@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useRef, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type FormEvent } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import {
   NOTIFICATION_REASONS,
@@ -17,8 +17,8 @@ import { SwitchRow } from '../app/SettingsHome';
 import { NotificationsButton } from '../pwa';
 import { getPushState } from '../pwa/push';
 import { Button, ErrorState, Icon, Spinner, useToast } from '../ui';
-import { addAddress, announcePauseChange, getPreferences, removeAddress, resendVerification, setMute, unsubscribe, updatePreferences, verifyAddress } from './api';
-import { captureNotificationSession, isCurrentNotificationSession } from './session';
+import { PAUSE_CHANGED, addAddress, announcePauseChange, getPreferences, removeAddress, resendVerification, setMute, unsubscribe, updatePreferences, verifyAddress, type PauseChange } from './api';
+import { captureNotificationSession, confirmedNotificationPauseSince, isCurrentNotificationSession, notificationPauseRevision } from './session';
 import './notifications.css';
 
 const ROWS: Record<NotificationReason, { label: string; hint: string }> = {
@@ -75,11 +75,32 @@ function AccountNotificationSettings() {
   const toast = useToast();
   const ids = { email: useId(), level: useId(), what: useId(), mute: useId() };
 
-  const load = () => {
+  const queue = useRef<Promise<void>>(Promise.resolve());
+  const sequence = useRef(0);
+  const reads = useRef(0);
+  const reconcilePause = useCallback((next: NotificationPreferences, revision: number): NotificationPreferences => {
+    const latest = confirmedNotificationPauseSince(captureNotificationSession(ownerId), revision);
+    return latest === undefined ? next : { ...next, pause: { until: latest } };
+  }, [ownerId]);
+  const load = useCallback(() => {
     setFailed(false);
-    getPreferences().then((next) => { if (mounted.current) setPrefs(next); }, () => { if (mounted.current) setFailed(true); });
-  };
-  useEffect(() => { getPreferences().then((next) => { if (mounted.current) setPrefs(next); }, () => { if (mounted.current) setFailed(true); }); }, []);
+    const mine = ++reads.current, edit = sequence.current;
+    const pauseVersion = notificationPauseRevision(captureNotificationSession(ownerId));
+    getPreferences().then((next) => {
+      if (mounted.current && mine === reads.current && edit === sequence.current) setPrefs(reconcilePause(next, pauseVersion));
+    }, () => { if (mounted.current && mine === reads.current && edit === sequence.current) setFailed(true); });
+  }, [ownerId, reconcilePause]);
+  useEffect(load, [load]);
+  useEffect(() => {
+    const changed = (event: Event) => {
+      const update = (event as CustomEvent<PauseChange>).detail;
+      if (update.ownerId === ownerId && isCurrentNotificationSession(captureNotificationSession(ownerId))) {
+        setPrefs((current) => current ? { ...current, pause: { until: update.until } } : current);
+      }
+    };
+    window.addEventListener(PAUSE_CHANGED, changed);
+    return () => window.removeEventListener(PAUSE_CHANGED, changed);
+  }, [ownerId]);
   // Push cannot reach anyone when the server has no VAPID keys or the browser has no push.
   const [pushOff, setPushOff] = useState<string | null>(null);
   useEffect(() => {
@@ -89,27 +110,35 @@ function AccountNotificationSettings() {
 
   // Saves run one after another in the order they were made, each numbered. Only the answer to
   // the newest one replaces what is shown, so an older response never undoes a newer edit.
-  const queue = useRef<Promise<void>>(Promise.resolve());
-  const sequence = useRef(0);
-  function save(run: () => Promise<NotificationPreferences>, done = 'Saved') {
+  function save(run: () => Promise<NotificationPreferences>, done = 'Saved', onError?: (error: unknown) => void): Promise<boolean> {
     const session = captureNotificationSession(ownerId);
-    if (!session) return Promise.resolve();
+    if (!session) return Promise.resolve(false);
     const mine = ++sequence.current;
     const next = queue.current.then(async () => {
-      if (!isCurrentNotificationSession(session)) return;
+      if (!isCurrentNotificationSession(session)) return false;
+      const pauseVersion = notificationPauseRevision(session);
       try {
-        const result = await run();
-        // Saves apply in order, so each confirmed answer is the server's state at that point.
-        if (!isCurrentNotificationSession(session)) return;
+        let result = await run();
+        // A confirmed change on another surface can overtake this response.
+        if (!isCurrentNotificationSession(session)) return false;
+        if (notificationPauseRevision(session) !== pauseVersion) {
+          const readVersion = notificationPauseRevision(session);
+          result = await getPreferences();
+          if (!isCurrentNotificationSession(session)) return false;
+          result = reconcilePause(result, readVersion);
+        }
         announcePauseChange(ownerId, result.pause.until);
         if (mounted.current && mine === sequence.current) { setPrefs(result); setSaved(done); }
+        return true;
       } catch (error) {
-        if (!isCurrentNotificationSession(session)) return;
-        toast({ message: message(error, 'Could not save. Try again.'), tone: 'danger' });
+        if (!isCurrentNotificationSession(session)) return false;
+        if (onError && mounted.current) onError(error);
+        else toast({ message: message(error, 'Could not save. Try again.'), tone: 'danger' });
         if (mounted.current && mine === sequence.current) load();
+        return false;
       }
     });
-    queue.current = next;
+    queue.current = next.then(() => undefined);
     return next;
   }
   const change = (command: UpdateNotificationPreferencesCommand, optimistic?: (current: NotificationPreferences) => NotificationPreferences) => {
@@ -267,7 +296,7 @@ function EmailDestinationChoice({ prefs, onChange }: { prefs: NotificationPrefer
   );
 }
 
-function ExtraAddress({ prefs, save }: { prefs: NotificationPreferences; save: (run: () => Promise<NotificationPreferences>, done?: string) => Promise<void> }) {
+function ExtraAddress({ prefs, save }: { prefs: NotificationPreferences; save: (run: () => Promise<NotificationPreferences>, done?: string, onError?: (error: unknown) => void) => Promise<boolean> }) {
   const [value, setValue] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -280,9 +309,9 @@ function ExtraAddress({ prefs, save }: { prefs: NotificationPreferences; save: (
     if (!value.trim() || busy) return;
     setBusy(true); setError('');
     try {
-      const next = await addAddress(value.trim());
-      await save(() => Promise.resolve(next), 'Verification link sent');
-      setValue('');
+      const added = await save(() => addAddress(value.trim()), 'Verification link sent',
+        (cause) => setError(message(cause, 'Could not send the link. Try again.')));
+      if (added) setValue('');
     } catch (cause) {
       setError(message(cause, 'Could not send the link. Try again.'));
     } finally {

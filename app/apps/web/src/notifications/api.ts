@@ -15,6 +15,7 @@ import {
   type UpdateNotificationPreferencesCommand,
 } from '@flux/contracts';
 import { request } from '../api/client';
+import { captureNotificationSession, recordNotificationPause } from './session';
 
 /** The inbox and notification settings (#41, #116). */
 export const getInbox = (signal?: AbortSignal, limit = 100) => request<InboxResponse>(`${INBOX_PATH}?limit=${limit}`, { signal });
@@ -39,5 +40,9 @@ export const announceInboxChange = () => window.dispatchEvent(new Event(INBOX_CH
 /** A confirmed pause belongs to the account that saved it. */
 export interface PauseChange { ownerId: string; until: string | null }
 export const PAUSE_CHANGED = 'flux:pause-changed';
-export const announcePauseChange = (ownerId: string, until: string | null) =>
+export const announcePauseChange = (ownerId: string, until: string | null) => {
+  const session = captureNotificationSession(ownerId);
+  if (!session) return;
+  recordNotificationPause(session, until);
   window.dispatchEvent(new CustomEvent<PauseChange>(PAUSE_CHANGED, { detail: { ownerId, until } }));
+};

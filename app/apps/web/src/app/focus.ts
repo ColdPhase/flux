@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { PAUSE_CHANGED, getPreferences, updatePreferences, type PauseChange } from '../notifications/api';
-import { beginNotificationSession, captureNotificationSession, isCurrentNotificationSession, retireNotificationSession, type NotificationSession } from '../notifications/session';
+import { PAUSE_CHANGED, announcePauseChange, getPreferences, updatePreferences, type PauseChange } from '../notifications/api';
+import { beginNotificationSession, captureNotificationSession, isCurrentNotificationSession, notificationPauseRevision, retireNotificationSession, type NotificationSession } from '../notifications/session';
 import { useToast } from '../ui';
 
 const MIN_FOCUS_MS = 30 * 60_000;
@@ -73,11 +73,20 @@ export function useFocus(identity: string) {
     // Focus shows only once the server holds notifications, so "paused" is never claimed early.
     const next = until ? null : focusEnd();
     const owner = who.current;
+    const pauseVersion = notificationPauseRevision(session);
     try {
       const prefs = await updatePreferences({ pause: { until: next ? next.toISOString() : null } });
       // The confirmed change is the newest state and drops any read still in flight; only a
       // different signed-in identity makes it obsolete.
-      if (owner === who.current && isCurrentNotificationSession(session)) apply(prefs.pause.until);
+      if (owner === who.current && isCurrentNotificationSession(session)) {
+        if (notificationPauseRevision(session) !== pauseVersion) {
+          // Another surface confirmed a change while this response was in flight. Read the
+          // actual current state instead of briefly showing the superseded action snapshot.
+          const mine = version.current;
+          const current = await getPreferences();
+          if (mine === version.current && isCurrentNotificationSession(session)) announcePauseChange(owner, current.pause.until);
+        } else announcePauseChange(owner, prefs.pause.until);
+      }
     } catch {
       if (isCurrentNotificationSession(session)) toast({ message: next ? 'Focus did not start: notifications are not paused' : 'Focus did not end; try again', tone: 'danger' });
     } finally {
