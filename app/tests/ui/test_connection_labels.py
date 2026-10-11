@@ -45,6 +45,10 @@ class ConnectionLabels(unittest.TestCase):
             node.click()
         trigger = page.get_by_role('toolbar', name='Selection actions').get_by_role('button', name='Connections', exact=True)
         expect(trigger).to_be_visible()
+        bar = trigger.locator('..').bounding_box()
+        canvas = page.locator('.sk-canvas').bounding_box()
+        self.assertGreaterEqual(bar['x'], canvas['x'], 'all selection controls stay inside the canvas')
+        self.assertLessEqual(bar['x'] + bar['width'], canvas['x'] + canvas['width'])
         if keyboard:
             trigger.focus()
             trigger.press('Enter')
@@ -235,6 +239,10 @@ class ConnectionLabels(unittest.TestCase):
         editor.get_by_role('textbox', name='Label', exact=True).fill('depends on soil temperature')
         shot(tablet, f'connection-labels-editor-tablet-820-{UI_BROWSER}')
         self.save(tablet, tablet_sketch, 'depends on soil temperature', touch=True)
+        bar = tablet.get_by_role('toolbar', name='Selection actions').bounding_box()
+        label = tablet.locator('.sk-el--edit').bounding_box()
+        overlap = max(0, min(bar['x'] + bar['width'], label['x'] + label['width']) - max(bar['x'], label['x'])) * max(0, min(bar['y'] + bar['height'], label['y'] + label['height']) - max(bar['y'], label['y']))
+        self.assertEqual(overlap, 0, 'the actions leave the saved label readable')
         self.assert_no_overflow(tablet)
         shot(tablet, f'connection-labels-map-tablet-820-{UI_BROWSER}')
 
