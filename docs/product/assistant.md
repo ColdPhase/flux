@@ -487,9 +487,11 @@ account, F-020).
   project the owner manages and in none other; a non-manager's [ Ask Jonas to add me ]
   creates one join request for that project's managers, and a manager's Allow grants
   it (app test with two people). The manager's Inbox request names the target project
-  and marks the assistant with monochrome Kreska and the Agent tag. Join questions
-  use the project source and its canonical `/projects/:projectId/agents` destination;
-  the marking comes from that destination and reason, never from matching display text.
+  and marks the assistant with monochrome Kreska, the Agent tag and explicit
+  `for <owner>` identity. Join questions use the project source and its canonical
+  `/projects/:projectId/agents` destination. Their identity is the immutable,
+  server-derived request-time snapshot defined in A1 below, with destination and
+  reason checked too; it never comes from parsing display text or private settings.
 - **AST-3.5** Jonas choosing "Ada's assistant" in a hand-off starts no run; it creates
   one Needs-you item for Ada, and only Ada's Allow starts the run (app test).
 - **AST-3.6** Assistant messages show the account's company in their header for every
@@ -1666,6 +1668,26 @@ An upgrade backfills already enabled owners from their existing `personal_run_ag
 with a read-only S6 snapshot and their existing explicit project grants. It adds no
 project grant or effect capability. Fresh explicit Turn on retains the accepted
 read-and-edit defaults; older owners allow new effects explicitly.
+
+**Join-question identity clarification (proposed 2026-10-11, #402/#457).** When
+creating the native manager question, the already-authorized request transaction
+stores a typed identity snapshot: request id, the actual assistant agent id/name,
+and the owner's id/public name. It is immutable with that question and is display
+provenance, never run, settings, connection or grant authority. Both Inbox list
+and individual-item reads expose it only as part of the existing recipient's
+notification under current project-read authorization. The names retain their
+request-time values: losing manager authority, renaming the owner/agent, closing
+or removing the request never relabels historical identity; Review and Allow
+still use their current project/manager checks. The original title/body, reason,
+destination and request-versus-grant behavior remain intact. No vendor/account,
+credential, policy, limit or private helper-setting data is included or fetched.
+Older questions without a recorded snapshot keep their original saved text; they
+must not acquire a guessed owner, a new/current assistant, or a text-parsed
+backfill. Their identity is unverified and does not count as legacy conformance
+without an independently admitted source-backed conversion. An additive
+migration permits an unused reverse, but refuses to delete identity snapshots
+after use. This records persistence/projection only; F-026's design and the A1
+owner/manage/read boundaries are unchanged.
 
 - **Scope.** One `owner_assistant` agent connection per person per workspace,
   created in the same transaction as the assistant's enablement, with its S6 policy
