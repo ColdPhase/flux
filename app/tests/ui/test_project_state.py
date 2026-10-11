@@ -166,6 +166,10 @@ class ProjectStateJourney(unittest.TestCase):
                 history.press("Tab")
                 page.keyboard.press("Shift+Tab")
                 self.assertTrue(history.evaluate("e => e.matches(':focus-visible')"))
+                ring = history.evaluate("""e => {const s=getComputedStyle(e);return {style:s.outlineStyle,width:parseFloat(s.outlineWidth),color:s.outlineColor};}""")
+                self.assertNotIn(ring["style"], ("none", "hidden"), ring)
+                self.assertGreater(ring["width"], 0, ring)
+                self.assertNotIn(ring["color"], ("transparent", "rgba(0, 0, 0, 0)"), ring)
         shot(page, "136-state-retained-history-desktop")
 
     def test_03_phone_and_tablet_readers_share_current_counts_and_reachable_details_without_write_access(self):
@@ -294,6 +298,34 @@ class ProjectStateJourney(unittest.TestCase):
                     page.get_by_role("button", name="Close details", exact=True).click()
                     if width in (744, 820, 1280):
                         shot(page, f"136-state-long-title-{len(name)}-{width}")
+
+    def test_05b_long_saved_rule_and_negative_result_keep_readable_metadata_in_details(self):
+        owner, project = self.scene()
+        token = "CALIBRATIONTRACEID" * 14
+        rule_title, result_title = "Library calibration policy " + token, "Optical field result " + token
+        rule = self.call(owner, "POST", f"/api/v1/projects/{project['id']}/decisions",
+            {"title": rule_title, "rationale": "Retain the measured native state"}, 201)
+        self.call(owner, "POST", f"/api/v1/decisions/{rule['id']}/accept", {"expectedVersion": rule["version"]})
+        self.call(owner, "POST", f"/api/v1/projects/{project['id']}/results",
+            {"title": result_title, "finding": "negative", "evidence": "Controlled field observation", "work": [], "sources": []}, 201)
+        for who, width, height, dark in (("Ada State", 1280, 800, False), ("Jonas Reader", 390, 844, True)):
+            with self.subTest(who=who, width=width):
+                page = self.page(who, width, height, dark)
+                page.goto(f"/projects/{project['id']}")
+                now = self.now_in_project(page)
+                rule_row = now.get_by_role("button").filter(has_text=rule_title)
+                result_row = now.get_by_role("button").filter(has_text=result_title)
+                expect(result_row).to_contain_text("Negative result")
+                for row in (rule_row, result_row):
+                    row.scroll_into_view_if_needed()
+                    self.assert_text_is_unclipped(row.locator(".ov-row__t"))
+                    # Any additional state metadata must remain readable; the semantic checks
+                    # do not require repeating a title that the row already communicates.
+                    if row.locator(".ov-row__s").count():
+                        self.assert_text_is_unclipped(row.locator(".ov-row__s"))
+                        wrapping = row.locator(".ov-row__s").evaluate("e => ({scroll:e.scrollWidth,width:e.clientWidth})")
+                        self.assertLessEqual(wrapping["scroll"], wrapping["width"] + 1, wrapping)
+                shot(page, f"136-state-long-metadata-{width}")
 
     def test_06_material_draft_hides_on_downgrade_and_returns_on_upgrade(self):
         owner, project = self.scene()

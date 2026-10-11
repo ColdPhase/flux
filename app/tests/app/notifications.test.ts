@@ -357,9 +357,11 @@ describe('email and push delivery', () => {
     const until = new Date(Date.now() + 45 * 60_000); until.setMilliseconds(0);
     const now = new Date(), minute = localMinutes(now, 'UTC');
     const clock = `${String(Math.floor(minute / 60)).padStart(2, '0')}:${String(minute % 60).padStart(2, '0')}`;
-    const combined = await prefs(focused, { pause: { until: until.toISOString() }, morningSummary: { enabled: true, at: clock }, quietHours: { enabled: false, timeZone: 'UTC' } });
+    const futureMinute = (minute + 60) % 1440;
+    const futureClock = `${String(Math.floor(futureMinute / 60)).padStart(2, '0')}:${String(futureMinute % 60).padStart(2, '0')}`;
+    const combined = await prefs(focused, { pause: { until: until.toISOString() }, morningSummary: { enabled: true, at: futureClock }, quietHours: { enabled: false, timeZone: 'UTC' } });
     assert.equal(combined.pause.until, until.toISOString());
-    assert.deepEqual(combined.morningSummary, { enabled: true, at: clock });
+    assert.deepEqual(combined.morningSummary, { enabled: true, at: futureClock });
     const thread = await conversation(owner, projectId, '@Pia Dolan the field measurements are ready');
     const item = await waitForItem(focused, entry => entry.url?.endsWith(thread.messages[0]!.id) === true, 'the Inbox during composed focus');
     await generatorCaughtUp();
@@ -367,16 +369,29 @@ describe('email and push delivery', () => {
     assert.equal(jobs.rows.length, 1, 'a pause-only push is queued even with summary enabled');
     assert.equal(new Date(jobs.rows[0].start_after).getTime(), until.getTime());
     const [email] = await waitFor(async () => { const rows = await emailRows(focused.id); return rows.length ? rows : null; }, 'the composed held email');
+    const emailJob = await pool.query('SELECT start_after FROM pgboss.job WHERE name=$1 AND data->>\'emailId\'=$2', [NOTIFICATION_EMAIL_JOB, email!.id]);
+    assert.equal(new Date(emailJob.rows[0].start_after).getTime(), until.getTime());
+    assert.equal((await mailsTo(focused.email)).length, 0, 'no email before Resume');
     assert.deepEqual(await deliverPush({ db, config: loadPushSenderConfig() }, { notificationId: item.id, subscriptionId, userId: focused.id }), { outcome: 'deferred', until });
     assert.deepEqual(await deliverNotificationEmail({ available: true, origin, uow: emailUnitOfWork(db, queue), mailer: smtp }, { emailId: email!.id }), { outcome: 'deferred', until });
+    // Enable today's due time only after the unread source exists, so a real scheduler
+    // cannot claim an empty day before this controlled summary is admitted.
+    await prefs(focused, { morningSummary: { at: clock } });
     await sendMorningSummaries(summaryUnitOfWork(db, queue), new Date());
     const summaries = (await pool.query("SELECT id FROM notifications WHERE user_id=$1 AND delivery_kind='morning_summary'", [focused.id])).rows;
     assert.equal(summaries.length, 1);
     assert.deepEqual(await deliverPush({ db, config: loadPushSenderConfig() }, { notificationId: summaries[0].id, subscriptionId, userId: focused.id }), { outcome: 'deferred', until });
+    await waitFor(async () => {
+      const jobs = await pool.query('SELECT state,start_after FROM pgboss.job WHERE name=$1 AND data->>\'notificationId\'=$2', [PUSH_SEND_JOB, summaries[0].id]);
+      return jobs.rows.some(row => new Date(row.start_after).getTime() === until.getTime())
+        && jobs.rows.every(row => row.state === 'completed' || new Date(row.start_after).getTime() >= until.getTime());
+    }, 'the real ready summary job to defer before direct Resume delivery');
     assert.equal((await recordedPushes(subscription.mockId)).length, 0, 'neither ordinary nor summary push escapes focus');
     await prefs(focused, { pause: { until: null } });
     assert.equal((await deliverPush({ db, config: loadPushSenderConfig() }, { notificationId: item.id, subscriptionId, userId: focused.id })).outcome, 'sent');
     assert.equal((await deliverNotificationEmail({ available: true, origin, uow: emailUnitOfWork(db, queue), mailer: smtp }, { emailId: email!.id })).outcome, 'sent');
+    await waitForMails(focused.email, 1, 'one email after Resume');
+    assert.equal((await mailsTo(focused.email)).length, 1);
     assert.equal((await deliverPush({ db, config: loadPushSenderConfig() }, { notificationId: summaries[0].id, subscriptionId, userId: focused.id })).outcome, 'sent');
     assert.equal((await recordedPushes(subscription.mockId)).length, 2, 'ordinary and summary delivery both resume');
     await prefs(focused, { morningSummary: { enabled: false } });
