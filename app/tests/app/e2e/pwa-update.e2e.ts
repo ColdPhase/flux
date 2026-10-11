@@ -166,7 +166,10 @@ describe(`Flux update prompt in ${engineName} over HTTPS`, () => {
       assert.equal(await first.getByLabel('Email').inputValue(), 'unfinished-first@example.test');
       let reloads = 0;
       first.on('framenavigated', (frame) => { if (frame === first.mainFrame()) reloads++; });
+      const reloaded = first.waitForEvent('framenavigated', { predicate: (frame) => frame === first.mainFrame() });
       await first.getByRole('button', { name: 'Reload', exact: true }).click();
+      await reloaded;
+      await first.waitForLoadState('domcontentloaded');
       await first.waitForFunction(() => navigator.serviceWorker.controller?.state === 'activated');
       // Version comes from the actual running worker, not an inferred registration filename.
       assert.equal(await controllerVersion(first), `${previousVersion}-next`);
