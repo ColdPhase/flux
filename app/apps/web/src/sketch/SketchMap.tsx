@@ -757,11 +757,12 @@ export function SketchMap(props: SketchMapProps) {
             const r = rects.get(thought.id)!;
             const p = place(r);
             const selected = selection.includes(thought.id);
+            const dragging = !!offset?.ids.includes(thought.id);
             // UI116-4: a count of the linked tasks, never their titles or results, under the text.
             return (
               <Fragment key={thought.id}>
               <ThoughtNode thought={thought} x={p.x} y={p.y} w={r.w} h={r.h} selected={selected}
-                dragging={!!offset?.ids.includes(thought.id)} editing={editing?.id === thought.id}
+                dragging={dragging} editing={editing?.id === thought.id}
                 resizable={selected && selection.length === 1 && arrange && !coarse && !editing}
                 meId={meId} helpId={helpId} projectId={projectId}
                 linked={projectId ? tasks.get(thought.id) : undefined}
