@@ -566,39 +566,56 @@ class RuntimeConsole(unittest.TestCase):
             for theme in ("light", "dark"):
                 for response_kind, response_status, response_body, message in (
                     ("unknown", 503, {"error": "unavailable"}, "Removal could not be confirmed. Check the current state before trying again."),
-                    ("refused", 409, {"error": "Another auth operation is still using your runtime", "code": "AGENT_RUNTIME_AUTH_BUSY"},
-                     "Another auth operation is still using your runtime"),
+                    ("off", 409, None, "Claude Code was not removed. Sign-in is turned off on this server. Ask the person who runs this server to turn it on, then try again."),
+                    # The current DELETE route never emits AUTH_BUSY. An unsupported response cannot
+                    # prove refusal/no deletion; keep this explicit synthetic compatibility control.
+                    ("synthetic-busy", 409, {"error": "Another auth operation is still using your runtime", "code": "AGENT_RUNTIME_AUTH_BUSY"},
+                     "Removal could not be confirmed. Check the current state before trying again."),
                 ):
                     with self.subTest(phone=phone, theme=theme, response=response_kind):
                         page = self.page(phone=phone)
                         page.emulate_media(color_scheme=theme)
+                        actual_status = page.request.get(f"{ORIGIN}/api/v1/agent-runtime")
+                        self.assertEqual(actual_status.status, 200)
+                        self.assertFalse(actual_status.json()["enabled"], "this real server's operator switch is off")
                         current = self.runtime_snapshot()
                         current["connections"]["claude_code"].update(state="signed_out", signedInAt=None,
                             signOut={"at": "2026-10-07T10:01:00.000Z", "failed": False})
                         page.route("**/api/v1/agent-runtime", lambda route: route.fulfill(
                             status=200, content_type="application/json", body=json.dumps(current)))
                         held: list[Route] = []
-                        page.route("**/api/v1/agent-runtime/binding", lambda route: held.append(route)
-                                   if route.request.method == "DELETE" else route.continue_())
+                        if response_kind != "off":
+                            page.route("**/api/v1/agent-runtime/binding", lambda route: held.append(route)
+                                       if route.request.method == "DELETE" else route.continue_())
                         page.goto("/settings/agents")
                         section = page.locator("section.rt")
                         expect(section.get_by_role("heading", name="Claude Code in Flux · not signed in")).to_be_visible()
                         section.get_by_role("button", name="Remove Claude Code from Flux…").click()
                         group = page.get_by_role("group", name="Remove Claude Code from Flux")
                         submit = group.get_by_role("button", name="Sign out and remove")
-                        submit.click()
-                        deadline = time.time() + 5
-                        while not held and time.time() < deadline:
-                            page.wait_for_timeout(20)
-                        self.assertEqual(len(held), 1, "the actual removal request reached its response barrier")
-                        held[0].fulfill(status=response_status, content_type="application/json", body=json.dumps(response_body))
-                        expect(section.get_by_role("alert")).to_have_text(message)
+                        if response_kind == "off":
+                            with page.expect_response(lambda response: response.request.method == "DELETE"
+                                                      and response.url.endswith("/api/v1/agent-runtime/binding")) as removal:
+                                submit.click()
+                            self.assertEqual(removal.value.status, response_status)
+                            self.assertEqual(removal.value.json()["code"], "AGENT_RUNTIME_OFF",
+                                             "the actual DELETE transport reached the pre-release server guard")
+                        else:
+                            submit.click()
+                            deadline = time.time() + 5
+                            while not held and time.time() < deadline:
+                                page.wait_for_timeout(20)
+                            self.assertEqual(len(held), 1, "the synthetic removal response reached its barrier")
+                            held[0].fulfill(status=response_status, content_type="application/json", body=json.dumps(response_body))
+                        expect(section.get_by_role("alert")).to_be_visible()
                         expect(submit).to_be_enabled()
                         expect(section.get_by_text("Signed out of Claude Code in Flux.", exact=True)).to_have_count(0)
                         # Preserve the natural post-click viewport: do not scroll to the header or alter focus.
                         shot(page, f"runtime-removal-working-{response_kind}-{'phone-390' if phone else 'desktop-1440'}-{theme}-{UI_BROWSER}")
+                        with self.subTest(check="plain-current-result"):
+                            self.assertEqual(section.get_by_role("alert").inner_text(), message)
                         with self.subTest(check="last-reported-value"):
-                            if response_kind == "unknown":
+                            if response_kind != "off":
                                 self.assertIn("last reported:", section.locator("#rt-h").inner_text(),
                                               "the strongest label qualifies the value carried through an unknown action")
                             else:
