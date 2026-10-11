@@ -115,6 +115,16 @@ class ProjectStateJourney(unittest.TestCase):
         page.reload()
         expect(state).to_contain_text("1 completed task")
         expect(state).not_to_contain_text("No decisions or work yet")
+        # Quiet header meta (#431): hovering adds no filled pill and no native tooltip over the
+        # tab row; the icon is centred on the label's line.
+        history = state.locator('[data-seg="history"]')
+        history.hover()
+        self.assertIsNone(history.get_attribute("title"))
+        meta = history.evaluate("""e => { const r = e.getBoundingClientRect(), i = e.querySelector('svg').getBoundingClientRect(),
+          t = e.querySelector('span:last-child').getBoundingClientRect();
+          return {bg: getComputedStyle(e).backgroundImage + getComputedStyle(e).backgroundColor, icon: Math.abs((i.top + i.height / 2) - (t.top + t.height / 2))}; }""")
+        self.assertEqual(meta["bg"], "nonergba(0, 0, 0, 0)", meta)
+        self.assertLessEqual(meta["icon"], 1, meta)
         state.locator('[data-seg="history"]').click()
         expect(page.locator("#details").get_by_role("heading", name=task["title"], exact=True)).to_be_visible()
         self.work(page, project, "Camera-only direction was not pursued", "not_pursued")
@@ -122,6 +132,19 @@ class ProjectStateJourney(unittest.TestCase):
         page.reload()
         expect(state).to_contain_text("1 completed task · 1 not pursued")
         self.assert_text_is_unclipped(state.locator('[data-seg="history"] > span'))
+        # The founder's desktop windows (#435): the header meta stays on one line, never "1 completed /
+        # task". The text element is exactly one line tall (its computed line-height).
+        for width, height in ((1440, 900), (1568, 751)):
+            with self.subTest(width=width, height=height):
+                page.set_viewport_size({"width": width, "height": height})
+                page.reload()
+                text = state.locator('[data-seg="history"] span:last-child')
+                expect(text).to_contain_text("1 completed task")
+                line = text.evaluate("""el => { const cs = getComputedStyle(el);
+                  return {height: el.getBoundingClientRect().height, lineHeight: parseFloat(cs.lineHeight), whiteSpace: cs.whiteSpace}; }""")
+                self.assertAlmostEqual(line["height"], line["lineHeight"], delta=1, msg=line)
+                self.assertEqual(line["whiteSpace"], "nowrap", line)
+        page.set_viewport_size({"width": 1280, "height": 800})
         shot(page, "136-state-retained-history-desktop")
 
     def test_03_phone_and_tablet_readers_share_current_counts_and_reachable_details_without_write_access(self):

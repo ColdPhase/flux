@@ -310,6 +310,11 @@ svg { flex: none; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0s !important; animation-iteration-count: 1 !important; transition-duration: 0s !important; transition-delay: 0s !important; scroll-behavior: auto !important; }
 }
+/* The person's own reduce-motion choice (Settings → Appearance; ui/motion-preference.ts) switches off CSS motion
+   exactly as the system setting does. It only adds reduction: the system setting is never overridden. */
+:root[data-motion="reduce"] *, :root[data-motion="reduce"] *::before, :root[data-motion="reduce"] *::after {
+  animation-duration: 0s !important; animation-iteration-count: 1 !important; transition-duration: 0s !important; transition-delay: 0s !important; scroll-behavior: auto !important;
+}
 /* Centered dialog (the Jump to… palette): `translate` positions it so the entry animation can own `transform`. */
 .ui-overlay--center .ui-overlay__surface {
   left: 50%; top: 12vh; translate: -50% 0; width: min(640px, calc(100% - 32px)); max-height: 76vh;
