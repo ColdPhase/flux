@@ -300,9 +300,9 @@ function AccountNotificationSettings() {
       </div>
 
       {refreshWarning ? <p className="nset__problem" role="note"><Icon name="alert" size={14} /><span>
-        {refreshWarning === 'settings' ? 'Current notification settings could not be refreshed. The last confirmed settings are shown.'
+        {refreshWarning === 'settings' ? 'Current notification settings could not be refreshed. Showing last confirmed settings.'
           : 'Current notification pause could not be checked. The last confirmed state is shown.'}{' '}
-        <Button variant="quiet" onClick={load}>Retry current settings</Button>
+        <Button variant="quiet" aria-label="Retry current settings" onClick={load}>Refresh</Button>
       </span></p> : null}
 
       <h3 className="sset-sec" id={ids.level}>Notify me about</h3>
