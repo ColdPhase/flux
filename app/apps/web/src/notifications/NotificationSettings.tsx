@@ -266,6 +266,9 @@ function AccountNotificationSettings() {
   const setLevel = (next: NotificationLevel) => change({ level: next }, (current) => ({ ...current, level: next }));
   const workingFeedback = (area: FeedbackArea) => refreshWarning === 'settings' && feedbackArea === area
     ? <WorkingReadNotice acknowledged={saved} retry={load} /> : null;
+  // The named result is also in its own row. Keep the header compact while the one live
+  // announcement retains the complete acknowledged name for assistive technology.
+  const savedMuteVerb = feedbackArea === 'mute' ? saved.startsWith('Muted ') ? 'Muted' : saved.startsWith('Unmuted ') ? 'Unmuted' : null : null;
   const activeMuteReceipt = showMuteReceipt ? muteReceipt : null;
   const muteRows: MutedPlaceRow[] = prefs.muted.map((place) => ({ place, receiptOnly: false }));
   if (activeMuteReceipt) {
@@ -296,7 +299,8 @@ function AccountNotificationSettings() {
           <h2>Notifications</h2>
           <p>Flux only interrupts you for things that need you. Everything else waits in Inbox.</p>
         </div>
-        <span className="nset__saved" role="status" aria-live="polite">{saved ? <><Icon name="check" size={14} />{saved}</> : null}</span>
+        <span className="nset__saved" role="status" aria-live="polite">{saved ? <><Icon name="check" size={14} />{savedMuteVerb
+          ? <>{savedMuteVerb}<span className="ui-vh">{saved.slice(savedMuteVerb.length)}</span></> : saved}</> : null}</span>
       </div>
 
       {refreshWarning ? <p className="nset__problem" role="note"><Icon name="alert" size={14} /><span>
