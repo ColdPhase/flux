@@ -3,6 +3,8 @@ import { and, desc, eq, sql, type SQL } from 'drizzle-orm';
 import * as schema from '../schema.js';
 import { TaskUseRefusal, type TaskUseFence } from './task-use.js';
 import { prepareReferencedTaskUse, referencedTaskIds } from './task-targets.js';
+import { prepareCanonicalArtifactTaskUse } from './artifact-task-associations.js';
+import { artifactResetRows } from './artifact-resets.js';
 import type { DbExecutor } from './push.js';
 
 /**
@@ -118,8 +120,9 @@ export function docRows(db: DbExecutor) {
     },
 
     /** Graph locks, then one sorted task pass over the previous mentions and these references; no link changes yet. */
-    async prepareTaskUse(scope: { workspaceId: string; projectId: string }, docId: string, refs: readonly Ref[]) {
-      return prepareReferencedTaskUse(db, scope.projectId, [...await previousMentions(docId), ...refs]);
+    async prepareTaskUse(scope: { workspaceId: string; projectId: string }, docId: string, refs: readonly Ref[], artifactVersion?: number) {
+      return prepareCanonicalArtifactTaskUse(db, scope, artifactVersion===undefined?null:{kind:'doc',id:docId,version:artifactVersion},
+        [...await previousMentions(docId), ...refs]);
     },
 
     assertTaskUse,
@@ -135,6 +138,14 @@ export function docRows(db: DbExecutor) {
         toType: to.type, toId: to.id, toVersion: to.type === 'material' ? to.version : null, createdByKind: by.kind, createdById: by.id,
       }))).onConflictDoNothing();
       await fence.mark();
+      const [current]=await db.select({version:v}).from(v).innerJoin(m,eq(m.id,v.materialId))
+        .where(and(eq(v.materialId,docId),eq(v.version,m.currentVersion)));
+      if(current){const version=current.version;
+        const [previous]=await db.select().from(v).where(and(eq(v.materialId,docId),eq(v.version,version.version-1)));
+        if(!previous||previous.body!==version.body||(previous.state??'published')!==(version.state??'published'))
+          await artifactResetRows(db).canonical(scope,{kind:'doc',id:docId,version:version.version},
+            {kind:'doc',id:docId,revision:String(version.version)},fence);
+      }
     },
   };
 }

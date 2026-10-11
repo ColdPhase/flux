@@ -110,6 +110,9 @@ test('0072 people/history survives upgrade; reversal refuses a thread and restor
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+    const resetDown = await readFile('packages/db/migrations/reverse/0088_agent_thread_artifact_resets.down.sql', 'utf8');
+    const resetUp = await readFile('packages/db/migrations/0088_agent_thread_artifact_resets.sql', 'utf8');
+    await client.query(resetDown);
     const guardDown = await readFile('packages/db/migrations/reverse/0087_agent_thread_turn_guard.down.sql', 'utf8');
     const guardUp = await readFile('packages/db/migrations/0087_agent_thread_turn_guard.sql', 'utf8');
     await client.query(guardDown);
@@ -118,7 +121,7 @@ test('0072 people/history survives upgrade; reversal refuses a thread and restor
     const down = await readFile('packages/db/migrations/reverse/0082_agent_threads.down.sql', 'utf8');
     const up = await readFile('packages/db/migrations/0082_agent_threads.sql', 'utf8');
     const ledger = (await client.query('SELECT version FROM flux_schema_version ORDER BY version')).rows;
-    await client.query(down); await client.query(up); await client.query(guardUp);
+    await client.query(down); await client.query(up); await client.query(guardUp); await client.query(resetUp);
     assert.equal((await client.query('SELECT space FROM project_conversations WHERE id=$1', [old.id])).rows[0].space, 'people');
     assert.equal((await client.query('SELECT body FROM project_messages WHERE conversation_id=$1', [old.id])).rows[0].body, 'Historical people text');
     await client.query('INSERT INTO project_conversations(id,workspace_id,project_id,created_by,space,work_id) VALUES($1,$2,$3,$4,$5,$6)', [randomUUID(), f.ws.id, f.place.id, f.owner.id, 'agents', f.task.id]);

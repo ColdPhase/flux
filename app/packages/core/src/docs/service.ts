@@ -88,7 +88,7 @@ async function resolve(ports: DocPorts, projectId: string, markdown: string, sel
  * changes. Each body is parsed once; the same raw identities are re-resolved after the graph wait, so a dangling
  * reference that becomes a task meanwhile refuses (TASK_TARGET_SET_CHANGED) instead of escaping the fence.
  */
-async function prepareDocBodyTaskUse(ports: DocPorts, row: DocWithCurrent, bodies: readonly string[], extra: readonly ObjectRef[] = []): Promise<DocTaskUseFence> {
+async function prepareDocBodyTaskUse(ports: DocPorts, row: DocWithCurrent, bodies: readonly string[], extra: readonly ObjectRef[] = [], artifactVersion: number|undefined=row.doc.currentVersion+1): Promise<DocTaskUseFence> {
   const parsed = bodies.map((body) => [...new Map(ports.renderer.references(body).map((ref) => [`${ref.type}:${ref.id}`, ref])).values()]);
   const targets = async () => {
     const refs: ObjectRef[] = [...extra];
@@ -98,7 +98,7 @@ async function prepareDocBodyTaskUse(ports: DocPorts, row: DocWithCurrent, bodie
     }
     return refs;
   };
-  const fence = await ports.docs.prepareTaskUse({ workspaceId: row.doc.workspaceId, projectId: row.doc.projectId }, row.doc.id, await targets());
+  const fence = await ports.docs.prepareTaskUse({ workspaceId: row.doc.workspaceId, projectId: row.doc.projectId }, row.doc.id, await targets(), artifactVersion);
   await ports.docs.assertTaskUse(row.doc.id, await targets(), fence);
   return fence;
 }
@@ -288,7 +288,7 @@ export function createDocUseCases(uow: DocUnitOfWork, options: DocUseCaseOptions
         if (body.length > DOC_LIMITS.body) throw new InvalidInputError(`body must be at most ${DOC_LIMITS.body} characters`);
         const first: NewDocVersion = { title, body, state, reason, author: by };
         const row = await ports.docs.insert({ id: randomUUID(), workspaceId, projectId: project, createdBy: by }, first);
-        const taskFence = await prepareDocBodyTaskUse(ports, row, [body], from ? [from] : []);
+        const taskFence = await prepareDocBodyTaskUse(ports, row, [body], from ? [from] : [], 1);
         if (from) await linkSource(ports, scope, row.doc.id, from, by);
         return commit(ports, principal, scope, row, true, taskFence);
       });

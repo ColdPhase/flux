@@ -1,7 +1,7 @@
 import { messagePreview } from '@flux/contracts';
 import { randomUUID } from 'node:crypto';
 import { and, asc, desc, eq, lt, sql, type SQL } from 'drizzle-orm';
-import { agentThreadGuardRows, fileRows, schema, taskDiscussionRows, taskUseRows, workRows } from '@flux/db';
+import { agentThreadGuardRows, artifactResetRows, fileRows, prepareCanonicalArtifactTaskUse, schema, taskDiscussionRows, taskUseRows, workRows } from '@flux/db';
 import type {
   Conversation, ConversationMessage, ConversationRootWindow, ConversationSummary, Material, MaterialOrDoc,
   AgentProjectOwner, AuthenticatedAgentRuntime, MaterialVersion, Page, PageQuery, TaskAgentThread,
@@ -543,6 +543,9 @@ export function conversationStore(db: Database, options: ConversationStoreOption
         const previous = await currentVersion(locked, tx);
         const next = { title: input.title ?? previous.title, body: input.body ?? previous.body, url: input.url === undefined ? previous.url : input.url };
         if (!next.body.trim() && !next.url) throw new InvalidInputError('Material needs text or a link');
+        const progress=next.body!==previous.body||next.url!==previous.url;
+        const scope={workspaceId:row.workspaceId,projectId:row.projectId};
+        const fence=await prepareCanonicalArtifactTaskUse(tx,scope,progress?{kind:'material',id:row.id,version:locked.currentVersion+1}:null,[]);
         const [updated] = await tx.update(schema.projectMaterials).set({ currentVersion: locked.currentVersion + 1, updatedAt: new Date() })
           .where(eq(schema.projectMaterials.id, row.id)).returning();
         const [snapshot] = await tx.insert(schema.projectMaterialVersions).values({
@@ -550,6 +553,8 @@ export function conversationStore(db: Database, options: ConversationStoreOption
           version: updated!.currentVersion, ...next, authorId,
           clientMutationId: input.clientMutationId, requestFingerprint: input.fingerprint,
         }).returning();
+        if(progress)await artifactResetRows(tx).canonical(scope,{kind:'material',id:row.id,version:snapshot!.version},
+          {kind:'material',id:row.id,revision:String(snapshot!.version)},fence);
         await recordEvent(eventPorts(tx), principal, row.workspaceId, 'project.material_updated.v1', row.projectId, { materialId: row.id, version: updated!.currentVersion });
         return material(updated!, snapshot!, principal);
       });

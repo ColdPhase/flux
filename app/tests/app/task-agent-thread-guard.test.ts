@@ -243,7 +243,7 @@ test('forced native-post winner fences actual HTTP Undo, while forced Undo winne
 });
 
 test('fresh/current82 migration preserves exact ledger/history and reverses only before guarded retained effects', {timeout:60_000},async()=>{
-  const manifest=await readMigrationManifest('packages/db/migrations',FLUX_SCHEMA_VERSION),prior=manifest.filter(f=>f.version!==87);
+  const manifest=await readMigrationManifest('packages/db/migrations',FLUX_SCHEMA_VERSION),prior=manifest.filter(f=>f.version<87);
   const name=`flux_thread_guard_${randomUUID().replaceAll('-','')}`,url=new URL(process.env.DATABASE_URL!);url.pathname=`/${name}`;
   const createFixture={text:`CREATE DATABASE "${name}"`,query_timeout:60_000};
   await pool.query(createFixture);const fixture=createDatabase(url.toString()).pool;
@@ -258,10 +258,11 @@ test('fresh/current82 migration preserves exact ledger/history and reverses only
     for(const conversation of [people,thread])await fixture.query("INSERT INTO project_messages(id,workspace_id,project_id,conversation_id,author_id,client_message_id,request_fingerprint,sequence,body) VALUES($1,$2,$3,$4,$5,$6,'retained-history',1,'Retain this exact human text')",[randomUUID(),workspace,project,conversation,human,randomUUID()]);
     const history=()=>fixture.query('SELECT * FROM project_messages ORDER BY id');const oldHistory=(await history()).rows;
     const up=await readFile('packages/db/migrations/0087_agent_thread_turn_guard.sql','utf8'),down=await readFile('packages/db/migrations/reverse/0087_agent_thread_turn_guard.down.sql','utf8');
-    const before=await readAppliedMigrationVersions(fixture);await fixture.query(up);await fixture.query('INSERT INTO flux_schema_version(version) VALUES(87)');assertExactMigrationLedger(manifest,await readAppliedMigrationVersions(fixture));
+    const guardManifest=manifest.filter(f=>f.version<=87);
+    const before=await readAppliedMigrationVersions(fixture);await fixture.query(up);await fixture.query('INSERT INTO flux_schema_version(version) VALUES(87)');assertExactMigrationLedger(guardManifest,await readAppliedMigrationVersions(fixture));
     assert.deepEqual((await history()).rows,oldHistory);await fixture.query(down);await fixture.query('DELETE FROM flux_schema_version WHERE version=87');assert.deepEqual(await readAppliedMigrationVersions(fixture),before);assert.deepEqual((await history()).rows,oldHistory);
     assert.equal((await fixture.query("SELECT to_regclass('agent_thread_guard_events') AS guard")).rows[0].guard,null);assert.equal((await fixture.query("SELECT count(*)::int n FROM pg_trigger WHERE tgname='agent_thread_agent_writes_closed'")).rows[0].n,1);
-    await fixture.query(up);await fixture.query('INSERT INTO flux_schema_version(version) VALUES(87)');assertExactMigrationLedger(manifest,await readAppliedMigrationVersions(fixture));assert.deepEqual((await history()).rows,oldHistory);
+    await fixture.query(up);await fixture.query('INSERT INTO flux_schema_version(version) VALUES(87)');assertExactMigrationLedger(guardManifest,await readAppliedMigrationVersions(fixture));assert.deepEqual((await history()).rows,oldHistory);
     const f=await actionScene(pool),item=await task(f),grant=await f.grant('conversation.reply','execute',20);await post(f,envelope(f,item.id,grant.id));
     const client=await pool.connect();try{await client.query('BEGIN');const ledger=await readAppliedMigrationVersions(client);await assert.rejects(client.query(down),/Cannot reverse 0087/);await client.query('ROLLBACK');assert.deepEqual(await readAppliedMigrationVersions(client),ledger);}finally{client.release();}
     assert.equal((await state(item.id)).messages,1);
