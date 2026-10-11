@@ -565,6 +565,9 @@ class TasksFinalJourney(unittest.TestCase):
                         route.fulfill(response=response)
                 page.route(address, hold)
                 self.row(page, SUPPLIER).get_by_role('button', name='Open. Set to In progress').click()
+                deadline = time.time() + 8
+                while not held and time.time() < deadline:
+                    page.wait_for_timeout(50)
                 self.assertEqual(len(held), 1)
                 self.assertEqual(held[0][1].status, 200, 'the delayed answer is a genuinely stored change')
                 middle = page.locator(f'.ws-task[data-work-id="{ids[9]}"] .ws-item')
