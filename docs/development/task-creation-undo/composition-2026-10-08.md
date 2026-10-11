@@ -47,6 +47,41 @@ do not infer SQL identity from version57, an old filename or a checksum introduc
 An ambiguous refusal must preserve data and ledger. Accepted conversion requires migration, restart and
 paired database/files backup restore against the matching image. Fresh-database success does not meet this gate.
 
+### Present namespace and conservative legacy refusal (2026-10-11)
+
+The [bounded guard plan was independently accepted](https://github.com/ColdPhase/flux/issues/238#issuecomment-6103941867)
+by the coordinator before implementation.
+At source `e1173082fc0707d57b13b2b882f3870023b1e1ae`, the actual manifest has lifecycle
+0048 and grant 0060, with no 0057/0058/0059 files. The coordination paragraph above
+records its dated allocation, not proof of present composition. Identity PR #384
+currently uses 0066. The actual focus artifact is **0059_notification_pause.sql**
+at `38ad797f3a561f10b7e9502079ff06d48379b492`, not a demonstrated focus0057 artifact.
+
+The original Undo source is `45c08e7d923e48d3d7402e1df962d0a1a4e71152` (parent of
+composition `ffd939d8ad1147fb47fc73df19e90647fbe56d6f`). Its 0048 and 0057 grant SQL
+are retained verbatim as test fixtures; 0060 is the same grant SQL, without rewriting
+historical ledgers. The canonical sign-in artifact is
+`6386b2fba48905d5f58f42ce12b84788ff57a611` / 0057_agent_runtime_sign_in.sql;
+the runtime-auth artifact is `cbfe436175b66c832328c3bd4560868e3e28abb1` /
+0058_agent_runtime_auth_operations.sql. These are source artifacts, not evidence of
+an accepted combined image or a surviving old deployment.
+
+Before any application migration, ledger or pg-boss write, under the existing
+migrator lock, inspect actual legacy catalog footprints and the supported 0048/0060
+columns, types, checks, scoped keys and guards. Refuse unsupported reserved ledgers,
+unversioned legacy footprints, partial or mixed states, and mismatched supported
+Undo shapes. Preserve schema, rows and ledger; advise restoring the matching image
+and paired backup. No conversion, renumbering, inferred provenance, flag or public
+API change is admitted. Additional unrelated columns/tables remain allowed.
+
+Required bounded evidence includes the real migration CLI on original legacy SQL,
+unchanged catalog/data/ledger after refusal and repeated startup, and refusal again
+after PostgreSQL dump/restore. Normal pre-0048/pre-0060 upgrades and current restart
+are positive controls. This bounded refusal policy does not certify a future image
+containing canonical sign-in/auth/focus migrations. When those compose, review the
+actual manifest and catalog ownership again and extend the guard and real combined
+upgrade/restore evidence. All AC-U1–AC-U5, live-writer and release gates remain.
+
 ## Required current evidence
 
 Verify trusted agent/proposal origins and current human/agent authority, monotonically recorded prior use,
