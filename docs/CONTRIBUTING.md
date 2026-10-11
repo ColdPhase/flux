@@ -171,8 +171,8 @@ maintainer in a comment.
 
 Please keep each PR focused on one problem. Updating documentation alongside a
 behavior change helps other contributors understand and maintain it. If people or
-operators will notice the change, add one line under `[Unreleased]` in
-[CHANGELOG.md](../CHANGELOG.md) with your PR number. [GOVERNANCE.md](../GOVERNANCE.md)
+operators will notice the change, add one changelog file under
+[changes/](../changes/README.md) with your PR number (not a line in CHANGELOG.md). [GOVERNANCE.md](../GOVERNANCE.md)
 explains who decides what and how to become a maintainer.
 
 ## Working with coding agents

@@ -106,13 +106,29 @@ handoff: issue/PR, branch, full pushed head SHA, actual draft/ready state,
 criteria done and remaining, checks run or unavailable, next action and an
 @mention of the evaluator. A timestamped handoff is a snapshot, not live presence.
 
+A PR that delivers only part of an issue says so in its first handoff. It maps each
+criterion to *done here* or *remaining*, and links a child issue in the milestone that
+carries every remaining criterion unchanged. Never write a closing keyword for the
+parent in a partial PR.
+
+Before asking for review or re-review, check the pushed head yourself:
+
+- Go through each criterion in scope and each open finding.
+- For each, name the test or observation at this head that shows it.
+- Describe the result no more strongly than that evidence: a fallback is not the
+  feature, and "passes here" is not "passes everywhere".
+- Mark anything you did not verify as unverified.
+
+A claim the evaluator finds overstated costs a whole review round.
+
 ## 5. Review, fix and merge
 
 The evaluator reviews the pinned head in an isolated checkout using
 [Evaluation](evaluation.md) and submits a **GitHub PR review**: approve, or
 request changes with concrete findings (criterion, expected, observed,
-reproduction). The author fixes on the same branch and asks for re-review; the
-evaluator re-reviews only the delta and any open findings.
+reproduction, severity). The author fixes on the same branch and asks for re-review; the
+evaluator re-reviews only the delta and any open findings. Only P1 and P2 findings
+block; see [Verdicts](evaluation.md#verdicts).
 
 Once the current head is approved, required checks pass and threads are resolved,
 the approver or the author merges. Never bypass branch protection. New code

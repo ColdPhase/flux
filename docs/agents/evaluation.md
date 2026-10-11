@@ -111,6 +111,30 @@ Keep optional improvement suggestions separate from blocking findings. A missing
 required interaction, data loss, incorrect access, or a broken primary workflow
 blocks acceptance. Missing evidence cannot be replaced with a positive score.
 
+Give every finding a severity, so that review rounds converge:
+
+| Severity | Meaning | Effect on the verdict |
+| --- | --- | --- |
+| P1 | Data loss, incorrect access, security, a broken primary workflow, or a failing required check | Blocks |
+| P2 | A required criterion fails or is unverified, or an agreed constraint is broken | Blocks |
+| P3 | Wording, naming, style, optional evidence, a pre-existing defect the PR does not touch, or a later improvement | Never blocks |
+
+When only P3 findings remain, approve and list them in the review. The author fixes them
+in the same PR when cheap, or opens a follow-up issue in the milestone and links it.
+
+Report every finding you can see at a head in one review. A later round re-checks the
+earlier findings and the code changed since. A required criterion or agreed constraint
+that newly turns out to fail still blocks, whatever the round: say why an earlier round
+missed it and consolidate it into that review. A later round does not add new preferences
+or P3 findings on code it already reviewed.
+
+A PR may deliver part of an issue. It then declares its scope against the issue's
+criteria, and links a child issue that preserves every remaining criterion (see
+[the workflow](workflow.md#4-implement-and-hand-off)). Evaluate it against that declared
+scope. The remaining criteria stay required in the child issue, so this never lowers
+the bar. If a declared split would leave a delivered part unusable or misleading,
+request changes and say which criterion must land in this PR.
+
 Code changes invalidate the reviewed head. Re-run affected verification and
 obtain the required review on the new head; retain prior findings until verified
 fixed. If the evaluator edits code, another independent evaluation is needed.
