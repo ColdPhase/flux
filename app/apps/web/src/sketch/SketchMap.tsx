@@ -170,7 +170,6 @@ export function SketchMap(props: SketchMapProps) {
   const arrange = canWrite && !compact;
   const observer = useRef<ResizeObserver | null>(null);
   const events = useRef<NodeEvents>(IDLE_EVENTS);
-  const getNodeEvents = useCallback(() => events.current, []);
   // One ref callback for every node. An inline callback is a new function on every render, so
   // React detached and re-attached every node's ref each time: with 500 thoughts, every live
   // preview unobserved and re-observed 500 elements, and the ResizeObserver then re-measured all
@@ -495,10 +494,6 @@ export function SketchMap(props: SketchMapProps) {
     begin(event, { kind: 'link', id, ids: [id] });
   };
 
-  const onDotClick = (id: string) => {
-    if (!suppressClick.current) props.onConnectFrom(id);
-  };
-
   const onResizePointerDown = (event: ReactPointerEvent<HTMLSpanElement>, thought: Thought) => {
     event.stopPropagation();
     if (event.button !== 0) return;
@@ -700,6 +695,36 @@ export function SketchMap(props: SketchMapProps) {
     </div>
   );
 
+  const thoughtNodes: ReactNode[] = [];
+  if (!measuring) {
+    for (const thought of shown) {
+      const r = rects.get(thought.id)!;
+      const p = place(r);
+      const selected = selection.includes(thought.id);
+      const dragging = !!offset?.ids.includes(thought.id);
+      // UI116-4: a count of the linked tasks, never their titles or results, under the text.
+      thoughtNodes.push(
+        <Fragment key={thought.id}>
+        <ThoughtNode thought={thought} x={p.x} y={p.y} w={r.w} h={r.h} selected={selected}
+          dragging={dragging} editing={editing?.id === thought.id}
+          resizable={selected && selection.length === 1 && arrange && !coarse && !editing}
+          meId={meId} helpId={helpId} projectId={projectId}
+          linked={projectId ? tasks.get(thought.id) : undefined}
+          mover={props.movers.get(thought.id)} live={props.livePreviews.get(thought.id)} nodeRef={nodeRef} events={events} />
+        {arrange && !editing && !measuring ? (['right', 'left'] as const).map((side) => (
+          <button key={side} type="button" tabIndex={selected && side === 'right' ? 0 : -1} data-for={thought.id} data-side={side}
+            aria-label={`Connect from ${quote(thought.text)}: drag to another thought, or press Enter and choose one`} aria-hidden={side === 'left' ? true : undefined}
+            onPointerEnter={() => setHover(thought.id)} onPointerLeave={() => setHover((id) => id === thought.id ? null : id)}
+            className={`sk-dot${selected || connectFrom === thought.id || hover === thought.id ? ' is-on' : ''}${dragging ? ' is-dragging' : ''}`}
+            style={{ transform: `translate(${p.x + (side === 'right' ? r.w : 0)}px, ${p.y + r.h / 2}px) scale(${1 / zoom}) translate(-50%, -50%)` }}
+            onPointerDown={(event) => onDotPointerDown(event, thought.id)}
+            onClick={() => { if (!suppressClick.current) props.onConnectFrom(thought.id); }} />
+        )) : null}
+        </Fragment>
+      );
+    }
+  }
+
   return (
     <div ref={wrapRef} className={`sk-canvas-wrap sk-canvas-wrap--controls${hasComposition ? ' has-composition' : ''}`} style={compact ? { '--sk-phone-tools-height': `${hasComposition ? compositionHeight : phoneToolsHeight}px` } as CSSProperties : undefined}>
     <div className={`sk-canvas${panning ? ' is-panning' : ''}${connectFrom ? ' is-connecting' : ''}${wire ? ' is-wiring' : ''}`} ref={canvasRef} role="group"
@@ -758,32 +783,7 @@ export function SketchMap(props: SketchMapProps) {
               </button> : <span key={link.id} className={`sk-el${on ? ' is-on' : ''}`} style={style}>{link.label}</span>;
             })}
           </div>
-          {measuring ? null : shown.map((thought) => {
-            const r = rects.get(thought.id)!;
-            const p = place(r);
-            const selected = selection.includes(thought.id);
-            const dragging = !!offset?.ids.includes(thought.id);
-            // UI116-4: a count of the linked tasks, never their titles or results, under the text.
-            return (
-              <Fragment key={thought.id}>
-              <ThoughtNode thought={thought} x={p.x} y={p.y} w={r.w} h={r.h} selected={selected}
-                dragging={dragging} editing={editing?.id === thought.id}
-                resizable={selected && selection.length === 1 && arrange && !coarse && !editing}
-                meId={meId} helpId={helpId} projectId={projectId}
-                linked={projectId ? tasks.get(thought.id) : undefined}
-                mover={props.movers.get(thought.id)} live={props.livePreviews.get(thought.id)} ref={nodeRef} getNodeEvents={getNodeEvents} />
-              {arrange && !editing && !measuring ? (['right', 'left'] as const).map((side) => (
-                <button key={side} type="button" tabIndex={selected && side === 'right' ? 0 : -1} data-for={thought.id} data-side={side}
-                  aria-label={`Connect from ${quote(thought.text)}: drag to another thought, or press Enter and choose one`} aria-hidden={side === 'left' ? true : undefined}
-                  onPointerEnter={() => setHover(thought.id)} onPointerLeave={() => setHover((id) => id === thought.id ? null : id)}
-                  className={`sk-dot${selected || connectFrom === thought.id || hover === thought.id ? ' is-on' : ''}${dragging ? ' is-dragging' : ''}`}
-                  style={{ transform: `translate(${p.x + (side === 'right' ? r.w : 0)}px, ${p.y + r.h / 2}px) scale(${1 / zoom}) translate(-50%, -50%)` }}
-                  onPointerDown={(event) => onDotPointerDown(event, thought.id)}
-                  onClick={() => onDotClick(thought.id)} />
-              )) : null}
-              </Fragment>
-            );
-          })}
+          {thoughtNodes}
           {plus && last && lastThought ? (!compact ? (() => {
             // Controls keep their on-screen size at every zoom (touch targets stay 44px).
             const x = plus.x + last.w / 2;
@@ -895,8 +895,8 @@ interface ThoughtNodeProps {
   linked: ThoughtTasksEntry | undefined;
   mover: string | undefined;
   live: { generation: string; gestureId: string; leaseId: string; sequence: number } | undefined;
-  ref(el: HTMLButtonElement | null): (() => void) | undefined;
-  getNodeEvents(): NodeEvents;
+  nodeRef(el: HTMLButtonElement | null): (() => void) | undefined;
+  events: { readonly current: NodeEvents };
 }
 
 /**
@@ -904,7 +904,7 @@ interface ThoughtNodeProps {
  * re-renders only the thoughts it moves: re-rendering all 500 thoughts of a map for every preview
  * kept a peer's main thread busy and delayed the next preview's receipt (#228 Gate 4).
  */
-const ThoughtNode = memo(function ThoughtNode({ thought, x, y, w, h, selected, dragging, editing, resizable, meId, helpId, projectId, linked, mover, live, ref: nodeRef, getNodeEvents }: ThoughtNodeProps) {
+const ThoughtNode = memo(function ThoughtNode({ thought, x, y, w, h, selected, dragging, editing, resizable, meId, helpId, projectId, linked, mover, live, nodeRef, events }: ThoughtNodeProps) {
   const link = linkOf(thought.text);
   const meta = thought.placement
     ? (thought.placement.title ? `Draft · ${thought.placement.title}` : 'Draft you can’t open')
@@ -917,11 +917,11 @@ const ThoughtNode = memo(function ThoughtNode({ thought, x, y, w, h, selected, d
         className={`sk-node sk-node--${thought.shape}${dragging ? ' is-dragging' : ''}${editing ? ' is-editing' : ''}${thought.version === 0 ? ' is-new' : ''}${linked?.count ? ' has-work' : ''}`}
         style={{ transform: `translate(${x}px, ${y}px)`, width: w, minHeight: thought.shape === 'circle' ? w : thought.height, height: thought.shape === 'circle' ? w : undefined }}
         aria-pressed={selected} aria-describedby={helpId}
-        onPointerDown={(event) => getNodeEvents().pointerDown(event, thought.id)}
-        onPointerEnter={(event) => getNodeEvents().pointerEnter(event, thought.id)} onPointerLeave={() => getNodeEvents().pointerLeave(thought.id)}
-        onClick={(event) => getNodeEvents().click(event, thought.id)}
-        onDoubleClick={() => getNodeEvents().doubleClick(thought.id)}
-        onKeyDown={(event) => getNodeEvents().keyDown(event, thought)}>
+        onPointerDown={(event) => events.current.pointerDown(event, thought.id)}
+        onPointerEnter={(event) => events.current.pointerEnter(event, thought.id)} onPointerLeave={() => events.current.pointerLeave(thought.id)}
+        onClick={(event) => events.current.click(event, thought.id)}
+        onDoubleClick={() => events.current.doubleClick(thought.id)}
+        onKeyDown={(event) => events.current.keyDown(event, thought)}>
         {meta ? <span className="sk-k"><Icon name={thought.placement ? 'doc' : 'link'} size={12} />{meta}</span> : null}
         {thought.file ? <ThoughtImage className="sk-img" fileId={thought.file.id} name={thought.file.name}
           style={{ maxHeight: Math.max(48, thought.height - 64) }} /> : null}
@@ -931,11 +931,11 @@ const ThoughtNode = memo(function ThoughtNode({ thought, x, y, w, h, selected, d
         {mover ? <span className="sk-live-mover">{mover} is moving</span> : null}
         {/* Room for the count, which is its own button beside this one. */}
         {linked?.count ? <span className="sk-work-gap" aria-hidden="true" /> : null}
-        {resizable ? <span className="sk-resize" aria-hidden="true" onPointerDown={(event) => getNodeEvents().resizePointerDown(event, thought)} /> : null}
+        {resizable ? <span className="sk-resize" aria-hidden="true" onPointerDown={(event) => events.current.resizePointerDown(event, thought)} /> : null}
       </button>
       {linked?.count && projectId ? (
         <div className={`sk-work-slot sk-work-slot--${thought.shape}${dragging ? ' is-dragging' : ''}`} data-for={thought.id} style={{ transform: `translate(${x}px, ${y}px)`, width: w, height: h }}>
-          <ThoughtTasks thought={thought} tasks={linked} projectId={projectId} variant="map" onOpenTask={(id) => getNodeEvents().openTask(id)} />
+          <ThoughtTasks thought={thought} tasks={linked} projectId={projectId} variant="map" onOpenTask={(id) => events.current.openTask(id)} />
         </div>
       ) : null}
     </>
