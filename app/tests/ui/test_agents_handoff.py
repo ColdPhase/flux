@@ -521,6 +521,46 @@ class HandOffJourney(unittest.TestCase):
         self.assertEqual(self.api(ada, "GET", f"/api/v1/work/{task_id}", status=200)["owner"], task["owner"])
         self.assertEqual(self.api(ada, "GET", f"/api/v1/projects/{project}/grants", status=200), grants, "refusals change no grants")
 
+    def test_16_phone_tap_confirmation_persists_owner_and_version_without_grant_changes(self) -> None:
+        """Isolated projects preserve the preceding fixture; complete both touch steps in both themes."""
+        for scheme in ("light", "dark"):
+            with self.subTest(engine=UI_BROWSER, scheme=scheme):
+                page = self.page("ada", phone=True, scheme=scheme)
+                workspace = self.api(page, "POST", "/api/v1/workspaces", {"name": f"Phone hand-off {scheme}"}, status=201)["id"]
+                project = self.api(page, "POST", f"/api/v1/workspaces/{workspace}/projects",
+                                   {"name": "Phone field work", "visibility": "restricted"}, status=201)["id"]
+                agent = self.api(page, "POST", f"/api/v1/workspaces/{workspace}/agents", {"name": "Field agent", "owner": "self"}, status=201)["id"]
+                self.api(page, "POST", f"/api/v1/projects/{project}/grants",
+                         {"principal": {"kind": "agent", "id": agent}, "role": "contributor"}, status=201)
+                task = self.api(page, "POST", f"/api/v1/projects/{project}/work", {"title": "Check the probes after rain"}, status=201)
+                grants = self.api(page, "GET", f"/api/v1/projects/{project}/grants", status=200)
+                page.goto(f"/projects/{project}/agents")
+                page.get_by_role("button", name="Hand off a task").tap()
+                dialog = page.get_by_role("dialog", name="Hand off a task")
+                expect(dialog.get_by_text("Step 1 of 2", exact=True)).to_be_visible()
+                dialog.get_by_label("Task", exact=True).select_option(label="#1 · Check the probes after rain")
+                dialog.locator("label.handoff__agent", has_text="Field agent").tap()
+                dialog.get_by_role("button", name="Next").tap()
+                expect(dialog.get_by_text("Step 2 of 2", exact=True)).to_be_visible()
+                expect(dialog).to_contain_text("Field agent will be able to read this project and write in it")
+                self.assertIsNone(self.api(page, "GET", f"/api/v1/work/{task['id']}", status=200)["owner"], "step2 alone changes nothing")
+                confirm = dialog.get_by_role("button", name=re.compile("^Hand off"))
+                target = confirm.bounding_box()
+                assert target
+                self.assertGreaterEqual(target["height"], 44)
+                self.assertGreaterEqual(target["width"], 44)
+                confirm.tap()
+                expect(dialog).to_have_count(0)
+                saved = self.api(page, "GET", f"/api/v1/work/{task['id']}", status=200)
+                self.assertEqual({key: saved["owner"][key] for key in ("kind", "id")}, {"kind": "agent", "id": agent})
+                self.assertEqual(saved["version"], task["version"] + 1, "one confirmation changes one native version")
+                self.assertEqual(self.api(page, "GET", f"/api/v1/projects/{project}/grants", status=200), grants)
+                page.reload()
+                expect(page.locator(f'.agents-row[data-agent="{agent}"]')).to_contain_text("Handed #1")
+                readback = self.api(page, "GET", f"/api/v1/work/{task['id']}", status=200)
+                self.assertEqual((readback["owner"], readback["version"]), (saved["owner"], saved["version"]))
+                self.assertEqual(self.api(page, "GET", f"/api/v1/projects/{project}/grants", status=200), grants, "reload grants no access")
+
     def test_15_an_exhausted_empty_task_page_is_honest(self) -> None:
         page = self.page("ada")
         project = self.api(page, "POST", f"/api/v1/workspaces/{self.ids['workspace']}/projects",
