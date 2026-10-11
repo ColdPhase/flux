@@ -59,6 +59,10 @@ def render(grouped: dict[str, list[str]]) -> str:
 
 
 def release(version: str, date: str, directory: Path = CHANGES, changelog: Path = CHANGELOG) -> str:
+    # Refuse before any write or delete, so an invalid fragment's notes are never lost.
+    found = problems(directory)
+    if found:
+        raise SystemExit("fix the changelog fragments first:\n" + "\n".join(found))
     body = render(entries(directory))
     if not body:
         raise SystemExit("no pending fragments under changes/")

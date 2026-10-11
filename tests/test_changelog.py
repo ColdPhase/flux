@@ -54,6 +54,18 @@ class ChangelogFragments(unittest.TestCase):
         self.assertEqual(changelog.fragments(self.dir), [])
         self.assertTrue((self.dir / "README.md").exists())
 
+    def test_release_with_an_invalid_fragment_changes_nothing(self):
+        log = Path(self.tmp.name) / "CHANGELOG.md"
+        original = "# Changelog\n\n## [Unreleased]\n"
+        log.write_text(original, encoding="utf-8")
+        self.write("475-repair.fixed.md", "- Fixed a repair.\n")
+        self.write("invalid.added.md", "- Notes that must not be lost.\n")
+        with self.assertRaises(SystemExit):
+            changelog.release("0.1.0", "2026-10-11", self.dir, log)
+        self.assertEqual(log.read_text(encoding="utf-8"), original)
+        self.assertTrue((self.dir / "475-repair.fixed.md").exists())
+        self.assertTrue((self.dir / "invalid.added.md").exists())
+
     def test_release_without_fragments_refuses(self):
         log = Path(self.tmp.name) / "CHANGELOG.md"
         log.write_text("# Changelog\n\n## [Unreleased]\n", encoding="utf-8")

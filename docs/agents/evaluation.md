@@ -123,8 +123,10 @@ When only P3 findings remain, approve and list them in the review. The author fi
 in the same PR when cheap, or opens a follow-up issue in the milestone and links it.
 
 Report every finding you can see at a head in one review. A later round re-checks the
-earlier findings and the code changed since. It raises a new blocking finding on code
-the earlier round already reviewed only when that finding is P1.
+earlier findings and the code changed since. A required criterion or agreed constraint
+that newly turns out to fail still blocks, whatever the round: say why an earlier round
+missed it and consolidate it into that review. A later round does not add new preferences
+or P3 findings on code it already reviewed.
 
 A PR may deliver part of an issue. It then declares its scope against the issue's
 criteria, and links a child issue that preserves every remaining criterion (see
