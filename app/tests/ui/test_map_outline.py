@@ -8,7 +8,7 @@ import unittest
 
 from playwright.sync_api import expect, sync_playwright
 
-from test_app_shell import DESKTOP, ORIGIN, PHONE, SHOTS, UPSTREAM, shot, start_forwarder
+from test_app_shell import show_map_as, DESKTOP, ORIGIN, PHONE, SHOTS, UPSTREAM, shot, start_forwarder
 from contrast import MEASURE
 
 STAMP = int(time.time() * 1000)
@@ -86,7 +86,7 @@ class MapOutlineJourney(unittest.TestCase):
 
     def open(self, page, fragment=""):
         page.goto(f"/projects/{self.project_id}/map/{self.sketch_id}{fragment}")
-        page.get_by_role("radio", name="List", exact=True).click()
+        show_map_as(page, "List")
         expect(page.locator(".sk-head")).to_contain_text("Bedside interaction directions")
         if self.stored(page)["thoughts"]:
             expect(page.get_by_role("list", name="Thoughts in Bedside interaction directions")).to_be_visible()
@@ -321,9 +321,9 @@ class MapOutlineJourney(unittest.TestCase):
         expect(self.title(page, 4)).to_be_focused()
         expect(self.title(page, 4)).to_have_attribute("aria-pressed", "true")
         before = self.stored(page)
-        page.get_by_role("radio", name="Map", exact=True).click()
+        show_map_as(page, "Map")
         expect(page.locator(f'.sk-node[data-id="{self.thoughts[4]}"]')).to_have_attribute("aria-pressed", "true")
-        page.get_by_role("radio", name="List", exact=True).click()
+        show_map_as(page, "List")
         self.assertEqual(self.row(page, 4).get_attribute("data-depth"), "4")
         # Exercise the real router arrival contract used by LiveProvider without a fake SFU.
         # Media/session transport remains the separate opt-in live profile's responsibility.
@@ -439,7 +439,7 @@ class MapOutlineJourney(unittest.TestCase):
         self.group(blocked, 1, 0)
         self.assertEqual(self.row(blocked, 1).get_attribute("data-depth"), "1")
         blocked.reload()
-        blocked.get_by_role("radio", name="List", exact=True).click()
+        show_map_as(blocked, "List")
         self.assertTrue(all(level == 0 for level in self.levels(blocked).values()))
         self.assertEqual(self.stored(blocked), before)
         corrupt = self.page()
