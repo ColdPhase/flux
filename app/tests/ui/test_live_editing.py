@@ -34,7 +34,7 @@ class LiveFixture(unittest.IsolatedAsyncioTestCase):
         self.pages = {}
         stamp = uuid.uuid4().hex
         for key, name in (("ada", "Ada North"), ("kai", "Kai South")):
-            context = await self.browser.new_context(base_url=ORIGIN, viewport={"width": 1440, "height": 900}, reduced_motion="reduce")
+            context = await self.browser.new_context(base_url=ORIGIN, viewport={"width": 1440, "height": 900}, reduced_motion="reduce", service_workers="block")
             self.contexts.append(context)
             page = await context.new_page()
             page.on("pageerror", lambda error: self.errors.append(str(error)))
@@ -558,7 +558,7 @@ class LiveEditingJourney(LiveFixture):
         kai = self.pages["kai"]
         thought = self.thoughts[0]
         phone = await self.browser.new_context(base_url=ORIGIN, storage_state=await self.pages["ada"].context.storage_state(),
-            viewport={"width": 390, "height": 844}, has_touch=True, is_mobile=True, reduced_motion="reduce")
+            viewport={"width": 390, "height": 844}, has_touch=True, is_mobile=True, reduced_motion="reduce", service_workers="block")
         self.contexts.append(phone)
         page = await phone.new_page()
         page.on("pageerror", lambda error: self.errors.append(str(error)))
