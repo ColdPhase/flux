@@ -151,5 +151,37 @@ its timing differs from the failing runs; `runtime-minimal-failure-state.log`
 and `runtime-light-trace-failure.log` reproduce the real3/4 timeout with valid
 observations. Their owned stacks/images/volumes/networks were cleaned. The new
 maintained controls require no reload during activation or an unrelated
-controller change, and preserve existing waiting/late-apply behavior. Fresh
-Docker checks and independent review of the correction remain pending here.
+controller change, and preserve existing waiting/late-apply behavior.
+
+Actual intermediate correctiond06b (`d06bde2507d65d372fbcd74039306972cd25b5e0`)
+completed driver75586 with exit0: Node5/5; original standalone update WebKit4/4
+15-second cohort and Chromium4/4; paired real HTTPS PWA/update7/7 in both
+engines. A source audit then scoped redundant-worker cleanup to that worker,
+so an older event cannot release a newer update's application fence. The added
+successive-worker control proves the d06b defect: two skip requests instead of
+one. A late extra control attempt after image cleanup exited125 before tests;
+`frozen-d06b-fence-node.log` preserves that setup-only failure.
+
+Final tested application source is **edb7d257e9203058f02842facfbbf28bb968678d**.
+Driver81615 returned0, with production/test files immutable throughout:
+
+| Actual final phase | Result |
+| --- | --- |
+| Docker build/type check/lint | Pass; three existing warnings, no errors |
+| Verbatim frozen8a negative controls | 2 pass/4 expected failures |
+| Verbatim frozend06b successive-worker negative | 5 pass/1 expected failure |
+| Current PWA controls | 6/6 |
+| Original standalone WebKit update module | 4/4,15.191s |
+| Original standalone Chromium update module | 4/4,14.627s |
+| Agent setup, repository tests, diff checks | Pass;102 repository tests |
+
+The original real-worker assertions/timeouts, changed version, already waiting
+worker, other-tab drafts and exact single reload remain. No paired7/7 result is
+relabeled as an edb7 run: that additional cohort is d06b evidence. Baked source
+hashes match the committed register/worker and both maintained regression files
+(`/tmp/flux380-update-diag/final-source-proof.json`). All six owned diagnostic/
+verification projects have zero remaining containers, networks, volumes or tagged
+images. Raw final log `verify-final.log` and compact `verification-proof.json`
+retain separate results and hashes. Fresh eligible independent review/current
+remote checks and every full #349/live-presence/integrated-release limit above
+remain open.
