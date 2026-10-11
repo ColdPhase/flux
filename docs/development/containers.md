@@ -280,8 +280,9 @@ active session (5 retries, exponential backoff up to 10 minutes, for
 it (`session_id`, foreign key `ON DELETE CASCADE`). Sign-out, revoking a session,
 revoke-others, password reset (which revokes all sessions) and account deletion all
 delete the session row, and with it that device's subscriptions, whichever code path
-ends the session. The web client also unsubscribes before signing out
-(`signOutDevice`). After signing in again, the client's start-up sync re-registers
+ends the session. When notification permission is granted, the web client also
+unsubscribes before signing out (`signOutDevice`; [mobile-pwa.md](../product/mobile-pwa.md#sign-out-and-this-devices-push-subscription-461)).
+After signing in again, the client's start-up sync re-registers
 the browser subscription under the new session.
 
 **Before each send** the worker rechecks from current rows that the account still
