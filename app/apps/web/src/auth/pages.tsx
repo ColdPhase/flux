@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Form, Link, Outlet, useActionData, useLoaderData, useLocation, useNavigate, useNavigation, useSearchParams } from 'react-router';
 import type { IdentityCapabilities } from '@flux/contracts';
 import { PASSWORD_MIN_LENGTH, getCapabilities, startSso } from '../api/auth';
+import { whenPageLive } from '../api/pageLeaving';
 import { NetworkError } from '../api/client';
 import { Button, ErrorState, FluxLogo, Icon, Input, useToast } from '../ui';
 import { safeNext, signedOauthQuery, type FormResult, type forgotPasswordLoader } from './logic';
@@ -88,13 +89,19 @@ function useSso() {
   const unreachable = sso !== null && !sso.reachable;
   useEffect(() => {
     const controller = new AbortController();
+    let waiting: () => void = () => undefined;
     const load = () => {
-      getCapabilities(controller.signal).then((capabilities) => setSso(capabilities.sso ?? null)).catch(() => undefined);
+      // A page being left starts no read (#471); one whose navigation was cancelled reads once it is live.
+      waiting();
+      waiting = whenPageLive(() => {
+        getCapabilities(controller.signal).then((capabilities) => setSso(capabilities.sso ?? null)).catch(() => undefined);
+      });
     };
     load();
     // While the provider is unreachable the page asks again, so its button comes back without a reload (#310 AC-4).
     const timer = unreachable ? window.setInterval(load, SSO_RECHECK_MS) : undefined;
     return () => {
+      waiting();
       controller.abort();
       if (timer !== undefined) window.clearInterval(timer);
     };

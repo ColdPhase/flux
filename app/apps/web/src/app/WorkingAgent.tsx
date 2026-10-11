@@ -19,11 +19,10 @@ function useWorkingRun(identity: string) {
   const lifetime = useRef<WorkingLifetime | null>(null);
   // Background reads (poll, focus, stream) wait while this page is hidden or being left (see
   // pageLeaving, #471). User-started requests never go through refresh().
-  const hidden = useRef(false);
   const refresh = useCallback(() => {
     const scope = lifetime.current;
     if (!scope?.live || scope.identity !== identity || scope.stopping) return;
-    if (pageLeaving() || hidden.current) return;
+    if (pageLeaving() || document.visibilityState === 'hidden') return;
     scope.read?.abort();
     const controller = new AbortController();
     scope.read = controller;
@@ -75,12 +74,7 @@ function useWorkingRun(identity: string) {
     };
   }, [identity, refresh]);
   useEffect(() => {
-    const visibility = () => {
-      if (document.visibilityState === 'hidden') { hidden.current = true; return; }
-      if (!hidden.current) return;
-      hidden.current = false;
-      refresh();
-    };
+    const visibility = () => { if (document.visibilityState === 'visible') refresh(); };
     document.addEventListener('visibilitychange', visibility);
     // A read skipped while the page was being left runs again once it is live.
     const stopWaiting = onPageLive(refresh);

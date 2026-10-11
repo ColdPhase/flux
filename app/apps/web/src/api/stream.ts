@@ -42,12 +42,12 @@ let resyncOnOpen = false;
 // head, or more events than can be held) is held the same way as one coalesced request, and runs
 // once for the same document when it is live. Nothing here outlives the identity or its listeners.
 const HOLD_MAX = 200;
-let hiddenTab = false;
 let held: StreamEvent[] = [];
 let resyncWanted = false;
 
+/** Read from the document each time, never remembered: a visible page can never be held back. */
 function paused() {
-  return pageLeaving() || hiddenTab;
+  return pageLeaving() || (typeof document !== 'undefined' && document.visibilityState === 'hidden');
 }
 
 function forgetHeld() {
@@ -63,6 +63,7 @@ function requestResync() {
 
 function deliver(event: StreamEvent) {
   if (!paused()) {
+    release(); // anything still held comes first, so order is kept
     for (const { listener } of [...subscriptions]) listener.onEvent(event);
     return;
   }
@@ -154,11 +155,7 @@ if (typeof window !== 'undefined') {
     clearTimer();
     connect();
   });
-  document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'hidden') { hiddenTab = true; return; }
-    hiddenTab = false;
-    release();
-  });
+  document.addEventListener('visibilitychange', release);
 }
 onPageLive(release);
 

@@ -1553,6 +1553,48 @@ class AppShellJourney(unittest.TestCase):
         self.assertTrue(result["people"], "the read that waited ran once the page was live again")
         self.assertGreaterEqual(min(result["people"]), 990, f"no read started while the leave could still happen: {result['people']}")
 
+    def open_while_leaving(self, page: Page, path: str) -> float:
+        """beforeunload, then the router opens `path` with no click or key press (either would prove the page stays)."""
+        return page.evaluate(
+            """(path) => {
+                const start = performance.now();
+                window.dispatchEvent(new Event('beforeunload'));
+                const idx = ((history.state && history.state.idx) || 0) + 1;
+                history.pushState({ usr: null, key: `leave-${idx}`, idx }, '', path);
+                window.dispatchEvent(new PopStateEvent('popstate', { state: history.state }));
+                return start;
+            }""",
+            path,
+        )
+
+    def assert_read_waits_for_the_grace(self, page: Page, start: float, url: str) -> None:
+        page.wait_for_function("([start, url]) => window.__fetches.some(([at, u]) => at >= start && u.includes(url))", arg=[start, url], timeout=8000)
+        reads = page.evaluate("([start, url]) => window.__fetches.filter(([at, u]) => at >= start && u.includes(url)).map(([at]) => at - start)", [start, url])
+        self.assertGreaterEqual(min(reads), 990, f"{url} was not read while the leave could still happen: {reads}")
+
+    def test_14d_the_sign_in_page_asks_for_single_sign_on_only_once_the_page_is_live(self) -> None:
+        """A sign-in page that opens while the page is being left reads its capabilities after the grace (#471)."""
+        page = self.page(signed_in=False)
+        page.add_init_script(FETCH_RECORDER)
+        page.goto("/sign-up")
+        expect(page.get_by_role("button", name="Create account")).to_be_visible()
+        start = self.open_while_leaving(page, "/sign-in")
+        expect(page.get_by_role("heading", name="Sign in to Flux")).to_be_visible()
+        self.assert_read_waits_for_the_grace(page, start, "/api/v1/auth/capabilities")
+
+    def test_14e_the_assistant_setup_reads_its_connections_only_once_the_page_is_live(self) -> None:
+        """Settings > Assistant opened while the page is being left lists the owner's connections after the grace (#471)."""
+        page = self.page(signed_in=False)
+        page.add_init_script(FETCH_RECORDER)
+        page.goto("/sign-up")
+        page.get_by_label("Name").fill("Leaving Owner")
+        page.get_by_label("Email").fill(f"leaving-setup+{int(time.time() * 1000)}@example.test")
+        page.get_by_label("Password").fill(PASSWORD)
+        page.get_by_role("button", name="Create account").click()
+        expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
+        start = self.open_while_leaving(page, "/settings/assistant")
+        self.assert_read_waits_for_the_grace(page, start, "/api/v1/background-compute-connections")
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -134,6 +134,18 @@ test('a hidden tab holds events until it is visible, and a leaving page until th
   assert.deepEqual(seen, ['e1', 'e2']);
 });
 
+test('a visible page never holds events, even when a visibility change was never reported', () => {
+  const { seen } = listen();
+  socket().open();
+  setVisibility('hidden');
+  socket().event('e1');
+  document.visibilityState = 'visible'; // the browser did not report the change
+  socket().event('e2');
+  assert.deepEqual(seen, ['e1', 'e2'], 'a visible page delivers at once, what was held first');
+  setVisibility('visible');
+  assert.deepEqual(seen, ['e1', 'e2'], 'nothing is delivered twice');
+});
+
 test('a reconnect from the head that opens while the page is left asks for no refetch until it is live, once', () => {
   const { seen } = listen();
   socket().open();
