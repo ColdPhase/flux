@@ -1,5 +1,5 @@
 #!/bin/sh
-# Human single sign-on (#113) in Docker: a pinned, disposable Keycloak (docker/compose.oidc.test.yaml)
+# Human single sign-on (#113) and provider sign-in on the MCP authorization path (#310) in Docker: a pinned, disposable Keycloak (docker/compose.oidc.test.yaml)
 # is the operator's OpenID Connect provider; a real browser runs the authorization-code flow against
 # the Compose API. Covers sign-in, the same subject across an email change, refused unverified and
 # colliding identities, a replayed or forged callback, a session across an API restart, session
@@ -78,6 +78,8 @@ $compose up -d --wait keycloak oidc-mock mailpit api api-mock worker
 e2e() { $compose run --rm -e FLUX_OIDC_PROVIDER_ID="$provider_id" e2e node_modules/.bin/tsx --test --test-concurrency=1 "$@"; }
 
 e2e tests/app/e2e/oidc.e2e.ts
+# Provider sign-in on the MCP authorization path (F-024 S1, #310): a scripted client, Keycloak, Chromium.
+e2e tests/app/e2e/oidc-mcp.e2e.ts
 # Bad ID tokens on the real callback, through the replica whose provider is the mock.
 $compose run --rm -e FLUX_API_URL=http://api-mock:8080 -e FLUX_OIDC_MOCK_PROVIDER_ID="$mock_provider_id" e2e \
   node_modules/.bin/tsx --test --test-concurrency=1 tests/app/e2e/oidc-bad-token.e2e.ts

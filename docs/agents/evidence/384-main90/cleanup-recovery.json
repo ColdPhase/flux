@@ -1,0 +1,17 @@
+{
+  "project": "flux384-upgrade-1791731770-1006716",
+  "pipeline_terminal_session": 1599,
+  "pipeline_terminal_exit": 2,
+  "application_and_data_phases": "PASS",
+  "cleanup_issue": "initial default-profile down left own Mailpit/teststate/default network",
+  "exact_test_profile_cleanup_recovery_exit": 0,
+  "remaining": {
+    "containers": "",
+    "networks": "",
+    "volumes": ""
+  },
+  "marker_absent": true,
+  "run_tags_absent": true,
+  "unknown_resources_touched": false,
+  "private_failure_and_diagnostic_evidence_retained": true
+}
