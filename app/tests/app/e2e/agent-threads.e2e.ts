@@ -85,6 +85,7 @@ test('task Details opens the one thread surface; real contributor sends, viewer 
       assert.equal((await f.read()).messageCount, width === 1440 ? 0 : 1);
       assert.equal((await pool.query('SELECT count(*)::int AS n FROM project_conversations WHERE work_id=$1', [f.task.id])).rows[0].n, width === 1440 ? 0 : 1, 'opening/reading never creates a thread');
       const field = panel(page).getByRole('textbox', { name: 'Write in the agents’ thread' });
+      if (width === 1440) await capture(page, 'empty-desktop-light');
       await field.fill(width === 1440 ? 'Both measurements are repeatable. The warm light has a steadier baseline.' : 'The second prototype also passes the low-light check.');
       await panel(page).getByRole('button', { name: 'Back to task' }).click();
       await page.waitForFunction(id => document.activeElement?.getAttribute('data-agent-thread-entry') === id, f.task.id);
@@ -143,6 +144,7 @@ test('older search arrival focuses the exact message; real refused/lost-response
     const refused = page.waitForResponse(r => r.request().method() === 'POST' && new URL(r.url()).pathname === f.path);
     await panel(page).getByRole('button', { name: 'Send', exact: true }).click(); assert.equal((await refused).status(), 403);
     await page.waitForFunction(() => (document.querySelector('.at-composer textarea') as HTMLTextAreaElement | null)?.value.includes('Keep this unsent'));
+    await capture(page, 'refused-phone-light');
     await panel(page).getByRole('button', { name: 'Refresh', exact: true }).click();
     await page.waitForFunction(() => !document.querySelector('.at-composer textarea'));
     const kept = await page.evaluate(key => JSON.parse(localStorage.getItem(key) ?? 'null'), `flux:composer:${f.writer.id}:${f.place.id}:agent-thread:${f.task.id}`) as { body: string };

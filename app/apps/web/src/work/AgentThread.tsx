@@ -152,7 +152,6 @@ export function AgentThreadPanel({ workId, project, members, me, readOnly, revis
       <label className="ui-vh" htmlFor={fieldId}>Write in the agents’ thread</label>
       <textarea id={fieldId} value={composer.draft.body} rows={3} maxLength={100000} placeholder="Write in this thread…" onChange={(event) => composer.setBody(event.target.value)} onKeyDown={onKeyDown} />
       <ComposerFiles state={composer} /><SendAnnouncer pending={composer.pending} />
-      {composer.error ? <p className="wd-error" role="alert">{composer.error}</p> : null}
       <div className="wd-actions"><Button type="submit" variant="secondary" icon="send" disabled={!composer.canSend}>Send</Button></div>
     </form> : thread ? <p className="wd-muted" role="status">{readOnly ? 'Creation was undone. This thread is read-only; your draft is kept.' : 'You can read this thread. Posting requires project write access.'}</p> : null}
   </div>;
