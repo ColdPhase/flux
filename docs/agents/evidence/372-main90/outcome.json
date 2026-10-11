@@ -1,0 +1,11 @@
+{
+  "baseline": "bb63d0f87a75e38e333e21b8aa1972b1334324b1",
+  "candidate": "46217659ab0c46572e3d566b9605f4f6b7bf8ab2",
+  "status": "PASS",
+  "scope": "bounded actual populated main90 pause/views upgrade and selected API controls; no full application/UI/PWA/native acceptance",
+  "new_migrations": [
+    "0059_notification_pause.sql",
+    "0064_project_views.sql"
+  ],
+  "api_cohort_executed": true
+}
