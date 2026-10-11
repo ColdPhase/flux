@@ -73,7 +73,7 @@ export interface TaskDiscussionPorts {
   /** Human file composition. An entry point without storage must refuse attachments. */
   attachments?: { lock(projectId: string, author: ActorRef, ids: readonly string[]): Promise<MessageFile[]> };
   access: WorkAccess;
-  work: Pick<WorkRepository, 'locate' | 'findWork' | 'names'>;
+  work: Pick<WorkRepository, 'locate' | 'findWork' | 'names' | 'prepareTaskUse'>;
   discussion: TaskDiscussionRepository;
   events: {
     record(principal: Principal, workspaceId: string, kind: TaskDiscussionEventIntent['kind'],

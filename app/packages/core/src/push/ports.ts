@@ -154,6 +154,9 @@ export type PushSendResult =
   | { kind: 'refused'; reason: string }
   | { kind: 'network'; message: string };
 
+/** A concrete provider call starts under a current lifecycle fence; response awaits happen after release. */
+export type ProviderDeliveryAdmission<T> = { status: 'suppressed' } | { status: 'started'; response: T } | { status: 'unknown' };
+
 /** Encrypts and signs the payload and POSTs it to the push service (web-push adapter). */
 export interface PushSender {
   send(subscription: PushSubscriptionRecord, payload: PushPayload): Promise<PushSendResult>;

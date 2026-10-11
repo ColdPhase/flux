@@ -1,0 +1,186 @@
+# Current unused-task Undo composition
+
+Recorded 2026-10-08. Owner: PelikanFix16, the single #238 assignee. Continue the accepted AC-U1–AC-U5;
+this is a composition plan and does not certify implementation or runtime behavior.
+
+Preserve original draft #244 and both original worktrees. The clean, unpublished standalone candidate
+`0e15abab9d3297e5e4e2ff598ba151aa05466004` is the starting point of the isolated continuation
+`codex/238-undo-main-composition`. The first composition used accepted main
+`94e708cdcdc8607e004d37846165cd6ec6479211`. The current continuation advances the reviewed fixture checkpoint
+`61c7ada8f69bb2c681d3154c8600cea5832da584` onto accepted main `b0fbc8b5291e3c9e2995962442144fbc48094ab3`
+(#282), without replacing native instant sending, human/agent author history, current owner scoping or current
+authority. Keep the immutable project task number in active and historical task/notice/native/MCP/export
+projections alongside trusted Undo origin, retained lifecycle, terminal replay and the monotonic use fence.
+The nine current source conflicts require explicit review of both sides and independent evaluation of the result.
+Checked v1 MCP/export snapshots retain the admitted exact Undo operation, typed task-use refusals and historical
+lifecycle/number fields; their actual extension-contract checks remain required before acceptance.
+
+## Scope and appearance
+
+The founder requires Undo and live map/wiki editing in v0.1. Standalone native Undo may progress before live
+editing is accepted, but composed live task writers and #153 co-work effects must join the shared complete
+task-use fence and receive actual race/replay tests before #238 or v0.1 closes. No criterion is deferred.
+
+The accepted appearance is #336/F-026, documented in `docs/design/final/README.md` on current main.
+Keep the real creator and actual reverter, retained sources and notices, readable read-only history, the
+truthful native task reference and original identity. Compose existing Details and Conversation behavior;
+obtain an independent neutral visual review of desktop, narrow phone and enlarged-text captures. Pictures
+alone do not verify authority, persistence or accessibility.
+
+## Migration namespace and legacy identity
+
+The independently evaluated [namespace coordination](https://github.com/ColdPhase/flux/issues/153#issuecomment-6051196285)
+retains #279 sign-in0057/auth0058, reserves prospective focus0059 and uses **0060** for this candidate's
+`work.creation.revert` grant widening. Keep the original lifecycle migration0048. Change the candidate's
+grant filename, paired reverse, manifest maximum, reversal runner and relevant tests together; preserve
+the original undo0057 SQL, old database and source on their original branch. Do not rewrite applied main SQL.
+
+A sparse manifest may contain0060 before focus0059 composes. Completion is exact set equality with the
+actual manifest, not a continuous numeric range. Later missing0059 must still apply through the normal
+manifest checks.
+
+**A numeric ledger is insufficient.** An old database with focus/undo0057 can otherwise skip canonical
+sign-in fields silently. Before accepting a composed upgrade, prove semantic catalog-footprint refusal
+before application migration writes for unsupported canonical/focus/undo/partial/mixed states, or implement
+and test an explicitly data-preserving conversion. Check actual columns, types and relevant constraints;
+do not infer SQL identity from version57, an old filename or a checksum introduced after the event.
+An ambiguous refusal must preserve data and ledger. Accepted conversion requires migration, restart and
+paired database/files backup restore against the matching image. Fresh-database success does not meet this gate.
+
+### Present namespace and conservative legacy refusal (2026-10-11)
+
+The [bounded guard plan was independently accepted](https://github.com/ColdPhase/flux/issues/238#issuecomment-6103941867)
+by the coordinator before implementation.
+At source `e1173082fc0707d57b13b2b882f3870023b1e1ae`, the actual manifest has lifecycle
+0048 and grant 0060, with no 0057/0058/0059 files. The coordination paragraph above
+records its dated allocation, not proof of present composition. Identity PR #384
+currently uses 0066. The actual focus artifact is **0059_notification_pause.sql**
+at `38ad797f3a561f10b7e9502079ff06d48379b492`, not a demonstrated focus0057 artifact.
+
+The original Undo source is `45c08e7d923e48d3d7402e1df962d0a1a4e71152` (parent of
+composition `ffd939d8ad1147fb47fc73df19e90647fbe56d6f`). Its 0048 and 0057 grant SQL
+are retained verbatim as test fixtures; 0060 is the same grant SQL, without rewriting
+historical ledgers. The canonical sign-in artifact is
+`6386b2fba48905d5f58f42ce12b84788ff57a611` / 0057_agent_runtime_sign_in.sql;
+the runtime-auth artifact is `cbfe436175b66c832328c3bd4560868e3e28abb1` /
+0058_agent_runtime_auth_operations.sql. These are source artifacts, not evidence of
+an accepted combined image or a surviving old deployment.
+
+Before any application migration, ledger or pg-boss write, under the existing
+migrator lock, inspect actual legacy catalog footprints and the supported 0048/0060
+columns, types, checks, scoped keys and guards. Refuse unsupported reserved ledgers,
+unversioned legacy footprints, partial or mixed states, and mismatched supported
+Undo shapes. Preserve schema, rows and ledger; advise restoring the matching image
+and paired backup. No conversion, renumbering, inferred provenance, flag or public
+API change is admitted. Additional unrelated columns/tables remain allowed.
+
+Required bounded evidence includes the real migration CLI on original legacy SQL,
+unchanged catalog/data/ledger after refusal and repeated startup, and refusal again
+after PostgreSQL dump/restore. Normal pre-0048/pre-0060 upgrades and current restart
+are positive controls. This bounded refusal policy does not certify a future image
+containing canonical sign-in/auth/focus migrations. When those compose, review the
+actual manifest and catalog ownership again and extend the guard and real combined
+upgrade/restore evidence. All AC-U1–AC-U5, live-writer and release gates remain.
+
+## Required current evidence
+
+Verify trusted agent/proposal origins and current human/agent authority, monotonically recorded prior use,
+all composed writer races and rollback, lost-answer/restart/changed-material receipts, creation replay
+without resurrection, active versus historical consumers and delayed notification suppression. Preserve
+the full accepted inventory rather than treating a passing core fixture as adapter coverage.
+
+Run the relevant maintained Docker build/type/lint/API/SQL/UI commands against a clean pinned current head.
+Verify additive old-data migrations, semantic legacy refusal/conversion, both guarded reverses, exact ledgers
+and paired restore. Record missing live/runtime integration as unverified. Preserve old 37-test and 6/8-UI
+evidence under their original source; neither result is current acceptance.
+
+Publish a reviewable continuation with normal ancestry when an implementation PR slot is available.
+Do not force-update the stacked original draft or import an unreviewed live branch merely to reuse its
+number. The final evaluator must be independent of every code-changing implementer. Keep #238 open until
+all accepted criteria pass on the composed candidate.
+
+## Reload and retained history verification
+
+The bounded current run at `6380aa7ed69f8bb1e6582f4c7545936b7a8b0676` (tree
+`6b09006c799975ba19e71d79dbdd22400d69c99d`) completed with actual exit 1 on
+2026-10-08. API 295/295, Push 33/33, contribution browser 1/1, actor browser 2/2
+and instant-send UI 14/14 passed; Undo browser passed 8/10. Both remaining failures
+occurred after bare reload, with the Details panel absent. Other open surfaces
+showed the correct read-only history. Preserve this failed result and its original
+captures; it is not candidate acceptance.
+
+The existing shell consumes `?open=work:<id>` when it first opens the object.
+AC-U4 requires retained historical links to reopen read-only history; it does not
+require a consumed query to survive reload. The corrected scenarios keep actual
+reload and exact private draft/pending-command assertions, then activate the real
+persisted reversion-notice button. They still require the unchanged task identity,
+read-only controls, one receipt, intact staged files/references and no automatic
+retry. Production route behavior and the accepted criteria are unchanged.
+
+This correction requires fresh independent source evaluation and a new pinned
+Docker run. The earlier API results do not certify a changed candidate, current
+main, migration compatibility, live writer composition or AC-U1–AC-U5 completion.
+# Bounded visual correction after the actual04e4 run
+
+The exact04e4 frozen Docker verification completed2026-10-08 at10:32:07Z:
+295/295 adjacent Undo/native API tests,33/33 shared push tests,10/10 Undo browser
+scenarios,1/1 contribution and2/2 actor browser scenarios, and14/14 maintained
+instant-send UI scenarios. Actual phase/driver/cleanup exits were0 with seven
+complete counters and no deadline, failures, cancellations, skips or TODOs.
+Raw log SHA256: `724baf2534f4df593266ab149808c30f7a002752382f3b8dc37ce6c8b3ba0cc6`.
+This remains a bounded historical result for04e4, not acceptance of later code.
+
+A fresh neutral image-only review of its six original desktop/phone captures
+requested two corrections: group creation/withdrawal attribution near the top,
+and separate the native task reference from the event sentence. It also identified
+an incomplete phone notice crop and a transition-time keyboard-history capture.
+The report is `/tmp/flux238-04e4-fresh-neutral-visual-review.md`, SHA256
+`77df1af15860ee1f261efc5576a6f57451702670532d677ad115a9acf4661ca6`.
+
+The continuation follows F-026's existing Activity and native-reference patterns:
+two compact activity rows retain the actual creation/withdrawal actors and exact
+recorded times, including existing Agent/Kreska/owner identity; the conversation
+event retains its author/source label above a glyph/number/full-title reference.
+Phone titles wrap with44px targets. The existing10 browser scenarios retain every
+assertion and add actual activity timestamp/actor checks; captures wait for the
+closed pane and finite visual transitions. No Undo authority, persistence,
+receipt, pending command, draft or object identity changes are proposed.
+
+The new visual code and strengthened capture fixture are unexecuted. Fresh source,
+runtime and neutral visual evaluation are required again. Full #153/live, semantic
+legacy migration/restore, protected-main composition and integratedv0.1 gates
+remain open; this is not a completed task or merge candidate.
+
+
+### Pre-run visual-correction review
+
+Independent source review of `d8d55f27edab4ae242dfdfb8f33f0965af96699c`
+identified an invalid fallback status, a stale event-label assertion and an
+ordinary task-announcement two-line regression. No runtime was admitted for that
+head. The correction uses the existing `open` task status, keeps the event label
+separate from the native card and limits full-title display to retained Undo
+history. Ordinary creation announcements retain their existing two-line limit and
+enlarged-text reflow. Their maintained tests now measure the title's actual text
+node inside the card and expect the separate event label; all prior geometry,
+access, counts and no-mutation assertions remain. Include that entire maintained
+announcement module alongside the existing bounded verification. New runtime and
+fresh neutral visual acceptance are pending; historical `04e4bb9e` results and the
+full AC-U1–AC-U5/live/migration/release gates retain their original qualifications.
+
+
+### Actual e9 announcement reflow failure
+
+The pinned `e9e592d00655f2918fc1d3f4f8cdab136ed9ac73` Docker run finished
+2026-10-08 at 11:46:10Z with actual driver/child exit 1. The six earlier
+phases passed all 355 cases. The added complete maintained announcement module
+passed 15/17: Chromium and WebKit enlarged phone text exposed the first title
+word above a vertically centered task number. No timeout, cancellation, skip or
+TODO occurred. Owned processes and Docker resources were confirmed absent.
+Raw log SHA256 `8bf468a6c880ac3a94d852769cc5ba273f1c53f0007eac18c7097e6c67e86c6c`.
+
+The corrective CSS aligns the card's glyph, number and title at their top edge
+only inside the existing narrow font-relative container. It retains ordinary
+two-line titles, full enlarged reflow, existing gap, native open behavior, all
+original assertions and phone target geometry. The current correction is not
+runtime or visual acceptance. Fresh pinned verification and neutral visual
+evaluation remain required alongside the full live/migration/integration gates.

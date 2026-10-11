@@ -303,7 +303,9 @@ test('negative control: the same distinct-lineage interleaving through raw stora
     return { sender: { workspaceId: w.ws.id, projectId: w.p.id, connectionId: from }, input, fingerprint: coWorkRequestFingerprint(input, from) };
   };
   const enqueue = async (tx: Parameters<typeof coworkRequestRows>[0], r: ReturnType<typeof raw>) => {
-    const result = await coworkRequestRows(tx).enqueue(r.sender, r.input, r.fingerprint, LIMITS);
+    // Raw storage without slots: a no-op retained fence stands in for the task-use fence the production caller takes.
+    const noFence = { ids: [a.id, b.id], mark: async () => undefined } as unknown as Parameters<ReturnType<typeof coworkRequestRows>['enqueue']>[4];
+    const result = await coworkRequestRows(tx).enqueue(r.sender, r.input, r.fingerprint, LIMITS, noFence);
     assert.equal(result.status, 'created'); if (result.status !== 'created') throw new Error('unreachable');
     return result.request.id;
   };
@@ -328,6 +330,8 @@ test('production graph provider adds direct prerequisites to the complete task l
   const current = expectStatus(await f.w.hubert.browser.request('GET', `/api/v1/work/${f.a.id}`), 200) as WorkItem;
   const linked = expectStatus(await f.w.hubert.browser.request('PATCH', `/api/v1/work/${f.a.id}`,
     { body: { dependencyIds: [pre.id] }, headers: { 'if-match': `"${current.version}"` } }), 200) as WorkItem;
+  // Created before the held admission transaction, which owns the project's task graph lock until released.
+  const unrelated = await f.w.task('Unrelated');
   const ready = barrier<number>(), release = barrier();
   const held = db.transaction(async (tx) => {
     const outcome = await coWorkRequestInTransaction(tx, f.codex.claims!, f.s.command(f.request({
@@ -341,7 +345,6 @@ test('production graph provider adds direct prerequisites to the complete task l
     await assert.rejects(pool.query('SELECT id FROM project_work_items WHERE id=$1 FOR UPDATE NOWAIT', [pre.id]),
       (error: unknown) => (error as { code?: string }).code === '55P03');
     // Negative control: an unrelated task of the same project is not locked.
-    const unrelated = await f.w.task('Unrelated');
     assert.equal((await pool.query('SELECT id FROM project_work_items WHERE id=$1 FOR UPDATE NOWAIT', [unrelated.id])).rows.length, 1);
   } finally { release.resolve(); }
   assert.equal((await held).status, 'created');

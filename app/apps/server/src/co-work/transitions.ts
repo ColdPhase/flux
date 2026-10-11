@@ -1,11 +1,11 @@
 import type { AgentExecutionCommand, AgentJsonValue, AgentPeerRequestClass, AgentPostcondition, CoWorkSourceRef } from '@flux/contracts';
-import { coworkAdmissionRows, coworkUnitTransitionRows } from '@flux/db';
+import { coworkAdmissionRows, coworkUnitTransitionRows, referencedTaskIds } from '@flux/db';
 import { agentOutcomeFingerprint, ConflictError, InvalidInputError, normalizeAgentExecution, normalizeCoWorkUnitTransition,
   NotFoundError, requireCoWorkUnitTransition, validateCoWorkUnitTransitionPolicy, type CoWorkContext,
   type CoWorkUnitTransitionPolicy, type Transaction } from '@flux/core';
 import { agentExecutionInTransaction } from '../agent-connection/execution.js';
 import type { FluxMcpClaims } from '../agent-connection/context.js';
-import { coWorkTaskGraphLocks } from './graph.js';
+import { coWorkNamedTaskGraphLocks, coWorkTaskReference } from './graph.js';
 
 export type { CoWorkUnitTransitionPolicy } from '@flux/core';
 /** Content-free result of a completion or transfer; the outcome itself lives in its native record. */
@@ -71,7 +71,10 @@ export async function coWorkUnitTransitionInTransaction(tx: Transaction, claims:
     connectionId: runtime.connectionId, agentId: runtime.agentId, ownerId: runtime.ownerUserId, runtimeSessionId: runtime.id };
   const scope = { workspaceId: context.workspaceId, projectId: context.projectId, holderConnectionId: context.connectionId, unitId,
     assigneeConnectionId: input.operation === 'transfer' ? input.assignmentConnectionId : null };
-  const facts = await rows.lock(scope, (units) => coWorkTaskGraphLocks(tx, context.workspaceId, units));
+  // #238: a completion outcome that names a task joins the one sorted task pass, after the project graph locks.
+  const outcome = input.operation === 'complete' ? [input.outcome] : [];
+  const outcomeTasks = () => outcome.length ? referencedTaskIds(tx, outcome.map(coWorkTaskReference)) : Promise.resolve([] as string[]);
+  const facts = await rows.lock(scope, (units) => coWorkNamedTaskGraphLocks(tx, context.workspaceId, units, prepared.replay ? [] : outcome));
   locked = true;
   // The role never changes; a grant of another class names no unit here.
   if (!facts.unit || facts.unit.role !== command.peerRequestClass) throw new NotFoundError('Work unit', 'COWORK_UNIT_NOT_FOUND');
@@ -90,11 +93,11 @@ export async function coWorkUnitTransitionInTransaction(tx: Transaction, claims:
   requireCoWorkUnitTransition(context, facts, input, policy);
   const fence = { expectedVersion: input.expectedVersion, generation: input.generation, leaseId: input.leaseId, runtimeSessionId: runtime.id };
   if (input.operation === 'complete' && !await readable(input.outcome)) throw outcomeUnavailable();
-  // #238 seam: completion and transfer are persisted unit uses. The lifecycle/use fence joins at this conditional
-  // update, inside this same transaction, when it lands; it is not implemented here.
+  // #238: completion and transfer are persisted unit uses, under the task pass the lock above retains.
   const saved = input.operation === 'complete' ? await rows.complete(scope, fence, input.outcome)
     : await rows.transfer(scope, fence, input.assignmentConnectionId);
   if (!saved) throw new ConflictError('The claim is no longer live; recover before continuing', 'COWORK_CLAIM_LOST');
+  await facts.taskFence!.mark([saved.taskId, saved.lineageTaskId, ...await outcomeTasks()]);
   if (saved.state !== (input.operation === 'complete' ? 'completed' : 'pending')) throw new Error('Persistence returned another transition');
   const transition: CoWorkUnitTransition = { unitId: saved.id, taskId: saved.taskId, role: saved.role,
     assignmentConnectionId: saved.assignmentConnectionId, version: saved.version, state: saved.state as CoWorkUnitTransition['state'],

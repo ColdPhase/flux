@@ -26,7 +26,7 @@ export function nativeWorkSummaryRows(db: DbExecutor) {
     return counts;
   }
   async function firstWork(projectId: string, status: 'in_progress' | 'blocked' | 'open'): Promise<WorkReadRef | null> {
-    const [row] = await db.select({ id: w.id, title: w.title }).from(w).where(and(eq(w.projectId, projectId), eq(w.status, status), isNull(w.parkedAt))).orderBy(desc(w.createdAt), desc(w.id)).limit(1);
+    const [row] = await db.select({ id: w.id, title: w.title }).from(w).where(and(eq(w.projectId, projectId), eq(w.status, status), isNull(w.parkedAt), isNull(w.creationRevertedAt))).orderBy(desc(w.createdAt), desc(w.id)).limit(1);
     return row ? { kind: 'work', ...row } : null;
   }
   return {
@@ -44,15 +44,15 @@ export function nativeWorkSummaryRows(db: DbExecutor) {
         count(*) FILTER (WHERE status = 'done' AND parked_at IS NULL)::int AS completed,
         count(*) FILTER (WHERE status = 'not_pursued' AND parked_at IS NULL)::int AS not_pursued,
         count(*) FILTER (WHERE parked_at IS NOT NULL)::int AS parked
-        FROM project_work_items WHERE project_id = ${projectId}::uuid`);
-      const [historyWork] = await db.select({ id: w.id, title: w.title }).from(w).where(eq(w.projectId, projectId)).orderBy(desc(w.createdAt), desc(w.id)).limit(1);
+        FROM project_work_items WHERE project_id = ${projectId}::uuid AND creation_reverted_at IS NULL`);
+      const [historyWork] = await db.select({ id: w.id, title: w.title }).from(w).where(and(eq(w.projectId, projectId), isNull(w.creationRevertedAt))).orderBy(desc(w.createdAt), desc(w.id)).limit(1);
       const [historyDecision] = await db.select({ id: d.id, title: d.title }).from(d).where(eq(d.projectId, projectId)).orderBy(desc(d.createdAt), desc(d.id)).limit(1);
       const decisionTotal = await db.execute<{ total: number }>(sql`SELECT count(*)::int AS total FROM project_decisions WHERE project_id = ${projectId}::uuid`);
       const history = historyCounts.rows[0];
       if (!history || !decisionTotal.rows[0]) throw new Error('Missing native history counts');
       const ownerScope = sql`SELECT DISTINCT CASE WHEN owner_user_id IS NOT NULL THEN 'human' ELSE 'agent' END AS kind,
         coalesce(owner_user_id, owner_agent_id::text) AS id FROM project_work_items WHERE project_id = ${projectId}::uuid AND status = 'in_progress'
-        AND parked_at IS NULL AND (owner_user_id IS NOT NULL OR owner_agent_id IS NOT NULL)`;
+        AND parked_at IS NULL AND creation_reverted_at IS NULL AND (owner_user_id IS NOT NULL OR owner_agent_id IS NOT NULL)`;
       const owners = await db.execute<PrincipalRef>(sql`WITH owners AS (${ownerScope}) SELECT kind, id FROM owners ORDER BY kind, id LIMIT 3`);
       const total = await db.execute<{ total: number }>(sql`WITH owners AS (${ownerScope}) SELECT count(*)::int AS total FROM owners`);
       if (!total.rows[0]) throw new Error('Missing native owner count');

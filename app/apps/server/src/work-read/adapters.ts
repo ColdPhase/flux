@@ -105,8 +105,10 @@ export function nativeWorkReadRepository(db: DbExecutor): WorkReadRepository {
       const [facts] = await visibility.relations(projectId, [ref]);
       if (!facts) throw new Error('Missing native detail counts');
       const refs = object.kind === 'decision' ? [object.supersedes, object.supersededBy] : object.kind === 'work' ? [object.parked?.decisionId ?? null] : [];
+      // #238: the facts core decides this reader's Undo eligibility from; they are not part of the projection.
+      const undo = object.kind === 'work' ? await workRows(db).creationUndoFacts(object.id) ?? undefined : undefined;
       return { object, observedAt: await summary.observedAt(), relations: { edges: facts.edges, sourceMessages: facts.sourceMessages, sourceMaterials: facts.sourceMaterials, decisions: facts.decisions, results: facts.results },
-        context: await objects.decisionRefs(projectId, refs.filter((id): id is string => id !== null)) };
+        context: await objects.decisionRefs(projectId, refs.filter((id): id is string => id !== null)), ...(undo ? { undo } : {}) };
     },
     async relations(projectId, selection, limit, cursor) {
       await requireObjects(projectId, selection.objects);

@@ -80,7 +80,7 @@ export function agentOutcomeFingerprint(outcome: AgentExecutionOutcome): string 
 }
 
 const POSTCONDITIONS: Record<AgentExecutionCommand['operation'], readonly AgentPostcondition['kind'][]> = {
-  'work.create': ['work'], 'work.update': ['work'], 'result.record': ['result'], 'decision.propose': ['decision'],
+  'work.create': ['work'], 'work.update': ['work'], 'work.creation.revert': ['work'], 'result.record': ['result'], 'decision.propose': ['decision'],
   'map.create': ['map'], 'map.rename': ['map'], 'map.thought.create': ['thought', 'map_checkpoint'],
   'map.thought.update': ['thought', 'map_checkpoint'], 'map.thought.delete': ['map_checkpoint'],
   'map.positions.update': ['thought', 'map_checkpoint'], 'map.link.create': ['map_checkpoint'], 'map.link.delete': ['map_checkpoint'],

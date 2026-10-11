@@ -890,6 +890,15 @@ export const projectWorkItems = pgTable('project_work_items', {
   createdById: text('created_by_id').notNull(),
   clientCommandId: uuid('client_command_id'),
   requestFingerprint: text('request_fingerprint'),
+  creationOrigin: text('creation_origin', { enum: ['native_agent', 'ai_proposal', 'human'] }),
+  creationBaselineVersion: integer('creation_baseline_version'),
+  creationBaseline: jsonb('creation_baseline'),
+  creationProposalId: uuid('creation_proposal_id'),
+  firstPersistedUseAt: timestamp('first_persisted_use_at', { withTimezone: true }),
+  creationRevertedAt: timestamp('creation_reverted_at', { withTimezone: true }),
+  creationRevertedByKind: text('creation_reverted_by_kind', { enum: ['human', 'agent'] }),
+  creationRevertedById: text('creation_reverted_by_id'),
+  creationReversionNoticeId: uuid('creation_reversion_notice_id'),
   /** Bounded array of distinct trimmed statements (#152, migration 0039); `[]` for tasks without any. */
   criteria: jsonb('criteria').$type<string[]>().notNull().default(sql`'[]'::jsonb`),
   version: integer('version').notNull().default(1),
@@ -944,15 +953,29 @@ export const projectTaskNotices = pgTable('project_task_notices', {
   workspaceId: uuid('workspace_id').notNull(),
   projectId: uuid('project_id').notNull(),
   workId: uuid('work_id').notNull(),
-  kind: text('kind', { enum: ['task.created'] }).notNull(),
+  kind: text('kind', { enum: ['task.created', 'task.creation_reverted'] }).notNull(),
   createdByKind: text('created_by_kind', { enum: ['human', 'agent'] }).notNull(),
   createdById: text('created_by_id').notNull(),
   sources: jsonb('sources').$type<import('@flux/contracts').ObjectRef[]>().notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
 }, (table) => [
   unique().on(table.workId, table.kind),
+  unique('task_notice_scope_identity').on(table.workspaceId, table.projectId, table.workId, table.id),
   index('project_task_notices_project_idx').on(table.projectId, table.createdAt, table.id),
   foreignKey({ columns: [table.workspaceId, table.projectId, table.workId], foreignColumns: [projectWorkItems.workspaceId, projectWorkItems.projectId, projectWorkItems.id] }).onDelete('cascade'),
+]);
+
+/** Exact immutable reversion command receipts, separate from the native update/result shape checks. */
+export const taskCreationUndoReceipts = pgTable('task_creation_undo_receipts', {
+  workspaceId: uuid('workspace_id').notNull(), projectId: uuid('project_id').notNull(),
+  actorKind: text('actor_kind', { enum: ['human', 'agent'] }).notNull(), actorId: text('actor_id').notNull(),
+  clientCommandId: uuid('client_command_id').notNull(), requestFingerprint: text('request_fingerprint').notNull(),
+  workId: uuid('work_id').notNull(), noticeId: uuid('notice_id').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  primaryKey({ columns: [table.projectId, table.actorKind, table.actorId, table.clientCommandId] }),
+  foreignKey({ columns: [table.workspaceId, table.projectId, table.workId], foreignColumns: [projectWorkItems.workspaceId, projectWorkItems.projectId, projectWorkItems.id] }),
+  foreignKey({ columns: [table.workspaceId, table.projectId, table.workId, table.noticeId], foreignColumns: [projectTaskNotices.workspaceId, projectTaskNotices.projectId, projectTaskNotices.workId, projectTaskNotices.id] }),
 ]);
 
 /** A task never manufactures a conversation. Its first genuine message binds the root. */

@@ -278,7 +278,7 @@ function failingAt(point: string) {
         insertLinks: thrower('insertLinks', work.insertLinks), recordNativeCommand: thrower('recordNativeCommand', work.recordNativeCommand) },
       events: { record: thrower('record', async (...args: Parameters<typeof session.record>) => session.record(...args)) } as WorkPorts['events'],
       contributions: createWorkContributions({ ...base, discussion }),
-      backgroundComparison: { enqueueHumanNegative: async () => 0 } };
+      backgroundComparison: { prepareHumanNegative: async () => {}, taskTargets: async () => [], enqueueHumanNegative: async () => 0 } };
     const result = await session.run(() => action(ports));
     if (point === 'beforeFlush') throw new Error('injected failure before the final flush');
     await session.flushEvents();
@@ -314,7 +314,10 @@ test('every associated write of a blocker save or a result rolls the whole unit 
   // A replay returns the current presentation of the original outcome (the result has since linked the task).
   const replayed = expectStatus(await f.patch(f.writer, t.id, save, blocked.version), 200) as WorkItem;
   assert.deepEqual([replayed.version, replayed.blocker], [saved.version, saved.blocker]);
-  assert.deepEqual(replayed, await f.current(t.id));
+  const { creationUndo, ...currentFields } = await f.current(t.id);
+  assert.deepEqual(creationUndo, { eligible: false, reason: 'not_ai_origin' }, 'current GET rechecks eligibility of the genuine human creation');
+  assert.equal(replayed.creationUndo, undefined, 'PATCH replay retains its original domain projection');
+  assert.deepEqual(replayed, currentFields);
   assert.deepEqual(expectStatus(await f.result(f.writer, publish), 201), published);
   assert.deepEqual(await f.counts(), final, 'the stable retries after the recovered failures add nothing');
 });
