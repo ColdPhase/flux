@@ -7,13 +7,16 @@ import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, describe, test } from 'node:test';
-import { chromium, type Browser, type BrowserContext, type Page } from 'playwright';
+import { chromium, webkit, type Browser, type BrowserContext, type Page } from 'playwright';
 
 /**
- * Service worker behaviour in Chromium over HTTPS (issue #41). A small TLS proxy in front of the
- * API container gives the browser a secure origin (https://localhost:<port>), and lets the test
- * simulate going offline and deploying a changed service worker.
+ * Service worker behaviour over HTTPS in Chromium (default) or WebKit, selected by FLUX_E2E_BROWSER
+ * (issue #41; #20 MOB-1/MOB-5 need both engines). A small TLS proxy in front of the API container
+ * gives the browser a secure origin (https://localhost:<port>), and lets the test simulate going
+ * offline and deploying a changed service worker.
  */
+const engine = process.env.FLUX_E2E_BROWSER ?? 'chromium';
+if (engine !== 'chromium' && engine !== 'webkit') throw new Error(`FLUX_E2E_BROWSER must be chromium or webkit, got ${engine}`);
 const upstream = new URL(process.env.FLUX_API_URL ?? 'http://api:8080');
 const state = { offline: false, nextServiceWorker: false };
 
@@ -61,7 +64,8 @@ let page: Page;
 before(async () => {
   await new Promise<void>((resolve) => proxy.listen(0, '127.0.0.1', resolve));
   origin = `https://localhost:${(proxy.address() as AddressInfo).port}`;
-  browser = await chromium.launch({ args: ['--ignore-certificate-errors'] });
+  // Chromium needs the flag for the self-signed certificate; WebKit takes it from ignoreHTTPSErrors.
+  browser = engine === 'webkit' ? await webkit.launch() : await chromium.launch({ args: ['--ignore-certificate-errors'] });
   context = await browser.newContext({ ignoreHTTPSErrors: true, serviceWorkers: 'allow' });
   // Count permission prompts: loading Flux must never ask for notification permission.
   await context.addInitScript(() => {
@@ -91,7 +95,7 @@ async function swVersion(target: Page) {
   }));
 }
 
-describe('Flux PWA in Chromium over HTTPS', () => {
+describe(`Flux PWA in ${engine === 'webkit' ? 'WebKit' : 'Chromium'} over HTTPS`, () => {
   test('the service worker registers for scope "/" and controls the page', async () => {
     await page.goto(`${origin}/`);
     const scope = await page.evaluate(async () => (await navigator.serviceWorker.ready).scope);

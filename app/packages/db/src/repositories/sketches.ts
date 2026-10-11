@@ -195,6 +195,10 @@ export function sketchRows(db: DbExecutor) {
     async linkExists(id: string) {
       return (await db.select({ id: l.id }).from(l).where(eq(l.id, id))).length > 0;
     },
+    async findLink(sketchId: string, id: string) {
+      const [row] = await db.select().from(l).where(and(eq(l.sketchId, sketchId), eq(l.id, id)));
+      return row ? toLinkRecord(row) : null;
+    },
     async linkBetween(sketchId: string, a: string, b: string) {
       const [row] = await db.select().from(l).where(and(eq(l.sketchId, sketchId), or(and(eq(l.fromId, a), eq(l.toId, b)), and(eq(l.fromId, b), eq(l.toId, a)))));
       return row ? toLinkRecord(row) : null;
@@ -205,6 +209,11 @@ export function sketchRows(db: DbExecutor) {
     },
     async deleteLink(sketchId: string, id: string) {
       return (await db.delete(l).where(and(eq(l.sketchId, sketchId), eq(l.id, id))).returning({ id: l.id })).length > 0;
+    },
+    async updateLinkLabel(sketchId: string, id: string, label: string | null) {
+      const [row] = await db.update(l).set({ label }).where(and(eq(l.sketchId, sketchId), eq(l.id, id))).returning();
+      if (!row) throw new Error('Link row vanished inside its transaction');
+      return toLinkRecord(row);
     },
   };
 }

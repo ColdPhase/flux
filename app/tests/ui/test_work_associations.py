@@ -20,7 +20,7 @@ class MessageWorkJourney(unittest.TestCase):
         expect.set_options(timeout=10000)
         cls.contexts, cls.users, emails = [], [], []
         for name in ("Ada Kowalska", "Ada Nowak"):
-            context = cls.browser.new_context(base_url=ORIGIN)
+            context = cls.browser.new_context(service_workers="block", base_url=ORIGIN)
             email = f"source-pages-{uuid.uuid4()}@example.test"
             api(context, "POST", "/api/auth/sign-up/email", {"name": name, "email": email, "password": "compare sensor measurements before ordering"})
             cls.contexts.append(context); emails.append(email)
@@ -69,7 +69,7 @@ class MessageWorkJourney(unittest.TestCase):
         finally: cls.browser.close(); cls.pw.stop()
 
     def page(self, phone=False):
-        context = self.browser.new_context(base_url=ORIGIN, storage_state=self.states[0], viewport={"width": 412 if phone else 1500, "height": 915 if phone else 900}, device_scale_factor=3 if phone else 1, is_mobile=phone, has_touch=phone, locale="en-GB")
+        context = self.browser.new_context(service_workers="block", base_url=ORIGIN, storage_state=self.states[0], viewport={"width": 412 if phone else 1500, "height": 915 if phone else 900}, device_scale_factor=3 if phone else 1, is_mobile=phone, has_touch=phone, locale="en-GB")
         self.addCleanup(context.close)
         page = context.new_page(); errors = []
         page.on("pageerror", lambda error: errors.append(str(error)))

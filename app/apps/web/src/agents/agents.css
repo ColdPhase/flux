@@ -62,8 +62,9 @@
 .agents-msg__meta b { min-width: 0; overflow-wrap: anywhere; font-size: var(--fs-sm); font-weight: 550; color: var(--t1); }
 .agents-msg__meta .agent-id__name { white-space: normal; overflow: visible; overflow-wrap: anywhere; }
 .agents-msg__kind { color: var(--t3); }
-.agents-msg__body { margin: 0; font-size: var(--fs-base); line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; }
-.agents-msg--own .agents-msg__body { background-color: var(--inv); background-image: var(--grad-inv); color: var(--oninv); border-radius: var(--r-lg) 6px var(--r-lg) var(--r-lg); padding: 9px 13px; }
+.message-bubble > .agents-msg__body { margin: 0; font-size: var(--fs-base); line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; }
+
+.agents-msg--own > .message-bubble:not(:has(.message-files)):not(.photo-grid + .message-bubble) { padding: 9px 13px; box-shadow: none; }
 
 .agents-composer {
   position: sticky; bottom: 0;

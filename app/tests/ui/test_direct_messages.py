@@ -49,14 +49,14 @@ class DirectMessageJourney(unittest.TestCase):
         expect.set_options(timeout=10000)
         # Accounts and the shared workspace come from the public API, as a person's browser would.
         for key, (name, email) in PEOPLE.items():
-            context = cls.browser.new_context(base_url=ORIGIN)
+            context = cls.browser.new_context(service_workers="block", base_url=ORIGIN)
             response = context.request.post("/api/auth/sign-up/email", data={"email": email, "password": PASSWORD, "name": name}, headers={"origin": ORIGIN})
             assert response.status == 200, response.text()
             me = context.request.get("/api/v1/me").json()
             cls.ids[key] = me["user"]["id"]
             cls.states[key] = context.storage_state()
             context.close()
-        ada = cls.browser.new_context(base_url=ORIGIN, storage_state=cls.states["ada"])
+        ada = cls.browser.new_context(service_workers="block", base_url=ORIGIN, storage_state=cls.states["ada"])
         post = lambda path, body: ada.request.post(path, data=body, headers={"origin": ORIGIN})  # noqa: E731
         workspace = post("/api/v1/workspaces", {"name": "Riverside Makers"})
         assert workspace.status == 201, workspace.text()
@@ -80,7 +80,7 @@ class DirectMessageJourney(unittest.TestCase):
             options.update(viewport=PHONE, device_scale_factor=3, is_mobile=True, has_touch=True)
         else:
             options.update(viewport=DESKTOP, device_scale_factor=1)
-        context = self.browser.new_context(**options)
+        context = self.browser.new_context(service_workers="block", **options)
         self.addCleanup(context.close)
         return context
 

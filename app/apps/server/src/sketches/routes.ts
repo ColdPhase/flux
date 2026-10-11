@@ -10,6 +10,9 @@ import {
   type PromoteSketchCommand,
   type SketchListQuery,
   type UpdateSketchCommand,
+  type UpdateLinkLabelCommand,
+  type AgentProjectOwner,
+  type SketchPage,
   type UpdateThoughtCommand,
 } from '@flux/contracts';
 import { DomainError,ServiceUnavailableError,derivedUuid, requestHash, type Database, type FileStorage, type Principal, type ResourceRef,type LiveMapBackend } from '@flux/core';
@@ -22,6 +25,7 @@ import { editingMapContextCharge } from '../editing/context-charge.js';
 import { editingJSONSize } from '../editing/json-size.js';
 import { editingHTTPLifetime, type EditingHTTPLifetime } from '../editing/http-lifetime.js';
 import type { CommandSpec } from '../http/commands.js';
+import { projectAuthorOwners, scopedPrincipal } from '../conversation/author-owners.js';
 
 export interface SketchRouteOptions {
   db: Database;
@@ -29,6 +33,23 @@ export interface SketchRouteOptions {
   /** The files volume: a new thought may take the caller's staged image (#252). */
   storage: FileStorage;
   developmentEditing?:boolean;liveBackend?:()=>LiveMapBackend|null;
+}
+
+/**
+ * Project sketches name an agent creator with its scoped owner, as the project overview does (#339 AC-2). Each
+ * project on the page gets one bounded audience read; sketches outside a project never carry it.
+ */
+async function scopedCreators(db: Database, workspaceId: string, page: SketchPage): Promise<SketchPage> {
+  const agentsByProject = new Map<string, Set<string>>();
+  for (const sketch of page.items) {
+    if (!sketch.projectId || sketch.createdBy.kind !== 'agent') continue;
+    agentsByProject.set(sketch.projectId, (agentsByProject.get(sketch.projectId) ?? new Set<string>()).add(sketch.createdBy.id));
+  }
+  if (!agentsByProject.size) return page;
+  const owners = new Map<string, ReadonlyMap<string, AgentProjectOwner>>();
+  for (const [projectId, agents] of agentsByProject) owners.set(projectId, await projectAuthorOwners(db, projectId, workspaceId, [...agents]));
+  return { ...page, items: page.items.map((sketch) => sketch.projectId && owners.has(sketch.projectId)
+    ? { ...sketch, createdBy: scopedPrincipal(sketch.createdBy, owners.get(sketch.projectId)!) } : sketch) };
 }
 
 const id = { type: 'string', minLength: 1, maxLength: 64 } as const;
@@ -109,7 +130,8 @@ export async function sketchRoutes(app: FastifyInstance, { db, sessions, storage
 
   app.get<{ Params: { workspaceId: string }; Querystring: SketchListQuery }>(WORKSPACE_SKETCHES, {
     schema: { querystring: { type: 'object', additionalProperties: false, properties: { limit: { type: 'integer' }, offset: { type: 'integer' }, projectId: { type: 'string' }, dmId: { type: 'string' }, scope: { type: 'string', enum: ['private'] } } } },
-  }, async (request) => sketches.list(await principal(request), request.params.workspaceId, request.query));
+  }, async (request) => scopedCreators(db, request.params.workspaceId,
+    await sketches.list(await principal(request), request.params.workspaceId, request.query)));
 
   app.post<{ Params: { workspaceId: string }; Body: CreateSketchCommand }>(WORKSPACE_SKETCHES, {
     schema: {
@@ -200,6 +222,14 @@ export async function sketchRoutes(app: FastifyInstance, { db, sessions, storage
   }, async (request, reply) => command(request, reply, {
     operation: `POST ${SKETCH}/links`, scope: sketchScope(request.params.sketchId), status: 201,
     run: (actor, conn, session) => native(conn,actor,request,session,reply).addLink(actor, request.params.sketchId, request.body),
+    replay: readSketch(request.params.sketchId),
+  }));
+
+  app.patch<{ Params: { sketchId: string; linkId: string }; Body: UpdateLinkLabelCommand }>(`${SKETCH}/links/:linkId`, {
+    schema: { body: { type: 'object', required: ['label', 'expectedLabel'], additionalProperties: false, properties: { label, expectedLabel: label } } },
+  }, async (request, reply) => command(request, reply, {
+    operation: `PATCH ${SKETCH}/links/:linkId`, scope: sketchScope(request.params.sketchId),
+    run: (actor, conn, session) => native(conn,actor,request,session,reply).updateLinkLabel(actor, request.params.sketchId, request.params.linkId, request.body),
     replay: readSketch(request.params.sketchId),
   }));
 

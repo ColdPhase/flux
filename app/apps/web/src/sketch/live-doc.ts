@@ -5,7 +5,7 @@ import { SharedMap } from '../editing/map';
 import * as api from '../api/sketches';
 import { useStreamEvents } from '../api/stream';
 import { applyLocal, applyLivePreviews, type Me, type NewThought, type Op } from './projection.js';
-import { inverse, type LoadState } from './doc';
+import { DraftSaveNotSentError, inverse, type DraftSaveOptions, type LoadState } from './doc';
 
 /**
  * Native confirmed state is independent of per-object pending intent and transient
@@ -300,14 +300,44 @@ export function useLiveSketchDoc(sketchId: string, me: Me) {
    * list, #252) are shared in order and stop at the first failure; the confirmed ones form one undo step. Returns the
    * confirmed thought IDs; the caller keeps the rest of its draft with their IDs and keys.
    */
-  const saveThoughts = useCallback(async (items: { thought: NewThought; parent: { id: string; linkId: string } | null; key: string }[]): Promise<string[]> => {
+  const saveThoughts = useCallback(async (items: { thought: NewThought; parent: { id: string; linkId: string } | null; key: string }[], options?: DraftSaveOptions): Promise<string[]> => {
     const saved: string[] = [];
     const label = items.length === 1 ? 'added a thought' : `added ${items.length} thoughts`;
     const entry: Entry = { label, ops: [], commands: [], at: Date.now() };
     for (const { thought, parent, key } of items) {
       const current = ref.current; if (!current) break;
+      if (options?.existingOnly?.has(thought.id) || options?.retry?.has(thought.id)) {
+        // Current-main private recovery never recreates an unknown/earlier connected save.
+        // Read under actual authority, then let ordered live delivery confirm the same native version.
+        const fresh = await api.getSketch(sketchId);
+        const existing = fresh.thoughts.find((item) => item.id === thought.id);
+        if (!existing) { setProblem('The earlier draft’s save is not confirmed yet. Your text is kept; check the shared map before starting another thought.'); break; }
+        const expected = options?.expectedText?.get(thought.id);
+        const wanted = options?.desiredText?.get(thought.id) ?? thought.text;
+        const untouchedOwnCreation = expected === undefined && existing.version === 1 && existing.createdBy.id === meRef.current.id;
+        if (existing.text !== wanted && existing.text !== expected && !untouchedOwnCreation) { setProblem('Someone changed the earlier saved thought. Your text is kept; cancel to inspect their version before editing again.'); break; }
+        live.current?.resync();
+        const until = Date.now() + 5000;
+        while ((confirmed.current?.thoughts.find((item) => item.id === thought.id)?.version ?? -1) < existing.version && Date.now() < until) await new Promise((resolve) => window.setTimeout(resolve, 20));
+        const observed = confirmed.current?.thoughts.find((item) => item.id === thought.id);
+        if (!observed || observed.version !== existing.version || observed.text !== existing.text) { setProblem('The current saved thought is not confirmed yet. Your text is kept; compare the shared map first.'); break; }
+        if (existing.text !== wanted) {
+          const op: Extract<Op, { kind: 'update' }> = { kind: 'update', id: thought.id, changes: { text: wanted } };
+          const updateKey = options?.editKeys?.get(thought.id);
+          if (!updateKey || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(updateKey)) { setProblem('The earlier edit has no retained save identity. Your text is kept; reopen the thought to compare it first.'); break; }
+          if (pending.current.size >= 256 || [...pending.current.values()].reduce((total, intent) => total + JSON.stringify(intent.op).length * 2, JSON.stringify(op).length * 2) > 1024 * 1024) { setProblem('Wait for the pending changes before sharing this private edit.'); break; }
+          const intent: Intent = { id: updateKey, scope: scope.current.number, op, epochs: new Map([[thought.id, epochs.current.get(thought.id) ?? 0]]), entry };
+          ownCommands.current.add(updateKey);
+          while (ownCommands.current.size > 12_000) ownCommands.current.delete(ownCommands.current.values().next().value!);
+          pending.current.set(updateKey, intent); publish();
+          if (!await enqueue(intent)) break;
+        }
+        saved.push(thought.id); continue;
+      }
       const op: Extract<Op, { kind: 'add' }> = { kind: 'add', thought, ...(parent ? { link: { id: parent.linkId, fromId: parent.id, label: null } } : {}) };
       if (pending.current.size >= 256 || [...pending.current.values()].reduce((total, intent) => total + JSON.stringify(intent.op).length * 2, JSON.stringify(op).length * 2) > 1024 * 1024) { setProblem('Wait for the pending changes before sharing this private draft.'); break; }
+      try { options?.onAttempt?.({ thought, parent, key }); }
+      catch (error) { if (!(error instanceof DraftSaveNotSentError)) throw error; setProblem('No request was sent. This browser could not safely retain the save state; your text is kept. Try again when storage is available.'); break; }
       const intent: Intent = { id: key, scope: scope.current.number, op, epochs: new Map(touched(op, current).map((id) => [id, epochs.current.get(id) ?? 0])), entry };
       ownCommands.current.add(key);
       while (ownCommands.current.size > 12_000) ownCommands.current.delete(ownCommands.current.values().next().value!);
@@ -316,9 +346,9 @@ export function useLiveSketchDoc(sketchId: string, me: Me) {
       if (!await enqueue(intent)) break;
       saved.push(thought.id);
     }
-    if (saved.length) {
+    if (saved.length && entry.commands.length) {
       entry.label = saved.length === 1 ? 'added a thought' : `added ${saved.length} thoughts`;
-      entry.ops = [...saved].reverse().map((id): Op => ({ kind: 'remove', id }));
+      entry.ops = [...saved].reverse().filter((id) => !options?.existingOnly?.has(id) && !options?.retry?.has(id)).map((id): Op => ({ kind: 'remove', id }));
       undoStack.current.push(entry); if (undoStack.current.length > 50) undoStack.current.shift(); setUndoLabel(entry.label);
     }
     return saved;
@@ -334,13 +364,43 @@ export function useLiveSketchDoc(sketchId: string, me: Me) {
     pending.current.set(key, intent); publish();
     return enqueue(intent).then((saved) => { if (saved) { undoStack.current.push(entry); if (undoStack.current.length > 50) undoStack.current.shift(); setUndoLabel(entry.label); } return saved; });
   }, [enqueue, publish]);
+  // Accepted label CAS joins the existing live write queue. Historical HTTP replay bodies
+  // never patch the live graph; ordered delta/snapshot catch-up establishes what is current.
+  const saveLinkLabel = useCallback((id: string, label: string | null, expectedLabel: string | null, key: string) => {
+    const instance = scope.current.number;
+    inFlight.current++; setSaving(true);
+    ownCommands.current.add(key);
+    while (ownCommands.current.size > 12_000) ownCommands.current.delete(ownCommands.current.values().next().value!);
+    const operation = queue.current.then(async () => {
+      const valid = () => scope.current.active && scope.current.number === instance;
+      const result = await withRetry(() => {
+        if (!valid()) throw new DOMException('The original map editor closed', 'AbortError');
+        return api.updateLinkLabel(sketchId, id, label, expectedLabel, key);
+      });
+      if (!valid()) throw new DOMException('The original map editor closed', 'AbortError');
+      if (live.current?.status === 'unavailable') await reload();
+      else {
+        const until = Date.now() + 1000;
+        while (!receipts.current.has(key) && Date.now() < until) { if (!valid()) throw new DOMException('The original map editor closed', 'AbortError'); await new Promise((resolve) => window.setTimeout(resolve, 20)); }
+        if (!receipts.current.has(key)) {
+          const before = snapshots.current; live.current?.resync();
+          const deadline = Date.now() + 5000;
+          while (snapshots.current === before && Date.now() < deadline) { if (!valid()) throw new DOMException('The original map editor closed', 'AbortError'); await new Promise((resolve) => window.setTimeout(resolve, 20)); }
+          if (snapshots.current === before) throw new Error('The label save is not confirmed in the current map yet. Your draft is kept; retry its original save.');
+        }
+      }
+      return result;
+    }).finally(() => { inFlight.current--; if (!inFlight.current) setSaving(false); });
+    queue.current = operation.then(() => undefined, () => undefined);
+    return operation;
+  }, [reload, sketchId]);
   const beginGesture = (ids: string[]) => {
     const current = confirmed.current; if (!current || live.current?.status === 'unavailable') return true;
     const busy = [...pending.current.values()].some((intent) => touched(intent.op, current).some((id) => ids.includes(id)));
     if (busy) { setProblem('Wait for these thoughts to be confirmed before dragging them.'); return false; }
     return live.current?.begin(ids.flatMap((id) => { const thought = current.thoughts.find((thought) => thought.id === id); return thought ? [thought] : []; })) ?? false;
   };
-  return { sketch, load, saving, problem: problem ?? liveState.problem, clearProblem: () => setProblem(null), canUndo: undoLabel !== null && !saving, perform, saveThoughts, saveText, undo, reload, newId: uuid,
+  return { sketch, load, saving, problem: problem ?? liveState.problem, clearProblem: () => setProblem(null), canUndo: undoLabel !== null && !saving, perform, saveThoughts, saveText, saveLinkLabel, undo, reload, newId: uuid,
     liveStatus: liveState.status, liveCanWrite: liveState.canWrite, ownGesture: liveState.ownGesture, previews: liveState.previews, peers: liveState.peers, privateMovement: liveState.privateMovement, discardPrivateMovement: () => live.current?.discardPrivateMovement(),
     beginGesture, previewGesture: (positions: LiveMapPosition[]) => live.current?.preview(positions), cancelGesture: () => live.current?.cancel(true),
     finishGesture: () => live.current?.status === 'unavailable' ? undefined : live.current?.finish(),

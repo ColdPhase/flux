@@ -76,12 +76,12 @@ test('0046 preserves saved material/history/search and makes live receipts, prov
   } finally { await client.query('ROLLBACK'); client.release(); }
 });
 
-test('0046 and 0047 arrive late on a database already at the current latest and on a fresh one, with the exact ledger either way', async () => {
+test('0046 and 0047 arrive late on a database already at intermediate84 and on a fresh one, with the exact ledger either way', async () => {
   const client = await pool.connect(); const namespace = `live_late_${randomUUID().replaceAll('-', '')}`;
   try {
     await client.query('BEGIN'); await client.query(`CREATE SCHEMA "${namespace}"`);
     await client.query(`SET LOCAL search_path TO "${namespace}",public`);
-    const dir = 'packages/db/migrations'; const manifest = await readMigrationManifest(dir, FLUX_SCHEMA_VERSION);
+    const dir = 'packages/db/migrations'; const manifest = (await readMigrationManifest(dir, FLUX_SCHEMA_VERSION)).filter((file) => file.version <= 84);
     const live = manifest.filter((file) => file.version === 46 || file.version === 47);
     assert.deepEqual(live.map((file) => file.name), ['0046_live_editing.sql', '0047_live_maps.sql']);
     // An upgraded installation recorded everything else (including 0048..latest) before these files existed.
@@ -93,11 +93,42 @@ test('0046 and 0047 arrive late on a database already at the current latest and 
       const next = await readAppliedMigrationVersions(client); assertMigrationStepLedger(applied, next, file); applied = next;
     };
     for (const file of manifest.filter((file) => file.version !== 46 && file.version !== 47)) await apply(file);
-    assert.ok(applied.includes(FLUX_SCHEMA_VERSION) && !applied.includes(46));
+    assert.ok(applied.includes(84) && !applied.includes(46));
     assert.throws(() => assertExactMigrationLedger(manifest, applied), /0046_live_editing\.sql/, 'the migrator must apply the older numbers');
     // The migrator loop applies every missing file, whatever its number.
     for (const file of manifest) if (!applied.includes(file.version)) await apply(file);
     assertExactMigrationLedger(manifest, applied);
+    for (const table of ['doc_live_heads', 'doc_live_updates', 'live_editing_intents', 'map_live_heads', 'map_live_journal'])
+      assert.equal((await client.query(`SELECT count(*)::int AS n FROM ${table}`)).rows[0].n, 0, `${table} starts empty`);
+  } finally { await client.query('ROLLBACK'); client.release(); }
+});
+
+test('0046, 0047 and 0084 arrive late on canonical90, retaining the exact old ledger timestamps, with the exact ledger either way', async () => {
+  const client = await pool.connect(); const namespace = `live_late90_${randomUUID().replaceAll('-', '')}`;
+  try {
+    await client.query('BEGIN'); await client.query(`CREATE SCHEMA "${namespace}"`);
+    await client.query(`SET LOCAL search_path TO "${namespace}",public`);
+    const dir = 'packages/db/migrations'; const manifest = await readMigrationManifest(dir, FLUX_SCHEMA_VERSION);
+    assert.equal(FLUX_SCHEMA_VERSION, 90);
+    const live = manifest.filter((file) => file.version === 46 || file.version === 47 || file.version === 84);
+    assert.deepEqual(live.map((file) => file.name), ['0046_live_editing.sql', '0047_live_maps.sql', '0084_live_update_log.sql']);
+    // An upgraded installation recorded everything else (including 0048..latest) before these files existed.
+    let applied: number[] = [];
+    const apply = async (file: (typeof manifest)[number]) => {
+      await client.query(await readFile(join(dir, file.name), 'utf8'));
+      assertMigrationSqlLedgerChange(applied, await readAppliedMigrationVersions(client), file);
+      await client.query('INSERT INTO flux_schema_version(version) VALUES ($1) ON CONFLICT DO NOTHING', [file.version]);
+      const next = await readAppliedMigrationVersions(client); assertMigrationStepLedger(applied, next, file); applied = next;
+    };
+    for (const file of manifest.filter((file) => file.version !== 46 && file.version !== 47 && file.version !== 84)) await apply(file);
+    assert.ok(applied.includes(90) && !applied.includes(46) && !applied.includes(47) && !applied.includes(84));
+    assert.throws(() => assertExactMigrationLedger(manifest, applied), /0046_live_editing\.sql/, 'the migrator must apply the older numbers');
+    const oldLedger = (await client.query('SELECT to_jsonb(r) value FROM (SELECT * FROM flux_schema_version ORDER BY version) r')).rows;
+    const oldVersions = [...applied];
+    // The migrator loop applies every missing file, whatever its number.
+    for (const file of manifest) if (!applied.includes(file.version)) await apply(file);
+    assertExactMigrationLedger(manifest, applied);
+    assert.deepEqual((await client.query('SELECT to_jsonb(r) value FROM (SELECT * FROM flux_schema_version WHERE version=ANY($1::int[]) ORDER BY version) r',[oldVersions])).rows, oldLedger, 'late SQL retains original applied_at bytes');
     for (const table of ['doc_live_heads', 'doc_live_updates', 'live_editing_intents', 'map_live_heads', 'map_live_journal'])
       assert.equal((await client.query(`SELECT count(*)::int AS n FROM ${table}`)).rows[0].n, 0, `${table} starts empty`);
   } finally { await client.query('ROLLBACK'); client.release(); }
@@ -109,7 +140,7 @@ test('0084 keeps every existing room as a complete snapshot, logs ledgers from t
   try {
     await client.query('BEGIN'); await client.query(`CREATE SCHEMA "${namespace}"`);
     await client.query(`SET LOCAL search_path TO "${namespace}",public`);
-    const dir = 'packages/db/migrations'; const manifest = await readMigrationManifest(dir, FLUX_SCHEMA_VERSION);
+    const dir = 'packages/db/migrations'; const manifest = (await readMigrationManifest(dir, FLUX_SCHEMA_VERSION)).filter((file) => file.version <= 84);
     const migration = manifest.find((file) => file.version === 84)!; assert.equal(migration.name, '0084_live_update_log.sql');
     for (const file of manifest.filter((file) => file.version < 84)) {
       await client.query(await readFile(join(dir, file.name), 'utf8'));

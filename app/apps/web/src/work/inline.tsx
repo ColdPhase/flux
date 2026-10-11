@@ -73,7 +73,7 @@ export function ProjectStateLine({ summary, phase }: { summary: ProjectWorkSumma
   if (!summary) return <p className="ws-state ws-state--empty" aria-label="Current state">{phase === 'unavailable' ? 'Current work unavailable' : 'Loading current work…'}</p>;
   const parts = summaryStateParts(summary, summary.access !== 'viewer').sort((a, b) => Number(b.tone === 'need') - Number(a.tone === 'need'));
   if (!parts.length) return <p className="ws-state ws-state--empty" aria-label="Current state" aria-busy={phase === 'refreshing'}>{summaryEmptyCaption(summary)}. Anything said here can become work.</p>;
-  return <p className="ws-state" aria-label="Current state" aria-busy={phase === 'refreshing'}>{parts.map((part, index) => <span key={part.key} className="ws-part">{index ? <span className="ws-sep" aria-hidden="true">·</span> : null}<button type="button" className={`ws-seg${part.tone ? ` ws-seg--${part.tone}` : ''}`} data-seg={part.key} title={part.title} onClick={() => openDetails(part.open)}>{part.icon ? <Icon name={part.icon} size={13} /> : <span className={`ws-dot ws-dot--${part.dot}`} aria-hidden="true" />}<span>{part.text}</span></button></span>)}</p>;
+  return <p className="ws-state" aria-label="Current state" aria-busy={phase === 'refreshing'}>{parts.map((part, index) => <span key={part.key} className="ws-part">{index ? <span className="ws-sep" aria-hidden="true">·</span> : null}<button type="button" className={`ws-seg${part.tone ? ` ws-seg--${part.tone}` : ''}`} data-seg={part.key} onClick={() => openDetails(part.open)}>{part.icon ? <Icon name={part.icon} size={13} /> : <span className={`ws-dot ws-dot--${part.dot}`} aria-hidden="true" />}<span>{part.text}</span></button></span>)}</p>;
 }
 
 /**
@@ -154,7 +154,7 @@ export function MessageObjects({ message, projectId, preview, thread = null, thr
  * Creates work from a message in one action. A failed attempt keeps its Idempotency-Key, so
  * retrying after a lost response returns the same work item instead of a duplicate.
  */
-export function useCreateWorkFromMessage(project: Project) {
+export function useCreateWorkFromMessage(project: Pick<Project, 'id'>) {
   const { openDetails } = useShellActions();
   const revalidator = useRevalidator();
   const keys = useRef(new Map<string, string>());

@@ -550,19 +550,20 @@ class LiveEditingJourney(LiveFixture):
         await expect(ada.locator('.editing-map-recovery')).to_be_visible()
         await expect(ada.locator(f'.sk-node[data-id="{thought["id"]}"]')).to_have_attribute('data-thought-x', str(thought['x']))
 
-    async def test_13_trusted_touch_drag_previews_before_release_on_a_phone(self):
-        # A real touch sequence (CDP touch events, so pointerType "touch") on a 390 px phone:
+    async def test_13_trusted_touch_drag_previews_before_release_on_a_tablet(self):
+        # A real touch sequence (CDP touch events, so pointerType "touch") on an 820 px tablet (F-026 S15 keeps phones view/add only):
         # tap selects, a finger drag on the selected thought moves it, the peer sees the
         # movement before the finger lifts, and the release confirms one durable position.
         await self.create_map(2)
         kai = self.pages["kai"]
         thought = self.thoughts[0]
-        phone = await self.browser.new_context(base_url=ORIGIN, storage_state=await self.pages["ada"].context.storage_state(),
-            viewport={"width": 390, "height": 844}, has_touch=True, is_mobile=True, reduced_motion="reduce", service_workers="block")
-        self.contexts.append(phone)
-        page = await phone.new_page()
+        tablet = await self.browser.new_context(base_url=ORIGIN, storage_state=await self.pages["ada"].context.storage_state(),
+            viewport={"width": 820, "height": 1180}, has_touch=True, is_mobile=True, reduced_motion="reduce", service_workers="block")
+        self.contexts.append(tablet)
+        page = await tablet.new_page()
         page.on("pageerror", lambda error: self.errors.append(str(error)))
         await page.goto(f"/map/{self.map_id}")
+        self.assertFalse(await page.evaluate("matchMedia('(max-width: 640px)').matches"), "accepted tablet viewport is outside the actual phone/compact predicate")
         await expect(page.locator('[data-live-map-status="live"]')).to_be_visible()
         node = page.locator(f'.sk-node[data-id="{thought["id"]}"]')
         await node.scroll_into_view_if_needed()
@@ -570,7 +571,7 @@ class LiveEditingJourney(LiveFixture):
         await expect(node).to_have_attribute("aria-pressed", "true")
         box = await node.bounding_box()
         x, y = box["x"] + box["width"] / 2, box["y"] + box["height"] / 2
-        cdp = await phone.new_cdp_session(page)
+        cdp = await tablet.new_cdp_session(page)
         await cdp.send("Input.dispatchTouchEvent", {"type": "touchStart", "touchPoints": [{"x": x, "y": y}]})
         for step in range(1, 9):
             await cdp.send("Input.dispatchTouchEvent", {"type": "touchMove", "touchPoints": [{"x": x + 6 * step, "y": y + 5 * step}]})
