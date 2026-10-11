@@ -17,6 +17,14 @@ commands. Their comments describe the harness ancestry, not additional cases
 proved by these bounded probes. Author-local logs are supplementary; results
 retain their final hashes but do not promise those files exist on your machine.
 
+The as-executed configs are textual captures:
+[`baseline-compose.yaml.txt`](historical/baseline-compose.yaml.txt) and
+[`prototype-compose.yaml.txt`](historical/prototype-compose.yaml.txt).
+The `.yaml.txt` suffix distinguishes the archived records from executable
+Compose inputs. Their original bytes and SHA-256 values are unchanged; the hash
+manifest uses their current archive filenames. The portable research configs
+remain `.yaml` files and are checked by the repository's container isolation guard.
+
 Use [`baseline-run.sh`](baseline-run.sh) or [`prototype-run.sh`](prototype-run.sh).
 They find all research files relative to themselves and require a Git repository
 containing exact server object `975747426a778cc4471bd4c9eabb8910eb187671`.

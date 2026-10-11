@@ -12,7 +12,7 @@ const SHA = 'a'.repeat(40);
 const rule = (over: Partial<GithubRuleRecord> = {}): GithubRuleRecord => ({
   taskId: 't', workspaceId: 'w', projectId: 'p', mode: 'complete', state: 'active', suspendedReason: null, authorUserId: 'ada',
   authorGithubUserId: '1', authorGeneration: 'g', appId: '9', expectedVersion: 1, expectedStatus: 'open', expectedBlocker: null,
-  blockedBy: null, readyToClose: false, updatedAt: new Date('2026-10-05T10:00:00Z'), ...over,
+  blockedBy: null, readyToClose: false, revision: 1, updatedAt: new Date('2026-10-05T10:00:00Z'), ...over,
 });
 const task = (over: Partial<GithubRuleTask> = {}): GithubRuleTask =>
   ({ status: 'open', blocker: null, parked: false, version: 1, criteria: [], prerequisitesMet: true, ...over });
