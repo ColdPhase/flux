@@ -477,6 +477,10 @@ class RuntimeConsole(unittest.TestCase):
             if completion:
                 status["authCompletion"] = completion
             cases.append((name, status, None))
+        for name, change in (("missing-timestamp", {"at": None}), ("unknown-failed", {"failed": None})):
+            status = copy.deepcopy(confirmed)
+            status["connections"]["claude_code"]["signOut"].update(change)
+            cases.append((name, status, None))
         pending = copy.deepcopy(confirmed)
         pending["auth"] = {"claude_code": "signing_out"}
         cases.append(("pending", pending, "Sign-out requested."))
@@ -531,6 +535,28 @@ class RuntimeConsole(unittest.TestCase):
                             self.assertLessEqual(geometry["top"] - geometry["heading"], 24, "outcome sits with the state")
                             self.assertLessEqual(geometry["bottom"], geometry["following"] + 1, "outcome precedes generic choices/disclosure")
                             self.assertLessEqual(geometry["bottom"], geometry["height"], "outcome is readable in the captured viewport")
+                        if name == "confirmed":
+                            # A new action owns the view even while the old saved receipt remains in GET.
+                            held_action: list[Route] = []
+                            page.route("**/api/v1/agent-runtime/binding", lambda route: held_action.append(route)
+                                       if route.request.method == "DELETE" else route.continue_())
+                            section.get_by_role("button", name="Remove Claude Code from Flux…").click()
+                            page.get_by_role("group", name="Remove Claude Code from Flux").get_by_role("button", name="Sign out and remove").click()
+                            deadline = time.time() + 5
+                            while not held_action and time.time() < deadline:
+                                page.wait_for_timeout(20)
+                            self.assertEqual(len(held_action), 1, "the actual next DELETE is held before its answer")
+                            expect(section.get_by_text("Signed out of Claude Code in Flux.", exact=True)).to_have_count(0)
+                            held_action[0].fulfill(status=503, content_type="application/json", body='{"error":"unavailable"}')
+                            uncertain = section.get_by_role("alert")
+                            expect(uncertain).to_contain_text("Removal could not be confirmed")
+                            expect(section.get_by_text("Signed out of Claude Code in Flux.", exact=True)).to_have_count(0)
+                            order = uncertain.evaluate("""node => ({top:node.getBoundingClientRect().top,
+                              heading:node.closest('section.rt').querySelector('#rt-h').getBoundingClientRect().bottom,
+                              choices:node.closest('section.rt').querySelector('.rt-choices').getBoundingClientRect().top})""")
+                            self.assertLessEqual(order["top"] - order["heading"], 24)
+                            self.assertLess(order["top"], order["choices"], "unconfirmed action stays beside its current state")
+                            shot(page, f"runtime-outcome-uncertain-action-{'phone-390' if phone else 'desktop-1440'}-{theme}-{UI_BROWSER}")
                         page.close()
 
 

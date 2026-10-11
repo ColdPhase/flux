@@ -129,10 +129,29 @@ export function RuntimeSection({ otherWays }: { otherWays: ReactNode }) {
   const authPending = status.auth?.claude_code;
   const again = binding?.state === 'sign_in_again' || connection?.state === 'sign_in_again';
   const release = status.lastRelease;
+  // Only current saved facts confirm sign-out; an action ACK or an older receipt cannot do so.
+  const confirmedSignOut = binding?.state === 'active' && !binding.recovery && !busy && !error && !authPending
+    && status.authCompletion?.disposition !== 'superseded' && connection?.state === 'signed_out'
+    && connection.signOut?.failed === false && Boolean(connection.signOut.at) && Number.isFinite(Date.parse(connection.signOut.at))
+    ? connection.signOut : null;
 
   return (
     <section className="nset__sec rt" aria-labelledby="rt-h">
       <h3 id="rt-h" className="aset__state"><span className={`aset__dot${signedIn ? ' is-ready' : ''}`} aria-hidden="true" />Claude Code in Flux · {removing ? 'removing' : signedIn ? 'signed in' : again ? 'sign in again' : 'not signed in'}</h3>
+      {confirmedSignOut ? <p className="nset__note" role="status"><b>Signed out of Claude Code in Flux.</b> <time dateTime={confirmedSignOut.at}>{dateTime(confirmedSignOut.at)}</time>.</p> : null}
+      {connection?.signOut?.failed && !signedIn ? (
+        <p className="nset__problem" role="note"><Icon name="alert" size={14} /><span><b>Anthropic didn’t confirm the sign-out.</b> Flux deleted the login from your Claude Code space anyway. To be sure it can’t be used, end the session in your Claude account or Anthropic Console settings.</span></p>
+      ) : null}
+      {!binding && release?.signOutFailed ? (
+        <p className="nset__problem" role="note"><Icon name="alert" size={14} /><span><b>Your Claude Code space was removed, but Anthropic didn’t confirm the sign-out.</b> Flux deleted the login anyway. End the session in your Claude account or Anthropic Console settings to be sure.</span></p>
+      ) : null}
+      {!binding && release && release.reason !== 'owner' ? (
+        <p className="nset__note">Your Claude Code space was removed on {dateTime(release.at)} {release.reason === 'idle' ? 'because it wasn’t used for a while' : release.reason === 'auth_recovery' ? 'to recover safely after an unconfirmed operation; both clients need to sign in again' : 'by the person who runs this server'}. {release.signOutFailed ? 'Vendor sign-out was not confirmed; end the session in your vendor account settings.' : 'It signed out first.'}</p>
+      ) : null}
+      {removing ? <p className="nset__note" role="status"><Spinner /> {binding?.recovery ? 'Recovering your Claude Code space after an unconfirmed operation. Access is disabled; both clients may need to sign in again after cleanup.' : 'Signing out and removing your Claude Code space…'}</p> : null}
+      {authPending ? <p className="nset__note" role="status"><Spinner /> {authPending === 'signing_out' ? 'Sign-out requested. Access is disabled while Claude Code signs out and its files are removed.' : authPending === 'signing_in' ? 'A sign-in is still in progress.' : 'Checking the current sign-in…'}</p> : null}
+      {status.authCompletion?.disposition === 'superseded' ? <p className="nset__problem" role="status">This operation’s result was no longer current and was not accepted. The current state is shown here.</p> : null}
+      {error ? <p className="nset__error" role="alert"><Icon name="alert" size={14} />{error}</p> : null}
       {!signedIn && !removing && !authPending ? (
         <ul className="sset-card rt-choices">
           <li>
@@ -155,25 +174,12 @@ export function RuntimeSection({ otherWays }: { otherWays: ReactNode }) {
           <Button variant="quiet" busy={busy === 'notice'} onClick={() => void act('notice', () => dismissNotice('claude_code'), 'Couldn’t save. Try again.')}>Got it</Button>
         </div>
       ) : null}
-      {connection?.signOut?.failed && !signedIn ? (
-        <p className="nset__problem" role="note"><Icon name="alert" size={14} /><span><b>Anthropic didn’t confirm the sign-out.</b> Flux deleted the login from your Claude Code space anyway. To be sure it can’t be used, end the session in your Claude account or Anthropic Console settings.</span></p>
-      ) : null}
-      {!binding && release?.signOutFailed ? (
-        <p className="nset__problem" role="note"><Icon name="alert" size={14} /><span><b>Your Claude Code space was removed, but Anthropic didn’t confirm the sign-out.</b> Flux deleted the login anyway. End the session in your Claude account or Anthropic Console settings to be sure.</span></p>
-      ) : null}
-      {!binding && release && release.reason !== 'owner' ? (
-        <p className="nset__note">Your Claude Code space was removed on {dateTime(release.at)} {release.reason === 'idle' ? 'because it wasn’t used for a while' : release.reason === 'auth_recovery' ? 'to recover safely after an unconfirmed operation; both clients need to sign in again' : 'by the person who runs this server'}. {release.signOutFailed ? 'Vendor sign-out was not confirmed; end the session in your vendor account settings.' : 'It signed out first.'}</p>
-      ) : null}
-      {removing ? <p className="nset__note" role="status"><Spinner /> {binding?.recovery ? 'Recovering your Claude Code space after an unconfirmed operation. Access is disabled; both clients may need to sign in again after cleanup.' : 'Signing out and removing your Claude Code space…'}</p> : null}
-      {authPending ? <p className="nset__note" role="status"><Spinner /> {authPending === 'signing_out' ? 'Sign-out requested. Access is disabled while Claude Code signs out and its files are removed.' : authPending === 'signing_in' ? 'A sign-in is still in progress.' : 'Checking the current sign-in…'}</p> : null}
       {signedIn && connection ? <SignedIn connection={connection} /> : null}
       {!signedIn && !removing ? (
         status.pool === 'full' && !binding
           ? <p className="nset__problem" role="note"><Icon name="alert" size={14} /><span><b>Every Claude Code space on this server is in use.</b> You can still use an API key here, or Claude Code on your own computer through <Link className="ui-link" to="/connect-agent">Local co-work</Link>.</span></p>
           : <><h4 className="rt-sub">Before you sign in</h4><BeforeSignIn status={status} /></>
       ) : null}
-      {status.authCompletion?.disposition === 'superseded' ? <p className="nset__problem" role="status">This operation’s result was no longer current and was not accepted. The current state is shown here.</p> : null}
-      {error ? <p className="nset__error" role="alert"><Icon name="alert" size={14} />{error}</p> : null}
       {removing ? null : (
         <div className="aset__actions rt-actions">
           {signedIn && !authPending ? <Button variant="secondary" busy={busy === 'check'} onClick={() => void act('check', () => checkRuntime('claude_code'), 'Couldn’t check. Try again.')}>Check sign-in</Button> : null}
