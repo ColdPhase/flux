@@ -19,13 +19,13 @@ def native_touch_driver(engine):
     from playwright._impl._driver import compute_driver_executable
     node, cli = compute_driver_executable()
     package = Path(cli).parent
-    preload = Path(__file__).with_name("native_touch_driver.cjs").resolve()
+    preload = Path(__file__).with_name("native_touch_driver.mjs").resolve()
     if not Path(node).is_file() or not (package / "index.js").is_file() or not preload.is_file():
         raise RuntimeError("FLUX_NATIVE_TOUCH_UNSUPPORTED: matched bundled driver/preloader missing")
     if any(char.isspace() for char in str(preload)):
         raise RuntimeError("FLUX_NATIVE_TOUCH_UNSUPPORTED: preloader path contains whitespace")
     values = {"FLUX_UI_PW_DRIVER_PACKAGE": str(package), "FLUX_UI_NATIVE_TOUCH_RPC": "1",
-              "NODE_OPTIONS": (os.environ.get("NODE_OPTIONS", "") + " --require=" + str(preload)).strip()}
+              "NODE_OPTIONS": (os.environ.get("NODE_OPTIONS", "") + " --import=" + str(preload)).strip()}
     previous = {name: os.environ.get(name) for name in values}
     try:
         os.environ.update(values)

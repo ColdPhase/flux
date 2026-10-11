@@ -1,7 +1,8 @@
-'use strict';
 // TEST ONLY, pinned Python Playwright 1.62.0 driver. No server or general protocol forwarding.
-const fs = require('node:fs');
-const path = require('node:path');
+import fs from 'node:fs';
+import path from 'node:path';
+import process from 'node:process';
+import { pathToFileURL } from 'node:url';
 
 const COMMAND = 'fluxNativeTouch';
 const fail = message => { throw new Error('FLUX_NATIVE_TOUCH_UNSUPPORTED: ' + message); };
@@ -15,8 +16,9 @@ const browsers = JSON.parse(fs.readFileSync(path.join(packageDir, 'browsers.json
 const webkit = browsers.browsers.find(browser => browser.name === 'webkit');
 if (pkg.version !== '1.62.0' || webkit?.revision !== '2336' || webkit?.browserVersion !== '26.5')
   fail('requires Playwright 1.62.0 and Linux WebKit 26.5/rev2336');
-require(path.join(packageDir, 'lib/bootstrap'));
-const { DispatcherConnection } = require(path.join(packageDir, 'lib/coreBundle')).server;
+await import(pathToFileURL(path.join(packageDir, 'lib/bootstrap.js')).href);
+const bundle = await import(pathToFileURL(path.join(packageDir, 'lib/coreBundle.js')).href);
+const DispatcherConnection = bundle.default?.server?.DispatcherConnection;
 if (typeof DispatcherConnection?.prototype?.dispatch !== 'function')
   fail('the pinned driver dispatcher is unavailable');
 const originalDispatch = DispatcherConnection.prototype.dispatch;
