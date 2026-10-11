@@ -440,7 +440,9 @@ class RuntimeConsole(unittest.TestCase):
                                      "opening Settings does not import either sign-in route or terminal")
                     page.goto("/settings/assistant/claude-code")
                     expect(page).to_have_url(re.compile(r"/settings/agents/claude-code$"))
-                    expect(page.get_by_role("heading", name="Sign in to Claude Code", exact=True)).to_be_visible()
+                    expect(page.get_by_role("group", name="How do you want to sign in?", exact=True)).to_be_visible()
+                    if not phone:
+                        expect(page.get_by_role("heading", name="Sign in to Claude Code", exact=True)).to_be_visible()
                     self.assertTrue(any("ClaudeCodeSignIn-" in url for url in assets), "the destination imports its actual route")
                     self.assertFalse(any("SignInConsole-" in url for url in assets), "choosing a method does not import the terminal")
                     self.assertEqual(page.get_by_role("radio").count(), 3, "all real supported Claude sign-in methods remain")
@@ -448,8 +450,11 @@ class RuntimeConsole(unittest.TestCase):
                         self.phone_layout(page, ".rt-page")
                     shot(page, f"runtime-composed-methods-{'phone-390' if phone else 'desktop-1440'}-{theme}-{UI_BROWSER}")
                     # Only the status read is substituted. The actual off server owns this attempted command.
-                    page.get_by_role("button", name="Start sign-in", exact=True).click()
-                    expect(page.get_by_role("alert")).to_contain_text("could not confirm the operation")
+                    with page.expect_response(lambda response: response.url.endswith("/api/v1/agent-runtime/console")) as reply:
+                        page.get_by_role("button", name="Start sign-in", exact=True).click()
+                    self.assertEqual(reply.value.status, 409, "the actual off server refuses admission")
+                    self.assertEqual(reply.value.json()["code"], "AGENT_RUNTIME_OFF")
+                    expect(page.get_by_role("alert")).to_have_text("The agent runtime is off on this instance")
                     self.assertEqual(page.locator(".rt-console").count(), 0, "a refused start cannot mount the terminal")
                     self.assertFalse(any("SignInConsole-" in url for url in assets), "a refused start cannot download the terminal")
                     page.close()
