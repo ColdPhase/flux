@@ -92,7 +92,7 @@ export function useFocus(identity: string) {
     } finally {
       if (busy.current === session) busy.current = null;
     }
-  }, [until, toast, apply]);
+  }, [until, toast]);
 
   return { until, toggle };
 }

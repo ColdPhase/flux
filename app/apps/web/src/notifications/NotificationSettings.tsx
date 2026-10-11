@@ -83,7 +83,6 @@ function AccountNotificationSettings() {
     return latest === undefined ? next : { ...next, pause: { until: latest } };
   }, [ownerId]);
   const load = useCallback(() => {
-    setFailed(false);
     const mine = ++reads.current, edit = sequence.current;
     const pauseVersion = notificationPauseRevision(captureNotificationSession(ownerId));
     getPreferences().then((next) => {
@@ -149,7 +148,7 @@ function AccountNotificationSettings() {
   if (failed) {
     return (
       <div className="pane-scroll"><div className="pane-in">
-        <ErrorState title="Notification settings could not load" actions={<Button onClick={load}>Retry</Button>}><p>Your inbox still works.</p></ErrorState>
+        <ErrorState title="Notification settings could not load" actions={<Button onClick={() => { setFailed(false); load(); }}>Retry</Button>}><p>Your inbox still works.</p></ErrorState>
       </div></div>
     );
   }
