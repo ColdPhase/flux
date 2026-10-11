@@ -235,6 +235,8 @@ test('actual retained native87 history upgrades to88 without pulses, seeds old b
     const rows=(await pool.query<{value:string}>(`SELECT row_to_json(r)::text AS value FROM ${table} r WHERE ${where} ORDER BY row_to_json(r)::text`,args)).rows;
     sourceSnapshot[table]=rows;retained.set(table,rows.map(r=>JSON.parse(r.value) as Record<string,unknown>));
   }
+  const taskSequence=(await pool.query<{last_value:string;is_called:boolean}>(`SELECT last_value,is_called FROM project_task_number_${f.projectId.replaceAll('-','')}`)).rows[0]!;
+  const guardSequence=(await pool.query<{last_value:string;is_called:boolean}>('SELECT last_value,is_called FROM agent_thread_guard_sequence')).rows[0]!;
   const name=`flux_artifact_upgrade_${randomUUID().replaceAll('-','')}`,url=new URL(connectionString);url.pathname=`/${name}`;
   const create={text:`CREATE DATABASE "${name}"`,query_timeout:60_000};await pool.query(create);
   const fixture=createDatabase(url.toString()),guard=guardFixturePool(fixture.pool);
@@ -246,6 +248,8 @@ test('actual retained native87 history upgrades to88 without pulses, seeds old b
       // Restore only this isolated fixture's two guarded tables, preserving the ACTUAL
       // canonical AS/native rows and provenance exactly, rather than re-authoring them.
       await client.query('ALTER TABLE project_messages DISABLE TRIGGER USER');await client.query('ALTER TABLE agent_thread_guard_events DISABLE TRIGGER USER');
+      // A restore retains assigned numbers rather than allocating them in row-copy order.
+      await client.query('ALTER TABLE project_work_items DISABLE TRIGGER project_work_number');
       for(const[table]of specs){
         const jsonColumns=new Set((await client.query<{column_name:string}>(`SELECT column_name FROM information_schema.columns
           WHERE table_schema='public' AND table_name=$1 AND data_type IN ('json','jsonb')`,[table])).rows.map(r=>r.column_name));
@@ -254,7 +258,9 @@ test('actual retained native87 history upgrades to88 without pulses, seeds old b
       }
       await client.query('SET CONSTRAINTS ALL IMMEDIATE');
       await client.query('ALTER TABLE project_messages ENABLE TRIGGER USER');await client.query('ALTER TABLE agent_thread_guard_events ENABLE TRIGGER USER');
-      await client.query("SELECT setval('agent_thread_guard_sequence',GREATEST(1,(SELECT max(sequence) FROM agent_thread_guard_events)),true)");await client.query('COMMIT');
+      await client.query('ALTER TABLE project_work_items ENABLE TRIGGER project_work_number');
+      await client.query('SELECT setval(project_task_sequence($1::uuid),$2,$3)',[f.projectId,taskSequence.last_value,taskSequence.is_called]);
+      await client.query("SELECT setval('agent_thread_guard_sequence',$1,$2)",[guardSequence.last_value,guardSequence.is_called]);await client.query('COMMIT');
     }finally{client.release();}
     const snapshots=async()=>{const rows:Record<string,unknown[]>={};for(const[table]of specs)rows[table]=(await fixture.pool.query(`SELECT row_to_json(r)::text AS value FROM ${table} r ORDER BY row_to_json(r)::text`)).rows;return rows;};
     const original=await snapshots();assert.deepEqual(original,sourceSnapshot);
