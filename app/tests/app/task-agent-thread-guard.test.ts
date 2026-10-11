@@ -3,13 +3,14 @@ import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { test } from 'node:test';
 import { sql, createDatabase, FLUX_SCHEMA_VERSION, readMigrationManifest, assertExactMigrationLedger, readAppliedMigrationVersions } from '@flux/db';
-import type { Database } from '@flux/core';
+import { taskAgentThreadUseCases, type Database } from '@flux/core';
 import type { WorkItem } from '@flux/contracts';
 import { internalAgentThreadWriter } from '../../apps/server/src/agent-connection/internal-agent-thread.js';
 import { createAuth } from '../../apps/server/src/identity/auth.js';
 import { loadIdentityConfig } from '../../apps/server/src/identity/config.js';
 import { createOauthRequests } from '../../apps/server/src/identity/oauth-flow.js';
 import { nativeWorkInTransaction } from '../../apps/server/src/work/adapters.js';
+import { conversationStore } from '../../apps/server/src/conversation/store.js';
 import { actionScene, agentConnection, toolFailure } from './support/mcp-actions.js';
 import { apiUrl, publicOrigin, register, uniqueEmail } from './support/http.js';
 import { expect, toolValue } from './support/mcp.js';
@@ -58,9 +59,13 @@ test('real OAuth native posts share one lazy thread and fifth slot across two ow
   const first = await Promise.all([post(f, firstCommand), post(second, secondCommand)]);
   assert.equal(first[0].conversationId, first[1].conversationId); assert.notEqual(first[0].messageId, first[1].messageId);
   await post(f, envelope(f, item.id, grant.id)); await post(second, envelope({ ...second, projectId: f.projectId }, item.id, peerGrant.id));
-  const race = await Promise.allSettled([post(f, envelope(f, item.id, grant.id)), post(second, envelope({ ...second, projectId: f.projectId }, item.id, peerGrant.id))]);
-  assert.equal(race.filter(r => r.status === 'fulfilled').length, 1);
-  const refused = race.find(r => r.status === 'rejected') as PromiseRejectedResult; assert.ok(fails('AGENT_THREAD_TURN_LIMIT')(refused.reason));
+  const held=barrier<number>(),release=barrier();let loser:ReturnType<typeof post>|undefined;
+  const fifth=db.transaction(async tx=>{const saved=await post(f,envelope(f,item.id,grant.id),tx);
+    held.resolve(await backendPid(tx));await bounded(release.promise);return saved;});void fifth.catch(()=>undefined);
+  try{const pid=await bounded(held.promise);loser=post(second,envelope({...second,projectId:f.projectId},item.id,peerGrant.id));
+    void loser.catch(()=>undefined);await waitUntilBlockedBy(pool,pid);release.resolve();await bounded(fifth);
+    await assert.rejects(bounded(loser),fails('AGENT_THREAD_TURN_LIMIT'));
+  }finally{release.resolve();await bounded(Promise.all([fifth.catch(()=>undefined),loser?.catch(()=>undefined)]));}
   assert.deepEqual(await state(item.id), { threads: 1, messages: 5, boundaries: 5, turns: 5, used: true });
   const authors = (await pool.query('SELECT DISTINCT author_agent_id,author_id FROM project_messages WHERE conversation_id=$1', [first[0].conversationId])).rows;
   assert.deepEqual(authors.map(r => r.author_agent_id).sort(), [f.agentId, agent.id].sort()); assert.ok(authors.every(r => r.author_id === null));
@@ -189,6 +194,33 @@ test('SQL cannot commit a prepared debit/message without its real native receipt
     await assert.rejects(client.query('COMMIT'),/receipt|foreign key/);await client.query('ROLLBACK');
   }finally{client.release();}
   assert.equal((await state(item.id)).messages,1);assert.equal((await state(item.id)).turns,0);assert.equal((await state(item.id)).boundaries,0);assert.equal(await f.used(grant.id),0);
+});
+
+test('real human reset and native post serialize in both forced orders; a rolled-back human boundary resets nothing',{timeout:60_000},async()=>{
+  for(const winner of ['post','human'] as const){
+    const f=await actionScene(pool),item=await task(f),grant=await f.grant('conversation.reply','execute',20);
+    for(let i=0;i<4;i++)await post(f,envelope(f,item.id,grant.id));
+    const ownerId=(expect(await f.owner.request('GET','/api/v1/me'),200).user as {id:string}).id;
+    const human={body:'New actual human observation',clientMessageId:randomUUID()},held=barrier<number>(),release=barrier();let other:Promise<unknown>|undefined;
+    const first=db.transaction(async tx=>{
+      if(winner==='post')await post(f,envelope(f,item.id,grant.id),tx);
+      else await taskAgentThreadUseCases(conversationStore(tx)).post({kind:'human',id:ownerId},item.id,human);
+      held.resolve(await backendPid(tx));await bounded(release.promise);
+    });void first.catch(()=>undefined);
+    try{const pid=await bounded(held.promise);other=winner==='post'?f.owner.request('POST',`/api/v1/work/${item.id}/agent-thread`,{body:human}):post(f,envelope(f,item.id,grant.id));void other.catch(()=>undefined);
+      await waitUntilBlockedBy(pool,pid);release.resolve();await bounded(first);const result=await bounded(other);if(winner==='post')assert.equal((result as {status:number}).status,201);
+      assert.deepEqual(await state(item.id),{threads:1,messages:6,boundaries:6,turns:winner==='post'?0:1,used:true});
+    }finally{release.resolve();await bounded(Promise.all([first.catch(()=>undefined),other?.catch(()=>undefined)]));}
+  }
+  const f=await actionScene(pool),item=await task(f),grant=await f.grant('conversation.reply','execute',20);
+  for(let i=0;i<5;i++)await post(f,envelope(f,item.id,grant.id));
+  const ownerId=(expect(await f.owner.request('GET','/api/v1/me'),200).user as {id:string}).id,sentinel=new Error('Rollback human reset');
+  await assert.rejects(db.transaction(async tx=>{
+    await taskAgentThreadUseCases(conversationStore(tx)).post({kind:'human',id:ownerId},item.id,{body:'Uncommitted boundary',clientMessageId:randomUUID()});
+    const current=await tx.execute<{turn_count:number}>(sql`SELECT turn_count FROM agent_thread_guard_events WHERE task_id=${item.id} ORDER BY sequence DESC LIMIT 1`);
+    assert.equal(current.rows[0]!.turn_count,0);throw sentinel;
+  }),sentinel);
+  assert.deepEqual(await state(item.id),{threads:1,messages:5,boundaries:5,turns:5,used:true});await assert.rejects(post(f,envelope(f,item.id,grant.id)),fails('AGENT_THREAD_TURN_LIMIT'));
 });
 
 async function bounded<T>(promise:Promise<T>):Promise<T>{let timer:ReturnType<typeof setTimeout>|undefined;try{return await Promise.race([promise,new Promise<never>((_,reject)=>{timer=setTimeout(()=>reject(new Error('Native guard race exceeded10s')),10_000);})]);}finally{clearTimeout(timer);}}
