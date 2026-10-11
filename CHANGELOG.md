@@ -5,10 +5,12 @@ All notable changes to Flux are recorded here. The format follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) for its releases.
 
 **Keeping it current.** A pull request that changes what people or operators see adds
-one line under `[Unreleased]`, in the matching section, with its PR number. This
-covers features, changed behaviour, fixes, removals, security fixes and new
-operator steps. Internal refactors, tests and agent-process changes need no entry.
-At release time, the release candidate moves `[Unreleased]` under its version and date.
+one file under [changes/](changes/README.md) with its PR number, instead of editing this
+file, so that parallel pull requests do not conflict here. This covers features, changed
+behaviour, fixes, removals, security fixes and new operator steps. Internal refactors,
+tests and agent-process changes need no entry. At release time,
+`python3 scripts/changelog.py release <version> <date>` moves the pending entries under
+that version; the entries below were written before that rule.
 
 ## [Unreleased]
 
@@ -50,6 +52,8 @@ repository was created on 2026-09-26.
 - Workspace People: owners and admins add an existing account by email, change roles and remove people, with project access controls and opt-in promotion grants ([#198](https://github.com/ColdPhase/flux/pull/198)). An open project's access line says accurately who can see it ([#243](https://github.com/ColdPhase/flux/pull/243)).
 
 #### Working together
+
+- Search finds projects by name for the people who may open them; a result opens the project, and a Projects filter narrows the results ([#465](https://github.com/ColdPhase/flux/issues/465)).
 
 - Installable PWA shell and Web Push notifications ([#49](https://github.com/ColdPhase/flux/pull/49)).
 - The calm web app shell and design system ([#55](https://github.com/ColdPhase/flux/pull/55)),
