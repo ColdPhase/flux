@@ -5,10 +5,12 @@ All notable changes to Flux are recorded here. The format follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) for its releases.
 
 **Keeping it current.** A pull request that changes what people or operators see adds
-one line under `[Unreleased]`, in the matching section, with its PR number. This
-covers features, changed behaviour, fixes, removals, security fixes and new
-operator steps. Internal refactors, tests and agent-process changes need no entry.
-At release time, the release candidate moves `[Unreleased]` under its version and date.
+one file under [changes/](changes/README.md) with its PR number, instead of editing this
+file, so that parallel pull requests do not conflict here. This covers features, changed
+behaviour, fixes, removals, security fixes and new operator steps. Internal refactors,
+tests and agent-process changes need no entry. At release time,
+`python3 scripts/changelog.py release <version> <date>` moves the pending entries under
+that version; the entries below were written before that rule.
 
 ## [Unreleased]
 
