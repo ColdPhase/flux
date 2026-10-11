@@ -407,6 +407,7 @@ class WikiReferences(unittest.TestCase):
         accepted = api("POST", f"/api/v1/projects/{pid}/decisions", {"title": "Measure soil moisture first"})
         api("POST", f"/api/v1/decisions/{accepted['id']}/accept", {"expectedVersion": accepted["version"]})
         proposed = api("POST", f"/api/v1/projects/{pid}/decisions", {"title": "Add frost warnings later"})
+        parts = api("POST", f"/api/v1/projects/{pid}/docs", {"title": "Parts list", "body": "The bench list.", "state": "published"}, {"idempotency-key": str(uuid.uuid4())})
         foreign = api("POST", f"/api/v1/projects/{other['id']}/work", {"title": "Not in this project"})
         agent = api("POST", f"/api/v1/workspaces/{ws['id']}/agents", {"name": "Alex", "owner": "self"})
         api("POST", f"/api/v1/projects/{pid}/grants", {"principal": {"kind": "agent", "id": agent["id"]}, "role": "contributor"})
@@ -415,7 +416,8 @@ class WikiReferences(unittest.TestCase):
         cls.proposed_id, cls.proposed_version = proposed["id"], proposed["version"]
         body = (f"Intro.\n\n[Measure soil moisture first](flux:decision/{accepted['id']})\n\n"
                 f"[Add frost warnings later](flux:decision/{proposed['id']})\n\n## Parts\n\n"
-                f"Probes: [Order the probes](flux:work/{task['id']}) and [Elsewhere](flux:work/{foreign['id']}).\n")
+                f"Probes: [Order the probes](flux:work/{task['id']}) and [Elsewhere](flux:work/{foreign['id']}).\n\n"
+                f"The parts are in [Parts list](flux:doc/{parts['id']}).\n")
         doc = api("POST", f"/api/v1/projects/{pid}/docs", {"title": "References", "body": body, "state": "published"}, {"idempotency-key": str(uuid.uuid4())})
         cls.url = f"/projects/{pid}/docs/{doc['id']}"
         cls.number = task["number"]
@@ -447,6 +449,9 @@ class WikiReferences(unittest.TestCase):
         return page
 
     def check(self, page, name, phone):
+        page_ref = page.locator('a.doc-page')
+        expect(page_ref).to_have_accessible_name('Parts list')
+        expect(page_ref.locator('svg')).to_have_count(1)
         task = page.locator("a.doc-task")
         expect(task).to_have_count(1)
         expect(task.locator("svg.ui-glyph--in_progress")).to_have_count(1)
@@ -489,6 +494,8 @@ class WikiReferences(unittest.TestCase):
         page.route("**/work-reference-rows?**", flaky)
         page.goto(self.url)
         expect(page.get_by_role("heading", level=2, name="References")).to_be_visible()
+        expect(page.locator('a.doc-page')).to_have_count(1, timeout=1000)
+        expect(page.locator('a.doc-page svg')).to_have_count(1)
         # The plain links stay until the read answers; the retry marks them, once each.
         expect(page.locator("a.doc-task")).to_have_count(1, timeout=15000)
         expect(page.locator("a.doc-task .doc-task__mark")).to_have_count(1)

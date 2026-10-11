@@ -820,6 +820,13 @@ class WikiPanesJourney(unittest.TestCase):
                     expect(chip).not_to_have_css('background-color', 'rgba(0, 0, 0, 0)')
                     expect(chip).to_have_css('text-decoration-line', 'none')
                     self.assertEqual(chip.evaluate("e => getComputedStyle(e, '::before').display"), 'none')
+                    baseline = chip.evaluate("""e => {
+                      const range = document.createRange(); range.selectNode(e.lastChild); const title = range.getBoundingClientRect();
+                      range.selectNode(e.parentElement.firstChild); const text = range.getBoundingClientRect();
+                      return {titleTop: title.top, textTop: text.top, titleHeight: title.height, textHeight: text.height};
+                    }""")
+                    self.assertAlmostEqual(baseline['titleTop'], baseline['textTop'], delta=.5, msg=baseline)
+                    self.assertAlmostEqual(baseline['titleHeight'], baseline['textHeight'], delta=.5, msg=baseline)
                     missing = page.locator('.doc-prose .doc-ref--missing')
                     expect(missing).to_have_text('private notes')
                     self.assertFalse(missing.evaluate("e => e.matches('a, .doc-page')"))

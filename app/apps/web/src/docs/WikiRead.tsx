@@ -44,7 +44,9 @@ export function EditedBy({ editor, at, reason, starter, startedAt, owners }: {
 
 export interface Heading { id: string; text: string; level: number }
 
-interface Mark { key: string; host: HTMLElement; kind: 'glyph' | 'word' | 'decision'; row: NativeWorkRow }
+type Mark = { key: string; host: HTMLElement } & (
+  { kind: 'glyph' | 'word' | 'decision'; row: NativeWorkRow } | { kind: 'page' }
+);
 
 function headingsOf(html: string): Heading[] {
   const doc = new DOMParser().parseFromString(html, 'text/html');
@@ -65,7 +67,6 @@ const RETRY_MS = 5000;
  */
 export function useProse(el: HTMLElement | null, html: string, projectId: string, owners: AgentOwners) {
   const [marks, setMarks] = useState<Mark[]>([]);
-  const [pageMarks, setPageMarks] = useState<{ key: string; host: HTMLElement }[]>([]);
   // The outline is read from the same HTML the page shows, then the rendered headings get these ids.
   const headings = useMemo(() => headingsOf(html), [html]);
 
@@ -77,31 +78,13 @@ export function useProse(el: HTMLElement | null, html: string, projectId: string
 
   useEffect(() => {
     if (!el) return;
-    // Only links already resolved by the server receive the page icon. Unavailable references
-    // remain plain spans; the written title, href and audience/version semantics stay untouched.
-    const anchors = [...el.querySelectorAll<HTMLAnchorElement>('a.doc-ref[data-ref-type="doc"][data-ref-id]')];
-    const next = anchors.map((anchor, index) => {
-      const host = document.createElement('span');
-      host.className = 'doc-page__icon';
-      anchor.classList.add('doc-page');
-      anchor.prepend(host);
-      return { key: `page-${index}`, host };
-    });
-    setPageMarks(next);
-    return () => {
-      next.forEach((mark, index) => { mark.host.remove(); anchors[index]!.classList.remove('doc-page'); });
-      setPageMarks([]);
-    };
-  }, [el, html]);
-
-  useEffect(() => {
-    if (!el) return;
     const anchors = [...el.querySelectorAll<HTMLAnchorElement>('a.doc-ref[data-ref-type]')]
-      .filter((anchor) => (anchor.dataset.refType === 'work' || anchor.dataset.refType === 'decision') && anchor.dataset.refId);
+      .filter((anchor) => ['work', 'decision', 'doc'].includes(anchor.dataset.refType ?? '') && anchor.dataset.refId);
     if (!anchors.length) return;
     // What each anchor currently carries, so a later read updates it in place and never doubles it.
     const carried = anchors.map(() => ({ hosts: [] as HTMLElement[], unwrap: null as (() => void) | null }));
-    const refs = [...new Set(anchors.map((anchor) => `${anchor.dataset.refType}:${anchor.dataset.refId}`))];
+    // Doc links were already resolved by the server. Their icon requires no new read or metadata.
+    const refs = [...new Set(anchors.filter((anchor) => anchor.dataset.refType !== 'doc').map((anchor) => `${anchor.dataset.refType}:${anchor.dataset.refId}`))];
     const chunks: string[][] = [];
     for (let start = 0; start < refs.length; start += 100) chunks.push(refs.slice(start, start + 100));
     let controller = new AbortController();
@@ -114,7 +97,7 @@ export function useProse(el: HTMLElement | null, html: string, projectId: string
       own.hosts = [];
       own.unwrap?.();
       own.unwrap = null;
-      anchors[index]!.classList.remove('doc-task', 'doc-decision');
+      anchors[index]!.classList.remove('doc-task', 'doc-decision', 'doc-page');
     };
     const apply = (rows: Map<string, NativeWorkRow>) => {
       const next: Mark[] = [];
@@ -129,7 +112,13 @@ export function useProse(el: HTMLElement | null, html: string, projectId: string
           own.hosts.push(span);
           return span;
         };
-        if (row?.kind === 'work') {
+        if (anchor.dataset.refType === 'doc') {
+          if (!own.hosts.length) {
+            anchor.classList.add('doc-page');
+            host('start', 'doc-page__icon');
+          }
+          next.push({ key: `${index}p`, host: own.hosts[0]!, kind: 'page' });
+        } else if (row?.kind === 'work') {
           if (!own.hosts.length) {
             anchor.classList.add('doc-task');
             host('start', 'doc-task__mark'); host('end', 'doc-task__word');
@@ -162,6 +151,9 @@ export function useProse(el: HTMLElement | null, html: string, projectId: string
       }, () => { if (!signal.aborted && !gone) retry = window.setTimeout(load, RETRY_MS); });
     };
     const refresh = () => { if (document.visibilityState === 'visible') load(); };
+    // Stage the local page icons independently of the work-row read and its retry. The portal
+    // hosts exist after this DOM effect; a failed work read cannot delay an already resolved page.
+    void Promise.resolve().then(() => { if (!gone) apply(new Map()); });
     load();
     window.addEventListener('focus', refresh);
     const interval = window.setInterval(refresh, REFRESH_MS);
@@ -178,10 +170,7 @@ export function useProse(el: HTMLElement | null, html: string, projectId: string
 
   return {
     headings,
-    marks: [
-      ...marks.map((mark) => createPortal(<RefMark mark={mark} owners={owners} />, mark.host, mark.key)),
-      ...pageMarks.map((mark) => createPortal(<Icon name="doc" size={16} />, mark.host, mark.key)),
-    ],
+    marks: marks.map((mark) => createPortal(<RefMark mark={mark} owners={owners} />, mark.host, mark.key)),
   };
 }
 
@@ -189,6 +178,7 @@ const DECISION_WORD = { accepted: 'Decision accepted', proposed: 'Decision propo
 const DECISION_GLYPH = { accepted: 'done', proposed: 'open', superseded: 'not_pursued' } as const;
 
 function RefMark({ mark, owners }: { mark: Mark; owners: AgentOwners }) {
+  if (mark.kind === 'page') return <Icon name="doc" size={16} />;
   const { row } = mark;
   if (row.kind === 'work') {
     return mark.kind === 'glyph'
