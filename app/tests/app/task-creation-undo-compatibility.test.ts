@@ -58,6 +58,7 @@ test('unversioned and partial canonical/focus/Undo footprints refuse despite a n
     'ALTER TABLE project_work_items DROP CONSTRAINT task_creation_proposal_scope; ALTER TABLE project_work_items ADD CONSTRAINT task_creation_proposal_scope FOREIGN KEY(creation_proposal_id) REFERENCES proactive_comparison_proposals(id)',
     "ALTER TABLE project_work_items DROP CONSTRAINT project_work_items_creation_origin_check; ALTER TABLE project_work_items ADD CONSTRAINT project_work_items_creation_origin_check CHECK(creation_origin IN ('native_agent ','ai_proposal','human'))",
     'ALTER TABLE project_work_items DISABLE TRIGGER task_creation_history_guard',
+    'CREATE SCHEMA legacy_guard_impostor; CREATE FUNCTION legacy_guard_impostor.flux_guard_task_creation_history() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NEW; END $$; DROP TRIGGER task_creation_history_guard ON project_work_items; CREATE TRIGGER task_creation_history_guard BEFORE UPDATE ON project_work_items FOR EACH ROW EXECUTE FUNCTION legacy_guard_impostor.flux_guard_task_creation_history()',
     "CREATE OR REPLACE FUNCTION flux_guard_task_creation_receipt() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NEW; END $$",
     'ALTER TABLE agent_standing_grants DROP CONSTRAINT agent_standing_grants_operation_check; ALTER TABLE agent_standing_grants ADD CONSTRAINT agent_standing_grants_operation_check CHECK(true)',
   ];
@@ -88,12 +89,15 @@ test('normal sparse pre48/pre60 upgrades, fresh creation and current restart adm
     const fixture = await fixtureDatabase(files);
     try {
       if (files.length) await retainedHistory(fixture.db);
+      const pre48 = files.length && !files.some((file) => file.version === 48);
+      if (pre48) await fixture.db.query("ALTER TABLE project_work_items ADD COLUMN constructor text; UPDATE project_work_items SET constructor='retained pre-Undo addon'");
       for (let attempt = 0; attempt < 2; attempt++) {
         const result = await migrationCli(fixture.name); assert.equal(result.code, 0, result.output);
         assertExactMigrationLedger(await readMigrationManifest('packages/db/migrations', FLUX_SCHEMA_VERSION), await readAppliedMigrationVersions(fixture.db));
       }
       await fixture.db.query('ALTER TABLE project_work_items ADD COLUMN harmless_future_column text; CREATE TABLE harmless_future_table(id integer)');
       const restart = await migrationCli(fixture.name); assert.equal(restart.code, 0, restart.output);
+      if (pre48) assert.equal((await fixture.db.query('SELECT constructor FROM project_work_items')).rows[0].constructor, 'retained pre-Undo addon');
     } finally { await fixture.close(); }
   }
 });

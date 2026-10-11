@@ -48,13 +48,13 @@ export async function assertTaskCreationUndoMigrationCompatibility(db: Reader, a
       problems.push(`unsupported legacy relation ${relation}`);
     }
   }
-  const functions = (await db.query(`SELECT p.proname AS name,p.prosrc AS body,l.lanname AS language,p.prorettype='trigger'::regtype AS trigger
+  const functions = (await db.query(`SELECT p.oid,p.proname AS name,p.prosrc AS body,l.lanname AS language,p.prorettype='trigger'::regtype AS trigger
     FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_language l ON l.oid=p.prolang
     WHERE p.oid IN (pg_catalog.to_regprocedure('flux_guard_task_creation_receipt()'),
       pg_catalog.to_regprocedure('flux_guard_task_creation_history()'),pg_catalog.to_regprocedure('invalidate_runtime_auth_operations()'))`)).rows;
   if (functions.some((fn) => fn.name === 'invalidate_runtime_auth_operations')) problems.push('unsupported legacy runtime-auth lifecycle function');
   const triggers = (await db.query(`SELECT t.tgname AS name,t.tgtype AS type,t.tgenabled AS enabled,
-      p.proname AS function,t.tgqual IS NOT NULL AS conditional, t.tgnargs AS arguments
+      p.proname AS function,t.tgfoid AS function_oid,t.tgqual IS NOT NULL AS conditional, t.tgnargs AS arguments
     FROM pg_catalog.pg_trigger t JOIN pg_catalog.pg_proc p ON p.oid=t.tgfoid
     WHERE (t.tgrelid=pg_catalog.to_regclass('project_work_items') AND t.tgname='task_creation_history_guard')
       OR (t.tgrelid=pg_catalog.to_regclass('task_creation_undo_receipts') AND t.tgname='task_creation_receipt_guard')
@@ -63,7 +63,7 @@ export async function assertTaskCreationUndoMigrationCompatibility(db: Reader, a
   const reserved = applied.filter((version) => [57, 58, 59].includes(version));
   if (reserved.length) problems.push(`unsupported reserved ledger versions ${reserved.join(',')} (numeric identity is not catalog identity)`);
 
-  const task = (await columns('project_work_items')).filter((column) => column.name in taskColumns);
+  const task = (await columns('project_work_items')).filter((column) => Object.hasOwn(taskColumns, column.name));
   const receiptRelation = (await db.query("SELECT pg_catalog.to_regclass('task_creation_undo_receipts') AS relation")).rows[0].relation;
   const receipts = await columns('task_creation_undo_receipts');
   const constraints = (await db.query(`SELECT c.conname AS name, c.conrelid::regclass::text AS relation,
@@ -71,7 +71,7 @@ export async function assertTaskCreationUndoMigrationCompatibility(db: Reader, a
     FROM pg_catalog.pg_constraint c WHERE c.conrelid IN (pg_catalog.to_regclass('project_work_items'),
       pg_catalog.to_regclass('task_creation_undo_receipts'),pg_catalog.to_regclass('project_task_notices'),
       pg_catalog.to_regclass('proactive_comparison_proposals'),pg_catalog.to_regclass('agent_standing_grants'))`)).rows;
-  const hasLifecycle = task.length || receiptRelation || functions.some((fn) => fn.name in UNDO_GUARD_BODIES) ||
+  const hasLifecycle = task.length || receiptRelation || functions.some((fn) => Object.hasOwn(UNDO_GUARD_BODIES, fn.name)) ||
     triggers.some((trigger) => trigger.name.startsWith('task_creation_')) ||
     constraints.some((constraint) => constraint.name.startsWith('task_creation_') || constraint.name === 'task_notice_scope_identity' ||
       constraint.name.startsWith('project_work_items_creation_') ||
@@ -98,7 +98,9 @@ export async function assertTaskCreationUndoMigrationCompatibility(db: Reader, a
     for (const [name, type, fn] of [['task_creation_history_guard', 19, 'flux_guard_task_creation_history'],
       ['task_creation_receipt_guard', 27, 'flux_guard_task_creation_receipt']] as const) {
       const trigger = triggers.find((entry) => entry.name === name);
-      if (!trigger || trigger.type !== type || trigger.enabled !== 'O' || trigger.function !== fn || trigger.conditional || trigger.arguments !== 0) {
+      const validatedFunction = functions.find((entry) => entry.name === fn);
+      if (!trigger || trigger.type !== type || trigger.enabled !== 'O' || trigger.function !== fn ||
+        trigger.function_oid !== validatedFunction?.oid || trigger.conditional || trigger.arguments !== 0) {
         problems.push(`mismatched Undo guard trigger ${name}`);
       }
     }
