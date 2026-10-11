@@ -74,12 +74,12 @@ export function taskDiscussionRows(db: DbExecutor) {
     /** Called in a transaction after current access and the shared command lock. */
     async append(conversation: Pick<ConversationRow, 'id' | 'workspaceId' | 'projectId'>, author: Actor,
       input: { body: string; clientMessageId: string; fingerprint: string; source: Source | null;
-        kind?: MessageRow['contributionKind']; resultId?: string | null; files?: MessageFile[] }) {
+        kind?: MessageRow['contributionKind']; resultId?: string | null; files?: MessageFile[] }, preparedMessageId?: string) {
       const workId = await boundTask(conversation.id);
       const [updated] = await db.update(c).set({ nextSequence: sql`${c.nextSequence} + 1` })
         .where(eq(c.id, conversation.id)).returning({ nextSequence: c.nextSequence });
       if (!updated) throw new Error('Conversation disappeared under contribution lock');
-      const [row] = await db.insert(m).values({ id: randomUUID(), workspaceId: conversation.workspaceId,
+      const [row] = await db.insert(m).values({ id: preparedMessageId ?? randomUUID(), workspaceId: conversation.workspaceId,
         projectId: conversation.projectId, conversationId: conversation.id, authorId: author.kind === 'human' ? author.id : null,
         authorAgentId: author.kind === 'agent' ? author.id : null, clientMessageId: input.clientMessageId,
         requestFingerprint: input.fingerprint, sequence: updated.nextSequence - 1, body: input.body,

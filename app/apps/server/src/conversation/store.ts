@@ -1,10 +1,10 @@
 import { messagePreview } from '@flux/contracts';
 import { randomUUID } from 'node:crypto';
 import { and, asc, desc, eq, lt, sql, type SQL } from 'drizzle-orm';
-import { fileRows, schema, taskDiscussionRows, taskUseRows, workRows } from '@flux/db';
+import { agentThreadGuardRows, fileRows, schema, taskDiscussionRows, taskUseRows, workRows } from '@flux/db';
 import type {
   Conversation, ConversationMessage, ConversationRootWindow, ConversationSummary, Material, MaterialOrDoc,
-  AgentProjectOwner, MaterialVersion, Page, PageQuery, TaskAgentThread,
+  AgentProjectOwner, AuthenticatedAgentRuntime, MaterialVersion, Page, PageQuery, TaskAgentThread,
 } from '@flux/contracts';
 import {
   ConflictError, conversationUseCases, enforce, evaluateDraft, evaluateProject, InvalidInputError, NotFoundError,
@@ -555,6 +555,43 @@ export function conversationStore(db: Database, options: ConversationStoreOption
       });
     },
   };
+}
+
+/** CLOSED private composition only; the verified native executor owns runtime/grant/receipt and final events.
+ * No route calls this adapter. All upstream authorization/command/source locks precede the shared task fence.
+ */
+export async function guardedAgentThreadInEventSession(tx: Transaction, session: TransactionEventSession,
+  runtime: AuthenticatedAgentRuntime, command: { clientCommandId: string; grantId: string }, taskId: string, input: AgentThreadPost) {
+  return session.run(async () => {
+    const principal: Principal = { kind: 'agent', id: runtime.agentId };
+    const task = await locateThreadTask(principal, taskId, tx, true, true);
+    if (task.workspaceId !== runtime.workspaceId || input.projectId !== task.projectId)
+      throw new InvalidInputError('The task does not belong to this project');
+    const author: Actor = { kind: 'agent', id: runtime.agentId };
+    await lockIdempotency(tx, task.projectId, author, input.clientMessageId);
+    if (await existingMessage(task.projectId, author, input.clientMessageId, tx))
+      throw new ConflictError('A native message requires its original command receipt', 'IDEMPOTENCY_CONFLICT');
+    await sourceExists(task.projectId, input.source, tx);
+    const sourceRefs = input.source ? [{ type: 'material', id: input.source.materialId }] : [];
+    const targets = [...new Set([task.id, ...await workRows(tx).taskUseTargets(sourceRefs)])].sort();
+    const fence = await taskUseRows(tx).prepare(targets);
+    const retainedTargets = [...new Set([task.id, ...await workRows(tx).taskUseTargets(sourceRefs)])].sort();
+    if (JSON.stringify(retainedTargets) !== JSON.stringify(targets))
+      throw new ConflictError('Task references changed; retry from current details', 'TASK_TARGET_SET_CHANGED');
+    let thread = await agentThreadGuardRows(tx).thread(task.id, task);
+    if (!thread) {
+      const [created] = await tx.insert(schema.projectConversations).values({ id: randomUUID(), workspaceId: task.workspaceId,
+        projectId: task.projectId, space: 'agents', workId: task.id, createdBy: null, createdByAgentId: runtime.agentId }).returning();
+      thread = created!;
+    }
+    const messageId = randomUUID();
+    await agentThreadGuardRows(tx).debit(fence, task, thread.id, messageId, runtime, command);
+    const stored = await taskDiscussionRows(tx).append(thread, author, input, messageId);
+    await fence.mark();
+    await session.record(principal, task.workspaceId, 'project.agent_thread_message_sent.v1', task.projectId,
+      { conversationId: thread.id, messageId: stored.id });
+    return message(stored, await workRows(tx).names([author]));
+  });
 }
 
 /**
