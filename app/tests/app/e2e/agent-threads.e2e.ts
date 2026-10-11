@@ -120,7 +120,18 @@ function ratio(foreground: string, background: string) {
   const a = light(foreground), b = light(background);
   return (Math.max(a, b) + .05) / (Math.min(a, b) + .05);
 }
+async function settledComposer(page: Page) {
+  // Enabling/disabling the existing action animates its foreground and surface. Observe the
+  // actual finished colors without disabling motion or changing the contrast requirements.
+  await page.waitForFunction(() => {
+    const box = document.querySelector('.at-composer .composer__box');
+    if (!box) return true;
+    for (const animation of box.getAnimations({ subtree: true })) if (animation.playState === 'running') return false;
+    return true;
+  }, undefined, { timeout: 5000 });
+}
 async function composerContrast(page: Page, theme: 'light' | 'dark') {
+  await settledComposer(page);
   const actual = await panel(page).evaluate(element => {
     const box = element.querySelector('.composer__box')!, field = box.querySelector('textarea')!;
     const attach = box.querySelector('.composer__attach')!, send = box.querySelector('.composer__send')!;
@@ -130,19 +141,20 @@ async function composerContrast(page: Page, theme: 'light' | 'dark') {
       placeholder: placeholder.color, placeholderOpacity: placeholder.opacity, attachment: attachment.color,
       send: action.color, sendBackground: getComputedStyle(send, '::before').backgroundColor, disabled: send.getAttribute('aria-disabled') };
   });
+  console.log(JSON.stringify({ engine, viewport: page.viewportSize(), theme, composerContrast: actual }));
   assert.deepEqual(rgb(actual.fieldBackground), [0, 0, 0, 0], 'transparent field shares the actual elevated composer surface');
   if (theme === 'dark') assert.ok(rgb(actual.background).slice(0, 3).every(channel => channel < 64), `dark composer remains a dark elevated input: ${JSON.stringify(actual)}`);
   assert.equal(Number(actual.placeholderOpacity), 1);
   assert.ok(ratio(actual.text, actual.background) >= 4.5, 'actual input text contrast');
   assert.ok(ratio(actual.placeholder, actual.background) >= 4.5, 'actual placeholder contrast');
   assert.ok(ratio(actual.attachment, actual.background) >= 3, 'actual attachment glyph contrast');
-  assert.ok(ratio(actual.send, actual.sendBackground) >= 3, 'actual enabled/inactive action glyph contrast');
-  console.log(JSON.stringify({ engine, viewport: page.viewportSize(), theme, composerContrast: actual }));
+  assert.ok(ratio(actual.send, actual.sendBackground) >= 3, `actual enabled/inactive action glyph contrast: ${JSON.stringify(actual)}`);
 }
 async function capture(page: Page, name: string) {
   const directory = process.env.FLUX_E2E_EVIDENCE_DIR;
   if (!directory) return;
   await settledSurface(page);
+  await settledComposer(page);
   mkdirSync(directory, { recursive: true }); await page.screenshot({ path: join(directory, `${engine}-${name}.png`) });
 }
 
