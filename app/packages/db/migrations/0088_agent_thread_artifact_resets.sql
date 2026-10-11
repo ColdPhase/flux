@@ -75,6 +75,8 @@ BEGIN
     changed:=NEW.state='current' AND binding.state='active' AND revision_key~'^[0-9a-f]{40}([0-9a-f]{24})?$'
       AND (TG_OP='INSERT' OR NEW.facts->>'headSha' IS DISTINCT FROM OLD.facts->>'headSha');
   END IF;
+  -- No-op/geometry/status-only and missing/unverified PR heads have no witness.
+  IF changed IS DISTINCT FROM true THEN RETURN NULL; END IF;
   INSERT INTO agent_thread_artifact_mutations(kind,source_id,revision,workspace_id,project_id,transaction_id,progress)
     VALUES(artifact_kind,source,revision_key,workspace,project,txid_current(),changed)
     ON CONFLICT(kind,source_id,revision,transaction_id) DO UPDATE
@@ -184,6 +186,12 @@ $$;
 CREATE FUNCTION flux_verify_artifact_boundary() RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE fresh boolean:=false;
 BEGIN
+  -- This frozen batch installs doc/material/result/decision producers only.
+  -- History support cannot admit a new boundary for an uninstalled producer.
+  IF NEW.kind IN('thought','file','github_pr') THEN
+    RAISE EXCEPTION 'This artifact reset producer is not installed'
+      USING ERRCODE='23514',CONSTRAINT='agent_thread_artifact_producer_closed';
+  END IF;
   IF NEW.kind IN ('doc','material') THEN
     SELECT EXISTS(SELECT 1 FROM project_material_versions v JOIN project_materials m ON m.id=v.material_id
       WHERE v.material_id::text=NEW.source_id AND v.version::text=NEW.revision AND m.kind=NEW.kind
@@ -231,13 +239,6 @@ BEGIN
   IF NOT FOUND OR NOT EXISTS(SELECT 1 FROM project_conversations WHERE id=NEW.conversation_id
     AND workspace_id=NEW.workspace_id AND project_id=NEW.project_id AND space='agents' AND work_id=NEW.task_id) THEN
     RAISE EXCEPTION 'Invalid task-thread guard scope' USING ERRCODE='23514',CONSTRAINT='agent_thread_guard_scope';
-  END IF;
-  -- This first frozen batch installs doc/material/result/decision producers only.
-  -- The remaining accepted kinds have history/witness support but cannot reset until
-  -- their complete canonical producer/fence integration is installed separately.
-  IF NEW.kind IN('thought','file','github_pr') THEN
-    RAISE EXCEPTION 'This artifact reset producer is not installed'
-      USING ERRCODE='23514',CONSTRAINT='agent_thread_artifact_producer_closed';
   END IF;
   SELECT turn_count INTO previous FROM (
     SELECT sequence,turn_count FROM agent_thread_guard_events WHERE task_id=NEW.task_id

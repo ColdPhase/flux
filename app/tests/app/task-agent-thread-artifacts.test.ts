@@ -4,8 +4,11 @@ import { readFile } from 'node:fs/promises';
 import { test } from 'node:test';
 import { artifactResetRows,assertExactMigrationLedger,createDatabase,FLUX_SCHEMA_VERSION,readAppliedMigrationVersions,readMigrationManifest,sql,taskUseRows } from '@flux/db';
 import type { Doc,WorkItem,Decision } from '@flux/contracts';
+import { taskAgentThreadUseCases } from '@flux/core';
 import { docUseCases } from '../../apps/server/src/docs/adapters.js';
 import { workUseCases } from '../../apps/server/src/work/adapters.js';
+import { conversationStore } from '../../apps/server/src/conversation/store.js';
+import { diskFileStorage } from '../../apps/server/src/files/storage.js';
 import { actionScene } from './support/mcp-actions.js';
 import { expect,toolValue } from './support/mcp.js';
 import { db,pool,connectionString } from './support/db.js';
@@ -179,6 +182,32 @@ test('SQL refuses fresh title-only/no-op packets and an unrelated same-project t
   assert.equal(await threadBudget(a.id),5);assert.equal(await threadBudget(b.id),5);
 });
 
+test('uninstalled artifact kinds remain physically closed even after genuine verified first file publication',async()=>{
+  const f=await setup(),item=await f.task('Closed file producer');await fillThread(f,item.id,f.grantId);
+  const uploaded=await fetch(new URL(`/api/v1/projects/${f.projectId}/files?uploadId=${randomUUID()}&name=closed.txt`,f.owner.base),{
+    method:'POST',headers:{'content-type':'application/octet-stream',cookie:f.owner.cookieHeader(),origin:f.owner.defaultOrigin},body:Buffer.from('Actual ready original bytes'),
+  });assert.equal(uploaded.status,201);const file=await uploaded.json() as{id:string;sha256:string;size:number};
+  const ownerId=(expect(await f.owner.request('GET','/api/v1/me'),200).user as{id:string}).id;
+  const storage=await diskFileStorage(process.env.FLUX_TEST_FILES_DIR??'/data/files'),sentinel=new Error('Rollback real closed publication');
+  await assert.rejects(db.transaction(async tx=>{
+    const posted=await taskAgentThreadUseCases(conversationStore(tx,{storage})).post({kind:'human',id:ownerId},item.id,
+      {body:'An actual human file publication',clientMessageId:randomUUID(),attachmentIds:[file.id]});
+    const witness=await tx.execute<{progress:boolean}>(sql`SELECT progress FROM agent_thread_artifact_mutations
+      WHERE kind='file' AND source_id=${file.id} AND revision='published' AND transaction_id=txid_current()`);
+    assert.equal(witness.rows[0]!.progress,true);assert.equal(posted.files![0]!.id,file.id);
+    for(const kind of ['file','thought','github_pr'] as const){
+      await tx.execute(sql`SAVEPOINT closed_producer_packet`);
+      await assert.rejects(tx.execute(sql`INSERT INTO agent_thread_artifact_boundaries(workspace_id,project_id,kind,source_id,revision,content_identity,transaction_id)
+        VALUES(${f.workspaceId},${f.projectId},${kind},${file.id},'published',${file.sha256+':'+file.size},txid_current())`),pgConstraint('agent_thread_artifact_producer_closed'));
+      await tx.execute(sql`ROLLBACK TO SAVEPOINT closed_producer_packet`);
+    }
+    throw sentinel;
+  }),sentinel);
+  assert.equal(await threadBudget(item.id),5);
+  const row=(await pool.query('SELECT published_at,message_id FROM project_files WHERE id=$1',[file.id])).rows[0];
+  assert.equal(row.published_at,null);assert.equal(row.message_id,null);
+});
+
 test('actual retained native87 history upgrades to88 without pulses, seeds old bytes/versions, reverses before reset and refuses afterward',{timeout:120_000},async()=>{
   const f=await setup(),item=await f.task('Retained native history'),d=await doc(f,'Existing artifact before guard upgrade');
   expect(await link(f,{type:'work',id:item.id},{type:'doc',id:d.id}),201);
@@ -201,7 +230,11 @@ test('actual retained native87 history upgrades to88 without pulses, seeds old b
     ['project_messages','project_id=$1',[f.projectId]],['project_files','project_id=$1',[f.projectId]],
     ['agent_command_receipts','connection_id=$1',[f.connectionId]],['agent_thread_guard_events','project_id=$1',[f.projectId]],
   ];
-  const retained=new Map<string,Record<string,unknown>[]>();for(const[table,where,args]of specs)retained.set(table,(await pool.query(`SELECT * FROM ${table} WHERE ${where}`,args)).rows);
+  const retained=new Map<string,Record<string,unknown>[]>(),sourceSnapshot:Record<string,unknown[]>={};
+  for(const[table,where,args]of specs){
+    const rows=(await pool.query<{value:string}>(`SELECT row_to_json(r)::text AS value FROM ${table} r WHERE ${where} ORDER BY row_to_json(r)::text`,args)).rows;
+    sourceSnapshot[table]=rows;retained.set(table,rows.map(r=>JSON.parse(r.value) as Record<string,unknown>));
+  }
   const name=`flux_artifact_upgrade_${randomUUID().replaceAll('-','')}`,url=new URL(connectionString);url.pathname=`/${name}`;
   const create={text:`CREATE DATABASE "${name}"`,query_timeout:60_000};await pool.query(create);
   const fixture=createDatabase(url.toString()),guard=guardFixturePool(fixture.pool);
@@ -219,11 +252,13 @@ test('actual retained native87 history upgrades to88 without pulses, seeds old b
         for(const row of retained.get(table)!){const columns=Object.keys(row);await client.query(`INSERT INTO ${table}(${columns.map(c=>`"${c}"`).join(',')}) VALUES(${columns.map((_,i)=>`$${i+1}`).join(',')})`,
           columns.map(c=>jsonColumns.has(c)&&row[c]!==null?JSON.stringify(row[c]):row[c]));}
       }
+      await client.query('SET CONSTRAINTS ALL IMMEDIATE');
       await client.query('ALTER TABLE project_messages ENABLE TRIGGER USER');await client.query('ALTER TABLE agent_thread_guard_events ENABLE TRIGGER USER');
       await client.query("SELECT setval('agent_thread_guard_sequence',GREATEST(1,(SELECT max(sequence) FROM agent_thread_guard_events)),true)");await client.query('COMMIT');
     }finally{client.release();}
     const snapshots=async()=>{const rows:Record<string,unknown[]>={};for(const[table]of specs)rows[table]=(await fixture.pool.query(`SELECT row_to_json(r)::text AS value FROM ${table} r ORDER BY row_to_json(r)::text`)).rows;return rows;};
-    const original=await snapshots();assertExactMigrationLedger(beforeManifest,await readAppliedMigrationVersions(fixture.pool));
+    const original=await snapshots();assert.deepEqual(original,sourceSnapshot);
+    assertExactMigrationLedger(beforeManifest,await readAppliedMigrationVersions(fixture.pool));
     const up=await readFile('packages/db/migrations/0088_agent_thread_artifact_resets.sql','utf8'),down=await readFile('packages/db/migrations/reverse/0088_agent_thread_artifact_resets.down.sql','utf8');
     await fixture.pool.query(up);await fixture.pool.query('INSERT INTO flux_schema_version(version) VALUES(88)');
     assertExactMigrationLedger(manifest,await readAppliedMigrationVersions(fixture.pool));assert.deepEqual(await snapshots(),original);
