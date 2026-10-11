@@ -194,10 +194,12 @@ function TaskThread({ task, projectId, meId, names, canWrite, changingScope }: {
             if (follow) scrollPaneToEnd(end.current);
           } catch (cause) {
             if (controller.signal.aborted) return;
+            const denied = cause instanceof ApiError && (cause.status === 401 || cause.status === 403 || cause.status === 404);
             if (!before) setLoadError(cause instanceof NetworkError ? 'Flux is unreachable.' : 'This task thread could not be loaded.');
-            else if (cause instanceof ApiError && (cause.status === 401 || cause.status === 403 || cause.status === 404)) setAccessLost(true);
-            // Unreachable: what is shown stays; the next change, focus or resync tries again.
-            return;
+            else if (denied) setAccessLost(true);
+            // Keep one newer reload (including native online) when an older transient read fails.
+            // Access loss and an aborted identity/task never fall through into a retry.
+            if (denied || !again) return;
           }
         } while (again && !controller.signal.aborted);
       } finally {

@@ -72,6 +72,12 @@ stream while HTTP fails. Both retain the native online transition, original
 12-second recovery assertion, all 67 messages with the root exactly once, the
 draft and same document. No synthetic online event or longer timeout is allowed.
 
+A native-online reload that arrives during an older failing read must also
+survive that failure. The existing loop coalesces it into one serialized follow-up;
+abort and 401/403/404 paths still stop. A held-failed-read/native-online regression
+and a catch-only reverted negative control verify this boundary. There is no new
+offline retry timer, shared state or permission path.
+
 The policy's CSS active-state probe uses public pointer down/hold, computed style
 and release outside in both engines, replacing its Chromium-only forced CDP
 state. Keep its before/pressed, no-hover and geometry assertions and the actual

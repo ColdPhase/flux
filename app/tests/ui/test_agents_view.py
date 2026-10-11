@@ -380,6 +380,58 @@ class AgentsViewJourney(unittest.TestCase):
                                       headers={"origin": ORIGIN, "content-type": "application/json", "if-match": f'"{current["version"]}"'})
         self.assertEqual(closed.status, 200, closed.text())
 
+    def test_03h_native_online_survives_an_older_pending_read_failure(self) -> None:
+        hubert = self.page("hubert")
+        task = self.api(hubert, "POST", f"/api/v1/projects/{self.ids['project']}/work", {"title": "Keep the newer recovery request"}, status=201)
+        marek = self.page("marek")
+        self.api(marek, "POST", f"/api/v1/work/{task['id']}/discussion",
+                 {"body": "The root before the held read.", "clientMessageId": str(uuid.uuid4()), "kind": "text"}, status=201)
+        hubert.add_init_script(RECORD_SOCKETS)
+        hubert.goto(f"/projects/{self.ids['project']}/agents?task={task['id']}")
+        thread = hubert.get_by_role("region", name="Thread of Keep the newer recovery request")
+        expect(thread.get_by_text("The root before the held read.", exact=True)).to_be_visible()
+        hubert.wait_for_function(STREAM_OPEN)
+        box = hubert.get_by_label("Write to this task")
+        box.fill("A draft during the held read")
+        hubert.evaluate("() => { window.__sameHeldDocument = true; window.__nativeOnlineCount = 0; window.addEventListener('online', () => { window.__nativeOnlineCount += 1; }); }")
+        path = f"/api/v1/work/{task['id']}/discussion"
+        held = []
+        reads: list[str] = []
+        successful: list[str] = []
+
+        def hold_first(route) -> None:
+            if route.request.method != "GET":
+                route.continue_()
+                return
+            reads.append(route.request.url)
+            if len(reads) == 1:
+                held.append(route)  # Keep the existing load pending until native online has arrived.
+            else:
+                route.continue_()
+
+        self.addCleanup(lambda: None if hubert.is_closed() else hubert.unroute_all(behavior="ignoreErrors"))
+        hubert.route(f"**{path}", hold_first)
+        hubert.on("response", lambda response: successful.append(response.url) if response.url.endswith(path) and response.status == 200 else None)
+        self.api(marek, "POST", path,
+                 {"body": "A reply while the old read is held.", "clientMessageId": str(uuid.uuid4()), "kind": "text"}, status=201)
+        until = time.monotonic() + 5
+        while not held and time.monotonic() < until:
+            hubert.wait_for_timeout(50)
+        self.assertEqual(len(held), 1, "an actual UI refetch is held")
+        hubert.context.set_offline(True)
+        self.assertFalse(hubert.evaluate("navigator.onLine"))
+        hubert.context.set_offline(False)
+        hubert.wait_for_function("() => navigator.onLine && window.__nativeOnlineCount === 1")
+        self.assertEqual(len(reads), 1, "native online coalesces behind the pending read")
+        held[0].fulfill(status=503, json={"code": "TEMPORARY_READ_FAILURE", "message": "Held read failed"})
+        expect(thread.get_by_text("A reply while the old read is held.", exact=True)).to_be_visible(timeout=8000)
+        expect(thread.get_by_text("The root before the held read.", exact=True)).to_have_count(1)
+        expect(thread.locator(".agents-thread__list > li")).to_have_count(2)
+        expect(box).to_have_value("A draft during the held read")
+        self.assertTrue(hubert.evaluate("window.__sameHeldDocument"))
+        self.assertEqual(len(reads), 2, "one serialized follow-up survives the older failed read")
+        self.assertEqual(len(successful), 1, "the follow-up is one real successful API read")
+
     def test_04_a_draft_survives_leaving_the_view(self) -> None:
         page = self.open_agents("hubert")
         page.get_by_label("Write to this task").fill("Half-written note about the firmware")
