@@ -247,3 +247,65 @@ and asset audits, configured build/type/lint and actual same-instance SMTP
 removal. Preserve all previous failed runs and unfiltered #471. Fresh neutral
 visual and eligible independent review, current-main composition and all full
 parent/release gates remain open. No GitHub write or push during this lease.
+
+## Verified bounded action-slot implementation — 2026-10-11
+
+Frozen application/test source `4e2e9c37f6ef604c03536c3a460b1aced83c7ce7`
+keeps the actual selected place and focusable busy Mute button through pending
+work, with truthful `Muting…` and no premature acknowledgement. Only the
+existing latest valid actual-ACK branch creates the receipt. Its full visible
+name/status/read-failure explanation and44px Refresh/current Unmute controls
+use normal readable width. The single row keeps its captured slot when it
+fits, otherwise moves to the nearest measured fitting normal-flow position in
+the same visible section. Canonical preferences/membership/counts are untouched.
+Actual receipt/account/view changes retire its measurements; there are no
+scroll/focus writes,overlays,cropped information or fixed negative offsets.
+An input-edit revision also prevents an older completion clearing a newer
+picker selection. Original request/session/queue/revision guards remain.
+
+Maintained long/overtaken controls additionally verify busy selection and no
+receipt/Saved result before the real held200 ACK. New failed-mute control18
+proves declared UI500 retires pending, preserves the selected place, creates
+no server mute/success and sends no automatic retry; only the person's explicit
+second action creates the actual mute. Every original assertion remains.
+
+The isolated hot lane is iteration evidence only. Initial pre-runtime build/
+typecheck passed but lint rejected a render-time ref access; its raw log is
+retained. The corrected dev build/type/lint passes. Its16 WebKit geometry and
+settled/recovery bodies pass in54.416s, with one unfiltered #471 desktop-dark
+overtaken cleanup error, so that runner is failed. Chromium3 methods/16 bodies
+pass45.846s; the later new failed-mute control passes WebKit6.225s. No hot run
+is relabelled immutable evidence. Exact dev cleanup reports zero owned resources.
+
+Final immutable run `/tmp/flux372-action-slot-final`, driver93034 **terminal1**:
+configured Docker build/type/lint pass with three existing warnings;
+1122 application inputs,75 UI inputs and206 served assets match the frozen
+images; PWA assets7/7 pass353.827ms. Foundation setup,102 tests (1.772s) and
+diff hygiene pass. The following phases ran sequentially on its owned stack:
+
+- Chromium narrow3 methods/16 real short,long mute/unmute and overtaken bodies
+  pass37.959s; WebKit passes51.913s. Each engine passes all32 original geometry
+  samples and16 post-two-rAF checks, actual API state and read-only recovery.
+  Full phone note125.5px,44px Refresh and retained Unmute fit; pageerrors are empty.
+- Affected Chromium10 methods pass76.512s; WebKit10 pass92.185s. This includes
+  the other12 original method14 subcases,email ACK/one Mailpit receipt/read-only
+  recovery,genuine failures,mixed queue,expiry/save,same-owner navigation,A→B
+  retirement,new failed-mute control and history keyboard ring. Method14 is
+  split into mute/nonmute selectors to avoid rerunning the same16 mute bodies.
+- The same authenticated owner,image,database and secret pass the real SMTP
+  configured→empty API/worker recreation; email.available becomes false and
+  push without VAPID remains unavailable.
+- In that same no-SMTP instance,Chromium original3 methods pass61.430s.
+  WebKit's3 method bodies and all16 named geometry/recovery cases pass77.391s,
+  but its unfiltered method17 desktop/light cleanup reports the retained
+  assistant-runs access-control pageerror (#471). **That runner and the overall
+  driver remain failed; #471 is not resolved or suppressed.**
+
+The exact final cleanup audit has zero containers,networks,volumes or run image
+tags; all four run tags were removed. Raw logs,source/asset/image audits,all original frames and the
+separate prior failed runs remain in their temporary evidence directories;
+`proof.json` and `cleanup-proof.json` summarize this actual pin. This scoped
+verification does not replace full application,main composition,phone/PWA,
+native/SSO or release acceptance. The implementation subagent is an author;
+fresh source-free visual review and eligible independent current-head review
+remain required. No push/GitHub write or main composition occurred in this lease.
