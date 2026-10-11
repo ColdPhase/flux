@@ -107,3 +107,27 @@ Prepared UI patch stays UNAPPLIED pending independent bounded source-plan accept
 
 
 Independent bounded plan ACCEPTED before production: `/tmp/flux372-visual-repair-plan-review.md`, SHA256 `93976e613a6c9eee99b46cb926e249551b2ecb36d35a0d5b895f0cc515006ed8`, reviews the exact proposaldf0f1c2e… and unapplied two-file patch998bed5f…. Apply only the prose-button foreground exclusion and actual-command working-position feedback. Keep separate quiet-hours/summary switch and actual channel-row counterparts, latest valid ACK only, one Saved live region, top warning, shared email behavior, all owner/nonce/read/revision/sequence/queue/error/no-duplicate/read-only fences. Verify representative shared email/mute and mixed-action/lifetime placements when the shared helper is touched; do not infer visibility beneath long groups without real geometry. Current repaired-head relevant checks and fresh source-free re-review remain required, inherited414 and strictWK09 remain open. Root does not edit source during this exclusive author lease; no human/design approval queue or whole-task acceptance is created.
+
+## Recovered owner checkpoint — 2026-10-11
+
+The current session recovered clean local `b288fcf7`, including 62 commits beyond
+the public `a689f899` head, and preserved every saved worktree and temporary
+evidence artifact. No prior test or visual result is relabelled as current.
+The terminal Codex session in this checkout was stopped at the user's explicit
+request; no other implementation writer or live test process was found.
+
+Protected main `8dfde127c6fc17553474e6520556f5ac2bac22cd` composes normally with
+this artifact, with no conflict or manual resolution. It adds the independently
+accepted project-search migration 0090; the composed highest version is 90,
+retaining the original 0059/0064 files. Current foundation setup, all 102
+foundation tests and staged diff hygiene pass. This composition has not received
+a new application/browser/migration run or independent current-head review.
+
+The saved `/tmp/flux372-visual-followup-source-review.md` and
+`/tmp/flux372-visual-followup-plan.md` identify the next bounded repair: preserve
+the actual mute/unmute action's captured reading slot, including overtaken
+server ordering, and tie email feedback measurements/cleanup to the latest
+valid action and view lifetime. Their proposed patch remains unapplied pending
+those corrections. The earlier b288 mute/email geometry failures and unfiltered
+WebKit native-fetch failure remain open. The existing PR is a draft checkpoint;
+full #340/#351/#414, native/PWA and release acceptance are not complete.
