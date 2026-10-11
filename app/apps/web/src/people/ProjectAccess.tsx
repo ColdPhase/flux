@@ -5,7 +5,7 @@ import type { Project, ProjectAccess as Access, ProjectGrant, ProjectGrantRole, 
 import { useShellData } from '../app/data';
 import { useShellActions } from '../app/shellContext';
 import { ACCESS_LABEL } from '../project/data';
-import { AgentTag, Avatar, Button, Icon, Kreska } from '../ui';
+import { AgentTag, Avatar, Button, Icon, Kreska, prefersReducedMotion } from '../ui';
 import { ROLE_LABEL, attemptKeys, firstName, grantPerson, isManagerRole, levelFor, listGrants, listMembers, problemText, revokeGrant } from './api';
 import './people.css';
 
@@ -14,8 +14,6 @@ type Change = { kind: 'grant'; role: ProjectGrantRole } | { kind: 'revoke' };
 interface Option { id: string; label: string; change: Change; confirm: string; preview: string; danger?: boolean }
 
 interface Roster { members: WorkspaceMember[]; grants: ProjectGrant[] }
-
-const reduced = () => typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
 /**
  * "Who can see this" for a project (#188, AC-2): exactly who can open it now, read from the server's
@@ -55,7 +53,7 @@ export function ProjectAccess({ project, people, focusToken }: { project: Projec
   useEffect(() => {
     if (!focusToken) return;
     const frame = requestAnimationFrame(() => {
-      headingRef.current?.scrollIntoView({ block: 'start', behavior: reduced() ? 'auto' : 'smooth' });
+      headingRef.current?.scrollIntoView({ block: 'start', behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
       headingRef.current?.focus({ preventScroll: true });
     });
     return () => cancelAnimationFrame(frame);

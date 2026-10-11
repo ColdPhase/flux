@@ -67,6 +67,13 @@ button.project-convo__contribution { cursor: pointer; }
 .material-view { max-width: 760px; }
 .material-view__body { margin: 24px 0; }
 @media (pointer: coarse) { .project-convo__material .ui-btn--link { min-height: 44px; } .project-convo__tray-close { width: 44px; height: 44px; } .project-convo__message-meta span { visibility: visible; } }
+/* Touch (#436, #443): the source chip and an author's name keep their size. A --ctl (44 px) tap area of their own,
+   centred on them and never narrower than 44 px (a one-letter name is 8 px wide), takes the tap, so neither the
+   chip's background nor the author line grows. */
+@media (pointer: coarse) {
+  :is(a, button).project-convo__source, .project-convo__person { position: relative; }
+  :is(a, button).project-convo__source::after, .project-convo__person::after { content: ""; position: absolute; left: 50%; top: 50%; width: max(100%, var(--ctl)); height: var(--ctl); transform: translate(-50%, -50%); }
+}
 @media (max-width: 640px) {
   .project-convo__in { padding: 8px 16px 16px; }
   .project-convo__message { padding-left: 44px; }
