@@ -213,7 +213,8 @@ test('forced native-post winner fences actual HTTP Undo, while forced Undo winne
 test('fresh/current82 migration preserves exact ledger/history and reverses only before guarded retained effects', {timeout:60_000},async()=>{
   const manifest=await readMigrationManifest('packages/db/migrations',FLUX_SCHEMA_VERSION),prior=manifest.filter(f=>f.version!==87);
   const name=`flux_thread_guard_${randomUUID().replaceAll('-','')}`,url=new URL(process.env.DATABASE_URL!);url.pathname=`/${name}`;
-  await pool.query({text:`CREATE DATABASE "${name}"`,query_timeout:60_000});const fixture=createDatabase(url.toString()).pool;
+  const createFixture={text:`CREATE DATABASE "${name}"`,query_timeout:60_000};
+  await pool.query(createFixture);const fixture=createDatabase(url.toString()).pool;
   const fixtureGuard=guardFixturePool(fixture);
   try{for(const file of prior){await fixture.query(await readFile(`packages/db/migrations/${file.name}`,'utf8'));await fixture.query('INSERT INTO flux_schema_version(version) VALUES($1) ON CONFLICT DO NOTHING',[file.version]);}
     const [human,workspace,project,work,people,thread]=Array.from({length:6},()=>randomUUID());
@@ -232,6 +233,6 @@ test('fresh/current82 migration preserves exact ledger/history and reverses only
     const f=await actionScene(pool),item=await task(f),grant=await f.grant('conversation.reply','execute',20);await post(f,envelope(f,item.id,grant.id));
     const client=await pool.connect();try{await client.query('BEGIN');const ledger=await readAppliedMigrationVersions(client);await assert.rejects(client.query(down),/Cannot reverse 0087/);await client.query('ROLLBACK');assert.deepEqual(await readAppliedMigrationVersions(client),ledger);}finally{client.release();}
     assert.equal((await state(item.id)).messages,1);
-  }finally{fixtureGuard.cleanup();await fixture.end();await pool.query({text:`DROP DATABASE "${name}" WITH (FORCE)`,query_timeout:60_000});}
+  }finally{fixtureGuard.cleanup();await fixture.end();const dropFixture={text:`DROP DATABASE "${name}" WITH (FORCE)`,query_timeout:60_000};await pool.query(dropFixture);}
   fixtureGuard.assertNoEarlyErrors();
 });
