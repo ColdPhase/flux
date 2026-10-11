@@ -6,7 +6,7 @@ import unittest
 import uuid
 
 from playwright.sync_api import expect, sync_playwright
-from test_app_shell import ORIGIN, UPSTREAM, shot, start_forwarder
+from test_app_shell import ORIGIN, UI_BROWSER, UPSTREAM, shot, start_forwarder
 from test_work_pagination import api
 
 
@@ -16,7 +16,9 @@ class DetailPanelFinal(unittest.TestCase):
         if UPSTREAM:
             start_forwarder(ORIGIN, UPSTREAM)
         cls.pw = sync_playwright().start()
-        cls.browser = cls.pw.chromium.launch()
+        cls.browser = getattr(cls.pw, UI_BROWSER).launch()
+        assert cls.browser.browser_type.name == UI_BROWSER
+        print(f"ACTUAL_UI_ENGINE={cls.browser.browser_type.name}", flush=True)
         expect.set_options(timeout=10000)
         cls.ctx = cls.browser.new_context(base_url=ORIGIN, service_workers="block")
         api(cls.ctx, "POST", "/api/auth/sign-up/email", {"name": "Ada Kowalska", "email": f"panel-{uuid.uuid4()}@example.test", "password": "Calibrate both probes together"})
