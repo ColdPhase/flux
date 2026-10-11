@@ -138,6 +138,9 @@ export function SignInPage() {
   const shownRef = useRef<string | null>(null);
   const sso = useSso();
   const ssoFailed = params.get('sso') === 'failed';
+  const ssoMessage = params.get('sso_reason') === 'no_refresh_token'
+    ? 'Your identity provider didn’t let Flux keep checking your account, so you aren’t signed in. Ask your administrator to allow offline access for Flux.'
+    : 'Single sign-on didn’t complete, so you aren’t signed in. Try again, or sign in with your password.';
   // On the MCP authorization step the page is `/login?<signed request>` (#310): the provider button carries it.
   const oauthQuery = location.pathname === '/login' ? signedOauthQuery(location.search) ?? undefined : undefined;
 
@@ -157,7 +160,7 @@ export function SignInPage() {
       <Heading title="Sign in to Flux">Pick up your work where you left it.</Heading>
       {sso && (location.pathname !== '/login' || oauthQuery) ? <SsoSignIn sso={sso} next={next} oauthQuery={oauthQuery} /> : null}
       <Form method="post" className="auth__form" noValidate ref={formRef} aria-label="Sign in">
-        <FormError message={result?.formError ?? (ssoFailed ? 'Single sign-on didn’t complete, so you aren’t signed in. Try again, or sign in with your password.' : undefined)} />
+        <FormError message={result?.formError ?? (ssoFailed ? ssoMessage : undefined)} />
         <Input label="Email" name="email" type="email" autoComplete="email" inputMode="email" autoCapitalize="none" spellCheck={false}
           defaultValue={result?.values?.email} error={result?.fieldErrors?.email} autoFocus />
         <Input label="Password" name="password" type="password" autoComplete="current-password" error={result?.fieldErrors?.password}

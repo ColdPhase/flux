@@ -7,10 +7,13 @@ import type { JobRetryPolicy } from '../push/config.js';
 import { isId } from '../work/validation.js';
 import type {
   PersonalCompute, PersonalComputeRequest, PersonalComputeResult, PersonalConnection, PersonalConnectionLookup,
-  PersonalRunPorts, PersonalRunUnitOfWork, RunChanges, RunRecord,
+  PersonalRunPorts, PersonalRunUnitOfWork, PersonalToolHost, PersonalToolSession, RunChanges, RunRecord,
 } from './ports.js';
 import { updateAndAnnounce } from './progress.js';
-import { centsToMicros, parseOutput, requestInput, runChargeMicros, runTokensWithinLimits, SYSTEM_PROMPT, type SuppliedSource } from './validation.js';
+import { requestParts, runToolLoop, type LoopResult, type RunAccount } from './tool-loop.js';
+import {
+  centsToMicros, connectionCallsTools, parseOutput, requestInput, runChargeMicros, runTokensWithinLimits, SYSTEM_PROMPT, TOOL_SYSTEM_PROMPT, type SuppliedSource,
+} from './validation.js';
 
 // The worker side of a personal run (`personal-run.dispatch.v1`, O-008 §3–§5). The job payload
 // is the run id only. Before reading, before dispatch and inside the commit transaction the run
@@ -19,6 +22,12 @@ import { centsToMicros, parseOutput, requestInput, runChargeMicros, runTokensWit
 // the daily cap. A run refused before dispatch costs zero and releases its reservation. After
 // dispatch the observed usage is charged, but a refusal at commit stores nothing: the answer is
 // withheld and no proposal is created. There is never another payer or connection to fall back to.
+//
+// A run with tools (F-027 AST-8, `tools` below and `tool-loop.ts`) is a bounded loop of such
+// requests: the same rechecks run before every further request, each request is reconciled by
+// itself against the run's reservation, and a run that reaches its turn cap, its money
+// reservation or one request's input bound ends `cap_reached` ("Limit reached") with the changes
+// it already made kept. A run without tools, or on a model that cannot call them, is one request.
 
 export const PERSONAL_RUN_JOB = 'personal-run.dispatch.v1';
 
@@ -46,6 +55,16 @@ export interface PersonalRunProcessorDeps {
   /** How often a dispatching run checks for the owner's stop. */
   stopPollMs?: number;
   hooks?: PersonalRunHooks;
+  /**
+   * Opens the tools of a run (F-027 AST-8): the worker's MCP client with the run token. Without
+   * it every run is one request with no tools, as before.
+   */
+  tools?: PersonalToolHost;
+  /** The most requests of one run with tools; at most {@link PERSONAL_RUN_LIMITS}`.maxTurns`. */
+  maxTurns?: number;
+  /** The clock bound of a run with tools (AST-6: five minutes). */
+  wallClockMs?: number;
+  now?: () => number;
 }
 
 type Stage = 'before_read' | 'before_dispatch' | 'before_commit';
@@ -127,7 +146,7 @@ async function fit(compute: PersonalCompute, base: Omit<PersonalComputeRequest, 
   let sources = read.sources;
   for (;;) {
     const request = { ...base, input: requestInput(run, sources, read.earlier) };
-    let tokens = conservativeTokenEstimate([request.system, request.input]);
+    let tokens = conservativeTokenEstimate(requestParts(request));
     if (tokens <= PERSONAL_RUN_LIMITS.maxInputTokens && compute.countInputTokens) {
       const refused = await beforeCount();
       if (refused) return { refused: true as const, outcome: refused };
@@ -149,7 +168,11 @@ export const unavailablePersonalCompute: PersonalCompute = {
   dispatch: async () => ({ kind: 'failed', reason: 'provider_error', billed: 'none' }),
 };
 
-export function createPersonalRunProcessor({ uow, connections, compute, stopPollMs = 250, hooks = {} }: PersonalRunProcessorDeps) {
+/** AST-6: a run with tools has five minutes. */
+const WALL_CLOCK_MS = 5 * 60_000;
+
+export function createPersonalRunProcessor({ uow, connections, compute, stopPollMs = 250, hooks = {}, tools, maxTurns = PERSONAL_RUN_LIMITS.maxTurns,
+  wallClockMs = WALL_CLOCK_MS, now = Date.now }: PersonalRunProcessorDeps) {
   /** Aborts the provider request as soon as the owner's stop is recorded. */
   function watchStop(runId: string, controller: AbortController) {
     let active = true;
@@ -169,24 +192,53 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
     return () => { active = false; };
   }
 
-  async function commit(runId: string, result: PersonalComputeResult, sources: SuppliedSource[], price: AiPrice | null): Promise<PersonalRunOutcome> {
+  /**
+   * What the run is charged, from one request (the single-request run) or from the sum of its
+   * reconciled requests (a run with tools). `withhold`: a request's usage was outside its bounds, so
+   * its cost is unknown and nothing is posted.
+   */
+  type Settlement = { charge: RunChanges; withhold: boolean };
+
+  /** The usage is charged at the price of the connection the run was reserved on, or as the provider reported it (PROV-3), never above the run's reservation. */
+  function settleRequest(run: RunRecord, result: PersonalComputeResult, price: AiPrice | null): Settlement {
+    // Usage beyond the run's token limits, or a cost above its reservation, is treated as a lost
+    // response: the cost is unknown, the whole reservation stays counted against the daily cap, the
+    // reported numbers are not stored, and the answer is withheld. Without a price the charge stays unknown too.
+    const usage = result.kind === 'completed' ? result.usage : null;
+    const tokens: RunChanges = usage && runTokensWithinLimits(usage) ? { inputTokens: usage.inputTokens, outputTokens: usage.outputTokens } : {};
+    const chargedMicros = usage && price ? runChargeMicros(usage, price, run.reservedMicros) : null;
+    const outOfBounds = usage !== null && price !== null && chargedMicros === null;
+    const charge: RunChanges = chargedMicros !== null ? { costState: 'observed', chargedMicros, ...tokens }
+      : result.kind === 'completed' && !outOfBounds ? { costState: 'unknown', chargedMicros: 0, ...tokens }
+        : result.kind === 'failed' && result.billed === 'none' ? { ...free } : { costState: 'unknown', chargedMicros: 0 };
+    return { charge, withhold: outOfBounds };
+  }
+
+  /**
+   * The same for a run with tools: every request was reconciled when it came back, so the account
+   * is the charge. A request that may have been billed without a usable report keeps the whole
+   * reservation counted as `unknown`.
+   */
+  function settleAccount(account: RunAccount): Settlement {
+    if (account.unknown) return { charge: { costState: 'unknown', chargedMicros: 0 }, withhold: true };
+    if (account.requests === 0) return { charge: { ...free }, withhold: false };
+    return { charge: { costState: 'observed', chargedMicros: account.micros, inputTokens: account.inputTokens, outputTokens: account.outputTokens }, withhold: false };
+  }
+
+  /** How a run that did not end in an answer is closed: at one of its own limits, or at a standing check. */
+  type Early = { status: RunRecord['status']; stage: Stage };
+
+  async function commit(runId: string, result: PersonalComputeResult | null, sources: SuppliedSource[],
+    settle: (run: RunRecord) => Settlement, early: Early | null = null): Promise<PersonalRunOutcome> {
     return uow.run(async (ports) => {
       const run = await ports.runs.findRun(runId, { lock: true });
       if (!run || run.status !== 'dispatching') return 'skipped';
-      // The usage is charged at the price of the connection the run was reserved on, or as the
-      // provider reported it (PROV-3), never above the run's reservation. Usage beyond the run's
-      // token limits, or a cost above its reservation, is treated as a lost response: the cost is
-      // unknown, the whole reservation stays counted against the daily cap, the reported numbers
-      // are not stored, and the answer is withheld. Without a price the charge stays unknown too.
-      const usage = result.kind === 'completed' ? result.usage : null;
-      const tokens: RunChanges = usage && runTokensWithinLimits(usage) ? { inputTokens: usage.inputTokens, outputTokens: usage.outputTokens } : {};
-      const chargedMicros = usage && price ? runChargeMicros(usage, price, run.reservedMicros) : null;
-      const outOfBounds = usage !== null && price !== null && chargedMicros === null;
-      const charge: RunChanges = chargedMicros !== null ? { costState: 'observed', chargedMicros, ...tokens }
-        : result.kind === 'completed' && !outOfBounds ? { costState: 'unknown', chargedMicros: 0, ...tokens }
-          : result.kind === 'failed' && result.billed === 'none' ? { ...free } : { costState: 'unknown', chargedMicros: 0 };
+      const { charge, withhold } = settle(run);
       if (run.stopRequestedAt) return (await updateAndAnnounce(ports, run.id, ended('stopped', 'before_commit', charge))).status;
-      if (result.kind === 'failed' || outOfBounds) return (await updateAndAnnounce(ports, run.id, ended('provider_failed', null, charge))).status;
+      if (early) return (await updateAndAnnounce(ports, run.id, ended(early.status, early.stage, charge))).status;
+      // A `tool_use` stop here means a request without tools came back asking for some: its text is
+      // half an answer to a call that will never be made, so nothing is posted (the cost stays as observed).
+      if (!result || result.kind === 'failed' || withhold || result.stopReason === 'tool_use') return (await updateAndAnnounce(ports, run.id, ended('provider_failed', null, charge))).status;
       let checked: Awaited<ReturnType<typeof recheck>>;
       try {
         checked = await recheck(ports, connections, compute, run, 'before_commit', true);
@@ -215,6 +267,104 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
       await ports.events.record(agent, run.workspaceId, 'project.assistant_answer_committed.v1', run.projectId, { conversationId: run.conversationId, runId: run.id });
       return updated.status;
     });
+  }
+
+  /** The loop's end, as the run's commit: an answer is committed like a single request's; every other end closes the run. */
+  function commitLoop(runId: string, loop: LoopResult, sources: SuppliedSource[]): Promise<PersonalRunOutcome> {
+    const settle = () => settleAccount(loop.account);
+    const { end } = loop;
+    switch (end.kind) {
+      case 'answer': return commit(runId, end.result, sources, settle);
+      case 'failed': return commit(runId, end.result, sources, settle);
+      case 'lost': return commit(runId, null, sources, settle);
+      // The turn cap, the money reservation, the input bound or the clock: "Limit reached".
+      case 'limit': return commit(runId, null, sources, settle, { status: 'cap_reached', stage: 'before_dispatch' });
+      case 'halted': return end.status === 'gone' ? Promise.resolve('skipped') : commit(runId, null, sources, settle, { status: end.status, stage: 'before_dispatch' });
+    }
+  }
+
+  /** Fits, rechecks and sends the run: one request, or the bounded loop when it has tools. */
+  async function dispatchRun(run: RunRecord, read: { sources: SuppliedSource[]; earlier: string | null }, connection: PersonalConnection,
+    session: PersonalToolSession | null, beforeSend: () => Promise<PersonalRunOutcome | null>): Promise<PersonalRunOutcome> {
+    let fitted: Awaited<ReturnType<typeof fit>>;
+    try {
+      fitted = await fit(compute, {
+        connection: { id: connection.id, keyRef: connection.keyRef, provider: connection.provider, baseUrl: connection.baseUrl }, model: run.model,
+        maxTokens: PERSONAL_RUN_LIMITS.maxOutputTokens, effort: PERSONAL_RUN_LIMITS.effort,
+        system: session ? TOOL_SYSTEM_PROMPT : SYSTEM_PROMPT, ...(session ? { tools: session.tools } : {}),
+      }, run, read, beforeSend);
+    } catch {
+      // The preflight count failed (provider down, key refused). Counting is free and nothing
+      // was dispatched: the run ends at zero cost and the owner may retry it as a new run.
+      return uow.run(async (ports) => {
+        const current = await ports.runs.findRun(run.id, { lock: true });
+        if (current?.status !== 'reading') return (current?.status ?? 'skipped') as PersonalRunOutcome;
+        return (await updateAndAnnounce(ports, run.id, ended('provider_failed', 'before_dispatch', free))).status;
+      });
+    }
+    if (fitted?.refused) return fitted.outcome;
+
+    const ready = await uow.run(async (ports) => {
+      const current = await ports.runs.findRun(run.id, { lock: true });
+      const end = async (status: RunRecord['status']) => ({ done: true as const, outcome: (await updateAndAnnounce(ports, run.id, ended(status, 'before_dispatch', free))).status as PersonalRunOutcome });
+      if (!current || current.status !== 'reading') return { done: true as const, outcome: 'skipped' as PersonalRunOutcome };
+      if (current.stopRequestedAt) return end('stopped');
+      const checked = await recheck(ports, connections, compute, current, 'before_dispatch', true).catch((error: unknown) => {
+        if (isAccessDenial(error)) return { refusal: 'denied' as const };
+        throw error;
+      });
+      if ('refusal' in checked) return end(checked.refusal);
+      if (checked.connection.id !== connection.id) return end('unavailable');
+      if (!fitted) return end('input_too_large');
+      await updateAndAnnounce(ports, run.id, { status: 'dispatching', dispatchedAt: new Date() });
+      return { done: false as const, fitted };
+    });
+    if (ready.done) return ready.outcome;
+
+    const controller = new AbortController();
+    const stopWatching = watchStop(run.id, controller);
+    if (session) {
+      // A standing check between the turns of the loop: the same as before a dispatch. It also
+      // touches the row, so a long loop is not swept as a crashed worker's.
+      const gate = (): Promise<{ status: RunRecord['status'] | 'gone' } | null> => uow.run(async (ports) => {
+        const current = await ports.runs.findRun(run.id, { lock: true });
+        if (!current || current.status !== 'dispatching') return { status: 'gone' as const };
+        if (current.stopRequestedAt) return { status: 'stopped' as const };
+        const checked = await recheck(ports, connections, compute, current, 'before_dispatch', true).catch((error: unknown) => {
+          if (isAccessDenial(error)) return { refusal: 'denied' as const };
+          throw error;
+        });
+        if ('refusal' in checked) return { status: checked.refusal };
+        if (checked.connection.id !== connection.id) return { status: 'unavailable' as const };
+        await ports.runs.updateRun(run.id, {});
+        return null;
+      });
+      let loop: LoopResult;
+      try {
+        loop = await runToolLoop({
+          compute, session, first: ready.fitted.request, price: connection.price!, reservedMicros: run.reservedMicros,
+          maxTurns: Math.max(1, Math.min(maxTurns, PERSONAL_RUN_LIMITS.maxTurns)), deadline: now() + wallClockMs, now, gate, signal: controller.signal,
+        });
+      } catch {
+        // An unexpected failure inside the loop is a lost response: the reservation stays counted.
+        loop = { end: { kind: 'failed', result: { kind: 'failed', reason: 'provider_error', billed: 'unknown' } }, account: { micros: 0, inputTokens: 0, outputTokens: 0, requests: 0, unknown: true }, turns: 0 };
+      } finally {
+        stopWatching();
+      }
+      await hooks.afterDispatch?.(run);
+      return commitLoop(run.id, loop, ready.fitted.sources);
+    }
+    let result: PersonalComputeResult;
+    try {
+      result = await compute.dispatch(ready.fitted.request, controller.signal);
+    } catch {
+      // An unexpected adapter failure is a lost response: the reservation stays counted.
+      result = { kind: 'failed', reason: 'provider_error', billed: 'unknown' };
+    } finally {
+      stopWatching();
+    }
+    await hooks.afterDispatch?.(run);
+    return commit(run.id, result, ready.fitted.sources, (current) => settleRequest(current, result, connection.price));
   }
 
   return {
@@ -270,53 +420,31 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
         const refused = await beforeSend();
         return refused ?? 'skipped';
       }
-      let fitted: Awaited<ReturnType<typeof fit>>;
-      try {
-        fitted = await fit(compute, {
-          connection: { id: connection.id, keyRef: connection.keyRef, provider: connection.provider, baseUrl: connection.baseUrl }, model: run.model,
-          maxTokens: PERSONAL_RUN_LIMITS.maxOutputTokens, effort: PERSONAL_RUN_LIMITS.effort, system: SYSTEM_PROMPT,
-        }, run, read, beforeSend);
-      } catch {
-        // The preflight count failed (provider down, key refused). Counting is free and nothing
-        // was dispatched: the run ends at zero cost and the owner may retry it as a new run.
-        return uow.run(async (ports) => {
-          const current = await ports.runs.findRun(run.id, { lock: true });
-          if (current?.status !== 'reading') return (current?.status ?? 'skipped') as PersonalRunOutcome;
-          return (await updateAndAnnounce(ports, run.id, ended('provider_failed', 'before_dispatch', free))).status;
-        });
+      // The run's tools (F-027 AST-8), only on a connection that can call them and has a known price
+      // to reserve and reconcile against. No host, no tools, or a model marked without tool calling:
+      // one request with no tools, as before.
+      let session: PersonalToolSession | null = null;
+      if (tools && connection.price && connectionCallsTools(connection)) {
+        try {
+          session = await tools(run, connection);
+        } catch {
+          // The run was started with tools it cannot have now (no run token): it does not quietly become another run.
+          return uow.run(async (ports) => {
+            const current = await ports.runs.findRun(run.id, { lock: true });
+            if (current?.status !== 'reading') return (current?.status ?? 'skipped') as PersonalRunOutcome;
+            return (await updateAndAnnounce(ports, run.id, ended('unavailable', 'before_dispatch', free))).status;
+          });
+        }
+        if (session && !session.tools.length) {
+          await session.close().catch(() => undefined);
+          session = null;
+        }
       }
-      if (fitted?.refused) return fitted.outcome;
-
-      const ready = await uow.run(async (ports) => {
-        const current = await ports.runs.findRun(run.id, { lock: true });
-        const end = async (status: RunRecord['status']) => ({ done: true as const, outcome: (await updateAndAnnounce(ports, run.id, ended(status, 'before_dispatch', free))).status as PersonalRunOutcome });
-        if (!current || current.status !== 'reading') return { done: true as const, outcome: 'skipped' as PersonalRunOutcome };
-        if (current.stopRequestedAt) return end('stopped');
-        const checked = await recheck(ports, connections, compute, current, 'before_dispatch', true).catch((error: unknown) => {
-          if (isAccessDenial(error)) return { refusal: 'denied' as const };
-          throw error;
-        });
-        if ('refusal' in checked) return end(checked.refusal);
-        if (checked.connection.id !== connection.id) return end('unavailable');
-        if (!fitted) return end('input_too_large');
-        await updateAndAnnounce(ports, run.id, { status: 'dispatching', dispatchedAt: new Date() });
-        return { done: false as const, fitted };
-      });
-      if (ready.done) return ready.outcome;
-
-      const controller = new AbortController();
-      const stopWatching = watchStop(run.id, controller);
-      let result: PersonalComputeResult;
       try {
-        result = await compute.dispatch(ready.fitted.request, controller.signal);
-      } catch {
-        // An unexpected adapter failure is a lost response: the reservation stays counted.
-        result = { kind: 'failed', reason: 'provider_error', billed: 'unknown' };
+        return await dispatchRun(run, read, connection, session, beforeSend);
       } finally {
-        stopWatching();
+        await session?.close().catch(() => undefined);
       }
-      await hooks.afterDispatch?.(run);
-      return commit(run.id, result, ready.fitted.sources, connection.price);
     },
   };
 }

@@ -53,7 +53,7 @@ connection lookup is still `noPersonalConnections`.
   optional `countInputTokens` (a provider count, which may only raise the Flux
   estimate) and `dispatch(request, signal)`. A dispatch is one bounded request to
   the connection's provider and model, at most 1500 output tokens, low effort where
-  the wire format has it, and no tools. The result is either `completed` with text,
+  the wire format has it, and no tools unless the run has the Flux tools of the [tool loop](#tool-loop-f-027-ast-8-406-first-part). The result is either `completed` with text,
   `stopReason` and usage (with the provider-reported cost when there is one), or
   `failed` with `billed: 'none' | 'unknown'`. Production composes
   `unavailablePersonalCompute`; the adapters are described below.
@@ -74,7 +74,8 @@ $3/$15 "will not occur"). Check again when production dispatch is switched on.
 the adapter of the connection's wire format: `anthropicPersonalCompute` for Anthropic Messages,
 `openAiCompatiblePersonalCompute` for OpenAI, OpenRouter, Gemini's compatible endpoint and
 OpenAI-compatible servers. Both use the guarded transport, refuse a request outside the O-008
-limits before a key is resolved, send no tools and never retry; the Chat Completions details are
+limits before a key is resolved, send no tools unless the run offers its Flux tools (see
+[Tool loop](#tool-loop-f-027-ast-8-406-first-part)) and never retry; the Chat Completions details are
 in [AI providers](ai-providers.md#provider-kinds-and-wire-formats).
 
 `anthropicPersonalCompute({ enabled, resolveKey, baseURL?, timeoutMs?, policy? })` implements
@@ -99,6 +100,68 @@ in [AI providers](ai-providers.md#provider-kinds-and-wire-formats).
   no billing outcome. Token counting is free per the provider's documentation. Retry is a new
   capped run. A failed preflight count ends the run as `provider_failed` at
   zero cost (nothing was dispatched).
+
+## Tool loop (F-027 AST-8, #406 first part)
+
+Contract: [F-027 AST-8](../product/assistant.md#ast-8--engines-the-server-tool-loop-and-the-runtime).
+This part is the provider side and the loop's limits; the tools themselves are the worker's MCP
+client of `/mcp` with the run token (A2), which is the next slice. Until a worker composes a
+`PersonalToolHost`, every run is one request with no tools, exactly as before; production
+composes none.
+
+- **Port.** `PersonalComputeRequest` gains optional `tools` (neutral `PersonalTool`: name,
+  description, JSON Schema) and `turns` (the earlier turns, each with the calls the model made,
+  the results that came back and `replay`, the provider's own assistant message). A completed
+  result gains the stop reason `tool_use` with `toolCalls`, only when tools were offered and the
+  answer was neither cut off nor refused. Without `tools` the request has no `tools` key on the
+  wire. One `dispatch` is still exactly one HTTP request.
+- **Wire formats** (`@flux/agent-runtime` `tool-wire.ts`, shapes read 2026-10-11 from the vendors'
+  documentation): Anthropic Messages writes `tools[].input_schema`, reads `tool_use` blocks and
+  returns `tool_result` blocks first in one user message with `is_error`; Chat Completions
+  (OpenAI, OpenRouter, Gemini's compatible endpoint, self-hosted servers) writes
+  `tools[].function.parameters`, reads `tool_calls` (a JSON-string `arguments`; not an object
+  means `invalid`, never run) and returns one `role: "tool"` message per call, with failures
+  starting "Error: ". `tool_choice` is never sent. The provider's own assistant message is sent
+  back unchanged, so reasoning blocks and thought signatures survive. The Anthropic token count
+  carries the tools and the turns. `checkRequestLimits` refuses a bad tool name, schema,
+  duplicate, more than 64 tools, a turn whose calls and results do not match one to one, more
+  turns than the cap, and tools offered to a model Flux knows cannot call them, all before a key
+  is resolved.
+- **No-tools model** (AST-8.3). `connectionCallsTools`: false when the owner marked the model
+  (`PersonalConnection.toolCalling === false`) or Flux's dated table `AI_MODELS_WITHOUT_TOOL_CALLING`
+  lists it. OpenAI's function-calling guide (read 2026-10-11) says GPT-6 Astra and GPT-6.1 Sol need
+  the Responses API for tool calling, which Flux does not speak yet, so they answer in one request.
+  Persisting the owner's mark and the account row's "This model can answer but can't make changes"
+  are not part of this change.
+- **Reservation.** `toolRunReservationMicros`: turns × the largest request (16,000 × input price +
+  1,500 × output price), never above the owner's per-run ceiling and never below one request.
+  `createPersonalRunUseCases({ toolTurns })` applies it to a connection that can call tools; the
+  default is 1 (today's single request) and no composition sets more yet. `PERSONAL_RUN_LIMITS.maxTurns`
+  is 10 (AST-6).
+- **The loop** (`core/personal-runs/tool-loop.ts`, driven by the processor when its `tools` host
+  returns a session with tools). It sends the first request, and while the model asks for tools
+  checks, before running anything it asked for, the turn cap, the money reservation (the largest
+  possible next request must still fit what the reservation has left) and the clock (5 minutes);
+  runs each call once through the session (a call the provider could not state as JSON, or outside the
+  offered tools, is answered with an error and never sent); rechecks the run's standing (stop,
+  enablement, connection, access, daily cap; the same recheck as before a dispatch) before the calls
+  and before the next request; and bounds the next request's input like the first. A run that
+  reaches a limit ends **`cap_reached`** with `stopped_at_stage = before_dispatch`, cost `observed`
+  and nothing posted; the calls already made stay made. The plain words "Limit reached" and the list of
+  changes are the run's message (A4); the web copy of `cap_reached` still says "today's cap", which
+  no run can reach until a worker composes tools. A separate status needs a migration and is left to
+  A4.
+- **Per-request reconciliation** (PROV-3). Each response is charged at the connection price or as the
+  provider reported it, within what is left of the reservation. A request outside its token limits,
+  or one that would take the run above its reservation, is a lost response: cost `unknown`, charge 0,
+  the whole reservation counted, nothing posted (`provider_failed`), the earlier calls kept. A
+  request that failed after it may have been billed does the same; one that was never sent
+  (`billed: none`) keeps the earlier requests' charge. A run's input and output tokens are the sums
+  over its requests.
+- **Tests.** `provider-tool-calling.test.ts` (AST-8.1: every wire format against documented-shape
+  fixtures in `support/provider-tool-fixtures.ts`, a local mock server), `personal-runs-tool-loop-core.test.ts`
+  (reservation, reconciliation and the loop with fakes) and `personal-runs-tools.test.ts` (AST-8.2 and AST-8.3
+  through the real worker and database, with a fake provider and a fake tool session).
 
 ## Switching production on
 
@@ -347,6 +410,11 @@ behaviour or accessibility.
 
 ## Not yet done
 
+- The tool loop's production side (#406 rest): the worker's MCP client with the run token, the
+  switch-derived tool list, AST-3.2 parity and the `server` parts of AST-4.2 and AST-9.1, the
+  persisted owner mark and the account row's note for a model without tool calling, a "Limit reached"
+  status and copy, the Responses API for the OpenAI models that need it, and the Gemini
+  thought-signature field name (unverified against Google's pages).
 - #124's key custody, the real connection lookup and key resolver, the foreign key
   from `connection_id`, and the operator switch (see [Switching production on](#switching-production-on)).
 - A provider pass against the real API (with a real key, by its owner), including billing on
