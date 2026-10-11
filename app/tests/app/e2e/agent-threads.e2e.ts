@@ -93,6 +93,47 @@ async function composerReachable(page: Page) {
   }
   assert.ok(geometry.form && geometry.bottom - geometry.form.bottom < 36, 'composer remains at the bottom, without blank space beneath the action');
 }
+async function storedTheme(page: Page, theme: 'light' | 'dark') {
+  // Apply the actual device preference through normal app initialization. Direct dataset mutation
+  // bypassed the app's atomic theme switch and photographed an unreadable intermediate cross-fade.
+  await page.evaluate(choice => localStorage.setItem('flux.theme', choice), theme);
+  await page.reload();
+  await panel(page).getByRole('heading').waitFor();
+  await page.waitForFunction(choice => document.documentElement.dataset.theme === choice, theme);
+  await settledSurface(page);
+}
+function rgb(value: string) {
+  const numbers = value.match(/[\d.]+/g)?.map(Number);
+  assert.ok(numbers && numbers.length >= 3, `actual CSS color is measurable: ${value}`);
+  return numbers;
+}
+function ratio(foreground: string, background: string) {
+  const light = (value: string) => {
+    const [r, g, b] = rgb(value).map(channel => { const x = channel / 255; return x <= .04045 ? x / 12.92 : ((x + .055) / 1.055) ** 2.4; });
+    return .2126 * r! + .7152 * g! + .0722 * b!;
+  };
+  const a = light(foreground), b = light(background);
+  return (Math.max(a, b) + .05) / (Math.min(a, b) + .05);
+}
+async function composerContrast(page: Page, theme: 'light' | 'dark') {
+  const actual = await panel(page).evaluate(element => {
+    const box = element.querySelector('.composer__box')!, field = box.querySelector('textarea')!;
+    const attach = box.querySelector('.composer__attach')!, send = box.querySelector('.composer__send')!;
+    const surface = getComputedStyle(box), text = getComputedStyle(field), placeholder = getComputedStyle(field, '::placeholder');
+    const attachment = getComputedStyle(attach.querySelector('svg')!), action = getComputedStyle(send.querySelector('svg')!);
+    return { background: surface.backgroundColor, fieldBackground: text.backgroundColor, text: text.color,
+      placeholder: placeholder.color, placeholderOpacity: placeholder.opacity, attachment: attachment.color,
+      send: action.color, sendBackground: getComputedStyle(send, '::before').backgroundColor, disabled: send.getAttribute('aria-disabled') };
+  });
+  assert.deepEqual(rgb(actual.fieldBackground), [0, 0, 0, 0], 'transparent field shares the actual elevated composer surface');
+  if (theme === 'dark') assert.ok(rgb(actual.background).slice(0, 3).every(channel => channel < 64), `dark composer remains a dark elevated input: ${JSON.stringify(actual)}`);
+  assert.equal(Number(actual.placeholderOpacity), 1);
+  assert.ok(ratio(actual.text, actual.background) >= 4.5, 'actual input text contrast');
+  assert.ok(ratio(actual.placeholder, actual.background) >= 4.5, 'actual placeholder contrast');
+  assert.ok(ratio(actual.attachment, actual.background) >= 3, 'actual attachment glyph contrast');
+  assert.ok(ratio(actual.send, actual.sendBackground) >= 3, 'actual enabled/inactive action glyph contrast');
+  console.log(JSON.stringify({ engine, viewport: page.viewportSize(), theme, composerContrast: actual }));
+}
 async function capture(page: Page, name: string) {
   const directory = process.env.FLUX_E2E_EVIDENCE_DIR;
   if (!directory) return;
@@ -113,7 +154,12 @@ test('task Details opens the one thread surface; real contributor sends, viewer 
       assert.equal((await f.read()).messageCount, width === 1440 ? 0 : 1);
       assert.equal((await pool.query('SELECT count(*)::int AS n FROM project_conversations WHERE work_id=$1', [f.task.id])).rows[0].n, width === 1440 ? 0 : 1, 'opening/reading never creates a thread');
       const field = panel(page).getByRole('textbox', { name: 'Write in the agents’ thread' });
-      if (width === 1440) await capture(page, 'empty-desktop-light');
+      if (width === 1440) {
+        await capture(page, 'empty-desktop-light');
+        await storedTheme(page, 'dark'); await field.waitFor(); await composerContrast(page, 'dark');
+        await capture(page, 'empty-desktop-dark');
+        await storedTheme(page, 'light'); await field.waitFor();
+      }
       await field.fill(width === 1440 ? 'Both measurements are repeatable. The warm light has a steadier baseline.' : 'The second prototype also passes the low-light check.');
       await panel(page).getByRole('button', { name: 'Back to task' }).click();
       await page.waitForFunction(id => document.activeElement?.getAttribute('data-agent-thread-entry') === id, f.task.id);
@@ -134,7 +180,13 @@ test('task Details opens the one thread surface; real contributor sends, viewer 
       assert.equal(aligned.avatarWidth, 32); assert.ok(Math.abs(aligned.nameLeft - aligned.bodyLeft) < 1);
       assert.ok(Math.abs(aligned.bodyLeft - aligned.avatarRight - (width === 390 ? 10 : 12)) < 1);
       for (const theme of ['light', 'dark'] as const) {
-        await page.evaluate(value => document.documentElement.setAttribute('data-theme', value), theme);
+        await storedTheme(page, theme);
+        await field.waitFor();
+        await composerReachable(page); await composerContrast(page, theme);
+        await field.fill('A private contrast check, kept out of the project.');
+        await page.waitForFunction(() => document.querySelector('.at-composer [aria-label="Send"]')?.getAttribute('aria-disabled') === 'false');
+        await composerContrast(page, theme); await composerReachable(page);
+        await field.fill('');
         await capture(page, `writer-${width}-${theme}`);
         assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, 'no page horizontal overflow');
       }
@@ -146,6 +198,8 @@ test('task Details opens the one thread surface; real contributor sends, viewer 
       await panel(readPage).locator('.at-message').first().waitFor(); assert.equal(await panel(readPage).getByRole('textbox').count(), 0);
       assert.equal(await panel(readPage).getByRole('button', { name: 'Send', exact: true }).count(), 0);
       await capture(readPage, `viewer-${width}-light`);
+      await storedTheme(readPage, 'dark'); await panel(readPage).locator('.at-message').first().waitFor();
+      await capture(readPage, `viewer-${width}-dark`);
     } finally { await readers.close(); }
   }
   const nobody = await session(f.outsider, 390); const page = await nobody.newPage();
@@ -184,6 +238,14 @@ test('older search arrival focuses the exact message; real refused/lost-response
     await panel(page).locator('.composer-files__error').waitFor();
     await composerReachable(page);
     await capture(page, 'refused-phone-light');
+    const appearance = await context.newPage();
+    try {
+      await appearance.goto('/settings');
+      await appearance.getByRole('radiogroup', { name: 'Theme', exact: true }).getByRole('radio', { name: 'Dark', exact: true }).click();
+    } finally { await appearance.close(); }
+    await page.waitForFunction(() => document.documentElement.dataset.theme === 'dark' && !document.documentElement.hasAttribute('data-theme-switching'));
+    await composerReachable(page); await composerContrast(page, 'dark');
+    await capture(page, 'refused-phone-dark');
     await panel(page).getByRole('button', { name: 'Refresh', exact: true }).click();
     await page.waitForFunction(() => !document.querySelector('.at-composer textarea'));
     const kept = await page.evaluate(key => JSON.parse(localStorage.getItem(key) ?? 'null'), `flux:composer:${f.writer.id}:${f.place.id}:agent-thread:${f.task.id}`) as { body: string };
@@ -216,7 +278,23 @@ test('compact bottom actions survive realistic long history, long drafts, narrow
       await field.fill('A private unsent measurement.\n'.repeat(30)); await field.press('Control+End');
       await composerReachable(page); assert.ok(await field.evaluate(element => element.scrollHeight > element.clientHeight), 'long draft scrolls within the capped field');
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
-      if (width === 320) await capture(page, 'long-draft-narrow-phone-light');
+      if (width === 320) {
+        const readable = await panel(page).evaluate(element => {
+          const feed = element.querySelector('.at-feed')!, head = element.querySelector('.at-head')!;
+          feed.scrollTop = 0;
+          const region = feed.getBoundingClientRect(), first = feed.querySelector('.at-message')!.getBoundingClientRect();
+          const next = feed.querySelectorAll('.at-message')[1]!.querySelector('strong')!.getBoundingClientRect();
+          return { height: region.height, header: head.getBoundingClientRect().height, firstVisible: first.top >= region.top && first.bottom <= region.bottom,
+            nextAuthorVisible: next.top >= region.top && next.bottom <= region.bottom };
+        });
+        assert.ok(readable.height >= 200, `narrow phone keeps a useful transcript beside its long draft: ${JSON.stringify(readable)}`);
+        assert.ok(readable.firstVisible && readable.nextAuthorVisible, 'one complete observation and the following attribution remain readable');
+        await capture(page, 'long-draft-narrow-phone-light');
+        await storedTheme(page, 'dark'); await field.waitFor();
+        assert.ok((await field.inputValue()).includes('A private unsent measurement.'), 'actual theme reload retains the private long draft');
+        await composerReachable(page); await composerContrast(page, 'dark');
+        await capture(page, 'long-draft-narrow-phone-dark');
+      }
       if (width === 390 && height === 844) {
         await field.fill('The measured traces are attached.');
         await panel(page).locator('.composer__box input[type="file"]').setInputFiles({ name: 'prototype-measurements.csv', mimeType: 'text/csv', buffer: Buffer.from('probe,value\nA,12\nB,14\n') });

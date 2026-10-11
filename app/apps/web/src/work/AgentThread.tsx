@@ -131,11 +131,13 @@ export function AgentThreadPanel({ workId, project, members, me, readOnly, revis
 
   return <div ref={panel} className="details wd at-panel" data-agent-thread-task={workId} aria-labelledby={headingId}>
     <div className="at-head">
-    <button type="button" className="wd-inline at-back" onClick={onBack}><Icon name="chevron-left" size={14} />Back to task</button>
-    <p className="details__eyebrow">Agents’ thread · {thread ? `#${thread.task.number}` : 'Task'}</p>
+    <div className="at-toolbar">
+      <button type="button" className="wd-inline at-back" onClick={onBack}><Icon name="chevron-left" size={14} />Back to task</button>
+      {thread ? <button type="button" className="wd-inline" disabled={busy} onClick={() => setAttempt((value) => value + 1)}>Refresh</button> : null}
+    </div>
+    <p className="details__eyebrow">Agents’ thread · {thread ? `#${thread.task.number} · ${thread.messageCount} ${thread.messageCount === 1 ? 'message' : 'messages'}` : 'Task'}</p>
     <h3 id={headingId} className="details__title" tabIndex={-1}>{thread?.task.title ?? 'Agents’ thread'}</h3>
-    <p className="details__lead at-audience">Everyone with access to {project.name} can read this thread. Progress stays here.</p>
-    {thread ? <div className="at-meta"><span>{thread.messageCount} {thread.messageCount === 1 ? 'message' : 'messages'}</span><button type="button" className="wd-inline" disabled={busy} onClick={() => setAttempt((value) => value + 1)}>Refresh</button></div> : null}
+    <p className="details__lead at-audience">Visible to everyone with access to {project.name}.</p>
     </div>
     <div className="at-feed" role="region" aria-label="Thread history" tabIndex={0}>
     {failed ? <p className="wd-error" role="alert">{olderFailed ? 'Older messages could not be loaded.' : 'This thread could not be loaded.'} Your draft is kept. <button type="button" className="wd-inline" onClick={() => setAttempt((value) => value + 1)}>Refresh thread</button></p>
