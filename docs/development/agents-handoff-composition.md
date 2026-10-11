@@ -101,3 +101,24 @@ controls. The reported left clipping is disputed on the unchanged original
 pixels, so verify live containment at 390/320, long names and enlarged text before
 any CSS correction. Fix only reproduced overflow. All full-design, full-issue and
 independent merge gates remain open, and changed production needs fresh evidence.
+
+
+## C-1 known-deadline and expression amendment, 2026-10-11
+
+Independent source review of `c306f2c3` found that roster ageing waited for its
+15-second observation poll, while the dialog could omit a deadline that elapsed
+between its displayed observation and effect setup. The coordinator independently
+accepted this correction before code: select known live-session deadlines that
+are future relative to the displayed clock, and age that scoped clock at the
+next deadline. If the deadline has already elapsed by effect setup, schedule a
+zero-delay tick. Share this rule across row, count, detail and hand-off; preserve
+cleanup and the long-timeout cap. The clock must not poll or retry an API, read
+Date.now during render, or synchronously update state from an effect.
+
+Preserve unit, role, request, native Handed, access and lifecycle facts. A claimed
+unit on a usable session uses Prostota's Working face; Thinking is reserved for
+actual reply composition. Verify prompt roster expiry before the existing
+15-second poll with the same snapshot/read count, and the displayed-clock /
+delayed-effect boundary. Keep historical c306's 51-method Chromium/WebKit results
+and geometry captures at their original pin. New source/runtime/neutral visual
+and eligible merge review remain required; full #347 and child gates stay open.

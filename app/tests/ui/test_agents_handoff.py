@@ -426,7 +426,7 @@ class HandOffJourney(unittest.TestCase):
         self.assertTrue(first["nextCursor"])
         type(self).ids.update(projection_project=project, projection_task=target["id"])
         states = (("pending", "queued", "Not signed in from your client yet", "not_signed_in", "Assigned", "asleep"),
-                  ("claimed", "claimed", "Session open since", "session_open", "Working on", "thinking"),
+                  ("claimed", "claimed", "Session open since", "session_open", "Working on", "working"),
                   ("paused", "deferred", "Offline", "offline", "Paused on", "asleep"),
                   ("claimed", "claimed", "Not signed in from your client yet", "not_signed_in", "Work held on", "asleep"),
                   ("claimed", "deferred", "Offline", "offline", "Work held on", "asleep"),
@@ -656,12 +656,16 @@ class HandOffJourney(unittest.TestCase):
                     item.update(state="not_signed_in", session=None, currentWork=None)
                 elif item["id"] == connections[1]["id"]:
                     item.update(state="session_open", session={"startedAt": started, "expiresAt": expires},
-                                currentWork={"taskId": held["id"], "taskTitle": held["title"], "role": "plan", "state": "claimed"})
+                                currentWork={"taskId": held["id"], "taskTitle": held["title"], "role": "plan", "state": "claimed"},
+                                requests=[{"id": "expiry-request", "kind": "review", "state": "claimed", "reason": "after the field reading",
+                                           "taskId": held["id"], "taskTitle": held["title"],
+                                           "sender": {"connectionId": "expiry-sender", "name": "Field laptop", "ownerName": "Jonas Berg"}}])
             reads.append(route.request.url)
             route.fulfill(response=response, json=body)
 
         self.addCleanup(lambda: None if page.is_closed() else page.unroute_all(behavior="ignoreErrors"))
         page.route(f"**/api/v1/projects/{project}/agents", projection)
+        opened_at = time.monotonic()
         page.goto(f"/projects/{project}/agents")
         rows = page.get_by_role("list", name="Agents in this project").get_by_role("listitem")
         expect(rows).to_have_count(2)
@@ -672,6 +676,7 @@ class HandOffJourney(unittest.TestCase):
         expect(unsigned.locator(".agents-row__icon")).to_have_attribute("data-expression", "asleep")
         expect(live).to_contain_text('Working on “Plan the next moisture reading”')
         expect(live).to_have_attribute("data-working", "true")
+        expect(live.locator(".agents-row__icon")).to_have_attribute("data-expression", "working")
         expect(page.get_by_text("2 in this project · 1 working", exact=True)).to_be_visible()
         expect(page.get_by_role("complementary").get_by_role("region", name="Now")).to_contain_text("Planning")
         page.get_by_role("button", name="Hand off a task").click()
@@ -683,11 +688,102 @@ class HandOffJourney(unittest.TestCase):
         radio.click()
         dialog.get_by_role("button", name="Next").click()
         expect(dialog).to_contain_text('Working on “Plan the next moisture reading”')
+        expect(dialog.locator(".handoff__chosen .kreska")).to_have_attribute("data-expression", "working")
+        shot(page, "handoff-known-expiry-live-desktop-light")
         expect(dialog.get_by_text(re.compile("queued behind", re.IGNORECASE))).to_have_count(0)
         before_expiry = len(reads)
         expect(dialog).to_contain_text('Work held on “Plan the next moisture reading”', timeout=12000)
         expect(dialog.locator(".handoff__chosen .kreska")).to_have_attribute("data-expression", "asleep")
+        shot(page, "handoff-known-expiry-held-desktop-light")
         self.assertEqual(len(reads), before_expiry, "aging session evidence polls no API")
+        # The known eight-second expiry must also age the roster, count and selected detail before
+        # their existing fifteen-second observation poll, without losing the unit/role/request facts.
+        dialog.get_by_role("button", name="Close", exact=True).click()
+        expect(live).to_contain_text('Work held on “Plan the next moisture reading”', timeout=1000)
+        expect(live).not_to_have_attribute("data-working", "true")
+        expect(live).to_contain_text("Offline")
+        expect(live).to_contain_text("Review request from Field laptop (Jonas Berg)")
+        expect(live).to_contain_text("after the field reading")
+        expect(live.locator(".agents-row__icon")).to_have_attribute("data-expression", "asleep")
+        expect(page.get_by_text("2 in this project", exact=True)).to_be_visible()
+        detail = page.get_by_role("complementary").get_by_role("region", name="Now")
+        expect(detail).to_contain_text("Planning · Work held · claim recorded")
+        expect(detail).to_contain_text("Offline")
+        expect(detail).to_contain_text("Field laptop (Jonas Berg)")
+        self.assertLess(time.monotonic() - opened_at, 14, "known expiry is visible before the fifteen-second poll")
+        self.assertEqual(len(reads), before_expiry, "roster, count and detail expiry use the unchanged snapshot")
+        shot(page, "agents-known-expiry-held-desktop-light")
+
+    def test_19_a_deadline_crossed_after_the_display_commit_is_not_dropped(self) -> None:
+        """Controlled browser clock: retain the real DOM/effect path and move only elapsed time.
+
+        A one-shot observer sees the freshly committed live claim, then moves Date.now beyond its
+        deadline before passive effect setup. No app event, API read, reload or timer advance is sent.
+        """
+        page = self.page("ada")
+        project = self.api(page, "POST", f"/api/v1/workspaces/{self.ids['workspace']}/projects",
+                           {"name": "Delayed expiry setup", "visibility": "restricted"}, status=201)["id"]
+        self.api(page, "POST", f"/api/v1/projects/{project}/grants",
+                 {"principal": {"kind": "agent", "id": self.ids["agent_claude"]}, "role": "contributor"}, status=201)
+        connection = self.api(page, "POST", "/api/v1/agent-connections",
+                              {"agentId": self.ids["agent_claude"], "selectedProjectIds": [project], "scopes": ["flux.context.read"],
+                               "name": "Delayed laptop", "clientDesignation": "codex"}, status=201)
+        task = self.api(page, "POST", f"/api/v1/projects/{project}/work", {"title": "Check the deadline boundary"}, status=201)
+        reads: list[str] = []
+        expires_at = int(time.time() * 1000) + 60_000
+
+        def projection(route) -> None:
+            response = route.fetch()
+            body = response.json()
+            item = next(row for row in body["connections"] if row["id"] == connection["id"])
+            item.update(state="session_open", session={"startedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                                                       "expiresAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(expires_at / 1000))},
+                        currentWork={"taskId": task["id"], "taskTitle": task["title"], "role": "review", "state": "claimed"})
+            reads.append(route.request.url)
+            route.fulfill(response=response, json=body)
+
+        self.addCleanup(lambda: None if page.is_closed() else page.unroute_all(behavior="ignoreErrors"))
+        page.route(f"**/api/v1/projects/{project}/agents", projection)
+        page.goto(f"/projects/{project}/agents")
+        expect(page.get_by_text("1 in this project · 1 working", exact=True)).to_be_visible()
+        before_dialog = len(reads)
+        page.evaluate("""expiry => {
+          const originalNow = Date.now.bind(Date);
+          const originalTimeout = window.setTimeout.bind(window);
+          const evidence = window.__expiryBoundary = { offset: 0, committed: null, timers: [] };
+          Date.now = () => originalNow() + evidence.offset;
+          window.setTimeout = (callback, delay, ...args) => {
+            if (evidence.committed) evidence.timers.push({ delay, at: Date.now() });
+            return originalTimeout(callback, delay, ...args);
+          };
+          const observer = new MutationObserver(() => {
+            const choice = document.querySelector('.handoff__agent');
+            if (!choice || !choice.textContent.includes('Working on “Check the deadline boundary”')) return;
+            evidence.committed = { text: choice.textContent, before: Date.now(), expiry };
+            evidence.offset = expiry + 1000 - originalNow();
+            evidence.committed.after = Date.now();
+            observer.disconnect();
+          });
+          observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+          window.__restoreExpiryBoundary = () => {
+            observer.disconnect(); Date.now = originalNow; window.setTimeout = originalTimeout;
+          };
+        }""", (expires_at // 1000) * 1000)
+        self.addCleanup(lambda: None if page.is_closed() else page.evaluate("window.__restoreExpiryBoundary?.()"))
+        page.get_by_role("button", name="Hand off a task").click()
+        dialog = page.get_by_role("dialog", name="Hand off a task")
+        radio = dialog.locator("label.handoff__agent", has_text="Delayed laptop")
+        expect(radio).to_contain_text('Work held on “Check the deadline boundary”', timeout=2000)
+        evidence = page.evaluate("window.__expiryBoundary")
+        self.assertIsNotNone(evidence["committed"], "the real DOM first committed a live claim")
+        self.assertLess(evidence["committed"]["before"], evidence["committed"]["expiry"])
+        self.assertGreater(evidence["committed"]["after"], evidence["committed"]["expiry"])
+        self.assertTrue(any(timer["delay"] == 0 and timer["at"] > evidence["committed"]["expiry"] for timer in evidence["timers"]),
+                        "a crossed known deadline schedules immediate ageing")
+        expect(radio.locator(".kreska")).to_have_attribute("data-expression", "asleep")
+        self.assertEqual(len(reads), before_dialog + 1, "only the dialog observation was read; clock ageing makes no read")
+        evidence.update(finalState=radio.inner_text(), clockAgeingReads=len(reads) - before_dialog - 1)
+        print("\n  Delayed expiry boundary: " + json.dumps(evidence))
 
     def test_15_an_exhausted_empty_task_page_is_honest(self) -> None:
         page = self.page("ada")

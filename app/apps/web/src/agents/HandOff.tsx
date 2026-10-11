@@ -8,6 +8,7 @@ import { updateWork, listAgents } from '../work/api';
 import { getProjectWorkView } from '../work/read-api';
 import { getAgentPolicy, getProjectAgents } from './api';
 import { agentEntries, connectionState, currentWorkLine, isAgentWorking, mayDo, tasksHeldBy, type AgentEntry } from './roster';
+import { useSessionClock } from './useSessionClock';
 
 /** The task being handed off; `version` is the one its owner is changed from. */
 export interface HandOffTask { id: string; version: number; number: number; title: string }
@@ -20,7 +21,7 @@ interface Loaded {
   policy: AgentProjectPolicy | null;
 }
 
-const kreskaFor = (entry: AgentEntry, now: number): KreskaExpression => isAgentWorking(entry, now) ? 'thinking'
+const kreskaFor = (entry: AgentEntry, now: number): KreskaExpression => isAgentWorking(entry, now) ? 'working'
   : entry.connection?.state === 'unavailable' ? 'worried' : entry.connection?.currentWork?.state === 'paused' || (entry.connection && connectionState(entry.connection, now) !== 'session_open') ? 'asleep' : 'idle';
 
 /** A live claimed unit is execution; native task ownership alone is handed work, never an automatic queue. */
@@ -76,7 +77,8 @@ function HandOffBody({ onClose, project, task: given, agentId, onDone }: {
   const [taskId, setTaskId] = useState<string | null>(given?.id ?? null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const [now, setNow] = useState(() => Date.now());
+  const [observedNow, setObservedNow] = useState(() => Date.now());
+  const now = useSessionClock(loaded?.connections, observedNow);
   const attempt = useRef<{ key: string; id: string } | null>(null);
   const first = useRef<HTMLElement | null>(null);
 
@@ -92,22 +94,11 @@ function HandOffBody({ onClose, project, task: given, agentId, onDone }: {
     ]).then(([people, agents, workspaceAgents, page, policy]) => {
       if (signal.aborted) return;
       setLoaded({ people, connections: agents.connections, workspaceAgents, tasks: page.rows, policy });
-      setNow(Date.now());
+      setObservedNow(Date.now());
       setCursor(page.next);
     }, () => { if (!signal.aborted) setLoadFailed(true); });
     return () => controller.abort();
   }, [project.id, project.workspaceId]);
-
-  // Age only the displayed session evidence at its next expiry; this clock never polls or retries an API read.
-  useEffect(() => {
-    const at = Date.now();
-    const expiry = (loaded?.connections ?? []).filter((connection) => connection.state === 'session_open' && connection.session)
-      .map((connection) => Date.parse(connection.session!.expiresAt)).filter((end) => end > at)
-      .reduce((soonest, end) => Math.min(soonest, end), Infinity);
-    if (!Number.isFinite(expiry)) return undefined;
-    const timer = window.setTimeout(() => setNow(Date.now()), Math.min(expiry - at + 1, 2_147_483_647));
-    return () => window.clearTimeout(timer);
-  }, [loaded, now]);
 
   const humans = useMemo(() => new Map((loaded?.people ?? []).filter((person) => person.kind === 'human').map((person) => [person.id, person.name])), [loaded]);
   const entries = useMemo(() => {

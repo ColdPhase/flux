@@ -24,6 +24,17 @@ export function connectionState(connection: ProjectAgentConnection, now: number)
   return connection.state === 'session_open' && connection.session && Date.parse(connection.session.expiresAt) <= now ? 'offline' : connection.state;
 }
 
+/** The next expiry still live in the displayed observation, even if effect setup happens later. */
+export function nextSessionExpiry(connections: readonly ProjectAgentConnection[] | undefined, now: number): number | null {
+  let next = Infinity;
+  for (const connection of connections ?? []) {
+    if (connection.state !== 'session_open' || !connection.session) continue;
+    const end = Date.parse(connection.session.expiresAt);
+    if (end > now && end < next) next = end;
+  }
+  return Number.isFinite(next) ? next : null;
+}
+
 /** Native task ownership/status is assignment; only a claimed unit on a usable live connection proves work. */
 export function isAgentWorking(entry: AgentEntry, now: number): boolean {
   const connection = entry.connection;

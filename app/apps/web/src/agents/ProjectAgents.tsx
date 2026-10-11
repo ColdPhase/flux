@@ -20,6 +20,7 @@ import { HandOffDialog, type HandOffTask } from './HandOff';
 import { agentAuthorOwner, useAgentOwners } from './owners';
 import { ProjectPolicy } from './ProjectPolicy';
 import { WORK_ROLE, agentEntries, connectionState, currentWorkLine, isAgentWorking, mayDo, tasksHeldBy, type AgentEntry } from './roster';
+import { useSessionClock } from './useSessionClock';
 import { useTyping } from '../typing/useTyping';
 import { TypingNotice } from '../typing/TypingNotice';
 import './agents.css';
@@ -334,7 +335,8 @@ const CONNECTION_EVENTS = new Set(['project.grant_set.v1', 'project.grant_revoke
  * Grant, policy and agent events and a resync refetch at once (not every message, which would refetch
  * on each line of a busy thread). A revoked connection and a session opening or closing record no
  * event, so focus, a visible tab and a 15 s poll while the tab is visible also refetch; the poll moves
- * `now` too, so a session past its end reads as offline, and keeps "Last: …" current.
+ * the observation time too, keeping "Last: …" current. A separate deadline clock promptly ages known
+ * session expiries without making another read.
  */
 function useConnections(projectId: string, meId: string, initial: ProjectAgentConnection[]) {
   // A newer read replaces the loader's list until the loader itself reads again.
@@ -365,7 +367,9 @@ function useConnections(projectId: string, meId: string, initial: ProjectAgentCo
     const interval = window.setInterval(tick, 15_000);
     return () => { window.removeEventListener('focus', onFocus); document.removeEventListener('visibilitychange', onVisible); window.clearInterval(interval); };
   }, []);
-  return { list: fetched && fetched.base === initial ? fetched.list : initial, now };
+  const list = fetched && fetched.base === initial ? fetched.list : initial;
+  const displayedNow = useSessionClock(list, now);
+  return { list, now: displayedNow };
 }
 
 const RANK: Record<ProjectAgentConnection['state'], number> = { session_open: 0, offline: 1, not_signed_in: 2, unavailable: 3 };
@@ -380,7 +384,7 @@ function nowLine(entry: AgentEntry, held: WorkRowProjection[], now: number): str
 }
 
 function agentExpression(entry: AgentEntry, now: number): KreskaExpression {
-  return entry.connection?.state === 'unavailable' ? 'worried' : isAgentWorking(entry, now) ? 'thinking'
+  return entry.connection?.state === 'unavailable' ? 'worried' : isAgentWorking(entry, now) ? 'working'
     : entry.connection?.currentWork?.state === 'paused' ? 'asleep' : entry.connection ? connectionExpression(entry.connection, now) : 'idle';
 }
 
