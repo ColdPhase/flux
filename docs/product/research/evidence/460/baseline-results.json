@@ -1,0 +1,216 @@
+{
+  "serverHead": "975747426a778cc4471bd4c9eabb8910eb187671",
+  "clientVersion": "codex-cli 0.160.1",
+  "versionPathAliasWarning": true,
+  "featureLineBefore": "mcp_2026_07_28                           under development  false",
+  "codexBinarySha256": "f34a4d2301892ae96c90097786bfe5dc269f187b6f69faf42a7b357b8c081e35",
+  "nativeEnable": {
+    "exit": 0,
+    "persisted": true,
+    "existingServerPreserved": true
+  },
+  "configMutationFromFlag": false,
+  "boundaries": {
+    "realClient": true,
+    "realFluxOAuth": true,
+    "seededOAuthClient": true,
+    "model": "local scripted fixture only",
+    "vendorAccount": false,
+    "vendorKey": false,
+    "vendorSpend": 0,
+    "fullStartResume": "not assessed"
+  },
+  "cases": [
+    {
+      "name": "default",
+      "flags": [],
+      "cliExit": 0,
+      "modelRequests": 2,
+      "fluxToolCount": 0,
+      "unsupportedDiagnostic": true,
+      "exchanges": [
+        {
+          "method": "initialize",
+          "offered": "2025-06-18",
+          "protocolHeader": null,
+          "authenticated": true,
+          "httpStatus": 400,
+          "selected": null,
+          "error": {
+            "code": -32022,
+            "message": "Unsupported protocol version: 2025-06-18",
+            "data": {
+              "supported": [
+                "2026-07-28"
+              ],
+              "requested": "2025-06-18"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "explicit-flag",
+      "flags": [
+        "--enable",
+        "mcp_2026_07_28"
+      ],
+      "cliExit": 0,
+      "modelRequests": 2,
+      "fluxToolCount": 45,
+      "unsupportedDiagnostic": false,
+      "exchanges": [
+        {
+          "method": "server/discover",
+          "offered": "2026-07-28",
+          "protocolHeader": "2026-07-28",
+          "authenticated": true,
+          "httpStatus": 200,
+          "selected": null,
+          "error": null
+        },
+        {
+          "method": "tools/list",
+          "offered": "2026-07-28",
+          "protocolHeader": "2026-07-28",
+          "authenticated": true,
+          "httpStatus": 200,
+          "selected": null,
+          "error": null
+        },
+        {
+          "method": "tools/call",
+          "offered": "2026-07-28",
+          "protocolHeader": "2026-07-28",
+          "authenticated": true,
+          "httpStatus": 200,
+          "selected": null,
+          "error": null
+        },
+        {
+          "method": "tools/call",
+          "offered": "2026-07-28",
+          "protocolHeader": "2026-07-28",
+          "authenticated": true,
+          "httpStatus": 200,
+          "selected": null,
+          "error": null
+        },
+        {
+          "method": "tools/call",
+          "offered": "2026-07-28",
+          "protocolHeader": "2026-07-28",
+          "authenticated": true,
+          "httpStatus": 200,
+          "selected": null,
+          "error": null
+        },
+        {
+          "method": "tools/call",
+          "offered": "2026-07-28",
+          "protocolHeader": "2026-07-28",
+          "authenticated": true,
+          "httpStatus": 200,
+          "selected": null,
+          "error": null
+        }
+      ]
+    },
+    {
+      "name": "default-after-flag",
+      "flags": [],
+      "cliExit": 0,
+      "modelRequests": 2,
+      "fluxToolCount": 0,
+      "unsupportedDiagnostic": true,
+      "exchanges": [
+        {
+          "method": "initialize",
+          "offered": "2025-06-18",
+          "protocolHeader": null,
+          "authenticated": true,
+          "httpStatus": 400,
+          "selected": null,
+          "error": {
+            "code": -32022,
+            "message": "Unsupported protocol version: 2025-06-18",
+            "data": {
+              "supported": [
+                "2026-07-28"
+              ],
+              "requested": "2025-06-18"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "native-persistent-enable",
+      "flags": [],
+      "cliExit": 0,
+      "modelRequests": 2,
+      "fluxToolCount": 45,
+      "unsupportedDiagnostic": false,
+      "exchanges": [
+        {
+          "method": "server/discover",
+          "offered": "2026-07-28",
+          "protocolHeader": "2026-07-28",
+          "authenticated": true,
+          "httpStatus": 200,
+          "selected": null,
+          "error": null
+        },
+        {
+          "method": "tools/list",
+          "offered": "2026-07-28",
+          "protocolHeader": "2026-07-28",
+          "authenticated": true,
+          "httpStatus": 200,
+          "selected": null,
+          "error": null
+        },
+        {
+          "method": "tools/call",
+          "offered": "2026-07-28",
+          "protocolHeader": "2026-07-28",
+          "authenticated": true,
+          "httpStatus": 200,
+          "selected": null,
+          "error": null
+        }
+      ]
+    },
+    {
+      "name": "revoked-with-feature",
+      "flags": [],
+      "cliExit": 0,
+      "modelRequests": 2,
+      "fluxToolCount": 0,
+      "unsupportedDiagnostic": false,
+      "exchanges": [
+        {
+          "method": "server/discover",
+          "offered": "2026-07-28",
+          "protocolHeader": "2026-07-28",
+          "authenticated": true,
+          "httpStatus": 403,
+          "selected": null,
+          "error": {}
+        }
+      ]
+    }
+  ],
+  "observedControls": {
+    "explicitFlagSelectedProject": "Selected research",
+    "explicitFlagOutsideSelection": {
+      "code": "PROJECT_NOT_FOUND",
+      "error": "Project not found"
+    },
+    "explicitFlagBoundedWritePersisted": true,
+    "revokedConnectionProjectDisclosure": false
+  },
+  "finalLogSha256": "f878d5cf20848ab91f00e87ea1dee31fefde193328de034aca6407196d1d3b5b",
+  "probeSha256": "c4d3d585f23ae36749e88380fb4ccd18f9b1a927f42e67f9f392c0d199edc779",
+  "sourceCheckedAt": "2026-10-10"
+}

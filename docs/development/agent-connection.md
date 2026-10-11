@@ -631,8 +631,11 @@ Findings recorded by this check (2026-10-09):
 
 - Flux's MCP endpoint speaks only protocol `2026-07-28`. The pinned Codex requests `2025-06-18` by default and
   fails the handshake (`-32022 Unsupported protocol version`); it works with Codex's under-development
-  `mcp_2026_07_28` feature on (`codex --enable mcp_2026_07_28`). Until Codex enables it by default, Codex users must
-  turn it on; Flux does not serve the older revision.
+  `mcp_2026_07_28` feature on (`codex --enable mcp_2026_07_28`). This is the opt-in fixture path,
+  not delivered built-in onboarding; the current application does not serve the older revision.
+  The [#460 research choice](../product/research/2026-10-10-codex-mcp-protocol-compatibility.md)
+  independently accepts a bounded two-era architecture. Its [public admission contract](../product/mcp-protocol-compatibility.md)
+  has independent bounded acceptance at `93889087`; implementation and complete runtime gates remain pending.
 - The pinned Codex runs MCP tool calls through its separate `codex-code-mode-host` release asset; the image pins it too.
 - Claude Code's `mcp login` needs a terminal (the check gives it a pty) and prints the authorization URL as a
   terminal hyperlink.

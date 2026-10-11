@@ -59,6 +59,12 @@ unchanged; F-024 implementation and independent acceptance remain pending.
 
 ## Connections and owner-authorized autonomy — CO-1
 
+The [#460 protocol admission/authentication/feature amendment](mcp-protocol-compatibility.md)
+is **Proposed; delegated pre-review at `93889087` / record `880340ab`; eligible independent acceptance pending**. Its two-era stateless
+architecture has a recorded bounded delegated pre-review; production
+support, built-in Connect delivery and #152/#160 acceptance remain unverified.
+The original authority and onboarding criteria below are unchanged.
+
 The in-product helper (#57/#68, O-007/O-008) remains: chat, research, finding
 connections, map/wiki/task assistance and scoped proposals. External MCP agents
 are separate connections using the owner's client and compute. Never substitute

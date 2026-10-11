@@ -1,5 +1,12 @@
 # Research that changes a decision
 
+Bounded research choice: [pinned Codex MCP protocol compatibility, 2026-10-10](research/2026-10-10-codex-mcp-protocol-compatibility.md)
+records actual default/flagged client experiments and a bounded stateless
+compatibility choice for #460, with delegated pre-review at `c39eea30`. Its public
+contract is Proposed, with delegated pre-review at `93889087` / record `880340ab`; eligible independent acceptance, implementation
+and runtime acceptance remain pending; #160 Start/Resume gates
+remain unchanged.
+
 Current dated assessment: [owner MCP switches and SSO-only authentication, 2026-10-07](research/2026-10-07-mcp-switches-and-sso-only.md)
 records the superseding founder direction and independent source assessment.
 The [earlier same-day necessity assessment](research/2026-10-07-single-provider-identity-scope.md)
