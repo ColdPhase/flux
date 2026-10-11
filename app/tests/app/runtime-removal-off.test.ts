@@ -19,7 +19,7 @@ test('actual off-server removal refuses before changing a saved binding, connect
     slots: (await pool.query('SELECT * FROM agent_runtime_slots WHERE slot = $1', [slot])).rows,
     bindings: (await pool.query('SELECT * FROM agent_runtime_bindings WHERE owner_user_id = $1 ORDER BY id', [owner.id])).rows,
     connections: (await pool.query('SELECT * FROM agent_runtime_connections WHERE owner_user_id = $1 ORDER BY id', [owner.id])).rows,
-    operations: (await pool.query('SELECT * FROM agent_runtime_auth_operations WHERE owner_user_id = $1 ORDER BY id', [owner.id])).rows,
+    operations: (await pool.query('SELECT * FROM agent_runtime_auth_operations WHERE owner_user_id = $1 ORDER BY operation_id', [owner.id])).rows,
     admission: (await pool.query('SELECT * FROM agent_runtime_auth_admission ORDER BY singleton')).rows,
   });
   try {
