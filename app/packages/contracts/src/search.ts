@@ -1,19 +1,19 @@
 /**
  * Search across Flux (issue #114, foundation 8.12).
  *
- * One query over project and direct messages, docs and materials and every version of them, work, decisions, results,
- * sketches and their thoughts, drafts and people. Every result, snippet, count and the `next`
+ * One query over project names, project and direct messages, docs and materials and every version of them, work,
+ * decisions, results, sketches and their thoughts, drafts and people. Every result, snippet, count and the `next`
  * cursor come only from objects the caller may read at the moment of the request: the server
  * applies the access policy inside the SQL before ranking, limiting, counting and highlighting.
  */
 export const SEARCH_PATH = '/api/v1/search';
 
 /** What a result is. `dm_message` results belong to the `message` filter and `thought` results to `sketch`. */
-export type SearchKind = 'message' | 'dm_message' | 'material' | 'doc' | 'work' | 'decision' | 'result' | 'sketch' | 'thought' | 'draft' | 'person';
+export type SearchKind = 'project' | 'message' | 'dm_message' | 'material' | 'doc' | 'work' | 'decision' | 'result' | 'sketch' | 'thought' | 'draft' | 'person';
 
 /** Filter values of `type`: one kind, with project and direct messages together and sketches with their thoughts. */
-export type SearchFilterType = 'message' | 'doc' | 'material' | 'work' | 'decision' | 'result' | 'sketch' | 'draft' | 'person';
-export const SEARCH_FILTER_TYPES: readonly SearchFilterType[] = ['message', 'doc', 'material', 'work', 'decision', 'result', 'sketch', 'draft', 'person'];
+export type SearchFilterType = 'project' | 'message' | 'doc' | 'material' | 'work' | 'decision' | 'result' | 'sketch' | 'draft' | 'person';
+export const SEARCH_FILTER_TYPES: readonly SearchFilterType[] = ['project', 'message', 'doc', 'material', 'work', 'decision', 'result', 'sketch', 'draft', 'person'];
 
 export const SEARCH_LIMITS = { query: 200, pageDefault: 20, pageMax: 50, countCap: 500 } as const;
 
@@ -50,6 +50,8 @@ export type SearchPlace =
 
 /** The exact object a result opens. Material results open the version that matched. */
 export type SearchTarget =
+  /** A project (#465) opens its home; it is found by its name, for whoever may open the project. */
+  | { type: 'project'; projectId: string }
   | { type: 'message'; projectId: string; conversationId: string; messageId: string }
   | { type: 'dm_message'; dmId: string; messageId: string }
   | { type: 'material'; projectId: string; materialId: string; version: number }

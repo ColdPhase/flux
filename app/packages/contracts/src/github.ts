@@ -72,6 +72,11 @@ export interface GithubTaskRule {
   expectedVersion: number;
   /** Every required PR is merged but the rule did not finish the task: a person finishes it with one tap. */
   readyToClose: boolean;
+  /**
+   * Grows with every semantic change of the rule: turned on or off, mode, resume, suspension and each automatic task
+   * change. A command may pin it (`expectedRuleRevision`) to override only the rule state the person saw.
+   */
+  revision: number;
   updatedAt: string;
 }
 export type GithubRuleChangeCode = 'pull_open' | 'pull_reopened' | 'check_failed' | 'checks_passed' | 'pull_closed'
@@ -109,6 +114,8 @@ export interface SetGithubTaskRuleCommand {
   enabled: boolean;
   mode?: GithubRuleMode;
   expectedVersion: number;
+  /** Optional: the rule `revision` the person saw (0: no rule). A mismatch is a 409 with the current rule. */
+  expectedRuleRevision?: number;
 }
 export interface GithubRuleDefault {
   /** Null: Ready to close for tasks with written criteria, Complete for the others. */
