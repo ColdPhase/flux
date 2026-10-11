@@ -1,0 +1,5 @@
+{
+  "phase": "verify-recovered",
+  "originalFamiliesAndLedgerTimestampsRetained": true,
+  "browserMcpFileWorkAfterRealRestart": true
+}

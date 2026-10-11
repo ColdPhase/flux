@@ -1,5 +1,5 @@
 import { fromDrizzle, type PgBoss } from 'pg-boss';
-import { personalRunRows, sql, workRows, type DbExecutor } from '@flux/db';
+import { personalRunRows, withIdpStanding, sql, workRows, type DbExecutor } from '@flux/db';
 import {
   createAssistantProposalUseCases,
   createPersonalRunUseCases,
@@ -38,7 +38,7 @@ export function pgBossPersonalRunQueue(boss: Pick<PgBoss, 'send'>): PersonalRunQ
 function personalRunPorts(tx: DbExecutor, queue: PersonalRunQueueFactory,
   events?: PersonalRunPorts['events']): PersonalRunPorts {
   return {
-    access: policyPersonalRunAccess(tx),
+    access: withIdpStanding(policyPersonalRunAccess(tx), tx),
     runs: personalRunRows(tx),
     queue: queue(tx),
     events: events ?? { record: async (principal, workspaceId, kind, projectId, data) => { await recordEvent(eventPorts(tx), principal, workspaceId, kind, projectId, data); } },
