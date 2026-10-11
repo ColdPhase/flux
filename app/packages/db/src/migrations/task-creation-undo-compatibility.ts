@@ -64,15 +64,17 @@ export async function assertTaskCreationUndoMigrationCompatibility(db: Reader, a
   if (reserved.length) problems.push(`unsupported reserved ledger versions ${reserved.join(',')} (numeric identity is not catalog identity)`);
 
   const task = (await columns('project_work_items')).filter((column) => column.name in taskColumns);
+  const receiptRelation = (await db.query("SELECT pg_catalog.to_regclass('task_creation_undo_receipts') AS relation")).rows[0].relation;
   const receipts = await columns('task_creation_undo_receipts');
   const constraints = (await db.query(`SELECT c.conname AS name, c.conrelid::regclass::text AS relation,
       pg_catalog.pg_get_constraintdef(c.oid) AS definition, c.convalidated AS validated
     FROM pg_catalog.pg_constraint c WHERE c.conrelid IN (pg_catalog.to_regclass('project_work_items'),
       pg_catalog.to_regclass('task_creation_undo_receipts'),pg_catalog.to_regclass('project_task_notices'),
       pg_catalog.to_regclass('proactive_comparison_proposals'),pg_catalog.to_regclass('agent_standing_grants'))`)).rows;
-  const hasLifecycle = task.length || receipts.length || functions.some((fn) => fn.name in UNDO_GUARD_BODIES) ||
+  const hasLifecycle = task.length || receiptRelation || functions.some((fn) => fn.name in UNDO_GUARD_BODIES) ||
     triggers.some((trigger) => trigger.name.startsWith('task_creation_')) ||
     constraints.some((constraint) => constraint.name.startsWith('task_creation_') || constraint.name === 'task_notice_scope_identity' ||
+      constraint.name.startsWith('project_work_items_creation_') ||
       constraint.name === 'project_task_notices_kind_check' && constraint.definition.includes("'task.creation_reverted'"));
   if (!applied.includes(48)) {
     if (hasLifecycle) problems.push('unversioned or partial Undo lifecycle without ledger 48');

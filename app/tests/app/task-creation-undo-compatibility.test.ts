@@ -73,6 +73,15 @@ test('unversioned and partial canonical/focus/Undo footprints refuse despite a n
   }
 });
 
+test('even an empty partial Undo receipt relation refuses before migration SQL', { timeout: 120_000 }, async () => {
+  const fixture = await fixtureDatabase((await originalUndoFiles()).filter((file) => file.version !== 48 && file.version !== 57));
+  try {
+    await retainedHistory(fixture.db);
+    await fixture.db.query('CREATE TABLE task_creation_undo_receipts()');
+    await refusedUnchanged(fixture, /partial Undo lifecycle without ledger 48/);
+  } finally { await fixture.close(); }
+});
+
 test('normal sparse pre48/pre60 upgrades, fresh creation and current restart admit harmless additional schema', { timeout: 120_000 }, async () => {
   const original = await originalUndoFiles();
   for (const files of [[], original.filter((file) => file.version !== 48 && file.version !== 57), original.filter((file) => file.version !== 57)]) {
