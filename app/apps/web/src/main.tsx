@@ -4,11 +4,17 @@ import { RouterProvider } from 'react-router/dom';
 import './ui/tokens.css';
 import './ui/ui.css';
 import './app/app.css';
+import { applyStoredSmallMoments } from './app/smallMoments';
+import { applyStoredTextSize } from './app/textSize';
+import { applyStoredReduceMotion } from './ui/motion-preference';
 import { applyStoredTheme } from './app/theme';
 import { registerServiceWorker } from './pwa';
 import { router } from './router';
 
 applyStoredTheme();
+applyStoredSmallMoments();
+applyStoredReduceMotion();
+applyStoredTextSize();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

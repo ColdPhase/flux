@@ -125,20 +125,29 @@ project_has_resources() {
   [ -n "$(docker ps -aq --filter "label=com.docker.compose.project=$1")" ] ||
     [ -n "$(docker volume ls -q --filter "label=com.docker.compose.project=$1")" ]
 }
+# Owner labels are written with FLUX_ROOT (pwd -P), but compare canonically anyway: a recorded
+# path that reaches this checkout through a symlink (macOS /var -> /private/var) is the same
+# checkout. A different checkout still resolves to a different path, and a recorded path that
+# no longer exists only matches literally.
+same_checkout() {
+  [ -n "$1" ] || return 1
+  [ "$1" = "$FLUX_ROOT" ] && return 0
+  [ "$(CDPATH='' cd -- "$1" 2>/dev/null && pwd -P)" = "$FLUX_ROOT" ]
+}
 check_owner() {
   owner=$(project_owner "$1")
-  [ -z "$owner" ] || [ "$owner" = "$FLUX_ROOT" ] || [ "${FORCE_PROJECT:-0}" = 1 ] ||
+  [ -z "$owner" ] || same_checkout "$owner" || [ "${FORCE_PROJECT:-0}" = 1 ] ||
     die "Compose project $1 belongs to another checkout ($owner). Refusing to touch it. Set a different FLUX_PROJECT in ${ENV_FILE#"$FLUX_ROOT"/}, or pass --force-project if you really mean that project."
   if [ -z "$owner" ] && [ "${FORCE_PROJECT:-0}" != 1 ] && project_has_resources "$1"; then
     die "Compose project $1 has containers or volumes but no owner record, so it may belong to another checkout or a manual setup. Refusing to touch it; pass --force-project if it is yours."
   fi
-  [ "${FORCE_PROJECT:-0}" != 1 ] || [ -z "$owner" ] || [ "$owner" = "$FLUX_ROOT" ] ||
+  [ "${FORCE_PROJECT:-0}" != 1 ] || [ -z "$owner" ] || same_checkout "$owner" ||
     warn "WARNING: --force-project: acting on $1, which belongs to $owner."
   return 0
 }
 claim_project() {
   check_owner "$1"
-  [ "$(project_owner "$1")" = "$FLUX_ROOT" ] && return 0
+  same_checkout "$(project_owner "$1")" && return 0
   docker volume rm "$(marker "$1")" >/dev/null 2>&1 || true
   docker volume create --label "$OWNER_LABEL=$FLUX_ROOT" --label "com.flux.project=$1" "$(marker "$1")" >/dev/null
 }

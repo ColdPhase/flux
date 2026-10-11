@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useState, type ReactNode } from 'react';
-import { Link, useMatches } from 'react-router';
-import type { Conversation, ConversationRootWindow, DecisionRowProjection, Material, NativeWorkRow, WorkRowProjection, ResultRowProjection } from '@flux/contracts';
-import { Icon, type IconName } from '../ui';
+import { Fragment, useCallback, useEffect, useState, type ReactNode } from 'react';
+import { Link } from 'react-router';
+import type { DecisionRowProjection, NamedPrincipal, NativeWorkRow, WorkRowProjection, ResultRowProjection } from '@flux/contracts';
+import { AgentIdentity, Icon, type IconName } from '../ui';
 import { useShellData } from '../app/data';
 import { useShellActions, type DetailsView, type OverviewView } from '../app/shellContext';
-import { STATUS_LABEL, decisionLine, resultLine } from '../work/format';
+import { STATUS_LABEL, decisionLine } from '../work/format';
 import { summaryStateParts } from '../work/state-summary';
 import { useProjectWorkSummary } from '../work/WorkReadContext';
 import { useOverviewWork } from '../work/useOverviewWork';
@@ -12,38 +12,26 @@ import { WorkPagination } from '../work/WorkPagination';
 import { audienceLine, useProjectShell } from './data';
 import { ProjectAccess } from '../people/ProjectAccess';
 import { docUrl } from '../docs/api';
-import { agentAuthorLabel, authorLabel } from '../docs/format';
-
-/** The Conversation tab's loader data: the open thread, if any, and the stream's newest roots (UI116-1). */
-function useOpenConversation(): { conversation: Conversation | null; materials: Material[]; roots?: ConversationRootWindow } | null {
-  const match = useMatches().find((entry) => entry.loaderData && typeof entry.loaderData === 'object' && 'conversation' in entry.loaderData);
-  return (match?.loaderData as { conversation: Conversation | null; materials: Material[]; roots?: ConversationRootWindow } | undefined) ?? null;
-}
-
-/** The owning context stays visible when a phone reader scrolls down to sources. */
-export function OverviewContext() {
-  const shell = useProjectShell();
-  const open = useOpenConversation();
-  const { me } = useShellData();
-  if (!shell) return null;
-  const title = open?.conversation?.firstMessageBody.split('\n')[0];
-  return <div className="ov-panel-context" aria-label="Overview context">
-    <strong>{shell.project.name}</strong>
-    {title ? <span title={title}>{title}</span> : null}
-    <small><Icon name={shell.project.visibility === 'workspace' ? 'people' : 'lock'} size={11} />{audienceLine(shell.people, me.user.id, shell.project.visibility === 'workspace')}</small>
-  </div>;
-}
+import { useOpenConversation } from './OverviewContext';
+import { agentDisplayName } from '../docs/format';
+import { agentAuthorOwner, useAgentOwners } from '../agents/owners';
+import './overview.css';
 
 interface Row {
   key: string;
   icon: IconName;
   kind: string;
   title: string;
-  sub?: string;
+  sub?: ReactNode;
   need?: boolean;
   open?: DetailsView;
   to?: string;
   native?: { kind: NativeWorkRow['kind']; id: string };
+}
+
+/** Sub-line parts joined with " · "; an agent's identity (Kreska, "Agent", "for <owner>") stays one part. */
+function dotted(parts: ReactNode[]): ReactNode {
+  return parts.filter(Boolean).map((part, index) => <Fragment key={index}>{index ? ' · ' : null}{part}</Fragment>);
 }
 
 function Rows({ label, rows, empty, controls }: { label: string; rows: Row[]; empty?: ReactNode; controls?: ReactNode }) {
@@ -101,8 +89,13 @@ export function ProjectOverview({ messageId, selection, focusPeople = null, onBa
   const { me } = useShellData();
   const read = useOverviewWork(me.user.id, shell?.project.id ?? null, open?.conversation?.id ?? null, messageId);
   const current = useProjectWorkSummary();
+  const owners = useAgentOwners(shell?.project);
   if (!shell) return null;
   const { project, people, sketches, docs } = shell;
+  // An agent is named with Kreska, the "Agent" tag and its owner; a person by name only.
+  // A retained agent's owner comes from the row's scoped relation, resolved against this fresh audience only.
+  const byline = (who: NamedPrincipal): ReactNode =>
+    who.kind === 'agent' ? <AgentIdentity name={who.name} owner={agentAuthorOwner(who, owners)} icon={14} /> : who.name;
   const conversation = open?.conversation ?? null;
   // Older messages loaded by the feed are absent from the route's latest-message window.
   // Keep exactly the selected native message, scoped to its reader/project/conversation,
@@ -123,9 +116,9 @@ export function ProjectOverview({ messageId, selection, focusPeople = null, onBa
   const work = rows.filter((item): item is WorkRowProjection => item.kind === 'work');
   const decisions = rows.filter((item): item is DecisionRowProjection => item.kind === 'decision');
   const results = rows.filter((item): item is ResultRowProjection => item.kind === 'result');
-  const workRow = (item: WorkRowProjection): Row => ({ key: `work:${item.id}`, native: item, icon: 'tasks', kind: 'Work', title: item.title, sub: [STATUS_LABEL[item.status], item.owner?.name, item.parked ? 'parked' : null].filter(Boolean).join(' · '), open: { kind: 'work', id: item.id } });
+  const workRow = (item: WorkRowProjection): Row => ({ key: `work:${item.id}`, native: item, icon: 'tasks', kind: 'Work', title: item.title, sub: dotted([STATUS_LABEL[item.status], item.owner ? byline(item.owner) : null, item.parked ? 'parked' : null]), open: { kind: 'work', id: item.id } });
   const decisionRow = (item: DecisionRowProjection): Row => ({ key: `decision:${item.id}`, native: item, icon: 'rule', kind: item.status === 'accepted' ? 'Current rule' : item.status === 'proposed' ? 'Proposed decision' : 'Earlier rule', title: item.title, sub: decisionLine(item).split(' · ').slice(1).join(' · ') || undefined, need: item.status === 'proposed' && project.access !== 'viewer', open: { kind: 'decision', id: item.id } });
-  const resultRow = (item: ResultRowProjection): Row => ({ key: `result:${item.id}`, native: item, icon: 'result', kind: 'Result', title: item.title, sub: resultLine(item), open: { kind: 'result', id: item.id } });
+  const resultRow = (item: ResultRowProjection): Row => ({ key: `result:${item.id}`, native: item, icon: 'result', kind: 'Result', title: item.title, sub: dotted([`${item.finding === 'negative' ? 'Negative' : 'Positive'} result`, byline(item.createdBy)]), open: { kind: 'result', id: item.id } });
   const linked = [...decisions.filter((item) => item.status === 'proposed').map(decisionRow), ...decisions.filter((item) => item.status !== 'proposed').map(decisionRow), ...work.map(workRow), ...results.map(resultRow)];
   const linkedIds = new Set(linked.map((row) => row.key));
   const byRef = new Map(rows.map((row) => [`${row.kind}:${row.id}`, row]));
@@ -151,7 +144,7 @@ export function ProjectOverview({ messageId, selection, focusPeople = null, onBa
       thoughts.set(link.to.id, { key: link.to.id, icon: 'map', kind: 'Thought on a sketch', title: link.toTitle, sub: `Linked to “${object.title}”`, to: `${base}/map/${link.sketchId}#thought-${link.to.id}` });
     }
   }
-  const sketchRows: Row[] = [...thoughts.values(), ...(messageMode ? [] : (sketches?.items ?? []).slice(0, 3).map((sketch) => ({ key: sketch.id, icon: 'map' as const, kind: 'Sketch', title: sketch.title, sub: `Started by ${sketch.createdBy.id === me.user.id ? 'you' : sketch.createdBy.name}`, to: `${base}/map/${sketch.id}` })))];
+  const sketchRows: Row[] = [...thoughts.values(), ...(messageMode ? [] : (sketches?.items ?? []).slice(0, 3).map((sketch) => ({ key: sketch.id, icon: 'map' as const, kind: 'Sketch', title: sketch.title, sub: <>Started by {sketch.createdBy.id === me.user.id ? 'you' : byline(sketch.createdBy)}</>, to: `${base}/map/${sketch.id}` })))];
   const moreSketches = !messageMode && sketches && sketches.total > 3;
 
   // Docs that include or mention what is linked here, then the project's latest docs.
@@ -162,7 +155,7 @@ export function ProjectOverview({ messageId, selection, focusPeople = null, onBa
     if (object && (!docRows.has(link.from.id) || link.role === 'source')) docRows.set(link.from.id, { key: link.from.id, icon: 'doc', kind: link.role === 'source' ? 'Doc · includes it' : 'Doc · mentions it', title: link.fromTitle, sub: `“${object.title}”`, to: docUrl(project.id, link.from.id) });
   }
   if (!messageMode) for (const doc of (docs ?? []).slice(0, 3)) {
-    if (!docRows.has(doc.id)) docRows.set(doc.id, { key: doc.id, icon: 'doc', kind: doc.state === 'draft' ? 'Doc · draft' : 'Doc', title: doc.title, sub: `Changed by ${doc.updatedBy.kind === 'human' && doc.updatedBy.id === me.user.id ? 'you' : authorLabel(doc.updatedBy)}${doc.reason ? ` · ${doc.reason}` : ''}`, to: docUrl(project.id, doc.id) });
+    if (!docRows.has(doc.id)) docRows.set(doc.id, { key: doc.id, icon: 'doc', kind: doc.state === 'draft' ? 'Doc · draft' : 'Doc', title: doc.title, sub: dotted([<>Changed by {doc.updatedBy.kind === 'human' && doc.updatedBy.id === me.user.id ? 'you' : byline(doc.updatedBy)}</>, doc.reason]), to: docUrl(project.id, doc.id) });
   }
   const moreDocs = !messageMode && docs && docs.length > 3;
   const noLinkedContext = read.objects.phase === 'idle' || read.page && (read.page.total === 0
@@ -173,8 +166,10 @@ export function ProjectOverview({ messageId, selection, focusPeople = null, onBa
     key: part.key, icon: part.icon ?? (part.key === 'work' ? 'tasks' : 'rule'), kind: part.key === 'rule' ? 'Current rule' : part.key === 'result' ? 'Latest result' : part.key === 'proposal' ? 'Proposed decision' : part.key === 'blocked' ? 'Blocked' : part.key === 'open' ? 'Open task' : part.key === 'history' ? (part.open.kind === 'work' ? 'Earlier work' : 'Earlier decision') : 'In progress',
     title: part.title, need: part.tone === 'need', sub: part.tone === 'need' ? 'Needs you' : undefined, open: part.open,
   }));
-  const author = message ? (message.authorId === null ? agentAuthorLabel(message.author) : message.authorId === me.user.id ? 'you' : people?.find((person) => person.id === message.authorId)?.name ?? 'a member') : null;
-  const title = messageMode ? message ? `Message from ${author}` : 'Message' : conversation ? conversation.firstMessageBody.split('\n')[0] || 'Conversation' : project.name;
+  const author: ReactNode = message ? (message.authorId === null
+    ? <AgentIdentity name={agentDisplayName(message.author)} owner={agentAuthorOwner(message.author, owners)} icon={14} />
+    : message.authorId === me.user.id ? 'you' : people?.find((person) => person.id === message.authorId)?.name ?? 'a member') : null;
+  const title: ReactNode = messageMode ? message ? <>Message from {author}</> : 'Message' : conversation ? conversation.firstMessageBody.split('\n')[0] || 'Conversation' : project.name;
 
   return (
     <div className="details ov" data-overview-phase={read.objects.phase} data-overview-observed-at={read.page?.observedAt} data-overview-relations-phase={read.relations.phase} data-overview-relations-observed-at={read.links?.observedAt}>

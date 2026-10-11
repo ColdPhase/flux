@@ -79,6 +79,50 @@ class FoundationValidationTests(unittest.TestCase):
         self.write(".agents/skills/flux-example/SKILL.md", "---\nname: flux-example\n---\n")
         self.assertTrue(any("single-line description" in error for error in self.check()))
 
+    def plant(self, name, size):
+        path = self.root / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"\0" * size)
+
+    def test_planted_large_document_fails_the_size_guard(self):
+        self.plant("docs/agents/evidence/1-report/report.json", CHECKER.DOCUMENT_LIMIT + 1)
+        self.assertTrue(any("docs/agents/evidence/1-report/report.json" in error and "400 KB" in error
+                            for error in self.check()))
+        self.plant("docs/agents/evidence/1-report/report.json", CHECKER.DOCUMENT_LIMIT)
+        self.assertEqual(self.check(), [])
+
+    def test_planted_large_screenshot_fails_the_lower_media_limit_anywhere_in_docs(self):
+        for name in ("docs/agents/evidence/1-ui/phone.png", "docs/design/review/tablet.WEBP",
+                     "docs/development/evidence/run.webm"):
+            self.plant(name, CHECKER.MEDIA_LIMIT + 1)
+        errors = self.check()
+        self.assertEqual(len(errors), 3)
+        self.assertTrue(all("300 KB" in error for error in errors))
+        # The same size is fine for a document that is not a screenshot or recording.
+        self.plant("docs/agents/evidence/1-ui/notes.json", CHECKER.MEDIA_LIMIT + 1)
+        self.assertEqual(len(self.check()), 3)
+
+    def test_allowlisted_file_passes_until_it_grows(self):
+        name = "docs/agents/evidence/1-ui/phone.png"
+        self.plant(name, CHECKER.MEDIA_LIMIT + 10)
+        self.write("scripts/docs-size-allowlist.txt",
+                   f"# Existing large files\n{CHECKER.MEDIA_LIMIT + 10} {name}\n")
+        self.assertEqual(self.check(), [])
+        self.plant(name, CHECKER.MEDIA_LIMIT + 11)
+        self.assertTrue(any(name in error and "allowlisted" in error for error in self.check()))
+
+    def test_malformed_size_allowlist_is_reported(self):
+        self.write("scripts/docs-size-allowlist.txt", "docs/agents/evidence/phone.png\n")
+        with self.assertRaises(ValueError):
+            self.check()
+
+    def test_repository_allowlist_names_only_large_files(self):
+        # An entry for a small file would be a silent free pass for its future growth.
+        for name, size in CHECKER.size_allowlist(REPOSITORY).items():
+            limit = CHECKER.MEDIA_LIMIT if Path(name).suffix.lower() in CHECKER.MEDIA_SUFFIXES \
+                else CHECKER.DOCUMENT_LIMIT
+            self.assertGreater(size, limit, name)
+
     def test_handoff_documentation_cannot_reference_a_missing_file(self):
         self.write("docs/agents/README.md", "[Handoff](missing-handoff.md)\n")
         self.assertTrue(any("missing-handoff.md" in error for error in self.check()))

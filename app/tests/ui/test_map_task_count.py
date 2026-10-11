@@ -207,8 +207,8 @@ class MapTaskCountJourney(unittest.TestCase):
             # The phone drawer's account row opens Settings, with the same choices (#266 PF-5).
             page.get_by_role("button", name="Open navigation").click()
             page.locator(".me__btn").click()
-            pop = page.locator(".set")
-            expect(pop.get_by_role("radiogroup", name="Appearance")).to_be_visible()
+            pop = page.locator(".sset-in")
+            expect(pop.get_by_role("radiogroup", name="Theme")).to_be_visible()
         else:
             page.locator(".me__btn").click()
             pop = page.get_by_role("dialog", name="Account", exact=True)

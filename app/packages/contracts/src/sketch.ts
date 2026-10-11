@@ -4,6 +4,7 @@
 // Changes accept `Idempotency-Key`; versioned changes need `If-Match` (see below).
 
 import type { Page, PageQuery, PrincipalRef } from './access.js';
+import type { AgentProjectOwner } from './conversation.js';
 
 export const SKETCHES_PATH = '/api/v1/sketches';
 
@@ -54,6 +55,8 @@ export interface PersonRef {
   kind: 'human' | 'agent';
   id: string;
   name: string;
+  /** Agents in the project list only (#339 AC-2); see `NamedPrincipal.projectOwner`. */
+  projectOwner?: AgentProjectOwner;
 }
 
 export interface Sketch {

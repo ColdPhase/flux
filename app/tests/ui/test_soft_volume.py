@@ -21,7 +21,7 @@ PASSWORD = "soft volume everywhere"
 LIGHT = {"--side": "#ebebed", "--bg": "#f4f4f5", "--el": "#ffffff", "--sub": "#ebebec", "--hov": "#e3e3e5",
          "--t1": "#18181b", "--t2": "#4a4a4a", "--t3": "#6b6b6b", "--inv": "#18181b", "--oninv": "#ffffff"}
 DARK = {"--side": "#0b0b0b", "--bg": "#111111", "--el": "#1c1c1c", "--sub": "#242424", "--hov": "#2c2c2c",
-        "--t1": "#f0f0f0", "--t2": "#acacac", "--t3": "#8c8c8c", "--inv": "#f0f0f0", "--oninv": "#111111"}
+        "--t1": "#f0f0f0", "--t2": "#bdbdbd", "--t3": "#a1a1a1", "--inv": "#f0f0f0", "--oninv": "#111111"}
 # The served CSS is minified (#ffffff becomes #fff), so values are compared as resolved colours.
 TOKENS = """names => Object.fromEntries(names.map(n => { const i = document.createElement('i'); i.style.color = `var(${n})`;
   document.body.append(i); const c = getComputedStyle(i).color; i.remove(); return [n, c]; }))"""
@@ -147,10 +147,10 @@ class SoftVolume(unittest.TestCase):
         self.ensure_account()
         page = self.page(init="localStorage.setItem('flux.accent.light', 'copper'); localStorage.setItem('flux.accent.dark', 'sky'); localStorage.setItem('flux.accent', 'iris')")
         page.goto("/settings")
-        expect(page.get_by_role("radiogroup", name="Appearance")).to_be_visible()
+        expect(page.get_by_role("radiogroup", name="Theme")).to_be_visible()
         self.assertIsNone(page.evaluate("document.documentElement.getAttribute('data-accent')"))
         self.assertEqual(page.evaluate("['flux.accent', 'flux.accent.light', 'flux.accent.dark'].map(k => localStorage.getItem(k))"), [None, None, None])
-        group = page.get_by_role("radiogroup", name="Appearance")
+        group = page.get_by_role("radiogroup", name="Theme")
         self.assertEqual([radio.inner_text().strip() for radio in group.get_by_role("radio").all()], ["Light", "Dark", "Match system"])
         expect(page.get_by_text("Accent", exact=True)).to_have_count(0)
         # No stylesheet defines or uses an accent token.
@@ -214,9 +214,10 @@ class SoftVolume(unittest.TestCase):
         calm = self.page(reduced=True)
         calm.goto("/")
         self.assertEqual(calm.evaluate("getComputedStyle(document.documentElement).getPropertyValue('--press').trim()"), "1")
-        # The segmented control is a pill track.
-        page.goto("/settings")
-        self.assertEqual(page.locator(".seg").evaluate("e => getComputedStyle(e).borderTopLeftRadius"), "999px")
+        # The segmented control (the account menu's theme choice) is a pill track.
+        page.goto("/")
+        page.locator(".me__btn").click()
+        self.assertEqual(page.get_by_role("dialog", name="Account").locator(".seg").evaluate("e => getComputedStyle(e).borderTopLeftRadius"), "999px")
 
     def test_05_every_task_state_has_its_glyph_and_word_in_both_themes(self) -> None:
         self.ensure_account()

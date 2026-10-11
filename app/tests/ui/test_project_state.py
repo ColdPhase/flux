@@ -127,12 +127,31 @@ class ProjectStateJourney(unittest.TestCase):
         page.reload()
         history = self.now_in_project(page).get_by_role("button", name=re.compile("^Earlier work"))
         expect(history).to_contain_text(task["title"])
+        expect(history).to_contain_text("1 completed task")
+        expect(history).not_to_contain_text("No decisions or work yet")
+        self.assertIsNone(history.get_attribute("title"))
         history.click()
         expect(page.locator("#details").get_by_role("heading", name=task["title"], exact=True)).to_be_visible()
         self.work(page, project, "Camera-only direction was not pursued", "not_pursued")
         page.get_by_role("button", name="Close details", exact=True).click()
         page.reload()
-        expect(self.now_in_project(page).get_by_role("button", name=re.compile("^Earlier work"))).to_have_count(1)
+        for width, height in ((1440, 900), (1568, 751), (1280, 800)):
+            with self.subTest(width=width, height=height):
+                page.set_viewport_size({"width": width, "height": height})
+                page.reload()
+                history = self.now_in_project(page).get_by_role("button", name=re.compile("^Earlier work"))
+                expect(history).to_have_count(1)
+                expect(history).to_contain_text("1 completed task · 1 not pursued")
+                # #340 moves this information into the drawn Details row. The old header-only
+                # no-fill hover/strict one-line rules are replaced by readable, unclipped
+                # Details metadata; the real counts, task identity and navigation remain.
+                meta = history.locator(".ov-row__s")
+                self.assert_text_is_unclipped(meta)
+                history.hover()
+                self.assertIsNone(history.get_attribute("title"))
+                geometry = history.evaluate("""e => { const r=e.getBoundingClientRect(), i=e.querySelector('.ov-row__ic').getBoundingClientRect();
+                    return {icon:Math.abs((i.top+i.height/2)-(r.top+r.height/2))}; }""")
+                self.assertLessEqual(geometry["icon"], 1, geometry)
         shot(page, "136-state-retained-history-desktop")
 
     def test_03_phone_and_tablet_readers_share_current_counts_and_reachable_details_without_write_access(self):

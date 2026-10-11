@@ -13,8 +13,8 @@ body:
     id: revision
     attributes:
       label: Version or commit
-      description: Include the commit hash if available, or the downloaded file and date.
-      placeholder: "flux-ux-v8.html from main, commit abc1234"
+      description: Include the commit from `git rev-parse --short HEAD`, or the installed release version.
+      placeholder: "Commit abc1234 or release version"
     validations:
       required: true
   - type: input
@@ -29,8 +29,10 @@ body:
     attributes:
       label: How did you open Flux?
       options:
-        - Opened the HTML file directly
-        - Used a local HTTP server
+        - ./flux up
+        - ./flux dev
+        - Installed app (PWA) on a phone or tablet
+        - Operator install from docker/compose.yaml
         - Another method (describe below)
     validations:
       required: true
@@ -40,7 +42,7 @@ body:
       label: Steps to reproduce
       description: Include whether you started with fresh sample data or imported existing data.
       placeholder: |
-        1. Open the prototype with fresh sample data.
+        1. Run ./flux up and ./flux demo, then sign in as Ada.
         2. Go to ...
         3. Click ...
     validations:
@@ -62,4 +64,4 @@ body:
     id: logs
     attributes:
       label: Console output or additional context
-      description: Optional. Remove tokens, personal data, and private project content.
+      description: Optional. Include ./flux logs api and relevant browser console output. Remove tokens, personal data, and private project content.

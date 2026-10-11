@@ -62,7 +62,7 @@ function harness(events: GeneratorEvent[], failures: Map<string, number>) {
       try { return await work(); } catch (error) { state.notifications.length = before; throw error; }
     },
   };
-  return { state, uow: { run: <T>(work: (p: GeneratorPorts) => Promise<T>) => work(ports) } };
+  return { state, ports, uow: { run: <T>(work: (p: GeneratorPorts) => Promise<T>) => work(ports) } };
 }
 
 describe('notification generation cursor', () => {
@@ -158,5 +158,32 @@ describe('focus pauses push and email (#340, F-026 S19)', () => {
       assert.throws(() => applyPreferenceChange(DEFAULT_PREFERENCES, { pause: { until } } as never, now), { code: 'INVALID_PAUSE' }, String(until));
     }
     assert.equal(paused('2026-10-07T21:20:00Z').pausedUntil?.toISOString(), '2026-10-07T21:20:00.000Z');
+  });
+});
+
+
+describe('focus composed with the morning-summary preference', () => {
+  const now = new Date('2026-10-07T09:20:00Z');
+  const until = new Date('2026-10-07T10:00:00Z');
+  const cases = [
+    { name: 'pause only retains the individual push', quietEnabled: false, quietStart: 22 * 60, quietEnd: 7 * 60, pushes: 1, release: until },
+    { name: 'quiet after the pause uses the summary and still holds email', quietEnabled: true, quietStart: 9 * 60 + 50, quietEnd: 11 * 60, pushes: 0, release: new Date('2026-10-07T11:00:00Z') },
+    { name: 'quiet ending before the pause does not consume a pause-only push', quietEnabled: true, quietStart: 9 * 60, quietEnd: 9 * 60 + 50, pushes: 1, release: until },
+  ];
+  for (const row of cases) test(row.name, async () => {
+    const { ports, state, uow } = harness([dmEvent(1)], new Map());
+    const preferences = { ...DEFAULT_PREFERENCES, summaryEnabled: true, pausedUntil: until,
+      quietEnabled: row.quietEnabled, quietStart: row.quietStart, quietEnd: row.quietEnd, timeZone: 'UTC' };
+    ports.preferences = preferenceRepository({ find: async () => preferences, save: async () => undefined,
+      isMuted: async () => false, mutes: async () => [], setMuted: async () => undefined });
+    ports.deliverableSubscriptions = async () => ['actual-subscription'];
+    const pushes: (Date | null)[] = [], emails: (Date | null)[] = [];
+    ports.enqueuePush = async (_payload, after) => { pushes.push(after); return null; };
+    ports.enqueueEmail = async (_payload, after) => { emails.push(after); return null; };
+    assert.deepEqual(await generateNotifications(uow, { emailAvailable: true, now: () => now }), { processed: 1, created: 1, stalled: false });
+    assert.equal(state.notifications.length, 1, 'focus never holds the Inbox');
+    assert.equal(pushes.length, row.pushes);
+    for (const after of pushes) assert.equal(after?.toISOString(), row.release.toISOString());
+    assert.deepEqual(emails.map(after => after?.toISOString()), [row.release.toISOString()]);
   });
 });

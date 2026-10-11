@@ -35,13 +35,13 @@ class SharedComposerJourney(unittest.TestCase):
         cls.states = {}
         cls.people = {}
         for who, (name, email) in PEOPLE.items():
-            context = cls.browser.new_context(base_url=ORIGIN)
+            context = cls.browser.new_context(service_workers="block", base_url=ORIGIN)
             response = context.request.post("/api/auth/sign-up/email", data={"name": name, "email": email, "password": PASSWORD}, headers={"origin": ORIGIN})
             assert response.status == 200, response.text()
             cls.people[who] = context.request.get("/api/v1/me").json()["user"]["id"]
             cls.states[who] = context.storage_state()
             context.close()
-        context = cls.browser.new_context(base_url=ORIGIN, storage_state=cls.states["owner"])
+        context = cls.browser.new_context(service_workers="block", base_url=ORIGIN, storage_state=cls.states["owner"])
         ws = context.request.post("/api/v1/workspaces", data={"name": "Exact bytes workshop"}, headers={"origin": ORIGIN}).json()
         response = context.request.post(f"/api/v1/workspaces/{ws['id']}/members", data={"email": PEOPLE["writer"][1], "role": "member"}, headers={"origin": ORIGIN})
         assert response.status == 201, response.text()
@@ -54,7 +54,7 @@ class SharedComposerJourney(unittest.TestCase):
         cls.pw.stop()
 
     def page(self, who="owner", *, width=1440, storage_refused=False):
-        context = self.browser.new_context(base_url=ORIGIN, storage_state=self.states[who], viewport={"width": width, "height": 900 if width == 1440 else 844},
+        context = self.browser.new_context(service_workers="block", base_url=ORIGIN, storage_state=self.states[who], viewport={"width": width, "height": 900 if width == 1440 else 844},
                                            is_mobile=width < 681, has_touch=width <= 1024, locale="en-GB", reduced_motion="reduce")
         self.addCleanup(context.close)
         if storage_refused:

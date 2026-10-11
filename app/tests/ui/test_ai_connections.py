@@ -63,7 +63,7 @@ class AiConnectionSettings(unittest.TestCase):
         options.update(viewport=PHONE, device_scale_factor=3, is_mobile=True, has_touch=True) if phone else options.update(viewport=DESKTOP)
         if self.state:
             options["storage_state"] = self.state
-        context = self.browser.new_context(**options)
+        context = self.browser.new_context(service_workers="block", **options)
         self.addCleanup(context.close)
         page = context.new_page()
         errors: list[str] = []

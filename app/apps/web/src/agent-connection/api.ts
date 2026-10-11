@@ -1,11 +1,29 @@
 import {
-  AUTH_BASE_PATH, agentActionGrantPath, agentActionGrantsPath, projectGrantsPath, workspaceAgentsPath, type Agent, type AgentConnection,
+  AUTH_BASE_PATH, agentActionGrantPath, agentActionGrantsPath, agentMcpPolicyPath, projectGrantsPath, workspaceAgentsPath, type Agent, type AgentConnection,
+  type AgentMcpEntry, type AgentMcpPolicy, type SaveAgentMcpPolicy,
   type AgentScope, type AgentOauthConsentContext, type AgentStandingGrant, type CreateAgentCommand, type CreateAgentConnectionCommand,
   type CreateAgentStandingGrantCommand, type GrantProjectCommand, type NarrowAgentStandingGrantCommand, type Page, type ProjectGrant,
 } from '@flux/contracts';
 import { request } from '../api/client';
 
 const CONNECTIONS_PATH = '/api/v1/agent-connections';
+
+export interface McpPermissionSettings {
+  connection: AgentConnection;
+  policy: AgentMcpPolicy;
+  projects: { id: string; selected: boolean; readable: boolean; writable: boolean }[];
+  entries: (AgentMcpEntry & { configured: boolean; available: boolean; reason: string | null })[];
+}
+
+export function getMcpPermissions(connectionId: string, signal?: AbortSignal) {
+  return request<McpPermissionSettings>(agentMcpPolicyPath(encodeURIComponent(connectionId)), { signal });
+}
+
+export function saveMcpPermissions(connectionId: string, version: number, input: SaveAgentMcpPolicy, signal?: AbortSignal) {
+  return request<{ policy: AgentMcpPolicy }>(agentMcpPolicyPath(encodeURIComponent(connectionId)), {
+    method: 'PATCH', headers: { 'if-match': `"mcp-policy-${version}"` }, body: input, signal,
+  });
+}
 
 export type ConsentContext = AgentOauthConsentContext;
 

@@ -15,7 +15,7 @@ import unittest
 
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
-from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, box, shot, start_forwarder
+from test_app_shell import DESKTOP, ORIGIN, PHONE, UI_BROWSER, UPSTREAM, box, shot, start_forwarder
 
 PASSWORD = "sketching all afternoon"
 EMAIL = f"kai.lind+{int(time.time() * 1000)}@example.test"
@@ -43,7 +43,7 @@ class SketchJourney(unittest.TestCase):
         if UPSTREAM:
             start_forwarder(ORIGIN, UPSTREAM)
         cls.pw = sync_playwright().start()
-        cls.browser = cls.pw.chromium.launch()
+        cls.browser = getattr(cls.pw, UI_BROWSER).launch()
         expect.set_options(timeout=8000)
 
     @classmethod
