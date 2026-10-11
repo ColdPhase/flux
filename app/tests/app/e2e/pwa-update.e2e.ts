@@ -91,6 +91,17 @@ async function workerState(page: Page) {
   });
 }
 
+async function controllerVersion(page: Page) {
+  return page.evaluate(() => new Promise<string>((resolve, reject) => {
+    const controller = navigator.serviceWorker.controller;
+    if (!controller) { reject(new Error('no controller')); return; }
+    const channel = new MessageChannel();
+    const timer = setTimeout(() => reject(new Error('controller version did not answer')), 5_000);
+    channel.port1.onmessage = (event) => { clearTimeout(timer); channel.port1.close(); resolve(event.data.version); };
+    controller.postMessage({ type: 'GET_VERSION' }, [channel.port2]);
+  }));
+}
+
 /** Opens the app in a page and waits until its service worker controls it and has settled. */
 async function openControlled(context: BrowserContext) {
   const page = await context.newPage();
@@ -137,6 +148,7 @@ describe(`Flux update prompt in ${engineName} over HTTPS`, () => {
     const first = await openControlled(context);
     const second = await openControlled(context);
     await second.waitForTimeout(1_000);
+    const previousVersion = await controllerVersion(first);
     state.nextServiceWorker = true;
     try {
       await first.evaluate(async () => { await (await navigator.serviceWorker.getRegistration('/'))!.update(); });
@@ -145,6 +157,23 @@ describe(`Flux update prompt in ${engineName} over HTTPS`, () => {
         await prompt.waitFor({ timeout: 20_000 }).catch(() => undefined);
         assert.equal(await prompt.count(), 1, `the ${label} offers the new version (worker ${JSON.stringify(await workerState(page))})`);
       }
+      const third = await openControlled(context);
+      await third.getByTestId('flux-update-prompt').waitFor({ timeout: 20_000 });
+      assert.equal(await third.getByTestId('flux-update-prompt').count(), 1, 'a later tab offers an already waiting worker');
+      await first.getByLabel('Email').fill('unfinished-first@example.test');
+      await second.getByLabel('Email').fill('unfinished-second@example.test');
+      assert.equal(await controllerVersion(first), previousVersion, 'availability alone never activates the update');
+      assert.equal(await first.getByLabel('Email').inputValue(), 'unfinished-first@example.test');
+      let reloads = 0;
+      first.on('framenavigated', (frame) => { if (frame === first.mainFrame()) reloads++; });
+      await first.getByRole('button', { name: 'Reload', exact: true }).click();
+      await first.waitForFunction(() => navigator.serviceWorker.controller?.state === 'activated');
+      // Version comes from the actual running worker, not an inferred registration filename.
+      assert.equal(await controllerVersion(first), `${previousVersion}-next`);
+      assert.equal(reloads, 1, 'the explicit update reloads exactly once');
+      await second.getByTestId('flux-update-prompt').waitFor({ state: 'hidden', timeout: 20_000 });
+      await third.getByTestId('flux-update-prompt').waitFor({ state: 'hidden', timeout: 20_000 });
+      assert.equal(await second.getByLabel('Email').inputValue(), 'unfinished-second@example.test', 'another tab activation never reloads or discards this input');
     } finally {
       state.nextServiceWorker = false;
     }

@@ -190,6 +190,8 @@ class DmSketchJourney(unittest.TestCase):
     def test_03_phone_selection_bar(self) -> None:
         page = self.page("kai", phone=True)
         page.goto(f"/dm/{self.dm_id}")
+        page.wait_for_function("navigator.serviceWorker.controller?.state === 'activated'")
+        expect(page.get_by_test_id("flux-update-prompt")).to_have_count(0, "first install keeps phone controls usable")
         select = page.get_by_role("button", name="Select", exact=True)
         select.tap()
         self.message(page, 1).locator(".dm-msg__body").tap()

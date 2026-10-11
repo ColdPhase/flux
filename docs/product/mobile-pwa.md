@@ -128,6 +128,17 @@ is retained on the device; partition it by account/workspace and clear sensitive
 cached data on logout. Recheck server permissions when reconnecting or following
 a deep link. Handle storage eviction and service-worker/schema upgrades explicitly.
 
+**First-install update identity, 2026-10-11 (#380 bounded repair).** Actual WebKit
+registration at `216f0018` briefly exposed its first installed worker as both
+`registration.waiting` and the current controller, then activated it. The earlier
+installed-plus-controller predicate falsely announced an update over phone
+controls. The peer-accepted correction offers only an installed actual waiting
+worker distinct from the current controller; stale waiting announcements clear
+when that worker leaves waiting. Existing waiting updates, genuine changed-version
+updates in each tab, explicit one-time Reload and draft preservation remain
+required in Chromium and WebKit. No worker blocking or visual token change is
+part of this correction.
+
 ## Push, privacy and operations
 
 Ask for notification permission after a clear user action and explain the useful

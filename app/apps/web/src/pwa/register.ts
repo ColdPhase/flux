@@ -12,21 +12,38 @@ export interface ServiceWorkerUpdate {
 
 const listeners = new Set<Listener>();
 let pending: ServiceWorkerUpdate | null = null;
+let pendingWorker: ServiceWorker | null = null;
+let applying: ServiceWorker | null = null;
 let registrationPromise: Promise<ServiceWorkerRegistration | null> | null = null;
 
 function announce(worker: ServiceWorker) {
+  if (pendingWorker === worker) return;
+  pendingWorker = worker;
   pending = {
     apply() {
+      if (applying === worker) return;
+      applying = worker;
       let reloaded = false;
-      navigator.serviceWorker.addEventListener('controllerchange', () => {
+      const reload = () => {
         if (reloaded) return;
         reloaded = true;
+        navigator.serviceWorker.removeEventListener('controllerchange', reload);
         window.location.reload();
-      });
+      };
+      // Another tab may already have activated it before this click is delivered.
+      if (navigator.serviceWorker.controller === worker) { reload(); return; }
+      navigator.serviceWorker.addEventListener('controllerchange', reload);
       worker.postMessage({ type: 'SKIP_WAITING' });
     },
   };
   for (const listener of listeners) listener(pending);
+}
+
+function clearAnnouncement(worker: ServiceWorker) {
+  if (pendingWorker !== worker) return;
+  pendingWorker = null;
+  pending = null;
+  for (const listener of listeners) listener(null);
 }
 
 /** Subscribe to update availability; the listener is called immediately with the current state. */
@@ -53,13 +70,17 @@ export function registerServiceWorker(): Promise<ServiceWorkerRegistration | nul
       const watch = (worker: ServiceWorker | null) => {
         if (!worker) return;
         const check = () => {
-          // With no controller this is the first install, not an update.
-          if (worker.state === 'installed' && navigator.serviceWorker.controller) announce(worker);
+          const controller = navigator.serviceWorker.controller;
+          // WebKit can briefly expose its first installed worker as both waiting and
+          // controller. Only a distinct actual waiting worker is a new deployment.
+          if (worker.state === 'installed' && registration.waiting === worker && controller && controller !== worker) announce(worker);
+          else clearAnnouncement(worker);
         };
         worker.addEventListener('statechange', check);
         check();
       };
       watch(registration.waiting);
+      watch(registration.installing);
       registration.addEventListener('updatefound', () => watch(registration.installing));
       const update = () => { registration.update().catch(() => undefined); };
       document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') update(); });
