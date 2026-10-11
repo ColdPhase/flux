@@ -72,6 +72,7 @@ export async function candidatesFor(event: GeneratorEvent, facts: NotificationFa
 
   switch (event.kind) {
     case 'project.conversation_created.v1':
+    case 'project.agent_thread_message_sent.v1':
     case 'project.message_sent.v1': {
       const messageId = id(event.data.messageId);
       const message = messageId ? await facts.projectMessage(messageId) : null;
@@ -81,12 +82,15 @@ export async function candidatesFor(event: GeneratorEvent, facts: NotificationFa
       const names = await facts.names([...(authorId ? [authorId] : []), ...people]);
       const author = authorId ? names.get(authorId) ?? 'Someone' : `${message.authorName ?? 'Agent'} (agent)`;
       const involved = new Set([...(message.conversationCreatedBy.kind === 'human' ? [message.conversationCreatedBy.id] : []), ...message.earlierAuthors]);
-      const url = `/projects/${message.projectId}/conversations/${message.conversationId}#message-${message.id}`;
+      const url = message.space === 'agents' && message.taskId
+        ? `/projects/${message.projectId}/tasks?open=work:${message.taskId}&agentThread=1#message-${message.id}`
+        : `/projects/${message.projectId}/conversations/${message.conversationId}#message-${message.id}`;
       const result: Candidate[] = [];
       for (const userId of people) {
         const name = names.get(userId) ?? '';
         const addressed = mentions(message.body, name);
-        const reason: NotificationReason | null = addressed ? (isQuestion(message.body) ? 'question' : 'mention') : involved.has(userId) ? 'reply' : null;
+        const reason: NotificationReason | null = addressed ? (isQuestion(message.body) ? 'question' : 'mention')
+          : message.space !== 'agents' && involved.has(userId) ? 'reply' : null;
         if (!reason) continue;
         const title = reason === 'question' ? `${author} asked you in ${message.projectName}`
           : reason === 'mention' ? `${author} mentioned you in ${message.projectName}`

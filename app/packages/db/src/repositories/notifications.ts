@@ -130,7 +130,8 @@ export function notificationFactRows(db: DbExecutor) {
     },
     async projectMessage(messageId: string) {
       const pm = schema.projectMessages;
-      const [row] = await db.select({ message: pm, createdBy: schema.projectConversations.createdBy, createdByAgentId: schema.projectConversations.createdByAgentId }).from(pm)
+      const [row] = await db.select({ message: pm, createdBy: schema.projectConversations.createdBy, createdByAgentId: schema.projectConversations.createdByAgentId,
+        space: schema.projectConversations.space, taskId: schema.projectConversations.workId }).from(pm)
         .innerJoin(schema.projectConversations, eq(schema.projectConversations.id, pm.conversationId)).where(eq(pm.id, messageId));
       if (!row) return null;
       const message = row.message;
@@ -142,6 +143,7 @@ export function notificationFactRows(db: DbExecutor) {
       return {
         id: message.id, workspaceId: message.workspaceId, projectId: message.projectId, projectName: await projectName(message.projectId),
         conversationId: message.conversationId, opening: messagePreview(opening?.body ?? message.body, opening?.attachmentCount ?? message.attachmentCount), conversationCreatedBy: row.createdBy !== null ? { kind: 'human' as const, id: row.createdBy } : { kind: 'agent' as const, id: row.createdByAgentId! },
+        space: row.space, taskId: row.taskId,
         author: message.authorId !== null ? { kind: 'human' as const, id: message.authorId } : { kind: 'agent' as const, id: message.authorAgentId! },
         authorName: agent?.name ?? null, body: message.body, attachmentCount: message.attachmentCount, sequence: message.sequence, earlierAuthors: earlier.map((item) => item.authorId!),
       };
