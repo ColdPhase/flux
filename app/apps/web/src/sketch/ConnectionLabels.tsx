@@ -8,8 +8,8 @@ export type ConnectionTarget = { thoughtId: string } | { linkId: string };
 export type SaveLinkLabel = (id: string, label: string | null, expectedLabel: string | null, key: string) => Promise<ThoughtLink>;
 
 /** One small surface for discovering a thought's connections and naming any one of them. */
-export function ConnectionLabels({ sketch, target, editable, onSave, onClose }: {
-  sketch: SketchDetail; target: ConnectionTarget; editable: boolean; onSave: SaveLinkLabel; onClose(): void;
+export function ConnectionLabels({ sketch, target, editable, onSave, onDraftChange, onClose }: {
+  sketch: SketchDetail; target: ConnectionTarget; editable: boolean; onSave: SaveLinkLabel; onDraftChange(text: string): void; onClose(): void;
 }) {
   const input = useRef<HTMLInputElement>(null);
   const initial = 'linkId' in target ? sketch.links.find((link) => link.id === target.linkId) : null;
@@ -68,7 +68,7 @@ export function ConnectionLabels({ sketch, target, editable, onSave, onClose }: 
         : <p role="status">This connection was removed. Your unsaved text is kept below.</p>}
       <Input ref={input} label="Label" value={editing.text} maxLength={SKETCH_LIMITS.label} disabled={saving}
         placeholder="e.g. depends on" hint="Describe how these thoughts relate. Leave blank to remove only the label."
-        onChange={(event) => setEditing({ ...editing, text: event.target.value })} />
+        onChange={(event) => { setEditing({ ...editing, text: event.target.value }); onDraftChange(event.target.value); }} />
       {!editable ? <p role="status">Editing connections is available on a larger screen when you have edit access.</p> : null}
       {error ? <p className="connection-labels__error" role="alert">{error}</p> : null}
       {conflict ? <div className="connection-labels__conflict"><span>Current saved label</span><p>{conflict.label || 'No label'}</p></div> : null}

@@ -667,7 +667,12 @@ export function SketchMap(props: SketchMapProps) {
               return editable ? <button key={link.id} type="button" className={`sk-el sk-el--edit${on ? ' is-on' : ''}`} style={style}
                 data-link-id={link.id} title={link.label ?? 'Add label'}
                 aria-label={`${link.label ? 'Edit' : 'Add'} label between ${byId.get(link.fromId)?.text} and ${byId.get(link.toId)?.text}`}
-                onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); props.onLabel(link.id); }}>
+                onPointerDown={(event) => event.stopPropagation()} onClick={(event) => {
+                  event.stopPropagation();
+                  // The label button can disappear when cleared; restore focus to its stable thought.
+                  nodes.current.get(link.fromId)?.focus({ preventScroll: true });
+                  props.onLabel(link.id);
+                }}>
                 {link.label ?? '+ Label'}
               </button> : <span key={link.id} className={`sk-el${on ? ' is-on' : ''}`} style={style}>{link.label}</span>;
             })}

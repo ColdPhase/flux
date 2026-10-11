@@ -536,6 +536,8 @@ export function useSketchDoc(sketchId: string, me: Me) {
       const link = await withRetry(() => api.updateLinkLabel(sketchId, id, label, expectedLabel, key));
       const current = ref.current;
       if (current) commit({ ...current, links: current.links.map((item) => item.id === id ? link : item) });
+      // An idempotent replay can contain an older result than a subsequent peer edit.
+      staleRef.current = true;
       return link;
     }).catch((error: unknown) => {
       staleRef.current = true;

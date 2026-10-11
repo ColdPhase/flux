@@ -98,6 +98,8 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
   const phone = useMediaQuery(MEDIA.phone);
   const [mode, setModeState] = useState<Mode>(storedMode);
   const [connectionTarget, setConnectionTarget] = useState<ConnectionTarget | null>(null);
+  const [connectionDraft, setConnectionDraft] = useState<string | null>(null);
+  const closeConnections = () => { setConnectionTarget(null); setConnectionDraft(null); };
   const location = useLocation();
   // A fragment shown in a live session (#62) opens with the presenter's thoughts selected.
   const liveSelect = (location.state as { liveSelect?: string[] | null } | null)?.liveSelect ?? null;
@@ -578,6 +580,7 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     const target = event.target as HTMLElement;
+    if (target.closest('[role="dialog"]')) return;
     if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'z' && !/^(INPUT|TEXTAREA)$/.test(target.tagName)) {
       event.preventDefault();
       if (canWrite) undo();
@@ -597,6 +600,7 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
           <EmptyState icon="map" title={doc.load === 'not-found' ? 'This sketch isn’t available' : 'The sketch couldn’t be opened'}
             action={doc.load === 'not-found' ? <Link className="ui-btn ui-btn--secondary" to={back}>All sketches</Link> : <Button onClick={() => void doc.reload()}>Try again</Button>}>
             <p>{doc.load === 'not-found' ? 'It may have been shared with other people only, or you no longer have access to where it lives.' : 'Flux could not be reached. Your changes are safe; try again in a moment.'}</p>
+            {connectionDraft !== null ? <label>Your unsaved connection label<textarea aria-label="Recoverable connection label" readOnly value={connectionDraft} /></label> : null}
             {capture.draft ? <label>Your private thought draft<textarea aria-label="Recoverable thought draft" readOnly value={capture.draft.lines ? capture.draft.lines.map((line) => line.text).join('\n') : capture.draft.text} /></label> : null}
             {editingState ? <label>Your unsaved edit<textarea aria-label="Recoverable thought edit" readOnly value={editingState.initial} /></label> : null}
           </EmptyState>
@@ -751,7 +755,7 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
             : <>An empty sketch. Add the first thought with <b>Thought</b>, then keep adding with the <b>+</b> beside it.</>}</p> : null}
           <p className={`sk-help${helpOpen ? ' is-open' : ''}`} id={helpId}>{helpText}</p>
           {connectionTarget ? <ConnectionLabels sketch={sketch} target={connectionTarget} editable={canWrite && !phone}
-            onSave={doc.saveLinkLabel} onClose={() => setConnectionTarget(null)} /> : null}
+            onSave={doc.saveLinkLabel} onDraftChange={setConnectionDraft} onClose={closeConnections} /> : null}
         </div>
       </div>
     );
@@ -818,7 +822,7 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
         <SketchList {...shared} personalOutline={personalOutline} onNavigate={navigateThought} />
         <p className="sk-help" id={helpId}>{helpText}</p>
         {connectionTarget ? <ConnectionLabels sketch={sketch} target={connectionTarget} editable={canWrite && !phone}
-          onSave={doc.saveLinkLabel} onClose={() => setConnectionTarget(null)} /> : null}
+          onSave={doc.saveLinkLabel} onDraftChange={setConnectionDraft} onClose={closeConnections} /> : null}
       </div>
     </div>
   );
