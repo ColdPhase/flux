@@ -56,7 +56,7 @@ cd flux
 decision (<a href="docs/assets/demo/README.md">how this was recorded</a>).</sub></p>
 
 Then open the URL that `./flux up` prints, <http://127.0.0.1:8081/> by default. If port 8081 is
-taken, start the first time with `FLUX_PORT=8090 ./flux up`. The first `./flux up` takes a few
+taken, start the first time with another free port, for example `FLUX_PORT=8090 ./flux up`. The first `./flux up` takes a few
 minutes, because it downloads the dependencies and builds Flux
 ([measured times](docs/development/time-to-first-run.md)). To connect your own MCP client, such
 as Claude Code or Codex, sign in, open Settings and choose Agent connections (MCP). The page
