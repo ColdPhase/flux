@@ -89,6 +89,14 @@ export const authVerifications = pgTable('auth_verifications', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [index('auth_verifications_identifier_idx').on(table.identifier)]);
 
+/** How a session signed in (migration 0066, #310): password or provider id, the IdP's `sid`, and when it vouched. */
+export const authSessionIdentities = pgTable('auth_session_identities', {
+  sessionId: text('session_id').primaryKey().references(() => authSessions.id, { onDelete: 'cascade' }),
+  method: text('method').notNull(),
+  idpSid: text('idp_sid'),
+  confirmedAt: timestamp('confirmed_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
 // Better Auth MCP/OAuth provider models (migration 0009).
 export const jwks = pgTable("jwks", {
   id: text("id").primaryKey(),
@@ -676,7 +684,22 @@ export const agentOauthBindings = pgTable('agent_oauth_bindings', {
   clientId: text('client_id').notNull(),
   generation: integer('generation').notNull().default(1),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  // How the sign-in that last consented to this grant happened (migration 0083, #310 AC-3). Kept after the browser session ends.
+  authMethod: text('auth_method'),
+  authIdpSid: text('auth_idp_sid'),
+  authConfirmedAt: timestamp('auth_confirmed_at', { withTimezone: true }),
 }, (table) => [unique().on(table.ownerUserId, table.connectionId, table.clientId)]);
+
+/** Immutable authentication provenance for one minted OAuth authorization-code family (#310, 0086). */
+export const oauthGrantAuthentication = pgTable('oauth_grant_authentication', {
+  authorizationCodeId: text('authorization_code_id').primaryKey(),
+  userId: text('user_id').notNull().references(() => authUsers.id, { onDelete: 'cascade' }),
+  referenceId: text('reference_id').notNull(),
+  authMethod: text('auth_method').notNull(),
+  authIdpSid: text('auth_idp_sid'),
+  authConfirmedAt: timestamp('auth_confirmed_at', { withTimezone: true }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
 
 export const agentOauthFlows = pgTable('agent_oauth_flows', {
   ownerUserId: text('owner_user_id').notNull().references(() => authUsers.id),

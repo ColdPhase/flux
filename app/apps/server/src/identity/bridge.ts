@@ -3,6 +3,7 @@ import { fromNodeHeaders } from 'better-auth/node';
 import { AUTH_BASE_PATH, type ApiError, type IdentityCapabilities } from '@flux/contracts';
 import { CLIENT_IP_HEADER, type FluxAuth } from './auth.js';
 import { oauthRequestContext, type OauthRequests } from './oauth-flow.js';
+import type { SignIns } from './sign-in.js';
 
 // Forwarding headers are dropped before Better Auth sees a request. Client addresses come
 // from Fastify's request.ip, which honours only the configured trusted proxies.
@@ -38,10 +39,11 @@ export interface AuthBridgeOptions {
   publicOrigin: string;
   passwordReset: IdentityCapabilities['passwordReset'];
   oauthRequests: OauthRequests;
+  signIns: SignIns;
 }
 
 /** Forwards auth endpoints and the exact OAuth discovery paths to Better Auth. */
-export function registerAuthBridge(app: FastifyInstance, { auth, publicOrigin, passwordReset, oauthRequests }: AuthBridgeOptions) {
+export function registerAuthBridge(app: FastifyInstance, { auth, publicOrigin, passwordReset, oauthRequests, signIns }: AuthBridgeOptions) {
   // OAuth token and revocation endpoints use HTML form encoding. Preserve the
   // bounded raw payload so Better Auth validates it, rather than Fastify's 415.
   app.addContentTypeParser('application/x-www-form-urlencoded', { parseAs: 'string' }, (_request, body, done) => done(null, body));
@@ -65,7 +67,8 @@ export function registerAuthBridge(app: FastifyInstance, { auth, publicOrigin, p
       try { context = await oauthRequestContext(url, request.body, (await auth.$context).secret, `${publicOrigin}/mcp`); }
       catch { return reply.code(400).send({ error: 'Invalid OAuth request', code: 'INVALID_OAUTH_QUERY' }); }
       const incoming = new Request(url, { method: request.method, headers, body });
-      const response = context ? await oauthRequests.run(Object.freeze(context), () => auth.handler(incoming)) : await auth.handler(incoming);
+      const handle = () => signIns.run({}, () => auth.handler(incoming));
+      const response = context ? await oauthRequests.run(Object.freeze(context), handle) : await handle();
       reply.status(response.status);
       response.headers.forEach((value, key) => {
         if (key !== 'set-cookie' && key !== 'content-length' && key !== 'transfer-encoding') reply.header(key, value);

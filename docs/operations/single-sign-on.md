@@ -126,8 +126,16 @@ own policies (MFA, conditional access), which stay the provider's responsibility
   claim adapter for it exists (F-024 S5b, [#315](https://github.com/ColdPhase/flux/issues/315)). These
   profiles describe provider compatibility, not personal profile pages. This is an
   inference from Microsoft's documentation; it was not tested against a real Entra tenant.
-- **Agent (MCP) authorization.** The page an agent client opens for authorization (`/login`, for
-  example from `claude mcp login`) offers email and password only, not single sign-on. Single sign-on
-  there is F-024 S1 ([#274](https://github.com/ColdPhase/flux/pull/274)). Until then, sign in at
-  `/sign-in` with single sign-on in the same browser first, then run the client's login again; the
-  authorization then uses the signed-in session (read from the code; no end-to-end test covers it yet).
+- **Agent (MCP) authorization ([#310](https://github.com/ColdPhase/flux/issues/310), F-024 S1).** The
+  page an agent client opens for authorization (`/login`, for example from `claude mcp login`) shows
+  **Sign in with <label>** above the password form. Flux keeps the signed authorization request through
+  the provider round trip and continues to the connection choice and consent afterwards; the client only
+  ever receives Flux's own code and tokens, and an access or ID token issued by the provider is refused at
+  `/mcp`. If the provider step is cancelled or fails, the page returns to `/login` with the same request
+  and a message. If the provider's discovery document cannot be read, the button is disabled and says
+  `<label> is not reachable right now`. A Flux that starts while the provider is down waits with backoff
+  for about 12 seconds; if the provider is still down then, restart Flux once it is back.
+  Pre-registered Codex clients: register the callback that Codex displays. It is the stable
+  `http://127.0.0.1/callback` when the server advertises the issuer response parameter, as Flux does.
+  Tested in `scripts/check_oidc.sh` against Keycloak with a scripted client; runs of the real Claude Code
+  and Codex clients are not part of this change.

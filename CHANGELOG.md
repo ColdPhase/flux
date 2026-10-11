@@ -128,6 +128,7 @@ repository was created on 2026-09-26.
 
 ### Changed
 
+- When an agent app opens Flux's sign-in page, people can now use the operator's single sign-on there, then pick the connection and approve as before; a cancelled sign-in comes back to the same page, and the page says when the provider cannot be reached ([#310](https://github.com/ColdPhase/flux/issues/310)).
 - Settings → Appearance adds Text size (Small, Default, Large) on the computer, a Reduce motion switch that turns motion off on this device as the system setting does, and a phone text-size row that follows the phone ([#452](https://github.com/ColdPhase/flux/pull/452)).
 - The Agents view shows what each connected agent holds now (its task and whether it is working, assigned or paused) and its open requests with sender, task and why they wait, and Claude Code users start Flux work from the built-in Start work prompt ([#160](https://github.com/ColdPhase/flux/issues/160)).
 - Faster reads: the Inbox count no longer compiles query code on each visit, conversation and material lists use one statement instead of one or two per row, and conversation roots and comparison outcomes are read without locks ([#300](https://github.com/ColdPhase/flux/pull/300)).

@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { and, eq } from 'drizzle-orm';
 import { betterAuth } from 'better-auth';
 import { APIError } from 'better-auth/api';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
@@ -12,6 +13,7 @@ import { createAgentConnectionStore } from '../agent-connection/store.js';
 import type { IdentityConfig, OidcConfig } from './config.js';
 import type { Mailer } from './mailer.js';
 import type { OauthRequests } from './oauth-flow.js';
+import { createSignIns, type SignIns } from './sign-in.js';
 
 /** Set by the Fastify bridge from the socket or trusted-proxy address; client copies are dropped. */
 export const CLIENT_IP_HEADER = 'x-flux-client-ip';
@@ -24,6 +26,10 @@ export interface AuthDependencies {
   mailer: Mailer | null;
   onMailError?: (error: unknown) => void;
   oauthRequests: OauthRequests;
+  /** Per-request facts about the sign-in in progress; the bridge runs each auth request inside it (#310). */
+  signIns?: SignIns;
+  /** Discovery recovery may temporarily omit the plugin, while retaining the configured authentication mode. */
+  installProvider?: boolean;
 }
 
 /**
@@ -41,6 +47,35 @@ export function oidcUser(oidc: Pick<OidcConfig, 'issuer'>, claims: Record<string
   const name = [claims.name, claims.preferred_username].find((value): value is string => typeof value === 'string' && !!value.trim());
   // The plugin keys the Flux account by `sub` (the stable OIDC subject), never by email.
   return { id: subject, sub: subject, email, emailVerified: true, name: (name ?? email).trim().slice(0, 200) };
+}
+
+/** Snapshot the authorizing session at code redemption, keyed to the immutable refresh lineage (#310 AC-3). */
+export async function recordGrantAuthentication(db: Database, userId: string, sessionId: string | undefined,
+  referenceId: string, authorizationCodeId: string) {
+  const [previous] = await db.select().from(schema.oauthGrantAuthentication)
+    .where(eq(schema.oauthGrantAuthentication.authorizationCodeId, authorizationCodeId));
+  if (previous) {
+    if (previous.userId !== userId || previous.referenceId !== referenceId)
+      throw new APIError('BAD_REQUEST', { error: 'invalid_grant', error_description: 'Grant authentication is unavailable' });
+    return; // Refresh and unrelated sessions cannot replace the original facts.
+  }
+  if (!sessionId) throw new APIError('BAD_REQUEST', { error: 'invalid_grant', error_description: 'Sign-in is unavailable' });
+  const [facts] = await db.select({ method: schema.authSessionIdentities.method, idpSid: schema.authSessionIdentities.idpSid,
+    confirmedAt: schema.authSessionIdentities.confirmedAt }).from(schema.authSessionIdentities)
+    .innerJoin(schema.authSessions, eq(schema.authSessions.id, schema.authSessionIdentities.sessionId))
+    .where(and(eq(schema.authSessionIdentities.sessionId, sessionId), eq(schema.authSessions.userId, userId)));
+  if (!facts) throw new APIError('BAD_REQUEST', { error: 'invalid_grant', error_description: 'Sign-in is unavailable' });
+  await db.insert(schema.oauthGrantAuthentication).values({ authorizationCodeId, userId, referenceId,
+    authMethod: facts.method, authIdpSid: facts.idpSid, authConfirmedAt: facts.confirmedAt }).onConflictDoNothing();
+}
+
+const IDP_TOKEN_FIELDS = ['accessToken', 'refreshToken', 'idToken', 'accessTokenExpiresAt', 'refreshTokenExpiresAt'] as const;
+
+/** Drops every provider token from an auth_accounts write; the password hash and identity keys stay. */
+export function withoutIdpTokens<T extends Record<string, unknown>>(account: T): T {
+  const clean: Record<string, unknown> = { ...account };
+  for (const field of IDP_TOKEN_FIELDS) if (field in clean) clean[field] = null;
+  return clean as T;
 }
 
 /** The payload of an ID token the plugin verified before calling getUserInfo. */
@@ -81,7 +116,7 @@ export async function ensureOauthResource(db: Database, publicOrigin: string): P
   }).onConflictDoNothing({ target: schema.oauthResource.identifier });
 }
 
-export function createAuth({ db, config, mailer, onMailError, oauthRequests }: AuthDependencies) {
+export function createAuth({ db, config, mailer, onMailError, oauthRequests, signIns = createSignIns(), installProvider = true }: AuthDependencies) {
   const connections = agentOauthUseCases(createAgentConnectionStore(db));
   const resource = mcpResourceIdentifier(config.publicOrigin);
   const connectionForGrant = async (userId: string, sessionId: string, scopes: readonly string[]) => {
@@ -144,7 +179,10 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests }: A
           consentReferenceId: async ({ user, session, scopes }) =>
             (await connectionForGrant(user.id, session.id, scopes)).referenceId,
         },
-        customAccessTokenClaims: async ({ user, referenceId, scopes, resources }) => {
+        customAccessTokenClaims: async (args) => {
+          const { user, referenceId, scopes, resources } = args;
+          // The pinned provider patch exposes its validated session and code-family key at issuance.
+          const { sessionId, authorizationCodeId } = args as typeof args & { sessionId?: string; authorizationCodeId?: string };
           if (!user || !referenceId || resources?.length !== 1 || resources[0] !== resource) {
             throw new APIError('BAD_REQUEST', { error: 'invalid_grant', error_description: 'Agent connection is unavailable' });
           }
@@ -153,12 +191,33 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests }: A
           if (!connection || scopes.some((scope) => scope !== 'offline_access' && !connection.scopes.includes(scope as 'flux.context.read' | 'flux.proposal.write' | 'flux.action.execute'))) {
             throw new APIError('BAD_REQUEST', { error: 'invalid_grant', error_description: 'Agent connection is unavailable' });
           }
-          return { flux_connection_id: connection.id, flux_owner_user_id: user.id, flux_grant_reference: grant!.referenceId };
+          if (authorizationCodeId) await recordGrantAuthentication(db, user.id, sessionId, referenceId, authorizationCodeId);
+          return { flux_connection_id: connection.id, flux_owner_user_id: user.id, flux_grant_reference: grant!.referenceId,
+            ...(authorizationCodeId ? { flux_authentication_reference: authorizationCodeId } : {}) };
         },
       }),
       cimd({ fetchClientMetadataResource, metadataProfile: 'mcp-2026-07-28' }),
-      ...(config.oidc ? [oidcPlugin(config.oidc)] : []),
+      ...(config.oidc && installProvider ? [oidcPlugin(config.oidc, signIns)] : []),
     ],
+    databaseHooks: {
+      session: {
+        create: {
+          // Every session records how it signed in: password, or the provider id with its IdP `sid` (#310).
+          after: async (session) => {
+            const sign = signIns.getStore();
+            await db.insert(schema.authSessionIdentities).values({
+              sessionId: session.id, method: sign?.providerId ?? 'password', idpSid: sign?.idpSid ?? null,
+            }).onConflictDoNothing();
+          },
+        },
+      },
+      // The provider's access, ID and refresh tokens never reach auth_accounts. Flux needs only the
+      // verified identity; S4 keeps the refresh token in its own encrypted table (#310 AC-8).
+      account: {
+        create: { before: async (account) => ({ data: withoutIdpTokens(account) }) },
+        update: { before: async (account) => ({ data: withoutIdpTokens(account) }) },
+      },
+    },
     emailAndPassword: {
       enabled: true,
       autoSignIn: true,
@@ -199,7 +258,7 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests }: A
 export type FluxAuth = ReturnType<typeof createAuth>;
 
 /** One operator-configured OpenID Connect provider for human sign-in (#113). */
-function oidcPlugin(oidc: OidcConfig) {
+function oidcPlugin(oidc: OidcConfig, signIns: SignIns) {
   return genericOAuth({
     config: [{
       providerId: oidc.providerId,
@@ -212,7 +271,16 @@ function oidcPlugin(oidc: OidcConfig) {
       requireIdTokenVerification: true,
       // The same subject keeps the same Flux person; a changed (verified) email updates it.
       overrideUserInfo: true,
-      getUserInfo: async (tokens) => oidcUser(oidc, idTokenClaims(tokens.idToken)),
+      getUserInfo: async (tokens) => {
+        const claims = idTokenClaims(tokens.idToken);
+        const user = oidcUser(oidc, claims);
+        const sign = signIns.getStore();
+        if (user && sign) {
+          sign.providerId = oidc.providerId;
+          if (typeof claims?.sid === 'string' && claims.sid && claims.sid.length <= 512) sign.idpSid = claims.sid;
+        }
+        return user;
+      },
     }],
   });
 }
