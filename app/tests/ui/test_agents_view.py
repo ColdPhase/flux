@@ -304,19 +304,74 @@ class AgentsViewJourney(unittest.TestCase):
         hubert.wait_for_function(STREAM_OPEN)
         box = hubert.get_by_label("Write to this task")
         box.fill("Draft kept through the outage")
+        hubert.evaluate("() => { window.__sameOutageDocument = true; window.__nativeOnlineCount = 0; window.addEventListener('online', () => { window.__nativeOnlineCount += 1; }); }")
         hubert.context.set_offline(True)
-        hubert.evaluate("() => window.__fluxSockets.forEach((ws) => ws.close())")
+        self.assertFalse(hubert.evaluate("navigator.onLine"))
+        hubert.evaluate("() => { window.__fluxDown = true; window.__fluxSockets.forEach((ws) => ws.close()); }")
         for index in range(1, 67):
             self.api(marek, "POST", f"/api/v1/work/{task['id']}/discussion", {"body": f"Reading {index:02d} while Hubert is offline", "clientMessageId": str(uuid.uuid4()), "kind": "text"}, status=201)
         hubert.wait_for_timeout(1500)
         expect(hubert.get_by_text("Flux can’t be reached")).to_have_count(0)
+        # WebKit's HTTP offline switch allows new sockets, so the existing fixture closes them too.
+        hubert.wait_for_function("() => window.__fluxSockets.every(ws => ws.readyState === 3)")
+        expect(thread.locator(".agents-thread__list > li")).to_have_count(1)
+        hubert.evaluate("() => { window.__fluxDown = false; }")
         hubert.context.set_offline(False)
+        hubert.wait_for_function("() => navigator.onLine && window.__nativeOnlineCount === 1")
         # Back online: the stream reconnects at once and the thread pages in the whole burst.
         expect(thread.get_by_text("Reading 66 while Hubert is offline")).to_be_visible(timeout=12000)
         expect(thread.get_by_text("Reading 01 while Hubert is offline")).to_have_count(1)
         expect(thread.locator(".agents-thread__list > li")).to_have_count(67)
         expect(hubert.get_by_text("Flux can’t be reached")).to_have_count(0)
         expect(box).to_have_value("Draft kept through the outage")
+        expect(thread.get_by_text("Starting the night measurements.", exact=True)).to_have_count(1)
+        self.assertTrue(hubert.evaluate("window.__sameOutageDocument"), "the same document recovered without reload")
+        hubert.wait_for_function(STREAM_OPEN)
+        box.fill("")
+        # Done, so the later tests still open on the original task (the view opens the first open one).
+        current = self.api(hubert, "GET", f"/api/v1/work/{task['id']}", status=200)
+        closed = hubert.request.fetch(f"{ORIGIN}/api/v1/work/{task['id']}", method="PATCH", data=json.dumps({"status": "done"}),
+                                      headers={"origin": ORIGIN, "content-type": "application/json", "if-match": f'"{current["version"]}"'})
+        self.assertEqual(closed.status, 200, closed.text())
+
+    def test_03g_an_http_outage_with_an_open_stream_recovers_on_native_online(self) -> None:
+        # Preserve the original WebKit failure: new sockets reopen while its HTTP fixture is offline.
+        # Native online must reload the scoped thread even though the stream is already open.
+        hubert = self.page("hubert")
+        task = self.api(hubert, "POST", f"/api/v1/projects/{self.ids['project']}/work", {"title": "Measure the lamp after dark"}, status=201)
+        marek = self.page("marek")
+        self.api(marek, "POST", f"/api/v1/work/{task['id']}/discussion", {"body": "Starting the night measurements.", "clientMessageId": str(uuid.uuid4()), "kind": "text"}, status=201)
+        hubert.add_init_script(RECORD_SOCKETS)
+        failed_reads: list[str] = []
+        hubert.on("requestfailed", lambda request: failed_reads.append(request.url) if f"/work/{task['id']}/discussion" in request.url else None)
+        hubert.goto(f"/projects/{self.ids['project']}/agents?task={task['id']}")
+        thread = hubert.get_by_role("region", name="Thread of Measure the lamp after dark")
+        expect(thread.get_by_text("Starting the night measurements.")).to_be_visible()
+        hubert.wait_for_function(STREAM_OPEN)
+        box = hubert.get_by_label("Write to this task")
+        box.fill("Draft kept through the outage")
+        hubert.evaluate("() => { window.__sameOutageDocument = true; window.__nativeOnlineCount = 0; window.addEventListener('online', () => { window.__nativeOnlineCount += 1; }); }")
+        hubert.context.set_offline(True)
+        self.assertFalse(hubert.evaluate("navigator.onLine"))
+        hubert.evaluate("() => window.__fluxSockets.forEach((ws) => ws.close())")
+        for index in range(1, 67):
+            self.api(marek, "POST", f"/api/v1/work/{task['id']}/discussion", {"body": f"Reading {index:02d} while Hubert is offline", "clientMessageId": str(uuid.uuid4()), "kind": "text"}, status=201)
+        hubert.wait_for_timeout(1500)
+        expect(hubert.get_by_text("Flux can’t be reached")).to_have_count(0)
+        # The WebKit control proves the mixed condition instead of silently treating it as a full outage.
+        if UI_BROWSER == "webkit":
+            hubert.wait_for_function(STREAM_OPEN)
+            self.assertTrue(failed_reads, "actual HTTP reads failed while the resumed stream stayed open")
+        hubert.context.set_offline(False)
+        hubert.wait_for_function("() => navigator.onLine && window.__nativeOnlineCount === 1")
+        # Back online: the stream reconnects at once and the thread pages in the whole burst.
+        expect(thread.get_by_text("Reading 66 while Hubert is offline")).to_be_visible(timeout=12000)
+        expect(thread.get_by_text("Reading 01 while Hubert is offline")).to_have_count(1)
+        expect(thread.locator(".agents-thread__list > li")).to_have_count(67)
+        expect(hubert.get_by_text("Flux can’t be reached")).to_have_count(0)
+        expect(box).to_have_value("Draft kept through the outage")
+        expect(thread.get_by_text("Starting the night measurements.", exact=True)).to_have_count(1)
+        self.assertTrue(hubert.evaluate("window.__sameOutageDocument"), "the same document recovered without reload")
         hubert.wait_for_function(STREAM_OPEN)
         box.fill("")
         # Done, so the later tests still open on the original task (the view opens the first open one).

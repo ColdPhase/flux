@@ -135,22 +135,20 @@ class ProjectPolicyJourney(unittest.TestCase):
         locator.evaluate("el => el.scrollIntoView({ block: 'start' })")
 
     def press_changes(self, page: Page, button) -> tuple[str, str]:
-        """The button's look before and while pressed, with :active forced as the HIG checklist's check does."""
+        """CSS active-state input probe: public pointer down/hold/read/release outside, in either engine."""
+        button.scroll_into_view_if_needed()
         before = button.evaluate(PRESS_STYLE)
-        button.evaluate("el => el.setAttribute('data-press-probe', '')")
-        cdp = page.context.new_cdp_session(page)
+        box = button.bounding_box()
+        assert box
+        page.mouse.move(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+        page.mouse.down()
         try:
-            cdp.send("DOM.enable")
-            cdp.send("CSS.enable")
-            root = cdp.send("DOM.getDocument", {"depth": 0})["root"]["nodeId"]
-            node = cdp.send("DOM.querySelector", {"nodeId": root, "selector": "[data-press-probe]"})["nodeId"]
-            cdp.send("CSS.forcePseudoState", {"nodeId": node, "forcedPseudoClasses": ["active"]})
             page.wait_for_timeout(300)  # past the colour transition
             pressed = button.evaluate(PRESS_STYLE)
-            cdp.send("CSS.forcePseudoState", {"nodeId": node, "forcedPseudoClasses": []})
         finally:
-            cdp.detach()
-            button.evaluate("el => el.removeAttribute('data-press-probe')")
+            # Release outside without activating Publish or Cancel; their actual tap paths are tested separately.
+            page.mouse.move(0, 0)
+            page.mouse.up()
         return before, pressed
 
     def assert_no_sideways_scroll(self, page: Page) -> None:

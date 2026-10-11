@@ -52,3 +52,27 @@ Issue #347 remains partial: AC-3/AC-4, Message, richer A7 behavior and integrate
 acceptance stay open. The changed head needs fresh independent source/runtime/
 visual evaluation and eligible approval before protected-main merge. The author
 cannot approve this change, and planning acceptance does not reuse an old review.
+
+## C-2 network recovery amendment, 2026-10-11
+
+Independent review of the unchanged `0a4e7169` Chromium/WebKit diagnostic found two
+distinct cases. WebKit's HTTP offline fixture emitted native offline/online
+events but allowed a new resumed WebSocket to open while HTTP reads still failed.
+The thread then waited for its 15-second fallback after coming online. Chromium's
+new sockets stayed closed and its reconnect promptly recovered the full burst.
+The failing WebKit evidence is preserved; it is not a passing current-head result.
+
+The accepted bounded correction adds a native `online` listener to TaskThread's
+existing recovery effect, using the same serialized, abort-fenced scoped reload.
+No shared stream, router, grants or server projection changes are admitted.
+Verification keeps both cases: the complete HTTP/WebSocket outage explicitly
+closes new sockets through the existing outage fixture, and the original failing
+mixed-transport case remains a separate regression. WebKit must prove an open
+stream while HTTP fails. Both retain the native online transition, original
+12-second recovery assertion, all 67 messages with the root exactly once, the
+draft and same document. No synthetic online event or longer timeout is allowed.
+
+The policy's CSS active-state probe uses public pointer down/hold, computed style
+and release outside in both engines, replacing its Chromium-only forced CDP
+state. Keep its before/pressed, no-hover and geometry assertions and the actual
+phone tap journeys. This is emulated CSS/input evidence, not physical-device proof.

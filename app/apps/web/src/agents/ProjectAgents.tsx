@@ -220,9 +220,10 @@ function TaskThread({ task, projectId, meId, names, canWrite, changingScope }: {
     const onFocus = () => reload.current();
     const onVisible = () => { if (document.visibilityState === 'visible') reload.current(); };
     window.addEventListener('focus', onFocus);
+    window.addEventListener('online', onFocus);
     document.addEventListener('visibilitychange', onVisible);
     const interval = window.setInterval(onVisible, 15_000);
-    return () => { window.removeEventListener('focus', onFocus); document.removeEventListener('visibilitychange', onVisible); window.clearInterval(interval); };
+    return () => { window.removeEventListener('focus', onFocus); window.removeEventListener('online', onFocus); document.removeEventListener('visibilitychange', onVisible); window.clearInterval(interval); };
   }, []);
 
   const messages = useMemo(() => {
