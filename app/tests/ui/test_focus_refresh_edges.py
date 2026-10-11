@@ -89,7 +89,7 @@ class RefreshEdges(unittest.TestCase):
     def assert_read_feedback_at_working_viewport(self, page, *, acknowledged):
         observed = page.get_by_role('note').filter(has_text='Current notification settings could not be refreshed.').evaluate_all("""notes => notes.map(note => {
           const box=note.getBoundingClientRect(), pane=note.closest('.pane-scroll')?.getBoundingClientRect();
-          const button=Array.from(note.querySelectorAll('button')).find(button=>button.textContent.includes('Retry current settings'));
+          const button=Array.from(note.querySelectorAll('button')).find(button=>button.getAttribute('aria-label')==='Retry current settings'||button.textContent.includes('Retry current settings'));
           const retry=button?.getBoundingClientRect(), hit=retry&&document.elementFromPoint(retry.x+retry.width/2,retry.y+retry.height/2);
           return {text:note.textContent, box:{top:box.top,bottom:box.bottom}, pane:pane&&{top:pane.top,bottom:pane.bottom},
             retry:retry&&{top:retry.top,bottom:retry.bottom,height:retry.height}, usable:!!hit&&(hit===button||button.contains(hit))};
