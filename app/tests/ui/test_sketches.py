@@ -9,14 +9,13 @@ persistence rather than local state. Screenshots go to FLUX_UI_SCREENSHOTS when 
 from __future__ import annotations
 
 import json
-import os
 import re
 import time
 import unittest
 
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
-from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, box, open_map_options, show_map_as, shot, start_forwarder
+from test_app_shell import DESKTOP, ORIGIN, PHONE, UI_BROWSER, UPSTREAM, box, open_map_options, show_map_as, shot, start_forwarder
 
 PASSWORD = "sketching all afternoon"
 EMAIL = f"kai.lind+{int(time.time() * 1000)}@example.test"
@@ -44,7 +43,7 @@ class SketchJourney(unittest.TestCase):
         if UPSTREAM:
             start_forwarder(ORIGIN, UPSTREAM)
         cls.pw = sync_playwright().start()
-        cls.browser = getattr(cls.pw, os.environ.get("FLUX_UI_BROWSER", "chromium")).launch()
+        cls.browser = getattr(cls.pw, UI_BROWSER).launch()
         expect.set_options(timeout=8000)
 
     @classmethod
