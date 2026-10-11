@@ -26,6 +26,10 @@ ORIGIN = os.environ.get("FLUX_UI_ORIGIN", "http://127.0.0.1:18591").rstrip("/")
 UPSTREAM = os.environ.get("FLUX_UI_UPSTREAM")
 MAILPIT = os.environ.get("FLUX_MAILPIT_URL")
 SHOTS = Path(os.environ["FLUX_UI_SCREENSHOTS"]) if os.environ.get("FLUX_UI_SCREENSHOTS") else None
+# FLUX_UI_BROWSER selects the engine for these journeys: chromium (default) or webkit (#461).
+UI_BROWSER = os.environ.get("FLUX_UI_BROWSER", "chromium")
+if UI_BROWSER not in ("chromium", "webkit"):
+    raise ValueError(f"FLUX_UI_BROWSER must be chromium or webkit, got {UI_BROWSER!r}")
 
 DESKTOP = {"width": 1440, "height": 900}
 PHONE = {"width": 390, "height": 844}
@@ -221,7 +225,7 @@ class AppShellJourney(unittest.TestCase):
         if UPSTREAM:
             start_forwarder(ORIGIN, UPSTREAM)
         cls.pw = sync_playwright().start()
-        cls.browser = cls.pw.chromium.launch()
+        cls.browser = getattr(cls.pw, UI_BROWSER).launch()
         expect.set_options(timeout=8000)
 
     @classmethod
