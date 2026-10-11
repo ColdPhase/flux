@@ -25,6 +25,7 @@ export function workRepository(tx: DbExecutor): WorkRepository {
     ...rows,
     /** "Let linked PRs move this task" (#74 G-1a) is part of the native task read model. */
     githubRules: (taskIds) => githubRows(tx).taskRules(taskIds),
+    suspendGithubRule: (task) => githubRows(tx).suspendRuleForOverride(task),
     /** The policy's own list condition (`visibleFilter`) is applied before the limit and in the total. */
     async listAssignedVisible(principal, workspaceId, owner, page) {
       return rows.listAssigned(workspaceId, owner, await visibleFilter(principal, workspaceId, 'project', tx), page);

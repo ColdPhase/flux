@@ -8,7 +8,7 @@ This is the first implementation slice of [#74](https://github.com/ColdPhase/flu
 Repository bindings and verified task/PR references are implemented under each
 reader's own GitHub authorization. G-1a task rules ("Let linked PRs move this task") are implemented as recorded in
 [G-1 §2a](2026-10-05-app-and-task-rules.md#2a-g-1a-as-implemented). Local-agent delivery, external review publication,
-polling without public HTTPS, manifest setup and portable export/import recovery remain pending. Fixture checks do not
+polling without public HTTPS, manifest setup and portable import recovery remain pending (the project export already lists task rules dormant and withholds repository bindings, see `docs/operations/export.md`). Fixture checks do not
 complete the whole issue.
 
 ## Operator configuration

@@ -42,6 +42,8 @@ export interface GithubRuleRecord {
   /** Set only while the task is blocked by this rule. */
   blockedBy: GithubRuleBlock | null;
   readyToClose: boolean;
+  /** Grows with every semantic change of the rule; the compare-and-set token of a manual override. */
+  revision: number;
   updatedAt: Date;
 }
 /** A rule as read for presentation: whether a required link's repository binding is no longer active. */
@@ -109,7 +111,7 @@ export function presentGithubRule(rule: GithubRuleReading, task: Pick<GithubRule
   const state = derived ? 'suspended' : rule.state;
   return {
     mode: rule.mode, state, suspendedReason: derived ?? rule.suspendedReason,
-    expectedVersion: rule.expectedVersion, updatedAt: rule.updatedAt.toISOString(),
+    expectedVersion: rule.expectedVersion, revision: rule.revision, updatedAt: rule.updatedAt.toISOString(),
     readyToClose: state === 'active' && rule.readyToClose && !task.parked && !FINISHED.has(task.status),
   };
 }

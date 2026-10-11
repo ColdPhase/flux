@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { after, before, test } from 'node:test';
 import Fastify from 'fastify';
-import { chromium, type Browser, type BrowserContext, type Page } from 'playwright';
+import { chromium, webkit, type Browser, type BrowserContext, type Page } from 'playwright';
 import { createDatabase } from '@flux/db';
 import type { GithubBinding, GithubCheck, GithubPullFacts, WorkItem } from '@flux/contracts';
 import { NotFoundError, type GithubProvider, type Principal } from '@flux/core';
@@ -75,7 +75,10 @@ let browser: Browser; const contexts: BrowserContext[] = []; const errors: strin
 before(async () => {
   await app.register(githubRoutes, { db, sessions: identity, config, transport: identityOnly, provider, background: false }); await app.ready();
   await new Promise<void>((resolve) => proxy.listen(Number(new URL(publicOrigin).port), '127.0.0.1', resolve));
-  browser = await chromium.launch();
+  const engine = process.env.FLUX_E2E_BROWSER ?? 'chromium';
+  if (engine !== 'chromium' && engine !== 'webkit') throw new Error('FLUX_E2E_BROWSER must be chromium or webkit');
+  browser = await (engine === 'webkit' ? webkit : chromium).launch();
+  assert.equal(browser.browserType().name(), engine);
 });
 after(async () => {
   await Promise.all(contexts.map((ctx) => ctx.close())); await browser?.close();

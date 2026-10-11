@@ -55,6 +55,7 @@ const createWork = { type: 'object', required: ['title'], additionalProperties: 
 const updateWork = { type: 'object', additionalProperties: false, minProperties: 1, properties: {
   title, outcome: { type: 'string', maxLength: WORK_LIMITS.outcome }, owner: principalRef, status,
   blocker: { type: ['string', 'null'], maxLength: WORK_LIMITS.blocker }, parked: { type: 'boolean', enum: [false] }, expectedVersion: version,
+  expectedGithubRuleRevision: { type: 'integer', minimum: 0 },
   clientCommandId: { type: 'string', format: 'uuid' },
   criteria, dependencyIds,
 } } as const;

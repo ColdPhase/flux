@@ -128,6 +128,8 @@ repository was created on 2026-09-26.
 
 ### Changed
 
+- A project export now lists the project's "Let linked PRs move this task" rules as dormant, disabled entries; connected repositories are not exported, because their names need your own GitHub authorization ([#74](https://github.com/ColdPhase/flux/issues/74)).
+- Changing a task's status or blocker by hand now pauses its "Let linked PRs move this task" rule at once, with a history line, and the rule carries a revision that a task change or a rule command can pin so you override only the state you saw ([#74](https://github.com/ColdPhase/flux/issues/74)).
 - Settings → Appearance adds Text size (Small, Default, Large) on the computer, a Reduce motion switch that turns motion off on this device as the system setting does, and a phone text-size row that follows the phone ([#452](https://github.com/ColdPhase/flux/pull/452)).
 - The Agents view shows what each connected agent holds now (its task and whether it is working, assigned or paused) and its open requests with sender, task and why they wait, and Claude Code users start Flux work from the built-in Start work prompt ([#160](https://github.com/ColdPhase/flux/issues/160)).
 - Faster reads: the Inbox count no longer compiles query code on each visit, conversation and material lists use one statement instead of one or two per row, and conversation roots and comparison outcomes are read without locks ([#300](https://github.com/ColdPhase/flux/pull/300)).
