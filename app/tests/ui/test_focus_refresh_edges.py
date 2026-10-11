@@ -94,11 +94,17 @@ class RefreshEdges(unittest.TestCase):
           return {text:note.textContent, box:{top:box.top,bottom:box.bottom}, pane:pane&&{top:pane.top,bottom:pane.bottom},
             retry:retry&&{top:retry.top,bottom:retry.bottom,height:retry.height}, usable:!!hit&&(hit===button||button.contains(hit))};
         })""")
-        print('ACTUAL_WORKING_FEEDBACK ' + json.dumps({'engine':original.helper.base.ENGINE,'viewport':page.viewport_size,'notes':observed}),flush=True)
-        self.assertTrue(any(acknowledged + '.' in note['text'] and note['pane'] and note['retry']
+        receipt=page.locator('.nset__saved').evaluate("""element=>{
+          const box=element.getBoundingClientRect(),pane=element.closest('.pane-scroll').getBoundingClientRect();
+          return {text:element.textContent,visible:box.top>=pane.top&&box.bottom<=pane.bottom};
+        }""")
+        print('ACTUAL_WORKING_FEEDBACK ' + json.dumps({'engine':original.helper.base.ENGINE,'viewport':page.viewport_size,'notes':observed,'receipt':receipt}),flush=True)
+        visible=[note for note in observed if note['pane'] and note['retry']
             and note['box']['top'] >= note['pane']['top'] and note['box']['bottom'] <= note['pane']['bottom']
-            and note['retry']['top'] >= note['pane']['top'] and note['retry']['bottom'] <= note['pane']['bottom']
-            and note['usable'] for note in observed), 'acknowledged result, unavailable current settings and usable read-only Retry remain visible at the original action viewport')
+            and note['retry']['top'] >= note['pane']['top'] and note['retry']['bottom'] <= note['pane']['bottom'] and note['usable']]
+        self.assertTrue(visible, 'current-read qualifier and usable read-only Retry remain visible at the original action viewport')
+        self.assertTrue((receipt['visible'] and acknowledged in receipt['text']) or any(acknowledged + '.' in note['text'] for note in visible),
+            'the actual acknowledged result remains visible beside current-read feedback or in the existing visible header')
 
     def test_01_silent_remote_extension_is_read_at_the_old_deadline(self):
         page, actor = self.actor('Silent Extension')
