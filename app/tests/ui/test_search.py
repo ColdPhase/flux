@@ -468,5 +468,39 @@ class SearchJourney(unittest.TestCase):
                 shot(page, f"task-number-26-text-200-{'phone-390' if phone else 'desktop-1440'}")
 
 
+    # ---------------------------------------------------------------- projects by name (#465)
+
+    def test_12_a_project_is_found_by_its_name_and_opens_its_home(self) -> None:
+        page = self.page("nia")
+        page.goto("/")
+        expect(page.get_by_role("button", name="Search", exact=True)).to_be_visible()
+        dialog, field = self.jump(page, "gesture lamp")
+        expect(dialog.get_by_role("option").first).to_contain_text("Gesture lamp")
+        expect(dialog.get_by_role("option").first).to_contain_text("Project · restricted")
+        shot(page, "search-project-jump-desktop-1440")
+        field.press("Enter")
+        expect(dialog).to_be_hidden()
+        expect(page).to_have_url(re.compile(rf"/projects/{self.ids['lamp']}"))
+        expect(page.get_by_role("heading", level=1, name="Gesture lamp")).to_be_visible()
+
+        page.goto("/search?q=lamp&type=project")
+        results = page.get_by_role("list", name="Results")
+        expect(results.get_by_role("link")).to_have_count(1)
+        expect(results).to_contain_text("Gesture lamp")
+        chips = page.get_by_role("group", name="Kind of result")
+        expect(chips.get_by_role("button", name=re.compile("^Projects"))).to_have_attribute("aria-pressed", "true")
+
+        # Olek is not in the restricted project: the name finds nothing, on the palette or the page.
+        olek = self.page("olek")
+        olek.goto("/")
+        expect(olek.get_by_role("button", name="Search", exact=True)).to_be_visible()
+        dialog, _ = self.jump(olek, "gesture lamp")
+        expect(dialog).to_contain_text("Nothing you can open matches")
+        expect(dialog.get_by_role("option")).to_have_count(0)
+        olek.goto("/search?q=gesture%20lamp")
+        expect(olek.get_by_role("heading", name=re.compile("Nothing matches"))).to_be_visible()
+        self.assertNotIn("Gesture lamp", olek.content())
+
+
 if __name__ == "__main__":
     unittest.main()

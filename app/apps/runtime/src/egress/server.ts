@@ -20,10 +20,27 @@ export const EGRESS_LIMITS = {
   tunnelIdleMs: 5 * 60_000,
   connectTimeoutMs: 10_000,
   connections: 256,
+  /** Per source address. Each slot sits alone on its own network, so its address identifies it. */
+  connectionsPerSource: 32,
 } as const;
 
 const defaultResolve: Resolve = async (host) => (await lookup(host, { all: true, verbatim: true })).map((entry) => entry.address);
 const defaultConnect: Connect = (address, port) => netConnect({ host: address, port });
+
+/** Closes a connection past the per-source cap before any byte is read; one busy slot cannot take all `connections`. */
+export function capConnectionsPerSource(server: Server, limit: number = EGRESS_LIMITS.connectionsPerSource, log: Log = () => undefined): void {
+  const open = new Map<string, number>();
+  server.on('connection', (socket: Socket) => {
+    const source = socket.remoteAddress ?? 'unknown';
+    const count = (open.get(source) ?? 0) + 1;
+    if (count > limit) { log({ event: 'refused', reason: 'source_limit' }); socket.destroy(); return; }
+    open.set(source, count);
+    socket.once('close', () => {
+      const left = (open.get(source) ?? 1) - 1;
+      if (left <= 0) open.delete(source); else open.set(source, left);
+    });
+  });
+}
 
 function refuse(socket: Duplex, status: 400 | 403 | 405 | 502, reason: string) {
   if (!socket.writable) { socket.destroy(); return; }
@@ -39,6 +56,7 @@ export function createProxyServer({ allow, resolve = defaultResolve, connect = d
     res.end();
   });
   server.maxConnections = EGRESS_LIMITS.connections;
+  capConnectionsPerSource(server, EGRESS_LIMITS.connectionsPerSource, log);
   server.on('connect', async (req, socket: Duplex, head: Buffer) => {
     socket.on('error', () => socket.destroy());
     const target = parseConnectTarget(req.url);
@@ -112,6 +130,7 @@ export function createMcpForwarder({ upstream, log = () => undefined }: { upstre
     res.on('close', () => forward.destroy());
   });
   server.maxConnections = EGRESS_LIMITS.connections;
+  capConnectionsPerSource(server, EGRESS_LIMITS.connectionsPerSource, log);
   // CONNECT on the MCP port is refused like any other non-/mcp request.
   server.on('connect', (_req, socket: Duplex) => { socket.on('error', () => socket.destroy()); refuse(socket, 405, 'Method Not Allowed'); });
   server.on('clientError', (_error, socket) => refuse(socket, 400, 'Bad Request'));

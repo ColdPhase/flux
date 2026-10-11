@@ -30,7 +30,7 @@ export interface AgentRuntimeRows {
   requestRelease(target: { ownerUserId: string } | { slot: string }, reason: AgentRuntimeReleaseReason): Promise<RuntimeBindingRow | null>;
   recordCommercialTerms(agreedOn: string): Promise<void>;
   slotsWithBindings(): Promise<{ slot: RuntimeSlotRow; binding: RuntimeBindingRow | null }[]>;
-  saveSlot(slot: RuntimeSlotRow): Promise<void>;
+  saveSlot(slot: RuntimeSlotRow, expected?: Pick<RuntimeSlotRow, 'state' | 'wipeBootId'>): Promise<void>;
   markSignInAgain(bindingId: string): Promise<void>;
   completeRelease(bindingId: string, slot: RuntimeSlotRow, logoutFailed: boolean): Promise<void>;
   dropStaleReservation(bindingId: string, olderThan: Date): Promise<boolean>;
@@ -153,12 +153,17 @@ export function agentRuntimeStore(db: Handle): AgentRuntimeRows {
       return rows.rows.map((row) => ({ slot: slotRow(row), binding: row.binding ? binding(row.binding) : null }));
     },
 
-    async saveSlot(slot) {
+    async saveSlot(slot, expected) {
+      // Compare-and-set against the row the reconciliation read, so a bind or release that committed in
+      // between (reserve flips the slot to `held`) is not overwritten with an older decision.
+      const unchanged = expected
+        ? sql` WHERE agent_runtime_slots.state = ${expected.state} AND agent_runtime_slots.wipe_boot_id IS NOT DISTINCT FROM ${expected.wipeBootId}`
+        : sql``;
       await db.execute(sql`INSERT INTO agent_runtime_slots(slot, state, boot_id, wipe_boot_id, out_of_pool_reason, reported_at, updated_at)
         VALUES (${slot.slot}, ${slot.state}, ${slot.bootId}, ${slot.wipeBootId}, ${slot.outOfPoolReason}, now(), now())
         ON CONFLICT (slot) DO UPDATE SET state = excluded.state, boot_id = excluded.boot_id, wipe_boot_id = excluded.wipe_boot_id,
           out_of_pool_reason = excluded.out_of_pool_reason, reported_at = now(),
-          updated_at = CASE WHEN agent_runtime_slots.state = excluded.state THEN agent_runtime_slots.updated_at ELSE now() END`);
+          updated_at = CASE WHEN agent_runtime_slots.state = excluded.state THEN agent_runtime_slots.updated_at ELSE now() END${unchanged}`);
     },
 
     async markSignInAgain(bindingId) {

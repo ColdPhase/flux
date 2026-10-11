@@ -5,10 +5,12 @@ All notable changes to Flux are recorded here. The format follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) for its releases.
 
 **Keeping it current.** A pull request that changes what people or operators see adds
-one line under `[Unreleased]`, in the matching section, with its PR number. This
-covers features, changed behaviour, fixes, removals, security fixes and new
-operator steps. Internal refactors, tests and agent-process changes need no entry.
-At release time, the release candidate moves `[Unreleased]` under its version and date.
+one file under [changes/](changes/README.md) with its PR number, instead of editing this
+file, so that parallel pull requests do not conflict here. This covers features, changed
+behaviour, fixes, removals, security fixes and new operator steps. Internal refactors,
+tests and agent-process changes need no entry. At release time,
+`python3 scripts/changelog.py release <version> <date>` moves the pending entries under
+that version; the entries below were written before that rule.
 
 ## [Unreleased]
 
@@ -50,6 +52,8 @@ repository was created on 2026-09-26.
 - Workspace People: owners and admins add an existing account by email, change roles and remove people, with project access controls and opt-in promotion grants ([#198](https://github.com/ColdPhase/flux/pull/198)). An open project's access line says accurately who can see it ([#243](https://github.com/ColdPhase/flux/pull/243)).
 
 #### Working together
+
+- Search finds projects by name for the people who may open them; a result opens the project, and a Projects filter narrows the results ([#465](https://github.com/ColdPhase/flux/issues/465)).
 
 - Installable PWA shell and Web Push notifications ([#49](https://github.com/ColdPhase/flux/pull/49)).
 - The calm web app shell and design system ([#55](https://github.com/ColdPhase/flux/pull/55)),
@@ -93,6 +97,8 @@ repository was created on 2026-09-26.
 - "Let linked PRs move this task": a person who can edit a task lets its required pull requests
   start, block and finish it, or mark it Ready to close. A manual status change pauses it until resumed
   ([#270](https://github.com/ColdPhase/flux/pull/270)).
+- A task made in Tasks can be linked to a map thought from its Details: a "Linked thoughts" section
+  and a "Link to a thought" picker for the project's maps ([#449](https://github.com/ColdPhase/flux/pull/449)).
 - Messages send instantly: the field empties at once, the message shows "Sending…" in place, and a failed send offers Retry or Remove. Offline, a line says so and queued messages resend automatically ([#299](https://github.com/ColdPhase/flux/pull/299)).
 - A phone-first shell: on phones, Home and project views sit in a bottom bar, with a clear current place, motion and Settings ([#267](https://github.com/ColdPhase/flux/pull/267)).
 - One chronological project conversation with no mandatory topics; replies sit with their message in a reply drawer ([#195](https://github.com/ColdPhase/flux/pull/195)). Creating a task posts one compact announcement in the stream, and the task's discussion root shows in the stream and Details ([#224](https://github.com/ColdPhase/flux/pull/224)).
@@ -129,6 +135,10 @@ repository was created on 2026-09-26.
 - When an agent app opens Flux's sign-in page, people can now use the operator's single sign-on there, then pick the connection and approve as before; a cancelled sign-in comes back to the same page, and the page says when the provider cannot be reached ([#310](https://github.com/ColdPhase/flux/issues/310)).
 - People who sign in through the operator's single sign-on now lose access once the provider has not confirmed them for `FLUX_OIDC_CONFIRMATION_MAX_AGE` (default 7 days, 1 hour to 30 days): their browser sessions return to sign-in, their agents get a 401 and must sign in again, and the connection an agent held is chosen for it ([#312](https://github.com/ColdPhase/flux/issues/312)).
 - With single sign-on, Flux now checks every 15 minutes that the provider still honours each signed-in person: when an administrator disables someone there, their browser sessions end and their agents' MCP requests get `401` "Sign in again with <provider>" until the provider accepts them again, with nothing revoked. A provider that gives Flux no refresh token refuses the sign-in with a message; `FLUX_OIDC_STANDING=off` turns the check off, and backups leave the stored tokens out ([#311](https://github.com/ColdPhase/flux/issues/311)).
+- The agent runtime retains unconfirmed sign-out history, treats unreadable client files conservatively, refuses startup without the required kernel isolation settings, and caps both egress listeners per source and globally; remaining installation-history and supported-host observations stay open in the operator guide ([#385](https://github.com/ColdPhase/flux/pull/385)).
+- A project export now lists the project's "Let linked PRs move this task" rules as dormant, disabled entries; connected repositories are not exported, because their names need your own GitHub authorization ([#74](https://github.com/ColdPhase/flux/issues/74)).
+- Changing a task's status or blocker by hand now pauses its "Let linked PRs move this task" rule at once, with a history line, and the rule carries a revision that a task change or a rule command can pin so you override only the state you saw ([#74](https://github.com/ColdPhase/flux/issues/74)).
+- The map fills the work pane with floating tools: dragging from a thought's dot connects it to another thought, releasing on empty space adds a connected thought as a draft until you save it, the selection's actions float above it, and Create task sits in the bottom toolbar; on the phone the map is for viewing and adding a thought and says connecting and arranging happen on a computer ([#380](https://github.com/ColdPhase/flux/pull/380)).
 - Settings → Appearance adds Text size (Small, Default, Large) on the computer, a Reduce motion switch that turns motion off on this device as the system setting does, and a phone text-size row that follows the phone ([#452](https://github.com/ColdPhase/flux/pull/452)).
 - The Agents view shows what each connected agent holds now (its task and whether it is working, assigned or paused) and its open requests with sender, task and why they wait, and Claude Code users start Flux work from the built-in Start work prompt ([#160](https://github.com/ColdPhase/flux/issues/160)).
 - Faster reads: the Inbox count no longer compiles query code on each visit, conversation and material lists use one statement instead of one or two per row, and conversation roots and comparison outcomes are read without locks ([#300](https://github.com/ColdPhase/flux/pull/300)).
@@ -145,6 +155,8 @@ repository was created on 2026-09-26.
 - The compiled, non-root runtime image no longer ships TypeScript tooling ([#43](https://github.com/ColdPhase/flux/pull/43)).
 
 ### Fixed
+
+- A new map draft receives keyboard focus after its editor becomes visible, without taking focus again when the editor is repositioned ([#380](https://github.com/ColdPhase/flux/pull/380)).
 
 - Background comparisons resume within a few minutes after the worker is killed mid-run, instead of waiting an hour for the dead run to expire; the interrupted request stays counted as possible spending and is never retried ([#58](https://github.com/ColdPhase/flux/issues/58)).
 - Task details hide empty relationship paging after a successful read and keep status/owner labels separated from their values with enlarged text ([#282](https://github.com/ColdPhase/flux/pull/282)).

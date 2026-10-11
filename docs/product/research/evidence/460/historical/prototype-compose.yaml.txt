@@ -1,0 +1,31 @@
+services:
+  migrate:
+    build:
+      dockerfile: /tmp/flux-460-prototype/Dockerfile
+      additional_contexts:
+        research-patch: /tmp/flux-460-prototype
+  mcp-clients:
+    build:
+      dockerfile: /tmp/flux-460-prototype/Dockerfile
+      additional_contexts:
+        research-patch: /tmp/flux-460-prototype
+    volumes:
+      - /tmp/flux-460-prototype/probe.ts:/app/tests/app/e2e/flux-460-probe.ts:ro,z
+      - /tmp/flux-460-prototype/evidence:/evidence:z
+    environment:
+      FLUX_RESEARCH_PATCH_SHA256: 000557a3697ca87d54d0f5b3302935495f5b8d7ccc121c64edce186c402e7595
+      FLUX_GIT_COMMIT: 975747426a778cc4471bd4c9eabb8910eb187671
+    command: ["node_modules/.bin/tsx", "tests/app/e2e/flux-460-probe.ts"]
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: 10.198.100.0/24
+  runtime-control:
+    ipam:
+      config:
+        - subnet: 10.198.101.0/24
+  runtime-api:
+    ipam:
+      config:
+        - subnet: 10.198.102.0/24

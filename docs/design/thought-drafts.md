@@ -5,9 +5,57 @@ Recorded before implementation, 2026-09-30, under the #149 contract. Appearance 
 source navigation and map camera remain authoritative.
 
 New root/child capture opens one private draft per account/workspace/place/map.
+F-026 S15 and #349 AC-3 limit screens at or below 640 CSS px to plain additions:
+selection, keyboard Add and clipboard text/lines/images never infer a parent there.
+A draft opened on a wider screen retains its content when narrowed. Before its
+first Save it shows a plain addition and saves without creating a connection on the phone.
+Existing graph links and saved thought positions remain unchanged. Wider screens
+keep confirmed connected capture and the intended-parent checks described below.
+The actual creation payload is recorded per thought immediately before dispatch.
+Changing screen width never rewrites an attempted payload or renews its key.
+Refining text after an uncertain Save also retains the original creation body/key;
+the desired text and its edit key are separate. Only after confirming current server
+state may explicit Save refine that text through the ordinary version-checked edit.
+An unsent draft first saved on a phone keeps that plain-addition intent on later
+retries. For an earlier connected attempt, the phone only confirms an existing
+server thought (and, if edited, uses the ordinary version-checked text update);
+it does not dispatch or recreate its connection. If that thought is not present,
+the text stays recoverable and the earlier save must be checked/retried on a
+computer. Partial pasted batches retain each dispatched row's own canonical
+payload while unsent rows may first be saved as plain additions on the phone.
+Missing canonical metadata never proves that a key was unused, including in a
+tracked-format copy left behind by a refused storage write. A separate unused
+proof belongs to this account/place/map, thought ID and creation key. Before a
+creation dispatch the client removes that proof and verifies its absence, while
+retaining the canonical attempt in memory and trying to persist it. Refusing the
+full attempt write alone does not disable memory-only Save. If neither canonical
+persistence nor invalidation can make stale unused authorization unusable, only
+that dispatch is refused: no request is sent, text/IDs/keys stay, and the draft
+keeps its known unused retry state rather than claiming an attempt was dispatched.
+A fresh thought whose bound unused proof never existed can save entirely in
+memory even when all storage access is blocked. Successfully retained canonical
+state already makes an older unused proof irrelevant; later storage refusal does
+not convert that known creation back into unused or unknown intent.
+After reload, a valid canonical attempt wins over any stale unused proof; a valid
+unused proof permits first Save; neither is an unknown save on every viewport.
+Unknown and historical markerless copies only confirm an existing server thought
+and use an ordinary guarded refinement. An absent thought retains the original
+text/IDs/coordinates/key with an unresolved-save message; widening alone cannot
+recover lost canonical information. Confirmation does not create a link or infer
+personal outline grouping from the stale draft's parent. Unrelated grouping and
+drafts stay intact. A refinement is submitted only by explicit Save, against the
+version just read and the known earlier text; a different peer text is shown
+without overwriting it and the person's retained text stays recoverable.
+
+This refused-storage lifecycle was independently reviewed on 2026-10-10 for
+#380/#349 against #149 AC-2/AC-3. It preserves memory-only Save during the visit
+and the existing limit that reload can recover only accepted storage. It adds no
+public API or server reservation contract.
 It retains text, intended parent ID, client thought/link IDs, position and an
 idempotency key in this tab's session storage, with memory fallback. No shared
-thought, relation, event, outline grouping or API write exists before Save/Enter.
+thought, relation, event, outline grouping or API write exists before the first Save/Enter.
+An uncertain response may already have published the earlier write; the draft says
+that its save is unconfirmed rather than claiming it is still certainly private.
 List/Map and map navigation retain it; blur never saves. So do the task
 count chooser (opening it, Escape, Close and opening a task beside the map) and switching
 project views (Conversation, Agents, Tasks, Wiki) within the same visit. Empty Save leaves the
@@ -27,12 +75,13 @@ local document, records its normal undo step, groups its ID in this person's lis
 and clears the draft. A failed/uncertain response retains the text and the stable
 client IDs/key for explicit retry; no replacement ID or partial-link command is
 created. The server rechecks the intended parent and current write access.
-Editing after a failed attempt gets a fresh request key while retaining the
-thought ID, so an uncertain earlier creation cannot become a duplicate thought.
-If that earlier creation did commit, the next Save finds the thought by its ID
-(`THOUGHT_EXISTS`). It then finishes the save: the newer text is sent as an
-ordinary edit at the version just read, so another author's change in between
-is still a conflict.
+Editing after a failed attempt gives the refinement its own edit key while
+keeping the immutable creation body/key and thought ID. A creation replay or
+`THOUGHT_EXISTS` recovery reads authoritative current state rather than trusting
+an older creation receipt. Only the known earlier text may then be refined by an
+ordinary edit at the version just read; another author's newer text remains a
+conflict. A restored copy with unknown earlier text may only refine its owner's
+untouched version-1 creation, never silently replace a later version.
 A parent removed or access revoked is an error; it never silently becomes a root.
 
 Existing thought editing remains inline. F2 and visible Edit open the same text
