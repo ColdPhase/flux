@@ -203,3 +203,47 @@ action slot and place the entire named warning at a measured fitting position
 in the same visible section, preserving original viewport/44 px/no-write/error
 and lifecycle guards. The PR stays draft; the failed experiment remains
 available, with no parent/visual/runtime/release acceptance claimed.
+
+## Delegated bounded action-slot repair before code — 2026-10-11
+
+Root explicitly handed its clean published `8303e754` writer and exclusive
+Docker leases to the diagnostic subagent. The same single assignee owns
+#340/#351; no other writer changes this branch during the handoff. This agent
+now implements and cannot supply independent final approval of its changes.
+
+The accepted presentation policy permits one measured fitting position within
+the same original visible muted section when the captured index cannot fit the
+complete result. Canonical membership/counts, the one actual target, historical
+unmute semantics, full visible read-failure explanation/name/status,44px
+read-only recovery and one Saved live announcement remain required. No API,
+session,nonce,read,revision,queue,mount or genuine-failure authority changes;
+no forced scrolling/focus,overlay,cropping or arbitrary negative offsets.
+
+Concrete implementation: retain a keyed physical picker slot and its selected
+place through the actual pending command, using the existing focusable busy
+Button and truthful `Muting…`. Create no acknowledgement or preference change
+from pending presentation. Only the existing latest valid actual-ACK branch
+creates the named receipt. Keep the historical unmute row's canonical React
+identity while removing its repeat Unmute control. Present the full note at
+normal readable width with44px recovery/current Unmute actions together, rather
+than squeezing every line beside a button and adding another control row.
+
+Measure the actual whole named row and pane/section/ordinary-row boundaries.
+Keep its captured position whenever it fits; otherwise move that single result
+to the nearest measured fitting normal-flow position in the same visible
+section, including before its heading when that position fits. Other rows keep
+their order and canonical preferences are untouched. Measurement belongs to
+the actual latest receipt/account and connected view; observe real resize/text
+layout changes and clean up on retirement. User scrolling does not create a
+sticky result or trigger forced viewport movement. The original geometry/hit/
+text/no-duplicate/page-error assertions stay unchanged.
+
+Verification will start with real original short/long/overtaken MUTE and UNMUTE
+guards and settled observations in Chromium/WebKit, in an isolated disposable
+Docker stack. A hot source/UI lane may support bounded iteration; it is not
+immutable final evidence. After those pass, freeze coherent source and run the
+affected email/other/mixed/lifetime/genuine-failure checks, exact baked source
+and asset audits, configured build/type/lint and actual same-instance SMTP
+removal. Preserve all previous failed runs and unfiltered #471. Fresh neutral
+visual and eligible independent review, current-main composition and all full
+parent/release gates remain open. No GitHub write or push during this lease.
