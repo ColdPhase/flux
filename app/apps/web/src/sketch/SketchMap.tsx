@@ -494,6 +494,10 @@ export function SketchMap(props: SketchMapProps) {
     begin(event, { kind: 'link', id, ids: [id] });
   };
 
+  const onDotClick = (id: string) => {
+    if (!suppressClick.current) props.onConnectFrom(id);
+  };
+
   const onResizePointerDown = (event: ReactPointerEvent<HTMLSpanElement>, thought: Thought) => {
     event.stopPropagation();
     if (event.button !== 0) return;
@@ -774,7 +778,7 @@ export function SketchMap(props: SketchMapProps) {
                   className={`sk-dot${selected || connectFrom === thought.id || hover === thought.id ? ' is-on' : ''}${dragging ? ' is-dragging' : ''}`}
                   style={{ transform: `translate(${p.x + (side === 'right' ? r.w : 0)}px, ${p.y + r.h / 2}px) scale(${1 / zoom}) translate(-50%, -50%)` }}
                   onPointerDown={(event) => onDotPointerDown(event, thought.id)}
-                  onClick={() => { if (!suppressClick.current) props.onConnectFrom(thought.id); }} />
+                  onClick={() => onDotClick(thought.id)} />
               )) : null}
               </Fragment>
             );
