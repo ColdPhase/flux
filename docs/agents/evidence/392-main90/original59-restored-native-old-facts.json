@@ -1,0 +1,9 @@
+{
+  "phase": "verify-upgrade",
+  "allOriginalTablesAndTimestamps": true,
+  "ledgerCount": 61,
+  "onlyNew70_71": true,
+  "authentic71Backfill": true,
+  "originalFamiliesUnchanged": true,
+  "missingCustodyNoToken": true
+}

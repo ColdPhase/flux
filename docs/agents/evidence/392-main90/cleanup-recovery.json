@@ -1,0 +1,49 @@
+{
+  "project": "flux392-primary-1791742503-1501538",
+  "session": 46273,
+  "pid": 1501538,
+  "allPrimaryAssertions": "PASS",
+  "originalDriverTerminal": 2,
+  "originalCleanupFailure": "PermissionDenied exactproviderbind/import after successful Compose cleanup",
+  "cleanupRecoveryExit": 0,
+  "helper": "flux392-keycloak-import-owner-1501538",
+  "helperExit": 0,
+  "helperAbsent": true,
+  "helperNetwork": "none",
+  "helperImage": "node@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1",
+  "helperOutputEmpty": true,
+  "exactMount": "/tmp/flux392-custody-current/run-primary-1791742503-1501538/private/keycloak-data",
+  "changedOnlyImportDirectoryOwner": {
+    "uid": {
+      "before": 0,
+      "after": 1000
+    },
+    "gid": {
+      "before": 0,
+      "after": 1000
+    },
+    "modeBeforeAndAfter": "0755"
+  },
+  "providerFileContentsUnchangedBeforeDeletion": true,
+  "providerRegularFileCount": 3,
+  "providerFilesMapSha256": "ac94d87c3628b58b4215a1c86a00ebd1cf4c9e3225e152ae32711aa87588cba3",
+  "providerBindRemoved": true,
+  "providerOwnerMarkerRemoved": true,
+  "authorizedSuccessPrivateTailRemoved": [
+    "client-secret",
+    "candidate-dump.bin",
+    "project-export.tar",
+    "upgrade-backup/flux-backup-flux392-primary-1791742503-1501538-20261011T181547Z-a158dfb8.tar.sha256",
+    "upgrade-backup/flux-backup-flux392-primary-1791742503-1501538-20261011T181547Z-a158dfb8.tar",
+    "custody-backup/flux-backup-flux392-primary-1791742503-1501538-20261011T181643Z-c1b1f238.tar.sha256",
+    "custody-backup/flux-backup-flux392-primary-1791742503-1501538-20261011T181643Z-c1b1f238.tar"
+  ],
+  "nativeRemaining": {
+    "containers": "",
+    "networks": "",
+    "volumes": "",
+    "image_tags": ""
+  },
+  "leaseReturned": true,
+  "time": "2026-10-11T18:23:13.821088+00:00"
+}
