@@ -179,6 +179,8 @@
 
 /* The named mute result stays with its affected row, including an acknowledged removed row. */
 .nset__muted li { flex-wrap: wrap; }
-.nset__muted .nset__mute-read { flex: 0 0 100%; display: flex; align-items: center; gap: 6px; margin: 4px 0 0; font-size: var(--fs-xs); line-height: 1.35; color: var(--t2); }
+.nset__muted .nset__mute-read { flex: 0 0 100%; display: flex; align-items: center; gap: 8px; margin: 0; font-size: var(--fs-xs); line-height: 1.35; color: var(--t2); }
 .nset__mute-read > span { flex: 1; min-width: 0; }
 .nset__mute-read > svg, .nset__mute-read > button { flex: none; }
+.nset__mute-read .nset__place { display: flex; }
+.nset__mute-state { display: block; margin-top: 2px; }

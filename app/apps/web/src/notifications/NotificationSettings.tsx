@@ -378,9 +378,13 @@ function AccountNotificationSettings() {
             <ul className="nset__muted">
               {muteRows.map(({ place, receiptOnly }) => (
                 <li key={`${receiptOnly ? 'receipt:' : ''}${place.type}:${place.id}`} className={receiptOnly ? 'nset__mute-result' : undefined}>
-                  <span className="nset__place">{place.type === 'dm' ? <Icon name="chat" size={14} /> : <span className="nset__hash" aria-hidden="true">#</span>}{place.name}<span className="ui-vh">{place.type === 'dm' ? ', direct message' : ', project'}</span></span>
+                  {activeMuteReceipt && activeMuteReceipt.place.type === place.type && activeMuteReceipt.place.id === place.id ? (
+                    <p className="nset__mute-read" role="note"><span>
+                      <span className="nset__place">{place.type === 'dm' ? <Icon name="chat" size={14} /> : <span className="nset__hash" aria-hidden="true">#</span>}{place.name}<span className="ui-vh">{place.type === 'dm' ? ', direct message' : ', project'}</span></span>
+                      <span className="nset__mute-state">{activeMuteReceipt.muted ? 'Muted' : 'Unmuted'}. Current settings unverified.</span>
+                    </span><Button variant="quiet" aria-label="Retry current settings" onClick={load}>Retry</Button></p>
+                  ) : <span className="nset__place">{place.type === 'dm' ? <Icon name="chat" size={14} /> : <span className="nset__hash" aria-hidden="true">#</span>}{place.name}<span className="ui-vh">{place.type === 'dm' ? ', direct message' : ', project'}</span></span>}
                   {!receiptOnly ? <Button variant="quiet" onClick={() => void save(() => setMute({ type: place.type, id: place.id, muted: false }), `Unmuted ${place.name}`, undefined, 'mute', { place, muted: false, index: prefs.muted.findIndex((item) => item.type === place.type && item.id === place.id) })}>Unmute</Button> : null}
-                  {activeMuteReceipt && activeMuteReceipt.place.type === place.type && activeMuteReceipt.place.id === place.id ? <p className="nset__mute-read" role="note"><Icon name="alert" size={14} /><span>{activeMuteReceipt.muted ? 'Muted' : 'Unmuted'}. Current settings unverified.</span><Button variant="quiet" onClick={load}>Retry current settings</Button></p> : null}
                 </li>
               ))}
             </ul>
