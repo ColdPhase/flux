@@ -2,11 +2,15 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { test } from 'node:test';
-import type { TaskAgentThread, ConversationMessage, WorkItem, Page, ConversationSummary, UndoTaskCreationResult } from '@flux/contracts';
+import type { TaskAgentThread, ConversationMessage, WorkItem, Page, ConversationSummary, UndoTaskCreationResult, ProjectExport, SearchResponse, ReturnSummary, InboxResponse } from '@flux/contracts';
+import { createDatabase } from '@flux/db';
+import type pg from 'pg';
+import { conversationStore } from '../../apps/server/src/conversation/store.js';
 import { addMember, expectStatus, grant, person, project, workspace } from './support/people.js';
 import { actionScene, toolFailure } from './support/mcp-actions.js';
 import { expect, toolValue } from './support/mcp.js';
-import { pool } from './support/db.js';
+import { pool, connectionString } from './support/db.js';
+import { recordedPushes, subscribe, waitFor } from './support/push.js';
 
 async function scene() {
   const [owner, writer, viewer, outsider] = await Promise.all(['thread-owner', 'thread-writer', 'thread-viewer', 'thread-outsider'].map(person));
@@ -132,4 +136,107 @@ test('a new thread post versus unused AI-task Undo has one winner under the shar
   const threads = (await pool.query('SELECT count(*)::int AS n FROM project_conversations WHERE work_id=$1', [item.id])).rows[0].n;
   if (post.status === 201) { assert.equal(undo.status, 409); assert.ok(row.first_persisted_use_at); assert.equal(row.creation_reverted_at, null); assert.equal(threads, 1); }
   else { expect(undo, 200) as unknown as UndoTaskCreationResult; assert.ok(row.creation_reverted_at); assert.equal(row.first_persisted_use_at, null); assert.equal(threads, 0); }
+});
+
+test('new thread GET is a read-only snapshot when a post and access revocation commit between count and window', async () => {
+  const f = await scene();
+  expectStatus(await f.owner.browser.request('POST', f.path, { body: { body: 'Before the read', clientMessageId: randomUUID() } }), 201);
+  const database = createDatabase(connectionString); const statements: string[] = [];
+  let held = false;
+  database.pool.on('connect', (client: pg.PoolClient) => {
+    const query = client.query.bind(client) as (...args: unknown[]) => Promise<unknown>;
+    (client as unknown as { query: (...args: unknown[]) => Promise<unknown> }).query = async (...args) => {
+      const config = args[0]; const text = typeof config === 'string' ? config : (config as { text?: string })?.text ?? '';
+      statements.push(text);
+      const result = await query(...args);
+      if (!held && /^select count\(\*\)::int from "project_messages"/i.test(text)) {
+        held = true;
+        // The real count has completed; the real page has not started. These commands really commit.
+        expectStatus(await f.owner.browser.request('POST', f.path, { body: { body: 'Committed during the read', clientMessageId: randomUUID() } }), 201);
+        await grant(f.owner, f.place.id, f.writer, 'denied');
+      }
+      return result;
+    };
+  });
+  try {
+    const observed = await conversationStore(database.db).getAgentThread({ kind: 'human', id: f.writer.id }, f.task.id, { limit: 50, beforeSequence: null });
+    assert.ok(held, 'actual count-to-window barrier ran');
+    assert.equal(observed.messageCount, 1); assert.equal(observed.conversation?.messages.length, 1);
+    assert.equal(observed.conversation?.messages[0]?.body, 'Before the read'); assert.equal(observed.canWrite, true);
+    assert.match(statements.find(s => /^begin/i.test(s)) ?? '', /repeatable read.*read only/i);
+    assert.equal((await f.writer.browser.request('GET', f.path)).status, 404, 'a new request uses the newly revoked audience');
+    assert.equal((expectStatus(await f.owner.browser.request('GET', f.path), 200) as TaskAgentThread).messageCount, 2);
+    const before = (await pool.query('SELECT first_persisted_use_at FROM project_work_items WHERE id=$1', [f.task.id])).rows;
+    await f.owner.browser.request('GET', f.path);
+    assert.deepEqual((await pool.query('SELECT first_persisted_use_at FROM project_work_items WHERE id=$1', [f.task.id])).rows, before, 'GET never marks another use');
+  } finally { await database.pool.end(); }
+});
+
+test('agent-thread search has exact task/message targets; hidden matches do not rank, count or page', async () => {
+  const f = await scene(); const token = 'threadneedle' + randomUUID().replaceAll('-', '');
+  const messages: ConversationMessage[] = [];
+  for (let i = 0; i < 3; i++) messages.push(expectStatus(await f.owner.browser.request('POST', f.path, { body: { body: `${token} visible observation ${i}`, clientMessageId: randomUUID() } }), 201) as ConversationMessage);
+  const hidden = await project(f.owner, f.ws.id, token + ' hidden project', 'restricted');
+  const hiddenTask = expectStatus(await f.owner.browser.request('POST', `/api/v1/projects/${hidden.id}/work`, { body: { title: 'Private measurements' } }), 201) as WorkItem;
+  expectStatus(await f.owner.browser.request('POST', `/api/v1/work/${hiddenTask.id}/agent-thread`, { body: { body: `${token} ${token} ${token} HIDDEN`, clientMessageId: randomUUID() } }), 201);
+  const query = new URLSearchParams({ q: token, type: 'message', limit: '1' });
+  const get = async (who = f.viewer) => expectStatus(await who.browser.request('GET', `/api/v1/search?${query}`), 200) as SearchResponse;
+  const first = await get(); assert.equal(first.items.length, 1); assert.equal(first.counts.message, 3);
+  const found: string[] = [];
+  let answer = first;
+  for (;;) {
+    for (const hit of answer.items) {
+      assert.equal(hit.label, `Agents’ thread · #${f.task.number}`);
+      assert.ok(hit.target.type === 'agent_thread');
+      assert.deepEqual(hit.target, { type: 'agent_thread', projectId: f.place.id, taskId: f.task.id, conversationId: messages[0]!.conversationId, messageId: hit.target.messageId });
+      found.push(hit.target.messageId); assert.ok(!JSON.stringify(hit).includes('HIDDEN'));
+    }
+    if (!answer.next) break;
+    query.set('cursor', answer.next); answer = await get(); assert.equal(answer.counts.message, 3);
+  }
+  assert.deepEqual(found.sort(), messages.map(m => m.id).sort());
+  query.delete('cursor');
+  assert.deepEqual((await get(f.outsider)).counts, {});
+  await grant(f.owner, f.place.id, f.viewer, 'denied');
+  const revoked = await get(); assert.deepEqual(revoked.items, []); assert.deepEqual(revoked.counts, {});
+});
+
+test('format-1 export adds agentThreads while preserving people history and manager/privacy rules', async () => {
+  const f = await scene();
+  const old = expectStatus(await f.owner.browser.request('POST', `/api/v1/projects/${f.place.id}/conversations`, { body: { body: 'Original people history', clientMessageId: randomUUID() } }), 201) as { id: string };
+  const message = expectStatus(await f.writer.browser.request('POST', f.path, { body: { body: 'Task progress kept in its own thread', clientMessageId: randomUUID() } }), 201) as ConversationMessage;
+  const document = expectStatus(await f.owner.browser.request('GET', `/api/v1/projects/${f.place.id}/export?format=json`), 200) as ProjectExport;
+  assert.equal(document.formatVersion, 1);
+  assert.deepEqual(document.conversations.map(c => c.id), [old.id]);
+  assert.equal(document.conversations[0]?.messages[0]?.body, 'Original people history');
+  assert.equal(document.agentThreads.length, 1); assert.equal(document.agentThreads[0]?.workId, f.task.id);
+  assert.equal(document.agentThreads[0]?.messages[0]?.id, message.id);
+  assert.deepEqual(document.agentThreads[0]?.messages[0]?.author, { kind: 'human', id: f.writer.id });
+  assert.ok(document.people.some(p => p.id === f.writer.id));
+  // A legacy version-1 consumer reads its old fields and ignores additive ones.
+  const legacy = (input: Pick<ProjectExport, 'format' | 'formatVersion' | 'project' | 'conversations'>) => input.conversations.map(c => c.messages.map(m => m.body));
+  assert.deepEqual(legacy(document), [['Original people history']]);
+  for (const p of [f.writer, f.viewer]) assert.equal((await p.browser.request('GET', `/api/v1/projects/${f.place.id}/export?format=json`)).status, 403);
+  assert.equal((await f.outsider.browser.request('GET', `/api/v1/projects/${f.place.id}/export?format=json`)).status, 404);
+});
+
+test('three quiet progress posts change no Since-you-left, Inbox unread or push; an explicit mention reaches only an authorized reader', async () => {
+  const f = await scene(); const recipient = await subscribe(f.viewer.browser);
+  expectStatus(await f.viewer.browser.request('PUT', '/api/v1/notification-preferences', { body: { channels: { reply: { inApp: true, push: true, email: false }, mention: { inApp: true, push: true, email: false } } } }), 200);
+  const returned = async (place: string) => expectStatus(await f.viewer.browser.request('GET', '/api/v1/return?' + place), 200) as ReturnSummary;
+  for (const [place, actual] of [['place=home', { type: 'home' }], [`place=project&id=${f.place.id}`, { type: 'project', id: f.place.id }]] as const) {
+    const seen = await returned(place); expectStatus(await f.viewer.browser.request('PUT', '/api/v1/return-points', { body: { place: actual, mark: seen.mark } }), 200);
+  }
+  const inbox = async () => expectStatus(await f.viewer.browser.request('GET', '/api/v1/inbox'), 200) as InboxResponse;
+  const initialInbox = await inbox(), initialPush = await recordedPushes(recipient.subscription.mockId);
+  for (let i = 0; i < 3; i++) expectStatus(await f.owner.browser.request('POST', f.path, { body: { body: `Quiet progress ${i}`, clientMessageId: randomUUID() } }), 201);
+  const caughtUp = async () => { const target = Number((await pool.query('SELECT max(seq) AS seq FROM events')).rows[0].seq); await waitFor(async () => Number((await pool.query("SELECT seq FROM notification_cursor WHERE id='generator'")).rows[0].seq) >= target, 'quiet thread event generation'); };
+  await caughtUp();
+  assert.deepEqual((await returned('place=home')).items, []); assert.deepEqual((await returned(`place=project&id=${f.place.id}`)).items, []);
+  assert.deepEqual(await inbox(), initialInbox); assert.deepEqual(await recordedPushes(recipient.subscription.mockId), initialPush);
+  const mention = expectStatus(await f.owner.browser.request('POST', f.path, { body: { body: '@thread-viewer, the comparison is ready. @thread-outsider', clientMessageId: randomUUID() } }), 201) as ConversationMessage;
+  await caughtUp();
+  const item = (await inbox()).items.find(item => item.url?.endsWith(mention.id)); assert.equal(item?.reason, 'mention');
+  assert.ok(item?.url?.includes(`open=work:${f.task.id}&agentThread=1`));
+  assert.equal((await pool.query('SELECT count(*)::int AS n FROM notifications WHERE user_id=$1 AND url LIKE $2', [f.outsider.id, `%${mention.id}`])).rows[0].n, 0);
 });

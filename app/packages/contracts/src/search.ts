@@ -50,6 +50,7 @@ export type SearchPlace =
 
 /** The exact object a result opens. Material results open the version that matched. */
 export type SearchTarget =
+  | { type: 'agent_thread'; projectId: string; taskId: string; conversationId: string; messageId: string }
   | { type: 'message'; projectId: string; conversationId: string; messageId: string }
   | { type: 'dm_message'; dmId: string; messageId: string }
   | { type: 'material'; projectId: string; materialId: string; version: number }

@@ -76,6 +76,9 @@ export interface SearchRowRecord {
   projectId: string | null;
   /** Set only when the project is itself visible to the reader. */
   projectName: string | null;
+  messageSpace: 'people' | 'agents' | null;
+  messageTaskId: string | null;
+  messageTaskNumber: number | null;
   /** The DM of a DM message, or of a sketch or thought that belongs to a DM (#96). */
   dmId: string | null;
   dmName: string | null;
@@ -204,6 +207,7 @@ function pageStatement(audiences: SearchAudienceRows[], plan: SearchPlanRows): S
     hits AS (SELECT * FROM matched WHERE newest = 1)
     SELECT h.id::text AS id, h.score::text AS score, h.at::text AS at_key, h.at, h.kind, h.workspace_id, w.name AS workspace_name,
       h.object_id, h.parent_id, h.project_id, coalesce(h.dm_id, d.id) AS dm_id, p.name AS project_name, h.version, pm.current_version, h.status, sk.title AS sketch_title,
+      mc.space AS message_space, mc.work_id::text AS message_task_id, mw.number AS message_task_number,
       h.author_kind, h.author_id, coalesce(au.name, ag.name) AS author_name, length(h.body) > 0 AS has_body,
       ts_headline('simple', ${clean(sql`h.title`)}, ${q}, ${TITLE_OPTIONS}) AS title_headline,
       CASE WHEN length(h.body) = 0 THEN NULL
@@ -215,6 +219,8 @@ function pageStatement(audiences: SearchAudienceRows[], plan: SearchPlanRows): S
       END AS dm_name
     FROM (SELECT * FROM hits ${after} ORDER BY hits.score DESC, hits.at DESC, hits.id DESC LIMIT ${plan.limit + 1}) h
     LEFT JOIN projects p ON p.id = h.project_id AND ('project:' || p.id) = ANY ((SELECT keys FROM aud)::text[])
+    LEFT JOIN project_conversations mc ON h.kind = 'message' AND mc.id = h.parent_id
+    LEFT JOIN project_work_items mw ON mw.id = mc.work_id AND mw.project_id = h.project_id
     LEFT JOIN workspaces w ON w.id = h.workspace_id
     LEFT JOIN auth_users au ON h.author_kind = 'human' AND au.id = h.author_id
     LEFT JOIN agents ag ON ag.id = (CASE WHEN h.author_kind = 'agent' THEN h.author_id::uuid END)
@@ -236,6 +242,7 @@ interface PageRow {
   object_id: string; parent_id: string | null; project_id: string | null; dm_id: string | null; project_name: string | null; version: number | null;
   current_version: number | null; status: string | null; sketch_title: string | null; author_name: string | null; has_body: boolean;
   author_kind: 'human' | 'agent' | null; author_id: string | null;
+  message_space: 'people' | 'agents' | null; message_task_id: string | null; message_task_number: number | null;
   title_headline: string | null; body_headline: string | null; dm_name: string | null;
 }
 
@@ -327,6 +334,9 @@ export function searchRows(db: SearchExecutor) {
         parentId: row.parent_id,
         projectId: row.project_id,
         projectName: row.project_name,
+        messageSpace: row.message_space,
+        messageTaskId: row.message_task_id,
+        messageTaskNumber: row.message_task_number,
         dmId: row.dm_id,
         dmName: row.dm_name,
         sketchTitle: row.sketch_title,

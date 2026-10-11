@@ -287,4 +287,17 @@ button.wd-link:active:not(:disabled) { background: var(--sub); transform: scale(
 .wd-discussion-form textarea { width: 100%; min-height: 72px; padding: 9px 11px; border: 0; border-radius: var(--r-sm); box-shadow: inset 0 0 0 1px var(--line); background: var(--el); color: var(--t1); font: inherit; font-size: var(--fs-md); line-height: 1.5; resize: vertical; }
 .wd-discussion-form textarea:focus-visible { outline: none; box-shadow: inset 0 0 0 1px var(--t1); }
 .wd-discussion-form .wd-actions { margin-top: 0; }
+.at-entry { width: 100%; text-align: left; background: none; border: 0; font: inherit; cursor: pointer; }
+.at-back { display: inline-flex; align-items: center; gap: 4px; margin-bottom: 16px; min-height: 32px; }
+.at-audience { font-size: var(--fs-sm); }
+.at-meta { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 18px 0 10px; color: var(--t3); font-size: var(--fs-xs); }
+.at-messages { list-style: none; margin: 0; padding: 0; }
+.at-message { padding: 14px 0; border-bottom: 1px solid var(--line); }
+.at-message:target, .at-message:focus-visible { outline: 1px solid var(--t2); outline-offset: 4px; border-radius: var(--r-sm); }
+.at-message__meta { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; color: var(--t3); font-size: var(--fs-xs); }
+.at-message__meta strong { color: var(--t1); font-weight: 550; }
+.at-message__meta time { margin-left: auto; font-size: var(--fs-xxs); }
+.at-message__body { margin: 6px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; font-size: var(--fs-md); line-height: 1.5; }
+.at-composer, .at-empty { margin-top: 18px; }
+@media (pointer: coarse) { .at-entry, .at-back { min-height: 44px; } }
 @media (pointer: coarse) { .wd-discussion { min-height: 44px; } }

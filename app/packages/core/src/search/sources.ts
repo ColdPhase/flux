@@ -45,8 +45,11 @@ function inProject(row: SearchRow) {
 
 export const SEARCH_SOURCES: Record<SearchKind, SearchSource> = {
   message: {
-    filter: 'message', audience: 'project', textIsTitle: true, label: () => 'Message',
-    target: (row) => ({ type: 'message', projectId: inProject(row), conversationId: row.parentId ?? '', messageId: row.objectId }),
+    filter: 'message', audience: 'project', textIsTitle: true,
+    label: (row) => row.messageSpace === 'agents' ? `Agents’ thread · #${row.messageTaskNumber ?? ''}` : 'Message',
+    target: (row) => row.messageSpace === 'agents' && row.messageTaskId
+      ? { type: 'agent_thread', projectId: inProject(row), taskId: row.messageTaskId, conversationId: row.parentId ?? '', messageId: row.objectId }
+      : { type: 'message', projectId: inProject(row), conversationId: row.parentId ?? '', messageId: row.objectId },
   },
   dm_message: {
     filter: 'message', audience: 'dm', textIsTitle: true, label: () => 'Direct message',

@@ -1,4 +1,4 @@
-import { projectFilesPath, taskDiscussionPath, type ConversationMessage, type StagedFile, type TaskContributionCommand, type TaskDiscussion } from '@flux/contracts';
+import { projectFilesPath, taskDiscussionPath, taskAgentThreadPath, type ConversationMessage, type SendMessageCommand, type StagedFile, type TaskAgentThread, type TaskContributionCommand, type TaskDiscussion } from '@flux/contracts';
 import { ApiError, NetworkError, request } from '../api/client';
 
 /** Every view sends the same task command through this operation, including conversation replies. */
@@ -10,6 +10,16 @@ export const getTaskDiscussion = (workId: string, options: { limit?: number; bef
 };
 export const contributeToTask = (workId: string, command: TaskContributionCommand) =>
   request<ConversationMessage>(taskDiscussionPath(workId), { method: 'POST', body: command });
+
+/** The task determines the thread's project and audience; a GET never creates it. */
+export const getTaskAgentThread = (workId: string, options: { limit?: number; beforeSequence?: number; signal?: AbortSignal } = {}) => {
+  const query = new URLSearchParams();
+  if (options.limit) query.set('limit', String(options.limit));
+  if (options.beforeSequence) query.set('beforeSequence', String(options.beforeSequence));
+  return request<TaskAgentThread>(`${taskAgentThreadPath(workId)}${query.size ? `?${query}` : ''}`, { signal: options.signal });
+};
+export const postTaskAgentThread = (workId: string, projectId: string, command: SendMessageCommand) =>
+  request<ConversationMessage>(taskAgentThreadPath(workId), { method: 'POST', body: { ...command, projectId } });
 
 /** Raw authenticated bytes; upload UUID is retained after a lost response. */
 export async function stageFile(projectId: string, uploadId: string, file: File): Promise<StagedFile> {

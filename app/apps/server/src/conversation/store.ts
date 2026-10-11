@@ -224,16 +224,20 @@ export function conversationStore(db: Database, options: ConversationStoreOption
   } };
   return {
     async getAgentThread(principal: Principal, taskId: string, window: AgentThreadWindow): Promise<TaskAgentThread> {
-      const task = await locateThreadTask(principal, taskId, db);
-      const write = await evaluateProject(principal, 'project.write', task.projectId, db);
-      const [thread] = await db.select({ id: schema.projectConversations.id }).from(schema.projectConversations)
-        .where(and(eq(schema.projectConversations.workId, task.id), eq(schema.projectConversations.space, 'agents')));
-      const [count] = thread ? await db.select({ total: sql<number>`count(*)::int` }).from(schema.projectMessages)
-        .where(eq(schema.projectMessages.conversationId, thread.id)) : [];
-      const canWrite = principal.kind === 'human' && write.allowed && task.creationRevertedAt === null;
-      return { task: { id: task.id, projectId: task.projectId, number: task.number, title: task.title },
-        conversation: thread ? await conversationStore(db, options).getConversation(principal, thread.id, window) : null,
-        messageCount: count?.total ?? 0, canWrite, postingAvailable: canWrite };
+      // Access, task, count, page and all author/file reads are one coherent observation.
+      // The existing v1 conversation entry keeps its behavior; only this new GET supplies a snapshot.
+      return db.transaction(async (tx) => {
+        const task = await locateThreadTask(principal, taskId, tx);
+        const write = await evaluateProject(principal, 'project.write', task.projectId, tx);
+        const [thread] = await tx.select({ id: schema.projectConversations.id }).from(schema.projectConversations)
+          .where(and(eq(schema.projectConversations.workId, task.id), eq(schema.projectConversations.space, 'agents')));
+        const [count] = thread ? await tx.select({ total: sql<number>`count(*)::int` }).from(schema.projectMessages)
+          .where(eq(schema.projectMessages.conversationId, thread.id)) : [];
+        const canWrite = principal.kind === 'human' && write.allowed && task.creationRevertedAt === null;
+        return { task: { id: task.id, projectId: task.projectId, number: task.number, title: task.title },
+          conversation: thread ? await conversationStore(tx, options).getConversation(principal, thread.id, window) : null,
+          messageCount: count?.total ?? 0, canWrite, postingAvailable: canWrite };
+      }, { isolationLevel: 'repeatable read', accessMode: 'read only' });
     },
     async postAgentThread(principal: Principal, taskId: string, input: AgentThreadPost): Promise<ConversationMessage> {
       return db.transaction(async (tx) => {
