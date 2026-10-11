@@ -45,9 +45,10 @@ class CompositionProbe(unittest.TestCase):
         self.assertEqual(response.status, status, f'{method} {path}: {response.status}: {response.text()}')
         return response.json() if response.text() else None
 
-    def actor(self, label):
-        context = self.browser.new_context(base_url=ORIGIN, viewport={'width':1440,'height':900},
-            device_scale_factor=1, service_workers='block', locale='en-GB', timezone_id='Europe/Warsaw')
+    def actor(self, label, *, phone=False, theme="light"):
+        context = self.browser.new_context(base_url=ORIGIN, viewport={'width':390,'height':844} if phone else {'width':1440,'height':900},
+            device_scale_factor=3 if phone else 1, is_mobile=phone, has_touch=phone, color_scheme=theme,
+            service_workers='block', locale='en-GB', timezone_id='Europe/Warsaw')
         self.addCleanup(context.close)
         page = context.new_page()
         errors = []

@@ -408,7 +408,7 @@ function AppLayoutContent() {
     ...('noDetails' in place ? [] : [{ label: 'Details', run: () => { setDetailsView('place'); toggleDetails(true); } }]),
     ...(activeProject && projectId ? [{ label: 'What matters', run: () => { setDetailsView({ kind: 'recap', projectId }); toggleDetails(true); } }] : []),
     ...addViewItems,
-    { label: 'Focus', keys: 'F', checked: focusing, run: () => void focus.toggle() },
+    { label: focus.uncertain ? 'Check notification pause' : 'Focus', keys: 'F', checked: focusing, run: () => void focus.toggle() },
     { label: railed ? 'Show the sidebar' : 'Hide the sidebar', keys: '[', run: toggleRail },
   ];
 
@@ -466,7 +466,7 @@ function AppLayoutContent() {
           <div className="top__right" data-shift>
             {/* A view can put one quiet action here (a DM's Select, #96). */}
             <span className="top__actions" ref={setActionSlot} />
-            {focusing && focus.until ? <FocusPill until={focus.until} onEnd={() => void focus.toggle()} /> : phone ? (
+            {focusing && focus.until ? <FocusPill until={focus.until} uncertain={focus.uncertain} onEnd={() => void focus.toggle()} /> : phone ? (
               <>
                 {activeProject ? <LiveEntry /> : null}
                 {/* The inbox and its settings have nothing to show in Details. Labelled (#264). */}

@@ -33,13 +33,13 @@ export function NeedsYouChip({ count, open, onToggle }: { count: number; open: b
 }
 
 /** Focus on: the one thing the header says, and the way out (`F`). */
-export function FocusPill({ until, onEnd }: { until: Date; onEnd: () => void }) {
+export function FocusPill({ until, onEnd, uncertain = false }: { until: Date; onEnd: () => void; uncertain?: boolean }) {
   return (
     <span className="top__focus">
       <button type="button" className="ui-pill ui-pill--inv top__focus-pill" aria-keyshortcuts="F" onClick={onEnd}
-        title="End focus (F)">
-        <Icon name="focus" size={13} />Focus · notifications paused until <time dateTime={until.toISOString()}>{clock(until)}</time>
-        <span className="ui-vh">. End focus</span>
+        title={uncertain ? 'Check current notification pause (F)' : 'End focus (F)'}>
+        <Icon name="focus" size={13} />Focus · {uncertain ? 'last confirmed pause until ' : 'notifications paused until '}<time dateTime={until.toISOString()}>{clock(until)}</time>
+        <span className="ui-vh">{uncertain ? '. Check current notification pause' : '. End focus'}</span>
       </button>
       <kbd aria-hidden="true">F</kbd>
     </span>

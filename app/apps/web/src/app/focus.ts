@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { PAUSE_CHANGED, announcePauseChange, getPreferences, updatePreferences, type PauseChange } from '../notifications/api';
-import { beginNotificationSession, captureNotificationSession, isCurrentNotificationSession, notificationPauseRevision, retireNotificationSession, type NotificationSession } from '../notifications/session';
+import { PAUSE_CHANGED, announcePauseChange, announcePauseUncertainty, getPreferences, updatePreferences, type PauseChange } from '../notifications/api';
+import { beginNotificationSession, captureNotificationSession, isCurrentNotificationSession, notificationPauseRevision, notificationPauseUncertain, retireNotificationSession, type NotificationSession } from '../notifications/session';
 import { useToast } from '../ui';
 
 const MIN_FOCUS_MS = 30 * 60_000;
@@ -22,30 +22,40 @@ export const clock = (at: Date) => at.toLocaleTimeString([], { hour: '2-digit', 
 export function useFocus(identity: string) {
   const toast = useToast();
   // The pause belongs to the identity that read it; another identity never sees it.
-  const [state, setState] = useState<{ owner: string; until: Date | null }>({ owner: identity, until: null });
-  const until = state.owner === identity ? state.until : null;
+  const [state, setState] = useState<{ owner: string; until: Date | null; uncertain: boolean }>({ owner: identity, until: null, uncertain: false });
+  const knownUntil = state.owner === identity ? state.until : null;
+  const until = knownUntil && knownUntil.getTime() > Date.now() ? knownUntil : null;
+  const uncertain = state.owner === identity && state.uncertain;
   const busy = useRef<NotificationSession | null>(null);
   const who = useRef(identity);
+  const readNotice = useRef<(() => void) | null>(null);
+  const clearReadNotice = useCallback(() => { readNotice.current?.(); readNotice.current = null; }, []);
   // Every applied state is numbered. A read applies only if nothing newer (a confirmed change,
   // another read's answer or a new identity) has been applied since it was asked for.
   const version = useRef(0);
-  const apply = useCallback((pause: string | null) => {
+  const apply = useCallback((pause: string | null, unverified = false) => {
     version.current += 1;
-    setState({ owner: who.current, until: pause ? new Date(pause) : null });
+    setState({ owner: who.current, until: pause ? new Date(pause) : null, uncertain: unverified });
   }, []);
   const refresh = useCallback(() => {
     const mine = version.current;
     const session = captureNotificationSession(who.current);
     if (!session) return;
-    void getPreferences().then((prefs) => { if (mine === version.current && isCurrentNotificationSession(session)) apply(prefs.pause.until); }, () => undefined);
-  }, [apply]);
+    void getPreferences().then((prefs) => {
+      if (mine === version.current && isCurrentNotificationSession(session)) announcePauseChange(session.ownerId, prefs.pause.until);
+    }, () => {
+      if (mine === version.current && isCurrentNotificationSession(session)) {
+        announcePauseUncertainty(session, 'Current notification pause could not be checked. Try again.');
+      }
+    });
+  }, []);
   useEffect(() => {
     who.current = identity;
     const session = beginNotificationSession(identity);
     version.current += 1;
     refresh();
-    return () => { retireNotificationSession(session); version.current += 1; };
-  }, [refresh, identity]);
+    return () => { retireNotificationSession(session); version.current += 1; clearReadNotice(); };
+  }, [refresh, identity, clearReadNotice]);
   useEffect(() => {
     window.addEventListener('focus', refresh);
     return () => window.removeEventListener('focus', refresh);
@@ -54,45 +64,65 @@ export function useFocus(identity: string) {
   useEffect(() => {
     const onChange = (event: Event) => {
       const change = (event as CustomEvent<PauseChange>).detail;
-      if (change.ownerId === who.current && isCurrentNotificationSession(captureNotificationSession(who.current))) apply(change.until);
+      if (change.ownerId === who.current && isCurrentNotificationSession(captureNotificationSession(who.current))) {
+        if (!change.uncertain) clearReadNotice();
+        else if (change.notice) { clearReadNotice(); readNotice.current = toast({ message: change.notice, tone: 'danger' }); }
+        apply(change.until, change.uncertain);
+      }
     };
     window.addEventListener(PAUSE_CHANGED, onChange);
     return () => window.removeEventListener(PAUSE_CHANGED, onChange);
-  }, [apply]);
-  // A pause ends on its own at its time; nothing claims it is still running after that.
+  }, [apply, clearReadNotice, toast]);
+  // Another device can extend the pause without a focus event. Read at the old deadline before
+  // confirming Resume; a failed read expires only the old presentation and retains uncertainty.
   useEffect(() => {
-    if (!until) return undefined;
-    const timer = window.setTimeout(() => setState((current) => ({ ...current, until: null })), Math.max(0, until.getTime() - Date.now()));
+    if (!knownUntil || (uncertain && knownUntil.getTime() <= Date.now())) return undefined;
+    const mine = version.current;
+    const session = captureNotificationSession(who.current);
+    const timer = window.setTimeout(() => {
+      if (mine === version.current && isCurrentNotificationSession(session)) refresh();
+    }, Math.max(0, knownUntil.getTime() - Date.now()));
     return () => window.clearTimeout(timer);
-  }, [until]);
+  }, [knownUntil, uncertain, refresh]);
 
   const toggle = useCallback(async () => {
     const session = captureNotificationSession(who.current);
     if (!session || busy.current === session) return;
+    // With current state unavailable, F/Retry reads rather than guessing which mutation is wanted.
+    if (notificationPauseUncertain(session)) { refresh(); return; }
     busy.current = session;
     // Focus shows only once the server holds notifications, so "paused" is never claimed early.
     const next = until ? null : focusEnd();
     const owner = who.current;
     const pauseVersion = notificationPauseRevision(session);
     try {
-      const prefs = await updatePreferences({ pause: { until: next ? next.toISOString() : null } });
+      let prefs: Awaited<ReturnType<typeof updatePreferences>>;
+      try { prefs = await updatePreferences({ pause: { until: next ? next.toISOString() : null } }); }
+      catch {
+        if (isCurrentNotificationSession(session)) toast({ message: next ? 'Focus did not start: notifications are not paused' : 'Focus did not end; try again', tone: 'danger' });
+        return;
+      }
       // The confirmed change is the newest state and drops any read still in flight; only a
       // different signed-in identity makes it obsolete.
       if (owner === who.current && isCurrentNotificationSession(session)) {
-        if (notificationPauseRevision(session) !== pauseVersion) {
+        if (notificationPauseRevision(session) !== pauseVersion || notificationPauseUncertain(session)) {
           // Another surface confirmed a change while this response was in flight. Read the
           // actual current state instead of briefly showing the superseded action snapshot.
           const mine = version.current;
-          const current = await getPreferences();
-          if (mine === version.current && isCurrentNotificationSession(session)) announcePauseChange(owner, current.pause.until);
+          try {
+            const current = await getPreferences();
+            if (mine === version.current && isCurrentNotificationSession(session)) announcePauseChange(owner, current.pause.until);
+          } catch {
+            if (mine === version.current && isCurrentNotificationSession(session)) {
+              announcePauseUncertainty(session, 'Focus change saved, but the current notification pause could not be checked. The last confirmed state is shown.');
+            }
+          }
         } else announcePauseChange(owner, prefs.pause.until);
       }
-    } catch {
-      if (isCurrentNotificationSession(session)) toast({ message: next ? 'Focus did not start: notifications are not paused' : 'Focus did not end; try again', tone: 'danger' });
     } finally {
       if (busy.current === session) busy.current = null;
     }
-  }, [until, toast]);
+  }, [until, toast, refresh]);
 
-  return { until, toggle };
+  return { until, uncertain, toggle, refresh };
 }

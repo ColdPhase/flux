@@ -4,11 +4,13 @@ let generation = 0;
 let active: NotificationSession | null = null;
 let pauseRevision = 0;
 let confirmedPause: string | null = null;
+let pauseUncertain = false;
 
 export function beginNotificationSession(ownerId: string): NotificationSession {
   active = { ownerId, nonce: ++generation };
   pauseRevision = 0;
   confirmedPause = null;
+  pauseUncertain = false;
   return active;
 }
 
@@ -29,6 +31,20 @@ export function recordNotificationPause(session: NotificationSession, until: str
   if (!isCurrentNotificationSession(session)) return;
   pauseRevision += 1;
   confirmedPause = until;
+  pauseUncertain = false;
+}
+
+/** A failed read is not a new confirmation and never changes the last confirmed value. */
+export function markNotificationPauseUncertain(session: NotificationSession) {
+  if (isCurrentNotificationSession(session)) pauseUncertain = true;
+}
+
+export function notificationPauseUncertain(session: NotificationSession | null) {
+  return isCurrentNotificationSession(session) && pauseUncertain;
+}
+
+export function lastConfirmedNotificationPause(session: NotificationSession): string | null {
+  return isCurrentNotificationSession(session) ? confirmedPause : null;
 }
 
 export function notificationPauseRevision(session: NotificationSession | null): number {

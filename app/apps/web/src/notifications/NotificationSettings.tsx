@@ -17,8 +17,8 @@ import { SwitchRow } from '../app/SettingsHome';
 import { NotificationsButton } from '../pwa';
 import { getPushState } from '../pwa/push';
 import { Button, ErrorState, Icon, Spinner, useToast } from '../ui';
-import { PAUSE_CHANGED, addAddress, announcePauseChange, getPreferences, removeAddress, resendVerification, setMute, unsubscribe, updatePreferences, verifyAddress, type PauseChange } from './api';
-import { captureNotificationSession, confirmedNotificationPauseSince, isCurrentNotificationSession, notificationPauseRevision } from './session';
+import { PAUSE_CHANGED, addAddress, announcePauseChange, announcePauseUncertainty, getPreferences, removeAddress, resendVerification, setMute, unsubscribe, updatePreferences, verifyAddress, type PauseChange } from './api';
+import { captureNotificationSession, confirmedNotificationPauseSince, isCurrentNotificationSession, notificationPauseRevision, notificationPauseUncertain } from './session';
 import './notifications.css';
 
 const ROWS: Record<NotificationReason, { label: string; hint: string }> = {
@@ -72,6 +72,8 @@ function AccountNotificationSettings() {
   const [prefs, setPrefs] = useState<NotificationPreferences | null>(null);
   const [failed, setFailed] = useState(false);
   const [saved, setSaved] = useState('');
+  const [refreshWarning, setRefreshWarning] = useState<'pause' | 'settings' | null>(null);
+  const hasPreferences = useRef(false);
   const toast = useToast();
   const ids = { email: useId(), level: useId(), what: useId(), mute: useId() };
 
@@ -84,10 +86,22 @@ function AccountNotificationSettings() {
   }, [ownerId]);
   const load = useCallback(() => {
     const mine = ++reads.current, edit = sequence.current;
-    const pauseVersion = notificationPauseRevision(captureNotificationSession(ownerId));
+    const session = captureNotificationSession(ownerId);
+    const pauseVersion = notificationPauseRevision(session);
     getPreferences().then((next) => {
-      if (mounted.current && mine === reads.current && edit === sequence.current) setPrefs(reconcilePause(next, pauseVersion));
-    }, () => { if (mounted.current && mine === reads.current && edit === sequence.current) setFailed(true); });
+      if (mounted.current && mine === reads.current && edit === sequence.current && (!session || isCurrentNotificationSession(session))) {
+        const result = reconcilePause(next, pauseVersion);
+        hasPreferences.current = true;
+        setPrefs(result); setFailed(false); setRefreshWarning(null);
+        announcePauseChange(ownerId, result.pause.until);
+      }
+    }, () => {
+      if (mounted.current && mine === reads.current && edit === sequence.current && (!session || isCurrentNotificationSession(session))) {
+        if (hasPreferences.current) setRefreshWarning('settings');
+        else setFailed(true);
+        if (session) announcePauseUncertainty(session);
+      }
+    });
   }, [ownerId, reconcilePause]);
   useEffect(load, [load]);
   useEffect(() => {
@@ -95,6 +109,7 @@ function AccountNotificationSettings() {
       const update = (event as CustomEvent<PauseChange>).detail;
       if (update.ownerId === ownerId && isCurrentNotificationSession(captureNotificationSession(ownerId))) {
         setPrefs((current) => current ? { ...current, pause: { until: update.until } } : current);
+        setRefreshWarning((current) => current === 'settings' ? current : update.uncertain ? 'pause' : null);
       }
     };
     window.addEventListener(PAUSE_CHANGED, changed);
@@ -113,29 +128,46 @@ function AccountNotificationSettings() {
     const session = captureNotificationSession(ownerId);
     if (!session) return Promise.resolve(false);
     const mine = ++sequence.current;
+    if (mounted.current) setSaved('');
     const next = queue.current.then(async () => {
       if (!isCurrentNotificationSession(session)) return false;
       const pauseVersion = notificationPauseRevision(session);
-      try {
-        let result = await run();
-        // A confirmed change on another surface can overtake this response.
-        if (!isCurrentNotificationSession(session)) return false;
-        if (notificationPauseRevision(session) !== pauseVersion) {
-          const readVersion = notificationPauseRevision(session);
-          result = await getPreferences();
-          if (!isCurrentNotificationSession(session)) return false;
-          result = reconcilePause(result, readVersion);
-        }
-        announcePauseChange(ownerId, result.pause.until);
-        if (mounted.current && mine === sequence.current) { setPrefs(result); setSaved(done); }
-        return true;
-      } catch (error) {
+      let result: NotificationPreferences;
+      try { result = await run(); }
+      catch (error) {
         if (!isCurrentNotificationSession(session)) return false;
         if (onError && mounted.current) onError(error);
         else toast({ message: message(error, 'Could not save. Try again.'), tone: 'danger' });
         if (mounted.current && mine === sequence.current) load();
         return false;
       }
+      if (!isCurrentNotificationSession(session)) return false;
+      let refreshFailed = false, refreshed = false;
+      if (notificationPauseRevision(session) !== pauseVersion || notificationPauseUncertain(session)) {
+        const readVersion = notificationPauseRevision(session);
+        try {
+          const current = await getPreferences();
+          if (!isCurrentNotificationSession(session)) return false;
+          result = reconcilePause(current, readVersion);
+          refreshed = true;
+        } catch {
+          if (!isCurrentNotificationSession(session)) return false;
+          // The mutation was acknowledged. Preserve its other facts, never an obsolete pause,
+          // and report read unavailability without suggesting the side effect needs repeating.
+          result = reconcilePause(result, pauseVersion);
+          refreshFailed = true;
+        }
+      }
+      if (refreshFailed) announcePauseUncertainty(session, !mounted.current
+        ? `${done}. Current notification settings could not be refreshed; the last confirmed settings are shown.` : undefined);
+      else announcePauseChange(ownerId, result.pause.until);
+      if (mounted.current && mine === sequence.current) {
+        hasPreferences.current = true;
+        setPrefs(result); setSaved(done);
+        if (refreshFailed) setRefreshWarning('settings');
+        else if (refreshed) setRefreshWarning(null);
+      }
+      return true;
     });
     queue.current = next.then(() => undefined);
     return next;
@@ -178,6 +210,12 @@ function AccountNotificationSettings() {
         <span className="nset__saved" role="status" aria-live="polite">{saved ? <><Icon name="check" size={14} />{saved}</> : null}</span>
       </div>
 
+      {refreshWarning ? <p className="nset__problem" role="note"><Icon name="alert" size={14} /><span>
+        {refreshWarning === 'settings' ? 'Current notification settings could not be refreshed. The last confirmed settings are shown.'
+          : 'Current notification pause could not be checked. The last confirmed state is shown.'}{' '}
+        <Button variant="quiet" onClick={load}>Retry current settings</Button>
+      </span></p> : null}
+
       <h3 className="sset-sec" id={ids.level}>Notify me about</h3>
       <div className="sset-card" role="radiogroup" aria-labelledby={ids.level}>
         {LEVELS.map((option) => (
@@ -193,9 +231,9 @@ function AccountNotificationSettings() {
       </div>
       {level === 'custom' ? <p className="sset-note" role="note">You chose channels for each kind below, so none of the three matches. Pick one to reset them.</p> : null}
 
-      {prefs.pause.until ? (
+      {prefs.pause.until && Date.parse(prefs.pause.until) > Date.now() ? (
         <p className="nset__focus" role="status">
-          <Icon name="focus" size={14} /><span>Focus: push and email are paused until <time dateTime={prefs.pause.until}>{clock(new Date(prefs.pause.until))}</time>.</span>
+          <Icon name="focus" size={14} /><span>{refreshWarning ? 'Last confirmed pause: push and email were paused until ' : 'Focus: push and email are paused until '}<time dateTime={prefs.pause.until}>{clock(new Date(prefs.pause.until))}</time>.</span>
           <Button variant="secondary" onClick={() => change({ pause: { until: null } }, (current) => ({ ...current, pause: { until: null } }))}>Resume now</Button>
         </p>
       ) : null}
@@ -246,7 +284,7 @@ function AccountNotificationSettings() {
         ) : null}
         <div className="sset-card nset__box">
           <EmailDestinationChoice prefs={prefs} onChange={(destination) => change({ emailDestination: destination }, (current) => ({ ...current, email: { ...current.email, destination } }))} />
-          <ExtraAddress prefs={prefs} save={save} />
+          <ExtraAddress prefs={prefs} save={save} refreshWarning={refreshWarning} retry={load} />
         </div>
       </section>
 
@@ -295,13 +333,19 @@ function EmailDestinationChoice({ prefs, onChange }: { prefs: NotificationPrefer
   );
 }
 
-function ExtraAddress({ prefs, save }: { prefs: NotificationPreferences; save: (run: () => Promise<NotificationPreferences>, done?: string, onError?: (error: unknown) => void) => Promise<boolean> }) {
+function ExtraAddress({ prefs, save, refreshWarning, retry }: { prefs: NotificationPreferences; save: (run: () => Promise<NotificationPreferences>, done?: string, onError?: (error: unknown) => void) => Promise<boolean>; refreshWarning: 'pause' | 'settings' | null; retry: () => void }) {
   const [value, setValue] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const inputId = useId();
   const extra = prefs.email.extra;
   if (!prefs.email.available) return null;
+  // Keep read uncertainty at the address working position too; this is not a failed send.
+  const readNotice = refreshWarning ? <p className="nset__problem" role="note"><Icon name="alert" size={14} /><span>
+    {refreshWarning === 'settings' ? 'Current notification settings could not be refreshed. The last confirmed settings are shown.'
+      : 'Current notification pause could not be checked. The last confirmed state is shown.'}{' '}
+    <Button variant="quiet" onClick={retry}>Retry current settings</Button>
+  </span></p> : null;
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -321,6 +365,7 @@ function ExtraAddress({ prefs, save }: { prefs: NotificationPreferences; save: (
   if (extra) {
     return (
       <div className="nset__extra">
+        {readNotice}
         <div className="nset__addr">
           <Icon name="mail" size={14} />
           <span><b>{extra.email}</b><span>{extra.verified ? 'Confirmed · receives notification email only' : 'Waiting for you to open the link we sent. It works once and expires in 24 hours.'}</span></span>
@@ -334,6 +379,7 @@ function ExtraAddress({ prefs, save }: { prefs: NotificationPreferences; save: (
   }
   return (
     <form className="nset__add" onSubmit={(event) => void submit(event)} noValidate>
+      {readNotice}
       <label htmlFor={inputId}>Add an extra address, for example the inbox you read most</label>
       <div className="nset__row">
         <input id={inputId} type="email" autoComplete="email" inputMode="email" placeholder="name@example.org" value={value}
