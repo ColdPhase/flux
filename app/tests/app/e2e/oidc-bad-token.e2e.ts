@@ -114,8 +114,8 @@ const state: { erinId?: string; workspace?: string; extra?: string } = {};
 
 test('a valid ID token from the mock provider signs in through the same callback (control)', async () => {
   const context = await fresh();
-  const capabilities = await api<{ sso: { providerId: string; label: string } | null }>(context, 'GET', '/api/v1/auth/capabilities');
-  assert.deepEqual(capabilities.sso, { providerId, label: 'Mock IdP' }, 'the replica read the mock provider\'s discovery');
+  const capabilities = await api<{ sso: { providerId: string; label: string; reachable: boolean } | null }>(context, 'GET', '/api/v1/auth/capabilities');
+  assert.deepEqual(capabilities.sso, { providerId, label: 'Mock IdP', reachable: true }, 'the replica read the mock provider\'s discovery');
   const { page } = await sso(context, erin);
   assert.equal(new URL(page.url()).pathname, '/', 'a valid token lands on Home');
   const signedIn = await me(context);

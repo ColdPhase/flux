@@ -33,12 +33,13 @@ export interface IdentityRouteOptions {
   sessions: SessionResolver;
   store: SessionStore;
   passwordReset: IdentityCapabilities['passwordReset'];
-  sso: IdentityCapabilities['sso'];
+  /** Evaluated per request: the provider's reachability changes while Flux runs. */
+  sso: () => Promise<IdentityCapabilities['sso']>;
 }
 
 /** Flux's own identity routes: capabilities, the current principal and session management. */
 export function registerIdentityRoutes(app: FastifyInstance, { sessions, store, passwordReset, sso }: IdentityRouteOptions) {
-  app.get(IDENTITY_CAPABILITIES_PATH, async (): Promise<IdentityCapabilities> => ({ passwordReset, sso }));
+  app.get(IDENTITY_CAPABILITIES_PATH, async (): Promise<IdentityCapabilities> => ({ passwordReset, sso: await sso() }));
 
   app.get(ME_PATH, async (request): Promise<MeResponse> => {
     const context = await sessions.requirePrincipal(request);
