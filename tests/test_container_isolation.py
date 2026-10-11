@@ -9,8 +9,9 @@ only.
 
 Service mounts use block lists of plain or simply quoted short-form scalars, including indentless
 lists. Unparsed mount entries, volume aliases/anchors/tags, block scalars and flow-style services or
-volume declarations are refused. Empty top-level named-volume mappings are supported. This is a
-fail-closed spelling restriction, not a YAML resolver; scripts/agent-runtime/inspect.py is the
+volume declarations are refused. Escaped quoted mapping keys are refused throughout the document,
+including extension mappings merged into services. Empty top-level named-volume mappings are supported.
+This is a fail-closed spelling restriction, not a YAML resolver; scripts/agent-runtime/inspect.py is the
 authoritative check of Docker's resolved mount sources in the supported-host runtime check.
 """
 
@@ -44,6 +45,8 @@ MAPPING_ENTRY = re.compile(r"""^\s*(?P<key>[A-Za-z0-9_.-]+|["'][A-Za-z0-9_.-]+["
 BLOCK_ANCHOR = re.compile(r"&[A-Za-z0-9_-]+$")
 EMPTY_NAMED_VOLUME = re.compile(r"^\s*[A-Za-z0-9][A-Za-z0-9_.-]*:\s*\{\s*\}\s*$")
 UNSUPPORTED_VOLUME_STYLE = re.compile(r"(?:^\s*(?:-\s*)?|:\s*)[\[{>|&*!]")
+YAML_TEXT_TOKEN = re.compile(r"""(?P<comment>(?<!\S)\#[^\n]*)|(?P<quoted>"(?:[^"\\]|\\.)*"|'(?:[^']|'')*')""", re.S)
+BLOCK_SCALAR = re.compile(r"^(?P<indent> *)(?:[^:\n]+:\s*|-\s*)[>|](?:[+-]?[1-9]?|[1-9][+-]?)\s*(?:#.*)?$")
 FORBIDDEN = [
     (re.compile(r"^\s*DOCKER_HOST\s*[:=]", re.M), "DOCKER_HOST"),
     (re.compile(r"^\s*CONTAINER_HOST\s*[:=]", re.M), "CONTAINER_HOST"),
@@ -71,9 +74,32 @@ def source_problem(compose: Path, source: str) -> str | None:
     return "is a host path outside the checkout"
 
 
+def escaped_key_problems(text: str) -> list[str]:
+    """Refuse YAML escapes in quoted keys without mistaking quoted or block-scalar values for keys."""
+    lines = []
+    scalar_indent = None
+    for raw in text.splitlines(keepends=True):
+        indent = len(raw) - len(raw.lstrip(" "))
+        if scalar_indent is not None and (not raw.strip() or indent > scalar_indent):
+            lines.append("\n" if raw.endswith("\n") else "")
+            continue
+        scalar_indent = None
+        if match := BLOCK_SCALAR.fullmatch(raw.rstrip("\r\n")):
+            scalar_indent = len(match.group("indent"))
+        lines.append(raw)
+    yaml_text = "".join(lines)
+    problems = []
+    for token in YAML_TEXT_TOKEN.finditer(yaml_text):
+        quoted = token.group("quoted")
+        if quoted and "\\" in quoted and yaml_text[token.end():].lstrip().startswith(":"):
+            number = yaml_text.count("\n", 0, token.start()) + 1
+            problems.append(f"{number}: unsupported escaped mapping key: {quoted}")
+    return problems
+
+
 def bind_problems(compose: Path, text: str) -> list[str]:
     """Refused sources and unparsed mount declarations in one Compose file, as `line: problem`."""
-    problems = []
+    problems = escaped_key_problems(text)
     volumes_indent = None
     named_volume_indent = None
     services_indent = None
@@ -212,6 +238,9 @@ class ContainerIsolationTest(unittest.TestCase):
             "E": "services:\n  x:\n    image: busybox\n    volumes:\n    - >-\n      /var/run:/host-run\n",
             "F": 'services:\n  x: {image: busybox, volumes: ["/var/run:/host-run"]}\n',
             "G": 'x-m: &m "/var/run:/host-run"\nservices:\n  x:\n    image: busybox\n    volumes:\n      - *m\n',
+            "escaped service volume key": 'services:\n  x:\n    image: busybox\n    "volu\\u006des": ["/var/run:/host-run"]\n',
+            "escaped root and volume keys": '"serv\\u0069ces":\n  x:\n    image: busybox\n    "volu\\u006des": ["/var/run:/host-run"]\n',
+            "escaped extension key merged into service": 'x-m: &m {image: busybox, "volu\\u006des": ["/var/run:/host-run"]}\nservices:\n  x:\n    <<: *m\n',
         }
         self.test_bind_mounts_come_only_from_the_checkout()
         with tempfile.TemporaryDirectory(prefix="mount-guard-", dir=ROOT / "docker") as temporary:
@@ -232,6 +261,16 @@ class ContainerIsolationTest(unittest.TestCase):
             probe = Path(temporary) / "compose.probe.yaml"
             probe.write_text(text, encoding="utf-8")
             self.test_bind_mounts_come_only_from_the_checkout()
+
+    def test_escaped_values_and_supported_mapping_merges_remain_supported(self) -> None:
+        compose = ROOT / "docker" / "compose.yaml"
+        text = 'x-service: &service\n  image: busybox\nx-env: &env\n  NOTE: "volu\\u006des: text"\n' \
+               'services:\n  x:\n    <<: *service\n    environment:\n      <<: *env\n' \
+               '    command: ["echo", "\\\"volu\\\\u006des\\\": value"]\n' \
+               '    volumes:\n      - files:/state\n  y:\n    image: busybox\n    command: >-\n' \
+               '      echo \'"volu\\u006des": value\'\nvolumes:\n  files: {}\n' \
+               '# "volu\\u006des": documentation example\n'
+        self.assertEqual(bind_problems(compose, text), [])
 
     def test_the_bind_guard_keeps_the_legitimate_mounts(self) -> None:
         compose = ROOT / "docker" / "compose.yaml"
