@@ -337,7 +337,8 @@ describe('linked PRs move the same Flux task (#74 G-1a)', () => {
         task: await one('SELECT version, status FROM project_work_items WHERE id=$1', [task.id]),
         history: (await one('SELECT count(*)::int AS n FROM github_task_rule_changes WHERE task_id=$1', [task.id])).n,
         receipts: (await one('SELECT count(*)::int AS n FROM native_command_receipts WHERE work_id=$1', [task.id])).n,
-        messages: (await one('SELECT count(*)::int AS n FROM project_messages WHERE project_id=$1', [current.projectId])).n };
+        messages: (await one('SELECT count(*)::int AS n FROM project_messages WHERE project_id=$1', [current.projectId])).n,
+        blockers: (await one("SELECT count(*)::int AS n FROM project_messages WHERE project_id=$1 AND contribution_kind='blocker'", [current.projectId])).n };
     };
     const conflict = async (label: string, body: Record<string, unknown>) => {
       const before = await state(); const response = await send(body);
@@ -345,9 +346,12 @@ describe('linked PRs move the same Flux task (#74 G-1a)', () => {
       assert.deepEqual(await state(), before, `${label}: nothing changed`);
     };
     const same = { status: 'blocked', blocker: 'Supplier', expectedVersion: current.version, expectedGithubRuleRevision: rev, clientCommandId: commandId };
+    const beforeOverride = await state();
     expectStatus(await send(same), 200);
     const done = await state();
-    assert.deepEqual([done.rule.state, done.rule.revision, done.receipts, done.history], ['suspended', rev + 1, 1, done.history]);
+    assert.deepEqual([done.rule.state, done.rule.revision, done.receipts, done.history],
+      ['suspended', rev + 1, beforeOverride.receipts + 1, beforeOverride.history + 1]);
+    assert.equal(done.blockers, beforeOverride.blockers + 1, 'the first override appends exactly one blocker contribution');
     expectStatus(await send(same), 200);
     assert.deepEqual(await state(), done, 'an exact replay returns the original result and changes nothing');
     await conflict('changed pin', { ...same, expectedGithubRuleRevision: rev + 100 });
