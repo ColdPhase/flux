@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link } from 'react-router';
-import type { AgentRuntimeConnection, AgentRuntimeStatus } from '@flux/contracts';
+import { AGENT_RUNTIME_ERRORS, type AgentRuntimeConnection, type AgentRuntimeStatus } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { Button, Icon, Spinner } from '../ui';
 import { checkRuntime, dismissNotice, getRuntime, removeRuntime, signOutRuntime } from './api';
@@ -100,8 +100,12 @@ export function RuntimeSection({ otherWays }: { otherWays: ReactNode }) {
       if (current === generation.current) { setStatus(next); setConfirmRemove(false); }
     } catch (cause) {
       if (current === generation.current) {
-        setError(failure(cause, fallback));
-        setErrorContext({ action: key, uncertain: !(cause instanceof ApiError) || cause.status >= 500 });
+        const offRemoval = key === 'remove' && cause instanceof ApiError && cause.status === 409 && cause.code === AGENT_RUNTIME_ERRORS.off;
+        // AUTH_BUSY belongs to auth admission, not removal: an unexpected payload cannot prove no deletion.
+        const unknownRemovalBusy = key === 'remove' && cause instanceof ApiError && cause.status === 409 && cause.code === AGENT_RUNTIME_ERRORS.authBusy;
+        setError(offRemoval ? 'Claude Code was not removed. Sign-in is turned off on this server. Ask the person who runs this server to turn it on, then try again.'
+          : unknownRemovalBusy ? fallback : failure(cause, fallback));
+        setErrorContext({ action: key, uncertain: unknownRemovalBusy || !(cause instanceof ApiError) || cause.status >= 500 });
         refresh = true;
       }
     } finally {
