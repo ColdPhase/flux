@@ -478,6 +478,56 @@ class RefreshEdges(unittest.TestCase):
             if 'route' in held and not held.get('released'): held['route'].fulfill(response=held['response'])
             if 'readRoute' in held and not held.get('readReleased'): held['readRoute'].fulfill(response=held['readResponse'])
 
+    def test_12_future_unverified_pause_is_qualified_and_f_recovers_by_read_only(self):
+        for phone in (False, True):
+            for theme in ('light', 'dark'):
+                with self.subTest(phone=phone, theme=theme):
+                    page, actor, until = self.focused('Future Read ' + str(phone) + theme, phone=phone, theme=theme)
+                    self.settings(page)
+                    expect(self.note(page)).to_be_visible()
+                    phase = {'fail': True}
+                    reads, patches = [], []
+                    def handler(route):
+                        if route.request.method == 'GET':
+                            reads.append({'failed': phase['fail'], 'url': route.request.url})
+                            if phase['fail']:
+                                route.fulfill(status=500, content_type='application/json', body='{}'); return
+                        elif route.request.method == 'PATCH': patches.append(route.request.post_data_json)
+                        route.continue_()
+                    page.route('**/api/v1/notification-preferences', handler)
+                    self.addCleanup(lambda p=page: None if p.is_closed() else p.unroute_all(behavior='ignoreErrors'))
+                    page.evaluate("window.dispatchEvent(new Event('focus'))")
+                    expect(self.warning(page)).to_contain_text('Current notification pause could not be checked.')
+                    qualified = page.get_by_role('status').filter(has_text='Last confirmed pause: push and email were paused until')
+                    expect(qualified.locator('time')).to_have_attribute('datetime', until)
+                    expect(self.note(page)).to_have_count(0)
+                    if not phone:
+                        pill = page.locator('header.top').get_by_role('button', name=re.compile(r'^Focus · last confirmed pause until'))
+                        expect(pill).to_be_visible()
+                        expect(pill.locator('time')).to_have_attribute('datetime', until)
+                        expect(pill).to_have_attribute('title', 'Check current notification pause (F)')
+                    self.assertEqual(self.api(page, 'GET', '/api/v1/notification-preferences')['pause'], {'until': until})
+                    self.assertEqual(len(reads), 1, 'the actual unavailable current read is accounted for')
+                    self.capture(page, 'future-pause-read-unavailable', phone=phone, theme=theme)
+                    other = self.browser.new_context(base_url=ORIGIN, storage_state=page.context.storage_state(), service_workers='block')
+                    self.addCleanup(other.close)
+                    self.assertEqual(self.api(other, 'GET', '/api/v1/me')['user']['id'], actor['id'])
+                    self.api(other, 'PATCH', '/api/v1/notification-preferences', {'pause': {'until': None}})
+                    phase['fail'] = False
+                    if phone:
+                        self.warning(page).get_by_role('button', name='Retry current settings', exact=True).click()
+                    else:
+                        page.locator('body').press('f')
+                    expect(self.warning(page)).to_have_count(0)
+                    expect(qualified).to_have_count(0)
+                    self.assert_current_pause(page, None)
+                    self.assertEqual(len(reads), 2, 'one recovery GET, no extra action')
+                    self.assertFalse(reads[-1]['failed'])
+                    self.assertEqual(patches, [], 'F/header recovery must not guess or send a PATCH')
+                    expect(page.get_by_text('Current notification pause could not be checked. Try again.', exact=True)).to_have_count(0)
+                    self.capture(page, 'future-pause-read-recovered', phone=phone, theme=theme)
+                    page.close()
+
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)
