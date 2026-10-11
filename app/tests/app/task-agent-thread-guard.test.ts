@@ -15,6 +15,7 @@ import { apiUrl, publicOrigin, register, uniqueEmail } from './support/http.js';
 import { expect, toolValue } from './support/mcp.js';
 import { db, pool } from './support/db.js';
 import { backendPid, barrier, waitUntilBlockedBy } from './support/locks.js';
+import { guardFixturePool } from './support/fixture-database.js';
 
 const auth = createAuth({ db, config: loadIdentityConfig(), mailer: null, oauthRequests: createOauthRequests() });
 type Scene = Awaited<ReturnType<typeof actionScene>>;
@@ -142,7 +143,7 @@ test('current real source/runtime/grant/access authority is enforced on new effe
 });
 
 test('revoked project, owner, binding and connection block actual native effects/replay; invalid bearer creates nothing', async () => {
-  for (const axis of ['project','owner','binding','connection'] as const) {
+  for (const axis of ['project','owner','binding','connection','grant','expiredGrant','runtime'] as const) {
     const f = await actionScene(pool), item = await task(f), grant = await f.grant('conversation.reply','execute',20);
     const command=envelope(f,item.id,grant.id); await post(f,command);
     if(axis==='project') expect(await f.owner.request('POST',`/api/v1/projects/${f.projectId}/grants`,{body:{principal:{kind:'agent',id:f.agentId},role:'denied'}}),201);
@@ -152,6 +153,9 @@ test('revoked project, owner, binding and connection block actual native effects
     }
     if(axis==='binding') await pool.query('UPDATE agent_oauth_bindings SET generation=generation+1 WHERE id=(SELECT binding_id FROM agent_runtime_sessions WHERE id=$1)',[f.runtimeSessionId]);
     if(axis==='connection') expect(await f.owner.request('DELETE',`/api/v1/agent-connections/${f.connectionId}`),204);
+    if(axis==='grant') expect(await f.owner.request('DELETE',`/api/v1/agent-connections/${f.connectionId}/action-grants/${grant.id}`),204);
+    if(axis==='expiredGrant') await pool.query("UPDATE agent_standing_grants SET expires_at=clock_timestamp()-interval '1 second' WHERE id=$1",[grant.id]);
+    if(axis==='runtime') await pool.query("UPDATE agent_runtime_sessions SET revoked_at=clock_timestamp() WHERE id=$1",[f.runtimeSessionId]);
     await assert.rejects(post(f,command)); await assert.rejects(post(f,{...command,clientCommandId:randomUUID()}));
     assert.equal((await state(item.id)).messages,1); assert.equal(await f.used(grant.id),1);
   }
@@ -209,7 +213,8 @@ test('forced native-post winner fences actual HTTP Undo, while forced Undo winne
 test('fresh/current82 migration preserves exact ledger/history and reverses only before guarded retained effects', {timeout:60_000},async()=>{
   const manifest=await readMigrationManifest('packages/db/migrations',FLUX_SCHEMA_VERSION),prior=manifest.filter(f=>f.version!==87);
   const name=`flux_thread_guard_${randomUUID().replaceAll('-','')}`,url=new URL(process.env.DATABASE_URL!);url.pathname=`/${name}`;
-  await pool.query(`CREATE DATABASE "${name}"`);const fixture=createDatabase(url.toString()).pool;
+  await pool.query({text:`CREATE DATABASE "${name}"`,query_timeout:60_000});const fixture=createDatabase(url.toString()).pool;
+  const fixtureGuard=guardFixturePool(fixture);
   try{for(const file of prior){await fixture.query(await readFile(`packages/db/migrations/${file.name}`,'utf8'));await fixture.query('INSERT INTO flux_schema_version(version) VALUES($1) ON CONFLICT DO NOTHING',[file.version]);}
     const [human,workspace,project,work,people,thread]=Array.from({length:6},()=>randomUUID());
     await fixture.query("INSERT INTO auth_users(id,name,email) VALUES($1,'Retained human',$2)",[human,`${human}@example.test`]);
@@ -227,5 +232,6 @@ test('fresh/current82 migration preserves exact ledger/history and reverses only
     const f=await actionScene(pool),item=await task(f),grant=await f.grant('conversation.reply','execute',20);await post(f,envelope(f,item.id,grant.id));
     const client=await pool.connect();try{await client.query('BEGIN');const ledger=await readAppliedMigrationVersions(client);await assert.rejects(client.query(down),/Cannot reverse 0087/);await client.query('ROLLBACK');assert.deepEqual(await readAppliedMigrationVersions(client),ledger);}finally{client.release();}
     assert.equal((await state(item.id)).messages,1);
-  }finally{await fixture.end();await pool.query(`DROP DATABASE "${name}" WITH (FORCE)`);}
+  }finally{fixtureGuard.cleanup();await fixture.end();await pool.query({text:`DROP DATABASE "${name}" WITH (FORCE)`,query_timeout:60_000});}
+  fixtureGuard.assertNoEarlyErrors();
 });
