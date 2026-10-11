@@ -53,7 +53,7 @@
 .sk-canvas:focus-visible { outline-offset: -2px; }
 .sk-zoomed { position: relative; min-width: 100%; min-height: 100%; }
 .sk-plane { position: absolute; left: 0; top: 0; min-width: 100%; min-height: 100%; transform-origin: 0 0; }
-.sk-edges { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; }
+.sk-edges, .sk-wires { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; }
 .sk-edges path { fill: none; stroke: var(--sk-edge); stroke-width: 1.5; transition: stroke var(--dur-1) var(--ease-out); }
 .sk-edges path.is-on { stroke: var(--t1); stroke-width: 2; }
 .sk-labels { position: absolute; left: 0; top: 0; pointer-events: none; }
@@ -61,10 +61,11 @@
   font-size: var(--fs-xs); line-height: 18px; white-space: nowrap; }
 .sk-el.is-on { color: var(--t1); }
 
-/* Thoughts keep the map's own type scale: their positions are laid out for these sizes on every screen. */
-.sk-node { position: absolute; left: 0; top: 0; display: flex; flex-direction: column; gap: 1px; padding: 9px 12px 10px;
+/* Thought reading follows Prostota's body/meta tokens, including larger phone text. Stored
+   widths and positions stay unchanged; measured heights keep links attached after wrapping. */
+.sk-node { position: absolute; left: 0; top: 0; display: flex; flex-direction: column; gap: 1px; padding: 12px 16px;
   border-radius: var(--r-lg); background: var(--el); text-align: left; touch-action: manipulation; user-select: none; -webkit-user-select: none; cursor: grab;
-  box-shadow: 0 1px 2px rgba(16, 17, 20, .05), inset 0 0 0 1px var(--line2);
+  box-shadow: var(--sh-card), inset 0 0 0 1px var(--line);
   transition: transform var(--dur-2) var(--ease-out), box-shadow var(--dur-1) var(--ease-out), opacity var(--dur-2) var(--ease-out); }
 .sk-node:hover { box-shadow: 0 1px 2px rgba(16, 17, 20, .06), inset 0 0 0 1px var(--t3); }
 .sk-node[aria-pressed="true"] { touch-action: none; box-shadow: 0 0 0 3px var(--sub), inset 0 0 0 1.5px var(--t1); }
@@ -75,10 +76,10 @@
 .sk-node--pill { border-radius: var(--r-pill); padding-left: 18px; padding-right: 18px; }
 .sk-node--circle { border-radius: 50%; align-items: center; justify-content: center; text-align: center; padding: 16px; }
 .sk-canvas.is-connecting .sk-node:not([aria-pressed="true"]) { cursor: crosshair; box-shadow: inset 0 0 0 1.5px var(--line2), 0 0 0 3px var(--sub); }
-.sk-k { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: .65625rem; color: var(--t3); line-height: 1.4; }
+.sk-k { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: var(--fs-xs); color: var(--t3); line-height: 1.4; }
 .sk-k svg { flex: none; }
-.sk-t { font-size: .75rem; font-weight: 500; color: var(--t1); line-height: 1.35; overflow-wrap: anywhere; white-space: pre-line; }
-.sk-p { margin-top: 3px; font-size: .65625rem; color: var(--t3); line-height: 1.4; }
+.sk-t { font-size: var(--fs-base); font-weight: 600; color: var(--t1); line-height: var(--lh); overflow-wrap: anywhere; white-space: pre-line; }
+.sk-p { margin-top: 3px; font-size: var(--fs-xs); color: var(--t3); line-height: 1.4; }
 .sk-resize { position: absolute; right: 2px; bottom: 2px; width: 12px; height: 12px; cursor: nwse-resize; touch-action: none;
   background: linear-gradient(135deg, transparent 50%, var(--inv) 50%, var(--inv) 60%, transparent 60%, transparent 72%, var(--inv) 72%, var(--inv) 82%, transparent 82%); border-radius: 0 0 var(--r-lg) 0; opacity: .7; }
 
@@ -122,6 +123,30 @@
 .sk-task__m { font-size: var(--fs-sm); color: var(--t3); line-height: 1.45; overflow-wrap: anywhere; }
 .sk-task__id { font-family: var(--mono); font-size: var(--fs-xs); letter-spacing: .02em; color: var(--t2); }
 .sk-tasks__note { padding: 6px 16px 14px; font-size: var(--fs-xs); color: var(--t3); line-height: 1.5; }
+
+/* P12: the dot on a thought's edge. Drag it onto another thought to connect, or release on empty space for a
+   connected draft thought. Shown on hover, focus and selection; it keeps its size at every zoom. */
+.sk-dot { position: absolute; left: 0; top: 0; z-index: 2; width: 12px; height: 12px; border-radius: 50%; padding: 0; background: var(--el);
+  box-shadow: inset 0 0 0 1.5px var(--t1); cursor: crosshair; touch-action: none; opacity: 0; transform-origin: 0 0;
+  transition: opacity var(--dur-1) var(--ease-out), background-color var(--dur-1) var(--ease-out); }
+.sk-dot::before { content: ''; position: absolute; inset: -8px; }
+.sk-dot:hover, .sk-dot:focus-visible, .sk-dot.is-on, .sk-dot.is-dragging { opacity: 1; }
+.sk-dot.is-on { background: var(--inv); }
+.sk-canvas.is-wiring, .sk-canvas.is-wiring .sk-node { cursor: crosshair; }
+.sk-canvas.is-wiring .sk-node:hover { box-shadow: 0 0 0 3px var(--sub), inset 0 0 0 1.5px var(--t1); }
+.sk-wire { fill: none; stroke: var(--t1); stroke-width: 1.5; stroke-dasharray: 4 4; }
+.sk-ghost { position: absolute; left: 0; top: 0; display: grid; place-items: center; border-radius: var(--r-lg); border: 1.5px dashed var(--t2);
+  color: var(--t2); font-size: .75rem; pointer-events: none; z-index: 1; }
+.sk-ghost--draft { color: var(--t3); border-color: var(--t3); }
+.sk-ghost__hint { position: absolute; left: 0; top: 0; margin: 0; font-size: var(--fs-xs); color: var(--t3); white-space: nowrap; pointer-events: none; }
+/* S15: on a phone the map is for viewing and adding; the way to connect and arrange is said on the screen. */
+.sk-phone__note { display: inline-flex; align-items: center; gap: 8px; margin: 0; padding: 6px 14px; border-radius: var(--r-pill); background: var(--el);
+  box-shadow: var(--sh-card), inset 0 0 0 1px var(--line); font-size: var(--fs-md); color: var(--t2); }
+.sk-phone__note svg { flex: none; color: var(--t3); }
+.sk-fab { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 22px 0 18px; border-radius: var(--r-pill);
+  background: var(--inv); color: var(--oninv); box-shadow: var(--sh-pop); font-size: var(--fs-lg, 1rem); font-weight: 500; }
+@media (pointer: coarse) { .sk-dot { width: 16px; height: 16px; } .sk-dot::before { inset: -14px; } }
+@media (prefers-reduced-motion: reduce) { .sk-dot { transition: none; } }
 
 .sk-actions { position: absolute; left: 0; top: 0; z-index: 4; display: flex; align-items: center; gap: 8px; transform-origin: 0 0; }
 .sk-plus { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%;
@@ -275,8 +300,8 @@
   .sk-bar .sk-tools .ui-btn { flex: 1 0 auto; min-width: 44px; flex-direction: column; justify-content: center; gap: 1px; padding: 3px 2px; font-size: 10.5px; line-height: 1.2; }
   .sk-status { flex: none; padding: 0 8px 6px; white-space: normal; }
   .sk-status:empty { display: none; }
-  .sk-canvas { height: clamp(360px, calc(100dvh - 250px), 620px); }
-  .sk-canvas-wrap--controls { height: clamp(360px, calc(100dvh - 250px), 620px); }
+  .sk-canvas { height: clamp(220px, calc(100dvh - 430px), 620px); }
+  .sk-canvas-wrap--controls { height: clamp(220px, calc(100dvh - 430px), 620px); }
   .sk-el:not(.is-on) { display: none; }
   .sk-edges path:not(.is-on) { stroke-opacity: 1; }
 }
@@ -314,3 +339,105 @@ span.sk-li-img { width: 160px; height: 96px; }
   .sk-draft__remove { width: 44px; min-height: 44px; }
   .sk-li-link { min-height: 44px; }
 }
+
+/* F-026 map: the canvas fills the work pane, dotted edge to edge. The header, notices and drafts float at the
+   top left, the tools at the bottom centre, and the selection's actions above the selected thought. */
+.sk-page--map { position: relative; overflow: hidden; }
+.sk-page--map .sk--map { position: relative; flex: 1; min-height: 0; width: 100%; max-width: none; margin: 0; padding: 0; gap: 0; }
+.sk--map .sk-canvas-wrap { position: absolute; inset: 0; display: block; flex: none; height: auto; min-height: 0; padding: 0; }
+.sk--map .sk-canvas { height: 100%; box-sizing: border-box; padding: 56px 0 100px; border-radius: 0; box-shadow: none; background-color: var(--bg); }
+.sk-over { position: absolute; left: 14px; top: 12px; right: 14px; z-index: 8; display: flex; flex-direction: column; align-items: flex-start; gap: 8px;
+  max-height: calc(100% - 24px); overflow-y: auto; pointer-events: none; }
+.sk-over > * { pointer-events: auto; }
+.sk--map .sk-head { flex-wrap: nowrap; justify-content: flex-start; gap: 4px 10px; padding: 4px 4px 4px 14px; border-radius: var(--r-pill);
+  background: var(--el); box-shadow: var(--sh-card), inset 0 0 0 1px var(--line); }
+.sk--map .sk-lead { flex-wrap: nowrap; position: relative; }
+.sk--map .sk-aud { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.sk--map .sk-mode .seg__b { min-width: 48px; }
+.sk--map .sk-copies, .sk--map .sk-origin, .sk--map .sk-readonly { padding: 6px 12px; border-radius: var(--r-pill); background: var(--el); box-shadow: var(--sh-card), inset 0 0 0 1px var(--line); }
+.sk--map .sk-copies { max-width: 100%; }
+.sk-over .sk-draft { width: min(440px, 100%); margin: 0; box-shadow: var(--sh-pop); }
+/* The inset also keeps fractional-height borders inside WebKit's integer scroll clip. */
+.sk-composition { position: absolute; z-index: 8; width: min(440px, calc(100% - 28px)); max-height: calc(100% - 28px); padding: 1px; overflow: auto; }
+.sk-composition .sk-draft { margin: 0; box-shadow: var(--sh-pop); }
+.sk-composition .sk-undo { margin-top: 8px; }
+.sk-over .sk-edit-controls { margin: 0; }
+.sk--map .sk-first { position: absolute; left: 50%; top: 42%; z-index: 6; margin: 0; transform: translateX(-50%); text-align: center; pointer-events: none; }
+.sk-dock { position: absolute; left: 0; right: 0; bottom: 16px; z-index: 7; display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 0 12px; pointer-events: none; }
+.sk-dock__row { pointer-events: auto; display: flex; align-items: center; gap: 6px; max-width: 100%; padding: 5px 8px 5px 5px; border-radius: var(--r-pill);
+  background: var(--el); box-shadow: var(--sh-pop), inset 0 0 0 1px var(--line); }
+.sk-dock__row:not(:has(.sk-tools)) { padding: 2px; }
+.sk-line { display: flex; flex-direction: column; align-items: center; gap: 2px; max-width: 100%; }
+.sk-hint, .sk--map .sk-status { margin: 0; padding: 0; flex: none; max-width: min(640px, 100%); font-size: var(--fs-sm); color: var(--t3); text-align: center; white-space: normal; overflow: visible; }
+.sk--map .sk-status:empty { display: none; }
+.sk-dock .sk-tools { gap: 4px; flex-wrap: nowrap; flex: none; }
+.sk-dock__row { flex-wrap: wrap; justify-content: center; }
+.sk-dock__row > *, .sk-dock .sk-tools > * { flex: none; }
+.sk-dock .ui-btn { min-height: 36px; padding: 0 14px; border-radius: var(--r-pill); gap: 6px; }
+.sk-dock .ui-btn svg { color: var(--t2); }
+.sk-dock .ui-btn[aria-pressed="true"] { background: var(--sub); }
+.sk-dock .ui-btn[aria-disabled="true"] { opacity: .55; }
+.sk-dock .ui-btn--primary { padding: 0 18px; }
+.sk-tool { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 50%; color: var(--t2); transition: var(--tr); }
+.sk-tool:hover { background: var(--hov); color: var(--t1); }
+.sk-tool[aria-pressed="true"] { background: var(--sub); color: var(--t1); }
+.sk-tool[aria-disabled="true"] { opacity: .5; }
+.sk-dock .sk-zoom { position: static; padding: 0; box-shadow: none; background: transparent; margin: 0 0 0 4px; border-left: 1px solid var(--line); padding-left: 6px; }
+.sk-dock__row:not(:has(.sk-tools)) .sk-zoom { margin: 0; border: 0; padding: 0; }
+.sk--map .sk-help:not(.is-open) { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.sk--map .sk-help.is-open { position: absolute; left: 50%; bottom: 110px; z-index: 9; width: min(560px, calc(100% - 28px)); max-width: none; margin: 0; padding: 12px 16px; transform: translateX(-50%);
+  border-radius: var(--r-lg); background: var(--el); box-shadow: var(--sh-pop), inset 0 0 0 1px var(--line); font-size: var(--fs-sm); color: var(--t2); }
+/* The actions of the selection float above it (below it where there is no room, and on the phone). */
+.sk-actions { gap: 2px; padding: 4px; border-radius: var(--r-pill); background: var(--el); box-shadow: var(--sh-pop), inset 0 0 0 1px var(--line); }
+.sk-actions .sk-edit-btn { background: transparent; box-shadow: none; }
+.sk-actions .sk-edit-btn:hover { background: var(--sub); }
+.sk-actions .sk-edit-btn[aria-pressed="true"] { background: var(--sub); }
+.sk-actions .sk-edit-btn[aria-disabled="true"] { opacity: .5; }
+.sk-edit-btn--icon { display: inline-grid; place-items: center; width: 28px; padding: 0; }
+.sk-taskline { display: flex; align-items: center; gap: 6px; margin-top: 3px; font-size: var(--fs-xs); color: var(--t2); line-height: 1.4; }
+.sk-taskline svg { flex: none; }
+@media (pointer: coarse) { .sk-edit-btn--icon { width: 44px; } .sk-tool { width: 44px; height: 44px; } .sk-dock .ui-btn { min-height: 44px; } }
+/* S15: one primary Add a thought. Secondary map and selection controls open named sheets. */
+.sk-phone { position: absolute; left: 0; right: 0; bottom: 14px; z-index: 7; display: flex; flex-direction: column; align-items: center; gap: 8px; pointer-events: none; }
+.sk-phone > * { pointer-events: auto; }
+@media (max-width: 640px) {
+  .sk--map .sk-canvas-wrap { background-color: var(--bg); background-image: radial-gradient(var(--line2) 1px, transparent 1.3px); background-size: 20px 20px; }
+  .sk--map .sk-canvas { position: absolute; inset: 60px 0 calc(var(--sk-phone-tools-height, 150px) + 8px); height: auto; padding: 0 0 24px; }
+  /* A draft or rename stays below Map options, so changing views cannot cover its entry. */
+  .sk-over { left: auto; right: 10px; top: 64px; align-items: flex-end; }
+  .sk--map .sk-lead:not(:has(.sk-title-edit)) { display: none; }
+  .sk--map .sk-head { padding: 3px; }
+  .sk--map .sk-head:not(:has(.sk-title-edit, .sk-promote)) { display: none; }
+  .sk-over .sk-draft { width: calc(100vw - 20px); }
+  /* Composition replaces the Add dock while open and reserves space below the phone
+     projection. Map options and the useful map context remain above it. */
+  .sk-composition { left: 10px; right: 10px; bottom: 10px; width: auto; max-height: max(96px, calc(100% - 180px)); }
+  .sk-composition .sk-draft__actions > span { display: none; }
+  .sk-composition .ui-btn { min-height: 44px; }
+  .sk-dock, .sk-dock__row { display: contents; }
+  .sk-map-options { position: absolute; top: 10px; right: 10px; z-index: 7; }
+  .sk--map .sk-status { max-width: 100%; background: var(--el); padding: 4px 12px; border-radius: var(--r-pill); box-shadow: var(--sh-card); pointer-events: auto; }
+  .sk-actions { flex-wrap: wrap; justify-content: center; max-width: calc(100vw - 20px); }
+}
+.sk-phone .sk-actions { position: static; transform: none; }
+.sk-phone .sk-line { max-width: calc(100% - 20px); }
+/* The selected outline and named action entry already identify the phone selection; announce
+   it without a second visual pill. Changes and errors remain visible in the measured dock. */
+.sk-phone .sk-line:has(.sk-status--selection) { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.sk-phone__secondary { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 8px; max-width: calc(100% - 20px); }
+.sk-phone__secondary:empty { display: none; }
+.sk-phone__secondary .sk-edit-btn { display: inline-flex; align-items: center; gap: 6px; }
+.sk-map-options { display: inline-flex; align-items: center; gap: 6px; }
+.ui-overlay--bottom .ui-overlay__surface.sk-options-sheet { top: auto; max-height: 85dvh; border-radius: var(--r-sheet) var(--r-sheet) 0 0; }
+.sk-options-sheet .ui-panel__head { height: 56px; padding-top: 0; }
+.sk-options-sheet .ui-panel__head::before { top: 6px; }
+.sk-options-sheet .ui-panel__body { display: flex; flex-direction: column; gap: 8px; }
+.sk-options-sheet .sk-zoom { position: static; align-self: flex-start; }
+.sk-options-sheet .sk-mode { align-self: flex-start; }
+.sk-options__thought { margin: 0 0 8px; color: var(--t2); font-size: var(--fs-base); line-height: var(--lh); overflow-wrap: anywhere; }
+.sk-options__action { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 44px; padding: 10px 12px; border-radius: var(--r); color: var(--t1); text-align: left; font-size: var(--fs-base); line-height: var(--lh); }
+.sk-options__action:hover { background: var(--hov); }
+.sk-options__action svg { flex: none; color: var(--t2); }
+.sk-undo { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 16px; border-radius: var(--r-pill); background: var(--el); color: var(--t1);
+  box-shadow: var(--sh-card), inset 0 0 0 1px var(--line); font-size: var(--fs-md); font-weight: 500; }
+.sk-undo svg { color: var(--t2); }
