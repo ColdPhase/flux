@@ -26,13 +26,13 @@ a.file-row:hover .file-row__act { color: var(--t1); }
 .message-bubble { display: flex; flex-direction: column; gap: 6px; min-width: 0; max-width: 100%; padding: 9px 13px; border-radius: 6px var(--r-lg) var(--r-lg) var(--r-lg); background: var(--el); box-shadow: var(--sh-1); box-sizing: border-box; }
 .message-bubble:empty { display: none; }
 .message-bubble > p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font-size: var(--fs-base); line-height: var(--lh); }
-.message-bubble > :is(.message-files, .link-previews, .ws-attach) { min-width: 0; max-width: 100%; margin: 0; }
+.message-bubble > :is(.message-files, .link-previews, .ws-attach, .wiki-card) { min-width: 0; max-width: 100%; margin: 0; }
 .is-mine > .message-bubble, .agents-msg--own > .message-bubble { border-radius: var(--r-lg) 6px var(--r-lg) var(--r-lg); background-color: var(--inv); background-image: var(--grad-inv); color: var(--oninv); }
 @media (max-width: 760px) { .message-bubble { padding: 11px 14px; } }
 /* A task card under a photo fills the photo's width, not the caption's (F-026 §6). */
-.photo-grid + .message-bubble:has(.ws-chip, .ws-attach) { width: min(100%, 340px); }
+.photo-grid + .message-bubble:has(.ws-chip, .ws-attach, .wiki-card) { width: min(100%, 340px); }
 /* A wrapper alone does not turn legacy unframed text-only excerpts into cards. */
-.thread__root > .message-bubble:not(:has(.message-files, .ws-attach)):not(.photo-grid + .message-bubble),
+.thread__root > .message-bubble:not(:has(.message-files, .ws-attach, .wiki-card)):not(.photo-grid + .message-bubble),
 .agents-msg:not(.agents-msg--own) > .message-bubble:not(:has(.message-files)):not(.photo-grid + .message-bubble),
 .wd-pending__item > .message-bubble:not(:has(.message-files)):not(.photo-grid + .message-bubble),
 .details__sec > .message-bubble { padding: 0; border-radius: 0; background: none; box-shadow: none; color: inherit; }
@@ -159,7 +159,8 @@ span.photo-grid__open { cursor: default; }
 .photo-pick__add { background: var(--inv); color: var(--oninv); }
 .photo-pick__add:disabled { opacity: .4; cursor: default; }
 
-/* A Wiki page cited by a message: a compact card with its kind glyph, title and one line of context (#348 AC-2). */
+/* A Wiki page cited by a message: a compact card with its kind glyph, title and one line of context (#348 AC-2).
+   It is the message's own reference, so it sits inside the message's one bubble (a tint, not a second card). */
 .wiki-card { position: relative; display: flex; align-items: center; gap: 10px; min-width: 0; max-width: 100%; margin-top: 6px; padding: 8px 12px; border-radius: var(--r); background: var(--el); box-shadow: inset 0 0 0 1px var(--line); color: var(--t1); text-decoration: none; transition: var(--tr); }
 .wiki-card:hover { background: var(--hov); }
 .wiki-card__glyph { display: grid; place-items: center; flex: none; width: 28px; height: 28px; border-radius: var(--r-sm); background: var(--sub); color: var(--t2); }
@@ -170,3 +171,9 @@ span.photo-grid__open { cursor: default; }
 .wiki-card::after { content: ""; position: absolute; left: 50%; top: 50%; width: max(100%, var(--ctl)); height: var(--ctl); transform: translate(-50%, -50%); }
 @media (pointer: coarse) { .wiki-card { min-height: 44px; } }
 .wiki-card:focus-visible { outline: 2px solid var(--t1); outline-offset: 2px; }
+.message-bubble > .wiki-card { background: var(--sub); box-shadow: none; }
+.message-bubble > .wiki-card:hover { background: var(--hov); }
+.is-mine > .message-bubble .wiki-card { background: rgba(255, 255, 255, .1); box-shadow: none; color: var(--oninv); }
+.is-mine > .message-bubble .wiki-card:hover { background: rgba(255, 255, 255, .16); }
+.is-mine > .message-bubble .wiki-card__glyph { background: rgba(255, 255, 255, .14); color: inherit; }
+.is-mine > .message-bubble .wiki-card small { color: inherit; opacity: .78; }

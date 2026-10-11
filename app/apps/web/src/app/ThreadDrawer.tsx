@@ -84,8 +84,8 @@ export function ThreadRoot({ message, projectId, body, author, agentOwner = null
           <LinkPreviews body={body} />
           {message ? <MessageObjects message={message} projectId={projectId} preview={preview} thread={task} threadRow={taskRow} />
             : task ? <div className="ws-attach"><DiscussedTask task={task} row={taskRow} /></div> : null}
+          {message?.source ? <SourceCitation materialId={message.source.materialId} version={message.source.version} onDenied={onDenied} /> : null}
         </MessageContent>
-        {message?.source ? <SourceCitation materialId={message.source.materialId} version={message.source.version} onDenied={onDenied} /> : null}
       </article>
       <p className="thread__hint">{replies ? `${replies} ${replies === 1 ? 'reply' : 'replies'}` : writable ? 'Reply to this message. No new topic needed.' : 'No replies yet.'}</p>
     </>

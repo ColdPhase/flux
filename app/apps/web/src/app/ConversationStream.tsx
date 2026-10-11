@@ -595,9 +595,9 @@ function RootItem(props: RootItemProps | QueuedRootProps) {
       <MessageContent body={message.body ? <p><MessageText body={message.body} /></p> : null} files={message.files} context={{ author: name, at: message.createdAt, caption: message.body, place: project.name, onReply: writable ? () => onOpen(root, true) : undefined, onCreateTask: writable ? () => void makeWork.create(message) : undefined }}>
         <LinkPreviews body={message.body} />
         <MessageObjects message={message} projectId={project.id} preview={messageWork.previews?.get(message.id) ?? null} thread={root.task ?? null} threadRow={taskRow} />
+        {message.source ? <SourceCitation materialId={message.source.materialId} version={message.source.version} onDenied={onDenied} /> : null}
       </MessageContent>
       {message.contribution ? <ContributionMark contribution={message.contribution} onOpenResult={onOpenResult} /> : null}
-      {message.source ? <SourceCitation materialId={message.source.materialId} version={message.source.version} onDenied={onDenied} /> : null}
       <Replies root={root} open={open} writable={writable} onOpen={(reply) => onOpen(root, reply)} />
       <MessageActions projectId={project.id} message={message} writable={writable} busy={makeWork.busy === message.id} onCreateWork={() => void makeWork.create(message)} />
       {makeWork.failed?.messageId === message.id ? <p className="ws-act-error" role="alert">{makeWork.failed.text} <button type="button" onClick={() => void makeWork.create(message)}>Retry</button></p> : null}

@@ -17,7 +17,7 @@ import uuid
 
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
-from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
+from test_app_shell import DESKTOP, ORIGIN, PHONE, UI_BROWSER, UPSTREAM, shot, start_forwarder
 from contrast import MEASURE
 
 PASSWORD = "one calm conversation for the lamp"
@@ -83,7 +83,7 @@ class OneConversationJourney(unittest.TestCase):
         if UPSTREAM:
             start_forwarder(ORIGIN, UPSTREAM)
         cls.pw = sync_playwright().start()
-        cls.browser = cls.pw.chromium.launch()
+        cls.browser = getattr(cls.pw, UI_BROWSER).launch()
         expect.set_options(timeout=10000)
         contexts: dict[str, BrowserContext] = {}
         for key, (name, email) in PEOPLE.items():
@@ -704,6 +704,43 @@ class OneConversationJourney(unittest.TestCase):
         self.assertEqual(name.evaluate(OVERLAPS), [], "the tap area covers no other control in the thread")
         self.no_sideways_scroll(page)
         shot(page, "one-conversation-phone-390-thread-short-name-light")
+
+    def assert_card_in_bubble(self, scope, card) -> None:
+        """#348 (review 36b49271): a cited Wiki card is part of its message's one bubble, not a card set beneath it."""
+        expect(card).to_be_visible()
+        inside = scope.evaluate("""(message, card) => { const bubble = message.querySelector(':scope > .message-bubble');
+          if (!bubble || !bubble.contains(card)) return false;
+          const a = bubble.getBoundingClientRect(), r = card.getBoundingClientRect();
+          return r.left >= a.left - .001 && r.top >= a.top - .001 && r.right <= a.right + .001 && r.bottom <= a.bottom + .001; }""", card.element_handle())
+        self.assertTrue(inside, "the Wiki card sits inside its message's single bubble")
+
+    def test_07d_a_cited_wiki_card_sits_inside_its_message_bubble(self) -> None:
+        # #348 (review 36b49271): Ada's cited root is her own message, so its bubble is the inverted one. The card stays in
+        # that bubble in the stream and in the thread, on desktop and phone, in light and dark, and it still opens the cited version.
+        for phone, dark in ((False, False), (True, False), (False, True), (True, True)):
+            with self.subTest(phone=phone, dark=dark):
+                page = self.page("ada", phone=phone, dark=dark)
+                if phone:
+                    page.goto(f"/projects/{self.targets()}/conversations/{self.ids['targets_conversation']}")
+                    scope = self.thread(page).locator(".thread__root")
+                else:
+                    page.goto(f"/projects/{self.targets()}")
+                    scope = self.stream(page).locator("li.project-convo__message").filter(has=page.locator("a.wiki-card"))
+                card = scope.locator("a.wiki-card")
+                expect(card).to_be_visible()
+                expect(card.locator("strong")).to_have_text("Lux table")
+                expect(card).to_have_attribute("href", re.compile(r"^/materials/[^/]+/versions/1$"))
+                self.assert_card_in_bubble(scope, card)
+                shot(page, f"one-conversation-wiki-card-{'phone' if phone else 'desktop'}-{'dark' if dark else 'light'}-{UI_BROWSER}")
+                if not phone and not dark:
+                    # Negative control: the same card moved beside the bubble fails the check; the card is then restored.
+                    card.evaluate("e => { const slot = document.createElement('span'); slot.id = 'wiki-card-slot'; e.before(slot); e.closest('.message-bubble').after(e); }")
+                    try:
+                        with self.assertRaises(AssertionError):
+                            self.assert_card_in_bubble(scope, card)
+                    finally:
+                        card.evaluate("e => { document.getElementById('wiki-card-slot').replaceWith(e); }")
+                    self.assert_card_in_bubble(scope, card)
 
     def test_08_tablet_and_desktop_renders(self) -> None:
         tablet = self.page("ada", phone=True, viewport={"width": 820, "height": 1180})

@@ -50,6 +50,7 @@ export function LinkPreviews({ body }: { body: string }) {
     <a className="link-preview" href={raw} target="_blank" rel="noopener noreferrer nofollow">
       <span className="link-preview__site"><Icon name="link" size={12} />{url.hostname.replace(/^www\./, '')}</span>
       <strong>{addressTitle(url)}</strong>
+      {/* The address fallback: no page is fetched, so this is the URL, not the page's own description (still open, #469). */}
       <small>{url.pathname.length > 1 ? `${url.hostname}${url.pathname}` : 'Opens in a new tab'}</small>
     </a>
   </li>)}</ul>;

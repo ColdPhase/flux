@@ -474,9 +474,9 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
                 <MessageContent body={message.body ? <p><MessageText body={message.body} /></p> : null} files={message.files} context={{ author: messageAuthor(message), at: message.createdAt, caption: message.body, place: project.name, onReply: writable ? () => document.getElementById(composerId)?.focus() : undefined, onCreateTask: writable ? () => void makeWork.create(message) : undefined }}>
                   <LinkPreviews body={message.body} />
                   <MessageObjects message={message} projectId={project.id} preview={messageWork.previews?.get(message.id) ?? null} />
+                  {message.source ? <SourceCitation materialId={message.source.materialId} version={message.source.version} onDenied={hideIfDenied} /> : null}
                 </MessageContent>
                 {message.contribution ? <ContributionMark contribution={message.contribution} onOpenResult={(resultId) => openDetails({ kind: 'result', id: resultId })} /> : null}
-                {message.source ? <SourceCitation materialId={message.source.materialId} version={message.source.version} onDenied={hideIfDenied} /> : null}
                 <ThreadMessageActions writable={writable}><MessageActions projectId={project.id} message={message} writable={writable} busy={makeWork.busy === message.id} onCreateWork={() => void makeWork.create(message)} /></ThreadMessageActions>
                 {makeWork.failed?.messageId === message.id ? <p className="ws-act-error" role="alert">{makeWork.failed.text} <button type="button" onClick={() => void makeWork.create(message)}>Retry</button></p> : null}
               </li>];

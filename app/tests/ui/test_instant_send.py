@@ -17,7 +17,7 @@ import uuid
 
 from playwright.sync_api import Browser, Page, Route, expect, sync_playwright
 
-from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
+from test_app_shell import DESKTOP, ORIGIN, PHONE, UI_BROWSER, UPSTREAM, shot, start_forwarder
 
 PASSWORD = "messages that feel instant on a phone"
 STAMP = int(time.time() * 1000)
@@ -69,7 +69,7 @@ class InstantSendJourney(unittest.TestCase):
         if UPSTREAM:
             start_forwarder(ORIGIN, UPSTREAM)
         cls.pw = sync_playwright().start()
-        cls.browser = cls.pw.chromium.launch()
+        cls.browser = getattr(cls.pw, UI_BROWSER).launch()
         expect.set_options(timeout=10000)
         contexts = {}
         for key, (name, email) in PEOPLE.items():
