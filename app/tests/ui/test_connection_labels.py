@@ -331,5 +331,23 @@ class ConnectionLabels(unittest.TestCase):
         shot(page, f'connection-labels-unavailable-recovery-{UI_BROWSER}')
 
 
+    def test_09_long_labels_stay_compact_and_reopen_in_full(self):
+        page = self.page({'width': 820, 'height': 1180}, touch=True)
+        sketch = self.scene(page, link=True)
+        _, connections = self.connections(page, touch=True)
+        connections.get_by_role('button', name=re.compile('^Add label for connection to')).tap()
+        label = 'Depends on the enclosure seal and successful range tests before the winter frost'
+        self.assertEqual(len(label), 80)
+        self.save(page, sketch, label, touch=True)
+        button = page.locator('.sk-el--edit')
+        expect(button).to_have_attribute('title', label)
+        self.assertLessEqual(button.bounding_box()['width'], 180)
+        self.assert_no_overflow(page)
+        button.tap()
+        editor = self.editor(page)
+        expect(editor.get_by_role('textbox', name='Label', exact=True)).to_have_value(label)
+        editor.get_by_role('button', name='Cancel', exact=True).tap()
+        self.assertEqual(self.link(page, sketch)['label'], label)
+
 if __name__ == '__main__':
     unittest.main(verbosity=2)
