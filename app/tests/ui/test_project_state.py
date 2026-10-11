@@ -166,6 +166,9 @@ class ProjectStateJourney(unittest.TestCase):
                 history.press("Tab")
                 page.keyboard.press("Shift+Tab")
                 self.assertTrue(history.evaluate("e => e.matches(':focus-visible')"))
+                # Focus is keyboard-driven; the shared outline colour transitions for120ms.
+                # Retain the visible-colour guard after its real transition, within600ms.
+                expect(history).to_have_css("outline-color", history.evaluate("e => getComputedStyle(e).color"), timeout=600)
                 ring = history.evaluate("""e => {const s=getComputedStyle(e);return {style:s.outlineStyle,width:parseFloat(s.outlineWidth),color:s.outlineColor};}""")
                 self.assertNotIn(ring["style"], ("none", "hidden"), ring)
                 self.assertGreater(ring["width"], 0, ring)

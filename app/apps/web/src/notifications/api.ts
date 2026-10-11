@@ -36,6 +36,8 @@ export const unsubscribe = (token: string) => request<UnsubscribeResponse>(`${NO
 export const INBOX_CHANGED = 'flux:inbox-changed';
 export const announceInboxChange = () => window.dispatchEvent(new Event(INBOX_CHANGED));
 
-/** Tells Focus (the header) that the pause changed and the server confirmed it; the detail is its end or null. */
+/** A confirmed pause belongs to the account that saved it. */
+export interface PauseChange { ownerId: string; until: string | null }
 export const PAUSE_CHANGED = 'flux:pause-changed';
-export const announcePauseChange = (until: string | null) => window.dispatchEvent(new CustomEvent<string | null>(PAUSE_CHANGED, { detail: until }));
+export const announcePauseChange = (ownerId: string, until: string | null) =>
+  window.dispatchEvent(new CustomEvent<PauseChange>(PAUSE_CHANGED, { detail: { ownerId, until } }));

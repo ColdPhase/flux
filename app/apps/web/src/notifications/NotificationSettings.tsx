@@ -18,6 +18,7 @@ import { NotificationsButton } from '../pwa';
 import { getPushState } from '../pwa/push';
 import { Button, ErrorState, Icon, Spinner, useToast } from '../ui';
 import { addAddress, announcePauseChange, getPreferences, removeAddress, resendVerification, setMute, unsubscribe, updatePreferences, verifyAddress } from './api';
+import { captureNotificationSession, isCurrentNotificationSession } from './session';
 import './notifications.css';
 
 const ROWS: Record<NotificationReason, { label: string; hint: string }> = {
@@ -59,7 +60,15 @@ const message = (error: unknown, fallback: string) => (error instanceof ApiError
  * nothing here changes how you sign in.
  */
 export function NotificationSettings() {
-  const { projects, directMessages } = useShellData();
+  const { me } = useShellData();
+  return <AccountNotificationSettings key={me.user.id} />;
+}
+
+function AccountNotificationSettings() {
+  const { me, projects, directMessages } = useShellData();
+  const ownerId = me.user.id;
+  const mounted = useRef(false);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const [prefs, setPrefs] = useState<NotificationPreferences | null>(null);
   const [failed, setFailed] = useState(false);
   const [saved, setSaved] = useState('');
@@ -68,14 +77,14 @@ export function NotificationSettings() {
 
   const load = () => {
     setFailed(false);
-    getPreferences().then(setPrefs, () => setFailed(true));
+    getPreferences().then((next) => { if (mounted.current) setPrefs(next); }, () => { if (mounted.current) setFailed(true); });
   };
-  useEffect(() => { getPreferences().then(setPrefs, () => setFailed(true)); }, []);
+  useEffect(() => { getPreferences().then((next) => { if (mounted.current) setPrefs(next); }, () => { if (mounted.current) setFailed(true); }); }, []);
   // Push cannot reach anyone when the server has no VAPID keys or the browser has no push.
   const [pushOff, setPushOff] = useState<string | null>(null);
   useEffect(() => {
-    getPushState().then((push) => setPushOff(push.state === 'unavailable' ? 'Push is not set up on this Flux server, so the Push column has no effect.'
-      : push.state === 'unsupported' ? 'This browser cannot receive push; choices apply to your other devices.' : null), () => undefined);
+    getPushState().then((push) => { if (mounted.current) setPushOff(push.state === 'unavailable' ? 'Push is not set up on this Flux server, so the Push column has no effect.'
+      : push.state === 'unsupported' ? 'This browser cannot receive push; choices apply to your other devices.' : null); }, () => undefined);
   }, []);
 
   // Saves run one after another in the order they were made, each numbered. Only the answer to
@@ -83,16 +92,21 @@ export function NotificationSettings() {
   const queue = useRef<Promise<void>>(Promise.resolve());
   const sequence = useRef(0);
   function save(run: () => Promise<NotificationPreferences>, done = 'Saved') {
+    const session = captureNotificationSession(ownerId);
+    if (!session) return Promise.resolve();
     const mine = ++sequence.current;
     const next = queue.current.then(async () => {
+      if (!isCurrentNotificationSession(session)) return;
       try {
         const result = await run();
         // Saves apply in order, so each confirmed answer is the server's state at that point.
-        announcePauseChange(result.pause.until);
-        if (mine === sequence.current) { setPrefs(result); setSaved(done); }
+        if (!isCurrentNotificationSession(session)) return;
+        announcePauseChange(ownerId, result.pause.until);
+        if (mounted.current && mine === sequence.current) { setPrefs(result); setSaved(done); }
       } catch (error) {
+        if (!isCurrentNotificationSession(session)) return;
         toast({ message: message(error, 'Could not save. Try again.'), tone: 'danger' });
-        if (mine === sequence.current) load();
+        if (mounted.current && mine === sequence.current) load();
       }
     });
     queue.current = next;

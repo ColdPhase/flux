@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { PAUSE_CHANGED, getPreferences, updatePreferences } from '../notifications/api';
+import { PAUSE_CHANGED, getPreferences, updatePreferences, type PauseChange } from '../notifications/api';
+import { beginNotificationSession, captureNotificationSession, isCurrentNotificationSession, retireNotificationSession, type NotificationSession } from '../notifications/session';
 import { useToast } from '../ui';
 
 const MIN_FOCUS_MS = 30 * 60_000;
@@ -23,7 +24,7 @@ export function useFocus(identity: string) {
   // The pause belongs to the identity that read it; another identity never sees it.
   const [state, setState] = useState<{ owner: string; until: Date | null }>({ owner: identity, until: null });
   const until = state.owner === identity ? state.until : null;
-  const busy = useRef(false);
+  const busy = useRef<NotificationSession | null>(null);
   const who = useRef(identity);
   // Every applied state is numbered. A read applies only if nothing newer (a confirmed change,
   // another read's answer or a new identity) has been applied since it was asked for.
@@ -34,12 +35,16 @@ export function useFocus(identity: string) {
   }, []);
   const refresh = useCallback(() => {
     const mine = version.current;
-    void getPreferences().then((prefs) => { if (mine === version.current) apply(prefs.pause.until); }, () => undefined);
+    const session = captureNotificationSession(who.current);
+    if (!session) return;
+    void getPreferences().then((prefs) => { if (mine === version.current && isCurrentNotificationSession(session)) apply(prefs.pause.until); }, () => undefined);
   }, [apply]);
   useEffect(() => {
     who.current = identity;
+    const session = beginNotificationSession(identity);
     version.current += 1;
     refresh();
+    return () => { retireNotificationSession(session); version.current += 1; };
   }, [refresh, identity]);
   useEffect(() => {
     window.addEventListener('focus', refresh);
@@ -47,7 +52,10 @@ export function useFocus(identity: string) {
   }, [refresh]);
   // A change confirmed elsewhere in this tab (Notification settings) shows here at once.
   useEffect(() => {
-    const onChange = (event: Event) => apply((event as CustomEvent<string | null>).detail);
+    const onChange = (event: Event) => {
+      const change = (event as CustomEvent<PauseChange>).detail;
+      if (change.ownerId === who.current && isCurrentNotificationSession(captureNotificationSession(who.current))) apply(change.until);
+    };
     window.addEventListener(PAUSE_CHANGED, onChange);
     return () => window.removeEventListener(PAUSE_CHANGED, onChange);
   }, [apply]);
@@ -59,8 +67,9 @@ export function useFocus(identity: string) {
   }, [until]);
 
   const toggle = useCallback(async () => {
-    if (busy.current) return;
-    busy.current = true;
+    const session = captureNotificationSession(who.current);
+    if (!session || busy.current === session) return;
+    busy.current = session;
     // Focus shows only once the server holds notifications, so "paused" is never claimed early.
     const next = until ? null : focusEnd();
     const owner = who.current;
@@ -68,11 +77,11 @@ export function useFocus(identity: string) {
       const prefs = await updatePreferences({ pause: { until: next ? next.toISOString() : null } });
       // The confirmed change is the newest state and drops any read still in flight; only a
       // different signed-in identity makes it obsolete.
-      if (owner === who.current) apply(prefs.pause.until);
+      if (owner === who.current && isCurrentNotificationSession(session)) apply(prefs.pause.until);
     } catch {
-      toast({ message: next ? 'Focus did not start: notifications are not paused' : 'Focus did not end; try again', tone: 'danger' });
+      if (isCurrentNotificationSession(session)) toast({ message: next ? 'Focus did not start: notifications are not paused' : 'Focus did not end; try again', tone: 'danger' });
     } finally {
-      busy.current = false;
+      if (busy.current === session) busy.current = null;
     }
   }, [until, toast, apply]);
 
