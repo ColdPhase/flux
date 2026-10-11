@@ -24,7 +24,12 @@ def instant(seconds):
 
 
 class RefreshEdges(unittest.TestCase):
-    api = original.PauseRefreshProbe.api
+    def api(self, page, method, path, body=None, status=200):
+        if method == 'DELETE' and body is None:
+            response = page.request.delete(ORIGIN + path, headers={'origin': ORIGIN})
+            self.assertEqual(response.status, status, response.text())
+            return response.json() if response.text() else None
+        return original.PauseRefreshProbe.api(self, page, method, path, body, status)
     actor = original.PauseRefreshProbe.actor
     pill = original.PauseRefreshProbe.pill
     note = original.PauseRefreshProbe.note
@@ -45,7 +50,10 @@ class RefreshEdges(unittest.TestCase):
     def settings(self, page):
         if page.viewport_size['width'] <= 680:
             page.locator('header.top').get_by_role('button', name='Open navigation', exact=True).click()
-        original.PauseRefreshProbe.settings(self, page)
+            page.get_by_role('link', name=re.compile(r'settings and sign out$')).click()
+            page.locator('a[href=\"/settings/notifications\"]').first.click()
+        else:
+            original.PauseRefreshProbe.settings(self, page)
 
     def warning(self, page):
         return page.locator('.nset > .nset__problem').filter(has_text='Current notification')
@@ -159,7 +167,7 @@ class RefreshEdges(unittest.TestCase):
                             if route.request.method == 'PATCH': patches.append(route.request.post_data_json)
                             route.continue_()
                     page.route('**/api/v1/notification-preferences', handler)
-                    self.addCleanup(lambda p=page: p.unroute_all(behavior='ignoreErrors'))
+                    self.addCleanup(lambda p=page: None if p.is_closed() else p.unroute_all(behavior='ignoreErrors'))
                     try:
                         page.get_by_role('radio', name=re.compile(r'^Everything(?:\s|$)')).check()
                         self.wait_held(page, held)
@@ -216,13 +224,17 @@ class RefreshEdges(unittest.TestCase):
                         if route.request.method == 'PATCH': patches.append(route.request.post_data_json)
                         route.continue_()
                 page.route('**/api/v1/notification-preferences', handler)
-                self.addCleanup(lambda p=page: p.unroute_all(behavior='ignoreErrors'))
+                self.addCleanup(lambda p=page: None if p.is_closed() else p.unroute_all(behavior='ignoreErrors'))
                 try:
                     page.locator('body').press('f')
                     self.wait_held(page, held)
                     self.settings(page)
                     expect(self.note(page)).to_be_visible()
-                    page.get_by_role('button', name='Resume now', exact=True).click()
+                    with page.expect_response(lambda response: response.request.method == 'PATCH'
+                                              and urlsplit(response.url).path == '/api/v1/notification-preferences'
+                                              and response.request.post_data_json == {'pause': {'until': None}}
+                                              and response.status == 200):
+                        page.get_by_role('button', name='Resume now', exact=True).click()
                     expect(self.note(page)).to_have_count(0)
                     self.assert_current_pause(page, None)
                     held['fail'] = True
@@ -265,7 +277,7 @@ class RefreshEdges(unittest.TestCase):
                         else: route.continue_()
                     page.route('**/api/v1/notification-address', address_handler)
                     page.route('**/api/v1/notification-preferences', preferences_handler)
-                    self.addCleanup(lambda p=page: p.unroute_all(behavior='ignoreErrors'))
+                    self.addCleanup(lambda p=page: None if p.is_closed() else p.unroute_all(behavior='ignoreErrors'))
                     try:
                         field = page.get_by_label('Add an extra address, for example the inbox you read most', exact=True)
                         field.fill(address)
@@ -396,6 +408,75 @@ class RefreshEdges(unittest.TestCase):
         expect(page.get_by_role('radiogroup')).to_be_visible()
         expect(page.get_by_role('heading', name='Notification settings could not load', exact=True)).to_have_count(0)
         self.assertEqual(patches, [])
+
+    def test_10_old_settings_load_rejection_cannot_mark_a_newer_validated_pause_unknown(self):
+        page, actor, until = self.focused('Old Load Failure')
+        held = {}
+        def handler(route):
+            if route.request.method == 'GET' and 'route' not in held and '/settings/notifications' in page.url:
+                response = route.fetch(); self.assertEqual(response.status, 200)
+                held.update(route=route, response=response)
+            else: route.continue_()
+        page.route('**/api/v1/notification-preferences', handler)
+        self.addCleanup(lambda: page.unroute_all(behavior='ignoreErrors'))
+        try:
+            self.settings(page)
+            self.wait_held(page, held)
+            current = instant(time.time() + 7200)
+            self.api(page, 'PATCH', '/api/v1/notification-preferences', {'pause': {'until': current}})
+            page.evaluate("window.__pauseRace=[];window.addEventListener('flux:pause-changed',e=>window.__pauseRace.push(e.detail));window.dispatchEvent(new Event('focus'))")
+            expect(self.pill(page).locator('time')).to_have_attribute('datetime', current)
+            self.assertTrue(page.evaluate('window.__pauseRace.some(e=>!e.uncertain)'), 'a newer actual current read was accepted')
+            page.evaluate('window.__pauseRace=[]')
+            held['route'].fulfill(status=500, content_type='application/json', body='{}'); held['released'] = True
+            expect(page.get_by_role('heading', name='Notification settings could not load', exact=True)).to_be_visible()
+            self.assertEqual(self.api(page, 'GET', '/api/v1/notification-preferences')['pause'], {'until': current})
+            self.assertEqual(page.evaluate('window.__pauseRace.filter(e=>e.uncertain)'), [], 'the obsolete failing load cannot invalidate the newer observation')
+            expect(self.pill(page).locator('time')).to_have_attribute('datetime', current)
+        finally:
+            if 'route' in held and not held.get('released'): held['route'].fulfill(response=held['response'])
+
+    def test_11_old_reconciliation_rejection_keeps_newer_pause_verified_and_full_settings_uncertain(self):
+        page, actor, until = self.focused('Old Reconciliation Failure')
+        self.settings(page)
+        held = {'reconcile': False}
+        def handler(route):
+            if route.request.method == 'PATCH' and 'route' not in held:
+                self.assertEqual(route.request.post_data_json, {'level': 'everything'})
+                response = route.fetch(); self.assertEqual(response.status, 200)
+                held.update(route=route, response=response)
+            elif route.request.method == 'GET' and held['reconcile'] and 'readRoute' not in held:
+                response = route.fetch(); self.assertEqual(response.status, 200)
+                held.update(readRoute=route, readResponse=response)
+            else: route.continue_()
+        page.route('**/api/v1/notification-preferences', handler)
+        self.addCleanup(lambda: page.unroute_all(behavior='ignoreErrors'))
+        try:
+            page.get_by_role('radio', name=re.compile(r'^Everything(?:\s|$)')).check()
+            self.wait_held(page, held)
+            self.pill(page).click(); expect(self.pill(page)).to_have_count(0)
+            held['reconcile'] = True
+            held['route'].fulfill(response=held['response']); held['released'] = True
+            for _ in range(80):
+                if 'readRoute' in held: break
+                page.wait_for_timeout(50)
+            self.assertIn('readRoute', held, 'the actual reconciliation GET must precede the newer read')
+            current = instant(time.time() + 7200)
+            self.api(page, 'PATCH', '/api/v1/notification-preferences', {'pause': {'until': current}})
+            page.evaluate("window.__pauseRace=[];window.addEventListener('flux:pause-changed',e=>window.__pauseRace.push(e.detail));window.dispatchEvent(new Event('focus'))")
+            expect(self.pill(page).locator('time')).to_have_attribute('datetime', current)
+            self.assertTrue(page.evaluate('window.__pauseRace.some(e=>!e.uncertain)'))
+            page.evaluate('window.__pauseRace=[]')
+            held['readRoute'].fulfill(status=500, content_type='application/json', body='{}'); held['readReleased'] = True
+            expect(page.locator('.nset__saved')).to_have_text('Saved')
+            expect(self.warning(page)).to_contain_text('Current notification settings could not be refreshed.')
+            self.assertEqual(page.evaluate('window.__pauseRace.filter(e=>e.uncertain)'), [], 'the older failed read cannot downgrade current pause verification')
+            expect(self.pill(page).locator('time')).to_have_attribute('datetime', current)
+            actual = self.api(page, 'GET', '/api/v1/notification-preferences')
+            self.assertEqual(actual['level'], 'everything'); self.assertEqual(actual['pause'], {'until': current})
+        finally:
+            if 'route' in held and not held.get('released'): held['route'].fulfill(response=held['response'])
+            if 'readRoute' in held and not held.get('readReleased'): held['readRoute'].fulfill(response=held['readResponse'])
 
 
 if __name__ == '__main__':
