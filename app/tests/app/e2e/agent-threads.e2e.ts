@@ -96,8 +96,13 @@ async function composerReachable(page: Page) {
 async function storedTheme(page: Page, theme: 'light' | 'dark') {
   // Apply the actual device preference through normal app initialization. Direct dataset mutation
   // bypassed the app's atomic theme switch and photographed an unreadable intermediate cross-fade.
+  const taskId = await panel(page).getAttribute('data-agent-thread-task');
+  assert.ok(taskId);
+  // The existing shell consumes its one-shot `open` address. Re-enter the authorized task link
+  // when loading the stored preference; do not invent persistence for another surface's URL state.
+  const address = new URL(page.url()); address.searchParams.set('open', `work:${taskId}`);
   await page.evaluate(choice => localStorage.setItem('flux.theme', choice), theme);
-  await page.reload();
+  await page.goto(address.href);
   await panel(page).getByRole('heading').waitFor();
   await page.waitForFunction(choice => document.documentElement.dataset.theme === choice, theme);
   await settledSurface(page);
@@ -291,7 +296,7 @@ test('compact bottom actions survive realistic long history, long drafts, narrow
         assert.ok(readable.firstVisible && readable.nextAuthorVisible, 'one complete observation and the following attribution remain readable');
         await capture(page, 'long-draft-narrow-phone-light');
         await storedTheme(page, 'dark'); await field.waitFor();
-        assert.ok((await field.inputValue()).includes('A private unsent measurement.'), 'actual theme reload retains the private long draft');
+        assert.ok((await field.inputValue()).includes('A private unsent measurement.'), 'stored theme and explicit task re-entry retain the private long draft');
         await composerReachable(page); await composerContrast(page, 'dark');
         await capture(page, 'long-draft-narrow-phone-dark');
       }
