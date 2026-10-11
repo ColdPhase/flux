@@ -537,10 +537,68 @@ class TasksFinalJourney(unittest.TestCase):
                     expect(last_button).to_be_focused()
                     with self.subTest(feedback='Undo aftermath'):
                         self.desktop_feedback_geometry(page, pane, last, 'aftermath', dark, height)
-                    for close in page.locator('.ui-toast__close').all():
-                        close.click()
-                    expect(page.locator('.ui-toast')).to_have_count(0)
+                    # Natural expiry must preserve the person's row focus; clicking the
+                    # Dismiss button deliberately moves focus to that control.
+                    expect(page.locator('.ui-toast')).to_have_count(0, timeout=7000)
                     expect(last_button).to_be_focused()
+
+    def test_13_middle_reading_survives_feedback_resize_and_view_retirement(self) -> None:
+        setup = self.page('ada')
+        ids = []
+        for index in range(20):
+            item = self.api(setup, 'POST', f"/api/v1/projects/{self.ids['project']}/work",
+                            {'title': f'Read garden sensor calibration note {index + 1:02d}', 'clientCommandId': str(uuid.uuid4())}, status=201)
+            ids.append(item['id'])
+        for dark in (False, True):
+            with self.subTest(dark=dark):
+                self.set_status(setup, 'supplier', 'open')
+                page = self.tasks(dark=dark)
+                page.get_by_role('radio', name='List', exact=True).click()
+                pane = page.locator('.tb-root > .pane-scroll')
+                held = []
+                address = re.compile(r'/api/v1/work/' + self.ids['supplier'] + r'$')
+                def hold(route):
+                    response = route.fetch()
+                    if route.request.method == 'PATCH':
+                        held.append((route, response))
+                    else:
+                        route.fulfill(response=response)
+                page.route(address, hold)
+                self.row(page, SUPPLIER).get_by_role('button', name='Open. Set to In progress').click()
+                self.assertEqual(len(held), 1)
+                self.assertEqual(held[0][1].status, 200, 'the delayed answer is a genuinely stored change')
+                middle = page.locator(f'.ws-task[data-work-id="{ids[9]}"] .ws-item')
+                middle.scroll_into_view_if_needed()
+                middle.focus()
+                page.wait_for_timeout(100)
+                before = pane.evaluate('el => el.scrollTop')
+                held[0][0].fulfill(response=held[0][1])
+                page.unroute(address, hold)
+                toast = page.locator('.ui-toast').filter(has_text=f"#{self.numbers['supplier']} in progress")
+                expect(toast).to_be_visible()
+                page.wait_for_timeout(300)
+                expect(middle).to_be_focused()
+                self.assertAlmostEqual(pane.evaluate('el => el.scrollTop'), before, delta=2, msg='feedback does not jump a middle reader')
+                self.desktop_feedback_geometry(page, pane, middle.locator('.ws-item__t'), 'middle', dark, 900)
+                page.set_viewport_size({'width': 1440, 'height': 600})
+                expect(middle).to_be_focused()
+                self.desktop_feedback_geometry(page, pane, middle.locator('.ws-item__t'), 'middle-resized', dark, 600)
+                page.set_viewport_size({'width': 1440, 'height': 900})
+                page.get_by_role('radio', name='Board', exact=True).click()
+                expect(toast).to_be_visible()
+                self.assertAlmostEqual(pane.bounding_box()['y'] + pane.bounding_box()['height'], page.locator('.tb-root').bounding_box()['y'] + page.locator('.tb-root').bounding_box()['height'], delta=1, msg='the list reservation retires in Board mode')
+                page.get_by_role('radio', name='List', exact=True).click()
+                page.set_viewport_size({'width': 390, 'height': 844})
+                self.assertAlmostEqual(pane.bounding_box()['y'] + pane.bounding_box()['height'], page.locator('.tb-root').bounding_box()['y'] + page.locator('.tb-root').bounding_box()['height'], delta=1, msg='desktop reservation retires at the phone breakpoint')
+                page.set_viewport_size({'width': 1440, 'height': 900})
+                middle.scroll_into_view_if_needed()
+                middle.focus()
+                page.wait_for_timeout(100)
+                before = pane.evaluate('el => el.scrollTop')
+                expect(page.locator('.ui-toast')).to_have_count(0, timeout=9000)
+                expect(middle).to_be_focused()
+                self.assertAlmostEqual(pane.evaluate('el => el.scrollTop'), before, delta=2, msg='middle reading remains stable when feedback expires')
+                self.assertAlmostEqual(pane.bounding_box()['y'] + pane.bounding_box()['height'], page.locator('.tb-root').bounding_box()['y'] + page.locator('.tb-root').bounding_box()['height'], delta=1, msg='normal list density returns without feedback')
 
     def desktop_feedback_geometry(self, page: Page, pane: Locator, last: Locator, state: str, dark: bool, height: int) -> None:
         page.wait_for_function("() => [...document.querySelectorAll('.ui-toast')].every(el => getComputedStyle(el).transform === 'none')")
@@ -559,7 +617,7 @@ class TasksFinalJourney(unittest.TestCase):
         }""")
         print('Desktop Tasks feedback geometry', json.dumps({'engine':os.environ.get('FLUX_UI_BROWSER'), 'state':state,'dark':dark,'height':height,**observed}), flush=True)
         shot(page, f"375-desktop-feedback-{state}-{height}-{'dark' if dark else 'light'}")
-        self.assertEqual(observed['title'], LORA)
+        self.assertEqual(observed['title'], last.inner_text())
         self.assertTrue(observed['visible'], 'the complete final task title remains in the task scrollport')
         self.assertFalse(observed['covered'], 'feedback must not overlap any rendered line of the final task title')
         self.assertTrue(observed['readable'], 'every title line remains hit-testable above the feedback')
