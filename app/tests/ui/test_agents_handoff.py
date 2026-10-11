@@ -128,9 +128,11 @@ class HandOffJourney(unittest.TestCase):
             claude = rows.filter(has_text="Claude Code agent")
             expect(claude).to_contain_text("for Ada Kowalska (you)")
             expect(claude).to_contain_text("Desk laptop")
-            expect(claude).to_contain_text("Working on #1 · Calibrate the probes at two soil depths")
+            expect(claude).to_contain_text("Handed #1 · Calibrate the probes at two soil depths")
+            expect(claude).to_contain_text("Not signed in from your client yet")
+            expect(claude).not_to_have_attribute("data-working", "true")
             expect(rows.filter(has_text="Reader agent")).to_contain_text("nothing handed to it")
-            expect(page.get_by_text("2 in this project · 1 working")).to_be_visible()
+            expect(page.get_by_text("2 in this project", exact=True)).to_be_visible()
             # Requests, Policy and "Connect your own agent": one row each, below the list.
             expect(page.get_by_role("link", name=re.compile("^Requests"))).to_have_attribute("href", "/inbox")
             expect(page.get_by_role("button", name=re.compile("^Project policy"))).to_be_visible()
@@ -195,7 +197,8 @@ class HandOffJourney(unittest.TestCase):
         expect(dialog.get_by_text("Step 2 of 2")).to_be_visible()
         expect(dialog.get_by_role("heading", name="What Claude Code agent may do")).to_be_visible()
         expect(dialog).to_contain_text("Claude Code agent will be able to read this project and write in it")
-        expect(dialog).to_contain_text("It is working on #1")
+        expect(dialog).to_contain_text("has #1")
+        expect(dialog.get_by_text(re.compile("queued behind|working on", re.IGNORECASE))).to_have_count(0)
         shot(page, "handoff-step2-desktop")
         dialog.get_by_role("button", name="Back").click()
         expect(dialog.get_by_text("Step 1 of 2")).to_be_visible()
@@ -208,7 +211,7 @@ class HandOffJourney(unittest.TestCase):
         owner = self.task("label")["owner"]
         self.assertEqual(owner["id"], self.ids["agent_claude"])
         row = page.get_by_role("list", name="Agents in this project").get_by_role("listitem").filter(has_text="Claude Code agent")
-        expect(row).to_contain_text("Working on #1")
+        expect(row).to_contain_text("Handed #1")
 
     def test_06_an_agent_without_write_access_is_explained_and_never_granted(self) -> None:
         page = self.open_agents()
@@ -424,7 +427,13 @@ class HandOffJourney(unittest.TestCase):
         type(self).ids.update(projection_project=project, projection_task=target["id"])
         states = (("pending", "queued", "Not signed in from your client yet", "not_signed_in", "Assigned", "asleep"),
                   ("claimed", "claimed", "Session open since", "session_open", "Working on", "thinking"),
-                  ("paused", "deferred", "Offline", "offline", "Paused on", "asleep"))
+                  ("paused", "deferred", "Offline", "offline", "Paused on", "asleep"),
+                  ("claimed", "claimed", "Not signed in from your client yet", "not_signed_in", "Work held on", "asleep"),
+                  ("claimed", "deferred", "Offline", "offline", "Work held on", "asleep"),
+                  ("claimed", "claimed", "Can’t act here now", "unavailable", "Work held on", "worried"),
+                  ("claimed", "claimed", "Offline", "expired_session", "Work held on", "asleep"),
+                  ("paused", "deferred", "Session open since", "session_open", "Paused on", "asleep"),
+                  ("paused", "deferred", "Can’t act here now", "unavailable", "Paused on", "worried"))
         for state, request_state, availability, connection_state, text, expression in states:
             for phone, scheme in ((False, "dark"), (True, "light")):
                 with self.subTest(state=state, phone=phone, engine=UI_BROWSER):
@@ -437,8 +446,8 @@ class HandOffJourney(unittest.TestCase):
                         response = route.fetch()
                         body = response.json()
                         item = next(row for row in body["connections"] if row["id"] == connection["id"])
-                        item["state"] = connection_state
-                        item["session"] = {"startedAt": "2026-10-11T10:00:00Z", "expiresAt": "2099-10-11T10:00:00Z"} if connection_state == "session_open" else None
+                        item["state"] = "session_open" if connection_state == "expired_session" else connection_state
+                        item["session"] = {"startedAt": "2026-10-11T10:00:00Z", "expiresAt": "2000-10-11T10:00:00Z" if connection_state == "expired_session" else "2099-10-11T10:00:00Z"} if item["state"] == "session_open" else None
                         item["currentWork"] = {"taskId": target["id"], "taskTitle": target["title"], "role": "review", "state": state}
                         item["requests"] = [{"id": "fixture-request", "kind": "review", "state": request_state,
                                              "reason": "after the calibration result", "taskId": target["id"], "taskTitle": target["title"],
@@ -455,7 +464,9 @@ class HandOffJourney(unittest.TestCase):
                     request_text = {"queued": "waiting for its next step", "claimed": "being handled", "deferred": "deferred until its next step"}[request_state]
                     expect(row).to_contain_text(request_text)
                     expect(row.locator(".agents-row__icon")).to_have_attribute("data-expression", expression)
-                    if state == "claimed":
+                    if state != "claimed" or connection_state != "session_open":
+                        expect(row).not_to_contain_text("Working on")
+                    if state == "claimed" and connection_state == "session_open":
                         expect(row).to_have_attribute("data-working", "true")
                         expect(page.get_by_text("1 in this project · 1 working", exact=True)).to_be_visible()
                     else:
@@ -468,7 +479,10 @@ class HandOffJourney(unittest.TestCase):
                     expect(now).to_contain_text(availability)
                     expect(now).to_contain_text(request_text)
                     expect(now).to_contain_text("Review laptop (Jonas Berg)")
-                    shot(page, f"handoff-projection-{state}-{'phone' if phone else 'desktop'}-{scheme}")
+                    expect(now).to_contain_text("Review")
+                    if state == "claimed":
+                        expect(now).to_contain_text("claim recorded")
+                    shot(page, f"handoff-projection-{state}-{connection_state}-{'phone' if phone else 'desktop'}-{scheme}")
                     # The selected task is outside the loaded page. Its native read and actual discussion open.
                     (now.get_by_role("button", name=target["title"]).tap if phone else now.get_by_role("button", name=target["title"]).click)()
                     thread = page.get_by_role("region", name=f'Thread of {target["title"]}')
@@ -560,6 +574,59 @@ class HandOffJourney(unittest.TestCase):
                 readback = self.api(page, "GET", f"/api/v1/work/{task['id']}", status=200)
                 self.assertEqual((readback["owner"], readback["version"]), (saved["owner"], saved["version"]))
                 self.assertEqual(self.api(page, "GET", f"/api/v1/projects/{project}/grants", status=200), grants, "reload grants no access")
+
+    def test_17_phone_permission_content_stays_inside_its_inset_with_long_names_and_larger_text(self) -> None:
+        api = self.page("ada")
+        workspace = self.api(api, "POST", "/api/v1/workspaces", {"name": "Phone containment"}, status=201)["id"]
+        project = self.api(api, "POST", f"/api/v1/workspaces/{workspace}/projects",
+                           {"name": "Phone containment", "visibility": "restricted"}, status=201)["id"]
+        name = "Field calibration companion " + "X" * 95
+        agent = self.api(api, "POST", f"/api/v1/workspaces/{workspace}/agents", {"name": name, "owner": "self"}, status=201)["id"]
+        self.api(api, "POST", f"/api/v1/projects/{project}/grants",
+                 {"principal": {"kind": "agent", "id": agent}, "role": "contributor"}, status=201)
+        self.api(api, "POST", f"/api/v1/projects/{project}/work", {"title": "Check the permission-step inset"}, status=201)
+        problems: list[str] = []
+        measurements = []
+        for width in (390, 320):
+            for scheme in ("light", "dark"):
+                for enlarged in (False, True):
+                    page = self.page("ada", phone=True, scheme=scheme)
+                    page.set_viewport_size({"width": width, "height": 844})
+                    page.goto(f"/projects/{project}/agents")
+                    if enlarged:
+                        page.evaluate("() => { document.documentElement.style.fontSize = '125%'; }")
+                    page.get_by_role("button", name="Hand off a task").tap()
+                    dialog = page.get_by_role("dialog", name="Hand off a task")
+                    dialog.get_by_label("Task", exact=True).select_option(label="#1 · Check the permission-step inset")
+                    dialog.locator("label.handoff__agent", has_text=name).tap()
+                    dialog.get_by_role("button", name="Next").tap()
+                    expect(dialog.get_by_text("Step 2 of 2", exact=True)).to_be_visible()
+                    metric = dialog.evaluate("""el => {
+                      const width = innerWidth;
+                      const boxes = {};
+                      for (const selector of ['.handoff__step','.handoff__title','.handoff__can','.handoff__foot']) {
+                        const item = el.querySelector(selector), rect = item.getBoundingClientRect();
+                        const range = document.createRange(); range.selectNodeContents(item);
+                        boxes[selector] = {left:rect.left,right:rect.right,scroll:item.scrollWidth,client:item.clientWidth,
+                          text:[...range.getClientRects()].map(r=>({left:r.left,right:r.right}))};
+                      }
+                      const body = el.querySelector('.handoff__body');
+                      return {width, rootFont:getComputedStyle(document.documentElement).fontSize,boxes,
+                        bodyScroll:body.scrollWidth,bodyClient:body.clientWidth};
+                    }""")
+                    label = f"{UI_BROWSER} {width} {scheme} {'125%' if enlarged else 'default'}"
+                    measurements.append({"label": label, **metric})
+                    for selector, box in metric["boxes"].items():
+                        if box["left"] < 0 or box["right"] > width + 1:
+                            problems.append(f"{label} {selector}: box outside viewport {box}")
+                        if selector in (".handoff__step", ".handoff__title", ".handoff__can") and any(r["left"] < 0 or r["right"] > width + 1 for r in box["text"]):
+                            problems.append(f"{label} {selector}: text outside viewport {box}")
+                    if metric["bodyScroll"] > metric["bodyClient"] + 1:
+                        problems.append(f"{label}: permission body scrolls horizontally")
+                    shot(page, f"handoff-long-name-{width}-{scheme}-{'large' if enlarged else 'default'}")
+                    page.context.close()
+        print("\n  Phone permission containment: " + json.dumps(measurements))
+        self.assertEqual(problems, [], "\n".join(problems))
 
     def test_15_an_exhausted_empty_task_page_is_honest(self) -> None:
         page = self.page("ada")

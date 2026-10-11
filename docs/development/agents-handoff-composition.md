@@ -82,3 +82,22 @@ The policy's CSS active-state probe uses public pointer down/hold, computed styl
 and release outside in both engines, replacing its Chromium-only forced CDP
 state. Keep its before/pressed, no-hover and geometry assertions and the actual
 phone tap journeys. This is emulated CSS/input evidence, not physical-device proof.
+
+## C-1 truth amendment after visual review, 2026-10-11
+
+Independent visual review found that native in-progress task ownership was still
+shown as execution alongside an unsigned client. The bounded correction was
+independently accepted before production edits: only a claimed `currentWork`
+with a current usable session drives Working, the count and a working expression.
+Native ownership remains Handed; its task status stays visible as task status.
+Pending, paused, offline, unsigned and unavailable connections retain their work
+and recorded state without asserting execution. Preserve the work role and open
+requests. Apply the same evidence rule in the row, detail and hand-off load copy;
+native task status cannot establish an automatic execution queue.
+
+The inherited phone shell and genuine Stop/Message remain independently owned
+required follow-ups. Do not import their active branches or add nonfunctional
+controls. The reported left clipping is disputed on the unchanged original
+pixels, so verify live containment at 390/320, long names and enlarged text before
+any CSS correction. Fix only reproduced overflow. All full-design, full-issue and
+independent merge gates remain open, and changed production needs fresh evidence.
