@@ -85,7 +85,10 @@ test('even an empty partial Undo receipt relation refuses before migration SQL',
 
 test('normal sparse pre48/pre60 upgrades, fresh creation and current restart admit harmless additional schema', { timeout: 120_000 }, async () => {
   const original = await originalUndoFiles();
-  for (const files of [[], original.filter((file) => file.version !== 48 && file.version !== 57), original.filter((file) => file.version !== 57)]) {
+  const currentPrior = await Promise.all((await readMigrationManifest('packages/db/migrations', FLUX_SCHEMA_VERSION))
+    .filter((file) => file.version !== 48 && file.version !== 60)
+    .map(async (file) => ({ ...file, sql: await readFile(`packages/db/migrations/${file.name}`, 'utf8') })));
+  for (const files of [[], original.filter((file) => file.version !== 48 && file.version !== 57), original.filter((file) => file.version !== 57), currentPrior]) {
     const fixture = await fixtureDatabase(files);
     try {
       if (files.length) await retainedHistory(fixture.db);
