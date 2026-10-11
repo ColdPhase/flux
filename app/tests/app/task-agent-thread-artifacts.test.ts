@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
 import { test } from 'node:test';
-import { artifactResetRows,createDatabase,sql,taskUseRows } from '@flux/db';
+import { artifactResetRows,assertExactMigrationLedger,createDatabase,FLUX_SCHEMA_VERSION,readAppliedMigrationVersions,readMigrationManifest,sql,taskUseRows } from '@flux/db';
 import type { Doc,WorkItem,Decision } from '@flux/contracts';
 import { docUseCases } from '../../apps/server/src/docs/adapters.js';
 import { workUseCases } from '../../apps/server/src/work/adapters.js';
@@ -11,6 +12,7 @@ import { db,pool,connectionString } from './support/db.js';
 import { fillThread,nativeThreadPost,threadBudget,threadCommand,turnLimit,type ThreadNativeScene } from './support/internal-agent-threads.js';
 import { backendPid,barrier,waitUntilBlockedBy } from './support/locks.js';
 import { person } from './support/people.js';
+import { guardFixturePool } from './support/fixture-database.js';
 
 async function setup(){const f=await actionScene(pool),grant=await f.grant('conversation.reply','execute',100);
   const task=async(title:string)=>expect(await f.owner.request('POST',`/api/v1/projects/${f.projectId}/work`,{body:{title}}),201) as unknown as WorkItem;
@@ -69,7 +71,7 @@ test('real native doc creation is a canonical reset; document reads and reset wi
 test('new immutable native result resets its about tasks once; receipt replay and old related links cannot replenish',async()=>{
   const f=await setup(),a=await f.task('Result target'),b=await f.task('Incidental source');for(const t of[a,b])await fillThread(f,t.id,f.grantId);
   const grant=await f.grant('result.record','execute',10),command={projectId:f.projectId,runtimeSessionId:f.runtimeSessionId,grantId:grant.id,
-    clientCommandId:randomUUID(),peerRequestClass:'execute',sources:[],result:{title:'Measurement confirmed',finding:'positive',evidence:'Actual comparison',work:[a.id]}};
+    clientCommandId:randomUUID(),peerRequestClass:'execute',sources:[],result:{title:'Measurement confirmed',finding:'positive',evidence:'Actual comparison',workIds:[a.id]}};
   const saved=toolValue(await f.tool('flux_record_result',command));assert.equal(await threadBudget(a.id),0);assert.equal(await threadBudget(b.id),5);
   await fillThread(f,a.id,f.grantId);toolValue(await f.tool('flux_record_result',command));assert.equal(await threadBudget(a.id),5);
   expect(await link(f,{type:'result',id:String(saved.resultId)},{type:'work',id:b.id}),201);assert.equal(await threadBudget(b.id),5);
@@ -78,7 +80,8 @@ test('new immutable native result resets its about tasks once; receipt replay an
 
 test('actual proposed/accepted/superseded decision boundaries reset their own direct tasks, never incidental sources',async()=>{
   const f=await setup(),a=await f.task('Earlier rule'),b=await f.task('New rule'),other=await f.task('Incidental');for(const t of[a,b,other])await fillThread(f,t.id,f.grantId);
-  const earlier=expect(await f.owner.request('POST',`/api/v1/projects/${f.projectId}/decisions`,{body:{title:'First rule',rationale:'Observed data',affects:[a.id],sources:[{type:'work',id:other.id}]}}),201) as unknown as Decision;
+  const source=expect(await f.owner.request('POST',`/api/v1/work/${other.id}/discussion`,{body:{body:'An incidental source observation',clientMessageId:randomUUID()}}),201);
+  const earlier=expect(await f.owner.request('POST',`/api/v1/projects/${f.projectId}/decisions`,{body:{title:'First rule',rationale:'Observed data',affects:[a.id],sources:[{type:'message',id:source.id}]}}),201) as unknown as Decision;
   assert.equal(await threadBudget(a.id),0);assert.equal(await threadBudget(other.id),5);
   await fillThread(f,a.id,f.grantId);expect(await f.owner.request('POST',`/api/v1/decisions/${earlier.id}/accept`,{body:{},headers:{'if-match':'"1"'}}),200);assert.equal(await threadBudget(a.id),0);
   await fillThread(f,a.id,f.grantId);
@@ -139,4 +142,87 @@ test('current viewer/non-reader rights and forged/old boundary packets cannot mu
     await artifactResetRows(tx).canonical({workspaceId:f.workspaceId,projectId:f.projectId},{kind:'doc',id:d.id,version:changed.version},
       {kind:'doc',id:d.id,revision:String(changed.version)},fence);});
   assert.equal(await threadBudget(item.id),5);assert.equal((expect(await f.owner.request('GET',`/api/v1/docs/${d.id}`),200) as unknown as Doc).body,'Actual revision');
+});
+
+test('SQL refuses fresh title-only/no-op packets and an unrelated same-project task retained for old-mention safety',async()=>{
+  const f=await setup(),a=await f.task('Current recipient'),b=await f.task('Old safety recipient'),d=await doc(f,mentions(a.id,b.id));
+  for(const t of[a,b])await fillThread(f,t.id,f.grantId);
+  const ownerId=(expect(await f.owner.request('GET','/api/v1/me'),200).user as{id:string}).id;
+  const titleOnly=new Error('Rollback title-only proof');
+  await assert.rejects(db.transaction(async tx=>{
+    const changed=await docUseCases(tx).updateDoc({kind:'human',id:ownerId},d.id,{title:'Only fresh title'},d.version);
+    await tx.execute(sql`SAVEPOINT no_progress_packet`);
+    await assert.rejects(tx.execute(sql`INSERT INTO agent_thread_artifact_boundaries(workspace_id,project_id,kind,source_id,revision,transaction_id)
+      VALUES(${f.workspaceId},${f.projectId},'doc',${d.id},${String(changed.version)},txid_current())`),/actual progress/);
+    await tx.execute(sql`ROLLBACK TO SAVEPOINT no_progress_packet`);throw titleOnly;
+  }),titleOnly);
+  const scopeError=new Error('Rollback unrelated recipient proof');
+  await assert.rejects(db.transaction(async tx=>{
+    const changed=await docUseCases(tx).updateDoc({kind:'human',id:ownerId},d.id,{body:mentions(a.id)+'\nNew real content'},d.version);
+    // The real canonical mutation retained both old mentions BEFORE rewriting them.
+    // B's actual task lock is still held, but its removed relation gives no reset entitlement.
+    await tx.execute(sql`SAVEPOINT wrong_recipient_packet`);
+    await assert.rejects(tx.execute(sql`INSERT INTO agent_thread_artifact_resets(task_id,boundary_id,workspace_id,project_id)
+      SELECT ${b.id},id,workspace_id,project_id FROM agent_thread_artifact_boundaries
+      WHERE kind='doc' AND source_id=${d.id} AND revision=${String(changed.version)}`),/direct eligible/);
+    await tx.execute(sql`ROLLBACK TO SAVEPOINT wrong_recipient_packet`);throw scopeError;
+  }),scopeError);
+  assert.equal(await threadBudget(a.id),5);assert.equal(await threadBudget(b.id),5);
+});
+
+test('actual retained native87 history upgrades to88 without pulses, seeds old bytes/versions, reverses before reset and refuses afterward',{timeout:120_000},async()=>{
+  const f=await setup(),item=await f.task('Retained native history'),d=await doc(f,'Existing artifact before guard upgrade');
+  expect(await link(f,{type:'work',id:item.id},{type:'doc',id:d.id}),201);
+  const uploaded=await fetch(new URL(`/api/v1/projects/${f.projectId}/files?uploadId=${randomUUID()}&name=retained.txt`,f.owner.base),{
+    method:'POST',headers:{'content-type':'application/octet-stream',cookie:f.owner.cookieHeader(),origin:f.owner.defaultOrigin},body:Buffer.from('Canonical retained original bytes'),
+  });assert.equal(uploaded.status,201);const file=await uploaded.json() as{id:string};
+  expect(await f.owner.request('POST',`/api/v1/work/${item.id}/agent-thread`,{body:{body:'Real original file publication',clientMessageId:randomUUID(),attachmentIds:[file.id]}}),201);
+  const firstCommand=threadCommand(f,item.id,f.grantId),first=await nativeThreadPost(f,firstCommand);
+  for(let i=0;i<4;i++)await nativeThreadPost(f,threadCommand(f,item.id,f.grantId));assert.equal(await threadBudget(item.id),5);
+  const ownerId=(expect(await f.owner.request('GET','/api/v1/me'),200).user as{id:string}).id;
+  const specs:[string,string,unknown[]][]=[
+    ['auth_users','id=$1',[ownerId]],['workspaces','id=$1',[f.workspaceId]],['workspace_members','workspace_id=$1',[f.workspaceId]],
+    ['projects','id=$1',[f.projectId]],['agents','id=$1',[f.agentId]],['project_grants','project_id=$1',[f.projectId]],
+    ['agent_connections','id=$1',[f.connectionId]],['agent_connection_projects','connection_id=$1',[f.connectionId]],
+    ['agent_oauth_bindings','connection_id=$1',[f.connectionId]],['agent_runtime_sessions','connection_id=$1',[f.connectionId]],
+    ['agent_standing_grants','connection_id=$1',[f.connectionId]],['project_work_items','project_id=$1',[f.projectId]],
+    ['project_materials','project_id=$1',[f.projectId]],['project_material_versions','project_id=$1',[f.projectId]],
+    ['project_object_links','project_id=$1',[f.projectId]],['project_conversations','project_id=$1',[f.projectId]],
+    ['project_messages','project_id=$1',[f.projectId]],['project_files','project_id=$1',[f.projectId]],
+    ['agent_command_receipts','connection_id=$1',[f.connectionId]],['agent_thread_guard_events','project_id=$1',[f.projectId]],
+  ];
+  const retained=new Map<string,Record<string,unknown>[]>();for(const[table,where,args]of specs)retained.set(table,(await pool.query(`SELECT * FROM ${table} WHERE ${where}`,args)).rows);
+  const name=`flux_artifact_upgrade_${randomUUID().replaceAll('-','')}`,url=new URL(connectionString);url.pathname=`/${name}`;
+  const create={text:`CREATE DATABASE "${name}"`,query_timeout:60_000};await pool.query(create);
+  const fixture=createDatabase(url.toString()),guard=guardFixturePool(fixture.pool);
+  const manifest=await readMigrationManifest('packages/db/migrations',FLUX_SCHEMA_VERSION),beforeManifest=manifest.filter(m=>m.version<88);
+  try{
+    for(const migration of beforeManifest){await fixture.pool.query(await readFile(`packages/db/migrations/${migration.name}`,'utf8'));await fixture.pool.query('INSERT INTO flux_schema_version(version) VALUES($1) ON CONFLICT DO NOTHING',[migration.version]);}
+    const client=await fixture.pool.connect();try{
+      await client.query('BEGIN');await client.query('SET CONSTRAINTS ALL DEFERRED');
+      // Restore only this isolated fixture's two guarded tables, preserving the ACTUAL
+      // canonical AS/native rows and provenance exactly, rather than re-authoring them.
+      await client.query('ALTER TABLE project_messages DISABLE TRIGGER USER');await client.query('ALTER TABLE agent_thread_guard_events DISABLE TRIGGER USER');
+      for(const[table]of specs)for(const row of retained.get(table)!){const columns=Object.keys(row);await client.query(`INSERT INTO ${table}(${columns.map(c=>`"${c}"`).join(',')}) VALUES(${columns.map((_,i)=>`$${i+1}`).join(',')})`,columns.map(c=>row[c]));}
+      await client.query('ALTER TABLE project_messages ENABLE TRIGGER USER');await client.query('ALTER TABLE agent_thread_guard_events ENABLE TRIGGER USER');
+      await client.query("SELECT setval('agent_thread_guard_sequence',GREATEST(1,(SELECT max(sequence) FROM agent_thread_guard_events)),true)");await client.query('COMMIT');
+    }finally{client.release();}
+    const snapshots=async()=>{const rows:Record<string,unknown[]>={};for(const[table]of specs)rows[table]=(await fixture.pool.query(`SELECT row_to_json(r)::text AS value FROM ${table} r ORDER BY row_to_json(r)::text`)).rows;return rows;};
+    const original=await snapshots();assertExactMigrationLedger(beforeManifest,await readAppliedMigrationVersions(fixture.pool));
+    const up=await readFile('packages/db/migrations/0088_agent_thread_artifact_resets.sql','utf8'),down=await readFile('packages/db/migrations/reverse/0088_agent_thread_artifact_resets.down.sql','utf8');
+    await fixture.pool.query(up);await fixture.pool.query('INSERT INTO flux_schema_version(version) VALUES(88)');
+    assertExactMigrationLedger(manifest,await readAppliedMigrationVersions(fixture.pool));assert.deepEqual(await snapshots(),original);
+    assert.equal((await fixture.pool.query('SELECT count(*)::int n FROM agent_thread_artifact_resets WHERE sequence IS NOT NULL')).rows[0].n,0);
+    assert.equal((await fixture.pool.query('SELECT count(*)::int n FROM agent_thread_artifact_resets WHERE task_id=$1 AND content_identity IS NOT NULL',[item.id])).rows[0].n,1);
+    assert.deepEqual(await nativeThreadPost(f,firstCommand,fixture.db),{...first,replayed:true});
+    await assert.rejects(nativeThreadPost(f,threadCommand(f,item.id,f.grantId),fixture.db),turnLimit);
+    await fixture.pool.query(down);await fixture.pool.query('DELETE FROM flux_schema_version WHERE version=88');assert.deepEqual(await snapshots(),original);
+    assertExactMigrationLedger(beforeManifest,await readAppliedMigrationVersions(fixture.pool));
+    await fixture.pool.query(up);await fixture.pool.query('INSERT INTO flux_schema_version(version) VALUES(88)');
+    await docUseCases(fixture.db).updateDoc({kind:'human',id:ownerId},d.id,{body:'New canonical content after restored upgrade'},d.version);
+    assert.equal((await fixture.pool.query('SELECT count(*)::int n FROM agent_thread_artifact_resets WHERE sequence IS NOT NULL')).rows[0].n,1);
+    const check=await fixture.pool.connect();try{await check.query('BEGIN');await assert.rejects(check.query(down),/Cannot reverse 0088/);await check.query('ROLLBACK');}finally{check.release();}
+    assertExactMigrationLedger(manifest,await readAppliedMigrationVersions(fixture.pool));
+  }finally{guard.cleanup();await fixture.pool.end();const drop={text:`DROP DATABASE "${name}" WITH (FORCE)`,query_timeout:60_000};await pool.query(drop);}
+  guard.assertNoEarlyErrors();
 });

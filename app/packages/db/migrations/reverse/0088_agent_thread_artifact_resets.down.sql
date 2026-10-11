@@ -4,10 +4,20 @@ DO $$ BEGIN
   END IF;
 END $$;
 DROP TABLE agent_thread_artifact_resets;
-DROP TABLE agent_thread_artifact_boundaries;
 DROP FUNCTION flux_append_artifact_reset();
+DROP FUNCTION flux_artifact_task_is_direct(uuid,agent_thread_artifact_boundaries);
+DROP TABLE agent_thread_artifact_boundaries;
 DROP FUNCTION flux_verify_artifact_boundary();
 DROP FUNCTION flux_artifact_xid_is_current(xid);
+DROP TRIGGER artifact_material_delta ON project_material_versions;
+DROP TRIGGER artifact_result_delta ON project_results;
+DROP TRIGGER artifact_decision_delta ON project_decisions;
+DROP TRIGGER artifact_thought_delta ON sketch_thoughts;
+DROP TRIGGER artifact_file_delta ON project_files;
+DROP TRIGGER artifact_pr_delta ON github_task_links;
+DROP FUNCTION flux_capture_artifact_mutation();
+DROP TABLE agent_thread_artifact_mutations;
+DROP FUNCTION flux_protect_artifact_mutation();
 CREATE OR REPLACE FUNCTION flux_append_agent_thread_guard() RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE previous integer;
 BEGIN
