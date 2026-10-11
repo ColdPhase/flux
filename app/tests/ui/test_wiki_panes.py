@@ -833,6 +833,7 @@ class WikiPanesJourney(unittest.TestCase):
                     expect(missing.locator('svg')).to_have_count(0)
                     ordinary = page.locator('.doc-prose').get_by_role('link', name='ordinary link')
                     self.assertFalse(ordinary.evaluate("e => e.classList.contains('doc-page')"))
+                    self.assertIn('underline', ordinary.evaluate("e => getComputedStyle(e).textDecorationLine"), "ordinary links retain their non-colour cue")
                     self.assertEqual(outbound, [], "rendering references performs no outbound fetch")
                     self.no_horizontal_overflow(page, size['width'])
                     shot(page, f"wiki-page-ref-{size['width']}-{'focus' if focus else 'reading'}-{theme}")
@@ -877,14 +878,19 @@ class WikiPanesJourney(unittest.TestCase):
                 self.measure(page, ".wiki-search input")
                 search.fill("")
                 shot(page, f"wiki-desktop-1440-{theme}")
-                # The focus ring and links stay visible: one ink, and links are underlined (#338).
+                # The focus ring stays visible. Resolved page links use the final object-chip cue;
+                # ordinary-link underlining is checked separately in the reference journey above.
                 self.index(page).get_by_role("link", name=PARTS).focus()
                 page.keyboard.press("Shift+Tab")
                 expect(self.index(page).get_by_role("link", name=LAMP)).to_be_focused()
                 page.wait_for_timeout(200)
                 self.measure(page, '.wiki-page[aria-current="page"]', 3, property="outlineColor", backgroundSelector=".wiki-index")
                 self.measure(page, ".doc-prose a")
-                self.assertIn("underline", page.locator(".doc-prose a").first.evaluate("e => getComputedStyle(e).textDecorationLine"), "links are more than colour")
+                page_ref = page.locator(".doc-prose a").first
+                self.assertTrue(page_ref.evaluate("e => e.classList.contains('doc-page')"))
+                expect(page_ref.locator('svg')).to_have_count(1)
+                expect(page_ref).not_to_have_css('background-color', 'rgba(0, 0, 0, 0)')
+                self.measure(page, '.doc-prose a svg', 3)
                 page.locator(".wiki-bar").get_by_role("button", name="Share this page").click()
                 for selector in (".wiki-pop__h", ".wiki-pop__who", ".wiki-pop__link .ui-input"):
                     self.measure(page, selector)
