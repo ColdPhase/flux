@@ -55,7 +55,9 @@
 .lv-inline-note--on { color: var(--t2); }
 
 /* ---------- The strip ---------- */
-.lv-bar { position: relative; z-index: 2; flex: none; border-bottom: 1px solid var(--line); background: var(--sub); }
+/* The strip is its own layer above the pane's sheets and stage, so its session popover (which drops into
+   the pane) is never painted over by the thread sheet (#63). Still below portalled overlays (--z-overlay). */
+.lv-bar { position: relative; z-index: var(--z-overlay); flex: none; border-bottom: 1px solid var(--line); background: var(--sub); }
 .lv-bar.is-quiet { background: var(--bg); }
 .lv-row { display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 6px 12px 6px 20px; }
 .lv-row__lead { display: inline-flex; align-items: center; gap: 8px; flex: none; }
@@ -93,11 +95,11 @@
 .lv-dev:active:not([aria-disabled="true"]) { transform: scale(.94); }
 .lv-dev.is-on { background: var(--t1); color: var(--oninv); box-shadow: none; }
 .lv-dev.is-on:hover { background: var(--t2); color: var(--oninv); }
-.lv-dev--screen.is-on { background: var(--t1); color: #fff; }
+.lv-dev--screen.is-on { background: var(--inv); color: var(--oninv); }
 .lv-dev[aria-disabled="true"] { opacity: .55; cursor: default; }
 .lv-dev__badge {
   position: absolute; top: -4px; right: -4px; display: grid; place-items: center; width: 14px; height: 14px;
-  border-radius: 50%; background: var(--t2); color: #fff; font-size: 10px; font-weight: 700; line-height: 1;
+  border-radius: 50%; background: var(--inv); color: var(--oninv); font-size: var(--fs-xs); font-weight: 700; line-height: 1;
 }
 .lv-dev .ui-spin { width: 13px; height: 13px; }
 .lv-leave { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--t1) 35%, transparent); margin-left: 2px; }
@@ -170,7 +172,8 @@
 /* ---------- Stage: screens and cameras over the work area ---------- */
 .app__pane { position: relative; }
 .lv-stage {
-  position: absolute; inset: 0; z-index: 5; display: flex; flex-direction: column; background: var(--bg);
+  /* Over the thread sheet (--z-panel) in the same pane, under the strip and overlays (#63). */
+  position: absolute; inset: 0; z-index: var(--z-scrim); display: flex; flex-direction: column; background: var(--bg);
   transform-origin: 50% 0;
 }
 .lv-stage__bar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; min-height: 48px; padding: 6px 12px 6px 20px; border-bottom: 1px solid var(--line); }

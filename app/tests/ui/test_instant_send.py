@@ -73,7 +73,7 @@ class InstantSendJourney(unittest.TestCase):
         expect.set_options(timeout=10000)
         contexts = {}
         for key, (name, email) in PEOPLE.items():
-            context = cls.browser.new_context(base_url=ORIGIN)
+            context = cls.browser.new_context(service_workers="block", base_url=ORIGIN)
             response = context.request.post("/api/auth/sign-up/email", data={"email": email, "password": PASSWORD, "name": name}, headers={"origin": ORIGIN})
             assert response.status == 200, response.text()
             cls.ids[key] = context.request.get("/api/v1/me").json()["user"]["id"]
@@ -113,7 +113,7 @@ class InstantSendJourney(unittest.TestCase):
             options.update(viewport=PHONE, device_scale_factor=3, is_mobile=True, has_touch=True)
         else:
             options.update(viewport=DESKTOP, device_scale_factor=1)
-        context = self.browser.new_context(**options)
+        context = self.browser.new_context(service_workers="block", **options)
         self.addCleanup(context.close)
         page = context.new_page()
         errors: list[str] = []

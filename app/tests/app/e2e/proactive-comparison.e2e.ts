@@ -223,7 +223,9 @@ test('real project UI presents sourced quiet suggestions, then persists edits, u
   await cards.first().getByRole('button', { name: 'Edit', exact: true }).click();
   await cards.first().getByLabel('Interpretation').fill('The camera result suggests testing a distance sensor, but needs a controlled comparison.');
   await cards.first().getByRole('button', { name: 'Save edits' }).click();
-  await page.waitForFunction(() => document.querySelector('.ws-proposal')?.textContent?.includes('needs a controlled comparison'));
+  // A controlled textarea also exposes its draft through textContent. Wait for the
+  // read-only value after the actual save and refresh before abandoning this page.
+  await cards.first().locator('.ws-proposal__detail').filter({ hasText: 'needs a controlled comparison' }).waitFor();
   await page.reload();
   await cards.first().locator('.ws-proposal__toggle').click();
   assert.match(await cards.first().innerText(), /needs a controlled comparison/);

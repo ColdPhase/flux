@@ -76,6 +76,15 @@ fi
 
 # Service worker registration, offline fallback and the update prompt in Chromium over HTTPS.
 run_browser e2e
+# The same service worker journey in WebKit (#20 MOB-1/MOB-5 engine lane; Safari is a required target).
+run_browser -e FLUX_E2E_BROWSER=webkit e2e
+
+# The update prompt (#20): a fresh install, a second tab and a fresh profile show none; a changed worker shows it. Chromium and WebKit.
+run_browser e2e node_modules/.bin/tsx --test tests/app/e2e/pwa-update.e2e.ts
+run_browser -e FLUX_E2E_BROWSER=webkit e2e node_modules/.bin/tsx --test tests/app/e2e/pwa-update.e2e.ts
+
+# Browser Web Push on this device (#20): turn on stores the subscription, a muted place sends nothing, turn off removes it.
+run_browser e2e node_modules/.bin/tsx --test tests/app/e2e/push-browser.e2e.ts
 
 # Login, sharing, denied access and stream revocation in Chromium sessions (issue #29, AC-4).
 run_browser e2e node_modules/.bin/tsx --test tests/app/e2e/access-stream.e2e.ts
@@ -116,6 +125,9 @@ $compose run --rm e2e node_modules/.bin/tsx --test tests/app/e2e/agent-connectio
 # The owner's standing-grant controls on the Connect page decide the agent's next real MCP call (#152).
 run_browser e2e node_modules/.bin/tsx --test tests/app/e2e/agent-grant-controls.e2e.ts
 
+# The owner's capability and project switches on the Connect page decide the agent's next real MCP call (#316).
+run_browser e2e node_modules/.bin/tsx --test tests/app/e2e/mcp-permission-controls.e2e.ts
+
 # A session created before an API container restart must still be valid afterwards.
 $compose run --rm test node_modules/.bin/tsx tests/app/session-restart.ts prepare
 $compose restart api
@@ -139,6 +151,14 @@ $compose up -d --wait api worker
 $compose run --rm --no-deps test node_modules/.bin/tsx tests/app/background-comparisons-switch.ts prepare
 FLUX_BACKGROUND_COMPARISONS=on $compose up -d --wait api worker
 run_browser --no-deps e2e node_modules/.bin/tsx --test tests/app/e2e/background-comparisons.e2e.ts
+# Live stop and crash, still switched on, against a provider mock that never answers: pausing the
+# rule aborts the open request and keeps its possible charge counted; killing the worker mid-request
+# and restarting it reconciles the reservation as unknown, without a retry (fake provider only).
+$compose run --rm --no-deps test node_modules/.bin/tsx tests/app/background-comparisons-live.ts cancel
+$compose run --rm --no-deps test node_modules/.bin/tsx tests/app/background-comparisons-live.ts crash-start
+$compose kill worker
+FLUX_BACKGROUND_COMPARISONS=on $compose up -d --wait worker
+$compose run --rm --no-deps test node_modules/.bin/tsx tests/app/background-comparisons-live.ts crash-verify
 $compose up -d --wait api worker
 $compose run --rm --no-deps test node_modules/.bin/tsx tests/app/background-comparisons-switch.ts off
 if $compose logs --no-color api worker providermock | grep -F 'owner-budget-key-' >/dev/null; then

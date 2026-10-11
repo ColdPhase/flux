@@ -1,4 +1,5 @@
 import type { CSSProperties, ReactNode } from 'react';
+import { useLoopPause } from './motion.js';
 
 /**
  * Kreska: Flux's logo, every agent's icon and the mascot (final design F-026, guide §3). A monoline
@@ -86,12 +87,17 @@ export interface KreskaProps {
   style?: CSSProperties;
 }
 
+/** The expressions ui.css moves (the brow, the loading dots, the blink). Only these loop, so only these pause. */
+const MOVING: ReadonlySet<KreskaExpression> = new Set<KreskaExpression>(['thinking', 'loading', 'working']);
+
 /** Kreska as an agent icon (outline squircle on --el) or, at 56–112px, the mascot. */
 export function Kreska({ expression = 'idle', size = 24, hue, label, className, style }: KreskaProps) {
   const [frame, eyes, brow] = weights(size);
   const face = FACES[expression];
+  // A moving face pauses while hidden, off screen or under a modal, wherever it is shown (#155 AC-4).
+  const loop = useLoopPause<HTMLSpanElement>();
   return (
-    <span className={`kreska${hue ? ` kreska--${hue}` : ''}${className ? ` ${className}` : ''}`} data-expression={expression}
+    <span ref={MOVING.has(expression) ? loop : undefined} className={`kreska${hue ? ` kreska--${hue}` : ''}${className ? ` ${className}` : ''}`} data-expression={expression}
       style={{ width: size, height: size, ...style }} role={label ? 'img' : undefined} aria-label={label} aria-hidden={label ? undefined : true}>
       <svg viewBox="0 0 24 24" width={size} height={size}>
         {line(SQUIRCLE, frame, 'kreska__frame')}

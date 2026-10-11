@@ -1,0 +1,5 @@
+.route-progress { display: flex; flex: 0 0 auto; align-items: center; justify-content: space-between; gap: 12px; padding: 6px 16px; border-bottom: 1px solid var(--line); color: var(--t2); }
+.route-progress > span { display: flex; align-items: center; gap: 8px; font-size: inherit; }
+.deferred-surface { padding: 16px; }
+.deferred-surface > p { display: flex; align-items: center; gap: 8px; color: var(--t2); }
+.deferred-surface--stage { position: absolute; inset: 0; z-index: 3; background: var(--bg); }

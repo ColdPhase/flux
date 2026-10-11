@@ -8,6 +8,7 @@ export type { SQL } from 'drizzle-orm';
 export * from './repositories/sessions.js';
 export * from './repositories/agent-proposals.js';
 export * from './repositories/agent-connections.js';
+export * from './repositories/agent-mcp-policy.js';
 export * from './repositories/project-agents.js';
 export * from './repositories/agent-project-objects.js';
 export * from './migrations/ledger.js';

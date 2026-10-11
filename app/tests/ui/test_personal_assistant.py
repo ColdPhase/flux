@@ -79,7 +79,7 @@ class PersonalAssistantJourney(unittest.TestCase):
             options.update(viewport=DESKTOP, device_scale_factor=1)
         if who and who in self.states:
             options["storage_state"] = self.states[who]
-        context = self.browser.new_context(**options)
+        context = self.browser.new_context(service_workers="block", **options)
         self.addCleanup(context.close)
         return context
 
@@ -414,14 +414,23 @@ class PersonalAssistantJourney(unittest.TestCase):
         # The mark is Kreska thinking: its brow waves while the run executes (#339).
         pulse = working.locator('.kreska[data-expression="thinking"] .kreska__brow')
         self.assertEqual(pulse.evaluate("el => [getComputedStyle(el).animationName, getComputedStyle(el).animationPlayState]"), ["kreska-wave", "running"])
-        # Under a modal (Jump to…) the mark pauses; it runs again when the modal closes.
+        # The sidebar's working mark is the same run's Kreska, so it follows the same motion rule (#155 AC-4).
+        sidebar = jo.locator(".app__side").count() > 0
+        side_pulse = jo.locator('.app__side .agentlive .kreska[data-expression="thinking"] .kreska__brow')
+        if sidebar:
+            self.assertEqual(side_pulse.evaluate("el => getComputedStyle(el).animationPlayState"), "running")
+        # Under a modal (Jump to…) the marks pause; they run again when the modal closes.
         jo.keyboard.press("Control+k")
         expect(jo.locator('[aria-modal="true"]')).to_be_visible()
         expect(working).to_have_attribute("data-motion-paused", "")
         self.assertEqual(pulse.evaluate("el => getComputedStyle(el).animationPlayState"), "paused")
+        if sidebar:
+            self.assertEqual(side_pulse.evaluate("el => getComputedStyle(el).animationPlayState"), "paused")
         jo.keyboard.press("Escape")
         expect(jo.locator('[aria-modal="true"]')).to_have_count(0)
         expect(working).not_to_have_attribute("data-motion-paused", "")
+        if sidebar:
+            self.assertEqual(side_pulse.evaluate("el => getComputedStyle(el).animationPlayState"), "running")
         # Off screen it pauses too: in a short window the reader scrolls (a real wheel; the thread keeps a
         # reader's own position) to the top of the thread, then back down to the line.
         jo.set_viewport_size({"width": 1440, "height": 640})

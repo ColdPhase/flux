@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Checks WCAG 2.2 contrast of the web app's colour tokens in both themes (final design, F-026).
+"""Checks WCAG 2.2 and APCA contrast of the web app's colour tokens in both themes (final design, F-026).
 
 Reads app/apps/web/src/ui/tokens.css (the light :root block and the dark block) and fails when a
 text pair is below 4.5:1 or an icon, glyph or indicator pair is below 3:1. Gradients are checked
-at both stops. `--failures-only` prints only failing pairs and a one-line summary; the exit code
+at both stops. Text tokens also have an APCA lower bound on --bg, --el and --sub (#432, founder
+direction 2026-10-10): APCA predicts small light-on-dark text far better than the WCAG 2 ratio. `--failures-only` prints only failing pairs and a one-line summary; the exit code
 is the same.
 """
 from __future__ import annotations
@@ -45,6 +46,10 @@ PAIRS = [
     ("--t2", "--sub", 3.0, "icons on quiet fills"),
 ]
 
+# APCA lower bounds (absolute Lc) for text tokens on the surfaces where text sits, in both themes.
+APCA_MINIMUM = {"--t1": 90, "--t2": 60, "--t3": 45}
+APCA_SURFACES = ("--bg", "--el", "--sub")
+
 HEX = r"#[0-9a-fA-F]{6}"
 
 
@@ -73,6 +78,24 @@ def ratio(a: str, b: str) -> float:
     return (la + 0.05) / (lb + 0.05)
 
 
+def apca(text: str, background: str) -> float:
+    """APCA-W3 0.0.98G-4g lightness contrast Lc; positive for dark on light, negative for light on dark."""
+
+    def screen_luminance(hex_colour: str) -> float:
+        r, g, b = (int(hex_colour[i:i + 2], 16) / 255 for i in (1, 3, 5))
+        y = 0.2126729 * r ** 2.4 + 0.7151522 * g ** 2.4 + 0.0721750 * b ** 2.4
+        return y + (0.022 - y) ** 1.414 if y < 0.022 else y
+
+    yt, yb = screen_luminance(text), screen_luminance(background)
+    if abs(yb - yt) < 0.0005:
+        return 0.0
+    if yb > yt:
+        s = (yb ** 0.56 - yt ** 0.57) * 1.14
+        return 0.0 if s < 0.1 else (s - 0.027) * 100
+    s = (yb ** 0.65 - yt ** 0.62) * 1.14
+    return 0.0 if s > -0.1 else (s + 0.027) * 100
+
+
 def block_after(css: str, opener: str) -> str:
     start = css.index(opener)
     return css[start:css.index("}", start)]
@@ -98,6 +121,14 @@ def main(argv: list[str] | None = None) -> int:
             checked += 1
             if not (quiet and ok):
                 print(f"{'ok  ' if ok else 'FAIL'} {theme:5} {value:5.2f}:1 (min {minimum}) {fg} on {bg}: {purpose}")
+        for fg, minimum in APCA_MINIMUM.items():
+            for bg in APCA_SURFACES:
+                value = abs(apca(resolve(tokens, fg), resolve(tokens, bg)))
+                ok = value >= minimum
+                failures += not ok
+                checked += 1
+                if not (quiet and ok):
+                    print(f"{'ok  ' if ok else 'FAIL'} {theme:5} APCA Lc {value:5.1f} (min {minimum}) {fg} on {bg}: text readability")
     # The dark tokens are duplicated for prefers-color-scheme; they must match the toggle block.
     media = block_after(css, ':root:not([data-theme="light"]) {')
     normalise = lambda block: re.sub(r"\s+", "", re.sub(r"color-scheme:\s*dark;", "", block.split("{", 1)[1]))
