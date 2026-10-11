@@ -57,6 +57,12 @@ export const PERSONAL_RUN_LIMITS = {
   effort: 'low',
   maxInputTokens: 16_000,
   maxOutputTokens: 1_500,
+  /**
+   * The most requests ("turns") of one run with a tool loop (F-027 AST-6 limits, AST-8): the run
+   * reserves up to this many maximum requests, never above the owner's per-run ceiling. A run
+   * without tools, or on a model without tool calling, is one request.
+   */
+  maxTurns: 10,
   prompt: 4_000,
   perRunCents: { default: 6, min: 6, max: 50 },
   dailyCapCents: { default: 100, min: 10, max: 1_000 },
