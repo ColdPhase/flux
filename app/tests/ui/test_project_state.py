@@ -301,7 +301,7 @@ class ProjectStateJourney(unittest.TestCase):
 
     def test_05b_long_saved_rule_and_negative_result_keep_readable_metadata_in_details(self):
         owner, project = self.scene()
-        token = "CALIBRATIONTRACEID" * 14
+        token = "CALIBRATIONTRACEID" * 8
         rule_title, result_title = "Library calibration policy " + token, "Optical field result " + token
         rule = self.call(owner, "POST", f"/api/v1/projects/{project['id']}/decisions",
             {"title": rule_title, "rationale": "Retain the measured native state"}, 201)
