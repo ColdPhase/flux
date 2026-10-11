@@ -19,7 +19,7 @@ from urllib.parse import parse_qs, urlsplit
 
 from playwright.sync_api import Browser, BrowserContext, Locator, Page, expect, sync_playwright
 
-from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
+from test_app_shell import UI_BROWSER, DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
 from contrast import MEASURE
 
 PASSWORD = "boards keep the work moving"
@@ -62,7 +62,7 @@ class TasksBoardJourney(unittest.TestCase):
         if UPSTREAM:
             start_forwarder(ORIGIN, UPSTREAM)
         cls.pw = sync_playwright().start()
-        cls.browser = cls.pw.chromium.launch()
+        cls.browser = getattr(cls.pw, UI_BROWSER).launch()
         expect.set_options(timeout=8000)
 
     @classmethod
