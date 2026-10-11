@@ -102,8 +102,7 @@ class MessageAlignment(unittest.TestCase):
           const bubble = el.querySelector(':scope > .message-bubble').getBoundingClientRect();
           const face = el.querySelector(':scope > :is(.ui-avatar, .author-face), :scope > .thread__root-meta > :is(.ui-avatar, .author-face)').getBoundingClientRect();
           return {left: bounds.left + parseFloat(style.paddingLeft), right: bounds.right - parseFloat(style.paddingRight),
-            bubbleLeft: bubble.left, bubbleRight: bubble.right, faceLeft: face.left, faceRight: face.right,
-            overflow: el.scrollWidth > el.clientWidth + 1};
+            bubbleLeft: bubble.left, bubbleRight: bubble.right, faceLeft: face.left, faceRight: face.right};
         }""")
         gap = 42 if page.viewport_size["width"] <= 680 else 44
         if mine:
@@ -112,7 +111,8 @@ class MessageAlignment(unittest.TestCase):
         else:
             self.assertAlmostEqual(geometry["faceLeft"], geometry["left"], delta=1, msg=str(geometry))
             self.assertAlmostEqual(geometry["bubbleLeft"], geometry["left"] + gap, delta=1, msg=str(geometry))
-        self.assertFalse(geometry["overflow"], geometry)
+        self.assertGreaterEqual(geometry["bubbleLeft"], geometry["left"] - 1, geometry)
+        self.assertLessEqual(geometry["bubbleRight"], geometry["right"] + 1, geometry)
         self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), page.viewport_size["width"])
 
     def test_01_saved_messages_follow_the_viewer_in_stream_and_thread(self):
