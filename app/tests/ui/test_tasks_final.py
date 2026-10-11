@@ -504,6 +504,67 @@ class TasksFinalJourney(unittest.TestCase):
                     page.get_by_role('navigation', name='Main places').get_by_role('link', name='Home', exact=True).tap()
                     expect(page.get_by_role('heading', level=1, name='Home')).to_be_visible()
 
+    def test_12_desktop_feedback_keeps_the_final_task_title_readable(self) -> None:
+        """Real initial Undo and aftermath at the list's last task, with focus and stored versions."""
+        for dark in (False, True):
+            for height in (900, 600):
+                with self.subTest(dark=dark, height=height):
+                    setup = self.page('ada')
+                    self.set_status(setup, 'supplier', 'open')
+                    page = self.tasks(dark=dark)
+                    page.set_viewport_size({'width': 1440, 'height': height})
+                    page.get_by_role('radio', name='List', exact=True).click()
+                    pane = page.locator('.tb-root > .pane-scroll')
+                    last = self.row(page, LORA).locator('.ws-item__t')
+                    last.scroll_into_view_if_needed()
+                    before = self.task(page, 'supplier')
+                    self.row(page, SUPPLIER).get_by_role('button', name='Open. Set to In progress').click()
+                    self.wait_status(page, 'supplier', 'in_progress')
+                    toast = page.locator('.ui-toast').filter(has_text=f"#{self.numbers['supplier']} in progress")
+                    expect(toast.get_by_role('button', name='Undo', exact=True)).to_be_visible()
+                    # The person scans the last task while feedback is shown; focusing it must
+                    # preserve its title rather than let the overlay conceal a focused row.
+                    last_button = self.row(page, LORA).locator('.ws-item')
+                    last_button.focus()
+                    expect(last_button).to_be_focused()
+                    with self.subTest(feedback='available Undo'):
+                        self.desktop_feedback_geometry(page, pane, last, 'undo', dark, height)
+                    page.keyboard.press('z')
+                    aftermath = page.locator('.ui-toast').filter(has_text=f"#{self.numbers['supplier']} back to open")
+                    expect(aftermath).to_be_visible()
+                    self.wait_status(page, 'supplier', 'open')
+                    self.assertEqual(self.task(page, 'supplier')['version'], before['version'] + 2)
+                    expect(last_button).to_be_focused()
+                    with self.subTest(feedback='Undo aftermath'):
+                        self.desktop_feedback_geometry(page, pane, last, 'aftermath', dark, height)
+                    for close in page.locator('.ui-toast__close').all():
+                        close.click()
+                    expect(page.locator('.ui-toast')).to_have_count(0)
+                    expect(last_button).to_be_focused()
+
+    def desktop_feedback_geometry(self, page: Page, pane: Locator, last: Locator, state: str, dark: bool, height: int) -> None:
+        page.wait_for_function("() => [...document.querySelectorAll('.ui-toast')].every(el => getComputedStyle(el).transform === 'none')")
+        page.wait_for_timeout(100)
+        observed = last.evaluate("""el => {
+            const pane = el.closest('.pane-scroll'), bounds = pane.getBoundingClientRect();
+            const rect = r => ({left:r.left,right:r.right,top:r.top,bottom:r.bottom});
+            const range = document.createRange(); range.selectNodeContents(el);
+            const lines = [...range.getClientRects()].map(rect);
+            const toasts = [...document.querySelectorAll('.ui-toast')].map(n => rect(n.getBoundingClientRect()));
+            const overlap = (a,b) => Math.min(a.right,b.right) > Math.max(a.left,b.left) && Math.min(a.bottom,b.bottom) > Math.max(a.top,b.top);
+            return {pane:rect(bounds),title:el.textContent,lines,toasts,scrollTop:pane.scrollTop,
+                covered:lines.some(line => toasts.some(toast => overlap(line,toast))),
+                visible:lines.every(line => line.top >= bounds.top && line.bottom <= bounds.bottom),
+                readable:lines.every(line => {const hit=document.elementFromPoint((line.left+line.right)/2,(line.top+line.bottom)/2);return !!hit && (hit === el || el.contains(hit));})};
+        }""")
+        print('Desktop Tasks feedback geometry', json.dumps({'engine':os.environ.get('FLUX_UI_BROWSER'), 'state':state,'dark':dark,'height':height,**observed}), flush=True)
+        shot(page, f"375-desktop-feedback-{state}-{height}-{'dark' if dark else 'light'}")
+        self.assertEqual(observed['title'], LORA)
+        self.assertTrue(observed['visible'], 'the complete final task title remains in the task scrollport')
+        self.assertFalse(observed['covered'], 'feedback must not overlap any rendered line of the final task title')
+        self.assertTrue(observed['readable'], 'every title line remains hit-testable above the feedback')
+        self.assertTrue(pane.evaluate('el => el.scrollHeight >= el.clientHeight'))
+
     def feedback_geometry(self, page: Page, state: str, dark: bool, width: int, factor: float) -> None:
         page.wait_for_function("() => document.getAnimations().every(a => a.playState !== 'running' || a.effect?.getComputedTiming().endTime === Infinity)")
         page.wait_for_function("""() => {
