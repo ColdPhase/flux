@@ -77,4 +77,10 @@ $compose exec -T db dropdb -U flux flux_undo_legacy_restore
 $compose exec -T db createdb -U flux flux_undo_legacy_restore
 $compose exec -T db pg_restore -U flux --exit-on-error -d flux_undo_legacy_restore < "$evidence/original45c.dump"
 $compose run --rm --no-deps checks node_modules/.bin/tsx tests/app/task-creation-undo-legacy-restore.check.ts verify
+$compose run --rm --no-deps checks node_modules/.bin/tsx tests/app/task-creation-undo-legacy-restore.check.ts prepare current
+$compose exec -T db pg_dump -U flux --format=custom flux_undo_current_restore > "$evidence/current.dump"
+$compose exec -T db dropdb -U flux flux_undo_current_restore
+$compose exec -T db createdb -U flux flux_undo_current_restore
+$compose exec -T db pg_restore -U flux --exit-on-error -d flux_undo_current_restore < "$evidence/current.dump"
+$compose run --rm --no-deps checks node_modules/.bin/tsx tests/app/task-creation-undo-legacy-restore.check.ts verify current
 printf 'Undo semantic legacy refusal checks passed at %s. No conversion or future composition acceptance.\n' "$FLUX_GIT_COMMIT"

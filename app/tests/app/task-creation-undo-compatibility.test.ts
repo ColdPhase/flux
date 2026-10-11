@@ -5,6 +5,18 @@ import { test } from 'node:test';
 import { assertExactMigrationLedger, assertKnownMigrationVersions, assertTaskCreationUndoMigrationCompatibility,
   FLUX_SCHEMA_VERSION, readAppliedMigrationVersions, readMigrationManifest } from '@flux/db';
 import { fixtureDatabase, legacyDirectory, legacySql, migrationCli, originalUndoFiles, refusedUnchanged, retainedHistory, retainedUndoHistory } from './support/undo-legacy-database.js';
+import { restoredConstraintShape } from './support/restored-catalog-shape.js';
+
+test('restore evidence permits only associative CHECK grouping while retaining operators, precedence and literals', () => {
+  const normalized = restoredConstraintShape;
+  assert.deepEqual(normalized('CHECK (((a AND b) AND c))'), normalized('CHECK ((a AND b AND c))'));
+  assert.deepEqual(normalized('CHECK (((a OR b) OR c))'), normalized('CHECK ((a OR b OR c))'));
+  assert.notDeepEqual(normalized('CHECK (((a AND b) OR c))'), normalized('CHECK ((a AND (b OR c)))'));
+  assert.notDeepEqual(normalized("CHECK (a = 'native_agent')"), normalized("CHECK (a = 'native_agent ')"));
+  assert.notDeepEqual(normalized('CHECK (a >= 1)'), normalized('CHECK (a > 1)'));
+  assert.notDeepEqual(normalized("CHECK (a = 'AND')"), normalized("CHECK (a = 'OR')"));
+  assert.equal(normalized('FOREIGN KEY (a, b) REFERENCES target(a, b)'), 'FOREIGN KEY (a, b) REFERENCES target(a, b)');
+});
 
 test('retained original legacy SQL and manifest have explicit original commit provenance', async () => {
   const provenance = JSON.parse(await readFile(`${legacyDirectory}/provenance.json`, 'utf8')) as { sources: { name: string; sha256: string }[] };
