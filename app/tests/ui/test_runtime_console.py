@@ -390,6 +390,8 @@ class RuntimeConsole(unittest.TestCase):
         page.evaluate("async () => { await new Promise(requestAnimationFrame); await new Promise(requestAnimationFrame); }")
         expect(section.get_by_role("heading", name=expected)).to_be_visible()
         expect(section.get_by_role("button", name="Sign out", exact=True)).to_have_count(0)
+        if not remove:
+            expect(section.get_by_role("status").filter(has_text="Signed out of Claude Code in Flux.")).to_be_visible()
         self.phone_layout(page, "section.rt")
         shot(page, "runtime-held-poll-remove-phone-390" if remove else "runtime-held-poll-signout-phone-390")
 
@@ -458,6 +460,78 @@ class RuntimeConsole(unittest.TestCase):
                     self.assertEqual(page.locator(".rt-console").count(), 0, "a refused start cannot mount the terminal")
                     self.assertFalse(any("SignInConsole-" in url for url in assets), "a refused start cannot download the terminal")
                     page.close()
+
+
+    def test_13_sign_out_receipts_are_visible_and_never_inferred_from_an_ack(self) -> None:
+        """Actual mounted rendering of current saved facts; no native profile or vendor acceptance."""
+        receipt = {"at": "2026-10-07T10:01:00.000Z", "failed": False}
+        confirmed = self.runtime_snapshot()
+        confirmed["connections"]["claude_code"].update(state="signed_out", signedInAt=None, signOut=receipt)
+        cases = [("confirmed", confirmed, "Signed out of Claude Code in Flux.")]
+        failed = copy.deepcopy(confirmed)
+        failed["connections"]["claude_code"]["signOut"]["failed"] = True
+        cases.append(("unconfirmed", failed, "Anthropic didn’t confirm the sign-out."))
+        for name, completion in (("no-receipt", None), ("ack-only", {"kind": "logout", "disposition": "accepted"})):
+            status = copy.deepcopy(confirmed)
+            status["connections"]["claude_code"]["signOut"] = None
+            if completion:
+                status["authCompletion"] = completion
+            cases.append((name, status, None))
+        pending = copy.deepcopy(confirmed)
+        pending["auth"] = {"claude_code": "signing_out"}
+        cases.append(("pending", pending, "Sign-out requested."))
+        superseded = copy.deepcopy(confirmed)
+        superseded["authCompletion"] = {"kind": "logout", "disposition": "superseded"}
+        cases.append(("superseded", superseded, "This operation’s result was no longer current and was not accepted."))
+        recovery = copy.deepcopy(confirmed)
+        recovery["binding"].update(state="releasing", recovery=True)
+        recovery["connections"]["claude_code"] = None
+        cases.append(("recovery", recovery, "Recovering your Claude Code space after an unconfirmed operation."))
+        for name, state in (("new-sign-in", "signed_in"), ("sign-in-again", "sign_in_again")):
+            status = copy.deepcopy(confirmed)
+            status["connections"]["claude_code"]["state"] = state
+            cases.append((name, status, None))
+        unbound = copy.deepcopy(confirmed)
+        unbound["binding"] = None
+        cases.append(("unbound-old-receipt", unbound, None))
+
+        for phone in (False, True):
+            for theme in ("light", "dark"):
+                for name, current, text in cases:
+                    with self.subTest(phone=phone, theme=theme, state=name):
+                        page = self.page(phone=phone)
+                        page.emulate_media(color_scheme=theme)
+                        page.route("**/api/v1/agent-runtime", lambda route: route.fulfill(
+                            status=200, content_type="application/json", body=json.dumps(current)))
+                        page.goto("/settings/agents")
+                        section = page.locator("section.rt")
+                        heading = section.locator("h3#rt-h")
+                        expect(heading).to_contain_text("Claude Code in Flux ·")
+                        if name in ("confirmed", "unconfirmed", "pending", "superseded", "recovery"):
+                            shot(page, f"runtime-outcome-{name}-{'phone-390' if phone else 'desktop-1440'}-{theme}-{UI_BROWSER}")
+                        if name == "confirmed":
+                            self.assertEqual(section.get_by_text("Signed out of Claude Code in Flux.", exact=True).count(), 1,
+                                             "a saved current sign-out receipt gets visible confirmation")
+                            outcome = section.get_by_role("status").filter(has_text=text)
+                            expect(outcome.locator("time")).to_have_attribute("datetime", receipt["at"])
+                        else:
+                            self.assertEqual(section.get_by_text("Signed out of Claude Code in Flux.", exact=True).count(), 0,
+                                             "missing, older, pending, superseded or recovery facts confer no success")
+                            outcome = section.locator("p").filter(has_text=text) if text else None
+                        if outcome:
+                            expect(outcome).to_be_visible()
+                            geometry = outcome.evaluate("""node => {
+                              const heading = node.closest('section.rt').querySelector('#rt-h').getBoundingClientRect();
+                              const result = node.getBoundingClientRect();
+                              const following = node.closest('section.rt').querySelector('.rt-choices, .rt-sub');
+                              return {heading:heading.bottom, top:result.top, bottom:result.bottom,
+                                following:following?.getBoundingClientRect().top ?? innerHeight, height:innerHeight};
+                            }""")
+                            self.assertGreaterEqual(geometry["top"], geometry["heading"] - 1)
+                            self.assertLessEqual(geometry["top"] - geometry["heading"], 24, "outcome sits with the state")
+                            self.assertLessEqual(geometry["bottom"], geometry["following"] + 1, "outcome precedes generic choices/disclosure")
+                            self.assertLessEqual(geometry["bottom"], geometry["height"], "outcome is readable in the captured viewport")
+                        page.close()
 
 
 if __name__ == "__main__":
