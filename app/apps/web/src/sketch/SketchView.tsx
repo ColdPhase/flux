@@ -10,7 +10,7 @@ import { useShellData } from '../app/data';
 import { useShellActions } from '../app/shellContext';
 import { setReloadRetention } from '../app/reload-retention';
 import { createWork } from '../work/api';
-import { useSketchDoc, type Op } from './doc';
+import { DraftSaveNotSentError, useSketchDoc, type Op } from './doc';
 import { audience, quote, sketchHref, when } from './format';
 import { freeSpot, rectOf } from './geometry';
 import { SketchList } from './SketchList';
@@ -105,12 +105,21 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
     setSelectedFor(location.key);
     if (liveSelect) setSelection(liveSelect);
   }
+  // AC-2: no Shift key on touch, so a tablet's toolbar can switch tapping to adding to the selection.
+  const [selectSeveral, setSelectSeveral] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
   const [connectState, setConnectFrom] = useState<string | null>(null);
+  // Narrowing to the phone cancels a connection that was armed on the wider screen.
+  const [wasPhone, setWasPhone] = useState(phone);
+  if (wasPhone !== phone) {
+    setWasPhone(phone);
+    if (phone) { setConnectFrom(null); setSelectSeveral(false); setSelection((current) => current.slice(-1)); }
+  }
   const [editingState, setEditing] = useState<Editing | null>(null);
   const editSaveInFlight = useRef(false);
   const dmAudience = directMessages.find((item) => item.id === (doc.sketch?.dmId ?? dmId))?.audience ?? null;
   // "Start sketch from these messages" lands here: say what happened and who sees it.
-  const [status, setStatus] = useState<{ text: string; change: boolean }>(() => ({
+  const [status, setStatus] = useState<{ text: string; change: boolean; selection?: boolean }>(() => ({
     text: started ? `Started from ${started} ${started === 1 ? 'message' : 'messages'} · ${dmAudience ? `${dmAudience.replace(/^Only /, 'only ')} can see it` : 'it stays in this conversation'}` : '',
     change: false,
   }));
@@ -124,7 +133,7 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
 
   // UI116-4: each thought of a project sketch shows how many of the project's tasks link to it,
   // from bounded reads of the sketch's own thoughts (#170), never the project's work collection.
-  // They refresh when the project's work or links change, on focus and after Create work; a
+  // They refresh when the project's work or links change, on focus and after Create task; a
   // private or DM sketch has no linkable thoughts.
   const taskProjectId = sketch?.scope === 'project' ? sketch.projectId ?? null : null;
   const [taskRevision, setTaskRevision] = useState(0);
@@ -147,7 +156,7 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
     return () => window.removeEventListener('focus', refresh);
   }, [taskProjectId]);
 
-  const say = (text: string, change = false) => setStatus({ text, change });
+  const say = (text: string, change = false, selection = false) => setStatus({ text, change, selection });
   const find = (id: string) => sketch?.thoughts.find((t) => t.id === id);
   // Focus moves after the next commit (a list row replaces its editor only then), and only if
   // focus is not already somewhere the person put it meanwhile.
@@ -196,12 +205,14 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
 
   const describe = (ids: string[]) => {
     if (!ids.length) say('');
-    else if (ids.length === 1) say(`${quote(find(ids[0]!)?.text ?? '')} selected`);
-    else say(`${ids.length} thoughts selected · Connect links them`);
+    else if (ids.length === 1) say(`${quote(find(ids[0]!)?.text ?? '')} selected`, false, true);
+    else say(`${ids.length} thoughts selected · Connect links them`, false, true);
   };
 
   const connectTo = (from: string, to: string) => {
     setConnectFrom(null);
+    // S15: the phone views and adds only, whatever was armed before the screen narrowed.
+    if (phone) return;
     if (from === to) { say('Connect cancelled'); return; }
     const a = find(from);
     const b = find(to);
@@ -215,15 +226,17 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
     say(`Linked ${quote(a.text)} and ${quote(b.text)}`, true);
   };
 
-  const pick = (id: string, additive: boolean) => {
+  const pick = (id: string, extend: boolean) => {
     if (connectFrom) { connectTo(connectFrom, id); return; }
+    // Phones select one thought at a time (S15); tablets add by touch while "Select several" is on.
+    const additive = !phone && (extend || selectSeveral);
     const next = additive ? (selection.includes(id) ? selection.filter((x) => x !== id) : [...selection, id]) : [id];
     setSelection(next);
     describe(next);
   };
 
   const toggle = (id: string) => {
-    const next = selection.includes(id) ? selection.filter((x) => x !== id) : [...selection, id];
+    const next = phone ? [id] : selection.includes(id) ? selection.filter((x) => x !== id) : [...selection, id];
     setSelection(next);
     describe(next);
   };
@@ -267,7 +280,7 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
     if (!canWrite) { say(VIEW_ONLY); return true; }
     if (uploadingRef.current) { say('Wait for the pasted image to finish uploading'); return true; }
     if (editingState) { say('Finish or cancel your current edit first'); return true; }
-    if (capture.draft && !(replace && emptyDraft(capture.draft))) { rootRef.current?.querySelector<HTMLElement>('.sk-draft textarea, .sk-draft input')?.focus(); say('Finish or cancel your current thought draft first'); return true; }
+    if (capture.draft && !(replace && emptyDraft(capture.draft) && !capture.draft.attempt && !capture.draft.unknown)) { rootRef.current?.querySelector<HTMLElement>('.sk-draft textarea, .sk-draft input')?.focus(); say('Finish or cancel your current thought draft first'); return true; }
     return false;
   };
 
@@ -283,19 +296,31 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
     });
   };
 
-  const add = (parentId: string | null, text = '', replace = false) => {
+  /** `at` is where a dragged dot was released (P12); the draft stays local until it is saved. */
+  const add = (parentId: string | null, text = '', replace = false, at?: { x: number; y: number }) => {
     if (blocked(replace)) return;
-    const [spot] = spots(parentId, 1, { w: DEFAULT_THOUGHT_SIZE.width, h: DEFAULT_THOUGHT_SIZE.height });
-    capture.set({ id: doc.newId(), linkId: doc.newId(), key: doc.newId(), text, x: spot!.x, y: spot!.y, parentId });
+    // S15 applies to every entry point, including + on a focused thought and clipboard drafts.
+    if (phone) parentId = null;
+    const [spot] = at ? [at] : spots(parentId, 1, { w: DEFAULT_THOUGHT_SIZE.width, h: DEFAULT_THOUGHT_SIZE.height });
+    capture.set({ id: doc.newId(), linkId: doc.newId(), key: doc.newId(), text, x: spot!.x, y: spot!.y, parentId, tracked: true });
     setConnectFrom(null);
     setEditing(null);
-    say(!text ? 'Private thought draft · Enter saves, Escape cancels'
+    say(!text ? (at ? 'Private connected thought draft · Enter saves, Escape cancels' : 'Private thought draft · Enter saves, Escape cancels')
       : `Private ${linkOf(text) ? 'link' : 'thought'} draft from the clipboard · Enter saves, Escape cancels`);
+  };
+
+  /** The dot without a pointer: Enter or Space starts a connection from this thought; choose the other one next. */
+  const connectFromDot = (id: string) => {
+    if (!canWrite || phone) return;
+    if (connectFrom === id) { setConnectFrom(null); say('Connect cancelled'); return; }
+    setSelection([id]);
+    setConnectFrom(id);
+    say(`Choose the thought to link to ${quote(find(id)?.text ?? '')} · Esc cancels`);
   };
 
   // #252: what is pasted becomes a private draft with the same parent rule as the Thought button; pasting into the
   // open empty draft keeps that draft's parent.
-  const pasteParent = () => (capture.draft && emptyDraft(capture.draft) ? capture.draft.parentId : selection[selection.length - 1] ?? null);
+  const pasteParent = () => phone ? null : (capture.draft && emptyDraft(capture.draft) ? capture.draft.parentId : selection[selection.length - 1] ?? null);
 
   const pasteText = (text: string, replace: boolean) => {
     const parsed = pastedText(text);
@@ -310,7 +335,7 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
     // Several lines, or one line too long for a thought (marked, so it can be shortened before Save).
     const lines = parsed.kind === 'one' ? [parsed.text] : parsed.lines;
     const places = spots(parentId, lines.length, { w: DEFAULT_THOUGHT_SIZE.width, h: DEFAULT_THOUGHT_SIZE.height });
-    capture.set({ id: doc.newId(), linkId: doc.newId(), key: doc.newId(), text: '', x: places[0]!.x, y: places[0]!.y, parentId,
+    capture.set({ id: doc.newId(), linkId: doc.newId(), key: doc.newId(), text: '', x: places[0]!.x, y: places[0]!.y, parentId, tracked: true,
       lines: lines.map((line, index): DraftLine => ({ id: doc.newId(), linkId: doc.newId(), key: doc.newId(), text: line, x: places[index]!.x, y: places[index]!.y })) });
     setConnectFrom(null);
     setEditing(null);
@@ -336,7 +361,7 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
       const staged = await stageFile(projectId, crypto.randomUUID(), new File([file], pastedImageName(type), { type }));
       const meanwhile = capture.peek();
       if (meanwhile && !emptyDraft(meanwhile)) { say('The image stays private and unused: you started another draft meanwhile.'); return; }
-      capture.set({ id: doc.newId(), linkId: doc.newId(), key: doc.newId(), text: IMAGE_CAPTION, x: spot!.x, y: spot!.y, parentId,
+      capture.set({ id: doc.newId(), linkId: doc.newId(), key: doc.newId(), text: IMAGE_CAPTION, x: spot!.x, y: spot!.y, parentId, tracked: true,
         file: { id: staged.id, name: staged.name, size: staged.size }, width: IMAGE_THOUGHT_SIZE.width, height: IMAGE_THOUGHT_SIZE.height });
       setConnectFrom(null);
       setEditing(null);
@@ -400,28 +425,47 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
   }, []);
 
   const saveDraft = async () => {
-    const draft = capture.draft;
+    let draft = capture.draft;
     if (!draft || draftSaveInFlight.current || !canWrite || !draftReady(draft)) return;
     draftSaveInFlight.current = true;
     setSavingDraft(true);
-    const parent = (linkId: string) => (draft.parentId ? { id: draft.parentId, linkId } : null);
+    // Normalize only unsent intent. An actual earlier attempt keeps its canonical parent
+    // and payload; on a phone it may only be confirmed from existing server state.
+    if (phone && draft.parentId && !(draft.lines ?? [draft]).some((row) => row.unknown)) { draft = { ...draft, parentId: null }; capture.set(draft); }
+    const parent = (row: DraftLine | ThoughtDraft) => {
+      const parentId = row.unknown ? null : row.attempt ? row.attempt.parentId : phone ? null : draft!.parentId;
+      return parentId ? { id: parentId, linkId: row.attempt?.linkId ?? row.linkId } : null;
+    };
     const items = draft.lines
-      ? draft.lines.map((line) => ({ thought: { id: line.id, text: line.text.trim(), x: line.x, y: line.y }, parent: parent(line.linkId), key: line.key }))
-      : [{ thought: { id: draft.id, text: draft.text.trim(), x: draft.x, y: draft.y,
-        ...(draft.file ? { file: draft.file, width: draft.width, height: draft.height } : {}) }, parent: parent(draft.linkId), key: draft.key }];
-    const saved = await doc.saveThoughts(items);
+      ? draft.lines.map((line) => ({ thought: line.attempt?.thought ?? { id: line.id, text: line.text.trim(), x: line.x, y: line.y }, parent: parent(line), key: line.attempt?.key ?? line.key }))
+      : [{ thought: draft.attempt?.thought ?? { id: draft.id, text: draft.text.trim(), x: draft.x, y: draft.y,
+        ...(draft.file ? { file: draft.file, width: draft.width, height: draft.height } : {}) }, parent: parent(draft), key: draft.attempt?.key ?? draft.key }];
+    const unknown = new Set((draft.lines ?? [draft]).filter((row) => row.unknown).map((row) => row.id));
+    const existingOnly = new Set((draft.lines ?? [draft]).filter((row) => row.unknown || (phone && row.attempt?.parentId)).map((row) => row.id));
+    const expectedText = new Map((draft.lines ?? [draft]).flatMap((row) => row.attempt ? [[row.id, row.attempt.thought.text] as const] : []));
+    const desiredText = new Map((draft.lines ?? [draft]).map((row) => [row.id, row.text.trim()]));
+    const editKeys = new Map((draft.lines ?? [draft]).map((row) => [row.id, row.editKey ?? row.key]));
+    const retry = new Set((draft.lines ?? [draft]).filter((row) => !!row.attempt).map((row) => row.id));
+    const saved = await doc.saveThoughts(items, { existingOnly, expectedText, desiredText, editKeys, retry, onAttempt: (item) => {
+      const current = capture.peek();
+      if (!current) throw new DraftSaveNotSentError();
+      const row = current.lines?.find((line) => line.id === item.thought.id) ?? current;
+      const attempt = { key: item.key, parentId: item.parent?.id ?? null, linkId: item.parent?.linkId ?? row.linkId, thought: item.thought };
+      if (!capture.prepareAttempt(attempt)) throw new DraftSaveNotSentError();
+    } });
     setSavingDraft(false);
     draftSaveInFlight.current = false;
-    for (const id of saved) personalOutline.group(id, draft.parentId, false);
+    for (const id of saved) if (!unknown.has(id)) personalOutline.group(id, items.find((item) => item.thought.id === id)?.parent?.id ?? null, false);
     if (saved.length < items.length) {
       // Confirmed thoughts are shared now; only the rest stay in the draft, with their IDs and request keys.
-      if (draft.lines && saved.length) capture.set({ ...draft, lines: draft.lines.filter((line) => !saved.includes(line.id)) });
+      const retained = capture.peek() ?? draft;
+      if (retained.lines && saved.length) capture.set({ ...retained, lines: retained.lines.filter((line) => !saved.includes(line.id)) });
       say('Couldn’t confirm the save. Your thought draft is kept; try again.');
       return;
     }
     capture.set(null);
     setSelection(saved);
-    say(saved.length === 1 ? `Added ${quote(items[0]!.thought.text)}` : `Added ${saved.length} thoughts`, true);
+    say(saved.length === 1 ? `Added ${quote(desiredText.get(saved[0]!) ?? items[0]!.thought.text)}` : `Added ${saved.length} thoughts`, true);
     focusThought(`.sk-node[data-id="${saved[0]}"], .sk-li-t[data-id="${saved[0]}"]`);
   };
 
@@ -508,7 +552,7 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
   const workAttempt = useRef<{ ids: string; key: string } | null>(null);
   const makeWork = async () => {
     const thoughts = selection.flatMap((id) => { const t = find(id); return t ? [t] : []; });
-    if (!thoughts.length || !sketch?.projectId) { say('Select thoughts first, then Create work'); return; }
+    if (!thoughts.length || !sketch?.projectId) { say('Select thoughts first, then Create task'); return; }
     const ids = thoughts.map((t) => t.id).join(',');
     if (workAttempt.current?.ids !== ids) workAttempt.current = { ids, key: crypto.randomUUID() };
     const title = thoughts.length === 1 ? thoughts[0]!.text : `Explore: ${thoughts.map((t) => t.text).join(', ')}`;
@@ -517,7 +561,7 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
       workAttempt.current = null;
       setTaskRevision((value) => value + 1);
       revalidator.revalidate();
-      say(`Created work ${quote(item.title)}; the thoughts stay on the map`);
+      say(`Created task ${quote(item.title)}; the thoughts stay on the map`);
       openDetails({ kind: 'work', id: item.id, projectId: item.projectId });
     } catch { say('Could not create the work yet. Wait for “Saved”, then try again.'); }
   };
@@ -573,9 +617,13 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
     describe(next);
   };
 
-  return (
-    <div className={`sk-page${mode === 'map' ? ' sk-page--map' : ''}`} ref={rootRef} onKeyDown={onKeyDown}>
-      <div className={`sk${mode === 'map' ? ' sk--map' : ''}`}>
+  const mapMode = mode === 'map';
+  const viewModes = <div className="seg sk-mode" role="radiogroup" aria-label="Show as">
+    {(['map', 'list'] as const).map((m) => (
+      <button key={m} type="button" role="radio" className="seg__b" aria-checked={mode === m} onClick={() => setMode(m)}>{m === 'map' ? 'Map' : 'List'}</button>
+    ))}
+  </div>;
+  const head = (
         <div className="sk-head">
           <p className="sk-lead">
             <Link to={back} className="sk-back">Sketches</Link>
@@ -588,19 +636,32 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
             ) : (
               <button type="button" className="sk-title" disabled={!canWrite} aria-label={canWrite ? `Rename sketch ${sketch.title}` : undefined} onClick={() => setRenaming(true)}>{sketch.title}</button>
             )}
-            <span className="sk-aud"><Icon name={sketch.scope === 'project' ? 'people' : 'lock'} size={12} />{audience(sketch, me.user.id, projectName, dmAudience)}</span>
+            <span className="sk-aud" title="Who can see this map"><Icon name={sketch.scope === 'project' ? 'people' : 'lock'} size={12} />{audience(sketch, me.user.id, projectName, dmAudience)}</span>
           </p>
           {/* #96: a DM sketch can be copied into a project, after an exact preview in Details. */}
           {sketch.scope === 'dm' && canWrite ? (
             <Button variant="secondary" className="sk-promote" onClick={() => openDetails({ kind: 'promote-sketch', sketchId: sketch.id, title: sketch.title })}>Make it a project…</Button>
           ) : null}
-          <div className="seg sk-mode" role="radiogroup" aria-label="Show as">
-            {(['map', 'list'] as const).map((m) => (
-              <button key={m} type="button" role="radio" className="seg__b" aria-checked={mode === m} onClick={() => setMode(m)}>{m === 'map' ? 'Map' : 'List'}</button>
-            ))}
-          </div>
+          {!phone || !mapMode || (!sketch.thoughts.length && !canWrite) ? viewModes : null}
         </div>
-
+  );
+  const confirmPrevious = !!capture.draft && (capture.draft.lines ?? [capture.draft]).some((row) => row.unknown || (phone && row.attempt?.parentId));
+  const pendingParents = capture.draft ? new Set((capture.draft.lines ?? [capture.draft]).map((row) => row.unknown ? null : row.attempt ? row.attempt.parentId : capture.draft!.parentId)) : new Set<string | null>();
+  const attemptParent = pendingParents.size === 1 ? [...pendingParents][0] : null;
+  const shownDraft = capture.draft ? { ...capture.draft, parentId: phone ? null : attemptParent ?? null } : null;
+  const draftForm = (focusReady = true) => shownDraft ? <DraftCapture draft={shownDraft} focusReady={focusReady} parent={shownDraft.parentId ? find(shownDraft.parentId)?.text ?? null : null}
+    confirmPrevious={confirmPrevious} mixedParents={pendingParents.size > 1}
+    saving={savingDraft} canWrite={canWrite} onText={(text) => { if (capture.draft) capture.set({ ...capture.draft, text,
+      key: capture.draft.attempt || capture.draft.unknown ? capture.draft.key : doc.newId(), editKey: doc.newId() }); }}
+    onLines={(lines) => {
+      if (!capture.draft) return;
+      if (lines.length) { capture.set({ ...capture.draft, lines }); return; }
+      capture.set(null); say('Pasted thoughts cancelled'); focusThought('.sk-add');
+    }}
+    onPaste={coarse ? () => void pasteFromClipboard() : undefined}
+    onSave={() => void saveDraft()} onCancel={() => { capture.set(null); say(capture.draft?.lines ? 'Pasted thoughts cancelled' : 'Thought draft cancelled'); focusThought('.sk-add'); }} /> : null;
+  const notices = (
+    <>
         {sketch.copies.length ? (
           <ul className="sk-copies" aria-label="Project copies">
             {sketch.copies.map((copy) => (
@@ -612,25 +673,117 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
           <p className="sk-origin"><Icon name="lock" size={12} />Copied from a direct message by {sketch.origin.copiedBy.id === me.user.id ? 'you' : sketch.origin.copiedBy.name} · {when(sketch.origin.copiedAt)}<span className="sk-origin__long">. Only the thoughts were copied; the conversation stays private.</span><span className="sk-origin__short"> · the conversation stays private</span></p>
         ) : null}
 
+        {/* Pressing these keeps focus in the editor. Safari and macOS Firefox never focus a pressed
+            button: the editor would blur first, and leaving the field saves, even for Cancel edit. */}
+        {editing && canWrite ? <div className="sk-edit-controls" role="group" aria-label="Current thought edit" onMouseDown={(event) => event.preventDefault()}>
+          <Button disabled={editing.saving || !editing.initial.trim()} onClick={() => void finishEdit(editing.initial)}>{editing.saving ? 'Saving…' : 'Save edit'}</Button>
+          <Button variant="secondary" disabled={editing.saving} onClick={() => void finishEdit(null)}>Cancel edit</Button>
+        </div> : null}
+
+        {!mapMode ? draftForm() : null}
+        {uploading ? <p className="sk-draft sk-draft--uploading" role="status"><Icon name="image" size={14} />Uploading the pasted image privately…</p> : null}
+
+        {editingState && (!editing || !canWrite) ? <label className="sk-draft">Your unsaved edit is kept
+          <textarea aria-label="Recoverable thought edit" readOnly value={editingState.initial} />
+          <Button variant="secondary" onClick={() => setEditing(null)}>Discard edit</Button>
+        </label> : null}
+    </>
+  );
+  const sayLine = doc.problem ? <span className="sk-warn">{doc.problem}</span> : status.text;
+  const statusLine = (
+    <p className={`sk-status${canWrite ? '' : ' sk-status--readonly'}${phone && status.selection && !doc.problem ? ' sk-status--selection' : ''}`} role="status">
+      {sayLine}
+      {!doc.problem && status.change ? <span className={doc.saving ? undefined : 'sk-ok'}> · {busy}</span> : null}
+    </p>
+  );
+  const hasStatus = !!doc.problem || !!status.text;
+  const helpText = phone
+    ? 'Tap a thought to select it. Add a thought, then Paste, fills a draft from copied lines, a link or an image. List shows the same thoughts in order.'
+    : coarse
+      ? 'Tap a thought to select it, then drag it, or drag its dot onto another thought to connect them. Add links a new thought to it. Select several adds taps to the selection. Thought, then Paste, turns copied lines, a link or an image into a draft. List shows the same thoughts in order.'
+      : 'Drag to move, drag a thought’s dot onto another thought to connect, or release it on empty space for a connected draft thought. Drag empty space to pan, Shift-click to select several. On a focused thought: arrows move (Shift further, Alt resizes) · Enter edits · Space selects · Enter on the dot connects · + adds a linked thought · Delete removes · Ctrl/⌘ Z undoes · Ctrl/⌘ V pastes lines, a link or an image as a draft.';
+
+  if (mapMode && !(sketch.thoughts.length || canWrite)) {
+    return (
+      <div className="sk-page" ref={rootRef} onKeyDown={onKeyDown}><div className="sk">{head}<p className="sk-empty-list">No thoughts yet.</p></div></div>
+    );
+  }
+  if (mapMode) {
+    // F-026: the map fills the pane; the header, the tools and the notices float over it.
+    const dock = canWrite && !phone ? (
+      <div className="sk-tools" role="toolbar" aria-label="Sketch tools">
+        <button type="button" className="sk-tool" aria-label="Select" aria-pressed={!connectFrom} data-tip="Select" onClick={() => { if (connectFrom) escape(); }}>
+          <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"><path d="M3.5 2.5 12 6.2 8 7.6 6.6 11.7z" /></svg>
+        </button>
+        <button type="button" className="ui-btn ui-btn--quiet sk-add" onClick={() => add(selection[selection.length - 1] ?? null)}><Icon name="plus" size={14} />Thought</button>
+        {coarse ? <button type="button" className="ui-btn ui-btn--quiet" aria-pressed={selectSeveral} onClick={() => { setSelectSeveral(!selectSeveral); say(selectSeveral ? 'Tapping selects one thought' : 'Tap thoughts to add them to the selection'); }}><Icon name="check" size={14} /><span className="sk-bl">Select several</span></button> : null}
+        {sketch.scope === 'project' ? <button type="button" className="ui-btn ui-btn--primary sk-task-btn" aria-disabled={!selection.length} onClick={() => void makeWork()} aria-label="Create task from selected thoughts">Create task</button> : null}
+        <button type="button" className="sk-tool" aria-label="Undo" data-tip="Undo" aria-disabled={!doc.canUndo} onClick={undo}><Icon name="undo" size={16} /></button>
+      </div>
+    ) : null;
+    const hint = canWrite ? (
+      <div className="sk-line">
+        {statusLine}
+        {!hasStatus && !phone ? <p className="sk-hint">Drag a dot onto a thought to connect · release on empty space to add a new one</p> : null}
+      </div>
+    ) : <div className="sk-line">{statusLine}</div>;
+    return (
+      <div className="sk-page sk-page--map" ref={rootRef} onKeyDown={onKeyDown}>
+        <div className="sk sk--map">
+          <div className="sk-over">
+            {head}
+            {!canWrite ? <p className="sk-readonly"><Icon name="lock" size={12} />{sketch.scope === 'dm'
+              ? 'Nobody else is in this conversation now, so the sketch is read-only until the other person reopens it.'
+              : 'You can look at this sketch; people who can change it keep it up to date.'}</p> : null}
+            {notices}
+          </div>
+          <SketchMap {...shared} coarse={coarse} compact={phone} helpId={helpId} heights={heights} dock={dock} hint={hint} viewModes={viewModes}
+            bar={{ project: sketch.scope === 'project', canUndo: doc.canUndo, helpOpen, onShape: cycleShape, onTask: () => void makeWork(), onUndo: undo, onHelp: () => setHelpOpen(!helpOpen) }}
+            onConnect={connectTo} onAddAt={(parentId, x, y) => add(parentId, '', false, { x, y })} onConnectFrom={connectFromDot} onAddThought={() => add(selection[selection.length - 1] ?? null)}
+            draftEditor={shownDraft ? draftForm : null} draft={shownDraft && !shownDraft.lines && !sketch.thoughts.some((thought) => thought.id === shownDraft.id)
+              ? { x: shownDraft.x, y: shownDraft.y, parentId: shownDraft.parentId, label: shownDraft.attempt ? 'Save not confirmed' : shownDraft.unknown ? 'Saved state unknown' : 'Draft · not saved' }
+              : null} onMove={move} onResize={resize} onClear={() => { if (connectFrom) return; setSelection([]); say(''); }} />
+          {!sketch.thoughts.length ? <p className="sk-first">{phone
+            ? <>An empty sketch. Start with <b>Add a thought</b>.</>
+            : <>An empty sketch. Add the first thought with <b>Thought</b>, then keep adding with the <b>+</b> beside it.</>}</p> : null}
+          <p className={`sk-help${helpOpen ? ' is-open' : ''}`} id={helpId}>{helpText}</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="sk-page" ref={rootRef} onKeyDown={onKeyDown}>
+      <div className="sk">
+        {head}
+        {sketch.copies.length ? (
+          <ul className="sk-copies" aria-label="Project copies">
+            {sketch.copies.map((copy) => (
+              <li key={copy.sketchId}><Icon name="check" size={12} />Copied to <Link to={`/projects/${copy.projectId}/map/${copy.sketchId}`}>{copy.projectName}</Link> · {when(copy.copiedAt)}<span className="sk-origin__long"> · later changes here stay in this conversation</span><span className="sk-origin__short"> · not synced</span></li>
+            ))}
+          </ul>
+        ) : null}
+        {sketch.origin ? (
+          <p className="sk-origin"><Icon name="lock" size={12} />Copied from a direct message by {sketch.origin.copiedBy.id === me.user.id ? 'you' : sketch.origin.copiedBy.name} · {when(sketch.origin.copiedAt)}<span className="sk-origin__long">. Only the thoughts were copied; the conversation stays private.</span><span className="sk-origin__short"> · the conversation stays private</span></p>
+        ) : null}
+
+
         {canWrite ? (
           <div className={`sk-bar${doc.problem ? ' sk-bar--problem' : ''}`}>
             <div className={`sk-tools${sketch.scope === 'project' ? ' sk-tools--seven' : ''}`} role="toolbar" aria-label="Sketch tools">
             <button type="button" className="ui-btn ui-btn--quiet sk-add" onClick={() => add(selection[selection.length - 1] ?? null)}><Icon name="plus" size={14} />Thought</button>
-            <button type="button" className="ui-btn ui-btn--quiet" aria-pressed={!!connectFrom} onClick={connect} aria-label="Connect"><Icon name="link" size={14} /><span className="sk-bl">Connect</span></button>
+            {phone ? null : <button type="button" className="ui-btn ui-btn--quiet" aria-pressed={!!connectFrom} onClick={connect} aria-label="Connect"><Icon name="link" size={14} /><span className="sk-bl">Connect</span></button>}
             <button type="button" className="ui-btn ui-btn--quiet" aria-disabled={selection.length !== 1} onClick={() => {
               if (selection.length !== 1) { say('Select one thought, then Edit'); return; }
               startEdit(selection[0]!);
             }} aria-label="Edit"><Icon name="edit" size={14} /><span className="sk-bl">Edit</span></button>
-            <button type="button" className="ui-btn ui-btn--quiet" aria-disabled={!selection.length} onClick={cycleShape} aria-label="Change shape"><Icon name="shape" size={14} /><span className="sk-bl">Shape</span></button>
+            {phone ? null : <button type="button" className="ui-btn ui-btn--quiet" aria-disabled={!selection.length} onClick={cycleShape} aria-label="Change shape"><Icon name="shape" size={14} /><span className="sk-bl">Shape</span></button>}
             <button type="button" className="ui-btn ui-btn--quiet" aria-disabled={!selection.length} onClick={() => remove(selection)} aria-label="Remove from sketch"><Icon name="trash" size={14} /><span className="sk-bl">Remove</span></button>
-            {sketch.scope === 'project' ? <button type="button" className="ui-btn ui-btn--quiet" aria-disabled={!selection.length} onClick={() => void makeWork()} aria-label="Create work from selected thoughts"><Icon name="tasks" size={14} /><span className="sk-bl sk-bl--long">Create work</span><span className="sk-bl sk-bl--short">Task</span></button> : null}
+            {sketch.scope === 'project' ? <button type="button" className="ui-btn ui-btn--quiet" aria-disabled={!selection.length} onClick={() => void makeWork()} aria-label="Create task from selected thoughts"><Icon name="tasks" size={14} /><span className="sk-bl sk-bl--long">Create task</span><span className="sk-bl sk-bl--short">Task</span></button> : null}
             <span className="sk-div" aria-hidden="true" />
             <button type="button" className="ui-btn ui-btn--quiet" aria-disabled={!doc.canUndo} onClick={undo} aria-label="Undo"><Icon name="undo" size={14} /><span className="sk-bl">Undo</span></button>
             </div>
-            <p className="sk-status" role="status">
-              {doc.problem ? <span className="sk-warn">{doc.problem}</span> : status.text}
-              {!doc.problem && status.change ? <span className={doc.saving ? undefined : 'sk-ok'}> · {busy}</span> : null}
-            </p>
+            {statusLine}
           </div>
         ) : (
           <>
@@ -640,7 +793,6 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
             <p className="sk-status sk-status--readonly" role="status">{status.text}</p>
           </>
         )}
-
         {/* Pressing these keeps focus in the editor. Safari and macOS Firefox never focus a pressed
             button: the editor would blur first, and leaving the field saves, even for Cancel edit. */}
         {editing && canWrite ? <div className="sk-edit-controls" role="group" aria-label="Current thought edit" onMouseDown={(event) => event.preventDefault()}>
@@ -648,15 +800,7 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
           <Button variant="secondary" disabled={editing.saving} onClick={() => void finishEdit(null)}>Cancel edit</Button>
         </div> : null}
 
-        {capture.draft ? <DraftCapture draft={capture.draft} parent={capture.draft.parentId ? find(capture.draft.parentId)?.text ?? null : null}
-          saving={savingDraft} canWrite={canWrite} onText={(text) => { if (capture.draft) capture.set({ ...capture.draft, text, key: doc.newId() }); }}
-          onLines={(lines) => {
-            if (!capture.draft) return;
-            if (lines.length) { capture.set({ ...capture.draft, lines }); return; }
-            capture.set(null); say('Pasted thoughts cancelled'); focusThought('.sk-add');
-          }}
-          onPaste={coarse ? () => void pasteFromClipboard() : undefined}
-          onSave={() => void saveDraft()} onCancel={() => { capture.set(null); say(capture.draft?.lines ? 'Pasted thoughts cancelled' : 'Thought draft cancelled'); focusThought('.sk-add'); }} /> : null}
+        {draftForm()}
         {uploading ? <p className="sk-draft sk-draft--uploading" role="status"><Icon name="image" size={14} />Uploading the pasted image privately…</p> : null}
 
         {editingState && (!editing || !canWrite) ? <label className="sk-draft">Your unsaved edit is kept
@@ -664,22 +808,9 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
           <Button variant="secondary" onClick={() => setEditing(null)}>Discard edit</Button>
         </label> : null}
 
-        {mode === 'map' ? (
-          sketch.thoughts.length || canWrite ? (
-            <>
-              <SketchMap {...shared} coarse={coarse} compact={phone} helpId={helpId} heights={heights} onMove={move} onResize={resize} onClear={() => { if (connectFrom) return; setSelection([]); say(''); }} />
-              {!sketch.thoughts.length ? <p className="sk-first">An empty sketch. Add the first thought with <b>Thought</b>, then keep adding with the <b>+</b> beside it.</p> : null}
-            </>
-          ) : <p className="sk-empty-list">No thoughts yet.</p>
-        ) : (
-          <SketchList {...shared} personalOutline={personalOutline} onNavigate={navigateThought} />
-        )}
 
-        <p className="sk-help" id={helpId}>
-          {coarse
-            ? 'Tap a thought to select it, then drag it. Add links a new thought to it. Thought, then Paste, turns copied lines, a link or an image into a draft. List shows the same thoughts in order.'
-            : 'Drag to move, drag empty space to pan, Shift-click to select several. On a focused thought: arrows move (Shift further, Alt resizes) · Enter edits · Space selects · + adds a linked thought · Delete removes · Ctrl/⌘ Z undoes · Ctrl/⌘ V pastes lines, a link or an image as a draft.'}
-        </p>
+        <SketchList {...shared} personalOutline={personalOutline} onNavigate={navigateThought} />
+        <p className="sk-help" id={helpId}>{helpText}</p>
       </div>
     </div>
   );

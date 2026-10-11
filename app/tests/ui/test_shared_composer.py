@@ -501,7 +501,7 @@ class SharedComposerJourney(unittest.TestCase):
         page.goto(f"/projects/{project['id']}/map/{sketch['id']}")
         page.locator(f".sk-node[data-id='{thought['id']}']").click()
         with page.expect_response(lambda response: response.request.method == "POST" and response.url.endswith(f"/projects/{project['id']}/work")) as created:
-            page.get_by_role("button", name="Create work from selected thoughts").click()
+            page.get_by_role("button", name="Create task from selected thoughts").click()
         task = created.value.json()
         details = page.get_by_role("region", name="Discussion")
         box = details.get_by_label("First message about this task")

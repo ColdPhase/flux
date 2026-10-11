@@ -29,7 +29,7 @@ from playwright.sync_api import Locator, Page, expect, sync_playwright
 
 import adaptive_fixture as fx
 from author_columns import assert_author_column
-from test_app_shell import ORIGIN, UPSTREAM, shot, start_forwarder
+from test_app_shell import show_map_as, open_map_options, ORIGIN, UPSTREAM, shot, start_forwarder
 
 # Width × height fixtures (CSS px). Phones and tablets use a coarse (touch) pointer.
 # Every starting fixture of docs/design/adaptive-workspaces.md, by context: phones, short landscape
@@ -49,7 +49,6 @@ TABS = ["Conversation", "Map", "Tasks", "Wiki", "Agents"]
 # ADAPT-2 caps that stop the wide screens from giving more room (measured by test_07). Each is open until its
 # owner's PR lands; the test fails once a cap is gone, so the entry is removed rather than passing silently.
 WIDE_CAPS = {
-    "the map plane": "the sketch page caps the plane at 1080 px (app/apps/web/src/sketch/sketch.css; PR #380 owns the map)",
     "the Agents column": "the Agents column stays at 854 px (app/apps/web/src/agents/agents.css; PRs #376 and #417 own it)",
 }
 # The readable measure (proposed 2026-10-05, docs/design/adaptive-layout-rules.md): at most 90
@@ -434,23 +433,30 @@ class AdaptiveMatrix(AdaptiveBase):
         tools = page.get_by_role("toolbar", name="Sketch tools")
         for button in tools.get_by_role("button").all():
             self.primary(page, button, f"the map tool “{button.inner_text().strip() or button.get_attribute('aria-label')}”")
+        options = open_map_options(page) if page.get_by_role('button', name='Map options', exact=True).is_visible() else None
         for name in ("Map", "List"):
             self.primary(page, page.get_by_role("radio", name=name, exact=True), f"the {name} switch")
         zoom = page.get_by_role("group", name="Zoom")
         for button in zoom.get_by_role("button").all():
             self.primary(page, button, f"the zoom control “{button.get_attribute('aria-label')}”")
-        self.measure(page, ".sk-help", "The map hint")
+        if options is not None:
+            options.get_by_role('button', name='Close map options', exact=True).click()
+            expect(options).to_have_count(0)
+        add = page.get_by_role("button", name="Add a thought", exact=True)
+        if add.count():
+            self.primary(page, add, "the phone's Add a thought")
+        self.measure(page, ".sk-hint, .sk-phone__note", "The map hint")
         self.no_sideways_scroll(page, "Map")
         self.shot(page, f"adapt-{size}{tag}-map")
 
         # The same thoughts as a list.
-        page.get_by_role("radio", name="List", exact=True).click()
+        show_map_as(page, "List")
         rows = page.locator(".sk-li-t")
         expect(rows).to_have_count(len(fx.THOUGHTS))
         self.primary(page, rows.first, "a list row")
         self.no_sideways_scroll(page, "List")
         self.shot(page, f"adapt-{size}{tag}-list")
-        page.get_by_role("radio", name="Map", exact=True).click()
+        show_map_as(page, "Map")
         expect(page.locator(".sk-node")).to_have_count(len(fx.THOUGHTS))
 
         # Tasks: a readable active/blocked route on narrow boards, every column on wide ones.
@@ -544,7 +550,9 @@ class AdaptiveMatrix(AdaptiveBase):
                 expect(page.locator("#details.ui-panel--docked")).to_be_visible()
                 page.wait_for_timeout(300)
                 after = page.locator(".sk-canvas").bounding_box()["width"]
-                self.assertGreaterEqual(after, before - 1, f"the map canvas keeps its width beside Details at {width}")
+                # F-026: the map fills its pane, so docking Details narrows it; what is left stays a real work surface.
+                self.assertLessEqual(after, before + 1)
+                self.assertGreaterEqual(after, min(900, width * 0.45), f"the map canvas keeps a usable width beside Details at {width}")
                 self.assertLessEqual(page.locator(".sk-canvas").bounding_box()["x"] + after, page.locator("#details").bounding_box()["x"] + 1)
                 page.goto(f"/projects/{pid}/tasks")
                 expect(page.locator(".tb-board")).to_be_visible()
@@ -642,8 +650,8 @@ class AdaptiveMatrix(AdaptiveBase):
                     self.no_problems()
 
     def test_07_wide_screens_gain_room_for_the_map_and_the_agents_column(self) -> None:
-        """ADAPT-2: a larger screen gives the map plane and the Agents column more room. Each cap in WIDE_CAPS is
-        still in the code and measured here; the test fails when a cap is gone, so the entry must be removed."""
+        """ADAPT-2: the map fills its pane and grows with the screen. Remaining caps in WIDE_CAPS are
+        still measured; the test fails when one is gone, so the entry must be removed."""
         measured: dict[int, dict[str, float]] = {}
         for width, height in [(1920, 1080), (2560, 1440), (3840, 2160)]:
             page = self.page(width, height)
@@ -651,12 +659,16 @@ class AdaptiveMatrix(AdaptiveBase):
             expect(page.locator(".sk-node")).to_have_count(len(fx.THOUGHTS))
             self.at_rest(page)
             plane = page.locator(".sk-canvas").bounding_box()["width"]
+            pane = page.locator(".sk-page--map").bounding_box()["width"]
+            self.assertAlmostEqual(plane, pane, delta=1, msg=f"the map fills the available pane at {width} CSS px")
             self.tab(page, "Agents")
             expect(page.get_by_role("heading", level=1, name="Working together")).to_be_visible()
             self.at_rest(page)
             column = page.locator(".agents").first.bounding_box()["width"]
             measured[width] = {"the map plane": round(plane), "the Agents column": round(column)}
-        print("\n  wide caps, CSS px at 1920 / 2560 / 3840: " + "; ".join(f"{name} {measured[1920][name]} / {measured[2560][name]} / {measured[3840][name]}" for name in WIDE_CAPS), end="")
+        print("\n  wide surfaces, CSS px at 1920 / 2560 / 3840: " + "; ".join(f"{name} {measured[1920][name]} / {measured[2560][name]} / {measured[3840][name]}" for name in measured[1920]), end="")
+        for smaller, larger in ((1920, 2560), (2560, 3840)):
+            self.assertGreater(measured[larger]["the map plane"], measured[smaller]["the map plane"], f"the map gains room at {larger} CSS px: {measured}")
         for name in WIDE_CAPS:
             capped = measured[3840][name] - measured[1920][name] <= 1
             self.assertTrue(capped, f"{name} now grows with the screen; remove it from WIDE_CAPS: {measured}")
@@ -833,9 +845,12 @@ class AdaptiveTransitions(AdaptiveBase):
         """T151-E: zoomed in, the phone's two columns scroll sideways; selecting, the keyboard and a zoom step keep that place."""
         page = self.page(390, 844)
         canvas = self.open_map(page)
+        options = open_map_options(page, touch=True)
         for label in ("110%", "125%", "150%"):
-            page.get_by_role("button", name="Zoom in").click()
-            expect(page.get_by_role("button", name=f"Zoom {label}, reset to 100%")).to_be_visible()
+            options.get_by_role("button", name="Zoom in").tap()
+            expect(options.get_by_role("button", name=f"Zoom {label}, reset to 100%")).to_be_visible()
+        options.get_by_role('button', name='Close map options', exact=True).tap()
+        expect(options).to_have_count(0)
         right = canvas.evaluate("""(c) => {
           const box = c.getBoundingClientRect();
           let best = null;
@@ -860,15 +875,18 @@ class AdaptiveTransitions(AdaptiveBase):
         self.assertEqual(page.evaluate(CAMERA)["left"], camera["left"], "a keyboard keeps the sideways place")
         self.resize(page, 390, 844)
         self.assertEqual(page.evaluate(CAMERA)["left"], camera["left"], "closing the keyboard keeps the sideways place")
-        page.get_by_role("button", name="Zoom out").click()
-        expect(page.get_by_role("button", name="Zoom 125%, reset to 100%")).to_be_visible()
+        options = open_map_options(page, touch=True)
+        options.get_by_role("button", name="Zoom out").tap()
+        expect(options.get_by_role("button", name="Zoom 125%, reset to 100%")).to_be_visible()
+        options.get_by_role('button', name='Close map options', exact=True).tap()
+        expect(options).to_have_count(0)
         page.wait_for_timeout(250)
         self.assertGreater(page.evaluate(CAMERA)["left"], 0, "a zoom step keeps a sideways place")
         self.assertEqual(self.thoughts(page), len(fx.THOUGHTS), "nothing is saved")
         self.no_problems()
 
-    def test_16_dragging_the_top_thought_on_a_phone_moves_the_thought_not_the_view(self) -> None:
-        """T151-E: the phone camera anchors on the top thought; dragging that thought must not scroll the map with it."""
+    def test_16_dragging_the_top_thought_on_a_phone_does_not_arrange_the_thought_or_move_the_view(self) -> None:
+        """T151-E, S15: the phone camera anchors on the top thought; dragging it neither arranges it nor scrolls the map."""
         page = self.page(390, 844)
         canvas = self.open_map(page)
         self.set_camera(page, 0, 160)
@@ -895,18 +913,12 @@ class AdaptiveTransitions(AdaptiveBase):
             page.wait_for_timeout(50)
             self.assertEqual(page.evaluate(CAMERA), camera, f"the view stays still {25 * step} px into the drag")
         page.mouse.up()
-        expect(page.locator(".sk-status")).to_contain_text("Moved")
         page.wait_for_timeout(300)
-        self.assertGreater(node.bounding_box()["y"], start["y"], "the dragged thought moves down on screen")
-        self.assertEqual(page.evaluate(CAMERA), camera, "dropping keeps the view")
-        moved = {t["id"]: (t["x"], t["y"]) for t in self.api(page, "GET", f"/api/v1/sketches/{self.ids['sketch']}")["thoughts"]}
-        self.assertEqual(moved[top][1], stored[top][1] + 150, "the drop saves the dragged distance")
-        # Put the shared fixture back.
-        page.keyboard.press("Control+z")
-        expect(page.locator(".sk-status")).to_contain_text("Undid")
-        page.wait_for_timeout(300)
-        restored = {t["id"]: (t["x"], t["y"]) for t in self.api(page, "GET", f"/api/v1/sketches/{self.ids['sketch']}")["thoughts"]}
-        self.assertEqual(restored[top], stored[top], "undo puts the thought back")
+        # S15 (#349): the phone only views and adds; the drag arranges nothing and the view stays put.
+        self.assertEqual(node.bounding_box()["y"], start["y"], "the thought stays where it is on a phone")
+        self.assertEqual(page.evaluate(CAMERA), camera, "releasing keeps the view")
+        after = {t["id"]: (t["x"], t["y"]) for t in self.api(page, "GET", f"/api/v1/sketches/{self.ids['sketch']}")["thoughts"]}
+        self.assertEqual(after, stored, "nothing was moved on the shared map")
         self.no_problems()
 
 
