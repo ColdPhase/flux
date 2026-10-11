@@ -146,6 +146,7 @@ function AppLayoutContent() {
   const detailsScope = useRef<typeof detailsOwner | null>(detailsOwner);
   useLayoutEffect(() => { detailsScope.current = detailsOwner; return () => { detailsScope.current = null; }; }, [detailsOwner]);
   const [actionSlot, setActionSlot] = useState<HTMLElement | null>(null);
+  const [metadataSlot, setMetadataSlot] = useState<HTMLElement | null>(null);
   const shell = useMemo(() => ({
     openDetails(view: DetailsView = 'place') {
       if (detailsScope.current !== detailsOwner) return;
@@ -155,7 +156,8 @@ function AppLayoutContent() {
     openSearch() { setNavOpen(false); setJumpOpen(true); },
     openNavigation() { setDetailsOpen(false); setNavOpen(true); },
     actionSlot,
-  }), [toggleDetails, actionSlot, projectId, detailsOwner]);
+    metadataSlot,
+  }), [toggleDetails, actionSlot, metadataSlot, projectId, detailsOwner]);
 
   // A link inside an overlaid panel or sheet (#117 overview) leads to its destination.
   const [shownPath, setShownPath] = useState(location.pathname);
@@ -405,6 +407,7 @@ function AppLayoutContent() {
                 <h1 title={place.title}>{place.title}</h1>
               </div>
               <div className="top__meta">
+                <div className="top__meta-slot" ref={setMetadataSlot} />
                 {/* Who can read the project, then its current state; Details retains the full names. */}
                 <button type="button" className="top__audience" onClick={openAudience} aria-haspopup="dialog" title={audience}>
                   <Icon name={audienceOpen ? 'people' : 'lock'} size={12} /><span>{audience}</span><span className="ui-vh">, who can see this project</span>

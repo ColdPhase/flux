@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useRef, useState, type ChangeEvent } from 'react';
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { Link, Outlet, redirect, useLoaderData, useLocation, useMatch, useNavigate, useParams, type LoaderFunctionArgs, type ShouldRevalidateFunctionArgs } from 'react-router';
 import type { DocSummary, Project } from '@flux/contracts';
 import { ApiError } from '../api/client';
@@ -11,10 +11,12 @@ import { WikiIcon } from './WikiParts';
 import { WikiContext, useWiki, type WikiState } from './wiki-context';
 import './docs.css';
 
-// The project wiki as two panes (UI116-4): a page index with search, New page
-// and Import .md beside the document. The open page is marked by a quiet tint, a stronger label,
-// a small dot and aria-current, never by colour alone. In a narrow work area the index becomes a
-// compact strip above the document.
+// The project wiki as drawn (F-026, #354): the "Pages" list beside the document. The open page is a
+// raised row with a stronger label and aria-current, never colour alone. In a narrow work area
+// (a phone) the list becomes a row of chips above the document and the page's actions one menu.
+
+/** Below this width of the wiki itself it is "compact": the phone layout, whatever the viewport. */
+const COMPACT_BELOW = 500;
 
 interface WikiData { project: Project; docs: DocSummary[] }
 
@@ -51,16 +53,29 @@ export function WikiLayout() {
   // Writing gets the whole column on a phone: the page strip steps aside while a page is edited.
   const editing = /\/docs\/(new|[^/]+\/edit)$/.test(useLocation().pathname);
   const [focus, setFocusState] = useState(() => readKey(FOCUS_KEY) === '1');
+  const frame = useRef<HTMLDivElement>(null);
+  const [compact, setCompact] = useState(false);
+  useLayoutEffect(() => {
+    const node = frame.current;
+    if (!node) return;
+    const measure = () => setCompact(node.clientWidth < COMPACT_BELOW);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
   useEffect(() => { if (docId) writeKey(pageKey(project.id), docId); }, [project.id, docId]);
+  // Focus is a computer setting: on a phone the pages are always a row of chips (nothing to exit),
+  // and the choice returns when the wiki is wide again.
   const value = useMemo<WikiState>(() => ({
-    project, docs, focus, writable: project.access !== 'viewer',
+    project, docs, focus, compact, writable: project.access !== 'viewer',
     setFocus(next: boolean) { writeKey(FOCUS_KEY, next ? '1' : null); setFocusState(next); },
-  }), [project, docs, focus]);
+  }), [project, docs, focus, compact]);
   return (
     <WikiContext.Provider value={value}>
-      <div className="wiki-frame">
-        <div className={`wiki${focus ? ' wiki--focus' : ''}${editing ? ' wiki--editing' : ''}`}>
-          <WikiIndex activeId={docId ?? null} hidden={focus} />
+      <div className="wiki-frame" ref={frame}>
+        <div className={`wiki${focus && !compact ? ' wiki--focus' : ''}${editing ? ' wiki--editing' : ''}`}>
+          <WikiIndex activeId={docId ?? null} hidden={focus && !compact} />
           <div className="wiki-main pane-scroll"><Outlet /></div>
         </div>
       </div>
@@ -72,7 +87,7 @@ const collator = new Intl.Collator(undefined, { sensitivity: 'base', numeric: tr
 const fold = (text: string) => text.normalize('NFD').replace(/\p{M}/gu, '').toLocaleLowerCase();
 
 function WikiIndex({ activeId, hidden }: { activeId: string | null; hidden: boolean }) {
-  const { project, docs, writable } = useWiki();
+  const { project, docs, writable, compact } = useWiki();
   const navigate = useNavigate();
   const toast = useToast();
   const creating = !!useMatch('/projects/:projectId/docs/new');
@@ -92,6 +107,8 @@ function WikiIndex({ activeId, hidden }: { activeId: string | null; hidden: bool
   const needle = fold(query.trim());
   const shown = needle ? pages.filter((doc) => fold(`${doc.title} ${doc.excerpt}`).includes(needle)) : pages;
   const listed = shown.length > 0;
+  // On a phone the search appears once the chip row is long enough to need it (or while searching).
+  const searchable = docs.length > 0 && (!compact || docs.length > 5 || !!query);
 
   // As a strip (narrow work area) the index scrolls sideways; keep the open page in view, also
   // when the strip's width changes (rotation, resize, a panel opening).
@@ -133,46 +150,55 @@ function WikiIndex({ activeId, hidden }: { activeId: string | null; hidden: bool
     } finally { setImporting(false); }
   }
 
+  const newPage = writable ? (
+    <Link className="ui-icon-btn wiki-index__new" to={`/projects/${project.id}/docs/new`} aria-label="New page" aria-current={creating ? 'page' : undefined}>
+      <Icon name="plus" size={16} />
+    </Link>
+  ) : null;
+  const importer = writable ? (
+    <>
+      <button type="button" className={compact ? 'ui-icon-btn wiki-index__new' : 'ui-btn ui-btn--quiet wiki-index__import'} aria-label="Import .md" onClick={() => { if (!importing) fileRef.current?.click(); }}
+        aria-disabled={importing || undefined} aria-busy={importing || undefined} aria-describedby={error ? errorId : undefined}>
+        {importing ? <Spinner /> : <WikiIcon name="upload" size={14} />}{compact ? null : <span>Import .md</span>}
+      </button>
+      <input ref={fileRef} type="file" accept=".md,.markdown,text/markdown,text/x-markdown" hidden tabIndex={-1}
+        onChange={(event) => void importFile(event)} />
+    </>
+  ) : null;
+
   return (
     <nav className="wiki-index" aria-label="Wiki pages" hidden={hidden}>
-      <p className="wiki-index__eyebrow">Project memory</p>
-      {docs.length ? (
+      {compact ? null : (
+        <div className="wiki-index__head">
+          <p className="wiki-index__eyebrow">Pages</p>
+          {newPage}
+        </div>
+      )}
+      {searchable ? (
         <div className="wiki-search">
           <Icon name="search" size={14} />
           <label className="ui-vh" htmlFor={searchId}>Search the wiki</label>
-          <input id={searchId} type="search" placeholder="Search the wiki" autoComplete="off" value={query}
+          <input id={searchId} type="search" placeholder="Search pages" autoComplete="off" value={query}
             onChange={(event) => setQuery(event.target.value)}
             onKeyDown={(event) => { if (event.key === 'Escape' && query) { event.stopPropagation(); setQuery(''); } }} />
         </div>
       ) : null}
       {/* Mounted while the index is shown, so a changed count is announced. */}
       <p className="wiki-index__count" role="status">{needle ? (shown.length ? `${shown.length} ${shown.length === 1 ? 'page' : 'pages'}` : `No pages match “${query.trim()}”.`) : ''}</p>
-      {shown.length ? (
+      {shown.length || compact ? (
         <ul ref={listRef} className="wiki-pages">
           {shown.map((doc) => (
             <li key={doc.id}>
               <Link className="wiki-page" to={docUrl(project.id, doc.id)} title={doc.title} aria-current={doc.id === activeId ? 'page' : undefined}>
-                <Icon name="doc" size={12} />
                 <span className="wiki-page__t">{doc.title}</span>
                 {doc.state === 'draft' ? <span className="wiki-page__state">Draft</span> : null}
               </Link>
             </li>
           ))}
+          {compact && writable ? <li className="wiki-pages__end">{newPage}{importer}</li> : null}
         </ul>
       ) : null}
-      {writable ? (
-        <div className="wiki-index__acts">
-          <Link className="ui-btn ui-btn--quiet wiki-index__act" to={`/projects/${project.id}/docs/new`} aria-current={creating ? 'page' : undefined}>
-            <Icon name="plus" size={14} /><span className="wiki-index__act-t">New page</span>
-          </Link>
-          <button type="button" className="ui-btn ui-btn--quiet wiki-index__act" onClick={() => { if (!importing) fileRef.current?.click(); }}
-            aria-disabled={importing || undefined} aria-busy={importing || undefined} aria-describedby={error ? errorId : undefined}>
-            {importing ? <Spinner /> : <WikiIcon name="upload" size={14} />}<span className="wiki-index__act-t">Import .md</span>
-          </button>
-          <input ref={fileRef} type="file" accept=".md,.markdown,text/markdown,text/x-markdown" hidden tabIndex={-1}
-            onChange={(event) => void importFile(event)} />
-        </div>
-      ) : null}
+      {!compact && writable ? <div className="wiki-index__acts">{importer}</div> : null}
       {error ? <p className="wiki-index__error" id={errorId} role="alert"><Icon name="alert" size={13} /><span>{error}</span></p> : null}
     </nav>
   );

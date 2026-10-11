@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import re
 import tarfile
 import time
@@ -107,7 +108,7 @@ class WikiPanesJourney(unittest.TestCase):
         if UPSTREAM:
             start_forwarder(ORIGIN, UPSTREAM)
         cls.pw = sync_playwright().start()
-        cls.browser = cls.pw.chromium.launch()
+        cls.browser = getattr(cls.pw, os.environ.get("FLUX_UI_BROWSER", "chromium")).launch()
         expect.set_options(timeout=8000)
 
     @classmethod
@@ -161,12 +162,14 @@ class WikiPanesJourney(unittest.TestCase):
         return page.get_by_role("navigation", name="Wiki pages")
 
     def measure(self, page: Page, selector: str, minimum: float = 4.5, **spec) -> dict:
-        page.wait_for_function("""spec => {
+        # Check opacity and measure in the same browser task: a separate evaluation can land
+        # inside the menu's fade after the readiness command observed the pre-animation style.
+        measured = page.wait_for_function("""spec => {
           const el = document.querySelector(spec.selector); if (!el) return false;
           for (let n = el; n; n = n.parentElement) if (Number(getComputedStyle(n).opacity) !== 1) return false;
-          return true;
-        }""", arg={"selector": selector}, timeout=5000)
-        value = page.evaluate(MEASURE, {"selector": selector, **spec})
+          return (""" + MEASURE + ")(spec); }", arg={"selector": selector, **spec}, timeout=5000)
+        value = measured.json_value()
+        measured.dispose()
         self.assertGreaterEqual(value["ratio"], minimum, value)
         return value
 
@@ -222,38 +225,53 @@ class WikiPanesJourney(unittest.TestCase):
         expect(items).to_have_count(3)
         expect(index.locator(".wiki-page__t")).to_have_text([WIRING, LAMP, PARTS])
         expect(index.get_by_role("link", name=WIRING)).to_contain_text("Draft")
-        # Exactly one current page, marked by tint and weight as well as aria-current; no dot beside it (#431).
+        # Exactly one current page, marked by a raised row and weight as well as aria-current.
         expect(index.locator('[aria-current="page"]')).to_have_count(1)
         active = index.get_by_role("link", name=LAMP)
         expect(active).to_have_attribute("aria-current", "page")
         expect(index.get_by_role("link", name=PARTS)).not_to_have_attribute("aria-current", "page")
         self.assertEqual(active.evaluate("e => getComputedStyle(e).fontWeight"), "600")
-        self.assertEqual(index.get_by_role("link", name=PARTS).evaluate("e => getComputedStyle(e).fontWeight"), "450")
+        self.assertEqual(index.get_by_role("link", name=PARTS).evaluate("e => getComputedStyle(e).fontWeight"), "500")
+        raised = active.evaluate("e => [getComputedStyle(e).backgroundColor, getComputedStyle(e).boxShadow]")
+        self.assertNotEqual(raised[0], index.evaluate("e => getComputedStyle(e).backgroundColor"), "the open page is raised from the list")
+        self.assertNotEqual(raised[1], "none")
+        # As drawn: "Pages" with a New page button, a 220px list, the page at a 776px column with a 32px title.
+        expect(index.get_by_text("Pages", exact=True)).to_be_visible()
+        self.assertAlmostEqual(index.bounding_box()["width"], 220, delta=1)
+        self.assertLessEqual(page.locator(".wiki-doc").bounding_box()["width"], 776.5)
+        # #431 retains one-line/ellipsis, full names and no dot; final Pages rows have no pictogram.
         marker = page.evaluate(DOT, '.wiki-page[aria-current="page"]')
         self.assertEqual(marker["content"], "none", "no pseudo-element dot beside the open page's label (#431)")
-        tint = active.evaluate("e => getComputedStyle(e).backgroundColor")
-        self.assertNotIn(tint, ("rgba(0, 0, 0, 0)", "transparent"), "the open page has a quiet tint")
-        self.assertNotEqual(tint, index.evaluate("e => getComputedStyle(e).backgroundColor"), "the tint differs from the index")
-        # Studio 11.6 geometry: a 212px index, a 57px bar and an 820px document with 30px titles.
-        self.assertAlmostEqual(index.bounding_box()["width"], 212, delta=1)
-        self.assertAlmostEqual(page.locator(".wiki-bar").bounding_box()["height"], 57, delta=1)
-        self.assertLessEqual(page.locator(".wiki-doc").bounding_box()["width"], 820.5)
-        # One line per page (#431): equal row heights, the full title on the link, the icon centred.
         rows = items.evaluate_all("""els => els.map(e => {
-          const r = e.getBoundingClientRect(), t = e.querySelector('.wiki-page__t'), i = e.querySelector('svg').getBoundingClientRect();
-          return {h: r.height, lines: Math.round(t.getBoundingClientRect().height / parseFloat(getComputedStyle(t).lineHeight)),
-            title: e.title, text: t.textContent, icon: Math.abs((i.top + i.height / 2) - (r.top + r.height / 2))};
+            const r = e.getBoundingClientRect(), t = e.querySelector('.wiki-page__t'), tr = t.getBoundingClientRect(), style = getComputedStyle(t);
+            return {h: r.height, lines: Math.round(tr.height / parseFloat(style.lineHeight)), title: e.title, text: t.textContent,
+                iconCount: e.querySelectorAll('svg').length, labelWithin: tr.left >= r.left && tr.right <= r.right,
+                rowFits: e.scrollWidth <= e.clientWidth, overflow: style.overflow, ellipsis: style.textOverflow};
         })""")
         for row in rows:
             self.assertEqual(row["lines"], 1, row)
             self.assertEqual(row["title"], row["text"], row)
-            self.assertLessEqual(row["icon"], 1, row)
+            self.assertEqual(row["iconCount"], 0, "the fixed final Pages list uses text-only rows")
+            self.assertTrue(row["labelWithin"] and row["rowFits"], row)
+            self.assertEqual((row["overflow"], row["ellipsis"]), ("hidden", "ellipsis"), row)
         self.assertLessEqual(max(row["h"] for row in rows) - min(row["h"] for row in rows), 0.5, rows)
         title = page.get_by_role("heading", level=2, name=LAMP)
-        self.assertEqual(title.evaluate("e => [getComputedStyle(e).fontSize, getComputedStyle(e).fontWeight]"), ["32px", "650"])
+        self.assertEqual(title.evaluate("e => [getComputedStyle(e).fontSize, getComputedStyle(e).fontWeight]"), ["32px", "600"])
         prose = page.locator(".doc-prose")
-        self.assertEqual(prose.evaluate("e => [getComputedStyle(e).fontSize, getComputedStyle(e).lineHeight]"), ["14px", "25.9px"])
-        self.assertEqual(prose.locator("h2").first.evaluate("e => [getComputedStyle(e).fontSize, getComputedStyle(e).fontWeight, getComputedStyle(e).borderBottomStyle]"), ["20px", "600", "none"])
+        self.assertEqual(prose.evaluate("e => getComputedStyle(e).fontSize"), "15px")
+        self.assertEqual(prose.locator("h2").first.evaluate("e => [getComputedStyle(e).fontSize, getComputedStyle(e).fontWeight]"), ["19px", "600"])
+        # Who edited: the last editor with a face, then who started the page.
+        who = page.locator(".wiki-who")
+        expect(who).to_contain_text(f"Edited by {PARTNER['name']}")
+        expect(who).to_contain_text(OWNER["name"])
+        expect(who.locator(".ui-avatar")).to_have_count(2)
+        # The outline from the page's headings moves focus to its heading, by keyboard too.
+        outline = page.get_by_role("complementary", name="On this page")
+        expect(outline.get_by_role("link")).to_have_text(["What we want", "What we test", "Running it", "Privacy"])
+        outline.get_by_role("link", name="Privacy").focus()
+        page.keyboard.press("Enter")
+        expect(page.locator(".doc-prose h2", has_text="Privacy")).to_be_focused()
+        expect(outline.get_by_role("link", name="Privacy")).to_have_attribute("aria-current", "location")
         # Keyboard: from the search field, Tab reaches each page; the open one shows a visible ring.
         search = index.get_by_label("Search the wiki")
         search.focus()
@@ -280,6 +298,53 @@ class WikiPanesJourney(unittest.TestCase):
         expect(page).to_have_url(re.compile(r"/tasks"))
         page.get_by_role("navigation", name="Project views").get_by_role("link", name="Wiki").click()
         expect(page).to_have_url(re.compile(re.escape(self.url("parts")) + "$"))
+
+    def test_02b_long_page_labels_keep_one_line_full_names_and_targets(self) -> None:
+        # A separate owned project preserves the shared three-page fixture used by the later journeys.
+        setup = self.page("owner")
+        space = self.api(setup, "POST", "/api/v1/workspaces", {"name": "Page label checks"}, status=201)
+        project = self.api(setup, "POST", f"/api/v1/workspaces/{space['id']}/projects", {"name": "Long page labels", "visibility": "restricted"}, status=201)
+        title = "How the community garden sensors work through an entire winter of measurements and volunteer visits"
+        made = {}
+        for label in ("Overview", title):
+            made[label] = self.api(setup, "POST", f"/api/v1/projects/{project['id']}/docs", {"title": label, "body": "Readable project notes.", "state": "published"}, status=201,
+                                   headers={"idempotency-key": str(uuid.uuid4())})
+        for phone in (False, True):
+            for theme in ("light", "dark"):
+                with self.subTest(phone=phone, theme=theme):
+                    size = PHONE if phone else DESKTOP
+                    page = self.page("owner", viewport=size, touch=phone, theme=theme)
+                    page.goto(f"/projects/{project['id']}/docs/{made['Overview']['id']}")
+                    index = self.index(page)
+                    link = index.get_by_role("link", name=title, exact=True)
+                    link.scroll_into_view_if_needed()
+                    expect(link).to_be_visible()
+                    expect(link).to_have_attribute("title", title)
+                    label = link.locator(".wiki-page__t")
+                    metrics = label.evaluate("""el => ({ height: el.getBoundingClientRect().height,
+                        lineHeight: parseFloat(getComputedStyle(el).lineHeight), clipped: el.scrollWidth > el.clientWidth })""")
+                    self.assertTrue(metrics["clipped"], "the fixture really needs ellipsis, not merely a short single line")
+                    self.assertLessEqual(metrics["height"], metrics["lineHeight"] + 1, metrics)
+                    rows = index.locator(".wiki-page").evaluate_all("els => els.map(e => e.getBoundingClientRect().height)")
+                    self.assertLessEqual(max(rows) - min(rows), .5, rows)
+                    self.assertEqual(page.evaluate(DOT, '.wiki-page')["content"], "none")
+                    box = link.bounding_box(); assert box
+                    if phone:
+                        self.assertGreaterEqual(min(box["width"], box["height"]), 44)
+                        self.assertTrue(link.evaluate("e => { const r=e.getBoundingClientRect(), hit=document.elementFromPoint(r.x+r.width/2,r.y+r.height/2); return hit===e || e.contains(hit); }"))
+                    self.no_horizontal_overflow(page, size["width"])
+                    if not phone and theme == "light":
+                        # The same measured fixture fails if wrapping or loss of its tooltip returns.
+                        link.evaluate("e => e.removeAttribute('title')")
+                        with self.assertRaises(AssertionError): self.assertEqual(link.get_attribute("title"), title)
+                        link.evaluate("(e, title) => e.title = title", title)
+                        broken = page.add_style_tag(content=".wiki-page { white-space: normal !important; } .wiki-page__t { overflow: visible !important; text-overflow: clip !important; overflow-wrap: anywhere !important; }")
+                        self.assertGreater(label.evaluate("e => e.getBoundingClientRect().height"), metrics["lineHeight"] + 1, "the old wrapping behavior really breaks the one-line bound")
+                        broken.evaluate("e => e.remove()")
+                    link.focus(); page.keyboard.press("Enter")
+                    expect(page.get_by_role("heading", level=2, name=title, exact=True)).to_be_visible()
+                    expect(index.get_by_role("link", name=title, exact=True)).to_have_attribute("aria-current", "page")
+                    shot(page, f"wiki-long-labels-{size['width']}-{theme}")
 
     def test_03_index_search(self) -> None:
         page = self.page("owner")
@@ -570,8 +635,8 @@ class WikiPanesJourney(unittest.TestCase):
         expect(index).to_be_hidden()
         expect(focus).to_be_focused()
         wide = page.locator(".wiki-doc").bounding_box()
-        self.assertGreater(wide["width"], narrow["width"])
-        self.assertLessEqual(wide["width"], 850.5)
+        self.assertGreaterEqual(wide["width"], narrow["width"])
+        self.assertLessEqual(wide["width"], 776.5)
         self.assertLess(wide["x"], narrow["x"], "the document takes the room of the page list")
         shot(page, "wiki-focus-desktop-1440")
         # It stays while moving within the wiki and after a reload in this tab.
@@ -599,13 +664,19 @@ class WikiPanesJourney(unittest.TestCase):
         index = self.index(page)
         heading = page.get_by_role("heading", level=2, name=latest["title"])
         expect(heading).to_be_visible()
-        self.assertLessEqual(index.bounding_box()["y"] + index.bounding_box()["height"], page.locator(".wiki-bar").bounding_box()["y"] + 1,
-                             "the index sits before the document")
-        expect(index.get_by_label("Search the wiki")).to_be_visible()
+        header = page.locator("header.top")
+        expect(header.locator(".wiki-bar__title")).to_have_text(re.compile(r"^Wiki · \d+ pages?$"))
+        more = header.get_by_role("button", name="More", exact=True)
+        expect(more).to_be_visible()
+        self.assertLessEqual(index.bounding_box()["y"] + index.bounding_box()["height"], heading.bounding_box()["y"],
+                             "the page selector sits before the document")
+        expect(page.locator(".wiki-bar__title")).to_have_text(re.compile(r"^Wiki · \d+ pages?$"))
+        expect(index.get_by_label("Search the wiki")).to_be_visible()  # more than five pages by now
+        self.assertEqual(page.locator(".doc-prose").evaluate("e => getComputedStyle(e).fontSize"), "16px", "the phone reads at 16px")
         for control in (index.get_by_role("link", name="New page"), index.get_by_role("button", name="Import .md"), index.get_by_role("link", name=PARTS)):
             box = control.bounding_box()
             self.assertGreaterEqual(box["height"], 44, "touch target")
-        for control in page.locator(".wiki-bar").get_by_role("button").all() + [page.locator(".wiki-bar").get_by_role("link", name="Edit")]:
+        for control in [more, page.get_by_role("link", name="Edit")]:
             box = control.bounding_box()
             self.assertGreaterEqual(box["height"], 44, "touch target in the bar")
             self.assertLessEqual(box["x"] + box["width"], PHONE["width"])
@@ -622,21 +693,31 @@ class WikiPanesJourney(unittest.TestCase):
         # The bar stays at the top while reading a long page, and its cards stay on screen.
         index.get_by_role("link", name=LAMP).tap()
         expect(page.get_by_role("heading", level=2, name=LAMP)).to_be_visible()
-        self.assertGreater(page.locator(".wiki").evaluate("e => e.scrollHeight - e.clientHeight"), 200)
-        page.locator(".wiki").evaluate("e => e.scrollTo(0, e.scrollHeight)")
+        reader = page.locator(".wiki-read")
+        self.assertGreater(reader.evaluate("e => e.scrollHeight - e.clientHeight"), 200)
+        reader.evaluate("e => e.scrollTo(0, e.scrollHeight)")
+        self.assertGreater(reader.evaluate("e => e.scrollTop"), 200, "the lower document is actually reached")
+        tail = page.locator(".doc-ids").bounding_box()
+        read_box, edit_box = reader.bounding_box(), page.get_by_role("link", name="Edit").bounding_box()
+        self.assertLessEqual(tail["y"] + tail["height"], read_box["y"] + read_box["height"] + 1,
+                             "the final document attribution is visible")
+        self.assertLessEqual(read_box["y"] + read_box["height"], edit_box["y"] + 1,
+                             "Edit cannot cover the scrolled reading area")
         page.wait_for_timeout(200)
-        self.assertLessEqual(abs(page.locator(".wiki-bar").bounding_box()["y"] - page.locator(".wiki").bounding_box()["y"]), 1)
-        page.locator(".wiki-bar").get_by_role("button", name="Download").tap()
-        card = page.get_by_role("dialog", name="Download").bounding_box()
+        self.assertLessEqual(abs(index.bounding_box()["y"] - page.locator(".wiki").bounding_box()["y"]), 1,
+                             "page selection and its action menu stay reachable together")
+        more.tap()
+        card = page.get_by_role("dialog", name="Page actions").bounding_box()
         self.assertGreaterEqual(card["x"], 0)
         self.assertLessEqual(card["x"] + card["width"], PHONE["width"])
         shot(page, "wiki-phone-390-download")
         page.keyboard.press("Escape")
-        # A search narrows the strip.
-        page.locator(".wiki").evaluate("e => e.scrollTo(0, 0)")
-        index.get_by_label("Search the wiki").fill("solder")
-        expect(index.locator(".wiki-page__t")).to_have_text([PARTS])
-        index.get_by_label("Search the wiki").fill("")
+        # Page selection while reading the tail starts the newly selected page at its heading.
+        index.get_by_role("link", name=PARTS).tap()
+        expect(page.get_by_role("heading", level=2, name=PARTS)).to_be_in_viewport()
+        index.get_by_role("link", name=LAMP).tap()
+        expect(page.get_by_role("heading", level=2, name=LAMP)).to_be_in_viewport()
+        reader.evaluate("e => e.scrollTo(0, 0)")
         # The smallest phones keep everything, without sideways scrolling.
         page.set_viewport_size(SMALL_PHONE)
         page.wait_for_timeout(200)
@@ -645,17 +726,19 @@ class WikiPanesJourney(unittest.TestCase):
         self.assertGreaterEqual(box["x"], 0)
         self.assertLessEqual(box["x"] + box["width"], SMALL_PHONE["width"], "the open page stays in the strip after a resize")
         for control in (index.get_by_role("link", name="New page"), index.get_by_role("button", name="Import .md")):
-            expect(control).to_be_visible()
+            # New page and Import end the chip row, which scrolls sideways; they come into view there.
+            control.scroll_into_view_if_needed()
+            page.wait_for_timeout(100)
             box = control.bounding_box()
             self.assertGreaterEqual(box["height"], 44)
             self.assertLessEqual(box["x"] + box["width"], SMALL_PHONE["width"])
-        for control in page.locator(".wiki-bar").get_by_role("button").all():
+        for control in [more]:
             box = control.bounding_box()
             self.assertLessEqual(box["x"] + box["width"], SMALL_PHONE["width"])
         shot(page, "wiki-phone-320-light")
         # Phone editing keeps its Save within reach, and the text field itself stays uncovered (it is
         # what the caret is in): the page strip steps aside and only Cancel / Save stay sticky.
-        page.locator(".wiki-bar").get_by_role("link", name="Edit").tap()
+        page.get_by_role("link", name="Edit").tap()
         text = page.get_by_label("Text (Markdown)")
         expect(text).to_be_visible()
         self.no_horizontal_overflow(page, SMALL_PHONE["width"])
@@ -695,10 +778,81 @@ class WikiPanesJourney(unittest.TestCase):
         shot(page, "wiki-tablet-820-light")
         page.locator(".wiki-bar").get_by_role("button", name="Focus on the page").tap()
         expect(self.index(page)).to_be_hidden()
-        self.assertGreater(page.locator(".wiki-doc").bounding_box()["width"], main["width"] - 1)
+        self.assertGreaterEqual(page.locator(".wiki-doc").bounding_box()["width"], main["width"] - 1)
         shot(page, "wiki-tablet-820-focus")
         page.locator(".wiki-bar").get_by_role("button", name="Focus on the page").tap()
         expect(self.index(page)).to_be_visible()
+
+    def test_13b_wiki_page_reference_chips_keep_routes_audiences_and_versions(self) -> None:
+        setup = self.page("owner")
+        space = self.api(setup, "POST", "/api/v1/workspaces", {"name": "Wiki reference checks"}, status=201)
+        self.api(setup, "POST", f"/api/v1/workspaces/{space['id']}/members", {"email": READER['email'], "role": "member"}, status=201)
+        project = self.api(setup, "POST", f"/api/v1/workspaces/{space['id']}/projects", {"name": "Reference notes", "visibility": "restricted"}, status=201)
+        self.api(setup, "POST", f"/api/v1/projects/{project['id']}/grants", {"principal": {"kind": "human", "id": READER['id']}, "role": "viewer"}, status=201)
+        other = self.api(setup, "POST", f"/api/v1/workspaces/{space['id']}/projects", {"name": "Private notes", "visibility": "restricted"}, status=201)
+        create = lambda pid, title, body: self.api(setup, "POST", f"/api/v1/projects/{pid}/docs", {"title": title, "body": body, "state": "published"}, status=201,
+                                                  headers={"idempotency-key": str(uuid.uuid4())})  # noqa: E731
+        target = create(project['id'], PARTS, "The first bench list.")
+        self.api(setup, "PATCH", f"/api/v1/docs/{target['id']}", {"body": "The second bench list.", "reason": "Updated the stock"}, status=200,
+                 headers={"if-match": '"1"', "idempotency-key": str(uuid.uuid4())})
+        foreign = create(other['id'], "Private notes", "The private body must not appear.")
+        body = f"## Assembly\n\nThe parts are in [{PARTS}](flux:doc/{target['id']}). Keep [private notes](flux:doc/{foreign['id']}) separate. An [ordinary link](https://example.invalid) stays a link.\n"
+        source = create(project['id'], LAMP, body)
+        source_url = f"/projects/{project['id']}/docs/{source['id']}"
+        target_url = f"/projects/{project['id']}/docs/{target['id']}"
+        for size, focus in ((DESKTOP, False), (TABLET, False), (TABLET, True), (PHONE, False)):
+            for theme in ("light", "dark"):
+                with self.subTest(width=size['width'], focus=focus, theme=theme):
+                    phone = size == PHONE
+                    page = self.page("owner", viewport=size, touch=size != DESKTOP, theme=theme)
+                    outbound = []
+                    page.on("request", lambda request: outbound.append(request.url) if request.url.startswith('https://example.invalid') else None)
+                    page.goto(source_url)
+                    if focus:
+                        page.get_by_role("button", name="Focus on the page").tap()
+                        expect(self.index(page)).to_be_hidden()
+                    chip = page.locator('.doc-prose a.doc-page')
+                    expect(chip).to_have_count(1)
+                    expect(chip).to_have_accessible_name(PARTS)
+                    expect(chip).to_have_attribute('href', target_url)
+                    expect(chip.locator('svg[aria-hidden="true"]')).to_have_count(1)
+                    self.assertEqual(chip.locator('svg').evaluate("e => [e.getBoundingClientRect().width, e.getBoundingClientRect().height]"), [16, 16])
+                    expect(chip).not_to_have_css('background-color', 'rgba(0, 0, 0, 0)')
+                    expect(chip).to_have_css('text-decoration-line', 'none')
+                    self.assertEqual(chip.evaluate("e => getComputedStyle(e, '::before').display"), 'none')
+                    baseline = chip.evaluate("""e => {
+                      const range = document.createRange(); range.selectNode(e.lastChild); const title = range.getBoundingClientRect();
+                      range.selectNode(e.parentElement.firstChild); const text = range.getBoundingClientRect();
+                      return {titleTop: title.top, textTop: text.top, titleHeight: title.height, textHeight: text.height};
+                    }""")
+                    self.assertAlmostEqual(baseline['titleTop'], baseline['textTop'], delta=.5, msg=baseline)
+                    self.assertAlmostEqual(baseline['titleHeight'], baseline['textHeight'], delta=.5, msg=baseline)
+                    missing = page.locator('.doc-prose .doc-ref--missing')
+                    expect(missing).to_have_text('private notes')
+                    self.assertFalse(missing.evaluate("e => e.matches('a, .doc-page')"))
+                    expect(missing.locator('svg')).to_have_count(0)
+                    ordinary = page.locator('.doc-prose').get_by_role('link', name='ordinary link')
+                    self.assertFalse(ordinary.evaluate("e => e.classList.contains('doc-page')"))
+                    self.assertIn('underline', ordinary.evaluate("e => getComputedStyle(e).textDecorationLine"), "ordinary links retain their non-colour cue")
+                    self.assertEqual(outbound, [], "rendering references performs no outbound fetch")
+                    self.no_horizontal_overflow(page, size['width'])
+                    shot(page, f"wiki-page-ref-{size['width']}-{'focus' if focus else 'reading'}-{theme}")
+                    if size == DESKTOP:
+                        chip.focus(); page.keyboard.press('Enter')
+                    else:
+                        chip.tap()
+                    expect(page).to_have_url(re.compile(re.escape(target_url) + '$'))
+                    expect(page.locator('.doc-prose')).to_have_text('The second bench list.')
+                    self.assertEqual(self.doc(page, target['id'])['version'], 2)
+        viewer = self.page("reader", touch=True)
+        viewer.goto(source_url)
+        viewer.locator('.doc-prose a.doc-page').tap()
+        expect(viewer).to_have_url(re.compile(re.escape(target_url) + '$'))
+        expect(viewer.locator('.doc-prose')).to_have_text('The second bench list.')
+        self.api(viewer, "GET", f"/api/v1/docs/{foreign['id']}", status=404)
+        saved = self.doc(setup, source['id'])
+        self.assertEqual(saved['body'], body)
+        self.assertEqual(saved['version'], 1)
 
     # ---------------------------------------------------------------- contrast
 
@@ -710,8 +864,8 @@ class WikiPanesJourney(unittest.TestCase):
                 expect(page.locator("html")).to_have_attribute("data-theme", theme)
                 expect(page.get_by_role("heading", level=2, name=LAMP)).to_be_visible()
                 for selector in (".wiki-index__eyebrow", ".wiki-page:not([aria-current])", '.wiki-page[aria-current="page"]', ".wiki-page__state",
-                                 ".wiki-index__act", ".wiki-bar__meta .doc-head__k", ".wiki-bar__primary", ".wiki-doc__crumb", ".doc-head__t",
-                                 ".doc-head__change", ".doc-prose p", ".doc-prose h2", ".doc-prose li", ".doc-prose pre code", ".doc-prose a",
+                                 ".wiki-index__import", ".wiki-bar__meta .doc-head__k", ".wiki-bar__primary", ".doc-head__t",
+                                 ".wiki-who", ".wiki-outline__h", ".wiki-outline a", ".doc-prose p", ".doc-prose h2", ".doc-prose li", ".doc-prose pre code", ".doc-prose a",
                                  ".doc-links h3", ".doc-audience"):
                     self.measure(page, selector)
                 # Icon buttons and the underline search boundary are non-text marks (3:1).
@@ -724,14 +878,19 @@ class WikiPanesJourney(unittest.TestCase):
                 self.measure(page, ".wiki-search input")
                 search.fill("")
                 shot(page, f"wiki-desktop-1440-{theme}")
-                # The focus ring and links stay visible: one ink, and links are underlined (#338).
+                # The focus ring stays visible. Resolved page links use the final object-chip cue;
+                # ordinary-link underlining is checked separately in the reference journey above.
                 self.index(page).get_by_role("link", name=PARTS).focus()
                 page.keyboard.press("Shift+Tab")
                 expect(self.index(page).get_by_role("link", name=LAMP)).to_be_focused()
                 page.wait_for_timeout(200)
                 self.measure(page, '.wiki-page[aria-current="page"]', 3, property="outlineColor", backgroundSelector=".wiki-index")
                 self.measure(page, ".doc-prose a")
-                self.assertIn("underline", page.locator(".doc-prose a").first.evaluate("e => getComputedStyle(e).textDecorationLine"), "links are more than colour")
+                page_ref = page.locator(".doc-prose a").first
+                self.assertTrue(page_ref.evaluate("e => e.classList.contains('doc-page')"))
+                expect(page_ref.locator('svg')).to_have_count(1)
+                expect(page_ref).not_to_have_css('background-color', 'rgba(0, 0, 0, 0)')
+                self.measure(page, '.doc-prose a svg', 3)
                 page.locator(".wiki-bar").get_by_role("button", name="Share this page").click()
                 for selector in (".wiki-pop__h", ".wiki-pop__who", ".wiki-pop__link .ui-input"):
                     self.measure(page, selector)
