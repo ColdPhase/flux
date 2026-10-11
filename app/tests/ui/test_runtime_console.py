@@ -27,6 +27,10 @@ from playwright.sync_api import Error as PlaywrightError, Browser, BrowserContex
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
 
 RUNTIME = os.environ.get("FLUX_UI_RUNTIME") == "on"
+UI_BROWSER = os.environ.get("FLUX_UI_BROWSER", "chromium")
+if UI_BROWSER not in ("chromium", "webkit"):
+    raise ValueError(f"FLUX_UI_BROWSER must be chromium or webkit, got {UI_BROWSER!r}")
+
 PASSWORD = "a terminal that stays mine"
 STAMP = int(time.time() * 1000)
 RAE = {"name": "Rae Novak", "email": f"rae.novak+{STAMP}@example.test"}
@@ -45,7 +49,7 @@ class RuntimeConsole(unittest.TestCase):
         if UPSTREAM:
             start_forwarder(ORIGIN, UPSTREAM)
         cls.pw = sync_playwright().start()
-        cls.browser = cls.pw.chromium.launch()
+        cls.browser = getattr(cls.pw, UI_BROWSER).launch()
         expect.set_options(timeout=15000)
 
     @classmethod
@@ -54,7 +58,7 @@ class RuntimeConsole(unittest.TestCase):
         cls.pw.stop()
 
     def context(self, *, phone: bool) -> BrowserContext:
-        options: dict = {"base_url": ORIGIN, "color_scheme": "light", "locale": "en-GB", "timezone_id": "Europe/Warsaw"}
+        options: dict = {"base_url": ORIGIN, "color_scheme": "light", "locale": "en-GB", "timezone_id": "Europe/Warsaw", "service_workers": "block"}
         if phone:
             options.update(viewport=PHONE, device_scale_factor=3, is_mobile=True, has_touch=True)
         else:
@@ -419,3 +423,37 @@ class RuntimeConsole(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+    def test_12_legacy_sign_in_route_is_lazy_and_off_server_refuses_the_start(self) -> None:
+        """Real lazy assets/redirect and refusal; offered status is a fixture, never a native login."""
+        for phone in (False, True):
+            for theme in ("light", "dark"):
+                with self.subTest(phone=phone, theme=theme):
+                    page = self.page(phone=phone)
+                    page.emulate_media(color_scheme=theme)
+                    offered = self.runtime_snapshot()
+                    offered["binding"] = None
+                    offered["connections"]["claude_code"] = None
+                    page.route("**/api/v1/agent-runtime", lambda route: route.fulfill(
+                        status=200, content_type="application/json", body=json.dumps(offered)))
+                    assets: list[str] = []
+                    page.on("request", lambda request: assets.append(request.url) if "/assets/" in request.url else None)
+                    page.goto("/settings/agents")
+                    expect(page.get_by_role("heading", name="Agents and AI", exact=True)).to_be_visible()
+                    self.assertFalse(any("ClaudeCodeSignIn-" in url or "SignInConsole-" in url for url in assets),
+                                     "opening Settings does not import either sign-in route or terminal")
+                    page.goto("/settings/assistant/claude-code")
+                    expect(page).to_have_url(re.compile(r"/settings/agents/claude-code$"))
+                    expect(page.get_by_role("heading", name="Sign in to Claude Code", exact=True)).to_be_visible()
+                    self.assertTrue(any("ClaudeCodeSignIn-" in url for url in assets), "the destination imports its actual route")
+                    self.assertFalse(any("SignInConsole-" in url for url in assets), "choosing a method does not import the terminal")
+                    self.assertEqual(page.get_by_role("radio").count(), 3, "all real supported Claude sign-in methods remain")
+                    if phone:
+                        self.phone_layout(page, ".rt-page")
+                    shot(page, f"runtime-composed-methods-{'phone-390' if phone else 'desktop-1440'}-{theme}-{UI_BROWSER}")
+                    # Only the status read is substituted. The actual off server owns this attempted command.
+                    page.get_by_role("button", name="Start sign-in", exact=True).click()
+                    expect(page.get_by_role("alert")).to_contain_text("could not confirm the operation")
+                    self.assertEqual(page.locator(".rt-console").count(), 0, "a refused start cannot mount the terminal")
+                    self.assertFalse(any("SignInConsole-" in url for url in assets), "a refused start cannot download the terminal")
+                    page.close()

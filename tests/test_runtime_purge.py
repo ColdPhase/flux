@@ -103,7 +103,7 @@ class RuntimePurgeTest(unittest.TestCase):
             # Run through the real path; the owner label names the same checkout via the symlink.
             result, log = run_purge(base, checkout, str(link / "checkout"))
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-            self.assertTrue(any(call.endswith("runtime-forget confirmed") for call in log.read_text().splitlines()))
+            self.assertTrue(any(call.endswith("runtime-forget 11111111-1111-4111-8111-111111111111 confirmed") for call in log.read_text().splitlines()))
 
     def test_purge_refuses_project_of_another_checkout(self) -> None:
         with tempfile.TemporaryDirectory(prefix="flux-purge-test-") as directory:
