@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useMemo, useRef, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState, Fragment, type FormEvent, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import {
   NOTIFICATION_REASONS,
@@ -51,6 +51,8 @@ function timeZones(current: string) {
   return [...new Set([current, browserTimeZone(), 'UTC', ...zones])].sort((a, b) => a.localeCompare(b));
 }
 
+type FeedbackArea = 'level' | 'quietHours' | 'morningSummary' | 'email' | 'mute' | NotificationReason;
+
 const message = (error: unknown, fallback: string) => (error instanceof ApiError && error.status < 500 ? error.message : fallback);
 
 /**
@@ -72,6 +74,7 @@ function AccountNotificationSettings() {
   const [prefs, setPrefs] = useState<NotificationPreferences | null>(null);
   const [failed, setFailed] = useState(false);
   const [saved, setSaved] = useState('');
+  const [feedbackArea, setFeedbackArea] = useState<FeedbackArea | null>(null);
   const [refreshWarning, setRefreshWarning] = useState<'pause' | 'settings' | null>(null);
   const [pauseExpired, setPauseExpired] = useState(false);
   const hasPreferences = useRef(false);
@@ -127,11 +130,11 @@ function AccountNotificationSettings() {
 
   // Saves run one after another in the order they were made, each numbered. Only the answer to
   // the newest one replaces what is shown, so an older response never undoes a newer edit.
-  function save(run: () => Promise<NotificationPreferences>, done = 'Saved', onError?: (error: unknown) => void): Promise<boolean> {
+  function save(run: () => Promise<NotificationPreferences>, done = 'Saved', onError?: (error: unknown) => void, area: FeedbackArea = 'email'): Promise<boolean> {
     const session = captureNotificationSession(ownerId);
     if (!session) return Promise.resolve(false);
     const mine = ++sequence.current;
-    if (mounted.current) setSaved('');
+    if (mounted.current) { setSaved(''); setFeedbackArea(area); }
     const next = queue.current.then(async () => {
       if (!isCurrentNotificationSession(session)) return false;
       const pauseVersion = notificationPauseRevision(session);
@@ -169,7 +172,7 @@ function AccountNotificationSettings() {
       else announcePauseChange(ownerId, result.pause.until);
       if (mounted.current && mine === sequence.current) {
         hasPreferences.current = true;
-        setPrefs(result); setSaved(done);
+        setPrefs(result); setSaved(done); setFeedbackArea(area);
         setPauseExpired(result.pause.until !== null && Date.parse(result.pause.until) <= Date.now());
         if (refreshFailed) setRefreshWarning('settings');
         else if (refreshed) setRefreshWarning(null);
@@ -181,7 +184,9 @@ function AccountNotificationSettings() {
   }
   const change = (command: UpdateNotificationPreferencesCommand, optimistic?: (current: NotificationPreferences) => NotificationPreferences) => {
     if (optimistic) setPrefs((current) => (current ? optimistic(current) : current));
-    void save(() => updatePreferences(command));
+    const area: FeedbackArea = command.channels ? NOTIFICATION_REASONS.find((reason) => command.channels?.[reason]) ?? 'level'
+      : command.emailDestination !== undefined ? 'email' : command.morningSummary ? 'morningSummary' : command.quietHours ? 'quietHours' : 'level';
+    void save(() => updatePreferences(command), 'Saved', undefined, area);
   };
 
   if (failed) {
@@ -206,6 +211,8 @@ function AccountNotificationSettings() {
 
   const level = prefs.level;
   const setLevel = (next: NotificationLevel) => change({ level: next }, (current) => ({ ...current, level: next }));
+  const workingFeedback = (area: FeedbackArea) => refreshWarning === 'settings' && feedbackArea === area
+    ? <WorkingReadNotice acknowledged={saved} retry={load} /> : null;
 
   return (
     <div className="pane-scroll"><div className="pane-in sset-in nset" data-shift>
@@ -236,6 +243,7 @@ function AccountNotificationSettings() {
           </label>
         ))}
       </div>
+      {workingFeedback('level')}
       {level === 'custom' ? <p className="sset-note" role="note">You chose channels for each kind below, so none of the three matches. Pick one to reset them.</p> : null}
 
       {prefs.pause.until && !pauseExpired ? (
@@ -245,8 +253,8 @@ function AccountNotificationSettings() {
         </p>
       ) : null}
       <div className="sset-card sset-gap">
-        <QuietHoursRow prefs={prefs} onChange={change} />
-        <MorningSummaryRow prefs={prefs} onChange={change} />
+        <QuietHoursRow prefs={prefs} onChange={change} feedback={workingFeedback('quietHours')} />
+        <MorningSummaryRow prefs={prefs} onChange={change} feedback={workingFeedback('morningSummary')} />
       </div>
 
       <section className="nset__sec" aria-labelledby={ids.what}>
@@ -257,7 +265,7 @@ function AccountNotificationSettings() {
             <thead><tr><th scope="col"><span className="ui-vh">Reason</span></th>{COLUMNS.map((column) => <th key={column.id} scope="col">{column.label}</th>)}</tr></thead>
             <tbody>
               {NOTIFICATION_REASONS.map((reason) => (
-                <tr key={reason}>
+                <Fragment key={reason}><tr>
                   <th scope="row"><b>{ROWS[reason].label}</b><span>{ROWS[reason].hint}</span></th>
                   {COLUMNS.map((column) => {
                     const disabled = (column.id === 'email' && emailOff) || (column.id === 'push' && !!pushOff?.startsWith('Push is not'));
@@ -271,7 +279,7 @@ function AccountNotificationSettings() {
                       </td>
                     );
                   })}
-                </tr>
+                </tr>{refreshWarning === 'settings' && feedbackArea === reason ? <tr><td colSpan={4}>{workingFeedback(reason)}</td></tr> : null}</Fragment>
               ))}
             </tbody>
           </table>
@@ -304,16 +312,24 @@ function AccountNotificationSettings() {
               {prefs.muted.map((place) => (
                 <li key={`${place.type}:${place.id}`}>
                   <span className="nset__place">{place.type === 'dm' ? <Icon name="chat" size={14} /> : <span className="nset__hash" aria-hidden="true">#</span>}{place.name}<span className="ui-vh">{place.type === 'dm' ? ', direct message' : ', project'}</span></span>
-                  <Button variant="quiet" onClick={() => void save(() => setMute({ type: place.type, id: place.id, muted: false }), `Unmuted ${place.name}`)}>Unmute</Button>
+                  <Button variant="quiet" onClick={() => void save(() => setMute({ type: place.type, id: place.id, muted: false }), `Unmuted ${place.name}`, undefined, 'mute')}>Unmute</Button>
                 </li>
               ))}
             </ul>
           ) : <p className="nset__none">No muted places.</p>}
-          {mutable.length ? <MutePicker places={mutable} onMute={(place) => void save(() => setMute({ type: place.type, id: place.id, muted: true }), `Muted ${place.name}`)} /> : null}
+          {workingFeedback('mute')}
+          {mutable.length ? <MutePicker places={mutable} onMute={(place) => void save(() => setMute({ type: place.type, id: place.id, muted: true }), `Muted ${place.name}`, undefined, 'mute')} /> : null}
         </div>
       </section>
     </div></div>
   );
+}
+
+function WorkingReadNotice({ acknowledged, retry }: { acknowledged: string; retry: () => void }) {
+  return <div className="nset__read-feedback"><p className="nset__problem" role="note"><Icon name="alert" size={14} /><span>
+    {acknowledged ? `${acknowledged}. ` : ''}Current notification settings could not be refreshed. The last confirmed settings are shown.{' '}
+    <Button variant="quiet" onClick={retry}>Retry current settings</Button>
+  </span></p></div>;
 }
 
 function EmailDestinationChoice({ prefs, onChange }: { prefs: NotificationPreferences; onChange: (destination: EmailDestination) => void }) {
@@ -405,7 +421,7 @@ const shortClock = (value: string) => value.replace(/^0(\d)/, '$1');
 const zoneLabel = (zone: string) => zone.replace(/_/g, ' ');
 
 /** Quiet hours: a switch, then the window and its time zone while it is on. */
-function QuietHoursRow({ prefs, onChange }: { prefs: NotificationPreferences; onChange: Change }) {
+function QuietHoursRow({ prefs, onChange, feedback }: { prefs: NotificationPreferences; onChange: Change; feedback?: ReactNode }) {
   const quiet = prefs.quietHours;
   const zones = useMemo(() => timeZones(quiet.timeZone), [quiet.timeZone]);
   const set = (next: Partial<typeof quiet>) => onChange({ quietHours: next }, (current) => ({ ...current, quietHours: { ...current.quietHours, ...next } }));
@@ -415,6 +431,7 @@ function QuietHoursRow({ prefs, onChange }: { prefs: NotificationPreferences; on
       <SwitchRow label="Quiet hours" checked={quiet.enabled}
         detail={`${shortClock(quiet.start)} – ${shortClock(quiet.end)} · ${zoneLabel(quiet.timeZone)}`}
         onChange={(on) => set(on && quiet.timeZone === 'UTC' && suggested !== 'UTC' ? { enabled: true, timeZone: suggested } : { enabled: on })} />
+      {feedback}
       {quiet.enabled ? (
         <div className="nset__times">
           <label>From<input type="time" value={quiet.start} onChange={(event) => event.target.value && set({ start: event.target.value })} /></label>
@@ -431,7 +448,7 @@ function QuietHoursRow({ prefs, onChange }: { prefs: NotificationPreferences; on
 }
 
 /** The morning summary (S22): one push a day at a local time, counting what waits in Inbox. */
-function MorningSummaryRow({ prefs, onChange }: { prefs: NotificationPreferences; onChange: Change }) {
+function MorningSummaryRow({ prefs, onChange, feedback }: { prefs: NotificationPreferences; onChange: Change; feedback?: ReactNode }) {
   const summary = prefs.morningSummary;
   const zone = prefs.quietHours.timeZone;
   const suggested = browserTimeZone();
@@ -445,6 +462,7 @@ function MorningSummaryRow({ prefs, onChange }: { prefs: NotificationPreferences
       <SwitchRow label="Morning summary" checked={summary.enabled}
         detail={`One digest at ${shortClock(summary.at)} instead of single pings`}
         onChange={(on) => set({ enabled: on })} />
+      {feedback}
       {summary.enabled ? (
         <div className="nset__times">
           <label>At<input type="time" value={summary.at} onChange={(event) => event.target.value && set({ at: event.target.value })} /></label>

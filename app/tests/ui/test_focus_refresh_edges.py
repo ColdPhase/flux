@@ -103,8 +103,9 @@ class RefreshEdges(unittest.TestCase):
             and note['box']['top'] >= note['pane']['top'] and note['box']['bottom'] <= note['pane']['bottom']
             and note['retry']['top'] >= note['pane']['top'] and note['retry']['bottom'] <= note['pane']['bottom'] and note['usable']]
         self.assertTrue(visible, 'current-read qualifier and usable read-only Retry remain visible at the original action viewport')
-        self.assertTrue((receipt['visible'] and acknowledged in receipt['text']) or any(acknowledged + '.' in note['text'] for note in visible),
-            'the actual acknowledged result remains visible beside current-read feedback or in the existing visible header')
+        if acknowledged is not None:
+            self.assertTrue((receipt['visible'] and acknowledged in receipt['text']) or any(acknowledged + '.' in note['text'] for note in visible),
+                'the actual acknowledged result remains visible beside current-read feedback or in the existing visible header')
 
     def test_01_silent_remote_extension_is_read_at_the_old_deadline(self):
         page, actor = self.actor('Silent Extension')
@@ -330,6 +331,7 @@ class RefreshEdges(unittest.TestCase):
                         self.assertEqual(actual['pause'], {'until': None})
                         self.assertGreater(len(reads), 0); self.assertEqual(len(posts), 1)
                         self.capture(page, 'address-current-read-unavailable', phone=phone, theme=theme)
+                        self.assert_read_feedback_at_working_viewport(page, acknowledged=None)
                         # The other current server facts change before read-only Retry. The cleared
                         # form returning after this real removal proves the successful boolean path.
                         self.api(page, 'DELETE', '/api/v1/notification-address')
@@ -594,6 +596,137 @@ class RefreshEdges(unittest.TestCase):
                     self.assertGreaterEqual(min((max(foreground,luminance(bg))+0.05)/(min(foreground,luminance(bg))+0.05) for bg in backgrounds),4.5)
                     self.assertEqual(errors,[],'no uncaught browser errors')
                     page.close()
+
+    def test_14_other_settings_commands_keep_read_feedback_at_their_own_controls(self):
+        for area in ('quietHours', 'morningSummary', 'mention', 'mute'):
+            for phone in (False, True):
+                for theme in ('light', 'dark'):
+                    with self.subTest(area=area, phone=phone, theme=theme):
+                        page, actor, until = self.focused('Working ' + area + str(phone) + theme, phone=phone, theme=theme)
+                        self.settings(page)
+                        held, writes, reads = {}, [], []
+                        def handler(route):
+                            if route.request.method == 'GET':
+                                reads.append({'failed': bool(held.get('fail')), 'url': route.request.url})
+                                if held.get('fail'):
+                                    route.fulfill(status=500, content_type='application/json', body='{}'); return
+                            elif route.request.method in ('PATCH', 'PUT'):
+                                writes.append({'method':route.request.method,'body':route.request.post_data_json})
+                                if 'route' not in held:
+                                    response=route.fetch(); self.assertEqual(response.status,200)
+                                    held.update(route=route,response=response); return
+                            route.continue_()
+                        page.route('**/api/v1/notification-preferences**',handler)
+                        self.addCleanup(lambda p=page:None if p.is_closed() else p.unroute_all(behavior='ignoreErrors'))
+                        try:
+                            if area=='mute':
+                                page.get_by_label('Place to mute',exact=True).select_option('project:'+actor['project'])
+                                control=page.get_by_role('button',name='Mute',exact=True)
+                                done='Muted '+actor['projectName']
+                            elif area=='mention':
+                                control=page.get_by_role('checkbox',name='Mentions: Inbox',exact=True).locator('..')
+                                done='Saved'
+                            else:
+                                control=page.get_by_role('switch',name=re.compile('^'+('Quiet hours' if area=='quietHours' else 'Morning summary')))
+                                done='Saved'
+                            control.tap() if phone else control.click()
+                            self.wait_held(page,held)
+                            other=self.browser.new_context(base_url=ORIGIN,storage_state=page.context.storage_state(),service_workers='block')
+                            self.addCleanup(other.close)
+                            self.assertEqual(self.api(other,'GET','/api/v1/me')['user']['id'],actor['id'])
+                            self.api(other,'PATCH','/api/v1/notification-preferences',{'pause':{'until':None}})
+                            page.evaluate("window.dispatchEvent(new Event('focus'))")
+                            expect(self.note(page)).to_have_count(0)
+                            held['fail']=True
+                            held['route'].fulfill(response=held['response']);held['released']=True
+                            expect(self.warning(page)).to_contain_text('Current notification settings could not be refreshed.')
+                            expect(page.locator('.nset__saved')).to_have_text(done)
+                            actual=self.api(page,'GET','/api/v1/notification-preferences')
+                            self.assertEqual(actual['pause'],{'until':None})
+                            if area in ('quietHours','morningSummary'):self.assertTrue(actual[area]['enabled'])
+                            elif area=='mention':self.assertFalse(actual['channels']['mention']['inApp'])
+                            else:self.assertTrue(any(place['id']==actor['project'] for place in actual['muted']))
+                            self.assertEqual(len(writes),1,'only the actual control command was admitted')
+                            self.assertEqual(sum(read['failed'] for read in reads),1)
+                            self.capture(page,'working-'+area+'-read-unavailable',phone=phone,theme=theme)
+                            self.assert_read_feedback_at_working_viewport(page,acknowledged=done)
+                            local=page.get_by_role('note').filter(has_text=done+'.').filter(has_text='Current notification settings could not be refreshed.')
+                            expect(local).to_have_count(1)
+                            self.assertIsNone(local.get_attribute('aria-live'),'the compact counterpart adds no second live announcement')
+                            held['fail']=False
+                            retry=local.get_by_role('button',name='Retry current settings',exact=True)
+                            retry.tap() if phone else retry.click()
+                            expect(self.warning(page)).to_have_count(0);expect(local).to_have_count(0)
+                            self.assertEqual(self.api(page,'GET','/api/v1/notification-preferences'),actual)
+                            self.assertEqual(len(writes),1,'read-only recovery sends no duplicate control command')
+                            self.assertFalse(reads[-1]['failed'])
+                        finally:
+                            if 'route' in held and not held.get('released'):held['route'].fulfill(response=held['response'])
+                        page.close()
+
+
+    def test_15_mixed_queued_actions_keep_only_the_latest_ack_at_the_latest_control(self):
+        for phone in (False, True):
+            with self.subTest(phone=phone):
+                page, actor, until=self.focused('Mixed Working '+str(phone),phone=phone)
+                self.settings(page)
+                held, writes, failed_reads={},[],[]
+                def handler(route):
+                    if route.request.method=='GET' and held.get('fail'):
+                        failed_reads.append(route.request.url)
+                        route.fulfill(status=500,content_type='application/json',body='{}');return
+                    if route.request.method=='PATCH':
+                        writes.append(route.request.post_data_json)
+                        response=route.fetch();self.assertEqual(response.status,200)
+                        key='first' if 'first' not in held else 'second'
+                        held[key]={'route':route,'response':response};return
+                    route.continue_()
+                page.route('**/api/v1/notification-preferences',handler)
+                self.addCleanup(lambda p=page:None if p.is_closed() else p.unroute_all(behavior='ignoreErrors'))
+                try:
+                    page.get_by_role('radio',name=re.compile(r'^Everything(?:\s|$)')).check()
+                    for _ in range(80):
+                        if 'first' in held:break
+                        page.wait_for_timeout(50)
+                    self.assertIn('first',held)
+                    page.get_by_role('checkbox',name='Mentions: Inbox',exact=True).uncheck()
+                    self.assertEqual(len(writes),1,'second real action is queued while first ACK is held')
+                    other=self.browser.new_context(base_url=ORIGIN,storage_state=page.context.storage_state(),service_workers='block')
+                    self.addCleanup(other.close)
+                    self.api(other,'PATCH','/api/v1/notification-preferences',{'pause':{'until':None}})
+                    page.evaluate("window.dispatchEvent(new Event('focus'))")
+                    expect(self.note(page)).to_have_count(0)
+                    held['fail']=True
+                    held['first']['route'].fulfill(response=held['first']['response']);held['first']['released']=True
+                    for _ in range(80):
+                        if 'second' in held:break
+                        page.wait_for_timeout(50)
+                    self.assertIn('second',held)
+                    expect(page.locator('.nset__saved')).to_be_empty()
+                    expect(page.get_by_role('note').filter(has_text=re.compile(r'^Saved\.'))).to_have_count(0)
+                    self.assertEqual(len(failed_reads),1,'the overtaken first ACK has its real failed reconciliation')
+                    actual=self.api(page,'GET','/api/v1/notification-preferences')
+                    self.assertEqual(actual['pause'],{'until':None});self.assertFalse(actual['channels']['mention']['inApp'])
+                    held['second']['route'].fulfill(response=held['second']['response']);held['second']['released']=True
+                    expect(page.locator('.nset__saved')).to_have_text('Saved')
+                    expect(self.warning(page)).to_contain_text('Current notification settings could not be refreshed.')
+                    local=page.get_by_role('note').filter(has_text=re.compile(r'^Saved\.'))
+                    expect(local).to_have_count(1)
+                    self.assertEqual(local.locator('xpath=ancestor::tr/preceding-sibling::tr[1]').get_by_role('rowheader').inner_text().splitlines()[0],'Mentions',
+                        'the real latest command keeps its feedback beside its actual channel row')
+                    self.assertEqual(writes,[{'level':'everything'},{'channels':{'mention':{'inApp':False}}}])
+                    self.assertEqual(len(failed_reads),2)
+                    self.capture(page,'mixed-latest-command-read-unavailable',phone=phone)
+                    self.assert_read_feedback_at_working_viewport(page,acknowledged='Saved')
+                    held['fail']=False
+                    local.get_by_role('button',name='Retry current settings',exact=True).click()
+                    expect(self.warning(page)).to_have_count(0);expect(local).to_have_count(0)
+                    self.assertEqual(len(writes),2,'Retry performs no command for either queued action')
+                    self.assertEqual(self.api(page,'GET','/api/v1/notification-preferences'),actual)
+                finally:
+                    for key in ('first','second'):
+                        if key in held and not held[key].get('released'):held[key]['route'].fulfill(response=held[key]['response'])
+                page.close()
 
 
 if __name__ == '__main__':

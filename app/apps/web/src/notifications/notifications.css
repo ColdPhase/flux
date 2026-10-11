@@ -112,7 +112,7 @@
 
 .unsub .ui-btn { margin-top: 8px; }
 .unsub__link { margin-top: 18px; font-size: var(--fs-sm); }
-.unsub__link a { color: var(--t1); }
+.unsub__link a:not(.ui-btn) { color: var(--t1); }
 
 @media (pointer: coarse) {
   .inbox__read { opacity: 1; }
@@ -169,3 +169,10 @@
   .nset__radio { min-height: 44px; align-items: center; }
   .nset__radio input { margin-top: 0; }
 }
+
+/* Keep current-read feedback beside the actual settings controls without another live announcement. */
+.sset-card + .nset__read-feedback { margin-top: 12px; }
+.nset__table .nset__read-feedback { margin: 4px 0 8px; text-align: left; }
+.nset__group .nset__read-feedback { margin: 0 18px 12px; }
+
+.nset__read-feedback .nset__problem { margin-bottom: 0; }
