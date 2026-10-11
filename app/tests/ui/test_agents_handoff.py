@@ -750,10 +750,14 @@ class HandOffJourney(unittest.TestCase):
         page.evaluate("""expiry => {
           const originalNow = Date.now.bind(Date);
           const originalTimeout = window.setTimeout.bind(window);
-          const evidence = window.__expiryBoundary = { offset: 0, committed: null, timers: [] };
-          Date.now = () => originalNow() + evidence.offset;
+          const evidence = window.__expiryBoundary = { offset: 0, committed: null, timers: [], clockReads: [] };
+          Date.now = () => {
+            const at = originalNow() + evidence.offset;
+            evidence.clockReads.push({ at, phase: evidence.committed ? 'after-commit' : 'before-commit' });
+            return at;
+          };
           window.setTimeout = (callback, delay, ...args) => {
-            if (evidence.committed) evidence.timers.push({ delay, at: Date.now() });
+            evidence.timers.push({ delay, at: originalNow() + evidence.offset, phase: evidence.committed ? 'after-commit' : 'before-commit' });
             return originalTimeout(callback, delay, ...args);
           };
           const observer = new MutationObserver(() => {
@@ -773,7 +777,12 @@ class HandOffJourney(unittest.TestCase):
         page.get_by_role("button", name="Hand off a task").click()
         dialog = page.get_by_role("dialog", name="Hand off a task")
         radio = dialog.locator("label.handoff__agent", has_text="Delayed laptop")
-        expect(radio).to_contain_text('Work held on “Check the deadline boundary”', timeout=2000)
+        try:
+            expect(radio).to_contain_text('Work held on “Check the deadline boundary”', timeout=2000)
+        finally:
+            observed = page.evaluate("window.__expiryBoundary")
+            observed.update(finalState=radio.inner_text(), clockAgeingReads=len(reads) - before_dialog - 1)
+            print("\n  Delayed expiry boundary lifecycle: " + json.dumps(observed))
         evidence = page.evaluate("window.__expiryBoundary")
         self.assertIsNotNone(evidence["committed"], "the real DOM first committed a live claim")
         self.assertLess(evidence["committed"]["before"], evidence["committed"]["expiry"])
