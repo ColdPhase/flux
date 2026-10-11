@@ -72,3 +72,35 @@ not admit or complete them. No full
 `check_application.sh`, broad application/release, real-provider or PWA acceptance
 is claimed by these selected cohorts. Older 1103/489 counts retain their original
 4335f81c pin.
+
+## Protected-main composition at schema 90 — 2026-10-11
+
+Normal main composition at `f530647440e99dc39e9d0791b4877e99a68ccb03`
+retains unchanged GitHub/work/export implementations and 0068, with accepted
+0090 and the highest schema 90. Only CHANGELOG conflicted; both sides remain.
+Actual Docker build/type/lint passes (three existing hook warnings). Both test
+images match all 1111 tracked application files. Selected API cohort 65/65
+passes in 38.613 s: the previous 64-test cohort plus 0090 migration. The real
+0068 test starts with exact manifest90-minus68, applies 68, retains data and
+exact ledger, restarts, reverses before use and reapplies. Separate running SQL
+read confirms all 56 migration versions, including 68 and 90.
+
+The unchanged task-Details rules journey passes Chromium 1/1 in 5.350 s and
+WebKit 1/1 in 7.305 s, including desktop/390 px, viewer authority, 44 px targets
+and the unfiltered page-error guard. Driver 81402 exits 0; exact per-run
+resources, three image tags and temporary secret are removed. Local raw proof
+and hashes remain `/tmp/flux379-composition-f530/`.
+
+Later normal composition `defdc1958a237428286dea30cfd94ec8a7de5487`
+adds accepted #369 without conflicts. All API/migration/export/rules inputs,
+Docker configuration, verification scripts and the rules journey are unchanged
+from f530. Main's task-discussion attachment rendering changes are separately
+accepted; shared helper changes are inside unrelated conversation test methods.
+The f530 run retains its actual pin; no new browser run is claimed at defdc.
+Agent setup, 108 foundation tests and whitespace checks pass after composition.
+Fresh current-head CI and eligible independent review remain required.
+
+Child #479 preserves every remaining original #74 criterion unchanged. The
+parent and child stay open for real GitHub installation, G-1b–G-1d, #153 bridge,
+echo/eligible external review and integrated acceptance. No full application,
+real-provider, PWA or release acceptance is claimed by this bounded increment.
