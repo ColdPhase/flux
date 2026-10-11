@@ -29,7 +29,7 @@ function announce(worker: ServiceWorker) {
         worker.removeEventListener('statechange', reload);
       };
       const reload = () => {
-        if (worker.state === 'redundant') { stopListening(); applying = null; return; }
+        if (worker.state === 'redundant') { stopListening(); if (applying === worker) applying = null; return; }
         if (reloaded || navigator.serviceWorker.controller !== worker || worker.state !== 'activated') return;
         reloaded = true;
         stopListening();

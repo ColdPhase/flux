@@ -103,3 +103,21 @@ test('late explicit apply while already controlling waits for activation without
   next.state = 'activated'; next.dispatchEvent(new Event('statechange'));
   assert.equal(f.reloads(), 1);
 });
+
+
+test('a retired update cannot release a newer update application fence', async () => {
+  const current = new Worker(); current.state = 'activated';
+  const first = new Worker();
+  const f = await fixture(first, current);
+  f.offers.at(-1)!.apply();
+  const newer = new Worker();
+  f.registration.installing = newer; f.registration.waiting = newer;
+  f.registration.dispatchEvent(new Event('updatefound'));
+  const offered = f.offers.at(-1)!;
+  offered.apply();
+  first.state = 'redundant'; first.dispatchEvent(new Event('statechange'));
+  offered.apply();
+  assert.deepEqual(newer.sent, [{ type: 'SKIP_WAITING' }], 'the older statechange does not unlock a newer explicit apply');
+  f.container.controller = newer; newer.state = 'activated'; newer.dispatchEvent(new Event('statechange'));
+  assert.equal(f.reloads(), 1);
+});
