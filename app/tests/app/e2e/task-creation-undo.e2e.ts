@@ -5,7 +5,7 @@ import http from 'node:http';
 import net from 'node:net';
 import { join } from 'node:path';
 import { after, before, test } from 'node:test';
-import { chromium, type Browser, type BrowserContext, type Page, type Route } from 'playwright';
+import { chromium, webkit, type Browser, type BrowserContext, type Page, type Route } from 'playwright';
 import { LIVE_SESSIONS_PATH, projectWorkDetailPath, STREAM_PATH, taskCreationUndoPath, taskDiscussionPath, type ConversationMessage,
   projectWorkPath, type SketchDetail, type TaskCreationNotice, type UndoTaskCreationResult, type WorkItem } from '@flux/contracts';
 import { pool } from '../support/db.js';
@@ -13,9 +13,11 @@ import { agentConnection } from '../support/mcp-actions.js';
 import { toolValue } from '../support/mcp.js';
 import { addMember, expectStatus, grant, password, person, project, workspace, type Person } from '../support/people.js';
 
-// Real OAuth/native creation, two real human accounts, real HTTP/SQL and Chromium.
+// Real OAuth/native creation, two real human accounts and real HTTP/SQL in either engine.
 // Holds interpose on genuine responses; they do not fabricate objects or events.
 // Phone-width evidence is a rendered UI check, not physical-device/PWA evidence.
+const engine = process.env.FLUX_E2E_BROWSER ?? 'chromium';
+if (engine !== 'chromium' && engine !== 'webkit') throw new Error(`FLUX_E2E_BROWSER must be chromium or webkit, got ${engine}`);
 const upstream = new URL(process.env.FLUX_API_URL ?? 'http://api:8080');
 const origin = new URL(process.env.FLUX_PUBLIC_ORIGIN!);
 const sockets = new Set<net.Socket>();
@@ -64,7 +66,7 @@ before(async () => {
   await finite(new Promise<void>((resolve, reject) => {
     proxy.once('error', reject); proxy.listen(Number(origin.port || 80), origin.hostname, resolve);
   }), 'proxy listen');
-  browser = await chromium.launch({ timeout: 15_000 });
+  browser = await (engine === 'webkit' ? webkit : chromium).launch({ timeout: 15_000 });
 }, { timeout: 30_000 });
 after(async () => {
   try { if (browser) await finite(browser.close(), 'browser close'); }
@@ -113,7 +115,11 @@ const title = (page: Page, item: WorkItem) => panel(page).getByRole('heading', {
 const undoButton = (page: Page) => panel(page).getByRole('button', { name: 'Undo task creation', exact: true });
 const draftKey = (f: Scene, item: WorkItem) => `flux:composer:${f.author.id}:${f.place.id}:task:${item.id}`;
 async function signedIn(who: Person, options: { disconnected?: boolean; width?: number; height?: number } = {}) {
-  const context = await browser.newContext({ baseURL: origin.origin, viewport: { width: options.width ?? 1280, height: options.height ?? 900 } });
+  // page.route cannot hold service-worker-owned requests. This suite tests real
+  // server races; pwa.e2e.ts covers the installed worker with serviceWorkers: 'allow'.
+  // https://playwright.dev/docs/api/class-page#page-route
+  const context = await browser.newContext({ baseURL: origin.origin, serviceWorkers: 'block',
+    viewport: { width: options.width ?? 1280, height: options.height ?? 900 } });
   context.setDefaultTimeout(15_000); context.setDefaultNavigationTimeout(15_000);
   if (options.disconnected) { disconnected.add(context); await context.routeWebSocket(`**${STREAM_PATH}*`, (socket) => socket.close()); }
   const response = await context.request.post('/api/auth/sign-in/email',

@@ -101,6 +101,7 @@ run_browser e2e node_modules/.bin/tsx --test tests/app/e2e/task-contribution-eff
 # Undo of an unused AI-created task (#238): two accounts across Conversation, Tasks, Map and Agents, stale and late
 # refusals, a lost response retried with its receipt, read-only history at desktop and phone width.
 run_browser e2e node_modules/.bin/tsx --test tests/app/e2e/task-creation-undo.e2e.ts
+run_browser -e FLUX_E2E_BROWSER=webkit e2e node_modules/.bin/tsx --test tests/app/e2e/task-creation-undo.e2e.ts
 
 # Project GitHub settings use real Flux sessions/SQL and an injected external transport fixture.
 # This is browser integration coverage, not the required real GitHub App installation evidence.
