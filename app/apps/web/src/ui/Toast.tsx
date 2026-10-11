@@ -24,6 +24,10 @@ interface ToastEntry extends Required<Omit<ToastOptions, 'timeout' | 'action'>> 
 
 const ToastContext = createContext<(options: ToastOptions) => void>(() => {});
 const ToastScopeContext = createContext<() => boolean>(() => true);
+const ToastTopContext = createContext<number | null>(null);
+
+/** Actual top of the rendered feedback stack, or null while no feedback is shown. */
+export function useToastTop() { return useContext(ToastTopContext); }
 
 export function useToast() {
   return useContext(ToastContext);
@@ -88,6 +92,8 @@ function ToastItem({ toast, onDone }: { toast: ToastEntry; onDone: (id: number) 
 export function ToastProvider({ children, scopeKey }: { children: ReactNode; scopeKey?: string | null }) {
   const [toasts, setToasts] = useState<ToastEntry[]>([]);
   const nextId = useRef(1);
+  const stack = useRef<HTMLDivElement>(null);
+  const [toastTop, setToastTop] = useState<number | null>(null);
   const [scope, setScope] = useState({ key: scopeKey, epoch: 0 });
   if (scope.key !== scopeKey) setScope({ key: scopeKey, epoch: scope.epoch + 1 });
   const epoch = scope.epoch;
@@ -108,6 +114,19 @@ export function ToastProvider({ children, scopeKey }: { children: ReactNode; sco
   const value = useMemo(() => show, [show]);
   // Z undoes the newest toast that offers it, unless the person is typing.
   const visible = toasts.filter((entry) => entry.scope === epoch);
+  useLayoutEffect(() => {
+    const node = stack.current;
+    if (!node) return;
+    const measure = () => {
+      const bounds = node.getBoundingClientRect();
+      setToastTop(bounds.height > 0 ? bounds.top : null);
+    };
+    const observer = new ResizeObserver(measure);
+    observer.observe(node);
+    window.addEventListener('resize', measure);
+    measure();
+    return () => { observer.disconnect(); window.removeEventListener('resize', measure); };
+  }, [epoch, visible.length]);
   const latest = useRef(visible);
   useLayoutEffect(() => { latest.current = visible; });
   useEffect(() => {
@@ -125,14 +144,14 @@ export function ToastProvider({ children, scopeKey }: { children: ReactNode; sco
     return () => window.removeEventListener('keydown', onKey);
   }, []);
   return (
-    <ToastScopeContext.Provider value={isCurrent}><ToastContext.Provider value={value}>
+    <ToastTopContext.Provider value={toastTop}><ToastScopeContext.Provider value={isCurrent}><ToastContext.Provider value={value}>
       {children}
       {createPortal(
-        <div className="ui-toasts" role="status" aria-live="polite" aria-relevant="additions text">
+        <div ref={stack} className="ui-toasts" role="status" aria-live="polite" aria-relevant="additions text">
           {visible.map((toast) => <ToastItem key={toast.id} toast={toast} onDone={remove} />)}
         </div>,
         document.body,
       )}
-    </ToastContext.Provider></ToastScopeContext.Provider>
+    </ToastContext.Provider></ToastScopeContext.Provider></ToastTopContext.Provider>
   );
 }

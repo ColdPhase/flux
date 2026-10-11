@@ -589,10 +589,11 @@ class TasksFinalJourney(unittest.TestCase):
                 page.set_viewport_size({'width': 1440, 'height': 900})
                 page.get_by_role('radio', name='Board', exact=True).click()
                 expect(toast).to_be_visible()
-                self.assertAlmostEqual(pane.bounding_box()['y'] + pane.bounding_box()['height'], page.locator('.tb-root').bounding_box()['y'] + page.locator('.tb-root').bounding_box()['height'], delta=1, msg='the list reservation retires in Board mode')
+                page.wait_for_function("() => {const pane=document.querySelector('.tb-root > .pane-scroll').getBoundingClientRect(), root=document.querySelector('.tb-root').getBoundingClientRect();return Math.abs(pane.bottom-root.bottom)<=1;}", timeout=8000)
                 page.get_by_role('radio', name='List', exact=True).click()
                 page.set_viewport_size({'width': 390, 'height': 844})
-                self.assertAlmostEqual(pane.bounding_box()['y'] + pane.bounding_box()['height'], page.locator('.tb-root').bounding_box()['y'] + page.locator('.tb-root').bounding_box()['height'], delta=1, msg='desktop reservation retires at the phone breakpoint')
+                expect(page.get_by_role('group', name='Whose tasks')).to_be_visible()
+                page.wait_for_function("() => {const pane=document.querySelector('.tb-root > .pane-scroll').getBoundingClientRect(), root=document.querySelector('.tb-root').getBoundingClientRect();return Math.abs(pane.bottom-root.bottom)<=1;}", timeout=8000)
                 page.set_viewport_size({'width': 1440, 'height': 900})
                 middle.scroll_into_view_if_needed()
                 middle.focus()
@@ -601,7 +602,7 @@ class TasksFinalJourney(unittest.TestCase):
                 expect(page.locator('.ui-toast')).to_have_count(0, timeout=9000)
                 expect(middle).to_be_focused()
                 self.assertAlmostEqual(pane.evaluate('el => el.scrollTop'), before, delta=2, msg='middle reading remains stable when feedback expires')
-                self.assertAlmostEqual(pane.bounding_box()['y'] + pane.bounding_box()['height'], page.locator('.tb-root').bounding_box()['y'] + page.locator('.tb-root').bounding_box()['height'], delta=1, msg='normal list density returns without feedback')
+                page.wait_for_function("() => {const pane=document.querySelector('.tb-root > .pane-scroll').getBoundingClientRect(), root=document.querySelector('.tb-root').getBoundingClientRect();return Math.abs(pane.bottom-root.bottom)<=1;}", timeout=8000)
 
     def desktop_feedback_geometry(self, page: Page, pane: Locator, last: Locator, state: str, dark: bool, height: int) -> None:
         page.wait_for_function("() => [...document.querySelectorAll('.ui-toast')].every(el => getComputedStyle(el).transform === 'none')")

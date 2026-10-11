@@ -17,6 +17,7 @@ import { OPENING_REVEAL_MS } from '../app/messageParts';
 import { useProjectWorkPage } from './WorkReadContext';
 import { WorkPagination } from './WorkPagination';
 import { useWorkReadingPosition } from './useWorkReadingPosition';
+import { useTaskFeedback } from './useTaskFeedback';
 import { TaskBoard, type ColumnId } from './TaskBoard';
 import { useProjectShell } from '../project/data';
 import { ProjectProposals } from '../project/ProjectProposals';
@@ -344,6 +345,7 @@ export function ProjectTasks() {
   // One tap on a glyph, or the keys 1-5 on a row, change its state; the toast offers Undo (F-026 S9).
   const shownSaved = useCallback((item: WorkItem) => setSaved((now) => ({ ...now, [item.id]: item })), []);
   const storeState = useStateChange(shownSaved, refreshPage);
+  useTaskFeedback(scroller, !phone && listing, data?.summary.observedAt, saved);
   const changeState: TaskRowProps['onChange'] = (item, status) => {
     if (document.activeElement?.closest(`[data-work-id="${item.id}"]`)) focusRow.current = { id: item.id, until: performance.now() + 5000 };
     void storeState(item, status);
