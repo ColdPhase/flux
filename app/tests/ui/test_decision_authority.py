@@ -141,7 +141,6 @@ class DecisionAuthorityJourney(unittest.TestCase):
     def test_03_on_a_phone_the_viewer_reads_the_same_note(self) -> None:
         page = self.page("vic", phone=True)
         page.goto(f"/projects/{self.project_id}/tasks")
-        page.get_by_role("radio", name="List", exact=True).tap()
         page.get_by_role("region", name=re.compile("^Waiting for a decision")).get_by_role("button", name=re.compile(f"^{re.escape(TITLE)}")).tap()
         sheet = self.details(page, phone=True)
         expect(sheet.get_by_role("region", name="Who decides")).to_contain_text("A person who can edit Gesture lamp accepts it")

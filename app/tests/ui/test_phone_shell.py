@@ -371,35 +371,21 @@ class PhoneShellJourney(unittest.TestCase):
 
     # ------------------------------------------------------------------ PF-6
 
-    def test_10_phone_tasks_toolbar_is_one_row_and_search_opens_to_the_full_row(self):
+    def test_10_phone_tasks_has_no_toolbar_only_the_view_menu_and_its_own_filter_row(self):
+        # F-026 S-P-Tasks (#346): the title is the view menu, the page has Mine | All and the rows follow at once.
         page = self.page()
         page.goto(f"/projects/{self.project['id']}/tasks")
-        toolbar = page.locator(".tb-bar")
-        expect(toolbar).to_be_visible()
-        self.assertLessEqual(self.box(toolbar)["height"], 60, "one row of tools")
-        first = page.locator(".tb-card:visible").first
+        expect(page.locator(".tb-bar")).to_be_hidden()
+        expect(page.locator(".tb-board")).to_have_count(0)
+        filters = page.get_by_role("group", name="Whose tasks")
+        expect(filters).to_be_visible()
+        first = page.locator(".ws-task:visible").first
         expect(first).to_be_visible()
-        self.assertLessEqual(self.box(first)["y"], 320, "the first card starts within 320px")
-        page.locator(".tb-ov", has_text="In progress").click()
-        search = page.get_by_label("Search tasks")
-        # Every tool names itself; Search is a target as wide as its tile.
-        for tool in ("Search", "Decisions"):
-            expect(toolbar.get_by_text(tool, exact=True)).to_be_visible()
-        tile = self.box(page.locator(".tb-search"))
-        self.assertGreaterEqual(min(tile["width"], tile["height"]), 44)
-        page.mouse.click(tile["x"] + tile["width"] - 4, tile["y"] + tile["height"] - 4)
-        expect(search).to_be_focused()
-        self.settle(page)
-        self.assertGreater(self.box(page.locator(".tb-search"))["width"], 250, "search takes the row while in use")
-        search.fill("probes")
-        expect(page.locator(".tb-card:visible")).to_have_count(1)
-        page.locator("header.top h1").click()
-        expect(search).to_have_value("probes")
-        # A filter in use keeps the field open and marked beside the tools, which come back.
-        self.assertGreater(self.box(page.locator(".tb-search"))["width"], 80, "a filter in use stays visible")
-        expect(page.locator(".tb-search.has-query")).to_have_count(1)
-        expect(page.get_by_role("button", name=re.compile("Task$"))).to_be_visible()
-        shot(page, "266-tasks-search-phone")
+        self.assertLessEqual(self.box(first)["y"], 220, "the first row starts within 220px")
+        for button in filters.get_by_role("button").all():
+            self.assertGreaterEqual(self.box(button)["height"], 34)
+        self.assertLessEqual(page.locator("body").evaluate("el => el.scrollWidth"), SE["width"])
+        shot(page, "346-tasks-phone")
 
     # ------------------------------------------------------------------ PF-3 and PF-7: keyboard and type size
 

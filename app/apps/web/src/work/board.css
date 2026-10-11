@@ -4,8 +4,8 @@
 
 /* ---------- Toolbar: underline search, Kanban | List, Mine, + Task ---------- */
 .tb-bar {
-  flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; min-height: 69px;
-  padding: 17px var(--space-page); border-bottom: 1px solid var(--line); background: var(--bg);
+  flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 8px; min-height: 0;
+  padding: 16px var(--space-page) 0; background: var(--bg);
 }
 .tb-search {
   display: flex; align-items: center; gap: 8px; flex: 0 1 280px; min-width: 0; height: 34px; color: var(--t3);
@@ -14,14 +14,20 @@
 .tb-search:focus-within { box-shadow: inset 0 -2px 0 var(--t1); color: var(--t2); }
 .tb-search input { flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; background: none; font-size: var(--fs-md); color: var(--t1); outline: none; }
 .tb-search input::placeholder { color: var(--t3); }
-.tb-bar__end { display: flex; align-items: center; gap: 6px; margin-left: auto; }
-.tb-mode { display: flex; gap: 3px; }
+.tb-bar__end { display: contents; }
+.tb-mode { order: 0; }
+.tb-mine { order: 1; }
+.tb-search { order: 2; margin-left: 8px; }
+.tb-dr { order: 8; margin-left: auto; }
+.tb-add.ui-btn { order: 9; }
+.tb-mode { display: inline-flex; gap: 2px; padding: 2px; border-radius: var(--r-pill); background: var(--sub); box-shadow: inset 0 1px 2px rgba(0, 0, 0, .06); }
 .tb-mode__b {
-  display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-height: var(--ctl); min-width: var(--ctl); padding: 0 9px;
-  border-radius: 5px; font-size: var(--fs-sm); color: var(--t2); transition: var(--tr);
+  display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-height: 26px; min-width: 26px; padding: 0 12px;
+  border-radius: var(--r-pill); font-size: var(--fs-sm); font-weight: 500; color: var(--t2); transition: var(--tr);
 }
-.tb-mode__b:hover { background: var(--hov); color: var(--t1); }
-.tb-mode__b[aria-checked="true"] { background: var(--sub); color: var(--t1); font-weight: 500; box-shadow: inset 0 0 0 1px var(--line2); }
+.tb-mode__b svg { display: none; }
+.tb-mode__b:hover { color: var(--t1); }
+.tb-mode__b[aria-checked="true"] { background: var(--el); color: var(--t1); box-shadow: var(--sh-1), 0 2px 6px -2px rgba(0, 0, 0, .14); }
 .tb-mine, .tb-dr {
   display: inline-flex; align-items: center; gap: 6px; min-height: var(--ctl); padding: 0 10px; border-radius: var(--r);
   font-size: var(--fs-sm); font-weight: 500; color: var(--t2); white-space: nowrap; transition: var(--tr);
@@ -31,6 +37,8 @@
 .tb-dr { position: relative; }
 .tb-dr__n { font-family: var(--mono); min-width: 17px; height: 17px; padding: 0 4px; border-radius: 9px; background: var(--inv); color: var(--oninv);
   font-size: 10px; font-weight: 700; line-height: 17px; text-align: center; font-variant-numeric: tabular-nums; }
+.tb-mine { min-height: 28px; padding: 0 10px; border-radius: var(--r-pill); box-shadow: inset 0 0 0 1px var(--line); }
+.tb-mine svg { display: none; }
 .tb-mine[aria-pressed="true"] { background: var(--sub); color: var(--t1); box-shadow: inset 0 0 0 1px var(--line2); }
 .tb-add.ui-btn { gap: 6px; padding: 0 10px; font-size: var(--fs-sm); }
 
@@ -54,13 +62,15 @@
 .tb-note__x { flex: none; margin-left: auto; min-height: 24px; font-weight: 500; color: var(--t2); text-decoration: underline; text-underline-offset: 3px; }
 .tb-none { margin: 14px var(--space-page) 0; font-size: var(--fs-md); color: var(--t2); overflow-wrap: anywhere; }
 
-.tb-board { flex: 1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 26px; padding: 24px var(--space-page) 32px; }
+.tb-board { flex: 1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; padding: 12px var(--space-page) 32px; align-items: start; }
 .tb-col { display: flex; flex-direction: column; min-width: 0; }
 /* Every column header is as tall as the ones with a "+" button, so the three line up. */
 /* 40px = the 25px add button, the padding and the rule: a column without the button (Done, readers) lines up. */
-.tb-col__head { display: flex; align-items: center; gap: 8px; min-height: 40px; padding-bottom: 14px; margin-bottom: 15px; border-bottom: 1px solid var(--line); }
-.tb-col__h { font-size: var(--fs-md); font-weight: 500; line-height: 1.4; color: var(--t1); }
-.tb-col__n { font-family: var(--mono); font-size: var(--fs-sm); color: var(--t3); font-variant-numeric: tabular-nums; }
+.tb-col__head { display: flex; align-items: center; gap: 8px; min-height: 28px; margin-bottom: 8px; }
+.tb-col__g { margin-top: 0; vertical-align: 0; }
+.tb-col[data-column="done"] .tb-col__head, .tb-col[data-column="done"] .tb-card__open { color: var(--t2); }
+.tb-col__h { font-size: 13px; font-weight: 600; line-height: 1.4; color: inherit; }
+.tb-col__n { font-size: var(--fs-sm); color: var(--t3); font-variant-numeric: tabular-nums; }
 .tb-col__b { display: inline-flex; align-items: center; gap: 4px; font-size: var(--fs-sm); font-weight: 500; color: var(--t2); }
 .tb-col__add.ui-icon-btn { width: 25px; height: 25px; margin-left: auto; }
 /* The card-list area is the drop target that lights up; the header, title and count stay neutral. */
@@ -72,47 +82,44 @@
 .tb-col__cards.is-over { background: color-mix(in srgb, var(--inv) 8%, var(--bg)); box-shadow: 0 0 0 2px var(--t1); }
 .tb-note--moving { background: color-mix(in srgb, var(--inv) 8%, var(--bg)); }
 .tb-note--moving svg { color: var(--t1); }
-.tb-col__list { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr)); gap: 12px; align-content: start; margin: 0; padding: 0; list-style: none; }
+.tb-col__list { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr)); gap: 8px; align-content: start; margin: 0; padding: 0; list-style: none; }
 .tb-col__empty { padding: 14px 1px 18px; font-size: var(--fs-md); color: var(--t3); }
 /* A column holds more than its bounded first page: the List pages through the rest (#155). */
 .tb-col__more { display: block; min-height: 32px; margin: 4px 1px 8px; font-size: var(--fs-sm); text-align: left; }
 
-.tb-ring { flex: none; width: 9px; height: 9px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px var(--t3); }
-.tb-ring--in_progress { box-shadow: none; border: 1.5px solid var(--t1); border-right-color: transparent; transform: rotate(-45deg); }
-.tb-ring--done { box-shadow: none; background: var(--t2); }
-
 /* ---------- Card ---------- */
 .tb-card {
-  position: relative; display: flex; flex-direction: column; min-width: 0; padding: 16px;
-  border: 1px solid var(--line); border-radius: var(--r-card); background: var(--el);
+  position: relative; display: flex; flex-direction: column; gap: 8px; min-width: 0; padding: 12px;
+  border-radius: 16px; background: var(--el); box-shadow: var(--sh-card);
   transition: border-color var(--dur-1) ease, background-color var(--dur-1) ease, box-shadow var(--dur-1) ease, opacity var(--dur-1) ease;
 }
-.tb-card:hover { border-color: var(--t1); background: var(--sub); }
+.tb-card:hover { box-shadow: var(--sh-card), inset 0 0 0 1px var(--line2); }
 /* While a card is dragged only the target column's card area lights up, never the card under the pointer. */
-html.tb-is-dragging .tb-card:hover { border-color: var(--line); background: var(--el); }
+html.tb-is-dragging .tb-card:hover { box-shadow: var(--sh-card); }
 .tb-card:has(.tb-card__open:focus-visible) { outline: 2px solid var(--t1); outline-offset: 2px; }
-.tb-card__top { display: flex; align-items: center; gap: 8px; min-height: 20px; margin: -4px -6px 0 0; }
-.tb-card__id { font-family: var(--mono); font-size: var(--fs-xs); letter-spacing: .5px; color: var(--t3); font-variant-numeric: tabular-nums; }
+.tb-card:has(.tb-card__open[aria-current="true"]) { box-shadow: var(--sh-card), 0 0 0 1.5px var(--t1); }
+.tb-card__top { display: flex; align-items: center; gap: 8px; min-height: 20px; margin: -4px -6px -2px 0; }
+.tb-card__top .ui-pill { height: 20px; }
+.tb-card__id { font-family: var(--mono); font-size: var(--fs-sm); color: var(--t3); font-variant-numeric: tabular-nums; }
 .tb-card__state { display: inline-flex; align-items: center; gap: 4px; font-size: var(--fs-xs); font-weight: 500; color: var(--t2); }
-.tb-card__state--blocked { color: var(--t2); }
 .tb-card__menu.ui-icon-btn { position: relative; z-index: 2; width: 28px; height: 28px; margin-left: auto; }
-.tb-card__t { margin: 9px 0 0; font-size: var(--fs-base); font-weight: 500; line-height: 1.6; letter-spacing: -.025em; }
+.tb-card__t { margin: 0; font-size: 14px; font-weight: 400; line-height: 19px; }
 .tb-card__open { display: block; width: 100%; text-align: left; color: var(--t1); }
 .tb-card__open:focus-visible { outline: none; }
 /* The title's button covers the card, so a click anywhere opens it; links and the menu sit above. */
 .tb-card__open::after { content: ""; position: absolute; inset: 0; border-radius: inherit; }
 .tb-card__title { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 4; overflow: hidden; overflow-wrap: anywhere; }
-.tb-card__blocker { margin-top: 8px; padding-left: 9px; border-left: 2px solid var(--t2); font-size: var(--fs-sm); line-height: 1.5; color: var(--t2); overflow-wrap: anywhere; }
+.tb-card__blocker { margin-top: 0; padding-left: 9px; border-left: 2px solid var(--t2); font-size: var(--fs-sm); line-height: 1.5; color: var(--t2); overflow-wrap: anywhere; }
 .tb-card__from {
-  position: relative; z-index: 2; display: flex; align-items: center; gap: 6px; align-self: flex-start; max-width: 100%; min-height: 24px; margin-top: 8px;
+  position: relative; z-index: 2; display: flex; align-items: center; gap: 6px; align-self: flex-start; max-width: 100%; min-height: 24px; margin-top: 0;
   font-size: var(--fs-sm); color: var(--t2); text-decoration: none; border-radius: var(--r-sm);
 }
 .tb-card__from > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tb-card__from svg { color: var(--t3); }
 .tb-card__from:hover { color: var(--t1); text-decoration: underline; text-underline-offset: 3px; }
-.tb-card__foot { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; margin-top: 12px; font-size: var(--fs-sm); }
+.tb-card__foot { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; font-size: var(--fs-sm); }
 .tb-card__owner { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 7px; min-width: 0; }
-.tb-card__name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--t1); }
+.tb-card__name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--t3); }
 .tb-card__kind { color: var(--t3); }
 .tb-card__owner--none { color: var(--t3); }
 .tb-av {
@@ -122,7 +129,7 @@ html.tb-is-dragging .tb-card:hover { border-color: var(--line); background: var(
 .tb-card__facts { display: inline-flex; gap: 8px; flex: none; margin-left: auto; font-size: var(--fs-xs); color: var(--t3); }
 .tb-card--set-aside .tb-card__open { color: var(--t2); }
 .tb-card.is-dragging { opacity: .45; }
-.tb-card.is-lifted { border-color: var(--t1); box-shadow: 0 0 0 2px color-mix(in srgb, var(--t1) 30%, transparent); }
+.tb-card.is-lifted { box-shadow: var(--sh-card), 0 0 0 2px var(--t1); }
 .tb-card.has-menu { z-index: 3; }
 /* Brief placement feedback once the server confirmed the move (UI116-5); none under reduced motion. */
 .tb-card.is-arrived { animation: tb-arrive 900ms var(--ease-out); }
@@ -133,7 +140,7 @@ html.tb-is-dragging .tb-card:hover { border-color: var(--line); background: var(
 html.tb-is-dragging, html.tb-is-dragging * { cursor: grabbing !important; user-select: none; }
 .tb-ghost {
   position: fixed; left: 0; top: 0; z-index: var(--z-menu); display: flex; flex-direction: column; gap: 9px; padding: 16px;
-  border: 1px solid var(--t1); border-radius: var(--r-card); background: var(--bg); box-shadow: var(--sh-pop); pointer-events: none;
+  border-radius: 16px; background: var(--el); box-shadow: var(--sh-pop), 0 0 0 1.5px var(--t1); pointer-events: none;
 }
 .tb-ghost__t { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; font-size: var(--fs-base); font-weight: 500; line-height: 1.6; color: var(--t1); }
 
@@ -181,49 +188,20 @@ html.tb-is-dragging, html.tb-is-dragging * { cursor: grabbing !important; user-s
   .tb-col__head { margin-bottom: 12px; padding-bottom: 10px; }
 }
 
-/* ---------- Phone toolbar (#266 PF-6, #264): one row of labelled tools ----------
-   Each tool is an icon over a short visible label, so nothing has to be guessed. Search is a tap target
-   as wide as its tile; tapped, it opens to the full row, and a filter in use stays open beside the tools. */
+/* ---------- Phone (F-026 S-P-Tasks): no toolbar; the view menu sits in the title and the page has its own Mine | All row ---------- */
 .tb-search__l, .tb-dr__s { display: none; }
 @media (max-width: 640px) {
-  /* The phone row keeps the search usable: the add button is tighter (12.5px labels since #338). */
-  .tb-add.ui-btn { padding: 0 8px; }
-  .tb-bar { min-height: 0; flex-wrap: nowrap; gap: 2px; padding: 4px 8px; }
-  .tb-bar :is(.tb-search, .tb-dr, .tb-mode__b, .tb-mine) {
-    position: relative; flex: none; flex-direction: column; justify-content: center; align-items: center; gap: 2px;
-    min-width: 44px; min-height: 48px; height: auto; padding: 4px 6px; border-radius: var(--r); font-size: 10.5px; font-weight: 500; line-height: 1.15; box-shadow: none;
-  }
-  .tb-bar .tb-mode__b[aria-checked="true"], .tb-bar .tb-mine[aria-pressed="true"] { background: var(--sub); color: var(--t1); }
-  .tb-search { order: 0; transition: background-color var(--dur-1) ease; }
-  .tb-search__l { display: block; }
-  /* Collapsed, the field covers the whole tile, so a tap anywhere on it focuses the search. */
-  .tb-search input { position: absolute; inset: 0; width: 100%; height: 100%; padding: 0 12px 0 36px; border-radius: inherit; opacity: 0; }
-  .tb-search:focus-within, .tb-search.has-query { flex: 1 1 auto; flex-direction: row; justify-content: flex-start; padding: 0 12px; background: var(--sub); }
-  .tb-search:focus-within input, .tb-search.has-query input { opacity: 1; background: transparent; }
-  .tb-search:focus-within .tb-search__l, .tb-search.has-query .tb-search__l { display: none; }
-  .tb-search:focus-within > svg, .tb-search.has-query > svg { position: relative; z-index: 1; pointer-events: none; }
-  .tb-bar:has(.tb-search:focus-within) :is(.tb-dr, .tb-bar__end) { display: none; }
-  .tb-dr { order: 1; }
-  .tb-dr__l { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-  .tb-dr__s { display: block; }
-  .tb-bar__end { order: 2; margin-left: auto; gap: 2px; }
-  .tb-mode { gap: 2px; }
-  .tb-add.ui-btn { margin-left: 4px; min-height: 48px; }
+  .tb-bar { display: none; }
   .tb-also { padding-top: 8px; }
-  .tb-col__head { min-height: 0; }
-  /* The count on Decisions & results says a decision waits; the List row stays only for parked work. */
-  .tb-dr__n { position: absolute; top: 2px; right: 2px; box-shadow: 0 0 0 2px var(--bg); }
   .tb-also__b--need { display: none; }
   .tb-also:not(:has(.tb-also__b:not(.tb-also__b--need))) { display: none; }
-  .tb-card__id { font-size: 10px; opacity: .85; }
 }
-@media (max-width: 350px) { .tb-bar { gap: 0; padding-inline: 4px; } .tb-bar :is(.tb-search, .tb-dr, .tb-mode__b, .tb-mine) { padding-inline: 3px; } }
 
 /* One column at a time on a narrow board: the status tabs above already name it and count it, so the
    column keeps only a quiet "New task" row (its heading stays for assistive technology). */
 @container tasks (max-width: 699px) {
   .tb-col__head { margin-bottom: 8px; padding-bottom: 0; border-bottom: 0; }
-  .tb-col__head > .tb-ring, .tb-col__head > .tb-col__n, .tb-col__head > .tb-col__b { display: none; }
+  .tb-col__head > .ui-glyph, .tb-col__head > .tb-col__n, .tb-col__head > .tb-col__b { display: none; }
   .tb-col__head > .tb-col__h { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   .tb-col__head .tb-col__add.ui-icon-btn { display: flex; align-items: center; width: 100%; height: 44px; margin: 0; justify-content: flex-start; gap: 8px; padding: 0 12px; border-radius: var(--r);
     box-shadow: inset 0 0 0 1px var(--line); color: var(--t2); font-size: var(--fs-sm); }
@@ -231,6 +209,8 @@ html.tb-is-dragging, html.tb-is-dragging * { cursor: grabbing !important; user-s
 }
 
 @media (pointer: coarse) {
+  .tb-mode__b { min-height: 44px; min-width: 44px; }
+  .tb-mine { min-height: 44px; }
   .tb-search input { font-size: 16px; }
   .tb-col__add.ui-icon-btn, .tb-card__menu.ui-icon-btn { width: 44px; height: 44px; }
   .tb-card__menu.ui-icon-btn { margin: -12px -8px -12px auto; }

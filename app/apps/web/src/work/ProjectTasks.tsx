@@ -1,24 +1,28 @@
-import { useCallback, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { useLoaderData, useLocation, useRevalidator, useSearchParams, type LoaderFunctionArgs } from 'react-router';
-import type { DecisionRowProjection, Project, ProactiveComparisonOutcome, ProjectWorkViewQuery, ResultRowProjection, WorkCounts, WorkObjectType, WorkRowProjection } from '@flux/contracts';
-import { AgentIdentity, Button, EmptyState, ErrorState, Icon, StatusGlyph } from '../ui';
+import type { DecisionRowProjection, Project, ProactiveComparisonOutcome, ProjectWorkViewQuery, ResultRowProjection, WorkCounts, WorkItem, WorkObjectType, WorkRowProjection } from '@flux/contracts';
+import { AgentIdentity, Button, EmptyState, ErrorState, Icon, MEDIA, useMediaQuery } from '../ui';
 import { getProject } from '../app/conversation-api';
 import { useShellActions } from '../app/shellContext';
 import { useShellData } from '../app/data';
 import { remember } from '../app/remembered';
 import { NewWorkComposer } from './NewWorkComposer';
-import { STATUS_LABEL, isFinished, shortDate } from './format';
+import { useDraft } from '../app/drafts';
+import { isFinished, shortDate } from './format';
+import { TaskRow, type TaskRowProps } from './TaskRow';
+import { useStateChange } from './taskState';
 import { getProjectWorkView, getWorkReferenceRows, workReferenceReadUrl, workViewReadUrl } from './read-api';
 import { useWorkRead } from './useWorkRead';
 import { OPENING_REVEAL_MS } from '../app/messageParts';
 import { useProjectWorkPage } from './WorkReadContext';
 import { WorkPagination } from './WorkPagination';
 import { useWorkReadingPosition } from './useWorkReadingPosition';
+import { useTaskFeedback } from './useTaskFeedback';
 import { TaskBoard, type ColumnId } from './TaskBoard';
 import { useProjectShell } from '../project/data';
 import { ProjectProposals } from '../project/ProjectProposals';
 import { listComparisonOutcomes } from '../project/proposals';
-import { useAgentOwners, type AgentOwners } from '../agents/owners';
+import { useAgentOwners } from '../agents/owners';
 import './work.css';
 
 interface TasksData { project: Project; outcomes: ProactiveComparisonOutcome[] }
@@ -99,26 +103,6 @@ function Row({ kind, id, icon, iconClass, title, sub, right, onOpen, muted }: { 
   );
 }
 
-function workSub(item: WorkRowProjection, owners: AgentOwners) {
-  const { rule, parkedBy } = item;
-  const results = item.relations.results;
-  const fromMessage = item.relations.sourceMessages > 0;
-  const waiting = isFinished(item) ? 0 : item.prerequisiteCounts.unmet;
-  const rest = [
-    item.parked ? null : STATUS_LABEL[item.status],
-    item.status === 'blocked' && item.blocker ? `waiting for ${item.blocker}` : null,
-    waiting ? `waits for ${waiting} ${waiting === 1 ? 'task' : 'tasks'}` : null,
-    parkedBy ? `Parked · was ${STATUS_LABEL[item.status].toLowerCase()}` : null,
-    rule && !parkedBy ? `follows “${rule.title}”` : null,
-    fromMessage ? 'from a message' : null,
-    results ? `${results} ${results === 1 ? 'result' : 'results'}` : null,
-  ].filter(Boolean).join(' · ');
-  return <>{item.owner?.kind === 'agent' ? <AgentIdentity name={item.owner.name} owner={owners.get(item.owner.id)} /> : item.owner?.name ?? 'No owner'}{rest ? ` · ${rest}` : ''}</>;
-}
-
-// The row's own text names the state; a parked task keeps its state's shape, quieter.
-const glyph = (item: WorkRowProjection) => <StatusGlyph status={item.status} className={item.parked ? 'ui-glyph--parked' : undefined} />;
-
 type Mode = 'board' | 'list';
 const MODE_KEY = 'flux.tasks.mode.';
 
@@ -173,7 +157,7 @@ function Toolbar({ mode, onMode, query, onQuery, mine, onMine, writable, onNew, 
           {(['board', 'list'] as const).map((value) => (
             <button key={value} type="button" role="radio" className="tb-mode__b" data-mode={value} aria-checked={mode === value}
               tabIndex={mode === value ? 0 : -1} onClick={() => onMode(value)}>
-              <Icon name={value === 'board' ? 'board' : 'list'} size={13} /><span className="tb-mode__l">{value === 'board' ? 'Kanban' : 'List'}</span>
+              <span className="tb-mode__l">{value === 'board' ? 'Board' : 'List'}</span>
             </button>
           ))}
         </div>
@@ -225,24 +209,38 @@ export function ProjectTasks() {
   // the person's own choice unless the URL names one (`view`).
   const fromUrl = () => {
     const status = isGroup(search.get('status')) ? search.get('status') as GroupId : null;
+    // The phone lists whatever the address names (a section jump or a shared link) and keeps its own continuation.
+    const onPhone = window.matchMedia(MEDIA.phone).matches;
     const cursor = search.get('cursor') || null;
     const asked = search.get('view');
     const mode: Mode = asked === 'board' || asked === 'list' ? asked : status || cursor ? 'list' : preferredMode(me.user.id);
-    return { routeKey, status, mine: search.get('show') === 'mine', cursor: mode === 'list' ? cursor : null, mode };
+    return { routeKey, status, mine: search.get('show') === 'mine', cursor: mode === 'list' || onPhone ? cursor : null, mode };
   };
+  const [saved, setSaved] = useState<Record<string, WorkItem>>({});
+  const focusRow = useRef<{ id: string; until: number } | null>(null);
   const [stored, setViewState] = useState(fromUrl);
   const [searched, setSearched] = useState({ routeKey: `${me.user.id}:${project.id}`, text: '' });
   const [adding, setAdding] = useState<ColumnId | null>(null);
+  // On the phone the task field is not on the page until "New → Task" asks for it.
+  const [composing, setComposing] = useState(false);
+  // A kept private draft brings the field back after a reload or a return, on the phone too.
+  const keptDraft = useDraft(me.user.id, `project-work:${project.id}`).text.trim() !== '';
   // A router POP, account switch or project switch selects its actual URL immediately.
   const view = stored.routeKey === routeKey ? stored : fromUrl();
-  const { status, mine, cursor, mode } = view;
+  const { status: viewStatus, mine, cursor: viewCursor, mode: viewMode } = view;
+  // The phone shows the list as drawn (S-P-Tasks): Mine | All over the rows, no board and no group views.
+  const phone = useMediaQuery(MEDIA.phone);
+  const status = viewStatus;
+  const cursor = viewCursor;
+  const listing = phone || viewMode === 'list';
+  const mode = viewMode;
   const boardSearch = searched.routeKey === `${me.user.id}:${project.id}` ? searched.text : '';
   const setBoardSearch = (text: string) => setSearched({ routeKey: `${me.user.id}:${project.id}`, text });
   // The List reads its chosen view page by page. The board's Open column is the same bounded read
   // of the open group; its other columns are read by the board (see TaskBoard).
-  const query = useMemo<ProjectWorkViewQuery>(() => mode === 'list'
-    ? { purpose: 'tasks', group: status ?? 'all', mine, ...(cursor ? { cursor } : {}) }
-    : { purpose: 'tasks', group: 'open', mine }, [mode, status, mine, cursor]);
+  const query = useMemo<ProjectWorkViewQuery>(() => phone || viewMode === 'list'
+    ? { purpose: 'tasks', group: viewStatus ?? 'all', mine, ...(cursor ? { cursor } : {}) }
+    : { purpose: 'tasks', group: 'open', mine }, [phone, viewMode, viewStatus, mine, cursor]);
   const selector = workViewReadUrl(project.id, query);
   const load = useCallback((signal: AbortSignal) => getProjectWorkView(project.id, query, signal), [project.id, query]);
   const { page: read, refresh: refreshPage } = useProjectWorkPage(project.id, selector, load);
@@ -250,7 +248,7 @@ export function ProjectTasks() {
   const writable = (data?.summary.access ?? project.access) !== 'viewer';
   const counts = data ? mine ? data.summary.mine : data.summary.all : null;
   const viewKey = taskViewKey(me.user.id, project.id, status, mine);
-  const readingKey = mode === 'list' ? `${viewKey}:reading:${cursor ?? 'first'}` : `${taskViewKey(me.user.id, project.id, null, mine)}:board:reading`;
+  const readingKey = listing ? `${viewKey}:reading:${cursor ?? 'first'}` : `${taskViewKey(me.user.id, project.id, null, mine)}:board:reading`;
   const saveReading = useWorkReadingPosition(scroller, readingKey, data !== null, data?.summary.observedAt);
   // The results that proposals and outcomes name (#155): their current titles come from one bounded
   // reference read (at most 100), not from whichever page of results the List has loaded.
@@ -272,7 +270,7 @@ export function ProjectTasks() {
     const group = SECTION_GROUP[id];
     if (!group) return;
     saveReading();
-    if (mode === 'list') keepCursor(viewKey, cursor);
+    if (listing) keepCursor(viewKey, cursor);
     jump.current = { routeKey, id, group };
     setBoardSearch('');
     setViewState({ routeKey, status: null, mine: false, cursor: null, mode: 'list' });
@@ -303,29 +301,29 @@ export function ProjectTasks() {
   // instant, and back/forward or a shared link restore it. Kanban or List is a personal choice:
   // the URL names it only when it differs from that choice.
   const params = new URLSearchParams();
-  if (mode === 'list' && status) params.set('status', status);
+  if (listing && status) params.set('status', status);
   if (mine) params.set('show', 'mine');
-  if (mode === 'list' && cursor) params.set('cursor', cursor);
-  if (mode !== (mode === 'list' && (status || cursor) ? 'list' : preference)) params.set('view', mode);
+  if (listing && cursor) params.set('cursor', cursor);
+  if (!phone && mode !== (mode === 'list' && (status || cursor) ? 'list' : preference)) params.set('view', mode);
   const viewSearch = params.toString();
   useEffect(() => {
-    if (mode === 'list') keepCursor(viewKey, cursor);
+    if (listing) keepCursor(viewKey, cursor);
     remember('tasks', me.user.id, project.id, viewSearch ? `?${viewSearch}` : '');
     const url = new URL(window.location.href);
     for (const key of ['status', 'show', 'cursor', 'view']) url.searchParams.delete(key);
     for (const [key, value] of new URLSearchParams(viewSearch)) url.searchParams.set(key, value);
     if (url.href !== window.location.href) window.history.replaceState(window.history.state, '', url);
-  }, [viewKey, cursor, mode, viewSearch, me.user.id, project.id, location.search]);
+  }, [viewKey, cursor, mode, listing, viewSearch, me.user.id, project.id, location.search]);
 
   const setView = (next: { status?: GroupId | null; mine?: boolean; mode?: Mode }) => {
     jump.current = null;
     saveReading();
-    if (mode === 'list') keepCursor(viewKey, cursor);
+    if (listing) keepCursor(viewKey, cursor);
     const nextStatus = next.status === undefined ? status : next.status;
     const nextMine = next.mine ?? mine;
     const nextMode = next.mode ?? mode;
     setViewState({ routeKey, status: nextStatus, mine: nextMine, mode: nextMode,
-      cursor: nextMode === 'list' ? storedCursor(taskViewKey(me.user.id, project.id, nextStatus, nextMine)) : null });
+      cursor: nextMode === 'list' || phone ? storedCursor(taskViewKey(me.user.id, project.id, nextStatus, nextMine)) : null });
   };
   const chooseMode = (next: Mode) => { setChosen({ userId: me.user.id, mode: next }); rememberMode(me.user.id, next); setView({ mode: next }); };
   const movePage = (nextCursor: string) => {
@@ -337,16 +335,34 @@ export function ProjectTasks() {
   const refresh = () => {
     jump.current = null;
     saveReading();
-    if (mode === 'list') keepCursor(viewKey, null);
+    if (listing) keepCursor(viewKey, null);
     setViewState({ ...view, cursor: null });
     refreshPage();
   };
   // The board's own column reads follow this revision as well as the router's revalidation.
   const [boardRevision, setBoardRevision] = useState(0);
   const refreshBoard = () => { refreshPage(); setBoardRevision((current) => current + 1); };
+  // One tap on a glyph, or the keys 1-5 on a row, change its state; the toast offers Undo (F-026 S9).
+  const shownSaved = useCallback((item: WorkItem) => setSaved((now) => ({ ...now, [item.id]: item })), []);
+  const storeState = useStateChange(shownSaved, refreshPage);
+  useTaskFeedback(scroller, !phone && listing, data?.summary.observedAt, saved);
+  const changeState: TaskRowProps['onChange'] = (item, status) => {
+    if (document.activeElement?.closest(`[data-work-id="${item.id}"]`)) focusRow.current = { id: item.id, until: performance.now() + 5000 };
+    void storeState(item, status);
+  };
+  // The row is drawn in another group after its state changes: keep focus on it when that is where it was.
+  useLayoutEffect(() => {
+    const wanted = focusRow.current;
+    if (!wanted) return;
+    if (performance.now() > wanted.until) { focusRow.current = null; return; }
+    const active = document.activeElement;
+    if (active && active !== document.body) return;
+    const button = scroller.current?.querySelector<HTMLButtonElement>(`[data-work-id="${wanted.id}"] .ws-item`);
+    if (button) { button.focus({ preventScroll: true }); focusRow.current = null; }
+  });
   // "+ Task" starts the same creation: the List's field, or a field at the top of the board's Open column.
   const startNew = () => {
-    if (mode === 'list') document.getElementById('ws-add')?.focus();
+    if (listing) { setComposing(true); requestAnimationFrame(() => requestAnimationFrame(() => document.getElementById('ws-add')?.focus())); }
     else setAdding('open');
   };
   // New → Task in the sidebar (F-026 S3) arrives as ?new=task: start the same creation once, then drop it.
@@ -355,9 +371,9 @@ export function ProjectTasks() {
     const next = new URLSearchParams(search);
     next.delete('new');
     setSearch(next, { replace: true });
-    if (mode === 'list') requestAnimationFrame(() => document.getElementById('ws-add')?.focus());
+    if (listing) requestAnimationFrame(() => { setComposing(true); requestAnimationFrame(() => document.getElementById('ws-add')?.focus()); });
     else requestAnimationFrame(() => setAdding('open'));
-  }, [search, writable, mode, setSearch]);
+  }, [search, writable, listing, setSearch]);
 
   useEffect(() => {
     const refresh = () => { if (document.visibilityState === 'visible') revalidator.revalidate(); };
@@ -366,7 +382,9 @@ export function ProjectTasks() {
     return () => { window.removeEventListener('focus', refresh); window.clearInterval(interval); };
   }, [revalidator]);
 
-  const work = data?.items.filter((item): item is WorkRowProjection => item.kind === 'work') ?? [];
+  // A stored state change shows at once; the List's own read catches up with that version.
+  const work = (data?.items.filter((item): item is WorkRowProjection => item.kind === 'work') ?? [])
+    .map((item) => { const stored = saved[item.id]; return stored && stored.version > item.version ? { ...item, status: stored.status, blocker: stored.blocker, version: stored.version } : item; });
   const decisions = data?.items.filter((item): item is DecisionRowProjection => item.kind === 'decision') ?? [];
   const results = data?.items.filter((item): item is ResultRowProjection => item.kind === 'result') ?? [];
   const by = (state: WorkRowProjection['status']) => work.filter((item) => item.status === state && !item.parked);
@@ -377,7 +395,7 @@ export function ProjectTasks() {
   const earlier = decisions.filter((item) => item.status === 'superseded');
   const groupCount = (id: GroupId, visible: number) => visible ? counts?.[id] ?? 0 : 0;
   const openObject = (kind: WorkObjectType, id: string) => () => { saveReading(); openDetails({ kind, id }); };
-  const workRow = (item: WorkRowProjection, muted = false) => <Row key={item.id} kind="work" id={item.id} icon={glyph(item)} title={item.title} sub={workSub(item, owners)} right={item.owner?.kind === 'human' ? <span className="ws-av" aria-hidden="true">{item.owner.name.slice(0, 1)}</span> : null} onOpen={openObject('work', item.id)} muted={muted} />;
+  const workRow = (item: WorkRowProjection, muted = false) => <TaskRow key={item.id} item={item} meId={me.user.id} owners={owners} writable={writable} muted={muted} onOpen={openObject('work', item.id)} onChange={changeState} />;
   const summaryCounts = data ? mine ? data.summary.mine : data.summary.all : null;
   // What the board leaves to the List, one step away: a decision waiting for someone and work a pivot set aside.
   const elsewhere: { id: GroupId; text: string; need?: boolean }[] = [];
@@ -398,7 +416,7 @@ export function ProjectTasks() {
       resultTitles={resultTitles}
       workCount={data?.summary.workTotal ?? 0} resultCount={data?.summary.all.results ?? 0}
       workJumpId={data?.summary.all.in_progress ? 'g-progress' : data?.summary.all.blocked ? 'g-blocked' : data?.summary.all.open ? 'g-open' : data?.summary.all.parked ? 'g-parked' : 'g-finished'}
-      jumpToSection={jumpToSection} writable={writable} refresh={() => { if (mode === 'list') refresh(); else refreshBoard(); revalidator.revalidate(); }}
+      jumpToSection={jumpToSection} writable={writable} refresh={() => { if (listing) refresh(); else refreshBoard(); revalidator.revalidate(); }}
       openResult={(id) => openDetails({ kind: 'result', id, projectId: project.id })}
       openWork={(item) => openDetails({ kind: 'work', id: item.id, projectId: project.id })} />
     </div>
@@ -408,7 +426,7 @@ export function ProjectTasks() {
     <div className="tb-root">
       <Toolbar mode={mode} onMode={chooseMode} query={boardSearch} onQuery={setBoardSearch} mine={mine} onMine={(next) => setView({ mine: next })} writable={writable} onNew={startNew} onDecisions={toDecisions} needs={summaryCounts?.needs ?? 0} />
       <div className="pane-scroll" ref={scroller}>
-      {mode === 'board' ? (
+      {!listing ? (
         <div className="tb" data-work-observed-at={data?.summary.observedAt}>
           {elsewhere.length ? (
             <nav className="tb-also" aria-label="Also in the List">
@@ -427,10 +445,15 @@ export function ProjectTasks() {
         </div>
       ) : (
       <div className="pane-in ws-tasks" data-shift data-work-observed-at={data?.summary.observedAt}>
-        {writable ? <NewWorkComposer key={`${me.user.id}:${project.id}`} userId={me.user.id} projectId={project.id} /> : null}
+        {writable && (!phone || composing || keptDraft) ? <NewWorkComposer key={`${me.user.id}:${project.id}`} userId={me.user.id} projectId={project.id} /> : null}
         {proposals}
         <div className="ws-task-controls">
-          <TaskViews counts={counts} status={status} mine={mine} writable={writable} onStatus={(next) => setView({ status: next })} onMine={(next) => setView({ mine: next })} />
+          {phone ? (
+            <div className="ws-mineall" role="group" aria-label="Whose tasks">
+              <button type="button" aria-pressed={mine} onClick={() => setView({ mine: true })}>Mine</button>
+              <button type="button" aria-pressed={!mine} onClick={() => setView({ mine: false, status: null })}>All</button>
+            </div>
+          ) : <TaskViews counts={counts} status={status} mine={mine} writable={writable} onStatus={(next) => setView({ status: next })} onMine={(next) => setView({ mine: next })} />}
           <WorkPagination page={data} busy={read.phase !== 'ready' && read.phase !== 'unavailable'} onCursor={movePage} onRefresh={refresh} />
         </div>
         {read.phase === 'unavailable' ? <ErrorState title="Work could not be loaded" actions={<button type="button" className="ws-none__b" onClick={refresh}>Refresh work</button>}><p>Your private draft is kept. Refresh to read the current view.</p></ErrorState> : null}

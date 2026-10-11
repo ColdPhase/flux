@@ -8,7 +8,7 @@ import uuid
 from urllib.parse import parse_qs, urlsplit
 
 from playwright.sync_api import expect, sync_playwright
-from test_app_shell import ORIGIN, UPSTREAM, shot, start_forwarder
+from test_app_shell import UI_BROWSER, ORIGIN, UPSTREAM, shot, start_forwarder
 
 
 def api(context, method, path, body=None, status=200):
@@ -26,7 +26,7 @@ class WorkPaginationJourney(unittest.TestCase):
         if UPSTREAM:
             start_forwarder(ORIGIN, UPSTREAM)
         cls.pw = sync_playwright().start()
-        cls.browser = cls.pw.chromium.launch()
+        cls.browser = getattr(cls.pw, UI_BROWSER).launch()
         expect.set_options(timeout=10000)
         cls.contexts, cls.users, emails = [], [], []
         for name in ("Ada Kowalska", "Ada Nowak"):
@@ -119,16 +119,17 @@ class WorkPaginationJourney(unittest.TestCase):
                 pane = page.locator(".pane-scroll").filter(has=page.locator(".ws-tasks"))
                 pane.evaluate("el => { el.scrollTop = 460; el.dispatchEvent(new Event('scroll')); }")
                 anchor = pane.locator("[data-work-id]").evaluate_all("els => { const pane=els[0].closest('.pane-scroll');const top=pane.getBoundingClientRect().top;const visibleTop=Math.max(top,pane.querySelector('.ws-task-controls').getBoundingClientRect().bottom);const row=els.find(el=>el.getBoundingClientRect().bottom>visibleTop);return [row.dataset.workId,row.getBoundingClientRect().top-top]; }")
-                views = page.get_by_role("navigation", name="Task views")
-                views.get_by_role("button", name=re.compile("^Blocked")).click()
-                self.ready(page)
-                self.assertEqual(len(self.rows(page)), 6)
-                views.get_by_role("button", name="All", exact=True).click()
-                self.ready(page)
-                self.assertEqual(parse_qs(urlsplit(page.url).query)["cursor"][0], cursor)
-                self.assertEqual(self.rows(page), second)
-                restored = pane.locator(f"[data-work-id='{anchor[0]}']").evaluate("el=>el.getBoundingClientRect().top-el.closest('.pane-scroll').getBoundingClientRect().top")
-                self.assertLess(abs(restored - anchor[1]), 3)
+                if not phone:  # the phone has no group views, only Mine | All (F-026 S-P-Tasks)
+                    views = page.get_by_role("navigation", name="Task views")
+                    views.get_by_role("button", name=re.compile("^Blocked")).click()
+                    self.ready(page)
+                    self.assertEqual(len(self.rows(page)), 6)
+                    views.get_by_role("button", name="All", exact=True).click()
+                    self.ready(page)
+                    self.assertEqual(parse_qs(urlsplit(page.url).query)["cursor"][0], cursor)
+                    self.assertEqual(self.rows(page), second)
+                    restored = pane.locator(f"[data-work-id='{anchor[0]}']").evaluate("el=>el.getBoundingClientRect().top-el.closest('.pane-scroll').getBoundingClientRect().top")
+                    self.assertLess(abs(restored - anchor[1]), 3)
                 page.reload(); self.ready(page)
                 self.assertEqual(self.rows(page), second)
                 expect(page.get_by_role("navigation", name="Work pages")).to_contain_text("51–100 of 127")
@@ -266,7 +267,7 @@ class WorkPaginationJourney(unittest.TestCase):
             with self.subTest(phone=phone):
                 page = self.page(phone=phone)
                 page.goto(f"/projects/{self.project}/tasks?view=list"); self.ready(page)
-                page.locator("[data-work-id]").nth(25).get_by_role("button").focus()
+                page.locator("[data-work-id]").nth(25).locator(".ws-item").focus()
                 for _ in range(20):
                     page.keyboard.press("Shift+Tab")
                     exposed = page.evaluate("""() => {

@@ -755,7 +755,7 @@ class ScenarioJourney:
         s["doc_v1"] = doc["body"]
 
         # Task first, map later: Jonas adds the order in Tasks and links it to Variant B from its Details (test_2b).
-        jonas.goto(f"/projects/{lamp}/tasks?view=list")
+        jonas.goto(f"/projects/{lamp}/tasks?view=list" + ("&new=task" if self.phone else ""))  # the phone opens its task field through New → Task
         jonas.get_by_label("New task", exact=True).fill(ORDER_TASK)
         self.tap(jonas.get_by_role("button", name="Add task", exact=True))
         expect(self.details(jonas).get_by_role("heading", name=ORDER_TASK)).to_be_visible()

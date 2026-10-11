@@ -455,35 +455,49 @@ class AdaptiveMatrix(AdaptiveBase):
 
         # Tasks: a readable active/blocked route on narrow boards, every column on wide ones.
         self.tab(page, "Tasks")
-        expect(page.locator(".tb-board")).to_be_visible()
-        self.primary(page, page.get_by_role("button", name="New Task", exact=True), "New Task")
-        for name in ("Kanban", "List"):
-            self.primary(page, page.get_by_role("radiogroup", name="Show tasks as").get_by_role("radio", name=name, exact=True), f"the {name} switch")
-        overview = page.get_by_role("navigation", name="Task status")
-        board_width = page.locator(".tb").bounding_box()["width"]
-        if board_width < 700:
-            expect(overview).to_be_visible()
-            expect(overview).to_contain_text("1 blocked")
-            for button in overview.get_by_role("button").all():
-                self.primary(page, button, "a status overview button")
-            overview.get_by_role("button", name=re.compile("^In progress")).click()
-        else:
-            expect(overview).to_be_hidden()
-            for column in ("Open", "In progress", "Done"):
-                region = page.get_by_role("region", name=re.compile(f"^{column}"))
-                expect(region).to_be_visible()
-                box = region.bounding_box()
-                pane = page.locator(".app__pane").bounding_box()
-                self.assertGreaterEqual(box["x"], pane["x"] - 1, f"the {column} column starts inside the pane at {size}")
-                self.assertLessEqual(box["x"] + box["width"], pane["x"] + pane["width"] + 1, f"the whole {column} column is in view at {size}")
-        card = self.card(page, fx.OPEN_TASK)
-        self.primary(page, card, "a task card")
-        self.no_sideways_scroll(page, "Tasks")
-        self.shot(page, f"adapt-{size}{tag}-tasks")
-        if "a task card" in KNOWN_GAPS.get(f"{width}×{height}", {}):
-            card.evaluate("el => el.click()")
-        else:
+        if width <= 640:
+            # The phone shows the list as drawn (F-026 S-P-Tasks): Mine | All, then rows with a glyph that changes the state.
+            expect(page.locator(".tb-board")).to_have_count(0)
+            expect(page.locator(".tb-bar")).to_be_hidden()
+            for button in page.get_by_role("group", name="Whose tasks").get_by_role("button").all():
+                self.primary(page, button, "Mine or All")
+            card = page.locator(".ws-task").filter(has_text=fx.OPEN_TASK).locator(".ws-item")
+            self.primary(page, page.locator(".ws-task").filter(has_text=fx.OPEN_TASK).locator(".ws-task__glyph"), "a task's state glyph")
+            self.primary(page, card, "a task row")
+            self.no_sideways_scroll(page, "Tasks")
+            self.shot(page, f"adapt-{size}{tag}-tasks")
             card.click()
+        else:
+            expect(page.locator(".tb-board")).to_be_visible()
+            self.primary(page, page.get_by_role("button", name="New Task", exact=True), "New Task")
+            for name in ("Board", "List"):
+                self.primary(page, page.get_by_role("radiogroup", name="Show tasks as").get_by_role("radio", name=name, exact=True), f"the {name} switch")
+            overview = page.get_by_role("navigation", name="Task status")
+            board_width = page.locator(".tb").bounding_box()["width"]
+            if board_width < 700:
+                expect(overview).to_be_visible()
+                expect(overview).to_contain_text("1 blocked")
+                for button in overview.get_by_role("button").all():
+                    self.primary(page, button, "a status overview button")
+                overview.get_by_role("button", name=re.compile("^In progress")).click()
+            else:
+                expect(overview).to_be_hidden()
+                for column in ("Open", "In progress", "Done"):
+                    region = page.get_by_role("region", name=re.compile(f"^{column}"))
+                    expect(region).to_be_visible()
+                    box = region.bounding_box()
+                    pane = page.locator(".app__pane").bounding_box()
+                    self.assertGreaterEqual(box["x"], pane["x"] - 1, f"the {column} column starts inside the pane at {size}")
+                    self.assertLessEqual(box["x"] + box["width"], pane["x"] + pane["width"] + 1, f"the whole {column} column is in view at {size}")
+            card = self.card(page, fx.OPEN_TASK)
+            self.primary(page, card, "a task card")
+            self.no_sideways_scroll(page, "Tasks")
+            self.shot(page, f"adapt-{size}{tag}-tasks")
+            if "a task card" in KNOWN_GAPS.get(f"{width}×{height}", {}):
+                card.evaluate("el => el.click()")
+            else:
+                card.click()
+
         details = page.locator("#details")
         expect(details.get_by_role("heading", name=fx.OPEN_TASK)).to_be_visible()
         self.primary(page, details.get_by_role("button", name="Close details"), "Close details")

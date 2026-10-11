@@ -53,14 +53,24 @@ test('all pages render quiet comparisons and insufficient evidence with current 
       const views = page.getByRole('navigation', { name: 'Task views' });
       const jumps = page.getByRole('navigation', { name: 'Project work sections' });
       for (const [label, target] of [['Results', 'g-results'], ['Work', 'g-open']] as const) {
-        await views.getByRole('button', { name: /^Open / }).click();
-        await views.getByRole('checkbox', { name: 'Only mine', exact: true }).check();
+        // The phone's saved view is Mine (it has no group views); the computer's is a group plus Only mine.
+        const mine = page.getByRole('group', { name: 'Whose tasks' });
+        if (viewport.width === 390) await mine.getByRole('button', { name: 'Mine', exact: true }).tap();
+        else {
+          await views.getByRole('button', { name: /^Open / }).click();
+          await views.getByRole('checkbox', { name: 'Only mine', exact: true }).check();
+        }
         assert.equal(await page.locator(`#${target}`).count(), 0, 'the destination is hidden by the saved view');
         const jump = jumps.getByRole('button', { name: new RegExp(`^${label} `) });
         if (touch) await jump.tap(); else await jump.click();
         await page.locator(`#${target}`).waitFor();
-        assert.equal(await views.getByRole('button', { name: 'All', exact: true }).getAttribute('aria-pressed'), 'true');
-        assert.equal(await views.getByRole('checkbox', { name: 'Only mine', exact: true }).isChecked(), false);
+        if (viewport.width === 390) {
+          assert.equal(await mine.getByRole('button', { name: 'All', exact: true }).getAttribute('aria-pressed'), 'true');
+          assert.equal(await mine.getByRole('button', { name: 'Mine', exact: true }).getAttribute('aria-pressed'), 'false');
+        } else {
+          assert.equal(await views.getByRole('button', { name: 'All', exact: true }).getAttribute('aria-pressed'), 'true');
+          assert.equal(await views.getByRole('checkbox', { name: 'Only mine', exact: true }).isChecked(), false);
+        }
         await page.waitForFunction((id) => {
           const bounds = document.getElementById(id)?.getBoundingClientRect();
           return !!bounds && bounds.y > 0 && bounds.bottom < innerHeight;
@@ -68,7 +78,7 @@ test('all pages render quiet comparisons and insufficient evidence with current 
       }
       await page.locator('.ws-tasks').evaluate((node) => { node.parentElement!.scrollTop = 0; });
       await page.waitForFunction(() => {
-        const buttons = [...document.querySelectorAll('nav[aria-label="Task views"] button')];
+        const buttons = [...document.querySelectorAll('nav[aria-label="Task views"] button, .ws-mineall button')];
         return buttons.length > 0 && buttons.every((node) => node.getAnimations()
           .every((animation) => animation.playState !== 'running'));
       });
