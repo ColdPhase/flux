@@ -10,12 +10,15 @@ guides. Follow [the workflow](../../../docs/agents/workflow.md) and
 [GitHub ownership rules](../../../docs/agents/github-protocol.md).
 
 1. Confirm you own implementation, dependencies are satisfied, and the accepted
-   contract is current. Inspect an existing branch/PR/checkpoint before starting.
+   contract is current. Inspect an existing branch/PR/checkpoint before starting;
+   check the workflow's WIP limit, including delegated work.
 2. Claim by assigning yourself with one short comment. Use a dedicated worktree
    and branch `<worker>/<issue>-<slug>` from current `main`; reuse the existing
    task worktree when resuming. Preserve user changes.
 3. Implement the agreed outcome with relevant regression coverage. Run real checks
-   from the trusted project configuration, with targeted checks during iteration.
+   from the trusted project configuration. Use
+   [impact-based verification](../../../docs/agents/evaluation.md#choose-verification-by-impact)
+   during iteration and before review; full suites are not an automatic handoff gate.
    For UI behavior, exercise the running application when the environment is ready.
    Use Docker/Compose for the application, dependencies and tests. Do not install
    databases/toolchains as host services; isolate the task's ports and volumes.
@@ -25,8 +28,8 @@ guides. Follow [the workflow](../../../docs/agents/workflow.md) and
    Do not disable tests, weaken criteria, or add unrelated features to complete a run.
 6. When ready, mark the PR ready and post one [handoff](../../../docs/agents/templates/handoff.md)
    comment with the branch, full pushed head SHA, actual PR state, done/remaining
-   criteria, checks and next actor. @mention the evaluator. You stay the
-   assignee during review. Incomplete implementation remains a draft.
+   criteria, selected checks and their scope, and next actor. @mention the evaluator.
+   You stay the assignee during review. Incomplete implementation remains a draft.
 
 Respond to peer findings on your own branch. A new head needs relevant verification
 and independent review again. Your self-check is preparation for peer evaluation;
@@ -36,4 +39,5 @@ if all pass; record remaining work and next actor for a partial issue.
 
 If blocked, document attempted solutions and the remaining work in the issue,
 ask the peer for help, preserve the worktree, and return the task number. Work on
-another eligible milestone task; never discard required work or block the whole queue.
+an existing eligible task within the WIP limit; never discard required work or
+block the whole queue.

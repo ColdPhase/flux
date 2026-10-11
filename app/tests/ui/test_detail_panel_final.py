@@ -18,7 +18,7 @@ class DetailPanelFinal(unittest.TestCase):
         cls.pw = sync_playwright().start()
         cls.browser = cls.pw.chromium.launch()
         expect.set_options(timeout=10000)
-        cls.ctx = cls.browser.new_context(base_url=ORIGIN)
+        cls.ctx = cls.browser.new_context(base_url=ORIGIN, service_workers="block")
         api(cls.ctx, "POST", "/api/auth/sign-up/email", {"name": "Ada Kowalska", "email": f"panel-{uuid.uuid4()}@example.test", "password": "Calibrate both probes together"})
         cls.user = api(cls.ctx, "GET", "/api/v1/me")["user"]["id"]
         workspace = api(cls.ctx, "POST", "/api/v1/workspaces", {"name": "Garden co-op"}, 201)["id"]
@@ -48,7 +48,7 @@ class DetailPanelFinal(unittest.TestCase):
     def page(self, phone=False, scheme="light"):
         ctx = self.browser.new_context(base_url=ORIGIN, storage_state=self.state, color_scheme=scheme,
             viewport={"width": 390 if phone else 1440, "height": 844 if phone else 900},
-            device_scale_factor=2 if phone else 1, is_mobile=phone, has_touch=phone, locale="en-GB")
+            device_scale_factor=2 if phone else 1, is_mobile=phone, has_touch=phone, locale="en-GB", service_workers="block")
         self.addCleanup(ctx.close)
         page = ctx.new_page()
         errors = []
@@ -429,7 +429,7 @@ class DetailPanelFinal(unittest.TestCase):
         expect(page.locator("#thread")).to_be_visible()
         self.assertIn("thread-in", page.locator("#thread").evaluate("el => getComputedStyle(el).animationName"))
         ctx = self.browser.new_context(base_url=ORIGIN, storage_state=self.state, viewport={"width": 390, "height": 844},
-            is_mobile=True, has_touch=True, locale="en-GB", reduced_motion="reduce")
+            is_mobile=True, has_touch=True, locale="en-GB", reduced_motion="reduce", service_workers="block")
         self.addCleanup(ctx.close)
         still = ctx.new_page()
         still.goto(f"/projects/{self.project}/conversations/{self.thread['id']}")

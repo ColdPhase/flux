@@ -125,6 +125,25 @@ one coalesced local reconciliation, so every automatic change names the signed d
 **Project default.** A project manager can turn it on for new required links. The writer who links a required PR
 to a task without a rule then becomes the author of that task's rule.
 
+## 2b. Manual override and the rule revision (#74)
+
+A person's explicit change is the override, and it wins now, not at the next delivery.
+- Changing a task's status, blocker or parking through `PATCH /api/v1/work/:id` (people, agents and helpers use the same
+  command), also to the same value, suspends its active rule **in the same transaction**, after the task row lock. It
+  records one `suspended_manual` history line and needs no GitHub access. Edits of title, owner, criteria or prerequisites
+  do not. Finishing a task (Done, not pursued) leaves the rule as it is: a rule never acts on finished work, and the
+  one-tap Done is how "Ready to close" ends.
+- Every rule has a `revision` (1 on first use). It grows when the rule is turned on, off, changed, resumed or suspended, and
+  with each automatic task change. A repin of the expected version after an unrelated edit does not change it.
+- Compare-and-set is optional and sits beside the task `expectedVersion`:
+  `expectedRuleRevision` on `PUT/POST /api/v1/work/:id/github-rule[/resume]` and `expectedGithubRuleRevision` on the task
+  change (0 means "no rule"). A mismatch is a 409 `VERSION_CONFLICT` with the current task and rule, and nothing changes.
+  Without it the change is an explicit manual override of whatever the rule is now.
+- Rule readers are everyone who can read the task (the toggle is the disclosure in section 2a), so no source-view gate
+  hides the revision. The stricter hidden-effect model of the
+  [private-source amendment](2026-10-01-private-source-effects-amendment.md) stays proposed and off.
+- Migration 0068 adds only `github_task_rules.revision`. The reversal drops it.
+
 ## 3. Delivery order
 
 1. **G-1a** rule engine and the task UI (toggle, history line, Ready to close), with Docker tests: open, draft, failed check, re-run, merge, closed unmerged, two required PRs, manual override, access loss, duplicate and out-of-order deliveries.

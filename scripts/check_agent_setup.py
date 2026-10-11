@@ -6,6 +6,7 @@ not GitHub enforcement, application correctness, or permission to publish anythi
 """
 
 import argparse
+import importlib.util
 from pathlib import Path
 import re
 import sys
@@ -215,6 +216,7 @@ def validate(root: Path) -> list[str]:
     skill_names = {path.parent.name for path in skill_files}
     # Every Markdown file under docs/ (#84 AC-1), plus the root instructions and skills.
     documents = list(dict.fromkeys([root / "README.md", agents, claude, root / "GOVERNANCE.md", root / "CHANGELOG.md",
+                                    *sorted((root / "changes").glob("README.md")),
                                     *sorted((root / "docs").rglob("*.md")), *skill_files]))
     anchor_cache: dict[Path, set[str]] = {}
     for path in skill_files:
@@ -256,7 +258,21 @@ def validate(root: Path) -> list[str]:
                 require(unquote(url.fragment).lower() in anchor_cache[destination],
                         f"{path.relative_to(root)}: link {link} names a missing heading anchor")
     errors.extend(oversized_documents(root))
+    errors.extend(changelog_fragment_problems(root))
     return errors
+
+
+def changelog_fragment_problems(root: Path) -> list[str]:
+    """Pending changelog entries under changes/ follow scripts/changelog.py's format."""
+    script = root / "scripts/changelog.py"
+    if not (root / "changes").is_dir():
+        return []
+    if not script.is_file():
+        return ["missing scripts/changelog.py"]
+    spec = importlib.util.spec_from_file_location("flux_changelog", script)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return [f"changes/{line}" for line in module.problems(root / "changes")]
 
 
 def main() -> int:

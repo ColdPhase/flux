@@ -4,6 +4,7 @@
 // Changes accept `Idempotency-Key`; versioned changes need `If-Match` (see below).
 
 import type { Page, PageQuery, PrincipalRef } from './access.js';
+import type { AgentProjectOwner } from './conversation.js';
 
 export const SKETCHES_PATH = '/api/v1/sketches';
 
@@ -54,6 +55,8 @@ export interface PersonRef {
   kind: 'human' | 'agent';
   id: string;
   name: string;
+  /** Agents in the project list only (#339 AC-2); see `NamedPrincipal.projectOwner`. */
+  projectOwner?: AgentProjectOwner;
 }
 
 export interface Sketch {
@@ -248,6 +251,21 @@ export interface CreateLinkCommand {
   fromId: string;
   toId: string;
   label?: string | null;
+}
+
+/** Changes only an existing connection's label; an empty or blank label clears it. */
+export interface UpdateLinkLabelCommand {
+  label: string | null;
+  /** The label last read by the caller. Required; a changed label answers 409. */
+  expectedLabel: string | null;
+}
+
+/** Nothing changed. Show the current label before offering another save. */
+export interface LinkLabelConflict {
+  error: string;
+  code: 'LABEL_CONFLICT';
+  currentLabel: string | null;
+  current: ThoughtLink;
 }
 
 /** Where a promotion copies the sketch: a new restricted project, or an existing project the caller can change. */

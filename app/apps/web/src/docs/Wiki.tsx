@@ -151,7 +151,7 @@ function WikiIndex({ activeId, hidden }: { activeId: string | null; hidden: bool
         <ul ref={listRef} className="wiki-pages">
           {shown.map((doc) => (
             <li key={doc.id}>
-              <Link className="wiki-page" to={docUrl(project.id, doc.id)} aria-current={doc.id === activeId ? 'page' : undefined}>
+              <Link className="wiki-page" to={docUrl(project.id, doc.id)} title={doc.title} aria-current={doc.id === activeId ? 'page' : undefined}>
                 <Icon name="doc" size={12} />
                 <span className="wiki-page__t">{doc.title}</span>
                 {doc.state === 'draft' ? <span className="wiki-page__state">Draft</span> : null}

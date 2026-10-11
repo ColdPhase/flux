@@ -17,6 +17,7 @@ import { useWorkRead } from './useWorkRead';
 import { useNativeOwn, useWorkChoices, useDetailRelations, type DetailRelations, type DetailChoices } from './useDetailReads';
 import { WorkPagination } from './WorkPagination';
 import { TaskDiscussionSection } from './TaskDiscussion';
+import { TaskThoughtLinks } from './TaskThoughtLinks';
 import { ReadyToClose, TaskPullRequests } from '../github/TaskPullRequests';
 import { PanelMeta, StatusControl, TitleField, useStateKeys } from './TaskParts';
 
@@ -173,6 +174,8 @@ function OtherRelationships({ object, relations, project }: { object: WorkDetail
     if (!outgoing && other.type === 'doc') return [];
     if (outgoing && link.role === 'source' && ['message', 'material', 'thought'].includes(other.type)) return [];
     if (object.kind === 'work' && ['decision', 'result'].includes(other.type)) return [];
+    // Thoughts a task is linked to are listed in its own "Linked thoughts" section.
+    if (object.kind === 'work' && other.type === 'thought') return [];
     if (object.kind === 'decision' && other.type === 'work' && ['affects', 'still_applies'].includes(link.role)) return [];
     if (object.kind === 'result' && ['work', 'decision'].includes(other.type) && link.role === 'about') return [];
     const body = <><span>{other.type}: {title}</span><small>{link.role.replaceAll('_', ' ')}</small><Icon name="chevron-right" size={14} /></>;
@@ -338,6 +341,8 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
           {writable ? <Button variant="secondary" icon="plus" onClick={() => openDetails({ kind: 'attach-result', projectId: item.projectId, workId: item.id })}>Attach a result</Button> : null}</div>
         <Linked empty={emptyLinks(relations, isFinished(item) ? 'Finished without a written result.' : 'No result yet. Small tasks do not need one.')} items={results.map((entry) => ({ key: entry.link.id, label: entry.title, open: () => openDetails({ kind: 'result', id: entry.id, projectId: context.project.id }) }))} />
       </section>
+      <TaskThoughtLinks item={item} project={context.project} links={relations.links} writable={writable} reload={reload}
+        empty={emptyLinks(relations, 'Not linked to a thought yet.')} />
 
       <TaskDiscussionSection key={`${me.user.id}:${context.project.id}:${item.id}`} workId={item.id} project={context.project} number={item.number} members={context.members} me={{ id: me.user.id, name: me.user.name }} />
 

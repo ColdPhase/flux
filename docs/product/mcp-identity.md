@@ -317,8 +317,12 @@ S1 tests them on the IdP path:
 - **`localhost`:** RFC 8252 §8.3 says "the use of localhost is NOT RECOMMENDED",
   but Flux must accept it. Claude Code uses "a pre-registered redirect URI of the
   form `http://localhost:PORT/callback`", and Cursor's desktop app uses
-  `http://localhost:8787/callback`. Codex uses
-  `http://127.0.0.1:<port>/callback/<callback_id>`.
+  `http://localhost:8787/callback`. With a pre-registered client, Codex uses the
+  stable `http://127.0.0.1/callback` when the server advertises
+  `authorization_response_iss_parameter_supported` and an issuer, as Flux does; the
+  `http://127.0.0.1:<port>/callback/<callback_id>` form applies only without that
+  support (review follow-up N2, #310). The operator guide tells operators to
+  register the callback that Codex displays.
 - **Everything else** (an `https` address or an app's private-use scheme) must
   match a registered redirect exactly. Consent warns about it (#294).
 - **Flux's own redirect at the IdP** (`<origin>/api/auth/callback/<providerId>`) is
@@ -1019,6 +1023,16 @@ requires the following v0.1 outcomes with one SSO provider:
 
 All implementation and independent evidence remain required. The prior deferred
 scope and its observations are preserved in the dated research and GitHub records.
+
+**S1 AC-3 implementation correction (2026-10-10, #384 re-review).** Authentication provenance is
+immutable per minted authorization-code family, stored in `oauth_grant_authentication` (0086),
+keyed by the provider's `authorizationCodeId`. Code redemption snapshots its validated session;
+refresh retains the same record after browser-session deletion. Starting, denying or abandoning
+another authorization never changes an older family. The shared binding's 0083 fields are legacy
+metadata, not the provenance source. Upgrade retains existing families and records their original
+session facts where available; an already deleted session yields explicit `unknown` provenance,
+without inferring facts from a newer sign-in. The pinned provider patch exposes session/family identifiers
+only to the server's claims hook and the signed access token carries the family reference.
 
 ### S1 — Provider sign-in on the MCP authorization path
 

@@ -21,6 +21,7 @@ import {
   type ThoughtFile,
   type ThoughtLink,
   type UpdateSketchCommand,
+  type UpdateLinkLabelCommand,
   type UpdateThoughtCommand,
 } from '@flux/contracts';
 import { ConflictError, ForbiddenError, InvalidInputError, NotFoundError, RuleViolationError, VersionConflictError } from '../access/errors.js';
@@ -39,6 +40,14 @@ export class PositionsConflictError extends ConflictError {
   constructor(conflicts: { id: string; currentVersion: number; current: Thought }[]) {
     super('Some thoughts changed since the expected versions', 'VERSION_CONFLICT');
     this.details = { conflicts };
+  }
+}
+
+/** Nothing changed: the caller must review the current connection label before saving again. */
+export class LinkLabelConflictError extends ConflictError {
+  constructor(current: ThoughtLink) {
+    super('The connection label changed. Review the current label before saving again.', 'LABEL_CONFLICT');
+    this.details = { currentLabel: current.label, current };
   }
 }
 
@@ -414,6 +423,23 @@ export function createSketchUseCases(uow: SketchUnitOfWork) {
         const link = await ports.sketches.insertLink({ id: linkId, workspaceId: sketch.workspaceId, sketchId: sketch.id, fromId, toId, label: text, createdBy: principal });
         await changed(ports, principal, sketch, { op: 'link_added', thoughtIds: [fromId, toId], linkIds: [link.id] });
         return toLink(link);
+      });
+    },
+
+    async updateLinkLabel(principal: Principal, sketchId: string, linkId: string, command: UpdateLinkLabelCommand): Promise<ThoughtLink> {
+      return uow.run(async (ports) => {
+        const { sketch } = await authorized(ports, principal, 'sketch.write', sketchId);
+        const current = await ports.sketches.findLink(sketch.id, valid.id(linkId, 'linkId'));
+        if (!current) throw new NotFoundError('Link', 'LINK_NOT_FOUND');
+        if (command?.label === undefined || command?.expectedLabel === undefined)
+          throw new InvalidInputError('label and expectedLabel are required');
+        const label = valid.label(command.label);
+        const expectedLabel = valid.label(command.expectedLabel, 'expectedLabel');
+        if (current.label !== expectedLabel) throw new LinkLabelConflictError(toLink(current));
+        if (current.label === label) return toLink(current);
+        const updated = await ports.sketches.updateLinkLabel(sketch.id, current.id, label);
+        await changed(ports, principal, sketch, { op: 'link_updated', thoughtIds: [current.fromId, current.toId], linkIds: [current.id] });
+        return toLink(updated);
       });
     },
 

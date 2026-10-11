@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useLocation, useRevalidator } from 'react-router';
-import type { ConversationMessage, Project } from '@flux/contracts';
+import type { AgentProjectOwner, Project } from '@flux/contracts';
 import { useShellData } from '../app/data';
 import { useStreamEvents } from '../api/stream';
 import { listProjectPeople } from '../project/data';
@@ -9,8 +9,11 @@ import { listProjectPeople } from '../project/data';
 export type AgentOwners = ReadonlyMap<string, string>;
 const EMPTY: AgentOwners = new Map();
 
-/** A historical author may lose its grant; its owner name still needs a fresh authorized audience. */
-export function agentAuthorOwner(author: Extract<ConversationMessage, { authorId: null }>['author'], owners: AgentOwners): string | undefined {
+/**
+ * A historical author or a native row's agent may lose its grant; its owner name still needs a fresh
+ * authorized audience, so the projected relation only selects a current audience entry, never a name.
+ */
+export function agentAuthorOwner(author: { id: string; projectOwner?: AgentProjectOwner }, owners: AgentOwners): string | undefined {
   const current = owners.get(author.id);
   if (current) return current;
   const projected = author.projectOwner;

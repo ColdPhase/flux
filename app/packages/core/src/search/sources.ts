@@ -44,6 +44,12 @@ function inProject(row: SearchRow) {
 }
 
 export const SEARCH_SOURCES: Record<SearchKind, SearchSource> = {
+  // A project is found by its name (#465) and opens its home; the policy's project audience gates it.
+  project: {
+    filter: 'project', audience: 'project', textIsTitle: false,
+    label: (row) => (row.status === 'restricted' ? 'Project · restricted' : 'Project'),
+    target: (row) => ({ type: 'project', projectId: row.objectId }),
+  },
   message: {
     filter: 'message', audience: 'project', textIsTitle: true, label: () => 'Message',
     target: (row) => ({ type: 'message', projectId: inProject(row), conversationId: row.parentId ?? '', messageId: row.objectId }),
@@ -100,6 +106,8 @@ export function searchKindsOf(filter: SearchFilterType): SearchKind[] {
 
 /** Where a row lives, told only from what the reader may see. */
 export function searchPlaceOf(row: SearchRow): SearchPlace {
+  // A project's place is its workspace: its name is the result itself, not a place it lives in.
+  if (row.kind === 'project') return { type: 'workspace', id: row.workspaceId, name: row.workspaceName ?? '' };
   if (row.kind === 'dm_message' && row.parentId) return { type: 'dm', id: row.parentId, name: row.dmName ?? 'Direct message' };
   // A DM sketch or thought lives in its DM (#96); only its participants can see it at all.
   if ((row.kind === 'sketch' || row.kind === 'thought') && row.dmId) return { type: 'dm', id: row.dmId, name: row.dmName ?? 'Direct message' };
