@@ -5,10 +5,12 @@ All notable changes to Flux are recorded here. The format follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) for its releases.
 
 **Keeping it current.** A pull request that changes what people or operators see adds
-one line under `[Unreleased]`, in the matching section, with its PR number. This
-covers features, changed behaviour, fixes, removals, security fixes and new
-operator steps. Internal refactors, tests and agent-process changes need no entry.
-At release time, the release candidate moves `[Unreleased]` under its version and date.
+one file under [changes/](changes/README.md) with its PR number, instead of editing this
+file, so that parallel pull requests do not conflict here. This covers features, changed
+behaviour, fixes, removals, security fixes and new operator steps. Internal refactors,
+tests and agent-process changes need no entry. At release time,
+`python3 scripts/changelog.py release <version> <date>` moves the pending entries under
+that version; the entries below were written before that rule.
 
 ## [Unreleased]
 
@@ -50,6 +52,8 @@ repository was created on 2026-09-26.
 - Workspace People: owners and admins add an existing account by email, change roles and remove people, with project access controls and opt-in promotion grants ([#198](https://github.com/ColdPhase/flux/pull/198)). An open project's access line says accurately who can see it ([#243](https://github.com/ColdPhase/flux/pull/243)).
 
 #### Working together
+
+- Search finds projects by name for the people who may open them; a result opens the project, and a Projects filter narrows the results ([#465](https://github.com/ColdPhase/flux/issues/465)).
 
 - Installable PWA shell and Web Push notifications ([#49](https://github.com/ColdPhase/flux/pull/49)).
 - The calm web app shell and design system ([#55](https://github.com/ColdPhase/flux/pull/55)),
@@ -130,6 +134,7 @@ repository was created on 2026-09-26.
 
 - A project export now lists the project's "Let linked PRs move this task" rules as dormant, disabled entries; connected repositories are not exported, because their names need your own GitHub authorization ([#74](https://github.com/ColdPhase/flux/issues/74)).
 - Changing a task's status or blocker by hand now pauses its "Let linked PRs move this task" rule at once, with a history line, and the rule carries a revision that a task change or a rule command can pin so you override only the state you saw ([#74](https://github.com/ColdPhase/flux/issues/74)).
+- The map fills the work pane with floating tools: dragging from a thought's dot connects it to another thought, releasing on empty space adds a connected thought as a draft until you save it, the selection's actions float above it, and Create task sits in the bottom toolbar; on the phone the map is for viewing and adding a thought and says connecting and arranging happen on a computer ([#380](https://github.com/ColdPhase/flux/pull/380)).
 - Settings → Appearance adds Text size (Small, Default, Large) on the computer, a Reduce motion switch that turns motion off on this device as the system setting does, and a phone text-size row that follows the phone ([#452](https://github.com/ColdPhase/flux/pull/452)).
 - The Agents view shows what each connected agent holds now (its task and whether it is working, assigned or paused) and its open requests with sender, task and why they wait, and Claude Code users start Flux work from the built-in Start work prompt ([#160](https://github.com/ColdPhase/flux/issues/160)).
 - Faster reads: the Inbox count no longer compiles query code on each visit, conversation and material lists use one statement instead of one or two per row, and conversation roots and comparison outcomes are read without locks ([#300](https://github.com/ColdPhase/flux/pull/300)).
@@ -146,6 +151,8 @@ repository was created on 2026-09-26.
 - The compiled, non-root runtime image no longer ships TypeScript tooling ([#43](https://github.com/ColdPhase/flux/pull/43)).
 
 ### Fixed
+
+- A new map draft receives keyboard focus after its editor becomes visible, without taking focus again when the editor is repositioned ([#380](https://github.com/ColdPhase/flux/pull/380)).
 
 - Background comparisons resume within a few minutes after the worker is killed mid-run, instead of waiting an hour for the dead run to expire; the interrupted request stays counted as possible spending and is never retried ([#58](https://github.com/ColdPhase/flux/issues/58)).
 - Task details hide empty relationship paging after a successful read and keep status/owner labels separated from their values with enlarged text ([#282](https://github.com/ColdPhase/flux/pull/282)).
