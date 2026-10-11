@@ -8,6 +8,7 @@ import uuid
 from playwright.sync_api import expect, sync_playwright
 from test_app_shell import ORIGIN, UI_BROWSER, UPSTREAM, shot, start_forwarder
 from test_work_pagination import api
+from native_touch import drag_touch, native_touch_driver
 
 
 class DetailPanelFinal(unittest.TestCase):
@@ -15,7 +16,8 @@ class DetailPanelFinal(unittest.TestCase):
     def setUpClass(cls):
         if UPSTREAM:
             start_forwarder(ORIGIN, UPSTREAM)
-        cls.pw = sync_playwright().start()
+        with native_touch_driver(UI_BROWSER):
+            cls.pw = sync_playwright().start()
         cls.browser = getattr(cls.pw, UI_BROWSER).launch()
         assert cls.browser.browser_type.name == UI_BROWSER
         print(f"ACTUAL_UI_ENGINE={cls.browser.browser_type.name}", flush=True)
@@ -254,14 +256,7 @@ class DetailPanelFinal(unittest.TestCase):
     # --------------------------------------------------------------------- phone
 
     def drag(self, page, from_y, to_y, x=195):
-        cdp = page.context.new_cdp_session(page)
-        steps = 8
-        cdp.send("Input.dispatchTouchEvent", {"type": "touchStart", "touchPoints": [{"x": x, "y": from_y}]})
-        for index in range(1, steps + 1):
-            cdp.send("Input.dispatchTouchEvent", {"type": "touchMove", "touchPoints": [{"x": x, "y": from_y + (to_y - from_y) * index / steps}]})
-            page.wait_for_timeout(16)
-        cdp.send("Input.dispatchTouchEvent", {"type": "touchEnd", "touchPoints": []})
-        page.wait_for_timeout(500)
+        drag_touch(page, from_y, to_y, x)
 
     def test_05_phone_sheet_has_a_grabber_and_two_heights(self):
         task = self.new_task("Label every probe cable", owner=True, blocker="Waiting for the label printer")
