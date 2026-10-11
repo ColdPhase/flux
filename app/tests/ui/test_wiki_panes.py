@@ -783,6 +783,69 @@ class WikiPanesJourney(unittest.TestCase):
         page.locator(".wiki-bar").get_by_role("button", name="Focus on the page").tap()
         expect(self.index(page)).to_be_visible()
 
+    def test_13b_wiki_page_reference_chips_keep_routes_audiences_and_versions(self) -> None:
+        setup = self.page("owner")
+        space = self.api(setup, "POST", "/api/v1/workspaces", {"name": "Wiki reference checks"}, status=201)
+        self.api(setup, "POST", f"/api/v1/workspaces/{space['id']}/members", {"email": READER['email'], "role": "member"}, status=201)
+        project = self.api(setup, "POST", f"/api/v1/workspaces/{space['id']}/projects", {"name": "Reference notes", "visibility": "restricted"}, status=201)
+        self.api(setup, "POST", f"/api/v1/projects/{project['id']}/grants", {"principal": {"kind": "human", "id": READER['id']}, "role": "viewer"}, status=201)
+        other = self.api(setup, "POST", f"/api/v1/workspaces/{space['id']}/projects", {"name": "Private notes", "visibility": "restricted"}, status=201)
+        create = lambda pid, title, body: self.api(setup, "POST", f"/api/v1/projects/{pid}/docs", {"title": title, "body": body, "state": "published"}, status=201,
+                                                  headers={"idempotency-key": str(uuid.uuid4())})  # noqa: E731
+        target = create(project['id'], PARTS, "The first bench list.")
+        self.api(setup, "PATCH", f"/api/v1/docs/{target['id']}", {"body": "The second bench list.", "reason": "Updated the stock"}, status=200,
+                 headers={"if-match": '"1"', "idempotency-key": str(uuid.uuid4())})
+        foreign = create(other['id'], "Private notes", "The private body must not appear.")
+        body = f"## Assembly\n\nThe parts are in [{PARTS}](flux:doc/{target['id']}). Keep [private notes](flux:doc/{foreign['id']}) separate. An [ordinary link](https://example.invalid) stays a link.\n"
+        source = create(project['id'], LAMP, body)
+        source_url = f"/projects/{project['id']}/docs/{source['id']}"
+        target_url = f"/projects/{project['id']}/docs/{target['id']}"
+        for size, focus in ((DESKTOP, False), (TABLET, False), (TABLET, True), (PHONE, False)):
+            for theme in ("light", "dark"):
+                with self.subTest(width=size['width'], focus=focus, theme=theme):
+                    phone = size == PHONE
+                    page = self.page("owner", viewport=size, touch=size != DESKTOP, theme=theme)
+                    outbound = []
+                    page.on("request", lambda request: outbound.append(request.url) if request.url.startswith('https://example.invalid') else None)
+                    page.goto(source_url)
+                    if focus:
+                        page.get_by_role("button", name="Focus on the page").tap()
+                        expect(self.index(page)).to_be_hidden()
+                    chip = page.locator('.doc-prose a.doc-page')
+                    expect(chip).to_have_count(1)
+                    expect(chip).to_have_accessible_name(PARTS)
+                    expect(chip).to_have_attribute('href', target_url)
+                    expect(chip.locator('svg[aria-hidden="true"]')).to_have_count(1)
+                    self.assertEqual(chip.locator('svg').evaluate("e => [e.getBoundingClientRect().width, e.getBoundingClientRect().height]"), [16, 16])
+                    expect(chip).not_to_have_css('background-color', 'rgba(0, 0, 0, 0)')
+                    expect(chip).to_have_css('text-decoration-line', 'none')
+                    self.assertEqual(chip.evaluate("e => getComputedStyle(e, '::before').display"), 'none')
+                    missing = page.locator('.doc-prose .doc-ref--missing')
+                    expect(missing).to_have_text('private notes')
+                    self.assertFalse(missing.evaluate("e => e.matches('a, .doc-page')"))
+                    expect(missing.locator('svg')).to_have_count(0)
+                    ordinary = page.locator('.doc-prose').get_by_role('link', name='ordinary link')
+                    self.assertFalse(ordinary.evaluate("e => e.classList.contains('doc-page')"))
+                    self.assertEqual(outbound, [], "rendering references performs no outbound fetch")
+                    self.no_horizontal_overflow(page, size['width'])
+                    shot(page, f"wiki-page-ref-{size['width']}-{'focus' if focus else 'reading'}-{theme}")
+                    if size == DESKTOP:
+                        chip.focus(); page.keyboard.press('Enter')
+                    else:
+                        chip.tap()
+                    expect(page).to_have_url(re.compile(re.escape(target_url) + '$'))
+                    expect(page.locator('.doc-prose')).to_have_text('The second bench list.')
+                    self.assertEqual(self.doc(page, target['id'])['version'], 2)
+        viewer = self.page("reader", touch=True)
+        viewer.goto(source_url)
+        viewer.locator('.doc-prose a.doc-page').tap()
+        expect(viewer).to_have_url(re.compile(re.escape(target_url) + '$'))
+        expect(viewer.locator('.doc-prose')).to_have_text('The second bench list.')
+        self.api(viewer, "GET", f"/api/v1/docs/{foreign['id']}", status=404)
+        saved = self.doc(setup, source['id'])
+        self.assertEqual(saved['body'], body)
+        self.assertEqual(saved['version'], 1)
+
     # ---------------------------------------------------------------- contrast
 
     def test_14_light_and_dark_contrast(self) -> None:

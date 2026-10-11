@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type MouseEvent } from 'react';
 import { createPortal } from 'react-dom';
 import type { NamedPrincipal, NativeWorkRow } from '@flux/contracts';
-import { AgentIdentity, Avatar, Kreska, StatusGlyph, TASK_STATE_WORD } from '../ui';
+import { AgentIdentity, Avatar, Icon, Kreska, prefersReducedMotion, StatusGlyph, TASK_STATE_WORD } from '../ui';
 import { getWorkReferenceRows } from '../work/read-api';
 import type { AgentOwners } from '../agents/owners';
 import { ago, longDate, shortDate } from './format';
@@ -46,8 +46,6 @@ export interface Heading { id: string; text: string; level: number }
 
 interface Mark { key: string; host: HTMLElement; kind: 'glyph' | 'word' | 'decision'; row: NativeWorkRow }
 
-const reduced = () => typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-
 function headingsOf(html: string): Heading[] {
   const doc = new DOMParser().parseFromString(html, 'text/html');
   return [...doc.querySelectorAll('h1, h2, h3')].flatMap((node) => {
@@ -67,6 +65,7 @@ const RETRY_MS = 5000;
  */
 export function useProse(el: HTMLElement | null, html: string, projectId: string, owners: AgentOwners) {
   const [marks, setMarks] = useState<Mark[]>([]);
+  const [pageMarks, setPageMarks] = useState<{ key: string; host: HTMLElement }[]>([]);
   // The outline is read from the same HTML the page shows, then the rendered headings get these ids.
   const headings = useMemo(() => headingsOf(html), [html]);
 
@@ -74,6 +73,25 @@ export function useProse(el: HTMLElement | null, html: string, projectId: string
     if (!el) return;
     const nodes = [...el.querySelectorAll<HTMLElement>('h1, h2, h3')].filter((node) => node.textContent?.trim());
     nodes.forEach((node, index) => { node.id = `section-${index + 1}`; node.tabIndex = -1; });
+  }, [el, html]);
+
+  useEffect(() => {
+    if (!el) return;
+    // Only links already resolved by the server receive the page icon. Unavailable references
+    // remain plain spans; the written title, href and audience/version semantics stay untouched.
+    const anchors = [...el.querySelectorAll<HTMLAnchorElement>('a.doc-ref[data-ref-type="doc"][data-ref-id]')];
+    const next = anchors.map((anchor, index) => {
+      const host = document.createElement('span');
+      host.className = 'doc-page__icon';
+      anchor.classList.add('doc-page');
+      anchor.prepend(host);
+      return { key: `page-${index}`, host };
+    });
+    setPageMarks(next);
+    return () => {
+      next.forEach((mark, index) => { mark.host.remove(); anchors[index]!.classList.remove('doc-page'); });
+      setPageMarks([]);
+    };
   }, [el, html]);
 
   useEffect(() => {
@@ -160,7 +178,10 @@ export function useProse(el: HTMLElement | null, html: string, projectId: string
 
   return {
     headings,
-    marks: marks.map((mark) => createPortal(<RefMark mark={mark} owners={owners} />, mark.host, mark.key)),
+    marks: [
+      ...marks.map((mark) => createPortal(<RefMark mark={mark} owners={owners} />, mark.host, mark.key)),
+      ...pageMarks.map((mark) => createPortal(<Icon name="doc" size={16} />, mark.host, mark.key)),
+    ],
   };
 }
 
@@ -208,7 +229,7 @@ export function Outline({ headings, scroller }: { headings: Heading[]; scroller:
     const node = document.getElementById(id);
     if (!node) return;
     event.preventDefault();
-    node.scrollIntoView({ block: 'start', behavior: reduced() ? 'auto' : 'smooth' });
+    node.scrollIntoView({ block: 'start', behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
     node.focus({ preventScroll: true });
     setCurrent(id);
   };

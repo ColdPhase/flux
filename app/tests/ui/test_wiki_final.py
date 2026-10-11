@@ -127,6 +127,64 @@ class WikiFinal(unittest.TestCase):
         page.get_by_role("button", name="Focus on the page").click()
         expect(index).to_be_visible()
 
+    def test_outline_respects_the_persons_reduce_motion_choice_and_system(self) -> None:
+        page = self.open(DESKTOP, "light")
+        errors = []
+        page.on("pageerror", lambda error: errors.append(str(error)))
+        self.addCleanup(lambda: self.assertEqual(errors, [], "no uncaught outline/settings errors"))
+        body = "## Start\n\n" + ("A season of field measurements needs careful notes.\n\n" * 70) + "## Last readings\n\nKeep the last reading reachable.\n"
+        space = page.request.post(f"{ORIGIN}/api/v1/workspaces", data={"name": "Outline motion"}, headers={"origin": ORIGIN})
+        self.assertEqual(space.status, 201, space.text())
+        project = page.request.post(f"{ORIGIN}/api/v1/workspaces/{space.json()['id']}/projects", data={"name": "Field notes", "visibility": "restricted"}, headers={"origin": ORIGIN})
+        self.assertEqual(project.status, 201, project.text())
+        response = page.request.post(f"{ORIGIN}/api/v1/projects/{project.json()['id']}/docs", data={"title": "Field readings", "body": body, "state": "published"},
+                                     headers={"origin": ORIGIN, "idempotency-key": str(uuid.uuid4())})
+        self.assertEqual(response.status, 201, response.text())
+        target = f"/projects/{project.json()['id']}/docs/{response.json()['id']}"
+        # Observe the request and its actual scroll effect, while retaining the native method.
+        page.context.add_init_script("""(() => {
+          const original = Element.prototype.scrollIntoView;
+          window.outlineScrolls = [];
+          Element.prototype.scrollIntoView = function(options) {
+            const reader = this.closest('.wiki-main');
+            const before = reader?.scrollTop;
+            const result = original.call(this, options);
+            if (reader) window.outlineScrolls.push({behavior: options?.behavior, before, after: reader.scrollTop});
+            return result;
+          };
+        })()""")
+
+        def open_outline(expected):
+            page.goto(target)
+            reader = page.locator(".wiki-main")
+            page.get_by_role("complementary", name="On this page").get_by_role("link", name="Last readings").focus()
+            page.keyboard.press("Enter")
+            expect(page.locator(".doc-prose h2", has_text="Last readings")).to_be_focused()
+            event = page.evaluate("window.outlineScrolls.at(-1)")
+            self.assertEqual(event["behavior"], expected, event)
+            if expected == "auto":
+                self.assertGreater(event["after"] - event["before"], 1000, "the real outline scroll settles immediately")
+            page.wait_for_function("document.querySelector('.wiki-main').scrollTop > 1000")
+            self.assertGreater(reader.evaluate("e => e.scrollTop"), 1000)
+
+        page.emulate_media(reduced_motion="no-preference")
+        open_outline("smooth")
+        page.goto("/settings")
+        switch = page.get_by_role("switch", name="Reduce motion")
+        expect(switch).to_have_attribute("aria-checked", "false")
+        switch.click()
+        expect(switch).to_have_attribute("aria-checked", "true")
+        self.assertEqual(page.evaluate("localStorage.getItem('flux.reduceMotion')"), "on")
+        open_outline("auto")
+        # Turning the person's choice off never overrides the operating system.
+        page.goto("/settings")
+        page.get_by_role("switch", name="Reduce motion").press("Space")
+        expect(page.get_by_role("switch", name="Reduce motion")).to_have_attribute("aria-checked", "false")
+        page.emulate_media(reduced_motion="reduce")
+        open_outline("auto")
+        page.emulate_media(reduced_motion="no-preference")
+        open_outline("smooth")
+
     def test_wide_table_scrolls_inside_its_card(self) -> None:
         for size in ({"width": 320, "height": 640}, PHONE, {"width": 820, "height": 900}):
             with self.subTest(width=size["width"]):
