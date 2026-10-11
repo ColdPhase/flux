@@ -76,6 +76,16 @@ services:
       # Pool connection wait for this suite (#271, docs/development/containers.md): new connections and
       # short waits while other stacks share the host. Production keeps 1.5 s.
       FLUX_DB_CONNECT_TIMEOUT_MS: ${FLUX_DB_CONNECT_TIMEOUT_MS:-10000}
+  # TEST ONLY (#316): a second API process on the same database, so a policy change made on one
+  # instance is proven to order against delivery held on the other. No host port.
+  api2:
+    extends:
+      file: compose.source.yaml
+      service: api
+    ports: !reset []
+    environment:
+      FLUX_AI_PRIVATE_TARGETS: providermock
+      FLUX_DB_CONNECT_TIMEOUT_MS: ${FLUX_DB_CONNECT_TIMEOUT_MS:-10000}
   worker:
     environment:
       FLUX_AI_PRIVATE_TARGETS: providermock
@@ -100,11 +110,14 @@ services:
       FLUX_MAILPIT_STARTTLS_URL: http://mailpit-starttls:8025
       FLUX_MAILPIT_SMTPS_URL: http://mailpit-smtps:8025
       FLUX_PROVIDER_MOCK_URL: http://providermock:8095
+      FLUX_API2_URL: http://api2:8080
       NODE_EXTRA_CA_CERTS: /tls/cert.pem
     volumes:
       - pushtls:/tls:ro
       - files:/data/files:z
     depends_on:
+      api2:
+        condition: service_healthy
       worker:
         condition: service_started
       pushmock:
@@ -128,6 +141,30 @@ services:
       FLUX_E2E_EVIDENCE_DIR: ${FLUX_E2E_EVIDENCE_DIR:-}
     volumes:
       - teststate:/state
+    depends_on:
+      api:
+        condition: service_healthy
+  # OPT-IN (#152 AC-4, scripts/check_mcp_clients.sh): the real pinned Codex and Claude Code CLIs register Flux's
+  # MCP server with their own `mcp add`, complete its OAuth in Chromium and use its tools against a scripted model
+  # endpoint. Needs internet to download Claude Code at run time (see the Dockerfile `mcp-clients` stage).
+  mcp-clients:
+    profiles: ["mcp-clients"]
+    build:
+      context: ../app
+      dockerfile: ../docker/Dockerfile
+      target: mcp-clients
+    image: flux-mcp-clients:${FLUX_IMAGE_TAG:-${COMPOSE_PROJECT_NAME:-local}}
+    command:
+      - sh
+      - -c
+      - node apps/runtime/dist/install/main.js && exec node_modules/.bin/tsx --test --test-concurrency=1 tests/app/e2e/mcp-clients.e2e.ts tests/app/e2e/mcp-onboarding.e2e.ts
+    environment:
+      FLUX_AGENT_RUNTIME: claude_code
+      DATABASE_URL: postgres://${POSTGRES_USER:-flux}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-flux}
+      FLUX_DB_CONNECT_TIMEOUT_MS: ${FLUX_DB_CONNECT_TIMEOUT_MS:-10000}
+      FLUX_AUTH_SECRET: ${FLUX_AUTH_SECRET:?Set FLUX_AUTH_SECRET}
+      FLUX_API_URL: http://api:8080
+      FLUX_PUBLIC_ORIGIN: ${FLUX_PUBLIC_ORIGIN:?Set FLUX_PUBLIC_ORIGIN}
     depends_on:
       api:
         condition: service_healthy

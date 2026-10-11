@@ -1,0 +1,188 @@
+name: Time to first run
+
+# Measures the README quick start on a fresh Linux amd64 runner (#305, L-1 of the v0.1 launch
+# plan). Manual dispatch only: it runs on no PR, push or schedule and has no matrix, as
+# docs/agents/ci-and-releases.md asks. How to run it and where its numbers go:
+# docs/development/time-to-first-run.md.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: time-to-first-run
+  cancel-in-progress: false
+
+jobs:
+  measure:
+    name: Time to first run on Linux amd64
+    runs-on: ubuntu-latest
+    # Two clones and two builds on a small runner; the build in ./flux up has no timeout of its own.
+    timeout-minutes: 60
+    env:
+      # The README's `git clone https://github.com/ColdPhase/flux.git`. It clones the default
+      # branch whatever ref the workflow was dispatched from. No checkout precedes it, so nothing
+      # from this repository is on the runner before the timed clone.
+      CLONE_URL: ${{ github.server_url }}/${{ github.repository }}.git
+    steps:
+      - name: Record CPUs, memory, disk and the preloaded Docker images
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/ttfr"
+          mkdir -p "$out"
+          {
+            echo "## Run"
+            echo "Workflow revision: $GITHUB_SHA ($GITHUB_REF), run $GITHUB_RUN_ID attempt $GITHUB_RUN_ATTEMPT"
+            echo "Runner image: ${ImageOS:-unknown} ${ImageVersion:-unknown}"
+            grep '^PRETTY_NAME=' /etc/os-release
+            uname -srm
+            echo "## CPUs"
+            nproc
+            lscpu | grep -E '^(Architecture|CPU\(s\)|Model name|Thread\(s\) per core|Core\(s\) per socket):'
+            echo "## Memory"
+            free -h
+            echo "## Disk"
+            df -h / "$RUNNER_TEMP"
+            echo "## Tools"
+            git --version
+            docker version --format 'Docker Engine {{.Server.Version}}, client {{.Client.Version}}'
+            docker compose version
+            docker buildx version
+            docker info --format 'Docker: {{.NCPU}} CPUs, {{.MemTotal}} bytes memory, {{.Driver}} storage'
+            echo "## Preloaded Docker images"
+            docker image ls --digests
+            echo "## Docker disk use, build cache included"
+            docker system df
+            echo "## Listening TCP ports (8081 must be free for the README default)"
+            ss -ltn
+          } 2>&1 | tee "$out/machine.txt"
+
+      - name: Write the timed quick start
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/measure.sh" <<'SCRIPT'
+          #!/usr/bin/env bash
+          # Usage: measure.sh <cold|warm>. One pass of the README quick start, timed at each step.
+          set -euo pipefail
+          pass=$1
+          out="$RUNNER_TEMP/ttfr"
+          work="$RUNNER_TEMP/$pass"
+          mkdir -p "$out" "$work"
+          mark() { printf '%s\t%s\t%s\n' "$pass" "$1" "$(date +%s.%N)" >> "$out/timings.tsv"; }
+          cd "$work"
+
+          mark clone_start
+          git clone "$CLONE_URL"
+          mark clone_done
+          cd flux
+          rev=$(git rev-parse HEAD)
+          if [ "$pass" = warm ]; then
+            # Both passes build the same revision, so a merge during the run cannot skew the warm one.
+            cold_rev=$(cat "$out/cold-revision.txt")
+            if [ "$rev" != "$cold_rev" ]; then
+              echo "main moved to $rev during the run; the warm pass checks out $cold_rev." | tee -a "$out/notes.txt"
+              git checkout -q --detach "$cold_rev"
+              rev=$cold_rev
+            fi
+          fi
+          echo "$rev" > "$out/$pass-revision.txt"
+
+          mark up_start
+          ./flux up 2>&1 | tee "$out/$pass-up.log"
+          mark up_exited
+          url=$(sed -n 's/^Flux is running:[[:space:]]*//p' "$out/$pass-up.log" | tail -n 1)
+          [ -n "$url" ] || { echo './flux up printed no URL.' >&2; exit 1; }
+          echo "$url" > "$out/$pass-url.txt"
+          deadline=$((SECONDS + 120))
+          until [ "$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 "$url")" = 200 ]; do
+            [ "$SECONDS" -lt "$deadline" ] || { echo "$url did not answer 200 within 120 s." >&2; exit 1; }
+            sleep 1
+          done
+          mark url_200
+
+          # ./flux demo prints two passwords: the log and the artifact keep them redacted.
+          mark demo_start
+          ./flux demo 2>&1 | sed -E 's/(@demo\.flux\.test[[:space:]]+).*/\1[redacted]/' | tee "$out/$pass-demo.log"
+          mark demo_exited
+          if grep -rqE 'demo-[0-9a-f]{8,}' "$out"; then
+            echo 'A demo password reached the measurement files; stopping before the upload.' >&2
+            rm -rf "$out"
+            exit 1
+          fi
+
+          { docker image ls --digests; docker system df; } > "$out/$pass-docker-after.txt" 2>&1
+          SCRIPT
+
+      - name: Cold pass - clone, ./flux up until the URL answers 200, ./flux demo
+        run: bash "$RUNNER_TEMP/measure.sh" cold
+
+      - name: Warm pass - remove the first project, then a second clone the same way
+        run: |
+          set -euo pipefail
+          # Removes the first clone's containers, volumes and image. The base images and the
+          # BuildKit cache stay: that is the warm Docker cache the second pass measures.
+          (cd "$RUNNER_TEMP/cold/flux" && ./flux clean -y)
+          rm -rf "$RUNNER_TEMP/cold"
+          bash "$RUNNER_TEMP/measure.sh" warm
+
+      - name: Summarize the timings
+        if: always()
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/ttfr"
+          if [ ! -f "$out/timings.tsv" ]; then
+            echo 'No timings were recorded.' | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          python3 - "$out" <<'PY' | tee "$out/summary.md" >> "$GITHUB_STEP_SUMMARY"
+          import json, pathlib, sys
+
+          out = pathlib.Path(sys.argv[1])
+          marks = {}
+          for line in (out / "timings.tsv").read_text().splitlines():
+              pass_, name, stamp = line.split("\t")
+              marks[(pass_, name)] = float(stamp)
+
+          steps = [
+              ("1. `git clone`", "clone_start", "clone_done"),
+              ("2. `./flux up`, until it exits", "up_start", "up_exited"),
+              ("2. then the printed URL answers HTTP 200", "up_exited", "url_200"),
+              ("3. `./flux demo`, until the logins print", "demo_start", "demo_exited"),
+              ("From clone start to the logins", "clone_start", "demo_exited"),
+          ]
+
+          def fmt(seconds):
+              if seconds is None:
+                  return "not reached"
+              minutes, rest = divmod(seconds, 60)
+              return f"{int(minutes)} min {rest:04.1f} s" if minutes else f"{rest:.1f} s"
+
+          result = {}
+          print("## Time to first run, Linux amd64\n")
+          print("| Step | Cold Docker cache | Warm Docker cache |")
+          print("| --- | --- | --- |")
+          for label, start, end in steps:
+              cells = []
+              for pass_ in ("cold", "warm"):
+                  a, b = marks.get((pass_, start)), marks.get((pass_, end))
+                  seconds = round(b - a, 3) if a is not None and b is not None else None
+                  result.setdefault(pass_, {})[label] = seconds
+                  cells.append(fmt(seconds))
+              print(f"| {label} | {cells[0]} | {cells[1]} |")
+          for pass_ in ("cold", "warm"):
+              rev = out / f"{pass_}-revision.txt"
+              if rev.exists():
+                  result[pass_]["revision"] = rev.read_text().strip()
+                  print(f"\n{pass_.capitalize()} pass revision: `{result[pass_]['revision']}`")
+          (out / "summary.json").write_text(json.dumps(result, indent=2) + "\n")
+          PY
+
+      - name: Upload the timings
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: time-to-first-run-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/ttfr/
+          if-no-files-found: error
+          retention-days: 30

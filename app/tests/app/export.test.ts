@@ -5,12 +5,14 @@ import { before, describe, test } from 'node:test';
 import { createDatabase } from '@flux/db';
 import Fastify from 'fastify';
 import {
+  NOTIFICATION_PREFERENCES_PATH,
   PROJECT_EXPORT_EXCLUDED,
   PROJECT_EXPORT_JSON_SCHEMA,
   projectExportPath,
   type Conversation,
   type Decision,
   type Doc,
+  type NotificationPreferences,
   type ProjectExport,
   type ProjectExportManifest,
   type Project,
@@ -28,6 +30,13 @@ import { addMember, draft, expectStatus, grant, person, project as createProject
 
 const post = (someone: Person, path: string, body: unknown, headers?: Record<string, string>) => someone.browser.request('POST', path, { body, headers });
 const json = <T>(response: ClientResponse, status: number, label?: string) => expectStatus(response, status, label) as T;
+
+// The partner's quiet hours (#116) must stay out of the export. A bare clock time such as 21:15
+// also occurs in every instant written at that minute ("…T21:15:03.000Z"), so a run at 21:15 UTC
+// failed (#365). The markers are the JSON string values, quotes included, which an instant never
+// forms; the control test below shows they still catch the preferences.
+const QUIET_HOURS_MARKERS = ['Pacific/Chatham', '"21:15"', '"07:05"'] as const;
+const leaked = (text: string, markers: readonly string[]) => markers.filter((marker) => text.includes(marker));
 
 /** Reads a ustar archive: path → content. */
 function untar(archive: Buffer) {
@@ -224,7 +233,7 @@ describe('project export', () => {
     for (const [someone, name] of [[owner, 'export-owner'], [partner, 'export-partner']] as const) assert.equal(names.get(someone.id), name);
 
     const text = JSON.stringify(data);
-    for (const hidden of ['OTHERPROJECT', 'DMSECRET', 'PRIVATENOTE', 'PRIVATESKETCH', 'extra-address', 'Pacific/Chatham', '21:15']) assert.ok(!text.includes(hidden), `export leaks ${hidden}`);
+    assert.deepEqual(leaked(text, ['OTHERPROJECT', 'DMSECRET', 'PRIVATENOTE', 'PRIVATESKETCH', 'extra-address', ...QUIET_HOURS_MARKERS]), [], 'export leaks');
     for (const hidden of [privateDraftId, materialMutationId, connectionId, other.id, owner.email, partner.email, outsider.id]) assert.ok(!text.includes(hidden), `export leaks ${hidden}`);
 
     const validate = await validator();
@@ -279,6 +288,21 @@ describe('project export', () => {
       assert.ok(!JSON.stringify(revoked).includes('firmware') && revoked.githubSources?.rules.length === 1);
       assert.equal(json<ProjectExport>(await owner.browser.request('GET', projectExportPath(lamp.id)), 200).githubSources, undefined, 'another project has none');
     } finally { await pool.end(); }
+  });
+
+  test('the leak check ignores instants at the quiet-hours minutes and catches the quiet hours themselves (#365)', async () => {
+    const data = json<ProjectExport>(await owner.browser.request('GET', projectExportPath(lamp.id)), 200, 'export');
+    const preferences = json<NotificationPreferences>(await partner.browser.request('GET', NOTIFICATION_PREFERENCES_PATH), 200, 'preferences');
+    assert.deepEqual(preferences.quietHours, { enabled: true, start: '21:15', end: '07:05', timeZone: 'Pacific/Chatham' });
+    // The export as a run at 21:15 or 07:05 UTC writes it, every instant at that minute; the old
+    // bare '21:15' check failed on exactly this text.
+    for (const minute of ['21:15', '07:05']) {
+      const text = JSON.stringify(data).replace(/T\d{2}:\d{2}(?=:\d{2}(?:\.\d+)?Z)/g, `T${minute}`);
+      assert.ok(text.includes(`T${minute}:`), 'the export carries instants');
+      assert.deepEqual(leaked(text, QUIET_HOURS_MARKERS), [], `an instant at ${minute} is not a leak`);
+    }
+    // Negative control: the same export carrying the partner's preferences is caught on every marker.
+    assert.deepEqual(leaked(JSON.stringify({ ...data, notificationPreferences: preferences }), QUIET_HOURS_MARKERS), [...QUIET_HOURS_MARKERS]);
   });
 
   test('the bundle is a tar.gz with project.json, docs as Markdown, the schema and a checked manifest', async () => {
