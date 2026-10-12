@@ -151,8 +151,8 @@ test('a person signs in with the operator identity provider and gets a Flux acco
   assert.equal(accounts[0].provider_id, providerId, 'the account is keyed by the issuer-derived provider id');
   assert.match(accounts[0].account_id, /^[0-9a-f-]{36}$/, 'and the stable subject, not the email');
   assert.deepEqual(await api(aliceContext, 'GET', '/api/v1/workspaces'), [], 'identity provider claims grant nothing in Flux');
-  const capabilities = await api<{ sso: { providerId: string; label: string } | null }>(aliceContext, 'GET', '/api/v1/auth/capabilities');
-  assert.deepEqual(capabilities.sso, { providerId, label: 'Keycloak' });
+  const capabilities = await api<{ sso: { providerId: string; label: string; reachable: boolean } | null }>(aliceContext, 'GET', '/api/v1/auth/capabilities');
+  assert.deepEqual(capabilities.sso, { providerId, label: 'Keycloak', reachable: true });
 });
 
 test('mail goes to the chosen mailboxes of a single sign-on person', async () => {

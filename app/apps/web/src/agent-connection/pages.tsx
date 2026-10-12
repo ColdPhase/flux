@@ -7,7 +7,7 @@ import { listAccessibleProjects } from '../app/conversation-api';
 import { signInPath } from '../auth/logic';
 import { Button, Icon } from '../ui';
 import {
-  SCOPE_LABELS, continueAgentOAuth, createAgentConnection, createPersonalAgent, decideAgentConsent,
+  SCOPE_LABELS, continueAgentOAuth, getHeldConnection, createAgentConnection, createPersonalAgent, decideAgentConsent,
   followOAuthRedirect, getConsentContext, grantAgentProject, listActionGrants, listAgentConnections, listProjectGrants,
   revokeAgentConnection, selectAgentConnection,
   type ConsentContext,
@@ -34,6 +34,8 @@ interface ConnectionData {
   agents: Agent[];
   ownerId: string;
   oauthQuery: string;
+  /** The connection this client held before it had to authorize again; chosen first (F-024 S2, #312). */
+  heldConnectionId: string | null;
   /** Each live action connection's standing grants (current and ended); null when they could not be read. */
   actionGrants: Record<string, AgentStandingGrant[] | null>;
 }
@@ -78,6 +80,7 @@ export async function agentConnectionLoader({ request }: LoaderFunctionArgs): Pr
     agents: byWorkspace.flat().filter((agent) => agent.owner.kind === 'human' && agent.owner.id === me.user.id && !agent.revokedAt),
     ownerId: me.user.id,
     oauthQuery,
+    heldConnectionId: oauthQuery ? await getHeldConnection(oauthQuery, request.signal) : null,
     actionGrants: Object.fromEntries(actionGrants),
   };
 }
@@ -137,9 +140,9 @@ function ConnectionSummary({ connection, agentName, projectNames, showScopes = t
 }
 
 export function AgentConnectionPage() {
-  const { connections, projects, workspaces, agents, grants, oauthQuery, actionGrants } = useLoaderData() as ConnectionData;
+  const { connections, projects, workspaces, agents, grants, oauthQuery, heldConnectionId, actionGrants } = useLoaderData() as ConnectionData;
   const [items, setItems] = useState(connections.filter((connection) => !connection.revokedAt));
-  const [selected, setSelected] = useState<string | null>(items[0]?.id ?? null);
+  const [selected, setSelected] = useState<string | null>((items.find((item) => item.id === heldConnectionId) ?? items[0])?.id ?? null);
   const [adding, setAdding] = useState(items.length === 0);
   const [personalAgents, setPersonalAgents] = useState(agents);
   const [agentId, setAgentId] = useState(agents[0]?.id ?? '');
@@ -331,7 +334,9 @@ function ConsentDestination({ context }: { context: ConsentContext }) {
         : <dd>Registered on this Flux server</dd>}</div>
     </dl>
     {redirect.kind === 'loopback'
-      ? <p>This address is on your own computer, where your agent client runs.</p>
+      ? <p>This address is on your own computer, where your agent client runs.{clientIdHost
+        ? <> Access goes to a program on this computer that names itself as the client at <strong>{clientIdHost}</strong>; Flux cannot check that claim.</>
+        : null}</p>
       : <p className="connection__warning" role="note">
         <Icon name="alert" size={16} />
         {redirect.kind === 'app'

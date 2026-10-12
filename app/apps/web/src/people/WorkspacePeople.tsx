@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import { useNavigate, useRevalidator } from 'react-router';
 import type { Workspace, WorkspaceMember, WorkspaceRole } from '@flux/contracts';
 import { ApiError } from '../api/client';
+import { whenPageLive } from '../api/pageLeaving';
 import { useShellData } from '../app/data';
 import { Avatar, Button, Icon, Input, Spinner, useToast } from '../ui';
 import { ROLE_HINT, ROLE_LABEL, addMember, attemptKeys, changeRole, firstName, getWorkspace, isManagerRole, listMembers, problemText, removeMember } from './api';
@@ -41,11 +42,14 @@ export function WorkspacePeople({ workspaceId, onBack }: { workspaceId: string; 
 
   useEffect(() => {
     const controller = new AbortController();
-    fetchRoster(workspaceId, controller.signal).then((next) => { setRoster(next); setFailed(''); }, (error: unknown) => {
-      if (error instanceof DOMException && error.name === 'AbortError') return;
-      setFailed(error instanceof ApiError && error.status === 404 ? 'You’re no longer in this workspace.' : 'The people here couldn’t be loaded. Try again.');
+    // A page being left starts no read (#471); one whose navigation was cancelled reads once it is live.
+    const waiting = whenPageLive(() => {
+      fetchRoster(workspaceId, controller.signal).then((next) => { setRoster(next); setFailed(''); }, (error: unknown) => {
+        if (error instanceof DOMException && error.name === 'AbortError') return;
+        setFailed(error instanceof ApiError && error.status === 404 ? 'You’re no longer in this workspace.' : 'The people here couldn’t be loaded. Try again.');
+      });
     });
-    return () => controller.abort();
+    return () => { waiting(); controller.abort(); };
   }, [workspaceId, reload]);
   const load = () => setReload((n) => n + 1);
 

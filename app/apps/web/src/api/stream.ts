@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { STREAM_CLOSE_UNAUTHENTICATED, STREAM_PATH, type StreamEvent, type StreamMessage } from '@flux/contracts';
+import { onPageLive, pageLeaving } from './pageLeaving.js';
 
 /**
  * The authorized event stream (#29) as a small shared subscription. One WebSocket per tab,
@@ -35,6 +36,52 @@ let seen = new Set<string>();
 /** A cursor was dropped: events since then were not replayed, so the next open asks for a refetch. */
 let resyncOnOpen = false;
 
+// While the page is being left (see pageLeaving) or is hidden, listeners must not start refetches:
+// the browser may cancel them and report it as a page error (#471). Events are held and delivered in
+// order once the page is live again. A refetch that listeners are asked for (a reconnect from the
+// head, or more events than can be held) is held the same way as one coalesced request, and runs
+// once for the same document when it is live. Nothing here outlives the identity or its listeners.
+const HOLD_MAX = 200;
+let held: StreamEvent[] = [];
+let resyncWanted = false;
+
+/** Read from the document each time, never remembered: a visible page can never be held back. */
+function paused() {
+  return pageLeaving() || (typeof document !== 'undefined' && document.visibilityState === 'hidden');
+}
+
+function forgetHeld() {
+  held = [];
+  resyncWanted = false;
+}
+
+/** Tells listeners to refetch what they show, now or, while paused, once when live again. */
+function requestResync() {
+  if (paused()) { resyncWanted = true; return; }
+  for (const { listener } of [...subscriptions]) listener.onResync?.();
+}
+
+function deliver(event: StreamEvent) {
+  if (!paused()) {
+    release(); // anything still held comes first, so order is kept
+    for (const { listener } of [...subscriptions]) listener.onEvent(event);
+    return;
+  }
+  if (resyncWanted) return;
+  if (held.length >= HOLD_MAX) { held = []; resyncWanted = true; return; }
+  held.push(event);
+}
+
+/** Delivers what was held, in order; a wanted refetch comes first and is asked for once. */
+function release() {
+  if (paused()) return;
+  const batch = held;
+  const resync = resyncWanted;
+  forgetHeld();
+  if (resync) requestResync();
+  for (const event of batch) for (const { listener } of [...subscriptions]) listener.onEvent(event);
+}
+
 function clearTimer() {
   if (timer !== null) { window.clearTimeout(timer); timer = null; }
 }
@@ -49,6 +96,7 @@ export function resetStream() {
   retry = 0;
   seen = new Set();
   resyncOnOpen = false;
+  forgetHeld();
   identity = null;
 }
 
@@ -70,7 +118,7 @@ function connect() {
     opened = true;
     if (!resyncOnOpen) return;
     resyncOnOpen = false;
-    for (const { listener } of [...subscriptions]) listener.onResync?.();
+    requestResync();
   };
   ws.onmessage = (message) => {
     let data: StreamMessage;
@@ -80,7 +128,7 @@ function connect() {
     if (data.type !== 'event' || seen.has(data.id)) return;
     seen.add(data.id);
     if (seen.size > 500) seen.delete(seen.values().next().value!);
-    for (const { listener } of [...subscriptions]) listener.onEvent(data);
+    deliver(data);
   };
   ws.onclose = (event) => {
     if (socket !== ws) return;
@@ -107,9 +155,12 @@ if (typeof window !== 'undefined') {
     clearTimer();
     connect();
   });
+  document.addEventListener('visibilitychange', release);
 }
+onPageLive(release);
 
-function subscribe(owner: string, listener: StreamListener) {
+/** One listener for the signed-in person `owner`; `useStreamEvents` is the way components use it. */
+export function subscribe(owner: string, listener: StreamListener) {
   if (identity !== owner) {
     // Another account in this tab: nothing of the previous one may be reused.
     resetStream();
@@ -121,6 +172,7 @@ function subscribe(owner: string, listener: StreamListener) {
   return () => {
     subscriptions.delete(subscription);
     if (subscriptions.size) return;
+    forgetHeld();
     clearTimer();
     socket?.close(1000);
     socket = null;

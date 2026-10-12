@@ -2,7 +2,7 @@ import { access, constants } from 'node:fs/promises';
 import {
   RUNTIME_CLIENTS, type RuntimeClient, type StepOutcome, type SupervisorError, type SupervisorFrame, type SupervisorRequest, type SupervisorResult,
 } from '@flux/runtime-protocol';
-import { bindingBytes, clearClientFiles, createBinding, credentialFileState, dataEntries, isEmpty, openBinding, removeBinding, tmpIsEmpty } from './data.js';
+import { bindingBytes, clearClientFiles, clientHasFiles, createBinding, credentialFileState, dataEntries, hasUnconfirmed, isEmpty, openBinding, recordUnconfirmed, removeBinding, tmpIsEmpty } from './data.js';
 import { runFixed } from './process.js';
 import { cliEnvironment, LOGOUT_TEMPLATES, STATUS_TEMPLATES } from './templates.js';
 
@@ -51,10 +51,28 @@ export async function slotReport(config: SupervisorConfig, busy: boolean): Promi
 }
 
 async function cliStep(config: SupervisorConfig, client: RuntimeClient, dir: string, args: readonly string[]): Promise<StepOutcome> {
-  if (!(await installed(config.cliPaths[client]))) return 'not_installed';
+  if (!(await installed(config.cliPaths[client]))) {
+    // Nothing of this client in the binding and no earlier failed sign-out: no session can exist, so there
+    // is nothing to sign out. Files left, or any unreadable file, mean a session may remain: a failure.
+    return (await clientHasFiles(dir, client)) ? 'failed' : 'not_installed';
+  }
   const run = await runFixed(config.cliPaths[client], args, { env: cliEnvironment(client, dir, config.egressHost), cwd: dir, timeoutMs: config.cliTimeoutMs });
   if (run.timedOut) return 'timeout';
   return run.code === 0 ? 'ok' : 'failed';
+}
+
+/**
+ * One client's sign-out. An earlier failed sign-out stays failed: its files were deleted before any later
+ * attempt, so a later "ok" or "not installed" cannot confirm what the vendor still holds. A failure is
+ * recorded in the binding directory before the caller deletes the client's files.
+ */
+async function signOut(config: SupervisorConfig, client: RuntimeClient, dir: string): Promise<StepOutcome> {
+  const earlierFailure = await hasUnconfirmed(dir, client);
+  const outcome = await cliStep(config, client, dir, LOGOUT_TEMPLATES[client]);
+  const confirmed = outcome === 'ok' || outcome === 'not_installed';
+  if (earlierFailure && confirmed) return 'failed';
+  if (!confirmed) await recordUnconfirmed(dir, client);
+  return outcome;
 }
 
 /** Runs one request already parsed against the closed set. `busy` is the lane's state for slot reports. */
@@ -107,7 +125,7 @@ export async function handle(config: SupervisorConfig, request: SupervisorReques
     case 'logout': {
       const open = await openBinding(config.dataDir, request.bindingId);
       if (!open.ok) return { error: open.code };
-      const outcome = await cliStep(config, request.client, open.dir, LOGOUT_TEMPLATES[request.client]);
+      const outcome = await signOut(config, request.client, open.dir);
       // A failed logout still deletes the files; the owner is told to end the session at the vendor.
       await clearClientFiles(open.dir, request.client);
       send({ t: 'step', step: 'logout', outcome, client: request.client });
@@ -118,7 +136,7 @@ export async function handle(config: SupervisorConfig, request: SupervisorReques
       const open = await openBinding(config.dataDir, request.bindingId);
       if (open.ok) {
         for (const client of RUNTIME_CLIENTS) {
-          logout[client] = await cliStep(config, client, open.dir, LOGOUT_TEMPLATES[client]);
+          logout[client] = await signOut(config, client, open.dir);
           send({ t: 'step', step: 'logout', outcome: logout[client], client });
         }
       }

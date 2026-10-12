@@ -8,30 +8,29 @@
 # is ignored elsewhere. The launcher runs this under its own Compose project (<name>-dev),
 # so the database and files volumes are separate from `./flux up`.
 x-dev-image: &dev-image flux-dev:${FLUX_IMAGE_TAG:-${COMPOSE_PROJECT_NAME:-local}}
-x-source: &source
-  - ../app/apps/server/src:/app/apps/server/src:ro,z
-  - ../app/apps/worker/src:/app/apps/worker/src:ro,z
-  - ../app/apps/web/src:/app/apps/web/src:ro,z
-  - ../app/apps/web/public:/app/apps/web/public:ro,z
-  - ../app/apps/web/build:/app/apps/web/build:ro,z
-  - ../app/apps/web/index.html:/app/apps/web/index.html:ro,z
-  - ../app/apps/web/vite.config.ts:/app/apps/web/vite.config.ts:ro,z
-  - ../app/packages/contracts/src:/app/packages/contracts/src:ro,z
-  - ../app/packages/core/src:/app/packages/core/src:ro,z
-  - ../app/packages/db/src:/app/packages/db/src:ro,z
-  - ../app/packages/db/migrations:/app/packages/db/migrations:ro,z
-  - ../app/packages/sdk/src:/app/packages/sdk/src:ro,z
-  - ../app/packages/agent-runtime/src:/app/packages/agent-runtime/src:ro,z
-  - ../app/packages/runtime-protocol/src:/app/packages/runtime-protocol/src:ro,z
-  - ../app/tooling/migrate.ts:/app/tooling/migrate.ts:ro,z
-  - ../app/tooling/tsconfig.dev.json:/app/tooling/tsconfig.dev.json:ro,z
 services:
   migrate:
     build:
       target: build
     image: *dev-image
     command: ["node_modules/.bin/tsx", "--tsconfig", "tooling/tsconfig.dev.json", "tooling/migrate.ts"]
-    volumes: *source
+    volumes:
+      - ../app/apps/server/src:/app/apps/server/src:ro,z
+      - ../app/apps/worker/src:/app/apps/worker/src:ro,z
+      - ../app/apps/web/src:/app/apps/web/src:ro,z
+      - ../app/apps/web/public:/app/apps/web/public:ro,z
+      - ../app/apps/web/build:/app/apps/web/build:ro,z
+      - ../app/apps/web/index.html:/app/apps/web/index.html:ro,z
+      - ../app/apps/web/vite.config.ts:/app/apps/web/vite.config.ts:ro,z
+      - ../app/packages/contracts/src:/app/packages/contracts/src:ro,z
+      - ../app/packages/core/src:/app/packages/core/src:ro,z
+      - ../app/packages/db/src:/app/packages/db/src:ro,z
+      - ../app/packages/db/migrations:/app/packages/db/migrations:ro,z
+      - ../app/packages/sdk/src:/app/packages/sdk/src:ro,z
+      - ../app/packages/agent-runtime/src:/app/packages/agent-runtime/src:ro,z
+      - ../app/packages/runtime-protocol/src:/app/packages/runtime-protocol/src:ro,z
+      - ../app/tooling/migrate.ts:/app/tooling/migrate.ts:ro,z
+      - ../app/tooling/tsconfig.dev.json:/app/tooling/tsconfig.dev.json:ro,z
   files-init:
     image: *dev-image
   api:
@@ -39,7 +38,23 @@ services:
     command: ["node_modules/.bin/tsx", "watch", "--clear-screen=false", "--tsconfig", "tooling/tsconfig.dev.json", "apps/server/src/index.ts"]
     environment:
       NODE_ENV: development
-    volumes: *source
+    volumes:
+      - ../app/apps/server/src:/app/apps/server/src:ro,z
+      - ../app/apps/worker/src:/app/apps/worker/src:ro,z
+      - ../app/apps/web/src:/app/apps/web/src:ro,z
+      - ../app/apps/web/public:/app/apps/web/public:ro,z
+      - ../app/apps/web/build:/app/apps/web/build:ro,z
+      - ../app/apps/web/index.html:/app/apps/web/index.html:ro,z
+      - ../app/apps/web/vite.config.ts:/app/apps/web/vite.config.ts:ro,z
+      - ../app/packages/contracts/src:/app/packages/contracts/src:ro,z
+      - ../app/packages/core/src:/app/packages/core/src:ro,z
+      - ../app/packages/db/src:/app/packages/db/src:ro,z
+      - ../app/packages/db/migrations:/app/packages/db/migrations:ro,z
+      - ../app/packages/sdk/src:/app/packages/sdk/src:ro,z
+      - ../app/packages/agent-runtime/src:/app/packages/agent-runtime/src:ro,z
+      - ../app/packages/runtime-protocol/src:/app/packages/runtime-protocol/src:ro,z
+      - ../app/tooling/migrate.ts:/app/tooling/migrate.ts:ro,z
+      - ../app/tooling/tsconfig.dev.json:/app/tooling/tsconfig.dev.json:ro,z
     # Only the Vite dev server is published; it proxies /api (HTTP and WebSocket) here.
     ports: !reset []
     healthcheck:
@@ -49,7 +64,23 @@ services:
     command: ["node_modules/.bin/tsx", "watch", "--clear-screen=false", "--tsconfig", "tooling/tsconfig.dev.json", "apps/worker/src/index.ts"]
     environment:
       NODE_ENV: development
-    volumes: *source
+    volumes:
+      - ../app/apps/server/src:/app/apps/server/src:ro,z
+      - ../app/apps/worker/src:/app/apps/worker/src:ro,z
+      - ../app/apps/web/src:/app/apps/web/src:ro,z
+      - ../app/apps/web/public:/app/apps/web/public:ro,z
+      - ../app/apps/web/build:/app/apps/web/build:ro,z
+      - ../app/apps/web/index.html:/app/apps/web/index.html:ro,z
+      - ../app/apps/web/vite.config.ts:/app/apps/web/vite.config.ts:ro,z
+      - ../app/packages/contracts/src:/app/packages/contracts/src:ro,z
+      - ../app/packages/core/src:/app/packages/core/src:ro,z
+      - ../app/packages/db/src:/app/packages/db/src:ro,z
+      - ../app/packages/db/migrations:/app/packages/db/migrations:ro,z
+      - ../app/packages/sdk/src:/app/packages/sdk/src:ro,z
+      - ../app/packages/agent-runtime/src:/app/packages/agent-runtime/src:ro,z
+      - ../app/packages/runtime-protocol/src:/app/packages/runtime-protocol/src:ro,z
+      - ../app/tooling/migrate.ts:/app/tooling/migrate.ts:ro,z
+      - ../app/tooling/tsconfig.dev.json:/app/tooling/tsconfig.dev.json:ro,z
   web:
     image: *dev-image
     working_dir: /app/apps/web
@@ -58,7 +89,23 @@ services:
     environment:
       FLUX_DEV_API_URL: http://api:8080
       FLUX_DEV_POLL: ${FLUX_DEV_POLL:-false}
-    volumes: *source
+    volumes:
+      - ../app/apps/server/src:/app/apps/server/src:ro,z
+      - ../app/apps/worker/src:/app/apps/worker/src:ro,z
+      - ../app/apps/web/src:/app/apps/web/src:ro,z
+      - ../app/apps/web/public:/app/apps/web/public:ro,z
+      - ../app/apps/web/build:/app/apps/web/build:ro,z
+      - ../app/apps/web/index.html:/app/apps/web/index.html:ro,z
+      - ../app/apps/web/vite.config.ts:/app/apps/web/vite.config.ts:ro,z
+      - ../app/packages/contracts/src:/app/packages/contracts/src:ro,z
+      - ../app/packages/core/src:/app/packages/core/src:ro,z
+      - ../app/packages/db/src:/app/packages/db/src:ro,z
+      - ../app/packages/db/migrations:/app/packages/db/migrations:ro,z
+      - ../app/packages/sdk/src:/app/packages/sdk/src:ro,z
+      - ../app/packages/agent-runtime/src:/app/packages/agent-runtime/src:ro,z
+      - ../app/packages/runtime-protocol/src:/app/packages/runtime-protocol/src:ro,z
+      - ../app/tooling/migrate.ts:/app/tooling/migrate.ts:ro,z
+      - ../app/tooling/tsconfig.dev.json:/app/tooling/tsconfig.dev.json:ro,z
     ports:
       - 127.0.0.1:${FLUX_DEV_PORT:-5173}:${FLUX_DEV_PORT:-5173}
     depends_on:

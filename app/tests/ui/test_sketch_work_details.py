@@ -1,4 +1,5 @@
 """Project-map work creation opens the native object from both supported map routes."""
+import os
 import re
 import unittest
 import uuid
@@ -15,7 +16,7 @@ class SketchWorkDetailsJourney(unittest.TestCase):
         if UPSTREAM:
             start_forwarder(ORIGIN, UPSTREAM)
         cls.pw = sync_playwright().start()
-        cls.browser = cls.pw.chromium.launch()
+        cls.browser = getattr(cls.pw, os.environ.get("FLUX_UI_BROWSER", "chromium")).launch()
         expect.set_options(timeout=10000)
         cls.ctx = cls.browser.new_context(base_url=ORIGIN)
         api(cls.ctx, "POST", "/api/auth/sign-up/email", {
@@ -58,7 +59,9 @@ class SketchWorkDetailsJourney(unittest.TestCase):
                     page.goto(f"/map/{self.sketch}" if route == "workspace" else canonical)
                     expect(page).to_have_url(re.compile(rf"{re.escape(canonical)}$"))
                     page.locator(f".sk-node[data-id='{self.thought}']").click()
-                    create = page.get_by_role("button", name="Create work from selected thoughts", exact=True)
+                    if phone:
+                        page.get_by_role('button', name='Thought actions', exact=True).tap()
+                    create = page.get_by_role("button", name="Create task from selected thoughts", exact=True)
                     expect(create).to_have_attribute("aria-disabled", "false")
                     with page.expect_response(lambda response: response.request.method == "POST"
                         and urlsplit(response.url).path == f"/api/v1/projects/{self.project}/work") as saved:

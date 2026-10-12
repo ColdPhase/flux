@@ -277,10 +277,25 @@ closes this gap. The flow becomes:
    No upstream test exercises that branch, so S1's Keycloak-backed MCP test is the
    proof. The query is checked by the same `oauth_query` verifier as the password
    path, and is never an open redirect. Flux then redirects to the IdP with PKCE,
-   `state`, nonce and the scopes `openid email profile offline_access`
-   (`offline_access` only when the standing check is on).
+   `state`, nonce and the scopes `openid email profile`. *Revised 2026-10-09 by
+   founder direction (Hubert):* this request no longer carries `offline_access`;
+   with the standing check on, Flux asks for it in a second, silent step (step 5),
+   so the IdP keeps the person's browser session
+   ([why](#why-the-offline-token-is-a-second-step)).
 4. The person signs in at the IdP. MFA and conditional access stay the IdP's job.
-5. The IdP returns to `/api/auth/callback/<providerId>`. Flux verifies:
+5. The IdP returns to `/api/auth/callback/<providerId>`. *Revised 2026-10-09 by
+   founder direction (Hubert):* with the standing check on, Flux first holds this
+   callback and sends the browser back to the IdP once more, silently:
+   `prompt=none`, `scope=openid offline_access`, its own `state`, nonce and PKCE,
+   and the same redirect URI (operators register nothing new). The IdP answers from
+   its session at once. Flux redeems that code itself and requires an ID token for
+   the same `sub` (and the same `sid` when both carry one) and an offline refresh
+   token. Then it resumes the held callback. The step's state lives in a sealed,
+   HttpOnly cookie for that callback path, valid for 5 minutes, so any `api`
+   replica can finish it. If the silent step answers `login_required` or any other
+   error, returns no refresh token, or names another person, the sign-in is refused
+   exactly as [N1](#standing-check-s4) refuses it: no account or session is
+   created, and the API logs the provider's answer. Then Flux verifies:
    - `state` and PKCE;
    - the ID token's signature, `iss`, `aud`, `exp` and nonce;
    - the verified-email rule ([provider profiles](#provider-profiles)).
@@ -317,8 +332,12 @@ S1 tests them on the IdP path:
 - **`localhost`:** RFC 8252 §8.3 says "the use of localhost is NOT RECOMMENDED",
   but Flux must accept it. Claude Code uses "a pre-registered redirect URI of the
   form `http://localhost:PORT/callback`", and Cursor's desktop app uses
-  `http://localhost:8787/callback`. Codex uses
-  `http://127.0.0.1:<port>/callback/<callback_id>`.
+  `http://localhost:8787/callback`. With a pre-registered client, Codex uses the
+  stable `http://127.0.0.1/callback` when the server advertises
+  `authorization_response_iss_parameter_supported` and an issuer, as Flux does; the
+  `http://127.0.0.1:<port>/callback/<callback_id>` form applies only without that
+  support (review follow-up N2, #310). The operator guide tells operators to
+  register the callback that Codex displays.
 - **Everything else** (an `https` address or an app's private-use scheme) must
   match a registered redirect exactly. Consent warns about it (#294).
 - **Flux's own redirect at the IdP** (`<origin>/api/auth/callback/<providerId>`) is
@@ -550,9 +569,17 @@ add refreshes without ending access sooner.
 
 Default `FLUX_OIDC_STANDING=refresh`, interval 15 minutes.
 
-1. **Offline token.** At IdP sign-in, Flux asks for `offline_access`. It keeps the
-   newest offline refresh token per identity and revokes the one it replaces at
-   the IdP (RFC 7009), so offline sessions do not pile up.
+1. **Offline token.** At IdP sign-in, Flux asks for `offline_access` (in the silent
+   second step of [S1](#case-2-operator-oidc)). It keeps the newest offline refresh
+   token per identity, with the IdP `sid` it was issued for. *Revised 2026-10-09 by
+   founder direction (Hubert):* Flux revokes the token it replaces at the IdP
+   (RFC 7009) **only when no live Flux browser session carries that token's `sid`**
+   and that `sid` is not the new sign-in's own. Otherwise it forgets the token, and
+   the IdP's offline idle limit (Keycloak: 30 days) ends it. Keycloak's revocation
+   endpoint also removes Flux from the *online* session of the revoked token's
+   `sid`, so revoking it while that browser session lives would silently stop the
+   session's [back-channel logout](#why-the-offline-token-is-a-second-step). A
+   token without a known `sid` is not revoked.
 2. **Where it runs.** In the `api` service, as a timer like its existing live
    session sweep and recovery timers (`app/apps/server/src/app.ts`). The `api`
    already holds what the check needs: the database, the provider settings, the
@@ -564,6 +591,13 @@ Default `FLUX_OIDC_STANDING=refresh`, interval 15 minutes.
    check one identity at once and a rotating refresh token is never raced. Each
    check is a `refresh_token` grant at the IdP's token endpoint, authenticated as
    Flux's client.
+
+   *Lease, not lock (N3).* The claim is one short statement that sets a lease on the row
+   (`lease_id`, `lease_until`, about 30 s, longer than the 10 s IdP timeout) and commits at once.
+   Flux then calls the IdP with no transaction and no row lock open, and writes the outcome with
+   a second statement that applies only while the lease is still its own. A replica that
+   crashed leaves a lease that simply runs out. A pass checks at most 20 identities, four at
+   a time.
 4. **Outcomes:**
    - **Success.** Confirmation becomes now. A rotated refresh token is stored in the
      same transaction that records the check; only then does Flux forget the
@@ -583,8 +617,16 @@ Default `FLUX_OIDC_STANDING=refresh`, interval 15 minutes.
      the previous token, which the IdP still accepts when it does not make refresh
      tokens single-use (Keycloak's realm setting "Revoke Refresh Token", off by
      default; the worked example keeps it off).
-   - **No stored refresh token** (after a restore, or when the IdP returned none):
-     sign-in required.
+   - **No stored refresh token** (after a restore): sign-in required. At startup every account
+     that signed in through the provider and has no stored token is put in sign-in required.
+   - **The IdP returned no refresh token at sign-in (N1).** With the standing check on, Flux
+     **refuses that sign-in** (*revised 2026-10-09 by founder direction (Hubert):* this applies to the
+     silent second step of S1, and also when that step answers `login_required` or another error or
+     names another person): no account or session is created, the browser returns to the sign-in page with
+     "Your identity provider didn’t let Flux keep checking your account … allow offline access
+     for Flux", and the API logs the operator-facing cause (grant `offline_access` and the
+     refresh grant to the Flux client, or set `FLUX_OIDC_STANDING=off`). Without the refusal,
+     each sign-in would clear the state and the next check would suspend the person again.
 5. **Sign-in required at an authoritative provider:**
    - Flux deletes the account's browser sessions;
    - MCP requests with any bearer (OAuth token, run token) get 401
@@ -592,7 +634,13 @@ Default `FLUX_OIDC_STANDING=refresh`, interval 15 minutes.
    - owner compute stops ([below](#standing-governs-all-of-the-persons-automation));
    - nothing is revoked: MCP grants, connections and standing grants
      stay the owner's and are only refused.
-6. **A successful sign-in through that identity** clears the state. Retained MCP
+6. **Checks continue for a suspended identity (N5).** While the identity still has a stored
+   token and a browser session or grant, the checker keeps asking at the normal interval. A later
+   successful check clears the state without a new sign-in, because Keycloak keeps offline
+   sessions when it disables a user, so a re-enabled user's old offline token works again. Deleted
+   browser sessions stay deleted; the person signs in again. A dead token (`invalid_grant` again)
+   changes nothing until a sign-in replaces it.
+7. **A successful sign-in through that identity** clears the state. Retained MCP
    grants become usable again, a client that kept its refresh token can refresh, and a client that
    re-authorizes finds its connection preselected.
 
@@ -641,6 +689,14 @@ The worker reads standing from the database; it never calls the IdP.
   - the client re-runs authorization, which goes through the IdP;
   - the `/connect-agent` step preselects the connection this client held, so the
     person does not set it up again.
+- **As built (#312).** The confirmation is the newer of `auth_accounts.confirmed_at` (migration
+  0071, set by each provider sign-in, so it exists with the standing check off and survives
+  sign-out) and `auth_idp_standing.confirmed_at` (S4, renewed by each successful check). It is
+  per provider identity, so it covers MCP tokens that have no session. A managed account with no recorded confirmation is
+  lapsed. Browser sessions that signed in with the provider are ended when it lapses (a password
+  session of the same person is S5b's concern, not this check). The 401 and the
+  refresh grant's `invalid_grant` use S4's "Sign in again with <label>." description. `GET /api/v1/agent-oauth/held-connection` names the
+  connection the client last held for `/connect-agent` to preselect.
 - S2 lands only after S4. Without the standing check, nothing renews confirmation
   between sign-ins, and every managed account would have to re-authorize its
   clients every 7 days.
@@ -693,6 +749,64 @@ The worker reads standing from the database; it never calls the IdP.
   26.8.0 sends none when an admin **disables** a user (open issues #37981 and
   #10228). The standing check, not back-channel logout, is the offboarding
   mechanism.
+
+#### Why the offline token is a second step
+
+*Revised 2026-10-09 by founder direction (Hubert).* The two back-channel rows of
+`scripts/check_oidc.sh` timed out at #314 head `3b459fd6`, because Keycloak 26.7.5
+sent Flux no logout token at all. The diagnosis on 2026-10-09 found two causes:
+
+- **Keycloak ends the online session when `offline_access` comes first [C].**
+  `AuthenticationProcessor.attachSession` marks a client session
+  `first.offline.access` when the user session is new, has no client sessions and
+  the request asks for `offline_access`. At the code exchange,
+  `OAuth2GrantTypeBase.createTokenResponseBuilder` then removes the online user
+  session. Only the offline session is left.
+  - This came from [keycloak PR #34346](https://github.com/keycloak/keycloak/pull/34346)
+    (merged 2024-11-06; closes #34001).
+  - It is in the [26.1.0 upgrading notes](https://github.com/keycloak/keycloak/blob/26.7.5/docs/documentation/upgrading/topics/changes/changes-26_1_0.adoc),
+    "Offline access removes the associated online session if the `offline_scope`
+    is requested in the initial exchange".
+  - In [keycloak#32650](https://github.com/keycloak/keycloak/issues/32650#issuecomment-2416777809)
+    (2024-10-16) a maintainer writes that clients which need the SSO session
+    "will need put additional step with the 'online' login … followed with the
+    'offline_access' login".
+- **Logout reaches only online client sessions [C].** At tag 26.7.5,
+  `AuthenticationManager.browserLogout` and `backchannelLogout` send logout tokens
+  to the client sessions of the *online* user session. An offline-only client is
+  never told. "Backchannel logout revoke offline sessions" only adds
+  `revoke_offline_access` to those tokens (`DefaultTokenManager.initLogoutToken`).
+- **Revoking an offline token also detaches the online client session [C].**
+  `TokenRevocationEndpoint.revokeClientSession` (26.7.5) "Always remove[s] 'online'
+  session as well" for the revoked token's `sid`. Flux's S4 rule of revoking every
+  replaced token therefore unsubscribed an earlier device's live session from
+  logout as soon as the person signed in on another device.
+
+Observed on 2026-10-09 with Keycloak 26.7.5 in Docker. Each case used its own
+Keycloak user, and the sessions were read through Keycloak's admin REST API. "Logout
+tokens" counts tokens Flux accepted; logs are in
+`flux-ops/logs/314o/` on the diagnosing machine.
+
+| Case | Keycloak sessions after Flux sign-in | Logout tokens | First browser's Flux session after logout |
+| --- | --- | --- | --- |
+| Fresh browser, `offline_access` in the only request (before this revision) | none online; one offline | 0 | still signed in |
+| Keycloak account console used before Flux | online with `flux`; offline | 1 | signed out |
+| Two devices, replaced token revoked (before this revision) | first device's online session loses `flux` | 0 | still signed in |
+| Two devices, replaced token kept | `flux` on both online sessions | 1 | signed out; second device still signed in |
+| Standing check off (no `offline_access`) | online with `flux` | 1 | signed out |
+
+So before this revision, a fresh Flux sign-in left the person with no online
+Keycloak session (observed), so other applications would ask for the password again
+(inferred). A logout at
+Keycloak ended nothing in Flux. The standing check does not stand in for this:
+after a normal logout, the offline token still works.
+
+The revision therefore:
+
+1. signs in online first and fetches the offline token in a silent second step
+   ([S1](#case-2-operator-oidc));
+2. revokes a replaced token only when no live Flux browser session carries its
+   `sid` ([S4](#standing-check-s4)).
 
 ### When MCP access stops
 
@@ -775,6 +889,7 @@ inside the container.
 | Password signup/verification | Password mode only | S5a retains collision and verification safeguards; active SSO refuses ordinary password signup/reset |
 | Authoritative IdP / operator recovery | Preserve S5a standing/offboarding defaults | An operator recovery setting does not authorize ordinary password login while SSO is active or remove the required standing/offboarding gates; explicit host recovery is separately audited |
 | `FLUX_OIDC_STANDING` | `refresh` | `off` disables the offline standing check (S4) |
+| `FLUX_OIDC_STANDING_INTERVAL_SECONDS` | `900` | 5–86400. Seconds between checks of a live identity; the tests use 6 (S4) |
 | `FLUX_OIDC_CONFIRMATION_MAX_AGE` | `7d` | `1h`–`30d` (S2) |
 
 ### Who must reach what
@@ -959,7 +1074,7 @@ imported realm, the API, Mailpit and Chromium. Add:
 | 4 Exclusive modes and account safety | Password-only without active SSO; SSO-only with it, including server refusal of password sign-in/signup/reset and password-only continuation. Fresh SSO accounts need no Flux password. Preserve migration/collision, verified-email membership, no-data-transfer claim, managed/reset/offboarding and audited recovery controls. No ordinary mixed-method fallback |
 | 5 Canceled opaque keys | No additional key minting/storage/UI/settings are admitted. Existing OAuth issuer/audience, owner/grant/standing checks and unsupported-bearer refusals remain; this is cancellation, not successful implementation of S7 |
 | 6 Headless | The scripted client completes authorization by posting the pasted redirect URL to its own loopback listener, mirroring Claude Code's paste-back |
-| 7 Offboarding | Keycloak disable or delete → within the interval: browser sessions gone, refresh `invalid_grant`, MCP 401 with the `error_description` (a label with non-ASCII characters is reduced to allowed characters), MCP requests refused, nothing revoked. After disable, re-enable plus sign-in: a client that kept its refresh token can refresh. Removing the Flux client's offline session at Keycloak gives the same suspension. In sign-in required, an O-008 personal run (mock provider) is not dispatched, and, once F-022 run tokens exist, none is minted or accepted. Back-channel logout ends matching browser sessions and MCP continues; with "Backchannel logout revoke offline sessions" on, the MCP refresh tokens are revoked. With standing off, MCP stops at the confirmation age (shortened in the test) |
+| 7 Offboarding | Keycloak disable or delete → within the interval: browser sessions gone, refresh `invalid_grant`, MCP 401 with the `error_description` (a label with non-ASCII characters is reduced to allowed characters), MCP requests refused, nothing revoked. After disable, re-enable plus sign-in: a client that kept its refresh token can refresh. Removing the Flux client's offline session at Keycloak gives the same suspension. In sign-in required, an O-008 personal run (mock provider) is not dispatched, and, once F-022 run tokens exist, none is minted or accepted. Back-channel logout ends matching browser sessions and MCP continues; with "Backchannel logout revoke offline sessions" on, the MCP refresh tokens are revoked. A sign-in on a second device leaves the first device's logout working (revised 2026-10-09). With standing off, MCP stops at the confirmation age (shortened in the test) |
 | 8 No passthrough and token storage | A Keycloak-issued access token or ID token sent to `/mcp` gets 401. After sign-in, `auth_accounts` holds no IdP access or ID token, and the IdP refresh token is only in its own table, encrypted. A dump made with the backup's `pg_dump` arguments has no row of that table; after restoring it, managed accounts are in sign-in required until they sign in. No IdP token appears in any MCP response, log line or export |
 | 9 Failures | The mock IdP returning 503 leaves MCP working and records "unknown"; at the confirmation age it stops. A rejected client secret puts nobody in sign-in required. After a lost rotation response, the next check succeeds with the previous token. A logout token with `nonce`, a replayed `jti`, a wrong `aud` or `alg` none gets 400. Every back-channel response has `Cache-Control: no-store` |
 | 10 Owner capability switches | Owner-only persisted/versioned controls; other owner/admin/agent denied. Old JWT, cached catalog/runtime, held projection/effect/delivery and receipt replay cannot bypass committed Off/narrowing. On is within live consent/rights/grants, never resurrects expired/revoked authority; refresh cannot widen scope. Prove all-disabled management, failed/stale saves and actual Read/bootstrap execution prerequisites without secondary authentication |
@@ -1020,6 +1135,16 @@ requires the following v0.1 outcomes with one SSO provider:
 All implementation and independent evidence remain required. The prior deferred
 scope and its observations are preserved in the dated research and GitHub records.
 
+**S1 AC-3 implementation correction (2026-10-10, #384 re-review).** Authentication provenance is
+immutable per minted authorization-code family, stored in `oauth_grant_authentication` (0086),
+keyed by the provider's `authorizationCodeId`. Code redemption snapshots its validated session;
+refresh retains the same record after browser-session deletion. Starting, denying or abandoning
+another authorization never changes an older family. The shared binding's 0083 fields are legacy
+metadata, not the provenance source. Upgrade retains existing families and records their original
+session facts where available; an already deleted session yields explicit `unknown` provenance,
+without inferring facts from a newer sign-in. The pinned provider patch exposes session/family identifiers
+only to the server's claims hook and the signed access token carries the family reference.
+
 ### S1 — Provider sign-in on the MCP authorization path
 
 - **AC-1.** `/login` offers the sole active provider; without active SSO it uses password mode. The IdP round trip keeps the signed
@@ -1043,6 +1168,12 @@ scope and its observations are preserved in the dated research and GitHub record
 - **AC-10.** Real Claude Code and Codex runs against a Keycloak-backed Flux,
   recorded with their versions as integration evidence (PROV-5). Mock clients do
   not prove vendor compatibility.
+- **AC-11** (*revised 2026-10-09 by founder direction (Hubert)*, implemented in #314). With the
+  standing check on, the provider request asks `openid email profile` only. The offline token comes
+  from a silent second request (`prompt=none`, `scope=openid offline_access`, own `state`, nonce
+  and PKCE, the same redirect URI) for the same `sub` and `sid`. `login_required`, any other error,
+  no refresh token or another subject refuses the sign-in as N1 does. After a fresh sign-in,
+  Keycloak still has an online session with Flux's client session.
 
 ### S2 — Confirmation age
 
@@ -1055,6 +1186,17 @@ scope and its observations are preserved in the dated research and GitHub record
 
 ### S3 — OIDC back-channel logout receiver
 
+- **Implemented in #314:** `app/apps/server/src/identity/backchannel.ts`; the replay store is
+  `auth_logout_tokens` (migration 0073, `jti` kept until `exp` plus 60 s). Decisions: a `sid` that
+  Flux does not know ends nothing and answers 200 (§2.8); a refused token does not consume its
+  `jti`; with `revoke_offline_access` all MCP refresh tokens of the resolved person are revoked (the
+  managed-account rule; there is no managed flag yet, so the unmanaged narrowing waits for S2) and
+  the identity goes to sign-in required with reason `offline_access_revoked` (no immediate check,
+  there is no token left); otherwise the immediate check is queued and run in the background.
+  Keycloak fixture: the `flux` client has the back-channel URL and `session.required` set.
+  *Revised 2026-10-09 by founder direction (Hubert):* Keycloak notifies only clients that hold an
+  online client session, so S3 depends on S1's two-step sign-in (AC-11) and S4's conditional revoke
+  (AC-1). The evidence is [above](#why-the-offline-token-is-a-second-step).
 - **AC-1.** A dedicated route at `/api/v1/identity/oidc/<providerId>/backchannel-logout`,
   outside the Better Auth bridge, with §2.6 validation, a `jti` replay store, and
   200 or 400 with `Cache-Control: no-store`.
@@ -1062,16 +1204,24 @@ scope and its observations are preserved in the dated research and GitHub record
 - **AC-3.** The immediate standing check.
 - **AC-4.** `revoke_offline_access` in `events` revokes the MCP refresh tokens and Flux's IdP refresh token.
 - **AC-5.** The logout rows of test cases 7 and 9, against Keycloak with the client
-  setting on and off, and against the mock.
+  setting on and off, and against the mock. Also the two-device row (*added 2026-10-09
+  by founder direction (Hubert)*): a sign-in on a second device does not stop the first
+  device's provider logout from reaching Flux. A replaced token whose browser session
+  has ended is still revoked.
 
 ### S4 — Standing check
 
 - **AC-1.** `offline_access` at sign-in. The IdP refresh token is stored encrypted in
-  its own table, and the replaced token is revoked at the IdP.
+  its own table, with its `sid`. *Revised 2026-10-09 by founder direction (Hubert):*
+  the replaced token is revoked at the IdP only when no live Flux browser session
+  carries its `sid` (and it is not the new sign-in's `sid`); otherwise it is forgotten
+  and left to the IdP's offline idle limit.
 - **AC-2.** The check runs in `api` and claims identities with `FOR UPDATE SKIP
-  LOCKED`. It has success, sign-in required and unknown outcomes; a rotated token
+  LOCKED` inside one short leasing statement; no lock or transaction is held across the
+  IdP call (N3). It has success, sign-in required and unknown outcomes; a rotated token
   is stored before the previous one is forgotten; no stored token means sign-in
-  required.
+  required. A sign-in that returns no refresh token is refused (N1). Checks continue
+  for a suspended identity and a later success clears the state (N5).
 - **AC-3.** Sign-in required deletes the browser sessions, answers MCP requests with
   401 and an RFC 6750-safe `error_description`, refuses refresh, and revokes
   nothing. A new sign-in restores use of kept refresh tokens and grants.

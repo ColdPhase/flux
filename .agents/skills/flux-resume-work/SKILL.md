@@ -20,8 +20,13 @@ your local worktrees; there is no other journal.
   happened.
 - Resume the same branch/PR and criteria. Do not recreate issues, repeat accepted
   research or reopen an agreed contract because the session restarted.
+- Count inherited implementation WIP under the workflow, including subagents.
+  Read changed comments and current blockers first; do not reread every historical
+  log or rerun old checks just because a session restarted. Update the next
+  integrable PR instead of rebasing the entire queue.
 - If a requirement actually changed, update the issue body and tell the evaluator.
-- If a task is blocked, record it once and continue another ready task.
+- If a task is blocked, record it once and continue existing ready work within
+  the WIP limit.
 
 Return the recovered tasks, branches/PRs, what is verified and the next action.
 Never describe files on one machine as already pushed.
