@@ -92,8 +92,9 @@
 @media (pointer: coarse) { .wiki-bar__primary { min-width: 44px; justify-content: center; } }
 .wiki-bar__back { gap: 4px; padding: 0 8px; font-size: var(--fs-sm); color: var(--t2); }
 /* The phone's primary action has its own space below the scrolling page. */
-.wiki-edit { justify-self: end; margin: 0 16px max(16px, env(safe-area-inset-bottom)) auto; min-height: 48px; padding: 0 20px; gap: 8px; font-size: .9375rem; box-shadow: var(--sh-pri), 0 10px 24px -8px rgba(0, 0, 0, .35); }
+.wiki-edit { justify-self: end; margin: 0 16px max(16px, env(safe-area-inset-bottom)) auto; min-height: 48px; padding: 0 20px; gap: 8px; font-size: .9375rem; box-shadow: var(--sh-pri), var(--sh-pop); }
 .wiki-pop__item { text-decoration: none; }
+.wiki-empty__acts { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 16px; }
 
 /* Share and Download: a small card hanging from the bar's right end (the bar is its containing
    block, so it never leaves the document pane), focus kept inside while open. */
@@ -379,7 +380,6 @@
   .wiki-pages { flex-direction: row; align-items: center; gap: 6px; margin: 0 -16px; padding: 4px 16px 10px; overflow-x: auto; scrollbar-width: none; overscroll-behavior-x: contain; }
   .wiki-pages::-webkit-scrollbar { display: none; }
   .wiki-pages li { flex: none; max-width: 78%; }
-  .wiki-pages__end { display: flex; align-items: center; gap: 2px; }
   .wiki-page { min-height: max(32px, var(--ctl)); padding: 0 14px; border-radius: var(--r-pill); background: var(--sub); color: var(--t2); white-space: nowrap; }
   .wiki-page[aria-current="page"] { background: var(--inv); background-image: var(--grad-inv); color: var(--oninv); box-shadow: none; }
   .wiki-page__t { overflow: hidden; text-overflow: ellipsis; }

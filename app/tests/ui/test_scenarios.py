@@ -1169,12 +1169,18 @@ class ScenarioJourney:
 
         # Ada exports the whole project from the wiki.
         page.goto(f"/projects/{lamp}/docs/{s['doc']}")
-        # On a phone the page's actions are one menu; on a computer Download is its own button.
-        expect(page.locator(".wiki-bar")).to_be_visible()
-        more = page.locator(".wiki-bar").get_by_role("button", name="More")
+        # On a phone the page's context and its one "More" menu sit in the header (F-026 §4: no bar
+        # under it); on a computer the bar above the page has Download as its own button.
+        expect(page.get_by_role("heading", level=2, name=DOC_TITLE)).to_be_visible()
         if self.phone:
-            self.tap(more)
+            header = page.locator("header.top")
+            expect(page.locator(".wiki-bar")).to_have_count(0)
+            expect(header.locator(".wiki-header-meta")).to_have_text(re.compile(r"^Wiki · \d+ pages?$"))
+            actions = header.locator(".wiki-header-actions")
+            expect(actions).to_be_visible()
+            self.tap(actions.get_by_role("button", name="More", exact=True))
             download = page.get_by_role("dialog", name="Page actions")
+            expect(download.get_by_role("button", name="This page as Markdown")).to_be_visible()
         else:
             self.tap(page.locator(".wiki-bar").get_by_role("button", name="Download"))
             download = page.get_by_role("dialog", name="Download")

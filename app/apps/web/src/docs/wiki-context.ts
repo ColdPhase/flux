@@ -12,6 +12,12 @@ export interface WikiState {
   setFocus(next: boolean): void;
   /** The wiki is narrow (a phone): pages are a chip row and the page's actions sit in one menu. */
   compact: boolean;
+  /** Import .md: the one file chooser of the wiki, offered by the page list (computer) or the page menu (phone). */
+  importing: boolean;
+  importError: string;
+  /** The id of the refused import's message, for the controls it describes. */
+  importErrorId: string;
+  startImport(): void;
 }
 
 export const WikiContext = createContext<WikiState | null>(null);

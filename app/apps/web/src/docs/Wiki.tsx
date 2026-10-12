@@ -1,4 +1,4 @@
-import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { Link, Outlet, redirect, useLoaderData, useLocation, useMatch, useNavigate, useParams, type LoaderFunctionArgs, type ShouldRevalidateFunctionArgs } from 'react-router';
 import type { DocSummary, Project } from '@flux/contracts';
 import { ApiError } from '../api/client';
@@ -65,12 +65,47 @@ export function WikiLayout() {
     return () => observer.disconnect();
   }, []);
   useEffect(() => { if (docId) writeKey(pageKey(project.id), docId); }, [project.id, docId]);
+  const navigate = useNavigate();
+  const toast = useToast();
+  const intents = useIntentKeys();
+  const [importing, setImporting] = useState(false);
+  const [importError, setImportError] = useState('');
+  // A refused import is about that attempt: opening another page clears it.
+  const [errorFor, setErrorFor] = useState(docId ?? null);
+  if (errorFor !== (docId ?? null)) { setErrorFor(docId ?? null); if (importError) setImportError(''); }
+  const fileRef = useRef<HTMLInputElement>(null);
+  const importErrorId = useId();
+
+  async function importFile(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file || importing) return;
+    setImportError('');
+    setImporting(true);
+    try {
+      const read = await readMarkdownFile(file);
+      if (!read.ok) { setImportError(read.error); return; }
+      // The same file chosen again after a lost answer reuses its key (#178): one page, never two.
+      const intent = JSON.stringify(['import', project.id, file.name, read.title, read.body]);
+      const doc = await createDoc(project.id, { title: read.title, body: read.body, state: 'draft', reason: `Imported from ${file.name}` }, intents.keyFor(intent));
+      intents.settle(intent);
+      toast({ message: `Imported “${doc.title}” as a draft page.`, tone: 'success' });
+      navigate(docUrl(project.id, doc.id));
+    } catch (cause) {
+      setImportError(cause instanceof ApiError && cause.status === 403 ? 'You can read this project but not add pages to it.'
+        : cause instanceof ApiError ? `“${file.name}” was not imported: ${cause.message.replace(/\.$/, '')}.`
+          : `“${file.name}” was not imported. Check the connection and try again.`);
+    } finally { setImporting(false); }
+  }
+  const startImport = useCallback(() => { if (!importing) fileRef.current?.click(); }, [importing]);
+
   // Focus is a computer setting: on a phone the pages are always a row of chips (nothing to exit),
   // and the choice returns when the wiki is wide again.
   const value = useMemo<WikiState>(() => ({
     project, docs, focus, compact, writable: project.access !== 'viewer',
     setFocus(next: boolean) { writeKey(FOCUS_KEY, next ? '1' : null); setFocusState(next); },
-  }), [project, docs, focus, compact]);
+    importing, importError, importErrorId, startImport,
+  }), [project, docs, focus, compact, importing, importError, importErrorId, startImport]);
   return (
     <WikiContext.Provider value={value}>
       <div className="wiki-frame" ref={frame}>
@@ -78,6 +113,8 @@ export function WikiLayout() {
           <WikiIndex activeId={docId ?? null} hidden={focus && !compact} />
           <div className="wiki-main pane-scroll"><Outlet /></div>
         </div>
+        {project.access !== 'viewer' ? <input ref={fileRef} type="file" accept=".md,.markdown,text/markdown,text/x-markdown" hidden tabIndex={-1}
+          onChange={(event) => void importFile(event)} /> : null}
       </div>
     </WikiContext.Provider>
   );
@@ -87,21 +124,11 @@ const collator = new Intl.Collator(undefined, { sensitivity: 'base', numeric: tr
 const fold = (text: string) => text.normalize('NFD').replace(/\p{M}/gu, '').toLocaleLowerCase();
 
 function WikiIndex({ activeId, hidden }: { activeId: string | null; hidden: boolean }) {
-  const { project, docs, writable, compact } = useWiki();
-  const navigate = useNavigate();
-  const toast = useToast();
+  const { project, docs, writable, compact, importing, importError: error, importErrorId: errorId, startImport } = useWiki();
   const creating = !!useMatch('/projects/:projectId/docs/new');
   const [query, setQuery] = useState('');
-  const [importing, setImporting] = useState(false);
-  const intents = useIntentKeys();
-  const [error, setError] = useState('');
-  // A refused import is about that attempt: opening another page clears it.
-  const [errorFor, setErrorFor] = useState(activeId);
-  if (errorFor !== activeId) { setErrorFor(activeId); if (error) setError(''); }
-  const fileRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
   const searchId = useId();
-  const errorId = useId();
   // A stable order to find a page by name; the server's order changes with every save.
   const pages = useMemo(() => [...docs].sort((a, b) => collator.compare(a.title, b.title)), [docs]);
   const needle = fold(query.trim());
@@ -128,42 +155,17 @@ function WikiIndex({ activeId, hidden }: { activeId: string | null; hidden: bool
     return () => observer.disconnect();
   }, [activeId, hidden, listed]);
 
-  async function importFile(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    event.target.value = '';
-    if (!file || importing) return;
-    setError('');
-    setImporting(true);
-    try {
-      const read = await readMarkdownFile(file);
-      if (!read.ok) { setError(read.error); return; }
-      // The same file chosen again after a lost answer reuses its key (#178): one page, never two.
-      const intent = JSON.stringify(['import', project.id, file.name, read.title, read.body]);
-      const doc = await createDoc(project.id, { title: read.title, body: read.body, state: 'draft', reason: `Imported from ${file.name}` }, intents.keyFor(intent));
-      intents.settle(intent);
-      toast({ message: `Imported “${doc.title}” as a draft page.`, tone: 'success' });
-      navigate(docUrl(project.id, doc.id));
-    } catch (cause) {
-      setError(cause instanceof ApiError && cause.status === 403 ? 'You can read this project but not add pages to it.'
-        : cause instanceof ApiError ? `“${file.name}” was not imported: ${cause.message.replace(/\.$/, '')}.`
-          : `“${file.name}” was not imported. Check the connection and try again.`);
-    } finally { setImporting(false); }
-  }
-
   const newPage = writable ? (
     <Link className="ui-icon-btn wiki-index__new" to={`/projects/${project.id}/docs/new`} aria-label="New page" aria-current={creating ? 'page' : undefined}>
       <Icon name="plus" size={16} />
     </Link>
   ) : null;
-  const importer = writable ? (
-    <>
-      <button type="button" className={compact ? 'ui-icon-btn wiki-index__new' : 'ui-btn ui-btn--quiet wiki-index__import'} aria-label="Import .md" onClick={() => { if (!importing) fileRef.current?.click(); }}
-        aria-disabled={importing || undefined} aria-busy={importing || undefined} aria-describedby={error ? errorId : undefined}>
-        {importing ? <Spinner /> : <WikiIcon name="upload" size={14} />}{compact ? null : <span>Import .md</span>}
-      </button>
-      <input ref={fileRef} type="file" accept=".md,.markdown,text/markdown,text/x-markdown" hidden tabIndex={-1}
-        onChange={(event) => void importFile(event)} />
-    </>
+  // On a phone New page and Import .md live in the page's menu; the chip row holds only pages (F-026 §4).
+  const importer = writable && !compact ? (
+    <button type="button" className="ui-btn ui-btn--quiet wiki-index__import" aria-label="Import .md" onClick={startImport}
+      aria-disabled={importing || undefined} aria-busy={importing || undefined} aria-describedby={error ? errorId : undefined}>
+      {importing ? <Spinner /> : <WikiIcon name="upload" size={14} />}<span>Import .md</span>
+    </button>
   ) : null;
 
   return (
@@ -185,7 +187,7 @@ function WikiIndex({ activeId, hidden }: { activeId: string | null; hidden: bool
       ) : null}
       {/* Mounted while the index is shown, so a changed count is announced. */}
       <p className="wiki-index__count" role="status">{needle ? (shown.length ? `${shown.length} ${shown.length === 1 ? 'page' : 'pages'}` : `No pages match “${query.trim()}”.`) : ''}</p>
-      {shown.length || compact ? (
+      {shown.length ? (
         <ul ref={listRef} className="wiki-pages">
           {shown.map((doc) => (
             <li key={doc.id}>
@@ -195,7 +197,6 @@ function WikiIndex({ activeId, hidden }: { activeId: string | null; hidden: bool
               </Link>
             </li>
           ))}
-          {compact && writable ? <li className="wiki-pages__end">{newPage}{importer}</li> : null}
         </ul>
       ) : null}
       {!compact && writable ? <div className="wiki-index__acts">{importer}</div> : null}

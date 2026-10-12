@@ -15,6 +15,7 @@ import uuid
 
 from playwright.sync_api import Browser, expect, sync_playwright
 
+from project_views import project_view
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
 
 STAMP = int(time.time() * 1000)
@@ -243,6 +244,59 @@ class WikiFinal(unittest.TestCase):
                 self.assertNotEqual(look[0], "rgba(0, 0, 0, 0)")
                 shot(page, f"wiki-final-phone-390-{theme}")
 
+    def test_phone_has_no_other_toolbars(self) -> None:
+        """AC-3 as drawn (phone-wiki.webp, README §4 Phone): the title is the view menu, there is no row of
+        views, and the chip row holds only pages; New page and Import .md are in the page's menu."""
+        page = self.open(PHONE, "light", touch=True)
+        header = page.locator("header.top")
+        chips = page.get_by_role("navigation", name="Wiki pages")
+        expect(page.get_by_role("navigation", name="Project views")).to_have_count(0)
+        expect(page.locator(".views:not(.views--none)")).to_have_count(0)
+        expect(chips.locator("a, button")).to_have_count(5)
+        expect(chips.get_by_role("link", name="New page")).to_have_count(0)
+        expect(chips.get_by_role("button", name="Import .md")).to_have_count(0)
+        # Between the header and the chips there is nothing else: the chips start right under it.
+        self.assertLessEqual(chips.locator(".wiki-pages").bounding_box()["y"] - (header.bounding_box()["y"] + header.bounding_box()["height"]), 12,
+                             "no row of views or toolbar between the header and the page chips")
+        # The title opens the views; Wiki is current, then Details, goal and people.
+        title = header.get_by_role("heading", level=1, name="Community garden sensors", exact=True)
+        menu_button = title.get_by_role("button", name="Community garden sensors", exact=True)
+        expect(menu_button).to_have_attribute("aria-haspopup", "dialog")
+        box = menu_button.evaluate("e => { const r = e.getBoundingClientRect(), a = getComputedStyle(e, '::after'); return [r.height - parseFloat(a.top) - parseFloat(a.bottom)]; }")
+        self.assertGreaterEqual(box[0], 44, "the title menu is a 44 px target")
+        menu_button.tap()
+        dialog = page.get_by_role("dialog", name="Community garden sensors, views")
+        views = dialog.get_by_role("navigation", name="Project views")
+        expect(views.get_by_role("link")).to_have_text(["Conversation", "Map", "Tasks", "Wiki", "Agents"])
+        expect(views.get_by_role("link", name="Wiki")).to_have_attribute("aria-current", "page")
+        expect(views.get_by_role("link", name="Wiki")).to_be_focused()
+        expect(dialog.get_by_role("button", name="Details, goal and people")).to_be_visible()
+        shot(page, "wiki-phone-390-view-menu")
+        page.keyboard.press("Escape")
+        expect(dialog).to_have_count(0)
+        expect(menu_button).to_be_focused()
+        # New page and Import .md from the page's menu.
+        more = header.get_by_role("button", name="More", exact=True)
+        more.tap()
+        actions = page.get_by_role("dialog", name="Page actions")
+        with page.expect_file_chooser() as chooser:
+            actions.get_by_role("button", name="Import .md").tap()
+        self.assertFalse(chooser.value.is_multiple())
+        expect(actions).to_have_count(0)
+        more.tap()
+        page.get_by_role("dialog", name="Page actions").get_by_role("link", name=re.compile("^New page")).tap()
+        expect(page).to_have_url(re.compile(r"/docs/new$"))
+        expect(page.get_by_label("Title")).to_be_visible()
+        # The menu leads to another view, where that view's own header returns.
+        project_view(page, "Tasks", touch=True)
+        expect(page).to_have_url(re.compile(r"/tasks"))
+        expect(header.locator(".top__viewmenu")).to_have_count(0)
+        # And back to the Wiki on the computer: the row of views is unchanged there.
+        page.set_viewport_size(DESKTOP)
+        page.goto(f"/projects/{self.project_id}/docs/{self.doc_id}")
+        expect(page.get_by_role("navigation", name="Project views").get_by_role("link", name="Wiki")).to_have_attribute("aria-current", "page")
+        expect(header.locator(".top__viewmenu")).to_have_count(0)
+
     def test_phone_edit_keeps_lower_document_unobscured(self) -> None:
         for size in ({"width": 320, "height": 640}, PHONE):
             for theme in ("light", "dark"):
@@ -284,7 +338,7 @@ class WikiFinal(unittest.TestCase):
         expect(header.locator(".top__audience")).to_be_visible()
         private = BODY + "\nA private phone note, not published."
         page.get_by_label("Text (Markdown)").fill(private)
-        page.get_by_role("navigation", name="Project views").get_by_role("link", name="Conversation", exact=True).click()
+        project_view(page, "Conversation")
         expect(header.locator(".wiki-bar__title")).to_have_count(0)
         page.goto(f"/projects/{self.project_id}/docs/{self.doc_id}")
         kept = page.get_by_role("link", name="Unsaved changes in this tab", exact=True)
@@ -293,7 +347,7 @@ class WikiFinal(unittest.TestCase):
         expect(page.get_by_label("Text (Markdown)")).to_have_value(private)
         page.get_by_role("link", name="Cancel", exact=True).click()
         expect(header.locator(".wiki-bar__title")).to_have_text("Wiki · 5 pages")
-        page.get_by_role("navigation", name="Project views").get_by_role("link", name="Conversation", exact=True).click()
+        project_view(page, "Conversation")
         expect(header.locator(".wiki-bar__title")).to_have_count(0)
         expect(header.get_by_role("button", name="More", exact=True)).to_have_count(0)
         expect(header.locator(".top__audience")).to_be_visible()

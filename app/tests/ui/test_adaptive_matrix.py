@@ -29,6 +29,7 @@ from playwright.sync_api import Locator, Page, expect, sync_playwright
 
 import adaptive_fixture as fx
 from author_columns import assert_author_column
+from project_views import project_view, project_views
 from test_app_shell import show_map_as, open_map_options, ORIGIN, UPSTREAM, shot, start_forwarder
 
 # Width × height fixtures (CSS px). Phones and tablets use a coarse (touch) pointer.
@@ -331,8 +332,13 @@ class AdaptiveBase(unittest.TestCase):
         return page.get_by_role("navigation", name="Project views")
 
     def tab(self, page: Page, name: str) -> None:
-        self.tabs(page).get_by_role("link", name=re.compile(f"^{name}")).click()
-        expect(self.tabs(page).get_by_role("link", name=re.compile(f"^{name}"))).to_have_attribute("aria-current", "page")
+        # On the phone Wiki the title is the view menu (F-026 §4, #354); elsewhere the views are a row.
+        project_view(page, name)
+        if name == "Wiki" and page.viewport_size["width"] <= 640:
+            expect(page.locator("header.top .top__viewmenu")).to_be_visible()
+            expect(self.tabs(page)).to_have_count(0)
+        else:
+            expect(self.tabs(page).get_by_role("link", name=re.compile(f"^{name}"))).to_have_attribute("aria-current", "page")
 
     def details_button(self, page: Page) -> Locator:
         return page.locator("header.top").get_by_role("button", name="Details", exact=True)

@@ -72,3 +72,22 @@ header.top:has(.wiki-header-actions) .top__right > .top__details { display: none
      margin and the left padding trade 2 px), so the hit square ends at the button's edge instead of inside it. */
   header.top.top--project .top__audience { margin-left: -2px; padding-left: 2px; }
 }
+
+/* The phone Wiki's title is the view menu (F-026 §4 Phone, #354): the name and a chevron, one target. */
+.top__title--project h1.top__viewmenu-h { overflow: visible; }
+.top__viewmenu { position: relative; z-index: 1; display: inline-flex; align-items: center; gap: 4px; max-width: 100%; padding: 0; border-radius: var(--r-sm); font: inherit; letter-spacing: inherit; color: var(--t1); text-align: left; }
+.top__viewmenu-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.top__viewmenu svg { flex: none; color: var(--t2); }
+/* A 44 px target without growing the compact header: the hit area reaches up into the header's padding,
+   not down over the line below. The title sits above the audience line's own hit square, which reaches
+   into the title's band. */
+.top__viewmenu::after { content: ""; position: absolute; inset: -20px 0 -3px; }
+.viewmenu { padding: 8px; }
+.viewmenu__t { padding: 10px 12px 6px; font-size: var(--fs-md); font-weight: 600; color: var(--t2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.viewmenu__list { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }
+.viewmenu__item { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 44px; padding: 0 12px; border-radius: var(--r-sm); font-size: var(--fs-base); color: var(--t1); text-align: left; text-decoration: none; transition: var(--tr); }
+.viewmenu__item svg { flex: none; color: var(--t2); }
+.viewmenu__item:hover, .viewmenu__item:active { background: var(--hov); }
+.viewmenu__item[aria-current="page"] { background: var(--sub); font-weight: 550; }
+.viewmenu__l { flex: 1; min-width: 0; }
+.viewmenu__details { margin-top: 6px; border-top: 1px solid var(--line); border-radius: 0 0 var(--r-sm) var(--r-sm); padding-top: 2px; }

@@ -11,6 +11,7 @@ import { useInboxDot } from '../notifications/dot';
 import { placeOf } from './place';
 import { ShellContext, type DetailsView } from './shellContext';
 import { Sidebar } from './Sidebar';
+import { ProjectViewMenu } from './ProjectViewMenu';
 import { VIEWS, viewIndex } from './views';
 import { ProjectStateLine, ProjectStateRow } from '../work/inline';
 import { audienceLine, useProjectShell } from '../project/data';
@@ -304,6 +305,7 @@ function AppLayoutContent() {
   // Map tab to the sketch (or list) that was open there.
   const onOtherView = /^\/projects\/[^/]+\/(tasks|map|docs|agents|github)(\/|$)/.test(location.pathname);
   const onMap = /^\/projects\/[^/]+\/map(\/|$)/.test(location.pathname);
+  const onWiki = /^\/projects\/[^/]+\/docs(\/|$)/.test(location.pathname);
   useEffect(() => {
     if (!projectId || (onOtherView && !onMap)) return;
     remember(onMap ? 'map' : 'conversation', me.user.id, projectId, `${location.pathname}${location.search}`);
@@ -376,6 +378,8 @@ function AppLayoutContent() {
           : { crumb: null, title: 'Direct messages', topic: 'Conversations with people, outside any project', views: false, noDetails: true }
       // Home's Tasks span every workspace, so no single workspace is named above them (#190).
       : { crumb: location.pathname.startsWith('/tasks') ? null : workspace?.name ?? null, title: 'Home', topic: 'Your private notes and where you left off', views: true };
+  // The phone Wiki is drawn with its title as the view menu and no chip row of views (F-026 §4, #354).
+  const titleMenu = phone && onWiki && !!activeProject;
   // A place without its own Details (Search, Inbox, the DM list) never keeps the generic panel open.
   if ('noDetails' in place && detailsOpen && detailsView === 'place') setDetailsOpen(false);
 
@@ -406,7 +410,10 @@ function AppLayoutContent() {
             <div className="top__head">
               <div className="top__title top__title--project">
                 {place.crumb ? <><span className="top__crumb">{place.crumb}</span><span className="top__slash" aria-hidden="true">/</span></> : null}
-                <h1 title={place.title}>{place.title}</h1>
+                {titleMenu && projectViews ? (
+                  <ProjectViewMenu title={place.title} views={projectViews} current="docs"
+                    onDetails={() => { setDetailsView('place'); toggleDetails(true); }} />
+                ) : <h1 title={place.title}>{place.title}</h1>}
               </div>
               <div className="top__meta">
                 <div className="top__meta-slot" ref={setMetadataSlot} />
@@ -444,7 +451,7 @@ function AppLayoutContent() {
             (#266 PF-1), so where you are is never a guess. */}
         {place.views
           ? <Tabs className={`views${phone ? ' views--chips' : ''}`} label="Views" items={homeViews} />
-          : activeProject && projectViews
+          : activeProject && projectViews && !titleMenu
             ? <div className={`views views--project${phone ? ' views--chips' : ''}`}><Tabs className="views__tabs" label="Project views" items={projectViews} />{phone ? null : recapEntry}</div>
             : dmViews
               ? <Tabs className={`views${phone ? ' views--chips' : ''}`} label="Direct message views" items={dmViews} />

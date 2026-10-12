@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
+import { Link } from 'react-router';
 import { ApiError } from '../api/client';
 import { Button, Icon, Spinner, duration, play, trapTab, useToast } from '../ui';
 import { useShellData } from '../app/data';
@@ -64,9 +65,27 @@ export function PageMenu({ history, sharePath, shareVersion, shown }: {
       {history}
       <ShareBody path={sharePath} version={shareVersion} />
       <DownloadBody shown={shown} />
+      <PageCreate />
       <ProjectActions />
     </Popover>
   );
+}
+
+/** On a phone the chip row holds only pages: a new page and Import .md are here (F-026 §4 Phone). */
+function PageCreate() {
+  const close = useContext(ClosePopover);
+  const { project, writable, importing, importError, importErrorId, startImport } = useWiki();
+  if (!writable) return null;
+  return <>
+    <p className="wiki-pop__h">Add a page</p>
+    <Link className="wiki-pop__item" to={`/projects/${project.id}/docs/new`} onClick={() => close(false)}>
+      <Icon name="plus" /><span><b>New page</b><small>Starts as a draft</small></span>
+    </Link>
+    <button type="button" className="wiki-pop__item" aria-label="Import .md" aria-busy={importing || undefined} aria-disabled={importing || undefined}
+      aria-describedby={importError ? importErrorId : undefined} onClick={() => { close(); startImport(); }}>
+      {importing ? <Spinner /> : <WikiIcon name="upload" />}<span><b>Import .md</b><small>A Markdown file becomes a draft page</small></span>
+    </button>
+  </>;
 }
 
 function ProjectActions() {

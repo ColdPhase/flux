@@ -14,6 +14,7 @@ import uuid
 
 from playwright.sync_api import expect, sync_playwright
 
+from project_views import project_view, project_views, title_menu
 from test_app_shell import ORIGIN, UPSTREAM, shot as save_shot, start_forwarder
 from test_settings import UI_BROWSER
 
@@ -172,10 +173,15 @@ class PhoneShellJourney(unittest.TestCase):
         chips = page.get_by_role("navigation", name="Project views")
         expect(chips.get_by_role("link", name="Conversation")).to_have_attribute("aria-current", "page")
         for name, path in (("Map", "/map"), ("Wiki", "/docs"), ("Agents", "/agents"), ("Tasks", "/tasks")):
-            chips.get_by_role("link", name=re.compile(f"^{name}")).click()
+            project_view(page, name)
             expect(page).to_have_url(re.compile(f"/projects/{self.project['id']}{path}"))
-            expect(chips.get_by_role("link", name=re.compile(f"^{name}"))).to_have_attribute("aria-current", "page")
-            expect(chips.locator('[aria-current="page"]')).to_have_count(1)
+            # The phone Wiki has no chip row: its title is the view menu, with Wiki marked (F-026 §4, #354).
+            views = project_views(page)
+            expect(views.get_by_role("link", name=re.compile(f"^{name}"))).to_have_attribute("aria-current", "page")
+            expect(views.locator('[aria-current="page"]')).to_have_count(1)
+            if title_menu(page):
+                page.keyboard.press("Escape")
+                expect(page.get_by_role("dialog", name=re.compile(", views$"))).to_have_count(0)
         shot(page, "266-chips-after-switching")
 
     def test_03_header_has_a_labelled_details_and_the_state_line_holds_what_matters(self):

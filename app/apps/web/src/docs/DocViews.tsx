@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, type MouseEvent, type ReactNode } from 'r
 import { useRegisterLiveHere } from '../live/LiveProvider';
 import { Link, redirect, useLoaderData, useNavigate, useRevalidator, useSearchParams, type LoaderFunctionArgs } from 'react-router';
 import type { Doc, DocSummary, DocVersion, DocVersionSummary, ObjectLink, Project } from '@flux/contracts';
-import { EmptyState, Icon } from '../ui';
+import { EmptyState, Icon, Spinner } from '../ui';
 import { useShellData } from '../app/data';
 import { useShellActions } from '../app/shellContext';
 import { docUrl, getDoc, getVersion, listVersions, listWorkspaceDocs } from './api';
@@ -65,7 +65,7 @@ function DocRow({ doc, showProject }: { doc: DocSummary; showProject?: boolean }
 
 /** The wiki without a page to open: the project has none yet (otherwise the loader opens one). */
 export function WikiHome() {
-  const { project, docs, writable } = useWiki();
+  const { project, docs, writable, compact, importing, importError, importErrorId, startImport } = useWiki();
   useRefresh();
   return (
     <>
@@ -76,6 +76,16 @@ export function WikiHome() {
             <p>{writable
               ? 'Write down how things work and what you learned: start a new page, or import a Markdown file. A result or decision can start a page from its details, and every change keeps the earlier version.'
               : `When people in ${project.name} write pages, they appear here.`}</p>
+            {/* On a phone the page list is a chip row of pages only, so the first page starts here. */}
+            {compact && writable ? (
+              <div className="wiki-empty__acts">
+                <Link className="ui-btn ui-btn--primary" to={`/projects/${project.id}/docs/new`}><Icon name="plus" size={16} />New page</Link>
+                <button type="button" className="ui-btn ui-btn--secondary" onClick={startImport} aria-busy={importing || undefined}
+                  aria-disabled={importing || undefined} aria-describedby={importError ? importErrorId : undefined}>
+                  {importing ? <Spinner /> : <WikiIcon name="upload" size={16} />}Import .md
+                </button>
+              </div>
+            ) : null}
           </EmptyState></div>
         )}
         <Audience project={project} />

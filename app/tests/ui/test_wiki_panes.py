@@ -673,9 +673,10 @@ class WikiPanesJourney(unittest.TestCase):
         expect(page.locator(".wiki-bar__title")).to_have_text(re.compile(r"^Wiki · \d+ pages?$"))
         expect(index.get_by_label("Search the wiki")).to_be_visible()  # more than five pages by now
         self.assertEqual(page.locator(".doc-prose").evaluate("e => getComputedStyle(e).fontSize"), "16px", "the phone reads at 16px")
-        for control in (index.get_by_role("link", name="New page"), index.get_by_role("button", name="Import .md"), index.get_by_role("link", name=PARTS)):
-            box = control.bounding_box()
-            self.assertGreaterEqual(box["height"], 44, "touch target")
+        # The chip row holds only pages (F-026 §4 Phone): New page and Import .md are in the page's menu.
+        expect(index.get_by_role("link", name="New page")).to_have_count(0)
+        expect(index.get_by_role("button", name="Import .md")).to_have_count(0)
+        self.assertGreaterEqual(index.get_by_role("link", name=PARTS).bounding_box()["height"], 44, "touch target")
         for control in [more, page.get_by_role("link", name="Edit")]:
             box = control.bounding_box()
             self.assertGreaterEqual(box["height"], 44, "touch target in the bar")
@@ -725,13 +726,17 @@ class WikiPanesJourney(unittest.TestCase):
         box = index.get_by_role("link", name=LAMP).bounding_box()
         self.assertGreaterEqual(box["x"], 0)
         self.assertLessEqual(box["x"] + box["width"], SMALL_PHONE["width"], "the open page stays in the strip after a resize")
-        for control in (index.get_by_role("link", name="New page"), index.get_by_role("button", name="Import .md")):
-            # New page and Import end the chip row, which scrolls sideways; they come into view there.
+        # New page and Import .md stay within reach in the page's menu, on the smallest phone too.
+        more.tap()
+        actions = page.get_by_role("dialog", name="Page actions")
+        for control in (actions.get_by_role("link", name=re.compile("^New page")), actions.get_by_role("button", name="Import .md")):
             control.scroll_into_view_if_needed()
-            page.wait_for_timeout(100)
             box = control.bounding_box()
             self.assertGreaterEqual(box["height"], 44)
+            self.assertGreaterEqual(box["x"], 0)
             self.assertLessEqual(box["x"] + box["width"], SMALL_PHONE["width"])
+        page.keyboard.press("Escape")
+        expect(actions).to_have_count(0)
         for control in [more]:
             box = control.bounding_box()
             self.assertLessEqual(box["x"] + box["width"], SMALL_PHONE["width"])
