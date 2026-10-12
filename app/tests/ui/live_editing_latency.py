@@ -673,6 +673,30 @@ async def map_drag(fixture, count, selected):
     peer_node = peer.locator(f'.sk-node[data-id="{target["id"]}"]')
     await node.scroll_into_view_if_needed()
     await peer_node.scroll_into_view_if_needed()
+    camera_preparation = []
+    if selected == 200:
+        # The unchanged positive pointer excursion needs room beyond the entire target.
+        # Visibility alone leaves this last-column card at the clipped right edge.
+        for page, target_node in ((owner, node), (peer, peer_node)):
+            prepared_left = await target_node.evaluate("""el => {
+              const canvas=el.closest('.sk-canvas'), box=el.getBoundingClientRect(), clip=canvas.getBoundingClientRect();
+              canvas.scrollLeft += (box.left+box.right-clip.left-clip.right)/2;
+              return canvas.scrollLeft;
+            }""")
+            # Settle native scroll/ResizeObserver bookkeeping before any timed input.
+            await page.evaluate("() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))")
+            preparation = await target_node.evaluate("""el => {
+              const canvas=el.closest('.sk-canvas'), box=el.getBoundingClientRect(), clip=canvas.getBoundingClientRect();
+              return {scroll_left:canvas.scrollLeft,scroll_top:canvas.scrollTop,
+                target:{left:box.left,right:box.right,top:box.top,bottom:box.bottom},
+                clip:{left:clip.left,right:clip.right,top:clip.top,bottom:clip.bottom},
+                right_margin:Math.min(innerWidth,clip.right)-box.right};
+            }""")
+            fixture.assertAlmostEqual(preparation['scroll_left'], prepared_left, delta=1,
+                msg='Native preparation scroll must survive camera bookkeeping')
+            fixture.assertGreaterEqual(preparation['right_margin'], 45,
+                'The original maximum43px pointer excursion needs full target visibility')
+            camera_preparation.append(preparation)
     box = await node.bounding_box()
     x, y = box["x"] + 20, box["y"] + 20
     await owner.mouse.move(x, y)
@@ -743,7 +767,7 @@ async def map_drag(fixture, count, selected):
     try:
         return await cohort(fixture, f"map-{count}-drag-{selected}", owner, peer, produce, observe,
                             local_observe, {"resource_id": fixture.map_id, "thoughts": count, "selected": selected,
-                                           "selected_bases": [{"id": thought['id'], "version": thought['version'], "x": thought['x'], "y": thought['y']} for thought in selected_thoughts],
+                                           "camera_preparation": camera_preparation, "selected_bases": [{"id": thought['id'], "version": thought['version'], "x": thought['x'], "y": thought['y']} for thought in selected_thoughts],
                                            "actions": "continuous trusted pointer movement; pointer remains down for local control and all 30+240 samples"})
     finally:
         await owner.mouse.up()
