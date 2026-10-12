@@ -11,6 +11,7 @@ the Map tab, and the phone. Every change is checked against the API.
 from __future__ import annotations
 
 import json
+import os
 import re
 import time
 import unittest
@@ -19,6 +20,10 @@ import uuid
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
+
+UI_BROWSER = os.environ.get("FLUX_UI_BROWSER", "chromium")
+if UI_BROWSER not in ("chromium", "webkit"):
+    raise ValueError(f"FLUX_UI_BROWSER must be chromium or webkit, got {UI_BROWSER!r}")
 
 PASSWORD = "a lamp that reads the room"
 STAMP = int(time.time() * 1000)
@@ -52,7 +57,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
         if UPSTREAM:
             start_forwarder(ORIGIN, UPSTREAM)
         cls.pw = sync_playwright().start()
-        cls.browser = cls.pw.chromium.launch()
+        cls.browser = getattr(cls.pw, UI_BROWSER).launch()
         expect.set_options(timeout=8000)
 
     @classmethod
@@ -195,7 +200,8 @@ class ProjectSurfaceJourney(unittest.TestCase):
 
     def assert_whole_messages(self, page: Page) -> None:
         """The stream and the open thread (UI116-1) each open on whole messages: none starts above the
-        top edge of its feed, and its latest message is fully visible."""
+        top edge of its feed. The stream shows its latest message; a thread opens at its root (#436 #14,
+        #443), so its root starts at the top of the feed and the reader scrolls down."""
         page.wait_for_timeout(600)
         for selector in (".project-convo__feed", ".thread__feed"):
             clipped = page.evaluate("""(selector) => {
@@ -204,9 +210,19 @@ class ProjectSurfaceJourney(unittest.TestCase):
               return [...feed.querySelectorAll('.project-convo__message')].filter((el) => { const r = el.getBoundingClientRect(); return r.top < top - 1 && r.bottom > top + 1; }).length;
             }""", selector)
             self.assertEqual(clipped, 0, f"{selector}: no message is cut off at the top of the opening screen")
-            last = page.locator(f"{selector} .project-convo__message").last.bounding_box()
             feed = page.locator(selector).bounding_box()
-            assert last and feed
+            assert feed
+            if selector == ".thread__feed":
+                # Opened without an anchor, the thread is scrolled to its root: the root starts where the feed's
+                # content starts, below its own top padding (no reply sits above it).
+                root = page.locator(f"{selector} .thread__root").bounding_box()
+                assert root
+                padding = page.evaluate("(selector) => parseFloat(getComputedStyle(document.querySelector(selector + ' .thread__in')).paddingTop)", selector)
+                self.assertEqual(page.evaluate("(selector) => document.querySelector(selector).scrollTop", selector), 0, f"{selector}: the thread opens at its root")
+                self.assertLess(abs(root["y"] - feed["y"] - padding), 2.01, f"{selector}: the root starts at the top of the feed")
+                continue
+            last = page.locator(f"{selector} .project-convo__message").last.bounding_box()
+            assert last
             self.assertLessEqual(last["y"] + last["height"], feed["y"] + feed["height"] + 1, f"{selector}: the latest message is fully visible")
 
     # ---------------------------------------------------------------- current state
