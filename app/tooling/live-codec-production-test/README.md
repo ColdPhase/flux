@@ -9,7 +9,25 @@ The inherited probe's ownership adaptation is authored for #228 and requires fre
 independent evaluation; it does not become independent evidence by retaining its
 old filename or authorship.
 
-Only three historical completed-input handoffs change: author100k assembly,
+The current storage adaptation follows accepted `54c5d573` / migration0084:
+confirmed codec state has no receipt map or journal. Exact replay belongs to the
+serialized intent-store fixture, before codec work. It retains rights-first and
+immutable actor/UUID fingerprint/scope controls, returns the original receipt,
+and reports no worker limits when no worker ran. Actual worker-result limits
+remain asserted. This fixture is not PostgreSQL durability or authorization proof.
+
+Journal assertions now use a separate serialized append-only fixture log. Every
+actual non-replay semantic change stores its bytes, sequence, actor, fingerprint
+and production `ledgerDelta(previous, next)`; no-op/replay/refusal creates no log
+entry. Changed sequence/log counts, nonempty original logs, unchanged hashes,
+original nodes/deletions/splits/provenance and exact receipts are still checked.
+The inherited probe adaptation is authored for #228 and needs fresh independent
+review. Original probe files and their hashes stay historical. The retained-room
+cap control inflates the actual checkpoint; receipt storage remains separately
+bounded by the existing8MiB serialized intent-store cap, never charged as a
+nonexistent codec field. No canonical production module, cap or deadline changes.
+
+The earlier three completed-input handoff corrections remain: author100k assembly,
 author copy-pressure recovery, and inherited independent C3. The old assertions
 require zero charged bytes or no pending assembly immediately on completion.
 Those would fail against the accepted production ownership rule. Current

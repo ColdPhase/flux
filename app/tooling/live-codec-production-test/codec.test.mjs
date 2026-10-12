@@ -9,7 +9,7 @@ import { EditorState } from '@codemirror/state';
 import { yCollab } from 'y-codemirror.next';
 import { Awareness } from 'y-protocols/awareness';
 import { CAPS } from './caps.mjs';
-import { canonical, emptyRoom, enroll, fingerprint, stateCharge } from './codec.mjs';
+import { canonical, emptyRoom, enroll, fingerprint, stateCharge, ledgerDelta } from './codec.mjs';
 import { CodecPool } from './worker-pool.mjs';
 import { item, wire } from './wire-fixtures.mjs';
 import { RoomCache } from './room-cache.mjs';
@@ -27,7 +27,7 @@ function capture(doc, change) {
 }
 function harness(t) {
   const pool = new CodecPool(); const clients = []; let counter = 0;
-  const h = { state: emptyRoom(), pool, intents: new IntentRegistry() };
+  const h = { state: emptyRoom(), journal: [], pool, intents: new IntentRegistry() };
   t.after(async () => { for (const client of clients) client.doc.destroy(); await h.intents.close(); await pool.close(); });
   h.client = (actor = 'actor-a', { text = true } = {}) => {
     // Public clientID is read once. Enrollment precedes getText, editor, and all local structs.
@@ -43,14 +43,26 @@ function harness(t) {
   h.accept = async (client, bytes, envelope = h.envelope(client)) => {
     const started = performance.now(); const result = await h.intents.run(pool, h.state, envelope, bytes);
     assert.equal(result.ok, true, result.code);
-    assert.equal(result.workerLimits.maxOldGenerationSizeMb, CAPS.workerOldMiB);
-    assert.equal(result.workerLimits.maxYoungGenerationSizeMb, CAPS.workerYoungMiB);
+    if (result.replay) {
+      assert.equal(result.workerLimits, undefined, 'stored receipt replay does not invent a worker observation');
+    } else {
+      assert.equal(result.workerLimits.maxOldGenerationSizeMb, CAPS.workerOldMiB);
+      assert.equal(result.workerLimits.maxYoungGenerationSizeMb, CAPS.workerYoungMiB);
+    }
+    if (!result.replay && !result.receipt.semanticNoop) {
+      // The production codec returns state; 0084 stores bytes and ledger beside it.
+      const entry = { sequence: result.state.sequence, actor: envelope.actor,
+        fingerprint: result.receipt.fingerprint, bytes: Buffer.from(bytes).toString('base64'),
+        ledger: ledgerDelta(h.state, result.state) };
+      h.journal = [...h.journal, canonical(entry)];
+    }
     h.state = result.state;
+    assert.equal(h.journal.length, h.state.sequence, 'every changed sequence has exactly one serialized log entry');
     t.diagnostic(`accepted bytes=${bytes.byteLength} bodyUnits=${h.state.body.length} wallMs=${(performance.now() - started).toFixed(2)}`);
     return result;
   };
   h.reject = async (client, bytes, code, envelope = h.envelope(client), options = {}) => {
-    const before = digest(h.state); const registryBefore = digest(h.intents.bindings);
+    const before = digest(h.state); const registryBefore = digest(h.intents.bindings); const journalBefore = digest(h.journal);
     let result;
     try { result = await h.intents.run(pool, h.state, envelope, bytes, options); }
     catch (error) { result = { ok: false, code: error.code }; }
@@ -58,6 +70,7 @@ function harness(t) {
     if (code) assert.equal(result.code, code);
     assert.equal(digest(h.state), before, 'confirmed state or receipts poisoned');
     assert.equal(digest(h.intents.bindings), registryBefore, 'confirmed intent binding poisoned');
+    assert.equal(digest(h.journal), journalBefore, 'confirmed append-only log poisoned');
     return result;
   };
   h.sync = (client) => Y.applyUpdate(client.doc, Buffer.from(h.state.checkpoint, 'base64'), 'confirmed');
@@ -80,7 +93,7 @@ test('two concurrent authors converge in either admission order and own undo pre
   const ub = capture(b.doc, () => b.doc.transact(() => b.text.insert(0, 'B'), 'human-b'));
   const initial = JSON.parse(JSON.stringify(h.state));
   await h.accept(a, ua); await h.accept(b, ub); const orderAB = h.state.body;
-  h.state = initial;
+  h.state = initial; h.journal = [];
   await h.accept(b, ub); await h.accept(a, ua); assert.equal(h.state.body, orderAB);
   h.sync(a); h.sync(b); assert.equal(a.text.toString(), b.text.toString());
   const undone = capture(a.doc, () => undo.undo());
@@ -99,9 +112,10 @@ test('durable enrollment, collisions and reconnect versus a fresh document', asy
   assert.equal(a.doc.clientID, id); // Same Doc survives transport reconnect.
   const fresh = h.client(); assert.notEqual(fresh.doc.clientID, id);
   // A fresh instance submits old exact bytes under durable old ownership, without changing its ID.
-  await h.accept(a, oldPending, intent); const confirmed = digest(h.state);
+  const admitted = await h.accept(a, oldPending, intent); const confirmed = digest(h.state); const journal = digest(h.journal);
   const replay = await h.accept(a, Uint8Array.from(oldPending), intent);
   assert.equal(replay.replay, true); assert.equal(digest(h.state), confirmed);
+  assert.deepEqual(replay.receipt, admitted.receipt); assert.equal(digest(h.journal), journal);
   h.sync(fresh); assert.equal(fresh.text.toString(), 'offline');
   const own = capture(fresh.doc, () => fresh.text.insert(fresh.text.length, '!'));
   await h.accept(fresh, own); assert.equal(h.state.body, 'offline!');
@@ -129,17 +143,17 @@ test('known structs and ranges under new intents acknowledge without new journal
   const h = harness(t); const a = h.client('actor-a');
   const original = capture(a.doc, () => a.text.insert(0, 'abc'));
   await h.accept(a, original); const b = h.client('actor-b');
-  const journal = digest(h.state.journal); const nodes = digest(h.state.nodes);
+  const journal = digest(h.journal); const nodes = digest(h.state.nodes);
   const duplicate = await h.accept(b, original);
   assert.equal(duplicate.receiptOnly, true); assert.equal(duplicate.receipt.semanticNoop, true);
   assert.equal(duplicate.receipt.provenance, null); assert.equal(h.state.sequence, 1);
-  assert.equal(digest(h.state.journal), journal); assert.equal(digest(h.state.nodes), nodes);
+  assert.equal(digest(h.journal), journal); assert.equal(digest(h.state.nodes), nodes);
   await h.accept(a, capture(a.doc, () => a.text.delete(1, 1)));
-  const deletions = digest(h.state.deleted); const deletionJournal = digest(h.state.journal);
+  const deletions = digest(h.state.deleted); const deletionJournal = digest(h.journal);
   const repeated = await h.accept(b, wire([], [{ client: a.replica, clock: 1, length: 1 }]));
   assert.equal(repeated.receiptOnly, true); assert.equal(repeated.receipt.provenance, null);
   assert.equal(h.state.sequence, 2); assert.equal(digest(h.state.deleted), deletions);
-  assert.equal(digest(h.state.journal), deletionJournal);
+  assert.equal(digest(h.journal), deletionJournal);
   await h.accept(b, wire([], [{ client: a.replica, clock: 1, length: 2 }]));
   assert.equal(h.state.body, 'a'); assert.equal(h.state.sequence, 3);
   assert.deepEqual(h.state.deleted.map(({ clock, length, actor }) => ({ clock, length, actor })), [
@@ -227,11 +241,11 @@ test('confirmed surrogate splits retain original provenance and accept public ch
   await h.accept(a, original);
   await h.reject(a, wire([item(a.replica, 0, '\ufffd\ufffdz')]), 'ALTERED_DUPLICATE_CONTENT');
   await h.accept(a, capture(a.doc, () => a.text.delete(0, 1)));
-  const immutable = digest(h.state.nodes); const journal = digest(h.state.journal);
+  const immutable = digest(h.state.nodes); const journal = digest(h.journal);
   const checkpoint = await h.accept(a, Y.encodeStateAsUpdate(a.doc));
   assert.equal(checkpoint.receiptOnly, true); assert.equal(h.state.sequence, 2);
   assert.equal(h.state.body, '\ufffdz'); assert.equal(h.state.nodes[0].text, '🙂z');
-  assert.equal(digest(h.state.nodes), immutable); assert.equal(digest(h.state.journal), journal);
+  assert.equal(digest(h.state.nodes), immutable); assert.equal(digest(h.journal), journal);
   assert.deepEqual(h.state.splits, [{ client: a.replica, clock: 1 }]);
   await h.reject(a, wire([item(a.replica, 1, '\ufffdQ', { origin: { client: a.replica, clock: 0 }, parent: null })]), 'ALTERED_DUPLICATE_CONTENT');
   await h.reject(a, wire([item(a.replica, 0, '\ufffd\ufffdQ')]), 'ALTERED_DUPLICATE_CONTENT');
@@ -249,9 +263,9 @@ test('a peer insertion inside a surrogate establishes only that public split tra
   const original = h.state.nodes.filter((node) => node.client === a.replica && node.clock === 0);
   assert.equal(original.length, 1); assert.equal(original[0].text, '🙂');
   const provenance = digest(original);
-  const before = digest(h.state.journal);
+  const before = digest(h.journal);
   const checkpoint = await h.accept(b, Y.encodeStateAsUpdate(b.doc));
-  assert.equal(checkpoint.receiptOnly, true); assert.equal(digest(h.state.journal), before);
+  assert.equal(checkpoint.receiptOnly, true); assert.equal(digest(h.journal), before);
   const after = h.state.nodes.filter((node) => node.client === a.replica && node.clock === 0);
   assert.equal(after.length, 1); assert.equal(after[0].text, '🙂'); assert.equal(digest(after), provenance);
 });
@@ -334,7 +348,10 @@ test('100ms hard termination, bounded queue and external reservations are recove
 
 test('room charge includes retained original text, checkpoint, receipts and object overhead', async (t) => {
   const h = harness(t); const a = h.client(); const original = stateCharge(h.state);
-  const inflated = { ...h.state, receipts: { originalText: { value: 'x'.repeat(CAPS.roomCacheBytes / 2) } } };
+  // Receipts now live in IntentRegistry; inflate the actual retained checkpoint charge.
+  assert.equal(Object.hasOwn(h.state, 'receipts'), false);
+  assert.equal(Object.hasOwn(h.state, 'journal'), false);
+  const inflated = { ...h.state, checkpoint: 'x'.repeat(CAPS.roomCacheBytes / 2) };
   assert.ok(stateCharge(inflated) > CAPS.roomCacheBytes);
   await assert.rejects(h.pool.run(inflated, h.envelope(a), wire()), { code: 'ROOM_CACHE_LIMIT' });
   assert.equal(stateCharge(h.state), original);

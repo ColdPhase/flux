@@ -56,6 +56,14 @@ export class IntentRegistry {
       if (fingerprint(intent, bytes) !== digest) throw new Refusal('ADMISSION_INPUT_CHANGED');
       const binding = this.bindings[key];
       if (binding && binding.fingerprint !== digest) throw new Refusal('EDITING_IDEMPOTENCY_CONFLICT');
+      if (binding) {
+        // 0084 moved exact receipt replay out of decoded codec state. This is a
+        // serialized intent-store model, not a PostgreSQL/authorization proof.
+        if (intent.workspace !== state.workspace || intent.kind !== state.kind
+          || intent.room !== state.room || intent.generation !== state.generation) throw new Refusal('ROOM_GENERATION');
+        return { ok: true, state, replay: true,
+          receipt: JSON.parse(JSON.stringify(binding.receipt)) };
+      }
       const operation = pool.run(state, intent, bytes, { ...options,
         admission: pool.budget ? admission : undefined, signal: controller.signal });
       this.operations.add(operation);

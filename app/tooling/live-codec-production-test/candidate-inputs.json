@@ -1,9 +1,9 @@
 {
   "schema": 1,
-  "baselineSourceSha": "39ca642d03e24fd8f4c721e2d926fc843f43f9ab",
+  "baselineSourceSha": "43f395c26de9c8364cfb1628163400fb70527d60",
   "canonicalModules": {
     "caps.mjs": "0bf4059e81bbbef7fc5e453a450444a646e678bb425d6746870c19378a37b014",
-    "codec.mjs": "42c8a14780efe6890e159077c6d9afe03a50dc58bea8e094602441629afe5d94",
+    "codec.mjs": "fbd76411d01cf85c6d1ff9e60fb75e5cc27b0ac3309dd64402b65d8c0f663cd2",
     "envelope.mjs": "b6ab8236e53619785845ae9770bcf31f58a15201c2ba8a2f29c7b41400ac276f",
     "assembly.mjs": "d6bf996556227eade5dad239af0d4897048dead1873f3870d2c5d3a8d79079fe",
     "admission-budget.mjs": "2ee7dafe07716d1a4e6edc29c097a0204936abaa58a06af0312e294b99685ad8",
@@ -12,10 +12,10 @@
     "room-cache.mjs": "16a8ef1b1edecde982b1ba04d53d49dd41f3589d5268ecd093e826b23fa0e6c3"
   },
   "candidateFiles": {
-    "codec.test.mjs": "1dfccdc0b954c4756c757bbf1a009eaf46171d44b475d07c319e90820c079075",
+    "codec.test.mjs": "e00291b09c92ce691c85f66a1506297aeaf41394e0327f80a925a07ed7ceb14f",
     "exit-worker.mjs": "39324c6b118bbb3fbb81986ca0f95e53e104403fd396379e2a230f9731c813a1",
-    "independent-probe.proposed.test.mjs": "896f1d99659d06bbe848897b308665346f4d4067a33d0a8e8ef1abed6bdd0893",
-    "intent-registry.mjs": "f5f2217521a5b4667e74955d37e677e6760e9a40cd5d07e83e3d12344318956a",
+    "independent-probe.proposed.test.mjs": "4b942a51612f73ec1d2a43c5e681a086efb5fed42c60fe5620c3e5c9295c6897",
+    "intent-registry.mjs": "5e45bb8e1401345be255434f5c4e8318f154db8be33871ddc8da085e99c2b6cb",
     "inventory.mjs": "170f0c5b58798857b7b7c9e8ce9d514ef24a953218fcd11412a219c5ffbe9d76",
     "retained-backing.test.mjs": "8d27f2dd31f3ab36cf7bdcb5763d1a214066a0636bc44b27a36f2b7260bc89e5",
     "silent-worker.mjs": "5ed3135987ba629b76b6e236a6d3e72816fccbc2e3935fd002f9430047cbdc75",
@@ -49,7 +49,10 @@
     "inheritedindependentC3 retained-input handoff",
     "priorreviewedmandatoryC3framingfields",
     "publicNodeimportsforlint",
-    "keptcodecworkerswithinthetwoworkercap;terminateontimeout/failure"
+    "keptcodecworkerswithinthetwoworkercap;terminateontimeout/failure",
+    "Accepted 0084 storage: codec state excludes receipts and journal; exact fixture intent replay returns the immutable original receipt without another worker run.",
+    "Author and inherited-probe log assertions use a separate serialized append-only fixture journal with actual update bytes and production ledgerDelta(previous, next).",
+    "Original 31+10+1 names and all malicious, Unicode, namespace, resource, timeout and input-ownership assertions retained; inherited adaptation requires fresh independent evaluation."
   ],
   "meaning": "Current canonical corpus candidate, not historicalPASS or durableSQL proof"
 }

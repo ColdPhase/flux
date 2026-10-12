@@ -1,4 +1,4 @@
-// #228 author-proposed current-ownership adaptation. Independent review required; original probe preserved.
+// #228 author-proposed ownership and 0084 storage adaptation. Fresh independent review required; original probe preserved.
 import { Buffer } from 'node:buffer';
 import process from 'node:process';
 import { setImmediate } from 'node:timers';
@@ -10,7 +10,7 @@ import { pathToFileURL } from 'node:url';
 const root = process.env.FLUX_CALIBRATION_ROOT ?? '/calibration';
 const moduleAt = (name) => import(pathToFileURL(root + '/' + name).href);
 const Y = await moduleAt('node_modules/yjs/dist/yjs.mjs');
-const { emptyRoom, enroll, canonical } = await moduleAt('codec.mjs');
+const { emptyRoom, enroll, canonical, ledgerDelta } = await moduleAt('codec.mjs');
 const { CodecPool } = await moduleAt('worker-pool.mjs');
 const { Assemblies, packet } = await moduleAt('assembly.mjs');
 const { CAPS } = await moduleAt('caps.mjs');
@@ -27,8 +27,8 @@ function capture(doc, fn) {
 function harness(t, room = 'independent-room', registry = null) {
   const pool = new CodecPool();
   const docs = [];
-  const h = { state: emptyRoom(room), pool, counter: 0 };
-  t.after(async () => { docs.forEach((doc) => doc.destroy()); await pool.close(); });
+  const h = { state: emptyRoom(room), journal: [], pool, counter: 0 };
+  t.after(async () => { docs.forEach((doc) => doc.destroy()); await registry?.close(); await pool.close(); });
   h.client = (actor = 'independent-a') => {
     const doc = new Y.Doc();
     h.state = enroll(h.state, actor, doc.clientID, true);
@@ -46,26 +46,34 @@ function harness(t, room = 'independent-room', registry = null) {
     const result = registry ? await registry.run(pool, h.state, intent, bytes)
       : await pool.run(h.state, intent, bytes);
     assert.equal(hash(h.state), before, 'call mutated input confirmed state');
-    return result;
+    // Explicit fixture store view: compare real serialized log entries, never undefined fields.
+    const journal = result.ok && !result.replay && !result.receipt.semanticNoop
+      ? [...h.journal, canonical({ sequence: result.state.sequence, actor: intent.actor,
+        fingerprint: result.receipt.fingerprint, bytes: Buffer.from(bytes).toString('base64'),
+        ledger: ledgerDelta(h.state, result.state) })] : [...h.journal];
+    return { ...result, journal };
   };
   h.accept = async (client, bytes, intent) => {
     const result = await h.run(client, bytes, intent);
     assert.equal(result.ok, true, result.code);
-    h.state = result.state;
+    h.state = result.state; h.journal = result.journal;
+    assert.equal(h.journal.length, h.state.sequence);
     return result;
   };
   return h;
 }
 
 test('positive control: independent public updates admit, exact original receipt replays', async (t) => {
-  const h = harness(t); const a = h.client();
+  // Accepted0084 replays immutable intents before the codec; other direct codec probes stay direct.
+  const h = harness(t, 'independent-room', new IntentRegistry()); const a = h.client();
   const bytes = capture(a.doc, () => a.text.insert(0, 'control'));
   const intent = h.intent(a);
-  await h.accept(a, bytes, intent);
-  const before = hash(h.state);
+  const admitted = await h.accept(a, bytes, intent);
+  const before = hash(h.state); const journal = hash(h.journal);
   const repeat = await h.run(a, Uint8Array.from(bytes), intent);
   assert.equal(repeat.ok, true); assert.equal(repeat.replay, true);
   assert.equal(hash(repeat.state), before);
+  assert.deepEqual(repeat.receipt, admitted.receipt); assert.equal(hash(repeat.journal), journal);
 });
 
 test('exact known update under a fresh UUID receives no new admitted sequence/provenance', async (t) => {
@@ -77,7 +85,8 @@ test('exact known update under a fresh UUID receives no new admitted sequence/pr
     'known duplicate was journalled as a fresh contributing update');
   if (result.ok) {
     assert.equal(result.receipt.provenance, null);
-    assert.deepEqual(result.state.journal, h.state.journal);
+    assert.ok(h.journal.length > 0, 'the unchanged log comparison has real admitted entries');
+    assert.deepEqual(result.journal, h.journal);
     assert.deepEqual(result.state.nodes, h.state.nodes);
   }
 });
@@ -91,7 +100,8 @@ test('another authenticated writer cannot gain new provenance by forwarding know
     'B received a fresh admitted sequence for unchanged A structs');
   if (result.ok) {
     assert.equal(result.receipt.provenance, null);
-    assert.deepEqual(result.state.journal, h.state.journal);
+    assert.ok(h.journal.length > 0, 'the unchanged log comparison has real admitted entries');
+    assert.deepEqual(result.journal, h.journal);
     assert.deepEqual(result.state.nodes, h.state.nodes);
   }
 });
@@ -106,7 +116,8 @@ test('duplicate deletion with a fresh UUID does not create another admitted chan
     'known deletion received new provenance and retained duplicate ranges');
   if (result.ok) {
     assert.equal(result.receipt.provenance, null);
-    assert.deepEqual(result.state.journal, h.state.journal);
+    assert.ok(h.journal.length > 0, 'the unchanged log comparison has real admitted entries');
+    assert.deepEqual(result.journal, h.journal);
     assert.deepEqual(result.state.deleted, h.state.deleted);
   }
 });
