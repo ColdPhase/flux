@@ -1,0 +1,67 @@
+{
+  "checkedAt": "2026-10-10",
+  "codexTag": "rust-v0.160.1",
+  "codexTagObject": "c3e23d4c4385619ecec78408766e46b7fa7dd9ad",
+  "codexCommit": "d27764b82f7118f674371e6d6e76271d9d606edb",
+  "codexCommitDate": "2026-10-05T17:16:58Z",
+  "codexTarSha256": "9226581be592d18f7e7f740a352fdb63aa61e45e39f7eb9b09d3888c84bba33f",
+  "codeModeHostTarSha256": "8a69207d97545ac753b6585974e1e67a4c51ae5deacf06517db512bb25e0e3c2",
+  "codexSourceFiles": {
+    "codex-rs_app-server-protocol_src_protocol_v2_config.rs": {
+      "sha256": "8187edb07de0259f5a96927ca69b749a7ba9049062bf2ef2eb1ff9c7d8696447"
+    },
+    "codex-rs_app-server_README.md": {
+      "sha256": "d7fae889d9101c3bdae896204d840fc9c2a70e063bcb0108d5625f1e29f04d44"
+    },
+    "codex-rs_app-server_src_request_processors_config_processor.rs": {
+      "sha256": "66d0f303742fc268f9f4557cc01418c89c85854ff58f3feb7321e19a891b1db2"
+    },
+    "codex-rs_cli_src_main.rs": {
+      "sha256": "dc0356a131108ace0f63f7e9f5040b1f0fc19a71057eeeb4108e04623267c502"
+    },
+    "codex-rs_codex-mcp_src_rmcp_client.rs": {
+      "sha256": "b8562b3a6def953aab82fc8e728785010da932d5dce4526b0e8df861a7e3e685"
+    },
+    "codex-rs_features_src_lib.rs": {
+      "sha256": "124c76d1fbad7b05fd78a62b89a28282c7ecab1de7426ac18696987024ddeae0"
+    },
+    "codex-rs_rmcp-client_src_lib.rs": {
+      "sha256": "3ac3bb25857ebb7155288966e5965e135a0ad4daa486bdb3027ad20bb611499e"
+    }
+  },
+  "sdk": {
+    "package": "@modelcontextprotocol/server",
+    "version": "2.1.0",
+    "publishedAt": "2026-09-23T15:45:32.276Z",
+    "tarball": "https://registry.npmjs.org/@modelcontextprotocol/server/-/server-2.1.0.tgz",
+    "integrity": "sha512-FdvwZU5N03O77Suh35JqjAqq5R1ZTEPFtwu6N4BgBq28qrQtrCnpbLL5U2pwYCuE194jAw0xnlOVmIqhfoYuUQ==",
+    "sdkTagEndpoint": "unavailable: GitHub v2.1.0 tag HTTP404",
+    "examinedBundleFiles": {
+      "package_dist_stdio.d.mts": "2e5870b02346a7e6221aa03ab356386cb8152f5094dd9d0a9f74d6fc4989a8e7",
+      "package_dist_index.d.mts": "a475dde58e1594373a5c397070c321c4c18268fa101ed03bf3badc884b721ad8",
+      "package_dist_createMcpHandler-Bt6U_Fqb.d.mts": "35e680e88f87322e3ed8ea386e21fced67a851771bbe3f71ce6079ce96aafadd",
+      "package_dist_stdio.mjs": "017575c4e870c19579aec6973d405c504c542cc748e262e39fa0a36f3e96aab5",
+      "package_dist_src-D-y6h4N7.mjs": "9cc3caf713a88aa6d7787001b673915ee011ea5edc620118aae2737c4b335c75",
+      "package_dist_mcp-Dw2OlZ1f.mjs": "29840cb4f42d4aaf0ed217080c87df34d7bfa9ddea2e6e56616f35e3ac56f44a",
+      "package_dist_index.mjs": "94cdf04854caf7bd41fde3ae22c7c5700c5e79f98dd4ee0d9b99feaecae51532"
+    }
+  },
+  "baseline": {
+    "serverCommit": "975747426a778cc4471bd4c9eabb8910eb187671",
+    "finalComposeProject": "flux-mcpclients-1791651790-2940545",
+    "ports": [
+      19820,
+      19821
+    ],
+    "subnets": [
+      "10.198.100.0/24",
+      "10.198.101.0/24",
+      "10.198.102.0/24"
+    ]
+  },
+  "retainedLocalLogs": [
+    "/tmp/flux-460-protocol-probe.log",
+    "/tmp/flux-460-protocol-probe-corrected.log",
+    "/tmp/flux-460-protocol-probe-final.log"
+  ]
+}

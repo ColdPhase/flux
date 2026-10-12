@@ -121,6 +121,28 @@ def shot(page: Page, name: str) -> None:
     page.screenshot(path=str(SHOTS / f"{name}.png"))
 
 
+def open_map_options(page: Page, *, touch: bool = False):
+    """The phone's named sheet retains Map/List and Fit/zoom without stacked map controls."""
+    trigger = page.get_by_role("button", name="Map options", exact=True)
+    expect(trigger).to_be_visible()
+    trigger.tap() if touch else trigger.click()
+    sheet = page.get_by_role("dialog", name="Map options", exact=True)
+    expect(sheet).to_be_visible()
+    return sheet
+
+
+def show_map_as(page: Page, mode: str, *, touch: bool = False) -> None:
+    """Choose the same Map/List control through its visible desktop or phone entry point."""
+    expect(page.locator('.ui-overlay[data-state="closing"]')).to_have_count(0)
+    switch = page.get_by_role("radio", name=mode, exact=True)
+    trigger = page.get_by_role("button", name="Map options", exact=True)
+    expect(trigger.or_(switch)).to_be_visible()
+    if trigger.is_visible():
+        switch = open_map_options(page, touch=touch).get_by_role("radio", name=mode, exact=True)
+    switch.tap() if touch else switch.click()
+    expect(page.get_by_role("dialog", name="Map options", exact=True)).to_have_count(0)
+
+
 def mailpit_reset_link(email: str) -> str:
     assert MAILPIT, "FLUX_MAILPIT_URL is required for the password reset journey"
     query = urllib.parse.quote(f'to:"{email}"')
@@ -208,6 +230,26 @@ SLOW_ANSWERS = """
       }));
     }
     return answer.finally(() => { slow.inflight -= 1; });
+  };
+})();
+"""
+
+
+# Records the API requests this document starts: when each began, and whether `beforeunload` had
+# already fired (#471). A document that is being left starts none; WebKit reports every one of them
+# as an uncaught page error even though the app handles the rejection.
+FETCH_RECORDER = """
+(() => {
+  let leaving = false;
+  window.__fetches = [];
+  window.addEventListener('beforeunload', () => { leaving = true; });
+  window.addEventListener('pageshow', () => { leaving = false; });
+  const original = window.fetch;
+  window.fetch = function (...args) {
+    const url = String((args[0] && args[0].url) || args[0]);
+    window.__fetches.push([performance.now(), url]);
+    if (leaving) { try { console.log('started-while-leaving ' + url); } catch (e) { /* the page is going away */ } }
+    return original.apply(this, args);
   };
 })();
 """
@@ -1043,7 +1085,7 @@ class AppShellJourney(unittest.TestCase):
         owner.get_by_role("navigation", name="Projects").get_by_role("link", name="Gesture lamp").click()
         owner.get_by_label("Write a message").fill("Try a PIR sensor before considering a camera")
         owner.get_by_role("button", name="Send message").click()
-        expect(owner.locator(".project-convo__message > p").filter(has_text="Try a PIR sensor before considering a camera")).to_be_visible()
+        expect(owner.locator(".project-convo__message > .message-bubble > p").filter(has_text="Try a PIR sensor before considering a camera")).to_be_visible()
         # Sending is instant (#264): the root shows at once and gets its conversation when it is stored.
         expect(owner.locator("[data-client-message-id]")).to_have_count(0)
         # One project conversation (UI116-1): the root joins the stream; its replies open beside it.
@@ -1070,8 +1112,9 @@ class AppShellJourney(unittest.TestCase):
         owner.get_by_label("Reply", exact=True).fill("This is the version we should prototype")
         owner.get_by_role("button", name="Send reply").click()
         expect(owner.get_by_text("This is the version we should prototype", exact=True)).to_be_visible()
-        source = owner.get_by_role("link", name="Source: Privacy options · v1")
+        source = owner.get_by_role("link", name=re.compile("Privacy options.*Wiki page · v1"))
         expect(source).to_be_visible()
+        expect(source.locator(".wiki-card__glyph svg")).to_have_count(1)
         source.click()
         expect(owner.get_by_text("PIR avoids storing images")).to_be_visible()
         owner.go_back()
@@ -1143,7 +1186,7 @@ class AppShellJourney(unittest.TestCase):
         threads = owner.context.request.get(f"{ORIGIN}/api/v1/projects/{project_id}/conversations").json()["items"]
         self.assertEqual(sum(thread["firstMessageBody"] == "Revisit after lost opening" for thread in threads), 1)
         owner.goto(f"/projects/{project_id}/conversations/{conversation_id}")
-        expect(owner.get_by_role("link", name="Source: Privacy options · v1")).to_be_visible()
+        expect(owner.get_by_role("link", name=re.compile("Privacy options.*Wiki page · v1"))).to_be_visible()
 
         read_failures = {"count": 0}
         def fail_first_citation(route) -> None:
@@ -1413,6 +1456,144 @@ class AppShellJourney(unittest.TestCase):
         self.assertEqual(connections.status, 200, connections.text())
         self.assertEqual(len(connections.json()), 1)
         self.assertIsNotNone(connections.json()[0]["revokedAt"])
+
+    def sign_up_and_create_project(self, page: Page, name: str) -> None:
+        page.goto("/sign-up")
+        page.get_by_label("Name").fill("Leaving Owner")
+        page.get_by_label("Email").fill(f"leaving+{int(time.time() * 1000)}@example.test")
+        page.get_by_label("Password").fill(PASSWORD)
+        page.get_by_role("button", name="Create account").click()
+        new_from_sidebar(page, "Project")
+        page.get_by_label("Your space").fill("Research space")
+        page.get_by_label("Project name").fill(name)
+        page.get_by_role("button", name="Create project").click()
+        expect(page.get_by_role("heading", level=1, name=name)).to_be_visible()
+
+    def hold_details_code(self, page: Page) -> list:
+        """Holds the Details panel's code download (a new project opens that panel by itself)."""
+        held: list = []
+        pattern = re.compile(r"/assets/Details-[^/]+\.js(?:\?.*)?$")
+        page.route(pattern, lambda route: held.append(route))
+
+        def release() -> None:
+            page.unroute(pattern)
+            for route in held:
+                try:
+                    route.abort("aborted")
+                except Exception:  # noqa: BLE001 - the page is already closed
+                    pass
+
+        self.addCleanup(release)
+        return held
+
+    def wait_until_held(self, page: Page, held: list) -> None:
+        deadline = time.monotonic() + 5
+        while not held:
+            self.assertLess(time.monotonic(), deadline, "the Details code request never arrived")
+            page.wait_for_timeout(10)
+
+    def test_14a_leaving_while_the_details_panel_is_still_loading_starts_no_request(self) -> None:
+        """A page that is being left starts no request, however the app reacts to the leave (#471)."""
+        # A new project opens its Details panel; its code is still downloading when the person
+        # follows a link out. The failed download and the address change that comes with the same
+        # commit used to start /me and the project's people after beforeunload.
+        page = self.page(signed_in=False, service_workers="block")
+        page.add_init_script(FETCH_RECORDER)
+        started: list[str] = []
+        page.on("console", lambda message: started.append(message.text) if message.text.startswith("started-while-leaving ") else None)
+        held = self.hold_details_code(page)
+        self.sign_up_and_create_project(page, "Sensor study")
+        self.wait_until_held(page, held)
+        page.goto("/connect-agent")
+        expect(page.get_by_role("heading", name="Your agent connections")).to_be_visible()
+        page.evaluate("1")  # events of the document that was left have all arrived
+        self.assertEqual(started, [], "no request started after beforeunload")
+
+    def test_14b_a_panel_that_mounts_while_the_page_is_left_reads_once_the_page_is_live(self) -> None:
+        """Its mount-time reads wait for the grace of a cancelled navigation, and then run (#471)."""
+        page = self.page(signed_in=False, service_workers="block")
+        page.add_init_script(FETCH_RECORDER)
+        held = self.hold_details_code(page)
+        self.sign_up_and_create_project(page, "Sensor study")
+        self.wait_until_held(page, held)
+        # A leave that is cancelled never reaches pagehide. The panel's code arrives in that moment.
+        start = page.evaluate("() => { window.dispatchEvent(new Event('beforeunload')); return performance.now(); }")
+        held[0].continue_()
+        page.wait_for_function("(start) => window.__fetches.some(([at, url]) => at >= start && /\\/grants$/.test(url))", arg=start, timeout=6000)
+        reads = page.evaluate(
+            "(start) => window.__fetches.filter(([at, url]) => at >= start && /\\/(members|grants)$/.test(url)).map(([at]) => at - start)",
+            start,
+        )
+        self.assertTrue(reads, "the panel read the project's people after all")
+        self.assertGreaterEqual(min(reads), 990, f"no read started while the leave could still happen: {reads}")
+
+    def test_14c_a_read_wanted_while_leaving_runs_when_the_leave_is_cancelled(self) -> None:
+        """A read a page wants while it is being left waits, and then runs: nothing stays stale (#471)."""
+        page = self.page(signed_in=False)
+        page.add_init_script(FETCH_RECORDER)
+        self.sign_up_and_create_project(page, "Sensor study")
+        # A leave that is cancelled never reaches pagehide. The browser coming back online is when
+        # the project's agent owners are read again. Start once the page has been quiet for a moment,
+        # so only what the leave itself holds back is measured.
+        result = page.evaluate(
+            """async () => {
+                let seen = -1;
+                for (let round = 0; round < 10 && seen !== window.__fetches.length; round += 1) {
+                    seen = window.__fetches.length;
+                    await new Promise((resolve) => setTimeout(resolve, 600));
+                }
+                const start = performance.now();
+                window.dispatchEvent(new Event('beforeunload'));
+                window.dispatchEvent(new Event('online'));
+                await new Promise((resolve) => setTimeout(resolve, 2500));
+                const people = window.__fetches.filter(([at, url]) => at >= start && /\\/people$/.test(url)).map(([at]) => at - start);
+                return { people };
+            }"""
+        )
+        self.assertTrue(result["people"], "the read that waited ran once the page was live again")
+        self.assertGreaterEqual(min(result["people"]), 990, f"no read started while the leave could still happen: {result['people']}")
+
+    def open_while_leaving(self, page: Page, path: str) -> float:
+        """beforeunload, then the router opens `path` with no click or key press (either would prove the page stays)."""
+        return page.evaluate(
+            """(path) => {
+                const start = performance.now();
+                window.dispatchEvent(new Event('beforeunload'));
+                const idx = ((history.state && history.state.idx) || 0) + 1;
+                history.pushState({ usr: null, key: `leave-${idx}`, idx }, '', path);
+                window.dispatchEvent(new PopStateEvent('popstate', { state: history.state }));
+                return start;
+            }""",
+            path,
+        )
+
+    def assert_read_waits_for_the_grace(self, page: Page, start: float, url: str) -> None:
+        page.wait_for_function("([start, url]) => window.__fetches.some(([at, u]) => at >= start && u.includes(url))", arg=[start, url], timeout=8000)
+        reads = page.evaluate("([start, url]) => window.__fetches.filter(([at, u]) => at >= start && u.includes(url)).map(([at]) => at - start)", [start, url])
+        self.assertGreaterEqual(min(reads), 990, f"{url} was not read while the leave could still happen: {reads}")
+
+    def test_14d_the_sign_in_page_asks_for_single_sign_on_only_once_the_page_is_live(self) -> None:
+        """A sign-in page that opens while the page is being left reads its capabilities after the grace (#471)."""
+        page = self.page(signed_in=False)
+        page.add_init_script(FETCH_RECORDER)
+        page.goto("/sign-up")
+        expect(page.get_by_role("button", name="Create account")).to_be_visible()
+        start = self.open_while_leaving(page, "/sign-in")
+        expect(page.get_by_role("heading", name="Sign in to Flux")).to_be_visible()
+        self.assert_read_waits_for_the_grace(page, start, "/api/v1/auth/capabilities")
+
+    def test_14e_the_assistant_setup_reads_its_connections_only_once_the_page_is_live(self) -> None:
+        """Settings > Assistant opened while the page is being left lists the owner's connections after the grace (#471)."""
+        page = self.page(signed_in=False)
+        page.add_init_script(FETCH_RECORDER)
+        page.goto("/sign-up")
+        page.get_by_label("Name").fill("Leaving Owner")
+        page.get_by_label("Email").fill(f"leaving-setup+{int(time.time() * 1000)}@example.test")
+        page.get_by_label("Password").fill(PASSWORD)
+        page.get_by_role("button", name="Create account").click()
+        expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
+        start = self.open_while_leaving(page, "/settings/assistant")
+        self.assert_read_waits_for_the_grace(page, start, "/api/v1/background-compute-connections")
 
 
 if __name__ == "__main__":

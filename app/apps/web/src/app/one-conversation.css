@@ -14,6 +14,7 @@
 
 /* Under a root: the size of its thread and the reply action. Both open the thread. */
 .convo-replies { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; margin: 6px 0 0 -7px; font-size: var(--fs-sm); }
+.project-convo__message.is-mine > .convo-replies { justify-content: flex-end; margin-left: 0; margin-right: -7px; }
 .convo-replies button { display: inline-flex; align-items: center; gap: 5px; min-height: 26px; padding: 0 7px; border-radius: var(--r-sm); color: var(--t2); font-weight: 500; transition: var(--tr); }
 .convo-replies button:hover { background: var(--hov); color: var(--t1); }
 .convo-replies svg { flex: none; }
@@ -27,15 +28,21 @@
 @media (pointer: coarse) { .convo-replies button { min-height: 44px; min-width: 44px; justify-content: center; } }
 /* The root whose thread is open, marked without colour alone: its control is also expanded. */
 /* The open root is ringed just outside its bubble, so the ring reads on light and inverted bubbles alike. */
-.project-convo__message.is-open > p { outline: 2px solid var(--t1); outline-offset: 2px; }
+.project-convo__message.is-open > .message-bubble { outline: 2px solid var(--t1); outline-offset: 2px; }
 
 /* ---------- The thread ---------- */
 .thread { display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--bg); outline: none; }
 .thread--docked { flex: none; width: clamp(320px, 40%, var(--panel-w)); border-left: 1px solid var(--line); }
-.thread--sheet { position: absolute; inset: 0; z-index: var(--z-panel); }
+/* One panel look (F-026 S4): beside the stream a raised card like the detail panel; over it a sheet with a grabber and two heights. */
+.thread--docked { margin: 10px 10px 10px 0; background: var(--el); border: 0; border-radius: var(--r-panel); box-shadow: var(--sh-pop); overflow: hidden; }
+.ui-detent-sheet.thread { background: var(--el); }
+.ui-detent-sheet.thread .thread__head { border-bottom: 0; }
+@media (prefers-reduced-motion: no-preference) {
+  .ui-detent-sheet.thread { animation: thread-in var(--dur-3) var(--ease-sheet) both; }
+}
 .thread__head { display: flex; align-items: center; gap: 8px; height: 48px; flex: none; padding: 0 8px 0 20px; border-bottom: 1px solid var(--line); }
-.thread__title { font-size: var(--fs-md); font-weight: 600; }
-.thread__n { font-family: var(--mono); min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--sub); color: var(--t2); font-size: var(--fs-xs); font-weight: 600; line-height: 18px; text-align: center; font-variant-numeric: tabular-nums; }
+.thread__title { margin: 0; font-size: var(--fs-sm); font-weight: 600; }
+.thread__n { color: var(--t3); font-size: var(--fs-sm); font-variant-numeric: tabular-nums; }
 .thread__close { margin-left: auto; }
 /* As a sheet the way back sits first, where a phone's back control is expected. */
 .thread--sheet .thread__head { padding-left: 6px; }
@@ -45,18 +52,22 @@
 /* Laid out but hidden until its first bounded reads settle (#155, at most 1 s), so nothing shifts as they arrive. */
 .thread__feed.is-opening { visibility: hidden; }
 .thread__in { padding: 18px 20px 12px; }
-.thread__root { position: relative; padding-left: 44px; }
+.thread__root { position: relative; display: flex; flex-direction: column; align-items: flex-start; width: fit-content; max-width: 100%; padding-left: 44px; }
+.thread__root > :not(.ui-avatar, .author-face) { min-width: 0; max-width: 100%; }
+.thread__root.is-mine { margin-left: auto; align-items: flex-end; padding-left: 0; padding-right: 44px; }
+.thread__root.is-mine > .thread__root-meta { justify-content: flex-end; }
 .thread__root-meta { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; margin-bottom: 8px; color: var(--t3); font-size: var(--fs-xs); }
 .thread__root-meta > :is(.ui-avatar, .author-face) { position: absolute; left: 0; top: 0; }
+.thread__root.is-mine > .thread__root-meta > :is(.ui-avatar, .author-face) { left: auto; right: 0; }
 .thread__root-meta strong { min-width: 0; max-width: 100%; overflow-wrap: anywhere; color: var(--t1); font-size: var(--fs-sm); font-weight: 550; }
 .thread__root-meta .agent-id__name { white-space: normal; overflow: visible; overflow-wrap: anywhere; }
-.thread__root > p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font-size: var(--fs-base); line-height: 1.7; }
+.thread__root > .message-bubble > p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font-size: var(--fs-base); line-height: 1.7; }
 .thread__hint { display: flex; align-items: center; gap: 12px; margin: 14px 0 22px; color: var(--t3); font-size: var(--fs-xs); }
 .thread__hint::after { content: ""; flex: 1; height: 1px; background: var(--line); }
 .thread__list { list-style: none; margin: 0; padding: 0; }
-/* Roots and replies keep the same 32px author column, including a person's own replies. */
+/* Roots and replies retain the 32px author face on the side belonging to their author. */
 .thread .project-convo__message { min-width: min(220px, 100%); max-width: 100%; }
-.thread .project-convo__message > p { padding: 10px 13px; }
+.thread .project-convo__message > p, .thread .project-convo__message > .message-bubble { padding: 10px 13px; }
 .thread .project-convo__message + .project-convo__message { margin-top: 18px; }
 .thread .project-convo__day { margin: 4px 0 18px; }
 /* The thread is narrower than a reply's action bar: one ⋯ in the reply's corner opens the actions under the
@@ -64,6 +75,7 @@
 @media (hover: hover) {
   .thread .project-convo__message .ws-acts:not(.ws-acts--more) { position: static; margin: 4px 0 0 -6px; padding: 0; background: none; box-shadow: none; pointer-events: auto; }
   .thread .project-convo__message .ws-acts--more { position: absolute; top: -4px; right: -6px; margin: 0; padding: 0; background: none; box-shadow: none; }
+  .thread .project-convo__message.is-mine .ws-acts--more { left: -6px; right: auto; }
   .thread .ws-more { width: 28px; height: 28px; }
   .thread__acts .ws-acts, .thread .ws-acts--more:has([aria-expanded="true"]) { opacity: 1; pointer-events: auto; }
 }
@@ -73,6 +85,7 @@
 @media (max-width: 680px) {
   .thread__in { padding: 16px 17px 12px; }
   .thread__root { padding-left: 42px; }
+  .thread__root.is-mine { padding-left: 0; padding-right: 42px; }
 }
 /* A narrow window can still have a mouse. Keep its hover controls below the content,
    where the touch controls already live, so enlarged author names remain readable. */
@@ -82,7 +95,6 @@
   }
 }
 @media (prefers-reduced-motion: no-preference) {
-  .thread--sheet { animation: thread-in var(--dur-3) var(--ease-sheet) both; }
   .thread--docked { animation: thread-dock var(--dur-2) var(--ease-out) both; }
 }
 @keyframes thread-in { from { transform: translateX(24px); opacity: 0; } to { transform: none; opacity: 1; } }

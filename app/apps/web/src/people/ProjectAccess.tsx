@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { ApiError } from '../api/client';
+import { whenPageLive } from '../api/pageLeaving';
 import { useRevalidator } from 'react-router';
 import type { Project, ProjectAccess as Access, ProjectGrant, ProjectGrantRole, ProjectPerson, WorkspaceMember } from '@flux/contracts';
 import { useShellData } from '../app/data';
@@ -39,13 +40,16 @@ export function ProjectAccess({ project, people, focusToken }: { project: Projec
   useEffect(() => {
     if (!manager) return;
     const controller = new AbortController();
-    Promise.all([listMembers(project.workspaceId, controller.signal), listGrants(project.id, controller.signal)]).then(([members, grants]) => {
-      setRoster({ members, grants }); setRosterFailed(false);
-    }, (error: unknown) => {
-      if (error instanceof DOMException && error.name === 'AbortError') return;
-      setRosterFailed(true);
+    // A page being left starts no read (#471); one whose navigation was cancelled reads once it is live.
+    const waiting = whenPageLive(() => {
+      Promise.all([listMembers(project.workspaceId, controller.signal), listGrants(project.id, controller.signal)]).then(([members, grants]) => {
+        setRoster({ members, grants }); setRosterFailed(false);
+      }, (error: unknown) => {
+        if (error instanceof DOMException && error.name === 'AbortError') return;
+        setRosterFailed(true);
+      });
     });
-    return () => controller.abort();
+    return () => { waiting(); controller.abort(); };
   }, [manager, project.id, project.workspaceId, reload]);
   const load = () => setReload((n) => n + 1);
 

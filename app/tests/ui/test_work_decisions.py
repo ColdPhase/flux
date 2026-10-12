@@ -18,7 +18,7 @@ import uuid
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
 from author_columns import assert_author_column
-from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
+from test_app_shell import DESKTOP, ORIGIN, PHONE, UI_BROWSER, UPSTREAM, shot, start_forwarder
 
 PASSWORD = "decisions need reasons"
 STAMP = int(time.time() * 1000)
@@ -44,7 +44,9 @@ class WorkDecisionsJourney(unittest.TestCase):
         if UPSTREAM:
             start_forwarder(ORIGIN, UPSTREAM)
         cls.pw = sync_playwright().start()
-        cls.browser = cls.pw.chromium.launch()
+        cls.browser = getattr(cls.pw, UI_BROWSER).launch()
+        assert cls.browser.browser_type.name == UI_BROWSER
+        print(f"ACTUAL_UI_ENGINE={cls.browser.browser_type.name}", flush=True)
         expect.set_options(timeout=8000)
 
     @classmethod
@@ -130,18 +132,22 @@ class WorkDecisionsJourney(unittest.TestCase):
         message.get_by_role("button", name="Task", exact=True).click()
         panel = self.details(page)
         expect(panel.get_by_role("heading", name=IDEA)).to_be_visible()
-        expect(panel.get_by_label("Status")).to_have_value("open")
+        expect(panel.get_by_role("button", name="Status", exact=True)).to_contain_text("Open")
         expect(panel).to_contain_text("Everyone with access to Gesture lamp")
         expect(panel.get_by_role("link", name=re.compile("^Message: Test the camera"))).to_be_visible()
         # The source stays in place, and the work shows up under it.
-        expect(message.locator(".project-convo__message-meta ~ p").first).to_have_text(IDEA)
+        expect(message.locator(":scope > .message-bubble > p").first).to_have_text(IDEA)
         expect(message.get_by_role("button", name=f"Work: {IDEA}")).to_be_visible()
         # The panel's controls change the stored work (If-Match under the hood).
-        panel.get_by_label("Status").select_option("in_progress")
-        expect(panel.locator(".wd-eyebrow")).to_contain_text("In progress")
-        # Details names the task by its number in the project (#276).
-        expect(panel.locator(".wd-eyebrow")).to_have_text(re.compile(r"^Task #[1-9]\d* · Gesture lamp · In progress"))
-        expect(panel.locator(".wd-eyebrow .ui-task-number")).to_have_text("#1")
+        panel.get_by_role("button", name="Status", exact=True).click()
+        page.get_by_role("menuitemradio", name="In progress").click()
+        expect(panel.get_by_role("button", name="Status", exact=True)).to_contain_text("In progress")
+        # One change, one toast, and Undo puts the state back at once (S9).
+        expect(page.get_by_role("status").get_by_role("button", name="Undo")).to_be_visible()
+        # Details names the task by its number in the project (#276), in the head beside the Task chip.
+        expect(panel.locator(".wd-where")).to_have_text(re.compile(r"^#[1-9]\d* · Gesture lamp"))
+        expect(panel.locator(".wd-where .ui-task-number")).to_have_text("#1")
+        expect(page.locator(".ui-panel__meta")).to_have_text("#1")
         expect(message.locator(".ws-chip .ui-task-number")).to_have_text("#1")
         self.assertTrue(message.locator(".ws-chip").evaluate("node => node.querySelector('.ui-task-number').compareDocumentPosition(node.querySelector('.ws-chip__t')) & Node.DOCUMENT_POSITION_FOLLOWING"), "the number leads the title in a task reference")
         panel.get_by_label("Owner").select_option(f"human:{PARTNER['id']}")
@@ -404,7 +410,7 @@ class WorkDecisionsJourney(unittest.TestCase):
         expect(desk.get_by_role("region", name=re.compile("^In progress"))).to_contain_text("Measure the lamp current")
         shot(desk, "tasks-desktop-1440-in-progress")
 
-    # ---------------------------------------------------------------- common author column (F-026, superseding #136 AC-1)
+    # ---------------------------------------------------------------- author sides (F-026, #481)
 
     def assert_columns(self, page: Page, label: str) -> None:
         # Opening Details slides the pane; measure once it has settled.
@@ -414,22 +420,29 @@ class WorkDecisionsJourney(unittest.TestCase):
           setTimeout(() => resolve(el.getBoundingClientRect().x === first), 250);
         })""")
         # One project conversation (UI116-1): the root is in the stream and its replies in the thread
-        # beside it (over it on a phone). Every author keeps the same full face/name column.
+        # beside it (over it on a phone). Own messages are right; all other authors are left.
         feed = page.locator(".thread__in").bounding_box()
-        mine = page.locator(f"#message-{self.messages['finding']} > p").bounding_box()
-        theirs = page.locator(f"#message-{self.messages['pivot']} > p").bounding_box()
+        mine = page.locator(f"#message-{self.messages['finding']} > .message-bubble").bounding_box()
+        theirs = page.locator(f"#message-{self.messages['pivot']} > .message-bubble").bounding_box()
         stream = page.locator(".project-convo__in").bounding_box()
-        root = page.locator(f"#message-{self.messages['idea']} > p").bounding_box()
+        root = page.locator(f"#message-{self.messages['idea']} > .message-bubble").bounding_box()
         assert feed and mine and theirs and stream and root
         for key in ("finding", "pivot", "idea"):
             message = page.locator(f"#message-{self.messages[key]}")
             assert_author_column(self, message, page.viewport_size["width"], f"{label}: {key}")
             meta = message.locator(".project-convo__message-meta").bounding_box()
-            bubble = message.locator(":scope > p").bounding_box()
-            self.assertAlmostEqual(bubble["x"], meta["x"], delta=1, msg=f"{label}: {key} starts at the author-name edge")
-        self.assertAlmostEqual(mine["x"], theirs["x"], delta=1, msg=f"{label}: own and other messages share one left edge")
-        own_fill = page.locator(f"#message-{self.messages['finding']} > p").evaluate("el => getComputedStyle(el).backgroundColor")
-        other_fill = page.locator(f"#message-{self.messages['pivot']} > p").evaluate("el => getComputedStyle(el).backgroundColor")
+            bubble = message.locator(":scope > .message-bubble").bounding_box()
+            if key == "finding":
+                self.assertAlmostEqual(bubble["x"] + bubble["width"], meta["x"] + meta["width"], delta=1,
+                                       msg=f"{label}: own message ends at the author's right edge")
+            else:
+                self.assertAlmostEqual(bubble["x"], meta["x"], delta=1, msg=f"{label}: {key} starts at the author-name edge")
+        edges = page.locator(".thread__list").evaluate("el => { const r = el.getBoundingClientRect(); return {left:r.left, right:r.right}; }")
+        inset = 42 if page.viewport_size["width"] <= 680 else 44
+        self.assertAlmostEqual(mine["x"] + mine["width"], edges["right"] - inset, delta=1, msg=f"{label}: own bubble is right-aligned")
+        self.assertAlmostEqual(theirs["x"], edges["left"] + inset, delta=1, msg=f"{label}: other bubble is left-aligned")
+        own_fill = page.locator(f"#message-{self.messages['finding']} > .message-bubble").evaluate("el => getComputedStyle(el).backgroundColor")
+        other_fill = page.locator(f"#message-{self.messages['pivot']} > .message-bubble").evaluate("el => getComputedStyle(el).backgroundColor")
         self.assertNotEqual(own_fill, other_fill, f"{label}: the own-message treatment still distinguishes it")
         self.assertLessEqual(mine["x"] + mine["width"], feed["x"] + feed["width"] + 1, f"{label}: inside the pane")
         self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), page.viewport_size["width"], f"{label}: no sideways scroll")
@@ -444,7 +457,7 @@ class WorkDecisionsJourney(unittest.TestCase):
                 self.assertLessEqual(box["x"] + box["width"], pane["x"] + pane["width"] + 1, f"{label}: linked object {index} ends inside {column}")
                 self.assertLessEqual(box["x"] + box["width"], page.viewport_size["width"], f"{label}: linked object {index} is not cut off")
 
-    def test_09_authors_share_the_full_avatar_column_on_every_viewport(self) -> None:
+    def test_09_messages_keep_the_full_avatar_on_the_authors_side_on_every_viewport(self) -> None:
         page = self.open_conversation("partner")
         expect(page.locator(f"#message-{self.messages['finding']}")).to_have_class(re.compile("is-mine"))
         expect(page.locator(f"#message-{self.messages['pivot']}")).not_to_have_class(re.compile("is-mine"))

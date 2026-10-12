@@ -1,2 +1,2 @@
 export * from './ports.js';
-export { createSketchUseCases, PositionsConflictError, PromotionChangedError, type SketchUseCases } from './service.js';
+export { createSketchUseCases, LinkLabelConflictError, PositionsConflictError, PromotionChangedError, type SketchUseCases } from './service.js';

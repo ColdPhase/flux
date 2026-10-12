@@ -73,6 +73,8 @@ export const authAccounts = pgTable('auth_accounts', {
   refreshTokenExpiresAt: timestamp('refresh_token_expires_at', { withTimezone: true }),
   scope: text('scope'),
   password: text('password'),
+  /** When the identity provider last confirmed this identity (migration 0071, #312); null for a password account. */
+  confirmedAt: timestamp('confirmed_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [
@@ -88,6 +90,42 @@ export const authVerifications = pgTable('auth_verifications', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [index('auth_verifications_identifier_idx').on(table.identifier)]);
+
+/** How a session signed in (migration 0066, #310): password or provider id, the IdP's `sid`, and when it vouched. */
+export const authSessionIdentities = pgTable('auth_session_identities', {
+  sessionId: text('session_id').primaryKey().references(() => authSessions.id, { onDelete: 'cascade' }),
+  method: text('method').notNull(),
+  idpSid: text('idp_sid'),
+  confirmedAt: timestamp('confirmed_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+/**
+ * The standing check of a person's account at the identity provider (migration 0070, #311). The sealed
+ * offline refresh token lives only here; backups keep this table's definition but not its rows.
+ */
+export const authIdpStanding = pgTable('auth_idp_standing', {
+  userId: text('user_id').notNull().references(() => authUsers.id, { onDelete: 'cascade' }),
+  providerId: text('provider_id').notNull(),
+  state: text('state').notNull().default('ok'),
+  reason: text('reason'),
+  refreshTokenEnc: text('refresh_token_enc'),
+  /** The provider session (`sid`) the stored token was issued for (migration 0085, #314). */
+  refreshTokenSid: text('refresh_token_sid'),
+  confirmedAt: timestamp('confirmed_at', { withTimezone: true }),
+  stateChangedAt: timestamp('state_changed_at', { withTimezone: true }).notNull().defaultNow(),
+  lastCheckAt: timestamp('last_check_at', { withTimezone: true }),
+  lastOutcome: text('last_outcome'),
+  nextCheckAt: timestamp('next_check_at', { withTimezone: true }).notNull().defaultNow(),
+  leaseId: text('lease_id'),
+  leaseUntil: timestamp('lease_until', { withTimezone: true }),
+}, (table) => [primaryKey({ columns: [table.userId, table.providerId] })]);
+
+/** Seen back-channel logout token ids (migration 0073, #314): a `jti` is accepted once per provider until it expires. */
+export const authLogoutTokens = pgTable('auth_logout_tokens', {
+  providerId: text('provider_id').notNull(),
+  jti: text('jti').notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+}, (table) => [primaryKey({ columns: [table.providerId, table.jti] }), index('auth_logout_tokens_expires_idx').on(table.expiresAt)]);
 
 // Better Auth MCP/OAuth provider models (migration 0009).
 export const jwks = pgTable("jwks", {
@@ -676,7 +714,22 @@ export const agentOauthBindings = pgTable('agent_oauth_bindings', {
   clientId: text('client_id').notNull(),
   generation: integer('generation').notNull().default(1),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  // How the sign-in that last consented to this grant happened (migration 0083, #310 AC-3). Kept after the browser session ends.
+  authMethod: text('auth_method'),
+  authIdpSid: text('auth_idp_sid'),
+  authConfirmedAt: timestamp('auth_confirmed_at', { withTimezone: true }),
 }, (table) => [unique().on(table.ownerUserId, table.connectionId, table.clientId)]);
+
+/** Immutable authentication provenance for one minted OAuth authorization-code family (#310, 0086). */
+export const oauthGrantAuthentication = pgTable('oauth_grant_authentication', {
+  authorizationCodeId: text('authorization_code_id').primaryKey(),
+  userId: text('user_id').notNull().references(() => authUsers.id, { onDelete: 'cascade' }),
+  referenceId: text('reference_id').notNull(),
+  authMethod: text('auth_method').notNull(),
+  authIdpSid: text('auth_idp_sid'),
+  authConfirmedAt: timestamp('auth_confirmed_at', { withTimezone: true }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
 
 export const agentOauthFlows = pgTable('agent_oauth_flows', {
   ownerUserId: text('owner_user_id').notNull().references(() => authUsers.id),
@@ -1711,6 +1764,7 @@ export const githubTaskRules = pgTable('github_task_rules', {
   expectedVersion: integer('expected_version').notNull(), expectedStatus: text('expected_status', { enum: WORK_STATUS }).notNull(),
   expectedBlocker: text('expected_blocker'), blockedBy: text('blocked_by', { enum: ['check', 'closed'] }),
   readyToClose: boolean('ready_to_close').notNull().default(false),
+  revision: integer('revision').notNull().default(1),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [foreignKey({ columns: [t.workspaceId, t.projectId, t.taskId], foreignColumns: [projectWorkItems.workspaceId, projectWorkItems.projectId, projectWorkItems.id] }).onDelete('cascade')]);
 export const githubTaskRuleChanges = pgTable('github_task_rule_changes', {

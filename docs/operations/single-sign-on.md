@@ -72,11 +72,72 @@ provider can still sign in.
 
    `z` lets the container read the file on an SELinux host (Fedora, RHEL); elsewhere it has no effect.
 
-4. **Restart:** `./flux up` (or `docker compose … up -d`). The sign-in page shows
+4. **Optional: confirmation age.** `FLUX_OIDC_CONFIRMATION_MAX_AGE` (default `7d`; whole hours or
+   days from `1h` to `30d`, such as `12h`) is how long the provider's last confirmation of a person
+   keeps their access. It starts at each sign-in through the provider. After it, that person's
+   provider browser sessions return to sign-in, their MCP requests get 401 `invalid_token`, and the
+   refresh grant gets `invalid_grant` until they sign in through the provider again; the client then
+   authorizes again and `/connect-agent` offers the connection it held. Without the standing check
+   (S4), this age is the offboarding bound: a person disabled at the provider keeps access at most
+   this long. People with only a Flux password are not affected.
+
+5. **Restart:** `./flux up` (or `docker compose … up -d`). The sign-in page shows
    "Sign in with Acme login" once the API reads the provider's discovery document.
 
 The API reads discovery when it starts. If the provider is unreachable then, single sign-on fails
 until the next restart; password sign-in is unaffected.
+
+## Standing check
+
+Flux asks the provider for `offline_access` at sign-in and keeps the refresh token it returns,
+sealed with a key derived from `FLUX_AUTH_SECRET`, in `auth_idp_standing`.
+
+*Revised 2026-10-09 by founder direction (Hubert).* The sign-in now takes two steps. The person signs
+in with `openid email profile`. Flux then sends the browser back to the provider once more, silently,
+with `prompt=none` and `scope=openid offline_access`, to the same redirect URI. You register nothing
+new. The person sees only a second redirect.
+
+The reason is Keycloak 26.1 and later: when `offline_access` is the first request of a new Keycloak
+session, Keycloak deletes the browser session at the code exchange (keycloak PR #34346). The provider
+then never sends a back-channel logout to Flux, and other applications lose single sign-on.
+
+- **A refused silent step.** If the step answers `login_required` or another error, the sign-in is
+  refused like a missing refresh token, and the API logs the provider's answer. A provider session that
+  `prompt=none` cannot reuse causes this, for example when the provider's own cookies are blocked.
+- **When Flux revokes a stored token.** Flux revokes the token it replaces only when no live Flux
+  browser session came from that token's provider session (`sid`). Revoking a Keycloak offline token
+  also takes Flux out of that browser session's logout.
+- **Tokens Flux does not revoke** end at the provider's offline idle limit (Keycloak: 30 days). Until then,
+  Keycloak lists them as offline sessions of the Flux client. Every
+`FLUX_OIDC_STANDING_INTERVAL_SECONDS` (default 900) the API uses that token for each person with a
+live session or agent connection. If the provider answers `invalid_grant` (a disabled user, a removed
+offline session), the person is in *sign-in required*: their browser sessions end, MCP requests answer
+`401 invalid_token` with "Sign in again with <label>", the refresh grant answers `invalid_grant`, and
+automation that acts for them stops. Nothing is revoked. A network error, timeout, 5xx or
+`invalid_client` changes nothing.
+
+- **Restoring access.** Checks continue for a suspended person. When the provider honours the token
+  again (a re-enabled Keycloak user), the next check clears the state; their kept agent grants work
+  again, and they sign in again in the browser.
+- **The provider must return a refresh token.** Grant the Flux client the `refresh_token` grant and
+  let the people use `offline_access` (Keycloak: the `offline_access` role; Okta: the Refresh Token
+  grant). A sign-in that returns none is refused with a message, and the API logs
+  `The identity provider returned no refresh token`. For a provider that cannot, set
+  `FLUX_OIDC_STANDING=off`: then only the confirmation age (S2) and back-channel logout end access.
+- **Backups and restores.** `./flux backup` keeps the table's rows out of the archive. After a
+  restore, every person who signed in through the provider is in sign-in required until they sign in
+  again.
+- **Back-channel logout.** In the provider's client settings, set the *Backchannel logout URL* to
+  `<FLUX_PUBLIC_ORIGIN>/api/v1/identity/oidc/<provider id>/backchannel-logout` (the id is in the
+  `Single sign-on is on` log line and in the redirect URI) and require the session id. Flux verifies
+  the signed logout token (signature from the provider's keys, issuer, audience, times, the logout
+  event, no `nonce`, and a `jti` it has not seen), ends the browser sessions created from that
+  provider session (or all of the person's sessions when only `sub` is sent), and asks for an
+  immediate standing check. A plain logout does not stop agents; with Keycloak's *Backchannel logout
+  revoke offline sessions* on, Flux also revokes the person's MCP refresh tokens and its own stored
+  provider token, so agents must be authorized again. Flux answers 200, or 400 for a refused token,
+  with `Cache-Control: no-store`; an unknown session id is answered 200.
+- **Only the stored state is read per request;** an unreachable provider adds no latency to MCP calls.
 
 ## Verified behavior
 
@@ -94,6 +155,10 @@ configured with it. Through the same browser flow and callback it returns ID tok
 nonce, a signature by another key, another issuer or another audience; each is refused with no
 session, no linked or changed account, no grants and no notification address, and a valid
 token from the same mock still signs in.
+
+The confirmation age runs against Keycloak with `FLUX_OIDC_CONFIRMATION_MAX_AGE=12h`: a person
+whose last confirmation is moved back past it is refused at the browser, at MCP and on the refresh
+grant; one moved back less than it is not; signing in again through Keycloak restores access.
 
 It uses its own Compose project and ports (`FLUX_OIDC_TEST_PORT`, default 18095, and the next port
 for Mailpit) and removes everything afterwards.
@@ -126,8 +191,16 @@ own policies (MFA, conditional access), which stay the provider's responsibility
   claim adapter for it exists (F-024 S5b, [#315](https://github.com/ColdPhase/flux/issues/315)). These
   profiles describe provider compatibility, not personal profile pages. This is an
   inference from Microsoft's documentation; it was not tested against a real Entra tenant.
-- **Agent (MCP) authorization.** The page an agent client opens for authorization (`/login`, for
-  example from `claude mcp login`) offers email and password only, not single sign-on. Single sign-on
-  there is F-024 S1 ([#274](https://github.com/ColdPhase/flux/pull/274)). Until then, sign in at
-  `/sign-in` with single sign-on in the same browser first, then run the client's login again; the
-  authorization then uses the signed-in session (read from the code; no end-to-end test covers it yet).
+- **Agent (MCP) authorization ([#310](https://github.com/ColdPhase/flux/issues/310), F-024 S1).** The
+  page an agent client opens for authorization (`/login`, for example from `claude mcp login`) shows
+  **Sign in with <label>** above the password form. Flux keeps the signed authorization request through
+  the provider round trip and continues to the connection choice and consent afterwards; the client only
+  ever receives Flux's own code and tokens, and an access or ID token issued by the provider is refused at
+  `/mcp`. If the provider step is cancelled or fails, the page returns to `/login` with the same request
+  and a message. If the provider's discovery document cannot be read, the button is disabled and says
+  `<label> is not reachable right now`. A Flux that starts while the provider is down waits with backoff
+  for about 12 seconds; if the provider is still down then, restart Flux once it is back.
+  Pre-registered Codex clients: register the callback that Codex displays. It is the stable
+  `http://127.0.0.1/callback` when the server advertises the issuer response parameter, as Flux does.
+  Tested in `scripts/check_oidc.sh` against Keycloak with a scripted client; runs of the real Claude Code
+  and Codex clients are not part of this change.
