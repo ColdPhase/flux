@@ -99,7 +99,7 @@ $compose up -d --wait api
 
 if [ -z "$latency" ]; then
   [ "$#" -gt 0 ] || set -- test_live_editing test_live_map_projection test_live_map_selection
-  $compose run --rm --no-deps -e FLUX_LIVE_EDITING_TEST=1 -w /work/tests/ui ui-test python3 -m unittest -v "$@"
+  $compose run --rm --no-deps -e FLUX_LIVE_EDITING_TEST=1 -e FLUX_UI_BROWSER="${FLUX_UI_BROWSER:-chromium}" -w /work/tests/ui ui-test python3 -m unittest -v "$@"
   exit 0
 fi
 

@@ -18,15 +18,19 @@ import unittest
 import uuid
 
 from playwright.async_api import async_playwright, expect
-from test_app_shell import ORIGIN, UPSTREAM, start_forwarder
+from test_app_shell import ORIGIN, UI_BROWSER, UPSTREAM, start_forwarder
+from native_touch import native_touch_driver, native_touch_sender
 
 
 class LiveFixture(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         if UPSTREAM:
             start_forwarder(ORIGIN, UPSTREAM)
-        self.pw = await async_playwright().start()
-        self.browser = await self.pw.chromium.launch()
+        with native_touch_driver(UI_BROWSER):
+            self.pw = await async_playwright().start()
+        self.browser = await getattr(self.pw, UI_BROWSER).launch()
+        self.assertEqual(self.browser.browser_type.name, UI_BROWSER)
+        print(f"ACTUAL_UI_ENGINE={self.browser.browser_type.name}", flush=True)
         self.contexts = []
         self.errors = []
         self.frames = {"ada": [], "kai": []}
@@ -551,7 +555,7 @@ class LiveEditingJourney(LiveFixture):
         await expect(ada.locator(f'.sk-node[data-id="{thought["id"]}"]')).to_have_attribute('data-thought-x', str(thought['x']))
 
     async def test_13_trusted_touch_drag_previews_before_release_on_a_tablet(self):
-        # A real touch sequence (CDP touch events, so pointerType "touch") on an 820 px tablet (F-026 S15 keeps phones view/add only):
+        # A real touch sequence (native Chromium/WebKit input, pointerType "touch") on an 820 px tablet (F-026 S15 keeps phones view/add only):
         # tap selects, a finger drag on the selected thought moves it, the peer sees the
         # movement before the finger lifts, and the release confirms one durable position.
         await self.create_map(2)
@@ -571,10 +575,10 @@ class LiveEditingJourney(LiveFixture):
         await expect(node).to_have_attribute("aria-pressed", "true")
         box = await node.bounding_box()
         x, y = box["x"] + box["width"] / 2, box["y"] + box["height"] / 2
-        cdp = await tablet.new_cdp_session(page)
-        await cdp.send("Input.dispatchTouchEvent", {"type": "touchStart", "touchPoints": [{"x": x, "y": y}]})
+        touch = await native_touch_sender(page)
+        await touch("touchStart", x, y)
         for step in range(1, 9):
-            await cdp.send("Input.dispatchTouchEvent", {"type": "touchMove", "touchPoints": [{"x": x + 6 * step, "y": y + 5 * step}]})
+            await touch("touchMove", x + 6 * step, y + 5 * step)
             await page.wait_for_timeout(16)
         peer = kai.locator(f'.sk-node[data-id="{thought["id"]}"]')
         await expect(peer).to_have_attribute("data-live-mover", "Ada North")
@@ -582,8 +586,8 @@ class LiveEditingJourney(LiveFixture):
         unchanged = await self.api(kai, "GET", f"/api/v1/sketches/{self.map_id}")
         self.assertEqual(unchanged["thoughts"][0]["version"], thought["version"], "The finger is still down: nothing is saved yet")
         # The five-second drag lease is renewed only by movement; a held finger nudges before release.
-        await cdp.send("Input.dispatchTouchEvent", {"type": "touchMove", "touchPoints": [{"x": x + 49, "y": y + 41}]})
-        await cdp.send("Input.dispatchTouchEvent", {"type": "touchEnd", "touchPoints": []})
+        await touch("touchMove", x + 49, y + 41)
+        await touch("touchEnd")
         await expect(page.locator(".sk-status")).to_contain_text("Saved")
         await expect(peer).not_to_have_attribute("data-live-mover", "Ada North")
         saved = next(item for item in (await self.api(kai, "GET", f"/api/v1/sketches/{self.map_id}"))["thoughts"] if item["id"] == thought["id"])

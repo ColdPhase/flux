@@ -70,3 +70,37 @@ def drag_touch(page, from_y, to_y, x=195):
         page.wait_for_timeout(16)
     _webkit_command(page, "touchEnd", point(to_y))
     page.wait_for_timeout(500)
+
+
+async def native_touch_sender(page):
+    """Async counterpart for a maintained single-touch journey; Chromium keeps its exact CDP payloads."""
+    engine = page.context.browser.browser_type.name
+    if engine not in ("chromium", "webkit"):
+        raise RuntimeError("FLUX_NATIVE_TOUCH_UNSUPPORTED: native touch supports Chromium/WebKit only")
+    cdp = await page.context.new_cdp_session(page) if engine == "chromium" else None
+    touch_id = next(_TOUCH_IDS)
+    last = None
+
+    async def send(kind, x=None, y=None):
+        nonlocal last
+        if kind not in ("touchStart", "touchMove", "touchEnd", "touchCancel"):
+            raise RuntimeError("FLUX_NATIVE_TOUCH_UNSUPPORTED: only single-point touch commands are supported")
+        if kind in ("touchStart", "touchMove"):
+            if x is None or y is None:
+                raise RuntimeError("FLUX_NATIVE_TOUCH_UNSUPPORTED: native touch needs CSS coordinates")
+            last = (x, y)
+        if last is None:
+            raise RuntimeError("FLUX_NATIVE_TOUCH_UNSUPPORTED: native touch must start before release")
+        if cdp is not None:
+            points = [] if kind in ("touchEnd", "touchCancel") else [{"x": x, "y": y}]
+            await cdp.send("Input.dispatchTouchEvent", {"type": kind, "touchPoints": points})
+            return
+        # Accepted native WebKit backend needs integer CSS points (at most half-pixel rounding).
+        point = {"x": round(last[0]), "y": round(last[1]), "id": touch_id}
+        impl = page._impl_obj
+        witness = await impl._channel.send_return_as_dict(
+            "fluxNativeTouch", None, {"type": kind, "point": point}, is_internal=True)
+        if witness != {"pageGuid": impl._guid, "transport": "webkit-native", "version": "1.62.0", "revision": "2336"}:
+            raise RuntimeError("FLUX_NATIVE_TOUCH_UNSUPPORTED: wrong native transport or product Page GUID")
+
+    return send
