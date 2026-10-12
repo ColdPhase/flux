@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import re
 import unittest
+from unittest import mock
 
 from playwright.sync_api import Locator, Page, expect, sync_playwright
 
@@ -937,6 +938,21 @@ class KnownGapRules(AdaptiveBase):
     OVERLAP_REACH = {"top": ".ui-tabs__bar", "bottom": ".project-convo__composer"}
     OVERLAP_STOPS = {"left": None, "right": None, "up": ".ui-tabs__bar", "down": ".project-convo__composer"}
     CARD_OVERLAP = {"centre": ".tb-overview", "left": ".tb-overview", "right": ".tb-overview", "top": ".tb-overview"}
+    # The rules are judged against this fixed table, not the live KNOWN_GAPS: a gap that closes in the app
+    # leaves KNOWN_GAPS, but the rule must still prove it excuses only the recorded overlap (#342 merge).
+    RULE_GAPS = {
+        "640×360": {"a message's Reply": {"covered_by": (".ui-tabs__bar", ".project-convo__composer"), "reason": "rule fixture"}},
+        "844×390": {
+            "a message's Reply": {"covered_by": (".ui-tabs__bar", ".project-convo__composer"), "reason": "rule fixture"},
+            "a task card": {"covered_by": (".tb-overview",), "reason": "rule fixture"},
+        },
+    }
+
+    def setUp(self) -> None:
+        super().setUp()
+        patcher = mock.patch.dict(KNOWN_GAPS, self.RULE_GAPS, clear=True)
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
     def test_01_the_recorded_overlap_is_seen_not_failed(self) -> None:
         self.judge_reach("a message's Reply", "640×360", reach_result(self.OVERLAP_REACH))
