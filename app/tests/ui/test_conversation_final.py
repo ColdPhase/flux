@@ -1,6 +1,6 @@
 """Browser tests for the conversation as drawn in the final design (F-026 S5-S8, P5, #343).
 
-Authors share one left edge; task notices say where the task came from and fold when several arrive in a
+Other authors share one left edge and your own messages one right edge (#481); task notices say where the task came from and fold when several arrive in a
 row; "Since you left" jumps to the first unread item; the composer offers "@" and "/" instead of Ask and
 Cite buttons; a computer shows hover actions, a phone swipe left and long press. Runs at 1440x900 and
 390x844 with touch, in light and dark, and with the keyboard. Ada manages the project and Jonas writes.
@@ -155,7 +155,7 @@ class ConversationFinal(unittest.TestCase):
         items = self.api(page, "GET", f"/api/v1/projects/{self.ids['project']}/work?limit=100")["items"]
         return [item["title"] for item in items]
 
-    def test_01_every_author_has_a_face_and_a_full_name_on_one_left_edge(self) -> None:
+    def test_01_every_author_has_a_face_and_a_full_name_on_their_side(self) -> None:
         for phone in (False, True):
             page = self.open("ada", phone=phone)
             width = PHONE["width"] if phone else DESKTOP["width"]
@@ -164,11 +164,18 @@ class ConversationFinal(unittest.TestCase):
             for row in rows:
                 row.scroll_into_view_if_needed()
                 assert_author_column(self, row, width, f"{label} author")
-            # Every author, in messages and in events, keeps one 32 px face at the same x.
-            faces = page.locator(".project-convo__message > :is(.ui-avatar, .author-face), .convo-notice > :is(.ui-avatar, .author-face)")
-            xs = faces.evaluate_all("items => items.filter(el => el.getClientRects().length).map(el => Math.round(el.getBoundingClientRect().x))")
+            # Every other author, in messages and in events, keeps one 32 px face at the same x on the left; the
+            # signed-in person's own messages keep theirs at one x on the right (#481 supersedes all-left).
+            visible = "items => items.filter(el => el.getClientRects().length)"
+            faces = page.locator(".project-convo__message:not(.is-mine) > :is(.ui-avatar, .author-face), .convo-notice > :is(.ui-avatar, .author-face)")
+            xs = faces.evaluate_all(f"{visible}.map(el => Math.round(el.getBoundingClientRect().x))")
             self.assertGreater(len(xs), 3)
-            self.assertEqual(len(set(xs)), 1, f"{label}: faces share one left edge, saw {sorted(set(xs))}")
+            self.assertEqual(len(set(xs)), 1, f"{label}: other authors' faces share one left edge, saw {sorted(set(xs))}")
+            own = page.locator(".project-convo__message.is-mine > :is(.ui-avatar, .author-face)")
+            rights = own.evaluate_all(f"{visible}.map(el => Math.round(el.getBoundingClientRect().right))")
+            self.assertGreater(len(rights), 0)
+            self.assertEqual(len(set(rights)), 1, f"{label}: own faces share one right edge, saw {sorted(set(rights))}")
+            self.assertGreater(min(rights), max(xs) + 32, f"{label}: own messages are on the right")
             # 20 px avatars appear only as owners in task rows.
             small = page.locator(".project-convo__feed .ui-avatar--sm").evaluate_all("items => items.filter(el => el.getClientRects().length).map(el => !!el.closest('.convo-notice__owner, .convo-fold__faces'))")
             self.assertTrue(all(small), f"{label}: 20 px avatars are task owners or fold faces only")
@@ -527,7 +534,8 @@ class ConversationFinal(unittest.TestCase):
           fire(B, 'pointerup');
           return { early, held };
         }"""
-        result = page.evaluate(script, [f"#message-{self.ids['probes']} > p", f"#message-{self.ids['probes']} > p", False])
+        bubble = f"#message-{self.ids['probes']} > .message-bubble > p"
+        result = page.evaluate(script, [bubble, bubble, False])
         self.assertFalse(result["early"], "an earlier tap's timer does not open the next press early")
         self.assertTrue(result["held"], "a real long hold still opens the menu")
         page.keyboard.press("Escape")

@@ -4,6 +4,8 @@
 .msg-acts { position: absolute; top: -18px; right: 0; z-index: 2; display: flex; gap: 2px; padding: 4px; border-radius: 12px; background: var(--el);
   box-shadow: var(--sh-pop), inset 0 0 0 1px var(--line); opacity: 0; pointer-events: none; transition: opacity var(--dur-1) var(--ease-out); }
 .project-convo__message:hover > .msg-acts, .project-convo__message:focus-within > .msg-acts, .msg-acts:has([aria-expanded="true"]) { opacity: 1; pointer-events: auto; }
+/* An own message sits on the right with its name (#481): its pill takes the far, left corner, clear of the name and time. */
+.project-convo__message.is-mine > .msg-acts { left: 0; right: auto; }
 .msg-acts__b { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 8px; color: var(--t2); transition: var(--tr); }
 .msg-acts__b:hover:not(:disabled) { background: var(--hov); color: var(--t1); }
 .msg-acts__b:disabled { opacity: .5; cursor: progress; }
