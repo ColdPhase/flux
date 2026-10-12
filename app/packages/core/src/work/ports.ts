@@ -180,6 +180,11 @@ export interface WorkRepository extends TaskGraphReader {
   taskPlans(taskIds: readonly string[]): Promise<Map<string, TaskPlanRecord>>;
   /** "Let linked PRs move this task" rules of these tasks (#74 G-1a); tasks without one are absent. */
   githubRules(taskIds: readonly string[]): Promise<Map<string, GithubRuleReading>>;
+  /**
+   * A person's explicit change of status, blocker or parking is a manual override: suspends the task's active rule in the
+   * same transaction (task row already locked), keeping one history line and growing its revision. False without a rule.
+   */
+  suspendGithubRule(task: { id: string; fromStatus: WorkStatus; status: WorkStatus; version: number }): Promise<boolean>;
   /** Share-locks the plan material of the project and returns its current version, or null when it is not there. */
   lockPlanSource(workspaceId: string, projectId: string, materialId: string): Promise<{ currentVersion: number } | null>;
   findPlanIntent(projectId: string, intent: TaskPlanIntent): Promise<PlanIntentRecord | null>;

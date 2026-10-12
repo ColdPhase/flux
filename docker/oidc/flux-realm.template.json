@@ -12,6 +12,7 @@
       "enabled": true,
       "protocol": "openid-connect",
       "publicClient": false,
+      "frontchannelLogout": false,
       "secret": "__CLIENT_SECRET__",
       "standardFlowEnabled": true,
       "implicitFlowEnabled": false,
@@ -19,17 +20,37 @@
       "serviceAccountsEnabled": false,
       "redirectUris": ["__PUBLIC_ORIGIN__/api/auth/callback/__PROVIDER_ID__"],
       "webOrigins": [],
-      "attributes": { "pkce.code.challenge.method": "S256" }
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "backchannel.logout.url": "http://api:8080/api/v1/identity/oidc/__PROVIDER_ID__/backchannel-logout",
+        "backchannel.logout.session.required": "true",
+        "backchannel.logout.revoke.offline.tokens": "false"
+      }
+    },
+    {
+      "clientId": "probe",
+      "name": "Token probe (test only, #310)",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": true,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "redirectUris": [],
+      "webOrigins": []
     }
   ],
   "users": [
-    { "username": "alice", "email": "alice@acme.test", "emailVerified": true, "enabled": true, "firstName": "Alice", "lastName": "Nowak",
+    { "username": "alice", "email": "alice@acme.test", "emailVerified": true, "enabled": true, "realmRoles": ["offline_access"], "firstName": "Alice", "lastName": "Nowak",
       "credentials": [{ "type": "password", "value": "__USER_PASSWORD__", "temporary": false }] },
-    { "username": "bob", "email": "bob@acme.test", "emailVerified": true, "enabled": true, "firstName": "Bob", "lastName": "Lis",
+    { "username": "bob", "email": "bob@acme.test", "emailVerified": true, "enabled": true, "realmRoles": ["offline_access"], "firstName": "Bob", "lastName": "Lis",
       "credentials": [{ "type": "password", "value": "__USER_PASSWORD__", "temporary": false }] },
-    { "username": "carol", "email": "carol@acme.test", "emailVerified": false, "enabled": true, "firstName": "Carol", "lastName": "Unverified",
+    { "username": "carol", "email": "carol@acme.test", "emailVerified": false, "enabled": true, "realmRoles": ["offline_access"], "firstName": "Carol", "lastName": "Unverified",
       "credentials": [{ "type": "password", "value": "__USER_PASSWORD__", "temporary": false }] },
-    { "username": "dave", "email": "dave@acme.test", "emailVerified": true, "enabled": true, "firstName": "Dave", "lastName": "Collision",
+    { "username": "erin", "email": "erin@acme.test", "emailVerified": true, "enabled": true, "realmRoles": ["offline_access"], "firstName": "Erin", "lastName": "Agent",
+      "credentials": [{ "type": "password", "value": "__USER_PASSWORD__", "temporary": false }] },
+    { "username": "frank", "email": "frank@acme.test", "emailVerified": true, "enabled": true, "realmRoles": ["offline_access"], "firstName": "Frank", "lastName": "Standing",
+      "credentials": [{ "type": "password", "value": "__USER_PASSWORD__", "temporary": false }] },
+    { "username": "dave", "email": "dave@acme.test", "emailVerified": true, "enabled": true, "realmRoles": ["offline_access"], "firstName": "Dave", "lastName": "Collision",
       "credentials": [{ "type": "password", "value": "__USER_PASSWORD__", "temporary": false }] }
   ]
 }

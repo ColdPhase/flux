@@ -22,12 +22,13 @@ export class FakeConnections implements PersonalConnectionLookup {
   resolved: string[] = [];
 
   /** Adds a connection (or replaces the one with that id); the owner's others stay. */
-  connect(ownerUserId: string, id: string, model: { provider?: AiProviderKind; model?: string; baseUrl?: string | null; price?: AiPrice | null } = {}): PersonalConnection {
+  connect(ownerUserId: string, id: string, model: { provider?: AiProviderKind; model?: string; baseUrl?: string | null; price?: AiPrice | null; toolCalling?: boolean } = {}): PersonalConnection {
     const connection: PersonalConnection = {
       id, ownerUserId, status: 'active', keyRef: `test-key-ref-${id}`,
       payer: { organization: `Payer org of ${ownerUserId}`, workspace: 'Default' },
       provider: model.provider ?? 'anthropic', model: model.model ?? 'claude-sonnet-5', baseUrl: model.baseUrl ?? null,
       price: model.price === undefined ? FAKE_PRICE : model.price,
+      ...(model.toolCalling !== undefined ? { toolCalling: model.toolCalling } : {}),
     };
     this.byOwner.set(ownerUserId, [...(this.byOwner.get(ownerUserId) ?? []).filter((item) => item.id !== id), connection]);
     return connection;

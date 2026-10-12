@@ -102,7 +102,7 @@ export async function mcp(accessToken: string, id: number, method: string, param
   } else if (body) {
     message = JSON.parse(body) as Record<string, unknown>;
   }
-  return { status: response.status, message };
+  return { status: response.status, message, headers: response.headers };
 }
 
 export function toolValue(message: Record<string, unknown> | null) {

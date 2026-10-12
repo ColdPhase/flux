@@ -1,0 +1,23 @@
+.ui-overlay--center .connection-labels { width: min(460px, calc(100% - 32px)); }
+.connection-labels .ui-panel__head { flex: none; }
+.connection-labels__body { padding: 4px 20px 20px; overflow-y: auto; min-height: 0; }
+.connection-labels__pair { display: grid; grid-template-columns: minmax(0, 1fr) 16px minmax(0, 1fr); gap: 12px; align-items: center; padding: 12px; margin-bottom: 20px; border-radius: var(--r); background: var(--sub); }
+.connection-labels__pair p { margin: 0; font-size: var(--fs-sm); overflow-wrap: anywhere; }
+.connection-labels__pair svg { color: var(--t2); }
+.connection-labels__subject { margin: 0 0 6px; font-weight: 600; overflow-wrap: anywhere; }
+.connection-labels__hint { margin: 0 0 16px; font-size: var(--fs-sm); color: var(--t2); }
+.connection-labels__list { margin: 0; padding: 0; list-style: none; }
+.connection-labels__list li + li { border-top: 1px solid var(--line); }
+.connection-labels__list button { display: flex; gap: 16px; align-items: center; width: 100%; min-height: 52px; padding: 12px 4px; text-align: left; border-radius: var(--r-sm); color: var(--t1); }
+.connection-labels__list button:hover { background: var(--hov); }
+.connection-labels__list button:focus-visible { outline: 2px solid var(--t1); outline-offset: 2px; }
+.connection-labels__list button > span:first-child { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.connection-labels__list strong { font-size: var(--fs-base); font-weight: 500; }
+.connection-labels__saved { display: block; margin-top: 4px; color: var(--t2); font-size: var(--fs-sm); }
+.connection-labels__action { display: flex; flex: none; align-items: center; gap: 4px; font-size: var(--fs-sm); color: var(--t2); }
+.connection-labels__actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 20px; }
+.connection-labels__actions .ui-btn { min-height: 44px; }
+.connection-labels__error { margin-top: 14px; font-size: var(--fs-sm); }
+.connection-labels__conflict { padding: 12px; margin-top: 12px; border-radius: var(--r); background: var(--sub); overflow-wrap: anywhere; }
+.connection-labels__conflict span { font-size: var(--fs-xs); color: var(--t2); }
+.connection-labels__conflict p { margin: 6px 0 0; }

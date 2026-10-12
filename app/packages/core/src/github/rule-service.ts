@@ -22,6 +22,13 @@ function person(principal: Principal) {
   if (principal.kind !== 'human' || !principal.id) throw new ForbiddenError('A signed-in person is required', 'GITHUB_NEEDS_PERSON');
 }
 
+/** The rule revision the person saw (0: none); the compare-and-set of a rule command, beside the task version. */
+function ruleRevision(value: unknown): number | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0) throw new InvalidInputError('expectedRuleRevision must be a non-negative integer');
+  return value;
+}
+
 function mode(value: unknown, nullable = false): GithubRuleMode | null | undefined {
   if (value === undefined || (nullable && value === null)) return value as undefined | null;
   if (typeof value !== 'string' || !(GITHUB_RULE_MODES as readonly string[]).includes(value)) throw new InvalidInputError(`mode must be one of ${GITHUB_RULE_MODES.join(', ')}`);
@@ -63,7 +70,7 @@ function activeRule(task: GithubTaskState, principal: Principal, proof: GithubRe
     // Resuming keeps a block only while the task still shows exactly the blocker this rule wrote; a person's own or
     // reworded blocker is never adopted, so the rule never clears text a person wrote.
     blockedBy: task.status === 'blocked' && existing?.state !== 'off' && existing?.blockedBy && task.blocker === existing.expectedBlocker ? existing.blockedBy : null,
-    readyToClose: existing?.state === 'off' ? false : existing?.readyToClose ?? false, updatedAt: new Date() };
+    readyToClose: existing?.state === 'off' ? false : existing?.readyToClose ?? false, revision: (existing?.revision ?? 0) + 1, updatedAt: new Date() };
 }
 
 /**
@@ -71,7 +78,7 @@ function activeRule(task: GithubTaskState, principal: Principal, proof: GithubRe
  * write access and their own GitHub access to the repository of every required link; their GitHub identity and
  * authorization generation are captured. A reconciliation of each repository then applies it to current facts.
  */
-async function enable(ports: GithubPorts, principal: Principal, work: { id: string; projectId: string }, version: number, chosen: GithubRuleMode | undefined) {
+async function enable(ports: GithubPorts, principal: Principal, work: { id: string; projectId: string }, version: number, chosen: GithubRuleMode | undefined, revision?: number) {
   const required = (await ports.rows.links(work.id)).filter((link) => link.role === 'required_output');
   if (!required.length) throw new RuleViolationError('Link a required pull request to this task first', 'GITHUB_RULE_NEEDS_REQUIRED_PR');
   const bindings: GithubBindingRecord[] = [];
@@ -94,6 +101,7 @@ async function enable(ports: GithubPorts, principal: Principal, work: { id: stri
   if (!task) throw new NotFoundError('Work item', 'WORK_NOT_FOUND');
   if (task.version !== version) throw new VersionConflictError(task.version, await presentView(ports, task));
   const existing = await ports.rows.rule(work.id, true);
+  if (revision !== undefined && (existing?.revision ?? 0) !== revision) throw new VersionConflictError(task.version, await presentView(ports, task));
   await ports.rows.saveRule(activeRule(task, principal, proof!, chosen ?? existing?.mode ?? defaultGithubRuleMode(task.criteria), existing));
   await ports.tasks.updated(principal, task);
   return presentView(ports, task);
@@ -119,29 +127,30 @@ export function githubRuleUseCases(uow: GithubUnitOfWork) {
     async set(principal: Principal, taskId: string, command: SetGithubTaskRuleCommand): Promise<GithubTaskRuleView> {
       person(principal); const task = id(taskId, 'taskId');
       if (!command || typeof command.enabled !== 'boolean') throw new InvalidInputError('enabled must be true or false');
-      const version = expectedVersion(command.expectedVersion); const chosen = mode(command.mode) ?? undefined;
+      const version = expectedVersion(command.expectedVersion); const chosen = mode(command.mode) ?? undefined; const revision = ruleRevision(command.expectedRuleRevision);
       return uow.run(async (ports) => {
         const work = await located(ports, principal, task, 'write');
-        if (command.enabled) return enable(ports, principal, work, version, chosen);
+        if (command.enabled) return enable(ports, principal, work, version, chosen, revision);
         const current = await ports.tasks.find(task, true);
         if (!current) throw new NotFoundError('Work item', 'WORK_NOT_FOUND');
         if (current.version !== version) throw new VersionConflictError(current.version, await presentView(ports, current));
         const rule = await ports.rows.rule(task, true);
+        if (revision !== undefined && (rule?.revision ?? 0) !== revision) throw new VersionConflictError(current.version, await presentView(ports, current));
         if (rule && rule.state !== 'off') {
-          await ports.rows.saveRule({ ...rule, state: 'off', suspendedReason: null, blockedBy: null, readyToClose: false, updatedAt: new Date() });
+          await ports.rows.saveRule({ ...rule, state: 'off', suspendedReason: null, blockedBy: null, readyToClose: false, revision: rule.revision + 1, updatedAt: new Date() });
           await ports.tasks.updated(principal, current);
         }
         return presentView(ports, current);
       });
     },
     /** Resumes a suspended rule as the person resuming it, from the task's current state. */
-    async resume(principal: Principal, taskId: string, command: { expectedVersion: number }): Promise<GithubTaskRuleView> {
-      person(principal); const task = id(taskId, 'taskId'); const version = expectedVersion(command?.expectedVersion);
+    async resume(principal: Principal, taskId: string, command: { expectedVersion: number; expectedRuleRevision?: number }): Promise<GithubTaskRuleView> {
+      person(principal); const task = id(taskId, 'taskId'); const version = expectedVersion(command?.expectedVersion); const revision = ruleRevision(command?.expectedRuleRevision);
       return uow.run(async (ports) => {
         const work = await located(ports, principal, task, 'write');
         const rule = await ports.rows.rule(task);
         if (!rule || rule.state === 'off') throw new RuleViolationError('Turn the rule on first', 'GITHUB_RULE_OFF');
-        return enable(ports, principal, work, version, rule.mode);
+        return enable(ports, principal, work, version, rule.mode, revision);
       });
     },
     async ruleDefault(principal: Principal, projectId: string): Promise<GithubRuleDefault | null> {
@@ -272,7 +281,7 @@ export async function applyGithubRules(ports: GithubPorts, context: { delivery: 
     const actor: Principal = { kind: 'human', id: rule.authorUserId ?? binding.authorUserId! };
     const record = async (next: GithubRuleRecord, change: { code: Parameters<GithubPorts['rows']['recordRuleChange']>[0]['code']; to: GithubTaskState;
       blocker: string | null; pull: GithubRulePull | null; checkName: string | null }) => {
-      await ports.rows.saveRule(next);
+      await ports.rows.saveRule({ ...next, revision: rule.revision + 1 });
       await ports.rows.recordRuleChange({ id: randomUUID(), workspaceId: task.workspaceId, projectId: task.projectId, taskId, code: change.code,
         fromStatus: task.status, toStatus: change.to.status, blocker: change.blocker, readyToClose: next.readyToClose, authorUserId: rule.authorUserId,
         linkId: change.pull?.linkId ?? null, pullNumber: change.pull?.number ?? null, headSha: change.pull?.headSha ?? null, checkName: change.checkName,

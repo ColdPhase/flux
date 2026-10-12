@@ -23,7 +23,8 @@ screenshots, a neutral brief and references, separately from functional testing.
    required checks, and unresolved prior findings.
 2. Read the implementation in an isolated checkout. Inspect integration points,
    data ownership, permission behavior, and compatibility relevant to the diff.
-3. Run configured application checks through Docker/Compose. For changed user flows, operate the running app
+3. Select checks using the verification policy below and run application checks
+   through Docker/Compose. For changed user flows, operate the running app
    with a browser and verify relevant API/storage behavior. A screenshot alone
    does not establish that an interaction or persistence works.
 4. Record `pass`, `fail`, or `unverified` for each required criterion using the
@@ -35,6 +36,50 @@ screenshots, a neutral brief and references, separately from functional testing.
 For documentation-only changes, use relevant link, configuration, and structural
 checks. Do not run a browser suite or introduce application dependencies merely
 to validate a documentation patch.
+
+## Choose verification by impact
+
+This policy applies during implementation, before marking a PR ready, and during
+independent review. Choose the smallest set that establishes the changed criteria
+and affected integration points. File count alone does not establish risk: a
+one-line authorization change may need broad coverage. In the handoff, state the
+affected behavior, selected checks and any remaining uncertainty briefly.
+
+| Change | Relevant evidence before review |
+| --- | --- |
+| Documentation or skill text | Links, referenced commands/configuration, agent setup and relevant foundation checks; no application suite. |
+| Isolated core function | Its regression tests and affected callers; current required build/type/lint/portable CI. |
+| API or persistence | Affected API tests with real disposable storage, including relevant access, failure and migration cases. |
+| Local UI behavior | Affected browser modules/journeys and API/storage paths; applicable phone/desktop and browser engines, plus separate visual assessment when required. |
+| Shared shell, routing, authorization, schema or runtime | Expand to dependent features and cross-feature journeys; run the full applicable suite when the impact cannot be bounded confidently. |
+| Release candidate | Complete configured release checks and integrated acceptance below. |
+
+Do not run the whole application and browser suites automatically for every PR,
+every review round, or a documentation-only follow-up. Required remote checks
+still run on the current head. Use maintained test selectors where available;
+see [contribution commands](../CONTRIBUTING.md#verify-your-change). If no supported
+selector can verify the affected behavior, use the existing broader command and
+record that runner limitation; do not claim coverage from a skipped check.
+
+After new code or a base update, inspect the delta and rerun affected checks.
+Earlier evidence may support unchanged areas only when the relevant source,
+dependencies, tests, configuration and runtime inputs remain compatible with
+the current head. Link its original SHA and explain this assessment; do not
+relabel an old run as a new one. The independent evaluator still reviews the
+current head and verifies open findings. New criteria need their own evidence.
+
+For a meaningful batch of integrated changes, agree one integration checkpoint
+with a named runner and candidate SHA instead of duplicating the full run in
+every contributing PR. This supplements targeted checks and does not replace
+the complete final release acceptance. Record failures against their affected
+outcomes before admitting more dependent work.
+
+Distinguish a changed-behavior regression, a reproduced baseline defect and an
+environment failure using the smallest useful reproduction. Link one shared
+blocker with an owner when several PRs hit the same fault. Avoid repeatedly
+running an unchanged full suite while that blocker remains. Keep required checks
+and required criteria unresolved until verified; do not disable tests or treat
+a baseline failure as a passing result.
 
 ## Evidence size
 
@@ -65,6 +110,30 @@ grow. A new entry needs the evaluator's explicit agreement in the PR.
 Keep optional improvement suggestions separate from blocking findings. A missing
 required interaction, data loss, incorrect access, or a broken primary workflow
 blocks acceptance. Missing evidence cannot be replaced with a positive score.
+
+Give every finding a severity, so that review rounds converge:
+
+| Severity | Meaning | Effect on the verdict |
+| --- | --- | --- |
+| P1 | Data loss, incorrect access, security, a broken primary workflow, or a failing required check | Blocks |
+| P2 | A required criterion fails or is unverified, or an agreed constraint is broken | Blocks |
+| P3 | Wording, naming, style, optional evidence, a pre-existing defect the PR does not touch, or a later improvement | Never blocks |
+
+When only P3 findings remain, approve and list them in the review. The author fixes them
+in the same PR when cheap, or opens a follow-up issue in the milestone and links it.
+
+Report every finding you can see at a head in one review. A later round re-checks the
+earlier findings and the code changed since. A required criterion or agreed constraint
+that newly turns out to fail still blocks, whatever the round: say why an earlier round
+missed it and consolidate it into that review. A later round does not add new preferences
+or P3 findings on code it already reviewed.
+
+A PR may deliver part of an issue. It then declares its scope against the issue's
+criteria, and links a child issue that preserves every remaining criterion (see
+[the workflow](workflow.md#4-implement-and-hand-off)). Evaluate it against that declared
+scope. The remaining criteria stay required in the child issue, so this never lowers
+the bar. If a declared split would leave a delivered part unusable or misleading,
+request changes and say which criterion must land in this PR.
 
 Code changes invalidate the reviewed head. Re-run affected verification and
 obtain the required review on the new head; retain prior findings until verified
