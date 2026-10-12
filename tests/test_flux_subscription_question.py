@@ -436,6 +436,17 @@ class SubscriptionQuestionTest(unittest.TestCase):
                 self.assertEqual(self.applied(), bool(terms))
                 self.assertEqual("Nothing changed." in term.output, not terms)
 
+    def test_ai_on_applies_the_answer_it_saves_even_when_the_shell_exports_older_values(self) -> None:
+        self.existing_env(runtime="codex")
+        term = self.terminal("ai", "on", FLUX_AGENT_RUNTIME="codex", FLUX_AGENT_RUNTIME_COMMERCIAL_TERMS="2020-01-01")
+        term.expect("[y/N]")
+        term.send("y\n")
+        self.assertEqual(term.finish(), 0, term.output)
+        self.assertEqual(self.value("FLUX_AGENT_RUNTIME"), "codex,claude_code")
+        self.assertIn("Building the agent runtime (codex,claude_code)", term.output)
+        self.assertNotIn("Building the agent runtime (codex)...", term.output)
+        self.assertTrue(self.applied())
+
     def test_ai_on_when_claude_code_is_already_on_asks_nothing(self) -> None:
         self.existing_env(runtime="claude_code", terms="2026-10-05")
         before = self.env_file.read_bytes()

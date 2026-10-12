@@ -273,7 +273,7 @@ runtime_host_problem() {
   done
   net="flux-ai-check-$$"
   if docker network create --internal "$net" >/dev/null 2>&1; then
-    docker network rm "$net" >/dev/null 2>&1 || true
+    docker network rm "$net" >/dev/null 2>&1 || say "Could not remove the temporary Docker network $net; remove it with: docker network rm $net" >&2
   else
     say "the Docker engine cannot create an internal network, which every slot needs"; return 0
   fi
@@ -1198,6 +1198,10 @@ cmd_ai() {
     return 0
   fi
   write_runtime_answer "$ENV_FILE"
+  # The answer is this invocation's configuration: an exported value would otherwise beat the file just written.
+  FLUX_AGENT_RUNTIME=$AI_RUNTIME
+  export FLUX_AGENT_RUNTIME
+  if [ -n "$AI_TERMS" ]; then FLUX_AGENT_RUNTIME_COMMERCIAL_TERMS=$AI_TERMS; export FLUX_AGENT_RUNTIME_COMMERCIAL_TERMS; fi
   claim_project "$PROJECT"
   start_main
   say ""
