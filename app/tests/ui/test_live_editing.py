@@ -717,6 +717,62 @@ class LiveEditingJourney(LiveFixture):
         self.assertLess(observed, 8, f"{observed} element observations for {previews} previews of a 40-thought map")
         self.assertLessEqual(rendered, 3 * previews, f"{rendered} thought renders for {previews} previews of a 40-thought map")
 
+        await ada.mouse.up()
+        await self.map_saved(ada)
+
+        # The first eight thoughts occupy the entire top row. Moving that row used
+        # to rebase the plane origin and move every untouched neighbour on both pages.
+        # This exercises real trusted input and the existing API/socket/React path.
+        await self.create_map(40)
+        group = self.thoughts[:8]
+        untouched = self.thoughts[8]
+        group_ids = {thought["id"] for thought in group}
+        for thought in group:
+            await ada.locator(f'.sk-node[data-id="{thought["id"]}"]').click(modifiers=["Shift"])
+        node = ada.locator(f'.sk-node[data-id="{group[0]["id"]}"]')
+        await node.scroll_into_view_if_needed()
+        await kai.locator(f'.sk-node[data-id="{group[0]["id"]}"]').scroll_into_view_if_needed()
+        async def neighbour_state(page):
+            return await page.locator(f'.sk-node[data-id="{untouched["id"]}"]').evaluate("""el => {
+              const box=el.getBoundingClientRect(),canvas=document.querySelector('.sk-canvas');
+              return {transform:el.style.transform,x:el.dataset.thoughtX,y:el.dataset.thoughtY,
+                version:el.dataset.thoughtVersion,mover:el.dataset.liveMover||null,
+                left:box.left,top:box.top,scrollLeft:canvas.scrollLeft,scrollTop:canvas.scrollTop};
+            }""")
+        original_neighbours = {key: await neighbour_state(page) for key,page in self.pages.items()}
+        bounds = await node.bounding_box()
+        await ada.mouse.move(bounds["x"] + 20, bounds["y"] + 20)
+        await ada.mouse.down()
+        for step in range(1, 13):
+            await ada.mouse.move(bounds["x"] + 20 + 4 * step, bounds["y"] + 20 + 2 * step)
+            await ada.wait_for_timeout(45)
+            for thought in group:
+                await expect(kai.locator(f'.sk-node[data-id="{thought["id"]}"]')).to_have_attribute("data-live-mover", "Ada North")
+            for key,page in self.pages.items():
+                current = await neighbour_state(page)
+                expected = original_neighbours[key]
+                for field in ("transform", "x", "y", "version", "mover", "scrollLeft", "scrollTop"):
+                    self.assertEqual(current[field], expected[field], f"{key}: untouched neighbour {field} changed during live preview")
+                self.assertAlmostEqual(current["left"], expected["left"], delta=0.5)
+                self.assertAlmostEqual(current["top"], expected["top"], delta=0.5)
+        real_previews = [row for row in self.frames["kai"] if row["direction"] == "received"
+            and row["header"].get("type") == "map-move"
+            and {position["id"] for position in row["header"].get("positions", [])} == group_ids]
+        self.assertGreaterEqual(len(real_previews), 8, "The complete top row was shared before pointerup")
+        unchanged = await self.api(kai, "GET", f"/api/v1/sketches/{self.map_id}")
+        for thought in unchanged["thoughts"]:
+            self.assertEqual(thought["version"], 1, "No preview changed native durable versions")
+        for thought in group:
+            await expect(ada.locator(f'.sk-node[data-id="{thought["id"]}"]')).to_have_attribute("aria-pressed", "true")
+        await ada.mouse.up()
+        await self.map_saved(ada)
+        saved = await self.api(kai, "GET", f"/api/v1/sketches/{self.map_id}")
+        by_id = {thought["id"]: thought for thought in saved["thoughts"]}
+        for thought in group:
+            self.assertEqual(by_id[thought["id"]]["version"], 2, "The real release commits every selected thought once")
+        self.assertEqual(by_id[untouched["id"]]["version"], 1)
+        self.assertEqual((by_id[untouched["id"]]["x"], by_id[untouched["id"]]["y"]), (untouched["x"], untouched["y"]))
+
     async def test_17_ctrl_end_then_shift_left_replaces_the_last_character_of_a_100k_line(self):
         # #228 Gate 4: CodeMirror draws a line longer than 20,000 characters only around the view
         # and the selection. Native Ctrl+End from the middle stopped at undrawn text, so Shift+

@@ -40,7 +40,7 @@ export class SharedMap {
       for (const [id, preview] of this.previews) if (Date.parse(preview.expiresAt) <= Date.now()) { this.previews.delete(id); expired = true; }
       for (const [id, peer] of this.peers) if (Date.parse(peer.expiresAt) <= Date.now()) { this.peers.delete(id); expired = true; }
       const gesture = this.gesture;
-      if (gesture?.active && gesture.serverLease && Date.parse(gesture.serverLease.expiresAt) <= Date.now() && gesture.lastPreviewAt + 5000 <= Date.now()) { this.cancel(true); this.problem = 'The movement lease expired. Its unfinished positions are kept privately for comparison.'; expired = true; }
+      if (gesture?.active && gesture.serverLease && Date.parse(gesture.serverLease.expiresAt) <= Date.now() && gesture.lastPreviewAt + 5000 <= Date.now()) { this.cancel(true, false); this.problem = 'The movement lease expired. Its unfinished positions are kept privately for comparison.'; expired = true; }
       if (expired) this.changed();
       if (this.head && this.status === 'live' && this.head.canWrite) this.connection?.send({ type: 'map-presence', generation: this.head.generation, selected: this.selected.slice(0, 16), cursor: null });
     }, 1000);
@@ -105,7 +105,7 @@ export class SharedMap {
       }
       case 'map-clear':
         this.previews.delete(message.leaseId);
-        if (this.gesture?.serverLease?.leaseId === message.leaseId) { this.cancel(true); this.problem = 'The movement lease ended. Its unfinished positions are kept privately; compare them before starting again.'; }
+        if (this.gesture?.serverLease?.leaseId === message.leaseId) { this.cancel(true, false); this.problem = 'The movement lease ended. Its unfinished positions are kept privately; compare them before starting again.'; }
         break;
       case 'map-presence':
         if (message.actor.id !== this.userId) this.peers.set(message.connectionId, message); break;
@@ -167,14 +167,15 @@ export class SharedMap {
       return { leaseId: lease.leaseId, versions: gesture.base };
     });
   }
-  cancel(keep = false) {
+  cancel(keep = false, notify = true) {
     // A late view cancel (pointercancel, touch end) after the commit must not cancel the consumed lease.
     if (keep && !this.gesture && this.completedGesture) return;
     const gesture = this.gesture ?? this.completedGesture; this.gesture = null; this.completedGesture = null;
     if (!gesture) return;
     if (keep && gesture.active) this.keepMovement(gesture);
     gesture.active = false;
-    if (gesture.serverLease) this.connection?.send({ type: 'map-cancel', generation: gesture.serverLease.generation, gestureId: gesture.id, leaseId: gesture.serverLease.leaseId });
+    // An authoritative clear or expiry retires locally; an explicit cancel still tells the server.
+    if (notify && gesture.serverLease) this.connection?.send({ type: 'map-cancel', generation: gesture.serverLease.generation, gestureId: gesture.id, leaseId: gesture.serverLease.leaseId });
   }
   destroy() {
     this.cancel(true); this.stopped = true; this.abort.abort(); this.connection?.close(); window.clearInterval(this.timer);

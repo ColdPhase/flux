@@ -29,6 +29,8 @@ export interface SketchMapProps {
   viewModes: ReactNode;
   bar: SelectionTools;
   sketch: SketchDetail;
+  /** Plane origin follows native positions, before transient previews and a local drag. */
+  confirmedThoughts: Thought[] | null;
   meId: string;
   selection: string[];
   connectFrom: string | null;
@@ -247,7 +249,12 @@ export function SketchMap(props: SketchMapProps) {
   const measuring = compact && !canvasWidth;
   const rects = projection ? projection.rects : new Map<string, Rect>(shown.map((t) => [t.id, rectOf(t, heights)]));
   const scaleX = projection?.scaleX ?? 1;
-  const origin = { x: Math.min(0, ...[...rects.values()].map((r) => r.x - PAD)), y: Math.min(0, ...[...rects.values()].map((r) => r.y - (compact ? PAD : 128))) };
+  // Moving every top-row thought changes the preview's minY. Deriving the plane origin
+  // from that minY moved every untouched thought too, invalidating its memoized props.
+  // Keep signed native bounds for the plane; phone projection, live rects, sizes and Fit
+  // still use the actual displayed graph.
+  const originPoints = compact || !props.liveEnabled ? [...rects.values()] : props.confirmedThoughts ?? sketch.thoughts;
+  const origin = { x: Math.min(0, ...originPoints.map((r) => r.x - PAD)), y: Math.min(0, ...originPoints.map((r) => r.y - (compact ? PAD : 128))) };
   let width = 0;
   let height = 0;
   for (const r of rects.values()) { width = Math.max(width, r.x + r.w - origin.x); height = Math.max(height, r.y + r.h - origin.y); }

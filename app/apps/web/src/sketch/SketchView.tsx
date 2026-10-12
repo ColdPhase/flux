@@ -638,7 +638,7 @@ function SketchEditor({ sketchId, projectId, dmId, back = '/map', doc }: ViewPro
   if (!sketch) return null;
 
   const busy = doc.saving ? 'Saving…' : 'Saved';
-  const shared = { sketch, meId: me.user.id, selection, connectFrom, editing, canWrite, onPick: pick, onToggle: toggle, onEdit: startEdit,
+  const shared = { sketch, confirmedThoughts: doc.confirmedThoughts, meId: me.user.id, selection, connectFrom, editing, canWrite, onPick: pick, onToggle: toggle, onEdit: startEdit,
     onEditText: (text: string) => setEditing((current) => current ? { ...current, initial: text, key: doc.newId() } : null),
     onFinishEdit: (text: string | null) => { void finishEdit(text); }, onAdd: add, onRemove: remove, onEscape: escape,
     tasks, projectId: taskProjectId, onOpenTask: (id: string) => openDetails({ kind: 'work', id }) };

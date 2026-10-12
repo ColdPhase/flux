@@ -499,7 +499,7 @@ export function useSketchDoc(sketchId: string, me: Me) {
     return operation;
   }, [commit, flushMoves, reload, sketchId]);
 
-  return { sketch, load, saving, problem, clearProblem: () => setProblem(null), canUndo: undoLabel !== null, perform, saveThoughts, saveText, saveLinkLabel, undo, reload, newId: uuid, ...ORDINARY };
+  return { sketch, confirmedThoughts: sketch?.thoughts ?? null, load, saving, problem, clearProblem: () => setProblem(null), canUndo: undoLabel !== null, perform, saveThoughts, saveText, saveLinkLabel, undo, reload, newId: uuid, ...ORDINARY };
 }
 
 /** No live room, movement, presence or server undo: the ordinary map's inert live fields. */

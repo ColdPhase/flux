@@ -45,6 +45,7 @@ function touched(op: Op, sketch: SketchDetail): string[] {
 /** Ordered confirmed native deltas, per-command local overlays, and transient authorized previews. */
 export function useLiveSketchDoc(sketchId: string, me: Me) {
   const [sketch, setSketch] = useState<SketchDetail | null>(null);
+  const [confirmedThoughts, setConfirmedThoughts] = useState<Thought[] | null>(null);
   const [load, setLoad] = useState<LoadState>('loading');
   const [saving, setSaving] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
@@ -70,6 +71,8 @@ export function useLiveSketchDoc(sketchId: string, me: Me) {
     if (client) setLiveState({ status: client.status, canWrite: client.status === 'unavailable' || client.status === 'live' && !!client.head?.canWrite, problem: client.problem, ownGesture: client.ownGesture, previews: new Map(client.previews), peers: new Map(client.peers), privateMovement: client.privateMovement });
     let next = confirmed.current;
     if (!next) { if (live.current?.status === 'private') setLoad('not-found'); else if (live.current?.problem) setLoad('failed'); return; }
+    // Native geometry stays separate from replaceable live positions.
+    setConfirmedThoughts(next.thoughts);
     const previews = new Map<string, LiveMapPosition>();
     for (const preview of live.current?.previews.values() ?? []) for (const position of preview.positions) previews.set(position.id, position);
     next = applyLivePreviews(next, previews);
@@ -400,7 +403,7 @@ export function useLiveSketchDoc(sketchId: string, me: Me) {
     if (busy) { setProblem('Wait for these thoughts to be confirmed before dragging them.'); return false; }
     return live.current?.begin(ids.flatMap((id) => { const thought = current.thoughts.find((thought) => thought.id === id); return thought ? [thought] : []; })) ?? false;
   };
-  return { sketch, load, saving, problem: problem ?? liveState.problem, clearProblem: () => setProblem(null), canUndo: undoLabel !== null && !saving, perform, saveThoughts, saveText, saveLinkLabel, undo, reload, newId: uuid,
+  return { sketch, confirmedThoughts, load, saving, problem: problem ?? liveState.problem, clearProblem: () => setProblem(null), canUndo: undoLabel !== null && !saving, perform, saveThoughts, saveText, saveLinkLabel, undo, reload, newId: uuid,
     liveStatus: liveState.status, liveCanWrite: liveState.canWrite, ownGesture: liveState.ownGesture, previews: liveState.previews, peers: liveState.peers, privateMovement: liveState.privateMovement, discardPrivateMovement: () => live.current?.discardPrivateMovement(),
     beginGesture, previewGesture: (positions: LiveMapPosition[]) => live.current?.preview(positions), cancelGesture: () => live.current?.cancel(true),
     finishGesture: () => live.current?.status === 'unavailable' ? undefined : live.current?.finish(),
