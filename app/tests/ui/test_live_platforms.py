@@ -29,8 +29,11 @@ No physical device is used, and nothing here certifies a network path (see live-
 
 from __future__ import annotations
 
+import fcntl
 import json
 import re
+import socket
+import struct
 import unittest
 from dataclasses import dataclass
 from pathlib import Path
@@ -39,6 +42,53 @@ from playwright.sync_api import Page, expect, sync_playwright
 
 from test_app_shell import DESKTOP, ORIGIN, SHOTS, UPSTREAM, shot, start_forwarder
 from test_live_sessions import INSTRUMENT, LIVE, LiveBase
+
+SIOCGIFADDR = 0x8915
+
+
+def container_network() -> dict:
+    """This container's interfaces, default-route interface and the SFU's address on the media network it shares.
+
+    Linux only (procfs and SIOCGIFADDR), which is where the browsers run. Diagnostic: it is recorded with each row.
+    """
+    interfaces: dict[str, str | None] = {}
+    for _, name in socket.if_nameindex():
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
+                raw = fcntl.ioctl(probe.fileno(), SIOCGIFADDR, struct.pack("256s", name.encode()[:15]))
+            interfaces[name] = socket.inet_ntoa(raw[20:24])
+        except OSError:
+            interfaces[name] = None
+    default_route = None
+    for line in Path("/proc/net/route").read_text().splitlines()[1:]:
+        fields = line.split()
+        if fields[1] == "00000000":
+            default_route = fields[0]
+            break
+    return {"interfaces": interfaces, "defaultRouteInterface": default_route, "mediaRemote": socket.gethostbyname("livekit")}
+
+
+def bound_udp_addresses() -> dict[int, str]:
+    """The IPv4 address each UDP socket of this network namespace is bound to, by local port (0.0.0.0 = wildcard).
+
+    The browsers run in this container's network namespace, so their ICE sockets are listed here.
+    """
+    bound: dict[int, str] = {}
+    for line in Path("/proc/net/udp").read_text().splitlines()[1:]:
+        address, port = line.split()[1].split(":")
+        bound.setdefault(int(port, 16), socket.inet_ntoa(bytes.fromhex(address)[::-1]))
+    return bound
+
+
+def record_ice(page: Page) -> list[dict]:
+    """The page's ICE path, with each candidate pair's local socket attributed to the address it is bound to."""
+    ice = page.evaluate(ICE_PATH)
+    bound = bound_udp_addresses()
+    for entry in ice:
+        for pair in entry["pairs"]:
+            port = pair["local"]["port"] if pair["local"] else None
+            pair["localSocketBound"] = bound.get(port) if port is not None else None
+    return ice
 
 # Documented capability state: no getDisplayMedia on Android Chrome, Firefox for Android or iOS Safari.
 NO_DISPLAY_CAPTURE = """(() => {
@@ -74,6 +124,64 @@ PROTOTYPE_INSTRUMENT = """(() => {
     };
   }
 })();"""
+
+# Observes every RTCPeerConnection the app creates (#63, reviewer finding on the Firefox Join): the
+# local candidates the page gathered, the remote candidates it was given, and the ICE servers it was
+# configured with (credentials are not recorded). Observational only: the constructor is subclassed,
+# nothing is changed. Runs after INSTRUMENT in the same init script, so the order is fixed.
+ICE_RECORD = """(() => {
+  const state = window.__live;
+  const Native = window.RTCPeerConnection;
+  if (!state || typeof Native !== 'function') return;
+  state.pcs = [];
+  const candidateLines = (sdp) => String(sdp || '').split(/\\r?\\n/).filter((line) => line.startsWith('a=candidate:'));
+  window.RTCPeerConnection = class extends Native {
+    constructor(configuration, ...rest) {
+      super(configuration, ...rest);
+      const record = { pc: this, iceServers: (this.getConfiguration().iceServers ?? []).map((server) => ({ urls: server.urls })), local: [], remote: [] };
+      this.addEventListener('icecandidate', (event) => { if (event.candidate) record.local.push(event.candidate.candidate); });
+      const setRemoteDescription = this.setRemoteDescription;
+      this.setRemoteDescription = function (description, ...args) { record.remote.push(...candidateLines(description?.sdp)); return setRemoteDescription.call(this, description, ...args); };
+      const addIceCandidate = this.addIceCandidate;
+      this.addIceCandidate = function (candidate, ...args) { if (candidate?.candidate) record.remote.push(candidate.candidate); return addIceCandidate.call(this, candidate, ...args); };
+      state.pcs.push(record);
+    }
+  };
+})();"""
+
+# Reads what the page's peer connections actually use: the selected candidate pair (or a succeeded pair
+# that is nominated or selected) resolved to its local and remote candidates, from getStats().
+ICE_PATH = """async () => {
+  const out = [];
+  for (const [index, record] of (window.__live?.pcs ?? []).entries()) {
+    const pc = record.pc;
+    const entry = { index, connectionState: pc.connectionState, iceConnectionState: pc.iceConnectionState,
+      iceServers: record.iceServers, localCandidates: record.local.slice(0, 40), remoteCandidates: record.remote.slice(0, 40), pairs: [] };
+    try {
+      const report = await pc.getStats();
+      const byId = new Map();
+      report.forEach((stat) => byId.set(stat.id, stat));
+      const transports = [...byId.values()].filter((stat) => stat.type === 'transport');
+      const selectedIds = new Set(transports.map((stat) => stat.selectedCandidatePairId).filter(Boolean));
+      const describe = (id) => {
+        const candidate = byId.get(id);
+        return candidate ? { candidateType: candidate.candidateType, protocol: candidate.protocol ?? null, address: candidate.address ?? candidate.ip ?? null,
+          port: candidate.port ?? null, relayProtocol: candidate.relayProtocol ?? null, url: candidate.url ?? null } : null;
+      };
+      for (const stat of byId.values()) {
+        if (stat.type !== 'candidate-pair') continue;
+        const selected = selectedIds.has(stat.id) || stat.selected === true;
+        if (!selected && stat.state !== 'succeeded') continue;
+        entry.pairs.push({ id: stat.id, state: stat.state, nominated: stat.nominated === true, selected, bytesSent: stat.bytesSent ?? null,
+          bytesReceived: stat.bytesReceived ?? null, local: describe(stat.localCandidateId), remote: describe(stat.remoteCandidateId) });
+      }
+    } catch (error) {
+      entry.error = String(error);
+    }
+    out.push(entry);
+  }
+  return out;
+}"""
 
 JOIN_PROBE = """() => {
   const region = document.querySelector('[role="region"][aria-label="Live session"]');
@@ -168,6 +276,9 @@ class PlatformRows(LiveBase):
             "firefox": cls.pw.firefox.launch(firefox_user_prefs={
                 "media.navigator.streams.fake": True,
                 "media.navigator.permission.disabled": True,
+                # Firefox hides host addresses behind mDNS names (.local) unless a page holds real media
+                # permission; the SFU cannot resolve them, so ICE fails (#63). Test-engine setting only.
+                "media.peerconnection.ice.obfuscate_host_addresses": False,
             }),
             "webkit": cls.pw.webkit.launch(),
         }
@@ -202,8 +313,8 @@ class PlatformRows(LiveBase):
         context = self.browser.new_context(**options)
         if self.engine != "firefox":
             context.grant_permissions(["microphone", "camera"], origin=ORIGIN)
-        context.add_init_script(INSTRUMENT)
-        context.add_init_script(PROTOTYPE_INSTRUMENT)
+        # One init script, so the order is fixed: capture counters, then the prototype hook, then the ICE record.
+        context.add_init_script("\n".join((INSTRUMENT, PROTOTYPE_INSTRUMENT, ICE_RECORD)))
         self.addCleanup(context.close)
         return context
 
@@ -261,10 +372,13 @@ class PlatformRows(LiveBase):
             expect(bar.get_by_role("status").first).to_contain_text("Live")
         except Exception:
             # Record what the page showed when the wait gave up (region, status, sockets, console); then fail.
-            self.observed[row.name]["joinDiagnostics"] = {"probe": page.evaluate(JOIN_PROBE), "console": console[-40:]}
+            self.observed[row.name]["joinDiagnostics"] = {"probe": page.evaluate(JOIN_PROBE), "console": console[-40:],
+                                                          "ice": record_ice(page), "container": container_network()}
             shot(page, f"live-platform-{row.name}-join-failed")
             raise
         shot(page, f"live-platform-{row.name}-joined")
+        self.observed[row.name]["icePath"] = record_ice(page)
+        self.observed[row.name]["container"] = container_network()
         # The emulated state must be in the page the app rendered, not only in the context.
         in_page = page.evaluate("""() => ({ installed: window.__noDisplayCapture === true,
           getDisplayMedia: typeof navigator.mediaDevices?.getDisplayMedia,
