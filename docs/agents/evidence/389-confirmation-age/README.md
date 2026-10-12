@@ -24,6 +24,17 @@ check recipient and presence/gesture producers at one SQL clock and perform thei
 callback synchronously. No provider call or session deletion runs under the held
 session lock, and no existing migration changes.
 
-Current repair/runtime regression results are pending. Full F3–F6, native/browser,
+**Repair result at actual tested `7277b99286a7f662c87219605f7a3e2fcb346bf7`: PASS.**
+Build/type/lint, frozen source/runtime and current CI pass. Six disposable real SQL
+regressions pass6/6, with fresh/expired/NULL/missing account, newest confirmation,
+ordinary password/no-provider, actor/expiry and transaction clock controls. The
+same genuine Keycloak case passes1/1 without weakened guards: both existing
+channels close1008, no subject update/presence or protected owner frame gets
+through, and the password owner continues on map and wiki. `/me401` occurs only
+after capture. No OAuth family was created in this bounded browser case, so it
+makes no family/token-client compatibility claim. Driver5271 exits0 and all exact
+owned containers/networks/volumes/tags/provider-bind/private temporary state are
+removed. The passed receipts preserve7277 as their tested source; any following
+evidence-only commit does not relabel that run. Full F3–F6, native/browser,
 latency, operator and production acceptance remain required in #228/#231/#389.
 Sanitized first-failure files are small; private raw material stays outside the repo.
