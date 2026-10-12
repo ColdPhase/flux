@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Form, Link, Outlet, useActionData, useLoaderData, useLocation, useNavigate, useNavigation, useSearchParams } from 'react-router';
 import type { IdentityCapabilities } from '@flux/contracts';
 import { PASSWORD_MIN_LENGTH, getCapabilities, startSso } from '../api/auth';
+import { whenPageLive } from '../api/pageLeaving';
 import { NetworkError } from '../api/client';
 import { Button, ErrorState, FluxLogo, Icon, Input, useToast } from '../ui';
 import { safeNext, signedOauthQuery, type FormResult, type forgotPasswordLoader } from './logic';
@@ -87,13 +88,19 @@ function useSso() {
   const unreachable = sso !== null && !sso.reachable;
   useEffect(() => {
     const controller = new AbortController();
+    let waiting: () => void = () => undefined;
     const load = () => {
-      getCapabilities(controller.signal).then((capabilities) => setSso(capabilities.sso ?? null)).catch(() => undefined);
+      // A page being left starts no read (#471); one whose navigation was cancelled reads once it is live.
+      waiting();
+      waiting = whenPageLive(() => {
+        getCapabilities(controller.signal).then((capabilities) => setSso(capabilities.sso ?? null)).catch(() => undefined);
+      });
     };
     load();
     // While the provider is unreachable the page asks again, so its button comes back without a reload (#310 AC-4).
     const timer = unreachable ? window.setInterval(load, SSO_RECHECK_MS) : undefined;
     return () => {
+      waiting();
       controller.abort();
       if (timer !== undefined) window.clearInterval(timer);
     };
@@ -137,6 +144,9 @@ export function SignInPage() {
   const shownRef = useRef<string | null>(null);
   const sso = useSso();
   const ssoFailed = params.get('sso') === 'failed';
+  const ssoMessage = params.get('sso_reason') === 'no_refresh_token'
+    ? 'Your identity provider didn’t let Flux keep checking your account, so you aren’t signed in. Ask your administrator to allow offline access for Flux.'
+    : 'Single sign-on didn’t complete, so you aren’t signed in. Try again, or sign in with your password.';
   // On the MCP authorization step the page is `/login?<signed request>` (#310): the provider button carries it.
   const oauthQuery = location.pathname === '/login' ? signedOauthQuery(location.search) ?? undefined : undefined;
 
@@ -157,7 +167,7 @@ export function SignInPage() {
       <div className="auth__card">
       {sso && (location.pathname !== '/login' || oauthQuery) ? <SsoSignIn sso={sso} next={next} oauthQuery={oauthQuery} /> : null}
       <Form method="post" className="auth__form" noValidate ref={formRef} aria-label="Sign in">
-        <FormError message={result?.formError ?? (ssoFailed ? 'Single sign-on didn’t complete, so you aren’t signed in. Try again, or sign in with your password.' : undefined)} />
+        <FormError message={result?.formError ?? (ssoFailed ? ssoMessage : undefined)} />
         <Input label="Email" name="email" type="email" autoComplete="email" inputMode="email" autoCapitalize="none" spellCheck={false}
           defaultValue={result?.values?.email} error={result?.fieldErrors?.email} autoFocus />
         <Input label="Password" name="password" type="password" autoComplete="current-password" error={result?.fieldErrors?.password}

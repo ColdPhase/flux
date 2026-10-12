@@ -557,7 +557,27 @@ class SketchJourney(unittest.TestCase):
         if options is not None:
             options.get_by_role("button", name="Close map options", exact=True).tap()
             expect(options).to_have_count(0)
-        page.wait_for_function("() => { const el = document.querySelector('.sk-canvas'); return el.scrollLeft === 0 && el.scrollTop === 0; }")
+        if viewport["width"] <= 640:
+            # The phone projection starts at the plane's top left.
+            page.wait_for_function("() => { const el = document.querySelector('.sk-canvas'); return el.scrollLeft === 0 && el.scrollTop === 0; }")
+        else:
+            # Fit has finished when the graph's top-left corner sits 24 px (at the fitted zoom) inside the
+            # padded viewport. That is not scroll 0/0 on the plane: the plane keeps 104 px of room above a
+            # thought at y=24 for its selection actions (#482), so a fitted view starts that far down.
+            page.wait_for_function(
+                """() => {
+                    const el = document.querySelector('.sk-canvas');
+                    const node = [...document.querySelectorAll('.sk-node')].find((item) => item.textContent.includes('Explore gesture sensing'));
+                    if (!el || !node) return false;
+                    const view = el.getBoundingClientRect();
+                    const at = node.getBoundingClientRect();
+                    const style = getComputedStyle(el);
+                    const zoom = at.width / 240;
+                    return el.scrollLeft === 0
+                        && Math.abs(at.left - view.left - (parseFloat(style.paddingLeft) || 0) - 24 * zoom) < 1.5
+                        && Math.abs(at.top - view.top - (parseFloat(style.paddingTop) || 0) - 24 * zoom) < 1.5;
+                }"""
+            )
         return page
 
     def assert_no_overlap(self, a: dict, b: dict, message: str) -> None:
@@ -650,6 +670,44 @@ class SketchJourney(unittest.TestCase):
                 self.assertGreaterEqual(corner.locator(".sk-t").evaluate("el => parseFloat(getComputedStyle(el).fontSize)"), 15)
                 self.assertGreaterEqual(corner.locator(".sk-p").evaluate("el => parseFloat(getComputedStyle(el).fontSize)"), 12.5)
                 expect(controls).to_be_in_viewport(ratio=1)
+
+    # ---------------------------------------------------------------- a leave prompt the person dismisses (#471)
+
+    def test_14_a_dismissed_leave_prompt_does_not_strand_the_map(self) -> None:
+        # A native beforeunload prompt, dismissed by the person, keeps this document alive. A view
+        # opened right after it must still load: no request the person starts is refused.
+        page = self.page()
+        page.goto("/")
+        home = page.get_by_role("heading", level=1, name="Home")
+        expect(home).to_be_visible()
+        home.click()  # a real click gives the page the activation that lets a browser show the prompt
+        page.evaluate(
+            """() => {
+                window.__leave = { beforeunload: 0, pagehide: 0 };
+                window.addEventListener('beforeunload', (event) => {
+                    window.__leave.beforeunload += 1;
+                    event.preventDefault();
+                    event.returnValue = '';
+                });
+                window.addEventListener('pagehide', () => { window.__leave.pagehide += 1; });
+            }"""
+        )
+        prompts: list[str] = []
+
+        def dismiss(dialog) -> None:
+            prompts.append(dialog.type)
+            dialog.dismiss()
+
+        page.on("dialog", dismiss)
+        with page.expect_event("dialog"):
+            page.evaluate("() => { setTimeout(() => location.reload(), 0); }")
+        self.assertEqual(prompts, ["beforeunload"], "the browser asked whether to leave")
+        self.assertEqual(page.evaluate("() => window.__leave"), {"beforeunload": 1, "pagehide": 0}, "the leave was cancelled, not carried out")
+        expect(home).to_be_visible()
+
+        page.get_by_role("navigation", name="Views").get_by_role("link", name="Map").click()
+        expect(page.get_by_role("link", name=re.compile("Lamp ideas"))).to_be_visible()
+        expect(page).to_have_url(re.compile(r"/map$"))
 
 
 if __name__ == "__main__":

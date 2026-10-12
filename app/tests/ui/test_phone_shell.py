@@ -512,6 +512,30 @@ class PhoneShellJourney(unittest.TestCase):
     def test_18_real_tap_on_the_bottom_edge_opens_the_audience(self):
         self.tap_audience_edge(21)
 
+    def test_19_the_audience_hit_square_stays_out_of_open_navigation(self):
+        # #478: the audience line's 2 px hit margin once reached 2 px into the 44 px Open navigation button
+        # beside it, leaving 42 px of that target. Every pixel across the button's middle row belongs to it.
+        # Whole-pixel points: Chromium rounds a half-pixel point up, onto the next pixel.
+        for width in (320, 390, 640):
+            with self.subTest(width=width):
+                page = self.page({"width": width, "height": 844})
+                page.goto(f"/projects/{self.project['id']}")
+                menu = page.get_by_role("button", name="Open navigation")
+                expect(menu).to_be_visible()
+                expect(page.locator("header.top .top__audience")).to_be_visible()
+                self.settle(page)
+                box = self.box(menu)
+                self.assertGreaterEqual(min(box["width"], box["height"]), 44, "Open navigation is a 44 px box")
+                elsewhere = page.evaluate("""([left, width, y]) => {
+                  const out = [];
+                  for (let step = 0; step < width; step += 1) {
+                    const el = document.elementFromPoint(left + step, y);
+                    if (!(el && el.closest('button.top__menu'))) out.push([step, el ? el.tagName + '.' + el.className : null]);
+                  }
+                  return out;
+                }""", [box["x"], box["width"], box["y"] + box["height"] / 2])
+                self.assertEqual(elsewhere, [], f"every pixel across Open navigation's middle row belongs to it at {width} px")
+
 
 if __name__ == "__main__":
     unittest.main()

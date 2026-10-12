@@ -18,7 +18,7 @@ import uuid
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
 from author_columns import assert_author_column
-from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, open_details, shot, start_forwarder
+from test_app_shell import DESKTOP, ORIGIN, PHONE, UI_BROWSER, UPSTREAM, open_details, shot, start_forwarder
 
 PASSWORD = "decisions need reasons"
 STAMP = int(time.time() * 1000)
@@ -44,7 +44,9 @@ class WorkDecisionsJourney(unittest.TestCase):
         if UPSTREAM:
             start_forwarder(ORIGIN, UPSTREAM)
         cls.pw = sync_playwright().start()
-        cls.browser = cls.pw.chromium.launch()
+        cls.browser = getattr(cls.pw, UI_BROWSER).launch()
+        assert cls.browser.browser_type.name == UI_BROWSER
+        print(f"ACTUAL_UI_ENGINE={cls.browser.browser_type.name}", flush=True)
         expect.set_options(timeout=8000)
 
     @classmethod
@@ -132,18 +134,22 @@ class WorkDecisionsJourney(unittest.TestCase):
         message.get_by_role("button", name="Task", exact=True).click()
         panel = self.details(page)
         expect(panel.get_by_role("heading", name=IDEA)).to_be_visible()
-        expect(panel.get_by_label("Status")).to_have_value("open")
+        expect(panel.get_by_role("button", name="Status", exact=True)).to_contain_text("Open")
         expect(panel).to_contain_text("Everyone with access to Gesture lamp")
         expect(panel.get_by_role("link", name=re.compile("^Message: Test the camera"))).to_be_visible()
         # The source stays in place, and the work shows up under it.
         expect(message.locator(":scope > .message-bubble > p").first).to_have_text(IDEA)
         expect(message.get_by_role("button", name=f"Work: {IDEA}")).to_be_visible()
         # The panel's controls change the stored work (If-Match under the hood).
-        panel.get_by_label("Status").select_option("in_progress")
-        expect(panel.locator(".wd-eyebrow")).to_contain_text("In progress")
-        # Details names the task by its number in the project (#276).
-        expect(panel.locator(".wd-eyebrow")).to_have_text(re.compile(r"^Task #[1-9]\d* · Gesture lamp · In progress"))
-        expect(panel.locator(".wd-eyebrow .ui-task-number")).to_have_text("#1")
+        panel.get_by_role("button", name="Status", exact=True).click()
+        page.get_by_role("menuitemradio", name="In progress").click()
+        expect(panel.get_by_role("button", name="Status", exact=True)).to_contain_text("In progress")
+        # One change, one toast, and Undo puts the state back at once (S9).
+        expect(page.get_by_role("status").get_by_role("button", name="Undo")).to_be_visible()
+        # Details names the task by its number in the project (#276), in the head beside the Task chip.
+        expect(panel.locator(".wd-where")).to_have_text(re.compile(r"^#[1-9]\d* · Gesture lamp"))
+        expect(panel.locator(".wd-where .ui-task-number")).to_have_text("#1")
+        expect(page.locator(".ui-panel__meta")).to_have_text("#1")
         expect(message.locator(".ws-chip .ui-task-number")).to_have_text("#1")
         self.assertTrue(message.locator(".ws-chip").evaluate("node => node.querySelector('.ui-task-number').compareDocumentPosition(node.querySelector('.ws-chip__t')) & Node.DOCUMENT_POSITION_FOLLOWING"), "the number leads the title in a task reference")
         panel.get_by_label("Owner").select_option(f"human:{PARTNER['id']}")
