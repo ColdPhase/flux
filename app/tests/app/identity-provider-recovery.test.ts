@@ -4,7 +4,7 @@ import http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { after, before, test } from 'node:test';
 import Fastify from 'fastify';
-import { registerIdentity, type IdentityConfig } from '../../apps/server/src/identity/index.js';
+import { registerIdentity, loadIdentityConfig, type IdentityConfig } from '../../apps/server/src/identity/index.js';
 import { oidcProviderId } from '../../apps/server/src/identity/config.js';
 import { db } from './support/db.js';
 
@@ -40,8 +40,8 @@ after(async () => {
 test('a provider that answers only after Flux started is offered and can start a sign-in without a restart', async () => {
   const issuer = `http://127.0.0.1:${(stub.address() as AddressInfo).port}/realms/flux`;
   const config: IdentityConfig = {
-    publicOrigin, secret: randomBytes(32).toString('base64url'), trustedProxies: [], smtp: null, rateLimit: false, passwordResetTtlSeconds: 3600,
-    oidc: { providerId: oidcProviderId(issuer), issuer, clientId: 'flux-recovery-test', clientSecret: 'recovery-test-secret', label: 'Recovery provider' },
+    ...loadIdentityConfig({ FLUX_PUBLIC_ORIGIN: publicOrigin, FLUX_AUTH_SECRET: randomBytes(32).toString('base64url'), FLUX_AUTH_RATE_LIMIT: 'false' }),
+    oidc: { providerId: oidcProviderId(issuer), issuer, clientId: 'flux-recovery-test', clientSecret: 'recovery-test-secret', label: 'Recovery provider', standing: 'off', standingIntervalMs: 900_000, confirmationMaxAgeMs: 7 * 24 * 3_600_000 },
   };
   const app = Fastify();
   registerIdentity(app, { db, config, mailer: null });
@@ -69,8 +69,8 @@ test('a successful probe followed by skipped plugin discovery keeps retrying unt
   answering = true; discoveryReads = 0; failDiscoveryRead = 2;
   const issuer = `http://127.0.0.1:${(stub.address() as AddressInfo).port}/realms/flux`;
   const config: IdentityConfig = {
-    publicOrigin, secret: randomBytes(32).toString('base64url'), trustedProxies: [], smtp: null, rateLimit: false, passwordResetTtlSeconds: 3600,
-    oidc: { providerId: oidcProviderId(issuer), issuer, clientId: 'flux-race-test', clientSecret: 'race-test-secret', label: 'Race provider' },
+    ...loadIdentityConfig({ FLUX_PUBLIC_ORIGIN: publicOrigin, FLUX_AUTH_SECRET: randomBytes(32).toString('base64url'), FLUX_AUTH_RATE_LIMIT: 'false' }),
+    oidc: { providerId: oidcProviderId(issuer), issuer, clientId: 'flux-race-test', clientSecret: 'race-test-secret', label: 'Race provider', standing: 'off', standingIntervalMs: 900_000, confirmationMaxAgeMs: 7 * 24 * 3_600_000 },
   };
   const app = Fastify(); const identity = registerIdentity(app, { db, config, mailer: null });
   try {
