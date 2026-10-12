@@ -1,5 +1,5 @@
 import { eq,sql } from 'drizzle-orm';
-import { editingSessionRows,editingTransactions,liveMapRows,schema,type createDatabase,type EditingCommit } from '@flux/db';
+import { editingSessionRows,editingTransactions,liveMapRows,schema,type createDatabase,type EditingCommit,type EditingConfirmationPolicy } from '@flux/db';
 import { ConflictError,ForbiddenError,InvalidInputError,NotFoundError,ServiceUnavailableError,createSketchUseCases,policySketchAccess,
   presentSketch,presentThoughts,presentThoughtLink,type LiveMapBackend,type MapIdentity,type MapNativeChange,type MapTransient } from '@flux/core';
 import type { LiveMapDelta,LiveMapPosition,NamedPrincipal } from '@flux/contracts';
@@ -23,7 +23,7 @@ function positions(value:LiveMapPosition[],allowed:string[]) {
     return {id:thought,x:p.x,y:p.y,...(p.width===undefined?{}:{width:p.width}),...(p.height===undefined?{}:{height:p.height})};
   });
 }
-export function mapBackend(database:{pool:Pick<ReturnType<typeof createDatabase>['pool'],'connect'>},boundary:{beforeHandoff?:()=>Promise<void>}={}):LiveMapBackend&{readonly sqlActive:number} {
+export function mapBackend(database:{pool:Pick<ReturnType<typeof createDatabase>['pool'],'connect'>},boundary:{beforeHandoff?:()=>Promise<void>;confirmation?:EditingConfirmationPolicy|null}={}):LiveMapBackend&{readonly sqlActive:number} {
   const transactions=editingTransactions(database.pool);const active=new Set<Promise<unknown>>();let closing=false;
   type Db=Parameters<Parameters<typeof transactions.run>[0]>[0];
   /**
@@ -33,10 +33,10 @@ export function mapBackend(database:{pool:Pick<ReturnType<typeof createDatabase>
   async function run<T>(who:MapIdentity,sketchId:string,write:boolean,action:(c:{db:Db;actor:NamedPrincipal;principal:{kind:'human';id:string};room:NonNullable<Awaited<ReturnType<ReturnType<typeof liveMapRows<MapNativeChange>>['head']>>>;sketch:NonNullable<Awaited<ReturnType<ReturnType<typeof sketchRepository>['findSketch']>>>;access:'read'|'write';finalFence:()=>Promise<void>})=>Promise<T>,commit:EditingCommit='durable') {
     if(closing)throw new ServiceUnavailableError('Live maps are closing','EDITING_MAP_CAPACITY');
     const work=transactions.run(async db=>{
-      const sessions=editingSessionRows(db);const actor=await sessions.lock(who);if(!actor)throw new UnauthenticatedError();
+      const sessions=editingSessionRows(db,boundary.confirmation);const actor=await sessions.lock(who);if(!actor)throw new UnauthenticatedError();
       const principal={kind:'human' as const,id:actor.id};const access=await policySketchAccess(db).requireSketch(principal,write?'sketch.write':'sketch.read',id(sketchId),{lock:true});
       const sketch=await sketchRepository(db).findSketch(sketchId);if(!sketch)throw new NotFoundError('Sketch');
-      const room=await liveMapRows(db,decodeMapChange).ensureHead(sketchId,sketch.workspaceId);
+      const room=await liveMapRows(db,decodeMapChange,boundary.confirmation).ensureHead(sketchId,sketch.workspaceId);
       const finalFence=async()=>{if(!await sessions.current(who))throw new UnauthenticatedError();};
       const result=await action({db,actor,principal,room,sketch,access,finalFence});await finalFence();return result;
     },commit);active.add(work);editingResourcesChanged();try{return await work;}finally{active.delete(work);editingResourcesChanged();}
@@ -51,7 +51,7 @@ export function mapBackend(database:{pool:Pick<ReturnType<typeof createDatabase>
       links:change.links.filter(l=>l.after&&changed(l.before,l.after)).map(l=>presentThoughtLink(l.after!)),removedLinks:change.links.filter(l=>l.before&&!l.after).map(l=>l.id),clearedLeaseIds:change.clearedLeaseIds};
   }
   async function lease(c:Parameters<Parameters<typeof run>[3]>[0],who:MapIdentity,leaseId:string,gestureId:string,generation:string,connectionId:string) {
-    const rows=liveMapRows(c.db,decodeMapChange);const found=await rows.gesture(id(leaseId));
+    const rows=liveMapRows(c.db,decodeMapChange,boundary.confirmation);const found=await rows.gesture(id(leaseId));
     if(!found||found.sketchId!==c.room.sketchId||found.generation!==id(generation)||found.gestureId!==id(gestureId)||found.actorId!==who.actorId||found.sessionId!==who.sessionId
       ||found.connectionId!==null&&found.connectionId!==id(connectionId))throw stale();
     const alive=await c.db.execute<{alive:boolean}>(sql`SELECT ${found.expiresAt}::timestamptz > clock_timestamp() AS alive`);if(!alive.rows[0]?.alive)throw stale();
@@ -62,7 +62,7 @@ export function mapBackend(database:{pool:Pick<ReturnType<typeof createDatabase>
   return {
     get sqlActive(){return active.size;},
     bootstrap(who,sketchId,handoff){return run(who,sketchId,false,async c=>{
-      const rows=liveMapRows(c.db,decodeMapChange);await rows.snapshotCapacity(sketchId);
+      const rows=liveMapRows(c.db,decodeMapChange,boundary.confirmation);await rows.snapshotCapacity(sketchId);
       const sketch=await createSketchUseCases({run:action=>action(sketchPorts(c.db))}).get(c.principal,sketchId);
       await boundary.beforeHandoff?.();await c.finalFence();handoff({kind:'map',workspaceId:c.room.workspaceId,resourceId:sketchId,generation:c.room.generation,
         sequence:c.room.sequence,hash:mapHash(c.room.generation,c.room.sequence),sketch,canWrite:c.access==='write',actor:c.actor});
@@ -91,7 +91,7 @@ export function mapBackend(database:{pool:Pick<ReturnType<typeof createDatabase>
       if(new Set(requested.map(t=>t.id)).size!==requested.length)throw new InvalidInputError('Each selected thought may appear once');
       const current=await sketchRepository(c.db).lockThoughts(sketchId,requested.map(t=>t.id));
       if(current.length!==requested.length||requested.some(t=>current.find(row=>row.id===t.id)?.version!==t.expectedVersion))throw stale();
-      const rows=liveMapRows(c.db,decodeMapChange);await rows.expire(sketchId);const leases=await rows.gestures(sketchId,c.room.generation);
+      const rows=liveMapRows(c.db,decodeMapChange,boundary.confirmation);await rows.expire(sketchId);const leases=await rows.gestures(sketchId,c.room.generation);
       const exact=leases.find(l=>l.lease.actorId===who.actorId&&l.lease.sessionId===who.sessionId&&l.lease.gestureId===gesture.gestureId);
       if(exact){if(JSON.stringify(exact.lease.thoughts)!==JSON.stringify(requested))throw stale();return{leaseId:exact.lease.leaseId,gestureId:gesture.gestureId,generation:c.room.generation,expiresAt:exact.lease.expiresAt.toISOString()};}
       if(leases.some(l=>l.lease.thoughts.some(t=>requested.some(w=>w.id===t.id))))throw new ConflictError('Another collaborator is moving a selected thought','EDITING_GESTURE_CONFLICT');
@@ -104,10 +104,10 @@ export function mapBackend(database:{pool:Pick<ReturnType<typeof createDatabase>
       if(seq<current.sequence)return;if(seq===current.sequence){if(!current.connectionId||next.length!==current.positions.length||next.some((position,index)=>{const old=current.positions[index];return !old||position.id!==old.id||position.x!==old.x||position.y!==old.y||position.width!==old.width||position.height!==old.height;}))throw new ConflictError('A preview sequence has different positions','EDITING_PREVIEW_SEQUENCE_CONFLICT');return;}
       const packet={type:'map-move',generation:c.room.generation,connectionId,actor:c.actor,gestureId:current.gestureId,leaseId:current.leaseId,sequence:seq,positions:next,expiresAt:new Date().toISOString()};
       if(Buffer.byteLength(JSON.stringify(packet))>65_536)throw new ServiceUnavailableError('The bounded preview frame is full','EDITING_MAP_CAPACITY');
-      const rows=liveMapRows(c.db,decodeMapChange);await rows.bindMove(current.leaseId,connectionId,seq,next);await rows.notify(sketchId);
+      const rows=liveMapRows(c.db,decodeMapChange,boundary.confirmation);await rows.bindMove(current.leaseId,connectionId,seq,next);await rows.notify(sketchId);
     },'transient');},
     cancel(who,sketchId,connectionId,command){return run(who,sketchId,true,async c=>{closed(command,['generation','gestureId','leaseId']);const current=await lease(c,who,command.leaseId,command.gestureId,command.generation,connectionId);
-      const rows=liveMapRows(c.db,decodeMapChange);await rows.removeGesture(current.leaseId);await rows.notify(sketchId);
+      const rows=liveMapRows(c.db,decodeMapChange,boundary.confirmation);await rows.removeGesture(current.leaseId);await rows.notify(sketchId);
     },'transient');},
     presence(who,sketchId,connectionId,command){return run(who,sketchId,true,async c=>{
       closed(command,['generation','selected','cursor']);if(id(command.generation)!==c.room.generation)throw new ConflictError('The map generation changed','EDITING_GENERATION_CHANGED');
@@ -115,21 +115,21 @@ export function mapBackend(database:{pool:Pick<ReturnType<typeof createDatabase>
       const selected=command.selected.map(id);if(new Set(selected).size!==selected.length)throw new InvalidInputError('Each selected thought may appear once');
       if((await sketchRepository(c.db).lockThoughts(sketchId,selected)).length!==selected.length)throw new InvalidInputError('Selection contains another map');
       if(command.cursor){closed(command.cursor,['x','y']);if(!Number.isInteger(command.cursor.x)||!Number.isInteger(command.cursor.y)||Math.abs(command.cursor.x)>100_000||Math.abs(command.cursor.y)>100_000)throw new InvalidInputError('Invalid map cursor');}
-      const rows=liveMapRows(c.db,decodeMapChange);if(!await rows.hasPresence(connectionId))await rows.capacity('presence',sketchId);
+      const rows=liveMapRows(c.db,decodeMapChange,boundary.confirmation);if(!await rows.hasPresence(connectionId))await rows.capacity('presence',sketchId);
       const packet={type:'map-presence',generation:c.room.generation,connectionId,actor:c.actor,selected,cursor:command.cursor,expiresAt:new Date().toISOString()};
       if(Buffer.byteLength(JSON.stringify(packet))>65_536)throw new ServiceUnavailableError('The bounded presence frame is full','EDITING_MAP_CAPACITY');
       await rows.setPresence(sketchId,c.room.generation,who,id(connectionId),selected,command.cursor);await rows.notify(sketchId);
     },'transient');},
     undo(who,sketchId,command){return run(who,sketchId,true,c=>undoMap(c.db,c.principal,c.room,c.sketch,command));},
     deliverUndo(who,sketchId,commandId,handoff){return run(who,sketchId,false,async c=>{
-      const row=await liveMapRows(c.db,decodeMapChange).command({kind:'human',id:who.actorId},id(commandId));
+      const row=await liveMapRows(c.db,decodeMapChange,boundary.confirmation).command({kind:'human',id:who.actorId},id(commandId));
       if(!row||row.sketchId!==sketchId||row.generation!==c.room.generation)throw new NotFoundError('Undo receipt');
       const value=await delta(c.db,c.principal,c.room,c.sketch,row,c.access);await boundary.beforeHandoff?.();await c.finalFence();handoff({commandId,delta:value});
     },'transient');},
     deliver(who,sketchId,generation,afterSequence,handoff,options={}){return run(who,sketchId,false,async c=>{
       if(id(generation)!==c.room.generation)throw new ConflictError('The map generation changed','EDITING_GENERATION_CHANGED');
       const after=sequence(afterSequence);if(after>c.room.sequence)throw new ConflictError('The confirmed map sequence has a gap','EDITING_SEQUENCE_GAP');
-      const rows=liveMapRows(c.db,decodeMapChange);
+      const rows=liveMapRows(c.db,decodeMapChange,boundary.confirmation);
       // Room and policy locks are held: no other transaction changes these rows before they load.
       if(options.prepare){const need=await rows.deliveryNeed(sketchId,generation);
         options.prepare({...need,delta:options.includeDelta!==false&&after<c.room.sequence,nameBytes:need.nameBytes+Buffer.byteLength(c.actor.name)});}
@@ -138,11 +138,11 @@ export function mapBackend(database:{pool:Pick<ReturnType<typeof createDatabase>
       const transient:MapTransient[]=[];const access=policySketchAccess(c.db);
       for(const {lease:current,name} of await rows.gestures(sketchId,generation)) {
         if(!current.connectionId||!current.positions.length)continue;
-        try{if(!await editingSessionRows(c.db).lock({sessionId:current.sessionId,actorId:current.actorId}))continue;await access.requireSketch({kind:'human',id:current.actorId},'sketch.write',sketchId,{lock:true});}catch(error){if(error instanceof ForbiddenError||error instanceof NotFoundError)continue;throw error;}
+        try{if(!await editingSessionRows(c.db,boundary.confirmation).lock({sessionId:current.sessionId,actorId:current.actorId}))continue;await access.requireSketch({kind:'human',id:current.actorId},'sketch.write',sketchId,{lock:true});}catch(error){if(error instanceof ForbiddenError||error instanceof NotFoundError)continue;throw error;}
         transient.push({type:'map-move',generation,connectionId:current.connectionId,actor:{kind:'human',id:current.actorId,name},gestureId:current.gestureId,leaseId:current.leaseId,sequence:current.sequence,positions:current.positions,expiresAt:current.expiresAt.toISOString()});
       }
       for(const {presence:current,name} of await rows.presence(sketchId,generation)) {
-        try{if(!await editingSessionRows(c.db).lock({sessionId:current.sessionId,actorId:current.actorId}))continue;await access.requireSketch({kind:'human',id:current.actorId},'sketch.write',sketchId,{lock:true});}catch(error){if(error instanceof ForbiddenError||error instanceof NotFoundError)continue;throw error;}
+        try{if(!await editingSessionRows(c.db,boundary.confirmation).lock({sessionId:current.sessionId,actorId:current.actorId}))continue;await access.requireSketch({kind:'human',id:current.actorId},'sketch.write',sketchId,{lock:true});}catch(error){if(error instanceof ForbiddenError||error instanceof NotFoundError)continue;throw error;}
         transient.push({type:'map-presence',generation,connectionId:current.connectionId,actor:{kind:'human',id:current.actorId,name},selected:current.selected,cursor:current.cursor,expiresAt:current.expiresAt.toISOString()});
       }
       const next=record?await delta(c.db,c.principal,c.room,c.sketch,record,c.access):null;await boundary.beforeHandoff?.();
@@ -152,7 +152,7 @@ export function mapBackend(database:{pool:Pick<ReturnType<typeof createDatabase>
       const currentTransient=transient.filter(item=>item.type==='map-move'?gestures.has(item.leaseId):item.type==='map-presence'&&people.has(item.connectionId));
       handoff({generation,sequence:c.room.sequence,hash:mapHash(generation,c.room.sequence),workspaceId:c.room.workspaceId,resourceId:sketchId,actor:c.actor,canWrite:c.access==='write',delta:next,transient:currentTransient});
     },'transient');},
-    disconnect(who,sketchId,connectionId){return run(who,sketchId,false,async c=>{const rows=liveMapRows(c.db,decodeMapChange);await rows.disconnect(sketchId,who,id(connectionId));await rows.notify(sketchId);},'transient');},
+    disconnect(who,sketchId,connectionId){return run(who,sketchId,false,async c=>{const rows=liveMapRows(c.db,decodeMapChange,boundary.confirmation);await rows.disconnect(sketchId,who,id(connectionId));await rows.notify(sketchId);},'transient');},
     async close(){closing=true;await Promise.allSettled([...active]);},
   };
 }

@@ -16,6 +16,7 @@ import {
   type UpdateThoughtCommand,
 } from '@flux/contracts';
 import { DomainError,ServiceUnavailableError,derivedUuid, requestHash, type Database, type FileStorage, type Principal, type ResourceRef,type LiveMapBackend } from '@flux/core';
+import type { EditingConfirmationPolicy } from '@flux/db';
 import type { SessionContext, SessionResolver } from '../identity/index.js';
 import { bodyId, commandRunner, expectedVersion, requires, useDomainErrors, versionEtag } from '../http/commands.js';
 import { sketchUseCases } from './adapters.js';
@@ -33,6 +34,7 @@ export interface SketchRouteOptions {
   /** The files volume: a new thought may take the caller's staged image (#252). */
   storage: FileStorage;
   developmentEditing?:boolean;liveBackend?:()=>LiveMapBackend|null;
+  confirmation?:EditingConfirmationPolicy|null;
 }
 
 /**
@@ -67,7 +69,7 @@ const routeUrl=(request:FastifyRequest)=>{const url=request.routeOptions.url;if(
  * `Idempotency-Key`; renaming, editing, moving and removing thoughts need their version
  * (`If-Match` or `expectedVersion`; batch moves carry one per thought).
  */
-export async function sketchRoutes(app: FastifyInstance, { db, sessions, storage,developmentEditing=false,liveBackend }: SketchRouteOptions) {
+export async function sketchRoutes(app: FastifyInstance, { db, sessions, storage,developmentEditing=false,liveBackend,confirmation }: SketchRouteOptions) {
   useDomainErrors(app);
   const domainErrors=app.errorHandler;
   app.setErrorHandler(function(error,request,reply) {
@@ -121,7 +123,7 @@ export async function sketchRoutes(app: FastifyInstance, { db, sessions, storage
     const url=routeUrl(request);
     const uuid=original&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(original)?original.toLowerCase():original?derivedUuid('flux.map.legacy-key.v1',actor.kind,actor.id,request.method,url,original):undefined;
     const lifetime=lifetimes.get(reply);if(!lifetime)throw new Error('Native HTTP work has no response owner');
-    return sketchUseCases(conn,storage,{context:{params:request.params,body:request.body,query:request.query,headers:request.headers,session},prepared:developmentEditing,resourceId:(request.params as {sketchId?:string}).sketchId,principal:actor,sessionId:session.sessionId,commandId:uuid,protectLifetime:()=>lifetime.protect(),retainUntil:(release)=>lifetime.retain(release),
+    return sketchUseCases(conn,storage,{confirmation,context:{params:request.params,body:request.body,query:request.query,headers:request.headers,session},prepared:developmentEditing,resourceId:(request.params as {sketchId?:string}).sketchId,principal:actor,sessionId:session.sessionId,commandId:uuid,protectLifetime:()=>lifetime.protect(),retainUntil:(release)=>lifetime.retain(release),
       operation:`native:${request.method} ${url}`,fingerprint:requestHash({params:request.params,body:request.body??null,query:request.query,ifMatch:request.headers['if-match']??null})});
   }
   const sketchScope = (sketchId: string): ResourceRef => ({ type: 'sketch', id: sketchId });

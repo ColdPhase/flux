@@ -1,0 +1,31 @@
+{
+  "fixtureAged": true,
+  "naturalElapsedHourProof": false,
+  "case": "already-open-map-wiki-confirmation-age",
+  "boundary": {
+    "session_alive": true,
+    "age_lapsed": true
+  },
+  "immutableIdentitySha256": "a9fa1eab90013c896e1cbac2d4f4389ca3abb2c2f842a873be7b2db316cfd7a9",
+  "immutableFamilySha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+  "immutableFamilyRowsObserved": 0,
+  "immutableSessionIdentityRowsObserved": 1,
+  "subjectHttpBeforeCapture": 0,
+  "subjectPageHttpBeforeCapture": 0,
+  "observation": {
+    "subjectMapClosed1008": false,
+    "subjectWikiClosed1008": false,
+    "subjectMapInputHandedOff": true,
+    "subjectWikiInputHandedOff": true,
+    "subjectWikiCommit": 1,
+    "subjectMapPreviewStored": true,
+    "subjectMapPresenceStored": true,
+    "subjectWikiPresenceStored": true,
+    "ownerMapProtectedFramesReachedSubject": true,
+    "ownerWikiProtectedFramesReachedSubject": true,
+    "ownerMapContinued": true,
+    "ownerWikiContinued": true
+  },
+  "laterMeStatus": 401,
+  "error": "PRODUCT: fixture-aged subject retained live authority or protected content"
+}

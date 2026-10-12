@@ -3,14 +3,14 @@ import { and, asc, eq, gt, inArray, or, sql } from 'drizzle-orm';
 import type { LiveMapPosition } from '@flux/contracts';
 import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
-import { EDITING_CHANNEL } from './live-editing.js';
+import { EDITING_CHANNEL, editingConfirmationCurrent, type EditingConfirmationPolicy } from './live-editing.js';
 
 export class LiveMapCapacityError extends Error { readonly code='EDITING_MAP_CAPACITY'; }
 const h=schema.mapLiveHeads; const j=schema.mapLiveJournal; const v=schema.mapLiveObjectVersions;
 const g=schema.mapLiveGestures; const p=schema.mapLivePresence;
 interface Actor { kind:'human'|'agent';id:string }
 interface Who { actorId:string;sessionId:string }
-export function liveMapRows<Change extends Record<string,unknown>>(db:DbExecutor, decode:(value:Record<string,unknown>)=>Change) {
+export function liveMapRows<Change extends Record<string,unknown>>(db:DbExecutor, decode:(value:Record<string,unknown>)=>Change, confirmation?:EditingConfirmationPolicy|null) {
   // This rows instance retains original raw/decoded journals through the caller's undo transaction.
   // Current graph preparation must fit beside them in the same shared24MiB reservation.
   let originalsRetained=0;
@@ -169,11 +169,14 @@ export function liveMapRows<Change extends Record<string,unknown>>(db:DbExecutor
     async currentTransientFence(who:Who,sketchId:string,generation:string) {
       const result=await db.execute<{recipientAlive:boolean;gestureIds:string[];presenceIds:string[]}>(sql`
         WITH moment AS MATERIALIZED (SELECT clock_timestamp() AS at)
-        SELECT EXISTS(SELECT 1 FROM auth_sessions a,moment m WHERE a.id=${who.sessionId} AND a.user_id=${who.actorId} AND a.expires_at>m.at) AS "recipientAlive",
+        SELECT EXISTS(SELECT 1 FROM auth_sessions a,moment m WHERE a.id=${who.sessionId} AND a.user_id=${who.actorId} AND a.expires_at>m.at
+          AND ${editingConfirmationCurrent(sql`a.id`,sql`a.user_id`,confirmation,sql`m.at`)}) AS "recipientAlive",
           ARRAY(SELECT g.lease_id::text FROM map_live_gestures g JOIN auth_sessions a ON a.id=g.session_id AND a.user_id=g.actor_id,moment m
-            WHERE g.sketch_id=${sketchId} AND g.generation=${generation} AND g.expires_at>m.at AND a.expires_at>m.at ORDER BY g.lease_id LIMIT 32) AS "gestureIds",
+            WHERE g.sketch_id=${sketchId} AND g.generation=${generation} AND g.expires_at>m.at AND a.expires_at>m.at
+              AND ${editingConfirmationCurrent(sql`a.id`,sql`a.user_id`,confirmation,sql`m.at`)} ORDER BY g.lease_id LIMIT 32) AS "gestureIds",
           ARRAY(SELECT p.connection_id::text FROM map_live_presence p JOIN auth_sessions a ON a.id=p.session_id AND a.user_id=p.actor_id,moment m
-            WHERE p.sketch_id=${sketchId} AND p.generation=${generation} AND p.expires_at>m.at AND a.expires_at>m.at ORDER BY p.connection_id LIMIT 32) AS "presenceIds"`);
+            WHERE p.sketch_id=${sketchId} AND p.generation=${generation} AND p.expires_at>m.at AND a.expires_at>m.at
+              AND ${editingConfirmationCurrent(sql`a.id`,sql`a.user_id`,confirmation,sql`m.at`)} ORDER BY p.connection_id LIMIT 32) AS "presenceIds"`);
       return result.rows[0]!;
     },
     async hasPresence(connectionId:string) { const [row]=await db.select().from(p).where(eq(p.connectionId,connectionId));return !!row; },

@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { and,eq,sql } from 'drizzle-orm';
-import { editingSessionRows, liveMapRows, schema, type DbExecutor } from '@flux/db';
+import { editingSessionRows, liveMapRows, schema, type DbExecutor, type EditingConfirmationPolicy } from '@flux/db';
 import { ConflictError, InvalidInputError, derivedUuid,policySketchAccess, type MapNativeChange, type Principal, type SketchLiveJournal } from '@flux/core';
 import type { SketchRepository } from '@flux/core';
 import { decodeMapChange } from './map-state.js';
@@ -21,6 +21,7 @@ export const nativeMapAdmissionQueued=()=>admissions.queued;
 export const nativeMapRoomExists=(db:DbExecutor,sketchId:string)=>liveMapRows(db,decodeMapChange).exists(sketchId);
 
 export interface NativeMapOptions {
+  confirmation?:EditingConfirmationPolicy|null;
   commandId?:string;sessionId?:string;fingerprint?:string;operation?:string;principal?:Principal;retainUntil?: (release:()=>void)=>void;prepared?:boolean;resourceId?:string;context?:unknown;
   /** Acquire HTTP owner metadata before any protected live input/admission. */
   protectLifetime?:()=>void;
@@ -28,7 +29,7 @@ export interface NativeMapOptions {
 const conflict=()=>new ConflictError('This command UUID belongs to another immutable intent','EDITING_IDEMPOTENCY_CONFLICT');
 /** Only affected raw objects/dependency bags enter the durable journal; delivery projects current read rights. */
 export function nativeMapJournal(db:DbExecutor,repository:SketchRepository,options:NativeMapOptions={}) {
-  const rows=liveMapRows(db,decodeMapChange);let subcommand=0;let releaseResponse:(()=>void)|null=null;const retained=new Set<()=>void>();
+  const rows=liveMapRows(db,decodeMapChange,options.confirmation);let subcommand=0;let releaseResponse:(()=>void)|null=null;const retained=new Set<()=>void>();
   const completed: {room:NonNullable<Awaited<ReturnType<typeof rows.head>>>;change:MapNativeChange;commandId:string;principal:Principal}[]=[];
   const pending=new Map<string,{room:NonNullable<Awaited<ReturnType<typeof rows.head>>>;change:MapNativeChange;commandId:string;principal:Principal}>();
   const journal:SketchLiveJournal={
@@ -46,7 +47,7 @@ export function nativeMapJournal(db:DbExecutor,repository:SketchRepository,optio
       if(!options.prepared)releaseResponse??=await admissions.admit(0);
       await rows.snapshotCapacity(sketch.id);
       await rows.journalCapacity(sketch.id,affected.thoughtIds,affected.linkIds);
-      if(options.sessionId&&principal.kind==='human'&&!await editingSessionRows(db).lock({actorId:principal.id,sessionId:options.sessionId}))throw new ConflictError('The current session ended','UNAUTHENTICATED');
+      if(options.sessionId&&principal.kind==='human'&&!await editingSessionRows(db,options.confirmation).lock({actorId:principal.id,sessionId:options.sessionId}))throw new ConflictError('The current session ended','UNAUTHENTICATED');
       if(pending.has(sketch.id))throw new Error('Await each native map command before composing another');
       const commandId=options.commandId?(subcommand++===0?options.commandId:derivedUuid('flux.map.native-subcommand.v1',options.commandId,String(subcommand))):randomUUID();
       if(principal.kind==='human') {
@@ -58,7 +59,7 @@ export function nativeMapJournal(db:DbExecutor,repository:SketchRepository,optio
         const lease=await rows.gesture(affected.leaseId);
         if(principal.kind!=='human'||!options.sessionId||!lease||lease.actorId!==principal.id||lease.sessionId!==options.sessionId||lease.sketchId!==sketch.id||lease.generation!==room.generation
           ||lease.thoughts.length!==affected.thoughtIds.length||lease.thoughts.some(t=>!affected.thoughtIds.includes(t.id)))throw new ConflictError('The drag lease changed; keep the intended placement private','EDITING_LEASE_CHANGED');
-        const current=await editingSessionRows(db).lock({actorId:principal.id,sessionId:options.sessionId});
+        const current=await editingSessionRows(db,options.confirmation).lock({actorId:principal.id,sessionId:options.sessionId});
         const live=await db.execute<{alive:boolean}>(sql`SELECT ${lease.expiresAt}::timestamptz > clock_timestamp() AS alive`);
         if(!current||!live.rows[0]?.alive)throw new ConflictError('The drag lease expired','EDITING_LEASE_CHANGED');
       }
@@ -106,7 +107,7 @@ export function nativeMapJournal(db:DbExecutor,repository:SketchRepository,optio
   };
   return {journal,pending,
     async replay() {
-      if(options.principal?.kind==='human'&&options.sessionId&&!await editingSessionRows(db).lock({actorId:options.principal.id,sessionId:options.sessionId}))throw new ConflictError('The current session ended','UNAUTHENTICATED');
+      if(options.principal?.kind==='human'&&options.sessionId&&!await editingSessionRows(db,options.confirmation).lock({actorId:options.principal.id,sessionId:options.sessionId}))throw new ConflictError('The current session ended','UNAUTHENTICATED');
       if(!options.commandId||!options.resourceId||options.principal?.kind!=='human')return {found:false as const};
       const principal=options.principal;
       await policySketchAccess(db).requireSketch(principal,'sketch.read',options.resourceId,{lock:true});
@@ -139,7 +140,7 @@ export function nativeMapJournal(db:DbExecutor,repository:SketchRepository,optio
         if(principal.kind==='human')await db.insert(schema.liveEditingIntents).values({actorId:principal.id,commandId,workspaceId:room.workspaceId,kind:'map',
           resourceId:room.sketchId,generation:room.generation,operation,fingerprint,byteLength:0,
           receipt:{commandId,generation:room.generation,sequence,operation,requestFingerprint,nativeResult:result??null}});
-        if(options.sessionId&&principal.kind==='human'&&!await editingSessionRows(db).current({actorId:principal.id,sessionId:options.sessionId}))
+        if(options.sessionId&&principal.kind==='human'&&!await editingSessionRows(db,options.confirmation).current({actorId:principal.id,sessionId:options.sessionId}))
           throw new ConflictError('The current session ended before the native commit','UNAUTHENTICATED');
       }
     },

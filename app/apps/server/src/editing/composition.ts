@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import type { SessionResolver } from '../identity/session.js';
-import { EDITING_CHANNEL, listen, type createDatabase } from '@flux/db';
+import { EDITING_CHANNEL, listen, type createDatabase, type EditingConfirmationPolicy } from '@flux/db';
 import { editingGate } from './gate.js';
 import { wikiAuthority } from './authority.js';
 import { wikiController } from './wiki-controller.js';
@@ -19,13 +19,14 @@ interface Options {
   /** Disabled by default; development selection does not certify any of the four required gates. */
   developmentEnabled: boolean;
   env?:NodeJS.ProcessEnv;
+  confirmation?:EditingConfirmationPolicy|null;
 }
 export async function registerEditing(app: FastifyInstance, options: Options) {
   const outputBudget = apiEditingOutputBudget;
   let telemetry:EditingQueueTelemetry|null=null;
-  const authority = options.developmentEnabled ? wikiAuthority(options.database,undefined,{outputBudget}) : null;
+  const authority = options.developmentEnabled ? wikiAuthority(options.database,undefined,{outputBudget,confirmation:options.confirmation}) : null;
   const controller = authority ? wikiController(authority, outputBudget,()=>telemetry) : null;
-  const mapsBackend=options.developmentEnabled?mapBackend(options.database):null;
+  const mapsBackend=options.developmentEnabled?mapBackend(options.database,{confirmation:options.confirmation}):null;
   const mapsAuthority=mapsBackend?mapAuthority(mapsBackend,outputBudget):null;
   const mapsController=mapsAuthority?mapController(mapsAuthority,outputBudget,()=>telemetry):null;
   await app.register(editingRoutes, { sessions: options.sessions, authority, outputBudget,maps:mapsAuthority });

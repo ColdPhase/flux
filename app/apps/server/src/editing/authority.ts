@@ -1,5 +1,5 @@
 import { liveWiki, ServiceUnavailableError, type WikiHead, type WikiIdentity, type WikiPorts, type WikiRows } from '@flux/core';
-import { editingSessionRows, editingTransactions, liveEditingRows, type createDatabase, type DbExecutor, type EditingCommit } from '@flux/db';
+import { editingSessionRows, editingTransactions, liveEditingRows, type createDatabase, type DbExecutor, type EditingCommit, type EditingConfirmationPolicy } from '@flux/db';
 import type { LiveCursor, LiveReceipt, SaveSharedDoc, WikiTextEnvelope } from '@flux/contracts';
 import { docPorts } from '../docs/adapters.js';
 import { UnauthenticatedError, type SessionContext } from '../identity/session.js';
@@ -19,7 +19,7 @@ type RoomHead = WikiHead<CodecState> & { snapshotSequence: number };
 interface Committed { generation: string; revision: number; state: CodecState }
 /** Production composition. The caller receives data only through the held current authority fence. */
 export function wikiAuthority(database: { pool: Pick<ReturnType<typeof createDatabase>['pool'], 'connect'> }, runtime = editingRuntime(),
-  boundary: { beforeHandoff?: () => Promise<void>;outputBudget?:EditingOutputBudget;rooms?:DecodedRooms } = {}) {
+  boundary: { beforeHandoff?: () => Promise<void>;outputBudget?:EditingOutputBudget;rooms?:DecodedRooms;confirmation?:EditingConfirmationPolicy|null } = {}) {
   const rooms = boundary.rooms ?? new DecodedRooms();
   const outputBudget=boundary.outputBudget??apiEditingOutputBudget;
   const transactions = editingTransactions(database.pool); const active = new Set<Promise<unknown>>();
@@ -43,7 +43,7 @@ export function wikiAuthority(database: { pool: Pick<ReturnType<typeof createDat
    * their transaction commits (`committed`); a state read under the lock is committed already.
    */
   function roomRows(db: DbExecutor, committed: Map<string, Committed>): WikiRows<CodecState> {
-    const rows = liveEditingRows(db, stored);
+    const rows = liveEditingRows(db, stored, boundary.confirmation);
     return { ...rows,
       async lockHead(docId) {
         const head = await rows.lockHeadSummary(docId);
@@ -88,16 +88,16 @@ export function wikiAuthority(database: { pool: Pick<ReturnType<typeof createDat
     };
   }
   function ports(db: DbExecutor, committed: Map<string, Committed>): WikiPorts<CodecState, AdmissionLease> {
-    const sessions = editingSessionRows(db);
+    const sessions = editingSessionRows(db, boundary.confirmation);
     return { native: docPorts(db), rows: roomRows(db, committed), codec: runtime,
       session: { async lock(who) { const actor = await sessions.lock(who); if (!actor) throw new UnauthenticatedError(); return actor; },
         async assertCurrent(who) { if (!await sessions.current(who)) throw new UnauthenticatedError(); } } };
   }
-  async function run<T>(session: SessionContext, admission: AdmissionLease, action: (wiki: ReturnType<typeof liveWiki<CodecState, AdmissionLease>>, finalFence: () => Promise<void>,admission:AdmissionLease) => Promise<T>, commit: EditingCommit = 'durable') {
+  async function run<T>(session: SessionContext, admission: AdmissionLease, action: (wiki: ReturnType<typeof liveWiki<CodecState, AdmissionLease>>, finalFence: () => Promise<void>,admission:AdmissionLease,db:DbExecutor) => Promise<T>, commit: EditingCommit = 'durable') {
     const committed = new Map<string, Committed>();
     try {
       const work = transactions.run(async (db) => {
-        const adapters = ports(db, committed); const result = await action(liveWiki(adapters), () => adapters.session.assertCurrent(identity(session)),admission);
+        const adapters = ports(db, committed); const result = await action(liveWiki(adapters), () => adapters.session.assertCurrent(identity(session)),admission,db);
         await adapters.session.assertCurrent(identity(session));
         return result;
       }, commit);
@@ -148,9 +148,13 @@ export function wikiAuthority(database: { pool: Pick<ReturnType<typeof createDat
     async deliver(session: SessionContext, docId: string, generation: string, afterSequence: number,
       handoff: (result: Awaited<ReturnType<ReturnType<typeof liveWiki<CodecState, AdmissionLease>>['readConfirmed']>>) => void,
       view: { previewAfterSequence?: number; includeContent?: boolean } = {}) {
-      return admitted(session,{session,docId,generation,afterSequence,view},async (wiki,finalFence)=>{
+      return admitted(session,{session,docId,generation,afterSequence,view},async (wiki,_finalFence,_admission,db)=>{
         const result = await wiki.readConfirmed(identity(session), docId, generation, afterSequence, view);
-        await boundary.beforeHandoff?.(); await finalFence(); handoff(result);
+        await boundary.beforeHandoff?.();
+        const fence = await liveEditingRows(db, stored, boundary.confirmation).currentPresenceFence(identity(session), docId, generation);
+        if (!fence.recipientAlive) throw new UnauthenticatedError();
+        const present = new Set(fence.presenceIds);
+        handoff({ ...result, presence: result.presence.filter(peer => present.has(peer.connectionId)) });
       },undefined,'transient');
     },
     async handoff(session: SessionContext, docId: string, send: () => void) {

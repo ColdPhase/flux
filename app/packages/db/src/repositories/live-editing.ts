@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { and, asc, eq, gt, lte, sql } from 'drizzle-orm';
+import { and, asc, eq, gt, lte, sql, type SQL } from 'drizzle-orm';
 import type { LiveCursor, LiveReceipt } from '@flux/contracts';
 import * as schema from '../schema.js';
 import { docRows } from './docs.js';
@@ -20,7 +20,7 @@ function receipt(value: Record<string, unknown>): LiveReceipt {
   return value as unknown as LiveReceipt;
 }
 /** Rows only. Current session/resource policy and the input lease precede every call in the composition. */
-export function liveEditingRows<Codec extends State>(db: DbExecutor, decodeState: (value: Record<string, unknown>) => Codec) {
+export function liveEditingRows<Codec extends State>(db: DbExecutor, decodeState: (value: Record<string, unknown>) => Codec, confirmation?: EditingConfirmationPolicy | null) {
   const summary = { docId: h.docId, workspaceId: h.workspaceId, projectId: h.projectId, generation: h.generation, sequence: h.sequence,
     body: h.body, hash: h.hash, savedVersion: h.savedVersion, savedSequence: h.savedSequence, snapshotSequence: h.snapshotSequence,
     revision: h.revision, initialized: sql<boolean>`${h.codecState} IS NOT NULL` };
@@ -149,21 +149,58 @@ export function liveEditingRows<Codec extends State>(db: DbExecutor, decodeState
       const rows = await db.select({ connectionId: p.connectionId, actorId: p.actorId, name: schema.authUsers.name, cursor: p.cursor, expiresAt: p.expiresAt })
         .from(p).innerJoin(schema.authUsers, eq(schema.authUsers.id, p.actorId))
         .innerJoin(schema.authSessions, and(eq(schema.authSessions.id, p.sessionId), gt(schema.authSessions.expiresAt, sql`clock_timestamp()`)))
-        .where(and(eq(p.docId, docId), eq(p.generation, generation), gt(p.expiresAt, sql`clock_timestamp()`))).orderBy(p.connectionId).limit(128);
+        .where(and(eq(p.docId, docId), eq(p.generation, generation), gt(p.expiresAt, sql`clock_timestamp()`),
+          editingConfirmationCurrent(sql`${p.sessionId}`, sql`${p.actorId}`, confirmation))).orderBy(p.connectionId).limit(128);
       return rows.map((row) => ({ connectionId: row.connectionId, actor: { kind: 'human' as const, id: row.actorId, name: row.name }, cursor: row.cursor, expiresAt: row.expiresAt.toISOString() }));
+    },
+    /** One final recipient/producer clock observation; the caller hands off synchronously after it. */
+    async currentPresenceFence(identity: { sessionId: string; actorId: string }, docId: string, generation: string) {
+      const result = await db.execute<{ recipientAlive: boolean; presenceIds: string[] }>(sql`
+        WITH moment AS MATERIALIZED (SELECT clock_timestamp() AS at)
+        SELECT EXISTS(SELECT 1 FROM auth_sessions session, moment m
+          WHERE session.id = ${identity.sessionId} AND session.user_id = ${identity.actorId} AND session.expires_at > m.at
+            AND ${editingConfirmationCurrent(sql`session.id`, sql`session.user_id`, confirmation, sql`m.at`)}) AS "recipientAlive",
+          ARRAY(SELECT presence.connection_id::text FROM doc_live_presence presence
+            JOIN auth_sessions session ON session.id = presence.session_id AND session.user_id = presence.actor_id, moment m
+            WHERE presence.doc_id = ${docId} AND presence.generation = ${generation}
+              AND presence.expires_at > m.at AND session.expires_at > m.at
+              AND ${editingConfirmationCurrent(sql`session.id`, sql`session.user_id`, confirmation, sql`m.at`)}
+            ORDER BY presence.connection_id LIMIT 128) AS "presenceIds"`);
+      return result.rows[0]!;
     },
     async notify(docId: string) { await db.execute(sql`SELECT pg_notify(${EDITING_CHANNEL}, ${docId})`); },
   };
 }
 
+/** Server configuration only; no provider token or browser-supplied authority enters this fence. */
+export interface EditingConfirmationPolicy { providerId: string; confirmationMaxAgeMs: number }
+
+/** The same last-confirmation rule as F-024 S2, evaluated at the final SQL clock without a provider call. */
+export function editingConfirmationCurrent(sessionId: string | SQL, actorId: string | SQL,
+  confirmation?: EditingConfirmationPolicy | null, moment: SQL = sql`clock_timestamp()`) {
+  if (!confirmation) return sql`TRUE`;
+  return sql`NOT EXISTS (
+    SELECT 1 FROM auth_session_identities identity
+    WHERE identity.session_id = ${sessionId} AND identity.method = ${confirmation.providerId}
+      AND (NOT EXISTS (SELECT 1 FROM auth_accounts account
+        WHERE account.user_id = ${actorId} AND account.provider_id = ${confirmation.providerId})
+      OR EXISTS (SELECT 1 FROM auth_accounts account
+        LEFT JOIN auth_idp_standing standing ON standing.user_id = account.user_id AND standing.provider_id = account.provider_id
+        WHERE account.user_id = ${actorId} AND account.provider_id = ${confirmation.providerId}
+          AND (GREATEST(account.confirmed_at, standing.confirmed_at) IS NULL
+            OR GREATEST(account.confirmed_at, standing.confirmed_at) < ${moment} - ${confirmation.confirmationMaxAgeMs} * interval '1 millisecond')))
+  )`;
+}
+
 /** SQL session row fence: authority uses current database time and the current persisted identity/name. */
-export function editingSessionRows(db: DbExecutor) {
+export function editingSessionRows(db: DbExecutor, confirmation?: EditingConfirmationPolicy | null) {
   const s = schema.authSessions;
   async function current(identity: { sessionId: string; actorId: string }, lock: boolean) {
-    const select = db.select({ id: s.id }).from(s).where(and(eq(s.id, identity.sessionId), eq(s.userId, identity.actorId), gt(s.expiresAt, sql`clock_timestamp()`)));
-    const rows = await (lock ? select.for('share') : select);
-    if (!rows.length) return null;
-    const [user] = await db.select({ name: schema.authUsers.name }).from(schema.authUsers).where(eq(schema.authUsers.id, identity.actorId));
+    const select = db.select({ name: schema.authUsers.name }).from(s)
+      .innerJoin(schema.authUsers, eq(schema.authUsers.id, s.userId))
+      .where(and(eq(s.id, identity.sessionId), eq(s.userId, identity.actorId), gt(s.expiresAt, sql`clock_timestamp()`),
+        editingConfirmationCurrent(sql`${s.id}`, sql`${s.userId}`, confirmation)));
+    const [user] = await (lock ? select.for('share', { of: s }) : select);
     return user ? { kind: 'human' as const, id: identity.actorId, name: user.name } : null;
   }
   return { lock: (identity: { sessionId: string; actorId: string }) => current(identity, true),
