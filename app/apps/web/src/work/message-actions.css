@@ -6,6 +6,8 @@
 .project-convo__message:hover > .msg-acts, .project-convo__message:focus-within > .msg-acts, .msg-acts:has([aria-expanded="true"]) { opacity: 1; pointer-events: auto; }
 /* An own message sits on the right with its name (#481): its pill takes the far, left corner, clear of the name and time. */
 .project-convo__message.is-mine > .msg-acts { left: 0; right: auto; }
+/* The thread's own replies are only as wide as their text: there the far corner is the right one, as before. */
+.thread .project-convo__message.is-mine > .msg-acts { left: auto; right: 0; }
 .msg-acts__b { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 8px; color: var(--t2); transition: var(--tr); }
 .msg-acts__b:hover:not(:disabled) { background: var(--hov); color: var(--t1); }
 .msg-acts__b:disabled { opacity: .5; cursor: progress; }
