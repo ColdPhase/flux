@@ -276,9 +276,6 @@ class PlatformRows(LiveBase):
             "firefox": cls.pw.firefox.launch(firefox_user_prefs={
                 "media.navigator.streams.fake": True,
                 "media.navigator.permission.disabled": True,
-                # Firefox hides host addresses behind mDNS names (.local) unless a page holds real media
-                # permission; the SFU cannot resolve them, so ICE fails (#63). Test-engine setting only.
-                "media.peerconnection.ice.obfuscate_host_addresses": False,
             }),
             "webkit": cls.pw.webkit.launch(),
         }
