@@ -68,16 +68,6 @@ KNOWN_GAPS = {
             "reason": "the sticky tab bar and the composer leave less than 44 px of stream between them; the phone shell (PR #414) replaces the tab bar",
         },
     },
-    "844×390": {
-        "a message's Reply": {
-            "covered_by": (".ui-tabs__bar", ".project-convo__composer"),
-            "reason": "the sticky tab bar and the composer leave less than 44 px of stream between them; the phone shell (PR #414) replaces the tab bar",
-        },
-        "a task card": {
-            "covered_by": (".tb-overview",),
-            "reason": "the sticky status overview covers the card at this height; the Tasks layout (PR #375) owns the overview",
-        },
-    },
 }
 # The overlays a known gap may name. The measurements report which one (if any) covers each point or stops each side.
 OVERLAYS = (".ui-tabs__bar", ".project-convo__composer", ".tb-overview")

@@ -368,10 +368,10 @@ class RouteChunksJourney(unittest.TestCase):
                     self.assertEqual(actual, {"owner":me["user"]["id"], "session":me["session"]["id"]})
                     self.assertEqual(page.evaluate("window.__reloadSession.status"), 200)
                     if retiring:
-                        page.evaluate("window.__reloadSession.afterCommit('Sign in to Flux')")
+                        page.evaluate("window.__reloadSession.afterCommit('Sign in')")
                         page.get_by_role("button", name=re.compile(self.name)).click()
                         page.get_by_role("button", name="Sign out", exact=True).click()
-                        expect(page.get_by_role("heading", name="Sign in to Flux", exact=True)).to_be_visible()
+                        expect(page.get_by_role("heading", name="Sign in", exact=True)).to_be_visible()
                         self.assertEqual(page.request.get(f"{ORIGIN}/api/v1/me").status, 401)
                     else:
                         page.evaluate("window.__reloadSession.afterCommit('Home')")
@@ -445,7 +445,7 @@ class RouteChunksJourney(unittest.TestCase):
                 expect(page.locator(".ui-error")).to_be_visible()
                 expect(page.locator(".app__side")).to_be_visible()
                 expect(page.get_by_role("button", name=re.compile(self.name))).to_be_visible()
-                expect(page.get_by_role("heading", name="Sign in to Flux")).to_have_count(0)
+                expect(page.get_by_role("heading", name="Sign in", exact=True)).to_have_count(0)
                 shot(page, f"route-chunks-code-error-{engine}-desktop")
                 page.get_by_role("link", name="Go to Home", exact=True).click()
                 expect(page.get_by_placeholder("Write a note…")).to_have_value(f"Private recovery after code failure {engine}")
