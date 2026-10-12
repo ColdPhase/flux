@@ -462,7 +462,7 @@ class RouteChunksJourney(unittest.TestCase):
                 expect(page.locator(".ui-error")).to_be_visible()
                 expect(page.locator(".app__side")).to_be_visible()
                 expect(page.get_by_role("button", name=re.compile(self.name))).to_be_visible()
-                expect(page.get_by_role("heading", name="Sign in", exact=True)).to_have_count(0)
+                expect(page.get_by_role("heading", name="Sign in")).to_have_count(0)
                 shot(page, f"route-chunks-code-error-{engine}-desktop")
                 page.get_by_role("link", name="Go to Home", exact=True).click()
                 self.back_to_notes(page)

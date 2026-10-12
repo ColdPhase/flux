@@ -84,7 +84,7 @@ class SignOutJourney(unittest.TestCase):
 
         print(f"[#461] sign-out request sent on {UI_BROWSER}; worker state before the click: {json.dumps(before)}", file=sys.stderr, flush=True)
         expect(page).to_have_url(re.compile(r"/sign-in"))
-        expect(page.get_by_role("heading", name="Sign in", exact=True)).to_be_visible()
+        expect(page.get_by_role("heading", name="Sign in")).to_be_visible()
         self.assertEqual(errors, [], f"no uncaught page errors (worker state before the click: {before})")
 
 

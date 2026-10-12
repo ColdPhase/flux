@@ -29,7 +29,7 @@ interface ToastEntry extends Required<Omit<ToastOptions, 'timeout' | 'action'>> 
   leaving: boolean;
 }
 
-const ToastContext = createContext<(options: ToastOptions) => void>(() => {});
+const ToastContext = createContext<(options: ToastOptions) => () => void>(() => () => {});
 
 export function useToast() {
   return useContext(ToastContext);
@@ -98,6 +98,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     const entry: ToastEntry = { id: nextId.current++, message: options.message, tone, timeout: options.timeout ?? (tone === 'danger' ? null : options.action ? 7000 : 5000), leaving: false, action: options.action ?? null };
     // Keep at most three; older ones leave.
     setToasts((current) => [...current.slice(-2), entry]);
+    return () => setToasts((current) => current.filter((toast) => toast.id !== entry.id));
   }, []);
   const remove = useCallback((id: number) => setToasts((current) => current.filter((toast) => toast.id !== id)), []);
   const actions = useRef(new Map<number, () => void>());

@@ -1,8 +1,8 @@
 """#223: the real map uses the space left by the project header and Details."""
 from __future__ import annotations
 
-import os
 import re
+import os
 import unittest
 import uuid
 

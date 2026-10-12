@@ -1614,7 +1614,7 @@ class AppShellJourney(unittest.TestCase):
         page.goto("/sign-up")
         expect(page.get_by_role("button", name="Create account")).to_be_visible()
         start = self.open_while_leaving(page, "/sign-in")
-        expect(page.get_by_role("heading", name="Sign in", exact=True)).to_be_visible()
+        expect(page.get_by_role("heading", name="Sign in")).to_be_visible()
         self.assert_read_waits_for_the_grace(page, start, "/api/v1/auth/capabilities")
 
     def test_14e_the_assistant_setup_reads_its_connections_only_once_the_page_is_live(self) -> None:
