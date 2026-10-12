@@ -18,7 +18,7 @@ import uuid
 
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
-from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, box, shot, start_forwarder
+from test_app_shell import DESKTOP, ORIGIN, PHONE, UI_BROWSER, UPSTREAM, box, shot, start_forwarder
 from test_personal_assistant import mock
 
 PASSWORD = "a calm home for the garden"
@@ -57,7 +57,8 @@ class HomeFinal(unittest.TestCase):
         if UPSTREAM:
             start_forwarder(ORIGIN, UPSTREAM)
         cls.pw = sync_playwright().start()
-        cls.browser = cls.pw.chromium.launch()
+        cls.browser = getattr(cls.pw, UI_BROWSER).launch()
+        assert cls.browser.browser_type.name == UI_BROWSER
         expect.set_options(timeout=15000)
         for key, (name, email) in PEOPLE.items():
             context = cls.browser.new_context(base_url=ORIGIN)
