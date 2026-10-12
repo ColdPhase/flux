@@ -966,6 +966,68 @@
       "formatVersion": {
         "const": 1
       },
+      "githubSources": {
+        "additionalProperties": false,
+        "properties": {
+          "defaultMode": {
+            "anyOf": [
+              {
+                "enum": [
+                  "complete",
+                  "ready"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "dormant": {
+            "const": true
+          },
+          "rules": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "enabled": {
+                  "const": false
+                },
+                "mode": {
+                  "enum": [
+                    "complete",
+                    "ready"
+                  ]
+                },
+                "recordedState": {
+                  "enum": [
+                    "active",
+                    "suspended",
+                    "off"
+                  ]
+                },
+                "taskId": {
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "enabled",
+                "mode",
+                "recordedState",
+                "taskId"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "defaultMode",
+          "dormant",
+          "rules"
+        ],
+        "type": "object"
+      },
       "grants": {
         "items": {
           "additionalProperties": false,

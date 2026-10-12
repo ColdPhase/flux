@@ -49,12 +49,12 @@ function ToastItem({ toast, onDone, registerAction }: { toast: ToastEntry; onDon
     toast.action.onAction();
     setLeaving(true);
   }, [toast.action, leaving, toast.leaving]);
-  // `Z` runs the newest toast's action once; a toast that is leaving no longer answers to it.
+  // `Z` runs the newest keyed toast's action once; a toast that is leaving no longer answers to it.
   useEffect(() => {
-    if (!toast.action || leaving) return undefined;
+    if (!toast.action?.key || leaving || toast.leaving) return undefined;
     registerAction(toast.id, act);
     return () => registerAction(toast.id, null);
-  }, [toast.action, toast.id, leaving, act, registerAction]);
+  }, [toast.action, toast.id, leaving, toast.leaving, act, registerAction]);
   const arm = useCallback(() => {
     if (toast.timeout !== null) timer.current = window.setTimeout(dismiss, toast.timeout);
   }, [dismiss, toast.timeout]);

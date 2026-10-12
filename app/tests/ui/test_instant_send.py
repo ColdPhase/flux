@@ -17,7 +17,7 @@ import uuid
 
 from playwright.sync_api import Browser, Page, Route, expect, sync_playwright
 
-from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
+from test_app_shell import DESKTOP, ORIGIN, PHONE, UI_BROWSER, UPSTREAM, shot, start_forwarder
 
 PASSWORD = "messages that feel instant on a phone"
 STAMP = int(time.time() * 1000)
@@ -69,11 +69,11 @@ class InstantSendJourney(unittest.TestCase):
         if UPSTREAM:
             start_forwarder(ORIGIN, UPSTREAM)
         cls.pw = sync_playwright().start()
-        cls.browser = cls.pw.chromium.launch()
+        cls.browser = getattr(cls.pw, UI_BROWSER).launch()
         expect.set_options(timeout=10000)
         contexts = {}
         for key, (name, email) in PEOPLE.items():
-            context = cls.browser.new_context(base_url=ORIGIN)
+            context = cls.browser.new_context(service_workers="block", base_url=ORIGIN)
             response = context.request.post("/api/auth/sign-up/email", data={"email": email, "password": PASSWORD, "name": name}, headers={"origin": ORIGIN})
             assert response.status == 200, response.text()
             cls.ids[key] = context.request.get("/api/v1/me").json()["user"]["id"]
@@ -113,7 +113,7 @@ class InstantSendJourney(unittest.TestCase):
             options.update(viewport=PHONE, device_scale_factor=3, is_mobile=True, has_touch=True)
         else:
             options.update(viewport=DESKTOP, device_scale_factor=1)
-        context = self.browser.new_context(**options)
+        context = self.browser.new_context(service_workers="block", **options)
         self.addCleanup(context.close)
         page = context.new_page()
         errors: list[str] = []
@@ -516,14 +516,14 @@ class InstantSendJourney(unittest.TestCase):
                 with page.expect_file_chooser() as chooser:
                     thread.get_by_role("button", name="Attach files", exact=True).click()
                 chooser.value.set_files({"name": name, "mimeType": "application/octet-stream", "buffer": b"\x00\x04 lux at nine"})
-                expect(thread.get_by_role("list", name="Files in your draft")).to_contain_text("Uploading…")
+                expect(thread.get_by_role("list", name="Files in your draft")).to_contain_text(re.compile("Uploading"))
                 field = thread.get_by_label("Reply", exact=True)
                 body = f"Readings at {width} attached."
                 field.fill(body)
-                # Sent before its file is staged: the message shows at once with the file, marked "Uploading…".
+                # Sent before its file is staged: the message shows at once with the file, marked "Uploading" with its percentage.
                 thread.get_by_role("button", name="Send reply").click()
                 bubble = self.pending(thread, body)
-                expect(bubble).to_contain_text("Uploading…")
+                expect(bubble).to_contain_text(re.compile("Uploading"))
                 expect(bubble).to_contain_text(name)
                 expect(field).to_have_value("")
                 expect(thread.get_by_role("list", name="Files in your draft")).to_have_count(0)
@@ -585,13 +585,13 @@ class InstantSendJourney(unittest.TestCase):
                 button = thread.get_by_role("button", name="Send reply")
                 button.tap() if width < 681 else button.click()
                 bubble = self.pending(thread, body)
-                expect(bubble).to_contain_text("Uploading…")
+                expect(bubble).to_contain_text(re.compile("Uploading"))
                 page.context.set_offline(True)
                 uploads[0].abort("internetdisconnected")
-                # The upload was cut: the message says why (HIG-67), not "Uploading…".
+                # The upload was cut: the message says why (HIG-67), not "Uploading".
                 expect(bubble).to_have_attribute("data-send-state", "waiting")
                 expect(bubble).to_contain_text("Waiting to send")
-                expect(bubble).not_to_contain_text("Uploading…")
+                expect(bubble).not_to_contain_text(re.compile("Uploading"))
                 # The stream and the thread both have a composer: one line on the screen.
                 expect(page.locator(".connection-line")).to_have_count(1)
                 expect(page.locator(".connection-line")).to_be_visible()

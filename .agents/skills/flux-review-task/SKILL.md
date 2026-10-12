@@ -14,7 +14,10 @@ contract, and all unresolved prior findings. Follow
 - Review the code and real integration points. Reproduce the required scenarios,
   including relevant failure/access cases. Use live UI/API/persistence checks for
   functional changes; use structural/link checks for documentation-only work.
-  Use the supported Docker environment. Visual assessment uses
+  Use [impact-based verification](../../../docs/agents/evaluation.md#choose-verification-by-impact)
+  and the supported Docker environment; do not restart full suites automatically.
+  Assess prior evidence against changed code/base/runtime inputs, retaining its
+  original SHA. Visual assessment uses
   `flux-review-visual` with a fresh neutral brief; separately test behavior.
 - Record each criterion as pass, fail, or unverified, with evidence at this head.
   Inspect CI and unresolved review threads. Pending or unavailable required checks

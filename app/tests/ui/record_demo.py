@@ -146,7 +146,7 @@ def journey(page: Page, rec: Recorder) -> None:
     order.hover()
     rec.click(order.get_by_role("button", name=CREATE_TASK))
     panel = page.locator("#details")
-    expect(panel.get_by_label("Status")).to_have_value("open")
+    expect(panel.get_by_role("button", name="Status", exact=True)).to_contain_text("Open")
     rec.hold(2400)
     page.keyboard.press("Escape")
 

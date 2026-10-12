@@ -41,6 +41,7 @@ function readme(data: ProjectExport) {
     '',
     `Contents: ${data.conversations.length} conversations, ${data.materials.length} materials, ${data.docs.length} docs, ${data.sketches.length} sketches, `
       + `${data.work.length} work items, ${data.decisions.length} decisions, ${data.results.length} results, ${data.links.length} links, ${data.people.length} people.`,
+    ...(data.githubSources ? ['', `GitHub: ${data.githubSources.rules.length} task rules are listed dormant in \`githubSources\`, all disabled. Repository bindings are not exported; connect and authorize repositories again to use them.`] : []),
     '',
     'Not included:',
     ...data.excluded.map((item) => `- ${item}`),
@@ -80,6 +81,7 @@ export function createProjectExportUseCases(uow: ProjectExportUnitOfWork, contex
       ]);
 
       const attachments = await rows.files?.(project.id) ?? [];
+      const githubSources = await rows.githubSources?.(project.id) ?? null;
 
 
       const roleOf = new Map(roles.map((row) => [row.userId, row.role]));
@@ -137,6 +139,7 @@ export function createProjectExportUseCases(uow: ProjectExportUnitOfWork, contex
         excluded: [...PROJECT_EXPORT_EXCLUDED],
         project,
         ...(attachments.length ? { files: attachments } : {}),
+        ...(githubSources ? { githubSources } : {}),
         people,
         grants,
         actors,

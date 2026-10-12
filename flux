@@ -668,8 +668,11 @@ backup_to() {
   applied=$(db_query "SELECT coalesce(string_agg(version::text, ',' ORDER BY version), '') FROM flux_schema_version") \
     || die "Could not read the migration ledger of $PROJECT."
   pg_version=$(compose_main exec -T db pg_dump --version | sed 's/^pg_dump (PostgreSQL) //')
+  # The identity provider's offline refresh tokens (auth_idp_standing, F-024 S4) stay out of every backup: a restored
+  # instance has none, so each person who signs in through the provider signs in again.
   say "Dumping the database (schema $schema, PostgreSQL $pg_version)..."
-  compose_main exec -T db pg_dump -U "$(pg_user)" -d "$(pg_db)" --format=custom --compress=6 > "$BACKUP_STAGING/database.dump" \
+  compose_main exec -T db pg_dump -U "$(pg_user)" -d "$(pg_db)" --format=custom --compress=6 \
+    --exclude-table-data=auth_idp_standing > "$BACKUP_STAGING/database.dump" \
     || die "pg_dump failed; no backup was written."
   say "Archiving the files volume..."
   compose_main --profile ops run --rm --no-deps -T files-archive tar -C /data/files -czf - . > "$BACKUP_STAGING/files.tar.gz" \

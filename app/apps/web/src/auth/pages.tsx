@@ -2,8 +2,10 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Form, Link, Outlet, useActionData, useLoaderData, useLocation, useNavigate, useNavigation, useSearchParams } from 'react-router';
 import type { IdentityCapabilities } from '@flux/contracts';
 import { PASSWORD_MIN_LENGTH, getCapabilities, startSso } from '../api/auth';
+import { whenPageLive } from '../api/pageLeaving';
+import { NetworkError } from '../api/client';
 import { Button, ErrorState, FluxLogo, Icon, Input, useToast } from '../ui';
-import { safeNext, type FormResult, type forgotPasswordLoader } from './logic';
+import { safeNext, signedOauthQuery, type FormResult, type forgotPasswordLoader } from './logic';
 
 /** The plain Flux logo tile and wordmark, large above the page's title (#351, F-026 S-D/S-P sign-in). */
 function Brand() {
@@ -79,33 +81,51 @@ const NOTICES: Record<string, string> = {
 };
 
 /** The operator's single sign-on, when configured (#113). Hidden while unknown or unavailable. */
+const SSO_RECHECK_MS = 5000;
+
 function useSso() {
   const [sso, setSso] = useState<IdentityCapabilities['sso']>(null);
+  const unreachable = sso !== null && !sso.reachable;
   useEffect(() => {
     const controller = new AbortController();
-    getCapabilities(controller.signal).then((capabilities) => setSso(capabilities.sso ?? null)).catch(() => undefined);
-    return () => controller.abort();
-  }, []);
+    let waiting: () => void = () => undefined;
+    const load = () => {
+      // A page being left starts no read (#471); one whose navigation was cancelled reads once it is live.
+      waiting();
+      waiting = whenPageLive(() => {
+        getCapabilities(controller.signal).then((capabilities) => setSso(capabilities.sso ?? null)).catch(() => undefined);
+      });
+    };
+    load();
+    // While the provider is unreachable the page asks again, so its button comes back without a reload (#310 AC-4).
+    const timer = unreachable ? window.setInterval(load, SSO_RECHECK_MS) : undefined;
+    return () => {
+      waiting();
+      controller.abort();
+      if (timer !== undefined) window.clearInterval(timer);
+    };
+  }, [unreachable]);
   return sso;
 }
 
-function SsoSignIn({ sso, next }: { sso: NonNullable<IdentityCapabilities['sso']>; next: string | null }) {
+function SsoSignIn({ sso, next, oauthQuery }: { sso: NonNullable<IdentityCapabilities['sso']>; next: string | null; oauthQuery?: string }) {
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState('');
+  const unreachable = `${sso.label} is not reachable right now. Try again in a moment${oauthQuery ? '' : ', or sign in with your password'}.`;
   const start = async () => {
     setBusy(true); setFailed('');
     try {
-      const { url } = await startSso(sso.providerId, safeNext(next));
+      const { url } = await startSso(sso.providerId, oauthQuery ? '/' : safeNext(next), oauthQuery);
       window.location.assign(url);
-    } catch {
+    } catch (error) {
       setBusy(false);
-      setFailed('Single sign-on can’t start right now. Try again, or sign in with your password.');
+      setFailed(error instanceof NetworkError ? 'Flux can’t be reached right now. Check your connection and try again.' : unreachable);
     }
   };
   return (
     <div className="auth__sso">
-      <Button variant="secondary" size="lg" block busy={busy} onClick={() => void start()}>{`Sign in with ${sso.label}`}</Button>
-      {failed ? <p className="auth__sso-error" role="alert">{failed}</p> : null}
+      <Button variant="secondary" size="lg" block busy={busy} disabled={!sso.reachable} onClick={() => void start()}>{`Sign in with ${sso.label}`}</Button>
+      {failed || !sso.reachable ? <p className="auth__sso-error" role="alert">{failed || unreachable}</p> : null}
       <p className="auth__or" aria-hidden="true"><span>or</span></p>
     </div>
   );
@@ -124,6 +144,11 @@ export function SignInPage() {
   const shownRef = useRef<string | null>(null);
   const sso = useSso();
   const ssoFailed = params.get('sso') === 'failed';
+  const ssoMessage = params.get('sso_reason') === 'no_refresh_token'
+    ? 'Your identity provider didn’t let Flux keep checking your account, so you aren’t signed in. Ask your administrator to allow offline access for Flux.'
+    : 'Single sign-on didn’t complete, so you aren’t signed in. Try again, or sign in with your password.';
+  // On the MCP authorization step the page is `/login?<signed request>` (#310): the provider button carries it.
+  const oauthQuery = location.pathname === '/login' ? signedOauthQuery(location.search) ?? undefined : undefined;
 
   // One-time notices arrive as a query flag; show them once and drop the flag from the address.
   useEffect(() => {
@@ -140,9 +165,9 @@ export function SignInPage() {
     <>
       <Heading title="Sign in">A shared workspace for people and their agents.</Heading>
       <div className="auth__card">
-      {sso && location.pathname !== '/login' ? <SsoSignIn sso={sso} next={next} /> : null}
+      {sso && (location.pathname !== '/login' || oauthQuery) ? <SsoSignIn sso={sso} next={next} oauthQuery={oauthQuery} /> : null}
       <Form method="post" className="auth__form" noValidate ref={formRef} aria-label="Sign in">
-        <FormError message={result?.formError ?? (ssoFailed ? 'Single sign-on didn’t complete, so you aren’t signed in. Try again, or sign in with your password.' : undefined)} />
+        <FormError message={result?.formError ?? (ssoFailed ? ssoMessage : undefined)} />
         <Input label="Email" name="email" type="email" autoComplete="email" inputMode="email" autoCapitalize="none" spellCheck={false}
           defaultValue={result?.values?.email} error={result?.fieldErrors?.email} autoFocus />
         <Input label="Password" name="password" type="password" autoComplete="current-password" error={result?.fieldErrors?.password}

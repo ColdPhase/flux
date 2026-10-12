@@ -11,15 +11,25 @@ export const getTaskDiscussion = (workId: string, options: { limit?: number; bef
 export const contributeToTask = (workId: string, command: TaskContributionCommand) =>
   request<ConversationMessage>(taskDiscussionPath(workId), { method: 'POST', body: command });
 
-/** Raw authenticated bytes; upload UUID is retained after a lost response. */
-export async function stageFile(projectId: string, uploadId: string, file: File): Promise<StagedFile> {
-  let response: Response;
-  try {
-    response = await fetch(`${projectFilesPath(projectId)}?${new URLSearchParams({ uploadId, name: file.name })}`, {
-      method: 'POST', credentials: 'same-origin', headers: { accept: 'application/json', 'content-type': 'application/octet-stream' }, body: file,
-    });
-  } catch { throw new NetworkError(); }
-  const data = await response.json() as StagedFile & { code?: string; message?: string };
-  if (!response.ok) throw new ApiError(response.status, data.code ?? null, data.message ?? response.statusText, data);
-  return data;
+/**
+ * Raw authenticated bytes; upload UUID is retained after a lost response. It goes by XMLHttpRequest, the
+ * only browser API that reports how many bytes of the upload have gone out (`onProgress`, 0 to 1, #348).
+ */
+export function stageFile(projectId: string, uploadId: string, file: File, onProgress?: (fraction: number) => void): Promise<StagedFile> {
+  return new Promise<StagedFile>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', `${projectFilesPath(projectId)}?${new URLSearchParams({ uploadId, name: file.name })}`);
+    xhr.setRequestHeader('accept', 'application/json');
+    xhr.setRequestHeader('content-type', 'application/octet-stream');
+    if (onProgress) xhr.upload.onprogress = (event) => { if (event.lengthComputable && event.total > 0) onProgress(event.loaded / event.total); };
+    xhr.onerror = () => reject(new NetworkError());
+    xhr.ontimeout = () => reject(new NetworkError());
+    xhr.onload = () => {
+      let data: StagedFile & { code?: string; message?: string };
+      try { data = JSON.parse(xhr.responseText) as StagedFile & { code?: string; message?: string }; } catch { reject(new ApiError(xhr.status, null, xhr.statusText)); return; }
+      if (xhr.status < 200 || xhr.status >= 300) { reject(new ApiError(xhr.status, data.code ?? null, data.message ?? xhr.statusText, data)); return; }
+      resolve(data);
+    };
+    xhr.send(file);
+  });
 }
