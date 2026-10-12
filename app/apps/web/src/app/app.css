@@ -569,5 +569,5 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
 /* On touch, the "Create an account" style link under the form gets a 44 px tall hit area without moving the text (#434). */
 @media (pointer: coarse) {
   .auth__alt .ui-link { position: relative; }
-  .auth__alt .ui-link::after { content: ""; position: absolute; inset: -13px -4px; }
+  .auth__alt .ui-link::after { content: ""; position: absolute; left: -4px; right: -4px; top: calc(50% - 22px); height: 44px; }
 }
