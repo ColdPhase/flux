@@ -18,4 +18,3 @@
 .composer__hint { display: inline-flex; align-items: center; gap: 4px; margin-left: 4px; color: var(--t3); font-size: var(--fs-sm); }
 .composer__hint kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 4px; border-radius: 5px; background: var(--sub); color: var(--t2); font: 500 11px/1 var(--mono); box-shadow: inset 0 -1px 0 var(--line2); }
 @media (max-width: 640px) { .composer__hint { display: none; } }
-
