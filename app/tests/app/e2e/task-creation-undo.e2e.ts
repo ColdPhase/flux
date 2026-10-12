@@ -5,7 +5,7 @@ import http from 'node:http';
 import net from 'node:net';
 import { join } from 'node:path';
 import { after, before, test } from 'node:test';
-import { chromium, webkit, type Browser, type BrowserContext, type Page, type Route } from 'playwright';
+import { chromium, webkit, type Browser, type BrowserContext, type Page, type Request, type Route } from 'playwright';
 import { LIVE_SESSIONS_PATH, projectWorkDetailPath, STREAM_PATH, taskCreationUndoPath, taskDiscussionPath, type ConversationMessage,
   projectWorkPath, type SketchDetail, type TaskCreationNotice, type UndoTaskCreationResult, type WorkItem } from '@flux/contracts';
 import { pool } from '../support/db.js';
@@ -60,6 +60,35 @@ function gate<T = void>() {
   return { promise, resolve };
 }
 let browser: Browser;
+/**
+ * Leaving a document cancels the reads it still has in flight, and WebKit reports each cancelled fetch as an
+ * uncaught page error even though the app handles the rejection (#471). A person navigates after a view has
+ * loaded, so the journey lets the page finish its own reads before it reloads, navigates or closes it.
+ * Playwright's `networkidle` fires once per document, so it cannot see reads a same-document view starts later.
+ */
+const inFlight = new WeakMap<Page, Set<Request>>();
+async function settle(page: Page, quietMs = 300, ms = 10_000) {
+  const pending = inFlight.get(page)!;
+  const deadline = Date.now() + ms;
+  let quietSince = pending.size ? 0 : Date.now();
+  while (!quietSince || Date.now() - quietSince < quietMs) {
+    if (Date.now() > deadline) throw new Error(`page reads still in flight after ${ms}ms: ${[...pending].map((request) => request.url()).join(', ')}`);
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    if (pending.size) quietSince = 0; else quietSince ||= Date.now();
+  }
+}
+/** Every uncaught page error fails the suite; the page it came from is logged for diagnosis. */
+function watchErrors(page: Page) {
+  const pending = new Set<Request>(); inFlight.set(page, pending);
+  page.on('request', (request) => {
+    // A new document leaves the previous one's reads behind (a held read included); only its own count.
+    if (request.isNavigationRequest() && request.frame() === page.mainFrame()) pending.clear();
+    pending.add(request);
+  });
+  page.on('requestfinished', (request) => pending.delete(request));
+  page.on('requestfailed', (request) => pending.delete(request));
+  page.on('pageerror', (error) => { pageErrors.push(error.message); console.error(`pageerror at ${page.url()}: ${error.message}`); });
+}
 const disconnected = new WeakSet<BrowserContext>();
 const pageErrors: string[] = [];
 before(async () => {
@@ -128,7 +157,7 @@ async function signedIn(who: Person, options: { disconnected?: boolean; width?: 
 }
 async function open(context: BrowserContext, f: Scene, item: WorkItem, surface = 'tasks', eligible = true) {
   const page = await context.newPage();
-  page.on('pageerror', (error) => pageErrors.push(error.message));
+  watchErrors(page);
   const ready = gate();
   page.on('websocket', (socket) => {
     if (new URL(socket.url()).pathname !== STREAM_PATH) return;
@@ -189,6 +218,8 @@ async function withContexts(contexts: BrowserContext[], run: () => Promise<void>
       for (const capture of captures) if (capture.status === 'rejected') failures.push(capture.reason);
     }
   }
+  // Best effort: a page that cannot settle (a failed run) is still closed, and any page error it reports still counts.
+  await Promise.allSettled(contexts.flatMap((context) => context.pages().map((page) => settle(page))));
   const closed = await Promise.allSettled(contexts.map((context) => finite(context.close(), 'context close')));
   for (const result of closed) if (result.status === 'rejected') failures.push(result.reason);
   if (failures.length === 1) throw failures[0];
@@ -322,12 +353,12 @@ test('pending contribution cannot be retried from undone read-only history and b
       const discussion = expectStatus(await f.author.browser.request('GET', taskDiscussionPath(item.id)), 200) as { root: ConversationMessage | null; messages: ConversationMessage[] };
       assert.equal(discussion.root, null); assert.deepEqual(discussion.messages, []);
       assert.equal((await notices(f, item)).length, 2); assert.equal(await receipts(item), 1);
-      await page.reload();
+      await settle(page); await page.reload();
       assert.deepEqual(await storedDraft(page, draftKey(f, item)), current, 'reload keeps both private records before reopening history');
       assert.deepEqual(writes, [command.clientMessageId], 'reload never retries the refused command');
       // The initial ?open address is consumed by the shell. Re-enter through the
       // genuine retained notice, rather than expecting bare reload to reopen Details.
-      await page.goto(`/projects/${f.place.id}`);
+      await settle(page); await page.goto(`/projects/${f.place.id}`);
       const reversion = (await notices(f, item)).find((notice) => notice.kind === 'task.creation_reverted');
       assert.ok(reversion, 'the real reversion notice remains available after reload');
       assert.equal(reversion.workId, item.id); assert.equal(reversion.workNumber, item.number);
@@ -410,7 +441,7 @@ test('a committed contribution with a held answer stays unconfirmed after write 
       assert.deepEqual({ body: current.body, files: current.files, references: current.references, commandId: current.commandId },
         { body: original.body, files: original.files, references: original.references, commandId: original.commandId }, 'confirming the earlier send keeps the later staged draft');
       await grant(f.manager, f.place.id, f.author, 'contributor');
-      await page.goto('/projects/' + f.place.id + '/tasks?open=work:' + item.id); await title(page, item).waitFor();
+      await settle(page); await page.goto('/projects/' + f.place.id + '/tasks?open=work:' + item.id); await title(page, item).waitFor();
       assert.deepEqual(await storedDraft(page, draftKey(f, item)), current, 'returning write access keeps the draft and does not restore a confirmed command');
       assert.deepEqual(writes, [command.clientMessageId], 'authority refresh, confirmation and reload never duplicate the saved send');
       const after = expectStatus(await f.author.browser.request('GET', taskDiscussionPath(item.id)), 200) as { messages: ConversationMessage[] };
@@ -450,7 +481,7 @@ test('two accounts keep Conversation, Tasks, Map and Agents current after real U
     const appended = history.find((notice) => notice.kind === 'task.creation_reverted')!;
     assert.equal(appended.id, result.noticeId); assert.equal(appended.createdBy.id, f.author.id);
     assert.equal(history.find((notice) => notice.kind === 'task.created')!.createdBy.kind, 'agent', 'the original creator stays the genuine agent');
-    await pages[0]!.reload();
+    await settle(pages[0]!); await pages[0]!.reload();
     assert.deepEqual(await storedDraft(pages[0]!, draftKey(f, item)), original, 'reload keeps the private staged draft before reopening history');
     for (const notice of history) {
       const row = pages[0]!.locator(`#notice-${notice.id}`); await row.waitFor();
@@ -504,6 +535,8 @@ test('real sign-out and account switch reject a held old-account read and keep t
       await page.getByLabel('Email', { exact: true }).fill(f.manager.email); await page.getByLabel('Password', { exact: true }).fill(password);
       await page.getByRole('button', { name: 'Sign in', exact: true }).click();
       await page.waitForURL((url) => !url.pathname.includes('sign-in'));
+      // Sign-in lands on Home, which opens with its own reads (return, inbox, assistant, drafts, live).
+      await settle(page);
       await page.goto(`/projects/${f.place.id}/tasks?open=work:${item.id}`); await title(page, item).waitFor();
       assert.equal(await undoButton(page).count(), 0);
       await panel(page).getByRole('textbox', { name: 'First message about this task' }).fill('Blair account draft only');
@@ -595,7 +628,7 @@ test('desktop and phone-width history render readable actor and time, keyboard l
   for (const [width, height] of [[1280, 900], [390, 844]]) {
     const context = await signedIn(f.author, { width, height });
     await withContexts([context], async () => {
-      const page = await context.newPage(); page.on('pageerror', (error) => pageErrors.push(error.message));
+      const page = await context.newPage(); watchErrors(page);
       await page.goto(`/projects/${f.place.id}?open=work:${item.id}`); await reverted(page, item);
       assert.match(await panel(page).innerText(), /Creation undone by Ari Task author on/);
       const activity = panel(page).getByRole('list', { name: 'Task activity', exact: true });
@@ -643,7 +676,7 @@ test('Agents, Map and live work never offer a task whose creation was undone, wh
   await f.undo(item);
   const context = await signedIn(f.author);
   await withContexts([context], async () => {
-    const page = await context.newPage(); page.on('pageerror', (error) => pageErrors.push(error.message));
+    const page = await context.newPage(); watchErrors(page);
     // Agents: a ?task= naming the undone task does not open it as a thread; the open task list leaves it out.
     await page.goto(`/projects/${f.place.id}/agents?task=${item.id}`);
     const select = page.locator('#agents-task'); await select.waitFor();
