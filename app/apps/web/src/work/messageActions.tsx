@@ -132,16 +132,16 @@ const REVEAL = 168;
 const HOLD_MS = 450;
 const MOVE_SLOP = 10;
 
-interface TouchProps {
-  ref: RefObject<HTMLLIElement | null>;
+interface TouchProps<E extends HTMLElement> {
+  ref: RefObject<E | null>;
   className: string;
   style?: CSSProperties;
-  onPointerDown?: (event: ReactPointerEvent<HTMLLIElement>) => void;
-  onPointerMove?: (event: ReactPointerEvent<HTMLLIElement>) => void;
-  onPointerUp?: (event: ReactPointerEvent<HTMLLIElement>) => void;
+  onPointerDown?: (event: ReactPointerEvent<E>) => void;
+  onPointerMove?: (event: ReactPointerEvent<E>) => void;
+  onPointerUp?: (event: ReactPointerEvent<E>) => void;
   onPointerCancel?: () => void;
-  onContextMenu?: (event: MouseEvent<HTMLLIElement>) => void;
-  onClickCapture?: (event: MouseEvent<HTMLLIElement>) => void;
+  onContextMenu?: (event: MouseEvent<E>) => void;
+  onClickCapture?: (event: MouseEvent<E>) => void;
 }
 
 /**
@@ -150,10 +150,10 @@ interface TouchProps {
  * returned props go on the message's list item and `node` inside it. A visually hidden button opens the same
  * menu for keyboards and screen readers, who cannot long press.
  */
-export function useTouchActions(options: MessageActionOptions | null): { props: TouchProps; node: ReactNode } {
+export function useTouchActions<E extends HTMLElement = HTMLLIElement>(options: MessageActionOptions | null): { props: TouchProps<E>; node: ReactNode } {
   const touch = useMediaQuery('(hover: none)');
   const items = useMenuItems(options);
-  const ref = useRef<HTMLLIElement>(null);
+  const ref = useRef<E>(null);
   const [menu, setMenu] = useState<{ kind: 'press' | 'button'; anchor: HTMLElement } | null>(null);
   const [offset, setOffset] = useState(0);
   const [dragging, setDragging] = useState(false);
@@ -182,14 +182,14 @@ export function useTouchActions(options: MessageActionOptions | null): { props: 
 
   const openPress = (row: HTMLElement) => {
     opener.current = row;
-    setMenu({ kind: 'press', anchor: row.querySelector<HTMLElement>(':scope > p') ?? row });
+    setMenu({ kind: 'press', anchor: row.querySelector<HTMLElement>('.message-bubble > p') ?? row });
     try { navigator.vibrate?.(8); } catch { /* optional */ }
   };
   const props = {
     ref,
     className: `msg-touch${dragging ? ' is-dragging' : ''}${revealed || offset ? ' is-swiped' : ''}`,
     style: offset ? { transform: `translateX(${offset}px)` } : undefined,
-    onPointerDown: (event: ReactPointerEvent<HTMLLIElement>) => {
+    onPointerDown: (event: ReactPointerEvent<E>) => {
       swallow.current = false;
       if (event.pointerType !== 'touch') return;
       const row = event.currentTarget;
@@ -201,7 +201,7 @@ export function useTouchActions(options: MessageActionOptions | null): { props: 
       }, HOLD_MS);
       gesture.current = g;
     },
-    onPointerMove: (event: ReactPointerEvent<HTMLLIElement>) => {
+    onPointerMove: (event: ReactPointerEvent<E>) => {
       const g = gesture.current;
       if (!g || g.mode === 'dead' || event.pointerType !== 'touch') return;
       const dx = event.clientX - g.x;
@@ -214,7 +214,7 @@ export function useTouchActions(options: MessageActionOptions | null): { props: 
       // Only leftwards: a rightward drag only closes a revealed row.
       setOffset(Math.max(-REVEAL, Math.min(0, (revealed ? -REVEAL : 0) + dx)));
     },
-    onPointerUp: (event: ReactPointerEvent<HTMLLIElement>) => {
+    onPointerUp: (event: ReactPointerEvent<E>) => {
       const g = gesture.current;
       gesture.current = null;
       if (!g) return;
@@ -228,8 +228,8 @@ export function useTouchActions(options: MessageActionOptions | null): { props: 
     },
     onPointerCancel: () => { clearTimer(); gesture.current = null; if (dragging) { setDragging(false); if (!revealed) setOffset(0); else setOffset(-REVEAL); } },
     // Android raises a context menu after a long press: the message menu is the answer, not the browser's.
-    onContextMenu: (event: MouseEvent<HTMLLIElement>) => { event.preventDefault(); if (!menu) openPress(event.currentTarget); },
-    onClickCapture: (event: MouseEvent<HTMLLIElement>) => { if (swallow.current) { swallow.current = false; event.preventDefault(); event.stopPropagation(); } },
+    onContextMenu: (event: MouseEvent<E>) => { event.preventDefault(); if (!menu) openPress(event.currentTarget); },
+    onClickCapture: (event: MouseEvent<E>) => { if (swallow.current) { swallow.current = false; event.preventDefault(); event.stopPropagation(); } },
   };
   const swipeAction = (run: (() => void) | undefined) => () => { close(); run?.(); };
   const node = (
@@ -239,7 +239,7 @@ export function useTouchActions(options: MessageActionOptions | null): { props: 
         {writable ? <button type="button" className="msg-swipe__b" disabled={busy} onClick={swipeAction(onCreateWork)}><Icon name="plus-circle" size={20} />Create task</button> : null}
         {writable ? <button type="button" className="msg-swipe__b" disabled={busy} onClick={swipeAction(onCreateWork)}><Kreska size={20} />Hand off</button> : null}
       </div>
-      <button type="button" className="msg-touch__sr" aria-haspopup="menu" aria-expanded={menu?.kind === 'button'} onClick={(event) => { opener.current = event.currentTarget; setMenu({ kind: 'button', anchor: event.currentTarget.parentElement?.querySelector<HTMLElement>(':scope > p') ?? event.currentTarget }); }}>Message actions</button>
+      <button type="button" className="msg-touch__sr" aria-haspopup="menu" aria-expanded={menu?.kind === 'button'} onClick={(event) => { opener.current = event.currentTarget; setMenu({ kind: 'button', anchor: event.currentTarget.parentElement?.querySelector<HTMLElement>('.message-bubble > p') ?? event.currentTarget }); }}>Message actions</button>
       {menu ? <MessageMenu items={items} anchor={menu.anchor} press={menu.kind === 'press'} label="Message actions"
         onClose={(restore) => { setMenu(null); if (restore) opener.current?.focus({ preventScroll: true }); }} /> : null}
     </>

@@ -301,9 +301,9 @@ class ConversationFinal(unittest.TestCase):
         page.keyboard.type("for the depths")
         page.keyboard.press("Enter")
         sent = page.locator(".project-convo__message.is-mine").filter(has_text="for the depths")
-        chip = sent.locator(".mention")
+        chip = sent.locator(".ref-chip--person")
         expect(chip).to_have_text("@Jonas Berg")
-        text = sent.locator(":scope > p")
+        text = sent.locator(".message-bubble > p")
         self.assertLess(text.evaluate("el => el.getBoundingClientRect().height") - 38, 4, "the chip does not lift or stretch its line")
         expect(page.get_by_role("listbox")).to_have_count(0)
 
@@ -354,7 +354,7 @@ class ConversationFinal(unittest.TestCase):
         page = self.open("ada", phone=True)
         message = self.message(page, self.ids["probes"])
         message.scroll_into_view_if_needed()
-        bubble = message.locator(":scope > p")
+        bubble = message.locator(".message-bubble > p")
         expect(message.get_by_role("button", name="Create task")).to_have_count(0)
         expect(message.locator(".msg-acts")).to_have_count(0)
         # Nothing swipes right.
@@ -507,7 +507,7 @@ class ConversationFinal(unittest.TestCase):
 
     def test_13_short_taps_leave_no_timer_that_opens_the_next_press_early(self) -> None:
         page = self.open("ada", phone=True)
-        first = self.message(page, self.ids["probes"]).locator(":scope > p")
+        first = self.message(page, self.ids["probes"]).locator(".message-bubble > p")
         first.scroll_into_view_if_needed()
         menu = page.get_by_role("menu", name="Message actions")
         # The touches are fired from the page with its own clock, so the gaps are exact even on a loaded machine.

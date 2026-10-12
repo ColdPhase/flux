@@ -1,0 +1,310 @@
+[
+  {
+    "phase": "clone",
+    "exit": 0,
+    "expected_exit": 0,
+    "wall_seconds": 0.007,
+    "raw_log_sha256": "eac1924ce7533e49ffd9c59e2373002dbf7aa4e17ef2d1d7daf450fb4be63c5e"
+  },
+  {
+    "phase": "initial-checkout",
+    "exit": 0,
+    "expected_exit": 0,
+    "wall_seconds": 0.485,
+    "raw_log_sha256": "8cfef4cc6ff535aaba7d1eaee2454d3998c8519aa5d93baad6b45e8372b0b0d6"
+  },
+  {
+    "phase": "baseline-up",
+    "exit": 0,
+    "expected_exit": 0,
+    "wall_seconds": 20.091,
+    "raw_log_sha256": "232eea74a1ec8d5a75b8b0455fa81450246564712ddeaf779f10555da329bf26"
+  },
+  {
+    "phase": "baseline-browser",
+    "exit": 0,
+    "expected_exit": 0,
+    "wall_seconds": 0.868,
+    "raw_log_sha256": "b0c9b3e05478876b8603cb42097bae0d3752e8217b59213ea0b668ca2e0409da"
+  },
+  {
+    "phase": "baseline-browser-source",
+    "exit": 0,
+    "expected_exit": 0,
+    "wall_seconds": 0.789,
+    "raw_log_sha256": "a2e7aa5158138e4a86483f446782db7671e6bd5517655335e5cbe674174ddec8"
+  },
+  {
+    "phase": "baseline-browser-syntax",
+    "exit": 0,
+    "expected_exit": 0,
+    "wall_seconds": 0.588,
+    "raw_log_sha256": "f9f18a23cef2803efbf5dfa9d577af4136d6150d5b0556517fa5de44751f63f3"
+  },
+  {
+    "phase": "authentic-baseline-native-seed",
+    "exit": 0,
+    "expected_exit": 0,
+    "wall_seconds": 3.335,
+    "raw_log_sha256": "83ff5bf85a856310ce944b799b0e552a375e93415485b486f6f4efb0a6efadf8"
+  },
+  {
+    "phase": "stop-baseline-writers",
+    "exit": 0,
+    "expected_exit": 0,
+    "wall_seconds": 10.648,
+    "raw_log_sha256": "be28f03fec4162562c4213d5c9292c6e8507aa7be560458b218952f2e89cd2b2"
+  },
+  {
+    "phase": "real-baseline-snapshot",
+    "exit": 0,
+    "expected_exit": 0,
+    "wall_seconds": 2.013,
+    "raw_log_sha256": "5477daf505affcd3761aec8a4f779d66a15b20a68f65a6e041d6f58f7e7f93bc"
+  },
+  {
+    "phase": "candidate-checkout",
+    "exit": 0,
+    "expected_exit": 0,
+    "wall_seconds": 0.34,
+    "raw_log_sha256": "545c0098631cb2a6006568d679eabc37e9bdbeacd2bbc4b1dbe3ffc0e5b834d3"
+  },
+  {
+    "phase": "ordinary-upgrade",
+    "exit": 0,
+    "expected_exit": 0,
+    "wall_seconds": 15.39,
+    "raw_log_sha256": "023a26d1ca2f5b020beee37bec8ea5c6367d1948e267704b73b8df6ec86d4de3"
+  },
+  {
+    "phase": "stop-candidate-before-gates",
+    "exit": 0,
+    "expected_exit": 0,
+    "wall_seconds": 10.596,
+    "raw_log_sha256": "9c1d2aff0efc2c7099265956a29b7255e0bc90dadc8ba6cc9df923b3847137ab"
+  },
+  {
+    "phase": "candidate-browser",
+    "exit": 0,
+    "expected_exit": 0,
+    "wall_seconds": 0.865,
+    "raw_log_sha256": "df980a08415a4c92dc43dd6b7dbd3a5e890eb1d5c6b4f348a0fb3f9484d66c3f"
+  },
+  {
+    "phase": "candidate-browser-source",
+    "exit": 0,
+    "expected_exit": 0,
+    "wall_seconds": 0.699,
+    "raw_log_sha256": "8fe83a6849715c192e84388d17851b642a8d1a3fe0ec512626f5fc8e34a26591"
+  },
+  {
+    "phase": "candidate-browser-syntax",
+    "exit": 0,
+    "expected_exit": 0,
+    "wall_seconds": 0.609,
+    "raw_log_sha256": "9f139127fd16f34a37ec686da81f943f09092a57a7bf3e424be2f2df36958f07"
+  },
+  {
+    "phase": "upgrade-native-ledger-family-preservation-before-gates",
+    "exit": 0,
+    "expected_exit": 0,
+    "wall_seconds": 1.062,
+    "raw_log_sha256": "354e05f2e326fa0a5bcc6ececeb874bd93cfc08824feb12a2900b60f1cc28a04"
+  },
+  {
+    "phase": "resume-candidate-for-gates",
+    "exit": 0,
+    "expected_exit": 0,
+    "wall_seconds": 5.952,
+    "raw_log_sha256": "00af152346bc615acd1a1db66eb9cbba123e2ff83838fc4d71eab0340d94cf7b"
+  },
+  {
+    "phase": "missing-token-refusal-and-real-provider-recovery",
+    "exit": 0,
+    "expected_exit": 0,
+    "wall_seconds": 2.011,
+    "raw_log_sha256": "2c6d3bdcb5413947128adbd55ab463d49656fc8d063a519edfea61c210e7b6a3"
+  },
+  {
+    "phase": "nonempty-custody-wire-exclusion",
+    "exit": 0,
+    "expected_exit": 0,
+    "wall_seconds": 1.352,
+    "raw_log_sha256": "469c5ed85b7496c3092d9682f4662cf53feee35fdae952c0d795ad415c756f3d"
+  },
+  {
+    "phase": "stop-checkpoint-writers",
+    "exit": 0,
+    "expected_exit": 0,
+    "wall_seconds": 10.602,
+    "raw_log_sha256": "be28f03fec4162562c4213d5c9292c6e8507aa7be560458b218952f2e89cd2b2"
+  },
+  {
+    "phase": "nonempty-custody-checkpoint",
+    "exit": 0,
+    "expected_exit": 0,
+    "wall_seconds": 1.507,
+    "raw_log_sha256": "e4f9a5baa16089b6b333bea809403e60763516065299bd467cac17c7955bc1ff"
+  },
+  {
+    "phase": "resume-checkpoint-writers",
+    "exit": 0,
+    "expected_exit": 0,
+    "wall_seconds": 5.88,
+    "raw_log_sha256": "b4f4da5cbc1e8255424766ba38b400721f25dbe7f0130fd2ba18e184ec6cded2"
+  },
+  {
+    "phase": "ordinary-nonempty-custody-backup",
+    "exit": 0,
+    "expected_exit": 0,
+    "wall_seconds": 18.335,
+    "raw_log_sha256": "cad5a0c5f81d14c8303f7e7a63907e22d7b8972d5c0408e83da6c1ec2b0622c8"
+  },
+  {
+    "phase": "actual-nonempty-backup-toc",
+    "exit": 0,
+    "expected_exit": 0,
+    "wall_seconds": 0.521,
+    "raw_log_sha256": "9083c64b69b8942b14df12b2702f58b82be825806b1ad9a688f5c8b9485406c5"
+  },
+  {
+    "phase": "actual-nonempty-backup-readable",
+    "exit": 0,
+    "expected_exit": 0,
+    "wall_seconds": 0.492,
+    "raw_log_sha256": "3f4af68e12367cc5b4d666dc0d663f6d6bbffa5ea135fc5c9fa37a8a94017da0"
+  },
+  {
+    "phase": "ordinary-project-export",
+    "exit": 0,
+    "expected_exit": 0,
+    "wall_seconds": 0.748,
+    "raw_log_sha256": "8bd9cbcc0d0e210df1b30a0f39d74155a539c666e23815c9223f3d3a395a0d77"
+  },
+  {
+    "phase": "private-api-worker-log-scan",
+    "exit": 0,
+    "expected_exit": 0,
+    "wall_seconds": 0.068,
+    "raw_log_sha256": "ee6506d8554908f88b115b4d6b38053852dbf6645bf379368712442c10e946ac"
+  },
+  {
+    "phase": "same-head-custody-restore",
+    "exit": 0,
+    "expected_exit": 0,
+    "wall_seconds": 52.031,
+    "raw_log_sha256": "a25e07d6fc0b1e6a1655ee372edb8546c9a2e570b9e74d35d0147a2228f62296"
+  },
+  {
+    "phase": "stop-restored-before-gates",
+    "exit": 0,
+    "expected_exit": 0,
+    "wall_seconds": 11.108,
+    "raw_log_sha256": "9c1d2aff0efc2c7099265956a29b7255e0bc90dadc8ba6cc9df923b3847137ab"
+  },
+  {
+    "phase": "restore-preserves-native-before-gates",
+    "exit": 0,
+    "expected_exit": 0,
+    "wall_seconds": 2.109,
+    "raw_log_sha256": "fb63c4dac61e3838e4d65d3effebba4f81d51df4ec5f38a538b2d7640986229c"
+  },
+  {
+    "phase": "resume-restored-for-gates",
+    "exit": 0,
+    "expected_exit": 0,
+    "wall_seconds": 7.306,
+    "raw_log_sha256": "7396cf75178cfe3ef8ce8e683b9df3fa41d2e0841f24fcc51c1a2e2fda91d27c"
+  },
+  {
+    "phase": "restored-tokenless-gates-and-authentic-sign-in-recovery",
+    "exit": 0,
+    "expected_exit": 0,
+    "wall_seconds": 3.196,
+    "raw_log_sha256": "cbd17ac0787a6649b643beecddef2243f6be4314846a93ff7209f2ddee52e6c2"
+  },
+  {
+    "phase": "actual-api-worker-restart",
+    "exit": 0,
+    "expected_exit": 0,
+    "wall_seconds": 10.933,
+    "raw_log_sha256": "f497b4d3ff783bd0253af7eafcb92dd9bc633ed2d89685089eeafea2ae084146"
+  },
+  {
+    "phase": "restart-health",
+    "exit": 0,
+    "expected_exit": 0,
+    "wall_seconds": 3.327,
+    "raw_log_sha256": "3f5ad2b5d9ec4b8a90690d68cb1e5a2425f30cead88b48fd5137f0e359af5991"
+  },
+  {
+    "phase": "post-recovery-restart",
+    "exit": 0,
+    "expected_exit": 0,
+    "wall_seconds": 1.147,
+    "raw_log_sha256": "af3cabfc8a3214d36c2b0fb5849a7d95edb23225ec9322058914641f4f2367f4"
+  },
+  {
+    "phase": "stop-before-original-archive-refusal",
+    "exit": 0,
+    "expected_exit": 0,
+    "wall_seconds": 10.566,
+    "raw_log_sha256": "9c1d2aff0efc2c7099265956a29b7255e0bc90dadc8ba6cc9df923b3847137ab"
+  },
+  {
+    "phase": "actual-pre-refusal-snapshot",
+    "exit": 0,
+    "expected_exit": 0,
+    "wall_seconds": 1.099,
+    "raw_log_sha256": "f405c38cb53ec5b3d3077329635a19ea764493dcc2c37a12dab96aac73948e89"
+  },
+  {
+    "phase": "original59-plain-restore-refusal",
+    "exit": 1,
+    "expected_exit": 1,
+    "wall_seconds": 0.107,
+    "raw_log_sha256": "322df844be6d91099a526fda3bc36c0c4b37e9cc4db6ab2b3fa1f6ea4296b3e4"
+  },
+  {
+    "phase": "plain-refusal-preserves-current-checkpoint",
+    "exit": 0,
+    "expected_exit": 0,
+    "wall_seconds": 1.077,
+    "raw_log_sha256": "e1cf897b5070f669d63beb5f0a336316a9f9afc1a3ec3d72ebccb1da83d15be6"
+  },
+  {
+    "phase": "original59-restore-migrate",
+    "exit": 0,
+    "expected_exit": 0,
+    "wall_seconds": 40.231,
+    "raw_log_sha256": "748fbe62444848c79e2fa43e74f997e11877756d33483d41315de573f44a377a"
+  },
+  {
+    "phase": "stop-original59-restored-before-gates",
+    "exit": 0,
+    "expected_exit": 0,
+    "wall_seconds": 10.572,
+    "raw_log_sha256": "9c1d2aff0efc2c7099265956a29b7255e0bc90dadc8ba6cc9df923b3847137ab"
+  },
+  {
+    "phase": "original59-restored-native-old-facts",
+    "exit": 0,
+    "expected_exit": 0,
+    "wall_seconds": 1.393,
+    "raw_log_sha256": "062aabf256db18bd75ce2e628919bc4b56c72f295073d45209559d4dc4ede3ce"
+  },
+  {
+    "phase": "resume-original59-restored-for-gates",
+    "exit": 0,
+    "expected_exit": 0,
+    "wall_seconds": 5.889,
+    "raw_log_sha256": "66c3019925ac8d63f7cc7dd7c6d974eafd644362d0c2bc5a4eaf0e55805c2170"
+  },
+  {
+    "phase": "original59-restored-gates-and-provider-recovery",
+    "exit": 0,
+    "expected_exit": 0,
+    "wall_seconds": 2.313,
+    "raw_log_sha256": "25de11e97f4e2999bfb99c5b57ee5b9ce72da70e053fc6fe5a6b0b67e9cb8439"
+  }
+]

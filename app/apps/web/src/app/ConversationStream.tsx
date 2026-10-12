@@ -13,11 +13,11 @@ import { useShellActions } from './shellContext';
 import { listConversationRoots, listTaskNotices } from './conversation-api';
 import { AgentAuthor, AuthorFace, ContributionMark, OPENING_REVEAL_MS, SourceCitation, clock, day, openOnWholeMessages, pendingMessageRow, when } from './messageParts';
 import { agentAuthorOwner, useAgentOwners, type AgentOwners } from '../agents/owners';
-import { MessageFiles } from '../composer/Files';
+import { MessageContent } from '../composer/Files';
+import { LinkPreviews, MessageText } from './MessageText';
 import { onSent, outboxView, useComposerDraft, type PendingSend } from '../composer/draft';
 import { getReturnSummary } from '../returns/api';
 import { useProjectShell } from '../project/data';
-import { mentionNodes } from './ComposerMenu';
 import { cite as citeMessage, quoteOf } from './citeBus';
 import { foldEntries, foldSummary, firstUnread, noticeSource, rootAuthor, sinceLine, sourcePhrase } from './conversationEvents';
 import './conversation-final.css';
@@ -703,11 +703,12 @@ function RootItem(props: RootItemProps | QueuedRootProps) {
         <strong>{mine ? `${name} · you` : message.authorId === null ? <AgentAuthor message={message} owner={agentAuthorOwner(message.author, owners)} /> : <Link className="project-convo__person" to={`/dm/new?workspace=${project.workspaceId}&with=${message.authorId}`} title={`Message ${name} directly`}>{name}</Link>}</strong>
         <time dateTime={message.createdAt} title={when(message.createdAt)}>{clock(message.createdAt)}</time>
       </div>
-      {message.body ? <p>{mentionNodes(message.body, people)}</p> : null}
-      <MessageFiles files={message.files} />
+      <MessageContent body={message.body ? <p><MessageText body={message.body} people={people} /></p> : null} files={message.files} context={{ author: name, at: message.createdAt, caption: message.body, place: project.name, onReply: writable ? () => onOpen(root, true) : undefined, onCreateTask: writable ? () => void makeWork.create(message) : undefined }}>
+        <LinkPreviews body={message.body} />
+        <MessageObjects message={message} projectId={project.id} preview={messageWork.previews?.get(message.id) ?? null} thread={root.task ?? null} threadRow={taskRow} />
+        {message.source ? <SourceCitation materialId={message.source.materialId} version={message.source.version} onDenied={onDenied} /> : null}
+      </MessageContent>
       {message.contribution ? <ContributionMark contribution={message.contribution} onOpenResult={onOpenResult} /> : null}
-      {message.source ? <SourceCitation materialId={message.source.materialId} version={message.source.version} onDenied={onDenied} /> : null}
-      <MessageObjects message={message} projectId={project.id} preview={messageWork.previews?.get(message.id) ?? null} thread={root.task ?? null} threadRow={taskRow} />
       <Replies root={root} open={open} writable={writable} onOpen={(reply) => onOpen(root, reply)} />
       <MessageActions {...actions} />
       {touch.node}

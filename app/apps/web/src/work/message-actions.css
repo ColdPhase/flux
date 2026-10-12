@@ -43,7 +43,7 @@
 .msg-swipe__b svg { color: var(--t2); }
 .msg-swipe__b:disabled { opacity: .5; }
 /* For keyboards and screen readers: the same menu, visible when focused. */
-.msg-touch__sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.msg-touch__sr { position: absolute; top: 0; right: 0; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .msg-touch__sr:focus-visible { top: 0; right: 0; width: auto; height: 44px; padding: 0 14px; overflow: visible; clip-path: none; border-radius: 12px; background: var(--el);
   box-shadow: var(--sh-pop), inset 0 0 0 1px var(--line); font-size: var(--fs-md); color: var(--t1); z-index: 2; }
 @media (hover: none) { .project-convo__feed, .thread__feed { overflow-x: hidden; } }

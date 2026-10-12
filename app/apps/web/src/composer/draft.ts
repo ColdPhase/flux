@@ -14,6 +14,8 @@ export interface DraftFile {
   staged?: StagedFile; error?: string;
   /** The upload got no answer (offline): a queued message uploads it again when the connection is back. */
   offline?: boolean;
+  /** Share of the bytes sent so far, 0 to 100, while uploading (#348). Not kept once the upload is confirmed or failed. */
+  progress?: number;
 }
 export interface ComposerDraft {
   version: 1; body: string; files: DraftFile[]; references: DraftReference[];
@@ -37,6 +39,8 @@ export interface PendingSend {
   /** It had to wait for the connection. */
   waited?: boolean;
 }
+/** An uploading file's words: its percentage while bytes go out, "Sending" once all are out, until the server confirms (#348). */
+export const uploadLabel = (file: DraftFile) => file.progress === undefined ? 'Uploading…' : file.progress >= 100 ? 'Sending…' : `Uploading ${file.progress}%`;
 /** A confirmed message, kept for this visit so a view shows it until its own read includes it. */
 export interface SentMessage { id: string; message: ConversationMessage; conversation?: Conversation }
 export type SendOutcome =
@@ -51,6 +55,11 @@ const listeners = new Map<string, Set<() => void>>();
 const places = new Map<string, { accountId: string; projectId: string; context: string }>();
 // The selected bytes live only in this visit. After reload, failed uploads ask for the same file.
 const selected = new Map<string, Map<string, File>>();
+/** The bytes a person picked in this visit, for a thumbnail of a draft or of a message not stored yet (#348). */
+export function selectedFile(uploadId: string): File | undefined {
+  for (const bytes of selected.values()) { const file = bytes.get(uploadId); if (file) return file; }
+  return undefined;
+}
 const PREFIX = 'flux:composer:';
 const RETIREMENT_KEY = 'flux:session:composer-retirement';
 let sessionGeneration = 0;
@@ -367,23 +376,31 @@ async function upload(key: string, projectId: string, uploadId: string, file: Fi
     return current.draft.files.some((item) => item.uploadId === uploadId) || current.pending.some((item) => item.files.some((other) => other.uploadId === uploadId));
   };
   if (!alive(key, generation) || !holds()) return;
-  const changeFile = (change: (item: DraftFile) => DraftFile) => {
+  // A progress report only redraws: the message waiting for this file goes on when the upload is confirmed.
+  const changeFile = (change: (item: DraftFile) => DraftFile, { wake = true } = {}) => {
     if (!alive(key, generation) || !holds()) return;
     const current = snapshots.get(key)!;
     const map = (files: DraftFile[]) => files.map((item) => item.uploadId === uploadId ? change(item) : item);
     put(key, { ...current, draft: { ...current.draft, files: map(current.draft.files) },
       pending: current.pending.map((item) => item.files.some((other) => other.uploadId === uploadId) ? { ...item, files: map(item.files) } : item) });
     // A message waiting for this file can go on (or fail) now.
-    if (snapshots.get(key)!.pending.some((item) => item.files.some((other) => other.uploadId === uploadId))) kick(key);
+    if (wake && snapshots.get(key)!.pending.some((item) => item.files.some((other) => other.uploadId === uploadId))) kick(key);
   };
-  changeFile((item) => ({ ...item, state: 'uploading', error: undefined, offline: undefined }));
+  changeFile((item) => ({ ...item, state: 'uploading', error: undefined, offline: undefined, progress: 0 }));
+  let lastShown = 0;
   try {
-    const staged = await stageFile(projectId, uploadId, file);
+    const staged = await stageFile(projectId, uploadId, file, (fraction) => {
+      const percent = Math.min(100, Math.floor(fraction * 100));
+      // One write per whole percent, rising only: a progress event is far more frequent than the screen needs.
+      if (percent <= lastShown) return;
+      lastShown = percent;
+      changeFile((item) => item.state === 'uploading' ? { ...item, progress: percent } : item, { wake: false });
+    });
     reportReachable();
-    changeFile((item) => ({ ...item, state: 'ready', staged, error: undefined }));
+    changeFile((item) => ({ ...item, state: 'ready', staged, error: undefined, progress: undefined }));
   } catch (cause) {
     if (cause instanceof NetworkError) reportUnreachable();
-    changeFile((item) => ({ ...item, state: 'failed', error: uploadError(cause), offline: cause instanceof NetworkError || undefined }));
+    changeFile((item) => ({ ...item, state: 'failed', error: uploadError(cause), offline: cause instanceof NetworkError || undefined, progress: undefined }));
   }
 }
 

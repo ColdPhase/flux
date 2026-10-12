@@ -128,6 +128,17 @@ is retained on the device; partition it by account/workspace and clear sensitive
 cached data on logout. Recheck server permissions when reconnecting or following
 a deep link. Handle storage eviction and service-worker/schema upgrades explicitly.
 
+**First-install update identity, 2026-10-11 (#380 bounded repair).** Actual WebKit
+registration at `216f0018` briefly exposed its first installed worker as both
+`registration.waiting` and the current controller, then activated it. The earlier
+installed-plus-controller predicate falsely announced an update over phone
+controls. The peer-accepted correction offers only an installed actual waiting
+worker distinct from the current controller; stale waiting announcements clear
+when that worker leaves waiting. Existing waiting updates, genuine changed-version
+updates in each tab, explicit one-time Reload and draft preservation remain
+required in Chromium and WebKit. No worker blocking or visual token change is
+part of this correction.
+
 ## Push, privacy and operations
 
 Ask for notification permission after a clear user action and explain the useful
@@ -349,6 +360,30 @@ the same audience as the thing it is about ([#41](https://github.com/ColdPhase/f
   the lock screen) still apply on top. The tap-time fetch and generic preview are
   part of MOB-4/MOB-7 evidence in #20, verified as described in
   [Acceptance evidence](#acceptance-evidence).
+
+### Sign-out and this device's push subscription (#461)
+
+Sign out first removes this device's browser push subscription, then sends
+`POST /api/auth/sign-out`; the server ends the session and deletes its subscriptions.
+Flux subscribes only after notification permission is `granted`, so the browser is
+asked for a subscription (`getSubscription`, `unsubscribe`) only in that state. Any
+other permission state (`default`, `denied`) goes straight to the request. The
+notifications control in Account reads its state the same way. Without `granted`, a
+subscription left by a permission revoked after subscribing is no longer reachable from
+the server once the session ends.
+
+*Observed* on 2026-10-10 in Playwright 1.62 WebKit, headless Linux, Docker (emulation;
+no Safari device was used). In isolated probes on a fresh account's Home page,
+`PushManager.getSubscription()` did not settle with notification permission `default`
+or `granted`, whether the service worker was still installing or already active. The
+page's script stopped running while the call was pending (a heartbeat timer stopped),
+and a 30-second watch saw no answer. The same call returned `null` at once in Chromium.
+On the unchanged code, the WebKit app-shell run stopped at the sign-out journey
+`test_11a` on 2026-10-11 and had to be interrupted. Safari is not observed here, and
+the reason the probes and the suite differ is not established. Flux therefore asks the
+browser for a subscription only when permission is `granted`. A granted permission that
+a browser never answers still holds sign-out, and no page-side timer can bound it,
+because a blocked page runs no timers.
 
 MOB-1 through MOB-7 are required in milestone 2 and its final acceptance report;
 track implementation in [issue #20](https://github.com/ColdPhase/flux/issues/20).

@@ -50,7 +50,8 @@ within `^[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,199}$`; OpenRouter's `:online` variants
 provider-hosted web search, are refused.
 
 Both wire formats send the same request: the Flux system prompt, one user message, the output
-bound, no tools, no streaming, no retries. The differences are the wire format only:
+bound, no tools (a `server` run with the Flux tool loop adds only the Flux tools, each request one turn: see
+[personal runs](personal-runs.md#tool-loop-f-027-ast-8-406-first-part)), no streaming, no retries. The differences are the wire format only:
 
 - Anthropic: `x-api-key`, `max_tokens`, `output_config.effort: "low"`, and for comparisons
   `output_config.format` with the answer schema; the official SDK with `maxRetries: 0` and the

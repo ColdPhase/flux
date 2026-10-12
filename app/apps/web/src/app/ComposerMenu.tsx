@@ -79,28 +79,3 @@ export function ComposerMenu({ id, options, active, onPick, onHover, trigger }: 
 export function ComposerHint(): ReactNode {
   return <span className="composer__hint">Type <kbd>@</kbd> to mention · <kbd>/</kbd> for actions</span>;
 }
-
-/**
- * The body with each "@Name" of a project member as a chip that sits on the text baseline. Longest
- * names first, so "@Ada Kowalska" never reads as "@Ada".
- */
-export function mentionNodes(body: string, people: ProjectPerson[] | null): ReactNode[] {
-  if (!people?.length || !body.includes('@')) return [body];
-  const names = [...people].sort((a, b) => b.name.length - a.name.length);
-  const escape = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const pattern = new RegExp(`(^|\\s)@(${names.map((person) => escape(person.name)).join('|')})(?![\\p{L}\\p{N}])`, 'gu');
-  const out: ReactNode[] = [];
-  let last = 0;
-  for (const match of body.matchAll(pattern)) {
-    const lead = match[1]!;
-    const start = match.index! + lead.length;
-    const person = names.find((item) => item.name === match[2]);
-    if (start > last) out.push(body.slice(last, start));
-    out.push(<span key={start} className={`mention${person?.kind === 'agent' ? ' mention--agent' : ''}`} data-mention={person?.kind}>
-      {person?.kind === 'agent' ? <Kreska size={14} className="mention__k" /> : null}@{match[2]}</span>);
-    last = start + 1 + match[2]!.length;
-  }
-  if (!out.length) return [body];
-  if (last < body.length) out.push(body.slice(last));
-  return out;
-}

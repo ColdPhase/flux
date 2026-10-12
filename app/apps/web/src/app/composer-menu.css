@@ -19,7 +19,3 @@
 .composer__hint kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 4px; border-radius: 5px; background: var(--sub); color: var(--t2); font: 500 11px/1 var(--mono); box-shadow: inset 0 -1px 0 var(--line2); }
 @media (max-width: 640px) { .composer__hint { display: none; } }
 
-/* A mention in a message: a chip that sits on the text baseline instead of lifting the line. */
-.mention { display: inline; padding: 1px 6px; border-radius: 6px; background: var(--sub); box-decoration-break: clone; -webkit-box-decoration-break: clone; font-weight: 500; }
-.mention__k { display: inline-block; width: 14px; height: 14px; margin-right: 4px; vertical-align: -.2em; }
-.is-mine > p .mention { background: color-mix(in srgb, currentColor 16%, transparent); color: inherit; }

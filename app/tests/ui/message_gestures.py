@@ -39,7 +39,7 @@ def open_message_menu(message: Locator, *, phone: bool) -> Locator:
     message.scroll_into_view_if_needed()
     page = message.page
     if phone:
-        bubble = message.locator(":scope > p")
+        bubble = message.locator(".message-bubble > p")
         target = bubble if bubble.count() else message
         target.scroll_into_view_if_needed()
         long_press(target)

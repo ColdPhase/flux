@@ -74,11 +74,63 @@
 .wd-finding--negative svg { color: var(--t2); }
 .wd-finding--positive svg { color: var(--t1); }
 .wd-was { color: var(--t3); text-decoration: line-through; text-decoration-color: var(--line2); }
-.wd-blocker { display: flex; align-items: center; gap: 6px; margin-top: 10px; font-size: var(--fs-md); color: var(--t2); }
 .wd-controls { display: grid; grid-template-columns: max-content minmax(0, 1fr); align-items: center; gap: 8px 12px; margin: 18px 0 0; padding: 0; border: 0; min-width: 0; }
 .wd-controls label { font-size: var(--fs-sm); color: var(--t3); }
 .wd-controls select, .wd-form select { width: 100%; min-height: var(--ctl); padding: 0 8px; border: 0; border-radius: var(--r); background: var(--el); color: var(--t1); font-size: var(--fs-md); box-shadow: inset 0 0 0 1px var(--line2); }
 .wd-blocker-form { grid-column: 1 / -1; display: flex; align-items: flex-end; gap: 8px; }
+
+/* ---------- The task panel (F-026 S4, S9, S10, P10): rows, a blocker card, Results, Activity ---------- */
+.wd-where { margin: 4px 0 0; color: var(--t3); font-size: var(--fs-sm); }
+.wd .wd-title { margin: 6px 0 12px; }
+.wd-title__text, .wd-title__field {
+  display: block; width: calc(100% + 16px); margin: 0 -8px; padding: 2px 8px; border-radius: var(--r-sm);
+  font: inherit; letter-spacing: inherit; line-height: inherit; color: inherit; text-align: left; overflow-wrap: anywhere;
+}
+.wd-title__text { cursor: text; }
+.wd-title__text:hover { background: var(--hov); }
+.wd-title__field { resize: none; overflow: hidden; border: 0; background: var(--bg); box-shadow: inset 0 0 0 1.5px var(--t1); outline: none; }
+.wd-rows { margin: 14px 0 0; border-radius: var(--r-card); background: var(--bg); box-shadow: inset 0 0 0 1px var(--line); }
+.ui-sheet .wd-rows { background: var(--sub); box-shadow: none; }
+.wd-row { display: grid; grid-template-columns: 88px minmax(0, 1fr); align-items: center; gap: 12px; min-height: 44px; padding: 4px 14px; }
+.wd-row + .wd-row { border-top: 1px solid var(--line); }
+.wd-row dt { color: var(--t3); font-size: var(--fs-sm); }
+.wd-row dt label { color: inherit; }
+.wd-row dd { display: flex; align-items: center; gap: 8px; min-width: 0; margin: 0; font-size: var(--fs-md); overflow-wrap: anywhere; }
+.wd-from { flex-wrap: wrap; }
+.wd-from .wd-links { width: 100%; }
+.wd-from .wd-link { width: 100%; margin: 0; min-height: 32px; padding: 2px 0; }
+.wd-value { display: inline-flex; align-items: center; gap: 8px; }
+.wd-owner { flex: 1; min-width: 0; min-height: 36px; padding: 0 8px; margin-left: -8px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--t1); font: inherit; cursor: pointer; }
+.wd-owner:hover { background: var(--hov); }
+.wd-owner:focus-visible { outline: 2px solid var(--t1); outline-offset: -2px; }
+.wd-menu { position: relative; }
+.wd-state { display: inline-flex; align-items: center; gap: 8px; min-height: 34px; margin-left: -8px; padding: 0 8px; border-radius: var(--r-sm); font: inherit; color: var(--t1); }
+.wd-state:hover, .wd-state[aria-expanded="true"] { background: var(--hov); }
+.wd-state__go { color: var(--t3); }
+.wd-menu__list {
+  position: absolute; z-index: 5; left: -8px; top: calc(100% + 4px); min-width: 220px; padding: 6px; border-radius: var(--r-card);
+  background: var(--el); box-shadow: var(--sh-pop);
+}
+.wd-menu__item { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 38px; padding: 0 10px; border-radius: var(--r-sm); font-size: var(--fs-md); text-align: left; }
+.wd-menu__item span { flex: 1; }
+.wd-menu__item:hover, .wd-menu__item:focus-visible { background: var(--sub); outline: none; }
+.wd-menu__item[aria-checked="true"] { font-weight: 600; }
+.wd-menu__item kbd { min-width: 20px; height: 20px; border-radius: 6px; background: var(--sub); color: var(--t2); font: 600 var(--fs-xs)/20px var(--mono); text-align: center; }
+.wd-pills { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; width: 100%; }
+.wd-pill { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 16px; border-radius: var(--r-pill); background: var(--el); color: var(--t1); font-size: var(--fs-md); box-shadow: var(--sh-card); }
+.wd-pill[aria-checked="true"] { background-color: var(--inv); background-image: var(--grad-inv); color: var(--oninv); box-shadow: none; }
+.wd-pill[aria-checked="true"] .ui-glyph { color: var(--oninv); }
+.wd-pill[aria-checked="true"] .ui-glyph__knock { fill: var(--inv); }
+.wd-pill[aria-checked="true"] .ui-glyph__knock-line { stroke: var(--inv); }
+.wd-row:has(.wd-pills) { grid-template-columns: 1fr; padding: 10px 14px; }
+.wd-row:has(.wd-pills) dt { display: none; }
+.wd-blocker { margin-top: 14px; padding: 14px 16px; border-radius: var(--r-card); background: var(--sub); }
+.wd-blocker__head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.wd-blocker__resolve { margin-right: -10px; }
+.wd-blocker-form { margin-top: 10px; }
+.wd-blocker p { margin: 10px 0 0; font-size: var(--fs-md); }
+.wd-sechead { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.wd-sechead h4 { margin: 0; }
 .wd-blocker-form .ui-field { flex: 1; }
 .wd-dl { margin-top: 16px; }
 .wd-links { list-style: none; margin: 0; padding: 0; }
@@ -153,6 +205,9 @@ button.wd-link:active:not(:disabled) { background: var(--sub); transform: scale(
   .ws-seg span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .ws-add .ui-btn { padding: 0 12px; }
 }
+/* The message is only as wide as its own author line and bubble on a touch screen, so the bubble sits at its own
+   width instead of floating at a fixed 260px measure beside a short message (#189). */
+@media (hover: none) { .project-convo__message { min-width: 0; } }
 /* A wider task or decision chip under a short bubble does not widen the message either: the chips take
    the message's own width (at least a readable 200px) and shorten their titles. */
 .msg-touch .ws-attach { contain: inline-size; align-self: stretch; min-width: min(100%, 200px); }
@@ -248,6 +303,7 @@ button.wd-link:active:not(:disabled) { background: var(--sub); transform: scale(
 .wd-discussion { display: flex; flex-direction: column; gap: 4px; margin: 0 -8px; padding: 8px; border-radius: var(--r-sm); color: var(--t1); text-decoration: none; transition: var(--tr); }
 .wd-discussion:hover { background: var(--hov); }
 .wd-discussion__who { font-size: var(--fs-xs); color: var(--t3); }
+.wd-discussion__author { display: block; margin-top: 8px; }
 .wd-discussion__who b { font-weight: 550; color: var(--t1); }
 .wd-discussion__body { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; font-size: var(--fs-md); line-height: 1.5; overflow-wrap: anywhere; }
 .wd-discussion__more { display: inline-flex; align-items: center; gap: 4px; font-size: var(--fs-xs); color: var(--t2); }
@@ -261,3 +317,22 @@ button.wd-link:active:not(:disabled) { background: var(--sub); transform: scale(
 .wd-discussion-form textarea:focus-visible { outline: none; box-shadow: inset 0 0 0 1px var(--t1); }
 .wd-discussion-form .wd-actions { margin-top: 0; }
 @media (pointer: coarse) { .wd-discussion { min-height: 44px; } }
+
+/* References to Flux objects under a message are cards (#348, F-026 §6): the object icon, the kind,
+   the title and its state. */
+.message-bubble .ws-attach { flex-direction: column; flex-wrap: nowrap; width: min(100%, 460px); }
+.message-bubble .ws-attach > .ws-chip { display: grid; grid-template-columns: 32px auto minmax(0, 1fr) auto; grid-template-rows: auto auto; align-items: center; gap: 1px 6px; width: 100%; min-height: 52px; padding: 8px 12px 8px 8px; border-radius: var(--r); background: var(--sub); box-shadow: none; }
+.message-bubble .ws-attach > .ws-chip:hover { background: var(--hov); }
+.message-bubble .ws-attach > .ws-chip > svg { grid-column: 1; grid-row: 1 / span 2; align-self: center; justify-self: center; box-sizing: content-box; padding: 8px; margin: 0 2px 0 -2px; border-radius: 10px; background: var(--el); color: var(--t1); }
+.message-bubble .ws-attach > .ws-chip::before { grid-column: 2 / 4; grid-row: 1; font-size: 10px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--t3); }
+.message-bubble .ws-attach > .ws-chip[data-work-kind="work"]::before { content: "Task"; }
+.message-bubble .ws-attach > .ws-chip[data-work-kind="decision"]::before { content: "Decision"; }
+.message-bubble .ws-attach > .ws-chip[data-work-kind="result"]::before { content: "Result"; }
+.message-bubble .ws-attach > .ws-chip > .ws-chip__num { grid-column: 2; grid-row: 2; color: var(--t1); font-weight: 600; }
+.message-bubble .ws-attach > .ws-chip > .ws-chip__t { grid-column: 2 / 4; grid-row: 2; white-space: nowrap; font-weight: 600; }
+.message-bubble .ws-attach > .ws-chip > .ws-chip__num + .ws-chip__t { grid-column: 3; }
+.message-bubble .ws-attach > .ws-chip > .ws-chip__k { grid-column: 4; grid-row: 1 / span 2; max-width: 16ch; text-align: right; white-space: normal; }
+@media (max-width: 760px) {
+  .message-bubble .ws-attach { width: 100%; }
+  .message-bubble .ws-attach > .ws-chip > .ws-chip__t { white-space: normal; overflow-wrap: anywhere; }
+}
