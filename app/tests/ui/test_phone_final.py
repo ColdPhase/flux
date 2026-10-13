@@ -1,12 +1,13 @@
 """The final phone shell (#341, F-026 §4 Phone and S2): Home · Projects · Inbox with a round Search, one
 floating "+", the view menu in the title, and conversations without the tab bar.
 
-Real authenticated browser and API data in Chromium with touch emulation, at 390 x 844 and 320 x 568,
-in light and dark. Gestures are real touch taps.
+Real authenticated browser and API data with touch emulation, at 390 x 844 and 320 x 568, in light and
+dark. Gestures are real touch taps. FLUX_UI_BROWSER selects chromium (default) or webkit.
 """
 from __future__ import annotations
 
 import json
+import os
 import re
 import unittest
 import uuid
@@ -17,6 +18,9 @@ from test_app_shell import ORIGIN, UPSTREAM, shot, start_forwarder
 
 SIZES = ({"width": 390, "height": 844}, {"width": 320, "height": 568})
 PASSWORD = "phones deserve room to work"
+UI_BROWSER = os.environ.get("FLUX_UI_BROWSER", "chromium")
+if UI_BROWSER not in ("chromium", "webkit"):
+    raise ValueError(f"FLUX_UI_BROWSER must be chromium or webkit, got {UI_BROWSER!r}")
 
 
 class PhoneFinal(unittest.TestCase):
@@ -25,7 +29,7 @@ class PhoneFinal(unittest.TestCase):
         if UPSTREAM:
             start_forwarder(ORIGIN, UPSTREAM)
         cls.pw = sync_playwright().start()
-        cls.browser = cls.pw.chromium.launch()
+        cls.browser = getattr(cls.pw, UI_BROWSER).launch()
         expect.set_options(timeout=8000)
         cls.kai_email = f"kai-{uuid.uuid4()}@example.test"
         kai = cls.browser.new_context(base_url=ORIGIN)
@@ -198,6 +202,48 @@ class PhoneFinal(unittest.TestCase):
         page.get_by_role("dialog", name="Create").get_by_role("button", name=re.compile("^Thought")).click()
         expect(page).to_have_url(f"{ORIGIN}/map")
         expect(page.get_by_label("Private note", exact=True)).to_be_focused()
+
+    def test_04b_create_decision_and_file_or_link_start_those_things_in_the_chosen_project(self):
+        page = self.page(SIZES[0])
+        base = f"/api/v1/projects/{self.project['id']}"
+        # Decision: "Propose a decision" opens on the project, and proposing it records the decision.
+        page.goto("/inbox")
+        page.get_by_role("button", name="Create", exact=True).click()
+        sheet = page.get_by_role("dialog", name="Create")
+        sheet.get_by_label("Project").select_option(self.project["id"])
+        sheet.get_by_role("button", name=re.compile("^Decision")).click()
+        expect(page).to_have_url(f"{ORIGIN}/projects/{self.project['id']}")
+        expect(page.get_by_role("heading", name="Propose a decision")).to_be_visible()
+        form = page.locator("form").filter(has=page.get_by_role("heading", name="Propose a decision"))
+        title = f"Probes stay on the north beds {uuid.uuid4().hex[:6]}"
+        form.get_by_label("Decision", exact=True).fill(title)
+        form.get_by_role("button", name="Propose decision").click()
+        expect(page.get_by_role("heading", name=title)).to_be_visible()
+        decisions = self.call(page, "GET", f"{base}/decisions?limit=100")["items"]
+        self.assertIn(title, [item["title"] for item in decisions])
+        # File or link: the picker opens inside the tap; the file joins the project's message draft and sends.
+        page.goto("/projects")
+        page.get_by_role("button", name="Create", exact=True).click()
+        sheet = page.get_by_role("dialog", name="Create")
+        sheet.get_by_label("Project").select_option(self.project["id"])
+        name = f"bed-map-{uuid.uuid4().hex[:6]}.txt"
+        with page.expect_file_chooser() as chooser:
+            sheet.get_by_role("button", name=re.compile("^File or link")).click()
+        chooser.value.set_files({"name": name, "mimeType": "text/plain", "buffer": b"north beds: probes 1-6"})
+        expect(page).to_have_url(f"{ORIGIN}/projects/{self.project['id']}")
+        expect(page.get_by_role("dialog", name="Create")).to_have_count(0)
+        draft = page.get_by_role("list", name="Files in your draft")
+        expect(draft).to_contain_text(name)
+        expect(draft).to_contain_text("Ready, private")
+        field = page.get_by_label("Write a message", exact=True)
+        expect(field).to_be_focused()
+        field.fill("The bed map, with the probe numbers")
+        page.get_by_role("button", name="Send message").click()
+        expect(page.get_by_role("link", name=re.compile(re.escape(name))).first).to_be_visible()
+        roots = self.call(page, "GET", f"{base}/conversation-roots?limit=20")["roots"]
+        sent = [root["message"] for root in roots if root["message"]["body"] == "The bed map, with the probe numbers"]
+        self.assertEqual(len(sent), 1)
+        self.assertEqual([item["name"] for item in sent[0].get("files", [])], [name])
 
     # ------------------------------------------------------------------ AC-3
 

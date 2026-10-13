@@ -164,13 +164,16 @@ function AppLayoutContent() {
     const open = params.get('open') ?? '';
     const match = /^(work|decision|result):([0-9a-f-]{36})$/i.exec(open);
     const people = open === 'people' && /^\/projects\/[^/]+/.test(location.pathname);
-    if (!match && !people) return;
+    // The phone's "+" Create → Decision (F-026 S2) opens "Propose a decision" on its project.
+    const propose = open === 'propose-decision' && projectId ? projectId : null;
+    if (!match && !people && !propose) return;
     openedAt.current = location.key;
     params.delete('open');
     const search = params.toString();
     navigate({ pathname: location.pathname, search: search ? `?${search}` : '', hash: location.hash }, { replace: true, defaultShouldRevalidate: false });
-    shell.openDetails(match ? { kind: match[1]!.toLowerCase() as 'work' | 'decision' | 'result', id: match[2]!.toLowerCase() } : { kind: 'overview', focus: 'people' });
-  }, [location.key, location.search, location.pathname, location.hash, navigate, shell]);
+    shell.openDetails(match ? { kind: match[1]!.toLowerCase() as 'work' | 'decision' | 'result', id: match[2]!.toLowerCase() }
+      : propose ? { kind: 'propose-decision', projectId: propose } : { kind: 'overview', focus: 'people' });
+  }, [location.key, location.search, location.pathname, location.hash, navigate, shell, projectId]);
   // ⌘K / Ctrl+K opens Jump to… from anywhere, also while typing, as the sidebar hint says.
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {

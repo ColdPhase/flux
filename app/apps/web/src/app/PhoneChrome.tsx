@@ -1,7 +1,8 @@
-import { useId, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { Link } from 'react-router';
 import { Avatar, BottomNav, FluxLogo, Icon, IconButton, Overlay, type BottomNavItem, type IconName } from '../ui';
-import type { ProjectSummary } from './data';
+import { handFilesToComposer } from '../composer/handoff';
+import { useShellData, type ProjectSummary } from './data';
 
 /**
  * The phone's chrome (F-026 §4 Phone, S2): one floating tab capsule Home · Projects · Inbox with a
@@ -119,25 +120,47 @@ export function PhoneHomeLead() {
 interface Tile { id: string; label: string; icon: IconName; run: (() => void) | null; hint?: string }
 
 /**
- * "+" Create (F-026 S2): Task, Thought, Message, Decision, File or link, Sketch. Until the full Create
- * window (#345) lands, each tile opens the place where that thing is made today; the project the
- * thing belongs to is the one you are in, or the one chosen here.
+ * "+" Create (F-026 S2): Task, Thought, Message, Decision, File or link, Sketch. Each tile starts that
+ * thing where it is made, in the project you are in or the one chosen here: Task opens a new task,
+ * Decision the "Propose a decision" sheet, and File or link the file picker inside the tap; the picked
+ * files join the project's message draft (a cancelled picker leaves the composer ready for a link).
  */
 export function PhoneCreate({ open, onClose, projects, projectId, go, onThought }: {
   open: boolean; onClose: () => void; projects: ProjectSummary[]; projectId: string | undefined;
   go: (to: string) => void; onThought: () => void;
 }) {
   const titleId = useId();
+  const { me } = useShellData();
   const [picked, setPicked] = useState<string | null>(null);
   const chosen = projects.find((project) => project.id === (picked ?? projectId)) ?? projects[0];
   const to = (path: string | null) => (path ? () => { onClose(); go(path); } : null);
   const inProject = chosen ? `/projects/${chosen.id}` : null;
+  // The picker must open within the tap (WebKit refuses it later), so the sheet holds the file input.
+  const fileInput = useRef<HTMLInputElement>(null);
+  const fileTarget = useRef<{ projectId: string; path: string } | null>(null);
+  const toComposer = (files: File[]) => {
+    const target = fileTarget.current;
+    fileTarget.current = null;
+    if (!target) return;
+    handFilesToComposer(me.user.id, target.projectId, files);
+    onClose(); go(`${target.path}?compose=${files.length ? 'files' : 'link'}`);
+  };
+  const toComposerRef = useRef(toComposer);
+  toComposerRef.current = toComposer;
+  useEffect(() => {
+    const input = fileInput.current;
+    if (!input) return;
+    const cancelled = () => toComposerRef.current([]);
+    input.addEventListener('cancel', cancelled);
+    return () => input.removeEventListener('cancel', cancelled);
+  }, [open]);
   const tiles: Tile[] = [
     { id: 'task', label: 'Task', icon: 'plus', run: to(inProject && `${inProject}/tasks?new=task`), hint: 'needs a project' },
     { id: 'thought', label: 'Thought', icon: 'edit', run: () => { onClose(); onThought(); } },
     { id: 'message', label: 'Message', icon: 'chat', run: to('/dm/new') },
-    { id: 'decision', label: 'Decision', icon: 'rule', run: to(inProject), hint: 'needs a project' },
-    { id: 'file', label: 'File or link', icon: 'clip', run: to(inProject), hint: 'needs a project' },
+    { id: 'decision', label: 'Decision', icon: 'rule', run: to(inProject && `${inProject}?open=propose-decision`), hint: 'needs a project' },
+    { id: 'file', label: 'File or link', icon: 'clip', hint: 'needs a project',
+      run: chosen && inProject ? () => { fileTarget.current = { projectId: chosen.id, path: inProject }; fileInput.current?.click(); } : null },
     { id: 'sketch', label: 'Sketch', icon: 'shape', run: to(inProject ? `${inProject}/map` : '/map') },
   ];
   return (
@@ -156,6 +179,8 @@ export function PhoneCreate({ open, onClose, projects, projectId, go, onThought 
           </label>
         ) : null}
       </div>
+      <input ref={fileInput} className="ui-vh" type="file" multiple tabIndex={-1} aria-hidden="true"
+        onChange={(event) => { const files = [...event.currentTarget.files ?? []]; event.currentTarget.value = ''; toComposer(files); }} />
       <ul className="phone-create__grid">
         {tiles.map((tile) => (
           <li key={tile.id}>
