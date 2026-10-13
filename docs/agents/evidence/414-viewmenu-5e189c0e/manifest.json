@@ -1,0 +1,97 @@
+{
+  "schema": 1,
+  "purpose": "Durable, exact-head visual evidence and independent scoped review for PR #414; does not claim complete F-026 alignment or certify interaction/accessibility.",
+  "pullRequest": "https://github.com/ColdPhase/flux/pull/414",
+  "sourceHead": "5e189c0efc26735a538f41dd54896fb231573062",
+  "sourceBranch": "claude-hubert/341-phone-shell",
+  "evidenceCommitParent": "5e189c0efc26735a538f41dd54896fb231573062",
+  "reviewer": "Fresh-context Luna evaluator, independent of screenshot capture operator",
+  "review": "visual-review.md",
+  "brief": "neutral-visual-brief.md",
+  "references": [
+    "docs/design/final/README.md#phone",
+    "docs/design/final/screens/phone-viewsmenu.webp",
+    "docs/design/final/screens/phone-projects.webp",
+    "#341 AC-3 and AC-5"
+  ],
+  "capture": {
+    "engine": "Chromium in Docker Playwright UI runner",
+    "command": "./scripts/check_ui.sh test_phone_final test_phone_shell",
+    "result": "Ran 27 tests; 27 passed, 0 failed.",
+    "scenario": "Project Tasks view with the title menu open, realistic task content, at 390x844 and 320x568 CSS px, 100% zoom, light and dark.",
+    "deviceScaleFactor": 2,
+    "cleanup": "Runner cleanup completed; no owned Compose resources remain."
+  },
+  "otherExactHeadEvidence": [
+    {
+      "kind": "browser",
+      "engine": "WebKit in Docker Playwright UI runner",
+      "scope": "test_phone_final",
+      "result": "11/11 passed",
+      "reuse": "Existing exact-head run; source change only added browser selection in the test."
+    },
+    {
+      "kind": "github-check",
+      "name": "Agent setup",
+      "conclusion": "success",
+      "url": "https://github.com/ColdPhase/flux/actions/runs/38437502784/job/115435232604"
+    },
+    {
+      "kind": "github-check",
+      "name": "Application validation",
+      "conclusion": "success",
+      "url": "https://github.com/ColdPhase/flux/actions/runs/38437502844/job/115435232392"
+    }
+  ],
+  "screenshots": [
+    {
+      "source": "341-viewsmenu-390-light.png",
+      "sourceSha256": "f8112f8d152d18d4536e377e6f9e6211e813924a48d472071a4b09d9562bbd7d",
+      "stored": "screenshots/341-viewsmenu-390-light.webp",
+      "storedSha256": "5f222777acd492516de4574a1f68eaa55a895f708f33c3159cc4de7369850392",
+      "width": 390,
+      "height": 844,
+      "cssViewport": [390, 844],
+      "theme": "light",
+      "zoomPercent": 100,
+      "pixelVerifiedLossless": true
+    },
+    {
+      "source": "341-viewsmenu-390-dark.png",
+      "sourceSha256": "b3995910a8d37e47c7baf549b502c39d352c55b33a66a49d135f8e142797da8e",
+      "stored": "screenshots/341-viewsmenu-390-dark.webp",
+      "storedSha256": "f2911aed31fbe0bd90295e20594d610697292a3cf7218a994c235cb6a0cacf52",
+      "width": 390,
+      "height": 844,
+      "cssViewport": [390, 844],
+      "theme": "dark",
+      "zoomPercent": 100,
+      "pixelVerifiedLossless": true
+    },
+    {
+      "source": "341-viewsmenu-320-light.png",
+      "sourceSha256": "4003bff25283dd2e52b219b22cb0ef1aae9fb5147df1ca813e333790e5a512c1",
+      "stored": "screenshots/341-viewsmenu-320-light.webp",
+      "storedSha256": "8fe8176fd8eb98b6611d86bd42339220ea27577cca144ad5a6612c7fa1c372c6",
+      "width": 320,
+      "height": 568,
+      "cssViewport": [320, 568],
+      "theme": "light",
+      "zoomPercent": 100,
+      "pixelVerifiedLossless": true
+    },
+    {
+      "source": "341-viewsmenu-320-dark.png",
+      "sourceSha256": "0938ba337aea8f149f18840c2027d0523f960fca45112cbe491d2c7f131c0fba",
+      "stored": "screenshots/341-viewsmenu-320-dark.webp",
+      "storedSha256": "af8c442f96718009495b017df39ffeb2f9fd4aac2f92db3d805a3c8d8f89bbb6",
+      "width": 320,
+      "height": 568,
+      "cssViewport": [320, 568],
+      "theme": "dark",
+      "zoomPercent": 100,
+      "pixelVerifiedLossless": true
+    }
+  ],
+  "behavioralLimit": "Visual images alone do not establish behavior, accessibility, target geometry, or responsive transitions. Exact-head Chromium 27/27 and WebKit 11/11 browser checks are listed separately."
+}
