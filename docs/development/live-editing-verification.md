@@ -188,3 +188,64 @@ for the receiver's delayed ACK, about 40 ms, on a hop that no deployment has: br
 Node and real proxies set `TCP_NODELAY`. The forwarder now sets it on both sockets
 (`ForwarderTransport` in `tests/ui/test_live_editing.py`: 41 ms per small exchange before,
 3 ms after). The driver, thresholds, deadlines, denominators and correlations are unchanged.
+
+## Proposed trace-snapshot decision (pending independent review)
+
+The current driver starts Playwright tracing with `screenshots=True` and
+`snapshots=True`; the fixed measurement contract above requires retained traces and a
+standalone peer screenshot, but does not specify that DOM snapshots must be enabled.
+The accepted [measurement note](live-editing-proposal.md) records that, at 200 changed
+thoughts, each trace snapshot serialized the changed positions (about 125 KB per peer
+snapshot versus 9 KB for drag-1), while the driver's visibility checks already inspect and
+return all 200 positions. It also records one same-code comparison with snapshots enabled
+at 209 ms and disabled at 161 ms, and says a reduction in this measurement work is a
+driver decision. The founder's [PR #389 handoff](https://github.com/ColdPhase/flux/pull/389#issuecomment-6093931519)
+likewise says changing trace snapshots requires a separate decision.
+
+A separate, non-acceptance diagnostic on source `00d1d99cb93393c40223efe6ed5730e493b59f0f`
+kept 30 warmups and all 240 scheduled rows for `map-500-drag-200`, disabled both
+Playwright snapshots and trace screenshots, and added 5 ms CDP sampling. Its rows had no
+behavioral failures and p95 was 146.681 ms, but its one-case marker was rejected by the
+unchanged nine-case collector contract, so the collector seal was incomplete and the
+overall command exited 1. This diagnostic cannot establish a passing Gate 4 or isolate the
+effect of snapshots: it also disabled trace screenshots and added CPU profiling. Its owner
+profile nevertheless showed Playwright-injected sampling fall from 27.237 s in the earlier
+snapshots-enabled partial profile to 8.080 s in the no-snapshot diagnostic; those samples
+are observer work, not a source-level hotspot. The canonical nine-cohort run at the same
+application candidate remains **FAIL**, including map-500-drag-200 p95 237.477 ms against
+the unchanged 200 ms limit and the separate map-500-drag-50 identity failure.
+
+**Proposal only; no test-driver or acceptance change is made here.** If independently
+accepted, change only `snapshots=True` to `snapshots=False`, retain `screenshots=True` in
+the Playwright trace and the standalone screenshot, and keep every row, freshness,
+geometry, receipt, coverage, socket, paint, p95 and zero-error assertion unchanged. Do not
+subtract observer time from reported latency. Keep the canonical nine-case plan, 2,160-row
+finish marker, actual queue collector, shutdown checks and seal unchanged. The driver diff
+needs a new exact candidate pin and independent review, followed by the full canonical
+nine-cohort run and complete seal at that pin; preserve the current failed run as-is. The
+separate diagnostic above changed both trace options and therefore supports investigation,
+not this one-option change's causal effect.
+
+The supporting files remain outside the repository to avoid adding large traces and row
+artifacts to every clone. On the shared host, the diagnostic directory is
+`/home/hubert/Develop/flux-evidence-archive/flux389-profile-diagnostic-00d1d99-nosnap/`;
+the canonical failed run remains at
+`/home/hubert/Develop/flux-evidence-archive/flux389-gate4-00d1d99-current/`. Key SHA-256
+pointers:
+
+| Artifact | SHA-256 |
+| --- | --- |
+| Diagnostic 240 scheduled rows, `map-500-drag-200-rows.json` | `3299f81bdb30929bb8e78d0c960f79e2c0852f226c37519e1e15916cc8a7f837` |
+| Diagnostic owner CPU profile | `c3498dad1fdec8cb9804e2eda664fc1d9f5ae42ae098a0959ca88d2241e5b432` |
+| Diagnostic peer CPU profile | `f17cb2b1a0e9d8a946c1b2a06c6f32d0369fbe55c97890ccc3adf9c4c0407750` |
+| Diagnostic owner runtime metrics | `2e808080d85aa0bef7624645ee47956001c6acd94687ecc549a0378655117de0` |
+| Diagnostic peer runtime metrics | `2f4438ada2ff4e3a77c3ce513b0f492ab9329aa9b0919397c91f28b03adc7b35` |
+| Diagnostic cohort summary, `map-500-drag-200-summary.json` | `8b037fd14d020d9ab16ce302eda87c72ca79af21575e0e26304de39b5b8d38cd` |
+| Diagnostic whole-run summary, including the incomplete queue-seal failure | `7d7a6a4909f4576186eed22f6a0e15a6f9795aad20bc7972d5e7517a2ee944e0` |
+| Canonical Gate4 map-500/drag-200 summary (p95 237.477 ms) | `513897eeb1052e43d577c75896904c9e80ac8d654c0f58411a5eb439a663370b` |
+| Canonical Gate4 map-500/drag-200 rows | `b8633c617fd594f40fba9ee836f9517ee26c50622d0eb664378eceb03416ff49` |
+
+The author's prior separate-decision note is
+[here](https://github.com/ColdPhase/flux/pull/389#issuecomment-6093931519). The local
+analysis report and full manifest, including instrumentation hashes, remain in
+`/home/hubert/Develop/flux-evidence-archive/flux389-profile-diagnostic-manifest/`.
