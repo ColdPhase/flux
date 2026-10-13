@@ -4,7 +4,7 @@ import { request, createServer, type ServerResponse } from 'node:http';
 import { test } from 'node:test';
 import Fastify from 'fastify';
 import { createDatabase, EditingTransactionError } from '@flux/db';
-import { createProject, createWorkspace, VersionConflictError } from '@flux/core';
+import { addMember, createProject, createWorkspace, grantProject, revokeProjectGrant, VersionConflictError } from '@flux/core';
 import type { Doc, LiveMapBootstrap, Sketch, Thought } from '@flux/contracts';
 import { registerIdentity, loadIdentityConfig } from '../../apps/server/src/identity/index.js';
 import { docRoutes } from '../../apps/server/src/docs/routes.js';
@@ -172,10 +172,9 @@ test('live label conflict holds current write authority through the protected er
   expectStatus(signup, 200);
   const person = expectStatus(await grantee.request('GET', '/api/v1/me'), 200) as { user: { id: string } };
   try {
-    expectStatus(await grantor.request('POST', `/api/v1/workspaces/${f.workspace.id}/members`, { body: { email, role: 'member' } }), 201);
-    const grant = expectStatus(await grantor.request('POST', `/api/v1/projects/${f.project.id}/grants`, {
-      body: { principal: { kind: 'human', id: person.user.id }, role: 'contributor' },
-    }), 201) as { id: string };
+    const owner = { kind: 'human' as const, id: f.actorId };
+    await addMember(owner, f.workspace.id, { email }, f.database.db);
+    const grant = await grantProject(owner, f.project.id, { principal: { kind: 'human', id: person.user.id }, role: 'contributor' }, f.database.db);
     const second = expectStatus(await grantor.request('POST', `/api/v1/sketches/${f.sketch.id}/thoughts`, {
       body: { text: 'Second thought', x: 200, y: 0 },
     }), 201) as { thought: Thought };
@@ -193,7 +192,7 @@ test('live label conflict holds current write authority through the protected er
       body: { label: 'stale private draft', expectedLabel: null }, headers: { 'idempotency-key': randomUUID() },
     }).finally(() => { conflictSettled = true; });
     await finite(boundary.reached, 'The conflict must reach its current-write-authority handoff');
-    const revoke = grantor.request('DELETE', `/api/v1/projects/${f.project.id}/grants/${grant.id}`)
+    const revoke = revokeProjectGrant(owner, f.project.id, grant.id, f.database.db)
       .finally(() => { revokeSettled = true; });
     try {
       await observed(async () => (await pool.query<{ blocked: boolean }>(`SELECT EXISTS (
@@ -208,22 +207,20 @@ test('live label conflict holds current write authority through the protected er
     assert.equal(conflictResponse.code, 'LABEL_CONFLICT');
     assert.equal(conflictResponse.currentLabel, currentLabel);
     assert.equal(conflictResponse.current.label, currentLabel);
-    expectStatus(await revoke, 204);
+    await revoke;
     assert.equal((await pool.query('SELECT id FROM project_grants WHERE id=$1', [grant.id])).rowCount, 0,
       'revocation commits after the authorized conflict handoff');
 
     // Reverse ordering: revocation commits after the command rollback but before the
     // protected delivery transaction begins. The fence must refuse the stale details.
-    const replacement = expectStatus(await grantor.request('POST', `/api/v1/projects/${f.project.id}/grants`, {
-      body: { principal: { kind: 'human', id: person.user.id }, role: 'contributor' },
-    }), 201) as { id: string };
+    const replacement = await grantProject(owner, f.project.id, { principal: { kind: 'human', id: person.user.id }, role: 'contributor' }, f.database.db);
     const beforeFence = f.pauseNativeDelivery();
     const lateConflict = grantee.request('PATCH', `/api/v1/sketches/${f.sketch.id}/links/${link.id}`, {
       body: { label: 'another stale draft', expectedLabel: null }, headers: { 'idempotency-key': randomUUID() },
     });
     await finite(beforeFence.reached, 'The command rollback must reach the injected gap before current-authority reacquisition');
     try {
-      expectStatus(await grantor.request('DELETE', `/api/v1/projects/${f.project.id}/grants/${replacement.id}`), 204);
+      await revokeProjectGrant(owner, f.project.id, replacement.id, f.database.db);
     } finally { beforeFence.release(); }
     const refused = await lateConflict;
     assert.equal(refused.status, 404, refused.text);
