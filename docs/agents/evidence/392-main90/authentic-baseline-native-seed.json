@@ -1,0 +1,31 @@
+{
+  "phase": "seed",
+  "realProviderSignIn": true,
+  "unmanagedControl": true,
+  "nativeTaskConversationFile": true,
+  "realPkceFamilies": 2,
+  "original66_83_86Facts": true,
+  "observedFamilyProvenance": [
+    {
+      "method": "oidc-b70a8351b59d",
+      "providerMethodObserved": true,
+      "sidAvailable": true,
+      "confirmationRecorded": true
+    },
+    {
+      "method": "oidc-b70a8351b59d",
+      "providerMethodObserved": true,
+      "sidAvailable": true,
+      "confirmationRecorded": true
+    }
+  ],
+  "baselineQuiescence": {
+    "cursorCaughtUp": true,
+    "notificationGenerationFailures": 0,
+    "pendingEmailDeliveries": 0,
+    "activeOrDueJobs": 0
+  },
+  "sidAvailabilityNotClaimed": true,
+  "noS3Claim": true,
+  "noManufacturedSessionsTokensOrLedger": true
+}

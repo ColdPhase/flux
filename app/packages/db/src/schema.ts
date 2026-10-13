@@ -45,7 +45,7 @@ export const authUsers = pgTable('auth_users', {
   name: text('name').notNull(),
   email: text('email').notNull().unique(),
   emailVerified: boolean('email_verified').notNull().default(false),
-  /** Set on a password sign-up while sign-up is `verified` (migration 0074, #313): no password sign-in until the address is verified. */
+  /** Set on a password sign-up while sign-up is `verified` (migration 0091, #313): no password sign-in until the address is verified. */
   verificationRequired: boolean('verification_required').notNull().default(false),
   image: text('image'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -94,7 +94,7 @@ export const authVerifications = pgTable('auth_verifications', {
 }, (table) => [index('auth_verifications_identifier_idx').on(table.identifier)]);
 
 /**
- * A provider sign-in whose email is held by another account (migration 0074, #313). A pending row is the proof,
+ * A provider sign-in whose email is held by another account (migration 0091, #313). A pending row is the proof,
  * from the verified ID token, that this browser may ask to claim the address of an UNVERIFIED account; claiming
  * writes the audit trail. The token is a secret in a cookie; only its hash is stored.
  */
@@ -113,7 +113,7 @@ export const authEmailClaims = pgTable('auth_email_claims', {
 });
 
 /**
- * An explicit link of a password account to the one provider, before cutover (migration 0075, #315). Only the hash of
+ * An explicit link of a password account to the one provider, before cutover (migration 0092, #315). Only the hash of
  * the browser's token is kept; `used` marks the identity linked, and an intent is never reused.
  */
 export const authLinkIntents = pgTable('auth_link_intents', {
@@ -128,7 +128,7 @@ export const authLinkIntents = pgTable('auth_link_intents', {
   usedAt: timestamp('used_at', { withTimezone: true }),
 }, (table) => [index('auth_link_intents_user_idx').on(table.userId)]);
 
-/** Operator re-keys and provider unlinks (migration 0076, #315). Append-only; no foreign key, so it outlives accounts. */
+/** Operator re-keys and provider unlinks (migration 0093, #315). Append-only; no foreign key, so it outlives accounts. */
 export const authIdentityAudit = pgTable('auth_identity_audit', {
   id: text('id').primaryKey(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -160,6 +160,8 @@ export const authIdpStanding = pgTable('auth_idp_standing', {
   state: text('state').notNull().default('ok'),
   reason: text('reason'),
   refreshTokenEnc: text('refresh_token_enc'),
+  /** The provider session (`sid`) the stored token was issued for (migration 0085, #314). */
+  refreshTokenSid: text('refresh_token_sid'),
   confirmedAt: timestamp('confirmed_at', { withTimezone: true }),
   stateChangedAt: timestamp('state_changed_at', { withTimezone: true }).notNull().defaultNow(),
   lastCheckAt: timestamp('last_check_at', { withTimezone: true }),
@@ -168,6 +170,13 @@ export const authIdpStanding = pgTable('auth_idp_standing', {
   leaseId: text('lease_id'),
   leaseUntil: timestamp('lease_until', { withTimezone: true }),
 }, (table) => [primaryKey({ columns: [table.userId, table.providerId] })]);
+
+/** Seen back-channel logout token ids (migration 0073, #314): a `jti` is accepted once per provider until it expires. */
+export const authLogoutTokens = pgTable('auth_logout_tokens', {
+  providerId: text('provider_id').notNull(),
+  jti: text('jti').notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+}, (table) => [primaryKey({ columns: [table.providerId, table.jti] }), index('auth_logout_tokens_expires_idx').on(table.expiresAt)]);
 
 // Better Auth MCP/OAuth provider models (migration 0009).
 export const jwks = pgTable("jwks", {
@@ -1783,6 +1792,7 @@ export const githubTaskRules = pgTable('github_task_rules', {
   expectedVersion: integer('expected_version').notNull(), expectedStatus: text('expected_status', { enum: WORK_STATUS }).notNull(),
   expectedBlocker: text('expected_blocker'), blockedBy: text('blocked_by', { enum: ['check', 'closed'] }),
   readyToClose: boolean('ready_to_close').notNull().default(false),
+  revision: integer('revision').notNull().default(1),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [foreignKey({ columns: [t.workspaceId, t.projectId, t.taskId], foreignColumns: [projectWorkItems.workspaceId, projectWorkItems.projectId, projectWorkItems.id] }).onDelete('cascade')]);
 export const githubTaskRuleChanges = pgTable('github_task_rule_changes', {

@@ -253,6 +253,21 @@ export interface CreateLinkCommand {
   label?: string | null;
 }
 
+/** Changes only an existing connection's label; an empty or blank label clears it. */
+export interface UpdateLinkLabelCommand {
+  label: string | null;
+  /** The label last read by the caller. Required; a changed label answers 409. */
+  expectedLabel: string | null;
+}
+
+/** Nothing changed. Show the current label before offering another save. */
+export interface LinkLabelConflict {
+  error: string;
+  code: 'LABEL_CONFLICT';
+  currentLabel: string | null;
+  current: ThoughtLink;
+}
+
 /** Where a promotion copies the sketch: a new restricted project, or an existing project the caller can change. */
 export type PromotionTarget = { kind: 'new'; name: string } | { kind: 'existing'; projectId: string };
 

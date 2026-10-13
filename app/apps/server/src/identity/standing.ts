@@ -1,5 +1,5 @@
 import { createCipheriv, createDecipheriv, hkdfSync, randomBytes, randomUUID } from 'node:crypto';
-import { idpStandingRepository, type IdpCheckResult, type IdpStandingClaim } from '@flux/db';
+import { idpLogoutRepository, idpStandingRepository, type IdpCheckResult, type IdpStandingClaim } from '@flux/db';
 import type { Database } from '@flux/core';
 import type { OidcConfig } from './config.js';
 
@@ -48,16 +48,37 @@ export function signInAgainMessage(label: string): string {
   return `Sign in again with ${safe || 'your identity provider'}.`;
 }
 
+function idTokenPayload(token: string): Record<string, unknown> | null {
+  try {
+    const value: unknown = JSON.parse(Buffer.from(token.split('.')[1] ?? '', 'base64url').toString('utf8'));
+    return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null;
+  } catch { return null; }
+}
+
 type Fetch = (url: string, init: { method?: string; headers?: Record<string, string>; body?: string; signal: AbortSignal }) =>
   Promise<{ ok: boolean; status: number; json(): Promise<unknown> }>;
 
-interface ProviderEndpoints { token: string; revocation: string | null }
+interface ProviderEndpoints { token: string; revocation: string | null; authorization: string | null }
+
+/** What the silent offline-access step of a provider sign-in brought back (S1, revised 2026-10-09). */
+export type OfflineGrant = { refreshToken: string; subject: string; sid?: string } | { error: string };
 
 export interface StandingLog { info(object: object, message: string): void; warn(object: object, message: string): void; error(object: object, message: string): void }
 
 export interface IdpStanding {
-  /** Stores a provider sign-in's refresh token and clears sign-in required; revokes the token it replaces. */
-  recordSignIn(userId: string, refreshToken: string): Promise<void>;
+  /**
+   * Stores a provider sign-in's refresh token with the provider session (`sid`) it belongs to and clears sign-in
+   * required. The token it replaces is revoked only when no live browser session carries that token's sid.
+   */
+  recordSignIn(userId: string, refreshToken: string, sid?: string): Promise<void>;
+  /** The provider's authorization URL for the silent offline-access step of a sign-in; null when discovery fails. */
+  offlineAuthorizationUrl(request: { state: string; nonce: string; challenge: string; redirectUri: string }): Promise<string | null>;
+  /** Redeems the silent step's code as Flux's client and checks the ID token that comes with it. */
+  redeemOffline(request: { code: string; verifier: string; redirectUri: string; nonce: string }): Promise<OfflineGrant>;
+  /** Back-channel logout (S3): asks the checker to look at these people now rather than at their next interval. */
+  checkSoon(userIds: string[]): Promise<void>;
+  /** The provider revoked offline access (S3): deletes the stored token, revokes it at the provider, sign-in required. */
+  revokeOffline(userIds: string[]): Promise<void>;
   /** The state every gate reads: false while any of the person's identities is in sign-in required. */
   stands(userId: string): Promise<boolean>;
   /** One pass of the checker: leases due identities and asks the provider about each. Returns how many it checked. */
@@ -88,6 +109,7 @@ export function createIdpStanding(options: IdpStandingOptions): IdpStanding {
   const { oidc, log, fetcher = fetch as unknown as Fetch, now = () => new Date(), timeoutMs = 10_000, batch = 20, concurrency = 4, retryMs = 60_000 } = options;
   const leaseMs = options.leaseMs ?? timeoutMs * 3;
   const rows = idpStandingRepository(options.db);
+  const logout = idpLogoutRepository(options.db);
   const key = sealKey(options.authSecret);
   let endpoints: { at: number; value: Promise<ProviderEndpoints | null> } | null = null;
 
@@ -99,7 +121,8 @@ export function createIdpStanding(options: IdpStandingOptions): IdpStanding {
           if (!response.ok) return null;
           const document = await response.json() as Record<string, unknown> | null;
           if (typeof document?.token_endpoint !== 'string') return null;
-          return { token: document.token_endpoint, revocation: typeof document.revocation_endpoint === 'string' ? document.revocation_endpoint : null };
+          return { token: document.token_endpoint, revocation: typeof document.revocation_endpoint === 'string' ? document.revocation_endpoint : null,
+            authorization: typeof document.authorization_endpoint === 'string' ? document.authorization_endpoint : null };
         } catch { return null; }
       })() };
     }
@@ -162,11 +185,56 @@ export function createIdpStanding(options: IdpStandingOptions): IdpStanding {
   let timer: NodeJS.Timeout | null = null;
   let running = false;
   const self: IdpStanding = {
-    async recordSignIn(userId, refreshToken) {
+    async recordSignIn(userId, refreshToken, sid) {
       const at = now();
-      const previous = await rows.record(userId, oidc.providerId, sealToken(key, userId, oidc.providerId, refreshToken), at, new Date(at.getTime() + oidc.standingIntervalMs));
-      const old = previous ? openToken(key, userId, oidc.providerId, previous) : null;
-      if (old && old !== refreshToken) await revoke(old);
+      const previous = await rows.record(userId, oidc.providerId, sealToken(key, userId, oidc.providerId, refreshToken), sid ?? null, at, new Date(at.getTime() + oidc.standingIntervalMs));
+      const old = previous ? openToken(key, userId, oidc.providerId, previous.token) : null;
+      if (!previous || !old || old === refreshToken) return;
+      // Keycloak's revocation also takes Flux out of the online session of the token's sid, which would end that
+      // browser session's back-channel logout. So a replaced token is revoked only when it belongs to another
+      // provider session that no live Flux browser session carries; otherwise it is forgotten and the provider's
+      // offline idle limit ends it (S4 AC-1, revised 2026-10-09).
+      if (previous.sid && previous.sid !== sid && !await rows.sessionCarries(userId, oidc.providerId, previous.sid, at)) await revoke(old);
+    },
+    async offlineAuthorizationUrl({ state, nonce, challenge, redirectUri }) {
+      const found = await discover();
+      if (!found?.authorization) return null;
+      const url = new URL(found.authorization);
+      const params = { response_type: 'code', client_id: oidc.clientId, redirect_uri: redirectUri, scope: 'openid offline_access',
+        prompt: 'none', state, nonce, code_challenge: challenge, code_challenge_method: 'S256' };
+      for (const [name, value] of Object.entries(params)) url.searchParams.set(name, value);
+      return url.toString();
+    },
+    async redeemOffline({ code, verifier, redirectUri, nonce }) {
+      const found = await discover();
+      if (!found) return { error: 'provider_unreachable' };
+      try {
+        const response = await fetcher(found.token, { ...form({ grant_type: 'authorization_code', code, redirect_uri: redirectUri, code_verifier: verifier }), signal: AbortSignal.timeout(timeoutMs) });
+        const body = await response.json().catch(() => null) as Record<string, unknown> | null;
+        if (!response.ok || !body) return { error: typeof body?.error === 'string' ? `token_${body.error}`.slice(0, 100) : `token_status_${response.status}` };
+        // The ID token comes straight from the token endpoint, authenticated as Flux's client, so (OIDC Core
+        // §3.1.3.7, item 6) its issuer, audience and nonce are checked without the signature.
+        const claims = typeof body.id_token === 'string' ? idTokenPayload(body.id_token) : null;
+        const audience = claims ? [claims.aud].flat() : [];
+        if (!claims || typeof claims.iss !== 'string' || claims.iss.replace(/\/$/, '') !== oidc.issuer || !audience.includes(oidc.clientId)
+          || claims.nonce !== nonce || typeof claims.sub !== 'string' || !claims.sub) return { error: 'invalid_id_token' };
+        if (typeof body.refresh_token !== 'string' || !body.refresh_token) return { error: 'no_refresh_token' };
+        return { refreshToken: body.refresh_token, subject: claims.sub, ...(typeof claims.sid === 'string' && claims.sid && claims.sid.length <= 512 ? { sid: claims.sid } : {}) };
+      } catch {
+        return { error: 'provider_unreachable' };
+      }
+    },
+    async checkSoon(userIds) {
+      await logout.dueNow(oidc.providerId, userIds, now());
+      // Not awaited by the logout response: the provider is waiting for a 200, not for our check.
+      void self.runOnce().catch((error) => log.error({ error }, 'Standing check after back-channel logout failed'));
+    },
+    async revokeOffline(userIds) {
+      for (const userId of userIds) {
+        const sealed = await logout.dropToken(oidc.providerId, userId, now());
+        const token = sealed ? openToken(key, userId, oidc.providerId, sealed) : null;
+        if (token) await revoke(token);
+      }
     },
     stands: async (userId) => !await rows.refuses(userId),
     async reconcile(at = now()) {

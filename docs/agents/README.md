@@ -2,8 +2,8 @@
 
 Two agents, Codex/Hubert and Claude/Maurycy, share the product foundation,
 skills, and GitHub milestones. Each founder runs one `/goal` session;
-[start here](startup.md). The Flux application is still an exploratory HTML
-prototype.
+[start here](startup.md). Delivery means the working application and its verified
+release, measured against accepted milestone outcomes.
 
 ```mermaid
 flowchart TD
@@ -24,8 +24,7 @@ flowchart TD
 The [delegation](../product/autonomy.md) authorizes decisions and the complete
 application. Planning and implementation milestones overlap, and agents create
 further milestones. No human acceptance is required. Agents create useful issues,
-agree short criteria, implement agreed work in small PRs (at most three open
-implementation PRs each),
+agree short criteria, finish agreed work within the [WIP limit](workflow.md#3-select-work),
 and evaluate the other's changes. Roles can
 alternate; there is no fixed provider-to-frontend/backend assignment.
 
@@ -64,6 +63,10 @@ Records: [milestone brief](templates/milestone.md),
 [evaluation](templates/evaluation.md), [task form](../../.github/ISSUE_TEMPLATE/task.yml).
 
 ## References
+
+The [2026-10-11 delivery audit](delivery-audit-2026-10-11.md) records the queue,
+testing and Docker observations behind the current verification and WIP policy,
+with remaining runner improvements separated from implemented instructions.
 
 [Anthropic's harness article](https://www.anthropic.com/engineering/harness-design-long-running-apps)
 informed independent evaluation and durable handoffs.

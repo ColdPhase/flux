@@ -105,6 +105,13 @@ listed below.
 | **Visible failure** | A tool failure returns `isError: true` with a stable `code`. The documented codes are `MCP_SCOPE_REQUIRED`, `AGENT_EXECUTION_UNAVAILABLE`, `VERSION_CONFLICT`, `SOURCE_VERSION_CONFLICT`, `TASK_PREREQUISITES_UNMET`, `PLAYBOOK_VERSION_MISMATCH`, `IDEMPOTENCY_CONFLICT`, `RUNTIME_UNAVAILABLE`, `INVALID_INPUT`, the co-work `COWORK_UNIT_TAKEN`, `COWORK_CLAIM_LOST`, `COWORK_CONNECTION_BUSY`, `COWORK_TASK_CLOSED` and `COWORK_UNIT_REQUESTS_OPEN` (named by playbook 1.3.0, #153) and the generic `MCP_TOOL_UNAVAILABLE`. A missing or invalid token gets 401 with the resource metadata challenge. A revoked connection or a disabled client gets 403. In Flux, a project's **Agents** view shows each connection's state and its last action. The state is session open, offline, not signed in yet, or "Can’t act here now: check this agent’s project access". The owner revokes a connection on the **Connect agent** page. Bootstrap `gaps` name the server capabilities that are missing. |
 | **Contract test** | `extension-contracts.test.ts` connects through real OAuth and reads `tools/list`, `prompts/list`, `resources/list`, `resources/templates/list`, the protected-resource metadata, bootstrap and one refused call. It compares them with `mcp-tools.v1.json`. It also checks that every listed error code is still raised in the server or core source, and that every code the playbook names is listed. |
 
+The [#460 wire admission/authentication/feature amendment](mcp-protocol-compatibility.md)
+is Proposed, with delegated pre-review at `93889087` / record `880340ab`; eligible independent acceptance is pending. Its bounded two-era
+research choice has a recorded delegated pre-review; this does not change EXT-1's domain version,
+permission or compatibility promises, nor declare a production legacy client
+supported. Implementation must prove both wire formats against the required
+domain contract before support is published.
+
 ### EXT-2 — project export format 1
 
 | Property | Contract |

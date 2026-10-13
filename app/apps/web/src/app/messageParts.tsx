@@ -75,7 +75,10 @@ export function SourceCitation({ materialId, version, onDenied }: { materialId: 
   const onDeniedRef = useRef(onDenied);
   useEffect(() => { onDeniedRef.current = onDenied; }, [onDenied]);
   useEffect(() => { const controller = new AbortController(); getMaterialVersion(materialId, version, controller.signal).then((item) => setTitle(item.title)).catch((cause: unknown) => { if (!controller.signal.aborted) { onDeniedRef.current(cause); setTitle('Material unavailable'); } }); return () => controller.abort(); }, [materialId, version]);
-  return <Link to={`/materials/${materialId}/versions/${version}`} className="project-convo__source">Source: {title} · v{version}</Link>;
+  return <Link to={`/materials/${materialId}/versions/${version}`} className="wiki-card" data-ref="wiki">
+    <span className="wiki-card__glyph" aria-hidden="true"><Icon name="doc" size={14} /></span>
+    <span className="wiki-card__text"><strong>{title}</strong><small>Wiki page · v{version}</small></span>
+  </Link>;
 }
 
 export { AuthorFace } from '../ui';
@@ -104,8 +107,7 @@ export function pendingMessageRow({ item, name, place, keyed = true, onRetry, on
       className={`project-convo__message is-mine is-pending is-pending-${place}${item.state === 'failed' ? ' is-failed-send' : ''}`}>
       <Avatar name={name} size="lg" tone="me" />
       <div className="project-convo__message-meta"><strong>{name} · you</strong>{inMeta ? status : null}</div>
-      {item.body ? <p>{item.body}</p> : null}
-      <PendingFiles files={item.files} />
+      <PendingFiles body={item.body ? <p>{item.body}</p> : null} files={item.files} send={{ state: item.state, onRetry }} />
       <PendingSource item={item} className="project-convo__source" />
       {inMeta ? null : status}
     </li>

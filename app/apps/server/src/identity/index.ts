@@ -19,7 +19,9 @@ import { cachedReachability, discoveryReachable, waitForDiscovery } from './disc
 import { registerAgentOauthContext } from './oauth-context.js';
 import { registerIdentityRoutes } from './routes.js';
 import { createSessionResolver, type SessionResolver } from './session.js';
+import { registerBackchannelLogout } from './backchannel.js';
 import { createIdpStanding, type IdpStanding } from './standing.js';
+import { createOfflineStep } from './offline-step.js';
 
 export { loadIdentityConfig, type IdentityConfig } from './config.js';
 export { UnauthenticatedError, type SessionContext, type SessionResolver } from './session.js';
@@ -144,7 +146,8 @@ export function registerIdentity(app: FastifyInstance, options: IdentityOptions)
     }
   });
 
-  registerAuthBridge(app, { auth, publicOrigin: config.publicOrigin, passwordReset, oauthRequests, signIns, sessions, links });
+  const offlineStep = config.oidc && standing ? createOfflineStep({ oidc: config.oidc, publicOrigin: config.publicOrigin, authSecret: config.secret, standing }) : null;
+  registerAuthBridge(app, { auth, publicOrigin: config.publicOrigin, passwordReset, oauthRequests, signIns, offlineStep, sessions, links });
   const reachable = config.oidc ? cachedReachability(config.oidc) : null;
   // The provider is offered from configuration; it is reachable only once installed and answering.
   const sso = async (): Promise<IdentityCapabilities['sso']> =>
@@ -156,6 +159,7 @@ export function registerIdentity(app: FastifyInstance, options: IdentityOptions)
     provider: config.oidc ? { providerId: config.oidc.providerId, label: config.oidc.label } : null });
   registerClaimRoutes(app, { claims, publicOrigin: config.publicOrigin });
   if (config.signupRequested !== config.signup) app.log.warn({ requested: config.signupRequested }, 'FLUX_SIGNUP=verified needs email (FLUX_SMTP_URL), and a sign-on provider closes password sign-up, so password sign-up is closed');
+  if (config.oidc) registerBackchannelLogout(app, { db, oidc: config.oidc, standing, log: app.log });
   registerAgentOauthContext(app, db, sessions, auth, config.publicOrigin);
 
   return { ...sessions, passwordReset, auth, standing, confirmation };

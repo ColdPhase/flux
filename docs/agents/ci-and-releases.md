@@ -37,11 +37,12 @@ check, obsolete runs are cancelled, and an explicit dispatch can check the base.
 The workflow does not automatically duplicate a successful merge on a main push.
 
 This fast check does not establish API/persistence, browser interaction, restart,
-installation, mobile or release acceptance. Run the relevant complete Docker
-commands locally (`scripts/check_application.sh`, `check_ui.sh`, `check_runtime.sh`
-and applicable installation/media/operations checks) and attach commit-specific
-evidence for independent evaluation. Those commands and all product criteria remain
-in force; neither this check nor `Agent setup` replaces them. Publication remains
+installation, mobile or release acceptance. Select local Docker checks using the
+[verification policy](evaluation.md#choose-verification-by-impact), including
+targeted browser modules or broader application/runtime/installation checks as
+the impact requires. Attach commit-specific evidence for independent evaluation.
+The complete commands and all product criteria remain required for their applicable
+scope; neither this check nor `Agent setup` replaces them. Publication remains
 in the explicitly triggered final release workflow.
 
 On 2026-09-30, #143's independently approved workflow was protected-merged,

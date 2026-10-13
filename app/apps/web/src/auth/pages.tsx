@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Form, Link, Outlet, useActionData, useLoaderData, useLocation, useNavigate, useNavigation, useSearchParams } from 'react-router';
 import type { IdentityCapabilities } from '@flux/contracts';
 import { PASSWORD_MIN_LENGTH, claimAddress, getCapabilities, getPendingClaim, startSso } from '../api/auth';
+import { whenPageLive } from '../api/pageLeaving';
 import { ApiError, NetworkError } from '../api/client';
 import { Button, ErrorState, FluxLogo, Icon, Input, useToast } from '../ui';
 import { safeNext, signedOauthQuery, type FormResult, type forgotPasswordLoader } from './logic';
@@ -89,10 +90,21 @@ function useCapabilities() {
   const unreachable = capabilities?.sso !== null && capabilities?.sso?.reachable === false;
   useEffect(() => {
     const controller = new AbortController();
-    const load = () => { getCapabilities(controller.signal).then(setCapabilities).catch(() => undefined); };
+    let waiting: () => void = () => undefined;
+    const load = () => {
+      // A page being left starts no read (#471); one whose navigation was cancelled reads once it is live.
+      waiting();
+      waiting = whenPageLive(() => {
+        getCapabilities(controller.signal).then(setCapabilities).catch(() => undefined);
+      });
+    };
     load();
     const timer = unreachable ? window.setInterval(load, SSO_RECHECK_MS) : undefined;
-    return () => { controller.abort(); if (timer !== undefined) window.clearInterval(timer); };
+    return () => {
+      waiting();
+      controller.abort();
+      if (timer !== undefined) window.clearInterval(timer);
+    };
   }, [unreachable]);
   return capabilities;
 }
