@@ -372,7 +372,7 @@ class StopAndQuestions(unittest.TestCase):
         pid, conversation_id = self.ids["project"], self.question["conversation"]
         page = self.page("ada", phone=True)
         page.goto(f"/projects/{pid}/conversations/{conversation_id}")
-        header_stop = page.locator(".top").get_by_role("button", name="Stop Claude Code agent")
+        header_stop = page.locator(".phead").get_by_role("button", name="Stop Claude Code agent")
         expect(header_stop).to_be_visible()
         overflow = page.evaluate("() => document.documentElement.scrollWidth - document.documentElement.clientWidth")
         self.assertLessEqual(overflow, 0, "no horizontal page scroll at 390px")
