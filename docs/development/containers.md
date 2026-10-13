@@ -57,6 +57,28 @@ default test project or another worker's persistent volumes. The
 Compose commands; the worktree location does not change their container-only
 runtime requirement.
 
+### Shared-host test budget
+
+Until measurements justify more concurrency, run at most one heavy Flux image
+build or application/browser suite at a time on a shared host, across identities
+and subagents. Check active owned processes/Compose projects before starting;
+if a run is already active, do review, implementation or lightweight checks
+while it finishes. Distinct ports prevent collisions, not CPU or disk contention.
+This is an operating convention, not an implemented scheduler or lock.
+
+Choose the affected checks using the
+[verification policy](../agents/evaluation.md#choose-verification-by-impact).
+Use `./flux dev` for source iteration; the maintained test scripts still build
+their own disposable stacks. Do not share mutable test databases between tasks.
+Retain useful build cache. Clean only completed, owned task resources after
+checking for live processes and unsaved work; never use global Docker pruning
+or stop another worker's containers as a routine test preparation step.
+
+When optimizing a runner, record build, startup/migration, test and cleanup times
+separately, including whether the cache was warm. Compare the same test scope
+and source before claiming a speedup. Selector and stack-reuse improvements
+require implementation and validation; this guidance does not add those features.
+
 ### Launcher and development mode
 
 `./flux` at the repository root wraps these Compose commands for people: `up`
@@ -382,7 +404,7 @@ AI wire formats (`app/tests/app/support/provider-mock.ts`) that the adapter cont
 
 The `runtime` Compose profile ([operator guide](../operations/agent-runtime.md)) is off unless
 `FLUX_AGENT_RUNTIME` is set; `./flux up` then starts `runtime-install`, `runtime-manager`,
-`runtime-egress` and the slots `runtime-1` to `runtime-4`. No service mounts a Docker or Podman socket
+`runtime-egress` and the slots `runtime-1` to `runtime-4`. The first interactive `./flux up` and `./flux ai on` ask whether to set it (`codex` on Enter, `codex,claude_code` with a typed `y`; [operator guide](../operations/agent-runtime.md#switch-it-on)); scripts that run `./flux up` on a fresh copy redirect stdin from `/dev/null` so they never wait for the question. No service mounts a Docker or Podman socket
 (`tests/test_container_isolation.py`). The slot image is the Dockerfile's `agent-runtime` target (the
 supervisor and the pinned Codex); `agent-runtime-test` replaces both CLIs with the TEST ONLY fakes from
 `app/apps/runtime/src/fakes`, and `docker/compose.runtime.test.yaml` selects it.

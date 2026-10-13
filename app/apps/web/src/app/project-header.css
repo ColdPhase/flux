@@ -61,4 +61,9 @@
   header.top.top--project .top__head { align-self: flex-start; gap: 0; }
   header.top.top--project .top__meta { overflow: visible; }
   header.top.top--project .top__audience::after { top: -11px; bottom: auto; height: 44px; }
+  /* Open navigation is a 44 px target of its own (#478). The title block begins 4 px after the button (the 2 px
+     header gap plus the head's 2 px padding), so the audience line's -4 px margin put its box on the button's edge
+     and its 2 px hit margin 2 px inside it. The box now starts 2 px later and its text stays where it was (the
+     margin and the left padding trade 2 px), so the hit square ends at the button's edge instead of inside it. */
+  header.top.top--project .top__audience { margin-left: -2px; padding-left: 2px; }
 }

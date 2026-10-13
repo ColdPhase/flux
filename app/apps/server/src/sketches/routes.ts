@@ -10,6 +10,7 @@ import {
   type PromoteSketchCommand,
   type SketchListQuery,
   type UpdateSketchCommand,
+  type UpdateLinkLabelCommand,
   type AgentProjectOwner,
   type SketchPage,
   type UpdateThoughtCommand,
@@ -160,6 +161,14 @@ export async function sketchRoutes(app: FastifyInstance, { db, sessions, storage
   }, async (request, reply) => command(request, reply, {
     operation: `POST ${SKETCH}/links`, scope: sketchScope(request.params.sketchId), status: 201,
     run: (actor, conn) => sketchUseCases(conn).addLink(actor, request.params.sketchId, request.body),
+    replay: readSketch(request.params.sketchId),
+  }));
+
+  app.patch<{ Params: { sketchId: string; linkId: string }; Body: UpdateLinkLabelCommand }>(`${SKETCH}/links/:linkId`, {
+    schema: { body: { type: 'object', required: ['label', 'expectedLabel'], additionalProperties: false, properties: { label, expectedLabel: label } } },
+  }, async (request, reply) => command(request, reply, {
+    operation: `PATCH ${SKETCH}/links/:linkId`, scope: sketchScope(request.params.sketchId),
+    run: (actor, conn) => sketchUseCases(conn).updateLinkLabel(actor, request.params.sketchId, request.params.linkId, request.body),
     replay: readSketch(request.params.sketchId),
   }));
 

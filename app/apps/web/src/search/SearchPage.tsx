@@ -10,7 +10,7 @@ import { useSearch } from './useSearch';
 import './search.css';
 
 const FILTER_LABELS: Record<SearchFilterType, string> = {
-  message: 'Messages', doc: 'Docs', material: 'Materials', work: 'Tasks', decision: 'Decisions', result: 'Results',
+  project: 'Projects', message: 'Messages', doc: 'Docs', material: 'Materials', work: 'Tasks', decision: 'Decisions', result: 'Results',
   sketch: 'Sketches', draft: 'Drafts', person: 'People',
 };
 

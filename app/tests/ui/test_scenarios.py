@@ -53,7 +53,7 @@ from pathlib import Path
 
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
-from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
+from test_app_shell import show_map_as, DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
 
 UI_BROWSER = os.environ.get("FLUX_UI_BROWSER", "chromium")
 if UI_BROWSER not in ("chromium", "webkit"):
@@ -352,7 +352,7 @@ class ScenarioJourney:
         page.goto(f"/projects/{self.s['lamp']}/map/{self.s['map']}")
         expect(page.get_by_role("group", name=re.compile("^Sketch: ")).or_(page.locator(".sk-outline-list"))).to_be_visible()
         if self.phone:
-            page.get_by_role("radio", name="List", exact=True).tap()
+            show_map_as(page, "List", touch=True)
             expect(page.locator(".sk-outline-list")).to_be_visible()
 
     def thought(self, page: Page, thought_id: str):
@@ -372,7 +372,10 @@ class ScenarioJourney:
         editor.press("Enter")
         stored = self.wait_for(f"the thought {text!r}", lambda: (lambda s: s if len(s["thoughts"]) == before + 1 else None)(self.sketch("ada", sketch_id)))
         new_id = self.thought_id(stored, text)
-        self.assertTrue(any({link["fromId"], link["toId"]} == {parent_id, new_id} for link in stored["links"]), "the new thought is connected to its parent")
+        if self.phone:
+            self.assertFalse(any(new_id in (link["fromId"], link["toId"]) for link in stored["links"]), "the phone adds a plain thought even with a parent selected")
+        else:
+            self.assertTrue(any({link["fromId"], link["toId"]} == {parent_id, new_id} for link in stored["links"]), "the new thought is connected to its parent")
         return new_id
 
     def give_access(self, page: Page, key: str, read_only: bool) -> None:
@@ -511,7 +514,7 @@ class ScenarioJourney:
 
         # Ada thinks further on the sketch: low light is the camera's weak spot.
         if self.phone:
-            page.get_by_role("radio", name="List", exact=True).tap()
+            show_map_as(page, "List", touch=True)
         camera = self.thought_id(sketch, CAMERA)
         self.add_connected_thought(page, dm_sketch, camera, LOW_LIGHT)
         self.shot(page, "1-dm-sketch")
@@ -640,7 +643,7 @@ class ScenarioJourney:
             for text in (LOW_LIGHT, PRIVACY):
                 self.thought(page, thoughts[text]).click(modifiers=["Shift"])
             expect(page.locator(".sk-node[aria-pressed='true']")).to_have_count(3)
-        create = page.get_by_role("toolbar", name="Sketch tools").get_by_role("button", name="Create work from selected thoughts")
+        create = page.get_by_role("button", name="Create task from selected thoughts", exact=True)
         with page.expect_response(lambda r: r.request.method == "POST" and urllib.parse.urlsplit(r.url).path == f"/api/v1/projects/{lamp}/work") as saved:
             self.tap(create)
         self.assertEqual(saved.value.status, 201)
@@ -767,7 +770,7 @@ class ScenarioJourney:
         market_task = self.api("jonas", "POST", f"/api/v1/projects/{lamp}/work", {"title": MARKET_TASK, "sources": [{"type": "thought", "id": market}]}, status=201)
         self.open_map(page)
         self.tap(self.thought(page, market))
-        self.tap(page.get_by_role("toolbar", name="Sketch tools").get_by_role("button", name="Remove from sketch"))
+        self.tap(page.get_by_role("button", name="Remove from sketch", exact=True))
         self.wait_for("the placement to go", lambda: all(t["id"] != market for t in self.sketch("ada", s["map"])["thoughts"]))
         kept = self.api("ada", "GET", f"/api/v1/work/{market_task['id']}", status=200)
         self.assertEqual((kept["title"], kept["status"]), (MARKET_TASK, "open"), "the task outlives its map placement")

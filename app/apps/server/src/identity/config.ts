@@ -18,7 +18,15 @@ export interface OidcConfig {
   clientId: string;
   clientSecret: string;
   label: string;
+  /** How long the provider's last confirmation of a person keeps their access (F-024 S2, #312). */
+  confirmationMaxAgeMs: number;
+  /** `refresh` runs the standing check of the person's account at the provider (F-024 S4, #311); `off` keeps only logout and age. */
+  standing: 'refresh' | 'off';
+  /** How often a live identity is checked (default 15 minutes, FLUX_OIDC_STANDING_INTERVAL_SECONDS). */
+  standingIntervalMs: number;
 }
+
+export const DEFAULT_STANDING_INTERVAL_SECONDS = 900;
 
 export interface IdentityConfig {
   /** The only origin browsers may use for state-changing requests, e.g. https://flux.example.org. */
@@ -32,6 +40,14 @@ export interface IdentityConfig {
   passwordResetTtlSeconds: number;
   /** Null keeps email/password sign-in only. */
   oidc: OidcConfig | null;
+  /**
+   * Who may create a password account (F-024 S5a, #313). `open` is today's behaviour; `verified` makes a new
+   * account prove its address by mail before it can sign in; `off` closes password sign-up. `verified` without
+   * SMTP cannot send that mail, and any sign-on provider makes password sign-up ordinary-closed (SSO-only mode),
+   * so the effective value is `off` (`signupRequested` keeps what the operator asked for).
+   */
+  signup: 'open' | 'verified' | 'off';
+  signupRequested: 'open' | 'verified' | 'off';
 }
 
 function isAddressOrRange(value: string) {
@@ -64,6 +80,19 @@ export function parsePublicOrigin(value: string | undefined): string {
     throw new Error('FLUX_PUBLIC_ORIGIN must use https unless it is a loopback address (localhost, 127.0.0.0/8 or [::1])');
   }
   return url.origin;
+}
+
+const HOUR_MS = 3_600_000;
+export const DEFAULT_CONFIRMATION_MAX_AGE_MS = 7 * 24 * HOUR_MS;
+
+/** `FLUX_OIDC_CONFIRMATION_MAX_AGE`: whole hours (`36h`) or days (`7d`), from 1h to 30d; empty means 7d. */
+export function parseConfirmationMaxAge(value: string | undefined): number {
+  const text = value?.trim();
+  if (!text) return DEFAULT_CONFIRMATION_MAX_AGE_MS;
+  const match = /^([1-9]\d{0,4})([hd])$/.exec(text);
+  const ms = match ? Number(match[1]) * (match[2] === 'd' ? 24 : 1) * HOUR_MS : NaN;
+  if (!(ms >= HOUR_MS && ms <= 30 * 24 * HOUR_MS)) throw new Error('FLUX_OIDC_CONFIRMATION_MAX_AGE must be from 1h to 30d, such as 12h or 7d');
+  return ms;
 }
 
 export function oidcProviderId(issuer: string) {
@@ -107,7 +136,12 @@ export function loadOidcConfig(env: NodeJS.ProcessEnv, readSecret: (path: string
   if (!clientSecret) throw new Error('FLUX_OIDC_CLIENT_SECRET_FILE is empty');
   const label = env.FLUX_OIDC_LABEL?.trim() || 'single sign-on';
   if (label.length > 60) throw new Error('FLUX_OIDC_LABEL must be at most 60 characters');
-  return { providerId: oidcProviderId(issuer), issuer, clientId: clientId!, clientSecret, label };
+  const standing = (env.FLUX_OIDC_STANDING ?? 'refresh').trim().toLowerCase();
+  if (standing !== 'refresh' && standing !== 'off') throw new Error('FLUX_OIDC_STANDING must be refresh or off');
+  const interval = Number(env.FLUX_OIDC_STANDING_INTERVAL_SECONDS?.trim() || DEFAULT_STANDING_INTERVAL_SECONDS);
+  if (!Number.isInteger(interval) || interval < 5 || interval > 86_400) throw new Error('FLUX_OIDC_STANDING_INTERVAL_SECONDS must be an integer from 5 to 86400');
+  return { providerId: oidcProviderId(issuer), issuer, clientId: clientId!, clientSecret, label, standing, standingIntervalMs: interval * 1000,
+    confirmationMaxAgeMs: parseConfirmationMaxAge(env.FLUX_OIDC_CONFIRMATION_MAX_AGE) };
 }
 
 export function loadIdentityConfig(env: NodeJS.ProcessEnv = process.env): IdentityConfig {
@@ -125,13 +159,18 @@ export function loadIdentityConfig(env: NodeJS.ProcessEnv = process.env): Identi
   if (!Number.isInteger(ttl) || ttl < 60 || ttl > 86_400) throw new Error('FLUX_PASSWORD_RESET_TTL_SECONDS must be an integer from 60 to 86400');
   const rateLimit = (env.FLUX_AUTH_RATE_LIMIT ?? 'true').trim().toLowerCase();
   if (rateLimit !== 'true' && rateLimit !== 'false') throw new Error('FLUX_AUTH_RATE_LIMIT must be true or false');
+  const requested = (env.FLUX_SIGNUP ?? 'open').trim().toLowerCase();
+  if (requested !== 'open' && requested !== 'verified' && requested !== 'off') throw new Error('FLUX_SIGNUP must be open, verified or off');
+  const oidc = loadOidcConfig(env);
   return {
     publicOrigin,
     secret,
+    signupRequested: requested,
+    signup: oidc || (requested === 'verified' && !(smtpUrl && from)) ? 'off' : requested,
     trustedProxies,
     smtp: smtpUrl && from ? { url: smtpUrl, from } : null,
     rateLimit: rateLimit === 'true',
     passwordResetTtlSeconds: ttl,
-    oidc: loadOidcConfig(env),
+    oidc,
   };
 }

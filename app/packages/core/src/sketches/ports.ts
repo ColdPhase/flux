@@ -188,10 +188,14 @@ export interface SketchRepository {
   /** Deletes the thought and its links; never the placed object. */
   deleteThought(sketchId: string, id: string): Promise<void>;
   links(sketchId: string, page?: Required<PageQuery>): Promise<LinkRecord[]>;
+  /** Read after the sketch's write lock; every connection mutation holds that lock. */
+  findLink(sketchId: string, id: string): Promise<LinkRecord | null>;
   linkExists(id: string): Promise<boolean>;
   /** The link between two thoughts of the sketch, in either direction. */
   linkBetween(sketchId: string, a: string, b: string): Promise<LinkRecord | null>;
   insertLink(link: NewLink): Promise<LinkRecord>;
+  /** Changes only the label; caller holds the sketch lock and checked the expected label. */
+  updateLinkLabel(sketchId: string, id: string, label: string | null): Promise<LinkRecord>;
   /** Returns false when the sketch has no such link. */
   deleteLink(sketchId: string, id: string): Promise<boolean>;
 }

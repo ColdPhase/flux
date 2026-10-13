@@ -97,6 +97,8 @@ Keep procedures in one place and use the guides below when relevant.
 - Verify observable behavior against the task contract. Match effort to the
   change; documentation edits need link/config checks, while behavior changes
   need relevant regression coverage once the application test setup exists.
+  Use the impact-based selection in `docs/agents/evaluation.md` before review
+  too; full suites are not the default for each PR or review round.
 - For functional UI changes, exercise the running application and applicable
   API/persistence paths. Report unavailable checks as unverified.
 - Deliver the required phone/tablet PWA and Web Push under
