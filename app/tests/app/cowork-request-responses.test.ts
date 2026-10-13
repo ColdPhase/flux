@@ -529,6 +529,8 @@ test('the Agents view shows each connection its held unit and its open request w
   assert.equal(reviewer(await view()).currentWork!.liveClaimExpiresAt, null, 'an expired lease is only held work');
   await pool.query("UPDATE cowork_units SET lease_expires_at=clock_timestamp()+interval '30 seconds' WHERE id=$1", [f.reviewUnit]);
   assert.ok(reviewer(await view()).currentWork!.liveClaimExpiresAt);
+  await pool.query('DELETE FROM agent_standing_grants WHERE connection_id=$1 AND project_id=$2',
+    [f.marekClaude.connection.id, f.w.p.id]);
   const ceiling = await pool.query('DELETE FROM agent_connection_projects WHERE connection_id=$1 AND project_id=$2 RETURNING workspace_id',
     [f.marekClaude.connection.id, f.w.p.id]);
   assert.equal(ceiling.rowCount, 1);
