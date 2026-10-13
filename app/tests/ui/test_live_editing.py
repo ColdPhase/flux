@@ -59,7 +59,8 @@ class LiveFixture(unittest.IsolatedAsyncioTestCase):
         await self.api(ada, "POST", f"/api/v1/workspaces/{self.workspace}/members", {"email": self.kai_email, "role": "member"}, 201)
         project = await self.api(ada, "POST", f"/api/v1/workspaces/{self.workspace}/projects", {"name": "Two people writing", "visibility": "restricted"}, 201)
         self.project = project["id"]
-        await self.api(ada, "POST", f"/api/v1/projects/{self.project}/grants", {"principal": {"kind": "human", "id": self.kai_id}, "role": "contributor"}, 201)
+        grant = await self.api(ada, "POST", f"/api/v1/projects/{self.project}/grants", {"principal": {"kind": "human", "id": self.kai_id}, "role": "contributor"}, 201)
+        self.project_grant_id = grant["id"]
 
     async def asyncTearDown(self):
         for context in self.contexts:
@@ -354,14 +355,26 @@ class LiveEditingJourney(LiveFixture):
     async def test_07_phone_tablet_and_private_capture_are_real_browser_journeys(self):
         await self.create_map(3)
         ada, kai = self.pages["ada"], self.pages["kai"]
-        for width, height in ((390, 844), (768, 1024)):
-            await ada.set_viewport_size({"width": width, "height": height})
-            await expect(ada.get_by_role("button", name="Thought", exact=True)).to_be_visible()
-            self.assertLessEqual(await ada.evaluate("document.documentElement.scrollWidth"), width)
+        await ada.set_viewport_size({"width": 390, "height": 844})
+        add = ada.get_by_role("button", name="Add a thought", exact=True)
+        await expect(add).to_be_visible()
+        self.assertLessEqual(await ada.evaluate("document.documentElement.scrollWidth"), 390)
+        await add.click()
+        phone_draft = ada.get_by_role("form", name="New thought draft")
+        await phone_draft.get_by_label("Thought text").fill("Added from the phone map")
+        await phone_draft.get_by_role("button", name="Save thought", exact=True).click()
+        await expect(ada.locator(".sk-node")).to_have_count(4)
+        await expect(kai.locator(".sk-node")).to_have_count(4)
+        phone_readback = await self.api(kai, "GET", f"/api/v1/sketches/{self.map_id}")
+        self.assertEqual(len(phone_readback["thoughts"]), 4)
+        self.assertIn("Added from the phone map", [thought["text"] for thought in phone_readback["thoughts"]])
+        await ada.set_viewport_size({"width": 768, "height": 1024})
+        await expect(ada.get_by_role("button", name="Thought", exact=True)).to_be_visible()
+        self.assertLessEqual(await ada.evaluate("document.documentElement.scrollWidth"), 768)
         await ada.get_by_role("button", name="Thought", exact=True).click()
         await ada.get_by_role("textbox", name=re.compile("thought", re.I)).fill("Private capture remains private until Save")
-        await expect(kai.locator(".sk-node")).to_have_count(3)
-        self.assertEqual(len((await self.api(kai, "GET", f"/api/v1/sketches/{self.map_id}"))["thoughts"]), 3)
+        await expect(kai.locator(".sk-node")).to_have_count(4)
+        self.assertEqual(len((await self.api(kai, "GET", f"/api/v1/sketches/{self.map_id}"))["thoughts"]), 4)
         # This is desktop browser emulation, never physical Android/iPhone/iPad evidence.
 
     async def test_08_known_replay_after_reload_keeps_recovered_text_before_editable(self):

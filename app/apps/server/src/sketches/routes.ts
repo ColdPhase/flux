@@ -15,7 +15,7 @@ import {
   type SketchPage,
   type UpdateThoughtCommand,
 } from '@flux/contracts';
-import { DomainError,ServiceUnavailableError,derivedUuid, requestHash, type Database, type FileStorage, type Principal, type ResourceRef,type LiveMapBackend } from '@flux/core';
+import { DomainError,LinkLabelConflictError,ServiceUnavailableError,derivedUuid, requestHash, type Database, type FileStorage, type Principal, type ResourceRef,type LiveMapBackend } from '@flux/core';
 import type { EditingConfirmationPolicy } from '@flux/db';
 import type { SessionContext, SessionResolver } from '../identity/index.js';
 import { bodyId, commandRunner, expectedVersion, requires, useDomainErrors, versionEtag } from '../http/commands.js';
@@ -113,7 +113,10 @@ export async function sketchRoutes(app: FastifyInstance, { db, sessions, storage
       if(error instanceof Error&&'code' in error&&['EDITING_MAP_CAPACITY','EDITING_OUTPUT_CAPACITY'].includes(String(error.code))) {
         const refusal=new ServiceUnavailableError('The finite native map capacity is busy',String(error.code));refusal.details={outcome:'refused',retryable:true};throw refusal;
       }
-      if(error instanceof DomainError)error.details={};throw error;
+      // A stale label is checked only after sketch.write authorization and link lookup.
+      // Its current public label is required for the explicit conflict review flow;
+      // all other live-mode domain details remain scrubbed.
+      if(error instanceof DomainError&&!(error instanceof LinkLabelConflictError))error.details={};throw error;
     }
     finally {owner?.settled();lifetimes.delete(reply);}
   }

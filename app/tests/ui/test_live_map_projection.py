@@ -11,6 +11,43 @@ from test_app_shell import ORIGIN
 
 @unittest.skipUnless(os.environ.get('FLUX_LIVE_EDITING_TEST') == '1', '#228 needs an explicitly enabled isolated candidate')
 class LiveMapProjectionJourney(LiveFixture):
+    async def test_connection_label_conflict_reveals_current_label_only_to_authorized_writer(self):
+        await self.create_map(2)
+        ada, kai = self.pages['ada'], self.pages['kai']
+        source, target = self.thoughts
+        link = await self.api(kai, 'POST', f'/api/v1/sketches/{self.map_id}/links',
+            {'fromId': source['id'], 'toId': target['id']}, 201,
+            {'idempotency-key': str(uuid.uuid4())})
+        current = 'authorized current label'
+        await self.api(kai, 'PATCH', f'/api/v1/sketches/{self.map_id}/links/{link["id"]}',
+            {'label': current, 'expectedLabel': None}, 200,
+            {'idempotency-key': str(uuid.uuid4())})
+
+        # The request runs through the live-enabled route wrapper. A stale writer
+        # receives the checked current public label so the UI can require review.
+        conflict = await ada.request.fetch(f'/api/v1/sketches/{self.map_id}/links/{link["id"]}',
+            method='PATCH', headers={'origin': ORIGIN, 'content-type': 'application/json',
+                'idempotency-key': str(uuid.uuid4())},
+            data=json.dumps({'label': 'my stale draft', 'expectedLabel': None}))
+        self.assertEqual(conflict.status, 409, await conflict.text())
+        details = await conflict.json()
+        self.assertEqual(details.get('code'), 'LABEL_CONFLICT')
+        self.assertEqual(details.get('currentLabel'), current)
+        self.assertEqual(details.get('current', {}).get('label'), current)
+
+        # Revocation is checked before label comparison, so a former writer cannot
+        # use the conflict payload as a read channel for the saved label.
+        await self.api(ada, 'DELETE', f'/api/v1/projects/{self.project}/grants/{self.project_grant_id}', status=204)
+        revoked = await kai.request.fetch(f'/api/v1/sketches/{self.map_id}/links/{link["id"]}',
+            method='PATCH', headers={'origin': ORIGIN, 'content-type': 'application/json',
+                'idempotency-key': str(uuid.uuid4())},
+            data=json.dumps({'label': 'revoked draft', 'expectedLabel': None}))
+        self.assertEqual(revoked.status, 404, await revoked.text())
+        revoked_body = await revoked.text()
+        self.assertNotIn(current, revoked_body)
+        self.assertNotIn('currentLabel', revoked_body)
+        self.assertNotIn('"current"', revoked_body)
+
     async def test_connection_label_save_uses_live_fence_and_replays_same_private_attempt(self):
         await self.create_map(2)
         ada, kai = self.pages['ada'], self.pages['kai']
