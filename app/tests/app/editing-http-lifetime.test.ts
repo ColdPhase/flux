@@ -84,6 +84,7 @@ async function fixture(developmentEditing = true) {
   const beforeHandoff = async (kind: 'map' | 'wiki') => {
     if(handoffKind !== kind)return;handoffKind = null;handoffReached.resolve();await handoffRelease.promise;
   };
+  let nativeDeliveryPause: { reached: ReturnType<typeof signal>; release: ReturnType<typeof signal> } | null = null;
   const app = Fastify(); const captures = new Map<string, Capture>();
   app.addHook('onRequest', async (incoming, reply) => {
     const id = incoming.headers['x-lifetime-fixture']; const current = typeof id === 'string' ? captures.get(id) : undefined;
@@ -122,9 +123,15 @@ async function fixture(developmentEditing = true) {
   // encrypted with it, so a fresh random secret cannot sign up (compose.test.yaml).
   const config = loadIdentityConfig({ FLUX_PUBLIC_ORIGIN: origin, FLUX_AUTH_SECRET: process.env.FLUX_AUTH_SECRET ?? randomBytes(32).toString('hex'), FLUX_AUTH_RATE_LIMIT: 'false' });
   const identity = registerIdentity(app, { db: database.db, config, mailer: null });
-  const backend = mapBackend(database, { beforeHandoff: () => beforeHandoff('map') }); const maps = mapAuthority(backend, apiEditingOutputBudget);
+  const backend = mapBackend(database, { beforeHandoff: () => beforeHandoff('map') });
+  const routeBackend = { ...backend, deliverNative: async (...args: Parameters<typeof backend.deliverNative>) => {
+    const pause = nativeDeliveryPause; nativeDeliveryPause = null;
+    if (pause) { pause.reached.resolve(); await pause.release.promise; }
+    return backend.deliverNative(...args);
+  } };
+  const maps = mapAuthority(backend, apiEditingOutputBudget);
   const wiki = wikiAuthority(database, undefined, { beforeHandoff: () => beforeHandoff('wiki'), outputBudget: apiEditingOutputBudget });
-  await app.register(sketchRoutes, { db: database.db, sessions: identity, storage: await diskFileStorage(filesDir), developmentEditing, liveBackend: () => backend });
+  await app.register(sketchRoutes, { db: database.db, sessions: identity, storage: await diskFileStorage(filesDir), developmentEditing, liveBackend: () => routeBackend });
   await app.register(docRoutes, { db: database.db, sessions: identity });
   await app.register(editingRoutes, { sessions: identity, authority: wiki, maps, outputBudget: apiEditingOutputBudget });
   const base = await app.listen({ host: '127.0.0.1', port: 0 }); const browser = new Browser(base, origin);
@@ -148,6 +155,7 @@ async function fixture(developmentEditing = true) {
       arm(commits: number, lose = false) { assert.equal(remaining, 0); remaining = commits; lost = lose; reached = signal(); release = signal(); return { reached: reached.promise, release: release.resolve, failure }; },
       pauseRoomRead(sketchId: string) { assert.equal(roomReadTarget, null); roomReadTarget = sketchId; roomReadReached = signal(); roomReadRelease = signal(); return { reached: roomReadReached.promise, release: roomReadRelease.resolve }; },
       pauseHandoff(kind: 'map' | 'wiki') { handoffKind = kind;handoffReached = signal();handoffRelease = signal();return { reached: handoffReached.promise,release: handoffRelease.resolve }; },
+      pauseNativeDelivery() { assert.equal(nativeDeliveryPause, null);const reached=signal(),release=signal();nativeDeliveryPause={reached,release};return {reached:reached.promise,release:release.resolve}; },
       async close() { release.resolve();roomReadRelease.resolve();handoffRelease.resolve(); await wiki.close(); await maps.close(); await app.close(); await database.pool.end(); },
     };
   } catch (error) {
@@ -203,6 +211,25 @@ test('live label conflict holds current write authority through the protected er
     expectStatus(await revoke, 204);
     assert.equal((await pool.query('SELECT id FROM project_grants WHERE id=$1', [grant.id])).rowCount, 0,
       'revocation commits after the authorized conflict handoff');
+
+    // Reverse ordering: revocation commits after the command rollback but before the
+    // protected delivery transaction begins. The fence must refuse the stale details.
+    const replacement = expectStatus(await grantor.request('POST', `/api/v1/projects/${f.project.id}/grants`, {
+      body: { principal: { kind: 'human', id: person.user.id }, role: 'contributor' },
+    }), 201) as { id: string };
+    const beforeFence = f.pauseNativeDelivery();
+    const lateConflict = grantee.request('PATCH', `/api/v1/sketches/${f.sketch.id}/links/${link.id}`, {
+      body: { label: 'another stale draft', expectedLabel: null }, headers: { 'idempotency-key': randomUUID() },
+    });
+    await finite(beforeFence.reached, 'The command rollback must reach the injected gap before current-authority reacquisition');
+    try {
+      expectStatus(await grantor.request('DELETE', `/api/v1/projects/${f.project.id}/grants/${replacement.id}`), 204);
+    } finally { beforeFence.release(); }
+    const refused = await lateConflict;
+    assert.equal(refused.status, 404, refused.text);
+    assert.equal(refused.json && typeof refused.json === 'object' && 'currentLabel' in refused.json, false);
+    assert.equal(refused.json && typeof refused.json === 'object' && 'current' in refused.json, false);
+    assert.equal(refused.text.includes(currentLabel), false, 'a revocation committed in the gap prevents stale conflict details from being sent');
   } finally { await f.close(); }
 });
 
