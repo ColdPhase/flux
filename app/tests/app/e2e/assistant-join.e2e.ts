@@ -94,7 +94,15 @@ for (const [engine, mobile] of [['chromium', false], ['webkit', true]] as const)
       await expect(invitation.locator('.kreska')).toHaveCount(1);
       await expect(invitation.locator('.agent-tag')).toHaveText('Agent');
       await expect(invitation.locator('.inbox__review')).toHaveText('Review');
-      await capture(managerPage, `join-${engine}-manager-needs-you`);
+       // Final design §3 glyph scale (16/20/24/32/48): the row's Kreska is the 16px step, centred in its 28px icon well.
+       for (const choice of ['light', 'dark'] as const) {
+         await theme(managerPage, choice);
+         const glyph = (await invitation.locator('.kreska').boundingBox())!; const well = (await invitation.locator('.inbox__ic').boundingBox())!;
+         assert.deepEqual([glyph.width, glyph.height], [16, 16], `${choice} Inbox Kreska is 16x16`);
+         assert.ok(Math.abs(glyph.x + glyph.width / 2 - (well.x + well.width / 2)) <= 0.5 && Math.abs(glyph.y + glyph.height / 2 - (well.y + well.height / 2)) <= 0.5, `${choice} Inbox Kreska is centred`);
+         await capture(managerPage, `join-${engine}-manager-needs-you-${choice}`);
+         if (evidence) await invitation.screenshot({ path: join(evidence, `join-${engine}-inbox-row-${choice}.png`) });
+       }
       await invitation.click(); await expect(managerPage).toHaveURL(`${origin}${path}`);
       const requests = managerPage.getByRole('region', { name: 'Assistant join requests' });
       await theme(managerPage, 'light'); await capture(managerPage, `join-${engine}-manager-row-light`);
