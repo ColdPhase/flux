@@ -27,6 +27,7 @@ interface ToastEntry extends Required<Omit<ToastOptions, 'timeout' | 'action'>> 
   id: number;
   timeout: number | null;
   leaving: boolean;
+  sessionEpoch: number;
 }
 
 const ToastContext = createContext<(options: ToastOptions) => () => void>(() => () => {});
@@ -90,18 +91,35 @@ function ToastItem({ toast, onDone, registerAction }: { toast: ToastEntry; onDon
 }
 
 /** Short confirmations and recoverable errors, announced politely, bottom centre, one at a time on top. */
-export function ToastProvider({ children }: { children: ReactNode }) {
+export function ToastProvider({ children, sessionId }: { children: ReactNode; sessionId: string | null }) {
   const [toasts, setToasts] = useState<ToastEntry[]>([]);
   const nextId = useRef(1);
+  // Increment even for A → signed-out → A, so a callback from the earlier visit cannot become
+  // valid again just because the same person signed back in. Updated during render so retained
+  // callbacks are fenced as soon as the router commits the identity transition.
+  const session = useRef({ id: sessionId, epoch: 0 });
+  if (session.current.id !== sessionId) session.current = { id: sessionId, epoch: session.current.epoch + 1 };
   const show = useCallback((options: ToastOptions) => {
     const tone = options.tone ?? 'neutral';
-    const entry: ToastEntry = { id: nextId.current++, message: options.message, tone, timeout: options.timeout ?? (tone === 'danger' ? null : options.action ? 7000 : 5000), leaving: false, action: options.action ?? null };
+    const sessionEpoch = session.current.epoch;
+    const action = options.action ? {
+      ...options.action,
+      // A callback can outlive its toast (or be retained by an already queued click/key event).
+      // Fence the callback itself, not just the button or hotkey registration.
+      onAction: () => { if (session.current.epoch === sessionEpoch) options.action!.onAction(); },
+    } : null;
+    const entry: ToastEntry = { id: nextId.current++, message: options.message, tone, timeout: options.timeout ?? (tone === 'danger' ? null : action ? 7000 : 5000), leaving: false, action, sessionEpoch };
     // Keep at most three; older ones leave.
     setToasts((current) => [...current.slice(-2), entry]);
     return () => setToasts((current) => current.filter((toast) => toast.id !== entry.id));
   }, []);
   const remove = useCallback((id: number) => setToasts((current) => current.filter((toast) => toast.id !== id)), []);
   const actions = useRef(new Map<number, () => void>());
+  const sessionEpoch = session.current.epoch;
+  useEffect(() => {
+    setToasts((current) => current.filter((toast) => toast.sessionEpoch === session.current.epoch));
+    actions.current.clear();
+  }, [sessionEpoch]);
   const registerAction = useCallback((id: number, run: (() => void) | null) => {
     if (run) actions.current.set(id, run); else actions.current.delete(id);
   }, []);
@@ -119,12 +137,13 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
   const value = useMemo(() => show, [show]);
+  const visibleToasts = toasts.filter((toast) => toast.sessionEpoch === sessionEpoch);
   return (
     <ToastContext.Provider value={value}>
       {children}
       {createPortal(
         <div className="ui-toasts" role="status" aria-live="polite" aria-relevant="additions text">
-          {toasts.map((toast) => <ToastItem key={toast.id} toast={toast} onDone={remove} registerAction={registerAction} />)}
+          {visibleToasts.map((toast) => <ToastItem key={toast.id} toast={toast} onDone={remove} registerAction={registerAction} />)}
         </div>,
         document.body,
       )}

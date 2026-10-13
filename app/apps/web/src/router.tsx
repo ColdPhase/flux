@@ -1,8 +1,8 @@
-import { Outlet, createBrowserRouter, type RouteObject } from 'react-router';
+import { Outlet, createBrowserRouter, useRouteLoaderData, type RouteObject } from 'react-router';
 import { ToastProvider } from './ui';
 import { UpdatePrompt } from './pwa';
 import { AppLayout } from './app/AppLayout';
-import { appLoader } from './app/data';
+import { appLoader, type ShellData } from './app/data';
 import { ProjectConversation, projectConversationLoader, shouldRevalidateProjectConversation } from './app/ProjectConversation';
 import { Booting, RouteCodeLoadError, RouteErrorPage } from './app/errors';
 import { NotFoundView } from './app/views';
@@ -59,7 +59,10 @@ const material = secondary(async () => {
 
 function Root() {
   // The update prompt is shown on every page, signed in or not; reloading is the person's choice.
-  return <ToastProvider><Outlet /><UpdatePrompt /></ToastProvider>;
+  // Toast actions belong to the signed-in person who created them. The provider outlives the app
+  // and auth route siblings, so its scope must follow the app loader's current principal.
+  const shell = useRouteLoaderData('app') as ShellData | undefined;
+  return <ToastProvider sessionId={shell?.me.user.id ?? null}><Outlet /><UpdatePrompt /></ToastProvider>;
 }
 
 export const router = createBrowserRouter([
