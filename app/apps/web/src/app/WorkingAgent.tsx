@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useLocation } from 'react-router';
-import type { AssistantRun, OwnWorkingAgent } from '@flux/contracts';
+import { ASSISTANT_RUN_CHANGED_EVENT, type AssistantRun, type OwnWorkingAgent } from '@flux/contracts';
+import { onPageLive, pageLeaving } from '../api/pageLeaving';
 import { useStreamEvents } from '../api/stream';
 import { listOwnRuns, stopRun } from '../assistant/api';
 import { isWorking } from '../assistant/format';
@@ -18,9 +19,12 @@ interface WorkingLifetime { identity: string; live: boolean; revision: number; r
 function useWorkingRun(identity: string) {
   const [snapshot, setSnapshot] = useState<WorkingSnapshot>({ identity, run: null, stopping: false, failed: false });
   const lifetime = useRef<WorkingLifetime | null>(null);
+  // Background reads (poll, focus, stream) wait while this page is hidden or being left (see
+  // pageLeaving, #471). User-started requests never go through refresh().
   const refresh = useCallback(() => {
     const scope = lifetime.current;
     if (!scope?.live || scope.identity !== identity || scope.stopping) return;
+    if (pageLeaving() || document.visibilityState === 'hidden') return;
     scope.read?.abort();
     const controller = new AbortController();
     scope.read = controller;
@@ -38,14 +42,49 @@ function useWorkingRun(identity: string) {
   useEffect(() => {
     const scope: WorkingLifetime = { identity, live: true, revision: 0, read: null, stopping: false };
     lifetime.current = scope;
-    refresh();
-    return () => {
+    const retire = () => {
       scope.live = false;
       ++scope.revision;
       scope.read?.abort();
+      scope.read = null;
+    };
+    const resume = () => {
+      if (lifetime.current !== scope || scope.live) return;
+      scope.live = true;
+      // A Stop response from the retired lifetime stays fenced. Read current truth;
+      // resuming never resends the command or revives its pre-Stop snapshot.
+      scope.stopping = false;
+      refresh();
+    };
+    const focus = () => { if (scope.live) refresh(); else resume(); };
+    window.addEventListener('beforeunload', retire);
+    window.addEventListener('pagehide', retire);
+    window.addEventListener('pageshow', resume);
+    window.addEventListener('focus', focus);
+    window.addEventListener('pointerdown', resume, true);
+    window.addEventListener('keydown', resume, true);
+    refresh();
+    return () => {
+      window.removeEventListener('beforeunload', retire);
+      window.removeEventListener('pagehide', retire);
+      window.removeEventListener('pageshow', resume);
+      window.removeEventListener('focus', focus);
+      window.removeEventListener('pointerdown', resume, true);
+      window.removeEventListener('keydown', resume, true);
+      retire();
       if (lifetime.current === scope) lifetime.current = null;
     };
   }, [identity, refresh]);
+  useEffect(() => {
+    const visibility = () => { if (document.visibilityState === 'visible') refresh(); };
+    document.addEventListener('visibilitychange', visibility);
+    // A read skipped while the page was being left runs again once it is live.
+    const stopWaiting = onPageLive(refresh);
+    return () => {
+      stopWaiting();
+      document.removeEventListener('visibilitychange', visibility);
+    };
+  }, [refresh]);
   // The previous owner's snapshot is hidden immediately, before effect cleanup runs.
   const run = snapshot.identity === identity ? snapshot.run : null;
   useEffect(() => {
@@ -53,11 +92,7 @@ function useWorkingRun(identity: string) {
     const timer = setInterval(refresh, POLL_WHILE_WORKING_MS);
     return () => clearInterval(timer);
   }, [run, refresh]);
-  useEffect(() => {
-    window.addEventListener('focus', refresh);
-    return () => window.removeEventListener('focus', refresh);
-  }, [refresh]);
-  useStreamEvents(identity, refresh, refresh);
+  useStreamEvents(identity, (event) => { if (event.kind === ASSISTANT_RUN_CHANGED_EVENT) refresh(); }, refresh);
   const stop = useCallback(async () => {
     const scope = lifetime.current;
     if (!run || !scope?.live || scope.identity !== identity || scope.stopping || run.stopRequested) return;

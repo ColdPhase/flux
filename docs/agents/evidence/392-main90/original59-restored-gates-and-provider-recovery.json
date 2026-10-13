@@ -1,0 +1,10 @@
+{
+  "phase": "upgrade-refusal-reauth",
+  "restored": false,
+  "managedBrowserMcpAndBothRefreshFamiliesRefused": true,
+  "passwordControlRetained": true,
+  "authenticProviderRecovery": true,
+  "originalFamilyFactsUnchanged": true,
+  "noRevocations": true,
+  "nonemptySealedCustody": true
+}

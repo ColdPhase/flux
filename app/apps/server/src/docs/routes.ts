@@ -11,6 +11,7 @@ import {
   type AddDocSectionCommand,
   type CreateDocCommand,
   type DocPreviewCommand,
+  type DocSummary,
   type PageQuery,
   type UpdateDocCommand,
 } from '@flux/contracts';
@@ -18,6 +19,7 @@ import { assertAuthorized, type Database, type ResourceRef } from '@flux/core';
 import type { SessionResolver } from '../identity/index.js';
 import { commandRunner, expectedVersion, useDomainErrors, versionEtag, type ReplayCheck } from '../http/commands.js';
 import { docUseCases } from './adapters.js';
+import { projectAuthorOwners, scopedPrincipal } from '../conversation/author-owners.js';
 
 interface Options { db: Database; sessions: SessionResolver }
 
@@ -40,6 +42,19 @@ const projectReader: ReplayCheck = (principal, stored, db) =>
   assertAuthorized(principal, 'project.read', { type: 'project', id: String((stored as { projectId?: unknown } | null)?.projectId ?? '') }, db);
 
 /**
+ * The last change of each doc in one project: an agent author keeps its scoped owner while that person is in the
+ * project's current audience (#339 AC-2), the same boundary as preserved message history.
+ */
+async function scopedUpdaters(db: Database, items: DocSummary[]): Promise<DocSummary[]> {
+  const agents = [...new Set(items.flatMap((item) => item.updatedBy.kind === 'agent' ? [item.updatedBy.id] : []))];
+  if (!agents.length) return items;
+  // A project's list page is one project and at most 100 rows, inside the owner read's bound.
+  const { projectId, workspaceId } = items[0]!;
+  const owners = await projectAuthorOwners(db, projectId, workspaceId, agents);
+  return items.map((item) => ({ ...item, updatedBy: scopedPrincipal(item.updatedBy, owners) }));
+}
+
+/**
  * `/api/v1` doc routes (#112). Each handler resolves the current session and calls one core use
  * case, which authorizes. POST/PATCH accept `Idempotency-Key`; an edit and "Add to docs" on an
  * existing doc need `If-Match` (or `expectedVersion`). Responses with a version carry `ETag`.
@@ -51,7 +66,10 @@ export async function docRoutes(app: FastifyInstance, { db, sessions }: Options)
   const projectScope = (id: string): ResourceRef => ({ type: 'project', id });
 
   app.get<{ Params: { projectId: string }; Querystring: PageQuery }>(projectDocsPath(':projectId'), { schema: { querystring: page } },
-    async (request) => docs.listProjectDocs(await principal(request), request.params.projectId, request.query));
+    async (request) => {
+      const found = await docs.listProjectDocs(await principal(request), request.params.projectId, request.query);
+      return { ...found, items: await scopedUpdaters(db, found.items) };
+    });
   app.post<{ Params: { projectId: string }; Body: CreateDocCommand }>(projectDocsPath(':projectId'), { schema: { body: createDoc } },
     async (request, reply) => command(request, reply, {
       operation: `POST ${projectDocsPath(':projectId')}`, scope: projectScope(request.params.projectId), status: 201, etag: true,

@@ -57,6 +57,28 @@ default test project or another worker's persistent volumes. The
 Compose commands; the worktree location does not change their container-only
 runtime requirement.
 
+### Shared-host test budget
+
+Until measurements justify more concurrency, run at most one heavy Flux image
+build or application/browser suite at a time on a shared host, across identities
+and subagents. Check active owned processes/Compose projects before starting;
+if a run is already active, do review, implementation or lightweight checks
+while it finishes. Distinct ports prevent collisions, not CPU or disk contention.
+This is an operating convention, not an implemented scheduler or lock.
+
+Choose the affected checks using the
+[verification policy](../agents/evaluation.md#choose-verification-by-impact).
+Use `./flux dev` for source iteration; the maintained test scripts still build
+their own disposable stacks. Do not share mutable test databases between tasks.
+Retain useful build cache. Clean only completed, owned task resources after
+checking for live processes and unsaved work; never use global Docker pruning
+or stop another worker's containers as a routine test preparation step.
+
+When optimizing a runner, record build, startup/migration, test and cleanup times
+separately, including whether the cache was warm. Compare the same test scope
+and source before claiming a speedup. Selector and stack-reuse improvements
+require implementation and validation; this guidance does not add those features.
+
 ### Launcher and development mode
 
 `./flux` at the repository root wraps these Compose commands for people: `up`
@@ -280,8 +302,9 @@ active session (5 retries, exponential backoff up to 10 minutes, for
 it (`session_id`, foreign key `ON DELETE CASCADE`). Sign-out, revoking a session,
 revoke-others, password reset (which revokes all sessions) and account deletion all
 delete the session row, and with it that device's subscriptions, whichever code path
-ends the session. The web client also unsubscribes before signing out
-(`signOutDevice`). After signing in again, the client's start-up sync re-registers
+ends the session. When notification permission is granted, the web client also
+unsubscribes before signing out (`signOutDevice`; [mobile-pwa.md](../product/mobile-pwa.md#sign-out-and-this-devices-push-subscription-461)).
+After signing in again, the client's start-up sync re-registers
 the browser subscription under the new session.
 
 **Before each send** the worker rechecks from current rows that the account still
@@ -398,3 +421,9 @@ supervisor and the pinned Codex); `agent-runtime-test` replaces both CLIs with t
 project and ports (`FLUX_RUNTIME_TEST_PORT`, default 19571). Run it alone, like the other Docker checks.
 `./scripts/check_runtime_cli_contract.sh` is the opt-in check against the pinned real CLIs; it needs
 internet access and is not part of CI.
+`./scripts/check_mcp_clients.sh` (#152 AC-4) is the opt-in check that the real pinned Codex (`rust-v0.160.1`,
+checksummed in the `mcp-clients` image) and Claude Code (the `pins.ts` version, fetched at run time from the signed
+release manifest) register Flux's MCP server with their own `mcp add`, complete Flux's OAuth as the person in Chromium,
+and list and call the shared domain tools from three personal connections until the owner revokes one. It uses no
+vendor account: the clients' model traffic goes to a scripted local endpoint. It needs internet access and is not
+part of CI or `check_application.sh`.

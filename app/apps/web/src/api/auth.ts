@@ -17,8 +17,24 @@ export function getCapabilities(signal?: AbortSignal) {
   return request<IdentityCapabilities>(IDENTITY_CAPABILITIES_PATH, { signal });
 }
 
+/** With verified sign-up the mailed link lands on the sign-in page (#313); otherwise the person is signed in at once. */
 export function signUp(input: { name: string; email: string; password: string }) {
-  return request<unknown>(`${AUTH_BASE_PATH}/sign-up/email`, { method: 'POST', body: input });
+  return request<{ token: string | null }>(`${AUTH_BASE_PATH}/sign-up/email`, { method: 'POST', body: { ...input, callbackURL: '/sign-in?notice=email-verified' } });
+}
+
+/** The address a provider sign-in found held by an unverified account (#313), or null without a pending claim. */
+export async function getPendingClaim(signal?: AbortSignal) {
+  try {
+    return await request<{ email: string; expiresAt: string }>('/api/v1/identity/claim', { signal });
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) return null;
+    throw error;
+  }
+}
+
+/** Releases the address from the unverified account; the provider sign-in can then be repeated. */
+export function claimAddress() {
+  return request<{ providerId: string }>('/api/v1/identity/claim', { method: 'POST' });
 }
 
 export function signIn(input: { email: string; password: string; oauth_query?: string }) {
@@ -28,11 +44,17 @@ export function signIn(input: { email: string; password: string; oauth_query?: s
 /**
  * Starts the operator's single sign-on (#113). The identity provider returns to `next` on success
  * and to the sign-in page with `sso=failed` otherwise; the browser follows the returned address.
+ *
+ * On the MCP authorization path (#310) `oauthQuery` is the signed request. The server carries it through
+ * the provider round trip and resumes the authorization after sign-in; a failure returns to `/login` with
+ * the same signed request, so the person can try again without restarting the agent client.
  */
-export function startSso(providerId: string, next: string) {
+export function startSso(providerId: string, next: string, oauthQuery?: string) {
+  const failure = oauthQuery ? `/login?${oauthQuery}&sso=failed` : '/sign-in?sso=failed';
   return request<{ url: string }>(`${AUTH_BASE_PATH}/sign-in/social`, {
     method: 'POST',
-    body: { provider: providerId, callbackURL: next, errorCallbackURL: '/sign-in?sso=failed', newUserCallbackURL: next, disableRedirect: true },
+    body: { provider: providerId, callbackURL: next, errorCallbackURL: failure, newUserCallbackURL: next, disableRedirect: true,
+      ...(oauthQuery ? { oauth_query: oauthQuery } : {}) },
   });
 }
 

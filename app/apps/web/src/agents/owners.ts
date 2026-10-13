@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { useLocation, useRevalidator } from 'react-router';
-import type { ConversationMessage, Project } from '@flux/contracts';
+import type { AgentProjectOwner, Project } from '@flux/contracts';
 import { useShellData } from '../app/data';
+import { whenPageLive } from '../api/pageLeaving';
 import { useStreamEvents } from '../api/stream';
 import { listProjectPeople } from '../project/data';
 
@@ -9,8 +10,11 @@ import { listProjectPeople } from '../project/data';
 export type AgentOwners = ReadonlyMap<string, string>;
 const EMPTY: AgentOwners = new Map();
 
-/** A historical author may lose its grant; its owner name still needs a fresh authorized audience. */
-export function agentAuthorOwner(author: Extract<ConversationMessage, { authorId: null }>['author'], owners: AgentOwners): string | undefined {
+/**
+ * A historical author or a native row's agent may lose its grant; its owner name still needs a fresh
+ * authorized audience, so the projected relation only selects a current audience entry, never a name.
+ */
+export function agentAuthorOwner(author: { id: string; projectOwner?: AgentProjectOwner }, owners: AgentOwners): string | undefined {
   const current = owners.get(author.id);
   if (current) return current;
   const projected = author.projectOwner;
@@ -34,7 +38,8 @@ export function useAgentOwners(project: Pick<Project, 'id' | 'workspaceId'> | nu
   useEffect(() => {
     if (!scope || !projectId || revalidator.state !== 'idle') return;
     let current: AbortController | null = null;
-    const load = () => {
+    let waiting: () => void = () => undefined;
+    const start = () => {
       current?.abort();
       const controller = new AbortController();
       current = controller;
@@ -50,11 +55,14 @@ export function useAgentOwners(project: Pick<Project, 'id' | 'workspaceId'> | nu
         setRead({ scope, owners });
       }, () => { if (!controller.signal.aborted) setRead(null); });
     };
+    // A page being left starts no read (#471); one whose navigation was cancelled reads once it is live.
+    const load = () => { waiting(); waiting = whenPageLive(start); };
     reload.current = load;
     load();
     window.addEventListener('focus', load);
     window.addEventListener('online', load);
     return () => {
+      waiting();
       current?.abort();
       reload.current = () => undefined;
       window.removeEventListener('focus', load);

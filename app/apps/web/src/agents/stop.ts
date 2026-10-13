@@ -53,7 +53,7 @@ export function useStopAgent(projectId: string, onSettled: () => void) {
       const inProgress = task.status === 'in_progress';
       toast({
         message: inProgress ? `Stopped ${agentName} on #${task.number}` : `Took #${task.number} back from ${agentName}`, tone: 'success',
-        action: offerHandBack ? { label: 'Hand back', onAction: () => { void handBack(agentId, task, agentName); } } : undefined,
+        action: offerHandBack ? { label: 'Hand back', onClick: () => { void handBack(agentId, task, agentName); } } : undefined,
       });
     } catch (cause) {
       if (cause instanceof ApiError) attempts.current.delete(key);
