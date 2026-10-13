@@ -22,7 +22,7 @@ export function workViewReadUrl(projectId: string, query: ProjectWorkViewQuery =
   const path = projectWorkViewPath(encodeURIComponent(projectId));
   const window = { limit: query.limit ?? 50, cursor: query.cursor };
   if (query.purpose !== 'choices') {
-    return withQuery(path, { purpose: 'tasks', group: query.group ?? 'all', mine: query.mine ?? false, ...window });
+    return withQuery(path, { purpose: 'tasks', group: query.group ?? 'all', mine: query.mine ?? false, kinds: query.kinds, ...window });
   }
   const selector = { purpose: 'choices', choice: query.choice, q: query.q?.trim() || undefined, ...window };
   switch (query.choice) {

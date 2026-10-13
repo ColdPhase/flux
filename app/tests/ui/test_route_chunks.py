@@ -125,7 +125,22 @@ class RouteChunksJourney(unittest.TestCase):
     def home(self, page: Page):
         page.goto("/")
         expect(page.get_by_role("heading", name="Home", exact=True)).to_be_visible()
+        expect(page.get_by_role("region", name="Needs you")).to_be_visible()
+
+    def notes(self, page: Page):
+        """The private note composer and its device draft live in the Sketchbook's "Your notes" since #342."""
+        page.goto("/map")
+        expect(page.get_by_role("heading", name="Sketchbook", exact=True)).to_be_visible()
         expect(page.get_by_placeholder("Write a note…")).to_be_visible()
+
+    def back_to_notes(self, page: Page, *, phone=False):
+        """Returns to "Your notes" through the router, in the same document (no reload)."""
+        if phone:
+            page.get_by_role("button", name="Open navigation").click()
+            page.get_by_role("dialog", name="Flux").get_by_role("link", name="Sketchbook").click()
+        else:
+            page.locator(".app__side").get_by_role("link", name="Sketchbook").first.click()
+        expect(page.get_by_role("heading", name="Sketchbook", exact=True)).to_be_visible()
 
     def settings(self, page: Page, *, phone=False):
         if phone:
@@ -170,7 +185,7 @@ class RouteChunksJourney(unittest.TestCase):
         self.assertEqual(len(held), 1, "Exactly one actual code download is held")
 
     def refused_home_draft(self, page: Page, engine: str):
-        self.home(page)
+        self.notes(page)
         response = page.request.get(f"{ORIGIN}/api/v1/me")
         self.assertEqual(response.status, 200)
         key = f"flux:draft:{response.json()['user']['id']}:home"
@@ -203,13 +218,14 @@ class RouteChunksJourney(unittest.TestCase):
                     # Old-source control follows the real unsafe action and observes its actual loss.
                     with page.expect_navigation(wait_until="domcontentloaded"):
                         reload.click()
-                    self.home(page)
+                    self.notes(page)
                     self.assertEqual(page.get_by_placeholder("Write a note…").input_value(), latest,
                         "unguarded document reload must not restore the older stored A over the latest visit-only B")
                     self.fail("visit-only work must make automatic code-error Reload unavailable")
                 expect(reload).to_be_disabled()
                 expect(page.get_by_text("Keep this tab open", exact=False)).to_be_visible()
                 page.get_by_role("link", name="Go to Home", exact=True).click()
+                self.back_to_notes(page)
                 expect(page.get_by_placeholder("Write a note…")).to_have_value(latest)
                 self.assertEqual(page.evaluate("performance.timeOrigin"), origin)
                 self.assertEqual(page.evaluate("key => localStorage.getItem(key)", key), earlier)
@@ -224,7 +240,7 @@ class RouteChunksJourney(unittest.TestCase):
                     page.get_by_role("button", name="Reload Flux", exact=True).click()
                 self.assertGreater(page.evaluate("performance.timeOrigin"), origin)
                 expect(page.get_by_role("heading", name="Agents and AI", exact=True)).to_be_visible()
-                self.home(page)
+                self.notes(page)
                 expect(page.get_by_placeholder("Write a note…")).to_have_value(persisted)
 
     def test_11_failed_optional_surface_keeps_refused_draft_and_close_recovery(self):
@@ -348,7 +364,7 @@ class RouteChunksJourney(unittest.TestCase):
                 with self.subTest(engine=engine, retiring=retiring):
                     page = self.page(engine)
                     page.add_init_script(HELD_SESSION_RESPONSE)
-                    self.home(page)
+                    self.notes(page)
                     me = page.request.get(f"{ORIGIN}/api/v1/me").json()
                     durable = f"Durable same-account work before held reload {engine}"
                     page.get_by_placeholder("Write a note…").fill(durable)
@@ -376,6 +392,7 @@ class RouteChunksJourney(unittest.TestCase):
                     else:
                         page.evaluate("window.__reloadSession.afterCommit('Home')")
                         page.get_by_role("link", name="Go to Home", exact=True).click()
+                        self.back_to_notes(page)
                         expect(page.get_by_placeholder("Write a note…")).to_have_value(durable)
                     page.wait_for_function("window.__reloadSession.commitSeen && window.__reloadSession.settled")
                     page.evaluate("new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))")
@@ -409,7 +426,7 @@ class RouteChunksJourney(unittest.TestCase):
             with self.subTest(engine=engine, phone=phone):
                 page = self.page(engine, phone=phone)
                 held = self.hold(page, "SettingsHome")
-                self.home(page)
+                self.notes(page)
                 field = page.get_by_placeholder("Write a note…")
                 field.fill("Private work while the destination downloads")
                 page.evaluate("window.__routeDraftElement = document.querySelector('#composer')")
@@ -417,28 +434,28 @@ class RouteChunksJourney(unittest.TestCase):
                 expect(page.locator('[data-route-pending="/settings"]')).to_be_visible()
                 expect(page.locator('[data-route-pending="/settings"] [role="status"]')).to_have_text("Opening settings…")
                 self.request_is_held(page, held)
-                expect(page.get_by_role("heading", name="Home", exact=True)).to_be_visible()
+                expect(page.get_by_role("heading", name="Sketchbook", exact=True)).to_be_visible()
                 expect(field).to_have_value("Private work while the destination downloads")
                 field.fill("Private work remains editable")
                 self.assertTrue(page.evaluate("window.__routeDraftElement === document.querySelector('#composer')"))
                 shot(page, f"route-chunks-pending-{engine}-{'phone' if phone else 'desktop'}")
                 page.get_by_role("button", name="Cancel", exact=True).click()
                 expect(page.locator("[data-route-pending]")).to_have_count(0)
-                expect(page).to_have_url(f"{ORIGIN}/")
+                expect(page).to_have_url(f"{ORIGIN}/map")
                 held.pop().continue_()
                 expect(field).to_have_value("Private work remains editable")
                 # A newer completed navigation stays current even after the canceled code arrives.
-                page.get_by_role("link", name="Map", exact=True).click()
-                expect(page).to_have_url(f"{ORIGIN}/map")
+                page.get_by_role("navigation", name="Main places" if phone else "Places").get_by_role("link", name=re.compile("^Inbox")).click()
+                expect(page).to_have_url(f"{ORIGIN}/inbox")
                 expect(page.get_by_role("heading", name="Settings", exact=True)).to_have_count(0)
-                page.get_by_role("link", name="Conversation", exact=True).click()
+                self.back_to_notes(page, phone=phone)
                 expect(page.get_by_placeholder("Write a note…")).to_have_value("Private work remains editable")
 
     def test_03_failed_route_download_keeps_authenticated_shell_and_private_recovery(self):
         for engine in self.browsers:
             with self.subTest(engine=engine):
                 page = self.page(engine)
-                self.home(page)
+                self.notes(page)
                 page.get_by_placeholder("Write a note…").fill(f"Private recovery after code failure {engine}")
                 page.route(re.compile(r"/assets/SettingsHome-[^/]+\.js(?:\?.*)?$"), lambda route: route.abort("failed"))
                 self.settings(page)
@@ -448,6 +465,7 @@ class RouteChunksJourney(unittest.TestCase):
                 expect(page.get_by_role("heading", name="Sign in")).to_have_count(0)
                 shot(page, f"route-chunks-code-error-{engine}-desktop")
                 page.get_by_role("link", name="Go to Home", exact=True).click()
+                self.back_to_notes(page)
                 expect(page.get_by_placeholder("Write a note…")).to_have_value(f"Private recovery after code failure {engine}")
 
     def test_04_cold_deep_link_announces_destination_without_a_fabricated_shell(self):
@@ -468,7 +486,7 @@ class RouteChunksJourney(unittest.TestCase):
             with self.subTest(engine=engine):
                 page = self.page(engine)
                 held = self.hold(page, "JumpTo")
-                self.home(page)
+                self.notes(page)
                 field = page.get_by_placeholder("Write a note…")
                 field.fill(f"Search download preserves focus {engine}")
                 page.keyboard.press("Control+k")
@@ -517,12 +535,11 @@ class RouteChunksJourney(unittest.TestCase):
                 page.keyboard.press("Escape")
                 expect(page.locator("#details")).to_have_count(0)
                 expect(opener).to_be_focused()
-                field = page.get_by_placeholder("Write a note…")
-                field.fill(f"Closed Details never steals focus {engine}")
+                # Home has no text field since #342: the opener, where focus returned, keeps it.
                 with page.expect_response(re.compile(r"/assets/Details-[^/]+\.js")):
                     held.pop().continue_()
                 page.evaluate("() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))")
-                expect(field).to_be_focused()
+                expect(opener).to_be_focused()
                 expect(page.locator("#details")).to_have_count(0)
                 self.open_details_by_keyboard(page)
                 expect(page.locator("#details .details")).to_be_visible()

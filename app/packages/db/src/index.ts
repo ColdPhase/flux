@@ -144,6 +144,7 @@ export * from './repositories/proactive-recovery.js';
 export { COMPARISON_CONTEXT_LIMITS } from './repositories/proactive-sources.js';
 export * from './background-key-crypto.js';
 export * from './repositories/notifications.js';
+export * from './repositories/needs-you.js';
 export * from './repositories/search.js';
 export * from './repositories/personal-runs.js';
 export * from './repositories/project-export.js';

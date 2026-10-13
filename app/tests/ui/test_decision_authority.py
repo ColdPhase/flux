@@ -82,13 +82,10 @@ class DecisionAuthorityJourney(unittest.TestCase):
     def decision(self, page: Page) -> dict:
         return self.api(page, "GET", f"/api/v1/decisions/{self.decision_id}", status=200)
 
-    def open_decision(self, who: str, group: str, **kwargs) -> Page:
-        """Opens the decision from the Tasks list, where a proposal sits in its own group."""
+    def open_decision(self, who: str, **kwargs) -> Page:
+        """Opens the decision itself in the detail panel: there is no Decisions view to find it in (#342)."""
         page = self.page(who, **kwargs)
-        page.goto(f"/projects/{self.project_id}/tasks")
-        page.get_by_role("radio", name="List", exact=True).click()
-        region = page.get_by_role("region", name=re.compile(f"^{group}"))
-        region.get_by_role("button", name=re.compile(f"^{re.escape(TITLE)}")).click()
+        page.goto(f"/projects/{self.project_id}/tasks?open=decision:{self.decision_id}")
         return page
 
     def details(self, page: Page, phone: bool = False):
@@ -121,7 +118,7 @@ class DecisionAuthorityJourney(unittest.TestCase):
     # ---------------------------------------------------------------- a viewer sees who decides
 
     def test_02_a_viewer_sees_that_a_person_with_edit_access_decides_and_cannot_accept(self) -> None:
-        page = self.open_decision("vic", "Waiting for a decision")
+        page = self.open_decision("vic")
         panel = self.details(page)
         expect(panel.get_by_role("heading", name=TITLE)).to_be_visible()
         expect(panel.locator(".wd-eyebrow")).to_contain_text("Proposed decision")
@@ -136,12 +133,14 @@ class DecisionAuthorityJourney(unittest.TestCase):
         self.assertEqual(refused.status, 403, refused.text())
         stored = self.decision(page)
         self.assertEqual((stored["status"], stored["version"], stored["decidedBy"]), ("proposed", 1, None))
+        # The Inbox asks only people who can accept: a viewer is not asked, and is told nothing was lost.
+        page.goto("/inbox")
+        expect(page.get_by_role("heading", name="Nothing needs you right now")).to_be_visible()
+        expect(page.locator(".nyc")).to_have_count(0)
 
     def test_03_on_a_phone_the_viewer_reads_the_same_note(self) -> None:
         page = self.page("vic", phone=True)
-        page.goto(f"/projects/{self.project_id}/tasks")
-        page.get_by_role("radio", name="List", exact=True).tap()
-        page.get_by_role("region", name=re.compile("^Waiting for a decision")).get_by_role("button", name=re.compile(f"^{re.escape(TITLE)}")).tap()
+        page.goto(f"/projects/{self.project_id}/tasks?open=decision:{self.decision_id}")
         sheet = self.details(page, phone=True)
         expect(sheet.get_by_role("region", name="Who decides")).to_contain_text("A person who can edit Gesture lamp accepts it")
         expect(sheet.get_by_role("button", name=re.compile("^Accept"))).to_have_count(0)
@@ -150,7 +149,15 @@ class DecisionAuthorityJourney(unittest.TestCase):
     # ---------------------------------------------------------------- a contributor decides
 
     def test_04_a_contributor_who_did_not_propose_it_accepts_and_is_recorded(self) -> None:
-        page = self.open_decision("kai", "Needs you")
+        # The proposal waits in Kai's Inbox as one card: who proposed it, who can still accept it (one person decides).
+        inbox = self.page("kai")
+        inbox.goto("/inbox")
+        card = inbox.locator(".nyc", has_text=TITLE)
+        expect(card).to_contain_text("Ada Lind")
+        expect(card.locator(".nyc__waiting")).to_contain_text("waiting for you")
+        expect(card.locator(".nyc__waiting")).to_contain_text("Ada Lind can accept too")
+        expect(card.get_by_role("button", name=re.compile("^Accept"))).to_be_visible()
+        page = self.open_decision("kai")
         panel = self.details(page)
         expect(panel.get_by_role("region", name="Who decides")).to_have_count(0)
         expect(panel).to_contain_text("Ada Lind")
@@ -162,13 +169,14 @@ class DecisionAuthorityJourney(unittest.TestCase):
 
         # The viewer now reads a current rule, with no pending note.
         viewer = self.page("vic")
-        viewer.goto(f"/projects/{self.project_id}/tasks")
-        viewer.get_by_role("radio", name="List", exact=True).click()
-        viewer.get_by_role("region", name=re.compile("^Decisions")).get_by_role("button", name=re.compile(f"^{re.escape(TITLE)}")).click()
+        viewer.goto(f"/projects/{self.project_id}/tasks?open=decision:{self.decision_id}")
         sheet = self.details(viewer)
         expect(sheet.locator(".wd-eyebrow")).to_contain_text("Current rule")
         expect(sheet).to_contain_text("Kai Berg")
         expect(sheet.get_by_role("region", name="Who decides")).to_have_count(0)
+        # Accepted, it has left everyone's Inbox.
+        inbox.goto("/inbox")
+        expect(inbox.locator(".nyc", has_text=TITLE)).to_have_count(0)
 
 
 if __name__ == "__main__":
