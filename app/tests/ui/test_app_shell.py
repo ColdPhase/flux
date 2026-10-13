@@ -112,6 +112,37 @@ def new_from_sidebar(page: Page, item: str) -> None:
     page.get_by_role("menu", name="New").get_by_role("menuitem", name=item, exact=True).click()
 
 
+def open_details(page: Page) -> None:
+    """Details: More, then Details, in the computer's one-row header (#340); the phone keeps its
+    labelled Details button until its own header (#341)."""
+    header = page.locator("header.top")
+    header.locator("button[aria-label='More'], .top__details").first.wait_for()
+    more = header.get_by_role("button", name="More", exact=True)
+    if more.count():
+        more.click()
+        page.get_by_role("menu", name="More").get_by_role("menuitem", name="Details").click()
+    else:
+        header.get_by_role("button", name="Details", exact=True).click()
+
+
+def open_what_matters(page: Page, tap: bool = False) -> None:
+    """"What matters" (#133): on the computer "N needs you" in the header opens it, or More when nothing
+    needs you (#340); the phone keeps its entry after the state row until #341."""
+    header = page.locator("header.top")
+    header.locator("button[aria-label='More'], .top__details").first.wait_for()
+    more = header.get_by_role("button", name="More", exact=True)
+    if not more.count():
+        entry = page.get_by_role("button", name=re.compile("^What matters"))
+        entry.tap() if tap else entry.click()
+        return
+    chip = header.get_by_role("button", name=re.compile("needs you$"))
+    if chip.count():
+        chip.click()
+        return
+    more.click()
+    page.get_by_role("menu", name="More").get_by_role("menuitem", name="What matters").click()
+
+
 def shot(page: Page, name: str) -> None:
     if not SHOTS:
         return
@@ -374,7 +405,7 @@ class AppShellJourney(unittest.TestCase):
         page = self.page(signed_in=False)
         page.goto("/tasks")
         expect(page).to_have_url(re.compile(r"/sign-in\?next=%2Ftasks$"))
-        expect(page.get_by_role("heading", name="Sign in to Flux")).to_be_visible()
+        expect(page.get_by_role("heading", name="Sign in")).to_be_visible()
         shot(page, "sign-in-desktop-light")
 
     def test_02_register(self) -> None:
@@ -460,6 +491,8 @@ class AppShellJourney(unittest.TestCase):
         expect(sidebar.get_by_text("No projects yet")).to_be_visible()
         expect(sidebar.get_by_role("button", name=re.compile("^New"))).to_have_attribute("aria-keyshortcuts", "C")
         views = page.get_by_role("navigation", name="Views")
+        # The views sit in the header's one row as a segmented control (F-026 §4, #340).
+        expect(page.locator("header.top").get_by_role("navigation", name="Views")).to_be_visible()
         for label in ("Conversation", "Map", "Tasks", "Wiki"):
             expect(views.get_by_role("link", name=label, exact=True)).to_be_visible()
         expect(views.get_by_role("link", name="Conversation")).to_have_attribute("aria-current", "page")
@@ -491,23 +524,23 @@ class AppShellJourney(unittest.TestCase):
         self.assertEqual(len(page.evaluate("fetch('/api/v1/workspaces').then(r => r.json())")), 1, "still one space")
         shot(page, "desktop-1440-light")
 
-        indicator = page.locator(".views .ui-tabs__indicator")
+        indicator = page.locator(".top__views .ui-tabs__indicator")
         before = indicator.evaluate("el => el.style.transform")
         views.get_by_role("link", name="Tasks").click()
         expect(page).to_have_url(f"{ORIGIN}/tasks")
         expect(views.get_by_role("link", name="Tasks")).to_have_attribute("aria-current", "page")
         expect(page.get_by_role("heading", name="Nothing is waiting for you")).to_be_visible()
-        self.assertNotEqual(before, indicator.evaluate("el => el.style.transform"), "the underline moves to the chosen view")
+        self.assertNotEqual(before, indicator.evaluate("el => el.style.transform"), "the pill moves to the chosen view")
         views.get_by_role("link", name="Map").click()
         expect(page.get_by_role("heading", name="Start a sketch")).to_be_visible()
         shot(page, "desktop-1440-map-light")
 
-        details_button = page.get_by_role("button", name="Details", exact=True)
-        expect(details_button).to_have_attribute("aria-expanded", "false")
-        details_button.click()
+        # Details is in More (#340); the header has no separate Details button on the computer.
+        more = page.locator("header.top").get_by_role("button", name="More", exact=True)
+        expect(page.locator("header.top").get_by_role("button", name="Details", exact=True)).to_have_count(0)
+        open_details(page)
         panel = page.get_by_role("complementary", name="Details")
         expect(panel).to_be_visible()
-        expect(details_button).to_have_attribute("aria-expanded", "true")
         expect(panel.get_by_role("heading", name="Nothing selected")).to_be_visible()
         expect(panel.get_by_text(EMAIL)).to_have_count(0)
         # Docked: the work area stays usable beside the panel.
@@ -517,8 +550,11 @@ class AppShellJourney(unittest.TestCase):
         shot(page, "desktop-1440-details-light")
         page.keyboard.press("Escape")
         expect(panel).to_have_count(0)
-        expect(details_button).to_be_focused()
+        expect(more).to_be_focused()
+        # "]" is not a key of the final design (§4 keyboard); it opens nothing.
         page.keyboard.press("]")
+        expect(page.get_by_role("complementary", name="Details")).to_have_count(0)
+        open_details(page)
         expect(page.get_by_role("complementary", name="Details")).to_be_visible()
         page.get_by_role("button", name="Close details").click()
         expect(page.get_by_role("complementary", name="Details")).to_have_count(0)
@@ -660,7 +696,7 @@ class AppShellJourney(unittest.TestCase):
         self.assertEqual(page.evaluate("getComputedStyle(document.body).backgroundColor"), "rgb(11, 11, 11)", "the dark outer background")
         self.assertEqual(page.locator(".app__main").evaluate("el => getComputedStyle(el).backgroundColor"), "rgb(17, 17, 17)", "the dark panel")
         shot(page, "desktop-1440-dark")
-        page.get_by_role("button", name="Details", exact=True).click()
+        open_details(page)
         expect(page.get_by_role("complementary", name="Details")).to_be_visible()
         shot(page, "desktop-1440-details-dark")
 
@@ -768,7 +804,7 @@ class AppShellJourney(unittest.TestCase):
 
         signin = self.page(phone=True, dark=True, signed_in=False)
         signin.goto("/sign-in")
-        expect(signin.get_by_role("heading", name="Sign in to Flux")).to_be_visible()
+        expect(signin.get_by_role("heading", name="Sign in")).to_be_visible()
         shot(signin, "sign-in-phone-dark")
 
     def test_07a_phone_enlarged_text_keeps_every_place_in_view(self) -> None:
@@ -854,7 +890,7 @@ class AppShellJourney(unittest.TestCase):
         calm = self.page(reduced_motion="reduce")
         calm.goto("/")
         self.assertEqual(calm.evaluate("parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--dur-3'))"), 0)
-        calm.get_by_role("button", name="Details", exact=True).click()
+        open_details(calm)
         panel = calm.get_by_role("complementary", name="Details")
         expect(panel).to_be_visible()
         self.assertEqual(panel.evaluate("el => el.getAnimations().length"), 0, "no panel animation under reduced motion")
@@ -935,7 +971,7 @@ class AppShellJourney(unittest.TestCase):
         page.goto("/map")
         expect(page).to_have_url(re.compile(r"/sign-in\?next=%2Fmap$"))
         page.reload()
-        expect(page.get_by_role("heading", name="Sign in to Flux")).to_be_visible()
+        expect(page.get_by_role("heading", name="Sign in")).to_be_visible()
 
     def person_with_a_task(self, name: str, *, slow: bool = True, service_workers: str = "allow") -> tuple[Page, str, str]:
         """A new account in its own tab with one restricted project and one task in it."""
@@ -963,7 +999,7 @@ class AppShellJourney(unittest.TestCase):
         """Signs out while the tab still waits for answers, then lets every answer arrive."""
         page.get_by_role("button", name=re.compile(rf"{name}.*account and sign out")).click()
         page.get_by_role("dialog", name="Account").get_by_role("button", name="Sign out").click()
-        expect(page.get_by_role("heading", name="Sign in to Flux")).to_be_visible()
+        expect(page.get_by_role("heading", name="Sign in")).to_be_visible()
         expect(page.get_by_role("status").filter(has_text="You’re signed out.")).to_be_visible()
         # What the tab was loading before sign-out answers now, while the sign-in page's own check
         # of the session is still out; then that check answers too. (That check is the sign-in
@@ -976,7 +1012,7 @@ class AppShellJourney(unittest.TestCase):
         # Sign-out ends on the sign-in page and stays there: nothing loaded for the previous account
         # takes the tab back, neither its address nor its page.
         expect(page).to_have_url(f"{ORIGIN}/sign-in")
-        expect(page.get_by_role("heading", name="Sign in to Flux")).to_be_visible()
+        expect(page.get_by_role("heading", name="Sign in")).to_be_visible()
         expect(page.get_by_text("Something went wrong")).to_have_count(0)
         self.assertEqual(page.evaluate("location.pathname + location.search"), "/sign-in")
 
@@ -1032,7 +1068,7 @@ class AppShellJourney(unittest.TestCase):
         expect(owner.get_by_role("heading", level=1, name="Home")).to_be_visible()
         new_from_sidebar(owner, "Project")
         owner.get_by_label("Your space").fill("Lamp lab")
-        owner.get_by_label("Project name").fill("Gesture lamp")
+        owner.get_by_label("What is it about?").fill("Gesture lamp")
 
         def lose_first_committed(path: str):
             # The server commits the first POST but its 201 never arrives (#29 AC-4): Retry must not duplicate it.
@@ -1293,7 +1329,7 @@ class AppShellJourney(unittest.TestCase):
         owner.get_by_role("button", name="Create account").click()
         new_from_sidebar(owner, "Project")
         owner.get_by_label("Your space").fill("Many ideas")
-        owner.get_by_label("Project name").fill("Busy project")
+        owner.get_by_label("What is it about?").fill("Busy project")
         owner.get_by_role("button", name="Create project").click()
         project_id = owner.locator(".project-convo").get_attribute("data-project-id")
         self.assertTrue(project_id)
@@ -1411,7 +1447,7 @@ class AppShellJourney(unittest.TestCase):
         page.get_by_role("button", name="Create account").click()
         new_from_sidebar(page, "Project")
         page.get_by_label("Your space").fill("Research space")
-        page.get_by_label("Project name").fill("Sensor study")
+        page.get_by_label("What is it about?").fill("Sensor study")
         page.get_by_role("button", name="Create project").click()
         expect(page.get_by_role("heading", level=1, name="Sensor study")).to_be_visible()
 
@@ -1465,7 +1501,7 @@ class AppShellJourney(unittest.TestCase):
         page.get_by_role("button", name="Create account").click()
         new_from_sidebar(page, "Project")
         page.get_by_label("Your space").fill("Research space")
-        page.get_by_label("Project name").fill(name)
+        page.get_by_label("What is it about?").fill(name)
         page.get_by_role("button", name="Create project").click()
         expect(page.get_by_role("heading", level=1, name=name)).to_be_visible()
 
@@ -1579,7 +1615,7 @@ class AppShellJourney(unittest.TestCase):
         page.goto("/sign-up")
         expect(page.get_by_role("button", name="Create account")).to_be_visible()
         start = self.open_while_leaving(page, "/sign-in")
-        expect(page.get_by_role("heading", name="Sign in to Flux")).to_be_visible()
+        expect(page.get_by_role("heading", name="Sign in")).to_be_visible()
         self.assert_read_waits_for_the_grace(page, start, "/api/v1/auth/capabilities")
 
     def test_14e_the_assistant_setup_reads_its_connections_only_once_the_page_is_live(self) -> None:

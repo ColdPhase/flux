@@ -6,7 +6,7 @@ import { readsSource } from '../push/notifications.js';
 import type { SourceLookup } from '../push/ports.js';
 import { isQuestion, mentions } from './addressing.js';
 import type { GeneratorEvent, GeneratorPorts, GeneratorUnitOfWork, NotificationFacts } from './ports.js';
-import { channelsOf, deliverableAt, emailKinds } from './preferences.js';
+import { channelsOf, deliverableAt, emailKinds, pausedUntil } from './preferences.js';
 
 // Notifications from committed domain events (issue #116, foundation 8.9). The worker reads the
 // event log after its cursor, in commit order, and for each event decides who it concerns and
@@ -195,9 +195,14 @@ async function deliver(ports: GeneratorPorts, event: GeneratorEvent, candidate: 
   const now = options.now?.() ?? new Date();
   const at = deliverableAt(preferences, now);
   const startAfter = at.getTime() > now.getTime() ? at : null;
+  const pauseEnd = pausedUntil(preferences, now);
+  // A pause alone keeps the ordinary push. Quiet hours that hold it now, or extend the
+  // release after that pause, still route it to the summary as they did without Focus.
+  const heldByQuietHours = at.getTime() > (pauseEnd ?? now).getTime()
+    || !!pauseEnd && deliverableAt({ ...preferences, pausedUntil: null }, now).getTime() > now.getTime();
   // With the morning summary on, pushes that quiet hours hold back are not sent one by one when
   // they end: the summary counts them and the inbox keeps them (S22). Email is unaffected.
-  if (channels.push && !(startAfter && preferences.summaryEnabled)) {
+  if (channels.push && !(heldByQuietHours && preferences.summaryEnabled)) {
     for (const subscriptionId of await ports.deliverableSubscriptions(candidate.userId)) {
       await ports.enqueuePush({ notificationId, subscriptionId, userId: candidate.userId }, startAfter);
     }

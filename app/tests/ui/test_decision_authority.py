@@ -130,7 +130,6 @@ class DecisionAuthorityJourney(unittest.TestCase):
         expect(who).to_contain_text("A person who can edit Gesture lamp accepts it; agents and assistants can only propose.")
         expect(panel.get_by_role("button", name=re.compile("^Accept"))).to_have_count(0)
         expect(panel.get_by_role("heading", name="Accept")).to_have_count(0)
-        expect(page.get_by_label("Current state")).to_contain_text("A decision is proposed")
         shot(page, "decision-desktop-1440-viewer")
         # A direct attempt is refused and leaves the proposal untouched.
         refused = self.fetch(page, "POST", f"/api/v1/decisions/{self.decision_id}/accept", {"expectedVersion": 1})

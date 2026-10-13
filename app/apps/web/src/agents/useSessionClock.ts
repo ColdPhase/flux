@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import type { ProjectAgentConnection } from '@flux/contracts';
 import { nextSessionExpiry } from './roster';
 
-/** Age known session evidence without another API observation or a polling clock. */
+/** Age known session and live-claim deadlines without another API observation or a polling clock. */
 export function useSessionClock(connections: readonly ProjectAgentConnection[] | undefined, observedNow: number): number {
   const [agedNow, setAgedNow] = useState(() => observedNow);
   const now = Math.max(observedNow, agedNow);

@@ -77,7 +77,7 @@ export function HandOffDialog({ open, onClose, project, task, agentId = null, on
   const phone = useMediaQuery(MEDIA.phone);
   const body = open ? <HandOffBody onClose={onClose} project={project} task={task ?? null} agentId={agentId} onDone={onDone} /> : null;
   return phone
-    ? <Sheet open={open} onClose={onClose} label="Hand off a task">{body}</Sheet>
+    ? <Sheet open={open} onClose={onClose} label="Hand off a task" className="handoff-sheet">{body}</Sheet>
     : <Overlay placement="center" open={open} onClose={onClose} label="Hand off a task">{body}</Overlay>;
 }
 

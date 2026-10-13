@@ -46,7 +46,7 @@ def not_signed_in() -> dict:
 
 def claimed(task_id: str, title: str) -> dict:
     """The connection's recorded unit of work on a task, claimed: with an open session, the only thing that reads "Working" (C-1)."""
-    return {"currentWork": {"taskId": task_id, "taskTitle": title, "role": "execute", "state": "claimed"}}
+    return {"currentWork": {"taskId": task_id, "taskTitle": title, "role": "execute", "state": "claimed", "liveClaimExpiresAt": iso(60)}}
 
 
 def recorded_result(minutes_ago: int) -> dict:

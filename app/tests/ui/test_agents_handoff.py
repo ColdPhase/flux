@@ -27,6 +27,13 @@ def shot(page: Page, name: str) -> None:
     save_shot(page, name if UI_BROWSER == "chromium" else f"{name}-{UI_BROWSER}")
 
 
+def assert_phone_sheet(dialog, page) -> None:
+    metrics = dialog.evaluate("""el => { const rect = el.getBoundingClientRect(); return {top: rect.top, radius: parseFloat(getComputedStyle(el).borderTopLeftRadius)}; }""")
+    if metrics["top"] <= 80 or metrics["radius"] <= 20:
+        raise AssertionError(f"phone hand-off sheet should leave the project visible above rounded corners: {metrics}")
+    expect(page.get_by_role("heading", level=1, name="Agents")).to_be_visible()
+
+
 class HandOffJourney(unittest.TestCase):
     """Tests run in name order and share two accounts, one project, three agents and four tasks."""
 
@@ -284,6 +291,7 @@ class HandOffJourney(unittest.TestCase):
             button.tap()
             dialog = page.get_by_role("dialog", name="Hand off a task")
             expect(dialog.get_by_text("Step 1 of 2")).to_be_visible()
+            assert_phone_sheet(dialog, page)
             dialog.get_by_label("Task", exact=True).select_option(label="#5 · Order spare batteries")
             dialog.locator("label.handoff__agent", has_text="Claude Code agent").tap()
             for name in ("Next",):
@@ -293,6 +301,7 @@ class HandOffJourney(unittest.TestCase):
             shot(page, f"handoff-step1-phone-{scheme}")
             dialog.get_by_role("button", name="Next").tap()
             expect(dialog.get_by_text("Step 2 of 2")).to_be_visible()
+            assert_phone_sheet(dialog, page)
             shot(page, f"handoff-step2-phone-{scheme}")
             page.keyboard.press("Escape")
             expect(page.get_by_role("dialog")).to_have_count(0)
@@ -518,7 +527,9 @@ class HandOffJourney(unittest.TestCase):
                         at = time.time()
                         item["session"] = {"startedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(at - 3600)),
                                            "expiresAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(at - 60 if connection_state == "expired_session" else at + 3600))} if item["state"] == "session_open" else None
-                        item["currentWork"] = {"taskId": target["id"], "taskTitle": target["title"], "role": "review", "state": state}
+                        item["currentWork"] = {"taskId": target["id"], "taskTitle": target["title"], "role": "review", "state": state,
+                                               "liveClaimExpiresAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() + 3600))
+                                               if state == "claimed" and connection_state == "session_open" else None}
                         item["requests"] = [{"id": "fixture-request", "kind": "review", "state": request_state,
                                              "reason": "after the calibration result", "taskId": target["id"], "taskTitle": target["title"],
                                              "sender": {"connectionId": "fixture-sender", "name": "Review laptop", "ownerName": "Jonas Berg"}}]
@@ -721,7 +732,8 @@ class HandOffJourney(unittest.TestCase):
         reads: list[str] = []
         at = time.time()
         started = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(at - 60))
-        expires = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(at + 8))
+        expires = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(at + 60))
+        claim_expires = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(at + 8))
 
         def projection(route) -> None:
             response = route.fetch()
@@ -731,7 +743,7 @@ class HandOffJourney(unittest.TestCase):
                     item.update(state="not_signed_in", session=None, currentWork=None)
                 elif item["id"] == connections[1]["id"]:
                     item.update(state="session_open", session={"startedAt": started, "expiresAt": expires},
-                                currentWork={"taskId": held["id"], "taskTitle": held["title"], "role": "plan", "state": "claimed"},
+                                currentWork={"taskId": held["id"], "taskTitle": held["title"], "role": "plan", "state": "claimed", "liveClaimExpiresAt": claim_expires},
                                 requests=[{"id": "expiry-request", "kind": "review", "state": "claimed", "reason": "after the field reading",
                                            "taskId": held["id"], "taskTitle": held["title"],
                                            "sender": {"connectionId": "expiry-sender", "name": "Field laptop", "ownerName": "Jonas Berg"}}])
@@ -776,16 +788,16 @@ class HandOffJourney(unittest.TestCase):
         dialog.get_by_role("button", name="Close", exact=True).click()
         expect(live).to_contain_text('Work held on “Plan the next moisture reading”', timeout=1000)
         expect(live).not_to_have_attribute("data-working", "true")
-        expect(live).to_contain_text("Offline")
+        expect(live).to_contain_text("Session open")
         expect(live).to_contain_text("Review request from Field laptop (Jonas Berg)")
         expect(live).to_contain_text("after the field reading")
         expect(live.locator(".agents-row__icon")).to_have_attribute("data-expression", "asleep")
         expect(page.get_by_text("2 in this project", exact=True)).to_be_visible()
         detail = page.get_by_role("complementary").get_by_role("region", name="Now")
         expect(detail).to_contain_text("Planning · Work held · claim recorded")
-        expect(detail).to_contain_text("Offline")
+        expect(detail).to_contain_text("Session open")
         expect(detail).to_contain_text("Field laptop (Jonas Berg)")
-        self.assertLess(time.monotonic() - opened_at, 14, "known expiry is visible before the fifteen-second poll")
+        self.assertLess(time.monotonic() - opened_at, 14, "known lease expiry is visible before the fifteen-second poll")
         self.assertEqual(len(reads), before_expiry, "roster, count and detail expiry use the unchanged snapshot")
         shot(page, "agents-known-expiry-held-desktop-light")
 
@@ -814,7 +826,8 @@ class HandOffJourney(unittest.TestCase):
             item = next(row for row in body["connections"] if row["id"] == connection["id"])
             item.update(state="session_open", session={"startedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
                                                        "expiresAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(expires_at / 1000))},
-                        currentWork={"taskId": task["id"], "taskTitle": task["title"], "role": "review", "state": "claimed"})
+                        currentWork={"taskId": task["id"], "taskTitle": task["title"], "role": "review", "state": "claimed",
+                                     "liveClaimExpiresAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(expires_at / 1000))})
             reads.append(route.request.url)
             route.fulfill(response=response, json=body)
 

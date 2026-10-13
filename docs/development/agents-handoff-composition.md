@@ -35,7 +35,7 @@ the independently owned Stop/questions or Agents follow-up branches.
 - **C-4 — Preserve main's verification and migrations.** Retain both changelog
   entries, main's audience helpers and all clean merges. Update only the two newly
   merged adaptive expectations from “Working together” to “Agents”; retain every
-  #454 guard. Migration 0062's forward bytes and schema version 72 stay unchanged.
+  #454 guard. Migration 0062's forward bytes stay unchanged. This note was written against main schema 72; the current composed main schema is 91, and the agent migration does not alter that version contract.
 
 ## Evidence required before merge
 
@@ -101,6 +101,17 @@ controls. The reported left clipping is disputed on the unchanged original
 pixels, so verify live containment at 390/320, long names and enlarged text before
 any CSS correction. Fix only reproduced overflow. All full-design, full-issue and
 independent merge gates remain open, and changed production needs fresh evidence.
+
+## C-1 live-claim fence amendment, 2026-10-13
+
+“Working” on the Agents view requires more than a claimed unit and an open
+connection. The server must confirm that the unit's lease is unexpired and bound
+to the connection's current usable runtime session, with the project still inside
+that connection's current project ceiling. Return the lease expiry only while
+that proof holds; the client ages the Working expression at that known deadline
+without another API read. Keep the recorded unit state visible when proof is
+absent, but report it as held work. The sidebar's separate owned-agent projection
+is not a substitute for this project-scoped Agents API.
 
 
 ## C-1 known-deadline and expression amendment, 2026-10-11

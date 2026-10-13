@@ -503,7 +503,7 @@ test('the Agents view shows each connection its held unit and its open request w
   const view = async () => expectStatus(await f.w.hubert.browser.request('GET', `/api/v1/projects/${f.w.p.id}/agents`), 200) as ProjectAgents;
   const reviewer = (listed: ProjectAgents) => listed.connections.find((item) => item.id === f.marekClaude.connection.id)!;
   const before = reviewer(await view());
-  assert.deepEqual(before.currentWork, { taskId: f.a.id, taskTitle: f.a.title, role: 'review', state: 'pending' }, 'assigned, not yet claimed');
+  assert.deepEqual(before.currentWork, { taskId: f.a.id, taskTitle: f.a.title, role: 'review', state: 'pending', liveClaimExpiresAt: null }, 'assigned, not yet claimed');
   assert.deepEqual(before.requests, [{ id: asked.requestId, kind: 'review', state: 'queued', reason: null, taskId: f.a.id, taskTitle: f.a.title,
     sender: { connectionId: f.codex.connection.id, name: f.codex.connection.name, ownerName: before.requests[0]!.sender.ownerName } }]);
   assert.equal(typeof before.requests[0]!.sender.ownerName, 'string');
@@ -513,4 +513,23 @@ test('the Agents view shows each connection its held unit and its open request w
   const claimed = reviewer(await view());
   assert.equal(claimed.requests[0]!.state, 'claimed');
   assert.equal(claimed.currentWork!.state, 'claimed');
+  assert.ok(claimed.currentWork!.liveClaimExpiresAt, 'only the current live session lease is exposed');
+  const lease = (await pool.query('SELECT lease_session_id, lease_expires_at FROM cowork_units WHERE id=$1', [f.reviewUnit])).rows[0]!;
+  const currentLeaseSession = lease.lease_session_id as string;
+  await pool.query('UPDATE cowork_units SET lease_session_id=$2 WHERE id=$1', [f.reviewUnit, randomUUID()]);
+  assert.equal(reviewer(await view()).currentWork!.liveClaimExpiresAt, null, 'a different session cannot make this unit Working');
+  await pool.query("UPDATE cowork_units SET lease_session_id=$2, lease_expires_at=clock_timestamp()+interval '30 seconds' WHERE id=$1", [f.reviewUnit, currentLeaseSession]);
+  assert.ok(reviewer(await view()).currentWork!.liveClaimExpiresAt);
+  await pool.query("UPDATE cowork_units SET lease_expires_at=clock_timestamp()-interval '1 second' WHERE id=$1", [f.reviewUnit]);
+  assert.equal(reviewer(await view()).currentWork!.liveClaimExpiresAt, null, 'an expired lease is only held work');
+  await pool.query("UPDATE cowork_units SET lease_expires_at=clock_timestamp()+interval '30 seconds' WHERE id=$1", [f.reviewUnit]);
+  assert.ok(reviewer(await view()).currentWork!.liveClaimExpiresAt);
+  const ceiling = await pool.query('DELETE FROM agent_connection_projects WHERE connection_id=$1 AND project_id=$2 RETURNING workspace_id',
+    [f.marekClaude.connection.id, f.w.p.id]);
+  assert.equal(ceiling.rowCount, 1);
+  assert.equal((await view()).connections.some((item) => item.id === f.marekClaude.connection.id), false,
+    'the connection leaves the project-scoped Agents response when its project ceiling is removed');
+  await pool.query('INSERT INTO agent_connection_projects (workspace_id,connection_id,project_id) VALUES ($1,$2,$3)',
+    [ceiling.rows[0]!.workspace_id, f.marekClaude.connection.id, f.w.p.id]);
+  assert.ok(reviewer(await view()).currentWork!.liveClaimExpiresAt);
 });

@@ -88,9 +88,9 @@ export function projectAgentRepository(db: Database, policy: ProjectAgentPolicy)
           .from(schema.agentRuntimeSessions).where(inArray(schema.agentRuntimeSessions.connectionId, ids))) authorized.add(row.connectionId);
 
         // An open session: unrevoked, unexpired, on the binding's current generation, of an enabled client.
-        const sessions = new Map<string, { startedAt: Date; expiresAt: Date }>();
+        const sessions = new Map<string, { sessionId: string; startedAt: Date; expiresAt: Date }>();
         for (const row of await tx.selectDistinctOn([schema.agentRuntimeSessions.connectionId], { connectionId: schema.agentRuntimeSessions.connectionId,
-          startedAt: schema.agentRuntimeSessions.createdAt, expiresAt: schema.agentRuntimeSessions.expiresAt })
+          sessionId: schema.agentRuntimeSessions.id, startedAt: schema.agentRuntimeSessions.createdAt, expiresAt: schema.agentRuntimeSessions.expiresAt })
           .from(schema.agentRuntimeSessions)
           .innerJoin(schema.agentOauthBindings, and(eq(schema.agentOauthBindings.id, schema.agentRuntimeSessions.bindingId),
             eq(schema.agentOauthBindings.generation, schema.agentRuntimeSessions.bindingGeneration)))
@@ -110,16 +110,25 @@ export function projectAgentRepository(db: Database, policy: ProjectAgentPolicy)
 
         // Work the connection holds here: one unit per (task, role) lives on its assignee, so a connection's units are its work.
         const units = await tx.select({ connectionId: schema.coworkUnits.assignmentConnectionId, taskId: schema.coworkUnits.taskId,
-          taskTitle: schema.projectWorkItems.title, role: schema.coworkUnits.role, state: schema.coworkUnits.state })
+          taskTitle: schema.projectWorkItems.title, role: schema.coworkUnits.role, state: schema.coworkUnits.state,
+          leaseSessionId: schema.coworkUnits.leaseSessionId,
+          leaseExpiresAt: schema.coworkUnits.leaseExpiresAt,
+          leaseUnexpired: sql<boolean>`${schema.coworkUnits.leaseExpiresAt} > clock_timestamp()` })
           .from(schema.coworkUnits)
           .innerJoin(schema.projectWorkItems, and(eq(schema.projectWorkItems.id, schema.coworkUnits.taskId),
             eq(schema.projectWorkItems.projectId, schema.coworkUnits.projectId)))
           .where(and(eq(schema.coworkUnits.projectId, projectId), inArray(schema.coworkUnits.assignmentConnectionId, ids),
             inArray(schema.coworkUnits.state, ['pending', 'claimed', 'paused'])))
           .orderBy(asc(schema.coworkUnits.createdAt), asc(schema.coworkUnits.id));
-        const work = new Map<string, { taskId: string; taskTitle: string; role: 'execute' | 'review' | 'plan'; state: 'pending' | 'claimed' | 'paused' }>();
-        for (const unit of units) if (!work.has(unit.connectionId)) work.set(unit.connectionId, { taskId: unit.taskId, taskTitle: unit.taskTitle,
-          role: unit.role, state: unit.state as 'pending' | 'claimed' | 'paused' });
+        const work = new Map<string, { taskId: string; taskTitle: string; role: 'execute' | 'review' | 'plan'; state: 'pending' | 'claimed' | 'paused'; liveClaimExpiresAt: string | null }>();
+        for (const unit of units) if (!work.has(unit.connectionId)) {
+          const session = usable.has(unit.connectionId) ? sessions.get(unit.connectionId) : undefined;
+          const liveClaim = unit.state === 'claimed' && unit.leaseUnexpired && !!unit.leaseExpiresAt
+            && !!unit.leaseSessionId && unit.leaseSessionId === session?.sessionId;
+          work.set(unit.connectionId, { taskId: unit.taskId, taskTitle: unit.taskTitle, role: unit.role,
+            state: unit.state as 'pending' | 'claimed' | 'paused',
+            liveClaimExpiresAt: liveClaim ? unit.leaseExpiresAt!.toISOString() : null });
+        }
 
         // Open requests addressed to each connection, with the sender's connection and owner. Resolved, declined and
         // superseded requests leave the list; the request's own state, not a heartbeat, says what it waits for.

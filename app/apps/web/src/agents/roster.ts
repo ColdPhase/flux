@@ -30,9 +30,12 @@ export function connectionState(connection: ProjectAgentConnection, now: number)
 export function nextSessionExpiry(connections: readonly ProjectAgentConnection[] | undefined, now: number): number | null {
   let next = Infinity;
   for (const connection of connections ?? []) {
-    if (connection.state !== 'session_open' || !connection.session) continue;
-    const end = Date.parse(connection.session.expiresAt);
-    if (end > now && end < next) next = end;
+    if (connection.state === 'session_open' && connection.session) {
+      const end = Date.parse(connection.session.expiresAt);
+      if (end > now && end < next) next = end;
+    }
+    const claimEnd = connection.currentWork?.liveClaimExpiresAt ? Date.parse(connection.currentWork.liveClaimExpiresAt) : NaN;
+    if (claimEnd > now && claimEnd < next) next = claimEnd;
   }
   return Number.isFinite(next) ? next : null;
 }
@@ -40,8 +43,10 @@ export function nextSessionExpiry(connections: readonly ProjectAgentConnection[]
 /** Native task ownership/status is assignment; only a claimed unit on a usable live connection proves work. */
 export function isAgentWorking(entry: AgentEntry, now: number): boolean {
   const connection = entry.connection;
-  return !!connection?.session && connection.currentWork?.state === 'claimed' && connectionState(connection, now) === 'session_open'
-    && Date.parse(connection.session.expiresAt) > now;
+  const claimExpiresAt = connection?.currentWork?.liveClaimExpiresAt;
+  return !!connection?.session && connection.currentWork?.state === 'claimed' && !!claimExpiresAt
+    && connectionState(connection, now) === 'session_open'
+    && Date.parse(connection.session.expiresAt) > now && Date.parse(claimExpiresAt) > now;
 }
 
 export const WORK_ROLE: Record<NonNullable<ProjectAgentConnection['currentWork']>['role'], string> = {
