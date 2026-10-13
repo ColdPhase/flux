@@ -571,6 +571,18 @@ class LiveEditingJourney(LiveFixture):
         await expect(page.locator('[data-live-map-status="live"]')).to_be_visible()
         self.assertLessEqual(await page.evaluate("document.documentElement.scrollWidth"), 820,
             "the tablet map stays within its 820px viewport")
+        pane = await page.locator('.sk-canvas-wrap').bounding_box()
+        canvas = await page.locator('.sk-canvas').bounding_box()
+        self.assertIsNotNone(pane)
+        self.assertIsNotNone(canvas)
+        self.assertGreater(canvas['width'], 0)
+        self.assertGreater(canvas['height'], 0)
+        self.assertGreaterEqual(canvas['x'], pane['x'] - 1, "the map canvas starts within its tablet pane")
+        self.assertGreaterEqual(canvas['y'], pane['y'] - 1, "the map canvas starts within its tablet pane")
+        self.assertLessEqual(canvas['x'] + canvas['width'], pane['x'] + pane['width'] + 1,
+            "the map canvas ends within its tablet pane")
+        self.assertLessEqual(canvas['y'] + canvas['height'], pane['y'] + pane['height'] + 1,
+            "the map canvas ends within its tablet pane")
         node = page.locator(f'.sk-node[data-id="{thought["id"]}"]')
         await node.scroll_into_view_if_needed()
         bounds = await node.bounding_box()
