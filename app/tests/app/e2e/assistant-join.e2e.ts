@@ -91,7 +91,7 @@ for (const [engine, mobile] of [['chromium', false], ['webkit', true]] as const)
       const invitation = managerPage.locator('.nyc').filter({ hasText: 'Ada’s assistant' });
       await expect(invitation).toHaveCount(1);
       await expect(invitation.locator('.nyc__eyebrow')).toContainText('Ada’s assistant');
-      await expect(invitation.locator('.nyc__title')).toHaveText(`${owner.name}'s assistant asks to join`);
+      await expect(invitation.locator('.nyc__title')).toHaveText("Ada Kowalska Nowak – Community Sensor Team's assistant asks to join");
       await expect(invitation).toContainText('for Ada Kowalska Nowak – Community Sensor Team');
       await expect(invitation.locator('.nyc__reason')).toContainText('Community garden sensors');
       await expect(invitation.locator('.kreska')).toHaveCount(1);
