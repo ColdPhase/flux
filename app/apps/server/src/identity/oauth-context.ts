@@ -23,4 +23,17 @@ export function registerAgentOauthContext(app: FastifyInstance, db: Database, se
     if (!context) return reply.code(403).send({ error: 'Agent connection is unavailable', code: 'AGENT_CONNECTION_UNAVAILABLE' });
     return context;
   });
+  // Which saved connection this client held before, so a client sent through the provider again finds it chosen (F-024 S2, #312).
+  app.get<{ Querystring: { oauth_query?: string } }>('/api/v1/agent-oauth/held-connection', {
+    schema: { querystring: { type: 'object', required: ['oauth_query'], additionalProperties: false,
+      properties: { oauth_query: { type: 'string', minLength: 1, maxLength: 8192 } } } },
+  }, async (request, reply) => {
+    const session = await sessions.requirePrincipal(request);
+    const { secret } = await auth.$context;
+    const params = await verifiedOauthQuery(request.query.oauth_query ?? '', secret);
+    const flow = params ? oauthFlow(params, `${publicOrigin}/mcp`) : null;
+    if (!params || !flow || params.get('ba_pl') && params.get('ba_pl') !== session.sessionId)
+      return reply.code(400).send({ error: 'Invalid OAuth request', code: 'INVALID_OAUTH_QUERY' });
+    return { connectionId: await connections.heldConnectionId(session.principal.id, flow.clientId) };
+  });
 }

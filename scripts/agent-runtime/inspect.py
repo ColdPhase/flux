@@ -1,20 +1,24 @@
 """Checks `docker inspect` of a running agent runtime (F-022 T3 #278) against the decided limits.
 
-Usage: docker inspect <every container of the project> | python3 inspect.py <compose project>
+Usage: docker inspect <every container of the project> | python3 inspect.py <compose project> [<checkout directory>]
 Each slot (runtime-<n>): user 1000:1000, read-only root, cap_drop ALL, no-new-privileges, not
 privileged, an init, 2 GiB memory without swap, one CPU, 256 pids, a 128 MiB tmpfs /tmp, rotated
 json-file logs (3 x 10 MB), restart always, only its own data volume and the read-only tools volume,
 and only its own network. runtime-manager and runtime-egress: read-only, cap_drop ALL,
-no-new-privileges, no mounts. No container of the project mounts a container engine socket.
+no-new-privileges, no mounts. No container of the project mounts a container engine socket, directly
+or through a directory that holds one (/var/run, /run): a bind mount must come from inside the
+checkout directory given as the optional second argument, anything else is refused.
 """
 
 from __future__ import annotations
 
 import json
+import os
 import re
 import sys
 
 project = sys.argv[1]
+checkout = os.path.realpath(sys.argv[2]) if len(sys.argv) > 2 else None
 containers = json.load(sys.stdin)
 failures: list[str] = []
 checked: list[str] = []
@@ -33,6 +37,12 @@ for container in containers:
         text = f"{mount.get('Source', '')} {mount.get('Destination', '')} {mount.get('Name', '')}"
         if re.search(r"(docker|podman|containerd)\.sock|/var/run/docker|/run/podman", text):
             failures.append(f"{service}: mounts a container engine socket ({text.strip()})")
+    for mount in container.get("Mounts", []):
+        if mount.get("Type") != "bind":
+            continue
+        source = os.path.realpath(mount.get("Source", ""))
+        if checkout is None or not (source == checkout or source.startswith(checkout + os.sep)):
+            failures.append(f"{service}: bind mount from {mount.get('Source', '')!r} is outside the checkout (allowlist)")
     if service.startswith("runtime-"):
         expect(service, "privileged", host["Privileged"], False)
         expect(service, "read-only root", host["ReadonlyRootfs"], True)

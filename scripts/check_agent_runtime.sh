@@ -68,6 +68,9 @@ cid() { compose --profile runtime ps -q "$1"; }
 live() { compose --profile test run --rm --no-deps -T -u 0 test node_modules/.bin/tsx tests/app/agent-runtime-live.check.ts "$@"; }
 value() { printf '%s\n' "$1" | sed -n "s/^$2=//p" | tail -n 1; }
 runtime_containers() { docker ps -aq --filter "label=com.docker.compose.project=$project" | xargs -r docker inspect -f '{{ index .Config.Labels "com.docker.compose.service" }}' | grep -E '^runtime-' || true; }
+# Addresses on a bridge, read in a container in the Docker host's network namespace (the host's own `ip`
+# is Linux-only and, with Docker Desktop, would look at the wrong machine). Empty when there is none.
+host_addr() { docker run --rm --network host --cap-drop ALL --read-only --entrypoint ip "flux-test-tools:$project" -4 addr show dev "$1" 2>/dev/null | sed -n 's/^ *inet \([0-9.]*\).*/\1/p'; }
 ip_on() { docker inspect -f "{{ with index .NetworkSettings.Networks \"${project}_$2\" }}{{ .IPAddress }}{{ end }}" "$1"; }
 
 step "1. Off by default: no runtime service starts and the API reports the feature disabled"
@@ -96,20 +99,21 @@ compose --profile runtime logs --no-color runtime-install | grep -q 'TEST ONLY: 
 step "3. docker inspect: limits and security options on every slot; no engine socket anywhere"
 # shellcheck disable=SC2046
 docker inspect $(docker ps -q --filter "label=com.docker.compose.project=$project") > "$work/inspect.json"
-python3 "$here/scripts/agent-runtime/inspect.py" "$project" < "$work/inspect.json"
+python3 "$here/scripts/agent-runtime/inspect.py" "$project" "$copy" < "$work/inspect.json"
 # Negative controls: the same check fails on a writable root, an added capability or a socket mount.
 for mutation in 'c["HostConfig"]["ReadonlyRootfs"] = False' 'c["HostConfig"]["CapAdd"] = ["NET_ADMIN"]' \
   'c["Mounts"].append({"Type": "bind", "Source": "/var/run/docker.sock", "Destination": "/var/run/docker.sock", "RW": True})' \
+  'c["Mounts"].append({"Type": "bind", "Source": "/var/run", "Destination": "/host-run", "RW": False})' \
   'c["HostConfig"]["PidsLimit"] = 0' 'c["NetworkSettings"]["Networks"]["x_default"] = {}'; do
   if python3 -c "import json, sys
 cs = json.load(open(sys.argv[1]))
 c = next(c for c in cs if c['Config']['Labels'].get('com.docker.compose.service') == 'runtime-3')
 $mutation
-json.dump(cs, sys.stdout)" "$work/inspect.json" | python3 "$here/scripts/agent-runtime/inspect.py" "$project" >/dev/null; then
+json.dump(cs, sys.stdout)" "$work/inspect.json" | python3 "$here/scripts/agent-runtime/inspect.py" "$project" "$copy" >/dev/null; then
     fail "inspect.py accepted a slot with: $mutation"
   fi
 done
-printf 'inspect.py refuses each of the 5 mutated slots\n'
+printf 'inspect.py refuses each of the 6 mutated slots\n'
 # Measured footprint of idle runtime services (F-022 "Limits": T3 records them).
 # shellcheck disable=SC2046
 docker stats --no-stream --format '{{ .Name }}\t{{ .MemUsage }}\t{{ .PIDs }} pids' $(docker ps -q --filter "label=com.docker.compose.project=$project")
@@ -144,10 +148,10 @@ gateway=$(docker network inspect -f '{{ range .IPAM.Config }}{{ .Gateway }}{{ en
 # The slot networks give the host no address at all (com.docker.network.bridge.inhibit_ipv4).
 for slot in runtime-1 runtime-2 runtime-3 runtime-4 runtime-5; do
   bridge="br-$(docker network inspect -f '{{ .Id }}' "${project}_$slot" | cut -c1-12)"
-  [ -z "$(ip -4 -o addr show "$bridge" 2>/dev/null)" ] || fail "the host has an address on $slot's bridge: $(ip -4 -o addr show "$bridge")"
+  [ -z "$(host_addr "$bridge")" ] || fail "the host has an address on $slot's bridge: $(host_addr "$bridge")"
 done
 # Control: the project's default bridge does carry a host address.
-[ -n "$(ip -4 -o addr show "br-$(docker network inspect -f '{{ .Id }}' "${project}_default" | cut -c1-12)")" ] || fail "control: no host address on the default bridge"
+[ -n "$(host_addr "br-$(docker network inspect -f '{{ .Id }}' "${project}_default" | cut -c1-12)")" ] || fail "control: no host address on the default bridge"
 printf 'no host address on any slot bridge\n'
 docker exec -i -u 1000:1000 \
   -e FLUX_PROBE_DB="$(ip_on "$(compose ps -q db)" default)" \

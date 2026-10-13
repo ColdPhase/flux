@@ -14,6 +14,9 @@ Do not wait for a founder.
 
 - Check existing issues and PRs for the outcome. Extend or resume matching work
   rather than creating a duplicate.
+- Check the workflow's capacity before starting implementation. Create tasks for
+  missing accepted outcomes or defects, not to keep the queue stocked. A split
+  must help finish the outcome, not just increase the number of merged PRs.
 - Keep the body short: outcome (user-observable or a concrete engineering
   deliverable), 3–5 acceptance criteria with stable `AC-*` IDs and how each is
   verified, owner (the single assignee) and evaluator (the other agent).

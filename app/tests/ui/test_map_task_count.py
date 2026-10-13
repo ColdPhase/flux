@@ -12,6 +12,7 @@ contrast in Light and Dark. No interaction changes the stored sketch or work.
 from __future__ import annotations
 
 import json
+import os
 import re
 import time
 import unittest
@@ -19,7 +20,7 @@ import uuid
 
 from playwright.sync_api import Browser, Locator, Page, expect, sync_playwright
 
-from test_app_shell import DESKTOP, ORIGIN, PHONE, SHOTS, UPSTREAM, shot, start_forwarder
+from test_app_shell import show_map_as, DESKTOP, ORIGIN, PHONE, SHOTS, UPSTREAM, shot, start_forwarder
 from contrast import MEASURE
 
 STAMP = int(time.time() * 1000)
@@ -72,7 +73,7 @@ class MapTaskCountJourney(unittest.TestCase):
         if UPSTREAM:
             start_forwarder(ORIGIN, UPSTREAM)
         cls.pw = sync_playwright().start()
-        cls.browser = cls.pw.chromium.launch()
+        cls.browser = getattr(cls.pw, os.environ.get("FLUX_UI_BROWSER", "chromium")).launch()
         expect.set_options(timeout=10000)
         contexts = {}
         for key, name in PEOPLE.items():
@@ -162,7 +163,7 @@ class MapTaskCountJourney(unittest.TestCase):
     def open(self, page: Page, mode: str = "Map") -> None:
         page.goto(f"/projects/{self.ids['project']}/map/{self.ids['sketch']}")
         expect(page.locator(".sk-head")).to_contain_text("Sensing directions")
-        page.get_by_role("radio", name=mode, exact=True).click()
+        show_map_as(page, mode)
         if mode == "Map":
             expect(page.locator(".sk-node")).to_have_count(5)
         else:
@@ -260,7 +261,7 @@ class MapTaskCountJourney(unittest.TestCase):
             expect(page.locator(".sk-canvas")).not_to_contain_text(title)
         shot(page, "map-task-count-canvas-1440-light")
 
-        page.get_by_role("radio", name="List", exact=True).click()
+        show_map_as(page, "List")
         for key, count in counts.items():
             if count:
                 expect(self.row_badge(page, key)).to_have_accessible_name(tasks_label(count, texts[key]))
@@ -321,7 +322,7 @@ class MapTaskCountJourney(unittest.TestCase):
         page.keyboard.press("Escape")
 
         # The List opens the same chooser.
-        page.get_by_role("radio", name="List", exact=True).click()
+        show_map_as(page, "List")
         self.row_badge(page, "drafted").click()
         drafted = self.chooser(page, DRAFTED)
         expect(drafted.get_by_role("link")).to_have_count(1)
@@ -377,7 +378,7 @@ class MapTaskCountJourney(unittest.TestCase):
         expect(chooser).to_have_count(0)
         badge.click()
         expect(chooser).to_be_visible()
-        page.get_by_role("radio", name="Map", exact=True).click()
+        show_map_as(page, "Map")
         expect(chooser).to_have_count(0)
         self.assertEqual(self.camera(page), before)
         self.unchanged(page)
@@ -439,7 +440,7 @@ class MapTaskCountJourney(unittest.TestCase):
         self.badge(page, "dark").click()
         self.chooser(page, DARK_ROOM).get_by_role("link", name=re.compile(re.escape(ORDER))).click()
         expect(page.locator(".details__title")).to_have_text(ORDER)
-        page.get_by_role("radio", name="List", exact=True).click()
+        show_map_as(page, "List")
         expect(self.row_badge(page, "dark")).to_have_text("3 tasks")
         # Compared as the owner, who can also read the private placement.
         self.unchanged(self.page())
@@ -491,7 +492,7 @@ class MapTaskCountJourney(unittest.TestCase):
             expect(badge).to_be_focused()
             self.assertEqual(self.camera(page), before, "closing the sheet keeps the phone camera")
 
-            page.get_by_role("radio", name="List", exact=True).tap()
+            show_map_as(page, "List", touch=True)
             row = self.row_badge(page, "dark")
             expect(row).to_have_text("3 tasks")
             self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), PHONE["width"], "the List with counts fits too")
@@ -527,7 +528,7 @@ class MapTaskCountJourney(unittest.TestCase):
                 measure(page, theme, f".sk-tasks-pop {selector}")
             shot(page, f"map-task-count-{theme.lower()}-1440")
             page.keyboard.press("Escape")
-            page.get_by_role("radio", name="List", exact=True).click()
+            show_map_as(page, "List")
             measure(page, theme, f'.sk-outline-list > li[data-id="{self.thoughts["dark"]}"] .sk-work')
         if SHOTS:
             (SHOTS / "map-task-count-contrast.json").write_text(json.dumps(measurements, indent=2) + "\n")
@@ -546,9 +547,9 @@ class MapTaskCountJourney(unittest.TestCase):
         expect(self.chooser(page, QUIET).get_by_role("link")).to_contain_text(f"{task_number(created)} · Open")
         expect(self.chooser(page, QUIET).get_by_role("link")).to_contain_text("No owner yet · added by Nia Okafor")
         page.keyboard.press("Escape")
-        # Create work on the map: the new task is counted at once.
+        # Create task on the map: the new task is counted at once.
         self.node(page, "later").click()
-        page.get_by_role("toolbar", name="Sketch tools").get_by_role("button", name="Create work from selected thoughts").click()
+        page.get_by_role("toolbar", name="Sketch tools").get_by_role("button", name="Create task from selected thoughts").click()
         expect(page.locator(".details__title")).to_have_text(LATER)
         expect(self.badge(page, "later")).to_have_accessible_name(tasks_label(1, LATER))
         self.assertEqual(self.expected_counts(page), {"dark": 4, "camera": 1, "quiet": 1, "drafted": 1, "later": 1})

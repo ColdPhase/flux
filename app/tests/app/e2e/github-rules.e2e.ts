@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { after, before, test } from 'node:test';
 import Fastify from 'fastify';
-import { chromium, type Browser, type BrowserContext, type Page } from 'playwright';
+import { chromium, webkit, type Browser, type BrowserContext, type Page } from 'playwright';
 import { createDatabase } from '@flux/db';
 import type { GithubBinding, GithubCheck, GithubPullFacts, WorkItem } from '@flux/contracts';
 import { NotFoundError, type GithubProvider, type Principal } from '@flux/core';
@@ -75,7 +75,10 @@ let browser: Browser; const contexts: BrowserContext[] = []; const errors: strin
 before(async () => {
   await app.register(githubRoutes, { db, sessions: identity, config, transport: identityOnly, provider, background: false }); await app.ready();
   await new Promise<void>((resolve) => proxy.listen(Number(new URL(publicOrigin).port), '127.0.0.1', resolve));
-  browser = await chromium.launch();
+  const engine = process.env.FLUX_E2E_BROWSER ?? 'chromium';
+  if (engine !== 'chromium' && engine !== 'webkit') throw new Error('FLUX_E2E_BROWSER must be chromium or webkit');
+  browser = await (engine === 'webkit' ? webkit : chromium).launch();
+  assert.equal(browser.browserType().name(), engine);
 });
 after(async () => {
   await Promise.all(contexts.map((ctx) => ctx.close())); await browser?.close();
@@ -129,14 +132,16 @@ test('task Details: turn the rule on, see sourced automatic changes, resume afte
   // A failing check on the PR's head blocks it, with the check and PR as the reason and a history line.
   provider.now.checks = [check('failure')]; await settle(binding);
   page = await open(owner, link);
-  await details(page).getByText('Blocked: Check “firmware / test” failed on PR #42').waitFor();
+  await details(page).getByRole('region', { name: 'Blocker' }).waitFor();
+  assert.equal(await details(page).getByLabel('What is it waiting for?', { exact: true }).inputValue(), 'Check “firmware / test” failed on PR #42');
   const history = details(page).getByRole('list', { name: 'Changes by GitHub rule' });
   await history.getByText('by GitHub rule · set up by Ada Lind', { exact: false }).first().waitFor();
   assert.match(await history.innerText(), /Blocked\s*Check “firmware \/ test” failed on PR #42/);
   await evidence(page, 'desktop-blocked');
 
   // A person changes the status by hand: the rule pauses until someone resumes it.
-  await details(page).getByLabel('Status', { exact: true }).selectOption('in_progress');
+  await details(page).getByRole('button', { name: 'Status', exact: true }).click();
+  await page.getByRole('menuitemradio', { name: 'In progress' }).click();
   await details(page).getByText('Paused because someone changed the status or blocker by hand.', { exact: false }).waitFor();
   await evidence(page, 'desktop-paused');
   await details(page).getByRole('button', { name: 'Resume' }).click();

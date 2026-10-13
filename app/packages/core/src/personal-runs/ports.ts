@@ -229,6 +229,12 @@ export interface PersonalConnection {
   /** `openai_compatible` only; null for a named provider's fixed URL. */
   baseUrl: string | null;
   price: AiPrice | null;
+  /**
+   * `false` when the owner marked this model as unable to call tools (F-027 AST-8.3): it then
+   * answers in one request and cannot change anything. Absent means not marked; Flux's own dated
+   * table of known models without tool calling applies as well (`aiModelCallsTools`).
+   */
+  toolCalling?: boolean;
 }
 
 /**
@@ -241,8 +247,50 @@ export interface PersonalConnectionLookup {
 }
 
 /**
+ * A Flux tool as the model sees it, the same neutral definition for every wire format (F-027
+ * AST-8). `inputSchema` is the tool's JSON Schema object; each adapter writes it in its provider's
+ * tool-calling format (`input_schema`, `function.parameters`).
+ */
+export interface PersonalTool {
+  name: string;
+  description: string;
+  inputSchema: Record<string, unknown>;
+}
+
+/** One call the model asked for. `invalid` is set when the provider's arguments were not a JSON object: it is never executed. */
+export interface PersonalToolCall {
+  id: string;
+  name: string;
+  input: Record<string, unknown>;
+  invalid?: true;
+}
+
+/** What came back for one call. A refused or failed call is a result with `isError`, never a thrown error. */
+export interface PersonalToolResult {
+  callId: string;
+  content: string;
+  isError: boolean;
+}
+
+/**
+ * One round of the tool loop: what the model said and asked for, and what came back. `replay` is
+ * the provider's own assistant message exactly as it answered (opaque to core): an adapter echoes
+ * it unchanged so provider-private continuity data (reasoning or thought signatures) survives.
+ */
+export interface PersonalTurn {
+  text: string;
+  calls: PersonalToolCall[];
+  results: PersonalToolResult[];
+  replay?: unknown;
+}
+
+/**
  * One bounded request (O-008 §3) to the owner's connection, the same for every provider (F-020):
- * no tools, no hosted search, no automatic retries. The adapter of `connection.provider` translates it.
+ * no hosted tools, no hosted search, no automatic retries. The adapter of `connection.provider`
+ * translates it. Without `tools` it is exactly the single request of O-008 (no tools on the wire).
+ * With `tools` (F-027 AST-8) the same request is one turn of the worker's bounded tool loop:
+ * `turns` carries the earlier turns, each with the results that came back, and every turn is still
+ * one request that is bounded, billed and reconciled by itself.
  */
 export interface PersonalComputeRequest {
   connection: { id: string; keyRef: string; provider: AiProviderKind; baseUrl: string | null };
@@ -251,13 +299,25 @@ export interface PersonalComputeRequest {
   effort: 'low';
   system: string;
   input: string;
+  tools?: readonly PersonalTool[];
+  turns?: readonly PersonalTurn[];
 }
 
 /** `reportedCostMicros`: the provider's own cost of the response, when it reports one (PROV-3 source 1). */
 export interface PersonalComputeUsage { inputTokens: number; outputTokens: number; reportedCostMicros?: number | null }
 
 export type PersonalComputeResult =
-  | { kind: 'completed'; text: string; stopReason: 'end_turn' | 'max_tokens' | 'stop_sequence' | 'refusal'; usage: PersonalComputeUsage }
+  | {
+    kind: 'completed'; text: string; usage: PersonalComputeUsage;
+    /**
+     * `tool_use`: the model stopped to call tools. Only then are `toolCalls` set, and never from a
+     * response that was cut off or refused (a partial call is not executable).
+     */
+    stopReason: 'end_turn' | 'max_tokens' | 'stop_sequence' | 'refusal' | 'tool_use';
+    toolCalls?: PersonalToolCall[];
+    /** The provider's own assistant message for the next request, with `toolCalls`; see {@link PersonalTurn}. */
+    replay?: unknown;
+  }
   /** `billed: 'none'` when the provider documents no charge (e.g. 429, 5xx before work); else `unknown`. */
   | { kind: 'failed'; reason: 'rate_limited' | 'overloaded' | 'provider_error' | 'timeout' | 'aborted'; billed: 'none' | 'unknown' };
 
@@ -275,6 +335,27 @@ export interface PersonalCompute {
   /** Sends the request once. `signal` aborts it as best effort when the owner stops the run. */
   dispatch(request: PersonalComputeRequest, signal: AbortSignal): Promise<PersonalComputeResult>;
 }
+
+/**
+ * The tools of one run and the way to call them (F-027 AST-8). The worker's production
+ * implementation is an MCP client of the API's `/mcp` route with the run's token, so the owner's
+ * switches, caps, place checks and change log stay in one place (A6 with A2); core only knows this
+ * seam. `tools` is exactly what the run may use; a call outside it is never sent.
+ */
+export interface PersonalToolSession {
+  readonly tools: readonly PersonalTool[];
+  /** Runs one call as the run's agent. A refusal or failure is a result with `isError`, not an exception. */
+  call(call: PersonalToolCall, signal: AbortSignal): Promise<{ content: string; isError: boolean }>;
+  /** Ends the session (the run token); called once, whatever the outcome. */
+  close(): Promise<void>;
+}
+
+/**
+ * Opens the tool session of one run, or null when the run has no tools (every switch off, or no
+ * run token). Throwing ends the run `unavailable` at zero cost: nothing falls back to a run
+ * without the tools it was started with.
+ */
+export type PersonalToolHost = (run: RunRecord, connection: PersonalConnection) => Promise<PersonalToolSession | null>;
 
 /**
  * The work use cases a proposal accept goes through, in the accept's transaction: the result is

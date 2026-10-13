@@ -1,5 +1,6 @@
-import { Component, Suspense, lazy, useLayoutEffect, useRef, useState, type ComponentProps, type ReactNode } from 'react';
+import { Component, Suspense, lazy, useEffect, useLayoutEffect, useRef, useState, type ComponentProps, type ReactNode } from 'react';
 import { Button, ErrorState, MEDIA, Overlay, Spinner, useMediaQuery } from '../ui';
+import { pageLeaving, whenPageLive } from '../api/pageLeaving';
 import { useLive } from '../live/LiveProvider';
 import type { Details } from './Details';
 import type { JumpTo } from '../search/JumpTo';
@@ -27,9 +28,21 @@ function Opening({ label }: { label: string }) {
   return <div className="deferred-surface"><p role="status"><Spinner />Opening {label.toLowerCase()}…</p></div>;
 }
 
+/**
+ * Shows its content once the page is not being left (#471). A panel the app opens by itself, from an
+ * address, can mount in the moment the person navigates away; its mount-time reads would then start
+ * on a page the browser is already closing. A page that stays shows it after the short grace.
+ */
+function WhenPageLive({ children, fallback }: { children: ReactNode; fallback: ReactNode }) {
+  const [live, setLive] = useState(() => !pageLeaving());
+  useEffect(() => (live ? undefined : whenPageLive(() => setLive(true))), [live]);
+  return live ? children : fallback;
+}
+
 /** SidePanel itself owns mount/exit/focus; this content is never rendered while initially closed. */
 export function DeferredDetails(props: ComponentProps<typeof Details>) {
-  return <SurfaceBoundary label="Details"><Suspense fallback={<Opening label="Details" />}><DetailsContent {...props} /></Suspense></SurfaceBoundary>;
+  const opening = <Opening label="Details" />;
+  return <SurfaceBoundary label="Details"><Suspense fallback={opening}><WhenPageLive fallback={opening}><DetailsContent {...props} /></WhenPageLive></Suspense></SurfaceBoundary>;
 }
 
 export function DeferredJumpTo(props: ComponentProps<typeof JumpTo>) {

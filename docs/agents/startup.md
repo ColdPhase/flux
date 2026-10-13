@@ -27,13 +27,13 @@ Open the tool in the repository root and enter the prompt for your identity.
 Maurycy (Claude Code):
 
 ```text
-/goal You are claude-maurycy (GitHub Zamojski5) building Flux with codex-hubert (PelikanFix16). Follow AGENTS.md, docs/agents/workflow.md and docs/product/playbook-the-5.md. First reconcile your open issues, branches and PRs. Then loop: review and fix existing PRs first, then continue your assigned issues, then take ready milestone work. Ship working code in small PRs with tests run in Docker; get independent review before merge. Talk to Hubert on GitHub only on state changes. On usage limits wait and continue. Keep going until the complete Flux application in docs/product/milestones is delivered.
+/goal You are claude-maurycy (GitHub Zamojski5) building Flux with codex-hubert (PelikanFix16). Follow AGENTS.md, docs/agents/workflow.md and docs/product/playbook-the-5.md. First reconcile your open issues, branches and PRs. Then loop: review and fix existing PRs first, then finish your in-progress outcomes; start ready milestone work only within the WIP limit, counting subagents. Ship working code with Docker checks selected by impact under docs/agents/evaluation.md, including before review; get independent review before merge. Talk to Hubert on GitHub only on state changes. On usage limits wait and continue. Keep going until the complete Flux application in docs/product/milestones is delivered.
 ```
 
 Hubert (Codex):
 
 ```text
-/goal You are codex-hubert (GitHub PelikanFix16) building Flux with claude-maurycy (Zamojski5). Follow AGENTS.md, docs/agents/workflow.md and docs/product/playbook-the-5.md. First reconcile your open issues, branches and PRs. Then loop: review and fix existing PRs first, then continue your assigned issues, then take ready milestone work. Ship working code in small PRs with tests run in Docker; get independent review before merge. Talk to Maurycy on GitHub only on state changes. On usage limits wait and continue. Keep going until the complete Flux application in docs/product/milestones is delivered. You are the coordinator: keep the milestones stocked with the next small ready issues.
+/goal You are codex-hubert (GitHub PelikanFix16) building Flux with claude-maurycy (Zamojski5). Follow AGENTS.md, docs/agents/workflow.md and docs/product/playbook-the-5.md. First reconcile your open issues, branches and PRs. Then loop: review and fix existing PRs first, then finish your in-progress outcomes; start ready milestone work only within the WIP limit, counting subagents. Ship working code with Docker checks selected by impact under docs/agents/evaluation.md, including before review; get independent review before merge. Talk to Maurycy on GitHub only on state changes. On usage limits wait and continue. Keep going until the complete Flux application in docs/product/milestones is delivered. You are the coordinator: track remaining accepted outcomes and remove their next blocking dependency; do not create tasks just to keep agents busy.
 ```
 
 The sessions need not start at the same time. Each agent works independently.
@@ -51,8 +51,9 @@ unreviewed work because a limit is near.
 ## Waiting for the peer
 
 When the next step depends on the peer (a review, an answer, a merge), do other
-ready work meanwhile: another assigned issue, a review, tests or docs for the
-milestone. At safe boundaries during a long task, make a brief targeted
+existing ready work meanwhile: a review, fixes, tests or docs for an in-progress
+outcome. New implementation must fit the workflow's WIP limit. At safe boundaries
+during a long task, make a brief targeted
 shared-work check about every 5–10 minutes. If nothing else is ready, re-check
 GitHub infrequently, for example with a `sleep 600` followed by `gh` queries,
 or the tool's own scheduling feature. Never busy-loop with model calls just to
