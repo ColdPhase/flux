@@ -105,7 +105,6 @@ export function ToastProvider({ children, sessionId }: { children: ReactNode; se
   useLayoutEffect(() => {
     committedSession.current = { id: sessionId, epoch: sessionEpoch };
     actions.current.clear();
-    setToasts((current) => current.filter((toast) => toast.sessionEpoch === sessionEpoch));
   }, [sessionId, sessionEpoch]);
   const show = useCallback((options: ToastOptions) => {
     const tone = options.tone ?? 'neutral';
