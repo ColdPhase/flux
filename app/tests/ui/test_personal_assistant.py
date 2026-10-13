@@ -79,7 +79,7 @@ class PersonalAssistantJourney(unittest.TestCase):
             options.update(viewport=DESKTOP, device_scale_factor=1)
         if who and who in self.states:
             options["storage_state"] = self.states[who]
-        context = self.browser.new_context(**options)
+        context = self.browser.new_context(service_workers="block", **options)
         self.addCleanup(context.close)
         return context
 

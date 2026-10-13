@@ -1,4 +1,4 @@
-import { chmod, lstat, mkdir, readdir, rm } from 'node:fs/promises';
+import { chmod, lstat, mkdir, readdir, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { BINDING_ID, MAX_REPORTED_BINDINGS, type RuntimeClient } from '@flux/runtime-protocol';
 import { CLIENT_DIRS, CREDENTIAL_FILES } from './templates.js';
@@ -78,6 +78,37 @@ export async function clearClientFiles(bindingDir: string, client: RuntimeClient
     for (const entry of await readdir(join(bindingDir, 'home')).catch(() => [] as string[])) {
       if (entry.startsWith('.claude')) await rm(join(bindingDir, 'home', entry), { recursive: true, force: true });
     }
+  }
+}
+
+/**
+ * Whether the binding directory holds anything of this client: its home directory is not empty, or Claude's
+ * `~/.claude*` exists. A directory that cannot be read counts as holding files: unknown is not "never installed".
+ */
+export async function clientHasFiles(bindingDir: string, client: RuntimeClient): Promise<boolean> {
+  const list = (path: string) => readdir(path).then((entries) => entries, () => null);
+  const home = await list(join(bindingDir, CLIENT_DIRS[client]));
+  if (home === null || home.length > 0) return true;
+  if (client !== 'claude_code') return false;
+  const shared = await list(join(bindingDir, 'home'));
+  return shared === null || shared.some((entry) => entry.startsWith('.claude'));
+}
+
+// A failed or timed-out sign-out leaves this marker in the binding directory, beside the client homes that
+// the sign-out then clears. It is the durable record that the sign-out was not confirmed.
+const unconfirmedPath = (bindingDir: string, client: RuntimeClient) => join(bindingDir, `unconfirmed-${client}`);
+
+export async function recordUnconfirmed(bindingDir: string, client: RuntimeClient): Promise<void> {
+  await writeFile(unconfirmedPath(bindingDir, client), '', { flag: 'w', mode: 0o600 });
+}
+
+/** Whether an earlier sign-out of this client failed. Any error other than "absent" counts as recorded. */
+export async function hasUnconfirmed(bindingDir: string, client: RuntimeClient): Promise<boolean> {
+  try {
+    await lstat(unconfirmedPath(bindingDir, client));
+    return true;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code !== 'ENOENT';
   }
 }
 

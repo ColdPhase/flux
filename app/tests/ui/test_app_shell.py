@@ -26,6 +26,10 @@ ORIGIN = os.environ.get("FLUX_UI_ORIGIN", "http://127.0.0.1:18591").rstrip("/")
 UPSTREAM = os.environ.get("FLUX_UI_UPSTREAM")
 MAILPIT = os.environ.get("FLUX_MAILPIT_URL")
 SHOTS = Path(os.environ["FLUX_UI_SCREENSHOTS"]) if os.environ.get("FLUX_UI_SCREENSHOTS") else None
+# FLUX_UI_BROWSER selects the engine for these journeys: chromium (default) or webkit (#461).
+UI_BROWSER = os.environ.get("FLUX_UI_BROWSER", "chromium")
+if UI_BROWSER not in ("chromium", "webkit"):
+    raise ValueError(f"FLUX_UI_BROWSER must be chromium or webkit, got {UI_BROWSER!r}")
 
 DESKTOP = {"width": 1440, "height": 900}
 PHONE = {"width": 390, "height": 844}
@@ -115,6 +119,28 @@ def shot(page: Page, name: str) -> None:
     page.evaluate("document.fonts.ready.then(() => true)")
     page.wait_for_timeout(450)  # let panel and view motion settle
     page.screenshot(path=str(SHOTS / f"{name}.png"))
+
+
+def open_map_options(page: Page, *, touch: bool = False):
+    """The phone's named sheet retains Map/List and Fit/zoom without stacked map controls."""
+    trigger = page.get_by_role("button", name="Map options", exact=True)
+    expect(trigger).to_be_visible()
+    trigger.tap() if touch else trigger.click()
+    sheet = page.get_by_role("dialog", name="Map options", exact=True)
+    expect(sheet).to_be_visible()
+    return sheet
+
+
+def show_map_as(page: Page, mode: str, *, touch: bool = False) -> None:
+    """Choose the same Map/List control through its visible desktop or phone entry point."""
+    expect(page.locator('.ui-overlay[data-state="closing"]')).to_have_count(0)
+    switch = page.get_by_role("radio", name=mode, exact=True)
+    trigger = page.get_by_role("button", name="Map options", exact=True)
+    expect(trigger.or_(switch)).to_be_visible()
+    if trigger.is_visible():
+        switch = open_map_options(page, touch=touch).get_by_role("radio", name=mode, exact=True)
+    switch.tap() if touch else switch.click()
+    expect(page.get_by_role("dialog", name="Map options", exact=True)).to_have_count(0)
 
 
 def mailpit_reset_link(email: str) -> str:
@@ -209,6 +235,26 @@ SLOW_ANSWERS = """
 """
 
 
+# Records the API requests this document starts: when each began, and whether `beforeunload` had
+# already fired (#471). A document that is being left starts none; WebKit reports every one of them
+# as an uncaught page error even though the app handles the rejection.
+FETCH_RECORDER = """
+(() => {
+  let leaving = false;
+  window.__fetches = [];
+  window.addEventListener('beforeunload', () => { leaving = true; });
+  window.addEventListener('pageshow', () => { leaving = false; });
+  const original = window.fetch;
+  window.fetch = function (...args) {
+    const url = String((args[0] && args[0].url) || args[0]);
+    window.__fetches.push([performance.now(), url]);
+    if (leaving) { try { console.log('started-while-leaving ' + url); } catch (e) { /* the page is going away */ } }
+    return original.apply(this, args);
+  };
+})();
+"""
+
+
 class AppShellJourney(unittest.TestCase):
     """One person's journey; tests run in name order and share the signed-in state."""
 
@@ -221,7 +267,7 @@ class AppShellJourney(unittest.TestCase):
         if UPSTREAM:
             start_forwarder(ORIGIN, UPSTREAM)
         cls.pw = sync_playwright().start()
-        cls.browser = cls.pw.chromium.launch()
+        cls.browser = getattr(cls.pw, UI_BROWSER).launch()
         expect.set_options(timeout=8000)
 
     @classmethod
@@ -238,7 +284,7 @@ class AppShellJourney(unittest.TestCase):
         if signed_in and self.state:
             options["storage_state"] = self.state
         options.update(extra)
-        context = self.browser.new_context(**options)
+        context = self.browser.new_context(**options)  # sw-allowed: as on main; routing tests pass service_workers="block" (#271)
         self.addCleanup(context.close)
         return context
 
@@ -251,6 +297,76 @@ class AppShellJourney(unittest.TestCase):
 
     def save_state(self, page: Page) -> None:
         type(self).state = page.context.storage_state()
+
+    def assert_choices_share_one_width(self, page: Page, menu, where: str) -> None:
+        """The three Appearance choices are equal wide (#431, within 1 px), each label whole on one line."""
+        # Measure settled geometry: the popover animates in and the fonts must be the final ones.
+        menu.evaluate("el => Promise.all(el.getAnimations({ subtree: true }).map((animation) => animation.finished.then(() => true, () => false)))")
+        page.evaluate("document.fonts.ready.then(() => true)")
+        seg = menu.locator(".appearance .seg").evaluate("""el => { const t = el.getBoundingClientRect();
+          const all = [...el.querySelectorAll('.seg__b')], b = all.map(e => e.getBoundingClientRect());
+          const on = el.querySelector('[aria-checked="true"]').getBoundingClientRect();
+          return {widths: b.map(r => r.width), clipped: all.filter(e => e.scrollWidth > e.clientWidth).map(e => e.textContent),
+            top: on.top - t.top, bottom: t.bottom - on.bottom, left: b[0].left - t.left, right: t.right - b[b.length - 1].right}; }""")
+        self.assertEqual(seg["clipped"], [], f"{where}: {seg}")
+        self.assertLessEqual(max(seg["widths"]) - min(seg["widths"]), 1, f"{where}: {seg}")
+        self.assertAlmostEqual(seg["top"], seg["bottom"], delta=0.5, msg=f"{where}: {seg}")
+        self.assertAlmostEqual(seg["left"], seg["right"], delta=0.5, msg=f"{where}: {seg}")
+
+    def assert_focused_choice_inside_track(self, page: Page, menu, shot_name: str, *, resolved: str | None = None) -> None:
+        """Keyboard focus on Match system (#435): its focus ring stays inside the track (and on the
+        segment itself), and its label is one line that is never clipped or wider than its segment.
+        With `resolved` ("light" or "dark") the page must show that theme when Match system is focused,
+        so the screenshot's name says what it shows."""
+        dark = menu.get_by_role("radio", name="Dark", exact=True)
+        system = menu.get_by_role("radio", name="Match system", exact=True)
+        # Start from Dark, whatever the device's current choice, so one ArrowRight reaches Match system.
+        dark.click()
+        expect(dark).to_have_attribute("aria-checked", "true")
+        dark.focus()
+        page.keyboard.press("ArrowRight")
+        expect(system).to_be_focused()
+        expect(system).to_have_attribute("aria-checked", "true")
+        if resolved is not None:
+            self.assertEqual(page.evaluate("matchMedia('(prefers-color-scheme: dark)').matches"), resolved == "dark", resolved)
+            # Body luminance (0 black .. 1 white) on the page the shot shows: dark is near black, light near white.
+            luminance = page.evaluate(r"""() => { const rgb = getComputedStyle(document.body).backgroundColor.match(/[\d.]+/g).slice(0, 3).map(Number);
+              return (0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2]) / 255; }""")
+            if resolved == "dark":
+                self.assertLess(luminance, 0.2, f"{shot_name}: background is not dark ({luminance})")
+            else:
+                self.assertGreater(luminance, 0.8, f"{shot_name}: background is not light ({luminance})")
+        # Measure the resting ring: a transition of the offset would otherwise be read mid-frame.
+        system.evaluate("el => Promise.all(el.getAnimations().map((animation) => animation.finished))")
+        m = system.evaluate("""el => {
+          const track = el.closest('.seg').getBoundingClientRect(), box = el.getBoundingClientRect(), cs = getComputedStyle(el);
+          const width = parseFloat(cs.outlineWidth) || 0, offset = parseFloat(cs.outlineOffset) || 0, grow = width + offset;
+          const range = document.createRange();
+          range.selectNodeContents(el);
+          const text = range.getBoundingClientRect();
+          return {focusVisible: el.matches(':focus-visible'), outlineStyle: cs.outlineStyle, outlineWidth: width, outlineOffset: offset,
+            track: [track.left, track.top, track.right, track.bottom], box: [box.left, box.top, box.right, box.bottom],
+            ring: [box.left - grow, box.top - grow, box.right + grow, box.bottom + grow], text: [text.left, text.right],
+            lines: new Set([...range.getClientRects()].map((r) => Math.round(r.top))).size,
+            scrollWidth: el.scrollWidth, clientWidth: el.clientWidth};
+        }""")
+
+        def inside(inner: list[float], outer: list[float], slack: float) -> bool:
+            return inner[0] >= outer[0] - slack and inner[1] >= outer[1] - slack and inner[2] <= outer[2] + slack and inner[3] <= outer[3] + slack
+
+        self.assertTrue(m["focusVisible"], m)
+        self.assertNotEqual(m["outlineStyle"], "none", m)
+        self.assertGreaterEqual(m["outlineWidth"], 2, m)
+        self.assertTrue(inside(m["ring"], m["track"], 1), m)
+        self.assertTrue(inside(m["ring"], m["box"], 0.5), m)
+        self.assertTrue(inside(m["box"], m["track"], 1), m)
+        self.assertEqual(m["lines"], 1, m)
+        self.assertLessEqual(m["scrollWidth"], m["clientWidth"], m)
+        self.assertTrue(m["text"][0] >= m["box"][0] - 0.5 and m["text"][1] <= m["box"][2] + 0.5, m)
+        shot(page, shot_name)
+        dark.focus()
+        page.keyboard.press("ArrowLeft")
+        expect(dark).to_have_attribute("aria-checked", "true")
 
     # ---------------------------------------------------------------- sign-up and session
 
@@ -578,20 +694,30 @@ class AppShellJourney(unittest.TestCase):
         targets = [menu, details_button, *[page.get_by_role("navigation", name="Views").get_by_role("link", name=n, exact=True) for n in ("Conversation", "Map", "Tasks", "Wiki")]]
         for target in targets:
             size = box(page, target)
-            self.assertGreaterEqual(min(size["width"], size["height"]), 44, f"44px target: {target}")
-        self.assertGreaterEqual(box(page, page.get_by_role("button", name="Save note"))["height"], 44)
+            self.assertGreaterEqual(round(min(size["width"], size["height"]), 2), 44, f"44px target: {target}")
+        self.assertGreaterEqual(round(box(page, page.get_by_role("button", name="Save note"))["height"], 2), 44)
         expect(composer).to_be_editable()
+        # #437: the places bar labels are at least the phone meta size (12.5px, final design §2), and
+        # the composer's audience line wraps inside the viewport instead of clipping mid-word.
+        for size in page.locator(".ui-bottomnav__label").evaluate_all("els => els.map(e => parseFloat(getComputedStyle(e).fontSize))"):
+            self.assertGreaterEqual(size, 12.5, "places bar label at least 12.5px")
+        where = page.locator(".composer__audience").first
+        self.assertLessEqual(box(page, where)["x"] + box(page, where)["width"], PHONE["width"], "the audience line fits the phone")
+        self.assertFalse(where.evaluate("el => el.scrollWidth > el.clientWidth + 1"), "the audience line is not clipped")
 
         menu.click()
         drawer = page.get_by_role("dialog", name="Flux")
         expect(drawer).to_be_visible()
         expect(menu).to_have_attribute("aria-expanded", "true")
+        # The drawer slides in with a running transform (#271): places are measured once the slide has ended.
+        drawer.evaluate("el => Promise.all(el.getAnimations({ subtree: true }).map((animation) => animation.finished.then(() => true, () => false)))")
         # The sidebar is a 260px drawer with the places as 44px+ rows.
         drawer_places = drawer.get_by_role("navigation", name="Places")
         expect(drawer_places).to_be_visible()
         self.assertLessEqual(round(box(page, drawer)["width"]), 260)
         for name in ("Home", "Inbox", "Sketchbook"):
-            self.assertGreaterEqual(box(page, drawer_places.get_by_role("link", name=name))["height"], 44, f"44px place target: {name}")
+            # Layout reports fractional pixels: a 44 px row was measured as 43.99997 px (#271), so two decimals decide.
+            self.assertGreaterEqual(round(box(page, drawer_places.get_by_role("link", name=name))["height"], 2), 44, f"44px place target: {name}")
         self.assertTrue(drawer.evaluate("el => el.contains(document.activeElement)"), "focus moves into the drawer")
         self.assertTrue(page.evaluate("document.getElementById('root').inert"), "the page behind the drawer is inert")
         # Tab stays inside the drawer.
@@ -645,6 +771,37 @@ class AppShellJourney(unittest.TestCase):
         expect(signin.get_by_role("heading", name="Sign in to Flux")).to_be_visible()
         shot(signin, "sign-in-phone-dark")
 
+    def test_07a_phone_enlarged_text_keeps_every_place_in_view(self) -> None:
+        # #437 (HIG-11, HIG-19): with the text size doubled (html 16 -> 32 px, as the SoftVolume checks do), all four
+        # places stay on the screen, each label whole and apart from its neighbours. The page's scrollWidth can stay
+        # at the viewport width while the bar clips its last label, so each label's own bounds are measured.
+        measure = """els => els.map((item) => {
+          const label = item.querySelector('.ui-bottomnav__label');
+          const r = label.getBoundingClientRect();
+          return { name: label.textContent, left: r.left, right: r.right, size: parseFloat(getComputedStyle(label).fontSize),
+                   overflow: label.scrollWidth - label.clientWidth };
+        })"""
+        for width, dark in ((320, False), (320, True), (390, False), (390, True)):
+            with self.subTest(width=width, dark=dark):
+                page = self.page(phone=True, dark=dark, viewport={"width": width, "height": 844})
+                page.goto("/")
+                expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
+                items = page.get_by_role("navigation", name="Main places").locator(".ui-bottomnav__item")
+                self.assertEqual(items.count(), 4, "the places bar holds Home, Inbox, Messages and Projects")
+                normal = min(place["size"] for place in items.evaluate_all(measure))
+                page.add_style_tag(content="html { font-size: 32px !important; }")
+                places = sorted(items.evaluate_all(measure), key=lambda place: place["left"])
+                listing = json.dumps(places)
+                for place in places:
+                    name = place["name"]
+                    self.assertGreaterEqual(place["left"], 0, f"{name} starts on screen at {width}px: {listing}")
+                    self.assertLessEqual(place["right"], width, f"{name} ends on screen at {width}px: {listing}")
+                    self.assertLessEqual(place["overflow"], 1, f"{name} is not clipped: {listing}")
+                    self.assertGreaterEqual(place["size"], 12.5, f"{name} keeps the phone meta size: {listing}")
+                    self.assertGreater(place["size"], normal, f"{name} still grows with the text size: {listing}")
+                for before, after in zip(places, places[1:]):
+                    self.assertGreaterEqual(after["left"] - before["right"], 4, f"{before['name']} and {after['name']} do not touch: {listing}")
+
     # ---------------------------------------------------------------- theme and motion
 
     def test_08_theme_choice_persists_and_reduced_motion(self) -> None:
@@ -663,6 +820,28 @@ class AppShellJourney(unittest.TestCase):
         shot(page, "desktop-1440-account-light")
         menu.get_by_role("radio", name="Dark").click()
         self.assertEqual(page.evaluate("document.documentElement.dataset.theme"), "dark")
+        # Equal choices (#431): Light, Dark and Match system share one width, and no label is clipped,
+        # in the full menu at 1440x900, in the founder's 1568x751 window and in the collapsed rail's menu.
+        self.assert_choices_share_one_width(page, menu, "1440x900 account menu")
+        # Keyboard focus on Match system (#435). The 1440 page's system scheme is dark for this check, so
+        # its shot is dark; the scheme is restored afterwards, the theme stays Dark until the next step.
+        page.emulate_media(color_scheme="dark")
+        self.assert_focused_choice_inside_track(page, menu, "desktop-1440-account-focus-dark", resolved="dark")
+        page.emulate_media(color_scheme="light")
+        window = self.page(viewport={"width": 1568, "height": 751})
+        window.goto("/")
+        window.get_by_role("button", name=re.compile(NAME)).click()
+        window_menu = window.get_by_role("dialog", name="Account")
+        self.assert_choices_share_one_width(window, window_menu, "1568x751 account menu")
+        self.assert_focused_choice_inside_track(window, window_menu, "desktop-1568-account-focus-light", resolved="light")
+        rail = self.page(viewport={"width": 1568, "height": 751}, dark=True)
+        rail.goto("/")
+        rail.get_by_role("button", name="Collapse sidebar").click()
+        rail.get_by_role("button", name=re.compile(NAME)).click()
+        rail_menu = rail.get_by_role("dialog", name="Account")
+        self.assert_choices_share_one_width(rail, rail_menu, "1568x751 collapsed rail menu")
+        self.assert_focused_choice_inside_track(rail, rail_menu, "desktop-1568-rail-account-focus-dark", resolved="dark")
+        shot(page, "desktop-1440-account-dark")
         page.keyboard.press("Escape")
         expect(menu).to_have_count(0)
         expect(account).to_be_focused()
@@ -722,7 +901,7 @@ class AppShellJourney(unittest.TestCase):
         expect(page.get_by_role("link", name="Request a new link")).to_be_visible()
 
     def test_10_password_reset_unavailable(self) -> None:
-        page = self.page(signed_in=False)
+        page = self.page(signed_in=False, service_workers="block")
         # Simulate a server without SMTP: capabilities say so and the request answers 503.
         page.route("**/api/v1/auth/capabilities", lambda route: route.fulfill(json={"passwordReset": "unavailable"}))
         page.goto("/forgot-password")
@@ -730,7 +909,7 @@ class AppShellJourney(unittest.TestCase):
         expect(page.get_by_role("button", name="Send reset link")).to_be_disabled()
         shot(page, "reset-unavailable-desktop-light")
 
-        late = self.page(signed_in=False)
+        late = self.page(signed_in=False, service_workers="block")
         late.route("**/api/auth/request-password-reset", lambda route: route.fulfill(status=503, json={"error": "Password reset is unavailable", "code": "PASSWORD_RESET_UNAVAILABLE"}))
         late.goto("/forgot-password")
         late.get_by_label("Email").fill(EMAIL)
@@ -758,9 +937,9 @@ class AppShellJourney(unittest.TestCase):
         page.reload()
         expect(page.get_by_role("heading", name="Sign in to Flux")).to_be_visible()
 
-    def person_with_a_task(self, name: str, *, slow: bool = True) -> tuple[Page, str, str]:
+    def person_with_a_task(self, name: str, *, slow: bool = True, service_workers: str = "allow") -> tuple[Page, str, str]:
         """A new account in its own tab with one restricted project and one task in it."""
-        page = self.page(signed_in=False)
+        page = self.page(signed_in=False, service_workers=service_workers)
         if slow:
             page.add_init_script(SLOW_ANSWERS)
         page.goto("/sign-up")
@@ -824,7 +1003,7 @@ class AppShellJourney(unittest.TestCase):
         self.sign_out_while_loading(page, "Tove Berg")
 
     def test_11c_a_failed_sign_out_says_so_and_can_be_retried(self) -> None:
-        page, _, _ = self.person_with_a_task("Ida Holm", slow=False)
+        page, _, _ = self.person_with_a_task("Ida Holm", slow=False, service_workers="block")
         page.route("**/api/auth/sign-out", lambda route: route.fulfill(status=503, json={"code": "TEST_UNAVAILABLE", "message": "test: sign-out unavailable"}))
         page.get_by_role("button", name=re.compile("Ida Holm.*account and sign out")).click()
         page.get_by_role("dialog", name="Account").get_by_role("button", name="Sign out").click()
@@ -844,7 +1023,7 @@ class AppShellJourney(unittest.TestCase):
         """Real UI: create project, send, cite a saved version, reply, revisit on phone, revoke."""
         # A fresh account without any space: its first project names the space (Jo's first note
         # already created Jo's personal space, #190 HOME-3).
-        owner = self.page(signed_in=False)
+        owner = self.page(signed_in=False, service_workers="block")
         owner.goto("/sign-up")
         owner.get_by_label("Name").fill("Mira Lamp")
         owner.get_by_label("Email").fill(f"mira.lamp+{int(time.time() * 1000)}@example.test")
@@ -906,7 +1085,7 @@ class AppShellJourney(unittest.TestCase):
         owner.get_by_role("navigation", name="Projects").get_by_role("link", name="Gesture lamp").click()
         owner.get_by_label("Write a message").fill("Try a PIR sensor before considering a camera")
         owner.get_by_role("button", name="Send message").click()
-        expect(owner.locator(".project-convo__message > p").filter(has_text="Try a PIR sensor before considering a camera")).to_be_visible()
+        expect(owner.locator(".project-convo__message > .message-bubble > p").filter(has_text="Try a PIR sensor before considering a camera")).to_be_visible()
         # Sending is instant (#264): the root shows at once and gets its conversation when it is stored.
         expect(owner.locator("[data-client-message-id]")).to_have_count(0)
         # One project conversation (UI116-1): the root joins the stream; its replies open beside it.
@@ -933,8 +1112,9 @@ class AppShellJourney(unittest.TestCase):
         owner.get_by_label("Reply", exact=True).fill("This is the version we should prototype")
         owner.get_by_role("button", name="Send reply").click()
         expect(owner.get_by_text("This is the version we should prototype", exact=True)).to_be_visible()
-        source = owner.get_by_role("link", name="Source: Privacy options · v1")
+        source = owner.get_by_role("link", name=re.compile("Privacy options.*Wiki page · v1"))
         expect(source).to_be_visible()
+        expect(source.locator(".wiki-card__glyph svg")).to_have_count(1)
         source.click()
         expect(owner.get_by_text("PIR avoids storing images")).to_be_visible()
         owner.go_back()
@@ -1006,7 +1186,7 @@ class AppShellJourney(unittest.TestCase):
         threads = owner.context.request.get(f"{ORIGIN}/api/v1/projects/{project_id}/conversations").json()["items"]
         self.assertEqual(sum(thread["firstMessageBody"] == "Revisit after lost opening" for thread in threads), 1)
         owner.goto(f"/projects/{project_id}/conversations/{conversation_id}")
-        expect(owner.get_by_role("link", name="Source: Privacy options · v1")).to_be_visible()
+        expect(owner.get_by_role("link", name=re.compile("Privacy options.*Wiki page · v1"))).to_be_visible()
 
         read_failures = {"count": 0}
         def fail_first_citation(route) -> None:
@@ -1276,6 +1456,144 @@ class AppShellJourney(unittest.TestCase):
         self.assertEqual(connections.status, 200, connections.text())
         self.assertEqual(len(connections.json()), 1)
         self.assertIsNotNone(connections.json()[0]["revokedAt"])
+
+    def sign_up_and_create_project(self, page: Page, name: str) -> None:
+        page.goto("/sign-up")
+        page.get_by_label("Name").fill("Leaving Owner")
+        page.get_by_label("Email").fill(f"leaving+{int(time.time() * 1000)}@example.test")
+        page.get_by_label("Password").fill(PASSWORD)
+        page.get_by_role("button", name="Create account").click()
+        new_from_sidebar(page, "Project")
+        page.get_by_label("Your space").fill("Research space")
+        page.get_by_label("Project name").fill(name)
+        page.get_by_role("button", name="Create project").click()
+        expect(page.get_by_role("heading", level=1, name=name)).to_be_visible()
+
+    def hold_details_code(self, page: Page) -> list:
+        """Holds the Details panel's code download (a new project opens that panel by itself)."""
+        held: list = []
+        pattern = re.compile(r"/assets/Details-[^/]+\.js(?:\?.*)?$")
+        page.route(pattern, lambda route: held.append(route))
+
+        def release() -> None:
+            page.unroute(pattern)
+            for route in held:
+                try:
+                    route.abort("aborted")
+                except Exception:  # noqa: BLE001 - the page is already closed
+                    pass
+
+        self.addCleanup(release)
+        return held
+
+    def wait_until_held(self, page: Page, held: list) -> None:
+        deadline = time.monotonic() + 5
+        while not held:
+            self.assertLess(time.monotonic(), deadline, "the Details code request never arrived")
+            page.wait_for_timeout(10)
+
+    def test_14a_leaving_while_the_details_panel_is_still_loading_starts_no_request(self) -> None:
+        """A page that is being left starts no request, however the app reacts to the leave (#471)."""
+        # A new project opens its Details panel; its code is still downloading when the person
+        # follows a link out. The failed download and the address change that comes with the same
+        # commit used to start /me and the project's people after beforeunload.
+        page = self.page(signed_in=False, service_workers="block")
+        page.add_init_script(FETCH_RECORDER)
+        started: list[str] = []
+        page.on("console", lambda message: started.append(message.text) if message.text.startswith("started-while-leaving ") else None)
+        held = self.hold_details_code(page)
+        self.sign_up_and_create_project(page, "Sensor study")
+        self.wait_until_held(page, held)
+        page.goto("/connect-agent")
+        expect(page.get_by_role("heading", name="Your agent connections")).to_be_visible()
+        page.evaluate("1")  # events of the document that was left have all arrived
+        self.assertEqual(started, [], "no request started after beforeunload")
+
+    def test_14b_a_panel_that_mounts_while_the_page_is_left_reads_once_the_page_is_live(self) -> None:
+        """Its mount-time reads wait for the grace of a cancelled navigation, and then run (#471)."""
+        page = self.page(signed_in=False, service_workers="block")
+        page.add_init_script(FETCH_RECORDER)
+        held = self.hold_details_code(page)
+        self.sign_up_and_create_project(page, "Sensor study")
+        self.wait_until_held(page, held)
+        # A leave that is cancelled never reaches pagehide. The panel's code arrives in that moment.
+        start = page.evaluate("() => { window.dispatchEvent(new Event('beforeunload')); return performance.now(); }")
+        held[0].continue_()
+        page.wait_for_function("(start) => window.__fetches.some(([at, url]) => at >= start && /\\/grants$/.test(url))", arg=start, timeout=6000)
+        reads = page.evaluate(
+            "(start) => window.__fetches.filter(([at, url]) => at >= start && /\\/(members|grants)$/.test(url)).map(([at]) => at - start)",
+            start,
+        )
+        self.assertTrue(reads, "the panel read the project's people after all")
+        self.assertGreaterEqual(min(reads), 990, f"no read started while the leave could still happen: {reads}")
+
+    def test_14c_a_read_wanted_while_leaving_runs_when_the_leave_is_cancelled(self) -> None:
+        """A read a page wants while it is being left waits, and then runs: nothing stays stale (#471)."""
+        page = self.page(signed_in=False)
+        page.add_init_script(FETCH_RECORDER)
+        self.sign_up_and_create_project(page, "Sensor study")
+        # A leave that is cancelled never reaches pagehide. The browser coming back online is when
+        # the project's agent owners are read again. Start once the page has been quiet for a moment,
+        # so only what the leave itself holds back is measured.
+        result = page.evaluate(
+            """async () => {
+                let seen = -1;
+                for (let round = 0; round < 10 && seen !== window.__fetches.length; round += 1) {
+                    seen = window.__fetches.length;
+                    await new Promise((resolve) => setTimeout(resolve, 600));
+                }
+                const start = performance.now();
+                window.dispatchEvent(new Event('beforeunload'));
+                window.dispatchEvent(new Event('online'));
+                await new Promise((resolve) => setTimeout(resolve, 2500));
+                const people = window.__fetches.filter(([at, url]) => at >= start && /\\/people$/.test(url)).map(([at]) => at - start);
+                return { people };
+            }"""
+        )
+        self.assertTrue(result["people"], "the read that waited ran once the page was live again")
+        self.assertGreaterEqual(min(result["people"]), 990, f"no read started while the leave could still happen: {result['people']}")
+
+    def open_while_leaving(self, page: Page, path: str) -> float:
+        """beforeunload, then the router opens `path` with no click or key press (either would prove the page stays)."""
+        return page.evaluate(
+            """(path) => {
+                const start = performance.now();
+                window.dispatchEvent(new Event('beforeunload'));
+                const idx = ((history.state && history.state.idx) || 0) + 1;
+                history.pushState({ usr: null, key: `leave-${idx}`, idx }, '', path);
+                window.dispatchEvent(new PopStateEvent('popstate', { state: history.state }));
+                return start;
+            }""",
+            path,
+        )
+
+    def assert_read_waits_for_the_grace(self, page: Page, start: float, url: str) -> None:
+        page.wait_for_function("([start, url]) => window.__fetches.some(([at, u]) => at >= start && u.includes(url))", arg=[start, url], timeout=8000)
+        reads = page.evaluate("([start, url]) => window.__fetches.filter(([at, u]) => at >= start && u.includes(url)).map(([at]) => at - start)", [start, url])
+        self.assertGreaterEqual(min(reads), 990, f"{url} was not read while the leave could still happen: {reads}")
+
+    def test_14d_the_sign_in_page_asks_for_single_sign_on_only_once_the_page_is_live(self) -> None:
+        """A sign-in page that opens while the page is being left reads its capabilities after the grace (#471)."""
+        page = self.page(signed_in=False)
+        page.add_init_script(FETCH_RECORDER)
+        page.goto("/sign-up")
+        expect(page.get_by_role("button", name="Create account")).to_be_visible()
+        start = self.open_while_leaving(page, "/sign-in")
+        expect(page.get_by_role("heading", name="Sign in to Flux")).to_be_visible()
+        self.assert_read_waits_for_the_grace(page, start, "/api/v1/auth/capabilities")
+
+    def test_14e_the_assistant_setup_reads_its_connections_only_once_the_page_is_live(self) -> None:
+        """Settings > Assistant opened while the page is being left lists the owner's connections after the grace (#471)."""
+        page = self.page(signed_in=False)
+        page.add_init_script(FETCH_RECORDER)
+        page.goto("/sign-up")
+        page.get_by_label("Name").fill("Leaving Owner")
+        page.get_by_label("Email").fill(f"leaving-setup+{int(time.time() * 1000)}@example.test")
+        page.get_by_label("Password").fill(PASSWORD)
+        page.get_by_role("button", name="Create account").click()
+        expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
+        start = self.open_while_leaving(page, "/settings/assistant")
+        self.assert_read_waits_for_the_grace(page, start, "/api/v1/background-compute-connections")
 
 
 if __name__ == "__main__":

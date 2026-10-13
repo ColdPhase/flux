@@ -68,7 +68,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
             options.update(viewport=viewport or DESKTOP, device_scale_factor=1)
         if who and who in self.states:
             options["storage_state"] = self.states[who]
-        context = self.browser.new_context(**options)
+        context = self.browser.new_context(service_workers="block", **options)
         self.addCleanup(context.close)
         return context
 
@@ -177,7 +177,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
         column = page.locator(".project-convo__in").bounding_box()
         assert column
         self.assertLessEqual(column["width"], 1000, "conversation pane")
-        for bubble in page.locator(".project-convo__message > p").all():
+        for bubble in page.locator(".project-convo__message > .message-bubble").all():
             box = bubble.bounding_box()
             assert box
             self.assertLessEqual(box["width"], 700, "readable measure per message")
@@ -385,12 +385,40 @@ class ProjectSurfaceJourney(unittest.TestCase):
         page = self.open_project("ada")
         row = page.locator(".side__project.is-open")
         expect(row).to_have_count(1)
-        pill = row.evaluate("""el => {
+        # Motion paints the selected row on its separate moving highlight. Check the
+        # actual visible paint and its alignment, not a shadow on the transparent link.
+        measure_pill = """el => {
+          const list = el.closest('.side__list');
+          const mark = list.classList.contains('has-glide') ? list.querySelector('.side__glide') : el;
           const r = el.getBoundingClientRect(), box = el.closest('.side__scroll').getBoundingClientRect();
-          return { inside: r.left >= box.left - 1 && r.right <= box.right + 1, raised: getComputedStyle(el).boxShadow !== 'none' };
+          // The open row takes no shadow while the traveling highlight stands in for it (.side__list.has-glide): the pill is the highlight.
+          if (!mark) return { inside: false, raised: false, aligned: false };
+          const m = mark.getBoundingClientRect(), css = getComputedStyle(mark);
+          return { inside: m.left >= box.left - 1 && m.right <= box.right + 1,
+            raised: css.boxShadow !== 'none' && css.display !== 'none' && css.visibility === 'visible' && Number(css.opacity) > .99,
+            aligned: Math.abs(m.left-r.left) <= 1 && Math.abs(m.top-r.top) <= 1 && Math.abs(m.width-r.width) <= 1 && Math.abs(m.height-r.height) <= 1 };
+        }"""
+        page.wait_for_function("el => { const p = (" + measure_pill + ")(el); return p.raised && p.aligned; }", arg=row.element_handle())
+        def assert_pill() -> None:
+            pill = row.evaluate(measure_pill)
+            self.assertTrue(pill["raised"], "the current project is a visible raised pill (F-026 §4)")
+            self.assertTrue(pill["aligned"], "the highlight paints the current row")
+            self.assertTrue(pill["inside"], f"the pill lies inside the sidebar's scroll box: {pill}")
+        assert_pill()
+        # Removing the actual paint must fail even when the current-row marker remains.
+        original = row.evaluate("""el => {
+          const list = el.closest('.side__list'), mark = list.classList.contains('has-glide') ? list.querySelector('.side__glide') : el;
+          const previous = mark.style.boxShadow; mark.style.boxShadow = 'none'; return previous;
         }""")
-        self.assertTrue(pill["raised"], "the current project is a raised pill (F-026 §4)")
-        self.assertTrue(pill["inside"], f"the pill lies inside the sidebar's scroll box: {pill}")
+        try:
+            with self.assertRaises(AssertionError):
+                assert_pill()
+        finally:
+            row.evaluate("""(el, previous) => {
+              const list = el.closest('.side__list'), mark = list.classList.contains('has-glide') ? list.querySelector('.side__glide') : el;
+              mark.style.boxShadow = previous;
+            }""", original)
+        assert_pill()
         # On a phone every sidebar control is a 44px target: +, Search, places and projects.
         phone = self.open_project("ada", phone=True)
         phone.get_by_role("button", name="Open navigation").tap()

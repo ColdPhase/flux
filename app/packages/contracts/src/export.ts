@@ -32,6 +32,7 @@ export const PROJECT_EXPORT_EXCLUDED = [
   'accounts, e-mail addresses, sessions, push subscriptions and notifications',
   'agent connections, OAuth clients and tokens, and pending agent proposals',
   'approved project policies for agents (kept in full backups)',
+  'GitHub installations, authorizations, tokens, webhook deliveries, pull request snapshots and who connected a repository (task rules are exported dormant; repository bindings are never exported here)',
   'events, idempotency records and other internal rows',
 ] as const;
 
@@ -197,7 +198,30 @@ export interface ProjectExportFile extends MessageFile {
   path: string;
 }
 
+/** A task's "let linked PRs move this task" rule, exported dormant (#74). */
+export interface ProjectExportGithubRule {
+  taskId: string;
+  mode: 'complete' | 'ready';
+  recordedState: 'active' | 'suspended' | 'off';
+  enabled: false;
+}
+
+/**
+ * Task rules and the default mode (#74), present only when the project has any. Dormant and
+ * disabled. Repository bindings are deliberately absent: their names, URLs and ids are private
+ * GitHub facts that need the exporter's own current GitHub proof, which this ordinary export does
+ * not perform. A destination must connect and authorize repositories itself.
+ */
+export interface ProjectExportGithubSources {
+  dormant: true;
+  /** The project's default rule mode on the exporting instance, if one was set. */
+  defaultMode: 'complete' | 'ready' | null;
+  rules: ProjectExportGithubRule[];
+}
+
 export interface ProjectExport {
+  /** GitHub task rules, dormant. Absent when the project has none; never holds repositories. */
+  githubSources?: ProjectExportGithubSources;
   /** Published attachments only. Exact bytes are in the bundle paths. Absent in legacy file-free exports. */
   files?: ProjectExportFile[];
   $schema: typeof PROJECT_EXPORT_SCHEMA_ID;
@@ -338,6 +362,12 @@ const baseExportSchema = {
   }),
 } as const;
 
+const modeSchema = { enum: ['complete', 'ready'] } as const;
+const githubSourcesSchema = object({
+  dormant: { const: true }, defaultMode: nullable(modeSchema),
+  rules: list(object({ taskId: id, mode: modeSchema, recordedState: { enum: ['active', 'suspended', 'off'] }, enabled: { const: false } })),
+});
+
 export const PROJECT_EXPORT_JSON_SCHEMA = { ...baseExportSchema,
-  properties: { ...baseExportSchema.properties, files: list(exportFileSchema) },
+  properties: { ...baseExportSchema.properties, files: list(exportFileSchema), githubSources: githubSourcesSchema },
 } as const;

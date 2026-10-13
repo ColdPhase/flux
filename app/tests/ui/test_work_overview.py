@@ -18,7 +18,7 @@ class OverviewWorkJourney(unittest.TestCase):
         if UPSTREAM: start_forwarder(ORIGIN, UPSTREAM)
         cls.pw = sync_playwright().start(); cls.browser = cls.pw.chromium.launch()
         expect.set_options(timeout=10000)
-        cls.context = cls.browser.new_context(base_url=ORIGIN)
+        cls.context = cls.browser.new_context(service_workers="block", base_url=ORIGIN)
         api(cls.context, "POST", "/api/auth/sign-up/email", {"name": "Ada Kowalska", "email": f"overview-{uuid.uuid4()}@example.test", "password": "compare the library measurements before ordering"})
         cls.user = api(cls.context, "GET", "/api/v1/me")["user"]["id"]
         ws = api(cls.context, "POST", "/api/v1/workspaces", {"name": "Riverside makers"}, 201)["id"]
@@ -62,7 +62,7 @@ class OverviewWorkJourney(unittest.TestCase):
         finally: cls.browser.close(); cls.pw.stop()
 
     def page(self, phone=False):
-        context = self.browser.new_context(base_url=ORIGIN, storage_state=self.state, viewport={"width": 412 if phone else 1500, "height": 915 if phone else 900}, device_scale_factor=3 if phone else 1, is_mobile=phone, has_touch=phone, locale="en-GB")
+        context = self.browser.new_context(service_workers="block", base_url=ORIGIN, storage_state=self.state, viewport={"width": 412 if phone else 1500, "height": 915 if phone else 900}, device_scale_factor=3 if phone else 1, is_mobile=phone, has_touch=phone, locale="en-GB")
         self.addCleanup(context.close)
         page = context.new_page(); errors = []
         page.on("pageerror", lambda error: errors.append(str(error)))

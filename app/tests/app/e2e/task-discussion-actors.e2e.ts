@@ -101,7 +101,7 @@ function isFinishedFixtureRoute(cause: unknown): boolean {
   return cause instanceof Error && cause.message.includes('route.fulfill: Route is already handled!');
 }
 
-/** F-026: people and agents keep a 32px face in the same column on every viewport. */
+/** F-026 / #481: a 32px face on the author's side; neutral notices retain their left column. */
 async function assertAuthorColumn(row: Locator, width: number) {
   await row.waitFor();
   const geometry = await row.evaluate((el) => {
@@ -111,16 +111,17 @@ async function assertAuthorColumn(row: Locator, width: number) {
     const f = face.getBoundingClientRect();
     const m = meta.getBoundingClientRect();
     return { display: getComputedStyle(face).display,
-      rowX: r.x, faceX: f.x, faceRight: f.right, faceWidth: f.width, faceHeight: f.height,
-      metaX: m.x, direction: getComputedStyle(meta).flexDirection };
+      rowX: r.x, rowRight: r.right, faceX: f.x, faceRight: f.right, faceWidth: f.width, faceHeight: f.height,
+      own: el.matches('.project-convo__message.is-mine, .thread__root.is-mine'),
+      metaX: m.x, metaRight: m.right, direction: getComputedStyle(meta).flexDirection };
   });
   assert.notEqual(geometry.display, 'none', 'the phone retains the full author avatar');
   assert.ok(Math.abs(geometry.faceWidth - 32) <= 0.01 && Math.abs(geometry.faceHeight - 32) <= 0.01,
     'both author shapes have the required 32px size');
-  assert.ok(Math.abs(geometry.faceX - geometry.rowX) <= 1, JSON.stringify(geometry));
-  assert.ok(Math.abs(geometry.metaX - geometry.faceRight - (width <= 680 ? 10 : 12)) <= 1,
-    'the author name follows the common face column and required gap');
-  assert.equal(geometry.direction, 'row', 'own authors keep the same order');
+  assert.ok(Math.abs(geometry.own ? geometry.faceRight - geometry.rowRight : geometry.faceX - geometry.rowX) <= 1, JSON.stringify(geometry));
+  const gap = geometry.own ? geometry.faceX - geometry.metaRight : geometry.metaX - geometry.faceRight;
+  assert.ok(Math.abs(gap - (width <= 680 ? 10 : 12)) <= 1, 'the author name follows its face column with the required gap');
+  assert.equal(geometry.direction, 'row', 'metadata keeps its reading order');
 }
 
 /**

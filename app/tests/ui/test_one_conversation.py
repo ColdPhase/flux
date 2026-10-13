@@ -17,7 +17,7 @@ import uuid
 
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
-from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
+from test_app_shell import DESKTOP, ORIGIN, PHONE, UI_BROWSER, UPSTREAM, shot, start_forwarder
 from contrast import MEASURE
 
 PASSWORD = "one calm conversation for the lamp"
@@ -34,6 +34,31 @@ SECOND_REPLY = "Then the camera cannot be the only sensor. A ToF board works in 
 NUMBERS = "Camera numbers are in: 38% of gestures at 5 lux."
 NUMBERS_REPLY = "Thanks. Let's keep the negative result next to the ToF test."
 ORDER = "Order two ToF boards today?"
+TARGET_ROOT = "The lux table decides the threshold. Which reading do we trust?"
+# A touch control's tap area (#436, #443): its size, and whether a tap on the eight points 21 px from the centre
+# (the middles of a 44 px square's sides and its corners) lands on the control, so nothing else covers the area.
+TOUCH_AREA = """el => {
+  const area = getComputedStyle(el, '::after');
+  const box = el.getBoundingClientRect();
+  const x = box.left + box.width / 2, y = box.top + box.height / 2;
+  const lands = (px, py) => { const hit = document.elementFromPoint(px, py); return !!hit && el.contains(hit); };
+  const offsets = [[0, -21], [0, 21], [-21, 0], [21, 0], [-21, -21], [21, -21], [-21, 21], [21, 21]];
+  return { width: parseFloat(area.width), height: parseFloat(area.height), reach: offsets.map(([dx, dy]) => lands(x + dx, y + dy)) };
+}"""
+# The other controls in the same thread whose box meets this control's tap area, which is centred on it (#443).
+OVERLAPS = """el => {
+  const area = getComputedStyle(el, '::after');
+  const box = el.getBoundingClientRect();
+  const cx = box.left + box.width / 2, cy = box.top + box.height / 2, w = parseFloat(area.width), h = parseFloat(area.height);
+  const thread = el.closest('[role="complementary"]') || document.body;
+  const others = [...thread.querySelectorAll('a, button, input, textarea, select, [role="button"], [role="link"]')];
+  return others.filter((other) => {
+    if (other === el || other.contains(el) || el.contains(other)) return false;
+    const r = other.getBoundingClientRect();
+    if (!r.width || !r.height) return false;
+    return r.left < cx + w / 2 && r.right > cx - w / 2 && r.top < cy + h / 2 && r.bottom > cy - h / 2;
+  }).map((other) => (other.textContent || other.getAttribute('aria-label') || other.tagName).trim().slice(0, 60));
+}"""
 
 
 def contrast(a: list[float], b: list[float]) -> float:
@@ -58,11 +83,11 @@ class OneConversationJourney(unittest.TestCase):
         if UPSTREAM:
             start_forwarder(ORIGIN, UPSTREAM)
         cls.pw = sync_playwright().start()
-        cls.browser = cls.pw.chromium.launch()
+        cls.browser = getattr(cls.pw, UI_BROWSER).launch()
         expect.set_options(timeout=10000)
         contexts: dict[str, BrowserContext] = {}
         for key, (name, email) in PEOPLE.items():
-            context = cls.browser.new_context(base_url=ORIGIN)
+            context = cls.browser.new_context(service_workers="block", base_url=ORIGIN)
             response = context.request.post("/api/auth/sign-up/email", data={"email": email, "password": PASSWORD, "name": name}, headers={"origin": ORIGIN})
             assert response.status == 200, response.text()
             cls.ids[key] = context.request.get("/api/v1/me").json()["user"]["id"]
@@ -105,14 +130,14 @@ class OneConversationJourney(unittest.TestCase):
         cls.browser.close()
         cls.pw.stop()
 
-    def page(self, who: str, *, phone: bool = False, dark: bool = False, viewport: dict | None = None) -> Page:
-        options: dict = {"base_url": ORIGIN, "color_scheme": "dark" if dark else "light", "locale": "en-GB", "timezone_id": "Europe/Warsaw",
+    def page(self, who: str, *, phone: bool = False, dark: bool = False, viewport: dict | None = None, locale: str = "en-GB") -> Page:
+        options: dict = {"base_url": ORIGIN, "color_scheme": "dark" if dark else "light", "locale": locale, "timezone_id": "Europe/Warsaw",
                          "storage_state": self.states[who]}
         if phone:
             options.update(viewport=viewport or PHONE, device_scale_factor=3, is_mobile=True, has_touch=True)
         else:
             options.update(viewport=viewport or DESKTOP, device_scale_factor=1)
-        context = self.browser.new_context(**options)
+        context = self.browser.new_context(service_workers="block", **options)
         self.addCleanup(context.close)
         page = context.new_page()
         errors: list[str] = []
@@ -152,6 +177,36 @@ class OneConversationJourney(unittest.TestCase):
             if not cursor:
                 return roots
 
+    def targets(self) -> str:
+        """A restricted project for #436 (created once): Ada's root cites a material, and seven replies alternate
+        with Jonas's, so the thread is taller than the desktop panel and the phone sheet shows a source chip and an
+        author's name. An eighth reply comes from J, a contributor with a one-letter name (#443). It is a project of
+        its own, so the stream's roots and counts above stay as they are."""
+        if "targets" not in self.ids:
+            ada, jonas = self.page("ada"), self.page("jonas")
+            pid = self.api(ada, "POST", f"/api/v1/workspaces/{self.ids['workspace']}/projects", {"name": "Thread targets", "visibility": "restricted"}, status=201)["id"]
+            self.api(ada, "POST", f"/api/v1/projects/{pid}/grants", {"principal": {"kind": "human", "id": self.ids["jonas"]}, "role": "contributor"})
+            email = f"j.one+{STAMP}@example.test"
+            context = self.browser.new_context(service_workers="block", base_url=ORIGIN)
+            try:
+                response = context.request.post("/api/auth/sign-up/email", data={"email": email, "password": PASSWORD, "name": "J"}, headers={"origin": ORIGIN})
+                assert response.status == 200, response.text()
+                self.ids["short"] = context.request.get("/api/v1/me").json()["user"]["id"]
+                self.states["short"] = context.storage_state()
+            finally:
+                context.close()
+            self.api(ada, "POST", f"/api/v1/workspaces/{self.ids['workspace']}/members", {"email": email, "role": "member"})
+            self.api(ada, "POST", f"/api/v1/projects/{pid}/grants", {"principal": {"kind": "human", "id": self.ids["short"]}, "role": "contributor"})
+            short = self.page("short")
+            material = self.api(ada, "POST", f"/api/v1/projects/{pid}/materials", {"title": "Lux table", "body": "38% of gestures at 5 lux, 97% at 200 lux.", "clientMutationId": str(uuid.uuid4())}, status=201)
+            root = self.api(ada, "POST", f"/api/v1/projects/{pid}/conversations", {"body": TARGET_ROOT, "clientMessageId": str(uuid.uuid4()),
+                                                                                  "source": {"materialId": material["materialId"], "version": material["version"]}}, status=201)
+            for index in range(1, 9):
+                writer = short if index == 8 else jonas if index % 2 else ada
+                self.api(writer, "POST", f"/api/v1/conversations/{root['id']}/messages", {"body": f"Reply {index}: the reading corner stays quiet at this light level.", "clientMessageId": str(uuid.uuid4())}, status=201)
+            self.ids.update(targets=pid, targets_conversation=root["id"])
+        return self.ids["targets"]
+
     # ---------------------------------------------------------------- the stream
 
     def test_01_one_stream_of_roots_from_several_people(self) -> None:
@@ -160,7 +215,7 @@ class OneConversationJourney(unittest.TestCase):
         stream = self.stream(page)
         roots = stream.locator(".project-convo__message")
         expect(roots).to_have_count(50)
-        self.assertEqual([text.strip() for text in stream.locator(".project-convo__message > p").all_inner_texts()[-3:]], [OPENING, NUMBERS, ORDER], "chronological, newest last")
+        self.assertEqual([text.strip() for text in stream.locator(".project-convo__message > .message-bubble > p").all_inner_texts()[-3:]], [OPENING, NUMBERS, ORDER], "chronological, newest last")
         expect(self.root(page, "r1")).to_have_class(re.compile("is-mine"))
         expect(self.root(page, "r2")).not_to_have_class(re.compile("is-mine"))
         expect(self.root(page, "r2")).to_contain_text("Jonas Berg")
@@ -201,7 +256,17 @@ class OneConversationJourney(unittest.TestCase):
         after = anchor.bounding_box()
         assert before and after
         self.assertAlmostEqual(before["y"], after["y"], delta=4, msg="loading earlier roots keeps the reader's place")
-        self.assertTrue(stream.locator(".project-convo__message > p").first.inner_text().startswith("Earlier note 01"))
+        self.assertTrue(stream.locator(".project-convo__message > .message-bubble > p").first.inner_text().startswith("Earlier note 01"))
+
+    def test_01b_message_times_are_a_natural_clock_in_a_12_hour_locale(self) -> None:
+        # "4:55 PM", never a zero-padded "04:55 PM", under every root (#436).
+        page = self.page("ada", locale="en-US")
+        page.goto(self.project_url())
+        stream = self.stream(page)
+        expect(stream.locator(".project-convo__message").first).to_be_visible()
+        times = [text.strip() for text in stream.locator(".project-convo__message-meta time").all_inner_texts()]
+        self.assertTrue(times, "each root shows its time")
+        self.assertEqual([text for text in times if not re.fullmatch(r"[1-9]\d?:\d\d\s[AP]M", text)], [], "a natural 12-hour clock")
 
     def test_02_a_thread_opens_beside_the_stream_and_takes_a_reply(self) -> None:
         page = self.page("ada")
@@ -277,6 +342,25 @@ class OneConversationJourney(unittest.TestCase):
         page.keyboard.press("Escape")
         expect(self.thread(page)).to_have_count(0)
         expect(page).to_have_url(re.compile(rf"/projects/{self.ids['project']}$"))
+
+    def test_02b_a_thread_taller_than_its_panel_opens_at_its_root_whole(self) -> None:
+        # #436 (#14): opened without an anchor, the thread starts at its root, which is never cut off under the header.
+        page = self.page("ada")
+        page.goto(f"/projects/{self.targets()}/conversations/{self.ids['targets_conversation']}")
+        thread = self.thread(page)
+        expect(thread).to_be_visible()
+        feed = thread.locator(".thread__feed")
+        expect(feed).not_to_have_class(re.compile("is-opening"))
+        expect(thread.locator(".thread__hint")).to_have_text("8 replies")
+        page.wait_for_timeout(500)
+        overflow = feed.evaluate("el => el.scrollHeight - el.clientHeight")
+        self.assertGreater(overflow, 1, "the fixture thread overflows the desktop panel, so opening it could hide the root")
+        panel, root = feed.bounding_box(), thread.locator(".thread__root").bounding_box()
+        assert panel and root
+        self.assertGreaterEqual(root["y"], panel["y"] - 1, "the root starts inside the panel, below the Replies header")
+        self.assertLessEqual(root["y"] + root["height"], panel["y"] + panel["height"] + 1, "the root is whole")
+        self.no_sideways_scroll(page)
+        shot(page, "one-conversation-desktop-1440-thread-root-whole-light")
 
     # ---------------------------------------------------------------- links keep working
 
@@ -537,7 +621,7 @@ class OneConversationJourney(unittest.TestCase):
         sheet, header, pane = thread.bounding_box(), page.locator("header.top").bounding_box(), page.locator(".app__pane").bounding_box()
         assert sheet and header and pane
         self.assertEqual((round(sheet["x"]), round(sheet["width"])), (0, PHONE["width"]), "a full-width sheet")
-        self.assertAlmostEqual(sheet["y"], pane["y"], delta=1, msg="the sheet covers the whole work area")
+        self.assertAlmostEqual(sheet["y"], pane["y"] + 12, delta=1, msg="the full sheet covers the work area, a grabber's breadth below its top")
         self.assertAlmostEqual(sheet["y"] + sheet["height"], pane["y"] + pane["height"], delta=1)
         expect(page.locator("header.top")).to_be_visible()
         close = thread.get_by_role("button", name="Close replies")
@@ -575,6 +659,89 @@ class OneConversationJourney(unittest.TestCase):
         self.no_sideways_scroll(narrow)
         shot(narrow, "one-conversation-phone-320-thread-light")
 
+    def test_07b_phone_thread_source_chip_and_author_name_are_44_px_on_touch(self) -> None:
+        # #436 (#9, #10): the chip and an author's name keep their size and take a tap in a 44 px area.
+        page = self.page("ada", phone=True)
+        page.goto(f"/projects/{self.targets()}/conversations/{self.ids['targets_conversation']}")
+        thread = self.thread(page)
+        expect(thread).to_be_visible()
+        self.assertTrue(page.evaluate("matchMedia('(pointer: coarse)').matches"), "the phone runs with a touch pointer")
+        # #348 AC-2: a cited Wiki page is a compact card now, where the 24 px source chip stood; its tap area is still 44 px.
+        chip, name = thread.locator("a.wiki-card"), thread.locator(".project-convo__person").first
+        expect(chip).to_be_visible()
+        expect(name).to_be_visible()
+        page.wait_for_timeout(400)
+        for label, target in (("source chip", chip), ("author name", name)):
+            target.evaluate("el => el.scrollIntoView({ block: 'center' })")
+            page.wait_for_timeout(150)
+            area = target.evaluate(TOUCH_AREA)
+            self.assertGreaterEqual(min(area["width"], area["height"]), 44, (label, area))
+            self.assertEqual(area["reach"], [True] * 8, (label, "a tap on any point 21 px from the centre lands on it", area))
+        chip_box = chip.bounding_box()
+        assert chip_box
+        self.assertLessEqual(chip_box["height"], 56, "the Wiki card stays compact")
+        self.no_sideways_scroll(page)
+        shot(page, "one-conversation-phone-390-thread-targets-light")
+
+    def test_07c_a_one_letter_author_name_has_a_44_px_tap_area_too(self) -> None:
+        # #443: the tap area of a short name is centred on it and at least 44 px wide, though the name's own box stays
+        # narrow. No other control in the thread sits under that area, so the extra width takes no tap from anything.
+        page = self.page("ada", phone=True)
+        page.goto(f"/projects/{self.targets()}/conversations/{self.ids['targets_conversation']}")
+        thread = self.thread(page)
+        expect(thread).to_be_visible()
+        name = thread.get_by_role("link", name="J", exact=True)
+        expect(name).to_be_visible()
+        page.wait_for_timeout(400)
+        name.evaluate("el => el.scrollIntoView({ block: 'center' })")
+        page.wait_for_timeout(150)
+        text_box = name.bounding_box()
+        assert text_box
+        self.assertLess(text_box["width"], 44, ("the visual text box stays narrow", text_box))
+        area = name.evaluate(TOUCH_AREA)
+        self.assertGreaterEqual(min(area["width"], area["height"]), 44, area)
+        self.assertEqual(area["reach"], [True] * 8, ("a tap on any point of the 44 px square lands on the name", area))
+        self.assertEqual(name.evaluate(OVERLAPS), [], "the tap area covers no other control in the thread")
+        self.no_sideways_scroll(page)
+        shot(page, "one-conversation-phone-390-thread-short-name-light")
+
+    def assert_card_in_bubble(self, scope, card) -> None:
+        """#348 (review 36b49271): a cited Wiki card is part of its message's one bubble, not a card set beneath it."""
+        expect(card).to_be_visible()
+        inside = scope.evaluate("""(message, card) => { const bubble = message.querySelector(':scope > .message-bubble');
+          if (!bubble || !bubble.contains(card)) return false;
+          const a = bubble.getBoundingClientRect(), r = card.getBoundingClientRect();
+          return r.left >= a.left - .001 && r.top >= a.top - .001 && r.right <= a.right + .001 && r.bottom <= a.bottom + .001; }""", card.element_handle())
+        self.assertTrue(inside, "the Wiki card sits inside its message's single bubble")
+
+    def test_07d_a_cited_wiki_card_sits_inside_its_message_bubble(self) -> None:
+        # #348 (review 36b49271): Ada's cited root is her own message, so its bubble is the inverted one. The card stays in
+        # that bubble in the stream and in the thread, on desktop and phone, in light and dark, and it still opens the cited version.
+        for phone, dark in ((False, False), (True, False), (False, True), (True, True)):
+            with self.subTest(phone=phone, dark=dark):
+                page = self.page("ada", phone=phone, dark=dark)
+                if phone:
+                    page.goto(f"/projects/{self.targets()}/conversations/{self.ids['targets_conversation']}")
+                    scope = self.thread(page).locator(".thread__root")
+                else:
+                    page.goto(f"/projects/{self.targets()}")
+                    scope = self.stream(page).locator("li.project-convo__message").filter(has=page.locator("a.wiki-card"))
+                card = scope.locator("a.wiki-card")
+                expect(card).to_be_visible()
+                expect(card.locator("strong")).to_have_text("Lux table")
+                expect(card).to_have_attribute("href", re.compile(r"^/materials/[^/]+/versions/1$"))
+                self.assert_card_in_bubble(scope, card)
+                shot(page, f"one-conversation-wiki-card-{'phone' if phone else 'desktop'}-{'dark' if dark else 'light'}-{UI_BROWSER}")
+                if not phone and not dark:
+                    # Negative control: the same card moved beside the bubble fails the check; the card is then restored.
+                    card.evaluate("e => { const slot = document.createElement('span'); slot.id = 'wiki-card-slot'; e.before(slot); e.closest('.message-bubble').after(e); }")
+                    try:
+                        with self.assertRaises(AssertionError):
+                            self.assert_card_in_bubble(scope, card)
+                    finally:
+                        card.evaluate("e => { document.getElementById('wiki-card-slot').replaceWith(e); }")
+                    self.assert_card_in_bubble(scope, card)
+
     def test_08_tablet_and_desktop_renders(self) -> None:
         tablet = self.page("ada", phone=True, viewport={"width": 820, "height": 1180})
         tablet.goto(self.project_url())
@@ -607,8 +774,8 @@ class OneConversationJourney(unittest.TestCase):
                 page.goto(self.project_url(f"/conversations/{self.ids['c1']}"))
                 expect(self.thread(page).locator(f"#message-{self.ids['first']}")).to_be_visible()
                 for selector in (f"#message-{self.ids['r1']} .convo-replies__open", f"#message-{self.ids['r1']} .convo-replies__when",
-                                 ".thread__title", ".thread__n", ".thread__hint", ".thread__root-meta time", ".thread__root > p",
-                                 f"#message-{self.ids['first']} > p", f"#message-{self.ids['r3']} .convo-replies__reply"):
+                                 ".thread__title", ".thread__n", ".thread__hint", ".thread__root-meta time", ".thread__root > .message-bubble > p",
+                                 f"#message-{self.ids['first']} > .message-bubble > p", f"#message-{self.ids['r3']} .convo-replies__reply"):
                     if selector.endswith("convo-replies__reply"):
                         page.locator(selector).hover()
                     page.wait_for_function("""selector => {
@@ -631,7 +798,7 @@ class OneConversationJourney(unittest.TestCase):
                 self.assertGreaterEqual(hovered["ratio"], 4.5, (theme, "reply link on hover", hovered))
                 page.mouse.move(1, 1)
                 page.wait_for_timeout(250)
-                outline = page.locator(f"{root} > p").evaluate("e => { const s = getComputedStyle(e); return [s.outlineStyle, s.outlineWidth, s.outlineColor]; }")
+                outline = page.locator(f"{root} > .message-bubble").evaluate("e => { const s = getComputedStyle(e); return [s.outlineStyle, s.outlineWidth, s.outlineColor]; }")
                 ink = page.evaluate("""() => { const probe = document.createElement('i'); probe.style.color = 'var(--t1)';
                   document.body.append(probe); const color = getComputedStyle(probe).color; probe.remove(); return color; }""")
                 self.assertEqual(outline, ["solid", "2px", ink], (theme, "the open root has a solid ring in the primary ink"))

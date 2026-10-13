@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { flushSync } from 'react-dom';
 import { Link, useLoaderData, useLocation, useNavigation, useRevalidator, useSearchParams, type LoaderFunctionArgs } from 'react-router';
-import type { AgentOperation, AgentStop, ConversationMessage, ProjectAgentConnection, ProjectAgents as ProjectAgentsData, TaskDiscussion, WorkRowProjection, WorkStatus } from '@flux/contracts';
+import type { AgentOperation, AgentStop, ConversationMessage, ProjectAgentConnection, ProjectAgentRequest, ProjectAgents as ProjectAgentsData, TaskDiscussion, WorkRowProjection, WorkStatus } from '@flux/contracts';
 import { ApiError, NetworkError } from '../api/client';
 import { useStreamEvents } from '../api/stream';
 import { useShellData } from '../app/data';
 import { outboxView, useComposerDraft, useComposerScope } from '../composer/draft';
-import { AttachButton, ComposerFiles, MessageFiles } from '../composer/Files';
+import { AttachButton, ComposerFiles, MessageContent } from '../composer/Files';
+import { LinkPreviews, MessageText } from '../app/MessageText';
 import { ConnectionLine, OutboxStatus, PendingFiles, PendingSource } from '../composer/Outbox';
 import { getTaskDiscussion } from '../composer/api';
 import { useProjectShell } from '../project/data';
@@ -26,6 +27,7 @@ import { agentEntries, mayDo, tasksHeldBy, type AgentEntry } from './roster';
 import { useTyping } from '../typing/useTyping';
 import { TypingNotice } from '../typing/TypingNotice';
 import './agents.css';
+import { useCreateWorkFromMessage } from '../work/inline';
 
 /** The drag data type of a task dragged onto an agent (computer only; the button does the same by keyboard and touch). */
 const TASK_DRAG = 'application/x-flux-task';
@@ -80,6 +82,23 @@ function connectionExpression(connection: ProjectAgentConnection, now: number): 
   if (connection.state === 'unavailable') return 'worried';
   if (state !== 'session_open') return 'asleep';
   return 'idle';
+}
+
+const REQUEST_KIND: Record<ProjectAgentRequest['kind'], string> = { help: 'Help', review: 'Review', fix: 'Fix', handoff: 'Handoff' };
+const REQUEST_STATE: Record<ProjectAgentRequest['state'], string> = {
+  queued: 'waiting for its next step', deferred: 'deferred until its next step', claimed: 'being handled',
+};
+
+/** What the connection holds in this project now. Assigned work is not yet being done, and a paused unit says so. */
+function workLine(work: NonNullable<ProjectAgentConnection['currentWork']>) {
+  if (work.state === 'claimed') return `Working on “${work.taskTitle}”`;
+  return work.state === 'paused' ? `Paused on “${work.taskTitle}”` : `Assigned “${work.taskTitle}”, not started`;
+}
+
+/** A request addressed here: who asked, about which task, and what it waits for (the request's own reason, if any). */
+function requestLine(request: ProjectAgentRequest) {
+  const reason = request.reason ? ` — ${request.reason}` : '';
+  return `${REQUEST_KIND[request.kind]} request from ${request.sender.name} (${request.sender.ownerName}) about “${request.taskTitle}”: ${REQUEST_STATE[request.state]}${reason}`;
 }
 
 function authorName(message: ConversationMessage, names: Map<string, string>) {
@@ -146,6 +165,7 @@ function TaskThread({ task, projectId, meId, names, canWrite, changingScope }: {
   const reload = useRef(() => { /* set while mounted */ });
   // Per account and task, kept across views and reloads like every other composer (#40).
   const composer = useComposerDraft(meId, projectId, `task:${task.id}`);
+  const makeWork = useCreateWorkFromMessage({ id: projectId });
   const captureScope = useComposerScope(composer.key);
   const blocked = changingScope || !discussion || !canWrite || accessLost;
   // Typing (#155 AC-2) is the task thread's: the same canonical conversation as the task's thread in
@@ -277,9 +297,11 @@ function TaskThread({ task, projectId, meId, names, canWrite, changingScope }: {
                 <time dateTime={message.createdAt}>{when(message.createdAt)}</time>
                 {message.contribution ? <span className="agents-msg__kind"> · {message.contribution.kind}</span> : null}
               </span>
-              {message.body ? <p className="agents-msg__body">{message.body}</p> : null}
+              <MessageContent body={message.body ? <p className="agents-msg__body"><MessageText body={message.body} /></p> : null} files={message.files} context={{ author: name, at: message.createdAt, caption: message.body, onReply: blocked ? undefined : () => box.current?.focus(), onCreateTask: canWrite && !accessLost ? () => void makeWork.create(message) : undefined }}>
+                <LinkPreviews body={message.body} />
+              </MessageContent>
               <QuestionCard projectId={projectId} messageId={message.id} meId={meId} writable={canWrite} />
-              <MessageFiles files={message.files} />
+              {makeWork.failed?.messageId === message.id ? <p className="agents-thread__error" role="alert">{makeWork.failed.text}</p> : null}
             </li>
           );
         }), ...outbox.pending.map((item) => (
@@ -288,8 +310,7 @@ function TaskThread({ task, projectId, meId, names, canWrite, changingScope }: {
             <AuthorFace kind="human" name={names.get(meId) ?? 'Someone'} mine />
             {/* "Sending…" stands where the stored message's time will be, so it takes that message's exact space. */}
             <span className="agents-msg__meta"><b>{names.get(meId) ?? 'Someone'} · you</b>{item.state === 'sending' || item.state === 'uploading' ? <OutboxStatus inline item={item} onRetry={() => composer.retry(item.id)} onRemove={() => composer.remove(item.id)} /> : null}</span>
-            {item.body ? <p className="agents-msg__body">{item.body}</p> : null}
-            <PendingFiles files={item.files} />
+            <PendingFiles body={item.body ? <p className="agents-msg__body">{item.body}</p> : null} files={item.files} send={{ state: item.state, onRetry: () => composer.retry(item.id) }} />
             <PendingSource item={item} />
             {item.state === 'sending' || item.state === 'uploading' ? null : <OutboxStatus item={item} onRetry={() => composer.retry(item.id)} onRemove={() => composer.remove(item.id)} />}
           </li>
@@ -449,6 +470,13 @@ function AgentDetail({ entry, held, projectId, now, canHandOff, stops, onStop, s
             <p className="agents-detail__note">{task.status === 'in_progress' ? 'In progress' : 'Handed to it, not started'}{held.length > 1 ? ` · ${held.length - 1} more` : ''} · <Link className="ui-link" to={`/projects/${projectId}/tasks?open=work:${task.id}`}>Open task</Link></p>
           </>
         ) : <p className="agents-detail__note">{entry.connection ? stateLine(entry.connection, now) : 'Nothing is handed to it.'}</p>}
+        {/* The co-work unit the connection holds and the requests addressed to it (#160). */}
+        {entry.connection?.currentWork ? <p className="agents-detail__note agents-detail__unit">{workLine(entry.connection.currentWork)}</p> : null}
+        {entry.connection?.requests.length ? (
+          <ul className="agents-detail__requests">
+            {entry.connection.requests.map((request) => <li key={request.id} className="agents-detail__note">{requestLine(request)}</li>)}
+          </ul>
+        ) : null}
       </section>
       <section aria-label="Recent">
         <h3>Recent</h3>

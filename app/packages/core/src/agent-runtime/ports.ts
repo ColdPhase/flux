@@ -65,7 +65,8 @@ export interface AgentRuntimeStore {
   recordCommercialTerms(agreedOn: string): Promise<void>;
   // The worker's reconciliation.
   slotsWithBindings(): Promise<{ slot: RuntimeSlotRow; binding: RuntimeBindingRow | null }[]>;
-  saveSlot(slot: RuntimeSlotRow): Promise<void>;
+  /** With `expected` (the state and wipe boot id the caller read) the row is only replaced while it still has them. */
+  saveSlot(slot: RuntimeSlotRow, expected?: Pick<RuntimeSlotRow, 'state' | 'wipeBootId'>): Promise<void>;
   markSignInAgain(bindingId: string): Promise<void>;
   /** The binding is released (its connections stay revoked); the slot becomes `wiping` or `out_of_pool`. */
   completeRelease(bindingId: string, slot: RuntimeSlotRow, logoutFailed: boolean): Promise<void>;

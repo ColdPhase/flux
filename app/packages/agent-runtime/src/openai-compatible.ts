@@ -9,8 +9,9 @@ import { checkRequestLimits, PersonalKeyUnavailableError, type PersonalKeyResolv
 // OpenRouter, Gemini's OpenAI-compatible endpoint and any OpenAI-compatible server. It matches the
 // Anthropic adapter: one bounded request with the same prompt, output bound and no tools, no
 // retries, abort through the AbortSignal, an explicit base URL, the guarded transport, and the same
-// closed failure set and billing hints. There is no token-count endpoint on this wire format, so
-// the conservative Flux estimate alone bounds the input. "Low effort" has no equivalent that every
+// closed failure set and billing hints. Without `request.tools` the request has no tools on the wire;
+// with them (F-027 AST-8) each call is one turn of the worker's loop and carries the earlier turns.
+// There is no token-count endpoint on this wire format, so the conservative Flux estimate alone bounds the input. "Low effort" has no equivalent that every
 // compatible model accepts (non-reasoning models reject `reasoning_effort`), so none is sent; the
 // output bound, which includes any reasoning tokens, stays the cost bound.
 
@@ -36,8 +37,9 @@ export function openAiCompatiblePersonalCompute({ enabled, resolveKey, policy = 
         const apiKey = await resolveKey(request.connection.keyRef);
         if (!apiKey || !baseUrl) throw new PersonalKeyUnavailableError();
         const result = await chatCompletion(fetch, { provider: request.connection.provider, baseUrl, apiKey, model: request.model,
-          system: request.system, user: request.input, maxTokens: request.maxTokens, signal });
-        return { kind: 'completed', text: result.text, stopReason: result.stopReason, usage: result.usage };
+          system: request.system, user: request.input, maxTokens: request.maxTokens, tools: request.tools, turns: request.turns, signal });
+        return { kind: 'completed', text: result.text, stopReason: result.stopReason, usage: result.usage,
+          ...(result.toolCalls ? { toolCalls: result.toolCalls, replay: result.replay } : {}) };
       } catch (error) {
         if (error instanceof PersonalKeyUnavailableError) return { kind: 'failed', reason: 'provider_error', billed: 'none' };
         return { kind: 'failed', ...chatFailureOf(error, signal) };

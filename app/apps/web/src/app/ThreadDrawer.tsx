@@ -1,10 +1,12 @@
-import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { useId, useState, type ReactNode } from 'react';
 import type { ConversationMessage, NativeWorkRow } from '@flux/contracts';
 import { Icon, IconButton, useMediaQuery } from '../ui';
+import { DetentSheet } from '../ui/DetentSheet';
 import { DiscussedTask, MessageObjects } from '../work/inline';
 import type { MessageWorkPreview } from '../work/message-associations';
 import { AgentAuthor, AuthorFace, SourceCitation, clock, day, when } from './messageParts';
-import { MessageFiles } from '../composer/Files';
+import { MessageContent, type PhotoActions } from '../composer/Files';
+import { LinkPreviews, MessageText } from './MessageText';
 import { QuestionCard } from '../agents/QuestionCard';
 
 export type ThreadMode = 'docked' | 'sheet';
@@ -15,28 +17,21 @@ export type ThreadMode = 'docked' | 'sheet';
  * when docked, the stream stay usable. Esc inside it closes it; the opener takes focus back.
  */
 export function ThreadDrawer({ mode, count, focusOnOpen, onClose, children }: { mode: ThreadMode; count: number; focusOnOpen: boolean; onClose: () => void; children: ReactNode }) {
-  const ref = useRef<HTMLElement>(null);
   const titleId = useId();
-  useEffect(() => {
-    if (focusOnOpen && !ref.current?.contains(document.activeElement)) ref.current?.focus({ preventScroll: true });
-    // When it opens; the composer may take focus first when the person chose Reply.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-  const onKeyDown = (event: KeyboardEvent<HTMLElement>) => {
-    // Escape that ends an input method's composition is not a request to close.
-    if (event.key !== 'Escape' || event.defaultPrevented || event.nativeEvent.isComposing) return;
-    event.stopPropagation();
-    onClose();
-  };
+  const head = (
+    <div className="thread__head">
+      <h2 className="thread__title" id={titleId}><span className="ui-vh">Replies: </span><span className="ui-panel__kind">Thread</span></h2>
+      <span className="thread__n">{count} {count === 1 ? 'reply' : 'replies'}</span>
+      <IconButton icon={mode === 'sheet' ? 'chevron-left' : 'x'} label="Close replies" className="thread__close" onClick={onClose} />
+    </div>
+  );
+  // Over the stream on a phone or a narrow tablet it is the one two-height sheet, opening at full height;
+  // docked beside the stream it is the same element without the sheet, so a reply draft survives the change.
   return (
-    <aside ref={ref} id="thread" className={`thread thread--${mode}`} aria-labelledby={titleId} tabIndex={-1} onKeyDown={onKeyDown}>
-      <div className="thread__head">
-        <h2 className="thread__title" id={titleId}>Replies</h2>
-        <span className="thread__n"><span className="ui-vh">, </span>{count}</span>
-        <IconButton icon={mode === 'sheet' ? 'chevron-left' : 'x'} label="Close replies" className="thread__close" onClick={onClose} />
-      </div>
+    <DetentSheet as="aside" id="thread" className={`thread thread--${mode}`} aria-labelledby={titleId} detent={mode === 'sheet'} startFull focusOnOpen={focusOnOpen} onClose={onClose}>
+      {head}
       {children}
-    </aside>
+    </DetentSheet>
   );
 }
 
@@ -60,12 +55,14 @@ export function ThreadMessageActions({ writable, children }: { writable: boolean
 }
 
 /** The message the thread answers, at its top: who said it, when, and what, with its cited source. */
-export function ThreadRoot({ message, projectId, body, author, agentOwner = null, meId, writable, replies, task = null, taskRow = null, preview = null, onDenied }: {
+export function ThreadRoot({ message, projectId, body, author, agentOwner = null, meId, writable, replies, task = null, taskRow = null, preview = null, onDenied, photo }: {
   message: ConversationMessage | null; projectId: string; body: string; author: string | null; agentOwner?: string | null; meId: string; writable: boolean; replies: number;
   /** The task whose discussion this thread is (UI116-3), and its row from the thread's visible reference read (#155). */
   task?: { workId: string; title: string; number?: number } | null; taskRow?: NativeWorkRow | null;
   /** What was made from the root, from the thread's bounded association read (#155): the root is shown whole here. */
   preview?: MessageWorkPreview | null; onDenied: (cause: unknown) => void;
+  /** Reply and Create task in the photo viewer, as this reader may use them (#348). */
+  photo?: PhotoActions & { place?: string };
 }) {
   const mine = !!message && message.authorId === meId;
   return (
@@ -78,12 +75,13 @@ export function ThreadRoot({ message, projectId, body, author, agentOwner = null
             <time dateTime={message.createdAt} title={when(message.createdAt)}>{day(message.createdAt)} · {clock(message.createdAt)}</time>
           </div>
         ) : null}
-        {message?.body || !message ? <p>{body}</p> : null}
+        <MessageContent body={message?.body || !message ? <p><MessageText body={body} /></p> : null} files={message?.files} context={message ? { author: author ?? undefined, at: message.createdAt, caption: message.body, ...photo } : undefined}>
+          <LinkPreviews body={body} />
+          {message ? <MessageObjects message={message} projectId={projectId} preview={preview} thread={task} threadRow={taskRow} />
+            : task ? <div className="ws-attach"><DiscussedTask task={task} row={taskRow} /></div> : null}
+          {message?.source ? <SourceCitation materialId={message.source.materialId} version={message.source.version} onDenied={onDenied} /> : null}
+        </MessageContent>
         {message ? <QuestionCard projectId={projectId} messageId={message.id} meId={meId} writable={writable} /> : null}
-        <MessageFiles files={message?.files} />
-        {message?.source ? <SourceCitation materialId={message.source.materialId} version={message.source.version} onDenied={onDenied} /> : null}
-        {message ? <MessageObjects message={message} projectId={projectId} preview={preview} thread={task} threadRow={taskRow} />
-          : task ? <div className="ws-attach"><DiscussedTask task={task} row={taskRow} /></div> : null}
       </article>
       <p className="thread__hint">{replies ? `${replies} ${replies === 1 ? 'reply' : 'replies'}` : writable ? 'Reply to this message. No new topic needed.' : 'No replies yet.'}</p>
     </>

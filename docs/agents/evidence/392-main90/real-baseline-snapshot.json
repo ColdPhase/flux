@@ -1,0 +1,8 @@
+{
+  "phase": "snapshot-baseline",
+  "oldTableCount": 111,
+  "ledgerCount": 59,
+  "fileSha256": "75ca84e26b352d9222dba638e6f0247243b6081fe31fc56416cb0264d313b801",
+  "snapshotSha256": "91d0fcca5aeb7f69062ad352cc3af868ebc87ae8de354ca20a6826128d314252",
+  "externalProviderIdentityDigest": "566a0cdb68aef8206d9b827bd28c96227935740ed7eb2d208e5f7548e4f3142d"
+}
