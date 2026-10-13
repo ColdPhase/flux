@@ -176,11 +176,11 @@ export function PhoneCreate({ open, onClose, projects, projectId, go, onThought 
     const title = original.trim();
     const draftRevision = taskDraft.revision;
     if (!targetProject || !title || taskBusy) return;
-    let attempt = crypto.randomUUID();
+    let attempt: ReturnType<typeof crypto.randomUUID> = crypto.randomUUID();
     try {
       const previous: unknown = JSON.parse(taskPending.text);
       if (previous && typeof previous === 'object' && 'title' in previous && previous.title === title &&
-        'key' in previous && typeof previous.key === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(previous.key)) attempt = previous.key;
+        'key' in previous && typeof previous.key === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(previous.key)) attempt = previous.key as typeof attempt;
     } catch { /* No valid pending command for this title. */ }
     const command = JSON.stringify({ title, key: attempt });
     const pendingRevision = taskPending.setText(command);
