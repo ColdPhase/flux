@@ -1,0 +1,1080 @@
+{
+  "schema": 1,
+  "purpose": "Durable mapped visual evidence and independent review for partial PR #376; the evidence commit does not alter PR source.",
+  "pullRequest": "https://github.com/ColdPhase/flux/pull/376",
+  "sourceHead": "0dbab955671d2ca4562d575fb7f6ee767057e024",
+  "sourceBase": "3163f2e2192987c7dfc40a4535adbdbc6b1c8f45",
+  "evidenceCommitParent": "0dbab955671d2ca4562d575fb7f6ee767057e024",
+  "captureOperator": "PelikanFix16",
+  "visualReviewer": "Fresh-context Luna visual evaluator, independent of capture operator",
+  "visualVerdict": "No material visual finding remains; original P2 withdrawn after reassessment with reachable scroll-state evidence.",
+  "neutralBrief": "neutral-visual-brief.md",
+  "visualReview": "visual-review.md",
+  "verification": "verification.md",
+  "references": [
+    "../../../design/final/README.md",
+    "../../../design/final/screens/desktop-agents.webp",
+    "../../../design/final/screens/desktop-handoff.webp",
+    "../../../design/final/screens/phone-agents.webp",
+    "../../../design/final/screens/phone-agentdetail.webp",
+    "../../../design/final/screens/phone-handoff.webp"
+  ],
+  "testSummary": {
+    "chromiumUi": "52/52 passed",
+    "webkitUi": "52/52 passed",
+    "apiIntegration": "44/44 passed",
+    "reachabilityProbe": "2/2 passed; Chromium, 320/390 CSS px \u00d7 light/dark, 125% root font"
+  },
+  "mappedFrameCount": 40,
+  "reachabilityFrameCount": 4,
+  "screenshots": [
+    {
+      "criterion": "AC-1 two-step handoff and permission-before-confirmation",
+      "engine": "chromium",
+      "sourcePath": "chromium/handoff-step1-desktop.png",
+      "sourceSha256": "1638bb5f3077722c61cc3831fb8a68e50dc1f06e2e27097a1ba54cb998192beb",
+      "storedPath": "screenshots/chromium/handoff-step1-desktop.webp",
+      "storedSha256": "05829ed1107dad2085da3c4455803d1902a2aa7e3f77009e3aff9b42d6aef012",
+      "pixelDimensions": [
+        1440,
+        900
+      ],
+      "format": "lossless WebP",
+      "pixelIdentical": true,
+      "bytes": 76580,
+      "cssViewport": [
+        1440,
+        900
+      ],
+      "theme": "light",
+      "rootTextEnlargement": "default",
+      "scenario": null
+    },
+    {
+      "criterion": "AC-1 two-step handoff and permission-before-confirmation",
+      "engine": "webkit",
+      "sourcePath": "webkit/handoff-step1-desktop-webkit.png",
+      "sourceSha256": "296d2017f50522262c104efd8a3da5d879f0fe14beddcf675fc77faa2bfbcfa3",
+      "storedPath": "screenshots/webkit/handoff-step1-desktop-webkit.webp",
+      "storedSha256": "679eb180711be3e959dc4aaffeb3b6a03f1daeec64df937aba0fb49685e886b1",
+      "pixelDimensions": [
+        1440,
+        900
+      ],
+      "format": "lossless WebP",
+      "pixelIdentical": true,
+      "bytes": 59522,
+      "cssViewport": [
+        1440,
+        900
+      ],
+      "theme": "light",
+      "rootTextEnlargement": "default",
+      "scenario": null
+    },
+    {
+      "criterion": "AC-1 two-step handoff and permission-before-confirmation",
+      "engine": "chromium",
+      "sourcePath": "chromium/handoff-step2-desktop.png",
+      "sourceSha256": "a3dfe9466685b48d2af1495d74a4c1706c2d849ebe52368ca1370f283a5e3be4",
+      "storedPath": "screenshots/chromium/handoff-step2-desktop.webp",
+      "storedSha256": "d12ff0999236fe8dc23aa353a9dfc2a19db47e50d4926b535740643fa04d63e8",
+      "pixelDimensions": [
+        1440,
+        900
+      ],
+      "format": "lossless WebP",
+      "pixelIdentical": true,
+      "bytes": 76564,
+      "cssViewport": [
+        1440,
+        900
+      ],
+      "theme": "light",
+      "rootTextEnlargement": "default",
+      "scenario": null
+    },
+    {
+      "criterion": "AC-1 two-step handoff and permission-before-confirmation",
+      "engine": "webkit",
+      "sourcePath": "webkit/handoff-step2-desktop-webkit.png",
+      "sourceSha256": "84242d0546f5b2fde3912cecb240a63a5c7abd2130a795a85391edafcab6007d",
+      "storedPath": "screenshots/webkit/handoff-step2-desktop-webkit.webp",
+      "storedSha256": "1a85b607618fa39fa79d40fb2c3100e1027c099f8397cdf8477b3179e098e481",
+      "pixelDimensions": [
+        1440,
+        900
+      ],
+      "format": "lossless WebP",
+      "pixelIdentical": true,
+      "bytes": 62448,
+      "cssViewport": [
+        1440,
+        900
+      ],
+      "theme": "light",
+      "rootTextEnlargement": "default",
+      "scenario": null
+    },
+    {
+      "criterion": "AC-1 two-step handoff and permission-before-confirmation",
+      "engine": "chromium",
+      "sourcePath": "chromium/handoff-step1-phone-light.png",
+      "sourceSha256": "ac9396f0d04b326b2bb11a97327e229688113f04b5be2e8447f378c069e8bdc4",
+      "storedPath": "screenshots/chromium/handoff-step1-phone-light.webp",
+      "storedSha256": "239372d0306c13ffd024910208fdb3ab629bbebfa857ed2e65751507706fba91",
+      "pixelDimensions": [
+        1170,
+        2532
+      ],
+      "format": "lossless WebP",
+      "pixelIdentical": true,
+      "bytes": 87552,
+      "cssViewport": [
+        390,
+        844
+      ],
+      "theme": "light",
+      "rootTextEnlargement": "default",
+      "scenario": null
+    },
+    {
+      "criterion": "AC-1 two-step handoff and permission-before-confirmation",
+      "engine": "webkit",
+      "sourcePath": "webkit/handoff-step1-phone-light-webkit.png",
+      "sourceSha256": "0422f9cd6574963b3d391d00756a36ddcac39b34b5e2f0f4db1993ed846b7e10",
+      "storedPath": "screenshots/webkit/handoff-step1-phone-light-webkit.webp",
+      "storedSha256": "a4c87207cbda1746b32581bd040a24bcbe30f784fa02317c89f8bf58c174b391",
+      "pixelDimensions": [
+        1170,
+        2532
+      ],
+      "format": "lossless WebP",
+      "pixelIdentical": true,
+      "bytes": 55214,
+      "cssViewport": [
+        390,
+        844
+      ],
+      "theme": "light",
+      "rootTextEnlargement": "default",
+      "scenario": null
+    },
+    {
+      "criterion": "AC-1 two-step handoff and permission-before-confirmation",
+      "engine": "chromium",
+      "sourcePath": "chromium/handoff-step2-phone-dark.png",
+      "sourceSha256": "a7501b6dd2faaf0104f5905efc95c652274e27de9b5a891d4684927676bbd3ee",
+      "storedPath": "screenshots/chromium/handoff-step2-phone-dark.webp",
+      "storedSha256": "6044e9061c96d8671789d2d78ca9ff63ef647e0cd84d2dc97a03769b1429e541",
+      "pixelDimensions": [
+        1170,
+        2532
+      ],
+      "format": "lossless WebP",
+      "pixelIdentical": true,
+      "bytes": 78154,
+      "cssViewport": [
+        390,
+        844
+      ],
+      "theme": "dark",
+      "rootTextEnlargement": "default",
+      "scenario": null
+    },
+    {
+      "criterion": "AC-1 two-step handoff and permission-before-confirmation",
+      "engine": "webkit",
+      "sourcePath": "webkit/handoff-step2-phone-dark-webkit.png",
+      "sourceSha256": "216de6fc9d74d47eed63547b516e3c8c86fbeaf7002cab1428db29501584d3c8",
+      "storedPath": "screenshots/webkit/handoff-step2-phone-dark-webkit.webp",
+      "storedSha256": "301211f05b593680ea16e4d1316f0f25769a1d8f8e8c453460bf13da7d3763a9",
+      "pixelDimensions": [
+        1170,
+        2532
+      ],
+      "format": "lossless WebP",
+      "pixelIdentical": true,
+      "bytes": 49002,
+      "cssViewport": [
+        390,
+        844
+      ],
+      "theme": "dark",
+      "rootTextEnlargement": "default",
+      "scenario": null
+    },
+    {
+      "criterion": "AC-2 one-list Agents surface, rows, owner/current work and primary action",
+      "engine": "chromium",
+      "sourcePath": "chromium/handoff-agents-desktop-light.png",
+      "sourceSha256": "2ed793ae02a0eeb9e5d3c6695b4e200d222eb97941f854dc27a63ecfdacd4e5a",
+      "storedPath": "screenshots/chromium/handoff-agents-desktop-light.webp",
+      "storedSha256": "6d175778e0d0262693554008b65fabc1bfcd646b497b0bc074e0ae8362ad34e8",
+      "pixelDimensions": [
+        1440,
+        900
+      ],
+      "format": "lossless WebP",
+      "pixelIdentical": true,
+      "bytes": 70326,
+      "cssViewport": [
+        1440,
+        900
+      ],
+      "theme": "light",
+      "rootTextEnlargement": "default",
+      "scenario": null
+    },
+    {
+      "criterion": "AC-2 one-list Agents surface, rows, owner/current work and primary action",
+      "engine": "webkit",
+      "sourcePath": "webkit/handoff-agents-desktop-light-webkit.png",
+      "sourceSha256": "c6aa8f2f2b49ff20ef312f9efe10141c9e437d657d0e72effa2ffafa38897c61",
+      "storedPath": "screenshots/webkit/handoff-agents-desktop-light-webkit.webp",
+      "storedSha256": "925f7a8a5103d54f0ef1b152eb6304fc17500a1b4fd36124a197a4c566aafe9c",
+      "pixelDimensions": [
+        1440,
+        900
+      ],
+      "format": "lossless WebP",
+      "pixelIdentical": true,
+      "bytes": 54180,
+      "cssViewport": [
+        1440,
+        900
+      ],
+      "theme": "light",
+      "rootTextEnlargement": "default",
+      "scenario": null
+    },
+    {
+      "criterion": "AC-2 one-list Agents surface, rows, owner/current work and primary action",
+      "engine": "chromium",
+      "sourcePath": "chromium/handoff-agents-desktop-dark.png",
+      "sourceSha256": "d3b3572054501451e4341c86a5800cb860a1151d19519a934c021aa6efbdaa79",
+      "storedPath": "screenshots/chromium/handoff-agents-desktop-dark.webp",
+      "storedSha256": "3d54f2237bf6133c0f15cd40865fe506508671b3a9fab9cbb6e758b9df5301cd",
+      "pixelDimensions": [
+        1440,
+        900
+      ],
+      "format": "lossless WebP",
+      "pixelIdentical": true,
+      "bytes": 67690,
+      "cssViewport": [
+        1440,
+        900
+      ],
+      "theme": "dark",
+      "rootTextEnlargement": "default",
+      "scenario": null
+    },
+    {
+      "criterion": "AC-2 one-list Agents surface, rows, owner/current work and primary action",
+      "engine": "webkit",
+      "sourcePath": "webkit/handoff-agents-desktop-dark-webkit.png",
+      "sourceSha256": "b8152e01a6de36e944b6dab090c5022714864c1c39ac263f5c89f672f7ef3682",
+      "storedPath": "screenshots/webkit/handoff-agents-desktop-dark-webkit.webp",
+      "storedSha256": "0caddb1c5f68d56cb666d449088ed03842bdf70b6a5c14d38375252f728f1f93",
+      "pixelDimensions": [
+        1440,
+        900
+      ],
+      "format": "lossless WebP",
+      "pixelIdentical": true,
+      "bytes": 47834,
+      "cssViewport": [
+        1440,
+        900
+      ],
+      "theme": "dark",
+      "rootTextEnlargement": "default",
+      "scenario": null
+    },
+    {
+      "criterion": "AC-2 one-list Agents surface, rows, owner/current work and primary action",
+      "engine": "chromium",
+      "sourcePath": "chromium/handoff-agents-phone-light.png",
+      "sourceSha256": "5ca070c4b9a02df192221cc139c85f4b25e431ba12ca4bb4a1a1184f63dbb5c2",
+      "storedPath": "screenshots/chromium/handoff-agents-phone-light.webp",
+      "storedSha256": "d7bb9ba12aaa084b601b1e0c16af7cc8342af4626d8f9607f7e5d5de092cf6c1",
+      "pixelDimensions": [
+        1170,
+        2532
+      ],
+      "format": "lossless WebP",
+      "pixelIdentical": true,
+      "bytes": 114858,
+      "cssViewport": [
+        390,
+        844
+      ],
+      "theme": "light",
+      "rootTextEnlargement": "default",
+      "scenario": null
+    },
+    {
+      "criterion": "AC-2 one-list Agents surface, rows, owner/current work and primary action",
+      "engine": "webkit",
+      "sourcePath": "webkit/handoff-agents-phone-light-webkit.png",
+      "sourceSha256": "ee84ce69af1ddac955b9bd872222a9bdc016adcd1e1455b0e752ebf9eefe817a",
+      "storedPath": "screenshots/webkit/handoff-agents-phone-light-webkit.webp",
+      "storedSha256": "b35e353d6d76c2580a09a46b5881d416f582c51e7b65509565715c2f74438e4f",
+      "pixelDimensions": [
+        1170,
+        2532
+      ],
+      "format": "lossless WebP",
+      "pixelIdentical": true,
+      "bytes": 95586,
+      "cssViewport": [
+        390,
+        844
+      ],
+      "theme": "light",
+      "rootTextEnlargement": "default",
+      "scenario": null
+    },
+    {
+      "criterion": "AC-2 one-list Agents surface, rows, owner/current work and primary action",
+      "engine": "chromium",
+      "sourcePath": "chromium/handoff-agents-phone-dark.png",
+      "sourceSha256": "0e6fff09519ac98849e7c601aacce651ef28cc4998763d85c4c4d6a70d5ae89a",
+      "storedPath": "screenshots/chromium/handoff-agents-phone-dark.webp",
+      "storedSha256": "1539e1c012f67790ec9448ab252b6723e8195a191cd95dce4641a575e7364af1",
+      "pixelDimensions": [
+        1170,
+        2532
+      ],
+      "format": "lossless WebP",
+      "pixelIdentical": true,
+      "bytes": 104530,
+      "cssViewport": [
+        390,
+        844
+      ],
+      "theme": "dark",
+      "rootTextEnlargement": "default",
+      "scenario": null
+    },
+    {
+      "criterion": "AC-2 one-list Agents surface, rows, owner/current work and primary action",
+      "engine": "webkit",
+      "sourcePath": "webkit/handoff-agents-phone-dark-webkit.png",
+      "sourceSha256": "95924e5ccda01c4db081002e6b0133ab1bb88fd3e59b9b776df2714776b2e526",
+      "storedPath": "screenshots/webkit/handoff-agents-phone-dark-webkit.webp",
+      "storedSha256": "4404eb94f3603ffd78bce9b3c326ba69a5c8fa4df59733786bf42f446a0c6a78",
+      "pixelDimensions": [
+        1170,
+        2532
+      ],
+      "format": "lossless WebP",
+      "pixelIdentical": true,
+      "bytes": 90246,
+      "cssViewport": [
+        390,
+        844
+      ],
+      "theme": "dark",
+      "rootTextEnlargement": "default",
+      "scenario": null
+    },
+    {
+      "criterion": "AC-5 selected agent details and current work/history",
+      "engine": "chromium",
+      "sourcePath": "chromium/handoff-agents-detail-desktop.png",
+      "sourceSha256": "2ed793ae02a0eeb9e5d3c6695b4e200d222eb97941f854dc27a63ecfdacd4e5a",
+      "storedPath": "screenshots/chromium/handoff-agents-detail-desktop.webp",
+      "storedSha256": "6d175778e0d0262693554008b65fabc1bfcd646b497b0bc074e0ae8362ad34e8",
+      "pixelDimensions": [
+        1440,
+        900
+      ],
+      "format": "lossless WebP",
+      "pixelIdentical": true,
+      "bytes": 70326,
+      "cssViewport": [
+        1440,
+        900
+      ],
+      "theme": "light",
+      "rootTextEnlargement": "default",
+      "scenario": null
+    },
+    {
+      "criterion": "AC-5 selected agent details and current work/history",
+      "engine": "webkit",
+      "sourcePath": "webkit/handoff-agents-detail-desktop-webkit.png",
+      "sourceSha256": "c6aa8f2f2b49ff20ef312f9efe10141c9e437d657d0e72effa2ffafa38897c61",
+      "storedPath": "screenshots/webkit/handoff-agents-detail-desktop-webkit.webp",
+      "storedSha256": "925f7a8a5103d54f0ef1b152eb6304fc17500a1b4fd36124a197a4c566aafe9c",
+      "pixelDimensions": [
+        1440,
+        900
+      ],
+      "format": "lossless WebP",
+      "pixelIdentical": true,
+      "bytes": 54180,
+      "cssViewport": [
+        1440,
+        900
+      ],
+      "theme": "light",
+      "rootTextEnlargement": "default",
+      "scenario": null
+    },
+    {
+      "criterion": "AC-5 selected agent details and current work/history",
+      "engine": "chromium",
+      "sourcePath": "chromium/handoff-agent-phone-light.png",
+      "sourceSha256": "030aa9e8525b5b043ede284ca0b68078a44735061b36c69bb389dc1cf05dc790",
+      "storedPath": "screenshots/chromium/handoff-agent-phone-light.webp",
+      "storedSha256": "8c19c3503fa09c88192ff0cf6825d473af779b623286398d69a8f01844c51183",
+      "pixelDimensions": [
+        1170,
+        2532
+      ],
+      "format": "lossless WebP",
+      "pixelIdentical": true,
+      "bytes": 52274,
+      "cssViewport": [
+        390,
+        844
+      ],
+      "theme": "light",
+      "rootTextEnlargement": "default",
+      "scenario": null
+    },
+    {
+      "criterion": "AC-5 selected agent details and current work/history",
+      "engine": "webkit",
+      "sourcePath": "webkit/handoff-agent-phone-light-webkit.png",
+      "sourceSha256": "988f980cabbc49f640d0ac00effad372afccdf32f84de37ca234164dc97b0c9c",
+      "storedPath": "screenshots/webkit/handoff-agent-phone-light-webkit.webp",
+      "storedSha256": "038b76f911e29c91c7a4981fa14e4ad2e443892413857c4a932a44d4754b271e",
+      "pixelDimensions": [
+        1170,
+        2532
+      ],
+      "format": "lossless WebP",
+      "pixelIdentical": true,
+      "bytes": 57966,
+      "cssViewport": [
+        390,
+        844
+      ],
+      "theme": "light",
+      "rootTextEnlargement": "default",
+      "scenario": null
+    },
+    {
+      "criterion": "C-1 claimed/live vs held/paused/assigned expression",
+      "engine": "chromium",
+      "sourcePath": "chromium/handoff-projection-claimed-session_open-desktop-dark.png",
+      "sourceSha256": "df28e3cfcf222b73275fefcd4d3d8f4ad0509ed8e44588197ad7af74b907ba0d",
+      "storedPath": "screenshots/chromium/handoff-projection-claimed-session_open-desktop-dark.webp",
+      "storedSha256": "ed95030f4cd749b231b61075703dbd294233194a6fe7065f18eab921d22c8443",
+      "pixelDimensions": [
+        1440,
+        900
+      ],
+      "format": "lossless WebP",
+      "pixelIdentical": true,
+      "bytes": 60146,
+      "cssViewport": [
+        1440,
+        900
+      ],
+      "theme": "dark",
+      "rootTextEnlargement": "default",
+      "scenario": null
+    },
+    {
+      "criterion": "C-1 claimed/live vs held/paused/assigned expression",
+      "engine": "webkit",
+      "sourcePath": "webkit/handoff-projection-claimed-session_open-desktop-dark-webkit.png",
+      "sourceSha256": "4922e40247d39116d449294b25e2fc79f9f166000d686e64fedd668ac044c491",
+      "storedPath": "screenshots/webkit/handoff-projection-claimed-session_open-desktop-dark-webkit.webp",
+      "storedSha256": "52c80fbd49a3fb37511bc01f8a7f86a1c7fd7251a659114eab6f003dc0119572",
+      "pixelDimensions": [
+        1440,
+        900
+      ],
+      "format": "lossless WebP",
+      "pixelIdentical": true,
+      "bytes": 43896,
+      "cssViewport": [
+        1440,
+        900
+      ],
+      "theme": "dark",
+      "rootTextEnlargement": "default",
+      "scenario": null
+    },
+    {
+      "criterion": "C-1 claimed/live vs held/paused/assigned expression",
+      "engine": "chromium",
+      "sourcePath": "chromium/handoff-projection-paused-offline-phone-light.png",
+      "sourceSha256": "d2ce6f6662558b2d21354dea717478a27f99ff21f46e78b2eb849a64a3e41ac4",
+      "storedPath": "screenshots/chromium/handoff-projection-paused-offline-phone-light.webp",
+      "storedSha256": "d59806f7d6179cab1a7cd1fffe879cdcb93c6e64cbf2a0ec9748abfe0e9be461",
+      "pixelDimensions": [
+        1170,
+        2532
+      ],
+      "format": "lossless WebP",
+      "pixelIdentical": true,
+      "bytes": 64442,
+      "cssViewport": [
+        1440,
+        900
+      ],
+      "theme": "light",
+      "rootTextEnlargement": "default",
+      "scenario": null
+    },
+    {
+      "criterion": "C-1 claimed/live vs held/paused/assigned expression",
+      "engine": "webkit",
+      "sourcePath": "webkit/handoff-projection-paused-offline-phone-light-webkit.png",
+      "sourceSha256": "517c2d1378164ef8da44251f42b97f0b63d0a918e34f66992a547dcb17aa913e",
+      "storedPath": "screenshots/webkit/handoff-projection-paused-offline-phone-light-webkit.webp",
+      "storedSha256": "552850e238db019156dd4e3c6f8ee2b0b291544de19881a83594c93753538e3e",
+      "pixelDimensions": [
+        1170,
+        2532
+      ],
+      "format": "lossless WebP",
+      "pixelIdentical": true,
+      "bytes": 82024,
+      "cssViewport": [
+        1440,
+        900
+      ],
+      "theme": "light",
+      "rootTextEnlargement": "default",
+      "scenario": null
+    },
+    {
+      "criterion": "C-1 claimed/live vs held/paused/assigned expression",
+      "engine": "chromium",
+      "sourcePath": "chromium/handoff-known-expiry-live-desktop-light.png",
+      "sourceSha256": "8318b9a113fbffd0dc8f848e313f6c12df8494d3d234d871109ae6767022f2b5",
+      "storedPath": "screenshots/chromium/handoff-known-expiry-live-desktop-light.webp",
+      "storedSha256": "d60454f26008f542aa9673db7ad577363050f0278608182b88d3c7cd7a96bfb3",
+      "pixelDimensions": [
+        1440,
+        900
+      ],
+      "format": "lossless WebP",
+      "pixelIdentical": true,
+      "bytes": 82766,
+      "cssViewport": [
+        1440,
+        900
+      ],
+      "theme": "light",
+      "rootTextEnlargement": "default",
+      "scenario": null
+    },
+    {
+      "criterion": "C-1 claimed/live vs held/paused/assigned expression",
+      "engine": "webkit",
+      "sourcePath": "webkit/handoff-known-expiry-live-desktop-light-webkit.png",
+      "sourceSha256": "02934aa994b7f21474574d868b8372ba5b0751286f7a1bac8258ce55dcb69f76",
+      "storedPath": "screenshots/webkit/handoff-known-expiry-live-desktop-light-webkit.webp",
+      "storedSha256": "274610d03859ffbfda81394129db6ea1b56fc5851b841023992d6b438e37aa02",
+      "pixelDimensions": [
+        1440,
+        900
+      ],
+      "format": "lossless WebP",
+      "pixelIdentical": true,
+      "bytes": 65708,
+      "cssViewport": [
+        1440,
+        900
+      ],
+      "theme": "light",
+      "rootTextEnlargement": "default",
+      "scenario": null
+    },
+    {
+      "criterion": "C-1 claimed/live vs held/paused/assigned expression",
+      "engine": "chromium",
+      "sourcePath": "chromium/handoff-known-expiry-held-desktop-light.png",
+      "sourceSha256": "c3870c30ea7cc1b3e43843284989006f7410f5747f8526f1c4de180b2f106b86",
+      "storedPath": "screenshots/chromium/handoff-known-expiry-held-desktop-light.webp",
+      "storedSha256": "df326b26c188b1340859de8df6c275175272c1a48da48fdc016dd489717c8a25",
+      "pixelDimensions": [
+        1440,
+        900
+      ],
+      "format": "lossless WebP",
+      "pixelIdentical": true,
+      "bytes": 83280,
+      "cssViewport": [
+        1440,
+        900
+      ],
+      "theme": "light",
+      "rootTextEnlargement": "default",
+      "scenario": null
+    },
+    {
+      "criterion": "C-1 claimed/live vs held/paused/assigned expression",
+      "engine": "webkit",
+      "sourcePath": "webkit/handoff-known-expiry-held-desktop-light-webkit.png",
+      "sourceSha256": "be57f2a1a2c636fc38877e51eb4e2a4d844f652ab64871264717bcb96da8fda8",
+      "storedPath": "screenshots/webkit/handoff-known-expiry-held-desktop-light-webkit.webp",
+      "storedSha256": "9ecf4bfa5966adc11064f1b8cf4b352de3d9dfe8044953a40c874f69c217b9e7",
+      "pixelDimensions": [
+        1440,
+        900
+      ],
+      "format": "lossless WebP",
+      "pixelIdentical": true,
+      "bytes": 64796,
+      "cssViewport": [
+        1440,
+        900
+      ],
+      "theme": "light",
+      "rootTextEnlargement": "default",
+      "scenario": null
+    },
+    {
+      "criterion": "C-3 exact policy copy in read-only surface",
+      "engine": "chromium",
+      "sourcePath": "chromium/policy-read-desktop-1440.png",
+      "sourceSha256": "14682687a7019d20f75888d9937461f9077c161de567d38ee921f0001b591081",
+      "storedPath": "screenshots/chromium/policy-read-desktop-1440.webp",
+      "storedSha256": "e920f69b102ce62a6eedd2e9e69c827c538e803d716e477745517c572fecec58",
+      "pixelDimensions": [
+        1440,
+        900
+      ],
+      "format": "lossless WebP",
+      "pixelIdentical": true,
+      "bytes": 60994,
+      "cssViewport": [
+        1440,
+        900
+      ],
+      "theme": "light",
+      "rootTextEnlargement": "default",
+      "scenario": null
+    },
+    {
+      "criterion": "C-3 exact policy copy in read-only surface",
+      "engine": "webkit",
+      "sourcePath": "webkit/policy-read-desktop-1440-webkit.png",
+      "sourceSha256": "6287e86eeae6d1ffbb4a487c9b554fdb77e6453bee326dd576a43de4a295e3e7",
+      "storedPath": "screenshots/webkit/policy-read-desktop-1440-webkit.webp",
+      "storedSha256": "49a549f7a6ef2458838414c10dbc584a522165bc03deeab2e63f33938ad29915",
+      "pixelDimensions": [
+        1440,
+        900
+      ],
+      "format": "lossless WebP",
+      "pixelIdentical": true,
+      "bytes": 48462,
+      "cssViewport": [
+        1440,
+        900
+      ],
+      "theme": "light",
+      "rootTextEnlargement": "default",
+      "scenario": null
+    },
+    {
+      "criterion": "C-3 exact policy copy in read-only surface",
+      "engine": "chromium",
+      "sourcePath": "chromium/policy-read-phone-390.png",
+      "sourceSha256": "89fa3adeefb51f93fb5de7cad9e2470c9554c4bb97299b5f19441e0a7a91fac5",
+      "storedPath": "screenshots/chromium/policy-read-phone-390.webp",
+      "storedSha256": "54e007f076882cf6b89b5eab42a132df89239df669bc5be619752322b157b253",
+      "pixelDimensions": [
+        1170,
+        2532
+      ],
+      "format": "lossless WebP",
+      "pixelIdentical": true,
+      "bytes": 125184,
+      "cssViewport": [
+        390,
+        844
+      ],
+      "theme": "light",
+      "rootTextEnlargement": "default",
+      "scenario": null
+    },
+    {
+      "criterion": "C-3 exact policy copy in read-only surface",
+      "engine": "webkit",
+      "sourcePath": "webkit/policy-read-phone-390-webkit.png",
+      "sourceSha256": "d4731b751528e9d3c60e371bc69cfcde59e72858e11c2b0e7fc982c3863574c4",
+      "storedPath": "screenshots/webkit/policy-read-phone-390-webkit.webp",
+      "storedSha256": "c990c6d56b52075cc4d14f9b59c21c86359fb9c0611c2baa64ea749a926721ec",
+      "pixelDimensions": [
+        1170,
+        2532
+      ],
+      "format": "lossless WebP",
+      "pixelIdentical": true,
+      "bytes": 102218,
+      "cssViewport": [
+        390,
+        844
+      ],
+      "theme": "light",
+      "rootTextEnlargement": "default",
+      "scenario": null
+    },
+    {
+      "criterion": "C-4 narrow and enlarged-text containment",
+      "engine": "chromium",
+      "sourcePath": "chromium/handoff-long-name-320-light-large.png",
+      "sourceSha256": "2668c91ef63981d77fb42109b909d75ed14629d05ae33397601a74f41ce9d7df",
+      "storedPath": "screenshots/chromium/handoff-long-name-320-light-large.webp",
+      "storedSha256": "acedcbdcd7d351202107718f4167ac8e5d0bcdf095d74e0cfb9fec807faaf0d2",
+      "pixelDimensions": [
+        960,
+        2532
+      ],
+      "format": "lossless WebP",
+      "pixelIdentical": true,
+      "bytes": 68382,
+      "cssViewport": [
+        320,
+        844
+      ],
+      "theme": "light",
+      "rootTextEnlargement": "125%",
+      "scenario": null
+    },
+    {
+      "criterion": "C-4 narrow and enlarged-text containment",
+      "engine": "webkit",
+      "sourcePath": "webkit/handoff-long-name-320-light-large-webkit.png",
+      "sourceSha256": "b96ed9dc5826c3a8c42aa649bfb086bf573eb87e7e89da32bf6100825329e054",
+      "storedPath": "screenshots/webkit/handoff-long-name-320-light-large-webkit.webp",
+      "storedSha256": "4171675b71b4cc95f1414f744b2e53af1db682a80bf07cb8a634c62b2ea45494",
+      "pixelDimensions": [
+        960,
+        2532
+      ],
+      "format": "lossless WebP",
+      "pixelIdentical": true,
+      "bytes": 46156,
+      "cssViewport": [
+        320,
+        844
+      ],
+      "theme": "light",
+      "rootTextEnlargement": "125%",
+      "scenario": null
+    },
+    {
+      "criterion": "C-4 narrow and enlarged-text containment",
+      "engine": "chromium",
+      "sourcePath": "chromium/handoff-long-name-320-dark-large.png",
+      "sourceSha256": "0eace788401330723d3d060095562d12d64cedda55597445f756a41a0a360018",
+      "storedPath": "screenshots/chromium/handoff-long-name-320-dark-large.webp",
+      "storedSha256": "c6628c7b90ae90000658474ba924121c1bec551623fb3ec35cdb25ed2b943388",
+      "pixelDimensions": [
+        960,
+        2532
+      ],
+      "format": "lossless WebP",
+      "pixelIdentical": true,
+      "bytes": 56520,
+      "cssViewport": [
+        320,
+        844
+      ],
+      "theme": "dark",
+      "rootTextEnlargement": "125%",
+      "scenario": null
+    },
+    {
+      "criterion": "C-4 narrow and enlarged-text containment",
+      "engine": "webkit",
+      "sourcePath": "webkit/handoff-long-name-320-dark-large-webkit.png",
+      "sourceSha256": "aaa99eccf1f6bf297159e3d629b22191e4a03d445d00540ea5642f133018ed72",
+      "storedPath": "screenshots/webkit/handoff-long-name-320-dark-large-webkit.webp",
+      "storedSha256": "fead02058e2741e6bb4e4f4fd102a491b43e191487148e0b15d51db7cf11bb9c",
+      "pixelDimensions": [
+        960,
+        2532
+      ],
+      "format": "lossless WebP",
+      "pixelIdentical": true,
+      "bytes": 40550,
+      "cssViewport": [
+        320,
+        844
+      ],
+      "theme": "dark",
+      "rootTextEnlargement": "125%",
+      "scenario": null
+    },
+    {
+      "criterion": "C-4 narrow and enlarged-text containment",
+      "engine": "chromium",
+      "sourcePath": "chromium/handoff-long-name-390-light-large.png",
+      "sourceSha256": "da0af740d083d26071ea06ecf24cd7b5a3884a55d33d7678c0fe5f52964ddca0",
+      "storedPath": "screenshots/chromium/handoff-long-name-390-light-large.webp",
+      "storedSha256": "7834aeed1213ade9d7622f6352f0f157f932b57d8ba323587d99cf2bf2e8c535",
+      "pixelDimensions": [
+        1170,
+        2532
+      ],
+      "format": "lossless WebP",
+      "pixelIdentical": true,
+      "bytes": 88868,
+      "cssViewport": [
+        390,
+        844
+      ],
+      "theme": "light",
+      "rootTextEnlargement": "125%",
+      "scenario": null
+    },
+    {
+      "criterion": "C-4 narrow and enlarged-text containment",
+      "engine": "webkit",
+      "sourcePath": "webkit/handoff-long-name-390-light-large-webkit.png",
+      "sourceSha256": "ad1990e8f0b80f6c50ca673148d5947754874be0ddc7a75aee870f835cafb83a",
+      "storedPath": "screenshots/webkit/handoff-long-name-390-light-large-webkit.webp",
+      "storedSha256": "b2c006771916937bf1fff98e47c7b7322201232125be05eba1192273b6dbce2e",
+      "pixelDimensions": [
+        1170,
+        2532
+      ],
+      "format": "lossless WebP",
+      "pixelIdentical": true,
+      "bytes": 63620,
+      "cssViewport": [
+        390,
+        844
+      ],
+      "theme": "light",
+      "rootTextEnlargement": "125%",
+      "scenario": null
+    },
+    {
+      "criterion": "C-4 narrow and enlarged-text containment",
+      "engine": "chromium",
+      "sourcePath": "chromium/handoff-long-name-390-dark-large.png",
+      "sourceSha256": "64783afeb6e2b8e28044adf3441aa672d1ad3362c7296f0ddbb1e88f73f5fe98",
+      "storedPath": "screenshots/chromium/handoff-long-name-390-dark-large.webp",
+      "storedSha256": "79667ceddd44c08fd56e526e0e5ac1c90ec7422a9805c58dbfad1003b19b0f20",
+      "pixelDimensions": [
+        1170,
+        2532
+      ],
+      "format": "lossless WebP",
+      "pixelIdentical": true,
+      "bytes": 74746,
+      "cssViewport": [
+        390,
+        844
+      ],
+      "theme": "dark",
+      "rootTextEnlargement": "125%",
+      "scenario": null
+    },
+    {
+      "criterion": "C-4 narrow and enlarged-text containment",
+      "engine": "webkit",
+      "sourcePath": "webkit/handoff-long-name-390-dark-large-webkit.png",
+      "sourceSha256": "8ba38496b5de315036fb225a29659329e16b15bc2b7596e902e9cfed760a7940",
+      "storedPath": "screenshots/webkit/handoff-long-name-390-dark-large-webkit.webp",
+      "storedSha256": "7914f857b6297828dcfab7849b5ba8a1b0ad83b7e122fd672801ef2f02b03422",
+      "pixelDimensions": [
+        1170,
+        2532
+      ],
+      "format": "lossless WebP",
+      "pixelIdentical": true,
+      "bytes": 57882,
+      "cssViewport": [
+        390,
+        844
+      ],
+      "theme": "dark",
+      "rootTextEnlargement": "125%",
+      "scenario": null
+    },
+    {
+      "criterion": "C-4 scroll-reachability reassessment",
+      "engine": "chromium",
+      "sourcePath": "reachability/reachability-320-light-125-after-wheel.png",
+      "sourceSha256": "d3d66bd412849e485ee2e70c07fdaca8d093486a42bfc16fb922c3b8fe848e77",
+      "storedPath": "screenshots/chromium/reachability-320-light-125-after-wheel.webp",
+      "storedSha256": "4be21f0a4ada70dc975bf801693e04c81ac9c6fbca2a69be2d95bb62b3a2ee38",
+      "pixelDimensions": [
+        960,
+        2532
+      ],
+      "format": "lossless WebP",
+      "pixelIdentical": true,
+      "bytes": 72878,
+      "cssViewport": [
+        320,
+        844
+      ],
+      "theme": "light",
+      "rootTextEnlargement": "125%",
+      "scenario": "After scrolling to maxScrollTop; final permission sentence remains above fixed footer.",
+      "measurements": {
+        "scrollTop": 241,
+        "maxScrollTop": 241,
+        "scrollHeight": 929,
+        "clientHeight": 688,
+        "bodyBottom": 764,
+        "footerTop": 780,
+        "footerBottom": 824,
+        "lastTextRect": {
+          "top": 724.46875,
+          "bottom": 749.46875,
+          "left": 36,
+          "right": 264
+        },
+        "lastLineWithinBody": true,
+        "lastLineAboveFooter": true,
+        "footerVisible": true,
+        "canText": "Field calibration companion XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX will be able to read this project and write in it: messages, results, tasks and proposed decisions. It can\u2019t accept decisions or invite people.",
+        "buttonVisible": true
+      }
+    },
+    {
+      "criterion": "C-4 scroll-reachability reassessment",
+      "engine": "chromium",
+      "sourcePath": "reachability/reachability-320-dark-125-after-wheel.png",
+      "sourceSha256": "70370ef6efdf2c478803a3d056b837cc67fe9ce327894e31df567e118eb3359b",
+      "storedPath": "screenshots/chromium/reachability-320-dark-125-after-wheel.webp",
+      "storedSha256": "6629050a2f46f1200411a7600f01777314edb7e7855fb0a1fab7370aed25d5da",
+      "pixelDimensions": [
+        960,
+        2532
+      ],
+      "format": "lossless WebP",
+      "pixelIdentical": true,
+      "bytes": 61502,
+      "cssViewport": [
+        320,
+        844
+      ],
+      "theme": "dark",
+      "rootTextEnlargement": "125%",
+      "scenario": "After scrolling to maxScrollTop; final permission sentence remains above fixed footer.",
+      "measurements": {
+        "scrollTop": 241,
+        "maxScrollTop": 241,
+        "scrollHeight": 929,
+        "clientHeight": 688,
+        "bodyBottom": 764,
+        "footerTop": 780,
+        "footerBottom": 824,
+        "lastTextRect": {
+          "top": 724.46875,
+          "bottom": 749.46875,
+          "left": 36,
+          "right": 264
+        },
+        "lastLineWithinBody": true,
+        "lastLineAboveFooter": true,
+        "footerVisible": true,
+        "canText": "Field calibration companion XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX will be able to read this project and write in it: messages, results, tasks and proposed decisions. It can\u2019t accept decisions or invite people.",
+        "buttonVisible": true
+      }
+    },
+    {
+      "criterion": "C-4 scroll-reachability reassessment",
+      "engine": "chromium",
+      "sourcePath": "reachability/reachability-390-light-125-after-wheel.png",
+      "sourceSha256": "e1ca1cb14475f18b8e4034ef228d520a1fd6551286db491ee7e06bf8cec6f4d5",
+      "storedPath": "screenshots/chromium/reachability-390-light-125-after-wheel.webp",
+      "storedSha256": "89324068f9a1189da670bea863b71d340cf4f3ffa47bf14e0a78ea1f7c4e8a2d",
+      "pixelDimensions": [
+        1170,
+        2532
+      ],
+      "format": "lossless WebP",
+      "pixelIdentical": true,
+      "bytes": 85140,
+      "cssViewport": [
+        390,
+        844
+      ],
+      "theme": "light",
+      "rootTextEnlargement": "125%",
+      "scenario": "After scrolling to maxScrollTop; final permission sentence remains above fixed footer.",
+      "measurements": {
+        "scrollTop": 28,
+        "maxScrollTop": 28,
+        "scrollHeight": 716,
+        "clientHeight": 688,
+        "bodyBottom": 764,
+        "footerTop": 780,
+        "footerBottom": 824,
+        "lastTextRect": {
+          "top": 725.15625,
+          "bottom": 750.15625,
+          "left": 36,
+          "right": 264
+        },
+        "lastLineWithinBody": true,
+        "lastLineAboveFooter": true,
+        "footerVisible": true,
+        "canText": "Field calibration companion XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX will be able to read this project and write in it: messages, results, tasks and proposed decisions. It can\u2019t accept decisions or invite people.",
+        "buttonVisible": true
+      }
+    },
+    {
+      "criterion": "C-4 scroll-reachability reassessment",
+      "engine": "chromium",
+      "sourcePath": "reachability/reachability-390-dark-125-after-wheel.png",
+      "sourceSha256": "4a1728e016f50f6b66b2451779b84ed99e2b181e34205fa0c89ecc4b31ca1fcb",
+      "storedPath": "screenshots/chromium/reachability-390-dark-125-after-wheel.webp",
+      "storedSha256": "f2049c36376b874e63ae08239c7a08e1e9a525aa82c270e855cb19915c96a4a5",
+      "pixelDimensions": [
+        1170,
+        2532
+      ],
+      "format": "lossless WebP",
+      "pixelIdentical": true,
+      "bytes": 72286,
+      "cssViewport": [
+        390,
+        844
+      ],
+      "theme": "dark",
+      "rootTextEnlargement": "125%",
+      "scenario": "After scrolling to maxScrollTop; final permission sentence remains above fixed footer.",
+      "measurements": {
+        "scrollTop": 28,
+        "maxScrollTop": 28,
+        "scrollHeight": 716,
+        "clientHeight": 688,
+        "bodyBottom": 764,
+        "footerTop": 780,
+        "footerBottom": 824,
+        "lastTextRect": {
+          "top": 725.15625,
+          "bottom": 750.15625,
+          "left": 36,
+          "right": 264
+        },
+        "lastLineWithinBody": true,
+        "lastLineAboveFooter": true,
+        "footerVisible": true,
+        "canText": "Field calibration companion XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX will be able to read this project and write in it: messages, results, tasks and proposed decisions. It can\u2019t accept decisions or invite people.",
+        "buttonVisible": true
+      }
+    }
+  ]
+}
