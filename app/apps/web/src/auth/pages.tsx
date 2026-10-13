@@ -7,11 +7,11 @@ import { ApiError, NetworkError } from '../api/client';
 import { Button, ErrorState, FluxLogo, Icon, Input, useToast } from '../ui';
 import { safeNext, signedOauthQuery, type FormResult, type forgotPasswordLoader } from './logic';
 
-/** The Flux logo tile and wordmark, as in the sidebar (#189, F-026 §3). */
+/** The plain Flux logo tile and wordmark, large above the page's title (#351, F-026 S-D/S-P sign-in). */
 function Brand() {
   return (
     <Link to="/" className="brand" aria-label="Flux home">
-      <FluxLogo size={28} />
+      <FluxLogo size={44} />
       <span className="brand__name" aria-hidden="true">flux</span>
     </Link>
   );
@@ -24,13 +24,12 @@ export function AuthLayout() {
   return (
     <div className="auth">
       <a className="ui-skip" href="#auth-main">Skip to content</a>
-      <header className="auth__top"><Brand />
-        {/* Opened from Settings rather than by an agent's sign-in: a way back (#266 PF-5). */}
-        {location.pathname === '/connect-agent' && !location.search ? <Link to="/settings" className="auth__back"><Icon name="chevron-left" size={14} />Settings</Link> : null}
-      </header>
+      {/* Opened from Settings rather than by an agent's sign-in: a way back (#266 PF-5). */}
+      {location.pathname === '/connect-agent' && !location.search ? <header className="auth__top"><Link to="/settings" className="auth__back"><Icon name="chevron-left" size={14} />Settings</Link></header> : null}
       <main className="auth__main" id="auth-main" tabIndex={-1}>
         {/* Keyed by path so each page settles in when it replaces the previous one. */}
         <div className={`auth__col${connectionFlow ? ' auth__col--connection' : ''}`} key={location.pathname}>
+          <Brand />
           <Outlet />
         </div>
       </main>
@@ -169,15 +168,18 @@ export function SignInPage() {
   if (sso) {
     return (
       <>
-        <Heading title="Sign in to Flux">Pick up your work where you left it.</Heading>
-        <SsoSignIn sso={sso} next={next} oauthQuery={oauthQuery} />
-        <FormError message={ssoFailed ? ssoMessage : undefined} />
+        <Heading title="Sign in">A shared workspace for people and their agents.</Heading>
+        <div className="auth__card">
+          <SsoSignIn sso={sso} next={next} oauthQuery={oauthQuery} />
+          <FormError message={ssoFailed ? ssoMessage : undefined} />
+        </div>
       </>
     );
   }
   return (
     <>
-      <Heading title="Sign in to Flux">Pick up your work where you left it.</Heading>
+      <Heading title="Sign in">A shared workspace for people and their agents.</Heading>
+      <div className="auth__card">
       <Form method="post" className="auth__form" noValidate ref={formRef} aria-label="Sign in">
         <FormError message={result?.formError} />
         <Input label="Email" name="email" type="email" autoComplete="email" inputMode="email" autoCapitalize="none" spellCheck={false}
@@ -186,6 +188,7 @@ export function SignInPage() {
           labelAside={<Link className="ui-link" to="/forgot-password">Forgot password?</Link>} />
         <Button type="submit" variant="primary" size="lg" block busy={submitting}>{submitting ? 'Signing in…' : 'Sign in'}</Button>
       </Form>
+      </div>
       <p className="auth__alt">New to Flux? <Link className="ui-link" to={`/sign-up${suffix}`}>Create an account</Link></p>
     </>
   );

@@ -53,7 +53,7 @@ from pathlib import Path
 
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
-from test_app_shell import show_map_as, DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
+from test_app_shell import show_map_as, DESKTOP, ORIGIN, PHONE, UPSTREAM, open_details, open_what_matters, shot, start_forwarder
 
 UI_BROWSER = os.environ.get("FLUX_UI_BROWSER", "chromium")
 if UI_BROWSER not in ("chromium", "webkit"):
@@ -439,7 +439,7 @@ class ScenarioJourney:
             page.get_by_role("complementary", name="Sidebar").get_by_role("button", name="New", exact=True).click()
             page.get_by_role("menu", name="New").get_by_role("menuitem", name="Project", exact=True).click()
         page.get_by_label("Your space").fill(WORKSPACE)
-        page.get_by_label("Project name").fill(MARKET)
+        page.get_by_label("What is it about?").fill(MARKET)
         self.tap(page.get_by_role("button", name="Create project"))
         expect(page).to_have_url(re.compile(r"/projects/[0-9a-f-]{36}\?new=1"))
         market = re.search(r"/projects/([0-9a-f-]{36})", page.url).group(1)
@@ -447,7 +447,10 @@ class ScenarioJourney:
 
         # She adds the others to the space by email (Home → Details → People).
         page.goto("/")
-        self.tap(page.get_by_role("button", name="Details", exact=True))
+        if self.phone:
+            self.tap(page.get_by_role("button", name="Details", exact=True))
+        else:
+            open_details(page)
         self.tap(page.get_by_role("region", name="People").get_by_role("button", name=re.compile(f"^{WORKSPACE}")))
         expect(page.get_by_role("heading", name="People", exact=True)).to_be_visible()
         for key in ("jonas", "mia", "lee"):
@@ -1016,7 +1019,7 @@ class ScenarioJourney:
 
         # In the project, "What matters" works without AI.
         page.goto(f"/projects/{lamp}")
-        self.tap(page.get_by_role("button", name=re.compile("^What matters")))
+        open_what_matters(page, tap=self.phone)
         recap = page.locator("#details")
         expect(recap.get_by_role("heading", name="What matters")).to_be_visible()
         self.tap(recap.get_by_role("button", name="Summarize"))

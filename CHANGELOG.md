@@ -132,6 +132,8 @@ repository was created on 2026-09-26.
 
 ### Changed
 
+- A new project takes one step: a name and a template (Build something, Research, Plan an event or Blank); Map, Wiki and Agents appear the first time a project needs them and can be added from More, existing projects keep every view, and sign-in and account pages follow the final design with the plain Kreska logo tile ([#351](https://github.com/ColdPhase/flux/issues/351)).
+- The computer's project header is one row: the name, the views as a segmented control, what needs you, the people and agents, and More, which holds Details. `F` turns on focus: the sidebar folds, and push and email wait on the server until the shown time; Notification settings shows the pause with Resume now. `]` no longer opens Details ([#340](https://github.com/ColdPhase/flux/issues/340)).
 - With a single sign-on provider, password sign-in, sign-up and reset are closed; a provider sign-in whose email another account holds is refused, or can claim the address only when that account is unverified and unlinked; and `FLUX_SIGNUP=verified` without email closes sign-up ([#313](https://github.com/ColdPhase/flux/issues/313)).
 
 - When an agent app opens Flux's sign-in page, people can now use the operator's single sign-on there, then pick the connection and approve as before; a cancelled sign-in comes back to the same page, and the page says when the provider cannot be reached ([#310](https://github.com/ColdPhase/flux/issues/310)).
