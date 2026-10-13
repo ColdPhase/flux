@@ -1,0 +1,8 @@
+/* Your notes, a section of the Sketchbook (#342): the notes that were Home's conversation. */
+.ynotes { margin-top: 36px; padding-top: 24px; border-top: 1px solid var(--line); }
+.ynotes__intro h2 { font-size: var(--fs-lg); letter-spacing: -0.01em; }
+.ynotes__intro p { margin-top: 4px; font-size: var(--fs-md); color: var(--t3); }
+.ynotes .notes { margin-top: 16px; padding-top: 0; border-top: 0; }
+.ynotes .composer { padding: 14px 0 0; border-top: 0; }
+.ynotes .composer__in { max-width: none; }
+.ynotes .view-empty { padding: 20px 0 8px; }

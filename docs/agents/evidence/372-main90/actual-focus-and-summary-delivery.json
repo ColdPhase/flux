@@ -1,0 +1,13 @@
+{
+  "tests": 2,
+  "pass": 2,
+  "fail": 0,
+  "skipped": 0,
+  "cancelled": 0,
+  "name_pattern_used": true,
+  "scope": [
+    "focus holds push and email until it ends, the Inbox still fills, and resuming clears it",
+    "focus with summary enabled retains ordinary push and email and defers the real summary until resume"
+  ],
+  "skipped_siblings_not_claimed": true
+}

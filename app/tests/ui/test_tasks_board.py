@@ -231,9 +231,9 @@ class TasksBoardJourney(unittest.TestCase):
         expect(owner.locator(".agent-tag")).to_have_text("Agent")
         expect(self.card(open_, FIRMWARE)).to_contain_text("Waits for 1")
         expect(self.card(done, CAMERA).locator(".tb-card__state")).to_have_text("Not pursued")
-        # Decisions and results stay one step away, and a decision that needs you is named.
-        expect(page.get_by_role("button", name="Decisions & results")).to_be_visible()
-        expect(page.get_by_role("navigation", name="Also in the List")).to_contain_text("1 decision needs you")
+        # There is no Decisions view (#342): a decision that needs you waits in the Inbox, and says so here.
+        expect(page.get_by_role("button", name="Decisions & results")).to_have_count(0)
+        expect(page.get_by_role("navigation", name="Also elsewhere")).to_contain_text("1 decision needs you in the Inbox")
         self.no_sideways_scroll(page, DESKTOP["width"], "desktop")
         shot(page, "tasks-board-1440-light")
 
@@ -483,7 +483,9 @@ class TasksBoardJourney(unittest.TestCase):
         views = page.get_by_role("navigation", name="Task views")
         expect(views.get_by_role("button", name="All", exact=True)).to_have_attribute("aria-pressed", "true")
         expect(page.get_by_role("region", name=re.compile("^Blocked"))).to_contain_text(SOLDER)
-        expect(page.get_by_role("region", name=re.compile("^Needs you"))).to_contain_text(PROPOSAL)
+        expect(page.get_by_role("region", name=re.compile("^Needs you"))).to_have_count(0)
+        expect(page.get_by_text(PROPOSAL)).to_have_count(0)
+        expect(page.get_by_role("link", name="1 decision needs you in the Inbox")).to_be_visible()
         expect(page.get_by_role("region", name=re.compile("^Finished"))).to_contain_text(CALIBRATE)
         self.assertEqual(page.evaluate(f"localStorage.getItem('flux.tasks.mode.{ADA['id']}')"), "list")
         self.assertNotIn("view=", page.url)
@@ -503,14 +505,18 @@ class TasksBoardJourney(unittest.TestCase):
         page.reload()
         expect(page.get_by_role("radio", name="Board", exact=True)).to_be_checked()
         self.assertEqual(page.evaluate(f"localStorage.getItem('flux.tasks.mode.{ADA['id']}')"), "board")
-        # "Decisions & results" opens the whole List at the decisions without changing the choice.
-        page.get_by_role("button", name="Decisions & results").click()
-        expect(page.get_by_role("radio", name="List", exact=True)).to_be_checked()
-        expect(page.get_by_role("region", name=re.compile("^Needs you"))).to_contain_text(PROPOSAL)
-        expect(page.get_by_role("region", name=re.compile("^Decisions"))).to_contain_text(RULE)
-        expect(page.get_by_role("region", name=re.compile("^Results"))).to_contain_text(RESULT)
-        self.assertIn("view=list", page.url)
+        # The way to the proposal is the Inbox's Decisions filter; the choice of Kanban is untouched.
+        page.get_by_role("link", name="1 decision needs you in the Inbox").click()
+        expect(page).to_have_url(re.compile(r"/inbox\?show=decisions$"))
+        expect(page.locator(".nyc", has_text=PROPOSAL)).to_be_visible()
         self.assertEqual(page.evaluate(f"localStorage.getItem('flux.tasks.mode.{ADA['id']}')"), "board")
+        # Old links to the Decisions view arrive in the same place; its list and archive are gone.
+        for old in ("needs", "rules"):
+            page.goto(f"/projects/{self.ids['project']}/tasks?status={old}")
+            expect(page).to_have_url(re.compile(r"/inbox\?show=decisions$"))
+        page.goto(f"/projects/{self.ids['project']}/tasks?view=list")
+        expect(page.get_by_role("region", name=re.compile("^(Needs you|Decisions|Results)"))).to_have_count(0)
+        expect(page.get_by_role("navigation", name="Task views").get_by_role("button", name=re.compile("^(Needs you|Decisions|Results)"))).to_have_count(0)
         # A link to one List view opens the List.
         page.goto(f"/projects/{self.ids['project']}/tasks?status=blocked")
         expect(page.get_by_role("navigation", name="Task views").get_by_role("button", name=re.compile("^Blocked"))).to_have_attribute("aria-pressed", "true")
@@ -536,6 +542,9 @@ class TasksBoardJourney(unittest.TestCase):
         expect(solder.locator(".ui-task-number")).to_have_text(f"#{self.numbers['solder']}")
         self.assertGreaterEqual(solder.locator(".ui-task-number").evaluate("node => parseFloat(getComputedStyle(node).fontSize)"), 12.5, "F-026 phone metadata remains readable")
         self.no_sideways_scroll(page, PHONE["width"], "phone")
+        # F-026 phone Tasks has no page toolbar, only Mine | All and task rows.
+        expect(page.get_by_role("button", name="New Task", exact=True)).to_have_count(0)
+        expect(page.get_by_role("button", name="New task in In progress")).to_have_count(0)
         for control in (*mine.get_by_role("button").all(), rows.filter(has_text=ORDER).locator(".ws-task__glyph"), rows.filter(has_text=ORDER).locator(".ws-item")):
             box = control.bounding_box()
             assert box
@@ -639,15 +648,15 @@ class TasksBoardJourney(unittest.TestCase):
                     (".tb-card__id", 4.5, {}), (".tb-card__title", 4.5, {}), (".tb-card__from", 4.5, {}), (".tb-card__name", 4.5, {}),
                     (".tb-card .ui-pill--inv", 4.5, {}), (".tb-card__blocker", 4.5, {}), (".tb-col__n", 4.5, {}), (".tb-col__b", 4.5, {}),
                     (".tb-col__h", 4.5, {}), ('.tb-mode__b[aria-checked="true"]', 4.5, {}), ('.tb-mode__b[aria-checked="false"]', 4.5, {}),
-                    (".tb-dr", 4.5, {}), (".tb-mine", 4.5, {}), (".tb-also__b--need", 4.5, {}), (".tb-search input", 4.5, {"pseudo": "::placeholder"}),
-                    (".tb-col__head .ui-glyph--in_progress", 3, {"property": "color"}), (".tb-search", 3, {"property": "color"}),
+                    (".tb-mine", 4.5, {}), (".tb-also__b--need", 4.5, {}), (".tb-search input", 4.5, {"pseudo": "::placeholder"}),
+                    (".tb-col__head .tb-ring--in_progress", 3, {"property": "borderTopColor"}), (".tb-search", 3, {"property": "color"}),
                 ):
                     value = page.evaluate(MEASURE, {"selector": selector, **spec})
                     value.update(theme=theme, minimum=minimum)
                     measured.append(value)
                     self.assertGreaterEqual(value["ratio"], minimum, value)
                 shot(page, f"tasks-board-1440-{theme.lower()}")
-        self.assertEqual(len(measured), 2 * 17)
+        self.assertEqual(len(measured), 2 * 16)
 
     def test_13_delayed_native_columns_say_which_tasks_are_loading(self) -> None:
         for phone in (False, True):  # True: a narrow board with its status overview

@@ -112,7 +112,7 @@
 
 .unsub .ui-btn { margin-top: 8px; }
 .unsub__link { margin-top: 18px; font-size: var(--fs-sm); }
-.unsub__link a { color: var(--t1); }
+.unsub__link a:not(.ui-btn) { color: var(--t1); }
 
 @media (pointer: coarse) {
   .inbox__read { opacity: 1; }
@@ -137,6 +137,8 @@
   .nset__row input { min-width: 0; }
 }
 .nset__device .pwa-action { width: auto; }
+.nset__focus { display: flex; flex-wrap: wrap; gap: 8px 10px; align-items: center; margin: 0 0 12px; padding: 10px 12px; border-radius: var(--r); background: var(--sub); font-size: var(--fs-sm); line-height: 1.45; color: var(--t1); }
+.nset__focus > span { flex: 1 1 16em; }
 .nset__problem { display: flex; gap: 8px; align-items: flex-start; margin: 0 0 12px; padding: 10px 12px; border-radius: var(--r); background: var(--sub); font-size: var(--fs-sm); line-height: 1.45; color: var(--t2); }
 .nset__problem svg { flex: none; margin-top: 2px; color: var(--t2); }
 .nset__problem b { font-weight: 600; color: var(--t1); }
@@ -167,3 +169,24 @@
   .nset__radio { min-height: 44px; align-items: center; }
   .nset__radio input { margin-top: 0; }
 }
+
+/* Keep current-read feedback beside the actual settings controls without another live announcement. */
+.sset-card + .nset__read-feedback { margin-top: 12px; }
+.nset__table .nset__read-feedback { margin: 4px 0 8px; text-align: left; }
+.nset__group .nset__read-feedback { margin: 0 18px 12px; }
+
+.nset__read-feedback .nset__problem { margin-bottom: 0; }
+
+/* The named mute result stays with its affected row, including an acknowledged removed row. */
+.nset__muted li { flex-wrap: wrap; }
+.nset__muted .nset__mute-read { flex: 0 0 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0; font-size: var(--fs-xs); line-height: 1.35; color: var(--t2); }
+.nset__mute-read > span { flex: 1 1 100%; min-width: 0; }
+.nset__mute-read > svg, .nset__mute-read > button { flex: none; }
+.nset__mute-read .nset__place { display: flex; }
+.nset__mute-state { display: block; margin-top: 2px; }
+.nset__mute-warning { display: block; margin-top: 2px; }
+.nset__mute > .nset__muted { flex: 1 1 100%; margin: 0; }
+.nset__places > .nset__muted { margin-bottom: 0; }
+.nset__mute[hidden] { display: none; }
+.nset__mute-pending { flex: 1 1 100%; margin: 0; font-size: var(--fs-sm); color: var(--t2); overflow-wrap: anywhere; }
+.nset__email-target { display: block; overflow-wrap: anywhere; font-weight: 500; color: var(--t1); }

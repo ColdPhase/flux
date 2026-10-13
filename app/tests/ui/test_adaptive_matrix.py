@@ -24,12 +24,13 @@ from __future__ import annotations
 
 import re
 import unittest
+from unittest import mock
 
 from playwright.sync_api import Locator, Page, expect, sync_playwright
 
 import adaptive_fixture as fx
 from author_columns import assert_author_column
-from test_app_shell import show_map_as, open_map_options, ORIGIN, UPSTREAM, shot, start_forwarder
+from test_app_shell import show_map_as, open_map_options, ORIGIN, UPSTREAM, open_details, shot, start_forwarder
 
 # Width × height fixtures (CSS px). Phones and tablets use a coarse (touch) pointer.
 # Every starting fixture of docs/design/adaptive-workspaces.md, by context: phones, short landscape
@@ -46,6 +47,8 @@ MATRIX = [
 COARSE_UP_TO = 1024
 SHOTS_AT = {320, 390, 768, 1440, 1920, 3440, 3840}
 TABS = ["Conversation", "Map", "Tasks", "Wiki", "Agents"]
+# The phone menu lists Tasks before Map (#341).
+PHONE_TABS = ["Conversation", "Tasks", "Map", "Wiki", "Agents"]
 # ADAPT-2 caps that stop the wide screens from giving more room (measured by test_07). Each is open until its
 # owner's PR lands; the test fails once a cap is gone, so the entry is removed rather than passing silently.
 WIDE_CAPS = {
@@ -61,24 +64,8 @@ TARGET = 44
 # A gap is excused only for the predicate it names, and only when its own control is at least 44 px and
 # one of its overlays (covered_by) covers the hit area; see explained_by_recorded_overlap. Every other
 # failure at the same fixture stays a problem.
-KNOWN_GAPS = {
-    "640×360": {
-        "a message's Reply": {
-            "covered_by": (".ui-tabs__bar", ".project-convo__composer"),
-            "reason": "the sticky tab bar and the composer leave less than 44 px of stream between them; the phone shell (PR #414) replaces the tab bar",
-        },
-    },
-    "844×390": {
-        "a message's Reply": {
-            "covered_by": (".ui-tabs__bar", ".project-convo__composer"),
-            "reason": "the sticky tab bar and the composer leave less than 44 px of stream between them; the phone shell (PR #414) replaces the tab bar",
-        },
-        "a task card": {
-            "covered_by": (".tb-overview",),
-            "reason": "the sticky status overview covers the card at this height; the Tasks layout (PR #375) owns the overview",
-        },
-    },
-}
+# The 640×360 Reply gap (a sticky tab bar over the stream) closed with the phone shell (#341): no tab bar.
+KNOWN_GAPS: dict[str, dict[str, dict]] = {}
 # The overlays a known gap may name. The measurements report which one (if any) covers each point or stops each side.
 OVERLAYS = (".ui-tabs__bar", ".project-convo__composer", ".tb-overview")
 
@@ -327,15 +314,37 @@ class AdaptiveBase(unittest.TestCase):
         self.problems = []
         self.seen_gaps: set[tuple[str, str]] = set()
 
+    def phone(self, page: Page) -> bool:
+        return page.viewport_size["width"] <= 640
+
     def tabs(self, page: Page) -> Locator:
+        """The project's views: the header's segmented control, or on the phone the menu the title opens (#341)."""
+        if self.phone(page):
+            return page.get_by_role("dialog").filter(has=page.locator(".phone-menu__list"))
         return page.get_by_role("navigation", name="Project views")
 
+    def open_menu(self, page: Page) -> None:
+        if self.phone(page) and not self.tabs(page).count():
+            page.get_by_role("heading", level=1).get_by_role("button").click()
+            expect(self.tabs(page)).to_be_visible()
+
     def tab(self, page: Page, name: str) -> None:
+        self.open_menu(page)
         self.tabs(page).get_by_role("link", name=re.compile(f"^{name}")).click()
+        if self.phone(page):
+            expect(self.tabs(page)).to_have_count(0)
+            self.open_menu(page)
         expect(self.tabs(page).get_by_role("link", name=re.compile(f"^{name}"))).to_have_attribute("aria-current", "page")
+        if self.phone(page):
+            page.keyboard.press("Escape")
+            expect(self.tabs(page)).to_have_count(0)
 
     def details_button(self, page: Page) -> Locator:
-        return page.locator("header.top").get_by_role("button", name="Details", exact=True)
+        """The header's way to Details: More on the computer's one row (#340), the labelled button on the phone."""
+        if self.phone(page):
+            self.open_menu(page)
+            return self.tabs(page).locator(".phone-menu__details")
+        return page.locator("header.top").get_by_role("button", name="More", exact=True)
 
     def card(self, page: Page, title: str) -> Locator:
         return page.locator(".tb-card").filter(has_text=title).get_by_role("button", name=title, exact=True)
@@ -376,21 +385,20 @@ class AdaptiveMatrix(AdaptiveBase):
         # Conversation: the same places, labels and order at every width (ADAPT-3).
         composer = page.get_by_label("Write a message", exact=True)
         expect(composer).to_be_visible()
+        self.open_menu(page)
         expect(self.tabs(page).get_by_role("link")).to_have_count(len(TABS))
-        names = [re.sub(r",.*$", "", label).strip() for label in self.tabs(page).get_by_role("link").all_inner_texts()]
-        self.assertEqual(names, TABS, f"project views keep their names and order at {size}")
+        names = [re.sub(r"[,\n].*$", "", label, flags=re.S).strip() for label in self.tabs(page).get_by_role("link").all_inner_texts()]
+        self.assertEqual(names, PHONE_TABS if width <= 640 else TABS, f"project views keep their names and order at {size}")
         for name in TABS:
             self.primary(page, self.tabs(page).get_by_role("link", name=re.compile(f"^{name}")), f"the {name} tab")
-        if width <= 680:
+        if width <= 680 and width > 640:
             self.primary(page, page.get_by_role("button", name="Open navigation"), "Open navigation")
-        if width <= 640:
-            # #266 PF-1: the phone's bottom bar keeps the main places at hand, the current one marked.
-            places = page.get_by_role("navigation", name="Main places")
-            expect(places.get_by_role("link")).to_have_count(4)
-            expect(places.locator('[aria-current="page"]')).to_have_count(1)
-            for place in places.get_by_role("link").all():
-                self.primary(page, place, f"the bottom bar's {place.inner_text().strip()}")
         self.primary(page, self.details_button(page), "Details")
+        if width <= 640:
+            page.keyboard.press("Escape")
+            # #341: a conversation has no tab bar; the places are Back and, in the other views, the capsule.
+            expect(page.get_by_role("navigation", name="Main places")).to_have_count(0)
+            self.primary(page, page.get_by_role("button", name="Back", exact=True), "Back")
         self.no_sideways_scroll(page, "Conversation")
         self.primary(page, composer, "the message field")
         self.primary(page, page.get_by_role("button", name="Send message"), "Send message")
@@ -462,20 +470,19 @@ class AdaptiveMatrix(AdaptiveBase):
         show_map_as(page, "Map")
         expect(page.locator(".sk-node")).to_have_count(len(fx.THOUGHTS))
 
-        # Tasks: a readable active/blocked route on narrow boards, every column on wide ones.
+        # Tasks: the phone shows the drawn Mine | All list; wider views retain the responsive board.
         self.tab(page, "Tasks")
         if width <= 640:
-            # The phone shows the list as drawn (F-026 S-P-Tasks): Mine | All, then rows with a glyph that changes the state.
             expect(page.locator(".tb-board")).to_have_count(0)
             expect(page.locator(".tb-bar")).to_be_hidden()
+            expect(page.get_by_role("button", name="New Task", exact=True)).to_have_count(0)
+            self.primary(page, page.get_by_role("button", name="Create", exact=True), "Create")
             for button in page.get_by_role("group", name="Whose tasks").get_by_role("button").all():
                 self.primary(page, button, "Mine or All")
-            card = page.locator(".ws-task").filter(has_text=fx.OPEN_TASK).locator(".ws-item")
-            self.primary(page, page.locator(".ws-task").filter(has_text=fx.OPEN_TASK).locator(".ws-task__glyph"), "a task's state glyph")
+            row = page.locator(".ws-task").filter(has_text=fx.OPEN_TASK)
+            card = row.locator(".ws-item")
+            self.primary(page, row.locator(".ws-task__glyph"), "a task's state glyph")
             self.primary(page, card, "a task row")
-            self.no_sideways_scroll(page, "Tasks")
-            self.shot(page, f"adapt-{size}{tag}-tasks")
-            card.click()
         else:
             expect(page.locator(".tb-board")).to_be_visible()
             self.primary(page, page.get_by_role("button", name="New Task", exact=True), "New Task")
@@ -500,12 +507,12 @@ class AdaptiveMatrix(AdaptiveBase):
                     self.assertLessEqual(box["x"] + box["width"], pane["x"] + pane["width"] + 1, f"the whole {column} column is in view at {size}")
             card = self.card(page, fx.OPEN_TASK)
             self.primary(page, card, "a task card")
-            self.no_sideways_scroll(page, "Tasks")
-            self.shot(page, f"adapt-{size}{tag}-tasks")
-            if "a task card" in KNOWN_GAPS.get(f"{width}×{height}", {}):
-                card.evaluate("el => el.click()")
-            else:
-                card.click()
+        self.no_sideways_scroll(page, "Tasks")
+        self.shot(page, f"adapt-{size}{tag}-tasks")
+        if "a task card" in KNOWN_GAPS.get(f"{width}×{height}", {}):
+            card.evaluate("el => el.click()")
+        else:
+            card.click()
 
         details = page.locator("#details")
         expect(details.get_by_role("heading", name=fx.OPEN_TASK)).to_be_visible()
@@ -535,17 +542,12 @@ class AdaptiveMatrix(AdaptiveBase):
         self.no_sideways_scroll(page, "Wiki")
         self.shot(page, f"adapt-{size}{tag}-wiki")
 
-        # Agents: Hubert's two connections and Marek's one, each its own entry.
+        # Agents: Hubert's two connections and Marek's one, each its own row of one list, and one primary button.
         self.tab(page, "Agents")
-        expect(page.get_by_role("heading", level=1, name="Working together")).to_be_visible()
-        connections = page.get_by_role("list", name="Agent connections in this project").get_by_role("listitem")
+        expect(page.get_by_role("heading", level=1, name="Agents")).to_be_visible()
+        connections = page.get_by_role("list", name="Agents in this project").get_by_role("listitem")
         expect(connections).to_have_count(3)
-        if wide:
-            tops = {round(box["y"]) for box in (item.bounding_box() for item in connections.all())}
-            self.assertEqual(len(tops), 1, f"all three connections share one row at {size}")
-        self.primary(page, page.get_by_label("Task", exact=True), "the task selector")
-        self.primary(page, page.get_by_label("Write to this task"), "the task message field")
-        self.primary(page, page.get_by_role("button", name="Send to task"), "Send to task")
+        self.primary(page, page.get_by_role("button", name="Hand off a task"), "Hand off a task")
         self.no_sideways_scroll(page, "Agents")
         self.shot(page, f"adapt-{size}{tag}-agents")
 
@@ -563,7 +565,7 @@ class AdaptiveMatrix(AdaptiveBase):
                 page.goto(f"/projects/{pid}/map/{self.ids['sketch']}")
                 expect(page.locator(".sk-node")).to_have_count(len(fx.THOUGHTS))
                 before = page.locator(".sk-canvas").bounding_box()["width"]
-                self.details_button(page).click()
+                open_details(page)
                 expect(page.locator("#details.ui-panel--docked")).to_be_visible()
                 page.wait_for_timeout(300)
                 after = page.locator(".sk-canvas").bounding_box()["width"]
@@ -600,7 +602,7 @@ class AdaptiveMatrix(AdaptiveBase):
                 question.locator(".convo-replies__open").click()
                 thread = page.get_by_role("complementary", name="Replies")
                 expect(thread).to_be_visible()
-                self.details_button(page).click()
+                open_details(page)
                 expect(page.locator("#details.ui-panel--docked")).to_be_visible()
                 page.wait_for_timeout(300)
                 self.assertIn("thread--docked", thread.get_attribute("class"))
@@ -649,7 +651,7 @@ class AdaptiveMatrix(AdaptiveBase):
         self.at_rest(page)
         geometry["Tasks"] = page.evaluate(GEOMETRY)
         self.tab(page, "Agents")
-        expect(page.get_by_role("heading", level=1, name="Working together")).to_be_visible()
+        expect(page.get_by_role("heading", level=1, name="Agents")).to_be_visible()
         self.at_rest(page)
         geometry["Agents"] = page.evaluate(GEOMETRY)
         self.no_sideways_scroll(page, f"the views at {width}x{height} @{dpr}")
@@ -679,7 +681,7 @@ class AdaptiveMatrix(AdaptiveBase):
             pane = page.locator(".sk-page--map").bounding_box()["width"]
             self.assertAlmostEqual(plane, pane, delta=1, msg=f"the map fills the available pane at {width} CSS px")
             self.tab(page, "Agents")
-            expect(page.get_by_role("heading", level=1, name="Working together")).to_be_visible()
+            expect(page.get_by_role("heading", level=1, name="Agents")).to_be_visible()
             self.at_rest(page)
             column = page.locator(".agents").first.bounding_box()["width"]
             measured[width] = {"the map plane": round(plane), "the Agents column": round(column)}
@@ -959,6 +961,21 @@ class KnownGapRules(AdaptiveBase):
     OVERLAP_REACH = {"top": ".ui-tabs__bar", "bottom": ".project-convo__composer"}
     OVERLAP_STOPS = {"left": None, "right": None, "up": ".ui-tabs__bar", "down": ".project-convo__composer"}
     CARD_OVERLAP = {"centre": ".tb-overview", "left": ".tb-overview", "right": ".tb-overview", "top": ".tb-overview"}
+    # The rules are judged against this fixed table, not the live KNOWN_GAPS: a gap that closes in the app
+    # leaves KNOWN_GAPS, but the rule must still prove it excuses only the recorded overlap (#342 merge).
+    RULE_GAPS = {
+        "640×360": {"a message's Reply": {"covered_by": (".ui-tabs__bar", ".project-convo__composer"), "reason": "rule fixture"}},
+        "844×390": {
+            "a message's Reply": {"covered_by": (".ui-tabs__bar", ".project-convo__composer"), "reason": "rule fixture"},
+            "a task card": {"covered_by": (".tb-overview",), "reason": "rule fixture"},
+        },
+    }
+
+    def setUp(self) -> None:
+        super().setUp()
+        patcher = mock.patch.dict(KNOWN_GAPS, self.RULE_GAPS, clear=True)
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
     def test_01_the_recorded_overlap_is_seen_not_failed(self) -> None:
         self.judge_reach("a message's Reply", "640×360", reach_result(self.OVERLAP_REACH))

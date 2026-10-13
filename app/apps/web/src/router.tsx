@@ -6,7 +6,8 @@ import { AppLayout } from './app/AppLayout';
 import { appLoader, type ShellData } from './app/data';
 import { ProjectConversation, projectConversationLoader, shouldRevalidateProjectConversation } from './app/ProjectConversation';
 import { Booting, RouteCodeLoadError, RouteErrorPage } from './app/errors';
-import { ConversationView, NotFoundView } from './app/views';
+import { NotFoundView } from './app/views';
+import { Home } from './app/Home';
 import { projectShellLoader } from './project/data';
 import {
   forgotPasswordAction,
@@ -100,7 +101,7 @@ export const router = createBrowserRouter([
         Component: AppLayout,
         ErrorBoundary: RouteErrorPage,
         children: [
-          { index: true, Component: ConversationView },
+          { index: true, Component: Home },
           { path: 'projects', ...secondary(async () => ({ Component: (await import('./app/ProjectsIndex')).ProjectsIndex })) },
           { path: 'projects/new', ...secondary(async () => ({ Component: (await import('./app/ProjectSetup')).ProjectSetup })) },
           {

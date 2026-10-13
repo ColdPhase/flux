@@ -457,26 +457,25 @@ test('native agent owners retry failed reads, fence stale permission answers and
     await row.locator('.agent-for').waitFor();
     assert.equal(await row.locator('.agent-tag').innerText(), 'Agent');
     assert.equal(await row.locator('.ws-av').count(), 0);
-    const decision = page.locator(`[data-work-id="${proposal.id}"]`);
-    await decision.locator('.agent-for').waitFor();
-    assert.equal(await decision.locator('.agent-tag').innerText(), 'Agent');
-    assert.equal((await decision.innerText()).includes('(agent)'), false);
     await capture('scoped-owner-list', '.ws-item .agent-for');
-    await row.locator('.ws-item').click();
+    // Decisions have no row in Tasks (#342); the proposing agent's owner shows in the decision's own details below.
+    await row.getByRole('button').click();
     await page.locator('.wd-discussion .agent-for').waitFor();
     assert.equal(await page.locator('.wd-discussion .agent-tag').innerText(), 'Agent');
     assert.equal(await page.locator('.wd-discussion .agent-for').innerText(), 'for Scoped Casey');
     await capture('scoped-owner-task-details', '.wd-discussion .agent-for');
     await page.keyboard.press('Escape');
     await page.locator('#details').waitFor({ state: 'detached' });
-    await decision.locator('.ws-item').click();
+    await page.goto(`/projects/${place.id}/tasks?open=decision:${proposal.id}`);
     await page.locator('.details .agent-for').waitFor();
     assert.equal(await page.locator('.details .agent-for').innerText(), 'for Scoped Casey');
     await capture('scoped-owner-decision-details', '.details .agent-for');
     await page.keyboard.press('Escape');
     await page.locator('#details').waitFor({ state: 'detached' });
     await page.locator(`a[href^="/projects/${place.id}/agents"]`).click();
-    await page.getByLabel('Task', { exact: true }).selectOption(task.id);
+    // A task's thread opens from `?task=` (an agent's task link does the same); stay inside this page visit.
+    await page.getByRole('heading', { level: 1, name: 'Agents' }).waitFor();
+    await page.evaluate((url) => { history.pushState({}, '', url); window.dispatchEvent(new PopStateEvent('popstate')); }, `/projects/${place.id}/agents?task=${task.id}`);
     await page.waitForURL((url) => url.pathname === `/projects/${place.id}/agents` && url.searchParams.get('task') === task.id);
     await page.locator('#details').waitFor({ state: 'detached' });
     await page.locator('.agents-msg__meta .agent-for').waitFor();
@@ -582,7 +581,7 @@ test('native agent owners retry failed reads, fence stale permission answers and
     await page.evaluate(() => { (window as unknown as { sameDocument: boolean }).sameDocument = true; });
     await page.getByRole('button', { name: /Scoped Casey.*account and sign out/ }).click();
     await page.getByRole('dialog', { name: 'Account', exact: true }).getByRole('button', { name: 'Sign out', exact: true }).click();
-    await page.getByRole('heading', { name: 'Sign in to Flux' }).waitFor();
+    await page.getByRole('heading', { name: 'Sign in' }).waitFor();
     await page.getByLabel('Email').fill(guest.email); await page.getByLabel('Password', { exact: true }).fill(password);
     await page.getByRole('button', { name: 'Sign in', exact: true }).click();
     await page.getByRole('link', { name: 'Owner scope', exact: true }).click();

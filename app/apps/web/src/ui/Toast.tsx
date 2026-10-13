@@ -1,17 +1,24 @@
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Icon } from './Icon';
+import { Kreska } from './Kreska';
 import { duration, play } from './motion';
 
 export type ToastTone = 'neutral' | 'success' | 'danger';
+
+export interface ToastAction {
+  label: string;
+  onClick: () => void;
+  key?: 'Z';
+}
 
 export interface ToastOptions {
   message: string;
   tone?: ToastTone;
   /** Milliseconds before it leaves on its own; errors stay until dismissed. */
   timeout?: number;
-  /** One button after the message, e.g. "Undo". The key Z runs the newest toast's action while it is shown. */
-  action?: { label: string; onClick: () => void };
+  /** One quiet action beside the message, e.g. Undo or Hand back. Taking it closes the toast. */
+  action?: ToastAction;
 }
 
 interface ToastEntry extends Required<Omit<ToastOptions, 'timeout' | 'action'>> {
@@ -19,10 +26,10 @@ interface ToastEntry extends Required<Omit<ToastOptions, 'timeout' | 'action'>> 
   action: ToastOptions['action'] | null;
   timeout: number | null;
   leaving: boolean;
-  scope: number;
+  sessionEpoch: number;
 }
 
-const ToastContext = createContext<(options: ToastOptions) => void>(() => {});
+const ToastContext = createContext<(options: ToastOptions) => () => void>(() => () => {});
 const ToastScopeContext = createContext<() => boolean>(() => true);
 const ToastTopContext = createContext<number | null>(null);
 
@@ -38,14 +45,25 @@ export function useToastScope() {
   return useContext(ToastScopeContext);
 }
 
-function ToastItem({ toast, onDone }: { toast: ToastEntry; onDone: (id: number) => void }) {
+function ToastItem({ toast, onDone, registerAction }: { toast: ToastEntry; onDone: (id: number) => void; registerAction: (id: number, run: (() => void) | null) => void }) {
   const ref = useRef<HTMLDivElement>(null);
   const message = useRef<HTMLSpanElement>(null);
   const [scrollable, setScrollable] = useState(false);
   const timer = useRef<number | null>(null);
   const [leaving, setLeaving] = useState(false);
-
+  const ran = useRef(false);
   const dismiss = useCallback(() => setLeaving(true), []);
+  const act = useCallback(() => {
+    if (!toast.action || ran.current || leaving || toast.leaving) return;
+    ran.current = true;
+    toast.action.onClick();
+    dismiss();
+  }, [toast.action, leaving, toast.leaving, dismiss]);
+  useEffect(() => {
+    if (!toast.action?.key || leaving || toast.leaving) return undefined;
+    registerAction(toast.id, act);
+    return () => registerAction(toast.id, null);
+  }, [toast.action, toast.id, leaving, toast.leaving, act, registerAction]);
   const arm = useCallback(() => {
     if (toast.timeout !== null) timer.current = window.setTimeout(dismiss, toast.timeout);
   }, [dismiss, toast.timeout]);
@@ -75,13 +93,16 @@ function ToastItem({ toast, onDone }: { toast: ToastEntry; onDone: (id: number) 
 
   return (
     <div ref={ref} className={`ui-toast ui-toast--${toast.tone}${scrollable ? ' ui-toast--scrollable' : ''}`} onMouseEnter={disarm} onMouseLeave={arm} onFocus={disarm} onBlur={arm}>
-      {toast.tone === 'success' ? <Icon name="check" /> : toast.tone === 'danger' ? <Icon name="alert" /> : null}
+      {toast.tone === 'success' ? <Icon name="check" /> : toast.tone === 'danger' ? <Icon name="alert" /> : toast.action ? <Kreska size={24} expression="done" /> : null}
       <span ref={message} className="ui-toast__msg" tabIndex={scrollable ? 0 : undefined}
         role={scrollable ? 'region' : undefined} aria-label={scrollable ? 'Notification message' : undefined}>{toast.message}</span>
-      {toast.action ? (
-        <button type="button" className="ui-toast__action" onClick={() => { toast.action!.onClick(); dismiss(); }}>
-          {toast.action.label}{toast.action.label === 'Undo' ? <kbd aria-hidden="true">Z</kbd> : null}
-        </button>
+      {toast.action && !leaving && !toast.leaving ? (
+        <>
+          <span className="ui-toast__sep" aria-hidden="true" />
+          <button type="button" className="ui-toast__action" onClick={act} aria-keyshortcuts={toast.action.key}>
+            {toast.action.label}{toast.action.key ? <kbd aria-hidden="true">{toast.action.key}</kbd> : null}
+          </button>
+        </>
       ) : null}
       <button type="button" className="ui-toast__close" onClick={dismiss} aria-label="Dismiss notification"><Icon name="x" size={14} /></button>
     </div>
@@ -96,24 +117,49 @@ export function ToastProvider({ children, scopeKey }: { children: ReactNode; sco
   const [toastTop, setToastTop] = useState<number | null>(null);
   const [scope, setScope] = useState({ key: scopeKey, epoch: 0 });
   if (scope.key !== scopeKey) setScope({ key: scopeKey, epoch: scope.epoch + 1 });
-  const epoch = scope.epoch;
-  const currentEpoch = useRef(epoch);
+  const sessionEpoch = scope.epoch;
+  const committedSession = useRef({ key: scopeKey, epoch: sessionEpoch });
+  const actions = useRef(new Map<number, () => void>());
   useLayoutEffect(() => {
-    currentEpoch.current = epoch;
-    return () => { currentEpoch.current = -1; };
-  }, [epoch]);
-  const isCurrent = useCallback(() => currentEpoch.current === epoch, [epoch]);
+    committedSession.current = { key: scopeKey, epoch: sessionEpoch };
+    actions.current.clear();
+  }, [scopeKey, sessionEpoch]);
+  const isCurrent = useCallback(() => committedSession.current.epoch === sessionEpoch && committedSession.current.key === scopeKey, [scopeKey, sessionEpoch]);
   const show = useCallback((options: ToastOptions) => {
-    if (!isCurrent()) return;
+    if (!isCurrent()) return () => {};
     const tone = options.tone ?? 'neutral';
-    const entry: ToastEntry = { id: nextId.current++, message: options.message, tone, action: options.action ?? null, timeout: options.timeout ?? (tone === 'danger' ? null : options.action ? 8000 : 5000), leaving: false, scope: epoch };
-    // Keep at most three; older ones leave.
+    const actionEpoch = sessionEpoch;
+    const action = options.action ? {
+      ...options.action,
+      onClick: () => { if (isCurrent() && committedSession.current.epoch === actionEpoch) options.action!.onClick(); },
+    } : null;
+    const entry: ToastEntry = {
+      id: nextId.current++, message: options.message, tone, action,
+      timeout: options.timeout ?? (tone === 'danger' || action ? null : 5000),
+      leaving: false, sessionEpoch: actionEpoch,
+    };
     setToasts((current) => [...current.slice(-2), entry]);
-  }, [epoch, isCurrent]);
+    return () => setToasts((current) => current.filter((toast) => toast.id !== entry.id));
+  }, [isCurrent, sessionEpoch]);
   const remove = useCallback((id: number) => setToasts((current) => current.filter((toast) => toast.id !== id)), []);
+  const registerAction = useCallback((id: number, run: (() => void) | null) => {
+    if (run) actions.current.set(id, run); else actions.current.delete(id);
+  }, []);
+  useEffect(() => {
+    const onKey = (event: globalThis.KeyboardEvent) => {
+      if (event.key.toLowerCase() !== 'z' || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey || event.defaultPrevented || event.repeat) return;
+      const target = event.target as HTMLElement | null;
+      if (target?.closest('input, textarea, select, [contenteditable="true"], [role="textbox"]')) return;
+      const newest = [...actions.current.keys()].sort((a, b) => b - a)[0];
+      if (newest === undefined) return;
+      event.preventDefault();
+      actions.current.get(newest)?.();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
   const value = useMemo(() => show, [show]);
-  // Z undoes the newest toast that offers it, unless the person is typing.
-  const visible = toasts.filter((entry) => entry.scope === epoch);
+  const visible = toasts.filter((toast) => toast.sessionEpoch === sessionEpoch);
   useLayoutEffect(() => {
     const node = stack.current;
     if (!node) return;
@@ -126,29 +172,13 @@ export function ToastProvider({ children, scopeKey }: { children: ReactNode; sco
     window.addEventListener('resize', measure);
     measure();
     return () => { observer.disconnect(); window.removeEventListener('resize', measure); };
-  }, [epoch, visible.length]);
-  const latest = useRef(visible);
-  useLayoutEffect(() => { latest.current = visible; });
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key.toLowerCase() !== 'z' || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey || event.defaultPrevented) return;
-      const target = event.target as HTMLElement | null;
-      if (target?.closest('input, textarea, select, [contenteditable="true"], [role="textbox"]')) return;
-      const entry = [...latest.current].reverse().find((toast) => toast.action && !toast.leaving);
-      if (!entry) return;
-      event.preventDefault();
-      entry.action!.onClick();
-      setToasts((current) => current.map((toast) => toast.id === entry.id ? { ...toast, leaving: true } : toast));
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, []);
+  }, [sessionEpoch, visible.length]);
   return (
     <ToastTopContext.Provider value={toastTop}><ToastScopeContext.Provider value={isCurrent}><ToastContext.Provider value={value}>
       {children}
       {createPortal(
         <div ref={stack} className="ui-toasts" role="status" aria-live="polite" aria-relevant="additions text">
-          {visible.map((toast) => <ToastItem key={toast.id} toast={toast} onDone={remove} />)}
+          {visible.map((toast) => <ToastItem key={toast.id} toast={toast} onDone={remove} registerAction={registerAction} />)}
         </div>,
         document.body,
       )}

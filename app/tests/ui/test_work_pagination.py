@@ -8,7 +8,7 @@ import uuid
 from urllib.parse import parse_qs, urlsplit
 
 from playwright.sync_api import expect, sync_playwright
-from test_app_shell import UI_BROWSER, ORIGIN, UPSTREAM, shot, start_forwarder
+from test_app_shell import UI_BROWSER, ORIGIN, UPSTREAM, open_details, shot, start_forwarder
 
 
 def api(context, method, path, body=None, status=200):
@@ -57,7 +57,8 @@ class WorkPaginationJourney(unittest.TestCase):
         api(owner, "POST", f"/api/v1/decisions/{current['id']}/accept", {"expectedVersion": 1, "stillApplies": [], "park": []})
         proposal = api(owner, "POST", cls.root + "/decisions", {"title": "Keep a manual off switch"}, 201)
         result = api(owner, "POST", cls.root + "/results", {"title": "Noise is lower after the shield", "finding": "positive", "evidence": "Twenty real fixture measurements"}, 201)
-        cls.objects = {("work", item["id"]) for item in cls.work} | {("decision", item["id"]) for item in (previous, current, proposal)} | {("result", result["id"])}
+        # The Tasks list holds tasks only (#342): decisions wait in the Inbox and a result shows in its task.
+        cls.objects = {("work", item["id"]) for item in cls.work}
         cls.states = [context.storage_state() for context in cls.contexts]
         cls.before = cls.native_digest()
 
@@ -104,12 +105,12 @@ class WorkPaginationJourney(unittest.TestCase):
                 self.ready(page)
                 self.assertEqual(native_reads.count(self.root + "/work-view"), 1)
                 self.assertEqual(native_reads.count(self.root + "/work-summary"), 0)
-                expect(page.get_by_role("navigation", name="Work pages")).to_contain_text("1–50 of 127")
+                expect(page.get_by_role("navigation", name="Work pages")).to_contain_text("1–50 of 123")
                 self.assertEqual(len(self.rows(page)), 50)
                 first = self.rows(page)
                 page.get_by_role("navigation", name="Work pages").get_by_role("button", name="Next", exact=True).click()
                 self.ready(page)
-                expect(page.get_by_role("navigation", name="Work pages")).to_contain_text("51–100 of 127")
+                expect(page.get_by_role("navigation", name="Work pages")).to_contain_text("51–100 of 123")
                 second = self.rows(page)
                 self.assertEqual(len(second), 50)
                 self.assertFalse({row["id"] for row in first} & {row["id"] for row in second})
@@ -132,16 +133,16 @@ class WorkPaginationJourney(unittest.TestCase):
                     self.assertLess(abs(restored - anchor[1]), 3)
                 page.reload(); self.ready(page)
                 self.assertEqual(self.rows(page), second)
-                expect(page.get_by_role("navigation", name="Work pages")).to_contain_text("51–100 of 127")
+                expect(page.get_by_role("navigation", name="Work pages")).to_contain_text("51–100 of 123")
                 shot(page, f"bounded-work-page-{'phone' if phone else 'desktop'}")
                 pages = page.get_by_role("navigation", name="Work pages")
                 pages.get_by_role("button", name="Next", exact=True).click()
                 self.ready(page)
-                expect(pages).to_contain_text("101–127 of 127")
+                expect(pages).to_contain_text("101–123 of 123")
                 third = self.rows(page)
-                self.assertEqual(len(third), 27)
+                self.assertEqual(len(third), 23)
                 self.assertEqual({(row["kind"], row["id"]) for row in first + second + third}, self.objects)
-                self.assertEqual(len({row["id"] for row in first + second + third}), 127)
+                self.assertEqual(len({row["id"] for row in first + second + third}), 123)
                 expect(pages.get_by_role("button", name="Next", exact=True)).to_be_disabled()
                 pages.get_by_role("button", name="Previous", exact=True).click()
                 self.ready(page); self.assertEqual(self.rows(page), second)
@@ -216,7 +217,7 @@ class WorkPaginationJourney(unittest.TestCase):
     def test_04_cookie_account_change_fences_held_page_and_private_draft(self):
         page = self.page()
         page.goto(f"/projects/{self.project}/tasks?view=list&show=mine"); self.ready(page)
-        expect(page.get_by_role("navigation", name="Work pages")).to_contain_text("1–50 of 64")
+        expect(page.get_by_role("navigation", name="Work pages")).to_contain_text("1–50 of 62")
         field = page.get_by_label("New task", exact=True); field.fill("Ada Kowalska's private draft")
         held = []
         def hold_once(route):
@@ -231,14 +232,14 @@ class WorkPaginationJourney(unittest.TestCase):
         page.context.clear_cookies(); page.context.add_cookies(self.states[1]["cookies"])
         page.evaluate("window.dispatchEvent(new Event('focus'))")
         self.ready(page)
-        expect(page.get_by_role("navigation", name="Work pages")).to_contain_text("1–50 of 62")
+        expect(page.get_by_role("navigation", name="Work pages")).to_contain_text("1–50 of 61")
         expect(field).to_have_value("")
         field.fill("Ada Nowak's separate private draft")
         route, response = held.pop(); route.fulfill(response=response)
         self.ready(page)
-        expect(page.get_by_role("navigation", name="Work pages")).to_contain_text("1–50 of 62")
+        expect(page.get_by_role("navigation", name="Work pages")).to_contain_text("1–50 of 61")
         expect(field).to_have_value("Ada Nowak's separate private draft")
-        expected = api(self.contexts[1], "GET", self.root + "/work-view?purpose=tasks&group=all&mine=true&limit=50")
+        expected = api(self.contexts[1], "GET", self.root + "/work-view?purpose=tasks&group=all&mine=true&kinds=work&limit=50")
         self.assertEqual(self.rows(page), [{"kind": row["kind"], "id": row["id"]} for row in expected["items"]])
         page.unroute("**/work-view**", hold_once)
 
@@ -249,17 +250,11 @@ class WorkPaginationJourney(unittest.TestCase):
         task = api(owner, "POST", f"/api/v1/projects/{project}/work", {"title": "Check the wall socket before installation"}, 201)
         for phone in (False, True):
             page = self.page(phone=phone)
-            # On the phone the state line belongs to the project's Conversation (#266 PF-2).
-            if phone: page.goto(f"/projects/{project}")
-            else: page.goto(f"/projects/{project}/tasks?view=list"); self.ready(page)
-            state = page.locator(".ws-state-row") if phone else page.get_by_label("Current state", exact=True)
-            expect(state).to_contain_text("1 open task")
-            expect(state).not_to_contain_text("No decisions or work yet")
-            if phone:
-                state.tap()
-                page.locator("#details").get_by_role("button", name=re.compile(r"Open.*Check the wall socket before installation")).click()
-            else:
-                state.locator('[data-seg="open"]').click()
+            # The project's state is in Details on the computer (#340) and on the phone (#341, no state row).
+            page.goto(f"/projects/{project}/tasks?view=list") if not phone else page.goto(f"/projects/{project}")
+            if not phone: self.ready(page)
+            open_details(page, tap=phone)
+            page.locator("#details").get_by_role("button", name=re.compile(r"Open.*Check the wall socket before installation")).click()
             expect(page.locator("#details").get_by_role("heading", name=task["title"], exact=True)).to_be_visible()
 
     def test_06_keyboard_rows_remain_exposed_below_the_scrolled_controls(self):

@@ -150,6 +150,7 @@ button.ws-task__glyph:active { background: var(--hov); }
 .wd-row dt label { color: inherit; }
 .wd-row dd { display: flex; align-items: center; gap: 8px; min-width: 0; margin: 0; font-size: var(--fs-md); overflow-wrap: anywhere; }
 .wd-from { flex-wrap: wrap; }
+.wd-handoff { margin-top: 10px; }
 .wd-from .wd-links { width: 100%; }
 .wd-from .wd-link { width: 100%; margin: 0; min-height: 32px; padding: 2px 0; }
 .wd-value { display: inline-flex; align-items: center; gap: 8px; }
