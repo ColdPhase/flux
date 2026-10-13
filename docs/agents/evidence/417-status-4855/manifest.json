@@ -1,0 +1,190 @@
+{
+  "pr": 417,
+  "tested_head": "4855b2cbd910685c986c8a999ff0db215d95b939",
+  "git_tree": "3bb6b494ae38fdb86619800cb538207e464229da",
+  "stacked_base": "#383 -> #376; PR #417 head is based on #383, no rebase performed",
+  "capture_source": "Docker check_ui.sh test_agent_stop_questions; Chromium output after targeted modules plus WebKit full module",
+  "results": {
+    "chromium": "test_agent_stop_questions 11/11 passed; test_project_surface.test_03_each_state_segment_opens_its_object passed; test_project_surface module had unrelated test_02 feed clipping failure.",
+    "webkit": "test_agent_stop_questions 11/11 passed; Compose cleanup completed."
+  },
+  "captures": [
+    {
+      "file": "stop-sidebar-card.png",
+      "path": "/home/hubert/Develop/flux-347-agents-tab-fixes/test-results/flux-417-visual-delta/chromium/stop-sidebar-card.png",
+      "width_px": 1440,
+      "height_px": 900,
+      "engine": "Chromium",
+      "sourceSha256": "bdbf197a2d24ad6edea62837096925851457f38ec5deaf12b40948c69e9404d3",
+      "storedPath": "screenshots/chromium/stop-sidebar-card.webp",
+      "storedSha256": "2e82fd142fd1acf71ff32b408af0daa6e596c68d9cbff14cfa78e5c7ea86f1e7",
+      "sourceCapture": "test-results/flux-417-visual-delta/chromium/stop-sidebar-card.png"
+    },
+    {
+      "file": "stop-agents-desktop-light.png",
+      "path": "/home/hubert/Develop/flux-347-agents-tab-fixes/test-results/flux-417-visual-delta/chromium/stop-agents-desktop-light.png",
+      "width_px": 1440,
+      "height_px": 900,
+      "engine": "Chromium",
+      "sourceSha256": "64f5be24025159d6654bcc3553d56e4b57e69084c04632dc0d509ad59be3e809",
+      "storedPath": "screenshots/chromium/stop-agents-desktop-light.webp",
+      "storedSha256": "e6486d131731caa07a13dc301d5352d4df050fa40e553effe4b7ded3b487d412",
+      "sourceCapture": "test-results/flux-417-visual-delta/chromium/stop-agents-desktop-light.png"
+    },
+    {
+      "file": "stop-agents-desktop-dark.png",
+      "path": "/home/hubert/Develop/flux-347-agents-tab-fixes/test-results/flux-417-visual-delta/chromium/stop-agents-desktop-dark.png",
+      "width_px": 1440,
+      "height_px": 900,
+      "engine": "Chromium",
+      "sourceSha256": "0043c5516584e613a6073c452b2aee3d6476d933e1eb63f9adab0a9c3e70dfda",
+      "storedPath": "screenshots/chromium/stop-agents-desktop-dark.webp",
+      "storedSha256": "b9718ed6970bc23ccabaf8ec539a69ee32011550848203d4a1ea2acce0919f39",
+      "sourceCapture": "test-results/flux-417-visual-delta/chromium/stop-agents-desktop-dark.png"
+    },
+    {
+      "file": "stop-agents-phone-light.png",
+      "path": "/home/hubert/Develop/flux-347-agents-tab-fixes/test-results/flux-417-visual-delta/chromium/stop-agents-phone-light.png",
+      "width_px": 1170,
+      "height_px": 2532,
+      "engine": "Chromium",
+      "sourceSha256": "ab3ee60cca0260957697155ada86d3e907e2e0ca62daada9a879a404f0f49bca",
+      "storedPath": "screenshots/chromium/stop-agents-phone-light.webp",
+      "storedSha256": "640a34a65d7b01826932abc2e85337d42b4223f6dea9a6c2a16a8a42e245be53",
+      "sourceCapture": "test-results/flux-417-visual-delta/chromium/stop-agents-phone-light.png"
+    },
+    {
+      "file": "stop-agents-phone-dark.png",
+      "path": "/home/hubert/Develop/flux-347-agents-tab-fixes/test-results/flux-417-visual-delta/chromium/stop-agents-phone-dark.png",
+      "width_px": 1170,
+      "height_px": 2532,
+      "engine": "Chromium",
+      "sourceSha256": "35f09c095e63ac44ff718b240d3fed375a32fd306bacda17ae650220b4b2491d",
+      "storedPath": "screenshots/chromium/stop-agents-phone-dark.webp",
+      "storedSha256": "158752df2a762bb1dd12b9fe9b181efb4c64c8963fdc9b88517651d7311c5fdd",
+      "sourceCapture": "test-results/flux-417-visual-delta/chromium/stop-agents-phone-dark.png"
+    },
+    {
+      "file": "stop-home-desktop.png",
+      "path": "/home/hubert/Develop/flux-347-agents-tab-fixes/test-results/flux-417-visual-delta/chromium/stop-home-desktop.png",
+      "width_px": 1440,
+      "height_px": 900,
+      "engine": "Chromium",
+      "sourceSha256": "99e2b5b7a4d400574727ca3ddae2f519fe205f04d830c5989fbf36a6188ef838",
+      "storedPath": "screenshots/chromium/stop-home-desktop.webp",
+      "storedSha256": "8a8f6b8465301bbcb48a7702762d195583f07ca28c760f7aa606e09381b8807e",
+      "sourceCapture": "test-results/flux-417-visual-delta/chromium/stop-home-desktop.png"
+    },
+    {
+      "file": "stop-home-phone.png",
+      "path": "/home/hubert/Develop/flux-347-agents-tab-fixes/test-results/flux-417-visual-delta/chromium/stop-home-phone.png",
+      "width_px": 1170,
+      "height_px": 2532,
+      "engine": "Chromium",
+      "sourceSha256": "f18dbf1499379a556be50b5adec3182a7c9cefba8e2937d33746d91da4d054b8",
+      "storedPath": "screenshots/chromium/stop-home-phone.webp",
+      "storedSha256": "ac946724c1eb0485d1e1b93f9585460caac2c15061058977f9c17d1f4270866e",
+      "sourceCapture": "test-results/flux-417-visual-delta/chromium/stop-home-phone.png"
+    },
+    {
+      "file": "stop-sidebar-card.png",
+      "path": "/home/hubert/Develop/flux-347-agents-tab-fixes/test-results/flux-417-visual-delta/webkit/stop-sidebar-card.png",
+      "width_px": 1440,
+      "height_px": 900,
+      "engine": "WebKit",
+      "sourceSha256": "3c44c472cc2474b3a77cde4000fe3c76d79f8b92161e29a4efcb0bbaedcafdcc",
+      "storedPath": "screenshots/webkit/stop-sidebar-card.webp",
+      "storedSha256": "665169a00e3042fbae536ab6a2d7ac1091ad4474026237df026b40472a2b1050",
+      "sourceCapture": "test-results/flux-417-visual-delta/webkit/stop-sidebar-card.png"
+    },
+    {
+      "file": "stop-agents-desktop-light.png",
+      "path": "/home/hubert/Develop/flux-347-agents-tab-fixes/test-results/flux-417-visual-delta/webkit/stop-agents-desktop-light.png",
+      "width_px": 1440,
+      "height_px": 900,
+      "engine": "WebKit",
+      "sourceSha256": "289beb46420cbc669260a704c55450155e9b3eeb1afc4ad955cf732bc6d85fb5",
+      "storedPath": "screenshots/webkit/stop-agents-desktop-light.webp",
+      "storedSha256": "cbbbd831773d2586e7c33370e4a2d360e3560e2d8cb30abc8acbc566fd446892",
+      "sourceCapture": "test-results/flux-417-visual-delta/webkit/stop-agents-desktop-light.png"
+    },
+    {
+      "file": "stop-agents-desktop-dark.png",
+      "path": "/home/hubert/Develop/flux-347-agents-tab-fixes/test-results/flux-417-visual-delta/webkit/stop-agents-desktop-dark.png",
+      "width_px": 1440,
+      "height_px": 900,
+      "engine": "WebKit",
+      "sourceSha256": "3dc5bb106a71b416bec47b4d3f1dc53e05a6df7f574065f09a59cb54fc0d8cc0",
+      "storedPath": "screenshots/webkit/stop-agents-desktop-dark.webp",
+      "storedSha256": "e42c420ab3f4a64d48eb7311ac16ae5a8bd639d058d0ebf5e34fe302a1871c19",
+      "sourceCapture": "test-results/flux-417-visual-delta/webkit/stop-agents-desktop-dark.png"
+    },
+    {
+      "file": "stop-agents-phone-light.png",
+      "path": "/home/hubert/Develop/flux-347-agents-tab-fixes/test-results/flux-417-visual-delta/webkit/stop-agents-phone-light.png",
+      "width_px": 1170,
+      "height_px": 2532,
+      "engine": "WebKit",
+      "sourceSha256": "3e808036c7520588dd9074e975ac995bd33aa377d98482b6e9a0d0fadb48ee45",
+      "storedPath": "screenshots/webkit/stop-agents-phone-light.webp",
+      "storedSha256": "40a289cec478d2e840107d37efe35a5b6c31dd2c24a88a6df32640c512920ca8",
+      "sourceCapture": "test-results/flux-417-visual-delta/webkit/stop-agents-phone-light.png"
+    },
+    {
+      "file": "stop-agents-phone-dark.png",
+      "path": "/home/hubert/Develop/flux-347-agents-tab-fixes/test-results/flux-417-visual-delta/webkit/stop-agents-phone-dark.png",
+      "width_px": 1170,
+      "height_px": 2532,
+      "engine": "WebKit",
+      "sourceSha256": "d7e817f0f68e8130759c840e312bfff3ea659ba6fc9b432048945883cc0b5dee",
+      "storedPath": "screenshots/webkit/stop-agents-phone-dark.webp",
+      "storedSha256": "dcd720d8122c3d1d98b822aa33049a6afae33f1d82b26a0cef7529520763445c",
+      "sourceCapture": "test-results/flux-417-visual-delta/webkit/stop-agents-phone-dark.png"
+    },
+    {
+      "file": "stop-home-desktop.png",
+      "path": "/home/hubert/Develop/flux-347-agents-tab-fixes/test-results/flux-417-visual-delta/webkit/stop-home-desktop.png",
+      "width_px": 1440,
+      "height_px": 900,
+      "engine": "WebKit",
+      "sourceSha256": "e4b57f5b60b173392fe7d6ed4b47ca0c2bb3a33d940a0b077e1f0e58533267bd",
+      "storedPath": "screenshots/webkit/stop-home-desktop.webp",
+      "storedSha256": "e484dca07c6e3e6f81ab56c59ffb804d0eb022bef6a4ea5298d95e752431632c",
+      "sourceCapture": "test-results/flux-417-visual-delta/webkit/stop-home-desktop.png"
+    },
+    {
+      "file": "stop-home-phone.png",
+      "path": "/home/hubert/Develop/flux-347-agents-tab-fixes/test-results/flux-417-visual-delta/webkit/stop-home-phone.png",
+      "width_px": 1170,
+      "height_px": 2532,
+      "engine": "WebKit",
+      "sourceSha256": "502cbf4ec6a74f7538ee0d492cec632b12f32f350ae70fb2363063b67eeae2c8",
+      "storedPath": "screenshots/webkit/stop-home-phone.webp",
+      "storedSha256": "764418d66ae9c99de3d5ccc5efc5b039c9dbe4e5da1dc9d182a745fcf9063f77",
+      "sourceCapture": "test-results/flux-417-visual-delta/webkit/stop-home-phone.png"
+    }
+  ],
+  "references": [
+    "docs/design/final/README.md",
+    "docs/design/final/screens/desktop-agents.webp",
+    "docs/design/final/screens/desktop-handoff.webp",
+    "docs/design/final/screens/phone-agents.webp",
+    "docs/design/final/screens/phone-handoff.webp"
+  ],
+  "evidenceCommitParent": "4855b2cbd910685c986c8a999ff0db215d95b939",
+  "reviewer": "Fresh-context Luna visual evaluator, independent of screenshot capture",
+  "review": "visual-review.md",
+  "brief": "neutral-brief.md",
+  "pullRequest": "https://github.com/ColdPhase/flux/pull/417",
+  "purpose": "Durable screenshot and review record for PR #417 status-clarity delta. Visual appearance only; does not certify behavior, accessibility, permissions, persistence, or full issue #347 acceptance.",
+  "archiveFormat": "14 captures stored as lossless WebP; source PNG hashes and stored WebP hashes are both recorded.",
+  "checks": {
+    "repository": "https://github.com/ColdPhase/flux/actions/runs/38429356200/job/115407150763",
+    "application": "https://github.com/ColdPhase/flux/actions/runs/38429360796/job/115407166175"
+  },
+  "baselineFailure": {
+    "issue": "https://github.com/ColdPhase/flux/issues/495",
+    "testFix": "https://github.com/ColdPhase/flux/pull/497",
+    "detail": "The source stack still contains the earlier .thread__feed latest-message-visible assertion in test_project_surface test_02; #495 records the same clean-main failure and #497 updates the test to the accepted root-open behavior."
+  }
+}
