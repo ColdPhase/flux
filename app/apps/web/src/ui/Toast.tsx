@@ -20,7 +20,6 @@ interface ToastEntry extends Required<Omit<ToastOptions, 'timeout' | 'action'>> 
   id: number;
   timeout: number | null;
   leaving: boolean;
-  action: ToastOptions['action'];
 }
 
 const ToastContext = createContext<(options: ToastOptions) => void>(() => {});
