@@ -12,6 +12,6 @@
 .doc-field { display: grid; gap: 6px; margin: 12px 0; font-size: var(--fs-sm); color: var(--t2); }
 .doc-field input, .doc-field select { min-width: 0; min-height: var(--ctl); border: 1px solid var(--line); border-radius: var(--r); padding: 8px 10px; color: var(--t1); background: var(--bg); font: inherit; }
 .sk-live-mover { display: block; font-size: 11px; line-height: 1.3; color: var(--t1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.sk-node[data-live-mover] { outline: 2px solid var(--t1); outline-offset: 1px; }
+.sk-node[data-live-mover] { outline: 2px solid var(--t1); outline-offset: 1px; will-change: transform; }
 .editing-map-recovery { font-size: var(--fs-sm); color: var(--t2); padding: 8px 12px; border: 1px solid var(--line); border-radius: var(--r); }
 .editing-map-recovery ul { max-height: 180px; overflow: auto; overflow-wrap: anywhere; }

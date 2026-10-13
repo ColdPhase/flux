@@ -727,9 +727,9 @@ export function SketchMap(props: SketchMapProps) {
           meId={meId} helpId={helpId} projectId={projectId}
           linked={projectId ? tasks.get(thought.id) : undefined}
           mover={props.movers.get(thought.id)} live={props.livePreviews.get(thought.id)} nodeRef={nodeRef} events={events} />
-        {arrange && !editing && !measuring && (selected || connectFrom === thought.id || hover === thought.id || wire?.from === thought.id) ? (
+        {arrange && !editing && !measuring && !dragging && (selected || connectFrom === thought.id || hover === thought.id || wire?.from === thought.id) ? (
           <ThoughtDots id={thought.id} text={thought.text} x={p.x} y={p.y} w={r.w} h={r.h} zoom={zoom} selected={selected}
-            on={selected || connectFrom === thought.id || hover === thought.id} dragging={dragging} events={events} />
+            on={selected || connectFrom === thought.id || hover === thought.id} events={events} />
         ) : null}
         </Fragment>
       );
@@ -901,19 +901,19 @@ function ownPart(target: EventTarget | null, id: string) {
 /**
  * The two connection dots of one thought. A thought has them only while they can be used: when it
  * is selected, hovered, the connection source or the wire's start (the dots are invisible
- * otherwise). Rendering 1,000 invisible dots for a 500-thought map, all re-rendered and restyled
+ * otherwise), and not while it is being moved: 200 moved thoughts would restyle 400 dots per frame. Rendering 1,000 invisible dots for a 500-thought map, all re-rendered and restyled
  * on every movement preview, doubled the map's elements and slowed every frame of a live drag
  * on both computers (#228 Gate 4). Memoized like the thoughts, with stable handlers.
  */
-const ThoughtDots = memo(function ThoughtDots({ id, text, x, y, w, h, zoom, selected, on, dragging, events }: {
-  id: string; text: string; x: number; y: number; w: number; h: number; zoom: number; selected: boolean; on: boolean; dragging: boolean;
+const ThoughtDots = memo(function ThoughtDots({ id, text, x, y, w, h, zoom, selected, on, events }: {
+  id: string; text: string; x: number; y: number; w: number; h: number; zoom: number; selected: boolean; on: boolean;
   events: { readonly current: NodeEvents };
 }) {
   return <>{(['right', 'left'] as const).map((side) => (
     <button key={side} type="button" tabIndex={selected && side === 'right' ? 0 : -1} data-for={id} data-side={side}
       aria-label={`Connect from ${quote(text)}: drag to another thought, or press Enter and choose one`} aria-hidden={side === 'left' ? true : undefined}
       onPointerEnter={(event) => events.current.pointerEnter(event, id)} onPointerLeave={(event) => events.current.pointerLeave(event, id)}
-      className={`sk-dot${on ? ' is-on' : ''}${dragging ? ' is-dragging' : ''}`}
+      className={`sk-dot${on ? ' is-on' : ''}`}
       style={{ transform: `translate(${x + (side === 'right' ? w : 0)}px, ${y + h / 2}px) scale(${1 / zoom}) translate(-50%, -50%)` }}
       onPointerDown={(event) => events.current.dotPointerDown(event, id)}
       onClick={() => events.current.dotClick(id)} />
