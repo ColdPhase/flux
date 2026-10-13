@@ -455,7 +455,7 @@ class TasksFinalJourney(unittest.TestCase):
     def test_11_phone_feedback_clears_the_real_footer_and_keeps_actions_reachable(self) -> None:
         """Real state changes, Undo and offline failures at both themes and larger text sizes."""
         for dark in (False, True):
-            for width, factor, safe_padding in ((390, 1, 0), (390, 1.25, 34), (320, 2, 34)):
+            for width, factor, safe_padding in ((390, 1, 0), (320, 1, 0), (390, 1.25, 34), (320, 2, 34)):
                 with self.subTest(dark=dark, width=width, text_size=factor):
                     setup = self.page('ada')
                     self.set_status(setup, 'labels', 'open')
@@ -472,7 +472,7 @@ class TasksFinalJourney(unittest.TestCase):
                         page.add_style_tag(content=f'.ui-bottomnav {{ padding-bottom: {safe_padding}px !important; }}')
                     self.feedback_geometry(page, 'confirmed', dark, width, factor)
                     if factor == 1:
-                        shot(page, f"375-feedback-success-390-{'dark' if dark else 'light'}")
+                        shot(page, f"375-feedback-success-{width}-{'dark' if dark else 'light'}")
                     # The same feedback follows live footer removal/reappearance on resize.
                     if factor == 1.25:
                         page.set_viewport_size({'width': 1024, 'height': 844})
@@ -486,6 +486,8 @@ class TasksFinalJourney(unittest.TestCase):
                     self.assertEqual((stored['status'], stored['version']), ('open', before['version'] + 2))
                     page.locator('.ui-toast__close').last.tap()
                     expect(page.locator('.ui-toast')).to_have_count(0)
+                    if width == 320 and factor == 1:
+                        shot(page, f"346-tasks-phone-320-{'dark' if dark else 'light'}")
                     page.wait_for_load_state('networkidle')
                     page.context.set_offline(True)
                     row.get_by_role('button', name='Open. Set to In progress').tap()
@@ -498,7 +500,7 @@ class TasksFinalJourney(unittest.TestCase):
                         page.keyboard.press('End')
                         page.wait_for_function("() => { const el = document.querySelector('.ui-toast__msg'); return el.scrollTop > 0 && el.scrollTop + el.clientHeight >= el.scrollHeight - 1; }")
                     if factor == 1:
-                        shot(page, f"375-feedback-error-390-{'dark' if dark else 'light'}")
+                        shot(page, f"375-feedback-error-{width}-{'dark' if dark else 'light'}")
                     page.context.set_offline(False)
                     self.assertEqual(self.task(page, 'labels')['version'], stored['version'])
                     page.locator('.ui-toast__close').tap()
