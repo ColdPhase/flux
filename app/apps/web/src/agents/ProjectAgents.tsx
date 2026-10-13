@@ -445,7 +445,8 @@ function rowView(entry: AgentEntry, held: WorkRowProjection[], lead: boolean, no
   if (lead && asking) return { line: `Waiting for you · asks “${briefly(asking.question)}”`, expression: 'waiting', working: false, rank: 1 };
   if (work) {
     const working = isAgentWorking(entry, now);
-    return { line: currentWorkLine(work, working), expression, working, rank: working ? 2 : connectionRank(connection, now) };
+    // The unit says where its connection is on the same line, so a phone row stays compact (P2-6).
+    return { line: `${currentWorkLine(work, working)} · ${availabilityLine(connection!, now)}`, expression, working, rank: working ? 2 : connectionRank(connection, now) };
   }
   if (task?.status === 'blocked') {
     return { line: <><StatusGlyph status="blocked" size={12} />{` Blocked on #${task.number}${task.blocker ? ` · ${task.blocker}` : ''}`}</>, expression, working: false, rank: 3 };
@@ -506,7 +507,6 @@ function AgentRow({ entry, view, duplicate, short, now, selected, dropping, stop
             {!duplicate && entry.via ? <span className="agents-row__via"> · {entry.via}</span> : null}
           </span>
           <span className="agents-row__now">{view.line}</span>
-          {entry.connection?.currentWork ? <span className="agents-row__activity">{availabilityLine(entry.connection, now)}</span> : null}
           {entry.connection?.requests.map((request) => <span key={request.id} className="agents-row__activity">{requestLine(request)}</span>)}
         </span>
         {last ? <time className="agents-row__time" dateTime={last.at}>{when(last.at)}</time> : null}
