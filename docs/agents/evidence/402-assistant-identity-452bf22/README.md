@@ -25,5 +25,6 @@ The test creates no model/vendor calls; compute metadata is fake. No VAPID key m
 - `images/`: exact PNG screenshots captured by the runner.
 - `logs/dual-engine-run.log`: full exact-452 Docker build and E2E run.
 - `logs/api-d977-run.log`: full focused API run at d977 (production tree equivalent to 452).
-- `visual-review.md`: original independent screenshot review, retained without edits.
+- `visual-review.md`: initial independent screenshot review, retained without edits.
+- `visual-review-followup.md`: independent reconsideration with fixture provenance, retained without edits.
 - `SHA256SUMS`: integrity checks for all packet files except this checksum file.

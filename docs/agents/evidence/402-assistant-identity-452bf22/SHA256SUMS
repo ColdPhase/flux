@@ -1,4 +1,4 @@
-3f9386f503be7d819373bd337da6ca933a1d5ae7253dcd0a9c83f47d9ccd7ed7  ./README.md
+1965cd3cbd0afcc07a338c7edacfd608bc6be08b9a185c1047ba91ab52924f36  ./README.md
 d661a6a05918dfa0ae7845da4fe05b17407e5a46774e4df7871fbcd146f9dff9  ./images/join-chromium-manager-needs-you-dark.png
 7f815b27ff2074cb295287aa45aa88f1502bb83ad3404036e7fd4a5143f96acc  ./images/join-chromium-manager-needs-you-light.png
 118e25b6d55a2d0c088c9e67731770c1f459a280210ac26c37069ec7ab0c82ef  ./images/join-chromium-manager-review-dark.png
@@ -19,4 +19,5 @@ ba0e4c3cbb652d2233ac9752a0d3a468022ca82b922b2ab96323fabeb6492314  ./images/join-
 12baacb54c0404d89e8c9503078883aa676e39e601eacd4fd9c1a801d4d509d0  ./join-webkit-manifest.json
 8ff08d32f95542ea57aaee727c8aa5ae90d9b73c6d7b8b3749b554cd4e898ff1  ./logs/api-d977-run.log
 861f55a5cf53fd1c3eff422547ed2747e7af69195ba9a626a55d0898b84a676e  ./logs/dual-engine-run.log
+e9332ad98d43dde00bb8ea5594c4ef569beee8e6cdb3b698596166aed690574d  ./visual-review-followup.md
 74c2f353daf00e216d436e5ce91506cb2bb63ebfd1f7489bff4cd8c251ad536f  ./visual-review.md
