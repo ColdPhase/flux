@@ -189,7 +189,7 @@ Node and real proxies set `TCP_NODELAY`. The forwarder now sets it on both socke
 (`ForwarderTransport` in `tests/ui/test_live_editing.py`: 41 ms per small exchange before,
 3 ms after). The driver, thresholds, deadlines, denominators and correlations are unchanged.
 
-## Proposed trace-snapshot decision (pending independent review)
+## Accepted trace-snapshot decision (2026-10-13)
 
 The current driver starts Playwright tracing with `screenshots=True` and
 `snapshots=True`; the fixed measurement contract above requires retained traces and a
@@ -215,16 +215,19 @@ are observer work, not a source-level hotspot. The canonical nine-cohort run at 
 application candidate remains **FAIL**, including map-500-drag-200 p95 237.477 ms against
 the unchanged 200 ms limit and the separate map-500-drag-50 identity failure.
 
-**Proposal only; no test-driver or acceptance change is made here.** If independently
-accepted, change only `snapshots=True` to `snapshots=False`, retain `screenshots=True` in
-the Playwright trace and the standalone screenshot, and keep every row, freshness,
-geometry, receipt, coverage, socket, paint, p95 and zero-error assertion unchanged. Do not
-subtract observer time from reported latency. Keep the canonical nine-case plan, 2,160-row
-finish marker, actual queue collector, shutdown checks and seal unchanged. The driver diff
-needs a new exact candidate pin and independent review, followed by the full canonical
-nine-cohort run and complete seal at that pin; preserve the current failed run as-is. The
-separate diagnostic above changed both trace options and therefore supports investigation,
-not this one-option change's causal effect.
+**Independent contract decision accepted and implemented.** On docs head
+`323669643d2529d036aa1d74b31cd412764b8f3f`, PelikanFix16 accepted the bounded decision in
+[this review comment](https://github.com/ColdPhase/flux/pull/389#issuecomment-6151484881).
+That evaluation is not a formal GitHub approval. This driver change sets only
+`snapshots=False` on both Playwright traces, retains `screenshots=True` in the traces and
+the standalone peer screenshot, and leaves every row, freshness, geometry, receipt,
+coverage, socket, paint, p95 and zero-error assertion unchanged. It subtracts no observer
+time. The canonical nine-case plan, 2,160-row finish marker, actual queue collector,
+shutdown checks and seal are unchanged. This source change has its own exact pin; it needs
+independent source review before the full canonical nine-cohort run and complete seal at
+that pin. Preserve the earlier failed run as-is. The separate diagnostic above changed
+both trace options and therefore supports investigation, not this one-option change's
+causal effect.
 
 The supporting files remain outside the repository to avoid adding large traces and row
 artifacts to every clone. On the shared host, the diagnostic directory is

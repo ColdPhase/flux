@@ -405,8 +405,8 @@ async def cohort(fixture, case, owner, peer, producer, observer, local_observer,
     fixture.assertEqual(await peer.evaluate("document.visibilityState"), "visible")
     directory = Path(os.environ["FLUX_LIVE_EVIDENCE"])
     directory.mkdir(parents=True, exist_ok=True)
-    await owner.context.tracing.start(screenshots=True, snapshots=True, sources=False)
-    await peer.context.tracing.start(screenshots=True, snapshots=True, sources=False)
+    await owner.context.tracing.start(screenshots=True, snapshots=False, sources=False)
+    await peer.context.tracing.start(screenshots=True, snapshots=False, sources=False)
     stop = asyncio.Event()
     latest = {}
     errors = []
