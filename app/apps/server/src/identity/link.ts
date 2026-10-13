@@ -17,7 +17,34 @@ export type LinkOutcome = 'linked' | 'identity_held' | 'already_linked' | 'link_
 
 const hash = (token: string) => createHash('sha256').update(token).digest('hex');
 
+/** A unique violation, possibly wrapped by the query builder. */
+const uniqueViolation = (error: unknown) => {
+  const candidate = error as { code?: unknown; cause?: { code?: unknown } } | null;
+  return (candidate?.code ?? candidate?.cause?.code) === '23505';
+};
+
 export function createLinkIntents(db: Database, now: () => Date = () => new Date()) {
+  async function attachLocked(intentId: string, providerId: string, subject: string): Promise<LinkOutcome> {
+    return db.transaction(async (tx) => {
+      const [intent] = await tx.select().from(schema.authLinkIntents).where(eq(schema.authLinkIntents.id, intentId)).for('update');
+      if (!intent || intent.state !== 'pending' || intent.expiresAt <= now() || intent.providerId !== providerId) return 'link_expired' as const;
+      // Serialize competing links for this account and this provider subject before reading holders.
+      await tx.execute(sql`SELECT id FROM auth_users WHERE id = ${intent.userId} FOR UPDATE`);
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${providerId + ':' + subject}, 0))`);
+      const [holder] = await tx.select({ userId: schema.authAccounts.userId }).from(schema.authAccounts)
+        .where(and(eq(schema.authAccounts.providerId, providerId), eq(schema.authAccounts.accountId, subject)));
+      if (holder && holder.userId !== intent.userId) return 'identity_held' as const;
+      if (!holder) {
+        const [other] = await tx.select({ id: schema.authAccounts.id }).from(schema.authAccounts)
+          .where(and(eq(schema.authAccounts.userId, intent.userId), eq(schema.authAccounts.providerId, providerId)));
+        if (other) return 'already_linked' as const;
+        await tx.insert(schema.authAccounts).values({ id: randomUUID(), userId: intent.userId, accountId: subject, providerId });
+      }
+      await tx.update(schema.authLinkIntents).set({ state: 'used', usedAt: now() }).where(eq(schema.authLinkIntents.id, intentId));
+      return 'linked' as const;
+    });
+  }
+
   return {
     /** Opens an intent for this password session and user. A newer intent replaces nothing: each token stands alone. */
     async open(userId: string, sessionId: string, providerId: string): Promise<string> {
@@ -41,23 +68,11 @@ export function createLinkIntents(db: Database, now: () => Date = () => new Date
      * or when the account is already linked to a different subject at this provider.
      */
     async attach(intentId: string, providerId: string, subject: string): Promise<LinkOutcome> {
-      return db.transaction(async (tx) => {
-        const [intent] = await tx.select().from(schema.authLinkIntents).where(eq(schema.authLinkIntents.id, intentId)).for('update');
-        if (!intent || intent.state !== 'pending' || intent.expiresAt <= now() || intent.providerId !== providerId) return 'link_expired' as const;
-        // Serialize competing links for this account and this provider subject before reading holders.
-        await tx.execute(sql`SELECT id FROM auth_users WHERE id = ${intent.userId} FOR UPDATE`);
-        await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${providerId + ':' + subject}, 0))`);
-        const [holder] = await tx.select({ userId: schema.authAccounts.userId }).from(schema.authAccounts)
-          .where(and(eq(schema.authAccounts.providerId, providerId), eq(schema.authAccounts.accountId, subject)));
-        if (holder && holder.userId !== intent.userId) return 'identity_held' as const;
-        if (!holder) {
-          const [other] = await tx.select({ id: schema.authAccounts.id }).from(schema.authAccounts)
-            .where(and(eq(schema.authAccounts.userId, intent.userId), eq(schema.authAccounts.providerId, providerId)));
-          if (other) return 'already_linked' as const;
-          await tx.insert(schema.authAccounts).values({ id: randomUUID(), userId: intent.userId, accountId: subject, providerId });
-        }
-        await tx.update(schema.authLinkIntents).set({ state: 'used', usedAt: now() }).where(eq(schema.authLinkIntents.id, intentId));
-        return 'linked' as const;
+      // N1: a writer outside this lock (an ordinary provider sign-in creating the subject's account) can still win
+      // the (provider, subject) unique index between our read and insert. That is the same refusal, never a 500.
+      return attachLocked(intentId, providerId, subject).catch((error: unknown) => {
+        if (uniqueViolation(error)) return 'identity_held' as const;
+        throw error;
       });
     },
   };

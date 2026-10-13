@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { randomUUID } from 'node:crypto';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { schema } from '@flux/db';
 import { createLinkIntents, LINK_TTL_MS } from '../../apps/server/src/identity/link.js';
 import { db } from './support/db.js';
@@ -67,6 +67,36 @@ describe('linking a password account to the provider before cutover', () => {
     const outcomes = await Promise.all(intents.map((intent) => links.attach(intent.id, providerId, 'sub-racing')));
     assert.deepEqual(outcomes.sort(), ['identity_held', 'linked']);
     assert.equal((await linksOf(first)).length + (await linksOf(second)).length, 1);
+  });
+
+  test('a provider sign-in that creates the subject during the link is identity_held, not a server error (N1)', async () => {
+    const linker = await account('racing-linker'); const signer = await account('racing-signer');
+    const links = createLinkIntents(db);
+    const token = await links.open(linker, 'session-linker', providerId);
+    const intent = (await links.pending(token, 'session-linker', linker))!;
+    // An ordinary provider sign-in does not take the link lock. Its uncommitted row is invisible to the link's read,
+    // so the link's insert waits on the (provider, subject) unique index and fails once the sign-in commits.
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => { release = resolve; });
+    const signIn = db.transaction(async (tx) => {
+      await tx.insert(schema.authAccounts).values({ id: randomUUID(), userId: signer, accountId: 'sub-signing-in', providerId });
+      await held;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    const outcome = links.attach(intent.id, providerId, 'sub-signing-in');
+    for (let i = 0; i < 200; i++) {
+      const waiting = await db.execute(sql`SELECT 1 FROM pg_stat_activity WHERE wait_event_type = 'Lock' AND query ILIKE 'insert into "auth_accounts"%'`);
+      if (waiting.rowCount) break;
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    const blocked = await db.execute(sql`SELECT 1 FROM pg_stat_activity WHERE wait_event_type = 'Lock' AND query ILIKE 'insert into "auth_accounts"%'`);
+    assert.ok((blocked.rowCount ?? 0) >= 1, 'the link reached its insert before the sign-in committed');
+    release();
+    await signIn;
+    assert.equal(await outcome, 'identity_held');
+    assert.deepEqual(await linksOf(linker), [], 'the linker gained nothing');
+    assert.deepEqual(await linksOf(signer), ['sub-signing-in']);
+    assert.equal((await intentState(token)).state, 'pending', 'the intent stays pending');
   });
 
   test('an account already linked to a different subject at this provider is refused', async () => {
