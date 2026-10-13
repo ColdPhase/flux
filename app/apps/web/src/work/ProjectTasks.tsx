@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { Link, Navigate, useLoaderData, useLocation, useRevalidator, useSearchParams, type LoaderFunctionArgs } from 'react-router';
 import type { Project, ProactiveComparisonOutcome, ProjectWorkViewQuery, WorkCounts, WorkItem, WorkObjectType, WorkRowProjection } from '@flux/contracts';
-import { AgentIdentity, Button, EmptyState, ErrorState, Icon, MEDIA, useMediaQuery } from '../ui';
+import { Button, EmptyState, ErrorState, Icon, MEDIA, useMediaQuery } from '../ui';
 import { getProject } from '../app/conversation-api';
 import { useShellActions } from '../app/shellContext';
 import { useShellData } from '../app/data';
@@ -93,18 +93,6 @@ function TaskViews({ counts, status, mine, onStatus, onMine }: {
       </div>
       <label className="ws-mine"><input type="checkbox" checked={mine} onChange={(event) => onMine(event.target.checked)} /> Only mine</label>
     </nav>
-  );
-}
-
-function Row({ kind, id, icon, iconClass, title, sub, right, onOpen, muted }: { kind: WorkObjectType; id: string; icon: ReactNode; iconClass?: string; title: string; sub: ReactNode; right?: ReactNode; onOpen: () => void; muted?: boolean }) {
-  return (
-    <li data-work-kind={kind} data-work-id={id}>
-      <button type="button" className={`ws-item${muted ? ' ws-item--muted' : ''}`} onClick={onOpen}>
-        <span className={`ws-item__st ${iconClass ?? ''}`} aria-hidden="true">{icon}</span>
-        <span className="ws-item__b"><span className="ws-item__t">{title}</span><span className="ws-item__s">{sub}</span></span>
-        {right ? <span className="ws-item__r">{right}</span> : null}
-      </button>
-    </li>
   );
 }
 
