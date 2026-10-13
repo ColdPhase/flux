@@ -411,7 +411,7 @@ class PhoneFinal(unittest.TestCase):
         page.goto("/projects")
         title = f"Print bed labels {uuid.uuid4().hex[:8]}"
         page.get_by_role("button", name="Create", exact=True).click()
-        project_picker = page.get_by_label("Project")
+        project_picker = page.get_by_role("dialog", name="Create").get_by_role("combobox")
         project_picker.select_option(self.second_project["id"])
         field = page.get_by_role("textbox", name="Create a task from text")
         expect(field).to_be_visible()
@@ -420,7 +420,7 @@ class PhoneFinal(unittest.TestCase):
         # An unfinished quick task stays private to this account and project across reload.
         page.reload()
         page.get_by_role("button", name="Create", exact=True).click()
-        project_picker = page.get_by_label("Project")
+        project_picker = page.get_by_role("dialog", name="Create").get_by_role("combobox")
         expect(project_picker).to_have_value(self.second_project["id"])
         field = page.get_by_role("textbox", name="Create a task from text")
         expect(field).to_have_value(title)
