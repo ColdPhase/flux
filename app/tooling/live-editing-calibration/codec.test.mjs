@@ -29,9 +29,8 @@ function harness(t) {
   const pool = new CodecPool(); const clients = []; let counter = 0;
   const h = { state: emptyRoom(), pool, intents: new IntentRegistry() };
   t.after(async () => { for (const client of clients) client.doc.destroy(); await h.intents.close(); await pool.close(); });
-  h.client = (actor = 'actor-a', { text = true } = {}) => {
+  h.client = (actor = 'actor-a', { text = true, doc = new Y.Doc() } = {}) => {
     // Public clientID is read once. Enrollment precedes getText, editor, and all local structs.
-    const doc = new Y.Doc();
     h.state = enroll(h.state, actor, doc.clientID, true);
     Y.applyUpdate(doc, Buffer.from(h.state.checkpoint, 'base64'), 'confirmed');
     const client = { actor, doc, replica: doc.clientID, text: text ? doc.getText('body') : null };
@@ -245,8 +244,18 @@ for (const order of ['peer clientID below the author', 'peer clientID above the 
   test(`a peer insertion inside a surrogate establishes only that public split transformation (${order})`, async (t) => {
     const h = harness(t); const a = h.client('actor-a');
     await h.accept(a, capture(a.doc, () => a.text.insert(0, '🙂')));
-    let b = h.client('actor-b');
-    while ((b.replica < a.replica) !== (order === 'peer clientID below the author')) b = h.client('actor-b');
+    let peerDoc;
+    for (let attempt = 0; attempt < 32; attempt += 1) {
+      const candidate = new Y.Doc();
+      if ((candidate.clientID < a.replica) === (order === 'peer clientID below the author')) {
+        peerDoc = candidate;
+        break;
+      }
+      candidate.destroy();
+    }
+    assert.ok(peerDoc, `could not generate the requested public clientID ordering in 32 attempts (${order})`);
+    const b = h.client('actor-b', { doc: peerDoc });
+    assert.equal(Object.keys(h.state.enrollments).length, 2, 'only the author and selected peer are enrolled');
     await h.accept(b, capture(b.doc, () => b.text.insert(1, 'X')));
     assert.equal(h.state.body, '\ufffdX\ufffd');
     const emoji = h.state.nodes.find((node) => node.text === '🙂'), peer = h.state.nodes.find((node) => node.text === 'X');
