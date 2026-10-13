@@ -153,7 +153,7 @@ export function PhoneCreate({ open, onClose, projects, projectId, go, onThought 
     onClose(); go(`${target.path}?compose=${files.length ? 'files' : 'link'}`);
   };
   const toComposerRef = useRef(toComposer);
-  toComposerRef.current = toComposer;
+  useEffect(() => { toComposerRef.current = toComposer; });
   useEffect(() => {
     const input = fileInput.current;
     if (!input) return;
