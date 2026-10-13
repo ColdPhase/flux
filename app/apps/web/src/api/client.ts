@@ -21,6 +21,8 @@ export interface ApiRequestInit {
   signal?: AbortSignal;
   /** Extra request headers such as If-Match or Idempotency-Key. */
   headers?: Record<string, string>;
+  /** Lets the request finish after the page is left (a delayed command sent on the way out). */
+  keepalive?: boolean;
 }
 
 export async function request<T>(path: string, init: ApiRequestInit = {}): Promise<T> {
@@ -32,6 +34,7 @@ export async function request<T>(path: string, init: ApiRequestInit = {}): Promi
       headers: { accept: 'application/json', ...(init.body === undefined ? {} : { 'content-type': 'application/json' }), ...init.headers },
       body: init.body === undefined ? undefined : JSON.stringify(init.body),
       signal: init.signal,
+      keepalive: init.keepalive,
     });
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') throw error;

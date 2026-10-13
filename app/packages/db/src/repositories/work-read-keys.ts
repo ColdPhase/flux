@@ -5,7 +5,7 @@ import type { DbExecutor } from './push.js';
 
 /** Structural counterpart of core's normalized selector; DB never imports the core layer. */
 export type NativeWorkViewSelector =
-  | { purpose: 'tasks'; group: 'all' | WorkGroup; mine: boolean }
+  | { purpose: 'tasks'; group: 'all' | WorkGroup; mine: boolean; workOnly?: boolean }
   | { purpose: 'choices'; choice: 'accepted_decisions' | 'pivot_work'; q: string }
   | { purpose: 'choices'; choice: 'result_work'; q: string; selected?: string }
   | { purpose: 'choices'; choice: 'parked_work'; q: string; decisionId: string }
@@ -31,12 +31,13 @@ export function nativeWorkViewKeySource(projectId: string, actor: PrincipalRef, 
       const owner = !selection.mine ? sql`true` : actor.kind === 'human' ? sql`${w.ownerUserId} = ${actor.id}` : sql`${w.ownerUserId} IS NULL AND ${w.ownerAgentId} = ${actor.id}::uuid`;
       parts.push(sql`SELECT 'work'::text AS kind, ${w.id} AS id, ${w.createdAt} AS created_at, ${workRank} AS rank FROM ${w} WHERE ${w.projectId} = ${projectId}::uuid AND (${predicate}) AND (${owner})`);
     }
-    if (group === 'all' || group === 'needs' || group === 'rules') {
+    // `workOnly`: the Tasks tab lists tasks; decisions wait in the Inbox and results show in their task (#342).
+    if (!selection.workOnly && (group === 'all' || group === 'needs' || group === 'rules')) {
       const predicate = group === 'needs' ? sql`${d.status} = 'proposed'` : group === 'rules' ? sql`${d.status} IN ('accepted', 'superseded')` : sql`true`;
       const mine = selection.mine ? sql`${d.status} = 'proposed'` : sql`true`;
       parts.push(sql`SELECT 'decision'::text AS kind, ${d.id} AS id, ${d.createdAt} AS created_at, ${decisionRank} AS rank FROM ${d} WHERE ${d.projectId} = ${projectId}::uuid AND (${predicate}) AND (${mine})`);
     }
-    if (group === 'all' || group === 'results') {
+    if (!selection.workOnly && (group === 'all' || group === 'results')) {
       const mine = selection.mine ? sql`${r.createdByKind} = ${actor.kind} AND ${r.createdById} = ${actor.id}` : sql`true`;
       parts.push(sql`SELECT 'result'::text AS kind, ${r.id} AS id, ${r.createdAt} AS created_at, 8 AS rank FROM ${r} WHERE ${r.projectId} = ${projectId}::uuid AND (${mine})`);
     }

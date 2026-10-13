@@ -1,5 +1,6 @@
 import {
   EMAIL_DESTINATIONS,
+  MAX_NOTIFICATION_PAUSE_HOURS,
   NEEDS_YOU_REASONS,
   NOTIFICATION_CHANNELS,
   NOTIFICATION_LEVELS,
@@ -43,6 +44,8 @@ export interface StoredPreferences {
   quietStart: number;
   quietEnd: number;
   timeZone: string;
+  /** Focus mode: push and email wait until this instant (F-026 S19). */
+  pausedUntil: Date | null;
   /** The morning summary (S22), at `summaryAt` minutes after local midnight in `timeZone`. */
   summaryEnabled: boolean;
   summaryAt: number;
@@ -55,6 +58,7 @@ export const DEFAULT_PREFERENCES: StoredPreferences = {
   quietStart: 22 * 60,
   quietEnd: 7 * 60,
   timeZone: 'UTC',
+  pausedUntil: null,
   summaryEnabled: false,
   summaryAt: 9 * 60,
 };
@@ -118,7 +122,7 @@ export function formatClock(minutes: number) {
 }
 
 /** Applies a validated change to stored preferences; unknown reasons, channels or values are refused. */
-export function applyPreferenceChange(current: StoredPreferences, command: UpdateNotificationPreferencesCommand): StoredPreferences {
+export function applyPreferenceChange(current: StoredPreferences, command: UpdateNotificationPreferencesCommand, now = new Date()): StoredPreferences {
   if (!command || typeof command !== 'object') throw new InvalidInputError('A change is required');
   const next: StoredPreferences = { ...current, channels: { ...current.channels } };
   if (command.level !== undefined) {
@@ -157,6 +161,7 @@ export function applyPreferenceChange(current: StoredPreferences, command: Updat
     }
     if (next.quietEnabled && next.quietStart === next.quietEnd) throw new InvalidInputError('Quiet hours need different start and end times', 'INVALID_QUIET_HOURS');
   }
+  if (command.pause !== undefined) next.pausedUntil = parsePause(command.pause, now);
   const summary = command.morningSummary;
   if (summary !== undefined) {
     if (!summary || typeof summary !== 'object') throw new InvalidInputError('morningSummary must be an object', 'INVALID_MORNING_SUMMARY');
@@ -167,6 +172,22 @@ export function applyPreferenceChange(current: StoredPreferences, command: Updat
     if (summary.at !== undefined) next.summaryAt = parseClock(summary.at, 'morningSummary.at', 'INVALID_MORNING_SUMMARY');
   }
   return next;
+}
+
+function parsePause(pause: unknown, now: Date): Date | null {
+  const until = pause && typeof pause === 'object' ? (pause as { until?: unknown }).until : undefined;
+  if (until === null) return null;
+  const at = typeof until === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(until) ? new Date(until) : null;
+  const limit = now.getTime() + MAX_NOTIFICATION_PAUSE_HOURS * 3600_000;
+  if (!at || Number.isNaN(at.getTime()) || at.getTime() <= now.getTime() || at.getTime() > limit) {
+    throw new InvalidInputError(`pause.until must be a future time within ${MAX_NOTIFICATION_PAUSE_HOURS} hours, or null`, 'INVALID_PAUSE');
+  }
+  return at;
+}
+
+/** The end of a pause that is still running at `now`, else null. */
+export function pausedUntil(stored: StoredPreferences, now: Date): Date | null {
+  return stored.pausedUntil && stored.pausedUntil.getTime() > now.getTime() ? stored.pausedUntil : null;
 }
 
 function clockFormatter(timeZone: string) {
@@ -188,15 +209,19 @@ export function localMinutes(now: Date, timeZone: string) {
 const MINUTE = 60_000;
 
 /**
- * When push and email may go out: `now`, or — if `now` falls inside the person's quiet hours
- * (the window may cross midnight) — the first real instant after `now` whose wall-clock time in
- * their IANA zone is outside the window, i.e. the quiet end. Instants are sampled through Intl,
- * so daylight-saving transitions are honoured: an end time that does not exist on a
- * spring-forward day resolves to the first valid instant after the gap, and an end time that
- * occurs twice on a fall-back day resolves to its first occurrence after `now`. The inbox is
- * never held back.
+ * When push and email may go out: `now`, or the end of a running focus pause, and then — if that
+ * instant falls inside the person's quiet hours (the window may cross midnight) — the first real
+ * instant after it whose wall-clock time in their IANA zone is outside the window, i.e. the quiet
+ * end. Instants are sampled through Intl, so daylight-saving transitions are honoured: an end time
+ * that does not exist on a spring-forward day resolves to the first valid instant after the gap,
+ * and an end time that occurs twice on a fall-back day resolves to its first occurrence after
+ * `now`. The inbox is never held back.
  */
 export function deliverableAt(stored: StoredPreferences, now: Date): Date {
+  return afterQuietHours(stored, pausedUntil(stored, now) ?? now);
+}
+
+function afterQuietHours(stored: StoredPreferences, now: Date): Date {
   if (!stored.quietEnabled || stored.quietStart === stored.quietEnd || !isTimeZone(stored.timeZone)) return now;
   const { quietStart: start, quietEnd: end } = stored;
   const formatter = clockFormatter(stored.timeZone);

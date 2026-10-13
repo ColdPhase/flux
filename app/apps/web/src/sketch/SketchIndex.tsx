@@ -1,10 +1,12 @@
-import { useEffect, useState } from 'react';
-import { Link, useNavigate, useRevalidator } from 'react-router';
+import { useEffect, useRef, useState } from 'react';
+import { Link, useLocation, useNavigate, useRevalidator } from 'react-router';
 import type { Sketch } from '@flux/contracts';
 import { Button, EmptyState, Icon, Spinner, useToast } from '../ui';
 import * as api from '../api/sketches';
 import { useShellData } from '../app/data';
 import { ensurePersonalSpace } from '../app/personalSpace';
+import { YourNotes } from '../app/YourNotes';
+import { useReadingPosition } from '../app/drafts';
 import { useStreamEvents } from '../api/stream';
 import { audience, sketchHref, when } from './format';
 import './sketch.css';
@@ -54,6 +56,9 @@ export function SketchIndex() {
   const navigate = useNavigate();
   const revalidator = useRevalidator();
   const toast = useToast();
+  // The Sketchbook keeps its reading position per account across view switches and reloads, as Home's views do.
+  const scroller = useRef<HTMLDivElement>(null);
+  useReadingPosition(scroller, me.user.id, useLocation().pathname);
   const [state, setState] = useState<Loaded | 'loading' | 'failed'>('loading');
   const [creating, setCreating] = useState(false);
   const [refresh, setRefresh] = useState(0);
@@ -89,7 +94,7 @@ export function SketchIndex() {
   const action = <Button variant="primary" icon="plus" busy={creating} onClick={() => void start()}>New sketch</Button>;
 
   return (
-    <div className="sk-page">
+    <div className="sk-page" ref={scroller}>
       <div className="sk sk--index">
         {state === 'loading' ? <div className="sk-page--center"><Spinner label="Loading sketches" /></div> : null}
         {state === 'failed' ? (
@@ -134,6 +139,7 @@ export function SketchIndex() {
             ) : null}
           </>
         ) : null}
+        <YourNotes />
       </div>
     </div>
   );

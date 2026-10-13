@@ -144,6 +144,7 @@ export * from './repositories/proactive-recovery.js';
 export { COMPARISON_CONTEXT_LIMITS } from './repositories/proactive-sources.js';
 export * from './background-key-crypto.js';
 export * from './repositories/notifications.js';
+export * from './repositories/needs-you.js';
 export * from './repositories/search.js';
 export * from './repositories/personal-runs.js';
 export * from './repositories/project-export.js';
@@ -160,6 +161,8 @@ export * from './repositories/cowork-unit-transitions.js';
 export * from './repositories/github.js';
 export * from './repositories/agent-execution.js';
 export * from './repositories/agent-orientation.js';
+export * from './repositories/agent-stops.js';
+export * from './repositories/agent-questions.js';
 export * from './repositories/agent-playbook.js';
 export * from './repositories/agent-policies.js';
 

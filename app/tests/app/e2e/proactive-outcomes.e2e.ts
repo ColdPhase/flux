@@ -52,7 +52,7 @@ test('all pages render quiet comparisons and insufficient evidence with current 
       // must restore the whole project before landing on real persisted work/results.
       const views = page.getByRole('navigation', { name: 'Task views' });
       const jumps = page.getByRole('navigation', { name: 'Project work sections' });
-      for (const [label, target] of [['Results', 'g-results'], ['Work', 'g-open']] as const) {
+      for (const [label, target] of [['Work', 'g-open']] as const) {
         await views.getByRole('button', { name: /^Open / }).click();
         await views.getByRole('checkbox', { name: 'Only mine', exact: true }).check();
         assert.equal(await page.locator(`#${target}`).count(), 0, 'the destination is hidden by the saved view');

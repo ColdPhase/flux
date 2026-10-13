@@ -39,8 +39,10 @@ export interface ProjectAgentConnection {
   session: { startedAt: string; expiresAt: string } | null;
   /** The connection's latest completed action in this project; lease renewals (heartbeats) are not activity. */
   lastActivity: { operation: AgentOperation; at: string } | null;
-  /** The task unit this connection holds in this project now (assigned, working or paused); null when it holds none. */
-  currentWork: { taskId: string; taskTitle: string; role: 'execute' | 'review' | 'plan'; state: 'pending' | 'claimed' | 'paused' } | null;
+  /** The task unit this connection holds in this project now; null when it holds none. */
+  currentWork: { taskId: string; taskTitle: string; role: 'execute' | 'review' | 'plan'; state: 'pending' | 'claimed' | 'paused';
+    /** Expiry only when the claimed lease matches this connection's current usable session and project ceiling. */
+    liveClaimExpiresAt: string | null } | null;
   /** Requests addressed to this connection that are still open here (#160 AC-5), oldest first. Quiet acknowledgments are not listed. */
   requests: ProjectAgentRequest[];
 }

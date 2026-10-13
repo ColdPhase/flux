@@ -83,29 +83,29 @@ for (const [engine, mobile] of [['chromium', false], ['webkit', true]] as const)
       await ownRequests.getByRole('button', { name: /Review/ }).click();
       await expect(ownRequests.getByRole('button', { name: 'Allow', exact: true })).toHaveCount(0);
       const outsiderPage = await signedIn(viewerContext, viewer, path);
-      await expect(outsiderPage.getByRole('heading', { name: 'Working together' })).toBeVisible();
+      await expect(outsiderPage.getByRole('heading', { name: 'Agents', exact: true })).toBeVisible();
       await expect(outsiderPage.getByRole('region', { name: 'Assistant join requests' })).toHaveCount(0);
       const refused = await viewerContext.request.post(`${origin}/api/v1/projects/${place.id}/assistant-join-requests/${pending[0]!.id}/allow`, { headers: { origin } });
       assert.equal(refused.status(), 403);
       const managerPage = await signedIn(managerContext, manager, '/inbox');
-      const invitation = managerPage.locator('.inbox__item').filter({ hasText: 'Ada’s assistant' });
-      await expect(invitation).toHaveCount(1); await expect(invitation).toContainText('Asked you');
-      await expect(invitation.locator('.inbox__title')).toHaveText('Ada’s assistant');
+      const invitation = managerPage.locator('.nyc').filter({ hasText: 'Ada’s assistant' });
+      await expect(invitation).toHaveCount(1);
+      await expect(invitation.locator('.nyc__eyebrow')).toContainText('Ada’s assistant');
+      await expect(invitation.locator('.nyc__title')).toHaveText(`${owner.name}'s assistant asks to join`);
       await expect(invitation).toContainText('for Ada Kowalska Nowak – Community Sensor Team');
-      await expect(invitation.locator('.inbox__body')).toContainText('Community garden sensors');
+      await expect(invitation.locator('.nyc__reason')).toContainText('Community garden sensors');
       await expect(invitation.locator('.kreska')).toHaveCount(1);
       await expect(invitation.locator('.agent-tag')).toHaveText('Agent');
-      await expect(invitation.locator('.inbox__review')).toHaveText('Review');
-       // Final design §3 glyph scale (16/20/24/32/48): the row's Kreska is the 16px step, centred in its 28px icon well.
+      await expect(invitation.getByRole('button', { name: 'Review', exact: true })).toBeVisible();
+       // Final design §3 glyph scale (16/20/24/32/48): the assistant identity uses Kreska without a human avatar holder.
        for (const choice of ['light', 'dark'] as const) {
          await theme(managerPage, choice);
-         const glyph = (await invitation.locator('.kreska').boundingBox())!; const well = (await invitation.locator('.inbox__ic').boundingBox())!;
-         assert.deepEqual([glyph.width, glyph.height], [16, 16], `${choice} Inbox Kreska is 16x16`);
-         assert.ok(Math.abs(glyph.x + glyph.width / 2 - (well.x + well.width / 2)) <= 0.5 && Math.abs(glyph.y + glyph.height / 2 - (well.y + well.height / 2)) <= 0.5, `${choice} Inbox Kreska is centred`);
+         const glyph = (await invitation.locator('.nyc__face .kreska').boundingBox())!;
+         assert.deepEqual([glyph.width, glyph.height], [32, 32], `${choice} Needs you Kreska is 32x32`);
          await capture(managerPage, `join-${engine}-manager-needs-you-${choice}`);
-         if (evidence) await invitation.screenshot({ path: join(evidence, `join-${engine}-inbox-row-${choice}.png`) });
+         if (evidence) await invitation.screenshot({ path: join(evidence, `join-${engine}-needs-you-card-${choice}.png`) });
        }
-      await invitation.click(); await expect(managerPage).toHaveURL(`${origin}${path}`);
+      await invitation.getByRole('button', { name: 'Review', exact: true }).click(); await expect(managerPage).toHaveURL(`${origin}${path}`);
       const requests = managerPage.getByRole('region', { name: 'Assistant join requests' });
       await theme(managerPage, 'light'); await capture(managerPage, `join-${engine}-manager-row-light`);
       const review = requests.locator('.agents-join__toggle');
@@ -125,11 +125,11 @@ for (const [engine, mobile] of [['chromium', false], ['webkit', true]] as const)
       assert.equal((await pool.query('SELECT role FROM project_grants WHERE project_id=$1 AND agent_id=$2', [place.id,agent.id])).rows[0].role, 'contributor');
       assert.equal((await pool.query('SELECT state FROM assistant_join_requests WHERE id=$1', [pending[0]!.id])).rows[0].state, 'accepted');
       await ownerPage.reload(); await expect(ownerPage.getByRole('button', { name: 'Ask a manager to add my assistant', exact: true })).toHaveCount(0);
-      await expect(ownerPage.locator('.agents__connections')).toContainText('Ada Kowalska Nowak');
-      assert.ok(await ownerPage.locator('.agents__connections .agent-tag').count(), 'the joined assistant stays visibly an Agent');
+      await expect(ownerPage.locator('.agents-list')).toContainText('Ada’s assistant');
+      assert.ok(await ownerPage.locator('.agents-list .agent-tag').count(), 'the joined assistant stays visibly an Agent');
       if (evidence) writeFileSync(join(evidence, `join-${engine}-manifest.json`), JSON.stringify({ sourceSha: process.env.FLUX_E2E_SOURCE_SHA,
         engine, viewport: options.viewport, cssZoom: 1, themes: ['light','dark'], compute: 'fake metadata only; zero model calls',
-        observed: ['Request→Inbox question→manager Review/Allow', 'no grant before Allow', 'ordinary reader sees no request and API Allow403', 'contributor grant persisted after Allow', 'failed Allow keeps pending request', 'keyboard Enter', ...(mobile ? ['44px targets'] : [])] }, null, 2));
+        observed: ['Request→Needs You question with immutable assistant/owner identity→manager Review/Allow', 'no grant before Allow', 'ordinary reader sees no request and API Allow403', 'contributor grant persisted after Allow', 'failed Allow keeps pending request', 'keyboard Enter', ...(mobile ? ['44px targets'] : [])] }, null, 2));
     } finally { await Promise.all(contexts.map((context) => context.close())); await browser.close(); }
   });
 }

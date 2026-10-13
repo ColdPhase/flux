@@ -49,7 +49,7 @@ export const AGENT_MCP_ENTRIES: readonly AgentMcpEntry[] = [
   effect('flux_remove_thought', 'map.thought.delete'), effect('flux_move_thoughts', 'map.positions.update'),
   effect('flux_link_thoughts', 'map.link.create'), effect('flux_unlink_thoughts', 'map.link.delete'),
   effect('flux_create_doc', 'doc.create'), effect('flux_update_doc', 'doc.update'),
-  effect('flux_start_conversation', 'conversation.create'), effect('flux_reply_in_conversation', 'conversation.reply'),
+  effect('flux_start_conversation', 'conversation.create'), effect('flux_reply_in_conversation', 'conversation.reply'), effect('flux_ask_question', 'conversation.reply'),
   effect('flux_create_unit', 'cowork.unit.create'), effect('flux_claim_unit', 'cowork.claim'),
   effect('flux_renew_unit', 'cowork.renew'), effect('flux_release_unit', 'cowork.release'),
   effect('flux_complete_unit', 'cowork.unit.complete'), effect('flux_transfer_unit', 'cowork.unit.transfer'),
