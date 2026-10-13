@@ -256,6 +256,129 @@ pixels and resource windows, with production/harness pins and retained failures.
 Raw receiver reports now supply the existing audio/video diagnostic rows;
 the locked SDK audio projection's missing packet fields are not synthesized.
 
+## Platform rows and direct-path DTLS (#63 AC-3, AC-4; 2026-10-10)
+
+Scope: emulated browser rows and a direct-path DTLS assertion in Docker. No
+physical device, public host, real network, k3s deployment or receiver-quality
+calibration is covered here; those remain open in #63.
+
+### Direct-path DTLS
+
+`app/tests/app/e2e/live-sfu-direct-dtls.e2e.ts` runs in `check_live_sfu.sh`
+(listed in the `live-sfu-test` command of `docker/compose.live.test.yaml`). Two
+authorized Chromium clients reach the pinned SFU on its own ICE candidates with
+no UDP restriction. The positive case waits for real RTP (owner outbound RTP
+bytes and member inbound RTP packets), then requires every selected pair to be
+a non-relay candidate with no `relayProtocol`, and every transport that carried
+RTP to complete DTLS with the signalled fingerprint (`dtlsSrtpViolations`). The
+negative control tampers with the signalled fingerprint on the same path; DTLS
+fails and no RTP is received. Candidate-pair byte counts are not used as media
+evidence: they include non-RTP DTLS traffic (a first attempt failed on exactly
+that and was corrected).
+
+Observed 2026-10-10, `./scripts/check_live_sfu.sh` with
+`FLUX_LIVE_TEST_PORT=19235` and the ICE ports `19236`–`19238`:
+
+```
+✔ direct path: both clients complete DTLS-SRTP with the signalled certificate on a non-relay pair (3336.701293ms)
+✔ negative control, direct path: a tampered SFU fingerprint fails DTLS and carries no media (16112.746674ms)
+✔ Flux revocation retires the real SFU room, rejects original and refreshed grants, and rejoins a remaining member (2586.189335ms)
+✔ sign-out ends the signed-out session media, refuses its grants at the gate and leaves others connected (13203.638423ms)
+✔ reconciliation retires a participant connected with a pre-#128 grant and keeps an admitted one (24019.098677ms)
+✔ real SFU restart rotates a lost room; old original and refreshed tokens remain unusable (8111.323545ms)
+```
+
+Not covered: Firefox or WebKit DTLS, TURN-credential residual risk, and any
+run on the real host.
+
+### Emulated platform rows
+
+`app/tests/ui/test_live_platforms.py` is LIVE-only. Run it with
+`FLUX_LIVE_UI_PATTERN=test_live_platforms.py ./scripts/check_live_ui.sh` and
+the `FLUX_LIVE_UI_*` ports (UI, mailpit, ICE TCP, ICE UDP and TURN UDP; all five must be set, distinct). Each row joins a session that a
+desktop Chromium participant starts. Engines come from the pinned Playwright
+image `mcr.microsoft.com/playwright/python:v1.62.0-noble`, which ships Chromium,
+Firefox and WebKit.
+
+Capability sources, checked 2026-10-10:
+
+- [MDN browser-compat-data, `api/MediaDevices.json`](https://github.com/mdn/browser-compat-data/blob/main/api/MediaDevices.json)
+  (the file carries no date): `getDisplayMedia` is unsupported in `chrome_android`,
+  `firefox_android` and `safari_ios`, and supported in `chrome`, `firefox` and `safari`.
+- Observed in the engines (probe in the same image, before any emulation):
+  `navigator.mediaDevices.getDisplayMedia` is a function in Chromium 151.0.7922.34,
+  Firefox 153.0 and WebKit 26.5 even under device emulation. Playwright's Linux builds
+  do not reproduce the mobile limit, so each mobile row removes the function explicitly.
+  The result is a documented capability state, not a device.
+
+Result of the final run on the committed test file (`Ran 4 tests in 60.520s`, `OK`, 2026-10-10):
+
+| Row | Engine (version) | Device profile | Before → after emulation | Received host screen (decoded width) | Camera denial | Microphone track level |
+| --- | --- | --- | --- | --- | --- | --- |
+| Android Chrome | Chromium 151.0.7922.34 | Pixel 7 descriptor (mobile, touch) | function → undefined | 2560 | verified: instrumented call; strip reads "blocked by the browser" | instrumented, live |
+| Android Firefox | Firefox 153.0 | Pixel 7 viewport and user agent; no touch (`maxTouchPoints` 0, `coarsePointer` false); no `is_mobile` | function → undefined | 2560 | verified (same) | instrumented, live |
+| iPhone Safari | WebKit 26.5 | iPhone 13 | function → undefined | 2560 | verified: the prototype hook counts the call | instrumented, live |
+| iPad Safari | WebKit 26.5 | iPad (gen 7), tablet layout | function → undefined | 2560 | verified (same) | instrumented, live |
+
+Every row also checks: no screen-share control in the strip; the session panel
+says "This browser cannot share its screen"; microphone publishes; the desktop
+host's shared screen decodes; "Back to work" and the camera control are reached
+by a pointer click (Playwright's hit-target check, no fallback); a viewport
+rotation keeps the session with no horizontal overflow; a dispatched
+`visibilitychange` keeps the session; the row leaves. The rotation and visibility
+steps are a viewport change and a dispatched event, not an operating-system
+rotation or suspension.
+
+Capture counts are observed before they are used. `INSTRUMENT` (instance hook,
+`test_live_sessions.py`) and `PROTOTYPE_INSTRUMENT` (on `MediaDevices.prototype`,
+which WebKit's capture calls reach) write the same counters. Each row asserts that
+its denied camera request was counted (`0 → 1`) and that at least two captures
+were counted before the rotation step, so the "no new capture" equality compares
+real counters.
+
+Negative controls on this test file (2026-10-10):
+
+- (a) Prototype hook removed. Android Chrome and Android Firefox pass; both WebKit
+  rows fail at `0 not greater than 0 : the camera request reached the instrumented
+  getUserMedia` (`Ran 4 tests in 75.545s`, `FAILED (failures=2)`).
+- (b) A real `getUserMedia({ audio: true })` injected between the before and after
+  readings. All four rows fail at `3 != 2 : rotation and visibility return request
+  no capture` (`Ran 4 tests in 79.988s`, `FAILED (failures=4)`).
+- Earlier, on the pre-merge head `cec9cf43` and not rerun on the merged head:
+  `canPublishScreen()` forced to return `true` (temporary edit to
+  `app/apps/web/src/live/capture.ts`, reverted with git) gave `Ran 4 tests in
+  130.891s`, `FAILED (failures=4)`.
+
+Firefox join. The Join → Live wait passed in each of six runs here, including one
+with Firefox first on a fresh stack (`Ran 4 tests in 70.839s`, `OK`). A reviewer's
+run on another host reported the same wait failing. That host's log is not
+available here, so the failure is not reproduced in this harness and is not
+classified. The row now writes `joinDiagnostics` (region text, sockets and their
+states, console and page errors) into `live-platform-rows.json` when the wait
+fails, so a recurrence can be classified. Firefox is verified in this harness
+only.
+
+Findings from the review, status on the merged head:
+
+1. **Stage "Back to work" by pointer.** Reachable in all four rows at 412, 390 and
+   810 px after main's stacking change to `live.css` (see the next section). The
+   test now requires the pointer click; the earlier Escape fallback is removed.
+2. **Tablet camera control.** Reachable by pointer on the iPad row after the same
+   change. The DOM-click fallback is removed.
+3. **WebKit camera denial.** Verified through `PROTOTYPE_INSTRUMENT`. Negative
+   control (a) shows the instance hook alone records nothing in WebKit.
+4. **WebKit microphone track.** Verified through `PROTOTYPE_INSTRUMENT`
+   (`liveMicrophoneTracksInstrumented` 1 and live in both WebKit rows).
+
+Not covered by these rows: physical devices (optional under
+[#266](https://github.com/ColdPhase/flux/issues/266) item 10); real lock, background
+or suspension; headphone and Bluetooth changes (`devicechange` is not dispatched);
+offline and rejoin (Playwright's `set_offline` does not cut WebRTC UDP, so no media
+cut is claimed); service-worker update; the desktop Fedora/Wayland, Windows and
+macOS rows; real screen publication in Firefox or WebKit; system audio; the
+reviewer's Firefox join failure (above). Playwright's Firefox does not emulate
+`is_mobile` or touch, so the Firefox row is viewport and user agent only.
+
 ## Pointer reachability and camera state on phone and tablet (#63; 2026-10-10)
 
 Two stacking faults put conversation content over live controls on phone and tablet widths:
@@ -267,7 +390,7 @@ The fix in [live.css](../../app/apps/web/src/live/live.css) uses the existing la
 
 [`test_live_reachability.py`](../../app/tests/ui/test_live_reachability.py) runs with `FLUX_LIVE_UI_PATTERN=test_live_reachability.py ./scripts/check_live_ui.sh`. Each control gets `elementFromPoint` at its centre and then a real click or tap. On unmodified main three cases fail with the covering elements above. With the fix all four pass, including the phone sheet painting above the strip. On unmodified main the same suite's `test_live_sessions` `test_02` and `test_03` fail on this interception; with the fix both pass.
 
-**WebKit camera state (iPad, gen 7 emulation).** After a tap the strip reads "Camera on", while the instance-level `getUserMedia` hook in the test instrumentation records 0 calls. A probe on `MediaDevices.prototype.getUserMedia` records 1. The host's `video.lv-cam__video` decodes kai's camera at 1280×720. So a capture request reached the browser, and "on" is backed by a published track that the host decodes; this is not a product defect. The WebKit call reaches the prototype without going through the instance's own-property hook. The mechanism is not established. The instrumented track list (`window.__live.tracks`) therefore cannot see WebKit captures. By inference only, the same reason explains the zero WebKit microphone count recorded for #462's platform rows; that was not tested here.
+**WebKit camera state (iPad, gen 7 emulation).** After a tap the strip reads "Camera on", while the instance-level `getUserMedia` hook in the test instrumentation records 0 calls. A probe on `MediaDevices.prototype.getUserMedia` records 1. The host's `video.lv-cam__video` decodes kai's camera at 1280×720. So a capture request reached the browser, and "on" is backed by a published track that the host decodes; this is not a product defect. The WebKit call reaches the prototype without going through the instance's own-property hook. The mechanism is not established. The instrumented track list (`window.__live.tracks`) therefore cannot see WebKit captures. The platform rows in the section above observe WebKit camera and microphone calls through `PROTOTYPE_INSTRUMENT` in `test_live_platforms.py`; this section's reachability suite still uses the instance hook only.
 
 **Known and unrelated:** `test_live_sessions` `test_01_two_people_blocker_join_show_screen_result_leave` fails at line 365, waiting for the Map sketch link "Why are night frames black". It fails the same way on unmodified main and with the fix. It was not investigated here.
 
