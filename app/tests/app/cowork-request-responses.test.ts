@@ -514,6 +514,11 @@ test('the Agents view shows each connection its held unit and its open request w
   assert.equal(claimed.requests[0]!.state, 'claimed');
   assert.equal(claimed.currentWork!.state, 'claimed');
   assert.ok(claimed.currentWork!.liveClaimExpiresAt, 'only the current live session lease is exposed');
+  const earlierPending = await f.w.unit(f.a.id, f.run, 'plan', f.marekClaude.connection.id);
+  await pool.query("UPDATE cowork_units SET created_at=clock_timestamp()-interval '1 day' WHERE id=$1", [earlierPending]);
+  const selected = reviewer(await view()).currentWork!;
+  assert.equal(selected.role, 'review', 'the newer live claim wins over an older pending unit');
+  assert.ok(selected.liveClaimExpiresAt);
   const lease = (await pool.query('SELECT lease_session_id, lease_expires_at FROM cowork_units WHERE id=$1', [f.reviewUnit])).rows[0]!;
   const currentLeaseSession = lease.lease_session_id as string;
   await pool.query('UPDATE cowork_units SET lease_session_id=$2 WHERE id=$1', [f.reviewUnit, randomUUID()]);

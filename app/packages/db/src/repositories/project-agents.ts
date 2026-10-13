@@ -121,13 +121,18 @@ export function projectAgentRepository(db: Database, policy: ProjectAgentPolicy)
             inArray(schema.coworkUnits.state, ['pending', 'claimed', 'paused'])))
           .orderBy(asc(schema.coworkUnits.createdAt), asc(schema.coworkUnits.id));
         const work = new Map<string, { taskId: string; taskTitle: string; role: 'execute' | 'review' | 'plan'; state: 'pending' | 'claimed' | 'paused'; liveClaimExpiresAt: string | null }>();
-        for (const unit of units) if (!work.has(unit.connectionId)) {
+        for (const unit of units) {
           const session = usable.has(unit.connectionId) ? sessions.get(unit.connectionId) : undefined;
           const liveClaim = unit.state === 'claimed' && unit.leaseUnexpired && !!unit.leaseExpiresAt
             && !!unit.leaseSessionId && unit.leaseSessionId === session?.sessionId;
-          work.set(unit.connectionId, { taskId: unit.taskId, taskTitle: unit.taskTitle, role: unit.role,
-            state: unit.state as 'pending' | 'claimed' | 'paused',
-            liveClaimExpiresAt: liveClaim ? unit.leaseExpiresAt!.toISOString() : null });
+          const current = work.get(unit.connectionId);
+          // Prefer a provable live claim over earlier pending/expired units; retain the old deterministic
+          // first-unit choice as the fallback when no current claim exists.
+          if (!current || (liveClaim && !current.liveClaimExpiresAt)) {
+            work.set(unit.connectionId, { taskId: unit.taskId, taskTitle: unit.taskTitle, role: unit.role,
+              state: unit.state as 'pending' | 'claimed' | 'paused',
+              liveClaimExpiresAt: liveClaim ? unit.leaseExpiresAt!.toISOString() : null });
+          }
         }
 
         // Open requests addressed to each connection, with the sender's connection and owner. Resolved, declined and

@@ -110,8 +110,10 @@ to the connection's current usable runtime session, with the project still insid
 that connection's current project ceiling. Return the lease expiry only while
 that proof holds; the client ages the Working expression at that known deadline
 without another API read. Keep the recorded unit state visible when proof is
-absent, but report it as held work. The sidebar's separate owned-agent projection
-is not a substitute for this project-scoped Agents API.
+absent, but report it as held work. If a connection has multiple units, prefer a
+validated live claim over older pending or expired units; retain the existing
+deterministic first-unit choice when none is live. The sidebar's separate
+owned-agent projection is not a substitute for this project-scoped Agents API.
 
 
 ## C-1 known-deadline and expression amendment, 2026-10-11

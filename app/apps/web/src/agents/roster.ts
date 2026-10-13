@@ -27,7 +27,7 @@ export function connectionState(connection: ProjectAgentConnection, now: number)
 }
 
 /** The next expiry still live in the displayed observation, even if effect setup happens later. */
-export function nextSessionExpiry(connections: readonly ProjectAgentConnection[] | undefined, now: number): number | null {
+export function nextAgentDeadline(connections: readonly ProjectAgentConnection[] | undefined, now: number): number | null {
   let next = Infinity;
   for (const connection of connections ?? []) {
     if (connection.state === 'session_open' && connection.session) {
