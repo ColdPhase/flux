@@ -393,9 +393,9 @@ function AppLayoutContent() {
     { label: railed ? 'Show the sidebar' : 'Hide the sidebar', keys: '[', run: toggleRail },
   ];
 
-  // The phone's header (F-026 §4 Phone): inside a project or a conversation the round Back, the title as
-  // the view menu with the view and who is here beneath it, and Search; on Home the logo, the same menu
-  // and the avatar; on the other main places a large title and the avatar.
+  // The phone's header (F-026 §4 Phone): inside a project or a conversation the round Back and the
+  // title as the view menu with the view and who is here beneath it. The dock owns Search whenever
+  // it is present; a conversation keeps header Search because it hides the dock.
   const goBack = (fallback: string) => { if (location.key !== 'default') void navigate(-1); else void navigate(fallback); };
   const searchButton = <IconButton icon="search" label="Search" size={20} className="phead__round" onClick={shell.openSearch} />;
   const detailsEntry = () => { setDetailsView('place'); toggleDetails(true); };
@@ -417,6 +417,7 @@ function AppLayoutContent() {
   const mainPlace = ['/projects', '/inbox', '/search', '/dm', '/settings'].includes(location.pathname) || /^\/inbox\//.test(location.pathname);
   const homePage = /^\/(tasks|map|docs)(\/|$)/.test(location.pathname);
   const backOnly = settingsPage || location.pathname === '/projects/new' || dmId === 'new' || homePage;
+  const phoneDockVisible = phone && !detailsOpen && !phoneHidesDock(location.pathname);
   const phoneHeader = (
     <header className={`phead${mainPlace ? ' phead--large' : ''}`}>
       {backOnly ? (
@@ -444,7 +445,7 @@ function AppLayoutContent() {
         <span className="top__actions" ref={setActionSlot} />
         {activeProject && /^\/projects\/[^/]+\/conversations\//.test(location.pathname) ? <ProjectAgentStop projectId={activeProject.id} /> : null}
         {activeProject ? <LiveEntry /> : null}
-        {activeProject || activeDm ? searchButton : null}
+        {(activeProject || activeDm) && !phoneDockVisible ? searchButton : null}
         {!backOnly && !activeProject && !activeDm && location.pathname !== '/settings' ? <PhoneAvatar name={me.user.name} /> : null}
       </div>
     </header>
@@ -498,7 +499,7 @@ function AppLayoutContent() {
           <Outlet />
           <DeferredLiveStage />
         </div>
-        {phone && !detailsOpen && !phoneHidesDock(location.pathname) ? (
+        {phoneDockVisible ? (
           <PhoneDock places={places} onSearch={shell.openSearch} onCreate={() => setCreateOpen(true)} create={phoneOffersCreate(location.pathname)} />
         ) : null}
       </div>

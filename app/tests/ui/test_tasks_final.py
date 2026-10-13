@@ -337,6 +337,8 @@ class TasksFinalJourney(unittest.TestCase):
         for dark in (False, True):
             with self.subTest(dark=dark):
                 page = self.tasks(phone=True, dark=dark)
+                expect(page.locator(".phone-dock__search")).to_have_count(1)
+                expect(page.get_by_role("button", name="Search", exact=True)).to_have_count(1)
                 expect(page.locator(".tb-bar")).to_be_hidden()  # no search, board switch, Decisions or New Task tools
                 expect(page.get_by_role("radiogroup", name="Show tasks as")).to_be_hidden()
                 expect(page.get_by_label("Search tasks")).to_be_hidden()
@@ -639,17 +641,24 @@ class TasksFinalJourney(unittest.TestCase):
         observed = page.evaluate("""() => {
             const toast = document.querySelector('.ui-toast');
             const nav = document.querySelector('.ui-bottomnav');
+            const fab = document.querySelector('.phone-fab');
             const t = toast.getBoundingClientRect(), n = nav.getBoundingClientRect();
-            const controls = [...toast.querySelectorAll('button'), ...nav.querySelectorAll('a')].map(el => {
+            const f = fab?.getBoundingClientRect() ?? null;
+            const intersects = (a,b) => Math.min(a.right,b.right) > Math.max(a.left,b.left) && Math.min(a.bottom,b.bottom) > Math.max(a.top,b.top);
+            const controls = [...toast.querySelectorAll('button'), ...nav.querySelectorAll('a'), ...(fab ? [fab] : [])].map(el => {
                 const r = el.getBoundingClientRect();
                 const hit = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
                 return {name: el.getAttribute('aria-label') || el.textContent, width: r.width, height: r.height,
                     hit: hit === el || el.contains(hit), within: r.left >= 0 && r.right <= innerWidth && r.top >= 0 && r.bottom <= innerHeight};
             });
             return {gap: n.top - t.bottom, toast: {top: t.top, bottom: t.bottom, left: t.left, right: t.right},
-                nav: {top: n.top, height: n.height}, controls};
+                nav: {top: n.top, height: n.height}, fab: f && {left: f.left, right: f.right, top: f.top, bottom: f.bottom},
+                toastFabGap: f ? f.top - t.bottom : null, toastOverlapsFab: f ? intersects(t, f) : false, controls};
         }""")
         self.assertGreaterEqual(observed['gap'], 8)
+        self.assertFalse(observed['toastOverlapsFab'], 'the persistent Undo toast must not cover the floating Create control')
+        if observed['fab']:
+            self.assertGreaterEqual(observed['toastFabGap'], 8, 'leave a clear gap between feedback and floating Create')
         self.assertGreaterEqual(observed['toast']['top'], 0)
         self.assertGreaterEqual(observed['toast']['left'], 0)
         self.assertLessEqual(observed['toast']['right'], width)

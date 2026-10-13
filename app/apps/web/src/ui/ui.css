@@ -261,6 +261,11 @@ svg { flex: none; }
   position: fixed; left: 50%; bottom: var(--toast-bottom); transform: translateX(-50%); z-index: var(--z-toast);
   display: flex; flex-direction: column; align-items: center; gap: 8px; width: max-content; max-width: calc(100vw - 32px); pointer-events: none;
 }
+/* The phone Create control floats above the dock. Keep action feedback above it too, so its
+   persistent Undo toast cannot intercept Create while both are visible. */
+body:has(.phone-fab) .ui-toasts {
+  --toast-bottom: max(20px, calc(env(safe-area-inset-bottom) + 12px), calc(var(--ui-bottomnav-inset, 0px) + 74px));
+}
 .ui-toast {
   display: flex; align-items: center; gap: 10px; min-height: 44px; max-width: 100%; padding: 4px 6px 4px 16px; border-radius: var(--r-pill);
   background-color: var(--inv); background-image: var(--grad-inv); color: var(--oninv); font-size: var(--fs-base); font-weight: 500; line-height: 1.4; box-shadow: var(--sh-pop); pointer-events: auto;
