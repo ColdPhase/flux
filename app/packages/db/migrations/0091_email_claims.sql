@@ -7,7 +7,7 @@ ALTER TABLE auth_users ADD COLUMN verification_required boolean NOT NULL DEFAULT
 -- A provider sign-in whose verified email belongs to another account. Pending: that account is unverified and the
 -- person may claim the address from the browser that completed the provider sign-in. Claimed: the audit record.
 -- `held_by` is the released account's id, kept as text without a foreign key so the record outlives that account.
--- Only the SHA-256 of the cookie token is stored. Sparse after 0071 (0072-0073 belong to other branches).
+-- Only the SHA-256 of the cookie token is stored. Numbered after main's 0090.
 CREATE TABLE auth_email_claims (
   id text PRIMARY KEY,
   token_hash text NOT NULL UNIQUE,
