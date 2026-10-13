@@ -8,7 +8,7 @@ Source head: `7084120254f35c44ca542b29941aee873abe1938`.
 - Chromium exact head `70841202`: corrected PhoneFinal09 passed 1/1. The only intervening change is that test expectation.
 - WebKit exact head `70841202`: AppShell02→03→04→04a, PhoneFinal01/03/05/07/09/10/11, and StopAndQuestions01→07→08→10 passed 15/15 in 51.841s.
 
-The exact stdout/cleanup logs are `logs/chromium-46f635-selected.log`, `logs/chromium-09.log`, and `logs/webkit-15.log`.
+The exact stdout/cleanup logs are `logs/chromium-46f635-selected.log.gz`, `logs/chromium-09.log.gz`, and `logs/webkit-15.log.gz`.
 
 ## Capture-only fixtures
 
