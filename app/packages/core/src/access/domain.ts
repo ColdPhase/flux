@@ -235,7 +235,8 @@ function requireRoleAuthority(actor: Actor, ...roles: WorkspaceRole[]) {
 }
 
 /** Adds an existing account (by id or e-mail) to the workspace with a role. */
-export async function addMember(principal: Principal, workspaceId: string, command: AddMemberCommand, db: Database): Promise<WorkspaceMember> {
+export async function addMember(principal: Principal, workspaceId: string, command: AddMemberCommand, db: Database,
+  options: { verifiedEmailOnly?: boolean } = {}): Promise<WorkspaceMember> {
   const role = oneOf(command?.role, ROLES, 'role');
   return db.transaction(async (tx) => {
     await lockWorkspace(tx, workspaceId);
@@ -245,7 +246,9 @@ export async function addMember(principal: Principal, workspaceId: string, comma
       : typeof command.email === 'string' ? eq(schema.authUsers.email, command.email.trim().toLowerCase()) : null;
     if (!lookup) throw new InvalidInputError('userId or email is required');
     const [user] = await tx.select().from(schema.authUsers).where(lookup);
-    if (!user) throw new NotFoundError('Account', 'ACCOUNT_NOT_FOUND');
+    // With a sign-on provider, an address nobody has proved is not a way to find a person: the answer is the one
+    // for no account at all, so a squatter on an employee's address is never added in their place (#313).
+    if (!user || options.verifiedEmailOnly && typeof command.userId !== 'string' && !user.emailVerified) throw new NotFoundError('Account', 'ACCOUNT_NOT_FOUND');
     const inserted = await tx.insert(schema.workspaceMembers).values({ workspaceId, userId: user.id, role, createdBy: principal.id })
       .onConflictDoNothing().returning();
     const member = inserted[0];
