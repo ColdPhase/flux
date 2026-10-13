@@ -277,9 +277,10 @@ class FilesReferencesPhotos(unittest.TestCase):
         mine = "is-mine" in (scope.get_attribute("class") or "")
         grid_box, bubble_box = grid.bounding_box(), bubble.bounding_box()
         if mine:
-            self.assertLess(abs(grid_box["x"] + grid_box["width"] - bubble_box["x"] - bubble_box["width"]), 2.01, "own message: the photo and its caption share one right edge")
+            gap = abs(grid_box["x"] + grid_box["width"] - bubble_box["x"] - bubble_box["width"])
+            self.assertLess(gap, 1, "own message: the photo and its caption share one right edge")
         else:
-            self.assertLess(abs(grid_box["x"] - bubble_box["x"]), 2.01, "the photo and its caption share one left edge")
+            self.assertLess(abs(grid_box["x"] - bubble_box["x"]), 1, "the photo and its caption share one left edge")
 
     def assert_meta_below_caption(self, scope) -> None:
         """A single photo's name and size come after its caption, not between the photo and the caption (F-026 §6)."""

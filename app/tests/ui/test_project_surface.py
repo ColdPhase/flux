@@ -11,7 +11,6 @@ the Map tab, and the phone. Every change is checked against the API.
 from __future__ import annotations
 
 import json
-import os
 import re
 import time
 import unittest
@@ -19,11 +18,7 @@ import uuid
 
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
-from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
-
-UI_BROWSER = os.environ.get("FLUX_UI_BROWSER", "chromium")
-if UI_BROWSER not in ("chromium", "webkit"):
-    raise ValueError(f"FLUX_UI_BROWSER must be chromium or webkit, got {UI_BROWSER!r}")
+from test_app_shell import DESKTOP, ORIGIN, PHONE, UI_BROWSER, UPSTREAM, shot, start_forwarder
 
 PASSWORD = "a lamp that reads the room"
 STAMP = int(time.time() * 1000)
@@ -83,6 +78,29 @@ class ProjectSurfaceJourney(unittest.TestCase):
         page.on("pageerror", lambda error: errors.append(str(error)))
         self.addCleanup(lambda: self.assertEqual(errors, [], "no uncaught page errors"))
         return page
+
+    @staticmethod
+    def settle(page: Page, quiet_ms: int = 300, limit_ms: int = 10_000) -> None:
+        """Wait until the page has had no request in flight for quiet_ms (bounded by limit_ms)."""
+        pending: set = set()
+        on_req = lambda request: pending.add(request)
+        on_done = lambda request: pending.discard(request)
+        page.on("request", on_req)
+        page.on("requestfinished", on_done)
+        page.on("requestfailed", on_done)
+        try:
+            deadline = time.monotonic() + limit_ms / 1000
+            quiet_since = time.monotonic()
+            while time.monotonic() < deadline:
+                page.wait_for_timeout(50)
+                if pending:
+                    quiet_since = time.monotonic()
+                elif (time.monotonic() - quiet_since) * 1000 >= quiet_ms:
+                    return
+        finally:
+            page.remove_listener("request", on_req)
+            page.remove_listener("requestfinished", on_done)
+            page.remove_listener("requestfailed", on_done)
 
     def api(self, page: Page, method: str, path: str, body: dict | None = None, status: int | None = None, headers: dict | None = None) -> dict:
         response = page.request.fetch(f"{ORIGIN}{path}", method=method, headers={"origin": ORIGIN, "content-type": "application/json", **(headers or {})},
@@ -760,8 +778,12 @@ class ProjectSurfaceJourney(unittest.TestCase):
                 with page.expect_request_finished(lambda request: request.method == "POST" and request.url.endswith("/work")):
                     route.fulfill(response=response)
                 expect(field).to_have_value(title)
+                # The fulfilled create refreshes the shell (e.g. /workspaces). Leaving the page with that request in
+                # flight makes WebKit report the cancelled fetch as a page error (#471), so reload only once quiet.
+                self.settle(page)
                 page.reload()
                 expect(field).to_have_value(title)
+                self.settle(other)
                 other.close()
 
     def test_17_home_draft_changes_account_on_current_loader_revalidation(self) -> None:
