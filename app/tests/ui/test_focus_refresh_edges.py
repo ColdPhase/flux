@@ -48,7 +48,12 @@ class RefreshEdges(unittest.TestCase):
         return page, actor, until
 
     def settings(self, page):
-        if page.viewport_size['width'] <= 680:
+        if page.viewport_size['width'] <= 640:
+            # The phone has no drawer (#341): Back to the places, then the avatar opens Settings.
+            page.get_by_role('button', name='Back', exact=True).click()
+            page.get_by_role('link', name='Settings and account', exact=True).click()
+            page.get_by_role('link', name=re.compile(r'^Notifications')).first.click()
+        elif page.viewport_size['width'] <= 680:
             page.locator('header.top').get_by_role('button', name='Open navigation', exact=True).click()
             page.get_by_role('link', name=re.compile(r'settings and sign out$')).click()
             page.locator('a[href=\"/settings/notifications\"]').first.click()

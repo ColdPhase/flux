@@ -47,6 +47,8 @@ MATRIX = [
 COARSE_UP_TO = 1024
 SHOTS_AT = {320, 390, 768, 1440, 1920, 3440, 3840}
 TABS = ["Conversation", "Map", "Tasks", "Wiki", "Agents"]
+# The phone menu lists Tasks before Map (#341).
+PHONE_TABS = ["Conversation", "Tasks", "Map", "Wiki", "Agents"]
 # ADAPT-2 caps that stop the wide screens from giving more room (measured by test_07). Each is open until its
 # owner's PR lands; the test fails once a cap is gone, so the entry is removed rather than passing silently.
 WIDE_CAPS = {
@@ -62,14 +64,8 @@ TARGET = 44
 # A gap is excused only for the predicate it names, and only when its own control is at least 44 px and
 # one of its overlays (covered_by) covers the hit area; see explained_by_recorded_overlap. Every other
 # failure at the same fixture stays a problem.
-KNOWN_GAPS = {
-    "640×360": {
-        "a message's Reply": {
-            "covered_by": (".ui-tabs__bar", ".project-convo__composer"),
-            "reason": "the sticky tab bar and the composer leave less than 44 px of stream between them; the phone shell (PR #414) replaces the tab bar",
-        },
-    },
-}
+# The 640×360 Reply gap (a sticky tab bar over the stream) closed with the phone shell (#341): no tab bar.
+KNOWN_GAPS: dict[str, dict[str, dict]] = {}
 # The overlays a known gap may name. The measurements report which one (if any) covers each point or stops each side.
 OVERLAYS = (".ui-tabs__bar", ".project-convo__composer", ".tb-overview")
 
@@ -318,17 +314,37 @@ class AdaptiveBase(unittest.TestCase):
         self.problems = []
         self.seen_gaps: set[tuple[str, str]] = set()
 
+    def phone(self, page: Page) -> bool:
+        return page.viewport_size["width"] <= 640
+
     def tabs(self, page: Page) -> Locator:
+        """The project's views: the header's segmented control, or on the phone the menu the title opens (#341)."""
+        if self.phone(page):
+            return page.get_by_role("dialog").filter(has=page.locator(".phone-menu__list"))
         return page.get_by_role("navigation", name="Project views")
 
+    def open_menu(self, page: Page) -> None:
+        if self.phone(page) and not self.tabs(page).count():
+            page.get_by_role("heading", level=1).get_by_role("button").click()
+            expect(self.tabs(page)).to_be_visible()
+
     def tab(self, page: Page, name: str) -> None:
+        self.open_menu(page)
         self.tabs(page).get_by_role("link", name=re.compile(f"^{name}")).click()
+        if self.phone(page):
+            expect(self.tabs(page)).to_have_count(0)
+            self.open_menu(page)
         expect(self.tabs(page).get_by_role("link", name=re.compile(f"^{name}"))).to_have_attribute("aria-current", "page")
+        if self.phone(page):
+            page.keyboard.press("Escape")
+            expect(self.tabs(page)).to_have_count(0)
 
     def details_button(self, page: Page) -> Locator:
         """The header's way to Details: More on the computer's one row (#340), the labelled button on the phone."""
-        header = page.locator("header.top")
-        return header.get_by_role("button", name="Details", exact=True) if page.viewport_size["width"] <= 640 else header.get_by_role("button", name="More", exact=True)
+        if self.phone(page):
+            self.open_menu(page)
+            return self.tabs(page).locator(".phone-menu__details")
+        return page.locator("header.top").get_by_role("button", name="More", exact=True)
 
     def card(self, page: Page, title: str) -> Locator:
         return page.locator(".tb-card").filter(has_text=title).get_by_role("button", name=title, exact=True)
@@ -369,21 +385,20 @@ class AdaptiveMatrix(AdaptiveBase):
         # Conversation: the same places, labels and order at every width (ADAPT-3).
         composer = page.get_by_label("Write a message", exact=True)
         expect(composer).to_be_visible()
+        self.open_menu(page)
         expect(self.tabs(page).get_by_role("link")).to_have_count(len(TABS))
-        names = [re.sub(r",.*$", "", label).strip() for label in self.tabs(page).get_by_role("link").all_inner_texts()]
-        self.assertEqual(names, TABS, f"project views keep their names and order at {size}")
+        names = [re.sub(r"[,\n].*$", "", label, flags=re.S).strip() for label in self.tabs(page).get_by_role("link").all_inner_texts()]
+        self.assertEqual(names, PHONE_TABS if width <= 640 else TABS, f"project views keep their names and order at {size}")
         for name in TABS:
             self.primary(page, self.tabs(page).get_by_role("link", name=re.compile(f"^{name}")), f"the {name} tab")
-        if width <= 680:
+        if width <= 680 and width > 640:
             self.primary(page, page.get_by_role("button", name="Open navigation"), "Open navigation")
-        if width <= 640:
-            # #266 PF-1: the phone's bottom bar keeps the main places at hand, the current one marked.
-            places = page.get_by_role("navigation", name="Main places")
-            expect(places.get_by_role("link")).to_have_count(4)
-            expect(places.locator('[aria-current="page"]')).to_have_count(1)
-            for place in places.get_by_role("link").all():
-                self.primary(page, place, f"the bottom bar's {place.inner_text().strip()}")
         self.primary(page, self.details_button(page), "Details")
+        if width <= 640:
+            page.keyboard.press("Escape")
+            # #341: a conversation has no tab bar; the places are Back and, in the other views, the capsule.
+            expect(page.get_by_role("navigation", name="Main places")).to_have_count(0)
+            self.primary(page, page.get_by_role("button", name="Back", exact=True), "Back")
         self.no_sideways_scroll(page, "Conversation")
         self.primary(page, composer, "the message field")
         self.primary(page, page.get_by_role("button", name="Send message"), "Send message")
@@ -458,7 +473,12 @@ class AdaptiveMatrix(AdaptiveBase):
         # Tasks: a readable active/blocked route on narrow boards, every column on wide ones.
         self.tab(page, "Tasks")
         expect(page.locator(".tb-board")).to_be_visible()
-        self.primary(page, page.get_by_role("button", name="New Task", exact=True), "New Task")
+        if width <= 640:
+            # #341: the phone's one "+" floats over the work and opens Create; the toolbar has no second one.
+            expect(page.get_by_role("button", name="New Task", exact=True)).to_have_count(0)
+            self.primary(page, page.get_by_role("button", name="Create", exact=True), "Create")
+        else:
+            self.primary(page, page.get_by_role("button", name="New Task", exact=True), "New Task")
         for name in ("Kanban", "List"):
             self.primary(page, page.get_by_role("radiogroup", name="Show tasks as").get_by_role("radio", name=name, exact=True), f"the {name} switch")
         overview = page.get_by_role("navigation", name="Task status")

@@ -293,6 +293,11 @@ class StopAndQuestions(unittest.TestCase):
         # On a phone the thread opens as a sheet over the stream: the card to use is the sheet's.
         card = phone.locator("#thread .qcard")
         expect(card).to_be_visible()
+        # AC-3/4: an open project conversation is a focused phone surface, not the persistent
+        # Main places capsule or the project-view chips shown on project lists/views.
+        expect(phone.get_by_role("navigation", name="Main places")).to_have_count(0)
+        expect(phone.get_by_role("navigation", name="Project views")).to_have_count(0)
+        expect(phone.locator(".views--project")).to_have_count(0)
         overflow = phone.evaluate("() => document.documentElement.scrollWidth - document.documentElement.clientWidth")
         self.assertLessEqual(overflow, 0, "no horizontal page scroll at 390px")
         for name in ("Per bed", "One value", "Reply in your own words"):
@@ -367,7 +372,7 @@ class StopAndQuestions(unittest.TestCase):
         pid, conversation_id = self.ids["project"], self.question["conversation"]
         page = self.page("ada", phone=True)
         page.goto(f"/projects/{pid}/conversations/{conversation_id}")
-        header_stop = page.locator(".top").get_by_role("button", name="Stop Claude Code agent")
+        header_stop = page.locator(".phead").get_by_role("button", name="Stop Claude Code agent")
         expect(header_stop).to_be_visible()
         overflow = page.evaluate("() => document.documentElement.scrollWidth - document.documentElement.clientWidth")
         self.assertLessEqual(overflow, 0, "no horizontal page scroll at 390px")

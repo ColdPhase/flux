@@ -1,7 +1,7 @@
 import { Fragment, useCallback, useEffect, useState, type ReactNode } from 'react';
 import { Link } from 'react-router';
 import type { DecisionRowProjection, NamedPrincipal, NativeWorkRow, WorkRowProjection, ResultRowProjection } from '@flux/contracts';
-import { AgentIdentity, Icon, type IconName } from '../ui';
+import { AgentIdentity, Icon, MEDIA, useMediaQuery, type IconName } from '../ui';
 import { useShellData } from '../app/data';
 import { useShellActions, type DetailsView, type OverviewView } from '../app/shellContext';
 import { STATUS_LABEL, decisionLine } from '../work/format';
@@ -87,6 +87,8 @@ export function ProjectOverview({ messageId, selection, focusPeople = null, onBa
   const shell = useProjectShell();
   const open = useOpenConversation();
   const { me } = useShellData();
+  const { openDetails } = useShellActions();
+  const phone = useMediaQuery(MEDIA.navDrawer);
   const read = useOverviewWork(me.user.id, shell?.project.id ?? null, open?.conversation?.id ?? null, messageId);
   const current = useProjectWorkSummary();
   const owners = useAgentOwners(shell?.project);
@@ -186,6 +188,13 @@ export function ProjectOverview({ messageId, selection, focusPeople = null, onBa
       <h3 className="details__title">{title}</h3>
       {message ? <p className="details__lead ov-quote">{message.body.length > 280 ? `${message.body.slice(0, 279)}…` : message.body}</p> : null}
       <p className="ov-audience"><Icon name={project.visibility === 'workspace' ? 'people' : 'lock'} size={13} />{audienceLine(people, me.user.id, project.visibility === 'workspace')}</p>
+      {phone && !messageMode ? <section className="details__sec ov-sec" aria-label="Project summary">
+        <button type="button" className="ov-row" onClick={() => openDetails({ kind: 'recap', projectId: project.id })}>
+          <Icon name="leaf" size={16} className="ov-row__ic" />
+          <span className="ov-row__b"><span className="ov-row__t">What matters</span></span>
+          <Icon name="chevron-right" size={16} className="ov-row__go" />
+        </button>
+      </section> : null}
 
       <Rows label={messageMode ? 'Made from this message' : 'Linked in this conversation'} rows={linked}
         controls={read.objects.phase !== 'idle' ? <>

@@ -205,15 +205,20 @@ class NewProject(unittest.TestCase):
         pid = re.search(r"/projects/([0-9a-f-]{36})", page.url).group(1)
         # Close "Who can see this", which a new project opens.
         page.goto(f"/projects/{pid}")
-        views = page.get_by_role("navigation", name="Project views")
-        expect(views.get_by_role("link", name="Tasks")).to_be_visible()
-        expect(views.get_by_role("link", name="Map")).to_have_count(0)
-        add = page.get_by_role("button", name="Add a view", exact=True)
+        # On the phone the views live in the title's menu (#341); a view not added yet is an "Add …" row there.
+        title = page.get_by_role("heading", level=1).get_by_role("button")
+        title.tap()
+        views = page.get_by_role("dialog").filter(has=page.locator(".phone-menu__list"))
+        expect(views.get_by_role("link", name=re.compile("^Tasks"))).to_be_visible()
+        expect(views.get_by_role("link", name=re.compile("^Map"))).to_have_count(0)
+        add = views.get_by_role("button", name="Add Wiki", exact=True)
         self.assertGreaterEqual(add.bounding_box()["height"], 44)
         add.tap()
-        page.get_by_role("menu", name="Add a view").get_by_role("menuitem", name="Add Wiki").tap()
         expect(page).to_have_url(re.compile(r"/projects/[0-9a-f-]{36}/docs"))
-        expect(page.get_by_role("navigation", name="Project views").get_by_role("link", name="Wiki")).to_be_visible()
+        expect(views).to_have_count(0)
+        title.tap()
+        expect(views.get_by_role("link", name=re.compile("^Wiki"))).to_be_visible()
+        expect(views.get_by_role("button", name="Add Wiki", exact=True)).to_have_count(0)
         shot(page, "351-phone-views-390")
 
     def test_06_the_footer_names_who_can_see_a_new_project(self) -> None:

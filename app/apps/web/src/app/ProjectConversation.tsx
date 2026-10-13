@@ -3,6 +3,7 @@ import { Link, useLoaderData, useLocation, useNavigate, useRevalidator, type Loa
 import type { AssistantAnswer, ConversationMessage, Conversation, ConversationRootWindow, Draft, Material, Page, Project, TaskCreationNotice, WorkspaceMember } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { outboxView, useComposerDraft, useComposerScope } from '../composer/draft';
+import { takeHandedFiles } from '../composer/handoff';
 import { AttachButton, ComposerFiles, MessageContent, useFileDrop } from '../composer/Files';
 import { LinkPreviews, MessageText } from './MessageText';
 import { ConnectionLine, SendAnnouncer } from '../composer/Outbox';
@@ -154,6 +155,22 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
   // association read covers the root and the replies around the viewport (#155).
   const sourceIds = useMemo(() => [...(rootMessageId ? [rootMessageId] : []), ...messages.filter((message) => message.sequence > 1 && message.id !== rootMessageId).map((message) => message.id)], [messages, rootMessageId]);
   const writable = project.access !== 'viewer';
+  // The phone's "+" Create → File or link (F-026 S2) arrives as ?compose=files|link: the picked files
+  // join this project's message draft and the field takes focus, ready for a link or a line. Once.
+  const location = useLocation();
+  const addDraftFiles = publicComposer.addFiles;
+  useEffect(() => {
+    if (conversation) return;
+    const params = new URLSearchParams(location.search);
+    if (!params.has('compose')) return;
+    params.delete('compose');
+    const search = params.toString();
+    navigate({ pathname: location.pathname, search: search ? `?${search}` : '', hash: location.hash }, { replace: true, defaultShouldRevalidate: false });
+    const files = takeHandedFiles(me.user.id, project.id);
+    if (!writable) return;
+    if (files?.length) addDraftFiles(files);
+    requestAnimationFrame(() => document.getElementById(composerId)?.focus());
+  }, [conversation, location.search, location.pathname, location.hash, navigate, me.user.id, project.id, writable, addDraftFiles, composerId]);
   // Files dropped anywhere on the conversation join its draft (#348).
   const drop = useFileDrop(publicComposer, writable && !asking);
   const makeWork = useCreateWorkFromMessage(project);

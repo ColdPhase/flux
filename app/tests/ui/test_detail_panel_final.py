@@ -6,7 +6,7 @@ import unittest
 import uuid
 
 from playwright.sync_api import expect, sync_playwright
-from test_app_shell import ORIGIN, UI_BROWSER, UPSTREAM, shot, start_forwarder
+from test_app_shell import ORIGIN, UI_BROWSER, UPSTREAM, open_details, shot, start_forwarder
 from test_work_pagination import api
 from native_touch import drag_touch, native_touch_driver
 
@@ -384,7 +384,7 @@ class DetailPanelFinal(unittest.TestCase):
         """Negative control for test_08: the full-screen Details sheet (place details, no object) is not a two-height sheet."""
         page = self.page(phone=True)
         page.goto(f"/projects/{self.project}/tasks")
-        page.get_by_role("button", name="Details", exact=True).first.click()
+        open_details(page)
         sheet = page.get_by_role("dialog", name="Details")
         expect(sheet).to_be_visible()
         expect(page.locator("[data-detent-sheet]")).to_have_count(0)
