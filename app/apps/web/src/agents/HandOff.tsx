@@ -9,7 +9,8 @@ import { updateWork, listAgents } from '../work/api';
 import { getProjectWorkView } from '../work/read-api';
 import { contributeToTask } from '../composer/api';
 import { getAgentPolicy, getProjectAgents } from './api';
-import { agentEntries, firstName, mayDo, tasksHeldBy, teammateOf, type AgentEntry } from './roster';
+import { agentEntries, connectionState, currentWorkLine, firstName, isAgentWorking, mayDo, tasksHeldBy, teammateOf, type AgentEntry } from './roster';
+import { useSessionClock } from './useSessionClock';
 
 /** The task being handed off; `version` is the one its owner is changed from. */
 export interface HandOffTask { id: string; version: number; number: number; title: string }
@@ -22,34 +23,28 @@ interface Loaded {
   policy: AgentProjectPolicy | null;
 }
 
-/** The Kreska of an agent in the list: working only with an open session (P1-1); asleep when it holds work offline. */
-const kreskaFor = (entry: AgentEntry, held: readonly WorkRowProjection[], online: boolean): KreskaExpression => {
-  if (held[0]?.status === 'in_progress' && online) return 'working';
-  if (entry.connection?.state === 'unavailable') return 'worried';
-  if (held[0]?.status === 'in_progress') return 'asleep';
-  return 'idle';
-};
+/** The Kreska of an agent: Working only for a claimed unit on a usable live session (C-1); asleep when paused or not live. */
+const kreskaFor = (entry: AgentEntry, now: number): KreskaExpression => isAgentWorking(entry, now) ? 'working'
+  : entry.connection?.state === 'unavailable' ? 'worried' : entry.connection?.currentWork?.state === 'paused' || (entry.connection && connectionState(entry.connection, now) !== 'session_open') ? 'asleep' : 'idle';
 
 /**
- * What is known about an agent's load, from the tasks it owns. Working is claimed only with an open client session (P1-1);
- * an agent whose app is closed "holds" its task.
+ * What is known about an agent's load. A live claimed unit is execution; native task ownership alone is handed work, never an
+ * automatic queue (C-1). A handed task says when the agent's app is offline or not signed in (P1-1).
  */
-export function loadLine(held: readonly WorkRowProjection[], state: 'online' | 'offline' | 'not_signed_in'): string {
+export function loadLine(entry: AgentEntry, held: readonly WorkRowProjection[], now: number, state: 'online' | 'offline' | 'not_signed_in'): string {
+  const work = entry.connection?.currentWork;
+  if (work) return currentWorkLine(work, isAgentWorking(entry, now));
   const first = held[0];
   if (!first) return 'no task now';
-  const working = first.status === 'in_progress';
-  const queued = held.length - 1;
-  const head = state === 'online'
-    ? `${working ? `working on #${first.number}` : `has #${first.number}, not started`}`
-    : `holds #${first.number} · ${state === 'not_signed_in' ? 'not signed in yet' : 'offline'}`;
-  return `${head}${queued > 0 ? `, ${queued} more queued` : ''}`;
+  const where = state === 'online' ? '' : ` · ${state === 'not_signed_in' ? 'not signed in yet' : 'offline'}`;
+  return `has #${first.number}${where}${held.length > 1 ? `, ${held.length - 1} more handed` : ''}`;
 }
 
-/** An agent's connection state for the load line: online only with an open session; an agent with no connection is not signed in. */
-export function agentState(entry: AgentEntry, loaded: Loaded | null): 'online' | 'offline' | 'not_signed_in' {
+/** An agent's connection state for the load line: online only with a live session; an agent with no connection is not signed in. */
+export function agentState(entry: AgentEntry, loaded: Loaded | null, now: number): 'online' | 'offline' | 'not_signed_in' {
   const connection = loaded?.connections.filter((item) => item.agent.id === entry.agentId) ?? [];
-  if (connection.some((item) => item.state === 'session_open')) return 'online';
-  if (connection.some((item) => item.state === 'offline')) return 'offline';
+  if (connection.some((item) => connectionState(item, now) === 'session_open')) return 'online';
+  if (connection.some((item) => connectionState(item, now) === 'offline')) return 'offline';
   return 'not_signed_in';
 }
 
@@ -103,6 +98,8 @@ function HandOffBody({ onClose, project, task: given, agentId, onDone }: {
   const [taskId, setTaskId] = useState<string | null>(given?.id ?? null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [observedNow, setObservedNow] = useState(() => Date.now());
+  const now = useSessionClock(loaded?.connections, observedNow);
   const attempt = useRef<{ key: string; id: string } | null>(null);
   const first = useRef<HTMLElement | null>(null);
 
@@ -118,6 +115,7 @@ function HandOffBody({ onClose, project, task: given, agentId, onDone }: {
     ]).then(([people, agents, workspaceAgents, page, policy]) => {
       if (signal.aborted) return;
       setLoaded({ people, connections: agents.connections, workspaceAgents, tasks: page.rows, policy });
+      setObservedNow(Date.now());
       setCursor(page.next);
     }, () => { if (!signal.aborted) setLoadFailed(true); });
     return () => controller.abort();
@@ -127,16 +125,16 @@ function HandOffBody({ onClose, project, task: given, agentId, onDone }: {
   const entries = useMemo(() => {
     const all = loaded ? agentEntries(loaded.people, loaded.connections, loaded.workspaceAgents, humans) : [];
     // An agent with several connections is one choice: the task goes to the agent.
-    return all.filter((entry, index) => all.findIndex((other) => other.agentId === entry.agentId) === index);
-  }, [loaded, humans]);
+    return all.filter((entry, index) => all.findIndex((other) => other.agentId === entry.agentId) === index)
+      .map((entry) => all.find((other) => other.agentId === entry.agentId && isAgentWorking(other, now))
+        ?? all.find((other) => other.agentId === entry.agentId && other.connection?.currentWork) ?? entry);
+  }, [loaded, humans, now]);
   const held = (id: string) => tasksHeldBy(id, loaded?.tasks ?? []);
   const task: HandOffTask | null = given && taskId === given.id ? given : loaded?.tasks.find((row) => row.id === taskId) ?? null;
   const entry = entries.find((item) => item.agentId === chosen) ?? null;
   const grant = mayDo(entry?.access ?? null);
   // A teammate's agent is asked for, never handed work: its owner decides (#347 P1-3).
   const teammate = !!entry && teammateOf(entry, me.user.id);
-  // An agent is online when one of its connections has an open session (P1-1).
-  const online = (agentId: string) => !!loaded?.connections.some((connection) => connection.agent.id === agentId && connection.state === 'session_open');
   const manager = project.access === 'manager';
   const free = useMemo(() => (loaded?.tasks ?? []).filter((row) => !row.owner || row.owner.kind !== 'agent'), [loaded]);
 
@@ -240,7 +238,7 @@ function HandOffBody({ onClose, project, task: given, agentId, onDone }: {
             <div className="handoff__list" role="radiogroup" aria-label="Agent">
               {entries.map((item, index) => {
                 const busyWith = held(item.agentId);
-                const note = item.access === null ? 'no access here yet' : loadLine(busyWith, agentState(item, loaded));
+                const note = item.access === null ? 'no access here yet' : loadLine(item, busyWith, now, agentState(item, loaded, now));
                 const asks = teammateOf(item, me.user.id);
                 const id = `${titleId}-${item.agentId}`;
                 return (
@@ -248,7 +246,7 @@ function HandOffBody({ onClose, project, task: given, agentId, onDone }: {
                     <input id={id} type="radio" name="handoff-agent" value={item.agentId} checked={chosen === item.agentId}
                       ref={(node) => { if ((chosen ? chosen === item.agentId : index === 0) && (given || taskId)) first.current = node; }}
                       onChange={() => setChosen(item.agentId)} />
-                    <Kreska size={36} expression={kreskaFor(item, busyWith, online(item.agentId))} hue={agentHue(item.agentId)} />
+                    <Kreska size={36} expression={kreskaFor(item, now)} hue={agentHue(item.agentId)} />
                     <span className="handoff__who"><b>{item.name}</b>
                       <small>{asks && item.owner ? `for ${item.owner} · ${firstName(item.owner)} decides` : [item.owner ? `for ${item.owner}` : null, item.connection?.name, note].filter(Boolean).join(' · ')}</small></span>
                     <span className="handoff__mark" aria-hidden="true">{chosen === item.agentId ? <Icon name="check" size={14} /> : null}</span>
@@ -263,7 +261,7 @@ function HandOffBody({ onClose, project, task: given, agentId, onDone }: {
               <>
                 <h2 className="handoff__title" id={titleId}>Ask {firstName(entry.owner ?? 'them')} first</h2>
                 <div className="handoff__chosen">
-                  <Kreska size={36} expression="idle" hue={agentHue(entry.agentId)} />
+                  <Kreska size={36} expression={kreskaFor(entry, now)} hue={agentHue(entry.agentId)} />
                   <span className="handoff__who"><b>{entry.name}</b><small>{[entry.owner ? `for ${entry.owner}` : null, entry.connection?.name].filter(Boolean).join(' · ')}</small></span>
                 </div>
                 <p className="handoff__can">{`${entry.name} works for ${entry.owner}. Only ${firstName(entry.owner ?? 'them')} can hand work to it. Flux will ask ${firstName(entry.owner ?? 'them')} in the thread of #${task?.number ?? ''}.`}</p>
@@ -273,8 +271,8 @@ function HandOffBody({ onClose, project, task: given, agentId, onDone }: {
             <h2 className="handoff__title" id={titleId}>What {entry?.name ?? 'it'} may do</h2>
             {entry ? (
               <div className="handoff__chosen">
-                <Kreska size={36} expression="idle" hue={agentHue(entry.agentId)} />
-                <span className="handoff__who"><b>{entry.name}</b><small>{[entry.owner ? `for ${entry.owner}` : null, entry.connection?.name, entry.access ? loadLine(held(entry.agentId), agentState(entry, loaded)) : 'no access here yet'].filter(Boolean).join(' · ')}</small></span>
+                <Kreska size={36} expression={kreskaFor(entry, now)} hue={agentHue(entry.agentId)} />
+                <span className="handoff__who"><b>{entry.name}</b><small>{[entry.owner ? `for ${entry.owner}` : null, entry.connection?.name, entry.access ? loadLine(entry, held(entry.agentId), now, agentState(entry, loaded, now)) : 'no access here yet'].filter(Boolean).join(' · ')}</small></span>
               </div>
             ) : <p className="handoff__note" role="status">{status ?? 'That agent is no longer here. Go back and choose another.'}</p>}
             {entry ? (
@@ -287,7 +285,6 @@ function HandOffBody({ onClose, project, task: given, agentId, onDone }: {
               </p>
             ) : null}
             {entry && grant.canTake && loaded?.policy ? <p className="handoff__note">The project’s agent policy (revision {loaded.policy.revision}) applies to its work.</p> : null}
-            {entry && grant.canTake && held(entry.agentId).some((row) => row.status === 'in_progress') ? <p className="handoff__note">{online(entry.agentId) ? 'It is' : 'It'} {loadLine(held(entry.agentId), agentState(entry, loaded))}; this task is queued behind that work.</p> : null}
               </>
             )}
           </>

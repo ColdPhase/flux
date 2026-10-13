@@ -13,6 +13,7 @@ import { getTaskDiscussion } from '../composer/api';
 import { useProjectShell } from '../project/data';
 import { AgentIdentity, AuthorFace, Button, Icon, Kreska, StatusGlyph, agentHue, useMediaQuery, type KreskaExpression } from '../ui';
 import { ThreadDrawer } from '../app/ThreadDrawer';
+import { STATUS_LABEL } from '../work/format';
 import { useNativeOwn, useWorkChoices } from '../work/useDetailReads';
 import { agentDisplayName } from '../docs/format';
 import { getProjectAgents } from './api';
@@ -23,7 +24,8 @@ import { useProjectQuestions, useQuestionList } from './questions';
 import { useLatestAgentLine } from './latest';
 import { agentAuthorOwner, useAgentOwners } from './owners';
 import { ProjectPolicy } from './ProjectPolicy';
-import { agentEntries, firstName, mayDo, shortOwner, tasksHeldBy, teammateOf, type AgentEntry } from './roster';
+import { WORK_ROLE, agentEntries, connectionState, currentWorkLine, firstName, isAgentWorking, mayDo, shortOwner, tasksHeldBy, teammateOf, type AgentEntry } from './roster';
+import { useSessionClock } from './useSessionClock';
 import { useTyping } from '../typing/useTyping';
 import { TypingNotice } from '../typing/TypingNotice';
 import './agents.css';
@@ -64,7 +66,7 @@ function when(iso: string) {
 
 /** A session past its end is offline now, even before the next read says so. */
 function shownState(connection: ProjectAgentConnection, now: number): ProjectAgentConnection['state'] {
-  return connection.state === 'session_open' && connection.session && Date.parse(connection.session.expiresAt) <= now ? 'offline' : connection.state;
+  return connectionState(connection, now);
 }
 
 /** What Flux can prove about a connection; a configured or offline one never looks busy. */
@@ -91,12 +93,6 @@ const REQUEST_KIND: Record<ProjectAgentRequest['kind'], string> = { help: 'Help'
 const REQUEST_STATE: Record<ProjectAgentRequest['state'], string> = {
   queued: 'waiting for its next step', deferred: 'deferred until its next step', claimed: 'being handled',
 };
-
-/** What the connection holds in this project now. Assigned work is not yet being done, and a paused unit says so. */
-function workLine(work: NonNullable<ProjectAgentConnection['currentWork']>) {
-  if (work.state === 'claimed') return `Working on “${work.taskTitle}”`;
-  return work.state === 'paused' ? `Paused on “${work.taskTitle}”` : `Assigned “${work.taskTitle}”, not started`;
-}
 
 /** A request addressed here: who asked, about which task, and what it waits for (the request's own reason, if any). */
 function requestLine(request: ProjectAgentRequest) {
@@ -203,10 +199,12 @@ function TaskThread({ task, projectId, meId, names, canWrite, changingScope }: {
             if (follow) scrollPaneToEnd(end.current);
           } catch (cause) {
             if (controller.signal.aborted) return;
+            const denied = cause instanceof ApiError && (cause.status === 401 || cause.status === 403 || cause.status === 404);
             if (!before) setLoadError(cause instanceof NetworkError ? 'Flux is unreachable.' : 'This task thread could not be loaded.');
-            else if (cause instanceof ApiError && (cause.status === 401 || cause.status === 403 || cause.status === 404)) setAccessLost(true);
-            // Unreachable: what is shown stays; the next change, focus or resync tries again.
-            return;
+            else if (denied) setAccessLost(true);
+            // Keep one newer reload (including native online) when an older transient read fails.
+            // Access loss and an aborted identity/task never fall through into a retry.
+            if (denied || !again) return;
           }
         } while (again && !controller.signal.aborted);
       } finally {
@@ -229,9 +227,10 @@ function TaskThread({ task, projectId, meId, names, canWrite, changingScope }: {
     const onFocus = () => reload.current();
     const onVisible = () => { if (document.visibilityState === 'visible') reload.current(); };
     window.addEventListener('focus', onFocus);
+    window.addEventListener('online', onFocus);
     document.addEventListener('visibilitychange', onVisible);
     const interval = window.setInterval(onVisible, 15_000);
-    return () => { window.removeEventListener('focus', onFocus); document.removeEventListener('visibilitychange', onVisible); window.clearInterval(interval); };
+    return () => { window.removeEventListener('focus', onFocus); window.removeEventListener('online', onFocus); document.removeEventListener('visibilitychange', onVisible); window.clearInterval(interval); };
   }, []);
 
   const messages = useMemo(() => {
@@ -348,7 +347,8 @@ const CONNECTION_EVENTS = new Set(['project.grant_set.v1', 'project.grant_revoke
  * Grant, policy and agent events and a resync refetch at once (not every message, which would refetch
  * on each line of a busy thread). A revoked connection and a session opening or closing record no
  * event, so focus, a visible tab and a 15 s poll while the tab is visible also refetch; the poll moves
- * `now` too, so a session past its end reads as offline, and keeps "Last: …" current.
+ * the observation time too, keeping "Last: …" current. A separate deadline clock promptly ages known
+ * session expiries without making another read.
  */
 function useConnections(projectId: string, meId: string, initial: ProjectAgentConnection[]) {
   // A newer read replaces the loader's list until the loader itself reads again.
@@ -379,7 +379,9 @@ function useConnections(projectId: string, meId: string, initial: ProjectAgentCo
     const interval = window.setInterval(tick, 15_000);
     return () => { window.removeEventListener('focus', onFocus); document.removeEventListener('visibilitychange', onVisible); window.clearInterval(interval); };
   }, []);
-  return { list: fetched && fetched.base === initial ? fetched.list : initial, now };
+  const list = fetched && fetched.base === initial ? fetched.list : initial;
+  const displayedNow = useSessionClock(list, now);
+  return { list, now: displayedNow };
 }
 
 /** A stop stays the row's second line for a day; after that the connection's own state is again the truth. */
@@ -405,38 +407,55 @@ export function agentLabel(entry: AgentEntry, meId: string): string {
   return entry.ownerId && entry.ownerId !== meId && entry.owner ? `${firstName(entry.owner)}’s ${entry.name}` : entry.name;
 }
 
-/** What a row says, its Kreska, whether it is working (live, on an in-progress task) and its place in the list. */
+/** The face of an agent: Working only for a claimed unit on a usable live session (C-1); asleep when paused or not live. */
+function agentExpression(entry: AgentEntry, now: number): KreskaExpression {
+  return entry.connection?.state === 'unavailable' ? 'worried' : isAgentWorking(entry, now) ? 'working'
+    : entry.connection?.currentWork?.state === 'paused' ? 'asleep' : entry.connection ? connectionExpression(entry.connection, now) : 'idle';
+}
+
+/** Where a connection is, said beside a recorded unit of work (the unit's own line never says it). */
+function availabilityLine(connection: ProjectAgentConnection, now: number): string {
+  return shownState(connection, now) === 'session_open' ? `Session open since ${when(connection.session!.startedAt)}` : stateLine(connection, now);
+}
+
+/** A task handed to an agent but not claimed on a live session (C-1): "Handed", with what keeps it from being worked on. */
+function handedLine(task: WorkRowProjection, connection: ProjectAgentConnection | null, now: number): string {
+  if (!connection || connection.state === 'not_signed_in') return `Handed #${task.number} · not signed in yet`;
+  if (connection.state === 'unavailable') return `Handed #${task.number} · can’t act here now`;
+  if (shownState(connection, now) !== 'session_open') {
+    return `Handed #${task.number} · offline${connection.lastActivity ? ` · last seen ${when(connection.lastActivity.at)}` : ''}`;
+  }
+  return `Handed #${task.number} · ${task.title}`;
+}
+
+/** What a row says, its Kreska, whether it is working (a claimed unit on a live session) and its place in the list. */
 interface RowView { line: ReactNode; expression: KreskaExpression; working: boolean; rank: number }
 
 /**
- * A row's second line (P1-1, P2-1), first match wins: the agent's open question to you; its in-progress task (working only
- * with an open client session); its blocked or open task; its recent stop; else what Flux can prove about the connection.
- * Only the agent's lead row (its first online connection, else its first row) speaks for its held task and questions.
+ * A row's second line (C-1, P2-1), first match wins: the agent's open question to you; the connection's recorded unit of
+ * work (Working only when it is claimed on a usable live session); its blocked task; a task handed to it (never "Working":
+ * native ownership is not execution); its recent stop; else what Flux can prove about the connection.
+ * Only the agent's lead row (its first online connection, else its first row) speaks for its questions and recent stop.
  */
 function rowView(entry: AgentEntry, held: WorkRowProjection[], lead: boolean, now: number, stopped: AgentStop | null, asking: AgentQuestion | null, meId: string): RowView {
   const connection = entry.connection;
-  const task = lead ? held[0] : undefined;
-  const base: KreskaExpression = connection ? connectionExpression(connection, now) : 'idle';
+  const task = held[0];
+  const work = connection?.currentWork ?? null;
+  const expression = agentExpression(entry, now);
   if (lead && asking) return { line: `Waiting for you · asks “${briefly(asking.question)}”`, expression: 'waiting', working: false, rank: 1 };
-  if (task?.status === 'in_progress' && isOnline(connection, now)) {
-    return { line: `Working on #${task.number} · ${task.title}`, expression: 'working', working: true, rank: 2 };
-  }
-  if (task?.status === 'in_progress') {
-    const rank = connectionRank(connection, now);
-    if (rank === 7) return { line: `Not signed in yet · #${task.number} is waiting for it`, expression: 'asleep', working: false, rank };
-    if (rank === 8) return { line: `Can’t act here now · holds #${task.number}`, expression: 'worried', working: false, rank };
-    const seen = connection?.lastActivity ? ` · last seen ${when(connection.lastActivity.at)}` : '';
-    return { line: `Offline · holds #${task.number}${seen}`, expression: 'asleep', working: false, rank };
+  if (work) {
+    const working = isAgentWorking(entry, now);
+    return { line: currentWorkLine(work, working), expression, working, rank: working ? 2 : connectionRank(connection, now) };
   }
   if (task?.status === 'blocked') {
-    return { line: <><StatusGlyph status="blocked" size={12} />{` Blocked on #${task.number}${task.blocker ? ` · ${task.blocker}` : ''}`}</>, expression: base, working: false, rank: 3 };
+    return { line: <><StatusGlyph status="blocked" size={12} />{` Blocked on #${task.number}${task.blocker ? ` · ${task.blocker}` : ''}`}</>, expression, working: false, rank: 3 };
   }
-  if (task?.status === 'open') return { line: `Has #${task.number}, not started`, expression: base, working: false, rank: 4 };
-  if (lead && !held.length && stopped && now - Date.parse(stopped.stoppedAt) < STOPPED_SHOWN_MS) {
-    return { line: `Stopped by ${stopped.stoppedBy.id === meId ? 'you' : stopped.stoppedBy.name} · #${stopped.taskNumber}`, expression: base, working: false, rank: connectionRank(connection, now) };
+  if (task) return { line: handedLine(task, connection, now), expression, working: false, rank: isOnline(connection, now) ? 4 : connectionRank(connection, now) };
+  if (lead && stopped && now - Date.parse(stopped.stoppedAt) < STOPPED_SHOWN_MS) {
+    return { line: `Stopped by ${stopped.stoppedBy.id === meId ? 'you' : stopped.stoppedBy.name} · #${stopped.taskNumber}`, expression, working: false, rank: connectionRank(connection, now) };
   }
-  if (!connection) return { line: entry.access === 'viewer' ? 'Can read here · nothing handed to it' : 'Nothing handed to it', expression: 'idle', working: false, rank: 7 };
-  return { line: stateLine(connection, now), expression: base, working: false, rank: connectionRank(connection, now) };
+  if (!connection) return { line: entry.access === 'viewer' ? 'Can read here · nothing handed to it' : 'Nothing handed to it', expression, working: false, rank: 7 };
+  return { line: stateLine(connection, now), expression, working: false, rank: connectionRank(connection, now) };
 }
 
 /** The lead row of each agent: its first online connection, else its first row (list order). */
@@ -487,6 +506,8 @@ function AgentRow({ entry, view, duplicate, short, now, selected, dropping, stop
             {!duplicate && entry.via ? <span className="agents-row__via"> · {entry.via}</span> : null}
           </span>
           <span className="agents-row__now">{view.line}</span>
+          {entry.connection?.currentWork ? <span className="agents-row__activity">{availabilityLine(entry.connection, now)}</span> : null}
+          {entry.connection?.requests.map((request) => <span key={request.id} className="agents-row__activity">{requestLine(request)}</span>)}
         </span>
         {last ? <time className="agents-row__time" dateTime={last.at}>{when(last.at)}</time> : null}
         <Icon name="chevron-right" size={14} className="agents-row__go" />
@@ -498,19 +519,21 @@ function AgentRow({ entry, view, duplicate, short, now, selected, dropping, stop
 
 const sentence = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
 
-/** The panel's note on a task in progress, by what Flux can prove about the agent's connection (P1-1). */
-function progressNote(connection: ProjectAgentConnection | null, now: number): string {
-  if (!connection || connection.state === 'not_signed_in') return 'In progress · not signed in yet';
-  if (connection.state === 'unavailable') return 'In progress · can’t act here now';
-  return shownState(connection, now) === 'session_open' ? 'In progress' : 'In progress · its app is offline';
+/** What keeps a handed task from being worked on now, by what Flux can prove about the agent's connection (C-1, P1-1). */
+function handedSuffix(connection: ProjectAgentConnection | null, now: number): string {
+  if (!connection || connection.state === 'not_signed_in') return ' · not signed in yet';
+  if (connection.state === 'unavailable') return ' · can’t act here now';
+  return shownState(connection, now) === 'session_open' ? '' : ' · its app is offline';
 }
 
-/** The panel's note on the held task, in the row's own words (#347 N5): a question to you first, then the task's state. */
+/**
+ * The panel's note on the held task, in the row's own words (#347 N5): a question to you first, then a blocker, else the task
+ * as handed to it (native ownership is not execution, C-1), with its task status and connection.
+ */
 function taskNote(task: WorkRowProjection, asking: AgentQuestion | null, connection: ProjectAgentConnection | null, now: number): string {
   if (asking) return 'Waiting for your answer';
-  if (task.status === 'in_progress') return progressNote(connection, now);
   if (task.status === 'blocked') return task.blocker ? `Blocked · ${task.blocker}` : 'Blocked';
-  return 'Not started';
+  return `Handed to it · task ${STATUS_LABEL[task.status].toLowerCase()}${handedSuffix(connection, now)}`;
 }
 
 /**
@@ -524,9 +547,13 @@ function AgentDetail({ entry, held, meId, projectId, now, asking, canHandOff, st
   stop: RowStop | null; refocus: boolean; onRefocused: () => void; onHandOff: () => void; onClose: () => void; onThread: (taskId: string) => void;
 }) {
   const task = held[0];
+  const currentWork = entry.connection?.currentWork;
+  const otherHeld = currentWork ? held.filter((row) => row.id !== currentWork.taskId) : held.slice(1);
   const last = entry.connection?.lastActivity;
   const grant = mayDo(entry.access);
-  const latest = useLatestAgentLine(task?.id ?? null, entry.agentId);
+  // The Now card is the recorded unit's task when it is on this page (its number is known), else the task handed to it.
+  const shown = currentWork ? held.find((row) => row.id === currentWork.taskId) ?? null : task ?? null;
+  const latest = useLatestAgentLine(shown?.id ?? null, entry.agentId);
   const teammate = teammateOf(entry, meId);
   const lineId = useId();
   const heading = useRef<HTMLHeadingElement>(null);
@@ -540,7 +567,7 @@ function AgentDetail({ entry, held, meId, projectId, now, asking, canHandOff, st
         <button type="button" className="agents-detail__back" onClick={onClose}><Icon name="chevron-left" size={14} />Agents</button>
       </div>
       <header className="agents-detail__head">
-        <Kreska size={40} expression={task?.status === 'in_progress' && isOnline(entry.connection, now) ? 'working' : entry.connection ? connectionExpression(entry.connection, now) : 'idle'} hue={agentHue(entry.agentId)} />
+        <Kreska size={40} expression={agentExpression(entry, now)} hue={agentHue(entry.agentId)} />
         <div>
           <h2 className="agents-detail__name" ref={heading} tabIndex={-1}><AgentIdentity name={entry.name} icon={false} /></h2>
           <p className="agents-detail__for">{[entry.owner ? `for ${entry.owner}` : null, entry.via, entry.connection ? 'local MCP' : null].filter(Boolean).join(' · ')}</p>
@@ -548,31 +575,30 @@ function AgentDetail({ entry, held, meId, projectId, now, asking, canHandOff, st
       </header>
       <section className="agents-detail__now" aria-label="Now">
         <h3>Now</h3>
-        {task ? (
-          <>
-            <button type="button" className="agents-detail__card" aria-label={`Open the thread of #${task.number}`} aria-describedby={lineId} onClick={() => onThread(task.id)}>
-              <span className="agents-detail__task"><StatusGlyph status={task.status} size={14} /><span className="ui-task-number">#{task.number}</span><span className="agents-detail__tasktitle">{task.title}</span></span>
-              <span id={lineId} className="agents-detail__latest">{question ?? (latest === undefined ? '' : latest ? latest.body : 'No message from it on this task yet.')}</span>
-              {latest && !question ? <span className="agents-detail__at">Last update {when(latest.at)}</span> : null}
-            </button>
-            <p className="agents-detail__note">{taskNote(task, asking, entry.connection, now)}{held.length > 1 ? ` · ${held.length - 1} more` : ''} · <Link className="ui-link" to={`/projects/${projectId}/tasks?open=work:${task.id}`}>Open task</Link></p>
-          </>
-        ) : <p className="agents-detail__note">{entry.connection ? stateLine(entry.connection, now) : 'Nothing is handed to it.'}</p>}
-        {/* The co-work unit the connection holds and the requests addressed to it (#160). */}
-        {entry.connection?.currentWork ? <p className="agents-detail__note agents-detail__unit">{workLine(entry.connection.currentWork)}</p> : null}
-        {entry.connection?.requests.length ? (
-          <ul className="agents-detail__requests">
-            {entry.connection.requests.map((request) => <li key={request.id} className="agents-detail__note">{requestLine(request)}</li>)}
-          </ul>
+        {shown ? (
+          <button type="button" className="agents-detail__card" aria-label={`Open the thread of #${shown.number}`} aria-describedby={lineId} onClick={() => onThread(shown.id)}>
+            <span className="agents-detail__task"><StatusGlyph status={shown.status} size={14} /><span className="ui-task-number">#{shown.number}</span><span className="agents-detail__tasktitle">{shown.title}</span></span>
+            <span id={lineId} className="agents-detail__latest">{question ?? (latest === undefined ? '' : latest ? latest.body : 'No message from it on this task yet.')}</span>
+            {latest && !question ? <span className="agents-detail__at">Last update {when(latest.at)}</span> : null}
+          </button>
+        ) : currentWork ? (
+          <p className="agents-detail__task"><button type="button" className="agents-detail__thread" onClick={() => onThread(currentWork.taskId)}>{currentWork.taskTitle}</button></p>
         ) : null}
+        {currentWork ? (
+          <p className="agents-detail__note">{asking ? 'Waiting for your answer · ' : ''}{WORK_ROLE[currentWork.role]} · {currentWork.state === 'claimed' ? isAgentWorking(entry, now) ? 'Working · claim recorded' : 'Work held · claim recorded' : currentWork.state === 'paused' ? 'Paused' : 'Assigned, not started'}{otherHeld.length ? ` · ${otherHeld.length} more handed` : ''} · <Link className="ui-link" to={`/projects/${projectId}/tasks?open=work:${currentWork.taskId}`}>Open task</Link></p>
+        ) : task ? (
+          <p className="agents-detail__note">{taskNote(task, asking, entry.connection, now)}{held.length > 1 ? ` · ${held.length - 1} more handed` : ''} · <Link className="ui-link" to={`/projects/${projectId}/tasks?open=work:${task.id}`}>Open task</Link></p>
+        ) : <p className="agents-detail__note">{entry.connection ? stateLine(entry.connection, now) : 'Nothing is handed to it.'}</p>}
+        {entry.connection && currentWork ? <p className="agents-detail__note">{availabilityLine(entry.connection, now)}</p> : null}
+        {entry.connection?.requests.map((request) => <p key={request.id} className="agents-detail__note">{requestLine(request)}</p>)}
       </section>
       <section aria-label="Recent">
         <h3>Recent</h3>
-        {last || held.length > 1 || stops.length ? (
+        {last || otherHeld.length || stops.length ? (
           <ul className="agents-detail__recent">
             {stops.slice(0, 3).map((item) => <li key={item.id} data-stop={item.id}><span>Stopped by {item.stoppedBy.id === meId ? 'you' : item.stoppedBy.name} · <span className="ui-task-number">#{item.taskNumber}</span></span><time dateTime={item.stoppedAt}>{when(item.stoppedAt)}</time></li>)}
             {last ? <li><span>{sentence(OPERATION_LABEL[last.operation])}</span><time dateTime={last.at}>{when(last.at)}</time></li> : null}
-            {held.slice(1).map((row) => <li key={row.id}><button type="button" className="agents-detail__thread" onClick={() => onThread(row.id)}>Also holds #{row.number} · {row.title}</button></li>)}
+            {otherHeld.map((row) => <li key={row.id}><button type="button" className="agents-detail__thread" onClick={() => onThread(row.id)}>Also holds #{row.number} · {row.title}</button></li>)}
           </ul>
         ) : <p className="agents-detail__note">Nothing recorded yet.</p>}
       </section>
@@ -740,7 +766,7 @@ export function ProjectAgents() {
             <Icon name="chevron-right" size={14} />
           </Link></li>
           <li><button type="button" className="agents-link" aria-expanded={policyOpen} aria-controls="agents-policy" onClick={() => setPolicyOpen((value) => !value)}>
-            <span className="agents-link__icon"><Icon name="rule" size={16} /></span><span className="agents-link__text"><b>Project policy</b> · rules agents read before they plan</span><span className="agents-link__go">{policyOpen ? 'Hide' : shell?.project.access === 'manager' ? 'Edit' : 'Read'}<Icon name="chevron-right" size={14} /></span></button></li>
+            <span className="agents-link__icon"><Icon name="rule" size={16} /></span><span className="agents-link__text"><b>Project policy</b> · Agents read and propose; people accept. Assistants also edit for their owner, with Undo.</span><span className="agents-link__go">{policyOpen ? 'Hide' : shell?.project.access === 'manager' ? 'Edit' : 'Read'}<Icon name="chevron-right" size={14} /></span></button></li>
         </ul>
         {policyOpen ? (
           <div id="agents-policy">

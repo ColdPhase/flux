@@ -15,7 +15,7 @@ import unittest
 
 from playwright.sync_api import Browser, BrowserContext, Page, Route, expect, sync_playwright
 
-from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
+from test_app_shell import DESKTOP, ORIGIN, PHONE, UI_BROWSER, UPSTREAM, shot, start_forwarder
 
 PASSWORD = "stop it before it goes on"
 STAMP = int(time.time() * 1000)
@@ -37,7 +37,10 @@ class StopAndQuestions(unittest.TestCase):
         if UPSTREAM:
             start_forwarder(ORIGIN, UPSTREAM)
         cls.pw = sync_playwright().start()
-        cls.browser = cls.pw.chromium.launch()
+        cls.browser = getattr(cls.pw, UI_BROWSER).launch()
+        if cls.browser.browser_type.name != UI_BROWSER:
+            raise AssertionError(f"Expected {UI_BROWSER}, launched {cls.browser.browser_type.name}")
+        print(f"\n  {cls.__name__} browser: {cls.browser.browser_type.name}")
         expect.set_options(timeout=8000)
 
     @classmethod
@@ -108,7 +111,7 @@ class StopAndQuestions(unittest.TestCase):
             page = self.page("ada", scheme=scheme)
             page.goto(f"/projects/{self.ids['project']}/agents")
             row = page.locator(f'.agents-row[data-agent="{self.ids["agent"]}"]')
-            expect(row).to_contain_text("Not signed in yet · #1 is waiting for it")
+            expect(row).to_contain_text("Handed #1 · not signed in yet")
             stop = row.get_by_role("button", name="Stop Claude Code agent")
             expect(stop).to_be_visible()
             expect(page.get_by_role("complementary", name="Claude Code agent, details").get_by_role("button", name="Stop Claude Code agent")).to_be_visible()
@@ -116,7 +119,7 @@ class StopAndQuestions(unittest.TestCase):
         # Jonas writes here but is neither a manager nor the agent's owner: no Stop to press.
         jonas = self.page("jonas")
         jonas.goto(f"/projects/{self.ids['project']}/agents")
-        expect(jonas.locator(f'.agents-row[data-agent="{self.ids["agent"]}"]')).to_contain_text("Not signed in yet · #1 is waiting for it")
+        expect(jonas.locator(f'.agents-row[data-agent="{self.ids["agent"]}"]')).to_contain_text("Handed #1 · not signed in yet")
         expect(jonas.get_by_role("button", name=re.compile("^Stop"))).to_have_count(0)
         # The panel's Message opens the task's thread.
         page = self.page("ada")
@@ -131,7 +134,7 @@ class StopAndQuestions(unittest.TestCase):
         card = page.locator(".agentlive--agent")
         expect(card).to_have_count(1)
         expect(card).to_contain_text("Claude Code agent")
-        expect(card).to_contain_text("holds #1 · not signed in yet")
+        expect(card).to_contain_text("Handed #1 · not signed in yet")
         shot(page, "stop-sidebar-card")
         card.get_by_role("button", name="Stop Claude Code agent").click()
         expect(page.get_by_text("Stopped Claude Code agent on #1")).to_be_visible()
@@ -163,7 +166,7 @@ class StopAndQuestions(unittest.TestCase):
         page = self.page("ada")
         page.goto(f"/projects/{self.ids['project']}/agents")
         row = page.locator(f'.agents-row[data-agent="{self.ids["agent"]}"]')
-        expect(row).to_contain_text("Not signed in yet · #2 is waiting for it")
+        expect(row).to_contain_text("Handed #2 · not signed in yet")
         # Someone stops the agent while Ada's view is still open: her press is the stale one, so it is told and nothing is stopped twice.
         other = self.page("ada")
 
@@ -312,7 +315,7 @@ class StopAndQuestions(unittest.TestCase):
             expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
             home = page.get_by_role("region", name="Your agents working now")
             # The fixture's agent is not signed in, so Home says it holds the task (#347 N12), not the task's title.
-            expect(home.locator(".agentlive--agent")).to_contain_text(f"holds #{number} · not signed in yet")
+            expect(home.locator(".agentlive--agent")).to_contain_text(f"Handed #{number} · not signed in yet")
             expect(page.locator(".agentlive--agent")).to_have_count(1)
             stop = home.get_by_role("button", name="Stop Claude Code agent")
             expect(stop).to_be_visible()

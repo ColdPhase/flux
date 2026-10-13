@@ -21,6 +21,39 @@ export interface AgentEntry {
   access: ProjectAccess | null;
 }
 
+/** An expired session is offline even before the next server observation. */
+export function connectionState(connection: ProjectAgentConnection, now: number): ProjectAgentConnection['state'] {
+  return connection.state === 'session_open' && connection.session && Date.parse(connection.session.expiresAt) <= now ? 'offline' : connection.state;
+}
+
+/** The next expiry still live in the displayed observation, even if effect setup happens later. */
+export function nextSessionExpiry(connections: readonly ProjectAgentConnection[] | undefined, now: number): number | null {
+  let next = Infinity;
+  for (const connection of connections ?? []) {
+    if (connection.state !== 'session_open' || !connection.session) continue;
+    const end = Date.parse(connection.session.expiresAt);
+    if (end > now && end < next) next = end;
+  }
+  return Number.isFinite(next) ? next : null;
+}
+
+/** Native task ownership/status is assignment; only a claimed unit on a usable live connection proves work. */
+export function isAgentWorking(entry: AgentEntry, now: number): boolean {
+  const connection = entry.connection;
+  return !!connection?.session && connection.currentWork?.state === 'claimed' && connectionState(connection, now) === 'session_open'
+    && Date.parse(connection.session.expiresAt) > now;
+}
+
+export const WORK_ROLE: Record<NonNullable<ProjectAgentConnection['currentWork']>['role'], string> = {
+  execute: 'Task work', review: 'Review', plan: 'Planning',
+};
+
+/** Preserve the recorded unit state while distinguishing a disconnected claim from current execution. */
+export function currentWorkLine(work: NonNullable<ProjectAgentConnection['currentWork']>, working: boolean): string {
+  if (work.state === 'claimed') return working ? `Working on “${work.taskTitle}”` : `Work held on “${work.taskTitle}”`;
+  return work.state === 'paused' ? `Paused on “${work.taskTitle}”` : `Assigned “${work.taskTitle}”, not started`;
+}
+
 export const CLIENT_LABEL: Record<ProjectAgentConnection['clientDesignation'], string> = {
   claude_code: 'Claude Code', codex: 'Codex', other: 'External client',
 };

@@ -4,7 +4,8 @@ Ada manages a project with Jonas (a contributor). Ada's agents: "Codex" (one lap
 (holds #3 in progress), "Lab helper" (a tablet, holds #5 in progress) and "Notes" (a laptop, holds nothing). Jonas's
 "Claude Code" holds #2, blocked. #4 is open with no owner. The connection states, the questions and the agent's messages are
 stubbed on the page (the server rules behind them are tested in tests/app); the stubs keep the real records and change only
-what the test needs. Every test has a negative control in a comment: reverting the fix makes it fail.
+what the test needs. A row reads "Working" only for a claimed unit of work on a live session (#376 C-1); a task merely held
+by an agent reads "Handed". Every test has a negative control in a comment: reverting the fix makes it fail.
 """
 
 from __future__ import annotations
@@ -18,7 +19,7 @@ from datetime import datetime, timedelta, timezone
 
 from playwright.sync_api import Browser, BrowserContext, Page, Route, expect, sync_playwright
 
-from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
+from test_app_shell import DESKTOP, ORIGIN, PHONE, UI_BROWSER, UPSTREAM, shot, start_forwarder
 
 PASSWORD = "the lamp reads its own state"
 STAMP = int(time.time() * 1000)
@@ -43,6 +44,11 @@ def not_signed_in() -> dict:
     return {"state": "not_signed_in", "session": None, "lastActivity": None}
 
 
+def claimed(task_id: str, title: str) -> dict:
+    """The connection's recorded unit of work on a task, claimed: with an open session, the only thing that reads "Working" (C-1)."""
+    return {"currentWork": {"taskId": task_id, "taskTitle": title, "role": "execute", "state": "claimed"}}
+
+
 def recorded_result(minutes_ago: int) -> dict:
     return {"operation": "result.record", "at": iso(-minutes_ago)}
 
@@ -60,7 +66,10 @@ class AgentsTabStates(unittest.TestCase):
         if UPSTREAM:
             start_forwarder(ORIGIN, UPSTREAM)
         cls.pw = sync_playwright().start()
-        cls.browser = cls.pw.chromium.launch()
+        cls.browser = getattr(cls.pw, UI_BROWSER).launch()
+        if cls.browser.browser_type.name != UI_BROWSER:
+            raise AssertionError(f"Expected {UI_BROWSER}, launched {cls.browser.browser_type.name}")
+        print(f"\n  {cls.__name__} browser: {cls.browser.browser_type.name}")
         expect.set_options(timeout=8000)
 
     @classmethod
@@ -93,6 +102,10 @@ class AgentsTabStates(unittest.TestCase):
         if status is not None:
             self.assertEqual(response.status, status, response.text())
         return json.loads(response.text()) if response.text() else {}
+
+    def working(self, task: str, title: str) -> dict:
+        """An open session with a claimed unit of work on the task: the agent is working on it."""
+        return {**open_session(), **claimed(self.ids[task], title)}
 
     def row(self, page: Page, key: str):
         return page.locator(f'.agents-row[data-agent="{self.ids[key]}"]')
@@ -203,23 +216,37 @@ class AgentsTabStates(unittest.TestCase):
     def test_01_working_needs_an_online_client(self) -> None:
         page = self.page("ada")
         self.stub_connections(page, {
-            self.ids["conn_codex"]: open_session(),
-            self.ids["conn_claude"]: offline(recorded_result(40)),
+            self.ids["conn_codex"]: self.working("task1", "Fix the reconnect loop in the lamp firmware"),
+            self.ids["conn_claude"]: {**offline(recorded_result(40)), **claimed(self.ids["task3"], "Calibrate the soil probes")},
             self.ids["conn_lab"]: not_signed_in(),
         })
         page.goto(f"/projects/{self.ids['project']}/agents")
-        expect(self.row(page, "codex")).to_contain_text("Working on #1 · Fix the reconnect loop in the lamp firmware")
+        expect(self.row(page, "codex")).to_contain_text("Working on “Fix the reconnect loop in the lamp firmware”")
+        expect(self.row(page, "codex")).to_have_attribute("data-working", "true")
+        # A claim on a closed session is held work, not work being done (C-1).
         claude = self.row(page, "claude")
-        expect(claude).to_contain_text("Offline · holds #3")
+        expect(claude).to_contain_text("Work held on “Calibrate the soil probes”")
+        expect(claude).to_contain_text("Offline · last seen")
         self.assertNotIn("Working", claude.inner_text())
-        expect(self.row(page, "lab")).to_contain_text("is waiting for it")
+        expect(self.row(page, "lab")).to_contain_text("Handed #5 · not signed in yet")
+        self.assertNotIn("Working", self.row(page, "lab").inner_text())
         expect(page.locator(".agents__count")).to_contain_text("1 working")
-        # Negative control: with the same task and the client's session open, the same row says "Working on #3" and the count is 2
+        # Without a claim the held task is "Handed" even while the client's session is open (C-1), and the offline holder says so.
+        handed = self.page("ada")
+        self.stub_connections(handed, {self.ids["conn_codex"]: self.working("task1", "Fix the reconnect loop in the lamp firmware"),
+                                       self.ids["conn_claude"]: open_session(), self.ids["conn_lab"]: offline(recorded_result(40))})
+        handed.goto(f"/projects/{self.ids['project']}/agents")
+        expect(self.row(handed, "claude")).to_contain_text("Handed #3 · Calibrate the soil probes")
+        expect(self.row(handed, "claude")).not_to_have_attribute("data-working", "true")
+        expect(self.row(handed, "lab")).to_contain_text("Handed #5 · offline · last seen")
+        expect(handed.locator(".agents__count")).to_contain_text("1 working")
+        # Negative control: with the same task claimed and the client's session open, the same row says "Working" and the count is 2
         # (reverting the online rule makes the offline row above say "Working", so the first assertions fail).
         online = self.page("ada")
-        self.stub_connections(online, {self.ids["conn_codex"]: open_session(), self.ids["conn_claude"]: open_session()})
+        self.stub_connections(online, {self.ids["conn_codex"]: self.working("task1", "Fix the reconnect loop in the lamp firmware"),
+                                       self.ids["conn_claude"]: self.working("task3", "Calibrate the soil probes")})
         online.goto(f"/projects/{self.ids['project']}/agents")
-        expect(self.row(online, "claude")).to_contain_text("Working on #3")
+        expect(self.row(online, "claude")).to_contain_text("Working on “Calibrate the soil probes”")
         expect(online.locator(".agents__count")).to_contain_text("2 working")
         shot(online, "agents-tab-working-online")
 
@@ -253,28 +280,29 @@ class AgentsTabStates(unittest.TestCase):
         ada = self.page("ada")
         question = self.question(asked=ADA["id"], text="Merge PR 42 now, or wait for the CI run?", message=self.ids["m2"], task=self.ids["task1"])
         self.stub_questions(ada, [question])
-        self.stub_connections(ada, {self.ids["conn_codex"]: open_session()})
+        self.stub_connections(ada, {self.ids["conn_codex"]: self.working("task1", "Fix the reconnect loop in the lamp firmware")})
         ada.goto(f"/projects/{self.ids['project']}/agents")
         rows = ada.locator(".agents-row")
         expect(rows.first).to_have_attribute("data-agent", self.ids["codex"])
         expect(rows.first).to_contain_text("Waiting for you · asks “Merge PR 42 now, or wait")
         expect(self.row(ada, "jonas_claude")).to_contain_text("Blocked on #2 · Waiting for the probe drawing")
         expect(ada.locator(".agents__count")).to_contain_text("1 waiting for you")
-        expect(ada.locator(".agents-row", has_text="Handed")).to_have_count(0)
+        # The blocked agent says it is blocked, not merely "Handed" (other held rows are "Handed" under C-1).
+        expect(self.row(ada, "jonas_claude")).not_to_contain_text("Handed")
         # Negative control: Jonas is not the person asked, so the same row does not say "Waiting for you".
         jonas = self.page("jonas")
         self.stub_questions(jonas, [question])
-        self.stub_connections(jonas, {self.ids["conn_codex"]: open_session()})
+        self.stub_connections(jonas, {self.ids["conn_codex"]: self.working("task1", "Fix the reconnect loop in the lamp firmware")})
         jonas.goto(f"/projects/{self.ids['project']}/agents")
-        expect(self.row(jonas, "codex")).to_contain_text("Working on #1")
+        expect(self.row(jonas, "codex")).to_contain_text("Working on “Fix the reconnect loop in the lamp firmware”")
         self.assertNotIn("Waiting for you", self.row(jonas, "codex").inner_text())
         # Answered: the row goes back to the work it holds.
         answered = dict(question, answer={"optionIndex": 1, "text": "Wait", "by": {"id": ADA["id"], "name": ADA["name"]}, "messageId": self.ids["m2"], "at": iso(-1)})
         ada_later = self.page("ada")
         self.stub_questions(ada_later, [answered])
-        self.stub_connections(ada_later, {self.ids["conn_codex"]: open_session()})
+        self.stub_connections(ada_later, {self.ids["conn_codex"]: self.working("task1", "Fix the reconnect loop in the lamp firmware")})
         ada_later.goto(f"/projects/{self.ids['project']}/agents")
-        expect(self.row(ada_later, "codex")).to_contain_text("Working on #1")
+        expect(self.row(ada_later, "codex")).to_contain_text("Working on “Fix the reconnect loop in the lamp firmware”")
 
     def test_04_requests_shows_what_waits_for_you(self) -> None:
         ada = self.page("ada")
@@ -319,10 +347,10 @@ class AgentsTabStates(unittest.TestCase):
         shot(page, "agents-tab-rows-desktop")
         # Phone: the working row keeps its whole line in at most 112 px, and its client line is hidden.
         phone = self.page("ada", phone=True)
-        self.stub_connections(phone, {self.ids["conn_codex"]: open_session()})
+        self.stub_connections(phone, {self.ids["conn_codex"]: self.working("task1", "Fix the reconnect loop in the lamp firmware")})
         phone.goto(f"/projects/{self.ids['project']}/agents")
         codex = self.row(phone, "codex")
-        expect(codex).to_contain_text("Working on #1")
+        expect(codex).to_contain_text("Working on “Fix the reconnect loop")
         box = codex.bounding_box()
         assert box
         self.assertLessEqual(box["height"], 112)
@@ -418,7 +446,7 @@ class AgentsTabStates(unittest.TestCase):
     def test_11_stop_keeps_the_panel_and_focus_on_the_stopped_agent(self) -> None:
         # #347 review N4: Stop does not move the panel to another agent or the focus to its heading.
         page = self.page("ada")
-        self.stub_connections(page, {self.ids["conn_codex"]: open_session()})
+        self.stub_connections(page, {self.ids["conn_codex"]: self.working("task1", "Fix the reconnect loop in the lamp firmware")})
         page.goto(f"/projects/{self.ids['project']}/agents")
         detail = page.get_by_role("complementary", name="Codex, details")
         expect(detail).to_be_visible()
@@ -504,7 +532,7 @@ class AgentsTabStates(unittest.TestCase):
         expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
         # Only the first working agent is drawn in the card; this fixture's working agent is Ada's Claude Code (#3, no session).
         card = page.locator(".agentlive--agent").first
-        expect(card).to_contain_text("holds #3 · not signed in yet")
+        expect(card).to_contain_text("Handed #3 · not signed in yet")
         expect(card.locator("[data-expression]").first).to_have_attribute("data-expression", "asleep")
         # Negative control: the old card kept the thinking face for an offline holder.
 

@@ -630,7 +630,7 @@ class AdaptiveMatrix(AdaptiveBase):
         self.at_rest(page)
         geometry["Tasks"] = page.evaluate(GEOMETRY)
         self.tab(page, "Agents")
-        expect(page.get_by_role("heading", level=1, name="Working together")).to_be_visible()
+        expect(page.get_by_role("heading", level=1, name="Agents")).to_be_visible()
         self.at_rest(page)
         geometry["Agents"] = page.evaluate(GEOMETRY)
         self.no_sideways_scroll(page, f"the views at {width}x{height} @{dpr}")
@@ -660,7 +660,7 @@ class AdaptiveMatrix(AdaptiveBase):
             pane = page.locator(".sk-page--map").bounding_box()["width"]
             self.assertAlmostEqual(plane, pane, delta=1, msg=f"the map fills the available pane at {width} CSS px")
             self.tab(page, "Agents")
-            expect(page.get_by_role("heading", level=1, name="Working together")).to_be_visible()
+            expect(page.get_by_role("heading", level=1, name="Agents")).to_be_visible()
             self.at_rest(page)
             column = page.locator(".agents").first.bounding_box()["width"]
             measured[width] = {"the map plane": round(plane), "the Agents column": round(column)}

@@ -171,7 +171,8 @@ function useStopOwnAgent(item: OwnWorkingAgent, onChanged: () => void) {
 
 function OwnAgentCard({ item, compact, onChanged }: { item: OwnWorkingAgent; compact: boolean; onChanged: () => void }) {
   const { stopping, stop } = useStopOwnAgent(item, onChanged);
-  const label = `${item.agent.name} is working on #${item.task.number}`;
+  // Without a live session the task is only handed to it (C-1): the card never says it is working then.
+  const label = item.online ? `${item.agent.name} is working on #${item.task.number}` : `${item.agent.name} · handed #${item.task.number}`;
   const destination = `/projects/${item.task.projectId}/agents`;
   const hue = agentHue(item.agent.id);
   return (
@@ -183,7 +184,7 @@ function OwnAgentCard({ item, compact, onChanged }: { item: OwnWorkingAgent; com
           <Kreska size={24} expression={item.online ? 'thinking' : 'asleep'} hue={hue} />
           <Link className="agentlive__text" to={destination}>
             <b>{item.agent.name}</b>
-            <span>{stopping ? 'Stopping…' : item.online ? `#${item.task.number} · ${item.task.title}` : `holds #${item.task.number} · ${item.signedIn ? 'offline' : 'not signed in yet'}`}</span>
+            <span>{stopping ? 'Stopping…' : item.online ? `#${item.task.number} · ${item.task.title}` : `Handed #${item.task.number} · ${item.signedIn ? 'offline' : 'not signed in yet'}`}</span>
           </Link>
         </>
       )}

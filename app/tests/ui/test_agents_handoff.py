@@ -11,15 +11,20 @@ import json
 import re
 import time
 import unittest
+import uuid
 
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
-from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
+from test_app_shell import DESKTOP, ORIGIN, PHONE, UI_BROWSER, UPSTREAM, shot as save_shot, start_forwarder
 
 PASSWORD = "two steps then it is theirs"
 STAMP = int(time.time() * 1000)
 ADA = {"name": "Ada Kowalska", "email": f"ada.handoff+{STAMP}@example.test"}
 JONAS = {"name": "Jonas Berg", "email": f"jonas.handoff+{STAMP}@example.test"}
+
+
+def shot(page: Page, name: str) -> None:
+    save_shot(page, name if UI_BROWSER == "chromium" else f"{name}-{UI_BROWSER}")
 
 
 class HandOffJourney(unittest.TestCase):
@@ -35,7 +40,10 @@ class HandOffJourney(unittest.TestCase):
         if UPSTREAM:
             start_forwarder(ORIGIN, UPSTREAM)
         cls.pw = sync_playwright().start()
-        cls.browser = cls.pw.chromium.launch()
+        cls.browser = getattr(cls.pw, UI_BROWSER).launch()
+        if cls.browser.browser_type.name != UI_BROWSER:
+            raise AssertionError(f"Expected {UI_BROWSER}, launched {cls.browser.browser_type.name}")
+        print(f"\n  Hand-off browser: {cls.browser.browser_type.name}")
         expect.set_options(timeout=8000)
 
     @classmethod
@@ -120,10 +128,11 @@ class HandOffJourney(unittest.TestCase):
             claude = rows.filter(has_text="Claude Code agent")
             expect(claude).to_contain_text("for Ada Kowalska (you)")
             expect(claude).to_contain_text("Desk laptop")
-            # No client session is open here, so the held task is not "working" (#347 P1-1).
-            expect(claude).to_contain_text("Not signed in yet · #1 is waiting for it")
+            # No claimed unit on a live session here, so the handed task is not "working" (C-1; #347 P1-1).
+            expect(claude).to_contain_text("Handed #1 · not signed in yet")
+            expect(claude).not_to_have_attribute("data-working", "true")
             expect(rows.filter(has_text="Reader agent")).to_contain_text("nothing handed to it")
-            expect(page.get_by_text("2 in this project")).to_be_visible()
+            expect(page.get_by_text("2 in this project", exact=True)).to_be_visible()
             # Requests, Policy and "Connect your own agent": one row each, below the list.
             expect(page.get_by_role("link", name=re.compile("^Requests"))).to_have_attribute("href", "/inbox")
             expect(page.get_by_role("button", name=re.compile("^Project policy"))).to_be_visible()
@@ -138,6 +147,7 @@ class HandOffJourney(unittest.TestCase):
     def test_03_policy_opens_from_its_row(self) -> None:
         page = self.open_agents()
         row = page.get_by_role("button", name=re.compile("^Project policy"))
+        expect(row).to_contain_text("Agents read and propose; people accept. Assistants also edit for their owner, with Undo.")
         expect(row).to_have_attribute("aria-expanded", "false")
         row.click()
         expect(page.get_by_role("region", name="Agent policy")).to_be_visible()
@@ -188,7 +198,8 @@ class HandOffJourney(unittest.TestCase):
         expect(dialog.get_by_text("Step 2 of 2")).to_be_visible()
         expect(dialog.get_by_role("heading", name="What Claude Code agent may do")).to_be_visible()
         expect(dialog).to_contain_text("Claude Code agent will be able to read this project and write in it")
-        expect(dialog).to_contain_text("It holds #1 · not signed in yet")
+        expect(dialog).to_contain_text("has #1 · not signed in yet")
+        expect(dialog.get_by_text(re.compile("queued behind|working on", re.IGNORECASE))).to_have_count(0)
         shot(page, "handoff-step2-desktop")
         dialog.get_by_role("button", name="Back").click()
         expect(dialog.get_by_text("Step 1 of 2")).to_be_visible()
@@ -201,7 +212,7 @@ class HandOffJourney(unittest.TestCase):
         owner = self.task("label")["owner"]
         self.assertEqual(owner["id"], self.ids["agent_claude"])
         row = page.get_by_role("list", name="Agents in this project").get_by_role("listitem").filter(has_text="Claude Code agent")
-        expect(row).to_contain_text("Not signed in yet · #1 is waiting for it")
+        expect(row).to_contain_text("Handed #1 · not signed in yet")
 
     def test_06_an_agent_without_write_access_is_explained_and_never_granted(self) -> None:
         page = self.open_agents()
@@ -310,6 +321,20 @@ class HandOffJourney(unittest.TestCase):
             expect(detail).to_be_visible()
             page.go_forward()
             expect(thread).to_be_visible()
+            # Recent uses the same deliberate panel-to-thread step and returns to the same agent.
+            page.go_back()
+            recent_title = "Print a label for each of the six beds"
+            recent = detail.get_by_role("region", name="Recent").get_by_role("button", name=re.compile(f"Also holds #2 · {recent_title}"))
+            (recent.tap if touch else recent.click)()
+            recent_thread = page.get_by_role("region", name=f"Thread of {recent_title}")
+            expect(recent_thread).to_be_visible()
+            expect(page.get_by_label("Write to this task")).to_be_visible()
+            # There is no task picker (#347 P1-2): the opened task is the one in the address.
+            expect(page).to_have_url(re.compile(f"task={self.ids['label']}"))
+            page.go_back()
+            expect(detail).to_be_visible()
+            page.go_forward()
+            expect(recent_thread).to_be_visible()
         # Where the panel sits beside the list both stay on screen.
         wide = self.open_agents()
         wide.get_by_role("complementary", name="Claude Code agent, details").get_by_role("button", name=re.compile("^Open the thread of #")).click()
@@ -336,6 +361,9 @@ class HandOffJourney(unittest.TestCase):
         expect(page.get_by_role("dialog")).to_have_count(0)
         self.assertEqual(self.task("keys")["owner"]["id"], self.ids["agent_claude"])
         self.assertEqual(self.api(page, "GET", f"/api/v1/projects/{self.ids['project']}/grants", status=200), grants_before, "permissions are unchanged")
+        page.reload()
+        self.assertEqual(self.task("keys")["owner"]["id"], self.ids["agent_claude"], "the native owner persists after reload")
+        self.assertEqual(self.api(page, "GET", f"/api/v1/projects/{self.ids['project']}/grants", status=200), grants_before, "reload grants no permissions")
 
     def test_13_a_teammates_agent_is_asked_not_assigned(self) -> None:
         # #347 P1-3: a task is not handed to another person's agent; Flux asks its owner in the task's thread.
@@ -389,8 +417,8 @@ class HandOffJourney(unittest.TestCase):
         page.get_by_role("button", name="Hand off a task").click()
         dialog = page.get_by_role("dialog", name="Hand off a task")
         dialog.get_by_label("Task", exact=True).select_option(label=f"#{ask['number']} · Label the compost bins")
-        # Ada's Claude Code holds #1 in progress and has never signed in: the load line says so (negative control: "holds #1 · offline").
-        expect(dialog.locator("label.handoff__agent", has_text="Claude Code agent")).to_contain_text("holds #1 · not signed in yet")
+        # Ada's Claude Code has #1 in progress and has never signed in: the load line says so (negative control: "has #1 · offline").
+        expect(dialog.locator("label.handoff__agent", has_text="Claude Code agent")).to_contain_text("has #1 · not signed in yet")
         dialog.locator("label.handoff__agent", has_text="Claude Code").filter(has_text="Jonas Berg").first.click()
         dialog.get_by_role("button", name="Next").click()
         dialog.get_by_role("button", name="Ask Jonas").click()
@@ -442,6 +470,414 @@ class HandOffJourney(unittest.TestCase):
         expect(view.get_by_role("dialog")).to_have_count(0)
         owner = self.api(view, "GET", f"/api/v1/work/{free}", status=200)["owner"]
         self.assertEqual(owner["id"], self.ids["agent_claude"])
+
+    def test_13_connection_work_and_requests_survive_the_one_list_composition(self) -> None:
+        """The projection is a fixture; task pages, scoped native reads and threads use the actual API.
+
+        Main's durable unit/request projection is separately checked by the application suite. Here a
+        newer connection unit must override an older in-progress task-owner fallback, including its face.
+        """
+        ada = self.page("ada")
+        project = self.api(ada, "POST", f"/api/v1/workspaces/{self.ids['workspace']}/projects",
+                           {"name": "Connection work", "visibility": "restricted"}, status=201)["id"]
+        self.api(ada, "POST", f"/api/v1/projects/{project}/grants",
+                 {"principal": {"kind": "agent", "id": self.ids["agent_claude"]}, "role": "contributor"}, status=201)
+        connection = self.api(ada, "POST", "/api/v1/agent-connections",
+                              {"agentId": self.ids["agent_claude"], "selectedProjectIds": [project],
+                               "scopes": ["flux.context.read", "flux.proposal.write"], "name": "Unit laptop", "clientDesignation": "claude_code"}, status=201)
+        tasks = [self.api(ada, "POST", f"/api/v1/projects/{project}/work",
+                          {"title": f"Connection task {number}", "status": "in_progress",
+                           "owner": {"kind": "agent", "id": self.ids["agent_claude"]}}, status=201) for number in range(51)]
+        first = self.api(ada, "GET", f"/api/v1/projects/{project}/work-view?purpose=choices&choice=pivot_work&limit=50", status=200)
+        page_ids = {item["id"] for item in first["items"]}
+        target = next(item for item in tasks if item["id"] not in page_ids)
+        self.assertTrue(first["nextCursor"])
+        type(self).ids.update(projection_project=project, projection_task=target["id"])
+        states = (("pending", "queued", "Not signed in from your client yet", "not_signed_in", "Assigned", "asleep"),
+                  ("claimed", "claimed", "Session open since", "session_open", "Working on", "working"),
+                  ("paused", "deferred", "Offline", "offline", "Paused on", "asleep"),
+                  ("claimed", "claimed", "Not signed in from your client yet", "not_signed_in", "Work held on", "asleep"),
+                  ("claimed", "deferred", "Offline", "offline", "Work held on", "asleep"),
+                  ("claimed", "claimed", "Can’t act here now", "unavailable", "Work held on", "worried"),
+                  ("claimed", "claimed", "Offline", "expired_session", "Work held on", "asleep"),
+                  ("paused", "deferred", "Session open since", "session_open", "Paused on", "asleep"),
+                  ("paused", "deferred", "Can’t act here now", "unavailable", "Paused on", "worried"))
+        for state, request_state, availability, connection_state, text, expression in states:
+            for phone, scheme in ((False, "dark"), (True, "light")):
+                with self.subTest(state=state, phone=phone, engine=UI_BROWSER):
+                    page = self.page("ada", phone=phone, scheme=scheme)
+                    self.addCleanup(lambda page=page: None if page.is_closed() else page.unroute_all(behavior="ignoreErrors"))
+                    native_reads: list[str] = []
+                    page.on("request", lambda request: native_reads.append(request.url) if f"/projects/{project}/work-objects/work/{target['id']}" in request.url else None)
+
+                    def projection(route) -> None:
+                        response = route.fetch()
+                        body = response.json()
+                        item = next(row for row in body["connections"] if row["id"] == connection["id"])
+                        item["state"] = "session_open" if connection_state == "expired_session" else connection_state
+                        at = time.time()
+                        item["session"] = {"startedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(at - 3600)),
+                                           "expiresAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(at - 60 if connection_state == "expired_session" else at + 3600))} if item["state"] == "session_open" else None
+                        item["currentWork"] = {"taskId": target["id"], "taskTitle": target["title"], "role": "review", "state": state}
+                        item["requests"] = [{"id": "fixture-request", "kind": "review", "state": request_state,
+                                             "reason": "after the calibration result", "taskId": target["id"], "taskTitle": target["title"],
+                                             "sender": {"connectionId": "fixture-sender", "name": "Review laptop", "ownerName": "Jonas Berg"}}]
+                        route.fulfill(response=response, json=body)
+
+                    page.route(f"**/api/v1/projects/{project}/agents", projection)
+                    page.goto(f"/projects/{project}/agents")
+                    row = page.locator(f'.agents-row[data-agent="{self.ids["agent_claude"]}"]')
+                    expect(row.locator(".agents-row__now")).to_contain_text(f'{text} “{target["title"]}”')
+                    expect(row).to_contain_text(availability)
+                    expect(row).to_contain_text("Review request from Review laptop (Jonas Berg)")
+                    expect(row).to_contain_text("after the calibration result")
+                    request_text = {"queued": "waiting for its next step", "claimed": "being handled", "deferred": "deferred until its next step"}[request_state]
+                    expect(row).to_contain_text(request_text)
+                    expect(row.locator(".agents-row__icon")).to_have_attribute("data-expression", expression)
+                    if state != "claimed" or connection_state != "session_open":
+                        expect(row).not_to_contain_text("Working on")
+                    if state == "claimed" and connection_state == "session_open":
+                        expect(row).to_have_attribute("data-working", "true")
+                        expect(page.get_by_text("1 in this project · 1 working", exact=True)).to_be_visible()
+                    else:
+                        expect(row).not_to_have_attribute("data-working", "true")
+                        expect(page.get_by_text("1 in this project", exact=True)).to_be_visible()
+                    (row.locator(".agents-row__btn").tap if phone else row.locator(".agents-row__btn").click)()
+                    detail = page.get_by_role("complementary", name="Claude Code agent, details")
+                    expect(detail.locator(".agents-detail__head > .kreska")).to_have_attribute("data-expression", expression)
+                    now = detail.get_by_role("region", name="Now")
+                    expect(now).to_contain_text(availability)
+                    expect(now).to_contain_text(request_text)
+                    expect(now).to_contain_text("Review laptop (Jonas Berg)")
+                    expect(now).to_contain_text("Review")
+                    if state == "claimed":
+                        expect(now).to_contain_text("claim recorded")
+                    shot(page, f"handoff-projection-{state}-{connection_state}-{'phone' if phone else 'desktop'}-{scheme}")
+                    # The selected task is outside the loaded page. Its native read and actual discussion open.
+                    (now.get_by_role("button", name=target["title"]).tap if phone else now.get_by_role("button", name=target["title"]).click)()
+                    thread = page.get_by_role("region", name=f'Thread of {target["title"]}')
+                    expect(thread).to_be_visible()
+                    expect(page.get_by_label("Write to this task")).to_be_visible()
+                    expect(page).to_have_url(re.compile(f"task={target['id']}"))
+                    self.assertTrue(native_reads, "the current target used the actual project-scoped native read beyond page one")
+                    if phone:
+                        expect(detail).to_have_count(0)
+                        page.go_back()
+                        expect(detail).to_be_visible()
+                        page.go_forward()
+                        expect(thread).to_be_visible()
+                    else:
+                        # Wide: the thread takes the right column beside the list, which keeps the agent selected (#347 P1-2);
+                        # closing the thread returns to the same agent's panel.
+                        expect(row).to_be_visible()
+                        expect(row.locator(".agents-row__btn")).to_have_attribute("aria-pressed", "true")
+                        page.get_by_role("button", name="Close thread").click()
+                        expect(detail).to_be_visible()
+                        expect(detail.get_by_role("region", name="Now")).to_contain_text(availability)
+                    page.unroute_all(behavior="ignoreErrors")
+                    page.context.close()
+
+    def test_14_inaccessible_and_cross_project_targets_and_viewer_writes_are_refused(self) -> None:
+        project, task_id = self.ids["projection_project"], self.ids["projection_task"]
+        ada = self.page("ada")
+        task = self.api(ada, "GET", f"/api/v1/work/{task_id}", status=200)
+        before = self.api(ada, "GET", f"/api/v1/projects/{project}/grants", status=200)
+        jonas = self.page("jonas")
+        self.api(jonas, "GET", f"/api/v1/work/{task_id}", status=404)
+        self.api(jonas, "GET", f"/api/v1/projects/{project}/agents", status=404)
+        # An explicit task URL cannot open another project's otherwise readable thread.
+        for wanted in (self.ids["busy"], str(uuid.uuid4())):
+            page = self.page("ada", phone=True)
+            page.goto(f"/projects/{project}/agents?task={wanted}")
+            expect(page.get_by_role("heading", level=1, name="Agents")).to_be_visible()
+            expect(page.get_by_role("region", name="Thread of Calibrate the probes at two soil depths")).to_have_count(0)
+            # There is no task picker (#347 P1-2): the thread that opens is this project's own first task, never the wanted one.
+            expect(page.get_by_role("region", name=re.compile(r"^Thread of Connection task \d+$"))).to_have_count(1)
+        # A reader can see the work but has no hand-off entry and cannot bypass it through the API.
+        self.api(ada, "POST", f"/api/v1/projects/{project}/grants",
+                 {"principal": {"kind": "human", "id": JONAS["id"]}, "role": "viewer"}, status=201)
+        grants = self.api(ada, "GET", f"/api/v1/projects/{project}/grants", status=200)
+        self.assertEqual(len(grants), len(before) + 1)
+        jonas.goto(f"/projects/{project}/agents")
+        expect(jonas.get_by_role("heading", level=1, name="Agents")).to_be_visible()
+        expect(jonas.get_by_role("button", name="Hand off a task")).to_have_count(0)
+        headers = {"origin": ORIGIN, "content-type": "application/json", "if-match": f'"{task["version"]}"'}
+        response = jonas.request.patch(f"{ORIGIN}/api/v1/work/{task_id}", headers=headers,
+                                      data=json.dumps({"owner": {"kind": "agent", "id": self.ids["agent_outside"]}, "clientCommandId": str(uuid.uuid4())}))
+        self.assertEqual(response.status, 403, response.text())
+        response = ada.request.patch(f"{ORIGIN}/api/v1/work/{task_id}", headers=headers,
+                                    data=json.dumps({"owner": {"kind": "agent", "id": self.ids["agent_outside"]}, "clientCommandId": str(uuid.uuid4())}))
+        self.assertEqual(response.status, 422, response.text())
+        self.assertEqual(response.json()["code"], "OWNER_WITHOUT_ACCESS")
+        self.assertEqual(self.api(ada, "GET", f"/api/v1/work/{task_id}", status=200)["owner"], task["owner"])
+        self.assertEqual(self.api(ada, "GET", f"/api/v1/projects/{project}/grants", status=200), grants, "refusals change no grants")
+
+    def test_16_phone_tap_confirmation_persists_owner_and_version_without_grant_changes(self) -> None:
+        """Isolated projects preserve the preceding fixture; complete both touch steps in both themes."""
+        for scheme in ("light", "dark"):
+            with self.subTest(engine=UI_BROWSER, scheme=scheme):
+                page = self.page("ada", phone=True, scheme=scheme)
+                workspace = self.api(page, "POST", "/api/v1/workspaces", {"name": f"Phone hand-off {scheme}"}, status=201)["id"]
+                project = self.api(page, "POST", f"/api/v1/workspaces/{workspace}/projects",
+                                   {"name": "Phone field work", "visibility": "restricted"}, status=201)["id"]
+                agent = self.api(page, "POST", f"/api/v1/workspaces/{workspace}/agents", {"name": "Field agent", "owner": "self"}, status=201)["id"]
+                self.api(page, "POST", f"/api/v1/projects/{project}/grants",
+                         {"principal": {"kind": "agent", "id": agent}, "role": "contributor"}, status=201)
+                task = self.api(page, "POST", f"/api/v1/projects/{project}/work", {"title": "Check the probes after rain"}, status=201)
+                grants = self.api(page, "GET", f"/api/v1/projects/{project}/grants", status=200)
+                page.goto(f"/projects/{project}/agents")
+                page.get_by_role("button", name="Hand off a task").tap()
+                dialog = page.get_by_role("dialog", name="Hand off a task")
+                expect(dialog.get_by_text("Step 1 of 2", exact=True)).to_be_visible()
+                dialog.get_by_label("Task", exact=True).select_option(label="#1 · Check the probes after rain")
+                dialog.locator("label.handoff__agent", has_text="Field agent").tap()
+                dialog.get_by_role("button", name="Next").tap()
+                expect(dialog.get_by_text("Step 2 of 2", exact=True)).to_be_visible()
+                expect(dialog).to_contain_text("Field agent will be able to read this project and write in it")
+                self.assertIsNone(self.api(page, "GET", f"/api/v1/work/{task['id']}", status=200)["owner"], "step2 alone changes nothing")
+                confirm = dialog.get_by_role("button", name=re.compile("^Hand off"))
+                target = confirm.bounding_box()
+                assert target
+                self.assertGreaterEqual(target["height"], 44)
+                self.assertGreaterEqual(target["width"], 44)
+                confirm.tap()
+                expect(dialog).to_have_count(0)
+                saved = self.api(page, "GET", f"/api/v1/work/{task['id']}", status=200)
+                self.assertEqual({key: saved["owner"][key] for key in ("kind", "id")}, {"kind": "agent", "id": agent})
+                self.assertEqual(saved["version"], task["version"] + 1, "one confirmation changes one native version")
+                self.assertEqual(self.api(page, "GET", f"/api/v1/projects/{project}/grants", status=200), grants)
+                page.reload()
+                expect(page.locator(f'.agents-row[data-agent="{agent}"]')).to_contain_text("Handed #1")
+                readback = self.api(page, "GET", f"/api/v1/work/{task['id']}", status=200)
+                self.assertEqual((readback["owner"], readback["version"]), (saved["owner"], saved["version"]))
+                self.assertEqual(self.api(page, "GET", f"/api/v1/projects/{project}/grants", status=200), grants, "reload grants no access")
+
+    def test_17_phone_permission_content_stays_inside_its_inset_with_long_names_and_larger_text(self) -> None:
+        api = self.page("ada")
+        workspace = self.api(api, "POST", "/api/v1/workspaces", {"name": "Phone containment"}, status=201)["id"]
+        project = self.api(api, "POST", f"/api/v1/workspaces/{workspace}/projects",
+                           {"name": "Phone containment", "visibility": "restricted"}, status=201)["id"]
+        name = "Field calibration companion " + "X" * 95
+        agent = self.api(api, "POST", f"/api/v1/workspaces/{workspace}/agents", {"name": name, "owner": "self"}, status=201)["id"]
+        self.api(api, "POST", f"/api/v1/projects/{project}/grants",
+                 {"principal": {"kind": "agent", "id": agent}, "role": "contributor"}, status=201)
+        self.api(api, "POST", f"/api/v1/projects/{project}/work", {"title": "Check the permission-step inset"}, status=201)
+        problems: list[str] = []
+        measurements = []
+        for width in (390, 320):
+            for scheme in ("light", "dark"):
+                for enlarged in (False, True):
+                    page = self.page("ada", phone=True, scheme=scheme)
+                    page.set_viewport_size({"width": width, "height": 844})
+                    page.goto(f"/projects/{project}/agents")
+                    if enlarged:
+                        page.evaluate("() => { document.documentElement.style.fontSize = '125%'; }")
+                    page.get_by_role("button", name="Hand off a task").tap()
+                    dialog = page.get_by_role("dialog", name="Hand off a task")
+                    dialog.get_by_label("Task", exact=True).select_option(label="#1 · Check the permission-step inset")
+                    dialog.locator("label.handoff__agent", has_text=name).tap()
+                    dialog.get_by_role("button", name="Next").tap()
+                    expect(dialog.get_by_text("Step 2 of 2", exact=True)).to_be_visible()
+                    metric = dialog.evaluate("""el => {
+                      const width = innerWidth;
+                      const boxes = {};
+                      for (const selector of ['.handoff__step','.handoff__title','.handoff__can','.handoff__foot']) {
+                        const item = el.querySelector(selector), rect = item.getBoundingClientRect();
+                        const range = document.createRange(); range.selectNodeContents(item);
+                        boxes[selector] = {left:rect.left,right:rect.right,scroll:item.scrollWidth,client:item.clientWidth,
+                          text:[...range.getClientRects()].map(r=>({left:r.left,right:r.right}))};
+                      }
+                      const body = el.querySelector('.handoff__body');
+                      return {width, rootFont:getComputedStyle(document.documentElement).fontSize,boxes,
+                        bodyScroll:body.scrollWidth,bodyClient:body.clientWidth};
+                    }""")
+                    label = f"{UI_BROWSER} {width} {scheme} {'125%' if enlarged else 'default'}"
+                    measurements.append({"label": label, **metric})
+                    for selector, box in metric["boxes"].items():
+                        if box["left"] < 0 or box["right"] > width + 1:
+                            problems.append(f"{label} {selector}: box outside viewport {box}")
+                        if selector in (".handoff__step", ".handoff__title", ".handoff__can") and any(r["left"] < 0 or r["right"] > width + 1 for r in box["text"]):
+                            problems.append(f"{label} {selector}: text outside viewport {box}")
+                    if metric["bodyScroll"] > metric["bodyClient"] + 1:
+                        problems.append(f"{label}: permission body scrolls horizontally")
+                    shot(page, f"handoff-long-name-{width}-{scheme}-{'large' if enlarged else 'default'}")
+                    page.context.close()
+        print("\n  Phone permission containment: " + json.dumps(measurements))
+        self.assertEqual(problems, [], "\n".join(problems))
+
+    def test_18_each_connection_keeps_its_own_work_and_the_dialog_ages_the_live_claim(self) -> None:
+        page = self.page("ada")
+        workspace = self.api(page, "POST", "/api/v1/workspaces", {"name": "Two connection facts"}, status=201)["id"]
+        project = self.api(page, "POST", f"/api/v1/workspaces/{workspace}/projects", {"name": "Two connection facts", "visibility": "restricted"}, status=201)["id"]
+        agent = self.api(page, "POST", f"/api/v1/workspaces/{workspace}/agents", {"name": "Shared field agent", "owner": "self"}, status=201)["id"]
+        self.api(page, "POST", f"/api/v1/projects/{project}/grants", {"principal": {"kind": "agent", "id": agent}, "role": "contributor"}, status=201)
+        connections = []
+        for name in ("Older unsigned laptop", "Current planning laptop"):
+            connections.append(self.api(page, "POST", "/api/v1/agent-connections",
+                                        {"agentId": agent, "selectedProjectIds": [project], "scopes": ["flux.context.read", "flux.proposal.write"], "name": name, "clientDesignation": "codex"}, status=201))
+        held = self.api(page, "POST", f"/api/v1/projects/{project}/work",
+                        {"title": "Plan the next moisture reading", "status": "in_progress", "owner": {"kind": "agent", "id": agent}}, status=201)
+        self.api(page, "POST", f"/api/v1/projects/{project}/work", {"title": "The next task to hand off"}, status=201)
+        reads: list[str] = []
+        at = time.time()
+        started = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(at - 60))
+        expires = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(at + 8))
+
+        def projection(route) -> None:
+            response = route.fetch()
+            body = response.json()
+            for item in body["connections"]:
+                if item["id"] == connections[0]["id"]:
+                    item.update(state="not_signed_in", session=None, currentWork=None)
+                elif item["id"] == connections[1]["id"]:
+                    item.update(state="session_open", session={"startedAt": started, "expiresAt": expires},
+                                currentWork={"taskId": held["id"], "taskTitle": held["title"], "role": "plan", "state": "claimed"},
+                                requests=[{"id": "expiry-request", "kind": "review", "state": "claimed", "reason": "after the field reading",
+                                           "taskId": held["id"], "taskTitle": held["title"],
+                                           "sender": {"connectionId": "expiry-sender", "name": "Field laptop", "ownerName": "Jonas Berg"}}])
+            reads.append(route.request.url)
+            route.fulfill(response=response, json=body)
+
+        self.addCleanup(lambda: None if page.is_closed() else page.unroute_all(behavior="ignoreErrors"))
+        page.route(f"**/api/v1/projects/{project}/agents", projection)
+        opened_at = time.monotonic()
+        page.goto(f"/projects/{project}/agents")
+        rows = page.get_by_role("list", name="Agents in this project").get_by_role("listitem")
+        expect(rows).to_have_count(2)
+        unsigned = rows.filter(has_text="Older unsigned laptop")
+        live = rows.filter(has_text="Current planning laptop")
+        expect(unsigned).to_contain_text("Handed #1")
+        expect(unsigned).not_to_have_attribute("data-working", "true")
+        expect(unsigned.locator(".agents-row__icon")).to_have_attribute("data-expression", "asleep")
+        expect(live).to_contain_text('Working on “Plan the next moisture reading”')
+        expect(live).to_have_attribute("data-working", "true")
+        expect(live.locator(".agents-row__icon")).to_have_attribute("data-expression", "working")
+        expect(page.get_by_text("2 in this project · 1 working", exact=True)).to_be_visible()
+        expect(page.get_by_role("complementary").get_by_role("region", name="Now")).to_contain_text("Planning")
+        page.get_by_role("button", name="Hand off a task").click()
+        dialog = page.get_by_role("dialog", name="Hand off a task")
+        radio = dialog.locator("label.handoff__agent", has_text="Shared field agent")
+        expect(radio).to_contain_text("Current planning laptop")
+        expect(radio).to_contain_text('Working on “Plan the next moisture reading”')
+        dialog.get_by_label("Task", exact=True).select_option(label="#2 · The next task to hand off")
+        radio.click()
+        dialog.get_by_role("button", name="Next").click()
+        expect(dialog).to_contain_text('Working on “Plan the next moisture reading”')
+        expect(dialog.locator(".handoff__chosen .kreska")).to_have_attribute("data-expression", "working")
+        shot(page, "handoff-known-expiry-live-desktop-light")
+        expect(dialog.get_by_text(re.compile("queued behind", re.IGNORECASE))).to_have_count(0)
+        before_expiry = len(reads)
+        expect(dialog).to_contain_text('Work held on “Plan the next moisture reading”', timeout=12000)
+        expect(dialog.locator(".handoff__chosen .kreska")).to_have_attribute("data-expression", "asleep")
+        shot(page, "handoff-known-expiry-held-desktop-light")
+        self.assertEqual(len(reads), before_expiry, "aging session evidence polls no API")
+        # The known eight-second expiry must also age the roster, count and selected detail before
+        # their existing fifteen-second observation poll, without losing the unit/role/request facts.
+        dialog.get_by_role("button", name="Close", exact=True).click()
+        expect(live).to_contain_text('Work held on “Plan the next moisture reading”', timeout=1000)
+        expect(live).not_to_have_attribute("data-working", "true")
+        expect(live).to_contain_text("Offline")
+        expect(live).to_contain_text("Review request from Field laptop (Jonas Berg)")
+        expect(live).to_contain_text("after the field reading")
+        expect(live.locator(".agents-row__icon")).to_have_attribute("data-expression", "asleep")
+        expect(page.get_by_text("2 in this project", exact=True)).to_be_visible()
+        detail = page.get_by_role("complementary").get_by_role("region", name="Now")
+        expect(detail).to_contain_text("Planning · Work held · claim recorded")
+        expect(detail).to_contain_text("Offline")
+        expect(detail).to_contain_text("Field laptop (Jonas Berg)")
+        self.assertLess(time.monotonic() - opened_at, 14, "known expiry is visible before the fifteen-second poll")
+        self.assertEqual(len(reads), before_expiry, "roster, count and detail expiry use the unchanged snapshot")
+        shot(page, "agents-known-expiry-held-desktop-light")
+
+    def test_19_a_deadline_crossed_after_the_display_commit_is_not_dropped(self) -> None:
+        """Controlled browser clock: retain the real DOM/effect path and move only elapsed time.
+
+        The first clock read after the real live-claim DOM commit moves Date.now beyond its deadline,
+        before expiry scheduling. No app event, API read, reload or timer advance is sent. A DOM
+        observer alone is too late in this engine: its callback can run after passive effect setup.
+        """
+        page = self.page("ada")
+        project = self.api(page, "POST", f"/api/v1/workspaces/{self.ids['workspace']}/projects",
+                           {"name": "Delayed expiry setup", "visibility": "restricted"}, status=201)["id"]
+        self.api(page, "POST", f"/api/v1/projects/{project}/grants",
+                 {"principal": {"kind": "agent", "id": self.ids["agent_claude"]}, "role": "contributor"}, status=201)
+        connection = self.api(page, "POST", "/api/v1/agent-connections",
+                              {"agentId": self.ids["agent_claude"], "selectedProjectIds": [project], "scopes": ["flux.context.read"],
+                               "name": "Delayed laptop", "clientDesignation": "codex"}, status=201)
+        task = self.api(page, "POST", f"/api/v1/projects/{project}/work", {"title": "Check the deadline boundary"}, status=201)
+        reads: list[str] = []
+        expires_at = int(time.time() * 1000) + 60_000
+
+        def projection(route) -> None:
+            response = route.fetch()
+            body = response.json()
+            item = next(row for row in body["connections"] if row["id"] == connection["id"])
+            item.update(state="session_open", session={"startedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                                                       "expiresAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(expires_at / 1000))},
+                        currentWork={"taskId": task["id"], "taskTitle": task["title"], "role": "review", "state": "claimed"})
+            reads.append(route.request.url)
+            route.fulfill(response=response, json=body)
+
+        self.addCleanup(lambda: None if page.is_closed() else page.unroute_all(behavior="ignoreErrors"))
+        page.route(f"**/api/v1/projects/{project}/agents", projection)
+        page.goto(f"/projects/{project}/agents")
+        expect(page.get_by_text("1 in this project · 1 working", exact=True)).to_be_visible()
+        before_dialog = len(reads)
+        page.evaluate("""expiry => {
+          const originalNow = Date.now.bind(Date);
+          const originalTimeout = window.setTimeout.bind(window);
+          const evidence = window.__expiryBoundary = { offset: 0, committed: null, timers: [], clockReads: [] };
+          Date.now = () => {
+            const choice = document.querySelector('.handoff__agent');
+            if (!evidence.committed && choice?.textContent.includes('Working on “Check the deadline boundary”')) {
+              evidence.committed = { text: choice.textContent, before: originalNow(), expiry };
+              evidence.offset = expiry + 1000 - originalNow();
+              evidence.committed.after = originalNow() + evidence.offset;
+            }
+            const at = originalNow() + evidence.offset;
+            evidence.clockReads.push({ at, phase: evidence.committed ? 'after-commit' : 'before-commit' });
+            return at;
+          };
+          window.setTimeout = (callback, delay, ...args) => {
+            evidence.timers.push({ delay, at: originalNow() + evidence.offset, phase: evidence.committed ? 'after-commit' : 'before-commit' });
+            return originalTimeout(callback, delay, ...args);
+          };
+          window.__restoreExpiryBoundary = () => {
+            Date.now = originalNow; window.setTimeout = originalTimeout; evidence.offset = 0;
+          };
+        }""", (expires_at // 1000) * 1000)
+        self.addCleanup(lambda: None if page.is_closed() else page.evaluate("window.__restoreExpiryBoundary?.()"))
+        page.get_by_role("button", name="Hand off a task").click()
+        dialog = page.get_by_role("dialog", name="Hand off a task")
+        radio = dialog.locator("label.handoff__agent", has_text="Delayed laptop")
+        try:
+            expect(radio).to_contain_text('Work held on “Check the deadline boundary”', timeout=2000)
+        finally:
+            observed = page.evaluate("window.__expiryBoundary")
+            observed.update(finalState=radio.inner_text(), clockAgeingReads=len(reads) - before_dialog - 1)
+            print("\n  Delayed expiry boundary lifecycle: " + json.dumps(observed))
+        evidence = page.evaluate("window.__expiryBoundary")
+        self.assertIsNotNone(evidence["committed"], "the real DOM first committed a live claim")
+        self.assertLess(evidence["committed"]["before"], evidence["committed"]["expiry"])
+        self.assertGreater(evidence["committed"]["after"], evidence["committed"]["expiry"])
+        self.assertTrue(any(timer["delay"] == 0 and timer["at"] > evidence["committed"]["expiry"] for timer in evidence["timers"]),
+                        "a crossed known deadline schedules immediate ageing")
+        expect(radio.locator(".kreska")).to_have_attribute("data-expression", "asleep")
+        self.assertEqual(len(reads), before_dialog + 1, "only the dialog observation was read; clock ageing makes no read")
+        evidence.update(finalState=radio.inner_text(), clockAgeingReads=len(reads) - before_dialog - 1)
+        print("\n  Delayed expiry boundary: " + json.dumps(evidence))
+
+    def test_15_an_exhausted_empty_task_page_is_honest(self) -> None:
+        page = self.page("ada")
+        project = self.api(page, "POST", f"/api/v1/workspaces/{self.ids['workspace']}/projects",
+                           {"name": "Nothing to hand off", "visibility": "restricted"}, status=201)["id"]
+        page.goto(f"/projects/{project}/agents")
+        page.get_by_role("button", name="Hand off a task").click()
+        dialog = page.get_by_role("dialog", name="Hand off a task")
+        expect(dialog.get_by_label("Task", exact=True)).to_be_disabled()
+        expect(dialog.get_by_text("No open task without an agent", exact=True)).to_have_count(1)
+        expect(dialog.get_by_role("button", name="More tasks")).to_have_count(0)
+        expect(dialog.get_by_role("button", name="Next")).to_be_disabled()
 
 
 if __name__ == "__main__":
