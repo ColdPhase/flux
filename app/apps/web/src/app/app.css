@@ -545,6 +545,8 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
 }
 .phone-dock__bar .ui-bottomnav__item { min-height: 52px; min-width: 0; padding: 4px 0; border-radius: 26px; font-size: .8125rem; font-weight: 500; color: var(--t2); gap: 1px; }
 .phone-dock__bar .ui-bottomnav__pill { width: 36px; height: 26px; }
+/* Larger system text grows the labels, up to what three of them fit beside Search at 320 px (#437). */
+.phone-dock__bar .ui-bottomnav__label { font-size: min(.8125rem, 14px); max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
 .phone-dock__bar .ui-bottomnav__pill::before { display: none; }
 .phone-dock__bar .ui-bottomnav__item:is([aria-current="page"], [data-pending]) { background: var(--sub); color: var(--t1); font-weight: 600; }
 .phone-dock__bar .ui-bottomnav__dot { top: 0; right: 2px; width: 10px; height: 10px; box-shadow: 0 0 0 2px var(--el); }
@@ -555,6 +557,16 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
 .phone-fab {
   position: absolute; right: 18px; bottom: calc(100% + 4px); width: 56px; height: 56px; border-radius: 50%;
   display: grid; place-items: center; background: var(--inv); color: var(--oninv); box-shadow: var(--sh-pri), 0 10px 24px -8px rgba(0, 0, 0, .35);
+}
+/* A phone on its side (short landscape, F-015): the header and the capsule step down to 44 px targets so
+   the work keeps its room; the subtitle gives way (the view menu marks the current view). */
+@media (max-width: 640px) and (max-height: 480px) {
+  .phead, .phead--large { min-height: 52px; padding-top: calc(4px + env(safe-area-inset-top)); padding-bottom: 4px; align-items: center; }
+  .phead--large .phead__title h1 { font-size: 1.25rem; }
+  .phead__sub { display: none; }
+  .phone-dock { padding-top: 4px; padding-bottom: max(6px, env(safe-area-inset-bottom)); }
+  .phone-dock__bar .ui-bottomnav__item { min-height: 44px; }
+  .phone-dock__search { width: 54px; height: 54px; }
 }
 .phone-fab:active, .phone-dock__search:active { transform: scale(.96); }
 @media (prefers-reduced-motion: no-preference) { .phone-fab, .phone-dock__search { transition: transform var(--dur-1) ease; } }

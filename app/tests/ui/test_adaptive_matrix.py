@@ -64,14 +64,8 @@ TARGET = 44
 # A gap is excused only for the predicate it names, and only when its own control is at least 44 px and
 # one of its overlays (covered_by) covers the hit area; see explained_by_recorded_overlap. Every other
 # failure at the same fixture stays a problem.
-KNOWN_GAPS = {
-    "640×360": {
-        "a message's Reply": {
-            "covered_by": (".ui-tabs__bar", ".project-convo__composer"),
-            "reason": "the sticky tab bar and the composer leave less than 44 px of stream between them; the phone shell (PR #414) replaces the tab bar",
-        },
-    },
-}
+# The 640×360 Reply gap (a sticky tab bar over the stream) closed with the phone shell (#341): no tab bar.
+KNOWN_GAPS: dict[str, dict[str, dict]] = {}
 # The overlays a known gap may name. The measurements report which one (if any) covers each point or stops each side.
 OVERLAYS = (".ui-tabs__bar", ".project-convo__composer", ".tb-overview")
 
