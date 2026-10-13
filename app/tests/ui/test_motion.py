@@ -364,19 +364,33 @@ class MotionJourney(unittest.TestCase):
         page.keyboard.press("Escape")
 
     def test_09_a_reply_arriving_in_an_open_thread_rises_gently_and_history_does_not(self):
+        # #155 / UI116-5: a reply rises in when the reader sees it arrive. #436 #14 (#443): an open thread starts
+        # at its root, so a reader who has not scrolled stays there and a reply below the fold does not move them.
         page = self.page()
         page.goto(f"/projects/{self.projects[0]}/conversations/{self.thread['id']}")
         thread = page.locator("#thread")
-        expect(page.locator(".thread__feed")).not_to_have_attribute("aria-busy", "true")
+        feed = thread.locator(".thread__feed")
+        expect(feed).not_to_have_attribute("aria-busy", "true")
         expect(thread.locator(".project-convo__message")).to_have_count(12)
         page.wait_for_timeout(600)
         self.assertEqual(thread.locator("[data-arrival]").count(), 0)
-        reply = self.bob_replies("A new reply from Bob in the open thread.")
+        self.assertGreater(feed.evaluate("el => el.scrollHeight - el.clientHeight"), 1, "the thread overflows, so the root-opened reader is not at the end")
+        self.assertEqual(feed.evaluate("el => el.scrollTop"), 0, "the thread opens at its root")
+        below = self.bob_replies("A new reply from Bob below the fold of the open thread.")
+        page.evaluate("() => window.dispatchEvent(new Event('focus'))")
+        late = page.locator(f"#message-{below['id']}")
+        expect(late).to_have_attribute("data-arrival", "static")
+        page.wait_for_timeout(300)
+        self.assertEqual(feed.evaluate("el => el.scrollTop"), 0, "the reader at the root is not moved by a reply below")
+        # A reader who reads to the end sees the next reply arrive: it rises in, and nothing else moves.
+        feed.evaluate("el => { el.scrollTop = el.scrollHeight; }")
+        page.wait_for_timeout(300)
+        reply = self.bob_replies("A new reply from Bob while the reader is at the end.")
         page.evaluate("() => window.dispatchEvent(new Event('focus'))")
         arrived = page.locator(f"#message-{reply['id']}")
         expect(arrived).to_be_in_viewport()
         expect(arrived).to_have_attribute("data-arrival", "animated")
-        self.assertEqual(thread.locator("[data-arrival]").count(), 1)
+        self.assertEqual(thread.locator("[data-arrival='animated']").count(), 1)
 
 
 if __name__ == "__main__":
