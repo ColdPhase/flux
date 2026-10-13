@@ -94,7 +94,8 @@ for (const [engine, mobile] of [['chromium', false], ['webkit', true]] as const)
       await expect(invitation.locator('.nyc__title')).toHaveText("Ada Kowalska Nowak – Community Sensor Team's assistant asks to join");
       await expect(invitation).toContainText('for Ada Kowalska Nowak – Community Sensor Team');
       await expect(invitation.locator('.nyc__reason')).toContainText('Community garden sensors');
-      await expect(invitation.locator('.kreska')).toHaveCount(1);
+      await expect(invitation.locator('.nyc__face .kreska')).toHaveCount(1);
+      await expect(invitation.locator('.nyc__face .ui-avatar')).toHaveCount(0);
       await expect(invitation.locator('.agent-tag')).toHaveText('Agent');
       await expect(invitation.getByRole('button', { name: 'Review', exact: true })).toBeVisible();
        // Final design §3 glyph scale (16/20/24/32/48): the assistant identity uses Kreska without a human avatar holder.
