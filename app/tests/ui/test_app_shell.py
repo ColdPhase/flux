@@ -590,6 +590,9 @@ class AppShellJourney(unittest.TestCase):
         rail.get_by_role("link", name="Home").click()
         expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
 
+    def test_04b_unknown_route_page(self) -> None:
+        """A fresh signed-in document renders the unknown-route state without coupling it to prior reads."""
+        page = self.page()
         page.goto("/nowhere")
         expect(page.get_by_role("heading", name="This page doesn’t exist")).to_be_visible()
 
