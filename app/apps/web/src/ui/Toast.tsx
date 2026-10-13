@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Icon } from './Icon';
 import { Kreska } from './Kreska';
@@ -27,6 +27,7 @@ interface ToastEntry extends Required<Omit<ToastOptions, 'timeout' | 'action'>> 
   id: number;
   timeout: number | null;
   leaving: boolean;
+  sessionEpoch: number;
 }
 
 const ToastContext = createContext<(options: ToastOptions) => () => void>(() => () => {});
@@ -90,18 +91,36 @@ function ToastItem({ toast, onDone, registerAction }: { toast: ToastEntry; onDon
 }
 
 /** Short confirmations and recoverable errors, announced politely, bottom centre, one at a time on top. */
-export function ToastProvider({ children }: { children: ReactNode }) {
+export function ToastProvider({ children, sessionId }: { children: ReactNode; sessionId: string | null }) {
   const [toasts, setToasts] = useState<ToastEntry[]>([]);
   const nextId = useRef(1);
+  // Keep a monotonic epoch even for A → signed-out → A. Conditional state adjustment hides old
+  // entries in this render without mutating shared refs in a render that React may abandon.
+  const [session, setSession] = useState(() => ({ id: sessionId, epoch: 0 }));
+  const sessionEpoch = session.id === sessionId ? session.epoch : session.epoch + 1;
+  if (session.id !== sessionId) setSession({ id: sessionId, epoch: sessionEpoch });
+  const committedSession = useRef({ id: sessionId, epoch: sessionEpoch });
+  const actions = useRef(new Map<number, () => void>());
+  // Install the identity fence at commit, before the browser can deliver another click or key.
+  useLayoutEffect(() => {
+    committedSession.current = { id: sessionId, epoch: sessionEpoch };
+    actions.current.clear();
+  }, [sessionId, sessionEpoch]);
   const show = useCallback((options: ToastOptions) => {
     const tone = options.tone ?? 'neutral';
-    const entry: ToastEntry = { id: nextId.current++, message: options.message, tone, timeout: options.timeout ?? (tone === 'danger' ? null : options.action ? 7000 : 5000), leaving: false, action: options.action ?? null };
+    const actionEpoch = committedSession.current.epoch;
+    const action = options.action ? {
+      ...options.action,
+      // A callback can outlive its toast (or be retained by an already queued click/key event).
+      // Fence the callback itself, not just the button or hotkey registration.
+      onAction: () => { if (committedSession.current.epoch === actionEpoch) options.action!.onAction(); },
+    } : null;
+    const entry: ToastEntry = { id: nextId.current++, message: options.message, tone, timeout: options.timeout ?? (tone === 'danger' ? null : action ? 7000 : 5000), leaving: false, action, sessionEpoch: actionEpoch };
     // Keep at most three; older ones leave.
     setToasts((current) => [...current.slice(-2), entry]);
     return () => setToasts((current) => current.filter((toast) => toast.id !== entry.id));
   }, []);
   const remove = useCallback((id: number) => setToasts((current) => current.filter((toast) => toast.id !== id)), []);
-  const actions = useRef(new Map<number, () => void>());
   const registerAction = useCallback((id: number, run: (() => void) | null) => {
     if (run) actions.current.set(id, run); else actions.current.delete(id);
   }, []);
@@ -119,12 +138,13 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
   const value = useMemo(() => show, [show]);
+  const visibleToasts = toasts.filter((toast) => toast.sessionEpoch === sessionEpoch);
   return (
     <ToastContext.Provider value={value}>
       {children}
       {createPortal(
         <div className="ui-toasts" role="status" aria-live="polite" aria-relevant="additions text">
-          {toasts.map((toast) => <ToastItem key={toast.id} toast={toast} onDone={remove} registerAction={registerAction} />)}
+          {visibleToasts.map((toast) => <ToastItem key={toast.id} toast={toast} onDone={remove} registerAction={registerAction} />)}
         </div>,
         document.body,
       )}

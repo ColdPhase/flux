@@ -427,6 +427,61 @@ class InboxFinal(unittest.TestCase):
         expect(phone.locator(".nyc").first).to_be_visible()
         shot(phone, "inbox-final-phone-390-dark")
 
+    def test_14_undo_toast_cannot_cross_accounts(self) -> None:
+        """A's live Undo must not run under B's cookie after a same-tab sign-out/sign-in."""
+        title = f"Session-bound rule {uuid.uuid4().hex[:8]}"
+        decision = self.post("jonas", f"/api/v1/projects/{self.project_id}/decisions", {
+            "title": title, "rationale": "Keep each account's queue choice private.", "affects": [self.task["id"]],
+        })
+
+        def has_decision(who: str) -> bool:
+            response = self.contexts[who].request.get("/api/v1/needs-you")
+            assert response.status == 200, response.text()
+            return any(item.get("decision") and item["decision"].get("id") == decision["id"] for item in response.json()["items"])
+
+        self.wait_for(lambda: has_decision("ada") and has_decision("jonas"), "the shared decision in both accounts")
+        page = self.page()
+        page.goto("/inbox?show=decisions")
+        card = self.card(page, title)
+        expect(card).to_have_attribute("aria-current", "true")
+        page.keyboard.press("e")
+        expect(page.get_by_role("status").filter(has_text="Marked done")).to_be_visible()
+        self.wait_for(lambda: not has_decision("ada"), "Ada's decision choice to be stored")
+        self.assertTrue(has_decision("jonas"), "Ada’s decision must remain in Jonas’s queue")
+
+        # Use the same tab and browser context: the toast provider stays mounted across these routes.
+        page.goto("/sign-out")
+        page.get_by_role("button", name="Sign out", exact=True).click()
+        expect(page.get_by_role("heading", name="Sign in")).to_be_visible()
+        page.get_by_label("Email").fill(PEOPLE["jonas"][1])
+        page.get_by_label("Password").fill(PASSWORD)
+        page.get_by_role("button", name="Sign in", exact=True).click()
+        expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
+        self.assertEqual(page.request.get("/api/v1/me").json()["user"]["id"], self.ids["jonas"], "the same tab now carries Jonas's session")
+        page.get_by_role("link", name=re.compile("^Open Inbox")).click()
+        card = self.card(page, title)
+        expect(card).to_have_attribute("aria-current", "true")
+
+        def current_tab_has_decision() -> bool:
+            response = page.request.get("/api/v1/needs-you")
+            assert response.status == 200, response.text()
+            return any(item.get("decision") and item["decision"].get("id") == decision["id"] for item in response.json()["items"])
+
+        # B makes and dismisses their own Done toast. If A's callback survived, Z now picks it
+        # and sends its DELETE with B's cookie, incorrectly putting B's decision back in the queue.
+        page.keyboard.press("e")
+        expect(page.get_by_role("status").filter(has_text="Marked done")).to_be_visible()
+        self.wait_for(lambda: not current_tab_has_decision(), "Jonas's decision choice to be stored")
+        own_toast = page.locator(".ui-toast").filter(has_text="Marked done").last
+        own_toast.get_by_role("button", name="Dismiss notification").click()
+        expect(page.locator(".ui-toast")).to_have_count(0)
+        page.keyboard.press("z")
+        # Allow a wrongly retained callback enough time to make its request, then verify the same
+        # signed-in tab still sees the decision resolved for B.
+        for _ in range(6):
+            time.sleep(0.25)
+            self.assertFalse(current_tab_has_decision(), "A stale Undo callback must not restore the decision for Jonas")
+
 
 def requests_quote(key: str) -> str:
     import urllib.parse

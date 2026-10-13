@@ -1,8 +1,11 @@
-import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
-import { Link } from 'react-router';
+import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { Link, useRevalidator } from 'react-router';
 import { Avatar, BottomNav, FluxLogo, Icon, IconButton, Overlay, type BottomNavItem, type IconName } from '../ui';
 import { handFilesToComposer } from '../composer/handoff';
+import { useDraft } from './drafts';
+import { useShellActions } from './shellContext';
 import { useShellData, type ProjectSummary } from './data';
+import { createWork } from '../work/api';
 
 /**
  * The phone's chrome (F-026 §4 Phone, S2): one floating tab capsule Home · Projects · Inbox with a
@@ -59,10 +62,8 @@ export interface PhoneMenuItem { id: string; label: string; to: string; icon: Ic
  * The title is the view menu: it names the project (or Home, or the conversation) and the view
  * shown, and opens the places inside it. "Details, goal and people" is the last row.
  */
-export function PhoneTitleMenu({ title, subtitle, items, onDetails, detailsLabel = 'Details, goal and people', lead, matters, adds = [] }: {
+export function PhoneTitleMenu({ title, subtitle, items, onDetails, detailsLabel = 'Details, goal and people', lead, adds = [] }: {
   title: string; subtitle: ReactNode; items: PhoneMenuItem[]; onDetails: (() => void) | null; detailsLabel?: string; lead?: ReactNode;
-  /** A project's "What matters" (#133), kept reachable below Details now that the state row is gone. */
-  matters?: { count: number; run: () => void };
   /** "Add Map", "Add Wiki", "Add Agents" for a view the project has not added yet (#351), quiet at the end. */
   adds?: { label: string; run: () => void }[];
 }) {
@@ -99,12 +100,6 @@ export function PhoneTitleMenu({ title, subtitle, items, onDetails, detailsLabel
             <Icon name="panel" size={20} /><span className="phone-menu__l">{detailsLabel}</span>
           </button>
         ) : null}
-        {matters ? (
-          <button type="button" className="phone-menu__item phone-menu__quiet" onClick={() => { setOpen(false); matters.run(); }}>
-            <Icon name="leaf" size={20} /><span className="phone-menu__l">What matters</span>
-            {matters.count ? <span className="phone-menu__n">{matters.count} {matters.count === 1 ? 'needs' : 'need'} you</span> : null}
-          </button>
-        ) : null}
         {adds.map((add) => (
           <button key={add.label} type="button" className="phone-menu__item phone-menu__quiet" onClick={() => { setOpen(false); add.run(); }}>
             <Icon name="plus" size={20} /><span className="phone-menu__l">{add.label}</span>
@@ -138,8 +133,17 @@ export function PhoneCreate({ open, onClose, projects, projectId, go, onThought 
 }) {
   const titleId = useId();
   const { me } = useShellData();
-  const [picked, setPicked] = useState<string | null>(null);
-  const chosen = projects.find((project) => project.id === (picked ?? projectId)) ?? projects[0];
+  const { openDetails } = useShellActions();
+  const revalidator = useRevalidator();
+  const selectedProject = useDraft(me.user.id, 'phone-create-project');
+  const preferredProjectId = projects.some((project) => project.id === selectedProject.text)
+    ? selectedProject.text
+    : projectId;
+  const chosen = projects.find((project) => project.id === preferredProjectId) ?? projects[0];
+  const taskDraft = useDraft(me.user.id, `phone-create-task:${chosen?.id ?? 'none'}`);
+  const taskPending = useDraft(me.user.id, `phone-create-task:${chosen?.id ?? 'none'}:pending`);
+  const [taskBusy, setTaskBusy] = useState(false);
+  const [taskError, setTaskError] = useState('');
   const to = (path: string | null) => (path ? () => { onClose(); go(path); } : null);
   const inProject = chosen ? `/projects/${chosen.id}` : null;
   // The picker must open within the tap (WebKit refuses it later), so the sheet holds the file input.
@@ -165,6 +169,36 @@ export function PhoneCreate({ open, onClose, projects, projectId, go, onThought 
     { id: 'file', label: 'File or link', icon: 'clip', hint: 'needs a project', pick: true, run: inProject ? () => setPickerOpen(true) : null },
     { id: 'sketch', label: 'Sketch', icon: 'shape', run: to(inProject ? `${inProject}/map` : '/map') },
   ];
+  async function createQuickTask(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const targetProject = chosen?.id;
+    const original = taskDraft.text;
+    const title = original.trim();
+    const draftRevision = taskDraft.revision;
+    if (!targetProject || !title || taskBusy) return;
+    let attempt: ReturnType<typeof crypto.randomUUID> = crypto.randomUUID();
+    try {
+      const previous: unknown = JSON.parse(taskPending.text);
+      if (previous && typeof previous === 'object' && 'title' in previous && previous.title === title &&
+        'key' in previous && typeof previous.key === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(previous.key)) attempt = previous.key as typeof attempt;
+    } catch { /* No valid pending command for this title. */ }
+    const command = JSON.stringify({ title, key: attempt });
+    const pendingRevision = taskPending.setText(command);
+    setTaskBusy(true);
+    setTaskError('');
+    try {
+      const item = await createWork(targetProject, { title }, attempt);
+      taskDraft.clearIfMatches(original, draftRevision);
+      taskPending.clearIfMatches(command, pendingRevision);
+      onClose();
+      revalidator.revalidate();
+      openDetails({ kind: 'work', id: item.id, projectId: targetProject });
+    } catch (cause) {
+      setTaskError(cause instanceof Error ? cause.message : 'Could not create the task. Try again.');
+    } finally {
+      setTaskBusy(false);
+    }
+  }
   return (
     <Overlay open={open} onClose={onClose} placement="bottom" labelledBy={titleId} className="phone-create">
       <span className="phone-create__grab" aria-hidden="true" />
@@ -174,7 +208,7 @@ export function PhoneCreate({ open, onClose, projects, projectId, go, onThought 
           <label className="phone-create__project">
             <span className="phone-create__tile" aria-hidden="true">{(chosen?.name.trim()[0] ?? '?').toUpperCase()}</span>
             <span className="ui-vh">Project</span>
-            <select value={chosen?.id ?? ''} onChange={(event) => setPicked(event.target.value)}>
+            <select value={chosen?.id ?? ''} onChange={(event) => selectedProject.setText(event.target.value)}>
               {projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
             </select>
             <Icon name="chevron-down" size={12} />
@@ -194,6 +228,15 @@ export function PhoneCreate({ open, onClose, projects, projectId, go, onThought 
           </li>
         ))}
       </ul>
+      {chosen ? <form className="phone-create__quick" onSubmit={(event) => void createQuickTask(event)}>
+        <label htmlFor={`${titleId}-quick-task`}>Or just type</label>
+        <input id={`${titleId}-quick-task`} aria-label="Create a task from text" value={taskDraft.text} maxLength={200} disabled={taskBusy}
+          placeholder="“Print labels for the beds” → task"
+          onChange={(event) => { taskDraft.setText(event.target.value); taskPending.clear(); setTaskError(''); }} />
+        <button type="submit" className="ui-vh" disabled={taskBusy || !taskDraft.text.trim()}>Create task</button>
+        {taskDraft.storage === 'visit' || selectedProject.storage === 'visit' ? <p className="phone-create__draft" role="status">Draft kept for this visit. Reloading may lose it.</p> : null}
+        {taskError ? <p className="phone-create__error" role="alert">{taskError}</p> : null}
+      </form> : null}
     </Overlay>
   );
 }

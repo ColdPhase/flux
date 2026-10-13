@@ -426,7 +426,7 @@ function AppLayoutContent() {
           <div className="phead__id"><div className="phead__title"><h1>{location.pathname === '/projects/new' ? 'New project' : place.title}</h1></div></div></>
       ) : activeProject && projectViews ? (
         <><PhoneBack onBack={() => goBack('/projects')} />
-          <PhoneTitleMenu title={place.title} items={projectMenu} onDetails={detailsEntry} matters={projectId ? { count: needsYou, run: toggleRecap } : undefined}
+          <PhoneTitleMenu title={place.title} items={projectMenu} onDetails={detailsEntry}
             adds={addViewItems.map((item) => ({ label: item.label, run: item.run }))}
             subtitle={[PROJECT_VIEW_NAMES[Math.max(0, viewOrder(location.pathname))], peopleLine(project?.people ?? null)].filter(Boolean).join(' · ')} /></>
       ) : activeDm && dmViews ? (

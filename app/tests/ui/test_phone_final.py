@@ -50,6 +50,8 @@ class PhoneFinal(unittest.TestCase):
         cls.call(page, "POST", f"/api/v1/workspaces/{cls.workspace['id']}/members", {"email": cls.kai_email, "role": "member"}, 201)
         cls.project = cls.call(page, "POST", f"/api/v1/workspaces/{cls.workspace['id']}/projects",
             {"name": "Community garden sensors", "visibility": "restricted"}, 201)
+        cls.second_project = cls.call(page, "POST", f"/api/v1/workspaces/{cls.workspace['id']}/projects",
+            {"name": "Riverside seed library", "visibility": "restricted"}, 201)
         for title, status in (("Order six capacitive probes", "in_progress"), ("Ask the school for two ESP32 kits", "open")):
             cls.call(page, "POST", f"/api/v1/projects/{cls.project['id']}/work", {"title": title, "status": status}, 201)
         # A direct message with Kai: opening the person's link creates the 1:1 once.
@@ -284,8 +286,7 @@ class PhoneFinal(unittest.TestCase):
                 menu = page.get_by_role("dialog", name=re.compile("Community garden sensors"))
                 expect(menu).to_be_visible()
                 labels = [text.strip().split("\n")[0] for text in menu.locator(".phone-menu__item").all_inner_texts()]
-                # "What matters" (#133) stays reachable as a quiet last row now that the state row is gone.
-                self.assertEqual(labels, ["Conversation", "Tasks", "Map", "Wiki", "Agents", "Details, goal and people", "What matters"])
+                self.assertEqual(labels, ["Conversation", "Tasks", "Map", "Wiki", "Agents", "Details, goal and people"])
                 expect(menu.get_by_text("Decisions")).to_have_count(0)
                 expect(menu.locator('[aria-current="page"]')).to_have_count(1)
                 expect(menu.locator('[aria-current="page"]')).to_contain_text("Tasks")
@@ -294,11 +295,15 @@ class PhoneFinal(unittest.TestCase):
                     self.assertGreaterEqual(float(item.evaluate("el => getComputedStyle(el).fontSize").removesuffix("px")), 15)
                 self.assert_no_sideways_scroll(page, size["width"])
                 shot(page, f"341-viewsmenu-{size['width']}-{'dark' if dark else 'light'}")
+                expect(menu.get_by_role("button", name="What matters")).to_have_count(0)
                 menu.get_by_role("link", name=re.compile("^Map")).click()
                 expect(page).to_have_url(re.compile(r"/map$"))
                 page.get_by_role("heading", level=1).get_by_role("button").click()
                 page.get_by_role("button", name="Details, goal and people").click()
                 expect(page.get_by_role("dialog", name="Details")).to_be_visible()
+                details = page.get_by_role("dialog", name="Details")
+                details.get_by_role("button", name="What matters").click()
+                expect(page.get_by_role("dialog", name="What matters")).to_be_visible()
                 page.keyboard.press("Escape")
 
     def test_06_the_menu_works_from_the_keyboard(self):
@@ -400,6 +405,33 @@ class PhoneFinal(unittest.TestCase):
                 self.assertAlmostEqual(sizes(".phone-dock__bar .ui-bottomnav__label"), before * 1.25, delta=0.6)
                 page.evaluate("document.documentElement.style.fontSize = ''")
                 self.assert_no_sideways_scroll(page, size["width"])
+
+    def test_11_create_sheet_selection_and_text_persist_and_create_only_in_selected_project(self):
+        page = self.page(SIZES[0])
+        page.goto("/projects")
+        title = f"Print bed labels {uuid.uuid4().hex[:8]}"
+        page.get_by_role("button", name="Create", exact=True).click()
+        project_picker = page.get_by_role("dialog", name="Create").get_by_role("combobox")
+        project_picker.select_option(self.second_project["id"])
+        field = page.get_by_role("textbox", name="Create a task from text")
+        expect(field).to_be_visible()
+        field.fill(title)
+
+        # An unfinished quick task stays private to this account and project across reload.
+        page.reload()
+        page.get_by_role("button", name="Create", exact=True).click()
+        project_picker = page.get_by_role("dialog", name="Create").get_by_role("combobox")
+        expect(project_picker).to_have_value(self.second_project["id"])
+        field = page.get_by_role("textbox", name="Create a task from text")
+        expect(field).to_have_value(title)
+        field.press("Enter")
+        expect(page.locator("#details")).to_contain_text(title)
+        selected_work = self.call(page, "GET", f"/api/v1/projects/{self.second_project['id']}/work?limit=100")
+        first_work = self.call(page, "GET", f"/api/v1/projects/{self.project['id']}/work?limit=100")
+        created_selected = [item for item in selected_work["items"] if item["title"] == title]
+        created_first = [item for item in first_work["items"] if item["title"] == title]
+        self.assertEqual(len(created_selected), 1, "the submitted phone text becomes exactly one task in the persisted selected project")
+        self.assertEqual(created_first, [], "submitting from the reloaded sheet does not create the task in the first project")
 
 
 if __name__ == "__main__":
