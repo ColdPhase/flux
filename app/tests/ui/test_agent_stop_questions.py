@@ -108,7 +108,7 @@ class StopAndQuestions(unittest.TestCase):
             page = self.page("ada", scheme=scheme)
             page.goto(f"/projects/{self.ids['project']}/agents")
             row = page.locator(f'.agents-row[data-agent="{self.ids["agent"]}"]')
-            expect(row).to_contain_text("Working on #1")
+            expect(row).to_contain_text("Handed #1")
             stop = row.get_by_role("button", name="Stop Claude Code agent")
             expect(stop).to_be_visible()
             expect(page.get_by_role("complementary", name="Claude Code agent, details").get_by_role("button", name="Stop Claude Code agent")).to_be_visible()
@@ -116,7 +116,7 @@ class StopAndQuestions(unittest.TestCase):
         # Jonas writes here but is neither a manager nor the agent's owner: no Stop to press.
         jonas = self.page("jonas")
         jonas.goto(f"/projects/{self.ids['project']}/agents")
-        expect(jonas.locator(f'.agents-row[data-agent="{self.ids["agent"]}"]')).to_contain_text("Working on #1")
+        expect(jonas.locator(f'.agents-row[data-agent="{self.ids["agent"]}"]')).to_contain_text("Handed #1")
         expect(jonas.get_by_role("button", name=re.compile("^Stop"))).to_have_count(0)
         # The panel's Message opens the task's thread.
         page = self.page("ada")
@@ -162,7 +162,7 @@ class StopAndQuestions(unittest.TestCase):
         page = self.page("ada")
         page.goto(f"/projects/{self.ids['project']}/agents")
         row = page.locator(f'.agents-row[data-agent="{self.ids["agent"]}"]')
-        expect(row).to_contain_text("Working on #2")
+        expect(row).to_contain_text("Handed #2")
         # Someone stops the agent while Ada's view is still open: her press is the stale one, so it is told and nothing is stopped twice.
         other = self.page("ada")
 
