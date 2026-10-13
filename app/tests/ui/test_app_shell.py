@@ -453,7 +453,7 @@ class AppShellJourney(unittest.TestCase):
         expect(page.get_by_role("heading", name="No docs yet")).to_be_visible()
         page.reload()
         expect(page).to_have_url(f"{ORIGIN}/docs")
-        expect(page.get_by_role("heading", level=1, name="Wiki")).to_be_visible()
+        expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
         # A signed-in person who opens sign-in is taken to their work.
         page.goto("/sign-in")
         expect(page).to_have_url(f"{ORIGIN}/")
@@ -493,9 +493,9 @@ class AppShellJourney(unittest.TestCase):
         views = page.get_by_role("navigation", name="Views")
         # The views sit in the header's one row as a segmented control (F-026 §4, #340).
         expect(page.locator("header.top").get_by_role("navigation", name="Views")).to_be_visible()
-        for label in ("Conversation", "Map", "Tasks", "Wiki"):
+        for label in ("Overview", "Map", "Tasks", "Wiki"):
             expect(views.get_by_role("link", name=label, exact=True)).to_be_visible()
-        expect(views.get_by_role("link", name="Conversation")).to_have_attribute("aria-current", "page")
+        expect(views.get_by_role("link", name="Overview")).to_have_attribute("aria-current", "page")
         expect(page.get_by_role("heading", name="Nothing here yet")).to_be_visible()
         composer = page.get_by_label("Private note", exact=True)
         # The composer sits at the bottom of the work area and always shows its audience.
