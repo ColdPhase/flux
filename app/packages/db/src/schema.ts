@@ -385,6 +385,8 @@ export const projects = pgTable('projects', {
   name: text('name').notNull(),
   visibility: text('visibility', { enum: ['workspace', 'restricted'] }).notNull().default('workspace'),
   createdBy: text('created_by').notNull(),
+  /** Optional views added on purpose (#351); existing projects were given all of them (migration 0064). */
+  views: text('views').array().notNull().default(sql`'{}'::text[]`),
   version: integer('version').notNull().default(1),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -1451,6 +1453,8 @@ export const notificationPreferences = pgTable('notification_preferences', {
   quietStart: integer('quiet_start').notNull().default(1320),
   quietEnd: integer('quiet_end').notNull().default(420),
   timeZone: text('time_zone').notNull().default('UTC'),
+  /** Focus mode (F-026 S19): push and email wait until this instant. */
+  pausedUntil: timestamp('paused_until', { withTimezone: true }),
   // Migration 0072 (#350, F-026 S22): the morning summary and the local day it last went out.
   summaryEnabled: boolean('summary_enabled').notNull().default(false),
   summaryAt: integer('summary_at').notNull().default(540),

@@ -18,7 +18,7 @@ import uuid
 
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
-from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, box, shot, start_forwarder
+from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, box, open_details, shot, start_forwarder
 
 PASSWORD = "messages between friends"
 STAMP = int(time.time() * 1000)
@@ -281,12 +281,12 @@ class DirectMessageJourney(unittest.TestCase):
         expect(lee.get_by_text("print a test housing")).to_be_visible()
         self.send(lee, "Yes, PETG in white. Thursday?")
         expect(ada.get_by_text("PETG in white")).to_be_visible(timeout=15000)
-        ada.get_by_role("button", name="Details", exact=True).click()
+        open_details(ada)
         expect(ada.get_by_role("heading", name="People in this conversation")).to_be_visible()
         shot(ada, "dm-desktop-1440-group-details")
         ada.keyboard.press("Escape")
 
-        lee.get_by_role("button", name="Details", exact=True).click()
+        open_details(lee)
         lee.get_by_role("button", name="Leave conversation").click()
         expect(lee.get_by_text("You won’t see these messages again")).to_be_visible()
         lee.get_by_role("group", name="Leave this conversation").get_by_role("button", name="Leave", exact=True).click()
