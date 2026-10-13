@@ -1,0 +1,44 @@
+{
+  "browserViewportMode": "WebKit is_mobile=False; 390x844 CSS viewport; has_touch=True",
+  "environment": {
+    "pointerCoarse": true,
+    "hoverNone": true,
+    "maxTouchPoints": 0
+  },
+  "before": {
+    "scrollTop": 0,
+    "scrollHeight": 724,
+    "clientHeight": 700,
+    "rect": {
+      "top": 60,
+      "bottom": 759.984375
+    }
+  },
+  "after": {
+    "scrollTop": 24,
+    "scrollHeight": 724,
+    "clientHeight": 700,
+    "rect": {
+      "top": 60,
+      "bottom": 759.984375
+    }
+  },
+  "details": {
+    "x": 84,
+    "y": 694.328125,
+    "width": 288,
+    "height": 60.140625
+  },
+  "bottomNav": {
+    "x": 0,
+    "y": 778.1875,
+    "width": 390,
+    "height": 65.796875
+  },
+  "viewport": {
+    "width": 390,
+    "height": 844
+  },
+  "detailsNavOverlapPx": 0,
+  "centerHitTargetsDetails": true
+}

@@ -1,0 +1,100 @@
+{
+  "source_commit": "2dcf15056b9f02c592a431e642b6f47febd0946c",
+  "browser": "WebKit",
+  "phone_css_viewport": [
+    390,
+    844
+  ],
+  "device_scale_factor": 2,
+  "source_runs": "7 captures from independent visual packet; one scrolled capture from single reachability probe",
+  "images": [
+    {
+      "file": "wiki-final-phone-390-light.webp",
+      "source_png": "wiki-final-phone-390-light.png",
+      "source_sha256": "15026d822681b203d149348e940f985cab168b7c5d0a297a48154b7969a6c22a",
+      "source_bytes": 152386,
+      "webp_sha256": "302c8744b5123a8d9b7e66c2eb977a8dd288961a2ea05ae72aa6f49e49242e43",
+      "webp_bytes": 47508,
+      "width_px": 780,
+      "height_px": 1688,
+      "decoded_pixels_identical": true
+    },
+    {
+      "file": "wiki-final-phone-390-dark.webp",
+      "source_png": "wiki-final-phone-390-dark.png",
+      "source_sha256": "d5849ddc1b03d8300fe37ff77f2d4511e06638118de5561011efb6e1a7157c30",
+      "source_bytes": 144187,
+      "webp_sha256": "8b68173cb5660db878e43932f0045ea5d0511909a18e925898ae94e09c153509",
+      "webp_bytes": 41566,
+      "width_px": 780,
+      "height_px": 1688,
+      "decoded_pixels_identical": true
+    },
+    {
+      "file": "wiki-phone-390-view-menu.webp",
+      "source_png": "wiki-phone-390-view-menu.png",
+      "source_sha256": "7692e07a061fac4927d936024563d1cdbdbdf6563541ed663b238adc44fcdd79",
+      "source_bytes": 141156,
+      "webp_sha256": "04493f18b6ef4d60fa5fc71426fc95b90bab2b3b6d65898190d2d03c0504a9a6",
+      "webp_bytes": 46282,
+      "width_px": 780,
+      "height_px": 1688,
+      "decoded_pixels_identical": true
+    },
+    {
+      "file": "wiki-phone-390-page-actions-light.webp",
+      "source_png": "wiki-phone-390-page-actions-light.png",
+      "source_sha256": "2d62e86c47e12a9f39d00267050d1868ec165f0f2610258f9a2ce2f529848917",
+      "source_bytes": 217560,
+      "webp_sha256": "06c3db24cde5bfae509838b970781890cd4dc280672a07f16f9f0f69632fdbf8",
+      "webp_bytes": 66306,
+      "width_px": 780,
+      "height_px": 1688,
+      "decoded_pixels_identical": true
+    },
+    {
+      "file": "wiki-phone-390-page-actions-dark.webp",
+      "source_png": "wiki-phone-390-page-actions-dark.png",
+      "source_sha256": "c7636d4b1a099d77e0673ded39cd2e1ab7b9df05861996dcb490d03203f1bf45",
+      "source_bytes": 206178,
+      "webp_sha256": "dedf6a8a06c5e71da2cbac3ef43e4030750be506dd5cc83820399002c9c9bc51",
+      "webp_bytes": 59214,
+      "width_px": 780,
+      "height_px": 1688,
+      "decoded_pixels_identical": true
+    },
+    {
+      "file": "wiki-phone-390-empty-light.webp",
+      "source_png": "wiki-phone-390-empty-light.png",
+      "source_sha256": "5503485d78fc3cf8734be0dc25ac578172509648e8a308888dcb78ca0f72453a",
+      "source_bytes": 124076,
+      "webp_sha256": "b89d6233f05573d6bfa514117593085b8240856c55a5168f4a7d939ead4a30e3",
+      "webp_bytes": 36964,
+      "width_px": 780,
+      "height_px": 1688,
+      "decoded_pixels_identical": true
+    },
+    {
+      "file": "wiki-phone-390-empty-dark.webp",
+      "source_png": "wiki-phone-390-empty-dark.png",
+      "source_sha256": "c76664939c696b5cc48732208e3a8cbc5159553d3f3d428dbf835c126d4fc459",
+      "source_bytes": 116536,
+      "webp_sha256": "b0efe5b6c95dfe3846baf495df979704144606eb737178a03f6212e1c4a302fb",
+      "webp_bytes": 32280,
+      "width_px": 780,
+      "height_px": 1688,
+      "decoded_pixels_identical": true
+    },
+    {
+      "file": "wiki-phone-390-page-actions-scrolled.webp",
+      "source_png": "wiki-phone-390-page-actions-scrolled.png",
+      "source_sha256": "c4b4d94a50204196adcd3a23c3f6d72e366e6261aa09c336e0bbf2a4856134d9",
+      "source_bytes": 222895,
+      "webp_sha256": "9393dceaaf9c9c0218e75e4e70dc9846ee1545d030a05610a3f10b4f8581b1c6",
+      "webp_bytes": 71860,
+      "width_px": 780,
+      "height_px": 1688,
+      "decoded_pixels_identical": true
+    }
+  ]
+}
