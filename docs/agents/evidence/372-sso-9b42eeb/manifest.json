@@ -1,0 +1,102 @@
+{
+  "head": "9b42eeb32edc0904d7c1064c8aa5c9999571e767",
+  "origin": "http://127.0.0.1:18733",
+  "captures": [
+    {
+      "file": "sso-desktop-light-ready.png",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "scheme": "light",
+      "state": "ready",
+      "document_height": 900,
+      "sso_button_visible": true,
+      "error_visible": false
+    },
+    {
+      "file": "sso-desktop-light-provider-error.png",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "scheme": "light",
+      "state": "provider-error",
+      "document_height": 900,
+      "sso_button_visible": true,
+      "error_visible": true
+    },
+    {
+      "file": "sso-desktop-dark-ready.png",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "scheme": "dark",
+      "state": "ready",
+      "document_height": 900,
+      "sso_button_visible": true,
+      "error_visible": false
+    },
+    {
+      "file": "sso-desktop-dark-provider-error.png",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "scheme": "dark",
+      "state": "provider-error",
+      "document_height": 900,
+      "sso_button_visible": true,
+      "error_visible": true
+    },
+    {
+      "file": "sso-phone-light-ready.png",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "scheme": "light",
+      "state": "ready",
+      "document_height": 844,
+      "sso_button_visible": true,
+      "error_visible": false
+    },
+    {
+      "file": "sso-phone-light-provider-error.png",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "scheme": "light",
+      "state": "provider-error",
+      "document_height": 844,
+      "sso_button_visible": true,
+      "error_visible": true
+    },
+    {
+      "file": "sso-phone-dark-ready.png",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "scheme": "dark",
+      "state": "ready",
+      "document_height": 844,
+      "sso_button_visible": true,
+      "error_visible": false
+    },
+    {
+      "file": "sso-phone-dark-provider-error.png",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "scheme": "dark",
+      "state": "provider-error",
+      "document_height": 844,
+      "sso_button_visible": true,
+      "error_visible": true
+    }
+  ]
+}
