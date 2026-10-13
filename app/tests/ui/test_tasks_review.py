@@ -339,7 +339,7 @@ class TasksReviewJourney(unittest.TestCase):
         return page
 
     def sign_in_form(self, page: Page, who: str) -> None:
-        expect(page.get_by_role("heading", name="Sign in to Flux")).to_be_visible()
+        expect(page.get_by_role("heading", name="Sign in", exact=True)).to_be_visible()
         page.get_by_label("Email").fill(PEOPLE[who]["email"])
         page.get_by_label("Password").fill(PASSWORD)
         page.get_by_role("button", name="Sign in", exact=True).click()
@@ -348,7 +348,7 @@ class TasksReviewJourney(unittest.TestCase):
     def sign_out_in_app(self, page: Page, who: str = "ada") -> None:
         page.get_by_role("button", name=re.compile(f"{PEOPLE[who]['name']}.*account and sign out")).click()
         page.get_by_role("dialog", name="Account").get_by_role("button", name="Sign out", exact=True).click()
-        expect(page.get_by_role("heading", name="Sign in to Flux")).to_be_visible()
+        expect(page.get_by_role("heading", name="Sign in", exact=True)).to_be_visible()
 
     def test_10_real_sign_out_retires_undo_for_shared_and_unrelated_next_accounts(self) -> None:
         for who in ("jonas", "outsider"):
