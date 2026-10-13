@@ -18,7 +18,7 @@ import uuid
 
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
-from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
+from test_app_shell import DESKTOP, ORIGIN, PHONE, UI_BROWSER, UPSTREAM, shot, start_forwarder
 
 PASSWORD = "a lamp that reads the room"
 STAMP = int(time.time() * 1000)
@@ -52,7 +52,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
         if UPSTREAM:
             start_forwarder(ORIGIN, UPSTREAM)
         cls.pw = sync_playwright().start()
-        cls.browser = cls.pw.chromium.launch()
+        cls.browser = getattr(cls.pw, UI_BROWSER).launch()
         expect.set_options(timeout=8000)
 
     @classmethod
@@ -78,6 +78,29 @@ class ProjectSurfaceJourney(unittest.TestCase):
         page.on("pageerror", lambda error: errors.append(str(error)))
         self.addCleanup(lambda: self.assertEqual(errors, [], "no uncaught page errors"))
         return page
+
+    @staticmethod
+    def settle(page: Page, quiet_ms: int = 300, limit_ms: int = 10_000) -> None:
+        """Wait until the page has had no request in flight for quiet_ms (bounded by limit_ms)."""
+        pending: set = set()
+        on_req = lambda request: pending.add(request)
+        on_done = lambda request: pending.discard(request)
+        page.on("request", on_req)
+        page.on("requestfinished", on_done)
+        page.on("requestfailed", on_done)
+        try:
+            deadline = time.monotonic() + limit_ms / 1000
+            quiet_since = time.monotonic()
+            while time.monotonic() < deadline:
+                page.wait_for_timeout(50)
+                if pending:
+                    quiet_since = time.monotonic()
+                elif (time.monotonic() - quiet_since) * 1000 >= quiet_ms:
+                    return
+        finally:
+            page.remove_listener("request", on_req)
+            page.remove_listener("requestfinished", on_done)
+            page.remove_listener("requestfailed", on_done)
 
     def api(self, page: Page, method: str, path: str, body: dict | None = None, status: int | None = None, headers: dict | None = None) -> dict:
         response = page.request.fetch(f"{ORIGIN}{path}", method=method, headers={"origin": ORIGIN, "content-type": "application/json", **(headers or {})},
@@ -195,7 +218,8 @@ class ProjectSurfaceJourney(unittest.TestCase):
 
     def assert_whole_messages(self, page: Page) -> None:
         """The stream and the open thread (UI116-1) each open on whole messages: none starts above the
-        top edge of its feed, and its latest message is fully visible."""
+        top edge of its feed. The stream shows its latest message; a thread opens at its root (#436 #14,
+        #443), so its root starts at the top of the feed and the reader scrolls down."""
         page.wait_for_timeout(600)
         for selector in (".project-convo__feed", ".thread__feed"):
             clipped = page.evaluate("""(selector) => {
@@ -204,9 +228,19 @@ class ProjectSurfaceJourney(unittest.TestCase):
               return [...feed.querySelectorAll('.project-convo__message')].filter((el) => { const r = el.getBoundingClientRect(); return r.top < top - 1 && r.bottom > top + 1; }).length;
             }""", selector)
             self.assertEqual(clipped, 0, f"{selector}: no message is cut off at the top of the opening screen")
-            last = page.locator(f"{selector} .project-convo__message").last.bounding_box()
             feed = page.locator(selector).bounding_box()
-            assert last and feed
+            assert feed
+            if selector == ".thread__feed":
+                # Opened without an anchor, the thread is scrolled to its root: the root starts where the feed's
+                # content starts, below its own top padding (no reply sits above it).
+                root = page.locator(f"{selector} .thread__root").bounding_box()
+                assert root
+                padding = page.evaluate("(selector) => parseFloat(getComputedStyle(document.querySelector(selector + ' .thread__in')).paddingTop)", selector)
+                self.assertEqual(page.evaluate("(selector) => document.querySelector(selector).scrollTop", selector), 0, f"{selector}: the thread opens at its root")
+                self.assertLess(abs(root["y"] - feed["y"] - padding), 2.01, f"{selector}: the root starts at the top of the feed")
+                continue
+            last = page.locator(f"{selector} .project-convo__message").last.bounding_box()
+            assert last
             self.assertLessEqual(last["y"] + last["height"], feed["y"] + feed["height"] + 1, f"{selector}: the latest message is fully visible")
 
     # ---------------------------------------------------------------- current state
@@ -744,8 +778,12 @@ class ProjectSurfaceJourney(unittest.TestCase):
                 with page.expect_request_finished(lambda request: request.method == "POST" and request.url.endswith("/work")):
                     route.fulfill(response=response)
                 expect(field).to_have_value(title)
+                # The fulfilled create refreshes the shell (e.g. /workspaces). Leaving the page with that request in
+                # flight makes WebKit report the cancelled fetch as a page error (#471), so reload only once quiet.
+                self.settle(page)
                 page.reload()
                 expect(field).to_have_value(title)
+                self.settle(other)
                 other.close()
 
     def test_17_home_draft_changes_account_on_current_loader_revalidation(self) -> None:
