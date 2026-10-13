@@ -592,7 +592,7 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
 .phone-menu__details { margin-top: 6px; border-top: 1px solid var(--line); border-radius: 0; color: var(--t2); }
 .phone-menu__quiet { color: var(--t2); }
 /* "+" Create: a half sheet from the bottom. */
-.ui-overlay--bottom .phone-create { inset: auto 0 0 0; border-radius: 26px 26px 0 0; padding: 8px 16px max(24px, env(safe-area-inset-bottom)); }
+.ui-overlay--bottom .phone-create { inset: auto 0 0 0; max-height: calc(100dvh - env(safe-area-inset-top) - 12px); overflow-y: auto; overscroll-behavior: contain; border-radius: 26px 26px 0 0; padding: 8px 16px max(24px, env(safe-area-inset-bottom)); }
 .phone-create__grab { display: block; width: 36px; height: 5px; margin: 4px auto 14px; border-radius: 3px; background: var(--line2); }
 .phone-create__head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 14px; }
 .phone-create__head h2 { margin: 0; font-size: 1.375rem; font-weight: 600; letter-spacing: -.03em; }
@@ -609,6 +609,14 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
 }
 .phone-create__item[aria-disabled="true"] { opacity: .55; }
 .phone-create__item small { font-size: .8125rem; color: var(--t2); font-weight: 400; }
+.phone-create__quick { display: grid; gap: 8px; margin-top: 16px; }
+.phone-create__quick label { font-size: .875rem; font-weight: 500; color: var(--t2); }
+.phone-create__quick input { width: 100%; min-height: 58px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 18px; background: var(--el); color: var(--t1); box-shadow: var(--sh-card); font: inherit; font-size: 1rem; }
+.phone-create__quick input::placeholder { color: var(--t2); opacity: 1; }
+.phone-create__quick input:focus-visible { outline: 2px solid var(--t1); outline-offset: 2px; }
+.phone-create__draft, .phone-create__error { margin: 0; font-size: .8125rem; }
+.phone-create__draft { color: var(--t2); }
+.phone-create__error { color: var(--danger, var(--t1)); }
 .proj-index__dms { display: grid; gap: 10px; margin-top: 22px; justify-items: start; }
 .proj-index__dms h2 { margin: 0; font-size: .9375rem; font-weight: 500; color: var(--t2); }
 .proj-index__dms .dm-index { width: 100%; }

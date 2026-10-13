@@ -284,8 +284,7 @@ class PhoneFinal(unittest.TestCase):
                 menu = page.get_by_role("dialog", name=re.compile("Community garden sensors"))
                 expect(menu).to_be_visible()
                 labels = [text.strip().split("\n")[0] for text in menu.locator(".phone-menu__item").all_inner_texts()]
-                # "What matters" (#133) stays reachable as a quiet last row now that the state row is gone.
-                self.assertEqual(labels, ["Conversation", "Tasks", "Map", "Wiki", "Agents", "Details, goal and people", "What matters"])
+                self.assertEqual(labels, ["Conversation", "Tasks", "Map", "Wiki", "Agents", "Details, goal and people"])
                 expect(menu.get_by_text("Decisions")).to_have_count(0)
                 expect(menu.locator('[aria-current="page"]')).to_have_count(1)
                 expect(menu.locator('[aria-current="page"]')).to_contain_text("Tasks")
@@ -294,11 +293,15 @@ class PhoneFinal(unittest.TestCase):
                     self.assertGreaterEqual(float(item.evaluate("el => getComputedStyle(el).fontSize").removesuffix("px")), 15)
                 self.assert_no_sideways_scroll(page, size["width"])
                 shot(page, f"341-viewsmenu-{size['width']}-{'dark' if dark else 'light'}")
+                expect(menu.get_by_role("button", name="What matters")).to_have_count(0)
                 menu.get_by_role("link", name=re.compile("^Map")).click()
                 expect(page).to_have_url(re.compile(r"/map$"))
                 page.get_by_role("heading", level=1).get_by_role("button").click()
                 page.get_by_role("button", name="Details, goal and people").click()
                 expect(page.get_by_role("dialog", name="Details")).to_be_visible()
+                details = page.get_by_role("dialog", name="Details")
+                details.get_by_role("button", name="What matters").click()
+                expect(page.get_by_role("dialog", name="What matters")).to_be_visible()
                 page.keyboard.press("Escape")
 
     def test_06_the_menu_works_from_the_keyboard(self):
@@ -400,6 +403,26 @@ class PhoneFinal(unittest.TestCase):
                 self.assertAlmostEqual(sizes(".phone-dock__bar .ui-bottomnav__label"), before * 1.25, delta=0.6)
                 page.evaluate("document.documentElement.style.fontSize = ''")
                 self.assert_no_sideways_scroll(page, size["width"])
+
+    def test_11_create_sheet_text_persists_and_creates_a_task_in_the_selected_project(self):
+        page = self.page(SIZES[0])
+        page.goto(f"/projects/{self.project['id']}/tasks")
+        title = f"Print bed labels {uuid.uuid4().hex[:8]}"
+        page.get_by_role("button", name="Create", exact=True).click()
+        field = page.get_by_role("textbox", name="Create a task from text")
+        expect(field).to_be_visible()
+        field.fill(title)
+
+        # An unfinished quick task stays private to this account and project across reload.
+        page.reload()
+        page.get_by_role("button", name="Create", exact=True).click()
+        field = page.get_by_role("textbox", name="Create a task from text")
+        expect(field).to_have_value(title)
+        field.press("Enter")
+        expect(page.locator("#details")).to_contain_text(title)
+        work = self.call(page, "GET", f"/api/v1/projects/{self.project['id']}/work?limit=100")
+        created = [item for item in work["items"] if item["title"] == title]
+        self.assertEqual(len(created), 1, "the submitted phone text becomes one task in the selected project")
 
 
 if __name__ == "__main__":
