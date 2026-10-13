@@ -3,7 +3,7 @@
 - Product source pin: `d87fde2df4cbddafc8fb6c4771d5d9fda9eab8a2`.
 - This is a detached worktree; the only diff is a temporary test method in `app/tests/ui/test_tasks_final.py`. No product source is changed.
 - Harness SHA-256: `a446288202b89b18f3a501c2f9137f5ad5a6855674886e1836c4a93c0267134a` (copy: `harness-test_tasks_final.py`).
-- Runtime result: Chromium, `Ran 2 tests in 4.249s / OK`, Compose project `flux-ui-1791928331-2719907`, tool session 19985. The probe worktree's source commit stayed at d87; only the temporary UI test module differs. `git diff --check` passed and Compose cleanup removed this project's containers, volumes, networks, and per-run images.
+- Runtime result: Chromium, `Ran 2 tests in 4.249s / OK`, Compose project flux-ui-1791928331-2719907, tool session 19985. The probe worktree's source commit stayed at d87; only the temporary UI test module differs. `git diff --check` passed and Compose cleanup removed this project's containers, volumes, networks, and per-run images.
 - Browser run: one Chromium UI run through `scripts/check_ui.sh`, using the normal Compose source stack, fresh project/ports and an isolated screenshot directory.
 - Viewport: 320×568 CSS px, DPR 3, light/default text. Fixture: the existing `TasksFinalJourney.test_01` six-task Community garden sensors project, with `All` explicitly selected.
 - Selected unittest IDs, in fixture order:
