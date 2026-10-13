@@ -117,12 +117,9 @@ current-head evaluation. Its F3–F6 delta should be reconciled explicitly:
   exercised actual grant deletion and close-1008 on an already-open map socket.
   The exact integrated source changed after that pin; the fresh evaluator must
   judge its applicability or request only the affected delta.
-- **F5, codec calibration fixture:** the current test still creates/enrolls a
-  new `actor-b` client for each random Yjs client-ID ordering attempt in the
-  surrogate split case (`app/tooling/live-editing-calibration/codec.test.mjs`).
-  This can add extra enrolled replicas and the retry has no fixed upper bound;
-  resolve it or obtain an independent finding review before treating F5 as
-  closed.
+- **F5, codec calibration fixture:** this source finding was repaired on the
+  subsequent PR head `cbd4655d6a5d822186b452b1e76da2e3096fb446`; see the
+  follow-up section below for its scoped test result and exact delta.
 - **F6, Gate 4:** resolved for this exact head by the complete run above and
   independent artifact review. This does not close F3–F5 or other #228/#231
   acceptance criteria.
@@ -131,3 +128,50 @@ The source remains unchanged by this evidence branch. No application tests were
 run for this docs-only record; the two current-head GitHub checks above are
 reported from the PR and the heavy Gate 4 evidence is linked to its exact
 source/driver pins.
+
+## Subsequent PR-head delta
+
+After the Gate 4 run, PR head `cbd4655d6a5d822186b452b1e76da2e3096fb446`
+adds only a test-only change to
+`app/tooling/live-editing-calibration/codec.test.mjs`. Its surrogate split
+cases retain both below/above public `Y.Doc.clientID` order assertions, select
+an un-enrolled generated document in at most 32 attempts, destroy rejected
+documents, and enroll the selected peer once. It does not assign `clientID` or
+change codec/production semantics. The scoped Docker calibration codec run at
+that exact head passed 32/32 tests, zero failures/cancellations/skips, exit 0
+(13.334 s). The evidence is under `/tmp/flux389-f5-cbd4655/`; TAP SHA-256 is
+`d0db91a5e9db1222c344170e85d50f92d27897d7f8eaa386f737d250f9a61c8c`, and the
+fixture source-hash inventory is
+`a1c980677bb4c904178c68254bd6b7cfa04cd32b5341a650b028e0b2ce971ee4`.
+
+The change from the Gate 4 pin `79e3a14` to `cbd4655d` is exactly that one test
+file. The production tree, latency driver (SHA-256
+`11b71d4f9d34a471367de974ec93bde207b4b6f0a6b813babaa2d68c1a79e3c3`), and
+collector (`scripts/collect_live_editing_queue.py`, SHA-256
+`ef66cdaf42e81b142ed1a700e873f38f7a94d58e3f5d8799e7504b1cf0d0c001`) remain
+byte-identical. The Gate 4 evaluator accepted the artifacts at `79e3a14`; a
+separate current-head evaluator still needs to decide exact compatibility with
+`cbd4655d`. No Gate 4 rerun is inferred from the test-only change.
+
+## F4 evidence and current-source delta
+
+The actual two-API open-map grant-deletion result is pinned to
+`0847a79cd87efccb7b5afc80ce883389fc7b6aa3`. Its retained handoff and
+manifests are at
+`/tmp/flux389-two-api-420/run-1791747206-1731433/evidence/`, including
+`outcome.json`, `two-api-inventory.json`, `actual-ledger.json`,
+`runtime-input-proof.json`, `actual-test-source.json`, `cleanup.json`, and
+`terminal-independent-resource-audit.json`. It exercised real grant deletion
+against an already-open map socket, revoked/1008 closure, withholding post-
+commit protected frames, and continued access for the other owner; cleanup was
+exact for the isolated project.
+
+Since `0847a79`, the live-editing fence/current session policy changed in
+`app/apps/server/src/editing/{authority.ts,map-backend.ts,composition.ts,native-map-journal.ts,rooms.ts,runtime.ts}`
+and `app/packages/db/src/{editing-transactions.ts,repositories/live-editing.ts,repositories/live-map.ts}`;
+the current head also adds
+`app/tests/app/editing-confirmation-fence.test.ts`. Those changes add current
+provider-confirmation checks to map/wiki session and handoff paths. The old
+real two-API receipt therefore remains evidence at its pinned source; an
+independent reviewer must assess its applicability to the current authority
+delta and request only an affected current-head test if needed.
