@@ -66,7 +66,7 @@ export function useStateChange(saved: (item: WorkItem) => void, done: () => void
       toast({
         message: `${taskNumber(item)} ${lower(status)}`, tone: 'neutral',
         action: {
-          label: 'Undo',
+          label: 'Undo', key: 'Z',
           onClick: () => {
             const back = { status: item.status, ...(item.status === 'blocked' && item.blocker ? { blocker: item.blocker } : {}) };
             void (async () => {
