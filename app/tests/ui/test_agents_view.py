@@ -17,7 +17,7 @@ import uuid
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
 from author_columns import assert_author_column
-from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
+from test_app_shell import DESKTOP, ORIGIN, PHONE, UI_BROWSER, UPSTREAM, shot as save_shot, start_forwarder
 
 PASSWORD = "two agents share one lamp"
 STAMP = int(time.time() * 1000)
@@ -48,6 +48,10 @@ NEWEST_PLACEMENT = """() => {
 }"""
 
 
+def shot(page: Page, name: str) -> None:
+    save_shot(page, name if UI_BROWSER == "chromium" else f"{name}-{UI_BROWSER}")
+
+
 class AgentsViewJourney(unittest.TestCase):
     """Tests run in name order and share three accounts and one project."""
 
@@ -61,7 +65,10 @@ class AgentsViewJourney(unittest.TestCase):
         if UPSTREAM:
             start_forwarder(ORIGIN, UPSTREAM)
         cls.pw = sync_playwright().start()
-        cls.browser = cls.pw.chromium.launch()
+        cls.browser = getattr(cls.pw, UI_BROWSER).launch()
+        if cls.browser.browser_type.name != UI_BROWSER:
+            raise AssertionError(f"Expected {UI_BROWSER}, launched {cls.browser.browser_type.name}")
+        print(f"\n  Agents view browser: {cls.browser.browser_type.name}")
         expect.set_options(timeout=8000)
 
     @classmethod
@@ -108,10 +115,11 @@ class AgentsViewJourney(unittest.TestCase):
             self.api(page, "POST", "/api/v1/agent-connections", {"agentId": agent["id"], "selectedProjectIds": [project],
                      "scopes": ["flux.context.read", "flux.proposal.write"], "name": name, "clientDesignation": client}, status=201)
 
-    def open_agents(self, who: str, **kwargs) -> Page:
+    def open_agents(self, who: str, *, thread: bool = True, **kwargs) -> Page:
+        # The list is the view; a task's thread opens under it from `?task=` (the task's own link and detail panel).
         page = self.page(who, **kwargs)
-        page.goto(f"/projects/{self.ids['project']}/agents")
-        expect(page.get_by_role("heading", level=1, name="Working together")).to_be_visible()
+        page.goto(f"/projects/{self.ids['project']}/agents" + (f"?task={self.ids['task']}" if thread else ""))
+        expect(page.get_by_role("heading", level=1, name="Agents")).to_be_visible()
         return page
 
     def test_01_two_owners_connect_three_agents(self) -> None:
@@ -139,10 +147,10 @@ class AgentsViewJourney(unittest.TestCase):
         type(self).ids = {"workspace": ws["id"], "project": pid, "task": task["id"]}
 
     def test_02_every_connection_is_its_own_entry_with_owner_and_state(self) -> None:
-        page = self.open_agents("hubert")
+        page = self.open_agents("hubert", thread=False)
         tabs = page.get_by_role("navigation", name="Project views")
         expect(tabs.get_by_role("link", name=re.compile("^Agents"))).to_have_attribute("aria-current", "page")
-        connections = page.get_by_role("list", name="Agent connections in this project").get_by_role("listitem")
+        connections = page.get_by_role("list", name="Agents in this project").get_by_role("listitem")
         expect(connections).to_have_count(3)
         texts = connections.all_inner_texts()
         self.assertEqual(sum("Hubert Nowak (you)" in text for text in texts), 2, "both of Hubert's agents are listed")
@@ -154,8 +162,8 @@ class AgentsViewJourney(unittest.TestCase):
         api = self.api(page, "GET", f"/api/v1/projects/{self.ids['project']}/agents", status=200)
         self.assertEqual(len(api["connections"]), 3)
         shot(page, "agents-desktop-1440")
-        marek = self.open_agents("marek")
-        texts = marek.get_by_role("list", name="Agent connections in this project").get_by_role("listitem").all_inner_texts()
+        marek = self.open_agents("marek", thread=False)
+        texts = marek.get_by_role("list", name="Agents in this project").get_by_role("listitem").all_inner_texts()
         self.assertEqual(sum("(you)" in text for text in texts), 1, "Marek owns exactly one of them")
 
     def test_03_the_composer_writes_to_the_task_thread(self) -> None:
@@ -226,7 +234,7 @@ class AgentsViewJourney(unittest.TestCase):
         hubert = self.page("hubert")
         # The page's sockets are recorded; while the network is "down" every new one fails before it opens.
         hubert.add_init_script(RECORD_SOCKETS)
-        hubert.goto(f"/projects/{self.ids['project']}/agents")
+        hubert.goto(f"/projects/{self.ids['project']}/agents?task={self.ids['task']}")
         expect(self.thread(hubert).get_by_text("Then I'll flash it tonight.")).to_be_visible()
         hubert.wait_for_function(STREAM_OPEN)
         # The connection drops and stays down while Marek writes; then the network returns.
@@ -296,19 +304,28 @@ class AgentsViewJourney(unittest.TestCase):
         hubert.wait_for_function(STREAM_OPEN)
         box = hubert.get_by_label("Write to this task")
         box.fill("Draft kept through the outage")
+        hubert.evaluate("() => { window.__sameOutageDocument = true; window.__nativeOnlineCount = 0; window.addEventListener('online', () => { window.__nativeOnlineCount += 1; }); }")
         hubert.context.set_offline(True)
-        hubert.evaluate("() => window.__fluxSockets.forEach((ws) => ws.close())")
+        self.assertFalse(hubert.evaluate("navigator.onLine"))
+        hubert.evaluate("() => { window.__fluxDown = true; window.__fluxSockets.forEach((ws) => ws.close()); }")
         for index in range(1, 67):
             self.api(marek, "POST", f"/api/v1/work/{task['id']}/discussion", {"body": f"Reading {index:02d} while Hubert is offline", "clientMessageId": str(uuid.uuid4()), "kind": "text"}, status=201)
         hubert.wait_for_timeout(1500)
         expect(hubert.get_by_text("Flux can’t be reached")).to_have_count(0)
+        # WebKit's HTTP offline switch allows new sockets, so the existing fixture closes them too.
+        hubert.wait_for_function("() => window.__fluxSockets.every(ws => ws.readyState === 3)")
+        expect(thread.locator(".agents-thread__list > li")).to_have_count(1)
+        hubert.evaluate("() => { window.__fluxDown = false; }")
         hubert.context.set_offline(False)
+        hubert.wait_for_function("() => navigator.onLine && window.__nativeOnlineCount === 1")
         # Back online: the stream reconnects at once and the thread pages in the whole burst.
         expect(thread.get_by_text("Reading 66 while Hubert is offline")).to_be_visible(timeout=12000)
         expect(thread.get_by_text("Reading 01 while Hubert is offline")).to_have_count(1)
         expect(thread.locator(".agents-thread__list > li")).to_have_count(67)
         expect(hubert.get_by_text("Flux can’t be reached")).to_have_count(0)
         expect(box).to_have_value("Draft kept through the outage")
+        expect(thread.get_by_text("Starting the night measurements.", exact=True)).to_have_count(1)
+        self.assertTrue(hubert.evaluate("window.__sameOutageDocument"), "the same document recovered without reload")
         hubert.wait_for_function(STREAM_OPEN)
         box.fill("")
         # Done, so the later tests still open on the original task (the view opens the first open one).
@@ -317,11 +334,111 @@ class AgentsViewJourney(unittest.TestCase):
                                       headers={"origin": ORIGIN, "content-type": "application/json", "if-match": f'"{current["version"]}"'})
         self.assertEqual(closed.status, 200, closed.text())
 
+    def test_03g_an_http_outage_with_an_open_stream_recovers_on_native_online(self) -> None:
+        # Preserve the original WebKit failure: new sockets reopen while its HTTP fixture is offline.
+        # Native online must reload the scoped thread even though the stream is already open.
+        hubert = self.page("hubert")
+        task = self.api(hubert, "POST", f"/api/v1/projects/{self.ids['project']}/work", {"title": "Measure the lamp after dark"}, status=201)
+        marek = self.page("marek")
+        self.api(marek, "POST", f"/api/v1/work/{task['id']}/discussion", {"body": "Starting the night measurements.", "clientMessageId": str(uuid.uuid4()), "kind": "text"}, status=201)
+        hubert.add_init_script(RECORD_SOCKETS)
+        failed_reads: list[str] = []
+        hubert.on("requestfailed", lambda request: failed_reads.append(request.url) if f"/work/{task['id']}/discussion" in request.url else None)
+        hubert.goto(f"/projects/{self.ids['project']}/agents?task={task['id']}")
+        thread = hubert.get_by_role("region", name="Thread of Measure the lamp after dark")
+        expect(thread.get_by_text("Starting the night measurements.")).to_be_visible()
+        hubert.wait_for_function(STREAM_OPEN)
+        box = hubert.get_by_label("Write to this task")
+        box.fill("Draft kept through the outage")
+        hubert.evaluate("() => { window.__sameOutageDocument = true; window.__nativeOnlineCount = 0; window.addEventListener('online', () => { window.__nativeOnlineCount += 1; }); }")
+        hubert.context.set_offline(True)
+        self.assertFalse(hubert.evaluate("navigator.onLine"))
+        hubert.evaluate("() => window.__fluxSockets.forEach((ws) => ws.close())")
+        for index in range(1, 67):
+            self.api(marek, "POST", f"/api/v1/work/{task['id']}/discussion", {"body": f"Reading {index:02d} while Hubert is offline", "clientMessageId": str(uuid.uuid4()), "kind": "text"}, status=201)
+        hubert.wait_for_timeout(1500)
+        expect(hubert.get_by_text("Flux can’t be reached")).to_have_count(0)
+        # The WebKit control proves the mixed condition instead of silently treating it as a full outage.
+        if UI_BROWSER == "webkit":
+            hubert.wait_for_function(STREAM_OPEN)
+            self.assertTrue(failed_reads, "actual HTTP reads failed while the resumed stream stayed open")
+        hubert.context.set_offline(False)
+        hubert.wait_for_function("() => navigator.onLine && window.__nativeOnlineCount === 1")
+        # Back online: the stream reconnects at once and the thread pages in the whole burst.
+        expect(thread.get_by_text("Reading 66 while Hubert is offline")).to_be_visible(timeout=12000)
+        expect(thread.get_by_text("Reading 01 while Hubert is offline")).to_have_count(1)
+        expect(thread.locator(".agents-thread__list > li")).to_have_count(67)
+        expect(hubert.get_by_text("Flux can’t be reached")).to_have_count(0)
+        expect(box).to_have_value("Draft kept through the outage")
+        expect(thread.get_by_text("Starting the night measurements.", exact=True)).to_have_count(1)
+        self.assertTrue(hubert.evaluate("window.__sameOutageDocument"), "the same document recovered without reload")
+        hubert.wait_for_function(STREAM_OPEN)
+        box.fill("")
+        # Done, so the later tests still open on the original task (the view opens the first open one).
+        current = self.api(hubert, "GET", f"/api/v1/work/{task['id']}", status=200)
+        closed = hubert.request.fetch(f"{ORIGIN}/api/v1/work/{task['id']}", method="PATCH", data=json.dumps({"status": "done"}),
+                                      headers={"origin": ORIGIN, "content-type": "application/json", "if-match": f'"{current["version"]}"'})
+        self.assertEqual(closed.status, 200, closed.text())
+
+    def test_03h_native_online_survives_an_older_pending_read_failure(self) -> None:
+        hubert = self.page("hubert")
+        task = self.api(hubert, "POST", f"/api/v1/projects/{self.ids['project']}/work", {"title": "Keep the newer recovery request"}, status=201)
+        marek = self.page("marek")
+        self.api(marek, "POST", f"/api/v1/work/{task['id']}/discussion",
+                 {"body": "The root before the held read.", "clientMessageId": str(uuid.uuid4()), "kind": "text"}, status=201)
+        hubert.add_init_script(RECORD_SOCKETS)
+        hubert.goto(f"/projects/{self.ids['project']}/agents?task={task['id']}")
+        thread = hubert.get_by_role("region", name="Thread of Keep the newer recovery request")
+        expect(thread.get_by_text("The root before the held read.", exact=True)).to_be_visible()
+        hubert.wait_for_function(STREAM_OPEN)
+        box = hubert.get_by_label("Write to this task")
+        box.fill("A draft during the held read")
+        hubert.evaluate("() => { window.__sameHeldDocument = true; window.__nativeOnlineCount = 0; window.addEventListener('online', () => { window.__nativeOnlineCount += 1; }); }")
+        path = f"/api/v1/work/{task['id']}/discussion"
+        held = []
+        reads: list[str] = []
+        successful: list[str] = []
+
+        def hold_first(route) -> None:
+            if route.request.method != "GET":
+                route.continue_()
+                return
+            reads.append(route.request.url)
+            if len(reads) == 1:
+                held.append(route)  # Keep the existing load pending until native online has arrived.
+            else:
+                route.continue_()
+
+        self.addCleanup(lambda: None if hubert.is_closed() else hubert.unroute_all(behavior="ignoreErrors"))
+        hubert.route(f"**{path}", hold_first)
+        hubert.on("response", lambda response: successful.append(response.url) if response.url.endswith(path) and response.status == 200 else None)
+        self.api(marek, "POST", path,
+                 {"body": "A reply while the old read is held.", "clientMessageId": str(uuid.uuid4()), "kind": "text"}, status=201)
+        until = time.monotonic() + 5
+        while not held and time.monotonic() < until:
+            hubert.wait_for_timeout(50)
+        self.assertEqual(len(held), 1, "an actual UI refetch is held")
+        hubert.context.set_offline(True)
+        self.assertFalse(hubert.evaluate("navigator.onLine"))
+        hubert.context.set_offline(False)
+        hubert.wait_for_function("() => navigator.onLine && window.__nativeOnlineCount === 1")
+        self.assertEqual(len(reads), 1, "native online coalesces behind the pending read")
+        held[0].fulfill(status=503, json={"code": "TEMPORARY_READ_FAILURE", "message": "Held read failed"})
+        expect(thread.get_by_text("A reply while the old read is held.", exact=True)).to_be_visible(timeout=8000)
+        expect(thread.get_by_text("The root before the held read.", exact=True)).to_have_count(1)
+        expect(thread.locator(".agents-thread__list > li")).to_have_count(2)
+        expect(box).to_have_value("A draft during the held read")
+        self.assertTrue(hubert.evaluate("window.__sameHeldDocument"))
+        self.assertEqual(len(reads), 2, "one serialized follow-up survives the older failed read")
+        self.assertEqual(len(successful), 1, "the follow-up is one real successful API read")
+
     def test_04_a_draft_survives_leaving_the_view(self) -> None:
         page = self.open_agents("hubert")
         page.get_by_label("Write to this task").fill("Half-written note about the firmware")
         page.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile("^Tasks")).click()
         page.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile("^Agents")).click()
+        expect(page.get_by_role("heading", level=1, name="Agents")).to_be_visible()
+        page.evaluate("([url]) => { history.pushState({}, '', url); window.dispatchEvent(new PopStateEvent('popstate')); }", [f"/projects/{self.ids['project']}/agents?task={self.ids['task']}"])
         expect(page.get_by_label("Write to this task")).to_have_value("Half-written note about the firmware")
 
     def test_04b_a_draft_belongs_to_its_account(self) -> None:
@@ -330,8 +447,8 @@ class AgentsViewJourney(unittest.TestCase):
         # Another account signs in within the same browser storage: Hubert's unsent text is not theirs.
         page.context.clear_cookies()
         page.context.add_cookies(self.states["marek"]["cookies"])
-        page.goto(f"/projects/{self.ids['project']}/agents")
-        expect(page.get_by_role("heading", level=1, name="Working together")).to_be_visible()
+        page.goto(f"/projects/{self.ids['project']}/agents?task={self.ids['task']}")
+        expect(page.get_by_role("heading", level=1, name="Agents")).to_be_visible()
         expect(page.get_by_label("Write to this task")).to_have_value("")
 
     def test_04c_a_lost_response_is_retried_without_a_duplicate(self) -> None:
@@ -386,16 +503,16 @@ class AgentsViewJourney(unittest.TestCase):
         outsider = self.page("outsider")
         self.api(outsider, "GET", f"/api/v1/projects/{self.ids['project']}/agents", status=404)
         outsider.goto(f"/projects/{self.ids['project']}/agents")
-        expect(outsider.get_by_role("heading", level=1, name="Working together")).to_have_count(0)
+        expect(outsider.get_by_role("heading", level=1, name="Agents")).to_have_count(0)
 
     def test_06_phone_keeps_entries_and_composer_usable(self) -> None:
         page = self.open_agents("hubert", phone=True)
-        expect(page.get_by_role("list", name="Agent connections in this project").get_by_role("listitem")).to_have_count(3)
+        expect(page.get_by_role("list", name="Agents in this project").get_by_role("listitem")).to_have_count(3)
         expect(page.get_by_label("Write to this task")).to_be_visible()
         overflow = page.evaluate("() => document.documentElement.scrollWidth - document.documentElement.clientWidth")
         self.assertLessEqual(overflow, 0, "no horizontal page scroll at 390px")
         # The sections stack: the thread never starts above the task picker or the connections.
-        boxes = page.evaluate("""() => ['.agents__connections', '.agents__task', '.agents-thread'].map((s) => {
+        boxes = page.evaluate("""() => ['.agents-list', '.agents__task', '.agents-thread'].map((s) => {
           const r = document.querySelector(s).getBoundingClientRect(); return { top: r.top, bottom: r.bottom }; })""")
         self.assertLessEqual(boxes[0]["bottom"], boxes[1]["top"] + 1, "connections end before the task picker")
         self.assertLessEqual(boxes[1]["bottom"], boxes[2]["top"] + 1, "the task picker ends before the thread")
@@ -447,7 +564,7 @@ class AgentsViewJourney(unittest.TestCase):
         # #183 N1: another person revokes their connection while Hubert has the view open. A
         # revocation publishes no stream event, so returning to the tab refetches the list.
         page = self.open_agents("hubert")
-        connections = page.get_by_role("list", name="Agent connections in this project").get_by_role("listitem")
+        connections = page.get_by_role("list", name="Agents in this project").get_by_role("listitem")
         expect(connections).to_have_count(3)
         page.evaluate("() => { window.__fluxSameDocument = true; }")
         marek = self.page("marek")
@@ -459,7 +576,11 @@ class AgentsViewJourney(unittest.TestCase):
         response = marek.request.fetch(f"{ORIGIN}/api/v1/agent-connections/{active[0]['id']}", method="DELETE", headers={"origin": ORIGIN})
         self.assertEqual(response.status, 204, response.text())
         page.evaluate("() => window.dispatchEvent(new Event('focus'))")
-        expect(connections).to_have_count(2, timeout=20000)
+        # The connection leaves the list; Marek's agent keeps its project access, so it stays a row with nothing of its client.
+        marek_row = connections.filter(has_text="Marek's coding agent")
+        expect(marek_row).to_have_count(1)
+        expect(marek_row).not_to_contain_text("Workshop PC", timeout=20000)
+        expect(marek_row).to_contain_text("Nothing handed to it")
         self.assertFalse(any("Workshop PC" in text for text in connections.all_inner_texts()), "Marek's revoked connection is gone")
         self.assertTrue(page.evaluate("() => window.__fluxSameDocument === true"), "the list changed without a reload")
 
@@ -494,12 +615,12 @@ class AgentsViewJourney(unittest.TestCase):
         expires = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now + 6))
         page.route(f"**/api/v1/projects/{self.ids['project']}/agents", session_ending_soon)
         page.goto(f"/projects/{self.ids['project']}/agents")
-        expect(page.get_by_role("heading", level=1, name="Working together")).to_be_visible()
+        expect(page.get_by_role("heading", level=1, name="Agents")).to_be_visible()
         page.evaluate("() => { window.__fluxSameDocument = true; }")
-        desk = page.get_by_role("list", name="Agent connections in this project").get_by_role("listitem").filter(has_text="Desk laptop")
+        desk = page.get_by_role("list", name="Agents in this project").get_by_role("listitem").filter(has_text="Desk laptop")
         expect(desk).to_contain_text("Session open since")
         expect(desk).to_have_attribute("data-state", "session_open")
-        expect(desk.locator(".agents-conn__icon")).to_have_attribute("data-expression", "idle")
+        expect(desk.locator(".agents-row__icon")).to_have_attribute("data-expression", "idle")
         expect(desk).to_contain_text("Offline", timeout=25000)
         expect(desk).to_have_attribute("data-state", "offline")
         expect(desk).not_to_contain_text("Session open since")
