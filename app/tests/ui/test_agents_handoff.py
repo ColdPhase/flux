@@ -475,7 +475,7 @@ class HandOffJourney(unittest.TestCase):
                     else:
                         expect(row).not_to_have_attribute("data-working", "true")
                         expect(page.get_by_text("1 in this project", exact=True)).to_be_visible()
-                    (row.get_by_role("button").tap if phone else row.get_by_role("button").click)()
+                    (row.locator(".agents-row__btn").tap if phone else row.locator(".agents-row__btn").click)()
                     detail = page.get_by_role("complementary", name="Claude Code agent, details")
                     expect(detail.locator(".agents-detail__head > .kreska")).to_have_attribute("data-expression", expression)
                     now = detail.get_by_role("region", name="Now")
