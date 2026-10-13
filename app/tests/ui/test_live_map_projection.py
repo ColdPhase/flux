@@ -38,7 +38,10 @@ class LiveMapProjectionJourney(LiveFixture):
 
         # Revocation is checked before label comparison, so a former writer cannot
         # use the conflict payload as a read channel for the saved label.
-        await self.api(ada, 'DELETE', f'/api/v1/projects/{self.project}/grants/{self.project_grant_id}', status=204)
+        revoked_grant = await ada.request.fetch(
+            f'/api/v1/projects/{self.project}/grants/{self.project_grant_id}', method='DELETE',
+            headers={'origin': ORIGIN})
+        self.assertEqual(revoked_grant.status, 204, await revoked_grant.text())
         revoked = await kai.request.fetch(f'/api/v1/sketches/{self.map_id}/links/{link["id"]}',
             method='PATCH', headers={'origin': ORIGIN, 'content-type': 'application/json',
                 'idempotency-key': str(uuid.uuid4())},
