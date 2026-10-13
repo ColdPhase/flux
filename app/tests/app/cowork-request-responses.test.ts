@@ -529,16 +529,11 @@ test('the Agents view shows each connection its held unit and its open request w
   assert.equal(reviewer(await view()).currentWork!.liveClaimExpiresAt, null, 'an expired lease is only held work');
   await pool.query("UPDATE cowork_units SET lease_expires_at=clock_timestamp()+interval '30 seconds' WHERE id=$1", [f.reviewUnit]);
   assert.ok(reviewer(await view()).currentWork!.liveClaimExpiresAt);
-  await pool.query(`DELETE FROM agent_command_receipts WHERE connection_id=$1 AND grant_id IN
-    (SELECT id FROM agent_standing_grants WHERE connection_id=$1 AND project_id=$2)`, [f.marekClaude.connection.id, f.w.p.id]);
-  await pool.query('DELETE FROM agent_standing_grants WHERE connection_id=$1 AND project_id=$2',
-    [f.marekClaude.connection.id, f.w.p.id]);
+  const ceilingProbe = await f.w.connect(f.w.marek, 'Ceiling removal probe');
+  assert.ok((await view()).connections.some((item) => item.id === ceilingProbe.connection.id), 'the probe starts inside the project ceiling');
   const ceiling = await pool.query('DELETE FROM agent_connection_projects WHERE connection_id=$1 AND project_id=$2 RETURNING workspace_id',
-    [f.marekClaude.connection.id, f.w.p.id]);
+    [ceilingProbe.connection.id, f.w.p.id]);
   assert.equal(ceiling.rowCount, 1);
-  assert.equal((await view()).connections.some((item) => item.id === f.marekClaude.connection.id), false,
+  assert.equal((await view()).connections.some((item) => item.id === ceilingProbe.connection.id), false,
     'the connection leaves the project-scoped Agents response when its project ceiling is removed');
-  await pool.query('INSERT INTO agent_connection_projects (workspace_id,connection_id,project_id) VALUES ($1,$2,$3)',
-    [ceiling.rows[0]!.workspace_id, f.marekClaude.connection.id, f.w.p.id]);
-  assert.ok(reviewer(await view()).currentWork!.liveClaimExpiresAt);
 });
