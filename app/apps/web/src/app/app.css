@@ -545,8 +545,10 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
 }
 .phone-dock__bar .ui-bottomnav__item { min-height: 52px; min-width: 0; padding: 4px 0; border-radius: 26px; font-size: .8125rem; font-weight: 500; color: var(--t2); gap: 1px; }
 .phone-dock__bar .ui-bottomnav__pill { width: 36px; height: 26px; }
-/* Larger system text grows the labels, up to what three of them fit beside Search at 320 px (#437). */
-.phone-dock__bar .ui-bottomnav__label { font-size: min(.8125rem, 14px); max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+/* Larger system text grows the labels in rem up to a 20 px root (16.25 px), what three of them fit beside
+   Search at 320 px (#437); the narrowest phones give Search a little less. */
+.phone-dock__bar .ui-bottomnav__label { font-size: min(.8125rem, 16.25px); max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 340px) { .phone-dock { gap: 8px; } .phone-dock__search { width: 56px; height: 56px; } }
 .phone-dock__bar .ui-bottomnav__pill::before { display: none; }
 .phone-dock__bar .ui-bottomnav__item:is([aria-current="page"], [data-pending]) { background: var(--sub); color: var(--t1); font-weight: 600; }
 .phone-dock__bar .ui-bottomnav__dot { top: 0; right: 2px; width: 10px; height: 10px; box-shadow: 0 0 0 2px var(--el); }
