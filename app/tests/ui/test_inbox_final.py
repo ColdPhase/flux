@@ -458,7 +458,7 @@ class InboxFinal(unittest.TestCase):
         page.get_by_role("button", name="Sign in", exact=True).click()
         expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
         self.assertEqual(page.request.get("/api/v1/me").json()["user"]["id"], self.ids["jonas"], "the same tab now carries Jonas's session")
-        page.goto("/inbox?show=decisions")
+        page.get_by_role("link", name=re.compile("^Open Inbox")).click()
         card = self.card(page, title)
         expect(card).to_have_attribute("aria-current", "true")
 
