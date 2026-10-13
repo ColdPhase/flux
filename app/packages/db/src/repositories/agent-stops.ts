@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { and, desc, eq, inArray, isNull, notInArray, sql } from 'drizzle-orm';
+import { and, desc, eq, gt, inArray, isNull, notInArray, or, sql } from 'drizzle-orm';
 import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
 
@@ -84,8 +84,57 @@ export function agentStopRows(tx: DbExecutor) {
         .innerJoin(schema.agents, eq(schema.agents.id, w.ownerAgentId)).innerJoin(schema.projects, eq(schema.projects.id, w.projectId))
         .where(and(eq(schema.agents.ownerUserId, userId), isNull(schema.agents.revokedAt), eq(w.status, 'in_progress'), isNull(w.parkedAt)))
         .orderBy(desc(w.updatedAt), desc(w.id)).limit(limit);
+      // Online: an unrevoked connection of the agent has a session that is unexpired, on its binding's current generation, of an enabled client.
+      const live = new Set<string>();
+      const liveSessions = new Map<string, Set<string>>();
+      const agentIds = [...new Set(rows.map((row) => row.agentId))];
+      if (agentIds.length) {
+        const sessions = tx.select({ agentId: connections.agentId, connectionId: connections.id, sessionId: schema.agentRuntimeSessions.id }).from(schema.agentRuntimeSessions)
+          .innerJoin(connections, eq(connections.id, schema.agentRuntimeSessions.connectionId))
+          .innerJoin(schema.agentOauthBindings, and(eq(schema.agentOauthBindings.id, schema.agentRuntimeSessions.bindingId),
+            eq(schema.agentOauthBindings.generation, schema.agentRuntimeSessions.bindingGeneration)))
+          .innerJoin(schema.oauthClient, and(eq(schema.oauthClient.clientId, schema.agentOauthBindings.clientId),
+            or(eq(schema.oauthClient.disabled, false), isNull(schema.oauthClient.disabled))))
+          .where(and(inArray(connections.agentId, agentIds), isNull(connections.revokedAt), isNull(schema.agentRuntimeSessions.revokedAt),
+            gt(schema.agentRuntimeSessions.expiresAt, sql`now()`)));
+        for (const row of await sessions) {
+          live.add(row.agentId);
+          const connectionSessions = liveSessions.get(row.connectionId) ?? new Set<string>();
+          connectionSessions.add(row.sessionId);
+          liveSessions.set(row.connectionId, connectionSessions);
+        }
+      }
+      // A handed task is not necessarily work in progress. Require a live lease for this exact task, assigned
+      // connection and runtime session before the sidebar calls it Working. The connection must still include
+      // this project in its current ceiling; an expired claim or a different live session is only handed work.
+      const working = new Set<string>();
+      const sessionIds = [...liveSessions.values()].flatMap((ids) => [...ids]);
+      if (rows.length && sessionIds.length) {
+        const taskIds = rows.map((row) => row.taskId);
+        const connectionIds = [...liveSessions.keys()];
+        const claims = await tx.select({ taskId: units.taskId, projectId: units.projectId, agentId: connections.agentId,
+          connectionId: units.assignmentConnectionId, leaseSessionId: units.leaseSessionId }).from(units)
+          .innerJoin(connections, and(eq(connections.id, units.assignmentConnectionId), isNull(connections.revokedAt)))
+          .innerJoin(schema.agentConnectionProjects, and(eq(schema.agentConnectionProjects.connectionId, connections.id),
+            eq(schema.agentConnectionProjects.projectId, units.projectId)))
+          .where(and(inArray(units.taskId, taskIds), inArray(units.assignmentConnectionId, connectionIds),
+            inArray(units.leaseSessionId, sessionIds), eq(units.state, 'claimed'), gt(units.leaseExpiresAt, sql`clock_timestamp()`)));
+        for (const claim of claims) {
+          if (claim.leaseSessionId && liveSessions.get(claim.connectionId)?.has(claim.leaseSessionId))
+            working.add(`${claim.agentId}:${claim.projectId}:${claim.taskId}`);
+        }
+      }
+      // Signed in: a client has ever opened a session for one of the agent's connections.
+      const signed = new Set<string>();
+      if (agentIds.length) {
+        for (const row of await tx.selectDistinct({ agentId: connections.agentId }).from(schema.agentRuntimeSessions)
+          .innerJoin(connections, eq(connections.id, schema.agentRuntimeSessions.connectionId))
+          .where(inArray(connections.agentId, agentIds))) signed.add(row.agentId);
+      }
       return rows.map((row) => ({ agent: { id: row.agentId, name: row.agentName },
-        task: { id: row.taskId, projectId: row.projectId, projectName: row.projectName, number: row.number, title: row.title } }));
+        task: { id: row.taskId, projectId: row.projectId, projectName: row.projectName, number: row.number, title: row.title },
+        working: working.has(`${row.agentId}:${row.projectId}:${row.taskId}`),
+        online: live.has(row.agentId), signedIn: signed.has(row.agentId) }));
     },
     async get(id: string) { return (await this.list({ id }))[0] ?? null; },
     /** Newest first. */

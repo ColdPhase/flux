@@ -21,7 +21,7 @@ export function summaryStateParts(summary: ProjectWorkSummary, canDecide: boolea
     const remaining = Math.max(0, active.ownerTotal - names.length);
     const labels = [...names, ...(remaining ? [`${remaining} ${remaining === 1 ? 'other' : 'others'}`] : [])];
     const who = labels.length ? ` (${labels.join(', ')})` : '';
-    parts.push({ key: 'work', icon: null, dot: 'progress', text: `${active.count === 1 ? `In progress: ${active.first.title}` : `${active.count} in progress`}${who}`, short: `Work in progress${who}`, title: active.count === 1 ? `${active.first.title}${who}` : `${active.count} items in progress${who}`, open: { kind: 'work', id: active.first.id } });
+    parts.push({ key: 'work', icon: null, dot: 'progress', text: `${active.count === 1 ? `Task in progress: ${active.first.title}` : `${active.count} tasks in progress`}${who}`, short: `Tasks in progress${who}`, title: active.count === 1 ? `Task in progress: ${active.first.title}${who}` : `${active.count} tasks in progress${who}`, open: { kind: 'work', id: active.first.id } });
   }
   if (blocked.count && blocked.first) parts.push({ key: 'blocked', icon: 'alert', tone: 'warn', text: `${blocked.count} blocked`, short: `${blocked.count} blocked`, title: blocked.count === 1 ? blocked.first.title : `${blocked.count} blocked items`, open: { kind: 'work', id: blocked.first.id } });
   if (open.count && open.first) {

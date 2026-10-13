@@ -33,7 +33,7 @@ export function stateParts(lists: ProjectWork, canDecide: boolean): StatePart[] 
   if (active.length) {
     const names = [...new Set(active.map((item) => item.owner?.name.trim().split(/\s+/)[0]).filter(Boolean))];
     const who = names.length ? ` (${names.join(', ')})` : '';
-    parts.push({ key: 'work', icon: null, dot: 'progress', text: `${active.length === 1 ? `In progress: ${active[0]!.title}` : `${active.length} in progress`}${who}`, short: `Work in progress${who}`, title: active.length === 1 ? `${active[0]!.title}${who}` : `${active.length} items in progress${who}`, open: { kind: 'work', id: active[0]!.id } });
+    parts.push({ key: 'work', icon: null, dot: 'progress', text: `${active.length === 1 ? `Task in progress: ${active[0]!.title}` : `${active.length} tasks in progress`}${who}`, short: `Tasks in progress${who}`, title: active.length === 1 ? `Task in progress: ${active[0]!.title}${who}` : `${active.length} tasks in progress${who}`, open: { kind: 'work', id: active[0]!.id } });
   }
   if (blocked.length) parts.push({ key: 'blocked', icon: 'alert', tone: 'warn', text: `${blocked.length} blocked`, short: `${blocked.length} blocked`, title: blocked.length === 1 ? blocked[0]!.title : `${blocked.length} blocked items`, open: { kind: 'work', id: blocked[0]!.id } });
   if (open.length) {

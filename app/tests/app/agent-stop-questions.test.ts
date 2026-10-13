@@ -52,8 +52,8 @@ test('a manager stops the agent: the task goes back to nobody, its unit stops, t
   const { unitId, claim } = await f.work(item);
   assert.equal((await f.taskRow(item.id)).owner_agent_id, f.agent.id);
   const working = (viewer: Person) => viewer.browser.request('GET', '/api/v1/working-agents');
-  assert.deepEqual((expectStatus(await working(f.hubert), 200) as OwnWorkingAgents).items.map((entry) => [entry.agent.id, entry.task.id, entry.task.number]),
-    [[f.agent.id, item.id, 1]], 'the sidebar card lists the owner\'s working agent');
+  assert.deepEqual((expectStatus(await working(f.hubert), 200) as OwnWorkingAgents).items.map((entry) => [entry.agent.id, entry.task.id, entry.task.number, entry.working]),
+    [[f.agent.id, item.id, 1, true]], 'the sidebar card marks work only for the task\'s live claimed unit');
   assert.deepEqual((expectStatus(await working(f.marek), 200) as OwnWorkingAgents).items, [], 'another person\'s agent is never listed');
 
   // A contributor who is neither a manager, the agent's owner nor the task's creator may not stop it; a viewer cannot write at all.
@@ -206,4 +206,50 @@ test('a free reply answers a question; invalid questions and people without acce
   assert.equal((await f.eve.browser.request('POST', `/api/v1/agent-questions/${second.questionId}/answer`, { body: { optionIndex: 0 } })).status, 403,
     'a reader who may not write cannot answer');
   assert.equal(await messages(), 4);
+});
+
+test('the sidebar marks Working only for a live claim on its assigned session (#347 C-1)', async () => {
+  const handed = await scene();
+  const handedTask = await handed.task();
+  expectStatus(await handed.hubert.browser.request('PATCH', `/api/v1/work/${handedTask.id}`, { body: { owner: { kind: 'agent', id: handed.agent.id }, status: 'in_progress' },
+    headers: { 'if-match': `"${handedTask.version}"` } }), 200);
+  const heldWithoutClaim = (expectStatus(await handed.hubert.browser.request('GET', '/api/v1/working-agents'), 200) as OwnWorkingAgents).items[0]!;
+  assert.deepEqual([heldWithoutClaim.online, heldWithoutClaim.signedIn, heldWithoutClaim.working], [true, true, false],
+    'a live agent session does not turn a handed in-progress task into current work without a claim');
+
+  const f = await scene();
+  const item = await f.task();
+  const { unitId } = await f.work(item);
+  const state = async () => {
+    const entry = (expectStatus(await f.hubert.browser.request('GET', '/api/v1/working-agents'), 200) as OwnWorkingAgents).items[0]!;
+    return [entry.online, entry.working];
+  };
+  assert.deepEqual(await state(), [true, true], 'the assigned live session holds the task\'s current claimed unit');
+  // A claim bound to a different session cannot drive the Working expression, even while the agent has another live session.
+  const validLease = (await pool.query('SELECT lease_session_id FROM cowork_units WHERE id=$1', [unitId])).rows[0]!.lease_session_id as string;
+  await pool.query('UPDATE cowork_units SET lease_session_id=$2 WHERE id=$1', [unitId, randomUUID()]);
+  assert.deepEqual(await state(), [true, false], 'the lease belongs to a different runtime session');
+  await pool.query('UPDATE cowork_units SET lease_session_id=$2 WHERE id=$1', [unitId, validLease]);
+  assert.deepEqual(await state(), [true, true]);
+  await pool.query('UPDATE agent_runtime_sessions SET revoked_at=now() WHERE connection_id=$1', [f.connected.connectionId]);
+  assert.deepEqual(await state(), [false, false], 'a revoked session cannot keep a claimed task in Working');
+});
+
+test('the sidebar card says whether a working agent was ever signed in (#347 review N11)', async () => {
+  const f = await scene();
+  const item = await f.task();
+  // The first agent has signed in (its session exists): signedIn.
+  expectStatus(await f.hubert.browser.request('PATCH', `/api/v1/work/${item.id}`, { body: { owner: { kind: 'agent', id: f.agent.id }, status: 'in_progress' },
+    headers: { 'if-match': `"${item.version}"` } }), 200);
+  // A second agent has never opened a client session, and holds work: not signed in. Negative control: it must not read as signed in.
+  const never = expectStatus(await f.hubert.browser.request('POST', `/api/v1/workspaces/${f.ws.id}/agents`, { body: { name: 'Never connected', owner: 'self' } }), 201) as Agent;
+  expectStatus(await f.hubert.browser.request('POST', `/api/v1/projects/${f.p.id}/grants`, { body: { principal: { kind: 'agent', id: never.id }, role: 'contributor' } }), 201);
+  const second = await f.task(f.hubert, 'Never signed in task');
+  expectStatus(await f.hubert.browser.request('PATCH', `/api/v1/work/${second.id}`, { body: { owner: { kind: 'agent', id: never.id }, status: 'in_progress' },
+    headers: { 'if-match': `"${second.version}"` } }), 200);
+  const items = (expectStatus(await f.hubert.browser.request('GET', '/api/v1/working-agents'), 200) as OwnWorkingAgents).items;
+  const signed = items.find((entry) => entry.agent.id === f.agent.id);
+  const unsigned = items.find((entry) => entry.agent.id === never.id);
+  assert.deepEqual([signed?.signedIn, signed?.online, signed?.working], [true, true, false]);
+  assert.deepEqual([unsigned?.signedIn, unsigned?.online, unsigned?.working], [false, false, false]);
 });

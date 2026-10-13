@@ -10,7 +10,8 @@ export interface ToastOptions {
   tone?: ToastTone;
   /** Milliseconds before it leaves on its own; errors stay until dismissed. */
   timeout?: number;
-  /** One quiet action beside the message, e.g. Undo. Taking it closes the toast. */
+  /** One quiet action beside the message, e.g. Undo or Hand back. Taking it closes the toast; without a timeout it
+   * stays until it is used or dismissed (#347 review N1). */
   action?: { label: string; onClick: () => void };
 }
 
@@ -66,7 +67,8 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   const nextId = useRef(1);
   const show = useCallback((options: ToastOptions) => {
     const tone = options.tone ?? 'neutral';
-    const entry: ToastEntry = { id: nextId.current++, message: options.message, tone, action: options.action ?? null, timeout: options.timeout ?? (tone === 'danger' ? null : 5000), leaving: false };
+    const entry: ToastEntry = { id: nextId.current++, message: options.message, tone, action: options.action ?? null,
+      timeout: options.timeout ?? (tone === 'danger' || options.action ? null : 5000), leaving: false };
     // Keep at most three; older ones leave.
     setToasts((current) => [...current.slice(-2), entry]);
     return () => setToasts((current) => current.filter((toast) => toast.id !== entry.id));
