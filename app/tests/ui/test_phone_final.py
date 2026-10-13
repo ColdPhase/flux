@@ -50,6 +50,8 @@ class PhoneFinal(unittest.TestCase):
         cls.call(page, "POST", f"/api/v1/workspaces/{cls.workspace['id']}/members", {"email": cls.kai_email, "role": "member"}, 201)
         cls.project = cls.call(page, "POST", f"/api/v1/workspaces/{cls.workspace['id']}/projects",
             {"name": "Community garden sensors", "visibility": "restricted"}, 201)
+        cls.second_project = cls.call(page, "POST", f"/api/v1/workspaces/{cls.workspace['id']}/projects",
+            {"name": "Riverside seed library", "visibility": "restricted"}, 201)
         for title, status in (("Order six capacitive probes", "in_progress"), ("Ask the school for two ESP32 kits", "open")):
             cls.call(page, "POST", f"/api/v1/projects/{cls.project['id']}/work", {"title": title, "status": status}, 201)
         # A direct message with Kai: opening the person's link creates the 1:1 once.
@@ -404,11 +406,13 @@ class PhoneFinal(unittest.TestCase):
                 page.evaluate("document.documentElement.style.fontSize = ''")
                 self.assert_no_sideways_scroll(page, size["width"])
 
-    def test_11_create_sheet_text_persists_and_creates_a_task_in_the_selected_project(self):
+    def test_11_create_sheet_selection_and_text_persist_and_create_only_in_selected_project(self):
         page = self.page(SIZES[0])
-        page.goto(f"/projects/{self.project['id']}/tasks")
+        page.goto("/projects")
         title = f"Print bed labels {uuid.uuid4().hex[:8]}"
         page.get_by_role("button", name="Create", exact=True).click()
+        project_picker = page.get_by_label("Project")
+        project_picker.select_option(self.second_project["id"])
         field = page.get_by_role("textbox", name="Create a task from text")
         expect(field).to_be_visible()
         field.fill(title)
@@ -416,13 +420,18 @@ class PhoneFinal(unittest.TestCase):
         # An unfinished quick task stays private to this account and project across reload.
         page.reload()
         page.get_by_role("button", name="Create", exact=True).click()
+        project_picker = page.get_by_label("Project")
+        expect(project_picker).to_have_value(self.second_project["id"])
         field = page.get_by_role("textbox", name="Create a task from text")
         expect(field).to_have_value(title)
         field.press("Enter")
         expect(page.locator("#details")).to_contain_text(title)
-        work = self.call(page, "GET", f"/api/v1/projects/{self.project['id']}/work?limit=100")
-        created = [item for item in work["items"] if item["title"] == title]
-        self.assertEqual(len(created), 1, "the submitted phone text becomes one task in the selected project")
+        selected_work = self.call(page, "GET", f"/api/v1/projects/{self.second_project['id']}/work?limit=100")
+        first_work = self.call(page, "GET", f"/api/v1/projects/{self.project['id']}/work?limit=100")
+        created_selected = [item for item in selected_work["items"] if item["title"] == title]
+        created_first = [item for item in first_work["items"] if item["title"] == title]
+        self.assertEqual(len(created_selected), 1, "the submitted phone text becomes exactly one task in the persisted selected project")
+        self.assertEqual(created_first, [], "submitting from the reloaded sheet does not create the task in the first project")
 
 
 if __name__ == "__main__":

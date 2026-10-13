@@ -135,8 +135,11 @@ export function PhoneCreate({ open, onClose, projects, projectId, go, onThought 
   const { me } = useShellData();
   const { openDetails } = useShellActions();
   const revalidator = useRevalidator();
-  const [picked, setPicked] = useState<string | null>(null);
-  const chosen = projects.find((project) => project.id === (picked ?? projectId)) ?? projects[0];
+  const selectedProject = useDraft(me.user.id, 'phone-create-project');
+  const preferredProjectId = projects.some((project) => project.id === selectedProject.text)
+    ? selectedProject.text
+    : projectId;
+  const chosen = projects.find((project) => project.id === preferredProjectId) ?? projects[0];
   const taskDraft = useDraft(me.user.id, `phone-create-task:${chosen?.id ?? 'none'}`);
   const taskPending = useDraft(me.user.id, `phone-create-task:${chosen?.id ?? 'none'}:pending`);
   const [taskBusy, setTaskBusy] = useState(false);
@@ -205,7 +208,7 @@ export function PhoneCreate({ open, onClose, projects, projectId, go, onThought 
           <label className="phone-create__project">
             <span className="phone-create__tile" aria-hidden="true">{(chosen?.name.trim()[0] ?? '?').toUpperCase()}</span>
             <span className="ui-vh">Project</span>
-            <select value={chosen?.id ?? ''} onChange={(event) => setPicked(event.target.value)}>
+            <select value={chosen?.id ?? ''} onChange={(event) => selectedProject.setText(event.target.value)}>
               {projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
             </select>
             <Icon name="chevron-down" size={12} />
@@ -231,7 +234,7 @@ export function PhoneCreate({ open, onClose, projects, projectId, go, onThought 
           placeholder="“Print labels for the beds” → task"
           onChange={(event) => { taskDraft.setText(event.target.value); taskPending.clear(); setTaskError(''); }} />
         <button type="submit" className="ui-vh" disabled={taskBusy || !taskDraft.text.trim()}>Create task</button>
-        {taskDraft.storage === 'visit' ? <p className="phone-create__draft" role="status">Draft kept for this visit. Reloading may lose it.</p> : null}
+        {taskDraft.storage === 'visit' || selectedProject.storage === 'visit' ? <p className="phone-create__draft" role="status">Draft kept for this visit. Reloading may lose it.</p> : null}
         {taskError ? <p className="phone-create__error" role="alert">{taskError}</p> : null}
       </form> : null}
     </Overlay>
