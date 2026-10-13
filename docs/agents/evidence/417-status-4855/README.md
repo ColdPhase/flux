@@ -12,3 +12,20 @@ Current source-head GitHub checks are actual check runs on the pinned SHA:
 Targeted Docker UI evidence is recorded in `manifest.json`: `test_agent_stop_questions` passed 11/11 in Chromium and 11/11 in WebKit. Chromium `test_project_surface.test_03_each_state_segment_opens_its_object` passed. The full `test_project_surface` module had one unrelated inherited thread-feed assertion failure already tracked by [#495](https://github.com/ColdPhase/flux/issues/495) and corrected in [#497](https://github.com/ColdPhase/flux/pull/497); this stacked source head does not yet contain that test-only fix. No API suite was rerun because this text-only change did not alter API or persistence behavior.
 
 The 14 archived WebP screenshots are lossless conversions of the reviewed PNGs. `manifest.json` records each PNG source SHA-256, dimensions, and stored WebP SHA-256. `SHA256SUMS.txt` pins every archived artifact.
+
+## Archive files
+
+- [Visual review](visual-review.md)
+- [Neutral visual brief](neutral-brief.md)
+- [Capture manifest and source/stored image hashes](manifest.json)
+- [SHA-256 checksums for all archive files](SHA256SUMS.txt)
+
+| Scene | Chromium | WebKit |
+| --- | --- | --- |
+| Sidebar agent card | [screenshot](screenshots/chromium/stop-sidebar-card.webp) | [screenshot](screenshots/webkit/stop-sidebar-card.webp) |
+| Agents, desktop light | [screenshot](screenshots/chromium/stop-agents-desktop-light.webp) | [screenshot](screenshots/webkit/stop-agents-desktop-light.webp) |
+| Agents, desktop dark | [screenshot](screenshots/chromium/stop-agents-desktop-dark.webp) | [screenshot](screenshots/webkit/stop-agents-desktop-dark.webp) |
+| Agents, phone light | [screenshot](screenshots/chromium/stop-agents-phone-light.webp) | [screenshot](screenshots/webkit/stop-agents-phone-light.webp) |
+| Agents, phone dark | [screenshot](screenshots/chromium/stop-agents-phone-dark.webp) | [screenshot](screenshots/webkit/stop-agents-phone-dark.webp) |
+| Home, desktop | [screenshot](screenshots/chromium/stop-home-desktop.webp) | [screenshot](screenshots/webkit/stop-home-desktop.webp) |
+| Home, phone | [screenshot](screenshots/chromium/stop-home-phone.webp) | [screenshot](screenshots/webkit/stop-home-phone.webp) |

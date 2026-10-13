@@ -11,7 +11,6 @@
   "captures": [
     {
       "file": "stop-sidebar-card.png",
-      "path": "/home/hubert/Develop/flux-347-agents-tab-fixes/test-results/flux-417-visual-delta/chromium/stop-sidebar-card.png",
       "width_px": 1440,
       "height_px": 900,
       "engine": "Chromium",
@@ -22,7 +21,6 @@
     },
     {
       "file": "stop-agents-desktop-light.png",
-      "path": "/home/hubert/Develop/flux-347-agents-tab-fixes/test-results/flux-417-visual-delta/chromium/stop-agents-desktop-light.png",
       "width_px": 1440,
       "height_px": 900,
       "engine": "Chromium",
@@ -33,7 +31,6 @@
     },
     {
       "file": "stop-agents-desktop-dark.png",
-      "path": "/home/hubert/Develop/flux-347-agents-tab-fixes/test-results/flux-417-visual-delta/chromium/stop-agents-desktop-dark.png",
       "width_px": 1440,
       "height_px": 900,
       "engine": "Chromium",
@@ -44,7 +41,6 @@
     },
     {
       "file": "stop-agents-phone-light.png",
-      "path": "/home/hubert/Develop/flux-347-agents-tab-fixes/test-results/flux-417-visual-delta/chromium/stop-agents-phone-light.png",
       "width_px": 1170,
       "height_px": 2532,
       "engine": "Chromium",
@@ -55,7 +51,6 @@
     },
     {
       "file": "stop-agents-phone-dark.png",
-      "path": "/home/hubert/Develop/flux-347-agents-tab-fixes/test-results/flux-417-visual-delta/chromium/stop-agents-phone-dark.png",
       "width_px": 1170,
       "height_px": 2532,
       "engine": "Chromium",
@@ -66,7 +61,6 @@
     },
     {
       "file": "stop-home-desktop.png",
-      "path": "/home/hubert/Develop/flux-347-agents-tab-fixes/test-results/flux-417-visual-delta/chromium/stop-home-desktop.png",
       "width_px": 1440,
       "height_px": 900,
       "engine": "Chromium",
@@ -77,7 +71,6 @@
     },
     {
       "file": "stop-home-phone.png",
-      "path": "/home/hubert/Develop/flux-347-agents-tab-fixes/test-results/flux-417-visual-delta/chromium/stop-home-phone.png",
       "width_px": 1170,
       "height_px": 2532,
       "engine": "Chromium",
@@ -88,7 +81,6 @@
     },
     {
       "file": "stop-sidebar-card.png",
-      "path": "/home/hubert/Develop/flux-347-agents-tab-fixes/test-results/flux-417-visual-delta/webkit/stop-sidebar-card.png",
       "width_px": 1440,
       "height_px": 900,
       "engine": "WebKit",
@@ -99,7 +91,6 @@
     },
     {
       "file": "stop-agents-desktop-light.png",
-      "path": "/home/hubert/Develop/flux-347-agents-tab-fixes/test-results/flux-417-visual-delta/webkit/stop-agents-desktop-light.png",
       "width_px": 1440,
       "height_px": 900,
       "engine": "WebKit",
@@ -110,7 +101,6 @@
     },
     {
       "file": "stop-agents-desktop-dark.png",
-      "path": "/home/hubert/Develop/flux-347-agents-tab-fixes/test-results/flux-417-visual-delta/webkit/stop-agents-desktop-dark.png",
       "width_px": 1440,
       "height_px": 900,
       "engine": "WebKit",
@@ -121,7 +111,6 @@
     },
     {
       "file": "stop-agents-phone-light.png",
-      "path": "/home/hubert/Develop/flux-347-agents-tab-fixes/test-results/flux-417-visual-delta/webkit/stop-agents-phone-light.png",
       "width_px": 1170,
       "height_px": 2532,
       "engine": "WebKit",
@@ -132,7 +121,6 @@
     },
     {
       "file": "stop-agents-phone-dark.png",
-      "path": "/home/hubert/Develop/flux-347-agents-tab-fixes/test-results/flux-417-visual-delta/webkit/stop-agents-phone-dark.png",
       "width_px": 1170,
       "height_px": 2532,
       "engine": "WebKit",
@@ -143,7 +131,6 @@
     },
     {
       "file": "stop-home-desktop.png",
-      "path": "/home/hubert/Develop/flux-347-agents-tab-fixes/test-results/flux-417-visual-delta/webkit/stop-home-desktop.png",
       "width_px": 1440,
       "height_px": 900,
       "engine": "WebKit",
@@ -154,7 +141,6 @@
     },
     {
       "file": "stop-home-phone.png",
-      "path": "/home/hubert/Develop/flux-347-agents-tab-fixes/test-results/flux-417-visual-delta/webkit/stop-home-phone.png",
       "width_px": 1170,
       "height_px": 2532,
       "engine": "WebKit",
