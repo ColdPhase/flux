@@ -16,8 +16,9 @@ import {
   signOutAction,
   signOutLoader,
   signUpAction,
+  signUpLoader,
 } from './auth/logic';
-import { AuthLayout, ForgotPasswordPage, ResetPasswordPage, SignInPage, SignOutPage, SignUpPage } from './auth/pages';
+import { AuthLayout, ForgotPasswordPage, ResetPasswordPage, SignInPage, SignOutPage, SignUpPage, ClaimPage } from './auth/pages';
 
 // The settings layout and its sections share one download.
 let settings: Promise<typeof import('./app/SettingsHome')> | undefined;
@@ -72,9 +73,10 @@ export const router = createBrowserRouter([
           // Better Auth sends a signed OAuth continuation here, including forced reauthentication.
           { path: 'login', action: signInAction, Component: SignInPage },
           { path: 'sign-in', loader: redirectIfSignedIn, action: signInAction, Component: SignInPage },
-          { path: 'sign-up', loader: redirectIfSignedIn, action: signUpAction, Component: SignUpPage },
+          { path: 'sign-up', loader: signUpLoader, action: signUpAction, Component: SignUpPage },
           { path: 'forgot-password', loader: forgotPasswordLoader, action: forgotPasswordAction, Component: ForgotPasswordPage },
           { path: 'reset-password', action: resetPasswordAction, Component: ResetPasswordPage },
+          { path: 'claim', Component: ClaimPage },
           { path: 'sign-out', loader: signOutLoader, action: signOutAction, Component: SignOutPage },
           { path: 'connect-agent', ...secondary(async () => { const page = await import('./agent-connection/pages'); return { Component: page.AgentConnectionPage, loader: page.agentConnectionLoader }; }) },
           { path: 'consent', ...secondary(async () => { const page = await import('./agent-connection/pages'); return { Component: page.AgentConsentPage, loader: page.agentConsentLoader }; }) },

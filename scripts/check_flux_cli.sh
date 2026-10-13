@@ -74,7 +74,7 @@ done
 
 step "./flux up on a fresh copy creates .env and starts a healthy stack"
 start=$(date +%s)
-"$copy/flux" up
+"$copy/flux" up </dev/null   # no terminal: the first-run subscription question is not asked
 echo "up took $(( $(date +%s) - start ))s"
 [ -f "$copy/docker/.env" ] || fail ".env not created"
 run=$(sed -n 's/^FLUX_PROJECT=//p' "$copy/docker/.env")

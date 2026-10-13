@@ -37,7 +37,7 @@ services:
         E2E_IMAGE: flux-e2e:${FLUX_IMAGE_TAG:?Set an isolated image tag}
     image: flux-live-sfu-test:${FLUX_IMAGE_TAG:?Set an isolated image tag}
     # One file at a time: each binds the public origin's loopback port for its browsers.
-    command: ["node_modules/.bin/tsx", "--test", "--test-concurrency=1", "tests/app/e2e/live-sfu-revocation.e2e.ts", "tests/app/e2e/live-sfu-signout.e2e.ts"]
+    command: ["node_modules/.bin/tsx", "--test", "--test-concurrency=1", "tests/app/e2e/live-sfu-revocation.e2e.ts", "tests/app/e2e/live-sfu-signout.e2e.ts", "tests/app/e2e/live-sfu-direct-dtls.e2e.ts"]
     environment:
       FLUX_API_URL: http://api:8080
       FLUX_PUBLIC_ORIGIN: ${FLUX_PUBLIC_ORIGIN:?Set a loopback test origin}

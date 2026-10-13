@@ -1,6 +1,8 @@
 import type { IncomingHttpHeaders } from 'node:http';
 import { fromNodeHeaders } from 'better-auth/node';
-import type { Principal } from '@flux/core';
+import { eq } from 'drizzle-orm';
+import { schema } from '@flux/db';
+import type { Database, Principal } from '@flux/core';
 import type { FluxAuth } from './auth.js';
 import type { Confirmation } from './confirmation.js';
 import type { IdpStanding } from './standing.js';
@@ -32,7 +34,14 @@ export interface SessionResolver {
 }
 
 /** `confirmation` ends a provider session whose provider confirmation lapsed (F-024 S2, #312). */
-export function createSessionResolver(auth: FluxAuth, standing: Pick<IdpStanding, 'stands'> | null = null, confirmation?: Confirmation): SessionResolver {
+/**
+ * With an active sole provider (#313), only sessions that signed in through it continue: a password session, or one
+ * from before the sign-in method was recorded, is refused. Ordinary password authority ends at the session boundary too.
+ */
+export interface SsoOnlySessions { db: Database; providerId: string }
+
+export function createSessionResolver(auth: FluxAuth, standing: Pick<IdpStanding, 'stands'> | null = null, confirmation?: Confirmation,
+  ssoOnly: SsoOnlySessions | null = null): SessionResolver {
   async function resolveSession(headers: IncomingHttpHeaders): Promise<SessionContext | null> {
     if (!headers.cookie) return null;
     const result = await auth.api.getSession({
@@ -41,6 +50,11 @@ export function createSessionResolver(auth: FluxAuth, standing: Pick<IdpStanding
     });
     if (!result) return null;
     const { session, user } = result;
+    if (ssoOnly) {
+      const [identity] = await ssoOnly.db.select({ method: schema.authSessionIdentities.method }).from(schema.authSessionIdentities)
+        .where(eq(schema.authSessionIdentities.sessionId, session.id));
+      if (identity?.method !== ssoOnly.providerId) return null;
+    }
     // A person whose account no longer stands at the identity provider is signed out (S4, #311); the stored
     // state is read, the provider is not called.
     if (standing && !await standing.stands(user.id)) return null;
