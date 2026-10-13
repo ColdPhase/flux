@@ -212,11 +212,17 @@ function CollaborativeText({ client, handleRef }: { client: SharedWiki; handleRe
   return <div className="editing-code" ref={parent} data-live-wiki-editor data-live-generation={client.head.generation} data-live-sequence={client.head.sequence} data-live-command={client.lastLocalCommand ?? undefined} data-live-input-revision={client.inputRevision} data-live-command-revision={client.sealedRevision} data-live-command-batches={JSON.stringify(client.sealedBatches)} />;
 }
 
+/** The 1-based line of a text index, without copying or splitting the whole text on every update. */
+function lineAt(text: string, index: number) {
+  let line = 1;
+  for (let at = text.indexOf('\n'); at !== -1 && at < index; at = text.indexOf('\n', at + 1)) line++;
+  return line;
+}
 export function WikiPresence({ client }: { client: SharedWiki }) {
   const peers = [...client.peers.values()].filter((peer) => peer.cursor);
   return <span className="editing-people" aria-label="People editing">{peers.map((peer) => {
     const index = relativeIndex(client, peer.cursor!.head);
-    const line = index === null ? null : client.text.toString().slice(0, index).split('\n').length;
+    const line = index === null ? null : lineAt(client.text.toString(), index);
     return <span key={peer.connectionId} style={{ color: color(peer.actor.id) }}>{peer.actor.name}{line === null ? ' is editing' : ` · line ${line}`}</span>;
   })}</span>;
 }

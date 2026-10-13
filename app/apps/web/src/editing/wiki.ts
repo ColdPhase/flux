@@ -107,7 +107,9 @@ export class SharedWiki {
   }
   private persist() {
     if (!this.writer || !this.initialized || !this.head || !this.text) return;
-    this.seal();
+    // Sealing keeps its new command in the recovery copy itself: one copy of a 100,000-character
+    // text per receipt, not two, before the next command leaves (#228 Gate 4).
+    if (this.unsealed.length) { this.seal(); return; }
     try {
       if (!this.pending.size && !this.saveAttempt && this.status !== 'private') sessionStorage.removeItem(this.storageKey);
       else sessionStorage.setItem(this.storageKey, JSON.stringify({ generation: this.head.generation, body: this.text.toString(), pending: [...this.pending.values()], save: this.saveAttempt } satisfies Recovery));
@@ -235,16 +237,23 @@ export class SharedWiki {
   }
   private scheduleSend(delay = 0) {
     if (this.sendTimer !== null || this.stopped || this.status !== 'live' || !this.writer || !this.head.canWrite) return;
-    this.sendTimer = window.setTimeout(() => {
-      this.sendTimer = null;
-      if (this.activeCommand) return;
-      for (const [id, item] of this.pending) {
-        if (this.sent.has(id)) continue;
-        if (!this.connection?.text(item.envelope, decode64(item.bytes))) { this.scheduleSend(20); break; }
-        this.sent.add(id);
-        this.activeCommand = id; break;
-      }
-    }, delay);
+    this.sendTimer = window.setTimeout(() => { this.sendTimer = null; this.sendNext(); }, delay);
+  }
+  /** A receipt sends the next command at once: a timer task waited behind the typing and
+   * rendering of a busy page before the next round trip could start (#228 Gate 4). */
+  private sendNow() {
+    if (this.sendTimer !== null) { window.clearTimeout(this.sendTimer); this.sendTimer = null; }
+    if (this.stopped || this.status !== 'live' || !this.writer || !this.head.canWrite) return;
+    this.sendNext();
+  }
+  private sendNext() {
+    if (this.activeCommand) return;
+    for (const [id, item] of this.pending) {
+      if (this.sent.has(id)) continue;
+      if (!this.connection?.text(item.envelope, decode64(item.bytes))) { this.scheduleSend(20); break; }
+      this.sent.add(id);
+      this.activeCommand = id; break;
+    }
   }
   private receive = (message: ReceivedEditing) => {
     if (this.stopped || this.status === 'private') return;
@@ -293,7 +302,7 @@ export class SharedWiki {
         if (original && message.sequence === this.appliedSequence + 1) { this.appliedSequence = message.sequence; this.head.sequence = message.sequence; this.head.hash = message.hash; }
         if (message.savedDoc && message.savedDoc.version >= this.head.savedVersion) { this.head.savedVersion = message.savedDoc.version; this.head.savedSequence = message.sequence; }
         if (!this.pending.size) { this.recovering = false; this.privateBody = this.archivedRecovery?.body ?? null; this.privatePending = this.archivedRecovery?.pending ?? []; }
-        this.persist(); this.scheduleSend();
+        this.persist(); this.sendNow();
         if (this.cursorWaiting && this.editable) this.publishCursor();
         if (message.sequence > this.appliedSequence) { this.disconnected(); return; }
         break;

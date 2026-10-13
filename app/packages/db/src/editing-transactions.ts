@@ -16,6 +16,19 @@ export class EditingTransactionError extends Error {
  * (#228 Gate 4). Durable data it reads was on disk before it became visible.
  */
 export type EditingCommit = 'durable' | 'transient';
+/**
+ * One query builder per pooled connection. Building it reads the relational configuration of the
+ * whole schema (hundreds of tables), about a millisecond of the API's single thread, and every
+ * live operation is a transaction of its own: several per typed character (#228 Gate 4). The
+ * builder only forwards queries to its connection, so a pooled connection reuses its own; a
+ * discarded connection takes its builder with it.
+ */
+const builders = new WeakMap<pg.PoolClient, NodePgDatabase<typeof schema>>();
+function builder(client: pg.PoolClient) {
+  let db = builders.get(client);
+  if (!db) { db = drizzle({ client, schema }); builders.set(client, db); }
+  return db;
+}
 /** An explicit public pg transaction boundary distinguishes failed work/ROLLBACK from a lost COMMIT response. */
 export function editingTransactions(pool: Pick<pg.Pool, 'connect'>) {
   return {
@@ -28,7 +41,7 @@ export function editingTransactions(pool: Pick<pg.Pool, 'connect'>) {
         await client.query("SET LOCAL statement_timeout = '2000ms'");
         await client.query("SET LOCAL lock_timeout = '1500ms'");
         if (commit === 'transient') await client.query('SET LOCAL synchronous_commit = off');
-        const result = await action(drizzle({ client, schema }));
+        const result = await action(builder(client));
         committing = true;
         await client.query('COMMIT');
         return result;

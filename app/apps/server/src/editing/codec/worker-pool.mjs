@@ -82,7 +82,8 @@ export class CodecPool {
       }
       const result = response(worker, 'result', CAPS.workerTimeoutMs, 'WORKER_TIMEOUT', signal);
       const copy = Uint8Array.from(bytes);
-      worker.postMessage({ state, envelope, bytes: copy.buffer, canWrite }, [copy.buffer]);
+      // The lease's charge is the state's stateCharge; the worker need not serialize it again.
+      worker.postMessage({ state, envelope, bytes: copy.buffer, canWrite, charge: lease.charge }, [copy.buffer]);
       const value = await result;
       reusable = kind === 'codec';
       return { ...value, workerLimits: LIMITS.get(worker) };

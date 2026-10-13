@@ -10,7 +10,7 @@ export class AdmissionBudget {
   reserveQueued(bytes: Uint8Array, metadataBytes: number, maximumInputBytes?: number | null): AdmissionLease;
   promote(lease: AdmissionLease): void;
   replaceInput(lease: AdmissionLease, bytes: Uint8Array): void;
-  bind(lease: AdmissionLease, state: CodecState): void;
+  bind(lease: AdmissionLease, state: CodecState, knownCharge?: number): void;
   release(lease: AdmissionLease): void;
   onCapacity(callback: () => void): () => void;
 }

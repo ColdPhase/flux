@@ -21,6 +21,19 @@ interface Committed { generation: string; revision: number; state: CodecState }
 export function wikiAuthority(database: { pool: Pick<ReturnType<typeof createDatabase>['pool'], 'connect'> }, runtime = editingRuntime(),
   boundary: { beforeHandoff?: () => Promise<void>;outputBudget?:EditingOutputBudget;rooms?:DecodedRooms;confirmation?:EditingConfirmationPolicy|null } = {}) {
   const rooms = boundary.rooms ?? new DecodedRooms();
+  /**
+   * The charge the codec computed for each state it produced. The next admission of that state
+   * object (normally the decoded room's) binds it without serializing the whole state again,
+   * which takes milliseconds and grows with every change of the room (#228 Gate 4).
+   */
+  const charges = new WeakMap<CodecState, number>();
+  const codec: typeof runtime = Object.assign(Object.create(runtime) as typeof runtime, {
+    async validate(state: CodecState, envelope: WikiTextEnvelope, bytes: Uint8Array, admission: AdmissionLease) {
+      const result = await runtime.validate(state, envelope, bytes, admission, charges.get(state));
+      if (result.ok && result.charge !== undefined) charges.set(result.state, result.charge);
+      return result;
+    },
+  });
   const outputBudget=boundary.outputBudget??apiEditingOutputBudget;
   const transactions = editingTransactions(database.pool); const active = new Set<Promise<unknown>>();
   const identity = (session: SessionContext): WikiIdentity => ({ sessionId: session.sessionId, actorId: session.principal.id });
@@ -89,7 +102,7 @@ export function wikiAuthority(database: { pool: Pick<ReturnType<typeof createDat
   }
   function ports(db: DbExecutor, committed: Map<string, Committed>): WikiPorts<CodecState, AdmissionLease> {
     const sessions = editingSessionRows(db, boundary.confirmation);
-    return { native: docPorts(db), rows: roomRows(db, committed), codec: runtime,
+    return { native: docPorts(db), rows: roomRows(db, committed), codec,
       session: { async lock(who) { const actor = await sessions.lock(who); if (!actor) throw new UnauthenticatedError(); return actor; },
         async assertCurrent(who) { if (!await sessions.current(who)) throw new UnauthenticatedError(); } } };
   }
@@ -104,7 +117,7 @@ export function wikiAuthority(database: { pool: Pick<ReturnType<typeof createDat
       active.add(work);editingResourcesChanged();
       try {
         const result = await work;
-        for (const [docId, room] of committed) rooms.put(docId, room.generation, room.revision, room.state);
+        for (const [docId, room] of committed) rooms.put(docId, room.generation, room.revision, room.state, charges.get(room.state));
         return result;
       } finally { active.delete(work);editingResourcesChanged(); }
     } finally { runtime.release(admission); }

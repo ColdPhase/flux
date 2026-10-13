@@ -7,5 +7,5 @@ export function emptyRoom(room: string, generation: string, workspace: string): 
 export function enroll(state: CodecState, actor: string, clientId: number, canWrite: boolean): CodecState;
 export function ledgerDelta(previous: CodecState, next: CodecState): CodecLedgerDelta;
 export function rebuild(base: CodecState, entries: readonly { sequence: number; bytes: Uint8Array; ledger: CodecLedgerDelta }[], expectedBody?: string): CodecState;
-export function admit(state: CodecState, envelope: CodecEnvelope, bytes: Uint8Array, canWrite: boolean):
-  { replay: false; receipt: { semanticNoop: boolean; sequence: number; fingerprint: string }; state: CodecState; receiptOnly: boolean };
+export function admit(state: CodecState, envelope: CodecEnvelope, bytes: Uint8Array, canWrite: boolean, charge?: number):
+  { replay: false; receipt: { semanticNoop: boolean; sequence: number; fingerprint: string }; state: CodecState; receiptOnly: boolean; charge: number };

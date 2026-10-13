@@ -51,9 +51,10 @@ export class AdmissionBudget {
     // The pre-reserved capacity covers this allocation and its transferable copy.
     lease.input = bytes;
   }
-  bind(lease, state) {
+  /** `knownCharge`, when given, is stateCharge(state) as the codec already computed it for this state object. */
+  bind(lease, state, knownCharge) {
     if (!this.leases.has(lease) || lease.queued || lease.state !== null) throw new Refusal('INVALID_ADMISSION_LEASE');
-    const charge = stateCharge(state);
+    const charge = Number.isSafeInteger(knownCharge) && knownCharge >= 0 ? knownCharge : stateCharge(state);
     if (charge > lease.charge) throw new Refusal('ROOM_CACHE_LIMIT');
     const backing = lease.input.buffer.maxByteLength ?? lease.input.buffer.byteLength;
     const amount = backing + lease.input.byteLength + charge + CAPS.roomCacheBytes + lease.metadataBytes;

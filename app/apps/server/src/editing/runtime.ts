@@ -64,8 +64,9 @@ export function editingRuntime() {
         return { state: baseline, replicaId };
       } finally { doc.destroy(); }
     },
-    validate(state: CodecState, envelope: CodecEnvelope, bytes: Uint8Array, admission: AdmissionLease) {
-      pool.budget.bind(admission, state);
+    /** `charge`: the state's stateCharge when an earlier admission already computed it. */
+    validate(state: CodecState, envelope: CodecEnvelope, bytes: Uint8Array, admission: AdmissionLease, charge?: number) {
+      pool.budget.bind(admission, state, charge);
       return pool.run(state, envelope, bytes, { canWrite: true, admission });
     },
     stateVector(state: CodecState) {

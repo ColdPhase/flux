@@ -205,16 +205,20 @@ export function SketchMap(props: SketchMapProps) {
     return () => { ro.disconnect(); observer.current = null; };
   }, [heights]);
 
+  // Lookups by id: a 200-thought drag of a 500-thought map searched the moved ids for every thought
+  // on every movement frame (#228 Gate 4).
+  const movingIds = offset?.ids, movingBase = offset?.base;
+  const moving = useMemo(() => new Map((movingIds ?? []).map((id) => [id, movingBase?.find((thought) => thought.id === id)] as const)), [movingIds, movingBase]);
   const shown = useMemo(() => sketch.thoughts.map((t): Thought => {
     let next = t;
     // The live map moves from the positions at the gesture's start; the ordinary map, as before #228, from the current ones.
-    if (offset?.ids.includes(t.id)) {
-      if (props.liveEnabled) { const base = offset.base.find((thought) => thought.id === t.id) ?? t; next = { ...next, x: clamp(base.x + offset.dx, 0, SKETCH_LIMITS.coordinate), y: clamp(base.y + offset.dy, 0, SKETCH_LIMITS.coordinate) }; }
+    if (offset && moving.has(t.id)) {
+      if (props.liveEnabled) { const base = moving.get(t.id) ?? t; next = { ...next, x: clamp(base.x + offset.dx, 0, SKETCH_LIMITS.coordinate), y: clamp(base.y + offset.dy, 0, SKETCH_LIMITS.coordinate) }; }
       else next = { ...next, x: Math.max(0, t.x + offset.dx), y: Math.max(0, t.y + offset.dy) };
     }
     if (size?.id === t.id) next = { ...next, width: size.w, height: size.h };
     return next;
-  }), [sketch.thoughts, offset, size, props.liveEnabled]);
+  }), [sketch.thoughts, offset, moving, size, props.liveEnabled]);
   const [canvasWidth, setCanvasWidth] = useState(0);
   useEffect(() => {
     const el = canvasRef.current;
@@ -640,7 +644,11 @@ export function SketchMap(props: SketchMapProps) {
     events.current = { pointerDown: onNodePointerDown, resizePointerDown: onResizePointerDown, keyDown: onNodeKeyDown,
       click: (event, id) => { if (suppressClick.current) return; props.onPick(id, event.shiftKey || event.metaKey || event.ctrlKey); },
       doubleClick: (id) => { if (canWrite && !connectFrom) props.onEdit(id); },
-      openTask: (id) => props.onOpenTask(id), pointerEnter: (event, id) => { if (event.pointerType === 'mouse') setHover(id); }, pointerLeave: (id) => setHover((current) => current === id ? null : current) };
+      openTask: (id) => props.onOpenTask(id), pointerEnter: (event, id) => { if (event.pointerType === 'mouse') setHover(id); },
+      // Moving between a thought and its own dots keeps it hovered, so its dots stay in place under the pointer.
+      pointerLeave: (event, id) => { if (!ownPart(event.relatedTarget, id)) setHover((current) => current === id ? null : current); },
+      dotPointerDown: (event, id) => onDotPointerDown(event, id),
+      dotClick: (id) => { if (!suppressClick.current) props.onConnectFrom(id); } };
   });
 
   const ghost = (x: number, y: number): Rect => ({ x, y, w: DEFAULT_THOUGHT_SIZE.width, h: DEFAULT_THOUGHT_SIZE.height });
@@ -704,11 +712,12 @@ export function SketchMap(props: SketchMapProps) {
 
   const thoughtNodes: ReactNode[] = [];
   if (!measuring) {
+    const chosen = new Set(selection);
     for (const thought of shown) {
       const r = rects.get(thought.id)!;
       const p = place(r);
-      const selected = selection.includes(thought.id);
-      const dragging = !!offset?.ids.includes(thought.id);
+      const selected = chosen.has(thought.id);
+      const dragging = moving.has(thought.id);
       // UI116-4: a count of the linked tasks, never their titles or results, under the text.
       thoughtNodes.push(
         <Fragment key={thought.id}>
@@ -718,15 +727,10 @@ export function SketchMap(props: SketchMapProps) {
           meId={meId} helpId={helpId} projectId={projectId}
           linked={projectId ? tasks.get(thought.id) : undefined}
           mover={props.movers.get(thought.id)} live={props.livePreviews.get(thought.id)} nodeRef={nodeRef} events={events} />
-        {arrange && !editing && !measuring ? (['right', 'left'] as const).map((side) => (
-          <button key={side} type="button" tabIndex={selected && side === 'right' ? 0 : -1} data-for={thought.id} data-side={side}
-            aria-label={`Connect from ${quote(thought.text)}: drag to another thought, or press Enter and choose one`} aria-hidden={side === 'left' ? true : undefined}
-            onPointerEnter={() => setHover(thought.id)} onPointerLeave={() => setHover((id) => id === thought.id ? null : id)}
-            className={`sk-dot${selected || connectFrom === thought.id || hover === thought.id ? ' is-on' : ''}${dragging ? ' is-dragging' : ''}`}
-            style={{ transform: `translate(${p.x + (side === 'right' ? r.w : 0)}px, ${p.y + r.h / 2}px) scale(${1 / zoom}) translate(-50%, -50%)` }}
-            onPointerDown={(event) => onDotPointerDown(event, thought.id)}
-            onClick={() => { if (!suppressClick.current) props.onConnectFrom(thought.id); }} />
-        )) : null}
+        {arrange && !editing && !measuring && (selected || connectFrom === thought.id || hover === thought.id || wire?.from === thought.id) ? (
+          <ThoughtDots id={thought.id} text={thought.text} x={p.x} y={p.y} w={r.w} h={r.h} zoom={zoom} selected={selected}
+            on={selected || connectFrom === thought.id || hover === thought.id} dragging={dragging} events={events} />
+        ) : null}
         </Fragment>
       );
     }
@@ -882,9 +886,39 @@ interface NodeEvents {
   doubleClick(id: string): void;
   openTask(id: string): void;
   pointerEnter(event: ReactPointerEvent<HTMLButtonElement>, id: string): void;
-  pointerLeave(id: string): void;
+  pointerLeave(event: ReactPointerEvent<HTMLButtonElement>, id: string): void;
+  dotPointerDown(event: ReactPointerEvent<HTMLButtonElement>, id: string): void;
+  dotClick(id: string): void;
 }
-const IDLE_EVENTS: NodeEvents = { pointerDown() {}, resizePointerDown() {}, keyDown() {}, click() {}, doubleClick() {}, openTask() {}, pointerEnter() {}, pointerLeave() {} };
+const IDLE_EVENTS: NodeEvents = { pointerDown() {}, resizePointerDown() {}, keyDown() {}, click() {}, doubleClick() {}, openTask() {}, pointerEnter() {}, pointerLeave() {}, dotPointerDown() {}, dotClick() {} };
+
+/** Whether `target` is thought `id` itself or one of its connection dots. */
+function ownPart(target: EventTarget | null, id: string) {
+  const part = target instanceof Element ? target.closest<HTMLElement>('.sk-node, .sk-dot') : null;
+  return !!part && (part.dataset.id === id || part.dataset.for === id);
+}
+
+/**
+ * The two connection dots of one thought. A thought has them only while they can be used: when it
+ * is selected, hovered, the connection source or the wire's start (the dots are invisible
+ * otherwise). Rendering 1,000 invisible dots for a 500-thought map, all re-rendered and restyled
+ * on every movement preview, doubled the map's elements and slowed every frame of a live drag
+ * on both computers (#228 Gate 4). Memoized like the thoughts, with stable handlers.
+ */
+const ThoughtDots = memo(function ThoughtDots({ id, text, x, y, w, h, zoom, selected, on, dragging, events }: {
+  id: string; text: string; x: number; y: number; w: number; h: number; zoom: number; selected: boolean; on: boolean; dragging: boolean;
+  events: { readonly current: NodeEvents };
+}) {
+  return <>{(['right', 'left'] as const).map((side) => (
+    <button key={side} type="button" tabIndex={selected && side === 'right' ? 0 : -1} data-for={id} data-side={side}
+      aria-label={`Connect from ${quote(text)}: drag to another thought, or press Enter and choose one`} aria-hidden={side === 'left' ? true : undefined}
+      onPointerEnter={(event) => events.current.pointerEnter(event, id)} onPointerLeave={(event) => events.current.pointerLeave(event, id)}
+      className={`sk-dot${on ? ' is-on' : ''}${dragging ? ' is-dragging' : ''}`}
+      style={{ transform: `translate(${x + (side === 'right' ? w : 0)}px, ${y + h / 2}px) scale(${1 / zoom}) translate(-50%, -50%)` }}
+      onPointerDown={(event) => events.current.dotPointerDown(event, id)}
+      onClick={() => events.current.dotClick(id)} />
+  ))}</>;
+});
 
 interface ThoughtNodeProps {
   thought: Thought;
@@ -925,7 +959,7 @@ const ThoughtNode = memo(function ThoughtNode({ thought, x, y, w, h, selected, d
         style={{ transform: `translate(${x}px, ${y}px)`, width: w, minHeight: thought.shape === 'circle' ? w : thought.height, height: thought.shape === 'circle' ? w : undefined }}
         aria-pressed={selected} aria-describedby={helpId}
         onPointerDown={(event) => events.current.pointerDown(event, thought.id)}
-        onPointerEnter={(event) => events.current.pointerEnter(event, thought.id)} onPointerLeave={() => events.current.pointerLeave(thought.id)}
+        onPointerEnter={(event) => events.current.pointerEnter(event, thought.id)} onPointerLeave={(event) => events.current.pointerLeave(event, thought.id)}
         onClick={(event) => events.current.click(event, thought.id)}
         onDoubleClick={() => events.current.doubleClick(thought.id)}
         onKeyDown={(event) => events.current.keyDown(event, thought)}>

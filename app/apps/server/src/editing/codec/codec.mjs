@@ -228,10 +228,12 @@ function decodeComplete(bytes) {
   return decoded;
 }
 
-export function admit(state, envelope, bytes, canWrite) {
+/** `charge`, when given, is the input state's stateCharge, already computed by the caller. */
+export function admit(state, envelope, bytes, canWrite, charge) {
   if (!canWrite) refuse('CURRENT_WRITE_REQUIRED');
   if (!(bytes instanceof Uint8Array) || bytes.byteLength > CAPS.assemblyBytes) refuse('BYTE_LIMIT');
-  if (stateCharge(state) > CAPS.roomCacheBytes) refuse('ROOM_CACHE_LIMIT');
+  const known = Number.isSafeInteger(charge) && charge >= 0 ? charge : stateCharge(state);
+  if (known > CAPS.roomCacheBytes) refuse('ROOM_CACHE_LIMIT');
   if (typeof envelope.actor !== 'string' || typeof envelope.uuid !== 'string' || envelope.operation !== 'text') refuse('INVALID_ENVELOPE');
   const digest = fingerprint(envelope, bytes);
   // Exact retries are answered from the immutable intent rows before this codec runs.
@@ -250,7 +252,7 @@ export function admit(state, envelope, bytes, canWrite) {
     generation: state.generation, actor: envelope.actor, uuid: envelope.uuid, replica: envelope.replica,
     semanticNoop: !candidate.changed,
     provenance: candidate.changed ? { actor: envelope.actor, sequence } : null };
-  if (!candidate.changed) return { replay: false, receipt: admitted, state, receiptOnly: true };
+  if (!candidate.changed) return { replay: false, receipt: admitted, state, receiptOnly: true, charge: known };
   const doc = new Y.Doc();
   try {
     Y.applyUpdate(doc, Uint8Array.from(Buffer.from(state.checkpoint, 'base64')), 'checkpoint');
@@ -265,8 +267,10 @@ export function admit(state, envelope, bytes, canWrite) {
     if (checkpoint.byteLength > CAPS.assemblyBytes) refuse('CHECKPOINT_LIMIT');
     const next = { ...state, nodes: candidate.nodes, deleted: candidate.deleted, splits: candidate.splits, sequence,
       checkpoint: Buffer.from(checkpoint).toString('base64'), body: body.toString() };
-    if (stateCharge(next) > CAPS.roomCacheBytes) refuse('ROOM_CACHE_LIMIT');
-    return { replay: false, receipt: admitted, state: next, receiptOnly: false };
+    // Measured once here and returned, so the API thread binds and caches this state without serializing it again.
+    const nextCharge = stateCharge(next);
+    if (nextCharge > CAPS.roomCacheBytes) refuse('ROOM_CACHE_LIMIT');
+    return { replay: false, receipt: admitted, state: next, receiptOnly: false, charge: nextCharge };
   } finally { doc.destroy(); }
 }
 

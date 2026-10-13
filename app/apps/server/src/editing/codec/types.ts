@@ -22,5 +22,7 @@ export interface CodecState extends Record<string, unknown> {
 export interface CodecLedgerDelta { nodes: CodecNode[]; deleted: CodecState['deleted']; splits: CodecRef[] }
 export type CodecResult = { ok: false; code: string } | {
   ok: true; state: CodecState; receipt: CodecReceipt; replay: boolean; receiptOnly?: boolean;
+  /** stateCharge(state) of the result state, as the codec computed it. */
+  charge?: number;
 };
 export type CodecEnvelope = WikiTextEnvelope;

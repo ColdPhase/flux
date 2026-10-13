@@ -22,18 +22,20 @@ export class DecodedRooms {
     this.rooms.delete(docId); this.rooms.set(docId, room);
     return room;
   }
-  put(docId: string, generation: string, revision: number, state: CodecState) {
+  /** `charge`: the state's stateCharge when the codec already computed it. */
+  put(docId: string, generation: string, revision: number, state: CodecState, charge?: number) {
     const old = this.rooms.get(docId);
     // A later transaction of this process may already have installed a newer committed revision.
     if (old && old.generation === generation && old.revision >= revision) return;
     this.drop(docId);
-    const charge = stateCharge(state);
-    if (charge > CAPS.roomCacheBytes || charge > this.limits.bytes) return;
+    // A committed state arrives with the charge its codec admission measured; only a rebuilt one is measured here.
+    const exact = charge ?? stateCharge(state);
+    if (exact > CAPS.roomCacheBytes || exact > this.limits.bytes) return;
     for (const [key] of this.rooms) {
-      if (this.rooms.size < this.limits.rooms && this.bytes + charge <= this.limits.bytes) break;
+      if (this.rooms.size < this.limits.rooms && this.bytes + exact <= this.limits.bytes) break;
       this.drop(key);
     }
-    this.rooms.set(docId, { generation, revision, state, charge }); this.bytes += charge;
+    this.rooms.set(docId, { generation, revision, state, charge: exact }); this.bytes += exact;
   }
   drop(docId: string) {
     const old = this.rooms.get(docId);
