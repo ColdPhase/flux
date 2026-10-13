@@ -335,7 +335,8 @@ class AgentsTabStates(unittest.TestCase):
     def test_06_rows_read_cleanly(self) -> None:
         page = self.page("ada")
         travel = {"id": str(uuid.uuid4()), "name": "Travel laptop", "clientDesignation": "claude_code", "state": "offline", "session": None,
-                  "lastActivity": None, "agent": {"id": self.ids["claude"], "name": "Claude Code"}, "owner": {"id": ADA["id"], "name": ADA["name"]}, "own": True}
+                  "lastActivity": None, "currentWork": None, "requests": [],
+                  "agent": {"id": self.ids["claude"], "name": "Claude Code"}, "owner": {"id": ADA["id"], "name": ADA["name"]}, "own": True}
         self.stub_connections(page, {self.ids["conn_notes"]: {**open_session(), "lastActivity": recorded_result(30)}}, extra=[travel])
         page.goto(f"/projects/{self.ids['project']}/agents")
         expect(self.row(page, "notes")).to_contain_text("Idle · last recorded a result")
@@ -521,6 +522,9 @@ class AgentsTabStates(unittest.TestCase):
         # #347 review N9: after your own Stop the panel reads "Stopped by you", not your name.
         page = self.page("ada")
         page.goto(f"/projects/{self.ids['project']}/agents")
+        # Let the first view's reads finish: WebKit reports a read cancelled by the next navigation as a page error.
+        expect(self.row(page, "lab")).to_be_visible()
+        page.wait_for_load_state("networkidle")
         page.goto(f"/projects/{self.ids['project']}/agents?agent=connection:{self.ids['conn_lab']}")
         expect(page.get_by_role("complementary", name="Lab helper, details").get_by_role("region", name="Recent")).to_contain_text("Stopped by you · #5")
         # Negative control: the old panel read "Stopped by Ada Kowalska · #5".
