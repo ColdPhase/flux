@@ -437,7 +437,7 @@ class InboxFinal(unittest.TestCase):
         def has_decision(who: str) -> bool:
             response = self.contexts[who].request.get("/api/v1/needs-you")
             assert response.status == 200, response.text()
-            return any(item.get("decision", {}).get("id") == decision["id"] for item in response.json()["items"])
+            return any(item.get("decision") and item["decision"].get("id") == decision["id"] for item in response.json()["items"])
 
         self.wait_for(lambda: has_decision("ada") and has_decision("jonas"), "the shared decision in both accounts")
         page = self.page()
@@ -465,7 +465,7 @@ class InboxFinal(unittest.TestCase):
         def current_tab_has_decision() -> bool:
             response = page.request.get("/api/v1/needs-you")
             assert response.status == 200, response.text()
-            return any(item.get("decision", {}).get("id") == decision["id"] for item in response.json()["items"])
+            return any(item.get("decision") and item["decision"].get("id") == decision["id"] for item in response.json()["items"])
 
         # B makes and dismisses their own Done toast. If A's callback survived, Z now picks it
         # and sends its DELETE with B's cookie, incorrectly putting B's decision back in the queue.
