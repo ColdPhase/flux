@@ -129,12 +129,25 @@ class StopAndQuestions(unittest.TestCase):
 
     def test_03_the_sidebar_card_shows_the_working_agent_and_stops_it(self) -> None:
         page = self.page("ada")
+        def live_but_handed(route: Route) -> None:
+            response = route.fetch()
+            payload = response.json()
+            # A current client session does not make a native held task currentWork without a live unit claim.
+            for item in payload["items"]:
+                item.update(online=True, signedIn=True, working=False)
+            route.fulfill(response=response, json=payload)
+
+        page.route("**/api/v1/working-agents", live_but_handed)
         page.goto("/")
         expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
         card = page.locator(".agentlive--agent")
         expect(card).to_have_count(1)
         expect(card).to_contain_text("Claude Code agent")
-        expect(card).to_contain_text("Handed #1 · not signed in yet")
+        expect(card).to_have_attribute("aria-label", "Claude Code agent · handed #1")
+        expect(card).to_contain_text("Handed #1")
+        expect(card).not_to_contain_text("working on")
+        expect(card.locator("[data-expression]")).to_have_attribute("data-expression", "idle")
+        expect(card.get_by_role("button", name="Stop Claude Code agent")).to_be_visible()
         shot(page, "stop-sidebar-card")
         card.get_by_role("button", name="Stop Claude Code agent").click()
         expect(page.get_by_text("Stopped Claude Code agent on #1")).to_be_visible()
