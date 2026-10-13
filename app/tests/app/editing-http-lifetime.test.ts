@@ -173,7 +173,7 @@ test('live label conflict holds current write authority through the protected er
   const person = expectStatus(await grantee.request('GET', '/api/v1/me'), 200) as { user: { id: string } };
   try {
     const owner = { kind: 'human' as const, id: f.actorId };
-    await addMember(owner, f.workspace.id, { email }, f.database.db);
+    await addMember(owner, f.workspace.id, { email, role: 'member' }, f.database.db);
     const grant = await grantProject(owner, f.project.id, { principal: { kind: 'human', id: person.user.id }, role: 'contributor' }, f.database.db);
     const second = expectStatus(await grantor.request('POST', `/api/v1/sketches/${f.sketch.id}/thoughts`, {
       body: { text: 'Second thought', x: 200, y: 0 },
