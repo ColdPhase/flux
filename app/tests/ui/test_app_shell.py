@@ -116,12 +116,6 @@ def open_details(page: Page) -> None:
     """Details: More, then Details, in the computer's one-row header (#340); the phone keeps its
     labelled Details button until its own header (#341)."""
     header = page.locator("header.top")
-    # Home has no header row (#342): its Details are one quiet button under what needs you.
-    home = page.locator("#content .home").get_by_role("button", name="Details", exact=True)
-    page.locator("#content .home button:text-is('Details'), header.top:not(.top--bare) button[aria-label='More'], header.top .top__details").first.wait_for()
-    if home.count():
-        home.click()
-        return
     header.locator("button[aria-label='More'], .top__details").first.wait_for()
     more = header.get_by_role("button", name="More", exact=True)
     if more.count():
@@ -496,21 +490,16 @@ class AppShellJourney(unittest.TestCase):
         self.assertEqual(marker, ["rgb(255, 255, 255)", True], "the current place is a raised white pill (F-026 §4)")
         expect(sidebar.get_by_text("No projects yet")).to_be_visible()
         expect(sidebar.get_by_role("button", name=re.compile("^New"))).to_have_attribute("aria-keyshortcuts", "C")
-        # Home as drawn (#342): no header row and no views; the page starts with the greeting.
-        expect(page.get_by_role("navigation", name="Views")).to_have_count(0)
-        self.assertLessEqual(box(page, page.locator("header.top"))["height"], 2, "no header row on Home")
-        expect(page.get_by_role("link", name="All my tasks")).to_be_visible()
-        # Home is the date, a greeting and what needs you (#342); the private notes moved to the Sketchbook.
-        expect(page.get_by_role("heading", level=2, name=re.compile(r"^Good (morning|afternoon|evening), Jo$"))).to_be_visible()
-        expect(page.get_by_text("Nothing needs you right now. Enjoy the quiet.")).to_be_visible()
-        shot(page, "desktop-1440-empty-light")
-        places.get_by_role("link", name="Sketchbook").click()
-        expect(page).to_have_url(f"{ORIGIN}/map")
-        expect(page.get_by_role("heading", level=1, name="Sketchbook")).to_be_visible()
-        expect(page.get_by_role("heading", level=2, name="Your notes")).to_be_visible()
+        views = page.get_by_role("navigation", name="Views")
+        # The views sit in the header's one row as a segmented control (F-026 §4, #340).
+        expect(page.locator("header.top").get_by_role("navigation", name="Views")).to_be_visible()
+        for label in ("Conversation", "Map", "Tasks", "Wiki"):
+            expect(views.get_by_role("link", name=label, exact=True)).to_be_visible()
+        expect(views.get_by_role("link", name="Conversation")).to_have_attribute("aria-current", "page")
         expect(page.get_by_role("heading", name="Nothing here yet")).to_be_visible()
         composer = page.get_by_label("Private note", exact=True)
-        # The composer always shows its audience.
+        # The composer sits at the bottom of the work area and always shows its audience.
+        self.assertGreater(box(page, composer)["y"], DESKTOP["height"] - 130)
         expect(page.locator(".composer__audience")).to_contain_text("Only you")
         shot(page, "desktop-1440-notes-empty-light")
 
@@ -535,11 +524,13 @@ class AppShellJourney(unittest.TestCase):
         self.assertEqual(len(page.evaluate("fetch('/api/v1/workspaces').then(r => r.json())")), 1, "still one space")
         shot(page, "desktop-1440-light")
 
-        page.goto("/")
-        page.get_by_role("link", name="All my tasks").click()
+        indicator = page.locator(".top__views .ui-tabs__indicator")
+        before = indicator.evaluate("el => el.style.transform")
+        views.get_by_role("link", name="Tasks").click()
         expect(page).to_have_url(f"{ORIGIN}/tasks")
         expect(page.get_by_role("heading", name="Nothing is waiting for you")).to_be_visible()
-        places.get_by_role("link", name="Sketchbook").click()
+        self.assertNotEqual(before, indicator.evaluate("el => el.style.transform"), "the pill moves to the chosen view")
+        views.get_by_role("link", name="Map").click()
         expect(page.get_by_role("heading", name="Start a sketch")).to_be_visible()
         shot(page, "desktop-1440-map-light")
 
