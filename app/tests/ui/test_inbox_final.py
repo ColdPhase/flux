@@ -232,6 +232,10 @@ class InboxFinal(unittest.TestCase):
         expect(decision).to_have_count(1)
         self.wait_for(lambda: self.queue(None)["later"] == 0, "the snooze to be undone")
 
+        # Undo returns the card, but selection remains at its former neighbour. Move back to the
+        # decision explicitly before testing S on that card.
+        page.keyboard.press("k")
+        expect(decision).to_have_attribute("aria-current", "true")
         # S opens the menu for the selected card; one is tomorrow morning, and Undo returns it.
         page.keyboard.press("s")
         expect(page.get_by_role("menu", name="Ask me again")).to_be_visible()
