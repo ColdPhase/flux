@@ -283,6 +283,15 @@ class HandOffJourney(unittest.TestCase):
             button.tap()
             dialog = page.get_by_role("dialog", name="Hand off a task")
             expect(dialog.get_by_text("Step 1 of 2")).to_be_visible()
+            def assert_phone_sheet() -> None:
+                metrics = dialog.evaluate("""el => {
+                  const rect = el.getBoundingClientRect();
+                  return {top: rect.top, height: rect.height, radius: parseFloat(getComputedStyle(el).borderTopLeftRadius)};
+                }""")
+                self.assertGreater(metrics["top"], 80, "the project remains visible above the rounded hand-off sheet")
+                self.assertGreater(metrics["radius"], 20, "the phone hand-off uses the drawn sheet corners")
+                expect(page.get_by_role("heading", level=1, name="Agents")).to_be_visible()
+            assert_phone_sheet()
             dialog.get_by_label("Task", exact=True).select_option(label="#5 · Order spare batteries")
             dialog.locator("label.handoff__agent", has_text="Claude Code agent").tap()
             for name in ("Next",):
@@ -292,6 +301,7 @@ class HandOffJourney(unittest.TestCase):
             shot(page, f"handoff-step1-phone-{scheme}")
             dialog.get_by_role("button", name="Next").tap()
             expect(dialog.get_by_text("Step 2 of 2")).to_be_visible()
+            assert_phone_sheet()
             shot(page, f"handoff-step2-phone-{scheme}")
             page.keyboard.press("Escape")
             expect(page.get_by_role("dialog")).to_have_count(0)
