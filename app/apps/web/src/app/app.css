@@ -24,7 +24,7 @@
 .auth__card .auth__form { padding: 0; background: none; box-shadow: none; border-radius: 0; }
 .auth__form { gap: 14px; }
 .auth__form .ui-btn--primary { margin-top: 6px; }
-.auth__sso { display: flex; flex-direction: column; gap: 10px; margin-bottom: 14px; }
+.auth__sso { display: flex; flex-direction: column; gap: 10px; }
 .auth__sso-error { margin: 0; font-size: var(--fs-sm); color: var(--t1, var(--t1)); }
 .auth__or { display: flex; align-items: center; gap: 12px; margin: 8px 0 0; font-size: var(--fs-sm); color: var(--t3); }
 .auth__or::before, .auth__or::after { content: ""; flex: 1; height: 1px; background: var(--line); }

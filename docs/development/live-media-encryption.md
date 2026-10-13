@@ -170,8 +170,9 @@ profile and 0 inbound RTP bytes. See the
 
 The check does not prove:
 
-- the direct UDP or ICE-TCP path (not separately asserted; the browser applies
-  the same rule);
+- the direct UDP or ICE-TCP path in Firefox or Safari: the direct path is asserted
+  positively and negatively only in Chromium, by `live-sfu-direct-dtls.e2e.ts`
+  (2026-10-10, `check_live_sfu.sh`);
 - Firefox or Safari;
 - a public CA, DNS or NAT;
 - what the SFU process does with plaintext;
