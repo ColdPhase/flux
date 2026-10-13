@@ -4,7 +4,8 @@ import type { AssistantAnswer, ConversationMessage, Conversation, ConversationRo
 import { ApiError } from '../api/client';
 import { outboxView, useComposerDraft, useComposerScope } from '../composer/draft';
 import { takeHandedFiles } from '../composer/handoff';
-import { AttachButton, ComposerFiles, MessageFiles } from '../composer/Files';
+import { AttachButton, ComposerFiles, MessageContent, useFileDrop } from '../composer/Files';
+import { LinkPreviews, MessageText } from './MessageText';
 import { ConnectionLine, SendAnnouncer } from '../composer/Outbox';
 import { fluxAnswers, onFluxAnswered } from '../composer/connection';
 import { Button, Icon, Input, MEDIA, sendsOnEnter, useArrivals, useMediaQuery } from '../ui';
@@ -23,7 +24,7 @@ import { AnswerItem, AskBar, ProposalCard, WorkingLine } from '../assistant/Conv
 import { askError as askErrorText, askState } from '../assistant/format';
 import { grantAgentProject } from '../agent-connection/api';
 import { agentAuthorLabel } from '../docs/format';
-import { AgentAuthor, AuthorFace, ContributionMark, OPENING_REVEAL_MS, SourceCitation, clock, day, openOnWholeMessages, pendingMessageRow, when } from './messageParts';
+import { AgentAuthor, AuthorFace, ContributionMark, OPENING_REVEAL_MS, SourceCitation, clock, day, pendingMessageRow, when } from './messageParts';
 import { agentAuthorOwner, useAgentOwners } from '../agents/owners';
 import { OneConversation, type PaneProps } from './OneConversation';
 import { ThreadMessageActions } from './ThreadDrawer';
@@ -166,6 +167,8 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
     if (files?.length) addDraftFiles(files);
     requestAnimationFrame(() => document.getElementById(composerId)?.focus());
   }, [conversation, location.search, location.pathname, location.hash, navigate, me.user.id, project.id, writable, addDraftFiles, composerId]);
+  // Files dropped anywhere on the conversation join its draft (#348).
+  const drop = useFileDrop(publicComposer, writable && !asking);
   const makeWork = useCreateWorkFromMessage(project);
   const conversationId = conversation?.id;
   const author = (id: string) => id === me.user.id ? me.user.name : members.find((member) => member.userId === id)?.name ?? 'Member';
@@ -298,14 +301,14 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversation?.id, arrived]);
   useEffect(() => {
-    // A source link from "Since you left" or search opens on that whole message; otherwise on the latest.
-    // It runs again when the thread is first shown: a hidden message cannot take focus.
+    // A source link from "Since you left" or search opens on that whole message. Otherwise an open thread starts at
+    // its root, whole (#436): its feed (the only one this ref holds) is scrolled to the top, so a long thread shows
+    // its oldest replies first and the reader scrolls down. It runs again when the thread is first shown: a hidden
+    // message cannot take focus.
     const feed = scrollRef.current;
     const anchor = arrived ? document.getElementById(`message-${arrived}`) : null;
     if (anchor && feed?.contains(anchor)) { anchor.scrollIntoView({ block: 'start' }); if (revealed) anchor.focus({ preventScroll: true }); return; }
-    const column = feed?.firstElementChild as HTMLElement | null;
-    if (!feed || !column) return;
-    return openOnWholeMessages(feed, column, '.project-convo__message');
+    if (feed) feed.scrollTop = 0;
   }, [conversation?.id, arrived, arrivedLoaded, feedNode, revealed]);
   // Genuine replies and answers arriving in an open thread rise in gently when the reader sees them (#155,
   // UI116-5); the history the thread opens with and earlier pages never move. The thread's position owner
@@ -452,7 +455,7 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
   const title = conversation ? conversation.firstMessageBody.split('\n')[0] || 'Conversation' : project.name;
   let lastDay = '';
   const discussedRow = discussedTask ? referenceWork.rows.get(`work:${discussedTask}`) ?? null : null;
-  return <div className={conversation ? 'thread__pane' : 'project-convo'} data-project-id={conversation ? undefined : project.id}
+  return <div className={`${conversation ? 'thread__pane' : 'project-convo'}${drop.dropping ? ' is-dropping' : ''}`} {...drop.handlers} data-project-id={conversation ? undefined : project.id}
     data-associations-observed-at={conversation ? messageWork.page?.observedAt : undefined} data-associations-phase={conversation ? messageWork.state.phase : undefined}
     data-references-observed-at={conversation ? referenceWork.observation?.observedAt : undefined} data-references-phase={conversation ? referenceWork.state.phase : undefined}>
     {!conversation ? feed : <div className={`thread__feed${revealed ? '' : ' is-opening'}`} ref={attachFeed} aria-busy={revealed ? undefined : true}>
@@ -485,11 +488,12 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
               return [divider, <li key={outbox.keyOf(message.id)} id={`message-${message.id}`} data-message-id={message.id} tabIndex={-1} className={`project-convo__message${mine ? ' is-mine' : ''}${arrived === message.id ? ' is-arrived' : ''}`}>
                 <AuthorFace kind={message.authorId === null ? 'agent' : 'human'} name={messageAuthor(message)} mine={mine} />
                 <div className="project-convo__message-meta"><strong>{mine ? `${messageAuthor(message)} · you` : message.authorId === null ? <AgentAuthor message={message} owner={agentAuthorOwner(message.author, owners)} /> : <Link className="project-convo__person" to={`/dm/new?workspace=${project.workspaceId}&with=${message.authorId}`} title={`Message ${messageAuthor(message)} directly`}>{messageAuthor(message)}</Link>}</strong><time dateTime={message.createdAt} title={when(message.createdAt)}>{clock(message.createdAt)}</time><span>#{message.sequence}</span></div>
-                {message.body ? <p>{message.body}</p> : null}
-                <MessageFiles files={message.files} />
+                <MessageContent body={message.body ? <p><MessageText body={message.body} /></p> : null} files={message.files} context={{ author: messageAuthor(message), at: message.createdAt, caption: message.body, place: project.name, onReply: writable ? () => document.getElementById(composerId)?.focus() : undefined, onCreateTask: writable ? () => void makeWork.create(message) : undefined }}>
+                  <LinkPreviews body={message.body} />
+                  <MessageObjects message={message} projectId={project.id} preview={messageWork.previews?.get(message.id) ?? null} />
+                  {message.source ? <SourceCitation materialId={message.source.materialId} version={message.source.version} onDenied={hideIfDenied} /> : null}
+                </MessageContent>
                 {message.contribution ? <ContributionMark contribution={message.contribution} onOpenResult={(resultId) => openDetails({ kind: 'result', id: resultId })} /> : null}
-                {message.source ? <SourceCitation materialId={message.source.materialId} version={message.source.version} onDenied={hideIfDenied} /> : null}
-                <MessageObjects message={message} projectId={project.id} preview={messageWork.previews?.get(message.id) ?? null} />
                 <ThreadMessageActions writable={writable}><MessageActions projectId={project.id} message={message} writable={writable} busy={makeWork.busy === message.id} onCreateWork={() => void makeWork.create(message)} /></ThreadMessageActions>
                 {makeWork.failed?.messageId === message.id ? <p className="ws-act-error" role="alert">{makeWork.failed.text} <button type="button" onClick={() => void makeWork.create(message)}>Retry</button></p> : null}
               </li>];

@@ -86,6 +86,12 @@ class SharedComposerJourney(unittest.TestCase):
         with page.expect_file_chooser() as chooser:
             target.get_by_role("button", name="Attach files", exact=True).click()
         chooser.value.set_files(files)
+        if len(files) > 1 and (page.viewport_size or {}).get("width", 1440) <= 640:
+            # On a phone several files open the numbered picker (#348 AC-4); tapping them in order attaches them in that order.
+            sheet = page.get_by_role("dialog", name="Choose files to send")
+            for item in files:
+                sheet.get_by_role("button", name=item["name"]).click()
+            sheet.get_by_role("button", name=f"Add {len(files)}").click()
 
     def file(self, name="measurements.bin", content=b"\x00\xff\x04\n\x80 exact bytes"):
         return {"name": name, "mimeType": "application/octet-stream", "buffer": content}
@@ -258,7 +264,7 @@ class SharedComposerJourney(unittest.TestCase):
         page.route("**/api/v1/projects/*/files?*", hold)
         page.get_by_label("Write to this task").fill("A's held private bytes")
         self.choose(page, [self.file("held-a.bin")])
-        expect(page.get_by_text("Uploading…", exact=False)).to_have_count(1)
+        expect(page.get_by_text(re.compile("Uploading"))).to_have_count(1)  # "Uploading 0%" once the upload starts (#348 AC-3)
         page.wait_for_function("() => window.__fluxHeldUploadReady === true", timeout=10000)
         page.get_by_label("Task", exact=True).select_option(b["id"])
         page.get_by_label("Write to this task").fill("B's distinct draft")
@@ -501,7 +507,7 @@ class SharedComposerJourney(unittest.TestCase):
         page.goto(f"/projects/{project['id']}/map/{sketch['id']}")
         page.locator(f".sk-node[data-id='{thought['id']}']").click()
         with page.expect_response(lambda response: response.request.method == "POST" and response.url.endswith(f"/projects/{project['id']}/work")) as created:
-            page.get_by_role("button", name="Create work from selected thoughts").click()
+            page.get_by_role("button", name="Create task from selected thoughts").click()
         task = created.value.json()
         details = page.get_by_role("region", name="Discussion")
         box = details.get_by_label("First message about this task")
@@ -753,7 +759,7 @@ class SharedComposerJourney(unittest.TestCase):
                 with page.expect_response(lambda response: response.url.endswith("/api/auth/sign-out")) as response:
                     page.get_by_role("button", name="Sign out", exact=True).click()
                 self.assertEqual(response.value.status, 200)
-                expect(page.get_by_role("heading", name="Sign in to Flux", exact=True)).to_be_visible()
+                expect(page.get_by_role("heading", name="Sign in", exact=True)).to_be_visible()
                 self.assertIsNone(self.record(page, project, task))
                 self.assertEqual(page.evaluate("keys => [localStorage.getItem(keys[0]),localStorage.getItem(keys[0]+':pending'),sessionStorage.getItem(keys[1]),sessionStorage.getItem(keys[1]+'.pending')]", [legacy, old_conversation]), [None] * 4)
                 held[0][0].fulfill(response=held[0][1])
@@ -762,7 +768,7 @@ class SharedComposerJourney(unittest.TestCase):
                 page.get_by_label("Email", exact=True).fill(PEOPLE['owner'][1])
                 page.get_by_label("Password", exact=True).fill(PASSWORD)
                 page.get_by_role("button", name="Sign in", exact=True).click()
-                expect(page.get_by_role("heading", name="Sign in to Flux", exact=True)).to_have_count(0)
+                expect(page.get_by_role("heading", name="Sign in", exact=True)).to_have_count(0)
                 # Use the app's project link so the visit-local store survives the login round trip.
                 page.locator(f'a[href^="/projects/{project["id"]}"]').first.click()
                 page.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile("^Agents")).click()
@@ -803,14 +809,14 @@ class SharedComposerJourney(unittest.TestCase):
         with page.expect_response(lambda response: response.url.endswith('/api/auth/sign-out')) as response:
             page.get_by_role('button', name='Sign out', exact=True).click()
         self.assertEqual(response.value.status, 200)
-        expect(page.get_by_role('heading', name='Sign in to Flux', exact=True)).to_be_visible()
-        expect(other.get_by_role('heading', name='Sign in to Flux', exact=True)).to_be_visible()
+        expect(page.get_by_role('heading', name='Sign in', exact=True)).to_be_visible()
+        expect(other.get_by_role('heading', name='Sign in', exact=True)).to_be_visible()
         self.assertIsNone(self.record(other, project, task))
         expect(other.get_by_label('Write to this task', exact=True)).to_have_count(0)
         page.get_by_label('Email', exact=True).fill(PEOPLE['writer'][1])
         page.get_by_label('Password', exact=True).fill(PASSWORD)
         page.get_by_role('button', name='Sign in', exact=True).click()
-        expect(page.get_by_role('heading', name='Sign in to Flux', exact=True)).to_have_count(0)
+        expect(page.get_by_role('heading', name='Sign in', exact=True)).to_have_count(0)
         self.open_agents(other, project, task)
         expect(other.get_by_label('Write to this task', exact=True)).to_have_value('')
         expect(other.get_by_role('list', name='Files in your draft')).to_have_count(0)

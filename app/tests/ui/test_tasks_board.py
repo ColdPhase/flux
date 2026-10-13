@@ -236,7 +236,7 @@ class TasksBoardJourney(unittest.TestCase):
         # A card opens its existing details.
         order.get_by_role("button", name=ORDER, exact=True).click()
         expect(page.locator("#details").get_by_role("heading", name=ORDER)).to_be_visible()
-        expect(page.locator("#details").get_by_label("Status")).to_have_value("open")
+        expect(page.locator("#details").get_by_role("button", name="Status", exact=True)).to_contain_text("Open")
         page.keyboard.press("Escape")
 
         # Mine and the search narrow the board; the URL keeps Mine.

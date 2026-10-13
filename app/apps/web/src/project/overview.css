@@ -21,7 +21,7 @@
 .ov-row__b { display: flex; flex: 1; flex-direction: column; min-width: 0; gap: 1px; }
 .ov-row__k { font-size: var(--fs-xs); color: var(--t3); }
 .ov-row__t { font-size: var(--fs-md); font-weight: 500; line-height: 1.4; overflow-wrap: anywhere; }
-.ov-row__s { font-size: var(--fs-sm); color: var(--t3); }
+.ov-row__s { font-size: var(--fs-sm); color: var(--t3); overflow-wrap: anywhere; }
 .ov-empty, .ov-note, .ov-more { font-size: var(--fs-sm); color: var(--t3); line-height: 1.5; }
 .ov-note { margin-top: 8px; }
 .ov-more { margin-top: 6px; }

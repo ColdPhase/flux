@@ -4,10 +4,12 @@ import type { PersonalCompute, PersonalComputeResult } from '@flux/core';
 import { PUBLIC_ONLY, type AiEndpointPolicy } from './endpoint-policy.js';
 import { endpointRefusal, guardedFetch } from './guarded-fetch.js';
 import { checkRequestLimits, PersonalKeyUnavailableError, type PersonalKeyResolver } from './limits.js';
+import { anthropicMessages, anthropicToolCalls, anthropicTools } from './tool-wire.js';
 
 // The Anthropic Messages adapter behind core's `PersonalCompute` port (#68, O-008 §3–§4; F-020).
 // One run is one Messages request on the connection's model with `max_tokens` 1500, low effort and
-// no tools; the optional preflight uses the token-counting endpoint, which may only raise the Flux
+// no tools (with `request.tools`, F-027 AST-8, one turn of the worker's loop: the Flux tools in
+// `tools`, the earlier turns and their `tool_result`s in `messages`, no `tool_choice`); the optional preflight uses the token-counting endpoint, which may only raise the Flux
 // estimate. The SDK's automatic retries are off, a stop aborts the HTTP request through the
 // AbortSignal, the transport is the guarded fetch every adapter uses, and every failure maps to
 // the port's closed set of reasons with a billing hint. The key is resolved from the connection's
@@ -36,7 +38,9 @@ function stopReason(value: Anthropic.StopReason | null): StopReason {
     case 'max_tokens': case 'model_context_window_exceeded': return 'max_tokens';
     case 'stop_sequence': return 'stop_sequence';
     case 'refusal': return 'refusal';
-    // No tools are offered, so `tool_use` and `pause_turn` cannot continue anything; the text so far is the answer.
+    // `tool_use` is read by the caller, which checks that tools were offered and that a call is complete.
+    case 'tool_use': return 'tool_use';
+    // `pause_turn` belongs to hosted tools, which are never offered; the text so far is the answer.
     default: return 'end_turn';
   }
 }
@@ -78,7 +82,8 @@ export function anthropicPersonalCompute({ enabled, resolveKey, baseURL = AI_PRO
       checkRequestLimits(request, 'anthropic_messages');
       const api = await client(request.connection.keyRef);
       const counted = await api.messages.countTokens({
-        model: request.model, system: request.system, messages: [{ role: 'user', content: request.input }],
+        model: request.model, system: request.system, messages: anthropicMessages(request.input, request.turns) as unknown as Anthropic.MessageParam[],
+        ...(request.tools?.length ? { tools: anthropicTools(request.tools) as unknown as Anthropic.Tool[] } : {}),
       });
       return counted.input_tokens;
     },
@@ -91,7 +96,8 @@ export function anthropicPersonalCompute({ enabled, resolveKey, baseURL = AI_PRO
           model: request.model,
           max_tokens: request.maxTokens,
           system: request.system,
-          messages: [{ role: 'user', content: request.input }],
+          messages: anthropicMessages(request.input, request.turns) as unknown as Anthropic.MessageParam[],
+          ...(request.tools?.length ? { tools: anthropicTools(request.tools) as unknown as Anthropic.Tool[] } : {}),
           output_config: { effort: request.effort },
         }, { signal });
         const text = message.content.flatMap((block) => (block.type === 'text' ? [block.text] : [])).join('\n').trim();
@@ -101,7 +107,12 @@ export function anthropicPersonalCompute({ enabled, resolveKey, baseURL = AI_PRO
         const usage = message.usage;
         const inputTokens = usage.input_tokens + Math.ceil((usage.cache_creation_input_tokens ?? 0) * 1.25) + (usage.cache_read_input_tokens ?? 0);
         if (!Number.isSafeInteger(inputTokens) || !Number.isSafeInteger(usage.output_tokens)) throw new Error('The provider reported no usable usage');
-        return { kind: 'completed', text, stopReason: stopReason(message.stop_reason), usage: { inputTokens, outputTokens: usage.output_tokens } };
+        // A call counts only when tools were offered and the answer stopped to use them: one cut off
+        // by `max_tokens` can hold a partial `tool_use` block, which is never executable.
+        const calls = request.tools?.length && message.stop_reason === 'tool_use' ? anthropicToolCalls(message.content) : [];
+        const reason: StopReason = calls.length ? 'tool_use' : message.stop_reason === 'tool_use' ? 'end_turn' : stopReason(message.stop_reason);
+        return { kind: 'completed', text, stopReason: reason, usage: { inputTokens, outputTokens: usage.output_tokens },
+          ...(calls.length ? { toolCalls: calls, replay: message.content } : {}) };
       } catch (error) {
         return failureOf(error, signal);
       }

@@ -175,7 +175,9 @@ starting mail to the sign-in address by itself. The sign-in address cannot be ad
 The sidebar's **Inbox**, between Home and Sketchbook, shows how many items are unread (F-026 §4;
 the 64 px rail shows the same number). `/inbox` lists "New" and "Earlier" items,
 each with its reason, title, excerpt and time; opening one marks it read and opens the source;
-"Mark all read" only quiets the dot. `/settings/notifications` (Settings → Notifications, #350) holds the level (Only "Needs you", Everything, Nothing), quiet hours, the morning summary, then the channel table, push on this device, email destination and extra address, muted places, and a running focus pause with **Resume now**. `/inbox/:id` (email link) and
+"Mark all read" only quiets the dot. `/settings/notifications` (Settings → Notifications, #350)
+holds a running focus pause with Resume now, the level (Only "Needs you", Everything, Nothing), quiet hours, the morning summary, then
+the channel table, push on this device, email destination and extra address, and muted places. `/inbox/:id` (email link) and
 `/settings/notifications/verify` are routes of the signed-in app.
 
 ## Tests

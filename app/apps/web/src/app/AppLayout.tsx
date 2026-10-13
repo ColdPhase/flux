@@ -3,7 +3,7 @@ import { flushSync } from 'react-dom';
 import type { ProjectPerson } from '@flux/contracts';
 import { Outlet, useLocation, useNavigate, useParams, useRevalidator } from 'react-router';
 import { useStreamEvents } from '../api/stream';
-import { Drawer, IconButton, MEDIA, SidePanel, Tabs, duration, flip, play, useMediaQuery, useSidePanelMode, type TabItem } from '../ui';
+import { Drawer, IconButton, MEDIA, SidePanel, Tabs, duration, flip, play, useMediaQuery, useToast, useSidePanelMode, type TabItem } from '../ui';
 import { useShellData } from './data';
 import { registerServiceWorker, syncPushSubscription } from '../pwa';
 import { DeferredDetails, DeferredJumpTo, DeferredLiveStage } from './DeferredSurfaces';
@@ -13,7 +13,9 @@ import { placeOf } from './place';
 import { ShellContext, type DetailsView } from './shellContext';
 import { Sidebar } from './Sidebar';
 import { VIEWS, startCapture, viewIndex } from './views';
-import { audienceLine, useProjectShell } from '../project/data';
+import { PROJECT_VIEWS, type ProjectViewId } from '@flux/contracts';
+import { addProjectView } from './conversation-api';
+import { addableViews, audienceLine, shownViews, useProjectShell } from '../project/data';
 import { useDmSketchCount } from '../dm/useDmSketchCount';
 import { LiveProvider } from '../live/LiveProvider';
 import { LiveEntry } from '../live/LiveEntry';
@@ -41,6 +43,8 @@ function lastMapPath(userId: string, projectId: string, sketches: { items: { id:
 }
 
 const PROJECT_VIEW_NAMES = ['Conversation', 'Map', 'Tasks', 'Wiki', 'Agents'];
+const VIEW_LABEL: Record<ProjectViewId, string> = { map: 'Map', docs: 'Wiki', agents: 'Agents' };
+const VIEW_PATH: Record<ProjectViewId, string> = { map: 'map', docs: 'docs', agents: 'agents' };
 
 /** Tab order for the slide direction: Home's views, or a project's Conversation · Map · Tasks · Wiki · Agents. */
 function viewOrder(pathname: string) {
@@ -111,6 +115,20 @@ function AppLayoutContent() {
 
   // New or changed direct messages refresh the sidebar list (#107). An open DM refetches itself.
   const revalidator = useRevalidator();
+  const toast = useToast();
+  // Map, Wiki and Agents appear when needed; More adds one on purpose (#351, S21) and opens it.
+  // The answer may come after the person has moved on: the change stays, but only someone still in that
+  // project is taken to its new view (or told it failed).
+  const addView = async (projectId: string, view: ProjectViewId) => {
+    const stillHere = () => window.location.pathname.startsWith(`/projects/${projectId}`);
+    try {
+      await addProjectView(projectId, view);
+      revalidator.revalidate();
+      if (stillHere()) navigate(`/projects/${projectId}/${VIEW_PATH[view]}`);
+    } catch {
+      if (stillHere()) toast({ message: `${VIEW_LABEL[view]} couldn’t be added. Try again in a moment.`, tone: 'danger' });
+    }
+  };
   useStreamEvents(me.user.id, (event) => {
     if (event.objectType !== 'dm') return;
     const known = directMessages.some((dm) => dm.id === event.objectId);
@@ -296,13 +314,15 @@ function AppLayoutContent() {
   const openWork = project ? workSummary.summary?.unfinishedTotal : undefined;
   // Conversation · Map · Tasks · Wiki · Agents in the final design's order (#117); quiet tabs without
   // counts. The unfinished work count stays readable to assistive technology on the Tasks tab.
+  const viewNow = /^\/projects\/[^/]+\/(map|docs|agents)(\/|$)/.exec(location.pathname)?.[1] as ProjectViewId | undefined;
+  const shownProjectViews = project ? shownViews(project, viewNow) : null;
   const projectViews = projectId ? [
     { id: 'conversation', label: 'Conversation', to: onOtherView ? lastConversationPath(me.user.id, projectId) : `${location.pathname}${location.search}` },
     { id: 'map', label: 'Map', to: onMap ? location.pathname : lastMapPath(me.user.id, projectId, project?.sketches), end: false },
     { id: 'tasks', label: 'Tasks', to: `/projects/${projectId}/tasks${lastTasksSearch(me.user.id, projectId)}`, ...(openWork ? { countLabel: `, ${openWork} open` } : {}) },
     { id: 'docs', label: 'Wiki', to: `/projects/${projectId}/docs`, end: false },
     { id: 'agents', label: 'Agents', to: `/projects/${projectId}/agents` },
-  ] : null;
+  ].filter((view) => !(PROJECT_VIEWS as readonly string[]).includes(view.id) || !shownProjectViews || shownProjectViews.has(view.id as ProjectViewId)) : null;
   const homeViews: TabItem[] = VIEWS.map((view) => ({ id: view.id, label: view.label, to: view.path, end: view.path === '/' }));
   const places = phonePlaces(location.pathname, inboxUnread);
   const audienceOpen = project?.project.visibility === 'workspace';
@@ -310,6 +330,8 @@ function AppLayoutContent() {
   // The audience line leads to "Who can see this", where managers change it (#188).
   const openAudience = () => { setDetailsView({ kind: 'overview', focus: 'people' }); toggleDetails(true); };
   const recapOpen = detailsOpen && typeof detailsView === 'object' && detailsView.kind === 'recap';
+  // A task, decision or result opens in the one detail panel with its kind as a chip (F-026 S4).
+  const objectChip = typeof detailsView === 'object' ? ({ work: 'Task', decision: 'Decision', result: 'Result' } as Record<string, string | undefined>)[detailsView.kind] : undefined;
   // "What matters" (#133): a quiet count of what needs you; refreshed when the panel closes.
   const needsYou = useNeedsYou(activeProject ? projectId ?? null : null, recapOpen);
   const toggleRecap = () => {
@@ -363,10 +385,13 @@ function AppLayoutContent() {
       : dmViews ? { items: dmViews, label: 'Direct message views' }
         : place.views ? { items: homeViews, label: 'Views' } : null;
   const viewName = activeProject ? PROJECT_VIEW_NAMES[Math.max(0, viewOrder(location.pathname))] : null;
+  const addViewItems: MoreItem[] = project && shownProjectViews && projectId && project.project.access !== 'viewer'
+    ? addableViews(shownProjectViews).map((view) => ({ label: `Add ${VIEW_LABEL[view]}`, run: () => void addView(projectId, view) })) : [];
   const moreItems: MoreItem[] = [
     ...('noDetails' in place ? [] : [{ label: 'Details', run: () => { setDetailsView('place'); toggleDetails(true); } }]),
     ...(activeProject && projectId ? [{ label: 'What matters', run: () => { setDetailsView({ kind: 'recap', projectId }); toggleDetails(true); } }] : []),
-    { label: 'Focus', keys: 'F', checked: focusing, run: () => void focus.toggle() },
+    ...addViewItems,
+    { label: focus.uncertain ? 'Check notification pause' : 'Focus', keys: 'F', checked: focusing, run: () => void focus.toggle() },
     { label: railed ? 'Show the sidebar' : 'Hide the sidebar', keys: '[', run: toggleRail },
   ];
 
@@ -386,9 +411,10 @@ function AppLayoutContent() {
   const projectMenu: PhoneMenuItem[] = projectViews ? ([
     ['conversation', 'chat', undefined], ['tasks', 'tasks', openWork ? `${openWork} open` : undefined], ['map', 'edit', undefined], ['docs', 'doc', undefined],
     ['agents', 'spark', project?.people?.some((person) => person.kind === 'agent') ? `${project.people.filter((person) => person.kind === 'agent').length} agents` : undefined],
-  ] as const).map(([id, icon, note]) => {
-    const view = projectViews.find((item) => item.id === id)!;
-    return { id, label: view.label, to: view.to, icon, note, current: currentProjectView === id };
+  ] as const).flatMap(([id, icon, note]) => {
+    // A view the project has not added yet (#351) is not in the menu; "Add …" rows offer it.
+    const view = projectViews.find((item) => item.id === id);
+    return view ? [{ id, label: view.label, to: view.to, icon, note, current: currentProjectView === id }] : [];
   }) : [];
   const mainPlace = ['/projects', '/inbox', '/search', '/dm', '/settings'].includes(location.pathname) || /^\/inbox\//.test(location.pathname);
   const homePage = /^\/(tasks|map|docs)(\/|$)/.test(location.pathname);
@@ -401,6 +427,7 @@ function AppLayoutContent() {
       ) : activeProject && projectViews ? (
         <><PhoneBack onBack={() => goBack('/projects')} />
           <PhoneTitleMenu title={place.title} items={projectMenu} onDetails={detailsEntry} matters={projectId ? { count: needsYou, run: toggleRecap } : undefined}
+            adds={addViewItems.map((item) => ({ label: item.label, run: item.run }))}
             subtitle={[PROJECT_VIEW_NAMES[Math.max(0, viewOrder(location.pathname))], peopleLine(project?.people ?? null)].filter(Boolean).join(' · ')} /></>
       ) : activeDm && dmViews ? (
         <><PhoneBack onBack={() => goBack('/projects')} />
@@ -455,7 +482,7 @@ function AppLayoutContent() {
           <div className="top__right" data-shift>
             {/* A view can put one quiet action here (a DM's Select, #96). */}
             <span className="top__actions" ref={setActionSlot} />
-            {focusing && focus.until ? <FocusPill until={focus.until} onEnd={() => void focus.toggle()} /> : (
+            {focusing && focus.until ? <FocusPill until={focus.until} uncertain={focus.uncertain} onEnd={() => void focus.toggle()} /> : (
               <>
                 {activeProject && needsYou ? <NeedsYouChip count={needsYou} open={recapOpen} onToggle={toggleRecap} /> : null}
                 {project?.people ? <HeaderFaces people={project.people} audience={audience} onOpen={openAudience} /> : null}
@@ -479,7 +506,7 @@ function AppLayoutContent() {
 
       {phone ? <PhoneCreate open={createOpen} onClose={() => setCreateOpen(false)} projects={projects} projectId={projectId} go={(to) => void navigate(to)} onThought={() => startCapture(navigate)} /> : null}
       <DeferredJumpTo open={jumpOpen} onClose={() => setJumpOpen(false)} userId={me.user.id} />
-      <SidePanel open={detailsOpen} onClose={() => toggleDetails(false)} title={recapOpen ? 'What matters' : 'Details'} id="details"
+      <SidePanel open={detailsOpen} onClose={() => toggleDetails(false)} title={recapOpen ? 'What matters' : 'Details'} chip={objectChip} id="details"
         context={phone && (detailsView === 'place' || typeof detailsView === 'object' && detailsView.kind === 'overview') ? <OverviewContext /> : undefined}>
         <DeferredDetails view={detailsView} workspace={workspace} placeTitle={place.title} dm={activeDm ? { id: activeDm.id, kind: activeDm.kind, title: activeDm.title, me: me.user.name, people: activeDm.people, audience: activeDm.audience } : null} onBack={() => setDetailsView('place')} onClose={() => toggleDetails(false)} />
       </SidePanel>

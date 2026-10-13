@@ -38,6 +38,8 @@
 .home__empty { margin: 8px 0 0; font-size: var(--fs-sm); color: var(--t2); }
 .home__keys { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 28px 4px 0; font-size: var(--fs-xs); color: var(--t3); }
 .home__keys kbd { margin-right: 3px; }
+/* Touch: the "See all" link and each project row are 44 px tall on a phone (#393 review). */
+@media (pointer: coarse) { .home__all { min-height: 44px; } .home__project { min-height: 44px; } }
 @media (pointer: coarse), (hover: none) { .home__keys { display: none; } .home__go { width: 44px; height: 44px; } }
 @media (max-width: 680px) {
   .pane-in.home { padding-top: 20px; }

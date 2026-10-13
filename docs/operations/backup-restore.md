@@ -29,7 +29,7 @@ runs on the host except `sh`, `tar` and a SHA-256 tool.
    | Part | Contents |
    | --- | --- |
    | `manifest.json` | Format, time, project, schema and app version, checksums (below). |
-   | `database.dump` | `pg_dump` custom format of the whole database, including the pg-boss queue schema. |
+   | `database.dump` | `pg_dump` custom format of the whole database, including the pg-boss queue schema. It holds the definition of `auth_idp_standing` but none of its rows: the identity provider's offline refresh tokens never leave the instance ([single sign-on](single-sign-on.md#standing-check)). |
    | `files.tar.gz` | The files volume (uploaded files; the API's own health probe files are transient). |
    | `flux.env` | A copy of `docker/.env`: the database password, signing secret and VAPID keys that sessions and push subscriptions depend on. |
 

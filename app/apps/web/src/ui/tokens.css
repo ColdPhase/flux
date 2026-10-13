@@ -156,6 +156,12 @@
     --fs-xs: .78125rem; --fs-sm: .78125rem; --fs-md: .875rem; --fs-base: .9375rem; --fs-title: 1.0625rem; --fs-page: 1.75rem;
   }
 }
+/* The person's text size on the computer (Settings → Appearance; app/textSize.ts). The rem tokens scale
+   with the root size. The phone keeps the system size, so this starts where the phone breakpoint ends. */
+@media (min-width: 641px) {
+  :root[data-text-size="small"] { font-size: 93.75%; }
+  :root[data-text-size="large"] { font-size: 112.5%; }
+}
 @media (min-width: 1600px) { :root { --space-page: 44px; --panel-w: 430px; } }
 
 @media (pointer: coarse) {
@@ -165,3 +171,5 @@
 @media (prefers-reduced-motion: reduce) {
   :root { --dur-1: 0ms; --dur-2: 0ms; --dur-3: 0ms; --dur-4: 0ms; --dur-press: 0ms; --press: 1; }
 }
+/* The person's own reduce-motion choice (Settings → Appearance) gives the same durations. */
+:root[data-motion="reduce"] { --dur-1: 0ms; --dur-2: 0ms; --dur-3: 0ms; --dur-4: 0ms; --dur-press: 0ms; --press: 1; }

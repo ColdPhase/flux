@@ -29,7 +29,7 @@ interface ToastEntry extends Required<Omit<ToastOptions, 'timeout' | 'action'>> 
   leaving: boolean;
 }
 
-const ToastContext = createContext<(options: ToastOptions) => void>(() => {});
+const ToastContext = createContext<(options: ToastOptions) => () => void>(() => () => {});
 
 export function useToast() {
   return useContext(ToastContext);
@@ -41,13 +41,20 @@ function ToastItem({ toast, onDone, registerAction }: { toast: ToastEntry; onDon
   const [leaving, setLeaving] = useState(false);
 
   const dismiss = useCallback(() => setLeaving(true), []);
-  const act = useCallback(() => { if (!toast.action) return; toast.action.onAction(); setLeaving(true); }, [toast.action]);
-  // `Z` runs the newest toast's action once; a toast that is leaving no longer answers to it.
+  // An action runs once: after it (or once the toast leaves) no second press can run it again (#393 review).
+  const ran = useRef(false);
+  const act = useCallback(() => {
+    if (!toast.action || ran.current || leaving || toast.leaving) return;
+    ran.current = true;
+    toast.action.onAction();
+    setLeaving(true);
+  }, [toast.action, leaving, toast.leaving]);
+  // `Z` runs the newest keyed toast's action once; a toast that is leaving no longer answers to it.
   useEffect(() => {
-    if (!toast.action || leaving) return undefined;
+    if (!toast.action?.key || leaving || toast.leaving) return undefined;
     registerAction(toast.id, act);
     return () => registerAction(toast.id, null);
-  }, [toast.action, toast.id, leaving, act, registerAction]);
+  }, [toast.action, toast.id, leaving, toast.leaving, act, registerAction]);
   const arm = useCallback(() => {
     if (toast.timeout !== null) timer.current = window.setTimeout(dismiss, toast.timeout);
   }, [dismiss, toast.timeout]);
@@ -69,7 +76,7 @@ function ToastItem({ toast, onDone, registerAction }: { toast: ToastEntry; onDon
     <div ref={ref} className={`ui-toast ui-toast--${toast.tone}`} onMouseEnter={disarm} onMouseLeave={arm} onFocus={disarm} onBlur={arm}>
       {toast.tone === 'success' ? <Icon name="check" /> : toast.tone === 'danger' ? <Icon name="alert" /> : toast.action ? <Kreska size={24} expression="done" /> : null}
       <span className="ui-toast__msg">{toast.message}</span>
-      {toast.action ? (
+      {toast.action && !leaving && !toast.leaving ? (
         <>
           <span className="ui-toast__sep" aria-hidden="true" />
           <button type="button" className="ui-toast__action" onClick={act} aria-keyshortcuts={toast.action.key}>
@@ -91,6 +98,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     const entry: ToastEntry = { id: nextId.current++, message: options.message, tone, timeout: options.timeout ?? (tone === 'danger' ? null : options.action ? 7000 : 5000), leaving: false, action: options.action ?? null };
     // Keep at most three; older ones leave.
     setToasts((current) => [...current.slice(-2), entry]);
+    return () => setToasts((current) => current.filter((toast) => toast.id !== entry.id));
   }, []);
   const remove = useCallback((id: number) => setToasts((current) => current.filter((toast) => toast.id !== id)), []);
   const actions = useRef(new Map<number, () => void>());

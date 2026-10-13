@@ -54,6 +54,17 @@ export interface QuietHours {
 }
 
 /**
+ * One push at a local time (in the quiet-hours time zone) counting what still waits in your
+ * inbox. While it is on, pushes held back by quiet hours are not sent one by one when
+ * quiet hours end: the summary covers them and the inbox keeps them.
+ */
+export interface MorningSummary {
+  enabled: boolean;
+  /** Local time "HH:MM". */
+  at: string;
+}
+
+/**
  * Focus mode (F-026 S19): push and email wait until `until` and then arrive as usual; the Inbox
  * still fills. A pause ends at `until` or when it is turned off, and lasts at most 12 hours.
  */
@@ -64,17 +75,6 @@ export interface NotificationPause {
 
 /** The longest a pause may last, so a forgotten focus never silences someone for days. */
 export const MAX_NOTIFICATION_PAUSE_HOURS = 12;
-
-/**
- * One push at a local time (in the quiet-hours time zone) counting what still waits in your
- * inbox. While it is on, pushes held back by quiet hours are not sent one by one when
- * quiet hours end: the summary covers them and the inbox keeps them.
- */
-export interface MorningSummary {
-  enabled: boolean;
-  /** Local time "HH:MM". */
-  at: string;
-}
 
 export type MutablePlaceType = 'project' | 'dm';
 

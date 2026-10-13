@@ -234,6 +234,7 @@ forbidden action answers `403`. Error bodies are `{ error, code }`.
 | `GET/POST /api/v1/workspaces/:id/projects` | `listProjects` (`limit`, `offset`), `createProject` |
 | `GET /api/v1/projects/:id` | `getProject` |
 | `GET /api/v1/projects/:id/people` | `listProjectPeople` (#117): the people and agents who can read the project now, each with `access`. Needs `project.read`; every candidate's level comes from `evaluateProject`, so denied, removed and revoked principals are left out. Names only the project's audience, never the workspace roster. |
+| `POST /api/v1/projects/:id/views` | `addProjectView` (#351): adds Map, Wiki (`docs`) or Agents to the project's `views`; needs `project.write`, adding one it has changes nothing. `POST /workspaces/:id/projects` takes an optional `template` (`build`, `research`, `event`, `blank`) that sets the starting `views` (research adds `docs`); without one a project has every view. Migration 0064 gave every existing project all three, so none loses a view it uses. The web app also shows a view the project already uses (sketches, docs, an agent in it). Conversation and Tasks are always shown. |
 | `GET/POST /api/v1/projects/:id/grants` | `listProjectGrants`, `grantProject` (create or replace) |
 | `DELETE /api/v1/projects/:id/grants/:grantId` | `revokeProjectGrant` |
 | `GET/POST /api/v1/workspaces/:id/agents` | `listAgents`, `createAgent` |
@@ -544,3 +545,17 @@ events. Failed reads clear labels and retry on the next visit, focus, online
 event or authorized stream change. A connected session and a recently
 completed action alone leave the agent idle; active-run/claim integration is
 still required by #347 and does not come from an activity time heuristic.
+
+Native work rows that the overview and task details present (`/work-view`,
+`/work-reference-rows`, `/work-objects/:kind/:id`) carry an optional
+`projectOwner` on each agent principal (`owner`, `createdBy`, `proposedBy`), with
+the same boundary as preserved message history (#339 AC-2, 2026-10-10): a
+workspace-owned agent is `{ kind: 'workspace' }`, a self-owned agent names its
+human owner only while that person is in the current audience, and a revoked
+agent keeps its name and Agent tag while an owner who lost access is omitted.
+The browser looks the relation up in its own fresh audience and never infers an
+owner from a roster. The same relation is added to the last-change author of a
+project doc in `GET /api/v1/projects/:id/docs` (`updatedBy`) and to the creator of
+a project sketch in `GET /api/v1/workspaces/:id/sketches?projectId=` (`createdBy`);
+both use one bounded `projectAuthorOwners` read per page and project, and sketches
+outside a project never carry it.

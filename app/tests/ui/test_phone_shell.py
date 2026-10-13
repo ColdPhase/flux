@@ -1,9 +1,10 @@
 """Phone-first shell, current place and motion (#266, docs/design/phone-first.md PF-1 to PF-7), as the final
 phone shell draws it (#341: the capsule, the view menu in the title, no chips; test_phone_final covers its criteria).
 
-Actual authenticated browser and API data in Chromium. Viewports and touch are emulated, which
-#266 item 10 accepts as phone evidence. Gestures use CDP touch events, so the browser produces
-real touch pointer events.
+Actual authenticated browser and API data in Chromium or WebKit (FLUX_UI_BROWSER, default chromium;
+#20 MOB-7 needs both engines). Viewports and touch are emulated, which #266 item 10 accepts as phone
+evidence. Drag gestures use CDP touch events, which only Chromium exposes, so test_06 is skipped on
+WebKit and reported as unverified there rather than passed.
 """
 from __future__ import annotations
 
@@ -14,11 +15,18 @@ import uuid
 
 from playwright.sync_api import expect, sync_playwright
 
-from test_app_shell import ORIGIN, UPSTREAM, shot, start_forwarder
+from test_app_shell import ORIGIN, UPSTREAM, shot as save_shot, start_forwarder
+from test_settings import UI_BROWSER
 
 VIEWS = ("Conversation", "Tasks", "Map", "Wiki", "Agents")
 PLACES = ("Home", "Projects", "Inbox")
 SE = {"width": 375, "height": 667}
+CDP_ONLY = "CDP touch gestures exist only in Chromium; the WebKit drawer/sheet drag is unverified"
+
+
+def shot(page, name):
+    # Screenshots from the other engine get their own name, so neither run overwrites the other.
+    save_shot(page, name if UI_BROWSER == "chromium" else f"{name}-{UI_BROWSER}")
 
 
 class PhoneShellJourney(unittest.TestCase):
@@ -27,7 +35,7 @@ class PhoneShellJourney(unittest.TestCase):
         if UPSTREAM:
             start_forwarder(ORIGIN, UPSTREAM)
         cls.pw = sync_playwright().start()
-        cls.browser = cls.pw.chromium.launch()
+        cls.browser = getattr(cls.pw, UI_BROWSER).launch()
         expect.set_options(timeout=8000)
         context = cls.browser.new_context(base_url=ORIGIN)
         page = context.new_page()
@@ -62,9 +70,11 @@ class PhoneShellJourney(unittest.TestCase):
 
     def page(self, viewport=SE, dark=False, touch=True, reduced=False):
         phone = viewport["width"] <= 640
+        # Layout and motion checks do not use the service worker. Blocking it keeps a worker left by an
+        # earlier context from showing the update prompt over the header in later ones (seen in WebKit).
         context = self.browser.new_context(base_url=ORIGIN, viewport=viewport, storage_state=self.state,
             color_scheme="dark" if dark else "light", is_mobile=phone and touch, has_touch=phone and touch,
-            reduced_motion="reduce" if reduced else "no-preference")
+            reduced_motion="reduce" if reduced else "no-preference", service_workers="block")
         self.addCleanup(context.close)
         page = context.new_page()
         errors = []
@@ -264,6 +274,7 @@ class PhoneShellJourney(unittest.TestCase):
             page.wait_for_timeout(pause)
         cdp.send("Input.dispatchTouchEvent", {"type": "touchEnd", "touchPoints": []})
 
+    @unittest.skipIf(UI_BROWSER != "chromium", CDP_ONLY)
     def test_06_the_menu_and_the_sheet_follow_a_finger(self):
         page = self.page()
         page.goto(f"/projects/{self.project['id']}")
@@ -399,6 +410,74 @@ class PhoneShellJourney(unittest.TestCase):
                 page.wait_for_load_state("networkidle")
                 self.assertEqual(page.evaluate(check), [], "fields below 16px make iOS zoom on focus")
 
+
+    def test_13_projects_list_rows_audience_and_search_are_full_touch_targets(self):
+        # #438: #370 dropped the list rules the Projects list used, leaving a bulleted, underlined 19 px link.
+        page = self.page({"width": 390, "height": 844})
+        page.goto("/projects")
+        row = page.get_by_role("list", name="Projects").get_by_role("link", name="Community garden sensors")
+        expect(row).to_be_visible()
+        look = row.evaluate("""(el) => ({ height: el.getBoundingClientRect().height,
+          underline: getComputedStyle(el).textDecorationLine, bullet: getComputedStyle(el.closest('ul')).listStyleType })""")
+        self.assertGreaterEqual(look["height"], 44, "a project row is a full touch target")
+        self.assertEqual(look["underline"], "none")
+        self.assertEqual(look["bullet"], "none")
+        # The search field is 44 px tall on touch.
+        page.goto("/search?q=garden")
+        field = page.locator("input.search__input")
+        expect(field).to_be_visible()
+        self.assertGreaterEqual(self.box(field)["height"], 44)
+
+    # #438 / #478 asked that the project header's small targets have whole 44 px hit squares that do not
+    # reach into each other. The final phone header (#341) moved the audience line into Details; its
+    # targets are the round Back, the title (the view menu) and Search, side by side.
+    def header_targets(self, page):
+        page.goto(f"/projects/{self.project['id']}")
+        header = page.locator("header.phead")
+        targets = {"Back": header.get_by_role("button", name="Back", exact=True),
+                   "title": page.get_by_role("heading", level=1).get_by_role("button"),
+                   "Search": header.get_by_role("button", name="Search", exact=True)}
+        for target in targets.values():
+            expect(target).to_be_visible()
+        self.settle(page)
+        return targets
+
+    def test_14_the_phone_header_targets_are_44_px(self):
+        for width in (320, 390, 640):
+            with self.subTest(width=width):
+                page = self.page({"width": width, "height": 844})
+                for name, target in self.header_targets(page).items():
+                    box = self.box(target)
+                    self.assertGreaterEqual(round(box["height"], 2), 44, f"{name} is at least 44 px tall")
+                    self.assertGreaterEqual(round(box["width"], 2), 44, f"{name} is at least 44 px wide")
+                expect(page.locator("header .top__audience")).to_have_count(0)
+
+    def test_15_every_pixel_across_a_header_target_belongs_to_it(self):
+        # Whole-pixel points: Chromium rounds a half-pixel point up, onto the next pixel.
+        selectors = {"Back": "button.phead__back", "title": "button.phead__menu", "Search": "button.phead__round:not(.phead__back)"}
+        for width in (320, 390, 640):
+            with self.subTest(width=width):
+                page = self.page({"width": width, "height": 844})
+                for name, target in self.header_targets(page).items():
+                    box = self.box(target)
+                    elsewhere = page.evaluate("""([left, width, y, selector]) => {
+                      const out = [];
+                      for (let step = 1; step < width - 1; step += 1) {
+                        const el = document.elementFromPoint(Math.round(left + step), Math.round(y));
+                        if (!(el && el.closest(selector))) out.push([step, el ? el.tagName + '.' + el.className : null]);
+                      }
+                      return out;
+                    }""", [box["x"], box["width"], box["y"] + box["height"] / 2, selectors[name]])
+                    self.assertEqual(elsewhere, [], f"every pixel across {name}'s middle row belongs to it at {width} px")
+
+    def test_16_a_real_tap_on_the_title_edges_opens_the_view_menu(self):
+        for offset in (-20, 20):
+            with self.subTest(offset=offset):
+                page = self.page({"width": 390, "height": 844})
+                title = self.header_targets(page)["title"]
+                box = self.box(title)
+                page.mouse.click(box["x"] + 20, box["y"] + box["height"] / 2 + offset)
+                expect(page.get_by_role("dialog").filter(has=page.locator(".phone-menu__list"))).to_be_visible()
 
 if __name__ == "__main__":
     unittest.main()

@@ -2,6 +2,7 @@ import { useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { useLocation, useRouteLoaderData } from 'react-router';
 import type { MeResponse } from '@flux/contracts';
 import { getMe } from '../api/auth';
+import { whenPageLive } from '../api/pageLeaving';
 import { Button } from '../ui';
 import { reloadRetention, reloadRetentionRevision, subscribeReloadRetention } from './reload-retention';
 
@@ -25,13 +26,16 @@ export function ReloadRecovery() {
     // Reset the check synchronously with the commit so a stale result never authorizes a reload.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setValidation({ known: false, actor: null, checking: true });
-    void getMe(scope.controller!.signal).then((actor) => {
-      if (!scope.live || lifetime.current !== scope || scope.request !== 0) return;
-      setValidation({ known: expected === null || identity(actor) === expected, actor, checking: false });
-    }, () => {
-      if (scope.live && lifetime.current === scope && scope.request === 0) setValidation({ known: false, actor: null, checking: false });
+    // The check is not started while the page is being left (#471); it starts once the page is live.
+    const waiting = whenPageLive(() => {
+      void getMe(scope.controller!.signal).then((actor) => {
+        if (!scope.live || lifetime.current !== scope || scope.request !== 0) return;
+        setValidation({ known: expected === null || identity(actor) === expected, actor, checking: false });
+      }, () => {
+        if (scope.live && lifetime.current === scope && scope.request === 0) setValidation({ known: false, actor: null, checking: false });
+      });
     });
-    return () => { scope.live = false; scope.controller?.abort(); if (lifetime.current === scope) lifetime.current = null; };
+    return () => { waiting(); scope.live = false; scope.controller?.abort(); if (lifetime.current === scope) lifetime.current = null; };
   }, [expected, location.key]);
 
   const risk = validation.known ? reloadRetention(validation.actor?.user.id ?? null) : 'unknown';

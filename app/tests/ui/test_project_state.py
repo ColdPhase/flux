@@ -7,6 +7,8 @@ Actual authenticated browser/API data; viewport captures are emulation, not devi
 """
 from __future__ import annotations
 
+import os
+
 import json
 import re
 import unittest
@@ -18,13 +20,20 @@ from test_app_shell import ORIGIN, UPSTREAM, open_details, shot, start_forwarder
 from test_project_surface import LONG_NAME
 
 
+UI_BROWSER = os.environ.get("FLUX_UI_BROWSER", "chromium")
+if UI_BROWSER not in ("chromium", "webkit"):
+    raise ValueError(f"FLUX_UI_BROWSER must be chromium or webkit, got {UI_BROWSER!r}")
+
+
 class ProjectStateJourney(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         if UPSTREAM:
             start_forwarder(ORIGIN, UPSTREAM)
         cls.pw = sync_playwright().start()
-        cls.browser = cls.pw.chromium.launch()
+        cls.browser = getattr(cls.pw, UI_BROWSER).launch()
+        assert cls.browser.browser_type.name == UI_BROWSER
+        print(f"ACTUAL_UI_ENGINE={cls.browser.browser_type.name}")
         expect.set_options(timeout=8000)
         cls.accounts = {}
         for name in ("Ada State", "Jonas Reader"):
@@ -127,12 +136,43 @@ class ProjectStateJourney(unittest.TestCase):
         page.reload()
         history = self.now_in_project(page).get_by_role("button", name=re.compile("^Earlier work"))
         expect(history).to_contain_text(task["title"])
+        expect(history).to_contain_text("1 completed task")
+        expect(history).not_to_contain_text("No decisions or work yet")
+        self.assertIsNone(history.get_attribute("title"))
         history.click()
         expect(page.locator("#details").get_by_role("heading", name=task["title"], exact=True)).to_be_visible()
         self.work(page, project, "Camera-only direction was not pursued", "not_pursued")
         page.get_by_role("button", name="Close details", exact=True).click()
         page.reload()
-        expect(self.now_in_project(page).get_by_role("button", name=re.compile("^Earlier work"))).to_have_count(1)
+        for width, height in ((1440, 900), (1568, 751), (1280, 800)):
+            with self.subTest(width=width, height=height):
+                page.set_viewport_size({"width": width, "height": height})
+                page.reload()
+                history = self.now_in_project(page).get_by_role("button", name=re.compile("^Earlier work"))
+                expect(history).to_have_count(1)
+                expect(history).to_contain_text("1 completed task · 1 not pursued")
+                # #340 moves this information into the drawn Details row. The old header-only
+                # no-fill hover/strict one-line rules are replaced by readable, unclipped
+                # Details metadata; the real counts, task identity and navigation remain.
+                meta = history.locator(".ov-row__s")
+                self.assert_text_is_unclipped(meta)
+                history.hover()
+                self.assertIsNone(history.get_attribute("title"))
+                geometry = history.evaluate("""e => { const r=e.getBoundingClientRect(), i=e.querySelector('.ov-row__ic').getBoundingClientRect(), t=e.querySelector('.ov-row__b').getBoundingClientRect();
+                    return {top:i.top-r.top,bottom:r.bottom-i.bottom,gap:t.left-i.right}; }""")
+                self.assertGreaterEqual(geometry["top"], 0, geometry)
+                self.assertGreaterEqual(geometry["bottom"], 0, geometry)
+                self.assertGreaterEqual(geometry["gap"], 8, geometry)
+                history.press("Tab")
+                page.keyboard.press("Shift+Tab")
+                self.assertTrue(history.evaluate("e => e.matches(':focus-visible')"))
+                # Focus is keyboard-driven; the shared outline colour transitions for120ms.
+                # Retain the visible-colour guard after its real transition, within600ms.
+                expect(history).to_have_css("outline-color", history.evaluate("e => getComputedStyle(e).color"), timeout=600)
+                ring = history.evaluate("""e => {const s=getComputedStyle(e);return {style:s.outlineStyle,width:parseFloat(s.outlineWidth),color:s.outlineColor};}""")
+                self.assertNotIn(ring["style"], ("none", "hidden"), ring)
+                self.assertGreater(ring["width"], 0, ring)
+                self.assertNotIn(ring["color"], ("transparent", "rgba(0, 0, 0, 0)"), ring)
         shot(page, "136-state-retained-history-desktop")
 
     def test_03_phone_and_tablet_readers_share_current_counts_and_reachable_details_without_write_access(self):
@@ -203,7 +243,7 @@ class ProjectStateJourney(unittest.TestCase):
             {"title": "Low-light sensor notes", "body": "ToF detects gestures without saving camera images.", "clientMutationId": str(uuid.uuid4())}, 201)
         reader.reload()
         # The existing root is in the one stream (UI116-1); the reader has no composer.
-        expect(reader.locator(".project-convo__message > p")).to_have_text("Sensor calibration plan for the library")
+        expect(reader.locator(".project-convo__message > .message-bubble > p")).to_have_text("Sensor calibration plan for the library")
         expect(reader.get_by_role("heading", name="No messages yet", exact=True)).to_have_count(0)
         expect(reader.locator("#project-composer")).to_have_count(0)
         expect(reader.get_by_text("Unsent sensor notes remain mine", exact=True)).to_have_count(0)
@@ -220,7 +260,7 @@ class ProjectStateJourney(unittest.TestCase):
         reader.goto(f"/projects/{project['id']}/conversations/{thread['id']}")
         thread_view = reader.get_by_role("complementary", name="Replies")
         expect(thread_view.locator(".thread__root")).to_contain_text("Sensor calibration plan for the library")
-        expect(reader.locator(".project-convo__message > p")).to_have_text("Sensor calibration plan for the library")
+        expect(reader.locator(".project-convo__message > .message-bubble > p")).to_have_text("Sensor calibration plan for the library")
         expect(thread_view.locator(".project-convo__read-only")).to_be_visible()
         expect(thread_view.locator(".project-convo__current-thread")).to_contain_text("Conversation · Sensor calibration")
         expect(thread_view.locator(".project-convo__current-thread")).not_to_contain_text("Replying to")
@@ -254,6 +294,34 @@ class ProjectStateJourney(unittest.TestCase):
                     page.get_by_role("button", name="Close details", exact=True).click()
                     if width in (744, 820, 1280):
                         shot(page, f"136-state-long-title-{len(name)}-{width}")
+
+    def test_05b_long_saved_rule_and_negative_result_keep_readable_metadata_in_details(self):
+        owner, project = self.scene()
+        token = "CALIBRATIONTRACEID" * 8
+        rule_title, result_title = "Library calibration policy " + token, "Optical field result " + token
+        rule = self.call(owner, "POST", f"/api/v1/projects/{project['id']}/decisions",
+            {"title": rule_title, "rationale": "Retain the measured native state"}, 201)
+        self.call(owner, "POST", f"/api/v1/decisions/{rule['id']}/accept", {"expectedVersion": rule["version"]})
+        self.call(owner, "POST", f"/api/v1/projects/{project['id']}/results",
+            {"title": result_title, "finding": "negative", "evidence": "Controlled field observation", "work": [], "sources": []}, 201)
+        for who, width, height, dark in (("Ada State", 1280, 800, False), ("Jonas Reader", 390, 844, True)):
+            with self.subTest(who=who, width=width):
+                page = self.page(who, width, height, dark)
+                page.goto(f"/projects/{project['id']}")
+                now = self.now_in_project(page)
+                rule_row = now.get_by_role("button").filter(has_text=rule_title)
+                result_row = now.get_by_role("button").filter(has_text=result_title)
+                expect(result_row).to_contain_text("Negative result")
+                for row in (rule_row, result_row):
+                    row.scroll_into_view_if_needed()
+                    self.assert_text_is_unclipped(row.locator(".ov-row__t"))
+                    # Any additional state metadata must remain readable; the semantic checks
+                    # do not require repeating a title that the row already communicates.
+                    if row.locator(".ov-row__s").count():
+                        self.assert_text_is_unclipped(row.locator(".ov-row__s"))
+                        wrapping = row.locator(".ov-row__s").evaluate("e => ({scroll:e.scrollWidth,width:e.clientWidth})")
+                        self.assertLessEqual(wrapping["scroll"], wrapping["width"] + 1, wrapping)
+                shot(page, f"136-state-long-metadata-{width}")
 
     def test_06_material_draft_hides_on_downgrade_and_returns_on_upgrade(self):
         owner, project = self.scene()

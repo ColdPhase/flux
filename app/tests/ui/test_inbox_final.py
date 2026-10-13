@@ -17,7 +17,7 @@ import uuid
 
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
-from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, box, shot, start_forwarder
+from test_app_shell import DESKTOP, ORIGIN, PHONE, UI_BROWSER, UPSTREAM, box, shot, start_forwarder
 
 PASSWORD = "a calm inbox for the garden"
 STAMP = int(time.time() * 1000)
@@ -54,7 +54,8 @@ class InboxFinal(unittest.TestCase):
         if UPSTREAM:
             start_forwarder(ORIGIN, UPSTREAM)
         cls.pw = sync_playwright().start()
-        cls.browser = cls.pw.chromium.launch()
+        cls.browser = getattr(cls.pw, UI_BROWSER).launch()
+        assert cls.browser.browser_type.name == UI_BROWSER
         expect.set_options(timeout=15000)
         for key, (name, email) in PEOPLE.items():
             context = cls.browser.new_context(base_url=ORIGIN)
@@ -206,6 +207,8 @@ class InboxFinal(unittest.TestCase):
         self.wait_for(lambda: self.kinds() == ["decision", "question", "blocked"], "Done to be stored")
         page.keyboard.press("z")
         expect(cards).to_have_count(4)
+        # An answered toast offers no Undo while it leaves, so the next toast's Undo is the only one (#393 review).
+        expect(page.get_by_role("button", name="Undo")).to_have_count(0)
         self.wait_for(lambda: self.kinds() == ["decision", "question", "blocked", "mention"], "Undo to restore it for good")
         # The Undo button does the same as Z.
         page.keyboard.press("e")
@@ -384,6 +387,8 @@ class InboxFinal(unittest.TestCase):
         for name in (re.compile("^Accept"), "Not now"):
             self.assertGreaterEqual(box(page, decision.get_by_role("button", name=name))["height"], 44)
         expect(decision.get_by_role("button", name="Discuss")).to_be_visible()
+        # The title opens the item in the detail sheet, so it is a touch target too.
+        self.assertGreaterEqual(box(page, decision.locator(".nyc__open"))["height"], 44)
         shot(page, "inbox-final-phone-390")
         # A swipe left reveals Not now and Done; Done applies at once and offers Undo.
         question = self.card(page, "asked you")
@@ -403,6 +408,8 @@ class InboxFinal(unittest.TestCase):
         menu = page.get_by_role("menu", name="Ask me again")
         expect(menu).to_be_visible()
         self.assertLessEqual(box(page, menu)["x"] + box(page, menu)["width"], PHONE["width"])
+        for item in menu.get_by_role("menuitem").all():
+            self.assertGreaterEqual(box(page, item)["height"], 44)
         page.keyboard.press("Escape")
         # Filters scroll sideways; tabs are touch sized.
         for tab in page.get_by_role("tablist", name="Show").get_by_role("tab").all():

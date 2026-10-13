@@ -33,12 +33,12 @@ export function text(value: unknown, field: string, max: number): string {
   return trimmed;
 }
 
-export function label(value: unknown): string | null {
+export function label(value: unknown, field = 'label'): string | null {
   if (value === undefined || value === null) return null;
-  if (typeof value !== 'string') throw new InvalidInputError('label must be a string or null');
+  if (typeof value !== 'string') throw new InvalidInputError(`${field} must be a string or null`);
   const trimmed = value.trim();
   if (!trimmed) return null;
-  if (trimmed.length > SKETCH_LIMITS.label) throw new InvalidInputError(`label must be at most ${SKETCH_LIMITS.label} characters`);
+  if (trimmed.length > SKETCH_LIMITS.label) throw new InvalidInputError(`${field} must be at most ${SKETCH_LIMITS.label} characters`);
   return trimmed;
 }
 

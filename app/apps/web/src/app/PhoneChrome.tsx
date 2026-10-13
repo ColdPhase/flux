@@ -59,10 +59,12 @@ export interface PhoneMenuItem { id: string; label: string; to: string; icon: Ic
  * The title is the view menu: it names the project (or Home, or the conversation) and the view
  * shown, and opens the places inside it. "Details, goal and people" is the last row.
  */
-export function PhoneTitleMenu({ title, subtitle, items, onDetails, detailsLabel = 'Details, goal and people', lead, matters }: {
+export function PhoneTitleMenu({ title, subtitle, items, onDetails, detailsLabel = 'Details, goal and people', lead, matters, adds = [] }: {
   title: string; subtitle: ReactNode; items: PhoneMenuItem[]; onDetails: (() => void) | null; detailsLabel?: string; lead?: ReactNode;
   /** A project's "What matters" (#133), kept reachable below Details now that the state row is gone. */
   matters?: { count: number; run: () => void };
+  /** "Add Map", "Add Wiki", "Add Agents" for a view the project has not added yet (#351), quiet at the end. */
+  adds?: { label: string; run: () => void }[];
 }) {
   const [open, setOpen] = useState(false);
   const titleId = useId();
@@ -103,6 +105,11 @@ export function PhoneTitleMenu({ title, subtitle, items, onDetails, detailsLabel
             {matters.count ? <span className="phone-menu__n">{matters.count} {matters.count === 1 ? 'needs' : 'need'} you</span> : null}
           </button>
         ) : null}
+        {adds.map((add) => (
+          <button key={add.label} type="button" className="phone-menu__item phone-menu__quiet" onClick={() => { setOpen(false); add.run(); }}>
+            <Icon name="plus" size={20} /><span className="phone-menu__l">{add.label}</span>
+          </button>
+        ))}
       </Overlay>
     </div>
   );
