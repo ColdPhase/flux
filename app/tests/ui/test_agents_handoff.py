@@ -780,7 +780,7 @@ class HandOffJourney(unittest.TestCase):
         expect(dialog.get_by_text(re.compile("queued behind", re.IGNORECASE))).to_have_count(0)
         before_expiry = len(reads)
         expect(dialog).to_contain_text('Work held on “Plan the next moisture reading”', timeout=12000)
-        expect(dialog.locator(".handoff__chosen .kreska")).to_have_attribute("data-expression", "asleep")
+        expect(dialog.locator(".handoff__chosen .kreska")).to_have_attribute("data-expression", "idle")
         shot(page, "handoff-known-expiry-held-desktop-light")
         self.assertEqual(len(reads), before_expiry, "aging session evidence polls no API")
         # The known eight-second expiry must also age the roster, count and selected detail before
@@ -791,7 +791,7 @@ class HandOffJourney(unittest.TestCase):
         expect(live).to_contain_text("Session open")
         expect(live).to_contain_text("Review request from Field laptop (Jonas Berg)")
         expect(live).to_contain_text("after the field reading")
-        expect(live.locator(".agents-row__icon")).to_have_attribute("data-expression", "asleep")
+        expect(live.locator(".agents-row__icon")).to_have_attribute("data-expression", "idle")
         expect(page.get_by_text("2 in this project", exact=True)).to_be_visible()
         detail = page.get_by_role("complementary").get_by_role("region", name="Now")
         expect(detail).to_contain_text("Planning · Work held · claim recorded")

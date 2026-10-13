@@ -114,7 +114,9 @@ class StopAndQuestions(unittest.TestCase):
         for scheme in ("light", "dark"):
             page = self.page("ada", scheme=scheme)
             page.goto(f"/projects/{self.ids['project']}/agents")
-            expect(page.locator("header.top").get_by_label("Current state")).to_contain_text("Task in progress: Calibrate the probes at two soil depths")
+            now = page.get_by_role("complementary", name="Claude Code agent, details").get_by_role("region", name="Now")
+            expect(now).to_contain_text("Calibrate the probes at two soil depths")
+            expect(now).to_contain_text("task in progress")
             row = page.locator(f'.agents-row[data-agent="{self.ids["agent"]}"]')
             expect(row).to_contain_text("Handed #1 · not signed in yet")
             stop = row.get_by_role("button", name="Stop Claude Code agent")
