@@ -11,7 +11,7 @@ import { listAssignedWork } from '../work/api';
 import { STATUS_LABEL } from '../work/format';
 import { useShellData } from './data';
 import { useShellActions } from './shellContext';
-import { WorkingAgent } from './WorkingAgent';
+import { HomeWorkingAgents, WorkingAgent } from './WorkingAgent';
 import '../notifications/needs-you.css';
 import './home.css';
 
@@ -97,6 +97,7 @@ export function Home() {
 
   return (
     <div className="pane-scroll"><div className="pane-in home">
+      <HomeWorkingAgents />
       <p className="home__date">{dateFormat.format(now)}</p>
       <h2 className="home__hello">{greeting(now.getHours())}, {firstName}</h2>
 

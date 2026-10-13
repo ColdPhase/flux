@@ -478,7 +478,7 @@ class AppShellJourney(unittest.TestCase):
         expect(page.get_by_role("heading", name="No docs yet")).to_be_visible()
         page.reload()
         expect(page).to_have_url(f"{ORIGIN}/docs")
-        expect(page.get_by_role("heading", level=1, name="Wiki")).to_be_visible()
+        expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
         # A signed-in person who opens sign-in is taken to their work.
         page.goto("/sign-in")
         expect(page).to_have_url(f"{ORIGIN}/")
@@ -515,23 +515,36 @@ class AppShellJourney(unittest.TestCase):
         self.assertEqual(marker, ["rgb(255, 255, 255)", True], "the current place is a raised white pill (F-026 §4)")
         expect(sidebar.get_by_text("No projects yet")).to_be_visible()
         expect(sidebar.get_by_role("button", name=re.compile("^New"))).to_have_attribute("aria-keyshortcuts", "C")
-        # Home as drawn (#342): no header row and no views; the page starts with the greeting.
-        expect(page.get_by_role("navigation", name="Views")).to_have_count(0)
-        self.assertLessEqual(box(page, page.locator("header.top"))["height"], 2, "no header row on Home")
-        expect(page.get_by_role("link", name="All my tasks")).to_be_visible()
-        # Home is the date, a greeting and what needs you (#342); the private notes moved to the Sketchbook.
-        expect(page.get_by_role("heading", level=2, name=re.compile(r"^Good (morning|afternoon|evening), Jo$"))).to_be_visible()
-        expect(page.get_by_text("Nothing needs you right now. Enjoy the quiet.")).to_be_visible()
-        shot(page, "desktop-1440-empty-light")
-        places.get_by_role("link", name="Sketchbook").click()
+        views = page.get_by_role("navigation", name="Views")
+        # Home's personal views sit in the header's one row; project-header views are covered by
+        # test_project_header.py and retain Conversation · Map · Tasks · Wiki · Agents (#340).
+        expect(page.locator("header.top").get_by_role("navigation", name="Views")).to_be_visible()
+        for label in ("Overview", "Map", "Tasks", "Wiki"):
+            expect(views.get_by_role("link", name=label, exact=True)).to_be_visible()
+        expect(views.get_by_role("link", name="Overview")).to_have_attribute("aria-current", "page")
+        expect(page.get_by_role("heading", level=2, name=re.compile("^Good "))).to_be_visible()
+        expect(page.get_by_role("region", name="Needs you")).to_be_visible()
+        expect(page.get_by_role("region", name="Projects")).to_be_visible()
+        shot(page, "desktop-1440-home-light")
+
+        # Private notes moved from Home's former conversation into Your notes in the Sketchbook.
+        views.get_by_role("link", name="Map", exact=True).click()
         expect(page).to_have_url(f"{ORIGIN}/map")
-        expect(page.get_by_role("heading", level=1, name="Sketchbook")).to_be_visible()
-        expect(page.get_by_role("heading", level=2, name="Your notes")).to_be_visible()
-        expect(page.get_by_role("heading", name="Nothing here yet")).to_be_visible()
+        expect(page.get_by_role("heading", name="Start a sketch")).to_be_visible()
         composer = page.get_by_label("Private note", exact=True)
-        # The composer always shows its audience.
-        expect(page.locator(".composer__audience")).to_contain_text("Only you")
-        shot(page, "desktop-1440-notes-empty-light")
+        # Your notes is a normal-flow section of the Sketchbook, not the old Home-pinned composer.
+        notes_section = page.get_by_role("region", name="Your notes")
+        expect(notes_section).to_be_visible()
+        expect(notes_section.get_by_role("heading", name="Your notes")).to_be_visible()
+        expect(composer).to_be_visible()
+        audience = notes_section.locator(".composer__audience")
+        expect(audience).to_be_visible()
+        expect(audience).to_contain_text("Only you")
+        self.assertTrue(composer.evaluate("el => el.closest('.ynotes') !== null"), "the private note composer belongs to Your notes")
+        composer_box = box(page, composer)
+        audience_box = box(page, audience)
+        self.assertLess(audience_box["y"] + audience_box["height"], composer_box["y"], "the privacy label sits above the input")
+        shot(page, "desktop-1440-sketchbook-empty-light")
 
         # Quick capture: Enter saves a private note, which survives a reload.
         save = page.get_by_role("button", name="Save note")
@@ -554,11 +567,13 @@ class AppShellJourney(unittest.TestCase):
         self.assertEqual(len(page.evaluate("fetch('/api/v1/workspaces').then(r => r.json())")), 1, "still one space")
         shot(page, "desktop-1440-light")
 
-        page.goto("/")
-        page.get_by_role("link", name="All my tasks").click()
+        indicator = page.locator(".top__views .ui-tabs__indicator")
+        before = indicator.evaluate("el => el.style.transform")
+        views.get_by_role("link", name="Tasks").click()
         expect(page).to_have_url(f"{ORIGIN}/tasks")
         expect(page.get_by_role("heading", name="Nothing is waiting for you")).to_be_visible()
-        places.get_by_role("link", name="Sketchbook").click()
+        self.assertNotEqual(before, indicator.evaluate("el => el.style.transform"), "the pill moves to the chosen view")
+        views.get_by_role("link", name="Map", exact=True).click()
         expect(page.get_by_role("heading", name="Start a sketch")).to_be_visible()
         shot(page, "desktop-1440-map-light")
 
@@ -600,6 +615,9 @@ class AppShellJourney(unittest.TestCase):
         rail.get_by_role("link", name="Home").click()
         expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
 
+    def test_04b_unknown_route_page(self) -> None:
+        """A fresh signed-in document renders the unknown-route state without coupling it to prior reads."""
+        page = self.page()
         page.goto("/nowhere")
         expect(page.get_by_role("heading", name="This page doesn’t exist")).to_be_visible()
 
