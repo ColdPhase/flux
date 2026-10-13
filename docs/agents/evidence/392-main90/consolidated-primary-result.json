@@ -1,0 +1,152 @@
+{
+  "scope": "Builder PRIMARY only; no independent approval/full490/release acceptance",
+  "baseline": "672f056d082d3dce7ae13c57d4a81550bb91467b",
+  "candidate": "6d6c1a5015f7ba2a507755e5b8d6a4016dd32c5e",
+  "candidateTree": "05284242f9d70d28d0cb5ed69ae6279c3423fb4b",
+  "session": 46273,
+  "pid": 1501538,
+  "project": "flux392-primary-1791742503-1501538",
+  "allPrimaryAssertions": "PASS",
+  "phaseCount": 44,
+  "expectedExitMetCount": 44,
+  "expectedNegativeExit1": [
+    "original59-plain-restore-refusal"
+  ],
+  "actualFailedPhases": [],
+  "originalDriverTerminal": 2,
+  "nativeComposeCleanup": 0,
+  "providerBindCleanupRecovery": 0,
+  "images": {
+    "baseline": {
+      "head": "672f056d082d3dce7ae13c57d4a81550bb91467b",
+      "image_id": "sha256:60a47c87bf83a5b08a3d53a678eebb227ab4fc88bad08420e805a3aa06c01b72"
+    },
+    "candidate": {
+      "head": "6d6c1a5015f7ba2a507755e5b8d6a4016dd32c5e",
+      "image_id": "sha256:2f4b3581a2e25cfebebc23939caa8c98a6e47fd2498b132204ac3de3ad721b34"
+    }
+  },
+  "sourceInputs": {
+    "baselineAppFiles": 1134,
+    "candidateAppFiles": 1142,
+    "mismatches": []
+  },
+  "retainedOriginalAssertionLines": 43,
+  "retainedOriginalPublicTableCount": 111,
+  "migrationCount": {
+    "baseline": 59,
+    "candidate": 61,
+    "onlyAdded": [
+      "0070_idp_standing.sql",
+      "0071_identity_confirmation.sql"
+    ],
+    "highest": 90
+  },
+  "externalProviderIdentityDigest": "566a0cdb68aef8206d9b827bd28c96227935740ed7eb2d208e5f7548e4f3142d",
+  "identityDigestEqualBeforeAndAfterActualRestore": true,
+  "signinGuardsExecuted": 4,
+  "retainedSigninObservations": {
+    "signin-observation-restore-refusal-reauth-1.json": {
+      "phase": "restore-refusal-reauth",
+      "attempt": 1,
+      "callbacks": [
+        {
+          "pathname": "/api/auth/callback/oidc-b70a8351b59d",
+          "status": 302,
+          "reason": null
+        }
+      ],
+      "me": {
+        "pathname": "/api/v1/me",
+        "status": 200,
+        "reason": null
+      },
+      "final": {
+        "pathname": "/",
+        "reason": null
+      }
+    },
+    "signin-observation-upgrade-refusal-reauth-1.json": {
+      "phase": "upgrade-refusal-reauth",
+      "attempt": 1,
+      "callbacks": [
+        {
+          "pathname": "/api/auth/callback/oidc-b70a8351b59d",
+          "status": 302,
+          "reason": null
+        }
+      ],
+      "me": {
+        "pathname": "/api/v1/me",
+        "status": 200,
+        "reason": null
+      },
+      "final": {
+        "pathname": "/",
+        "reason": null
+      }
+    },
+    "signin-observation-seed-1.json": {
+      "phase": "seed",
+      "attempt": 1,
+      "callbacks": [
+        {
+          "pathname": "/api/auth/callback/oidc-b70a8351b59d",
+          "status": 302,
+          "reason": null
+        }
+      ],
+      "me": {
+        "pathname": "/api/v1/me",
+        "status": 200,
+        "reason": null
+      },
+      "final": {
+        "pathname": "/",
+        "reason": null
+      }
+    }
+  },
+  "observationArtifactLimit": "Three files retained: repeated upgrade-refusal-reauth mode for final original59 recovery overwrote first upgrade trace; all four original /me200 guards independently executed and passed. No original failure hidden.",
+  "harnessExecuted": {
+    "run.py": "d474bab6f8456106cb8533069ea6cd447a55ee0720fde8e4f6d0bf8ff051b5ec",
+    "core.py": "63c4dc6f290c4a5e313b8c93cb8243d320ecec90c039d18c74e4d9d357dc934f",
+    "custody.mjs": "f38e6e8f7f532a48ea114a469399e88eff51400e24bd6e9e85a26377021f5a3b",
+    "source-audit.cjs": "0f1068f2215e8c0333ec4d61cde74a761b125780db4e43eb856cacdcea009abe",
+    "README.md": "cca91019d94928dc46c261d007cde8ecbd0e00299241c6e7f36dcede84665cac"
+  },
+  "cleanup": {
+    "project": "flux392-primary-1791742503-1501538",
+    "remaining": {
+      "containers": "",
+      "networks": "",
+      "volumes": "",
+      "image_tags": ""
+    },
+    "marker_removed": true,
+    "run_tags_removed": true,
+    "private_state_env_backups_removed": true,
+    "private_failure_evidence_retained": false,
+    "external_provider_bind_removed": true,
+    "provider_owner_marker_removed": true,
+    "external_provider_file_count": 3,
+    "provider_bind_path": "/tmp/flux392-custody-current/run-primary-1791742503-1501538/private/keycloak-data",
+    "original_driver_terminal": 2,
+    "provider_bind_cleanup_recovery_exit": 0
+  },
+  "remainingUnverified": [
+    "API33 freshcohort",
+    "OIDC14+restart2 freshcohort",
+    "remaining original S4/S2 outcomes under490",
+    "separate418/315/483 contracts",
+    "eligible independent currenthead review",
+    "integrated release acceptance"
+  ],
+  "earlierAttemptsRetained": [
+    87667,
+    4643,
+    32538
+  ],
+  "leaseReturned": true,
+  "time": "2026-10-11T18:26:34.957825+00:00"
+}

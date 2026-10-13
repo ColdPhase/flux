@@ -26,7 +26,7 @@ export function runtimeManagerPort(client: RuntimeManagerClient) {
       if (!answer.ok) return answer;
       if (answer.result.kind !== 'release') return { ok: false, code: 'protocol' };
       const { dataEmpty, logout } = answer.result;
-      return { ok: true, value: { dataEmpty, logoutFailed: Object.values(logout).some((step) => step !== 'ok') } };
+      return { ok: true, value: { dataEmpty, logoutFailed: Object.values(logout).some((step) => step !== 'ok' && step !== 'not_installed') } };
     },
   };
 }

@@ -1,0 +1,8 @@
+{
+  "phase": "verify-restored",
+  "checkpointRowsAndTimestampBytesRetained": true,
+  "backupCustodyExcluded": true,
+  "startupReconcilesNoToken": true,
+  "externalProviderIdentityDigest": "566a0cdb68aef8206d9b827bd28c96227935740ed7eb2d208e5f7548e4f3142d",
+  "externalProviderIdentityUnchanged": true
+}

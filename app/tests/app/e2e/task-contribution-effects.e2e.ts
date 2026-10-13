@@ -77,10 +77,11 @@ test('a saved blocker, a published result and a handoff appear as marked message
     // 1. Status alone is not a comment; the saved blocker is one, with exactly the saved text.
     await page.goto(`/projects/${place.id}/tasks`);
     await page.getByRole('button', { name: /Inspect the hinge/ }).click();
-    const status = page.getByRole('combobox', { name: 'Status' });
+    const status = page.getByRole('button', { name: 'Status', exact: true });
     await status.waitFor();
     const blockedStatus = page.waitForResponse((response) => response.request().method() === 'PATCH' && new URL(response.url()).pathname === `/api/v1/work/${task.id}`);
-    await status.selectOption('blocked');
+    await status.click();
+    await page.getByRole('menuitemradio', { name: 'Blocked' }).click();
     assert.equal((await blockedStatus).status(), 200);
     assert.equal((await discussion()).root, null, 'blocking alone is not a comment');
     const waiting = page.getByRole('textbox', { name: 'What is it waiting for?' });
