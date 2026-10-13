@@ -124,7 +124,7 @@ export function PhoneHomeLead() {
   return <span className="phead__logo"><FluxLogo size={28} /></span>;
 }
 
-interface Tile { id: string; label: string; icon: IconName; run: (() => void) | null; hint?: string }
+interface Tile { id: string; label: string; icon: IconName; run: (() => void) | null; hint?: string; pick?: boolean }
 
 /**
  * "+" Create (F-026 S2): Task, Thought, Message, Decision, File or link, Sketch. Each tile starts that
@@ -144,30 +144,25 @@ export function PhoneCreate({ open, onClose, projects, projectId, go, onThought 
   const inProject = chosen ? `/projects/${chosen.id}` : null;
   // The picker must open within the tap (WebKit refuses it later), so the sheet holds the file input.
   const fileInput = useRef<HTMLInputElement>(null);
-  const fileTarget = useRef<{ projectId: string; path: string } | null>(null);
   const toComposer = (files: File[]) => {
-    const target = fileTarget.current;
-    fileTarget.current = null;
-    if (!target) return;
-    handFilesToComposer(me.user.id, target.projectId, files);
-    onClose(); go(`${target.path}?compose=${files.length ? 'files' : 'link'}`);
+    if (!chosen || !inProject) return;
+    handFilesToComposer(me.user.id, chosen.id, files);
+    onClose(); go(`${inProject}?compose=${files.length ? 'files' : 'link'}`);
   };
-  const toComposerRef = useRef(toComposer);
-  useEffect(() => { toComposerRef.current = toComposer; });
+  const [pickerOpen, setPickerOpen] = useState(false);
   useEffect(() => {
     const input = fileInput.current;
-    if (!input) return;
-    const cancelled = () => toComposerRef.current([]);
+    if (!input || !pickerOpen) return;
+    const cancelled = () => { setPickerOpen(false); toComposer([]); };
     input.addEventListener('cancel', cancelled);
     return () => input.removeEventListener('cancel', cancelled);
-  }, [open]);
+  });
   const tiles: Tile[] = [
     { id: 'task', label: 'Task', icon: 'plus', run: to(inProject && `${inProject}/tasks?new=task`), hint: 'needs a project' },
     { id: 'thought', label: 'Thought', icon: 'edit', run: () => { onClose(); onThought(); } },
     { id: 'message', label: 'Message', icon: 'chat', run: to('/dm/new') },
     { id: 'decision', label: 'Decision', icon: 'rule', run: to(inProject && `${inProject}?open=propose-decision`), hint: 'needs a project' },
-    { id: 'file', label: 'File or link', icon: 'clip', hint: 'needs a project',
-      run: chosen && inProject ? () => { fileTarget.current = { projectId: chosen.id, path: inProject }; fileInput.current?.click(); } : null },
+    { id: 'file', label: 'File or link', icon: 'clip', hint: 'needs a project', pick: true, run: inProject ? () => setPickerOpen(true) : null },
     { id: 'sketch', label: 'Sketch', icon: 'shape', run: to(inProject ? `${inProject}/map` : '/map') },
   ];
   return (
@@ -187,12 +182,12 @@ export function PhoneCreate({ open, onClose, projects, projectId, go, onThought 
         ) : null}
       </div>
       <input ref={fileInput} className="ui-vh" type="file" multiple tabIndex={-1} aria-hidden="true"
-        onChange={(event) => { const files = [...event.currentTarget.files ?? []]; event.currentTarget.value = ''; toComposer(files); }} />
+        onChange={(event) => { const files = [...event.currentTarget.files ?? []]; event.currentTarget.value = ''; setPickerOpen(false); toComposer(files); }} />
       <ul className="phone-create__grid">
         {tiles.map((tile) => (
           <li key={tile.id}>
             <button type="button" className="phone-create__item" aria-disabled={tile.run ? undefined : true}
-              onClick={() => { if (tile.run) tile.run(); }}>
+              onClick={() => { if (!tile.run) return; tile.run(); if (tile.pick) fileInput.current?.click(); }}>
               <Icon name={tile.icon} size={24} /><span>{tile.label}</span>
               {!tile.run && tile.hint ? <small>{tile.hint}</small> : null}
             </button>
