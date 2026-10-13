@@ -491,17 +491,26 @@ class AppShellJourney(unittest.TestCase):
         expect(sidebar.get_by_text("No projects yet")).to_be_visible()
         expect(sidebar.get_by_role("button", name=re.compile("^New"))).to_have_attribute("aria-keyshortcuts", "C")
         views = page.get_by_role("navigation", name="Views")
-        # The views sit in the header's one row as a segmented control (F-026 §4, #340).
+        # Home's personal views sit in the header's one row; project-header views are covered by
+        # test_project_header.py and retain Conversation · Map · Tasks · Wiki · Agents (#340).
         expect(page.locator("header.top").get_by_role("navigation", name="Views")).to_be_visible()
         for label in ("Overview", "Map", "Tasks", "Wiki"):
             expect(views.get_by_role("link", name=label, exact=True)).to_be_visible()
         expect(views.get_by_role("link", name="Overview")).to_have_attribute("aria-current", "page")
-        expect(page.get_by_role("heading", name="Nothing here yet")).to_be_visible()
+        expect(page.get_by_role("heading", level=2, name=re.compile("^Good "))).to_be_visible()
+        expect(page.get_by_role("region", name="Needs you")).to_be_visible()
+        expect(page.get_by_role("region", name="Projects")).to_be_visible()
+        shot(page, "desktop-1440-home-light")
+
+        # Private notes moved from Home's former conversation into Your notes in the Sketchbook.
+        views.get_by_role("link", name="Map", exact=True).click()
+        expect(page).to_have_url(f"{ORIGIN}/map")
+        expect(page.get_by_role("heading", name="Start a sketch")).to_be_visible()
         composer = page.get_by_label("Private note", exact=True)
-        # The composer sits at the bottom of the work area and always shows its audience.
+        # The private-notes composer sits at the bottom of the Sketchbook and always shows its audience.
         self.assertGreater(box(page, composer)["y"], DESKTOP["height"] - 130)
         expect(page.locator(".composer__audience")).to_contain_text("Only you")
-        shot(page, "desktop-1440-notes-empty-light")
+        shot(page, "desktop-1440-sketchbook-empty-light")
 
         # Quick capture: Enter saves a private note, which survives a reload.
         save = page.get_by_role("button", name="Save note")
@@ -530,7 +539,7 @@ class AppShellJourney(unittest.TestCase):
         expect(page).to_have_url(f"{ORIGIN}/tasks")
         expect(page.get_by_role("heading", name="Nothing is waiting for you")).to_be_visible()
         self.assertNotEqual(before, indicator.evaluate("el => el.style.transform"), "the pill moves to the chosen view")
-        views.get_by_role("link", name="Map").click()
+        views.get_by_role("link", name="Map", exact=True).click()
         expect(page.get_by_role("heading", name="Start a sketch")).to_be_visible()
         shot(page, "desktop-1440-map-light")
 
