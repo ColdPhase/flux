@@ -361,7 +361,9 @@ export function TaskBoard({ project, openRead, meId, mine, query, writable, revi
     const objects = relationSelector ? relationSelector.split(' ').map((url) => new URL(url, window.location.origin).searchParams.get('objects')!) : [];
     return Promise.all(objects.map((set) => getWorkRelations(project.id, { objects: set, role: 'source', limit: SOURCE_EDGES }, signal)));
   }, [project.id, relationSelector]);
-  const relationRead = useWorkRead<WorkRelations[]>(relationScope, loadRelations, revision, idle);
+  // Read once every column has its rows, so the selector does not change (and cancel itself) column by column.
+  const columnsRead = !!(openPage && progressPage && blockedPage && finishedPage);
+  const relationRead = useWorkRead<WorkRelations[]>(relationScope, loadRelations, revision, idle && columnsRead);
   const sourceLinks = relationRead.phase === 'ready' || relationRead.phase === 'refreshing' ? relationRead.value.flatMap((page) => page.items) : [];
   const origins = new Map<string, Origin | null>();
   const originOf = (id: string) => {

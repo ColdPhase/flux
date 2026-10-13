@@ -51,6 +51,7 @@ RESULT = "The camera caught 38% of gestures at 5 lux"
 class TasksBoardJourney(unittest.TestCase):
     """Tests run in name order and share three accounts, an agent and two projects."""
 
+    maxDiff = None
     pw = None
     browser: Browser
     states: dict[str, dict] = {}
