@@ -2,6 +2,7 @@ import {
   WORKSPACES_PATH, conversationMessagesPath, conversationPath, materialPath,
   materialVersionPath, projectConversationRootsPath, projectConversationsPath, projectMaterialsPath, projectPath, projectTaskNoticesPath, workspaceProjectsPath,
   type Conversation, type ConversationMessage, type ConversationRootWindow, type ConversationSummary, type CreateMaterialCommand,
+  type ProjectTemplate, type ProjectViewId, projectViewsPath,
   type Draft, type WorkspaceMember, type Material, type MaterialOrDoc, type MaterialVersion, type Page, type Project, type SendMessageCommand, type TaskCreationNotice, type Workspace, workspaceDraftsPath,
   IDEMPOTENCY_KEY_HEADER,
 } from '@flux/contracts';
@@ -23,8 +24,11 @@ export async function listAccessibleProjects(signal?: AbortSignal) {
 // First-run creations carry the intent's Idempotency-Key: a retry after a lost 201 replays it instead of duplicating.
 export const createWorkspace = (name: string, idempotencyKey: string) =>
   request<Workspace>(WORKSPACES_PATH, { method: 'POST', body: { name }, headers: { [IDEMPOTENCY_KEY_HEADER]: idempotencyKey } });
-export const createProject = (workspaceId: string, name: string, idempotencyKey: string) =>
-  request<Project>(workspaceProjectsPath(workspaceId), { method: 'POST', body: { name, visibility: 'restricted' }, headers: { [IDEMPOTENCY_KEY_HEADER]: idempotencyKey } });
+export const createProject = (workspaceId: string, name: string, template: ProjectTemplate, idempotencyKey: string) =>
+  request<Project>(workspaceProjectsPath(workspaceId), { method: 'POST', body: { name, visibility: 'restricted', template }, headers: { [IDEMPOTENCY_KEY_HEADER]: idempotencyKey } });
+/** Adds Map, Wiki or Agents to a project (#351); adding one it has changes nothing. */
+export const addProjectView = (projectId: string, view: ProjectViewId) =>
+  request<Project>(projectViewsPath(projectId), { method: 'POST', body: { view }, headers: { [IDEMPOTENCY_KEY_HEADER]: crypto.randomUUID() } });
 export const getProject = (id: string, signal?: AbortSignal) => request<Project>(projectPath(id), { signal });
 export const listConversations = (projectId: string, signal?: AbortSignal, offset = 0) => request<Page<ConversationSummary>>(`${projectConversationsPath(projectId)}?limit=100&offset=${offset}`, { signal });
 /** The project's one stream (UI116-1): the newest roots, or those before a conversation id. */

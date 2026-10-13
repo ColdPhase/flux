@@ -35,7 +35,7 @@ the independently owned Stop/questions or Agents follow-up branches.
 - **C-4 — Preserve main's verification and migrations.** Retain both changelog
   entries, main's audience helpers and all clean merges. Update only the two newly
   merged adaptive expectations from “Working together” to “Agents”; retain every
-  #454 guard. Migration 0062's forward bytes and schema version 72 stay unchanged.
+  #454 guard. Migration 0062's forward bytes stay unchanged. This note was written against main schema 72; the current composed main schema is 91, and the agent migration does not alter that version contract.
 
 ## Evidence required before merge
 

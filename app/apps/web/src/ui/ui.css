@@ -142,6 +142,18 @@ svg { flex: none; }
   transform-origin: 0 0; pointer-events: none; opacity: 0; transition: transform var(--dur-3) var(--ease-glide), opacity var(--dur-1) ease;
 }
 @media (pointer: coarse) { .ui-tabs__tab { min-height: 44px; padding: 0 12px; --tab-pad: 12px; } }
+/* Segmented views (F-026 §4): a soft pill track; the current view is a raised white pill that slides. */
+.ui-tabs--seg .ui-tabs__bar { width: max-content; max-width: 100%; gap: 2px; padding: 3px; border-radius: var(--r-pill); background: var(--sub); box-shadow: var(--sh-seg); }
+.ui-tabs--seg .ui-tabs__tab { z-index: 1; min-height: 30px; padding: 0 12px; border-radius: var(--r-pill); font-size: var(--fs-sm); font-weight: 500; color: var(--t2); }
+.ui-tabs--seg .ui-tabs__tab::after { display: none; }
+.ui-tabs--seg .ui-tabs__tab[aria-current="page"], .ui-tabs--seg .ui-tabs__tab[aria-selected="true"] { color: var(--t1); font-weight: 600; }
+.ui-tabs--seg .ui-tabs__label::after { font-weight: 600; }
+.ui-tabs--seg .ui-tabs__tab, .ui-tabs--seg .ui-tabs__tab:focus-visible { outline-offset: -2px; }
+.ui-tabs--seg .ui-tabs__indicator {
+  top: 3px; bottom: 3px; height: auto; width: 0; border-radius: var(--r-pill); background: var(--el); box-shadow: var(--sh-raise);
+  transition: transform var(--dur-3) var(--ease-glide), width var(--dur-3) var(--ease-glide), opacity var(--dur-1) ease;
+}
+@media (pointer: coarse) { .ui-tabs--seg .ui-tabs__tab { min-height: 44px; } }
 
 /* ---------- Bottom view bar (phone, #266 PF-1) ---------- */
 .ui-bottomnav {

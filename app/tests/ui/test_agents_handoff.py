@@ -27,6 +27,13 @@ def shot(page: Page, name: str) -> None:
     save_shot(page, name if UI_BROWSER == "chromium" else f"{name}-{UI_BROWSER}")
 
 
+def assert_phone_sheet(dialog, page) -> None:
+    metrics = dialog.evaluate("""el => { const rect = el.getBoundingClientRect(); return {top: rect.top, radius: parseFloat(getComputedStyle(el).borderTopLeftRadius)}; }""")
+    if metrics["top"] <= 80 or metrics["radius"] <= 20:
+        raise AssertionError(f"phone hand-off sheet should leave the project visible above rounded corners: {metrics}")
+    expect(page.get_by_role("heading", level=1, name="Agents")).to_be_visible()
+
+
 class HandOffJourney(unittest.TestCase):
     """Tests run in name order and share two accounts, one project, three agents and four tasks."""
 
@@ -284,6 +291,7 @@ class HandOffJourney(unittest.TestCase):
             button.tap()
             dialog = page.get_by_role("dialog", name="Hand off a task")
             expect(dialog.get_by_text("Step 1 of 2")).to_be_visible()
+            assert_phone_sheet(dialog, page)
             dialog.get_by_label("Task", exact=True).select_option(label="#5 · Order spare batteries")
             dialog.locator("label.handoff__agent", has_text="Claude Code agent").tap()
             for name in ("Next",):
@@ -293,6 +301,7 @@ class HandOffJourney(unittest.TestCase):
             shot(page, f"handoff-step1-phone-{scheme}")
             dialog.get_by_role("button", name="Next").tap()
             expect(dialog.get_by_text("Step 2 of 2")).to_be_visible()
+            assert_phone_sheet(dialog, page)
             shot(page, f"handoff-step2-phone-{scheme}")
             page.keyboard.press("Escape")
             expect(page.get_by_role("dialog")).to_have_count(0)

@@ -15,12 +15,16 @@ import unittest
 
 from playwright.sync_api import Browser, BrowserContext, Page, Route, expect, sync_playwright
 
-from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
+from test_app_shell import DESKTOP, ORIGIN, PHONE, UI_BROWSER, UPSTREAM, shot as save_shot, start_forwarder
 
 PASSWORD = "stop it before it goes on"
 STAMP = int(time.time() * 1000)
 ADA = {"name": "Ada Kowalska", "email": f"ada.stop+{STAMP}@example.test"}
 JONAS = {"name": "Jonas Berg", "email": f"jonas.stop+{STAMP}@example.test"}
+
+
+def shot(page: Page, name: str) -> None:
+    save_shot(page, name if UI_BROWSER == "chromium" else f"{name}-{UI_BROWSER}")
 
 
 class StopAndQuestions(unittest.TestCase):
@@ -37,7 +41,10 @@ class StopAndQuestions(unittest.TestCase):
         if UPSTREAM:
             start_forwarder(ORIGIN, UPSTREAM)
         cls.pw = sync_playwright().start()
-        cls.browser = cls.pw.chromium.launch()
+        cls.browser = getattr(cls.pw, UI_BROWSER).launch()
+        if cls.browser.browser_type.name != UI_BROWSER:
+            raise AssertionError(f"Expected {UI_BROWSER}, launched {cls.browser.browser_type.name}")
+        print(f"\n  Stop/questions browser: {cls.browser.browser_type.name}")
         expect.set_options(timeout=8000)
 
     @classmethod

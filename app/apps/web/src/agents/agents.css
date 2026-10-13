@@ -129,6 +129,10 @@
   .handoff { padding-bottom: calc(var(--s-5) + env(safe-area-inset-bottom)); }
   .handoff__foot .ui-btn { min-height: var(--ctl-lg); flex: 1; }
   .handoff__foot .ui-btn--primary { flex: 2; }
+  .ui-overlay--bottom .ui-overlay__surface.handoff-sheet {
+    inset: auto 0 0; height: min(82dvh, 760px); max-height: calc(100dvh - env(safe-area-inset-top) - 12px);
+    border-radius: var(--r-sheet) var(--r-sheet) 0 0; box-shadow: var(--sh-pop);
+  }
 }
 
 .agents__task {
@@ -200,7 +204,6 @@
 .agents-detail__thread { padding: 0; border: 0; background: none; color: inherit; font: inherit; font-weight: 600; text-align: left; cursor: pointer; text-decoration: underline; text-decoration-color: var(--line2); text-underline-offset: 3px; min-width: 0; overflow-wrap: anywhere; }
 .agents-detail__recent .agents-detail__thread { font-weight: 400; }
 .agents-detail__thread:focus-visible { outline: 2px solid var(--t1); outline-offset: 2px; }
-
 /* Stop (S13, #347): the filled square of the sidebar card with its word; a row has it at its right edge, the panel in its actions. */
 .agents-row { display: flex; align-items: center; }
 .agents-row__btn { flex: 1; min-width: 0; width: auto; }
