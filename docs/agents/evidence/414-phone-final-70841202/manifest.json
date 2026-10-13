@@ -1,0 +1,429 @@
+{
+  "source_pr": 414,
+  "source_branch": "claude-hubert/341-phone-shell",
+  "source_head": "7084120254f35c44ca542b29941aee873abe1938",
+  "base": "main at 4a696b6679eea6dcdd1e2de15ffcc5011b6e54e8",
+  "capture_engine": "Playwright Chromium via Docker",
+  "browser_zoom": "100%",
+  "production_equivalence": "The 46f635e9 captures have the same production source as 70841202; 70841202 changes only the PhoneFinal09 test expectation.",
+  "frames": [
+    {
+      "file": "screens/341-home-320-light.webp",
+      "scenario": "new-account Home capsule; no work return point in fixture",
+      "capture_source_sha": "46f635e9234dceca5eab453d8a12754c3c74ba48",
+      "product_source_sha": "7084120254f35c44ca542b29941aee873abe1938",
+      "pixel_dimensions": [
+        320,
+        568
+      ],
+      "css_viewport": [
+        320,
+        568
+      ],
+      "device_scale_factor": 1,
+      "theme": "light",
+      "source_png_sha256": "391b3a5309d810a5d968dba17b9d694695c0b0805f21c6bd2a990ef232266a48",
+      "lossless_webp_sha256": "cf988675caa2d2361e9baa703a600e86a5796b45d7c5c6b4198ff4c80110b475",
+      "pixel_identical_lossless": true
+    },
+    {
+      "file": "screens/341-home-320-dark.webp",
+      "scenario": "new-account Home capsule; no work return point in fixture",
+      "capture_source_sha": "46f635e9234dceca5eab453d8a12754c3c74ba48",
+      "product_source_sha": "7084120254f35c44ca542b29941aee873abe1938",
+      "pixel_dimensions": [
+        320,
+        568
+      ],
+      "css_viewport": [
+        320,
+        568
+      ],
+      "device_scale_factor": 1,
+      "theme": "dark",
+      "source_png_sha256": "1ccb1cc6c554d5f80b4b2908a3c416961af78343a25c8adfc64566719f85264f",
+      "lossless_webp_sha256": "edeeea16cc946a8a26c511e853d2a2524e117db9574308563bc15b560cad4183",
+      "pixel_identical_lossless": true
+    },
+    {
+      "file": "screens/341-viewsmenu-320-light.webp",
+      "scenario": "project Tasks view with title view menu open",
+      "capture_source_sha": "46f635e9234dceca5eab453d8a12754c3c74ba48",
+      "product_source_sha": "7084120254f35c44ca542b29941aee873abe1938",
+      "pixel_dimensions": [
+        320,
+        568
+      ],
+      "css_viewport": [
+        320,
+        568
+      ],
+      "device_scale_factor": 1,
+      "theme": "light",
+      "source_png_sha256": "9d5d5eb6accb0083219f0d6a044be6c58c7ddc9429c3ea3942f0f52a3450461b",
+      "lossless_webp_sha256": "f40b3d5c55d2c1eae670bac1c3d8b8d281fc1048dd5d7b82d193e7e35a8e06f9",
+      "pixel_identical_lossless": true
+    },
+    {
+      "file": "screens/341-viewsmenu-320-dark.webp",
+      "scenario": "project Tasks view with title view menu open",
+      "capture_source_sha": "46f635e9234dceca5eab453d8a12754c3c74ba48",
+      "product_source_sha": "7084120254f35c44ca542b29941aee873abe1938",
+      "pixel_dimensions": [
+        320,
+        568
+      ],
+      "css_viewport": [
+        320,
+        568
+      ],
+      "device_scale_factor": 1,
+      "theme": "dark",
+      "source_png_sha256": "da66d56e84482990b3fa27e4319499276970d86336c65ea682f48cc6cc38c5a8",
+      "lossless_webp_sha256": "4fd9a2823c561259e2101e1d843ce921966a4848592c564b5df7f8419981bbe8",
+      "pixel_identical_lossless": true
+    },
+    {
+      "file": "screens/341-viewsmenu-390-light.webp",
+      "scenario": "project Tasks view with title view menu open",
+      "capture_source_sha": "46f635e9234dceca5eab453d8a12754c3c74ba48",
+      "product_source_sha": "7084120254f35c44ca542b29941aee873abe1938",
+      "pixel_dimensions": [
+        390,
+        844
+      ],
+      "css_viewport": [
+        390,
+        844
+      ],
+      "device_scale_factor": 1,
+      "theme": "light",
+      "source_png_sha256": "5d2b26a7a3a91c4bfc4f704c25c1538896f1612731dbac3a1df984c5402c8f6b",
+      "lossless_webp_sha256": "1c1f82fcdf4293184add1f0a8b12de9164da590990c9b1a725ade03dee758689",
+      "pixel_identical_lossless": true
+    },
+    {
+      "file": "screens/341-viewsmenu-390-dark.webp",
+      "scenario": "project Tasks view with title view menu open",
+      "capture_source_sha": "46f635e9234dceca5eab453d8a12754c3c74ba48",
+      "product_source_sha": "7084120254f35c44ca542b29941aee873abe1938",
+      "pixel_dimensions": [
+        390,
+        844
+      ],
+      "css_viewport": [
+        390,
+        844
+      ],
+      "device_scale_factor": 1,
+      "theme": "dark",
+      "source_png_sha256": "8ccf9cff26626e959da3ec781450eb3b80e9af3210919003e21ddcd20a094a79",
+      "lossless_webp_sha256": "a133019ce7f40ba1c812e03f05370d20049fc567ce0dda45331cc4c0b7b69e2d",
+      "pixel_identical_lossless": true
+    },
+    {
+      "file": "screens/341-create-320-light.webp",
+      "scenario": "Create sheet with selected project and text path",
+      "capture_source_sha": "46f635e9234dceca5eab453d8a12754c3c74ba48",
+      "product_source_sha": "7084120254f35c44ca542b29941aee873abe1938",
+      "pixel_dimensions": [
+        320,
+        568
+      ],
+      "css_viewport": [
+        320,
+        568
+      ],
+      "device_scale_factor": 1,
+      "theme": "light",
+      "source_png_sha256": "a5283a2882a75bde4f18a98044b7f860158a9eb23631a396eb0096e4b1e028c8",
+      "lossless_webp_sha256": "6945cbda9e209763d63f1c392bfa51d7327ba2c97a16650a607b14ead161cf02",
+      "pixel_identical_lossless": true
+    },
+    {
+      "file": "screens/341-create-320-dark.webp",
+      "scenario": "Create sheet with selected project and text path",
+      "capture_source_sha": "46f635e9234dceca5eab453d8a12754c3c74ba48",
+      "product_source_sha": "7084120254f35c44ca542b29941aee873abe1938",
+      "pixel_dimensions": [
+        320,
+        568
+      ],
+      "css_viewport": [
+        320,
+        568
+      ],
+      "device_scale_factor": 1,
+      "theme": "dark",
+      "source_png_sha256": "70c66855da8bd5ac658c4ab0941c15437535d8ab4befcda1e35438487b4e1bf1",
+      "lossless_webp_sha256": "bfea20231cffb6cf69253c293210fbe31957dab8182cacb0d1801f33da1d8b92",
+      "pixel_identical_lossless": true
+    },
+    {
+      "file": "screens/341-create-390-light.webp",
+      "scenario": "Create sheet with selected project and text path",
+      "capture_source_sha": "46f635e9234dceca5eab453d8a12754c3c74ba48",
+      "product_source_sha": "7084120254f35c44ca542b29941aee873abe1938",
+      "pixel_dimensions": [
+        390,
+        844
+      ],
+      "css_viewport": [
+        390,
+        844
+      ],
+      "device_scale_factor": 1,
+      "theme": "light",
+      "source_png_sha256": "617f71e7c0491d409344ea7ea1cfcb7edaebc529345b0efcbd57d87781b7ed1b",
+      "lossless_webp_sha256": "912c5a2b0c76d14b4d2c229153b9114ce7c6619fa577075b59955d908c981a87",
+      "pixel_identical_lossless": true
+    },
+    {
+      "file": "screens/341-create-390-dark.webp",
+      "scenario": "Create sheet with selected project and text path",
+      "capture_source_sha": "46f635e9234dceca5eab453d8a12754c3c74ba48",
+      "product_source_sha": "7084120254f35c44ca542b29941aee873abe1938",
+      "pixel_dimensions": [
+        390,
+        844
+      ],
+      "css_viewport": [
+        390,
+        844
+      ],
+      "device_scale_factor": 1,
+      "theme": "dark",
+      "source_png_sha256": "bb2ddbaa84eb65dff05f95f6b9342d7f8bb6cc29a4775a721bfcf574da550a20",
+      "lossless_webp_sha256": "192cc9b3976fe16a071f381dfcc8614f0461dfad80e79572568adaa95af5f9c5",
+      "pixel_identical_lossless": true
+    },
+    {
+      "file": "screens/341-conversation-320-light.webp",
+      "scenario": "full-screen project conversation and composer",
+      "capture_source_sha": "46f635e9234dceca5eab453d8a12754c3c74ba48",
+      "product_source_sha": "7084120254f35c44ca542b29941aee873abe1938",
+      "pixel_dimensions": [
+        320,
+        568
+      ],
+      "css_viewport": [
+        320,
+        568
+      ],
+      "device_scale_factor": 1,
+      "theme": "light",
+      "source_png_sha256": "03b8d56f8278ec0214e426d415bfc97d55889b1f12b3be7e596cacc55486ba3f",
+      "lossless_webp_sha256": "a37a2d933538f480f5668bb574c5e3a3de569d301a452733b361915d96636ed7",
+      "pixel_identical_lossless": true
+    },
+    {
+      "file": "screens/341-conversation-320-dark.webp",
+      "scenario": "full-screen project conversation and composer",
+      "capture_source_sha": "46f635e9234dceca5eab453d8a12754c3c74ba48",
+      "product_source_sha": "7084120254f35c44ca542b29941aee873abe1938",
+      "pixel_dimensions": [
+        320,
+        568
+      ],
+      "css_viewport": [
+        320,
+        568
+      ],
+      "device_scale_factor": 1,
+      "theme": "dark",
+      "source_png_sha256": "4720aaa65d9a6f25b246ddf02f76a686420215297be94fc950a04c4df377e025",
+      "lossless_webp_sha256": "9aa94e7cce9c6b4af9b0d27341c27e69523cc06d31edf8152cd1d88570c45692",
+      "pixel_identical_lossless": true
+    },
+    {
+      "file": "screens/341-conversation-390-light.webp",
+      "scenario": "full-screen project conversation and composer",
+      "capture_source_sha": "46f635e9234dceca5eab453d8a12754c3c74ba48",
+      "product_source_sha": "7084120254f35c44ca542b29941aee873abe1938",
+      "pixel_dimensions": [
+        390,
+        844
+      ],
+      "css_viewport": [
+        390,
+        844
+      ],
+      "device_scale_factor": 1,
+      "theme": "light",
+      "source_png_sha256": "700599a3aaa81d34a2d8792a304ce2004964248619661b8b067c59a1c9ba7fb8",
+      "lossless_webp_sha256": "3e85c7e70a7073c916895d5ab3cb5d4cead36fe73a380c4d8d599f1745f0648b",
+      "pixel_identical_lossless": true
+    },
+    {
+      "file": "screens/341-conversation-390-dark.webp",
+      "scenario": "full-screen project conversation and composer",
+      "capture_source_sha": "46f635e9234dceca5eab453d8a12754c3c74ba48",
+      "product_source_sha": "7084120254f35c44ca542b29941aee873abe1938",
+      "pixel_dimensions": [
+        390,
+        844
+      ],
+      "css_viewport": [
+        390,
+        844
+      ],
+      "device_scale_factor": 1,
+      "theme": "dark",
+      "source_png_sha256": "dc7ffb380015299dcbbacc2c44d9ad5b7bf07de4acc190733e9ad049dfd9ede2",
+      "lossless_webp_sha256": "b05eb19fc51a5a246d1eca340a5ea9f645edd88b1302872a43550eb46da14c28",
+      "pixel_identical_lossless": true
+    },
+    {
+      "file": "screens/question-card-phone.webp",
+      "scenario": "question card open in phone project conversation",
+      "capture_source_sha": "46f635e9234dceca5eab453d8a12754c3c74ba48",
+      "product_source_sha": "7084120254f35c44ca542b29941aee873abe1938",
+      "pixel_dimensions": [
+        1170,
+        2532
+      ],
+      "css_viewport": [
+        390,
+        844
+      ],
+      "device_scale_factor": 3,
+      "theme": "light",
+      "source_png_sha256": "f62f29e33224403182df6c52a599b873e4e313b30d2d58b6c05b711c9e3de938",
+      "lossless_webp_sha256": "0c4edaa3b88fa22fc1d4b9916515ad2509849f1d68d04c7f2cf964f2964235b6",
+      "pixel_identical_lossless": true
+    },
+    {
+      "file": "screens/stop-conversation-header-phone.webp",
+      "scenario": "working agent with Stop in phone conversation header",
+      "capture_source_sha": "46f635e9234dceca5eab453d8a12754c3c74ba48",
+      "product_source_sha": "7084120254f35c44ca542b29941aee873abe1938",
+      "pixel_dimensions": [
+        1170,
+        2532
+      ],
+      "css_viewport": [
+        390,
+        844
+      ],
+      "device_scale_factor": 3,
+      "theme": "light",
+      "source_png_sha256": "f486ada1e731990dae20b71abc113ff92372f5e87951cd722d5e416d76dc45e6",
+      "lossless_webp_sha256": "1949d0772f973d329495dfc73a20df9c370f28b4e9d134d85a8bffc3557418b7",
+      "pixel_identical_lossless": true
+    },
+    {
+      "file": "screens/341-details-320-light.webp",
+      "scenario": "project Tasks \u2192 title menu \u2192 Details, goal and people sheet open",
+      "capture_source_sha": "7084120254f35c44ca542b29941aee873abe1938",
+      "product_source_sha": "7084120254f35c44ca542b29941aee873abe1938",
+      "pixel_dimensions": [
+        320,
+        568
+      ],
+      "css_viewport": [
+        320,
+        568
+      ],
+      "device_scale_factor": 1,
+      "theme": "light",
+      "source_png_sha256": "3733ccb98bacd05660e5b1b5b1c600ed6274f6b3a7d1fdecee51e4029b5444b9",
+      "lossless_webp_sha256": "28350be783dbf0cff9b650ab58817af70224bb68e4db3e090f58d462f310e650",
+      "pixel_identical_lossless": true
+    },
+    {
+      "file": "screens/341-details-320-dark.webp",
+      "scenario": "project Tasks \u2192 title menu \u2192 Details, goal and people sheet open",
+      "capture_source_sha": "7084120254f35c44ca542b29941aee873abe1938",
+      "product_source_sha": "7084120254f35c44ca542b29941aee873abe1938",
+      "pixel_dimensions": [
+        320,
+        568
+      ],
+      "css_viewport": [
+        320,
+        568
+      ],
+      "device_scale_factor": 1,
+      "theme": "dark",
+      "source_png_sha256": "cbf113757feded9a46cbc58d42a836e9316b475fef1643e35ef8147a5370230a",
+      "lossless_webp_sha256": "23636b6fe4e160b789a413b32fc41e599f3237357d64e6d87c59046ccfe0463f",
+      "pixel_identical_lossless": true
+    },
+    {
+      "file": "screens/341-details-390-light.webp",
+      "scenario": "project Tasks \u2192 title menu \u2192 Details, goal and people sheet open",
+      "capture_source_sha": "7084120254f35c44ca542b29941aee873abe1938",
+      "product_source_sha": "7084120254f35c44ca542b29941aee873abe1938",
+      "pixel_dimensions": [
+        390,
+        844
+      ],
+      "css_viewport": [
+        390,
+        844
+      ],
+      "device_scale_factor": 1,
+      "theme": "light",
+      "source_png_sha256": "ff62b6a86d205d16a273139e63360e714e62b9459b0132b4e97332fb600fb886",
+      "lossless_webp_sha256": "34abe725c1b782b561422cb166b1a8d257e3b6477faf75f98a4643d0a0a6e6c0",
+      "pixel_identical_lossless": true
+    },
+    {
+      "file": "screens/341-details-390-dark.webp",
+      "scenario": "project Tasks \u2192 title menu \u2192 Details, goal and people sheet open",
+      "capture_source_sha": "7084120254f35c44ca542b29941aee873abe1938",
+      "product_source_sha": "7084120254f35c44ca542b29941aee873abe1938",
+      "pixel_dimensions": [
+        390,
+        844
+      ],
+      "css_viewport": [
+        390,
+        844
+      ],
+      "device_scale_factor": 1,
+      "theme": "dark",
+      "source_png_sha256": "cb943097262410287975416135bf8c6838f814ac2537986fd5a873142d996b0c",
+      "lossless_webp_sha256": "27675a26b924dcce19cd2cd216ca6155743a9a6c7b754c7650b5b20448772c17",
+      "pixel_identical_lossless": true
+    },
+    {
+      "file": "screens/home-final-phone-390.webp",
+      "scenario": "returning-user Home with Continue card and Needs you fixture",
+      "capture_source_sha": "7084120254f35c44ca542b29941aee873abe1938",
+      "product_source_sha": "7084120254f35c44ca542b29941aee873abe1938",
+      "pixel_dimensions": [
+        1170,
+        2532
+      ],
+      "css_viewport": [
+        390,
+        844
+      ],
+      "device_scale_factor": 3,
+      "theme": "light",
+      "source_png_sha256": "786afd40d92e79a4598798f11c7348ecc1f894c03d92ad1d68c9ee576495d19a",
+      "lossless_webp_sha256": "af43ed5fc4d5236e53ce3069355b64a3b4a390e22ce7331823f109f69c2f9bc0",
+      "pixel_identical_lossless": true
+    },
+    {
+      "file": "screens/341-home-returning-390-dark.webp",
+      "scenario": "returning-user Home with Continue card and Needs you fixture",
+      "capture_source_sha": "7084120254f35c44ca542b29941aee873abe1938",
+      "product_source_sha": "7084120254f35c44ca542b29941aee873abe1938",
+      "pixel_dimensions": [
+        1170,
+        2532
+      ],
+      "css_viewport": [
+        390,
+        844
+      ],
+      "device_scale_factor": 3,
+      "theme": "dark",
+      "source_png_sha256": "12af66b6ac7c266488b374fc4d7a1534491f58e1807f3c850d7d4544bb6064c2",
+      "lossless_webp_sha256": "222fd24506b8c28b3640f10346b9c9985dce2edd5c83f0747c723210a9e8e3a1",
+      "pixel_identical_lossless": true
+    }
+  ]
+}
