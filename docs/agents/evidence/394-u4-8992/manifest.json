@@ -1,0 +1,81 @@
+{
+  "schema": 1,
+  "purpose": "Durable screenshot and review record for the independent current-head visual assessment of PR #394 AC-U4. It does not certify interaction, accessibility, persistence, or full #238 acceptance.",
+  "pullRequest": "https://github.com/ColdPhase/flux/pull/394",
+  "sourceHead": "8992ad2d8315f2e481150fac6e56a5ec6bedae0d",
+  "sourceBase": "3163f2e2192987c7dfc40a4535adbdbc6b1c8f45",
+  "evidenceCommitParent": "8992ad2d8315f2e481150fac6e56a5ec6bedae0d",
+  "reviewer": "Fresh-context Luna evaluator, independent of screenshot capture operator",
+  "review": "visual-review.md",
+  "brief": "neutral-visual-brief.md",
+  "references": [
+    "docs/design/final/README.md",
+    "docs/design/final/screens/desktop-tasknotice.webp",
+    "docs/design/final/screens/phone-tasknotice.webp",
+    "#238 AC-U4"
+  ],
+  "capture": {
+    "worktree": "/home/hubert/Develop/flux/.worktrees/238-undo-v2",
+    "engine": "Chromium (Docker Playwright e2e image)",
+    "command": "docker compose -p <isolated-project> -f docker/compose.source.yaml -f docker/compose.test.yaml --profile test run --rm e2e node_modules/.bin/tsx --test tests/app/e2e/task-creation-undo.e2e.ts",
+    "scenario": "desktop and phone-width history render readable actor and time, keyboard links and no horizontal overflow on realistic content",
+    "result": "Maintained task-creation-undo E2E file passed 10/10; 0 failures, 0 skipped, 0 cancelled, 0 TODO.",
+    "composeCleanup": "Completed; containers, networks, volumes, and per-run image tags removed."
+  },
+  "screenshots": [
+    {
+      "name": "task-undo-history-1280.png",
+      "sourceSha256": "73030c9ff2b6aa16e46fc7e6c086a9e55f712e689756c68fffb7f51e2f8b2a1e",
+      "storedPath": "screenshots/task-undo-history-1280.webp",
+      "storedSha256": "27dfbc1857e11b987f66917fb23b2133b8ddf628b1a3b660aececef8e1c381cd",
+      "width": 1280,
+      "height": 900,
+      "scenario": "Resting read-only Details after Undo."
+    },
+    {
+      "name": "task-undo-history-390.png",
+      "sourceSha256": "82d9ab83115dda235d462c4b26dc8a47c9f98421cad0625ba13d8860b62adf36",
+      "storedPath": "screenshots/task-undo-history-390.webp",
+      "storedSha256": "4157f5b1613698ec337334e6badf8291eda10551526996ff954f83a53f7674ff",
+      "width": 390,
+      "height": 844,
+      "scenario": "Resting read-only Details after Undo; byte-identical image also captured after the keyboard-navigation step."
+    },
+    {
+      "name": "task-undo-notice-1280.png",
+      "sourceSha256": "cef47abd2262401606c4a3f714a7ef57ca393e5a77b620423fd77159361e8784",
+      "storedPath": "screenshots/task-undo-notice-1280.webp",
+      "storedSha256": "45a69c8ca75bd135e280730f160f9f6c3feae8f16b20f8112d2e7b06771e60c7",
+      "width": 790,
+      "height": 55,
+      "scenario": "Chronological Undo notice crop, desktop."
+    },
+    {
+      "name": "task-undo-notice-390.png",
+      "sourceSha256": "b91b56900c7eb493fd2f26dcca242154896d70bd52824a12946f28954bd64ff3",
+      "storedPath": "screenshots/task-undo-notice-390.webp",
+      "storedSha256": "e80fe98e5920e66bf82cac686792d958f5009cc6f742c8137936208c62239e60",
+      "width": 356,
+      "height": 123,
+      "scenario": "Chronological Undo notice crop, phone."
+    },
+    {
+      "name": "task-undo-keyboard-history-1280.png",
+      "sourceSha256": "43dfe9769d664fd2c1c9aea3f8459544fa69fa78f4391b0a3db4d223100d02be",
+      "storedPath": "screenshots/task-undo-keyboard-history-1280.webp",
+      "storedSha256": "2846d39b6c03122f0ca3f2e5b6a9b8eb266fb279a989c4c7bdac2ed6b0c2d695",
+      "width": 1280,
+      "height": 900,
+      "scenario": "Full-page read-only history destination after the maintained keyboard-navigation step."
+    },
+    {
+      "name": "task-undo-keyboard-history-390.png",
+      "sourceSha256": "82d9ab83115dda235d462c4b26dc8a47c9f98421cad0625ba13d8860b62adf36",
+      "storedPath": "screenshots/task-undo-history-390.webp",
+      "storedSha256": "4157f5b1613698ec337334e6badf8291eda10551526996ff954f83a53f7674ff",
+      "width": 390,
+      "height": 844,
+      "scenario": "Same bytes as the resting phone Details capture; no duplicate image stored."
+    }
+  ]
+}

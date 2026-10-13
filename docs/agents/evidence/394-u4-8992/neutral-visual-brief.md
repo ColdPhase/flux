@@ -1,0 +1,9 @@
+# Neutral visual assessment brief — Flux PR #394 U4
+
+Please assess only the visible presentation in the attached current-head screenshots. Do not read implementation code, revision history, or the author's rationale before giving your independent assessment.
+
+A project member opens a task whose AI creation was undone. Assess whether the compact chronological notice and read-only Details make the original task and content, its creator, the undo actor and time, and its retained conversation/history easy to understand. Consider what attracts attention, whether the scale suits this job, which visible action is discoverable, and how much of the viewport supports useful work. Assess hierarchy, readable text, density, wrapping, containment, and the relation between current status and retained history at desktop and narrow phone sizes. Distinguish an observable usability/readability problem from stylistic preference. Identify useful elements to preserve and at most three material issues.
+
+Use the accepted final design “Prostota” / F-026 at `docs/design/final/README.md` as the visual direction, and the #238 accepted contract AC-U4 for the Undo notice and read-only Details scope. The older F-017 / Studio11.6 brief is superseded. This brief assesses only visible appearance. Do not infer behavior, data correctness, interaction, accessibility, or persistence from screenshots; those need separate evidence. Mention any missing state or question that needs a live check.
+
+Viewports are 1280×900 desktop and 390×844 phone. The history screenshots show the resting read-only Details surface after real Undo; the notice screenshots are crops of the resting chronological notice after Details closes. Keyboard-history screenshots are additional visible evidence of the destination after the maintained test navigates there; do not use them as proof of keyboard behavior.
