@@ -1,0 +1,12 @@
+/* An agent's question with ready-made answers (S14, #347): a card under the agent's message. */
+.qcard { display: flex; flex-direction: column; gap: var(--s-3); margin-top: var(--s-2); padding: var(--s-4); border-radius: var(--r-card); background: var(--el); box-shadow: var(--sh-card); max-width: 560px; }
+.qcard__q { font-size: var(--fs-md); line-height: 1.4; font-weight: 600; color: var(--t1); overflow-wrap: anywhere; }
+.qcard__options { display: flex; flex-wrap: wrap; gap: var(--s-2); }
+.qcard__own { display: flex; flex-wrap: wrap; gap: var(--s-2); align-items: center; }
+.qcard__own input { flex: 1 1 200px; min-width: 0; height: 36px; padding: 0 var(--s-3); border: 0; border-radius: var(--r-pill); background: var(--sub); color: var(--t1); font: inherit; }
+.qcard__own input:focus-visible { outline: 2px solid var(--t1); outline-offset: 2px; }
+.qcard__answer { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); margin: 0; font-size: var(--fs-base); color: var(--t1); overflow-wrap: anywhere; }
+.qcard__by { margin-left: auto; font-size: var(--fs-xs); color: var(--t3); }
+.qcard__waiting { margin: 0; font-size: var(--fs-sm); color: var(--t3); }
+.qcard__error { margin: 0; font-size: var(--fs-sm); color: var(--t1); }
+@media (pointer: coarse) { .qcard__own input { height: 44px; } }

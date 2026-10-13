@@ -12,6 +12,7 @@ import { acceptDecision, createResult, listAgents, proposeDecision, updateWork }
 import { STATUS_LABEL, decisionLine, firstLine, isFinished, linked, resultLine, shortDate, taskNumber } from './format';
 import { docsLinking } from '../docs/AddToDoc';
 import { useAgentOwners } from '../agents/owners';
+import { HandOffDialog } from '../agents/HandOff';
 import { useProjectShell } from '../project/data';
 import { useWorkRead } from './useWorkRead';
 import { useNativeOwn, useWorkChoices, useDetailRelations, type DetailRelations, type DetailChoices } from './useDetailReads';
@@ -219,6 +220,7 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
   const { setBusy, setError, setBlocker, isCurrent } = commands;
   const blocker = commands.state.blocker ?? item.blocker ?? '';
   const ownerId = useId();
+  const [handingOff, setHandingOff] = useState(false);
   const owners = useAgentOwners(context.project);
   const decisions = linked(relations.links, item.id, 'decision');
   const results = linked(relations.links, item.id, 'result');
@@ -297,6 +299,7 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
           <dd className="wd-from"><CameFrom item={item} links={relations.links} project={context.project} empty={emptyLinks(relations, 'Added directly on the Tasks tab.')} /></dd>
         </div>
       </dl>
+      {writable && !isFinished(item) ? <Button variant="secondary" className="wd-handoff" onClick={() => setHandingOff(true)}>Hand off to an agent</Button> : null}
 
       {item.status === 'blocked' ? (
         <section className="wd-blocker" aria-label="Blocker">
@@ -310,6 +313,7 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
           ) : <p>{item.blocker || 'Waiting for something; no reason written.'}</p>}
         </section>
       ) : null}
+      {writable ? <HandOffDialog open={handingOff} onClose={() => setHandingOff(false)} project={context.project} task={{ id: item.id, version: item.version, number: item.number, title: item.title }} onDone={reload} /> : null}
       <ReadyToClose item={item} writable={writable} busy={busy} done={() => void change({ status: 'done' })} />
       {!isFinished(item) ? <LiveEntry variant="inline" anchor={liveAnchor} /> : null}
       {error ? <p className="wd-error" role="alert">{error}</p> : null}

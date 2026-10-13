@@ -170,6 +170,7 @@ test('issued OAuth bearer reads and proposes through MCP, then connection revoca
         'flux_remove_thought:map.thought.delete', 'flux_move_thoughts:map.positions.update', 'flux_link_thoughts:map.link.create',
         'flux_unlink_thoughts:map.link.delete', 'flux_create_doc:doc.create', 'flux_update_doc:doc.update',
         'flux_start_conversation:conversation.create', 'flux_reply_in_conversation:conversation.reply',
+        'flux_ask_question:conversation.reply',
         // #153's co-work unit creation, unit claim/renew/release/completion/transfer and request claim/decline; no resolve tool.
         'flux_create_unit:cowork.unit.create', 'flux_claim_unit:cowork.claim', 'flux_renew_unit:cowork.renew',
         'flux_release_unit:cowork.release', 'flux_complete_unit:cowork.unit.complete', 'flux_transfer_unit:cowork.unit.transfer',

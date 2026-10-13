@@ -161,6 +161,8 @@ export * from './repositories/cowork-unit-transitions.js';
 export * from './repositories/github.js';
 export * from './repositories/agent-execution.js';
 export * from './repositories/agent-orientation.js';
+export * from './repositories/agent-stops.js';
+export * from './repositories/agent-questions.js';
 export * from './repositories/agent-playbook.js';
 export * from './repositories/agent-policies.js';
 
