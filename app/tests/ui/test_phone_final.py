@@ -78,7 +78,27 @@ class PhoneFinal(unittest.TestCase):
         self.addCleanup(context.close)
         page = context.new_page()
         errors = []
-        page.on("pageerror", lambda error: errors.append(str(error)))
+        # WebKit reports a fetch that a document unload cancels as an uncaught page error ("... due to access
+        # control checks", #471), even when the app handles it. Only those, and only while this test itself
+        # loads another document with goto, are not the app's errors; every other page error still fails.
+        leaving = {"now": False}
+
+        def on_error(error):
+            if UI_BROWSER == "webkit" and leaving["now"] and str(error).endswith("due to access control checks."):
+                return
+            errors.append(str(error))
+
+        page.on("pageerror", on_error)
+        goto = page.goto
+
+        def leave_and_goto(url, **options):
+            leaving["now"] = True
+            try:
+                return goto(url, **options)
+            finally:
+                leaving["now"] = False
+
+        page.goto = leave_and_goto
         self.addCleanup(lambda: self.assertEqual(errors, [], "no uncaught browser errors"))
         return page
 
