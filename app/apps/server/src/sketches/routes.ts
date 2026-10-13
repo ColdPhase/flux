@@ -83,6 +83,16 @@ export async function sketchRoutes(app: FastifyInstance, { db, sessions, storage
   const lifetimes=new WeakMap<FastifyReply,EditingHTTPLifetime>();
   async function command(request:FastifyRequest,reply:FastifyReply,spec:CommandSpec) {
     let owner:EditingHTTPLifetime|undefined;
+    const sendNative=(status:number,current:unknown,etag?:string|null,replayed=false)=>{
+      if(!owner?.canSend)return;
+      const size=status===204?0:editingJSONSize(current).bytes;const text=status===204?'':JSON.stringify(current);
+      if(Buffer.byteLength(text)!==size)throw new ServiceUnavailableError('The protected native response is too large','EDITING_OUTPUT_CAPACITY');
+      const owned=Buffer.allocUnsafeSlow(size);owned.write(text);
+      const headers:Record<string,string|number>={'cache-control':'no-store','content-length':size};
+      if(status!==204)headers['content-type']='application/json; charset=utf-8';
+      if(etag)headers.etag=etag;if(replayed)headers['idempotent-replayed']='true';
+      reply.hijack();reply.raw.writeHead(status,headers);reply.raw.end(owned);
+    };
     try {
       const lifetime=editingHTTPLifetime(reply.raw,apiEditingOutputBudget,{deferCharge:!developmentEditing});owner=lifetime;lifetimes.set(reply,lifetime);
       if(!developmentEditing) {
@@ -98,25 +108,25 @@ export async function sketchRoutes(app: FastifyInstance, { db, sessions, storage
       const params=request.params as {sketchId?:string};const body=response.body as {id?:string;sketch?:{id?:string}}|null;
       const target=routeUrl(request).endsWith('/promotion')?body?.sketch?.id:params.sketchId??body?.id;
       if(!target)throw new ServiceUnavailableError('The native map receipt has no target','EDITING_MAP_CAPACITY');
-      await backend.deliverNative({sessionId:session.sessionId,actorId:session.principal.id},target,response.body,current=>{
-        if(!lifetime.canSend)return;
-        const size=response.status===204?0:editingJSONSize(current).bytes;const text=response.status===204?'':JSON.stringify(current);
-        if(Buffer.byteLength(text)!==size)throw new ServiceUnavailableError('The protected native response is too large','EDITING_OUTPUT_CAPACITY');
-        const owned=Buffer.allocUnsafeSlow(size);owned.write(text);
-        const headers:Record<string,string|number>={'cache-control':'no-store','content-length':size};
-        if(response.status!==204)headers['content-type']='application/json; charset=utf-8';
-        if(response.etag)headers.etag=response.etag;if(response.replayed)headers['idempotent-replayed']='true';
-        reply.hijack();reply.raw.writeHead(response.status,headers);reply.raw.end(owned);
-      });
+      await backend.deliverNative({sessionId:session.sessionId,actorId:session.principal.id},target,response.body,
+        current=>sendNative(response.status,current,response.etag,response.replayed));
     } catch(error) {
       if(!developmentEditing)throw error;
       if(error instanceof Error&&'code' in error&&['EDITING_MAP_CAPACITY','EDITING_OUTPUT_CAPACITY'].includes(String(error.code))) {
         const refusal=new ServiceUnavailableError('The finite native map capacity is busy',String(error.code));refusal.details={outcome:'refused',retryable:true};throw refusal;
       }
-      // A stale label is checked only after sketch.write authorization and link lookup.
-      // Its current public label is required for the explicit conflict review flow;
-      // all other live-mode domain details remain scrubbed.
-      if(error instanceof DomainError&&!(error instanceof LinkLabelConflictError))error.details={};throw error;
+      if(error instanceof LinkLabelConflictError) {
+        const session=await sessions.requirePrincipal(request);const backend=liveBackend?.();
+        const sketchId=(request.params as {sketchId?:string}).sketchId;
+        if(!backend||!sketchId)throw new ServiceUnavailableError('The live map adapter is closing','EDITING_MAP_CAPACITY');
+        // Conflict details came from a command whose transaction has rolled back. Reacquire
+        // current write authority and hold it through the bounded handoff, so a committed
+        // revocation cannot race the label disclosure.
+        await backend.deliverNative({sessionId:session.sessionId,actorId:session.principal.id},sketchId,
+          {...error.details,error:error.message,code:error.code},current=>sendNative(error.status,current),'write');
+        return;
+      }
+      if(error instanceof DomainError)error.details={};throw error;
     }
     finally {owner?.settled();lifetimes.delete(reply);}
   }

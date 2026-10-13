@@ -68,7 +68,7 @@ export function mapBackend(database:{pool:Pick<ReturnType<typeof createDatabase>
         sequence:c.room.sequence,hash:mapHash(c.room.generation,c.room.sequence),sketch,canWrite:c.access==='write',actor:c.actor});
     });},
     authorize(who,sketchId,handoff){return run(who,sketchId,false,async c=>{await boundary.beforeHandoff?.();await c.finalFence();handoff();},'transient');},
-    deliverNative(who,sketchId,body,handoff){return run(who,sketchId,false,async c=>{
+    deliverNative(who,sketchId,body,handoff,requiredAccess='read'){return run(who,sketchId,requiredAccess==='write',async c=>{
       async function project(value:unknown,depth=0):Promise<unknown> {
         if(depth>8)throw new InvalidInputError('The native response is too deep');
         if(Array.isArray(value)){const result=[];for(const item of value)result.push(await project(item,depth+1));return result;}

@@ -143,7 +143,7 @@ async function fixture(developmentEditing = true) {
     const doc = expectStatus(await browser.request('POST', `/api/v1/projects/${project.id}/docs`, { body: { title: 'Protected wiki response', body: 'Actual saved original' } }), 201) as Doc;
     await observed(() => apiEditingOutputBudget.bytes === 0 && backend.sqlActive === 0 && wiki.sqlActive === 0, 'Setup response and actual SQL continuations must settle');
     return {
-      database, app, backend, maps, wiki, browser, base, origin, sketch, thought, head, doc, actorId: me.user.id,
+      database, app, backend, maps, wiki, browser, base, origin, workspace, project, sketch, thought, head, doc, actorId: me.user.id,
       watch(id = randomUUID()) { assert.ok(captures.size < 16); const value = capture(); captures.set(id, value); return { id, value }; },
       arm(commits: number, lose = false) { assert.equal(remaining, 0); remaining = commits; lost = lose; reached = signal(); release = signal(); return { reached: reached.promise, release: release.resolve, failure }; },
       pauseRoomRead(sketchId: string) { assert.equal(roomReadTarget, null); roomReadTarget = sketchId; roomReadReached = signal(); roomReadRelease = signal(); return { reached: roomReadReached.promise, release: roomReadRelease.resolve }; },
@@ -155,6 +155,57 @@ async function fixture(developmentEditing = true) {
     throw error;
   }
 }
+
+test('live label conflict holds current write authority through the protected error handoff', { timeout: 15_000 }, async () => {
+  const f = await fixture(); const grantor = f.browser; const grantee = new Browser(f.base, f.origin);
+  const password = 'actual label conflict handoff password';
+  const email = `label-handoff-${randomUUID()}@example.test`;
+  const signup = await grantee.request('POST', '/api/auth/sign-up/email', { body: { name: 'Label handoff writer', email, password } });
+  expectStatus(signup, 200);
+  const person = expectStatus(await grantee.request('GET', '/api/v1/me'), 200) as { user: { id: string } };
+  try {
+    expectStatus(await grantor.request('POST', `/api/v1/workspaces/${f.workspace.id}/members`, { body: { email, role: 'member' } }), 201);
+    const grant = expectStatus(await grantor.request('POST', `/api/v1/projects/${f.project.id}/grants`, {
+      body: { principal: { kind: 'human', id: person.user.id }, role: 'contributor' },
+    }), 201) as { id: string };
+    const second = expectStatus(await grantor.request('POST', `/api/v1/sketches/${f.sketch.id}/thoughts`, {
+      body: { text: 'Second thought', x: 200, y: 0 },
+    }), 201) as { thought: Thought };
+    const link = expectStatus(await grantor.request('POST', `/api/v1/sketches/${f.sketch.id}/links`, {
+      body: { fromId: f.thought.id, toId: second.thought.id }, headers: { 'idempotency-key': randomUUID() },
+    }), 201) as { id: string };
+    const currentLabel = 'current authorized value';
+    expectStatus(await grantee.request('PATCH', `/api/v1/sketches/${f.sketch.id}/links/${link.id}`, {
+      body: { label: currentLabel, expectedLabel: null }, headers: { 'idempotency-key': randomUUID() },
+    }), 200);
+
+    const boundary = f.pauseHandoff('map');
+    let conflictSettled = false; let revokeSettled = false;
+    const conflict = grantee.request('PATCH', `/api/v1/sketches/${f.sketch.id}/links/${link.id}`, {
+      body: { label: 'stale private draft', expectedLabel: null }, headers: { 'idempotency-key': randomUUID() },
+    }).finally(() => { conflictSettled = true; });
+    await finite(boundary.reached, 'The conflict must reach its current-write-authority handoff');
+    const revoke = grantor.request('DELETE', `/api/v1/projects/${f.project.id}/grants/${grant.id}`)
+      .finally(() => { revokeSettled = true; });
+    try {
+      await observed(async () => (await pool.query<{ blocked: boolean }>(`SELECT EXISTS (
+        SELECT 1 FROM pg_stat_activity a WHERE a.wait_event_type='Lock' AND a.query ILIKE '%for no key update%'
+          AND cardinality(pg_blocking_pids(a.pid)) > 0
+      ) AS blocked`)).rows[0]?.blocked === true,
+      'Grant revocation must block behind the held project authority fence');
+      assert.equal(conflictSettled, false, 'the protected 409 has not left the fence yet');
+      assert.equal(revokeSettled, false, 'revocation cannot commit before conflict disclosure is handed off');
+    } finally { boundary.release(); }
+    const conflictResponse = expectStatus(await conflict, 409) as { code: string; currentLabel: string; current: { label: string } };
+    assert.equal(conflictResponse.code, 'LABEL_CONFLICT');
+    assert.equal(conflictResponse.currentLabel, currentLabel);
+    assert.equal(conflictResponse.current.label, currentLabel);
+    expectStatus(await revoke, 204);
+    assert.equal((await pool.query('SELECT id FROM project_grants WHERE id=$1', [grant.id])).rowCount, 0,
+      'revocation commits after the authorized conflict handoff');
+  } finally { await f.close(); }
+});
+
 function client(f: Awaited<ReturnType<typeof fixture>>, method: string, path: string, marker: string, body?: unknown, extra: Record<string, string> = {}) {
   const text = body === undefined ? undefined : JSON.stringify(body);
   const req = request(new URL(path, f.base), { method, agent: false, headers: { cookie: f.browser.cookieHeader(), origin: f.origin, 'x-lifetime-fixture': marker,
