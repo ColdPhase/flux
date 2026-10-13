@@ -216,6 +216,8 @@ html.tb-is-dragging, html.tb-is-dragging * { cursor: grabbing !important; user-s
   .tb-card__menu.ui-icon-btn { margin: -12px -8px -12px auto; }
   .tb-col__add.ui-icon-btn { margin: -10px -10px -10px auto; }
   .tb-card__from { min-height: 32px; }
+  /* The title's own button reaches 44 px even for one line; the margins keep the drawn card unchanged. */
+  .tb-card__open { padding-block: 13px; margin-block: -13px; }
   .tb-also__b, .tb-note__x { min-height: 44px; }
   .tb-menu__i { min-height: 44px; }
 }
