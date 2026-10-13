@@ -27,12 +27,15 @@ export function connectionState(connection: ProjectAgentConnection, now: number)
 }
 
 /** The next expiry still live in the displayed observation, even if effect setup happens later. */
-export function nextSessionExpiry(connections: readonly ProjectAgentConnection[] | undefined, now: number): number | null {
+export function nextAgentDeadline(connections: readonly ProjectAgentConnection[] | undefined, now: number): number | null {
   let next = Infinity;
   for (const connection of connections ?? []) {
-    if (connection.state !== 'session_open' || !connection.session) continue;
-    const end = Date.parse(connection.session.expiresAt);
-    if (end > now && end < next) next = end;
+    if (connection.state === 'session_open' && connection.session) {
+      const end = Date.parse(connection.session.expiresAt);
+      if (end > now && end < next) next = end;
+    }
+    const claimEnd = connection.currentWork?.liveClaimExpiresAt ? Date.parse(connection.currentWork.liveClaimExpiresAt) : NaN;
+    if (claimEnd > now && claimEnd < next) next = claimEnd;
   }
   return Number.isFinite(next) ? next : null;
 }
@@ -40,8 +43,10 @@ export function nextSessionExpiry(connections: readonly ProjectAgentConnection[]
 /** Native task ownership/status is assignment; only a claimed unit on a usable live connection proves work. */
 export function isAgentWorking(entry: AgentEntry, now: number): boolean {
   const connection = entry.connection;
-  return !!connection?.session && connection.currentWork?.state === 'claimed' && connectionState(connection, now) === 'session_open'
-    && Date.parse(connection.session.expiresAt) > now;
+  const claimExpiresAt = connection?.currentWork?.liveClaimExpiresAt;
+  return !!connection?.session && connection.currentWork?.state === 'claimed' && !!claimExpiresAt
+    && connectionState(connection, now) === 'session_open'
+    && Date.parse(connection.session.expiresAt) > now && Date.parse(claimExpiresAt) > now;
 }
 
 export const WORK_ROLE: Record<NonNullable<ProjectAgentConnection['currentWork']>['role'], string> = {
@@ -99,3 +104,16 @@ export function mayDo(access: ProjectAccess | null): { can: string; canTake: boo
   if (access === 'viewer') return { can: 'read this project. It can’t post, change tasks or propose decisions.', canTake: false };
   return { can: 'nothing here yet: it has no access to this project.', canTake: false };
 }
+
+/** The first word of a person's name ("Jonas Berg" -> "Jonas"). */
+export const firstName = (name: string) => name.split(' ')[0] || name;
+
+/** An entry's owner as a phone row shows it: "you" for your own agent, the owner's first name, else the owner's label. */
+export function shortOwner(entry: AgentEntry, meId: string): string | null {
+  if (!entry.owner) return null;
+  if (entry.ownerId === meId) return 'you';
+  return entry.ownerId ? firstName(entry.owner) : entry.owner;
+}
+
+/** A person's agent that another person owns: a task can be handed to it only by asking its owner (#347 P1-3). */
+export const teammateOf = (entry: AgentEntry, meId: string) => entry.ownerId !== null && entry.ownerId !== meId;

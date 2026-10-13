@@ -114,8 +114,11 @@ class StopAndQuestions(unittest.TestCase):
         for scheme in ("light", "dark"):
             page = self.page("ada", scheme=scheme)
             page.goto(f"/projects/{self.ids['project']}/agents")
+            now = page.get_by_role("complementary", name="Claude Code agent, details").get_by_role("region", name="Now")
+            expect(now).to_contain_text("Calibrate the probes at two soil depths")
+            expect(now).to_contain_text("task in progress")
             row = page.locator(f'.agents-row[data-agent="{self.ids["agent"]}"]')
-            expect(row).to_contain_text("Handed #1")
+            expect(row).to_contain_text("Handed #1 · not signed in yet")
             stop = row.get_by_role("button", name="Stop Claude Code agent")
             expect(stop).to_be_visible()
             expect(page.get_by_role("complementary", name="Claude Code agent, details").get_by_role("button", name="Stop Claude Code agent")).to_be_visible()
@@ -123,7 +126,7 @@ class StopAndQuestions(unittest.TestCase):
         # Jonas writes here but is neither a manager nor the agent's owner: no Stop to press.
         jonas = self.page("jonas")
         jonas.goto(f"/projects/{self.ids['project']}/agents")
-        expect(jonas.locator(f'.agents-row[data-agent="{self.ids["agent"]}"]')).to_contain_text("Handed #1")
+        expect(jonas.locator(f'.agents-row[data-agent="{self.ids["agent"]}"]')).to_contain_text("Handed #1 · not signed in yet")
         expect(jonas.get_by_role("button", name=re.compile("^Stop"))).to_have_count(0)
         # The panel's Message opens the task's thread.
         page = self.page("ada")
@@ -133,12 +136,25 @@ class StopAndQuestions(unittest.TestCase):
 
     def test_03_the_sidebar_card_shows_the_working_agent_and_stops_it(self) -> None:
         page = self.page("ada")
+        def live_but_handed(route: Route) -> None:
+            response = route.fetch()
+            payload = response.json()
+            # A current client session does not make a native held task currentWork without a live unit claim.
+            for item in payload["items"]:
+                item.update(online=True, signedIn=True, working=False)
+            route.fulfill(response=response, json=payload)
+
+        page.route("**/api/v1/working-agents", live_but_handed)
         page.goto("/")
         expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
         card = page.locator(".agentlive--agent")
         expect(card).to_have_count(1)
         expect(card).to_contain_text("Claude Code agent")
-        expect(card).to_contain_text("#1 · Calibrate the probes at two soil depths")
+        expect(card).to_have_attribute("aria-label", "Claude Code agent · handed #1")
+        expect(card).to_contain_text("Handed #1")
+        expect(card).not_to_contain_text("working on")
+        expect(card.locator("[data-expression]")).to_have_attribute("data-expression", "idle")
+        expect(card.get_by_role("button", name="Stop Claude Code agent")).to_be_visible()
         shot(page, "stop-sidebar-card")
         card.get_by_role("button", name="Stop Claude Code agent").click()
         expect(page.get_by_text("Stopped Claude Code agent on #1")).to_be_visible()
@@ -153,11 +169,12 @@ class StopAndQuestions(unittest.TestCase):
         page = self.page("ada")
         page.goto(f"/projects/{self.ids['project']}/agents")
         row = page.locator(f'.agents-row[data-agent="{self.ids["agent"]}"]')
-        expect(row).to_contain_text("Stopped by Ada Kowalska · #1")
+        # The stop is yours: the row says "you" (#347 review N9); the other reader below still sees your name.
+        expect(row).to_contain_text("Stopped by you · #1")
         expect(row.get_by_role("button", name=re.compile("^Stop"))).to_have_count(0)
         row.locator(".agents-row__btn").click()
         recent = page.get_by_role("complementary", name="Claude Code agent, details").get_by_role("region", name="Recent")
-        expect(recent).to_contain_text("Stopped by Ada Kowalska")
+        expect(recent).to_contain_text("Stopped by you")
         # Everyone who reads the project sees it.
         jonas = self.page("jonas")
         jonas.goto(f"/projects/{self.ids['project']}/agents")
@@ -169,7 +186,7 @@ class StopAndQuestions(unittest.TestCase):
         page = self.page("ada")
         page.goto(f"/projects/{self.ids['project']}/agents")
         row = page.locator(f'.agents-row[data-agent="{self.ids["agent"]}"]')
-        expect(row).to_contain_text("Handed #2")
+        expect(row).to_contain_text("Handed #2 · not signed in yet")
         # Someone stops the agent while Ada's view is still open: her press is the stale one, so it is told and nothing is stopped twice.
         other = self.page("ada")
 
@@ -181,7 +198,7 @@ class StopAndQuestions(unittest.TestCase):
         page.route(re.compile(r".*/api/v1/projects/[^/]+/agent-stops$"), stop_first)
         row.get_by_role("button", name="Stop Claude Code agent").click()
         expect(page.get_by_text("That agent was not working on this task any more.")).to_be_visible()
-        expect(row).to_contain_text("Stopped by Ada Kowalska · #2")
+        expect(row).to_contain_text("Stopped by you · #2")
         stops = self.api(page, "GET", f"/api/v1/projects/{self.ids['project']}/agent-stops", status=200)["stops"]
         self.assertEqual(len(stops), 2)
 
@@ -200,7 +217,7 @@ class StopAndQuestions(unittest.TestCase):
             self.assertGreaterEqual(box["width"], 44)
             shot(page, f"stop-agents-phone-{scheme}")
         stop.tap()
-        expect(page.get_by_text("Stopped work on #3")).to_be_visible()
+        expect(page.get_by_text("Stopped Claude Code agent on #3")).to_be_visible()
         self.assertIsNone(self.task("third")["owner"])
 
     def route_question(self, page: Page, *, asked: str, message_id: str, conversation_id: str) -> list[dict]:
@@ -266,6 +283,10 @@ class StopAndQuestions(unittest.TestCase):
         card = ada.locator(".qcard").first
         expect(card).to_contain_text("Waiting for the person asked to answer.")
         expect(card.get_by_role("button")).to_have_count(0)
+        # #347 review finding 2: the answers offered stay readable for a teammate, listed without buttons.
+        offered = card.get_by_role("list", name="Answers offered")
+        expect(offered).to_contain_text("Per bed")
+        expect(offered).to_contain_text("One value")
         phone = self.page("jonas", phone=True)
         sent = self.route_question(phone, asked=JONAS["id"], message_id=message_id, conversation_id=conversation_id)
         phone.goto(f"/projects/{pid}/conversations/{conversation_id}")
@@ -286,6 +307,23 @@ class StopAndQuestions(unittest.TestCase):
         self.assertEqual(sent, [{"text": "Per bed, but start with the north one"}])
 
 
+    def test_11_stop_offers_hand_back(self) -> None:
+        # Hand back (#347 P2-4): after Stop the toast offers to give the task back to the agent; Jonas is offered neither.
+        self.new_working_task("Water the seedlings at dawn", "fourth")
+        number = self.task("fourth")["number"]
+        page = self.page("ada")
+        page.goto(f"/projects/{self.ids['project']}/agents")
+        row = page.locator(f'.agents-row[data-agent="{self.ids["agent"]}"]')
+        row.get_by_role("button", name="Stop Claude Code agent").click()
+        expect(page.get_by_text(f"Stopped Claude Code agent on #{number}")).to_be_visible()
+        page.get_by_role("button", name="Hand back").click()
+        expect(page.get_by_text(f"Handed #{number} back to Claude Code agent")).to_be_visible()
+        self.assertEqual(self.task("fourth")["owner"]["id"], self.ids["agent"])
+        # Negative control: Jonas, who neither owns the agent nor manages the project, sees neither Stop nor Hand back.
+        jonas = self.page("jonas")
+        jonas.goto(f"/projects/{self.ids['project']}/agents")
+        expect(jonas.locator(f'.agents-row[data-agent="{self.ids["agent"]}"]')).to_be_visible()
+        expect(jonas.get_by_role("button", name=re.compile("^(Stop|Hand back)"))).to_have_count(0)
     def test_09_home_lists_the_working_agent_with_stop_at_every_width(self) -> None:
         """AC-3: Home has its own Stop; the sidebar card steps aside there so the agent is listed once."""
         title = "Log the soil moisture at dawn"
@@ -296,7 +334,8 @@ class StopAndQuestions(unittest.TestCase):
             page.goto("/")
             expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
             home = page.get_by_role("region", name="Your agents working now")
-            expect(home.locator(".agentlive--agent")).to_contain_text(f"#{number} · {title}")
+            # The fixture's agent is not signed in, so Home says it holds the task (#347 N12), not the task's title.
+            expect(home.locator(".agentlive--agent")).to_contain_text(f"Handed #{number} · not signed in yet")
             expect(page.locator(".agentlive--agent")).to_have_count(1)
             stop = home.get_by_role("button", name="Stop Claude Code agent")
             expect(stop).to_be_visible()

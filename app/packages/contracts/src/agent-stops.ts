@@ -38,6 +38,12 @@ export const ownWorkingAgentsPath = '/api/v1/working-agents';
 export interface OwnWorkingAgent {
   agent: { id: string; name: string };
   task: { id: string; projectId: string; projectName: string; number: number; title: string };
+  /** True only when this task has a current claimed unit on a live session assigned to that unit's connection. */
+  working: boolean;
+  /** True when one of the agent's unrevoked connections has an open client session now. */
+  online: boolean;
+  /** True when a client has ever opened a session for the agent; false means it was never signed in (#347 review N11). */
+  signedIn: boolean;
 }
 
 export interface OwnWorkingAgents {

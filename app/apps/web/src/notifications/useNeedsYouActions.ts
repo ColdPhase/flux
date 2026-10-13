@@ -37,7 +37,7 @@ export function useNeedsYouActions(queue: Queue): CardHandlers {
       latest.current.show(item);
       toast({ message: apiMessage(error, 'That did not work. Try again.'), tone: 'danger' });
     });
-    toast({ message, action: { label: 'Undo', key: 'Z', onAction: () => {
+    toast({ message, action: { label: 'Undo', key: 'Z', onClick: () => {
       latest.current.show(item);
       void stored.then(() => restoreNeedsYou(item.key)).then(announceInboxChange).catch(() => {
         latest.current.reload();
@@ -69,7 +69,7 @@ export function useNeedsYouActions(queue: Queue): CardHandlers {
           ? { message: 'This decision changed before it was accepted. Nothing was accepted. Open it to look again.', tone: 'danger' }
           : { message: 'Could not accept. Nothing changed. Try again.', tone: 'danger' });
       });
-      toast({ message: 'Accepted', tone: 'success', action: { label: 'Undo', key: 'Z', onAction: () => {
+      toast({ message: 'Accepted', tone: 'success', action: { label: 'Undo', key: 'Z', onClick: () => {
         if (handle.undo()) { latest.current.show(item); return; }
         // It was already sent (the place was left, or the window ended): a decision is never un-accepted.
         toast({ message: 'It is already accepted. To change direction, propose a new decision.' });
@@ -97,7 +97,7 @@ export function useNeedsYouActions(queue: Queue): CardHandlers {
         latest.current.show(item);
         toast({ message: apiMessage(error, 'The task could not be unblocked. Open it to look again.'), tone: 'danger' });
       });
-      toast({ message: 'Blocker cleared', action: { label: 'Undo', key: 'Z', onAction: () => {
+      toast({ message: 'Blocker cleared', action: { label: 'Undo', key: 'Z', onClick: () => {
         latest.current.show(item);
         void changed.then((work) => updateWork(work, { status: 'blocked', blocker: blocked.blocker }, crypto.randomUUID())).then(announceInboxChange).catch(() => {
           latest.current.reload();

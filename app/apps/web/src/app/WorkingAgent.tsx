@@ -171,19 +171,23 @@ function useStopOwnAgent(item: OwnWorkingAgent, onChanged: () => void) {
 
 function OwnAgentCard({ item, compact, onChanged }: { item: OwnWorkingAgent; compact: boolean; onChanged: () => void }) {
   const { stopping, stop } = useStopOwnAgent(item, onChanged);
-  const label = `${item.agent.name} is working on #${item.task.number}`;
+  // A live session alone is not work: C-1 requires the current task's live claimed unit.
+  const label = item.working ? `${item.agent.name} is working on #${item.task.number}` : `${item.agent.name} · handed #${item.task.number}`;
+  const expression: KreskaExpression = item.working ? 'working' : item.online ? 'idle' : 'asleep';
+  const taskLabel = item.working ? `#${item.task.number} · ${item.task.title}`
+    : `Handed #${item.task.number}${item.online ? '' : ` · ${item.signedIn ? 'offline' : 'not signed in yet'}`}`;
   const destination = `/projects/${item.task.projectId}/agents`;
   const hue = agentHue(item.agent.id);
   return (
     <div className={`agentlive agentlive--agent${compact ? ' agentlive--compact' : ''}`} role="status" aria-label={label} data-agent={item.agent.id}>
       {compact ? (
-        <Link className="agentlive__link" to={destination} title={label} aria-label={label}><Kreska size={24} expression="thinking" hue={hue} /></Link>
+        <Link className="agentlive__link" to={destination} title={label} aria-label={label}><Kreska size={24} expression={expression} hue={hue} /></Link>
       ) : (
         <>
-          <Kreska size={24} expression="thinking" hue={hue} />
+          <Kreska size={24} expression={expression} hue={hue} />
           <Link className="agentlive__text" to={destination}>
             <b>{item.agent.name}</b>
-            <span>{stopping ? 'Stopping…' : `#${item.task.number} · ${item.task.title}`}</span>
+            <span>{stopping ? 'Stopping…' : taskLabel}</span>
           </Link>
         </>
       )}
@@ -201,15 +205,17 @@ export function WorkingAgent({ compact = false }: { compact?: boolean }) {
   const agents = useOwnWorkingAgents(me.user.id);
   // Home lists every working agent itself (HomeWorkingAgents), so the sidebar card steps aside there.
   const onHome = useLocation().pathname === '/';
-  // Several agents at once: the card shows the first with how many more work, so the sidebar never grows.
-  const first = agents.items[0];
+  // Several agents at once: online ones first; the card shows the first with how many more are online, so the sidebar never grows.
+  const ordered = [...agents.items.filter((item) => item.working), ...agents.items.filter((item) => !item.working)];
+  const first = ordered[0];
+  const workingCount = agents.items.filter((item) => item.working).length;
   return (
     <>
       <WorkingAssistant compact={compact} />
       {first && !onHome ? (
         <>
           <OwnAgentCard item={first} compact={compact} onChanged={agents.reload} />
-          {agents.items.length > 1 && !compact ? <p className="agentlive__more">+{agents.items.length - 1} more working</p> : null}
+          {workingCount > 1 && !compact ? <p className="agentlive__more">+{workingCount - 1} more working</p> : null}
         </>
       ) : null}
     </>

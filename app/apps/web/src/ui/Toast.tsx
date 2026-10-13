@@ -6,24 +6,17 @@ import { duration, play } from './motion';
 
 export type ToastTone = 'neutral' | 'success' | 'danger';
 
-/** One quick way back (F-026 S9/S11): the button, and `Z` while the toast is up. */
-export interface ToastAction {
-  label: string;
-  onAction: () => void;
-  /** Shown beside the label as the key that does the same; only `Z` is wired. */
-  key?: 'Z';
-}
-
 export interface ToastOptions {
   message: string;
-  action?: ToastAction;
   tone?: ToastTone;
   /** Milliseconds before it leaves on its own; errors stay until dismissed. */
   timeout?: number;
+  /** One quiet action beside the message, e.g. Undo or Hand back. Taking it closes the toast. */
+  action?: { label: string; onClick: () => void; key?: 'Z' };
 }
 
 interface ToastEntry extends Required<Omit<ToastOptions, 'timeout' | 'action'>> {
-  action: ToastAction | null;
+  action: ToastOptions['action'] | null;
   id: number;
   timeout: number | null;
   leaving: boolean;
@@ -40,17 +33,14 @@ function ToastItem({ toast, onDone, registerAction }: { toast: ToastEntry; onDon
   const ref = useRef<HTMLDivElement>(null);
   const timer = useRef<number | null>(null);
   const [leaving, setLeaving] = useState(false);
-
   const dismiss = useCallback(() => setLeaving(true), []);
-  // An action runs once: after it (or once the toast leaves) no second press can run it again (#393 review).
   const ran = useRef(false);
   const act = useCallback(() => {
     if (!toast.action || ran.current || leaving || toast.leaving) return;
     ran.current = true;
-    toast.action.onAction();
-    setLeaving(true);
-  }, [toast.action, leaving, toast.leaving]);
-  // `Z` runs the newest keyed toast's action once; a toast that is leaving no longer answers to it.
+    toast.action.onClick();
+    dismiss();
+  }, [toast.action, leaving, toast.leaving, dismiss]);
   useEffect(() => {
     if (!toast.action?.key || leaving || toast.leaving) return undefined;
     registerAction(toast.id, act);
@@ -94,14 +84,11 @@ function ToastItem({ toast, onDone, registerAction }: { toast: ToastEntry; onDon
 export function ToastProvider({ children, sessionId }: { children: ReactNode; sessionId: string | null }) {
   const [toasts, setToasts] = useState<ToastEntry[]>([]);
   const nextId = useRef(1);
-  // Keep a monotonic epoch even for A → signed-out → A. Conditional state adjustment hides old
-  // entries in this render without mutating shared refs in a render that React may abandon.
   const [session, setSession] = useState(() => ({ id: sessionId, epoch: 0 }));
   const sessionEpoch = session.id === sessionId ? session.epoch : session.epoch + 1;
   if (session.id !== sessionId) setSession({ id: sessionId, epoch: sessionEpoch });
   const committedSession = useRef({ id: sessionId, epoch: sessionEpoch });
   const actions = useRef(new Map<number, () => void>());
-  // Install the identity fence at commit, before the browser can deliver another click or key.
   useLayoutEffect(() => {
     committedSession.current = { id: sessionId, epoch: sessionEpoch };
     actions.current.clear();
@@ -111,12 +98,9 @@ export function ToastProvider({ children, sessionId }: { children: ReactNode; se
     const actionEpoch = committedSession.current.epoch;
     const action = options.action ? {
       ...options.action,
-      // A callback can outlive its toast (or be retained by an already queued click/key event).
-      // Fence the callback itself, not just the button or hotkey registration.
-      onAction: () => { if (committedSession.current.epoch === actionEpoch) options.action!.onAction(); },
+      onClick: () => { if (committedSession.current.epoch === actionEpoch) options.action!.onClick(); },
     } : null;
-    const entry: ToastEntry = { id: nextId.current++, message: options.message, tone, timeout: options.timeout ?? (tone === 'danger' ? null : action ? 7000 : 5000), leaving: false, action, sessionEpoch: actionEpoch };
-    // Keep at most three; older ones leave.
+    const entry: ToastEntry = { id: nextId.current++, message: options.message, tone, timeout: options.timeout ?? (tone === 'danger' || action ? null : 5000), leaving: false, action, sessionEpoch: actionEpoch };
     setToasts((current) => [...current.slice(-2), entry]);
     return () => setToasts((current) => current.filter((toast) => toast.id !== entry.id));
   }, []);

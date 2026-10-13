@@ -135,8 +135,8 @@ class HandOffJourney(unittest.TestCase):
             claude = rows.filter(has_text="Claude Code agent")
             expect(claude).to_contain_text("for Ada Kowalska (you)")
             expect(claude).to_contain_text("Desk laptop")
-            expect(claude).to_contain_text("Handed #1 · Calibrate the probes at two soil depths")
-            expect(claude).to_contain_text("Not signed in from your client yet")
+            # No claimed unit on a live session here, so the handed task is not "working" (C-1; #347 P1-1).
+            expect(claude).to_contain_text("Handed #1 · not signed in yet")
             expect(claude).not_to_have_attribute("data-working", "true")
             expect(rows.filter(has_text="Reader agent")).to_contain_text("nothing handed to it")
             expect(page.get_by_text("2 in this project", exact=True)).to_be_visible()
@@ -181,9 +181,9 @@ class HandOffJourney(unittest.TestCase):
         expect(page).to_have_url(re.compile(r"agent=connection|agent=agent"))
         page.locator(f'.agents-row[data-agent="{self.ids["agent_claude"]}"] .agents-row__btn').click()
         # The agent's task opens its thread under the list.
-        page.get_by_role("complementary", name="Claude Code agent, details").get_by_role("button", name="Calibrate the probes at two soil depths").click()
+        page.get_by_role("complementary", name="Claude Code agent, details").get_by_role("button", name=re.compile("^Open the thread of #")).click()
         expect(page.get_by_role("region", name="Thread of Calibrate the probes at two soil depths")).to_be_visible()
-        expect(page.get_by_label("Task", exact=True)).to_have_value(self.ids["busy"])
+        expect(page.locator("select#agents-task")).to_have_count(0)
 
     def test_05_two_steps_choose_the_agent_then_see_what_it_may_do(self) -> None:
         page = self.open_agents()
@@ -205,7 +205,7 @@ class HandOffJourney(unittest.TestCase):
         expect(dialog.get_by_text("Step 2 of 2")).to_be_visible()
         expect(dialog.get_by_role("heading", name="What Claude Code agent may do")).to_be_visible()
         expect(dialog).to_contain_text("Claude Code agent will be able to read this project and write in it")
-        expect(dialog).to_contain_text("has #1")
+        expect(dialog).to_contain_text("has #1 · not signed in yet")
         expect(dialog.get_by_text(re.compile("queued behind|working on", re.IGNORECASE))).to_have_count(0)
         shot(page, "handoff-step2-desktop")
         dialog.get_by_role("button", name="Back").click()
@@ -219,7 +219,7 @@ class HandOffJourney(unittest.TestCase):
         owner = self.task("label")["owner"]
         self.assertEqual(owner["id"], self.ids["agent_claude"])
         row = page.get_by_role("list", name="Agents in this project").get_by_role("listitem").filter(has_text="Claude Code agent")
-        expect(row).to_contain_text("Handed #1")
+        expect(row).to_contain_text("Handed #1 · not signed in yet")
 
     def test_06_an_agent_without_write_access_is_explained_and_never_granted(self) -> None:
         page = self.open_agents()
@@ -316,7 +316,7 @@ class HandOffJourney(unittest.TestCase):
             (row.tap if touch else row.click)()
             detail = page.get_by_role("complementary", name="Claude Code agent, details")
             expect(detail).to_be_visible()
-            link = detail.get_by_role("region", name="Now").get_by_role("button", name=title)
+            link = detail.get_by_role("region", name="Now").get_by_role("button", name=re.compile("^Open the thread of #"))
             (link.tap if touch else link.click)()
             # The panel is left: the exact thread with its composer is on screen, not hidden behind the panel.
             thread = page.get_by_role("region", name=f"Thread of {title}")
@@ -338,15 +338,19 @@ class HandOffJourney(unittest.TestCase):
             recent_thread = page.get_by_role("region", name=f"Thread of {recent_title}")
             expect(recent_thread).to_be_visible()
             expect(page.get_by_label("Write to this task")).to_be_visible()
-            expect(page.get_by_label("Task", exact=True)).to_have_value(self.ids["label"])
+            # There is no task picker (#347 P1-2): the opened task is the one in the address.
+            expect(page).to_have_url(re.compile(f"task={self.ids['label']}"))
             page.go_back()
             expect(detail).to_be_visible()
             page.go_forward()
             expect(recent_thread).to_be_visible()
         # Where the panel sits beside the list both stay on screen.
         wide = self.open_agents()
-        wide.get_by_role("complementary", name="Claude Code agent, details").get_by_role("button", name=title).click()
+        wide.get_by_role("complementary", name="Claude Code agent, details").get_by_role("button", name=re.compile("^Open the thread of #")).click()
         expect(wide.get_by_role("region", name=f"Thread of {title}")).to_be_visible()
+        # The thread takes the right column in place of the panel; closing it returns to the panel (#347 P1-2).
+        expect(wide.get_by_role("complementary", name="Claude Code agent, details")).to_have_count(0)
+        wide.get_by_role("button", name="Close thread").click()
         expect(wide.get_by_role("complementary", name="Claude Code agent, details")).to_be_visible()
 
     def test_11_the_agent_panel_asks_for_a_task_before_confirmation(self) -> None:
@@ -369,6 +373,69 @@ class HandOffJourney(unittest.TestCase):
         page.reload()
         self.assertEqual(self.task("keys")["owner"]["id"], self.ids["agent_claude"], "the native owner persists after reload")
         self.assertEqual(self.api(page, "GET", f"/api/v1/projects/{self.ids['project']}/grants", status=200), grants_before, "reload grants no permissions")
+
+    def test_13_a_teammates_agent_is_asked_not_assigned(self) -> None:
+        # #347 P1-3: a task is not handed to another person's agent; Flux asks its owner in the task's thread.
+        # Negative control (second half): the agent Ada owns still gets the task handed to it, owner changed.
+        ada, jonas = self.page("ada"), self.page("jonas")
+        pid, ws = self.ids["project"], self.ids["workspace"]
+        jonas_agent = self.api(jonas, "POST", f"/api/v1/workspaces/{ws}/agents", {"name": "Claude Code", "owner": "self"}, status=201)["id"]
+        self.api(ada, "POST", f"/api/v1/projects/{pid}/grants", {"principal": {"kind": "agent", "id": jonas_agent}, "role": "contributor"}, status=201)
+        ask = self.api(ada, "POST", f"/api/v1/projects/{pid}/work", {"title": "Print a label for each of the six beds"}, status=201)
+        page = self.open_agents()
+        page.get_by_role("button", name="Hand off a task").click()
+        dialog = page.get_by_role("dialog", name="Hand off a task")
+        dialog.get_by_label("Task", exact=True).select_option(label=f"#{ask['number']} · Print a label for each of the six beds")
+        dialog.locator("label.handoff__agent", has_text="Claude Code").filter(has_text="Jonas Berg").click()
+        expect(dialog).to_contain_text("for Jonas Berg · Jonas decides")
+        dialog.get_by_role("button", name="Next").click()
+        expect(dialog.get_by_role("heading", name="Ask Jonas first")).to_be_visible()
+        expect(dialog).to_contain_text("Only Jonas can hand work to it")
+        expect(dialog.get_by_role("button", name="Ask Jonas")).to_be_visible()
+        expect(dialog.get_by_role("button", name=re.compile("^Hand off"))).to_have_count(0)
+        dialog.get_by_role("button", name="Ask Jonas").click()
+        expect(page.get_by_text(f"Asked Jonas about #{ask['number']}")).to_be_visible()
+        self.assertIsNone(self.task_by_id(ask["id"])["owner"], "the task's owner does not change")
+        discussion = self.api(ada, "GET", f"/api/v1/work/{ask['id']}/discussion", status=200)
+        newest = sorted([discussion["root"] or {}, *discussion["messages"]], key=lambda m: m.get("sequence", 0))[-1]
+        self.assertTrue(newest["body"].startswith(f"@Jonas Berg can your Claude Code take #{ask['number']}"), newest["body"])
+        # Negative control: Ada's own agent is handed the task, and the owner becomes that agent.
+        fresh = self.api(ada, "POST", f"/api/v1/projects/{pid}/work", {"title": "Measure the greenhouse humidity"}, status=201)
+        page = self.open_agents()
+        page.get_by_role("button", name="Hand off a task").click()
+        dialog = page.get_by_role("dialog", name="Hand off a task")
+        dialog.get_by_label("Task", exact=True).select_option(label=f"#{fresh['number']} · Measure the greenhouse humidity")
+        dialog.locator("label.handoff__agent", has_text="Claude Code agent").click()
+        dialog.get_by_role("button", name="Next").click()
+        expect(dialog.get_by_role("button", name=re.compile("^Hand off"))).to_be_visible()
+        dialog.get_by_role("button", name=re.compile("^Hand off")).click()
+        expect(page.get_by_text(f"Handed #{fresh['number']} to Claude Code agent")).to_be_visible()
+        self.assertEqual(self.task_by_id(fresh["id"])["owner"]["id"], self.ids["agent_claude"])
+
+    def task_by_id(self, task_id: str) -> dict:
+        return self.api(self.page("ada"), "GET", f"/api/v1/work/{task_id}", status=200)
+
+    def test_14_asking_a_teammate_says_how_to_say_yes_and_load_lines_name_the_sign_in(self) -> None:
+        # #347 review N6 and N11: the asked message says what a yes does; a never-signed-in agent reads "not signed in yet", not "offline".
+        ada, jonas = self.page("ada"), self.page("jonas")
+        pid, ws = self.ids["project"], self.ids["workspace"]
+        jonas_agent = self.api(jonas, "POST", f"/api/v1/workspaces/{ws}/agents", {"name": "Claude Code", "owner": "self"}, status=201)["id"]
+        self.api(ada, "POST", f"/api/v1/projects/{pid}/grants", {"principal": {"kind": "agent", "id": jonas_agent}, "role": "contributor"}, status=201)
+        ask = self.api(ada, "POST", f"/api/v1/projects/{pid}/work", {"title": "Label the compost bins"}, status=201)
+        page = self.open_agents()
+        page.get_by_role("button", name="Hand off a task").click()
+        dialog = page.get_by_role("dialog", name="Hand off a task")
+        dialog.get_by_label("Task", exact=True).select_option(label=f"#{ask['number']} · Label the compost bins")
+        # Ada's Claude Code has #1 in progress and has never signed in: the load line says so (negative control: "has #1 · offline").
+        expect(dialog.locator("label.handoff__agent", has_text="Claude Code agent")).to_contain_text("has #1 · not signed in yet")
+        dialog.locator("label.handoff__agent", has_text="Claude Code").filter(has_text="Jonas Berg").first.click()
+        dialog.get_by_role("button", name="Next").click()
+        dialog.get_by_role("button", name="Ask Jonas").click()
+        expect(page.get_by_text(f"Asked Jonas about #{ask['number']}")).to_be_visible()
+        discussion = self.api(ada, "GET", f"/api/v1/work/{ask['id']}/discussion", status=200)
+        newest = sorted([discussion["root"] or {}, *discussion["messages"]], key=lambda m: m.get("sequence", 0))[-1]
+        # Negative control: the old message ended at the question mark, so Jonas was not told a yes hands the task over.
+        self.assertTrue(newest["body"].endswith(f"? If yes, hand #{ask['number']} to it in Agents."), newest["body"])
 
     def seed_paged_project(self, page: Page, free_first: bool) -> tuple[str, str]:
         """A project with 55 tasks owned by an agent and one free task, created in the given order."""
@@ -460,7 +527,9 @@ class HandOffJourney(unittest.TestCase):
                         at = time.time()
                         item["session"] = {"startedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(at - 3600)),
                                            "expiresAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(at - 60 if connection_state == "expired_session" else at + 3600))} if item["state"] == "session_open" else None
-                        item["currentWork"] = {"taskId": target["id"], "taskTitle": target["title"], "role": "review", "state": state}
+                        item["currentWork"] = {"taskId": target["id"], "taskTitle": target["title"], "role": "review", "state": state,
+                                               "liveClaimExpiresAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() + 3600))
+                                               if state == "claimed" and connection_state == "session_open" else None}
                         item["requests"] = [{"id": "fixture-request", "kind": "review", "state": request_state,
                                              "reason": "after the calibration result", "taskId": target["id"], "taskTitle": target["title"],
                                              "sender": {"connectionId": "fixture-sender", "name": "Review laptop", "ownerName": "Jonas Berg"}}]
@@ -500,7 +569,7 @@ class HandOffJourney(unittest.TestCase):
                     thread = page.get_by_role("region", name=f'Thread of {target["title"]}')
                     expect(thread).to_be_visible()
                     expect(page.get_by_label("Write to this task")).to_be_visible()
-                    expect(page.get_by_label("Task", exact=True)).to_have_value(target["id"])
+                    expect(page).to_have_url(re.compile(f"task={target['id']}"))
                     self.assertTrue(native_reads, "the current target used the actual project-scoped native read beyond page one")
                     if phone:
                         expect(detail).to_have_count(0)
@@ -509,7 +578,13 @@ class HandOffJourney(unittest.TestCase):
                         page.go_forward()
                         expect(thread).to_be_visible()
                     else:
+                        # Wide: the thread takes the right column beside the list, which keeps the agent selected (#347 P1-2);
+                        # closing the thread returns to the same agent's panel.
+                        expect(row).to_be_visible()
+                        expect(row.locator(".agents-row__btn")).to_have_attribute("aria-pressed", "true")
+                        page.get_by_role("button", name="Close thread").click()
                         expect(detail).to_be_visible()
+                        expect(detail.get_by_role("region", name="Now")).to_contain_text(availability)
                     page.unroute_all(behavior="ignoreErrors")
                     page.context.close()
 
@@ -527,7 +602,8 @@ class HandOffJourney(unittest.TestCase):
             page.goto(f"/projects/{project}/agents?task={wanted}")
             expect(page.get_by_role("heading", level=1, name="Agents")).to_be_visible()
             expect(page.get_by_role("region", name="Thread of Calibrate the probes at two soil depths")).to_have_count(0)
-            self.assertNotEqual(page.get_by_label("Task", exact=True).input_value(), wanted)
+            # There is no task picker (#347 P1-2): the thread that opens is this project's own first task, never the wanted one.
+            expect(page.get_by_role("region", name=re.compile(r"^Thread of Connection task \d+$"))).to_have_count(1)
         # A reader can see the work but has no hand-off entry and cannot bypass it through the API.
         self.api(ada, "POST", f"/api/v1/projects/{project}/grants",
                  {"principal": {"kind": "human", "id": JONAS["id"]}, "role": "viewer"}, status=201)
@@ -656,7 +732,8 @@ class HandOffJourney(unittest.TestCase):
         reads: list[str] = []
         at = time.time()
         started = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(at - 60))
-        expires = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(at + 8))
+        expires = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(at + 60))
+        claim_expires = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(at + 8))
 
         def projection(route) -> None:
             response = route.fetch()
@@ -666,7 +743,7 @@ class HandOffJourney(unittest.TestCase):
                     item.update(state="not_signed_in", session=None, currentWork=None)
                 elif item["id"] == connections[1]["id"]:
                     item.update(state="session_open", session={"startedAt": started, "expiresAt": expires},
-                                currentWork={"taskId": held["id"], "taskTitle": held["title"], "role": "plan", "state": "claimed"},
+                                currentWork={"taskId": held["id"], "taskTitle": held["title"], "role": "plan", "state": "claimed", "liveClaimExpiresAt": claim_expires},
                                 requests=[{"id": "expiry-request", "kind": "review", "state": "claimed", "reason": "after the field reading",
                                            "taskId": held["id"], "taskTitle": held["title"],
                                            "sender": {"connectionId": "expiry-sender", "name": "Field laptop", "ownerName": "Jonas Berg"}}])
@@ -703,7 +780,7 @@ class HandOffJourney(unittest.TestCase):
         expect(dialog.get_by_text(re.compile("queued behind", re.IGNORECASE))).to_have_count(0)
         before_expiry = len(reads)
         expect(dialog).to_contain_text('Work held on “Plan the next moisture reading”', timeout=12000)
-        expect(dialog.locator(".handoff__chosen .kreska")).to_have_attribute("data-expression", "asleep")
+        expect(dialog.locator(".handoff__chosen .kreska")).to_have_attribute("data-expression", "idle")
         shot(page, "handoff-known-expiry-held-desktop-light")
         self.assertEqual(len(reads), before_expiry, "aging session evidence polls no API")
         # The known eight-second expiry must also age the roster, count and selected detail before
@@ -711,16 +788,16 @@ class HandOffJourney(unittest.TestCase):
         dialog.get_by_role("button", name="Close", exact=True).click()
         expect(live).to_contain_text('Work held on “Plan the next moisture reading”', timeout=1000)
         expect(live).not_to_have_attribute("data-working", "true")
-        expect(live).to_contain_text("Offline")
+        expect(live).to_contain_text("Session open")
         expect(live).to_contain_text("Review request from Field laptop (Jonas Berg)")
         expect(live).to_contain_text("after the field reading")
-        expect(live.locator(".agents-row__icon")).to_have_attribute("data-expression", "asleep")
+        expect(live.locator(".agents-row__icon")).to_have_attribute("data-expression", "idle")
         expect(page.get_by_text("2 in this project", exact=True)).to_be_visible()
         detail = page.get_by_role("complementary").get_by_role("region", name="Now")
         expect(detail).to_contain_text("Planning · Work held · claim recorded")
-        expect(detail).to_contain_text("Offline")
+        expect(detail).to_contain_text("Session open")
         expect(detail).to_contain_text("Field laptop (Jonas Berg)")
-        self.assertLess(time.monotonic() - opened_at, 14, "known expiry is visible before the fifteen-second poll")
+        self.assertLess(time.monotonic() - opened_at, 14, "known lease expiry is visible before the fifteen-second poll")
         self.assertEqual(len(reads), before_expiry, "roster, count and detail expiry use the unchanged snapshot")
         shot(page, "agents-known-expiry-held-desktop-light")
 
@@ -749,7 +826,8 @@ class HandOffJourney(unittest.TestCase):
             item = next(row for row in body["connections"] if row["id"] == connection["id"])
             item.update(state="session_open", session={"startedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
                                                        "expiresAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(expires_at / 1000))},
-                        currentWork={"taskId": task["id"], "taskTitle": task["title"], "role": "review", "state": "claimed"})
+                        currentWork={"taskId": task["id"], "taskTitle": task["title"], "role": "review", "state": "claimed",
+                                     "liveClaimExpiresAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(expires_at / 1000))})
             reads.append(route.request.url)
             route.fulfill(response=response, json=body)
 

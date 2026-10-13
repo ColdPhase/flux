@@ -255,7 +255,7 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
         return;
       }
       const restore = before.status === 'blocked' && before.blocker ? { status: before.status, blocker: before.blocker } : { status: before.status };
-      toast({ message: `${taskNumber(item)} is now ${STATUS_LABEL[next].toLowerCase()}`, timeout: 8000, action: { label: 'Undo', onAction: () => { void change(restore, latest.current); } } });
+      toast({ message: `${taskNumber(item)} is now ${STATUS_LABEL[next].toLowerCase()}`, timeout: 8000, action: { label: 'Undo', onClick: () => { void change(restore, latest.current); } } });
     }
   }
   useStateKeys(writable, (status) => void setState(status));
