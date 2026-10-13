@@ -1,0 +1,257 @@
+ Image flux-e2e:flux-test-457-452bf22 Building 
+ Image flux-foundation:flux-test-457-452bf22 Building 
+ Image flux-test-tools:flux-test-457-452bf22 Building 
+#1 [internal] load local bake definitions
+#1 reading from stdin 1.76kB done
+#1 DONE 0.0s
+
+#2 [test internal] load build definition from Dockerfile
+#2 transferring dockerfile:
+#2 transferring dockerfile: 9.60kB done
+#2 DONE 0.1s
+
+#3 [pushmock internal] load metadata for mcr.microsoft.com/playwright:v1.63.0-noble@sha256:eff16c30e6f3f4af0a03fa4b706120d5e9b0891c344a27d64559aff5900a4a27
+#3 DONE 0.0s
+
+#4 [migrate internal] load metadata for docker.io/library/node@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1
+#4 DONE 0.0s
+
+#5 [pushmock internal] load .dockerignore
+#5 transferring context: 255B done
+#5 DONE 0.1s
+
+#6 [migrate build 1/9] FROM docker.io/library/node@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1
+#6 DONE 0.0s
+
+#7 [pushmock e2e 1/3] FROM mcr.microsoft.com/playwright:v1.63.0-noble@sha256:eff16c30e6f3f4af0a03fa4b706120d5e9b0891c344a27d64559aff5900a4a27
+#7 DONE 0.0s
+
+#8 [pushmock internal] load build context
+#8 transferring context: 12.18MB 0.1s done
+#8 transferring context: 12.18MB 0.1s done
+#8 DONE 0.2s
+
+#9 [pushmock build 7/9] COPY . .
+#9 CACHED
+
+#10 [pushmock build 8/9] RUN pnpm install --offline --frozen-lockfile
+#10 CACHED
+
+#11 [pushmock build 4/9] COPY pnpm-lock.yaml pnpm-workspace.yaml ./
+#11 CACHED
+
+#12 [pushmock build 3/9] RUN corepack enable && corepack install -g pnpm@12.6.0
+#12 CACHED
+
+#13 [pushmock build 5/9] COPY patches ./patches
+#13 CACHED
+
+#14 [pushmock build 6/9] RUN pnpm fetch
+#14 CACHED
+
+#15 [pushmock build 2/9] WORKDIR /app
+#15 CACHED
+
+#16 [pushmock build 9/9] RUN pnpm build && pnpm typecheck && pnpm lint
+#16 CACHED
+
+#17 [test] exporting to image
+#17 exporting layers done
+#17 writing image sha256:6c66c64207089c167760da80b2d4123ff52a6e244eb96376a280fe6de753ac77 0.0s done
+#17 naming to docker.io/library/flux-test-tools:flux-test-457-452bf22 0.0s done
+#17 DONE 0.1s
+
+#18 [migrate runtime  5/30] COPY --from=production-dependencies /app/apps/worker/node_modules ./apps/worker/node_modules
+#18 CACHED
+
+#19 [migrate runtime  9/30] COPY --from=production-dependencies /app/apps/runtime/node_modules ./apps/runtime/node_modules
+#19 CACHED
+
+#20 [migrate runtime 11/30] COPY --from=build /app/apps/server/package.json ./apps/server/package.json
+#20 CACHED
+
+#21 [migrate production-dependencies 1/1] RUN pnpm install --prod --offline --frozen-lockfile
+#21 CACHED
+
+#22 [migrate runtime 14/30] COPY --from=build /app/packages/core/package.json ./packages/core/package.json
+#22 CACHED
+
+#23 [migrate runtime 17/30] COPY --from=build /app/packages/runtime-protocol/package.json ./packages/runtime-protocol/package.json
+#23 CACHED
+
+#24 [migrate runtime 19/30] COPY --from=build /app/apps/server/dist ./apps/server/dist
+#24 CACHED
+
+#25 [migrate runtime 27/30] COPY --from=build /app/apps/runtime/dist ./apps/runtime/dist
+#25 CACHED
+
+#26 [migrate runtime 13/30] COPY --from=build /app/packages/contracts/package.json ./packages/contracts/package.json
+#26 CACHED
+
+#27 [migrate runtime  6/30] COPY --from=production-dependencies /app/packages/core/node_modules ./packages/core/node_modules
+#27 CACHED
+
+#28 [migrate runtime 29/30] COPY --from=build /app/tooling/dist ./tooling/dist
+#28 CACHED
+
+#29 [migrate runtime 22/30] COPY --from=build /app/packages/contracts/dist ./packages/contracts/dist
+#29 CACHED
+
+#30 [migrate runtime 18/30] COPY --from=build /app/apps/runtime/package.json ./apps/runtime/package.json
+#30 CACHED
+
+#31 [migrate runtime  7/30] COPY --from=production-dependencies /app/packages/db/node_modules ./packages/db/node_modules
+#31 CACHED
+
+#32 [migrate runtime 26/30] COPY --from=build /app/packages/runtime-protocol/dist ./packages/runtime-protocol/dist
+#32 CACHED
+
+#33 [migrate runtime 12/30] COPY --from=build /app/apps/worker/package.json ./apps/worker/package.json
+#33 CACHED
+
+#34 [migrate runtime 21/30] COPY --from=build /app/apps/web/dist ./apps/web/dist
+#34 CACHED
+
+#35 [migrate runtime 28/30] COPY --from=build /app/packages/db/migrations ./packages/db/migrations
+#35 CACHED
+
+#36 [migrate runtime 20/30] COPY --from=build /app/apps/worker/dist ./apps/worker/dist
+#36 CACHED
+
+#37 [migrate runtime 10/30] COPY --from=build /app/package.json ./package.json
+#37 CACHED
+
+#38 [migrate runtime  3/30] COPY --from=production-dependencies /app/node_modules ./node_modules
+#38 CACHED
+
+#39 [migrate runtime 23/30] COPY --from=build /app/packages/core/dist ./packages/core/dist
+#39 CACHED
+
+#40 [migrate runtime 25/30] COPY --from=build /app/packages/agent-runtime/dist ./packages/agent-runtime/dist
+#40 CACHED
+
+#41 [migrate runtime  8/30] COPY --from=production-dependencies /app/packages/agent-runtime/node_modules ./packages/agent-runtime/node_modules
+#41 CACHED
+
+#42 [migrate runtime 16/30] COPY --from=build /app/packages/agent-runtime/package.json ./packages/agent-runtime/package.json
+#42 CACHED
+
+#43 [migrate runtime 24/30] COPY --from=build /app/packages/db/dist ./packages/db/dist
+#43 CACHED
+
+#44 [migrate runtime 15/30] COPY --from=build /app/packages/db/package.json ./packages/db/package.json
+#44 CACHED
+
+#45 [migrate runtime  4/30] COPY --from=production-dependencies /app/apps/server/node_modules ./apps/server/node_modules
+#45 CACHED
+
+#46 [migrate runtime 30/30] RUN mkdir -p /data/files && chown -R node:node /data
+#46 CACHED
+
+#47 [migrate] exporting to image
+#47 exporting layers done
+#47 writing image sha256:6eb5c0150422b821efcaec1c65f6d5b5d614ca2e5bf06a3d2124dda9d0984af3 0.0s done
+#47 naming to docker.io/library/flux-foundation:flux-test-457-452bf22 0.0s done
+#47 DONE 0.1s
+
+#48 [test] resolving provenance for metadata file
+#48 DONE 0.0s
+
+#49 [migrate] resolving provenance for metadata file
+#49 DONE 0.0s
+
+#50 [pushmock e2e 2/3] WORKDIR /app
+#50 CACHED
+
+#51 [pushmock e2e 3/3] COPY --from=build /app /app
+#51 DONE 3.5s
+
+#52 [pushmock] exporting to image
+#52 exporting layers
+#52 exporting layers 3.1s done
+#52 writing image sha256:fe5987d7e15d5ab6c2e6b829a8d8659a6fc1870d05a8304612d61c541abfa2ff done
+#52 naming to docker.io/library/flux-e2e:flux-test-457-452bf22 0.0s done
+#52 DONE 3.1s
+
+#53 [pushmock] resolving provenance for metadata file
+#53 DONE 0.0s
+ Image flux-test-tools:flux-test-457-452bf22 Built 
+ Image flux-foundation:flux-test-457-452bf22 Built 
+ Image flux-e2e:flux-test-457-452bf22 Built 
+ Network flux-test-457-452bf22_default Creating 
+ Network flux-test-457-452bf22_default Created 
+ Volume flux-test-457-452bf22_pgdata Creating 
+ Volume flux-test-457-452bf22_pgdata Created 
+ Container flux-test-457-452bf22-db-1 Creating 
+ Container flux-test-457-452bf22-db-1 Created 
+ Container flux-test-457-452bf22-migrate-1 Creating 
+ Container flux-test-457-452bf22-migrate-1 Created 
+ Container flux-test-457-452bf22-db-1 Starting 
+ Container flux-test-457-452bf22-db-1 Started 
+ Container flux-test-457-452bf22-db-1 Waiting 
+ Container flux-test-457-452bf22-db-1 Healthy 
+ Container flux-test-457-452bf22-migrate-1 Starting 
+ Container flux-test-457-452bf22-migrate-1 Started 
+ Volume flux-test-457-452bf22_files Creating 
+ Volume flux-test-457-452bf22_files Created 
+ Volume flux-test-457-452bf22_teststate Creating 
+ Volume flux-test-457-452bf22_teststate Created 
+ Container flux-test-457-452bf22-files-init-run-13632e0f2b22 Creating 
+time="2026-10-13T23:55:02+02:00" level=warning msg="mount of type `volume` should not define `bind` option"
+ Container flux-test-457-452bf22-files-init-run-13632e0f2b22 Created 
+ Container flux-test-457-452bf22-migrate-run-4997276f70a5 Creating 
+ Container flux-test-457-452bf22-migrate-run-4997276f70a5 Created 
+ Network flux-test-457-452bf22_runtime-api Creating 
+ Network flux-test-457-452bf22_runtime-api Created 
+ Network flux-test-457-452bf22_runtime-control Creating 
+ Network flux-test-457-452bf22_runtime-control Created 
+ Container flux-test-457-452bf22-db-1 Running 
+ Container flux-test-457-452bf22-migrate-1 Running 
+ Container flux-test-457-452bf22-api-1 Creating 
+time="2026-10-13T23:55:04+02:00" level=warning msg="mount of type `volume` should not define `bind` option"
+ Container flux-test-457-452bf22-api-1 Created 
+ Container flux-test-457-452bf22-db-1 Waiting 
+ Container flux-test-457-452bf22-db-1 Healthy 
+ Container flux-test-457-452bf22-migrate-1 Waiting 
+ Container flux-test-457-452bf22-migrate-1 Exited 
+ Container flux-test-457-452bf22-api-1 Starting 
+ Container flux-test-457-452bf22-api-1 Started 
+ Container flux-test-457-452bf22-api-1 Waiting 
+ Container flux-test-457-452bf22-api-1 Healthy 
+ Container flux-test-457-452bf22-e2e-run-41e94f16af5c Creating 
+ Container flux-test-457-452bf22-e2e-run-41e94f16af5c Created 
+✔ chromium: owner Request reaches manager Inbox, only manager Allow creates a contributor grant (25093.053683ms)
+✔ webkit: owner Request reaches manager Inbox, only manager Allow creates a contributor grant (26298.461229ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 52319.731509
+ Container flux-test-457-452bf22-api-1 Stopping 
+ Container flux-test-457-452bf22-api-1 Stopped 
+ Container flux-test-457-452bf22-api-1 Removing 
+ Container flux-test-457-452bf22-api-1 Removed 
+ Container flux-test-457-452bf22-migrate-1 Stopping 
+ Container flux-test-457-452bf22-migrate-1 Stopped 
+ Container flux-test-457-452bf22-migrate-1 Removing 
+ Container flux-test-457-452bf22-migrate-1 Removed 
+ Container flux-test-457-452bf22-db-1 Stopping 
+ Container flux-test-457-452bf22-db-1 Stopped 
+ Container flux-test-457-452bf22-db-1 Removing 
+ Container flux-test-457-452bf22-db-1 Removed 
+ Volume flux-test-457-452bf22_pgdata Removing 
+ Volume flux-test-457-452bf22_files Removing 
+ Network flux-test-457-452bf22_default Removing 
+ Network flux-test-457-452bf22_runtime-api Removing 
+ Network flux-test-457-452bf22_runtime-control Removing 
+ Volume flux-test-457-452bf22_pgdata Removed 
+ Volume flux-test-457-452bf22_teststate Removing 
+ Volume flux-test-457-452bf22_files Removed 
+ Volume flux-test-457-452bf22_teststate Removed 
+ Network flux-test-457-452bf22_runtime-api Removed 
+ Network flux-test-457-452bf22_default Removed 
+ Network flux-test-457-452bf22_runtime-control Removed 
+Removed 3 per-run image(s) tagged :flux-test-457-452bf22
