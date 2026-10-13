@@ -27,6 +27,13 @@ def shot(page: Page, name: str) -> None:
     save_shot(page, name if UI_BROWSER == "chromium" else f"{name}-{UI_BROWSER}")
 
 
+def assert_phone_sheet(dialog, page) -> None:
+    metrics = dialog.evaluate("""el => { const rect = el.getBoundingClientRect(); return {top: rect.top, radius: parseFloat(getComputedStyle(el).borderTopLeftRadius)}; }""")
+    if metrics["top"] <= 80 or metrics["radius"] <= 20:
+        raise AssertionError(f"phone hand-off sheet should leave the project visible above rounded corners: {metrics}")
+    expect(page.get_by_role("heading", level=1, name="Agents")).to_be_visible()
+
+
 class HandOffJourney(unittest.TestCase):
     """Tests run in name order and share two accounts, one project, three agents and four tasks."""
 
@@ -155,7 +162,7 @@ class HandOffJourney(unittest.TestCase):
         row.click()
         expect(page.get_by_role("region", name="Agent policy")).to_have_count(0)
 
-    def test_04_the_detail_panel_opens_on_the_working_agent_and_has_no_stop_it_cannot_honour(self) -> None:
+    def test_04_the_detail_panel_opens_on_the_working_agent(self) -> None:
         page = self.open_agents()
         detail = page.get_by_role("complementary", name="Claude Code agent, details")
         expect(detail).to_be_visible()
@@ -165,8 +172,9 @@ class HandOffJourney(unittest.TestCase):
         expect(detail.get_by_role("region", name="Now")).to_contain_text("Calibrate the probes at two soil depths")
         expect(detail.get_by_role("region", name="Can")).to_contain_text("It can’t accept decisions")
         expect(detail.get_by_role("region", name="Recent")).to_be_visible()
-        # Flux has no operation that stops an external agent, so no button pretends to.
-        expect(page.get_by_role("button", name=re.compile("^Stop"))).to_have_count(0)
+        # Stop (S13) is on the working agent's row and in its panel, for its owner; test_agent_stop_questions exercises it.
+        expect(detail.get_by_role("button", name="Stop Claude Code agent")).to_be_visible()
+        expect(page.get_by_role("button", name="Stop Reader agent")).to_have_count(0)
         shot(page, "handoff-agents-detail-desktop")
         page.locator(f'.agents-row[data-agent="{self.ids["agent_reader"]}"] .agents-row__btn').click()
         expect(page.get_by_role("complementary", name="Reader agent, details")).to_be_visible()
@@ -283,15 +291,7 @@ class HandOffJourney(unittest.TestCase):
             button.tap()
             dialog = page.get_by_role("dialog", name="Hand off a task")
             expect(dialog.get_by_text("Step 1 of 2")).to_be_visible()
-            def assert_phone_sheet() -> None:
-                metrics = dialog.evaluate("""el => {
-                  const rect = el.getBoundingClientRect();
-                  return {top: rect.top, height: rect.height, radius: parseFloat(getComputedStyle(el).borderTopLeftRadius)};
-                }""")
-                self.assertGreater(metrics["top"], 80, "the project remains visible above the rounded hand-off sheet")
-                self.assertGreater(metrics["radius"], 20, "the phone hand-off uses the drawn sheet corners")
-                expect(page.get_by_role("heading", level=1, name="Agents")).to_be_visible()
-            assert_phone_sheet()
+            assert_phone_sheet(dialog, page)
             dialog.get_by_label("Task", exact=True).select_option(label="#5 · Order spare batteries")
             dialog.locator("label.handoff__agent", has_text="Claude Code agent").tap()
             for name in ("Next",):
@@ -301,7 +301,7 @@ class HandOffJourney(unittest.TestCase):
             shot(page, f"handoff-step1-phone-{scheme}")
             dialog.get_by_role("button", name="Next").tap()
             expect(dialog.get_by_text("Step 2 of 2")).to_be_visible()
-            assert_phone_sheet()
+            assert_phone_sheet(dialog, page)
             shot(page, f"handoff-step2-phone-{scheme}")
             page.keyboard.press("Escape")
             expect(page.get_by_role("dialog")).to_have_count(0)
@@ -484,7 +484,7 @@ class HandOffJourney(unittest.TestCase):
                     else:
                         expect(row).not_to_have_attribute("data-working", "true")
                         expect(page.get_by_text("1 in this project", exact=True)).to_be_visible()
-                    (row.get_by_role("button").tap if phone else row.get_by_role("button").click)()
+                    (row.locator(".agents-row__btn").tap if phone else row.locator(".agents-row__btn").click)()
                     detail = page.get_by_role("complementary", name="Claude Code agent, details")
                     expect(detail.locator(".agents-detail__head > .kreska")).to_have_attribute("data-expression", expression)
                     now = detail.get_by_role("region", name="Now")

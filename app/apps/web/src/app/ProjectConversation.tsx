@@ -27,6 +27,8 @@ import { AgentAuthor, AuthorFace, ContributionMark, OPENING_REVEAL_MS, SourceCit
 import { agentAuthorOwner, useAgentOwners } from '../agents/owners';
 import { OneConversation, type PaneProps } from './OneConversation';
 import { ThreadMessageActions } from './ThreadDrawer';
+import { QuestionCard } from '../agents/QuestionCard';
+import { useProjectQuestions } from '../agents/questions';
 import { useTyping } from '../typing/useTyping';
 import { TypingNotice } from '../typing/TypingNotice';
 import './project-conversation.css';
@@ -80,6 +82,8 @@ function mergeMessages(current: Conversation['messages'], incoming: Conversation
 export function ProjectConversation() {
   const data = useLoaderData() as ProjectData;
   const { me } = useShellData();
+  // Agents' questions with ready answers (S14): one read of the project's questions for every card below.
+  useProjectQuestions(data.project.id, me.user.id);
   return <div className="project-page">
     <OneConversation key={`${me.user.id}:${data.project.id}`} data={data} Pane={ProjectConversationContent} />
   </div>;
@@ -476,6 +480,7 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
                   <MessageObjects message={message} projectId={project.id} preview={messageWork.previews?.get(message.id) ?? null} />
                   {message.source ? <SourceCitation materialId={message.source.materialId} version={message.source.version} onDenied={hideIfDenied} /> : null}
                 </MessageContent>
+                <QuestionCard projectId={project.id} messageId={message.id} meId={me.user.id} writable={writable} />
                 {message.contribution ? <ContributionMark contribution={message.contribution} onOpenResult={(resultId) => openDetails({ kind: 'result', id: resultId })} /> : null}
                 <ThreadMessageActions writable={writable}><MessageActions projectId={project.id} message={message} writable={writable} busy={makeWork.busy === message.id} onCreateWork={() => void makeWork.create(message)} /></ThreadMessageActions>
                 {makeWork.failed?.messageId === message.id ? <p className="ws-act-error" role="alert">{makeWork.failed.text} <button type="button" onClick={() => void makeWork.create(message)}>Retry</button></p> : null}

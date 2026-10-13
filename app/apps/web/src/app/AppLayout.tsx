@@ -26,6 +26,7 @@ import { useNeedsYou } from '../returns/useNeedsYou';
 import { WorkReadProvider, useProjectWorkSummary } from '../work/WorkReadContext';
 import { OverviewContext } from '../project/OverviewContext';
 import { remember, remembered } from './remembered';
+import { ProjectAgentStop } from './WorkingAgent';
 import { useFocus } from './focus';
 import { FocusPill, HeaderFaces, MoreMenu, NeedsYouChip, type MoreItem } from './HeaderParts';
 
@@ -468,6 +469,8 @@ function AppLayoutContent() {
           <div className="top__right" data-shift>
             {/* A view can put one quiet action here (a DM's Select, #96). */}
             <span className="top__actions" ref={setActionSlot} />
+            {/* On the phone a working agent of the person's own stays one tap away in its conversation (S13). */}
+            {phone && activeProject && /^\/projects\/[^/]+\/conversations\//.test(location.pathname) ? <ProjectAgentStop projectId={activeProject.id} /> : null}
             {focusing && focus.until ? <FocusPill until={focus.until} uncertain={focus.uncertain} onEnd={() => void focus.toggle()} /> : phone ? (
               <>
                 {activeProject ? <LiveEntry /> : null}

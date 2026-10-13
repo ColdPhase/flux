@@ -7,6 +7,7 @@ import type { MessageWorkPreview } from '../work/message-associations';
 import { AgentAuthor, AuthorFace, SourceCitation, clock, day, when } from './messageParts';
 import { MessageContent, type PhotoActions } from '../composer/Files';
 import { LinkPreviews, MessageText } from './MessageText';
+import { QuestionCard } from '../agents/QuestionCard';
 
 export type ThreadMode = 'docked' | 'sheet';
 
@@ -80,6 +81,7 @@ export function ThreadRoot({ message, projectId, body, author, agentOwner = null
             : task ? <div className="ws-attach"><DiscussedTask task={task} row={taskRow} /></div> : null}
           {message?.source ? <SourceCitation materialId={message.source.materialId} version={message.source.version} onDenied={onDenied} /> : null}
         </MessageContent>
+        {message ? <QuestionCard projectId={projectId} messageId={message.id} meId={meId} writable={writable} /> : null}
       </article>
       <p className="thread__hint">{replies ? `${replies} ${replies === 1 ? 'reply' : 'replies'}` : writable ? 'Reply to this message. No new topic needed.' : 'No replies yet.'}</p>
     </>

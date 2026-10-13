@@ -1,6 +1,7 @@
 import type { AgentJsonValue, CoWorkRequestState, CoWorkSourceRef } from '@flux/contracts';
 import { ConflictError, InvalidInputError, NotFoundError } from '../access/errors.js';
 import type { CoWorkContext, CoWorkLease, CoWorkRole } from './claims.js';
+import { stoppedError } from './claims.js';
 import { normalizeCoWorkSource } from './requests.js';
 
 /** Bounded, content-free reasons; a decline never carries copied prose. */
@@ -77,6 +78,7 @@ function liveUnit(context: CoWorkContext, facts: CoWorkResponseFacts, input: CoW
   if (unit.assignmentConnectionId !== context.connectionId || unit.projectId !== context.projectId)
     throw new NotFoundError('Work unit', 'COWORK_UNIT_NOT_FOUND');
   if (!Number.isFinite(now.getTime())) throw new Error('Missing database wall time');
+  if (unit.state === 'stopped') throw stoppedError();
   if (unit.state !== 'claimed' || unit.generation !== input.generation || !unit.lease || unit.lease.id !== input.leaseId
     || unit.lease.runtimeSessionId !== context.runtimeSessionId || !(unit.lease.expiresAt.getTime() > now.getTime()))
     throw new ConflictError('The unit claim is no longer live; recover before continuing', 'COWORK_CLAIM_LOST');
