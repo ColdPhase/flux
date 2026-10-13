@@ -507,9 +507,18 @@ class AppShellJourney(unittest.TestCase):
         expect(page).to_have_url(f"{ORIGIN}/map")
         expect(page.get_by_role("heading", name="Start a sketch")).to_be_visible()
         composer = page.get_by_label("Private note", exact=True)
-        # The private-notes composer sits at the bottom of the Sketchbook and always shows its audience.
-        self.assertGreater(box(page, composer)["y"], DESKTOP["height"] - 130)
-        expect(page.locator(".composer__audience")).to_contain_text("Only you")
+        # Your notes is a normal-flow section of the Sketchbook, not the old Home-pinned composer.
+        notes_section = page.get_by_role("region", name="Your notes")
+        expect(notes_section).to_be_visible()
+        expect(notes_section.get_by_role("heading", name="Your notes")).to_be_visible()
+        expect(composer).to_be_visible()
+        audience = notes_section.locator(".composer__audience")
+        expect(audience).to_be_visible()
+        expect(audience).to_contain_text("Only you")
+        self.assertTrue(composer.evaluate("el => el.closest('.ynotes') !== null"), "the private note composer belongs to Your notes")
+        composer_box = box(page, composer)
+        audience_box = box(page, audience)
+        self.assertLess(audience_box["y"] + audience_box["height"], composer_box["y"], "the privacy label sits above the input")
         shot(page, "desktop-1440-sketchbook-empty-light")
 
         # Quick capture: Enter saves a private note, which survives a reload.
