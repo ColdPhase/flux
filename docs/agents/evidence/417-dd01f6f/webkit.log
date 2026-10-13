@@ -1,0 +1,317 @@
+ Image flux-ui-tests:flux-ui-1791924286-2570767 Building 
+ Image flux-foundation:flux-ui-1791924286-2570767 Building 
+#1 [internal] load local bake definitions
+#1 reading from stdin 1.17kB done
+#1 DONE 0.0s
+
+#2 [ui-test internal] load build definition from ui-tests.Dockerfile
+#2 transferring dockerfile: 1.00kB done
+#2 DONE 0.3s
+
+#3 [migrate internal] load build definition from Dockerfile
+#3 transferring dockerfile: 9.59kB done
+#3 DONE 0.5s
+
+#4 [ui-test internal] load metadata for mcr.microsoft.com/playwright/python:v1.62.0-noble@sha256:aa81288e738725378becba5b3e06cb0f3a7f012a610e87e8d767a090ea3f740d
+#4 DONE 0.0s
+
+#5 [migrate internal] load metadata for docker.io/library/node@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1
+#5 DONE 0.0s
+
+#6 [migrate internal] load .dockerignore
+#6 transferring context: 250B done
+#6 DONE 0.3s
+
+#7 [ui-test 1/5] FROM mcr.microsoft.com/playwright/python:v1.62.0-noble@sha256:aa81288e738725378becba5b3e06cb0f3a7f012a610e87e8d767a090ea3f740d
+#7 DONE 0.0s
+
+#8 [migrate build 1/9] FROM docker.io/library/node@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1
+#8 DONE 0.0s
+
+#9 [ui-test internal] load build context
+#9 transferring context: 9.56kB done
+#9 DONE 0.2s
+
+#10 [migrate internal] load build context
+#10 transferring context: 154.72kB 0.0s done
+#10 DONE 0.5s
+
+#11 [ui-test 2/5] COPY tests/ui/requirements.txt /tmp/ui-requirements.txt
+#11 CACHED
+
+#12 [ui-test 3/5] RUN pip install --no-cache-dir --break-system-packages --only-binary=:all: --require-hashes -r /tmp/ui-requirements.txt
+#12 CACHED
+
+#13 [ui-test 4/5] WORKDIR /work
+#13 CACHED
+
+#14 [ui-test 5/5] COPY tests/ui tests/ui
+#14 CACHED
+
+#15 [ui-test] exporting to image
+#15 exporting layers
+#15 ...
+
+#16 [migrate build 8/9] RUN pnpm install --offline --frozen-lockfile
+#16 CACHED
+
+#17 [migrate runtime  9/30] COPY --from=production-dependencies /app/apps/runtime/node_modules ./apps/runtime/node_modules
+#17 CACHED
+
+#18 [migrate runtime  4/30] COPY --from=production-dependencies /app/apps/server/node_modules ./apps/server/node_modules
+#18 CACHED
+
+#19 [migrate runtime 10/30] COPY --from=build /app/package.json ./package.json
+#19 CACHED
+
+#20 [migrate runtime 16/30] COPY --from=build /app/packages/agent-runtime/package.json ./packages/agent-runtime/package.json
+#20 CACHED
+
+#21 [migrate runtime 22/30] COPY --from=build /app/packages/contracts/dist ./packages/contracts/dist
+#21 CACHED
+
+#22 [migrate runtime  3/30] COPY --from=production-dependencies /app/node_modules ./node_modules
+#22 CACHED
+
+#23 [migrate runtime  5/30] COPY --from=production-dependencies /app/apps/worker/node_modules ./apps/worker/node_modules
+#23 CACHED
+
+#24 [migrate runtime 12/30] COPY --from=build /app/apps/worker/package.json ./apps/worker/package.json
+#24 CACHED
+
+#25 [migrate runtime 24/30] COPY --from=build /app/packages/db/dist ./packages/db/dist
+#25 CACHED
+
+#26 [migrate build 2/9] WORKDIR /app
+#26 CACHED
+
+#27 [migrate build 3/9] RUN corepack enable && corepack install -g pnpm@12.6.0
+#27 CACHED
+
+#28 [migrate runtime 25/30] COPY --from=build /app/packages/agent-runtime/dist ./packages/agent-runtime/dist
+#28 CACHED
+
+#29 [migrate production-dependencies 1/1] RUN pnpm install --prod --offline --frozen-lockfile
+#29 CACHED
+
+#30 [migrate build 6/9] RUN pnpm fetch
+#30 CACHED
+
+#31 [migrate build 4/9] COPY pnpm-lock.yaml pnpm-workspace.yaml ./
+#31 CACHED
+
+#32 [migrate runtime 15/30] COPY --from=build /app/packages/db/package.json ./packages/db/package.json
+#32 CACHED
+
+#33 [migrate runtime 17/30] COPY --from=build /app/packages/runtime-protocol/package.json ./packages/runtime-protocol/package.json
+#33 CACHED
+
+#34 [migrate runtime 14/30] COPY --from=build /app/packages/core/package.json ./packages/core/package.json
+#34 CACHED
+
+#35 [migrate runtime 27/30] COPY --from=build /app/apps/runtime/dist ./apps/runtime/dist
+#35 CACHED
+
+#36 [migrate runtime 26/30] COPY --from=build /app/packages/runtime-protocol/dist ./packages/runtime-protocol/dist
+#36 CACHED
+
+#37 [migrate runtime 13/30] COPY --from=build /app/packages/contracts/package.json ./packages/contracts/package.json
+#37 CACHED
+
+#38 [migrate runtime 19/30] COPY --from=build /app/apps/server/dist ./apps/server/dist
+#38 CACHED
+
+#39 [migrate runtime 29/30] COPY --from=build /app/tooling/dist ./tooling/dist
+#39 CACHED
+
+#40 [migrate runtime 23/30] COPY --from=build /app/packages/core/dist ./packages/core/dist
+#40 CACHED
+
+#41 [migrate runtime 28/30] COPY --from=build /app/packages/db/migrations ./packages/db/migrations
+#41 CACHED
+
+#42 [migrate runtime 11/30] COPY --from=build /app/apps/server/package.json ./apps/server/package.json
+#42 CACHED
+
+#43 [migrate runtime  6/30] COPY --from=production-dependencies /app/packages/core/node_modules ./packages/core/node_modules
+#43 CACHED
+
+#44 [migrate runtime 21/30] COPY --from=build /app/apps/web/dist ./apps/web/dist
+#44 CACHED
+
+#45 [migrate runtime  7/30] COPY --from=production-dependencies /app/packages/db/node_modules ./packages/db/node_modules
+#45 CACHED
+
+#46 [migrate build 9/9] RUN pnpm build && pnpm typecheck && pnpm lint
+#46 CACHED
+
+#47 [migrate runtime 18/30] COPY --from=build /app/apps/runtime/package.json ./apps/runtime/package.json
+#47 CACHED
+
+#48 [migrate runtime 20/30] COPY --from=build /app/apps/worker/dist ./apps/worker/dist
+#48 CACHED
+
+#49 [migrate build 5/9] COPY patches ./patches
+#49 CACHED
+
+#50 [migrate runtime  8/30] COPY --from=production-dependencies /app/packages/agent-runtime/node_modules ./packages/agent-runtime/node_modules
+#50 CACHED
+
+#51 [migrate build 7/9] COPY . .
+#51 CACHED
+
+#52 [migrate runtime 30/30] RUN mkdir -p /data/files && chown -R node:node /data
+#52 CACHED
+
+#15 [ui-test] exporting to image
+#15 exporting layers done
+#15 writing image sha256:1d649b5861d2cd782d8834107b2736ca05c179cb8dc1213160f801f48f6ecba7 0.0s done
+#15 naming to docker.io/library/flux-ui-tests:flux-ui-1791924286-2570767 0.1s done
+#15 DONE 0.5s
+
+#53 [migrate] exporting to image
+#53 exporting layers done
+#53 writing image sha256:bb915943d301c81f1203e73b507c81199323e68f8fb8307c7a4ffba82c930d53 0.0s done
+#53 naming to docker.io/library/flux-foundation:flux-ui-1791924286-2570767 0.1s done
+#53 DONE 0.5s
+
+#54 [ui-test] resolving provenance for metadata file
+#54 DONE 0.0s
+
+#55 [migrate] resolving provenance for metadata file
+#55 DONE 0.0s
+ Image flux-foundation:flux-ui-1791924286-2570767 Built 
+ Image flux-ui-tests:flux-ui-1791924286-2570767 Built 
+ Network flux-ui-1791924286-2570767_default Creating 
+ Network flux-ui-1791924286-2570767_default Created 
+ Volume flux-ui-1791924286-2570767_pgdata Creating 
+ Volume flux-ui-1791924286-2570767_pgdata Created 
+ Container flux-ui-1791924286-2570767-db-1 Creating 
+ Container flux-ui-1791924286-2570767-db-1 Created 
+ Container flux-ui-1791924286-2570767-migrate-1 Creating 
+ Container flux-ui-1791924286-2570767-migrate-1 Created 
+ Container flux-ui-1791924286-2570767-db-1 Starting 
+ Container flux-ui-1791924286-2570767-db-1 Started 
+ Container flux-ui-1791924286-2570767-db-1 Waiting 
+ Container flux-ui-1791924286-2570767-db-1 Healthy 
+ Container flux-ui-1791924286-2570767-migrate-1 Starting 
+ Container flux-ui-1791924286-2570767-migrate-1 Started 
+ Volume flux-ui-1791924286-2570767_files Creating 
+ Volume flux-ui-1791924286-2570767_files Created 
+ Container flux-ui-1791924286-2570767-files-init-run-21805c8baf51 Creating 
+time="2026-10-13T22:45:03+02:00" level=warning msg="mount of type `volume` should not define `bind` option"
+ Container flux-ui-1791924286-2570767-files-init-run-21805c8baf51 Created 
+ Network flux-ui-1791924286-2570767_runtime-control Creating 
+ Network flux-ui-1791924286-2570767_runtime-control Created 
+ Network flux-ui-1791924286-2570767_runtime-api Creating 
+ Network flux-ui-1791924286-2570767_runtime-api Created 
+ Container flux-ui-1791924286-2570767-mailpit-1 Creating 
+ Container flux-ui-1791924286-2570767-db-1 Running 
+ Container flux-ui-1791924286-2570767-migrate-1 Running 
+ Container flux-ui-1791924286-2570767-api-1 Creating 
+ Container flux-ui-1791924286-2570767-openai-mock-1 Creating 
+ Container flux-ui-1791924286-2570767-worker-1 Creating 
+ Container flux-ui-1791924286-2570767-anthropic-mock-1 Creating 
+time="2026-10-13T22:45:04+02:00" level=warning msg="mount of type `volume` should not define `bind` option"
+time="2026-10-13T22:45:04+02:00" level=warning msg="mount of type `volume` should not define `bind` option"
+ Container flux-ui-1791924286-2570767-mailpit-1 Created 
+ Container flux-ui-1791924286-2570767-anthropic-mock-1 Created 
+ Container flux-ui-1791924286-2570767-openai-mock-1 Created 
+ Container flux-ui-1791924286-2570767-worker-1 Created 
+ Container flux-ui-1791924286-2570767-api-1 Created 
+ Container flux-ui-1791924286-2570767-db-1 Waiting 
+ Container flux-ui-1791924286-2570767-anthropic-mock-1 Starting 
+ Container flux-ui-1791924286-2570767-openai-mock-1 Starting 
+ Container flux-ui-1791924286-2570767-mailpit-1 Starting 
+ Container flux-ui-1791924286-2570767-mailpit-1 Started 
+ Container flux-ui-1791924286-2570767-db-1 Healthy 
+ Container flux-ui-1791924286-2570767-migrate-1 Waiting 
+ Container flux-ui-1791924286-2570767-migrate-1 Waiting 
+ Container flux-ui-1791924286-2570767-openai-mock-1 Started 
+ Container flux-ui-1791924286-2570767-anthropic-mock-1 Started 
+ Container flux-ui-1791924286-2570767-migrate-1 Exited 
+ Container flux-ui-1791924286-2570767-worker-1 Starting 
+ Container flux-ui-1791924286-2570767-migrate-1 Exited 
+ Container flux-ui-1791924286-2570767-api-1 Starting 
+ Container flux-ui-1791924286-2570767-worker-1 Started 
+ Container flux-ui-1791924286-2570767-api-1 Started 
+ Container flux-ui-1791924286-2570767-anthropic-mock-1 Waiting 
+ Container flux-ui-1791924286-2570767-openai-mock-1 Waiting 
+ Container flux-ui-1791924286-2570767-api-1 Waiting 
+ Container flux-ui-1791924286-2570767-mailpit-1 Waiting 
+ Container flux-ui-1791924286-2570767-mailpit-1 Healthy 
+ Container flux-ui-1791924286-2570767-openai-mock-1 Healthy 
+ Container flux-ui-1791924286-2570767-anthropic-mock-1 Healthy 
+ Container flux-ui-1791924286-2570767-api-1 Healthy 
+ Container flux-ui-1791924286-2570767-ui-test-run-b289a3404b81 Creating 
+ Container flux-ui-1791924286-2570767-ui-test-run-b289a3404b81 Created 
+test_01_a_project_with_a_working_agent (test_agent_stop_questions.StopAndQuestions.test_01_a_project_with_a_working_agent) ... ok
+test_02_stop_is_on_the_working_agents_row_and_panel_only_for_who_may_stop_it (test_agent_stop_questions.StopAndQuestions.test_02_stop_is_on_the_working_agents_row_and_panel_only_for_who_may_stop_it) ... ok
+test_03_the_sidebar_card_shows_the_working_agent_and_stops_it (test_agent_stop_questions.StopAndQuestions.test_03_the_sidebar_card_shows_the_working_agent_and_stops_it) ... ok
+test_04_the_agents_view_says_who_stopped_it (test_agent_stop_questions.StopAndQuestions.test_04_the_agents_view_says_who_stopped_it) ... ok
+test_05_stop_from_the_row_ends_the_hold_and_a_stale_second_stop_is_explained (test_agent_stop_questions.StopAndQuestions.test_05_stop_from_the_row_ends_the_hold_and_a_stale_second_stop_is_explained) ... ok
+test_06_phone_stop_is_a_touch_target_in_the_row (test_agent_stop_questions.StopAndQuestions.test_06_phone_stop_is_a_touch_target_in_the_row) ... ok
+test_07_a_question_is_a_card_with_ready_answers_for_the_person_asked (test_agent_stop_questions.StopAndQuestions.test_07_a_question_is_a_card_with_ready_answers_for_the_person_asked) ... ok
+test_08_everyone_else_sees_the_question_without_buttons_and_free_words_work_on_the_phone (test_agent_stop_questions.StopAndQuestions.test_08_everyone_else_sees_the_question_without_buttons_and_free_words_work_on_the_phone) ... ok
+test_09_home_lists_the_working_agent_with_stop_at_every_width (test_agent_stop_questions.StopAndQuestions.test_09_home_lists_the_working_agent_with_stop_at_every_width)
+AC-3: Home has its own Stop; the sidebar card steps aside there so the agent is listed once. ... ok
+test_10_phone_conversation_header_stops_the_working_agent (test_agent_stop_questions.StopAndQuestions.test_10_phone_conversation_header_stops_the_working_agent)
+AC-3: on the phone the conversation header carries Stop for the agent that works in that project. ... ok
+test_11_stop_offers_hand_back (test_agent_stop_questions.StopAndQuestions.test_11_stop_offers_hand_back) ... ok
+test_01_a_project_with_three_agents_and_four_tasks (test_agents_handoff.HandOffJourney.test_01_a_project_with_three_agents_and_four_tasks) ... ok
+test_05_two_steps_choose_the_agent_then_see_what_it_may_do (test_agents_handoff.HandOffJourney.test_05_two_steps_choose_the_agent_then_see_what_it_may_do) ... ok
+test_18_each_connection_keeps_its_own_work_and_the_dialog_ages_the_live_claim (test_agents_handoff.HandOffJourney.test_18_each_connection_keeps_its_own_work_and_the_dialog_ages_the_live_claim) ... ok
+test_19_a_deadline_crossed_after_the_display_commit_is_not_dropped (test_agents_handoff.HandOffJourney.test_19_a_deadline_crossed_after_the_display_commit_is_not_dropped)
+Controlled browser clock: retain the real DOM/effect path and move only elapsed time. ... ok
+
+----------------------------------------------------------------------
+Ran 15 tests in 39.352s
+
+OK
+
+  Stop/questions browser: webkit
+
+  Hand-off browser: webkit
+
+  Delayed expiry boundary lifecycle: {"offset": 59620, "committed": {"text": "Claude Code agentfor Ada Kowalska (you) \u00b7 Delayed laptop \u00b7 Working on \u201cCheck the deadline boundary\u201d", "before": 1791924349380, "expiry": 1791924408000, "after": 1791924409000}, "timers": [{"delay": 0, "at": 1791924409000, "phase": "after-commit"}], "clockReads": [{"at": 1791924349335, "phase": "before-commit"}, {"at": 1791924349378, "phase": "before-commit"}, {"at": 1791924409000, "phase": "after-commit"}, {"at": 1791924409002, "phase": "after-commit"}], "finalState": "Claude Code agent\nfor Ada Kowalska (you) \u00b7 Delayed laptop \u00b7 Work held on \u201cCheck the deadline boundary\u201d", "clockAgeingReads": 0}
+
+  Delayed expiry boundary: {"offset": 59620, "committed": {"text": "Claude Code agentfor Ada Kowalska (you) \u00b7 Delayed laptop \u00b7 Working on \u201cCheck the deadline boundary\u201d", "before": 1791924349380, "expiry": 1791924408000, "after": 1791924409000}, "timers": [{"delay": 0, "at": 1791924409000, "phase": "after-commit"}], "clockReads": [{"at": 1791924349335, "phase": "before-commit"}, {"at": 1791924349378, "phase": "before-commit"}, {"at": 1791924409000, "phase": "after-commit"}, {"at": 1791924409002, "phase": "after-commit"}], "finalState": "Claude Code agent\nfor Ada Kowalska (you) \u00b7 Delayed laptop \u00b7 Work held on \u201cCheck the deadline boundary\u201d", "clockAgeingReads": 0}
+ Container flux-ui-1791924286-2570767-openai-mock-1 Stopping 
+ Container flux-ui-1791924286-2570767-worker-1 Stopping 
+ Container flux-ui-1791924286-2570767-api-1 Stopping 
+ Container flux-ui-1791924286-2570767-mailpit-1 Stopping 
+ Container flux-ui-1791924286-2570767-anthropic-mock-1 Stopping 
+ Container flux-ui-1791924286-2570767-worker-1 Stopped 
+ Container flux-ui-1791924286-2570767-worker-1 Removing 
+ Container flux-ui-1791924286-2570767-worker-1 Removed 
+ Container flux-ui-1791924286-2570767-mailpit-1 Stopped 
+ Container flux-ui-1791924286-2570767-mailpit-1 Removing 
+ Container flux-ui-1791924286-2570767-mailpit-1 Removed 
+ Container flux-ui-1791924286-2570767-openai-mock-1 Stopped 
+ Container flux-ui-1791924286-2570767-openai-mock-1 Removing 
+ Container flux-ui-1791924286-2570767-openai-mock-1 Removed 
+ Container flux-ui-1791924286-2570767-anthropic-mock-1 Stopped 
+ Container flux-ui-1791924286-2570767-anthropic-mock-1 Removing 
+ Container flux-ui-1791924286-2570767-anthropic-mock-1 Removed 
+ Container flux-ui-1791924286-2570767-api-1 Stopped 
+ Container flux-ui-1791924286-2570767-api-1 Removing 
+ Container flux-ui-1791924286-2570767-api-1 Removed 
+ Container flux-ui-1791924286-2570767-migrate-1 Stopping 
+ Container flux-ui-1791924286-2570767-migrate-1 Stopped 
+ Container flux-ui-1791924286-2570767-migrate-1 Removing 
+ Container flux-ui-1791924286-2570767-migrate-1 Removed 
+ Container flux-ui-1791924286-2570767-db-1 Stopping 
+ Container flux-ui-1791924286-2570767-db-1 Stopped 
+ Container flux-ui-1791924286-2570767-db-1 Removing 
+ Container flux-ui-1791924286-2570767-db-1 Removed 
+ Volume flux-ui-1791924286-2570767_pgdata Removing 
+ Volume flux-ui-1791924286-2570767_files Removing 
+ Network flux-ui-1791924286-2570767_runtime-control Removing 
+ Network flux-ui-1791924286-2570767_runtime-api Removing 
+ Network flux-ui-1791924286-2570767_default Removing 
+ Volume flux-ui-1791924286-2570767_pgdata Removed 
+ Volume flux-ui-1791924286-2570767_files Removed 
+ Network flux-ui-1791924286-2570767_runtime-control Removed 
+ Network flux-ui-1791924286-2570767_runtime-api Removed 
+ Network flux-ui-1791924286-2570767_default Removed 
+Removed 2 per-run image(s) tagged :flux-ui-1791924286-2570767

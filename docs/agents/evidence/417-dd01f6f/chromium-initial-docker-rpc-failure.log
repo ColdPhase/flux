@@ -1,0 +1,26 @@
+ Image flux-ui-tests:flux-ui-1791923573-2550226 Building 
+ Image flux-foundation:flux-ui-1791923573-2550226 Building 
+#1 [internal] load local bake definitions
+#1 reading from stdin 1.17kB done
+#1 DONE 0.0s
+
+#2 [migrate internal] load build definition from Dockerfile
+#2 transferring dockerfile: 9.59kB done
+#2 DONE 0.1s
+
+#3 [migrate internal] load metadata for docker.io/library/node@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1
+#3 DONE 0.0s
+
+#4 [ui-test internal] load build definition from ui-tests.Dockerfile
+#4 transferring dockerfile: 1.00kB done
+#4 DONE 0.2s
+
+#5 [migrate internal] load .dockerignore
+#5 transferring context: 250B done
+#5 DONE 0.1s
+
+#6 [ui-test internal] load metadata for mcr.microsoft.com/playwright/python:v1.62.0-noble@sha256:aa81288e738725378becba5b3e06cb0f3a7f012a610e87e8d767a090ea3f740d
+#6 DONE 0.0s
+target migrate: failed to receive status: rpc error: code = Unavailable desc = error reading from server: EOF
+
+Removed 0 per-run image(s) tagged :flux-ui-1791923573-2550226

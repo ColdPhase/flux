@@ -1,0 +1,397 @@
+{
+  "record": "Flux PR #417 exact-head evidence",
+  "sourceHead": "dd01f6f667ca9d4253f36f5eedf46cb135bd54ee",
+  "sourceBase": "fe4e08f0d6ece3e3b2f6ec5482e7826ab2bfec0b",
+  "mergeCommit": "943ef7cef268527799116026c805138ee4f78563",
+  "testSelection": [
+    "test_agent_stop_questions (11 StopAndQuestions methods)",
+    "test_agents_handoff.HandOffJourney.test_01_a_project_with_three_agents_and_four_tasks",
+    "test_agents_handoff.HandOffJourney.test_05_two_steps_choose_the_agent_then_see_what_it_may_do",
+    "test_agents_handoff.HandOffJourney.test_18_each_connection_keeps_its_own_work_and_the_dialog_ages_the_live_claim",
+    "test_agents_handoff.HandOffJourney.test_19_a_deadline_crossed_after_the_display_commit_is_not_dropped"
+  ],
+  "runs": {
+    "chromium": {
+      "result": "15 passed, 0 failed",
+      "elapsedSeconds": 28.19,
+      "command": "FLUX_UI_BROWSER=chromium FLUX_UI_SCREENSHOT_DIR=/tmp/flux417-dd01-chromium FLUX_UI_PORT=18641 FLUX_UI_MAILPIT_PORT=18642 ./scripts/check_ui.sh [selection above]",
+      "log": "chromium.log",
+      "project": "flux-ui-1791924136-2563497",
+      "screenshots": 18
+    },
+    "webkit": {
+      "result": "15 passed, 0 failed",
+      "elapsedSeconds": 39.352,
+      "command": "FLUX_UI_BROWSER=webkit FLUX_UI_SCREENSHOT_DIR=/tmp/flux417-dd01-webkit FLUX_UI_PORT=18651 FLUX_UI_MAILPIT_PORT=18652 ./scripts/check_ui.sh [selection above]",
+      "log": "webkit.log",
+      "project": "flux-ui-1791924286-2570767",
+      "screenshots": 18
+    },
+    "chromiumInitialAttempt": {
+      "result": "Docker RPC EOF before tests started",
+      "log": "chromium-initial-docker-rpc-failure.log"
+    }
+  },
+  "api": {
+    "sourceHead": "2c6a99b132a9eede3795656f1e4bcc1191331af2",
+    "result": "10 passed, 0 failed",
+    "outputProvenance": "captured terminal tool output, not persisted as a log; no saved transcript is claimed",
+    "evidenceNote": "api-provenance.md",
+    "runner": "api-focused-runner.sh"
+  },
+  "requiredChecks": [
+    {
+      "name": "Agent setup",
+      "run": "https://github.com/ColdPhase/flux/actions/runs/38463639270",
+      "result": "success"
+    },
+    {
+      "name": "Application validation",
+      "run": "https://github.com/ColdPhase/flux/actions/runs/38463639438",
+      "result": "success"
+    }
+  ],
+  "visualReview": {
+    "report": "independent-visual-review.md",
+    "verdict": "material phone conversation shell mismatch; report retained verbatim; #417 scope does not own shell, see scope-audit.md"
+  },
+  "assets": [
+    {
+      "engine": "chromium",
+      "name": "agents-known-expiry-held-desktop-light.webp",
+      "sourcePngSha256": "b437701c34584542ef45950eee783fd451c5739f786ace0ec2d2b8a4a16a2825",
+      "webpSha256": "1279b7bb90df7434955c8e0eade91bd279cadce6190ebacbddf9c41cf75a7038",
+      "width": 1440,
+      "height": 900,
+      "losslessPixelComparison": "absolute error 0"
+    },
+    {
+      "engine": "chromium",
+      "name": "handoff-known-expiry-held-desktop-light.webp",
+      "sourcePngSha256": "6565b981d7402fe6c8e8ddeb5df1d7c8ca363962a86921cf0c5dcebd1130b81d",
+      "webpSha256": "2ffe5d52b11311bfb79ce1609378cd544c99ab17b1fd26f823cf85febf28a805",
+      "width": 1440,
+      "height": 900,
+      "losslessPixelComparison": "absolute error 0"
+    },
+    {
+      "engine": "chromium",
+      "name": "handoff-known-expiry-live-desktop-light.webp",
+      "sourcePngSha256": "0bc833a42a04751f8a1052e0d75d9680e963f59de5898649fe2d2fb78f69afeb",
+      "webpSha256": "a814d025edd078b646c01a998bb60d12d33ad9407b4dfc082d0113845d4491bf",
+      "width": 1440,
+      "height": 900,
+      "losslessPixelComparison": "absolute error 0"
+    },
+    {
+      "engine": "chromium",
+      "name": "handoff-step1-desktop.webp",
+      "sourcePngSha256": "a28463343408d167e3a36710126c537a3010b590d59b2e41347cfa1293b40859",
+      "webpSha256": "23438be6e44e41e968ea655900fc0ba81b9320dd2e98a9ed7c21492a2d70ad0b",
+      "width": 1440,
+      "height": 900,
+      "losslessPixelComparison": "absolute error 0"
+    },
+    {
+      "engine": "chromium",
+      "name": "handoff-step2-desktop.webp",
+      "sourcePngSha256": "c9438e809671401a284610f09c696c04d813679614578e5256a7c9ec8f4a1581",
+      "webpSha256": "319732e2b499a48d5182038d656b281a746b3dc5487fdf4e83e5613e3abcbea1",
+      "width": 1440,
+      "height": 900,
+      "losslessPixelComparison": "absolute error 0"
+    },
+    {
+      "engine": "chromium",
+      "name": "question-answered-desktop.webp",
+      "sourcePngSha256": "6626cca1aa6bbda84ef6351b0941525c97bcccab2484a4d8960a2cfe3413ceed",
+      "webpSha256": "c6c76575607dd902344b1cb27e19601c4ad43872b9fe3a8cb19429d61fadec63",
+      "width": 1440,
+      "height": 900,
+      "losslessPixelComparison": "absolute error 0"
+    },
+    {
+      "engine": "chromium",
+      "name": "question-card-desktop-dark.webp",
+      "sourcePngSha256": "770f1055267febb102a18952edd952690e1eec10a8ec6f7c81383ae643654e29",
+      "webpSha256": "6a1636d040be33e47f0dbb7d057b9f113be330a77864df8fc05a531c2416c7dd",
+      "width": 1440,
+      "height": 900,
+      "losslessPixelComparison": "absolute error 0"
+    },
+    {
+      "engine": "chromium",
+      "name": "question-card-desktop-light.webp",
+      "sourcePngSha256": "6dc1388383114d20802d1c4a9c3843c32dbe6d3123d3518cbd93ce49529f27ea",
+      "webpSha256": "81d1fc21570cfb022051fe591ca2f5665ec86587310e82985323f6a235b98a36",
+      "width": 1440,
+      "height": 900,
+      "losslessPixelComparison": "absolute error 0"
+    },
+    {
+      "engine": "chromium",
+      "name": "question-card-phone.webp",
+      "sourcePngSha256": "8ca3943c569620a5226d9d1c5ac25ef3cbdf5183ab116bc76d31664cfe81ae99",
+      "webpSha256": "b114c6606e238c3d030d8228c82608e5929ae6549cbd20f735a1ad1926d19cd8",
+      "width": 1170,
+      "height": 2532,
+      "losslessPixelComparison": "absolute error 0"
+    },
+    {
+      "engine": "chromium",
+      "name": "stop-agents-desktop-dark.webp",
+      "sourcePngSha256": "582ba672e1bb978ca7e42a76476cc1c238c4a35987bea8030e8056bf783d46dc",
+      "webpSha256": "220bc0f66175e7de87d5688c1d0c7ef393ddcc63af6b863628b366fa1e199005",
+      "width": 1440,
+      "height": 900,
+      "losslessPixelComparison": "absolute error 0"
+    },
+    {
+      "engine": "chromium",
+      "name": "stop-agents-desktop-light.webp",
+      "sourcePngSha256": "e2e384e723f9ce5a465ab07e7b667e3b4cbbc8a3cbcc7a347f57877e9c1a3f15",
+      "webpSha256": "f02c3f2cf7b54f5728d0e5d8a1a928d8f971627221e028dab5b50e6c7ed9cc36",
+      "width": 1440,
+      "height": 900,
+      "losslessPixelComparison": "absolute error 0"
+    },
+    {
+      "engine": "chromium",
+      "name": "stop-agents-phone-dark.webp",
+      "sourcePngSha256": "d9f294bb695fb28b16ea2a5b7123bb331593480104555595d56a857b8ecf73b7",
+      "webpSha256": "9aa8abc7492ec73f4dab3e79f002512cd310441c297b40539ebf660b1c86b3c1",
+      "width": 1170,
+      "height": 2532,
+      "losslessPixelComparison": "absolute error 0"
+    },
+    {
+      "engine": "chromium",
+      "name": "stop-agents-phone-light.webp",
+      "sourcePngSha256": "952776c102b8170f6b49a292cf392e9420b808bb97b707657dab373c0d1a8c01",
+      "webpSha256": "d2a21a21c4898c0136aefaf4977134db15d8538c082ebc75317b6147edb3c4ed",
+      "width": 1170,
+      "height": 2532,
+      "losslessPixelComparison": "absolute error 0"
+    },
+    {
+      "engine": "chromium",
+      "name": "stop-conversation-header-phone.webp",
+      "sourcePngSha256": "450a7ad11d3db1571c57b79e2536747e9dac64ec417beff849882322b4ed856c",
+      "webpSha256": "76a43682b51d01d16cbaebe9d09c968918df284b0f022da8cb29c01197cb3640",
+      "width": 1170,
+      "height": 2532,
+      "losslessPixelComparison": "absolute error 0"
+    },
+    {
+      "engine": "chromium",
+      "name": "stop-home-desktop.webp",
+      "sourcePngSha256": "6da8d04ec8e205f83734476f268b7a8ecd4a2b11fe17148e0b1cccaeec83ca34",
+      "webpSha256": "76cf7e90356b3865a332da048490d3be6cfc1bb83772740ec03a84d1a31471d0",
+      "width": 1440,
+      "height": 900,
+      "losslessPixelComparison": "absolute error 0"
+    },
+    {
+      "engine": "chromium",
+      "name": "stop-home-phone.webp",
+      "sourcePngSha256": "248dc9ad1ef9e75a4189351fbcdcfdf96a9f364e95f4a8b5f57e9394aebd0c81",
+      "webpSha256": "0ade1cd095620d93df8190c9227700e38c9d399ba6806aa0b027b69ff9e6b4be",
+      "width": 1170,
+      "height": 2532,
+      "losslessPixelComparison": "absolute error 0"
+    },
+    {
+      "engine": "chromium",
+      "name": "stop-recorded-desktop.webp",
+      "sourcePngSha256": "924b7cc8c7a4468735b15bc1adb0774cbc2bb2d98c4d8f3aeda39380efe96fbc",
+      "webpSha256": "d11bee299fd1e2e90c14e49b16b6dff178cd614c8b817ed471dc8215c994908e",
+      "width": 1440,
+      "height": 900,
+      "losslessPixelComparison": "absolute error 0"
+    },
+    {
+      "engine": "chromium",
+      "name": "stop-sidebar-card.webp",
+      "sourcePngSha256": "3f4f0ac56d68b0d3385965173fd6a0604a0209391cd84a0970e7d61b718354e2",
+      "webpSha256": "85cf91521b94f13de92a63dab33267ea061a122f437059941b09ac0a8289d775",
+      "width": 1440,
+      "height": 900,
+      "losslessPixelComparison": "absolute error 0"
+    },
+    {
+      "engine": "webkit",
+      "name": "agents-known-expiry-held-desktop-light-webkit.webp",
+      "sourcePngSha256": "8fc5587ba18653cb3432dcea3f3649a734a9a080038d3270176382d8fa97d092",
+      "webpSha256": "e17012e91c49beb9c141fbc37e3f720ccad4d6e0cc72062fe8e59946ba3a6176",
+      "width": 1440,
+      "height": 900,
+      "losslessPixelComparison": "absolute error 0"
+    },
+    {
+      "engine": "webkit",
+      "name": "handoff-known-expiry-held-desktop-light-webkit.webp",
+      "sourcePngSha256": "bd6b1dcab8e52e876a8c799443158f33887991c8dbd86f0c43d0ff4b798be416",
+      "webpSha256": "d6ae7bc4a10b4c0c80778853260611da4e11881fecdde0543e0191a731ed3522",
+      "width": 1440,
+      "height": 900,
+      "losslessPixelComparison": "absolute error 0"
+    },
+    {
+      "engine": "webkit",
+      "name": "handoff-known-expiry-live-desktop-light-webkit.webp",
+      "sourcePngSha256": "6280d150eb36e2530c77b850cff33ae65b7f23fbc8e2644b1517a24bbdc04c48",
+      "webpSha256": "d916b4d0dedb519ae0fc461830c821a70f41331c494e0a9d24e4158eac503d67",
+      "width": 1440,
+      "height": 900,
+      "losslessPixelComparison": "absolute error 0"
+    },
+    {
+      "engine": "webkit",
+      "name": "handoff-step1-desktop-webkit.webp",
+      "sourcePngSha256": "7c51e6842b379385bafd96e04a9dff861e2fe87131a85f0f432edd9b6ec58794",
+      "webpSha256": "33e0d98d11d18a67f074c567a54088fc02f3dbd4d7d2a7ae94971f4e4440692e",
+      "width": 1440,
+      "height": 900,
+      "losslessPixelComparison": "absolute error 0"
+    },
+    {
+      "engine": "webkit",
+      "name": "handoff-step2-desktop-webkit.webp",
+      "sourcePngSha256": "49b49fb66782d0c26d98bace7305cc7b2e6042f65a47ce6fb86eaf1b889adc88",
+      "webpSha256": "b4636c041dce9cb5c7381601ad75b146ac098e489253ea94e807cd599dec3990",
+      "width": 1440,
+      "height": 900,
+      "losslessPixelComparison": "absolute error 0"
+    },
+    {
+      "engine": "webkit",
+      "name": "question-answered-desktop-webkit.webp",
+      "sourcePngSha256": "c6a74c76c27625cda091f455764f7de11134aba7be6786c8d3fad4d88f1faca5",
+      "webpSha256": "329334e5eb636dc40b4d739c63d851d90ab34a408b37f6c134188158be658a20",
+      "width": 1440,
+      "height": 900,
+      "losslessPixelComparison": "absolute error 0"
+    },
+    {
+      "engine": "webkit",
+      "name": "question-card-desktop-dark-webkit.webp",
+      "sourcePngSha256": "007830c490199e23e778dbec0ff69223f83670737c9283b9a43c063e4d5d8cf6",
+      "webpSha256": "b53cff6bdfc8812005ac5ca3def6759989eede56321de659614d2cfe9d3b1bc0",
+      "width": 1440,
+      "height": 900,
+      "losslessPixelComparison": "absolute error 0"
+    },
+    {
+      "engine": "webkit",
+      "name": "question-card-desktop-light-webkit.webp",
+      "sourcePngSha256": "580c8e2f6de3955e6317869f05a8d78abdcaeadfa6d7ca5113c2e61b128ddada",
+      "webpSha256": "68407c83df637a1d8a6582a2bb02c4f3d69cd6fbf16a86332075d0ad96aa9ac8",
+      "width": 1440,
+      "height": 900,
+      "losslessPixelComparison": "absolute error 0"
+    },
+    {
+      "engine": "webkit",
+      "name": "question-card-phone-webkit.webp",
+      "sourcePngSha256": "2ab12ec6cae7de8cfa630d4a3743d43971a1098d1fd62b15333b9267c75802f6",
+      "webpSha256": "1f7daf512a79f98c80e27c9d4cd6762b7f33f1801d5a0160fb016e6cb6c4d070",
+      "width": 1170,
+      "height": 2532,
+      "losslessPixelComparison": "absolute error 0"
+    },
+    {
+      "engine": "webkit",
+      "name": "stop-agents-desktop-dark-webkit.webp",
+      "sourcePngSha256": "27f0b8fa4d0adc232c65286e7e5b1ce8103d897f6868698612986be70866b0b5",
+      "webpSha256": "4ed75d0d374ea1fe06be25feb24f4334b0901fc8338f89ea6f7611a330b55723",
+      "width": 1440,
+      "height": 900,
+      "losslessPixelComparison": "absolute error 0"
+    },
+    {
+      "engine": "webkit",
+      "name": "stop-agents-desktop-light-webkit.webp",
+      "sourcePngSha256": "5448b6dfcff3069d302280db67b1bcbdbc3f12d1f6653d12263cad54f285194b",
+      "webpSha256": "da4cf5092cbec9755b43150c40d12bf6d680830f5c6eec8dcbefc44e5b4e6e93",
+      "width": 1440,
+      "height": 900,
+      "losslessPixelComparison": "absolute error 0"
+    },
+    {
+      "engine": "webkit",
+      "name": "stop-agents-phone-dark-webkit.webp",
+      "sourcePngSha256": "2922908551446cc7bf400448bd48f6804a32d2fde00b0214d7b27ee8d0b0f8d9",
+      "webpSha256": "b0c9485c4e42c1117b44a39658d3a2fefc83b2b8fbd422f9a3ab6275c6ae0df8",
+      "width": 1170,
+      "height": 2532,
+      "losslessPixelComparison": "absolute error 0"
+    },
+    {
+      "engine": "webkit",
+      "name": "stop-agents-phone-light-webkit.webp",
+      "sourcePngSha256": "5a9ff5405e2b0e3092af1c5d50459483cf10c609fd4b34fc95591d9d6108b0b0",
+      "webpSha256": "0a624222cbd613e9753a8d676c722e3a501d7cd3049132ebd86c7514e5b81fec",
+      "width": 1170,
+      "height": 2532,
+      "losslessPixelComparison": "absolute error 0"
+    },
+    {
+      "engine": "webkit",
+      "name": "stop-conversation-header-phone-webkit.webp",
+      "sourcePngSha256": "61a1e2936e3e0d357ff41e0b1b95cdb26d1cefbf16111306d351273da3d0a99e",
+      "webpSha256": "5d8c6c944dda5b1565e915c3f22511e049efffc733508e4ad6ed5fdda02c1117",
+      "width": 1170,
+      "height": 2532,
+      "losslessPixelComparison": "absolute error 0"
+    },
+    {
+      "engine": "webkit",
+      "name": "stop-home-desktop-webkit.webp",
+      "sourcePngSha256": "5a4b7b90a18b5dcc46ce2dd6eca0cac27da115f303f631495673dfb6baf5e18c",
+      "webpSha256": "00de07e0f723a5041a42739e785bbff05ae5fc12e11929eb3449850738490d88",
+      "width": 1440,
+      "height": 900,
+      "losslessPixelComparison": "absolute error 0"
+    },
+    {
+      "engine": "webkit",
+      "name": "stop-home-phone-webkit.webp",
+      "sourcePngSha256": "705d8fb61b8f6d7f517efaafef51c09f8c65e338ee48bdfd45e14539504e4a33",
+      "webpSha256": "bac2c79019dcda1619a56fab79770778dc853b3d014b8b009d4c52a3f234c6d1",
+      "width": 1170,
+      "height": 2532,
+      "losslessPixelComparison": "absolute error 0"
+    },
+    {
+      "engine": "webkit",
+      "name": "stop-recorded-desktop-webkit.webp",
+      "sourcePngSha256": "2594407410e3e05443a7b5cc018940e5742339db2f95215e457de1f1acea677c",
+      "webpSha256": "e17daec8083f4942fba4a5932e02d24ac4356da0e826c13d471e5c37e2069078",
+      "width": 1440,
+      "height": 900,
+      "losslessPixelComparison": "absolute error 0"
+    },
+    {
+      "engine": "webkit",
+      "name": "stop-sidebar-card-webkit.webp",
+      "sourcePngSha256": "dee3f405fe6e963f0a2a42fbd015e5cc6902460767a0737eab9d1c8f0722df54",
+      "webpSha256": "e268746c21563e3c52915fd1a0201cac90f670f1c32cffdb200ff4af2eff4721",
+      "width": 1440,
+      "height": 900,
+      "losslessPixelComparison": "absolute error 0"
+    }
+  ],
+  "sha256": {
+    "chromium.log": "204ee0749b5de8cb4eabf5de530623910931d0a0528e571d0a825b8e8bc4df52",
+    "webkit.log": "e65ce8e9924fb1e33be5a40afcc4767e8be0001e7655b5fc882df6eb6e235895",
+    "chromium-initial-docker-rpc-failure.log": "524594973f5676cb96654c0f8668a95f761277d43d77eba697d7212e0cbce1a2",
+    "independent-visual-review.md": "958e4f625c124227bfc010397de8bf6f81f4b80a3b946c3527c9e71daf700b75",
+    "neutral-brief.md": "0dc1df19277bd97a9911fe7dfe454b3303b1a3b1923bfc324f3101ff65dd8826",
+    "neutral-visual-brief-source.md": "1f80f35b2cd971deb198cadcb798f3a1c95f381e8fabe515565f885824bcf686",
+    "scope-audit.md": "ab499735ae787234d5c3d7ca228c178015e6865ea6bd07b261e951063ee2c27f",
+    "api-provenance.md": "eb7f73f50cfaebb96521de16515e34d6605adab0c24cf04731781452c90d773b",
+    "api-focused-runner.sh": "2d3c040f10235b82d5964068927403f47b2b00618561a11145ca5eec757312ed",
+    "browser-results.md": "729dd977b43d40d7e2f56e4c0abb11b1a8b3c291a2e0cc862082f38a34666565",
+    "merge-handoff.md": "baa16921c18292b48abe77fb9f1feaacbbaad1886cb7d3be133ba80780cec096"
+  }
+}

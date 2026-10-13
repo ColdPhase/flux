@@ -1,0 +1,525 @@
+ Image flux-ui-tests:flux-ui-1791924136-2563497 Building 
+ Image flux-foundation:flux-ui-1791924136-2563497 Building 
+#1 [internal] load local bake definitions
+#1 reading from stdin 1.17kB done
+#1 DONE 0.0s
+
+#2 [ui-test internal] load build definition from ui-tests.Dockerfile
+#2 transferring dockerfile: 1.00kB done
+#2 DONE 0.1s
+
+#3 [migrate internal] load build definition from Dockerfile
+#3 transferring dockerfile: 9.59kB done
+#3 DONE 0.2s
+
+#4 [ui-test internal] load metadata for mcr.microsoft.com/playwright/python:v1.62.0-noble@sha256:aa81288e738725378becba5b3e06cb0f3a7f012a610e87e8d767a090ea3f740d
+#4 DONE 0.0s
+
+#5 [migrate internal] load metadata for docker.io/library/node@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1
+#5 DONE 0.0s
+
+#6 [migrate internal] load .dockerignore
+#6 transferring context:
+#6 transferring context: 250B done
+#6 DONE 0.1s
+
+#7 [ui-test 1/5] FROM mcr.microsoft.com/playwright/python:v1.62.0-noble@sha256:aa81288e738725378becba5b3e06cb0f3a7f012a610e87e8d767a090ea3f740d
+#7 DONE 0.0s
+
+#8 [migrate internal] load build context
+#8 DONE 0.0s
+
+#9 [ui-test internal] load build context
+#9 transferring context: 99.94kB done
+#9 DONE 0.2s
+
+#10 [migrate build 1/9] FROM docker.io/library/node@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1
+#10 DONE 0.0s
+
+#8 [migrate internal] load build context
+#8 transferring context: 245.10kB 0.0s done
+#8 DONE 0.2s
+
+#11 [ui-test 3/5] RUN pip install --no-cache-dir --break-system-packages --only-binary=:all: --require-hashes -r /tmp/ui-requirements.txt
+#11 CACHED
+
+#12 [ui-test 2/5] COPY tests/ui/requirements.txt /tmp/ui-requirements.txt
+#12 CACHED
+
+#13 [ui-test 4/5] WORKDIR /work
+#13 CACHED
+
+#14 [migrate build 3/9] RUN corepack enable && corepack install -g pnpm@12.6.0
+#14 CACHED
+
+#15 [migrate build 4/9] COPY pnpm-lock.yaml pnpm-workspace.yaml ./
+#15 CACHED
+
+#16 [migrate build 5/9] COPY patches ./patches
+#16 CACHED
+
+#17 [migrate build 2/9] WORKDIR /app
+#17 CACHED
+
+#18 [migrate build 6/9] RUN pnpm fetch
+#18 CACHED
+
+#19 [migrate build 7/9] COPY . .
+#19 ...
+
+#20 [ui-test 5/5] COPY tests/ui tests/ui
+#20 DONE 0.7s
+
+#19 [migrate build 7/9] COPY . .
+#19 DONE 0.7s
+
+#21 [migrate build 8/9] RUN pnpm install --offline --frozen-lockfile
+#21 ...
+
+#22 [ui-test] exporting to image
+#22 exporting layers 0.2s done
+#22 writing image sha256:a1b76ac2b0728287ef117f409c6dd914b0747bd6e21533d24738c2aaa3838961 0.0s done
+#22 naming to docker.io/library/flux-ui-tests:flux-ui-1791924136-2563497 0.0s done
+#22 DONE 0.5s
+
+#21 [migrate build 8/9] RUN pnpm install --offline --frozen-lockfile
+#21 0.786 Scope: all 12 workspace projects
+#21 0.815 ✓ Lockfile passes supply-chain policies (verified 3d ago)
+#21 0.815 Lockfile is up to date, resolution step is skipped
+#21 ...
+
+#23 [ui-test] resolving provenance for metadata file
+#23 DONE 0.0s
+
+#21 [migrate build 8/9] RUN pnpm install --offline --frozen-lockfile
+#21 1.047 Already up to date
+#21 1.355 
+#21 1.355 dependencies:
+#21 1.355 + @flux/contracts link:packages/contracts
+#21 1.355 + @flux/core link:packages/core
+#21 1.355 + @flux/db link:packages/db
+#21 1.355 + @flux/runtime-protocol link:packages/runtime-protocol
+#21 1.355 + pg-boss 12.35.0
+#21 1.355 
+#21 1.355 devDependencies:
+#21 1.355 + @eslint/js 9.37.0
+#21 1.355 + @types/node 24.6.2
+#21 1.355 + @types/nodemailer 8.0.2
+#21 1.355 + @types/pg 8.15.5
+#21 1.355 + @types/sanitize-html 2.16.1
+#21 1.355 + @types/ws 8.18.1
+#21 1.355 + drizzle-orm 0.45.3
+#21 1.355 + eslint 9.37.0
+#21 1.355 + eslint-plugin-react-hooks 7.1.1
+#21 1.355 + fastify 5.6.1
+#21 1.355 + playwright 1.63.0
+#21 1.355 + tsx 4.20.5
+#21 1.355 + typescript 5.9.2
+#21 1.355 + typescript-eslint 8.44.1
+#21 1.355 + ws 8.22.0
+#21 1.355 
+#21 1.355 Done in 576ms using pnpm v12.6.0
+#21 DONE 1.7s
+
+#24 [migrate build 9/9] RUN pnpm build && pnpm typecheck && pnpm lint
+#24 0.518 $ pnpm -r --if-present build && tsc -p tooling/tsconfig.build.json
+#24 0.608 packages/contracts build$ tsc -p tsconfig.build.json
+#24 0.608 packages/runtime-protocol build$ tsc -p tsconfig.build.json
+#24 1.336 packages/runtime-protocol build: Done
+#24 1.336 apps/runtime build$ tsc -p tsconfig.build.json
+#24 2.153 apps/runtime build: Done
+#24 2.159 packages/contracts build: Done
+#24 2.159 apps/web build$ vite build
+#24 2.159 packages/db build$ tsc -p tsconfig.build.json
+#24 2.159 packages/sdk build$ tsc -p tsconfig.build.json
+#24 2.373 apps/web build: vite v8.3.1 building client environment for production...
+#24 2.390 apps/web build: transforming...
+#24 2.938 apps/web build: ✓ 396 modules transformed.
+#24 3.124 apps/web build: rendering chunks...
+#24 3.266 apps/web build: computing gzip size...
+#24 3.270 apps/web build: dist/index.html                                       2.94 kB │ gzip:   0.86 kB
+#24 3.270 apps/web build: dist/sw.js                                            8.74 kB
+#24 3.270 apps/web build: dist/assets/Geist-Variable-Bj2R_7yk.woff2            69.65 kB
+#24 3.270 apps/web build: dist/assets/GeistMono-Variable-Dispecij.woff2        71.36 kB
+#24 3.270 apps/web build: dist/assets/SettingsHome-BuNxiFi8.css                 0.08 kB │ gzip:   0.08 kB
+#24 3.270 apps/web build: dist/assets/data-1ij7AUYt.css                         0.25 kB │ gzip:   0.17 kB
+#24 3.270 apps/web build: dist/assets/GithubSettings-DfWB1iB-.css               2.34 kB │ gzip:   0.74 kB
+#24 3.270 apps/web build: dist/assets/SketchView-Dg8CsVYd.css                   6.10 kB │ gzip:   1.57 kB
+#24 3.270 apps/web build: dist/assets/BackgroundComputeSettings-B7T-YJK0.css    6.31 kB │ gzip:   1.28 kB
+#24 3.270 apps/web build: dist/assets/search-3BxTscsc.css                       6.95 kB │ gzip:   1.97 kB
+#24 3.270 apps/web build: dist/assets/dm-tGt_-Nfy.css                           8.86 kB │ gzip:   2.20 kB
+#24 3.270 apps/web build: dist/assets/settings-Bp977-DZ.css                     9.33 kB │ gzip:   2.39 kB
+#24 3.270 apps/web build: dist/assets/notifications-ReJvMb4f.css               10.97 kB │ gzip:   2.53 kB
+#24 3.270 apps/web build: dist/assets/Details-RIhidjHC.css                     12.72 kB │ gzip:   2.87 kB
+#24 3.270 apps/web build: dist/assets/pages-Drg3hqQR.css                       14.09 kB │ gzip:   2.71 kB
+#24 3.270 apps/web build: dist/assets/ProjectTasks-CajOcdFG.css                14.21 kB │ gzip:   3.33 kB
+#24 3.270 apps/web build: dist/assets/Outbox-ByVjCUSK.css                      19.03 kB │ gzip:   4.09 kB
+#24 3.270 apps/web build: dist/assets/ProjectAgents-B0LxA_pX.css               20.80 kB │ gzip:   3.92 kB
+#24 3.270 apps/web build: dist/assets/docs-DpTUmxIp.css                        24.04 kB │ gzip:   5.03 kB
+#24 3.270 apps/web build: dist/assets/owners-B-TvNcde.css                      25.61 kB │ gzip:   5.15 kB
+#24 3.270 apps/web build: dist/assets/sketch-CvbEgCbc.css                      30.09 kB │ gzip:   6.22 kB
+#24 3.270 apps/web build: dist/assets/index-CfKCG-wE.css                      111.30 kB │ gzip:  20.85 kB
+#24 3.270 apps/web build: dist/assets/push-bd7Mjfi-.js                          0.11 kB │ gzip:   0.10 kB
+#24 3.270 apps/web build: dist/assets/github-CkhyfZ1d.js                        0.16 kB │ gzip:   0.11 kB
+#24 3.270 apps/web build: dist/assets/proactive-outcomes-CVV6CW4R.js            0.17 kB │ gzip:   0.13 kB
+#24 3.270 apps/web build: dist/assets/shellContext-Dwl2zwG6.js                  0.28 kB │ gzip:   0.21 kB
+#24 3.270 apps/web build: dist/assets/rolldown-runtime-CbXtAM7H.js              0.58 kB │ gzip:   0.36 kB
+#24 3.270 apps/web build: dist/assets/api-CDhpRIES.js                           0.91 kB │ gzip:   0.47 kB
+#24 3.270 apps/web build: dist/assets/recent-DxFdUkRe.js                        0.92 kB │ gzip:   0.53 kB
+#24 3.270 apps/web build: dist/assets/format-CwCJAuos.js                        1.10 kB │ gzip:   0.62 kB
+#24 3.270 apps/web build: dist/assets/format-21mtKxjC.js                        1.16 kB │ gzip:   0.60 kB
+#24 3.270 apps/web build: dist/assets/LiveOpen-CphHoDZA.js                      1.19 kB │ gzip:   0.70 kB
+#24 3.270 apps/web build: dist/assets/data-By5UrcEG.js                          1.44 kB │ gzip:   0.74 kB
+#24 3.270 apps/web build: dist/assets/api-C0gjaFfe.js                           1.47 kB │ gzip:   0.71 kB
+#24 3.270 apps/web build: dist/assets/api-B8h2QWR9.js                           1.50 kB │ gzip:   0.68 kB
+#24 3.270 apps/web build: dist/assets/MaterialView-Bd_q5iPf.js                  1.52 kB │ gzip:   0.74 kB
+#24 3.270 apps/web build: dist/assets/api-D1SRWKJB.js                           1.62 kB │ gzip:   0.85 kB
+#24 3.270 apps/web build: dist/assets/sketches-pLQuo2oO.js                      1.65 kB │ gzip:   0.69 kB
+#24 3.270 apps/web build: dist/assets/ProjectsIndex-BEGRN4fD.js                 1.67 kB │ gzip:   0.67 kB
+#24 3.270 apps/web build: dist/assets/data-ChAxGqfc.js                          1.85 kB │ gzip:   1.00 kB
+#24 3.270 apps/web build: dist/assets/useDetailReads-Cqfy0xIu.js                1.97 kB │ gzip:   0.91 kB
+#24 3.270 apps/web build: dist/assets/ProjectSetup-GLuH2i9L.js                  3.26 kB │ gzip:   1.45 kB
+#24 3.270 apps/web build: dist/assets/api-D-ogyTyd.js                           3.34 kB │ gzip:   1.37 kB
+#24 3.270 apps/web build: dist/assets/conversation-api-DKAEqzhK.js              3.43 kB │ gzip:   1.44 kB
+#24 3.270 apps/web build: dist/assets/ProjectViews-B1zwsb3_.js                  3.74 kB │ gzip:   1.60 kB
+#24 3.270 apps/web build: dist/assets/SketchIndex-GREo2rrt.js                   3.82 kB │ gzip:   1.72 kB
+#24 3.270 apps/web build: dist/assets/DmSketches-BUNDo8Bi.js                    4.12 kB │ gzip:   1.72 kB
+#24 3.270 apps/web build: dist/assets/TasksView-BfqIyo5n.js                     4.51 kB │ gzip:   1.82 kB
+#24 3.270 apps/web build: dist/assets/search-L4yOtqTS.js                        4.51 kB │ gzip:   1.86 kB
+#24 3.270 apps/web build: dist/assets/useWorkRead-HxoBhANq.js                   4.53 kB │ gzip:   1.76 kB
+#24 3.270 apps/web build: dist/assets/JumpTo-CoGqwgTV.js                        4.92 kB │ gzip:   2.02 kB
+#24 3.270 apps/web build: dist/assets/Wiki-6HABoO7N.js                          5.46 kB │ gzip:   2.45 kB
+#24 3.270 apps/web build: dist/assets/InboxView-D1d28gbx.js                     5.53 kB │ gzip:   2.07 kB
+#24 3.270 apps/web build: dist/assets/LiveStage-uQtXcCHF.js                     5.89 kB │ gzip:   2.44 kB
+#24 3.270 apps/web build: dist/assets/SearchPage-DTLk0nSd.js                    5.95 kB │ gzip:   2.32 kB
+#24 3.270 apps/web build: dist/assets/owners-BhgWwePZ.js                        6.05 kB │ gzip:   2.57 kB
+#24 3.270 apps/web build: dist/assets/DmIndex-CrlgvifV.js                       6.97 kB │ gzip:   2.59 kB
+#24 3.270 apps/web build: dist/assets/docs-D_AHRX3A.js                          9.10 kB │ gzip:   3.74 kB
+#24 3.270 apps/web build: dist/assets/diff-DgSHKbVF.js                          9.83 kB │ gzip:   3.64 kB
+#24 3.270 apps/web build: dist/assets/SettingsHome-DyocOG-c.js                 12.26 kB │ gzip:   3.77 kB
+#24 3.270 apps/web build: dist/assets/DmConversation-CRVEm3PX.js               12.33 kB │ gzip:   4.64 kB
+#24 3.270 apps/web build: dist/assets/GithubSettings-Dggo_wgC.js               13.45 kB │ gzip:   4.12 kB
+#24 3.270 apps/web build: dist/assets/DocViews-SI7ZX2nI.js                     14.87 kB │ gzip:   5.05 kB
+#24 3.270 apps/web build: dist/assets/AssistantSettings-jjAo9evB.js            16.47 kB │ gzip:   5.36 kB
+#24 3.270 apps/web build: dist/assets/DocEditor-i2np5Cyq.js                    17.10 kB │ gzip:   6.45 kB
+#24 3.270 apps/web build: dist/assets/Outbox-B9hD4lNp.js                       18.94 kB │ gzip:   6.06 kB
+#24 3.270 apps/web build: dist/assets/NotificationSettings-BjdEr7a1.js         27.27 kB │ gzip:   8.38 kB
+#24 3.270 apps/web build: dist/assets/MessageText-BoDYI2rW.js                  31.57 kB │ gzip:  10.35 kB
+#24 3.270 apps/web build: dist/assets/BackgroundComputeSettings-CcppbyKm.js    35.87 kB │ gzip:  10.42 kB
+#24 3.270 apps/web build: dist/assets/pages-CLBFFybC.js                        40.03 kB │ gzip:  11.27 kB
+#24 3.270 apps/web build: dist/assets/ProjectAgents-DZMQ0Elh.js                41.63 kB │ gzip:  13.22 kB
+#24 3.270 apps/web build: dist/assets/ui-DUjICQEt.js                           44.84 kB │ gzip:  13.85 kB
+#24 3.270 apps/web build: dist/assets/logic-DQPtvsWu.js                        45.03 kB │ gzip:  15.52 kB
+#24 3.270 apps/web build: dist/assets/ProjectTasks-DcSlwjU1.js                 52.28 kB │ gzip:  16.03 kB
+#24 3.270 apps/web build: dist/assets/SketchView-CnGo3TtM.js                  100.63 kB │ gzip:  30.92 kB
+#24 3.270 apps/web build: dist/assets/client-D_hwx_AS.js                      112.17 kB │ gzip:  37.04 kB
+#24 3.270 apps/web build: dist/assets/Details-9xI79Mzc.js                     120.09 kB │ gzip:  32.72 kB
+#24 3.270 apps/web build: dist/assets/media-W4z7djNW.js                       424.63 kB │ gzip: 110.19 kB
+#24 3.270 apps/web build: dist/assets/index-C6dVxMZ2.js                       438.78 kB │ gzip: 131.47 kB
+#24 3.270 apps/web build: 
+#24 3.271 apps/web build: [33m[MODULE_LEVEL_DIRECTIVE] [0mThe semantics of the module level directive "use client" in "../../node_modules/.pnpm/react-router@8.4.0_react-dom@19.3.0_react@19.3.0__react@19.3.0/node_modules/react-router/dist/production/dom-export.js" may not be preserved when bundling.
+#24 3.271 apps/web build:     [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m ../../node_modules/.pnpm/react-router@8.4.0_react-dom@19.3.0_react@19.3.0__react@19.3.0/node_modules/react-router/dist/production/dom-export.js:11:1 [38;5;246m][0m
+#24 3.271 apps/web build:     [38;5;246m│[0m
+#24 3.271 apps/web build:  [38;5;246m11 │[0m "use client";
+#24 3.271 apps/web build:  [38;5;240m   │[0m ──────┬──────  
+#24 3.271 apps/web build:  [38;5;240m   │[0m       ╰──────── module level directive may not be preserved
+#24 3.271 apps/web build:  [38;5;240m   │[0m 
+#24 3.271 apps/web build:  [38;5;240m   │[0m [38;5;115mHelp[0m: For more information, see https://rolldown.rs/in-depth/directives#other-directives
+#24 3.271 apps/web build: [38;5;246m────╯[0m
+#24 3.271 apps/web build: 
+#24 3.271 apps/web build: [33m[MODULE_LEVEL_DIRECTIVE] [0mThe semantics of the module level directive "use client" in "../../node_modules/.pnpm/react-router@8.4.0_react-dom@19.3.0_react@19.3.0__react@19.3.0/node_modules/react-router/dist/production/index.js" may not be preserved when bundling.
+#24 3.271 apps/web build:     [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m ../../node_modules/.pnpm/react-router@8.4.0_react-dom@19.3.0_react@19.3.0__react@19.3.0/node_modules/react-router/dist/production/index.js:11:1 [38;5;246m][0m
+#24 3.271 apps/web build:     [38;5;246m│[0m
+#24 3.271 apps/web build:  [38;5;246m11 │[0m "use client";
+#24 3.271 apps/web build:  [38;5;240m   │[0m ──────┬──────  
+#24 3.271 apps/web build:  [38;5;240m   │[0m       ╰──────── module level directive may not be preserved
+#24 3.271 apps/web build:  [38;5;240m   │[0m 
+#24 3.271 apps/web build:  [38;5;240m   │[0m [38;5;115mHelp[0m: For more information, see https://rolldown.rs/in-depth/directives#other-directives
+#24 3.271 apps/web build: [38;5;246m────╯[0m
+#24 3.271 apps/web build: 
+#24 3.272 apps/web build: ✓ built in 897ms
+#24 3.939 packages/sdk build: Done
+#24 4.968 apps/web build: Done
+#24 7.584 packages/db build: Done
+#24 7.584 packages/core build$ tsc -p tsconfig.build.json
+#24 9.622 packages/core build: Done
+#24 9.622 packages/agent-runtime build$ tsc -p tsconfig.build.json
+#24 10.63 packages/agent-runtime build: Done
+#24 10.63 apps/server build$ tsc -p tsconfig.build.json
+#24 10.63 apps/worker build$ tsc -p tsconfig.build.json
+#24 11.78 apps/worker build: Done
+#24 14.14 apps/server build: Done
+#24 15.06 $ tsc --noEmit -p tsconfig.json && tsc --noEmit -p apps/web/tsconfig.json
+#24 30.58 $ eslint .
+#24 46.49 
+#24 46.49 /app/apps/web/src/app/drafts.ts
+#24 46.49   88:53  warning  React Hook useMemo has an unnecessary dependency: 'key'. Either exclude it or remove the dependency array  react-hooks/exhaustive-deps
+#24 46.49 
+#24 46.49 /app/apps/web/src/docs/DocEditor.tsx
+#24 46.49   90:66  warning  React Hook useMemo has an unnecessary dependency: 'storageKey'. Either exclude it or remove the dependency array  react-hooks/exhaustive-deps
+#24 46.49 
+#24 46.49 /app/apps/web/src/sketch/createdDraft.ts
+#24 46.49   178:53  warning  React Hook useMemo has an unnecessary dependency: 'key'. Either exclude it or remove the dependency array  react-hooks/exhaustive-deps
+#24 46.49 
+#24 46.49 ✖ 3 problems (0 errors, 3 warnings)
+#24 46.49 
+#24 DONE 46.9s
+
+#25 [migrate production-dependencies 1/1] RUN pnpm install --prod --offline --frozen-lockfile
+#25 0.689 Scope: all 12 workspace projects
+#25 0.729 ✓ Lockfile passes supply-chain policies (verified 3d ago)
+#25 0.729 Lockfile is up to date, resolution step is skipped
+#25 0.906 Packages: -199
+#25 0.906 --------------------------------------------------------------------------------
+#25 1.197 
+#25 1.197 devDependencies:
+#25 1.197 - @eslint/js 9.37.0
+#25 1.197 - @types/node 24.6.2
+#25 1.197 - @types/nodemailer 8.0.2
+#25 1.197 - @types/pg 8.15.5
+#25 1.197 - @types/sanitize-html 2.16.1
+#25 1.197 - @types/ws 8.18.1
+#25 1.197 - drizzle-orm 0.45.3
+#25 1.197 - eslint 9.37.0
+#25 1.197 - eslint-plugin-react-hooks 7.1.1
+#25 1.197 - fastify 5.6.1
+#25 1.197 - playwright 1.63.0
+#25 1.197 - tsx 4.20.5
+#25 1.197 - typescript 5.9.2
+#25 1.197 - typescript-eslint 8.44.1
+#25 1.197 - ws 8.22.0
+#25 1.197 
+#25 1.198 Done in 512ms using pnpm v12.6.0
+#25 DONE 1.7s
+
+#17 [migrate build 2/9] WORKDIR /app
+#17 CACHED
+
+#26 [migrate runtime  3/30] COPY --from=production-dependencies /app/node_modules ./node_modules
+#26 DONE 3.8s
+
+#27 [migrate runtime  4/30] COPY --from=production-dependencies /app/apps/server/node_modules ./apps/server/node_modules
+#27 DONE 0.3s
+
+#28 [migrate runtime  5/30] COPY --from=production-dependencies /app/apps/worker/node_modules ./apps/worker/node_modules
+#28 DONE 0.3s
+
+#29 [migrate runtime  6/30] COPY --from=production-dependencies /app/packages/core/node_modules ./packages/core/node_modules
+#29 DONE 0.3s
+
+#30 [migrate runtime  7/30] COPY --from=production-dependencies /app/packages/db/node_modules ./packages/db/node_modules
+#30 DONE 0.3s
+
+#31 [migrate runtime  8/30] COPY --from=production-dependencies /app/packages/agent-runtime/node_modules ./packages/agent-runtime/node_modules
+#31 DONE 0.3s
+
+#32 [migrate runtime  9/30] COPY --from=production-dependencies /app/apps/runtime/node_modules ./apps/runtime/node_modules
+#32 DONE 0.3s
+
+#33 [migrate runtime 10/30] COPY --from=build /app/package.json ./package.json
+#33 DONE 0.3s
+
+#34 [migrate runtime 11/30] COPY --from=build /app/apps/server/package.json ./apps/server/package.json
+#34 DONE 0.3s
+
+#35 [migrate runtime 12/30] COPY --from=build /app/apps/worker/package.json ./apps/worker/package.json
+#35 DONE 0.3s
+
+#36 [migrate runtime 13/30] COPY --from=build /app/packages/contracts/package.json ./packages/contracts/package.json
+#36 DONE 0.3s
+
+#37 [migrate runtime 14/30] COPY --from=build /app/packages/core/package.json ./packages/core/package.json
+#37 DONE 0.3s
+
+#38 [migrate runtime 15/30] COPY --from=build /app/packages/db/package.json ./packages/db/package.json
+#38 DONE 0.3s
+
+#39 [migrate runtime 16/30] COPY --from=build /app/packages/agent-runtime/package.json ./packages/agent-runtime/package.json
+#39 DONE 0.3s
+
+#40 [migrate runtime 17/30] COPY --from=build /app/packages/runtime-protocol/package.json ./packages/runtime-protocol/package.json
+#40 DONE 0.3s
+
+#41 [migrate runtime 18/30] COPY --from=build /app/apps/runtime/package.json ./apps/runtime/package.json
+#41 DONE 0.3s
+
+#42 [migrate runtime 19/30] COPY --from=build /app/apps/server/dist ./apps/server/dist
+#42 DONE 0.3s
+
+#43 [migrate runtime 20/30] COPY --from=build /app/apps/worker/dist ./apps/worker/dist
+#43 DONE 0.3s
+
+#44 [migrate runtime 21/30] COPY --from=build /app/apps/web/dist ./apps/web/dist
+#44 DONE 0.3s
+
+#45 [migrate runtime 22/30] COPY --from=build /app/packages/contracts/dist ./packages/contracts/dist
+#45 DONE 0.3s
+
+#46 [migrate runtime 23/30] COPY --from=build /app/packages/core/dist ./packages/core/dist
+#46 DONE 0.3s
+
+#47 [migrate runtime 24/30] COPY --from=build /app/packages/db/dist ./packages/db/dist
+#47 DONE 0.3s
+
+#48 [migrate runtime 25/30] COPY --from=build /app/packages/agent-runtime/dist ./packages/agent-runtime/dist
+#48 DONE 0.3s
+
+#49 [migrate runtime 26/30] COPY --from=build /app/packages/runtime-protocol/dist ./packages/runtime-protocol/dist
+#49 DONE 0.3s
+
+#50 [migrate runtime 27/30] COPY --from=build /app/apps/runtime/dist ./apps/runtime/dist
+#50 DONE 0.3s
+
+#51 [migrate runtime 28/30] COPY --from=build /app/packages/db/migrations ./packages/db/migrations
+#51 DONE 0.3s
+
+#52 [migrate runtime 29/30] COPY --from=build /app/tooling/dist ./tooling/dist
+#52 DONE 0.3s
+
+#53 [migrate runtime 30/30] RUN mkdir -p /data/files && chown -R node:node /data
+#53 DONE 0.5s
+
+#54 [migrate] exporting to image
+#54 exporting layers
+#54 exporting layers 4.1s done
+#54 writing image sha256:0c7e5e27aaa64c9ef13a5271f5aa4bec0199e0bb2e00239289986fe2543ee85a done
+#54 naming to docker.io/library/flux-foundation:flux-ui-1791924136-2563497 0.0s done
+#54 DONE 4.2s
+
+#55 [migrate] resolving provenance for metadata file
+#55 DONE 0.0s
+ Image flux-foundation:flux-ui-1791924136-2563497 Built 
+ Image flux-ui-tests:flux-ui-1791924136-2563497 Built 
+ Network flux-ui-1791924136-2563497_default Creating 
+ Network flux-ui-1791924136-2563497_default Created 
+ Volume flux-ui-1791924136-2563497_pgdata Creating 
+ Volume flux-ui-1791924136-2563497_pgdata Created 
+ Container flux-ui-1791924136-2563497-db-1 Creating 
+ Container flux-ui-1791924136-2563497-db-1 Created 
+ Container flux-ui-1791924136-2563497-migrate-1 Creating 
+ Container flux-ui-1791924136-2563497-migrate-1 Created 
+ Container flux-ui-1791924136-2563497-db-1 Starting 
+ Container flux-ui-1791924136-2563497-db-1 Started 
+ Container flux-ui-1791924136-2563497-db-1 Waiting 
+ Container flux-ui-1791924136-2563497-db-1 Healthy 
+ Container flux-ui-1791924136-2563497-migrate-1 Starting 
+ Container flux-ui-1791924136-2563497-migrate-1 Started 
+ Volume flux-ui-1791924136-2563497_files Creating 
+ Volume flux-ui-1791924136-2563497_files Created 
+ Container flux-ui-1791924136-2563497-files-init-run-8c9e40a3f71f Creating 
+time="2026-10-13T22:43:41+02:00" level=warning msg="mount of type `volume` should not define `bind` option"
+ Container flux-ui-1791924136-2563497-files-init-run-8c9e40a3f71f Created 
+ Network flux-ui-1791924136-2563497_runtime-api Creating 
+ Network flux-ui-1791924136-2563497_runtime-api Created 
+ Network flux-ui-1791924136-2563497_runtime-control Creating 
+ Network flux-ui-1791924136-2563497_runtime-control Created 
+ Container flux-ui-1791924136-2563497-openai-mock-1 Creating 
+ Container flux-ui-1791924136-2563497-db-1 Running 
+ Container flux-ui-1791924136-2563497-anthropic-mock-1 Creating 
+ Container flux-ui-1791924136-2563497-migrate-1 Running 
+ Container flux-ui-1791924136-2563497-api-1 Creating 
+ Container flux-ui-1791924136-2563497-mailpit-1 Creating 
+ Container flux-ui-1791924136-2563497-worker-1 Creating 
+time="2026-10-13T22:43:43+02:00" level=warning msg="mount of type `volume` should not define `bind` option"
+time="2026-10-13T22:43:43+02:00" level=warning msg="mount of type `volume` should not define `bind` option"
+ Container flux-ui-1791924136-2563497-anthropic-mock-1 Created 
+ Container flux-ui-1791924136-2563497-mailpit-1 Created 
+ Container flux-ui-1791924136-2563497-openai-mock-1 Created 
+ Container flux-ui-1791924136-2563497-worker-1 Created 
+ Container flux-ui-1791924136-2563497-api-1 Created 
+ Container flux-ui-1791924136-2563497-openai-mock-1 Starting 
+ Container flux-ui-1791924136-2563497-mailpit-1 Starting 
+ Container flux-ui-1791924136-2563497-anthropic-mock-1 Starting 
+ Container flux-ui-1791924136-2563497-db-1 Waiting 
+ Container flux-ui-1791924136-2563497-anthropic-mock-1 Started 
+ Container flux-ui-1791924136-2563497-db-1 Healthy 
+ Container flux-ui-1791924136-2563497-migrate-1 Waiting 
+ Container flux-ui-1791924136-2563497-migrate-1 Waiting 
+ Container flux-ui-1791924136-2563497-openai-mock-1 Started 
+ Container flux-ui-1791924136-2563497-mailpit-1 Started 
+ Container flux-ui-1791924136-2563497-migrate-1 Exited 
+ Container flux-ui-1791924136-2563497-worker-1 Starting 
+ Container flux-ui-1791924136-2563497-migrate-1 Exited 
+ Container flux-ui-1791924136-2563497-api-1 Starting 
+ Container flux-ui-1791924136-2563497-worker-1 Started 
+ Container flux-ui-1791924136-2563497-api-1 Started 
+ Container flux-ui-1791924136-2563497-openai-mock-1 Waiting 
+ Container flux-ui-1791924136-2563497-api-1 Waiting 
+ Container flux-ui-1791924136-2563497-mailpit-1 Waiting 
+ Container flux-ui-1791924136-2563497-anthropic-mock-1 Waiting 
+ Container flux-ui-1791924136-2563497-mailpit-1 Healthy 
+ Container flux-ui-1791924136-2563497-anthropic-mock-1 Healthy 
+ Container flux-ui-1791924136-2563497-openai-mock-1 Healthy 
+ Container flux-ui-1791924136-2563497-api-1 Healthy 
+ Container flux-ui-1791924136-2563497-ui-test-run-4270cd2fe758 Creating 
+ Container flux-ui-1791924136-2563497-ui-test-run-4270cd2fe758 Created 
+test_01_a_project_with_a_working_agent (test_agent_stop_questions.StopAndQuestions.test_01_a_project_with_a_working_agent) ... ok
+test_02_stop_is_on_the_working_agents_row_and_panel_only_for_who_may_stop_it (test_agent_stop_questions.StopAndQuestions.test_02_stop_is_on_the_working_agents_row_and_panel_only_for_who_may_stop_it) ... ok
+test_03_the_sidebar_card_shows_the_working_agent_and_stops_it (test_agent_stop_questions.StopAndQuestions.test_03_the_sidebar_card_shows_the_working_agent_and_stops_it) ... ok
+test_04_the_agents_view_says_who_stopped_it (test_agent_stop_questions.StopAndQuestions.test_04_the_agents_view_says_who_stopped_it) ... ok
+test_05_stop_from_the_row_ends_the_hold_and_a_stale_second_stop_is_explained (test_agent_stop_questions.StopAndQuestions.test_05_stop_from_the_row_ends_the_hold_and_a_stale_second_stop_is_explained) ... ok
+test_06_phone_stop_is_a_touch_target_in_the_row (test_agent_stop_questions.StopAndQuestions.test_06_phone_stop_is_a_touch_target_in_the_row) ... ok
+test_07_a_question_is_a_card_with_ready_answers_for_the_person_asked (test_agent_stop_questions.StopAndQuestions.test_07_a_question_is_a_card_with_ready_answers_for_the_person_asked) ... ok
+test_08_everyone_else_sees_the_question_without_buttons_and_free_words_work_on_the_phone (test_agent_stop_questions.StopAndQuestions.test_08_everyone_else_sees_the_question_without_buttons_and_free_words_work_on_the_phone) ... ok
+test_09_home_lists_the_working_agent_with_stop_at_every_width (test_agent_stop_questions.StopAndQuestions.test_09_home_lists_the_working_agent_with_stop_at_every_width)
+AC-3: Home has its own Stop; the sidebar card steps aside there so the agent is listed once. ... ok
+test_10_phone_conversation_header_stops_the_working_agent (test_agent_stop_questions.StopAndQuestions.test_10_phone_conversation_header_stops_the_working_agent)
+AC-3: on the phone the conversation header carries Stop for the agent that works in that project. ... ok
+test_11_stop_offers_hand_back (test_agent_stop_questions.StopAndQuestions.test_11_stop_offers_hand_back) ... ok
+test_01_a_project_with_three_agents_and_four_tasks (test_agents_handoff.HandOffJourney.test_01_a_project_with_three_agents_and_four_tasks) ... ok
+test_05_two_steps_choose_the_agent_then_see_what_it_may_do (test_agents_handoff.HandOffJourney.test_05_two_steps_choose_the_agent_then_see_what_it_may_do) ... ok
+test_18_each_connection_keeps_its_own_work_and_the_dialog_ages_the_live_claim (test_agents_handoff.HandOffJourney.test_18_each_connection_keeps_its_own_work_and_the_dialog_ages_the_live_claim) ... ok
+test_19_a_deadline_crossed_after_the_display_commit_is_not_dropped (test_agents_handoff.HandOffJourney.test_19_a_deadline_crossed_after_the_display_commit_is_not_dropped)
+Controlled browser clock: retain the real DOM/effect path and move only elapsed time. ... ok
+
+----------------------------------------------------------------------
+Ran 15 tests in 28.190s
+
+OK
+
+  Stop/questions browser: chromium
+
+  Hand-off browser: chromium
+
+  Delayed expiry boundary lifecycle: {"offset": 60151, "committed": {"text": "Claude Code agentfor Ada Kowalska (you) \u00b7 Delayed laptop \u00b7 Working on \u201cCheck the deadline boundary\u201d", "before": 1791924256849, "expiry": 1791924316000, "after": 1791924317000}, "timers": [{"delay": 0, "at": 1791924317000, "phase": "after-commit"}], "clockReads": [{"at": 1791924256804, "phase": "before-commit"}, {"at": 1791924256848, "phase": "before-commit"}, {"at": 1791924317000, "phase": "after-commit"}, {"at": 1791924317002, "phase": "after-commit"}], "finalState": "Claude Code agent\nfor Ada Kowalska (you) \u00b7 Delayed laptop \u00b7 Work held on \u201cCheck the deadline boundary\u201d", "clockAgeingReads": 0}
+
+  Delayed expiry boundary: {"offset": 60151, "committed": {"text": "Claude Code agentfor Ada Kowalska (you) \u00b7 Delayed laptop \u00b7 Working on \u201cCheck the deadline boundary\u201d", "before": 1791924256849, "expiry": 1791924316000, "after": 1791924317000}, "timers": [{"delay": 0, "at": 1791924317000, "phase": "after-commit"}], "clockReads": [{"at": 1791924256804, "phase": "before-commit"}, {"at": 1791924256848, "phase": "before-commit"}, {"at": 1791924317000, "phase": "after-commit"}, {"at": 1791924317002, "phase": "after-commit"}], "finalState": "Claude Code agent\nfor Ada Kowalska (you) \u00b7 Delayed laptop \u00b7 Work held on \u201cCheck the deadline boundary\u201d", "clockAgeingReads": 0}
+ Container flux-ui-1791924136-2563497-api-1 Stopping 
+ Container flux-ui-1791924136-2563497-openai-mock-1 Stopping 
+ Container flux-ui-1791924136-2563497-worker-1 Stopping 
+ Container flux-ui-1791924136-2563497-anthropic-mock-1 Stopping 
+ Container flux-ui-1791924136-2563497-mailpit-1 Stopping 
+ Container flux-ui-1791924136-2563497-worker-1 Stopped 
+ Container flux-ui-1791924136-2563497-worker-1 Removing 
+ Container flux-ui-1791924136-2563497-worker-1 Removed 
+ Container flux-ui-1791924136-2563497-mailpit-1 Stopped 
+ Container flux-ui-1791924136-2563497-mailpit-1 Removing 
+ Container flux-ui-1791924136-2563497-mailpit-1 Removed 
+ Container flux-ui-1791924136-2563497-openai-mock-1 Stopped 
+ Container flux-ui-1791924136-2563497-openai-mock-1 Removing 
+ Container flux-ui-1791924136-2563497-openai-mock-1 Removed 
+ Container flux-ui-1791924136-2563497-anthropic-mock-1 Stopped 
+ Container flux-ui-1791924136-2563497-anthropic-mock-1 Removing 
+ Container flux-ui-1791924136-2563497-anthropic-mock-1 Removed 
+ Container flux-ui-1791924136-2563497-api-1 Stopped 
+ Container flux-ui-1791924136-2563497-api-1 Removing 
+ Container flux-ui-1791924136-2563497-api-1 Removed 
+ Container flux-ui-1791924136-2563497-migrate-1 Stopping 
+ Container flux-ui-1791924136-2563497-migrate-1 Stopped 
+ Container flux-ui-1791924136-2563497-migrate-1 Removing 
+ Container flux-ui-1791924136-2563497-migrate-1 Removed 
+ Container flux-ui-1791924136-2563497-db-1 Stopping 
+ Container flux-ui-1791924136-2563497-db-1 Stopped 
+ Container flux-ui-1791924136-2563497-db-1 Removing 
+ Container flux-ui-1791924136-2563497-db-1 Removed 
+ Volume flux-ui-1791924136-2563497_pgdata Removing 
+ Volume flux-ui-1791924136-2563497_files Removing 
+ Network flux-ui-1791924136-2563497_default Removing 
+ Network flux-ui-1791924136-2563497_runtime-api Removing 
+ Network flux-ui-1791924136-2563497_runtime-control Removing 
+ Volume flux-ui-1791924136-2563497_pgdata Removed 
+ Volume flux-ui-1791924136-2563497_files Removed 
+ Network flux-ui-1791924136-2563497_runtime-api Removed 
+ Network flux-ui-1791924136-2563497_default Removed 
+ Network flux-ui-1791924136-2563497_runtime-control Removed 
+Removed 2 per-run image(s) tagged :flux-ui-1791924136-2563497
