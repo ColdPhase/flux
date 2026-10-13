@@ -6,13 +6,19 @@ import { duration, play } from './motion';
 
 export type ToastTone = 'neutral' | 'success' | 'danger';
 
+export interface ToastAction {
+  label: string;
+  onClick: () => void;
+  key?: 'Z';
+}
+
 export interface ToastOptions {
   message: string;
   tone?: ToastTone;
   /** Milliseconds before it leaves on its own; errors stay until dismissed. */
   timeout?: number;
   /** One quiet action beside the message, e.g. Undo or Hand back. Taking it closes the toast. */
-  action?: { label: string; onClick: () => void; key?: 'Z' };
+  action?: ToastAction;
 }
 
 interface ToastEntry extends Required<Omit<ToastOptions, 'timeout' | 'action'>> {
