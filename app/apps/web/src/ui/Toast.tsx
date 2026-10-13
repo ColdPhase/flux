@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Icon } from './Icon';
 import { Kreska } from './Kreska';
@@ -94,32 +94,34 @@ function ToastItem({ toast, onDone, registerAction }: { toast: ToastEntry; onDon
 export function ToastProvider({ children, sessionId }: { children: ReactNode; sessionId: string | null }) {
   const [toasts, setToasts] = useState<ToastEntry[]>([]);
   const nextId = useRef(1);
-  // Increment even for A → signed-out → A, so a callback from the earlier visit cannot become
-  // valid again just because the same person signed back in. Updated during render so retained
-  // callbacks are fenced as soon as the router commits the identity transition.
-  const session = useRef({ id: sessionId, epoch: 0 });
-  if (session.current.id !== sessionId) session.current = { id: sessionId, epoch: session.current.epoch + 1 };
+  // Keep a monotonic epoch even for A → signed-out → A. Conditional state adjustment hides old
+  // entries in this render without mutating shared refs in a render that React may abandon.
+  const [session, setSession] = useState(() => ({ id: sessionId, epoch: 0 }));
+  const sessionEpoch = session.id === sessionId ? session.epoch : session.epoch + 1;
+  if (session.id !== sessionId) setSession({ id: sessionId, epoch: sessionEpoch });
+  const committedSession = useRef({ id: sessionId, epoch: sessionEpoch });
+  const actions = useRef(new Map<number, () => void>());
+  // Install the identity fence at commit, before the browser can deliver another click or key.
+  useLayoutEffect(() => {
+    committedSession.current = { id: sessionId, epoch: sessionEpoch };
+    actions.current.clear();
+    setToasts((current) => current.filter((toast) => toast.sessionEpoch === sessionEpoch));
+  }, [sessionId, sessionEpoch]);
   const show = useCallback((options: ToastOptions) => {
     const tone = options.tone ?? 'neutral';
-    const sessionEpoch = session.current.epoch;
+    const actionEpoch = committedSession.current.epoch;
     const action = options.action ? {
       ...options.action,
       // A callback can outlive its toast (or be retained by an already queued click/key event).
       // Fence the callback itself, not just the button or hotkey registration.
-      onAction: () => { if (session.current.epoch === sessionEpoch) options.action!.onAction(); },
+      onAction: () => { if (committedSession.current.epoch === actionEpoch) options.action!.onAction(); },
     } : null;
-    const entry: ToastEntry = { id: nextId.current++, message: options.message, tone, timeout: options.timeout ?? (tone === 'danger' ? null : action ? 7000 : 5000), leaving: false, action, sessionEpoch };
+    const entry: ToastEntry = { id: nextId.current++, message: options.message, tone, timeout: options.timeout ?? (tone === 'danger' ? null : action ? 7000 : 5000), leaving: false, action, sessionEpoch: actionEpoch };
     // Keep at most three; older ones leave.
     setToasts((current) => [...current.slice(-2), entry]);
     return () => setToasts((current) => current.filter((toast) => toast.id !== entry.id));
   }, []);
   const remove = useCallback((id: number) => setToasts((current) => current.filter((toast) => toast.id !== id)), []);
-  const actions = useRef(new Map<number, () => void>());
-  const sessionEpoch = session.current.epoch;
-  useEffect(() => {
-    setToasts((current) => current.filter((toast) => toast.sessionEpoch === session.current.epoch));
-    actions.current.clear();
-  }, [sessionEpoch]);
   const registerAction = useCallback((id: number, run: (() => void) | null) => {
     if (run) actions.current.set(id, run); else actions.current.delete(id);
   }, []);
