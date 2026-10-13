@@ -1,0 +1,376 @@
+{
+  "serverHead": "975747426a778cc4471bd4c9eabb8910eb187671",
+  "clientVersion": "codex-cli 0.160.1",
+  "versionPathAliasWarning": true,
+  "featureLineBefore": "mcp_2026_07_28                           under development  false",
+  "codexBinarySha256": "f34a4d2301892ae96c90097786bfe5dc269f187b6f69faf42a7b357b8c081e35",
+  "researchPatchSha256": "000557a3697ca87d54d0f5b3302935495f5b8d7ccc121c64edce186c402e7595",
+  "playbookReference": {
+    "bundleId": "flux.cowork",
+    "version": "1.3.0",
+    "toolContractVersion": 1,
+    "digest": "sha256:9f7137e66f2acb7b99d99342a1a2ce4f425ecb7b3731a912c259d3f91debc7ba",
+    "retrievalReference": "flux://playbook/flux.cowork/1.3.0"
+  },
+  "configMutationFromFlag": false,
+  "boundaries": {
+    "realClient": true,
+    "realFluxOAuth": true,
+    "seededOAuthClient": true,
+    "model": "local scripted fixture only",
+    "vendorAccount": false,
+    "vendorKey": false,
+    "vendorSpend": 0,
+    "fullStartResume": "not assessed"
+  },
+  "cases": [
+    {
+      "name": "prototype-default",
+      "flags": [],
+      "cliExit": 0,
+      "fluxToolCount": 45,
+      "exchanges": [
+        {
+          "method": "initialize",
+          "offered": "2025-06-18",
+          "protocolHeader": null,
+          "httpStatus": 200,
+          "selected": "2025-06-18",
+          "error": null
+        },
+        {
+          "method": "notifications/initialized",
+          "offered": "2025-06-18",
+          "protocolHeader": "2025-06-18",
+          "httpStatus": 202,
+          "selected": null,
+          "error": null
+        },
+        {
+          "method": "tools/list",
+          "offered": "2025-06-18",
+          "protocolHeader": "2025-06-18",
+          "httpStatus": 200,
+          "selected": null,
+          "error": null
+        },
+        {
+          "method": "tools/call",
+          "offered": "2025-06-18",
+          "protocolHeader": "2025-06-18",
+          "httpStatus": 200,
+          "selected": null,
+          "error": null
+        },
+        {
+          "method": "tools/call",
+          "offered": "2025-06-18",
+          "protocolHeader": "2025-06-18",
+          "httpStatus": 200,
+          "selected": null,
+          "error": null
+        },
+        {
+          "method": "tools/call",
+          "offered": "2025-06-18",
+          "protocolHeader": "2025-06-18",
+          "httpStatus": 200,
+          "selected": null,
+          "error": null
+        },
+        {
+          "method": "tools/call",
+          "offered": "2025-06-18",
+          "protocolHeader": "2025-06-18",
+          "httpStatus": 200,
+          "selected": null,
+          "error": null
+        }
+      ]
+    },
+    {
+      "name": "prototype-flagged",
+      "flags": [
+        "--enable",
+        "mcp_2026_07_28"
+      ],
+      "cliExit": 0,
+      "fluxToolCount": 45,
+      "exchanges": [
+        {
+          "method": "server/discover",
+          "offered": "2026-07-28",
+          "protocolHeader": "2026-07-28",
+          "httpStatus": 200,
+          "selected": null,
+          "error": null
+        },
+        {
+          "method": "tools/list",
+          "offered": "2026-07-28",
+          "protocolHeader": "2026-07-28",
+          "httpStatus": 200,
+          "selected": null,
+          "error": null
+        },
+        {
+          "method": "tools/call",
+          "offered": "2026-07-28",
+          "protocolHeader": "2026-07-28",
+          "httpStatus": 200,
+          "selected": null,
+          "error": null
+        },
+        {
+          "method": "tools/call",
+          "offered": "2026-07-28",
+          "protocolHeader": "2026-07-28",
+          "httpStatus": 200,
+          "selected": null,
+          "error": null
+        },
+        {
+          "method": "tools/call",
+          "offered": "2026-07-28",
+          "protocolHeader": "2026-07-28",
+          "httpStatus": 200,
+          "selected": null,
+          "error": null
+        },
+        {
+          "method": "tools/call",
+          "offered": "2026-07-28",
+          "protocolHeader": "2026-07-28",
+          "httpStatus": 200,
+          "selected": null,
+          "error": null
+        }
+      ]
+    },
+    {
+      "name": "prototype-default-after-flag",
+      "flags": [],
+      "cliExit": 0,
+      "fluxToolCount": 45,
+      "exchanges": [
+        {
+          "method": "initialize",
+          "offered": "2025-06-18",
+          "protocolHeader": null,
+          "httpStatus": 200,
+          "selected": "2025-06-18",
+          "error": null
+        },
+        {
+          "method": "notifications/initialized",
+          "offered": "2025-06-18",
+          "protocolHeader": "2025-06-18",
+          "httpStatus": 202,
+          "selected": null,
+          "error": null
+        },
+        {
+          "method": "tools/list",
+          "offered": "2025-06-18",
+          "protocolHeader": "2025-06-18",
+          "httpStatus": 200,
+          "selected": null,
+          "error": null
+        },
+        {
+          "method": "tools/call",
+          "offered": "2025-06-18",
+          "protocolHeader": "2025-06-18",
+          "httpStatus": 200,
+          "selected": null,
+          "error": null
+        }
+      ]
+    },
+    {
+      "name": "prototype-revoked-default",
+      "flags": [],
+      "cliExit": 0,
+      "fluxToolCount": 0,
+      "exchanges": [
+        {
+          "method": "initialize",
+          "offered": "2025-06-18",
+          "protocolHeader": null,
+          "httpStatus": 403,
+          "selected": null,
+          "error": {}
+        }
+      ]
+    },
+    {
+      "name": "prototype-revoked-flagged",
+      "flags": [
+        "--enable",
+        "mcp_2026_07_28"
+      ],
+      "cliExit": 0,
+      "fluxToolCount": 0,
+      "exchanges": [
+        {
+          "method": "server/discover",
+          "offered": "2026-07-28",
+          "protocolHeader": "2026-07-28",
+          "httpStatus": 403,
+          "selected": null,
+          "error": {}
+        }
+      ]
+    }
+  ],
+  "probes": [
+    {
+      "kind": "feature-projection",
+      "version": "2025-06-18",
+      "toolCount": 45,
+      "playbookBytes": 14224,
+      "promptBytes": 15042
+    },
+    {
+      "kind": "feature-projection",
+      "version": "2026-07-28",
+      "toolCount": 45,
+      "playbookBytes": 14224,
+      "promptBytes": 15042
+    },
+    {
+      "kind": "denied-scope",
+      "version": "2025-06-18",
+      "status": 200,
+      "error": [
+        {
+          "type": "text",
+          "text": "{\"code\":\"MCP_SCOPE_REQUIRED\",\"error\":\"The connection lacks the required scope\"}"
+        }
+      ]
+    },
+    {
+      "kind": "denied-scope",
+      "version": "2026-07-28",
+      "status": 200,
+      "error": [
+        {
+          "type": "text",
+          "text": "{\"code\":\"MCP_SCOPE_REQUIRED\",\"error\":\"The connection lacks the required scope\"}"
+        }
+      ]
+    },
+    {
+      "kind": "unsupported-legacy",
+      "status": 400,
+      "message": {
+        "jsonrpc": "2.0",
+        "id": 412,
+        "error": {
+          "code": -32022,
+          "message": "Unsupported protocol version",
+          "data": {
+            "requested": "2024-11-05",
+            "supported": [
+              "2025-06-18",
+              "2026-07-28"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "kind": "unsupported-modern",
+      "status": 400,
+      "message": {
+        "jsonrpc": "2.0",
+        "error": {
+          "code": -32022,
+          "message": "Unsupported protocol version: 2027-01-01",
+          "data": {
+            "supported": [
+              "2026-07-28"
+            ],
+            "requested": "2027-01-01"
+          }
+        },
+        "id": 413
+      }
+    },
+    {
+      "kind": "modern-header-mismatch",
+      "status": 400,
+      "message": {
+        "jsonrpc": "2.0",
+        "error": {
+          "code": -32020,
+          "message": "Bad Request: the request headers and body disagree: the body envelope names protocol version 2026-07-28 but the MCP-Protocol-Version header names 2025-06-18",
+          "data": {
+            "mismatch": {
+              "header": "2025-06-18",
+              "body": "the body envelope names protocol version 2026-07-28 but the MCP-Protocol-Version header names 2025-06-18"
+            }
+          }
+        },
+        "id": 414
+      }
+    },
+    {
+      "kind": "legacy-missing-version",
+      "status": 400,
+      "message": {
+        "jsonrpc": "2.0",
+        "id": 415,
+        "error": {
+          "code": -32022,
+          "message": "Unsupported protocol version",
+          "data": {
+            "requested": "",
+            "supported": [
+              "2025-06-18",
+              "2026-07-28"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "kind": "revoked",
+      "version": "2025-06-18",
+      "status": 403,
+      "message": {
+        "error": "Agent connection is unavailable"
+      }
+    },
+    {
+      "kind": "revoked",
+      "version": "2026-07-28",
+      "status": 403,
+      "message": {
+        "error": "Agent connection is unavailable"
+      }
+    }
+  ],
+  "assertedControls": [
+    "two native clients offered identical tool names",
+    "native old and new persisted separate one-grant tasks",
+    "both real native callers refused an unselected project",
+    "raw HTTP old and new tools definitions equal",
+    "raw HTTP old and new playbook texts equal",
+    "raw HTTP old and new Start prompt texts equal",
+    "read-only genuine OAuth token refused proposal write in both formats",
+    "unsupported legacy initialization and modern revision refused",
+    "modern protocol/header mismatch refused",
+    "headerless legacy tool request refused",
+    "raw and native old/new requests refused after live connection revocation"
+  ],
+  "composeProject": "flux-mcpclients-1791653762-3038846",
+  "logSha256": "e4f6c605df0fbe2ee8c02cdf6e9aee4b8424e362808145cd61065b59258c2bb5",
+  "probeSha256": "084bc69c812c93afffe89720b4c57d143d619cc20a690d2fbd6760e52a365804",
+  "limitations": [
+    "temporary research patch only",
+    "direct wire resource/prompt parity is not native model instruction activation",
+    "held delivery/effect races and complete role/grant/replay/provenance suite unverified",
+    "stateful sessions and subscriptions untested"
+  ]
+}

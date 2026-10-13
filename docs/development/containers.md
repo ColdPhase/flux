@@ -57,6 +57,28 @@ default test project or another worker's persistent volumes. The
 Compose commands; the worktree location does not change their container-only
 runtime requirement.
 
+### Shared-host test budget
+
+Until measurements justify more concurrency, run at most one heavy Flux image
+build or application/browser suite at a time on a shared host, across identities
+and subagents. Check active owned processes/Compose projects before starting;
+if a run is already active, do review, implementation or lightweight checks
+while it finishes. Distinct ports prevent collisions, not CPU or disk contention.
+This is an operating convention, not an implemented scheduler or lock.
+
+Choose the affected checks using the
+[verification policy](../agents/evaluation.md#choose-verification-by-impact).
+Use `./flux dev` for source iteration; the maintained test scripts still build
+their own disposable stacks. Do not share mutable test databases between tasks.
+Retain useful build cache. Clean only completed, owned task resources after
+checking for live processes and unsaved work; never use global Docker pruning
+or stop another worker's containers as a routine test preparation step.
+
+When optimizing a runner, record build, startup/migration, test and cleanup times
+separately, including whether the cache was warm. Compare the same test scope
+and source before claiming a speedup. Selector and stack-reuse improvements
+require implementation and validation; this guidance does not add those features.
+
 ### Launcher and development mode
 
 `./flux` at the repository root wraps these Compose commands for people: `up`
@@ -280,8 +302,9 @@ active session (5 retries, exponential backoff up to 10 minutes, for
 it (`session_id`, foreign key `ON DELETE CASCADE`). Sign-out, revoking a session,
 revoke-others, password reset (which revokes all sessions) and account deletion all
 delete the session row, and with it that device's subscriptions, whichever code path
-ends the session. The web client also unsubscribes before signing out
-(`signOutDevice`). After signing in again, the client's start-up sync re-registers
+ends the session. When notification permission is granted, the web client also
+unsubscribes before signing out (`signOutDevice`; [mobile-pwa.md](../product/mobile-pwa.md#sign-out-and-this-devices-push-subscription-461)).
+After signing in again, the client's start-up sync re-registers
 the browser subscription under the new session.
 
 **Before each send** the worker rechecks from current rows that the account still

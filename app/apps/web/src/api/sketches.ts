@@ -84,5 +84,7 @@ export const addLink = (sketchId: string, command: CreateLinkCommand, idempotenc
   request<ThoughtLink>(sketchLinksPath(sketchId), { method: 'POST', body: command, headers: key(idempotencyKey) });
 export const removeLink = (sketchId: string, linkId: string, idempotencyKey: string) =>
   request<null>(sketchLinkPath(sketchId, linkId), { method: 'DELETE', headers: key(idempotencyKey) });
+export const updateLinkLabel = (sketchId: string, linkId: string, label: string | null, expectedLabel: string | null, idempotencyKey: string) =>
+  request<ThoughtLink>(sketchLinkPath(sketchId, linkId), { method: 'PATCH', body: { label, expectedLabel }, headers: key(idempotencyKey) });
 
 export const getProject = (projectId: string, signal?: AbortSignal) => request<Project>(projectPath(projectId), { signal });
