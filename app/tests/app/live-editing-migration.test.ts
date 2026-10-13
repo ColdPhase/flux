@@ -103,13 +103,13 @@ test('0046 and 0047 arrive late on a database already at intermediate84 and on a
   } finally { await client.query('ROLLBACK'); client.release(); }
 });
 
-test('0046, 0047 and 0084 arrive late on canonical90, retaining the exact old ledger timestamps, with the exact ledger either way', async () => {
+test('0046, 0047 and 0084 arrive late on the canonical latest schema (90+), retaining the exact old ledger timestamps, with the exact ledger either way', async () => {
   const client = await pool.connect(); const namespace = `live_late90_${randomUUID().replaceAll('-', '')}`;
   try {
     await client.query('BEGIN'); await client.query(`CREATE SCHEMA "${namespace}"`);
     await client.query(`SET LOCAL search_path TO "${namespace}",public`);
     const dir = 'packages/db/migrations'; const manifest = await readMigrationManifest(dir, FLUX_SCHEMA_VERSION);
-    assert.equal(FLUX_SCHEMA_VERSION, 90);
+    assert.ok(FLUX_SCHEMA_VERSION >= 90); assert.equal(Math.max(...manifest.map((file) => file.version)), FLUX_SCHEMA_VERSION);
     const live = manifest.filter((file) => file.version === 46 || file.version === 47 || file.version === 84);
     assert.deepEqual(live.map((file) => file.name), ['0046_live_editing.sql', '0047_live_maps.sql', '0084_live_update_log.sql']);
     // An upgraded installation recorded everything else (including 0048..latest) before these files existed.
@@ -121,7 +121,7 @@ test('0046, 0047 and 0084 arrive late on canonical90, retaining the exact old le
       const next = await readAppliedMigrationVersions(client); assertMigrationStepLedger(applied, next, file); applied = next;
     };
     for (const file of manifest.filter((file) => file.version !== 46 && file.version !== 47 && file.version !== 84)) await apply(file);
-    assert.ok(applied.includes(90) && !applied.includes(46) && !applied.includes(47) && !applied.includes(84));
+    assert.ok(applied.includes(FLUX_SCHEMA_VERSION) && !applied.includes(46) && !applied.includes(47) && !applied.includes(84));
     assert.throws(() => assertExactMigrationLedger(manifest, applied), /0046_live_editing\.sql/, 'the migrator must apply the older numbers');
     const oldLedger = (await client.query('SELECT to_jsonb(r) value FROM (SELECT * FROM flux_schema_version ORDER BY version) r')).rows;
     const oldVersions = [...applied];
