@@ -297,6 +297,8 @@ function AppLayoutContent() {
   // In focus the rail shows no counts.
   const sidebarProps = { workspace, projects, directMessages, user: me.user, session: me.session, inboxUnread: focusing ? 0 : inboxUnread };
   const where = placeOf(location.pathname);
+  // Home's computer layout has no header row; keep its name available to assistive technology.
+  const homeRoot = where === 'home' && location.pathname === '/';
   const activeProject = projects.find((project) => project.id === projectId);
   // The Conversation tab returns to the conversation that was open before Tasks, Map, Docs or project
   // settings (GitHub), and the
