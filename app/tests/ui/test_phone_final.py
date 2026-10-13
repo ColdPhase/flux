@@ -369,11 +369,13 @@ class PhoneFinal(unittest.TestCase):
         page.get_by_role("link", name="Settings and account").click()
         expect(page).to_have_url(f"{ORIGIN}/settings")
         expect(page.get_by_role("heading", level=1, name="Settings")).to_be_visible()
-        for link, path, title in (("All my tasks", "/tasks", "Your tasks"), ("Wiki", "/docs", "Wiki"), ("Sketchbook", "/map", "Sketchbook")):
+        for link, path, content_title in (("All my tasks", "/tasks", "Nothing is waiting for you"), ("Wiki", "/docs", "No docs yet"), ("Sketchbook", "/map", "Start a sketch")):
             page.goto("/")
             page.locator(".home__more").get_by_role("link", name=link).click()
             expect(page).to_have_url(f"{ORIGIN}{path}")
-            expect(page.get_by_role("heading", level=1, name=title)).to_be_visible()
+            # These are Home's content views: the shell heading stays Home, and each route names its content.
+            expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
+            expect(page.get_by_role("heading", level=2, name=content_title)).to_be_visible()
             page.get_by_role("button", name="Back", exact=True).click()
             expect(page).to_have_url(f"{ORIGIN}/")
         page.locator(".home__more").get_by_role("button", name="Details", exact=True).click()
