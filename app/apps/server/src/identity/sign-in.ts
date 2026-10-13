@@ -14,7 +14,9 @@ export interface SignInFacts {
   /** What the silent offline-access step brought back; the bridge sets it before resuming the held callback (S1, revised 2026-10-09). */
   offline?: OfflineGrant;
   /** Set when Flux refused the sign-in itself; the bridge tells the browser why. */
-  refused?: 'no_refresh_token';
+  refused?: 'no_refresh_token' | 'email_held' | 'email_claim';
+  /** With `email_claim`: the secret for the browser that completed the provider sign-in (#313). Set as a cookie by the bridge. */
+  claimToken?: string;
 }
 export const createSignIns = () => new AsyncLocalStorage<SignInFacts>();
 export type SignIns = ReturnType<typeof createSignIns>;
