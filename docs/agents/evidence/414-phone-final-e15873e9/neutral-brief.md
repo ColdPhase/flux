@@ -1,0 +1,9 @@
+# Neutral visual brief — #414 complete phone delta evidence
+
+A person uses Flux on a small phone to create a task from text and reach the project's Details. Review all included screenshots: current project view menu at 320×568 and 390×844 in light/dark Chromium and WebKit; Home Continue at 390×844 in both engines; fresh Create quick-text and project Details “What matters” row at 320×568 and 390×844 in light/dark Chromium.
+
+Compare the Create frames with the F-026 `phone-create.webp` reference. Compare menu frames with `phone-viewsmenu.webp`. There is no dedicated reference image for the Details “What matters” row; assess that frame against the written F-026 §4 flow (the project title opens the menu, which contains “Details, goal and people”; Details includes “What matters”), clearly distinguishing explicit contract observations from visual interpretation. Comment on hierarchy, clarity, density, clipping, and character. Do not infer interaction, target size, permission behavior, persistence, or accessibility from screenshots.
+
+All 8 changed-surface frames were freshly captured from source `e15873e97a843dc32e944032c9b3a6067c5cfaea`, Chromium, with 2 bounded real-fixture capture cases passing. The exact temporary harness and hash are archived in the manifest. Earlier Chromium menu/Home captures at `531cf9b1c828b2fe7a3f88c3ea27acbe1b693501` are product-source-equivalent to e158; the only source-tree difference was the test-only locator correction. Earlier WebKit frames were captured directly at e158 and their three focused tests passed. See `manifest.json` for each image hash, dimensions, engine, theme, viewport, reference, and test run.
+
+The evidence packet contains current frames for all #414 changed UI surfaces. The browser tests separately establish interactions and persistence; screenshots alone do not certify behavior or accessibility.

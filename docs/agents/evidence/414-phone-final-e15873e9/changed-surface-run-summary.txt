@@ -1,0 +1,7 @@
+source: e15873e97a843dc32e944032c9b3a6067c5cfaea
+engine: Chromium
+compose project: flux-ui-1791919963-2229666
+command: FLUX_UI_BROWSER=chromium FLUX_UI_SCREENSHOT_DIR=/home/hubert/Develop/flux-evidence-archive/flux414-e15873e9-changed-surfaces ./scripts/check_ui.sh test_414_visual_capture.PhoneDeltaCapture.test_capture_390 test_414_visual_capture.PhoneDeltaCapture.test_capture_320
+result: Ran 2 tests in 11.485s; OK (2 passed, 0 failed).
+The selected fixture captured Create quick-text and Details/What matters at 390×844 and 320×568, light and dark (8 PNGs).
+Compose cleanup trap completed; subsequent docker ps/volume/network filters for this project returned no resources.
