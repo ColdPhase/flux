@@ -38,6 +38,8 @@ export const REVOKE_OTHER_SESSIONS_PATH = '/api/v1/sessions/revoke-others';
 
 export interface IdentityCapabilities {
   passwordReset: 'available' | 'unavailable';
+  /** Who can create a password account (#313): `verified` mails a link first; `off` is closed, including `verified` without email. */
+  signup: 'open' | 'verified' | 'off';
   /** The operator's single sign-on provider (#113), or null when only email/password sign-in exists. */
   sso: { providerId: string; label: string; /** The provider's discovery document answers right now (#310). */ reachable: boolean } | null;
 }
