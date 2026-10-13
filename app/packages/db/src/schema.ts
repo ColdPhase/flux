@@ -459,6 +459,17 @@ export const pushSubscriptions = pgTable('push_subscriptions', {
   index('push_subscriptions_session_id_idx').on(table.sessionId),
 ]);
 
+export const assistantJoinQuestionIdentitySnapshots = pgTable('assistant_join_question_identity_snapshots', {
+  joinRequestId: uuid('join_request_id').notNull(),
+  openingVersion: integer('opening_version').notNull(),
+  assistantId: uuid('assistant_id').notNull(),
+  assistantName: text('assistant_name').notNull(),
+  ownerId: text('owner_id').notNull(),
+  ownerName: text('owner_name').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  notificationLinkedAt: timestamp('notification_linked_at', { withTimezone: true }),
+}, (table) => [primaryKey({ columns: [table.joinRequestId, table.openingVersion] }), check('assistant_join_question_identity_version_check', sql`${table.openingVersion} > 0`)]);
+
 export const notifications = pgTable('notifications', {
   id: uuid('id').primaryKey(),
   userId: text('user_id').notNull().references(() => authUsers.id, { onDelete: 'cascade' }),
@@ -477,9 +488,13 @@ export const notifications = pgTable('notifications', {
   inInbox: boolean('in_inbox').notNull().default(true),
   deliveryKind: text('delivery_kind').$type<'ordinary' | 'morning_summary'>().notNull().default('ordinary'),
   summarySources: jsonb('summary_sources').$type<NotificationSourceRef[]>(),
+  assistantJoinRequestId: uuid('assistant_join_request_id'),
+  assistantJoinOpeningVersion: integer('assistant_join_opening_version'),
 }, (table) => [
   index('notifications_user_created_idx').on(table.userId, table.createdAt.desc()),
   index('notifications_source_idx').on(table.sourceType, table.sourceId),
+  foreignKey({ columns: [table.assistantJoinRequestId, table.assistantJoinOpeningVersion], foreignColumns: [assistantJoinQuestionIdentitySnapshots.joinRequestId, assistantJoinQuestionIdentitySnapshots.openingVersion] }),
+  check('notifications_assistant_join_identity_pair_check', sql`(${table.assistantJoinRequestId} IS NULL) = (${table.assistantJoinOpeningVersion} IS NULL)`),
 ]);
 // Per-recipient stream index (migration 0004), written by recordEvent.
 export const eventAudience = pgTable('event_audience', {

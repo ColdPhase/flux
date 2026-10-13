@@ -72,6 +72,40 @@ test('0077 fresh/upgrade/reverse preserves legacy identity, grants and consent w
     await client.query('DELETE FROM personal_run_agents'); await client.query('DELETE FROM personal_run_enablements');
     await client.query(await readFile(join(directory, '0077_assistant_settings.sql'), 'utf8'));
     assert.equal((await client.query('SELECT * FROM assistant_settings')).rowCount, 0);
+
+    const requestId = randomUUID(); const notificationId = randomUUID();
+    await client.query(`INSERT INTO assistant_join_question_identity_snapshots
+      (join_request_id,opening_version,assistant_id,assistant_name,owner_id,owner_name)
+      VALUES($1,1,$2,'Request-time assistant',$3,'Request-time owner')`, [requestId, agent, owner]);
+    await client.query(`INSERT INTO notifications
+      (id,user_id,workspace_id,source_type,source_id,title,assistant_join_request_id,assistant_join_opening_version)
+      VALUES($1,$2,$3,'workspace',$3,'Manager question',$4,1)`, [notificationId, owner, ws, requestId]);
+    await client.query('UPDATE assistant_join_question_identity_snapshots SET notification_linked_at=now() WHERE join_request_id=$1 AND opening_version=1', [requestId]);
+    await client.query('SAVEPOINT reverse_join_identity');
+    await assert.rejects(client.query(await readFile(join(directory, 'reverse/0094_assistant_join_question_identity.down.sql'), 'utf8')),
+      /Cannot reverse 0094 while a manager notification links/);
+    await client.query('ROLLBACK TO SAVEPOINT reverse_join_identity');
+    assert.equal((await client.query('SELECT assistant_name FROM assistant_join_question_identity_snapshots WHERE join_request_id=$1 AND opening_version=1', [requestId])).rows[0].assistant_name,
+      'Request-time assistant', 'refused reverse preserves the linked request-time identity');
+    await client.query('DELETE FROM notifications WHERE id=$1', [notificationId]);
+    await assert.rejects(client.query(await readFile(join(directory, 'reverse/0094_assistant_join_question_identity.down.sql'), 'utf8')),
+      /Cannot reverse 0094 while a manager notification links/);
+  } finally { await client.query('ROLLBACK'); client.release(); }
+});
+
+test('0094 allows an unused reverse without changing existing notifications', async () => {
+  const client = await pool.connect(); const namespace = `assistant_identity_unused_${randomUUID().replaceAll('-', '')}`;
+  try {
+    await client.query('BEGIN'); await client.query(`CREATE SCHEMA ${namespace}`); await client.query(`SET LOCAL search_path TO ${namespace}, pg_catalog`);
+    await client.query('CREATE TABLE notifications(id uuid PRIMARY KEY)');
+    const historicalNotification = randomUUID();
+    await client.query('INSERT INTO notifications VALUES($1)', [historicalNotification]);
+    await client.query(await readFile(join(directory, '0094_assistant_join_question_identity.sql'), 'utf8'));
+    assert.deepEqual((await client.query('SELECT assistant_join_request_id, assistant_join_opening_version FROM notifications WHERE id=$1', [historicalNotification])).rows[0],
+      { assistant_join_request_id: null, assistant_join_opening_version: null }, 'older notifications are not guessed or backfilled');
+    await client.query(await readFile(join(directory, 'reverse/0094_assistant_join_question_identity.down.sql'), 'utf8'));
+    assert.deepEqual((await client.query('SELECT * FROM notifications')).rows, [{ id: historicalNotification }]);
+    assert.equal((await client.query("SELECT to_regclass('assistant_join_question_identity_snapshots') AS relation")).rows[0].relation, null);
   } finally { await client.query('ROLLBACK'); client.release(); }
 });
 

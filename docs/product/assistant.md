@@ -1669,25 +1669,29 @@ with a read-only S6 snapshot and their existing explicit project grants. It adds
 project grant or effect capability. Fresh explicit Turn on retains the accepted
 read-and-edit defaults; older owners allow new effects explicitly.
 
-**Join-question identity clarification (proposed 2026-10-11, #402/#457).** When
-creating the native manager question, the already-authorized request transaction
-stores a typed identity snapshot: request id, the actual assistant agent id/name,
-and the owner's id/public name. It is immutable with that question and is display
-provenance, never run, settings, connection or grant authority. Both Inbox list
-and individual-item reads expose it only as part of the existing recipient's
-notification under current project-read authorization. The names retain their
-request-time values: losing manager authority, renaming the owner/agent, closing
-or removing the request never relabels historical identity; Review and Allow
-still use their current project/manager checks. The original title/body, reason,
-destination and request-versus-grant behavior remain intact. No vendor/account,
-credential, policy, limit or private helper-setting data is included or fetched.
-Older questions without a recorded snapshot keep their original saved text; they
-must not acquire a guessed owner, a new/current assistant, or a text-parsed
-backfill. Their identity is unverified and does not count as legacy conformance
-without an independently admitted source-backed conversion. An additive
-migration permits an unused reverse, but refuses to delete identity snapshots
-after use. This records persistence/projection only; F-026's design and the A1
-owner/manage/read boundaries are unchanged.
+**Join-question identity clarification (accepted conditionally 2026-10-13, #402/#457).**
+When creating the native manager question, the already-authorized request transaction
+stores a typed identity snapshot for that immutable request cycle, identified by the
+join request id and the opening version captured when that ask becomes pending. The
+snapshot records the actual assistant agent id/public name and owner's id/public name.
+Every manager notification created for one cycle links to that same snapshot. If a
+closed request is reopened, its incremented opening version creates a new snapshot;
+the earlier cycle and its notification links are never changed. Snapshot identity is
+display provenance, never run, settings, connection or grant authority. Both Inbox
+list and individual-item reads expose it only as part of the existing recipient's
+notification under the current project-read authorization. The names retain their
+request-time values: losing manager authority, renaming the owner/agent, closing or
+removing the request never relabels historical identity; Review and Allow still use
+their current project/manager checks. The original title/body, reason, destination
+and request-versus-grant behavior remain intact. No vendor/account, credential,
+policy, limit or private helper-setting data is included or fetched. Older questions
+without a recorded cycle snapshot keep their original saved text; they must not acquire
+a guessed owner, a new/current assistant, or a text-parsed backfill. Their identity is
+unverified and does not count as legacy conformance without an independently admitted
+source-backed conversion. Migration 0094 is reserved for this additive persistence;
+reverse must refuse after any notification links a snapshot. This records
+persistence/projection only; F-026's design and the A1 owner/manage/read boundaries
+are unchanged.
 
 - **Scope.** One `owner_assistant` agent connection per person per workspace,
   created in the same transaction as the assistant's enablement, with its S6 policy

@@ -26,7 +26,9 @@ export function assistantJoinUseCases(db: Database, boss: Pick<PgBoss, 'send'>) 
           throw new ConflictError('Your assistant is already a member here', 'ASSISTANT_ALREADY_JOINED');
         const request = await rows.open(principal.id, project.workspaceId, identity.connectionId, projectId);
         if (request.created) {
-          const title = `${await rows.name(principal.id)}'s assistant asks to join`.slice(0, 200);
+          await rows.snapshotQuestion({ joinRequestId: request.row.id, openingVersion: request.row.version,
+            assistantId: identity.agentId, assistantName: identity.agentName, ownerId: principal.id, ownerName: identity.ownerName });
+          const title = `${identity.ownerName}'s assistant asks to join`.slice(0, 200);
           for (const candidate of await rows.candidates(project.workspaceId)) {
             if (!(await evaluateProject({ kind: 'human', id: candidate.userId }, 'project.manage', projectId, tx, { lock: true })).allowed) continue;
             const notification = await createNotification(notificationUnitOfWork(tx, pgBossQueue(boss)), {
@@ -34,6 +36,7 @@ export function assistantJoinUseCases(db: Database, boss: Pick<PgBoss, 'send'>) 
               body: `${project.name} · Requested contributor access.`, url: assistantJoinInboxPath(projectId),
             });
             await rows.markQuestion(notification.id);
+            await rows.linkQuestion(notification.id, request.row.id, request.row.version);
           }
         }
         return assistantJoinView(request.row, identity.agentId);

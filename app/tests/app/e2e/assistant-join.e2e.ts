@@ -88,8 +88,10 @@ for (const [engine, mobile] of [['chromium', false], ['webkit', true]] as const)
       const refused = await viewerContext.request.post(`${origin}/api/v1/projects/${place.id}/assistant-join-requests/${pending[0]!.id}/allow`, { headers: { origin } });
       assert.equal(refused.status(), 403);
       const managerPage = await signedIn(managerContext, manager, '/inbox');
-      const invitation = managerPage.locator('.inbox__item').filter({ hasText: 'assistant asks to join' });
+      const invitation = managerPage.locator('.inbox__item').filter({ hasText: 'Ada’s assistant' });
       await expect(invitation).toHaveCount(1); await expect(invitation).toContainText('Asked you');
+      await expect(invitation.locator('.inbox__title')).toHaveText('Ada’s assistant');
+      await expect(invitation).toContainText('for Ada Kowalska Nowak – Community Sensor Team');
       await expect(invitation.locator('.inbox__body')).toContainText('Community garden sensors');
       await expect(invitation.locator('.kreska')).toHaveCount(1);
       await expect(invitation.locator('.agent-tag')).toHaveText('Agent');

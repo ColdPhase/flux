@@ -32,6 +32,7 @@ function Row({ item, onRead }: { item: InboxItem; onRead: (id: string) => void }
   const reason = item.reason ? REASONS[item.reason] : { label: 'Update', icon: 'bell' as IconName };
   const assistantRequest = item.reason === 'question' && item.source.type === 'project'
     && item.url === assistantJoinInboxPath(item.source.id);
+  const assistantIdentity = assistantRequest ? item.assistantRequestIdentity : null;
   const unread = !item.readAt;
   const open = (event: MouseEvent<HTMLAnchorElement>) => {
     if (event.button !== 0) return;
@@ -42,9 +43,9 @@ function Row({ item, onRead }: { item: InboxItem; onRead: (id: string) => void }
       <Link to={item.url ?? `/inbox/${item.id}`} className={`inbox__item${assistantRequest ? ' inbox__item--assistant-request' : ''}`} onClick={open}>
         <span className={`inbox__ic inbox__ic--${item.reason ?? 'other'}`} aria-hidden="true">{assistantRequest ? <Kreska size={16} /> : <Icon name={reason.icon} size={14} />}</span>
         <span className="inbox__text">
-          <span className="inbox__title">{item.title}</span>
+          <span className="inbox__title">{assistantIdentity?.assistantName ?? item.title}</span>
           {item.body ? <span className="inbox__body">{item.body}</span> : null}
-          <span className="inbox__meta">{assistantRequest ? <><span className="agent-tag">Agent</span><span aria-hidden="true"> · </span></> : null}{reason.label}<span aria-hidden="true"> · </span><time dateTime={item.createdAt}>{when(item.createdAt)}</time>{assistantRequest ? <><span aria-hidden="true"> · </span><span className="inbox__review">Review <Icon name="chevron-right" size={14} /></span></> : null}</span>
+          <span className="inbox__meta">{assistantIdentity ? <><span className="agent-tag">Agent</span><span aria-hidden="true"> · </span><span>for {assistantIdentity.ownerName}</span><span aria-hidden="true"> · </span></> : assistantRequest ? <><span className="agent-tag">Agent</span><span aria-hidden="true"> · </span></> : null}{reason.label}<span aria-hidden="true"> · </span><time dateTime={item.createdAt}>{when(item.createdAt)}</time>{assistantRequest ? <><span aria-hidden="true"> · </span><span className="inbox__review">Review <Icon name="chevron-right" size={14} /></span></> : null}</span>
         </span>
         {unread ? <span className="inbox__dot"><span className="ui-vh">, unread</span></span> : null}
       </Link>

@@ -15,11 +15,14 @@ export const assistantJoinView = (row: Row, agentId: string): AssistantJoinReque
 export function assistantJoinRows(tx: DbExecutor) {
   return {
     async forOwner(ownerUserId: string, workspaceId: string) {
-      const [row] = await tx.select({ settings: schema.assistantSettings, revokedAt: schema.agentConnections.revokedAt }).from(schema.assistantSettings)
+      const [row] = await tx.select({ settings: schema.assistantSettings, revokedAt: schema.agentConnections.revokedAt,
+        agentName: schema.agents.name, ownerName: schema.authUsers.name }).from(schema.assistantSettings)
         .innerJoin(schema.agentConnections, and(eq(schema.agentConnections.id, schema.assistantSettings.connectionId),
           eq(schema.agentConnections.ownerUserId, ownerUserId), eq(schema.agentConnections.computeSource, 'owner_assistant')))
+        .innerJoin(schema.agents, and(eq(schema.agents.id, schema.assistantSettings.agentId), eq(schema.agents.workspaceId, schema.assistantSettings.workspaceId)))
+        .innerJoin(schema.authUsers, eq(schema.authUsers.id, ownerUserId))
         .where(and(eq(schema.assistantSettings.ownerUserId, ownerUserId), eq(schema.assistantSettings.workspaceId, workspaceId))).for('share');
-      return row && !row.revokedAt ? row.settings : null;
+      return row && !row.revokedAt ? { ...row.settings, agentName: row.agentName, ownerName: row.ownerName } : null;
     },
     async open(ownerUserId: string, workspaceId: string, connectionId: string, projectId: string) {
       const [existing] = await tx.select().from(schema.assistantJoinRequests).where(and(
@@ -49,11 +52,26 @@ export function assistantJoinRows(tx: DbExecutor) {
     },
     candidates: (workspaceId: string) => tx.select({ userId: schema.workspaceMembers.userId }).from(schema.workspaceMembers)
       .where(eq(schema.workspaceMembers.workspaceId, workspaceId)).orderBy(schema.workspaceMembers.userId),
-    async name(ownerUserId: string) {
-      return (await tx.select({ name: schema.authUsers.name }).from(schema.authUsers).where(eq(schema.authUsers.id, ownerUserId)))[0]?.name ?? 'Former member';
-    },
     async markQuestion(id: string) {
       await tx.update(schema.notifications).set({ reason: 'question' }).where(eq(schema.notifications.id, id));
+    },
+    async snapshotQuestion(identity: { joinRequestId: string; openingVersion: number; assistantId: string; assistantName: string; ownerId: string; ownerName: string }) {
+      const snapshots = schema.assistantJoinQuestionIdentitySnapshots;
+      const [inserted] = await tx.insert(snapshots).values(identity).onConflictDoNothing()
+        .returning({ joinRequestId: snapshots.joinRequestId });
+      if (inserted) return;
+      const [existing] = await tx.select().from(snapshots).where(and(
+        eq(snapshots.joinRequestId, identity.joinRequestId), eq(snapshots.openingVersion, identity.openingVersion)));
+      if (!existing || existing.assistantId !== identity.assistantId || existing.assistantName !== identity.assistantName
+        || existing.ownerId !== identity.ownerId || existing.ownerName !== identity.ownerName)
+        throw new Error('Assistant join-question cycle identity is immutable');
+    },
+    async linkQuestion(notificationId: string, joinRequestId: string, openingVersion: number) {
+      await tx.update(schema.notifications).set({ assistantJoinRequestId: joinRequestId, assistantJoinOpeningVersion: openingVersion })
+        .where(eq(schema.notifications.id, notificationId));
+      await tx.update(schema.assistantJoinQuestionIdentitySnapshots).set({ notificationLinkedAt: sql`coalesce(${schema.assistantJoinQuestionIdentitySnapshots.notificationLinkedAt}, now())` })
+        .where(and(eq(schema.assistantJoinQuestionIdentitySnapshots.joinRequestId, joinRequestId),
+          eq(schema.assistantJoinQuestionIdentitySnapshots.openingVersion, openingVersion)));
     },
   };
 }

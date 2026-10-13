@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
-import { AGENT_MCP_ENTRIES, DEFAULT_ASSISTANT_AREAS, PERSONAL_RUN_CONSENT_VERSION, agentMcpPolicyPath, assistantSettingsPath,
+import { AGENT_MCP_ENTRIES, DEFAULT_ASSISTANT_AREAS, PERSONAL_RUN_CONSENT_VERSION, agentMcpPolicyPath, assistantJoinInboxPath, assistantSettingsPath,
   compileAssistantAreas, type AssistantSettings, type ProjectAgents } from '@flux/contracts';
 import { assistantSettingsUseCases, createPersonalRunUseCases, type Principal } from '@flux/core';
 import { personalRunUnitOfWork, personalRunUseCases } from '../../apps/server/src/personal-runs/adapters.js';
@@ -96,8 +96,12 @@ test('only the owner can read/save, persisted switches are S6, and competing CAS
 });
 
 test('a join request gives no authority, is deduplicated/manager-scoped, and manager Allow uses an ordinary contributor grant', async () => {
-  const manager = await person('assistant-join-manager'); const requester = await person('assistant-join-owner'); const bystander = await person('assistant-join-bystander');
-  const ws = await workspace(manager, 'Join workspace'); await addMember(manager, ws.id, requester, 'member'); await addMember(manager, ws.id, bystander, 'member');
+  const workspaceOwner = await person('assistant-join-workspace-owner'); const manager = await person('assistant-join-manager');
+  const secondManager = await person('assistant-join-second-manager'); const requester = await person('assistant-join-owner'); const bystander = await person('assistant-join-bystander');
+  const ws = await workspace(workspaceOwner, 'Join workspace');
+  await addMember(workspaceOwner, ws.id, manager, 'admin'); await addMember(workspaceOwner, ws.id, secondManager, 'admin');
+  await addMember(workspaceOwner, ws.id, requester, 'member'); await addMember(workspaceOwner, ws.id, bystander, 'member');
+  const originalOwnerName = (await pool.query('SELECT name FROM auth_users WHERE id=$1', [requester.id])).rows[0].name as string;
   const destination = await project(manager, ws.id, 'Join destination', 'workspace');
   const agent = expectStatus(await requester.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`, { body: { name: 'Joining assistant', owner: 'self' } }), 201) as { id: string };
   const connections = new FakeConnections(); connections.connect(requester.id, randomUUID()); const queue = new FakeQueue();
@@ -109,8 +113,40 @@ test('a join request gives no authority, is deduplicated/manager-scoped, and man
   const repeated = expectStatus(await requester.browser.request('POST', endpoint), 201) as { id: string };
   assert.equal(first.id, repeated.id); assert.equal(first.state, 'pending');
   assert.equal((await pool.query('SELECT id FROM project_grants WHERE project_id=$1 AND agent_id=$2', [destination.id, agent.id])).rowCount, 0);
-  const notifications = (await pool.query("SELECT user_id, reason, body FROM notifications WHERE source_id=$1 AND title LIKE '%assistant asks to join'", [destination.id])).rows;
-  assert.deepEqual(notifications, [{ user_id: manager.id, reason: 'question', body: 'Join destination · Requested contributor access.' }]);
+  const notifications = (await pool.query("SELECT id, user_id, reason, body, assistant_join_request_id, assistant_join_opening_version FROM notifications WHERE source_id=$1 AND title LIKE '%assistant asks to join' ORDER BY user_id", [destination.id])).rows;
+  assert.deepEqual(notifications.map(({ user_id, reason, body, assistant_join_request_id, assistant_join_opening_version }) =>
+    ({ user_id, reason, body, assistant_join_request_id, assistant_join_opening_version })), [workspaceOwner.id, manager.id, secondManager.id].sort().map((user_id) => ({
+      user_id, reason: 'question', body: 'Join destination · Requested contributor access.', assistant_join_request_id: first.id, assistant_join_opening_version: 1,
+    })));
+  const snapshot = (await pool.query('SELECT * FROM assistant_join_question_identity_snapshots WHERE join_request_id=$1 AND opening_version=1', [first.id])).rows[0];
+  assert.deepEqual([snapshot.assistant_id, snapshot.assistant_name, snapshot.owner_id, snapshot.owner_name], [agent.id, 'Joining assistant', requester.id, originalOwnerName]);
+  const firstInbox = expectStatus(await manager.browser.request('GET', '/api/v1/inbox'), 200) as { items: { id: string; url: string | null; assistantRequestIdentity?: unknown }[] };
+  const firstItem = firstInbox.items.find((item) => item.id === notifications.find((row: { user_id: string }) => row.user_id === manager.id)!.id)!;
+  assert.equal(firstItem.url, assistantJoinInboxPath(destination.id));
+  assert.deepEqual(firstItem.assistantRequestIdentity, { joinRequestId: first.id, openingVersion: 1, assistantId: agent.id,
+    assistantName: 'Joining assistant', ownerId: requester.id, ownerName: originalOwnerName });
+  const firstItemRead = expectStatus(await manager.browser.request('GET', `/api/v1/inbox/${firstItem.id}`), 200) as { assistantRequestIdentity?: unknown };
+  assert.deepEqual(firstItemRead.assistantRequestIdentity, firstItem.assistantRequestIdentity, 'the individual item path exposes the same authorized snapshot');
+  const secondInbox = expectStatus(await secondManager.browser.request('GET', '/api/v1/inbox'), 200) as { items: { id: string; assistantRequestIdentity?: unknown }[] };
+  assert.deepEqual(secondInbox.items.find((item) => item.id === notifications.find((row: { user_id: string }) => row.user_id === secondManager.id)!.id)!.assistantRequestIdentity,
+    firstItem.assistantRequestIdentity, 'all manager recipients of one cycle share one snapshot');
+  expectStatus(await manager.browser.request('POST', `${endpoint}/${first.id}/decline`), 200);
+  await pool.query('UPDATE agents SET name=$1 WHERE id=$2', ['Renamed assistant', agent.id]);
+  await pool.query('UPDATE auth_users SET name=$1 WHERE id=$2', ['Renamed owner', requester.id]);
+  expectStatus(await requester.browser.request('POST', endpoint), 201);
+  const cycles = (await pool.query(`SELECT n.assistant_join_opening_version, s.assistant_name, s.owner_name, s.notification_linked_at FROM notifications n
+    JOIN assistant_join_question_identity_snapshots s ON n.assistant_join_request_id=s.join_request_id AND n.assistant_join_opening_version=s.opening_version
+    WHERE n.source_id=$1 AND n.user_id=$2 ORDER BY n.assistant_join_opening_version`, [destination.id, manager.id])).rows;
+  assert.ok(cycles.every(({ notification_linked_at }) => notification_linked_at !== null), 'real manager notifications durably mark their cycle snapshots as linked');
+  assert.deepEqual(cycles.map(({ assistant_join_opening_version, assistant_name, owner_name }) => ({ assistant_join_opening_version, assistant_name, owner_name })), [
+    { assistant_join_opening_version: 1, assistant_name: 'Joining assistant', owner_name: originalOwnerName },
+    { assistant_join_opening_version: 3, assistant_name: 'Renamed assistant', owner_name: 'Renamed owner' },
+  ], 'closing/reopening uses a new immutable snapshot and preserves request-time names');
+  const afterRename = expectStatus(await manager.browser.request('GET', '/api/v1/inbox'), 200) as { items: { assistantRequestIdentity?: { openingVersion: number; assistantName: string; ownerName: string } }[] };
+  assert.deepEqual(afterRename.items.filter((item) => item.assistantRequestIdentity).map((item) => item.assistantRequestIdentity).sort((a, b) => a!.openingVersion - b!.openingVersion), [
+    { joinRequestId: first.id, openingVersion: 1, assistantId: agent.id, assistantName: 'Joining assistant', ownerId: requester.id, ownerName: originalOwnerName },
+    { joinRequestId: first.id, openingVersion: 3, assistantId: agent.id, assistantName: 'Renamed assistant', ownerId: requester.id, ownerName: 'Renamed owner' },
+  ]);
   const managerView = expectStatus(await manager.browser.request('GET', `/api/v1/projects/${destination.id}/agents`), 200) as unknown as ProjectAgents;
   assert.equal(managerView.joinRequests?.[0]?.id, first.id);
   const otherView = expectStatus(await bystander.browser.request('GET', `/api/v1/projects/${destination.id}/agents`), 200) as unknown as ProjectAgents;
@@ -125,6 +161,10 @@ test('a join request gives no authority, is deduplicated/manager-scoped, and man
   assert.equal(afterJoin.assistantJoin?.canRequest, false); assert.equal(afterJoin.connections[0]?.assistant, true);
   const hidden = expectStatus(await manager.browser.request('POST', `/api/v1/workspaces/${ws.id}/projects`, { body: { name: 'Hidden destination', visibility: 'restricted' } }), 201) as { id: string };
   expectStatus(await requester.browser.request('POST', `/api/v1/projects/${hidden.id}/assistant-join-requests`), 404);
+  await pool.query('DELETE FROM workspace_members WHERE workspace_id=$1 AND user_id=$2', [ws.id, manager.id]);
+  const noLongerReadable = expectStatus(await manager.browser.request('GET', '/api/v1/inbox'), 200) as { items: { id: string }[] };
+  assert.equal(noLongerReadable.items.some((item) => item.id === firstItem.id), false, 'list projection applies the current project-read gate');
+  expectStatus(await manager.browser.request('GET', `/api/v1/inbox/${firstItem.id}`), 404, 'item projection applies the same current project-read gate');
 });
 
 
