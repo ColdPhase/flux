@@ -54,9 +54,11 @@ export interface ShellActions {
   openNavigation(): void;
   /** A place in the header where the current view can put one quiet action (a DM's Select, #96). */
   actionSlot: HTMLElement | null;
+  /** A project view's quiet context beside its title, such as the compact Wiki's page count. */
+  metadataSlot: HTMLElement | null;
 }
 
-export const ShellContext = createContext<ShellActions>({ openDetails: () => undefined, openSearch: () => undefined, openNavigation: () => undefined, actionSlot: null });
+export const ShellContext = createContext<ShellActions>({ openDetails: () => undefined, openSearch: () => undefined, openNavigation: () => undefined, actionSlot: null, metadataSlot: null });
 
 export function useShellActions(): ShellActions {
   return useContext(ShellContext);

@@ -172,6 +172,10 @@ class PhoneShellJourney(unittest.TestCase):
             menu = self.open_views(page)
             expect(menu.get_by_role("link", name=re.compile(f"^{name}"))).to_have_attribute("aria-current", "page")
             expect(menu.locator('[aria-current="page"]')).to_have_count(1)
+            if name == "Wiki":
+                expect(page.get_by_role("navigation", name="Project views")).to_have_count(0)
+            page.keyboard.press("Escape")
+            expect(page.get_by_role("dialog", name=re.compile(", views$"))).to_have_count(0)
         shot(page, "266-menu-after-switching")
 
     def test_03_details_open_from_the_view_menu_and_nothing_stacks_under_the_header(self):

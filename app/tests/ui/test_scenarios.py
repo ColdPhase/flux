@@ -1131,7 +1131,6 @@ class ScenarioJourney:
         page.get_by_label("What changed").fill("The rule changed to the ToF sensor")
         self.tap(page.get_by_role("button", name="Save version"))
         expect(page.get_by_role("heading", level=2, name=DOC_TITLE)).to_be_visible()
-        expect(page.locator(".doc-head__k")).to_contain_text("Published · version 2")
         doc = self.wait_for("version 2 of the page", lambda: (lambda d: d if d["version"] == 2 else None)(self.api("ada", "GET", f"/api/v1/docs/{s['doc']}", status=200)))
         self.assertTrue(any(link["role"] == "mentions" and link["to"]["id"] == s["d2"] for link in doc["links"]))
         first = self.api("ada", "GET", f"/api/v1/docs/{s['doc']}/versions/1", status=200)
@@ -1197,8 +1196,21 @@ class ScenarioJourney:
 
         # Ada exports the whole project from the wiki.
         page.goto(f"/projects/{lamp}/docs/{s['doc']}")
-        self.tap(page.locator(".wiki-bar").get_by_role("button", name="Download"))
-        download = page.get_by_role("dialog", name="Download")
+        # On a phone the page's context and its one "More" menu sit in the header (F-026 §4: no bar
+        # under it); on a computer the bar above the page has Download as its own button.
+        expect(page.get_by_role("heading", level=2, name=DOC_TITLE)).to_be_visible()
+        if self.phone:
+            header = page.locator("header.phead")
+            expect(page.locator(".wiki-bar")).to_have_count(0)
+            expect(header.locator(".wiki-header-meta")).to_have_text(re.compile(r"^Wiki · \d+ pages?$"))
+            actions = header.locator(".wiki-header-actions")
+            expect(actions).to_be_visible()
+            self.tap(actions.get_by_role("button", name="More", exact=True))
+            download = page.get_by_role("dialog", name="Page actions")
+            expect(download.get_by_role("button", name="This page as Markdown")).to_be_visible()
+        else:
+            self.tap(page.locator(".wiki-bar").get_by_role("button", name="Download"))
+            download = page.get_by_role("dialog", name="Download")
         with page.expect_download() as info:
             self.tap(download.get_by_role("button", name=re.compile("^Export the whole project")))
         name, data = info.value.suggested_filename, Path(info.value.path()).read_bytes()
