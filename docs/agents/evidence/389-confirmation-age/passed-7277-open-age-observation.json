@@ -1,0 +1,30 @@
+{
+  "fixtureAged": true,
+  "naturalElapsedHourProof": false,
+  "case": "already-open-map-wiki-confirmation-age",
+  "boundary": {
+    "session_alive": true,
+    "age_lapsed": true
+  },
+  "immutableIdentitySha256": "2bc0622e17258333ca11d05c369e629352f69a622f4252bf0cad704804f7ce0d",
+  "immutableFamilySha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+  "immutableFamilyRowsObserved": 0,
+  "immutableSessionIdentityRowsObserved": 1,
+  "subjectHttpBeforeCapture": 0,
+  "subjectPageHttpBeforeCapture": 0,
+  "observation": {
+    "subjectMapClosed1008": true,
+    "subjectWikiClosed1008": true,
+    "subjectMapInputHandedOff": false,
+    "subjectWikiInputHandedOff": false,
+    "subjectWikiCommit": 0,
+    "subjectMapPreviewStored": false,
+    "subjectMapPresenceStored": false,
+    "subjectWikiPresenceStored": false,
+    "ownerMapProtectedFramesReachedSubject": false,
+    "ownerWikiProtectedFramesReachedSubject": false,
+    "ownerMapContinued": true,
+    "ownerWikiContinued": true
+  },
+  "laterMeStatus": 401
+}

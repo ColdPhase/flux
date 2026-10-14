@@ -1,0 +1,58 @@
+{
+  "schema": 1,
+  "baselineSourceSha": "43f395c26de9c8364cfb1628163400fb70527d60",
+  "canonicalModules": {
+    "caps.mjs": "0bf4059e81bbbef7fc5e453a450444a646e678bb425d6746870c19378a37b014",
+    "codec.mjs": "46e95057c449342f294512ce758ab380f8c494e01995685780ce5c9a6431052d",
+    "envelope.mjs": "b6ab8236e53619785845ae9770bcf31f58a15201c2ba8a2f29c7b41400ac276f",
+    "assembly.mjs": "d6bf996556227eade5dad239af0d4897048dead1873f3870d2c5d3a8d79079fe",
+    "admission-budget.mjs": "f61a289aad11e09bca8a87d9f195907af5b96a068029d5fb2fa8a8edde5c5f97",
+    "worker-pool.mjs": "bbacdf76316cd0d8f5347aec34aaba16d61cdb29869253684604f7e95570a789",
+    "codec-worker.mjs": "5d600705358cabb1d05b24621eec40c2f2f8f72ee4a782e6fc3806c5c628690e",
+    "room-cache.mjs": "16a8ef1b1edecde982b1ba04d53d49dd41f3589d5268ecd093e826b23fa0e6c3"
+  },
+  "candidateFiles": {
+    "codec.test.mjs": "e00291b09c92ce691c85f66a1506297aeaf41394e0327f80a925a07ed7ceb14f",
+    "exit-worker.mjs": "39324c6b118bbb3fbb81986ca0f95e53e104403fd396379e2a230f9731c813a1",
+    "independent-probe.proposed.test.mjs": "4b942a51612f73ec1d2a43c5e681a086efb5fed42c60fe5620c3e5c9295c6897",
+    "intent-registry.mjs": "5e45bb8e1401345be255434f5c4e8318f154db8be33871ddc8da085e99c2b6cb",
+    "inventory.mjs": "170f0c5b58798857b7b7c9e8ce9d514ef24a953218fcd11412a219c5ffbe9d76",
+    "retained-backing.test.mjs": "8d27f2dd31f3ab36cf7bdcb5763d1a214066a0636bc44b27a36f2b7260bc89e5",
+    "silent-worker.mjs": "5ed3135987ba629b76b6e236a6d3e72816fccbc2e3935fd002f9430047cbdc75",
+    "stall-worker.mjs": "654b914333c1768c23a4f8d9f03a445a27f74a19d8882bfcbd2534d4817fc5a5",
+    "wire-fixtures.mjs": "5f1d859e1c40298d08e4933ce6455fcc8b59be85a30dbfcb08accd14e147dcc5"
+  },
+  "historicalInputs": {
+    "codec.test.mjs": "b1ec47363e1b61c6ea9cd91a49bccd17a9b184872544c2e5b4dcfe64070a99e5",
+    "wire-fixtures.mjs": "5f1d859e1c40298d08e4933ce6455fcc8b59be85a30dbfcb08accd14e147dcc5",
+    "intent-registry.mjs": "f5f2217521a5b4667e74955d37e677e6760e9a40cd5d07e83e3d12344318956a",
+    "stall-worker.mjs": "654b914333c1768c23a4f8d9f03a445a27f74a19d8882bfcbd2534d4817fc5a5",
+    "silent-worker.mjs": "5ed3135987ba629b76b6e236a6d3e72816fccbc2e3935fd002f9430047cbdc75",
+    "exit-worker.mjs": "39324c6b118bbb3fbb81986ca0f95e53e104403fd396379e2a230f9731c813a1"
+  },
+  "independentOriginals": {
+    "independent-probe.mjs": "92bd2ac7da3ffe794b62415a411c6a95ebb24357b0cd841f0b5245e9087b8fc7",
+    "retained-backing.mjs": "038cf43a21403bdc352b7401599cbf0c5403338c08244cd398dfd19dd8ec2fb8"
+  },
+  "dependencies": {
+    "yjs": "13.6.33",
+    "y-codemirror.next": "0.3.6",
+    "@codemirror/state": "6.7.6",
+    "@codemirror/view": "6.43.13",
+    "y-protocols": "1.0.7",
+    "lib0": "0.2.119",
+    "ws": "8.22.0"
+  },
+  "changes": [
+    "author100k retained-input handoff",
+    "authorcopy-pressure retained-input handoff",
+    "inheritedindependentC3 retained-input handoff",
+    "priorreviewedmandatoryC3framingfields",
+    "publicNodeimportsforlint",
+    "keptcodecworkerswithinthetwoworkercap;terminateontimeout/failure",
+    "Accepted 0084 storage: codec state excludes receipts and journal; exact fixture intent replay returns the immutable original receipt without another worker run.",
+    "Author and inherited-probe log assertions use a separate serialized append-only fixture journal with actual update bytes and production ledgerDelta(previous, next).",
+    "Original 31+10+1 names and all malicious, Unicode, namespace, resource, timeout and input-ownership assertions retained; inherited adaptation requires fresh independent evaluation."
+  ],
+  "meaning": "Current canonical corpus candidate, not historicalPASS or durableSQL proof"
+}

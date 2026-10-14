@@ -46,6 +46,9 @@ export interface DocVersionSummary {
   /** Why this version was made; generated ("Edited the text", "Published") when none was given. */
   reason: string;
   author: NamedPrincipal;
+  /** Shared text contributors since the preceding saved binding; author is the deliberate saver. */
+  contributors?: NamedPrincipal[];
+  liveSnapshot?: { generation: string; fromSequence: number; toSequence: number };
   createdAt: string;
 }
 
@@ -124,4 +127,14 @@ export interface DocPreviewCommand {
 export interface DocPreview {
   html: string;
   mentions: DocMention[];
+}
+
+/** Saves exactly an acknowledged shared head; body is read from that head by the server. */
+export interface SaveLiveDocCommand {
+  generation: string;
+  headSequence: number;
+  headHash: string;
+  title?: string;
+  state?: DocState;
+  reason?: string;
 }

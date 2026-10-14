@@ -1,0 +1,26 @@
+[
+  {
+    "file": "setup-failure.log.gz",
+    "scope": "Invalid harness attempt; missing test file-volume mount, not a product finding",
+    "originalBytes": 29578,
+    "originalSha256": "aae490db3243301d593478195a2e2ed7e9e88c17cf69f2eaaf9b32c8700a512f",
+    "storedBytes": 5195,
+    "storedSha256": "75f034ce92a3fa62654339dd08c47b549f2cfc55e7e782fed0c12ca898a6dac1"
+  },
+  {
+    "file": "baseline.log.gz",
+    "scope": "Valid original-production negative control, test-only 06b8cc9d, exit1",
+    "originalBytes": 17631,
+    "originalSha256": "6d6cf1f07a7d713fbc435219399221a540fd879290ee1b97c2d5f7098e2d6516",
+    "storedBytes": 3515,
+    "storedSha256": "7f63a71aba325b7edecc3a59955acac3b77bece2e8c86cde9a1a7baba80d2120"
+  },
+  {
+    "file": "candidate.log.gz",
+    "scope": "Production fix d5bf0be2, exit0",
+    "originalBytes": 22836,
+    "originalSha256": "3cf33ca8c41d718d6bfe96c39b7b078c9a9e45cf161f7d9b0ec5ad40b981f89f",
+    "storedBytes": 5003,
+    "storedSha256": "4f2906a86e0723e5b994419a2386d7a309af182098dc7de8752ebc010e35b636"
+  }
+]

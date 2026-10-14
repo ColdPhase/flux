@@ -1,0 +1,6 @@
+services:
+  test:
+    environment:
+      FLUX_TEST_FILES_DIR: /data/files
+    volumes:
+      - files:/data/files:z
