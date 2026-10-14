@@ -7,7 +7,9 @@ import type {
   ChangeRoleCommand,
   CreateAgentCommand,
   CreateDraftCommand,
+  AddProjectViewCommand,
   CreateProjectCommand,
+  ProjectViewId,
   CreateWorkspaceCommand,
   Draft,
   DraftListQuery,
@@ -27,6 +29,7 @@ import type {
   WorkspaceMember,
   WorkspaceRole,
 } from '@flux/contracts';
+import { PROJECT_TEMPLATES, PROJECT_VIEWS, TEMPLATE_VIEWS } from '@flux/contracts';
 import type { Database, Executor, Principal } from '../types.js';
 import { ConflictError, ForbiddenError, InvalidInputError, NotFoundError, PreconditionRequiredError, RuleViolationError, VersionConflictError } from './errors.js';
 import { policyEventPorts, recordEvent } from '../events.js';
@@ -44,6 +47,11 @@ import {
   visibleProjectsSql,
   type Actor,
 } from './policy.js';
+
+/** Optional transaction composition: prepare grant/project events, then flush after all related writes. */
+export interface DomainEventSink {
+  record(principal: Principal, workspaceId: string, kind: string, objectId: string, data: Record<string, unknown>): Promise<void>;
+}
 
 // Events of these use cases: the access policy decides the audience; `@flux/db` stores (#89).
 const events = (tx: Executor) => policyEventPorts(tx, eventRepository(tx));
@@ -129,7 +137,7 @@ function toWorkspace(row: typeof schema.workspaces.$inferSelect, role: Workspace
 function toProject(row: typeof schema.projects.$inferSelect, level: number): Project {
   const access = accessName(level);
   if (!access) throw new Error('Invisible project serialized');
-  return { id: row.id, workspaceId: row.workspaceId, name: row.name, visibility: row.visibility, access, version: row.version, createdAt: row.createdAt.toISOString() };
+  return { id: row.id, workspaceId: row.workspaceId, name: row.name, visibility: row.visibility, access, views: row.views as ProjectViewId[], version: row.version, createdAt: row.createdAt.toISOString() };
 }
 
 function toGrant(row: typeof schema.projectGrants.$inferSelect): ProjectGrant {
@@ -235,7 +243,8 @@ function requireRoleAuthority(actor: Actor, ...roles: WorkspaceRole[]) {
 }
 
 /** Adds an existing account (by id or e-mail) to the workspace with a role. */
-export async function addMember(principal: Principal, workspaceId: string, command: AddMemberCommand, db: Database): Promise<WorkspaceMember> {
+export async function addMember(principal: Principal, workspaceId: string, command: AddMemberCommand, db: Database,
+  options: { verifiedEmailOnly?: boolean } = {}): Promise<WorkspaceMember> {
   const role = oneOf(command?.role, ROLES, 'role');
   return db.transaction(async (tx) => {
     await lockWorkspace(tx, workspaceId);
@@ -245,7 +254,9 @@ export async function addMember(principal: Principal, workspaceId: string, comma
       : typeof command.email === 'string' ? eq(schema.authUsers.email, command.email.trim().toLowerCase()) : null;
     if (!lookup) throw new InvalidInputError('userId or email is required');
     const [user] = await tx.select().from(schema.authUsers).where(lookup);
-    if (!user) throw new NotFoundError('Account', 'ACCOUNT_NOT_FOUND');
+    // With a sign-on provider, an address nobody has proved is not a way to find a person: the answer is the one
+    // for no account at all, so a squatter on an employee's address is never added in their place (#313).
+    if (!user || options.verifiedEmailOnly && typeof command.userId !== 'string' && !user.emailVerified) throw new NotFoundError('Account', 'ACCOUNT_NOT_FOUND');
     const inserted = await tx.insert(schema.workspaceMembers).values({ workspaceId, userId: user.id, role, createdBy: principal.id })
       .onConflictDoNothing().returning();
     const member = inserted[0];
@@ -295,15 +306,34 @@ export async function removeMember(principal: Principal, workspaceId: string, us
 // ---------------------------------------------------------------------------------------
 // Projects and grants
 
-export async function createProject(principal: Principal, workspaceId: string, command: CreateProjectCommand, db: Database): Promise<Project> {
+export async function createProject(principal: Principal, workspaceId: string, command: CreateProjectCommand, db: Database, eventSink?: DomainEventSink): Promise<Project> {
   const projectName = name(command?.name);
   const visibility = command.visibility === undefined ? 'workspace' : oneOf(command.visibility, PROJECT_VISIBILITIES, 'visibility');
+  // Without a template (the API, agents, a promoted sketch) a project shows every view, as every project did before (#351).
+  const template = command.template === undefined ? null : oneOf(command.template, PROJECT_TEMPLATES, 'template');
   return db.transaction(async (tx) => {
     enforce(await evaluateWorkspace(principal, 'project.create', workspaceId, tx, { lock: true }), 'workspace');
     const id = randomUUID();
-    const [row] = await tx.insert(schema.projects).values({ id, workspaceId, name: projectName, visibility, createdBy: principal.id }).returning();
-    await recordEvent(events(tx), principal, workspaceId, 'project.created.v1', id, { visibility });
+    const [row] = await tx.insert(schema.projects).values({ id, workspaceId, name: projectName, visibility, views: [...(template ? TEMPLATE_VIEWS[template] : PROJECT_VIEWS)], createdBy: principal.id }).returning();
+    if (eventSink) await eventSink.record(principal, workspaceId, 'project.created.v1', id, { visibility });
+    else await recordEvent(events(tx), principal, workspaceId, 'project.created.v1', id, { visibility });
     return toProject(row!, LEVEL.manager);
+  });
+}
+
+/** Adds an optional view (Map, Wiki or Agents) to a project; whoever can write there may (#351). */
+export async function addProjectView(principal: Principal, projectId: string, command: AddProjectViewCommand, db: Database): Promise<Project> {
+  const view = oneOf(command?.view, PROJECT_VIEWS, 'view');
+  return db.transaction(async (tx) => {
+    // The same exclusive project lock a grant change takes, before the read: two additions then queue and
+    // the second reads the first's array, instead of both holding FOR SHARE and deadlocking on the update.
+    await lockProjectForGrantChange(tx, projectId);
+    const { project, level } = enforce(await evaluateProject(principal, 'project.write', projectId, tx, { lock: true }), 'project');
+    if (project!.views.includes(view)) return toProject(project!, level);
+    const [row] = await tx.update(schema.projects).set({ views: [...project!.views, view], version: sql`${schema.projects.version} + 1`, updatedAt: new Date() })
+      .where(eq(schema.projects.id, projectId)).returning();
+    await recordEvent(events(tx), principal, project!.workspaceId, 'project.view_added.v1', projectId, { view });
+    return toProject(row!, level);
   });
 }
 
@@ -377,7 +407,7 @@ export async function listProjectPeople(principal: Principal, projectId: string,
  * a member of the project's workspace; an agent must belong to it and not be revoked.
  * Grants that affect an owner need an owner.
  */
-export async function grantProject(principal: Principal, projectId: string, command: GrantProjectCommand, db: Database): Promise<ProjectGrant> {
+export async function grantProject(principal: Principal, projectId: string, command: GrantProjectCommand, db: Database, eventSink?: DomainEventSink): Promise<ProjectGrant> {
   const role = oneOf(command?.role, GRANT_ROLES, 'role');
   const target = command.principal;
   if (!target || (target.kind !== 'human' && target.kind !== 'agent') || typeof target.id !== 'string' || !target.id) throw new InvalidInputError('principal must be { kind: "human" | "agent", id }');
@@ -416,7 +446,9 @@ export async function grantProject(principal: Principal, projectId: string, comm
       if (pgCode(error) === '23503') throw new ConflictError('The grantee is no longer part of the workspace', 'GRANTEE_REMOVED');
       throw error;
     }
-    await recordEvent(events(tx), principal, workspaceId, 'project.grant_set.v1', projectId, { grantId: row!.id, principal: target, role });
+    const event = { grantId: row!.id, principal: target, role };
+    if (eventSink) await eventSink.record(principal, workspaceId, 'project.grant_set.v1', projectId, event);
+    else await recordEvent(events(tx), principal, workspaceId, 'project.grant_set.v1', projectId, event);
     return toGrant(row!);
   });
 }

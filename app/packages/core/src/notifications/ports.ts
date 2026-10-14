@@ -36,6 +36,8 @@ export interface ProjectMessageFacts {
   sequence: number;
   /** People who wrote in the conversation before this message. */
   earlierAuthors: string[];
+  /** Set when the message carries an agent's question card (#347 S14): the one person asked and the question text. */
+  asked?: { userId: string; question: string } | null;
 }
 
 export interface DmMessageFacts {
@@ -164,6 +166,7 @@ export interface GeneratorUnitOfWork {
 
 /** The email row and its notification, read from current rows. */
 export interface ClaimableEmail {
+  lifecycleActive?: boolean;
   id: string;
   userId: string;
   addressKind: EmailAddressKind;
@@ -205,6 +208,8 @@ export interface EmailDeliveryPorts {
 
 export interface EmailDeliveryUnitOfWork {
   run<T>(work: (ports: EmailDeliveryPorts) => Promise<T>): Promise<T>;
+  /** Called after the sending claim commits and all async checks finish; never awaits SMTP inside SQL. */
+  admitSend(notificationId: string, send: () => Promise<MailResult>): Promise<import('../push/ports.js').ProviderDeliveryAdmission<MailResult>>;
 }
 
 export interface OutgoingMail {

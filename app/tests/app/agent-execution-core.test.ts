@@ -132,6 +132,7 @@ test('every operation has a registered postcondition entry; an incomplete sample
   // POSTCONDITIONS registry does not accept for that operation fails below.
   const samples: Record<AgentOperation, AgentPostcondition[]> = {
     'work.create': [{ kind: 'work', id: uuid(), version: 1 }], 'work.update': [{ kind: 'work', id: uuid(), version: 2 }],
+    'work.creation.revert': [{ kind: 'work', id: uuid(), version: 2 }],
     'result.record': [{ kind: 'result', id: uuid() }], 'decision.propose': [{ kind: 'decision', id: uuid(), version: 1 }],
     'map.create': [{ kind: 'map', id: uuid(), version: 1 }], 'map.rename': [{ kind: 'map', id: uuid(), version: 2 }],
     'map.thought.create': [{ kind: 'thought', id: uuid(), version: 1 }, { kind: 'map_checkpoint', id: uuid(), updatedAt: at }],

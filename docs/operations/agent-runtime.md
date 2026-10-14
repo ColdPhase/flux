@@ -8,7 +8,8 @@ bind a slot, and Settings shows the state, but nobody can sign in or run yet.
 
 **It is off by default.** With `FLUX_AGENT_RUNTIME` empty, no runtime service runs, the API reports the
 feature as not enabled, and nothing below applies. The published release `compose.yaml` does not
-contain it; the runtime is available from a source checkout with `./flux`.
+contain it and never asks; the runtime is available from a source checkout with `./flux`, which asks
+once ([Switch it on](#switch-it-on)).
 
 ## Before you switch it on
 
@@ -28,7 +29,68 @@ contain it; the runtime is available from a source checkout with `./flux`.
 
 ## Switch it on
 
-In `docker/.env`:
+### With the question (`./flux up` the first time, `./flux ai on` later)
+
+The launcher asks whether people on this Flux may sign in with their own ChatGPT and Claude
+subscriptions ([F-027 AST-1](../product/assistant.md#ast-1--subscriptions-are-the-normal-way-to-connect)):
+
+```text
+Let people on this Flux sign in with their own ChatGPT and Claude
+subscriptions? Flux runs the official Codex and Claude Code for each
+person in their own isolated slot.  [Y/n]
+
+Claude Code also needs the person who runs this Flux to accept
+Anthropic's Commercial Terms (for example by creating a Console
+organization). Have you accepted them?  [y/N]
+```
+
+- **When it asks.** `./flux up` asks while it *creates* `docker/.env` (a fresh checkout), before the
+  build, and only when stdin and stdout are a terminal. An existing `docker/.env` is never asked about,
+  and neither is a second `./flux up`, so a deployment that is already running stays as it is. Without a
+  terminal (CI, a pipe, `./flux up > log`) nothing is asked, checked or written, and the runtime stays
+  off. To skip the question in a terminal, set `FLUX_AGENT_RUNTIME` in the environment, even empty
+  (`FLUX_AGENT_RUNTIME= ./flux up`). `./flux dev` never asks.
+- **`./flux ai on`** asks the same questions on an existing instance, writes the answer to `docker/.env`
+  and applies it like `./flux up` (builds and starts the runtime). It needs a terminal and refuses without
+  one; set the variables by hand then. It only adds: if Codex is already on, it asks only the
+  Commercial Terms question; if Claude Code is on too, it says so and changes nothing. It never removes a
+  client. To turn the runtime off, empty `FLUX_AGENT_RUNTIME` and run `./flux up` (see
+  [Switching off](#switching-off-purging-reset-and-clean)).
+- **Enter means yes, for Codex.** `Enter` on the first question writes `FLUX_AGENT_RUNTIME=codex`.
+  **Codex stays unavailable in this version** (its network hosts and checks arrive with F-022 T6), so
+  the profile starts and Settings shows Codex as pending until then. `n` writes nothing and does not ask
+  the second question.
+- **Claude Code needs a typed `y`.** The second question records *your* statement that you have agreed to
+  Anthropic's Commercial Terms (see [Before you switch it on](#before-you-switch-it-on)), so `Enter`, `n`
+  or any other answer does not make it. `y` writes `FLUX_AGENT_RUNTIME=codex,claude_code` and
+  `FLUX_AGENT_RUNTIME_COMMERCIAL_TERMS=<today>`; the API records that statement, with the date, in
+  `agent_runtime_operator_statements` when it starts. Flux does not check it. An unclear answer to the
+  first question is asked again, and three of them count as `n`; Ctrl-D decides nothing.
+- **Hosts that fail the checks are not asked.** Before it asks, the launcher checks the Docker engine (not
+  the machine you type on: the slots run in the engine's kernel, which on Docker Desktop is a VM) and
+  prints one line saying why when a check fails; `./flux up` then carries on with the runtime off and
+  `./flux ai on` stops with that line:
+
+  | Check | How the launcher asks | Reason line says |
+  | --- | --- | --- |
+  | Linux engine | `docker info`, `OSType` | the engine is not a Linux engine |
+  | Memory, CPU and process limits | `docker info`: `MemoryLimit`, `CpuCfsQuota`, `PidsLimit` | the engine cannot set the limits every slot has |
+  | `internal` networks | `docker network create --internal`, removed at once | the engine cannot create an internal network |
+  | Yama `ptrace_scope` of 1 or higher | one throwaway container (read-only, no network, no capabilities) of the Dockerfile's pinned `node` base image runs `cat /proc/sys/kernel/yama/ptrace_scope`, the same file the supervisor reads | the kernel has no Yama policy or it is 0 (Docker Desktop has none) |
+
+  If the engine cannot answer (for example it cannot pull the base image), the line says the check could
+  not be run. The check image is the one the build pulls anyway.
+- **Paid hosting never asks.** A hosting service run by the Flux project keeps the runtime off
+  ([AIM-3](../product/ai-modes.md#operator-switch-and-installation)). It deploys the release
+  `compose.yaml`, where `FLUX_AGENT_RUNTIME` is empty and no launcher runs. The launcher has no
+  paid-hosting setting; refusing runtime sign-in there is a server rule (F-027 AST-2.4).
+- **On a self-hosted Flux, Yes can be the default** because the operator is the owner, or someone the
+  members already trust with their data. Each person still signs in themselves and is told, before
+  signing in, that the operator can read the login.
+
+### By hand
+
+Equivalent to the answers above. In `docker/.env`:
 
 ```sh
 FLUX_AGENT_RUNTIME=claude_code
@@ -226,6 +288,7 @@ Run it again whenever a pin changes. It proves the flags exist, not how the CLIs
 | --- | --- |
 | `./scripts/check_agent_runtime.sh` | The whole runtime through `./flux` with fake CLIs: off by default; on; `docker inspect` limits; two owners, no cross-owner reach, a full pool; escape attempts from inside a slot; the supervisors' closed request set; release and reuse; bind refused with any entry in `/data`; operator release; backup without slot volumes; restore reconciliation; switching off; purge; reset. |
 | `./scripts/check_application.sh` | With the runtime off: the API reports it disabled; no request input selects a slot; the runtime tables hold display facts only; core, supervisor, manager and egress tests, including the fuzz tests of the supervisor-stream reader and `runtime-egress`. |
+| `python3 -m unittest tests.test_flux_subscription_question` | The launcher's question with a pseudo-terminal and a stub `docker` as the fake host check: Enter, Enter writes `codex` and no statement; Enter, `y` writes `codex,claude_code` and today's date; `n` writes nothing; no terminal asks and writes nothing; each failing host check shows no question and one reason line; an existing `docker/.env` and a second `./flux up` are never asked; `./flux ai on` asks the same, only adds and refuses without a terminal. It creates no Docker resource. |
 | `python3 -m unittest tests.test_container_isolation tests.test_runtime_inspect` | No Compose file mounts a Docker or Podman socket, and none binds a host path outside the checkout (so no `/var/run` or `/run` directory mount); `inspect.py` refuses the same on a running project. |
 | `./scripts/check_runtime_install.sh` | Opt-in, needs the internet (about 250 MB): the real `runtime-install` through `runtime-egress` to `downloads.claude.ai` with the signature and SHA-256 checks, the installed binary reporting the pinned version, and the installer proxy refusing every other host. A public download; no account or sign-in. |
 | `./scripts/check_runtime_cli_contract.sh` | Opt-in: the fixed templates' flags against the pinned real CLIs. |

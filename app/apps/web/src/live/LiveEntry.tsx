@@ -37,7 +37,9 @@ export function audienceOf(people: ProjectPerson[] | null | undefined, meId: str
  * current task, map, doc or conversation, joins it with every device off and tells the
  * project's people quietly. A running session at this anchor becomes “Join”.
  */
-export function LiveEntry({ variant = 'header', anchor: given }: { variant?: 'header' | 'inline'; anchor?: LiveAnchor | null }) {
+export function LiveEntry({ variant = 'header', anchor: given, onAction }: {
+  variant?: 'header' | 'inline' | 'menu'; anchor?: LiveAnchor | null; onAction?(): void;
+}) {
   const live = useLive();
   const here = useLiveHere();
   const anchor = given ?? here.anchor;
@@ -61,6 +63,16 @@ export function LiveEntry({ variant = 'header', anchor: given }: { variant?: 'he
   if (!configured) {
     // Explained once, behind the header's "Together" (#189): a task does not repeat it.
     if (variant === 'inline') return null;
+    if (variant === 'menu') return (
+      <div className="lv-menu">
+        <Button variant="quiet" icon="together" className="lv-menu__act" aria-expanded={open}
+          aria-controls={open ? noteId : undefined} onClick={() => setOpen((value) => !value)}>Together</Button>
+        {open ? <div id={noteId} className="lv-menu__note" role="region" aria-label="Live sessions">
+          <b>Live sessions are not available here</b>
+          <p>This Flux server has no media server configured, so voice, camera and screen sharing are off for everyone. Conversations, tasks, maps and docs work as usual.</p>
+        </div> : null}
+      </div>
+    );
     return (
       <span className="lv-entry">
         <Button ref={buttonRef} variant="quiet" icon="together" className="lv-entry__btn" aria-expanded={open} aria-haspopup="dialog" aria-label="Together" onClick={() => setOpen((v) => !v)}>
@@ -76,7 +88,7 @@ export function LiveEntry({ variant = 'header', anchor: given }: { variant?: 'he
 
   if (inSession) {
     if (live.session && sameContext(live.session.context, anchor.context))
-      return variant === 'inline' ? <p className="lv-inline-note lv-inline-note--on"><span className="lv-dot" aria-hidden="true" />You are in the live session for this {word}.</p> : null;
+      return variant !== 'header' ? <p className="lv-inline-note lv-inline-note--on"><span className="lv-dot" aria-hidden="true" />You are in the live session for this {word}.</p> : null;
     return null;
   }
 
@@ -90,6 +102,20 @@ export function LiveEntry({ variant = 'header', anchor: given }: { variant?: 'he
     if (joinable) void live.join(here_, anchor);
     else void live.start(anchor);
   };
+
+  if (variant === 'menu') return (
+    <div className="lv-menu">
+      {others.length && !joinable ? <>
+        <p className="lv-menu__note">Live in this project</p>
+        <ul className="lv-pop__list">{others.map((item) => <OtherSession key={item.id} session={item} nameOf={nameOf} meId={live.meId}
+          onJoin={(resolved) => { onAction?.(); void live.join(item, resolved); }} />)}</ul>
+      </> : null}
+      <Button variant="quiet" icon="together" busy={busy} className="lv-menu__act" onClick={() => { onAction?.(); act(); }}
+        aria-label={joinable ? 'Join' : 'Together'}>
+        <span><b>{joinable ? 'Join' : 'Together'}</b><small>{joinable ? label : `Work on this ${word} together`}. Microphone and camera stay off.</small></span>
+      </Button>
+    </div>
+  );
 
   if (variant === 'inline') {
     return (

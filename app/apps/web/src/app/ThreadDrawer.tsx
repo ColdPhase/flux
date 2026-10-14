@@ -8,6 +8,7 @@ import { AgentAuthor, AuthorFace, SourceCitation, clock, day, when } from './mes
 import { MessageContent, type PhotoActions } from '../composer/Files';
 import { LinkPreviews, MessageText } from './MessageText';
 import { useProjectShell } from '../project/data';
+import { QuestionCard, WhenNoQuestion } from '../agents/QuestionCard';
 
 export type ThreadMode = 'docked' | 'sheet';
 
@@ -16,13 +17,19 @@ export type ThreadMode = 'docked' | 'sheet';
  * stream on a phone or a narrow tablet. It is not modal: the header, tabs, a live session's bar and,
  * when docked, the stream stay usable. Esc inside it closes it; the opener takes focus back.
  */
-export function ThreadDrawer({ mode, count, focusOnOpen, onClose, children }: { mode: ThreadMode; count: number; focusOnOpen: boolean; onClose: () => void; children: ReactNode }) {
+export function ThreadDrawer({ mode, count, focusOnOpen, onClose, title, closeLabel = 'Close replies', children }: {
+  mode: ThreadMode; count?: number; focusOnOpen: boolean; onClose: () => void;
+  /** The heading (default "Thread", read as "Replies: Thread"); the Agents view names the task here. */
+  title?: string;
+  /** The close control's name (default "Close replies"). */
+  closeLabel?: string; children: ReactNode;
+}) {
   const titleId = useId();
   const head = (
     <div className="thread__head">
-      <h2 className="thread__title" id={titleId}><span className="ui-vh">Replies: </span><span className="ui-panel__kind">Thread</span></h2>
-      <span className="thread__n">{count} {count === 1 ? 'reply' : 'replies'}</span>
-      <IconButton icon={mode === 'sheet' ? 'chevron-left' : 'x'} label="Close replies" className="thread__close" onClick={onClose} />
+      <h2 className="thread__title" id={titleId}>{title ?? <><span className="ui-vh">Replies: </span><span className="ui-panel__kind">Thread</span></>}</h2>
+      {count === undefined ? null : <span className="thread__n">{count} {count === 1 ? 'reply' : 'replies'}</span>}
+      <IconButton icon={mode === 'sheet' ? 'chevron-left' : 'x'} label={closeLabel} className="thread__close" onClick={onClose} />
     </div>
   );
   // Over the stream on a phone or a narrow tablet it is the one two-height sheet, opening at full height;
@@ -57,12 +64,13 @@ export function ThreadRoot({ message, projectId, body, author, agentOwner = null
             <time dateTime={message.createdAt} title={when(message.createdAt)}>{day(message.createdAt)} · {clock(message.createdAt)}</time>
           </div>
         ) : null}
-        <MessageContent body={message?.body || !message ? <p><MessageText body={body} people={people} /></p> : null} files={message?.files} context={message ? { author: author ?? undefined, at: message.createdAt, caption: message.body, ...photo } : undefined}>
+        <MessageContent body={message?.body || !message ? <WhenNoQuestion projectId={projectId} messageId={message?.id ?? null}><p><MessageText body={body} people={people} /></p></WhenNoQuestion> : null} files={message?.files} context={message ? { author: author ?? undefined, at: message.createdAt, caption: message.body, ...photo } : undefined}>
           <LinkPreviews body={body} />
           {message ? <MessageObjects message={message} projectId={projectId} preview={preview} thread={task} threadRow={taskRow} />
             : task ? <div className="ws-attach"><DiscussedTask task={task} row={taskRow} /></div> : null}
           {message?.source ? <SourceCitation materialId={message.source.materialId} version={message.source.version} onDenied={onDenied} /> : null}
         </MessageContent>
+        {message ? <QuestionCard projectId={projectId} messageId={message.id} meId={meId} writable={writable} /> : null}
       </article>
       <p className="thread__hint">{replies ? `${replies} ${replies === 1 ? 'reply' : 'replies'}` : writable ? 'Reply to this message. No new topic needed.' : 'No replies yet.'}</p>
     </>

@@ -243,6 +243,7 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, t
     const agent = { kind: 'agent' as const, id: agentId };
     if (!(await ports.access.canUseProject(agent, 'read', place.projectId, { lock: true })))
       throw new ConflictError('Your assistant has no access to this project', 'PERSONAL_RUN_NO_PROJECT_ACCESS');
+    const taskFence = await ports.runs.prepareTaskUse(place.projectId, conversationId.toLowerCase());
     // A run a crashed worker left behind must not block the owner forever (the job expires after 5 minutes).
     for (const ended of await ports.runs.endStale(owner, STALE_AFTER_SECONDS)) await announce(ports, ended);
     if (await ports.runs.hasRunInFlight(owner)) throw new ConflictError('Your assistant is already working on a request', 'PERSONAL_RUN_IN_FLIGHT');
@@ -258,6 +259,7 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, t
       continuesRunId: request.continuesRunId, retryOfRunId, reservedMicros, provider: connection.provider, model: connection.model,
     });
     await ports.queue.enqueue(run.id);
+    await taskFence.mark();
     // Only the owner learns that the run exists (O-008 §4 "Progress").
     await announce(ports, run);
     return { run, created: true };
@@ -279,6 +281,7 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, t
       const owner = ownerOf(principal);
       const input = normalizeEnable(command);
       return uow.run(async (ports) => {
+        await ports.assistants?.lockOwner(owner);
         const { workspaceId } = await ports.access.requireInvoke(principal, input.agentId, { lock: true });
         if (await ports.runs.enablement(owner, { lock: true })) throw new ConflictError('Your assistant is already enabled', 'PERSONAL_RUN_ALREADY_ENABLED');
         // The owner chooses which of their connections the assistant uses; without a choice, their newest.
@@ -299,6 +302,7 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, t
         });
         if (!created) throw new ConflictError('Your assistant is already enabled', 'PERSONAL_RUN_ALREADY_ENABLED');
         await ports.runs.selectAgent(owner, workspaceId, input.agentId);
+        await ports.assistants?.ensure(owner, workspaceId, input.agentId);
         return status(ports, owner);
       });
     },
@@ -321,9 +325,11 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, t
       const owner = ownerOf(principal);
       const agentId = id(command?.agentId, 'agentId');
       return uow.run(async (ports) => {
+        await ports.assistants?.lockOwner(owner);
         const { workspaceId } = await ports.access.requireInvoke(principal, agentId, { lock: true });
         await lockedEnablement(ports, owner);
         await ports.runs.selectAgent(owner, workspaceId, agentId);
+        await ports.assistants?.ensure(owner, workspaceId, agentId);
         await ports.runs.updateEnablement(owner, {});
         return status(ports, owner);
       });
@@ -353,8 +359,10 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, t
     async remove(principal: Principal): Promise<void> {
       const owner = ownerOf(principal);
       await uow.run(async (ports) => {
+        await ports.assistants?.lockOwner(owner);
         await lockedEnablement(ports, owner);
         for (const ended of await ports.runs.endUndispatched(owner, 'revoked')) await announce(ports, ended);
+        await ports.assistants?.remove(owner);
         await ports.runs.deleteEnablement(owner);
       });
     },

@@ -35,6 +35,7 @@ function ports(decision: SourceReadDecision, target: PushDeliveryTarget | null =
     deleted,
     ports: {
       available: true,
+      admitSend: async (_id: string, send: () => Promise<import('@flux/core').PushSendResult>) => ({ status: 'started' as const, response: await send() }),
       targets: {
         findTarget: async () => target,
         deleteSubscription: async (id: string) => { deleted.push(id); },

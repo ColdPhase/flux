@@ -1,5 +1,5 @@
-import { Fragment, type CSSProperties, type ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent as ReactPointerEvent, type WheelEvent } from 'react';
-import { DEFAULT_THOUGHT_SIZE, SKETCH_LIMITS, type SketchDetail, type Thought } from '@flux/contracts';
+import { Fragment, memo, type CSSProperties, type ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type WheelEvent } from 'react';
+import { DEFAULT_THOUGHT_SIZE, SKETCH_LIMITS, type LiveMapPosition, type SketchDetail, type Thought } from '@flux/contracts';
 import { Icon, IconButton, Sheet, StatusGlyph } from '../ui';
 import { STATUS_LABEL, taskNumber } from '../work/format';
 import { linkPath, PAD, project, rectOf, type Rect } from './geometry';
@@ -29,6 +29,8 @@ export interface SketchMapProps {
   viewModes: ReactNode;
   bar: SelectionTools;
   sketch: SketchDetail;
+  /** Plane origin follows native positions, before transient previews and a local drag. */
+  confirmedThoughts: Thought[] | null;
   meId: string;
   selection: string[];
   connectFrom: string | null;
@@ -68,6 +70,13 @@ export interface SketchMapProps {
   onResize(id: string, width: number, height: number, how: 'drag' | 'keyboard'): void;
   onRemove(ids: string[]): void;
   onEscape(): boolean;
+  onGestureStart(ids: string[]): boolean;
+  onGesturePreview(positions: LiveMapPosition[]): void;
+  onGestureCancel(): void;
+  movers: Map<string, string>;
+  livePreviews: Map<string, { generation: string; gestureId: string; leaseId: string; sequence: number }>;
+  ownGesture: { id: string; sequence: number; generation: string } | null | undefined;
+  liveEnabled: boolean;
 }
 
 const ZOOMS = [0.5, 0.67, 0.8, 0.9, 1, 1.1, 1.25, 1.5];
@@ -91,8 +100,11 @@ interface Drag {
   sx: number;
   sy: number;
   moved: boolean;
+  /** Selection-only pointer clicks own no live lease. */
+  started: boolean;
   scrollLeft?: number;
   scrollTop?: number;
+  base: Thought[];
 }
 
 /**
@@ -125,7 +137,7 @@ export function SketchMap(props: SketchMapProps) {
   const nodes = useRef(new Map<string, HTMLButtonElement>());
   const drag = useRef<Drag | null>(null);
   const suppressClick = useRef(false);
-  const [offset, setOffset] = useState<{ ids: string[]; dx: number; dy: number } | null>(null);
+  const [offset, setOffset] = useState<{ ids: string[]; base: Thought[]; dx: number; dy: number } | null>(null);
   const [size, setSize] = useState<{ id: string; w: number; h: number } | null>(null);
   const [panning, setPanning] = useState(false);
   // The dot shows while the pointer is over its thought or itself (mouse only; touch shows it on the selection).
@@ -159,6 +171,21 @@ export function SketchMap(props: SketchMapProps) {
   // S15: on a phone nothing is connected or arranged; people who can write may still add and edit text.
   const arrange = canWrite && !compact;
   const observer = useRef<ResizeObserver | null>(null);
+  const events = useRef<NodeEvents>(IDLE_EVENTS);
+  // One ref callback for every node. An inline callback is a new function on every render, so
+  // React detached and re-attached every node's ref each time: with 500 thoughts, every live
+  // preview unobserved and re-observed 500 elements, and the ResizeObserver then re-measured all
+  // of them (#228 Gate 4). The node's own data-id names it.
+  const nodeRef = useCallback((el: HTMLButtonElement | null) => {
+    const id = el?.dataset.id;
+    if (!el || !id) return undefined;
+    nodes.current.set(id, el); observer.current?.observe(el);
+    return () => { if (nodes.current.get(id) === el) nodes.current.delete(id); observer.current?.unobserve(el); };
+  }, []);
+  useEffect(() => {
+    if (!props.liveEnabled || props.ownGesture || !drag.current?.started || drag.current.kind === 'pan') return;
+    props.onGestureCancel(); drag.current = null; setOffset(null); setSize(null);
+  }, [props.liveEnabled, props.ownGesture, props.onGestureCancel]);
 
   // Measure rendered heights so links attach to the real edges of each thought.
   useEffect(() => {
@@ -178,12 +205,20 @@ export function SketchMap(props: SketchMapProps) {
     return () => { ro.disconnect(); observer.current = null; };
   }, [heights]);
 
+  // Lookups by id: a 200-thought drag of a 500-thought map searched the moved ids for every thought
+  // on every movement frame (#228 Gate 4).
+  const movingIds = offset?.ids, movingBase = offset?.base;
+  const moving = useMemo(() => new Map((movingIds ?? []).map((id) => [id, movingBase?.find((thought) => thought.id === id)] as const)), [movingIds, movingBase]);
   const shown = useMemo(() => sketch.thoughts.map((t): Thought => {
     let next = t;
-    if (offset?.ids.includes(t.id)) next = { ...next, x: Math.max(0, t.x + offset.dx), y: Math.max(0, t.y + offset.dy) };
+    // The live map moves from the positions at the gesture's start; the ordinary map, as before #228, from the current ones.
+    if (offset && moving.has(t.id)) {
+      if (props.liveEnabled) { const base = moving.get(t.id) ?? t; next = { ...next, x: clamp(base.x + offset.dx, 0, SKETCH_LIMITS.coordinate), y: clamp(base.y + offset.dy, 0, SKETCH_LIMITS.coordinate) }; }
+      else next = { ...next, x: Math.max(0, t.x + offset.dx), y: Math.max(0, t.y + offset.dy) };
+    }
     if (size?.id === t.id) next = { ...next, width: size.w, height: size.h };
     return next;
-  }), [sketch.thoughts, offset, size]);
+  }), [sketch.thoughts, offset, moving, size, props.liveEnabled]);
   const [canvasWidth, setCanvasWidth] = useState(0);
   useEffect(() => {
     const el = canvasRef.current;
@@ -218,7 +253,12 @@ export function SketchMap(props: SketchMapProps) {
   const measuring = compact && !canvasWidth;
   const rects = projection ? projection.rects : new Map<string, Rect>(shown.map((t) => [t.id, rectOf(t, heights)]));
   const scaleX = projection?.scaleX ?? 1;
-  const origin = { x: Math.min(0, ...[...rects.values()].map((r) => r.x - PAD)), y: Math.min(0, ...[...rects.values()].map((r) => r.y - (compact ? PAD : 128))) };
+  // Moving every top-row thought changes the preview's minY. Deriving the plane origin
+  // from that minY moved every untouched thought too, invalidating its memoized props.
+  // Keep signed native bounds for the plane; phone projection, live rects, sizes and Fit
+  // still use the actual displayed graph.
+  const originPoints = compact || !props.liveEnabled ? [...rects.values()] : props.confirmedThoughts ?? sketch.thoughts;
+  const origin = { x: Math.min(0, ...originPoints.map((r) => r.x - PAD)), y: Math.min(0, ...originPoints.map((r) => r.y - (compact ? PAD : 128))) };
   let width = 0;
   let height = 0;
   for (const r of rects.values()) { width = Math.max(width, r.x + r.w - origin.x); height = Math.max(height, r.y + r.h - origin.y); }
@@ -447,8 +487,8 @@ export function SketchMap(props: SketchMapProps) {
     return () => el.removeEventListener('wheel', block);
   }, []);
 
-  const begin = (event: ReactPointerEvent, next: Omit<Drag, 'pointerId' | 'sx' | 'sy' | 'moved'>) => {
-    drag.current = { ...next, pointerId: event.pointerId, sx: event.clientX, sy: event.clientY, moved: false };
+  const begin = (event: ReactPointerEvent, next: Omit<Drag, 'pointerId' | 'sx' | 'sy' | 'moved' | 'started' | 'base'>) => {
+    drag.current = { ...next, base: sketch.thoughts.filter((thought) => next.ids.includes(thought.id)).map((thought) => ({ ...thought })), pointerId: event.pointerId, sx: event.clientX, sy: event.clientY, moved: false, started: false };
     (event.currentTarget as Element).setPointerCapture?.(event.pointerId);
   };
 
@@ -486,6 +526,13 @@ export function SketchMap(props: SketchMapProps) {
     const dy = (event.clientY - d.sy) / zoom;
     if (!d.moved && Math.hypot(event.clientX - d.sx, event.clientY - d.sy) < 4) return;
     if (!d.moved) {
+      // Keep the same trusted-input threshold as local movement. A Shift-click
+      // changes selection without allocating a lease or racing a late cancellation
+      // against the next selected group's actual drag.
+      if (d.kind !== 'pan') {
+        if (!props.onGestureStart(d.ids)) { drag.current = null; return; }
+        d.started = true;
+      }
       d.moved = true;
       if (d.kind === 'move' && !selection.includes(d.id!)) props.onPick(d.id!, false);
       if (d.kind === 'pan') setPanning(true);
@@ -501,11 +548,15 @@ export function SketchMap(props: SketchMapProps) {
       setWire({ from: d.id!, x: Math.max(0, Math.round((event.clientX - box.left) / zoom + origin.x)), y: Math.max(0, Math.round((event.clientY - box.top) / zoom + origin.y)), over: over && over !== d.id ? over : null });
     } else if (d.kind === 'move') {
       // Offsets are in stored plane units; the phone projection compresses x.
-      setOffset({ ids: d.ids, dx: Math.round(dx * scaleX), dy: Math.round(dy) });
+      setOffset({ ids: d.ids, base: d.base, dx: Math.round(dx * scaleX), dy: Math.round(dy) });
+      props.onGesturePreview(d.base.map((thought) => ({ id: thought.id, x: clamp(Math.round(thought.x + dx * scaleX), 0, SKETCH_LIMITS.coordinate), y: clamp(Math.round(thought.y + dy), 0, SKETCH_LIMITS.coordinate) })));
     } else {
       const t = byId.get(d.id!) ?? sketch.thoughts.find((x) => x.id === d.id);
-      const base = sketch.thoughts.find((x) => x.id === d.id) ?? t!;
-      setSize({ id: d.id!, w: clamp(Math.round(base.width + dx), SKETCH_LIMITS.minWidth, SKETCH_LIMITS.maxWidth), h: clamp(Math.round(Math.max(base.height, heights.get(base.id) ?? 0) + dy), SKETCH_LIMITS.minHeight, SKETCH_LIMITS.maxHeight) });
+      const base = (props.liveEnabled ? d.base.find((x) => x.id === d.id) : sketch.thoughts.find((x) => x.id === d.id)) ?? t!;
+      const width = clamp(Math.round(base.width + dx), SKETCH_LIMITS.minWidth, SKETCH_LIMITS.maxWidth);
+      const height = clamp(Math.round(Math.max(base.height, heights.get(base.id) ?? 0) + dy), SKETCH_LIMITS.minHeight, SKETCH_LIMITS.maxHeight);
+      setSize({ id: d.id!, w: width, h: height });
+      props.onGesturePreview([{ id: base.id, x: base.x, y: base.y, width, height }]);
     }
   };
 
@@ -531,8 +582,12 @@ export function SketchMap(props: SketchMapProps) {
     }
     if (d.kind === 'move' && offset) {
       props.onMove(d.ids.flatMap((id) => {
-        const t = sketch.thoughts.find((x) => x.id === id);
-        return t ? [{ id, x: Math.max(0, t.x + offset.dx), y: Math.max(0, t.y + offset.dy) }] : [];
+        if (!props.liveEnabled) {
+          const t = sketch.thoughts.find((x) => x.id === id);
+          return t ? [{ id, x: Math.max(0, t.x + offset.dx), y: Math.max(0, t.y + offset.dy) }] : [];
+        }
+        const t = d.base.find((x) => x.id === id);
+        return t ? [{ id, x: clamp(t.x + offset.dx, 0, SKETCH_LIMITS.coordinate), y: clamp(t.y + offset.dy, 0, SKETCH_LIMITS.coordinate) }] : [];
       }), 'drag');
     }
     if (d.kind === 'resize' && size) props.onResize(size.id, size.w, size.h, 'drag');
@@ -547,6 +602,7 @@ export function SketchMap(props: SketchMapProps) {
   };
 
   const onPointerCancel = () => {
+    if (drag.current?.started) props.onGestureCancel();
     drag.current = null;
     setWire(null);
     setPanning(false);
@@ -558,8 +614,8 @@ export function SketchMap(props: SketchMapProps) {
     const { key } = event;
     if (key === 'Enter' || key === 'F2') { event.preventDefault(); if (connectFrom) props.onPick(thought.id, false); else if (canWrite) props.onEdit(thought.id); return; }
     if (key === ' ') { event.preventDefault(); if (connectFrom) props.onPick(thought.id, false); else props.onToggle(thought.id); return; }
-    if (key === 'Escape') { if (props.onEscape()) { event.preventDefault(); event.stopPropagation(); } return; }
-    if (!arrange && !canWrite) return;
+    if (key === 'Escape') { if (props.liveEnabled && drag.current && drag.current.kind !== 'pan') { onPointerCancel(); event.preventDefault(); event.stopPropagation(); } else if (props.onEscape()) { event.preventDefault(); event.stopPropagation(); } return; }
+    if (!canWrite) return;
     if (key === '+' || key === '=') { event.preventDefault(); props.onAdd(thought.id); return; }
     if (key === 'Delete' || key === 'Backspace') { event.preventDefault(); props.onRemove(selection.includes(thought.id) ? selection : [thought.id]); return; }
     if (!key.startsWith('Arrow')) return;
@@ -582,6 +638,18 @@ export function SketchMap(props: SketchMapProps) {
     }), 'keyboard');
     requestAnimationFrame(() => nodes.current.get(thought.id)?.scrollIntoView({ block: 'nearest', inline: 'nearest' }));
   };
+
+  // The memoized thoughts call the handlers of the latest render (#228 Gate 4).
+  useLayoutEffect(() => {
+    events.current = { pointerDown: onNodePointerDown, resizePointerDown: onResizePointerDown, keyDown: onNodeKeyDown,
+      click: (event, id) => { if (suppressClick.current) return; props.onPick(id, event.shiftKey || event.metaKey || event.ctrlKey); },
+      doubleClick: (id) => { if (canWrite && !connectFrom) props.onEdit(id); },
+      openTask: (id) => props.onOpenTask(id), pointerEnter: (event, id) => { if (event.pointerType === 'mouse') setHover(id); },
+      // Moving between a thought and its own dots keeps it hovered, so its dots stay in place under the pointer.
+      pointerLeave: (event, id) => { if (!ownPart(event.relatedTarget, id)) setHover((current) => current === id ? null : current); },
+      dotPointerDown: (event, id) => onDotPointerDown(event, id),
+      dotClick: (id) => { if (!suppressClick.current) props.onConnectFrom(id); } };
+  });
 
   const ghost = (x: number, y: number): Rect => ({ x, y, w: DEFAULT_THOUGHT_SIZE.width, h: DEFAULT_THOUGHT_SIZE.height });
   const wireFrom = wire ? rects.get(wire.from) : undefined;
@@ -642,9 +710,36 @@ export function SketchMap(props: SketchMapProps) {
     </div>
   );
 
+  const thoughtNodes: ReactNode[] = [];
+  if (!measuring) {
+    const chosen = new Set(selection);
+    for (const thought of shown) {
+      const r = rects.get(thought.id)!;
+      const p = place(r);
+      const selected = chosen.has(thought.id);
+      const dragging = moving.has(thought.id);
+      // UI116-4: a count of the linked tasks, never their titles or results, under the text.
+      thoughtNodes.push(
+        <Fragment key={thought.id}>
+        <ThoughtNode thought={thought} x={p.x} y={p.y} w={r.w} h={r.h} selected={selected}
+          dragging={dragging} editing={editing?.id === thought.id}
+          resizable={selected && selection.length === 1 && arrange && !coarse && !editing}
+          meId={meId} helpId={helpId} projectId={projectId}
+          linked={projectId ? tasks.get(thought.id) : undefined}
+          mover={props.movers.get(thought.id)} live={props.livePreviews.get(thought.id)} nodeRef={nodeRef} events={events} />
+        {arrange && !editing && !measuring && !dragging && (selected || connectFrom === thought.id || hover === thought.id || wire?.from === thought.id) ? (
+          <ThoughtDots id={thought.id} text={thought.text} x={p.x} y={p.y} w={r.w} h={r.h} zoom={zoom} selected={selected}
+            on={selected || connectFrom === thought.id || hover === thought.id} events={events} />
+        ) : null}
+        </Fragment>
+      );
+    }
+  }
+
   return (
     <div ref={wrapRef} className={`sk-canvas-wrap sk-canvas-wrap--controls${hasComposition ? ' has-composition' : ''}`} style={compact ? { '--sk-phone-tools-height': `${hasComposition ? compositionHeight : phoneToolsHeight}px` } as CSSProperties : undefined}>
     <div className={`sk-canvas${panning ? ' is-panning' : ''}${connectFrom ? ' is-connecting' : ''}${wire ? ' is-wiring' : ''}`} ref={canvasRef} role="group"
+      data-live-own-gesture={props.ownGesture?.id} data-live-own-sequence={props.ownGesture?.sequence} data-live-generation={props.ownGesture?.generation}
       aria-label={`Sketch: ${sketch.title}`} aria-describedby={helpId} onWheel={onWheel}>
       <div className="sk-zoomed" ref={zoomedRef} style={{ width: width * zoom, height: height * zoom }}
         onPointerDown={onPlanePointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerCancel}>
@@ -699,63 +794,7 @@ export function SketchMap(props: SketchMapProps) {
               </button> : <span key={link.id} className={`sk-el${on ? ' is-on' : ''}`} style={style}>{link.label}</span>;
             })}
           </div>
-          {measuring ? null : shown.map((thought) => {
-            const r = rects.get(thought.id)!;
-            const p = place(r);
-            const selected = selection.includes(thought.id);
-            const dragging = !!offset?.ids.includes(thought.id);
-            const link = linkOf(thought.text);
-            const meta = thought.placement
-              ? (thought.placement.title ? `Draft · ${thought.placement.title}` : 'Draft you can’t open')
-              : link ? `Link · ${link.host}` : null;
-            // UI116-4: a count of the linked tasks, never their titles or results, under the text.
-            const linked = projectId ? tasks.get(thought.id) : undefined;
-            return (
-              <Fragment key={thought.id}>
-              <button type="button" data-id={thought.id}
-                ref={(el) => {
-                  if (el) { nodes.current.set(thought.id, el); observer.current?.observe(el); return () => { nodes.current.delete(thought.id); observer.current?.unobserve(el); }; }
-                }}
-                className={`sk-node sk-node--${thought.shape}${dragging ? ' is-dragging' : ''}${editing?.id === thought.id ? ' is-editing' : ''}${thought.version === 0 ? ' is-new' : ''}${linked?.count ? ' has-work' : ''}`}
-                style={{ transform: `translate(${p.x}px, ${p.y}px)`, width: r.w, minHeight: thought.shape === 'circle' ? r.w : thought.height, height: thought.shape === 'circle' ? r.w : undefined }}
-                aria-pressed={selected} aria-describedby={helpId}
-                onPointerDown={(event) => onNodePointerDown(event, thought.id)}
-                onClick={(event) => { if (suppressClick.current) return; props.onPick(thought.id, event.shiftKey || event.metaKey || event.ctrlKey); }}
-                onDoubleClick={() => { if (canWrite && !connectFrom) props.onEdit(thought.id); }}
-                onPointerEnter={(event) => { if (event.pointerType === 'mouse') setHover(thought.id); }}
-                onPointerLeave={() => setHover((id) => id === thought.id ? null : id)}
-                onKeyDown={(event) => onNodeKeyDown(event, thought)}>
-                {meta ? <span className="sk-k"><Icon name={thought.placement ? 'doc' : 'link'} size={12} />{meta}</span> : null}
-                {thought.file ? <ThoughtImage className="sk-img" fileId={thought.file.id} name={thought.file.name}
-                  style={{ maxHeight: Math.max(48, thought.height - 64) }} /> : null}
-                <span className={`sk-t${link ? ' sk-t--link' : ''}`}>{thought.text}</span>
-                <span className="sk-p">{provenance(thought, meId)}</span>
-                {/* A thought that became a task shows its status, number and owner (F-026). */}
-                {linked?.tasks[0] ? <span className="sk-taskline"><StatusGlyph status={linked.tasks[0].status} size={14} />
-                  <span>{taskNumber(linked.tasks[0])} {STATUS_LABEL[linked.tasks[0].status]}{linked.tasks[0].owner ? ` · ${linked.tasks[0].owner.name}` : ''}</span></span> : null}
-                {/* Room for the count, which is its own button beside this one. */}
-                {linked?.count ? <span className="sk-work-gap" aria-hidden="true" /> : null}
-                {selected && selection.length === 1 && arrange && !coarse && !editing ? (
-                  <span className="sk-resize" aria-hidden="true" onPointerDown={(event) => onResizePointerDown(event, thought)} />
-                ) : null}
-              </button>
-              {linked?.count && projectId ? (
-                <div className={`sk-work-slot sk-work-slot--${thought.shape}${dragging ? ' is-dragging' : ''}`} data-for={thought.id} style={{ transform: `translate(${p.x}px, ${p.y}px)`, width: r.w, height: r.h }}>
-                  <ThoughtTasks thought={thought} tasks={linked} projectId={projectId} variant="map" onOpenTask={props.onOpenTask} />
-                </div>
-              ) : null}
-              {arrange && !editing && !measuring ? (['right', 'left'] as const).map((side) => (
-                <button key={side} type="button" tabIndex={selected && side === 'right' ? 0 : -1} data-for={thought.id} data-side={side}
-                  aria-label={`Connect from ${quote(thought.text)}: drag to another thought, or press Enter and choose one`} aria-hidden={side === 'left' ? true : undefined}
-                  onPointerEnter={() => setHover(thought.id)} onPointerLeave={() => setHover((id) => id === thought.id ? null : id)}
-                  className={`sk-dot${selected || connectFrom === thought.id || hover === thought.id ? ' is-on' : ''}${dragging ? ' is-dragging' : ''}`}
-                  style={{ transform: `translate(${p.x + (side === 'right' ? r.w : 0)}px, ${p.y + r.h / 2}px) scale(${1 / zoom}) translate(-50%, -50%)` }}
-                  onPointerDown={(event) => onDotPointerDown(event, thought.id)}
-                  onClick={() => { if (!suppressClick.current) props.onConnectFrom(thought.id); }} />
-              )) : null}
-              </Fragment>
-            );
-          })}
+          {thoughtNodes}
           {plus && last && lastThought ? (!compact ? (() => {
             // Controls keep their on-screen size at every zoom (touch targets stay 44px).
             const x = plus.x + last.w / 2;
@@ -838,6 +877,111 @@ export function SketchMap(props: SketchMapProps) {
     </div>
   );
 }
+
+interface NodeEvents {
+  pointerDown(event: ReactPointerEvent<HTMLButtonElement>, id: string): void;
+  resizePointerDown(event: ReactPointerEvent<HTMLSpanElement>, thought: Thought): void;
+  keyDown(event: KeyboardEvent<HTMLButtonElement>, thought: Thought): void;
+  click(event: ReactMouseEvent<HTMLButtonElement>, id: string): void;
+  doubleClick(id: string): void;
+  openTask(id: string): void;
+  pointerEnter(event: ReactPointerEvent<HTMLButtonElement>, id: string): void;
+  pointerLeave(event: ReactPointerEvent<HTMLButtonElement>, id: string): void;
+  dotPointerDown(event: ReactPointerEvent<HTMLButtonElement>, id: string): void;
+  dotClick(id: string): void;
+}
+const IDLE_EVENTS: NodeEvents = { pointerDown() {}, resizePointerDown() {}, keyDown() {}, click() {}, doubleClick() {}, openTask() {}, pointerEnter() {}, pointerLeave() {}, dotPointerDown() {}, dotClick() {} };
+
+/** Whether `target` is thought `id` itself or one of its connection dots. */
+function ownPart(target: EventTarget | null, id: string) {
+  const part = target instanceof Element ? target.closest<HTMLElement>('.sk-node, .sk-dot') : null;
+  return !!part && (part.dataset.id === id || part.dataset.for === id);
+}
+
+/**
+ * The two connection dots of one thought. A thought has them only while they can be used: when it
+ * is selected, hovered, the connection source or the wire's start (the dots are invisible
+ * otherwise), and not while it is being moved: 200 moved thoughts would restyle 400 dots per frame. Rendering 1,000 invisible dots for a 500-thought map, all re-rendered and restyled
+ * on every movement preview, doubled the map's elements and slowed every frame of a live drag
+ * on both computers (#228 Gate 4). Memoized like the thoughts, with stable handlers.
+ */
+const ThoughtDots = memo(function ThoughtDots({ id, text, x, y, w, h, zoom, selected, on, events }: {
+  id: string; text: string; x: number; y: number; w: number; h: number; zoom: number; selected: boolean; on: boolean;
+  events: { readonly current: NodeEvents };
+}) {
+  return <>{(['right', 'left'] as const).map((side) => (
+    <button key={side} type="button" tabIndex={selected && side === 'right' ? 0 : -1} data-for={id} data-side={side}
+      aria-label={`Connect from ${quote(text)}: drag to another thought, or press Enter and choose one`} aria-hidden={side === 'left' ? true : undefined}
+      onPointerEnter={(event) => events.current.pointerEnter(event, id)} onPointerLeave={(event) => events.current.pointerLeave(event, id)}
+      className={`sk-dot${on ? ' is-on' : ''}`}
+      style={{ transform: `translate(${x + (side === 'right' ? w : 0)}px, ${y + h / 2}px) scale(${1 / zoom}) translate(-50%, -50%)` }}
+      onPointerDown={(event) => events.current.dotPointerDown(event, id)}
+      onClick={() => events.current.dotClick(id)} />
+  ))}</>;
+});
+
+interface ThoughtNodeProps {
+  thought: Thought;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  selected: boolean;
+  dragging: boolean;
+  editing: boolean;
+  resizable: boolean;
+  meId: string;
+  helpId: string;
+  projectId: string | null;
+  linked: ThoughtTasksEntry | undefined;
+  mover: string | undefined;
+  live: { generation: string; gestureId: string; leaseId: string; sequence: number } | undefined;
+  nodeRef(el: HTMLButtonElement | null): (() => void) | undefined;
+  events: { readonly current: NodeEvents };
+}
+
+/**
+ * One thought on the plane. Its props are plain values and stable references, so a live preview
+ * re-renders only the thoughts it moves: re-rendering all 500 thoughts of a map for every preview
+ * kept a peer's main thread busy and delayed the next preview's receipt (#228 Gate 4).
+ */
+const ThoughtNode = memo(function ThoughtNode({ thought, x, y, w, h, selected, dragging, editing, resizable, meId, helpId, projectId, linked, mover, live, nodeRef, events }: ThoughtNodeProps) {
+  const link = linkOf(thought.text);
+  const meta = thought.placement
+    ? (thought.placement.title ? `Draft · ${thought.placement.title}` : 'Draft you can’t open')
+    : link ? `Link · ${link.host}` : null;
+  return (
+    <>
+      <button type="button" data-id={thought.id} data-thought-x={thought.x} data-thought-y={thought.y} data-thought-version={thought.version}
+        data-live-generation={live?.generation} data-live-mover={mover} data-live-gesture={live?.gestureId} data-live-lease={live?.leaseId} data-live-preview-sequence={live?.sequence}
+        ref={nodeRef}
+        className={`sk-node sk-node--${thought.shape}${dragging ? ' is-dragging' : ''}${editing ? ' is-editing' : ''}${thought.version === 0 ? ' is-new' : ''}${linked?.count ? ' has-work' : ''}`}
+        style={{ transform: `translate(${x}px, ${y}px)`, width: w, minHeight: thought.shape === 'circle' ? w : thought.height, height: thought.shape === 'circle' ? w : undefined }}
+        aria-pressed={selected} aria-describedby={helpId}
+        onPointerDown={(event) => events.current.pointerDown(event, thought.id)}
+        onPointerEnter={(event) => events.current.pointerEnter(event, thought.id)} onPointerLeave={(event) => events.current.pointerLeave(event, thought.id)}
+        onClick={(event) => events.current.click(event, thought.id)}
+        onDoubleClick={() => events.current.doubleClick(thought.id)}
+        onKeyDown={(event) => events.current.keyDown(event, thought)}>
+        {meta ? <span className="sk-k"><Icon name={thought.placement ? 'doc' : 'link'} size={12} />{meta}</span> : null}
+        {thought.file ? <ThoughtImage className="sk-img" fileId={thought.file.id} name={thought.file.name}
+          style={{ maxHeight: Math.max(48, thought.height - 64) }} /> : null}
+        <span className={`sk-t${link ? ' sk-t--link' : ''}`}>{thought.text}</span>
+        <span className="sk-p">{provenance(thought, meId)}</span>
+        {linked?.tasks[0] ? <span className="sk-taskline"><StatusGlyph status={linked.tasks[0].status} size={14} /><span>{taskNumber(linked.tasks[0])} {STATUS_LABEL[linked.tasks[0].status]}{linked.tasks[0].owner ? ` · ${linked.tasks[0].owner.name}` : ''}</span></span> : null}
+        {mover ? <span className="sk-live-mover">{mover} is moving</span> : null}
+        {/* Room for the count, which is its own button beside this one. */}
+        {linked?.count ? <span className="sk-work-gap" aria-hidden="true" /> : null}
+        {resizable ? <span className="sk-resize" aria-hidden="true" onPointerDown={(event) => events.current.resizePointerDown(event, thought)} /> : null}
+      </button>
+      {linked?.count && projectId ? (
+        <div className={`sk-work-slot sk-work-slot--${thought.shape}${dragging ? ' is-dragging' : ''}`} data-for={thought.id} style={{ transform: `translate(${x}px, ${y}px)`, width: w, height: h }}>
+          <ThoughtTasks thought={thought} tasks={linked} projectId={projectId} variant="map" onOpenTask={(id) => events.current.openTask(id)} />
+        </div>
+      ) : null}
+    </>
+  );
+});
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));

@@ -11,6 +11,8 @@ import { useShellActions } from '../app/shellContext';
 import { setReloadRetention } from '../app/reload-retention';
 import { createWork } from '../work/api';
 import { DraftSaveNotSentError, useSketchDoc, type Op } from './doc';
+import { useLiveSketchDoc, type LiveSketchDoc } from './live-doc';
+import { useEditingCapability } from '../editing/capability';
 import { audience, quote, sketchHref, when } from './format';
 import { freeSpot, rectOf } from './geometry';
 import { SketchList } from './SketchList';
@@ -23,6 +25,7 @@ import { clipboardFile, IMAGE_CAPTION, IMAGE_THOUGHT_SIZE, imageRefusal, linkOf,
 import { useThoughtTasks } from './ThoughtTasks';
 import { useRegisterLiveHere } from '../live/LiveProvider';
 import './sketch.css';
+import '../editing/editing.css';
 
 export interface Editing {
   id: string;
@@ -72,9 +75,31 @@ function useProjectName(projectId: string | null | undefined) {
 /** `/map/:sketchId`: a fresh view (and document) per sketch. */
 export function SketchRoute() {
   const { sketchId = '', projectId, dmId } = useParams();
+  const { me } = useShellData();
+  const capability = useEditingCapability();
   // Opened from a project's Map tab (#117) or a DM's Sketches (#96), the way back stays there.
   const back = projectId ? `/projects/${projectId}/map` : dmId ? `/dm/${dmId}/sketches` : '/map';
-  return <SketchView key={sketchId} sketchId={sketchId} projectId={projectId} dmId={dmId} back={back} />;
+  // The live map mounts only when this API's live capability is configured (#228, #239 review);
+  // otherwise the map is the ordinary one, unchanged.
+  if (capability === 'loading') return <div className="sk-page sk-page--center"><Spinner label="Opening the sketch" /></div>;
+  const View = capability === 'configured' ? LiveSketchView : SketchView;
+  return <View key={`${me.user.id}:${sketchId}`} sketchId={sketchId} projectId={projectId} dmId={dmId} back={back} />;
+}
+
+interface ViewProps { sketchId: string; projectId?: string; dmId?: string; back?: string }
+
+/** The ordinary map: native requests, stream refetches and local inverse undo. */
+export function SketchView(props: ViewProps) {
+  const { me } = useShellData();
+  const doc = useSketchDoc(props.sketchId, { id: me.user.id, name: me.user.name });
+  return <SketchEditor {...props} doc={doc} />;
+}
+
+/** The live map: ordered server deltas, live movement/presence and server-journal undo. */
+function LiveSketchView(props: ViewProps) {
+  const { me } = useShellData();
+  const doc = useLiveSketchDoc(props.sketchId, { id: me.user.id, name: me.user.name });
+  return <SketchEditor {...props} doc={doc} />;
 }
 
 /**
@@ -82,10 +107,9 @@ export function SketchRoute() {
  * a List. Everything is edited in place; there is no management panel. Changes save as they
  * happen and arrive live from the other people who can see the sketch.
  */
-export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketchId: string; projectId?: string; dmId?: string; back?: string }) {
+function SketchEditor({ sketchId, projectId, dmId, back = '/map', doc }: ViewProps & { doc: LiveSketchDoc }) {
   const { me, directMessages } = useShellData();
   const started = (useLocation().state as { started?: number } | null)?.started;
-  const doc = useSketchDoc(sketchId, { id: me.user.id, name: me.user.name });
   const { sketch } = doc;
   const personalOutline = useOutline(me.user.id, sketch);
   const capture = useThoughtDraft(me.user.id, sketchId, sketch);
@@ -133,7 +157,7 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
   const rootRef = useRef<HTMLDivElement>(null);
   const helpId = useId();
   const projectName = useProjectName(sketch?.projectId);
-  const canWrite = sketch?.access === 'write';
+  const canWrite = sketch?.access === 'write' && !!doc.liveCanWrite;
 
   // UI116-4: each thought of a project sketch shows how many of the project's tasks link to it,
   // from bounded reads of the sketch's own thoughts (#170), never the project's work collection.
@@ -178,6 +202,7 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
   // Selection follows what exists: someone else may remove a selected thought meanwhile.
   const present = new Set(sketch?.thoughts.map((t) => t.id));
   const selection = selectionState.filter((id) => present.has(id));
+  useEffect(() => { doc.presence(selection); }, [selection, doc.presence]);
   const connectFrom = connectState && present.has(connectState) ? connectState : null;
   // A project sketch anchors a session; "Show this" points at the selected thoughts, if any.
   const projectSketch = sketch?.scope === 'project' && sketch.projectId ? sketch : null;
@@ -532,13 +557,13 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
 
   const move = (moves: { id: string; x: number; y: number }[], how: 'drag' | 'keyboard') => {
     if (!moves.length) return;
-    doc.perform([{ kind: 'move', moves }], how === 'keyboard' ? 'moved with the keyboard' : 'moved thoughts', { coalesce: how === 'keyboard' });
+    doc.perform([{ kind: 'move', moves }], how === 'keyboard' ? 'moved with the keyboard' : 'moved thoughts', { coalesce: how === 'keyboard', lease: how === 'drag' ? doc.finishGesture() : undefined });
     const what = moves.length === 1 ? quote(find(moves[0]!.id)?.text ?? '') : `${moves.length} thoughts`;
     say(`Moved ${what}${how === 'keyboard' ? ' with the keyboard' : ''}`, true);
   };
 
-  const resize = (id: string, width: number, height: number) => {
-    doc.perform([{ kind: 'update', id, changes: { width, height } }], 'resized a thought');
+  const resize = (id: string, width: number, height: number, how: 'drag' | 'keyboard') => {
+    doc.perform([{ kind: 'update', id, changes: { width, height } }], 'resized a thought', { lease: how === 'drag' ? doc.finishGesture() : undefined });
     say(`Resized ${quote(find(id)?.text ?? '')}`, true);
   };
 
@@ -575,7 +600,9 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
     setEditing(null);
     setConnectFrom(null);
     const label = doc.undo();
-    say(label ? `Undid: ${label}` : 'Nothing to undo');
+    // Only the live map's undo waits for a server receipt; the ordinary one is applied at once.
+    if (doc.liveStatus === 'unavailable') say(label ? `Undid: ${label}` : 'Nothing to undo');
+    else say(label ? `Undo requested: ${label}. Waiting for confirmation.` : 'No undo started');
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -611,7 +638,7 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
   if (!sketch) return null;
 
   const busy = doc.saving ? 'Saving…' : 'Saved';
-  const shared = { sketch, meId: me.user.id, selection, connectFrom, editing, canWrite, onPick: pick, onToggle: toggle, onEdit: startEdit,
+  const shared = { sketch, confirmedThoughts: doc.confirmedThoughts, meId: me.user.id, selection, connectFrom, editing, canWrite, onPick: pick, onToggle: toggle, onEdit: startEdit,
     onEditText: (text: string) => setEditing((current) => current ? { ...current, initial: text, key: doc.newId() } : null),
     onFinishEdit: (text: string | null) => { void finishEdit(text); }, onAdd: add, onRemove: remove, onEscape: escape,
     tasks, projectId: taskProjectId, onOpenTask: (id: string) => openDetails({ kind: 'work', id }) };
@@ -668,6 +695,7 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
     onSave={() => void saveDraft()} onCancel={() => { capture.set(null); say(capture.draft?.lines ? 'Pasted thoughts cancelled' : 'Thought draft cancelled'); focusThought('.sk-add'); }} /> : null;
   const notices = (
     <>
+        {doc.privateMovement ? <details className="editing-map-recovery"><summary>An unfinished movement is kept privately</summary><p>Compare these positions with the current thoughts before starting a new movement. This copy is not shared automatically.</p><ul>{doc.privateMovement.positions.map((position) => <li key={position.id}>{quote(find(position.id)?.text ?? 'Unavailable thought')} · x {Math.round(position.x)}, y {Math.round(position.y)}{position.width !== undefined ? ` · width ${Math.round(position.width)}, height ${Math.round(position.height ?? 0)}` : ''}</li>)}</ul><Button variant="quiet" onClick={doc.discardPrivateMovement}>Discard private movement copy</Button></details> : null}
         {sketch.copies.length ? (
           <ul className="sk-copies" aria-label="Project copies">
             {sketch.copies.map((copy) => (
@@ -711,7 +739,7 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
 
   if (mapMode && !(sketch.thoughts.length || canWrite)) {
     return (
-      <div className="sk-page" ref={rootRef} onKeyDown={onKeyDown}><div className="sk">{head}<p className="sk-empty-list">No thoughts yet.</p></div></div>
+      <div className="sk-page" ref={rootRef} onKeyDown={onKeyDown} data-live-map-status={doc.liveStatus}><div className="sk">{head}<p className="sk-empty-list">No thoughts yet.</p></div></div>
     );
   }
   if (mapMode) {
@@ -734,11 +762,11 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
       </div>
     ) : <div className="sk-line">{statusLine}</div>;
     return (
-      <div className="sk-page sk-page--map" ref={rootRef} onKeyDown={onKeyDown}>
+      <div className="sk-page sk-page--map" ref={rootRef} onKeyDown={onKeyDown} data-live-map-status={doc.liveStatus}>
         <div className="sk sk--map">
           <div className="sk-over">
             {head}
-            {!canWrite ? <p className="sk-readonly"><Icon name="lock" size={12} />{sketch.scope === 'dm'
+            {!canWrite ? <p className="sk-readonly"><Icon name="lock" size={12} />{doc.liveStatus === 'connecting' ? 'Reconnecting to the shared map. Wait for confirmation before changing it.' : sketch.scope === 'dm'
               ? 'Nobody else is in this conversation now, so the sketch is read-only until the other person reopens it.'
               : 'You can look at this sketch; people who can change it keep it up to date.'}</p> : null}
             {notices}
@@ -749,7 +777,10 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
             onConnect={connectTo} onAddAt={(parentId, x, y) => add(parentId, '', false, { x, y })} onConnectFrom={connectFromDot} onAddThought={() => add(selection[selection.length - 1] ?? null)}
             draftEditor={shownDraft ? draftForm : null} draft={shownDraft && !shownDraft.lines && !sketch.thoughts.some((thought) => thought.id === shownDraft.id)
               ? { x: shownDraft.x, y: shownDraft.y, parentId: shownDraft.parentId, label: shownDraft.attempt ? 'Save not confirmed' : shownDraft.unknown ? 'Saved state unknown' : 'Draft · not saved' }
-              : null} onMove={move} onResize={resize} onClear={() => { if (connectFrom) return; setSelection([]); say(''); }} />
+              : null} onMove={move} onResize={resize} onClear={() => { if (connectFrom) return; setSelection([]); say(''); }}
+            onGestureStart={doc.beginGesture} onGesturePreview={doc.previewGesture} onGestureCancel={doc.cancelGesture} ownGesture={doc.ownGesture} liveEnabled={doc.liveStatus !== 'unavailable'}
+            movers={new Map([...doc.previews?.values() ?? []].flatMap((preview) => preview.positions.map((position) => [position.id, preview.actor.name] as [string, string])))}
+            livePreviews={new Map([...doc.previews?.values() ?? []].flatMap((preview) => preview.positions.map((position) => [position.id, preview] as [string, typeof preview])))} />
           {!sketch.thoughts.length ? <p className="sk-first">{phone
             ? <>An empty sketch. Start with <b>Add a thought</b>.</>
             : <>An empty sketch. Add the first thought with <b>Thought</b>, then keep adding with the <b>+</b> beside it.</>}</p> : null}
@@ -762,7 +793,7 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
   }
 
   return (
-    <div className="sk-page" ref={rootRef} onKeyDown={onKeyDown}>
+    <div className="sk-page" ref={rootRef} onKeyDown={onKeyDown} data-live-map-status={doc.liveStatus}>
       <div className="sk">
         {head}
         {sketch.copies.length ? (
@@ -797,12 +828,15 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
           </div>
         ) : (
           <>
-            <p className="sk-readonly"><Icon name="lock" size={12} />{sketch.scope === 'dm'
+            <p className="sk-readonly"><Icon name="lock" size={12} />{doc.liveStatus === 'connecting' ? 'Reconnecting to the shared map. Wait for confirmation before changing it.' : sketch.scope === 'dm'
               ? 'Nobody else is in this conversation now, so the sketch is read-only until the other person reopens it.'
               : 'You can look at this sketch; people who can change it keep it up to date.'}</p>
             <p className="sk-status sk-status--readonly" role="status">{status.text}</p>
           </>
         )}
+
+        {doc.privateMovement ? <details className="editing-map-recovery"><summary>An unfinished movement is kept privately</summary><p>Compare these positions with the current thoughts before starting a new movement. This copy is not shared automatically.</p><ul>{doc.privateMovement.positions.map((position) => <li key={position.id}>{quote(find(position.id)?.text ?? 'Unavailable thought')} · x {Math.round(position.x)}, y {Math.round(position.y)}{position.width !== undefined ? ` · width ${Math.round(position.width)}, height ${Math.round(position.height ?? 0)}` : ''}</li>)}</ul><Button variant="quiet" onClick={doc.discardPrivateMovement}>Discard private movement copy</Button></details> : null}
+
         {/* Pressing these keeps focus in the editor. Safari and macOS Firefox never focus a pressed
             button: the editor would blur first, and leaving the field saves, even for Cancel edit. */}
         {editing && canWrite ? <div className="sk-edit-controls" role="group" aria-label="Current thought edit" onMouseDown={(event) => event.preventDefault()}>

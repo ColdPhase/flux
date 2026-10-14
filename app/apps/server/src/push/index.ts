@@ -79,6 +79,7 @@ function inboxItem(row: NotificationRecord): InboxItem {
     url: row.url,
     createdAt: row.createdAt.toISOString(),
     readAt: row.readAt?.toISOString() ?? null,
+    ...(row.assistantRequestIdentity ? { assistantRequestIdentity: row.assistantRequestIdentity } : {}),
   };
 }
 

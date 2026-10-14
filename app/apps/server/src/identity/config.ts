@@ -40,6 +40,14 @@ export interface IdentityConfig {
   passwordResetTtlSeconds: number;
   /** Null keeps email/password sign-in only. */
   oidc: OidcConfig | null;
+  /**
+   * Who may create a password account (F-024 S5a, #313). `open` is today's behaviour; `verified` makes a new
+   * account prove its address by mail before it can sign in; `off` closes password sign-up. `verified` without
+   * SMTP cannot send that mail, and any sign-on provider makes password sign-up ordinary-closed (SSO-only mode),
+   * so the effective value is `off` (`signupRequested` keeps what the operator asked for).
+   */
+  signup: 'open' | 'verified' | 'off';
+  signupRequested: 'open' | 'verified' | 'off';
 }
 
 function isAddressOrRange(value: string) {
@@ -151,13 +159,18 @@ export function loadIdentityConfig(env: NodeJS.ProcessEnv = process.env): Identi
   if (!Number.isInteger(ttl) || ttl < 60 || ttl > 86_400) throw new Error('FLUX_PASSWORD_RESET_TTL_SECONDS must be an integer from 60 to 86400');
   const rateLimit = (env.FLUX_AUTH_RATE_LIMIT ?? 'true').trim().toLowerCase();
   if (rateLimit !== 'true' && rateLimit !== 'false') throw new Error('FLUX_AUTH_RATE_LIMIT must be true or false');
+  const requested = (env.FLUX_SIGNUP ?? 'open').trim().toLowerCase();
+  if (requested !== 'open' && requested !== 'verified' && requested !== 'off') throw new Error('FLUX_SIGNUP must be open, verified or off');
+  const oidc = loadOidcConfig(env);
   return {
     publicOrigin,
     secret,
+    signupRequested: requested,
+    signup: oidc || (requested === 'verified' && !(smtpUrl && from)) ? 'off' : requested,
     trustedProxies,
     smtp: smtpUrl && from ? { url: smtpUrl, from } : null,
     rateLimit: rateLimit === 'true',
     passwordResetTtlSeconds: ttl,
-    oidc: loadOidcConfig(env),
+    oidc,
   };
 }

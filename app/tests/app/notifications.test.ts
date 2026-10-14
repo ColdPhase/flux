@@ -4,6 +4,7 @@ import { after, before, describe, test } from 'node:test';
 import {
   DEFAULT_PREFERENCES,
   NOTIFICATION_EMAIL_JOB,
+  PUSH_SEND_JOB,
   applyPreferenceChange,
   buildNotificationEmail,
   deliverNotificationEmail,
@@ -320,6 +321,80 @@ describe('email and push delivery', () => {
     await sleep(1500);
     assert.equal((await mailsTo(reader.email)).length, count, 'no email after unsubscribing');
     await prefs(reader, { emailDestination: 'account' });
+  });
+
+  test('focus holds push and email until it ends, the Inbox still fills, and resuming clears it (#340)', async () => {
+    const focused = await person('Fen Ito');
+    await addMember(owner, workspaceId, focused, 'member');
+    const until = new Date(Date.now() + 45 * 60_000);
+    until.setMilliseconds(0);
+    const paused = await prefs(focused, { pause: { until: until.toISOString() } });
+    assert.equal(paused.pause.until, until.toISOString());
+    for (const bad of [new Date(Date.now() - 60_000).toISOString(), new Date(Date.now() + 13 * 3600_000).toISOString(), 'soon']) {
+      const refused = await focused.browser.request('PATCH', '/api/v1/notification-preferences', { body: { pause: { until: bad } } });
+      assert.equal(refused.status, 400, refused.text);
+      assert.match(refused.text, /INVALID_PAUSE/);
+    }
+    const thread = await conversation(owner, projectId, '@Fen Ito the seed order is in');
+    await waitForItem(focused, (entry) => entry.url?.endsWith(thread.messages[0]!.id) === true, 'the mention in the Inbox during focus');
+    const [email] = await waitFor(async () => { const rows = await emailRows(focused.id); return rows.length ? rows : null; }, 'the queued email');
+    const held = await pool.query(`SELECT start_after FROM pgboss.job WHERE name = $1 AND data->>'emailId' = $2`, [NOTIFICATION_EMAIL_JOB, email!.id]);
+    assert.equal(new Date(held.rows[0].start_after).getTime(), until.getTime(), 'the email job waits for the end of focus');
+    // While focus runs, a delivery attempt is deferred to its end.
+    const deferred = await deliverNotificationEmail({ available: true, origin, uow: emailUnitOfWork(db, queue), mailer: smtp }, { emailId: email!.id });
+    assert.deepEqual(deferred, { outcome: 'deferred', until });
+
+    const resumed = await prefs(focused, { pause: { until: null } });
+    assert.equal(resumed.pause.until, null);
+    const sent = await deliverNotificationEmail({ available: true, origin, uow: emailUnitOfWork(db, queue), mailer: smtp }, { emailId: email!.id });
+    assert.equal(sent.outcome, 'sent');
+  });
+
+  test('focus with summary enabled retains ordinary push and email and defers the real summary until resume', async () => {
+    const focused = await person('Pia Dolan');
+    await addMember(owner, workspaceId, focused, 'member');
+    const { subscription, id: subscriptionId } = await subscribe(focused.browser);
+    const until = new Date(Date.now() + 45 * 60_000); until.setMilliseconds(0);
+    const now = new Date(), minute = localMinutes(now, 'UTC');
+    const clock = `${String(Math.floor(minute / 60)).padStart(2, '0')}:${String(minute % 60).padStart(2, '0')}`;
+    const futureMinute = (minute + 60) % 1440;
+    const futureClock = `${String(Math.floor(futureMinute / 60)).padStart(2, '0')}:${String(futureMinute % 60).padStart(2, '0')}`;
+    const combined = await prefs(focused, { pause: { until: until.toISOString() }, morningSummary: { enabled: true, at: futureClock }, quietHours: { enabled: false, timeZone: 'UTC' } });
+    assert.equal(combined.pause.until, until.toISOString());
+    assert.deepEqual(combined.morningSummary, { enabled: true, at: futureClock });
+    const thread = await conversation(owner, projectId, '@Pia Dolan the field measurements are ready');
+    const item = await waitForItem(focused, entry => entry.url?.endsWith(thread.messages[0]!.id) === true, 'the Inbox during composed focus');
+    await generatorCaughtUp();
+    const jobs = await pool.query('SELECT start_after FROM pgboss.job WHERE name=$1 AND data->>\'notificationId\'=$2 AND data->>\'subscriptionId\'=$3', [PUSH_SEND_JOB, item.id, subscriptionId]);
+    assert.equal(jobs.rows.length, 1, 'a pause-only push is queued even with summary enabled');
+    assert.equal(new Date(jobs.rows[0].start_after).getTime(), until.getTime());
+    const [email] = await waitFor(async () => { const rows = await emailRows(focused.id); return rows.length ? rows : null; }, 'the composed held email');
+    const emailJob = await pool.query('SELECT start_after FROM pgboss.job WHERE name=$1 AND data->>\'emailId\'=$2', [NOTIFICATION_EMAIL_JOB, email!.id]);
+    assert.equal(new Date(emailJob.rows[0].start_after).getTime(), until.getTime());
+    assert.equal((await mailsTo(focused.email)).length, 0, 'no email before Resume');
+    assert.deepEqual(await deliverPush({ db, config: loadPushSenderConfig() }, { notificationId: item.id, subscriptionId, userId: focused.id }), { outcome: 'deferred', until });
+    assert.deepEqual(await deliverNotificationEmail({ available: true, origin, uow: emailUnitOfWork(db, queue), mailer: smtp }, { emailId: email!.id }), { outcome: 'deferred', until });
+    // Enable today's due time only after the unread source exists, so a real scheduler
+    // cannot claim an empty day before this controlled summary is admitted.
+    await prefs(focused, { morningSummary: { at: clock } });
+    await sendMorningSummaries(summaryUnitOfWork(db, queue), new Date());
+    const summaries = (await pool.query("SELECT id FROM notifications WHERE user_id=$1 AND delivery_kind='morning_summary'", [focused.id])).rows;
+    assert.equal(summaries.length, 1);
+    assert.deepEqual(await deliverPush({ db, config: loadPushSenderConfig() }, { notificationId: summaries[0].id, subscriptionId, userId: focused.id }), { outcome: 'deferred', until });
+    await waitFor(async () => {
+      const jobs = await pool.query('SELECT state,start_after FROM pgboss.job WHERE name=$1 AND data->>\'notificationId\'=$2', [PUSH_SEND_JOB, summaries[0].id]);
+      return jobs.rows.some(row => new Date(row.start_after).getTime() === until.getTime())
+        && jobs.rows.every(row => row.state === 'completed' || new Date(row.start_after).getTime() >= until.getTime());
+    }, 'the real ready summary job to defer before direct Resume delivery');
+    assert.equal((await recordedPushes(subscription.mockId)).length, 0, 'neither ordinary nor summary push escapes focus');
+    await prefs(focused, { pause: { until: null } });
+    assert.equal((await deliverPush({ db, config: loadPushSenderConfig() }, { notificationId: item.id, subscriptionId, userId: focused.id })).outcome, 'sent');
+    assert.equal((await deliverNotificationEmail({ available: true, origin, uow: emailUnitOfWork(db, queue), mailer: smtp }, { emailId: email!.id })).outcome, 'sent');
+    await waitForMails(focused.email, 1, 'one email after Resume');
+    assert.equal((await mailsTo(focused.email)).length, 1);
+    assert.equal((await deliverPush({ db, config: loadPushSenderConfig() }, { notificationId: summaries[0].id, subscriptionId, userId: focused.id })).outcome, 'sent');
+    assert.equal((await recordedPushes(subscription.mockId)).length, 2, 'ordinary and summary delivery both resume');
+    await prefs(focused, { morningSummary: { enabled: false } });
   });
 
   test('access is rechecked before email and push: someone removed meanwhile receives nothing', async () => {

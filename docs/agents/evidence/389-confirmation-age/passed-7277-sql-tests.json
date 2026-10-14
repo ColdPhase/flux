@@ -1,0 +1,10 @@
+{
+  "testedHead": "7277b99286a7f662c87219605f7a3e2fcb346bf7",
+  "command": "node_modules/.bin/tsx --test --test-reporter=spec --test-concurrency=1 tests/app/editing-confirmation-fence.test.ts",
+  "tests": 6,
+  "pass": 6,
+  "fail": 0,
+  "cancelled": 0,
+  "skipped": 0,
+  "scope": "Disposable real SQL identity/confirmation/current/final recipient fences; synthetic unit identities, not vendor sign-ins."
+}

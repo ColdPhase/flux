@@ -1,6 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { and, asc, desc, eq, gt, inArray, isNull, or, sql } from 'drizzle-orm';
 import type { CoWorkEnqueueCommand, CoWorkRequestLimits, CoWorkRequestRecord, CoWorkInboxRecord, CoWorkSourceRef } from '@flux/contracts';
+import { prepareReferencedTaskUse, referencedTaskIds } from './task-targets.js';
+import type { TaskUseFence } from './task-use.js';
 import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
 
@@ -48,7 +50,7 @@ function pageLimit(limit: number) {
  */
 export function coworkRequestRows(tx: DbExecutor) {
   return {
-    async enqueue(sender: Address, input: CoWorkEnqueueCommand, fingerprint: string, limits: CoWorkRequestLimits) {
+    async enqueue(sender: Address, input: CoWorkEnqueueCommand, fingerprint: string, limits: CoWorkRequestLimits, retained?: TaskUseFence) {
       const [unit] = await tx.select().from(schema.coworkUnits).where(and(eq(schema.coworkUnits.id, input.unitId),
         eq(schema.coworkUnits.workspaceId, sender.workspaceId), eq(schema.coworkUnits.projectId, sender.projectId),
         eq(schema.coworkUnits.assignmentConnectionId, input.recipientConnectionId)));
@@ -63,6 +65,11 @@ export function coworkRequestRows(tx: DbExecutor) {
         eq(requests.id, input.parentRequestId), eq(requests.workspaceId, sender.workspaceId), eq(requests.projectId, sender.projectId))) : [];
       if (input.parentRequestId && (!parent || parent.senderConnectionId !== sender.connectionId
         && parent.recipientConnectionId !== sender.connectionId)) return { status: 'unavailable' as const };
+      const references = [{ type: 'work', id: unit.taskId }, { type: 'work', id: unit.lineageTaskId },
+        ...[input.target, ...input.sourceRefs, ...input.criteriaRefs].map((ref) => ref.type === 'github_pr' ? { type: ref.type, id: ref.linkId } : ref)];
+      const affected = await referencedTaskIds(tx, references);
+      const taskFence = retained ?? await prepareReferencedTaskUse(tx, sender.projectId, references);
+      if (affected.some((id) => !taskFence.ids.includes(id))) throw new Error('Request targets are outside the complete retained task fence');
       const root = and(eq(lineages.taskId, unit.lineageTaskId), eq(lineages.runId, unit.runId),
         parent ? eq(lineages.id, parent.lineageId) : sql`true`);
       const rootScope = and(root, eq(lineages.workspaceId, sender.workspaceId), eq(lineages.projectId, sender.projectId));
@@ -103,6 +110,7 @@ export function coworkRequestRows(tx: DbExecutor) {
         createdAt: sql`clock_timestamp()`, updatedAt: sql`clock_timestamp()` }).returning();
       const deliveryIntentId = randomUUID();
       await tx.insert(deliveries).values({ id: deliveryIntentId, requestId: created!.id, createdAt: sql`clock_timestamp()` });
+      await taskFence.mark(affected);
       return { status: 'created' as const, request: record(created!), deliveryIntentId };
     },
     /** At-least-once transport ACK only. No claim, task state, deletion or model wake. */
@@ -122,9 +130,16 @@ export function coworkRequestRows(tx: DbExecutor) {
         throw new Error('A concrete deferral reason/boundary is required');
       if ((reason === 'dependency' || nextBoundary === 'on_dependency') && !dependencyRef)
         throw new Error('The actual dependency reference is required');
+      const [located] = await tx.select().from(requests).where(and(addressed(recipient), eq(requests.id, requestId)));
+      if (!located) return null;
+      const refs = [located.target, ...located.sourceRefs, ...located.criteriaRefs,
+        ...(located.dependencyRef ? [located.dependencyRef] : []), ...(dependencyRef ? [dependencyRef] : [])]
+        .map((ref) => ref.type === 'github_pr' ? { type: ref.type, id: ref.linkId } : ref);
+      const taskFence = await prepareReferencedTaskUse(tx, recipient.projectId, [{ type: 'work', id: located.taskId }, ...refs]);
       const [row] = await tx.update(requests).set({ state: 'deferred', reason, nextBoundary, dependencyRef, version: sql`${requests.version} + 1`, updatedAt: sql`clock_timestamp()` })
         .where(and(addressed(recipient), eq(requests.id, requestId), eq(requests.version, expectedVersion),
           inArray(requests.state, ['queued', 'deferred']), sql`${requests.expiresAt} > clock_timestamp()`)).returning();
+      if (row) await taskFence.mark();
       return row ? record(row) : null;
     },
     /** Internal keyset only; current source filtering and opaque cursor signing belong to the caller. */

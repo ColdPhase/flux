@@ -61,7 +61,49 @@
 .ws-item__s { display: block; font-size: var(--fs-sm); color: var(--t3); line-height: 1.5; }
 .ws-item--muted .ws-item__t { color: var(--t2); font-weight: 400; }
 .ws-item__r { font-family: var(--mono); display: flex; align-items: center; gap: 8px; flex: none; font-size: var(--fs-sm); color: var(--t3); font-variant-numeric: tabular-nums; }
-.ws-av { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--sub); color: var(--t2); font-family: var(--font); font-size: 11px; font-weight: 600; }
+.ws-av { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: var(--el); color: var(--t1); box-shadow: inset 0 0 0 1px var(--line), var(--sh-1); font-family: var(--font); font-size: 9px; font-weight: 600; }
+
+/* ---------- Task rows (F-026 S-P-Tasks, S9): glyph that changes the state, swipe left for Done ---------- */
+.ws-task { position: relative; overflow: hidden; }
+.ws-task .ws-av { width: 20px; height: 20px; }
+.ws-task__fg { position: relative; display: flex; align-items: center; background: var(--task-bg, var(--bg)); touch-action: pan-y; transition: transform var(--dur-2) var(--ease-out); }
+.ws-task.is-dragging .ws-task__fg { transition: none; }
+.ws-task__acts { position: absolute; inset: 0 0 0 auto; display: flex; width: 76px; visibility: hidden; }
+.ws-task.is-dragging .ws-task__acts, .ws-task.is-open .ws-task__acts { visibility: visible; }
+.ws-task__done {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; width: 100%; font-size: var(--fs-sm); font-weight: 600;
+  background-color: var(--inv); background-image: var(--grad-inv); color: var(--oninv);
+}
+.ws-task__done:focus-visible { outline-color: var(--oninv); outline-offset: -3px; }
+.ws-task__glyph { display: grid; place-items: center; flex: none; width: 30px; height: 30px; margin: 0 2px 0 -7px; border-radius: 50%; transition: background-color var(--dur-1) ease; }
+button.ws-task__glyph:hover, button.ws-task__glyph:focus-visible { background: var(--sub); }
+button.ws-task__glyph:active { background: var(--hov); }
+.ws-task .ws-item { flex: 1; min-width: 0; width: auto; margin: 0; }
+.ws-task .ws-item__r .ui-pill { height: 24px; padding: 0 12px; font-size: var(--fs-md); }
+.ws-mineall { display: none; }
+@media (max-width: 640px) {
+  .ws-tasks { padding-top: 6px; }
+  .ws-mineall { display: flex; gap: 2px; padding: 3px; margin-bottom: 14px; border-radius: var(--r-pill); background: var(--sub); box-shadow: inset 0 1px 2px rgba(0, 0, 0, .06); }
+  .ws-mineall button { flex: 1; min-height: 34px; border-radius: var(--r-pill); font-size: var(--fs-md); font-weight: 500; color: var(--t2); }
+  .ws-mineall button[aria-pressed="true"] { background: var(--el); color: var(--t1); box-shadow: var(--sh-1), 0 2px 6px -2px rgba(0, 0, 0, .14); }
+  .ws-tasks .ws-task-controls { margin: 0 -16px; padding: 0 16px; }
+  .ws-tasks .ws-group { margin-top: 12px; }
+  /* Read by assistive technology, in the flow so the section jumps still land on it. */
+  .ws-tasks .ws-group__h { height: 1px; margin: 0 0 -1px; overflow: hidden; white-space: nowrap; }
+  .ws-tasks .ws-list { --task-bg: var(--el); overflow: hidden; border-radius: 18px; background: var(--el); box-shadow: var(--sh-card); }
+  .ws-task { min-height: 62px; }
+  .ws-task__fg { min-height: 62px; padding-left: 4px; }
+  .ws-tasks .ws-pages:not(:has(.ws-pages__actions button:not(:last-child):not(:disabled))) { display: none; }
+  .ws-task .ws-item { padding: 8px 16px 8px 4px; border-radius: 0; }
+  .ws-task .ws-item__t { font-size: 15px; font-weight: 400; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ws-task .ws-item__s { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; font-size: 12.5px; }
+  /* Identity, named owner and the state word must all remain readable when an agent wraps. */
+  .ws-task--agent .ws-item__s { display: block; -webkit-line-clamp: unset; overflow: visible; }
+  .ws-task--agent .agent-id { max-width: 100%; vertical-align: middle; }
+  .ws-task__acts { width: 76px; }
+}
+@media (pointer: coarse) { .ws-mineall button { min-height: 44px; } .ws-task__glyph { width: 44px; height: 44px; margin: 0; } }
+@media (prefers-reduced-motion: reduce) { .ws-task__fg, .ws-task__glyph { transition: none; } }
 
 /* ---------- Details panel ---------- */
 .wd .details__title { overflow-wrap: anywhere; }
@@ -97,6 +139,7 @@
 .wd-row dt label { color: inherit; }
 .wd-row dd { display: flex; align-items: center; gap: 8px; min-width: 0; margin: 0; font-size: var(--fs-md); overflow-wrap: anywhere; }
 .wd-from { flex-wrap: wrap; }
+.wd-handoff { margin-top: 10px; }
 .wd-from .wd-links { width: 100%; }
 .wd-from .wd-link { width: 100%; margin: 0; min-height: 32px; padding: 2px 0; }
 .wd-value { display: inline-flex; align-items: center; gap: 8px; }
@@ -146,6 +189,15 @@
 button.wd-link:active:not(:disabled) { background: var(--sub); transform: scale(var(--press)); transition-duration: var(--dur-1); }
 .wd-inline { display: inline; padding: 0; color: var(--t1); font-weight: 500; text-decoration: underline; text-decoration-color: var(--line2); text-underline-offset: 3px; }
 .wd-muted { font-size: var(--fs-sm) !important; color: var(--t3) !important; }
+.wd-history.details__sec { margin-top: 14px; }
+.wd-history h4 { margin-top: 12px; }
+.wd-history__events { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.wd-history__events li { display: flex; flex-wrap: wrap; align-items: center; gap: 3px 6px; font-size: var(--fs-md); min-width: 0; }
+.wd-history__events strong { font-weight: 550; overflow-wrap: anywhere; }
+.wd-history__action { color: var(--t2); }
+.wd-history__events .agent-id { flex-wrap: wrap; min-width: 0; }
+.wd-history__events .agent-id__name { white-space: normal; overflow-wrap: anywhere; }
+.wd-history__events time { flex-basis: 100%; font-size: var(--fs-sm); color: var(--t3); font-variant-numeric: tabular-nums; }
 /* Criteria and prerequisites of a planned task (#152): plain list, state in words, no checkbox that implies a check. */
 .wd-criteria { margin: 0 0 6px; padding-left: 18px; font-size: var(--fs-md); line-height: 1.5; }
 .wd-criteria li { padding: 2px 0; overflow-wrap: anywhere; }

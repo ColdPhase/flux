@@ -1,3 +1,4 @@
+import { assistantRoutes } from './assistant/routes.js';
 import { EventEmitter } from 'node:events';
 import type { Server } from 'node:http';
 import { join } from 'node:path';
@@ -6,6 +7,7 @@ import fastifyStatic from '@fastify/static';
 import websocket from '@fastify/websocket';
 import { PgBoss } from 'pg-boss';
 import { assertExactMigrationLedger, FLUX_SCHEMA_VERSION, readAppliedMigrationVersions, readMigrationManifest } from '@flux/db';
+import { EDITING_CAPABILITIES_PATH, type EditingCapability } from '@flux/contracts';
 import { registerDatabase } from './plugins/database.js';
 import { startIdentity } from './identity/index.js';
 import { accessRoutes } from './access/routes.js';
@@ -33,10 +35,13 @@ import { joinRateLimiter } from './live/rate-limit.js';
 import { agentProposalRoutes } from './agent-connection/routes.js';
 import { projectAgentRoutes } from './agent-connection/project-agents.js';
 import { agentPolicyRoutes } from './agent-connection/project-policy.js';
+import { agentStopRoutes } from './agent-connection/agent-stops.js';
+import { agentQuestionRoutes } from './agent-connection/agent-questions.js';
 import { agentMcpPolicyRoutes } from './agent-connection/mcp-policy-routes.js';
 import { proactiveComparisonRoutes } from './proactive-comparison/routes.js';
 import { registerMcpRoute } from './agent-connection/mcp-route.js';
 import { returnRoutes } from './returns/routes.js';
+import { needsYouRoutes } from './needs-you/routes.js';
 import { docRoutes } from './docs/routes.js';
 import { notificationRoutes } from './notifications/routes.js';
 import { searchRoutes } from './search/routes.js';
@@ -52,8 +57,21 @@ import type { ServerConfig } from './config.js';
 import { fixtureFlags, registerFixtureRoutes } from './fixture/index.js';
 import { registerHealth } from './health/routes.js';
 import { useDomainErrors } from './http/errors.js';
+import { registerUpgradeDispatcher } from './http/upgrades.js';
+import { registerEditing } from './editing/composition.js';
+import { disabledEditingUpgrade } from './editing/disabled-upgrade.js';
 import { useJsonCompression } from './http/compress.js';
 import { useFramingProtection } from './http/framing.js';
+
+declare module 'fastify' {
+  interface FastifyInstance {
+    /**
+     * Process shutdown (#228): closes development live editing, then the app, and reports whether
+     * editing resources drained (always true when it is off). A false result is a failed shutdown.
+     */
+    closeGracefully(): Promise<boolean>;
+  }
+}
 
 /**
  * The API's composition root (#88): builds every route and background loop from one loaded
@@ -80,14 +98,17 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
   const liveMedia = createLiveMediaFromEnv(env, identityConfig.publicOrigin);
   const lifecycle = liveMedia ? liveLifecycle(db, pool, liveMedia.media) : null;
   const liveRevocation = liveMedia ? liveRevocationCoordinator(db, pool, liveMedia.media, lifecycle!) : null;
-  await app.register(accessRoutes, { db, sessions: identity, boss, liveRevocation });
+  await app.register(accessRoutes, { db, sessions: identity, boss, liveRevocation, verifiedEmailMembers: identityConfig.oidc !== null });
+  // Live map/wiki editing (#228) is composed below, after media; native map routes reach its backend lazily.
+  let editing: Awaited<ReturnType<typeof registerEditing>> = null;
   const fileStorage = await diskFileStorage(filesDir);
-  await app.register(sketchRoutes, { db, sessions: identity, storage: fileStorage });
+  const editingConfirmation = identityConfig.oidc ? { providerId: identityConfig.oidc.providerId, confirmationMaxAgeMs: identityConfig.oidc.confirmationMaxAgeMs } : null;
+  await app.register(sketchRoutes, { db, sessions: identity, confirmation: editingConfirmation, storage: fileStorage, developmentEditing: config.developmentLiveEditing, liveBackend: () => editing?.mapsBackend ?? null });
   await app.register(dmRoutes, { db, sessions: identity });
   await app.register(pushRoutes, { db, sessions: identity, config: pushConfig });
   if (pushConfig.status === 'unavailable') app.log.warn(pushConfig.reason);
-  // Upgrades reach @fastify/websocket through this emitter, except `/media/*`, which the live
-  // signaling gate takes before any Fastify WebSocket handling (see the dispatch below).
+  // Upgrades reach @fastify/websocket through this emitter, except `/media/*` and the editing gate,
+  // which take theirs before any Fastify WebSocket handling (see the dispatch below).
   const streamUpgrades = new EventEmitter();
   await app.register(websocket, { options: { maxPayload: 1024, server: streamUpgrades as unknown as Server } });
   await app.register(streamRoutes, { db, sessions: identity, publicOrigin: identityConfig.publicOrigin, connectionString, heartbeatMs: config.heartbeatMs, cursorSecret: identityConfig.secret, exposeWork });
@@ -99,6 +120,8 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
   await app.register(githubRoutes, { db, sessions: identity, config: loadGithubConfig(env, identityConfig.publicOrigin) });
   // Configuration alone does not prove the SFU, DNS/TLS or receiver path is healthy.
   app.get('/api/v1/live-sessions/capabilities', async () => ({ status: liveMedia ? 'configured' : 'unavailable' }));
+  // Outside the editing routes, whose disabled hook refuses every request (#239 review).
+  app.get(EDITING_CAPABILITIES_PATH, async (): Promise<{ status: EditingCapability }> => ({ status: editing ? 'configured' : 'unavailable' }));
   const livePorts = liveMedia ? { access: liveAccess(db), sessions: liveSessionStore(db), media: liveMedia.media, mediaUrl: liveMedia.mediaUrl } : null;
   if (liveMedia) await app.register(liveRoutes, {
     sessions: identity,
@@ -111,9 +134,18 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
   // Browsers signal only through this gate; ending an auth session revokes its media admission (#128).
   const liveSignaling = liveMedia ? registerLiveSignaling(app, { db, connectionString, publicOrigin: identityConfig.publicOrigin,
     sessions: identity, ports: livePorts!, media: liveMedia.media, config: liveMedia.config }) : null;
-  app.server.on('upgrade', (request, socket, head) => {
-    if (liveSignaling?.gate.handleUpgrade(request, socket, head)) return;
-    streamUpgrades.emit('upgrade', request, socket, head);
+  editing = await registerEditing(app, { database: { db, pool }, sessions: identity, publicOrigin: identityConfig.publicOrigin,
+    connectionString, developmentEnabled: config.developmentLiveEditing, env, confirmation: editingConfirmation });
+  if (editing) app.log.warn('Development live editing selected; four-gate production acceptance remains pending');
+  // One listener owns every upgrade: media, then editing, then the Fastify stream emitter (1 KiB bound).
+  const removeUpgradeDispatcher = registerUpgradeDispatcher(app.server, streamUpgrades,
+    [liveSignaling?.gate, editing?.gate ?? disabledEditingUpgrade()]);
+  app.addHook('onClose', async () => removeUpgradeDispatcher());
+  app.decorate('closeGracefully', async () => {
+    await editing?.close();
+    await app.close();
+    // Only after Fastify and its HTTP/database hooks settle, never while a SQL fence is held.
+    return editing ? editing.finishTelemetry() : true;
   });
   if (liveMedia) await app.register(liveDiscoveryRoutes, { db, sessions: identity, media: liveMedia.media });
   if (liveMedia) await app.register(liveInvitationRoutes, { db, sessions: identity, cursorSecret: identityConfig.secret });
@@ -165,6 +197,8 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
   await app.register(agentProposalRoutes, { db, sessions: identity, oauthSecret: identityConfig.secret, publicOrigin: identityConfig.publicOrigin });
   await app.register(projectAgentRoutes, { db, sessions: identity });
   await app.register(agentPolicyRoutes, { db, sessions: identity });
+  await app.register(agentStopRoutes, { db, sessions: identity });
+  await app.register(agentQuestionRoutes, { db, sessions: identity });
   await app.register(agentMcpPolicyRoutes, { db, sessions: identity });
   await app.register(proactiveComparisonRoutes, { db, sessions: identity, backgroundMasterKey: config.backgroundMasterKey,
     comparisonsEnabled: config.backgroundComparisons });
@@ -172,11 +206,13 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
     identity.standing && identityConfig.oidc ? { checker: identity.standing, label: identityConfig.oidc.label } : null,
     identity.confirmation, identityConfig.oidc?.label);
   await app.register(returnRoutes, { db, sessions: identity });
+  await app.register(needsYouRoutes, { db, sessions: identity });
   await app.register(docRoutes, { db, sessions: identity });
   await app.register(notificationRoutes, { db, sessions: identity, smtp: identityConfig.smtp, publicOrigin: identityConfig.publicOrigin });
   // Personal assistant runs (#68): the server queues; the worker dispatches.
   const personalRuns = personalRunServerComposition(env, db);
   if (personalRuns.mode !== 'production') app.log.warn({ mode: personalRuns.mode }, 'TEST ONLY: personal runs use fixture connections and a mock provider');
+  await app.register(assistantRoutes, { db, sessions: identity, boss });
   await app.register(personalRunRoutes, { db, sessions: identity, boss, connections: personalRuns.connections, providerEnabled: personalRuns.providerEnabled });
   await app.register(searchRoutes, { db, sessions: identity, cursorSecret: identityConfig.secret, exposeWork });
   await app.register(exportRoutes, { db, sessions: identity, publicOrigin: identityConfig.publicOrigin, storage: fileStorage });

@@ -27,7 +27,7 @@ function source(scope: AgentOrientationScope, kind: AgentSourceKind): SQL {
   const state = kind === 'result' ? sql`finding` : sql`status`;
   return sql`SELECT id, left(title, 300) AS title, ${version} AS version, ${at} AS updated_at,
     NULL::integer AS sequence, ${state} AS state FROM ${table}
-    WHERE workspace_id = ${scope.workspaceId} AND project_id = ${scope.projectId}`;
+    WHERE workspace_id = ${scope.workspaceId} AND project_id = ${scope.projectId} ${kind === 'work' ? sql`AND creation_reverted_at IS NULL` : sql``}`;
 }
 function reference(scope: AgentOrientationScope, kind: AgentSourceKind, row: MetadataRow): AgentSourceReference {
   const checkpoint: AgentSourceCheckpoint = kind === 'result' ? { kind, id: row.id }

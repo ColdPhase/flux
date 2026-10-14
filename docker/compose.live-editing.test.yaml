@@ -1,0 +1,23 @@
+# TEST ONLY (#228): selects the development live map/wiki editing path on the API of an isolated
+# check stack. Use only through scripts/check_live_editing.sh. Live editing stays off by default:
+# compose.source.yaml and the operator compose.yaml never set FLUX_DEVELOPMENT_LIVE_EDITING.
+services:
+  api:
+    # The latency run stops the API itself and inspects its clean exit (live-editing-verification.md).
+    restart: "no"
+    environment:
+      FLUX_DEVELOPMENT_LIVE_EDITING: "true"
+      # Bounded development queue telemetry on stdout, only for the latency run (empty otherwise).
+      FLUX_DEVELOPMENT_LIVE_EDITING_TELEMETRY: ${FLUX_DEVELOPMENT_LIVE_EDITING_TELEMETRY:-}
+      FLUX_DEVELOPMENT_LIVE_EDITING_API_INSTANCE: ${FLUX_DEVELOPMENT_LIVE_EDITING_API_INSTANCE:-}
+  # A second API process on the same image, database, secret and public origin (Gate 3
+  # cross-process fixture, tests/app/live/two-api.test.ts). Only `--two-api` starts it.
+  api-two:
+    profiles: ["two-api"]
+    extends:
+      file: compose.source.yaml
+      service: api
+    restart: "no"
+    ports: !reset []
+    environment:
+      FLUX_DEVELOPMENT_LIVE_EDITING: "true"

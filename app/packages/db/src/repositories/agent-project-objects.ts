@@ -28,7 +28,9 @@ export function agentProjectObjectRows(tx: DbExecutor) {
         : kind === 'result' ? schema.projectResults : schema.projectConversations;
       const query = tx.select({ workspaceId: table.workspaceId, projectId: table.projectId }).from(table)
         .where(and(eq(table.id, id), eq(table.workspaceId, within.workspaceId), eq(table.projectId, within.projectId)));
-      const [row] = await (lock ? query.for('share') : query);
+      // Work identity/scope is immutable. Its mutation and lifecycle fence belongs to
+      // the complete sorted native task pass, never this upstream grant preparation.
+      const [row] = await (lock && kind !== 'work' ? query.for('share') : query);
       return row ?? null;
     },
   };

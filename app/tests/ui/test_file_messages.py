@@ -265,12 +265,19 @@ class FilesReferencesPhotos(unittest.TestCase):
         self.assertGreaterEqual(caption_box["y"], photo_box["y"] + photo_box["height"] - 0.001, "descriptive caption is below the complete photo/grid")
 
     def assert_grid_aligned(self, scope) -> None:
-        """The photo starts on its caption's left edge, own messages included (F-026 AC-3: one group)."""
+        """The photo and its caption share one edge (F-026 AC-3: one group): the left edge for others' messages,
+        the right edge for own messages, which are right-aligned (#482, bb63d0f8)."""
         grid = scope.locator(":scope > .photo-grid")
         bubble = scope.locator(":scope > .message-bubble")
         expect(grid).to_have_count(1)
         expect(bubble).to_be_visible()
-        self.assertLess(abs(grid.bounding_box()["x"] - bubble.bounding_box()["x"]), 1, "the photo and its caption share one left edge")
+        mine = "is-mine" in (scope.get_attribute("class") or "")
+        grid_box, bubble_box = grid.bounding_box(), bubble.bounding_box()
+        if mine:
+            gap = abs(grid_box["x"] + grid_box["width"] - bubble_box["x"] - bubble_box["width"])
+            self.assertLess(gap, 1, "own message: the photo and its caption share one right edge")
+        else:
+            self.assertLess(abs(grid_box["x"] - bubble_box["x"]), 1, "the photo and its caption share one left edge")
 
     def assert_meta_below_caption(self, scope) -> None:
         """A single photo's name and size come after its caption, not between the photo and the caption (F-026 §6)."""

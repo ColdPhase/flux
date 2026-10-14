@@ -182,6 +182,12 @@ native map commits and saved wiki versions retain their existing durable event b
    together. Store only bounded latest preview/lease state in expiring PostgreSQL
    rows; notify identifiers across API processes. It is not native placement/history
    and is never replayed after expiry. This avoids an extra broker or sticky host.
+   The HTTP acquire binds actor/current SQL session, resource/generation and gesture
+   to the lease. Its first authorized movement or cancellation atomically binds the
+   server-generated WebSocket connection ID; subsequent other connections refuse.
+   No client-supplied actor or connection identifier creates authority. Current
+   lease/session/versions are still checked again in the final native CAS transaction.
+
 3. Send bounded absolute preview positions during pointermove; peers render them
    before pointerup and see the authenticated mover. Preserve each peer's camera,
    selection and keyboard focus. Pan/zoom remains local. Preview does not create new
@@ -270,6 +276,8 @@ bounded OT alternative**. Neither private API mutation nor weaker guards is a fa
 
 PostgreSQL stores the room generation, saved-version binding, checkpoint/state vector,
 confirmed text/hash, admitted updates and immutable scoped receipts described below.
+(Revised 2026-10-09 by founder direction, B1: the checkpoint/state is a bounded snapshot
+plus the append-only update log after it; see the end of this document.)
 A serialized document transaction rechecks policy, locks the material/live head in
 the established access-before-material-before-live-head order, validates against
 current committed state, and persists the
@@ -551,3 +559,392 @@ malformed CRDT validation cost and checkpoint size under long histories, cross-p
 lease/delivery ordering, CodeMirror mobile/IME/undo behavior, and actual persistence
 plus safe-preview latency at 100k text. These are concrete calibration/test tasks;
 none is already proved by the cited documentation or source inspection.
+
+
+### Current disabled integration bounds — 2026-10-04
+
+All editing HTTP, wiki and map output/context reservations use one API-wide 32 MiB
+budget. Parsed wiki contexts retain the 512-visit/64 KiB ceiling; a closed map
+command of up to 200 positions uses at most 4096 visits and 256 KiB conservatively
+charged context, plus its separately charged at-most-64 KiB input frame. This does
+not increase the common cap. Finite FIFO admission retains charged input before
+SQL or hashing, rejects on timeout/close, and has no uncharged continuation queue.
+An empty bootstrap waiter has no encoded input yet: its queued codec lease charges
+actual retained backing/copy allowance and its continuation stays in the common
+context budget. The validated future encoding ceiling is immutable budget-owned
+metadata. Promotion atomically adds that future input/copy allowance and the full
+state/result reservation before admission resolves to any SQL/body read or input
+allocation. A failed promotion changes no lease or byte total; ordinary retained
+input and direct cold reservations keep their existing charge semantics. This
+bounded future-capacity clarification addresses an actual healthy 100k read refusal
+at `cdbf4a57`; the caps, FIFO, slots and deadlines stay unchanged and its repair
+still requires independent source and runtime checks.
+Each protected authority callback emits at most one frame; received-frame ACKs do
+not themselves send the next frame. (Revised 2026-10-09 by founder direction, A1: a wiki
+confirmed read hands off its whole batch within the output window; see the end of this
+document.) Public ws-owned frame copies remain charged
+through their actual send callbacks after close or revocation. Rolled-back live
+errors carry scalar outcome/code only; current protected postimages require a new
+held-fence read. These are source integration choices, awaiting current-head
+runtime and independent evaluation; they do not close any remaining gate.
+
+### Map persistence integration seam (2026-10-04, implementation pending verification)
+
+The development composition shares `apiEditingOutputBudget` across wiki/map
+controllers, live HTTP, and native map HTTP/MCP journals. The existing common
+32 MiB cap and frame/chunk/assembly/window bounds remain in force. Native map
+HTTP owns its preparation before session/SQL admission; journal adapters reuse
+that reservation. MCP retains its native journal reservation through the outer
+caller transaction. This live preparation applies only to a map whose live room
+already exists (2026-10-05, #239 review): with the development capability off, an
+ordinary HTTP/MCP map command first makes a non-locking room-existence read; a map
+without a room is neither charged in the shared budget nor queued for native
+admission, so ordinary map traffic keeps main's concurrency. When a room appears
+between that read and the journal's locked head read, the journal admits the
+command inside its transaction (the same finite FIFO, 10-second deadline). Any
+native capacity refusal on these paths is a retryable 503 (`outcome: refused`),
+never a 500. A map that has a room stays charged in either mode.
+Clients read `GET /api/v1/live-editing/capabilities` (`{status: 'configured' |
+'unavailable'}`, outside the disabled editing routes) once per page load, in the
+wiki loaders before the first render. Only `configured` mounts the live map hook,
+the live wiki reader and editor; their CRDT/editor bundle is a lazily loaded chunk,
+because yjs's `lib0` reads `localStorage` while its module evaluates and a refusing
+browser storage otherwise stopped the whole application rendering (observed
+2026-10-05 at `0309cc48`). Otherwise maps and the wiki are the ordinary, pre-#228
+ones; a failed chunk load also falls back to them. A native replay still uses the immutable original actor/UUID
+and parameters, and reprojects placed-object titles under current locked rights
+before HTTP handoff. The client confirms graph state exclusively from ordered
+server deltas; HTTP replay does not patch an old graph snapshot.
+
+Migration `0047_live_maps.sql` is reserved in
+[the issue record](https://github.com/ColdPhase/flux/issues/228#issuecomment-5975059152).
+One atomic join reads the native snapshot with generation/sequence. Native CAS
+writes, immutable journal, retained thought versions/link epochs, cleared gesture
+leases, original intent receipt and identifier-only NOTIFY commit together;
+ordinary identifier events are flushed after native/coordination writes. Separate
+API replicas re-read the journal immediately on transactional NOTIFY; periodic
+catch-up is recovery only. Each protected callback hands off at most one ordered
+delta or chunk (for the wiki, revised 2026-10-09 by founder direction, A1: every pending
+update and the head preview within the output window); it also hands off every transient frame its read observed (map:
+cleared lease, preview, presence; wiki: cursor presence), under the same held fence
+and output window (2026-10-06, below).
+
+The source bounds each room to 32 expiring gestures and 32 presence leases,
+and each category to 2048 across the database. A producer reaches a truthful
+capacity refusal before admitting a snapshot every reader cannot represent.
+A gesture retains at most 200 closed thought CAS records/positions; presence
+names at most 16 selections. TTL is at most five seconds and the current SQL
+session expiry. First authorized movement/cancel binds the HTTP-issued lease to
+the server-generated socket connection, preserving actor/session/room/generation.
+Input retains at most 4096 parsed visits/262144 bytes plus its separately charged
+65536-byte raw frame; wiki metadata retains its earlier smaller bound. Native
+snapshot/affected-link counts and serialized SQL sizes are checked before
+allocating graph rows. Required normal 500-thought/200-movement behavior and
+capacity boundary tests are pending; these limits do not establish latency proof.
+
+Own undo names 1–200 original command UUIDs from this frontend instance. The
+server verifies author, immutable namespace, generation, original poststates,
+retained absences and complete dependent-link epochs. It dry-runs inverses in
+reverse journal order before any mutation, then applies one atomic native change
+with increasing versions/epochs, one receipt and one ordered delta. Any peer
+change or delete/restore ABA refuses the entire step; there is no latest-state
+rebase. Exact original inverse UUID retry reads its stored receipt. Journal input
+is counted and size-checked before SQL result allocation; the complete preparation
+remains under the shared reservation. Required rollback/retry/conflict/ABA cases
+and actual reader/drag/full-path two-API measurements remain unverified.
+
+### Map delivery cost (2026-10-06, #239 latency work)
+
+The 2026-10-04 diagnostic on `2e179041` spent p50 57 ms between a preview's
+publication and the peer's receipt. Each preview took one movement transaction and,
+per connection, two confirmed reads (one per transient frame, then a read that found
+nothing), and every confirmed read charged the 24 MiB worst case of a delta, so the
+shared 32 MiB budget admitted one read at a time across the whole API. Two changes,
+with the common cap, FIFO, deadlines and per-room row limits unchanged:
+
+- A confirmed read first charges 2 MiB. Under its session, policy and room locks,
+  before loading rows, it counts what it would load (a pending delta; current
+  previews, their positions and presence; actor name bytes). The conservative
+  object/UTF-16 charge of such a read without a delta is at most
+  `8192 + 4096·previews + 1200·positions + 8192·presence + 4·name bytes`
+  (`transientCharge`, checked against the actual charge of the largest shapes in
+  `live-map-preparation.test.ts`). A delta, or a larger count, grows the charge to
+  the 24 MiB worst case when the budget has room and nobody waits; otherwise the read
+  rolls back and is admitted again through the FIFO with the worst case charged.
+  Nothing larger than its charge is loaded first.
+- A map read hands off all transient frames it observed (cleared leases first,
+  then changed previews and presence) instead of one per read; a wiki read likewise
+  hands off every changed cursor before its next ordered update or preview. A full
+  output window ends the read and the timer retries, as before; a later change
+  arrives as a new read through its NOTIFY.
+- A wiki confirmed read locks the same head row without transferring or decoding its
+  codec state (up to 8 MiB), which it never sends.
+- Up to two codec workers stay between text updates instead of a fresh worker per
+  update (see the [server codec](live-editing-server-codec.md) note).
+
+The browser sends the first preview after 40 ms without one at once, and later
+ones at most every 40 ms as before.
+
+### Wiki text under continuous typing (2026-10-09, #228 Gate 4)
+
+The Gate 4 runs at `71367e69` timed out all 960 wiki rows: no sampled keystroke
+reached the peer within 1000 ms. A diagnostic run of the same source (10k cases,
+unloaded host) found three causes; each now has a regression test:
+
+- The editor sealed a new immutable command every 40 ms but sends one command at a
+  time and waits for its receipt (about 230 ms from frame to ACK). Commands queued
+  without bound (1025 waiting, past the 1024 recovery bound), so a sampled input's
+  command never reached the server in time. Input typed while a command awaits its
+  receipt now stays unsealed and that receipt seals it as the next command. With
+  nothing in flight the 40 ms window seals as before; sealed UUID/bytes are still
+  never merged or rewritten.
+- A completed text reserved its codec lease only when no other editing operation
+  held the budget, while reads and cursors in the admission FIFO took every freed
+  slot first. Texts waited p50 152 ms (max 1.3 s) and were refused 3319 times; in the
+  reader case one text was refused 232 times while 230 reads and cursors ran, until
+  its 10 s assembly deadline (`EDITING_ASSEMBLY_EXPIRED`). The text now takes its turn
+  in that FIFO and reserves the same charge at promotion. Until then it stays charged
+  in its assembly; both deadlines are unchanged.
+- A cursor inside the editor's own text that the server has not admitted yet was
+  refused (`INVALID_CURSOR`: the position named clock 768 of a replica admitted up to
+  211). Such a cursor now waits for the receipt that confirms that text; positions in
+  admitted text are sent as before.
+
+With these three fixed, a second diagnostic run (all four wiki cases, host shared with
+six other suites) still timed out every row: the peer received each update 1.6–2.4 s
+after its ACK, and the reader got 11–15 previews for 336–413 updates. Two costs on
+every update's path:
+
+- While a delivery waited for the client's acknowledgment, each room notification
+  still ran an authorized handoff transaction that could not send anything (about
+  1280 of 9850 operations). The acknowledgment then waited for it before the next read
+  (p50 300 ms from acknowledgment to the next update). A busy delivery with no chunk
+  to send now skips that transaction; its acknowledgment starts the next read.
+- The editor re-sends its unchanged cursor every 40 ms while typing (about 25 a
+  second); each was a locked transaction plus a read on every connection of the
+  room (3828 of 9850 operations). An unchanged cursor now renews presence at most
+  once a second, the presence heartbeat; a moved cursor goes through at once.
+
+The third run painted 238/240 and 239/240 editor rows (p95 686 and 527 ms on the
+shared host) but showed one more starvation: each live read reserves a 24 MiB response
+from the shared output budget through its own admission queue, and that queue was
+notified before the HTTP routes' queue. Enrollment renewals waited the full 10 s and
+failed with 503 (about ten in four cases); each failure reconnected the writer and
+blurred its editor. Requests of every admission sharing one budget now take their
+turns in arrival order. The fourth run had no 503 and no reconnect. Later runs still
+showed map bootstraps refused after 10 s (three to four per run). The cause in the code: the map authority's
+FIFO was a separate queue on the same budget, notified after the HTTP and read
+admissions, and a running map read could grow its charge while others waited. Every
+queue of the budget (HTTP, read preparation, native journal, map authority) now takes
+its turn by one arrival ticket, and a map read grows its charge only when no queue of
+the budget waits (2026-10-10).
+
+Not fixed here, with evidence from the same runs:
+
+- **Reader previews starve under continuous typing.** A read sends a preview only when
+  it finds no newer update. Every read locks the document row and so waits behind the
+  next text commit, which the writer sends as soon as the previous one is
+  acknowledged; the reader received 1–12 previews for 340–380 updates and painted no
+  row. Sending the head's preview before the last update cost the peer one read per
+  commit and pushed the editor peer behind for good (run four), so it is not included.
+- **Commit cost grows with the room.** A text commit took p50 23 ms in the first 10 s
+  of a case and 84 ms after 60 s (reads 28 → 50 ms): every commit loads and rewrites
+  the whole codec state, which grows with each admitted command. As commits slow, the
+  peer, which needs one authorized read per update, falls further behind.
+
+Caps, budgets, deadlines and the latency gate are unchanged.
+
+### Options for the two remaining wiki causes (2026-10-09, for the founder's decision)
+
+Decided the same day: A1 + B1 (next section). The rest of this section is the proposal as
+written. Numbers come from the runs above. The 8fce745a
+run shared its host with other suites. The latency path is input → batch or wait for the
+command in flight (p50 67 / p95 144 ms) → commit and receipt (122 / 164) → the peer's
+read → peer render and two animation frames (about 45). Peer render is not the problem.
+Even in the first 15 s of a case, before the slowdown, editor p95 was 346 ms (10k) and
+517 ms (100k).
+
+**Cause A: reader previews starve and the peer falls behind.** One read sends at most one
+update, previews only at the head, and the 24 MiB response charge allows one read at a
+time per API.
+
+| Option | What changes | Expected wiki p95 effect | Risk | Effort | Recorded decision |
+| --- | --- | --- | --- | --- | --- |
+| A1 Batched reads | One authorized read hands off every pending update, each still its own frame with sequence, UUID and hash. It adds the head preview when the batch reaches the head. The output holds that ordered set, not one delivery. | Removes the backlog: the peer is one read from the head however far behind. Readers get a preview every read; reader p95 becomes the editor path plus one preview render. | Larger output/charge per read; the reader preview render (100k) sits inside the locked read. | M | Changes the 2026-10-04 bound "one frame / one update chunk per callback". F-021 unchanged. |
+| A2 Room preview stream | Render the head preview once per room, at most every 100 ms after commits. Send it to each reader under its own fence. A reader shows the newest preview not newer than its applied update. | Readers render within about 100 ms + one handoff of a commit, with no extra read per update. Does not fix the editor peer's backlog. | Client rule change (a slightly older preview may show); preview cache memory. | M | Amends "preview generation/sequence" wording; F-021 unchanged. |
+| A3 Concurrent reads | Charge a read by its counted size (as maps did on 2026-10-06), not 24 MiB. Room reads take shared row locks. | Writer and peer reads stop queuing behind each other. Throughput maybe ×2; the peer still needs one read per update. | Memory accounting review; lock-order review. | M | Changes the "one worst-case response at a time" bound; F-021 unchanged. |
+
+**Cause B: every commit loads and rewrites the whole codec state** (submit 23 → 84 ms
+within 60 s; the receipts map and journal grow per command, plus nodes and deleted
+ranges).
+
+| Option | What changes | Expected wiki p95 effect | Risk | Effort | Recorded decision |
+| --- | --- | --- | --- | --- | --- |
+| B1 Append-only log + snapshot | A commit validates against a decoded room kept per API and checked by sequence. It appends the update, receipt and body/hash. A full checkpoint is written every N updates or T seconds. | Commit cost stays near the 23 ms case start; the commit cycle shortens to about 50–60 ms. | Two-API consistency (Gate 3), crash replay from the last snapshot, cache memory (already capped at 16 rooms/128 MiB). | L | Within "Storage compaction must keep confirmed text, receipt/provenance…"; needs a storage amendment. F-021 unchanged. |
+| B2 Slimmer state | Move receipts and journal out of the codec state (receipts are already immutable intent rows). | An estimated two-thirds of per-command growth by size, not measured; slower growth, not constant cost. | Codec replay checks must read the intent rows. | S–M | None. |
+| B3 Decoded-state cache only | Keep the parsed state per room. Skip parse and worker transfer when the head sequence matches, but still write the whole state. | Removes part of each commit; the write still grows. | Cache invalidation across APIs. | M | None. |
+
+**Recommendation:** A1 + B1, with B2 as a first step if B1 must wait. Neither cause alone is
+enough. With constant commits (about 25 ms) and the peer one read from the head (about
+30 ms on a quiet host), the p95 estimate is: wait for the command in flight (about 60) +
+commit (25) + read (30) + network (10) + render (45) ≈ 170 ms. That is an estimate, not a
+measurement. A1 + B1 is the only combination likely to pass Gate 4 at 10k and 100k. The
+100k cases also need B1, because their commits start slower.
+
+**Maps** (296–361 ms on the shared host): input to covering publication is 50 / 91 ms
+(the 40 ms batch). Publication to peer receipt is 131 / 199 ms. Receipt to paint is
+50–67 ms, 105 at 200 thoughts. On a quiet host, publication to receipt was p50 57 ms
+(2026-10-06 note), which would put the 1–50-thought cases near 200 ms. Measure on a
+quiet host before changing anything. The 200-thought drag (p95 361, paint p95 105) is
+unlikely to pass without peer render work.
+
+### Revised 2026-10-09 by founder direction: A1 + B1
+
+Hubert chose A1 (batched reads) and B1 (an append-only update log with periodic snapshot
+compaction) on 2026-10-09, in #389. They replace two rules above: "one update chunk per
+read" and "a commit rewrites the whole codec state". Caps, budgets, deadlines, the FIFO,
+locks, generations and the latency gate are unchanged.
+
+**A1, batched reads.**
+- **One read, every pending update.** A wiki confirmed read hands off every update after
+  the connection's sequence, up to 64 updates or 1 MiB of stored bytes (at least one), in
+  sequence order. Each update is its own frame and delivery, with its own sequence,
+  command UUID and hash. The stored sizes are summed before any bytes load.
+- **The head preview.** When the batch reaches the head, the read adds the head preview
+  as the last delivery, so a reader renders the head every read. A read no longer has to
+  find no newer update before it sends a preview.
+- **Ordering and limits.** The output holds one read's ordered set (at most 65
+  deliveries), every payload charged to the shared output budget. Frames leave in order;
+  deliveries complete in order whatever order a client acknowledges them in. The read
+  hands off every frame the 1 MiB per-connection window allows, under its one SQL fence.
+  Frames beyond the window leave on acknowledgments, each through a fresh authority
+  fence as before.
+- **Next read.** The next read starts once the whole batch is acknowledged.
+
+**B1, an append-only update log with snapshot compaction.**
+- **Codec state.** The state no longer carries receipts or a journal. Both already live
+  in the immutable intent and update rows, and exact retries are answered from the intent
+  rows before the codec runs.
+- **A commit.** A text commit appends its update row together with the ledger entries it
+  added (new nodes, deletion ranges, surrogate splits). It then advances the locked head's
+  sequence, body, hash and `revision`. It writes the complete state as the head's snapshot
+  (`snapshot_sequence`) only once the snapshot is 64 updates behind.
+- **Other writes.** Initialization and enrollment write a snapshot at the current
+  sequence. A retired generation archives its snapshot position.
+- **Rebuild.** The state at the head is the snapshot plus the updates logged after it.
+  Rebuilding re-applies the confirmed update bytes to a document and appends the logged
+  ledger entries. The result must reproduce the ledger's state vector and the head's
+  stored body, or it is refused. Only confirmed, already validated updates are replayed,
+  at most 63 after a snapshot.
+- **Compaction.** Compaction never deletes history. Contributors, receipts and
+  reconciliation still read the same rows.
+- **Decoded rooms.** Each API process keeps decoded rooms (at most 16, 128 MiB). It uses
+  one only at the locked head's revision. When only commits changed the revision, it
+  catches up from the log; otherwise it reloads the snapshot. A commit's state enters the
+  decoded rooms only after its transaction commits. A definite rollback or an unknown
+  COMMIT outcome therefore leaves at most a stale decoded room, never a wrong one.
+- **Two API processes.** They stay consistent through the same row locks, generations
+  and the head revision.
+- **Migration.** `0084_live_update_log.sql` keeps every existing room as a complete
+  snapshot at its sequence. Its guarded reversal is refused once any room depends on
+  logged updates after its snapshot.
+- **Backup and export.** Backup and restore copy the new columns with the database.
+  Export does not include live rooms.
+
+Evidence for the change and its gate results are in #389.
+
+### Remaining Gate 4 latency (2026-10-10)
+
+The quiet-host run at `0744de80` painted every row but six of nine cases stayed above
+200 ms. Map 500 lost its time between publication and peer receipt (p95 110–160 ms
+against 93 ms at 50 thoughts, with the same p50 of about 74 ms; slow rows came in bursts
+of 3–12 s). The wiki editor at 10k characters lost it between publication and the peer's
+update (p50 126, p95 175 ms; at 100k, 68 and 95 ms). Scratch runs with temporary timers
+in the API (never committed) and the driver's own map case on a shared host found four
+causes. Caps, budgets, deadlines, FIFOs, locks, generations, the driver and the gate are
+unchanged.
+
+- **Wiki fan-out order.** Confirmed reads take turns in the API. After a commit the room's
+  connections were read in connection order. When the author had connected first, its read,
+  which only carries back its own update, went before the peer's: the peer's update came
+  p50 34 ms and p95 110 ms after the author's ACK at 10k, and before it at 100k. A room's
+  reads now start with the connections that do not have the change, then the connection
+  whose commit is in flight.
+- **Every transaction waited for its WAL flush.** Two codec-admitted operations run at a
+  time in an API, one confirmed read at a time, and every operation locks the document row.
+  Each COMMIT waited for its commit record to reach disk, p50 7.6 ms of a 22.6 ms
+  transaction, also for reads, handoff and receipt fences and presence, which write nothing
+  but row locks and transient rows. Those now commit with `synchronous_commit = off`
+  (`EditingCommit` `transient`): their COMMIT took 0.1 ms, a transaction p50 10 ms, the
+  ACK left p50 31 ms after the frame (was 46) and the peer's update p50 18 ms after the
+  commit (was 36). Text, enrollment, initialization, Save, native map changes, map
+  bootstrap and undo stay durable: an ACK still follows a flushed commit, and durable data a
+  transient transaction reads was on disk before it became visible. The map's gesture lease, preview
+  and presence writes are transient too; a crash can lose them, as their expiry already allows.
+- **Map peer rendering.** Every preview re-rendered all thoughts on the peer, and each
+  thought's inline ref callback made React detach and re-attach it, so the ResizeObserver
+  unobserved, re-observed and re-measured every thought (a 40-thought map: 1080 element
+  observations for 22 previews). Thoughts now share one stable ref callback and are
+  memoized: a preview re-renders only the thoughts it moves.
+- **The test forwarder delayed small frames.** Every browser check reaches the API through
+  a same-origin forwarder in the UI test process. It left Nagle's algorithm on, so a small
+  frame written while the previous one awaited its TCP acknowledgement waited for the
+  receiver's delayed ACK, about 40 ms. Browsers, Node and real proxies disable it. The
+  forwarder now sets `TCP_NODELAY` on both sockets. In one back-to-back pair of 10k editor
+  runs, publication to ACK fell from p50 105 / p95 116 ms to 46 / 71 ms, and publication to
+  the peer's update from 115 / 139 ms to 47 / 75 ms. The driver, its thresholds,
+  deadlines and correlations are unchanged; see the
+  [verification revisions](live-editing-verification.md#driver-revisions-2026-10-09-389).
+
+With transient commits and the peer rendering changes (and the forwarder as before), the
+driver's own map-500-drag-1 case on the same shared host (load 5–7) went from p95 245 to
+136 ms: publication to peer receipt from p50 95 / p95 145 ms to 37 / 50 ms, and the peer's
+script time over the case from 5.1 s to 2.2 s. The forwarder change made no difference to
+that case (p95 142 ms). The quiet-host gate decides.
+
+**The first local-control sample at 100k (2026-10-10).** The quiet-host run at `5b22d9ab`
+met p95 ≤ 200 ms in all nine cases, but both 100k cases kept one local-control error: the
+first sample's input never produced an input revision (also at `0744de80`; never at 10k).
+CodeMirror draws a line longer than 20,000 characters only around the view and the
+selection, and the editor left caret movement to the browser. The driver clicks into the
+middle of the one 100,000-character line and then presses Ctrl+End, Shift+ArrowLeft and a
+character in quick succession. After Ctrl+End the end of the line was not drawn yet, so
+Shift+ArrowLeft selected nothing, the character was added instead of replacing the last one,
+and the editor refused the 100,001-character text ("The shared text limit is 100,000
+characters"). Later samples start with the end already drawn. Moving to the start or end of
+the text (Ctrl/Cmd+Home/End, with or without Shift) now dispatches the selection, which
+CodeMirror draws and places exactly, as `@codemirror/commands` does. A move by one character
+(ArrowLeft/Right, with or without Shift) does so only next to text CodeMirror has not drawn.
+At `55ba59cf` every such move came from the state, and the gate lost one sample in each editor
+case (index 180 at 10k, 79 at 100k: "The correlated visible state did not survive both paint
+opportunities"). A state move puts the keyboard selection into the shared cursor at once; the
+typed character that replaces it follows a few milliseconds later. Once per case that selection
+reached the 40 ms cursor tick (one cursor with a selection among about 1000; none in the two
+earlier quiet runs), and the peer drew Ada's caret one character before the end between the two paint
+checks. In drawn text the browser moves the caret again, as before. The control and the driver
+are unchanged.
+
+**map-500-drag-200 (2026-10-10).** At `256a5ad5` this case sat at the edge (p95 199, 186
+and 202.8 ms in three quiet runs). Timing each sample from its exact sampled publication,
+not the covering one, puts the extra time against drag-1 on the peer's observation:
+publication to receipt p50/p95 35/48 ms (drag-1: 37/45), receipt to the render condition
+54/92 (14/23), two paint opportunities 57/93 (37/41); the owner published p95 21 ms after
+its input. The application itself is fast there: on the peer a preview's DOM commit
+followed its WebSocket message by p50 3.1 / p95 4 ms, animation frames stayed at 16.7 ms on
+both pages, and there were no long tasks. The extra time is the measurement's own work for
+200 changed thoughts: each trace snapshot re-serializes every changed thought (p95 125 KB per
+peer snapshot against 9 KB at drag-1) and the driver's checks query and return all 200
+positions. The same case with trace snapshots off measured p95 161 against 209 ms in one
+run on the same code.
+
+One server cost was the application's. Every map operation locks the room's head row, so
+reads take turns, and a movement woke the room twice: locally after its operation and again
+through its own NOTIFY. Each connection read the same change twice (4.3 reads per movement),
+in connection order, so the peer's read often waited behind the mover's echo. The room now
+wakes once, through the operation's NOTIFY (missing wakeups are still recovered by the
+250 ms catch-up), and the people who do not have the change read first. Reads fell by about
+a third, the peer's preview left p50 12 ms after the movement committed (was 32), and
+publication to receipt fell from p50 34 to 21 ms. Two runs of the case on each version on a
+shared host gave p95 206 and 209 ms before, 193 and 188 ms after. A p95 of 170 ms at 200
+moved thoughts needs less measurement work per changed thought, which is the driver's
+decision, not the application's.

@@ -359,7 +359,8 @@ class TaskAnnouncements(unittest.TestCase):
                     };
                     const number = notice.querySelector('.ui-task-number');
                     const word = notice.querySelector('.convo-notice__title').firstChild;
-                    if (!word) throw new Error('The task title has no first word');
+                    if (!word || word.nodeType !== Node.TEXT_NODE || !word.textContent.trim())
+                        throw new Error('The native task reference title has no first word');
                     const first = word.textContent.search(/\\S/);
                     const range = document.createRange();
                     range.setStart(word, first);

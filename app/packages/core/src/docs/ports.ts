@@ -1,6 +1,7 @@
 import type { DocMention, DocRefType, DocState, ObjectRef } from '@flux/contracts';
 import type { Principal } from '../principal.js';
 import type { ActorRef, Paged, PageWindow, WorkAccess, WorkRepository } from '../work/ports.js';
+import type { DocLiveVersions } from '../editing/doc-ports.js';
 
 /**
  * Ports of the project doc use cases (issue #112). Docs reuse the #36 material rows and their
@@ -30,6 +31,9 @@ export interface DocVersionRecord {
   reason: string;
   /** The actual author of this version: a person, or an agent writing under a standing grant (#152). */
   author: ActorRef;
+  /** Immutable contributing humans of an explicit shared snapshot; the saver remains author. */
+  contributors?: ActorRef[];
+  liveSnapshot?: { generation: string; fromSequence: number; toSequence: number };
   createdAt: Date;
 }
 
@@ -42,8 +46,15 @@ export interface DocWithCurrent {
 
 export type NewDocVersion = Pick<DocVersionRecord, 'title' | 'body' | 'state' | 'reason' | 'author'>;
 
+/** #238: the complete graph/task fence a doc writer retains; `mark` only after the saved effect. */
+export interface DocTaskUseFence { readonly ids: readonly string[]; mark(ids?: readonly string[]): Promise<void> }
+
 /** Rows only; the repository makes no access decisions (the use cases ask {@link WorkAccess}). */
 export interface DocRepository {
+  /** Graph locks, then one sorted task pass over the doc's previous mentions and these references (#238). */
+  prepareTaskUse(scope: { workspaceId: string; projectId: string }, docId: string, refs: readonly ObjectRef[]): Promise<DocTaskUseFence>;
+  /** Read-only check that the current previous/new task set is inside an already retained fence. */
+  assertTaskUse(docId: string, refs: readonly ObjectRef[], retained: DocTaskUseFence): Promise<void>;
   /** The project of a doc, whoever may read it; callers must authorize before using it. */
   locate(id: string): Promise<{ projectId: string } | null>;
   /** Docs of a project, the most recently changed first. */
@@ -61,7 +72,7 @@ export interface DocRepository {
   /** Adds the next immutable version and makes it current; the caller holds the row lock. */
   append(id: string, next: NewDocVersion): Promise<DocWithCurrent>;
   /** Replaces the doc's `mentions` links with links to `targets`; other roles are kept. */
-  replaceMentions(scope: { workspaceId: string; projectId: string }, docId: string, targets: ObjectRef[], by: ActorRef): Promise<void>;
+  replaceMentions(scope: { workspaceId: string; projectId: string }, docId: string, targets: ObjectRef[], by: ActorRef, retained?: DocTaskUseFence): Promise<void>;
 }
 
 /** A `flux:<type>/<id>` reference found in a Markdown text. */
@@ -90,6 +101,7 @@ export interface DocEventLog {
 export interface DocPorts {
   access: WorkAccess;
   docs: DocRepository;
+  live: DocLiveVersions;
   /** The #101 rows: typed links, titles, names, and the results and decisions added to docs. */
   work: WorkRepository;
   events: DocEventLog;

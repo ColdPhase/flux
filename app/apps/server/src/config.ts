@@ -25,6 +25,11 @@ export interface ServerConfig {
   backgroundMasterKey: Buffer | null;
   /** `FLUX_BACKGROUND_COMPARISONS=on` (#58): owners may enable comparison rules; the worker runs them. */
   backgroundComparisons: boolean;
+  /**
+   * `FLUX_DEVELOPMENT_LIVE_EDITING=true` (#228): selects the isolated development live map/wiki
+   * editing path. Off by default; selecting it certifies none of the four F-021 gates.
+   */
+  developmentLiveEditing: boolean;
   /** `FLUX_AGENT_RUNTIME` and its settings (F-022 AIM-3); empty, the default, is off. */
   agentRuntime: AgentRuntimeConfig;
 }
@@ -45,6 +50,7 @@ export function loadServerConfig(env: NodeJS.ProcessEnv = process.env, backgroun
     port: Number(env.PORT ?? 8080),
     backgroundMasterKey: backgroundKeyPath === undefined ? loadBackgroundMasterKey() : loadBackgroundMasterKey(backgroundKeyPath),
     backgroundComparisons: backgroundComparisonsEnabled(env),
+    developmentLiveEditing: env.FLUX_DEVELOPMENT_LIVE_EDITING === 'true',
     agentRuntime: loadAgentRuntimeConfig(env),
   };
 }

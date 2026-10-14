@@ -70,6 +70,11 @@ export async function notificationRoutes(app: FastifyInstance, { db, sessions, s
             type: 'object', additionalProperties: false,
             properties: { enabled: { type: 'boolean' }, at: { type: 'string', maxLength: 5 } },
           },
+          // Focus mode (#340): an ISO instant within 12 hours, or null to resume.
+          pause: {
+            type: 'object', required: ['until'], additionalProperties: false,
+            properties: { until: { type: ['string', 'null'], maxLength: 40 } },
+          },
         },
       },
     },

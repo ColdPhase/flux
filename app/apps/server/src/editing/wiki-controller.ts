@@ -1,0 +1,260 @@
+import { createHash } from 'node:crypto';
+import WebSocket, { type RawData } from 'ws';
+import { DomainError, ServiceUnavailableError } from '@flux/core';
+import { EditingTransactionError } from '@flux/db';
+import type { EditingClientMessage, LiveCursor } from '@flux/contracts';
+import type { EditingContext } from './gate.js';
+import { editingContextCharge,editingWikiResultCharge } from './context-charge.js';
+import type { AdmissionLease } from './codec/admission-budget.mjs';
+import { Assemblies, type CompletedAssembly } from './codec/assembly.mjs';
+import { EditingOutput, EditingOutputBudget } from './output.js';
+import type { WikiAuthority } from './authority.js';
+import { EditingHTTPAdmission } from './http-admission.js';
+import { editingJSONSize } from './json-size.js';
+import { editingResourcesChanged } from './resource-observation.js';
+import type { EditingQueueTelemetry } from './telemetry.js';
+
+interface Connection {
+  socket: WebSocket; context: EditingContext; output: EditingOutput; generation: string | null;
+  sequence: number; previewSequence: number; assemblyCommand: string | null; assembly: CompletedAssembly | null; running: boolean; reading: boolean;
+  pendingRead: boolean; closed: boolean; subscribed: boolean; lastHead: string; lastSaved: string; presence: Map<string, { hash: string; release: () => void }>; cursorBusy: boolean; cursor: RetainedCursor | null; releaseBase: () => void;
+  /** The last presence this connection's cursor renewed, and when. */
+  renewed: { key: string; at: number } | null;
+}
+interface RetainedCursor { generation: string; cursor: LiveCursor | null; release: () => void; expiresAt: number }
+type ControllerAuthority = Pick<WikiAuthority, 'queueInput' | 'submit' | 'deliverReceipt' | 'deliver' | 'handoff' | 'cursor' | 'close'> & {
+  runtime: Pick<WikiAuthority['runtime'], 'onCapacity' | 'release'>;
+};
+const signature = (text: string) => createHash('sha256').update(text).digest('hex');
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** Error identity comes from this bounded text frame, never an unrelated waiting assembly. */
+function textCommand(frame: Buffer): string | undefined {
+  if (frame.byteLength < 4 || frame.byteLength > 65_536) return;
+  const length = frame.readUInt32BE(0);
+  if (length > 4092 || length + 4 > frame.byteLength) return;
+  try {
+    const header: unknown = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(frame.subarray(4, 4 + length)));
+    if (header && typeof header === 'object' && 'operation' in header && header.operation === 'text'
+      && 'uuid' in header && typeof header.uuid === 'string' && UUID.test(header.uuid)) return header.uuid;
+  } catch { /* A malformed frame has no admitted durable command identity. */ }
+}
+const errorCode = (error: unknown) => error instanceof DomainError ? error.code
+  : error instanceof Error && 'code' in error && typeof error.code === 'string' ? error.code : 'EDITING_UNAVAILABLE';
+const busy = (error: unknown) => ['EXTERNAL_BUFFER_LIMIT', 'WORK_QUEUE_LIMIT', 'POOL_CLOSED', 'EDITING_OUTPUT_CAPACITY', 'EDITING_PRESENCE_CAPACITY'].includes(errorCode(error));
+/** Message listeners are installed synchronously by the one upgrade dispatcher; all protected send paths use SQL authority. */
+export function wikiController(authority: ControllerAuthority, outputBudget: EditingOutputBudget,telemetry?:()=>EditingQueueTelemetry|null) {
+  const connections = new Map<string, Connection>(); const assemblies = new Assemblies(editingResourcesChanged);
+  const preparation=new EditingHTTPAdmission(outputBudget,10_000,'wiki');
+  const operations=new Set<Promise<void>>();let reading=0,writing=0,cursorActive=0;
+  function operation(){let finish=()=>{};const done=new Promise<void>(resolve=>{finish=resolve;});operations.add(done);return()=>{operations.delete(done);finish();};}
+  let closing = false;
+  function close(c: Connection) { if (c.closed) return; c.closed = true; c.releaseBase(); c.cursor?.release(); c.cursor = null; for (const entry of c.presence.values()) entry.release(); c.presence.clear(); c.output.close(); assemblies.remove(c.context.connectionId); c.assembly = null; connections.delete(c.context.connectionId);editingResourcesChanged(); }
+  function fail(c: Connection, error: unknown, commandId?: string) {
+    if (c.closed) return;
+    if (errorCode(error) === 'UNAUTHENTICATED' || error instanceof DomainError && (error.status === 403 || error.status === 404)) {
+      try { c.output.sendJSON({ type: 'revoked' }); } finally { c.socket.close(1008, 'Access ended'); close(c); } return;
+    }
+    const unknown = error instanceof EditingTransactionError && error.outcome === 'unknown';
+    try { c.output.sendJSON({ type: 'error', code: errorCode(error), ...(commandId ? { commandId } : {}), outcome: unknown ? 'unknown' : 'refused', retryable: unknown || busy(error) }); }
+    catch { c.socket.terminate(); close(c); }
+  }
+  async function catchup(c: Connection) {
+    if (c.closed || !c.subscribed || !c.generation) return;
+    if (c.reading) { c.pendingRead = true; return; }
+    c.reading = true;reading++;editingResourcesChanged();const completed=operation();
+    try {
+      do {
+        c.pendingRead = false;
+        if(c.output.busy) {
+          // A delivery awaiting its acknowledgment with no chunk to send needs no authority
+          // operation; that acknowledgment starts the next read (#228 Gate 4).
+          if(!c.output.canPump) break;
+          await authority.handoff(c.context.session,c.context.target.id,()=>{if(!c.closed){while(c.output.pump()){/* every frame the window allows, under this fence */}c.pendingRead=c.output.canPump;}});
+          continue;
+        }
+        const releasePreparation=await preparation.admit(editingContextCharge({session:c.context.session,docId:c.context.target.id}));
+        try {await authority.deliver(c.context.session, c.context.target.id, c.generation, c.sequence, (result) => {
+          if (c.closed) return;
+          // The pre-SQL worst-case reservation retains all protected source objects through transaction settlement.
+          editingWikiResultCharge(result);
+          const head = result.current;
+          const currentHead = { type: 'head', kind: 'wiki', workspaceId: head.workspaceId, resourceId: head.resourceId,
+            generation: head.generation, sequence: head.sequence, hash: head.hash, savedVersion: head.savedVersion, canWrite: result.canWrite, actor: result.actor };
+          const headSignature = signature(JSON.stringify({ generation: head.generation, canWrite: result.canWrite, actor: result.actor }));
+          if (c.lastHead !== headSignature) { c.output.sendJSON(currentHead); c.lastHead = headSignature; c.pendingRead = true; return; }
+          const savedSignature = signature(JSON.stringify({ generation: head.generation, savedVersion: head.savedVersion, savedSequence: head.savedSequence }));
+          if (c.lastSaved !== savedSignature) {
+            c.output.sendJSON({ type: 'saved', generation: head.generation, sequence: head.sequence, hash: head.hash,
+              savedVersion: head.savedVersion, savedSequence: head.savedSequence }); c.lastSaved = savedSignature; c.pendingRead = true; return;
+          }
+          // Every changed cursor this read observed goes out under its fence, then the next
+          // ordered update or preview in the same callback (contract amendment 2026-10-06).
+          const active = new Set(result.presence.map((peer) => peer.connectionId));
+          for (const key of [...c.presence.keys()]) if (!active.has(key)) { c.presence.get(key)!.release(); c.presence.delete(key); }
+          for (const peer of result.presence) {
+            const value = { type: 'presence', generation: head.generation, ...peer };
+            const currentSignature = signature(JSON.stringify(value));
+            if (c.presence.get(peer.connectionId)?.hash !== currentSignature) {
+              const old = c.presence.get(peer.connectionId); const release = old?.release ?? outputBudget.reserve(512);
+              try { c.output.sendJSON(value); c.presence.set(peer.connectionId, { hash: currentSignature, release }); }
+              catch (error) { if (!old) release(); throw error; }
+            }
+          }
+          if (!c.output.busy) {
+            // Every pending update of this read, each its own ordered delivery, then the head preview
+            // once the batch reaches the head (founder direction 2026-10-09, A1).
+            const updates = result.updates;
+            updates.forEach((update, index) => {
+              const deliveredSequence = update.sequence;
+              c.output.send({ type: 'update', generation: head.generation, sequence: update.sequence, hash: update.hash,
+                commandId: update.commandId, actor: update.actor }, update.bytes, () => { c.sequence = deliveredSequence; void catchup(c); }, index > 0);
+            });
+            const atHead = !updates.length || updates.at(-1)!.sequence === head.sequence;
+            if (atHead && result.preview && c.previewSequence < head.sequence) {
+              const size=editingJSONSize(result.preview);
+              const releaseText=outputBudget.reserve(size.textBytes);
+              try {
+              const text=JSON.stringify(result.preview);if(Buffer.byteLength(text)!==size.bytes||text.length*2!==size.textBytes)throw new ServiceUnavailableError('Invalid bounded preview','EDITING_OUTPUT_CAPACITY');
+              const deliveredSequence = head.sequence;
+              c.output.sendJSONPayload({ type: 'preview', generation: head.generation, sequence: head.sequence, hash: head.hash }, text,
+                () => { c.previewSequence = deliveredSequence; void catchup(c); }, updates.length > 0);
+              } finally {releaseText();}
+            }
+          }
+          while (c.output.pump()) { /* every frame of this batch the window allows, under this fence */ }
+          c.pendingRead = c.output.canPump;
+          // Frames beyond the window leave on later acknowledgments, each through a current SQL authority fence.
+        }, { previewAfterSequence: c.previewSequence, includeContent: true });} finally {releasePreparation();}
+      } while (c.pendingRead && !c.closed);
+    } catch (error) {
+      if (!busy(error)) fail(c, error);
+      // Periodic catch-up retries bounded capacity; it holds no additional input or promise queue.
+    } finally { c.reading = false;reading--;editingResourcesChanged();completed(); }
+  }
+  /**
+   * A room's reads after a change: the people who do not have it yet first, then any connection
+   * whose own text commit is in flight. Confirmed reads take turns API-wide, and the author's read
+   * would only carry back its own update, so reading it first delayed everyone else's (#228 Gate 4).
+   */
+  function fanOut(docId: string) {
+    const room = [...connections.values()].filter((other) => other.context.target.id === docId);
+    for (const other of room) if (!other.running) void catchup(other);
+    for (const other of room) if (other.running) void catchup(other);
+  }
+  function pump(c: Connection) {
+    if (c.closed || c.running || !c.assembly) return;
+    let bytes:CompletedAssembly|null=c.assembly;const commandId=bytes.intent.uuid;
+    // The completed text takes its turn in the one admission FIFO, ahead of later reads and
+    // cursors, and stays charged in its assembly until that turn reserves it. Waiting for an
+    // idle budget instead let every later read or cursor take the capacity first (#228 Gate 4).
+    let turn: Promise<AdmissionLease>;
+    try { turn = authority.queueInput(bytes); }
+    catch (error) { if (!busy(error)) { fail(c, error, commandId); assemblies.remove(c.context.connectionId); c.assembly = null; c.assemblyCommand = null; } return; }
+    c.running = true;writing++;editingResourcesChanged();const completed=operation();
+    void (async () => {
+      let admission: AdmissionLease;
+      try {
+        try { admission = await turn; }
+        catch (error) {
+          if (c.assembly !== bytes) return; // Already refused (expired) or closed.
+          assemblies.remove(c.context.connectionId); c.assembly = null; c.assemblyCommand = null; throw error;
+        }
+        // Close or the finite assembly deadline may have ended this input while it waited.
+        if (c.closed || c.assembly !== bytes) { authority.runtime.release(admission); return; }
+        c.assembly = null; assemblies.remove(c.context.connectionId); c.assemblyCommand = null;
+        await authority.submit(c.context.session, c.context.target.id, bytes!.intent, bytes!, admission);bytes=null;
+        // Re-read the immutable original receipt under CURRENT authority AFTER the commit.
+        await authority.deliverReceipt(c.context.session, c.context.target.id, commandId, (receipt) => {
+          if (!c.closed && receipt) c.output.sendJSON({ type: 'ack', ...receipt });
+          if(receipt)telemetry?.()?.schedule('wiki',{resourceId:c.context.target.id,generation:receipt.generation,commandId:receipt.commandId,confirmedSequence:receipt.sequence});
+        });
+        fanOut(c.context.target.id);
+      } catch (error) { fail(c, error, commandId); }
+      finally { bytes=null;c.running = false;writing--;editingResourcesChanged();completed(); pump(c); }
+    })();
+  }
+  function cursor(c: Connection) {
+    if (c.closed || c.cursorBusy || !c.cursor) return;
+    const retained = c.cursor; c.cursor = null;
+    if (retained.expiresAt <= Date.now()) {
+      retained.release(); fail(c, new ServiceUnavailableError('The latest cursor expired before admission', 'EDITING_PRESENCE_CAPACITY')); return;
+    }
+    // Unchanged presence is renewed at most once a second (the presence heartbeat); its expiry
+    // is five seconds. Typing re-sends the same cursor every 40 ms, and each renewal is a
+    // locked transaction plus a read on every connection of the room (#228 Gate 4).
+    const key = JSON.stringify([retained.generation, retained.cursor?.anchor ?? null, retained.cursor?.head ?? null]);
+    const started = Date.now();
+    if (c.renewed?.key === key && started - c.renewed.at < 1000) { retained.release(); editingResourcesChanged(); return; }
+    c.cursorBusy = true; cursorActive++; editingResourcesChanged(); const completed = operation();
+    // This cursor owns its complete parsed continuation until the actual authority
+    // operation settles. The one replaceable waiting slot is independently charged.
+    void authority.cursor(c.context.session, c.context.target.id, retained.generation, c.context.connectionId, retained.cursor)
+      .then(() => { c.renewed = { key, at: started }; fanOut(c.context.target.id); })
+      .catch((error) => fail(c, error))
+      .finally(() => { retained.release(); c.cursorBusy = false; cursorActive--; editingResourcesChanged(); completed(); cursor(c); });
+  }
+  function retainCursor(c: Connection, generation: string, value: LiveCursor | null, rawBytes: number) {
+    if (rawBytes > 2048 || value !== null && (!value || typeof value !== 'object' || Array.isArray(value)
+      || Object.keys(value).some((key) => key !== 'anchor' && key !== 'head')
+      || typeof value.anchor !== 'string' || value.anchor.length > 344 || typeof value.head !== 'string' || value.head.length > 344)) {
+      throw new DomainError(400, 'INVALID_CURSOR', 'A bounded closed cursor is required');
+    }
+    const release = outputBudget.reserve(rawBytes + editingContextCharge({ context: c.context, generation, cursor: value }));
+    const old = c.cursor;
+    c.cursor = { generation, cursor: value, release, expiresAt: Date.now() + 5000 };
+    old?.release(); editingResourcesChanged(); cursor(c);
+  }
+  const unsubscribeCapacity = authority.runtime.onCapacity(() => { if (!closing) for (const c of connections.values()) pump(c); });
+  const timer = setInterval(() => {
+    assemblies.expire(Date.now());
+    for (const c of connections.values()) {
+      if (c.cursor && c.cursor.expiresAt <= Date.now()) { c.cursor.release(); c.cursor = null; editingResourcesChanged(); fail(c, new ServiceUnavailableError('The latest cursor expired before admission', 'EDITING_PRESENCE_CAPACITY')); }
+      if (c.assemblyCommand && !assemblies.pending.has(c.context.connectionId)) { const uuid = c.assemblyCommand; c.assembly = null; c.assemblyCommand = null; fail(c, new ServiceUnavailableError('The finite assembly deadline ended', 'EDITING_ASSEMBLY_EXPIRED'), uuid); }
+      void catchup(c);
+    }
+  }, 250); timer.unref();
+  return {
+    accept(socket: WebSocket, context: EditingContext) {
+      if (closing || context.target.kind !== 'wiki') { socket.close(1008, 'Unavailable'); return; }
+      const c: Connection = { socket, context, output: new EditingOutput(socket, outputBudget), generation: null,
+        sequence: 0, previewSequence: -1, assemblyCommand: null, assembly: null, running: false, reading: false, pendingRead: false, closed: false, subscribed: false, lastHead: '', lastSaved: '', presence: new Map(), cursorBusy: false, cursor: null, renewed: null, releaseBase: outputBudget.reserve(2048 + editingContextCharge(context)) };
+      connections.set(context.connectionId, c);editingResourcesChanged();
+      socket.once('close', () => close(c));
+      socket.on('message', (data: RawData, binary) => {
+        if (c.closed) return;
+        // Only the binary text branch owns an assembly command. A cursor or
+        // delivery-ACK refusal must never manufacture a durable text retry.
+        let commandId: string | undefined;
+        try {
+          if (binary) {
+            if (!c.subscribed || !c.generation) throw new DomainError(400, 'EDITING_SUBSCRIBE_REQUIRED', 'Subscribe before sharing text');
+            if (!Buffer.isBuffer(data)) throw new DomainError(400, 'EDITING_FRAME_INVALID', 'An exact binary frame is required');
+            commandId = textCommand(data);
+            const complete = assemblies.receive(context.connectionId, data, { actor: context.session.principal.id, kind: 'wiki', room: context.target.id, operation: 'text', parameters: null }, Date.now());
+            c.assemblyCommand = assemblies.intent(context.connectionId)?.uuid ?? null;
+            if (complete) { c.assembly = complete; pump(c); }
+            return;
+          }
+          const raw = Buffer.isBuffer(data) ? data.toString('utf8') : String(data);
+          const message = JSON.parse(raw) as EditingClientMessage;
+          if (message.type === 'subscribe') {
+            if (c.subscribed || typeof message.generation !== 'string' || !Number.isSafeInteger(message.afterSequence) || message.afterSequence < 0
+              || Object.keys(message).some((key) => !['type','generation','afterSequence'].includes(key))) throw new DomainError(400, 'EDITING_SUBSCRIBE_INVALID', 'Invalid subscription');
+            c.generation = message.generation; c.sequence = message.afterSequence; c.subscribed = true; void catchup(c);
+          } else if (message.type === 'received') {
+            if (Object.keys(message).some((key) => !['type','deliveryId','index'].includes(key))) throw new DomainError(400, 'EDITING_ACK_INVALID', 'Invalid delivery acknowledgment');
+            c.output.received(message.deliveryId, message.index); void catchup(c);
+          } else if (message.type === 'cursor') {
+            if (!c.subscribed || message.generation !== c.generation || Object.keys(message).some((key) => !['type','generation','cursor'].includes(key))) throw new DomainError(400, 'INVALID_CURSOR', 'Invalid cursor');
+            retainCursor(c, message.generation, message.cursor, Buffer.byteLength(raw));
+          } else throw new DomainError(400, 'EDITING_MESSAGE_INVALID', 'Invalid wiki message');
+        } catch (error) { fail(c, error, commandId); }
+      });
+    },
+    notifyAll() { for (const c of connections.values()) void catchup(c); },
+    notify(docId: string) { fanOut(docId); },
+    async close() { closing = true; clearInterval(timer); unsubscribeCapacity(); preparation.close(); for (const c of [...connections.values()]) { c.socket.terminate(); close(c); } await authority.close();await Promise.allSettled([...operations]); },
+    get externalOutputBytes() { return outputBudget.bytes; }, get assemblyBytes() { return assemblies.bytes; },
+    get resources(){let wikiCursorPending=0;for(const c of connections.values())if(c.cursor)wikiCursorPending++;return{wikiConnections:connections.size,wikiReading:reading,wikiWriting:writing,wikiCursorActive:cursorActive,wikiCursorPending,assemblyCount:assemblies.pending.size,assemblyBytes:assemblies.bytes};},
+  };
+}

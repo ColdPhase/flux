@@ -408,7 +408,7 @@ class OneConversationJourney(unittest.TestCase):
             time.sleep(0.25)
         self.assertEqual(url, self.project_url(f"/conversations/{self.ids['c2']}#message-{asked['id']}"), "the notification links the exact message")
         page.goto("/inbox")
-        page.locator(".inbox__row", has_text="asked you in Night lamp").get_by_role("link").click()
+        page.locator(".nyc", has_text="asked you in Night lamp").first.get_by_role("button", name="Reply").click()
         expect(page).to_have_url(re.compile(re.escape(url) + "$"))
         message = self.thread(page).locator(f"#message-{asked['id']}")
         expect(message).to_have_class(re.compile("is-arrived"))
@@ -618,12 +618,12 @@ class OneConversationJourney(unittest.TestCase):
         thread = self.thread(page)
         expect(thread).to_be_visible()
         page.wait_for_timeout(400)
-        sheet, header, pane = thread.bounding_box(), page.locator("header.top").bounding_box(), page.locator(".app__pane").bounding_box()
+        sheet, header, pane = thread.bounding_box(), page.locator("header").bounding_box(), page.locator(".app__pane").bounding_box()
         assert sheet and header and pane
         self.assertEqual((round(sheet["x"]), round(sheet["width"])), (0, PHONE["width"]), "a full-width sheet")
         self.assertAlmostEqual(sheet["y"], pane["y"] + 12, delta=1, msg="the full sheet covers the work area, a grabber's breadth below its top")
         self.assertAlmostEqual(sheet["y"] + sheet["height"], pane["y"] + pane["height"], delta=1)
-        expect(page.locator("header.top")).to_be_visible()
+        expect(page.locator("header")).to_be_visible()
         close = thread.get_by_role("button", name="Close replies")
         close_box = close.bounding_box()
         assert close_box
