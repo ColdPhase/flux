@@ -151,7 +151,10 @@ describe('operator re-key (#315)', () => {
       const result = await recovery;
       assert.ok('error' in result && result.error instanceof IdentityAdminError);
       assert.equal((result as { error: IdentityAdminError }).error.code, 'SUBJECT_HELD');
-      assert.deepEqual(await subjects(user), ['sub-race-before'], 'a failed race leaves the old mapping intact');
+      assert.deepEqual(await subjects(user), [], 'a failed race must not create a current-provider mapping');
+      const oldLinks = await db.select({ accountId: schema.authAccounts.accountId }).from(schema.authAccounts)
+        .where(and(eq(schema.authAccounts.userId, user), eq(schema.authAccounts.providerId, oldProviderId)));
+      assert.deepEqual(oldLinks.map((row) => row.accountId), ['sub-race-before'], 'a failed race leaves the old issuer mapping intact');
       assert.deepEqual(await audits(user), [], 'a failed race writes no audit row');
     } finally {
       if (open) await held.query('ROLLBACK');
