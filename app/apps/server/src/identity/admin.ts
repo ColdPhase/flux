@@ -58,8 +58,10 @@ export interface RekeyInput {
  * the identity, not the data. In SSO-only mode the operator must pass `allowInSso` explicitly.
  */
 const uniqueViolation = (error: unknown) => {
-  const candidate = error as { code?: unknown; cause?: { code?: unknown } } | null;
-  return (candidate?.code ?? candidate?.cause?.code) === '23505';
+  const candidate = error as { code?: unknown; constraint?: unknown; cause?: { code?: unknown; constraint?: unknown } } | null;
+  const cause = candidate?.cause;
+  return (candidate?.code ?? cause?.code) === '23505'
+    && (candidate?.constraint ?? cause?.constraint) === 'auth_accounts_provider_account_idx';
 };
 
 export async function rekeyIdentity(db: Database, input: RekeyInput): Promise<'linked' | 'rekeyed' | 'unchanged'> {
