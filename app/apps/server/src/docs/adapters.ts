@@ -4,6 +4,7 @@ import { policyWorkAccess, workRepository } from '../work/adapters.js';
 import type { TransactionEventSession } from '../work/transaction-events.js';
 import { markdownRenderer } from './markdown.js';
 import { eventPorts } from '../events.js';
+import { withTaskUseErrors } from '../work/task-use-errors.js';
 
 // Adapters that connect the core doc use cases (#112) to the access policy, the Drizzle rows,
 // the #101 link rows, the event log and the Markdown renderer. Core defines the ports (#46).
@@ -31,7 +32,7 @@ function docPorts(tx: DbExecutor, events?: DocPorts['events']): DocPorts {
 
 /** One transaction per use case; on an open transaction (an idempotency scope) it nests as a savepoint. */
 export function docUnitOfWork(db: Database): DocUnitOfWork {
-  return { run: (work) => db.transaction((tx) => work(docPorts(tx))) };
+  return { run: (work) => withTaskUseErrors(() => db.transaction((tx) => work(docPorts(tx)))) };
 }
 
 export const docUseCases = (db: Database) => createDocUseCases(docUnitOfWork(db));

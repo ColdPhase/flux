@@ -51,7 +51,7 @@ function PendingStatus({ item, onRetry, onRemove }: { item: PendingSend; onRetry
  * picked bytes with the send state on the photo itself (#348): sending, "sends when you're back", Retry.
  * The on-photo Retry repeats the message's own Retry for the pointer, so assistive technology hears one.
  */
-export function PendingFiles({ files, send, body }: { files: readonly DraftFile[]; send?: { state: PendingSend['state']; onRetry: () => void }; body?: ReactNode }) {
+export function PendingFiles({ files, send, body }: { files: readonly DraftFile[]; send?: { state: PendingSend['state']; onRetry?: () => void }; body?: ReactNode }) {
   const photos = files.filter((file) => looksLikePhoto(file.name) && selectedFile(file.uploadId));
   const others = files.filter((file) => !photos.includes(file));
   return <>
@@ -76,7 +76,7 @@ function Meter({ percent }: { percent: number }) {
   </svg>;
 }
 
-function PendingPhoto({ file, send, more }: { file: DraftFile; send?: { state: PendingSend['state']; onRetry: () => void }; more: number }) {
+function PendingPhoto({ file, send, more }: { file: DraftFile; send?: { state: PendingSend['state']; onRetry?: () => void }; more: number }) {
   const url = useObjectUrl(selectedFile(file.uploadId));
   const state = send?.state ?? 'sending';
   // Its own bytes: a percentage while they go out, then "Sending" once all are out until the message is confirmed (#348).
@@ -86,7 +86,7 @@ function PendingPhoto({ file, send, more }: { file: DraftFile; send?: { state: P
       {url ? <img src={url} alt={file.name} draggable={false} /> : null}
       {more ? <span className="photo-grid__more" aria-hidden="true">+{more}</span> : null}
       <span className="photo-grid__state" aria-hidden="true">
-        {state === 'failed' ? <button type="button" tabIndex={-1} className="photo-grid__retry" onClick={send?.onRetry}>Retry</button>
+        {state === 'failed' ? (send?.onRetry ? <button type="button" tabIndex={-1} className="photo-grid__retry" onClick={send.onRetry}>Retry</button> : <span>Not sent</span>)
           : state === 'waiting' ? <><Icon name="clock" size={22} /><span>Sends when you're back</span></>
             : uploading && (file.progress ?? 0) < 100 ? <><Meter percent={file.progress ?? 0} /><span data-upload-progress={file.progress ?? 0}>{uploadLabel(file)}</span></>
               : <><span className="photo-grid__ring" /><span>Sending</span></>}

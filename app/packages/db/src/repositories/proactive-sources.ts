@@ -21,7 +21,7 @@ const humanThought = and(isNull(t.placementType), isNull(t.placementId), isNull(
 
 // A work item made from this agent's earlier proposal or changed by an agent, or by a GitHub task rule (#74 G-1a),
 // is not evidence of human work.
-const humanWork = and(eq(w.createdByKind, 'human'),
+const humanWork = and(eq(w.createdByKind, 'human'), isNull(w.creationRevertedAt),
   sql`NOT EXISTS (SELECT 1 FROM ${schema.proactiveComparisonProposals} p WHERE p.used_work_id = ${w.id})`,
   sql`NOT EXISTS (SELECT 1 FROM ${schema.events} e WHERE e.object_id = ${w.projectId}
     AND e.kind IN ('project.work_created.v1', 'project.work_updated.v1')

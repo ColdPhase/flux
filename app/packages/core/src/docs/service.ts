@@ -23,7 +23,7 @@ import type { Principal } from '../principal.js';
 import { linkReader } from '../work/service.js';
 import * as valid from '../work/validation.js';
 import type { ActorRef } from '../work/ports.js';
-import type { DocPorts, DocUnitOfWork, DocVersionRecord, DocWithCurrent, NewDocVersion } from './ports.js';
+import type { DocPorts, DocTaskUseFence, DocUnitOfWork, DocVersionRecord, DocWithCurrent, NewDocVersion } from './ports.js';
 import * as text from './text.js';
 
 // Project doc use cases (issue #112). Each runs in one unit of work: it asks the access port
@@ -80,6 +80,27 @@ async function resolve(ports: DocPorts, projectId: string, markdown: string, sel
   // Links point at what exists in this project; the doc itself is not its own backlink.
   const targets = mentions.filter((item) => item.path && !(item.type === 'doc' && item.id === self)).map((item) => ({ type: item.type, id: item.id }) as ObjectRef);
   return { mentions, map, targets };
+}
+
+/**
+ * #238: a saved doc version that mentions (or stops mentioning) a task is a persisted use of that task. The doc row is
+ * already locked; this prepares the shared graph/task fence over the previous and the new references before any link
+ * changes. Each body is parsed once; the same raw identities are re-resolved after the graph wait, so a dangling
+ * reference that becomes a task meanwhile refuses (TASK_TARGET_SET_CHANGED) instead of escaping the fence.
+ */
+async function prepareDocBodyTaskUse(ports: DocPorts, row: DocWithCurrent, bodies: readonly string[], extra: readonly ObjectRef[] = []): Promise<DocTaskUseFence> {
+  const parsed = bodies.map((body) => [...new Map(ports.renderer.references(body).map((ref) => [`${ref.type}:${ref.id}`, ref])).values()]);
+  const targets = async () => {
+    const refs: ObjectRef[] = [...extra];
+    for (const unique of parsed) for (const ref of unique) {
+      if (ref.type === 'doc' && ref.id === row.doc.id) continue;
+      if (await ports.work.targetExists(row.doc.projectId, ref as ObjectRef)) refs.push(ref as ObjectRef);
+    }
+    return refs;
+  };
+  const fence = await ports.docs.prepareTaskUse({ workspaceId: row.doc.workspaceId, projectId: row.doc.projectId }, row.doc.id, await targets());
+  await ports.docs.assertTaskUse(row.doc.id, await targets(), fence);
+  return fence;
 }
 
 async function names(ports: DocPorts, actors: ActorRef[]) {
@@ -173,9 +194,9 @@ export interface DocUseCaseOptions {
 export function createDocUseCases(uow: DocUnitOfWork, options: DocUseCaseOptions = {}) {
   const agentAuthors = options.agentAuthors === true;
   /** Stores the next version, rewrites mentions and records one event; returns the doc as its readers see it. */
-  async function commit(ports: DocPorts, principal: Principal, scope: { workspaceId: string; projectId: string }, row: DocWithCurrent, created: boolean) {
+  async function commit(ports: DocPorts, principal: Principal, scope: { workspaceId: string; projectId: string }, row: DocWithCurrent, created: boolean, retained: DocTaskUseFence) {
     const { targets } = await resolve(ports, scope.projectId, row.current.body, row.doc.id);
-    await ports.docs.replaceMentions(scope, row.doc.id, targets, row.current.author);
+    await ports.docs.replaceMentions(scope, row.doc.id, targets, row.current.author, retained);
     const view = await present(ports, row);
     await ports.events.record(principal, scope.workspaceId, created ? 'project.doc_created.v1' : 'project.doc_updated.v1', scope.projectId,
       { docId: row.doc.id, version: row.current.version });
@@ -267,8 +288,9 @@ export function createDocUseCases(uow: DocUnitOfWork, options: DocUseCaseOptions
         if (body.length > DOC_LIMITS.body) throw new InvalidInputError(`body must be at most ${DOC_LIMITS.body} characters`);
         const first: NewDocVersion = { title, body, state, reason, author: by };
         const row = await ports.docs.insert({ id: randomUUID(), workspaceId, projectId: project, createdBy: by }, first);
+        const taskFence = await prepareDocBodyTaskUse(ports, row, [body], from ? [from] : []);
         if (from) await linkSource(ports, scope, row.doc.id, from, by);
-        return commit(ports, principal, scope, row, true);
+        return commit(ports, principal, scope, row, true, taskFence);
       });
     },
 
@@ -293,8 +315,9 @@ export function createDocUseCases(uow: DocUnitOfWork, options: DocUseCaseOptions
         const next = { title: title ?? current.current.title, body: body ?? current.current.body, state: state ?? current.current.state };
         const change = text.describeChange(current.current, next);
         if (!change) return present(ports, current);
+        const taskFence = await prepareDocBodyTaskUse(ports, current, [current.current.body, next.body]);
         const row = await ports.docs.append(id, { ...next, reason: given || change, author: by });
-        return commit(ports, principal, { workspaceId, projectId }, row, false);
+        return commit(ports, principal, { workspaceId, projectId }, row, false, taskFence);
       });
     },
 
@@ -314,12 +337,19 @@ export function createDocUseCases(uow: DocUnitOfWork, options: DocUseCaseOptions
         const composed = await composeSection(ports, projectId, from);
         const { body, replaced } = text.upsertSection(current.current.body, from, composed.section);
         const scope = { workspaceId, projectId };
+        const taskFence = await prepareDocBodyTaskUse(ports, current, [current.current.body, body], [from]);
+        const existing = (await ports.work.links([id])).some((link) => link.role === 'source' && link.fromType === 'doc'
+          && link.fromId === id && link.toType === from.type && link.toId === from.id);
         await linkSource(ports, scope, id, from, by);
-        if (body === current.current.body) return present(ports, current);
+        if (body === current.current.body) {
+          // A new source link alone is a saved use; an exact existing one is an observation.
+          if (!existing) { await taskFence.mark(); await ports.events.record(principal, workspaceId, 'project.doc_updated.v1', projectId, { docId: id, version }); }
+          return present(ports, current);
+        }
         if (body.length > DOC_LIMITS.body) throw new RuleViolationError('The doc would become too long; start a new doc for this', 'DOC_TOO_LONG');
         const reason = `${replaced ? 'Updated' : 'Added'} the ${composed.label} “${composed.title}”`;
         const row = await ports.docs.append(id, { title: current.current.title, body, state: current.current.state, reason, author: by });
-        return commit(ports, principal, scope, row, false);
+        return commit(ports, principal, scope, row, false, taskFence);
       });
     },
   };

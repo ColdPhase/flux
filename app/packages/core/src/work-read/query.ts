@@ -3,7 +3,7 @@ import { InvalidInputError } from '../access/errors.js';
 
 /** Normalized read selectors owned by core; transport CSV/query strings never reach SQL. */
 export type WorkViewSelection =
-  | { purpose: 'tasks'; group: 'all' | WorkGroup; mine: boolean }
+  | { purpose: 'tasks'; group: 'all' | WorkGroup; mine: boolean; workOnly?: boolean }
   | { purpose: 'choices'; choice: 'accepted_decisions' | 'pivot_work'; q: string }
   | { purpose: 'choices'; choice: 'result_work'; q: string; selected?: string }
   | { purpose: 'choices'; choice: 'parked_work'; q: string; decisionId: string }
@@ -66,12 +66,14 @@ export function assertEmptyWorkReadQuery(query: URLSearchParams) { closed(query,
 export function parseWorkViewRead(query: URLSearchParams): WorkViewRead {
   const purpose = query.get('purpose') ?? 'tasks';
   if (purpose === 'tasks') {
-    closed(query, ['purpose', 'group', 'mine', 'limit', 'cursor']);
+    closed(query, ['purpose', 'group', 'mine', 'kinds', 'limit', 'cursor']);
     const group = query.get('group') ?? 'all';
     if (group !== 'all' && !WORK_GROUPS.includes(group as WorkGroup)) return workReadInvalid('Unknown Tasks group');
     const mine = query.get('mine') ?? 'false';
     if (mine !== 'true' && mine !== 'false') return workReadInvalid('mine must be true or false');
-    return { ...window(query), selection: { purpose, group: group as 'all' | WorkGroup, mine: mine === 'true' } };
+    const kinds = query.get('kinds');
+    if (kinds !== null && kinds !== 'work') return workReadInvalid('kinds must be work');
+    return { ...window(query), selection: { purpose, group: group as 'all' | WorkGroup, mine: mine === 'true', ...(kinds === 'work' ? { workOnly: true } : {}) } };
   }
   if (purpose !== 'choices') return workReadInvalid('Unknown read purpose');
   const choice = query.get('choice');

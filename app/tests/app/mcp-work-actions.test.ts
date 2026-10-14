@@ -10,6 +10,7 @@ test('a standing work.create grant creates one planned native task through MCP; 
   const capabilities = f.bootstrap.capabilities as { name: string; operation: string | null; classes: string[]; available: boolean }[];
   assert.deepEqual(capabilities.filter((item) => item.operation !== null && /^(work|result|decision)\./.test(item.operation)).map(({ name, operation, available }) => ({ name, operation, available })),
     [{ name: 'flux_create_task', operation: 'work.create', available: true }, { name: 'flux_update_task', operation: 'work.update', available: true },
+      { name: 'flux_undo_task_creation', operation: 'work.creation.revert', available: true },
       { name: 'flux_record_result', operation: 'result.record', available: true }, { name: 'flux_propose_decision', operation: 'decision.propose', available: true }]);
   const create = await f.grant('work.create', 'plan');
   const command = (clientCommandId: string, title = 'Compare against the baseline') => ({ projectId: f.projectId,

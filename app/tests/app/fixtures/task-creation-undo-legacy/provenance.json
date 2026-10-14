@@ -1,0 +1,239 @@
+{
+  "sources": [
+    {
+      "commit": "45c08e7d923e48d3d7402e1df962d0a1a4e71152",
+      "name": "0048_unused_ai_task_creation_undo.sql",
+      "sha256": "062e6fdac1dd6e94b3f90ac8af5240923137b8c2fc5b0713d6127946b148b9c0"
+    },
+    {
+      "commit": "45c08e7d923e48d3d7402e1df962d0a1a4e71152",
+      "name": "0057_task_creation_undo_grant.sql",
+      "sha256": "63cd65b2a52b5a70d017f816255dc32f1bdf7a821a09775487ad0431b8288494"
+    },
+    {
+      "commit": "6386b2fba48905d5f58f42ce12b84788ff57a611",
+      "name": "0057_agent_runtime_sign_in.sql",
+      "sha256": "d9ae2618224af2b99987dd7cb4dc8a051e0f173eb236aa920291f9dab70601b1"
+    },
+    {
+      "commit": "cbfe436175b66c832328c3bd4560868e3e28abb1",
+      "name": "0058_agent_runtime_auth_operations.sql",
+      "sha256": "2f7055a5efeb58ceebfa49f170a895523b1601e62947da140dbfff85a02e7221"
+    },
+    {
+      "commit": "38ad797f3a561f10b7e9502079ff06d48379b492",
+      "name": "0059_notification_pause.sql",
+      "sha256": "0625069da34dedf45e8ee840c9ddbae8b2d4497db7f24a9309d8aad9f86a896f"
+    }
+  ],
+  "originalUndoManifest": [
+    {
+      "name": "0001_foundation.sql",
+      "sha256": "927baccece189dc375f99017256f026a4d5da863d9fed1f50ff4052128d7e319"
+    },
+    {
+      "name": "0002_identity.sql",
+      "sha256": "6241ef92c5a44c26da7f18918b5aa03b47afe30803277a9b29b38b60afcd66c6"
+    },
+    {
+      "name": "0003_access.sql",
+      "sha256": "8c88a362994e6c29a8ed5d5723a474b6c0a5782d1d36258cf0f88b466cf7003d"
+    },
+    {
+      "name": "0004_stream_safe_writes.sql",
+      "sha256": "2fb0438dce8bee99f0eb60ec893656821788ed2c2ade12915e8a9ad403e6e1e7"
+    },
+    {
+      "name": "0005_push.sql",
+      "sha256": "1efa25bdbea930a30556c9d7784f0bb7bce9a7cb3946cce9b7b9f9515df6b05f"
+    },
+    {
+      "name": "0006_conversation.sql",
+      "sha256": "4f8fad716dc11a587efded1fb32dee72532462838c33943c30bb022a91929e06"
+    },
+    {
+      "name": "0007_sketches.sql",
+      "sha256": "60738a82f2c9047c38d9f007aeeb66a267d89766054ee33c116cc57f2addeca6"
+    },
+    {
+      "name": "0008_work.sql",
+      "sha256": "efa57fce68a017a1bf165ead6397ed0397720f45c17da61196fd813541244dfd"
+    },
+    {
+      "name": "0009_return_points.sql",
+      "sha256": "a8c160817265a7a676f900b1781ed1c7f04f0b42d94690bdc1e538322edeca1c"
+    },
+    {
+      "name": "0010_direct_messages.sql",
+      "sha256": "b67f3dab077a41cacb509b7f816d471f00d885306900d64ff6d0cbdeff60910d"
+    },
+    {
+      "name": "0011_agent_connection.sql",
+      "sha256": "aa802129847e9b07796ebd2b726212b0bba751c710767cd669bbba08895408ac"
+    },
+    {
+      "name": "0012_agent_oauth.sql",
+      "sha256": "17a1b18cd2f5f73715303f2f01300fcd9f534aa32c3674a212ab27ca8826648d"
+    },
+    {
+      "name": "0013_docs.sql",
+      "sha256": "aa0da3ed346aa3aeef55d331856d6e241e5107bb106f2be9f17900cc736ab523"
+    },
+    {
+      "name": "0014_search.sql",
+      "sha256": "bf48551adb3e59154808d9deaf36863c18b2d77c2481f457d7537e97a9ad72f3"
+    },
+    {
+      "name": "0015_notifications.sql",
+      "sha256": "3aacecb3c5701f76fbd258cc3d4d14fbd39a21b22f48a960ec892b27baab30a5"
+    },
+    {
+      "name": "0016_live_sessions.sql",
+      "sha256": "57d7af26014906939a44d6c620fc4f7dd67fa2d2046979658d5bb3674c02a65a"
+    },
+    {
+      "name": "0017_live_access_fences.sql",
+      "sha256": "fb8a456e353e3ffbc7b6a3830693588327cc05e34cd2745f3f338d8f62b889ed"
+    },
+    {
+      "name": "0018_live_lifecycle.sql",
+      "sha256": "e3fb9c02285879beb0070c333fc781a11e2c78d5e4d31bd7001c61fbd27b4846"
+    },
+    {
+      "name": "0019_live_webhook_events.sql",
+      "sha256": "55447ab01feba74ecfcf94c0aff68f5104fec0b44731b2c7113fa5881216e5e0"
+    },
+    {
+      "name": "0020_live_invitations.sql",
+      "sha256": "9478dde8a2851e93335da9ed0ffd7f81a939fc3037e697deb9abf7d4298567c3"
+    },
+    {
+      "name": "0021_live_invitation_notifications.sql",
+      "sha256": "dfeeb806829f43deceb625814a71fe992c4044455868da6267c868d7fe60d141"
+    },
+    {
+      "name": "0022_search_restore_path.sql",
+      "sha256": "c536d02b6ca65f4b96b00a6461956b11cfd7a001ce98a159ef5f2c522c83da2e"
+    },
+    {
+      "name": "0023_live_admissions.sql",
+      "sha256": "218457d3fc2850a59c119acdc664a0be025896477bf26efe4f801d0cdef56714"
+    },
+    {
+      "name": "0024_personal_runs.sql",
+      "sha256": "5607e4155f15c8180f70e7076abdb1ae0ef018a05da104f62f17fe72240d3e23"
+    },
+    {
+      "name": "0025_dm_sketches.sql",
+      "sha256": "e25eb0b2bb08fe4dab2f642b948ee67b359593b53fcfc1241ce5c358d83fdda6"
+    },
+    {
+      "name": "0026_proactive_rules.sql",
+      "sha256": "b81384dc393bb514e3e24dce8b2e84d12a93f4a9dc797879d11c4ff4af12f754"
+    },
+    {
+      "name": "0027_background_connections.sql",
+      "sha256": "b3342f0af3fbe29aa32bd0f0a8625eb761e86af386880d3b95ed519c38965f3e"
+    },
+    {
+      "name": "0028_proactive_outbox.sql",
+      "sha256": "fc00453f09069761bd7a8d049dd37baa61be9fdf0277d626815e4a07d324f780"
+    },
+    {
+      "name": "0029_proactive_proposals.sql",
+      "sha256": "bdeca8c0f1534b0b8f4a9a44b8eecf84f5b11023bf38c2b5fe07287e0c4eacc6"
+    },
+    {
+      "name": "0030_proactive_rule_renewal.sql",
+      "sha256": "d615fa2c0da8d69618f80a9db372515ebfa49a3b6c01a3bc0fd02610207fcb59"
+    },
+    {
+      "name": "0031_proactive_outcomes.sql",
+      "sha256": "4d2142c9953c1fa462a9b8a1a91b6dfb9a4e35d06a34c8ee6545062b24f345cc"
+    },
+    {
+      "name": "0032_proactive_source_scheduling.sql",
+      "sha256": "38b495a6948a009411e95093305a82f169de271f600d45598cacafbe2db8b2e1"
+    },
+    {
+      "name": "0033_task_creation_notices.sql",
+      "sha256": "8c9229e78203d2727eac521b23dc0170ae56c7130b8f28a033461850c57d234d"
+    },
+    {
+      "name": "0034_multiple_agent_connections.sql",
+      "sha256": "6a5bfc6699ccbe8dbec2803fefb7da6e55cc3b768526c852de7a2c024514e793"
+    },
+    {
+      "name": "0035_cowork_coordination.sql",
+      "sha256": "0fd09a27731fd5f0e24c4e954184ae17f9fb7d3d42d9c7603714a9628fe6acb9"
+    },
+    {
+      "name": "0036_github_project_integration.sql",
+      "sha256": "c4dafa7b5531f52dd50383204deff1240e7b6a609907a0d21df7e0f26105fb40"
+    },
+    {
+      "name": "0037_task_message_actors.sql",
+      "sha256": "eb7957db5319d06b982753f19bb765c093d058f0d2edd9e62016b6ce76c1b130"
+    },
+    {
+      "name": "0038_cowork_request_operation.sql",
+      "sha256": "404f8dd9dab48f9d127164956ab13ed417ec2731bcf94e4120bf83860a884ff3"
+    },
+    {
+      "name": "0039_native_task_plan.sql",
+      "sha256": "0cb349a51ffa4aa06bbbe60d3a7477ee01848bb966ff43105d8d7e154ec1ddbf"
+    },
+    {
+      "name": "0040_native_contribution_effects.sql",
+      "sha256": "2e74dc404fad2acadaa7ce10b70218e74c432fde1cb10b51c810701bf6bb347a"
+    },
+    {
+      "name": "0041_agent_playbook_acknowledgments.sql",
+      "sha256": "0ca990fb007f312721976ec298721cd352c0170aab9703596bd620b2c21b7115"
+    },
+    {
+      "name": "0042_ai_provider_connections.sql",
+      "sha256": "55f1c2d1ec67eeabd72c36ce4e6c3910b86621c158854c5b424cabc07053c906"
+    },
+    {
+      "name": "0043_agent_doc_authors.sql",
+      "sha256": "f9df8992e174a1c244a76afbd126349a7cf880a8037ba857616cd1ab7a825232"
+    },
+    {
+      "name": "0044_agent_project_policies.sql",
+      "sha256": "3095f51baffe5ea1bd08bb32043722ecc4b1e314c997ce0d0c6100c87a45438d"
+    },
+    {
+      "name": "0045_stored_files.sql",
+      "sha256": "b3c8db912502571c149191c9684a93fff31f515823d528256f84728e4e33da3e"
+    },
+    {
+      "name": "0048_unused_ai_task_creation_undo.sql",
+      "sha256": "062e6fdac1dd6e94b3f90ac8af5240923137b8c2fc5b0713d6127946b148b9c0"
+    },
+    {
+      "name": "0049_cowork_request_responses.sql",
+      "sha256": "9762a2af0c23581e390438a653cc8c33e04050035ccb77b7cf4d972fe34745bf"
+    },
+    {
+      "name": "0050_cowork_unit_creation.sql",
+      "sha256": "cac8c6aaad7773a8fdf461329dafdc11265b51c9983bd596f8fbb793c3dbac45"
+    },
+    {
+      "name": "0051_thought_images.sql",
+      "sha256": "74eba65d09a38c6127f41b9d10d39c77ffd5d196927be8e99c90ceb0d3cb7251"
+    },
+    {
+      "name": "0052_github_task_rules.sql",
+      "sha256": "24b135f0fa606697fc96e498b5d50d16f166b02b57cd0ce23a53ef31ad29d7bd"
+    },
+    {
+      "name": "0054_cowork_unit_transitions.sql",
+      "sha256": "8d8d4d897f4d6c87a193b9c08c5ab0a8f2a2d89aba36baea5c45a86bf27da561"
+    },
+    {
+      "name": "0057_task_creation_undo_grant.sql",
+      "sha256": "63cd65b2a52b5a70d017f816255dc32f1bdf7a821a09775487ad0431b8288494"
+    }
+  ]
+}

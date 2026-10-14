@@ -81,6 +81,7 @@ export * from './ai-providers.js';
 export * from './background-compute.js';
 export * from './proactive-outcomes.js';
 export * from './notifications.js';
+export * from './needs-you.js';
 export * from './search.js';
 export * from './personal-runs.js';
 export * from './export.js';
@@ -91,5 +92,9 @@ export * from './github.js';
 export * from './agent-execution.js';
 export * from './agent-bootstrap.js';
 export * from './project-agents.js';
+export * from './agent-stops.js';
+export * from './agent-questions.js';
 export * from './agent-runtime.js';
 export * from './agent-mcp-policy.js';
+
+export * from './assistant.js';

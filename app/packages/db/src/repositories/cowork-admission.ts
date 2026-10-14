@@ -3,6 +3,7 @@ import type { CoWorkSourceRef } from '@flux/contracts';
 import * as schema from '../schema.js';
 import type { CoWorkTaskLockInput } from './cowork.js';
 import { readableReferenceSet } from './cowork-recovery.js';
+import { taskUseRows } from './task-use.js';
 import type { DbExecutor } from './push.js';
 
 // Live request admission (#153). Storage only: the server composition has already run #152
@@ -59,10 +60,8 @@ export function coworkAdmissionRows(tx: DbExecutor) {
         projectId: row.projectId, lineageTaskId: row.lineageTaskId })));
       const taskIds = [...new Set([...involved.flatMap((row) => [row.taskId, row.lineageTaskId]),
         ...(parent ? [parent.taskId, parent.rootTaskId] : []), ...additional])].sort();
-      const tasks = await tx.select({ id: schema.projectWorkItems.id }).from(schema.projectWorkItems)
-        .where(and(eq(schema.projectWorkItems.workspaceId, scope.workspaceId), inArray(schema.projectWorkItems.id, taskIds)))
-        .orderBy(asc(schema.projectWorkItems.id)).for('update');
-      if (tasks.length !== taskIds.length) throw new Error('The complete native task lock set is unavailable');
+      // #238: the one sorted task pass is the shared use fence; it refuses a missing or creation-undone task.
+      const taskFence = await taskUseRows(tx).lockPrepared(taskIds);
       const locked = await tx.select().from(units).where(and(inProject, inArray(units.id, involved.map((row) => row.id))))
         .orderBy(asc(units.id)).for('update');
       const lockedSender = locked.find((row) => row.id === sender.id && row.assignmentConnectionId === scope.senderConnectionId);
@@ -73,7 +72,7 @@ export function coworkAdmissionRows(tx: DbExecutor) {
         .where(and(eq(schema.agentConnections.workspaceId, scope.workspaceId), eq(schema.agentConnections.id, scope.recipientConnectionId)));
       // Fresh wall time AFTER every lock wait; this fences the sender's lease.
       const [time] = await tx.select({ now: clock }).from(units).where(eq(units.id, lockedSender.id));
-      return { sender: unit(lockedSender), recipient: lockedRecipient ? unit(lockedRecipient) : null, now: time!.now,
+      return { sender: unit(lockedSender), recipient: lockedRecipient ? unit(lockedRecipient) : null, now: time!.now, taskFence,
         recipientConnection: recipientConnection && !recipientConnection.revokedAt
           ? { id: recipientConnection.id, ownerUserId: recipientConnection.ownerUserId } : null };
     },

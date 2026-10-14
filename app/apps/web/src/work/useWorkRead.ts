@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useSyncExternalStore } from 'react';
+import { useEffect, useMemo, useRef, useSyncExternalStore } from 'react';
+import { whenPageLive } from '../api/pageLeaving';
 import { readStateForScope, ScopedReadStore, type ReadScope, type ReadState } from './read-state';
 
 /**
@@ -17,9 +18,16 @@ export function useWorkRead<T>(scope: ReadScope | null, load: (signal: AbortSign
     store.clear();
     return () => { store.clear(); };
   }, [store, captured]);
+  // The first read of a scope opens the view and starts at once. A later refresh of the same scope is
+  // background work: while the page is being left it waits until the page is live (#471), so WebKit
+  // does not report the cancelled request as a page error.
+  const opened = useRef<typeof captured>(null);
   useEffect(() => {
-    if (!captured) store.clear();
-    else if (enabled) void store.read(captured, load, true);
+    if (!captured) { store.clear(); opened.current = null; return undefined; }
+    if (!enabled) return undefined;
+    const run = () => { opened.current = captured; void store.read(captured, load, true); };
+    if (opened.current !== captured) { run(); return undefined; }
+    return whenPageLive(run);
   }, [store, captured, load, refresh, enabled]);
   return readStateForScope(state, scope);
 }

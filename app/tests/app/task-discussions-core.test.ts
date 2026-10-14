@@ -35,6 +35,8 @@ function world({ bound = false, visible = true, writable = true, rootSequence = 
       async locate(_type, id) { return id === ids.work ? { projectId: ids.project } : null; },
       async findWork(id) { return id === ids.work ? ({ id } as never) : null; },
       async names() { return new Map(); },
+      async prepareTaskUse(taskIds) { writes.push('prepareTaskUse'); return { ids: taskIds, projectIds: [ids.project],
+        async mark() { writes.push('markTaskUse'); } }; },
     },
     discussion: {
       async lockCommand() { writes.push('lockCommand'); },

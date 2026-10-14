@@ -162,12 +162,19 @@ async function captureVisibleAuthor(page: Page, row: Locator, name: string, evid
         inViewport: r.x >= 0 && r.y >= 0 && r.right <= innerWidth && r.bottom <= innerHeight,
         uncovered });
     }
-    return { text: label.innerText, parts };
+    const sample = { text: label.innerText, parts };
+    const feed = element.closest<HTMLElement>('.project-convo__feed');
+    const bounds = element.getBoundingClientRect();
+    return { sample, frameSignals: { rowY: bounds.y, rowHeight: bounds.height, scrollTop: feed?.scrollTop,
+      scrollHeight: feed?.scrollHeight, feedWidth: feed?.clientWidth, feedHeight: feed?.clientHeight,
+      opening: feed?.classList.contains('is-opening') } };
   });
   const samples = [];
+  const frameSignals = [];
   for (let i = 0; i < 3; i++) {
     await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
-    const sample = await inspect();
+    const observation = await inspect();
+    const sample = observation.sample;
     assert.ok(sample.parts.every((part) => part.width > 0 && part.height > 0 && part.inViewport && part.uncovered),
       `${name}: the actual full author and face are in the viewport and uncovered`);
     assert.ok(sample.parts.every((part) => part.ancestors.every((a, index) => a.opacity === 1 && a.display !== 'none'
@@ -175,13 +182,15 @@ async function captureVisibleAuthor(page: Page, row: Locator, name: string, evid
       && (a.ariaHidden !== 'true' || (part.name === 'face' && index === 0)))),
     `${name}: visible identity has no hidden ancestor; only the decorative face itself may be aria-hidden`);
     samples.push(sample);
+    frameSignals.push(observation.frameSignals);
     if (i === 0 && disturb) await disturb();
   }
+  if (evidence) writeFileSync(join(evidence, `${name}-frame-observations.json`), JSON.stringify({ samples, frameSignals }, null, 2), { mode: 0o600 });
   assert.deepEqual(samples[1], samples[0], `${name}: visible identity is stable over rendered frames`);
   assert.deepEqual(samples[2], samples[1], `${name}: visible identity remains stable over rendered frames`);
   if (evidence) {
     await page.screenshot({ path: join(evidence, `${name}.png`), fullPage: true });
-    const after = await inspect();
+    const { sample: after } = await inspect();
     assert.deepEqual(after, samples[2], `${name}: the author stays visible throughout the raw capture`);
     writeFileSync(join(evidence, `${name}-visibility.json`), JSON.stringify({ before: samples[2], after }, null, 2));
   }
@@ -457,11 +466,8 @@ test('native agent owners retry failed reads, fence stale permission answers and
     await row.locator('.agent-for').waitFor();
     assert.equal(await row.locator('.agent-tag').innerText(), 'Agent');
     assert.equal(await row.locator('.ws-av').count(), 0);
-    const decision = page.locator(`[data-work-id="${proposal.id}"]`);
-    await decision.locator('.agent-for').waitFor();
-    assert.equal(await decision.locator('.agent-tag').innerText(), 'Agent');
-    assert.equal((await decision.innerText()).includes('(agent)'), false);
     await capture('scoped-owner-list', '.ws-item .agent-for');
+    // Decisions have no row in Tasks (#342); the proposing agent's owner shows in the decision's own details below.
     await row.getByRole('button').click();
     await page.locator('.wd-discussion .agent-for').waitFor();
     assert.equal(await page.locator('.wd-discussion .agent-tag').innerText(), 'Agent');
@@ -469,14 +475,16 @@ test('native agent owners retry failed reads, fence stale permission answers and
     await capture('scoped-owner-task-details', '.wd-discussion .agent-for');
     await page.keyboard.press('Escape');
     await page.locator('#details').waitFor({ state: 'detached' });
-    await decision.getByRole('button').click();
+    await page.goto(`/projects/${place.id}/tasks?open=decision:${proposal.id}`);
     await page.locator('.details .agent-for').waitFor();
     assert.equal(await page.locator('.details .agent-for').innerText(), 'for Scoped Casey');
     await capture('scoped-owner-decision-details', '.details .agent-for');
     await page.keyboard.press('Escape');
     await page.locator('#details').waitFor({ state: 'detached' });
     await page.locator(`a[href^="/projects/${place.id}/agents"]`).click();
-    await page.getByLabel('Task', { exact: true }).selectOption(task.id);
+    // A task's thread opens from `?task=` (an agent's task link does the same); stay inside this page visit.
+    await page.getByRole('heading', { level: 1, name: 'Agents' }).waitFor();
+    await page.evaluate((url) => { history.pushState({}, '', url); window.dispatchEvent(new PopStateEvent('popstate')); }, `/projects/${place.id}/agents?task=${task.id}`);
     await page.waitForURL((url) => url.pathname === `/projects/${place.id}/agents` && url.searchParams.get('task') === task.id);
     await page.locator('#details').waitFor({ state: 'detached' });
     await page.locator('.agents-msg__meta .agent-for').waitFor();
@@ -494,7 +502,7 @@ test('native agent owners retry failed reads, fence stale permission answers and
     // owner cache would wrongly reuse the first project's authorized name here.
     await page.getByRole('link', { name: 'Other owner scope', exact: true }).click();
     await page.locator(`a[data-tab="tasks"][href^="/projects/${elsewhere.id}/tasks"]`).click();
-    await page.getByRole('radio', { name: 'Kanban', exact: true }).click();
+    await page.getByRole('radio', { name: 'Board', exact: true }).click();
     await page.locator(`[data-card-id="${otherTask.id}"]`).waitFor();
     assert.equal(await page.locator(`[data-card-id="${otherTask.id}"] .agent-for`).count(), 0);
     await page.getByRole('link', { name: 'Owner scope', exact: true }).click();
@@ -582,7 +590,7 @@ test('native agent owners retry failed reads, fence stale permission answers and
     await page.evaluate(() => { (window as unknown as { sameDocument: boolean }).sameDocument = true; });
     await page.getByRole('button', { name: /Scoped Casey.*account and sign out/ }).click();
     await page.getByRole('dialog', { name: 'Account', exact: true }).getByRole('button', { name: 'Sign out', exact: true }).click();
-    await page.getByRole('heading', { name: 'Sign in to Flux' }).waitFor();
+    await page.getByRole('heading', { name: 'Sign in' }).waitFor();
     await page.getByLabel('Email').fill(guest.email); await page.getByLabel('Password', { exact: true }).fill(password);
     await page.getByRole('button', { name: 'Sign in', exact: true }).click();
     await page.getByRole('link', { name: 'Owner scope', exact: true }).click();

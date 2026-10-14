@@ -180,7 +180,7 @@ class TaskAnnouncements(unittest.TestCase):
         made = self.notice(page, self.ids["from_message"])
         expect(made).to_have_count(1)
         expect(made.locator(".convo-notice__meta strong")).to_have_text("Jonas Berg")
-        expect(made.locator(".convo-notice__kind")).to_have_text("New task · ")
+        expect(made.locator(".convo-notice__kind")).to_have_text("New task")
         assert_author_column(self, made, DESKTOP["width"], "task event author")
         self.assertAlmostEqual(made.locator(".convo-notice__kind").bounding_box()["x"],
                                made.locator(".convo-notice__meta").bounding_box()["x"], delta=1,
@@ -363,9 +363,9 @@ class TaskAnnouncements(unittest.TestCase):
                         return rect(range);
                     };
                     const number = notice.querySelector('.ui-task-number');
-                    let word = number.nextSibling;
-                    while (word && (word.nodeType !== Node.TEXT_NODE || !word.textContent.trim())) word = word.nextSibling;
-                    if (!word) throw new Error('The task title has no first word');
+                    const word = notice.querySelector('.convo-notice__title').firstChild;
+                    if (!word || word.nodeType !== Node.TEXT_NODE || !word.textContent.trim())
+                        throw new Error('The native task reference title has no first word');
                     const first = word.textContent.search(/\\S/);
                     const range = document.createRange();
                     range.setStart(word, first);

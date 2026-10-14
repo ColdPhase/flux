@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router';
 import type { Conversation, ConversationMessage, ConversationRoot, ConversationRootWindow, NativeWorkRow, Page, Project, TaskCreationNotice } from '@flux/contracts';
-import { AgentIdentity, Button, EmptyState, Icon, useArrivals } from '../ui';
+import { AgentIdentity, Button, EmptyState, Icon, StatusGlyph, useArrivals } from '../ui';
 import { newBelowText } from '../ui/motion-rules';
 import { MessageActions, MessageObjects, useCreateWorkFromMessage } from '../work/inline';
 import { useMessageWorkRead, type MessageWorkRead } from '../work/useMessageWork';
@@ -10,6 +10,7 @@ import { useProjectWorkSummary } from '../work/WorkReadContext';
 import { MessageWorkPages } from '../work/MessageWorkPages';
 import { useShellActions } from './shellContext';
 import { listConversationRoots, listTaskNotices } from './conversation-api';
+import { QuestionCard, WhenNoQuestion } from '../agents/QuestionCard';
 import { AgentAuthor, AuthorFace, ContributionMark, OPENING_REVEAL_MS, SourceCitation, clock, day, openOnWholeMessages, pendingMessageRow, when } from './messageParts';
 import { agentAuthorOwner, useAgentOwners, type AgentOwners } from '../agents/owners';
 import { MessageContent } from '../composer/Files';
@@ -548,16 +549,19 @@ function NoticeItem({ notice, meId, owners, row, onOpenTask }: { notice: TaskCre
   const name = creator.name ?? (creator.kind === 'agent' ? 'Agent' : 'Member');
   const mine = creator.kind === 'human' && creator.id === meId;
   return (
-    <li className="convo-notice" id={`notice-${notice.id}`} data-work-id={notice.workId}>
+    <li className={`convo-notice${notice.kind === 'task.creation_reverted' || notice.lifecycle?.state === 'creation_reverted' ? ' convo-notice--undone' : ''}`} id={`notice-${notice.id}`} data-work-id={notice.workId}>
       <AuthorFace kind={creator.kind} name={name} mine={mine} />
       <span className="convo-notice__body">
         <span className="convo-notice__meta">
+          <span className="convo-notice__kind">{notice.kind === 'task.creation_reverted' ? 'Task creation undone' : 'New task'}{notice.kind === 'task.created' && notice.lifecycle?.state === 'creation_reverted' ? ' · creation undone' : ''}</span>
           {creator.kind === 'agent' ? <AgentIdentity name={name} owner={owners.get(creator.id)} icon={false} /> : <strong>{name}{mine ? ' · you' : ''}</strong>}
           <time dateTime={notice.createdAt} title={when(notice.createdAt)}>{clock(notice.createdAt)}</time>
         </span>
         <button type="button" className="convo-notice__task" data-native-ref={`work:${notice.workId}`} onClick={() => onOpenTask(notice.workId)} aria-label={`Open task #${notice.workNumber} ${title}`}>
           {/* The immutable announcement number names the task before and after the current row arrives. */}
-          <span className="convo-notice__title"><span className="convo-notice__kind">New task · </span><span className="convo-notice__num ui-task-number">#{notice.workNumber}</span> {title}</span><Icon name="chevron-right" size={14} />
+          <StatusGlyph status={current?.status ?? 'open'} size={16} />
+          <span className="convo-notice__num ui-task-number">#{notice.workNumber}</span>
+          <span className="convo-notice__title">{title}</span><Icon name="chevron-right" size={14} />
         </button>
       </span>
     </li>
@@ -592,11 +596,12 @@ function RootItem(props: RootItemProps | QueuedRootProps) {
         <strong>{mine ? `${name} · you` : message.authorId === null ? <AgentAuthor message={message} owner={agentAuthorOwner(message.author, owners)} /> : <Link className="project-convo__person" to={`/dm/new?workspace=${project.workspaceId}&with=${message.authorId}`} title={`Message ${name} directly`}>{name}</Link>}</strong>
         <time dateTime={message.createdAt} title={when(message.createdAt)}>{clock(message.createdAt)}</time>
       </div>
-      <MessageContent body={message.body ? <p><MessageText body={message.body} /></p> : null} files={message.files} context={{ author: name, at: message.createdAt, caption: message.body, place: project.name, onReply: writable ? () => onOpen(root, true) : undefined, onCreateTask: writable ? () => void makeWork.create(message) : undefined }}>
+      <MessageContent body={message.body ? <WhenNoQuestion projectId={project.id} messageId={message.id}><p><MessageText body={message.body} /></p></WhenNoQuestion> : null} files={message.files} context={{ author: name, at: message.createdAt, caption: message.body, place: project.name, onReply: writable ? () => onOpen(root, true) : undefined, onCreateTask: writable ? () => void makeWork.create(message) : undefined }}>
         <LinkPreviews body={message.body} />
         <MessageObjects message={message} projectId={project.id} preview={messageWork.previews?.get(message.id) ?? null} thread={root.task ?? null} threadRow={taskRow} />
         {message.source ? <SourceCitation materialId={message.source.materialId} version={message.source.version} onDenied={onDenied} /> : null}
       </MessageContent>
+      <QuestionCard projectId={project.id} messageId={message.id} meId={meId} writable={writable} />
       {message.contribution ? <ContributionMark contribution={message.contribution} onOpenResult={onOpenResult} /> : null}
       <Replies root={root} open={open} writable={writable} onOpen={(reply) => onOpen(root, reply)} />
       <MessageActions projectId={project.id} message={message} writable={writable} busy={makeWork.busy === message.id} onCreateWork={() => void makeWork.create(message)} />

@@ -15,7 +15,9 @@ export function isFinished(item: Pick<WorkItem, 'status'>) {
 }
 
 /** The quiet kind line of a work item: status, owner and parking, never colour alone. */
-export function workLine(item: Pick<WorkItem, 'status' | 'owner' | 'parked'>) {
+export function workLine(item: Pick<WorkItem, 'status' | 'owner' | 'parked' | 'lifecycle'>) {
+  // A task whose creation was undone (#238) is named as history, never as current work.
+  if (item.lifecycle?.state === 'creation_reverted') return 'Work · creation undone';
   return ['Work', STATUS_LABEL[item.status], item.owner?.name, item.parked ? 'parked' : null].filter(Boolean).join(' · ');
 }
 

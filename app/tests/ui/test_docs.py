@@ -250,9 +250,10 @@ class DocsJourney(unittest.TestCase):
 
     def test_05_add_a_result_to_the_doc(self) -> None:
         page = self.page("partner")
-        page.goto(f"/projects/{self.project_id}/tasks")
-        page.get_by_role("radio", name="List", exact=True).click()
-        page.get_by_role("region", name=re.compile("^Results")).get_by_role("button", name=re.compile(FINDING)).click()
+        # Results have no list in Tasks (#342): the result opens by its own link, as from its task's details.
+        results = page.request.get(f"/api/v1/projects/{self.project_id}/results?limit=100").json()["items"]
+        result = next(item for item in results if item["title"].startswith(FINDING))
+        page.goto(f"/projects/{self.project_id}/tasks?open=result:{result['id']}")
         panel = page.locator("#details")
         expect(panel).to_contain_text("Not in a doc yet.")
         panel.get_by_role("button", name="Add to docs").click()
@@ -260,7 +261,7 @@ class DocsJourney(unittest.TestCase):
         shot(page, "docs-add-from-result-desktop-1440")
         panel.get_by_role("button", name="Add or update section").click()
         expect(page.get_by_role("heading", level=2, name=TITLE)).to_be_visible()
-        expect(page.locator(".doc-head__why")).to_have_text(f"Added the result “{FINDING}”")
+        expect(page.locator(".wiki-who time").first).to_have_attribute("title", re.compile(re.escape(f"Added the result “{FINDING}”")))
         expect(page.locator(".doc-prose").get_by_role("heading", name=f"Result: {FINDING}")).to_be_visible()
         expect(page.get_by_role("region", name=re.compile("^Added from"))).to_contain_text(FINDING)
         doc = self.doc(page)
@@ -269,9 +270,7 @@ class DocsJourney(unittest.TestCase):
         result = self.api(page, "GET", f"/api/v1/results/{self.result_id}", status=200)
         self.assertTrue(any(link["from"]["type"] == "doc" and link["from"]["id"] == self.doc_id for link in result["links"]))
         # The result now shows the doc it is in.
-        page.goto(f"/projects/{self.project_id}/tasks")
-        page.get_by_role("radio", name="List", exact=True).click()
-        page.get_by_role("region", name=re.compile("^Results")).get_by_role("button", name=re.compile(FINDING)).click()
+        page.goto(f"/projects/{self.project_id}/tasks?open=result:{self.result_id}")
         expect(page.locator("#details").get_by_role("link", name=re.compile(TITLE))).to_be_visible()
 
     # ---------------------------------------------------------------- phone
@@ -297,8 +296,11 @@ class DocsJourney(unittest.TestCase):
         expect(page.get_by_label("Preview").get_by_role("heading", name="Next")).to_be_visible()
         shot(page, "docs-editor-preview-phone-390")
         page.get_by_role("button", name="Save version").tap()
-        expect(page.locator(".doc-head__k")).to_have_text("Published · version 5")
+        expect(page.get_by_role("heading", level=2, name=TITLE)).to_be_visible()
+        expect(page.locator(".wiki-bar__title")).to_contain_text("Wiki ·")
+        self.assertEqual(self.doc(page)["version"], 5)
         self.assertEqual(self.doc(page)["reason"], "Edited the text")
+        page.get_by_role("button", name="More").tap()
         page.get_by_role("link", name=re.compile("^History")).tap()
         expect(page.get_by_label("Changes in the text").locator(".doc-diff__row--added")).to_contain_text(["## Next"])
         shot(page, "docs-history-phone-390")

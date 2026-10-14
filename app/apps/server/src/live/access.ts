@@ -1,4 +1,4 @@
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, isNull } from 'drizzle-orm';
 import { schema } from '@flux/db';
 import type { LiveContextRef, LivePresentationRef } from '@flux/contracts';
 import { assertAuthorized, enforce, evaluateProject, NotFoundError, type Executor, type LiveAccess, type Principal } from '@flux/core';
@@ -17,7 +17,7 @@ export async function requireLiveContext(principal: Principal, ref: LiveContextR
   }
   if (ref.type === 'work') {
     const query = db.select({ projectId: schema.projectWorkItems.projectId })
-      .from(schema.projectWorkItems).where(eq(schema.projectWorkItems.id, ref.id));
+      .from(schema.projectWorkItems).where(and(eq(schema.projectWorkItems.id, ref.id), isNull(schema.projectWorkItems.creationRevertedAt)));
     const [row] = lock ? await query.for('share') : await query;
     if (!row || row.projectId !== projectId) missing();
     return;
@@ -64,7 +64,7 @@ export async function requireLivePresentationSource(principal: Principal, projec
   }
   if (ref.type === 'work') {
     const query = db.select({ projectId: s.projectWorkItems.projectId, version: s.projectWorkItems.version }).from(s.projectWorkItems)
-      .where(eq(s.projectWorkItems.id, ref.id));
+      .where(and(eq(s.projectWorkItems.id, ref.id), isNull(s.projectWorkItems.creationRevertedAt)));
     const [row] = lock ? await query.for('share') : await query;
     // Work has no historical snapshot API yet: an old version is not a readable source.
     if (!row || row.projectId !== projectId || row.version !== ref.version) missing();
@@ -106,7 +106,7 @@ export function liveAccess(db: Executor): LiveAccess {
     }
     if (type === 'work') {
       const [row] = await db.select({ projectId: schema.projectWorkItems.projectId }).from(schema.projectWorkItems)
-        .where(eq(schema.projectWorkItems.id, id));
+        .where(and(eq(schema.projectWorkItems.id, id), isNull(schema.projectWorkItems.creationRevertedAt)));
       return row?.projectId ?? null;
     }
     if (type === 'sketch') {

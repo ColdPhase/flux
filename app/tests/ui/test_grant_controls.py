@@ -18,13 +18,17 @@ from datetime import datetime, timedelta, timezone
 
 from playwright.sync_api import Browser, Page, expect, sync_playwright
 
-from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
+from test_app_shell import DESKTOP, ORIGIN, PHONE, UI_BROWSER, UPSTREAM, shot as save_shot, start_forwarder
 
 PASSWORD = "grants that end on time"
 STAMP = int(time.time() * 1000)
 HUBERT = {"name": "Hubert Grant", "email": f"hubert.grants+{STAMP}@example.test"}
 MAREK = {"name": "Marek Grant", "email": f"marek.grants+{STAMP}@example.test"}
 ACTION_SCOPES = ["flux.context.read", "flux.proposal.write", "flux.action.execute"]
+
+
+def shot(page: Page, name: str) -> None:
+    save_shot(page, name if UI_BROWSER == "chromium" else f"{name}-{UI_BROWSER}")
 
 
 def parse(iso: str) -> datetime:
@@ -44,7 +48,10 @@ class GrantControlsJourney(unittest.TestCase):
         if UPSTREAM:
             start_forwarder(ORIGIN, UPSTREAM)
         cls.pw = sync_playwright().start()
-        cls.browser = cls.pw.chromium.launch()
+        cls.browser = getattr(cls.pw, UI_BROWSER).launch()
+        if cls.browser.browser_type.name != UI_BROWSER:
+            raise AssertionError(f"Expected {UI_BROWSER}, launched {cls.browser.browser_type.name}")
+        print(f"\n  Grant controls browser: {cls.browser.browser_type.name}")
         expect.set_options(timeout=8000)
 
     @classmethod
@@ -278,8 +285,8 @@ class GrantControlsJourney(unittest.TestCase):
         # The project Agents view lists Hubert's connections for Marek, but offers no grant controls there.
         agents = self.page("marek")
         agents.goto(f"/projects/{self.ids['sensor']}/agents")
-        expect(agents.get_by_role("heading", level=1, name="Working together")).to_be_visible()
-        expect(agents.get_by_role("list", name="Agent connections in this project")).to_contain_text("Desk laptop")
+        expect(agents.get_by_role("heading", level=1, name="Agents")).to_be_visible()
+        expect(agents.get_by_role("list", name="Agents in this project")).to_contain_text("Desk laptop")
         expect(agents.get_by_text("Standing grants")).to_have_count(0)
         expect(agents.get_by_role("button", name="Revoke")).to_have_count(0)
         # And Hubert's page never shows Marek's connection or grant.

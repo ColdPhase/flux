@@ -1,5 +1,5 @@
 import type { ProjectAccess } from './access.js';
-import type { Decision, NamedPrincipal, ObjectLink, ResultFinding, WorkItem, WorkObjectType, WorkResult, WorkStatus } from './work.js';
+import type { Decision, NamedPrincipal, ObjectLink, ResultFinding, TaskLifecycle, WorkItem, WorkObjectType, WorkResult, WorkStatus } from './work.js';
 
 /** Bounded native reads (#155/#151/#136). These projections are NOT full WorkItem DTOs. */
 export const projectWorkSummaryPath = (projectId: string) => `/api/v1/projects/${projectId}/work-summary`;
@@ -25,7 +25,8 @@ export interface WorkReadQuery {
 
 /** Flat URL fields are closed: combinations not in this union are invalid. */
 export type ProjectWorkViewQuery = WorkReadQuery & (
-  | { purpose?: 'tasks'; group?: 'all' | WorkGroup; mine?: boolean }
+  /** `kinds: 'work'` lists only tasks: the Tasks tab shows tasks, decisions wait in the Inbox (#342). */
+  | { purpose?: 'tasks'; group?: 'all' | WorkGroup; mine?: boolean; kinds?: 'work' }
   | { purpose: 'choices'; choice: 'accepted_decisions' | 'pivot_work'; q?: string }
   | { purpose: 'choices'; choice: 'result_work'; q?: string; selected?: string }
   | { purpose: 'choices'; choice: 'parked_work'; decisionId: string; q?: string }
@@ -81,6 +82,8 @@ export interface WorkRowProjection extends NativeRowBase {
   parked: WorkItem['parked'];
   parkedBy: WorkReadRef | null;
   rule: WorkReadRef | null;
+  /** #238: a task whose creation was undone appears only as history (direct reads and existing references). */
+  lifecycle?: TaskLifecycle;
   version: number;
   updatedAt: string;
 }

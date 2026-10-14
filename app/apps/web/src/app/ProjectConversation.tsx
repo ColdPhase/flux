@@ -3,6 +3,7 @@ import { Link, useLoaderData, useLocation, useNavigate, useRevalidator, type Loa
 import type { AssistantAnswer, ConversationMessage, Conversation, ConversationRootWindow, Draft, Material, Page, Project, TaskCreationNotice, WorkspaceMember } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { outboxView, useComposerDraft, useComposerScope } from '../composer/draft';
+import { takeHandedFiles } from '../composer/handoff';
 import { AttachButton, ComposerFiles, MessageContent, useFileDrop } from '../composer/Files';
 import { LinkPreviews, MessageText } from './MessageText';
 import { ConnectionLine, SendAnnouncer } from '../composer/Outbox';
@@ -27,6 +28,8 @@ import { AgentAuthor, AuthorFace, ContributionMark, OPENING_REVEAL_MS, SourceCit
 import { agentAuthorOwner, useAgentOwners } from '../agents/owners';
 import { OneConversation, type PaneProps } from './OneConversation';
 import { ThreadMessageActions } from './ThreadDrawer';
+import { QuestionCard } from '../agents/QuestionCard';
+import { useProjectQuestions } from '../agents/questions';
 import { useTyping } from '../typing/useTyping';
 import { TypingNotice } from '../typing/TypingNotice';
 import './project-conversation.css';
@@ -80,6 +83,8 @@ function mergeMessages(current: Conversation['messages'], incoming: Conversation
 export function ProjectConversation() {
   const data = useLoaderData() as ProjectData;
   const { me } = useShellData();
+  // Agents' questions with ready answers (S14): one read of the project's questions for every card below.
+  useProjectQuestions(data.project.id, me.user.id);
   return <div className="project-page">
     <OneConversation key={`${me.user.id}:${data.project.id}`} data={data} Pane={ProjectConversationContent} />
   </div>;
@@ -150,6 +155,22 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
   // association read covers the root and the replies around the viewport (#155).
   const sourceIds = useMemo(() => [...(rootMessageId ? [rootMessageId] : []), ...messages.filter((message) => message.sequence > 1 && message.id !== rootMessageId).map((message) => message.id)], [messages, rootMessageId]);
   const writable = project.access !== 'viewer';
+  // The phone's "+" Create → File or link (F-026 S2) arrives as ?compose=files|link: the picked files
+  // join this project's message draft and the field takes focus, ready for a link or a line. Once.
+  const location = useLocation();
+  const addDraftFiles = publicComposer.addFiles;
+  useEffect(() => {
+    if (conversation) return;
+    const params = new URLSearchParams(location.search);
+    if (!params.has('compose')) return;
+    params.delete('compose');
+    const search = params.toString();
+    navigate({ pathname: location.pathname, search: search ? `?${search}` : '', hash: location.hash }, { replace: true, defaultShouldRevalidate: false });
+    const files = takeHandedFiles(me.user.id, project.id);
+    if (!writable) return;
+    if (files?.length) addDraftFiles(files);
+    requestAnimationFrame(() => document.getElementById(composerId)?.focus());
+  }, [conversation, location.search, location.pathname, location.hash, navigate, me.user.id, project.id, writable, addDraftFiles, composerId]);
   // Files dropped anywhere on the conversation join its draft (#348).
   const drop = useFileDrop(publicComposer, writable && !asking);
   const makeWork = useCreateWorkFromMessage(project);
@@ -476,6 +497,7 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
                   <MessageObjects message={message} projectId={project.id} preview={messageWork.previews?.get(message.id) ?? null} />
                   {message.source ? <SourceCitation materialId={message.source.materialId} version={message.source.version} onDenied={hideIfDenied} /> : null}
                 </MessageContent>
+                <QuestionCard projectId={project.id} messageId={message.id} meId={me.user.id} writable={writable} />
                 {message.contribution ? <ContributionMark contribution={message.contribution} onOpenResult={(resultId) => openDetails({ kind: 'result', id: resultId })} /> : null}
                 <ThreadMessageActions writable={writable}><MessageActions projectId={project.id} message={message} writable={writable} busy={makeWork.busy === message.id} onCreateWork={() => void makeWork.create(message)} /></ThreadMessageActions>
                 {makeWork.failed?.messageId === message.id ? <p className="ws-act-error" role="alert">{makeWork.failed.text} <button type="button" onClick={() => void makeWork.create(message)}>Retry</button></p> : null}
