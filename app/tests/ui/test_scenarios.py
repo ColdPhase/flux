@@ -1200,7 +1200,7 @@ class ScenarioJourney:
         # under it); on a computer the bar above the page has Download as its own button.
         expect(page.get_by_role("heading", level=2, name=DOC_TITLE)).to_be_visible()
         if self.phone:
-            header = page.locator("header.top")
+            header = page.locator("header.phead")
             expect(page.locator(".wiki-bar")).to_have_count(0)
             expect(header.locator(".wiki-header-meta")).to_have_text(re.compile(r"^Wiki · \d+ pages?$"))
             actions = header.locator(".wiki-header-actions")
