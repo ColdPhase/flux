@@ -116,10 +116,12 @@ export function NeedsYouCard({ item, variant = 'card', selected = false, handler
   const notNow = useRef<HTMLButtonElement>(null);
   const trayNotNow = useRef<HTMLButtonElement>(null);
   const anchors = useMemo(() => [notNow, trayNotNow], []);
-  const label = `${KIND_WORD[item.kind]}: ${item.title}`;
   const decision = item.kind === 'decision';
   const project = item.project?.name ?? null;
-  const meta = (decision ? ['Proposed decision', project] : item.kind === 'blocked' ? ['Your task', project, ago(item.at)] : [KIND_WORD[item.kind], project]).filter(Boolean).join(' · ');
+  const identity = item.assistantRequestIdentity;
+  const label = identity ? `${KIND_WORD[item.kind]}: ${identity.assistantName}, Agent for ${identity.ownerName}: ${item.title}` : `${KIND_WORD[item.kind]}: ${item.title}`;
+  const meta = (identity ? [`for ${identity.ownerName}`, KIND_WORD[item.kind], project]
+    : decision ? ['Proposed decision', project] : item.kind === 'blocked' ? ['Your task', project, ago(item.at)] : [KIND_WORD[item.kind], project]).filter(Boolean).join(' · ');
   const who = item.from?.name ?? null;
 
   const actions = (
@@ -136,7 +138,7 @@ export function NeedsYouCard({ item, variant = 'card', selected = false, handler
           <Button variant="quiet" onClick={() => handlers.unblock(item)}>Unblock</Button>
         </>
       ) : (
-        <Button variant="secondary" onClick={() => handlers.open(item)}>{item.reason === 'invitation' ? 'Open' : 'Reply'}</Button>
+        <Button variant="secondary" onClick={() => handlers.open(item)}>{item.assistantRequestIdentity ? 'Review' : item.reason === 'invitation' ? 'Open' : 'Reply'}</Button>
       )}
       {!decision && !touch && variant === 'card' ? <span className="nyc__quiet"><NotNowButton buttonRef={notNow} open={menuOpen} onToggle={() => onMenuOpen(!menuOpen)} className=" nyc__nn--quiet" /><Button variant="quiet" aria-keyshortcuts="E" onClick={() => handlers.done(item)}>Done</Button></span> : null}
     </div>
@@ -159,7 +161,8 @@ export function NeedsYouCard({ item, variant = 'card', selected = false, handler
             ) : (
               <p className="nyc__eyebrow">
                 {variant === 'row'
-                  ? [KIND_WORD[item.kind], who, project].filter(Boolean).join(' · ')
+                  ? identity ? <><b>{identity.assistantName}</b><AgentTag /><span className="nyc__meta">{meta}</span></>
+                    : [KIND_WORD[item.kind], who, project].filter(Boolean).join(' · ')
                   : <>{who ? <b>{who}</b> : null}{item.from?.kind === 'agent' ? <AgentTag /> : null}<span className="nyc__meta">{[meta, variant === 'card' && item.kind !== 'blocked' ? when(item.at) : null].filter(Boolean).join(' · ')}</span></>}
               </p>
             )}
@@ -176,7 +179,7 @@ export function NeedsYouCard({ item, variant = 'card', selected = false, handler
           </div>
           {variant === 'row' ? <div className="nyc__rowactions">{decision ? <>
             <Button variant="primary" onClick={() => handlers.accept(item)}>Accept</Button>
-            <NotNowButton buttonRef={notNow} open={menuOpen} onToggle={() => onMenuOpen(!menuOpen)} /></> : <Button variant="secondary" onClick={() => handlers.open(item)}>{item.kind === 'blocked' ? 'Open task' : item.reason === 'invitation' ? 'Open' : 'Reply'}</Button>}</div> : null}
+            <NotNowButton buttonRef={notNow} open={menuOpen} onToggle={() => onMenuOpen(!menuOpen)} /></> : <Button variant="secondary" onClick={() => handlers.open(item)}>{item.assistantRequestIdentity ? 'Review' : item.kind === 'blocked' ? 'Open task' : item.reason === 'invitation' ? 'Open' : 'Reply'}</Button>}</div> : null}
           {children}
         </div>
         {/* A swipe left on a phone: the card slides over this tray. Reachable by keyboard and touch alike. */}

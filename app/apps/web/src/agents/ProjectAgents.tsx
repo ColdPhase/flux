@@ -24,6 +24,7 @@ import { useProjectQuestions, useQuestionList } from './questions';
 import { useLatestAgentLine } from './latest';
 import { agentAuthorOwner, useAgentOwners } from './owners';
 import { ProjectPolicy } from './ProjectPolicy';
+import { AssistantJoinRequests } from './AssistantJoinRequests';
 import { WORK_ROLE, agentEntries, connectionState, currentWorkLine, firstName, isAgentWorking, mayDo, shortOwner, tasksHeldBy, teammateOf, type AgentEntry } from './roster';
 import { useSessionClock } from './useSessionClock';
 import { useTyping } from '../typing/useTyping';
@@ -350,22 +351,23 @@ const CONNECTION_EVENTS = new Set(['project.grant_set.v1', 'project.grant_revoke
  * the observation time too, keeping "Last: …" current. A separate deadline clock promptly ages known
  * session expiries without making another read.
  */
-function useConnections(projectId: string, meId: string, initial: ProjectAgentConnection[]) {
+function useConnections(projectId: string, meId: string, initial: ProjectAgentsData) {
   // A newer read replaces the loader's list until the loader itself reads again.
-  const [fetched, setFetched] = useState<{ base: ProjectAgentConnection[]; list: ProjectAgentConnection[] } | null>(null);
+  const [fetched, setFetched] = useState<{ base: ProjectAgentsData; view: ProjectAgentsData } | null>(null);
   const [now, setNow] = useState(() => Date.now());
-  const reload = useRef<() => void>(() => { /* not mounted */ });
+  const reload = useRef<() => Promise<void>>(async () => { /* not mounted */ });
   useEffect(() => {
     let controller: AbortController | null = null;
-    reload.current = () => {
+    reload.current = async () => {
       controller?.abort();
       const current = new AbortController();
       controller = current;
-      getProjectAgents(projectId, current.signal)
-        .then((next) => { if (!current.signal.aborted) { setFetched({ base: initial, list: next.connections }); setNow(Date.now()); } })
-        .catch(() => { /* keep the last known list; the next trigger retries */ });
+      try {
+        const next = await getProjectAgents(projectId, current.signal);
+        if (!current.signal.aborted) { setFetched({ base: initial, view: next }); setNow(Date.now()); }
+      } catch { /* keep the last known projection; the next trigger retries */ }
     };
-    return () => { controller?.abort(); reload.current = () => { /* unmounted */ }; };
+    return () => { controller?.abort(); reload.current = async () => { /* unmounted */ }; };
   }, [projectId, initial]);
   useStreamEvents(meId, (event) => {
     if (CONNECTION_EVENTS.has(event.kind) && (event.objectType === 'agent' || event.objectId === projectId)) reload.current();
@@ -379,9 +381,10 @@ function useConnections(projectId: string, meId: string, initial: ProjectAgentCo
     const interval = window.setInterval(tick, 15_000);
     return () => { window.removeEventListener('focus', onFocus); document.removeEventListener('visibilitychange', onVisible); window.clearInterval(interval); };
   }, []);
-  const list = fetched && fetched.base === initial ? fetched.list : initial;
+  const view = fetched && fetched.base === initial ? fetched.view : initial;
+  const list = view.connections;
   const displayedNow = useSessionClock(list, now);
-  return { list, now: displayedNow };
+  return { list, view, now: displayedNow, refresh: () => reload.current() };
 }
 
 /** A stop stays the row's second line for a day; after that the connection's own state is again the truth. */
@@ -651,7 +654,7 @@ export function ProjectAgents() {
   const names = useMemo(() => new Map((shell?.people ?? []).map((person) => [person.id, person.name])), [shell]);
   const changingScope = navigation.state !== 'idle' && !!navigation.location
     && (navigation.location.pathname !== location.pathname || navigation.location.search !== location.search);
-  const connections = useConnections(projectId, me.user.id, data.connections);
+  const connections = useConnections(projectId, me.user.id, data);
   const canWrite = shell?.project.access !== 'viewer';
   const agentStops = useAgentStops(projectId, me.user.id);
   const { reload: reloadStops } = agentStops;
@@ -756,11 +759,13 @@ export function ProjectAgents() {
         ) : (
           <p className="agents__no-connections">No agents here yet. Connect one below; people can still discuss tasks in Conversation.</p>
         )}
+        <AssistantJoinRequests key={`${projectId}:${me.user.id}`} projectId={projectId} meId={me.user.id} meName={me.user.name}
+          view={connections.view} names={names} canManage={shell?.project.access === 'manager'} onRefresh={connections.refresh} />
         <ul className="agents-links">
           <li><Link className="agents-link" to={requests ? questionLink(projectId, requests) : '/inbox'}>
             <span className="agents-link__icon"><Icon name="inbox" size={16} /></span>
             <span className="agents-link__text">
-              {requests ? <>{asked.length > 1 ? <b>Requests</b> : <b>Request</b>} · {requests.agent.name} asks: “{briefly(requests.question)}”</> : <><b>Requests</b> · No requests for you</>}
+              {requests ? <><b>Agent questions</b> · {requests.agent.name} asks: “{briefly(requests.question)}”</> : <><b>Agent questions</b> · No open questions for you</>}
             </span>
             {asked.length ? <span className="agents-link__count">{asked.length}</span> : null}
             <Icon name="chevron-right" size={14} />
