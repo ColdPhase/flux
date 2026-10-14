@@ -1,5 +1,5 @@
 export type AgentScope = 'flux.context.read' | 'flux.proposal.write' | 'flux.action.execute';
-export type ExternalComputeSource = 'user_operated_claude_code' | 'user_operated_external_client';
+export type ExternalComputeSource = 'user_operated_claude_code' | 'user_operated_external_client' | 'owner_assistant';
 export type ExternalClientDesignation = 'claude_code' | 'codex' | 'other';
 
 /** A person's server-owned consent selection; no model account or token is stored here. */

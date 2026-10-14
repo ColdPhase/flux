@@ -1,13 +1,15 @@
 // "Needs you" (#342, F-026 S1/S11): the one queue of what asks something of the signed-in person.
 // It is computed for the person from current access rows, never stored; only what the person did
 // with an item (done, not now, declined) is stored, per person.
+import type { AssistantRequestIdentity } from './push.js';
 
 export const NEEDS_YOU_PATH = '/api/v1/needs-you';
 export const needsYouItemPath = (key: string) => `${NEEDS_YOU_PATH}/${encodeURIComponent(key)}`;
 
 /**
- * What kind of need an item is. `question` is a person asking you something (an @mention that ends
- * in a question, or an invitation to work together); agents' questions with ready-made answers have no contract yet, so none appear.
+ * What kind of need an item is. `question` is a notification asking the person to respond, including an
+ * assistant join request linked to its saved request-cycle identity. Agent questions with ready-made answers
+ * remain outside this queue.
  */
 export const NEEDS_YOU_KINDS = ['decision', 'question', 'blocked', 'mention'] as const;
 export type NeedsYouKind = typeof NEEDS_YOU_KINDS[number];
@@ -73,6 +75,8 @@ export interface NeedsYouItem {
   blocked: NeedsYouBlocked | null;
   /** Why a notification-based item reached you (`mention`, `question` or `invitation`); null for the others. */
   reason: 'mention' | 'question' | 'invitation' | null;
+  /** Immutable request-cycle identity, only when the notification links a saved assistant join-question snapshot. */
+  assistantRequestIdentity?: AssistantRequestIdentity | null;
   /** The task "Not now: when #N is done" waits for; null when the item has none. */
   snoozeTask: NeedsYouTaskRef | null;
 }

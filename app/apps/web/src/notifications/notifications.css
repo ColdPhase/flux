@@ -18,11 +18,14 @@
 .inbox__item:focus-visible { outline: 2px solid var(--t1); outline-offset: -2px; }
 .inbox__ic { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; background: var(--sub); color: var(--t2); box-shadow: inset 0 0 0 1px var(--line); }
 .is-unread .inbox__ic { color: var(--t1); background: var(--sub); box-shadow: none; }
+.inbox__item--assistant-request .inbox__ic, .is-unread .inbox__item--assistant-request .inbox__ic { border-radius: 0; background: transparent; box-shadow: none; color: var(--t1); }
 .inbox__text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .inbox__title { font-size: var(--fs-md); line-height: 1.4; color: var(--t2); overflow-wrap: anywhere; }
 .is-unread .inbox__title { color: var(--t1); font-weight: 600; }
 .inbox__body { font-size: var(--fs-md); line-height: 1.45; color: var(--t2); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow-wrap: anywhere; }
 .inbox__meta { font-size: var(--fs-xs); color: var(--t3); }
+.inbox__item--assistant-request .inbox__body { display: block; -webkit-line-clamp: unset; line-clamp: unset; }
+.inbox__review { display: inline-flex; align-items: center; gap: var(--s-1); color: var(--t1); font-weight: 500; }
 .inbox__dot { width: 8px; height: 8px; margin-top: 7px; border-radius: 50%; background: var(--inv); }
 .inbox__read { position: absolute; right: 0; top: 10px; opacity: 0; transition: opacity var(--dur-1) var(--ease-out); }
 .inbox__row:hover .inbox__read, .inbox__read:focus-visible { opacity: 1; }

@@ -48,7 +48,7 @@ function holds(state: StoredNeedsYou, now: Date, statuses: Map<string, string>) 
 /**
  * The Inbox "Needs you" queue (#342, F-026 S1/S11). What needs a person is computed from current rows
  * for them alone: proposed decisions they can accept (O-009 DA-2: one person with write access
- * accepts), people's questions to them, their blocked tasks and unread mentions. Only what the person
+ * accepts), questions addressed to them, their blocked tasks and unread mentions. Only what the person
  * did with an item is stored. Every list is filtered by the access policy at the moment of reading.
  */
 export function createNeedsYou(ports: NeedsYouPorts, now: () => Date = () => new Date()) {
@@ -125,13 +125,21 @@ export function createNeedsYou(ports: NeedsYouPorts, now: () => Date = () => new
     // People's questions and mentions, still unread.
     const since = now().getTime() - MENTION_DAYS * 86_400_000;
     const inbox = await ports.inbox.listReadable(userId, 100);
+    const noteProjectIds = inbox.items.filter((note) => note.reason === 'question' && note.source.type === 'project'
+      && !!note.assistantRequestIdentity).map((note) => note.source.id);
+    if (noteProjectIds.length) for (const [id, name] of await ports.access.projectNames(noteProjectIds)) projectNames.set(id, name);
     for (const note of inbox.items) {
       if ((note.reason !== 'mention' && note.reason !== 'question' && note.reason !== 'invitation') || note.readAt || note.createdAt.getTime() < since) continue;
       // Someone asking you something, or to join them, is a question; a mention is a mention.
       const kind: NeedsYouKind = note.reason === 'mention' ? 'mention' : 'question';
+      const assistantRequestIdentity = note.reason === 'question' ? note.assistantRequestIdentity ?? null : null;
       items.push({
-        key: `note:${note.id}`, kind, title: note.title, detail: excerpt(note.body), project: null, from: null,
+        key: `note:${note.id}`, kind, title: note.title, detail: excerpt(note.body),
+        project: assistantRequestIdentity && note.source.type === 'project'
+          ? { id: note.source.id, name: projectNames.get(note.source.id) ?? 'Project' } : null,
+        from: assistantRequestIdentity ? { kind: 'agent', id: assistantRequestIdentity.assistantId, name: assistantRequestIdentity.assistantName } : null,
         at: iso(note.createdAt), url: note.url ?? `/inbox/${note.id}`, decision: null, blocked: null, reason: note.reason, snoozeTask: null,
+        ...(assistantRequestIdentity ? { assistantRequestIdentity } : {}),
       });
     }
     return items.sort((a, b) => ORDER[a.kind] - ORDER[b.kind] || b.at.localeCompare(a.at));

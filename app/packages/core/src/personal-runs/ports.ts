@@ -3,6 +3,7 @@ import type {
   AiPrice, AiProviderKind, AssistantProposalStatus, AssistantRunCostState, AssistantRunKind, AssistantRunStatus, AssistantSourceRef,
   PersonalRunConsentVersion, PersonalRunEnablementStatus, ResultFinding,
 } from '@flux/contracts';
+import type { AssistantIdentityPort } from '../assistant/ports.js';
 import type { Principal } from '../principal.js';
 import type { Paged, PageWindow } from '../work/ports.js';
 
@@ -199,6 +200,8 @@ export interface PersonalRunEventLog {
 }
 
 export interface PersonalRunPorts {
+  /** Production always supplies the assistant identity adapter; older isolated fake ports may omit it. */
+  assistants?: AssistantIdentityPort;
   access: PersonalRunAccess;
   runs: PersonalRunRepository;
   queue: PersonalRunQueue;

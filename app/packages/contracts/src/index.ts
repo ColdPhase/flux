@@ -92,3 +92,5 @@ export * from './agent-stops.js';
 export * from './agent-questions.js';
 export * from './agent-runtime.js';
 export * from './agent-mcp-policy.js';
+
+export * from './assistant.js';

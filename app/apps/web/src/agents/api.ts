@@ -1,5 +1,5 @@
 import { agentProjectPolicyPath, agentQuestionAnswerPath, ownWorkingAgentsPath, projectAgentQuestionsPath, projectAgentStopsPath, projectAgentsPath,
-  type AgentProjectPolicy, type AgentQuestion, type AgentQuestions, type AgentStop, type AgentStops, type AnswerAgentQuestionCommand, type OwnWorkingAgents,
+  assistantJoinRequestPath, type AssistantJoinRequest, type AgentProjectPolicy, type AgentQuestion, type AgentQuestions, type AgentStop, type AgentStops, type AnswerAgentQuestionCommand, type OwnWorkingAgents,
   type ProjectAgents, type PublishAgentProjectPolicyCommand, type StopAgentCommand } from '@flux/contracts';
 import { request } from '../api/client';
 
@@ -17,6 +17,11 @@ export const getAgentPolicy = (projectId: string, signal?: AbortSignal) =>
 export const publishAgentPolicy = (projectId: string, command: PublishAgentProjectPolicyCommand, idempotencyKey: string) =>
   request<AgentProjectPolicy>(agentProjectPolicyPath(projectId), { method: 'PUT', body: command, headers: { 'idempotency-key': idempotencyKey } });
 
+/** A request is durable but grants nothing; only a current project manager may allow it. */
+export const requestAssistantJoin = (projectId: string) =>
+  request<AssistantJoinRequest>(assistantJoinRequestPath(projectId), { method: 'POST' });
+export const allowAssistantJoin = (projectId: string, requestId: string) =>
+  request<AssistantJoinRequest>(`${assistantJoinRequestPath(projectId)}/${requestId}/allow`, { method: 'POST' });
 /** Who stopped which agent's work in a project, newest first (S13, #347). */
 export const getAgentStops = (projectId: string, signal?: AbortSignal) => request<AgentStops>(projectAgentStopsPath(projectId), { signal });
 
