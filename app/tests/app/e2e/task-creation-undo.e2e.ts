@@ -687,10 +687,10 @@ test('Agents, Map and live work never offer a task whose creation was undone, wh
     // The current task picker is in Hand Off; the undone task is absent, while the open task remains selectable.
     await page.getByRole('button', { name: 'Hand off a task', exact: true }).click();
     const taskChoice = page.getByLabel('Task', { exact: true }); await taskChoice.waitFor();
-    assert.equal(await taskChoice.locator(`option[value="${item.id}"]`).count(), 0);
-    assert.equal(await taskChoice.locator(`option[value="${kept.id}"]`).count(), 1);
     await taskChoice.selectOption(kept.id);
     assert.equal(await taskChoice.inputValue(), kept.id);
+    assert.equal(await taskChoice.locator(`option[value="${item.id}"]`).count(), 0);
+    assert.equal(await taskChoice.locator(`option[value="${kept.id}"]`).count(), 1);
     await page.getByRole('button', { name: 'Close', exact: true }).click();
     // Map: the map surface has no live or task action on it; the Details link still opens read-only history.
     await page.goto(`/projects/${f.place.id}/map/${sketch.id}?open=work:${item.id}`); await reverted(page, item);
