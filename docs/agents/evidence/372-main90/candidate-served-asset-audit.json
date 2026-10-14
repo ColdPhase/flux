@@ -1,0 +1,7 @@
+{
+  "phase": "served-assets",
+  "files": 82,
+  "runtimeAndServedSha256Equal": true,
+  "compressedSiblingsExcluded": true,
+  "assetInventorySha256": "523d321f43d742764cad057edb0356c9fef96686590ff50513b91e199b2133e6"
+}

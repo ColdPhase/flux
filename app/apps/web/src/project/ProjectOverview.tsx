@@ -1,7 +1,7 @@
 import { Fragment, useCallback, useEffect, useState, type ReactNode } from 'react';
 import { Link } from 'react-router';
 import type { DecisionRowProjection, NamedPrincipal, NativeWorkRow, WorkRowProjection, ResultRowProjection } from '@flux/contracts';
-import { AgentIdentity, Icon, type IconName } from '../ui';
+import { AgentIdentity, Icon, MEDIA, useMediaQuery, type IconName } from '../ui';
 import { useShellData } from '../app/data';
 import { useShellActions, type DetailsView, type OverviewView } from '../app/shellContext';
 import { STATUS_LABEL, decisionLine } from '../work/format';
@@ -87,6 +87,8 @@ export function ProjectOverview({ messageId, selection, focusPeople = null, onBa
   const shell = useProjectShell();
   const open = useOpenConversation();
   const { me } = useShellData();
+  const { openDetails } = useShellActions();
+  const phone = useMediaQuery(MEDIA.navDrawer);
   const read = useOverviewWork(me.user.id, shell?.project.id ?? null, open?.conversation?.id ?? null, messageId);
   const current = useProjectWorkSummary();
   const owners = useAgentOwners(shell?.project);
@@ -113,13 +115,20 @@ export function ProjectOverview({ messageId, selection, focusPeople = null, onBa
   // One native row window for every matching role, including Related-only objects.
   // Conversation scope covers all native messages, independently of its source-count window.
   const rows = read.page?.items ?? [];
+  const stateParts = messageMode || !current.summary ? [] : summaryStateParts(current.summary, current.summary.access !== 'viewer');
+  const aggregateKeys = new Set(['work', 'blocked', 'open', 'history']);
+  const totalsByTarget = new Map(stateParts.filter((part) => aggregateKeys.has(part.key)).map((part) => [`${part.open.kind}:${part.open.id}`, part]));
+  const withProjectTotal = (row: Row): Row => {
+    const part = totalsByTarget.get(row.key);
+    return part ? { ...row, sub: dotted([row.sub, `In this project: ${part.text}`]) } : row;
+  };
   const work = rows.filter((item): item is WorkRowProjection => item.kind === 'work');
   const decisions = rows.filter((item): item is DecisionRowProjection => item.kind === 'decision');
   const results = rows.filter((item): item is ResultRowProjection => item.kind === 'result');
   const workRow = (item: WorkRowProjection): Row => ({ key: `work:${item.id}`, native: item, icon: 'tasks', kind: 'Work', title: item.title, sub: dotted([STATUS_LABEL[item.status], item.owner ? byline(item.owner) : null, item.parked ? 'parked' : null]), open: { kind: 'work', id: item.id } });
   const decisionRow = (item: DecisionRowProjection): Row => ({ key: `decision:${item.id}`, native: item, icon: 'rule', kind: item.status === 'accepted' ? 'Current rule' : item.status === 'proposed' ? 'Proposed decision' : 'Earlier rule', title: item.title, sub: decisionLine(item).split(' · ').slice(1).join(' · ') || undefined, need: item.status === 'proposed' && project.access !== 'viewer', open: { kind: 'decision', id: item.id } });
   const resultRow = (item: ResultRowProjection): Row => ({ key: `result:${item.id}`, native: item, icon: 'result', kind: 'Result', title: item.title, sub: dotted([`${item.finding === 'negative' ? 'Negative' : 'Positive'} result`, byline(item.createdBy)]), open: { kind: 'result', id: item.id } });
-  const linked = [...decisions.filter((item) => item.status === 'proposed').map(decisionRow), ...decisions.filter((item) => item.status !== 'proposed').map(decisionRow), ...work.map(workRow), ...results.map(resultRow)];
+  const linked = [...decisions.filter((item) => item.status === 'proposed').map(decisionRow), ...decisions.filter((item) => item.status !== 'proposed').map(decisionRow), ...work.map(workRow), ...results.map(resultRow)].map(withProjectTotal);
   const linkedIds = new Set(linked.map((row) => row.key));
   const byRef = new Map(rows.map((row) => [`${row.kind}:${row.id}`, row]));
   const relationItems = read.links?.items ?? [];
@@ -162,9 +171,9 @@ export function ProjectOverview({ messageId, selection, focusPeople = null, onBa
     || read.page.total === rows.length && read.links?.total === 0);
 
   // The project's current state, without repeating what is already linked here.
-  const state = messageMode || !current.summary ? [] : summaryStateParts(current.summary, current.summary.access !== 'viewer').filter((part) => !linkedIds.has(`${part.open.kind}:${part.open.id}`)).map((part): Row => ({
+  const state = stateParts.filter((part) => !linkedIds.has(`${part.open.kind}:${part.open.id}`)).map((part): Row => ({
     key: part.key, icon: part.icon ?? (part.key === 'work' ? 'tasks' : 'rule'), kind: part.key === 'rule' ? 'Current rule' : part.key === 'result' ? 'Latest result' : part.key === 'proposal' ? 'Proposed decision' : part.key === 'blocked' ? 'Blocked' : part.key === 'open' ? 'Open task' : part.key === 'history' ? (part.open.kind === 'work' ? 'Earlier work' : 'Earlier decision') : 'In progress',
-    title: part.title, need: part.tone === 'need', sub: part.tone === 'need' ? 'Needs you' : undefined, open: part.open,
+    title: part.title, need: part.tone === 'need', sub: part.text, open: part.open,
   }));
   const author: ReactNode = message ? (message.authorId === null
     ? <AgentIdentity name={agentDisplayName(message.author)} owner={agentAuthorOwner(message.author, owners)} icon={14} />
@@ -179,6 +188,13 @@ export function ProjectOverview({ messageId, selection, focusPeople = null, onBa
       <h3 className="details__title">{title}</h3>
       {message ? <p className="details__lead ov-quote">{message.body.length > 280 ? `${message.body.slice(0, 279)}…` : message.body}</p> : null}
       <p className="ov-audience"><Icon name={project.visibility === 'workspace' ? 'people' : 'lock'} size={13} />{audienceLine(people, me.user.id, project.visibility === 'workspace')}</p>
+      {phone && !messageMode ? <section className="details__sec ov-sec" aria-label="Project summary">
+        <button type="button" className="ov-row" onClick={() => openDetails({ kind: 'recap', projectId: project.id })}>
+          <Icon name="leaf" size={16} className="ov-row__ic" />
+          <span className="ov-row__b"><span className="ov-row__t">What matters</span></span>
+          <Icon name="chevron-right" size={16} className="ov-row__go" />
+        </button>
+      </section> : null}
 
       <Rows label={messageMode ? 'Made from this message' : 'Linked in this conversation'} rows={linked}
         controls={read.objects.phase !== 'idle' ? <>
@@ -202,7 +218,7 @@ export function ProjectOverview({ messageId, selection, focusPeople = null, onBa
       {!message && project.access === 'manager' ? <p className="ov-more"><Link to={`${base}/github`}>GitHub repositories</Link></p> : null}
       {/* Exactly who can open it, and for its managers the controls to change that (#188). */}
       <ProjectAccess project={project} people={people} focusToken={focusPeople} />
-      <p className="details__keys"><kbd>]</kbd> toggles this panel · <kbd>Esc</kbd> closes it</p>
+      <p className="details__keys"><kbd>Esc</kbd> closes this panel</p>
     </div>
   );
 }

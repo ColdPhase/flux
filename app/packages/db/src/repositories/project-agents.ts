@@ -1,12 +1,13 @@
 import { and, asc, desc, eq, gt, inArray, isNull, ne, or, sql } from 'drizzle-orm';
 import type { AgentOperation, ProjectAgentConnection, ProjectAgentRequest, ProjectAgents } from '@flux/contracts';
 import * as schema from '../schema.js';
+import { assistantJoinView } from './assistant-joins.js';
 import type { createDatabase } from '../index.js';
 
 type Database = Pick<ReturnType<typeof createDatabase>['db'], 'transaction'>;
 type Transaction = Parameters<Parameters<Database['transaction']>[0]>[0];
 type Reader = { id: string; kind: 'human' };
-type Action = 'project.read' | 'project.write';
+type Action = 'project.read' | 'project.write' | 'project.manage';
 
 /** The composition root supplies the existing #29 policy; this adapter never decides access itself. */
 export interface ProjectAgentPolicy {
@@ -51,7 +52,31 @@ export function projectAgentRepository(db: Database, policy: ProjectAgentPolicy)
           if (await allows({ kind: 'agent', id: row.connection.agentId }, 'project.read', projectId)
             && await allows({ kind: 'human', id: row.connection.ownerUserId }, 'project.read', projectId)) current.push(row);
         }
-        if (!current.length) return { projectId, connections: [] };
+        const manages = await allows(reader, 'project.manage', projectId);
+        const asked = await tx.select({ request: schema.assistantJoinRequests, agentId: schema.assistantSettings.agentId })
+          .from(schema.assistantJoinRequests)
+          .innerJoin(schema.assistantSettings, and(eq(schema.assistantSettings.connectionId, schema.assistantJoinRequests.connectionId),
+            eq(schema.assistantSettings.ownerUserId, schema.assistantJoinRequests.ownerUserId), eq(schema.assistantSettings.workspaceId, schema.assistantJoinRequests.workspaceId)))
+          .innerJoin(schema.agentConnections, and(eq(schema.agentConnections.id, schema.assistantSettings.connectionId),
+            isNull(schema.agentConnections.revokedAt), eq(schema.agentConnections.computeSource, 'owner_assistant')))
+          .where(and(eq(schema.assistantJoinRequests.projectId, projectId), eq(schema.assistantJoinRequests.state, 'pending'),
+            ...(manages ? [] : [eq(schema.assistantJoinRequests.ownerUserId, reader.id)])))
+          .orderBy(schema.assistantJoinRequests.createdAt, schema.assistantJoinRequests.id);
+        const joinRequests = [];
+        for (const row of asked) if (await allows({ kind: 'human', id: row.request.ownerUserId }, 'project.read', projectId))
+          joinRequests.push(assistantJoinView(row.request, row.agentId));
+        const [ownAssistant] = await tx.select({ agentId: schema.assistantSettings.agentId }).from(schema.assistantSettings)
+          .innerJoin(schema.projects, and(eq(schema.projects.id, projectId), eq(schema.projects.workspaceId, schema.assistantSettings.workspaceId)))
+          .innerJoin(schema.agentConnections, and(eq(schema.agentConnections.id, schema.assistantSettings.connectionId),
+            eq(schema.agentConnections.computeSource, 'owner_assistant'), eq(schema.agentConnections.ownerUserId, reader.id), isNull(schema.agentConnections.revokedAt)))
+          .innerJoin(schema.agents, and(eq(schema.agents.id, schema.assistantSettings.agentId),
+            eq(schema.agents.ownerUserId, reader.id), isNull(schema.agents.revokedAt)))
+          .where(eq(schema.assistantSettings.ownerUserId, reader.id));
+        const joins = { ...(joinRequests.length ? { joinRequests } : {}), ...(ownAssistant ? { assistantJoin: {
+          agentId: ownAssistant.agentId, canRequest: !joinRequests.some((row) => row.ownerUserId === reader.id)
+            && !await allows({ kind: 'agent', id: ownAssistant.agentId }, 'project.read', projectId),
+        } } : {}) };
+        if (!current.length) return { projectId, connections: [], ...joins };
         const ids = current.map((row) => row.connection.id);
 
         // Usable now = what MCP requires of the whole connection: the level its scopes need on every
@@ -88,9 +113,9 @@ export function projectAgentRepository(db: Database, policy: ProjectAgentPolicy)
           .from(schema.agentRuntimeSessions).where(inArray(schema.agentRuntimeSessions.connectionId, ids))) authorized.add(row.connectionId);
 
         // An open session: unrevoked, unexpired, on the binding's current generation, of an enabled client.
-        const sessions = new Map<string, { startedAt: Date; expiresAt: Date }>();
+        const sessions = new Map<string, { sessionId: string; startedAt: Date; expiresAt: Date }>();
         for (const row of await tx.selectDistinctOn([schema.agentRuntimeSessions.connectionId], { connectionId: schema.agentRuntimeSessions.connectionId,
-          startedAt: schema.agentRuntimeSessions.createdAt, expiresAt: schema.agentRuntimeSessions.expiresAt })
+          sessionId: schema.agentRuntimeSessions.id, startedAt: schema.agentRuntimeSessions.createdAt, expiresAt: schema.agentRuntimeSessions.expiresAt })
           .from(schema.agentRuntimeSessions)
           .innerJoin(schema.agentOauthBindings, and(eq(schema.agentOauthBindings.id, schema.agentRuntimeSessions.bindingId),
             eq(schema.agentOauthBindings.generation, schema.agentRuntimeSessions.bindingGeneration)))
@@ -110,16 +135,30 @@ export function projectAgentRepository(db: Database, policy: ProjectAgentPolicy)
 
         // Work the connection holds here: one unit per (task, role) lives on its assignee, so a connection's units are its work.
         const units = await tx.select({ connectionId: schema.coworkUnits.assignmentConnectionId, taskId: schema.coworkUnits.taskId,
-          taskTitle: schema.projectWorkItems.title, role: schema.coworkUnits.role, state: schema.coworkUnits.state })
+          taskTitle: schema.projectWorkItems.title, role: schema.coworkUnits.role, state: schema.coworkUnits.state,
+          leaseSessionId: schema.coworkUnits.leaseSessionId,
+          leaseExpiresAt: schema.coworkUnits.leaseExpiresAt,
+          leaseUnexpired: sql<boolean>`${schema.coworkUnits.leaseExpiresAt} > clock_timestamp()` })
           .from(schema.coworkUnits)
           .innerJoin(schema.projectWorkItems, and(eq(schema.projectWorkItems.id, schema.coworkUnits.taskId),
             eq(schema.projectWorkItems.projectId, schema.coworkUnits.projectId)))
           .where(and(eq(schema.coworkUnits.projectId, projectId), inArray(schema.coworkUnits.assignmentConnectionId, ids),
             inArray(schema.coworkUnits.state, ['pending', 'claimed', 'paused'])))
           .orderBy(asc(schema.coworkUnits.createdAt), asc(schema.coworkUnits.id));
-        const work = new Map<string, { taskId: string; taskTitle: string; role: 'execute' | 'review' | 'plan'; state: 'pending' | 'claimed' | 'paused' }>();
-        for (const unit of units) if (!work.has(unit.connectionId)) work.set(unit.connectionId, { taskId: unit.taskId, taskTitle: unit.taskTitle,
-          role: unit.role, state: unit.state as 'pending' | 'claimed' | 'paused' });
+        const work = new Map<string, { taskId: string; taskTitle: string; role: 'execute' | 'review' | 'plan'; state: 'pending' | 'claimed' | 'paused'; liveClaimExpiresAt: string | null }>();
+        for (const unit of units) {
+          const session = usable.has(unit.connectionId) ? sessions.get(unit.connectionId) : undefined;
+          const liveClaim = unit.state === 'claimed' && unit.leaseUnexpired && !!unit.leaseExpiresAt
+            && !!unit.leaseSessionId && unit.leaseSessionId === session?.sessionId;
+          const current = work.get(unit.connectionId);
+          // Prefer a provable live claim over earlier pending/expired units; retain the old deterministic
+          // first-unit choice as the fallback when no current claim exists.
+          if (!current || (liveClaim && !current.liveClaimExpiresAt)) {
+            work.set(unit.connectionId, { taskId: unit.taskId, taskTitle: unit.taskTitle, role: unit.role,
+              state: unit.state as 'pending' | 'claimed' | 'paused',
+              liveClaimExpiresAt: liveClaim ? unit.leaseExpiresAt!.toISOString() : null });
+          }
+        }
 
         // Open requests addressed to each connection, with the sender's connection and owner. Resolved, declined and
         // superseded requests leave the list; the request's own state, not a heartbeat, says what it waits for.
@@ -150,6 +189,7 @@ export function projectAgentRepository(db: Database, policy: ProjectAgentPolicy)
             id: connection.id, name: connection.name, clientDesignation: connection.clientDesignation,
             owner: { id: connection.ownerUserId, name: ownerName }, agent: { id: connection.agentId, name: agentName },
             own: connection.ownerUserId === reader.id,
+            ...(connection.computeSource === 'owner_assistant' ? { assistant: true as const } : {}),
             state: !usable.has(connection.id) ? 'unavailable' : session ? 'session_open' : authorized.has(connection.id) ? 'offline' : 'not_signed_in',
             session: session ? { startedAt: session.startedAt.toISOString(), expiresAt: session.expiresAt.toISOString() } : null,
             lastActivity: last ? { operation: last.operation, at: last.at.toISOString() } : null,
@@ -157,7 +197,7 @@ export function projectAgentRepository(db: Database, policy: ProjectAgentPolicy)
             requests: requests.get(connection.id) ?? [],
           };
         });
-        return { projectId, connections };
+        return { projectId, connections, ...joins };
       });
     },
   };

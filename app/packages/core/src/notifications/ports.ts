@@ -36,6 +36,8 @@ export interface ProjectMessageFacts {
   sequence: number;
   /** People who wrote in the conversation before this message. */
   earlierAuthors: string[];
+  /** Set when the message carries an agent's question card (#347 S14): the one person asked and the question text. */
+  asked?: { userId: string; question: string } | null;
 }
 
 export interface DmMessageFacts {

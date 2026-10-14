@@ -31,8 +31,8 @@ export const updateWork = (item: Pick<WorkItem, 'id' | 'version'>, command: Upda
   request<WorkItem>(workItemPath(item.id), { method: 'PATCH', body: { ...command, clientCommandId }, headers: ifMatch(item.version) });
 export const proposeDecision = (projectId: string, command: ProposeDecisionCommand, idempotencyKey: string) =>
   request<Decision>(projectDecisionsPath(projectId), { method: 'POST', body: command, headers: key(idempotencyKey) });
-export const acceptDecision = (decision: Pick<Decision, 'id' | 'version'>, command: AcceptDecisionCommand, idempotencyKey: string) =>
-  request<Decision>(decisionAcceptPath(decision.id), { method: 'POST', body: command, headers: { ...ifMatch(decision.version), ...key(idempotencyKey) } });
+export const acceptDecision = (decision: Pick<Decision, 'id' | 'version'>, command: AcceptDecisionCommand, idempotencyKey: string, keepalive = false) =>
+  request<Decision>(decisionAcceptPath(decision.id), { method: 'POST', body: command, headers: { ...ifMatch(decision.version), ...key(idempotencyKey) }, keepalive });
 /** Connects a task to another object of its project (#289: a task made first in Tasks, linked to a map thought). */
 export const linkObjects = (projectId: string, command: CreateObjectLinkCommand, idempotencyKey: string) =>
   request<ObjectLink>(projectLinksPath(projectId), { method: 'POST', body: command, headers: key(idempotencyKey) });

@@ -187,11 +187,15 @@ class DocReferenceJourney(unittest.TestCase):
                 expect(text).to_have_value("PRIVATE-DRAFT of native reference notes\n")
 
     def assert_account(self, page, name, phone):
-        if phone: page.get_by_role("button", name="Open navigation", exact=True).click()
-        # In the phone drawer the account row leads to Settings (#266 PF-5).
-        role, suffix = ("link", "settings and sign out") if phone else ("button", "account and sign out")
-        expect(page.get_by_role(role, name=re.compile(f"^{name} .*{suffix}"))).to_be_visible()
-        if phone: page.get_by_role("button", name="Close navigation", exact=True).click()
+        if phone:
+            # On the phone the avatar leads to Settings (#266 PF-5, #341).
+            # The editor's header leads back; the account is read where the avatar leads, in Settings.
+            settings = page.context.new_page()
+            settings.goto("/settings")
+            expect(settings.get_by_text(re.compile(f"{name}"))).not_to_have_count(0)
+            settings.close()
+            return
+        expect(page.get_by_role("button", name=re.compile(f"^{name} .*account and sign out"))).to_be_visible()
 
     def expect_new_editor(self, page, project_name):
         # Main's #197 wiki pane splits the old "New doc · everyone in <project> can read it" line:
