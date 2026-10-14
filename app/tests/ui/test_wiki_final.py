@@ -207,11 +207,14 @@ class WikiFinal(unittest.TestCase):
         for theme in ("light", "dark"):
             with self.subTest(theme=theme):
                 page = self.open(PHONE, theme, touch=True)
+                page.goto(f"/projects/{self.project_id}/tasks")
+                task_header_height = page.locator("header.phead").bounding_box()["height"]
+                page.goto(f"/projects/{self.project_id}/docs/{self.doc_id}")
                 expect(page.locator(".wiki-bar__title")).to_have_text("Wiki · 5 pages")
                 chips = page.get_by_role("navigation", name="Wiki pages")
                 expect(chips.locator(".wiki-page")).to_have_count(5)
                 expect(chips.get_by_role("link", name="Hardware")).to_have_attribute("aria-current", "page")
-                header = page.locator("header.top")
+                header = page.locator("header.phead")
                 more = header.get_by_role("button", name="More", exact=True)
                 expect(more).to_have_count(1)
                 expect(header.locator(".wiki-bar__title")).to_have_text("Wiki · 5 pages")
@@ -221,7 +224,12 @@ class WikiFinal(unittest.TestCase):
                                      "the document follows page selection without a separate summary band")
                 self.assertLessEqual(title["y"] - page.locator(".wiki").bounding_box()["y"], 80,
                                      "Wiki metadata does not add a second row inside the reading surface")
-                self.assertLessEqual(header.bounding_box()["height"], 60, "the project header stays compact")
+                self.assertLessEqual(header.bounding_box()["height"], task_header_height + 1,
+                                     "Wiki metadata shares the current phone header row")
+                expect(header.locator(".phead__sub")).to_contain_text(re.compile(r"\d+ (?:people|person)"))
+                expect(header.locator(".wiki-header-meta")).to_have_text(re.compile(r"Wiki · 5 pages"))
+                self.assertLessEqual(header.locator(".phead__sub").evaluate("e => e.scrollWidth - e.clientWidth"), 1,
+                                     "people and page-count metadata are visible without clipping")
                 project_title = header.get_by_role("heading", level=1, name="Community garden sensors", exact=True)
                 self.assertLessEqual(project_title.evaluate("e => e.scrollWidth - e.clientWidth"), 1,
                                      "the project identity stays complete beside the single overflow")
@@ -237,6 +245,19 @@ class WikiFinal(unittest.TestCase):
                 self.assertGreater(box["y"] + box["height"], PHONE["height"] * 0.6, "Edit stays low on the screen")
                 expect(page.get_by_role("complementary", name="On this page")).to_have_count(0)
                 self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), PHONE["width"])
+                if theme == "light":
+                    page.set_viewport_size({"width": 320, "height": 640})
+                    expect(header.locator(".wiki-header-meta")).to_have_text(re.compile(r"Wiki · 5 pages"))
+                    expect(header.locator(".phead__sub")).to_contain_text(re.compile(r"\d+ (?:people|person)"))
+                    self.assertLessEqual(header.locator(".phead__sub").evaluate("e => e.scrollWidth - e.clientWidth"), 1,
+                                         "people and page-count metadata fit at 320 px")
+                    menu_button = page.get_by_role("heading", level=1).get_by_role("button", name="Community garden sensors")
+                    menu_button.tap()
+                    dialog = page.get_by_role("dialog", name="Community garden sensors, views")
+                    expect(dialog.get_by_role("link", name="Wiki")).to_have_attribute("aria-current", "page")
+                    expect(dialog.get_by_role("button", name="Details, goal and people")).to_be_visible()
+                    page.keyboard.press("Escape")
+                    page.set_viewport_size(PHONE)
                 # Edit is the one primary action: the primary pill, never the page's own surface.
                 look = edit.evaluate("e => { const c = getComputedStyle(e); return [c.backgroundColor, c.backgroundImage, c.color, getComputedStyle(document.documentElement).getPropertyValue('--inv').trim()]; }")
                 self.assertNotEqual(look[1], "none", "the primary gradient")
@@ -248,7 +269,7 @@ class WikiFinal(unittest.TestCase):
         """AC-3 as drawn (phone-wiki.webp, README §4 Phone): the title is the view menu, there is no row of
         views, and the chip row holds only pages; New page and Import .md are in the page's menu."""
         page = self.open(PHONE, "light", touch=True)
-        header = page.locator("header.top")
+        header = page.locator("header.phead")
         chips = page.get_by_role("navigation", name="Wiki pages")
         expect(page.get_by_role("navigation", name="Project views")).to_have_count(0)
         expect(page.locator(".views:not(.views--none)")).to_have_count(0)
@@ -266,10 +287,10 @@ class WikiFinal(unittest.TestCase):
         self.assertGreaterEqual(box[0], 44, "the title menu is a 44 px target")
         menu_button.tap()
         dialog = page.get_by_role("dialog", name="Community garden sensors, views")
-        views = dialog.get_by_role("navigation", name="Project views")
-        expect(views.get_by_role("link")).to_have_text(["Conversation", "Map", "Tasks", "Wiki", "Agents"])
+        views = dialog.locator(".phone-menu__list")
+        expect(views.get_by_role("link")).to_have_text(["Conversation", "Tasks", "Map", "Wiki", "Agents"])
         expect(views.get_by_role("link", name="Wiki")).to_have_attribute("aria-current", "page")
-        expect(views.get_by_role("link", name="Wiki")).to_be_focused()
+        expect(views.get_by_role("link", name="Conversation")).to_be_focused()
         expect(dialog.get_by_role("button", name="Details, goal and people")).to_be_visible()
         shot(page, "wiki-phone-390-view-menu")
         page.keyboard.press("Escape")
@@ -290,12 +311,12 @@ class WikiFinal(unittest.TestCase):
         # The menu leads to another view, where that view's own header returns.
         project_view(page, "Tasks", touch=True)
         expect(page).to_have_url(re.compile(r"/tasks"))
-        expect(header.locator(".top__viewmenu")).to_have_count(0)
+        expect(header.locator(".phead__menu")).to_be_visible()
         # And back to the Wiki on the computer: the row of views is unchanged there.
         page.set_viewport_size(DESKTOP)
         page.goto(f"/projects/{self.project_id}/docs/{self.doc_id}")
         expect(page.get_by_role("navigation", name="Project views").get_by_role("link", name="Wiki")).to_have_attribute("aria-current", "page")
-        expect(header.locator(".top__viewmenu")).to_have_count(0)
+        expect(page.locator("header.top .top__viewmenu")).to_have_count(0)
 
     def test_phone_edit_keeps_lower_document_unobscured(self) -> None:
         for size in ({"width": 320, "height": 640}, PHONE):
@@ -329,13 +350,13 @@ class WikiFinal(unittest.TestCase):
 
     def test_phone_context_retires_when_the_reader_is_left(self) -> None:
         page = self.open(PHONE, "light", touch=True)
-        header = page.locator("header.top")
+        header = page.locator("header.phead")
         expect(header.locator(".wiki-bar__title")).to_have_text("Wiki · 5 pages")
         page.get_by_role("link", name="Edit", exact=True).click()
         expect(page.get_by_label("Text (Markdown)")).to_be_visible()
         expect(header.locator(".wiki-bar__title")).to_have_count(0)
         expect(header.get_by_role("button", name="More", exact=True)).to_have_count(0)
-        expect(header.locator(".top__audience")).to_be_visible()
+        expect(header.locator(".phead__sub")).to_contain_text(re.compile(r"\d+ (?:people|person)"))
         private = BODY + "\nA private phone note, not published."
         page.get_by_label("Text (Markdown)").fill(private)
         project_view(page, "Conversation")
@@ -350,12 +371,12 @@ class WikiFinal(unittest.TestCase):
         project_view(page, "Conversation")
         expect(header.locator(".wiki-bar__title")).to_have_count(0)
         expect(header.get_by_role("button", name="More", exact=True)).to_have_count(0)
-        expect(header.locator(".top__audience")).to_be_visible()
+        expect(header.locator(".phead__sub")).to_contain_text(re.compile(r"\d+ (?:people|person)"))
 
     def test_phone_share_refusal_keeps_the_exact_link_and_audience_reachable(self) -> None:
         page = self.open(PHONE, "light", touch=True)
         page.evaluate("Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: () => Promise.reject(new DOMException('Test browser refusal', 'NotAllowedError')) } })")
-        page.locator("header.top").get_by_role("button", name="More", exact=True).click()
+        page.locator("header.phead").get_by_role("button", name="More", exact=True).click()
         dialog = page.get_by_role("dialog", name="Page actions")
         dialog.get_by_role("button", name="Copy link", exact=True).click()
         field = dialog.get_by_label("Link to this page")
@@ -367,11 +388,11 @@ class WikiFinal(unittest.TestCase):
         expect(dialog).to_have_count(0)
         expect(page.locator("#details").get_by_role("heading", name="Who can see this", exact=True)).to_be_visible()
         page.get_by_role("button", name="Close details", exact=True).click()
-        expect(page.locator("header.top").get_by_role("button", name="More", exact=True)).to_be_focused()
+        expect(page.locator("header.phead").get_by_role("button", name="More", exact=True)).to_be_focused()
 
     def test_phone_overflow_keeps_project_controls_available(self) -> None:
         page = self.open(PHONE, "light", touch=True)
-        header = page.locator("header.top")
+        header = page.locator("header.phead")
         more = header.get_by_role("button", name="More", exact=True)
         more.click()
         dialog = page.get_by_role("dialog", name="Page actions")

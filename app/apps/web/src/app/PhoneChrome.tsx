@@ -66,7 +66,7 @@ export function PhoneTitleMenu({ title, subtitle, items, onDetails, detailsLabel
   title: string; subtitle: ReactNode; items: PhoneMenuItem[]; onDetails: (() => void) | null; detailsLabel?: string; lead?: ReactNode;
   /** "Add Map", "Add Wiki", "Add Agents" for a view the project has not added yet (#351), quiet at the end. */
   adds?: { label: string; run: () => void }[];
-  /** Compact view context such as the Wiki page count, placed beside the title on the phone. */
+  /** Compact view metadata such as the Wiki page count, placed inline with the phone subtitle. */
   metadataSlot?: (element: HTMLSpanElement | null) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -82,8 +82,7 @@ export function PhoneTitleMenu({ title, subtitle, items, onDetails, detailsLabel
             <span className="phead__name">{title}</span><Icon name="chevron-down" size={14} />
           </button>
         </h1>
-        <p className="phead__sub">{subtitle}</p>
-        {metadataSlot ? <span className="phead__meta-slot" ref={metadataSlot} /> : null}
+        <p className="phead__sub">{subtitle}{metadataSlot ? <span className="phead__meta-slot" ref={metadataSlot} /> : null}</p>
       </div>
       <Overlay open={open} onClose={() => setOpen(false)} placement="center" labelledBy={`${menuId}-t`} id={menuId} className="phone-menu" initialFocus={firstRef}>
         <h2 className="phone-menu__t" id={`${menuId}-t`}>{title}<span className="ui-vh">, views</span></h2>

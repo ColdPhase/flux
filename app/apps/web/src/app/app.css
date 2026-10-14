@@ -526,7 +526,8 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
 .phead__word { font-size: 1.5rem; font-weight: 600; letter-spacing: -.04em; }
 .phead__sub { margin: 0; font-size: .8125rem; line-height: 1.35; color: var(--t2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .phead__meta-slot:empty { display: none; }
-.phead__meta-slot:not(:empty) { display: block; min-width: 0; line-height: 1.25; }
+.phead__meta-slot:not(:empty)::before { content: ' · '; }
+.phead__meta-slot .wiki-header-meta { font-size: inherit; }
 .phead__right { display: flex; align-items: center; gap: 8px; flex: none; }
 .phead__round.ui-icon-btn, .phead__avatar {
   width: 44px; height: 44px; border-radius: 50%; background: var(--el); color: var(--t1); box-shadow: var(--sh-card);

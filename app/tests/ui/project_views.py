@@ -1,9 +1,4 @@
-"""Moving between a project's views in browser tests.
-
-On the phone Wiki the project title is the view menu and there is no row of views (F-026 §4 Phone,
-#354); every other place keeps the "Project views" row. `project_view` opens the menu when it is the
-switcher, so a journey can move between views the way a person would at that size.
-"""
+"""Moving between a project's views using the current desktop tabs or phone title menu."""
 
 from __future__ import annotations
 
@@ -16,17 +11,18 @@ PHONE_MAX = 640
 
 
 def title_menu(page: Page) -> bool:
-    """True where the title is the view menu: a project's Wiki on a phone-width screen."""
+    """True where the title is the view menu: all project views on a phone-width screen (#341)."""
     size = page.viewport_size or {"width": 1440}
-    return size["width"] <= PHONE_MAX and bool(re.search(r"^/projects/[^/]+/docs(/|$)", urlparse(page.url).path))
+    return size["width"] <= PHONE_MAX and bool(re.search(r"^/projects/[^/]+(?:/|$)", urlparse(page.url).path))
 
 
 def project_views(page: Page) -> Locator:
     """The "Project views" navigation, opening the title menu first where that is the switcher."""
     if title_menu(page):
-        menu = page.locator("header.top .top__viewmenu")
-        if menu.get_attribute("aria-expanded") != "true":
-            menu.click()
+        opener = page.get_by_role("heading", level=1).get_by_role("button")
+        if opener.get_attribute("aria-expanded") != "true":
+            opener.click()
+        return page.get_by_role("dialog").filter(has=page.locator(".phone-menu__list")).locator(".phone-menu__list")
     return page.get_by_role("navigation", name="Project views")
 
 
