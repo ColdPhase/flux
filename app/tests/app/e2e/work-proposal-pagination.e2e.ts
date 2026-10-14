@@ -48,11 +48,14 @@ test('comparison jumps expose headings below sticky controls on a bounded page a
         const views = page.getByRole('navigation', { name: 'Task views' });
         const jumps = page.getByRole('navigation', { name: 'Project work sections' });
         await jumps.waitFor();
-        for (const [label, target, expectedView] of [['Work', 'g-open', 'All']] as const) {
-          await views.getByRole('button', { name: /^Open / }).click();
-          await views.getByRole('checkbox', { name: 'Only mine', exact: true }).check();
-          await page.locator('.ws-none').waitFor();
-          assert.equal(await page.locator(`#${target}`).count(), 0);
+for (const [label, target, expectedView] of [['Work', 'g-open', 'All']] as const) {
+          const phone = width === 390; const mine = page.getByRole('group', { name: 'Whose tasks' });
+          if (!phone) {
+            await views.getByRole('button', { name: /^Open / }).click();
+            await views.getByRole('checkbox', { name: 'Only mine', exact: true }).check();
+            await page.locator('.ws-none').waitFor();
+            assert.equal(await page.locator(`#${target}`).count(), 0);
+          }
           const jump = jumps.getByRole('button', { name: new RegExp(`^${label} `) });
           if (width < 1440) await jump.tap(); else await jump.click();
           const heading = page.locator(`#${target}`); await heading.waitFor();
@@ -65,9 +68,14 @@ test('comparison jumps expose headings below sticky controls on a bounded page a
           const geometry = await heading.evaluate((node) => ({ top: node.getBoundingClientRect().top,
             controlsBottom: document.querySelector('.ws-task-controls')!.getBoundingClientRect().bottom }));
           assert.ok(geometry.top >= geometry.controlsBottom, `heading remains visible below controls: ${JSON.stringify(geometry)}`);
-          const chosen = expectedView === 'All' ? views.getByRole('button', { name: 'All', exact: true }) : views.getByRole('button', { name: /^Results / });
-          assert.equal(await chosen.getAttribute('aria-pressed'), 'true');
-          assert.equal(await views.getByRole('checkbox', { name: 'Only mine', exact: true }).isChecked(), false);
+if (phone) {
+            assert.equal(await mine.getByRole('button', { name: 'All', exact: true }).getAttribute('aria-pressed'), 'true');
+            assert.equal(await mine.getByRole('button', { name: 'Mine', exact: true }).getAttribute('aria-pressed'), 'false');
+          } else {
+            const chosen = views.getByRole('button', { name: 'All', exact: true });
+            assert.equal(await chosen.getAttribute('aria-pressed'), 'true');
+            assert.equal(await views.getByRole('checkbox', { name: 'Only mine', exact: true }).isChecked(), false);
+          }
           const path = 'work-view?kinds=work&limit=50';
           const read = await api(page, 'GET', `/api/v1/projects/${fixture.projectId}/${path}`);
           assert.equal(read.status, 200);

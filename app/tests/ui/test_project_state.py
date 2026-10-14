@@ -16,7 +16,7 @@ import uuid
 
 from playwright.sync_api import expect, sync_playwright
 
-from test_app_shell import ORIGIN, UPSTREAM, open_details, shot, start_forwarder, view_tab
+from test_app_shell import UI_BROWSER, ORIGIN, UPSTREAM, open_details, shot, start_forwarder, view_tab
 from test_project_surface import LONG_NAME
 
 
@@ -215,10 +215,15 @@ class ProjectStateJourney(unittest.TestCase):
                 shot(page, f"136-state-reader-{width}-{'dark' if dark else 'light'}")
                 view_tab(page, "Tasks")
                 # A reader's board has no way to add or move a task (#136).
-                expect(page.locator(".tb-card").filter(has_text=task["title"])).to_have_count(1)
                 expect(page.get_by_role("button", name="New Task")).to_have_count(0)
                 expect(page.get_by_role("button", name="Move to…")).to_have_count(0)
-                page.get_by_role("radio", name="List", exact=True).click()
+                if width <= 640:
+                    # The phone shows the list as drawn; a reader's glyph is a picture of the state, not a button.
+                    expect(page.locator(".ws-task").filter(has_text=task["title"])).to_have_count(1)
+                    expect(page.locator(".ws-task button.ws-task__glyph")).to_have_count(0)
+                else:
+                    expect(page.locator(".tb-card").filter(has_text=task["title"])).to_have_count(1)
+                    page.get_by_role("radio", name="List", exact=True).click()
                 expect(page.locator(".ws-item").filter(has_text=task["title"])).to_be_visible()
                 expect(page.get_by_role("button", name="Add task", exact=True)).to_have_count(0)
         self.call(owner, "POST", f"/api/v1/projects/{project['id']}/grants",
