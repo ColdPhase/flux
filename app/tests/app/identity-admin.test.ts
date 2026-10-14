@@ -166,7 +166,7 @@ describe('operator re-key (#315)', () => {
     const user = await person('rekey-ambiguous', true);
     await link(user, 'sub-current');
     await link(user, 'sub-other', oldProviderId);
-    await refusedWith(rekeyIdentity(db, { userId: user, providerId, issuer, subject: 'sub-new', actor: 'op', reason: 'ambiguous', mode: 'prepare', allowInSso: false }), 'IDENTITY_AMBIGUOUS');
+    await refusedWith(rekeyIdentity(db, { userId: user, providerId, issuer, subject: `sub-ambiguous-${randomUUID()}`, actor: 'op', reason: 'ambiguous', mode: 'prepare', allowInSso: false }), 'IDENTITY_AMBIGUOUS');
     const links = await db.select({ providerId: schema.authAccounts.providerId, accountId: schema.authAccounts.accountId }).from(schema.authAccounts)
       .where(eq(schema.authAccounts.userId, user));
     assert.deepEqual(links.filter((row) => row.providerId !== 'credential').map((row) => [row.providerId, row.accountId]).sort(),
