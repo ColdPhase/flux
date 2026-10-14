@@ -43,6 +43,7 @@ export const AGENT_MCP_ENTRIES: readonly AgentMcpEntry[] = [
   read('flux_bootstrap', 'project.identity.read', 'connection.runtime.read', 'project.policy.read', 'cowork.playbook.read'),
   read('flux_acknowledge_playbook', 'cowork.playbook.read', 'connection.runtime.read'),
   effect('flux_create_task', 'work.create'), effect('flux_update_task', 'work.update'),
+  effect('flux_undo_task_creation', 'work.creation.revert'),
   effect('flux_record_result', 'result.record'), effect('flux_propose_decision', 'decision.propose'),
   effect('flux_create_map', 'map.create'), effect('flux_rename_map', 'map.rename'),
   effect('flux_add_thought', 'map.thought.create'), effect('flux_update_thought', 'map.thought.update'),

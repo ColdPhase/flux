@@ -19,14 +19,18 @@ import { useCreateWorkFromMessage } from './inline';
  * Before anyone has written, a person who can write starts it here. The structured draft and its
  * retry identity belong to the account/project/task, as in every place that writes to it.
  */
-export function TaskDiscussionSection({ workId, number, project, members, me }: {
+export function TaskDiscussionSection({ workId, number, project, members, me, readOnly = false, revision = 0 }: {
   workId: string; number?: number; project: Project; members: WorkspaceMember[]; me: { id: string; name: string };
+  /** A task whose creation was undone (#238) keeps its discussion as read-only history. */
+  readOnly?: boolean;
+  /** A fresh authorized Details observation also refreshes the independently stored discussion. */
+  revision?: number | string;
 }) {
   const owners = useAgentOwners(project);
   const headingId = useId();
   const fieldId = useId();
   const navigate = useNavigate();
-  const writable = project.access !== 'viewer';
+  const writable = project.access !== 'viewer' && !readOnly;
   const makeWork = useCreateWorkFromMessage(project);
   // People the project shell already knows, for a reader who cannot list the workspace's members.
   const people = useProjectShell()?.people ?? null;
@@ -38,9 +42,11 @@ export function TaskDiscussionSection({ workId, number, project, members, me }: 
 
   useEffect(() => {
     const controller = new AbortController();
-    getTaskDiscussion(workId, { limit: 1, signal: controller.signal }).then((next) => { if (!controller.signal.aborted) setDiscussion(next); }).catch(() => { if (!controller.signal.aborted) setFailed(true); });
+    getTaskDiscussion(workId, { limit: 1, signal: controller.signal }).then((next) => {
+      if (!controller.signal.aborted) { setDiscussion(next); setFailed(false); }
+    }).catch(() => { if (!controller.signal.aborted) setFailed(true); });
     return () => controller.abort();
-  }, [workId, project.id, me.id, attempt]);
+  }, [workId, project.id, me.id, attempt, revision]);
 
   const thread = discussion?.conversationId ? `/projects/${project.id}/conversations/${discussion.conversationId}` : null;
   const author = (message: ConversationMessage) => {
@@ -88,11 +94,12 @@ export function TaskDiscussionSection({ workId, number, project, members, me }: 
               </MessageContent>
               {makeWork.failed?.messageId === root.id ? <p className="wd-error" role="alert">{makeWork.failed.text}</p> : null}
             </> : null}
-            {composer.pending.length ? <ol className="wd-pending" aria-label="Messages you are sending">{composer.pending.map((item) => (
+            {composer.pending.length ? <ol className="wd-pending" aria-label={writable ? 'Messages you are sending' : 'Pending messages kept'}>{composer.pending.map((item) => (
               <li key={item.id} id={`pending-${item.id}`} data-client-message-id={item.id} data-send-state={item.state} className={`wd-pending__item is-pending${item.state === 'failed' ? ' is-failed-send' : ''}`}>
-                <PendingFiles body={item.body ? <span className="wd-pending__body">{item.body}</span> : null} files={item.files} send={{ state: item.state, onRetry: () => composer.retry(item.id) }} />
+                <PendingFiles body={item.body ? <span className="wd-pending__body">{item.body}</span> : null} files={item.files} send={{ state: item.state, ...(writable ? { onRetry: () => composer.retry(item.id) } : {}) }} />
                 <PendingSource item={item} />
-                <OutboxStatus item={item} onRetry={() => composer.retry(item.id)} onRemove={() => composer.remove(item.id)} />
+                {writable ? <OutboxStatus item={item} onRetry={() => composer.retry(item.id)} onRemove={() => composer.remove(item.id)} />
+                  : <p className="wd-muted" role="status">{readOnly && item.state === 'failed' ? 'Unsent message kept.' : 'Send not confirmed. Your message is kept.'} You cannot send to this task.</p>}
               </li>
             ))}</ol> : null}
             {writable ? <form className="wd-discussion-form" onSubmit={(event) => void send(event)}>
@@ -104,7 +111,7 @@ export function TaskDiscussionSection({ workId, number, project, members, me }: 
               <ComposerFiles state={composer} />
               <SendAnnouncer pending={composer.pending} />
               <div className="wd-actions"><Button type="submit" variant="secondary" icon="send" disabled={!composer.canSend}>{root ? 'Send to task' : 'Start the discussion'}</Button></div>
-            </form> : !root ? <p className="wd-muted">Nobody has written about this task yet.</p> : null}
+            </form> : !root ? <p className="wd-muted">{readOnly ? 'Creation was undone. This history is read-only; your unsent draft is kept.' : 'Nobody has written about this task yet.'}</p> : null}
           </>}
     </section>
   );

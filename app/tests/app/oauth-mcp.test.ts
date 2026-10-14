@@ -165,6 +165,7 @@ test('issued OAuth bearer reads and proposes through MCP, then connection revoca
   const writes = (bootstrap.capabilities as { name: string; operation: string | null; available: boolean }[]).filter((row) => row.operation !== null);
   assert.deepEqual(writes.map(({ name, operation, available }) => ({ name, operation, available })),
     [{ name: 'flux_create_task', operation: 'work.create', available: false }, { name: 'flux_update_task', operation: 'work.update', available: false },
+      { name: 'flux_undo_task_creation', operation: 'work.creation.revert', available: false },
       { name: 'flux_record_result', operation: 'result.record', available: false }, { name: 'flux_propose_decision', operation: 'decision.propose', available: false },
       ...['flux_create_map:map.create', 'flux_rename_map:map.rename', 'flux_add_thought:map.thought.create', 'flux_update_thought:map.thought.update',
         'flux_remove_thought:map.thought.delete', 'flux_move_thoughts:map.positions.update', 'flux_link_thoughts:map.link.create',

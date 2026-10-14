@@ -33,7 +33,7 @@ export interface CoworkPlaybook {
 
 const playbook: CoworkPlaybook = {
   bundleId: 'flux.cowork',
-  version: '1.3.0',
+  version: '1.4.0',
   toolContractVersion: 1,
   startPayload: `Start my authorized Flux work in the bound project. Load this playbook and the authenticated bootstrap first. \
 Understand the project's current plan, wiki, relevant conversations, decisions and existing tasks before planning or creating more \
@@ -86,7 +86,7 @@ they do not exist on this server, so rely on the task records, the units you kno
       tools: ['flux_project_orientation', 'flux_list_materials', 'flux_read_material', 'flux_list_docs', 'flux_get_doc',
         'flux_list_decisions', 'flux_get_decision', 'flux_list_work', 'flux_get_work', 'flux_list_results', 'flux_get_result',
         'flux_list_conversations', 'flux_get_conversation', 'flux_list_maps', 'flux_get_map', 'flux_search_project',
-        'flux_create_proposal', 'flux_create_task', 'flux_propose_decision'],
+        'flux_create_proposal', 'flux_create_task', 'flux_undo_task_creation', 'flux_propose_decision'],
       providers: ['approved_policy'],
       text: `On first entry, list the project's sources with flux_project_orientation for each kind (doc, material, work, decision, \
 result, conversation, map). Read the current plan and the accepted decisions completely, paging with nextOffset and the exact \
@@ -103,6 +103,9 @@ clear done-when criteria, the prerequisite task IDs, the plan material revision 
 revision and a stable key for each planned unit (for example "release-step-2"). The same intent then returns the existing task, \
 so a repeated or concurrent planning run cannot create duplicates; a different task for the same intent is refused. If the plan \
 changes, its new revision needs new intents; do not rewrite existing tasks to match without reading their current version. \
+If you created a task by mistake and nobody has used or changed it yet, with a live work.creation.revert grant you can undo its \
+creation with flux_undo_task_creation at its current version: it stays as read-only history and is never deleted. A refusal \
+means it was used or changed; leave it and say so instead. \
 When the planning itself is a task and you hold a cowork.unit.create grant of class plan, take it first with flux_create_unit \
 (class plan, parent null, assigned to yourself): COWORK_UNIT_TAKEN means another planner is writing that plan, so do not \
 decompose it in parallel. \

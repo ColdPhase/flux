@@ -160,8 +160,10 @@ export function createTaskDiscussionUseCases(unit: TaskDiscussionUnitOfWork) {
           if (!ports.attachments) throw new InvalidInputError('Files are unavailable from this entry point', 'AGENT_FILES_UNAVAILABLE');
           files = await ports.attachments.lock(project.projectId, author, input.attachmentIds);
         }
-        if (!await ports.work.findWork(workId, { lock: true })) throw missing();
-        const { message } = await appendToTask(ports, project, author, workId, { ...input, kind, files });
+        const fence = await ports.work.prepareTaskUse([workId]);
+        if (!await ports.work.findWork(workId)) throw missing();
+        const { message, replayed } = await appendToTask(ports, project, author, workId, { ...input, kind, files });
+        if (!replayed) await fence.mark();
         return wire(message, await ports.work.names([message.author]));
       });
     },
@@ -207,7 +209,7 @@ export function createWorkContributions(ports: TaskDiscussionPorts): WorkContrib
       const prepared = own(handle, 'prepared');
       const rows: WorkRecord[] = [];
       for (const workId of prepared.workIds) {
-        const row = await ports.work.findWork(workId, { lock: true });
+        const row = await ports.work.findWork(workId);
         if (!row || row.projectId !== prepared.projectId) throw new RuleViolationError('The work is not part of this project', 'LINK_TARGET_NOT_FOUND');
         rows.push(row);
       }

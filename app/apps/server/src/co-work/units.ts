@@ -87,6 +87,8 @@ export async function coWorkUnitCreateInTransaction(tx: Transaction, claims: Flu
     lineageTaskId: decision.lineageTaskId, runId: decision.runId, unitKey: input.unitKey, role,
     assignmentConnectionId: input.assignmentConnectionId });
   if (!unit) throw new ConflictError('This unit key was used for another unit', 'COWORK_UNIT_CONFLICT');
+  // #238: a new unit is a persisted use of its task and lineage task, under the task pass the lock above retains.
+  if (decision.kind !== 'existing') await facts.taskFence.mark([unit.taskId, unit.lineageTaskId]);
   const creation: CoWorkUnitCreation = { status: decision.kind === 'existing' ? 'existing' : 'created', unitId: unit.id,
     taskId: unit.taskId, lineageTaskId: unit.lineageTaskId, runId: unit.runId, role: unit.role,
     assignmentConnectionId: unit.assignmentConnectionId, version: unit.version, state: unit.state };

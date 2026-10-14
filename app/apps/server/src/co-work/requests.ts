@@ -5,7 +5,7 @@ import { coWorkRequestFingerprint, ConflictError, InvalidInputError, normalizeAg
   type Transaction } from '@flux/core';
 import { agentExecutionInTransaction } from '../agent-connection/execution.js';
 import type { FluxMcpClaims } from '../agent-connection/context.js';
-import { coWorkTaskGraphLocks } from './graph.js';
+import { coWorkNamedTaskGraphLocks } from './graph.js';
 
 /** Server-owned current policy; never supplied by MCP/clientInfo/peer request. */
 export interface CoWorkRequestPolicy {
@@ -71,9 +71,11 @@ export async function coWorkRequestInTransaction(tx: Transaction, claims: FluxMc
   const runtime = prepared.context;
   const context: CoWorkContext = { workspaceId: runtime.workspaceId, projectId: command.projectId,
     connectionId: runtime.connectionId, agentId: runtime.agentId, ownerId: runtime.ownerUserId, runtimeSessionId: runtime.id };
+  // #238: the tasks the request names join the one sorted task pass, resolved after the project graph locks.
+  const named = [input.request.target, ...input.request.sourceRefs, ...input.request.criteriaRefs];
   const facts = await rows.lock({ workspaceId: context.workspaceId, projectId: context.projectId, senderConnectionId: context.connectionId,
     senderUnitId, recipientConnectionId: input.request.recipientConnectionId, recipientUnitId: input.request.unitId,
-    parentRequestId: input.request.parentRequestId }, (units) => coWorkTaskGraphLocks(tx, context.workspaceId, units));
+    parentRequestId: input.request.parentRequestId }, (units) => coWorkNamedTaskGraphLocks(tx, context.workspaceId, units, prepared.replay ? [] : named));
   locked = true;
   if (!facts || facts.sender.role !== command.peerRequestClass) throw new NotFoundError('Work unit', 'COWORK_UNIT_NOT_FOUND');
 
@@ -92,7 +94,7 @@ export async function coWorkRequestInTransaction(tx: Transaction, claims: FluxMc
   if (!await rows.referencesReadable(context.workspaceId, context.projectId, [target, ...sourceRefs, ...criteriaRefs]))
     throw sourceUnavailable();
   const result = await coworkRequestRows(tx).enqueue({ workspaceId: context.workspaceId, projectId: context.projectId,
-    connectionId: context.connectionId }, input.request, coWorkRequestFingerprint(input.request, context.connectionId), policy.limits);
+    connectionId: context.connectionId }, input.request, coWorkRequestFingerprint(input.request, context.connectionId), policy.limits, facts.taskFence);
   if (result.status !== 'created' && result.status !== 'existing') throw REFUSED[result.status]();
   if (result.request.senderConnectionId !== context.connectionId) throw new Error('Persistence returned another sender');
   // Only a newly created request supersedes; a re-issued intent replaces nothing. Claimed requests keep their history.
