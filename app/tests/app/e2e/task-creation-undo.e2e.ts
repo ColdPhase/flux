@@ -670,7 +670,9 @@ async function settleVisualTransitions(page: Page) {
 }
 
 test('Agents, Map and live work never offer a task whose creation was undone, while its link still opens as history', { timeout: 120_000 }, async () => {
-  const f = await fixture(); const item = await f.create(); const kept = await f.create('Keep the second sensor in the plan');
+  const f = await fixture(); const item = await f.create();
+  const kept = expectStatus(await f.author.browser.request('POST', `/api/v1/projects/${f.place.id}/work`,
+    { body: { title: 'Keep the second sensor in the plan' } }), 201) as WorkItem;
   const sketch = expectStatus(await f.author.browser.request('POST', `/api/v1/workspaces/${f.ws.id}/sketches`,
     { body: { title: 'Sensor map', scope: 'project', projectId: f.place.id } }), 201) as { id: string };
   await f.undo(item);
