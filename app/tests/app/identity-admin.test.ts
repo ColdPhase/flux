@@ -5,7 +5,7 @@ import { and, eq } from 'drizzle-orm';
 import { schema } from '@flux/db';
 import { IdentityAdminError, rekeyIdentity, unlinkIdentity } from '../../apps/server/src/identity/admin.js';
 import { oidcProviderId } from '../../apps/server/src/identity/config.js';
-import { db } from './support/db.js';
+import { db, pool } from './support/db.js';
 
 // Operator re-key and last-identity unlink (F-024 S5b, #315). Negative controls: SSO-only mode without the explicit
 // flag, a subject another account holds, an email given where an account id belongs, the last sign-in method, and an
@@ -123,6 +123,40 @@ describe('operator re-key (#315)', () => {
     assert.equal(await alive(live), false, 'sessions authenticated by the old issuer end');
     const [row] = await audits(user);
     assert.deepEqual([row.oldIssuer, row.newIssuer, row.oldSubject, row.newSubject], [oldIssuer, issuer, 'sub-before', 'sub-after']);
+  });
+
+  test('a concurrent ordinary sign-in that claims the target maps to SUBJECT_HELD', async () => {
+    const user = await person('rekey-race', true);
+    const signer = await person('rekey-race-signer', false);
+    await link(user, 'sub-race-before', oldProviderId);
+    const held = await pool.connect();
+    let open = true;
+    try {
+      await held.query('BEGIN');
+      await held.query('INSERT INTO auth_accounts (id,user_id,account_id,provider_id) VALUES ($1,$2,$3,$4)',
+        [randomUUID(), signer, 'sub-race-target', providerId]);
+      const recovery = rekeyIdentity(db, { userId: user, providerId, issuer, oldIssuer, subject: 'sub-race-target', actor: 'operator-cli',
+        reason: 'issuer migration race', mode: 'prepare', allowInSso: false }).then(
+        (value) => ({ value }), (error: unknown) => ({ error }));
+      let blocked = false;
+      for (let attempt = 0; attempt < 200; attempt++) {
+        const waiting = await pool.query(`SELECT 1 FROM pg_stat_activity
+          WHERE wait_event_type = 'Lock' AND query ILIKE '%update "auth_accounts"%'`);
+        if (waiting.rowCount) { blocked = true; break; }
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      assert.ok(blocked, 'the recovery reached its row update while ordinary sign-in held the target unique key');
+      await held.query('COMMIT');
+      open = false;
+      const result = await recovery;
+      assert.ok('error' in result && result.error instanceof IdentityAdminError);
+      assert.equal((result as { error: IdentityAdminError }).error.code, 'SUBJECT_HELD');
+      assert.deepEqual(await subjects(user), ['sub-race-before'], 'a failed race leaves the old mapping intact');
+      assert.deepEqual(await audits(user), [], 'a failed race writes no audit row');
+    } finally {
+      if (open) await held.query('ROLLBACK');
+      held.release();
+    }
   });
 
   test('an account with several legacy provider links refuses issuer recovery without changing any link', async () => {
