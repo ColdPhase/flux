@@ -227,7 +227,7 @@ class WikiFinal(unittest.TestCase):
                 self.assertLessEqual(header.bounding_box()["height"], task_header_height + 1,
                                      "Wiki metadata shares the current phone header row")
                 expect(header.locator(".phead__sub")).to_contain_text(re.compile(r"\d+ (?:people|person)"))
-                expect(header.locator(".wiki-header-meta")).to_have_text(re.compile(r"Wiki · 5 pages"))
+                expect(header.locator(".wiki-header-meta")).to_have_text(re.compile(r"^Wiki · 5 pages$"))
                 self.assertLessEqual(header.locator(".phead__sub").evaluate("e => e.scrollWidth - e.clientWidth"), 1,
                                      "people and page-count metadata are visible without clipping")
                 project_title = header.get_by_role("heading", level=1, name="Community garden sensors", exact=True)
@@ -247,7 +247,7 @@ class WikiFinal(unittest.TestCase):
                 self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), PHONE["width"])
                 if theme == "light":
                     page.set_viewport_size({"width": 320, "height": 640})
-                    expect(header.locator(".wiki-header-meta")).to_have_text(re.compile(r"Wiki · 5 pages"))
+                    expect(header.locator(".wiki-header-meta")).to_have_text(re.compile(r"^Wiki · 5 pages$"))
                     expect(header.locator(".phead__sub")).to_contain_text(re.compile(r"\d+ (?:people|person)"))
                     self.assertLessEqual(header.locator(".phead__sub").evaluate("e => e.scrollWidth - e.clientWidth"), 1,
                                          "people and page-count metadata fit at 320 px")
@@ -283,8 +283,10 @@ class WikiFinal(unittest.TestCase):
         title = header.get_by_role("heading", level=1, name="Community garden sensors", exact=True)
         menu_button = title.get_by_role("button", name="Community garden sensors", exact=True)
         expect(menu_button).to_have_attribute("aria-haspopup", "dialog")
-        box = menu_button.evaluate("e => { const r = e.getBoundingClientRect(), a = getComputedStyle(e, '::after'); return [r.height - parseFloat(a.top) - parseFloat(a.bottom)]; }")
-        self.assertGreaterEqual(box[0], 44, "the title menu is a 44 px target")
+        box = menu_button.bounding_box()
+        self.assertGreaterEqual(box["height"], 44, "the title menu is a 44 px target")
+        self.assertTrue(menu_button.evaluate("e => { const r = e.getBoundingClientRect(); return document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)?.closest('button') === e; }"),
+                        "the title menu's center is not covered")
         menu_button.tap()
         dialog = page.get_by_role("dialog", name="Community garden sensors, views")
         views = dialog.locator(".phone-menu__list")

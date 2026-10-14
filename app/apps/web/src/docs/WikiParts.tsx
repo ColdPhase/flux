@@ -38,12 +38,12 @@ export function WikiIcon({ name, size = 16 }: { name: WikiIconName; size?: numbe
 const isMac = typeof navigator !== 'undefined' && /Mac|iP(hone|ad|od)/.test(navigator.platform);
 
 /** The quiet row above every wiki document: what is shown on the left, actions on the right. */
-export function WikiBar({ meta, children, compactInHeader = false }: { meta: ReactNode; children?: ReactNode; compactInHeader?: boolean }) {
+export function WikiBar({ meta, phoneMeta, children, compactInHeader = false }: { meta: ReactNode; phoneMeta?: ReactNode; children?: ReactNode; compactInHeader?: boolean }) {
   const { compact } = useWiki();
   const { metadataSlot, actionSlot } = useShellActions();
   if (compact && compactInHeader && metadataSlot && actionSlot) {
     return <>
-      {createPortal(<span className="wiki-header-meta">{meta}</span>, metadataSlot)}
+      {createPortal(<span className="wiki-header-meta">{phoneMeta ?? meta}</span>, metadataSlot)}
       {createPortal(<div className="wiki-header-actions">{children}</div>, actionSlot)}
     </>;
   }
