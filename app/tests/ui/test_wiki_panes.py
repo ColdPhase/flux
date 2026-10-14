@@ -664,13 +664,13 @@ class WikiPanesJourney(unittest.TestCase):
         index = self.index(page)
         heading = page.get_by_role("heading", level=2, name=latest["title"])
         expect(heading).to_be_visible()
-        header = page.locator("header.top")
-        expect(header.locator(".wiki-bar__title")).to_have_text(re.compile(r"^Wiki · \d+ pages?$"))
+        header = page.locator("header.phead")
+        expect(header.locator(".wiki-header-meta")).to_have_text(re.compile(r"^Wiki · \d+ pages?$"))
         more = header.get_by_role("button", name="More", exact=True)
         expect(more).to_be_visible()
         self.assertLessEqual(index.bounding_box()["y"] + index.bounding_box()["height"], heading.bounding_box()["y"],
                              "the page selector sits before the document")
-        expect(page.locator(".wiki-bar__title")).to_have_text(re.compile(r"^Wiki · \d+ pages?$"))
+        expect(header.locator(".wiki-header-meta")).to_have_text(re.compile(r"^Wiki · \d+ pages?$"))
         expect(index.get_by_label("Search the wiki")).to_be_visible()  # more than five pages by now
         self.assertEqual(page.locator(".doc-prose").evaluate("e => getComputedStyle(e).fontSize"), "16px", "the phone reads at 16px")
         # The chip row holds only pages (F-026 §4 Phone): New page and Import .md are in the page's menu.
