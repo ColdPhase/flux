@@ -1,0 +1,644 @@
+ Image flux-test-tools:flux-test-457-b6451-focused Building 
+ Image flux-e2e:flux-test-457-b6451-focused Building 
+ Image flux-foundation:flux-test-457-b6451-focused Building 
+ Image flux-ui-tests:flux-test-457-b6451-focused Building 
+#1 [internal] load local bake definitions
+#1 reading from stdin 2.35kB done
+#1 DONE 0.0s
+
+#2 [ui-test internal] load build definition from ui-tests.Dockerfile
+#2 transferring dockerfile: 1.00kB done
+#2 DONE 0.1s
+
+#3 [test internal] load build definition from Dockerfile
+#3 transferring dockerfile: 9.60kB done
+#3 DONE 0.2s
+
+#4 [ui-test internal] load metadata for mcr.microsoft.com/playwright/python:v1.62.0-noble@sha256:aa81288e738725378becba5b3e06cb0f3a7f012a610e87e8d767a090ea3f740d
+#4 DONE 0.0s
+
+#5 [pushmock internal] load metadata for mcr.microsoft.com/playwright:v1.63.0-noble@sha256:eff16c30e6f3f4af0a03fa4b706120d5e9b0891c344a27d64559aff5900a4a27
+#5 DONE 0.0s
+
+#6 [pushmock internal] load metadata for docker.io/library/node@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1
+#6 DONE 0.0s
+
+#7 [migrate internal] load .dockerignore
+#7 transferring context: 255B done
+#7 DONE 0.1s
+
+#8 [ui-test 1/5] FROM mcr.microsoft.com/playwright/python:v1.62.0-noble@sha256:aa81288e738725378becba5b3e06cb0f3a7f012a610e87e8d767a090ea3f740d
+#8 DONE 0.0s
+
+#9 [pushmock e2e 1/3] FROM mcr.microsoft.com/playwright:v1.63.0-noble@sha256:eff16c30e6f3f4af0a03fa4b706120d5e9b0891c344a27d64559aff5900a4a27
+#9 DONE 0.0s
+
+#10 [migrate build 1/9] FROM docker.io/library/node@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1
+#10 DONE 0.0s
+
+#11 [ui-test internal] load build context
+#11 transferring context: 115.74kB 0.0s done
+#11 DONE 0.1s
+
+#12 [test internal] load build context
+#12 ...
+
+#13 [ui-test 2/5] COPY tests/ui/requirements.txt /tmp/ui-requirements.txt
+#13 CACHED
+
+#14 [ui-test 3/5] RUN pip install --no-cache-dir --break-system-packages --only-binary=:all: --require-hashes -r /tmp/ui-requirements.txt
+#14 CACHED
+
+#15 [ui-test 4/5] WORKDIR /work
+#15 CACHED
+
+#12 [test internal] load build context
+#12 transferring context: 12.28MB 0.1s done
+#12 DONE 0.2s
+
+#16 [test build 3/9] RUN corepack enable && corepack install -g pnpm@12.6.0
+#16 CACHED
+
+#17 [test build 4/9] COPY pnpm-lock.yaml pnpm-workspace.yaml ./
+#17 CACHED
+
+#18 [test build 5/9] COPY patches ./patches
+#18 CACHED
+
+#19 [test build 2/9] WORKDIR /app
+#19 CACHED
+
+#20 [test build 6/9] RUN pnpm fetch
+#20 CACHED
+
+#21 [test build 7/9] COPY . .
+#21 ...
+
+#22 [ui-test 5/5] COPY tests/ui tests/ui
+#22 DONE 0.5s
+
+#23 [ui-test] exporting to image
+#23 exporting layers 0.1s done
+#23 ...
+
+#21 [test build 7/9] COPY . .
+#21 DONE 0.6s
+
+#23 [ui-test] exporting to image
+#23 writing image sha256:33f4e98511c5310747a31fce1d627834162ce3a5ef91c60b97ba8c8f2da526c8 0.0s done
+#23 naming to docker.io/library/flux-ui-tests:flux-test-457-b6451-focused 0.0s done
+#23 DONE 0.5s
+
+#24 [migrate build 8/9] RUN pnpm install --offline --frozen-lockfile
+#24 0.572 Scope: all 12 workspace projects
+#24 ...
+
+#25 [ui-test] resolving provenance for metadata file
+#25 DONE 0.0s
+
+#24 [migrate build 8/9] RUN pnpm install --offline --frozen-lockfile
+#24 0.611 ✓ Lockfile passes supply-chain policies (verified 3d ago)
+#24 0.611 Lockfile is up to date, resolution step is skipped
+#24 0.833 Already up to date
+#24 1.155 
+#24 1.155 dependencies:
+#24 1.155 + @flux/contracts link:packages/contracts
+#24 1.155 + @flux/core link:packages/core
+#24 1.155 + @flux/db link:packages/db
+#24 1.155 + @flux/runtime-protocol link:packages/runtime-protocol
+#24 1.155 + pg-boss 12.35.0
+#24 1.155 
+#24 1.155 devDependencies:
+#24 1.155 + @eslint/js 9.37.0
+#24 1.155 + @types/node 24.6.2
+#24 1.155 + @types/nodemailer 8.0.2
+#24 1.155 + @types/pg 8.15.5
+#24 1.155 + @types/sanitize-html 2.16.1
+#24 1.155 + @types/ws 8.18.1
+#24 1.155 + drizzle-orm 0.45.3
+#24 1.155 + eslint 9.37.0
+#24 1.155 + eslint-plugin-react-hooks 7.1.1
+#24 1.155 + fastify 5.6.1
+#24 1.155 + playwright 1.63.0
+#24 1.155 + tsx 4.20.5
+#24 1.155 + typescript 5.9.2
+#24 1.155 + typescript-eslint 8.44.1
+#24 1.155 + ws 8.22.0
+#24 1.155 
+#24 1.155 Done in 590ms using pnpm v12.6.0
+#24 DONE 1.4s
+
+#26 [pushmock build 9/9] RUN pnpm build && pnpm typecheck && pnpm lint
+#26 0.589 $ pnpm -r --if-present build && tsc -p tooling/tsconfig.build.json
+#26 0.681 packages/runtime-protocol build$ tsc -p tsconfig.build.json
+#26 0.681 packages/contracts build$ tsc -p tsconfig.build.json
+#26 1.438 packages/runtime-protocol build: Done
+#26 1.438 apps/runtime build$ tsc -p tsconfig.build.json
+#26 2.263 packages/contracts build: Done
+#26 2.263 packages/db build$ tsc -p tsconfig.build.json
+#26 2.263 apps/web build$ vite build
+#26 2.263 packages/sdk build$ tsc -p tsconfig.build.json
+#26 2.274 apps/runtime build: Done
+#26 2.495 apps/web build: vite v8.3.1 building client environment for production...
+#26 2.506 apps/web build: transforming...
+#26 3.077 apps/web build: ✓ 415 modules transformed.
+#26 3.616 apps/web build: rendering chunks...
+#26 3.795 apps/web build: computing gzip size...
+#26 3.824 apps/web build: dist/index.html                                       2.86 kB │ gzip:   0.85 kB
+#26 3.824 apps/web build: dist/sw.js                                            8.78 kB
+#26 3.824 apps/web build: dist/assets/Geist-Variable-Bj2R_7yk.woff2            69.65 kB
+#26 3.824 apps/web build: dist/assets/GeistMono-Variable-Dispecij.woff2        71.36 kB
+#26 3.824 apps/web build: dist/assets/SettingsHome-BuNxiFi8.css                 0.08 kB │ gzip:   0.08 kB
+#26 3.824 apps/web build: dist/assets/data-1ij7AUYt.css                         0.25 kB │ gzip:   0.17 kB
+#26 3.824 apps/web build: dist/assets/SketchIndex-BbAvfCMA.css                  0.39 kB │ gzip:   0.21 kB
+#26 3.824 apps/web build: dist/assets/GithubSettings-DfWB1iB-.css               2.34 kB │ gzip:   0.74 kB
+#26 3.824 apps/web build: dist/assets/SketchView-Dg8CsVYd.css                   6.10 kB │ gzip:   1.57 kB
+#26 3.824 apps/web build: dist/assets/BackgroundComputeSettings-B7T-YJK0.css    6.31 kB │ gzip:   1.28 kB
+#26 3.824 apps/web build: dist/assets/search-3BxTscsc.css                       6.95 kB │ gzip:   1.97 kB
+#26 3.824 apps/web build: dist/assets/dm-tGt_-Nfy.css                           8.86 kB │ gzip:   2.20 kB
+#26 3.824 apps/web build: dist/assets/settings-Bp977-DZ.css                     9.33 kB │ gzip:   2.39 kB
+#26 3.824 apps/web build: dist/assets/notifications-D-IZsjv7.css               11.33 kB │ gzip:   2.60 kB
+#26 3.824 apps/web build: dist/assets/Details-RIhidjHC.css                     12.72 kB │ gzip:   2.87 kB
+#26 3.824 apps/web build: dist/assets/ProjectTasks-CwhtU2HN.css                12.79 kB │ gzip:   3.06 kB
+#26 3.824 apps/web build: dist/assets/pages-Drg3hqQR.css                       14.09 kB │ gzip:   2.71 kB
+#26 3.824 apps/web build: dist/assets/Outbox-ByVjCUSK.css                      19.03 kB │ gzip:   4.09 kB
+#26 3.824 apps/web build: dist/assets/ProjectAgents-BZ56BuO5.css               23.07 kB │ gzip:   4.24 kB
+#26 3.824 apps/web build: dist/assets/docs-DpTUmxIp.css                        24.04 kB │ gzip:   5.03 kB
+#26 3.824 apps/web build: dist/assets/owners-CtFmLLqt.css                      28.49 kB │ gzip:   5.73 kB
+#26 3.824 apps/web build: dist/assets/sketch-CvbEgCbc.css                      30.09 kB │ gzip:   6.22 kB
+#26 3.824 apps/web build: dist/assets/index-DeY_86bm.css                      127.40 kB │ gzip:  23.73 kB
+#26 3.824 apps/web build: dist/assets/github-CkhyfZ1d.js                        0.16 kB │ gzip:   0.11 kB
+#26 3.824 apps/web build: dist/assets/proactive-outcomes-CVV6CW4R.js            0.17 kB │ gzip:   0.13 kB
+#26 3.824 apps/web build: dist/assets/shellContext-Dq_fzFmv.js                  0.28 kB │ gzip:   0.21 kB
+#26 3.824 apps/web build: dist/assets/intent-keys-DG37AWUw.js                   0.31 kB │ gzip:   0.23 kB
+#26 3.824 apps/web build: dist/assets/rolldown-runtime-CbXtAM7H.js              0.58 kB │ gzip:   0.36 kB
+#26 3.824 apps/web build: dist/assets/api-9Ss3qJh7.js                           0.91 kB │ gzip:   0.46 kB
+#26 3.824 apps/web build: dist/assets/recent-B81fH1Uq.js                        0.92 kB │ gzip:   0.53 kB
+#26 3.824 apps/web build: dist/assets/format-CwCJAuos.js                        1.10 kB │ gzip:   0.62 kB
+#26 3.824 apps/web build: dist/assets/format-21mtKxjC.js                        1.16 kB │ gzip:   0.60 kB
+#26 3.824 apps/web build: dist/assets/LiveOpen-BGSXjqWV.js                      1.19 kB │ gzip:   0.70 kB
+#26 3.824 apps/web build: dist/assets/api-DrvomySj.js                           1.41 kB │ gzip:   0.65 kB
+#26 3.824 apps/web build: dist/assets/data-C3BNd32F.js                          1.44 kB │ gzip:   0.74 kB
+#26 3.824 apps/web build: dist/assets/api-CW63_vez.js                           1.48 kB │ gzip:   0.73 kB
+#26 3.824 apps/web build: dist/assets/MaterialView-CnbGwJDJ.js                  1.52 kB │ gzip:   0.74 kB
+#26 3.824 apps/web build: dist/assets/api-B4rhXGMB.js                           1.62 kB │ gzip:   0.85 kB
+#26 3.824 apps/web build: dist/assets/sketches-mqHuDRdA.js                      1.65 kB │ gzip:   0.69 kB
+#26 3.824 apps/web build: dist/assets/data-C_PrdOuP.js                          1.85 kB │ gzip:   1.00 kB
+#26 3.824 apps/web build: dist/assets/useDetailReads-BveiMOrp.js                1.97 kB │ gzip:   0.91 kB
+#26 3.824 apps/web build: dist/assets/ProjectsIndex-D2e6SXYp.js                 2.20 kB │ gzip:   0.81 kB
+#26 3.824 apps/web build: dist/assets/ProjectSetup-CCjGaTQf.js                  3.27 kB │ gzip:   1.46 kB
+#26 3.824 apps/web build: dist/assets/api-UXPZnPQ9.js                           3.34 kB │ gzip:   1.37 kB
+#26 3.824 apps/web build: dist/assets/conversation-api-BlLLYfQD.js              3.43 kB │ gzip:   1.44 kB
+#26 3.824 apps/web build: dist/assets/ProjectViews-BJSwniqZ.js                  3.74 kB │ gzip:   1.61 kB
+#26 3.824 apps/web build: dist/assets/DmSketches-Dg_ME75P.js                    4.12 kB │ gzip:   1.73 kB
+#26 3.824 apps/web build: dist/assets/TasksView-DsEybLCm.js                     4.51 kB │ gzip:   1.82 kB
+#26 3.824 apps/web build: dist/assets/search-D-JsImHG.js                        4.52 kB │ gzip:   1.86 kB
+#26 3.824 apps/web build: dist/assets/useWorkRead-DkstUlEJ.js                   4.71 kB │ gzip:   1.85 kB
+#26 3.824 apps/web build: dist/assets/JumpTo-BSfE0Iyi.js                        4.92 kB │ gzip:   2.02 kB
+#26 3.824 apps/web build: dist/assets/Wiki-DhwHfuQA.js                          5.46 kB │ gzip:   2.45 kB
+#26 3.824 apps/web build: dist/assets/InboxView-g1t1NgBQ.js                     5.68 kB │ gzip:   2.40 kB
+#26 3.824 apps/web build: dist/assets/LiveStage-Ca24Md0L.js                     5.89 kB │ gzip:   2.44 kB
+#26 3.824 apps/web build: dist/assets/SearchPage-wmI44plu.js                    5.95 kB │ gzip:   2.33 kB
+#26 3.824 apps/web build: dist/assets/owners-BeiFjanV.js                        6.05 kB │ gzip:   2.57 kB
+#26 3.824 apps/web build: dist/assets/DmIndex-Dt1QABna.js                       7.04 kB │ gzip:   2.62 kB
+#26 3.824 apps/web build: dist/assets/docs-CX6cF2Qw.js                          9.10 kB │ gzip:   3.73 kB
+#26 3.824 apps/web build: dist/assets/diff-DgSHKbVF.js                          9.83 kB │ gzip:   3.64 kB
+#26 3.824 apps/web build: dist/assets/SettingsHome-CncS0Q6l.js                 12.26 kB │ gzip:   3.77 kB
+#26 3.824 apps/web build: dist/assets/DmConversation-MKS_uTzp.js               12.33 kB │ gzip:   4.64 kB
+#26 3.824 apps/web build: dist/assets/GithubSettings-Doz1TOoi.js               13.45 kB │ gzip:   4.12 kB
+#26 3.824 apps/web build: dist/assets/DocViews-DB5ACnwt.js                     14.87 kB │ gzip:   5.05 kB
+#26 3.824 apps/web build: dist/assets/AssistantSettings-77og7fRW.js            16.47 kB │ gzip:   5.37 kB
+#26 3.824 apps/web build: dist/assets/SketchIndex-D87IbkI_.js                  16.86 kB │ gzip:   6.15 kB
+#26 3.824 apps/web build: dist/assets/DocEditor-7BgTNW1B.js                    17.09 kB │ gzip:   6.45 kB
+#26 3.824 apps/web build: dist/assets/Outbox-DvPSaIxN.js                       18.94 kB │ gzip:   6.05 kB
+#26 3.824 apps/web build: dist/assets/NotificationSettings-BfdgxAQg.js         27.27 kB │ gzip:   8.38 kB
+#26 3.824 apps/web build: dist/assets/inline-KII5xjQh.js                       28.28 kB │ gzip:   9.40 kB
+#26 3.824 apps/web build: dist/assets/BackgroundComputeSettings-DEKlzDWL.js    35.87 kB │ gzip:  10.43 kB
+#26 3.824 apps/web build: dist/assets/pages-DZQj-0fa.js                        40.01 kB │ gzip:  11.27 kB
+#26 3.824 apps/web build: dist/assets/ProjectAgents-DteQEXv1.js                45.11 kB │ gzip:  14.13 kB
+#26 3.824 apps/web build: dist/assets/logic-ByjCmqsB.js                        45.16 kB │ gzip:  15.56 kB
+#26 3.824 apps/web build: dist/assets/ui-EPmuATq5.js                           48.06 kB │ gzip:  14.75 kB
+#26 3.824 apps/web build: dist/assets/ProjectTasks-93lWuIpY.js                 56.78 kB │ gzip:  17.49 kB
+#26 3.824 apps/web build: dist/assets/SketchView-DiGuVziJ.js                  100.63 kB │ gzip:  30.91 kB
+#26 3.824 apps/web build: dist/assets/client-DmnW8LD8.js                      112.22 kB │ gzip:  37.05 kB
+#26 3.824 apps/web build: dist/assets/Details-C_hm8k9u.js                     122.70 kB │ gzip:  33.48 kB
+#26 3.824 apps/web build: dist/assets/media-DV7RjrCm.js                       424.63 kB │ gzip: 110.19 kB
+#26 3.824 apps/web build: dist/assets/index-D7Vdok8g.js                       450.54 kB │ gzip: 134.63 kB
+#26 3.824 apps/web build: 
+#26 3.824 apps/web build: [33m[MODULE_LEVEL_DIRECTIVE] [0mThe semantics of the module level directive "use client" in "../../node_modules/.pnpm/react-router@8.4.0_react-dom@19.3.0_react@19.3.0__react@19.3.0/node_modules/react-router/dist/production/dom-export.js" may not be preserved when bundling.
+#26 3.824 apps/web build:     [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m ../../node_modules/.pnpm/react-router@8.4.0_react-dom@19.3.0_react@19.3.0__react@19.3.0/node_modules/react-router/dist/production/dom-export.js:11:1 [38;5;246m][0m
+#26 3.824 apps/web build:     [38;5;246m│[0m
+#26 3.824 apps/web build:  [38;5;246m11 │[0m "use client";
+#26 3.824 apps/web build:  [38;5;240m   │[0m ──────┬──────  
+#26 3.824 apps/web build:  [38;5;240m   │[0m       ╰──────── module level directive may not be preserved
+#26 3.824 apps/web build:  [38;5;240m   │[0m 
+#26 3.824 apps/web build:  [38;5;240m   │[0m [38;5;115mHelp[0m: For more information, see https://rolldown.rs/in-depth/directives#other-directives
+#26 3.824 apps/web build: [38;5;246m────╯[0m
+#26 3.824 apps/web build: 
+#26 3.824 apps/web build: [33m[MODULE_LEVEL_DIRECTIVE] [0mThe semantics of the module level directive "use client" in "../../node_modules/.pnpm/react-router@8.4.0_react-dom@19.3.0_react@19.3.0__react@19.3.0/node_modules/react-router/dist/production/index.js" may not be preserved when bundling.
+#26 3.824 apps/web build:     [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m ../../node_modules/.pnpm/react-router@8.4.0_react-dom@19.3.0_react@19.3.0__react@19.3.0/node_modules/react-router/dist/production/index.js:11:1 [38;5;246m][0m
+#26 3.824 apps/web build:     [38;5;246m│[0m
+#26 3.824 apps/web build:  [38;5;246m11 │[0m "use client";
+#26 3.824 apps/web build:  [38;5;240m   │[0m ──────┬──────  
+#26 3.824 apps/web build:  [38;5;240m   │[0m       ╰──────── module level directive may not be preserved
+#26 3.824 apps/web build:  [38;5;240m   │[0m 
+#26 3.824 apps/web build:  [38;5;240m   │[0m [38;5;115mHelp[0m: For more information, see https://rolldown.rs/in-depth/directives#other-directives
+#26 3.824 apps/web build: [38;5;246m────╯[0m
+#26 3.824 apps/web build: 
+#26 3.826 apps/web build: ✓ built in 1.33s
+#26 4.204 packages/sdk build: Done
+#26 5.535 apps/web build: Done
+#26 7.877 packages/db build: Done
+#26 7.877 packages/core build$ tsc -p tsconfig.build.json
+#26 10.05 packages/core build: Done
+#26 10.05 packages/agent-runtime build$ tsc -p tsconfig.build.json
+#26 11.12 packages/agent-runtime build: Done
+#26 11.12 apps/server build$ tsc -p tsconfig.build.json
+#26 11.12 apps/worker build$ tsc -p tsconfig.build.json
+#26 12.23 apps/worker build: Done
+#26 14.68 apps/server build: Done
+#26 15.58 $ tsc --noEmit -p tsconfig.json && tsc --noEmit -p apps/web/tsconfig.json
+#26 31.63 $ eslint .
+#26 48.38 
+#26 48.38 /app/apps/web/src/app/drafts.ts
+#26 48.38   88:53  warning  React Hook useMemo has an unnecessary dependency: 'key'. Either exclude it or remove the dependency array  react-hooks/exhaustive-deps
+#26 48.38 
+#26 48.38 /app/apps/web/src/docs/DocEditor.tsx
+#26 48.38   90:66  warning  React Hook useMemo has an unnecessary dependency: 'storageKey'. Either exclude it or remove the dependency array  react-hooks/exhaustive-deps
+#26 48.38 
+#26 48.38 /app/apps/web/src/sketch/createdDraft.ts
+#26 48.38   178:53  warning  React Hook useMemo has an unnecessary dependency: 'key'. Either exclude it or remove the dependency array  react-hooks/exhaustive-deps
+#26 48.38 
+#26 48.38 ✖ 3 problems (0 errors, 3 warnings)
+#26 48.38 
+#26 DONE 48.7s
+
+#27 [test] exporting to image
+#27 exporting layers
+#27 exporting layers 1.0s done
+#27 writing image sha256:934977ca066ba59ab8f058097296268c9439b962c4d0bfbeaeff23c786369033 done
+#27 naming to docker.io/library/flux-test-tools:flux-test-457-b6451-focused 0.0s done
+#27 DONE 1.0s
+
+#28 [migrate production-dependencies 1/1] RUN pnpm install --prod --offline --frozen-lockfile
+#28 0.541 Scope: all 12 workspace projects
+#28 0.582 ✓ Lockfile passes supply-chain policies (verified 3d ago)
+#28 0.582 Lockfile is up to date, resolution step is skipped
+#28 0.765 Packages: -199
+#28 0.765 --------------------------------------------------------------------------------
+#28 1.039 
+#28 1.039 devDependencies:
+#28 1.039 - @eslint/js 9.37.0
+#28 1.039 - @types/node 24.6.2
+#28 1.039 - @types/nodemailer 8.0.2
+#28 1.039 - @types/pg 8.15.5
+#28 1.039 - @types/sanitize-html 2.16.1
+#28 1.039 - @types/ws 8.18.1
+#28 1.039 - drizzle-orm 0.45.3
+#28 1.039 - eslint 9.37.0
+#28 1.039 - eslint-plugin-react-hooks 7.1.1
+#28 1.039 - fastify 5.6.1
+#28 1.039 - playwright 1.63.0
+#28 1.039 - tsx 4.20.5
+#28 1.039 - typescript 5.9.2
+#28 1.039 - typescript-eslint 8.44.1
+#28 1.039 - ws 8.22.0
+#28 1.039 
+#28 1.039 Done in 501ms using pnpm v12.6.0
+#28 ...
+
+#29 [test] resolving provenance for metadata file
+#29 DONE 0.0s
+
+#28 [migrate production-dependencies 1/1] RUN pnpm install --prod --offline --frozen-lockfile
+#28 DONE 1.7s
+
+#19 [migrate build 2/9] WORKDIR /app
+#19 CACHED
+
+#30 [pushmock e2e 2/3] WORKDIR /app
+#30 CACHED
+
+#31 [pushmock e2e 3/3] COPY --from=build /app /app
+#31 DONE 4.0s
+
+#32 [migrate runtime  3/30] COPY --from=production-dependencies /app/node_modules ./node_modules
+#32 DONE 4.0s
+
+#33 [migrate runtime  4/30] COPY --from=production-dependencies /app/apps/server/node_modules ./apps/server/node_modules
+#33 DONE 0.5s
+
+#34 [pushmock] exporting to image
+#34 exporting layers
+#34 ...
+
+#35 [migrate runtime  5/30] COPY --from=production-dependencies /app/apps/worker/node_modules ./apps/worker/node_modules
+#35 DONE 0.4s
+
+#36 [migrate runtime  6/30] COPY --from=production-dependencies /app/packages/core/node_modules ./packages/core/node_modules
+#36 DONE 0.4s
+
+#34 [pushmock] exporting to image
+#34 ...
+
+#37 [migrate runtime  7/30] COPY --from=production-dependencies /app/packages/db/node_modules ./packages/db/node_modules
+#37 DONE 0.4s
+
+#38 [migrate runtime  8/30] COPY --from=production-dependencies /app/packages/agent-runtime/node_modules ./packages/agent-runtime/node_modules
+#38 DONE 0.3s
+
+#34 [pushmock] exporting to image
+#34 ...
+
+#39 [migrate runtime  9/30] COPY --from=production-dependencies /app/apps/runtime/node_modules ./apps/runtime/node_modules
+#39 DONE 0.5s
+
+#40 [migrate runtime 10/30] COPY --from=build /app/package.json ./package.json
+#40 DONE 0.3s
+
+#34 [pushmock] exporting to image
+#34 ...
+
+#41 [migrate runtime 11/30] COPY --from=build /app/apps/server/package.json ./apps/server/package.json
+#41 DONE 0.4s
+
+#42 [migrate runtime 12/30] COPY --from=build /app/apps/worker/package.json ./apps/worker/package.json
+#42 ...
+
+#34 [pushmock] exporting to image
+#34 exporting layers 3.8s done
+#34 writing image sha256:0e5b98243701bccd88a0026c24aa44110caca72f8b22a1ff8105ce4ec581a310 0.0s done
+#34 naming to docker.io/library/flux-e2e:flux-test-457-b6451-focused 0.0s done
+#34 DONE 4.1s
+
+#42 [migrate runtime 12/30] COPY --from=build /app/apps/worker/package.json ./apps/worker/package.json
+#42 DONE 0.8s
+
+#43 [migrate runtime 13/30] COPY --from=build /app/packages/contracts/package.json ./packages/contracts/package.json
+#43 ...
+
+#44 [pushmock] resolving provenance for metadata file
+#44 DONE 0.0s
+
+#43 [migrate runtime 13/30] COPY --from=build /app/packages/contracts/package.json ./packages/contracts/package.json
+#43 DONE 0.5s
+
+#45 [migrate runtime 14/30] COPY --from=build /app/packages/core/package.json ./packages/core/package.json
+#45 DONE 0.4s
+
+#46 [migrate runtime 15/30] COPY --from=build /app/packages/db/package.json ./packages/db/package.json
+#46 DONE 0.3s
+
+#47 [migrate runtime 16/30] COPY --from=build /app/packages/agent-runtime/package.json ./packages/agent-runtime/package.json
+#47 DONE 6.2s
+
+#48 [migrate runtime 17/30] COPY --from=build /app/packages/runtime-protocol/package.json ./packages/runtime-protocol/package.json
+#48 DONE 0.3s
+
+#49 [migrate runtime 18/30] COPY --from=build /app/apps/runtime/package.json ./apps/runtime/package.json
+#49 DONE 0.3s
+
+#50 [migrate runtime 19/30] COPY --from=build /app/apps/server/dist ./apps/server/dist
+#50 DONE 0.3s
+
+#51 [migrate runtime 20/30] COPY --from=build /app/apps/worker/dist ./apps/worker/dist
+#51 DONE 0.3s
+
+#52 [migrate runtime 21/30] COPY --from=build /app/apps/web/dist ./apps/web/dist
+#52 DONE 0.3s
+
+#53 [migrate runtime 22/30] COPY --from=build /app/packages/contracts/dist ./packages/contracts/dist
+#53 DONE 0.3s
+
+#54 [migrate runtime 23/30] COPY --from=build /app/packages/core/dist ./packages/core/dist
+#54 DONE 0.3s
+
+#55 [migrate runtime 24/30] COPY --from=build /app/packages/db/dist ./packages/db/dist
+#55 DONE 0.3s
+
+#56 [migrate runtime 25/30] COPY --from=build /app/packages/agent-runtime/dist ./packages/agent-runtime/dist
+#56 DONE 0.3s
+
+#57 [migrate runtime 26/30] COPY --from=build /app/packages/runtime-protocol/dist ./packages/runtime-protocol/dist
+#57 DONE 0.3s
+
+#58 [migrate runtime 27/30] COPY --from=build /app/apps/runtime/dist ./apps/runtime/dist
+#58 DONE 0.3s
+
+#59 [migrate runtime 28/30] COPY --from=build /app/packages/db/migrations ./packages/db/migrations
+#59 DONE 0.3s
+
+#60 [migrate runtime 29/30] COPY --from=build /app/tooling/dist ./tooling/dist
+#60 DONE 0.3s
+
+#61 [migrate runtime 30/30] RUN mkdir -p /data/files && chown -R node:node /data
+#61 DONE 0.5s
+
+#62 [migrate] exporting to image
+#62 exporting layers
+#62 exporting layers 4.1s done
+#62 writing image sha256:09bc52e07f9ca01dac1443801dfae84b2c99bf1b676ff09744ae02ca95a957e5 done
+#62 naming to docker.io/library/flux-foundation:flux-test-457-b6451-focused 0.0s done
+#62 DONE 4.2s
+
+#63 [migrate] resolving provenance for metadata file
+#63 DONE 0.0s
+ Image flux-ui-tests:flux-test-457-b6451-focused Built 
+ Image flux-foundation:flux-test-457-b6451-focused Built 
+ Image flux-test-tools:flux-test-457-b6451-focused Built 
+ Image flux-e2e:flux-test-457-b6451-focused Built 
+ Network flux-test-457-b6451-focused_default Creating 
+ Network flux-test-457-b6451-focused_default Created 
+ Volume flux-test-457-b6451-focused_pgdata Creating 
+ Volume flux-test-457-b6451-focused_pgdata Created 
+ Container flux-test-457-b6451-focused-db-1 Creating 
+ Container flux-test-457-b6451-focused-db-1 Created 
+ Container flux-test-457-b6451-focused-migrate-1 Creating 
+ Container flux-test-457-b6451-focused-migrate-1 Created 
+ Container flux-test-457-b6451-focused-db-1 Starting 
+ Container flux-test-457-b6451-focused-db-1 Started 
+ Container flux-test-457-b6451-focused-db-1 Waiting 
+ Container flux-test-457-b6451-focused-db-1 Healthy 
+ Container flux-test-457-b6451-focused-migrate-1 Starting 
+ Container flux-test-457-b6451-focused-migrate-1 Started 
+ Volume flux-test-457-b6451-focused_teststate Creating 
+ Volume flux-test-457-b6451-focused_teststate Created 
+ Volume flux-test-457-b6451-focused_files Creating 
+ Volume flux-test-457-b6451-focused_files Created 
+ Container flux-test-457-b6451-focused-files-init-run-217e2563d251 Creating 
+time="2026-10-14T07:40:07+02:00" level=warning msg="mount of type `volume` should not define `bind` option"
+ Container flux-test-457-b6451-focused-files-init-run-217e2563d251 Created 
+=== AgentsTabStates fixture + test_04: chromium ===
+ Network flux-test-457-b6451-focused_runtime-api Creating 
+ Network flux-test-457-b6451-focused_runtime-api Created 
+ Network flux-test-457-b6451-focused_runtime-control Creating 
+ Network flux-test-457-b6451-focused_runtime-control Created 
+ Volume flux-test-457-b6451-focused_pushtls Creating 
+ Volume flux-test-457-b6451-focused_pushtls Created 
+ Container flux-test-457-b6451-focused-anthropic-mock-1 Creating 
+ Container flux-test-457-b6451-focused-openai-mock-1 Creating 
+ Container flux-test-457-b6451-focused-db-1 Running 
+ Container flux-test-457-b6451-focused-pushmock-1 Creating 
+ Container flux-test-457-b6451-focused-mailpit-1 Creating 
+ Container flux-test-457-b6451-focused-migrate-1 Running 
+ Container flux-test-457-b6451-focused-api-1 Creating 
+time="2026-10-14T07:40:08+02:00" level=warning msg="mount of type `volume` should not define `bind` option"
+ Container flux-test-457-b6451-focused-api-1 Created 
+ Container flux-test-457-b6451-focused-anthropic-mock-1 Created 
+ Container flux-test-457-b6451-focused-openai-mock-1 Created 
+ Container flux-test-457-b6451-focused-mailpit-1 Created 
+ Container flux-test-457-b6451-focused-pushmock-1 Created 
+ Container flux-test-457-b6451-focused-worker-1 Creating 
+time="2026-10-14T07:40:08+02:00" level=warning msg="mount of type `volume` should not define `bind` option"
+ Container flux-test-457-b6451-focused-worker-1 Created 
+ Container flux-test-457-b6451-focused-mailpit-1 Starting 
+ Container flux-test-457-b6451-focused-anthropic-mock-1 Starting 
+ Container flux-test-457-b6451-focused-openai-mock-1 Starting 
+ Container flux-test-457-b6451-focused-pushmock-1 Starting 
+ Container flux-test-457-b6451-focused-db-1 Waiting 
+ Container flux-test-457-b6451-focused-db-1 Healthy 
+ Container flux-test-457-b6451-focused-migrate-1 Waiting 
+ Container flux-test-457-b6451-focused-anthropic-mock-1 Started 
+ Container flux-test-457-b6451-focused-mailpit-1 Started 
+ Container flux-test-457-b6451-focused-openai-mock-1 Started 
+ Container flux-test-457-b6451-focused-pushmock-1 Started 
+ Container flux-test-457-b6451-focused-migrate-1 Waiting 
+ Container flux-test-457-b6451-focused-pushmock-1 Waiting 
+ Container flux-test-457-b6451-focused-migrate-1 Exited 
+ Container flux-test-457-b6451-focused-api-1 Starting 
+ Container flux-test-457-b6451-focused-migrate-1 Exited 
+ Container flux-test-457-b6451-focused-api-1 Started 
+ Container flux-test-457-b6451-focused-pushmock-1 Healthy 
+ Container flux-test-457-b6451-focused-worker-1 Starting 
+ Container flux-test-457-b6451-focused-worker-1 Started 
+ Container flux-test-457-b6451-focused-api-1 Waiting 
+ Container flux-test-457-b6451-focused-mailpit-1 Waiting 
+ Container flux-test-457-b6451-focused-anthropic-mock-1 Waiting 
+ Container flux-test-457-b6451-focused-openai-mock-1 Waiting 
+ Container flux-test-457-b6451-focused-mailpit-1 Healthy 
+ Container flux-test-457-b6451-focused-anthropic-mock-1 Healthy 
+ Container flux-test-457-b6451-focused-openai-mock-1 Healthy 
+ Container flux-test-457-b6451-focused-api-1 Healthy 
+ Container flux-test-457-b6451-focused-ui-test-run-f3ccda2114db Creating 
+ Container flux-test-457-b6451-focused-ui-test-run-f3ccda2114db Created 
+test_00_a_project_with_agents_connections_and_tasks (test_agents_tab_states.AgentsTabStates.test_00_a_project_with_agents_connections_and_tasks) ... ok
+test_04_requests_shows_what_waits_for_you (test_agents_tab_states.AgentsTabStates.test_04_requests_shows_what_waits_for_you) ... ok
+
+----------------------------------------------------------------------
+Ran 2 tests in 2.982s
+
+OK
+
+  AgentsTabStates browser: chromium
+=== AgentsTabStates fixture + test_04: webkit ===
+ Container flux-test-457-b6451-focused-openai-mock-1 Running 
+ Container flux-test-457-b6451-focused-pushmock-1 Running 
+ Container flux-test-457-b6451-focused-anthropic-mock-1 Running 
+ Container flux-test-457-b6451-focused-mailpit-1 Running 
+ Container flux-test-457-b6451-focused-db-1 Running 
+ Container flux-test-457-b6451-focused-api-1 Running 
+ Container flux-test-457-b6451-focused-worker-1 Running 
+ Container flux-test-457-b6451-focused-db-1 Waiting 
+ Container flux-test-457-b6451-focused-db-1 Healthy 
+ Container flux-test-457-b6451-focused-migrate-1 Starting 
+ Container flux-test-457-b6451-focused-migrate-1 Started 
+ Container flux-test-457-b6451-focused-migrate-1 Waiting 
+ Container flux-test-457-b6451-focused-migrate-1 Waiting 
+ Container flux-test-457-b6451-focused-pushmock-1 Waiting 
+ Container flux-test-457-b6451-focused-pushmock-1 Healthy 
+ Container flux-test-457-b6451-focused-migrate-1 Exited 
+ Container flux-test-457-b6451-focused-migrate-1 Exited 
+ Container flux-test-457-b6451-focused-mailpit-1 Waiting 
+ Container flux-test-457-b6451-focused-anthropic-mock-1 Waiting 
+ Container flux-test-457-b6451-focused-openai-mock-1 Waiting 
+ Container flux-test-457-b6451-focused-api-1 Waiting 
+ Container flux-test-457-b6451-focused-openai-mock-1 Healthy 
+ Container flux-test-457-b6451-focused-anthropic-mock-1 Healthy 
+ Container flux-test-457-b6451-focused-api-1 Healthy 
+ Container flux-test-457-b6451-focused-mailpit-1 Healthy 
+ Container flux-test-457-b6451-focused-ui-test-run-d4299ee944a2 Creating 
+ Container flux-test-457-b6451-focused-ui-test-run-d4299ee944a2 Created 
+test_00_a_project_with_agents_connections_and_tasks (test_agents_tab_states.AgentsTabStates.test_00_a_project_with_agents_connections_and_tasks) ... ok
+test_04_requests_shows_what_waits_for_you (test_agents_tab_states.AgentsTabStates.test_04_requests_shows_what_waits_for_you) ... ok
+
+----------------------------------------------------------------------
+Ran 2 tests in 6.883s
+
+OK
+
+  AgentsTabStates browser: webkit
+ Container flux-test-457-b6451-focused-migrate-run-42e69a7b2acb Creating 
+ Container flux-test-457-b6451-focused-migrate-run-42e69a7b2acb Created 
+ Container flux-test-457-b6451-focused-db-1 Running 
+ Container flux-test-457-b6451-focused-api-1 Recreate 
+time="2026-10-14T07:40:28+02:00" level=warning msg="mount of type `volume` should not define `bind` option"
+ Container flux-test-457-b6451-focused-api-1 Recreated 
+ Container flux-test-457-b6451-focused-db-1 Waiting 
+ Container flux-test-457-b6451-focused-db-1 Healthy 
+ Container flux-test-457-b6451-focused-migrate-1 Starting 
+ Container flux-test-457-b6451-focused-migrate-1 Started 
+ Container flux-test-457-b6451-focused-migrate-1 Waiting 
+ Container flux-test-457-b6451-focused-migrate-1 Exited 
+ Container flux-test-457-b6451-focused-api-1 Starting 
+ Container flux-test-457-b6451-focused-api-1 Started 
+ Container flux-test-457-b6451-focused-api-1 Waiting 
+ Container flux-test-457-b6451-focused-api-1 Healthy 
+ Container flux-test-457-b6451-focused-e2e-run-e15a85d2937e Creating 
+ Container flux-test-457-b6451-focused-e2e-run-e15a85d2937e Created 
+✔ chromium: owner Request reaches manager Inbox, only manager Allow creates a contributor grant (2652.059772ms)
+✔ webkit: owner Request reaches manager Inbox, only manager Allow creates a contributor grant (4991.42158ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 8614.894519
+ Container flux-test-457-b6451-focused-api-1 Stopping 
+ Container flux-test-457-b6451-focused-mailpit-1 Stopping 
+ Container flux-test-457-b6451-focused-worker-1 Stopping 
+ Container flux-test-457-b6451-focused-anthropic-mock-1 Stopping 
+ Container flux-test-457-b6451-focused-openai-mock-1 Stopping 
+ Container flux-test-457-b6451-focused-worker-1 Stopped 
+ Container flux-test-457-b6451-focused-worker-1 Removing 
+ Container flux-test-457-b6451-focused-worker-1 Removed 
+ Container flux-test-457-b6451-focused-pushmock-1 Stopping 
+ Container flux-test-457-b6451-focused-mailpit-1 Stopped 
+ Container flux-test-457-b6451-focused-mailpit-1 Removing 
+ Container flux-test-457-b6451-focused-mailpit-1 Removed 
+ Container flux-test-457-b6451-focused-pushmock-1 Stopped 
+ Container flux-test-457-b6451-focused-pushmock-1 Removing 
+ Container flux-test-457-b6451-focused-pushmock-1 Removed 
+ Container flux-test-457-b6451-focused-openai-mock-1 Stopped 
+ Container flux-test-457-b6451-focused-openai-mock-1 Removing 
+ Container flux-test-457-b6451-focused-anthropic-mock-1 Stopped 
+ Container flux-test-457-b6451-focused-anthropic-mock-1 Removing 
+ Container flux-test-457-b6451-focused-anthropic-mock-1 Removed 
+ Container flux-test-457-b6451-focused-openai-mock-1 Removed 
+ Container flux-test-457-b6451-focused-api-1 Stopped 
+ Container flux-test-457-b6451-focused-api-1 Removing 
+ Container flux-test-457-b6451-focused-api-1 Removed 
+ Container flux-test-457-b6451-focused-migrate-1 Stopping 
+ Container flux-test-457-b6451-focused-migrate-1 Stopped 
+ Container flux-test-457-b6451-focused-migrate-1 Removing 
+ Container flux-test-457-b6451-focused-migrate-1 Removed 
+ Container flux-test-457-b6451-focused-db-1 Stopping 
+ Container flux-test-457-b6451-focused-db-1 Stopped 
+ Container flux-test-457-b6451-focused-db-1 Removing 
+ Container flux-test-457-b6451-focused-db-1 Removed 
+ Volume flux-test-457-b6451-focused_files Removing 
+ Volume flux-test-457-b6451-focused_teststate Removing 
+ Volume flux-test-457-b6451-focused_pgdata Removing 
+ Volume flux-test-457-b6451-focused_pushtls Removing 
+ Network flux-test-457-b6451-focused_runtime-api Removing 
+ Network flux-test-457-b6451-focused_default Removing 
+ Network flux-test-457-b6451-focused_runtime-control Removing 
+ Volume flux-test-457-b6451-focused_files Removed 
+ Volume flux-test-457-b6451-focused_teststate Removed 
+ Volume flux-test-457-b6451-focused_pgdata Removed 
+ Volume flux-test-457-b6451-focused_pushtls Removed 
+ Network flux-test-457-b6451-focused_runtime-api Removed 
+ Network flux-test-457-b6451-focused_runtime-control Removed 
+ Network flux-test-457-b6451-focused_default Removed 
+Removed 4 per-run image(s) tagged :flux-test-457-b6451-focused
