@@ -153,6 +153,7 @@ function AppLayoutContent() {
   const detailsScope = useRef<typeof detailsOwner | null>(detailsOwner);
   useLayoutEffect(() => { detailsScope.current = detailsOwner; return () => { detailsScope.current = null; }; }, [detailsOwner]);
   const [actionSlot, setActionSlot] = useState<HTMLElement | null>(null);
+  const [metadataSlot, setMetadataSlot] = useState<HTMLElement | null>(null);
   const shell = useMemo(() => ({
     openDetails(view: DetailsView = 'place') {
       if (detailsScope.current !== detailsOwner) return;
@@ -162,7 +163,8 @@ function AppLayoutContent() {
     openSearch() { setNavOpen(false); setJumpOpen(true); },
     openNavigation() { setDetailsOpen(false); setNavOpen(true); },
     actionSlot,
-  }), [toggleDetails, actionSlot, projectId, detailsOwner]);
+    metadataSlot,
+  }), [toggleDetails, actionSlot, metadataSlot, projectId, detailsOwner]);
 
   // A link inside an overlaid panel or sheet (#117 overview) leads to its destination.
   const [shownPath, setShownPath] = useState(location.pathname);
@@ -305,6 +307,7 @@ function AppLayoutContent() {
   // Map tab to the sketch (or list) that was open there.
   const onOtherView = /^\/projects\/[^/]+\/(tasks|map|docs|agents|github)(\/|$)/.test(location.pathname);
   const onMap = /^\/projects\/[^/]+\/map(\/|$)/.test(location.pathname);
+  const onWiki = /^\/projects\/[^/]+\/docs(\/|$)/.test(location.pathname);
   useEffect(() => {
     if (!projectId || (onOtherView && !onMap)) return;
     remember(onMap ? 'map' : 'conversation', me.user.id, projectId, `${location.pathname}${location.search}`);
@@ -372,6 +375,7 @@ function AppLayoutContent() {
           : { crumb: null, title: 'Direct messages', topic: 'Conversations with people, outside any project', views: false, noDetails: true }
       // Home's Tasks span every workspace, so no single workspace is named above them (#190).
       : { crumb: location.pathname.startsWith('/tasks') ? null : workspace?.name ?? null, title: 'Home', topic: 'Your private notes and where you left off', views: true };
+  // The phone Wiki is drawn with its title as the view menu and no chip row of views (F-026 §4, #354).
   // A place without its own Details (Search, Inbox, the DM list) never keeps the generic panel open.
   if ('noDetails' in place && detailsOpen && detailsView === 'place') setDetailsOpen(false);
 
@@ -426,8 +430,9 @@ function AppLayoutContent() {
       ) : activeProject && projectViews ? (
         <><PhoneBack onBack={() => goBack('/projects')} />
           <PhoneTitleMenu title={place.title} items={projectMenu} onDetails={detailsEntry}
+            metadataSlot={onWiki ? setMetadataSlot : undefined}
             adds={addViewItems.map((item) => ({ label: item.label, run: item.run }))}
-            subtitle={[PROJECT_VIEW_NAMES[Math.max(0, viewOrder(location.pathname))], peopleLine(project?.people ?? null)].filter(Boolean).join(' · ')} /></>
+            subtitle={onWiki ? peopleLine(project?.people ?? null) : [PROJECT_VIEW_NAMES[Math.max(0, viewOrder(location.pathname))], peopleLine(project?.people ?? null)].filter(Boolean).join(' · ')} /></>
       ) : activeDm && dmViews ? (
         <><PhoneBack onBack={() => goBack('/projects')} />
           <PhoneTitleMenu title={activeDm.title} items={dmViews.map((view) => ({ id: view.id, label: view.label, to: view.to, icon: view.id === 'messages' ? 'chat' as const : 'edit' as const, current: view.id === (/\/sketches/.test(location.pathname) ? 'sketches' : 'messages') }))}

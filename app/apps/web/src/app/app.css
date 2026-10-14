@@ -525,6 +525,9 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
 .phead__name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .phead__word { font-size: 1.5rem; font-weight: 600; letter-spacing: -.04em; }
 .phead__sub { margin: 0; font-size: .8125rem; line-height: 1.35; color: var(--t2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.phead__meta-slot:empty { display: none; }
+.phead__meta-slot:not(:empty)::before { content: ' · '; }
+.phead__meta-slot .wiki-header-meta { font-size: inherit; }
 .phead__right { display: flex; align-items: center; gap: 8px; flex: none; }
 .phead__round.ui-icon-btn, .phead__avatar {
   width: 44px; height: 44px; border-radius: 50%; background: var(--el); color: var(--t1); box-shadow: var(--sh-card);
@@ -550,6 +553,7 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
    Search at 320 px (#437); the narrowest phones give Search a little less. */
 .phone-dock__bar .ui-bottomnav__label { font-size: min(.8125rem, 16.25px); max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
 @media (max-width: 340px) { .phone-dock { gap: 8px; } .phone-dock__search { width: 56px; height: 56px; } }
+@media (max-width: 340px) { .phead:has(.wiki-header-meta) { gap: 4px; } }
 .phone-dock__bar .ui-bottomnav__pill::before { display: none; }
 .phone-dock__bar .ui-bottomnav__item:is([aria-current="page"], [data-pending]) { background: var(--sub); color: var(--t1); font-weight: 600; }
 .phone-dock__bar .ui-bottomnav__dot { top: 0; right: 2px; width: 10px; height: 10px; box-shadow: 0 0 0 2px var(--el); }

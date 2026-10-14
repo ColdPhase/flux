@@ -62,10 +62,12 @@ export interface PhoneMenuItem { id: string; label: string; to: string; icon: Ic
  * The title is the view menu: it names the project (or Home, or the conversation) and the view
  * shown, and opens the places inside it. "Details, goal and people" is the last row.
  */
-export function PhoneTitleMenu({ title, subtitle, items, onDetails, detailsLabel = 'Details, goal and people', lead, adds = [] }: {
+export function PhoneTitleMenu({ title, subtitle, items, onDetails, detailsLabel = 'Details, goal and people', lead, adds = [], metadataSlot }: {
   title: string; subtitle: ReactNode; items: PhoneMenuItem[]; onDetails: (() => void) | null; detailsLabel?: string; lead?: ReactNode;
   /** "Add Map", "Add Wiki", "Add Agents" for a view the project has not added yet (#351), quiet at the end. */
   adds?: { label: string; run: () => void }[];
+  /** Compact view metadata such as the Wiki page count, placed inline with the phone subtitle. */
+  metadataSlot?: (element: HTMLSpanElement | null) => void;
 }) {
   const [open, setOpen] = useState(false);
   const titleId = useId();
@@ -80,7 +82,7 @@ export function PhoneTitleMenu({ title, subtitle, items, onDetails, detailsLabel
             <span className="phead__name">{title}</span><Icon name="chevron-down" size={14} />
           </button>
         </h1>
-        <p className="phead__sub">{subtitle}</p>
+        <p className="phead__sub">{subtitle}{metadataSlot ? <span className="phead__meta-slot" ref={metadataSlot} /> : null}</p>
       </div>
       <Overlay open={open} onClose={() => setOpen(false)} placement="center" labelledBy={`${menuId}-t`} id={menuId} className="phone-menu" initialFocus={firstRef}>
         <h2 className="phone-menu__t" id={`${menuId}-t`}>{title}<span className="ui-vh">, views</span></h2>
