@@ -531,7 +531,7 @@ test('real sign-out and account switch reject a held old-account read and keep t
       await f.create('A second task that only triggers a re-read');
       await late.held; late.retire();
       await page.goto('/sign-out'); await page.getByRole('button', { name: 'Sign out', exact: true }).click();
-      await page.getByRole('heading', { name: 'Sign in to Flux', exact: true }).waitFor();
+      await page.getByRole('heading', { name: 'Sign in', exact: true }).waitFor();
       await page.getByLabel('Email', { exact: true }).fill(f.manager.email); await page.getByLabel('Password', { exact: true }).fill(password);
       await page.getByRole('button', { name: 'Sign in', exact: true }).click();
       await page.waitForURL((url) => !url.pathname.includes('sign-in'));
@@ -677,11 +677,19 @@ test('Agents, Map and live work never offer a task whose creation was undone, wh
   const context = await signedIn(f.author);
   await withContexts([context], async () => {
     const page = await context.newPage(); watchErrors(page);
-    // Agents: a ?task= naming the undone task does not open it as a thread; the open task list leaves it out.
+    // Agents: an undone ?task= falls back to the current open task, never the undone thread.
     await page.goto(`/projects/${f.place.id}/agents?task=${item.id}`);
-    const select = page.locator('#agents-task'); await select.waitFor();
-    assert.equal(await select.locator(`option[value="${item.id}"]`).count(), 0);
-    assert.equal(await select.inputValue(), kept.id);
+    const keptThread = page.getByRole('region', { name: `#${kept.number} · ${kept.title}`, exact: true });
+    await keptThread.waitFor();
+    assert.equal(await page.getByRole('region', { name: `#${item.number} · ${item.title}`, exact: true }).count(), 0);
+    // The current task picker is in Hand Off; the undone task is absent, while the open task remains selectable.
+    await page.getByRole('button', { name: 'Hand off a task', exact: true }).click();
+    const taskChoice = page.getByLabel('Task', { exact: true }); await taskChoice.waitFor();
+    assert.equal(await taskChoice.locator(`option[value="${item.id}"]`).count(), 0);
+    assert.equal(await taskChoice.locator(`option[value="${kept.id}"]`).count(), 1);
+    await taskChoice.selectOption(kept.id);
+    assert.equal(await taskChoice.inputValue(), kept.id);
+    await page.getByRole('button', { name: 'Close', exact: true }).click();
     // Map: the map surface has no live or task action on it; the Details link still opens read-only history.
     await page.goto(`/projects/${f.place.id}/map/${sketch.id}?open=work:${item.id}`); await reverted(page, item);
     // Live: the work anchor of an undone task is refused by the server, so no session can start on it.
