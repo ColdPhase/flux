@@ -82,6 +82,29 @@ containing canonical sign-in/auth/focus migrations. When those compose, review t
 actual manifest and catalog ownership again and extend the guard and real combined
 upgrade/restore evidence. All AC-U1–AC-U5, live-writer and release gates remain.
 
+### Current main composition: accepted focus 0059 (2026-10-14)
+
+At main `d7f8d8defbee91e0f0d78fee95841b026ae00c31`, the manifest contains the
+accepted `0059_notification_pause.sql` from #340. Its SQL is the known Focus
+migration: one nullable `timestamptz` column, `notification_preferences.paused_until`.
+The current forward file SHA-256 is
+`0625069da34dedf45e8ee840c9ddbae8b2d4497db7f24a9309d8aad9f86a896f`; its guarded
+reverse file is `59a0b82d1b00954ed40f00ef59733c1a2290bb385b834bdd36acd7c8aa27d86e`.
+This catalog shape is compatible with task-creation Undo and must be admitted when
+ledger 59 is present. A ledger number alone is still insufficient: startup must
+require the expected base relation, column type and nullability, and refuse ledger
+59 with a missing or mismatched column, or the column without ledger 59. The
+historical sign-in/runtime-auth migration artifacts at 0057/0058, their distinctive
+catalog footprints, and malformed or partial states remain unsupported and must
+still refuse before migration, ledger, or pg-boss writes. This composition does not
+authorize an inferred conversion or admit any unverified migration content.
+
+The original 2026-10-11 refusal evidence remains an accurate report of its then
+manifest and tested behavior; it is historical evidence, not current-main proof.
+The current-image compatibility regression must run the real migration CLI on a
+0059 database through both Undo migrations and repeated startup while preserving
+retained task history, alongside the negative catalog controls above.
+
 ## Required current evidence
 
 Verify trusted agent/proposal origins and current human/agent authority, monotonically recorded prior use,

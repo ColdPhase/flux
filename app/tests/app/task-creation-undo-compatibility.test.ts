@@ -7,6 +7,13 @@ import { assertExactMigrationLedger, assertKnownMigrationVersions, assertTaskCre
 import { fixtureDatabase, legacyDirectory, legacySql, migrationCli, originalUndoFiles, refusedUnchanged, retainedHistory, retainedUndoHistory } from './support/undo-legacy-database.js';
 import { restoredConstraintShape } from './support/restored-catalog-shape.js';
 
+async function retainedUndoSnapshot(db: Awaited<ReturnType<typeof fixtureDatabase>>['db']) {
+  const work = await db.query("SELECT to_jsonb(t)::text AS row FROM project_work_items t WHERE creation_reverted_at IS NOT NULL OR first_persisted_use_at IS NOT NULL ORDER BY id");
+  const notices = await db.query("SELECT to_jsonb(t)::text AS row FROM project_task_notices t WHERE kind IN ('task.created','task.creation_reverted') ORDER BY id");
+  const receipts = await db.query('SELECT to_jsonb(t)::text AS row FROM task_creation_undo_receipts t ORDER BY work_id');
+  return { work: work.rows, notices: notices.rows, receipts: receipts.rows };
+}
+
 test('restore evidence permits only associative CHECK grouping while retaining operators, precedence and literals', () => {
   const normalized = restoredConstraintShape;
   assert.deepEqual(normalized('CHECK (((a AND b) AND c))'), normalized('CHECK ((a AND b AND c))'));
@@ -34,17 +41,16 @@ test('actual original 45c Undo48/57 database refuses before any writes on migrat
   } finally { await fixture.close(); }
 });
 
-test('actual canonical sign-in, runtime-auth and focus SQL refuse individually and mixed at this sparse namespace', { timeout: 120_000 }, async () => {
-  const files = ['0057_agent_runtime_sign_in.sql', '0058_agent_runtime_auth_operations.sql', '0059_notification_pause.sql'];
+test('actual canonical sign-in and runtime-auth SQL refuse individually and mixed at this namespace', { timeout: 120_000 }, async () => {
+  const files = ['0057_agent_runtime_sign_in.sql', '0058_agent_runtime_auth_operations.sql'];
   for (const selected of files.map((file) => [file]).concat([files])) {
     const fixture = await fixtureDatabase();
     try {
-      const { user } = await retainedHistory(fixture.db);
+      await retainedHistory(fixture.db);
       for (const file of selected) {
         await fixture.db.query(await legacySql(file));
         await fixture.db.query('INSERT INTO flux_schema_version(version) VALUES($1)', [Number(file.slice(0, 4))]);
       }
-      if (selected.includes('0059_notification_pause.sql')) await fixture.db.query("INSERT INTO notification_preferences(user_id,paused_until) VALUES($1,'2026-10-12T12:34:56Z')", [user]);
       if (selected.includes('0058_agent_runtime_auth_operations.sql')) await fixture.db.query("UPDATE agent_runtime_auth_admission SET blocked=true,purge_id='10000000-0000-4000-8000-000000000001'");
       await refusedUnchanged(fixture, /unsupported legacy/);
       // Negative control: adding nominal files makes numeric identity pass, but does not prove SQL ownership.
@@ -57,10 +63,43 @@ test('actual canonical sign-in, runtime-auth and focus SQL refuse individually a
   }
 });
 
+test('Focus 0059 is admitted only with its exact recorded nullable timestamptz catalog shape', { timeout: 120_000 }, async () => {
+  for (const change of [
+    'ALTER TABLE notification_preferences DROP COLUMN paused_until',
+    'ALTER TABLE notification_preferences ALTER COLUMN paused_until TYPE integer USING NULL',
+    'ALTER TABLE notification_preferences ALTER COLUMN paused_until SET NOT NULL',
+  ]) {
+    const fixture = await fixtureDatabase();
+    try {
+      await fixture.db.query(change);
+      await refusedUnchanged(fixture, /mismatched accepted Focus 0059 column/);
+    } finally { await fixture.close(); }
+  }
+  const unversioned = await fixtureDatabase();
+  try {
+    await unversioned.db.query('DELETE FROM flux_schema_version WHERE version=59');
+    await refusedUnchanged(unversioned, /unversioned Focus 0059 column/);
+  } finally { await unversioned.close(); }
+});
+
+test('current main Focus 0059 plus Undo history permits migration startup and repeat without rewriting retained rows', { timeout: 120_000 }, async () => {
+  const fixture = await fixtureDatabase();
+  try {
+    await retainedUndoHistory(fixture.db);
+    const before = await retainedUndoSnapshot(fixture.db);
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const result = await migrationCli(fixture.name);
+      assert.equal(result.code, 0, result.output);
+      assertExactMigrationLedger(await readMigrationManifest('packages/db/migrations', FLUX_SCHEMA_VERSION), await readAppliedMigrationVersions(fixture.db));
+      assert.deepEqual(await retainedUndoSnapshot(fixture.db), before, 'accepted current ledger and task history remain unchanged on startup');
+    }
+  } finally { await fixture.close(); }
+});
+
 test('unversioned and partial canonical/focus/Undo footprints refuse despite a numerically known ledger', { timeout: 120_000 }, async () => {
   const changes = [
     "ALTER TABLE agent_runtime_connections ADD COLUMN account_changed_at text",
-    'ALTER TABLE notification_preferences ADD COLUMN paused_until integer',
+    'ALTER TABLE notification_preferences DROP COLUMN paused_until; DELETE FROM flux_schema_version WHERE version=59; ALTER TABLE notification_preferences ADD COLUMN paused_until integer',
     'CREATE TABLE agent_runtime_console_nonces(retained text)',
     'DELETE FROM flux_schema_version WHERE version=48',
     'DELETE FROM flux_schema_version WHERE version=60',

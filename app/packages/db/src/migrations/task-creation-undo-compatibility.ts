@@ -14,7 +14,6 @@ const receiptColumns: Readonly<Record<string, string>> = {
 };
 const legacyColumns: Readonly<Record<string, readonly string[]>> = {
   agent_runtime_connections: ['account_fingerprint', 'previous_account_label', 'account_changed_at', 'signed_out_at', 'sign_out_failed'],
-  notification_preferences: ['paused_until'],
 };
 const legacyRelations = ['agent_runtime_auth_operations', 'agent_runtime_console_nonces', 'agent_runtime_auth_admission'];
 // Ignore rendering whitespace outside literals; a space inside a CHECK's value is semantic.
@@ -27,9 +26,9 @@ function refuse(problems: readonly string[]): never {
 }
 
 /** Read-only preflight, under flux-migrate, before application SQL, ledger or pg-boss writes.
- * 0057/0058/0059 are unsupported in this image. A future composition must review their actual
- * catalog ownership here; merely adding numbered files must never silently admit legacy schemas.
- * Additional unrelated columns/tables do not change these supported semantic footprints.
+ * 0057/0058 remain unsupported. Current 0059 is the accepted Focus migration, and its exact
+ * nullable timestamptz footprint is admitted only with ledger 59. Additional unrelated
+ * columns/tables do not change these supported semantic footprints.
  */
 export async function assertTaskCreationUndoMigrationCompatibility(db: Reader, applied: readonly number[]): Promise<void> {
   const problems: string[] = [];
@@ -60,8 +59,17 @@ export async function assertTaskCreationUndoMigrationCompatibility(db: Reader, a
       OR (t.tgrelid=pg_catalog.to_regclass('task_creation_undo_receipts') AND t.tgname='task_creation_receipt_guard')
       OR (t.tgrelid=pg_catalog.to_regclass('agent_runtime_bindings') AND t.tgname='agent_runtime_auth_lifecycle')`)).rows;
   if (triggers.some((trigger) => trigger.name === 'agent_runtime_auth_lifecycle')) problems.push('unsupported legacy runtime-auth lifecycle trigger');
-  const reserved = applied.filter((version) => [57, 58, 59].includes(version));
+  const reserved = applied.filter((version) => [57, 58].includes(version));
   if (reserved.length) problems.push(`unsupported reserved ledger versions ${reserved.join(',')} (numeric identity is not catalog identity)`);
+
+  const pauseColumn = (await columns('notification_preferences')).find((column) => column.name === 'paused_until');
+  if (applied.includes(59)) {
+    if (!pauseColumn || pauseColumn.type !== 'timestamp with time zone' || pauseColumn.required || pauseColumn.kind !== 'r') {
+      problems.push('mismatched accepted Focus 0059 column notification_preferences.paused_until');
+    }
+  } else if (pauseColumn) {
+    problems.push('unversioned Focus 0059 column notification_preferences.paused_until');
+  }
 
   const task = (await columns('project_work_items')).filter((column) => Object.hasOwn(taskColumns, column.name));
   const receiptRelation = (await db.query("SELECT pg_catalog.to_regclass('task_creation_undo_receipts') AS relation")).rows[0].relation;
