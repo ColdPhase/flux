@@ -329,4 +329,3 @@ function NotesSection() {
     </section>
   );
 }
-

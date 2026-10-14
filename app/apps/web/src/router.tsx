@@ -1,4 +1,5 @@
-import { Outlet, createBrowserRouter, useRouteLoaderData, type RouteObject } from 'react-router';
+import { useState } from 'react';
+import { Outlet, createBrowserRouter, useMatches, useRouteLoaderData, type RouteObject } from 'react-router';
 import { ToastProvider } from './ui';
 import { UpdatePrompt } from './pwa';
 import { AppLayout } from './app/AppLayout';
@@ -58,11 +59,16 @@ const material = secondary(async () => {
 });
 
 function Root() {
-  // The update prompt is shown on every page, signed in or not; reloading is the person's choice.
-  // Toast actions belong to the signed-in person who created them. The provider outlives the app
-  // and auth route siblings, so its scope must follow the app loader's current principal.
   const shell = useRouteLoaderData('app') as ShellData | undefined;
-  return <ToastProvider sessionId={shell?.me.user.id ?? null}><Outlet /><UpdatePrompt /></ToastProvider>;
+  const inApp = useMatches().some((match) => match.id === 'app');
+  const [session, setSession] = useState<string | null>(null);
+  const observed = shell ? JSON.stringify([shell.me.user.id, shell.me.session.id]) : null;
+  if (observed && observed !== session) setSession(observed);
+  // A failed/offline loader is not proof of sign-out. Keep its last known scope
+  // while the app route remains matched; auth routes or a confirmed new session retire it.
+  const scopeKey = inApp ? observed ?? session : null;
+  // The update prompt is shown on every page, signed in or not; reloading is the person's choice.
+  return <ToastProvider scopeKey={scopeKey}><Outlet /><UpdatePrompt /></ToastProvider>;
 }
 
 export const router = createBrowserRouter([
