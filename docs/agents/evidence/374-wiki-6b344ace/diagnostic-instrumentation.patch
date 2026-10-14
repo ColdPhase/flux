@@ -1,0 +1,85 @@
+diff --git a/app/tests/ui/test_scenarios.py b/app/tests/ui/test_scenarios.py
+index 916c8f00..73cd3f0e 100644
+--- a/app/tests/ui/test_scenarios.py
++++ b/app/tests/ui/test_scenarios.py
+@@ -231,7 +231,40 @@ class ScenarioJourney:
+         self.addCleanup(context.close)
+         page = context.new_page()
+         errors: list[str] = []
+-        page.on("pageerror", lambda error: errors.append(str(error)))
++        trace_step = ["page-created"]
++        self._trace_step = trace_step
++        tracing = self._testMethodName == "test_5_inbox_search_and_the_wiki_find_the_work"
++        def trace(event: str, detail: str) -> None:
++            if tracing:
++                print(f"TRACE_NEEDS_YOU epoch_ms={time.time_ns() // 1_000_000} monotonic={time.monotonic():.6f} step={trace_step[0]} event={event} page={page.url} {detail}", flush=True)
++        def request_started(request) -> None:
++            if "/api/v1/needs-you" in request.url:
++                try:
++                    navigation = request.is_navigation_request()
++                except Exception:
++                    navigation = "unavailable"
++                trace("request", f"url={request.url} method={request.method} navigation={navigation}")
++        def response_received(response) -> None:
++            if "/api/v1/needs-you" in response.url:
++                trace("response", f"url={response.url} status={response.status}")
++        def request_finished(request) -> None:
++            if "/api/v1/needs-you" in request.url:
++                trace("finished", f"url={request.url}")
++        def request_failed(request) -> None:
++            if "/api/v1/needs-you" in request.url:
++                trace("failed", f"url={request.url} failure={request.failure}")
++        def frame_navigated(frame) -> None:
++            if frame == page.main_frame:
++                trace("framenavigated", f"url={frame.url}")
++        def page_error(error) -> None:
++            errors.append(str(error))
++            trace("pageerror", f"error={error!s} stack={getattr(error, 'stack', None)!r}")
++        page.on("request", request_started)
++        page.on("response", response_received)
++        page.on("requestfinished", request_finished)
++        page.on("requestfailed", request_failed)
++        page.on("framenavigated", frame_navigated)
++        page.on("pageerror", page_error)
+         self.addCleanup(lambda: self.assertEqual(errors, [], "no uncaught page errors"))
+         return page
+ 
+@@ -1087,7 +1120,9 @@ class ScenarioJourney:
+         for who, titles in expected.items():
+             self.wait_for(f"{who}'s notifications", lambda who=who, titles=titles: all(any(t.startswith(title) for t in self.inbox_titles(who)) for title in titles))
+         page = self.page("ada")
++        self._trace_step[0] = "goto-home"
+         page.goto("/")
++        self._trace_step[0] = "spa-home-to-inbox"
+         self.go_to_place(page, "Inbox")
+         expect(page.get_by_role("heading", level=1, name="Inbox")).to_be_visible()
+         # The queue holds what needs Ada (the question); the direct message and the proposal she already
+@@ -1095,10 +1130,12 @@ class ScenarioJourney:
+         expect(page.locator(".nyc", has_text=f"Jonas Berg asked you in {LAMP}").first).to_be_visible()
+         self.shot(page, "5-inbox")
+         note = next(item for item in self.api("ada", "GET", "/api/v1/inbox?limit=100", status=200)["items"] if item["title"] == "Jonas Berg sent you a message")
++        self._trace_step[0] = "hard-goto-inbox-note"
+         page.goto(f"/inbox/{note['id']}")
+         expect(page).to_have_url(re.compile(rf"/dm/{s['dm']}#message-"))
+ 
+         # Search: Jump to, then the full results, find the run, the result, the page and the map.
++        self._trace_step[0] = "hard-goto-project-before-search"
+         page.goto(f"/projects/{lamp}")
+         if self.phone:
+             page.get_by_role("button", name="Search", exact=True).tap()
+@@ -1108,6 +1145,7 @@ class ScenarioJourney:
+         dialog = page.get_by_role("dialog", name="Jump to")
+         dialog.get_by_role("combobox", name="Jump to").fill("lux")
+         expect(dialog.get_by_role("listbox", name="Results")).to_contain_text(RESULT)
++        self._trace_step[0] = "spa-search-to-results"
+         self.tap(dialog.get_by_role("option", name=re.compile("See all results")))
+         expect(page).to_have_url(re.compile(r"/search\?q=lux"))
+         chips = page.get_by_role("group", name="Kind of result")
+@@ -1121,6 +1159,7 @@ class ScenarioJourney:
+         self.assertIn("decision", kinds("ToF distance sensor"))
+ 
+         # The wiki page gets a second version citing the new rule; version 1 stays as written.
++        self._trace_step[0] = "hard-goto-wiki-doc"
+         page.goto(f"/projects/{lamp}/docs/{s['doc']}")
+         expect(page.get_by_role("heading", level=2, name=DOC_TITLE)).to_be_visible()
+         self.tap(page.get_by_role("link", name="Edit"))

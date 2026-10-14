@@ -1,0 +1,24 @@
+{
+  "pr": "https://github.com/ColdPhase/flux/pull/374",
+  "source_sha": "6b344acedd1479e5f4e1ffcc03accd85937f6754",
+  "source_branch": "claude-hubert/354-wiki",
+  "base_sha_at_composition": "d7f8d8defbee91e0f0d78fee95841b026ae00c31",
+  "base_branch": "main",
+  "parent_issue": "https://github.com/ColdPhase/flux/issues/354",
+  "exact_head_ci": {
+    "application_validation": "https://github.com/ColdPhase/flux/actions/runs/38519098710",
+    "agent_setup": "https://github.com/ColdPhase/flux/actions/runs/38519098742"
+  },
+  "independent_review": "https://github.com/ColdPhase/flux/pull/374#pullrequestreview-5513770452",
+  "verification": {
+    "chromium": "5 passed at exact source 6b344ac",
+    "webkit_original": "16 methods: 14 passed, 1 failed, 1 expected failure",
+    "webkit_diagnostic": "8 methods: 7 passed, 1 expected failure; original pageerror not reproduced; cause remains uncertain",
+    "diagnostic_patch_sha256": "fa1e7af870e7d8b1eca1a227607041ea080afad5b205be06e2c7271f5204fa17"
+  },
+  "scope": {
+    "issue_354_remains_open": true,
+    "whole_application_or_release_acceptance_claimed": false,
+    "no_source_change_in_archive": true
+  }
+}

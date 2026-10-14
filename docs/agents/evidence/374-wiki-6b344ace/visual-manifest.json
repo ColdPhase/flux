@@ -1,0 +1,206 @@
+{
+  "source_sha": "6b344acedd1479e5f4e1ffcc03accd85937f6754",
+  "engine": "Chromium",
+  "runner": "scripts/check_ui.sh",
+  "fixtures": [
+    {
+      "id": "wiki_final",
+      "person": "Ada Kowalska",
+      "project": "Community garden sensors",
+      "published_pages": 5,
+      "selected_page": "Hardware"
+    },
+    {
+      "id": "wiki_panes",
+      "people": [
+        "Hubert Lis",
+        "Marek Wolny",
+        "Noa Berg"
+      ],
+      "project": "Arduino + AI",
+      "pages_at_initial_setup": 3,
+      "state_for_phone_test_11": "long How the lamp works article; after earlier ordered imports, Search has more than five pages"
+    }
+  ],
+  "frames": [
+    {
+      "file": "screenshots/wiki-final-phone-390-light.webp",
+      "fixture": "wiki_final",
+      "viewport_css_px": [
+        390,
+        844
+      ],
+      "device_scale_factor": 2,
+      "theme": "light",
+      "state": "Hardware page, page reading surface",
+      "source_png": "screenshots/wiki-final-phone-390-light.png",
+      "pixel_dimensions_px": [
+        780,
+        1688
+      ],
+      "archive_encoding": "lossless WebP",
+      "source_png_sha256": "21dd86e43960c8ae60f0be733c25124f7454f1447fbacc9b03c63b6f2c582a44"
+    },
+    {
+      "file": "screenshots/wiki-final-phone-390-dark.webp",
+      "fixture": "wiki_final",
+      "viewport_css_px": [
+        390,
+        844
+      ],
+      "device_scale_factor": 2,
+      "theme": "dark",
+      "state": "Hardware page, page reading surface",
+      "source_png": "screenshots/wiki-final-phone-390-dark.png",
+      "pixel_dimensions_px": [
+        780,
+        1688
+      ],
+      "archive_encoding": "lossless WebP",
+      "source_png_sha256": "85bd51a98b8b529f4d63db3b43457ab0c2366e1ddf2650dca925913b1f5991f2"
+    },
+    {
+      "file": "screenshots/wiki-phone-390-view-menu.webp",
+      "fixture": "wiki_final",
+      "viewport_css_px": [
+        390,
+        844
+      ],
+      "device_scale_factor": 2,
+      "theme": "light",
+      "state": "project title menu open",
+      "source_png": "screenshots/wiki-phone-390-view-menu.png",
+      "pixel_dimensions_px": [
+        780,
+        1688
+      ],
+      "archive_encoding": "lossless WebP",
+      "source_png_sha256": "4c62ac0504b3e4d108c9507b51a1200bf37ed74ffff139be087db7696e873977"
+    },
+    {
+      "file": "screenshots/wiki-phone-320-light.webp",
+      "fixture": "wiki_panes",
+      "viewport_css_px": [
+        320,
+        640
+      ],
+      "device_scale_factor": 3,
+      "theme": "light",
+      "state": "long How the lamp works reading surface, page-selection/action row visible",
+      "source_png": "screenshots/wiki-phone-320-light.png",
+      "pixel_dimensions_px": [
+        960,
+        1920
+      ],
+      "archive_encoding": "lossless WebP",
+      "source_png_sha256": "3690c2691c4dae2eac58d1323f371f89e85623712061e54b66edcb3909ea2c75"
+    },
+    {
+      "file": "screenshots/wiki-phone-320-editor.webp",
+      "fixture": "wiki_panes",
+      "viewport_css_px": [
+        320,
+        640
+      ],
+      "device_scale_factor": 3,
+      "theme": "light",
+      "state": "long How the lamp works in editor",
+      "source_png": "screenshots/wiki-phone-320-editor.png",
+      "pixel_dimensions_px": [
+        960,
+        1920
+      ],
+      "archive_encoding": "lossless WebP",
+      "source_png_sha256": "7cccf802638c67074df8b031c221edcd8649cc2615ab1d78e6e3468dff2441c8"
+    },
+    {
+      "file": "screenshots/wiki-phone-390-light.webp",
+      "fixture": "wiki_panes",
+      "viewport_css_px": [
+        390,
+        844
+      ],
+      "device_scale_factor": 3,
+      "theme": "light",
+      "state": "long How the lamp works reading surface",
+      "source_png": "screenshots/wiki-phone-390-light.png",
+      "pixel_dimensions_px": [
+        1170,
+        2532
+      ],
+      "archive_encoding": "lossless WebP",
+      "source_png_sha256": "fd4c88837a3190f5563472a82114365d7b66a2a9fd191a2a72be5297f4498009"
+    },
+    {
+      "file": "screenshots/wiki-phone-390-download.webp",
+      "fixture": "wiki_panes",
+      "viewport_css_px": [
+        390,
+        844
+      ],
+      "device_scale_factor": 3,
+      "theme": "light",
+      "state": "page action menu open",
+      "source_png": "screenshots/wiki-phone-390-download.png",
+      "pixel_dimensions_px": [
+        1170,
+        2532
+      ],
+      "archive_encoding": "lossless WebP",
+      "source_png_sha256": "d5b4d19bd5108f254010324881116148f3b2d488dc84cf1d042c7526cd5b04ba"
+    },
+    {
+      "file": "screenshots/wiki-import-desktop-1440.webp",
+      "fixture": "wiki_panes",
+      "viewport_css_px": [
+        1440,
+        900
+      ],
+      "device_scale_factor": 1,
+      "theme": "light",
+      "state": "Arduino + AI; imported Power budget draft selected with import success notices",
+      "source_png": "screenshots/wiki-import-desktop-1440.png",
+      "pixel_dimensions_px": [
+        1440,
+        900
+      ],
+      "archive_encoding": "lossless WebP",
+      "source_png_sha256": "18e50b4990d12ae9955669c3f0edf9d5def0ba9e23a125bfd82b10695d350d05"
+    },
+    {
+      "file": "screenshots/wiki-import-refused-desktop-1440.webp",
+      "fixture": "wiki_panes",
+      "viewport_css_px": [
+        1440,
+        900
+      ],
+      "device_scale_factor": 1,
+      "theme": "light",
+      "state": "Arduino + AI; unsupported broken.md import refused beside How the lamp works",
+      "source_png": "screenshots/wiki-import-refused-desktop-1440.png",
+      "pixel_dimensions_px": [
+        1440,
+        900
+      ],
+      "archive_encoding": "lossless WebP",
+      "source_png_sha256": "19a0653da71880df10acceb1be6eef13b96053075b41a63cda503939c7e6f259"
+    }
+  ],
+  "references": [
+    "docs/design/final/screens/phone-wiki.webp",
+    "docs/design/final/screens/desktop-wiki.webp",
+    "docs/design/final/README.md \u00a74 Phone and Wiki"
+  ],
+  "functional_run": {
+    "selection": [
+      "test_wiki_final.WikiFinal.test_phone_title_chips_and_edit",
+      "test_wiki_final.WikiFinal.test_phone_has_no_other_toolbars",
+      "test_wiki_panes.WikiPanesJourney.test_01_people_and_pages",
+      "test_wiki_panes.WikiPanesJourney.test_05_import_markdown_and_refuse_other_files",
+      "test_wiki_panes.WikiPanesJourney.test_11_phone_puts_the_index_before_the_document"
+    ],
+    "result": "5 passed"
+  },
+  "archive_note": "Each archived WebP is lossless conversion from the exact PNG named in source_png; source PNG SHA-256 and pixel dimensions are retained per frame.",
+  "visual_review": "visual-review-sol61.md"
+}
