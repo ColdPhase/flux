@@ -1,0 +1,107 @@
+{
+  "browserZoom": "default (not changed by runner)",
+  "engine": "chromium",
+  "fixtureNotes": {
+    "liveReader": "Ada writes a new heading and paragraph to the shared working copy; Kai reads the unsaved collaborative text and outline at desktop and 390\u00d7844 viewport.",
+    "wiki": "WikiFinal class fixture with the Community garden sensors project and its published-page set."
+  },
+  "screenshots": [
+    {
+      "context": {
+        "deviceScaleFactor": 1,
+        "fixture": "liveReader",
+        "mobileEmulation": false,
+        "theme": "light",
+        "viewportCssPx": [
+          1440,
+          900
+        ]
+      },
+      "file": "live-reader-desktop-1440-light.png",
+      "heightPx": 900,
+      "sha256": "5cce5c3cd617d215c0b1799da48ad674873e20f3c8e45ffa26842cbc3d99699a",
+      "widthPx": 1440
+    },
+    {
+      "context": {
+        "deviceScaleFactor": 1,
+        "fixture": "liveReader",
+        "mobileEmulation": false,
+        "theme": "light",
+        "viewportCssPx": [
+          390,
+          844
+        ]
+      },
+      "file": "live-reader-phone-390-light.png",
+      "heightPx": 844,
+      "sha256": "04e6107e6b229ff4b0c1bde5b1b9a6370e6ecab63eaed5227de511f4013ceeda",
+      "widthPx": 390
+    },
+    {
+      "context": {
+        "deviceScaleFactor": 1,
+        "fixture": "wiki",
+        "mobileEmulation": false,
+        "theme": "dark",
+        "viewportCssPx": [
+          1440,
+          900
+        ]
+      },
+      "file": "wiki-final-desktop-1440-dark.png",
+      "heightPx": 900,
+      "sha256": "4f27faaaf95112254e417b8739fb6f3fd780082729e7e64a36301479edc4490f",
+      "widthPx": 1440
+    },
+    {
+      "context": {
+        "deviceScaleFactor": 1,
+        "fixture": "wiki",
+        "mobileEmulation": false,
+        "theme": "light",
+        "viewportCssPx": [
+          1440,
+          900
+        ]
+      },
+      "file": "wiki-final-desktop-1440-light.png",
+      "heightPx": 900,
+      "sha256": "757270f88920c2d0ac5ed2628bdf6d9cd4a8e55efbd5a65bd4fb501aff42d615",
+      "widthPx": 1440
+    },
+    {
+      "context": {
+        "deviceScaleFactor": 2,
+        "fixture": "wiki",
+        "mobileEmulation": true,
+        "theme": "dark",
+        "viewportCssPx": [
+          390,
+          844
+        ]
+      },
+      "file": "wiki-final-phone-390-dark.png",
+      "heightPx": 1688,
+      "sha256": "5827909d6dbef4d5a8693dd1343dba86b1999776d74525550835c978f158fdcb",
+      "widthPx": 780
+    },
+    {
+      "context": {
+        "deviceScaleFactor": 2,
+        "fixture": "wiki",
+        "mobileEmulation": true,
+        "theme": "light",
+        "viewportCssPx": [
+          390,
+          844
+        ]
+      },
+      "file": "wiki-final-phone-390-light.png",
+      "heightPx": 1688,
+      "sha256": "c9f88aa3c8645c4467f62df9d8ffcb808b37c33c927a47796eb96f91094c6407",
+      "widthPx": 780
+    }
+  ],
+  "sourceSha": "108a7a3c5935cb0265e55658176e97b759a1d937"
+}

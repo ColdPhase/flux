@@ -1,0 +1,6 @@
+source=108a7a3c5935cb0265e55658176e97b759a1d937
+branch=codex/228-main-composition
+base=372363e63991e9bba3db9876f158e4322040c579
+schema_version=94
+compose_project=flux389-late94-1791962070-3004737
+selection=tests/app/live-editing-migration.test.ts --test-name-pattern '0046, 0047 and 0084 arrive late on the canonical latest schema'

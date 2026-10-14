@@ -1,0 +1,5 @@
+# Current schema late-migration check
+
+Exact product source: `108a7a3c5935cb0265e55658176e97b759a1d937`; `FLUX_SCHEMA_VERSION=94`. The existing test `0046, 0047 and 0084 arrive late on the canonical latest schema (90+)` ran alone through the Docker `test` image against the disposable PostgreSQL stack and passed **1/1** (0 failures, 0 skipped). It verified the three migrations arrive late, the manifest latest version matches 94, the previous schema ledger timestamps remain exact, and final ledger is complete.
+
+The run built migrate/test images, started only DB and migration services, ran files-init, then invoked this test with `--no-deps`; it did not run unrelated application tests or start the API. The full command transcript, build/services output and Compose teardown are in `logs/`. Teardown removed the project database/files/state volumes and networks; post-run Docker filters found no matching containers, volumes or networks. Image cleanup reported zero tagged images left. Compose emitted a non-fatal volume/bind-option warning while creating the one-shot test container; the test passed and stack teardown completed.

@@ -1,0 +1,133 @@
+{
+  "browserZoom": "default (not changed by runner)",
+  "captureContexts": {
+    "live-reader-desktop-1440-light.png": {
+      "deviceScaleFactor": 1,
+      "fixture": "liveReader",
+      "mobileEmulation": false,
+      "theme": "light",
+      "viewportCssPx": [
+        1440,
+        900
+      ]
+    },
+    "live-reader-phone-390-light.png": {
+      "deviceScaleFactor": 1,
+      "fixture": "liveReader",
+      "mobileEmulation": false,
+      "theme": "light",
+      "viewportCssPx": [
+        390,
+        844
+      ]
+    },
+    "wiki-final-desktop-1440-dark.png": {
+      "deviceScaleFactor": 1,
+      "fixture": "wiki",
+      "mobileEmulation": false,
+      "theme": "dark",
+      "viewportCssPx": [
+        1440,
+        900
+      ]
+    },
+    "wiki-final-desktop-1440-light.png": {
+      "deviceScaleFactor": 1,
+      "fixture": "wiki",
+      "mobileEmulation": false,
+      "theme": "light",
+      "viewportCssPx": [
+        1440,
+        900
+      ]
+    },
+    "wiki-final-phone-390-dark.png": {
+      "deviceScaleFactor": 2,
+      "fixture": "wiki",
+      "mobileEmulation": true,
+      "theme": "dark",
+      "viewportCssPx": [
+        390,
+        844
+      ]
+    },
+    "wiki-final-phone-390-light.png": {
+      "deviceScaleFactor": 2,
+      "fixture": "wiki",
+      "mobileEmulation": true,
+      "theme": "light",
+      "viewportCssPx": [
+        390,
+        844
+      ]
+    }
+  },
+  "engine": "webkit",
+  "fixtures": {
+    "liveReader": "Ada writer + Kai reader; saved doc plus a live heading and text before Save",
+    "wiki": "Community garden sensors; five published pages; WikiFinal class fixture"
+  },
+  "screenshots": [
+    {
+      "archive_path": "screenshots/webkit-live-reader-desktop-1440-light.webp",
+      "archive_webp_sha256": "6a59d7fc8882cd7f5b8d22e749bf0321bc6f381085914224dcd64252e1b09e57",
+      "file": "live-reader-desktop-1440-light.png",
+      "heightPx": 900,
+      "pixel_identical_rgba8": true,
+      "sha256": "b8732f88e768a19a48b1b941cc995cf479e0cc2093e9069eaed3b27aaea1e71e",
+      "source_png_sha256": "b8732f88e768a19a48b1b941cc995cf479e0cc2093e9069eaed3b27aaea1e71e",
+      "widthPx": 1440
+    },
+    {
+      "archive_path": "screenshots/webkit-live-reader-phone-390-light.webp",
+      "archive_webp_sha256": "266380db5f370f736e37c1c095a24a8f07bed5c4f4e2b4c02b82ccfc40b81c6f",
+      "file": "live-reader-phone-390-light.png",
+      "heightPx": 844,
+      "pixel_identical_rgba8": true,
+      "sha256": "777bdca56f86e142b763be5630abdb7d2dff87bd40914aa8021c02e1d2695f74",
+      "source_png_sha256": "777bdca56f86e142b763be5630abdb7d2dff87bd40914aa8021c02e1d2695f74",
+      "widthPx": 390
+    },
+    {
+      "archive_path": "screenshots/webkit-wiki-final-desktop-1440-dark.webp",
+      "archive_webp_sha256": "9936aa7cd6d21b6d3353ba86ceaa828cd5fc84fd9577ef85812c8b83940e096f",
+      "file": "wiki-final-desktop-1440-dark.png",
+      "heightPx": 900,
+      "pixel_identical_rgba8": true,
+      "sha256": "296e0607db33c41cf7aaf5bb7a572b73bff80f0a5fb31526fc97c712bb4c817c",
+      "source_png_sha256": "296e0607db33c41cf7aaf5bb7a572b73bff80f0a5fb31526fc97c712bb4c817c",
+      "widthPx": 1440
+    },
+    {
+      "archive_path": "screenshots/webkit-wiki-final-desktop-1440-light.webp",
+      "archive_webp_sha256": "1c4270fe2b5c4626290718353d7e492d414853ce9868a8ab0e4b0619bd6c28dd",
+      "file": "wiki-final-desktop-1440-light.png",
+      "heightPx": 900,
+      "pixel_identical_rgba8": true,
+      "sha256": "bd1f531be0deaf3deeaed33252a174167422395e6a7a3000b6df98cbc26639d2",
+      "source_png_sha256": "bd1f531be0deaf3deeaed33252a174167422395e6a7a3000b6df98cbc26639d2",
+      "widthPx": 1440
+    },
+    {
+      "archive_path": "screenshots/webkit-wiki-final-phone-390-dark.webp",
+      "archive_webp_sha256": "db91b310f31be60e68dd891e58bfc6032517c55f4b8a28a9d7b697348f657e32",
+      "file": "wiki-final-phone-390-dark.png",
+      "heightPx": 1688,
+      "pixel_identical_rgba8": true,
+      "sha256": "d70e126aee36fd2a465f9f2815a71f85c61afe496fe9d470dce7777c479896ad",
+      "source_png_sha256": "d70e126aee36fd2a465f9f2815a71f85c61afe496fe9d470dce7777c479896ad",
+      "widthPx": 780
+    },
+    {
+      "archive_path": "screenshots/webkit-wiki-final-phone-390-light.webp",
+      "archive_webp_sha256": "979de825111a3034bd9e1c10f2c705939f804ab2693a6e1c18b4ffa77425be19",
+      "file": "wiki-final-phone-390-light.png",
+      "heightPx": 1688,
+      "pixel_identical_rgba8": true,
+      "sha256": "fe72048eaec69fea46721ef17fd3fb69312d7186851ef399d092c91cc3d4904f",
+      "source_png_sha256": "fe72048eaec69fea46721ef17fd3fb69312d7186851ef399d092c91cc3d4904f",
+      "widthPx": 780
+    }
+  ],
+  "sourceSha": "108a7a3c5935cb0265e55658176e97b759a1d937"
+}
