@@ -196,7 +196,7 @@ test('a live Save first use latches monotonically after the mention is removed, 
 });
 
 test('a live snapshot that targets an already creation-reverted task refuses without partial doc state', async () => {
-  const { f, item, doc, actor, undo } = await taskUseScene();
+  const { item, doc, actor, undo } = await taskUseScene();
   assert.equal((await undo()).status, 200);
   const head = await referencedHead(doc, item);
   const before = await unchangedState(doc.id);
