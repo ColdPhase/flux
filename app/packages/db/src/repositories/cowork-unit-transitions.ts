@@ -3,6 +3,7 @@ import type { CoWorkSourceRef } from '@flux/contracts';
 import * as schema from '../schema.js';
 import type { CoWorkTaskLockInput } from './cowork.js';
 import type { DbExecutor } from './push.js';
+import { taskUseRows } from './task-use.js';
 
 // The holder's unit completion and transfer (#153). Storage only: the server composition has already run #152
 // preparation (current bearer/runtime/grant/command ledger) in this same outer transaction. No grant, receipt,
@@ -75,17 +76,15 @@ export function coworkUnitTransitionRows(tx: DbExecutor) {
         .orderBy(asc(slots.connectionId)).for('update');
       // The unit's task and lineage are immutable; read them before any task lock, then lock the complete set.
       const [located] = await tx.select().from(units).where(and(inProject(scope), eq(units.id, scope.unitId)));
-      if (!located) return { unit: null, openRequests: 0, assignee: null, runUnits: [], now: await fresh() };
+      if (!located) return { unit: null, openRequests: 0, assignee: null, runUnits: [], now: await fresh(), taskFence: null };
       const inputs: CoWorkTaskLockInput[] = [{ id: located.id, taskId: located.taskId, projectId: located.projectId,
         lineageTaskId: located.lineageTaskId }];
       const additional = await prepareTasks(inputs);
       const taskIds = [...new Set([located.taskId, located.lineageTaskId, ...additional])].sort();
-      const tasks = await tx.select({ id: schema.projectWorkItems.id }).from(schema.projectWorkItems)
-        .where(and(eq(schema.projectWorkItems.workspaceId, scope.workspaceId), inArray(schema.projectWorkItems.id, taskIds)))
-        .orderBy(asc(schema.projectWorkItems.id)).for('update');
-      if (tasks.length !== taskIds.length) throw new Error('The complete native task lock set is unavailable');
+      // #238: the one sorted task pass is the shared use fence; it refuses a missing or creation-undone task.
+      const taskFence = await taskUseRows(tx).lockPrepared(taskIds);
       const [locked] = await tx.select().from(units).where(and(inProject(scope), eq(units.id, scope.unitId))).for('update');
-      if (!locked) return { unit: null, openRequests: 0, assignee: null, runUnits: [], now: await fresh() };
+      if (!locked) return { unit: null, openRequests: 0, assignee: null, runUnits: [], now: await fresh(), taskFence };
       // Every unit of a run changes only under its task row lock, held above.
       const runUnits = await tx.select({ id: units.id, role: units.role, assignmentConnectionId: units.assignmentConnectionId,
         ownerUserId: connections.ownerUserId }).from(units)
@@ -105,7 +104,7 @@ export function coworkUnitTransitionRows(tx: DbExecutor) {
         openRequests: open?.n ?? 0,
         assignee: assignee && !assignee.revokedAt && assignee.scopes.includes('flux.action.execute') && selected
           ? { id: assignee.id, ownerUserId: assignee.ownerUserId } : null,
-        runUnits, now,
+        runUnits, now, taskFence,
       };
     },
     /** Completed with its outcome under the live fence; null if the fence, version or open-request rule no longer holds. */

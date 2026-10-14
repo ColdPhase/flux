@@ -14,7 +14,9 @@ export * from './repositories/agent-project-objects.js';
 export * from './repositories/idp-standing.js';
 export * from './repositories/idp-logout.js';
 export * from './migrations/ledger.js';
+export * from './migrations/reverse-task-creation-undo.js';
 export * from './migrations/summary-compatibility.js';
+export * from './migrations/task-creation-undo-compatibility.js';
 // Highest numbered file in packages/db/migrations. The API refuses other versions.
 export const FLUX_SCHEMA_VERSION = 94;
 // pg-boss 12.35.0 declares schema 43. Update this with the pinned package.
@@ -167,6 +169,9 @@ export * from './repositories/agent-playbook.js';
 export * from './repositories/agent-policies.js';
 
 export * from './repositories/files.js';
+export * from './repositories/task-use.js';
+export * from './repositories/task-targets.js';
+export * from './repositories/notification-lifecycle.js';
 export * from './repositories/agent-runtime.js';
 
 export { assistantSettingsRows, type AssistantAuthority } from './repositories/assistant-settings.js';

@@ -1,3 +1,4 @@
+import { withTaskUseErrors } from '../work/task-use-errors.js';
 import { fromDrizzle, type PgBoss } from 'pg-boss';
 import { personalRunRows, withIdpStanding, sql, workRows, type DbExecutor } from '@flux/db';
 import {
@@ -51,7 +52,7 @@ function personalRunPorts(tx: DbExecutor, queue: PersonalRunQueueFactory,
 export function personalRunUnitOfWork(db: Database, queue: PersonalRunQueueFactory): PersonalRunUnitOfWork {
   return { run: (work) => db.transaction(async (tx) => {
     const session = transactionEventSession(tx);
-    const result = await session.run(() => work(personalRunPorts(tx, queue, session, session)));
+    const result = await session.run(() => withTaskUseErrors(() => work(personalRunPorts(tx, queue, session, session))));
     await session.flushEvents();
     return result;
   }) };

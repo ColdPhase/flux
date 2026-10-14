@@ -1,5 +1,6 @@
 import { and, count, desc, eq, isNull, sql, type SQL } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
+import { assignmentNotificationActive, assignmentNotificationReverted } from './notification-lifecycle.js';
 import * as schema from '../schema.js';
 
 /**
@@ -83,17 +84,22 @@ export function pushSubscriptionRepository(db: DbExecutor) {
 /** Notification rows; `audience` is an access-policy condition over `notifications` supplied by the caller. */
 export function notificationRows(db: DbExecutor) {
   const identitySnapshots = schema.assistantJoinQuestionIdentitySnapshots;
-  const withAssistantIdentity = (row: { notification: NotificationRow; identity: typeof identitySnapshots.$inferSelect | null }) => ({
-    ...toNotificationRecord(row.notification),
-    assistantRequestIdentity: row.identity ? {
-      joinRequestId: row.identity.joinRequestId,
-      openingVersion: row.identity.openingVersion,
-      assistantId: row.identity.assistantId,
-      assistantName: row.identity.assistantName,
-      ownerId: row.identity.ownerId,
-      ownerName: row.identity.ownerName,
-    } : null,
-  });
+  const withHistoryAndAssistantIdentity = async (row: { notification: NotificationRow; identity: typeof identitySnapshots.$inferSelect | null }) => {
+    const record = toNotificationRecord(row.notification);
+    const history = await assignmentNotificationReverted(db, row.notification)
+      ? { ...record, body: `${record.body}${record.body ? ' · ' : ''}Task creation undone` } : record;
+    return {
+      ...history,
+      assistantRequestIdentity: row.identity ? {
+        joinRequestId: row.identity.joinRequestId,
+        openingVersion: row.identity.openingVersion,
+        assistantId: row.identity.assistantId,
+        assistantName: row.identity.assistantName,
+        ownerId: row.identity.ownerId,
+        ownerName: row.identity.ownerName,
+      } : null,
+    };
+  };
   return {
     async insert(record: { id: string; userId: string; source: { workspaceId: string; type: NotificationRow['sourceType']; id: string }; title: string; body: string; url: string | null }) {
       await db.insert(n).values({
@@ -105,7 +111,7 @@ export function notificationRows(db: DbExecutor) {
       const [row] = await db.select({ notification: n, identity: identitySnapshots }).from(n)
         .leftJoin(identitySnapshots, and(eq(n.assistantJoinRequestId, identitySnapshots.joinRequestId), eq(n.assistantJoinOpeningVersion, identitySnapshots.openingVersion)))
         .where(and(eq(n.id, id), eq(n.userId, userId)));
-      return row ? withAssistantIdentity(row) : null;
+      return row ? withHistoryAndAssistantIdentity(row) : null;
     },
     async workspaceIdsForRecipient(userId: string) {
       return (await db.selectDistinct({ id: n.workspaceId }).from(n).where(eq(n.userId, userId))).map((row) => row.id);
@@ -116,7 +122,7 @@ export function notificationRows(db: DbExecutor) {
         .leftJoin(identitySnapshots, and(eq(n.assistantJoinRequestId, identitySnapshots.joinRequestId), eq(n.assistantJoinOpeningVersion, identitySnapshots.openingVersion)))
         .where(and(eq(n.userId, userId), eq(n.inInbox, true), audience))
         .orderBy(desc(n.createdAt), desc(n.id)).limit(limit);
-      return rows.map(withAssistantIdentity);
+      return Promise.all(rows.map(withHistoryAndAssistantIdentity));
     },
     async countUnread(userId: string, audience: SQL) {
       const [row] = await db.select({ unread: count() }).from(n).where(and(eq(n.userId, userId), eq(n.inInbox, true), isNull(n.readAt), audience));
@@ -143,7 +149,7 @@ export function pushDeliveryRepository(db: DbExecutor) {
         .innerJoin(n, and(eq(n.id, job.notificationId), eq(n.userId, s.userId)))
         .leftJoin(schema.authSessions, and(eq(schema.authSessions.id, s.sessionId), eq(schema.authSessions.userId, s.userId)))
         .where(and(eq(s.id, job.subscriptionId), eq(s.userId, job.userId)));
-      if (!row) return null;
+      if (!row || !(await assignmentNotificationActive(db, row.notification))) return null;
       return { subscription: toSubscriptionRecord(row.subscription), notification: toNotificationRecord(row.notification), sessionActive: row.sessionActive };
     },
     async deleteSubscription(id: string) {

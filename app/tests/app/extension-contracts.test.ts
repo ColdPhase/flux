@@ -30,12 +30,13 @@ function sourceFiles(dir: string): string[] {
   });
 }
 
-/** Error codes raised as string literals in the server and core source. */
+/** Server/core codes plus the DB-owned task-use refusals the composition roots map unchanged. */
 function sourceErrorCodes() {
   const codes = new Set<string>();
-  for (const dir of ['apps/server/src', 'packages/core/src'])
-    for (const file of sourceFiles(join(root, dir)))
-      for (const match of readFileSync(file, 'utf8').matchAll(/'([A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+)'/g)) codes.add(match[1]!);
+  const files = ['apps/server/src', 'packages/core/src'].flatMap((dir) => sourceFiles(join(root, dir)));
+  files.push(join(root, 'packages/db/src/repositories/task-use.ts'));
+  for (const file of files)
+    for (const match of readFileSync(file, 'utf8').matchAll(/'([A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+)'/g)) codes.add(match[1]!);
   return codes;
 }
 

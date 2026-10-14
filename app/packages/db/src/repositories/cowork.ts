@@ -1,4 +1,5 @@
 import { and, asc, eq, inArray, or, sql } from 'drizzle-orm';
+import { taskUseRows } from './task-use.js';
 import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
 
@@ -76,10 +77,7 @@ export function coworkUnitRows(tx: DbExecutor) {
       // and discovers dependencies here, before the first native task row lock.
       const additionalTasks = prepareTasks ? await prepareTasks(relevant) : [];
       const taskIds = [...new Set([...relevant.flatMap((row) => [row.taskId, row.lineageTaskId]), ...additionalTasks])].sort();
-      const tasks = await tx.select({ id: schema.projectWorkItems.id }).from(schema.projectWorkItems)
-        .where(and(eq(schema.projectWorkItems.workspaceId, scope.workspaceId), inArray(schema.projectWorkItems.id, taskIds)))
-        .orderBy(asc(schema.projectWorkItems.id)).for('update');
-      if (tasks.length !== taskIds.length) throw new Error('The complete native task lock set is unavailable');
+      const taskFence = prepareTasks ? await taskUseRows(tx).lockPrepared(taskIds) : await taskUseRows(tx).prepare(taskIds);
       const locked = await tx.select().from(units).where(and(own, inArray(units.id, relevant.map((row) => row.id))))
         .orderBy(asc(units.id)).for('update');
       const target = locked.find((row) => row.id === scope.unitId && row.projectId === scope.projectId);
@@ -89,7 +87,7 @@ export function coworkUnitRows(tx: DbExecutor) {
       const activeConnectionUnits = locked.filter((row) => row.id !== target.id && row.state === 'claimed'
         && row.leaseExpiresAt && row.leaseExpiresAt.getTime() > now.getTime()).length;
       return {
-        unit: unitRecord(target), now, activeConnectionUnits,
+        unit: unitRecord(target), now, activeConnectionUnits, taskFence,
         /** Canonical reread under the retained unit lock; no new upstream lock acquisition. */
         async current(): Promise<Unit | null> {
           const [row] = await tx.select().from(units).where(and(own, eq(units.id, target.id), eq(units.projectId, scope.projectId)));
@@ -132,6 +130,7 @@ export function coworkUnitRows(tx: DbExecutor) {
             leaseSessionId: next.lease?.runtimeSessionId ?? null,
             leaseExpiresAt: operation === 'release' ? null : sql`clock_timestamp() + (${command.leaseSeconds} * interval '1 second')`,
             updatedAt: sql`clock_timestamp()` }).where(and(base, fence, checkpointFence)).returning();
+          if (saved) await taskFence.mark();
           return saved ? unitRecord(saved) : null;
         },
         /** Metadata lookup only; the composition root also checks each checkpoint source now. */
@@ -152,6 +151,7 @@ export function coworkUnitRows(tx: DbExecutor) {
               AND current_unit.lease_id = ${input.leaseId} AND current_unit.lease_session_id = ${input.runtimeSessionId}
               AND current_unit.lease_expires_at > clock_timestamp()
             RETURNING id`);
+          if (result.rows.length) await taskFence.mark();
           return result.rows[0]?.id ?? null;
         },
       };

@@ -19,7 +19,8 @@ repository context are named as requirements, never as working features. Since 1
 (2026-10-05) every tool the server registers is declared by a module, including the
 wiki, conversation and map reads and writes. Since 1.3.0 (2026-10-06) agents take a task with the co-work unit tool,
 claim, renew, release (with a checkpoint), complete and transfer their units, and pick up or decline a request addressed
-to them; the inbox, sending requests and server recovery are still named as gaps. This page remains the design rationale; change the shipped text in
+to them; the inbox, sending requests and server recovery are still named as gaps. Since 1.4.0 (2026-10-06) an agent can undo
+creating its own task while nobody has used or changed it (#238). This page remains the design rationale; change the shipped text in
 that module, with a new version. Delivery is described in
 [agent connection](../development/agent-connection.md#built-in-co-work-playbook-160).
 

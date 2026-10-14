@@ -19,6 +19,17 @@ import { addMember, expectStatus, grant, person, project, workspace, type Person
 type Body = Record<string, unknown>;
 interface ApiFailure { code: string; error: string; [key: string]: unknown }
 const code = (expected: string) => (error: unknown) => error instanceof DomainError && error.code === expected;
+// GET/fresh creation expose current eligibility; list and stable command replay keep their stored
+// work projection. These human-origin scenarios must refuse Undo, separately from every work field.
+function humanWorkFields(item: WorkItem): Omit<WorkItem, 'creationUndo'> {
+  assert.equal(item.createdBy.kind, 'human');
+  const { creationUndo, ...fields } = item;
+  if (creationUndo !== undefined) assert.deepEqual(creationUndo, { eligible: false, reason: 'not_ai_origin' });
+  return fields;
+}
+function sameHumanWork(actual: WorkItem, expected: WorkItem, message?: string) {
+  assert.deepEqual(humanWorkFields(actual), humanWorkFields(expected), message);
+}
 const ifMatch = (item: { version: number }) => ({ 'if-match': `"${item.version}"` });
 
 async function scene() {
@@ -77,8 +88,9 @@ test('tasks carry bounded criteria, same-project prerequisites and an immutable 
   assert.equal(planned.status, 'open');
   assert.deepEqual(await f.read(planned.id), planned);
   const listed = expectStatus(await f.viewer.browser.request('GET', `${f.tasks}?limit=100`), 200) as Page<WorkItem>;
-  assert.deepEqual(listed.items.find((item) => item.id === planned.id), planned, 'a viewer reads the same plan fields');
-  assert.deepEqual(listed.items.find((item) => item.id === legacy.id), legacy);
+  assert.equal(listed.items.find((item) => item.id === planned.id)!.creationUndo, undefined);
+  sameHumanWork(listed.items.find((item) => item.id === planned.id)!, planned, 'a viewer reads the same plan fields');
+  sameHumanWork(listed.items.find((item) => item.id === legacy.id)!, legacy);
   const stored = (await pool.query('SELECT * FROM project_task_plan_intents WHERE task_id=$1', [planned.id])).rows[0];
   assert.deepEqual([stored.project_id, stored.material_id, stored.material_version, stored.intent_key, stored.task_version],
     [f.place.id, f.material.materialId, f.material.version, 'decompose-measurements', 1]);
@@ -107,12 +119,13 @@ test('tasks carry bounded criteria, same-project prerequisites and an immutable 
   assert.deepEqual([cleared.criteria, cleared.dependencyIds, cleared.prerequisites], [[], [], []]);
   await f.patchFails(f.owner, cleared, { planIntent: null }, 400, 'PLAN_INTENT_IMMUTABLE');
   await f.patchFails(f.owner, cleared, { planIntent: { materialId: f.material.materialId, version: 1, intentKey: 'other' }, title: 'Hidden change' }, 400, 'PLAN_INTENT_IMMUTABLE');
-  assert.deepEqual(await f.read(planned.id), cleared);
+  assert.deepEqual((await f.read(planned.id)).creationUndo, { eligible: false, reason: 'not_ai_origin' });
+  sameHumanWork(await f.read(planned.id), cleared);
   assert.equal((expectStatus(await f.owner.browser.request('PATCH', `/api/v1/work/${planned.id}`, { body: { criteria: ['No precondition'] } }), 428) as ApiFailure).code, 'PRECONDITION_REQUIRED');
   const stale = expectStatus(await f.owner.browser.request('PATCH', `/api/v1/work/${planned.id}`,
     { body: { criteria: ['Stale'], dependencyIds: [first.id] }, headers: ifMatch(planned) }), 409) as ApiFailure;
   assert.equal(stale.code, 'VERSION_CONFLICT');
-  assert.deepEqual(await f.read(planned.id), cleared, 'a stale replacement changes neither criteria nor edges');
+  sameHumanWork(await f.read(planned.id), cleared, 'a stale replacement changes neither criteria nor edges');
 });
 
 test('prerequisites must be real tasks of the same project: guessed, foreign, self-referencing and cyclic sets are refused without leaking', async () => {
@@ -234,8 +247,9 @@ test('the same canonical plan intent returns the original task once; other paylo
 
   // A retry, another command identity, another actor and a re-ordered but identical creation are the same task.
   const retry = await f.create(f.writer, { ...creation, dependencyIds: [first.id.toUpperCase()], criteria: ['20 gestures', ' Photograph '], clientCommandId: randomUUID() });
-  assert.deepEqual(retry, created, 'same id, creator, times and version');
-  assert.deepEqual(await f.create(f.owner, { ...creation }), created, 'no client command identity needed');
+  assert.equal(retry.creationUndo, undefined, 'intent replay returns the stored work projection');
+  sameHumanWork(retry, created, 'same id, creator, times and version');
+  sameHumanWork(await f.create(f.owner, { ...creation }), created, 'no client command identity needed');
   assert.deepEqual(await f.counts(), baseline, 'no second task, notice, edge, intent or event');
 
   // A different canonical creation for the same intent is a conflict, never another task or an overwrite.
@@ -290,16 +304,16 @@ test('creation retries keep the stored shape for older commands and cover every 
   // A creation without plan fields is fingerprinted exactly as before this feature, so older retries still match.
   const old = createHash('sha256').update(JSON.stringify({ title: 'Legacy shape', outcome: 'x', status: 'open', blocker: null, owner: null, sources: [], related: [] })).digest('hex');
   assert.equal((await pool.query('SELECT request_fingerprint FROM project_work_items WHERE id=$1', [created.id])).rows[0].request_fingerprint, old);
-  assert.deepEqual(await f.create(f.owner, legacyBody), created);
+  sameHumanWork(await f.create(f.owner, legacyBody), created);
   await f.fails(f.owner, { ...legacyBody, criteria: ['Now with a criterion'] }, 409, 'IDEMPOTENCY_CONFLICT');
   const dependency = await f.create(f.owner, { title: 'Prerequisite' });
   await f.fails(f.owner, { ...legacyBody, dependencyIds: [dependency.id] }, 409, 'IDEMPOTENCY_CONFLICT');
   await f.fails(f.owner, { ...legacyBody, planIntent: intentOf(f) }, 409, 'IDEMPOTENCY_CONFLICT');
   const planned = { title: 'With a plan', clientCommandId: randomUUID(), criteria: ['One'], dependencyIds: [dependency.id], planIntent: intentOf(f) };
   const first = await f.create(f.owner, planned);
-  assert.deepEqual(await f.create(f.owner, planned), first);
+  sameHumanWork(await f.create(f.owner, planned), first);
   await f.fails(f.owner, { ...planned, criteria: ['One', 'Two'] }, 409, 'IDEMPOTENCY_CONFLICT');
-  assert.deepEqual(await f.create(f.writer, planned), first, 'another actor with the same creation reaches the same task through its intent');
+  sameHumanWork(await f.create(f.writer, planned), first, 'another actor with the same creation reaches the same task through its intent');
 });
 
 test('concurrent planners creating one intent produce exactly one task, notice, edge set and event', async () => {
@@ -313,7 +327,8 @@ test('concurrent planners creating one intent produce exactly one task, notice, 
   const ids = new Set(results.map((response) => (response.json as WorkItem).id));
   assert.equal(ids.size, 1);
   const task = await f.read([...ids][0]!);
-  for (const response of results) assert.deepEqual(response.json, task);
+  assert.deepEqual(task.creationUndo, { eligible: false, reason: 'not_ai_origin' });
+  for (const response of results) sameHumanWork(response.json as WorkItem, task);
   const after = await f.counts();
   assert.deepEqual({ ...after }, { ...before, work: before.work + 1, notices: before.notices + 1, edges: before.edges + 1, intents: before.intents + 1, created: before.created + 1 });
 

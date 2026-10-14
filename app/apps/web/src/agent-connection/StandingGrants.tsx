@@ -17,7 +17,7 @@ const CLASS_LABEL: Record<AgentPeerRequestClass, string> = { execute: 'Doing the
  * units) are granted with their units through the API and only listed here, so later operations need no change.
  */
 const GRANTABLE: { area: string; operations: [AgentOperation, string][] }[] = [
-  { area: 'Tasks', operations: [['work.create', 'Create tasks'], ['work.update', 'Change tasks']] },
+  { area: 'Tasks', operations: [['work.create', 'Create tasks'], ['work.update', 'Change tasks'], ['work.creation.revert', 'Undo creating their own unused tasks']] },
   { area: 'Results and decisions', operations: [['result.record', 'Record results'], ['decision.propose', 'Propose decisions']] },
   { area: 'Maps', operations: [['map.create', 'Create maps'], ['map.rename', 'Rename maps'], ['map.thought.create', 'Add thoughts'],
     ['map.thought.update', 'Edit thoughts'], ['map.thought.delete', 'Remove thoughts'], ['map.positions.update', 'Arrange thoughts'],
