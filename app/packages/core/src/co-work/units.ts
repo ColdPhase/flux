@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { ConflictError, InvalidInputError, NotFoundError } from '../access/errors.js';
 import type { CoWorkReviewSeparation } from './admission.js';
 import type { CoWorkContext, CoWorkLease, CoWorkRole } from './claims.js';
+import { stoppedError } from './claims.js';
 
 /** The creator's live claim on a unit of the same lineage; absent for a root unit, which opens its own run. */
 export interface CoWorkUnitParentFence { unitId: string; generation: number; leaseId: string }
@@ -118,6 +119,7 @@ export function requireCoWorkUnitCreation(context: CoWorkContext, facts: CoWorkU
     if (!parent || parent.id !== input.parent.unitId || parent.assignmentConnectionId !== context.connectionId
       || parent.projectId !== context.projectId || parent.taskId !== target.taskId)
       throw new NotFoundError('Work unit', 'COWORK_UNIT_NOT_FOUND');
+    if (parent.state === 'stopped') throw stoppedError();
     if (parent.state !== 'claimed' || parent.generation !== input.parent.generation || !parent.lease
       || parent.lease.id !== input.parent.leaseId || parent.lease.runtimeSessionId !== context.runtimeSessionId
       || !(parent.lease.expiresAt.getTime() > now.getTime()))

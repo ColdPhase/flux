@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useRef, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, Fragment, type FormEvent, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import {
   NOTIFICATION_REASONS,
@@ -12,11 +12,13 @@ import {
 } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { useShellData } from '../app/data';
+import { clock } from '../app/focus';
 import { SwitchRow } from '../app/SettingsHome';
 import { NotificationsButton } from '../pwa';
 import { getPushState } from '../pwa/push';
 import { Button, ErrorState, Icon, Spinner, useToast } from '../ui';
-import { addAddress, getPreferences, removeAddress, resendVerification, setMute, unsubscribe, updatePreferences, verifyAddress } from './api';
+import { PAUSE_CHANGED, addAddress, announcePauseChange, announcePauseUncertainty, getPreferences, removeAddress, resendVerification, setMute, unsubscribe, updatePreferences, verifyAddress, type PauseChange } from './api';
+import { captureNotificationSession, confirmedNotificationPauseSince, isCurrentNotificationSession, notificationPauseRevision, notificationPauseUncertain } from './session';
 import './notifications.css';
 
 const ROWS: Record<NotificationReason, { label: string; hint: string }> = {
@@ -49,6 +51,10 @@ function timeZones(current: string) {
   return [...new Set([current, browserTimeZone(), 'UTC', ...zones])].sort((a, b) => a.localeCompare(b));
 }
 
+type FeedbackArea = 'level' | 'quietHours' | 'morningSummary' | 'email' | 'mute' | NotificationReason;
+type MuteReceipt = { place: NotificationPreferences['muted'][number]; muted: boolean; index: number };
+type MutedPlaceRow = { place: NotificationPreferences['muted'][number]; receiptOnly: boolean };
+
 const message = (error: unknown, fallback: string) => (error instanceof ApiError && error.status < 500 ? error.message : fallback);
 
 /**
@@ -58,52 +64,190 @@ const message = (error: unknown, fallback: string) => (error instanceof ApiError
  * nothing here changes how you sign in.
  */
 export function NotificationSettings() {
-  const { projects, directMessages } = useShellData();
+  const { me } = useShellData();
+  return <AccountNotificationSettings key={me.user.id} />;
+}
+
+function AccountNotificationSettings() {
+  const { me, projects, directMessages } = useShellData();
+  const ownerId = me.user.id;
+  const mounted = useRef(false);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const [prefs, setPrefs] = useState<NotificationPreferences | null>(null);
   const [failed, setFailed] = useState(false);
   const [saved, setSaved] = useState('');
+  const [feedbackArea, setFeedbackArea] = useState<FeedbackArea | null>(null);
+  const [muteReceipt, setMuteReceipt] = useState<MuteReceipt | null>(null);
+  const [pendingMute, setPendingMute] = useState<MuteReceipt | null>(null);
+  const [emailTarget, setEmailTarget] = useState<string | null>(null);
+  const [emailNoticeAtHead, setEmailNoticeAtHead] = useState(false);
+  const emailReadNoticeRef = useRef<HTMLParagraphElement | null>(null);
+  const emailHeadingRef = useRef<HTMLHeadingElement | null>(null);
+  const [refreshWarning, setRefreshWarning] = useState<'pause' | 'settings' | null>(null);
+  const [pauseExpired, setPauseExpired] = useState(false);
+  const hasPreferences = useRef(false);
   const toast = useToast();
   const ids = { email: useId(), level: useId(), what: useId(), mute: useId() };
 
-  const load = () => {
-    setFailed(false);
-    getPreferences().then(setPrefs, () => setFailed(true));
-  };
-  useEffect(() => { getPreferences().then(setPrefs, () => setFailed(true)); }, []);
+  const queue = useRef<Promise<void>>(Promise.resolve());
+  const sequence = useRef(0);
+  const reads = useRef(0);
+  const reconcilePause = useCallback((next: NotificationPreferences, revision: number): NotificationPreferences => {
+    const latest = confirmedNotificationPauseSince(captureNotificationSession(ownerId), revision);
+    return latest === undefined ? next : { ...next, pause: { until: latest } };
+  }, [ownerId]);
+  const load = useCallback(() => {
+    const mine = ++reads.current, edit = sequence.current;
+    const session = captureNotificationSession(ownerId);
+    const pauseVersion = notificationPauseRevision(session);
+    getPreferences().then((next) => {
+      if (mounted.current && mine === reads.current && edit === sequence.current && (!session || isCurrentNotificationSession(session))) {
+        const result = reconcilePause(next, pauseVersion);
+        hasPreferences.current = true;
+        setPrefs(result); setFailed(false); setRefreshWarning(null);
+        setMuteReceipt(null); setEmailTarget(null); setEmailNoticeAtHead(false);
+        setPauseExpired(result.pause.until !== null && Date.parse(result.pause.until) <= Date.now());
+        announcePauseChange(ownerId, result.pause.until);
+      }
+    }, () => {
+      if (mounted.current && mine === reads.current && edit === sequence.current && (!session || isCurrentNotificationSession(session))) {
+        if (hasPreferences.current) setRefreshWarning('settings');
+        else setFailed(true);
+        if (session && notificationPauseRevision(session) === pauseVersion) announcePauseUncertainty(session);
+      }
+    });
+  }, [ownerId, reconcilePause]);
+  useEffect(load, [load]);
+  useEffect(() => {
+    const changed = (event: Event) => {
+      const update = (event as CustomEvent<PauseChange>).detail;
+      if (update.ownerId === ownerId && isCurrentNotificationSession(captureNotificationSession(ownerId))) {
+        setPrefs((current) => current ? { ...current, pause: { until: update.until } } : current);
+        setPauseExpired(update.until !== null && Date.parse(update.until) <= Date.now());
+        setRefreshWarning((current) => current === 'settings' ? current : update.uncertain ? 'pause' : null);
+      }
+    };
+    window.addEventListener(PAUSE_CHANGED, changed);
+    return () => window.removeEventListener(PAUSE_CHANGED, changed);
+  }, [ownerId]);
   // Push cannot reach anyone when the server has no VAPID keys or the browser has no push.
   const [pushOff, setPushOff] = useState<string | null>(null);
   useEffect(() => {
-    getPushState().then((push) => setPushOff(push.state === 'unavailable' ? 'Push is not set up on this Flux server, so the Push column has no effect.'
-      : push.state === 'unsupported' ? 'This browser cannot receive push; choices apply to your other devices.' : null), () => undefined);
+    getPushState().then((push) => { if (mounted.current) setPushOff(push.state === 'unavailable' ? 'Push is not set up on this Flux server, so the Push column has no effect.'
+      : push.state === 'unsupported' ? 'This browser cannot receive push; choices apply to your other devices.' : null); }, () => undefined);
   }, []);
 
   // Saves run one after another in the order they were made, each numbered. Only the answer to
   // the newest one replaces what is shown, so an older response never undoes a newer edit.
-  const queue = useRef<Promise<void>>(Promise.resolve());
-  const sequence = useRef(0);
-  function save(run: () => Promise<NotificationPreferences>, done = 'Saved') {
+  function save(run: () => Promise<NotificationPreferences>, done = 'Saved', onError?: (error: unknown) => void, area: FeedbackArea = 'email', mute?: MuteReceipt, address?: string): Promise<boolean> {
+    const session = captureNotificationSession(ownerId);
+    if (!session) return Promise.resolve(false);
     const mine = ++sequence.current;
+    if (mounted.current) { setSaved(''); setFeedbackArea(area); setMuteReceipt(null); setPendingMute(mute ?? null); setEmailTarget(null); setEmailNoticeAtHead(false); }
     const next = queue.current.then(async () => {
-      try {
-        const result = await run();
-        if (mine === sequence.current) { setPrefs(result); setSaved(done); }
-      } catch (error) {
-        toast({ message: message(error, 'Could not save. Try again.'), tone: 'danger' });
-        if (mine === sequence.current) load();
+      if (!isCurrentNotificationSession(session)) return false;
+      const pauseVersion = notificationPauseRevision(session);
+      let result: NotificationPreferences;
+      try { result = await run(); }
+      catch (error) {
+        if (!isCurrentNotificationSession(session)) return false;
+        if (onError && mounted.current) onError(error);
+        else toast({ message: message(error, 'Could not save. Try again.'), tone: 'danger' });
+        if (mounted.current && mine === sequence.current) { setPendingMute(null); load(); }
+        return false;
       }
+      if (!isCurrentNotificationSession(session)) return false;
+      let refreshFailed = false, refreshed = false, pauseReadUnavailable = false;
+      if (notificationPauseRevision(session) !== pauseVersion || notificationPauseUncertain(session)) {
+        const readVersion = notificationPauseRevision(session);
+        try {
+          const current = await getPreferences();
+          if (!isCurrentNotificationSession(session)) return false;
+          result = reconcilePause(current, readVersion);
+          refreshed = true;
+        } catch {
+          if (!isCurrentNotificationSession(session)) return false;
+          // The mutation was acknowledged. Preserve its other facts, never an obsolete pause,
+          // and report read unavailability without suggesting the side effect needs repeating.
+          result = reconcilePause(result, pauseVersion);
+          refreshFailed = true;
+          pauseReadUnavailable = notificationPauseRevision(session) === readVersion;
+        }
+      }
+      if (refreshFailed) {
+        if (pauseReadUnavailable) announcePauseUncertainty(session, !mounted.current
+          ? `${done}. Current notification settings could not be refreshed; the last confirmed settings are shown.` : undefined);
+      }
+      else announcePauseChange(ownerId, result.pause.until);
+      if (mounted.current && mine === sequence.current) {
+        hasPreferences.current = true;
+        setPrefs(result); setSaved(done); setFeedbackArea(area);
+        setPendingMute(null);
+        setMuteReceipt(mute ? { ...mute, place: result.muted.find((place) => place.type === mute.place.type && place.id === mute.place.id) ?? mute.place } : null);
+        setEmailTarget(address ?? null);
+        setPauseExpired(result.pause.until !== null && Date.parse(result.pause.until) <= Date.now());
+        if (refreshFailed) setRefreshWarning('settings');
+        else if (refreshed) setRefreshWarning(null);
+      }
+      return true;
     });
-    queue.current = next;
+    queue.current = next.then(() => undefined);
     return next;
   }
   const change = (command: UpdateNotificationPreferencesCommand, optimistic?: (current: NotificationPreferences) => NotificationPreferences) => {
     if (optimistic) setPrefs((current) => (current ? optimistic(current) : current));
-    void save(() => updatePreferences(command));
+    const area: FeedbackArea = command.channels ? NOTIFICATION_REASONS.find((reason) => command.channels?.[reason]) ?? 'level'
+      : command.emailDestination !== undefined ? 'email' : command.morningSummary ? 'morningSummary' : command.quietHours ? 'quietHours' : 'level';
+    void save(() => updatePreferences(command), 'Saved', undefined, area);
   };
+
+  const showMuteReceipt = refreshWarning === 'settings' && feedbackArea === 'mute' && !!saved && muteReceipt !== null;
+  useEffect(() => {
+    // Measure the latest acknowledged email action in its own section, and retire its
+    // subscriptions when that action, account, view or actual layout is no longer current.
+    if (refreshWarning !== 'settings' || feedbackArea !== 'email' || !saved || !prefs?.email.available) return;
+    const notice = emailReadNoticeRef.current, heading = emailHeadingRef.current;
+    const pane = notice?.closest('.pane-scroll');
+    if (!notice || !heading || !pane) return;
+    const session = captureNotificationSession(ownerId), action = sequence.current;
+    let active = true, frame = 0;
+    let observer: ResizeObserver | null = null;
+    const retire = () => {
+      active = false;
+      cancelAnimationFrame(frame);
+      observer?.disconnect();
+      pane.removeEventListener('scroll', schedule);
+      window.removeEventListener('resize', schedule);
+    };
+    const measure = () => {
+      frame = 0;
+      if (!active) return;
+      if (!mounted.current || action !== sequence.current || !isCurrentNotificationSession(session)
+        || !notice.isConnected || !heading.isConnected || !pane.isConnected) { retire(); return; }
+      const box = notice.getBoundingClientRect(), view = pane.getBoundingClientRect();
+      const top = heading.getBoundingClientRect().bottom + (parseFloat(getComputedStyle(heading).marginBottom) || 0);
+      const fitsAtHead = top >= view.top && top + box.height <= view.bottom;
+      setEmailNoticeAtHead((atHead) => atHead ? fitsAtHead
+        : box.bottom > view.bottom && box.top < view.bottom && fitsAtHead);
+    };
+    function schedule() {
+      if (active && !frame) frame = requestAnimationFrame(measure);
+    }
+    observer = new ResizeObserver(schedule);
+    observer.observe(pane);
+    observer.observe(notice);
+    observer.observe(heading.closest('section') ?? heading);
+    observer.observe(document.documentElement);
+    pane.addEventListener('scroll', schedule, { passive: true });
+    window.addEventListener('resize', schedule);
+    schedule();
+    return retire;
+  }, [emailNoticeAtHead, refreshWarning, feedbackArea, saved, prefs?.email.available, ownerId]);
 
   if (failed) {
     return (
       <div className="pane-scroll"><div className="pane-in">
-        <ErrorState title="Notification settings could not load" actions={<Button onClick={load}>Retry</Button>}><p>Your inbox still works.</p></ErrorState>
+        <ErrorState title="Notification settings could not load" actions={<Button onClick={() => { setFailed(false); load(); }}>Retry</Button>}><p>Your inbox still works.</p></ErrorState>
       </div></div>
     );
   }
@@ -122,6 +266,21 @@ export function NotificationSettings() {
 
   const level = prefs.level;
   const setLevel = (next: NotificationLevel) => change({ level: next }, (current) => ({ ...current, level: next }));
+  const workingFeedback = (area: FeedbackArea) => refreshWarning === 'settings' && feedbackArea === area
+    ? <WorkingReadNotice acknowledged={saved} retry={load} /> : null;
+  // The named result is also in its own row. Keep the header compact while the one live
+  // announcement retains the complete acknowledged name for assistive technology.
+  const savedMuteVerb = feedbackArea === 'mute' ? saved.startsWith('Muted ') ? 'Muted' : saved.startsWith('Unmuted ') ? 'Unmuted' : null : null;
+  const activeMuteReceipt = showMuteReceipt ? muteReceipt : null;
+  const onMute = (place: NotificationPreferences['muted'][number]) => save(() => setMute({ type: place.type, id: place.id, muted: true }), `Muted ${place.name}`, undefined, 'mute', { place, muted: true, index: prefs.muted.length });
+  const onUnmute = (place: NotificationPreferences['muted'][number]) => void save(() => setMute({ type: place.type, id: place.id, muted: false }), `Unmuted ${place.name}`, undefined, 'mute', { place, muted: false, index: prefs.muted.findIndex((item) => item.type === place.type && item.id === place.id) });
+  const emailReadNotice = refreshWarning && !showMuteReceipt ? <p ref={emailReadNoticeRef} className="nset__problem" role="note"><Icon name="alert" size={14} /><span>
+    {refreshWarning === 'settings' && feedbackArea === 'email' && saved ? `${saved}. ` : ''}
+    {refreshWarning === 'settings' && feedbackArea === 'email' && saved && emailTarget ? <span className="nset__email-target">{emailTarget}</span> : null}
+    {refreshWarning === 'settings' ? 'Current notification settings could not be refreshed. The last confirmed settings are shown.'
+      : 'Current notification pause could not be checked. The last confirmed state is shown.'}{' '}
+    <Button variant="quiet" onClick={load}>Retry current settings</Button>
+  </span></p> : null;
 
   return (
     <div className="pane-scroll"><div className="pane-in sset-in nset" data-shift>
@@ -130,8 +289,15 @@ export function NotificationSettings() {
           <h2>Notifications</h2>
           <p>Flux only interrupts you for things that need you. Everything else waits in Inbox.</p>
         </div>
-        <span className="nset__saved" role="status" aria-live="polite">{saved ? <><Icon name="check" size={14} />{saved}</> : null}</span>
+        <span className="nset__saved" role="status" aria-live="polite">{saved ? <><Icon name="check" size={14} />{savedMuteVerb
+          ? <>{savedMuteVerb}<span className="ui-vh">{saved.slice(savedMuteVerb.length)}</span></> : saved}</> : null}</span>
       </div>
+
+      {refreshWarning && !showMuteReceipt ? <p className="nset__problem" role="note"><Icon name="alert" size={14} /><span>
+        {refreshWarning === 'settings' ? 'Current notification settings could not be refreshed. Showing last confirmed settings.'
+          : 'Current notification pause could not be checked. The last confirmed state is shown.'}{' '}
+        <Button variant="quiet" aria-label="Retry current settings" onClick={load}>Refresh</Button>
+      </span></p> : null}
 
       <h3 className="sset-sec" id={ids.level}>Notify me about</h3>
       <div className="sset-card" role="radiogroup" aria-labelledby={ids.level}>
@@ -146,11 +312,18 @@ export function NotificationSettings() {
           </label>
         ))}
       </div>
+      {workingFeedback('level')}
       {level === 'custom' ? <p className="sset-note" role="note">You chose channels for each kind below, so none of the three matches. Pick one to reset them.</p> : null}
 
+      {prefs.pause.until && !pauseExpired ? (
+        <p className="nset__focus" role="status">
+          <Icon name="focus" size={14} /><span>{refreshWarning ? 'Last confirmed pause: push and email were paused until ' : 'Focus: push and email are paused until '}<time dateTime={prefs.pause.until}>{clock(new Date(prefs.pause.until))}</time>.</span>
+          <Button variant="secondary" onClick={() => change({ pause: { until: null } }, (current) => ({ ...current, pause: { until: null } }))}>Resume now</Button>
+        </p>
+      ) : null}
       <div className="sset-card sset-gap">
-        <QuietHoursRow prefs={prefs} onChange={change} />
-        <MorningSummaryRow prefs={prefs} onChange={change} />
+        <QuietHoursRow prefs={prefs} onChange={change} feedback={workingFeedback('quietHours')} />
+        <MorningSummaryRow prefs={prefs} onChange={change} feedback={workingFeedback('morningSummary')} />
       </div>
 
       <section className="nset__sec" aria-labelledby={ids.what}>
@@ -161,7 +334,7 @@ export function NotificationSettings() {
             <thead><tr><th scope="col"><span className="ui-vh">Reason</span></th>{COLUMNS.map((column) => <th key={column.id} scope="col">{column.label}</th>)}</tr></thead>
             <tbody>
               {NOTIFICATION_REASONS.map((reason) => (
-                <tr key={reason}>
+                <Fragment key={reason}><tr>
                   <th scope="row"><b>{ROWS[reason].label}</b><span>{ROWS[reason].hint}</span></th>
                   {COLUMNS.map((column) => {
                     const disabled = (column.id === 'email' && emailOff) || (column.id === 'push' && !!pushOff?.startsWith('Push is not'));
@@ -175,7 +348,7 @@ export function NotificationSettings() {
                       </td>
                     );
                   })}
-                </tr>
+                </tr>{refreshWarning === 'settings' && feedbackArea === reason ? <tr><td colSpan={4}>{workingFeedback(reason)}</td></tr> : null}</Fragment>
               ))}
             </tbody>
           </table>
@@ -187,7 +360,8 @@ export function NotificationSettings() {
       </section>
 
       <section className="nset__sec" aria-labelledby={ids.email}>
-        <h3 className="sset-sec" id={ids.email}>Where email goes</h3>
+        <h3 ref={emailHeadingRef} className="sset-sec" id={ids.email}>Where email goes</h3>
+        {emailNoticeAtHead ? emailReadNotice : null}
         {!prefs.email.available ? (
           <p className="nset__problem" role="note"><Icon name="alert" size={14} /><span><b>Email delivery unavailable.</b> This Flux server has no outgoing mail set up, so nothing is emailed. Your inbox and push still work; an administrator can configure SMTP.</span></p>
         ) : prefs.email.lastFailureAt ? (
@@ -195,29 +369,137 @@ export function NotificationSettings() {
         ) : null}
         <div className="sset-card nset__box">
           <EmailDestinationChoice prefs={prefs} onChange={(destination) => change({ emailDestination: destination }, (current) => ({ ...current, email: { ...current.email, destination } }))} />
-          <ExtraAddress prefs={prefs} save={save} />
+          <ExtraAddress prefs={prefs} save={(run, done, onError, address) => save(run, done, onError, 'email', undefined, address)} readNotice={emailNoticeAtHead ? null : emailReadNotice} />
         </div>
       </section>
 
-      <section className="nset__sec" aria-labelledby={ids.mute}>
-        <h3 className="sset-sec" id={ids.mute}>Muted places</h3>
-        <div className="sset-card nset__box">
-          <p className="nset__lead">Nothing from a muted place notifies you, on any channel. You can still open it.</p>
-          {prefs.muted.length ? (
-            <ul className="nset__muted">
-              {prefs.muted.map((place) => (
-                <li key={`${place.type}:${place.id}`}>
-                  <span className="nset__place">{place.type === 'dm' ? <Icon name="chat" size={14} /> : <span className="nset__hash" aria-hidden="true">#</span>}{place.name}<span className="ui-vh">{place.type === 'dm' ? ', direct message' : ', project'}</span></span>
-                  <Button variant="quiet" onClick={() => void save(() => setMute({ type: place.type, id: place.id, muted: false }), `Unmuted ${place.name}`)}>Unmute</Button>
-                </li>
-              ))}
-            </ul>
-          ) : <p className="nset__none">No muted places.</p>}
-          {mutable.length ? <MutePicker places={mutable} onMute={(place) => void save(() => setMute({ type: place.type, id: place.id, muted: true }), `Muted ${place.name}`)} /> : null}
-        </div>
-      </section>
+      <MutedPlaces headingId={ids.mute} ownerId={ownerId} muted={prefs.muted}
+        places={mutable} pending={pendingMute} receipt={activeMuteReceipt} onMute={onMute} onUnmute={onUnmute} onRetry={load} />
     </div></div>
   );
+}
+
+function MutedPlaces({ headingId, ownerId, muted, places, pending, receipt, onMute, onUnmute, onRetry }: {
+  headingId: string; ownerId: string;
+  muted: NotificationPreferences['muted']; places: NotificationPreferences['muted'];
+  pending: MuteReceipt | null; receipt: MuteReceipt | null;
+  onMute: (place: NotificationPreferences['muted'][number]) => Promise<boolean>;
+  onUnmute: (place: NotificationPreferences['muted'][number]) => void; onRetry: () => void;
+}) {
+  const sectionRef = useRef<HTMLElement | null>(null);
+  const headingRef = useRef<HTMLHeadingElement | null>(null);
+  const [fitted, setFitted] = useState<{ receipt: MuteReceipt; position: number | 'head' } | null>(null);
+  const samePlace = (place: NotificationPreferences['muted'][number]) => receipt?.place.type === place.type && receipt.place.id === place.id;
+  const others = receipt ? muted.filter((place) => !samePlace(place)) : muted;
+  const current = receipt ? muted.find(samePlace) : undefined;
+  const resultRow: MutedPlaceRow | null = receipt ? { place: current ?? receipt.place, receiptOnly: !current } : null;
+  const captured = Math.max(0, Math.min(receipt?.index ?? pending?.index ?? others.length, others.length));
+  const position = receipt && fitted?.receipt === receipt ? fitted.position : captured;
+  const slotIndex = receipt?.muted || pending?.muted ? captured : others.length;
+  const atSlot = !!receipt?.muted && position === slotIndex;
+
+  useLayoutEffect(() => {
+    if (!receipt) return;
+    const section = sectionRef.current, heading = headingRef.current;
+    const pane = section?.closest('.pane-scroll');
+    const session = captureNotificationSession(ownerId);
+    if (!section || !heading || !pane || !session) return;
+    let active = true, frame = 0;
+    const measure = () => {
+      frame = 0;
+      if (!active || !isCurrentNotificationSession(session) || !section.isConnected || !heading.isConnected || !pane.isConnected) return;
+      const note = section.querySelector('.nset__mute-read'), row = note?.closest('li');
+      if (!row) return;
+      const view = pane.getBoundingClientRect(), box = row.getBoundingClientRect(), group = section.getBoundingClientRect();
+      if (box.top >= view.top && box.bottom <= view.bottom) return;
+      if (group.bottom <= view.top || group.top >= view.bottom) return;
+      const candidates: { position: number | 'head'; top: number }[] = [];
+      const headTop = heading.getBoundingClientRect().top;
+      if (position !== 'head' && headTop >= view.top && headTop + box.height <= view.bottom) candidates.push({ position: 'head', top: headTop });
+      for (const element of section.querySelectorAll<HTMLElement>('.nset__muted li[data-place]')) {
+        if (element === row) continue;
+        const index = others.findIndex((place) => `${place.type}:${place.id}` === element.dataset.place);
+        const top = element.getBoundingClientRect().top;
+        // A preceding physical row is unaffected when the result is removed from its old slot.
+        if (index >= 0 && top < box.top && top >= view.top && top + box.height <= view.bottom) candidates.push({ position: index, top });
+      }
+      candidates.sort((a, b) => b.top - a.top);
+      const next = candidates[0];
+      if (next) setFitted((previous) => previous?.receipt === receipt && previous.position === next.position ? previous : { receipt, position: next.position });
+    };
+    const schedule = () => { if (active && !frame) frame = requestAnimationFrame(measure); };
+    const observer = new ResizeObserver(schedule);
+    observer.observe(section); observer.observe(pane); observer.observe(document.documentElement);
+    const row = section.querySelector('.nset__mute-read')?.closest('li');
+    if (row) observer.observe(row);
+    window.addEventListener('resize', schedule);
+    // Real ref-derived measurement before paint, then only actual layout changes. No scroll/focus writes.
+    measure();
+    return () => { active = false; cancelAnimationFrame(frame); observer.disconnect(); window.removeEventListener('resize', schedule); };
+  }, [receipt, ownerId, position, others]);
+
+  const flow: ReactNode[] = [];
+  let run: MutedPlaceRow[] = [];
+  const flush = () => {
+    if (!run.length) return;
+    const first = run[0]!.place;
+    flow.push(<MutedPlaceRows key={`rows:${first.type}:${first.id}`} rows={run} receipt={receipt} pending={pending} onUnmute={onUnmute} onRetry={onRetry} />);
+    run = [];
+  };
+  for (let index = 0; index <= others.length; index += 1) {
+    if (resultRow && !atSlot && position !== 'head' && position === index) run.push(resultRow);
+    if (index === slotIndex) {
+      flush();
+      flow.push(<MutePicker key="mute-action" places={places} pending={pending?.muted ? pending : null} onMute={onMute}
+        hidden={!places.length && !pending?.muted && !atSlot}
+        result={atSlot && resultRow ? <MutedPlaceRows rows={[resultRow]} receipt={receipt} pending={pending} onUnmute={onUnmute} onRetry={onRetry} /> : undefined} />);
+    }
+    if (index < others.length) run.push({ place: others[index]!, receiptOnly: false });
+  }
+  flush();
+  return <section ref={sectionRef} className="nset__sec" aria-labelledby={headingId}>
+    {position === 'head' && resultRow ? <MutedPlaceRows rows={[resultRow]} receipt={receipt} pending={pending} onUnmute={onUnmute} onRetry={onRetry} /> : null}
+    <h3 ref={headingRef} className="sset-sec" id={headingId}>Muted places</h3>
+    <div className="sset-card nset__box nset__places">
+      <p className="nset__lead">Nothing from a muted place notifies you, on any channel. You can still open it.</p>
+      {!muted.length && !receipt ? <p className="nset__none">No muted places.</p> : null}
+      {flow}
+    </div>
+  </section>;
+}
+
+function MutedPlaceRows({ rows, receipt, pending, onUnmute, onRetry }: {
+  rows: MutedPlaceRow[];
+  receipt: MuteReceipt | null; pending: MuteReceipt | null;
+  onUnmute: (place: NotificationPreferences['muted'][number]) => void;
+  onRetry: () => void;
+}) {
+  return (
+    <ul className="nset__muted">
+      {rows.map(({ place, receiptOnly }) => (
+        <li key={`${place.type}:${place.id}`} data-place={`${place.type}:${place.id}`} className={receiptOnly ? 'nset__mute-result' : undefined}>
+          {receipt && receipt.place.type === place.type && receipt.place.id === place.id ? (
+            <p className="nset__mute-read" role="note"><span>
+              <span className="nset__place">{place.type === 'dm' ? <Icon name="chat" size={14} /> : <span className="nset__hash" aria-hidden="true">#</span>}{place.name}<span className="ui-vh">{place.type === 'dm' ? ', direct message' : ', project'}</span></span>
+              <span className="nset__mute-state">{receipt.muted ? 'Muted' : 'Unmuted'}. Current settings unverified.</span>
+              <span className="nset__mute-warning">Current notification settings could not be refreshed. Showing last confirmed settings.</span>
+            </span><Button variant="quiet" aria-label="Retry current settings" onClick={onRetry}>Refresh</Button>
+              {!receiptOnly ? <Button variant="quiet" onClick={() => onUnmute(place)}>Unmute</Button> : null}
+            </p>
+          ) : <span className="nset__place">{place.type === 'dm' ? <Icon name="chat" size={14} /> : <span className="nset__hash" aria-hidden="true">#</span>}{place.name}<span className="ui-vh">{place.type === 'dm' ? ', direct message' : ', project'}</span></span>}
+          {!receiptOnly && !(receipt && receipt.place.type === place.type && receipt.place.id === place.id)
+            ? <Button variant="quiet" busy={!!pending && !pending.muted && pending.place.type === place.type && pending.place.id === place.id} onClick={() => onUnmute(place)}>Unmute</Button> : null}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function WorkingReadNotice({ acknowledged, retry }: { acknowledged: string; retry: () => void }) {
+  return <div className="nset__read-feedback"><p className="nset__problem" role="note"><Icon name="alert" size={14} /><span>
+    {acknowledged ? `${acknowledged}. ` : ''}Current notification settings could not be refreshed. The last confirmed settings are shown.{' '}
+    <Button variant="quiet" onClick={retry}>Retry current settings</Button>
+  </span></p></div>;
 }
 
 function EmailDestinationChoice({ prefs, onChange }: { prefs: NotificationPreferences; onChange: (destination: EmailDestination) => void }) {
@@ -244,7 +526,7 @@ function EmailDestinationChoice({ prefs, onChange }: { prefs: NotificationPrefer
   );
 }
 
-function ExtraAddress({ prefs, save }: { prefs: NotificationPreferences; save: (run: () => Promise<NotificationPreferences>, done?: string) => Promise<void> }) {
+function ExtraAddress({ prefs, save, readNotice }: { prefs: NotificationPreferences; save: (run: () => Promise<NotificationPreferences>, done?: string, onError?: (error: unknown) => void, address?: string) => Promise<boolean>; readNotice: ReactNode }) {
   const [value, setValue] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -257,9 +539,10 @@ function ExtraAddress({ prefs, save }: { prefs: NotificationPreferences; save: (
     if (!value.trim() || busy) return;
     setBusy(true); setError('');
     try {
-      const next = await addAddress(value.trim());
-      await save(() => Promise.resolve(next), 'Verification link sent');
-      setValue('');
+      const address = value.trim();
+      const added = await save(() => addAddress(address), 'Verification link sent',
+        (cause) => setError(message(cause, 'Could not send the link. Try again.')), address);
+      if (added) setValue('');
     } catch (cause) {
       setError(message(cause, 'Could not send the link. Try again.'));
     } finally {
@@ -270,19 +553,21 @@ function ExtraAddress({ prefs, save }: { prefs: NotificationPreferences; save: (
   if (extra) {
     return (
       <div className="nset__extra">
+        {readNotice}
         <div className="nset__addr">
           <Icon name="mail" size={14} />
           <span><b>{extra.email}</b><span>{extra.verified ? 'Confirmed · receives notification email only' : 'Waiting for you to open the link we sent. It works once and expires in 24 hours.'}</span></span>
         </div>
         <div className="nset__actions">
-          {!extra.verified ? <Button variant="quiet" onClick={() => void save(resendVerification, 'Sent again')}>Send again</Button> : null}
-          <Button variant="quiet" onClick={() => void save(removeAddress, 'Extra address removed')}>Remove</Button>
+          {!extra.verified ? <Button variant="quiet" onClick={() => void save(resendVerification, 'Sent again', undefined, extra.email)}>Send again</Button> : null}
+          <Button variant="quiet" onClick={() => void save(removeAddress, 'Extra address removed', undefined, extra.email)}>Remove</Button>
         </div>
       </div>
     );
   }
   return (
     <form className="nset__add" onSubmit={(event) => void submit(event)} noValidate>
+      {readNotice}
       <label htmlFor={inputId}>Add an extra address, for example the inbox you read most</label>
       <div className="nset__row">
         <input id={inputId} type="email" autoComplete="email" inputMode="email" placeholder="name@example.org" value={value}
@@ -301,7 +586,7 @@ const shortClock = (value: string) => value.replace(/^0(\d)/, '$1');
 const zoneLabel = (zone: string) => zone.replace(/_/g, ' ');
 
 /** Quiet hours: a switch, then the window and its time zone while it is on. */
-function QuietHoursRow({ prefs, onChange }: { prefs: NotificationPreferences; onChange: Change }) {
+function QuietHoursRow({ prefs, onChange, feedback }: { prefs: NotificationPreferences; onChange: Change; feedback?: ReactNode }) {
   const quiet = prefs.quietHours;
   const zones = useMemo(() => timeZones(quiet.timeZone), [quiet.timeZone]);
   const set = (next: Partial<typeof quiet>) => onChange({ quietHours: next }, (current) => ({ ...current, quietHours: { ...current.quietHours, ...next } }));
@@ -311,6 +596,7 @@ function QuietHoursRow({ prefs, onChange }: { prefs: NotificationPreferences; on
       <SwitchRow label="Quiet hours" checked={quiet.enabled}
         detail={`${shortClock(quiet.start)} – ${shortClock(quiet.end)} · ${zoneLabel(quiet.timeZone)}`}
         onChange={(on) => set(on && quiet.timeZone === 'UTC' && suggested !== 'UTC' ? { enabled: true, timeZone: suggested } : { enabled: on })} />
+      {feedback}
       {quiet.enabled ? (
         <div className="nset__times">
           <label>From<input type="time" value={quiet.start} onChange={(event) => event.target.value && set({ start: event.target.value })} /></label>
@@ -327,7 +613,7 @@ function QuietHoursRow({ prefs, onChange }: { prefs: NotificationPreferences; on
 }
 
 /** The morning summary (S22): one push a day at a local time, counting what waits in Inbox. */
-function MorningSummaryRow({ prefs, onChange }: { prefs: NotificationPreferences; onChange: Change }) {
+function MorningSummaryRow({ prefs, onChange, feedback }: { prefs: NotificationPreferences; onChange: Change; feedback?: ReactNode }) {
   const summary = prefs.morningSummary;
   const zone = prefs.quietHours.timeZone;
   const suggested = browserTimeZone();
@@ -341,6 +627,7 @@ function MorningSummaryRow({ prefs, onChange }: { prefs: NotificationPreferences
       <SwitchRow label="Morning summary" checked={summary.enabled}
         detail={`One digest at ${shortClock(summary.at)} instead of single pings`}
         onChange={(on) => set({ enabled: on })} />
+      {feedback}
       {summary.enabled ? (
         <div className="nset__times">
           <label>At<input type="time" value={summary.at} onChange={(event) => event.target.value && set({ at: event.target.value })} /></label>
@@ -351,19 +638,29 @@ function MorningSummaryRow({ prefs, onChange }: { prefs: NotificationPreferences
   );
 }
 
-function MutePicker({ places, onMute }: { places: { type: 'project' | 'dm'; id: string; name: string }[]; onMute: (place: { type: 'project' | 'dm'; id: string; name: string }) => void }) {
+function MutePicker({ places, onMute, result, pending, hidden }: { places: NotificationPreferences['muted']; onMute: (place: NotificationPreferences['muted'][number]) => Promise<boolean>; result?: ReactNode; pending: MuteReceipt | null; hidden: boolean }) {
   const [choice, setChoice] = useState('');
+  const choiceVersion = useRef(0);
   const selectId = useId();
+  const mounted = useRef(false);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const place = places.find((item) => `${item.type}:${item.id}` === choice);
   return (
-    <div className="nset__row nset__mute">
+    <div className="nset__row nset__mute" hidden={hidden}>
+      {result ?? <>
       <label className="ui-vh" htmlFor={selectId}>Place to mute</label>
-      <select id={selectId} value={choice} onChange={(event) => setChoice(event.target.value)}>
+      <select id={selectId} value={choice} disabled={!!pending} onChange={(event) => { choiceVersion.current += 1; setChoice(event.target.value); }}>
         <option value="">Choose a project or conversation…</option>
         {places.some((item) => item.type === 'project') ? <optgroup label="Projects">{places.filter((item) => item.type === 'project').map((item) => <option key={item.id} value={`project:${item.id}`}># {item.name}</option>)}</optgroup> : null}
         {places.some((item) => item.type === 'dm') ? <optgroup label="Direct messages">{places.filter((item) => item.type === 'dm').map((item) => <option key={item.id} value={`dm:${item.id}`}>{item.name}</option>)}</optgroup> : null}
       </select>
-      <Button disabled={!place} onClick={() => { if (place) { onMute(place); setChoice(''); } }}>Mute</Button>
+      <Button disabled={!place && !pending} busy={!!pending} onClick={() => {
+        if (!place) return;
+        const selected = choice, version = ++choiceVersion.current;
+        void onMute(place).then((acknowledged) => { if (acknowledged && mounted.current && version === choiceVersion.current) setChoice((current) => current === selected ? '' : current); });
+      }}>Mute</Button>
+      {pending ? <p className="nset__mute-pending" role="note">Muting {pending.place.name}…</p> : null}
+      </>}
     </div>
   );
 }

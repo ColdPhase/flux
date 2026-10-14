@@ -10,8 +10,7 @@ import uuid
 
 from playwright.sync_api import expect, sync_playwright
 
-from project_views import project_view, project_views
-from test_app_shell import show_map_as, DESKTOP, ORIGIN, PHONE, SHOTS, UPSTREAM, shot, start_forwarder
+from test_app_shell import show_map_as, DESKTOP, ORIGIN, PHONE, SHOTS, UPSTREAM, shot, start_forwarder, view_tab
 from contrast import MEASURE
 
 STAMP = int(time.time() * 1000)
@@ -616,7 +615,7 @@ class ThoughtDraftJourney(unittest.TestCase):
         return writes
 
     def tab(self, page, name, *, touch=False):
-        project_view(page, name, touch=touch)
+        view_tab(page, name, tap=touch)
 
     def back_to_map(self, page, *, touch=False):
         """The Map tab returns to its last place (#189): this sketch, or the project's list of maps."""
@@ -633,7 +632,7 @@ class ThoughtDraftJourney(unittest.TestCase):
             self.tab(page, name, touch=touch)
             page.wait_for_url(re.compile(rf"/projects/{self.project}{path}"))
             if name == "Agents":
-                expect(page.get_by_role("heading", level=1, name="Working together")).to_be_visible()
+                expect(page.get_by_role("heading", level=1, name="Agents")).to_be_visible()
             expect(page.locator(".sk-head")).to_have_count(0)
             expect(page.get_by_role("form", name="New thought draft")).to_have_count(0)
         self.back_to_map(page, touch=touch)

@@ -18,7 +18,7 @@ import uuid
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
 from author_columns import assert_author_column
-from test_app_shell import DESKTOP, ORIGIN, PHONE, UI_BROWSER, UPSTREAM, shot, start_forwarder
+from test_app_shell import DESKTOP, ORIGIN, PHONE, UI_BROWSER, UPSTREAM, open_details, shot, start_forwarder, view_tab
 
 PASSWORD = "decisions need reasons"
 STAMP = int(time.time() * 1000)
@@ -126,7 +126,9 @@ class WorkDecisionsJourney(unittest.TestCase):
 
     def test_02_create_work_from_a_message_in_one_action(self) -> None:
         page = self.open_conversation("owner")
-        expect(page.get_by_label("Current state")).to_contain_text("No decisions or work yet")
+        # The computer's header is one row without a state line (#340); the project starts empty.
+        expect(page.get_by_label("Current state")).to_have_count(0)
+        self.assertEqual(self.work(page), {"work": [], "decisions": [], "results": []})
         message = page.locator(f"#message-{self.messages['idea']}")
         message.hover()
         message.get_by_role("button", name="Task", exact=True).click()
@@ -178,13 +180,12 @@ class WorkDecisionsJourney(unittest.TestCase):
         panel.get_by_role("button", name="Propose decision", exact=True).focus()
         page.keyboard.press("Enter")
         expect(panel.locator(".wd-eyebrow")).to_contain_text("Proposed decision")
-        expect(page.get_by_label("Current state")).to_contain_text("Needs you: a proposed decision")
+        self.assertEqual(self.work(page)["decisions"][0]["status"], "proposed")
         shot(page, "decision-desktop-1440-proposed")
         panel.get_by_role("button", name="Accept decision").focus()
         page.keyboard.press("Enter")
         expect(panel.locator(".wd-eyebrow")).to_contain_text("Current rule")
         expect(panel).to_contain_text("Ada Lind")
-        expect(page.get_by_label("Current state")).to_contain_text("Current rule: Use a camera for gesture control")
         decision = self.work(page)["decisions"][0]
         self.assertEqual((decision["status"], decision["decidedBy"]["id"]), ("accepted", OWNER["id"]))
         self.assertEqual([link["to"]["id"] for link in decision["links"] if link["role"] == "source"], [self.messages["idea"]])
@@ -218,11 +219,16 @@ class WorkDecisionsJourney(unittest.TestCase):
 
         page.get_by_role("navigation", name="Project views").get_by_role("link", name="Tasks").click()
         expect(page).to_have_url(re.compile(r"/tasks$"))
-        # Finished work, decisions and results are grouped in the List (#136; the board shows work by status).
+        # Finished work is grouped in the List (#136). Decisions wait in the Inbox and have no view here; a
+        # result shows in its task's details (#342).
         page.get_by_role("radio", name="List", exact=True).click()
-        expect(page.get_by_role("region", name=re.compile("^Finished"))).to_contain_text(IDEA)
-        expect(page.get_by_role("region", name=re.compile("^Decisions"))).to_contain_text("Use a camera for gesture control")
-        expect(page.get_by_role("region", name=re.compile("^Results"))).to_contain_text("The camera cannot track gestures")
+        finished = page.get_by_role("region", name=re.compile("^Finished"))
+        expect(finished).to_contain_text(IDEA)
+        expect(page.get_by_role("region", name=re.compile("^(Decisions|Results)"))).to_have_count(0)
+        expect(page.get_by_role("button", name=re.compile("^Decisions & results"))).to_have_count(0)
+        finished.get_by_role("button", name=re.compile(IDEA)).click()
+        expect(self.details(page)).to_contain_text("The camera cannot track gestures")
+        page.keyboard.press("Escape")
 
     # ---------------------------------------------------------------- pivot parks work
 
@@ -255,7 +261,6 @@ class WorkDecisionsJourney(unittest.TestCase):
         panel.get_by_role("button", name="Accept and pivot").click()
         expect(panel.locator(".wd-eyebrow")).to_contain_text("Current rule")
         expect(panel.get_by_role("region", name="At this pivot")).to_contain_text("parked")
-        expect(page.get_by_label("Current state")).to_contain_text(f"Current rule: {PIVOT}")
 
         stored = self.work(page)
         by_title = {item["title"]: item for item in stored["work"]}
@@ -268,7 +273,10 @@ class WorkDecisionsJourney(unittest.TestCase):
 
         page.get_by_role("navigation", name="Project views").get_by_role("link", name="Tasks").click()
         expect(page.get_by_role("region", name=re.compile("^Parked by a pivot"))).to_contain_text("Mount the camera in the lamp head")
-        expect(page.get_by_role("region", name=re.compile("^Decisions"))).to_contain_text("Earlier rule")
+        # The earlier rule and its reason stay in the decision's own details (S1: no archive).
+        page.goto(f"/projects/{self.project_id}/tasks?open=decision:{rules['Use a camera for gesture control']['id']}")
+        expect(self.details(page)).to_contain_text("Earlier rule")
+        expect(self.details(page).get_by_role("heading", name="Replaced by")).to_be_visible()
         page.keyboard.press("Escape")
         shot(page, "tasks-desktop-1440")
 
@@ -294,7 +302,7 @@ class WorkDecisionsJourney(unittest.TestCase):
         shot(page, "work-phone-390-details")
         sheet.get_by_role("button", name="Close details").tap()
         expect(message.get_by_role("button", name=f"Work: {FINDING}")).to_be_visible()
-        page.get_by_role("navigation", name="Project views").get_by_role("link", name="Tasks").tap()
+        view_tab(page, "Tasks", tap=True)
         expect(page.get_by_role("region", name=re.compile("^Open"))).to_contain_text(FINDING)
         shot(page, "tasks-phone-390")
         titles = [item["title"] for item in self.work(page)["work"]]
@@ -309,32 +317,41 @@ class WorkDecisionsJourney(unittest.TestCase):
         base = f"/api/v1/projects/{project['id']}"
         rule = self.api(page, "POST", f"{base}/decisions", {"title": "Oldest rule: battery powered"}, status=201)
         self.api(page, "POST", f"/api/v1/decisions/{rule['id']}/accept", {"expectedVersion": 1}, status=200)
-        expected={("decision",rule["id"])}
+        expected=set()
         for index in range(1, 102):
-            item=self.api(page, "POST", f"{base}/decisions", {"title": f"Idea {index:03d}"}, status=201)
-            expected.add(("decision",item["id"]))
+            self.api(page, "POST", f"{base}/decisions", {"title": f"Idea {index:03d}"}, status=201)
         for index in range(1, 102):
             item=self.api(page, "POST", f"{base}/work", {"title": f"Work item {index:03d}"}, status=201)
             expected.add(("work",item["id"]))
         self.assertEqual(self.api(page, "GET", f"{base}/work?limit=1", status=200)["total"], 101)
         page.goto(f"/projects/{project['id']}/tasks")
         page.get_by_role("radio", name="List", exact=True).click()
-        expect(page.get_by_label("Current state")).to_contain_text("Current rule: Oldest rule: battery powered")
+        # The project's state is in Details (#340): the rule in force, found among 101 tasks.
+        open_details(page)
+        expect(page.locator("#details").get_by_role("region", name="Now in this project").get_by_role("button", name=re.compile("^Current rule"))).to_contain_text("Oldest rule: battery powered")
+        page.get_by_role("button", name="Close details", exact=True).click()
         views=page.get_by_role("navigation",name="Task views")
         expect(views.get_by_role("button",name=re.compile("^Open"))).to_contain_text("101")
-        expect(views.get_by_role("button",name=re.compile("^Needs you"))).to_contain_text("101")
+        # Decisions are not a view of the Tasks tab any more; they wait in the Inbox.
+        expect(views.get_by_role("button",name=re.compile("^(Needs you|Decisions|Results)"))).to_have_count(0)
+        expect(page.get_by_role("link",name=re.compile("101 decisions need you in the Inbox"))).to_be_visible()
         pager=page.get_by_role("navigation",name="Work pages");seen=set();sizes=[]
-        for index in range(5):
+        for index in range(3):
             before=index*50
-            expect(pager).to_contain_text(f"{before+1}–{min(before+50,203)} of 203 objects")
+            expect(pager).to_contain_text(f"{before+1}–{min(before+50,101)} of 101 tasks")
             rows=page.locator(".ws-tasks [data-work-id]").evaluate_all("els=>els.map(el=>[el.dataset.workKind,el.dataset.workId])")
             self.assertLessEqual(len(rows),50);sizes.append(len(rows));seen.update(tuple(row) for row in rows)
-            if index<4:pager.get_by_role("button",name="Next",exact=True).click()
-        self.assertEqual(sizes,[50,50,50,50,3])
-        self.assertEqual(seen,expected,"every native work and decision remains reachable beyond the first hundred")
+            if index<2:pager.get_by_role("button",name="Next",exact=True).click()
+        self.assertEqual(sizes,[50,50,1])
+        self.assertEqual({kind for kind,_ in seen},{"work"})
+        self.assertEqual(len(seen),101,"every native task remains reachable beyond the first hundred")
         expect(pager.get_by_role("button",name="Next",exact=True)).to_be_disabled()
         pager.get_by_role("button",name="Previous",exact=True).click()
-        expect(pager).to_contain_text("151–200 of 203 objects")
+        expect(pager).to_contain_text("51–100 of 101 tasks")
+        # The 101 proposals remain reachable: they wait in the Inbox, newest first, and each opens in its details.
+        inbox = self.api(page, "GET", "/api/v1/needs-you", status=200)
+        self.assertEqual(sum(1 for item in inbox["items"] if item["kind"] == "decision" and item["project"]["id"] == project["id"]), 101, "every proposal waits in the Inbox")
+        self.assertEqual(self.api(page, "GET", f"{base}/decisions?limit=1", status=200)["total"], 102)
 
     # ---------------------------------------------------------------- phone task views (#136 AC-2)
 
@@ -350,58 +367,58 @@ class WorkDecisionsJourney(unittest.TestCase):
 
         page = self.page("partner", phone=True)
         page.goto(f"/projects/{self.project_id}/tasks")
-        page.get_by_role("radio", name="List", exact=True).tap()
-        views = page.get_by_role("navigation", name="Task views")
-        expect(views.get_by_role("button", name="All", exact=True)).to_have_attribute("aria-pressed", "true")
-        # Whole labels with their counts, no clipped column; every view is a 44 px touch target.
-        blocked = views.get_by_role("button", name=re.compile("^Blocked"))
-        expect(blocked).to_contain_text("2")
-        self.assertGreaterEqual(blocked.bounding_box()["height"], 44, "touch target")
+        # The phone has no group views: the list with its own Mine | All row (F-026 S-P-Tasks).
+        expect(page.get_by_role("navigation", name="Task views")).to_have_count(0)
+        filters = page.get_by_role("group", name="Whose tasks")
+        expect(filters.get_by_role("button", name="All", exact=True)).to_have_attribute("aria-pressed", "true")
+        for button in filters.get_by_role("button").all():
+            self.assertGreaterEqual(button.bounding_box()["height"], 44, "touch target")
         self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), PHONE["width"], "no sideways page scroll")
+        row = page.locator(".ws-task").filter(has_text=mine)
+        expect(row).to_be_visible()
+        expect(page.locator(".ws-task").filter(has_text=theirs)).to_be_visible()
         shot(page, "tasks-phone-390-views")
 
-        blocked.tap()
-        expect(blocked).to_have_attribute("aria-pressed", "true")
-        self.assertIn("status=blocked", page.url)
-        expect(page.get_by_role("region", name=re.compile("^Open"))).to_have_count(0)
-        region = page.get_by_role("region", name=re.compile("^Blocked"))
-        expect(region).to_contain_text(mine)
-        expect(region).to_contain_text(theirs)
-
-        views.get_by_label("Only mine").check()
+        filters.get_by_role("button", name="Mine", exact=True).tap()
         self.assertIn("show=mine", page.url)
-        expect(region).to_contain_text(mine)
-        expect(region).not_to_contain_text(theirs)
-        expect(region).to_contain_text("waiting for the sensor delivery")
+        expect(row).to_be_visible()
+        expect(page.locator(".ws-task").filter(has_text=theirs)).to_have_count(0)
+        expect(row.locator(".ws-item__s")).to_contain_text("waiting for the sensor delivery")
         shot(page, "tasks-phone-390-mine-blocked")
 
-        # Opening the work and coming back from another view keeps the chosen view.
-        region.get_by_role("button", name=re.compile(re.escape(mine))).tap()
+        # Opening the work and coming back keeps the chosen view.
+        row.locator(".ws-item").tap()
         sheet = page.get_by_role("dialog", name="Details")
         expect(sheet.get_by_role("heading", name=mine)).to_be_visible()
         sheet.get_by_role("button", name="Close details").tap()
-        expect(blocked).to_have_attribute("aria-pressed", "true")
+        expect(filters.get_by_role("button", name="Mine", exact=True)).to_have_attribute("aria-pressed", "true")
         page.get_by_role("navigation", name="Project views").get_by_role("link", name="Conversation").tap()
-        # The Conversation tab opens the newest conversation, which is the task thread that the earlier result opened (#154).
         expect(page.locator(".project-convo__message-list")).to_be_visible()
         page.go_back()
-        expect(page.get_by_role("navigation", name="Task views").get_by_role("button", name=re.compile("^Blocked"))).to_have_attribute("aria-pressed", "true")
-        expect(page.get_by_role("navigation", name="Task views").get_by_label("Only mine")).to_be_checked()
-        # The Tasks tab itself also returns to the chosen view.
+        expect(page.get_by_role("group", name="Whose tasks").get_by_role("button", name="Mine", exact=True)).to_have_attribute("aria-pressed", "true")
         page.get_by_role("navigation", name="Project views").get_by_role("link", name="Conversation").tap()
         page.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile("^Tasks")).tap()
-        # The outgoing Tasks DOM can remain while the requested route loads.
-        # Check the completed destination before treating its retained controls as proof.
-        expect(page).to_have_url(re.compile(r"/tasks\?(?=[^#]*status=blocked)(?=[^#]*show=mine)"))
-        expect(page.get_by_role("navigation", name="Task views").get_by_role("button", name=re.compile("^Blocked"))).to_have_attribute("aria-pressed", "true")
-        self.assertIn("show=mine", page.url)
+        expect(page).to_have_url(re.compile(r"/tasks\?(?=[^#]*show=mine)"))
+        expect(page.get_by_role("group", name="Whose tasks").get_by_role("button", name="Mine", exact=True)).to_have_attribute("aria-pressed", "true")
 
-        # An empty view says so and offers the way back instead of a blank screen.
-        page.goto(f"/projects/{self.project_id}/tasks?status=parked&show=mine")
-        expect(page.get_by_role("navigation", name="Task views").get_by_role("button", name=re.compile("^Parked"))).to_have_attribute("aria-pressed", "true")
-        expect(page.locator(".ws-none")).to_contain_text("Nothing of yours in parked right now.")
-        page.get_by_role("button", name="Show everyone’s").tap()
-        expect(page.get_by_role("navigation", name="Task views").get_by_label("Only mine")).not_to_be_checked()
+        # Computer: the group views keep whole labels with counts, a pressed state and Only mine.
+        desk = self.page("partner")
+        desk.goto(f"/projects/{self.project_id}/tasks?status=blocked")
+        views = desk.get_by_role("navigation", name="Task views")
+        blocked = views.get_by_role("button", name=re.compile("^Blocked"))
+        expect(blocked).to_have_attribute("aria-pressed", "true")
+        expect(blocked).to_contain_text("2")
+        region = desk.get_by_role("region", name=re.compile("^Blocked"))
+        expect(region).to_contain_text(mine)
+        expect(region).to_contain_text(theirs)
+        views.get_by_label("Only mine").check()
+        self.assertIn("show=mine", desk.url)
+        expect(region).not_to_contain_text(theirs)
+        desk.goto(f"/projects/{self.project_id}/tasks?status=parked&show=mine")
+        expect(desk.get_by_role("navigation", name="Task views").get_by_role("button", name=re.compile("^Parked"))).to_have_attribute("aria-pressed", "true")
+        expect(desk.locator(".ws-none")).to_contain_text("Nothing of yours in parked right now.")
+        desk.get_by_role("button", name="Show everyone’s").click()
+        expect(desk.get_by_role("navigation", name="Task views").get_by_label("Only mine")).not_to_be_checked()
 
         # Keyboard on desktop: views are buttons in reading order with a visible pressed state.
         desk = self.page("partner")
@@ -496,29 +513,26 @@ class WorkDecisionsJourney(unittest.TestCase):
                      {"title": f"Blocked step {index:02d}: check the ToF bracket", "status": "blocked", "blocker": "parts", "owner": me}, status=201)
         page = self.page("partner", phone=True)
         page.goto(f"/projects/{self.project_id}/tasks")
-        page.get_by_role("radio", name="List", exact=True).tap()
-        views = page.get_by_role("navigation", name="Task views")
-        views.get_by_role("button", name=re.compile("^Blocked")).tap()
+        filters = page.get_by_role("group", name="Whose tasks")
         pane = page.locator(".pane-scroll").first
-        expect(page.get_by_role("region", name=re.compile("^Blocked"))).to_contain_text("Blocked step 45")
+        expect(page.locator(".ws-task").filter(has_text="Blocked step 45")).to_have_count(1)
         pane.evaluate("(el) => { el.scrollTop = 850; }")
         page.wait_for_timeout(300)
         saved = pane.evaluate("(el) => el.scrollTop")
         self.assertGreater(saved, 600, "the list is long enough to scroll")
         # Through the Conversation tab and back through the Tasks tab.
-        page.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile("^Conversation")).tap()
+        view_tab(page, "Conversation", tap=True)
         expect(page.locator(".project-convo__message-list")).to_be_visible()
         page.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile("^Tasks")).tap()
-        expect(page.get_by_role("navigation", name="Task views").get_by_role("button", name=re.compile("^Blocked"))).to_have_attribute("aria-pressed", "true")
+        expect(page.locator(".ws-task").first).to_be_visible()
         page.wait_for_timeout(300)
         self.assertLess(abs(page.locator(".pane-scroll").first.evaluate("(el) => el.scrollTop") - saved), 8, "the Tasks tab returns to the same reading position")
-        # Switching view and back, pressing the buttons directly (no automatic scrolling into view).
-        page.get_by_role("navigation", name="Task views").get_by_role("button", name=re.compile("^Open")).evaluate("(button) => button.click()")
+        # Mine and back to All, pressing the buttons directly (no automatic scrolling into view).
+        page.get_by_role("group", name="Whose tasks").get_by_role("button", name="Mine", exact=True).evaluate("(button) => button.click()")
         page.wait_for_timeout(300)
-        page.get_by_role("navigation", name="Task views").get_by_role("button", name=re.compile("^Blocked")).evaluate("(button) => button.click()")
+        page.get_by_role("group", name="Whose tasks").get_by_role("button", name="All", exact=True).evaluate("(button) => button.click()")
         page.wait_for_timeout(300)
         self.assertLess(abs(page.locator(".pane-scroll").first.evaluate("(el) => el.scrollTop") - saved), 8, "switching views keeps each view's position")
-
 
 if __name__ == "__main__":
     unittest.main()

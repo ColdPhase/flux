@@ -250,9 +250,10 @@ class DocsJourney(unittest.TestCase):
 
     def test_05_add_a_result_to_the_doc(self) -> None:
         page = self.page("partner")
-        page.goto(f"/projects/{self.project_id}/tasks")
-        page.get_by_role("radio", name="List", exact=True).click()
-        page.get_by_role("region", name=re.compile("^Results")).get_by_role("button", name=re.compile(FINDING)).click()
+        # Results have no list in Tasks (#342): the result opens by its own link, as from its task's details.
+        results = page.request.get(f"/api/v1/projects/{self.project_id}/results?limit=100").json()["items"]
+        result = next(item for item in results if item["title"].startswith(FINDING))
+        page.goto(f"/projects/{self.project_id}/tasks?open=result:{result['id']}")
         panel = page.locator("#details")
         expect(panel).to_contain_text("Not in a doc yet.")
         panel.get_by_role("button", name="Add to docs").click()
@@ -269,9 +270,7 @@ class DocsJourney(unittest.TestCase):
         result = self.api(page, "GET", f"/api/v1/results/{self.result_id}", status=200)
         self.assertTrue(any(link["from"]["type"] == "doc" and link["from"]["id"] == self.doc_id for link in result["links"]))
         # The result now shows the doc it is in.
-        page.goto(f"/projects/{self.project_id}/tasks")
-        page.get_by_role("radio", name="List", exact=True).click()
-        page.get_by_role("region", name=re.compile("^Results")).get_by_role("button", name=re.compile(FINDING)).click()
+        page.goto(f"/projects/{self.project_id}/tasks?open=result:{self.result_id}")
         expect(page.locator("#details").get_by_role("link", name=re.compile(TITLE))).to_be_visible()
 
     # ---------------------------------------------------------------- phone

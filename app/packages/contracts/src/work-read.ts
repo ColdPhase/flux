@@ -25,7 +25,8 @@ export interface WorkReadQuery {
 
 /** Flat URL fields are closed: combinations not in this union are invalid. */
 export type ProjectWorkViewQuery = WorkReadQuery & (
-  | { purpose?: 'tasks'; group?: 'all' | WorkGroup; mine?: boolean }
+  /** `kinds: 'work'` lists only tasks: the Tasks tab shows tasks, decisions wait in the Inbox (#342). */
+  | { purpose?: 'tasks'; group?: 'all' | WorkGroup; mine?: boolean; kinds?: 'work' }
   | { purpose: 'choices'; choice: 'accepted_decisions' | 'pivot_work'; q?: string }
   | { purpose: 'choices'; choice: 'result_work'; q?: string; selected?: string }
   | { purpose: 'choices'; choice: 'parked_work'; decisionId: string; q?: string }
