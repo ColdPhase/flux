@@ -37,6 +37,11 @@ export interface SignalGate extends MediaSocketRegistry {
   close(): void;
 }
 
+/** Detached media sockets must close before Fastify waits for HTTP connections to drain. */
+export function registerSignalGateShutdown(app: FastifyInstance, gate: Pick<SignalGate, 'close'>) {
+  app.addHook('preClose', async () => { gate.close(); });
+}
+
 type Decision = { admitted: true; admission: LiveAdmission; roomId: string } | { admitted: false; reason: string };
 
 function normalCloseCode(code: number): number {

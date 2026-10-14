@@ -1,0 +1,196 @@
+{
+  "recordedAt": "2026-10-03T21:21:51.632Z",
+  "versions": {
+    "node": "24.21.0",
+    "acorn": "8.18.0",
+    "ada": "4.0.0",
+    "amaro": "1.1.11",
+    "ares": "1.34.8",
+    "brotli": "1.2.0",
+    "cldr": "48.0",
+    "icu": "78.3",
+    "llhttp": "9.4.3",
+    "merve": "1.2.2",
+    "modules": "137",
+    "napi": "10",
+    "nbytes": "0.1.4",
+    "ncrypto": "0.0.1",
+    "nghttp2": "1.70.0",
+    "nghttp3": "",
+    "ngtcp2": "",
+    "openssl": "3.5.8",
+    "simdjson": "4.6.7",
+    "simdutf": "6.4.0",
+    "sqlite": "3.53.4",
+    "tz": "2026c",
+    "undici": "7.29.1",
+    "unicode": "17.0",
+    "uv": "1.52.1",
+    "uvwasi": "0.0.23",
+    "v8": "13.6.233.17-node.53",
+    "zlib": "1.3.2.1-motley-8002e91",
+    "zstd": "1.5.7"
+  },
+  "lockSha256": "84d86b9d2b0d7b9b05965186da23fe12d04cf9456b1b2fc5470b8ea5bfef1ea2",
+  "caps": {
+    "frameBytes": 65536,
+    "chunkBytes": 61440,
+    "assemblyBytes": 8388608,
+    "chunks": 144,
+    "assemblyTimeoutMs": 10000,
+    "outputWindowBytes": 1048576,
+    "assembliesPerConnection": 1,
+    "assembliesPerApi": 4,
+    "assembliesBytesPerApi": 33554432,
+    "workers": 2,
+    "workerHeapMiB": 64,
+    "workerTimeoutMs": 100,
+    "waitingTasks": 8,
+    "workerOldMiB": 48,
+    "workerYoungMiB": 16,
+    "workerCodeMiB": 16,
+    "workerStackMiB": 2,
+    "workerBootstrapMs": 2000,
+    "caches": 16,
+    "cacheBytes": 134217728,
+    "roomCacheBytes": 8388608,
+    "sockets": 32,
+    "bodyUnits": 100000,
+    "structs": 65536,
+    "deleteRanges": 65536
+  },
+  "dependencies": [
+    {
+      "name": "@codemirror/state",
+      "version": "6.7.6",
+      "license": "MIT",
+      "licenseFiles": [
+        {
+          "file": "LICENSE",
+          "sha256": "05c6130cda97e7600ca91427a41e8a065efcf82365fc0293e7de80faec494c07"
+        }
+      ]
+    },
+    {
+      "name": "@codemirror/view",
+      "version": "6.43.13",
+      "license": "MIT",
+      "licenseFiles": [
+        {
+          "file": "LICENSE",
+          "sha256": "05c6130cda97e7600ca91427a41e8a065efcf82365fc0293e7de80faec494c07"
+        }
+      ]
+    },
+    {
+      "name": "@marijn/find-cluster-break",
+      "version": "1.0.4",
+      "license": "MIT",
+      "licenseFiles": [
+        {
+          "file": "LICENSE",
+          "sha256": "9360b00fdd091f05c783b568bdd46c679c41b72415599252de98949462ea1acb"
+        }
+      ]
+    },
+    {
+      "name": "crelt",
+      "version": "1.0.7",
+      "license": "MIT",
+      "licenseFiles": [
+        {
+          "file": "LICENSE",
+          "sha256": "23852ebf6aef7fadffc92514b3c5df163a8651f2c3ed0dbb494cb49d93bd5de5"
+        }
+      ]
+    },
+    {
+      "name": "isomorphic.js",
+      "version": "0.2.5",
+      "license": "MIT",
+      "licenseFiles": [
+        {
+          "file": "LICENSE",
+          "sha256": "dd6488c9c1a4ce2dc978ecee067e5b6a725b52e6057a450b24f1a23bc373b057"
+        }
+      ]
+    },
+    {
+      "name": "lib0",
+      "version": "0.2.119",
+      "license": "MIT",
+      "licenseFiles": [
+        {
+          "file": "LICENSE",
+          "sha256": "5446db1e43fe52faf3faab7e9959fe3762ac11bdc61c0945934c498affd52d73"
+        }
+      ]
+    },
+    {
+      "name": "style-mod",
+      "version": "4.1.4",
+      "license": "MIT",
+      "licenseFiles": [
+        {
+          "file": "LICENSE",
+          "sha256": "cb4474e26547397169061d3586c00022cda5330a1b64fa13e872319f3b63aff1"
+        }
+      ]
+    },
+    {
+      "name": "w3c-keyname",
+      "version": "2.2.8",
+      "license": "MIT",
+      "licenseFiles": [
+        {
+          "file": "LICENSE",
+          "sha256": "869c30f368eb08735e779027b9f4bc9fea2f39624351856aebe42741f0bc0884"
+        }
+      ]
+    },
+    {
+      "name": "ws",
+      "version": "8.22.0",
+      "license": "MIT",
+      "licenseFiles": [
+        {
+          "file": "LICENSE",
+          "sha256": "2b29dcfe0d6471f7e8c92c5fb38c9f93edee10330937055440192f1832b1ecef"
+        }
+      ]
+    },
+    {
+      "name": "y-codemirror.next",
+      "version": "0.3.6",
+      "license": "MIT",
+      "licenseFiles": [
+        {
+          "file": "LICENSE",
+          "sha256": "005143d73a1ddc93bfa434bde58f538f49bced8f0cae42daf7d577ca0a504e1f"
+        }
+      ]
+    },
+    {
+      "name": "y-protocols",
+      "version": "1.0.7",
+      "license": "MIT",
+      "licenseFiles": [
+        {
+          "file": "LICENSE",
+          "sha256": "5446db1e43fe52faf3faab7e9959fe3762ac11bdc61c0945934c498affd52d73"
+        }
+      ]
+    },
+    {
+      "name": "yjs",
+      "version": "13.6.33",
+      "license": "MIT",
+      "licenseFiles": [
+        {
+          "file": "LICENSE",
+          "sha256": "341baa53605ed85d6f95782322854cca56c655ebc7fd4712649b8e7afc6020ff"
+        }
+      ]
+    }
+  ]
+}

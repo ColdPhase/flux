@@ -1,0 +1,15 @@
+setup-failure.log.gz: byte-for-byte original, both SHA256/size pairs and mtime0 PASS
+source=06b8cc9d1a1823429f81d20f3a9ccde71d06aef3 mode=baseline project=flux-live-http-baseline-1791405051-1226214
+control_mode=baseline source=06b8cc9d1a1823429f81d20f3a9ccde71d06aef3 project=flux-live-http-baseline-1791405051-1226214 exit=1
+
+baseline.log.gz: byte-for-byte original, both SHA256/size pairs and mtime0 PASS
+source=06b8cc9d1a1823429f81d20f3a9ccde71d06aef3 mode=baseline-files project=flux-live-http-baseline-files-1791405202-1240949
+control_mode=baseline-files source=06b8cc9d1a1823429f81d20f3a9ccde71d06aef3 project=flux-live-http-baseline-files-1791405202-1240949 exit=1
+
+candidate.log.gz: byte-for-byte original, both SHA256/size pairs and mtime0 PASS
+source=d5bf0be2a8a96c943397262add758e64c9ed4b43 mode=candidate project=flux-live-http-candidate-1791405313-1252586
+control_mode=candidate source=d5bf0be2a8a96c943397262add758e64c9ed4b43 project=flux-live-http-candidate-1791405313-1252586 exit=0
+
+baseline-files: counts independently verified {'tests': 14, 'pass': 11, 'fail': 3, 'cancelled': 0, 'skipped': 0, 'todo': 0}
+
+candidate: counts independently verified {'tests': 14, 'pass': 14, 'fail': 0, 'cancelled': 0, 'skipped': 0, 'todo': 0}

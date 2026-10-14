@@ -1,0 +1,15 @@
+{
+  "project": "flux389-open-age-primary-1791816336-3726643",
+  "remaining": {
+    "containers": "",
+    "networks": "",
+    "volumes": "",
+    "image_tags": ""
+  },
+  "marker_removed": true,
+  "run_tags_removed": true,
+  "private_state_env_backups_removed": false,
+  "private_failure_evidence_retained": true,
+  "external_provider_bind_removed": true,
+  "external_provider_file_count": 3
+}
