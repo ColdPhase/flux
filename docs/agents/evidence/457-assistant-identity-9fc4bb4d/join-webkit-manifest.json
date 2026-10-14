@@ -1,0 +1,23 @@
+{
+  "sourceSha": "9fc4bb4d3b7310b7b8745f8de81cc2047268f54f",
+  "engine": "webkit",
+  "viewport": {
+    "width": 390,
+    "height": 844
+  },
+  "cssZoom": 1,
+  "themes": [
+    "light",
+    "dark"
+  ],
+  "compute": "fake metadata only; zero model calls",
+  "observed": [
+    "Request→Needs You question with immutable assistant/owner identity→manager Review/Allow",
+    "no grant before Allow",
+    "ordinary reader sees no request and API Allow403",
+    "contributor grant persisted after Allow",
+    "failed Allow keeps pending request",
+    "keyboard Enter",
+    "44px targets"
+  ]
+}
