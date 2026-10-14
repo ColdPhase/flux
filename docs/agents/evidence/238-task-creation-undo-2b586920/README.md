@@ -5,7 +5,7 @@ The source under review is `2b58692015218f9cb0acc132fadd313eb3df99cc`, composed 
 ## Verification
 
 - Current exact-head required checks: Agent setup (run `38522209246`) and Application validation (run `38522209214`) pass.
-- Bounded Undo API/core/migration/reversal tests at `b4f01d958f5764e752951be90fdf5eec5346ada4`: 65/65 pass, including the accepted migration 0059 compatibility and preservation of Undo history (`logs/flux394-b4-focused.log.gz`).
+- Bounded Undo API/core/migration/reversal tests at `b4f01d958f5764e752951be90fdf5eec5346ada0`: 65/65 pass, including the accepted migration 0059 compatibility and preservation of Undo history (`logs/flux394-b4-focused.log.gz`).
 - Undo E2E at `127221579838b6353efdd99c3cdaeb55ff96f4ac`: Chromium test C1 1/1 pass; WebKit W10 10/10 pass. Compose cleanup completed. The latest UI source is equivalent for these routes; the subsequent main composition changes only Wiki UI.
 - Paired `scripts/check_backup.sh` at exact composed tree `2b586920`: PASS. It exercised DB and files backup/restore, historical reverted task/notices/receipt and bearer state, schema 94 upgrade from prior main with migrations 0048/0060, guarded pre-use reversal to the prior image, re-upgrade, refusal after use and failed-upgrade recovery. Compose cleanup completed. Full transcript is in `logs/flux394-2b586920-backup-restore.log.gz`.
 
