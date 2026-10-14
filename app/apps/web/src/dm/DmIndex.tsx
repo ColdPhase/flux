@@ -9,6 +9,24 @@ import { Avatar, Button, EmptyState, Icon } from '../ui';
 import { audienceOf } from './names';
 import './dm.css';
 
+/** The rows of conversations with people; Home's Projects shows them on the phone (#341). */
+export function DmRows() {
+  const { directMessages } = useShellData();
+  return (
+    <ul className="dm-index" aria-label="Conversations">
+      {directMessages.map((dm) => (
+        <li key={dm.id}>
+          <Link to={`/dm/${dm.id}`} className="dm-index__item">
+            <Avatar name={dm.kind === 'group' ? dm.title : dm.people[0] ?? dm.title} size="lg" />
+            <span className="dm-index__text"><b>{dm.title}</b><span>{dm.preview ?? 'No messages yet'}</span></span>
+            {dm.lastAt ? <time dateTime={dm.lastAt}>{new Date(dm.lastAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</time> : null}
+          </Link>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 /** Direct messages (#107): the list of conversations with people, outside any project. */
 export function DmIndex() {
   const { directMessages } = useShellData();
@@ -29,17 +47,7 @@ export function DmIndex() {
         <div><p>Only the people in each conversation can read it.</p></div>
         <Link className="ui-btn ui-btn--secondary" to="/dm/new"><Icon name="plus" size={14} />New message</Link>
       </div>
-      <ul className="dm-index" aria-label="Conversations">
-        {directMessages.map((dm) => (
-          <li key={dm.id}>
-            <Link to={`/dm/${dm.id}`} className="dm-index__item">
-              <Avatar name={dm.kind === 'group' ? dm.title : dm.people[0] ?? dm.title} size="lg" />
-              <span className="dm-index__text"><b>{dm.title}</b><span>{dm.preview ?? 'No messages yet'}</span></span>
-              {dm.lastAt ? <time dateTime={dm.lastAt}>{new Date(dm.lastAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</time> : null}
-            </Link>
-          </li>
-        ))}
-      </ul>
+      <DmRows />
     </div></div>
   );
 }

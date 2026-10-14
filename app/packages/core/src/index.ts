@@ -50,6 +50,7 @@ export type { LiveInvitation, LiveInvitationPorts, LiveInvitationTarget, LiveInv
   LiveInvitationCursor, LiveInvitationPage, LiveInvitationPageRow } from './live/invitations.js';
 export * from './agent-connection/proposals.js';
 export * from './returns/index.js';
+export * from './needs-you/index.js';
 export * from './direct-messages/index.js';
 export { policyDmAccess } from './access/dm-access.js';
 export * from './docs/index.js';
@@ -90,8 +91,12 @@ export * from './editing/map-ports.js';
 
 export * from './editing/map-journal.js';
 export * from './agent-connection/project-policy.js';
+export * from './agent-connection/agent-stops.js';
+export * from './agent-connection/agent-questions.js';
 export * from './agent-connection/project-agents.js';
 
 export * from './files/ports.js';
 export * from './files/service.js';
 export * from './agent-runtime/index.js';
+
+export * from './assistant/index.js';

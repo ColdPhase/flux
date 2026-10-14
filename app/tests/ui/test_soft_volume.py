@@ -14,7 +14,7 @@ import uuid
 from playwright.sync_api import Browser, Page, expect, sync_playwright
 
 from contrast import MEASURE
-from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
+from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, open_details, shot, start_forwarder
 
 PASSWORD = "soft volume everywhere"
 # The final design's tokens (docs/design/final/README.md §2).
@@ -205,8 +205,9 @@ class SoftVolume(unittest.TestCase):
                     page.evaluate("document.fonts.ready")
                     shot(page, f"338-{self.engine}-files-{'390' if phone else '1440'}-{scheme}")
                     page.goto(f"/projects/{self.ids['project']}/tasks")
-                    page.get_by_role("radio", name="List", exact=True).click()
-                    counter = page.locator(".ws-view__n").first
+                    if not phone:  # the phone is always the list
+                        page.get_by_role("radio", name="List", exact=True).click()
+                    counter = (page.locator(".ws-task .ui-task-number") if phone else page.locator(".ws-view__n")).first
                     expect(counter).to_be_visible()
                     self.assert_mono(counter)
                     page.wait_for_function("() => ['Geist', 'Geist Mono'].every(name => [...document.fonts].some(f => f.family.replace(/\"/g, '') === name && f.status === 'loaded'))")
@@ -239,7 +240,8 @@ class SoftVolume(unittest.TestCase):
                 with self.subTest(scheme=scheme, phone=phone):
                     page = self.page(scheme=scheme, phone=phone)
                     page.goto(f"/projects/{self.ids['project']}/tasks")
-                    page.get_by_role("radio", name="List", exact=True).click()
+                    if not phone:  # the phone is always the list
+                        page.get_by_role("radio", name="List", exact=True).click()
                     for status, word in STATES.items():
                         task = page.locator(f"li[data-work-id='{self.ids[status]}']")
                         row = task.locator(".ui-glyph--" + status)
@@ -266,7 +268,8 @@ class SoftVolume(unittest.TestCase):
                     page.goto(f"/dm/{self.ids['dm']}")
                     expect(page.locator(".dm-msg__meta time").first).to_be_visible()
                     self.assert_mono(page.locator(".dm-msg__meta time").first)
-                    page.get_by_role("button", name="Details", exact=True).click()
+                    open_details(page)
+                    page.wait_for_timeout(400)  # the panel finishes fading in before contrast is measured
                     avatar = page.locator(".details__person .ui-avatar--me")
                     expect(avatar).to_have_text("AS")
                     page.wait_for_function("""() => { const el = document.querySelector('.details__person .ui-avatar--me');

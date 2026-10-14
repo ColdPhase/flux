@@ -2,7 +2,7 @@ import { z } from 'zod';
 import type { AgentExecutionCommand, AgentJsonValue, AgentOperation, AgentPostcondition, AuthenticatedAgentRuntime,
   ObjectRef } from '@flux/contracts';
 import { sketchRows, type DbExecutor } from '@flux/db';
-import { agentExecutionUseCases, requestHash, type Database, type Principal } from '@flux/core';
+import { agentExecutionUseCases, requestHash, type Database, type Principal, type Transaction } from '@flux/core';
 import { nativeConversationsInEventSession } from '../conversation/store.js';
 import { nativeDocsInEventSession } from '../docs/adapters.js';
 import { nativeMapRoomExists, prepareNativeMap } from '../editing/native-map-journal.js';
@@ -35,6 +35,9 @@ export interface NativeActions {
   docs: ReturnType<typeof nativeDocsInEventSession>;
   /** The project conversation start/reply commands with the agent as real author, in this transaction. */
   conversations: ReturnType<typeof nativeConversationsInEventSession>;
+  /** This action's transaction and event session, for a native effect that composes its own ports (the question card). */
+  transaction: Transaction;
+  events: ReturnType<typeof transactionEventSession>;
   /** The acting agent, from the server-issued runtime, never from tool input. */
   agent: Principal;
   runtime: AuthenticatedAgentRuntime;
@@ -73,7 +76,7 @@ export function nativeActionExecutor(db: Database, claims: FluxMcpClaims) {
         }
         return effect({ work: nativeWorkInEventSession(tx, session), maps: nativeSketchInEventSession(tx, session,{prepared:live,commandId:input.clientCommandId,operation:`native-agent:${operation}`,fingerprint:requestHash(command),retainUntil:release=>releases.add(release)}),
           docs: nativeDocsInEventSession(tx, session), conversations: nativeConversationsInEventSession(tx, session),
-          agent: { kind: 'agent', id: scope.context.agentId }, runtime: scope.context,
+          transaction: tx, events: session, agent: { kind: 'agent', id: scope.context.agentId }, runtime: scope.context,
           async mapCheckpoint(mapId) {
             const map = await sketchRows(tx).findSketch(mapId);
             if (!map) throw new Error('A changed map vanished inside its transaction');

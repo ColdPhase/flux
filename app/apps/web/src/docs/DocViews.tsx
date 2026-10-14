@@ -2,14 +2,17 @@ import { lazy, Suspense, useEffect, useMemo, useState, type MouseEvent, type Rea
 import { useRegisterLiveHere } from '../live/LiveProvider';
 import { Link, redirect, useLoaderData, useNavigate, useRevalidator, useSearchParams, type LoaderFunctionArgs } from 'react-router';
 import type { Doc, DocSummary, DocVersion, DocVersionSummary, ObjectLink, Project } from '@flux/contracts';
-import { EmptyState, Icon } from '../ui';
+import { EmptyState, Icon, Spinner } from '../ui';
 import { useShellData } from '../app/data';
 import { useShellActions } from '../app/shellContext';
 import { docUrl, getDoc, getVersion, listVersions, listWorkspaceDocs } from './api';
 import { diffDocs, diffStats, readableRefs, type DiffRow } from './diff';
 import { draftKey, readKept } from './drafts';
 import { STATE_LABEL, authorLabel, docLinks, kindLabel, longDate, pathOfLink, shortDate } from './format';
-import { DownloadButton, ShareButton, WikiBar, WikiIcon } from './WikiParts';
+import { DocProse } from './DocProse';
+import { DownloadButton, PageMenu, ShareButton, WikiBar, WikiIcon } from './WikiParts';
+import { EditedBy, Outline, useProse } from './WikiRead';
+import { useAgentOwners } from '../agents/owners';
 import { useWiki } from './wiki-context';
 import './docs.css';
 import { editingCapability, useEditingCapability } from '../editing/capability';
@@ -71,7 +74,7 @@ function DocRow({ doc, showProject }: { doc: DocSummary; showProject?: boolean }
 
 /** The wiki without a page to open: the project has none yet (otherwise the loader opens one). */
 export function WikiHome() {
-  const { project, docs, writable } = useWiki();
+  const { project, docs, writable, compact, importing, importError, importErrorId, startImport } = useWiki();
   useRefresh();
   return (
     <>
@@ -82,6 +85,16 @@ export function WikiHome() {
             <p>{writable
               ? 'Write down how things work and what you learned: start a new page, or import a Markdown file. A result or decision can start a page from its details, and every change keeps the earlier version.'
               : `When people in ${project.name} write pages, they appear here.`}</p>
+            {/* On a phone the page list is a chip row of pages only, so the first page starts here. */}
+            {compact && writable ? (
+              <div className="wiki-empty__acts">
+                <Link className="ui-btn ui-btn--primary" to={`/projects/${project.id}/docs/new`}><Icon name="plus" size={16} />New page</Link>
+                <button type="button" className="ui-btn ui-btn--secondary" onClick={startImport} aria-busy={importing || undefined}
+                  aria-disabled={importing || undefined} aria-describedby={importError ? importErrorId : undefined}>
+                  {importing ? <Spinner /> : <WikiIcon name="upload" size={16} />}Import .md
+                </button>
+              </div>
+            ) : null}
           </EmptyState></div>
         )}
         <Audience project={project} />
@@ -189,8 +202,7 @@ function LinkList({ title, links, end, projectId, empty }: { title: string; link
 export function DocReader() {
   const { doc, historical } = useLoaderData() as ReaderData;
   const { me } = useShellData();
-  // A versions URL is always a saved snapshot; only the current page shows the shared working copy
-  // (#228), and only when this API's live capability is configured (#239 review).
+  // Load the CRDT-backed reader only when configured, and never for an explicit version URL.
   const capability = useEditingCapability();
   if (capability !== 'configured' || historical) return <DocReading live={null} />;
   return <Suspense fallback={<DocReading live={null} />}>
@@ -200,35 +212,37 @@ export function DocReader() {
 
 function DocReading({ live }: { live: LiveReadingState | null }) {
   const { doc, shown, historical } = useLoaderData() as ReaderData;
-  const { project, writable } = useWiki();
+  const { project, docs, writable, compact } = useWiki();
   const { me } = useShellData();
   const navigate = useNavigate();
   const revalidator = useRefresh();
-  const onClick = useReferenceClicks();
-  // With live editing a versions URL is a saved snapshot even for the newest version; otherwise, as
-  // before #228, the newest version reads as the current page.
-  const capability = useEditingCapability();
-  const current = capability === 'configured' ? !historical : shown.version === doc.version;
+  const owners = useAgentOwners(project);
+  const [prose, setProse] = useState<HTMLElement | null>(null);
   const working = live?.working ?? null;
+  const html = working?.html ?? shown.html;
+  const text = working?.text ?? shown.body;
+  const { headings, marks } = useProse(prose, html, project.id, owners);
+  const onClick = useReferenceClicks();
+  const capability = useEditingCapability();
+  const current = !historical && (capability === 'configured' || shown.version === doc.version);
   const savedVersion = working?.savedVersion ?? doc.version;
-  useEffect(() => { if (!historical && savedVersion > doc.version && revalidator.state === 'idle') revalidator.revalidate(); }, [historical, savedVersion, doc.version, revalidator]);
+  useEffect(() => {
+    if (!historical && savedVersion > doc.version && revalidator.state === 'idle') revalidator.revalidate();
+  }, [historical, savedVersion, doc.version, revalidator]);
   const { sources, mentions, backlinks } = docLinks(doc);
   const missing = shown.mentions.filter((item) => !item.path).length;
   const base = docUrl(project.id, doc.id);
   const edit = `${base}/edit`;
-  // Unsaved editor text for this page stays in this tab; say so where the page is read.
   const kept = writable && current && !!readKept(draftKey(me.user.id, doc.id, project.id));
-  // The doc anchors a session; "Show this" points at exactly the version on screen.
   useRegisterLiveHere({ projectId: project.id, context: { type: 'doc', id: doc.id }, label: doc.title },
-    { ref: { type: 'material', id: doc.id, version: shown.version }, label: shown.title, what: current ? `doc · version ${shown.version}` : `doc · earlier version ${shown.version}` });
-  // "E" opens the editor, as the Edit button announces, while nothing else takes the keys.
+    { ref: { type: 'material', id: doc.id, version: shown.version }, label: shown.title,
+      what: current ? `doc · version ${shown.version}` : `doc · earlier version ${shown.version}` });
   useEffect(() => {
     if (!writable || !current) return;
     const onKey = (event: KeyboardEvent) => {
       if (event.key.toLowerCase() !== 'e' || event.metaKey || event.ctrlKey || event.altKey || event.defaultPrevented || isTyping(event.target)) return;
       const target = event.target as HTMLElement | null;
       if (document.getElementById('root')?.inert || (target && target !== document.body && !target.closest('.wiki-frame, #content'))) return;
-      // Not while Share or Download is open, even with focus on one of its buttons.
       if (target?.closest('[role="dialog"]')) return;
       event.preventDefault();
       navigate(edit);
@@ -236,44 +250,59 @@ function DocReading({ live }: { live: LiveReadingState | null }) {
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
   }, [writable, current, edit, navigate]);
+  const historyTo = `${base}/history${current ? '' : `?to=${shown.version}`}`;
+  const historyLabel = `History, ${doc.version} ${doc.version === 1 ? 'version' : 'versions'}`;
+  const keptLink = kept ? <Link className="wiki-bar__kept" to={edit}>Unsaved changes in this tab</Link> : null;
+  const editButton = writable && current
+    ? <Link className={`ui-btn ui-btn--primary ${compact ? 'wiki-edit' : 'wiki-bar__primary'}`} to={edit} aria-keyshortcuts="e"><Icon name="edit" size={16} />Edit</Link> : null;
   return (
     <>
-      <WikiBar meta={<>
-        <span className="doc-head__k">{STATE_LABEL[shown.state]} · version {shown.version}{current ? '' : ` of ${doc.version}`}</span>
-        {kept ? <Link className="wiki-bar__kept" to={edit}>Unsaved changes in this tab</Link> : null}
-      </>}>
-        <Link className="ui-icon-btn" to={`${base}/history${current ? '' : `?to=${shown.version}`}`}
-          aria-label={`History, ${doc.version} ${doc.version === 1 ? 'version' : 'versions'}`} data-tip={`History · ${doc.version} ${doc.version === 1 ? 'version' : 'versions'}`}>
-          <WikiIcon name="history" />
-        </Link>
-        <ShareButton path={current ? base : `${base}/versions/${shown.version}`} version={current ? null : shown.version} />
-        <DownloadButton shown={{ title: shown.title, body: shown.body, version: shown.version, current }} />
-        {writable && current ? <Link className="ui-btn ui-btn--primary wiki-bar__primary" to={edit} aria-keyshortcuts="e">Edit</Link> : null}
+      <WikiBar compactInHeader phoneMeta={<span className="wiki-bar__title"><b>Wiki</b> · {docs.length} {docs.length === 1 ? 'page' : 'pages'}</span>} meta={compact
+        ? <span className="wiki-bar__title"><b>Wiki</b> · {docs.length} {docs.length === 1 ? 'page' : 'pages'}</span>
+        : <><span className="doc-head__k">{STATE_LABEL[shown.state]} · version {shown.version}{current ? '' : ` of ${doc.version}`}</span>{keptLink}</>}>
+        {compact ? (
+          <PageMenu sharePath={current ? base : `${base}/versions/${shown.version}`} shareVersion={current ? null : shown.version}
+            shown={{ title: shown.title, body: text, version: shown.version, current }}
+            history={<Link className="wiki-pop__item" to={historyTo} aria-label={historyLabel}><WikiIcon name="history" /><span><b>History</b><small>{doc.version} {doc.version === 1 ? 'version' : 'versions'}, {STATE_LABEL[shown.state].toLowerCase()}</small></span></Link>} />
+        ) : (
+          <>
+            <Link className="ui-icon-btn" to={historyTo} aria-label={historyLabel} data-tip={`History · ${doc.version} ${doc.version === 1 ? 'version' : 'versions'}`}>
+              <WikiIcon name="history" />
+            </Link>
+            <ShareButton path={current ? base : `${base}/versions/${shown.version}`} version={current ? null : shown.version} />
+            <DownloadButton shown={{ title: shown.title, body: text, version: shown.version, current }} />
+            {editButton}
+          </>
+        )}
       </WikiBar>
-      <article className="wiki-doc doc" data-shift aria-labelledby="doc-title">
-        <p className="wiki-doc__crumb"><Icon name="doc" size={13} /><span>{project.name}</span></p>
-        {!current ? (
-          <p className="doc-notice"><Icon name="undo" size={14} />{shown.version < doc.version ? 'You are reading an earlier version.' : 'You are reading a saved version.'} It stays as it was written.
-            <Link to={base}>Open the current version</Link><Link to={`${base}/history?from=${shown.version}&to=${doc.version}`}>What changed since</Link></p>
-        ) : null}
-        <header className="doc-head">
-          <h2 id="doc-title" className="doc-head__t">{shown.title}</h2>
-          <p className="doc-head__change"><span>{authorLabel(shown.author)}</span> · <time dateTime={shown.createdAt}>{longDate(shown.createdAt)}</time> · <span className="doc-head__why">{shown.reason}</span></p>
-        </header>
-        {working ? <p className="doc-notice" data-live-reader data-live-generation={working.generation} data-live-sequence={working.sequence}>Shared working copy · last saved version {working.savedVersion}. Sources and citations keep their saved version.{working.presence}</p> : null}
-        {live?.problem ? <p className="doc-notice" role="alert">{live.problem}</p> : null}
-        {(working?.text ?? shown.body).trim()
-          ? <div className="doc-prose" onClick={onClick} dangerouslySetInnerHTML={{ __html: working?.html ?? shown.html }} />
-          : <p className="doc-muted doc-empty">This page has no text yet.{writable && current ? <> <Link to={edit}>Start writing</Link></> : null}</p>}
-        {missing ? <p className="doc-notice"><Icon name="alert" size={14} />{missing === 1 ? 'One link points' : `${missing} links point`} to something that is not in this project or no longer exists. It shows as plain text.</p> : null}
-        <div className="doc-foot">
-          <LinkList title="Added from" links={sources} end="to" projectId={project.id} />
-          {current ? <LinkList title="Links in this page" links={mentions} end="to" projectId={project.id} /> : null}
-          <LinkList title="Linked from" links={backlinks} end="from" projectId={project.id} empty="Nothing links here yet. Other pages and work can link to this page." />
-          <Audience project={project} />
-          <p className="doc-ids">Started by {authorLabel(doc.createdBy)} · {shortDate(doc.startedAt)}</p>
-        </div>
-      </article>
+      <div className="wiki-read" key={doc.id}>
+        <article className="wiki-doc wiki-doc--read doc" data-shift aria-labelledby="doc-title">
+          {compact && keptLink ? <p className="doc-notice">{keptLink}</p> : null}
+          {!current ? (
+            <p className="doc-notice"><Icon name="undo" size={14} />{historical && shown.version === doc.version ? 'You are reading a saved version.' : 'You are reading an earlier version.'} It stays as it was written.
+              <Link to={base}>Open the current version</Link><Link to={`${base}/history?from=${shown.version}&to=${doc.version}`}>What changed since</Link></p>
+          ) : null}
+          <header className="doc-head">
+            <h2 id="doc-title" className="doc-head__t">{shown.title}</h2>
+            <EditedBy editor={shown.author} at={shown.createdAt} reason={shown.reason} starter={doc.createdBy} startedAt={doc.startedAt} owners={owners} />
+          </header>
+          {working ? <p className="doc-notice" data-live-reader data-live-generation={working.generation} data-live-sequence={working.sequence}>Shared working copy · last saved version {working.savedVersion}. Sources and citations keep their saved version.{working.presence}</p> : null}
+          {live?.problem ? <p className="doc-notice" role="alert">{live.problem}</p> : null}
+          {text.trim()
+            ? <><DocProse html={html} onReady={setProse} onClick={onClick} />{marks}</>
+            : <p className="doc-muted doc-empty">This page has no text yet.{writable && current ? <> <Link to={edit}>Start writing</Link></> : null}</p>}
+          {missing ? <p className="doc-notice"><Icon name="alert" size={14} />{missing === 1 ? 'One link points' : `${missing} links point`} to something that is not in this project or no longer exists. It shows as plain text.</p> : null}
+          <div className="doc-foot">
+            <LinkList title="Added from" links={sources} end="to" projectId={project.id} />
+            {current ? <LinkList title="Links in this page" links={mentions} end="to" projectId={project.id} /> : null}
+            <LinkList title="Linked from" links={backlinks} end="from" projectId={project.id} empty="Nothing links here yet. Other pages and work can link to this page." />
+            <Audience project={project} />
+            <p className="doc-ids">Started by {authorLabel(doc.createdBy)} · {shortDate(doc.startedAt)}</p>
+          </div>
+        </article>
+        {!compact && headings.length > 1 ? <Outline headings={headings} scroller={prose?.closest<HTMLElement>('.wiki-main') ?? null} /> : null}
+      </div>
+      {compact ? editButton : null}
     </>
   );
 }

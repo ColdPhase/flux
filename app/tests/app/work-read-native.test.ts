@@ -164,6 +164,12 @@ describe('bounded native work reads through HTTP and current native fences', () 
       return page;
     };
     const initial = await observe(3, 2);
+    // The Tasks tab lists tasks only (#342): `kinds=work` leaves decisions and results to the Inbox and to their tasks.
+    const tasksOnly = await get<ProjectWorkView>(`${path}/work-view?kinds=work&limit=100`);
+    const everything = await get<ProjectWorkView>(`${path}/work-view?limit=100`);
+    assert.ok(tasksOnly.items.length > 0 && tasksOnly.items.every((item) => item.kind === 'work'));
+    assert.ok(everything.items.some((item) => item.kind === 'decision'), 'API readers still get decisions in the whole view');
+    assert.equal(tasksOnly.total, everything.items.filter((item) => item.kind === 'work').length, 'the total counts only tasks');
     const plain = initial.items.find(({ id }) => id === pending.id) as WorkRowProjection;
     assert.deepEqual(plain.prerequisiteCounts, { total: 0, unmet: 0 });
     const change = async (id: string, command: Record<string, unknown>) => {

@@ -1,3 +1,4 @@
+import { assistantRoutes } from './assistant/routes.js';
 import { EventEmitter } from 'node:events';
 import type { Server } from 'node:http';
 import { join } from 'node:path';
@@ -34,10 +35,13 @@ import { joinRateLimiter } from './live/rate-limit.js';
 import { agentProposalRoutes } from './agent-connection/routes.js';
 import { projectAgentRoutes } from './agent-connection/project-agents.js';
 import { agentPolicyRoutes } from './agent-connection/project-policy.js';
+import { agentStopRoutes } from './agent-connection/agent-stops.js';
+import { agentQuestionRoutes } from './agent-connection/agent-questions.js';
 import { agentMcpPolicyRoutes } from './agent-connection/mcp-policy-routes.js';
 import { proactiveComparisonRoutes } from './proactive-comparison/routes.js';
 import { registerMcpRoute } from './agent-connection/mcp-route.js';
 import { returnRoutes } from './returns/routes.js';
+import { needsYouRoutes } from './needs-you/routes.js';
 import { docRoutes } from './docs/routes.js';
 import { notificationRoutes } from './notifications/routes.js';
 import { searchRoutes } from './search/routes.js';
@@ -193,6 +197,8 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
   await app.register(agentProposalRoutes, { db, sessions: identity, oauthSecret: identityConfig.secret, publicOrigin: identityConfig.publicOrigin });
   await app.register(projectAgentRoutes, { db, sessions: identity });
   await app.register(agentPolicyRoutes, { db, sessions: identity });
+  await app.register(agentStopRoutes, { db, sessions: identity });
+  await app.register(agentQuestionRoutes, { db, sessions: identity });
   await app.register(agentMcpPolicyRoutes, { db, sessions: identity });
   await app.register(proactiveComparisonRoutes, { db, sessions: identity, backgroundMasterKey: config.backgroundMasterKey,
     comparisonsEnabled: config.backgroundComparisons });
@@ -200,11 +206,13 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
     identity.standing && identityConfig.oidc ? { checker: identity.standing, label: identityConfig.oidc.label } : null,
     identity.confirmation, identityConfig.oidc?.label);
   await app.register(returnRoutes, { db, sessions: identity });
+  await app.register(needsYouRoutes, { db, sessions: identity });
   await app.register(docRoutes, { db, sessions: identity });
   await app.register(notificationRoutes, { db, sessions: identity, smtp: identityConfig.smtp, publicOrigin: identityConfig.publicOrigin });
   // Personal assistant runs (#68): the server queues; the worker dispatches.
   const personalRuns = personalRunServerComposition(env, db);
   if (personalRuns.mode !== 'production') app.log.warn({ mode: personalRuns.mode }, 'TEST ONLY: personal runs use fixture connections and a mock provider');
+  await app.register(assistantRoutes, { db, sessions: identity, boss });
   await app.register(personalRunRoutes, { db, sessions: identity, boss, connections: personalRuns.connections, providerEnabled: personalRuns.providerEnabled });
   await app.register(searchRoutes, { db, sessions: identity, cursorSecret: identityConfig.secret, exposeWork });
   await app.register(exportRoutes, { db, sessions: identity, publicOrigin: identityConfig.publicOrigin, storage: fileStorage });

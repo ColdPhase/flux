@@ -9,6 +9,13 @@
 .lv-entry__btn { gap: 6px; padding: 0 10px; }
 .lv-entry__btn--join { padding: 0 12px 0 10px; }
 .lv-entry__live { gap: 6px; padding: 0 10px; color: var(--t2); }
+.lv-menu { border-top: 1px solid var(--line); padding-top: 4px; }
+.lv-menu__act { width: 100%; min-height: 44px; justify-content: flex-start; padding: 10px; text-align: left; }
+.lv-menu__act > span { min-width: 0; }
+.lv-menu__act b { font-size: var(--fs-md); font-weight: 500; }
+.lv-menu__act small { display: block; font-size: var(--fs-xs); font-weight: 400; color: var(--t3); white-space: normal; }
+.lv-menu__note { margin: 0; padding: 6px 10px; font-size: var(--fs-xs); line-height: 1.5; color: var(--t2); }
+.lv-menu__note p { margin: 4px 0 0; }
 .lv-faces { display: inline-flex; align-items: center; }
 .lv-faces .ui-avatar { box-shadow: 0 0 0 2px var(--bg); }
 .lv-faces > * + * { margin-left: -6px; }

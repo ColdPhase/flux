@@ -756,18 +756,20 @@ are not committed. Only the facts behind a finding are listed.
   - **Negative controls:** Jonas sees the Codex row without `Waiting for you`. With the
     stub answered, Ada's Codex row reads `Working on #1`.
 
-### P2-2 — Requests shows what waits for you
+### P2-2 — Agent questions show what waits for you
 
 - **Files.** `ProjectAgents.tsx`, the first item of `agents-links`.
-- **Behaviour.** It uses the P2-1 list of open questions asked of me in this project.
-  - **None:** `Requests · No requests for you`. It still links to the Inbox.
-  - **One or more:** the existing count pill, then `Request · Codex asks: “Merge PR 42 now,
-    or wait…”` (`Requests` when more than one, showing the newest).
+- **Behaviour.** It uses the P2-1 list of open questions asked of me by project agents. This
+  row is distinct from assistant join requests, which have their own control immediately above.
+  - **None:** `Agent questions · No open questions for you`. It still links to the Inbox.
+  - **One or more:** the existing count pill, then `Agent questions · Codex asks: “Merge PR 42
+    now, or wait…”` (showing the newest).
   - Activating it opens the question: with a `taskId`, through the P1-2 thread; otherwise
     at `/projects/{pid}/conversations/{conversationId}`.
 - **UI test** `test_04_requests_shows_what_waits_for_you`. Ada sees `1` and `Codex asks:
-  “Merge PR 42 now`. Clicking it shows the thread with a `.qcard` inside.
-  - **Negative control:** Jonas sees `No requests for you`.
+  “Merge PR 42 now`. Clicking it shows the thread with a `.qcard` inside. The `Agent questions`
+  label distinguishes this row from assistant join requests above.
+  - **Negative control:** Jonas sees `No open questions for you`.
 - **[backend → issue]** Requests between agents, after the #153 inbox read and the #160
   `requests` projection.
 
