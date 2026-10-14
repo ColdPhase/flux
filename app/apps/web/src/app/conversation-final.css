@@ -10,6 +10,7 @@
 .convo-notice__meta strong { min-width: 0; max-width: 100%; overflow-wrap: anywhere; font-size: var(--fs-base); font-weight: 600; color: var(--t1); }
 .convo-notice__meta .agent-id { vertical-align: baseline; }
 .convo-notice__meta .agent-id__name { white-space: normal; overflow: visible; overflow-wrap: anywhere; }
+.convo-notice__kind { color: var(--t3); font-size: var(--fs-sm); }
 .convo-notice__what { min-width: 0; }
 .convo-notice__src { padding: 0; border: 0; background: none; color: var(--t1); font: inherit; text-decoration: underline; text-decoration-color: var(--line2); text-underline-offset: 2px; }
 button.convo-notice__src { cursor: pointer; }
@@ -23,6 +24,7 @@ button.convo-notice__src:focus-visible { outline: 2px solid var(--t1); outline-o
 .convo-notice__task > svg { flex: none; color: var(--t2); }
 .convo-notice__num { flex: none; color: var(--t3); }
 .convo-notice__title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.convo-notice--undone .convo-notice__title { display: block; overflow: visible; text-overflow: clip; white-space: normal; }
 .convo-notice__owner { flex: none; display: inline-flex; align-items: center; gap: 6px; color: var(--t3); font-size: var(--fs-xs); }
 @media (pointer: coarse) { .convo-notice__task { min-height: 44px; } }
 .convo-notice + .convo-notice { margin-top: 14px; }

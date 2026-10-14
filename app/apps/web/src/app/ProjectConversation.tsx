@@ -31,7 +31,6 @@ import { agentAuthorOwner, useAgentOwners, type AgentOwners } from '../agents/ow
 import { OneConversation, type PaneProps } from './OneConversation';
 import { ComposerHint, ComposerMenu, composerOptions, composerTrigger, type ComposerOption } from './ComposerMenu';
 import { cite as citeMessage, onCite, quoteOf } from './citeBus';
-import { ThreadMessageActions } from './ThreadDrawer';
 import { QuestionCard, WhenNoQuestion } from '../agents/QuestionCard';
 import { useProjectQuestions } from '../agents/questions';
 import { useTyping } from '../typing/useTyping';
@@ -650,7 +649,7 @@ function ThreadReply(props: ThreadReplyProps | QueuedReplyProps) {
       </MessageContent>
       <QuestionCard projectId={project.id} messageId={message.id} meId={meId} writable={writable} />
       {message.contribution ? <ContributionMark contribution={message.contribution} onOpenResult={onOpenResult} /> : null}
-      <ThreadMessageActions writable={writable}><MessageActions {...actions} /></ThreadMessageActions>
+      <MessageActions {...actions} />
       {touch.node}
       {makeWork.failed?.messageId === message.id ? <p className="ws-act-error" role="alert">{makeWork.failed.text} <button type="button" onClick={() => void makeWork.create(message)}>Retry</button></p> : null}
     </li>
