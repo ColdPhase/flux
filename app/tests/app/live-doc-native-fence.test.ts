@@ -196,7 +196,7 @@ test('a live Save first use latches monotonically after the mention is removed, 
 });
 
 test('a live snapshot that targets an already creation-reverted task refuses without partial doc state', async () => {
-  const { item, doc, actor, undo } = await taskUseScene();
+  const { f, item, doc, actor, undo } = await taskUseScene();
   assert.equal((await undo()).status, 200);
   const head = await referencedHead(doc, item);
   const before = await unchangedState(doc.id);
@@ -207,7 +207,7 @@ test('a live snapshot that targets an already creation-reverted task refuses wit
 });
 
 test('live Save and task creation Undo serialize on first-use: exactly one transaction commits', { timeout: 30_000 }, async () => {
-  const { f, item, doc, actor, undo } = await taskUseScene();
+  const { item, doc, actor, undo } = await taskUseScene();
   const head = await referencedHead(doc, item);
   const saveHeld = barrier<number>(); const releaseSave = barrier();
   const saving = heldDocUseCases(saveHeld, releaseSave).saveLiveVersion(actor, doc.id, head, 1);
