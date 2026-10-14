@@ -13,7 +13,7 @@ export interface LinkRouteOptions {
   db: Database;
   sessions: SessionResolver;
   links: LinkIntents;
-  provider: { providerId: string; label: string } | null;
+  provider: { providerId: string; issuer: string; label: string } | null;
   ssoMode: 'prepare' | 'sso';
   publicOrigin: string;
 }
@@ -47,7 +47,7 @@ export function registerLinkRoutes(app: FastifyInstance, { db, sessions, links, 
       return reply.code(404).send({ error: 'No such sign-in is linked', code: 'NOT_LINKED' });
     }
     try {
-      await unlinkIdentity(db, { userId: context.principal.id, providerId: provider.providerId, mode: ssoMode,
+      await unlinkIdentity(db, { userId: context.principal.id, providerId: provider.providerId, issuer: provider.issuer, mode: ssoMode,
         actor: 'the account owner', reason: 'removed a sign-in from settings' });
     } catch (error) {
       if (error instanceof IdentityAdminError && error.code === 'NOT_LINKED') return reply.code(404).send({ error: error.message, code: 'NOT_LINKED' });

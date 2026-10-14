@@ -1141,11 +1141,11 @@ cmd_upgrade() {
 cmd_identity() {
   sub=${1:-}
   [ $# -gt 0 ] && shift
-  [ "$sub" = link ] || die "usage: ./flux identity link <userId> --subject <sub> --reason \"<why>\" [--allow-sso]"
+  [ "$sub" = link ] || die "usage: ./flux identity link <userId> --subject <sub> --reason \"<why>\" [--old-issuer <URL>] [--allow-sso]"
   need_docker
   [ -f "$ENV_FILE" ] || die "No ${ENV_FILE#"$FLUX_ROOT"/}; start Flux with ./flux up first."
   check_owner "$PROJECT"
-  # Operator re-key (#315): refused in SSO-only mode unless --allow-sso is given; every run is audited.
+  # Operator re-key (#315): issuer changes require the explicit old issuer; SSO mode requires --allow-sso.
   compose_main exec -T api node apps/server/dist/identity/cli.js link "$@"
 }
 
@@ -1244,6 +1244,8 @@ Flux launcher. Everything runs in Docker; only sh and Docker Compose are needed.
   ./flux export <project> [--as EMAIL] [--output FILE]
                          Write a project's JSON-plus-files bundle to exports/ (as the workspace
                          owner by default; the account needs project.manage).
+  ./flux identity link <userId> --subject <sub> --reason "<why>" [--old-issuer <URL>] [--allow-sso]
+                         Audited operator recovery by Flux account id; requires the running API.
   ./flux upgrade [--pull] [-y]
                          Back up, (git pull,) build this checkout, migrate and check health; on
                          failure print the restore instructions.

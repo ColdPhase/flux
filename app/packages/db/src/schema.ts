@@ -128,13 +128,15 @@ export const authLinkIntents = pgTable('auth_link_intents', {
   usedAt: timestamp('used_at', { withTimezone: true }),
 }, (table) => [index('auth_link_intents_user_idx').on(table.userId)]);
 
-/** Operator re-keys and provider unlinks (migration 0093, #315). Append-only; no foreign key, so it outlives accounts. */
+/** Operator re-keys and provider unlinks (migrations 0093/0095, #315). Old issuer fields stay NULL when history never recorded them. */
 export const authIdentityAudit = pgTable('auth_identity_audit', {
   id: text('id').primaryKey(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   action: text('action').notNull(),
   userId: text('user_id').notNull(),
   providerId: text('provider_id').notNull(),
+  oldIssuer: text('old_issuer'),
+  newIssuer: text('new_issuer'),
   oldSubject: text('old_subject'),
   newSubject: text('new_subject'),
   actor: text('actor').notNull(),

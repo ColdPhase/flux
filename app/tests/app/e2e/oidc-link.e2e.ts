@@ -21,8 +21,11 @@ const keycloak = 'http://keycloak:8080';
 const phase = process.env.FLUX_LINK_PHASE ?? 'prepare';
 const saved = '/state/oidc-link.json';
 const savedAuthority = '/state/oidc-password-authority.json';
+const savedRecovery = '/state/oidc-recovery.json';
+const savedRecoverySession = '/state/oidc-recovery-session.json';
 const pat = { name: 'Pat Link', email: 'pat.link@example.test', password: `pw-${randomUUID()}` };
 const quinn = { name: 'Quinn Link', email: 'quinn.link@example.test', password: `pw-${randomUUID()}` };
+const rory = { name: 'Rory Recovery', email: `rory-${randomUUID()}@example.test`, password: `pw-${randomUUID()}` };
 
 const { pool } = createDatabase(process.env.DATABASE_URL!);
 // Remove Pat's provider identity so later Keycloak suites can create frank. Quinn keeps the workspace
@@ -52,7 +55,8 @@ async function withBrowser<T>(run: (browser: Awaited<ReturnType<typeof chromium.
 
 async function api<T = unknown>(context: BrowserContext, method: string, path: string, body?: unknown) {
   const response = await context.request.fetch(`${origin}${path}`, { method, data: body, headers: { origin } });
-  return { status: response.status(), body: (await response.text()) ? JSON.parse(await response.text()) as T : null };
+  const text = await response.text();
+  return { status: response.status(), body: text ? JSON.parse(text) as T : null };
 }
 
 async function signUpAndIn(context: BrowserContext, person: typeof pat) {
@@ -76,6 +80,30 @@ async function loginAtProvider(page: import('playwright').Page, username: string
   await page.locator('#password').fill(idpPassword);
   await page.locator('#kc-login').click();
   await page.waitForURL((u) => u.origin === origin && u.pathname.startsWith('/settings'), { timeout: 20_000 });
+}
+
+async function keycloakSubject(username: string): Promise<string> {
+  const adminPassword = process.env.FLUX_OIDC_TEST_ADMIN_PASSWORD!;
+  const tokenResponse = await fetch(`${keycloak}/realms/master/protocol/openid-connect/token`, { method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ grant_type: 'password', client_id: 'admin-cli', username: 'admin', password: adminPassword }) });
+  assert.equal(tokenResponse.status, 200, 'Keycloak admin token for reading the fixed recovery test identity');
+  const { access_token: token } = await tokenResponse.json() as { access_token: string };
+  const response = await fetch(`${keycloak}/admin/realms/flux/users?username=${encodeURIComponent(username)}&exact=true`, {
+    headers: { authorization: `Bearer ${token}` },
+  });
+  assert.equal(response.status, 200, 'Keycloak admin lookup');
+  const [user] = await response.json() as { id: string; username: string }[];
+  assert.ok(user, `the IdP user ${username}`);
+  assert.equal(user.username, username);
+  return user.id;
+}
+
+async function recoveryState() {
+  return JSON.parse(readFileSync(savedRecovery, 'utf8')) as {
+    userId: string; workspaceId: string; oldSubject: string; newSubject: string; heldSubject: string;
+    clientId: string; accessToken: string; refreshToken: string;
+  };
 }
 
 if (phase === 'prepare') {
@@ -174,6 +202,51 @@ if (phase === 'prepare') {
       assert.equal((await other.request.get(`${origin}/api/v1/me`)).status(), 401, 'no session was created by the link callback');
     });
   });
+
+  test('prepare: seed an explicit old-issuer recovery account with real MCP authority', async () => {
+    assert.ok(process.env.FLUX_OIDC_OLD_PROVIDER_ID, 'the explicit old-issuer fixture id is supplied');
+    await withBrowser(async (browser) => {
+      const context = await browser.newContext();
+      const userId = await signUpAndIn(context, rory);
+      const client = new ApiBrowser();
+      for (const cookie of await context.cookies()) client.cookies.set(cookie.name, cookie.value);
+      const create = async (path: string, body: unknown) => {
+        const response = await client.request('POST', path, { body });
+        assert.equal(response.status, 201, response.text);
+        return response.json as { id: string };
+      };
+      const workspace = await create('/api/v1/workspaces', { name: 'Issuer recovery history' });
+      const project = await create(`/api/v1/workspaces/${workspace.id}/projects`, { name: 'Kept recovery project', visibility: 'restricted' });
+      const agent = await create(`/api/v1/workspaces/${workspace.id}/agents`, { name: 'Recovery agent', owner: 'self' });
+      await create(`/api/v1/projects/${project.id}/grants`, { principal: { kind: 'agent', id: agent.id }, role: 'contributor' });
+      const connection = await create('/api/v1/agent-connections', { agentId: agent.id, selectedProjectIds: [project.id], scopes: ['flux.context.read'] });
+      const recoveryClientId = `issuer-recovery-${randomUUID()}`;
+      const redirectUri = 'http://127.0.0.1:19739/callback';
+      await pool.query(`INSERT INTO oauth_client (id, client_id, name, redirect_uris, token_endpoint_auth_method,
+        grant_types, response_types, scopes, require_pkce, created_at, updated_at)
+        VALUES ($1, $2, 'Issuer recovery test client', $3, 'none', $4, $5, $6, true, now(), now())`,
+      [randomUUID(), recoveryClientId, [redirectUri], ['authorization_code', 'refresh_token'], ['code'], ['flux.context.read', 'offline_access']]);
+      await pool.query('INSERT INTO oauth_client_resource (id, client_id, resource_id, created_at) VALUES ($1, $2, $3, now())',
+        [randomUUID(), recoveryClientId, `${origin}/mcp`]);
+      const tokens = await oauthToken(client, connection.id, recoveryClientId, redirectUri);
+      assert.equal((await mcp(tokens.access_token, 91, 'tools/list')).status, 200, 'the old login has live MCP authority before recovery');
+
+      const oldSubject = `legacy-${randomUUID()}`;
+      const newSubject = await keycloakSubject('erin');
+      const patId = (await pool.query('SELECT id FROM auth_users WHERE email = $1', [pat.email])).rows[0].id as string;
+      const [held] = (await pool.query('SELECT account_id FROM auth_accounts WHERE user_id = $1 AND provider_id = $2',
+        [patId, process.env.FLUX_OIDC_PROVIDER_ID])).rows;
+      assert.ok(held?.account_id, 'the normal current-provider link supplies a real held-subject control');
+      await pool.query('INSERT INTO auth_accounts (id,user_id,account_id,provider_id) VALUES ($1,$2,$3,$4)',
+        [randomUUID(), userId, oldSubject, process.env.FLUX_OIDC_OLD_PROVIDER_ID]);
+      await pool.query(`INSERT INTO auth_idp_standing (user_id,provider_id,state,refresh_token_enc,refresh_token_sid,next_check_at)
+        VALUES ($1,$2,'ok','sealed-old-issuer-token','old-provider-session',now() + interval '1 hour')`,
+      [userId, process.env.FLUX_OIDC_OLD_PROVIDER_ID]);
+      await context.storageState({ path: savedRecoverySession });
+      writeFileSync(savedRecovery, JSON.stringify({ userId, workspaceId: workspace.id, oldSubject, newSubject, heldSubject: held.account_id,
+        clientId: recoveryClientId, accessToken: tokens.access_token, refreshToken: tokens.refresh_token }));
+    });
+  });
 }
 
 if (phase === 'cutover') {
@@ -233,6 +306,45 @@ if (phase === 'cutover') {
       assert.equal(me.body!.user.id, patId, 'the same Flux account, with its data and memberships');
       // The same subject keeps the same Flux account; a sign-in takes the provider's verified address (#113).
       assert.equal(me.body!.user.email, 'frank@acme.test', 'the account takes the verified provider address on sign-in');
+    });
+  });
+}
+
+if (phase === 'recovery') {
+  test('recovery: issuer re-key keeps the Flux account, revokes old authority, and accepts the new verified subject', async () => {
+    assert.ok(existsSync(savedRecovery), 'the explicit recovery fixture ran first');
+    const savedRecoveryState = await recoveryState();
+    const legacy = await pool.query('SELECT provider_id,account_id FROM auth_accounts WHERE user_id=$1 AND provider_id=$2',
+      [savedRecoveryState.userId, process.env.FLUX_OIDC_OLD_PROVIDER_ID]);
+    assert.deepEqual(legacy.rows, [], 'the old issuer mapping was atomically replaced');
+    const active = await pool.query('SELECT provider_id,account_id FROM auth_accounts WHERE user_id=$1 AND provider_id=$2',
+      [savedRecoveryState.userId, process.env.FLUX_OIDC_PROVIDER_ID]);
+    assert.deepEqual(active.rows, [{ provider_id: process.env.FLUX_OIDC_PROVIDER_ID, account_id: savedRecoveryState.newSubject }]);
+    const audit = await pool.query(`SELECT old_issuer,new_issuer,old_subject,new_subject,actor,reason
+      FROM auth_identity_audit WHERE user_id=$1 AND action='rekey' ORDER BY created_at DESC LIMIT 1`, [savedRecoveryState.userId]);
+    assert.deepEqual(audit.rows[0], { old_issuer: process.env.FLUX_OIDC_OLD_ISSUER, new_issuer: 'http://keycloak:8080/realms/flux',
+      old_subject: savedRecoveryState.oldSubject, new_subject: savedRecoveryState.newSubject, actor: 'operator-cli', reason: 'issuer migration test' });
+    assert.equal((await pool.query('SELECT count(*)::int AS n FROM auth_idp_standing WHERE user_id=$1 AND provider_id=$2',
+      [savedRecoveryState.userId, process.env.FLUX_OIDC_OLD_PROVIDER_ID])).rows[0].n, 0, 'the obsolete offline IdP refresh state is removed');
+
+    await withBrowser(async (browser) => {
+      const oldSession = await browser.newContext({ storageState: savedRecoverySession });
+      assert.equal((await oldSession.request.get(`${origin}/api/v1/me`)).status(), 401, 'the pre-recovery browser session ended');
+      assert.equal((await mcp(savedRecoveryState.accessToken, 92, 'tools/list')).status, 401, 'the old MCP bearer no longer works');
+      const refresh = await oldSession.request.post(`${origin}/api/auth/oauth2/token`, { headers: { origin }, form: {
+        grant_type: 'refresh_token', client_id: savedRecoveryState.clientId, refresh_token: savedRecoveryState.refreshToken, resource: `${origin}/mcp`,
+      } });
+      assert.equal(refresh.status(), 400, 'the old MCP refresh grant is revoked');
+      assert.equal((await refresh.json() as { error: string }).error, 'invalid_grant');
+
+      const context = await browser.newContext();
+      const page = await context.newPage();
+      await loginAtProvider(page, 'erin', await providerUrl(context));
+      const me = await api<{ user: { id: string } }>(context, 'GET', '/api/v1/me');
+      assert.equal(me.status, 200, JSON.stringify(me.body));
+      assert.equal(me.body!.user.id, savedRecoveryState.userId, 'verified sign-in resolves to the original Flux account');
+      const workspaces = await api<{ id: string }[]>(context, 'GET', '/api/v1/workspaces');
+      assert.ok(workspaces.body!.some((workspace) => workspace.id === savedRecoveryState.workspaceId), 'the original account data remains attached');
     });
   });
 }

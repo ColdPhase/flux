@@ -4,12 +4,12 @@ import { loadIdentityConfig } from './config.js';
 
 /**
  * Operator command for accounts that cannot link normally (F-024 S5b, #315). It runs in the API container:
- *   node apps/server/dist/identity/cli.js link <userId> --subject <provider sub> --reason "<why>" [--allow-sso]
+ *   node apps/server/dist/identity/cli.js link <userId> --subject <provider sub> --reason "<why>" [--old-issuer <URL>] [--allow-sso]
  * The account is named by its Flux id; nothing is matched by email. Every run writes an audit row.
  */
 
 function usage(): never {
-  process.stderr.write('usage: identity link <userId> --subject <sub> --reason "<why>" [--allow-sso]\n');
+  process.stderr.write('usage: identity link <userId> --subject <sub> --reason "<why>" [--old-issuer <URL>] [--allow-sso]\n');
   process.exit(2);
 }
 
@@ -26,6 +26,7 @@ async function main(argv: string[]) {
   if (command !== 'link' || !userId || userId.startsWith('--')) usage();
   const subject = flag(rest, '--subject');
   const reason = flag(rest, '--reason');
+  const oldIssuer = flag(rest, '--old-issuer');
   if (!subject || !reason) usage();
   const allowInSso = rest.includes('--allow-sso');
   const config = loadIdentityConfig(process.env);
@@ -34,9 +35,9 @@ async function main(argv: string[]) {
   if (!url) throw new Error('DATABASE_URL is required');
   const { db, pool } = createDatabase(url);
   try {
-    const outcome = await rekeyIdentity(db, { userId, providerId: config.oidc.providerId, subject, actor: 'operator-cli',
+    const outcome = await rekeyIdentity(db, { userId, providerId: config.oidc.providerId, issuer: config.oidc.issuer, oldIssuer, subject, actor: 'operator-cli',
       reason, mode: config.ssoMode, allowInSso });
-    process.stdout.write(`${outcome}: account ${userId} is linked to ${config.oidc.providerId} as subject ${subject}\n`);
+    process.stdout.write(`${outcome}: account ${userId} is linked to ${config.oidc.issuer} as subject ${subject}\n`);
   } finally {
     await pool.end();
   }

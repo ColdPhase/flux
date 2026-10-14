@@ -398,6 +398,14 @@ that mode to password login.
 | Lockout and offboarding | An authoritative identity cannot be detached by its owner to evade offboarding. The last usable sign-in method cannot be removed. Any retained removal path is confined to the sole provider and applicable password mode; this is not general multi-identity management |
 | Migration and recovery | The operator can re-key the sole provider identity after an issuer or subject change. Preserve the Flux account and history; audit old/new issuer and subject, end obsolete sessions and revoke old MCP authority and refresh credentials. It is recovery of the same account, not automatic data transfer by email |
 
+For an issuer change, the recovery command must receive the former issuer explicitly
+(`--old-issuer`). Its derived provider id must match the account's one existing
+provider mapping before that mapping can be moved to the currently configured
+issuer. The operation must refuse missing, ambiguous, or conflicting mappings and
+must never infer an old issuer from the current configuration, email, or audit rows
+that predate issuer snapshots. Such historical audit rows retain unknown issuer
+values; new audit rows record the actual issuer values supplied or configured.
+
 ### Standing for the sole provider
 
 - **Managed account** (linked to the authoritative configured provider):

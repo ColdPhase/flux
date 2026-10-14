@@ -38,6 +38,11 @@ export FLUX_BACKGROUND_KEY_HOST_FILE="$background_secret_dir/background_key"
 issuer="http://keycloak:8080/realms/flux"
 if command -v sha256sum >/dev/null 2>&1; then digest=$(printf '%s' "$issuer" | sha256sum); else digest=$(printf '%s' "$issuer" | shasum -a 256); fi
 provider_id="oidc-$(printf '%s' "$digest" | cut -c1-12)"
+old_issuer="http://keycloak:8080/realms/flux-legacy"
+if command -v sha256sum >/dev/null 2>&1; then old_digest=$(printf '%s' "$old_issuer" | sha256sum); else old_digest=$(printf '%s' "$old_issuer" | shasum -a 256); fi
+old_provider_id="oidc-$(printf '%s' "$old_digest" | cut -c1-12)"
+export FLUX_OIDC_OLD_ISSUER="$old_issuer"
+export FLUX_OIDC_OLD_PROVIDER_ID="$old_provider_id"
 mock_issuer="http://oidc-mock:9400"
 if command -v sha256sum >/dev/null 2>&1; then mock_digest=$(printf '%s' "$mock_issuer" | sha256sum); else mock_digest=$(printf '%s' "$mock_issuer" | shasum -a 256); fi
 mock_provider_id="oidc-$(printf '%s' "$mock_digest" | cut -c1-12)"
@@ -80,16 +85,17 @@ $compose up -d --wait keycloak oidc-mock mailpit api api-mock worker
 e2e() { $compose run --rm -e FLUX_OIDC_PROVIDER_ID="$provider_id" e2e node_modules/.bin/tsx --test --test-concurrency=1 "$@"; }
 
 # Link a password account before cutover, restart the API between the start and the finish, refuse held identities.
-link() { $compose run --rm -e FLUX_OIDC_PROVIDER_ID="$provider_id" -e FLUX_LINK_PHASE="$1" e2e node_modules/.bin/tsx --test --test-concurrency=1 --test-name-pattern "$2" tests/app/e2e/oidc-link.e2e.ts; }
+link() { $compose run --rm -e FLUX_OIDC_PROVIDER_ID="$provider_id" -e FLUX_OIDC_OLD_ISSUER="$old_issuer" \
+  -e FLUX_OIDC_OLD_PROVIDER_ID="$old_provider_id" -e FLUX_LINK_PHASE="$1" e2e node_modules/.bin/tsx --test --test-concurrency=1 --test-name-pattern "$2" tests/app/e2e/oidc-link.e2e.ts; }
 link prepare "prepare: a password account starts"
 $compose restart api
 $compose up -d --wait api
 link prepare "prepare: (after the API restart|a subject already held|a link cannot)"
+link prepare "prepare: seed an explicit old-issuer recovery account"
 # Cutover (#315): the API restarts in SSO-only mode. The password-only accounts stay refused; the linked one signs in
 # with the provider and reaches the same account.
 export FLUX_OIDC_TEST_SSO_MODE=sso
 $compose up -d --wait api
-link cutover "cutover:"
 # The operator re-key (#315) in the running SSO-only API: refused without --allow-sso, and with it the lookup by Flux id
 # still refuses an address or an unknown id. The refusal names its code, and nothing is written.
 cli() { $compose exec -T api node apps/server/dist/identity/cli.js "$@"; }
@@ -97,6 +103,22 @@ refused=$(cli link nobody@acme.test --subject sub-cli --reason "check" 2>&1 || t
 echo "$refused" | grep -q 'refused (SSO_MODE)' || { echo "$refused" >&2; echo "Expected the SSO-only refusal from the operator command" >&2; exit 1; }
 missing=$(cli link nobody@acme.test --subject sub-cli --reason "check" --allow-sso 2>&1 || true)
 echo "$missing" | grep -q 'refused (NO_ACCOUNT)' || { echo "$missing" >&2; echo "Expected NO_ACCOUNT for an address, even with the flag" >&2; exit 1; }
+
+# Positive issuer-change recovery: this named password account has one explicit legacy mapping and real old MCP
+# authority. The explicit old issuer must match that mapping, while a currently held target subject still refuses.
+recovery_user_id=$($compose run --rm e2e node -e 'process.stdout.write(JSON.parse(require("fs").readFileSync("/state/oidc-recovery.json", "utf8")).userId)')
+recovery_new_subject=$($compose run --rm e2e node -e 'process.stdout.write(JSON.parse(require("fs").readFileSync("/state/oidc-recovery.json", "utf8")).newSubject)')
+recovery_held_subject=$($compose run --rm e2e node -e 'process.stdout.write(JSON.parse(require("fs").readFileSync("/state/oidc-recovery.json", "utf8")).heldSubject)')
+without_old=$(cli link "$recovery_user_id" --subject "$recovery_new_subject" --reason "issuer migration test" --allow-sso 2>&1 || true)
+echo "$without_old" | grep -q 'refused (OLD_ISSUER_REQUIRED)' || { echo "$without_old" >&2; echo "Expected OLD_ISSUER_REQUIRED without --old-issuer" >&2; exit 1; }
+wrong_old=$(cli link "$recovery_user_id" --old-issuer "http://unrelated.example.test" --subject "$recovery_new_subject" --reason "issuer migration test" --allow-sso 2>&1 || true)
+echo "$wrong_old" | grep -q 'refused (OLD_IDENTITY_MISMATCH)' || { echo "$wrong_old" >&2; echo "Expected OLD_IDENTITY_MISMATCH for a wrong old issuer" >&2; exit 1; }
+held=$(cli link "$recovery_user_id" --old-issuer "$old_issuer" --subject "$recovery_held_subject" --reason "issuer migration test" --allow-sso 2>&1 || true)
+echo "$held" | grep -q 'refused (SUBJECT_HELD)' || { echo "$held" >&2; echo "Expected a held target subject to refuse recovery" >&2; exit 1; }
+recovered=$(cli link "$recovery_user_id" --old-issuer "$old_issuer" --subject "$recovery_new_subject" --reason "issuer migration test" --allow-sso 2>&1 || true)
+echo "$recovered" | grep -q '^rekeyed:' || { echo "$recovered" >&2; echo "Expected a successful issuer-change re-key" >&2; exit 1; }
+link recovery "recovery: issuer re-key keeps the Flux account"
+link cutover "cutover:"
 
 e2e tests/app/e2e/oidc.e2e.ts
 # Provider sign-in on the MCP authorization path (F-024 S1, #310): a scripted client, Keycloak, Chromium.

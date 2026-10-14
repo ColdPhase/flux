@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, inArray, ne, sql } from 'drizzle-orm';
 import { schema } from '@flux/db';
 import type { Database } from '@flux/core';
+import { oidcProviderId } from './config.js';
 
 /**
  * Operator re-key and provider unlink (F-024 S5b, #315). Both write an audit row in the same transaction. Neither
@@ -10,7 +11,8 @@ import type { Database } from '@flux/core';
  */
 
 export type IdentityMode = 'prepare' | 'sso';
-export type IdentityAdminCode = 'SSO_MODE' | 'NO_ACCOUNT' | 'SUBJECT_HELD' | 'NOT_LINKED' | 'LAST_IDENTITY';
+export type IdentityAdminCode = 'SSO_MODE' | 'NO_ACCOUNT' | 'SUBJECT_HELD' | 'NOT_LINKED' | 'LAST_IDENTITY'
+  | 'INVALID_ISSUER' | 'OLD_ISSUER_REQUIRED' | 'OLD_IDENTITY_MISMATCH' | 'ISSUER_COLLISION' | 'IDENTITY_AMBIGUOUS';
 
 export class IdentityAdminError extends Error {
   constructor(readonly code: IdentityAdminCode, message: string) { super(message); }
@@ -28,14 +30,25 @@ async function revokeMcpAuthority(tx: Tx, userId: string, at: Date) {
 }
 
 async function audit(tx: Tx, row: { action: 'rekey' | 'unlink'; userId: string; providerId: string; oldSubject: string | null;
-  newSubject: string | null; actor: string; reason: string; mode: IdentityMode; at: Date }) {
+  newSubject: string | null; oldIssuer: string | null; newIssuer: string | null; actor: string; reason: string; mode: IdentityMode; at: Date }) {
   await tx.insert(schema.authIdentityAudit).values({ id: randomUUID(), createdAt: row.at, action: row.action, userId: row.userId,
-    providerId: row.providerId, oldSubject: row.oldSubject, newSubject: row.newSubject, actor: row.actor.slice(0, 200),
+    providerId: row.providerId, oldIssuer: row.oldIssuer, newIssuer: row.newIssuer, oldSubject: row.oldSubject, newSubject: row.newSubject, actor: row.actor.slice(0, 200),
     reason: row.reason.slice(0, 500), mode: row.mode });
 }
 
+/** Validate a CLI-supplied historical issuer without contacting that issuer. */
+function canonicalIssuer(value: string): string {
+  const trimmed = value.trim();
+  let url: URL;
+  try { url = new URL(trimmed); } catch { throw new IdentityAdminError('INVALID_ISSUER', 'Issuer must be an absolute HTTP(S) URL'); }
+  if (!['https:', 'http:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) {
+    throw new IdentityAdminError('INVALID_ISSUER', 'Issuer must be an HTTP(S) URL without credentials, query or fragment');
+  }
+  return trimmed.replace(/\/$/, '');
+}
+
 export interface RekeyInput {
-  userId: string; providerId: string; subject: string; actor: string; reason: string;
+  userId: string; providerId: string; issuer: string; oldIssuer?: string; subject: string; actor: string; reason: string;
   mode: IdentityMode; allowInSso: boolean; now?: () => Date;
 }
 
@@ -48,31 +61,62 @@ export async function rekeyIdentity(db: Database, input: RekeyInput): Promise<'l
   if (input.mode === 'sso' && !input.allowInSso) {
     throw new IdentityAdminError('SSO_MODE', 'Re-keying in SSO-only mode needs the explicit --allow-sso flag');
   }
+  const issuer = canonicalIssuer(input.issuer);
+  if (oidcProviderId(issuer) !== input.providerId) throw new IdentityAdminError('INVALID_ISSUER', 'Configured issuer does not match its provider id');
+  const oldIssuer = input.oldIssuer === undefined ? undefined : canonicalIssuer(input.oldIssuer);
+  const oldProviderId = oldIssuer === undefined ? undefined : oidcProviderId(oldIssuer);
+  if (oldIssuer !== undefined && oldProviderId === input.providerId && oldIssuer !== issuer) {
+    throw new IdentityAdminError('ISSUER_COLLISION', 'The old and configured issuer values collide on the provider id; refusing an ambiguous re-key');
+  }
   const at = (input.now ?? (() => new Date()))();
   return db.transaction(async (tx) => {
     const [user] = await tx.select({ id: schema.authUsers.id }).from(schema.authUsers).where(eq(schema.authUsers.id, input.userId)).for('update');
     if (!user) throw new IdentityAdminError('NO_ACCOUNT', 'No account has that id');
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${input.providerId + ':' + input.subject}, 0))`);
     const [holder] = await tx.select({ userId: schema.authAccounts.userId }).from(schema.authAccounts)
       .where(and(eq(schema.authAccounts.providerId, input.providerId), eq(schema.authAccounts.accountId, input.subject)));
     if (holder && holder.userId !== input.userId) throw new IdentityAdminError('SUBJECT_HELD', 'That provider identity belongs to another account');
-    const [current] = await tx.select().from(schema.authAccounts)
-      .where(and(eq(schema.authAccounts.userId, input.userId), eq(schema.authAccounts.providerId, input.providerId)));
-    if (current && current.accountId === input.subject) return 'unchanged' as const;
-    const base = { userId: input.userId, providerId: input.providerId, actor: input.actor, reason: input.reason, mode: input.mode, at };
+    const providerLinks = await tx.select({ id: schema.authAccounts.id, providerId: schema.authAccounts.providerId,
+      accountId: schema.authAccounts.accountId }).from(schema.authAccounts)
+      .where(and(eq(schema.authAccounts.userId, input.userId), ne(schema.authAccounts.providerId, 'credential'))).for('update');
+    let current: typeof providerLinks[number] | undefined;
+    let sourceProviderId: string | undefined;
+    if (oldProviderId !== undefined) {
+      if (providerLinks.length !== 1 || providerLinks[0].providerId !== oldProviderId) {
+        throw new IdentityAdminError('OLD_IDENTITY_MISMATCH', 'The named account does not have exactly one provider identity matching --old-issuer');
+      }
+      current = providerLinks[0];
+      sourceProviderId = oldProviderId;
+    } else {
+      const active = providerLinks.find((row) => row.providerId === input.providerId);
+      if (providerLinks.length > 1) throw new IdentityAdminError('IDENTITY_AMBIGUOUS', 'The account has multiple provider identities; refusing an ambiguous re-key');
+      if (providerLinks.length === 1 && !active) {
+        throw new IdentityAdminError('OLD_ISSUER_REQUIRED', 'The account is linked to a different issuer; provide its exact value with --old-issuer');
+      }
+      current = active;
+      sourceProviderId = active?.providerId;
+    }
+    if (current && current.providerId === input.providerId && current.accountId === input.subject) return 'unchanged' as const;
+    const base = { userId: input.userId, providerId: input.providerId, actor: input.actor, reason: input.reason, mode: input.mode, at,
+      oldIssuer: current ? (oldIssuer ?? issuer) : null, newIssuer: issuer };
     if (current) {
-      await tx.update(schema.authAccounts).set({ accountId: input.subject }).where(eq(schema.authAccounts.id, current.id));
+      await tx.update(schema.authAccounts).set({ accountId: input.subject, providerId: input.providerId, accessToken: null, refreshToken: null,
+        idToken: null, accessTokenExpiresAt: null, refreshTokenExpiresAt: null, scope: null, confirmedAt: null })
+        .where(eq(schema.authAccounts.id, current.id));
       await tx.delete(schema.authSessions).where(eq(schema.authSessions.userId, input.userId));
       await revokeMcpAuthority(tx, input.userId, at);
+      await tx.delete(schema.authIdpStanding).where(and(eq(schema.authIdpStanding.userId, input.userId),
+        inArray(schema.authIdpStanding.providerId, [...new Set([sourceProviderId!, input.providerId])])));
       await audit(tx, { ...base, action: 'rekey', oldSubject: current.accountId, newSubject: input.subject });
       return 'rekeyed' as const;
     }
     await tx.insert(schema.authAccounts).values({ id: randomUUID(), userId: input.userId, accountId: input.subject, providerId: input.providerId });
-    await audit(tx, { ...base, action: 'rekey', oldSubject: null, newSubject: input.subject });
+    await audit(tx, { ...base, oldIssuer: null, action: 'rekey', oldSubject: null, newSubject: input.subject });
     return 'linked' as const;
   });
 }
 
-export interface UnlinkInput { userId: string; providerId: string; mode: IdentityMode; actor: string; reason: string; now?: () => Date }
+export interface UnlinkInput { userId: string; providerId: string; issuer: string; mode: IdentityMode; actor: string; reason: string; now?: () => Date }
 
 /**
  * Removes the provider identity from an account, unless it is the account's last way to sign in. With SSO-only mode
@@ -80,6 +124,8 @@ export interface UnlinkInput { userId: string; providerId: string; mode: Identit
  * The sessions that signed in through this identity end, and so does the account's MCP authority.
  */
 export async function unlinkIdentity(db: Database, input: UnlinkInput): Promise<void> {
+  const issuer = canonicalIssuer(input.issuer);
+  if (oidcProviderId(issuer) !== input.providerId) throw new IdentityAdminError('INVALID_ISSUER', 'Configured issuer does not match its provider id');
   const at = (input.now ?? (() => new Date()))();
   await db.transaction(async (tx) => {
     const [link] = await tx.select({ id: schema.authAccounts.id, accountId: schema.authAccounts.accountId }).from(schema.authAccounts)
@@ -92,8 +138,9 @@ export async function unlinkIdentity(db: Database, input: UnlinkInput): Promise<
     await tx.execute(sql`DELETE FROM auth_sessions WHERE user_id = ${input.userId}
       AND id IN (SELECT session_id FROM auth_session_identities WHERE method = ${input.providerId})`);
     await revokeMcpAuthority(tx, input.userId, at);
+    await tx.delete(schema.authIdpStanding).where(and(eq(schema.authIdpStanding.userId, input.userId), eq(schema.authIdpStanding.providerId, input.providerId)));
     await tx.delete(schema.authAccounts).where(eq(schema.authAccounts.id, link.id));
-    await audit(tx, { action: 'unlink', userId: input.userId, providerId: input.providerId, oldSubject: link.accountId, newSubject: null,
+    await audit(tx, { action: 'unlink', userId: input.userId, providerId: input.providerId, oldIssuer: issuer, newIssuer: null, oldSubject: link.accountId, newSubject: null,
       actor: input.actor, reason: input.reason, mode: input.mode, at });
   });
 }

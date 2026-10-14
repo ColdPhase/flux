@@ -58,7 +58,8 @@ instance. Flux works with one provider. Its mode is set by `FLUX_SSO_MODE`:
    ```
 
    The provider id is derived from the issuer URL, so changing the issuer creates a new identity
-   namespace (people would sign in as new accounts); keep the issuer stable.
+   namespace. Keep the issuer stable during normal operation; if it must change, use the explicit
+   `--old-issuer` operator recovery procedure below before people sign in at the new issuer.
 
 2. **Save the client secret in a file** readable only by you, for example
    `/etc/flux/oidc_client_secret`.
@@ -240,9 +241,12 @@ in once the cutover is on. Move them first, in this order:
 **Accounts that cannot link** (for example, the provider account was lost): the operator re-keys them with
 `./flux identity link <userId> --subject <provider subject> --reason "<why>"`. It names the account by its Flux id,
 never by an address, and refuses a subject another account holds. In SSO-only mode it refuses unless
-`--allow-sso` is given. A re-key writes an audit row (`auth_identity_audit`) with the actor, the reason and both
-subjects. A subject the account held before is replaced, and that account's sessions and MCP authority end; its
-data stays where it is.
+`--allow-sso` is given. A re-key writes an audit row (`auth_identity_audit`) with the actor, the reason and the
+old/new subjects and issuer values. For a changed issuer, pass the exact former issuer explicitly with
+`--old-issuer <issuer URL>`; Flux checks that issuer's derived provider id against the sole provider mapping on
+that Flux account before replacing it with the currently configured provider identity. Missing or ambiguous
+mappings are refused, and historical audit rows whose issuer was never recorded remain unknown. A successful
+re-key ends the account's sessions and old MCP authority/refresh credentials; its Flux data stays where it is.
 
 **Removing a sign-in.** Settings can remove the provider sign-in, unless it is the account's last way in. In SSO-only
 mode the provider is the only way, so it cannot be removed. In prepare mode a password on the account is the way back.

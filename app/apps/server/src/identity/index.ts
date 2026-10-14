@@ -156,7 +156,7 @@ export function registerIdentity(app: FastifyInstance, options: IdentityOptions)
   if (config.oidc) app.log.info({ issuer: config.oidc.issuer, redirectUri: `${config.publicOrigin}/api/auth/callback/${config.oidc.providerId}` }, 'Single sign-on is on');
   registerIdentityRoutes(app, { sessions, store: createSessionRepository(db), passwordReset, signup: config.signup, ssoOnly: config.ssoOnly, linkable: config.oidc !== null && config.ssoMode === 'prepare', sso });
   registerLinkRoutes(app, { db, sessions, links, ssoMode: config.ssoMode, publicOrigin: config.publicOrigin,
-    provider: config.oidc ? { providerId: config.oidc.providerId, label: config.oidc.label } : null });
+    provider: config.oidc ? { providerId: config.oidc.providerId, issuer: config.oidc.issuer, label: config.oidc.label } : null });
   registerClaimRoutes(app, { claims, publicOrigin: config.publicOrigin });
   if (config.signupRequested !== config.signup) app.log.warn({ requested: config.signupRequested }, 'FLUX_SIGNUP=verified needs email (FLUX_SMTP_URL), and a sign-on provider closes password sign-up, so password sign-up is closed');
   if (config.oidc) registerBackchannelLogout(app, { db, oidc: config.oidc, standing, log: app.log });
