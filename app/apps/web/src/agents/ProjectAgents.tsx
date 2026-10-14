@@ -765,7 +765,7 @@ export function ProjectAgents() {
           <li><Link className="agents-link" to={requests ? questionLink(projectId, requests) : '/inbox'}>
             <span className="agents-link__icon"><Icon name="inbox" size={16} /></span>
             <span className="agents-link__text">
-              {requests ? <>{asked.length > 1 ? <b>Requests</b> : <b>Request</b>} · {requests.agent.name} asks: “{briefly(requests.question)}”</> : <><b>Requests</b> · No requests for you</>}
+              {requests ? <><b>Agent questions</b> · {requests.agent.name} asks: “{briefly(requests.question)}”</> : <><b>Agent questions</b> · No open questions for you</>}
             </span>
             {asked.length ? <span className="agents-link__count">{asked.length}</span> : null}
             <Icon name="chevron-right" size={14} />

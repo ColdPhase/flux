@@ -141,7 +141,7 @@ class HandOffJourney(unittest.TestCase):
             expect(rows.filter(has_text="Reader agent")).to_contain_text("nothing handed to it")
             expect(page.get_by_text("2 in this project", exact=True)).to_be_visible()
             # Requests, Policy and "Connect your own agent": one row each, below the list.
-            expect(page.get_by_role("link", name=re.compile("^Requests"))).to_have_attribute("href", "/inbox")
+            expect(page.get_by_role("link", name=re.compile("^Agent questions"))).to_have_attribute("href", "/inbox")
             expect(page.get_by_role("button", name=re.compile("^Project policy"))).to_be_visible()
             expect(page.get_by_role("link", name=re.compile("^Connect your own agent"))).to_have_attribute("href", "/connect-agent")
             expect(page.get_by_role("button", name="Hand off a task")).to_have_count(1)

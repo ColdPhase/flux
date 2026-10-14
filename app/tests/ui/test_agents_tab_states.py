@@ -310,7 +310,7 @@ class AgentsTabStates(unittest.TestCase):
         self.stub_questions(ada, [question])
         ada.goto(f"/projects/{self.ids['project']}/agents")
         requests = ada.locator(".agents-links a").first
-        expect(requests).to_contain_text("Codex asks: “Merge PR 42 now")
+        expect(requests).to_contain_text("Agent questions · Codex asks: “Merge PR 42 now")
         expect(requests.locator(".agents-link__count")).to_have_text("1")
         requests.click()
         expect(ada).to_have_url(re.compile(rf"task={self.ids['task1']}"))
@@ -319,7 +319,7 @@ class AgentsTabStates(unittest.TestCase):
         jonas = self.page("jonas")
         self.stub_questions(jonas, [question])
         jonas.goto(f"/projects/{self.ids['project']}/agents")
-        expect(jonas.locator(".agents-links a").first).to_contain_text("No requests for you")
+        expect(jonas.locator(".agents-links a").first).to_contain_text("Agent questions · No open questions for you")
 
     def test_05_take_back_a_held_task(self) -> None:
         ada = self.page("ada")
