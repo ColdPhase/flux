@@ -70,7 +70,7 @@ const bounded = async <T>(pending: Promise<T>, label: string): Promise<T> => {
   })]); } finally { if (timer) clearTimeout(timer); }
 };
 
-function heldDocUseCases(held: ReturnType<typeof barrier<number>>, release: ReturnType<typeof barrier>) {
+function heldDocUseCases(held: ReturnType<typeof barrier<number>>, release: ReturnType<typeof barrier<void>>) {
   return createDocUseCases({ run: (action) => withTaskUseErrors(() => db.transaction(async (tx) => {
     const ports = docPorts(tx);
     return action({ ...ports, events: { record: async (...args) => {
