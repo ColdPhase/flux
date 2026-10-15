@@ -269,12 +269,24 @@ class ConversationFinal(unittest.TestCase):
         expect(page.locator("#details").get_by_label("Decision")).to_have_value("Use the second supplier")
         expect(composer).to_have_value("")
         page.keyboard.press("Escape")
-        # /task with a title makes a task and opens it.
+        # /task opens the one Create window with the words as its title; the task is made there.
         composer.fill("/task Order the probes from the second supplier")
         page.keyboard.press("Enter")
+        window = page.get_by_role("dialog", name="New task")
+        expect(window.get_by_label("Title", exact=True)).to_have_value("Order the probes from the second supplier")
+        expect(composer).to_have_value("/task Order the probes from the second supplier")
+        window.get_by_role("button", name=re.compile("^Create task")).click()
         expect(page.locator("#details").get_by_role("heading", name="Order the probes from the second supplier")).to_be_visible()
         self.assertIn("Order the probes from the second supplier", self.work_titles(page))
         expect(composer).to_have_value("")
+        # Closing the window before it creates anything keeps the composer's words.
+        composer.fill("/task Keep these words until the task exists")
+        page.keyboard.press("Enter")
+        expect(page.get_by_role("dialog", name="New task")).to_be_visible()
+        page.keyboard.press("Escape")
+        expect(page.get_by_role("dialog", name="New task")).to_have_count(0)
+        expect(composer).to_have_value("/task Keep these words until the task exists")
+        composer.fill("")
         # A command without words says what is missing and posts nothing.
         composer.fill("/task")
         page.keyboard.press("Enter")
@@ -349,6 +361,9 @@ class ConversationFinal(unittest.TestCase):
         message.hover()
         before = len(self.work_titles(page))
         message.get_by_role("button", name="Create task").click()
+        window = page.get_by_role("dialog", name="New task")
+        expect(window.get_by_label("Title", exact=True)).to_have_value(re.compile("^The probes arrive Thursday"))
+        window.get_by_role("button", name=re.compile("^Create task")).click()
         expect(page.locator("#details").get_by_role("heading", name=re.compile("^The probes arrive Thursday"))).to_be_visible()
         self.assertEqual(len(self.work_titles(page)), before + 1)
         # Reply in thread opens the thread beside the stream with the reply field focused.
@@ -479,14 +494,23 @@ class ConversationFinal(unittest.TestCase):
             newer = f"Newer draft typed while /{command} was on its way"
             composer.fill(f"/{command} {title}")
             composer.press("Enter")
+            window = page.get_by_role("dialog", name="New task")
+            expect(window).to_be_visible()
+            window.get_by_role("button", name=re.compile("^Create task")).click()
             for _ in range(60):
                 if held:
                     break
                 page.wait_for_timeout(100)
             self.assertEqual(len(held), 1, "the work request is held")
+            # The window closes while its request is on its way; the composer is free for newer words.
+            page.keyboard.press("Escape")
+            expect(window).to_have_count(0)
             composer.fill(newer)
             held[0].continue_()
-            expect(page.locator("#details").get_by_role("heading", name=title)).to_be_visible()
+            for _ in range(60):
+                if title in self.work_titles(page):
+                    break
+                page.wait_for_timeout(100)
             page.wait_for_timeout(300)
             expect(composer).to_have_value(newer)
             self.assertEqual(self.work_titles(page).count(title), 1, "exactly the original task exists")
@@ -496,6 +520,7 @@ class ConversationFinal(unittest.TestCase):
             # Positive control: an unchanged draft is consumed by its command.
             page.locator("#project-composer").fill(f"/{command} Control {command} task")
             page.locator("#project-composer").press("Enter")
+            page.get_by_role("dialog", name="New task").get_by_role("button", name=re.compile("^Create task")).click()
             expect(page.locator("#details").get_by_role("heading", name=f"Control {command} task")).to_be_visible()
             expect(page.locator("#project-composer")).to_have_value("")
 
@@ -504,6 +529,9 @@ class ConversationFinal(unittest.TestCase):
         title = "Typed in the conversation without a source"
         self.composer(page).fill(f"/task {title}")
         self.composer(page).press("Enter")
+        window = page.get_by_role("dialog", name="New task")
+        expect(window).to_be_visible()
+        window.get_by_role("button", name=re.compile("^Create task")).click()
         expect(page.locator("#details").get_by_role("heading", name=title)).to_be_visible()
         made = page.locator(".convo-notice").filter(has_text=title)
         expect(made.locator(".convo-notice__what")).to_have_text("added a task")
@@ -583,11 +611,16 @@ class ConversationFinal(unittest.TestCase):
             title = f"Original thread {command} completed after leaving"
             page.locator("#thread-composer").fill(f"/{command} {title}")
             page.locator("#thread-composer").press("Enter")
+            window = page.get_by_role("dialog", name="New task")
+            expect(window).to_be_visible()
+            window.get_by_role("button", name=re.compile("^Create task")).click()
             for _ in range(60):
                 if held:
                     break
                 page.wait_for_timeout(100)
             self.assertEqual(len(held), 1, "the original work request is held")
+            page.keyboard.press("Escape")
+            expect(window).to_have_count(0)
             page.get_by_role("button", name="Close replies").click()
             newer = f"The main conversation has its own newer {command} draft"
             self.composer(page).fill(newer)

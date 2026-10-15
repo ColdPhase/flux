@@ -13,6 +13,7 @@ import { getConversation, getMaterialVersion, getProject, listConversationRoots,
 import { pageBackTo } from './seekMessage';
 import { useShellData } from './data';
 import { MessageObjects, useCreateWorkFromMessage } from '../work/inline';
+import { firstLine } from '../work/format';
 import { MessageActions, useTouchActions } from '../work/messageActions';
 import { useMessageWork } from '../work/useMessageWork';
 import type { MessageWorkPreview } from '../work/message-associations';
@@ -217,7 +218,7 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
   useEffect(() => { const timer = window.setTimeout(() => setOpeningTimedOut(true), OPENING_REVEAL_MS); return () => window.clearTimeout(timer); }, []);
   const [revealed, setRevealed] = useState(false);
   if (!revealed && (openingSettled || openingTimedOut)) setRevealed(true);
-  const { openDetails } = useShellActions();
+  const { openDetails, openCreate } = useShellActions();
   const askBusy = helperComposer.sending;
   // Typing (#155) is the thread's: an ephemeral signal to the people who can read this conversation. The
   // stream's composer has no conversation yet, so it has no typing scope.
@@ -419,8 +420,9 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
     const submitted = publicComposer.draft;
     const consume = () => publicComposer.consumeBody(submitted);
     if (name === 'decide') { openDetails({ kind: 'propose-decision', projectId: project.id, title: text }); consume(); return; }
-    // A hand-off is a task for an agent; its owner is chosen in Details, where it opens (there is no hand-off command yet).
-    if (await makeWork.createText(text)) consume();
+    // A task, or a hand-off (a task for an agent whose owner the window asks for), opens the one Create window with the words as its title.
+    // The composer keeps its words until the task exists: closing the window loses nothing (and a newer draft is never consumed).
+    openCreate({ kind: 'task', projectId: project.id, title: firstLine(text), onCreated: consume });
   }
   async function send() {
     typing.stop();
@@ -607,7 +609,6 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
       {writable ? <SendAnnouncer pending={publicComposer.pending} /> : null}
       {writable && assistantInStream ? <p id={`${composerId}-ai-hint`} className="project-convo__hint" role="status">Your assistant answers inside a conversation. Open one and type /ai there. This text is not posted.</p> : null}
       {commandHint ? <p className="project-convo__hint" role="status">{commandHint}</p> : null}
-      {makeWork.failed?.messageId.startsWith('text:') ? <p className="project-convo__error" role="alert">{makeWork.failed.text}</p> : null}
       {readFailure ? <p className="project-convo__error" role="alert">{readFailure.message} <button type="button" onClick={readFailure.retry}>Retry read</button></p> : null}
     </div></div>
   </div>;
@@ -630,7 +631,7 @@ function ThreadReply(props: ThreadReplyProps | QueuedReplyProps) {
   const stored = 'pending' in props ? null : props;
   const message = stored?.message;
   const actions = stored && message ? {
-    projectId: stored.project.id, message, writable: stored.writable, busy: stored.makeWork.busy === message.id, onCreateWork: () => void stored.makeWork.create(message),
+    projectId: stored.project.id, message, writable: stored.writable, onCreateWork: () => void stored.makeWork.create(message),
     onReply: () => document.getElementById('thread-composer')?.focus(),
     onCite: () => citeMessage('thread', quoteOf(message.body, stored.name)),
   } : null;
@@ -639,7 +640,7 @@ function ThreadReply(props: ThreadReplyProps | QueuedReplyProps) {
     const queued = props as QueuedReplyProps;
     return pendingMessageRow({ place: 'thread', keyed: false, item: queued.pending, name: queued.name, onRetry: queued.onRetry, onRemove: queued.onRemove });
   }
-  const { mine, meId, arrived, name, project, owners, people, preview, makeWork, writable, onOpenResult, onDenied } = stored;
+  const { mine, meId, arrived, name, project, owners, people, preview, writable, onOpenResult, onDenied } = stored;
   return (
     <li {...touch.props} id={`message-${message.id}`} data-message-id={message.id} tabIndex={-1} className={`project-convo__message${mine ? ' is-mine' : ''}${arrived ? ' is-arrived' : ''} ${touch.props.className}`}>
       <AuthorFace kind={message.authorId === null ? 'agent' : 'human'} name={name} mine={mine} />
@@ -653,7 +654,6 @@ function ThreadReply(props: ThreadReplyProps | QueuedReplyProps) {
       {message.contribution ? <ContributionMark contribution={message.contribution} onOpenResult={onOpenResult} /> : null}
       <MessageActions {...actions} />
       {touch.node}
-      {makeWork.failed?.messageId === message.id ? <p className="ws-act-error" role="alert">{makeWork.failed.text} <button type="button" onClick={() => void makeWork.create(message)}>Retry</button></p> : null}
     </li>
   );
 }

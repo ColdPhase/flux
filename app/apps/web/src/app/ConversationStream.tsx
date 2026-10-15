@@ -689,7 +689,7 @@ function RootItem(props: RootItemProps | QueuedRootProps) {
   const name = stored && message ? stored.author(message) : '';
   const writable = !!stored && stored.project.access !== 'viewer';
   const actions = stored && message ? {
-    projectId: stored.project.id, message, writable, busy: stored.makeWork.busy === message.id, onCreateWork: () => void stored.makeWork.create(message),
+    projectId: stored.project.id, message, writable, onCreateWork: () => void stored.makeWork.create(message),
     onReply: () => stored.onOpen(stored.root, true), onCite: () => citeMessage('stream', quoteOf(message.body, name)),
   } : null;
   // The same hooks run for the queued root and the stored one, so the stored root keeps the queued root's list item.
@@ -718,7 +718,6 @@ function RootItem(props: RootItemProps | QueuedRootProps) {
       <Replies root={root} open={open} writable={writable} onOpen={(reply) => onOpen(root, reply)} />
       <MessageActions {...actions} />
       {touch.node}
-      {makeWork.failed?.messageId === message.id ? <p className="ws-act-error" role="alert">{makeWork.failed.text} <button type="button" onClick={() => void makeWork.create(message)}>Retry</button></p> : null}
     </li>
   );
 }
