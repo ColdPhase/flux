@@ -432,3 +432,30 @@ class NativeDetailsJourney(unittest.TestCase):
                     else: panel.get_by_role("button", name="Save", exact=True).click()
                 self.assertEqual(saved.value.status, 200)
                 self.assertEqual(api(other, "GET", url)[field], "My carefully preserved draft")
+
+    def test_14_owner_choice_conflicts_keep_the_selection_and_require_explicit_retry(self):
+        task = api(self.ctx, "POST", self.root + "/work", {"title": "Review who owns the next measurement"}, 201)
+        page = self.page(); panel = self.open(page, "work", task["id"])
+        owner = panel.get_by_label("Owner", exact=True)
+        owner.focus()
+        url = f"/api/v1/work/{task['id']}"
+        current = api(self.ctx, "PATCH", url, {"title": "The peer revised the measurement", "expectedVersion": task["version"]})
+        expect(panel.get_by_title("Edit title", exact=True)).to_have_text("The peer revised the measurement")
+        with page.expect_response(lambda response: response.request.method == "PATCH" and response.url.endswith(url)) as conflict:
+            owner.select_option(f"human:{self.user}")
+        self.assertEqual(conflict.value.status, 409)
+        expect(owner).to_have_value(f"human:{self.user}")
+        expect(panel).to_contain_text("Now: Nobody yet")
+        expect(panel.get_by_role("alert")).to_contain_text("Someone changed this")
+        api(self.ctx, "PATCH", url, {"title": "The peer revised it again", "expectedVersion": current["version"]})
+        expect(panel.get_by_title("Edit title", exact=True)).to_have_text("The peer revised it again")
+        retry = panel.get_by_role("button", name="Retry owner change", exact=True)
+        with page.expect_response(lambda response: response.request.method == "PATCH" and response.url.endswith(url)) as second:
+            retry.click()
+        self.assertEqual(second.value.status, 409)
+        expect(owner).to_have_value(f"human:{self.user}")
+        with page.expect_response(lambda response: response.request.method == "PATCH" and response.url.endswith(url)) as saved:
+            retry.click()
+        self.assertEqual(saved.value.status, 200)
+        self.assertEqual(self.native("work", task["id"])["owner"]["id"], self.user)
+        expect(retry).to_have_count(0)
