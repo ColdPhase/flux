@@ -361,11 +361,12 @@ test('agent root renders without a human DM link, real human reply persists, and
       if (touch) {
         // Negative control (#367): a late line above the author, as when a task chip used to gain its number
         // after the reference read answered, moves the identity about 39px between frames and must fail.
+        // Centre the identity first (#343 aligned authors) so the shift keeps it in view and the frame-stability check is what rejects.
+        await workspaceEvent.locator('.project-convo__message-meta, .convo-notice__meta').first()
+          .evaluate((element: HTMLElement) => element.scrollIntoView({ block: 'center' }));
         await assert.rejects(captureVisibleAuthor(workspaceView, workspaceEvent, 'negative-control-late-line', undefined,
           () => workspaceEvent.evaluate((element: HTMLElement) => { element.style.paddingTop = '39px'; })),
-        // #343 moved the aligned author; the 39px shift can push the identity out of the viewport before the stability check runs.
-        (cause: unknown) => cause instanceof assert.AssertionError && (cause.message.includes('visible identity is stable over rendered frames')
-          || cause.message.includes('the actual full author and face are in the viewport and uncovered')));
+        (cause: unknown) => cause instanceof assert.AssertionError && cause.message.includes('visible identity is stable over rendered frames'));
         await workspaceEvent.evaluate((element: HTMLElement) => { element.style.paddingTop = ''; });
       }
     }

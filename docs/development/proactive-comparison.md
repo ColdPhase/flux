@@ -108,17 +108,17 @@ The Docker browser journey in `app/tests/app/e2e/proactive-comparison.e2e.ts` se
 one human work item and two proposals for a restricted project, renders their
 compact review rows alongside ordinary work and results at 1440×900, opens one
 by keyboard, follows an exact project-message citation, then edits, uses and
-dismisses them. It also follows work/thought citations and the Work/Results
-section jumps in separate desktop, touch phone and touch tablet browser contexts
+dismisses them. It also follows work/thought citations and the Work
+section jump, and opens a cited result from its suggestion's sources, in separate desktop, touch phone and touch tablet browser contexts
 at 1440×900, 390×844 and 1024×768. Touch source links and jumps have at least
 44 px height, and source labels remain inside the visible column. Browser touch
 emulation is not real-device installation or notification evidence. It verifies the
 stored versions and resulting work through the API after reload. A person also
 creates work manually after both proposals are gone, so the continuing project
 workflow does not depend on an available model connection.
-When a saved Tasks status or Only mine view hides ordinary work/results, the
-outcome section's Work/Results links restore All before scrolling to the real
-destination. Quiet outcomes remain a separate project section above Task views.
+When a saved Tasks status or Only mine view hides ordinary work, the
+outcome section's Work link restores All before scrolling to the real
+destination. Results have no group or jump in Tasks (#342); a cited result opens in the details panel from its suggestion. Quiet outcomes remain a separate project section above Task views.
 
 The adapter shape was checked on 2026-09-28 against the provider's
 [token-count endpoint](https://platform.claude.com/docs/en/api/http/messages/count_tokens),

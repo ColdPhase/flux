@@ -251,7 +251,7 @@ export function ProjectTasks() {
   const [titlesShown, setTitlesShown] = useState(false);
   if (!titlesShown && (outcomeRead.phase !== 'loading' || titlesTimedOut)) setTitlesShown(true);
   const jump = useRef<{ routeKey: string; id: string; group: GroupId } | null>(null);
-  // Outcome links refer to the whole project's work/results in the List. Restore All before
+  // Outcome links refer to the whole project's work in the List. Restore All before
   // scrolling, since a saved status/mine filter or a search can hide their destination.
   const jumpToSection = (id: string) => {
     const group = SECTION_GROUP[id];

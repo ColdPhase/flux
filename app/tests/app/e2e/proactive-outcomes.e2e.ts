@@ -49,7 +49,7 @@ test('all pages render quiet comparisons and insufficient evidence with current 
       assert.ok(offsets.includes(100), 'the older open outcomes load from page 2 rather than disappearing');
       assert.equal(await page.locator('.ws-proposal').count(), 2);
       // A saved task filter can hide an outcome link's destination. These links
-      // must restore the whole project before landing on real persisted work/results.
+      // must restore the whole project before landing on real persisted work.
       const views = page.getByRole('navigation', { name: 'Task views' });
       const jumps = page.getByRole('navigation', { name: 'Project work sections' });
       // Results have no group in Tasks (#342); the cited result is checked below from the suggestion itself.
