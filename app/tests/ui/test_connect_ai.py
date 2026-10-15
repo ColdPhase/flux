@@ -182,14 +182,13 @@ class ConnectAiJourney(unittest.TestCase):
         expect(app.get_by_role("link", name="Local co-work on this computer")).to_be_visible()
         expect(app.locator(".sset-row__identity")).to_have_count(0)
         expect(page.get_by_text("Your connected agents could not be listed")).to_have_count(0)
-        # Human work goes on: the project opens. Tom has no AI of his own, but the project lists the agent Ines
-        # connected to it (project members see each connection's owner, client and name), and he cannot manage it.
+        # Human work goes on: the project opens. Tom has no AI of his own; the project lists the MCP agent Ines
+        # connected to it, with its owner (project members see each connection's owner, client and name).
         page.goto(f"/projects/{self.ids['project']}/agents")
         expect(page.get_by_role("heading", level=1, name="Agents")).to_be_visible()
-        expect(page.get_by_text("1 in this project")).to_be_visible()
         rows = page.get_by_role("list", name="Agents in this project").get_by_role("listitem")
-        expect(rows).to_have_count(1)
-        expect(rows).to_contain_text("for Ines Moreau")
+        expect(rows.filter(has_text=CONNECTION)).to_have_count(1)
+        expect(rows.filter(has_text=CONNECTION)).to_contain_text("for Ines Moreau")
 
     def test_06_the_agents_view_shows_each_entrys_mode(self) -> None:
         ines = self.page("ines")
@@ -200,9 +199,8 @@ class ConnectAiJourney(unittest.TestCase):
         ines.goto(f"/projects/{self.ids['project']}/agents")
         rows = ines.get_by_role("list", name="Agents in this project").get_by_role("listitem")
         # Both rows belong to Ines: her assistant (its own external-client entry) and her MCP connection.
-        expect(rows).to_have_count(2)
+        expect(rows.filter(has_text=CONNECTION)).to_have_count(1)
         expect(rows.filter(has_text=CONNECTION)).to_contain_text("for Ines")
-        expect(rows.filter(has_text="for Ines")).to_have_count(2)
         # The settings page lists the same assistant with its AI connection, its payer and each use.
         ines.goto("/settings/agents")
         flux = ines.get_by_role("region", name=MODE_A, exact=True)
@@ -220,15 +218,17 @@ class ConnectAiJourney(unittest.TestCase):
         expect(flux).not_to_contain_text("Ines")
         expect(flux).not_to_contain_text("Assistant on")
         expect(flux).not_to_contain_text("Paid by")
-        # The project lists Ines's agent connection to Tom, read-only; her assistant is not listed to him.
+        # The project lists Ines's MCP agent to Tom with its owner, read-only: no stop, hand-off or revoke control.
         tom.goto(f"/projects/{self.ids['project']}/agents")
         rows = tom.get_by_role("list", name="Agents in this project").get_by_role("listitem")
-        expect(rows).to_have_count(1)
         ines_row = rows.filter(has_text=CONNECTION)
+        expect(ines_row).to_have_count(1)
         expect(ines_row).to_be_visible()
         expect(ines_row).to_contain_text("for Ines Moreau")
-        expect(rows.filter(has_text="Your assistant")).to_have_count(0)
-        expect(ines_row.get_by_role("button", name=re.compile("Stop|Take back|Revoke|Remove|Hand off", re.I))).to_have_count(0)
+        manage = re.compile("Stop|Take back|Revoke|Remove|Hand off", re.I)
+        expect(ines_row.get_by_role("button", name=manage)).to_have_count(0)
+        ines_row.get_by_role("button").first.click()
+        expect(tom.locator(".agents-detail").get_by_role("button", name=manage)).to_have_count(0)
         # What Tom's API calls return and refuse.
         own = self.api(tom, "GET", "/api/v1/agent-connections", status=200)
         self.assertEqual([item for item in own if item["id"] == self.ids["connection"]], [])
