@@ -28,7 +28,7 @@ class AggregateProbe(unittest.TestCase):
         page,A=self.actor('Aggregate')
         cases=[('blocked',['blocked','blocked'],'blocked','first','2 blocked'),
                ('open',['open','open'],'open','first','2 open tasks'),
-               ('active',['in_progress','in_progress'],'active','first','2 in progress'),
+               ('active',['in_progress','in_progress'],'active','first','2 tasks in progress'),
                ('history',['done','not_pursued'],'history','firstWork','1 completed task · 1 not pursued')]
         for label,statuses,family,target_key,expected in cases:
             with self.subTest(family=label):
