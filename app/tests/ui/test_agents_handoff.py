@@ -885,6 +885,8 @@ class HandOffJourney(unittest.TestCase):
         page = self.page("ada")
         project = self.api(page, "POST", f"/api/v1/workspaces/{self.ids['workspace']}/projects",
                            {"name": "Nothing to hand off", "visibility": "restricted"}, status=201)["id"]
+        self.api(page, "POST", f"/api/v1/projects/{project}/grants",
+                 {"principal": {"kind": "agent", "id": self.ids["agent_claude"]}, "role": "contributor"}, status=201)
         page.goto(f"/projects/{project}/agents")
         page.get_by_role("button", name="Hand off a task").click()
         dialog = page.get_by_role("dialog", name="Hand off a task")
@@ -893,6 +895,130 @@ class HandOffJourney(unittest.TestCase):
         expect(dialog.get_by_role("button", name="More tasks")).to_have_count(0)
         expect(dialog.get_by_role("button", name="Next")).to_be_disabled()
 
+
+    def test_20_empty_project_handoff_is_one_action_from_both_cold_routes(self) -> None:
+        setup = self.page("ada")
+        project = self.api(setup, "POST", f"/api/v1/workspaces/{self.ids['workspace']}/projects",
+                           {"name": "Agent connection pending", "visibility": "restricted"}, status=201)["id"]
+        task = self.api(setup, "POST", f"/api/v1/projects/{project}/work",
+                        {"title": "Prepare the community garden watering plan"}, status=201)
+        before = self.api(setup, "GET", f"/api/v1/projects/{project}/grants", status=200)
+        for scheme in ("light", "dark"):
+            for width, height in ((390, 844), (820, 1180), (1440, 900), (2560, 1440)):
+                for source in ("agents", "task"):
+                    with self.subTest(scheme=scheme, width=width, source=source):
+                        page = self.page("ada", scheme=scheme, phone=width == 390, width=width)
+                        page.set_viewport_size({"width": width, "height": height})
+                        path = f"/projects/{project}/agents" if source == "agents" else f"/projects/{project}/tasks?open=work:{task['id']}"
+                        page.goto(path)
+                        opener = page.get_by_role("button", name="Hand off a task" if source == "agents" else "Hand off to an agent")
+                        opener.click()
+                        dialog = page.get_by_role("dialog", name="Hand off a task")
+                        expect(dialog).to_be_visible()
+                        expect(dialog.get_by_role("heading", name="No agents in this project yet", exact=True)).to_be_visible()
+                        expect(dialog.locator(".kreska")).to_have_count(1)
+                        expect(dialog.get_by_text("Connect Claude Code, Codex or your assistant once. After that, handing off a task takes two clicks.", exact=True)).to_be_visible()
+                        connect = dialog.get_by_role("link", name="Connect an agent")
+                        expect(connect).to_have_attribute("href", "/connect-agent")
+                        expect(connect).to_be_focused()
+                        page.keyboard.press("Tab")
+                        expect(dialog.get_by_role("button", name="Close", exact=True)).to_be_focused()
+                        page.keyboard.press("Shift+Tab")
+                        expect(connect).to_be_focused()
+                        page.keyboard.press("Shift+Tab")
+                        expect(dialog.get_by_role("button", name="Cancel", exact=True)).to_be_focused()
+                        page.keyboard.press("Tab")
+                        expect(connect).to_be_focused()
+                        expect(dialog.get_by_role("button", name="Next")).to_have_count(0)
+                        expect(dialog.get_by_label("Task", exact=True)).to_have_count(0)
+                        expect(dialog.get_by_role("radiogroup")).to_have_count(0)
+                        expect(dialog.locator(".handoff__step")).to_have_text("Hand off")
+                        self.assertEqual(dialog.locator(".handoff").evaluate("el => getComputedStyle(el).display"), "flex")
+                        self.assertLessEqual(dialog.evaluate("el => el.scrollWidth - el.clientWidth"), 0)
+                        shot(page, f"handoff-empty-{source}-{width}-{scheme}")
+                        page.keyboard.press("Escape")
+                        expect(dialog).to_have_count(0)
+                        expect(opener).to_be_focused()
+                        opener.click()
+                        page.get_by_role("dialog", name="Hand off a task").get_by_role("button", name="Cancel", exact=True).click()
+                        expect(opener).to_be_focused()
+                        if scheme == "dark" and width == 2560 and source == "task":
+                            opener.click()
+                            page.get_by_role("dialog", name="Hand off a task").get_by_role("link", name="Connect an agent").click()
+                            expect(page).to_have_url(re.compile(r"/connect-agent$"))
+                            expect(page.get_by_role("dialog", name="Hand off a task")).to_have_count(0)
+                        page.context.close()
+        self.assertEqual(self.api(setup, "GET", f"/api/v1/projects/{project}/grants", status=200), before)
+        self.assertEqual(self.api(setup, "GET", f"/api/v1/work/{task['id']}", status=200)["version"], task["version"])
+
+    def test_21_available_handoff_has_stable_controls_and_persists_from_cold_task(self) -> None:
+        setup = self.page("ada")
+        project = self.api(setup, "POST", f"/api/v1/workspaces/{self.ids['workspace']}/projects",
+                           {"name": "Native agent garden planning", "visibility": "restricted"}, status=201)["id"]
+        self.api(setup, "POST", f"/api/v1/projects/{project}/grants",
+                 {"principal": {"kind": "agent", "id": self.ids["agent_claude"]}, "role": "contributor"}, status=201)
+        grants = self.api(setup, "GET", f"/api/v1/projects/{project}/grants", status=200)
+        for scheme in ("light", "dark"):
+            for width, height in ((390, 844), (820, 1180), (1440, 900), (2560, 1440)):
+                for source in ("agents", "task"):
+                    with self.subTest(scheme=scheme, width=width, source=source):
+                        task = self.api(setup, "POST", f"/api/v1/projects/{project}/work",
+                                        {"title": f"Plan watering with the garden volunteers · {source} {width} {scheme}"}, status=201)
+                        page = self.page("ada", scheme=scheme, phone=width == 390, width=width)
+                        page.set_viewport_size({"width": width, "height": height})
+                        page.goto(f"/projects/{project}/agents" if source == "agents" else f"/projects/{project}/tasks?open=work:{task['id']}")
+                        opener = page.get_by_role("button", name="Hand off a task" if source == "agents" else "Hand off to an agent")
+                        opener.click()
+                        dialog = page.get_by_role("dialog", name="Hand off a task")
+                        expect(dialog.get_by_role("heading", name="Who should do it?", exact=True)).to_be_visible()
+                        agent = dialog.locator("label.handoff__agent", has_text="Claude Code agent")
+                        expect(agent).to_contain_text("Ada Kowalska")
+                        expect(agent).to_contain_text("not signed in yet")
+                        if source == "agents":
+                            dialog.get_by_label("Task", exact=True).select_option(task["id"])
+                        agent.click()
+                        page.evaluate("() => document.fonts.ready")
+                        page.wait_for_function("() => document.getAnimations().every(a => a.playState !== 'running' || a.effect.getComputedTiming().endTime === Infinity)")
+                        def positions():
+                            return dialog.locator(".handoff__foot > .ui-btn").evaluate_all("els => els.map(el => { const r = el.getBoundingClientRect(); return {x:r.x,y:r.y,width:r.width,height:r.height}; })")
+                        before = positions()
+                        self.assertEqual(dialog.locator(".handoff").evaluate("el => getComputedStyle(el).display"), "flex")
+                        geometry = dialog.bounding_box()
+                        self.assertIsNotNone(geometry)
+                        if width == 390:
+                            self.assertGreater(geometry["y"], 80)
+                            self.assertAlmostEqual(geometry["y"] + geometry["height"], height, delta=1)
+                        else:
+                            self.assertAlmostEqual(geometry["x"] + geometry["width"] / 2, width / 2, delta=1)
+                            self.assertAlmostEqual(geometry["y"] + geometry["height"] / 2, height / 2, delta=1)
+                        shot(page, f"handoff-choose-{source}-{width}-{scheme}")
+                        dialog.get_by_role("button", name="Next", exact=True).click()
+                        confirm = dialog.get_by_role("button", name=re.compile("^Hand off"))
+                        expect(confirm).to_be_focused()
+                        expect(dialog.locator(".handoff__can")).to_have_attribute("data-allowed", "true")
+                        after = positions()
+                        for old, new in zip(before, after, strict=True):
+                            for key in old:
+                                self.assertAlmostEqual(old[key], new[key], delta=1, msg=f"{key}: controls stay anchored between steps")
+                        self.assertLessEqual(dialog.evaluate("el => el.scrollWidth - el.clientWidth"), 0)
+                        shot(page, f"handoff-permissions-{source}-{width}-{scheme}")
+                        dialog.get_by_role("button", name="Back", exact=True).click()
+                        expect(agent.get_by_role("radio")).to_be_checked()
+                        page.keyboard.press("Escape")
+                        expect(dialog).to_have_count(0)
+                        expect(opener).to_be_focused()
+                        opener.click()
+                        dialog.locator("label.handoff__agent", has_text="Claude Code agent").click()
+                        if source == "agents":
+                            dialog.get_by_label("Task", exact=True).select_option(task["id"])
+                        dialog.get_by_role("button", name="Next", exact=True).click()
+                        dialog.get_by_role("button", name=re.compile("^Hand off")).click()
+                        expect(dialog).to_have_count(0)
+                        saved = self.api(setup, "GET", f"/api/v1/work/{task['id']}", status=200)
+                        self.assertEqual({key: saved["owner"][key] for key in ("kind", "id")}, {"kind": "agent", "id": self.ids["agent_claude"]})
+                        self.assertEqual(saved["version"], task["version"] + 1)
+                        self.assertEqual(self.api(setup, "GET", f"/api/v1/projects/{project}/grants", status=200), grants)
+                        page.context.close()
 
 if __name__ == "__main__":
     unittest.main()
