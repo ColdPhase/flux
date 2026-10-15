@@ -146,7 +146,7 @@ test('expiry between initial validation and final CAS rolls the complete transac
 
 test('paired reverse refuses unsafe active metadata and restores T4 after settled metadata is removed', () => fixture(async (target,operations) => {
   const { readFile } = await import('node:fs/promises');
-  const reverse=await readFile('packages/db/migrations/reverse/0058_agent_runtime_auth_operations.down.sql','utf8');
+  const reverse=await readFile('packages/db/migrations/reverse/0097_agent_runtime_auth_operations.down.sql','utf8');
   const operation=claimed(await operations.claim(target));
   const client=await pool.connect();
   try {

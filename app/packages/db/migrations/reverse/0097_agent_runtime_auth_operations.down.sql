@@ -4,7 +4,7 @@ DO $$ BEGIN
   IF EXISTS (SELECT 1 FROM agent_runtime_auth_operations WHERE phase <> 'settled')
     OR EXISTS (SELECT 1 FROM agent_runtime_auth_admission WHERE blocked)
     OR EXISTS (SELECT 1 FROM agent_runtime_bindings WHERE release_reason = 'auth_recovery') THEN
-    RAISE EXCEPTION 'Runtime auth recovery/admission/history must be resolved before reversing 0058';
+    RAISE EXCEPTION 'Runtime auth recovery/admission/history must be resolved before reversing 0097';
   END IF;
 END $$;
 DROP TRIGGER agent_runtime_auth_lifecycle ON agent_runtime_bindings;

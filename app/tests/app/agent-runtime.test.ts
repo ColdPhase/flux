@@ -52,12 +52,12 @@ describe('runtime tables hold display facts only', () => {
       'release_reason:text', 'release_requested_at:timestamp with time zone', 'released_at:timestamp with time zone', 'release_logout_failed:boolean'],
     agent_runtime_connections: ['id:uuid', 'owner_user_id:text', 'binding_id:uuid', 'transport:text', 'client:text', 'state:text', 'sign_in_method:text', 'auth_method:text',
       'plan_label:text', 'account_label:text', 'signed_in_at:timestamp with time zone', 'created_at:timestamp with time zone', 'revoked_at:timestamp with time zone',
-      // 0057 (T4): a keyed HMAC of the account (exactly 64 hex digits by CHECK, too short for any vendor
+      // 0096 (T4): a keyed HMAC of the account (exactly 64 hex digits by CHECK, too short for any vendor
       // token), the previous masked label for the account-change notice, and the last sign-out.
       'account_fingerprint:text', 'previous_account_label:text', 'account_changed_at:timestamp with time zone', 'signed_out_at:timestamp with time zone',
       'sign_out_failed:boolean'],
     agent_runtime_operator_statements: ['statement:text', 'agreed_on:date', 'recorded_at:timestamp with time zone'],
-    // 0058: bounded operation identity/time/phase and digests; no raw ticket, session token or output.
+    // 0097: bounded operation identity/time/phase and digests; no raw ticket, session token or output.
     agent_runtime_auth_operations: ['binding_id:uuid', 'client:text', 'owner_user_id:text', 'operation_id:uuid', 'revision:integer',
       'boot_id:uuid', 'actor_digest:text', 'kind:text', 'phase:text', 'claimed_at:timestamp with time zone',
       'lease_ends_at:timestamp with time zone', 'hard_ends_at:timestamp with time zone', 'settled_at:timestamp with time zone'],
@@ -221,8 +221,8 @@ describe('migration 0056 reverses only before use', () => {
       await client.query('DELETE FROM agent_runtime_bindings');
       await client.query('DELETE FROM agent_runtime_connections');
       // Reverse new dependent schema first, preserving each migration's own refusal guards.
-      await client.query(await readFile('packages/db/migrations/reverse/0058_agent_runtime_auth_operations.down.sql','utf8'));
-      await client.query(await readFile('packages/db/migrations/reverse/0057_agent_runtime_sign_in.down.sql','utf8'));
+      await client.query(await readFile('packages/db/migrations/reverse/0097_agent_runtime_auth_operations.down.sql','utf8'));
+      await client.query(await readFile('packages/db/migrations/reverse/0096_agent_runtime_sign_in.down.sql','utf8'));
       await client.query(down);
       const left = await client.query(`SELECT count(*)::int AS n FROM information_schema.tables WHERE table_name = ANY($1)`,
         [['agent_runtime_slots', 'agent_runtime_bindings', 'agent_runtime_connections', 'agent_runtime_operator_statements']]);
@@ -234,9 +234,9 @@ describe('migration 0056 reverses only before use', () => {
   });
 });
 
-describe('migration 0057 reverses to the T3 columns', () => {
+describe('migration 0096 reverses to the T3 columns', () => {
   test('drops only the sign-in notice columns (inside a rolled-back transaction)', async () => {
-    const down = await readFile('packages/db/migrations/reverse/0057_agent_runtime_sign_in.down.sql', 'utf8');
+    const down = await readFile('packages/db/migrations/reverse/0096_agent_runtime_sign_in.down.sql', 'utf8');
     const client = await pool.connect();
     const columns = async () => (await client.query<{ column_name: string }>(`SELECT column_name FROM information_schema.columns
       WHERE table_name = 'agent_runtime_connections' ORDER BY ordinal_position`)).rows.map((row) => row.column_name);

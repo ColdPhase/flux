@@ -1,4 +1,4 @@
--- Reversal of 0057 (#279). It is not applied by the migrator and never edits the schema ledger: a
+-- Reversal of 0096 (#279). It is not applied by the migrator and never edits the schema ledger: a
 -- reversal runner owns that. It drops only display facts and notices; the logins themselves live in
 -- the slot volumes and are unaffected.
 ALTER TABLE agent_runtime_connections
