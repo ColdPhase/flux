@@ -421,7 +421,8 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
     const consume = () => publicComposer.consumeBody(submitted);
     if (name === 'decide') { openDetails({ kind: 'propose-decision', projectId: project.id, title: text }); consume(); return; }
     // A task, or a hand-off (a task for an agent whose owner the window asks for), opens the one Create window with the words as its title.
-    openCreate({ kind: 'task', projectId: project.id, title: firstLine(text) }); consume();
+    // The composer keeps its words until the task exists: closing the window loses nothing (and a newer draft is never consumed).
+    openCreate({ kind: 'task', projectId: project.id, title: firstLine(text), onCreated: consume });
   }
   async function send() {
     typing.stop();

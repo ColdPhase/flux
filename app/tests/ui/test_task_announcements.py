@@ -282,8 +282,8 @@ class TaskAnnouncements(unittest.TestCase):
         later.hover()
         later.get_by_role("button", name="Create task").click()
         # The one Create window opens with the message as its source (#345); creating it opens the task.
-        expect(page.get_by_role("dialog", name="Create").get_by_label("Title", exact=True)).to_have_value(LATER)
-        page.get_by_role("dialog", name="Create").get_by_role("button", name=re.compile("^Create task")).click()
+        expect(page.get_by_role("dialog", name="New task").get_by_label("Title", exact=True)).to_have_value(LATER)
+        page.get_by_role("dialog", name="New task").get_by_role("button", name=re.compile("^Create task")).click()
         details = page.locator("#details")
         expect(details.get_by_role("heading", name=LATER)).to_be_visible()
         work = self.api(page, "GET", f"/api/v1/projects/{self.ids['project']}/work?limit=100", status=200)

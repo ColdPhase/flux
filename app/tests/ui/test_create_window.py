@@ -271,13 +271,14 @@ class CreateWindow(unittest.TestCase):
             for tile in tiles.all():
                 self.assertGreaterEqual(tile.bounding_box()["height"], 44)
             shot(page, f"345-create-sheet-390-{scheme}")
-            # The sheet's project is the one the Task tile opens the window in.
-            sheet.get_by_role("combobox", name="Project").select_option(self.ids["other"])
             sheet.get_by_role("button", name="Task", exact=True).tap()
             window = dialog(page)
             expect(window).to_have_count(1)  # the sheet has left the screen
             expect(window).to_be_visible()
+            # Type first, then pick another project: the typed title moves with the task (F2).
             title_field(page).fill("Print labels for the beds")
+            window.get_by_role("combobox", name="Project").select_option(self.ids["other"])
+            expect(title_field(page)).to_have_value("Print labels for the beds")
             for control in (window.get_by_label("Details"), window.get_by_role("combobox", name="Status"), window.get_by_role("combobox", name="Owner"),
                             window.get_by_role("button", name="+ Link a message or thought"), window.get_by_role("switch"), submit_button(page)):
                 expect(control).to_be_visible()
@@ -337,10 +338,11 @@ class CreateWindow(unittest.TestCase):
         self.ensure_account()
         page = self.page()
         page.goto(f"/projects/{self.ids['project']}/tasks")
-        open_from_tasks(page)
-        dialog(page).get_by_role("combobox", name="Project").select_option(self.ids["other"])
+        field = open_from_tasks(page)
         title = f"Picker moves this {uuid.uuid4().hex[:6]}"
-        title_field(page).fill(title)
+        field.fill(title)
+        dialog(page).get_by_role("combobox", name="Project").select_option(self.ids["other"])
+        expect(title_field(page)).to_have_value(title)
         submit_button(page).click()
         expect(dialog(page)).to_have_count(0)
         stored = self.api(page, "GET", f"/api/v1/projects/{self.ids['other']}/work?limit=100", status=200)["items"]

@@ -89,7 +89,7 @@ class FileOnlyMessage(unittest.TestCase):
         message.hover()
         message.get_by_role("button", name="Create task").click()
         # The one Create window opens with the file-only message as source and a titled task (#345).
-        window = page.get_by_role("dialog", name="Create")
+        window = page.get_by_role("dialog", name="New task")
         expect(window.get_by_label("Title", exact=True)).to_have_value("1 attached file")
         with page.expect_response(lambda response: response.request.method == "POST" and response.url.endswith(f"/projects/{project['id']}/work")) as created:
             window.get_by_role("button", name=re.compile("^Create task")).click()
@@ -443,7 +443,7 @@ class FilesReferencesPhotos(unittest.TestCase):
         """Create task in the viewer stores a task whose source is that message (read back from the API)."""
         viewer.get_by_role("button", name="Create task", exact=True).click()
         # The one Create window opens with this message as its source; submitting it stores the task (#345).
-        window = page.get_by_role("dialog", name="Create")
+        window = page.get_by_role("dialog", name="New task")
         expect(window).to_be_visible()
         expect(viewer).to_have_count(0)
         with page.expect_response(lambda r: r.request.method == "POST" and r.url.endswith("/work")) as created:

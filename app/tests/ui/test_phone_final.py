@@ -211,7 +211,7 @@ class PhoneFinal(unittest.TestCase):
                 sheet.get_by_role("button", name=re.compile("^Task")).click()
                 expect(page).to_have_url(re.compile(r"/tasks"))
                 # The Task tile opens the one Create window in this project; the sheet itself is gone.
-                expect(page.get_by_role("dialog", name="Create").get_by_label("Title", exact=True)).to_be_visible()
+                expect(page.get_by_role("dialog", name="New task").get_by_label("Title", exact=True)).to_be_visible()
 
     def test_04_create_message_and_thought_use_the_places_that_make_them(self):
         page = self.page(SIZES[0])
@@ -418,7 +418,7 @@ class PhoneFinal(unittest.TestCase):
         project_picker = page.get_by_role("dialog", name="Create").get_by_role("combobox")
         project_picker.select_option(self.second_project["id"])
         page.get_by_role("dialog", name="Create").get_by_role("button", name="Task", exact=True).click()
-        field = page.get_by_role("dialog", name="Create").get_by_label("Title", exact=True)
+        field = page.get_by_role("dialog", name="New task").get_by_label("Title", exact=True)
         expect(field).to_be_visible()
         field.fill(title)
 
@@ -426,11 +426,11 @@ class PhoneFinal(unittest.TestCase):
         page.reload()
         page.get_by_role("button", name="Create", exact=True).click()
         page.get_by_role("dialog", name="Create").get_by_role("button", name="Task", exact=True).click()
-        project_picker = page.get_by_role("dialog", name="Create").get_by_role("combobox")
+        project_picker = page.get_by_role("dialog", name="New task").get_by_role("combobox", name="Project")
         expect(project_picker).to_have_value(self.second_project["id"])
-        field = page.get_by_role("dialog", name="Create").get_by_label("Title", exact=True)
+        field = page.get_by_role("dialog", name="New task").get_by_label("Title", exact=True)
         expect(field).to_have_value(title)
-        page.get_by_role("dialog", name="Create").get_by_role("button", name=re.compile("^Create task")).click()
+        page.get_by_role("dialog", name="New task").get_by_role("button", name=re.compile("^Create task")).click()
         expect(page.locator("#details")).to_contain_text(title)
         selected_work = self.call(page, "GET", f"/api/v1/projects/{self.second_project['id']}/work?limit=100")
         first_work = self.call(page, "GET", f"/api/v1/projects/{self.project['id']}/work?limit=100")

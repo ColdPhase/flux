@@ -3,7 +3,7 @@ import { useLocation, useNavigate, useRevalidator } from 'react-router';
 import { WORK_LIMITS, WORK_STATUSES, type Agent, type CreateWorkCommand, type ObjectRef, type Project, type WorkItem, type WorkspaceMember, type WorkStatus } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { getProject } from '../api/sketches';
-import { readDraft, useDraft } from '../app/drafts';
+import { readDraft, useDraft, writeDraft } from '../app/drafts';
 import { listWorkspaceMembers } from '../app/conversation-api';
 import { useShellData } from '../app/data';
 import { useShellActions, type CreateRequest } from '../app/shellContext';
@@ -24,7 +24,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export function CreateHost({ request, onClose }: { request: CreateRequest | null; onClose: () => void }) {
   const phone = useMediaQuery(MEDIA.phone);
   return (
-    <Overlay open={request !== null} onClose={onClose} placement={phone ? 'bottom' : 'center'} label="Create" className="create">
+    <Overlay open={request !== null} onClose={onClose} placement={phone ? 'bottom' : 'center'} label="New task" className="create">
       {request ? <CreateBody request={request} phone={phone} onClose={onClose} /> : null}
     </Overlay>
   );
@@ -199,6 +199,7 @@ function TaskForm({ request, phone, projectId, onProject, onClose }: { request: 
         const rest = unresolvedOf(readDraft(me.user.id, pendingContext)).filter((record) => record.payload !== payload);
         pending.setText(rest.length ? JSON.stringify(rest) : '');
       }
+      request.onCreated?.();
       revalidator.revalidate();
       if (!mounted.current) return;
       if (another) { done(item); return; }
@@ -220,6 +221,15 @@ function TaskForm({ request, phone, projectId, onProject, onClose }: { request: 
     if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) { event.preventDefault(); void submit(); }
   };
   const elsewhere = (run: () => void) => { onClose(); requestAnimationFrame(run); };
+  // A typed title goes with the task to the project the picker shows; that project's own kept draft is never overwritten.
+  const changeProject = (id: string) => {
+    if (id === projectId) return;
+    if (!prefilled && draft.text && !readDraft(me.user.id, `project-work:${id}`).trim()) {
+      writeDraft(me.user.id, `project-work:${id}`, draft.text);
+      draft.clear();
+    }
+    onProject(id);
+  };
 
   if (noPlace) return (
     <div className="create__in">
@@ -233,8 +243,8 @@ function TaskForm({ request, phone, projectId, onProject, onClose }: { request: 
   return (
     <form className="create__in" onSubmit={(event) => void submit(event)} onKeyDown={onKeyDown}>
       <div className="create__head ui-panel__head">
-        {phone ? <div className="create__ptitle"><h2 className="create__h">New task</h2><PlacePicker projectId={projectId} onChange={onProject} compact plain /></div> : <>
-          <PlacePicker projectId={projectId} onChange={onProject} compact />
+        {phone ? <div className="create__ptitle"><h2 className="create__h">New task</h2><PlacePicker projectId={projectId} onChange={changeProject} compact plain /></div> : <>
+          <PlacePicker projectId={projectId} onChange={changeProject} compact />
           <Icon name="chevron-right" size={12} className="create__sep" />
           <h2 className="create__h">New task</h2><kbd aria-hidden="true">C</kbd>
         </>}

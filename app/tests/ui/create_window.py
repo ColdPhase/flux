@@ -8,7 +8,7 @@ from playwright.sync_api import Locator, Page, expect
 
 
 def dialog(page: Page) -> Locator:
-    return page.get_by_role("dialog", name="Create")
+    return page.get_by_role("dialog", name="New task")
 
 
 def title_field(page: Page) -> Locator:

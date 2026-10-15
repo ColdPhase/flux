@@ -145,7 +145,7 @@ def journey(page: Page, rec: Recorder) -> None:
     order.hover()
     rec.click(order.get_by_role("button", name=CREATE_TASK))
     # The one Create window opens with the message as its source (#345).
-    window = page.get_by_role("dialog", name="Create")
+    window = page.get_by_role("dialog", name="New task")
     expect(window).to_be_visible()
     rec.hold(1200)
     rec.click(window.get_by_role("button", name=re.compile("^Create task")))

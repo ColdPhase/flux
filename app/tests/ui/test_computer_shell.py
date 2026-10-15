@@ -128,7 +128,7 @@ class ComputerShell(unittest.TestCase):
         page.goto("/")
         expect(self.sidebar(page).get_by_role("button", name=re.compile("^New"))).to_be_visible()
         page.locator("body").press("c")
-        window = page.get_by_role("dialog", name="Create")
+        window = page.get_by_role("dialog", name="New task")
         expect(window).to_be_visible()
         # New opens the one Create window (#345); Project, Message and Private note stay one step away.
         expect(window.get_by_label("Title", exact=True)).to_be_focused()

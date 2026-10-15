@@ -57,6 +57,8 @@ export interface CreateRequest {
   status?: WorkStatus;
   /** What the task comes from (a message or the thoughts of a Map selection): linked, never moved or copied. */
   sources?: { ref: ObjectRef; label: string }[];
+  /** Called once the task exists, e.g. a `/task` command consumes its composer text only then (closing the window keeps it). */
+  onCreated?: () => void;
 }
 
 export interface ShellActions {

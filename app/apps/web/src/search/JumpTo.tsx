@@ -35,6 +35,7 @@ function scopeOf(query: string): { scope: Scope; rest: string } {
 
 const sectionOf = (option: Option, scope: Scope): string | null => {
   if (option.kind === 'create') return 'Create';
+  if (option.kind === 'recent') return 'Recent searches';
   if (option.kind === 'agent') return scope === 'agents' ? 'Agents' : 'People and agents';
   if (option.kind !== 'result') return null;
   if (scope === 'people') return 'People and agents';
@@ -184,19 +185,13 @@ function JumpBody({ onClose, userId, phone }: { onClose: () => void; userId: str
       ) : null}
       <p className="ui-vh" id={statusId} role="status">{status}</p>
       <div className="jump__body">
-        {!text ? (
-          recent.items.length ? (
-            <div className="jump__sec">
-              <div className="jump__h"><span>Recent searches</span><button type="button" className="jump__clear" onClick={() => recent.clear()}>Clear</button></div>
-            </div>
-          ) : <p className="jump__hint">Find a message, a material and each of its versions, a task, a rule, a result, a thought or a person. Only what you can open is searched.</p>
-        ) : null}
+        {!text && !recent.items.length ? <p className="jump__hint">Find a message, a material and each of its versions, a task, a rule, a result, a thought or a person. Only what you can open is searched.</p> : null}
         {options.length ? (
-          <ul className="jump__list" role="listbox" id={listId} aria-label={rest ? 'Results' : recent.items.length ? 'Recent searches' : 'Create'}>
+          <ul className="jump__list" role="listbox" id={listId} aria-label={rest ? 'Results' : recent.items.length ? 'Create and recent searches' : 'Create'}>
             {options.map((option, index) => {
               const section = sectionOf(option, scope);
               const before = index ? sectionOf(options[index - 1]!, scope) : null;
-              const head = section && section !== before ? <li key={`h-${section}`} role="presentation" className="jump__sh">{section}</li> : null;
+              const head = section && section !== before ? <li key={`h-${section}`} role="presentation" className="jump__sh">{section}{section === 'Recent searches' ? <button type="button" className="jump__clear" onClick={() => recent.clear()}>Clear</button> : null}</li> : null;
               return [head, (
                 <li key={option.id} id={`${listId}-${index}`} role="option" aria-selected={index === current}
                   className={`jump__opt${option.kind === 'result' ? ' sr' : ''}${option.kind === 'all' ? ' jump__all' : ''}${index === current ? ' is-active' : ''}`}

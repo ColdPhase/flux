@@ -17,8 +17,6 @@
 .ws-dot--need { box-shadow: none; background: var(--inv); }
 
 /* ---------- Actions and objects under a message ---------- */
-.ws-act-error { margin-top: 4px; font-size: var(--fs-xs); color: var(--t1); }
-.ws-act-error button { text-decoration: underline; min-height: 28px; }
 .ws-attach { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
 .ws-attach__more { min-height: 28px; text-align: left; font-size: var(--fs-xs); color: var(--t3); text-decoration: underline; text-underline-offset: 3px; }
 .ws-message-pages { padding: 4px 24px; border-top: 1px solid var(--line); font-size: var(--fs-sm); color: var(--t3); }
