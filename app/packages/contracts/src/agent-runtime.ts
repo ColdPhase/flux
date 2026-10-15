@@ -31,7 +31,14 @@ export interface AgentRuntimeBinding {
 /** Every method of `claude auth login`, as the sign-in console offers them (F-022 "Sign-in as in a terminal"). */
 export const CLAUDE_CODE_SIGN_IN_METHODS = ['claude_account', 'console', 'sso'] as const;
 export type ClaudeCodeSignInMethod = (typeof CLAUDE_CODE_SIGN_IN_METHODS)[number];
-export type AgentRuntimeSignInMethod = ClaudeCodeSignInMethod | 'device_code' | 'api_key' | 'access_token';
+/** The sign-in methods a Codex runtime connection can report (its own client's facts, not the console's). */
+export const CODEX_SIGN_IN_METHODS = ['device_code', 'api_key', 'access_token'] as const;
+export type CodexSignInMethod = (typeof CODEX_SIGN_IN_METHODS)[number];
+/**
+ * The stored sign-in fact of a runtime connection, for either client. The sign-in console accepts only
+ * the Claude methods (`ClaudeCodeSignInMethod`); Codex facts are recorded by their own paths.
+ */
+export type AgentRuntimeSignInMethod = ClaudeCodeSignInMethod | CodexSignInMethod;
 
 /**
  * Who pays for a runtime connection's use, from its sign-in status (F-022 "Payer and data"): the
