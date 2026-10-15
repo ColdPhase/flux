@@ -18,7 +18,10 @@ import { GOLDEN_HELP } from '../contract/goldens.js';
 // gets "Invalid code. Please make sure the full code was copied." on stderr and the CLI keeps waiting.
 // A pasted `<code>#<state>` signs in: `.credentials.json` (0600) holds a seeded fake credential,
 // `fake-secret` in the home when present (the secret-absence tests look for it everywhere else), then
-// "Login successful." and exit 0. On a terminal the URL is an OSC 8 hyperlink, as the real CLI draws it.
+// "Login successful." and exit 0. As the real CLI keeps the signed-in account with its login, a sign-in
+// also keeps one: `fake-account` in the home when a test seeded it, otherwise owner@example.org. A
+// credential file written without a sign-in (the contract table's seeded state) has no account, and
+// `auth status` then reports `email: null`. On a terminal the URL is an OSC 8 hyperlink, as the real CLI draws it.
 //
 // Scenarios (`fake-scenario`): login_failed (the exchange fails: `Login failed: …`, exit 1),
 // login_timeout (no code arrives in time; the wording is the fake's own, the real one is unknown),
@@ -133,6 +136,7 @@ async function claudeLogin(argv: string[], flags: string[]): Promise<number> {
       scopes: SCOPES.split(' '), subscriptionType: method === 'sso' ? 'enterprise' : 'max',
     } }), { mode: 0o600 });
   }
+  if (mode !== 'login_without_credentials' && !readHome('claude_code', 'fake-account')) writeFileSync(join(home('claude_code'), 'fake-account'), 'owner@example.org', { mode: 0o600 });
   out('Login successful.\n');
   return 0;
 }
