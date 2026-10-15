@@ -1152,6 +1152,21 @@ cmd_upgrade() {
 }
 
 # ./flux runtime status | release runtime-<n> | purge [-y]  (F-022 T3; docs/operations/agent-runtime.md)
+cmd_identity() {
+  sub=${1:-}
+  [ $# -gt 0 ] && shift
+  case "$sub" in
+    link|unlink) ;;
+    *) die "usage: ./flux identity link <userId> --subject <sub> --reason \"<why>\" [--old-issuer <URL>] [--allow-sso] | ./flux identity unlink <userId> --reason \"<why>\"" ;;
+  esac
+  need_docker
+  [ -f "$ENV_FILE" ] || die "No ${ENV_FILE#"$FLUX_ROOT"/}; start Flux with ./flux up first."
+  check_owner "$PROJECT"
+  # Operator re-key (#315): issuer changes require the explicit old issuer; SSO mode requires --allow-sso.
+  # Operator unlink (#315): removes the provider sign-in; refused as the account's last way in.
+  compose_main exec -T api node apps/server/dist/identity/cli.js "$sub" "$@"
+}
+
 cmd_runtime() {
   sub=${1:-status}
   [ $# -gt 0 ] && shift
@@ -1248,6 +1263,10 @@ Flux launcher. Everything runs in Docker; only sh and Docker Compose are needed.
   ./flux export <project> [--as EMAIL] [--output FILE]
                          Write a project's JSON-plus-files bundle to exports/ (as the workspace
                          owner by default; the account needs project.manage).
+  ./flux identity link <userId> --subject <sub> --reason "<why>" [--old-issuer <URL>] [--allow-sso]
+                         Audited operator recovery by Flux account id; requires the running API.
+  ./flux identity unlink <userId> --reason "<why>"
+                         Audited operator removal of the provider sign-in; refused as the last way in.
   ./flux upgrade [--pull] [-y]
                          Back up, (git pull,) build this checkout, migrate and check health; on
                          failure print the restore instructions.
@@ -1299,6 +1318,7 @@ case "$command" in
   export) cmd_export "$@" ;;
   upgrade) cmd_upgrade "$@" ;;
   runtime) cmd_runtime "$@" ;;
+  identity) cmd_identity "$@" ;;
   ai) cmd_ai "$@" ;;
   _upgrade-apply) upgrade_apply "$@" ;;  # continues ./flux upgrade --pull in the pulled launcher
   help|-h|--help) cmd_help ;;

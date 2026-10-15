@@ -594,12 +594,18 @@ work input runs.
   model then calls `flux_bootstrap`, `flux_acknowledge_playbook`, `flux_project_orientation` (the current plan
   appears with its material id) and `flux_create_task` under the standing grant. The server-side acknowledgment
   is current and the task is attributed to the connection's agent.
-- **Codex rust-v0.160.1 (pending, no integrated path):** the pinned Codex does not put an MCP server's
-  `instructions` into its model request (probed 2026-10-09 with the same CLI line: the request carries only its
-  exec tool, which lists MCP tools at run time). Flux's instructions therefore never reach the model. The check
-  holds this state: no Flux text reaches the model, nothing is acknowledged and no task is created. It fails
-  once Codex delivers them, and the row then becomes supported. Manual prompt files or skill installs are not an
-  accepted fallback.
+- **Codex rust-v0.160.1 (native resource delivery observed; complete onboarding pending):**
+  Codex does not automatically insert server instructions into the initial model request. The #460 candidate
+  now exercises its existing `list_mcp_resources`/`read_mcp_resource` tools instead of inferring that no Flux
+  content can reach it. From plain `Start work`, the local scripted model receives the complete authenticated
+  playbook, derives its URI/reference/context from actual responses, then bootstraps, acknowledges, reads
+  orientation and creates a permitted attributed task. The expected server render is used only for a
+  post-delivery assertion; no bundle is copied into the model plan or initial request. This is actual client
+  delivery/invocation evidence, not genuine model obedience, a new host bridge or completed Start/Resume.
+  Both default and optional modern native modes pass that scenario. An additional fresh Codex setup uses
+  ordinary native registration with no seeded client/pre-registered ID or flag on add/login and performs a
+  permitted read. Built-in state/recovery and all remaining parent gates stay pending. Manual prompt files,
+  copied workflows or skill installation remain unacceptable substitutes.
 - **Not built:** Pause and Stop of a running agent. The Agents view shows state but has no controls for them;
   revocation remains the only stop.
 - **Not verified:** the resume path and changed-plan reanalysis of AC-1 (later work consuming changes), and the
@@ -629,16 +635,11 @@ seeded rows used through each client's pre-registered client-id option; Client I
 by the real clients is not exercised. A model does not choose the tools, so this does not show model obedience
 or instruction loading (#160).
 
-Findings recorded by this check (2026-10-09):
+Historical findings recorded by the pre-#460 check (2026-10-09):
 
-- Flux's MCP endpoint speaks only protocol `2026-07-28`. The pinned Codex requests `2025-06-18` by default and
-  fails the handshake (`-32022 Unsupported protocol version`); it works with Codex's under-development
-  `mcp_2026_07_28` feature on (`codex --enable mcp_2026_07_28`). This is the opt-in fixture path,
-  not delivered built-in onboarding; the current application does not serve the older revision.
+- Historical, before #460: Flux's MCP endpoint then spoke only protocol `2026-07-28`. The pinned Codex requested `2025-06-18` by default and failed the handshake (`-32022 Unsupported protocol version`); it worked only with Codex's under-development `mcp_2026_07_28` feature on (`codex --enable mcp_2026_07_28`). The #460 candidate (PR #467) admits `2025-06-18` beside `2026-07-28`; see the two-era section below.
   The [#460 research choice](../product/research/2026-10-10-codex-mcp-protocol-compatibility.md)
-  proposes a bounded two-era architecture. Its [public admission contract](../product/mcp-protocol-compatibility.md)
-  has delegated pre-review at `93889087` / record `880340ab`; eligible independent acceptance remains pending.
-  Implementation and complete runtime gates remain pending.
+  proposes a bounded two-era architecture. Its [public admission contract](../product/mcp-protocol-compatibility.md) is accepted (PR #466, `ea2f13d2`). Built-in onboarding and the complete runtime gates remain pending.
 - The pinned Codex runs MCP tool calls through its separate `codex-code-mode-host` release asset; the image pins it too.
 - Claude Code's `mcp login` needs a terminal (the check gives it a pty) and prints the authorization URL as a
   terminal hyperlink.
@@ -681,3 +682,42 @@ official Claude Code client must complete OAuth and call the tools against
 the running self-hosted HTTPS instance before this path is documented as
 supported. Provider plan usage and billing are observed only in the client's
 account; Flux does not infer them from a successful tool call.
+
+## Two-era candidate — #460
+
+The [accepted PC-1–PC-5 contract](../product/mcp-protocol-compatibility.md) governs the
+implementation candidate (PR #467). The production route now admits explicit legacy
+`2025-06-18` and modern `2026-07-28` through the same verified bearer factory,
+domain dispatch and delivery fences. Exact admission, version refusals (missing,
+conflicting and modern-format claims), notification and batch/mixed-array refusals
+are covered by real OAuth/HTTP tests in `app/tests/app/mcp-protocol.test.ts`.
+
+Evidence: [dated author-run results](evidence/460/results.json) are **recorded on an
+earlier head, `2175d249`** (69 checks per era, 13 native checks per mode, two owners
+and three independent connections). They are not regenerated for the current head.
+On the current head `a281b9ed`, `scripts/check_mcp_clients.sh` passed on 2026-10-15:
+72 maintained API/authority/extension tests in each era (`tests 72`, pass 72, for
+`2026-07-28` and `2025-06-18`) and 21 native tests in each mode (default, and
+`FLUX_TEST_CODEX_MODERN=1`), with pinned Codex and Claude Code and scripted models.
+The native lanes do not record the negotiated protocol version per lane; the
+legacy and modern paths are proven by the server-side wire tests. The foundation
+unit suite (150 tests) also passes.
+
+The Connect page shows the owner-private setup view (`ConnectionSetup.tsx`) for the
+saved permissions. It states one of: Off, project access unavailable, authorization
+needed, client session open (with its expiry), or authorization recorded. Each state
+says that built-in Start and Resume are pending and that no displayed fact proves the
+client is online or can start work. Revoked connections stay in a "Revoked connections"
+history on the page when no OAuth flow is in progress. Limits: the facts are
+owner-private and derived from current records (an unexpired, unrevoked token and the
+current binding generation); no native activation adapter is shipped
+(`activation: 'pending'`), so the view never shows Start/Resume ready; the history
+lists names and revocation only. Recovery is by reconsent or re-enrollment, not a
+displayed live state. This candidate has no native launch bridge. Default/native resource delivery does not prove closed-client wake,
+all platforms, resume/busy/restart/quiet-idle behavior or required cancellation
+and progress. The legacy adapter refuses unsupported notifications; that is
+not cancellation evidence. #460/#152/#160 remain open. Independent current-head
+runtime evaluation, eligible approval and the normal protected merge gates are
+required. Documentation PR #466 is merged (`ea2f13d2`, eligible approval 2026-10-11);
+this candidate's merge still requires its own independent exact-head evaluation
+and eligible approval; no self-approval or bypass.

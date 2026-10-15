@@ -1,9 +1,7 @@
 # MCP admission and client compatibility — #460 amendment
 
-**Status: Proposed; delegated pre-review at `93889087` / record `880340ab`; eligible independent acceptance pending, 2026-10-11.**
-Owner: @PelikanFix16. Evaluator: an independent peer; eligible GitHub review by
-@Zamojski5 remains separate. [#460](https://github.com/ColdPhase/flux/issues/460)
-and research/contract [PR #466](https://github.com/ColdPhase/flux/pull/466) stay open.
+**Status: Accepted. Merged in [PR #466](https://github.com/ColdPhase/flux/pull/466) at `ea2f13d2` after eligible approval by @Zamojski5 (2026-10-11); this contract applies to implementation [PR #467](https://github.com/ColdPhase/flux/pull/467).**
+Owner: @PelikanFix16. Evaluator: an independent peer; the eligible GitHub approval by @Zamojski5 on #466 is the acceptance record. [#460](https://github.com/ColdPhase/flux/issues/460) stays open; research/contract [PR #466](https://github.com/ColdPhase/flux/pull/466) is merged.
 The [bounded research choice](research/2026-10-10-codex-mcp-protocol-compatibility.md)
 received delegated architectural pre-review acceptance at `c39eea3019de2cbc28aa798d2ae5e005e33fd3eb` in
 [COMMENT 5480322828](https://github.com/ColdPhase/flux/pull/466#pullrequestreview-5480322828).
@@ -24,12 +22,10 @@ authority/features/held races, native/platform Connect and actual #160 activatio
 remain runtime gates. The peer checked contracts, primary sources and static
 checks, not a new Docker pass.
 
-This is the proposed bounded contract amendment to [F-016](mcp-cowork.md), [CW-1](cowork-workflow.md)
+This is the accepted bounded contract amendment to [F-016](mcp-cowork.md), [CW-1](cowork-workflow.md)
 and the wire admission of [EXT-1](extension-contracts.md#ext-1--mcp-tool-contract-1).
 It retains [F-024](mcp-identity.md), every existing #460/#152/#160 criterion,
-and the normal built-in **Connect → authorize → Start/Resume** outcome. No
-application change is present. The pinned research main `97574742` rejected legacy
-`2025-06-18`; separate incomplete draft [PR #467](https://github.com/ColdPhase/flux/pull/467) is not eligible/runtime/full-client acceptance.
+and the normal built-in **Connect → authorize → Start/Resume** outcome. The #466 record itself contains no application change. The pinned research main `97574742` rejected legacy `2025-06-18`. [PR #467](https://github.com/ColdPhase/flux/pull/467) implements PC-1–PC-5; its runtime and full-client acceptance is separate (see PC-5).
 
 ## PC-1 — explicit two-era admission
 
@@ -182,13 +178,9 @@ substitute for completing it.
 
 ## PC-5 — acceptance and publication gates
 
-This public amendment remains proposed after delegated pre-review. Eligible
-independent review at `880340ab` requested these corrections in
-[REQUEST_CHANGES 5480898344](https://github.com/ColdPhase/flux/pull/466#pullrequestreview-5480898344).
-A fresh delta review and normal protected acceptance are pending. Separate draft
-implementation #467 also needs fresh exact-head runtime/eligible evaluation;
-existing bounded author/agent evidence cannot make this proposed record normative. The bounded research choice and author-run temporary prototype do not
-close #460 or satisfy eligible PR approval. Preserve the original issue criteria;
+This public amendment is accepted: [PR #466](https://github.com/ColdPhase/flux/pull/466) merged at `ea2f13d2` after the corrections requested at `880340ab` ([REQUEST_CHANGES 5480898344](https://github.com/ColdPhase/flux/pull/466#pullrequestreview-5480898344)) were resolved and eligible approval was given.
+
+**Implementation record:** [PR #467](https://github.com/ColdPhase/flux/pull/467) (`codex/460-protocol-compatibility-impl`) implements the PC-1 admission and the notification, batch and version refusals in both eras. Its exact-head runtime evaluation, eligible approval and the open #460/#152/#160 outcomes remain separate from this contract acceptance. Author-run evidence and the temporary prototype do not close #460 or satisfy eligible PR approval. Preserve the original issue criteria;
 do not split away their built-in Connect requirement to close the parent early.
 
 Implementation and independent runtime evaluation must prove:

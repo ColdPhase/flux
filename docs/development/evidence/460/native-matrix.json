@@ -1,0 +1,63 @@
+{
+  "date": "2026-10-10",
+  "sourceParentHead": "aca7a588f6564801c833969faa51d95ed008f05e",
+  "applicationSourceUnchanged": true,
+  "sourceSha256": {
+    "app/tests/app/e2e/mcp-clients.e2e.ts": "64c858e86a487108c25fcc50de29f30d4f5a65fc857be3034139c2d9fd72b58c",
+    "app/tests/app/e2e/mcp-onboarding.e2e.ts": "ba775b1168804c3b6ced4d25e8940c153ceeb099871282afb777c3ea5d10118c",
+    "app/tests/app/support/mcp-client-harness.ts": "796dd43622930c80f9c2e5d17ade9a2fd282fd29cac55362183f7428367a716c",
+    "scripts/check_mcp_clients.sh": "3886716c0ba09e8a9f9f9e4dfe8fb2c4d63fa49c11497f7387a2cbaf021a13a4"
+  },
+  "checks": {
+    "trustedDockerBuildTypeLint": "PASS; three existing lint warnings",
+    "nativeDefault": {
+      "passed": 15,
+      "failed": 0
+    },
+    "nativeOptInModern": {
+      "passed": 15,
+      "failed": 0
+    }
+  },
+  "matrix": {
+    "humanOwners": 2,
+    "codexHomes": 3,
+    "claudeHomes": 2,
+    "eachOwnerBothNativeClientTypes": true,
+    "sameOwnerSameCodexAgentTwoIndependentHomes": true,
+    "actualSharedTaskAttributedAndReadByOtherFourHomes": true,
+    "revokePeerClaudeOtherFourUnaffected": true
+  },
+  "clients": {
+    "codex": "rust-v0.160.1",
+    "claudeCode": "2.1.285"
+  },
+  "platform": "linux/amd64 Docker; logical homes, not physical laptops/desktops",
+  "fixtureBoundaries": {
+    "realCLIs": true,
+    "realFluxOAuthViaChromium": true,
+    "matrixOAuthClientsSeeded": true,
+    "separateOrdinaryCodexOnboardingClientNotSeeded": true,
+    "modelEndpointScripted": true,
+    "vendorAccounts": false,
+    "vendorCredentials": false,
+    "modelSpend": 0
+  },
+  "runner": {
+    "trustedConfiguration": "scripts/check_mcp_clients.sh and app/compose.test.yaml",
+    "boundedWrapper": "/tmp/flux-460-native-only.sh; rebuild/type/lint and native files only, unchanged API source not replayed",
+    "override": "/tmp/flux-460-impl-compose.yaml; isolated IPAM only",
+    "wrapperSha256": "30203c5dc047fbdeb3978281eebd3a83252d22a3fe767ce3025fcce380ec368c",
+    "overrideSha256": "a524d2e290b7cc4a4497abbe3380a597733eacfcd69a85153f75818a10937c34"
+  },
+  "log": "/tmp/flux-460-native-matrix.log",
+  "logSha256": "b26a2cdc115967b651d622115eb33a15557cfcc726504d5830c8d32c3d1fb369",
+  "cleanedProject": "flux-mcpclients-1791664060-3937148",
+  "remaining": [
+    "Built-in Connect/current state/recovery: not delivered by matrix",
+    "Start/Resume/Pause/Stop and actual cancellation/progress: adapter proposal needs independent decision before implementation depends on it",
+    "Busy review/fix/fresh review and native restart recovery",
+    "Additional native OS/desktop/IDE paths unverified",
+    "Eligible PR466 acceptance/protected main composition; PR467 required CI and eligible independent review"
+  ]
+}

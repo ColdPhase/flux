@@ -366,6 +366,8 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
     try {
       await assistant.ask(command.body, { clientRunId: command.clientMessageId });
       helperComposer.finish(command.clientMessageId);
+      // The run's working line joins the end of the thread; follow it as a sent message does, or it starts off screen.
+      if (active()) requestAnimationFrame(() => { const feed = scrollRef.current; if (feed && active()) feed.scrollTop = feed.scrollHeight; });
       if (active()) setAsking(false);
     } catch (cause) {
       helperComposer.finish(command.clientMessageId, cause);
