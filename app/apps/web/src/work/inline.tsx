@@ -158,4 +158,3 @@ export function useCreateWorkFromMessage(project: Pick<Project, 'id'>) {
   }, [openCreate, project.id]);
   return { create };
 }
-}
