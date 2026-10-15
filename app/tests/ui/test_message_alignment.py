@@ -86,6 +86,23 @@ class MessageAlignment(unittest.TestCase):
             cls.dm_messages.append(cls.post(contexts[key], f"/api/v1/dms/{cls.dm['id']}/messages", {
                 "body": body, "clientMessageId": str(uuid.uuid4()),
             }))
+        group_project = cls.post(owner, f"/api/v1/workspaces/{workspace['id']}/projects", {"name": "Probe planning", "visibility": "workspace"})
+        cls.group_project = group_project["id"]
+        cls.groups = []
+        for key, body in (("ada", "I can bring the probes."), ("ada", "And the spare batteries."),
+                          ("jonas", "I will ask the volunteers."), ("jonas", "We can meet by the raised beds.")):
+            started = cls.post(contexts[key], f"/api/v1/projects/{cls.group_project}/conversations", {
+                "body": body, "clientMessageId": str(uuid.uuid4()),
+            })
+            cls.groups.append(started["messages"][0])
+        cls.group_thread = cls.post(owner, f"/api/v1/projects/{cls.group_project}/conversations", {
+            "body": "Could we test the moisture readings together?", "clientMessageId": str(uuid.uuid4()),
+        })
+        cls.group_replies = []
+        for body in ("Saturday morning works.", "I will bring a notebook."):
+            cls.group_replies.append(cls.post(owner, f"/api/v1/conversations/{cls.group_thread['id']}/messages", {
+                "body": body, "clientMessageId": str(uuid.uuid4()),
+            }))
         for context in contexts.values():
             context.close()
 
@@ -273,6 +290,28 @@ class MessageAlignment(unittest.TestCase):
                     self.assertNotRegex(last.locator("time").inner_text(), r"^0\d:")
                     expect(page.get_by_text("Unsent text stays in this tab", exact=False)).to_be_hidden()
                     page.context.close()
+
+    def test_05_project_and_thread_author_runs_have_four_pixel_bubble_gaps(self):
+        for phone in (False, True):
+            page = self.page(phone=phone)
+            page.goto(f"/projects/{self.group_project}")
+            for first, last in (self.groups[:2], self.groups[2:]):
+                self.assert_run(page, page.locator(f"#message-{first['id']}"), page.locator(f"#message-{last['id']}"))
+            page.goto(f"/projects/{self.group_project}/conversations/{self.group_thread['id']}")
+            self.assert_run(page, page.locator(f"#message-{self.group_replies[0]['id']}"), page.locator(f"#message-{self.group_replies[1]['id']}"))
+            page.context.close()
+
+    def assert_run(self, page, first, last):
+        first.scroll_into_view_if_needed()
+        expect(first.locator(".message-time")).to_have_count(0)
+        expect(last.locator(".message-time")).to_have_count(1)
+        expect(last.locator(":scope > .author-face, :scope > .project-convo__message-meta")).to_have_count(0)
+        a, b = first.locator(".message-bubble").bounding_box(), last.locator(".message-bubble").bounding_box()
+        self.assertAlmostEqual(b["y"] - a["y"] - a["height"], 4, delta=1)
+        if not page.evaluate("matchMedia('(hover: none)').matches"):
+            last.hover()
+            toolbar = last.locator(".msg-acts").bounding_box()
+            self.assertTrue(toolbar["x"] + toolbar["width"] <= b["x"] or b["x"] + b["width"] <= toolbar["x"], "hover controls stay beside the bubble")
 
     def assert_reference_width(self, page, row):
         card = row.locator(".message-bubble .ws-chip").first
