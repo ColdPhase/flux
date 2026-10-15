@@ -270,9 +270,14 @@ class ConnectAiJourney(unittest.TestCase):
         expect(menu).to_be_focused()
         geometry = menu.evaluate("""button => {
           const box = button.getBoundingClientRect(), style = getComputedStyle(button);
+          const name = button.querySelector('.phead__name').getBoundingClientRect();
+          const icon = button.querySelector('svg').getBoundingClientRect();
           const subtitle = button.closest('.phead__title').querySelector('.phead__sub').getBoundingClientRect();
           return {width:box.width,height:box.height,visible:button.matches(':focus-visible'),
             outlineWidth:parseFloat(style.outlineWidth),outlineStyle:style.outlineStyle,outlineColor:style.outlineColor,
+            contentLeft:name.left,contentRight:icon.right,
+            outlineLeft:box.left - parseFloat(style.outlineOffset) - parseFloat(style.outlineWidth),
+            outlineRight:box.right + parseFloat(style.outlineOffset) + parseFloat(style.outlineWidth),
             outlineBottom:box.bottom + parseFloat(style.outlineOffset) + parseFloat(style.outlineWidth), subtitleTop:subtitle.top};
         }""")
         self.assertGreaterEqual(geometry["height"], 44)
@@ -281,6 +286,8 @@ class ConnectAiJourney(unittest.TestCase):
         self.assertEqual(geometry["outlineStyle"], "solid")
         self.assertGreaterEqual(geometry["outlineWidth"], 2)
         self.assertNotIn(geometry["outlineColor"], ("transparent", "rgba(0, 0, 0, 0)"))
+        self.assertLessEqual(geometry["outlineLeft"] + geometry["outlineWidth"], geometry["contentLeft"], "focus outline stays outside title text")
+        self.assertLessEqual(geometry["contentRight"], geometry["outlineRight"] - geometry["outlineWidth"], "focus outline stays outside the title chevron")
         self.assertLessEqual(geometry["outlineBottom"], geometry["subtitleTop"], "visible title focus does not overlap the subtitle")
 
     def test_07b_owner_and_member_mcp_visibility_on_computer_and_phone(self) -> None:
