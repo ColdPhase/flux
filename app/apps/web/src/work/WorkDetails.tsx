@@ -64,7 +64,7 @@ interface PanelCommands {
   setBusy: (value: boolean) => void;
   setError: (value: string) => void;
   setAttempt: (value: string) => void;
-  setBlocker: (value: string) => void;
+  setBlocker: (value: string | undefined) => void;
   isCurrent: () => boolean;
 }
 
@@ -277,7 +277,7 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
       base.current = latest.current.version;
       if (latest.current.version <= version) rebase.current[field] = version;
     });
-    if (ok) { base.current = null; delete rebase.current[field]; }
+    if (ok) { base.current = null; delete rebase.current[field]; if (field === 'blocker') setBlocker(undefined); }
     return ok;
   }
   async function saveOwner(value: string) {
@@ -334,7 +334,7 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
           <dd>
             {item.owner ? (item.owner.kind === 'agent' ? <AgentIdentity name={item.owner.name} owner={owners.get(item.owner.id)} /> : <Avatar name={item.owner.name} size="sm" tone={item.owner.id === me.user.id ? 'me' : 'neutral'} />) : null}
             {writable ? (
-              <select id={ownerId} className="wd-owner" disabled={busy} value={ownerDraft ?? ownerValue} onFocus={() => { ownerBase.current ??= item.version; }} onChange={(event) => {
+              <select id={ownerId} className="wd-owner" disabled={busy} value={ownerDraft ?? ownerValue} onFocus={() => { ownerBase.current ??= item.version; }} onPointerDown={() => { ownerBase.current ??= item.version; }} onBlur={() => { if (ownerDraft === null) ownerBase.current = null; }} onKeyDown={(event) => { if (event.key === 'Escape' && ownerDraft === null) ownerBase.current = null; else ownerBase.current ??= item.version; }} onChange={(event) => {
                 ownerBase.current ??= item.version;
                 setOwnerDraft(event.target.value);
                 void saveOwner(event.target.value);
@@ -360,7 +360,7 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
             {writable ? <Button variant="quiet" className="wd-blocker__resolve" disabled={busy} onClick={() => void setState('in_progress')}>Resolve</Button> : null}</div>
           {writable ? (
             <form className="wd-blocker-form" onSubmit={(event) => { event.preventDefault(); void saveField('blocker', blocker.trim() || null); }}>
-              <Input label="What is it waiting for?" value={blocker} onFocus={() => { blockerBase.current ??= item.version; }} onChange={(event) => { blockerBase.current ??= item.version; setBlocker(event.target.value); }} maxLength={2000} />
+              <Input label="What is it waiting for?" value={blocker} onFocus={() => { blockerBase.current ??= item.version; }} onBlur={() => { if (blocker.trim() === (item.blocker ?? '')) { blockerBase.current = null; setBlocker(undefined); } }} onChange={(event) => { blockerBase.current ??= item.version; setBlocker(event.target.value); }} maxLength={2000} />
               {commands.state.blocker !== undefined && item.blocker !== blocker ? <p className="wd-muted">Now: {item.blocker || 'No blocker written.'}</p> : null}
               <Button type="submit" variant="secondary" busy={busy} disabled={blocker.trim() === (item.blocker ?? '')}>Save</Button>
             </form>
@@ -812,6 +812,7 @@ function AttachResult({ view, context, contextStatus, reload, revision, isCurren
             {workId && !open.some((item) => item.id === workId) ? <option value={workId}>{chosen?.title ?? 'Selected work (not loaded)'}</option> : null}
             {open.map((item) => <option key={item.id} value={item.id}>{item.title}</option>)}
           </select>
+          {chosen && finishable && finishes && finishVersion === null ? <Button variant="quiet" onClick={() => { setFinishVersion(chosen.version); setAttempt(crypto.randomUUID()); setError(''); }}>Finish current version</Button> : null}
           {chosen && !finishable && finishes ? <Button variant="quiet" onClick={() => edit(setFinishes)(false)}>Attach without finishing</Button> : null}
           {chosen && !finishable ? <p className="wd-muted">“{chosen.title}” cannot be finished by this result in its current state. Parked work must first return to the plan.</p> : null}
           {chosen && finishable ? <label className="wd-check"><input type="checkbox" checked={finishes} onChange={(event) => { setFinishVersion(event.target.checked ? chosen.version : null); edit(setFinishes)(event.target.checked); }} />This finishes “{chosen.title}”</label> : null}

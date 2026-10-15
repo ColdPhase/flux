@@ -459,3 +459,45 @@ class NativeDetailsJourney(unittest.TestCase):
         self.assertEqual(saved.value.status, 200)
         self.assertEqual(self.native("work", task["id"])["owner"]["id"], self.user)
         expect(retry).to_have_count(0)
+
+    def test_15_successful_blocker_save_retires_the_draft_before_a_peer_refresh(self):
+        task = api(self.ctx, "POST", self.root + "/work", {"title": "Retire each stored blocker draft"}, 201)
+        task = api(self.ctx, "PATCH", f"/api/v1/work/{task['id']}", {"status": "blocked", "blocker": "Original", "expectedVersion": task["version"]})
+        page = self.page(); panel = self.open(page, "work", task["id"])
+        field = panel.get_by_label("What is it waiting for?", exact=True)
+        field.fill("My first stored blocker")
+        save = panel.get_by_role("button", name="Save", exact=True)
+        with page.expect_response(lambda response: response.request.method == "PATCH" and response.url.endswith(task['id'])) as stored:
+            save.click()
+        self.assertEqual(stored.value.status, 200)
+        expect(field).to_have_value("My first stored blocker")
+        expect(save).to_be_disabled()
+        current = self.native("work", task["id"])
+        api(self.ctx, "PATCH", f"/api/v1/work/{task['id']}", {"blocker": "The peer's newer blocker", "expectedVersion": current["version"]})
+        expect(field).to_have_value("The peer's newer blocker")
+        expect(save).to_be_disabled()
+        self.assertEqual(self.native("work", task["id"])["blocker"], "The peer's newer blocker")
+
+    def test_16_clean_field_focus_ends_before_a_later_edit(self):
+        task = api(self.ctx, "POST", self.root + "/work", {"title": "End clean property editing sessions"}, 201)
+        url = f"/api/v1/work/{task['id']}"
+        task = api(self.ctx, "PATCH", url, {"status": "blocked", "blocker": "Original blocker", "expectedVersion": task["version"]})
+        page = self.page(); panel = self.open(page, "work", task["id"])
+        owner = panel.get_by_label("Owner", exact=True)
+        owner.focus(); owner.press("Tab")
+        task = api(self.ctx, "PATCH", url, {"title": "A fresh title after clean owner focus", "expectedVersion": task["version"]})
+        expect(panel.get_by_title("Edit title", exact=True)).to_have_text(task["title"])
+        with page.expect_response(lambda response: response.request.method == "PATCH" and response.url.endswith(url)) as assigned:
+            owner.select_option(f"human:{self.user}")
+        self.assertEqual(assigned.value.status, 200, "a new clean owner session uses the currently visible version")
+        expect(panel.get_by_role("button", name="Retry owner change", exact=True)).to_have_count(0)
+        field = panel.get_by_label("What is it waiting for?", exact=True)
+        field.focus(); field.press("Tab")
+        task = self.native("work", task["id"])
+        api(self.ctx, "PATCH", url, {"blocker": "A fresh blocker after clean focus", "expectedVersion": task["version"]})
+        expect(field).to_have_value("A fresh blocker after clean focus")
+        field.fill("My new blocker session")
+        with page.expect_response(lambda response: response.request.method == "PATCH" and response.url.endswith(url)) as stored:
+            panel.get_by_role("button", name="Save", exact=True).click()
+        self.assertEqual(stored.value.status, 200, "a new clean blocker session uses the currently visible version")
+        expect(panel.get_by_role("alert")).to_have_count(0)
