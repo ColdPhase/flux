@@ -468,7 +468,8 @@ test('native agent owners retry failed reads, fence stale permission answers and
     assert.equal(await row.locator('.ws-av').count(), 0);
     await capture('scoped-owner-list', '.ws-item .agent-for');
     // Decisions have no row in Tasks (#342); the proposing agent's owner shows in the decision's own details below.
-    await row.getByRole('button').click();
+    // The row's open button is `.ws-item`; the status glyph is a second button in the same row (#346).
+    await row.locator('button.ws-item').click();
     await page.locator('.wd-discussion .agent-for').waitFor();
     assert.equal(await page.locator('.wd-discussion .agent-tag').innerText(), 'Agent');
     assert.equal(await page.locator('.wd-discussion .agent-for').innerText(), 'for Scoped Casey');
