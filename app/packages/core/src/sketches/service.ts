@@ -340,18 +340,22 @@ export function createSketchUseCases(uow: SketchUnitOfWork) {
           if (!view.readable) throw new NotFoundError('Draft', 'DRAFT_NOT_FOUND');
           if (view.workspaceId !== sketch.workspaceId) throw new RuleViolationError('A placed object must belong to the sketch’s workspace', 'CROSS_WORKSPACE');
         }
-        if (linkFrom) await lockedThought(ports, sketch.id, linkFrom.thoughtId);
         if (await ports.sketches.thoughtExists(thoughtId)) throw new ConflictError('A thought with this id already exists', 'THOUGHT_EXISTS');
         if (linkFrom && await ports.sketches.linkExists(linkFrom.linkId)) throw new ConflictError('A link with this id already exists', 'LINK_EXISTS');
         await ports.live.before(principal,sketch,{thoughtIds:[thoughtId,...(linkFrom?[linkFrom.thoughtId]:[])],linkIds:linkFrom?[linkFrom.linkId]:[]});
         // #252: stored files belong to a project, so only a project sketch's thought can show one.
         if (fileId && (sketch.scope !== 'project' || !sketch.projectId))
           throw new RuleViolationError('Images can be placed only on a project’s maps', 'IMAGES_NEED_A_PROJECT');
-        if (fileId) await ports.files.place(principal, { projectId: sketch.projectId!, fileId, thoughtId });
+        const preparedImage=fileId&&ports.files.preparePlace?await ports.files.preparePlace(principal,{projectId:sketch.projectId!,fileId,thoughtId}):null;
+        const artifacts=await ports.artifacts?.prepare(sketch,[thoughtId,...(linkFrom?[linkFrom.thoughtId]:[])]);
+        if (linkFrom) await lockedThought(ports, sketch.id, linkFrom.thoughtId);
+        if (fileId) {if(preparedImage)await preparedImage();else await ports.files.place(principal, { projectId: sketch.projectId!, fileId, thoughtId });}
         const thought = await ports.sketches.insertThought({ id: thoughtId, workspaceId: sketch.workspaceId, sketchId: sketch.id, ...values, placement, source, createdBy: principal });
         const link = linkFrom ? await ports.sketches.insertLink({
           id: linkFrom.linkId, workspaceId: sketch.workspaceId, sketchId: sketch.id, fromId: linkFrom.thoughtId, toId: thought.id, label: linkFrom.label, createdBy: principal,
         }) : null;
+        await artifacts?.thought(null,thought);
+        if(fileId)await artifacts?.file(fileId);
         const [view] = await presentThoughts(ports, principal, sketch, [thought]);
         await changed(ports, principal, sketch, { op: 'thought_added', thoughtIds: [thought.id], linkIds: link ? [link.id] : [] });
         return { thought: view!, link: link ? presentThoughtLink(link) : null };
@@ -369,11 +373,14 @@ export function createSketchUseCases(uow: SketchUnitOfWork) {
       if (!Object.keys(changes).length) throw new InvalidInputError('Change at least one of text, x, y, width, height, shape');
       return uow.run(async (ports) => {
         const { sketch } = await authorized(ports, principal, 'sketch.write', sketchId);
-        const current = await lockedThought(ports, sketch.id, valid.id(thoughtId, 'thoughtId'));
+        const target=valid.id(thoughtId,'thoughtId');
+        const artifacts=await ports.artifacts?.prepare(sketch,[target]);
+        const current = await lockedThought(ports, sketch.id, target);
         const [currentView] = await presentThoughts(ports, principal, sketch, [current]);
         checkVersion(current, command.expectedVersion, currentView!);
         await ports.live.before(principal,sketch,{thoughtIds:[current.id],linkIds:[],leaseId:command.leaseId});
         const updated = await ports.sketches.updateThought(sketch.id, current.id, changes);
+        await artifacts?.thought(current,updated);
         const [view] = await presentThoughts(ports, principal, sketch, [updated]);
         await changed(ports, principal, sketch, { op: 'thought_updated', thoughtIds: [current.id], linkIds: [] });
         return view!;

@@ -1,4 +1,4 @@
-import { fileRows, liveMapRows, sketchRows, type DbExecutor } from '@flux/db';
+import { artifactResetRows, canonicalArtifactTaskIds, fileRows, liveMapRows, prepareCanonicalArtifactTasks, sketchRows, type DbExecutor } from '@flux/db';
 import type { PromotionPerson } from '@flux/contracts';
 import {
   authorize,
@@ -7,6 +7,7 @@ import {
   ForbiddenError,
   ConflictError,
   placeThoughtImage,
+  prepareThoughtImage,
   getProject,
   grantProject,
   listMembers,
@@ -125,6 +126,9 @@ export function sketchFiles(tx: Database, storage?: FileStorage): SketchFiles {
     place: (principal, input) => placeThoughtImage(files, storage ?? { read: async () => {
       throw new ForbiddenError('Images cannot be placed on a map here', 'FILE_PLACEMENT_UNAVAILABLE');
     } }, principal, input),
+    preparePlace:(principal,input)=>prepareThoughtImage(files,storage??{read:async()=>{
+      throw new ForbiddenError('Images cannot be placed on a map here','FILE_PLACEMENT_UNAVAILABLE');
+    }},principal,input),
   };
 }
 
@@ -137,6 +141,21 @@ export function sketchPorts(tx: Database, storage?: FileStorage): SketchPorts {
     sketches,
     live:nativeMapJournal(tx as DbExecutor,sketches).journal,
     promotion: sketchPromotion(tx),
+    artifacts:{async prepare(sketch,thoughtIds){
+      if(sketch.scope!=='project'||!sketch.projectId)return null;
+      const scope={workspaceId:sketch.workspaceId,projectId:sketch.projectId};
+      const retained=await prepareCanonicalArtifactTasks(tx,scope,thoughtIds.map(id=>({kind:'thought' as const,id})),[]);
+      return{
+        async thought(before,after){
+          if(before&&before.text===after.text)return;
+          const recipients=await canonicalArtifactTaskIds(tx,scope,{kind:'thought',id:after.id});
+          await artifactResetRows(tx).record(scope,{kind:'thought',id:after.id,revision:String(after.version)},recipients,retained);
+          // A real saved source effect still counts as use when an old canonical identity suppresses its reset.
+          if(recipients.length)await retained.mark(recipients);
+        },
+        file:(fileId)=>artifactResetRows(tx).publishedFile(scope,fileId,retained),
+      };
+    }},
     events: { record: async (principal, workspaceId, kind, sketchId, data) => { await recordEvent(eventPorts(tx), principal, workspaceId, kind, sketchId, data); } },
   };
 }

@@ -78,7 +78,7 @@ function activeRule(task: GithubTaskState, principal: Principal, proof: GithubRe
  * write access and their own GitHub access to the repository of every required link; their GitHub identity and
  * authorization generation are captured. A reconciliation of each repository then applies it to current facts.
  */
-async function enable(ports: GithubPorts, principal: Principal, work: { id: string; projectId: string }, version: number, chosen: GithubRuleMode | undefined, revision?: number) {
+async function enable(ports: GithubPorts, principal: Principal, work: { id: string; projectId: string; workspaceId: string }, version: number, chosen: GithubRuleMode | undefined, revision?: number) {
   const required = (await ports.rows.links(work.id)).filter((link) => link.role === 'required_output');
   if (!required.length) throw new RuleViolationError('Link a required pull request to this task first', 'GITHUB_RULE_NEEDS_REQUIRED_PR');
   const bindings: GithubBindingRecord[] = [];
@@ -97,6 +97,7 @@ async function enable(ports: GithubPorts, principal: Principal, work: { id: stri
     if (!locked || locked.state !== 'active') throw new ServiceUnavailableError('A linked repository is unavailable; reconnect it first', 'GITHUB_BINDING_UNAVAILABLE');
     await scheduleRuleReconciliation(ports, locked);
   }
+  await ports.tasks.lockForRules(work.workspaceId,work.projectId,[work.id]);
   const task = await ports.tasks.find(work.id, true);
   if (!task) throw new NotFoundError('Work item', 'WORK_NOT_FOUND');
   if (task.version !== version) throw new VersionConflictError(task.version, await presentView(ports, task));
@@ -131,6 +132,7 @@ export function githubRuleUseCases(uow: GithubUnitOfWork) {
       return uow.run(async (ports) => {
         const work = await located(ports, principal, task, 'write');
         if (command.enabled) return enable(ports, principal, work, version, chosen, revision);
+        await ports.tasks.lockForRules(work.workspaceId,work.projectId,[work.id]);
         const current = await ports.tasks.find(task, true);
         if (!current) throw new NotFoundError('Work item', 'WORK_NOT_FOUND');
         if (current.version !== version) throw new VersionConflictError(current.version, await presentView(ports, current));
