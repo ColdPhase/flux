@@ -258,12 +258,16 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
     const before = { status: item.status, blocker: item.status === 'blocked' ? item.blocker : null };
     if (await change({ status: next })) {
       // Finishing parked work also unparks it, and the contract cannot park it again, so Undo would leave it unparked: no Undo for that change.
+      // The one wink (F-026 §3) on a task closed: the words carry it without the face.
+      const mascot = next === 'done' ? 'wink' as const : undefined;
       if (item.parked && (next === 'done' || next === 'not_pursued')) {
-        toast({ message: `${taskNumber(item)} is now ${STATUS_LABEL[next].toLowerCase()} and no longer parked`, timeout: 8000 });
+        toast({ message: `${taskNumber(item)} is now ${STATUS_LABEL[next].toLowerCase()} and no longer parked`, timeout: 8000, mascot });
         return;
       }
       const restore = before.status === 'blocked' && before.blocker ? { status: before.status, blocker: before.blocker } : { status: before.status };
-      toast({ message: `${taskNumber(item)} is now ${STATUS_LABEL[next].toLowerCase()}`, timeout: 8000, action: { label: 'Undo', onClick: () => { void change(restore, latest.current); } } });
+      // Closing says it in the words of the wink (#N done); the other states keep their status label.
+      const words = next === 'done' ? `${taskNumber(item)} done` : `${taskNumber(item)} is now ${STATUS_LABEL[next].toLowerCase()}`;
+      toast({ message: words, timeout: 8000, mascot, action: { label: 'Undo', onClick: () => { void change(restore, latest.current); } } });
     }
   }
   useStateKeys(writable, (status) => void setState(status));
@@ -322,7 +326,7 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
         </section>
       ) : null}
       {writable ? <HandOffDialog open={handingOff} onClose={() => setHandingOff(false)} project={context.project} task={{ id: item.id, version: item.version, number: item.number, title: item.title }} onDone={reload} /> : null}
-      <ReadyToClose item={item} writable={writable} busy={busy} done={() => void change({ status: 'done' })} />
+      <ReadyToClose item={item} writable={writable} busy={busy} done={() => void setState('done')} />
       {!reverted && !isFinished(item) ? <LiveEntry variant="inline" anchor={liveAnchor} /> : null}
 
       {reverted ? <section className="details__sec wd-history" data-task-lifecycle="creation_reverted" aria-labelledby={`wd-history-${item.id}`}>
