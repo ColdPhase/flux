@@ -7,6 +7,7 @@ import { useStreamEvents } from '../api/stream';
 import { listOwnRuns, stopRun } from '../assistant/api';
 import { isWorking } from '../assistant/format';
 import { Icon, Kreska, agentHue, useToast, type KreskaExpression } from '../ui';
+import { useSmallMoments } from './smallMoments';
 import { getOwnWorkingAgents } from '../agents/api';
 import { stopFailure, stopAgentWork } from '../agents/stop';
 import { useShellData } from './data';
@@ -227,6 +228,7 @@ function WorkingAssistant({ compact = false }: { compact?: boolean }) {
   const { me } = useShellData();
   const { run, stop, dismissFailure, stopping, failed } = useWorkingRun(me.user.id);
   const stopButton = useRef<HTMLButtonElement>(null);
+  const moments = useSmallMoments();
   if (!run) return null;
   const label = stopping ? 'Stopping your assistant…' : `Your assistant is ${doing(run)}`;
   const destination = `/projects/${run.projectId}/conversations/${run.conversationId}`;
@@ -235,11 +237,11 @@ function WorkingAssistant({ compact = false }: { compact?: boolean }) {
     <div className={`agentlive${compact ? ' agentlive--compact' : ''}`} role="status" aria-label={label}>
       {compact ? (
         <Link className="agentlive__link" to={destination} title={label} aria-label={label}>
-          <Kreska size={24} expression={face(run)} />
+          {moments ? <Kreska size={24} expression={face(run)} /> : <span className="agentlive__mark" aria-hidden="true"><Icon name="spark" size={20} /></span>}
         </Link>
       ) : (
         <>
-          <Kreska size={24} expression={face(run)} />
+          {moments ? <Kreska size={24} expression={face(run)} /> : <span className="agentlive__mark" aria-hidden="true"><Icon name="spark" size={20} /></span>}
           <Link className="agentlive__text" to={destination}>
             <b>Your assistant</b>
             <span>{stopping ? 'requesting Stop…' : doing(run)}</span>
