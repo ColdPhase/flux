@@ -28,7 +28,7 @@ older Prostota drawing differ, this page wins.
 5. **One pattern for one thing.** One message bubble in projects, direct messages and
    threads; one panel shell for tasks, threads and project details; one composer.
 6. **Selection is a soft fill.** No white rings or vertical bars. A highlighted source fades
-   after 2 s. Message actions appear on hover (computer) or long press / swipe (phone).
+   after 2 s. Message actions appear on hover (computer) or long press / swipe left (phone).
 7. **A control never changes place.** Switching a view or a state changes the content, never
    the position of a control. The view switcher is always on the left, the primary action
    always on the right, the sidebar toggle always in the top row. Unavailable actions are
@@ -68,7 +68,8 @@ avatar and no name; time and "Seen by" sit under the last bubble of a run.
 | 9 Consistency | [audit](boards/C01-spojnosc-audyt.webp) | [anchors](boards/C02-kotwice-po.webp) |
 | 10 Rest of the app | [now](boards/D01-reszta-teraz.webp) | [hand-off](boards/E01-handoff-po.webp) · [Create and ⌘K](boards/E02-create-palette-po.webp) · [Sketchbook](boards/E03-sketchbook-po.webp) · [Settings](boards/E04-settings-po.webp) · [Settings phone](boards/E04p-settings-telefon.webp) · [Search](boards/E05-search-po.webp) · [empty Inbox](boards/E06-inbox-pusty-po.webp) |
 
-Board copy explaining each change is in Polish; the application copy in the drawings is the
+The orange numbered badges and dashed lines on the boards are review annotations, not
+product UI. Board copy explaining each change is in Polish; the application copy in the drawings is the
 English product copy.
 
 ## Accepting an implementation

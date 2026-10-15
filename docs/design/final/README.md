@@ -276,7 +276,9 @@ The canvas labels S1–S22 and P1–P12 refer to these rules.
   messages are on the left, in projects and direct messages, including replies and pending
   sends. The side follows the actual author, never the agent's owner. This supersedes the
   former all-authors-left wording and matches the own-message placement in the renders.
-- Keep each author's name and 32 px avatar with their message on its corresponding side.
+- Keep other people's and agents' names and 32 px avatars with their message on its
+  corresponding side; the signed-in person's own bubbles have neither
+  ([Spokój](../spokoj/README.md#token), 2026-10-15).
   Bubbles, attachments and actions stay together, with a 12 px author gap on the computer,
   10 on the phone. Neutral event rows retain their readable author column on the left.
 - Small 20 px avatars appear only as owners inside task rows.
