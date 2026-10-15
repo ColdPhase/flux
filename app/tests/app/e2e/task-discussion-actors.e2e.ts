@@ -363,7 +363,9 @@ test('agent root renders without a human DM link, real human reply persists, and
         // after the reference read answered, moves the identity about 39px between frames and must fail.
         await assert.rejects(captureVisibleAuthor(workspaceView, workspaceEvent, 'negative-control-late-line', undefined,
           () => workspaceEvent.evaluate((element: HTMLElement) => { element.style.paddingTop = '39px'; })),
-        (cause: unknown) => cause instanceof assert.AssertionError && cause.message.includes('visible identity is stable over rendered frames'));
+        // #343 moved the aligned author; the 39px shift can push the identity out of the viewport before the stability check runs.
+        (cause: unknown) => cause instanceof assert.AssertionError && (cause.message.includes('visible identity is stable over rendered frames')
+          || cause.message.includes('the actual full author and face are in the viewport and uncovered')));
         await workspaceEvent.evaluate((element: HTMLElement) => { element.style.paddingTop = ''; });
       }
     }
