@@ -155,6 +155,8 @@ class MessageWorkJourney(unittest.TestCase):
         page.locator("#thread").get_by_role("navigation", name="Linked object pages").get_by_role("button", name="Next", exact=True).click()
         page.wait_for_function("window.__associationHeld === true")
         pane = page.locator(".thread__feed")
+        # An open thread starts at its root (#436), so the reader moves to the latest replies before the next page loads.
+        pane.evaluate("el=>{el.scrollTop=el.scrollHeight}")
         self.assertGreater(pane.evaluate("el=>el.scrollTop"),0,"loading still has scrollable native message text")
         pane.hover(); page.mouse.wheel(0, -100000)
         page.wait_for_function("document.querySelector('.thread__feed').scrollTop === 0")
