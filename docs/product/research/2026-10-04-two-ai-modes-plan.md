@@ -243,8 +243,8 @@ T11 issue text updates                       after T0
   completion, release/purge/new-reserve and fresh binding/boot reuse. The original
   command, transient-frame, seeded-secret, timeout, notice and phone criteria stay.
   This is a contract checkpoint; runtime and final-design acceptance stay pending.
-  Preserve published `0057_agent_runtime_sign_in.sql`; reserve the distinct
-  `0058_agent_runtime_auth_operations.sql` (and paired reverse) after current-ref
+  Preserve published `0096_agent_runtime_sign_in.sql`; reserve the distinct
+  `0097_agent_runtime_auth_operations.sql` (and paired reverse) after current-ref
   inventory. Other #238/#340 unmerged `0057` collisions are owner handoffs, not
   permission to edit their branches or deployed ledgers.
 
@@ -276,7 +276,7 @@ T11 issue text updates                       after T0
   - **Ends.** On exit (then `auth status`), on disconnect (no status), after 15 minutes (injectable
     timers in the tests), and when a release arrives. A newer console of the same owner replaces an
     older one; the supervisor waits up to three seconds for the older PTY to end, then answers `busy`.
-  - **What is stored.** Migration 0057 adds the account-change notice (a keyed HMAC of the slot's account
+  - **What is stored.** Migration 0096 adds the account-change notice (a keyed HMAC of the slot's account
     digest, the previous masked label, when it changed) and the last sign-out with whether the CLI's
     logout failed. The schema test reviews the new columns.
   - **The page.** `/settings/assistant/claude-code`; Settings → *Agent in Flux* gains a *Claude Code in

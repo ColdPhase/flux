@@ -21,13 +21,11 @@ git pull --ff-only && ./flux upgrade      # or: ./flux upgrade --pull
 The downtime is the backup, the build and the migration. It prints
 `Upgraded <project> from schema A to B` and keeps the backup.
 
-The [semantic migration gate](../development/migration-footprints.md) checks the
-actual runtime catalog before migration SQL or queue startup. A legacy version
-57 can mean sign-in, focus or Undo; its number alone does not admit an upgrade.
-If the image refuses a partial, mixed or unsupported footprint, keep the backup
-and restore its matching image/database. Do not edit the ledger or rename a
-migration to make the compatibility check pass. Future composed 48/59/60 images
-need their own reviewed descriptors and upgrade evidence.
+The compatibility guard for legacy ledger versions checks the actual catalog before migration
+SQL or queue startup. Composed sign-in 0096 and runtime-auth 0097 are admitted only with their own
+ledger versions; see [composition with sign-in 0096 / runtime-auth 0097](../development/task-creation-undo/composition-2026-10-08.md#composition-with-sign-in-0096--runtime-auth-0097-2026-10-15).
+If the image refuses a partial, mixed or unsupported footprint, keep the backup and restore its
+matching image/database. Do not edit the ledger or rename a migration to make the check pass.
 
 ## When it fails
 
