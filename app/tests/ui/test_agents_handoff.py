@@ -1020,5 +1020,43 @@ class HandOffJourney(unittest.TestCase):
                         self.assertEqual(self.api(setup, "GET", f"/api/v1/projects/{project}/grants", status=200), grants)
                         page.context.close()
 
+    def test_22_selecting_a_long_roster_keeps_the_heading_and_actions_visible(self) -> None:
+        setup = self.page("ada")
+        project = self.api(setup, "POST", f"/api/v1/workspaces/{self.ids['workspace']}/projects",
+                           {"name": "Volunteer agent planning roster", "visibility": "restricted"}, status=201)["id"]
+        for index in range(8):
+            agent = self.api(setup, "POST", f"/api/v1/workspaces/{self.ids['workspace']}/agents",
+                             {"name": f"Garden planning assistant {index + 1}", "owner": "self"}, status=201)["id"]
+            self.api(setup, "POST", f"/api/v1/projects/{project}/grants",
+                     {"principal": {"kind": "agent", "id": agent}, "role": "contributor"}, status=201)
+        task = self.api(setup, "POST", f"/api/v1/projects/{project}/work",
+                        {"title": "Prepare the shared planting calendar"}, status=201)
+        for phone in (False, True):
+            with self.subTest(phone=phone):
+                page = self.page("ada", phone=phone)
+                page.goto(f"/projects/{project}/tasks?open=work:{task['id']}")
+                page.get_by_role("button", name="Hand off to an agent").click()
+                dialog = page.get_by_role("dialog", name="Hand off a task")
+                for name in ("Garden planning assistant 1", "Garden planning assistant 8"):
+                    dialog.locator("label.handoff__agent", has_text=name).click()
+                    measure = dialog.locator(".handoff__title").evaluate("""el => {
+                      const box = el.getBoundingClientRect();
+                      let top = box.top, bottom = box.bottom;
+                      const ancestors = [];
+                      for (let parent = el.parentElement; parent; parent = parent.parentElement) {
+                        if (/(auto|scroll|hidden|clip)/.test(getComputedStyle(parent).overflowY)) {
+                          const clip = parent.getBoundingClientRect();
+                          ancestors.push({className: parent.className, top: clip.top, bottom: clip.bottom, scrollTop: parent.scrollTop});
+                          top = Math.max(top, clip.top); bottom = Math.min(bottom, clip.bottom);
+                        }
+                      }
+                      return {height: box.height, visible: Math.max(0, bottom-top), ancestors};
+                    }""")
+                    print("\n  Handoff heading containment: " + json.dumps({"phone": phone, "selected": name, **measure}))
+                    shot(page, f"handoff-long-roster-{'phone' if phone else 'desktop'}-{name[-1]}")
+                    self.assertAlmostEqual(measure["height"], measure["visible"], delta=1, msg="choosing an agent keeps the heading fully visible")
+                    expect(dialog.get_by_role("button", name="Next", exact=True)).to_be_visible()
+                page.context.close()
+
 if __name__ == "__main__":
     unittest.main()
