@@ -59,6 +59,9 @@ export interface TaskDiscussionRepository {
   createConversation(input: { id: string; workspaceId: string; projectId: string; createdBy: ActorRef }): Promise<DiscussionConversation>;
   append(conversation: Pick<DiscussionConversation, 'id' | 'workspaceId' | 'projectId'>, author: ActorRef, input: NewDiscussionMessage): Promise<DiscussionMessage>;
   bind(input: TaskDiscussionRoot): Promise<void>;
+  /** Canonical file publication after the actual task binding exists; uses the caller's complete retained fence. */
+  publishFiles?(scope:{workspaceId:string;projectId:string},messageId:string,
+    retained:{readonly ids:readonly string[];mark(ids?:readonly string[]):Promise<void>}):Promise<void>;
 }
 export interface TaskDiscussionEventIntent {
   readonly principal: Readonly<Principal>;

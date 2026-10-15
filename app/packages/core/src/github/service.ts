@@ -74,6 +74,7 @@ export function githubUseCases(uow: GithubUnitOfWork) {
         const repository = await current(ports, principal, binding);
         const facts = await ports.provider.pull(principal, repository, input.number);
         if (facts.repositoryId !== binding.repositoryId || facts.number !== input.number) throw new NotFoundError('Pull request');
+        await ports.tasks.lockForRules(work.workspaceId,work.projectId,[work.id]);
         const record = await ports.rows.link({ ...work, id: randomUUID(), taskId: work.id, bindingId: target,
           role: input.role, facts, state: 'current', verifiedAt: new Date() });
         // A new required output reaches the task's rule (or the project default) through a reconciliation.
@@ -164,6 +165,7 @@ export function githubUseCases(uow: GithubUnitOfWork) {
         const delivery = await ports.rows.delivery(deliveryId);
         if (!delivery) throw new NotFoundError('Delivery');
         const refreshed = new Set<string>();
+        const refreshes:{link:Awaited<ReturnType<typeof ports.rows.linkedPulls>>[number];facts:Awaited<ReturnType<typeof ports.provider.pull>>}[]=[];
         for (const link of await ports.rows.linkedPulls(bindingId)) {
           // An unrelated external comment cannot generate requests for all linked work.
           const pull = delivery.payload.pull_request as { id?: unknown } | undefined;
@@ -176,10 +178,13 @@ export function githubUseCases(uow: GithubUnitOfWork) {
             && !check?.pull_requests?.some((ref) => ref.number === link.facts.number)) continue;
           const facts = await ports.provider.pull(principal, proof, link.facts.number);
           if (facts.repositoryId !== binding.repositoryId || facts.pullId !== link.facts.pullId) throw new NotFoundError('Pull request');
-          await ports.rows.saveFacts(link.id, facts);
-          await ports.rows.bridge(delivery, binding, link, facts);
+          refreshes.push({link,facts});
           refreshed.add(link.taskId);
         }
+        // Verified source/binding/processing locks precede ONE complete linked/rule/prerequisite pass.
+        // Every later fact save and rule application reuses it; nothing extends it after domain locks.
+        if(refreshed.size)await ports.tasks.lockForRules(binding.workspaceId,binding.projectId,[...refreshed]);
+        for(const{link,facts}of refreshes){await ports.rows.saveFacts(link.id,facts);await ports.rows.bridge(delivery,binding,link,facts);}
         await applyGithubRules(ports, { delivery, binding, taskIds: [...refreshed], authority });
         await ports.rows.complete(deliveryId, bindingId);
         return 'completed';

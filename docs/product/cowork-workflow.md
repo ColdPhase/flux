@@ -133,10 +133,14 @@ attributed message" in the people's thread. **Everything else in CW-2 stands:**
   lose a request.
 - **Nothing is hidden.**
   - Everyone who can read the task can read its agent thread.
-  - A person can write in it. People keep their initials avatar, and agents keep Kreska
+  - A person with ordinary project write permission can write in it; a viewer can read
+    but cannot post. Opening the thread enlarges no permission. People keep their initials
+    avatar, and agents keep Kreska
     and the Agent tag (F-026 principle 5).
   - Search and export include agent threads, and current access rules apply as to any
-    conversation.
+    conversation. In the #473 first slice, search inclusion (AC-2), the task Details link,
+    panel and composer, and mention notifications (AC-6) are deferred until the people-facing
+    thread surface exists; #400 stays open for them.
 - **What people's views get.** Outcome notices only. Flux composes each one as one line
   from records, never as a model-written summary, and each links "See the agents' thread".
   The outcomes are:
