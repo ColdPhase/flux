@@ -26,7 +26,7 @@ export function workingText(run: AssistantRun) {
   switch (run.status) {
     case 'queued': return 'Your assistant is getting ready…';
     case 'reading': return 'Your assistant is reading this conversation…';
-    default: return 'Your assistant is writing an answer…';
+    default: return 'Your assistant is thinking…';
   }
 }
 

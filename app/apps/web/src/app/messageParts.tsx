@@ -36,7 +36,8 @@ export function openOnWholeMessages(feed: HTMLElement, column: HTMLElement, sele
     feed.scrollTop = feed.scrollHeight;
     written = feed.scrollTop;
     const top = feed.getBoundingClientRect().top;
-    const list = [...feed.querySelectorAll<HTMLElement>(selector)];
+    // Folded announcements are hidden: they take no part in where a message begins.
+    const list = [...feed.querySelectorAll<HTMLElement>(selector)].filter((item) => item.getClientRects().length);
     const index = list.findIndex((item) => { const box = item.getBoundingClientRect(); return box.top < top - 1 && box.bottom > top + 1; });
     if (index < 0) return;
     const next = list[index + 1];

@@ -140,7 +140,7 @@ class MessageAlignment(unittest.TestCase):
                     row = thread.locator(f"#message-{reply['id']}")
                     self.assert_side(page, row, key == who)
                     # Actions remain keyboard-reachable on either side and do not cover the name.
-                    more = row.get_by_role("button", name="Make from this message")
+                    more = row.get_by_role("button", name="Message actions" if phone else "More actions", exact=True)
                     more.focus()
                     expect(more).to_be_focused()
                     self.assertTrue(row.locator(".project-convo__message-meta strong").evaluate("""el => {
