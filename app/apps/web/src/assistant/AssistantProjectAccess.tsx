@@ -14,7 +14,6 @@ export function AssistantProjectAccess() {
   const [failed, setFailed] = useState(false);
   const load = useCallback(async (signal?: AbortSignal) => {
     if (!projectId) return;
-    setFailed(false);
     try {
       const next = await getProjectAgents(projectId, signal);
       if (!signal?.aborted && activeProject.current === projectId) setView(next);
@@ -32,10 +31,10 @@ export function AssistantProjectAccess() {
     <p className="nset__lead">Only you use your assistant. A project manager gives it access; it never has more access than you.</p>
     {projects.length ? <>
       <div className="aset__agent"><label htmlFor="assistant-access-project">Project</label>
-      <select id="assistant-access-project" value={projectId} onChange={(event) => { activeProject.current = event.target.value; setProjectId(event.target.value); }}>
+      <select id="assistant-access-project" value={projectId} onChange={(event) => { setFailed(false); activeProject.current = event.target.value; setProjectId(event.target.value); }}>
         {projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
       </select></div>
-      {failed ? <p role="alert">Project access could not be checked. <Button variant="link" onClick={() => void load()}>Try again</Button></p>
+      {failed ? <p role="alert">Project access could not be checked. <Button variant="link" onClick={() => { setFailed(false); void load(); }}>Try again</Button></p>
         : !currentView ? <p role="status">Checking project access…</p>
         : !currentView.assistantJoin ? <p>Choose your assistant for this project’s workspace above.</p>
         : <>

@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
-import type { NeedsYouItem, NeedsYouKind } from '@flux/contracts';
+import type { InboxItem, NeedsYouItem, NeedsYouKind } from '@flux/contracts';
 import { createPortal } from 'react-dom';
 import { Button, ErrorState, Icon, Kreska, MEDIA, Spinner, Tabs, useMediaQuery, type TabItem } from '../ui';
 import { useShellActions } from '../app/shellContext';
@@ -151,18 +151,24 @@ export function InboxOpen() {
   const { id = '' } = useParams();
   const navigate = useNavigate();
   const [gone, setGone] = useState(false);
-  const started = useRef(false);
+  const [notification, setNotification] = useState<InboxItem | null>(null);
   useEffect(() => {
-    if (started.current) return;
-    started.current = true;
-    getInboxItem(id).then((item) => {
+    const controller = new AbortController();
+    getInboxItem(id, controller.signal).then((item) => {
+      if (controller.signal.aborted) return;
+      if (item.assistantRequestIdentity && item.source.type === 'project') { setNotification(item); return; }
       if (!item.assistantRequestIdentity) void markInboxRead(item.id).then(announceInboxChange, () => undefined);
-      navigate(item.assistantRequestIdentity && item.source.type === 'project' ? `/inbox?assistantProject=${item.source.id}&assistantRequest=${item.assistantRequestIdentity.joinRequestId}&openingVersion=${item.assistantRequestIdentity.openingVersion}` : item.url ?? '/inbox', { replace: true });
-    }, () => setGone(true));
+      navigate(item.url ?? '/inbox', { replace: true });
+    }, () => { if (!controller.signal.aborted) setGone(true); });
+    return () => controller.abort();
   }, [id, navigate]);
   return (
     <div className="pane-scroll"><div className="pane-in">
-      {gone ? (
+      {notification?.id === id && notification.assistantRequestIdentity && notification.source.type === 'project' ?
+        <AssistantJoinReview key={id} item={{ assistantRequestIdentity: notification.assistantRequestIdentity,
+          project: { id: notification.source.id, name: notification.body.replace(/ · Requested contributor access\.$/, '') } }}
+          onClose={() => { announceInboxChange(); void navigate('/inbox', { replace: true }); }} />
+        : gone ? (
         <div className="inbox-gone">
           <Icon name="lock" size={16} />
           <div>

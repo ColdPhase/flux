@@ -108,7 +108,15 @@ for (const [engine, mobile] of [['chromium', false], ['webkit', true]] as const)
        }
       const review = invitation.getByRole('button', { name: 'Review', exact: true });
       if (mobile) assert.ok((await review.boundingBox())!.height >= 44);
-      await review.focus(); await review.press('Enter'); await expect(managerPage).toHaveURL(/\/inbox\?assistantProject=/);
+      await review.focus(); await review.press('Enter'); await expect(managerPage).toHaveURL(/\/inbox\/[0-9a-f-]+$/);
+      // A pending question remains actionable after it leaves Needs You (legacy read + older than 14 days).
+      const notification = (await pool.query('SELECT id FROM notifications WHERE assistant_join_request_id=$1 AND user_id=$2', [pending[0]!.id, manager.id])).rows[0];
+      await pool.query("UPDATE notifications SET read_at=now(), created_at=now()-interval '15 days' WHERE id=$1", [notification.id]);
+      await managerPage.goto(`${origin}/inbox`);
+      await expect(managerPage.locator('.nyc').filter({ hasText: 'Ada’s assistant' })).toHaveCount(0);
+      const unauthorized = await viewerContext.request.get(`${origin}/api/v1/inbox/${notification.id}`);
+      assert.equal(unauthorized.status(), 404, 'another recipient cannot load the question identity');
+      await managerPage.goto(`${origin}/inbox/${notification.id}`);
       const requests = managerPage.getByRole('region', { name: 'Assistant join requests' });
       await theme(managerPage, 'light'); await capture(managerPage, `join-${engine}-manager-row-light`);
       const allow = requests.getByRole('button', { name: 'Allow', exact: true });

@@ -153,7 +153,7 @@ test('a join request gives no authority, is deduplicated/manager-scoped, and man
   assert.deepEqual([snapshot.assistant_id, snapshot.assistant_name, snapshot.owner_id, snapshot.owner_name], [agent.id, 'Joining assistant', requester.id, originalOwnerName]);
   const firstInbox = expectStatus(await manager.browser.request('GET', '/api/v1/inbox'), 200) as { items: { id: string; url: string | null; assistantRequestIdentity?: unknown }[] };
   const firstItem = firstInbox.items.find((item) => item.id === notifications.find((row: { user_id: string }) => row.user_id === manager.id)!.id)!;
-  assert.equal(firstItem.url, assistantJoinInboxPath(destination.id, first.id, 1));
+  assert.equal(firstItem.url, assistantJoinInboxPath(firstItem.id));
   assert.deepEqual(firstItem.assistantRequestIdentity, { joinRequestId: first.id, openingVersion: 1, assistantId: agent.id,
     assistantName: 'Joining assistant', ownerId: requester.id, ownerName: originalOwnerName });
   const needsYou = expectStatus(await manager.browser.request('GET', '/api/v1/needs-you'), 200) as { items: { key: string; kind: string; title: string; detail: string; project: { id: string; name: string } | null; from: { kind: string; id: string; name: string } | null; at: string; url: string; assistantRequestIdentity?: unknown }[] };
@@ -162,7 +162,7 @@ test('a join request gives no authority, is deduplicated/manager-scoped, and man
     from: joinNeed.from, url: joinNeed.url, assistantRequestIdentity: joinNeed.assistantRequestIdentity }, {
     key: `note:${firstItem.id}`, kind: 'question', title: `${originalOwnerName}'s assistant asks to join`, detail: 'Join destination · Requested contributor access.',
     project: { id: destination.id, name: 'Join destination' }, from: { kind: 'agent', id: agent.id, name: 'Joining assistant' },
-    url: assistantJoinInboxPath(destination.id, first.id, 1), assistantRequestIdentity: firstItem.assistantRequestIdentity,
+    url: assistantJoinInboxPath(firstItem.id), assistantRequestIdentity: firstItem.assistantRequestIdentity,
   }, 'Needs You keeps the cycle snapshot, public assistant name, Agent identity and current project context');
   assert.match(joinNeed.at, /^\d{4}-\d\d-/);
   const firstItemRead = expectStatus(await manager.browser.request('GET', `/api/v1/inbox/${firstItem.id}`), 200) as { assistantRequestIdentity?: unknown };

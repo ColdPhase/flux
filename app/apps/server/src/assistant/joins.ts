@@ -1,5 +1,4 @@
 import { assistantJoinRows, assistantJoinView, lockAssistantOwner } from '@flux/db';
-import { assistantJoinInboxPath } from '@flux/contracts';
 import { ConflictError, NotFoundError, assertAuthorized, createNotification, evaluateProject, getProject,
   grantProject, isUuid, type Database, type Principal } from '@flux/core';
 import type { PgBoss } from 'pg-boss';
@@ -33,7 +32,7 @@ export function assistantJoinUseCases(db: Database, boss: Pick<PgBoss, 'send'>) 
             if (!(await evaluateProject({ kind: 'human', id: candidate.userId }, 'project.manage', projectId, tx, { lock: true })).allowed) continue;
             const notification = await createNotification(notificationUnitOfWork(tx, pgBossQueue(boss)), {
               userId: candidate.userId, source: { type: 'project', id: projectId }, title,
-              body: `${project.name} · Requested contributor access.`, url: assistantJoinInboxPath(projectId, request.row.id, request.row.version),
+              body: `${project.name} · Requested contributor access.`,
             });
             await rows.markQuestion(notification.id);
             await rows.linkQuestion(notification.id, request.row.id, request.row.version);

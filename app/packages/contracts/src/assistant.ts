@@ -80,5 +80,4 @@ export const assistantSettingsPath = (workspaceId: string, ownerUserId: string) 
   `/api/v1/workspaces/${workspaceId}/assistants/${ownerUserId}/settings`;
 export const assistantJoinRequestPath = (projectId: string) => `/api/v1/projects/${projectId}/assistant-join-requests`;
 /** Project-scoped join questions lead to the manager's existing Agents request area. */
-export const assistantJoinInboxPath = (projectId: string, requestId?: string, openingVersion?: number) =>
-  `/inbox?assistantProject=${projectId}${requestId ? `&assistantRequest=${requestId}&openingVersion=${openingVersion}` : ""}`;
+export const assistantJoinInboxPath = (notificationId: string) => `/inbox/${notificationId}`;

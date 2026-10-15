@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import type { NeedsYouItem } from '@flux/contracts';
+import '../agents/joins.css';
 import { ApiError } from '../api/client';
 import { allowAssistantJoin } from '../agents/api';
 import { AgentIdentity, Button, Overlay, agentHue } from '../ui';
 
 /** Reviews only the immutable identity on this recipient's Inbox question, never a roster. */
-export function AssistantJoinReview({ item, onClose }: { item: NeedsYouItem; onClose(): void }) {
+export function AssistantJoinReview({ item, onClose }: { item: Pick<NeedsYouItem, 'project' | 'assistantRequestIdentity'>; onClose(): void }) {
   const identity = item.assistantRequestIdentity!;
   const [busy, setBusy] = useState(false);
   const [accepted, setAccepted] = useState(false);
