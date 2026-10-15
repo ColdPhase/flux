@@ -161,7 +161,7 @@ class WorkPaginationJourney(unittest.TestCase):
             held.append((route, response))
             page.evaluate("window.__workReadHeld = (window.__workReadHeld || 0) + 1")
         page.route("**/work-view**", hold)
-        row = page.locator("[data-work-id]").first.locator(".ws-item")
+        row = page.locator("[data-work-id]").first.locator(".ws-item")  # the open button; the status glyph is a second button (#346)
         row.focus()
         original = self.rows(page)
         page.evaluate("window.dispatchEvent(new Event('focus'))")

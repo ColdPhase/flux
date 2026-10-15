@@ -244,7 +244,7 @@ export function ProjectTasks() {
   const [titlesShown, setTitlesShown] = useState(false);
   if (!titlesShown && (outcomeRead.phase !== 'loading' || titlesTimedOut)) setTitlesShown(true);
   const jump = useRef<{ routeKey: string; id: string; group: GroupId } | null>(null);
-  // Outcome links refer to the whole project's work/results in the List. Restore All before
+  // Outcome links refer to the whole project's work in the List. Restore All before
   // scrolling, since a saved status/mine filter or a search can hide their destination.
   const jumpToSection = (id: string) => {
     const group = SECTION_GROUP[id];
@@ -387,7 +387,7 @@ export function ProjectTasks() {
     <div className="ws-proposals-gate" style={titlesShown ? undefined : { visibility: 'hidden' }} aria-busy={titlesShown ? undefined : true}>
     <ProjectProposals outcomes={outcomes} people={shell?.people ?? null} projectName={project.name}
       resultTitles={resultTitles}
-      workCount={data?.summary.workTotal ?? 0} resultCount={0}
+      workCount={data?.summary.workTotal ?? 0}
       workJumpId={data?.summary.all.in_progress ? 'g-progress' : data?.summary.all.blocked ? 'g-blocked' : data?.summary.all.open ? 'g-open' : data?.summary.all.parked ? 'g-parked' : 'g-finished'}
       jumpToSection={jumpToSection} writable={writable} refresh={() => { if (listing) refresh(); else refreshBoard(); revalidator.revalidate(); }}
       openResult={(id) => openDetails({ kind: 'result', id, projectId: project.id })}
