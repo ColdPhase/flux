@@ -186,3 +186,4 @@ export { assertAssistantMigrationCompatibility } from './migrations/assistant-co
 
 export { lockAssistantOwner } from './repositories/assistant-lock.js';
 export { assistantJoinRows, assistantJoinView } from './repositories/assistant-joins.js';
+export * from './repositories/agent-connection-setup.js';

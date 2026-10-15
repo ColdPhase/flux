@@ -433,7 +433,7 @@ export function ProjectTasks() {
               <button type="button" aria-pressed={!mine} onClick={() => setView({ mine: false, status: null })}>All</button>
             </div>
           ) : <TaskViews counts={counts} status={status} mine={mine} onStatus={(next) => setView({ status: next })} onMine={(next) => setView({ mine: next })} />}
-          <WorkPagination page={data} busy={read.phase !== 'ready' && read.phase !== 'unavailable'} onCursor={movePage} onRefresh={refresh} />
+          <WorkPagination noun="tasks" page={data} busy={read.phase !== 'ready' && read.phase !== 'unavailable'} onCursor={movePage} onRefresh={refresh} />
         </div>
         {read.phase === 'unavailable' ? <ErrorState title="Work could not be loaded" actions={<button type="button" className="ws-none__b" onClick={refresh}>Refresh work</button>}><p>Your private draft is kept. Refresh to read the current view.</p></ErrorState> : null}
         {nothing ? <div className="view-empty"><EmptyState icon="tasks" title="No tasks yet"><p>A task starts when one of you makes it from a message, or adds it here. Not every idea has to become a task.</p></EmptyState></div> : null}

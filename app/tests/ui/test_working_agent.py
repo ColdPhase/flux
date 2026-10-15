@@ -389,6 +389,8 @@ class WorkingAgentJourney(unittest.TestCase):
                 page, ids = self.person(engine)
                 frames: list[dict] = []
                 page.on("websocket", lambda socket: socket.on("framereceived", lambda frame: frames.append(json.loads(frame))))
+                # Let Home's first reads finish: a reload cancels in-flight requests, and WebKit reports those as page errors.
+                page.wait_for_load_state("networkidle")
                 page.reload()
                 expect(page.get_by_role("heading", name="Home", exact=True)).to_be_visible()
                 page.wait_for_function("window.__workingWire.history.some(r => r.kind === 'list' && r.delivery === 'delivered' && r.status === 200)")
@@ -428,7 +430,7 @@ class WorkingAgentJourney(unittest.TestCase):
                 self.assertEqual(dialog.type, "beforeunload")
                 dialog.dismiss()
                 self.assertTrue(page.evaluate("window.__sameCancelledWorkingDocument"))
-                page.get_by_role("heading", name="Home", exact=True).click()
+                page.get_by_role("navigation", name="Places").get_by_role("link", name="Home", exact=True).click()
                 self.stopped(page, run)
                 page.evaluate("window.__workingWire.watchIdle()")
                 self.release(page, "pre-retirement")
