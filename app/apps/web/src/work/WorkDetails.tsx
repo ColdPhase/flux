@@ -243,11 +243,11 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
   const latest = useRef(item);
   useEffect(() => { latest.current = item; });
   const toast = useToast();
-  async function change(command: Parameters<typeof updateWork>[1], base: Pick<OwnWork, 'id' | 'version'> = item, onConflict?: () => void): Promise<boolean> {
+  async function change(command: Parameters<typeof updateWork>[1], base: Pick<OwnWork, 'id' | 'version'> = item, onConflict?: () => void, onSaved?: (stored: Awaited<ReturnType<typeof updateWork>>) => void): Promise<boolean> {
     const key = JSON.stringify([base.id, base.version, command]);
     if (attempt.current?.key !== key) attempt.current = { key, id: crypto.randomUUID() };
     setBusy(true); setError('');
-    try { await updateWork(base, command, attempt.current.id); attempt.current = null; if (isCurrent()) reload(); return true; }
+    try { const stored = await updateWork(base, command, attempt.current.id); attempt.current = null; if (isCurrent()) { onSaved?.(stored); reload(); } return true; }
     catch (cause) { if (!isCurrent()) return false; setError(readable(cause)); if (cause instanceof ApiError && cause.status === 409) { attempt.current = null; onConflict?.(); reload(); } return false; }
     finally { setBusy(false); }
   }
@@ -256,6 +256,7 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
   // written over. After that conflict the latest version is shown, and trying again saves over it.
   const titleBase = useRef<number | null>(null);
   const blockerBase = useRef<number | null>(null);
+  const fieldEdits = useRef({ title: 0, blocker: 0 });
   const ownerBase = useRef<number | null>(null);
   const [ownerDraft, setOwnerDraft] = useState<string | null>(null);
   const rebase = useRef<{ title?: number; blocker?: number; owner?: number }>({});
@@ -271,13 +272,23 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
   async function saveField(field: 'title' | 'blocker', value: string | null) {
     const base = field === 'title' ? titleBase : blockerBase;
     const version = base.current ?? item.version;
+    const edit = fieldEdits.current[field];
     const ok = await change({ [field]: value }, { id: item.id, version }, () => {
       // Rebase only to the snapshot visible when the conflict is reported. Later
       // live changes must still conflict with an explicit retry.
       base.current = latest.current.version;
       if (latest.current.version <= version) rebase.current[field] = version;
+    }, (stored) => {
+      delete rebase.current[field];
+      if (fieldEdits.current[field] === edit) {
+        base.current = null;
+        if (field === 'blocker') setBlocker(undefined);
+      } else {
+        // Text entered while the answer waited is a new draft after our own
+        // stored change. Only that acknowledged version becomes its base.
+        base.current = stored.version;
+      }
     });
-    if (ok) { base.current = null; delete rebase.current[field]; if (field === 'blocker') setBlocker(undefined); }
     return ok;
   }
   async function saveOwner(value: string) {
@@ -321,7 +332,7 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
       <PanelMeta>{taskNumber(item)}</PanelMeta>
       <p className="wd-where"><span className="ui-task-number">{taskNumber(item)}</span> · <span className="wd-project-name">{context.project.name}</span>{item.parked ? ' · parked, not done' : ''}</p>
       <TitleField title={item.title} editable={writable} onEdit={() => { titleBase.current = item.version; }}
-        onSave={(title) => saveField('title', title)} />
+        onDraftChange={() => { fieldEdits.current.title++; }} onSave={(title) => saveField('title', title)} />
       {item.outcome ? <p className="details__lead">{item.outcome}</p> : null}
 
       <dl className="wd-rows">
@@ -360,7 +371,7 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
             {writable ? <Button variant="quiet" className="wd-blocker__resolve" disabled={busy} onClick={() => void setState('in_progress')}>Resolve</Button> : null}</div>
           {writable ? (
             <form className="wd-blocker-form" onSubmit={(event) => { event.preventDefault(); void saveField('blocker', blocker.trim() || null); }}>
-              <Input label="What is it waiting for?" value={blocker} onFocus={() => { blockerBase.current ??= item.version; }} onBlur={() => { if (blocker.trim() === (item.blocker ?? '')) { blockerBase.current = null; setBlocker(undefined); } }} onChange={(event) => { blockerBase.current ??= item.version; setBlocker(event.target.value); }} maxLength={2000} />
+              <Input label="What is it waiting for?" value={blocker} onFocus={() => { blockerBase.current ??= item.version; }} onBlur={() => { if (blocker.trim() === (item.blocker ?? '')) { blockerBase.current = null; setBlocker(undefined); } }} onChange={(event) => { fieldEdits.current.blocker++; blockerBase.current ??= item.version; setBlocker(event.target.value); }} maxLength={2000} />
               {commands.state.blocker !== undefined && item.blocker !== blocker ? <p className="wd-muted">Now: {item.blocker || 'No blocker written.'}</p> : null}
               <Button type="submit" variant="secondary" busy={busy} disabled={blocker.trim() === (item.blocker ?? '')}>Save</Button>
             </form>

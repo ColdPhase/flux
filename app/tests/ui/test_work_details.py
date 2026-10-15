@@ -525,3 +525,53 @@ class NativeDetailsJourney(unittest.TestCase):
         submit.click()
         expect(page.locator('.wd[data-detail-kind="result"]')).to_contain_text("The reviewed measurement is complete")
         self.assertEqual(self.native("work", task["id"])["status"], "done")
+
+    def test_18_late_success_preserves_newer_title_and_blocker_drafts_with_their_own_base(self):
+        for field_name in ("blocker", "title"):
+            with self.subTest(field=field_name):
+                task = api(self.ctx, "POST", self.root + "/work", {"title": "Keep text entered after Save"}, 201)
+                url = f"/api/v1/work/{task['id']}"
+                task = api(self.ctx, "PATCH", url, {"status": "blocked", "blocker": "Original blocker", "expectedVersion": task["version"]})
+                page = self.page(); panel = self.open(page, "work", task["id"])
+                if field_name == "title":
+                    panel.get_by_title("Edit title", exact=True).click()
+                    field = panel.get_by_role("textbox", name="Task title", exact=True)
+                else:
+                    field = panel.get_by_label("What is it waiting for?", exact=True)
+                held = []
+                def hold(route):
+                    if route.request.method != "PATCH":
+                        route.continue_(); return
+                    response = route.fetch()
+                    self.assertEqual(response.status, 200)
+                    held.append((route, response))
+                    page.evaluate("window.__draftSaveHeld = true")
+                page.route("**" + url, hold)
+                field.fill("My submitted draft A")
+                if field_name == "title": field.press("Enter")
+                else: panel.get_by_role("button", name="Save", exact=True).click()
+                page.wait_for_function("window.__draftSaveHeld === true")
+                field.fill("My newer unsaved draft B")
+                stored = self.native("work", task["id"])
+                self.assertEqual(stored[field_name], "My submitted draft A")
+                api(self.ctx, "PATCH", url, {field_name: "Peer revision C", "expectedVersion": stored["version"]})
+                expect(panel).to_contain_text("Now: Peer revision C")
+                route, response = held.pop()
+                with page.expect_response(lambda response: response.request.method == "PATCH" and response.url.endswith(url)) as released:
+                    route.fulfill(response=response)
+                released.value.finished()
+                if field_name == "title": expect(field).to_have_attribute("aria-busy", "false")
+                else: expect(panel.get_by_role("button", name="Save", exact=True)).to_be_enabled()
+                expect(field).to_have_value("My newer unsaved draft B")
+                page.unroute("**" + url, hold)
+                with page.expect_response(lambda response: response.request.method == "PATCH" and response.url.endswith(url)) as conflict:
+                    if field_name == "title": field.press("Enter")
+                    else: panel.get_by_role("button", name="Save", exact=True).click()
+                self.assertEqual(conflict.value.status, 409, "newer draft is based on our own acknowledged save, not the later peer revision")
+                expect(field).to_have_value("My newer unsaved draft B")
+                self.assertEqual(self.native("work", task["id"])[field_name], "Peer revision C")
+                with page.expect_response(lambda response: response.request.method == "PATCH" and response.url.endswith(url)) as saved:
+                    if field_name == "title": field.press("Enter")
+                    else: panel.get_by_role("button", name="Save", exact=True).click()
+                self.assertEqual(saved.value.status, 200)
+                self.assertEqual(self.native("work", task["id"])[field_name], "My newer unsaved draft B")
