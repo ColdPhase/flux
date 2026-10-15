@@ -52,7 +52,7 @@ export async function assistantRoutes(app: FastifyInstance, { db, sessions, boss
   });
   for (const action of ['allow', 'decline'] as const) {
     app.post<{ Params: { projectId: string; requestId: string } }>(`${assistantJoinRequestPath(':projectId')}/:requestId/${action}`, async (request) =>
-      joins.respond((await sessions.requirePrincipal(request)).principal, request.params.projectId, request.params.requestId, action === 'allow'));
+      joins.respond((await sessions.requirePrincipal(request)).principal, request.params.projectId, request.params.requestId, action === 'allow', expectedVersion(request)));
   }
 
 }

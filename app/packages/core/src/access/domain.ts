@@ -357,7 +357,7 @@ export async function getProject(principal: Principal, projectId: string, db: Da
 
 export async function listProjectGrants(principal: Principal, projectId: string, db: Database): Promise<ProjectGrant[]> {
   enforce(await evaluateProject(principal, 'project.manage', projectId, db), 'project');
-  const rows = await db.select().from(schema.projectGrants).where(eq(schema.projectGrants.projectId, projectId))
+  const rows = await db.select().from(schema.projectGrants).where(and(eq(schema.projectGrants.projectId, projectId), sql`(${schema.projectGrants.agentId} is null or ${visibleAgentIdentity(principal, projectId, sql`${schema.projectGrants.agentId}`)})`))
     .orderBy(asc(schema.projectGrants.createdAt), asc(schema.projectGrants.id));
   return rows.map(toGrant);
 }
@@ -370,12 +370,12 @@ export async function listProjectGrants(principal: Principal, projectId: string,
  * workspace's members and agents; a project that nobody else can read lists only its managers.
  */
 /** Personal assistant identities are private discovery state; shared message attribution is separate (#522). */
-function visibleAgentIdentity(principal: Principal, projectId?: string): SQL {
+function visibleAgentIdentity(principal: Principal, projectId?: string, agentId: SQL = sql`${schema.agents.id}`): SQL {
   const assistant = schema.assistantSettings, connection = schema.agentConnections, selection = schema.agentConnectionProjects;
-  return sql`(not exists (select 1 from ${assistant} where ${assistant.agentId} = ${schema.agents.id}
+  return sql`(not exists (select 1 from ${assistant} where ${assistant.agentId} = ${agentId}
     and ${principal.kind === 'human' ? sql`${assistant.ownerUserId} <> ${principal.id}` : sql`true`})
     or exists (select 1 from ${connection} inner join ${selection} on ${selection.connectionId} = ${connection.id}
-      where ${connection.agentId} = ${schema.agents.id} and ${connection.computeSource} <> 'owner_assistant'
+      where ${connection.agentId} = ${agentId} and ${connection.computeSource} <> 'owner_assistant'
       and ${connection.revokedAt} is null ${projectId ? sql`and ${selection.projectId} = ${projectId}` : sql``}))`;
 }
 

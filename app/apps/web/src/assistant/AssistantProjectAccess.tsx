@@ -21,12 +21,12 @@ export function AssistantProjectAccess() {
     } catch { if (!signal?.aborted && activeProject.current === projectId) setFailed(true); }
   }, [projectId]);
   useEffect(() => {
-    setView(null);
     const controller = new AbortController();
     void load(controller.signal);
     return () => controller.abort();
   }, [load]);
-  const ownRequests = view?.joinRequests?.filter((row) => row.ownerUserId === me.user.id) ?? [];
+  const currentView = view?.projectId === projectId ? view : null;
+  const ownRequests = currentView?.joinRequests?.filter((row) => row.ownerUserId === me.user.id) ?? [];
   return <section className="nset__sec" aria-label="Your assistant’s project access">
     <h3>Project access</h3>
     <p className="nset__lead">Only you use your assistant. A project manager gives it access; it never has more access than you.</p>
@@ -36,12 +36,12 @@ export function AssistantProjectAccess() {
         {projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
       </select></div>
       {failed ? <p role="alert">Project access could not be checked. <Button variant="link" onClick={() => void load()}>Try again</Button></p>
-        : !view ? <p role="status">Checking project access…</p>
-        : !view.assistantJoin ? <p>Choose your assistant for this project’s workspace above.</p>
+        : !currentView ? <p role="status">Checking project access…</p>
+        : !currentView.assistantJoin ? <p>Choose your assistant for this project’s workspace above.</p>
         : <>
-          {!view.assistantJoin.canRequest && !ownRequests.length ? <p role="status">Your assistant has access to this project.</p> : null}
+          {!currentView.assistantJoin.canRequest && !ownRequests.length ? <p role="status">Your assistant has access to this project.</p> : null}
           <AssistantJoinRequests key={projectId} projectId={projectId} meId={me.user.id} meName={me.user.name}
-            view={{ ...view, joinRequests: ownRequests }} names={new Map([[me.user.id, me.user.name]])} canManage={false} onRefresh={load} />
+            view={{ ...currentView, joinRequests: ownRequests }} names={new Map([[me.user.id, me.user.name]])} canManage={false} onRefresh={load} />
         </>}
     </> : <p>No projects yet. Your assistant can work once you have a project.</p>}
   </section>;

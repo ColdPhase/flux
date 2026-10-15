@@ -106,14 +106,14 @@ for (const [engine, mobile] of [['chromium', false], ['webkit', true]] as const)
          await capture(managerPage, `join-${engine}-manager-needs-you-${choice}`);
          if (evidence) await invitation.screenshot({ path: join(evidence, `join-${engine}-needs-you-card-${choice}.png`) });
        }
-      await invitation.getByRole('button', { name: 'Review', exact: true }).click(); await expect(managerPage).toHaveURL(`${origin}${path}`);
+      const review = invitation.getByRole('button', { name: 'Review', exact: true });
+      if (mobile) assert.ok((await review.boundingBox())!.height >= 44);
+      await review.focus(); await review.press('Enter'); await expect(managerPage).toHaveURL(/\/inbox\?assistantProject=/);
       const requests = managerPage.getByRole('region', { name: 'Assistant join requests' });
       await theme(managerPage, 'light'); await capture(managerPage, `join-${engine}-manager-row-light`);
-      const review = requests.locator('.agents-join__toggle');
-      await review.focus(); await review.press('Enter');
       const allow = requests.getByRole('button', { name: 'Allow', exact: true });
       await expect(allow).toBeVisible();
-      if (mobile) { assert.ok((await review.boundingBox())!.height >= 44); assert.ok((await allow.boundingBox())!.height >= 44); }
+      if (mobile) assert.ok((await allow.boundingBox())!.height >= 44);
       await capture(managerPage, `join-${engine}-manager-review-light`);
       await theme(managerPage, 'dark'); await capture(managerPage, `join-${engine}-manager-review-dark`);
       // A refused answer keeps the real pending record; the successful retry uses the actual API.

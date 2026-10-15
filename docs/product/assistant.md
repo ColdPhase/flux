@@ -399,7 +399,7 @@ client; the private assistant connection and settings do not. This supersedes A1
 and the foreign-assistant picker/discovery behavior below (including AST-3.5):
 a hand-off may offer the signed-in person's own eligible assistant, never another
 person's. Existing owner-only assistant use, project grants, switches and explicit
-manager review of an owner's access request in Inbox remain unchanged. Shared
+manager review of an owner's access request in Inbox remain unchanged. Manager review renders only the immutable identity from that recipient’s explicit Inbox question, never an ordinary assistant roster. Allow rechecks current project management and the question’s opening version (`If-Match`); a stale cycle returns 409 without granting access. Existing callers without a precondition retain their current behavior. Project grant listings apply the same owner-only assistant identity boundary; human grants, the owner’s own assistant grants, and identities explicitly shared through a live project MCP connection remain visible. Shared
 conversation contributions retain their recorded author attribution; that does
 not make the assistant discoverable as a project member. Source: [founder issue
 and clarification](https://github.com/ColdPhase/flux/issues/522#issuecomment-6197494438).

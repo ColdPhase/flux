@@ -7,6 +7,7 @@ import { useShellActions } from '../app/shellContext';
 import { useSmallMoments } from '../app/smallMoments';
 import { useShellData } from '../app/data';
 import { announceInboxChange, getInboxItem, markInboxRead } from './api';
+import { AssistantJoinReview } from './AssistantJoinReview';
 import { NeedsYouCard, type CardHandlers } from './NeedsYouCard';
 import { useNeedsYou } from './needsYou';
 import { useNeedsYouActions } from './useNeedsYouActions';
@@ -61,12 +62,15 @@ export function InboxView() {
   const queue = useNeedsYou(me.user.id);
   const handlers = useNeedsYouActions(queue);
   // `?show=decisions` is where the retired Decisions view's links lead.
-  const [asked] = useSearchParams();
+  const [asked, setAsked] = useSearchParams();
   const [filter, setFilter] = useState<Filter>(() => FILTERS.find((entry) => `${entry.id}s` === asked.get('show') || entry.id === asked.get('show'))?.id ?? 'all');
   const [selected, setSelected] = useState<string | null>(null);
   const [menu, setMenu] = useState<string | null>(null);
 
   const all = useMemo(() => queue.items ?? [], [queue.items]);
+  const reviewing = all.find((item) => item.assistantRequestIdentity && item.project?.id === asked.get('assistantProject')
+    && item.assistantRequestIdentity.joinRequestId === asked.get('assistantRequest')
+    && String(item.assistantRequestIdentity.openingVersion) === asked.get('openingVersion'));
   const counts = useMemo(() => {
     const result: Record<Filter, number> = { all: all.length, decision: 0, question: 0, blocked: 0, mention: 0 };
     for (const item of all) result[item.kind] += 1;
@@ -130,6 +134,10 @@ export function InboxView() {
           </p>
         </>
       )}
+      {reviewing ? <AssistantJoinReview key={`${reviewing.key}:${reviewing.assistantRequestIdentity!.openingVersion}`} item={reviewing} onClose={() => {
+        const next = new URLSearchParams(asked); next.delete('assistantProject'); next.delete('assistantRequest'); next.delete('openingVersion');
+        setAsked(next, { replace: true }); announceInboxChange();
+      }} /> : null}
     </div></div>
   );
 }
@@ -148,8 +156,8 @@ export function InboxOpen() {
     if (started.current) return;
     started.current = true;
     getInboxItem(id).then((item) => {
-      void markInboxRead(item.id).then(announceInboxChange, () => undefined);
-      navigate(item.url ?? '/inbox', { replace: true });
+      if (!item.assistantRequestIdentity) void markInboxRead(item.id).then(announceInboxChange, () => undefined);
+      navigate(item.assistantRequestIdentity && item.source.type === 'project' ? `/inbox?assistantProject=${item.source.id}&assistantRequest=${item.assistantRequestIdentity.joinRequestId}&openingVersion=${item.assistantRequestIdentity.openingVersion}` : item.url ?? '/inbox', { replace: true });
     }, () => setGone(true));
   }, [id, navigate]);
   return (
