@@ -78,6 +78,9 @@ export interface ProjectExportConversation {
   messages: ProjectExportMessage[];
 }
 
+/** Additive format-1 native history; legacy conversation fields and actor identities stay intact. */
+export interface ProjectExportAgentThread extends ProjectExportConversation { workId: string }
+
 export interface ProjectExportMaterialVersion {
   version: number;
   title: string;
@@ -251,6 +254,7 @@ export interface ProjectExport {
   /** Display names of every person or agent referenced anywhere in this export. */
   actors: ExportNamedActor[];
   conversations: ProjectExportConversation[];
+  agentThreads: ProjectExportAgentThread[];
   materials: ProjectExportMaterial[];
   docs: ProjectExportDoc[];
   sketches: ProjectExportSketch[];
@@ -316,6 +320,7 @@ const baseExportSchema = {
         contribution: { oneOf: [object({ kind: { enum: ['blocker', 'handoff'] } }), object({ kind: { const: 'result' }, resultId: id })] } },
     },
     conversation: object({ id, createdBy: ref('actor'), createdAt: time, messages: list(ref('message')) }),
+    agentThread: object({ id, workId: id, createdBy: ref('actor'), createdAt: time, messages: list(ref('message')) }),
     materialVersion: object({ version: count, title: text, body: text, url: nullable(text), author: ref('actor'), createdAt: time }),
     material: object({ id, createdBy: ref('actor'), createdAt: time, currentVersion: count, versions: { ...list(ref('materialVersion')), minItems: 1 } }),
     docVersion: object({ version: count, title: text, body: text, state: { enum: ['draft', 'published'] }, reason: text, author: ref('actor'), createdAt: time }),
@@ -361,6 +366,7 @@ const baseExportSchema = {
     grants: list(object({ principal: ref('actor'), role: { enum: ['contributor', 'viewer', 'denied'] }, createdAt: time })),
     actors: list(ref('namedActor')),
     conversations: list(ref('conversation')),
+    agentThreads: list(ref('agentThread')),
     materials: list(ref('material')),
     docs: list(ref('doc')),
     sketches: list(ref('sketch')),

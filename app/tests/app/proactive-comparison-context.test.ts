@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { proactiveOutboxRows } from '@flux/db';
 import { recordEvent, type ComparisonProvider, type ComparisonSource } from '@flux/core';
-import type { Conversation, Material, WorkItem, WorkResult } from '@flux/contracts';
+import type { Conversation, ConversationMessage, Material, WorkItem, WorkResult } from '@flux/contracts';
 import { dispatchProactiveComparison } from '../../apps/worker/src/proactive-comparison/dispatch.js';
 import { addMember, draft, expectStatus, grant, person, project, workspace } from './support/people.js';
 import { eventPorts } from '../../apps/server/src/events.js';
@@ -168,4 +168,42 @@ test('unlinked work revisions invalidate queued context, and lost owner access c
   assert.equal(calls, 0);
   await grant(f.owner, f.projectId, f.owner, 'denied');
   assert.equal((await f.negative()).candidateId, undefined, 'a permitted peer result does not select context for an owner who lost access');
+});
+
+test('agent-thread messages are neither compared nor accepted as message sources (#400); people messages still are', async () => {
+  const f = await fixture();
+  const people = expectStatus(await f.peer.browser.request('POST', `/api/v1/projects/${f.projectId}/conversations`,
+    { body: { body: 'People line about the 5 lux trial', clientMessageId: randomUUID() } }), 201) as Conversation;
+  const peopleMessage = people.messages[0]!;
+  const task = expectStatus(await f.owner.browser.request('POST', `/api/v1/projects/${f.projectId}/work`,
+    { body: { title: 'Agent-thread task for the camera trial' } }), 201) as WorkItem;
+  // Written last so that, without the filter, it would be among the 12 newest project messages.
+  const agentLine = `AGENT-THREAD-${randomUUID()}`;
+  const agentMessage = expectStatus(await f.owner.browser.request('POST', `/api/v1/work/${task.id}/agent-thread`,
+    { body: { body: agentLine, clientMessageId: randomUUID() } }), 201) as ConversationMessage;
+  const rows = proactiveOutboxRows(db);
+  assert.equal(await rows.sourceCurrent(f.projectId, { type: 'message', id: agentMessage.id, version: 1 }), false,
+    'a human-written agent-thread message is not a valid comparison message source');
+  assert.equal(await rows.sourceCurrent(f.projectId, { type: 'message', id: peopleMessage.id, version: 1 }), true);
+  const { result, candidateId } = await f.negative([{ type: 'message', id: peopleMessage.id }]);
+  assert.ok(candidateId);
+  const snapshot = await rows.sourceSnapshot(result.id, f.rule.id);
+  assert.ok(snapshot.sources.some((source) => source.type === 'message' && source.id === peopleMessage.id));
+  assert.ok(!snapshot.sources.some((source) => source.id === agentMessage.id), 'the agent thread is absent from the context snapshot');
+  let supplied: ComparisonSource[] = [];
+  const provider: ComparisonProvider = {
+    async countInputTokens(input) { supplied = input.sources; return 100; },
+    async createMessage(input) {
+      return { stopReason: 'end_turn', usage: { inputTokens: 100, outputTokens: 50 }, answer: { kind: 'comparison' as const,
+        fact: 'The camera captured 38% at 5 lux.', interpretation: 'A controlled ToF comparison may help.',
+        suggestedAction: 'Compare the ToF sensor under the same human protocol.',
+        citations: input.sources.map(({ type, id, version }) => ({ type, id, version, title: 'Model-invented source name' })),
+      } };
+    },
+  };
+  const outcome = await dispatchProactiveComparison({ db, candidateId, masterKey, provider });
+  assert.equal(outcome.status, 'proposal');
+  assert.ok(supplied.some((source) => source.type === 'message' && source.id === peopleMessage.id));
+  assert.ok(!supplied.some((source) => source.id === agentMessage.id), 'the provider never receives the agent thread');
+  assert.ok(!JSON.stringify(supplied).includes(agentLine));
 });

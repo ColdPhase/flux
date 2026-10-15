@@ -64,7 +64,8 @@ async function boundRoot(ports: TaskDiscussionPorts, project: { projectId: strin
  * another intent conflicts.
  */
 async function appendToTask(ports: TaskDiscussionPorts, project: { workspaceId: string; projectId: string },
-  author: ActorRef, workId: string, input: NewDiscussionMessage): Promise<{ message: DiscussionMessage; replayed: boolean }> {
+  author: ActorRef, workId: string, input: NewDiscussionMessage,
+  retained?:{readonly ids:readonly string[];mark(ids?:readonly string[]):Promise<void>}): Promise<{ message: DiscussionMessage; replayed: boolean }> {
   const binding = await ports.discussion.findBinding(workId);
   const existing = await ports.discussion.existingMessage(project.projectId, author, input.clientMessageId);
   if (existing) {
@@ -81,6 +82,10 @@ async function appendToTask(ports: TaskDiscussionPorts, project: { workspaceId: 
   const sent = await ports.discussion.append(conversation, author, input);
   if (!binding) await ports.discussion.bind({ workId, workspaceId: project.workspaceId, projectId: project.projectId,
     conversationId: conversation.id, rootMessageId: sent.id });
+  if(input.files?.length){
+    if(!retained)throw new Error('File publication requires the actual retained task fence');
+    await ports.discussion.publishFiles?.(project,sent.id,retained);
+  }
   await ports.events.record(author, project.workspaceId,
     binding ? 'project.message_sent.v1' : 'project.conversation_created.v1', project.projectId,
     { conversationId: conversation.id, messageId: sent.id, workId, rootMessageId: binding?.rootMessageId ?? sent.id });
@@ -162,7 +167,7 @@ export function createTaskDiscussionUseCases(unit: TaskDiscussionUnitOfWork) {
         }
         const fence = await ports.work.prepareTaskUse([workId]);
         if (!await ports.work.findWork(workId)) throw missing();
-        const { message, replayed } = await appendToTask(ports, project, author, workId, { ...input, kind, files });
+        const { message, replayed } = await appendToTask(ports, project, author, workId, { ...input, kind, files },fence);
         if (!replayed) await fence.mark();
         return wire(message, await ports.work.names([message.author]));
       });

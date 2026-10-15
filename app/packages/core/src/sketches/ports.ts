@@ -238,6 +238,8 @@ export interface SketchFiles {
    * published to that same thought (Undo). Call it after the sketch's write lock; it throws the stored-files errors.
    */
   place(principal: Principal, input: { projectId: string; fileId: string; thoughtId: string }): Promise<ThoughtFile>;
+  /** Production preparation locks/verifies bytes before the shared task fence; the returned effect publishes afterward. */
+  preparePlace?(principal:Principal,input:{projectId:string;fileId:string;thoughtId:string}):Promise<()=>Promise<ThoughtFile>>;
 }
 
 export interface SketchPorts {
@@ -247,6 +249,11 @@ export interface SketchPorts {
   events: SketchEventLog;
   promotion: SketchPromotion;
   live: SketchLiveJournal;
+  /** Mandatory in production compositions; optional only in pure domain fixtures without persisted artifacts. */
+  artifacts?:{prepare(sketch:SketchRecord,thoughtIds:readonly string[]):Promise<{
+    thought(before:ThoughtRecord|null,after:ThoughtRecord):Promise<void>;
+    file(fileId:string):Promise<void>;
+  }|null>};
 }
 
 /**
