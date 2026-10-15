@@ -1,0 +1,53 @@
+{
+  "date": "2026-10-10",
+  "testedProductionSourceHead": "365cd0f208a13bd96f5aa733325b81f9352417af",
+  "log": "/tmp/flux-467-native-recovery-check.log",
+  "logSha256": "6827aba554d9def47c0a19cffc034b7f16ae26ad4a4f0ab6b50675c88b3d3cbb",
+  "noVendorAccountCredentialsOrSpend": true,
+  "sourceSha256": {
+    "app/tests/app/e2e/mcp-clients.e2e.ts": "dcf74b76befc721ab55baf5f6ca19fbcd691b4e490ac365dae9e4dba483ab5a4",
+    "app/tests/app/e2e/mcp-onboarding.e2e.ts": "777e92c91e42f8b7e40e8dfe51e7fbc83b77c9a2a40698ad413e4a287e6b9c93",
+    "app/tests/app/support/mcp-client-harness.ts": "796dd43622930c80f9c2e5d17ade9a2fd282fd29cac55362183f7428367a716c",
+    "scripts/check_mcp_clients.sh": "3886716c0ba09e8a9f9f9e4dfe8fb2c4d63fa49c11497f7387a2cbaf021a13a4"
+  },
+  "nativeDefault": {
+    "passed": 21,
+    "failed": 0
+  },
+  "nativeOptInModern": {
+    "passed": 21,
+    "failed": 0
+  },
+  "trustedDockerBuildTypeLint": "PASS; three existing warnings",
+  "clients": {
+    "codex": "rust-v0.160.1",
+    "claudeCode": "2.1.285",
+    "claudeArtifactSha256": "7b4414af1bc06eb6d91730759bd01c4c02a4976d0b8526237e9a6d8c33eaf102"
+  },
+  "matrix": "two owners each using Codex/Claude, five independent homes including two same-owner/same-agent Codex homes",
+  "actualDomainChecks": [
+    "attributed task and shared read",
+    "native task/unit claim/quiet renewal",
+    "typed checkpoint release and same-command replay with one checkpoint/debit",
+    "fresh native process/bootstrap runtime reclaim receives actual checkpoint",
+    "persisted non-code result/unit completion",
+    "isolated peer-Claude revoke leaves four other homes available"
+  ],
+  "fixtureBoundaries": [
+    "Linux/amd64 logical homes, not physical laptops/desktops or other OS",
+    "Chromium real Flux sign-in/consent; matrix OAuth clients seeded",
+    "each matrix authorization uses a fresh browser context; this alone does not prove same-browser multi-authorization",
+    "scripted local models, not genuine model reasoning/obedience",
+    "result record fixture proves persistence, not independently reviewed useful project outcome",
+    "ordinary Codex registration separately unseeded/unflagged in onboarding"
+  ],
+  "claudeRefreshPrimitive": {
+    "sameNativeSession": true,
+    "immediateSnapshotOffSystemRefresh": true,
+    "nativeDefaultInstructionsRetained": true,
+    "suppliedFluxBundle": false,
+    "integratedResume": false
+  },
+  "cleanedProject": "flux-mcpclients-1791665992-4045127",
+  "productionSourceEquivalentThroughResearchHead": "9aff85ac1743b83b4ebca8e4dc4a2ad0d319f223"
+}

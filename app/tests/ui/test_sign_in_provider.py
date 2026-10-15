@@ -45,7 +45,7 @@ class SignInWhileProviderIsDown(unittest.TestCase):
         def capabilities(route) -> None:
             answers.append(1)
             reachable = len(answers) >= 3
-            body = {"passwordReset": "unavailable", "sso": {"providerId": "oidc-recovery", "label": "Recovery provider", "reachable": reachable}}
+            body = {"passwordReset": "unavailable", "ssoOnly": True, "sso": {"providerId": "oidc-recovery", "label": "Recovery provider", "reachable": reachable}}
             route.fulfill(status=200, content_type="application/json", body=json.dumps(body))
 
         context.route(CAPABILITIES, capabilities)

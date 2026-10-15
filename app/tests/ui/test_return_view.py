@@ -19,7 +19,7 @@ import uuid
 
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
-from test_app_shell import DESKTOP, ORIGIN, PHONE, SHOTS, UPSTREAM, open_what_matters, shot, start_forwarder
+from test_app_shell import DESKTOP, ORIGIN, PHONE, SHOTS, UPSTREAM, open_details, open_what_matters, shot, start_forwarder
 
 PASSWORD = "coming back is calm"
 STAMP = int(time.time() * 1000)
@@ -599,7 +599,7 @@ class ReturnViewJourney(unittest.TestCase):
         fresh = self.summary(page, "home")
         self.assertEqual(fresh["items"], [], "the server's fresh answer is empty")
         # Navigating within the app, then reloading: the item is gone both times.
-        page.get_by_role("link", name="Wiki", exact=True).click()
+        page.locator(".home__more").get_by_role("link", name="Wiki", exact=True).click()
         expect(page.get_by_role("heading", name="No docs yet")).to_be_visible()
         page.get_by_role("navigation", name="Places").get_by_role("link", name="Home").click()
         expect(page.get_by_role("heading", level=2, name=re.compile("^Good (morning|afternoon|evening), Nia$"))).to_be_visible()
@@ -625,9 +625,10 @@ class ReturnViewJourney(unittest.TestCase):
         assert arrow
         self.assertGreaterEqual(arrow["height"], 43.5, "touch target")
         page.goto(f"/projects/{self.project_id}/conversations/{self.conversation_id}")
-        # #341: "What matters" is the last row of the title's view menu, a 44px row.
-        page.get_by_role("heading", level=1).get_by_role("button").tap()
-        entry = page.get_by_role("dialog").get_by_role("button", name=re.compile("^What matters"))
+        # #341: "What matters" is a 44px row in the project overview, which the phone's Details opens.
+        open_details(page, tap=True)
+        entry = page.locator("#details").get_by_role("button", name="What matters", exact=True)
+        expect(entry).to_be_visible()
         box = entry.bounding_box()
         assert box is not None
         self.assertGreaterEqual(min(box["width"], box["height"]), 43.5, "touch target")

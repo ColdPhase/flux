@@ -58,7 +58,7 @@ export async function agentConnection(pool: Pool, owner: Browser, agentId: strin
   };
   const bootstrap = toolValue(await tool('flux_bootstrap', { projectId, clientSessionId: randomUUID() }));
   const runtimeSessionId = (bootstrap.runtime as { id: string }).id;
-  return { connectionId, grant, tool, raw, toolNames, bootstrap, runtimeSessionId, tokens };
+  return { connectionId, grant, tool, raw, toolNames, bootstrap, runtimeSessionId, tokens, accessToken: tokens.access_token };
 }
 
 export async function actionScene(pool: Pool) {
@@ -81,5 +81,5 @@ export async function actionScene(pool: Pool) {
   const used = async (grantId: string) => (await pool.query('SELECT used FROM agent_standing_grants WHERE id=$1', [grantId])).rows[0].used as number;
   const tasks = async () => (await pool.query('SELECT count(*)::int AS n FROM project_work_items WHERE project_id=$1', [projectId])).rows[0].n as number;
   return { owner, workspaceId: String(workspace.id), projectId, agentId: String(agent.id), connectionId, source, prerequisiteId: String(prerequisite.id), bootstrap,
-    runtimeSessionId, grant, tool, raw, toolNames, read, used, tasks, tokens };
+    runtimeSessionId, grant, tool, raw, toolNames, read, used, tasks, tokens, accessToken: tokens.access_token };
 }

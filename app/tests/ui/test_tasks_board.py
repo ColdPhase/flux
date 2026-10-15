@@ -479,13 +479,14 @@ class TasksBoardJourney(unittest.TestCase):
 
     def test_08_the_list_stays_and_is_remembered_per_person(self) -> None:
         page = self.board("ada")
+        # The Inbox pointer is on the board only; the List omits it (#346).
+        expect(page.get_by_role("link", name="1 decision needs you in the Inbox")).to_be_visible()
         page.get_by_role("radio", name="List", exact=True).click()
         views = page.get_by_role("navigation", name="Task views")
         expect(views.get_by_role("button", name="All", exact=True)).to_have_attribute("aria-pressed", "true")
         expect(page.get_by_role("region", name=re.compile("^Blocked"))).to_contain_text(SOLDER)
         expect(page.get_by_role("region", name=re.compile("^Needs you"))).to_have_count(0)
         expect(page.get_by_text(PROPOSAL)).to_have_count(0)
-        expect(page.get_by_role("link", name="1 decision needs you in the Inbox")).to_be_visible()
         expect(page.get_by_role("region", name=re.compile("^Finished"))).to_contain_text(CALIBRATE)
         self.assertEqual(page.evaluate(f"localStorage.getItem('flux.tasks.mode.{ADA['id']}')"), "list")
         self.assertNotIn("view=", page.url)
@@ -649,7 +650,7 @@ class TasksBoardJourney(unittest.TestCase):
                     (".tb-card .ui-pill--inv", 4.5, {}), (".tb-card__blocker", 4.5, {}), (".tb-col__n", 4.5, {}), (".tb-col__b", 4.5, {}),
                     (".tb-col__h", 4.5, {}), ('.tb-mode__b[aria-checked="true"]', 4.5, {}), ('.tb-mode__b[aria-checked="false"]', 4.5, {}),
                     (".tb-mine", 4.5, {}), (".tb-also__b--need", 4.5, {}), (".tb-search input", 4.5, {"pseudo": "::placeholder"}),
-                    (".tb-col__head .tb-ring--in_progress", 3, {"property": "borderTopColor"}), (".tb-search", 3, {"property": "color"}),
+                    (".tb-col__head .ui-glyph--in_progress", 3, {}), (".tb-search", 3, {"property": "color"}),
                 ):
                     value = page.evaluate(MEASURE, {"selector": selector, **spec})
                     value.update(theme=theme, minimum=minimum)

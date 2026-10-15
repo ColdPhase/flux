@@ -116,7 +116,7 @@ function StatusMenu({ status, disabled, onChoose }: { status: WorkStatus; disabl
  * Enter or leaving it saves, Esc puts the old title back. The field stays open with the person's
  * text until the save is confirmed, so a failed save can be retried without retyping.
  */
-export function TitleField({ title, editable, onSave }: { title: string; editable: boolean; onSave: (title: string) => Promise<boolean> }) {
+export function TitleField({ title, editable, onEdit, onSave }: { title: string; editable: boolean; onEdit?: () => void; onSave: (title: string) => Promise<boolean> }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(title);
   const [saving, setSaving] = useState(false);
@@ -173,7 +173,7 @@ export function TitleField({ title, editable, onSave }: { title: string; editabl
             }} />
         </>
       ) : (
-        <button ref={opener} type="button" className="wd-title__text" title="Edit title" onClick={() => { setDraft(title); setEditing(true); }}>{title}</button>
+        <button ref={opener} type="button" className="wd-title__text" title="Edit title" onClick={() => { setDraft(title); setEditing(true); onEdit?.(); }}>{title}</button>
       )}
     </h3>
   );

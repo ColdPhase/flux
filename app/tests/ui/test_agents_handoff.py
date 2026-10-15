@@ -600,7 +600,8 @@ class HandOffJourney(unittest.TestCase):
         for wanted in (self.ids["busy"], str(uuid.uuid4())):
             page = self.page("ada", phone=True)
             page.goto(f"/projects/{project}/agents?task={wanted}")
-            expect(page.get_by_role("heading", level=1, name="Agents")).to_be_visible()
+            # The phone titles the view with the project; its subtitle names the open view (#341).
+            expect(page.locator("header.phead .phead__sub")).to_contain_text("Agents")
             expect(page.get_by_role("region", name="Thread of Calibrate the probes at two soil depths")).to_have_count(0)
             # There is no task picker (#347 P1-2): the thread that opens is this project's own first task, never the wanted one.
             expect(page.get_by_role("region", name=re.compile(r"^Thread of Connection task \d+$"))).to_have_count(1)

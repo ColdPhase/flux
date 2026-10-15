@@ -17,7 +17,7 @@ import uuid
 
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
-from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, start_forwarder
+from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, start_forwarder, view_tab
 
 PASSWORD = "a review keeps the work honest"
 STAMP = int(time.time() * 1000)
@@ -161,7 +161,7 @@ class TasksReviewJourney(unittest.TestCase):
         page.reload()
         expect(page.get_by_role("navigation", name="Work pages").locator(".ws-pages__range")).to_contain_text("51–")
         # Leaving for another tab and coming back with the browser's Back returns to the same page of the list.
-        page.get_by_role("link", name="Conversation").first.click()
+        view_tab(page, "Conversation")
         expect(page).not_to_have_url(re.compile("/tasks"))
         page.go_back()
         expect(page.get_by_role("navigation", name="Work pages").locator(".ws-pages__range")).to_contain_text("51–")
