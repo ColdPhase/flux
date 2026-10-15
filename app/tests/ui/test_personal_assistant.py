@@ -462,7 +462,7 @@ class PersonalAssistantJourney(unittest.TestCase):
         self.ask(jo, "Compare the two sensors a last time")
         working = jo.locator(".assistant-working")
         try:
-            expect(working).to_contain_text("Your assistant is writing an answer…", timeout=15000)
+            expect(working).to_contain_text("Your assistant is thinking…", timeout=15000)
             expect(working.locator('.kreska[data-expression="thinking"]')).to_have_count(1)
             settings = jo.context.new_page()  # the same storage as the conversation
             settings.goto("/settings")
@@ -470,7 +470,7 @@ class PersonalAssistantJourney(unittest.TestCase):
             expect(settings.get_by_role("switch", name="Kreska in loading and empty screens")).to_have_attribute("aria-checked", "false")
             settings.close()
             jo.reload()
-            expect(working).to_contain_text("Your assistant is writing an answer…", timeout=15000)
+            expect(working).to_contain_text("Your assistant is thinking…", timeout=15000)
             expect(working.get_by_role("button", name="Stop")).to_be_visible()
             expect(working.locator(".kreska")).to_have_count(0)
             self.assertEqual(jo.evaluate("document.documentElement.dataset.kreska"), "off")
