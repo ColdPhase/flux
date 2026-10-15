@@ -21,9 +21,13 @@ export function AssistantProjectAccess() {
   }, [projectId]);
   useEffect(() => {
     const controller = new AbortController();
-    void load(controller.signal);
+    if (projectId) getProjectAgents(projectId, controller.signal).then((next) => {
+      if (!controller.signal.aborted && activeProject.current === projectId) setView(next);
+    }, () => {
+      if (!controller.signal.aborted && activeProject.current === projectId) setFailed(true);
+    });
     return () => controller.abort();
-  }, [load]);
+  }, [projectId]);
   const currentView = view?.projectId === projectId ? view : null;
   const ownRequests = currentView?.joinRequests?.filter((row) => row.ownerUserId === me.user.id) ?? [];
   return <section className="nset__sec" aria-label="Your assistant’s project access">
