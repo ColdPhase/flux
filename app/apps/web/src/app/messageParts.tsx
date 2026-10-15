@@ -94,8 +94,8 @@ export function AgentAuthor({ message, owner }: { message: Extract<ConversationM
  * the stream or thread, shaped like the stored message that replaces it. It is a plain list item (not
  * a component of its own), so the stored message with the same key reuses it and nothing is redrawn.
  */
-export function pendingMessageRow({ item, place, keyed = true, onRetry, onRemove }: {
-  item: PendingSend; name: string; place: 'stream' | 'thread';
+export function pendingMessageRow({ item, place, continued = false, keyed = true, onRetry, onRemove }: {
+  item: PendingSend; name: string; place: 'stream' | 'thread'; continued?: boolean;
   /** False when a component returns it: its key then sits on that component, as on the stored message's. */
   keyed?: boolean; onRetry: () => void; onRemove: () => void;
 }) {
@@ -105,7 +105,7 @@ export function pendingMessageRow({ item, place, keyed = true, onRetry, onRemove
   const status = <OutboxStatus inline={inMeta} item={item} onRetry={onRetry} onRemove={onRemove} />;
   return (
     <li key={keyed ? `pending-${item.id}` : undefined} id={`pending-${item.id}`} data-client-message-id={item.id} data-send-state={item.state}
-      className={`project-convo__message is-mine is-pending is-pending-${place}${item.state === 'failed' ? ' is-failed-send' : ''}`}>
+      className={`project-convo__message is-mine is-pending is-pending-${place}${continued ? ' is-continued' : ''}${item.state === 'failed' ? ' is-failed-send' : ''}`}>
 
       {inMeta ? status : null}
       <PendingFiles body={item.body ? <p>{item.body}</p> : null} files={item.files} send={{ state: item.state, onRetry }} />

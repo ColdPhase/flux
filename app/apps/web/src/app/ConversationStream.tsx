@@ -551,7 +551,8 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
                 const { root } = entry;
                 const previous = display[index - 1], next = display[index + 1];
                 const continued = previous?.kind === 'root' && sameMessageAuthor(previous.root.message, root.message);
-                const groupLast = !(next?.kind === 'root' && sameMessageAuthor(root.message, next.root.message));
+                const nextMessage = next?.kind === 'root' ? next.root.message : !next && outbox.pending[0] ? { authorId: meId, createdAt: outbox.pending[0].at } : undefined;
+                const groupLast = !sameMessageAuthor(root.message, nextMessage);
                 // A root confirmed from its queued message keeps that list item: it does not move or arrive twice (#264).
                 return [divider, <RootItem key={key} continued={continued} groupLast={groupLast} owners={owners} root={root} project={project} meId={meId} author={author} messageWork={messageWork}
                   taskRow={root.task ? referenceWork.rows.get(`work:${root.task.workId}`) ?? null : null}
@@ -561,8 +562,11 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
                 const label = day(item.at);
                 const previous = index ? day(outbox.pending[index - 1]!.at) : dayOf.at(-1);
                 const divider = previous !== label ? <MessageDay key={`day-pending-${item.id}`} label={label} /> : null;
+                const lastEntry = display.at(-1);
+                const priorMessage = index ? { authorId: meId, createdAt: outbox.pending[index - 1]!.at } : lastEntry?.kind === 'root' ? lastEntry.root.message : undefined;
+                const continued = sameMessageAuthor(priorMessage, { authorId: meId, createdAt: item.at });
                 // The same component as a stored root, so the root that replaces it keeps this list item (#264).
-                return [divider, <RootItem key={`pending-${item.id}`} pending={item} name={meName} onRetry={() => composer.retry(item.id)} onRemove={() => composer.remove(item.id)} />];
+                return [divider, <RootItem key={`pending-${item.id}`} continued={continued} pending={item} name={meName} onRetry={() => composer.retry(item.id)} onRemove={() => composer.remove(item.id)} />];
               })]}
             </ol>
           ) : null}
@@ -680,7 +684,7 @@ type RootItemProps = {
   onOpen: (root: ConversationRoot, reply: boolean) => void; onOpenResult: (resultId: string) => void; onDenied: (cause: unknown) => void;
 };
 /** A root the person sent that is not stored yet (#264). */
-type QueuedRootProps = { pending: PendingSend; name: string; onRetry: () => void; onRemove: () => void };
+type QueuedRootProps = { continued?: boolean; pending: PendingSend; name: string; onRetry: () => void; onRemove: () => void };
 
 /**
  * One root of the stream, or the person's queued root that becomes it: one component and one list
@@ -700,7 +704,7 @@ function RootItem(props: RootItemProps | QueuedRootProps) {
   const touch = useTouchActions(actions);
   if (!stored || !message || !actions) {
     const queued = props as QueuedRootProps;
-    return pendingMessageRow({ place: 'stream', keyed: false, item: queued.pending, name: queued.name, onRetry: queued.onRetry, onRemove: queued.onRemove });
+    return pendingMessageRow({ place: 'stream', continued: queued.continued, keyed: false, item: queued.pending, name: queued.name, onRetry: queued.onRetry, onRemove: queued.onRemove });
   }
   const { root, project, owners, meId, messageWork, taskRow, open, arrived, makeWork, onOpen, onOpenResult, onDenied } = stored;
   const mine = message.authorId === meId;

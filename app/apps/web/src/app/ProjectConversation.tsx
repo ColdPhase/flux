@@ -564,16 +564,19 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
               const message = entry.message;
               const previous = entries[index - 1], next = entries[index + 1];
               const continued = previous?.type === 'message' && sameMessageAuthor(previous.message, message);
-              const groupLast = !(next?.type === 'message' && sameMessageAuthor(message, next.message));
+              const nextMessage = next?.type === 'message' ? next.message : !next && outbox.pending[0] ? { authorId: me.user.id, createdAt: outbox.pending[0].at } : undefined;
+              const groupLast = !sameMessageAuthor(message, nextMessage);
               // A reply confirmed from its queued message keeps that list item: it does not move or arrive twice (#264).
               return [divider, <ThreadReply key={outbox.keyOf(message.id)} continued={continued} groupLast={groupLast} message={message} mine={message.authorId === me.user.id} meId={me.user.id} arrived={arrived === message.id} name={messageAuthor(message)}
                 project={project} owners={owners} people={people} preview={messageWork.previews?.get(message.id) ?? null} makeWork={makeWork} writable={writable}
                 onOpenResult={(resultId) => openDetails({ kind: 'result', id: resultId })} onDenied={hideIfDenied} />];
-            }), ...outbox.pending.flatMap((item) => {
+            }), ...outbox.pending.flatMap((item, index) => {
               const label = day(item.at);
               const divider = label !== lastDay ? <MessageDay key={`day-pending-${item.id}`} label={label} /> : null;
               lastDay = label;
-              return [divider, <ThreadReply key={`pending-${item.id}`} pending={item} name={me.user.name} onRetry={() => publicComposer.retry(item.id)} onRemove={() => publicComposer.remove(item.id)} />];
+              const previous = index ? { authorId: me.user.id, createdAt: outbox.pending[index - 1]!.at } : entries.at(-1)?.type === 'message' ? messages.at(-1) : undefined;
+              const continued = sameMessageAuthor(previous, { authorId: me.user.id, createdAt: item.at });
+              return [divider, <ThreadReply key={`pending-${item.id}`} continued={continued} pending={item} name={me.user.name} onRetry={() => publicComposer.retry(item.id)} onRemove={() => publicComposer.remove(item.id)} />];
             })]}
             {assistant.run ? <WorkingLine key={assistant.run.id} run={assistant.run} onStop={assistant.stop} onRetry={() => assistant.retry(assistant.run!.id)} onDismiss={assistant.dismissRun} /> : null}
             </ol>
@@ -624,7 +627,7 @@ type ThreadReplyProps = {
   preview: MessageWorkPreview | null; makeWork: ReturnType<typeof useCreateWorkFromMessage>; writable: boolean;
   onOpenResult: (resultId: string) => void; onDenied: (cause: unknown) => void;
 };
-type QueuedReplyProps = { pending: PendingSend; name: string; onRetry: () => void; onRemove: () => void };
+type QueuedReplyProps = { continued?: boolean; pending: PendingSend; name: string; onRetry: () => void; onRemove: () => void };
 
 /**
  * One reply of the open thread, or the person's queued reply that becomes it: one component and one list
@@ -642,7 +645,7 @@ function ThreadReply(props: ThreadReplyProps | QueuedReplyProps) {
   const touch = useTouchActions(actions);
   if (!stored || !message || !actions) {
     const queued = props as QueuedReplyProps;
-    return pendingMessageRow({ place: 'thread', keyed: false, item: queued.pending, name: queued.name, onRetry: queued.onRetry, onRemove: queued.onRemove });
+    return pendingMessageRow({ place: 'thread', continued: queued.continued, keyed: false, item: queued.pending, name: queued.name, onRetry: queued.onRetry, onRemove: queued.onRemove });
   }
   const { mine, meId, arrived, name, project, owners, people, preview, writable, onOpenResult, onDenied } = stored;
   return (
