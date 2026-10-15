@@ -140,7 +140,7 @@ export function SearchPage() {
             {answer?.next ? <div className="search__more"><Button variant="secondary" busy={moreBusy} onClick={() => void loadMore()}>Show more results</Button></div> : null}
           </>
         ) : state.status === 'ready' ? (
-          <div className="view-empty"><EmptyState icon="search" title={`Nothing matches “${draft.trim()}”`} level={2}>
+          <div className="view-empty"><EmptyState icon="search" mascot="looking" title={`Nothing matches “${draft.trim()}”`} level={2}>
             <p>{!/[\p{L}\p{N}]{2,}/u.test(draft) ? 'Type at least two letters of a word.' : type || place ? 'Try all kinds and all places, or fewer words.' : 'Try fewer or different words. Only what you can open is searched.'}</p>
             {type || place ? <p><button type="button" className="ui-link" onClick={() => { const next = new URLSearchParams({ q: draft.trim() }); setParams(next, { replace: true }); }}>Search everywhere</button></p> : null}
           </EmptyState></div>

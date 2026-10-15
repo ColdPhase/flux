@@ -64,7 +64,7 @@ export function useStateChange(saved: (item: WorkItem) => void, done: () => void
       if (!(await sameSession())) return null;
       saved(stored);
       toast({
-        message: `${taskNumber(item)} ${lower(status)}`, tone: 'neutral',
+        message: `${taskNumber(item)} ${lower(status)}`, tone: 'neutral', mascot: status === 'done' ? 'wink' as const : undefined,
         action: {
           label: 'Undo', key: 'Z',
           onClick: () => {

@@ -1,8 +1,10 @@
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Icon } from './Icon';
-import { Kreska } from './Kreska';
+import { Kreska, type KreskaExpression } from './Kreska';
 import { duration, play } from './motion';
+import { useSmallMoments } from './smallMoments';
+import './moments.css';
 
 export type ToastTone = 'neutral' | 'success' | 'danger';
 
@@ -19,9 +21,12 @@ export interface ToastOptions {
   timeout?: number;
   /** One quiet action beside the message, e.g. Undo or Hand back. Taking it closes the toast. */
   action?: ToastAction;
+  /** A small moment: the wink after a task is closed. Shown only while Small moments is on; the message says it all. */
+  mascot?: KreskaExpression;
 }
 
-interface ToastEntry extends Required<Omit<ToastOptions, 'timeout' | 'action'>> {
+interface ToastEntry extends Required<Omit<ToastOptions, 'timeout' | 'action' | 'mascot'>> {
+  mascot: KreskaExpression | null;
   id: number;
   action: ToastOptions['action'] | null;
   timeout: number | null;
@@ -52,6 +57,7 @@ function ToastItem({ toast, onDone, registerAction }: { toast: ToastEntry; onDon
   const timer = useRef<number | null>(null);
   const [leaving, setLeaving] = useState(false);
   const ran = useRef(false);
+  const moments = useSmallMoments();
   const dismiss = useCallback(() => setLeaving(true), []);
   const act = useCallback(() => {
     if (!toast.action || ran.current || leaving || toast.leaving) return;
@@ -93,7 +99,7 @@ function ToastItem({ toast, onDone, registerAction }: { toast: ToastEntry; onDon
 
   return (
     <div ref={ref} className={`ui-toast ui-toast--${toast.tone}${scrollable ? ' ui-toast--scrollable' : ''}`} onMouseEnter={disarm} onMouseLeave={arm} onFocus={disarm} onBlur={arm}>
-      {toast.tone === 'success' ? <Icon name="check" /> : toast.tone === 'danger' ? <Icon name="alert" /> : toast.action ? <Kreska size={24} expression="done" /> : null}
+      {toast.mascot && moments ? <Kreska expression={toast.mascot} size={24} /> : toast.tone === 'success' ? <Icon name="check" /> : toast.tone === 'danger' ? <Icon name="alert" /> : null}
       <span ref={message} className="ui-toast__msg" tabIndex={scrollable ? 0 : undefined}
         role={scrollable ? 'region' : undefined} aria-label={scrollable ? 'Notification message' : undefined}>{toast.message}</span>
       {toast.action && !leaving && !toast.leaving ? (
@@ -134,7 +140,7 @@ export function ToastProvider({ children, scopeKey }: { children: ReactNode; sco
       onClick: () => { if (isCurrent() && committedSession.current.epoch === actionEpoch) options.action!.onClick(); },
     } : null;
     const entry: ToastEntry = {
-      id: nextId.current++, message: options.message, tone, action,
+      id: nextId.current++, message: options.message, tone, action, mascot: options.mascot ?? null,
       timeout: options.timeout ?? (tone === 'danger' || action ? null : 5000),
       leaving: false, sessionEpoch: actionEpoch,
     };
