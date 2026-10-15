@@ -536,6 +536,55 @@ class FilesReferencesPhotos(unittest.TestCase):
                 expect(viewer).to_have_count(0)
                 self.assertEqual(urlparse(page.url).path, f"/projects/{self.ids['project']}", "the stream stays where it is")
 
+    def test_narrow_media_widths_and_viewport_bounds(self) -> None:
+        for width in (320, 375, 390):
+            for dark in (False, True):
+                for who in ("jonas", "ada"):
+                    with self.subTest(width=width, dark=dark, who=who):
+                        page = self.page(who, phone=True, dark=dark)
+                        page.set_viewport_size({"width": width, "height": 844})
+                        for surface, path, cases in (
+                            ("project", f"/projects/{self.ids['project']}", (
+                                (f"#message-{self.ids['files']}", ".message-bubble"),
+                                (f"#message-{self.ids['two']}", ".photo-grid"),
+                                (f"#message-{self.ids['photo-only']}", ".photo-grid"),
+                            )),
+                            ("thread", f"/projects/{self.ids['project']}/conversations/{self.ids['conversation:' + self.ids['files']]}", (
+                                (".thread__root", ".message-bubble"),
+                                (f"#message-{self.ids['photo-reply']}", ".photo-grid"),
+                                (f"#message-{self.ids['photo-reply']}", ".message-bubble"),
+                            )),
+                        ):
+                            page.goto(path)
+                            for selector, child in cases:
+                                row = page.locator(selector)
+                                row.scroll_into_view_if_needed()
+                                target = row.locator(f":scope > {child}")
+                                expect(target).to_be_visible()
+                                target.evaluate("""async element => {
+                                  await document.fonts.ready;
+                                  for (let node=element; node; node=node.parentElement)
+                                    await Promise.all(node.getAnimations().filter(animation => animation.effect.getTiming().iterations !== Infinity)
+                                      .map(animation => animation.finished.catch(() => {})));
+                                }""")
+                                geometry = target.evaluate("""element => {
+                                  const box=element.getBoundingClientRect(), parent=element.parentElement,
+                                    style=getComputedStyle(parent);
+                                  return {width:box.width, available:parent.clientWidth-parseFloat(style.paddingLeft)-parseFloat(style.paddingRight)};
+                                }""")
+                                self.assertGreaterEqual(geometry["width"], min(300, geometry["available"]) - 1, (selector, child, geometry))
+                                bounds = row.evaluate("""element => [element, ...element.querySelectorAll('.message-bubble,.photo-grid,.ws-chip,.file-row,.link-preview,.photo-meta')]
+                                  .filter(item => item.getClientRects().length).map(item => {
+                                    const box=item.getBoundingClientRect(); return {kind:item.className,left:box.left,right:box.right};
+                                  })""")
+                                for box in bounds:
+                                    self.assertGreaterEqual(box["left"], -1, box)
+                                    self.assertLessEqual(box["right"], width + 1, box)
+                                self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), width)
+                            if who == "jonas" and SHOTS:
+                                page.screenshot(path=os.path.join(SHOTS, f"spokoj-media-{surface}-{width}-{'dark' if dark else 'light'}-{UI_BROWSER}.png"))
+                        page.context.close()
+
     def test_native_references_share_root_and_reply_bubbles(self) -> None:
         for phone in (False, True):
             for dark in (False, True):
