@@ -77,7 +77,9 @@ class RuntimeConsole(unittest.TestCase):
         return page
 
     def api(self, page: Page, method: str, path: str, body: dict | None = None) -> dict:
-        response = page.request.fetch(f"{ORIGIN}{path}", method=method, headers={"origin": ORIGIN, "content-type": "application/json"},
+        # A JSON content type with an empty body is refused by the server, so only a body sends one.
+        headers = {"origin": ORIGIN, **({"content-type": "application/json"} if body is not None else {})}
+        response = page.request.fetch(f"{ORIGIN}{path}", method=method, headers=headers,
                                       data=json.dumps(body) if body is not None else None)
         self.assertLess(response.status, 300, response.text())
         return json.loads(response.text()) if response.text() else {}
@@ -422,6 +424,7 @@ class RuntimeConsole(unittest.TestCase):
         expect(section).not_to_contain_text("Nothing changed")
         self.phone_layout(page, "section.rt")
 
+    @unittest.skipIf(RUNTIME, "the operator switch is off only in the check_ui stack")
     def test_12_legacy_sign_in_route_is_lazy_and_off_server_refuses_the_start(self) -> None:
         """Real lazy assets/redirect and refusal; offered status is a fixture, never a native login."""
         for phone in (False, True):
@@ -560,6 +563,7 @@ class RuntimeConsole(unittest.TestCase):
                         page.close()
 
 
+    @unittest.skipIf(RUNTIME, "the operator switch is off only in the check_ui stack")
     def test_14_uncertain_removal_is_clear_at_the_actual_action_position(self) -> None:
         """No post-result scrolling: current action feedback and saved-value qualifier remain truthful."""
         for phone in (False, True):
