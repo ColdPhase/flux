@@ -283,6 +283,14 @@ class PersonalAssistantJourney(unittest.TestCase):
         expect(kai.locator(".composer__ask")).not_to_have_attribute("aria-pressed", re.compile(".*"))
 
     def test_05_a_manager_lets_their_assistant_read_the_project(self) -> None:
+        # F-027 AST-3.4: Turn on joined the project Jo manages, as a contributor, through an ordinary grant.
+        setup = self.page("jo")
+        agent = {"kind": "agent", "id": self.ids["agent"]}
+        joined = [g for g in self.api(setup, "GET", f"/api/v1/projects/{self.ids['project']}/grants", status=200) if g["principal"] == agent]
+        self.assertEqual([g["role"] for g in joined], ["contributor"], "Turn on joins the projects the owner manages")
+        # The project's manager keeps control: without that grant the assistant cannot read the project.
+        revoked = setup.request.delete(f"{ORIGIN}/api/v1/projects/{self.ids['project']}/grants/{joined[0]['id']}", headers={"origin": ORIGIN})
+        self.assertEqual(revoked.status, 204, revoked.text())
         page = self.conversation("jo")
         self.ask(page, "Summarize where we are")
         bar = page.locator("#project-ask")

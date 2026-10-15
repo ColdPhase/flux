@@ -163,9 +163,19 @@ class PhoneShellJourney(unittest.TestCase):
         page.get_by_role("link", name=re.compile("^Community garden sensors")).click()
         expect(page).to_have_url(re.compile(f"/projects/{self.project['id']}$"))
         expect(bar).to_have_count(0)
+        # Wiki and Agents appear in the title menu once a project has them (#351, F-026 S20); this
+        # project has neither yet, so add them the way More does before walking the menu.
+        for view in ("docs", "agents"):
+            response = page.request.fetch(f"{ORIGIN}/api/v1/projects/{self.project['id']}/views", method="POST",
+                headers={"origin": ORIGIN, "content-type": "application/json", "idempotency-key": str(uuid.uuid4())},
+                data=json.dumps({"view": view}))
+            self.assertEqual(response.status, 200, response.text())
+        page.reload()
         menu = self.open_views(page)
         expect(menu.get_by_role("link", name="Conversation")).to_have_attribute("aria-current", "page")
-        for name, path in (("Map", "/map"), ("Wiki", "/docs"), ("Agents", "/agents"), ("Tasks", "/tasks")):
+        for index, (name, path) in enumerate((("Map", "/map"), ("Wiki", "/docs"), ("Agents", "/agents"), ("Tasks", "/tasks"))):
+            if index:  # the previous row's Escape closed the menu
+                menu = self.open_views(page)
             menu.get_by_role("link", name=re.compile(f"^{name}")).click()
             expect(page).to_have_url(re.compile(f"/projects/{self.project['id']}{path}"))
             expect(bar.get_by_role("link", name="Projects")).to_have_attribute("aria-current", "page")
