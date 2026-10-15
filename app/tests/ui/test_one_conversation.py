@@ -265,8 +265,8 @@ class OneConversationJourney(unittest.TestCase):
         page.goto(self.project_url())
         stream = self.stream(page)
         expect(stream.locator(".project-convo__message").first).to_be_visible()
-        times = [text.strip() for text in stream.locator(".project-convo__message-meta time").all_inner_texts()]
-        self.assertTrue(times, "each root shows its time")
+        times = [text.strip() for text in stream.locator(".message-time time").all_inner_texts()]
+        self.assertTrue(times, "each author run ends with a time")
         self.assertEqual([text for text in times if not re.fullmatch(r"[1-9]\d?:\d\d\s[AP]M", text)], [], "a natural 12-hour clock")
 
     def test_02_a_thread_opens_beside_the_stream_and_takes_a_reply(self) -> None:

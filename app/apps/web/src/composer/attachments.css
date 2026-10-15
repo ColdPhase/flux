@@ -32,13 +32,12 @@ a.file-row:hover .file-row__act { color: var(--t1); }
 /* A task card under a photo fills the photo's width, not the caption's (F-026 §6). */
 .photo-grid + .message-bubble:has(.ws-chip, .ws-attach, .wiki-card) { width: min(100%, 340px); }
 /* A wrapper alone does not turn legacy unframed text-only excerpts into cards. */
-.thread__root > .message-bubble:not(:has(.message-files, .ws-attach, .wiki-card)):not(.photo-grid + .message-bubble),
 .agents-msg:not(.agents-msg--own) > .message-bubble:not(:has(.message-files)):not(.photo-grid + .message-bubble),
 .wd-pending__item > .message-bubble:not(:has(.message-files)):not(.photo-grid + .message-bubble),
 .details__sec > .message-bubble { padding: 0; border-radius: 0; background: none; box-shadow: none; color: inherit; }
 
-.project-convo__message.is-mine .file-row, .project-convo__message.is-mine .link-preview { background: rgba(255, 255, 255, .1); color: var(--oninv); }
-.project-convo__message.is-mine .file-row__text small, .project-convo__message.is-mine .file-row__act, .project-convo__message.is-mine .link-preview small, .project-convo__message.is-mine .link-preview__site { color: inherit; opacity: .78; }
+.is-mine > .message-bubble .file-row, .is-mine > .message-bubble .link-preview { background: var(--sub); color: var(--t1); }
+.is-mine > .message-bubble .file-row__text small, .is-mine > .message-bubble .file-row__act, .is-mine > .message-bubble .link-preview small, .is-mine > .message-bubble .link-preview__site { color: var(--t2); opacity: 1; }
 
 /* A voice note: waveform and Play. */
 .voice-note__line { display: flex; align-items: center; gap: 10px; }
@@ -192,3 +191,5 @@ span.photo-grid__open { cursor: default; }
 
 .message-day.project-convo__day, .thread .message-day.project-convo__day { display: flex; align-items: center; justify-content: center; gap: 12px; margin: 20px 0 24px; font-size: var(--fs-xs); font-weight: 400; color: var(--t3); }
 .message-day.project-convo__day::before, .message-day.project-convo__day::after { content: ""; height: 1px; background: var(--line); flex: 1; }
+
+.photo-grid { min-width: min(100%, 300px); }

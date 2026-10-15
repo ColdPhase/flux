@@ -137,7 +137,9 @@
 .dm-msg__body, .dm-msg.is-mine .dm-msg__body { padding: 0; max-width: 100%; background: none; border-radius: 0; }
 .dm-msg--cont { margin-top: 4px; }
 .dm-msg__meta { margin-bottom: 7px; }
-.dm-msg.is-arrived, .dm-msg.is-picked { box-shadow: none; background: var(--sub); border-radius: var(--r); }
+.dm-msg.is-arrived, .dm-msg.is-picked { box-shadow: none; border-radius: var(--r); }
+.dm-msg.is-arrived .message-bubble { background: var(--sub); }
+.dm-msg.is-picked .message-time { color: var(--t2); }
 .dm--selecting .dm-msg.is-mine .dm-msg__row { display: grid; }
 .dm__day { margin: 20px 0; }
 

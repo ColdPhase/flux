@@ -273,7 +273,8 @@ export function MessageContent({ files, context, body, children }: { files?: Mes
   const photos = files?.filter((file) => looksLikePhoto(file.name)) ?? [];
   const others = files?.filter((file) => !looksLikePhoto(file.name));
   return <>
-    <MessageBubble>{body}{photos.length ? <PhotoGrid photos={photos} context={context} /> : null}<MessageFiles files={others} />{children}</MessageBubble>
+    {photos.length ? <PhotoGrid photos={photos} context={context} /> : null}
+    <MessageBubble>{body}<MessageFiles files={others} />{children}</MessageBubble>
     <PhotoMeta photos={photos} />
   </>;
 }

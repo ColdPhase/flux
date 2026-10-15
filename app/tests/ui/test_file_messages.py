@@ -21,6 +21,7 @@ from urllib.parse import urlparse
 
 from playwright.sync_api import Browser, Page, expect, sync_playwright
 
+from contrast import MEASURE
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, start_forwarder
 
 UI_BROWSER = os.environ.get("FLUX_UI_BROWSER", "chromium")
@@ -202,6 +203,7 @@ class FilesReferencesPhotos(unittest.TestCase):
             cls.ids[f"conversation:{started['messages'][0]['id']}"] = started["messages"][0]["conversationId"]
             return started["messages"][0]["id"]
 
+        cls.ids["plain"] = root("jonas", "The probes can wait until the rain stops.", [])
         cls.ids["files"] = root("jonas", "Drawing and range readings from Saturday, see #8 and ask @Ada: https://www.thethingsnetwork.org/docs/gateways/placement-guide/",
                                 [("probe-v2-drawing.pdf", PDF), ("lora-range-far-beds.csv", CSV), ("voice-note.m4a", VOICE)])
         cls.ids["two"] = root("jonas", "Sensor 3 is in, far east bed", [("IMG_2041.png", FIELD), ("IMG_2042.png", BOARD)])
@@ -579,6 +581,35 @@ class FilesReferencesPhotos(unittest.TestCase):
                     card = reply.locator(f'.ws-chip[data-work-id="{self.ids["reply-task"]}"]').bounding_box()
                     self.assertGreaterEqual(bubble["width"], grid["width"] - 1, "the caption bubble is as wide as the photo")
                     self.assertGreaterEqual(card["width"], bubble["width"] - 26 - 1, "the task card fills its bubble")
+
+    def test_spokoj_own_file_link_and_thread_root_contrast(self) -> None:
+        for dark in (False, True):
+            for phone in (False, True):
+                with self.subTest(dark=dark, phone=phone):
+                    page = self.page("jonas", dark=dark, phone=phone)
+                    for path, root_selector in (
+                        (f"/projects/{self.ids['project']}", f"#message-{self.ids['files']}"),
+                        (f"/projects/{self.ids['project']}/conversations/{self.ids['conversation:' + self.ids['files']]}", ".thread__root"),
+                    ):
+                        page.goto(path)
+                        row = page.locator(root_selector)
+                        row.scroll_into_view_if_needed()
+                        expect(row.locator(".link-preview")).to_be_visible()
+                        for part in (".file-row__name", ".file-row__text small", ".link-preview strong", ".link-preview__site"):
+                            selector = f"{root_selector} {part}"
+                            expect(page.locator(selector).first).to_be_visible()
+                            value = page.evaluate(MEASURE, {"selector": selector})
+                            self.assertGreaterEqual(value["ratio"], 4.5, (dark, phone, selector, value))
+                    # A plain own thread root also has the shared filled shell, not the former unframed text.
+                    page.goto(f"/projects/{self.ids['project']}/conversations/{self.ids['conversation:' + self.ids['plain']]}")
+                    bubble = page.locator(".thread__root > .message-bubble")
+                    expect(bubble).to_be_visible()
+                    style = bubble.evaluate("""e => { const s=getComputedStyle(e), p=document.createElement('i');
+                      p.style.background='var(--own)'; document.body.append(p); const own=getComputedStyle(p).backgroundColor; p.remove();
+                      return {fill:s.backgroundColor, own, padding:parseFloat(s.paddingLeft), radius:parseFloat(s.borderTopLeftRadius)}; }""")
+                    self.assertEqual(style["fill"], style["own"], style)
+                    self.assertGreater(style["padding"], 0, style)
+                    self.assertGreater(style["radius"], 0, style)
 
     def test_composer_thumbnails_drop_and_photo_states(self) -> None:
         for phone in (False, True):

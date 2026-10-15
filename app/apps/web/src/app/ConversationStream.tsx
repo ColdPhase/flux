@@ -709,7 +709,7 @@ function RootItem(props: RootItemProps | QueuedRootProps) {
   const { root, project, owners, meId, messageWork, taskRow, open, arrived, makeWork, onOpen, onOpenResult, onDenied } = stored;
   const mine = message.authorId === meId;
   return (
-    <li {...touch.props} id={`message-${message.id}`} data-message-id={message.id} tabIndex={-1} data-conversation-id={root.conversationId}
+    <li {...touch.props} id={`message-${message.id}`} data-message-id={message.id} aria-label={mine ? 'Your message' : `${name}’s message`} tabIndex={-1} data-conversation-id={root.conversationId}
       className={`project-convo__message${mine ? ' is-mine' : ''}${arrived ? ' is-arrived' : ''}${open ? ' is-open' : ''}${stored.continued ? ' is-continued' : ''} ${touch.props.className}`}>
       {!mine && !stored.continued ? <AuthorFace kind={message.authorId === null ? 'agent' : 'human'} name={name} mine={mine} /> : null}
       {!mine && !stored.continued ? <div className="project-convo__message-meta">

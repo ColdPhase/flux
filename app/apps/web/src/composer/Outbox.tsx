@@ -55,16 +55,18 @@ function PendingStatus({ item, onRetry, onRemove }: { item: PendingSend; onRetry
 export function PendingFiles({ files, send, body }: { files: readonly DraftFile[]; send?: { state: PendingSend['state']; onRetry?: () => void }; body?: ReactNode }) {
   const photos = files.filter((file) => looksLikePhoto(file.name) && selectedFile(file.uploadId));
   const others = files.filter((file) => !photos.includes(file));
-  return <MessageBubble>{body}
+  return <>
     {photos.length ? <div className={`photo-grid photo-grid--${Math.min(photos.length, 4)} is-pending`}>
       <ul className="photo-grid__tiles" aria-label={photos.length === 1 ? '1 photo' : `${photos.length} photos`}>
         {photos.slice(0, 4).map((file, index) => <PendingPhoto key={file.uploadId} file={file} send={send} more={index === 3 ? photos.length - 4 : 0} />)}
       </ul>
     </div> : null}
+    <MessageBubble>{body}
       {others.length ? <ol className="message-files is-pending" aria-label={others.length === 1 ? '1 attached file' : `${others.length} attached files`}>{others.map((file) => <li key={file.uploadId}>
         <span className="file-row"><FileIcon name={file.name} /><span className="file-row__text"><span className="file-row__name">{file.name}</span><small>{typeLine(file)}{file.state === 'uploading' ? ` · ${uploadLabel(file)}` : null}</small></span></span>
       </li>)}</ol> : null}
-  </MessageBubble>;
+    </MessageBubble>
+  </>;
 }
 
 /** The share of bytes sent, as a ring that fills (its words beside it say the number). */
