@@ -16,7 +16,7 @@ import uuid
 
 from playwright.sync_api import Browser, BrowserContext, Page, Route, expect, sync_playwright
 
-from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, open_details, shot, start_forwarder
+from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, open_details, shot, start_forwarder, view_tab
 
 # Exhaust real browser storage; a subsequent larger write must be refused by its own quota.
 # No storage API, React state or success response is replaced.
@@ -453,6 +453,33 @@ class RouteChunksJourney(unittest.TestCase):
                 expect(page.get_by_role("heading", name="Settings", exact=True)).to_have_count(0)
                 self.back_to_notes(page, phone=phone)
                 expect(page.get_by_placeholder("Write a note…")).to_have_value("Private work remains editable")
+
+    def test_02b_phone_held_route_keeps_the_conversation_draft_and_cancellation(self):
+        """The phone's own path to a lazy route (#341): a project conversation's title menu opens Tasks while its code is
+        held. The phone shell stays, the message draft stays the same editable element, and Cancel stays where it was."""
+        page = self.page("webkit", phone=True)
+        held = self.hold(page, "ProjectTasks")
+        page.goto(f"/projects/{self.project_id}")
+        field = page.get_by_label("Write a message", exact=True)
+        expect(field).to_be_visible()
+        start = page.url
+        field.fill("Private work while the destination downloads")
+        field.evaluate("el => { window.__routeDraftElement = el; }")
+        view_tab(page, "Tasks")
+        pending = page.locator(f'[data-route-pending="/projects/{self.project_id}/tasks"]')
+        expect(pending).to_be_visible()
+        expect(pending.get_by_role("status")).to_have_text("Opening tasks…")
+        self.request_is_held(page, held)
+        expect(field).to_have_value("Private work while the destination downloads")
+        field.fill("Private work remains editable")
+        self.assertTrue(field.evaluate("el => window.__routeDraftElement === el"))
+        shot(page, "route-chunks-pending-webkit-phone")
+        pending.get_by_role("button", name="Cancel", exact=True).click()
+        expect(page.locator("[data-route-pending]")).to_have_count(0)
+        expect(page).to_have_url(start)
+        held.pop().continue_()
+        expect(field).to_have_value("Private work remains editable")
+        self.assertTrue(field.evaluate("el => window.__routeDraftElement === el"))
 
     def test_03_failed_route_download_keeps_authenticated_shell_and_private_recovery(self):
         for engine in self.browsers:

@@ -152,11 +152,13 @@ class MessageWorkJourney(unittest.TestCase):
                 response = route.fetch(); self.assertEqual(response.status, 200); held.append((route,response)); page.evaluate("window.__associationHeld = true")
             else: route.continue_()
         page.route("**/work-associations?**", hold)
+        pane = page.locator(".thread__feed")
+        # An open thread starts at its root (#436). The reader is at the latest replies when the next page is asked
+        # for, so the position the held page must not restore differs from the newer one the wheel chooses below.
+        pane.hover(); page.mouse.wheel(0, 100000)
+        page.wait_for_function("()=>{const p=document.querySelector('.thread__feed');return p.scrollTop>0&&Math.abs(p.scrollTop+p.clientHeight-p.scrollHeight)<=1;}")
         page.locator("#thread").get_by_role("navigation", name="Linked object pages").get_by_role("button", name="Next", exact=True).click()
         page.wait_for_function("window.__associationHeld === true")
-        pane = page.locator(".thread__feed")
-        # An open thread starts at its root (#436), so the reader moves to the latest replies before the next page loads.
-        pane.evaluate("el=>{el.scrollTop=el.scrollHeight}")
         self.assertGreater(pane.evaluate("el=>el.scrollTop"),0,"loading still has scrollable native message text")
         pane.hover(); page.mouse.wheel(0, -100000)
         page.wait_for_function("document.querySelector('.thread__feed').scrollTop === 0")

@@ -603,11 +603,10 @@ class TasksFinalJourney(unittest.TestCase):
                 middle.focus()
                 page.wait_for_timeout(100)
                 before = pane.evaluate('el => el.scrollTop')
-                # An Undo toast stays until it is taken or closed (Toast contract), so the test closes it. Closing moves focus
-                # to the toast's own button; the reader's middle row takes it back, as it had before.
-                page.locator('.ui-toast__close').last.click()
+                # An Undo toast stays until it is taken or closed (#347 Toast contract). It is dismissed without moving focus
+                # (a DOM click, as a timeout would), so the focus check below still proves the toast leaving keeps the reader's row.
+                page.locator('.ui-toast__close').last.evaluate('el => el.click()')
                 expect(page.locator('.ui-toast')).to_have_count(0)
-                middle.focus()
                 expect(middle).to_be_focused()
                 self.assertAlmostEqual(pane.evaluate('el => el.scrollTop'), before, delta=2, msg='middle reading remains stable when feedback expires')
                 page.wait_for_function("() => {const pane=document.querySelector('.tb-root > .pane-scroll').getBoundingClientRect(), root=document.querySelector('.tb-root').getBoundingClientRect();return Math.abs(pane.bottom-root.bottom)<=1;}", timeout=8000)
