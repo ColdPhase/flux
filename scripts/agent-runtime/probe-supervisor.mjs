@@ -50,9 +50,11 @@ record('bind is refused while /data holds a binding', answer.status === 200 && a
 answer = await post(slot, '/v1/status', {});
 const report = answer.last?.result?.slot;
 record('the slot report names this slot and its binding only', report?.slot === slot && report.data.bindings.length === 1 && report.data.bindings[0] === bindingId, JSON.stringify(report?.data));
-answer = await post(slot, '/v1/status', { bindingId, client: 'claude_code' });
+// Status and login name the slot's current boot (every accepted frame carries it), as the console and the manager do.
+const bootId = answer.frames.find((frame) => frame.t === 'accepted')?.bootId;
+answer = await post(slot, '/v1/status', { bindingId, client: 'claude_code', bootId });
 record('client status runs the fixed template', answer.status === 200 && answer.last?.t === 'result' && typeof answer.last.result.client.signedIn === 'boolean', JSON.stringify(answer.last));
-answer = await post(slot, '/v1/login', { bindingId, client: 'claude_code', method: 'console', cols: 80, rows: 24 });
+answer = await post(slot, '/v1/login', { bindingId, bootId, client: 'claude_code', method: 'console', cols: 80, rows: 24 });
 record('login runs only in the sign-in console, never as a plain request (T4)', answer.status === 200 && answer.last?.code === 'invalid_request', JSON.stringify(answer.last));
 
 // The manager's own API checks the closed set before anything reaches a supervisor.
