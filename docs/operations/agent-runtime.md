@@ -3,8 +3,9 @@
 This guide is for the person who runs a Flux instance with [`./flux`](../../flux). It covers the
 `runtime` transport of [F-022 AIM-3](../product/ai-modes.md#aim-3--the-runtime-transport), delivered
 in slices: T3 ([#278](https://github.com/ColdPhase/flux/issues/278)) adds the runtime itself (slots,
-supervisor, isolation, operator steps). Sign-in (T4) and runs (T5) follow; until then an owner can
-bind a slot, and Settings shows the state, but nobody can sign in or run yet.
+supervisor, isolation, operator steps); T4 ([#279](https://github.com/ColdPhase/flux/issues/279)) adds
+the Claude Code [sign-in console](#the-sign-in-console). Runs (T5) follow; until then an owner can sign
+in, check and sign out, but not run.
 
 **It is off by default.** With `FLUX_AGENT_RUNTIME` empty, no runtime service runs, the API reports the
 feature as not enabled, and nothing below applies. The published release `compose.yaml` does not
@@ -202,16 +203,46 @@ A slot whose supervisor cannot confirm an empty `/data` (for example a stray fil
 /data/<entry>`), then restart that slot (`docker restart <container>`); it returns once its new
 supervisor reports an empty `/data`.
 
+## The sign-in console
+
+An owner signs in from Settings → *Agent in Flux* → *Sign in to Claude Code*, as in a terminal (F-022
+"Sign-in as in a terminal"). Settings first tells them that you, the operator, can technically read
+their runtime's storage, what Anthropic says about this kind of use, and who pays for each method.
+
+- **Methods.** Every method of `claude auth login`: *Claude account* (`claude auth login`, the default,
+  which the CLI also spells `--claudeai`), *Anthropic Console* (`--console`) and *SSO* (`--sso`). The
+  pinned CLI's `auth login --help` also lists `--email`, which only pre-fills an address on Anthropic's
+  page; the opt-in contract check fails if a later CLI lists any other option.
+- **What runs.** The owner's slot runs exactly that command in a pseudo-terminal: no shell, the CLI's
+  clean environment plus `TERM`. The terminal is relayed to the owner's browser over a WebSocket bound
+  to their session (API → `runtime-manager` → the slot's supervisor, each hop authenticated as every
+  other runtime request). The CLI prints Anthropic's sign-in link; the owner signs in there and pastes
+  the code back at the CLI's own prompt. Another member's session cannot attach to it.
+- **When it ends.** When the command exits, when the owner's page closes or loses its connection, and
+  after 15 minutes at the latest. The slot's serial lane is held meanwhile, so a sign-in never overlaps
+  a status check, a run or a sign-out.
+- **What Flux keeps.** Only what `claude auth status` reports afterwards, reduced in the slot to display
+  facts: the method, the plan if reported, a masked account (`a***@example.org`), the time, and a keyed
+  fingerprint of the account so a later sign-in to a different account shows the owner a notice. The
+  login stays in the CLI's own file in the slot volume. No service logs or stores the terminal's output
+  or what the owner types (`runtime-manager` logs the slot, the outcome and the duration only).
+- **Sign out** runs `claude auth logout` and then deletes the CLI's files; if the logout fails (for
+  example, Anthropic is unreachable) the files are still deleted and the owner is told to end the
+  session in their Claude or Console account. **Remove runtime** signs out first, deletes the binding
+  directory and frees the slot.
+
+The image of each slot contains node-pty 1.1.0 (pinned; compiled from source in the build stage) for
+the terminal. Nothing else is added to the slot image.
 ## Known limits (accepted)
 
 Recorded from the T3 review (#331); none of them is hidden by the checks.
 
-- **A slot can be bound before its owner signs in (m5).** Binding happens when an owner first opens the
-  runtime in Settings, not when a sign-in starts, so any account on the instance can hold a slot, and
-  with open sign-up that is anyone. The pool is the limit. Your controls: close or restrict sign-up,
-  watch `./flux runtime status`, release a slot with `./flux runtime release`, and set
-  `FLUX_AGENT_RUNTIME_IDLE_DAYS` (a binding that never ran counts from its creation). T4 may bind at the
-  start of sign-in instead; until then this is accepted, not solved.
+- **A slot can be bound without a sign-in (m5, open under #331).** The web client no longer binds when the owner
+  opens Settings: a binding starts only when a sign-in console is opened, at ticket time, and the console's
+  attach then binds again under the owner's session. The API route `POST /api/v1/agent-runtime/binding` still
+  binds a slot with no sign-in, so any signed-in account on the instance can call it. Your controls: close or
+  restrict sign-up, watch `./flux runtime status`, release a slot with `./flux runtime release`, and set
+  `FLUX_AGENT_RUNTIME_IDLE_DAYS` (a binding that never ran counts from its creation). Accepted (#331 m5).
 - **`runtime-egress` is not vendor-exclusive (m6).** Cleanup must still reach a vendor after you switch its
   client off (TLS hides the request path), so the proxy allows the recorded hosts of every client at all
   times; the supervisor, not the proxy, refuses login, status and runs for a client that is off. Today
@@ -276,7 +307,7 @@ The separate published runtime image and release-matched operator assets remain 
 
 `./scripts/check_runtime_cli_contract.sh` is the opt-in flag contract check against these real CLIs
 (no account needed; internet access to github.com and downloads.claude.ai). It is not part of CI; the
-automated checks use fake CLIs. **Run on 2026-10-06 at `5a9a2cf9`:** `runtime-install` verified and
+automated checks use fake CLIs. **Sign-in assertion table, run on 2026-10-08:** the same compiled table (`apps/runtime/dist/contract/check-auth.js`) passed 21 of 21 rows against the checksum-verified Claude Code 2.1.285 and codex-cli 0.160.1 binaries in `docker run --network none` (obtained by hand from the pinned URLs, not through the script, which has not run end to end). **Run on 2026-10-06 at `5a9a2cf9`:** `runtime-install` verified and
 installed Claude Code 2.1.285 (`linux-x64-musl`, SHA-256 `7b4414af…eaf102` from the signed manifest), and
 every flag and subcommand of the templates is in the help of Claude Code 2.1.285 and codex-cli 0.160.1,
 except `--max-turns`, which `claude --help` does not list but the CLI accepts (a made-up flag is refused).
@@ -286,9 +317,10 @@ Run it again whenever a pin changes. It proves the flags exist, not how the CLIs
 
 | Check | What it proves |
 | --- | --- |
-| `./scripts/check_agent_runtime.sh` | The whole runtime through `./flux` with fake CLIs: off by default; on; `docker inspect` limits; two owners, no cross-owner reach, a full pool; escape attempts from inside a slot; the supervisors' closed request set; release and reuse; bind refused with any entry in `/data`; operator release; backup without slot volumes; restore reconciliation; switching off; purge; reset. |
-| `./scripts/check_application.sh` | With the runtime off: the API reports it disabled; no request input selects a slot; the runtime tables hold display facts only; core, supervisor, manager and egress tests, including the fuzz tests of the supervisor-stream reader and `runtime-egress`. |
-| `python3 -m unittest tests.test_flux_subscription_question` | The launcher's question with a pseudo-terminal and a stub `docker` as the fake host check: Enter, Enter writes `codex` and no statement; Enter, `y` writes `codex,claude_code` and today's date; `n` writes nothing; no terminal asks and writes nothing; each failing host check shows no question and one reason line; an existing `docker/.env` and a second `./flux up` are never asked; `./flux ai on` asks the same, only adds and refuses without a terminal. It creates no Docker resource. |
+| `./scripts/check_agent_runtime.sh` | The whole runtime through `./flux` with fake CLIs: off by default; on; `docker inspect` limits; two owners, no cross-owner reach, a full pool; escape attempts from inside a slot; the supervisors' closed request set; release and reuse; bind refused with any entry in `/data`; operator release; the sign-in console (each method's exact command in a terminal, the URL, a pasted code, signed in only from `auth status`, sign-out and a failed logout, another member refused, the terminal gone after exit and after the page left, a seeded-secret scan of the database, frames, API answers and logs, and the pages at phone width in a browser); backup without slot volumes; restore reconciliation; switching off; purge; reset. Set `FLUX_RUNTIME_SCREENSHOT_DIR` to keep the browser's screenshots. |
+| `./scripts/check_application.sh` | With the runtime off: the API reports it disabled; no request input selects a slot; the runtime tables hold display facts only; core, supervisor, manager and egress tests, including the fuzz tests of the supervisor-stream reader and `runtime-egress`; the sign-in console in process with real terminals (the 15-minute end with injected timers, disconnect, the closed request set, the session-bound ticket). |
 | `python3 -m unittest tests.test_container_isolation tests.test_runtime_inspect` | No Compose file mounts a Docker or Podman socket, and none binds a host path outside the checkout (so no `/var/run` or `/run` directory mount); `inspect.py` refuses the same on a running project. |
+| `python3 -m unittest tests.test_flux_subscription_question` | The launcher's question with a pseudo-terminal and a stub `docker` as the fake host check: Enter, Enter writes `codex` and no statement; Enter, `y` writes `codex,claude_code` and today's date; `n` writes nothing; no terminal asks and writes nothing; each failing host check shows no question and one reason line; an existing `docker/.env` and a second `./flux up` are never asked; `./flux ai on` asks the same, only adds and refuses without a terminal. It creates no Docker resource. |
+| `./scripts/check_runtime_cli_contract.sh` | Opt-in: the fixed templates' flags and the sign-in, status and sign-out assertion table (golden `--help`, status JSON keys, exit codes, streams; `--network none`, no account) against the pinned real CLIs. |
+| `FLUX_LIVE_VENDOR=1 ./scripts/check_vendor_live.sh` | Optional and never required: shows the status of the logins already on the maintainer's machine. Refuses without the variable. |
 | `./scripts/check_runtime_install.sh` | Opt-in, needs the internet (about 250 MB): the real `runtime-install` through `runtime-egress` to `downloads.claude.ai` with the signature and SHA-256 checks, the installed binary reporting the pinned version, and the installer proxy refusing every other host. A public download; no account or sign-in. |
-| `./scripts/check_runtime_cli_contract.sh` | Opt-in: the fixed templates' flags against the pinned real CLIs. |

@@ -57,6 +57,8 @@ export function callSupervisor(target: SupervisorTarget, request: SupervisorRequ
           return;
         }
         if (bootId === null) throw new FrameStreamError('invalid_frame');
+        // Console frames belong to the sign-in console's stream (console.ts), never to a request's answer.
+        if (frame.t === 'console') throw new FrameStreamError('invalid_frame');
         if (frame.t === 'step') {
           if (steps.length >= MAX_STEPS) throw new FrameStreamError('too_many_frames');
           steps.push({ step: frame.step, outcome: frame.outcome, ...(frame.client ? { client: frame.client } : {}) });

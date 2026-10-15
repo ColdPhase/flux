@@ -27,7 +27,9 @@ async function fakeWrapper(dir: string, name: 'claude' | 'codex') {
   return path;
 }
 
-export async function startTestSlot(options: { slot?: string; enabled?: RuntimeClient[]; bindingLimitBytes?: number; cliTimeoutMs?: number; withClis?: boolean } = {}): Promise<TestSlot> {
+export async function startTestSlot(options: { slot?: string; enabled?: RuntimeClient[]; bindingLimitBytes?: number; cliTimeoutMs?: number; withClis?: boolean;
+  /** T4: the sign-in console's timers and lifetime. */
+  console?: Pick<SupervisorConfig, 'clock' | 'consoleLifetimeMs'> } = {}): Promise<TestSlot> {
   const root = await mkdtemp(join(tmpdir(), 'flux-slot-'));
   const dataDir = join(root, 'data');
   const tmpDir = join(root, 'tmp');
@@ -49,6 +51,7 @@ export async function startTestSlot(options: { slot?: string; enabled?: RuntimeC
     egressHost: 'runtime-egress',
     bindingLimitBytes: options.bindingLimitBytes ?? 256 * 1024 * 1024,
     cliTimeoutMs: options.cliTimeoutMs ?? 10_000,
+    ...options.console,
   };
   const state = { released: 0 };
   const { server } = createSupervisorServer(config, () => { state.released += 1; });

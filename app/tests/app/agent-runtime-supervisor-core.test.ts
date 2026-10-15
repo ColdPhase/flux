@@ -12,7 +12,9 @@ import { portOf, startTestSlot, type TestSlot } from './support/runtime-slot.js'
 // No database and no network beyond loopback.
 
 const target = (slot: TestSlot) => ({ host: '127.0.0.1', port: portOf(slot.url), secret: slot.config.secret });
-const call = (slot: TestSlot, request: SupervisorRequest) => callSupervisor(target(slot), request, { timeoutMs: 20_000 });
+type FixtureRequest<T> = T extends { bootId: string } ? Omit<T, 'bootId'> & { bootId?: string } : T;
+const call = (slot: TestSlot, request: FixtureRequest<SupervisorRequest>) => callSupervisor(target(slot),
+  ('client' in request && ['status', 'logout', 'login'].includes(request.kind) ? { bootId: slot.config.bootId, ...request } : request) as SupervisorRequest, { timeoutMs: 20_000 });
 
 /** The client status of a successful status request, or a failed assertion. */
 function clientStatus(out: SupervisorCallOutcome): ClientStatus {
@@ -166,10 +168,11 @@ describe('fixed command templates and a clean CLI environment', () => {
     }
   });
 
-  test('a client the operator did not enable is refused; login and run wait for T4 and T5', async () => {
+  test('a client the operator did not enable is refused; login runs only in the console and run waits for T5', async () => {
     assert.deepEqual(await call(slot, { kind: 'status', bindingId, client: 'codex' }), { ok: false, code: 'client_off' });
-    assert.deepEqual(await call(slot, { kind: 'login', bindingId, client: 'codex', method: 'device_code' }), { ok: false, code: 'client_off' });
-    assert.deepEqual(await call(slot, { kind: 'login', bindingId, client: 'claude_code', method: 'sso' }), { ok: false, code: 'not_available' });
+    // A sign-in is never a plain request: only the console's upgrade runs `auth login` (T4).
+    assert.deepEqual(await call(slot, { kind: 'login', bindingId, client: 'codex', method: 'device_code', cols: 80, rows: 24 }), { ok: false, code: 'invalid_request' });
+    assert.deepEqual(await call(slot, { kind: 'login', bindingId, client: 'claude_code', method: 'sso', cols: 80, rows: 24 }), { ok: false, code: 'invalid_request' });
     const run: SupervisorRequest = { kind: 'run', bindingId, client: 'claude_code', runId: randomUUID(), prompt: 'Hello', runToken: 'aa.bb.cc', tools: ['flux_get_doc'],
       caps: { maxTurns: 10, wallClockSeconds: 300, idleSeconds: 60, maxAnswerBytes: 16384 } };
     assert.deepEqual(await call(slot, run), { ok: false, code: 'not_available' });
@@ -202,6 +205,20 @@ describe('fixed command templates and a clean CLI environment', () => {
     const failed = await call(slot, { kind: 'logout', bindingId, client: 'claude_code' });
     assert.ok(failed.ok && failed.result.kind === 'logout' && failed.result.logout === 'failed');
     assert.deepEqual(await readdir(join(slot.config.dataDir, bindingId, 'claude')), [], 'the credential file is deleted anyway');
+  });
+
+  test('logout also deletes the keyless Console profile that lives outside CLAUDE_CONFIG_DIR, even when the CLI\'s logout fails', async () => {
+    const profile = join(slot.config.dataDir, bindingId, 'home', '.config', 'anthropic');
+    for (const scenario of ['', 'logout_fails']) {
+      await signIn(slot, bindingId);
+      await mkdir(join(profile, 'configs'), { recursive: true });
+      await writeFile(join(profile, 'active_config'), 'default');
+      await writeFile(join(profile, 'configs', 'default.json'), '{"authentication":{"type":"oauth"}}');
+      if (scenario) await writeFile(join(slot.config.dataDir, bindingId, 'claude', 'fake-scenario'), scenario);
+      assert.ok((await call(slot, { kind: 'logout', bindingId, client: 'claude_code' })).ok);
+      await assert.rejects(lstat(profile), { code: 'ENOENT' }, `the Console profile survived sign-out (${scenario || 'logout ok'})`);
+      assert.deepEqual(await readdir(join(slot.config.dataDir, bindingId, 'claude')), []);
+    }
   });
 });
 

@@ -12,10 +12,15 @@ const receiptColumns: Readonly<Record<string, string>> = {
   workspace_id: 'uuid', project_id: 'uuid', actor_kind: 'text', actor_id: 'text', client_command_id: 'uuid',
   request_fingerprint: 'text', work_id: 'uuid', notice_id: 'uuid', created_at: 'timestamp with time zone',
 };
-const legacyColumns: Readonly<Record<string, readonly string[]>> = {
-  agent_runtime_connections: ['account_fingerprint', 'previous_account_label', 'account_changed_at', 'signed_out_at', 'sign_out_failed'],
+// Sign-in 0096 and runtime-auth 0097 are admitted only with their own ledger versions (ledger 97 needs 96).
+// Without those ledger versions, the same objects refuse as unsupported legacy footprints.
+const signInColumns: Readonly<Record<string, string>> = {
+  account_fingerprint: 'text', previous_account_label: 'text', account_changed_at: 'timestamp with time zone',
+  signed_out_at: 'timestamp with time zone', sign_out_failed: 'boolean',
 };
-const legacyRelations = ['agent_runtime_auth_operations', 'agent_runtime_console_nonces', 'agent_runtime_auth_admission'];
+const runtimeAuthRelations = ['agent_runtime_auth_operations', 'agent_runtime_console_nonces', 'agent_runtime_auth_admission'];
+const runtimeAuthFunction = 'invalidate_runtime_auth_operations';
+const runtimeAuthTrigger = 'agent_runtime_auth_lifecycle';
 // Ignore rendering whitespace outside literals; a space inside a CHECK's value is semantic.
 const compact = (definition: string) => definition.replace(/('(?:''|[^'])*')|\s+/g, (part, literal: string | undefined) => literal ?? '');
 
@@ -26,39 +31,59 @@ function refuse(problems: readonly string[]): never {
 }
 
 /** Read-only preflight, under flux-migrate, before application SQL, ledger or pg-boss writes.
- * 0057/0058 remain unsupported. Current 0059 is the accepted Focus migration, and its exact
- * nullable timestamptz footprint is admitted only with ledger 59. Additional unrelated
- * columns/tables do not change these supported semantic footprints.
+ * Ledger 57/58 remain unsupported. Sign-in 0096 and runtime-auth 0097 are admitted only with
+ * their own ledger versions, and their exact catalog shapes are checked. Current 0059 is the
+ * accepted Focus migration, and its exact nullable timestamptz footprint is admitted only with
+ * ledger 59. Additional unrelated columns/tables do not change these supported semantic footprints.
  */
 export async function assertTaskCreationUndoMigrationCompatibility(db: Reader, applied: readonly number[]): Promise<void> {
   const problems: string[] = [];
+  const relationKind = async (relation: string) => (await db.query(
+    'SELECT c.relkind AS kind FROM pg_catalog.pg_class c WHERE c.oid=pg_catalog.to_regclass($1)', [relation])).rows[0]?.kind as string | undefined;
   const columns = async (relation: string) => (await db.query(`
     SELECT a.attname AS name, pg_catalog.format_type(a.atttypid,a.atttypmod) AS type,
       a.attnotnull AS required, c.relkind AS kind
     FROM pg_catalog.pg_attribute a JOIN pg_catalog.pg_class c ON c.oid=a.attrelid
     WHERE a.attrelid=pg_catalog.to_regclass($1) AND a.attnum>0 AND NOT a.attisdropped
   `, [relation])).rows as { name: string; type: string; required: boolean; kind: string }[];
-  for (const [relation, names] of Object.entries(legacyColumns)) {
-    const found = (await columns(relation)).filter((column) => names.includes(column.name));
-    if (found.length) problems.push(`unsupported legacy ${relation} columns ${found.map((column) => `${column.name}:${column.type}`).join(',')}`);
+  const signIn = (await columns('agent_runtime_connections')).filter((column) => Object.hasOwn(signInColumns, column.name));
+  if (applied.includes(96)) {
+    for (const [name, type] of Object.entries(signInColumns)) {
+      const column = signIn.find((entry) => entry.name === name);
+      if (!column || column.type !== type || column.required || column.kind !== 'r') problems.push(`mismatched sign-in 0096 column agent_runtime_connections.${name}:${type}`);
+    }
+  } else if (signIn.length) {
+    problems.push(`unsupported legacy agent_runtime_connections columns ${signIn.map((column) => `${column.name}:${column.type}`).join(',')}`);
   }
-  for (const relation of legacyRelations) {
-    if ((await db.query('SELECT pg_catalog.to_regclass($1) AS relation', [relation])).rows[0].relation) {
+  const authRelations = new Map(await Promise.all(runtimeAuthRelations.map(async (relation) => [relation, await relationKind(relation)] as const)));
+  for (const relation of runtimeAuthRelations) {
+    if (applied.includes(97)) {
+      if (authRelations.get(relation) !== 'r') problems.push(`mismatched runtime-auth 0097 relation ${relation}`);
+    } else if (authRelations.get(relation)) {
       problems.push(`unsupported legacy relation ${relation}`);
     }
   }
+  if (applied.includes(97) && !applied.includes(96)) problems.push('partial runtime-auth ledger 97 without sign-in ledger 96');
   const functions = (await db.query(`SELECT p.oid,p.proname AS name,p.prosrc AS body,l.lanname AS language,p.prorettype='trigger'::regtype AS trigger
     FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_language l ON l.oid=p.prolang
     WHERE p.oid IN (pg_catalog.to_regprocedure('flux_guard_task_creation_receipt()'),
       pg_catalog.to_regprocedure('flux_guard_task_creation_history()'),pg_catalog.to_regprocedure('invalidate_runtime_auth_operations()'))`)).rows;
-  if (functions.some((fn) => fn.name === 'invalidate_runtime_auth_operations')) problems.push('unsupported legacy runtime-auth lifecycle function');
+  const authFunction = functions.find((fn) => fn.name === runtimeAuthFunction);
+  if (applied.includes(97)) {
+    if (!authFunction?.trigger || authFunction.language !== 'plpgsql') problems.push('mismatched runtime-auth 0097 lifecycle function');
+  } else if (authFunction) problems.push('unsupported legacy runtime-auth lifecycle function');
   const triggers = (await db.query(`SELECT t.tgname AS name,t.tgtype AS type,t.tgenabled AS enabled,
       p.proname AS function,t.tgfoid AS function_oid,t.tgqual IS NOT NULL AS conditional, t.tgnargs AS arguments
     FROM pg_catalog.pg_trigger t JOIN pg_catalog.pg_proc p ON p.oid=t.tgfoid
     WHERE (t.tgrelid=pg_catalog.to_regclass('project_work_items') AND t.tgname='task_creation_history_guard')
       OR (t.tgrelid=pg_catalog.to_regclass('task_creation_undo_receipts') AND t.tgname='task_creation_receipt_guard')
       OR (t.tgrelid=pg_catalog.to_regclass('agent_runtime_bindings') AND t.tgname='agent_runtime_auth_lifecycle')`)).rows;
-  if (triggers.some((trigger) => trigger.name === 'agent_runtime_auth_lifecycle')) problems.push('unsupported legacy runtime-auth lifecycle trigger');
+  const authTrigger = triggers.find((trigger) => trigger.name === runtimeAuthTrigger);
+  if (applied.includes(97)) {
+    // AFTER UPDATE OF state, FOR EACH ROW (type bits 1 row + 16 update), no WHEN clause, no arguments.
+    if (!authTrigger || authTrigger.enabled !== 'O' || authTrigger.type !== 17 || authTrigger.function !== runtimeAuthFunction ||
+      authTrigger.conditional || authTrigger.arguments !== 0) problems.push('mismatched runtime-auth 0097 lifecycle trigger');
+  } else if (authTrigger) problems.push('unsupported legacy runtime-auth lifecycle trigger');
   const reserved = applied.filter((version) => [57, 58].includes(version));
   if (reserved.length) problems.push(`unsupported reserved ledger versions ${reserved.join(',')} (numeric identity is not catalog identity)`);
 

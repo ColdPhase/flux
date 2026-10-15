@@ -1,5 +1,5 @@
+import { Navigate, Outlet, createBrowserRouter, useMatches, useRouteLoaderData, type RouteObject } from 'react-router';
 import { useState } from 'react';
-import { Outlet, createBrowserRouter, useMatches, useRouteLoaderData, type RouteObject } from 'react-router';
 import { ToastProvider } from './ui';
 import { UpdatePrompt } from './pwa';
 import { AppLayout } from './app/AppLayout';
@@ -162,6 +162,9 @@ export const router = createBrowserRouter([
               { path: 'notifications', ...secondary(async () => ({ Component: (await import('./notifications/NotificationSettings')).NotificationSettings })) },
               { path: 'notifications/verify', ...secondary(async () => ({ Component: (await import('./notifications/NotificationSettings')).VerifyAddress })) },
               { path: 'agents', ...secondary(async () => ({ Component: (await settingsPage()).SettingsAgents })) },
+              // F-022 T4: the console and terminal load only when this route opens.
+              { path: 'agents/claude-code', ...secondary(async () => ({ Component: (await import('./agent-runtime/ClaudeCodeSignIn')).ClaudeCodeSignIn })) },
+              { path: 'assistant/claude-code', element: <Navigate to="/settings/agents/claude-code" replace /> },
               { path: 'shortcuts', ...secondary(async () => ({ Component: (await settingsPage()).KeyboardShortcuts })) },
               { path: 'assistant', ...secondary(async () => ({ Component: (await import('./assistant/AssistantSettings')).AssistantSettings })) },
               { path: 'background-compute', ...secondary(async () => { const page = await import('./proactive-comparison/BackgroundComputeSettings'); return { Component: page.BackgroundComputeSettings, loader: page.backgroundComputeLoader }; }) },
