@@ -8,7 +8,7 @@ import { updateWork } from '../work/api';
 import { announceInboxChange } from './api';
 import type { CardHandlers, SnoozeChoice } from './NeedsYouCard';
 import { nextWeek, tomorrowMorning } from './format';
-import { flushAccepts, startAccept } from './pendingAccept';
+import { ACCEPT_UNDO_MS, flushAccepts, startAccept } from './pendingAccept';
 import { restoreNeedsYou, resolveNeedsYou, type Queue } from './needsYou';
 
 const apiMessage = (error: unknown, fallback: string) => (error instanceof ApiError && error.message ? error.message : fallback);
@@ -69,7 +69,8 @@ export function useNeedsYouActions(queue: Queue): CardHandlers {
           ? { message: 'This decision changed before it was accepted. Nothing was accepted. Open it to look again.', tone: 'danger' }
           : { message: 'Could not accept. Nothing changed. Try again.', tone: 'danger' });
       });
-      toast({ message: 'Accepted', tone: 'success', action: { label: 'Undo', key: 'Z', onClick: () => {
+      // Undo is offered for ACCEPT_UNDO_MS only: the toast closes with the window, so it never outlives it.
+      toast({ message: 'Accepted', tone: 'success', timeout: ACCEPT_UNDO_MS, action: { label: 'Undo', key: 'Z', onClick: () => {
         if (handle.undo()) { latest.current.show(item); return; }
         // It was already sent (the place was left, or the window ended): a decision is never un-accepted.
         toast({ message: 'It is already accepted. To change direction, propose a new decision.' });
