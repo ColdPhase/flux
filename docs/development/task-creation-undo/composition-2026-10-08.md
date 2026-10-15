@@ -105,6 +105,28 @@ The current-image compatibility regression must run the real migration CLI on a
 0059 database through both Undo migrations and repeated startup while preserving
 retained task history, alongside the negative catalog controls above.
 
+### Composition with sign-in 0096 / runtime-auth 0097 (2026-10-15)
+
+Recorded for PR #398 (#279) after the 2026-10-11 and 2026-10-14 entries above; it
+supersedes the earlier mention of 0057/0058 in the namespace paragraph for the sign-in
+and runtime-auth files.
+
+- Ledger versions **57 and 58 stay refused**. They are not admitted as sign-in,
+  runtime-auth or Undo facts, and their catalog shapes keep the reserved 57/58 refusal.
+- The sign-in and runtime-auth catalog ships as `0096_agent_runtime_sign_in.sql` and
+  `0097_agent_runtime_auth_operations.sql` with paired reverse files. It is admitted only
+  with its own ledger versions. Ledger 96 requires the five nullable sign-in columns on
+  the binding table. Ledger 97 requires ledger 96, the three runtime-auth tables, the
+  `invalidate_runtime_auth_operations` function and the `agent_runtime_auth_lifecycle`
+  trigger enabled as `O`. Without those ledger versions, any of these objects refuses with
+  the existing "unsupported legacy" text; nothing is converted or inferred.
+- The branch's separate footprint gate (`migration-footprints.md`, `footprints.ts`, its
+  tests and fixtures) is removed. Main's `task-creation-undo-compatibility.ts` guard is the
+  single compatibility check and is extended for 96 and 97.
+- Required evidence: the real migration CLI on a ledger 94/95 database that holds runtime
+  binding and connection rows, run twice, exits 0 with the exact ledger and preserved rows.
+  The composition with focus 59 and Undo 60 keeps the requirements stated above.
+
 ## Required current evidence
 
 Verify trusted agent/proposal origins and current human/agent authority, monotonically recorded prior use,

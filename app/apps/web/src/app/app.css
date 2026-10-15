@@ -2,7 +2,6 @@
 
 /* ---------- Shared page frames ---------- */
 .page-center { min-height: 100%; display: grid; place-items: center; padding: 40px 20px; }
-.booting__msg { display: inline-flex; align-items: center; gap: 10px; color: var(--t3); font-size: var(--fs-md); animation: rise var(--dur-3) var(--ease-out) both; }
 @keyframes rise { from { opacity: 0; transform: translateY(4px); } }
 
 .brand { display: inline-flex; align-items: center; gap: 10px; min-height: var(--ctl); padding: 0 6px; margin-left: -6px; border-radius: var(--r); text-decoration: none; font-weight: 600; font-size: var(--fs-md); color: var(--t1); }
@@ -79,7 +78,7 @@ body:has(.app) { background: var(--side); }
 }
 .side__new { flex: 1; justify-content: flex-start; }
 .side__new:active, .side__search:active { transform: scale(var(--press)); }
-.side__new kbd, .newmenu__item kbd {
+.side__new kbd {
   margin-left: auto; display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 4px;
   border-radius: 5px; background: var(--sub); box-shadow: inset 0 -1px 0 var(--line2); font: 500 .6875rem/1 var(--mono); color: var(--t2);
 }
@@ -87,16 +86,6 @@ body:has(.app) { background: var(--side); }
 .newmenu { position: relative; display: flex; flex: 1; }
 .newmenu--compact { flex: none; margin: 10px 0 6px; }
 .newmenu--compact .side__new { width: 40px; height: 40px; padding: 0; justify-content: center; }
-.newmenu__menu {
-  position: absolute; z-index: var(--z-menu); top: calc(100% + 6px); left: 0; width: 220px; padding: 6px; display: flex; flex-direction: column;
-  border-radius: 16px; background: var(--el); box-shadow: var(--sh-pop);
-}
-.newmenu--compact .newmenu__menu { top: 0; left: calc(100% + 8px); }
-.newmenu__item { display: flex; align-items: center; gap: 10px; min-height: 36px; padding: 0 10px; border-radius: 10px; font-size: var(--fs-base); color: var(--t1); text-align: left; }
-.newmenu__item:hover, .newmenu__item:focus-visible { background: var(--hov); }
-.newmenu__item[aria-disabled="true"] { color: var(--t3); cursor: default; }
-.newmenu__item[aria-disabled="true"]:hover { background: transparent; }
-.newmenu__item small { margin-left: auto; font-size: var(--fs-xs); color: var(--t3); }
 .side__scroll { flex: 1; min-height: 0; overflow-y: auto; margin: 0 -12px; padding: 0 12px 12px; }
 .side__places { display: flex; flex-direction: column; gap: 2px; }
 .side__sec { margin-top: 10px; }
@@ -150,6 +139,7 @@ body:has(.app) { background: var(--side); }
 .agentlive__stop { display: grid; place-items: center; flex: none; width: 28px; height: 28px; border-radius: var(--r-pill); background: var(--sub); color: var(--t1); transition: var(--tr); }
 .agentlive__stop:hover { background: var(--hov); }
 .agentlive__link { display: grid; place-items: center; }
+.agentlive__mark { display: grid; place-items: center; flex: none; width: 24px; height: 24px; color: var(--t2); }
 .agentlive__error { flex-basis: 100%; min-width: 0; overflow-wrap: anywhere; font-size: var(--fs-xs); line-height: 1.3; color: var(--t1); }
 .agentlive--compact { flex-direction: column; gap: 4px; margin: 0; padding: 4px; }
 .agentlive__more { margin: -4px 0 8px; padding: 0 var(--s-2); font-size: var(--fs-xs); color: var(--t3); }
@@ -614,14 +604,6 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
 }
 .phone-create__item[aria-disabled="true"] { opacity: .55; }
 .phone-create__item small { font-size: .8125rem; color: var(--t2); font-weight: 400; }
-.phone-create__quick { display: grid; gap: 8px; margin-top: 16px; }
-.phone-create__quick label { font-size: .875rem; font-weight: 500; color: var(--t2); }
-.phone-create__quick input { width: 100%; min-height: 58px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 18px; background: var(--el); color: var(--t1); box-shadow: var(--sh-card); font: inherit; font-size: 1rem; }
-.phone-create__quick input::placeholder { color: var(--t2); opacity: 1; }
-.phone-create__quick input:focus-visible { outline: 2px solid var(--t1); outline-offset: 2px; }
-.phone-create__draft, .phone-create__error { margin: 0; font-size: .8125rem; }
-.phone-create__draft { color: var(--t2); }
-.phone-create__error { color: var(--danger, var(--t1)); }
 .proj-index__dms { display: grid; gap: 10px; margin-top: 22px; justify-items: start; }
 .proj-index__dms h2 { margin: 0; font-size: .9375rem; font-weight: 500; color: var(--t2); }
 .proj-index__dms .dm-index { width: 100%; }

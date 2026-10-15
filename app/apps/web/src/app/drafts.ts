@@ -40,6 +40,14 @@ export function forgetBrowserDrafts() {
 }
 
 export const draftKey = (userId: string, context: string) => `flux:draft:${userId}:${context}`;
+/** The text of one draft as stored now, not the snapshot a render saw (a finished command reads what is current). */
+export function readDraft(userId: string, context: string): string {
+  return read(draftKey(userId, context)).text;
+}
+/** Writes one draft outside the current composer (the Create window carries a typed title to the project it moves to). */
+export function writeDraft(userId: string, context: string, text: string): void {
+  write(draftKey(userId, context), text);
+}
 export const scrollKey = (userId: string, context: string) => `flux:scroll:${userId}:${context}`;
 
 function read(key: string): DraftState {

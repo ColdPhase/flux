@@ -1,11 +1,10 @@
-import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from 'react';
-import { Link, useRevalidator } from 'react-router';
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
+import { Link } from 'react-router';
 import { Avatar, BottomNav, FluxLogo, Icon, IconButton, Overlay, type BottomNavItem, type IconName } from '../ui';
 import { handFilesToComposer } from '../composer/handoff';
 import { useDraft } from './drafts';
 import { useShellActions } from './shellContext';
 import { useShellData, type ProjectSummary } from './data';
-import { createWork } from '../work/api';
 
 /**
  * The phone's chrome (F-026 §4 Phone, S2): one floating tab capsule Home · Projects · Inbox with a
@@ -135,17 +134,12 @@ export function PhoneCreate({ open, onClose, projects, projectId, go, onThought 
 }) {
   const titleId = useId();
   const { me } = useShellData();
-  const { openDetails } = useShellActions();
-  const revalidator = useRevalidator();
+  const { openCreate } = useShellActions();
   const selectedProject = useDraft(me.user.id, 'phone-create-project');
   const preferredProjectId = projects.some((project) => project.id === selectedProject.text)
     ? selectedProject.text
     : projectId;
   const chosen = projects.find((project) => project.id === preferredProjectId) ?? projects[0];
-  const taskDraft = useDraft(me.user.id, `phone-create-task:${chosen?.id ?? 'none'}`);
-  const taskPending = useDraft(me.user.id, `phone-create-task:${chosen?.id ?? 'none'}:pending`);
-  const [taskBusy, setTaskBusy] = useState(false);
-  const [taskError, setTaskError] = useState('');
   const to = (path: string | null) => (path ? () => { onClose(); go(path); } : null);
   const inProject = chosen ? `/projects/${chosen.id}` : null;
   // The picker must open within the tap (WebKit refuses it later), so the sheet holds the file input.
@@ -164,43 +158,13 @@ export function PhoneCreate({ open, onClose, projects, projectId, go, onThought 
     return () => input.removeEventListener('cancel', cancelled);
   });
   const tiles: Tile[] = [
-    { id: 'task', label: 'Task', icon: 'plus', run: to(inProject && `${inProject}/tasks?new=task`), hint: 'needs a project' },
+    { id: 'task', label: 'Task', icon: 'plus', run: chosen ? () => { onClose(); requestAnimationFrame(() => openCreate({ kind: 'task', projectId: chosen.id })); } : null, hint: 'needs a project' },
     { id: 'thought', label: 'Thought', icon: 'edit', run: () => { onClose(); onThought(); } },
     { id: 'message', label: 'Message', icon: 'chat', run: to('/dm/new') },
     { id: 'decision', label: 'Decision', icon: 'rule', run: to(inProject && `${inProject}?open=propose-decision`), hint: 'needs a project' },
     { id: 'file', label: 'File or link', icon: 'clip', hint: 'needs a project', pick: true, run: inProject ? () => setPickerOpen(true) : null },
     { id: 'sketch', label: 'Sketch', icon: 'shape', run: to(inProject ? `${inProject}/map` : '/map') },
   ];
-  async function createQuickTask(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const targetProject = chosen?.id;
-    const original = taskDraft.text;
-    const title = original.trim();
-    const draftRevision = taskDraft.revision;
-    if (!targetProject || !title || taskBusy) return;
-    let attempt: ReturnType<typeof crypto.randomUUID> = crypto.randomUUID();
-    try {
-      const previous: unknown = JSON.parse(taskPending.text);
-      if (previous && typeof previous === 'object' && 'title' in previous && previous.title === title &&
-        'key' in previous && typeof previous.key === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(previous.key)) attempt = previous.key as typeof attempt;
-    } catch { /* No valid pending command for this title. */ }
-    const command = JSON.stringify({ title, key: attempt });
-    const pendingRevision = taskPending.setText(command);
-    setTaskBusy(true);
-    setTaskError('');
-    try {
-      const item = await createWork(targetProject, { title }, attempt);
-      taskDraft.clearIfMatches(original, draftRevision);
-      taskPending.clearIfMatches(command, pendingRevision);
-      onClose();
-      revalidator.revalidate();
-      openDetails({ kind: 'work', id: item.id, projectId: targetProject });
-    } catch (cause) {
-      setTaskError(cause instanceof Error ? cause.message : 'Could not create the task. Try again.');
-    } finally {
-      setTaskBusy(false);
-    }
-  }
   return (
     <Overlay open={open} onClose={onClose} placement="bottom" labelledBy={titleId} className="phone-create">
       <span className="phone-create__grab" aria-hidden="true" />
@@ -230,15 +194,6 @@ export function PhoneCreate({ open, onClose, projects, projectId, go, onThought 
           </li>
         ))}
       </ul>
-      {chosen ? <form className="phone-create__quick" onSubmit={(event) => void createQuickTask(event)}>
-        <label htmlFor={`${titleId}-quick-task`}>Or just type</label>
-        <input id={`${titleId}-quick-task`} aria-label="Create a task from text" value={taskDraft.text} maxLength={200} disabled={taskBusy}
-          placeholder="“Print labels for the beds” → task"
-          onChange={(event) => { taskDraft.setText(event.target.value); taskPending.clear(); setTaskError(''); }} />
-        <button type="submit" className="ui-vh" disabled={taskBusy || !taskDraft.text.trim()}>Create task</button>
-        {taskDraft.storage === 'visit' || selectedProject.storage === 'visit' ? <p className="phone-create__draft" role="status">Draft kept for this visit. Reloading may lose it.</p> : null}
-        {taskError ? <p className="phone-create__error" role="alert">{taskError}</p> : null}
-      </form> : null}
     </Overlay>
   );
 }

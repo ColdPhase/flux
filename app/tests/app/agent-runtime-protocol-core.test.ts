@@ -17,10 +17,10 @@ const caps = { maxTurns: 10, wallClockSeconds: 300, idleSeconds: 60, maxAnswerBy
 const valid: Record<string, Record<string, unknown>> = {
   bind: { bindingId: binding() },
   status: {},
-  login: { bindingId: binding(), client: 'claude_code', method: 'console' },
+  login: { bindingId: binding(), bootId: randomUUID(), client: 'claude_code', method: 'console', cols: 80, rows: 24 },
   run: { bindingId: binding(), client: 'claude_code', runId: randomUUID(), prompt: 'Summarize the plan', runToken: token, tools: ['flux_get_doc', 'flux_list_docs'], caps },
   stop: { bindingId: binding(), runId: randomUUID() },
-  logout: { bindingId: binding(), client: 'codex' },
+  logout: { bindingId: binding(), bootId: randomUUID(), client: 'codex' },
   release: { bindingId: binding() },
 };
 
@@ -42,7 +42,7 @@ describe('the supervisor\'s closed request set', () => {
   test('accepts exactly the seven requests with data-only fields', () => {
     assert.deepEqual([...SUPERVISOR_REQUESTS].sort(), ['bind', 'login', 'logout', 'release', 'run', 'status', 'stop']);
     for (const kind of SUPERVISOR_REQUESTS) assert.equal(parseSupervisorRequest(kind, valid[kind]).ok, true, kind);
-    assert.equal(parseSupervisorRequest('status', { bindingId: binding(), client: 'claude_code' }).ok, true);
+    assert.equal(parseSupervisorRequest('status', { bindingId: binding(), bootId: randomUUID(), client: 'claude_code' }).ok, true);
   });
 
   test('refuses any other request name', () => {
@@ -66,8 +66,10 @@ describe('the supervisor\'s closed request set', () => {
     const refused: [string, unknown][] = [
       ['bind', { bindingId: '../etc' }], ['bind', { bindingId: `/data/${id}` }], ['bind', { bindingId: id.toUpperCase() }],
       ['bind', { bindingId: `${id}/..` }], ['bind', { bindingId: '00000000-0000-0000-0000-000000000000' }],
-      ['login', { bindingId: id, client: 'bash', method: 'console' }], ['login', { bindingId: id, client: 'codex', method: 'console' }],
-      ['login', { bindingId: id, client: 'claude_code', method: 'setup_token' }],
+      ['login', { ...valid.login, bindingId: id, client: 'bash' }], ['login', { ...valid.login, bindingId: id, client: 'codex' }],
+      ['login', { ...valid.login, bindingId: id, method: 'setup_token' }], ['login', { ...valid.login, method: 'api_key' }],
+      ['login', { ...valid.login, cols: 19 }], ['login', { ...valid.login, rows: 121 }], ['login', { ...valid.login, cols: 80.5 }],
+      ['login', { bindingId: id, client: 'claude_code', method: 'console' }],
       ['logout', { bindingId: id, client: 'claude_code --all' }],
       ['run', { ...valid.run, tools: ['mcp__flux__*'] }], ['run', { ...valid.run, tools: ['flux_*'] }], ['run', { ...valid.run, tools: [] }],
       ['run', { ...valid.run, tools: ['flux_get_doc', 'flux_get_doc'] }], ['run', { ...valid.run, tools: ['flux_get_doc --tools Bash'] }],

@@ -18,7 +18,7 @@ import {
 //   node tooling/dist/operations.js revoke-agent-access    revokes every agent connection and OAuth token
 //   node tooling/dist/operations.js runtime-status         agent runtime slots and their bindings (F-022 T3)
 //   node tooling/dist/operations.js runtime-release <slot> asks the worker to release that slot's binding
-//   node tooling/dist/operations.js runtime-forget [confirmed|unconfirmed]
+//   node tooling/dist/operations.js runtime-forget <purge-id> [confirmed|unconfirmed]
 //                                                        after purge: release bindings with the cleanup outcome
 // The migration commands use the #118 ledger parser of @flux/db, the one the migrator trusts.
 
@@ -90,10 +90,15 @@ if (command === 'migration-files') {
       const released = await agentRuntimeOperations(db).release(slot);
       console.log(released ? `Releasing ${slot}: the worker signs its owner out, deletes the binding directory and frees the slot; the owner sees it in Settings.`
         : `${slot} has no binding to release.`);
+    } else if (command === 'runtime-begin-purge') {
+      if (args.length) throw new Error('runtime-begin-purge takes no arguments');
+      console.log(`FLUX_RUNTIME_PURGE ${await agentRuntimeOperations(db).beginPurge()}`);
     } else if (command === 'runtime-forget') {
-      const outcome = args[0] ?? 'unconfirmed';
-      if (args.length > 1 || !['confirmed', 'unconfirmed'].includes(outcome)) throw new Error('usage: runtime-forget [confirmed|unconfirmed]');
-      await agentRuntimeOperations(db).forgetAll(outcome === 'confirmed');
+      const purgeId = args[0] ?? '';
+      const outcome = args[1] ?? 'unconfirmed';
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(purgeId)
+        || args.length > 2 || !['confirmed', 'unconfirmed'].includes(outcome)) throw new Error('usage: runtime-forget <purge-id> [confirmed|unconfirmed]');
+      await agentRuntimeOperations(db).forgetAll(purgeId, outcome === 'confirmed');
       console.log(`Every agent runtime binding is released in the database; vendor sign-out ${outcome}.`);
     } else {
       throw new Error(`unknown operation ${command ?? ''} (use migration-files, migration-ledger, migration-gate, agent-access, revoke-agent-access, revoke-github-access, runtime-status, runtime-release or runtime-forget)`);

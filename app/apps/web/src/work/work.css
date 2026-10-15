@@ -17,8 +17,6 @@
 .ws-dot--need { box-shadow: none; background: var(--inv); }
 
 /* ---------- Actions and objects under a message ---------- */
-.ws-act-error { margin-top: 4px; font-size: var(--fs-xs); color: var(--t1); }
-.ws-act-error button { text-decoration: underline; min-height: 28px; }
 .ws-attach { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
 .ws-attach__more { min-height: 28px; text-align: left; font-size: var(--fs-xs); color: var(--t3); text-decoration: underline; text-underline-offset: 3px; }
 .ws-message-pages { padding: 4px 24px; border-top: 1px solid var(--line); font-size: var(--fs-sm); color: var(--t3); }
@@ -41,10 +39,6 @@
 .ws-task-controls { position: sticky; top: 0; z-index: 3; background: var(--bg); display: flow-root; }
 .ws-audience { display: flex; align-items: center; gap: 6px; margin: 0 0 14px; font-size: var(--fs-xs); font-weight: 500; color: var(--t2); }
 .ws-audience svg, .wd-audience svg { color: var(--t3); }
-.ws-add { display: flex; gap: 8px; margin-bottom: 8px; }
-.ws-add .ui-input { flex: 1; min-width: 0; min-height: var(--ctl-lg); }
-.ws-add .ui-btn { min-height: var(--ctl-lg); }
-.ws-draft-state { margin: 0 0 8px; font-size: var(--fs-xs); color: var(--t3); line-height: 1.5; }
 .ws-group { margin-top: 24px; }
 .ws-group__h { display: flex; gap: 6px; margin-bottom: 4px; font-size: var(--fs-xs); font-weight: 500; color: var(--t3); }
 .ws-group__h span { font-family: var(--mono); font-variant-numeric: tabular-nums; }
@@ -255,7 +249,6 @@ button.wd-link:active:not(:disabled) { background: var(--sub); transform: scale(
   .ws-state::-webkit-scrollbar { display: none; }
   .ws-part { flex: none; max-width: 80vw; }
   .ws-seg span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .ws-add .ui-btn { padding: 0 12px; }
 }
 /* The message is only as wide as its own author line and bubble on a touch screen, so the bubble sits at its own
    width instead of floating at a fixed 260px measure beside a short message (#189). */

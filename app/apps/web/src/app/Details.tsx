@@ -128,6 +128,7 @@ function ConnectAi({ onBack }: { onBack: () => void }) {
           <li><b>Your MCP client on your computer</b><span>Claude Code, Codex or another MCP client, with your own account for compute and your personal Flux grant. Flux never receives your provider credentials.</span></li>
           <li><b>Your assistant in Flux</b><span>Answers here when you ask, with your own API key from the provider and model you choose, your consent and your daily cap. Only you can use it.</span></li>
         </ul>
+        <p><Link className="ui-link" to="/settings/agents">Ways to connect, in Settings → Agents and AI</Link></p>
         <p><Link className="ui-link" to="/connect-agent">Set up or revoke an MCP client connection</Link></p>
         <p><Link className="ui-link" to="/settings/assistant">Set up your assistant in Flux</Link></p>
       </section>

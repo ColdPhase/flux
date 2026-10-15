@@ -4,6 +4,7 @@ import type { NeedsYouItem, NeedsYouKind } from '@flux/contracts';
 import { createPortal } from 'react-dom';
 import { Button, ErrorState, Icon, Kreska, MEDIA, Spinner, Tabs, useMediaQuery, type TabItem } from '../ui';
 import { useShellActions } from '../app/shellContext';
+import { useSmallMoments } from '../app/smallMoments';
 import { useShellData } from '../app/data';
 import { announceInboxChange, getInboxItem, markInboxRead } from './api';
 import { NeedsYouCard, type CardHandlers } from './NeedsYouCard';
@@ -54,6 +55,7 @@ function useQueueKeys(items: NeedsYouItem[], selected: string | null, select: (k
  */
 export function InboxView() {
   const { me } = useShellData();
+  const moments = useSmallMoments();
   const { actionSlot } = useShellActions();
   const phone = useMediaQuery(MEDIA.navDrawer);
   const queue = useNeedsYou(me.user.id);
@@ -106,7 +108,7 @@ export function InboxView() {
         <p className="inbox__loading"><Spinner label="Loading the Inbox" /></p>
       ) : !shown.length ? (
         <div className="nyq__clear">
-          <Kreska size={96} expression="done" />
+          {moments ? <Kreska size={96} expression="done" /> : null}
           <h2>{ASKING[filter]}</h2>
           <p>{filter === 'all' ? 'Enjoy the quiet. Flux will ping you when a decision or question comes in.' : 'Everything else is under All.'}</p>
           <div className="nyq__clear-actions">

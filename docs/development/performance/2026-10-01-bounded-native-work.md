@@ -210,7 +210,7 @@ unchanged (409 `work_read_changed` otherwise) and the existing link-visibility d
 client chunks a sketch's thoughts by 100; a thought whose pairs are not all in its chunk's
 window is read on its own when its chooser opens (at most 100 tasks, the rest named as a
 count). Counts refresh on `project.work_*`, `project.link_*`, `project.result_*` stream events,
-on window focus and after Create work.
+on window focus and after Create task.
 
 Conversation reading position (2026-10-04, #170): message previews, reference rows and the
 header's state line come from separate bounded reads after the messages. A conversation is laid

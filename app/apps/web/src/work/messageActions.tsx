@@ -16,7 +16,6 @@ export interface MessageActionOptions {
   message: ConversationMessage;
   writable: boolean;
   /** A task is being made from this message. */
-  busy: boolean;
   /** Makes a task from the message and opens it in Details. */
   onCreateWork: () => void;
   /** Opens the thread beside the stream for a reply, or focuses the reply field. */
@@ -33,7 +32,7 @@ function useMenuItems(options: MessageActionOptions | null): MenuItem[] {
   const { me } = useShellData();
   const toast = useToast();
   if (!options) return [];
-  const { projectId, message, writable, busy, onCreateWork, onReply, onCite } = options;
+  const { projectId, message, writable, onCreateWork, onReply, onCite } = options;
   const source = { messageId: message.id, text: message.body };
   const copy = () => {
     const done = () => toast({ message: 'Copied', timeout: 2000 });
@@ -47,10 +46,10 @@ function useMenuItems(options: MessageActionOptions | null): MenuItem[] {
   if (!writable) return [...copyItem, details];
   return [
     ...(onReply ? [{ id: 'reply', label: 'Reply in thread', icon: 'reply' as const, run: onReply }] : []),
-    { id: 'task', label: busy ? 'Creating…' : 'Create task', icon: 'plus-circle', run: onCreateWork, disabled: busy },
+    { id: 'task', label: 'Create task', icon: 'plus-circle', run: onCreateWork },
     // There is no hand-off command yet (#347): a hand-off is a task, so it is made and opened in Details,
     // where its owner is chosen.
-    { id: 'handoff', label: 'Hand off to an agent', icon: 'kreska', run: onCreateWork, disabled: busy },
+    { id: 'handoff', label: 'Hand off to an agent', icon: 'kreska', run: onCreateWork },
     ...(onCite ? [{ id: 'cite', label: 'Cite', icon: 'cite' as const, run: onCite }] : []),
     ...copyItem,
     { id: 'decision', label: 'Propose a decision', icon: 'rule', secondary: true, run: () => openDetails({ kind: 'propose-decision', projectId, source }) },
@@ -116,11 +115,11 @@ export function MessageActions(options: MessageActionOptions) {
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
   const more = useRef<HTMLButtonElement>(null);
   if (touch) return null;
-  const { writable, busy, onCreateWork, onReply } = options;
+  const { writable, onCreateWork, onReply } = options;
   return (
     <div className="msg-acts" role="group" aria-label="Message actions">
       {writable && onReply ? <button type="button" className="msg-acts__b" aria-label="Reply in thread" data-tip="Reply in thread" onClick={onReply}><Icon name="reply" size={16} /></button> : null}
-      {writable ? <button type="button" className="msg-acts__b" aria-label="Create task" data-tip="Create task" aria-busy={busy || undefined} disabled={busy} onClick={onCreateWork}><Icon name="plus-circle" size={16} /></button> : null}
+      {writable ? <button type="button" className="msg-acts__b" aria-label="Create task" data-tip="Create task" onClick={onCreateWork}><Icon name="plus-circle" size={16} /></button> : null}
       <button ref={more} type="button" className="msg-acts__b" aria-label="More actions" data-tip="More actions" aria-haspopup="menu" aria-expanded={!!anchor} onClick={(event) => setAnchor(anchor ? null : event.currentTarget)}><Icon name="more" size={16} /></button>
       {anchor ? <MessageMenu items={items} anchor={anchor} press={false} label="Message actions"
         onClose={(restore) => { setAnchor(null); if (restore) more.current?.focus(); }} /> : null}
@@ -161,7 +160,7 @@ export function useTouchActions<E extends HTMLElement = HTMLLIElement>(options: 
   const gesture = useRef<{ x: number; y: number; mode: 'idle' | 'swipe' | 'dead'; timer: number; interactive: boolean } | null>(null);
   const swallow = useRef(false);
   const opener = useRef<HTMLElement | null>(null);
-  const { onCreateWork, onReply, writable, busy } = options ?? { onCreateWork: undefined, onReply: undefined, writable: false, busy: false };
+  const { onCreateWork, onReply, writable } = options ?? { onCreateWork: undefined, onReply: undefined, writable: false };
 
   // A gesture's own timer is cancelled before the gesture is dropped, and a timer only acts for the gesture that set it.
   const clearTimer = (g = gesture.current) => { if (g) window.clearTimeout(g.timer); };
@@ -236,8 +235,8 @@ export function useTouchActions<E extends HTMLElement = HTMLLIElement>(options: 
     <>
       <div className="msg-swipe" role="group" aria-label="Swipe actions" hidden={!revealed && !offset} inert={!revealed}>
         {writable && onReply ? <button type="button" className="msg-swipe__b" onClick={swipeAction(onReply)}><Icon name="reply" size={20} />Reply in thread</button> : null}
-        {writable ? <button type="button" className="msg-swipe__b" disabled={busy} onClick={swipeAction(onCreateWork)}><Icon name="plus-circle" size={20} />Create task</button> : null}
-        {writable ? <button type="button" className="msg-swipe__b" disabled={busy} onClick={swipeAction(onCreateWork)}><Kreska size={20} />Hand off</button> : null}
+        {writable ? <button type="button" className="msg-swipe__b" onClick={swipeAction(onCreateWork)}><Icon name="plus-circle" size={20} />Create task</button> : null}
+        {writable ? <button type="button" className="msg-swipe__b" onClick={swipeAction(onCreateWork)}><Kreska size={20} />Hand off</button> : null}
       </div>
       <button type="button" className="msg-touch__sr" aria-haspopup="menu" aria-expanded={menu?.kind === 'button'} onClick={(event) => { opener.current = event.currentTarget; setMenu({ kind: 'button', anchor: event.currentTarget.parentElement?.querySelector<HTMLElement>('.message-bubble > p') ?? event.currentTarget }); }}>Message actions</button>
       {menu ? <MessageMenu items={items} anchor={menu.anchor} press={menu.kind === 'press'} label="Message actions"

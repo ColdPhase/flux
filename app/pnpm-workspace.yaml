@@ -4,6 +4,8 @@ packages:
   - examples/*
 allowBuilds:
   esbuild: true
+  # The agent runtime's PTY for the sign-in console (F-022 T4): compiled from source in the build stage.
+  node-pty: true
 
 patchedDependencies:
   '@better-auth/oauth-provider@1.7.6': patches/oauth-provider-1.7.6-flux-refresh.patch

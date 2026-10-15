@@ -33,9 +33,32 @@ export interface SlotReport {
   busy: boolean;
 }
 
+/**
+ * What a CLI's own status command reports, reduced in the slot to display facts (F-022 "Sign-in as in a
+ * terminal", step 5): the authentication method, the plan if reported, a masked account label and a
+ * digest of the account's identity for the account-change notice. Never the address itself, never a
+ * credential.
+ */
+export interface ClientFacts {
+  /** `claude auth status`'s `authMethod` (`claude.ai`, `api_key`, …), or `unknown`. */
+  authMethod: string;
+  plan: string | null;
+  /** `a***@example.org`: the first character of the address and its domain. */
+  accountLabel: string | null;
+  /** SHA-256 (hex) of the account's address and organization; compared, never shown. */
+  accountDigest: string | null;
+}
+
+export const AUTH_METHOD = /^[a-z][a-z0-9_.-]{0,31}$/;
+export const PLAN_LABEL = /^[A-Za-z0-9][A-Za-z0-9 ._+-]{0,39}$/;
+export const ACCOUNT_LABEL = /^[A-Za-z0-9*]\*\*\*@[A-Za-z0-9.*-]{1,70}$/;
+export const ACCOUNT_DIGEST = /^[0-9a-f]{64}$/;
+
 export interface ClientStatus {
   client: RuntimeClient;
   signedIn: boolean;
+  /** Only when signed in and the CLI reported them. */
+  facts: ClientFacts | null;
   /** Checked by `stat` only, never read: present with mode 0600, missing, or too open. */
   credentialFile: 'ok' | 'missing' | 'loose_mode';
   bindingBytes: number;
@@ -48,12 +71,16 @@ export type SupervisorResult =
   | { kind: 'status'; client: ClientStatus }
   | { kind: 'logout'; client: RuntimeClient; logout: StepOutcome }
   | { kind: 'release'; bindingId: string; logout: Record<RuntimeClient, StepOutcome>; dataEmpty: boolean; exiting: boolean }
-  | { kind: 'stop'; runId: string; state: 'not_running' | 'stopping' };
+  | { kind: 'stop'; runId: string; state: 'not_running' | 'stopping' }
+  /** The sign-in console ended: the CLI exited or reached the console's lifetime; then its status. */
+  | { kind: 'login'; client: RuntimeClient; ended: 'exited' | 'timed_out'; exitCode: number | null; status: ClientStatus };
 
 export type SupervisorFrame =
   | { t: 'accepted'; kind: SupervisorRequestKind; bootId: string }
   | { t: 'step'; step: 'logout' | 'delete' | 'verify'; outcome: StepOutcome; client?: RuntimeClient }
   | { t: 'result'; result: SupervisorResult }
+  /** Sign-in console only: the PTY started, or its command ended (by exiting or after the lifetime). */
+  | { t: 'console'; state: 'started' | 'exited' | 'timed_out' }
   | { t: 'error'; code: SupervisorError };
 
 const client = oneOf(RUNTIME_CLIENTS);
@@ -72,8 +99,13 @@ export const isSlotReport: Check<SlotReport> = object({
   busy: bool,
 }) as unknown as Check<SlotReport>;
 
+const nullable = <T>(check: Check<T>): Check<T | null> => (value): value is T | null => value === null || check(value);
+const isClientFacts = object({
+  authMethod: str(AUTH_METHOD, 32), plan: nullable(str(PLAN_LABEL, 40)), accountLabel: nullable(str(ACCOUNT_LABEL, 80)), accountDigest: nullable(str(ACCOUNT_DIGEST, 64)),
+}) as unknown as Check<ClientFacts>;
+
 const isClientStatus = object({
-  client, signedIn: bool, credentialFile: oneOf(['ok', 'missing', 'loose_mode'] as const),
+  client, signedIn: bool, facts: nullable(isClientFacts), credentialFile: oneOf(['ok', 'missing', 'loose_mode'] as const),
   bindingBytes: int(0, Number.MAX_SAFE_INTEGER), bindingOverLimit: bool,
 }) as unknown as Check<ClientStatus>;
 
@@ -84,6 +116,7 @@ const RESULTS: Check<SupervisorResult>[] = [
   object({ kind: literal('logout'), client, logout: outcome }),
   object({ kind: literal('release'), bindingId: str(BINDING_ID, 36), logout: perClient(outcome), dataEmpty: bool, exiting: bool }),
   object({ kind: literal('stop'), runId: str(UUID, 36), state: oneOf(['not_running', 'stopping'] as const) }),
+  object({ kind: literal('login'), client, ended: oneOf(['exited', 'timed_out'] as const), exitCode: nullable(int(-1, 255)), status: isClientStatus }),
 ] as unknown as Check<SupervisorResult>[];
 
 export const isSupervisorResult: Check<SupervisorResult> = (value): value is SupervisorResult => RESULTS.some((check) => check(value));
@@ -93,6 +126,7 @@ const FRAMES: Check<SupervisorFrame>[] = [
   object({ t: literal('step'), step: oneOf(['logout', 'delete', 'verify'] as const), outcome }, { client }),
   object({ t: literal('result'), result: isSupervisorResult }),
   object({ t: literal('error'), code: oneOf(SUPERVISOR_ERRORS) }),
+  object({ t: literal('console'), state: oneOf(['started', 'exited', 'timed_out'] as const) }),
 ] as unknown as Check<SupervisorFrame>[];
 
 /** The frame, or null when the value is not exactly one of the closed frame shapes. */

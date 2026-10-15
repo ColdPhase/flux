@@ -16,7 +16,7 @@ test('0095 adds truthful issuer snapshots without guessing historical values and
     await client.query(`CREATE SCHEMA ${namespace}`);
     await client.query(`SET LOCAL search_path TO ${namespace}, pg_catalog`);
     const manifest = await readMigrationManifest(directory, FLUX_SCHEMA_VERSION);
-    assert.equal(FLUX_SCHEMA_VERSION, 95);
+    assert.ok(FLUX_SCHEMA_VERSION >= 95, 'this migration is part of the current manifest');
     assert.equal(manifest.find((file) => file.version === 95)?.name, '0095_identity_audit_issuers.sql');
     await client.query(await readFile(join(directory, '0093_identity_audit.sql'), 'utf8'));
     const legacyId = randomUUID();

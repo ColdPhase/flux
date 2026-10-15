@@ -10,7 +10,7 @@ import { DeferredDetails, DeferredJumpTo, DeferredLiveStage } from './DeferredSu
 import { RouteProgress } from './RouteProgress';
 import { useInboxDot } from '../notifications/dot';
 import { placeOf } from './place';
-import { ShellContext, type DetailsView } from './shellContext';
+import { ShellContext, type CreateRequest, type DetailsView } from './shellContext';
 import { Sidebar } from './Sidebar';
 import { VIEWS, startCapture, viewIndex } from './views';
 import { PROJECT_VIEWS, type ProjectViewId } from '@flux/contracts';
@@ -21,6 +21,7 @@ import { LiveProvider } from '../live/LiveProvider';
 import { LiveEntry } from '../live/LiveEntry';
 import { LiveBar } from '../live/LiveBar';
 import '../live/live.css';
+import { CreateHost } from '../create/CreateWindow';
 import './project-header.css';
 import { useNeedsYou } from '../returns/useNeedsYou';
 import { WorkReadProvider, useProjectWorkSummary } from '../work/WorkReadContext';
@@ -91,7 +92,9 @@ function AppLayoutContent() {
   const [detailsAccount, setDetailsAccount] = useState(me.user.id);
   if (detailsAccount !== me.user.id) { setDetailsAccount(me.user.id); setDetailsView('place'); setDetailsOpen(false); }
   const [jumpOpen, setJumpOpen] = useState(false);
+  // The phone's "+" sheet (#341) and the one Create window (#345) are separate: the sheet's Task opens the window.
   const [createOpen, setCreateOpen] = useState(false);
+  const [create, setCreate] = useState<CreateRequest | null>(null);
   const paneRef = useRef<HTMLDivElement>(null);
   const previousView = useRef(viewOrder(location.pathname));
   const drawerTitleId = useId();
@@ -160,6 +163,8 @@ function AppLayoutContent() {
       setDetailsView(typeof view === 'object' && 'id' in view ? { ...view, projectId: view.projectId ?? projectId } : view);
       toggleDetails(true);
     },
+    /** On the phone a request that does not yet say what to create opens the "+" sheet first (#341). */
+    openCreate(request: CreateRequest = {}) { setNavOpen(false); setJumpOpen(false); if (phone && !request.kind) setCreateOpen(true); else setCreate(request); },
     openSearch() { setNavOpen(false); setJumpOpen(true); },
     openNavigation() { setDetailsOpen(false); setNavOpen(true); },
     actionSlot,
@@ -510,6 +515,7 @@ function AppLayoutContent() {
       </div>
 
       {phone ? <PhoneCreate open={createOpen} onClose={() => setCreateOpen(false)} projects={projects} projectId={projectId} go={(to) => void navigate(to)} onThought={() => startCapture(navigate)} /> : null}
+      <CreateHost request={create} onClose={() => setCreate(null)} />
       <DeferredJumpTo open={jumpOpen} onClose={() => setJumpOpen(false)} userId={me.user.id} />
       <SidePanel open={detailsOpen} onClose={() => toggleDetails(false)} title={recapOpen ? 'What matters' : 'Details'} chip={objectChip} id="details"
         context={phone && (detailsView === 'place' || typeof detailsView === 'object' && detailsView.kind === 'overview') ? <OverviewContext /> : undefined}>

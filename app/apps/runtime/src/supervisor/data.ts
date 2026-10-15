@@ -25,6 +25,9 @@ export async function tmpIsEmpty(tmpDir: string): Promise<boolean> {
   try { return (await readdir(tmpDir)).length === 0; } catch { return false; }
 }
 
+/** The Anthropic configuration directory under the CLI's HOME (the default location of the Console profile). */
+export const CONSOLE_PROFILE_DIR = '.config/anthropic';
+
 const SUBDIRS = [CLIENT_DIRS.claude_code, CLIENT_DIRS.codex, 'home'];
 
 async function privateDir(path: string) {
@@ -78,6 +81,9 @@ export async function clearClientFiles(bindingDir: string, client: RuntimeClient
     for (const entry of await readdir(join(bindingDir, 'home')).catch(() => [] as string[])) {
       if (entry.startsWith('.claude')) await rm(join(bindingDir, 'home', entry), { recursive: true, force: true });
     }
+    // The keyless Console sign-in (Claude Code 2.1.242 and later) keeps its Anthropic profile outside
+    // CLAUDE_CONFIG_DIR, by default in `$HOME/.config/anthropic`; sign-out must remove it as well.
+    await rm(join(bindingDir, 'home', CONSOLE_PROFILE_DIR), { recursive: true, force: true });
   }
 }
 

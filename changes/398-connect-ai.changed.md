@@ -1,0 +1,1 @@
+- Settings → Agents and AI lists Sign in with Claude and Sign in with ChatGPT first, with API keys under "Other ways to connect"; when sign-in is off, one plain sentence says so ([#277](https://github.com/ColdPhase/flux/issues/277)).

@@ -1,6 +1,9 @@
 import { BINDING_ID, FLUX_TOOL_NAME, RUN_TOKEN, RUNTIME_CLIENTS, RUNTIME_LOGIN_METHODS, UUID, type RuntimeClient, type RuntimeLoginMethod } from './names.js';
 import { arrayOf, firstBadKey, int, object, oneOf, str, text, type Check } from './shape.js';
 
+/** The terminal size a sign-in console may ask for (F-022 T4): a phone held upright to a wide screen. */
+export const CONSOLE_SIZE = { cols: { min: 20, max: 300 }, rows: { min: 5, max: 120 } } as const;
+
 // The supervisor's closed request set (F-022 "Runtime slots and the supervisor"). Each request names
 // a client and a method from fixed lists and carries only data. No request field is a command line, a
 // flag, a path or an environment value: the supervisor builds every command from a fixed template.
@@ -29,11 +32,12 @@ export interface RunCaps { maxTurns: number; wallClockSeconds: number; idleSecon
 
 export type SupervisorRequest =
   | { kind: 'bind'; bindingId: string }
-  | { kind: 'status'; bindingId?: string; client?: RuntimeClient }
-  | { kind: 'login'; bindingId: string; client: RuntimeClient; method: RuntimeLoginMethod }
+  | { kind: 'status'; bindingId?: string; client?: RuntimeClient; bootId?: string }
+  /** Only through the sign-in console (console.ts): the supervisor runs the method's fixed command in a PTY. */
+  | { kind: 'login'; bindingId: string; bootId: string; client: RuntimeClient; method: RuntimeLoginMethod; cols: number; rows: number }
   | { kind: 'run'; bindingId: string; client: RuntimeClient; runId: string; prompt: string; runToken: string; tools: string[]; caps: RunCaps }
   | { kind: 'stop'; bindingId: string; runId: string }
-  | { kind: 'logout'; bindingId: string; client: RuntimeClient }
+  | { kind: 'logout'; bindingId: string; bootId: string; client: RuntimeClient }
   | { kind: 'release'; bindingId: string };
 
 const bindingId = str(BINDING_ID, 36);
@@ -50,11 +54,12 @@ const uniqueTools: Check<string[]> = (value): value is string[] =>
 type Fields = { required: Record<string, Check<unknown>>; optional?: Record<string, Check<unknown>> };
 const SHAPES: Record<SupervisorRequestKind, Fields> = {
   bind: { required: { bindingId } },
-  status: { required: {}, optional: { bindingId, client } },
-  login: { required: { bindingId, client, method: oneOf([...RUNTIME_LOGIN_METHODS.claude_code, ...RUNTIME_LOGIN_METHODS.codex]) } },
+  status: { required: {}, optional: { bindingId, client, bootId: str(UUID, 36) } },
+  login: { required: { bindingId, bootId: str(UUID, 36), client, method: oneOf([...RUNTIME_LOGIN_METHODS.claude_code, ...RUNTIME_LOGIN_METHODS.codex]),
+    cols: int(CONSOLE_SIZE.cols.min, CONSOLE_SIZE.cols.max), rows: int(CONSOLE_SIZE.rows.min, CONSOLE_SIZE.rows.max) } },
   run: { required: { bindingId, client, runId: str(UUID, 36), prompt: text(REQUEST_LIMITS.promptCharacters, 1), runToken: str(RUN_TOKEN, 12_300), tools: uniqueTools, caps } },
   stop: { required: { bindingId, runId: str(UUID, 36) } },
-  logout: { required: { bindingId, client } },
+  logout: { required: { bindingId, bootId: str(UUID, 36), client } },
   release: { required: { bindingId } },
 };
 
@@ -77,6 +82,7 @@ export function parseSupervisorRequest(kind: unknown, body: unknown): ParsedRequ
   if (bad !== undefined) return { ok: false, code: 'invalid_request', field: bad };
   const fields = body as Record<string, unknown>;
   if (kind === 'status' && fields.client !== undefined && fields.bindingId === undefined) return { ok: false, code: 'invalid_request', field: 'bindingId' };
+  if (kind === 'status' && fields.client !== undefined && fields.bootId === undefined) return { ok: false, code: 'invalid_request', field: 'bootId' };
   if (kind === 'login' && !(RUNTIME_LOGIN_METHODS[fields.client as RuntimeClient] as readonly string[]).includes(fields.method as string)) {
     return { ok: false, code: 'invalid_request', field: 'method' };
   }
