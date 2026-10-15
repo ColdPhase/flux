@@ -398,6 +398,14 @@ that mode to password login.
 | Lockout and offboarding | An authoritative identity cannot be detached by its owner to evade offboarding. The last usable sign-in method cannot be removed. Any retained removal path is confined to the sole provider and applicable password mode; this is not general multi-identity management |
 | Migration and recovery | The operator can re-key the sole provider identity after an issuer or subject change. Preserve the Flux account and history; audit old/new issuer and subject, end obsolete sessions and revoke old MCP authority and refresh credentials. It is recovery of the same account, not automatic data transfer by email |
 
+For an issuer change, the recovery command must receive the former issuer explicitly
+(`--old-issuer`). Its derived provider id must match the account's one existing
+provider mapping before that mapping can be moved to the currently configured
+issuer. The operation must refuse missing, ambiguous, or conflicting mappings and
+must never infer an old issuer from the current configuration, email, or audit rows
+that predate issuer snapshots. Such historical audit rows retain unknown issuer
+values; new audit rows record the actual issuer values supplied or configured.
+
 ### Standing for the sole provider
 
 - **Managed account** (linked to the authoritative configured provider):
@@ -1276,6 +1284,20 @@ addresses while a provider is set. Tests: `tests/app/identity-email-claims.test.
 
 <a id="s5b--password-switch-several-providers-linking-and-profiles"></a>
 ### S5b — Password mode, safe migration and provider claim adapters
+
+**Implemented in #315 (partial):** `FLUX_SSO_MODE=prepare|sso` (one provider; `sso` is the default with a provider).
+In `prepare`, a password account links the provider through its own session, one provider round trip, and
+nothing is matched by email (`auth_link_intents`, migration 0092; `POST /api/v1/identity/link`). In `sso`, the
+S5a refusals apply, linking is closed, and the startup log counts password-only accounts left behind. Also: the
+audited operator re-key (`./flux identity link`, AC-2), the operator unlink with its last-identity guard
+(`./flux identity unlink`, `unlinkIdentity`), and the Entra and Google claim rules (`claim-profile.ts`, unit-tested
+against documented claim shapes; a verified Entra address needs `xms_edov`). Real Entra and Google tenants stay
+unverified. In `prepare`, a link is prepared, not managed: the password still signs in, and no confirmation age applies to the
+account until the SSO-only cutover. At cutover the age counts from the link's recorded confirmation, so an old link
+needs one provider sign-in before its MCP connections work again. Ordinary provider sign-in is closed in `prepare`: `/sign-in` and `/login`
+offer only the password, and a provider callback without a valid link intent signs nobody in and creates no account.
+The owner cannot detach the configured provider identity in any mode; the owner's removal is refused, and recovery is
+the audited operator command.
 
 Required in v0.1 under [#315](https://github.com/ColdPhase/flux/issues/315).
 Depends on S1/#310 and S5a/#313, with S4/S2 standing/offboarding interfaces
