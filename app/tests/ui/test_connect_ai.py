@@ -261,6 +261,12 @@ class ConnectAiJourney(unittest.TestCase):
                     expect(rows).to_contain_text("for Ines Moreau")
                     expect(rows).to_contain_text("Codex")
                     expect(page.get_by_text("Ines personal assistant", exact=False)).to_have_count(0)
+                    if phone:
+                        expect(page.locator("header.phead .phead__sub")).to_have_text("Agents · 2 people · 1 MCP client")
+                        page.locator(".phead__menu").click()
+                        expect(page.locator(".phone-menu__item").filter(has_text=re.compile("^Agents"))).to_contain_text("1 MCP client")
+                        page.keyboard.press("Escape")
+                    shot(page, f"roster-{who}-{'phone-390' if phone else 'desktop-1440'}-{UI_BROWSER}")
                     rows.get_by_role("button").first.click()
                     panel = page.locator(".agents-detail")
                     if who == "ines":
@@ -351,6 +357,39 @@ class ConnectAiJourney(unittest.TestCase):
         self.assertIsNotNone(a, "first element is visible")
         self.assertIsNotNone(b, "second element is visible")
         return a["y"] < b["y"]
+
+
+
+    def test_10_phone_counts_clients_and_refreshes_after_final_mcp_revocation(self) -> None:
+        owner = self.page("ines", phone=True)
+        owner.goto(f"/projects/{self.ids['project']}/agents")
+        self.assertIn(self.ids["assistant_agent"], [person["id"] for person in self.api(owner, "GET", f"/api/v1/projects/{self.ids['project']}/people", status=200)], "own assistant remains in the authorized audience")
+        extra = self.api(owner, "POST", "/api/v1/agent-connections", {"agentId": self.ids["agent"], "selectedProjectIds": [self.ids["project"]],
+                         "scopes": ["flux.context.read"], "name": "Ines second client", "clientDesignation": "claude_code"}, status=201)
+        pages = {"ines": owner, "tom": self.page("tom", phone=True)}
+        for who, page in pages.items():
+            page.goto(f"/projects/{self.ids['project']}/agents")
+            expect(page.get_by_role("list", name="Agents in this project").get_by_role("listitem")).to_have_count(2)
+            expect(page.locator("header.phead .phead__sub")).to_have_text("Agents · 2 people · 2 MCP clients")
+            page.locator(".phead__menu").click()
+            expect(page.locator(".phone-menu__item").filter(has_text=re.compile("^Agents"))).to_contain_text("2 MCP clients")
+            page.keyboard.press("Escape")
+        for connection_id, count in ((extra["id"], 1), (self.ids["connection"], 0)):
+            removed = owner.request.fetch(f"{ORIGIN}/api/v1/agent-connections/{connection_id}", method="DELETE", headers={"origin": ORIGIN})
+            self.assertEqual(removed.status, 204, removed.text())
+            for who, page in pages.items():
+                page.evaluate("() => window.dispatchEvent(new Event('focus'))")
+                if count:
+                    expect(page.get_by_role("list", name="Agents in this project").get_by_role("listitem")).to_have_count(count)
+                else:
+                    expect(page.locator(".agents-row")).to_have_count(0)
+                expect(page.locator("header.phead .phead__sub")).to_have_text(f"Agents · 2 people · {count} MCP {'client' if count == 1 else 'clients'}")
+                page.locator(".phead__menu").click()
+                expect(page.locator(".phone-menu__item").filter(has_text=re.compile("^Agents"))).to_contain_text(f"{count} MCP {'client' if count == 1 else 'clients'}")
+                page.keyboard.press("Escape")
+                if not count:
+                    shot(page, f"roster-revoked-{who}-phone-390-{UI_BROWSER}")
+        self.assertIn(self.ids["assistant_agent"], [person["id"] for person in self.api(owner, "GET", f"/api/v1/projects/{self.ids['project']}/people", status=200)], "MCP revocation changes no own assistant authority")
 
 
 if __name__ == "__main__":

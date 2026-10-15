@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from 'react';
-import { flushSync } from 'react-dom';
+import { createPortal, flushSync } from 'react-dom';
 import { Link, useLoaderData, useLocation, useNavigation, useRevalidator, useSearchParams, type LoaderFunctionArgs } from 'react-router';
 import type { AgentOperation, AgentQuestion, AgentStop, ConversationMessage, ProjectAgentConnection, ProjectAgentRequest, ProjectAgents as ProjectAgentsData, TaskDiscussion, WorkRowProjection, WorkStatus } from '@flux/contracts';
 import { ApiError, NetworkError } from '../api/client';
 import { useStreamEvents } from '../api/stream';
 import { useShellData } from '../app/data';
+import { useShellActions } from '../app/shellContext';
 import { outboxView, useComposerDraft, useComposerScope } from '../composer/draft';
 import { AttachButton, ComposerFiles, MessageContent } from '../composer/Files';
 import { LinkPreviews, MessageText } from '../app/MessageText';
@@ -626,6 +627,7 @@ const questionLink = (projectId: string, question: AgentQuestion) => question.ta
 
 export function ProjectAgents() {
   const data = useLoaderData() as ProjectAgentsData;
+  const { metadataSlot, viewMenuMetadataSlot } = useShellActions();
   const shell = useProjectShell();
   const { me } = useShellData();
   const location = useLocation();
@@ -744,6 +746,8 @@ export function ProjectAgents() {
   // above the sticky composer on any screen.
   return (
     <div className="pane-scroll agents-scroll">
+    {metadataSlot ? createPortal(<span> · {listed.length} MCP {listed.length === 1 ? 'client' : 'clients'}</span>, metadataSlot) : null}
+    {viewMenuMetadataSlot ? createPortal(<span>{listed.length} MCP {listed.length === 1 ? 'client' : 'clients'}</span>, viewMenuMetadataSlot) : null}
     <div className="agents" data-detail={beside ? (latestDetail || canOpenThread ? 'open' : undefined) : (latestDetail && !canOpenThread ? 'open' : undefined)}
       data-thread-open={canOpenThread ? 'true' : undefined}>
       <div className="agents__main">
