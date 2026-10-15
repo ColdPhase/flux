@@ -254,7 +254,7 @@ class ConnectAiJourney(unittest.TestCase):
         subtitle = page.locator("header.phead .phead__sub")
         expect(subtitle).to_contain_text(f"{count} MCP {unit}")
         # Generated content is visible but omitted from textContent/Playwright text assertions.
-        rendered = subtitle.evaluate("""element => {
+        rendered = subtitle.evaluate(r"""element => {
           const generated = (node, pseudo) => {
             const content = getComputedStyle(node, pseudo).content;
             return content === 'none' || content === 'normal' ? '' : content.replace(/^["']|["']$/g, '');
