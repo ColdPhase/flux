@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { NeedsYouItem } from '@flux/contracts';
-import '../agents/joins.css';
+import './assistant-join-review.css';
 import { ApiError } from '../api/client';
 import { allowAssistantJoin } from '../agents/api';
 import { AgentIdentity, Button, Overlay, agentHue } from '../ui';
@@ -25,13 +25,15 @@ export function AssistantJoinReview({ item, onClose }: { item: Pick<NeedsYouItem
     } finally { setBusy(false); }
   };
   return <Overlay open placement="center" label="Assistant join request" onClose={onClose}>
-    <section className="agents-join" aria-label="Assistant join requests">
+    <section className="assistant-join-review" aria-label="Assistant join requests">
       <h2>Assistant join request</h2>
       <AgentIdentity name={identity.assistantName} owner={identity.ownerName} hue={agentHue(identity.assistantId)} expression="asking" />
       <p>Asks to join {item.project?.name} as a contributor. Allow gives it access within its owner’s project permissions.</p>
-      {accepted ? <p role="status">Request allowed.</p> : <Button variant="primary" busy={busy} onClick={() => void allow()}>Allow</Button>}
+      {accepted ? <p role="status">Request allowed.</p> : null}
       {error ? <p role="alert">{error}</p> : null}
-      <Button variant="quiet" onClick={onClose}>Close</Button>
+      <footer className="assistant-join-review__actions"><Button variant="quiet" onClick={onClose}>Close</Button>
+        {!accepted ? <Button variant="primary" busy={busy} onClick={() => void allow()}>Allow</Button> : null}
+      </footer>
     </section>
   </Overlay>;
 }

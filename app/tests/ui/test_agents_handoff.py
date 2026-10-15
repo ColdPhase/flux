@@ -639,6 +639,8 @@ class HandOffJourney(unittest.TestCase):
                 self.api(page, "POST", f"/api/v1/projects/{project}/grants",
                          {"principal": {"kind": "agent", "id": agent}, "role": "contributor"}, status=201)
                 task = self.api(page, "POST", f"/api/v1/projects/{project}/work", {"title": "Check the probes after rain"}, status=201)
+                self.api(page, "POST", "/api/v1/agent-connections", {"agentId": agent, "selectedProjectIds": [project],
+                         "scopes": ["flux.context.read", "flux.proposal.write"], "name": "Field laptop", "clientDesignation": "codex"}, status=201)
                 grants = self.api(page, "GET", f"/api/v1/projects/{project}/grants", status=200)
                 page.goto(f"/projects/{project}/agents")
                 page.get_by_role("button", name="Hand off a task").tap()

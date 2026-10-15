@@ -279,6 +279,7 @@ class ConnectAiJourney(unittest.TestCase):
                         page.goto("/settings/assistant")
                         expect(page.get_by_role("heading", name="Your assistant", exact=True)).to_be_visible()
                         expect(page.get_by_role("region", name="Your assistant’s project access")).to_contain_text("Your assistant has access to this project.")
+                        page.get_by_role("region", name="Your assistant’s project access").scroll_into_view_if_needed()
                         shot(page, f"assistant-own-settings-{'phone-390' if phone else 'desktop-1440'}-{UI_BROWSER}")
 
     def stub_runtime_on(self, page: Page) -> None:

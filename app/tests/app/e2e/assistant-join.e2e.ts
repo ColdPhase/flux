@@ -121,6 +121,13 @@ for (const [engine, mobile] of [['chromium', false], ['webkit', true]] as const)
       await theme(managerPage, 'light'); await capture(managerPage, `join-${engine}-manager-row-light`);
       const allow = requests.getByRole('button', { name: 'Allow', exact: true });
       await expect(allow).toBeVisible();
+      const inset = await requests.evaluate((element) => {
+        const surface = element.getBoundingClientRect();
+        return [...element.querySelectorAll('h2, p, footer')].map((child) => {
+          const box = child.getBoundingClientRect(); return { left: box.left - surface.left, right: surface.right - box.right };
+        });
+      });
+      assert.ok(inset.every((box) => box.left >= 16 && box.right >= 16), 'review copy and actions stay inside the dialog inset');
       if (mobile) assert.ok((await allow.boundingBox())!.height >= 44);
       await capture(managerPage, `join-${engine}-manager-review-light`);
       await theme(managerPage, 'dark'); await capture(managerPage, `join-${engine}-manager-review-dark`);
