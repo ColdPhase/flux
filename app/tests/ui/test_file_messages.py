@@ -87,10 +87,7 @@ class FileOnlyMessage(unittest.TestCase):
         self.assertEqual(downloaded.body(), BYTES)
 
         message.hover()
-        more = message.get_by_role("button", name="Make from this message")
-        if more.count():
-            more.click()
-        message.get_by_role("button", name="Task", exact=True).click()
+        message.get_by_role("button", name="Create task").click()
         # The one Create window opens with the file-only message as source and a titled task (#345).
         window = page.get_by_role("dialog", name="Create")
         expect(window.get_by_label("Title", exact=True)).to_have_value("1 attached file")

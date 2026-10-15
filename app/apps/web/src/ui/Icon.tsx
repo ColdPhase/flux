@@ -30,7 +30,6 @@ const paths = {
   download: <path d="M8 2.75v8M4.75 7.75L8 11l3.25-3.25M3 13.25h10" />,
   play: <path d="M5.5 3.25v9.5L13 8z" fill="currentColor" />,
   pause: <path d="M5.75 3.5v9M10.25 3.5v9" />,
-  reply: <path d="M6.5 4L3 7.5 6.5 11M3.5 7.5h6a3.5 3.5 0 013.5 3.5V13" />,
   share: <><path d="M8 2.5v8M5 5.5l3-3 3 3" /><path d="M5 8H3.5v5.5h9V8H11" /></>,
   'add-task': <><circle cx="8" cy="8" r="6" /><path d="M8 5.25v5.5M5.25 8h5.5" /></>,
   sun: <><circle cx="8" cy="8" r="2.75" /><path d="M8 1.75v1.5M8 12.75v1.5M1.75 8h1.5M12.75 8h1.5M3.6 3.6l1.05 1.05M11.35 11.35l1.05 1.05M3.6 12.4l1.05-1.05M11.35 4.65l1.05-1.05" /></>,
@@ -82,6 +81,12 @@ const paths = {
   board: <><rect x="2.25" y="2.5" width="3" height="11" rx="1" /><rect x="6.5" y="2.5" width="3" height="7" rx="1" /><rect x="10.75" y="2.5" width="3" height="9" rx="1" /></>,
   list: <><path d="M6 4.5h7.5M6 8h7.5M6 11.5h7.5" /><circle cx="3" cy="4.5" r=".8" fill="currentColor" stroke="none" /><circle cx="3" cy="8" r=".8" fill="currentColor" stroke="none" /><circle cx="3" cy="11.5" r=".8" fill="currentColor" stroke="none" /></>,
   person: <><circle cx="8" cy="5.25" r="2.5" /><path d="M3.25 13.5c.55-2.5 2.4-3.9 4.75-3.9s4.2 1.4 4.75 3.9" /></>,
+  /** Message actions (F-026 S6): reply in a thread, make a task, cite, copy. */
+  reply: <path d="M6.5 3.5L2.75 7l3.75 3.5M3 7h6.25a3.75 3.75 0 013.75 3.75V12" />,
+  'plus-circle': <><circle cx="8" cy="8" r="5.75" /><path d="M8 5.25v5.5M5.25 8h5.5" /></>,
+  cite: <path d="M3 4.5h10M3 8h6.5M3 11.5h8" />,
+  copy: <><rect x="5.5" y="5.5" width="8" height="8" rx="2" /><path d="M10.5 5.5V4.5a2 2 0 00-2-2h-4a2 2 0 00-2 2v4a2 2 0 002 2h1" /></>,
+  stop: <rect x="4" y="4" width="8" height="8" rx="2" fill="currentColor" stroke="none" />,
 } satisfies Record<string, ReactNode>;
 
 export type IconName = keyof typeof paths;

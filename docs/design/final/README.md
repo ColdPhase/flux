@@ -11,6 +11,10 @@ changes to it; agents implement it and do not re-decide it.
 - **In this folder.** This guide and a render of every board in [`screens/`](screens/). Phone
   renders are at 2× (780 × 1688). Desktop renders are 1440 × 900, and boards are 1440 × 1200.
 - **Implementation.** Issues [#338](https://github.com/ColdPhase/flux/issues/338), [#339](https://github.com/ColdPhase/flux/issues/339), [#340](https://github.com/ColdPhase/flux/issues/340), [#341](https://github.com/ColdPhase/flux/issues/341), [#342](https://github.com/ColdPhase/flux/issues/342), [#343](https://github.com/ColdPhase/flux/issues/343), [#344](https://github.com/ColdPhase/flux/issues/344), [#345](https://github.com/ColdPhase/flux/issues/345), [#346](https://github.com/ColdPhase/flux/issues/346), [#347](https://github.com/ColdPhase/flux/issues/347), [#348](https://github.com/ColdPhase/flux/issues/348), [#349](https://github.com/ColdPhase/flux/issues/349), [#350](https://github.com/ColdPhase/flux/issues/350), [#351](https://github.com/ColdPhase/flux/issues/351), [#352](https://github.com/ColdPhase/flux/issues/352), [#354](https://github.com/ColdPhase/flux/issues/354), tracked on #336. Each has its renders, acceptance criteria and the code to change.
+- **Refinement.** Founder direction by Hubert on 2026-10-15: [Spokój](../spokoj/README.md) adds
+  the rule that a control never changes place, limits the layout to two content columns, adds
+  the `--own` bubble token and draws calmer task, details, Wiki history, map, settings and
+  hand-off surfaces. Where Spokój and a drawing here differ, Spokój wins.
 - **Scope.** Appearance, structure and interaction. Product, data, access, AI and agent contracts
   stay as recorded in [the decision register](../../product/decisions.md). Where an older contract
   describes how something looks or where it sits, this design wins.
@@ -49,7 +53,8 @@ changes to it; agents implement it and do not re-decide it.
 | `--t1` | `#18181B` | `#F0F0F0` | Primary text |
 | `--t2` | `#4A4A4A` | `#BDBDBD` | Secondary text (APCA Lc at least 60 on `--bg`, `--el` and `--sub`) |
 | `--t3` | `#6B6B6B` | `#A1A1A1` | Meta text (at least 4.5:1 on `--bg` and `--el`; APCA Lc at least 45) |
-| `--inv` / `--oninv` | `#18181B` / `#FFFFFF` | `#F0F0F0` / `#111111` | Inverted chips, the primary button, own bubbles |
+| `--inv` / `--oninv` | `#18181B` / `#FFFFFF` | `#F0F0F0` / `#111111` | Inverted chips, the primary button |
+| `--own` | `#E7E7EA` | `#313134` | Own message bubbles ([Spokój](../spokoj/README.md#token), 2026-10-15) |
 
 Founder direction (Maurycy, 2026-10-10): dark-theme secondary text raised for readability; APCA t2 ≥ 60, t3 ≥ 45
 ([#432](https://github.com/ColdPhase/flux/issues/432)). Dark `--t2` was `#ACACAC` and `--t3` was `#8C8C8C`.
@@ -271,7 +276,9 @@ The canvas labels S1–S22 and P1–P12 refer to these rules.
   messages are on the left, in projects and direct messages, including replies and pending
   sends. The side follows the actual author, never the agent's owner. This supersedes the
   former all-authors-left wording and matches the own-message placement in the renders.
-- Keep each author's name and 32 px avatar with their message on its corresponding side.
+- Keep other people's and agents' names and 32 px avatars with their message on its
+  corresponding side; the signed-in person's own bubbles have neither
+  ([Spokój](../spokoj/README.md#token), 2026-10-15).
   Bubbles, attachments and actions stay together, with a 12 px author gap on the computer,
   10 on the phone. Neutral event rows retain their readable author column on the left.
 - Small 20 px avatars appear only as owners inside task rows.

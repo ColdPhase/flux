@@ -19,6 +19,7 @@ import uuid
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
 from create_window import dialog, open_from_tasks, submit_button, title_field
+from message_gestures import open_message_menu
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UI_BROWSER, UPSTREAM, open_details, shot, start_forwarder, view_tab
 
 PASSWORD = "a lamp that reads the room"
@@ -214,10 +215,10 @@ class ProjectSurfaceJourney(unittest.TestCase):
         small.goto(f"/projects/{self.ids['project']}/conversations/{self.ids['conversation']}")
         expect(small.locator("header.top").get_by_role("navigation", name="Project views")).to_be_visible()
         expect(small.locator(f"#message-{self.ids['m4']}")).to_be_visible()
-        self.assert_whole_messages(small)
+        self.assert_whole_messages(small, latest=False)
         shot(small, "project-conversation-desktop-1280")
 
-    def assert_whole_messages(self, page: Page) -> None:
+    def assert_whole_messages(self, page: Page, latest: bool = True) -> None:
         """The stream and the open thread (UI116-1) each open on whole messages: none starts above the
         top edge of its feed. The stream shows its latest message; a thread opens at its root (#436 #14,
         #443), so its root starts at the top of the feed and the reader scrolls down."""
@@ -229,19 +230,20 @@ class ProjectSurfaceJourney(unittest.TestCase):
               return [...feed.querySelectorAll('.project-convo__message')].filter((el) => { const r = el.getBoundingClientRect(); return r.top < top - 1 && r.bottom > top + 1; }).length;
             }""", selector)
             self.assertEqual(clipped, 0, f"{selector}: no message is cut off at the top of the opening screen")
-            feed = page.locator(selector).bounding_box()
-            assert feed
+            if not latest and selector == ".project-convo__feed":
+                continue  # a link opened this root at the top of the stream (F-026: notices are two rows now)
             if selector == ".thread__feed":
-                # Opened without an anchor, the thread is scrolled to its root: the root starts where the feed's
-                # content starts, below its own top padding (no reply sits above it).
+                # An unanchored thread starts at its root, whole (#436), rather than its latest reply.
                 root = page.locator(f"{selector} .thread__root").bounding_box()
-                assert root
+                feed = page.locator(selector).bounding_box()
+                assert root and feed
                 padding = page.evaluate("(selector) => parseFloat(getComputedStyle(document.querySelector(selector + ' .thread__in')).paddingTop)", selector)
                 self.assertEqual(page.evaluate("(selector) => document.querySelector(selector).scrollTop", selector), 0, f"{selector}: the thread opens at its root")
                 self.assertLess(abs(root["y"] - feed["y"] - padding), 2.01, f"{selector}: the root starts at the top of the feed")
                 continue
             last = page.locator(f"{selector} .project-convo__message").last.bounding_box()
-            assert last
+            feed = page.locator(selector).bounding_box()
+            assert last and feed
             self.assertLessEqual(last["y"] + last["height"], feed["y"] + feed["height"] + 1, f"{selector}: the latest message is fully visible")
 
     # ---------------------------------------------------------------- current state
@@ -347,9 +349,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
         # A message's own Details show what was made from it. Nia's message is a reply in the thread beside
         # the stream (UI116-1), where its actions open from one ⋯ in its corner.
         message = page.locator(f"#message-{self.ids['m1']}")
-        message.hover()
-        message.get_by_role("button", name="Make from this message").click()
-        message.get_by_role("button", name="Details of this message").click()
+        open_message_menu(message, phone=False).get_by_role("menuitem", name="Details").click()
         expect(panel.get_by_role("heading", name="Message from Nia Okafor")).to_be_visible()
         made = panel.get_by_role("region", name="Made from this message")
         expect(made.get_by_role("button", name=re.compile("Camera caught 38% of gestures"))).to_be_visible()
@@ -386,15 +386,16 @@ class ProjectSurfaceJourney(unittest.TestCase):
 
     def test_07_phone_has_no_state_row_and_keeps_the_people_in_the_title(self) -> None:
         page = self.open_project("ada", phone=True)
+        # Nothing sits under a message on the phone: its actions are a swipe left and a long press (F-026 S6).
+        message = page.locator(f"#message-{self.ids['m4']}")
+        expect(message.get_by_role("button", name="Make from this message")).to_have_count(0)
+        expect(message.locator(".msg-acts")).to_have_count(0)
+        open_message_menu(message, phone=True).get_by_role("menuitem", name="Details").click()
+        expect(page.get_by_role("dialog", name="Details")).to_be_visible()
+        page.get_by_role("dialog", name="Details").get_by_role("button", name="Close details").click()
+        expect(page.locator("header.top").get_by_label("Current state")).to_have_count(0)
         expect(page.get_by_role("button", name=re.compile("open project details"))).to_have_count(0)
         expect(page.locator(".ws-state-row")).to_have_count(0)
-        # One quiet overflow button per message, in its corner, still a 44 px target.
-        message = page.locator(f"#message-{self.ids['m4']}")
-        more = message.get_by_role("button", name="Make from this message")
-        mbox, bbox = more.bounding_box(), message.bounding_box()
-        assert mbox and bbox
-        self.assertGreaterEqual(mbox["height"], 44)
-        self.assertLess(mbox["y"] - bbox["y"], 20, "the overflow button sits beside the author, not in a row of its own")
         expect(page.locator("header").get_by_label("Current state")).to_have_count(0)
         self.assertLessEqual(page.locator("body").evaluate("el => el.scrollWidth"), PHONE["width"])
         shot(page, "project-conversation-phone-390")

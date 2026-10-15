@@ -8,6 +8,8 @@ export interface WorkFormView {
   kind: 'propose-decision' | 'attach-result';
   projectId: string;
   source?: { messageId: string; text: string };
+  /** A title typed in the composer (`/decide …`), when there is no message to start from. */
+  title?: string;
   workId?: string;
 }
 

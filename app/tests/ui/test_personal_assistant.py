@@ -113,7 +113,7 @@ class PersonalAssistantJourney(unittest.TestCase):
     def ask(self, page: Page, prompt: str) -> None:
         box = self.composer(page)
         box.fill(f"/ai {prompt}")
-        expect(page.get_by_role("button", name="Ask my assistant")).to_have_attribute("aria-pressed", "true")
+        expect(page.locator("#project-ask")).to_be_visible()
         expect(box).to_have_value(prompt)
         page.get_by_role("button", name="Send to your assistant").click()
 
@@ -159,9 +159,9 @@ class PersonalAssistantJourney(unittest.TestCase):
 
     def test_02_not_set_up_says_so_and_human_work_continues(self) -> None:
         page = self.conversation("jo")
-        ask = page.get_by_role("button", name="Ask my assistant")
-        ask.click()
-        expect(ask).to_have_attribute("aria-pressed", "true")
+        # The composer has no Ask button (F-026 S5): "/ai" in a conversation starts the private prompt.
+        expect(page.get_by_role("button", name="Ask my assistant")).to_have_count(0)
+        self.composer(page).fill("/ai ")
         bar = page.locator("#project-ask")
         expect(bar).to_contain_text("You haven’t set up your assistant. Nobody else’s can be used for you.")
         self.composer(page).fill("Summarize this for me")
@@ -176,7 +176,7 @@ class PersonalAssistantJourney(unittest.TestCase):
         # Esc returns to a plain reply; the person's own message is sent as usual.
         self.composer(page).focus()
         page.keyboard.press("Escape")
-        expect(ask).to_have_attribute("aria-pressed", "false")
+        expect(page.locator("#project-ask")).to_have_count(0)
         self.composer(page).fill("Let's try the ToF sensor next.")
         page.get_by_role("button", name="Send reply").click()
         expect(page.locator(".project-convo__message").filter(has_text="Let's try the ToF sensor next.")).to_be_visible()
@@ -206,12 +206,12 @@ class PersonalAssistantJourney(unittest.TestCase):
                         "payer": {"organization": "Jo's org", "workspace": "Default"}}},
             today={"chargedMicros": 0, "reservedMicros": 0, "capCents": 100, "resetsAt": "2026-09-30T22:00:00.000Z"})
         page.goto(f"/projects/{self.ids['project']}/conversations/{self.ids['conversation']}")
-        page.get_by_role("button", name="Ask my assistant").click()
+        self.composer(page).fill("/ai ")
         expect(page.locator("#project-ask")).to_contain_text("In-app AI is turned off on this Flux server, so nothing is sent.")
         expect(page.get_by_role("button", name="Send to your assistant")).to_have_attribute("aria-disabled", "true")
         stub.update(setup={"provider": "on", "connection": "none"}, unavailableReason="no_connection")
         page.reload()
-        page.get_by_role("button", name="Ask my assistant").click()
+        self.composer(page).fill("/ai ")
         expect(page.locator("#project-ask")).to_contain_text("Your AI key isn’t connected, so nothing is sent.")
 
     # ---------------------------------------------------------------- consent and caps
@@ -301,13 +301,14 @@ class PersonalAssistantJourney(unittest.TestCase):
         kai = self.conversation("kai")
         lee = self.conversation("lee")
         expect(lee.get_by_role("button", name="Ask my assistant")).to_have_count(0)
+        expect(self.composer(lee)).to_have_count(0)
         self.ask(jo, "Summarize where we are")
         working = jo.locator(".assistant-working")
         expect(working).to_contain_text("Only you see this")
         expect(working.get_by_role("button", name="Stop")).to_be_visible()
-        expect(jo.get_by_role("button", name="Ask my assistant")).to_have_attribute("aria-pressed", "false")
+        expect(jo.locator("#project-ask")).to_have_count(0)
         expect(self.composer(jo)).to_have_value("")
-        expect(working).to_contain_text(re.compile("Your assistant is (getting ready|reading this conversation|writing an answer)"))
+        expect(working).to_contain_text(re.compile("Your assistant is (getting ready|reading this conversation|thinking)"))
         shot(jo, "assistant-1440-working")
         # Nobody else learns that a run exists while it works.
         expect(kai.locator(".assistant-working")).to_have_count(0)
@@ -361,7 +362,7 @@ class PersonalAssistantJourney(unittest.TestCase):
         before = jo.locator(".assistant-answer").count()
         self.ask(jo, "Compare every sensor in detail")
         working = jo.locator(".assistant-working")
-        expect(working).to_contain_text("Your assistant is writing an answer…", timeout=15000)
+        expect(working).to_contain_text("Your assistant is thinking…", timeout=15000)
         working.get_by_role("button", name="Stop").click()
         expect(working).to_contain_text("Stopped. Nothing was posted.", timeout=15000)
         expect(working.get_by_role("button", name="Retry")).to_be_visible()
@@ -404,7 +405,7 @@ class PersonalAssistantJourney(unittest.TestCase):
             expect(working).to_have_count(0)
 
     def check_working_motion(self, jo: Page, working) -> None:
-        expect(working).to_contain_text("Your assistant is writing an answer…", timeout=15000)
+        expect(working).to_contain_text("Your assistant is thinking…", timeout=15000)
         expect(working).to_have_class(re.compile(r"\bis-working\b"))
         # The sidebar shows the working agent with Stop while the run executes (F-026 S13, #340).
         if jo.locator(".app__side").count():
@@ -488,7 +489,7 @@ class PersonalAssistantJourney(unittest.TestCase):
         settings.get_by_role("button", name="Pause").click()
         expect(settings.get_by_role("heading", name="Paused · nothing runs")).to_be_visible()
         jo = self.conversation("jo")
-        jo.get_by_role("button", name="Ask my assistant").click()
+        self.composer(jo).fill("/ai ")
         bar = jo.locator("#project-ask")
         expect(bar).to_contain_text("Your assistant is paused.")
         expect(jo.get_by_role("button", name="Send to your assistant")).to_have_attribute("aria-disabled", "true")
@@ -506,7 +507,7 @@ class PersonalAssistantJourney(unittest.TestCase):
         expect(settings.get_by_role("heading", name="Stopped at today’s cap")).to_be_visible()
         self.assertEqual(self.status(settings)["state"], "capped")
         jo.reload()
-        jo.get_by_role("button", name="Ask my assistant").click()
+        self.composer(jo).fill("/ai ")
         expect(bar).to_contain_text("Stopped at today’s $0.10 cap. It won’t use another payer.", timeout=10000)
         expect(jo.get_by_role("button", name="Send to your assistant")).to_have_attribute("aria-disabled", "true")
         shot(jo, "assistant-1440-capped")
@@ -527,7 +528,7 @@ class PersonalAssistantJourney(unittest.TestCase):
         self.no_horizontal_scroll(page)
         shot(page, "assistant-390-proposal-accepted")
         jo = self.conversation("jo", phone=True)
-        jo.get_by_role("button", name="Ask my assistant").tap()
+        self.composer(jo).fill("/ai ")
         expect(jo.locator("#project-ask")).to_be_visible()
         self.no_horizontal_scroll(jo)
         shot(jo, "assistant-390-ask-capped")
