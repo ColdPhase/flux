@@ -29,8 +29,6 @@ a.file-row:hover .file-row__act { color: var(--t1); }
 .message-bubble > :is(.message-files, .link-previews, .ws-attach, .wiki-card) { min-width: 0; max-width: 100%; margin: 0; }
 .is-mine > .message-bubble, .agents-msg--own > .message-bubble { border-radius: var(--r-lg) 6px var(--r-lg) var(--r-lg); background-color: var(--inv); background-image: var(--grad-inv); color: var(--oninv); }
 @media (max-width: 760px) { .message-bubble { padding: 11px 14px; } }
-/* A task card under a photo fills the photo's width, not the caption's (F-026 §6). */
-.photo-grid + .message-bubble:has(.ws-chip, .ws-attach, .wiki-card) { width: min(100%, 340px); }
 /* A wrapper alone does not turn legacy unframed text-only excerpts into cards. */
 .agents-msg:not(.agents-msg--own) > .message-bubble:not(:has(.message-files)):not(.photo-grid + .message-bubble),
 .wd-pending__item > .message-bubble:not(:has(.message-files)):not(.photo-grid + .message-bubble),
@@ -183,6 +181,8 @@ span.photo-grid__open { cursor: default; }
 .message-bubble:has(.message-files, .link-preview, .link-previews:not(:empty), .ws-chip, .wiki-card, .photo-grid) { width: max-content; min-width: min(100%, 300px); max-width: 100%; }
 .message-bubble > :is(.message-files, .link-previews, .ws-attach, .wiki-card, .photo-grid) { width: 100%; }
 .message-bubble .photo-grid { margin: 0; max-width: 100%; }
+/* Photo captions with references keep the media width after the generic minimum-width rule (§6/#482). */
+.photo-grid + .message-bubble:has(.ws-chip, .ws-attach, .wiki-card) { width: min(100%, 340px); }
 .is-mine > .message-bubble .ref-chip, .is-mine > .message-bubble .wiki-card { background: var(--sub); color: var(--t1); }
 .is-mine > .message-bubble .ref-chip__face, .is-mine > .message-bubble .wiki-card__glyph { background: var(--el); color: var(--t1); }
 .is-mine > .message-bubble .wiki-card:hover { background: var(--hov); }

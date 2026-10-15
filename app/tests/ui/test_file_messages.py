@@ -13,7 +13,6 @@ import os
 import re
 import struct
 import time
-import re
 import unittest
 import uuid
 import zlib
@@ -598,6 +597,13 @@ class FilesReferencesPhotos(unittest.TestCase):
                         for part in (".file-row__name", ".file-row__text small", ".link-preview strong", ".link-preview__site"):
                             selector = f"{root_selector} {part}"
                             expect(page.locator(selector).first).to_be_visible()
+                            page.wait_for_function("""selector => {
+                              const target = document.querySelector(selector);
+                              if (!target) return false;
+                              for (let node=target; node; node=node.parentElement)
+                                if (Number(getComputedStyle(node).opacity) !== 1) return false;
+                              return true;
+                            }""", arg=selector)
                             value = page.evaluate(MEASURE, {"selector": selector})
                             self.assertGreaterEqual(value["ratio"], 4.5, (dark, phone, selector, value))
                     # A plain own thread root also has the shared filled shell, not the former unframed text.
