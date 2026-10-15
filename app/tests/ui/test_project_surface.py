@@ -385,12 +385,6 @@ class ProjectSurfaceJourney(unittest.TestCase):
 
     def test_07_phone_has_no_state_row_and_keeps_the_people_in_the_title(self) -> None:
         page = self.open_project("ada", phone=True)
-        row = page.get_by_role("button", name=re.compile("open project details"))
-        box = row.bounding_box()
-        assert box
-        self.assertGreaterEqual(box["height"], 44, "state row is one 44px target")
-        self.assertLessEqual(box["height"], 50, "one line")
-        expect(row).to_contain_text("Decision needs you")
         # Nothing sits under a message on the phone: its actions are a swipe left and a long press (F-026 S6).
         message = page.locator(f"#message-{self.ids['m4']}")
         expect(message.get_by_role("button", name="Make from this message")).to_have_count(0)
@@ -401,13 +395,6 @@ class ProjectSurfaceJourney(unittest.TestCase):
         expect(page.locator("header.top").get_by_label("Current state")).to_have_count(0)
         expect(page.get_by_role("button", name=re.compile("open project details"))).to_have_count(0)
         expect(page.locator(".ws-state-row")).to_have_count(0)
-        # One quiet overflow button per message, in its corner, still a 44 px target.
-        message = page.locator(f"#message-{self.ids['m4']}")
-        more = message.get_by_role("button", name="Make from this message")
-        mbox, bbox = more.bounding_box(), message.bounding_box()
-        assert mbox and bbox
-        self.assertGreaterEqual(mbox["height"], 44)
-        self.assertLess(mbox["y"] - bbox["y"], 20, "the overflow button sits beside the author, not in a row of its own")
         expect(page.locator("header").get_by_label("Current state")).to_have_count(0)
         self.assertLessEqual(page.locator("body").evaluate("el => el.scrollWidth"), PHONE["width"])
         shot(page, "project-conversation-phone-390")

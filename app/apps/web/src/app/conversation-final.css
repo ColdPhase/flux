@@ -65,6 +65,7 @@ button.convo-notice__src:focus-visible { outline: 2px solid var(--t1); outline-o
   .convo-notice__title { white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow-wrap: anywhere; }
 }
 @container task-notice (max-width: 14em) {
+  .convo-notice__task { align-items: flex-start; }
   .convo-notice__title { display: block; -webkit-line-clamp: unset; }
   .convo-notice__meta { align-self: stretch; }
   .convo-notice__meta time { flex-basis: 100%; }
