@@ -4,6 +4,8 @@ import { randomUUID } from 'node:crypto';
 import { and, eq, sql } from 'drizzle-orm';
 import { schema } from '@flux/db';
 import { createLinkIntents, LINK_TTL_MS } from '../../apps/server/src/identity/link.js';
+import { createConfirmation } from '../../apps/server/src/identity/confirmation.js';
+import type { OidcConfig } from '../../apps/server/src/identity/config.js';
 import { db } from './support/db.js';
 
 // Explicit linking of a password account to the one provider before cutover (F-024 S5b, #315). Negative controls:
@@ -143,5 +145,31 @@ describe('linking a password account to the provider before cutover', () => {
     // Completing the abandoned one afterwards links nothing new: the account already holds this subject.
     assert.equal(await links.attach(abandonedIntent.id, providerId, 'sub-pat-five'), 'linked', 'an idempotent repeat of the same subject');
     assert.deepEqual(await linksOf(pat), ['sub-pat-five'], 'still one link');
+  });
+
+  test('a link starts the provider confirmation age, so the new link is not lapsed for its MCP connections', async () => {
+    const pat = await account('pat-confirmed');
+    const links = createLinkIntents(db);
+    const token = await links.open(pat, 'session-pat-confirmed', providerId);
+    const intent = (await links.pending(token, 'session-pat-confirmed', pat))!;
+    assert.equal(await links.attach(intent.id, providerId, 'sub-pat-confirmed'), 'linked');
+    const [row] = await db.select({ confirmedAt: schema.authAccounts.confirmedAt }).from(schema.authAccounts)
+      .where(and(eq(schema.authAccounts.userId, pat), eq(schema.authAccounts.providerId, providerId)));
+    assert.ok(row?.confirmedAt && Date.now() - row.confirmedAt.getTime() < 60_000, 'the provider just vouched for the person');
+    const oidc = { providerId, confirmationMaxAgeMs: 7 * 24 * 3_600_000 } as OidcConfig;
+    assert.equal(await createConfirmation(db, oidc, undefined, true).lapsed(pat), false, 'the new link is not lapsed');
+  });
+
+  test('a new link of a subject the account already holds renews its confirmation', async () => {
+    const pat = await account('pat-renewed');
+    const old = new Date(Date.now() - 3 * 24 * 3_600_000);
+    await db.insert(schema.authAccounts).values({ id: randomUUID(), userId: pat, accountId: 'sub-renewed', providerId, confirmedAt: old });
+    const links = createLinkIntents(db);
+    const token = await links.open(pat, 'session-pat-renewed', providerId);
+    const intent = (await links.pending(token, 'session-pat-renewed', pat))!;
+    assert.equal(await links.attach(intent.id, providerId, 'sub-renewed'), 'linked');
+    const [row] = await db.select({ confirmedAt: schema.authAccounts.confirmedAt }).from(schema.authAccounts)
+      .where(and(eq(schema.authAccounts.userId, pat), eq(schema.authAccounts.providerId, providerId)));
+    assert.ok(row?.confirmedAt && Date.now() - row.confirmedAt.getTime() < 60_000, 'the confirmation is now, not three days old');
   });
 });

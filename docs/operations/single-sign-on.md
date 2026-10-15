@@ -248,9 +248,11 @@ that Flux account before replacing it with the currently configured provider ide
 mappings are refused, and historical audit rows whose issuer was never recorded remain unknown. A successful
 re-key ends the account's sessions and old MCP authority/refresh credentials; its Flux data stays where it is.
 
-**Removing a sign-in.** Settings can remove the provider sign-in, unless it is the account's last way in. In SSO-only
-mode the provider is the only way, so it cannot be removed. In prepare mode a password on the account is the way back.
-Removing it ends the sessions that signed in through it and the account's MCP authority, and writes an audit row.
+**Removing a sign-in is an operator recovery action, not a Settings action.** Settings never removes the provider
+sign-in, in any mode. The host operator removes it with `./flux identity unlink <userId> --reason "<why>"`, which is
+refused when it is the account's last way in: always in SSO-only mode, and in prepare mode when the account has no
+password. A removal ends the sessions that signed in through it and the account's MCP authority, keeps the account's
+Flux data, and writes an audit row.
 
 **Provider claim rules.** Generic OpenID Connect providers use the verified `email_verified` claim. Microsoft Entra ID
 requires the token's tenant (`tid`) to match its issuer, and an address counts as verified only with the

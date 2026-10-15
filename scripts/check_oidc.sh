@@ -90,7 +90,7 @@ link() { $compose run --rm -e FLUX_OIDC_PROVIDER_ID="$provider_id" -e FLUX_OIDC_
 link prepare "prepare: a password account starts"
 $compose restart api
 $compose up -d --wait api
-link prepare "prepare: (after the API restart|a subject already held|a link cannot)"
+link prepare "prepare: (an ordinary provider|after the API restart|a subject already held|a link cannot)"
 link prepare "prepare: seed an explicit old-issuer recovery account"
 # Cutover (#315): the API restarts in SSO-only mode. The password-only accounts stay refused; the linked one signs in
 # with the provider and reaches the same account.
@@ -117,6 +117,12 @@ held=$(cli link "$recovery_user_id" --old-issuer "$old_issuer" --subject "$recov
 echo "$held" | grep -q 'refused (SUBJECT_HELD)' || { echo "$held" >&2; echo "Expected a held target subject to refuse recovery" >&2; exit 1; }
 recovered=$(cli link "$recovery_user_id" --old-issuer "$old_issuer" --subject "$recovery_new_subject" --reason "issuer migration test" --allow-sso 2>&1 || true)
 echo "$recovered" | grep -q '^rekeyed:' || { echo "$recovered" >&2; echo "Expected a successful issuer-change re-key" >&2; exit 1; }
+# The operator unlink (#315) is the only removal of the provider sign-in. In SSO-only mode the last way in is refused
+# (the account has no usable password), an unknown account is not linked, and nothing is written by a refusal.
+unlink_last=$(cli unlink "$recovery_user_id" --reason "check" 2>&1 || true)
+echo "$unlink_last" | grep -q 'refused (LAST_IDENTITY)' || { echo "$unlink_last" >&2; echo "Expected LAST_IDENTITY from the operator unlink in SSO-only mode" >&2; exit 1; }
+unlink_missing=$(cli unlink nobody@acme.test --reason "check" 2>&1 || true)
+echo "$unlink_missing" | grep -q 'refused (NOT_LINKED)' || { echo "$unlink_missing" >&2; echo "Expected NOT_LINKED for an address" >&2; exit 1; }
 link recovery "recovery: issuer re-key keeps the Flux account"
 link cutover "cutover:"
 

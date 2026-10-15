@@ -110,7 +110,7 @@ function useCapabilities() {
 
 
 
-function SsoSignIn({ sso, next, oauthQuery, divider = false }: { sso: NonNullable<IdentityCapabilities['sso']>; next: string | null; oauthQuery?: string; divider?: boolean }) {
+function SsoSignIn({ sso, next, oauthQuery }: { sso: NonNullable<IdentityCapabilities['sso']>; next: string | null; oauthQuery?: string }) {
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState('');
   const unreachable = `${sso.label} is not reachable right now. Try again in a moment.`;
@@ -128,7 +128,6 @@ function SsoSignIn({ sso, next, oauthQuery, divider = false }: { sso: NonNullabl
     <div className="auth__sso">
       <Button variant="secondary" size="lg" block busy={busy} disabled={!sso.reachable} onClick={() => void start()}>{`Sign in with ${sso.label}`}</Button>
       {failed || !sso.reachable ? <p className="auth__sso-error" role="alert">{failed || unreachable}</p> : null}
-      {divider ? <p className="auth__or" aria-hidden="true"><span>or</span></p> : null}
     </div>
   );
 }
@@ -153,7 +152,9 @@ export function SignInPage() {
     ? 'Your identity provider didn’t let Flux keep checking your account, so you aren’t signed in. Ask your administrator to allow offline access for Flux.'
     : reason === 'email_held'
       ? 'Single sign-on didn’t complete: your email address already belongs to another Flux account. Nothing was linked and nothing was changed. Ask your administrator to check that account.'
-      : 'Single sign-on didn’t complete, so you aren’t signed in. Try again.';
+      : reason === 'sign_in_closed'
+        ? 'Single sign-on isn’t open for ordinary sign-in yet. Sign in with your password, then link single sign-on in Settings.'
+        : 'Single sign-on didn’t complete, so you aren’t signed in. Try again.';
   // On the MCP authorization step the page is `/login?<signed request>` (#310): the provider button carries it.
   const oauthQuery = location.pathname === '/login' ? signedOauthQuery(location.search) ?? undefined : undefined;
 
@@ -184,15 +185,14 @@ export function SignInPage() {
     <>
       <Heading title="Sign in">A shared workspace for people and their agents.</Heading>
       <div className="auth__card">
-        {sso ? <SsoSignIn sso={sso} next={next} oauthQuery={oauthQuery} divider /> : null}
-      <Form method="post" className="auth__form" noValidate ref={formRef} aria-label="Sign in">
-        <FormError message={result?.formError ?? (ssoFailed ? ssoMessage : undefined)} />
-        <Input label="Email" name="email" type="email" autoComplete="email" inputMode="email" autoCapitalize="none" spellCheck={false}
-          defaultValue={result?.values?.email} error={result?.fieldErrors?.email} autoFocus />
-        <Input label="Password" name="password" type="password" autoComplete="current-password" error={result?.fieldErrors?.password}
-          labelAside={<Link className="ui-link" to="/forgot-password">Forgot password?</Link>} />
-        <Button type="submit" variant="primary" size="lg" block busy={submitting}>{submitting ? 'Signing in…' : 'Sign in'}</Button>
-      </Form>
+        <Form method="post" className="auth__form" noValidate ref={formRef} aria-label="Sign in">
+          <FormError message={result?.formError ?? (ssoFailed ? ssoMessage : undefined)} />
+          <Input label="Email" name="email" type="email" autoComplete="email" inputMode="email" autoCapitalize="none" spellCheck={false}
+            defaultValue={result?.values?.email} error={result?.fieldErrors?.email} autoFocus />
+          <Input label="Password" name="password" type="password" autoComplete="current-password" error={result?.fieldErrors?.password}
+            labelAside={<Link className="ui-link" to="/forgot-password">Forgot password?</Link>} />
+          <Button type="submit" variant="primary" size="lg" block busy={submitting}>{submitting ? 'Signing in…' : 'Sign in'}</Button>
+        </Form>
       </div>
       <p className="auth__alt">New to Flux? <Link className="ui-link" to={`/sign-up${suffix}`}>Create an account</Link></p>
     </>

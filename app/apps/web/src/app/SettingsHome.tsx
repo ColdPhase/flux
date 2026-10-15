@@ -1,4 +1,4 @@
-import { getCapabilities, startLink, startSso } from '../api/auth';
+import { getCapabilities, getLinkState, startLink, startSso } from '../api/auth';
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { Form, Link, Outlet, useLocation, useNavigation, useSearchParams } from 'react-router';
 import type { AgentConnection, PersonalAssistantStatus, IdentityCapabilities } from '@flux/contracts';
@@ -276,6 +276,7 @@ const LINK_NOTES: Record<string, string> = {
 function SingleSignOnLink() {
   const [params] = useSearchParams();
   const [capabilities, setCapabilities] = useState<IdentityCapabilities | null>(null);
+  const [linked, setLinked] = useState<boolean | null>(null);
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState('');
   useEffect(() => {
@@ -283,6 +284,13 @@ function SingleSignOnLink() {
     getCapabilities(controller.signal).then(setCapabilities).catch(() => undefined);
     return () => controller.abort();
   }, []);
+  const providerId = capabilities?.sso?.providerId;
+  useEffect(() => {
+    if (!providerId) return;
+    const controller = new AbortController();
+    getLinkState(providerId, controller.signal).then((state) => setLinked(state.linked)).catch(() => undefined);
+    return () => controller.abort();
+  }, [providerId]);
   if (!capabilities?.linkable || !capabilities.sso) return null;
   const outcome = params.get('link');
   const note = outcome ? (LINK_NOTES[outcome] ?? 'The link did not complete. Start again.') : '';
@@ -302,11 +310,15 @@ function SingleSignOnLink() {
       <div className="sset-row">
         <div className="sset-row__b">
         <h2 className="sset-row__t" id="set-sso">Single sign-on</h2>
-        <p className="sset-row__s">Link {capabilities.sso.label} to this account before Flux moves to single sign-on. Your Flux account, data and memberships stay the same.</p>
+        {linked ? (
+          <p className="sset-row__s">{capabilities.sso.label} is linked to this account. Your Flux account, data and memberships stay the same.</p>
+        ) : (
+          <p className="sset-row__s">Link {capabilities.sso.label} to this account before Flux moves to single sign-on. Your Flux account, data and memberships stay the same.</p>
+        )}
         {note ? <p role="status">{note}</p> : null}
         {failed ? <p role="alert">{failed}</p> : null}
         </div>
-        <Button variant="secondary" busy={busy} onClick={() => void start()}>{`Link ${capabilities.sso.label}`}</Button>
+        {linked ? null : <Button variant="secondary" busy={busy} onClick={() => void start()}>{`Link ${capabilities.sso.label}`}</Button>}
       </div>
     </section>
   );

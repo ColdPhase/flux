@@ -14,7 +14,7 @@ export interface SignInFacts {
   /** What the silent offline-access step brought back; the bridge sets it before resuming the held callback (S1, revised 2026-10-09). */
   offline?: OfflineGrant;
   /** Set when Flux refused the sign-in itself; the bridge tells the browser why. */
-  refused?: 'no_refresh_token' | 'email_held' | 'email_claim' | 'linked' | 'identity_held' | 'already_linked' | 'link_expired';
+  refused?: 'no_refresh_token' | 'email_held' | 'email_claim' | 'linked' | 'identity_held' | 'already_linked' | 'link_expired' | 'sign_in_closed';
   /** A link round trip for this password session's intent (#315): the callback attaches the subject, signs nobody in. */
   link?: { id: string; userId: string };
   /** The callback carried a link cookie that matches no pending intent of this session (#315). */

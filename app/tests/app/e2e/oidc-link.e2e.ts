@@ -96,7 +96,8 @@ async function createKeycloakUser(username: string, email: string, password: str
   const token = await keycloakAdminToken();
   const response = await fetch(`${keycloak}/admin/realms/flux/users`, { method: 'POST',
     headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
-    body: JSON.stringify({ username, email, emailVerified: true, enabled: true,
+    // Keycloak 26.7 stops a user without a first and last name on its profile page, so the login would never finish.
+    body: JSON.stringify({ username, email, firstName: 'Recovery', lastName: 'Fixture', emailVerified: true, enabled: true,
       credentials: [{ type: 'password', value: password, temporary: false }] }) });
   assert.equal(response.status, 201, 'create an isolated IdP identity for this recovery test');
   const location = response.headers.get('location');
@@ -130,6 +131,30 @@ if (phase === 'prepare') {
     });
   });
 
+  test('prepare: an ordinary provider sign-in without a link intent is refused and creates no account', async () => {
+    await withBrowser(async (browser) => {
+      // A fresh browser with no link cookie: the provider sign-in is ordinary, and prepare mode closes it (F-024 S5b).
+      const context = await browser.newContext();
+      const page = await context.newPage();
+      const started = await api<{ url: string }>(context, 'POST', '/api/auth/sign-in/social', { provider: process.env.FLUX_OIDC_PROVIDER_ID,
+        callbackURL: '/settings/account', errorCallbackURL: '/sign-in?sso=failed' });
+      assert.equal(started.status, 200, JSON.stringify(started.body));
+      await page.goto(started.body!.url);
+      await page.waitForURL((u) => u.origin === keycloak, { timeout: 20_000 });
+      await page.locator('#username').fill('frank');
+      await page.locator('#password').fill(idpPassword);
+      await page.locator('#kc-login').click();
+      await page.waitForURL((u) => u.origin === origin && u.pathname === '/sign-in', { timeout: 20_000 });
+      assert.equal(new URL(page.url()).searchParams.get('sso_reason'), 'sign_in_closed', 'refused with the prepare-mode reason');
+      await page.getByText('Single sign-on isn’t open for ordinary sign-in yet').waitFor({ timeout: 20_000 });
+      assert.equal((await context.request.get(`${origin}/api/v1/me`)).status(), 401, 'no session was created');
+      assert.equal((await pool.query('SELECT count(*)::int AS n FROM auth_users WHERE email = $1', ['frank@acme.test'])).rows[0].n, 0,
+        'no account was created from the provider identity');
+      assert.equal((await pool.query('SELECT count(*)::int AS n FROM auth_accounts WHERE provider_id = $1', [process.env.FLUX_OIDC_PROVIDER_ID])).rows[0].n, 0,
+        'no provider identity was stored');
+    });
+  });
+
   test('prepare: after the API restart the same browser completes the link, and no new account is created', async () => {
     assert.ok(existsSync(saved), 'the start ran first');
     await withBrowser(async (browser) => {
@@ -145,6 +170,18 @@ if (phase === 'prepare') {
         'no account was created from the provider identity; the link adds no email match');
       const [pat0] = (await pool.query('SELECT email, email_verified FROM auth_users WHERE id = $1', [patId])).rows;
       assert.deepEqual(pat0, { email: pat.email, email_verified: false }, 'Pat keeps the address and data');
+      // Prepare mode (F-024 S5b): the link is prepared, not managed, but the owner cannot detach the provider identity.
+      const state = await api<{ linked: boolean }>(context, 'GET', `/api/v1/identity/links/${process.env.FLUX_OIDC_PROVIDER_ID}`);
+      assert.deepEqual(state.body, { providerId: process.env.FLUX_OIDC_PROVIDER_ID, linked: true }, 'Settings can read the link');
+      const removal = await api<{ code: string }>(context, 'DELETE', `/api/v1/identity/links/${process.env.FLUX_OIDC_PROVIDER_ID}`);
+      assert.equal(removal.status, 403, JSON.stringify(removal.body));
+      assert.equal(removal.body!.code, 'PROVIDER_IDENTITY_OPERATOR_ONLY');
+      assert.equal((await pool.query('SELECT count(*)::int AS n FROM auth_accounts WHERE user_id = $1 AND provider_id = $2', [patId, process.env.FLUX_OIDC_PROVIDER_ID])).rows[0].n, 1,
+        'the refused removal left the link in place');
+      // Settings shows the linked state instead of the link button.
+      await page.goto(`${origin}/settings/account`);
+      await page.getByText('Keycloak is linked to this account.').waitFor({ timeout: 20_000 });
+      assert.equal(await page.getByRole('button', { name: 'Link Keycloak', exact: true }).count(), 0, 'no link button once linked');
     });
   });
 
@@ -303,10 +340,10 @@ if (phase === 'cutover') {
       await page.getByRole('heading', { name: 'Account', exact: true }).waitFor({ timeout: 20_000 });
       assert.equal(await page.getByRole('button', { name: 'Link Keycloak', exact: true }).count(), 0, 'no link row in SSO-only mode');
       assert.equal(await page.getByRole('heading', { name: 'Single sign-on' }).count(), 0, 'no single sign-on section in SSO-only mode');
-      // The last-identity guard (#315): the provider is Pat's only way to sign in, so the link cannot be removed.
+      // The owner cannot detach the provider identity in SSO-only mode either (F-024 S5b): recovery is the operator's.
       const removed = await api<{ code: string }>(context, 'DELETE', `/api/v1/identity/links/${process.env.FLUX_OIDC_PROVIDER_ID}`);
-      assert.equal(removed.status, 409, JSON.stringify(removed.body));
-      assert.equal(removed.body!.code, 'LAST_IDENTITY');
+      assert.equal(removed.status, 403, JSON.stringify(removed.body));
+      assert.equal(removed.body!.code, 'PROVIDER_IDENTITY_OPERATOR_ONLY');
       assert.equal((await pool.query('SELECT count(*)::int AS n FROM auth_accounts WHERE user_id = $1 AND provider_id = $2', [patId, process.env.FLUX_OIDC_PROVIDER_ID])).rows[0].n, 1,
         'the refused unlink left the link in place');
       const me = await api<{ user: { id: string; email: string } }>(context, 'GET', '/api/v1/me');

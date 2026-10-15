@@ -1288,10 +1288,15 @@ addresses while a provider is set. Tests: `tests/app/identity-email-claims.test.
 **Implemented in #315 (partial):** `FLUX_SSO_MODE=prepare|sso` (one provider; `sso` is the default with a provider).
 In `prepare`, a password account links the provider through its own session, one provider round trip, and
 nothing is matched by email (`auth_link_intents`, migration 0092; `POST /api/v1/identity/link`). In `sso`, the
-S5a refusals apply, linking is closed, and the startup log counts password-only accounts left behind. Not
-also: the audited operator re-key (`./flux identity link`, AC-2), the last-usable-identity guard on unlink
-(`unlinkIdentity`), and the Entra and Google claim rules (`claim-profile.ts`, unit-tested against documented claim
-shapes; a verified Entra address needs `xms_edov`). Real Entra and Google tenants stay unverified.
+S5a refusals apply, linking is closed, and the startup log counts password-only accounts left behind. Also: the
+audited operator re-key (`./flux identity link`, AC-2), the operator unlink with its last-identity guard
+(`./flux identity unlink`, `unlinkIdentity`), and the Entra and Google claim rules (`claim-profile.ts`, unit-tested
+against documented claim shapes; a verified Entra address needs `xms_edov`). Real Entra and Google tenants stay
+unverified. In `prepare`, a link is prepared, not managed: the password still signs in until the SSO-only cutover, and
+the link's confirmation starts at linking. Ordinary provider sign-in is closed in `prepare`: `/sign-in` and `/login`
+offer only the password, and a provider callback without a valid link intent signs nobody in and creates no account.
+The owner cannot detach the configured provider identity in any mode; the owner's removal is refused, and recovery is
+the audited operator command.
 
 Required in v0.1 under [#315](https://github.com/ColdPhase/flux/issues/315).
 Depends on S1/#310 and S5a/#313, with S4/S2 standing/offboarding interfaces

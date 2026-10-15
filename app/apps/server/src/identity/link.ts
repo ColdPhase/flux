@@ -31,14 +31,18 @@ export function createLinkIntents(db: Database, now: () => Date = () => new Date
       // Serialize competing links for this account and this provider subject before reading holders.
       await tx.execute(sql`SELECT id FROM auth_users WHERE id = ${intent.userId} FOR UPDATE`);
       await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${providerId + ':' + subject}, 0))`);
-      const [holder] = await tx.select({ userId: schema.authAccounts.userId }).from(schema.authAccounts)
+      const [holder] = await tx.select({ id: schema.authAccounts.id, userId: schema.authAccounts.userId }).from(schema.authAccounts)
         .where(and(eq(schema.authAccounts.providerId, providerId), eq(schema.authAccounts.accountId, subject)));
       if (holder && holder.userId !== intent.userId) return 'identity_held' as const;
+      // The provider has just vouched for the person, so the link starts its confirmation age (F-024 S2, #312). Without it,
+      // the account's MCP connections would be refused right after linking.
       if (!holder) {
         const [other] = await tx.select({ id: schema.authAccounts.id }).from(schema.authAccounts)
           .where(and(eq(schema.authAccounts.userId, intent.userId), eq(schema.authAccounts.providerId, providerId)));
         if (other) return 'already_linked' as const;
-        await tx.insert(schema.authAccounts).values({ id: randomUUID(), userId: intent.userId, accountId: subject, providerId });
+        await tx.insert(schema.authAccounts).values({ id: randomUUID(), userId: intent.userId, accountId: subject, providerId, confirmedAt: now() });
+      } else {
+        await tx.update(schema.authAccounts).set({ confirmedAt: now() }).where(eq(schema.authAccounts.id, holder.id));
       }
       await tx.update(schema.authLinkIntents).set({ state: 'used', usedAt: now() }).where(eq(schema.authLinkIntents.id, intentId));
       return 'linked' as const;

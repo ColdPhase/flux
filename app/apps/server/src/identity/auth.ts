@@ -238,7 +238,7 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests, sig
         },
       }),
       cimd({ fetchClientMetadataResource, metadataProfile: 'mcp-2026-07-28' }),
-      ...(config.oidc && installProvider ? [oidcPlugin(config.oidc, signIns, claims, links, log)] : []),
+      ...(config.oidc && installProvider ? [oidcPlugin(config.oidc, signIns, claims, links, log, config.ssoMode === 'prepare')] : []),
     ],
     // Sign-up is a Flux decision (#313): closed, or the new account must verify its address before it can sign in.
     hooks: {
@@ -351,8 +351,11 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests, sig
 
 export type FluxAuth = ReturnType<typeof createAuth>;
 
-/** One operator-configured OpenID Connect provider for human sign-in (#113). */
-function oidcPlugin(oidc: OidcConfig, signIns: SignIns, emailClaims: EmailClaims, links: LinkIntents, log?: { error(object: object, message: string): void }) {
+/**
+ * One operator-configured OpenID Connect provider for human sign-in (#113). In `prepare` mode (F-024 S5b, #315) ordinary
+ * provider sign-in is closed: only a callback that carries a valid, session-bound link intent may use the provider.
+ */
+function oidcPlugin(oidc: OidcConfig, signIns: SignIns, emailClaims: EmailClaims, links: LinkIntents, log: { error(object: object, message: string): void } | undefined, prepare: boolean) {
   return genericOAuth({
     config: [{
       providerId: oidc.providerId,
@@ -376,6 +379,12 @@ function oidcPlugin(oidc: OidcConfig, signIns: SignIns, emailClaims: EmailClaims
         if (user && sign?.link) {
           const outcome = await links.attach(sign.link.id, oidc.providerId, user.sub);
           sign.refused = outcome;
+          return null;
+        }
+        // Prepare mode: password-only ordinary sign-in. A provider callback without a valid link intent signs nobody in
+        // and creates no account; the owner's own link (above) is the only use of the provider until cutover.
+        if (prepare && !sign?.link) {
+          if (sign) sign.refused = 'sign_in_closed';
           return null;
         }
         const sid = typeof claims?.sid === 'string' && claims.sid && claims.sid.length <= 512 ? claims.sid : undefined;

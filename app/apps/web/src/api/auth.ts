@@ -54,6 +54,11 @@ export function startLink() {
   return request<{ providerId: string; label: string }>('/api/v1/identity/link', { method: 'POST' });
 }
 
+/** Whether the signed-in account is linked to the provider (#315). */
+export function getLinkState(providerId: string, signal?: AbortSignal) {
+  return request<{ providerId: string; linked: boolean }>(`/api/v1/identity/links/${encodeURIComponent(providerId)}`, { signal });
+}
+
 export function startSso(providerId: string, next: string, oauthQuery?: string) {
   const failure = oauthQuery ? `/login?${oauthQuery}&sso=failed` : '/sign-in?sso=failed';
   return request<{ url: string }>(`${AUTH_BASE_PATH}/sign-in/social`, {
