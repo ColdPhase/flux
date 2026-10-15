@@ -19,7 +19,7 @@ import uuid
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
 from message_gestures import open_message_menu
-from test_app_shell import DESKTOP, ORIGIN, PHONE, UI_BROWSER, UPSTREAM, open_details, shot, start_forwarder, view_tab
+from test_app_shell import DESKTOP, ORIGIN, PHONE, UI_BROWSER, UPSTREAM, open_details, phone_menu, shot, start_forwarder, view_tab
 
 PASSWORD = "a lamp that reads the room"
 STAMP = int(time.time() * 1000)
@@ -517,11 +517,15 @@ class ProjectSurfaceJourney(unittest.TestCase):
     # ---------------------------------------------------------------- private native work drafts (#155)
 
     def tasks(self, page: Page, project: str | None = None) -> None:
-        link = page.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile("^Tasks"))
+        # On the phone the views are the title menu (#341); its Tasks row is a link like the desktop tab.
+        phone = page.viewport_size["width"] <= 640
+        views = phone_menu(page) if phone else page.get_by_role("navigation", name="Project views")
+        link = views.get_by_role("link", name=re.compile("^Tasks"))
         if project:
             expect(link).to_have_attribute("href", re.compile(rf"^/projects/{project}/tasks"))
         href = link.get_attribute("href")
-        view_tab(page, "Tasks")
+        if phone: link.click()
+        else: view_tab(page, "Tasks")
         # The phone has only its drawn list; the sidebar's New → Task action opens its private composer.
         if page.viewport_size["width"] <= 640:
             page.goto(re.sub(r"\?.*$", "", href) + "?new=task")

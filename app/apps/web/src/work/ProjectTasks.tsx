@@ -251,7 +251,7 @@ export function ProjectTasks() {
   const [titlesShown, setTitlesShown] = useState(false);
   if (!titlesShown && (outcomeRead.phase !== 'loading' || titlesTimedOut)) setTitlesShown(true);
   const jump = useRef<{ routeKey: string; id: string; group: GroupId } | null>(null);
-  // Outcome links refer to the whole project's work/results in the List. Restore All before
+  // Outcome links refer to the whole project's work in the List. Restore All before
   // scrolling, since a saved status/mine filter or a search can hide their destination.
   const jumpToSection = (id: string) => {
     const group = SECTION_GROUP[id];
@@ -398,7 +398,7 @@ export function ProjectTasks() {
     <div className="ws-proposals-gate" style={titlesShown ? undefined : { visibility: 'hidden' }} aria-busy={titlesShown ? undefined : true}>
     <ProjectProposals outcomes={outcomes} people={shell?.people ?? null} projectName={project.name}
       resultTitles={resultTitles}
-      workCount={data?.summary.workTotal ?? 0} resultCount={0}
+      workCount={data?.summary.workTotal ?? 0}
       workJumpId={data?.summary.all.in_progress ? 'g-progress' : data?.summary.all.blocked ? 'g-blocked' : data?.summary.all.open ? 'g-open' : data?.summary.all.parked ? 'g-parked' : 'g-finished'}
       jumpToSection={jumpToSection} writable={writable} refresh={() => { if (listing) refresh(); else refreshBoard(); revalidator.revalidate(); }}
       openResult={(id) => openDetails({ kind: 'result', id, projectId: project.id })}
@@ -433,7 +433,7 @@ export function ProjectTasks() {
               <button type="button" aria-pressed={!mine} onClick={() => setView({ mine: false, status: null })}>All</button>
             </div>
           ) : <TaskViews counts={counts} status={status} mine={mine} onStatus={(next) => setView({ status: next })} onMine={(next) => setView({ mine: next })} />}
-          <WorkPagination page={data} busy={read.phase !== 'ready' && read.phase !== 'unavailable'} onCursor={movePage} onRefresh={refresh} />
+          <WorkPagination noun="tasks" page={data} busy={read.phase !== 'ready' && read.phase !== 'unavailable'} onCursor={movePage} onRefresh={refresh} />
         </div>
         {read.phase === 'unavailable' ? <ErrorState title="Work could not be loaded" actions={<button type="button" className="ws-none__b" onClick={refresh}>Refresh work</button>}><p>Your private draft is kept. Refresh to read the current view.</p></ErrorState> : null}
         {nothing ? <div className="view-empty"><EmptyState icon="tasks" title="No tasks yet"><p>A task starts when one of you makes it from a message, or adds it here. Not every idea has to become a task.</p></EmptyState></div> : null}
