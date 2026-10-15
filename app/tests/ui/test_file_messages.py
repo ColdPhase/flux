@@ -665,6 +665,27 @@ class FilesReferencesPhotos(unittest.TestCase):
                     self.assertEqual(style["fill"], style["own"], style)
                     self.assertGreater(style["padding"], 0, style)
                     self.assertGreater(style["radius"], 0, style)
+                    # Photo filename/size is a plain metadata line, not another own-message bubble.
+                    for path, selector in (
+                        (f"/projects/{self.ids['project']}", f"#message-{self.ids['photo-only']} > .photo-meta"),
+                        (f"/projects/{self.ids['project']}/conversations/{self.ids['conversation:' + self.ids['files']]}", f"#message-{self.ids['photo-reply']} > .photo-meta"),
+                    ):
+                        page.goto(path)
+                        metadata = page.locator(selector)
+                        metadata.scroll_into_view_if_needed()
+                        expect(metadata).to_be_visible()
+                        appearance = metadata.evaluate("""element => {
+                          const style=getComputedStyle(element), probe=document.createElement('i');
+                          probe.style.color='var(--t3)'; document.body.append(probe);
+                          const colour=getComputedStyle(probe).color; probe.remove();
+                          return {image:style.backgroundImage,background:style.backgroundColor,shadow:style.boxShadow,
+                            padding:parseFloat(style.paddingLeft)+parseFloat(style.paddingRight), colour:style.color, expected:colour};
+                        }""")
+                        self.assertEqual(appearance["image"], "none", appearance)
+                        self.assertEqual(appearance["background"], "rgba(0, 0, 0, 0)", appearance)
+                        self.assertEqual(appearance["shadow"], "none", appearance)
+                        self.assertEqual(appearance["padding"], 0, appearance)
+                        self.assertEqual(appearance["colour"], appearance["expected"], appearance)
 
     def test_composer_thumbnails_drop_and_photo_states(self) -> None:
         for phone in (False, True):

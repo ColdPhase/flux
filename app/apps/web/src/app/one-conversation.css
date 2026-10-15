@@ -67,7 +67,7 @@
 .thread__list { list-style: none; margin: 0; padding: 0; }
 /* Roots and replies retain the 32px author face on the side belonging to their author. */
 .thread .project-convo__message { min-width: 0; max-width: 100%; }
-.thread .project-convo__message > p, .thread .project-convo__message > .message-bubble { padding: 10px 13px; }
+.thread .project-convo__message > p:not(.photo-meta), .thread .project-convo__message > .message-bubble { padding: 10px 13px; }
 .thread .project-convo__message + .project-convo__message { margin-top: 18px; }
 .thread .project-convo__day { margin: 4px 0 18px; }
 .thread .project-convo__composer { padding: 8px 14px 14px; padding-bottom: max(14px, env(safe-area-inset-bottom)); }
