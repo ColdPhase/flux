@@ -1,0 +1,52 @@
+{
+  "date": "2026-10-10",
+  "applicationProductionSourceUnchangedExceptHistoryTarget": "final header/controls after365 plus full44px revoked disclosure; same protected MCP dispatch/factory as prior native matrix",
+  "sourceSha256": {
+    "app/apps/web/src/agent-connection/connection.css": "cb2b195d8eb3381b4168b2ded9de6d5c84f5f1a6446ffd266ed6b48009800df8",
+    "app/tests/app/e2e/mcp-permission-controls.e2e.ts": "e6f9cbef60a0a5ce68c0526c02817548ddc4e472e7384b22c7f14edbc4fd0700",
+    "docs/development/evidence/460/codex-interrupt-probe.ts": "979f194236572f3b4391e0ead9d3cc23b19b5350917def798ea808da4813aaba"
+  },
+  "focusedBrowser": {
+    "passed": 1,
+    "failed": 0,
+    "actualCases": "bothChromium/WebKit \u00d7390/1440; touch44px/history persistence, keyboard, 200% text, lost auth/Off/revoke"
+  },
+  "nativePrimitive": {
+    "client": "Codex rust-v0.160.1",
+    "actualNativeTurnInterruptAck": true,
+    "observedTerminalState": "interrupted",
+    "modelRequestsBefore": 1,
+    "modelRequestsAfter": 1,
+    "observationMsAfterInterrupt": 1500,
+    "nativeItemPredicate": "any native item/started; not a claimed proof of a particular long-running tool cancellation",
+    "FluxMcpCalls": 0,
+    "integratedCancellationOrBuiltinConnect": false,
+    "explicitSandboxApprovalBypassFlags": false,
+    "platform": "Linux/amd64 Docker",
+    "vendorAccountCredentialsSpend": false
+  },
+  "trustedBuildTypeLint": "PASS; three existing warnings",
+  "log": "/tmp/flux-467-final-capture-primitive-check.log",
+  "logSha256": "393d82f59c698def7a63d36e05016c6588ac6724f530c97f1d3e7062376efee2",
+  "retainedFailures": [
+    "/tmp/flux-467-final-capture-probe-eacces-attempt.log: focusedbrowser1/1pass; temporary probe bind EACCES, not executed",
+    "/tmp/flux-467-history-target-attempt.log: focusedbrowser0/1;44px disclosure assertion failed, fixed and rechecked",
+    "/tmp/flux-467-connect-setup-build-attempt1.log: raw-MCP fixture used wrong HTTP helper",
+    "/tmp/flux-467-connect-setup-enlarged-attempt2.log",
+    "/tmp/flux-467-connect-setup-enlarged-attempt3.log"
+  ],
+  "ownedProjectsCleaned": [
+    "flux-mcpclients-1791665992-4045127",
+    "flux-connect-setup-1791666352-4088659",
+    "flux-connect-setup-1791666661-4124059",
+    "flux-connect-setup-1791666947-4144838"
+  ],
+  "resources": "onlyowncontainers/volumes/networks/taggedimages/temporarykeys cleaned",
+  "remaining": [
+    "managed-binding public amendment independent acceptance before dependent code",
+    "actualsignedcompanion/pairing/nativepermissionbroker/pre-modelClaudeactivationfailuregate",
+    "fullbuilt-inConnect/Start/Resume/Pause/Stop and managed held effect/replay/delivery races",
+    "fullnativeaddressedinboxbusyreview/fix/freshreview/coldrecovery/usefulnoncode/protectedGitHubsourceaudience/platform",
+    "freshcurrentheadindependentcode/visual review,PR466eligiblemaincomposition,PR467requiredCI/eligibleapproval"
+  ]
+}
