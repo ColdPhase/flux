@@ -1,6 +1,6 @@
-import { useCallback, useState } from 'react';
+import { useCallback } from 'react';
 import { messagePreview, type ConversationMessage, type NativeWorkRow, type Project, type ProjectWorkSummary } from '@flux/contracts';
-import { Icon, useMediaQuery } from '../ui';
+import { Icon } from '../ui';
 import { useShellActions } from '../app/shellContext';
 import { useShellData } from '../app/data';
 import type { ProjectWork } from './api';

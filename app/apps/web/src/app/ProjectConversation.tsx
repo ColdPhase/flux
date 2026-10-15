@@ -637,7 +637,7 @@ function ThreadReply(props: ThreadReplyProps | QueuedReplyProps) {
     const queued = props as QueuedReplyProps;
     return pendingMessageRow({ place: 'thread', keyed: false, item: queued.pending, name: queued.name, onRetry: queued.onRetry, onRemove: queued.onRemove });
   }
-  const { mine, meId, arrived, name, project, owners, people, preview, makeWork, writable, onOpenResult, onDenied } = stored;
+  const { mine, meId, arrived, name, project, owners, people, preview, writable, onOpenResult, onDenied } = stored;
   return (
     <li {...touch.props} id={`message-${message.id}`} data-message-id={message.id} tabIndex={-1} className={`project-convo__message${mine ? ' is-mine' : ''}${arrived ? ' is-arrived' : ''} ${touch.props.className}`}>
       <AuthorFace kind={message.authorId === null ? 'agent' : 'human'} name={name} mine={mine} />
