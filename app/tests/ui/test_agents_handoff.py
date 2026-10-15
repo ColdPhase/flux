@@ -1114,10 +1114,12 @@ class HandOffJourney(unittest.TestCase):
                             page.mouse.move(0, 0)  # Measure the resting paint, without a hovered button's filter.
                             for selector, minimum in selectors:
                                 element = page.locator(selector)
-                                if not element.is_visible():
+                                if selector == ".handoff__tip" and phone:
+                                    expect(element).to_be_hidden()
                                     continue  # Desktop hint is intentionally absent on touch surfaces.
+                                expect(element).to_be_visible()
                                 self.assertFalse(element.evaluate("el => el.matches(':disabled,[aria-disabled=true]')"), "disabled controls are excluded from contrast claims")
-                                result = page.evaluate(MASURE_HANDOFF_GRADIENT, {"selector": selector, "base": page.evaluate(MEASURE, {"selector": selector})})
+                                result = page.evaluate(MEASURE_HANDOFF_GRADIENT, {"selector": selector, "base": page.evaluate(MEASURE, {"selector": selector})})
                                 print("\n  Handoff computed contrast: " + json.dumps({"state": state, "theme": scheme, "phone": phone, **result}))
                                 self.assertGreaterEqual(result["ratio"], minimum, f"{selector}: {result}")
                             motion = dialog.evaluate("""el => ({
