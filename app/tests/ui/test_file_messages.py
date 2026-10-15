@@ -13,6 +13,7 @@ import os
 import re
 import struct
 import time
+import re
 import unittest
 import uuid
 import zlib
@@ -86,8 +87,12 @@ class FileOnlyMessage(unittest.TestCase):
         self.assertEqual(downloaded.body(), BYTES)
 
         message.hover()
+        message.get_by_role("button", name="Create task").click()
+        # The one Create window opens with the file-only message as source and a titled task (#345).
+        window = page.get_by_role("dialog", name="New task")
+        expect(window.get_by_label("Title", exact=True)).to_have_value("1 attached file")
         with page.expect_response(lambda response: response.request.method == "POST" and response.url.endswith(f"/projects/{project['id']}/work")) as created:
-            message.get_by_role("button", name="Create task").click()
+            window.get_by_role("button", name=re.compile("^Create task")).click()
         self.assertEqual(created.value.status, 201, created.value.text())
         self.assertEqual(created.value.json()["title"], "1 attached file")
         expect(page.get_by_role("alert")).to_have_count(0)
@@ -436,9 +441,14 @@ class FilesReferencesPhotos(unittest.TestCase):
 
     def create_task_from(self, page: Page, viewer, message_id: str) -> None:
         """Create task in the viewer stores a task whose source is that message (read back from the API)."""
-        with page.expect_response(lambda r: r.request.method == "POST" and r.url.endswith("/work")) as created:
-            viewer.get_by_role("button", name="Create task", exact=True).click()
+        viewer.get_by_role("button", name="Create task", exact=True).click()
+        # The one Create window opens with this message as its source; submitting it stores the task (#345).
+        window = page.get_by_role("dialog", name="New task")
+        expect(window).to_be_visible()
         expect(viewer).to_have_count(0)
+        with page.expect_response(lambda r: r.request.method == "POST" and r.url.endswith("/work")) as created:
+            window.get_by_role("button", name=re.compile("^Create task")).click()
+        expect(window).to_have_count(0)
         self.assertEqual(created.value.status, 201, created.value.text())
         work_id = created.value.json()["id"]
         stored = page.request.get(f"/api/v1/projects/{self.ids['project']}/work-associations?messageIds={message_id}&relation=source&limit=100")

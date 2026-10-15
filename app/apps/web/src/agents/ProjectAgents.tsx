@@ -303,7 +303,6 @@ function TaskThread({ task, projectId, meId, names, canWrite, changingScope }: {
                 <LinkPreviews body={message.body} />
               </MessageContent>
               <QuestionCard projectId={projectId} messageId={message.id} meId={meId} writable={canWrite} />
-              {makeWork.failed?.messageId === message.id ? <p className="agents-thread__error" role="alert">{makeWork.failed.text}</p> : null}
             </li>
           );
         }), ...outbox.pending.map((item) => (
