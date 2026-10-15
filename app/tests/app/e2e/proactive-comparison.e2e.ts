@@ -245,7 +245,7 @@ test('real project UI presents sourced quiet suggestions, then persists edits, u
   assert.equal(stored.find((item) => item.id === initial[1]?.id)?.status, 'dismissed');
   // One Create window makes a task everywhere (#345).
   await page.getByRole('button', { name: /^(New )?Task$/ }).first().click();
-  const create = page.getByRole('dialog', { name: 'Create' });
+  const create = page.getByRole('dialog', { name: 'New task' });
   await create.getByLabel('Title', { exact: true }).fill('Repeat the sensor test with a manual switch');
   await create.getByRole('button', { name: /^Create task/ }).click();
   await page.getByRole('heading', { name: 'Repeat the sensor test with a manual switch' }).waitFor();
@@ -411,7 +411,7 @@ test('owner-only background setup persists consent, clears keys and preserves an
   await page.goto(`${origin.origin}/projects/${fixture.projectId}/tasks?view=list`);
   // One Create window makes a task everywhere (#345).
   await page.getByRole('button', { name: /^(New )?Task$/ }).first().click();
-  const create = page.getByRole('dialog', { name: 'Create' });
+  const create = page.getByRole('dialog', { name: 'New task' });
   await create.getByLabel('Title', { exact: true }).fill('Manual comparison without a background key');
   await create.getByRole('button', { name: /^Create task/ }).click();
   await page.getByRole('heading', { name: 'Manual comparison without a background key', exact: true }).waitFor();
