@@ -24,6 +24,7 @@ def open_from_tasks(page: Page) -> Locator:
     if (page.viewport_size or {"width": 1500})["width"] <= 640:
         page.get_by_role("button", name="Create", exact=True).click()
         page.get_by_role("button", name="Task", exact=True).click()
+        expect(dialog(page)).to_have_count(1)  # the "+" sheet has left the screen before the window is checked
     else:
         page.get_by_role("button", name=re.compile("^(New )?Task$")).first.click()
     expect(dialog(page)).to_be_visible()

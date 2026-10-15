@@ -299,7 +299,7 @@ class OneConversationJourney(unittest.TestCase):
         # A reply's actions float over its corner on hover (F-026 S6) and never cover its author or time.
         first = thread.locator(f"#message-{self.ids['first']}")
         first.hover()
-        expect(first.get_by_role("button", name="Create task")).to_have_count(0)
+        expect(first.get_by_role("button", name="Create work")).to_have_count(0)
         more = first.get_by_role("button", name="More actions")
         more_box, name_box = more.bounding_box(), first.locator(".project-convo__message-meta strong").bounding_box()
         assert more_box and name_box

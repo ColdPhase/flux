@@ -15,6 +15,7 @@ import uuid
 
 from playwright.sync_api import Browser, Page, expect, sync_playwright
 
+from message_gestures import open_message_menu
 from create_window import dialog, open_from_tasks, submit_button, title_field
 from native_work_performance import TASKS_READY, close_create, draft_value, open_create
 from touch_targets import has_minimum_touch_size
@@ -184,7 +185,7 @@ class CreateWindow(unittest.TestCase):
         message = page.locator(f"#message-{self.ids['message']}")
         expect(message).to_be_visible()
         message.hover()
-        message.get_by_role("button", name="Task", exact=True).click()
+        message.get_by_role("button", name="Create task", exact=True).click()
         window = dialog(page)
         expect(window).to_be_visible()
         expect(title_field(page)).to_have_value(SEED)
@@ -196,7 +197,7 @@ class CreateWindow(unittest.TestCase):
         self.assertEqual(len(made), 1)
         self.assertEqual([(link["role"], link["to"]) for link in made[0]["links"]], [("source", {"type": "message", "id": self.ids["message"]})])
         expect(page.locator(".convo-notice")).to_have_count(before + 1)
-        expect(page.locator(f'.convo-notice[data-work-id="{made[0]["id"]}"] .convo-notice__kind')).to_have_text("New task")
+        expect(page.locator(f'.convo-notice[data-work-id="{made[0]["id"]}"] .convo-notice__what')).to_contain_text("made a task from")
 
     # ---------------------------------------------------------------- AC-3: ⌘K finds and creates
 
@@ -274,6 +275,7 @@ class CreateWindow(unittest.TestCase):
             sheet.get_by_role("combobox", name="Project").select_option(self.ids["other"])
             sheet.get_by_role("button", name="Task", exact=True).tap()
             window = dialog(page)
+            expect(window).to_have_count(1)  # the sheet has left the screen
             expect(window).to_be_visible()
             title_field(page).fill("Print labels for the beds")
             for control in (window.get_by_label("Details"), window.get_by_role("combobox", name="Status"), window.get_by_role("combobox", name="Owner"),
@@ -376,7 +378,7 @@ class CreateWindow(unittest.TestCase):
         before = notices(page)
         message = page.locator(f"#message-{made['message']}")
         message.hover()
-        message.get_by_role("button", name="Task", exact=True).click()
+        message.get_by_role("button", name="Create task", exact=True).click()
         window = dialog(page)
         window.get_by_label("Details").fill("Done when both kits are counted")
         window.get_by_role("combobox", name="Status").select_option("in_progress")
@@ -385,7 +387,7 @@ class CreateWindow(unittest.TestCase):
         page.keyboard.press("Escape")
         expect(window).to_have_count(0)
         message.hover()
-        message.get_by_role("button", name="Task", exact=True).click()
+        message.get_by_role("button", name="Create task", exact=True).click()
         expect(title_field(page)).to_have_value("Lost response from a message: check the ESP32 kits")
         expect(window.get_by_label("Details")).to_have_value("Done when both kits are counted")
         expect(window.get_by_role("combobox", name="Status")).to_have_value("in_progress")
@@ -505,8 +507,8 @@ class CreateWindow(unittest.TestCase):
                 message = page.locator(f"#message-{made['message']}")
                 expect(message).to_be_visible()
                 page.evaluate("() => Promise.all(document.getAnimations().filter((a) => a.effect?.getTiming().iterations !== Infinity).map((a) => a.finished.catch(() => null)))")
-                message.get_by_role("button", name="Make from this message").tap()
-                message.get_by_role("button", name="Task", exact=True).tap()
+                menu = open_message_menu(message, phone=True)
+                menu.get_by_role("menuitem", name="Create task", exact=True).tap()
                 sheet = dialog(page)
                 expect(sheet.get_by_role("button", name=re.compile("^Remove link to"))).to_be_visible()
                 page.evaluate("() => Promise.all(document.getAnimations().filter((a) => a.effect?.getTiming().iterations !== Infinity).map((a) => a.finished.catch(() => null)))")
@@ -596,7 +598,7 @@ class CreateWindow(unittest.TestCase):
         page.goto(f"/projects/{self.ids['project']}/conversations/{made['conversation']}")
         message = page.locator(f"#message-{made['message']}")
         message.hover()
-        message.get_by_role("button", name="Task", exact=True).click()
+        message.get_by_role("button", name="Create task", exact=True).click()
         submit_button(page).click()
         expect(dialog(page)).to_have_count(0)
         page.goto(f"/projects/{self.ids['project']}/tasks")

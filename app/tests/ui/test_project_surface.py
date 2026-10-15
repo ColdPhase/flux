@@ -388,7 +388,6 @@ class ProjectSurfaceJourney(unittest.TestCase):
         page = self.open_project("ada", phone=True)
         # Nothing sits under a message on the phone: its actions are a swipe left and a long press (F-026 S6).
         message = page.locator(f"#message-{self.ids['m4']}")
-        expect(message.get_by_role("button", name="Make from this message")).to_have_count(0)
         expect(message.locator(".msg-acts")).to_have_count(0)
         open_message_menu(message, phone=True).get_by_role("menuitem", name="Details").click()
         expect(page.get_by_role("dialog", name="Details")).to_be_visible()
