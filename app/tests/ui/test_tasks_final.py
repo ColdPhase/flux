@@ -392,6 +392,8 @@ class TasksFinalJourney(unittest.TestCase):
                 done.tap()
                 toast = page.locator(".ui-toast")
                 expect(toast).to_contain_text(f"#{self.numbers['labels']} done")
+                # Closing by swipe is one of the moments that winks (#352 AC-1): the same Undo toast carries it.
+                expect(page.locator(".ui-toast").filter(has_text=f"#{self.numbers['labels']} done").locator(".kreska")).to_have_attribute("data-expression", "wink")
                 self.assertEqual(self.task(page, "labels")["status"], "done")
                 toast.get_by_role("button", name="Undo").tap()
                 expect(page.locator(".ui-toast").filter(has_text="back to open")).to_be_visible()

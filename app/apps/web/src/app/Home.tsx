@@ -11,6 +11,7 @@ import { listAssignedWork } from '../work/api';
 import { STATUS_LABEL } from '../work/format';
 import { useShellData } from './data';
 import { useShellActions } from './shellContext';
+import { useSmallMoments } from './smallMoments';
 import { HomeWorkingAgents, WorkingAgent } from './WorkingAgent';
 import '../notifications/needs-you.css';
 import './home.css';
@@ -84,6 +85,7 @@ function ContinueCard({ userId, workspaceIds }: { userId: string; workspaceIds: 
 
 /** Home (F-026 §7, S1, P1): the date and a greeting, the top three that need you, where to continue, and your projects. */
 export function Home() {
+  const moments = useSmallMoments();
   const { me, workspaces, projects } = useShellData();
   const { openDetails } = useShellActions();
   const phone = useMediaQuery(MEDIA.navDrawer);
@@ -117,7 +119,7 @@ export function Home() {
               ))}
             </ul>
           ) : (
-            <div className="home__card home__clear"><Kreska size={32} expression="done" /><span>Nothing needs you right now. Enjoy the quiet.</span></div>
+            <div className="home__card home__clear">{moments ? <Kreska size={32} expression="done" /> : null}<span>Nothing needs you right now. Enjoy the quiet.</span></div>
           )}
       </section>
 
