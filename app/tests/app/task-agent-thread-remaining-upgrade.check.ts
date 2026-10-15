@@ -1,7 +1,7 @@
 // The runner mounts this check read-only into the immutable pre-cutover test image for preparation,
 // then uses the head image after real pg_dump/restore and migration. No product-row SQL fabrication.
 // NOTE (#400): no script runs this file yet; the runner is a follow-up. Its pins are the head ledger: main's
-// migrations through 0094 plus the PR's late 0082, 0087, 0088 and 0089 (migrator order, missing files only).
+// migrations through 0097 plus the PR's late 0082, 0087, 0088 and 0089 (migrator order, missing files only).
 import assert from 'node:assert/strict';
 import { createHmac,randomUUID } from 'node:crypto';
 import { readFile,writeFile } from 'node:fs/promises';
@@ -62,7 +62,7 @@ test(phase==='prepare'?'actual pre-cutover native/canonical history exists befor
   const manifest=await readMigrationManifest('packages/db/migrations',FLUX_SCHEMA_VERSION),ledger=await readAppliedMigrationVersions(pool);
   assertExactMigrationLedger(manifest,ledger);
   if(phase==='prepare'){
-    assert.equal(FLUX_SCHEMA_VERSION,94,'the head image records main through 94 and the PR migrations');
+    assert.equal(FLUX_SCHEMA_VERSION,97,'the head image records main through 97 and the PR migrations');
     const f=await actionScene(pool),ownerId=(expect(await f.owner.request('GET','/api/v1/me'),200).user as{id:string}).id,grant=await f.grant('conversation.reply','execute',100);
     const items:WorkItem[]=[];for(const title of['Retained thought','Retained file','Retained PR'])items.push(expect(await f.owner.request('POST',`/api/v1/projects/${f.projectId}/work`,{body:{title}}),201) as unknown as WorkItem);
     const firstCommand=threadCommand(f,items[0]!.id,grant.id),firstResult=await nativeThreadPost(f,firstCommand);
@@ -94,7 +94,7 @@ test(phase==='prepare'?'actual pre-cutover native/canonical history exists befor
       sequence:(await pool.query('SELECT last_value,is_called FROM agent_thread_guard_sequence')).rows,ledger,bytes};
     await writeFile(`${directory}/actual-state.json`,JSON.stringify(state));
   }else{
-    assert.equal(FLUX_SCHEMA_VERSION,94);const state=JSON.parse(await readFile(`${directory}/actual-state.json`,'utf8')) as State;
+    assert.equal(FLUX_SCHEMA_VERSION,97);const state=JSON.parse(await readFile(`${directory}/actual-state.json`,'utf8')) as State;
     assert.deepEqual([...ledger].sort((a,b)=>a-b),[...state.ledger,82,87,88,89].sort((a,b)=>a-b),'cutover adds exactly the PR migrations 0082, 0087, 0088 and 0089');
     assert.deepEqual(await snapshot(),state.original,'every actual retained domain/native/witness row is unchanged by restore/cutover');
     assert.deepEqual((await pool.query('SELECT last_value,is_called FROM agent_thread_guard_sequence')).rows,state.sequence,'upgrade never allocates a reset sequence');
