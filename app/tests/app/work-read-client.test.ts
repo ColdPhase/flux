@@ -113,7 +113,7 @@ test('summary state preserves distinct identical owner labels and captions actua
   observed.state.active = { count: 12, first: { kind: 'work', id: 'native-work', title: 'Measure low-light noise' }, ownerTotal: 5,
     owners: [{ kind: 'human', id: 'one', name: 'Ada' }, { kind: 'human', id: 'two', name: 'Ada' }, { kind: 'agent', id: 'three', name: 'Ada' }] };
   const part = summaryStateParts(observed, true).find((value) => value.key === 'work');
-  assert.equal(part?.text, '12 in progress (Ada, Ada, Ada, 2 others)');
+  assert.equal(part?.text, '12 tasks in progress (Ada, Ada, Ada, 2 others)');
   assert.deepEqual(part?.open, { kind: 'work', id: 'native-work' });
 });
 
