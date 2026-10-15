@@ -746,7 +746,7 @@ export function ProjectAgents() {
   // above the sticky composer on any screen.
   return (
     <div className="pane-scroll agents-scroll">
-    {metadataSlot ? createPortal(<span> · {listed.length} MCP {listed.length === 1 ? 'client' : 'clients'}</span>, metadataSlot) : null}
+    {metadataSlot ? createPortal(<span className="agents-header-meta">{listed.length} MCP {listed.length === 1 ? 'client' : 'clients'}</span>, metadataSlot) : null}
     {viewMenuMetadataSlot ? createPortal(<span>{listed.length} MCP {listed.length === 1 ? 'client' : 'clients'}</span>, viewMenuMetadataSlot) : null}
     <div className="agents" data-detail={beside ? (latestDetail || canOpenThread ? 'open' : undefined) : (latestDetail && !canOpenThread ? 'open' : undefined)}
       data-thread-open={canOpenThread ? 'true' : undefined}>

@@ -249,6 +249,40 @@ class ConnectAiJourney(unittest.TestCase):
         self.assertEqual(len(live), 1)
         self.assertIsNone(live[0].get("revokedAt"))
 
+    def assert_phone_roster_summary(self, page: Page, count: int) -> None:
+        unit = "client" if count == 1 else "clients"
+        subtitle = page.locator("header.phead .phead__sub")
+        expect(subtitle).to_contain_text(f"{count} MCP {unit}")
+        # Generated content is visible but omitted from textContent/Playwright text assertions.
+        rendered = subtitle.evaluate("""element => {
+          const generated = (node, pseudo) => {
+            const content = getComputedStyle(node, pseudo).content;
+            return content === 'none' || content === 'normal' ? '' : content.replace(/^["']|["']$/g, '');
+          };
+          const text = node => node.nodeType === Node.TEXT_NODE ? node.textContent
+            : generated(node, '::before') + [...node.childNodes].map(text).join('') + generated(node, '::after');
+          return text(element).replace(/\s+/g, ' ').trim();
+        }""")
+        self.assertEqual(rendered, f"Agents · 2 people · {count} MCP {unit}", "the rendered subtitle has exactly one separator between each part")
+
+    def assert_phone_title_focus_inset(self, page: Page) -> None:
+        menu = page.locator(".phead__menu")
+        expect(menu).to_be_focused()
+        geometry = menu.evaluate("""button => {
+          const box = button.getBoundingClientRect(), style = getComputedStyle(button);
+          const subtitle = button.closest('.phead__title').querySelector('.phead__sub').getBoundingClientRect();
+          return {width:box.width,height:box.height,visible:button.matches(':focus-visible'),
+            outlineWidth:parseFloat(style.outlineWidth),outlineStyle:style.outlineStyle,outlineColor:style.outlineColor,
+            outlineBottom:box.bottom + parseFloat(style.outlineOffset) + parseFloat(style.outlineWidth), subtitleTop:subtitle.top};
+        }""")
+        self.assertGreaterEqual(geometry["height"], 44)
+        self.assertGreaterEqual(geometry["width"], 44)
+        self.assertTrue(geometry["visible"])
+        self.assertEqual(geometry["outlineStyle"], "solid")
+        self.assertGreaterEqual(geometry["outlineWidth"], 2)
+        self.assertNotIn(geometry["outlineColor"], ("transparent", "rgba(0, 0, 0, 0)"))
+        self.assertLessEqual(geometry["outlineBottom"], geometry["subtitleTop"], "visible title focus does not overlap the subtitle")
+
     def test_07b_owner_and_member_mcp_visibility_on_computer_and_phone(self) -> None:
         for phone in (False, True):
             for who in ("ines", "tom"):
@@ -262,10 +296,12 @@ class ConnectAiJourney(unittest.TestCase):
                     expect(rows).to_contain_text("Codex")
                     expect(page.get_by_text("Ines personal assistant", exact=False)).to_have_count(0)
                     if phone:
-                        expect(page.locator("header.phead .phead__sub")).to_have_text("Agents · 2 people · 1 MCP client")
+                        self.assert_phone_roster_summary(page, 1)
                         page.locator(".phead__menu").click()
                         expect(page.locator(".phone-menu__item").filter(has_text=re.compile("^Agents"))).to_contain_text("1 MCP client")
+                        shot(page, f"menu-{who}-phone-390-{UI_BROWSER}")
                         page.keyboard.press("Escape")
+                        self.assert_phone_title_focus_inset(page)
                     shot(page, f"roster-{who}-{'phone-390' if phone else 'desktop-1440'}-{UI_BROWSER}")
                     rows.get_by_role("button").first.click()
                     panel = page.locator(".agents-detail")
@@ -370,10 +406,12 @@ class ConnectAiJourney(unittest.TestCase):
         for who, page in pages.items():
             page.goto(f"/projects/{self.ids['project']}/agents")
             expect(page.get_by_role("list", name="Agents in this project").get_by_role("listitem")).to_have_count(2)
-            expect(page.locator("header.phead .phead__sub")).to_have_text("Agents · 2 people · 2 MCP clients")
+            self.assert_phone_roster_summary(page, 2)
             page.locator(".phead__menu").click()
             expect(page.locator(".phone-menu__item").filter(has_text=re.compile("^Agents"))).to_contain_text("2 MCP clients")
+            shot(page, f"menu-two-clients-{who}-phone-390-{UI_BROWSER}")
             page.keyboard.press("Escape")
+            self.assert_phone_title_focus_inset(page)
         for connection_id, count in ((extra["id"], 1), (self.ids["connection"], 0)):
             removed = owner.request.fetch(f"{ORIGIN}/api/v1/agent-connections/{connection_id}", method="DELETE", headers={"origin": ORIGIN})
             self.assertEqual(removed.status, 204, removed.text())
@@ -383,10 +421,13 @@ class ConnectAiJourney(unittest.TestCase):
                     expect(page.get_by_role("list", name="Agents in this project").get_by_role("listitem")).to_have_count(count)
                 else:
                     expect(page.locator(".agents-row")).to_have_count(0)
-                expect(page.locator("header.phead .phead__sub")).to_have_text(f"Agents · 2 people · {count} MCP {'client' if count == 1 else 'clients'}")
+                self.assert_phone_roster_summary(page, count)
                 page.locator(".phead__menu").click()
                 expect(page.locator(".phone-menu__item").filter(has_text=re.compile("^Agents"))).to_contain_text(f"{count} MCP {'client' if count == 1 else 'clients'}")
+                if not count:
+                    shot(page, f"menu-revoked-{who}-phone-390-{UI_BROWSER}")
                 page.keyboard.press("Escape")
+                self.assert_phone_title_focus_inset(page)
                 if not count:
                     shot(page, f"roster-revoked-{who}-phone-390-{UI_BROWSER}")
         self.assertIn(self.ids["assistant_agent"], [person["id"] for person in self.api(owner, "GET", f"/api/v1/projects/{self.ids['project']}/people", status=200)], "MCP revocation changes no own assistant authority")
