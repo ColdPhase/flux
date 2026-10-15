@@ -565,22 +565,13 @@ class TasksFinalJourney(unittest.TestCase):
                 page.get_by_role('radio', name='List', exact=True).click()
                 pane = page.locator('.tb-root > .pane-scroll')
                 held = []
-                network = []
-                def capture(response, network=network):
-                    if '/api/v1/me' in response.url or re.search(r'/api/v1/work/[0-9a-f-]+$', response.url):
-                        network.append({'event': 'response', 'method': response.request.method, 'url': response.url, 'status': response.status})
-                page.on('response', capture)
-                page.on('requestfailed', lambda request, network=network: network.append({'event': 'failed', 'url': request.url, 'failure': request.failure}))
-                page.on('console', lambda message, network=network: network.append({'event': 'console', 'type': message.type, 'text': message.text}))
-                self.addCleanup(lambda network=network, dark=dark: print('Task state conflict capture', json.dumps({'dark': dark, 'events': network}), flush=True))
                 address = re.compile(r'/api/v1/work/' + self.ids['supplier'] + r'$')
-                def hold(route):
-                    response = route.fetch()
-                    if route.request.method == 'PATCH':
-                        held.append((route, response))
+                def hold(route, *, held=held, page=page):
+                    if route.request.method == 'PATCH' and not held:
+                        held.append((route, route.fetch()))
                         page.evaluate("window.__statePatchHeld = true")
                     else:
-                        route.fulfill(response=response)
+                        route.continue_()
                 page.route(address, hold)
                 self.row(page, SUPPLIER).get_by_role('button', name='Open. Set to In progress').click()
                 page.wait_for_function("window.__statePatchHeld === true")
@@ -592,7 +583,10 @@ class TasksFinalJourney(unittest.TestCase):
                 page.wait_for_timeout(100)
                 before = middle.bounding_box()['y']
                 held[0][0].fulfill(response=held[0][1])
-                page.unroute(address, hold)
+                # Keep interception until this context closes. Removing the last route here races
+                # Chromium's Fetch.disable against the state change's follow-up /me request
+                # (microsoft/playwright#41802); that request can disappear before reaching the API.
+                # Later requests pass through above, so only this first PATCH is held.
                 toast = page.locator('.ui-toast').filter(has_text=f"#{self.numbers['supplier']} in progress")
                 expect(toast).to_be_visible()
                 page.wait_for_timeout(300)
