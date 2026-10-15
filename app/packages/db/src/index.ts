@@ -15,7 +15,6 @@ export * from './repositories/agent-project-objects.js';
 export * from './repositories/idp-standing.js';
 export * from './repositories/idp-logout.js';
 export * from './migrations/ledger.js';
-export * from './migrations/footprints.js';
 export * from './migrations/reverse-task-creation-undo.js';
 export * from './migrations/summary-compatibility.js';
 export * from './migrations/task-creation-undo-compatibility.js';
