@@ -81,18 +81,21 @@ export async function oauthToken(browser: Browser, connectionId: string, clientI
 
 export async function mcp(accessToken: string, id: number, method: string, params: Record<string, unknown> = {},
   options: { base?: string; headers?: Record<string, string> } = {}) {
+  const protocol = process.env.FLUX_TEST_MCP_PROTOCOL ?? '2026-07-28';
+  assert.ok(protocol === '2025-06-18' || protocol === '2026-07-28', 'test lane must name an admitted protocol');
+  const modern = protocol === '2026-07-28';
   // The 2026-07-28 transport repeats the tool/prompt name or the resource URI in Mcp-Name.
   const toolName = typeof params.name === 'string' ? params.name : typeof params.uri === 'string' ? params.uri : null;
   const response = await fetch(new URL('/mcp', options.base ?? apiUrl), {
     method: 'POST',
     headers: { ...options.headers, authorization: `Bearer ${accessToken}`, 'content-type': 'application/json',
-      accept: 'application/json', 'mcp-protocol-version': '2026-07-28', 'mcp-method': method,
-      ...(toolName ? { 'mcp-name': toolName } : {}) },
-    body: JSON.stringify({ jsonrpc: '2.0', id, method, params: { ...params, _meta: {
+      accept: modern ? 'application/json' : 'application/json, text/event-stream', 'mcp-protocol-version': protocol,
+      ...(modern ? { 'mcp-method': method, ...(toolName ? { 'mcp-name': toolName } : {}) } : {}) },
+    body: JSON.stringify({ jsonrpc: '2.0', id, method, params: { ...params, ...(modern ? { _meta: {
       'io.modelcontextprotocol/protocolVersion': '2026-07-28',
       'io.modelcontextprotocol/clientInfo': { name: 'flux-http-test', version: '1' },
       'io.modelcontextprotocol/clientCapabilities': {},
-    } } }),
+    } } : {}) } }),
   });
   const body = await response.text();
   let message: Record<string, unknown> | null = null;

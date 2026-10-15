@@ -1,6 +1,6 @@
 # Pinned Codex MCP compatibility — proposed bounded admission choice
 
-**2026-10-11 status: Proposed; delegated pre-review at `93889087` / record `880340ab`; eligible independent acceptance pending.** Owner:
+**2026-10-11 status: research checkpoint; the public PC-1–PC-5 contract was accepted in PR #466 (merged at `ea2f13d2`, eligible approval).** Implementation candidate: PR #467; its runtime acceptance is pending. Owner:
 @PelikanFix16, [#460](https://github.com/ColdPhase/flux/issues/460), milestone 2.
 This research checkpoint does not amend an accepted protocol contract or declare
 Codex Start/Resume delivered. [#152](https://github.com/ColdPhase/flux/issues/152),
@@ -204,17 +204,11 @@ original author-local log (its historical path is in the retained evidence),
 with hash in the results. That local file is not a portable prerequisite. Owned resources
 and image tags were cleaned. No unsupported client is now declared supported.
 
-## Proposed contract and implementation gates
+## Contract and implementation gates
 
-The bounded architecture/public contract has recorded delegated pre-review, not
-eligible independent acceptance. Zamojski5's current
-[REQUEST_CHANGES 5480898344](https://github.com/ColdPhase/flux/pull/466#pullrequestreview-5480898344)
-at exact `880340ab0052774af4431858975ac544bf30b877` requires this correction round.
-Fresh eligible delta acceptance/protected merge and exact runtime evaluation
-remain pending; #460/#152/#160 are not complete.
+The bounded architecture/public contract had recorded delegated pre-review. Zamojski5's [REQUEST_CHANGES 5480898344](https://github.com/ColdPhase/flux/pull/466#pullrequestreview-5480898344) at exact `880340ab0052774af4431858975ac544bf30b877` requested corrections; the corrected contract was accepted by eligible approval and merged in PR #466 (`ea2f13d2`). Exact runtime evaluation of the implementation in PR #467 remains pending; #460/#152/#160 are not complete.
 
-The concrete [PC-1–PC-5 amendment](../mcp-protocol-compatibility.md) remains proposed after that separate
-delegated pre-review. It specifies exact initialize/header,
+The concrete [PC-1–PC-5 amendment](../mcp-protocol-compatibility.md) is accepted (see above). It specifies exact initialize/header,
 notification and batch admission, unchanged authority/delivery, required domain
 features and truthful client states. Its detailed admission policy is new to this
 proposal and is not retroactively certified by the research prototype.

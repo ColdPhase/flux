@@ -243,14 +243,18 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
   const latest = useRef(item);
   useEffect(() => { latest.current = item; });
   const toast = useToast();
-  async function change(command: Parameters<typeof updateWork>[1], base: Pick<OwnWork, 'id' | 'version'> = item): Promise<boolean> {
+  async function change(command: Parameters<typeof updateWork>[1], base: Pick<OwnWork, 'id' | 'version'> = item, onConflict?: () => void): Promise<boolean> {
     const key = JSON.stringify([base.id, base.version, command]);
     if (attempt.current?.key !== key) attempt.current = { key, id: crypto.randomUUID() };
     setBusy(true); setError('');
     try { await updateWork(base, command, attempt.current.id); attempt.current = null; if (isCurrent()) reload(); return true; }
-    catch (cause) { if (!isCurrent()) return false; setError(readable(cause)); if (cause instanceof ApiError && cause.status === 409) { attempt.current = null; reload(); } return false; }
+    catch (cause) { if (!isCurrent()) return false; setError(readable(cause)); if (cause instanceof ApiError && cause.status === 409) { attempt.current = null; onConflict?.(); reload(); } return false; }
     finally { setBusy(false); }
   }
+  // A title draft is based on the version shown when its editing began. A newer version that arrives live while the
+  // field is open (someone else's change, which the field hides) is a conflict the person is told about, never silently
+  // written over. After that conflict the latest version is shown, and trying again saves over it.
+  const titleBase = useRef<number | null>(null);
   // One tap or a key changes the state at once, and the toast takes it back (S9).
   async function setState(next: WorkStatus) {
     if (!writable || busy || next === item.status) return;
@@ -282,7 +286,8 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
     <div className="details wd" data-detail-kind="work" data-detail-id={item.id}>
       <PanelMeta>{taskNumber(item)}</PanelMeta>
       <p className="wd-where"><span className="ui-task-number">{taskNumber(item)}</span> · <span className="wd-project-name">{context.project.name}</span>{item.parked ? ' · parked, not done' : ''}</p>
-      <TitleField title={item.title} editable={writable} onSave={(title) => change({ title })} />
+      <TitleField title={item.title} editable={writable} onEdit={() => { titleBase.current = item.version; }}
+        onSave={(title) => change({ title }, { id: item.id, version: titleBase.current ?? item.version }, () => { titleBase.current = null; })} />
       {item.outcome ? <p className="details__lead">{item.outcome}</p> : null}
 
       <dl className="wd-rows">
