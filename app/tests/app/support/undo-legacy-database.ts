@@ -3,6 +3,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import { createDatabase, FLUX_SCHEMA_VERSION, readMigrationManifest } from '@flux/db';
+import { guardFixturePool } from './fixture-database.js';
 
 export const legacyDirectory = 'tests/app/fixtures/task-creation-undo-legacy';
 const directory = 'packages/db/migrations';
@@ -23,17 +24,44 @@ export async function originalUndoFiles() {
 }
 export async function fixtureDatabase(files?: Awaited<ReturnType<typeof originalUndoFiles>>, name = `flux_undo_legacy_${randomUUID().replaceAll('-', '')}`) {
   const admin = createDatabase(process.env.DATABASE_URL!).pool;
-  await execute(admin, `CREATE DATABASE "${name}"`);
-  const db = createDatabase(dbUrl(name)).pool;
-  const manifest = await readMigrationManifest(directory, FLUX_SCHEMA_VERSION);
-  try {
-    for (const file of files ?? await Promise.all(manifest.map(async (file) => ({ ...file, sql: await readFile(`${directory}/${file.name}`, 'utf8') })))) {
-      await execute(db, file.sql);
-      await db.query('INSERT INTO flux_schema_version(version) VALUES($1) ON CONFLICT DO NOTHING', [file.version]);
+  let db: ReturnType<typeof createDatabase>['pool'] | undefined;
+  let guard: ReturnType<typeof guardFixturePool> | undefined;
+  let created = false;
+  let disposed = false;
+  const dispose = async (drop: boolean) => {
+    if (disposed) return;
+    disposed = true;
+    guard?.cleanup();
+    const errors: unknown[] = [];
+    if (db) {
+      try { await db.end(); } catch (error) { errors.push(error); }
     }
-  } catch (error) { await db.end(); await admin.query(`DROP DATABASE "${name}" WITH (FORCE)`); await admin.end(); throw error; }
-  return { db, name, async close() { await db.end(); await execute(admin, `DROP DATABASE "${name}" WITH (FORCE)`); await admin.end(); },
-    async retain() { await db.end(); await admin.end(); } };
+    if (drop && created) {
+      try { await execute(admin, `DROP DATABASE IF EXISTS "${name}" WITH (FORCE)`); } catch (error) { errors.push(error); }
+    }
+    try { await admin.end(); } catch (error) { errors.push(error); }
+    try { guard?.assertNoEarlyErrors(); } catch (error) { errors.push(error); }
+    if (errors.length === 1) throw errors[0];
+    if (errors.length > 1) throw new AggregateError(errors, 'undo fixture cleanup failed');
+  };
+  try {
+    await execute(admin, `CREATE DATABASE "${name}"`);
+    created = true;
+    const pool = createDatabase(dbUrl(name)).pool;
+    db = pool;
+    guard = guardFixturePool(pool);
+    const manifest = await readMigrationManifest(directory, FLUX_SCHEMA_VERSION);
+    for (const file of files ?? await Promise.all(manifest.map(async (file) => ({ ...file, sql: await readFile(`${directory}/${file.name}`, 'utf8') })))) {
+      await execute(pool, file.sql);
+      await pool.query('INSERT INTO flux_schema_version(version) VALUES($1) ON CONFLICT DO NOTHING', [file.version]);
+    }
+  } catch (error) {
+    try { await dispose(true); } catch (cleanupError) {
+      throw new AggregateError([error, cleanupError], 'undo fixture setup and cleanup failed');
+    }
+    throw error;
+  }
+  return { db: db!, name, guard: guard!, async close() { await dispose(true); }, async retain() { await dispose(false); } };
 }
 export async function retainedHistory(db: ReturnType<typeof createDatabase>['pool']) {
   const user = randomUUID(), workspace = randomUUID(), project = randomUUID(), task = randomUUID();
