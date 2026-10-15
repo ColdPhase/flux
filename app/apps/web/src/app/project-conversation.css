@@ -192,3 +192,25 @@ button.project-convo__contribution { cursor: pointer; }
   .project-new__foot .ui-btn { flex: 1; min-height: 52px; }
   .project-new__foot .ui-btn--secondary { display: none; }
 }
+
+/* Spokój author runs: own messages have no identity column. */
+.project-convo__message { min-width: 0; max-width: min(600px, 100%); width: fit-content; }
+.project-convo__message.is-mine { padding-right: 0; }
+.project-convo__message.is-continued { margin-top: 4px; }
+.project-convo__message.is-continued > .project-convo__message-meta { display: none; }
+.project-convo__message.is-open, .project-convo__message.is-arrived, .project-convo__message.is-mine.is-arrived { box-shadow: none; background: var(--sub); }
+.message-time { margin-top: 5px; color: var(--t3); font-family: var(--mono); font-size: var(--fs-xs); line-height: 1.5; }
+@media (max-width: 680px) { .project-convo__message.is-mine { padding-right: 0; } }
+
+.thread__root { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; }
+.thread__root.is-mine { align-items: flex-end; }
+.thread__root > .message-bubble { max-width: 100%; }
+
+.project-convo__message:has(.message-bubble :is(.ws-chip, .wiki-card, .message-files, .link-preview, .photo-grid)),
+.thread__root:has(.message-bubble :is(.ws-chip, .wiki-card, .message-files, .link-preview, .photo-grid)) { min-width: min(344px, 100%); }
+.project-convo__message.is-mine:has(.message-bubble :is(.ws-chip, .wiki-card, .message-files, .link-preview, .photo-grid)),
+.thread__root.is-mine:has(.message-bubble :is(.ws-chip, .wiki-card, .message-files, .link-preview, .photo-grid)) { min-width: min(300px, 100%); }
+@media (max-width: 680px) {
+  .project-convo__message:not(.is-mine):has(.message-bubble :is(.ws-chip, .wiki-card, .message-files, .link-preview, .photo-grid)),
+  .thread__root:not(.is-mine):has(.message-bubble :is(.ws-chip, .wiki-card, .message-files, .link-preview, .photo-grid)) { min-width: min(342px, 100%); }
+}

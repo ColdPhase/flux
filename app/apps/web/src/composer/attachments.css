@@ -177,3 +177,18 @@ span.photo-grid__open { cursor: default; }
 .is-mine > .message-bubble .wiki-card:hover { background: rgba(255, 255, 255, .16); }
 .is-mine > .message-bubble .wiki-card__glyph { background: rgba(255, 255, 255, .14); color: inherit; }
 .is-mine > .message-bubble .wiki-card small { color: inherit; opacity: .78; }
+
+/* Spokój: every conversation uses this bubble, including files, photos and references. */
+.message-bubble { color: var(--t1); box-shadow: inset 0 0 0 1px var(--line); }
+.is-mine > .message-bubble, .agents-msg--own > .message-bubble { background: var(--own); color: var(--t1); box-shadow: none; }
+.message-bubble:has(.message-files, .link-preview, .link-previews:not(:empty), .ws-chip, .wiki-card, .photo-grid) { width: max-content; min-width: min(100%, 300px); max-width: 100%; }
+.message-bubble > :is(.message-files, .link-previews, .ws-attach, .wiki-card, .photo-grid) { width: 100%; }
+.message-bubble .photo-grid { margin: 0; max-width: 100%; }
+.is-mine > .message-bubble .ref-chip, .is-mine > .message-bubble .wiki-card { background: var(--sub); color: var(--t1); }
+.is-mine > .message-bubble .ref-chip__face, .is-mine > .message-bubble .wiki-card__glyph { background: var(--el); color: var(--t1); }
+.is-mine > .message-bubble .wiki-card:hover { background: var(--hov); }
+.thread__root > .message-bubble { padding: 9px 13px; border-radius: var(--r-lg); background: var(--el); box-shadow: inset 0 0 0 1px var(--line); }
+.thread__root.is-mine > .message-bubble { background: var(--own); box-shadow: none; }
+
+.message-day.project-convo__day, .thread .message-day.project-convo__day { display: flex; align-items: center; justify-content: center; gap: 12px; margin: 20px 0 24px; font-size: var(--fs-xs); font-weight: 400; color: var(--t3); }
+.message-day.project-convo__day::before, .message-day.project-convo__day::after { content: ""; height: 1px; background: var(--line); flex: 1; }

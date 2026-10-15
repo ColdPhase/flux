@@ -7,6 +7,11 @@ from playwright.sync_api import Locator, expect
 
 def assert_author_column(case: unittest.TestCase, row: Locator, width: int, label: str) -> None:
     expect(row).to_be_visible()
+    own = row.evaluate("el => el.matches('.project-convo__message.is-mine, .thread__root.is-mine')")
+    if own:
+        case.assertEqual(row.locator(":scope > .author-face, :scope > .ui-avatar, :scope > .thread__root-meta").count(), 0,
+            f"{label}: Spokój own messages have no avatar or name")
+        return
     observed = row.evaluate("""el => {
       const face = el.querySelector(':scope > :is(.ui-avatar, .author-face), :scope > .thread__root-meta > :is(.ui-avatar, .author-face)');
       const meta = el.querySelector('.project-convo__message-meta, .thread__root-meta, .convo-notice__meta, .agents-msg__meta');

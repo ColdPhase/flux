@@ -545,7 +545,8 @@ class TaskAnnouncements(unittest.TestCase):
         held = self.hold_earlier_announcements(page)
         page.goto(f"/projects/{self.ids['busy']}")
         newest = page.locator(".project-convo__message", has_text=f"Later note {LATER_NOTES - 1:02} on the board.")
-        newest.get_by_role("button", name="Reply", exact=True).click()
+        newest.hover()
+        newest.get_by_role("button", name="Reply in thread", exact=True).click()
         expect(page.locator("#thread")).to_be_visible()
         page.wait_for_timeout(1200)
         # Search is a link inside the open stream: the thread changes, the stream stays mounted.

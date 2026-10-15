@@ -66,6 +66,26 @@ class MessageAlignment(unittest.TestCase):
         cls.post(owner, f"/api/v1/projects/{cls.project}/work", {
             "title": "Compare the two probes", "clientCommandId": str(uuid.uuid4()),
         })
+        cls.short = cls.post(owner, f"/api/v1/projects/{cls.project}/conversations", {
+            "body": "@Jon", "clientMessageId": str(uuid.uuid4()),
+        })
+        cls.short_reply = cls.post(owner, f"/api/v1/conversations/{cls.short['id']}/messages", {
+            "body": "Jon", "clientMessageId": str(uuid.uuid4()),
+        })
+        for message in (cls.short["messages"][0], cls.short_reply):
+            cls.post(owner, f"/api/v1/projects/{cls.project}/work", {
+                "title": "Raised beds by the fence: the volunteers need a readable blocked task card",
+                "sources": [{"type": "message", "id": message["id"]}],
+                "clientCommandId": str(uuid.uuid4()),
+            })
+        cls.dm = cls.post(owner, f"/api/v1/workspaces/{workspace['id']}/dms", {"participantIds": [cls.ids["jonas"]]})
+        cls.dm_messages = []
+        for key, body in (("jonas", "The school can lend us two ESP32 kits from the robotics club."),
+                          ("ada", "Great. Let us keep it between us until she confirms."),
+                          ("ada", "I will check with the volunteers tomorrow.")):
+            cls.dm_messages.append(cls.post(contexts[key], f"/api/v1/dms/{cls.dm['id']}/messages", {
+                "body": body, "clientMessageId": str(uuid.uuid4()),
+            }))
         for context in contexts.values():
             context.close()
 
@@ -100,14 +120,13 @@ class MessageAlignment(unittest.TestCase):
         geometry = row.evaluate("""el => {
           const parent = el.parentElement, style = getComputedStyle(parent), bounds = parent.getBoundingClientRect();
           const bubble = el.querySelector(':scope > .message-bubble').getBoundingClientRect();
-          const face = el.querySelector(':scope > :is(.ui-avatar, .author-face), :scope > .thread__root-meta > :is(.ui-avatar, .author-face)').getBoundingClientRect();
+          const face = el.querySelector(':scope > :is(.ui-avatar, .author-face), :scope > .thread__root-meta > :is(.ui-avatar, .author-face)')?.getBoundingClientRect();
           return {left: bounds.left + parseFloat(style.paddingLeft), right: bounds.right - parseFloat(style.paddingRight),
-            bubbleLeft: bubble.left, bubbleRight: bubble.right, faceLeft: face.left, faceRight: face.right};
+            bubbleLeft: bubble.left, bubbleRight: bubble.right, faceLeft: face?.left, faceRight: face?.right};
         }""")
         gap = 42 if page.viewport_size["width"] <= 680 else 44
         if mine:
-            self.assertAlmostEqual(geometry["faceRight"], geometry["right"], delta=1, msg=str(geometry))
-            self.assertAlmostEqual(geometry["bubbleRight"], geometry["right"] - gap, delta=1, msg=str(geometry))
+            self.assertAlmostEqual(geometry["bubbleRight"], geometry["right"], delta=1, msg=str(geometry))
         else:
             self.assertAlmostEqual(geometry["faceLeft"], geometry["left"], delta=1, msg=str(geometry))
             self.assertAlmostEqual(geometry["bubbleLeft"], geometry["left"] + gap, delta=1, msg=str(geometry))
@@ -143,6 +162,8 @@ class MessageAlignment(unittest.TestCase):
                     more = row.get_by_role("button", name="Message actions" if phone else "More actions", exact=True)
                     more.focus()
                     expect(more).to_be_focused()
+                    if key == who:
+                        continue
                     self.assertTrue(row.locator(".project-convo__message-meta strong").evaluate("""el => {
                       const r = el.getBoundingClientRect(), hit = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
                       return !!hit && el.contains(hit);
@@ -198,6 +219,81 @@ class MessageAlignment(unittest.TestCase):
                     page.reload()
                     self.assert_side(page, scope.locator(f"#message-{message['id']}"), True)
                     page.context.close()
+
+
+    def test_03_one_word_reference_keeps_a_readable_width(self):
+        for width in (320, 375, 390):
+            for dark in (False, True):
+                with self.subTest(width=width, dark=dark):
+                    page = self.page(phone=True, dark=dark)
+                    page.set_viewport_size({"width": width, "height": 844})
+                    page.goto(f"/projects/{self.project}")
+                    root = page.locator(f"#message-{self.short['messages'][0]['id']}")
+                    self.assert_reference_width(page, root)
+                    root.get_by_role("button", name=re.compile(r"^1 reply")).click()
+                    thread = page.get_by_role("complementary", name="Replies")
+                    self.assert_reference_width(page, thread.locator(".thread__root"))
+                    self.assert_reference_width(page, thread.locator(f"#message-{self.short_reply['id']}"))
+                    shot(page, f"spokoj-one-word-{width}-{'dark' if dark else 'light'}-{UI_BROWSER}")
+                    page.context.close()
+
+    def test_04_shared_bubble_and_grouping_matrix(self):
+        for width, height in ((390, 844), (820, 1180), (1440, 900), (2560, 1440)):
+            for dark in (False, True):
+                with self.subTest(width=width, dark=dark):
+                    page = self.page(phone=width == 390, dark=dark)
+                    page.set_viewport_size({"width": width, "height": height})
+                    for surface, path, selector in (
+                        ("project", f"/projects/{self.project}", f"#message-{self.short['messages'][0]['id']}"),
+                        ("thread", f"/projects/{self.project}/conversations/{self.short['id']}", f"#thread #message-{self.short_reply['id']}"),
+                        ("dm", f"/dm/{self.dm['id']}", f"#message-{self.dm_messages[-1]['id']} .dm-msg__main"),
+                    ):
+                        page.goto(path)
+                        row = page.locator(selector)
+                        bubble = row.locator(":scope > .message-bubble")
+                        expect(bubble).to_be_visible()
+                        style = bubble.evaluate("""el => {
+                          const s=getComputedStyle(el), probe=document.createElement('i');
+                          probe.style.background='var(--own)'; probe.style.color='var(--t1)'; document.body.append(probe);
+                          const p=getComputedStyle(probe), result={background:s.backgroundColor,color:s.color,own:p.backgroundColor,ink:p.color,image:s.backgroundImage};
+                          probe.remove(); return result;
+                        }""")
+                        self.assertEqual(style["background"], style["own"], style)
+                        self.assertEqual(style["color"], style["ink"], style)
+                        self.assertEqual(style["image"], "none", style)
+                        self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), width)
+                        shot(page, f"spokoj-{surface}-{width}-{'dark' if dark else 'light'}-{UI_BROWSER}")
+                    first = page.locator(f"#message-{self.dm_messages[-2]['id']}")
+                    last = page.locator(f"#message-{self.dm_messages[-1]['id']}")
+                    expect(first.locator(".message-time")).to_have_count(0)
+                    expect(last.locator(".message-time")).to_have_count(1)
+                    expect(page.locator(".dm-msg.is-mine .dm-msg__meta, .dm-msg.is-mine .ui-avatar")).to_have_count(0)
+                    a, b = first.locator(".message-bubble").bounding_box(), last.locator(".message-bubble").bounding_box()
+                    self.assertAlmostEqual(b["y"] - a["y"] - a["height"], 4, delta=1)
+                    self.assertNotRegex(last.locator("time").inner_text(), r"^0\d:")
+                    expect(page.get_by_text("Unsent text stays in this tab", exact=False)).to_be_hidden()
+                    page.context.close()
+
+    def assert_reference_width(self, page, row):
+        card = row.locator(".message-bubble .ws-chip").first
+        expect(card).to_be_visible()
+        row.scroll_into_view_if_needed()
+        measured = card.evaluate("""card => {
+          const bubble = card.closest('.message-bubble'), b = bubble.getBoundingClientRect(), c = card.getBoundingClientRect();
+          const style = getComputedStyle(bubble), title = card.querySelector('.ws-chip__t'), state = card.querySelector('.ws-chip__k');
+          return {bubble:b.width, card:c.width, available:bubble.parentElement.clientWidth,
+            padding:parseFloat(style.paddingLeft)+parseFloat(style.paddingRight),
+            titleLines:getComputedStyle(title).whiteSpace, ellipsis:getComputedStyle(title).textOverflow,
+            stateWidth:state.getBoundingClientRect().width, right:b.right, left:b.left};
+        }""")
+        self.assertGreaterEqual(measured["bubble"], min(300, measured["available"]) - 1, measured)
+        self.assertAlmostEqual(measured["card"], measured["bubble"] - measured["padding"], delta=1, msg=str(measured))
+        self.assertEqual(measured["titleLines"], "nowrap")
+        self.assertEqual(measured["ellipsis"], "ellipsis")
+        self.assertGreater(measured["stateWidth"], 12)
+        self.assertGreaterEqual(measured["left"], 0)
+        self.assertLessEqual(measured["right"], page.viewport_size["width"])
+        self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), page.viewport_size["width"])
 
 
 if __name__ == "__main__":
