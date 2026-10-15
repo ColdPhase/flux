@@ -15,6 +15,7 @@ import uuid
 
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
+from contrast import MEASURE
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UI_BROWSER, UPSTREAM, shot as save_shot, start_forwarder
 
 PASSWORD = "two steps then it is theirs"
@@ -33,6 +34,27 @@ def assert_phone_sheet(dialog, page) -> None:
         raise AssertionError(f"phone hand-off sheet should leave the project visible above rounded corners: {metrics}")
     expect(page.get_by_role("heading", level=1, name="Agents")).to_be_visible()
 
+
+
+# Both monotone, two-stop Flux button gradients are bounded by their endpoints. Reject other paints;
+# this supplements the shared ancestor-compositing measurement rather than ignoring the gradient.
+MEASURE_HANDOFF_GRADIENT = r"""({selector,base}) => {
+  const el=document.querySelector(selector), style=getComputedStyle(el);
+  if (style.filter!=='none') throw new Error('Unexpected contrast filter: '+selector);
+  if (style.backgroundImage==='none') return base;
+  const stops=style.backgroundImage.match(/rgba?\([^)]*\)/g);
+  if (!style.backgroundImage.startsWith('linear-gradient(') || stops?.length!==2)
+    throw new Error('Unsupported background paint: '+style.backgroundImage);
+  const canvas=document.createElement('canvas');canvas.width=canvas.height=1;
+  const ctx=canvas.getContext('2d',{willReadFrequently:true});
+  const colors=stops.map(stop=>{ctx.clearRect(0,0,1,1);ctx.fillStyle=stop;ctx.fillRect(0,0,1,1);return [...ctx.getImageData(0,0,1,1).data];});
+  if (colors.some(color=>color[3]!==255) || !([0,1,2].every(i=>colors[0][i]>=colors[1][i]) || [0,1,2].every(i=>colors[0][i]<=colors[1][i])))
+    throw new Error('Gradient is not opaque and monotone');
+  const lum=color=>{const c=color.slice(0,3).map(v=>{v/=255;return v<=.04045?v/12.92:((v+.055)/1.055)**2.4;});return c[0]*.2126+c[1]*.7152+c[2]*.0722;};
+  const fg=lum(base.foreground);
+  const ratios=colors.map(color=>{const bg=lum(color);return (Math.max(fg,bg)+.05)/(Math.min(fg,bg)+.05);});
+  return {...base,gradient:style.backgroundImage,gradientEndpointRatios:ratios,ratio:Math.min(...ratios)};
+}"""
 
 class HandOffJourney(unittest.TestCase):
     """Tests run in name order and share two accounts, one project, three agents and four tasks."""
@@ -1057,6 +1079,79 @@ class HandOffJourney(unittest.TestCase):
                     self.assertAlmostEqual(measure["height"], measure["visible"], delta=1, msg="choosing an agent keeps the heading fully visible")
                     expect(dialog.get_by_role("button", name="Next", exact=True)).to_be_visible()
                 page.context.close()
+
+    def test_23_reduced_motion_and_rendered_contrast_cover_handoff_states(self) -> None:
+        setup = self.page("ada")
+        project = self.api(setup, "POST", f"/api/v1/workspaces/{self.ids['workspace']}/projects",
+                           {"name": "Handoff accessibility garden", "visibility": "restricted"}, status=201)["id"]
+        task = self.api(setup, "POST", f"/api/v1/projects/{project}/work",
+                        {"title": "Prepare a readable watering handoff"}, status=201)
+        for has_agent in (False, True):
+            if has_agent:
+                self.api(setup, "POST", f"/api/v1/projects/{project}/grants",
+                         {"principal": {"kind": "agent", "id": self.ids["agent_claude"]}, "role": "contributor"}, status=201)
+            for scheme in ("light", "dark"):
+                for phone in (False, True):
+                    with self.subTest(available=has_agent, scheme=scheme, phone=phone):
+                        page = self.page("ada", scheme=scheme, phone=phone)
+                        page.emulate_media(reduced_motion="reduce")
+                        page.add_init_script("""(() => {
+                          window.__handoffAnimations = [];
+                          const animate = Element.prototype.animate;
+                          Element.prototype.animate = function(frames, options) {
+                            if (this.matches('.handoff-dialog,.handoff-sheet') || this.closest('.handoff'))
+                              window.__handoffAnimations.push({className:this.className, options});
+                            return animate.call(this, frames, options);
+                          };
+                        })();""")
+                        page.goto(f"/projects/{project}/tasks?open=work:{task['id']}")
+                        opener = page.get_by_role("button", name="Hand off to an agent")
+                        opener.click()
+                        dialog = page.get_by_role("dialog", name="Hand off a task")
+                        expect(dialog.get_by_role("heading")).to_be_visible()
+
+                        def check_state(state, selectors):
+                            page.mouse.move(0, 0)  # Measure the resting paint, without a hovered button's filter.
+                            for selector, minimum in selectors:
+                                element = page.locator(selector)
+                                if not element.is_visible():
+                                    continue  # Desktop hint is intentionally absent on touch surfaces.
+                                self.assertFalse(element.evaluate("el => el.matches(':disabled,[aria-disabled=true]')"), "disabled controls are excluded from contrast claims")
+                                result = page.evaluate(MASURE_HANDOFF_GRADIENT, {"selector": selector, "base": page.evaluate(MEASURE, {"selector": selector})})
+                                print("\n  Handoff computed contrast: " + json.dumps({"state": state, "theme": scheme, "phone": phone, **result}))
+                                self.assertGreaterEqual(result["ratio"], minimum, f"{selector}: {result}")
+                            motion = dialog.evaluate("""el => ({
+                              reduced:matchMedia('(prefers-reduced-motion: reduce)').matches,
+                              scripted:window.__handoffAnimations,
+                              active:el.getAnimations({subtree:true}).filter(a=>a.playState==='running' && a.effect.getComputedTiming().duration>0).length,
+                              moving:[el,...el.querySelectorAll('*')].flatMap(node=>['', '::before', '::after'].map(pseudo=>{
+                                const style=getComputedStyle(node,pseudo||null);
+                                return {animation:style.animationDuration,transition:style.transitionDuration};
+                              })).filter(style=>[style.animation,style.transition].some(times=>times.split(',').some(time=>parseFloat(time)>0)))
+                            })""")
+                            print("\n  Handoff reduced motion: " + json.dumps({"state": state, "theme": scheme, "phone": phone, **motion}))
+                            self.assertEqual(motion, {"reduced": True, "scripted": [], "active": 0, "moving": []})
+
+                        common = [(".handoff__title", 4.5), (".handoff__what", 4.5), (".handoff__step", 4.5),
+                                  (".handoff__close", 3), (".handoff__tip", 4.5), (".handoff__foot > .ui-btn:not(.ui-btn--primary)", 4.5)]
+                        if not has_agent:
+                            expect(dialog.get_by_role("heading", name="No agents in this project yet")).to_be_visible()
+                            check_state("empty", common + [(".handoff__empty p", 4.5), (".handoff__foot > .ui-btn--primary", 4.5)])
+                        else:
+                            agent = dialog.locator("label.handoff__agent", has_text="Claude Code agent")
+                            agent.click()
+                            check_state("choose", common + [(".handoff__agent[data-checked] b", 4.5), (".handoff__agent[data-checked] small", 4.5),
+                                                            (".handoff__agent[data-checked] .handoff__mark", 3), (".handoff__foot > .ui-btn--primary", 4.5)])
+                            dialog.get_by_role("button", name="Next", exact=True).click()
+                            expect(dialog.get_by_role("button", name=re.compile("^Hand off"))).to_be_enabled()
+                            check_state("permissions", common + [(".handoff__chosen b", 4.5), (".handoff__chosen small", 4.5),
+                                                                 (".handoff__can", 4.5), (".handoff__can b", 4.5), (".handoff__foot > .ui-btn--primary", 4.5)])
+                            dialog.get_by_role("button", name="Back", exact=True).click()
+                            expect(agent.get_by_role("radio")).to_be_checked()
+                        page.keyboard.press("Escape")
+                        expect(dialog).to_have_count(0)
+                        expect(opener).to_be_focused()
+                        page.context.close()
 
 if __name__ == "__main__":
     unittest.main()
