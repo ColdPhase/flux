@@ -242,8 +242,7 @@ Recorded from the T3 review (#331); none of them is hidden by the checks.
   attach then binds again under the owner's session. The API route `POST /api/v1/agent-runtime/binding` still
   binds a slot with no sign-in, so any signed-in account on the instance can call it. Your controls: close or
   restrict sign-up, watch `./flux runtime status`, release a slot with `./flux runtime release`, and set
-  `FLUX_AGENT_RUNTIME_IDLE_DAYS` (a binding that never ran counts from its creation). Removing that route, or
-  recording it as accepted, is still required before merge.
+  `FLUX_AGENT_RUNTIME_IDLE_DAYS` (a binding that never ran counts from its creation). Accepted (#331 m5).
 - **`runtime-egress` is not vendor-exclusive (m6).** Cleanup must still reach a vendor after you switch its
   client off (TLS hides the request path), so the proxy allows the recorded hosts of every client at all
   times; the supervisor, not the proxy, refuses login, status and runs for a client that is off. Today
