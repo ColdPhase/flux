@@ -374,7 +374,8 @@ export function createSketchUseCases(uow: SketchUnitOfWork) {
       return uow.run(async (ports) => {
         const { sketch } = await authorized(ports, principal, 'sketch.write', sketchId);
         const target=valid.id(thoughtId,'thoughtId');
-        const artifacts=await ports.artifacts?.prepare(sketch,[target]);
+        // Only a text change can be a canonical revision; geometry/shape keeps main's lock order without the task-graph fence.
+        const artifacts=changes.text!==undefined?await ports.artifacts?.prepare(sketch,[target]):null;
         const current = await lockedThought(ports, sketch.id, target);
         const [currentView] = await presentThoughts(ports, principal, sketch, [current]);
         checkVersion(current, command.expectedVersion, currentView!);
