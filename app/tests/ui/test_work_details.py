@@ -501,3 +501,27 @@ class NativeDetailsJourney(unittest.TestCase):
             panel.get_by_role("button", name="Save", exact=True).click()
         self.assertEqual(stored.value.status, 200, "a new clean blocker session uses the currently visible version")
         expect(panel.get_by_role("alert")).to_have_count(0)
+
+    def test_17_finishing_a_changed_open_task_requires_review_of_each_new_version(self):
+        task = api(self.ctx, "POST", self.root + "/work", {"title": "Review the version this result finishes"}, 201)
+        page = self.page(); panel = self.open(page, "work", task["id"])
+        panel.get_by_role("button", name="Attach a result", exact=True).click()
+        panel = page.locator("#details .wd"); self.choices_ready(panel, "Result work choices")
+        panel.get_by_label("Finding", exact=True).fill("The reviewed measurement is complete")
+        panel.get_by_label("Evidence", exact=True).fill("Two measured calibration passes")
+        panel.get_by_role("radio", name="Positive", exact=True).check()
+        panel.get_by_role("checkbox", name=re.compile("This finishes")).check()
+        submit = panel.get_by_role("button", name="Attach result", exact=True)
+        for number in (1, 2):
+            current = self.native("work", task["id"])
+            api(self.ctx, "PATCH", f"/api/v1/work/{task['id']}", {"title": f"Reviewed calibration version {number}", "expectedVersion": current["version"]})
+            expect(panel.get_by_role("checkbox", name=f"This finishes “Reviewed calibration version {number}”", exact=True)).to_be_checked()
+            with page.expect_response(lambda response: response.request.method == "POST" and response.url.endswith("/results")) as conflict:
+                submit.click()
+            self.assertEqual(conflict.value.status, 409)
+            expect(submit).to_be_disabled()
+            panel.get_by_role("button", name="Finish current version", exact=True).click()
+            expect(submit).to_be_enabled()
+        submit.click()
+        expect(page.locator('.wd[data-detail-kind="result"]')).to_contain_text("The reviewed measurement is complete")
+        self.assertEqual(self.native("work", task["id"])["status"], "done")
