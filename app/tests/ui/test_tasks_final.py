@@ -21,6 +21,7 @@ import uuid
 
 from playwright.sync_api import Browser, BrowserContext, Locator, Page, expect, sync_playwright
 
+from create_window import dialog, open_from_tasks
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
 from contrast import MEASURE
 
@@ -277,12 +278,14 @@ class TasksFinalJourney(unittest.TestCase):
         expect(page.locator(".ui-toast").filter(has_text="in progress").last).to_be_visible()
         self.assertEqual(self.task(page, "supplier")["status"], "in_progress")
         expect(self.row(page, SUPPLIER).locator(".ws-item")).to_be_focused()
-        field = page.get_by_label("New task", exact=True)
-        field.focus()
+        # Since #377 the only text field for a task is the Create window's title: Z typed there is text, and closing the window leaves Z on the row free to undo.
+        field = open_from_tasks(page)
         page.keyboard.type("z")
         expect(field).to_have_value("z")
         self.assertEqual(self.task(page, "supplier")["status"], "in_progress", "Z typed in a field is text")
         field.fill("")
+        page.keyboard.press("Escape")
+        expect(dialog(page)).to_have_count(0)
         self.row(page, SUPPLIER).locator(".ws-item").focus()
         page.keyboard.press("z")
         self.wait_status(page, "supplier", "open")
