@@ -41,6 +41,13 @@ export interface IdentityConfig {
   /** Null keeps email/password sign-in only. */
   oidc: OidcConfig | null;
   /**
+   * `prepare` keeps password sign-in while the provider is set, so existing password accounts can link their
+   * provider identity (F-024 S5b, #315). `sso` is the cutover: with a provider, ordinary authentication is SSO only.
+   */
+  ssoMode: 'prepare' | 'sso';
+  /** With a provider in `sso` mode: password sign-in, sign-up, reset and password-only sessions are refused. */
+  ssoOnly: boolean;
+  /**
    * Who may create a password account (F-024 S5a, #313). `open` is today's behaviour; `verified` makes a new
    * account prove its address by mail before it can sign in; `off` closes password sign-up. `verified` without
    * SMTP cannot send that mail, and any sign-on provider makes password sign-up ordinary-closed (SSO-only mode),
@@ -162,11 +169,17 @@ export function loadIdentityConfig(env: NodeJS.ProcessEnv = process.env): Identi
   const requested = (env.FLUX_SIGNUP ?? 'open').trim().toLowerCase();
   if (requested !== 'open' && requested !== 'verified' && requested !== 'off') throw new Error('FLUX_SIGNUP must be open, verified or off');
   const oidc = loadOidcConfig(env);
+  const mode = (env.FLUX_SSO_MODE ?? 'sso').trim().toLowerCase();
+  if (mode !== 'prepare' && mode !== 'sso') throw new Error('FLUX_SSO_MODE must be prepare or sso');
+  if (mode === 'prepare' && !oidc) throw new Error('FLUX_SSO_MODE=prepare needs a sign-on provider (FLUX_OIDC_ISSUER and FLUX_OIDC_CLIENT_ID)');
   return {
     publicOrigin,
     secret,
     signupRequested: requested,
-    signup: oidc || (requested === 'verified' && !(smtpUrl && from)) ? 'off' : requested,
+    // In SSO-only mode password sign-up is closed; prepare mode keeps it as configured, since password accounts exist then.
+    signup: (oidc && mode === 'sso') || (requested === 'verified' && !(smtpUrl && from)) ? 'off' : requested,
+    ssoMode: mode,
+    ssoOnly: oidc !== null && mode === 'sso',
     trustedProxies,
     smtp: smtpUrl && from ? { url: smtpUrl, from } : null,
     rateLimit: rateLimit === 'true',
