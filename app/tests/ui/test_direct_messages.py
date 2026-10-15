@@ -19,7 +19,7 @@ import uuid
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
 from create_window import create_other
-from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, box, open_details, shot, start_forwarder
+from test_app_shell import DESKTOP, ORIGIN, PHONE, UI_BROWSER, UPSTREAM, box, open_details, shot, start_forwarder
 
 PASSWORD = "messages between friends"
 STAMP = int(time.time() * 1000)
@@ -46,7 +46,7 @@ class DirectMessageJourney(unittest.TestCase):
         if UPSTREAM:
             start_forwarder(ORIGIN, UPSTREAM)
         cls.pw = sync_playwright().start()
-        cls.browser = cls.pw.chromium.launch()
+        cls.browser = getattr(cls.pw, UI_BROWSER).launch()
         expect.set_options(timeout=10000)
         # Accounts and the shared workspace come from the public API, as a person's browser would.
         for key, (name, email) in PEOPLE.items():
