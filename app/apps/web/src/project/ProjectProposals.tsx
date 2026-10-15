@@ -6,10 +6,10 @@ import { applyComparisonProposal, comparisonSourceHref, editComparisonProposal }
 import { ComparisonEvidence } from './ComparisonEvidence';
 import { InsufficientComparison } from './InsufficientComparison';
 
-export function ProjectProposals({ outcomes, people, projectName, resultTitles, workJumpId, workCount, resultCount, jumpToSection, writable, refresh, openResult, openWork }: {
+export function ProjectProposals({ outcomes, people, projectName, resultTitles, workJumpId, workCount, jumpToSection, writable, refresh, openResult, openWork }: {
   outcomes: ProactiveComparisonOutcome[]; people: ProjectPerson[] | null; projectName: string; writable: boolean;
   resultTitles: Map<string, string>;
-  workJumpId: string; workCount: number; resultCount: number;
+  workJumpId: string; workCount: number;
   jumpToSection: (id: string) => void;
   refresh: () => void; openResult: (id: string) => void; openWork: (item: WorkItem) => void;
 }) {
@@ -52,7 +52,6 @@ export function ProjectProposals({ outcomes, people, projectName, resultTitles, 
       <h2 className="ws-group__h" id="g-comparison-proposals">Suggestions and checks <span>{open.length + insufficient.length}</span></h2>
       <nav className="ws-proposals__jumps" aria-label="Project work sections">
         {workCount ? <button type="button" onClick={() => jumpToSection(workJumpId)}>Work {workCount}</button> : null}
-        {resultCount ? <button type="button" onClick={() => jumpToSection('g-results')}>Results {resultCount}</button> : null}
       </nav>
       <p className="ws-proposals__intro">Quiet project suggestions. The agent has not changed any work or decision.</p>
       {open.map(({ proposal, inspectedSources, unavailableSourcesCount }) => {
