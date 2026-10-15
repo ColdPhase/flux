@@ -76,6 +76,9 @@ export * from './repositories/fixture-oauth-clients.js';
 export * from './repositories/idempotency.js';
 export * from './repositories/draft-results.js';
 export * from './repositories/events.js';
+export * from './repositories/agent-thread-guard.js';
+export * from './repositories/artifact-task-associations.js';
+export * from './repositories/artifact-resets.js';
 
 /** PostgreSQL channel notified (payload: seq) after an event with a workspace commits; wakes stream connections. */
 export const EVENTS_CHANNEL = 'flux_events';
@@ -177,6 +180,9 @@ export * from './repositories/agent-policies.js';
 
 export * from './repositories/files.js';
 export * from './repositories/task-use.js';
+export * from './repositories/agent-thread-guard.js';
+export * from './repositories/artifact-task-associations.js';
+export * from './repositories/artifact-resets.js';
 export * from './repositories/task-targets.js';
 export * from './repositories/notification-lifecycle.js';
 export * from './repositories/agent-runtime.js';

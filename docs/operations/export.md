@@ -49,6 +49,8 @@ JSON-only export carries metadata, while the bundle carries the bytes as well.
 
 ## `project.json`
 
+Task agents’ threads (#400) appear in the additive `agentThreads` array in format 1. Each item carries `workId`, its original conversation ID, authors, ordered messages and attachment metadata. The existing `conversations` array remains people-space history. Format-1 readers that ignore unknown fields keep their old behavior; the bundled schema and versioned EXT-2 snapshot include the new array. The same project-manager authority and private-data exclusions apply. This extension does not publish new MCP tools or change existing people-space replies.
+
 Format `flux.project-export`, `formatVersion` 1. The TypeScript types (`ProjectExport`) and the
 JSON Schema (`PROJECT_EXPORT_JSON_SCHEMA`) are in
 [`app/packages/contracts/src/export.ts`](../../app/packages/contracts/src/export.ts) (Apache-2.0); the
@@ -66,6 +68,7 @@ names.
 | `grants` | Explicit project grants, including `denied`. |
 | `actors` | Names of every person and agent referenced anywhere in the export. |
 | `conversations` | Each conversation with all messages in sequence: author, text, cited material or doc version, time. A message made by a saved blocker, a published result or a public handoff (#154) also has `contribution` (`{ "kind": "blocker" \| "handoff" }` or `{ "kind": "result", "resultId" }`); ordinary messages omit it. |
+| `agentThreads` | Task-bound agents-space conversation history, with `workId` and the same ordered message/author/source/files fields. Additive in format1; readers ignore unknown fields. |
 | `files` (optional) | Published attachments: id, display name, size, SHA-256, message and conversation ids, order, and bundle path. Absent for projects without published files. Message `files` lists id, name and size in attachment order. |
 | `materials` | Published materials with every immutable version: title, text, URL, author, time. |
 | `docs` | Docs with every version: title, Markdown text, `draft`/`published`, reason, author, time, and `file` (the Markdown file of the current text). |

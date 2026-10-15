@@ -2,7 +2,8 @@ import { randomUUID } from 'node:crypto';
 import { and, desc, eq, lt, sql } from 'drizzle-orm';
 import * as schema from '../schema.js';
 import type { MessageFile } from '@flux/contracts';
-import { taskUseRows } from './task-use.js';
+import { taskUseRows, type TaskUseFence } from './task-use.js';
+import { artifactResetRows } from './artifact-resets.js';
 import { fileRows } from './files.js';
 import type { DbExecutor } from './push.js';
 
@@ -26,6 +27,12 @@ export function taskDiscussionRows(db: DbExecutor) {
   const m = schema.projectMessages;
   const c = schema.projectConversations;
   const b = schema.projectTaskDiscussions;
+  // Agent threads carry their task directly; the historical people discussion keeps its binding.
+  const boundTask = async (conversationId: string) => {
+    const [row] = await db.select({ workId: sql<string | null>`COALESCE(${c.workId}, ${b.workId})` }).from(c)
+      .leftJoin(b, eq(b.conversationId, c.id)).where(eq(c.id, conversationId));
+    return row?.workId ?? null;
+  };
   return {
     async lockCommand(projectId: string, author: Actor, commandId: string) {
       // Shared namespace with ordinary conversation sends. Collisions merely serialize.
@@ -68,12 +75,12 @@ export function taskDiscussionRows(db: DbExecutor) {
     /** Called in a transaction after current access and the shared command lock. */
     async append(conversation: Pick<ConversationRow, 'id' | 'workspaceId' | 'projectId'>, author: Actor,
       input: { body: string; clientMessageId: string; fingerprint: string; source: Source | null;
-        kind?: MessageRow['contributionKind']; resultId?: string | null; files?: MessageFile[] }) {
-      const [bound] = await db.select({ workId: b.workId }).from(b).where(eq(b.conversationId, conversation.id));
+        kind?: MessageRow['contributionKind']; resultId?: string | null; files?: MessageFile[] }, preparedMessageId?: string) {
+      const workId = await boundTask(conversation.id);
       const [updated] = await db.update(c).set({ nextSequence: sql`${c.nextSequence} + 1` })
         .where(eq(c.id, conversation.id)).returning({ nextSequence: c.nextSequence });
       if (!updated) throw new Error('Conversation disappeared under contribution lock');
-      const [row] = await db.insert(m).values({ id: randomUUID(), workspaceId: conversation.workspaceId,
+      const [row] = await db.insert(m).values({ id: preparedMessageId ?? randomUUID(), workspaceId: conversation.workspaceId,
         projectId: conversation.projectId, conversationId: conversation.id, authorId: author.kind === 'human' ? author.id : null,
         authorAgentId: author.kind === 'agent' ? author.id : null, clientMessageId: input.clientMessageId,
         requestFingerprint: input.fingerprint, sequence: updated.nextSequence - 1, body: input.body,
@@ -85,7 +92,7 @@ export function taskDiscussionRows(db: DbExecutor) {
           .returning({ id: schema.projectFiles.id });
         if (updated.length !== 1) throw new Error('Locked attachment publication invariant failed');
       }
-      if (bound) await db.update(schema.projectWorkItems).set({ firstPersistedUseAt: sql`COALESCE(${schema.projectWorkItems.firstPersistedUseAt}, clock_timestamp())` }).where(eq(schema.projectWorkItems.id, bound.workId));
+      if (workId) await db.update(schema.projectWorkItems).set({ firstPersistedUseAt: sql`COALESCE(${schema.projectWorkItems.firstPersistedUseAt}, clock_timestamp())` }).where(eq(schema.projectWorkItems.id, workId));
       return message(row!, input.files);
     },
     /**
@@ -93,9 +100,17 @@ export function taskDiscussionRows(db: DbExecutor) {
      * locking and takes the task row lock before it touches the conversation sequence, like every contribution.
      */
     async lockBoundTask(conversationId: string) {
-      const [bound] = await db.select({ workId: b.workId }).from(b).where(eq(b.conversationId, conversationId));
-      if (bound) await taskUseRows(db).prepare([bound.workId]);
-      return bound?.workId ?? null;
+      const workId = await boundTask(conversationId);
+      if (workId) await taskUseRows(db).prepare([workId]);
+      return workId;
+    },
+    async prepareBoundTask(conversationId: string) {
+      const workId=await boundTask(conversationId);
+      return taskUseRows(db).prepare(workId?[workId]:[]);
+    },
+    async publishFiles(scope:{workspaceId:string;projectId:string},messageId:string,retained:Pick<TaskUseFence,'ids'|'mark'>){
+      for(const file of (await fileRows(db).messageFiles([messageId])).get(messageId)??[])
+        await artifactResetRows(db).publishedFile(scope,file.id,retained);
     },
     async bind(input: { workId: string; workspaceId: string; projectId: string; conversationId: string; rootMessageId: string }) {
       await db.insert(b).values(input);

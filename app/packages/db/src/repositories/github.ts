@@ -20,7 +20,7 @@ const linkView = (row: Link) => { const { id, workspaceId, projectId, taskId, bi
 const LOCAL = { origin: 'binding' as const, deliveryId: null };
 type GithubOverrideStatus = typeof s.githubTaskRuleChanges.$inferSelect['fromStatus'];
 const ids = (rows: { id: string }[]) => rows.map((row) => row.id);
-export function githubRows(db: DbExecutor) {
+export function githubRows(db: DbExecutor,options:{taskFence?:()=>import('./task-use.js').TaskUseFence|null}={}) {
   const b = s.githubBindings; const l = s.githubTaskLinks; const p = s.githubProcessing; const d = s.githubDeliveries;
   const r = s.githubTaskRules; const c = s.githubTaskRuleChanges; const f = s.githubRuleDefaults; const w = s.projectWorkItems;
   /**
@@ -95,9 +95,11 @@ export function githubRows(db: DbExecutor) {
     },
     async links(taskId: string) { return (await db.select().from(l).where(eq(l.taskId, taskId)).orderBy(asc(l.id))).map(linkView); },
     async linkedPulls(bindingId: string) { return (await db.select().from(l).where(eq(l.bindingId, bindingId)).orderBy(asc(l.id))).map(linkView); },
+    async linkAt(id:string){const[row]=await db.select().from(l).where(eq(l.id,id));return row?{...linkView(row),pullId:row.pullId}:null;},
     async link(input: Omit<Link, 'pullId'>) {
       // Provider credential and canonical binding fences are retained by the caller.
-      const taskFence = await taskUseRows(db).prepare([input.taskId]);
+      const taskFence = options.taskFence?.()??await taskUseRows(db).prepare([input.taskId]);
+      if(!taskFence.ids.includes(input.taskId))throw new Error('PR link is outside the complete retained task fence');
       const [row] = await db.insert(l).values({ ...input, pullId: input.facts.pullId }).onConflictDoNothing().returning();
       if (row) { await taskFence.mark(); return linkView(row); }
       const [existing] = await db.select().from(l).where(and(eq(l.taskId, input.taskId), eq(l.bindingId, input.bindingId), eq(l.pullId, input.facts.pullId), eq(l.role, input.role)));
