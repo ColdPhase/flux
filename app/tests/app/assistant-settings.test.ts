@@ -46,6 +46,31 @@ test('five areas map through S6; only read removes effects and reserved co-work 
   for (const entry of AGENT_MCP_ENTRIES.filter((e) => e.operation?.startsWith('map.'))) assert.ok(!read.enabledEntryIds.includes(entry.id), entry.name);
 });
 
+test('#522: private assistant discovery is owner-only while an MCP connection sharing its identity stays visible', async () => {
+  const f = await setup('roster-privacy');
+  const roster = async (reader: Person) => expectStatus(await reader.browser.request('GET', `/api/v1/projects/${f.managed.id}/agents`), 200) as unknown as ProjectAgents;
+  const people = async (reader: Person) => expectStatus(await reader.browser.request('GET', `/api/v1/projects/${f.managed.id}/people`), 200) as { id: string }[];
+  const agents = async (reader: Person) => expectStatus(await reader.browser.request('GET', `/api/v1/workspaces/${f.ws.id}/agents`), 200) as { id: string }[];
+  const own = await roster(f.owner);
+  assert.equal(own.connections.length, 1); assert.equal(own.connections[0]?.assistant, true, 'the owner retains its eligible hand-off choice');
+  assert.deepEqual((await roster(f.manager)).connections, [], 'even a workspace owner never discovers another person’s assistant connection');
+  assert.equal((await people(f.manager)).some((row) => row.id === f.agent.id), false, 'private identity absent from another member’s project people');
+  assert.equal((await agents(f.manager)).some((row) => row.id === f.agent.id), false, 'private identity absent from another member’s workspace agent picker');
+  assert.equal((await people(f.owner)).some((row) => row.id === f.agent.id), true, 'own identity remains available for own authorized use');
+  expectStatus(await f.manager.browser.request('GET', assistantSettingsPath(f.ws.id, f.owner.id)), 404);
+
+  const external = expectStatus(await f.owner.browser.request('POST', '/api/v1/agent-connections', { body: {
+    agentId: f.agent.id, selectedProjectIds: [f.managed.id], scopes: ['flux.context.read'], name: 'Ines coding client', clientDesignation: 'codex',
+  } }), 201) as { id: string };
+  const shared = await roster(f.manager);
+  assert.deepEqual(shared.connections.map((row) => row.id), [external.id], 'the explicitly connected MCP client is still public to project members');
+  assert.equal(shared.connections[0]?.assistant, undefined);
+  assert.equal(shared.connections[0]?.own, false);
+  assert.equal(shared.connections[0]?.owner.id, f.owner.id);
+  assert.equal((await people(f.manager)).some((row) => row.id === f.agent.id), true, 'public MCP identity is not hidden merely because its owner also selected it for their assistant');
+  expectStatus(await f.manager.browser.request('DELETE', `/api/v1/agent-connections/${external.id}`), 404);
+});
+
 test('enablement atomically creates one identity/policy/settings, auto-joins only managed projects, and engine changes retain it', async () => {
   const f = await setup('identity'); const saved = (await settings(f.owner, f.ws.id)).body;
   assert.equal(saved.approvalMode, 'act'); assert.equal(saved.changesPerRun, 20); assert.equal(saved.backgroundRunsPerDay, 24);
@@ -163,7 +188,7 @@ test('a join request gives no authority, is deduplicated/manager-scoped, and man
     { joinRequestId: first.id, openingVersion: 3, assistantId: agent.id, assistantName: 'Renamed assistant', ownerId: requester.id, ownerName: 'Renamed owner' },
   ], 'Needs You preserves the old cycle identity and displays the new snapshot only for the reopened request');
   const managerView = expectStatus(await manager.browser.request('GET', `/api/v1/projects/${destination.id}/agents`), 200) as unknown as ProjectAgents;
-  assert.equal(managerView.joinRequests?.[0]?.id, first.id);
+  assert.equal(managerView.joinRequests, undefined, 'project roster never discovers someone else’s assistant; explicit manager review stays in Inbox (#522)');
   const otherView = expectStatus(await bystander.browser.request('GET', `/api/v1/projects/${destination.id}/agents`), 200) as unknown as ProjectAgents;
   assert.equal(otherView.joinRequests, undefined, 'an ordinary reader sees no one else\'s join request');
   assert.equal(otherView.assistantJoin, undefined, 'an ordinary reader sees no one else’s assistant request action');

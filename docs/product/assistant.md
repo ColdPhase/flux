@@ -386,6 +386,25 @@ account, F-020).
 
 ## AST-3 — One assistant, one permission surface
 
+**Founder amendment, 2026-10-15 (#522).** The project Agents tab and any
+“Agents in this project” list show only the project's MCP-connected agents,
+with their owner, client, name and current state. Every current project member
+may see these connections; only the connection's owner manages it. A personal
+assistant is not a row in either project Agents list, including for its owner.
+Its owner reaches it and its project-access requests through **Settings → Your
+assistant**. Other members never see someone else's assistant in the Agents tab
+or project member lists. If a legacy assistant and an explicitly connected MCP
+client share an agent identity, the MCP connection remains visible as that public
+client; the private assistant connection and settings do not. This supersedes A1/#457's assistant row in those lists
+and the foreign-assistant picker/discovery behavior below (including AST-3.5):
+a hand-off may offer the signed-in person's own eligible assistant, never another
+person's. Existing owner-only assistant use, project grants, switches and explicit
+manager review of an owner's access request in Inbox remain unchanged. Shared
+conversation contributions retain their recorded author attribution; that does
+not make the assistant discoverable as a project member. Source: [founder issue
+and clarification](https://github.com/ColdPhase/flux/issues/522#issuecomment-6197494438).
+
+
 - **One assistant per person per workspace.** Its identity is the existing agent row
   chosen at enablement (`personal_run_agents`). Its MCP authority is one
   agent connection with `compute_source = 'owner_assistant'`, created when the
@@ -421,15 +440,16 @@ account, F-020).
 - **Other people's view** (founder answer D; UX review P1-5). Every assistant message
   header reads "Ada's assistant · Agent · for Ada · Claude" (the account's company), so
   colleagues see where their messages go (O-008 §6). The assistant's panel, as others
-  see it, says "Uses Claude through Ada's account. What it reads here goes to
-  Anthropic." The project Agents tab's policy row states the real rule: "Agents read
-  and propose; people accept. Assistants also edit for their owner, with Undo." Only
-  the owner decides what the assistant may do; there is no project-level switch.
-- **Someone else picks Ada's assistant in a hand-off** (UX review P2-10). Jonas's
-  hand-off picker shows "Ada's assistant · for Ada · asks Ada first". Choosing it
-  sends Ada one Needs-you item: "Jonas asks your assistant to do #10 · [ Allow ] [ Not
-  now ]". Allow is Ada's own action, which starts the run (F-019). Jonas's `@` list
-  never offers another person's assistant.
+  see it, is no longer offered to colleagues under the 2026-10-15 #522
+  amendment; shared contributions keep their recorded attribution. The project
+  Agents policy row still states the real rule: "Agents read and propose; people
+  accept. Assistants also edit for their owner, with Undo." Only the owner decides
+  what the assistant may do; there is no project-level switch.
+- **Own assistant in a hand-off** (amended by founder #522, 2026-10-15).
+  Only the owner may discover their eligible assistant in the hand-off picker.
+  Another person's assistant is not offered or discoverable there. This replaces
+  the earlier UX review P2-10 flow in which Jonas could pick Ada's assistant and
+  ask Ada to start it. Owner-triggered use still follows F-019.
 - **Hand-offs between the owner's agents.** The assistant may hand a task to one of
   the **owner's own** MCP agents with `flux_create_unit` (`cowork.unit.create`:
   execute, review or plan) under the Tasks switch. **Amended 2026-10-10 for #401 C4:**
@@ -492,8 +512,10 @@ account, F-020).
   `/projects/:projectId/agents` destination. Their identity is the immutable,
   server-derived request-time snapshot defined in A1 below, with destination and
   reason checked too; it never comes from parsing display text or private settings.
-- **AST-3.5** Jonas choosing "Ada's assistant" in a hand-off starts no run; it creates
-  one Needs-you item for Ada, and only Ada's Allow starts the run (app test).
+- **AST-3.5** Amended by founder #522, 2026-10-15: Jonas cannot discover Ada’s
+  assistant in the project roster, member list or hand-off picker. Ada retains her
+  own eligible assistant choice and owner-only Settings/project-access controls
+  (app and browser tests).
 - **AST-3.6** Assistant messages show the account's company in their header for every
   viewer, and the Agents tab's policy row reads the sentence above (Playwright).
 
@@ -1326,8 +1348,8 @@ on`."
 
 ### The assistant screen
 
-Settings → Agents and AI → *Ada's assistant ›* (the existing row), the panel's *Manage
-›*, opens one screen: a header and three parts, then Recent and More. The phone shows
+Settings → **Your assistant** opens one screen (project Agents lists do not
+include an assistant row; founder amendment #522, 2026-10-15): a header and three parts, then Recent and More. The phone shows
 the same screen as a full page with Back; sheets open with a grabber (half height,
 full when dragged). Kreska appears in its agent colour, which Settings → Agents and AI
 may use.

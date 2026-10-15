@@ -190,18 +190,23 @@ class ConnectAiJourney(unittest.TestCase):
         expect(rows.filter(has_text=CONNECTION)).to_have_count(1)
         expect(rows.filter(has_text=CONNECTION)).to_contain_text("for Ines Moreau")
 
-    def test_06_the_agents_view_shows_each_entrys_mode(self) -> None:
+    def test_06_the_project_lists_only_mcp_while_own_assistant_stays_in_settings(self) -> None:
         ines = self.page("ines")
         status = self.api(ines, "GET", "/api/v1/personal-assistant", status=200)
         self.assertEqual(status["state"], "not_enabled")
-        self.api(ines, "POST", "/api/v1/personal-assistant", {"consentVersion": CONSENT, "agentId": self.ids["agent"], "perRunCents": 6,
+        assistant = self.api(ines, "POST", f"/api/v1/workspaces/{self.ids['workspace']}/agents", {"name": "Ines personal assistant", "owner": "self"}, status=201)
+        type(self).ids["assistant_agent"] = assistant["id"]
+        self.api(ines, "POST", "/api/v1/personal-assistant", {"consentVersion": CONSENT, "agentId": assistant["id"], "perRunCents": 6,
                  "dailyCapCents": 100, "timeZone": "Europe/Warsaw"}, status=201)
         ines.goto(f"/projects/{self.ids['project']}/agents")
         rows = ines.get_by_role("list", name="Agents in this project").get_by_role("listitem")
-        # Both rows belong to Ines: her assistant (its own external-client entry) and her MCP connection.
+        # Project lists contain only MCP connections, even for the assistant owner (#522).
+        expect(rows).to_have_count(1)
+        expect(ines.get_by_text("Ines personal assistant", exact=False)).to_have_count(0)
+        expect(ines.get_by_role("region", name="Assistant join requests")).to_have_count(0)
         expect(rows.filter(has_text=CONNECTION)).to_have_count(1)
         expect(rows.filter(has_text=CONNECTION)).to_contain_text("for Ines")
-        # The settings page lists the same assistant with its AI connection, its payer and each use.
+        # Settings keeps the owner’s assistant, payer and permitted project access reachable.
         ines.goto("/settings/agents")
         flux = ines.get_by_role("region", name=MODE_A, exact=True)
         expect(flux).to_contain_text("Paid by")
@@ -243,6 +248,38 @@ class ConnectAiJourney(unittest.TestCase):
         live = [item for item in self.api(ines, "GET", "/api/v1/agent-connections", status=200) if item["id"] == self.ids["connection"]]
         self.assertEqual(len(live), 1)
         self.assertIsNone(live[0].get("revokedAt"))
+
+    def test_07b_owner_and_member_mcp_visibility_on_computer_and_phone(self) -> None:
+        for phone in (False, True):
+            for who in ("ines", "tom"):
+                with self.subTest(phone=phone, who=who):
+                    page = self.page(who, phone=phone)
+                    page.goto(f"/projects/{self.ids['project']}/agents")
+                    rows = page.get_by_role("list", name="Agents in this project").get_by_role("listitem")
+                    expect(rows).to_have_count(1)
+                    expect(rows).to_contain_text(CONNECTION)
+                    expect(rows).to_contain_text("for Ines Moreau")
+                    expect(rows).to_contain_text("Codex")
+                    expect(page.get_by_text("Ines personal assistant", exact=False)).to_have_count(0)
+                    rows.get_by_role("button").first.click()
+                    panel = page.locator(".agents-detail")
+                    if who == "ines":
+                        expect(panel.get_by_role("button", name=re.compile("^Hand off to "))).to_have_count(1)
+                    else:
+                        expect(panel.get_by_role("button", name=re.compile("Stop|Take back|Revoke|Remove|Hand off|^Ask ", re.I))).to_have_count(0)
+                        view = self.api(page, "GET", f"/api/v1/projects/{self.ids['project']}/agents", status=200)
+                        self.assertEqual(len(view["connections"]), 1)
+                        self.assertFalse(any(connection.get("assistant") for connection in view["connections"]))
+                        people = self.api(page, "GET", f"/api/v1/projects/{self.ids['project']}/people", status=200)
+                        self.assertNotIn(self.ids["assistant_agent"], [person["id"] for person in people])
+                        self.assertIn(self.ids["agent"], [person["id"] for person in people])
+                    self.no_horizontal_scroll(page)
+                    shot(page, f"agent-visibility-{who}-{'phone-390' if phone else 'desktop-1440'}-{UI_BROWSER}")
+                    if who == "ines":
+                        page.goto("/settings/assistant")
+                        expect(page.get_by_role("heading", name="Your assistant", exact=True)).to_be_visible()
+                        expect(page.get_by_role("region", name="Your assistant’s project access")).to_contain_text("Your assistant has access to this project.")
+                        shot(page, f"assistant-own-settings-{'phone-390' if phone else 'desktop-1440'}-{UI_BROWSER}")
 
     def stub_runtime_on(self, page: Page) -> None:
         """A stubbed status with the runtime on (the check suite runs with it off); the sign-in pages are not read here."""

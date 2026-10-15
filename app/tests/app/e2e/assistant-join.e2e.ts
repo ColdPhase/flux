@@ -70,7 +70,7 @@ for (const [engine, mobile] of [['chromium', false], ['webkit', true]] as const)
       const managerContext = await browser.newContext(options); contexts.push(managerContext);
       const viewerContext = await browser.newContext(options); contexts.push(viewerContext);
       const path = `/projects/${place.id}/agents`;
-      const ownerPage = await signedIn(ownerContext, owner, path);
+      const ownerPage = await signedIn(ownerContext, owner, '/settings/assistant');
       const ownRequests = ownerPage.getByRole('region', { name: 'Assistant join requests' });
       const ask = ownRequests.getByRole('button', { name: 'Ask a manager to add my assistant', exact: true });
       await expect(ask).toBeVisible(); await theme(ownerPage, 'light'); await capture(ownerPage, `join-${engine}-owner-request-light`);
@@ -126,8 +126,14 @@ for (const [engine, mobile] of [['chromium', false], ['webkit', true]] as const)
       assert.equal((await pool.query('SELECT role FROM project_grants WHERE project_id=$1 AND agent_id=$2', [place.id,agent.id])).rows[0].role, 'contributor');
       assert.equal((await pool.query('SELECT state FROM assistant_join_requests WHERE id=$1', [pending[0]!.id])).rows[0].state, 'accepted');
       await ownerPage.reload(); await expect(ownerPage.getByRole('button', { name: 'Ask a manager to add my assistant', exact: true })).toHaveCount(0);
-      await expect(ownerPage.locator('.agents-list')).toContainText('Ada’s assistant');
-      assert.ok(await ownerPage.locator('.agents-list .agent-tag').count(), 'the joined assistant stays visibly an Agent');
+      await expect(ownerPage.getByRole('region', { name: 'Your assistant’s project access' })).toContainText('Your assistant has access to this project.');
+      await ownerPage.goto(`${origin}${path}`);
+      await expect(ownerPage.locator('.agents-list')).toHaveCount(0);
+      await expect(ownerPage.getByRole('region', { name: 'Assistant join requests' })).toHaveCount(0);
+      await outsiderPage.reload();
+      await expect(outsiderPage.locator('.agents-list')).toHaveCount(0);
+      const memberPeople = await viewerContext.request.get(`${origin}/api/v1/projects/${place.id}/people`);
+      assert.equal((await memberPeople.json() as { id: string }[]).some((person) => person.id === agent.id), false, 'another member never discovers the assistant as a project member (#522)');
       if (evidence) writeFileSync(join(evidence, `join-${engine}-manifest.json`), JSON.stringify({ sourceSha: process.env.FLUX_E2E_SOURCE_SHA,
         engine, viewport: options.viewport, cssZoom: 1, themes: ['light','dark'], compute: 'fake metadata only; zero model calls',
         observed: ['Request→Needs You question with immutable assistant/owner identity→manager Review/Allow', 'no grant before Allow', 'ordinary reader sees no request and API Allow403', 'contributor grant persisted after Allow', 'failed Allow keeps pending request', 'keyboard Enter', ...(mobile ? ['44px targets'] : [])] }, null, 2));
