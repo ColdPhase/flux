@@ -176,7 +176,7 @@ class SmallMomentsJourney(unittest.TestCase):
     def test_07_pull_to_refresh_peeks_over_the_edge_and_releases_to_read_again(self) -> None:
         self.ensure_account()
         page = self.page(phone=True)
-        page.goto("/")
+        page.goto("/tasks")
         expect(page.get_by_role("heading", name=re.compile("Your tasks|Nothing is waiting for you"))).to_be_visible()
         reads = []
         page.on("request", lambda request: reads.append(request.url) if "/work" in request.url else None)
@@ -249,7 +249,7 @@ class SmallMomentsJourney(unittest.TestCase):
         """The browser cancelling a touch is not a release: only touchend refreshes."""
         self.ensure_account()
         page = self.page(phone=True)
-        page.goto("/")
+        page.goto("/tasks")
         expect(page.get_by_role("heading", name=re.compile("Your tasks|Nothing is waiting for you"))).to_be_visible()
         page.wait_for_load_state("networkidle")
         reads: list[str] = []
