@@ -84,9 +84,9 @@ const NOTICES: Record<string, string> = {
 /** The operator's single sign-on, when configured (#113). Hidden while unknown or unavailable. */
 const SSO_RECHECK_MS = 5000;
 
-function useSso() {
-  const [sso, setSso] = useState<IdentityCapabilities['sso']>(null);
-  const unreachable = sso !== null && !sso.reachable;
+function useCapabilities() {
+  const [capabilities, setCapabilities] = useState<IdentityCapabilities | null>(null);
+  const unreachable = capabilities?.sso !== null && capabilities?.sso?.reachable === false;
   useEffect(() => {
     const controller = new AbortController();
     let waiting: () => void = () => undefined;
@@ -94,11 +94,10 @@ function useSso() {
       // A page being left starts no read (#471); one whose navigation was cancelled reads once it is live.
       waiting();
       waiting = whenPageLive(() => {
-        getCapabilities(controller.signal).then((capabilities) => setSso(capabilities.sso ?? null)).catch(() => undefined);
+        getCapabilities(controller.signal).then(setCapabilities).catch(() => undefined);
       });
     };
     load();
-    // While the provider is unreachable the page asks again, so its button comes back without a reload (#310 AC-4).
     const timer = unreachable ? window.setInterval(load, SSO_RECHECK_MS) : undefined;
     return () => {
       waiting();
@@ -106,8 +105,10 @@ function useSso() {
       if (timer !== undefined) window.clearInterval(timer);
     };
   }, [unreachable]);
-  return sso;
+  return capabilities;
 }
+
+
 
 function SsoSignIn({ sso, next, oauthQuery }: { sso: NonNullable<IdentityCapabilities['sso']>; next: string | null; oauthQuery?: string }) {
   const [busy, setBusy] = useState(false);
@@ -142,14 +143,18 @@ export function SignInPage() {
   const location = useLocation();
   const next = location.pathname === '/login' ? `${location.pathname}${location.search}` : params.get('next');
   const shownRef = useRef<string | null>(null);
-  const sso = useSso();
+  const capabilities = useCapabilities();
+  const sso = capabilities?.sso ?? null;
+  const ssoOnly = capabilities?.ssoOnly ?? false;
   const ssoFailed = params.get('sso') === 'failed';
   const reason = params.get('sso_reason');
   const ssoMessage = reason === 'no_refresh_token'
     ? 'Your identity provider didn’t let Flux keep checking your account, so you aren’t signed in. Ask your administrator to allow offline access for Flux.'
     : reason === 'email_held'
       ? 'Single sign-on didn’t complete: your email address already belongs to another Flux account. Nothing was linked and nothing was changed. Ask your administrator to check that account.'
-      : 'Single sign-on didn’t complete, so you aren’t signed in. Try again.';
+      : reason === 'sign_in_closed'
+        ? 'Single sign-on isn’t open for ordinary sign-in yet. Sign in with your password, then link single sign-on in Settings.'
+        : 'Single sign-on didn’t complete, so you aren’t signed in. Try again.';
   // On the MCP authorization step the page is `/login?<signed request>` (#310): the provider button carries it.
   const oauthQuery = location.pathname === '/login' ? signedOauthQuery(location.search) ?? undefined : undefined;
 
@@ -164,8 +169,8 @@ export function SignInPage() {
   }, [notice, params, navigate, toast]);
 
   const suffix = next ? `?next=${encodeURIComponent(next)}` : '';
-  // With an active sole provider, single sign-on is the only ordinary way in: no password form (F-024 S5a, #313).
-  if (sso) {
+  // With the sole provider in SSO-only mode, single sign-on is the only way in: no password form (F-024 S5a/S5b).
+  if (sso && ssoOnly) {
     return (
       <>
         <Heading title="Sign in">A shared workspace for people and their agents.</Heading>
@@ -180,14 +185,14 @@ export function SignInPage() {
     <>
       <Heading title="Sign in">A shared workspace for people and their agents.</Heading>
       <div className="auth__card">
-      <Form method="post" className="auth__form" noValidate ref={formRef} aria-label="Sign in">
-        <FormError message={result?.formError} />
-        <Input label="Email" name="email" type="email" autoComplete="email" inputMode="email" autoCapitalize="none" spellCheck={false}
-          defaultValue={result?.values?.email} error={result?.fieldErrors?.email} autoFocus />
-        <Input label="Password" name="password" type="password" autoComplete="current-password" error={result?.fieldErrors?.password}
-          labelAside={<Link className="ui-link" to="/forgot-password">Forgot password?</Link>} />
-        <Button type="submit" variant="primary" size="lg" block busy={submitting}>{submitting ? 'Signing in…' : 'Sign in'}</Button>
-      </Form>
+        <Form method="post" className="auth__form" noValidate ref={formRef} aria-label="Sign in">
+          <FormError message={result?.formError ?? (ssoFailed ? ssoMessage : undefined)} />
+          <Input label="Email" name="email" type="email" autoComplete="email" inputMode="email" autoCapitalize="none" spellCheck={false}
+            defaultValue={result?.values?.email} error={result?.fieldErrors?.email} autoFocus />
+          <Input label="Password" name="password" type="password" autoComplete="current-password" error={result?.fieldErrors?.password}
+            labelAside={<Link className="ui-link" to="/forgot-password">Forgot password?</Link>} />
+          <Button type="submit" variant="primary" size="lg" block busy={submitting}>{submitting ? 'Signing in…' : 'Sign in'}</Button>
+        </Form>
       </div>
       <p className="auth__alt">New to Flux? <Link className="ui-link" to={`/sign-up${suffix}`}>Create an account</Link></p>
     </>
@@ -271,7 +276,9 @@ export function ClaimPage() {
     getPendingClaim(controller.signal).then(setClaim).catch(() => setClaim(null));
     return () => controller.abort();
   }, []);
-  const sso = useSso();
+  const capabilities = useCapabilities();
+  const sso = capabilities?.sso;
+  const linkable = capabilities?.linkable === true;
   const confirm = async () => {
     if (!sso) return;
     setBusy(true); setFailed('');
@@ -302,12 +309,14 @@ export function ClaimPage() {
       <div className="auth__notice" role="status">
         <Icon name="alert" />
         <div>
-          <p><strong>Keep your existing account.</strong> If it is yours, ask the person who runs Flux to link it to your single sign-on identity. It keeps everything it has.</p>
+          {linkable ? <p><strong>Link first.</strong> If that account is yours, sign in to it and link single sign-on in Settings; it keeps everything it has.</p>
+            : <p><strong>Keep your existing account.</strong> If it is yours, ask the person who runs Flux to link it to your single sign-on identity. It keeps everything it has.</p>}
           <p><strong>Or claim the address.</strong> Flux then gives it up: the old account is signed out everywhere and its agent connections stop, but its data stays with it and does not move to your new account.</p>
         </div>
       </div>
       {failed ? <FormError message={failed} /> : null}
       <div className="auth__form">
+        {linkable ? <Link className="ui-btn ui-btn--primary ui-btn--lg ui-btn--block" to="/sign-in">Sign in to that account</Link> : null}
         <Button variant="secondary" size="lg" block busy={busy} disabled={!sso} onClick={() => void confirm()}>Claim this address</Button>
       </div>
       <p className="auth__alt"><Link className="ui-link" to={back}>Cancel</Link></p>

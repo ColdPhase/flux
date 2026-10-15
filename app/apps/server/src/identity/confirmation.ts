@@ -5,9 +5,9 @@ import type { OidcConfig } from './config.js';
 
 export interface Confirmation {
   /**
-   * True when the person is managed by the configured provider and its last confirmation is older than
-   * FLUX_OIDC_CONFIRMATION_MAX_AGE (F-024 S2, #312), or has no link to the sole provider under SSO-only
-   * (F-024 S5a, #313). Without a provider, ordinary password lifetimes remain in force.
+   * Under SSO-only mode only: true when the person is managed by the configured provider and its last confirmation is
+   * older than FLUX_OIDC_CONFIRMATION_MAX_AGE (F-024 S2, #312), or has no link to the sole provider (F-024 S5a, #313).
+   * Outside SSO-only mode (no provider, or `prepare`) nothing lapses here: a prepared link is not managed (S5b).
    */
   lapsed(userId: string): Promise<boolean>;
   /** A provider sign-in just vouched for the person. */
@@ -19,7 +19,7 @@ export interface Confirmation {
   endIfLapsed(sessionId: string): Promise<boolean>;
 }
 
-export function createConfirmation(db: Database, oidc: OidcConfig | null, now: () => Date = () => new Date()): Confirmation {
+export function createConfirmation(db: Database, oidc: OidcConfig | null, now: () => Date = () => new Date(), requireProviderLink = oidc !== null): Confirmation {
   const cutoff = () => new Date(now().getTime() - oidc!.confirmationMaxAgeMs).toISOString();
   // The newest of the provider sign-in (auth_accounts.confirmed_at, kept even with the standing check off) and the
   // standing check's last success (auth_idp_standing.confirmed_at, S4). A managed account with neither is lapsed.
@@ -31,7 +31,8 @@ export function createConfirmation(db: Database, oidc: OidcConfig | null, now: (
     LIMIT 1`;
   return {
     async lapsed(userId) {
-      if (!oidc) return false;
+      // Prepare mode (F-024 S5b): links are prepared, not managed, so no confirmation age applies until the cutover.
+      if (!oidc || !requireProviderLink) return false;
       // An unlinked password account must not retain bearer/refresh authority after SSO cutover.
       // Both token minting and MCP requests read this gate; absence of an IdP row is a refusal.
       const [link] = await db.select({ id: schema.authAccounts.id }).from(schema.authAccounts)

@@ -188,10 +188,10 @@ class DocReferenceJourney(unittest.TestCase):
 
     def assert_account(self, page, name, phone):
         if phone:
-            # On the phone the avatar leads to Settings (#266 PF-5, #341).
-            # The editor's header leads back; the account is read where the avatar leads, in Settings.
+            # On the phone the avatar leads to Settings (#266 PF-5, #341), whose root lists sections; the
+            # signed-in account is the "Account" page under it.
             settings = page.context.new_page()
-            settings.goto("/settings")
+            settings.goto("/settings/account")
             expect(settings.get_by_text(re.compile(f"{name}"))).not_to_have_count(0)
             settings.close()
             return

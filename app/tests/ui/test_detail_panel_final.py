@@ -239,16 +239,19 @@ class DetailPanelFinal(unittest.TestCase):
         task = self.new_task("Choose the mast")
         page = self.page()
         panel = self.open_task(page, task)
-        # Someone else changes the task after the panel loaded.
-        api(self.ctx, "PATCH", f"/api/v1/work/{task['id']}", {"outcome": "Changed elsewhere", "expectedVersion": task["version"]})
         panel.locator(".wd-title__text").click()
         field = panel.get_by_role("textbox", name="Task title")
         field.fill("Choose the mast and the mount")
+        # Someone else renames the task while this title is being edited, and the live update reaches the open panel.
+        # The field still shows this person's draft, so saving it must not silently replace a title they never saw.
+        api(self.ctx, "PATCH", f"/api/v1/work/{task['id']}", {"title": "Choose the mast height", "expectedVersion": task["version"]})
+        expect(panel.locator(".wd-ids")).to_contain_text("version 2")
+        expect(field).to_have_value("Choose the mast and the mount")
         page.keyboard.press("Enter")
         expect(panel.get_by_role("alert")).to_contain_text("Someone changed this")
         expect(field).to_have_value("Choose the mast and the mount")
-        self.assertEqual(self.stored(task)["title"], "Choose the mast")
-        page.wait_for_timeout(1500)  # the latest version has loaded
+        self.assertEqual(self.stored(task)["title"], "Choose the mast height")
+        # Told about the change, the person tries again: the draft is saved over the latest version.
         page.keyboard.press("Enter")
         expect(panel.locator(".details__title")).to_have_text("Choose the mast and the mount")
         self.assertEqual(self.stored(task)["title"], "Choose the mast and the mount")

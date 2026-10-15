@@ -20,7 +20,7 @@ from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_play
 
 from create_window import dialog, open_from_tasks, submit_button, title_field
 from message_gestures import open_message_menu
-from test_app_shell import DESKTOP, ORIGIN, PHONE, UI_BROWSER, UPSTREAM, open_details, shot, start_forwarder, view_tab
+from test_app_shell import DESKTOP, ORIGIN, PHONE, UI_BROWSER, UPSTREAM, open_details, phone_menu, shot, start_forwarder, view_tab
 
 PASSWORD = "a lamp that reads the room"
 STAMP = int(time.time() * 1000)
@@ -517,10 +517,16 @@ class ProjectSurfaceJourney(unittest.TestCase):
     # ---------------------------------------------------------------- private native work drafts (#155), in the Create window (#345)
 
     def tasks(self, page: Page, project: str | None = None) -> None:
-        link = page.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile("^Tasks"))
+        # On the phone the views are the title menu (#341); its Tasks row is a link like the desktop tab.
+        phone = page.viewport_size["width"] <= 640
+        views = phone_menu(page) if phone else page.get_by_role("navigation", name="Project views")
+        link = views.get_by_role("link", name=re.compile("^Tasks"))
         if project:
             expect(link).to_have_attribute("href", re.compile(rf"^/projects/{project}/tasks"))
-        view_tab(page, "Tasks")
+        if page.viewport_size["width"] <= 640:
+            link.click()
+        else:
+            view_tab(page, "Tasks")
         # The List is the computer's view of the same work (#136); the phone has only its drawn list.
         if page.viewport_size["width"] > 640:
             page.get_by_role("radio", name="List", exact=True).click()

@@ -324,6 +324,8 @@ class WorkDecisionsJourney(unittest.TestCase):
             expected.add(("work",item["id"]))
         self.assertEqual(self.api(page, "GET", f"{base}/work?limit=1", status=200)["total"], 101)
         page.goto(f"/projects/{project['id']}/tasks")
+        # The Inbox pointer belongs to the board; the List omits it (#346).
+        expect(page.get_by_role("link",name=re.compile("101 decisions need you in the Inbox"))).to_be_visible()
         page.get_by_role("radio", name="List", exact=True).click()
         # The project's state is in Details (#340): the rule in force, found among 101 tasks.
         open_details(page)
@@ -333,7 +335,6 @@ class WorkDecisionsJourney(unittest.TestCase):
         expect(views.get_by_role("button",name=re.compile("^Open"))).to_contain_text("101")
         # Decisions are not a view of the Tasks tab any more; they wait in the Inbox.
         expect(views.get_by_role("button",name=re.compile("^(Needs you|Decisions|Results)"))).to_have_count(0)
-        expect(page.get_by_role("link",name=re.compile("101 decisions need you in the Inbox"))).to_be_visible()
         pager=page.get_by_role("navigation",name="Work pages");seen=set();sizes=[]
         for index in range(3):
             before=index*50
@@ -391,12 +392,12 @@ class WorkDecisionsJourney(unittest.TestCase):
         expect(sheet.get_by_role("heading", name=mine)).to_be_visible()
         sheet.get_by_role("button", name="Close details").tap()
         expect(filters.get_by_role("button", name="Mine", exact=True)).to_have_attribute("aria-pressed", "true")
-        page.get_by_role("navigation", name="Project views").get_by_role("link", name="Conversation").tap()
+        view_tab(page, "Conversation", tap=True)
         expect(page.locator(".project-convo__message-list")).to_be_visible()
         page.go_back()
         expect(page.get_by_role("group", name="Whose tasks").get_by_role("button", name="Mine", exact=True)).to_have_attribute("aria-pressed", "true")
-        page.get_by_role("navigation", name="Project views").get_by_role("link", name="Conversation").tap()
-        page.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile("^Tasks")).tap()
+        view_tab(page, "Conversation", tap=True)
+        view_tab(page, "Tasks", tap=True)
         expect(page).to_have_url(re.compile(r"/tasks\?(?=[^#]*show=mine)"))
         expect(page.get_by_role("group", name="Whose tasks").get_by_role("button", name="Mine", exact=True)).to_have_attribute("aria-pressed", "true")
 
@@ -522,7 +523,7 @@ class WorkDecisionsJourney(unittest.TestCase):
         # Through the Conversation tab and back through the Tasks tab.
         view_tab(page, "Conversation", tap=True)
         expect(page.locator(".project-convo__message-list")).to_be_visible()
-        page.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile("^Tasks")).tap()
+        view_tab(page, "Tasks", tap=True)
         expect(page.locator(".ws-task").first).to_be_visible()
         page.wait_for_timeout(300)
         self.assertLess(abs(page.locator(".pane-scroll").first.evaluate("(el) => el.scrollTop") - saved), 8, "the Tasks tab returns to the same reading position")
