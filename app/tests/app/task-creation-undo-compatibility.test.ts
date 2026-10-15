@@ -7,6 +7,13 @@ import { assertExactMigrationLedger, assertKnownMigrationVersions, assertTaskCre
 import { fixtureDatabase, legacyDirectory, legacySql, migrationCli, originalUndoFiles, refusedUnchanged, retainedHistory, retainedUndoHistory } from './support/undo-legacy-database.js';
 import { restoredConstraintShape } from './support/restored-catalog-shape.js';
 
+// Migration files below a version: the sign-in and runtime-auth fixtures start from this exact prefix.
+async function manifestBefore(version: number) {
+  const manifest = await readMigrationManifest('packages/db/migrations', FLUX_SCHEMA_VERSION);
+  return Promise.all(manifest.filter((file) => file.version < version)
+    .map(async (file) => ({ ...file, sql: await readFile(`packages/db/migrations/${file.name}`, 'utf8') })));
+}
+
 async function retainedUndoSnapshot(db: Awaited<ReturnType<typeof fixtureDatabase>>['db']) {
   const work = await db.query("SELECT to_jsonb(t)::text AS row FROM project_work_items t WHERE creation_reverted_at IS NOT NULL OR first_persisted_use_at IS NOT NULL ORDER BY id");
   const notices = await db.query("SELECT to_jsonb(t)::text AS row FROM project_task_notices t WHERE kind IN ('task.created','task.creation_reverted') ORDER BY id");
@@ -44,7 +51,7 @@ test('actual original 45c Undo48/57 database refuses before any writes on migrat
 test('actual canonical sign-in and runtime-auth SQL refuse individually and mixed at this namespace', { timeout: 120_000 }, async () => {
   const files = ['0057_agent_runtime_sign_in.sql', '0058_agent_runtime_auth_operations.sql'];
   for (const selected of files.map((file) => [file]).concat([files])) {
-    const fixture = await fixtureDatabase();
+    const fixture = await fixtureDatabase(await manifestBefore(96));
     try {
       await retainedHistory(fixture.db);
       for (const file of selected) {
@@ -61,6 +68,31 @@ test('actual canonical sign-in and runtime-auth SQL refuse individually and mixe
       await assert.rejects(assertTaskCreationUndoMigrationCompatibility(fixture.db, ledger), /unsupported legacy/);
     } finally { await fixture.close(); }
   }
+});
+
+test('a ledger 94/95 database with runtime binding and connection rows upgrades through sign-in 0096 and runtime-auth 0097', { timeout: 120_000 }, async () => {
+  const fixture = await fixtureDatabase(await manifestBefore(96));
+  const signInColumns = ['account_fingerprint', 'previous_account_label', 'account_changed_at', 'signed_out_at', 'sign_out_failed'];
+  // Rows as the pre-0096 schema wrote them: the new sign-in columns are left out of the comparison.
+  const connectionRows = async () => (await fixture.db.query('SELECT to_jsonb(t)::text AS row FROM agent_runtime_connections t ORDER BY id'))
+    .rows.map(({ row }: { row: string }) => { const value = JSON.parse(row) as Record<string, unknown>; for (const name of signInColumns) delete value[name]; return value; });
+  try {
+    const { user } = await retainedHistory(fixture.db);
+    const binding = randomUUID();
+    await fixture.db.query("INSERT INTO agent_runtime_slots(slot, state) VALUES ('runtime-790', 'ready')");
+    await fixture.db.query("INSERT INTO agent_runtime_bindings(id, owner_user_id, slot, state) VALUES ($1, $2, 'runtime-790', 'active')", [binding, user]);
+    await fixture.db.query(`INSERT INTO agent_runtime_connections(id, owner_user_id, binding_id, client, state, account_label)
+      VALUES ($1, $2, $3, 'claude_code', 'signed_out', 'a***@example.org')`, [randomUUID(), user, binding]);
+    const before = await connectionRows();
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const result = await migrationCli(fixture.name);
+      assert.equal(result.code, 0, result.output);
+      assertExactMigrationLedger(await readMigrationManifest('packages/db/migrations', FLUX_SCHEMA_VERSION), await readAppliedMigrationVersions(fixture.db));
+    }
+    assert.ok((await readAppliedMigrationVersions(fixture.db)).includes(97));
+    assert.deepEqual(await connectionRows(), before, 'runtime connection rows keep every pre-0096 value');
+    assert.equal((await fixture.db.query('SELECT count(*)::int AS count FROM agent_runtime_bindings')).rows[0].count, 1);
+  } finally { await fixture.close(); }
 });
 
 test('Focus 0059 is admitted only with its exact recorded nullable timestamptz catalog shape', { timeout: 120_000 }, async () => {
@@ -98,9 +130,10 @@ test('current main Focus 0059 plus Undo history permits migration startup and re
 
 test('unversioned and partial canonical/focus/Undo footprints refuse despite a numerically known ledger', { timeout: 120_000 }, async () => {
   const changes = [
-    "ALTER TABLE agent_runtime_connections ADD COLUMN account_changed_at text",
+    'ALTER TABLE agent_runtime_connections ALTER COLUMN account_changed_at TYPE text',
     'ALTER TABLE notification_preferences DROP COLUMN paused_until; DELETE FROM flux_schema_version WHERE version=59; ALTER TABLE notification_preferences ADD COLUMN paused_until integer',
-    'CREATE TABLE agent_runtime_console_nonces(retained text)',
+    'DELETE FROM flux_schema_version WHERE version=97',
+    'DELETE FROM flux_schema_version WHERE version=96',
     'DELETE FROM flux_schema_version WHERE version=48',
     'DELETE FROM flux_schema_version WHERE version=60',
     'ALTER TABLE project_work_items DROP COLUMN creation_proposal_id CASCADE',
