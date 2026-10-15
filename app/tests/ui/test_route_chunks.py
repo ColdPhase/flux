@@ -16,7 +16,7 @@ import uuid
 
 from playwright.sync_api import Browser, BrowserContext, Page, Route, expect, sync_playwright
 
-from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
+from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, open_details, shot, start_forwarder
 
 # Exhaust real browser storage; a subsequent larger write must be refused by its own quota.
 # No storage API, React state or success response is replaced.
@@ -130,22 +130,23 @@ class RouteChunksJourney(unittest.TestCase):
     def notes(self, page: Page):
         """The private note composer and its device draft live in the Sketchbook's "Your notes" since #342."""
         page.goto("/map")
-        expect(page.get_by_role("heading", name="Sketchbook", exact=True)).to_be_visible()
+        expect(page.get_by_role("heading", name="Your notes", exact=True)).to_be_visible()
         expect(page.get_by_placeholder("Write a note…")).to_be_visible()
 
     def back_to_notes(self, page: Page, *, phone=False):
         """Returns to "Your notes" through the router, in the same document (no reload)."""
         if phone:
-            page.get_by_role("button", name="Open navigation").click()
-            page.get_by_role("dialog", name="Flux").get_by_role("link", name="Sketchbook").click()
+            # The phone has no drawer (#341): Home's quiet "Sketchbook" link opens it.
+            page.get_by_role("navigation", name="Main places").get_by_role("link", name="Home", exact=True).click()
+            page.get_by_role("link", name="Sketchbook", exact=True).click()
         else:
             page.locator(".app__side").get_by_role("link", name="Sketchbook").first.click()
-        expect(page.get_by_role("heading", name="Sketchbook", exact=True)).to_be_visible()
+        expect(page.get_by_role("heading", name="Your notes", exact=True)).to_be_visible()
 
     def settings(self, page: Page, *, phone=False):
         if phone:
-            page.get_by_role("button", name="Open navigation").click()
-            page.get_by_role("link", name=re.compile(self.name)).click()
+            # The phone reaches Settings through the account avatar in the header (#341).
+            page.get_by_role("link", name="Settings and account", exact=True).click()
         else:
             page.get_by_role("button", name=re.compile(self.name)).click()
             page.get_by_role("link", name="All settings", exact=True).click()
@@ -422,7 +423,9 @@ class RouteChunksJourney(unittest.TestCase):
                     self.assertFalse(any(re.search(rf"/assets/{module}-[^/]+\.js", url) for url in requested), f"Cold Home never imports {module}")
 
     def test_02_held_route_keeps_shell_editable_draft_and_cancellation(self):
-        for engine, phone in (("chromium", False), ("webkit", True)):
+        # The phone's Sketchbook has no route to Settings (its account avatar is on Home, #341), so this journey starts
+        # from the desktop Sketchbook on both engines.
+        for engine, phone in (("chromium", False), ("webkit", False)):
             with self.subTest(engine=engine, phone=phone):
                 page = self.page(engine, phone=phone)
                 held = self.hold(page, "SettingsHome")
@@ -434,7 +437,7 @@ class RouteChunksJourney(unittest.TestCase):
                 expect(page.locator('[data-route-pending="/settings"]')).to_be_visible()
                 expect(page.locator('[data-route-pending="/settings"] [role="status"]')).to_have_text("Opening settings…")
                 self.request_is_held(page, held)
-                expect(page.get_by_role("heading", name="Sketchbook", exact=True)).to_be_visible()
+                expect(page.get_by_role("heading", name="Your notes", exact=True)).to_be_visible()
                 expect(field).to_have_value("Private work while the destination downloads")
                 field.fill("Private work remains editable")
                 self.assertTrue(page.evaluate("window.__routeDraftElement === document.querySelector('#composer')"))
@@ -596,7 +599,7 @@ class RouteChunksJourney(unittest.TestCase):
                 page.on("request", lambda request: requested.append(request.url))
                 page.goto(f"/projects/{self.project_id}")
                 expect(page.get_by_role("heading", name="Chunk boundaries", exact=True)).to_be_visible()
-                page.get_by_role("button", name="Details", exact=True).click()
+                open_details(page)
                 row = page.locator("#details .ov-row", has_text=title)
                 expect(row).to_be_visible()
                 # A first-open native row must keep its icon, readable text and action in separate
