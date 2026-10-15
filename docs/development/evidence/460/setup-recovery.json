@@ -1,0 +1,39 @@
+{
+  "date": "2026-10-10",
+  "testedProductionSourceHead": "365cd0f208a13bd96f5aa733325b81f9352417af",
+  "log": "/tmp/flux-467-connect-setup-check.log",
+  "logSha256": "d79c696bb697c0be6dad03eb3b44a41950912b2f076cb640a77aedbd1c03b38e",
+  "noVendorAccountCredentialsOrSpend": true,
+  "ownerAPIperEra": {
+    "passed": 15,
+    "failed": 0,
+    "modules": [
+      "mcp-policy-owner",
+      "mcp-setup-state",
+      "architecture"
+    ]
+  },
+  "browserControls": {
+    "passed": 6,
+    "failed": 0,
+    "engines": [
+      "Chromium",
+      "WebKit"
+    ],
+    "phoneWidths": [
+      320,
+      390
+    ],
+    "newSetupPhoneDesktop": [
+      390,
+      1440
+    ],
+    "enlargedText": "200% actual browser; required wrap fix retained"
+  },
+  "sourceScope": "production setup projections/renders; later only revoked-history44px target and capture framing change has focused1/1 actual-engine regression in final log",
+  "activationReadyClaim": false,
+  "PWAacceptance": false,
+  "serviceWorkers": "blocked in owner-control fixture",
+  "cleanedProject": "flux-connect-setup-1791665532-4020569",
+  "productionSourceEquivalentThroughResearchHead": "9aff85ac1743b83b4ebca8e4dc4a2ad0d319f223"
+}

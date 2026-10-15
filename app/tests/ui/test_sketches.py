@@ -680,7 +680,9 @@ class SketchJourney(unittest.TestCase):
         page.goto("/")
         home = page.get_by_role("heading", level=1, name="Home")
         expect(home).to_be_visible()
-        home.click()  # a real click gives the page the activation that lets a browser show the prompt
+        # A real click gives the page the activation that lets a browser show the prompt. Home's heading is
+        # visually hidden on the computer (#340), so the sidebar's Home link carries the click.
+        page.get_by_role("navigation", name="Places").get_by_role("link", name="Home", exact=True).click()
         page.evaluate(
             """() => {
                 window.__leave = { beforeunload: 0, pagehide: 0 };
