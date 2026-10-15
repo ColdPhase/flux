@@ -119,6 +119,7 @@ function StatusMenu({ status, disabled, onChoose }: { status: WorkStatus; disabl
 export function TitleField({ title, editable, onEdit, onSave }: { title: string; editable: boolean; onEdit?: () => void; onSave: (title: string) => Promise<boolean> }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(title);
+  const [original, setOriginal] = useState(title);
   const [saving, setSaving] = useState(false);
   const field = useRef<HTMLTextAreaElement>(null);
   const opener = useRef<HTMLButtonElement>(null);
@@ -171,9 +172,10 @@ export function TitleField({ title, editable, onEdit, onSave }: { title: string;
               if (event.key === 'Enter' && !event.nativeEvent.isComposing) { event.preventDefault(); void save(false); }
               else if (event.key === 'Escape' && !event.nativeEvent.isComposing) { event.preventDefault(); event.stopPropagation(); cancel(); }
             }} />
+          {title !== original ? <span className="wd-muted">Now: {title}</span> : null}
         </>
       ) : (
-        <button ref={opener} type="button" className="wd-title__text" title="Edit title" onClick={() => { setDraft(title); setEditing(true); onEdit?.(); }}>{title}</button>
+        <button ref={opener} type="button" className="wd-title__text" title="Edit title" onClick={() => { setDraft(title); setOriginal(title); setEditing(true); onEdit?.(); }}>{title}</button>
       )}
     </h3>
   );

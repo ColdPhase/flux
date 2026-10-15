@@ -255,6 +255,40 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
   // field is open (someone else's change, which the field hides) is a conflict the person is told about, never silently
   // written over. After that conflict the latest version is shown, and trying again saves over it.
   const titleBase = useRef<number | null>(null);
+  const blockerBase = useRef<number | null>(null);
+  const ownerBase = useRef<number | null>(null);
+  const [ownerDraft, setOwnerDraft] = useState<string | null>(null);
+  const rebase = useRef<{ title?: number; blocker?: number; owner?: number }>({});
+  useEffect(() => {
+    for (const field of ['title', 'blocker', 'owner'] as const) {
+      const version = rebase.current[field];
+      if (version !== undefined && item.version > version) {
+        (field === 'title' ? titleBase : field === 'blocker' ? blockerBase : ownerBase).current = item.version;
+        delete rebase.current[field];
+      }
+    }
+  }, [item.version]);
+  async function saveField(field: 'title' | 'blocker', value: string | null) {
+    const base = field === 'title' ? titleBase : blockerBase;
+    const version = base.current ?? item.version;
+    const ok = await change({ [field]: value }, { id: item.id, version }, () => {
+      // Rebase only to the snapshot visible when the conflict is reported. Later
+      // live changes must still conflict with an explicit retry.
+      base.current = latest.current.version;
+      if (latest.current.version <= version) rebase.current[field] = version;
+    });
+    if (ok) { base.current = null; delete rebase.current[field]; }
+    return ok;
+  }
+  async function saveOwner(value: string) {
+    const [kind, ...rest] = value.split(':');
+    const version = ownerBase.current ?? item.version;
+    const ok = await change({ owner: value ? { kind: kind as 'human' | 'agent', id: rest.join(':') } : null }, { id: item.id, version }, () => {
+      ownerBase.current = latest.current.version;
+      if (latest.current.version <= version) rebase.current.owner = version;
+    });
+    if (ok) { ownerBase.current = null; delete rebase.current.owner; setOwnerDraft(null); }
+  }
   // One tap or a key changes the state at once, and the toast takes it back (S9).
   async function setState(next: WorkStatus) {
     if (!writable || busy || next === item.status) return;
@@ -287,7 +321,7 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
       <PanelMeta>{taskNumber(item)}</PanelMeta>
       <p className="wd-where"><span className="ui-task-number">{taskNumber(item)}</span> · <span className="wd-project-name">{context.project.name}</span>{item.parked ? ' · parked, not done' : ''}</p>
       <TitleField title={item.title} editable={writable} onEdit={() => { titleBase.current = item.version; }}
-        onSave={(title) => change({ title }, { id: item.id, version: titleBase.current ?? item.version }, () => { titleBase.current = null; })} />
+        onSave={(title) => saveField('title', title)} />
       {item.outcome ? <p className="details__lead">{item.outcome}</p> : null}
 
       <dl className="wd-rows">
@@ -300,15 +334,17 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
           <dd>
             {item.owner ? (item.owner.kind === 'agent' ? <AgentIdentity name={item.owner.name} owner={owners.get(item.owner.id)} /> : <Avatar name={item.owner.name} size="sm" tone={item.owner.id === me.user.id ? 'me' : 'neutral'} />) : null}
             {writable ? (
-              <select id={ownerId} className="wd-owner" disabled={busy} value={ownerValue} onChange={(event) => {
-                const [kind, ...rest] = event.target.value.split(':');
-                void change({ owner: event.target.value ? { kind: kind as 'human' | 'agent', id: rest.join(':') } : null });
+              <select id={ownerId} className="wd-owner" disabled={busy} value={ownerDraft ?? ownerValue} onFocus={() => { ownerBase.current ??= item.version; }} onChange={(event) => {
+                ownerBase.current ??= item.version;
+                setOwnerDraft(event.target.value);
+                void saveOwner(event.target.value);
               }}>
                 <option value="">Nobody yet</option>
                 <optgroup label="People">{people.map((person) => <option key={person.value} value={person.value}>{person.label}</option>)}</optgroup>
                 {agents.length ? <optgroup label="Agents">{agents.map((agent) => <option key={agent.value} value={agent.value}>{agent.label}</option>)}</optgroup> : null}
               </select>
             ) : <span className="wd-value" id={ownerId}>{item.owner?.name ?? 'Nobody yet'}</span>}
+            {writable && ownerDraft !== null && !busy ? <><span className="wd-muted">Now: {item.owner?.name ?? 'Nobody yet'}</span><Button variant="quiet" onClick={() => void saveOwner(ownerDraft)}>Retry owner change</Button></> : null}
           </dd>
         </div>
         <div className="wd-row">
@@ -323,8 +359,9 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
           <div className="wd-blocker__head"><span className="ui-pill ui-pill--inv">Blocked</span>
             {writable ? <Button variant="quiet" className="wd-blocker__resolve" disabled={busy} onClick={() => void setState('in_progress')}>Resolve</Button> : null}</div>
           {writable ? (
-            <form className="wd-blocker-form" onSubmit={(event) => { event.preventDefault(); void change({ blocker: blocker.trim() || null }); }}>
-              <Input label="What is it waiting for?" value={blocker} onChange={(event) => setBlocker(event.target.value)} maxLength={2000} />
+            <form className="wd-blocker-form" onSubmit={(event) => { event.preventDefault(); void saveField('blocker', blocker.trim() || null); }}>
+              <Input label="What is it waiting for?" value={blocker} onFocus={() => { blockerBase.current ??= item.version; }} onChange={(event) => { blockerBase.current ??= item.version; setBlocker(event.target.value); }} maxLength={2000} />
+              {commands.state.blocker !== undefined && item.blocker !== blocker ? <p className="wd-muted">Now: {item.blocker || 'No blocker written.'}</p> : null}
               <Button type="submit" variant="secondary" busy={busy} disabled={blocker.trim() === (item.blocker ?? '')}>Save</Button>
             </form>
           ) : <p>{item.blocker || 'Waiting for something; no reason written.'}</p>}
@@ -718,6 +755,7 @@ function AttachResult({ view, context, contextStatus, reload, revision, isCurren
   const [evidence, setEvidence] = useState('');
   const [workId, setWorkId] = useState(view.workId ?? '');
   const [finishes, setFinishes] = useState(false);
+  const [finishVersion, setFinishVersion] = useState<number | null>(null);
   const [attempt, setAttempt] = useState(() => crypto.randomUUID());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -728,7 +766,7 @@ function AttachResult({ view, context, contextStatus, reload, revision, isCurren
   const selected = useNativeOwn(me.user.id, view.projectId, 'work', workId || undefined, !!context, revision);
   const chosen = selected.value?.object.kind === 'work' ? selected.value.object : null;
   const finishable = !!chosen && !chosen.parked && chosen.status !== 'not_pursued';
-  const canSubmit = !!context && context.project.access !== 'viewer' && !!candidates.page && (!workId || !!chosen) && (!finishes || finishable);
+  const canSubmit = !!context && context.project.access !== 'viewer' && !!candidates.page && (!workId || !!chosen) && (!finishes || finishVersion !== null);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -738,7 +776,7 @@ function AttachResult({ view, context, contextStatus, reload, revision, isCurren
       const result = await createResult(view.projectId, {
         title: title.trim(), finding, evidence,
         ...(view.source ? { sources: [{ type: 'message', id: view.source.messageId }] } : {}),
-        ...(workId ? { work: [workId], ...(finishes && chosen && finishable ? { finishes: { id: workId, expectedVersion: chosen.version } } : {}) } : {}),
+        ...(workId ? { work: [workId], ...(finishes && finishVersion !== null ? { finishes: { id: workId, expectedVersion: finishVersion } } : {}) } : {}),
       }, attempt);
       if (!isCurrent()) return;
       revalidator.revalidate();
@@ -747,7 +785,7 @@ function AttachResult({ view, context, contextStatus, reload, revision, isCurren
       if (!isCurrent()) return;
       setError(readable(cause));
       // The work changed meanwhile: show its current state so the author decides again.
-      if (cause instanceof ApiError && cause.status === 409) { setAttempt(crypto.randomUUID()); reload(); }
+      if (cause instanceof ApiError && cause.status === 409) { setFinishVersion(null); setAttempt(crypto.randomUUID()); reload(); }
     } finally { if (isCurrent()) setBusy(false); }
   }
 
@@ -769,14 +807,14 @@ function AttachResult({ view, context, contextStatus, reload, revision, isCurren
         <textarea id={evidenceId} value={evidence} onChange={(event) => edit(setEvidence)(event.target.value)} maxLength={20000} rows={3} placeholder="Numbers, observations or where to find them" />
         <>
           <label htmlFor={workSelectId}>For work</label>
-          <select id={workSelectId} value={workId} disabled={!candidates.page} onChange={(event) => { edit(setWorkId)(event.target.value); if (!event.target.value) setFinishes(false); }}>
+          <select id={workSelectId} value={workId} disabled={!candidates.page} onChange={(event) => { edit(setWorkId)(event.target.value); setFinishes(false); setFinishVersion(null); }}>
             <option value="">Not linked to work</option>
             {workId && !open.some((item) => item.id === workId) ? <option value={workId}>{chosen?.title ?? 'Selected work (not loaded)'}</option> : null}
             {open.map((item) => <option key={item.id} value={item.id}>{item.title}</option>)}
           </select>
           {chosen && !finishable && finishes ? <Button variant="quiet" onClick={() => edit(setFinishes)(false)}>Attach without finishing</Button> : null}
           {chosen && !finishable ? <p className="wd-muted">“{chosen.title}” cannot be finished by this result in its current state. Parked work must first return to the plan.</p> : null}
-          {chosen && finishable ? <label className="wd-check"><input type="checkbox" checked={finishes} onChange={(event) => edit(setFinishes)(event.target.checked)} />This finishes “{chosen.title}”</label> : null}
+          {chosen && finishable ? <label className="wd-check"><input type="checkbox" checked={finishes} onChange={(event) => { setFinishVersion(event.target.checked ? chosen.version : null); edit(setFinishes)(event.target.checked); }} />This finishes “{chosen.title}”</label> : null}
         </>
       </fieldset>
       <ChoicePages choices={candidates} label="Result work choices" />
