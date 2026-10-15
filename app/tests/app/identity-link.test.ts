@@ -147,7 +147,7 @@ describe('linking a password account to the provider before cutover', () => {
     assert.deepEqual(await linksOf(pat), ['sub-pat-five'], 'still one link');
   });
 
-  test('a link starts the provider confirmation age, so the new link is not lapsed for its MCP connections', async () => {
+  test('a link records its confirmation, so the linked account is not lapsed at the cutover right after linking', async () => {
     const pat = await account('pat-confirmed');
     const links = createLinkIntents(db);
     const token = await links.open(pat, 'session-pat-confirmed', providerId);

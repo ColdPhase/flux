@@ -34,8 +34,8 @@ export function createLinkIntents(db: Database, now: () => Date = () => new Date
       const [holder] = await tx.select({ id: schema.authAccounts.id, userId: schema.authAccounts.userId }).from(schema.authAccounts)
         .where(and(eq(schema.authAccounts.providerId, providerId), eq(schema.authAccounts.accountId, subject)));
       if (holder && holder.userId !== intent.userId) return 'identity_held' as const;
-      // The provider has just vouched for the person, so the link starts its confirmation age (F-024 S2, #312). Without it,
-      // the account's MCP connections would be refused right after linking.
+      // The provider has just vouched for the person. The confirmation is recorded now, so an account whose link is kept
+      // is not refused at the SSO-only cutover right after linking (F-024 S2, #312, S5b).
       if (!holder) {
         const [other] = await tx.select({ id: schema.authAccounts.id }).from(schema.authAccounts)
           .where(and(eq(schema.authAccounts.userId, intent.userId), eq(schema.authAccounts.providerId, providerId)));

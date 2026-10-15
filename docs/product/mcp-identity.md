@@ -1292,8 +1292,9 @@ S5a refusals apply, linking is closed, and the startup log counts password-only 
 audited operator re-key (`./flux identity link`, AC-2), the operator unlink with its last-identity guard
 (`./flux identity unlink`, `unlinkIdentity`), and the Entra and Google claim rules (`claim-profile.ts`, unit-tested
 against documented claim shapes; a verified Entra address needs `xms_edov`). Real Entra and Google tenants stay
-unverified. In `prepare`, a link is prepared, not managed: the password still signs in until the SSO-only cutover, and
-the link's confirmation starts at linking. Ordinary provider sign-in is closed in `prepare`: `/sign-in` and `/login`
+unverified. In `prepare`, a link is prepared, not managed: the password still signs in, and no confirmation age applies to the
+account until the SSO-only cutover. At cutover the age counts from the link's recorded confirmation, so an old link
+needs one provider sign-in before its MCP connections work again. Ordinary provider sign-in is closed in `prepare`: `/sign-in` and `/login`
 offer only the password, and a provider callback without a valid link intent signs nobody in and creates no account.
 The owner cannot detach the configured provider identity in any mode; the owner's removal is refused, and recovery is
 the audited operator command.

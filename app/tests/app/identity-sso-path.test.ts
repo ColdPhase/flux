@@ -131,6 +131,15 @@ describe('the confirmation age (F-024 S2, #312)', () => {
     assert.equal(await confirmation.lapsed(userId), false, 'a recent sign-in renews an old standing row');
   });
 
+  test('a prepared link is not managed: its old confirmation lapses it only under SSO-only mode', async () => {
+    const linked = await person(13);
+    assert.equal(await createConfirmation(db, oidc, () => at, false).lapsed(linked.userId), false,
+      'prepare mode: the link is prepared, so its old confirmation does not refuse MCP or refresh');
+    assert.equal(await createConfirmation(db, oidc, () => at, true).lapsed(linked.userId), true,
+      'SSO-only mode with the same data: the old confirmation refuses it');
+    assert.equal(await createConfirmation(db, oidc, () => at).lapsed(linked.userId), true, 'the default is SSO-only');
+  });
+
   test('SSO-only refuses an unlinked password account; password mode keeps its ordinary lifetimes', async () => {
     const { userId } = await register(uniqueEmail('confirmation-password'), password).then(async ({ browser }) =>
       ({ userId: ((await browser.request('GET', '/api/v1/me')).json as { user: { id: string } }).user.id }));
