@@ -18,7 +18,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <style>
     /* The splash: the logo and a thin progress line while the app starts (Kreska's small moments, F-026).
-       Booting (app/errors.tsx) shows the same markup, so nothing jumps when React takes over. */
+       It is hidden with Small moments off; app/errors.tsx Booting then shows its status line. */
     .boot { --boot-ink: #18181B; --boot-on: #FFFFFF; --boot-line: rgba(0, 0, 0, .1); position: fixed; inset: 0; display: grid; place-content: center; justify-items: start; gap: 14px; background: var(--bg, #F4F4F5); color: var(--boot-ink); }
     @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .boot { --boot-ink: #F0F0F0; --boot-on: #111111; --boot-line: rgba(255, 255, 255, .12); } }
     :root[data-theme="dark"] .boot { --boot-ink: #F0F0F0; --boot-on: #111111; --boot-line: rgba(255, 255, 255, .12); }

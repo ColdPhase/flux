@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Kreska, type KreskaExpression } from './Kreska';
-import { useSmallMoments } from '../app/smallMoments';
+import { useSmallMoments } from './smallMoments';
 import './moments.css';
 
 /** The mascot for a small moment, or nothing when Settings → Appearance turned the moments off. */

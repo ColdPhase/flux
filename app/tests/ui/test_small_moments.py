@@ -8,6 +8,7 @@ words; Settings → Appearance turns the face off and the words stay; reduced mo
 from __future__ import annotations
 
 import json
+import os
 import re
 import time
 import unittest
@@ -32,7 +33,7 @@ class SmallMomentsJourney(unittest.TestCase):
         if UPSTREAM:
             start_forwarder(ORIGIN, UPSTREAM)
         cls.pw = sync_playwright().start()
-        cls.browser = cls.pw.chromium.launch()
+        cls.browser = getattr(cls.pw, os.environ.get("FLUX_UI_BROWSER", "chromium")).launch()
         expect.set_options(timeout=8000)
 
     @classmethod
@@ -70,6 +71,15 @@ class SmallMomentsJourney(unittest.TestCase):
         task = self.api(page, "POST", f"/api/v1/projects/{project['id']}/work", {"title": "Order the enclosures", "owner": {"kind": "human", "id": self.me(page)}})
         type(self).ids = {"workspace": workspace["id"], "project": project["id"], "task": task["id"]}
         type(self).state = page.context.storage_state()
+
+    def task_status(self, page: Page, task_id: str) -> str:
+        return json.loads(page.request.get(f"{ORIGIN}/api/v1/work/{task_id}").text())["status"]
+
+    def set_task_status(self, page: Page, task_id: str, status: str) -> None:
+        task = json.loads(page.request.get(f"{ORIGIN}/api/v1/work/{task_id}").text())
+        response = page.request.patch(f"{ORIGIN}/api/v1/work/{task_id}", data=json.dumps({"status": status, "expectedVersion": task["version"]}),
+                                      headers={"origin": ORIGIN, "content-type": "application/json"})
+        self.assertEqual(response.status, 200, response.text())
 
     def me(self, page: Page) -> str:
         return json.loads(page.request.get(f"{ORIGIN}/api/v1/me").text())["user"]["id"]
@@ -124,6 +134,9 @@ class SmallMomentsJourney(unittest.TestCase):
         switch.focus()
         page.keyboard.press("Space")
         expect(switch).to_have_attribute("aria-checked", "false")
+        page.goto("/")
+        expect(page.locator(".home__clear")).to_contain_text("Nothing needs you right now")
+        expect(page.locator(".home__clear .kreska")).to_have_count(0)
         page.goto("/inbox")
         expect(page.get_by_role("heading", name="Nothing needs you right now")).to_be_visible()
         expect(page.locator(".kreska")).to_have_count(0)
@@ -142,6 +155,8 @@ class SmallMomentsJourney(unittest.TestCase):
         page.goto("/settings")
         page.get_by_role("switch", name=SWITCH).click()
         expect(page.get_by_role("switch", name=SWITCH)).to_have_attribute("aria-checked", "true")
+        page.goto("/")
+        expect(page.locator(".home__clear .kreska")).to_be_visible()
 
     def test_05_the_splash_is_the_logo_and_a_line_and_moves_only_when_motion_is_allowed(self) -> None:
         self.ensure_account()
@@ -162,17 +177,47 @@ class SmallMomentsJourney(unittest.TestCase):
                 if not reduced:
                     shot(page, "352-splash-phone")
 
-    def test_06_closing_a_task_winks_in_the_toast_once_and_says_it_in_words(self) -> None:
+    def test_06_closing_a_task_winks_in_one_undo_toast_from_every_surface(self) -> None:
         self.ensure_account()
+        project = self.ids["project"]
+        owner = {"kind": "human", "id": self.me(self.page())}
+        tasks = {}
+        for key, title in (("list", "Close from the list"), ("key", "Close with key four")):
+            tasks[key] = self.api(self.page(), "POST", f"/api/v1/projects/{project}/work", {"title": title, "owner": owner})
+
+        def assert_one_wink(page: Page, task: dict) -> None:
+            toast = page.locator(".ui-toast").filter(has_text=re.compile(r"#\d+ done"))
+            expect(toast).to_have_count(1)
+            expect(toast.locator(".kreska")).to_have_attribute("data-expression", "wink")
+            expect(toast.get_by_role("button", name="Undo")).to_be_visible()
+            self.assertEqual(self.task_status(page, task["id"]), "done")
+
+        # 1. The detail panel's Status menu (the original task).
         page = self.page()
-        page.goto(f"/projects/{self.ids['project']}/tasks?open=work:{self.ids['task']}")
+        page.goto(f"/projects/{project}/tasks?open=work:{self.ids['task']}")
         page.get_by_role("button", name="Status", exact=True).click()
         page.get_by_role("menu", name="Status").get_by_role("menuitemradio", name="Done").click()
-        toast = page.locator(".ui-toast")
-        expect(toast).to_contain_text(re.compile(r"#\d+ done"))
+        toast = page.locator(".ui-toast").filter(has_text=re.compile(r"#\d+ done"))
+        expect(toast).to_have_count(1)
         expect(toast.locator(".kreska")).to_have_attribute("data-expression", "wink")
         shot(page, "352-toast-wink")
 
+        # 2. One tap on the glyph in the list (desktop): the glyph moves the task one step, so it starts In progress.
+        page = self.page()
+        self.set_task_status(page, tasks["list"]["id"], "in_progress")
+        page.goto(f"/projects/{project}/tasks")
+        page.get_by_role("radio", name="List", exact=True).click()
+        page.locator(".ws-task").filter(has_text=tasks["list"]["title"]).get_by_role("button", name=re.compile(r"Set to Done")).click()
+        assert_one_wink(page, tasks["list"])
+
+        # 3. Key 4 on the focused board card (desktop).
+        page = self.page()
+        page.goto(f"/projects/{project}/tasks")
+        page.locator(".tb-card").filter(has_text=tasks["key"]["title"]).get_by_role("button", name=tasks["key"]["title"], exact=True).focus()
+        page.keyboard.press("4")
+        assert_one_wink(page, tasks["key"])
+
+    @unittest.skipIf(os.environ.get("FLUX_UI_BROWSER", "chromium") == "webkit", "Chromium-only touch control and route holding; WebKit hangs here")
     def test_07_pull_to_refresh_peeks_over_the_edge_and_releases_to_read_again(self) -> None:
         self.ensure_account()
         page = self.page(phone=True)
@@ -219,6 +264,7 @@ class SmallMomentsJourney(unittest.TestCase):
         expect(page.locator("[role=alert] .kreska")).to_have_count(0)
 
 
+    @unittest.skipIf(os.environ.get("FLUX_UI_BROWSER", "chromium") == "webkit", "Chromium-only touch control and route holding; WebKit hangs here")
     def test_10_with_moments_off_the_startup_line_is_plain_before_the_app_loads(self) -> None:
         """Off is decided before the first paint, so the plain line is there while the bundle still downloads."""
         self.ensure_account()
@@ -245,6 +291,7 @@ class SmallMomentsJourney(unittest.TestCase):
             route.continue_()
         expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
 
+    @unittest.skipIf(os.environ.get("FLUX_UI_BROWSER", "chromium") == "webkit", "Chromium-only touch control and route holding; WebKit hangs here")
     def test_11_a_cancelled_pull_resets_without_refreshing(self) -> None:
         """The browser cancelling a touch is not a release: only touchend refreshes."""
         self.ensure_account()

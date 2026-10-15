@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { Icon } from './Icon';
 import { Kreska, type KreskaExpression } from './Kreska';
 import { duration, play } from './motion';
-import { useSmallMoments } from '../app/smallMoments';
+import { useSmallMoments } from './smallMoments';
 import './moments.css';
 
 export type ToastTone = 'neutral' | 'success' | 'danger';
@@ -99,7 +99,7 @@ function ToastItem({ toast, onDone, registerAction }: { toast: ToastEntry; onDon
 
   return (
     <div ref={ref} className={`ui-toast ui-toast--${toast.tone}${scrollable ? ' ui-toast--scrollable' : ''}`} onMouseEnter={disarm} onMouseLeave={arm} onFocus={disarm} onBlur={arm}>
-      {toast.mascot && moments ? <Kreska expression={toast.mascot} size={24} /> : toast.tone === 'success' ? <Icon name="check" /> : toast.tone === 'danger' ? <Icon name="alert" /> : toast.action && moments ? <Kreska size={24} expression="done" /> : null}
+      {toast.mascot && moments ? <Kreska expression={toast.mascot} size={24} /> : toast.tone === 'success' ? <Icon name="check" /> : toast.tone === 'danger' ? <Icon name="alert" /> : null}
       <span ref={message} className="ui-toast__msg" tabIndex={scrollable ? 0 : undefined}
         role={scrollable ? 'region' : undefined} aria-label={scrollable ? 'Notification message' : undefined}>{toast.message}</span>
       {toast.action && !leaving && !toast.leaving ? (

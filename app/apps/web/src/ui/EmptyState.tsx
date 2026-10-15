@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { Icon, type IconName } from './Icon';
 import { type KreskaExpression } from './Kreska';
 import { Mascot } from './Moments';
-import { useSmallMoments } from '../app/smallMoments';
+import { useSmallMoments } from './smallMoments';
 
 export interface EmptyStateProps {
   icon?: IconName;
