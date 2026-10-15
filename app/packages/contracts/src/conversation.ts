@@ -2,6 +2,8 @@
 export const projectConversationsPath = (projectId: string) => `/api/v1/projects/${projectId}/conversations`;
 export const conversationPath = (conversationId: string) => `/api/v1/conversations/${conversationId}`;
 export const conversationMessagesPath = (conversationId: string) => `${conversationPath(conversationId)}/messages`;
+/** Internal app entry; public MCP exposure/version transition remains a separate #400 gate. */
+export const taskAgentThreadPath = (workId: string) => `/api/v1/work/${workId}/agent-thread`;
 export const projectMaterialsPath = (projectId: string) => `/api/v1/projects/${projectId}/materials`;
 export const materialPath = (materialId: string) => `/api/v1/materials/${materialId}`;
 export const materialVersionPath = (materialId: string, version: number) => `${materialPath(materialId)}/versions/${version}`;
@@ -69,6 +71,16 @@ export interface ConversationFields {
   };
 }
 export type Conversation = ConversationFields & ConversationIdentity;
+
+/** An absent thread is a real empty state; reading/opening it creates no conversation. */
+export interface TaskAgentThread {
+  task: { id: string; projectId: string; number: number; title: string };
+  conversation: Conversation | null;
+  messageCount: number;
+  canWrite: boolean;
+  /** Human writes await the actual shared task-use adapter; agent writes remain guarded or closed. */
+  postingAvailable: boolean;
+}
 
 /** Stable, newest-first window returned in ascending display order. */
 export interface ConversationWindowQuery {

@@ -102,22 +102,31 @@ export async function lockAttachments(files: FileRepository, storage: Pick<FileS
  * exact stored bytes, which must be a PNG, JPEG, GIF or WebP image by signature. A file already published to this same
  * thought id (Undo re-creating a removed thought) is accepted as it is; any other published file is refused.
  */
-export async function placeThoughtImage(files: FileRepository, storage: Pick<FileStorage, 'read'>, principal: Principal,
-  input: { projectId: string; fileId: string; thoughtId: string }, clock: () => Date = () => new Date()): Promise<ThoughtFile> {
+export async function prepareThoughtImage(files: FileRepository, storage: Pick<FileStorage, 'read'>, principal: Principal,
+  input: { projectId: string; fileId: string; thoughtId: string }, clock: () => Date = () => new Date()): Promise<()=>Promise<ThoughtFile>> {
   const author = uploaderOf(principal);
   const fileId = id(input.fileId, 'fileId').toLowerCase();
   const [row] = await files.lockFiles([fileId]);
   // Another project's file, a reservation or a guessed id are all the same unknown file.
   if (!row || row.projectId !== input.projectId || row.state !== 'ready' || row.size === null || row.sha256 === null) throw attachmentUnavailable();
-  if (row.thoughtId === input.thoughtId) return { id: row.id, name: row.name, size: row.size };
+  const view={id:row.id,name:row.name,size:row.size};
+  if (row.thoughtId === input.thoughtId) return async()=>view;
   if (isPublished(row)) throw new ConflictError(row.messageId !== null ? 'A file is already attached to a message'
     : 'A file is already the image of another map thought', 'ATTACHMENT_ALREADY_PUBLISHED');
   if (!same(row.uploader, author) || !row.expiresAt || row.expiresAt <= clock()) throw attachmentUnavailable();
   const bytes = await storage.read(row.id);
   if (!bytes || bytes.byteLength !== row.size || createHash('sha256').update(bytes).digest('hex') !== row.sha256) throw attachmentUnavailable();
   if (!imageTypeOf(bytes)) throw new InvalidInputError('Only a PNG, JPEG, GIF or WebP image can be placed on a map', 'UNSUPPORTED_IMAGE');
-  if (!await files.publishToThought(row.id, input.thoughtId, clock())) throw attachmentUnavailable();
-  return { id: row.id, name: row.name, size: row.size };
+  return async()=>{
+    if (!await files.publishToThought(row.id, input.thoughtId, clock())) throw attachmentUnavailable();
+    return view;
+  };
+}
+
+/** Existing callers retain the same verified publication behavior. Composing callers prepare before task fences. */
+export async function placeThoughtImage(files: FileRepository, storage: Pick<FileStorage, 'read'>, principal: Principal,
+  input: { projectId: string; fileId: string; thoughtId: string }, clock: () => Date = () => new Date()): Promise<ThoughtFile> {
+  return(await prepareThoughtImage(files,storage,principal,input,clock))();
 }
 
 /** The current file list of each message, for read projections. */

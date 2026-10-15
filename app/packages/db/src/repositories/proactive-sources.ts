@@ -11,6 +11,8 @@ const messages = schema.projectMessages;
 const w = schema.projectWorkItems;
 const r = schema.projectResults;
 const users = schema.authUsers;
+// #400: a task agents' thread has no people surface yet; background comparisons neither read nor cite it.
+const peopleSpace = sql`NOT EXISTS (SELECT 1 FROM project_conversations agent_thread WHERE agent_thread.id = ${messages.conversationId} AND agent_thread.space = 'agents')`;
 const t = schema.sketchThoughts;
 const s = schema.sketches;
 const humanThought = and(isNull(t.placementType), isNull(t.placementId), isNull(t.createdByAgentId),
@@ -45,7 +47,7 @@ export function comparisonSources(db: DbExecutor) {
     if (source.type === 'message') {
       if (source.version !== 1) return false;
       const query = db.select({ id: messages.id }).from(messages).innerJoin(users, eq(users.id, messages.authorId))
-        .where(and(eq(messages.projectId, projectId), eq(messages.id, source.id)));
+        .where(and(eq(messages.projectId, projectId), eq(messages.id, source.id), peopleSpace));
       return (await (lock ? query.for('share') : query)).length === 1;
     }
     if (source.type === 'result') {
@@ -94,7 +96,7 @@ export function comparisonSources(db: DbExecutor) {
         .where(and(eq(m.projectId, rule.projectId), or(isNull(v.state), eq(v.state, 'published'))))
         .orderBy(desc(m.updatedAt), asc(m.id)).limit(COMPARISON_CONTEXT_LIMITS.materials);
       const conversation = await db.select({ id: messages.id }).from(messages).innerJoin(users, eq(users.id, messages.authorId))
-        .where(eq(messages.projectId, rule.projectId)).orderBy(desc(messages.createdAt), asc(messages.id)).limit(COMPARISON_CONTEXT_LIMITS.messages);
+        .where(and(eq(messages.projectId, rule.projectId), peopleSpace)).orderBy(desc(messages.createdAt), asc(messages.id)).limit(COMPARISON_CONTEXT_LIMITS.messages);
       const work = await db.select({ id: w.id, version: w.version }).from(w).where(and(eq(w.projectId, rule.projectId), humanWork))
         .orderBy(desc(w.updatedAt), asc(w.id)).limit(COMPARISON_CONTEXT_LIMITS.work);
       const benchmarks = await db.select({ id: r.id }).from(r).where(and(eq(r.projectId, rule.projectId), eq(r.createdByKind, 'human'), eq(r.finding, 'positive')))
