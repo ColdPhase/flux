@@ -8,7 +8,8 @@ import uuid
 from urllib.parse import parse_qs, urlsplit
 
 from playwright.sync_api import expect, sync_playwright
-from test_app_shell import ORIGIN, UPSTREAM, shot, start_forwarder
+from message_gestures import open_message_menu
+from test_app_shell import ORIGIN, UPSTREAM, open_details, shot, start_forwarder
 from test_work_pagination import api
 
 
@@ -79,7 +80,7 @@ class OverviewWorkJourney(unittest.TestCase):
     def open(self, page):
         page.goto(f"/projects/{self.project}/conversations/{self.conversation}")
         expect(page.get_by_label("Reply", exact=True)).to_be_visible()
-        page.locator("header.top").get_by_role("button", name="Details", exact=True).click()
+        open_details(page)
         return self.ready(page)
 
     def identities(self, page):
@@ -189,8 +190,8 @@ class OverviewWorkJourney(unittest.TestCase):
             earlier.click(); expect(page.locator("#thread .thread__list [data-message-id]")).to_have_count(count)
         expect(page.locator(f"#thread .thread__root[data-message-id='{self.m0}']")).to_have_count(1)
         message = page.locator(f"#message-{self.m0}"); expect(message).to_have_count(1)
-        message.scroll_into_view_if_needed(); message.hover()
-        message.get_by_role("button", name="Details of this message", exact=True).click()
+        message.scroll_into_view_if_needed()
+        open_message_menu(message, phone=False).get_by_role("menuitem", name="Details").click()
         ov = self.ready(page)
         expect(ov.get_by_role("heading", name="Message from you", exact=True)).to_be_visible()
         expect(ov.locator(".ov-quote")).to_have_text("Compare the earliest measurements before ordering another sensor.")

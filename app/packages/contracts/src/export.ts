@@ -32,6 +32,7 @@ export const PROJECT_EXPORT_EXCLUDED = [
   'accounts, e-mail addresses, sessions, push subscriptions and notifications',
   'agent connections, OAuth clients and tokens, and pending agent proposals',
   'approved project policies for agents (kept in full backups)',
+  'GitHub installations, authorizations, tokens, webhook deliveries, pull request snapshots and who connected a repository (task rules are exported dormant; repository bindings are never exported here)',
   'events, idempotency records and other internal rows',
 ] as const;
 
@@ -141,6 +142,12 @@ export interface ProjectExportSketch {
 }
 
 export interface ProjectExportWork {
+  lifecycle: { state: 'active' } | { state: 'creation_reverted'; noticeId: string; revertedAt: string; revertedBy: ExportActor };
+  creationHistory: {
+    origin: 'native_agent' | 'ai_proposal' | 'human' | null;
+    baselineVersion: number | null; baseline: unknown | null; proposalId: string | null; firstPersistedUseAt: string | null;
+    notices: { id: string; kind: 'task.created' | 'task.creation_reverted'; createdBy: ExportActor; sources: ObjectRef[]; createdAt: string }[];
+  };
   id: string;
   /** The task's number in its project, "#12" (#276); never reused or changed. */
   number: number;
@@ -197,7 +204,30 @@ export interface ProjectExportFile extends MessageFile {
   path: string;
 }
 
+/** A task's "let linked PRs move this task" rule, exported dormant (#74). */
+export interface ProjectExportGithubRule {
+  taskId: string;
+  mode: 'complete' | 'ready';
+  recordedState: 'active' | 'suspended' | 'off';
+  enabled: false;
+}
+
+/**
+ * Task rules and the default mode (#74), present only when the project has any. Dormant and
+ * disabled. Repository bindings are deliberately absent: their names, URLs and ids are private
+ * GitHub facts that need the exporter's own current GitHub proof, which this ordinary export does
+ * not perform. A destination must connect and authorize repositories itself.
+ */
+export interface ProjectExportGithubSources {
+  dormant: true;
+  /** The project's default rule mode on the exporting instance, if one was set. */
+  defaultMode: 'complete' | 'ready' | null;
+  rules: ProjectExportGithubRule[];
+}
+
 export interface ProjectExport {
+  /** GitHub task rules, dormant. Absent when the project has none; never holds repositories. */
+  githubSources?: ProjectExportGithubSources;
   /** Published attachments only. Exact bytes are in the bundle paths. Absent in legacy file-free exports. */
   files?: ProjectExportFile[];
   $schema: typeof PROJECT_EXPORT_SCHEMA_ID;
@@ -300,6 +330,9 @@ const baseExportSchema = {
       links: list(object({ id, fromId: id, toId: id, label: nullable(text), createdAt: time })),
     }),
     work: object({
+      lifecycle: { oneOf: [object({ state: { const: 'active' } }), object({ state: { const: 'creation_reverted' }, noticeId: id, revertedAt: time, revertedBy: ref('actor') })] },
+      creationHistory: object({ origin: nullable({ enum: ['native_agent', 'ai_proposal', 'human'] }), baselineVersion: nullable(count), baseline: {}, proposalId: nullable(id), firstPersistedUseAt: nullable(time),
+        notices: list(object({ id, kind: { enum: ['task.created', 'task.creation_reverted'] }, createdBy: ref('actor'), sources: list(ref('objectRef')), createdAt: time })) }),
       id, number: count, title: text, outcome: text, status: { enum: ['open', 'in_progress', 'blocked', 'done', 'not_pursued'] }, blocker: nullable(text),
       owner: nullable(ref('actor')), parked: nullable(object({ decisionId: id, at: time })), createdBy: ref('actor'), version: count, createdAt: time, updatedAt: time,
     }),
@@ -338,6 +371,12 @@ const baseExportSchema = {
   }),
 } as const;
 
+const modeSchema = { enum: ['complete', 'ready'] } as const;
+const githubSourcesSchema = object({
+  dormant: { const: true }, defaultMode: nullable(modeSchema),
+  rules: list(object({ taskId: id, mode: modeSchema, recordedState: { enum: ['active', 'suspended', 'off'] }, enabled: { const: false } })),
+});
+
 export const PROJECT_EXPORT_JSON_SCHEMA = { ...baseExportSchema,
-  properties: { ...baseExportSchema.properties, files: list(exportFileSchema) },
+  properties: { ...baseExportSchema.properties, files: list(exportFileSchema), githubSources: githubSourcesSchema },
 } as const;

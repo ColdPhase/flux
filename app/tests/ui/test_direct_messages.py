@@ -18,7 +18,7 @@ import uuid
 
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
-from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, box, shot, start_forwarder
+from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, box, open_details, shot, start_forwarder
 
 PASSWORD = "messages between friends"
 STAMP = int(time.time() * 1000)
@@ -238,16 +238,16 @@ class DirectMessageJourney(unittest.TestCase):
     def test_05_phone_reads_and_replies_with_the_audience_in_view(self) -> None:
         page = self.page("kai", phone=True)
         page.goto("/")
-        page.get_by_role("button", name="Open navigation").click()
-        page.get_by_role("dialog").locator("#side-dms").get_by_role("link", name="Messages", exact=True).click()
-        expect(page).to_have_url(f"{ORIGIN}/dm")
-        expect(page.get_by_role("list", name="Conversations").get_by_role("link", name=re.compile("Ada Kowalska"))).to_be_visible()
-        shot(page, "dm-phone-390-index")
-        page.get_by_role("button", name="Open navigation").click()
-        drawer = page.get_by_role("dialog")
-        expect(drawer.get_by_role("link", name=re.compile("Ada Kowalska"))).to_be_visible()
-        shot(page, "dm-phone-390-drawer")
-        drawer.get_by_role("link", name=re.compile("Ada Kowalska")).click()
+        # Direct messages live inside Projects on the phone (#341): no Messages tab, no drawer.
+        bar = page.get_by_role("navigation", name="Main places")
+        expect(bar.get_by_role("link", name="Messages")).to_have_count(0)
+        bar.get_by_role("link", name="Projects").click()
+        expect(page).to_have_url(f"{ORIGIN}/projects")
+        expect(page.get_by_role("heading", name="Direct messages")).to_be_visible()
+        row = page.get_by_role("list", name="Conversations").get_by_role("link", name=re.compile("Ada Kowalska"))
+        expect(row).to_be_visible()
+        shot(page, "dm-phone-390-projects")
+        row.click()
         expect(page).to_have_url(f"{ORIGIN}{self.dm_path}")
         expect(page.get_by_role("heading", level=1, name="Ada Kowalska")).to_be_visible()
         expect(page.locator(".composer__audience")).to_contain_text("Only you and Ada")
@@ -281,12 +281,12 @@ class DirectMessageJourney(unittest.TestCase):
         expect(lee.get_by_text("print a test housing")).to_be_visible()
         self.send(lee, "Yes, PETG in white. Thursday?")
         expect(ada.get_by_text("PETG in white")).to_be_visible(timeout=15000)
-        ada.get_by_role("button", name="Details", exact=True).click()
+        open_details(ada)
         expect(ada.get_by_role("heading", name="People in this conversation")).to_be_visible()
         shot(ada, "dm-desktop-1440-group-details")
         ada.keyboard.press("Escape")
 
-        lee.get_by_role("button", name="Details", exact=True).click()
+        open_details(lee)
         lee.get_by_role("button", name="Leave conversation").click()
         expect(lee.get_by_text("You won’t see these messages again")).to_be_visible()
         lee.get_by_role("group", name="Leave this conversation").get_by_role("button", name="Leave", exact=True).click()

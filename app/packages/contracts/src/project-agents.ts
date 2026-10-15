@@ -1,3 +1,4 @@
+import type { AssistantJoinRequest } from './assistant.js';
 import type { ExternalClientDesignation } from './agent-proposals.js';
 import type { AgentOperation } from './agent-execution.js';
 import type { CoWorkRequestKind, CoWorkRequestState } from './cowork.js';
@@ -31,13 +32,17 @@ export interface ProjectAgentConnection {
   agent: { id: string; name: string };
   /** True when the caller owns the connection. */
   own: boolean;
+  /** One owner assistant, independent of engine; never an external client label. */
+  assistant?: true;
   state: ProjectAgentConnectionState;
   /** The open session's start and end; null unless `session_open`. */
   session: { startedAt: string; expiresAt: string } | null;
   /** The connection's latest completed action in this project; lease renewals (heartbeats) are not activity. */
   lastActivity: { operation: AgentOperation; at: string } | null;
-  /** The task unit this connection holds in this project now (assigned, working or paused); null when it holds none. */
-  currentWork: { taskId: string; taskTitle: string; role: 'execute' | 'review' | 'plan'; state: 'pending' | 'claimed' | 'paused' } | null;
+  /** The task unit this connection holds in this project now; null when it holds none. */
+  currentWork: { taskId: string; taskTitle: string; role: 'execute' | 'review' | 'plan'; state: 'pending' | 'claimed' | 'paused';
+    /** Expiry only when the claimed lease matches this connection's current usable session and project ceiling. */
+    liveClaimExpiresAt: string | null } | null;
   /** Requests addressed to this connection that are still open here (#160 AC-5), oldest first. Quiet acknowledgments are not listed. */
   requests: ProjectAgentRequest[];
 }
@@ -56,4 +61,8 @@ export interface ProjectAgentRequest {
 export interface ProjectAgents {
   projectId: string;
   connections: ProjectAgentConnection[];
+  /** Pending joins visible only to current managers or the requesting owner. */
+  joinRequests?: AssistantJoinRequest[];
+  /** Only the reader’s own active assistant in this project’s workspace; asking grants no access. */
+  assistantJoin?: { agentId: string; canRequest: boolean };
 }

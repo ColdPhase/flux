@@ -6,6 +6,7 @@ import { useShellData } from '../app/data';
 import { createPersonalAgent } from '../agent-connection/api';
 import { listAgents } from '../work/api';
 import { Button, ErrorState, Icon, Spinner } from '../ui';
+import { whenPageLive } from '../api/pageLeaving';
 import { listBackgroundConnections } from '../proactive-comparison/api';
 import { enableAssistant, getAssistantStatus, pauseAssistant, removeAssistant, resumeAssistant, selectAssistantAgent, updateAssistant } from './api';
 import { dollars, micros, perMillion, stateLine, unavailableText } from './format';
@@ -136,10 +137,13 @@ function Setup({ status, agents, workspaces, name, onEnabled, onAgent }: {
   const choose = (id: string) => { setConnectionId(id); setConsent(false); };
   useEffect(() => {
     const controller = new AbortController();
-    listBackgroundConnections(controller.signal)
-      .then((items) => { setOwned(items); setConnectionId(items[0]?.id ?? ''); setConsent(false); setOwnedState('loaded'); })
-      .catch(() => { if (!controller.signal.aborted) { setOwned([]); setOwnedState('failed'); } });
-    return () => controller.abort();
+    // A page being left starts no read (#471); one whose navigation was cancelled reads once it is live.
+    const waiting = whenPageLive(() => {
+      listBackgroundConnections(controller.signal)
+        .then((items) => { setOwned(items); setConnectionId(items[0]?.id ?? ''); setConsent(false); setOwnedState('loaded'); })
+        .catch(() => { if (!controller.signal.aborted) { setOwned([]); setOwnedState('failed'); } });
+    });
+    return () => { waiting(); controller.abort(); };
   }, []);
   // The disclosure and the consent describe exactly the connection being enabled: its provider, model,
   // price, largest request and payer, never the server's default choice (#192 review B2).

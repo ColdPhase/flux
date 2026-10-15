@@ -71,6 +71,7 @@ names.
 | `docs` | Docs with every version: title, Markdown text, `draft`/`published`, reason, author, time, and `file` (the Markdown file of the current text). |
 | `sketches` | Project sketches with their thoughts (text, position, size, shape, author, version) and links between thoughts (label). |
 | `work`, `decisions`, `results` | All fields of #101: status, blocker, owner, parking, who proposed and who accepted, supersession, finding, evidence. |
+| `githubSources` (optional) | Only for projects with GitHub task rules (#74): `dormant: true`, the project's default rule mode and `rules` (task id, mode, the state it had, `enabled: false`). Repository bindings are never exported here: a repository's name, URL and id are private GitHub facts that need the exporter's own current GitHub proof, which this export does not check. No installation or App ids, tokens, connecting person, deliveries or pull request data either. Nothing imports it yet (`reimportSupported: false`); a future import must create rules disabled and require a person to connect and authorize repositories on the destination. |
 | `links` | Typed links (`source`, `affects`, `still_applies`, `about`, `related`, `mentions`) whose two ends are both in the export. |
 
 ## What is never exported
@@ -108,3 +109,9 @@ file, or changing the manifest identification needs a new `formatVersion`. The J
 keys so that a change to the format cannot go unnoticed in the tests, and
 `app/tests/app/extension-contracts.test.ts` pins the schema and bundle layout to
 `app/tests/app/contracts/project-export.v1.json`. See [integrations](../integrations/README.md#ext-2-read-a-project-export).
+
+Task creation Undo (#238) keeps every task in the export. Each task carries `lifecycle` (active, or creation
+reverted with the notice, time and actor) and `creationHistory` (trusted origin, immutable baseline, first persisted
+use, proposal identity, and the original and reversion notices with their actual actors). Active application lists
+leave creation-reverted tasks out; direct reads and the export name them explicitly. Command receipts stay in full
+backups, as before.

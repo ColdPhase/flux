@@ -48,6 +48,12 @@ export function AskBar({ id, state, onExit, onAction, error, errorAction = null 
   );
 }
 
+/** "<name> is thinking…" while the run composes (F-026 P5); queued, reading and stopping say what they are. */
+function WorkingWords({ run }: { run: AssistantRun }) {
+  if (run.stopRequested || run.status === 'queued' || run.status === 'reading') return <>{workingText(run)}</>;
+  return <><b>Your assistant</b> is thinking…</>;
+}
+
 /** The owner's line where the answer will appear: what the assistant is doing, with Stop. */
 export function WorkingLine({ run, onStop, onRetry, onDismiss }: { run: AssistantRun; onStop: () => Promise<void>; onRetry: () => Promise<void>; onDismiss: () => void }) {
   const [busy, setBusy] = useState(false);
@@ -67,13 +73,13 @@ export function WorkingLine({ run, onStop, onRetry, onDismiss }: { run: Assistan
       <AssistantAvatar expression={runExpression(run)} />
       <div className="assistant-working__body">
         <p className="assistant-working__text">
-          {working ? workingText(run) : ended}
+          {working ? <WorkingWords run={run} /> : ended}
         </p>
         <p className="assistant-working__who"><Icon name="lock" size={12} />Only you see this · “{run.prompt.length > 90 ? `${run.prompt.slice(0, 90)}…` : run.prompt}”</p>
         {failed ? <p className="assistant-working__error" role="alert">{failed}</p> : null}
       </div>
       <div className="assistant-working__actions">
-        {working && !run.stopRequested ? <Button variant="secondary" busy={busy} onClick={() => void act(onStop)}>Stop</Button> : null}
+        {working && !run.stopRequested ? <Button variant="secondary" icon="stop" busy={busy} onClick={() => void act(onStop)}>Stop</Button> : null}
         {!working && canRetry(run) ? <Button variant="quiet" busy={busy} onClick={() => void act(onRetry)}>Retry</Button> : null}
         {!working ? <IconButton icon="x" label="Dismiss" onClick={onDismiss} /> : null}
       </div>

@@ -17,7 +17,7 @@ import uuid
 
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
-from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
+from test_app_shell import DESKTOP, ORIGIN, PHONE, UI_BROWSER, UPSTREAM, shot, start_forwarder
 from contrast import MEASURE
 
 PASSWORD = "one calm conversation for the lamp"
@@ -83,7 +83,7 @@ class OneConversationJourney(unittest.TestCase):
         if UPSTREAM:
             start_forwarder(ORIGIN, UPSTREAM)
         cls.pw = sync_playwright().start()
-        cls.browser = cls.pw.chromium.launch()
+        cls.browser = getattr(cls.pw, UI_BROWSER).launch()
         expect.set_options(timeout=10000)
         contexts: dict[str, BrowserContext] = {}
         for key, (name, email) in PEOPLE.items():
@@ -215,7 +215,7 @@ class OneConversationJourney(unittest.TestCase):
         stream = self.stream(page)
         roots = stream.locator(".project-convo__message")
         expect(roots).to_have_count(50)
-        self.assertEqual([text.strip() for text in stream.locator(".project-convo__message > p").all_inner_texts()[-3:]], [OPENING, NUMBERS, ORDER], "chronological, newest last")
+        self.assertEqual([text.strip() for text in stream.locator(".project-convo__message > .message-bubble > p").all_inner_texts()[-3:]], [OPENING, NUMBERS, ORDER], "chronological, newest last")
         expect(self.root(page, "r1")).to_have_class(re.compile("is-mine"))
         expect(self.root(page, "r2")).not_to_have_class(re.compile("is-mine"))
         expect(self.root(page, "r2")).to_contain_text("Jonas Berg")
@@ -256,7 +256,7 @@ class OneConversationJourney(unittest.TestCase):
         after = anchor.bounding_box()
         assert before and after
         self.assertAlmostEqual(before["y"], after["y"], delta=4, msg="loading earlier roots keeps the reader's place")
-        self.assertTrue(stream.locator(".project-convo__message > p").first.inner_text().startswith("Earlier note 01"))
+        self.assertTrue(stream.locator(".project-convo__message > .message-bubble > p").first.inner_text().startswith("Earlier note 01"))
 
     def test_01b_message_times_are_a_natural_clock_in_a_12_hour_locale(self) -> None:
         # "4:55 PM", never a zero-padded "04:55 PM", under every root (#436).
@@ -296,17 +296,17 @@ class OneConversationJourney(unittest.TestCase):
         docked = r1.bounding_box()
         assert docked
         self.assertAlmostEqual(docked["y"], start["y"], delta=4, msg="opening the thread keeps the stream in place")
-        # A reply's actions open from one ⋯ in its corner and never cover its author or time.
+        # A reply's actions float over its corner on hover (F-026 S6) and never cover its author or time.
         first = thread.locator(f"#message-{self.ids['first']}")
         first.hover()
         expect(first.get_by_role("button", name="Create work")).to_have_count(0)
-        more = first.get_by_role("button", name="Make from this message")
+        more = first.get_by_role("button", name="More actions")
         more_box, name_box = more.bounding_box(), first.locator(".project-convo__message-meta strong").bounding_box()
         assert more_box and name_box
         self.assertTrue(more_box["x"] >= name_box["x"] + name_box["width"] or more_box["y"] >= name_box["y"] + name_box["height"], "the ⋯ is clear of the author")
         more.click()
         expect(more).to_have_attribute("aria-expanded", "true")
-        first.get_by_role("button", name="Details of this message").click()
+        page.get_by_role("menuitem", name="Details").click()
         expect(page.locator("#details").get_by_role("heading", name="Message from Jonas Berg")).to_be_visible()
         page.wait_for_timeout(300)
         expect(r1, "the opened root stays in view while Details is open").to_be_in_viewport()
@@ -408,7 +408,7 @@ class OneConversationJourney(unittest.TestCase):
             time.sleep(0.25)
         self.assertEqual(url, self.project_url(f"/conversations/{self.ids['c2']}#message-{asked['id']}"), "the notification links the exact message")
         page.goto("/inbox")
-        page.locator(".inbox__row", has_text="asked you in Night lamp").get_by_role("link").click()
+        page.locator(".nyc", has_text="asked you in Night lamp").first.get_by_role("button", name="Reply").click()
         expect(page).to_have_url(re.compile(re.escape(url) + "$"))
         message = self.thread(page).locator(f"#message-{asked['id']}")
         expect(message).to_have_class(re.compile("is-arrived"))
@@ -618,12 +618,12 @@ class OneConversationJourney(unittest.TestCase):
         thread = self.thread(page)
         expect(thread).to_be_visible()
         page.wait_for_timeout(400)
-        sheet, header, pane = thread.bounding_box(), page.locator("header.top").bounding_box(), page.locator(".app__pane").bounding_box()
+        sheet, header, pane = thread.bounding_box(), page.locator("header").bounding_box(), page.locator(".app__pane").bounding_box()
         assert sheet and header and pane
         self.assertEqual((round(sheet["x"]), round(sheet["width"])), (0, PHONE["width"]), "a full-width sheet")
-        self.assertAlmostEqual(sheet["y"], pane["y"], delta=1, msg="the sheet covers the whole work area")
+        self.assertAlmostEqual(sheet["y"], pane["y"] + 12, delta=1, msg="the full sheet covers the work area, a grabber's breadth below its top")
         self.assertAlmostEqual(sheet["y"] + sheet["height"], pane["y"] + pane["height"], delta=1)
-        expect(page.locator("header.top")).to_be_visible()
+        expect(page.locator("header")).to_be_visible()
         close = thread.get_by_role("button", name="Close replies")
         close_box = close.bounding_box()
         assert close_box
@@ -666,7 +666,8 @@ class OneConversationJourney(unittest.TestCase):
         thread = self.thread(page)
         expect(thread).to_be_visible()
         self.assertTrue(page.evaluate("matchMedia('(pointer: coarse)').matches"), "the phone runs with a touch pointer")
-        chip, name = thread.locator("a.project-convo__source"), thread.locator(".project-convo__person").first
+        # #348 AC-2: a cited Wiki page is a compact card now, where the 24 px source chip stood; its tap area is still 44 px.
+        chip, name = thread.locator("a.wiki-card"), thread.locator(".project-convo__person").first
         expect(chip).to_be_visible()
         expect(name).to_be_visible()
         page.wait_for_timeout(400)
@@ -678,7 +679,7 @@ class OneConversationJourney(unittest.TestCase):
             self.assertEqual(area["reach"], [True] * 8, (label, "a tap on any point 21 px from the centre lands on it", area))
         chip_box = chip.bounding_box()
         assert chip_box
-        self.assertLessEqual(chip_box["height"], 25, "the chip keeps its 24 px look")
+        self.assertLessEqual(chip_box["height"], 56, "the Wiki card stays compact")
         self.no_sideways_scroll(page)
         shot(page, "one-conversation-phone-390-thread-targets-light")
 
@@ -703,6 +704,43 @@ class OneConversationJourney(unittest.TestCase):
         self.assertEqual(name.evaluate(OVERLAPS), [], "the tap area covers no other control in the thread")
         self.no_sideways_scroll(page)
         shot(page, "one-conversation-phone-390-thread-short-name-light")
+
+    def assert_card_in_bubble(self, scope, card) -> None:
+        """#348 (review 36b49271): a cited Wiki card is part of its message's one bubble, not a card set beneath it."""
+        expect(card).to_be_visible()
+        inside = scope.evaluate("""(message, card) => { const bubble = message.querySelector(':scope > .message-bubble');
+          if (!bubble || !bubble.contains(card)) return false;
+          const a = bubble.getBoundingClientRect(), r = card.getBoundingClientRect();
+          return r.left >= a.left - .001 && r.top >= a.top - .001 && r.right <= a.right + .001 && r.bottom <= a.bottom + .001; }""", card.element_handle())
+        self.assertTrue(inside, "the Wiki card sits inside its message's single bubble")
+
+    def test_07d_a_cited_wiki_card_sits_inside_its_message_bubble(self) -> None:
+        # #348 (review 36b49271): Ada's cited root is her own message, so its bubble is the inverted one. The card stays in
+        # that bubble in the stream and in the thread, on desktop and phone, in light and dark, and it still opens the cited version.
+        for phone, dark in ((False, False), (True, False), (False, True), (True, True)):
+            with self.subTest(phone=phone, dark=dark):
+                page = self.page("ada", phone=phone, dark=dark)
+                if phone:
+                    page.goto(f"/projects/{self.targets()}/conversations/{self.ids['targets_conversation']}")
+                    scope = self.thread(page).locator(".thread__root")
+                else:
+                    page.goto(f"/projects/{self.targets()}")
+                    scope = self.stream(page).locator("li.project-convo__message").filter(has=page.locator("a.wiki-card"))
+                card = scope.locator("a.wiki-card")
+                expect(card).to_be_visible()
+                expect(card.locator("strong")).to_have_text("Lux table")
+                expect(card).to_have_attribute("href", re.compile(r"^/materials/[^/]+/versions/1$"))
+                self.assert_card_in_bubble(scope, card)
+                shot(page, f"one-conversation-wiki-card-{'phone' if phone else 'desktop'}-{'dark' if dark else 'light'}-{UI_BROWSER}")
+                if not phone and not dark:
+                    # Negative control: the same card moved beside the bubble fails the check; the card is then restored.
+                    card.evaluate("e => { const slot = document.createElement('span'); slot.id = 'wiki-card-slot'; e.before(slot); e.closest('.message-bubble').after(e); }")
+                    try:
+                        with self.assertRaises(AssertionError):
+                            self.assert_card_in_bubble(scope, card)
+                    finally:
+                        card.evaluate("e => { document.getElementById('wiki-card-slot').replaceWith(e); }")
+                    self.assert_card_in_bubble(scope, card)
 
     def test_08_tablet_and_desktop_renders(self) -> None:
         tablet = self.page("ada", phone=True, viewport={"width": 820, "height": 1180})
@@ -736,8 +774,8 @@ class OneConversationJourney(unittest.TestCase):
                 page.goto(self.project_url(f"/conversations/{self.ids['c1']}"))
                 expect(self.thread(page).locator(f"#message-{self.ids['first']}")).to_be_visible()
                 for selector in (f"#message-{self.ids['r1']} .convo-replies__open", f"#message-{self.ids['r1']} .convo-replies__when",
-                                 ".thread__title", ".thread__n", ".thread__hint", ".thread__root-meta time", ".thread__root > p",
-                                 f"#message-{self.ids['first']} > p", f"#message-{self.ids['r3']} .convo-replies__reply"):
+                                 ".thread__title", ".thread__n", ".thread__hint", ".thread__root-meta time", ".thread__root > .message-bubble > p",
+                                 f"#message-{self.ids['first']} > .message-bubble > p", f"#message-{self.ids['r3']} .convo-replies__reply"):
                     if selector.endswith("convo-replies__reply"):
                         page.locator(selector).hover()
                     page.wait_for_function("""selector => {
@@ -760,7 +798,7 @@ class OneConversationJourney(unittest.TestCase):
                 self.assertGreaterEqual(hovered["ratio"], 4.5, (theme, "reply link on hover", hovered))
                 page.mouse.move(1, 1)
                 page.wait_for_timeout(250)
-                outline = page.locator(f"{root} > p").evaluate("e => { const s = getComputedStyle(e); return [s.outlineStyle, s.outlineWidth, s.outlineColor]; }")
+                outline = page.locator(f"{root} > .message-bubble").evaluate("e => { const s = getComputedStyle(e); return [s.outlineStyle, s.outlineWidth, s.outlineColor]; }")
                 ink = page.evaluate("""() => { const probe = document.createElement('i'); probe.style.color = 'var(--t1)';
                   document.body.append(probe); const color = getComputedStyle(probe).color; probe.remove(); return color; }""")
                 self.assertEqual(outline, ["solid", "2px", ink], (theme, "the open root has a solid ring in the primary ink"))

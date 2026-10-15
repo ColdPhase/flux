@@ -17,13 +17,14 @@ import {
   type Page,
   type PageQuery,
   type UpdateDocCommand,
+  type SaveLiveDocCommand,
 } from '@flux/contracts';
-import { ForbiddenError, InvalidInputError, NotFoundError, RuleViolationError, VersionConflictError } from '../access/errors.js';
+import { ConflictError, ForbiddenError, InvalidInputError, NotFoundError, RuleViolationError, VersionConflictError } from '../access/errors.js';
 import type { Principal } from '../principal.js';
 import { linkReader } from '../work/service.js';
 import * as valid from '../work/validation.js';
 import type { ActorRef } from '../work/ports.js';
-import type { DocPorts, DocUnitOfWork, DocVersionRecord, DocWithCurrent, NewDocVersion } from './ports.js';
+import type { DocPorts, DocTaskUseFence, DocUnitOfWork, DocVersionRecord, DocWithCurrent, NewDocVersion } from './ports.js';
 import * as text from './text.js';
 
 // Project doc use cases (issue #112). Each runs in one unit of work: it asks the access port
@@ -82,6 +83,27 @@ async function resolve(ports: DocPorts, projectId: string, markdown: string, sel
   return { mentions, map, targets };
 }
 
+/**
+ * #238: a saved doc version that mentions (or stops mentioning) a task is a persisted use of that task. The doc row is
+ * already locked; this prepares the shared graph/task fence over the previous and the new references before any link
+ * changes. Each body is parsed once; the same raw identities are re-resolved after the graph wait, so a dangling
+ * reference that becomes a task meanwhile refuses (TASK_TARGET_SET_CHANGED) instead of escaping the fence.
+ */
+async function prepareDocBodyTaskUse(ports: DocPorts, row: DocWithCurrent, bodies: readonly string[], extra: readonly ObjectRef[] = []): Promise<DocTaskUseFence> {
+  const parsed = bodies.map((body) => [...new Map(ports.renderer.references(body).map((ref) => [`${ref.type}:${ref.id}`, ref])).values()]);
+  const targets = async () => {
+    const refs: ObjectRef[] = [...extra];
+    for (const unique of parsed) for (const ref of unique) {
+      if (ref.type === 'doc' && ref.id === row.doc.id) continue;
+      if (await ports.work.targetExists(row.doc.projectId, ref as ObjectRef)) refs.push(ref as ObjectRef);
+    }
+    return refs;
+  };
+  const fence = await ports.docs.prepareTaskUse({ workspaceId: row.doc.workspaceId, projectId: row.doc.projectId }, row.doc.id, await targets());
+  await ports.docs.assertTaskUse(row.doc.id, await targets(), fence);
+  return fence;
+}
+
 async function names(ports: DocPorts, actors: ActorRef[]) {
   const unique = [...new Map(actors.map((actor) => [`${actor.kind}:${actor.id}`, actor])).values()];
   const found = await ports.work.names(unique);
@@ -90,11 +112,12 @@ async function names(ports: DocPorts, actors: ActorRef[]) {
 }
 
 function summaryOf(version: DocVersionRecord, named: (actor: ActorRef) => NamedPrincipal): DocVersionSummary {
-  return { docId: version.docId, version: version.version, title: version.title, state: version.state, reason: version.reason, author: named(version.author), createdAt: iso(version.createdAt) };
+  return { docId: version.docId, version: version.version, title: version.title, state: version.state, reason: version.reason, author: named(version.author), createdAt: iso(version.createdAt),
+    ...(version.contributors ? { contributors: version.contributors.map(named), liveSnapshot: version.liveSnapshot } : {}) };
 }
 
 async function presentVersion(ports: DocPorts, version: DocVersionRecord): Promise<DocVersion> {
-  const [{ mentions, map }, named] = await Promise.all([resolve(ports, version.projectId, version.body), names(ports, [version.author])]);
+  const [{ mentions, map }, named] = await Promise.all([resolve(ports, version.projectId, version.body), names(ports, [version.author, ...(version.contributors ?? [])])]);
   return { ...summaryOf(version, named), projectId: version.projectId, body: version.body, html: ports.renderer.render(version.body, map), mentions };
 }
 
@@ -172,10 +195,16 @@ export interface DocUseCaseOptions {
 
 export function createDocUseCases(uow: DocUnitOfWork, options: DocUseCaseOptions = {}) {
   const agentAuthors = options.agentAuthors === true;
+  async function fenceLegacy(ports: DocPorts, row: DocWithCurrent) {
+    const head = await ports.live.lock(row.doc.id);
+    if (head && (head.savedVersion !== row.doc.currentVersion || head.body !== row.current.body)) {
+      throw new ConflictError('The shared working copy changed. Save its version before this operation.', 'DOC_LIVE_WORKING_COPY_CHANGED');
+    }
+  }
   /** Stores the next version, rewrites mentions and records one event; returns the doc as its readers see it. */
-  async function commit(ports: DocPorts, principal: Principal, scope: { workspaceId: string; projectId: string }, row: DocWithCurrent, created: boolean) {
+  async function commit(ports: DocPorts, principal: Principal, scope: { workspaceId: string; projectId: string }, row: DocWithCurrent, created: boolean, retained: DocTaskUseFence) {
     const { targets } = await resolve(ports, scope.projectId, row.current.body, row.doc.id);
-    await ports.docs.replaceMentions(scope, row.doc.id, targets, row.current.author);
+    await ports.docs.replaceMentions(scope, row.doc.id, targets, row.current.author, retained);
     const view = await present(ports, row);
     await ports.events.record(principal, scope.workspaceId, created ? 'project.doc_created.v1' : 'project.doc_updated.v1', scope.projectId,
       { docId: row.doc.id, version: row.current.version });
@@ -220,7 +249,7 @@ export function createDocUseCases(uow: DocUnitOfWork, options: DocUseCaseOptions
       return uow.run(async (ports) => {
         const { id } = await authorized(ports, principal, docId, 'read');
         const { items, total } = await ports.docs.versions(id, window);
-        const named = await names(ports, items.map((item) => item.author));
+        const named = await names(ports, items.flatMap((item) => [item.author, ...(item.contributors ?? [])]));
         return { items: items.map((item) => summaryOf(item, named)), total, ...window };
       });
     },
@@ -242,6 +271,16 @@ export function createDocUseCases(uow: DocUnitOfWork, options: DocUseCaseOptions
         await ports.access.requireProject(principal, 'read', project);
         const { mentions, map } = await resolve(ports, project, markdown);
         return { html: ports.renderer.render(markdown, map), mentions };
+      });
+    },
+
+    /** Exact committed shared text: never normalize it or rewrite native mention links while rendering. */
+    async previewShared(principal: Principal, docId: string, body: string): Promise<DocPreview> {
+      if (typeof body !== 'string' || body.length > DOC_LIMITS.body) throw new InvalidInputError('The shared text exceeds the doc limit');
+      return uow.run(async (ports) => {
+        const { projectId, id } = await authorized(ports, principal, docId, 'read');
+        const { mentions, map } = await resolve(ports, projectId, body, id);
+        return { html: ports.renderer.render(body, map), mentions };
       });
     },
 
@@ -267,8 +306,9 @@ export function createDocUseCases(uow: DocUnitOfWork, options: DocUseCaseOptions
         if (body.length > DOC_LIMITS.body) throw new InvalidInputError(`body must be at most ${DOC_LIMITS.body} characters`);
         const first: NewDocVersion = { title, body, state, reason, author: by };
         const row = await ports.docs.insert({ id: randomUUID(), workspaceId, projectId: project, createdBy: by }, first);
+        const taskFence = await prepareDocBodyTaskUse(ports, row, [body], from ? [from] : []);
         if (from) await linkSource(ports, scope, row.doc.id, from, by);
-        return commit(ports, principal, scope, row, true);
+        return commit(ports, principal, scope, row, true, taskFence);
       });
     },
 
@@ -289,12 +329,15 @@ export function createDocUseCases(uow: DocUnitOfWork, options: DocUseCaseOptions
       return uow.run(async (ports) => {
         const { id, projectId, workspaceId } = await authorized(ports, principal, docId, 'write');
         const current = (await ports.docs.find(id, { lock: true }))!;
+        await fenceLegacy(ports, current);
         if (current.doc.currentVersion !== version) throw new VersionConflictError(current.doc.currentVersion, await present(ports, current));
         const next = { title: title ?? current.current.title, body: body ?? current.current.body, state: state ?? current.current.state };
         const change = text.describeChange(current.current, next);
         if (!change) return present(ports, current);
+        const taskFence = await prepareDocBodyTaskUse(ports, current, [current.current.body, next.body]);
         const row = await ports.docs.append(id, { ...next, reason: given || change, author: by });
-        return commit(ports, principal, { workspaceId, projectId }, row, false);
+        await ports.live.rebindSaved(row, randomUUID());
+        return commit(ports, principal, { workspaceId, projectId }, row, false, taskFence);
       });
     },
 
@@ -310,16 +353,57 @@ export function createDocUseCases(uow: DocUnitOfWork, options: DocUseCaseOptions
       return uow.run(async (ports) => {
         const { id, projectId, workspaceId } = await authorized(ports, principal, docId, 'write');
         const current = (await ports.docs.find(id, { lock: true }))!;
+        await fenceLegacy(ports, current);
         if (current.doc.currentVersion !== version) throw new VersionConflictError(current.doc.currentVersion, await present(ports, current));
         const composed = await composeSection(ports, projectId, from);
         const { body, replaced } = text.upsertSection(current.current.body, from, composed.section);
         const scope = { workspaceId, projectId };
+        const taskFence = await prepareDocBodyTaskUse(ports, current, [current.current.body, body], [from]);
+        const existing = (await ports.work.links([id])).some((link) => link.role === 'source' && link.fromType === 'doc'
+          && link.fromId === id && link.toType === from.type && link.toId === from.id);
         await linkSource(ports, scope, id, from, by);
-        if (body === current.current.body) return present(ports, current);
+        if (body === current.current.body) {
+          // A new source link alone is a saved use; an exact existing one is an observation.
+          if (!existing) { await taskFence.mark(); await ports.events.record(principal, workspaceId, 'project.doc_updated.v1', projectId, { docId: id, version }); }
+          return present(ports, current);
+        }
         if (body.length > DOC_LIMITS.body) throw new RuleViolationError('The doc would become too long; start a new doc for this', 'DOC_TOO_LONG');
         const reason = `${replaced ? 'Updated' : 'Added'} the ${composed.label} “${composed.title}”`;
         const row = await ports.docs.append(id, { title: current.current.title, body, state: current.current.state, reason, author: by });
-        return commit(ports, principal, scope, row, false);
+        await ports.live.rebindSaved(row, randomUUID());
+        return commit(ports, principal, scope, row, false, taskFence);
+      });
+    },
+
+    /** A deliberate immutable version of one confirmed live head; never a client-supplied body. */
+    async saveLiveVersion(principal: Principal, docId: string, command: SaveLiveDocCommand, expected: number | undefined): Promise<Doc> {
+      if (principal.kind !== 'human') throw new ForbiddenError('People save the shared working copy', 'DOC_LIVE_NEEDS_PERSON');
+      const by = authorOf(principal, false);
+      const version = valid.expectedVersion(expected);
+      if (!command || !valid.isId(command.generation) || !Number.isSafeInteger(command.headSequence) || command.headSequence < 0
+        || typeof command.headHash !== 'string' || !/^[a-f0-9]{64}$/.test(command.headHash)) throw new InvalidInputError('An acknowledged shared head is required');
+      const title = command.title === undefined ? undefined : text.title(command.title);
+      const state = command.state === undefined ? undefined : text.state(command.state);
+      const given = text.reason(command.reason);
+      return uow.run(async (ports) => {
+        const { id, projectId, workspaceId } = await authorized(ports, principal, docId, 'write');
+        const current = (await ports.docs.find(id, { lock: true }))!;
+        // A rolled-back live refusal carries no protected postimage beyond its held fence.
+        if (current.doc.currentVersion !== version) throw new ConflictError('The saved version changed. Read the current shared head before saving.', 'VERSION_CONFLICT');
+        const head = await ports.live.lock(id);
+        if (!head || head.generation !== command.generation || head.sequence !== command.headSequence || head.hash !== command.headHash
+          || head.savedVersion !== current.doc.currentVersion) {
+          throw new ConflictError('The shared head changed. Synchronize before saving its version.', 'DOC_LIVE_HEAD_CHANGED');
+        }
+        // A snapshot is byte-for-byte the acknowledged body; never normalize it on this path.
+        if (typeof head.body !== 'string' || head.body.length > DOC_LIMITS.body) throw new RuleViolationError('The shared text exceeds the doc limit', 'DOC_TOO_LONG');
+        const next = { title: title ?? current.current.title, body: head.body, state: state ?? current.current.state };
+        const change = text.describeChange(current.current, next);
+        if (!change) return present(ports, current);
+        const taskFence = await prepareDocBodyTaskUse(ports, current, [current.current.body, next.body]);
+        const row = await ports.docs.append(id, { ...next, reason: given || change, author: by });
+        const snapshot = await ports.live.bindSnapshot(row, head);
+        return commit(ports, principal, { workspaceId, projectId }, snapshot, false, taskFence);
       });
     },
   };

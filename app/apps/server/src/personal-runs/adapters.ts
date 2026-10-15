@@ -1,5 +1,6 @@
+import { withTaskUseErrors } from '../work/task-use-errors.js';
 import { fromDrizzle, type PgBoss } from 'pg-boss';
-import { personalRunRows, sql, workRows, type DbExecutor } from '@flux/db';
+import { personalRunRows, withIdpStanding, sql, workRows, type DbExecutor } from '@flux/db';
 import {
   createAssistantProposalUseCases,
   createPersonalRunUseCases,
@@ -17,6 +18,7 @@ import {
 } from '@flux/core';
 import { nativeWorkInEventSession } from '../work/adapters.js';
 import { transactionEventSession } from '../work/transaction-events.js';
+import { assistantRows } from '../assistant/adapters.js';
 import { eventPorts } from '../events.js';
 
 // Adapters that connect the personal-run use cases (#68, O-008) to the access policy, the
@@ -36,9 +38,10 @@ export function pgBossPersonalRunQueue(boss: Pick<PgBoss, 'send'>): PersonalRunQ
 }
 
 function personalRunPorts(tx: DbExecutor, queue: PersonalRunQueueFactory,
-  events?: PersonalRunPorts['events']): PersonalRunPorts {
+  events?: PersonalRunPorts['events'], session?: ReturnType<typeof transactionEventSession>): PersonalRunPorts {
   return {
-    access: policyPersonalRunAccess(tx),
+    ...(session ? { assistants: assistantRows(tx, session) } : {}),
+    access: withIdpStanding(policyPersonalRunAccess(tx), tx),
     runs: personalRunRows(tx),
     queue: queue(tx),
     events: events ?? { record: async (principal, workspaceId, kind, projectId, data) => { await recordEvent(eventPorts(tx), principal, workspaceId, kind, projectId, data); } },
@@ -47,7 +50,12 @@ function personalRunPorts(tx: DbExecutor, queue: PersonalRunQueueFactory,
 
 /** One transaction per use case; on an open transaction (an idempotency scope) it nests as a savepoint. */
 export function personalRunUnitOfWork(db: Database, queue: PersonalRunQueueFactory): PersonalRunUnitOfWork {
-  return { run: (work) => db.transaction((tx) => work(personalRunPorts(tx, queue))) };
+  return { run: (work) => db.transaction(async (tx) => {
+    const session = transactionEventSession(tx);
+    const result = await session.run(() => withTaskUseErrors(() => work(personalRunPorts(tx, queue, session, session))));
+    await session.flushEvents();
+    return result;
+  }) };
 }
 
 /** Accept records the result through the #101 work use case, in the accept's own transaction. */
@@ -58,7 +66,7 @@ export function proposalUnitOfWork(db: Database, queue: PersonalRunQueueFactory)
       const native = nativeWorkInEventSession(tx as Transaction, session);
       const rows = workRows(tx);
       const result = await session.run(() => work({
-        ...personalRunPorts(tx, queue, session),
+        ...personalRunPorts(tx, queue, session, session),
         results: {
           async findWork(workId, options) {
             const item = await rows.findWork(workId, options);
@@ -79,10 +87,12 @@ export interface PersonalRunComposition {
   connections?: PersonalConnectionLookup;
   /** The instance operator's provider switch; off until the provider adapter lands. */
   providerEnabled?: boolean;
+  /** The most requests of a run once the worker runs the tool loop (F-027 AST-8); 1 (the default) is one request. */
+  toolTurns?: number;
 }
 
-export function personalRunUseCases(db: Database, { queue, connections = noPersonalConnections, providerEnabled = false }: PersonalRunComposition) {
-  return createPersonalRunUseCases({ uow: personalRunUnitOfWork(db, queue), connections, providerEnabled });
+export function personalRunUseCases(db: Database, { queue, connections = noPersonalConnections, providerEnabled = false, toolTurns }: PersonalRunComposition) {
+  return createPersonalRunUseCases({ uow: personalRunUnitOfWork(db, queue), connections, providerEnabled, ...(toolTurns !== undefined ? { toolTurns } : {}) });
 }
 
 export const assistantProposalUseCases = (db: Database, queue: PersonalRunQueueFactory) => createAssistantProposalUseCases(proposalUnitOfWork(db, queue));

@@ -1,6 +1,7 @@
 import { messagePreview } from '@flux/contracts';
 import { and, asc, eq, gt, gte, inArray, isNotNull, isNull, ne, sql } from 'drizzle-orm';
 import * as schema from '../schema.js';
+import { assignmentNotificationActive } from './notification-lifecycle.js';
 import type { DbExecutor } from './push.js';
 
 /**
@@ -29,6 +30,7 @@ export interface StoredPreferenceRow {
   quietStart: number;
   quietEnd: number;
   timeZone: string;
+  pausedUntil: Date | null;
   summaryEnabled: boolean;
   summaryAt: number;
 }
@@ -37,6 +39,7 @@ type PreferenceRecord = typeof schema.notificationPreferences.$inferSelect;
 const storedRow = (row: PreferenceRecord): StoredPreferenceRow => ({
   channels: row.channels ?? {}, emailDestination: row.emailDestination, quietEnabled: row.quietEnabled, quietStart: row.quietStart,
   quietEnd: row.quietEnd, timeZone: row.timeZone, summaryEnabled: row.summaryEnabled, summaryAt: row.summaryAt,
+  pausedUntil: row.pausedUntil,
 });
 
 /** What the generator reads and writes inside its transaction. */
@@ -138,7 +141,10 @@ export function notificationFactRows(db: DbExecutor) {
         .where(and(eq(pm.conversationId, message.conversationId), sql`${pm.sequence} < ${message.sequence}`, isNotNull(pm.authorId)));
       const [agent] = message.authorAgentId ? await db.select({ name: schema.agents.name }).from(schema.agents)
         .where(and(eq(schema.agents.workspaceId, message.workspaceId), eq(schema.agents.id, message.authorAgentId))) : [];
+      const [asked] = await db.select({ userId: schema.agentQuestions.askedUserId, question: schema.agentQuestions.question }).from(schema.agentQuestions)
+        .where(eq(schema.agentQuestions.messageId, message.id));
       return {
+        asked: asked ?? null,
         id: message.id, workspaceId: message.workspaceId, projectId: message.projectId, projectName: await projectName(message.projectId),
         conversationId: message.conversationId, opening: messagePreview(opening?.body ?? message.body, opening?.attachmentCount ?? message.attachmentCount), conversationCreatedBy: row.createdBy !== null ? { kind: 'human' as const, id: row.createdBy } : { kind: 'agent' as const, id: row.createdByAgentId! },
         author: message.authorId !== null ? { kind: 'human' as const, id: message.authorId } : { kind: 'agent' as const, id: message.authorAgentId! },
@@ -158,7 +164,7 @@ export function notificationFactRows(db: DbExecutor) {
     },
     async work(workId: string) {
       const w = schema.projectWorkItems;
-      const [row] = await db.select({ id: w.id, projectId: w.projectId, title: w.title, ownerUserId: w.ownerUserId }).from(w).where(eq(w.id, workId));
+      const [row] = await db.select({ id: w.id, projectId: w.projectId, title: w.title, ownerUserId: w.ownerUserId }).from(w).where(and(eq(w.id, workId), isNull(w.creationRevertedAt)));
       return row ? { ...row, projectName: await projectName(row.projectId) } : null;
     },
     async decision(decisionId: string) {
@@ -348,6 +354,7 @@ export function notificationEmailRows(db: DbExecutor) {
         .innerJoin(n, and(eq(n.id, ob.notificationId), eq(n.userId, ob.userId))).where(eq(ob.id, id)).for('update', { of: ob });
       if (!row) return null;
       return {
+        lifecycleActive: await assignmentNotificationActive(db, row.notification),
         id: row.email.id, userId: row.email.userId, addressKind: row.email.addressKind, status: row.email.status, attempts: row.email.attempts,
         notification: { id: row.notification.id, reason: row.notification.reason ?? null, source: { workspaceId: row.notification.workspaceId, type: row.notification.sourceType, id: row.notification.sourceId } },
       };

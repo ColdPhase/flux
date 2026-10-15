@@ -5,7 +5,7 @@ import net from 'node:net';
 import { join } from 'node:path';
 import { after, before, test } from 'node:test';
 import Fastify from 'fastify';
-import { chromium, type Browser, type BrowserContext } from 'playwright';
+import { chromium, webkit, type Browser, type BrowserContext } from 'playwright';
 import {expect} from 'playwright/test';
 import { createDatabase } from '@flux/db';
 import type { WorkItem } from '@flux/contracts';
@@ -66,7 +66,10 @@ let browser: Browser; const contexts: BrowserContext[] = [];
 before(async () => {
   await app.register(githubRoutes, { db, sessions: identity, config, transport, background: false }); await app.ready();
   await new Promise<void>((resolve) => proxy.listen(Number(new URL(publicOrigin).port), '127.0.0.1', resolve));
-  browser = await chromium.launch();
+  const engine = process.env.FLUX_E2E_BROWSER ?? 'chromium';
+  if (engine !== 'chromium' && engine !== 'webkit') throw new Error('FLUX_E2E_BROWSER must be chromium or webkit');
+  browser = await (engine === 'webkit' ? webkit : chromium).launch();
+  assert.equal(browser.browserType().name(), engine);
 });
 after(async () => {
   await browser?.close(); proxy.closeAllConnections(); await new Promise((resolve) => proxy.close(resolve)); await app.close(); await pool.end();
@@ -74,13 +77,17 @@ after(async () => {
 async function context(who: Person, options: { viewport?: { width: number; height: number }; isMobile?: boolean; hasTouch?: boolean } = {}) {
   const ctx = await browser.newContext({ baseURL: publicOrigin, locale: 'en-GB', timezoneId: 'Europe/Warsaw', serviceWorkers: 'block', ...options }); contexts.push(ctx);
   await ctx.addCookies([...who.browser.cookies].map(([name, value]) => ({ name, value, url: publicOrigin, httpOnly: true, sameSite: 'Lax' })));
-  // Browser navigation to the external provider is the only fixture redirect; callback runs real OAuth state/PKCE/SQL.
+  // Only the external provider page is a fixture; its navigation reaches the real OAuth state/PKCE/SQL callback.
   await ctx.route('https://github.com/**', async (route) => {
     const url = new URL(route.request().url());
     if (url.pathname !== '/login/oauth/authorize' && url.pathname !== `/apps/${config.appSlug}/installations/new`) throw new Error('Unexpected external browser navigation');
-    const target = new URL('/api/v1/integrations/github/callback', publicOrigin); target.searchParams.set('state', url.searchParams.get('state')!);
+    const state = url.searchParams.get('state'); assert.ok(state, 'the real authorization request carries its state');
+    const target = new URL('/api/v1/integrations/github/callback', publicOrigin); target.searchParams.set('state', state);
     target.searchParams.set(url.pathname === '/login/oauth/authorize' ? 'code' : 'installation_id', url.pathname === '/login/oauth/authorize' ? 'browser-fixture-code' : '555');
-    await route.fulfill({ status: 302, headers: { location: target.toString() }, body: '' });
+    // The pinned WebKit interception backend refuses a fulfilled 302. A provider page can navigate instead;
+    // the callback's own HTTP redirect and all original state, PKCE, cookies and SQL assertions remain real.
+    await route.fulfill({ status: 200, contentType: 'text/html',
+      body: `<!doctype html><meta charset="utf-8"><script>location.replace(${JSON.stringify(target.toString())})</script>` });
   });
   return ctx;
 }
@@ -103,11 +110,19 @@ test('real settings UI binds, verifies PR links and removes private projections 
   assert.equal(await views.getByRole('link', { name: 'Conversation', exact: true }).getAttribute('href'), `/projects/${place.id}`, 'a destination remembered under the retired key is ignored');
   await views.getByRole('link', { name: 'Conversation', exact: true }).click();
   await page.waitForURL(`**/projects/${place.id}`);
-  const details = page.getByRole('button', { name: 'Details', exact: true });
-  await details.click();
+  // The computer's one-row header keeps Details in More (#340).
+  const openDetails = async (target: typeof page) => {
+    await target.locator('header.top').getByRole('button', { name: 'More', exact: true }).click();
+    await target.getByRole('menu', { name: 'More' }).getByRole('menuitem', { name: 'Details' }).click();
+  };
+  const closeDetails = async (target: typeof page) => {
+    const close = target.getByRole('button', { name: 'Close details', exact: true });
+    if (await close.count()) await close.click();
+  };
+  await openDetails(page);
   await page.getByRole('link', { name: 'GitHub repositories', exact: true }).click();
   await page.waitForURL(`**/projects/${place.id}/github`);
-  if (await details.getAttribute('aria-expanded') === 'true') await details.click();
+  await closeDetails(page);
   await page.getByRole('heading', { name: 'GitHub is not configured on this server' }).waitFor();
   configuredFixture = true; await page.getByRole('button', { name: 'Check again', exact: true }).click();
   await page.getByRole('button', { name: 'Continue to GitHub', exact: true }).click();
@@ -167,10 +182,10 @@ test('real settings UI binds, verifies PR links and removes private projections 
   }
   const memberPage = await (await context(viewer)).newPage(); await memberPage.goto(`/projects/${place.id}/github`);
   await memberPage.getByRole('heading', { name: 'Authorize your GitHub account', exact: true }).waitFor();
-  const memberDetails = memberPage.getByRole('button', { name: 'Details', exact: true });
-  await memberDetails.click();
+  await openDetails(memberPage);
+  await memberPage.getByRole('complementary', { name: 'Details' }).waitFor();
   assert.equal(await memberPage.getByRole('link', { name: 'GitHub repositories', exact: true }).count(), 0, 'project management entry is absent for a viewer');
-  await memberDetails.click();
+  await closeDetails(memberPage);
   assert.equal(await memberPage.getByText('gesture-lamp-firmware', { exact: false }).count(), 0);
   assert.equal(await memberPage.getByRole('link', { name: /Keep a manual off switch/ }).count(), 0);
   await memberPage.getByRole('button', { name: 'Continue to GitHub', exact: true }).click();

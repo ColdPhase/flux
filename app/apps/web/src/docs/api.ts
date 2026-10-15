@@ -3,7 +3,13 @@ import {
   type CreateDocCommand, type Doc, type DocPreview, type DocSectionSource, type DocSummary, type DocVersion, type DocVersionSummary,
   type Page, type UpdateDocCommand,
 } from '@flux/contracts';
-import { ApiError, NetworkError, request } from '../api/client';
+import { ApiError, NetworkError, request } from '../api/client.js';
+import { liveDocPath, liveDocEnrollPath, liveDocSavePath, liveDocReceiptPath, type LiveDocBootstrap, type EnrollLiveDoc, type EnrolledLiveDoc, type SaveSharedDoc, type LiveReceipt } from '@flux/contracts';
+
+export const getLiveDoc = (id: string, signal?: AbortSignal) => request<LiveDocBootstrap>(liveDocPath(id), { signal });
+export const enrollLiveDoc = (id: string, command: EnrollLiveDoc, signal?: AbortSignal) => request<EnrolledLiveDoc>(liveDocEnrollPath(id), { method: 'POST', body: command, signal });
+export const saveLiveDoc = (id: string, command: SaveSharedDoc) => request<LiveReceipt>(liveDocSavePath(id), { method: 'POST', body: command, headers: { 'idempotency-key': command.clientCommandId, 'if-match': `"${command.expectedVersion}"` } });
+export const getLiveReceipt = (id: string, commandId: string, signal?: AbortSignal) => request<LiveReceipt>(liveDocReceiptPath(id, commandId), { signal });
 
 // Project docs (#112). Create and change commands carry an Idempotency-Key that a retry of the
 // same submission reuses; changes send If-Match with the version the person started from.

@@ -146,7 +146,9 @@ class TypingJourney(unittest.TestCase):
         alice = self.open("alice", video=True)
         bob = self.open("bob")
         # The receiver keeps its draft, selected source, keyboard focus and scroll.
-        self.thread(bob).get_by_role("button", name=re.compile(r"^Sources")).click()
+        # "/source" opens the saved sources (F-026 S5: no Sources button in the composer).
+        self.composer(bob).fill("/source")
+        self.composer(bob).press("Enter")
         self.thread(bob).get_by_role("button", name="Discuss this version").click()
         expect(self.thread(bob).locator(".composer-files__ref")).to_contain_text("Low-light observations")
         self.composer(bob).fill("PRIVATE-DRAFT receiver notes")
@@ -364,7 +366,7 @@ class TypingJourney(unittest.TestCase):
         bob = self.open("bob")
         self.composer(alice).fill("PRIVATE-DRAFT ordinary reply before asking")
         expect(bob.locator(".typing-notice")).to_contain_text("Alice Rivera", timeout=2000)
-        alice.get_by_role("button", name="Ask my assistant").click()
+        self.composer(alice).fill("/ai ")
         expect(bob.locator(".typing-notice")).not_to_contain_text("Alice Rivera", timeout=750)
         pulses = sum(frame.get("active") is True for frame in alice.typing_sent)
         alice.get_by_label("Ask your assistant", exact=True).fill("PRIVATE-DRAFT private assistant instructions")

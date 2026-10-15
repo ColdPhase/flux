@@ -1,5 +1,6 @@
 import type { NativeWorkRow, ObjectLink, ThoughtTaskRow, PrincipalRef, ProjectAccess, ProjectWorkSummary, SourceAssociationCounts, WorkDetailProjection } from '@flux/contracts';
 import type { Principal } from '../principal.js';
+import type { TaskCreationUndoFacts } from '../work/creation-undo.js';
 import type { WorkReadCursor } from '@flux/contracts';
 import type { WorkReadSlice } from './cursor.js';
 import type { WorkAssociationSelection, WorkReadObject, WorkRelationRead, WorkViewSelection } from './query.js';
@@ -9,7 +10,8 @@ export interface WorkReadAccess {
   requireProject(principal: Principal, projectId: string): Promise<{ workspaceId: string; access: ProjectAccess }>;
 }
 export type WorkSummaryObservation = Omit<ProjectWorkSummary, 'access'>;
-export type WorkDetailObservation = Omit<WorkDetailProjection, 'access'>;
+/** A task detail also carries the facts its reader's Undo eligibility is decided from (#238); they are not returned. */
+export type WorkDetailObservation = Omit<WorkDetailProjection, 'access'> & { undo?: TaskCreationUndoFacts };
 export interface WorkReferenceObservation { items: NativeWorkRow[]; unavailable: WorkReadObject[] }
 /** Selected project thoughts and their linked tasks: exact counts and one window of <=100 pairs. */
 export interface WorkThoughtTasksObservation {

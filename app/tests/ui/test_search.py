@@ -311,11 +311,10 @@ class SearchJourney(unittest.TestCase):
         for size in (43.5, 43.75, 43.99, 43.9989, 0, -1, float("nan"), float("inf")):
             self.assertFalse(has_minimum_touch_size(size), str(size))
 
-    def test_08_phone_search_from_the_drawer_and_the_page(self) -> None:
+    def test_08_phone_search_from_the_tab_bar_and_the_page(self) -> None:
         page = self.page("nia", phone=True)
         page.goto("/")
-        page.get_by_role("button", name="Open navigation").click()
-        page.get_by_role("dialog", name="Flux").get_by_role("button", name="Search", exact=True).click()
+        page.get_by_role("button", name="Search", exact=True).click()
         dialog = page.get_by_role("dialog", name="Jump to")
         expect(dialog).to_be_visible()
         box = dialog.bounding_box()
@@ -403,7 +402,7 @@ class SearchJourney(unittest.TestCase):
             with self.subTest(phone=phone):
                 page = self.page("ari", phone=phone)
                 page.goto(f"/projects/{place['id']}/tasks")
-                expect(page.locator(".tb-card").first).to_be_visible()
+                expect(page.locator(".tb-card, .ws-task").first).to_be_visible()  # the phone lists rows, the computer shows the board
                 page.keyboard.press("Control+k")
                 dialog = page.get_by_role("dialog", name="Jump to")
                 field = dialog.get_by_role("combobox", name="Jump to")
@@ -413,7 +412,7 @@ class SearchJourney(unittest.TestCase):
                 field.press("Enter")
                 details = page.locator("#details")
                 expect(details.get_by_role("heading", name=target["title"], exact=True)).to_be_visible()
-                expect(details.locator(".wd-eyebrow .ui-task-number")).to_have_text("#2")
+                expect(details.locator(".wd-where .ui-task-number")).to_have_text("#2")
                 expect(details.locator(".wd-project-name")).to_have_text(place["name"])
                 self.no_horizontal_scroll(page)
                 shot(page, f"task-number-jump-{'phone-390' if phone else 'desktop-1440'}")
@@ -436,15 +435,19 @@ class SearchJourney(unittest.TestCase):
                     result.click()
                     details = page.locator("#details")
                     expect(details.get_by_role("heading", name=tasks[number - 1]["title"], exact=True)).to_be_visible()
-                    expect(details.locator(".wd-eyebrow .ui-task-number")).to_have_text(f"#{number}")
+                    expect(details.locator(".wd-where .ui-task-number")).to_have_text(f"#{number}")
                     expect(details.locator(".wd-project-name")).to_have_text(place["name"])
                     expect(details.locator("[data-detail-relations-phase]")).to_have_attribute("data-detail-relations-phase", "ready")
                     expect(details.get_by_role("navigation", name="Object relationship pages")).to_have_count(0)
-                    expect(details.get_by_label("Status", exact=True)).to_have_value("open")
+                    status = details.get_by_role("radiogroup" if phone else "button", name="Status", exact=True)
+                    if phone:
+                        expect(status.get_by_role("radio", checked=True)).to_have_text("Open")
+                    else:
+                        expect(status).to_contain_text("Open")
                     expect(details.get_by_label("Owner", exact=True)).to_have_value("")
-                    for name in ("Status", "Owner"):
-                        field_box = details.get_by_label(name, exact=True).bounding_box()
-                        label_box = details.locator(".wd-controls > label", has_text=name).evaluate(
+                    for name in ("Owner",) if phone else ("Status", "Owner"):
+                        field_box = (status if name == "Status" else details.get_by_label(name, exact=True)).bounding_box()
+                        label_box = details.locator(".wd-row dt", has_text=name).evaluate(
                             "node => { const range = document.createRange(); range.selectNodeContents(node); return range.getBoundingClientRect().toJSON(); }")
                         self.assertGreaterEqual(field_box["x"] - label_box["x"] - label_box["width"], 11,
                                                 f"{name} keeps a readable label/value gap at default text size")
@@ -453,19 +456,53 @@ class SearchJourney(unittest.TestCase):
                 # The shared type tokens use rem. Enlarge actual text through the root size;
                 # parseFloat(.75rem) followed by px would shrink it to 1.5px instead of 24px.
                 page.evaluate("document.documentElement.style.fontSize = '200%'")
-                number_label = details.locator(".wd-eyebrow .ui-task-number")
+                number_label = details.locator(".wd-where .ui-task-number")
                 expect(number_label).to_be_visible()
                 expect(details.locator(".wd-project-name")).to_be_visible()
                 self.assertGreaterEqual(number_label.evaluate("node => parseFloat(getComputedStyle(node).fontSize)"), 20)
-                for name in ("Status", "Owner"):
-                    field_box = details.get_by_label(name, exact=True).bounding_box()
-                    label_box = details.locator(".wd-controls > label", has_text=name).evaluate(
+                for name in ("Owner",) if phone else ("Status", "Owner"):
+                    field_box = (status if name == "Status" else details.get_by_label(name, exact=True)).bounding_box()
+                    label_box = details.locator(".wd-row dt", has_text=name).evaluate(
                         "node => { const range = document.createRange(); range.selectNodeContents(node); return range.getBoundingClientRect().toJSON(); }")
                     self.assertGreaterEqual(field_box["x"] - label_box["x"] - label_box["width"], 11,
                                             f"{name} keeps a readable label/value gap with 200% text")
                 expect(details.get_by_role("navigation", name="Object relationship pages")).to_have_count(0)
                 self.no_horizontal_scroll(page)
                 shot(page, f"task-number-26-text-200-{'phone-390' if phone else 'desktop-1440'}")
+
+
+    # ---------------------------------------------------------------- projects by name (#465)
+
+    def test_12_a_project_is_found_by_its_name_and_opens_its_home(self) -> None:
+        page = self.page("nia")
+        page.goto("/")
+        expect(page.get_by_role("button", name="Search", exact=True)).to_be_visible()
+        dialog, field = self.jump(page, "gesture lamp")
+        expect(dialog.get_by_role("option").first).to_contain_text("Gesture lamp")
+        expect(dialog.get_by_role("option").first).to_contain_text("Project · restricted")
+        shot(page, "search-project-jump-desktop-1440")
+        field.press("Enter")
+        expect(dialog).to_be_hidden()
+        expect(page).to_have_url(re.compile(rf"/projects/{self.ids['lamp']}"))
+        expect(page.get_by_role("heading", level=1, name="Gesture lamp")).to_be_visible()
+
+        page.goto("/search?q=lamp&type=project")
+        results = page.get_by_role("list", name="Results")
+        expect(results.get_by_role("link")).to_have_count(1)
+        expect(results).to_contain_text("Gesture lamp")
+        chips = page.get_by_role("group", name="Kind of result")
+        expect(chips.get_by_role("button", name=re.compile("^Projects"))).to_have_attribute("aria-pressed", "true")
+
+        # Olek is not in the restricted project: the name finds nothing, on the palette or the page.
+        olek = self.page("olek")
+        olek.goto("/")
+        expect(olek.get_by_role("button", name="Search", exact=True)).to_be_visible()
+        dialog, _ = self.jump(olek, "gesture lamp")
+        expect(dialog).to_contain_text("Nothing you can open matches")
+        expect(dialog.get_by_role("option")).to_have_count(0)
+        olek.goto("/search?q=gesture%20lamp")
+        expect(olek.get_by_role("heading", name=re.compile("Nothing matches"))).to_be_visible()
+        self.assertNotIn("Gesture lamp", olek.content())
 
 
 if __name__ == "__main__":

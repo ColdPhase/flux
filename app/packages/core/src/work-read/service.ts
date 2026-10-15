@@ -4,6 +4,7 @@ import {
 } from '@flux/contracts';
 import { DomainError, ServiceUnavailableError } from '../access/errors.js';
 import type { Principal } from '../principal.js';
+import { creationUndoEligibility } from '../work/creation-undo.js';
 import { decodeWorkReadCursor, presentWorkReadPage, workReadScope } from './cursor.js';
 import type { WorkReadFinalFence, WorkReadPorts, WorkReadRequirements, WorkReadUnitOfWork, WorkSummaryObservation } from './ports.js';
 import {
@@ -203,7 +204,11 @@ export function createBoundedWorkReads(unit: WorkReadUnitOfWork, finalFence: Wor
         requireFact(detail.observedAt === observedAt && detail.object.kind === object.kind && detail.object.id === object.id && detail.object.projectId === projectId && detail.object.workspaceId === workspaceId && detail.object.audience.kind === 'project' && detail.object.audience.projectId === projectId && !('links' in detail.object) && detail.context.length <= 3);
         return detail;
       }, { objects: [object] });
-      return { ...response.value, access: response.access };
+      const { undo, ...value } = response.value;
+      // Advisory for this reader under its final access; the Undo command rechecks everything under the task fence.
+      if (value.object.kind === 'work' && undo)
+        return { ...value, object: { ...value.object, creationUndo: creationUndoEligibility(undo, actor, response.access !== 'viewer') }, access: response.access };
+      return { ...value, access: response.access };
     },
   };
 }

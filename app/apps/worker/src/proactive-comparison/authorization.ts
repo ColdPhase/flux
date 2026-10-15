@@ -1,4 +1,4 @@
-import { proactiveOutboxRows } from '@flux/db';
+import { idpStandingRepository, proactiveOutboxRows, TaskUseRefusal } from '@flux/db';
 import { evaluateProject, type Database, type Executor } from '@flux/core';
 
 export type ObservedUsage = { inputTokens: number; outputTokens: number; estimatedCents: number };
@@ -11,7 +11,7 @@ export class ComparisonStopped extends Error {
 export async function authorizedComparison(db: Executor, candidateId: string, connectionId: string,
   expectedRuleVersion?: number, lock = false) {
   const rows = proactiveOutboxRows(db);
-  const candidate = await rows.lockCandidate(candidateId);
+  const candidate = await rows.candidate(candidateId);
   if (!candidate || candidate.status !== 'reserved' || candidate.connectionId !== connectionId)
     throw new ComparisonStopped('RESERVATION_CHANGED');
   if (lock) await rows.lockOwner(candidate.ownerUserId);
@@ -22,6 +22,7 @@ export async function authorizedComparison(db: Executor, candidateId: string, co
     || !connection || connection.id !== candidate.connectionId || !connection.keyAvailable
     || (expectedRuleVersion !== undefined && rule.version !== expectedRuleVersion))
     throw new ComparisonStopped('AUTHORIZATION_CHANGED');
+  if (await idpStandingRepository(db).refuses(candidate.ownerUserId)) throw new ComparisonStopped('ACCESS_CHANGED');
   const owner = await evaluateProject({ kind: 'human', id: candidate.ownerUserId }, 'project.write', candidate.projectId, db, { lock });
   const agent = await evaluateProject({ kind: 'agent', id: rule.agentId }, 'project.write', candidate.projectId, db, { lock });
   if (!owner.allowed || !agent.allowed || agent.actor?.agent?.ownerUserId !== candidate.ownerUserId)
@@ -35,7 +36,16 @@ export async function authorizedComparison(db: Executor, candidateId: string, co
   for (const source of snapshot.sources) {
     if (!await rows.sourceCurrent(candidate.projectId, source)) throw new ComparisonStopped('SOURCE_CHANGED');
   }
-  return { rows, candidate, rule, result, connection, snapshot };
+  const taskFence = lock ? await rows.prepareTaskUse(candidate.projectId, [{ type: 'result', id: candidate.resultId }, ...snapshot.sources]).catch((error: unknown) => {
+    if (error instanceof TaskUseRefusal) throw new ComparisonStopped(error.code);
+    throw error;
+  }) : null;
+  if (lock) {
+    const retained = await rows.lockCandidate(candidateId);
+    if (!retained || retained.status !== candidate.status || retained.connectionId !== connectionId
+      || retained.sourceFingerprint !== candidate.sourceFingerprint) throw new ComparisonStopped('RESERVATION_CHANGED');
+  }
+  return { rows, candidate, rule, result, connection, snapshot, taskFence };
 }
 
 /**

@@ -4,6 +4,15 @@ const day = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' 
 const stamp = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 export const shortDate = (iso: string) => day.format(new Date(iso));
 export const longDate = (iso: string) => stamp.format(new Date(iso));
+/** "just now", "5 min ago", "2 h ago", "3 d ago", then the date: how recently a page changed. */
+export function ago(iso: string, now = Date.now()) {
+  const minutes = Math.max(0, Math.floor((now - new Date(iso).getTime()) / 60000));
+  if (minutes < 1) return 'just now';
+  if (minutes < 60) return `${minutes} min ago`;
+  if (minutes < 1440) return `${Math.floor(minutes / 60)} h ago`;
+  if (minutes < 10080) return `${Math.floor(minutes / 1440)} d ago`;
+  return shortDate(iso);
+}
 
 export const STATE_LABEL: Record<DocState, string> = { draft: 'Draft', published: 'Published' };
 /**

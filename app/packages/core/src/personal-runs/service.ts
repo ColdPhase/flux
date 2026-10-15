@@ -24,7 +24,9 @@ import type {
   EnablementRecord, PersonalConnection, PersonalConnectionLookup, PersonalRunPorts, PersonalRunUnitOfWork, RunRecord,
 } from './ports.js';
 import { announce, updateAndAnnounce } from './progress.js';
-import { centsToMicros, normalizeEnable, normalizeInvoke, normalizeUpdate, retryRequest, runReservationMicros, type NormalizedInvoke } from './validation.js';
+import {
+  centsToMicros, connectionCallsTools, normalizeEnable, normalizeInvoke, normalizeUpdate, retryRequest, runReservationMicros, toolRunReservationMicros, type NormalizedInvoke,
+} from './validation.js';
 
 // Personal assistant runs (issue #68, decision O-008): the owner's enablement, invoke, stop,
 // retry and the reads. Everything resolves the owner from the authenticated principal; a body
@@ -101,8 +103,10 @@ export async function runView(ports: PersonalRunPorts, record: RunRecord): Promi
  * The owner's usable connection and what one run on it reserves (F-020 PROV-3), or why it cannot
  * be used now: no price means nothing can be reserved, and a model whose largest request costs more
  * than the owner's per-run ceiling is never started. There is never another connection to fall back to.
+ * With `turns` above one (a worker that runs the tool loop, F-027 AST-8) a connection that can call
+ * tools reserves its turns × the largest request, never above the per-run ceiling.
  */
-export async function usableConnection(connections: PersonalConnectionLookup, providerEnabled: boolean, enablement: EnablementRecord):
+export async function usableConnection(connections: PersonalConnectionLookup, providerEnabled: boolean, enablement: EnablementRecord, turns = 1):
   Promise<{ problem: PersonalAssistantUnavailableReason } | { problem: null; connection: PersonalConnection; reservedMicros: number }> {
   if (!providerEnabled) return { problem: 'provider_off' };
   // The connection the consent names, and no other (PROV-1): removing it stops the assistant.
@@ -113,9 +117,10 @@ export async function usableConnection(connections: PersonalConnectionLookup, pr
     const other = await connections.resolve(enablement.ownerUserId);
     return { problem: other && other.status === 'active' && other.ownerUserId === enablement.ownerUserId ? 'connection_changed' : 'no_connection' };
   }
-  const reservedMicros = runReservationMicros(connection.price);
-  if (reservedMicros === null) return { problem: 'price_unknown' };
-  if (reservedMicros > centsToMicros(enablement.perRunCents)) return { problem: 'run_cost_over_limit' };
+  const oneRequest = runReservationMicros(connection.price);
+  if (oneRequest === null) return { problem: 'price_unknown' };
+  if (oneRequest > centsToMicros(enablement.perRunCents)) return { problem: 'run_cost_over_limit' };
+  const reservedMicros = turns > 1 && connectionCallsTools(connection) ? toolRunReservationMicros(connection.price, centsToMicros(enablement.perRunCents), turns) ?? oneRequest : oneRequest;
   return { problem: null, connection, reservedMicros };
 }
 
@@ -150,9 +155,15 @@ export interface PersonalRunDeps {
   connections: PersonalConnectionLookup;
   /** The instance operator's provider switch (O-008 §6); false fails every run closed. */
   providerEnabled: boolean;
+  /**
+   * The most requests of one run when the worker runs the tool loop (F-027 AST-8). A run on a
+   * connection that can call tools then reserves up to this many maximum requests, never above the
+   * owner's per-run ceiling. Default 1: the single request of O-008.
+   */
+  toolTurns?: number;
 }
 
-export function createPersonalRunUseCases({ uow, connections, providerEnabled }: PersonalRunDeps) {
+export function createPersonalRunUseCases({ uow, connections, providerEnabled, toolTurns = 1 }: PersonalRunDeps) {
   async function status(ports: PersonalRunPorts, owner: string): Promise<PersonalAssistantStatus> {
     const named = await ports.runs.enablement(owner);
     const connection = providerEnabled ? await connections.resolve(owner, named?.connectionId ?? undefined) : null;
@@ -178,7 +189,7 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled }:
     const today = { chargedMicros: spend.chargedMicros, reservedMicros: spend.reservedMicros, capCents: enablement.dailyCapCents, resetsAt: iso(spend.resetsAt) };
     const view = enablementView(enablement);
     if (enablement.status === 'paused') return { state: 'paused', unavailableReason: null, enablement: view, setup, today, disclosure };
-    const usableNow = await usableConnection(connections, providerEnabled, enablement);
+    const usableNow = await usableConnection(connections, providerEnabled, enablement, toolTurns);
     if (usableNow.problem) return { state: 'unavailable', unavailableReason: usableNow.problem, enablement: view, setup, today, disclosure };
     const capped = spend.chargedMicros + spend.reservedMicros + usableNow.reservedMicros > centsToMicros(enablement.dailyCapCents);
     return { state: capped ? 'capped' : 'ready', unavailableReason: null, enablement: view, setup, today, disclosure };
@@ -224,7 +235,7 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled }:
     if (request.target && !(await ports.access.canReadSketch(principal, request.target.sketchId))) throw new NotFoundError('Thought', 'THOUGHT_NOT_FOUND');
     if (!enablement) throw new ConflictError('Your assistant is not enabled', 'PERSONAL_RUN_NOT_ENABLED');
     if (enablement.status === 'paused') throw new ConflictError('Your assistant is paused', 'PERSONAL_RUN_PAUSED');
-    const usableNow = await usableConnection(connections, providerEnabled, enablement);
+    const usableNow = await usableConnection(connections, providerEnabled, enablement, toolTurns);
     if (usableNow.problem) throw unavailable(usableNow.problem);
     const agentId = enablement.agents.find((agent) => agent.workspaceId === place.workspaceId)?.agentId;
     if (!agentId || !(await ports.access.canInvoke(principal, agentId, { lock: true })))
@@ -232,6 +243,7 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled }:
     const agent = { kind: 'agent' as const, id: agentId };
     if (!(await ports.access.canUseProject(agent, 'read', place.projectId, { lock: true })))
       throw new ConflictError('Your assistant has no access to this project', 'PERSONAL_RUN_NO_PROJECT_ACCESS');
+    const taskFence = await ports.runs.prepareTaskUse(place.projectId, conversationId.toLowerCase());
     // A run a crashed worker left behind must not block the owner forever (the job expires after 5 minutes).
     for (const ended of await ports.runs.endStale(owner, STALE_AFTER_SECONDS)) await announce(ports, ended);
     if (await ports.runs.hasRunInFlight(owner)) throw new ConflictError('Your assistant is already working on a request', 'PERSONAL_RUN_IN_FLIGHT');
@@ -247,6 +259,7 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled }:
       continuesRunId: request.continuesRunId, retryOfRunId, reservedMicros, provider: connection.provider, model: connection.model,
     });
     await ports.queue.enqueue(run.id);
+    await taskFence.mark();
     // Only the owner learns that the run exists (O-008 §4 "Progress").
     await announce(ports, run);
     return { run, created: true };
@@ -268,6 +281,7 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled }:
       const owner = ownerOf(principal);
       const input = normalizeEnable(command);
       return uow.run(async (ports) => {
+        await ports.assistants?.lockOwner(owner);
         const { workspaceId } = await ports.access.requireInvoke(principal, input.agentId, { lock: true });
         if (await ports.runs.enablement(owner, { lock: true })) throw new ConflictError('Your assistant is already enabled', 'PERSONAL_RUN_ALREADY_ENABLED');
         // The owner chooses which of their connections the assistant uses; without a choice, their newest.
@@ -288,6 +302,7 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled }:
         });
         if (!created) throw new ConflictError('Your assistant is already enabled', 'PERSONAL_RUN_ALREADY_ENABLED');
         await ports.runs.selectAgent(owner, workspaceId, input.agentId);
+        await ports.assistants?.ensure(owner, workspaceId, input.agentId);
         return status(ports, owner);
       });
     },
@@ -310,9 +325,11 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled }:
       const owner = ownerOf(principal);
       const agentId = id(command?.agentId, 'agentId');
       return uow.run(async (ports) => {
+        await ports.assistants?.lockOwner(owner);
         const { workspaceId } = await ports.access.requireInvoke(principal, agentId, { lock: true });
         await lockedEnablement(ports, owner);
         await ports.runs.selectAgent(owner, workspaceId, agentId);
+        await ports.assistants?.ensure(owner, workspaceId, agentId);
         await ports.runs.updateEnablement(owner, {});
         return status(ports, owner);
       });
@@ -342,8 +359,10 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled }:
     async remove(principal: Principal): Promise<void> {
       const owner = ownerOf(principal);
       await uow.run(async (ports) => {
+        await ports.assistants?.lockOwner(owner);
         await lockedEnablement(ports, owner);
         for (const ended of await ports.runs.endUndispatched(owner, 'revoked')) await announce(ports, ended);
+        await ports.assistants?.remove(owner);
         await ports.runs.deleteEnablement(owner);
       });
     },

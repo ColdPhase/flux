@@ -3,6 +3,8 @@ import { randomUUID } from 'node:crypto';
 import type { ObjectRef } from '@flux/contracts';
 import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
+import { referencedTaskIds } from './task-targets.js';
+import { taskUseRows } from './task-use.js';
 import { taskGraphRows } from './task-graph.js';
 
 /**
@@ -29,6 +31,9 @@ export function toWorkRecord(row: WorkRow) {
   return {
     id: row.id, workspaceId: row.workspaceId, projectId: row.projectId, number: row.number, title: row.title, outcome: row.outcome,
     status: row.status, blocker: row.blocker,
+    creationOrigin: row.creationOrigin, creationBaselineVersion: row.creationBaselineVersion, firstPersistedUseAt: row.firstPersistedUseAt,
+    creationRevertedAt: row.creationRevertedAt, creationReversionNoticeId: row.creationReversionNoticeId,
+    creationRevertedBy: row.creationRevertedByKind && row.creationRevertedById ? { kind: row.creationRevertedByKind, id: row.creationRevertedById } : null,
     owner: row.ownerUserId ? { kind: 'human' as const, id: row.ownerUserId } : row.ownerAgentId ? { kind: 'agent' as const, id: row.ownerAgentId } : null,
     parked: row.parkedByDecisionId && row.parkedAt ? { decisionId: row.parkedByDecisionId, at: row.parkedAt } : null,
     criteria: row.criteria,
@@ -81,13 +86,74 @@ async function paged<Row, T>(db: DbExecutor, table: typeof w | typeof d | typeof
 export function workRows(db: DbExecutor) {
   return {
     ...taskGraphRows(db),
+    taskUseTargets: (refs: readonly { type: string; id: string }[]) => referencedTaskIds(db, refs),
+    prepareTaskUse: taskUseRows(db).prepare,
+    lockPreparedTaskUse: taskUseRows(db).lockPrepared,
+    async creatorAgentOwner(agentId: string, options: { lock?: boolean } = {}) {
+      const query = db.select({ ownerId: schema.agents.ownerUserId }).from(schema.agents).where(eq(schema.agents.id, agentId));
+      const [row] = options.lock ? await query.for('share') : await query;
+      return row?.ownerId ?? null;
+    },
+    async creationBaselineMatches(workId: string) {
+      const [row] = await db.select({ matches: sql<boolean>`${w.creationBaseline} = jsonb_build_object(
+        'title', ${w.title}, 'outcome', ${w.outcome}, 'status', ${w.status}, 'blocker', ${w.blocker},
+        'criteria', ${w.criteria}, 'ownerUserId', ${w.ownerUserId}, 'ownerAgentId', ${w.ownerAgentId},
+        'parkedByDecisionId', ${w.parkedByDecisionId}, 'parkedAt', ${w.parkedAt})` }).from(w).where(eq(w.id, workId));
+      return row?.matches === true;
+    },
+    async recordCreationBaseline(work: ReturnType<typeof toWorkRecord>, proposalId?: string) {
+      if (proposalId) {
+        const p = schema.proactiveComparisonProposals;
+        const [bound] = await db.select({ id: p.id }).from(p).where(and(eq(p.id, proposalId), eq(p.projectId, work.projectId), eq(p.status, 'used'), eq(p.usedWorkId, work.id)));
+        if (!bound || work.createdBy.kind !== 'human') throw new Error('Trusted proposal-use origin must be committed in this transaction');
+      }
+      await db.update(w).set({ creationOrigin: proposalId ? 'ai_proposal' : work.createdBy.kind === 'agent' ? 'native_agent' : 'human',
+        creationBaselineVersion: work.version, creationBaseline: sql`jsonb_build_object(
+          'title', ${w.title}, 'outcome', ${w.outcome}, 'status', ${w.status}, 'blocker', ${w.blocker},
+          'criteria', ${w.criteria}, 'ownerUserId', ${w.ownerUserId}, 'ownerAgentId', ${w.ownerAgentId},
+          'parkedByDecisionId', ${w.parkedByDecisionId}, 'parkedAt', ${w.parkedAt})`, creationProposalId: proposalId ?? null }).where(and(eq(w.id, work.id), isNull(w.creationBaselineVersion)));
+    },
+    /** #238: the facts a reader's Undo eligibility is decided from, in one read; no lock and no use mark. */
+    async creationUndoFacts(workId: string) {
+      const dependencies = schema.projectTaskDependencies;
+      const [row] = await db.select({ work: w,
+        baselineMatches: sql<boolean>`COALESCE(${w.creationBaseline} = jsonb_build_object(
+          'title', ${w.title}, 'outcome', ${w.outcome}, 'status', ${w.status}, 'blocker', ${w.blocker},
+          'criteria', ${w.criteria}, 'ownerUserId', ${w.ownerUserId}, 'ownerAgentId', ${w.ownerAgentId},
+          'parkedByDecisionId', ${w.parkedByDecisionId}, 'parkedAt', ${w.parkedAt}), false)`,
+        prerequisites: sql<number>`(SELECT count(*)::int FROM ${dependencies} WHERE ${dependencies.taskId} = ${w.id})`,
+        creatorAgentOwnerUserId: sql<string | null>`(SELECT ${schema.agents.ownerUserId} FROM ${schema.agents}
+          WHERE ${w.createdByKind} = 'agent' AND ${schema.agents.id}::text = ${w.createdById})` }).from(w).where(eq(w.id, workId));
+      if (!row) return null;
+      const record = toWorkRecord(row.work);
+      return { reverted: !!record.creationRevertedAt, origin: record.creationOrigin, baselineVersion: record.creationBaselineVersion,
+        version: record.version, used: !!record.firstPersistedUseAt, baselineMatches: row.baselineMatches, prerequisites: Number(row.prerequisites),
+        createdBy: record.createdBy, owner: record.owner, creatorAgentOwnerUserId: record.creationOrigin === 'native_agent' ? row.creatorAgentOwnerUserId : null };
+    },
+    async creationUndoReceipt(projectId: string, by: Actor, commandId: string) {
+      await db.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`task-creation-undo:${projectId}:${by.kind}:${by.id}:${commandId}`}))`);
+      const n = schema.taskCreationUndoReceipts;
+      const [row] = await db.select().from(n).where(and(eq(n.projectId, projectId), eq(n.actorKind, by.kind), eq(n.actorId, by.id), eq(n.clientCommandId, commandId)));
+      return row ? { workId: row.workId, fingerprint: row.requestFingerprint, noticeId: row.noticeId } : null;
+    },
+    async revertCreation(work: ReturnType<typeof toWorkRecord>, by: Actor, commandId: string, fingerprint: string) {
+      const noticeId = randomUUID();
+      const now = new Date();
+      const [updated] = await db.update(w).set({ creationRevertedAt: now, creationRevertedByKind: by.kind, creationRevertedById: by.id,
+        creationReversionNoticeId: noticeId, version: sql`${w.version} + 1`, updatedAt: now }).where(eq(w.id, work.id)).returning();
+      await db.insert(schema.projectTaskNotices).values({ id: noticeId, workspaceId: work.workspaceId, projectId: work.projectId,
+        workId: work.id, kind: 'task.creation_reverted', createdByKind: by.kind, createdById: by.id, sources: [], createdAt: now });
+      await db.insert(schema.taskCreationUndoReceipts).values({ workspaceId: work.workspaceId, projectId: work.projectId, actorKind: by.kind,
+        actorId: by.id, clientCommandId: commandId, requestFingerprint: fingerprint, workId: work.id, noticeId });
+      return { work: toWorkRecord(updated!), noticeId };
+    },
     async locate(type: 'work' | 'decision' | 'result', id: string) {
       const table = type === 'work' ? w : type === 'decision' ? d : r;
       const [row] = await db.select({ projectId: table.projectId }).from(table).where(eq(table.id, id));
       return row ?? null;
     },
 
-    listWork: (projectId: string, window: Window) => paged(db, w, eq(w.projectId, projectId), window, toWorkRecord),
+    listWork: (projectId: string, window: Window) => paged(db, w, and(eq(w.projectId, projectId), isNull(w.creationRevertedAt))!, window, toWorkRecord),
     listDecisions: (projectId: string, window: Window) => paged(db, d, eq(d.projectId, projectId), window, toDecisionRecord),
     listResults: (projectId: string, window: Window) => paged(db, r, eq(r.projectId, projectId), window, toResultRecord),
 
@@ -96,7 +162,7 @@ export function workRows(db: DbExecutor) {
       const where = and(
         eq(w.workspaceId, workspaceId),
         owner.kind === 'human' ? eq(w.ownerUserId, owner.id) : eq(w.ownerAgentId, owner.id),
-        notInArray(w.status, ['done', 'not_pursued']), isNull(w.parkedAt),
+        isNull(w.creationRevertedAt), notInArray(w.status, ['done', 'not_pursued']), isNull(w.parkedAt),
         sql`${w.projectId} IN (SELECT ${schema.projects.id} FROM ${schema.projects} WHERE ${visibleProjects})`,
       )!;
       return paged(db, w, where, window, toWorkRecord);
@@ -151,7 +217,7 @@ export function workRows(db: DbExecutor) {
         .innerJoin(w, and(eq(w.id, n.workId), eq(w.projectId, n.projectId), eq(w.workspaceId, n.workspaceId)))
         .where(eq(n.projectId, projectId)).orderBy(desc(n.createdAt), desc(n.id)).limit(window.limit).offset(window.offset);
       return { total: count?.total ?? 0, items: rows.map(({ notice, workTitle, workNumber }) => ({ id: notice.id,
-        workspaceId: notice.workspaceId, projectId: notice.projectId, workId: notice.workId, workTitle, workNumber,
+        workspaceId: notice.workspaceId, projectId: notice.projectId, workId: notice.workId, workTitle, workNumber, kind: notice.kind,
         createdBy: { kind: notice.createdByKind, id: notice.createdById }, sources: notice.sources, createdAt: notice.createdAt })) };
     },
     async updateWork(id: string, changes: { title?: string; outcome?: string; status?: WorkRow['status']; blocker?: string | null; owner?: Actor | null; parked?: { decisionId: string; at: Date } | null; criteria?: string[] }) {
@@ -203,12 +269,13 @@ export function workRows(db: DbExecutor) {
       return rows.map(toLinkRecord);
     },
     async insertLinks(links: { id: string; workspaceId: string; projectId: string; role: LinkRow['role']; from: { type: LinkRow['fromType']; id: string }; to: Ref; createdBy: Actor }[]) {
-      if (!links.length) return;
-      await db.insert(l).values(links.map((link) => ({
+      if (!links.length) return [];
+      const inserted = await db.insert(l).values(links.map((link) => ({
         id: link.id, workspaceId: link.workspaceId, projectId: link.projectId, role: link.role, fromType: link.from.type, fromId: link.from.id,
         toType: link.to.type, toId: link.to.id, toVersion: link.to.type === 'material' ? link.to.version : null,
         createdByKind: link.createdBy.kind, createdById: link.createdBy.id,
-      }))).onConflictDoNothing();
+      }))).onConflictDoNothing().returning({ id: l.id });
+      return inserted.map((row) => row.id);
     },
 
     async targetExists(projectId: string, ref: Ref) {
@@ -283,8 +350,13 @@ export function workRows(db: DbExecutor) {
       for (const [type, table] of [['work', w], ['decision', d], ['result', r]] as const) {
         const wanted = of(type);
         if (!wanted.length) continue;
-        for (const row of await db.select({ id: table.id, title: table.title }).from(table).where(and(eq(table.projectId, projectId), inArray(table.id, wanted))))
-          titles.set(`${type}:${row.id}`, { title: row.title });
+        if (type === 'work') {
+          for (const row of await db.select({ id: w.id, title: w.title, reverted: w.creationRevertedAt }).from(w).where(and(eq(w.projectId, projectId), inArray(w.id, wanted))))
+            titles.set(`work:${row.id}`, { title: row.reverted ? `${row.title} · creation undone` : row.title });
+        } else {
+          for (const row of await db.select({ id: table.id, title: table.title }).from(table).where(and(eq(table.projectId, projectId), inArray(table.id, wanted))))
+            titles.set(`${type}:${row.id}`, { title: row.title });
+        }
       }
       return titles;
     },

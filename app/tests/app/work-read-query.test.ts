@@ -16,6 +16,9 @@ const scope = workReadScope('view', a, actor, parseWorkViewRead(params('')).sele
 test('task URL fields default explicitly and reject duplicates/unknown/coerced selectors', () => {
   assert.deepEqual(parseWorkViewRead(params('')), { limit: 50, selection: { purpose: 'tasks', group: 'all', mine: false } });
   assert.equal(parseWorkViewRead(params('group=parked&mine=true&limit=100')).limit, 100);
+  // The Tasks tab lists tasks only (#342): `kinds=work` is the one accepted value.
+  assert.deepEqual(parseWorkViewRead(params('kinds=work')), { limit: 50, selection: { purpose: 'tasks', group: 'all', mine: false, workOnly: true } });
+  for (const input of ['kinds=decision', 'kinds=', 'kinds=work,result']) invalid(() => parseWorkViewRead(params(input)));
   for (const input of ['mine=1', 'mine=', 'limit=0', 'limit=101', 'limit=1.5', 'limit=1e2', 'limit=50&limit=50', 'group=todo', 'q=secret', 'purpose=unknown', 'group=open&selected='+a]) invalid(() => parseWorkViewRead(params(input)));
   invalid(() => assertEmptyWorkReadQuery(params('limit=50')));
 });

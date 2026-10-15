@@ -18,7 +18,8 @@ import uuid
 
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
-from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
+from message_gestures import open_message_menu
+from test_app_shell import DESKTOP, ORIGIN, PHONE, UI_BROWSER, UPSTREAM, open_details, shot, start_forwarder, view_tab
 
 PASSWORD = "a lamp that reads the room"
 STAMP = int(time.time() * 1000)
@@ -52,7 +53,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
         if UPSTREAM:
             start_forwarder(ORIGIN, UPSTREAM)
         cls.pw = sync_playwright().start()
-        cls.browser = cls.pw.chromium.launch()
+        cls.browser = getattr(cls.pw, UI_BROWSER).launch()
         expect.set_options(timeout=8000)
 
     @classmethod
@@ -78,6 +79,29 @@ class ProjectSurfaceJourney(unittest.TestCase):
         page.on("pageerror", lambda error: errors.append(str(error)))
         self.addCleanup(lambda: self.assertEqual(errors, [], "no uncaught page errors"))
         return page
+
+    @staticmethod
+    def settle(page: Page, quiet_ms: int = 300, limit_ms: int = 10_000) -> None:
+        """Wait until the page has had no request in flight for quiet_ms (bounded by limit_ms)."""
+        pending: set = set()
+        on_req = lambda request: pending.add(request)
+        on_done = lambda request: pending.discard(request)
+        page.on("request", on_req)
+        page.on("requestfinished", on_done)
+        page.on("requestfailed", on_done)
+        try:
+            deadline = time.monotonic() + limit_ms / 1000
+            quiet_since = time.monotonic()
+            while time.monotonic() < deadline:
+                page.wait_for_timeout(50)
+                if pending:
+                    quiet_since = time.monotonic()
+                elif (time.monotonic() - quiet_since) * 1000 >= quiet_ms:
+                    return
+        finally:
+            page.remove_listener("request", on_req)
+            page.remove_listener("requestfinished", on_done)
+            page.remove_listener("requestfailed", on_done)
 
     def api(self, page: Page, method: str, path: str, body: dict | None = None, status: int | None = None, headers: dict | None = None) -> dict:
         response = page.request.fetch(f"{ORIGIN}{path}", method=method, headers={"origin": ORIGIN, "content-type": "application/json", **(headers or {})},
@@ -168,7 +192,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
         # Studio 11.6 order and vocabulary (#136); quiet tabs without visible counts.
         self.assertEqual([text.split("\n")[0] for text in tabs.get_by_role("link").all_inner_texts()[:4]], ["Conversation", "Map", "Tasks", "Wiki"])
         expect(tabs.get_by_role("link", name="Tasks, 2 open")).to_be_visible()
-        expect(header.get_by_role("button", name="Details")).to_be_visible()
+        expect(header.get_by_role("button", name="More", exact=True)).to_be_visible()
         # One project conversation (UI116-1): the sidebar lists no threads; the stream shows the root
         # with its thread open beside it, and the centre uses the pane (#136) with readable bubbles.
         expect(page.get_by_role("complementary", name="Sidebar").get_by_role("link", name=re.compile("^Should the lamp react"))).to_have_count(0)
@@ -177,7 +201,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
         column = page.locator(".project-convo__in").bounding_box()
         assert column
         self.assertLessEqual(column["width"], 1000, "conversation pane")
-        for bubble in page.locator(".project-convo__message > p").all():
+        for bubble in page.locator(".project-convo__message > .message-bubble").all():
             box = bubble.bounding_box()
             assert box
             self.assertLessEqual(box["width"], 700, "readable measure per message")
@@ -188,14 +212,15 @@ class ProjectSurfaceJourney(unittest.TestCase):
         shot(page, "project-conversation-desktop-1440")
         small = self.page("ada", viewport={"width": 1280, "height": 800})
         small.goto(f"/projects/{self.ids['project']}/conversations/{self.ids['conversation']}")
-        expect(small.locator("header.top").get_by_label("Current state")).to_be_visible()
+        expect(small.locator("header.top").get_by_role("navigation", name="Project views")).to_be_visible()
         expect(small.locator(f"#message-{self.ids['m4']}")).to_be_visible()
-        self.assert_whole_messages(small)
+        self.assert_whole_messages(small, latest=False)
         shot(small, "project-conversation-desktop-1280")
 
-    def assert_whole_messages(self, page: Page) -> None:
+    def assert_whole_messages(self, page: Page, latest: bool = True) -> None:
         """The stream and the open thread (UI116-1) each open on whole messages: none starts above the
-        top edge of its feed, and its latest message is fully visible."""
+        top edge of its feed. The stream shows its latest message; a thread opens at its root (#436 #14,
+        #443), so its root starts at the top of the feed and the reader scrolls down."""
         page.wait_for_timeout(600)
         for selector in (".project-convo__feed", ".thread__feed"):
             clipped = page.evaluate("""(selector) => {
@@ -204,6 +229,17 @@ class ProjectSurfaceJourney(unittest.TestCase):
               return [...feed.querySelectorAll('.project-convo__message')].filter((el) => { const r = el.getBoundingClientRect(); return r.top < top - 1 && r.bottom > top + 1; }).length;
             }""", selector)
             self.assertEqual(clipped, 0, f"{selector}: no message is cut off at the top of the opening screen")
+            if not latest and selector == ".project-convo__feed":
+                continue  # a link opened this root at the top of the stream (F-026: notices are two rows now)
+            if selector == ".thread__feed":
+                # An unanchored thread starts at its root, whole (#436), rather than its latest reply.
+                root = page.locator(f"{selector} .thread__root").bounding_box()
+                feed = page.locator(selector).bounding_box()
+                assert root and feed
+                padding = page.evaluate("(selector) => parseFloat(getComputedStyle(document.querySelector(selector + ' .thread__in')).paddingTop)", selector)
+                self.assertEqual(page.evaluate("(selector) => document.querySelector(selector).scrollTop", selector), 0, f"{selector}: the thread opens at its root")
+                self.assertLess(abs(root["y"] - feed["y"] - padding), 2.01, f"{selector}: the root starts at the top of the feed")
+                continue
             last = page.locator(f"{selector} .project-convo__message").last.bounding_box()
             feed = page.locator(selector).bounding_box()
             assert last and feed
@@ -211,18 +247,31 @@ class ProjectSurfaceJourney(unittest.TestCase):
 
     # ---------------------------------------------------------------- current state
 
-    def test_03_each_state_segment_opens_its_object(self) -> None:
+    def test_03_needs_you_and_details_open_the_projects_objects(self) -> None:
+        """The computer's header is one row (F-026 §4, #340): "N needs you" is the recap's own count and opens
+        it; the rule, the work, the result and the proposal open from Details."""
         page = self.open_project("ada")
-        state = page.locator("header.top").get_by_label("Current state")
-        expect(state).to_contain_text("Current rule: Use a ToF sensor, not the camera, for gestures")
-        expect(state).to_contain_text("In progress: Test the camera in low light (Nia Okafor)")
-        expect(state).to_contain_text("Negative result: Camera caught 38% of gestures at 5 lux")
-        expect(state).to_contain_text("Needs you: a proposed decision")
+        header = page.locator("header.top")
+        expect(header.get_by_label("Current state")).to_have_count(0)
+        recap = self.api(page, "GET", f"/api/v1/return?place=project&id={self.ids['project']}&scope=all&from=last-visit", status=200)
+        chip = header.get_by_role("button", name=re.compile(r"needs you$"))
         panel = self.details(page)
-        for segment, heading in (("rule", "Use a ToF sensor, not the camera, for gestures"), ("work", "Test the camera in low light"),
-                                 ("result", "Camera caught 38% of gestures at 5 lux"), ("proposal", "Keep a manual off switch on the base")):
-            state.locator(f'[data-seg="{segment}"]').click()
+        if recap["needsYou"]:
+            expect(chip).to_have_text(f"{recap['needsYou']} needs you")
+            chip.click()
+            expect(chip).to_have_attribute("aria-expanded", "true")
+            expect(panel.get_by_role("heading", name="What matters")).to_be_visible()
+            chip.click()
+            expect(panel).to_be_hidden()
+        else:
+            expect(chip).to_have_count(0)
+        open_details(page)
+        linked = panel.get_by_role("region", name="Linked in this conversation")
+        for heading in ("Use a ToF sensor, not the camera, for gestures", "Test the camera in low light",
+                        "Camera caught 38% of gestures at 5 lux", "Keep a manual off switch on the base"):
+            linked.get_by_role("button", name=re.compile(re.escape(heading))).click()
             expect(panel.get_by_role("heading", name=heading)).to_be_visible()
+            open_details(page)
         panel.get_by_role("button", name="Close details").click()
         expect(panel).to_be_hidden()
 
@@ -250,26 +299,31 @@ class ProjectSurfaceJourney(unittest.TestCase):
         tabs.get_by_role("link", name=re.compile("^Conversation")).click()
         expect(page, "Conversation returns to the open conversation").to_have_url(conversation_url)
         expect(page.locator(f"#message-{self.ids['m_camera']}")).to_be_visible()
-        # The state line stays with the project on every tab, and Map returns to the list chosen last.
+        # The header stays with the project on every tab, and Map returns to the list chosen last.
         tabs.get_by_role("link", name=re.compile("^Map")).click()
         expect(page).to_have_url(re.compile(r"/map$"))
-        expect(page.locator("header.top").get_by_label("Current state")).to_contain_text("Current rule")
+        expect(page.locator("header.top").get_by_role("heading", level=1, name="Gesture lamp")).to_be_visible()
         # At 320px the tab strip scrolls sideways; the current tab is brought into view.
         page.set_viewport_size({"width": 320, "height": 640})
-        tabs.get_by_role("link", name=re.compile("^Wiki")).click()
+        view_tab(page, "Wiki")
         expect(page).to_have_url(re.compile(rf"/docs/{self.ids['doc']}$"))
-        current = tabs.get_by_role("link", name=re.compile("^Wiki"))
+        expect(page.locator("header .wiki-header-meta")).to_contain_text("Wiki · 1 page")
+        expect(page.locator("header .wiki-header-actions").get_by_role("button", name="More")).to_be_visible()
+        # At 320px the views are in the title's menu (#341): the current one is marked there.
+        page.get_by_role("heading", level=1).get_by_role("button").click()
+        current = page.get_by_role("dialog").get_by_role("link", name=re.compile("^Wiki"))
         expect(current).to_have_attribute("aria-current", "page")
         box = current.bounding_box()
         assert box
         self.assertGreaterEqual(box["x"], 0)
-        self.assertLessEqual(box["x"] + box["width"], 320, "the current tab is visible in the strip")
+        self.assertLessEqual(box["x"] + box["width"], 320, "the current view is visible in the menu")
+        page.keyboard.press("Escape")
 
     # ---------------------------------------------------------------- Details overview
 
     def test_05_details_overview_links_everything_one_step_away(self) -> None:
         page = self.open_project("ada")
-        page.locator("header.top").get_by_role("button", name="Details").click()
+        open_details(page)
         panel = self.details(page)
         expect(panel.get_by_role("heading", name=OPENING)).to_be_visible()
         linked = panel.get_by_role("region", name="Linked in this conversation")
@@ -286,8 +340,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
         # One step to an object, and back.
         linked.get_by_role("button", name=re.compile("Order two VL53L5CX boards")).click()
         expect(panel.get_by_role("heading", name="Order two VL53L5CX boards")).to_be_visible()
-        page.locator("header.top").get_by_role("button", name="Details").click()
-        page.locator("header.top").get_by_role("button", name="Details").click()
+        open_details(page)
         expect(panel.get_by_role("region", name="Sources")).to_be_visible()
         panel.get_by_role("region", name="Sources").get_by_role("link", name=re.compile("Low-light test notes")).click()
         expect(page).to_have_url(re.compile(rf"/materials/{self.ids['material']}/versions/1$"))
@@ -295,9 +348,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
         # A message's own Details show what was made from it. Nia's message is a reply in the thread beside
         # the stream (UI116-1), where its actions open from one ⋯ in its corner.
         message = page.locator(f"#message-{self.ids['m1']}")
-        message.hover()
-        message.get_by_role("button", name="Make from this message").click()
-        message.get_by_role("button", name="Details of this message").click()
+        open_message_menu(message, phone=False).get_by_role("menuitem", name="Details").click()
         expect(panel.get_by_role("heading", name="Message from Nia Okafor")).to_be_visible()
         made = panel.get_by_role("region", name="Made from this message")
         expect(made.get_by_role("button", name=re.compile("Camera caught 38% of gestures"))).to_be_visible()
@@ -332,25 +383,22 @@ class ProjectSurfaceJourney(unittest.TestCase):
 
     # ---------------------------------------------------------------- phone
 
-    def test_07_phone_collapses_the_state_line_and_keeps_the_audience(self) -> None:
+    def test_07_phone_has_no_state_row_and_keeps_the_people_in_the_title(self) -> None:
         page = self.open_project("ada", phone=True)
-        row = page.get_by_role("button", name=re.compile("open project details"))
-        box = row.bounding_box()
-        assert box
-        self.assertGreaterEqual(box["height"], 44, "state row is one 44px target")
-        self.assertLessEqual(box["height"], 50, "one line")
-        expect(row).to_contain_text("Decision needs you")
-        # One quiet overflow button per message, in its corner, still a 44 px target.
+        # Nothing sits under a message on the phone: its actions are a swipe left and a long press (F-026 S6).
         message = page.locator(f"#message-{self.ids['m4']}")
-        more = message.get_by_role("button", name="Make from this message")
-        mbox, bbox = more.bounding_box(), message.bounding_box()
-        assert mbox and bbox
-        self.assertGreaterEqual(mbox["height"], 44)
-        self.assertLess(mbox["y"] - bbox["y"], 20, "the overflow button sits beside the author, not in a row of its own")
+        expect(message.get_by_role("button", name="Make from this message")).to_have_count(0)
+        expect(message.locator(".msg-acts")).to_have_count(0)
+        open_message_menu(message, phone=True).get_by_role("menuitem", name="Details").click()
+        expect(page.get_by_role("dialog", name="Details")).to_be_visible()
+        page.get_by_role("dialog", name="Details").get_by_role("button", name="Close details").click()
         expect(page.locator("header.top").get_by_label("Current state")).to_have_count(0)
+        expect(page.get_by_role("button", name=re.compile("open project details"))).to_have_count(0)
+        expect(page.locator(".ws-state-row")).to_have_count(0)
+        expect(page.locator("header").get_by_label("Current state")).to_have_count(0)
         self.assertLessEqual(page.locator("body").evaluate("el => el.scrollWidth"), PHONE["width"])
         shot(page, "project-conversation-phone-390")
-        row.tap()
+        open_details(page, tap=True)
         sheet = page.get_by_role("dialog", name="Details")
         expect(sheet.get_by_role("region", name="Linked in this conversation").get_by_role("button", name=re.compile("Keep a manual off switch"))).to_be_visible()
         expect(sheet.get_by_role("region", name="Who can see this")).to_contain_text("Nia Okafor")
@@ -358,23 +406,18 @@ class ProjectSurfaceJourney(unittest.TestCase):
         sheet.get_by_role("region", name="Linked in this conversation").get_by_role("button", name=re.compile("Use a ToF sensor")).tap()
         expect(sheet.get_by_role("heading", name="Use a ToF sensor, not the camera, for gestures")).to_be_visible()
         sheet.get_by_role("button", name="Close details").tap()
-        page.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile("^Map")).tap()
+        view_tab(page, "Map", tap=True)
         expect(page.get_by_role("list", name="Sketches in Gesture lamp")).to_be_visible()
         shot(page, "project-map-phone-390")
 
-        # A title too long for the phone truncates; its audience stays visible and opens the people.
+        # A title too long for the phone truncates; the people stay in the line under it, and Details lists them.
         page.goto(f"/projects/{self.ids['long_project']}")
-        title = page.locator("header.top h1")
+        title = page.locator("header h1 .phead__name")
         expect(title).to_have_text(LONG_NAME)
         self.assertTrue(title.evaluate("el => el.scrollWidth > el.clientWidth"), "the long title truncates")
-        audience = page.locator("header.top .top__audience")
-        expect(audience).to_be_visible()
-        expect(audience).to_contain_text("Jonas and you · only you two")
-        abox = audience.bounding_box()
-        assert abox
-        self.assertLessEqual(abox["x"] + abox["width"], PHONE["width"])
+        expect(page.locator("header .phead__sub")).to_contain_text("2 people")
         shot(page, "project-long-title-phone-390")
-        audience.tap()
+        open_details(page, tap=True)
         expect(page.get_by_role("dialog", name="Details").get_by_role("region", name="Who can see this")).to_contain_text("Jonas Berg")
 
 
@@ -385,27 +428,41 @@ class ProjectSurfaceJourney(unittest.TestCase):
         page = self.open_project("ada")
         row = page.locator(".side__project.is-open")
         expect(row).to_have_count(1)
-        pill = row.evaluate("""el => {
+        # Motion paints the selected row on its separate moving highlight. Check the
+        # actual visible paint and its alignment, not a shadow on the transparent link.
+        measure_pill = """el => {
+          const list = el.closest('.side__list');
+          const mark = list.classList.contains('has-glide') ? list.querySelector('.side__glide') : el;
           const r = el.getBoundingClientRect(), box = el.closest('.side__scroll').getBoundingClientRect();
           // The open row takes no shadow while the traveling highlight stands in for it (.side__list.has-glide): the pill is the highlight.
-          const pill = el.closest('.side__list').querySelector('.side__glide');
-          return { inside: r.left >= box.left - 1 && r.right <= box.right + 1, raised: getComputedStyle(pill).boxShadow !== 'none' };
+          if (!mark) return { inside: false, raised: false, aligned: false };
+          const m = mark.getBoundingClientRect(), css = getComputedStyle(mark);
+          return { inside: m.left >= box.left - 1 && m.right <= box.right + 1,
+            raised: css.boxShadow !== 'none' && css.display !== 'none' && css.visibility === 'visible' && Number(css.opacity) > .99,
+            aligned: Math.abs(m.left-r.left) <= 1 && Math.abs(m.top-r.top) <= 1 && Math.abs(m.width-r.width) <= 1 && Math.abs(m.height-r.height) <= 1 };
+        }"""
+        page.wait_for_function("el => { const p = (" + measure_pill + ")(el); return p.raised && p.aligned; }", arg=row.element_handle())
+        def assert_pill() -> None:
+            pill = row.evaluate(measure_pill)
+            self.assertTrue(pill["raised"], "the current project is a visible raised pill (F-026 §4)")
+            self.assertTrue(pill["aligned"], "the highlight paints the current row")
+            self.assertTrue(pill["inside"], f"the pill lies inside the sidebar's scroll box: {pill}")
+        assert_pill()
+        # Removing the actual paint must fail even when the current-row marker remains.
+        original = row.evaluate("""el => {
+          const list = el.closest('.side__list'), mark = list.classList.contains('has-glide') ? list.querySelector('.side__glide') : el;
+          const previous = mark.style.boxShadow; mark.style.boxShadow = 'none'; return previous;
         }""")
-        self.assertTrue(pill["raised"], "the current project is a raised pill (F-026 §4)")
-        self.assertTrue(pill["inside"], f"the pill lies inside the sidebar's scroll box: {pill}")
-        # On a phone every sidebar control is a 44px target: +, Search, places and projects.
-        phone = self.open_project("ada", phone=True)
-        phone.get_by_role("button", name="Open navigation").tap()
-        drawer = phone.get_by_role("dialog")
-        expect(drawer.locator(".side__project.is-open")).to_be_visible()
-        targets = [drawer.get_by_role("link", name="New project"), drawer.get_by_role("link", name="New message"),
-                   drawer.locator(".side__search"), drawer.get_by_role("link", name="Home"), drawer.locator(".side__project.is-open")]
-        # One project conversation (UI116-1): the sidebar lists no conversation threads under the project.
-        expect(drawer.locator(".side__thread")).to_have_count(0)
-        for target in targets:
-            box = target.bounding_box()
-            assert box
-            self.assertGreaterEqual(box["height"], 44, f"touch target: {target}")
+        try:
+            with self.assertRaises(AssertionError):
+                assert_pill()
+        finally:
+            row.evaluate("""(el, previous) => {
+              const list = el.closest('.side__list'), mark = list.classList.contains('has-glide') ? list.querySelector('.side__glide') : el;
+              mark.style.boxShadow = previous;
+            }""", original)
+        assert_pill()
+        # The phone has no sidebar since #341: its places and 44px targets are covered by test_phone_final.
 
     def test_07c_a_keyboard_focus_ring_on_a_view_tab_is_whole(self) -> None:
         """#184 delta review S4: the tab strip scrolls sideways and clips anything outside it."""
@@ -422,7 +479,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
     def focus_ring(self, page: Page) -> dict | None:
         return page.evaluate("""() => {
           const tab = document.activeElement;
-          if (!tab || !tab.matches('.views .ui-tabs__tab:focus-visible')) return null;
+          if (!tab || !tab.matches('.top__views .ui-tabs__tab:focus-visible, .views .ui-tabs__tab:focus-visible')) return null;
           const style = getComputedStyle(tab);
           const out = parseFloat(style.outlineOffset) + parseFloat(style.outlineWidth);
           const r = tab.getBoundingClientRect(), bar = tab.closest('.ui-tabs__bar').getBoundingClientRect();
@@ -463,9 +520,13 @@ class ProjectSurfaceJourney(unittest.TestCase):
         link = page.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile("^Tasks"))
         if project:
             expect(link).to_have_attribute("href", re.compile(rf"^/projects/{project}/tasks"))
-        link.click()
-        # The List holds the private "New task" draft field; Kanban is the default view (#136).
-        page.get_by_role("radio", name="List", exact=True).click()
+        href = link.get_attribute("href")
+        view_tab(page, "Tasks")
+        # The phone has only its drawn list; the sidebar's New → Task action opens its private composer.
+        if page.viewport_size["width"] <= 640:
+            page.goto(re.sub(r"\?.*$", "", href) + "?new=task")
+        else:
+            page.get_by_role("radio", name="List", exact=True).click()
         expect(page.get_by_label("New task", exact=True)).to_be_visible()
         if project:
             expect(page).to_have_url(re.compile(rf"/projects/{project}/tasks"))
@@ -483,13 +544,14 @@ class ProjectSurfaceJourney(unittest.TestCase):
                 field.evaluate("el => el.setSelectionRange(6, 18)")
                 page.set_viewport_size({"width": 412 if phone else 1500, "height": 900})
                 self.assertEqual(field.evaluate("el => [document.activeElement === el, el.selectionStart, el.selectionEnd]"), [True, 6, 18])
-                views = page.get_by_role("navigation", name="Task views")
-                views.get_by_label("Only mine").check()
-                views.get_by_role("button", name="Needs you", exact=False).click()
-                expect(field).to_have_value(draft)
-                views.get_by_label("Only mine").uncheck()
-                views.get_by_role("button", name="In progress", exact=False).click()
-                views.get_by_role("button", name="All", exact=True).click()
+                if not phone:  # Phone Tasks has only Mine | All, not group views.
+                    views = page.get_by_role("navigation", name="Task views")
+                    views.get_by_label("Only mine").check()
+                    views.get_by_role("button", name="All", exact=True).click()
+                    expect(field).to_have_value(draft)
+                    views.get_by_label("Only mine").uncheck()
+                    views.get_by_role("button", name="In progress", exact=False).click()
+                    views.get_by_role("button", name="All", exact=True).click()
                 page.locator(".ws-list").get_by_role("button", name=re.compile("Test the camera in low light")).click()
                 expect(self.details(page).get_by_role("heading", name="Test the camera in low light")).to_be_visible()
                 source = self.details(page).get_by_role("link", name=re.compile("I ran the camera prototype"))
@@ -718,26 +780,30 @@ class ProjectSurfaceJourney(unittest.TestCase):
                 with page.expect_request_finished(lambda request: request.method == "POST" and request.url.endswith("/work")):
                     route.fulfill(response=response)
                 expect(field).to_have_value(title)
+                # The fulfilled create refreshes the shell (e.g. /workspaces). Leaving the page with that request in
+                # flight makes WebKit report the cancelled fetch as a page error (#471), so reload only once quiet.
+                self.settle(page)
                 page.reload()
                 expect(field).to_have_value(title)
+                self.settle(other)
                 other.close()
 
     def test_17_home_draft_changes_account_on_current_loader_revalidation(self) -> None:
         page = self.page("ada")
-        page.goto("/")
+        page.goto("/map")
         field = page.get_by_label("Private note", exact=True)
         expect(field).to_be_visible()
         field.fill("Ada's private Home draft before revalidation")
         page.context.clear_cookies()
         page.context.add_cookies(self.states["jonas"]["cookies"])
         # Same-route router navigation revalidates the mounted Home, without a document reload.
-        page.get_by_role("navigation", name="Places").get_by_role("link", name="Home", exact=True).click()
+        page.get_by_role("navigation", name="Places").get_by_role("link", name="Sketchbook", exact=True).click()
         expect(page.get_by_role("button", name=re.compile("^Jonas Berg .*account and sign out"))).to_be_visible()
         expect(field).to_have_value("")
         field.fill("Jonas's private Home draft")
         page.context.clear_cookies()
         page.context.add_cookies(self.states["ada"]["cookies"])
-        page.get_by_role("navigation", name="Places").get_by_role("link", name="Home", exact=True).click()
+        page.get_by_role("navigation", name="Places").get_by_role("link", name="Sketchbook", exact=True).click()
         expect(page.get_by_role("button", name=re.compile("^Ada Kowalska .*account and sign out"))).to_be_visible()
         expect(field).to_have_value("Ada's private Home draft before revalidation")
 

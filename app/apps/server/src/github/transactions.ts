@@ -1,3 +1,4 @@
+import { withTaskUseErrors } from '../work/task-use-errors.js';
 import { sql } from '@flux/db';
 import type { Database, Transaction } from '@flux/core';
 
@@ -6,6 +7,6 @@ export function githubTransaction<T>(db: Database, work: (tx: Transaction) => Pr
   return db.transaction(async (tx) => {
     await tx.execute(sql`SET LOCAL lock_timeout = '750ms'`);
     await tx.execute(sql`SET LOCAL statement_timeout = '1500ms'`);
-    return work(tx);
+    return withTaskUseErrors(() => work(tx));
   });
 }

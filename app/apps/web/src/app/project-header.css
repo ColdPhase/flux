@@ -10,6 +10,11 @@
 /* The divider before the state line sits in the gap. When the state line wraps to its own row,
    the divider falls outside this box and is clipped; the 4px padding keeps focus rings visible. */
 .top__meta { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 25px; min-width: 0; overflow: hidden; margin: -4px; padding: 4px; }
+.top__meta-slot:empty { display: none; }
+.top__meta:has(> .top__meta-slot:not(:empty)) > .top__audience { display: none; }
+/* A compact view offers the project controls in its single labelled overflow. */
+header.top:has(.wiki-header-actions) .top__right > .lv-entry,
+header.top:has(.wiki-header-actions) .top__right > .top__details { display: none; }
 .top__audience { display: inline-flex; align-items: center; gap: 5px; flex: 0 0 auto; max-width: 55%; min-width: 0; min-height: 22px; margin-left: -4px; padding: 0 4px; border-radius: var(--r-sm); font-size: 10.5px; color: var(--t2); white-space: normal; transition: var(--tr); }
 .top__audience > span:not(.ui-vh) { min-width: 0; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
 .top__audience svg { flex: none; width: 10px; height: 10px; }
@@ -61,4 +66,9 @@
   header.top.top--project .top__head { align-self: flex-start; gap: 0; }
   header.top.top--project .top__meta { overflow: visible; }
   header.top.top--project .top__audience::after { top: -11px; bottom: auto; height: 44px; }
+  /* Open navigation is a 44 px target of its own (#478). The title block begins 4 px after the button (the 2 px
+     header gap plus the head's 2 px padding), so the audience line's -4 px margin put its box on the button's edge
+     and its 2 px hit margin 2 px inside it. The box now starts 2 px later and its text stays where it was (the
+     margin and the left padding trade 2 px), so the hit square ends at the button's edge instead of inside it. */
+  header.top.top--project .top__audience { margin-left: -2px; padding-left: 2px; }
 }

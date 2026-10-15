@@ -26,6 +26,7 @@ from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_play
 
 from contrast import MEASURE
 
+from project_views import project_view
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
 
 LIVE = os.environ.get("FLUX_UI_LIVE") == "1"
@@ -279,7 +280,7 @@ class LiveJourney(LiveBase):
         nia.goto(self.task_url())
         panel = nia.locator("#details")
         expect(panel.get_by_role("heading", name=TASK)).to_be_visible()
-        expect(panel).to_contain_text(f"Blocked: {BLOCKER}")
+        expect(panel.get_by_label("What is it waiting for?")).to_have_value(BLOCKER)
         start = panel.get_by_role("button", name="Work on this together")
         expect(start).to_be_visible()
         expect(panel).to_contain_text("Ada, Jonas and Kai can join")
@@ -316,11 +317,11 @@ class LiveJourney(LiveBase):
 
         jonas = self.page("jonas")
         jonas.goto("/inbox")
-        item = jonas.get_by_role("link", name=re.compile("Nia Okafor invited you to work together"))
+        item = jonas.locator(".nyc", has_text="Nia Okafor invited you to work together")
         expect(item).to_have_count(1)
         expect(item).to_contain_text(TASK)
         shot(jonas, "live-desktop-1440-inbox")
-        item.click()
+        item.get_by_role("button", name="Open").click()
         card = jonas.get_by_role("region", name="Invitation to work together")
         expect(card).to_contain_text("Nia Okafor asked you to work together on")
         expect(card.get_by_role("button", name="Later")).to_be_visible()
@@ -618,8 +619,9 @@ class LiveJourney(LiveBase):
         # Typing with the session open keeps the draft through navigation.
         composer_box = phone.get_by_role("textbox").last
         composer_box.fill("Filter out gives 18 of 20 at 5 lux, writing it up now")
-        phone.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile("^Wiki")).click()
-        phone.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile("^Conversation")).click()
+        project_view(phone, "Wiki")
+        expect(phone).to_have_url(re.compile(r"/docs(/|$)"))
+        project_view(phone, "Conversation")
         expect(phone.get_by_role("textbox").last).to_have_value("Filter out gives 18 of 20 at 5 lux, writing it up now")
         expect(self.bar(phone)).to_be_visible()
         self.assertEqual(phone.evaluate("window.__live.sockets"), 1)

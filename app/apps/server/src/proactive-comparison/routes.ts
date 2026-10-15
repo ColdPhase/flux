@@ -1,3 +1,4 @@
+import { workRows } from '@flux/db';
 import type { FastifyError, FastifyInstance } from 'fastify';
 import { AI_BASE_URL_MAX_LENGTH, AI_MODEL_LISTS_PATH, AI_PRICE_MAX_MICROS_PER_MTOK, AI_PROVIDER_KINDS, backgroundComparisonRuntimePath, backgroundComputeUsagePath,
   proactiveComparisonOutcomePath, proactiveComparisonOutcomesPath, proactiveComparisonProposalsPath, WORK_LIMITS, type AiModelListQuery,
@@ -6,7 +7,8 @@ import { backgroundConnectionRepository, comparisonProposalView, proactiveOutbox
 import { backgroundConnectionUseCases, baseUrlSyntaxProblem, ConflictError, DomainError, enforce, evaluateProject, InvalidInputError,
   isUuid, normalizeBaseUrl, NotFoundError, proactiveRuleUseCases, VersionConflictError, visibleProposal, type Database } from '@flux/core';
 import type { SessionResolver } from '../identity/index.js';
-import { workUseCases } from '../work/adapters.js';
+import { taskUseDomainError } from '../work/task-use-errors.js';
+import { nativeWorkInTransaction } from '../work/adapters.js';
 import { comparisonOutcomeAccess, comparisonOutcomeReads, comparisonOutcomes } from './outcome-adapter.js';
 import { aiConnectionServerComposition, type AiConnectionServerComposition } from './ai-composition.js';
 
@@ -47,6 +49,7 @@ export async function proactiveComparisonRoutes(app: FastifyInstance, { db, sess
     return { status: comparisonsEnabled ? 'available' : 'unavailable' };
   });
   app.setErrorHandler((error: FastifyError | DomainError, _request, reply) => {
+    error = taskUseDomainError(error) as typeof error;
     if (error instanceof DomainError) return reply.code(error.status).send({ error: error.message, code: error.code, ...error.details });
     if ((error as FastifyError).statusCode === 401) return reply.code(401).send({ error: 'Authentication required', code: 'UNAUTHENTICATED' });
     throw error;
@@ -147,6 +150,9 @@ export async function proactiveComparisonRoutes(app: FastifyInstance, { db, sess
       if (typeof body.suggestedAction === 'string' && body.suggestedAction.trim().length > WORK_LIMITS.outcome)
         throw new InvalidInputError(`The suggested next step must be at most ${WORK_LIMITS.outcome} characters`);
       const rows = proactiveOutboxRows(tx);
+      const located = await rows.proposal(request.params.proposalId);
+      if (!located) throw new NotFoundError('Proposal');
+      enforce(await evaluateProject(principal, 'project.write', located.projectId, tx, { lock: true }), 'project');
       const current = await rows.lockProposal(request.params.proposalId);
       if (!current) throw new NotFoundError('Proposal');
       enforce(await evaluateProject(principal, 'project.write', current.projectId, tx, { lock: true }), 'project');
@@ -168,6 +174,9 @@ export async function proactiveComparisonRoutes(app: FastifyInstance, { db, sess
         || typeof body.title !== 'string' || !body.title.trim() || body.title.trim().length > 200)
         throw new InvalidInputError('A work title and expected version are required');
       const rows = proactiveOutboxRows(tx);
+      const located = await rows.proposal(request.params.proposalId);
+      if (!located) throw new NotFoundError('Proposal');
+      enforce(await evaluateProject(principal, 'project.write', located.projectId, tx, { lock: true }), 'project');
       const current = await rows.lockProposal(request.params.proposalId);
       if (!current) throw new NotFoundError('Proposal');
       enforce(await evaluateProject(principal, 'project.write', current.projectId, tx, { lock: true }), 'project');
@@ -183,15 +192,20 @@ export async function proactiveComparisonRoutes(app: FastifyInstance, { db, sess
           if (source.type === 'message') refs.push({ type: 'message', id: source.id });
           return refs;
         }, []);
-      const created = await workUseCases(tx).createWork(principal, current.projectId, {
+      const native = nativeWorkInTransaction(tx);
+      const created = await native.createWork(principal, current.projectId, {
         title: body.title.trim(), outcome: current.suggestedAction,
         sources: sourceRefs,
         related: cited.flatMap((source) => source.type === 'result' || source.type === 'work' || source.type === 'thought'
           ? [{ type: source.type, id: source.id }] : []),
-      });
+      }, { proposalId: current.id });
       const used = await rows.reviseProposal(current.id, { status: 'used', usedWorkId: created.id, editedByUserId: principal.id });
       if (!used) throw new NotFoundError('Proposal');
-      return { proposal: await visibleProposal(access, principal, used), work: created };
+      const stored = await workRows(tx).findWork(created.id);
+      await workRows(tx).recordCreationBaseline(stored!, current.id);
+      const result = { proposal: await visibleProposal(access, principal, used), work: await native.getWork(principal, created.id) };
+      await native.flushEvents();
+      return result;
     }));
   app.patch<{ Params: { ruleId: string }; Body: { expectedVersion: number; status: 'enabled' | 'paused' | 'revoked' } }>(
     '/api/v1/proactive-comparison-rules/:ruleId', async (request) => rules.setStatus(

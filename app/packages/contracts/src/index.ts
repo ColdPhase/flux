@@ -38,8 +38,10 @@ export const REVOKE_OTHER_SESSIONS_PATH = '/api/v1/sessions/revoke-others';
 
 export interface IdentityCapabilities {
   passwordReset: 'available' | 'unavailable';
+  /** Who can create a password account (#313): `verified` mails a link first; `off` is closed, including `verified` without email. */
+  signup: 'open' | 'verified' | 'off';
   /** The operator's single sign-on provider (#113), or null when only email/password sign-in exists. */
-  sso: { providerId: string; label: string } | null;
+  sso: { providerId: string; label: string; /** The provider's discovery document answers right now (#310). */ reachable: boolean } | null;
 }
 
 export interface MeResponse {
@@ -70,11 +72,13 @@ export * from './agent-proposals.js';
 export * from './returns.js';
 export * from './direct-message.js';
 export * from './docs.js';
+export * from './editing.js';
 export * from './proactive-comparison.js';
 export * from './ai-providers.js';
 export * from './background-compute.js';
 export * from './proactive-outcomes.js';
 export * from './notifications.js';
+export * from './needs-you.js';
 export * from './search.js';
 export * from './personal-runs.js';
 export * from './export.js';
@@ -85,5 +89,9 @@ export * from './github.js';
 export * from './agent-execution.js';
 export * from './agent-bootstrap.js';
 export * from './project-agents.js';
+export * from './agent-stops.js';
+export * from './agent-questions.js';
 export * from './agent-runtime.js';
 export * from './agent-mcp-policy.js';
+
+export * from './assistant.js';

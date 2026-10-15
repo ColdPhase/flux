@@ -76,6 +76,12 @@ def start_forwarder(origin: str, upstream: str) -> None:
             client.close()
             return
         remote.settimeout(None)
+        # Browsers, Node and real proxies disable Nagle's algorithm. With it on here, a small frame
+        # written while the previous one awaited its TCP acknowledgement waited for the receiver's
+        # delayed ACK (up to 40 ms on Linux): about 40-60 ms on every live round trip that no
+        # deployment has, which the #228 Gate 4 latency driver measured through this hop.
+        for end in (client, remote):
+            end.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         a = threading.Thread(target=_pipe, args=(client, remote), daemon=True)
         b = threading.Thread(target=_pipe, args=(remote, client), daemon=True)
         a.start(); b.start(); a.join(); b.join()
@@ -92,13 +98,20 @@ def start_forwarder(origin: str, upstream: str) -> None:
 def open_sources(page: Page, scope=None) -> None:
     """Opens the project's sources above a composer (#117), where materials are saved and cited.
 
-    With a thread open (UI116-1) both the stream's and the thread's composer have Sources: pass the
-    thread as `scope` to use its composer."""
+    A writer types "/source" in the composer (F-026 S5: no Sources button); a reader has no composer, so
+    its Sources button stays. With a thread open (UI116-1) pass the thread as `scope` to use its composer."""
     within = scope or page
-    button = within.get_by_role("button", name=re.compile("^Sources"))
-    if button.get_attribute("aria-expanded") != "true":
-        button.click()
-    expect(within.get_by_role("region", name="Project materials")).to_be_visible()
+    region = within.get_by_role("region", name="Project materials")
+    if not region.is_visible():
+        button = within.get_by_role("button", name=re.compile("^Sources"))
+        if button.count():
+            if button.get_attribute("aria-expanded") != "true":
+                button.click()
+        else:
+            field = scope.get_by_role("textbox") if scope else page.locator("#project-composer")
+            field.fill("/source")
+            field.press("Enter")
+    expect(region).to_be_visible()
 
 
 def thread_of(page: Page):
@@ -112,6 +125,65 @@ def new_from_sidebar(page: Page, item: str) -> None:
     page.get_by_role("menu", name="New").get_by_role("menuitem", name=item, exact=True).click()
 
 
+def phone_menu(page: Page, tap: bool = False):
+    """The phone's view menu: the title opens it (#341)."""
+    opener = page.get_by_role("heading", level=1).get_by_role("button")
+    opener.tap() if tap else opener.click()
+    return page.get_by_role("dialog").filter(has=page.locator(".phone-menu__list"))
+
+
+def view_tab(page: Page, name: str, tap: bool = False) -> None:
+    """A project view by its name: the header's segmented control, or on the phone the title's menu (#341)."""
+    if page.viewport_size["width"] <= 640:
+        link = phone_menu(page, tap).get_by_role("link", name=re.compile(f"^{name}"))
+    else:
+        link = page.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile(f"^{name}"))
+    link.tap() if tap else link.click()
+
+
+def open_details(page: Page, tap: bool = False) -> None:
+    """Details: More, then Details, in the computer's one-row header (#340); Home has its own quiet
+    Details button (#342); on the phone a project's title menu ends with "Details, goal and people" (#341)."""
+    home = page.locator("#content .home").get_by_role("button", name="Details", exact=True)
+    if page.viewport_size["width"] <= 640:
+        page.locator("#content .home button:text-is('Details'), header .phead__menu").first.wait_for()
+        if home.count():
+            home.tap() if tap else home.click()
+            return
+        row = phone_menu(page, tap).locator(".phone-menu__details")
+        row.tap() if tap else row.click()
+        return
+    header = page.locator("header.top")
+    # Home has no header row (#342): its Details are one quiet button under what needs you.
+    page.locator("#content .home button:text-is('Details'), header.top:not(.top--bare) button[aria-label='More']").first.wait_for()
+    if home.count():
+        home.click()
+        return
+    header.get_by_role("button", name="More", exact=True).click()
+    page.get_by_role("menu", name="More").get_by_role("menuitem", name="Details").click()
+
+
+def open_what_matters(page: Page, tap: bool = False) -> None:
+    """"What matters" (#133): on the computer "N needs you" in the header opens it, or More when nothing
+    needs you (#340); on the phone Details opens the project overview, then its What matters row (#341)."""
+    if page.viewport_size["width"] <= 640:
+        open_details(page, tap=tap)
+        overview = page.locator("#details")
+        row = overview.get_by_role("button", name="What matters", exact=True)
+        expect(row).to_be_visible()
+        row.tap() if tap else row.click()
+        return
+    header = page.locator("header.top")
+    header.locator("button[aria-label='More']").wait_for()
+    more = header.get_by_role("button", name="More", exact=True)
+    chip = header.get_by_role("button", name=re.compile("needs you$"))
+    if chip.count():
+        chip.click()
+        return
+    more.click()
+    page.get_by_role("menu", name="More").get_by_role("menuitem", name="What matters").click()
+
+
 def shot(page: Page, name: str) -> None:
     if not SHOTS:
         return
@@ -119,6 +191,28 @@ def shot(page: Page, name: str) -> None:
     page.evaluate("document.fonts.ready.then(() => true)")
     page.wait_for_timeout(450)  # let panel and view motion settle
     page.screenshot(path=str(SHOTS / f"{name}.png"))
+
+
+def open_map_options(page: Page, *, touch: bool = False):
+    """The phone's named sheet retains Map/List and Fit/zoom without stacked map controls."""
+    trigger = page.get_by_role("button", name="Map options", exact=True)
+    expect(trigger).to_be_visible()
+    trigger.tap() if touch else trigger.click()
+    sheet = page.get_by_role("dialog", name="Map options", exact=True)
+    expect(sheet).to_be_visible()
+    return sheet
+
+
+def show_map_as(page: Page, mode: str, *, touch: bool = False) -> None:
+    """Choose the same Map/List control through its visible desktop or phone entry point."""
+    expect(page.locator('.ui-overlay[data-state="closing"]')).to_have_count(0)
+    switch = page.get_by_role("radio", name=mode, exact=True)
+    trigger = page.get_by_role("button", name="Map options", exact=True)
+    expect(trigger.or_(switch)).to_be_visible()
+    if trigger.is_visible():
+        switch = open_map_options(page, touch=touch).get_by_role("radio", name=mode, exact=True)
+    switch.tap() if touch else switch.click()
+    expect(page.get_by_role("dialog", name="Map options", exact=True)).to_have_count(0)
 
 
 def mailpit_reset_link(email: str) -> str:
@@ -208,6 +302,26 @@ SLOW_ANSWERS = """
       }));
     }
     return answer.finally(() => { slow.inflight -= 1; });
+  };
+})();
+"""
+
+
+# Records the API requests this document starts: when each began, and whether `beforeunload` had
+# already fired (#471). A document that is being left starts none; WebKit reports every one of them
+# as an uncaught page error even though the app handles the rejection.
+FETCH_RECORDER = """
+(() => {
+  let leaving = false;
+  window.__fetches = [];
+  window.addEventListener('beforeunload', () => { leaving = true; });
+  window.addEventListener('pageshow', () => { leaving = false; });
+  const original = window.fetch;
+  window.fetch = function (...args) {
+    const url = String((args[0] && args[0].url) || args[0]);
+    window.__fetches.push([performance.now(), url]);
+    if (leaving) { try { console.log('started-while-leaving ' + url); } catch (e) { /* the page is going away */ } }
+    return original.apply(this, args);
   };
 })();
 """
@@ -332,7 +446,7 @@ class AppShellJourney(unittest.TestCase):
         page = self.page(signed_in=False)
         page.goto("/tasks")
         expect(page).to_have_url(re.compile(r"/sign-in\?next=%2Ftasks$"))
-        expect(page.get_by_role("heading", name="Sign in to Flux")).to_be_visible()
+        expect(page.get_by_role("heading", name="Sign in")).to_be_visible()
         shot(page, "sign-in-desktop-light")
 
     def test_02_register(self) -> None:
@@ -418,15 +532,35 @@ class AppShellJourney(unittest.TestCase):
         expect(sidebar.get_by_text("No projects yet")).to_be_visible()
         expect(sidebar.get_by_role("button", name=re.compile("^New"))).to_have_attribute("aria-keyshortcuts", "C")
         views = page.get_by_role("navigation", name="Views")
-        for label in ("Conversation", "Map", "Tasks", "Wiki"):
+        # Home's personal views sit in the header's one row; project-header views are covered by
+        # test_project_header.py and retain Conversation · Map · Tasks · Wiki · Agents (#340).
+        expect(page.locator("header.top").get_by_role("navigation", name="Views")).to_be_visible()
+        for label in ("Overview", "Map", "Tasks", "Wiki"):
             expect(views.get_by_role("link", name=label, exact=True)).to_be_visible()
-        expect(views.get_by_role("link", name="Conversation")).to_have_attribute("aria-current", "page")
-        expect(page.get_by_role("heading", name="Nothing here yet")).to_be_visible()
+        expect(views.get_by_role("link", name="Overview")).to_have_attribute("aria-current", "page")
+        expect(page.get_by_role("heading", level=2, name=re.compile("^Good "))).to_be_visible()
+        expect(page.get_by_role("region", name="Needs you")).to_be_visible()
+        expect(page.get_by_role("region", name="Projects")).to_be_visible()
+        shot(page, "desktop-1440-home-light")
+
+        # Private notes moved from Home's former conversation into Your notes in the Sketchbook.
+        views.get_by_role("link", name="Map", exact=True).click()
+        expect(page).to_have_url(f"{ORIGIN}/map")
+        expect(page.get_by_role("heading", name="Start a sketch")).to_be_visible()
         composer = page.get_by_label("Private note", exact=True)
-        # The composer sits at the bottom of the work area and always shows its audience.
-        self.assertGreater(box(page, composer)["y"], DESKTOP["height"] - 130)
-        expect(page.locator(".composer__audience")).to_contain_text("Only you")
-        shot(page, "desktop-1440-empty-light")
+        # Your notes is a normal-flow section of the Sketchbook, not the old Home-pinned composer.
+        notes_section = page.get_by_role("region", name="Your notes")
+        expect(notes_section).to_be_visible()
+        expect(notes_section.get_by_role("heading", name="Your notes")).to_be_visible()
+        expect(composer).to_be_visible()
+        audience = notes_section.locator(".composer__audience")
+        expect(audience).to_be_visible()
+        expect(audience).to_contain_text("Only you")
+        self.assertTrue(composer.evaluate("el => el.closest('.ynotes') !== null"), "the private note composer belongs to Your notes")
+        composer_box = box(page, composer)
+        audience_box = box(page, audience)
+        self.assertLess(audience_box["y"] + audience_box["height"], composer_box["y"], "the privacy label sits above the input")
+        shot(page, "desktop-1440-sketchbook-empty-light")
 
         # Quick capture: Enter saves a private note, which survives a reload.
         save = page.get_by_role("button", name="Save note")
@@ -449,23 +583,22 @@ class AppShellJourney(unittest.TestCase):
         self.assertEqual(len(page.evaluate("fetch('/api/v1/workspaces').then(r => r.json())")), 1, "still one space")
         shot(page, "desktop-1440-light")
 
-        indicator = page.locator(".views .ui-tabs__indicator")
+        indicator = page.locator(".top__views .ui-tabs__indicator")
         before = indicator.evaluate("el => el.style.transform")
         views.get_by_role("link", name="Tasks").click()
         expect(page).to_have_url(f"{ORIGIN}/tasks")
-        expect(views.get_by_role("link", name="Tasks")).to_have_attribute("aria-current", "page")
         expect(page.get_by_role("heading", name="Nothing is waiting for you")).to_be_visible()
-        self.assertNotEqual(before, indicator.evaluate("el => el.style.transform"), "the underline moves to the chosen view")
-        views.get_by_role("link", name="Map").click()
+        self.assertNotEqual(before, indicator.evaluate("el => el.style.transform"), "the pill moves to the chosen view")
+        views.get_by_role("link", name="Map", exact=True).click()
         expect(page.get_by_role("heading", name="Start a sketch")).to_be_visible()
         shot(page, "desktop-1440-map-light")
 
-        details_button = page.get_by_role("button", name="Details", exact=True)
-        expect(details_button).to_have_attribute("aria-expanded", "false")
-        details_button.click()
+        # Details is in More (#340); the header has no separate Details button on the computer.
+        more = page.locator("header.top").get_by_role("button", name="More", exact=True)
+        expect(page.locator("header.top").get_by_role("button", name="Details", exact=True)).to_have_count(0)
+        open_details(page)
         panel = page.get_by_role("complementary", name="Details")
         expect(panel).to_be_visible()
-        expect(details_button).to_have_attribute("aria-expanded", "true")
         expect(panel.get_by_role("heading", name="Nothing selected")).to_be_visible()
         expect(panel.get_by_text(EMAIL)).to_have_count(0)
         # Docked: the work area stays usable beside the panel.
@@ -475,8 +608,11 @@ class AppShellJourney(unittest.TestCase):
         shot(page, "desktop-1440-details-light")
         page.keyboard.press("Escape")
         expect(panel).to_have_count(0)
-        expect(details_button).to_be_focused()
+        expect(more).to_be_focused()
+        # "]" is not a key of the final design (§4 keyboard); it opens nothing.
         page.keyboard.press("]")
+        expect(page.get_by_role("complementary", name="Details")).to_have_count(0)
+        open_details(page)
         expect(page.get_by_role("complementary", name="Details")).to_be_visible()
         page.get_by_role("button", name="Close details").click()
         expect(page.get_by_role("complementary", name="Details")).to_have_count(0)
@@ -495,6 +631,9 @@ class AppShellJourney(unittest.TestCase):
         rail.get_by_role("link", name="Home").click()
         expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
 
+    def test_04b_unknown_route_page(self) -> None:
+        """A fresh signed-in document renders the unknown-route state without coupling it to prior reads."""
+        page = self.page()
         page.goto("/nowhere")
         expect(page.get_by_role("heading", name="This page doesn’t exist")).to_be_visible()
 
@@ -502,8 +641,7 @@ class AppShellJourney(unittest.TestCase):
 
     def test_04a_draft_survives_view_switch_and_reload(self) -> None:
         page = self.page()
-        page.goto("/")
-        views = page.get_by_role("navigation", name="Views")
+        page.goto("/map")
         composer = page.get_by_label("Private note", exact=True)
         state = page.locator(".composer__state")
         expect(state).to_have_text("Private until you explicitly publish a selected version")
@@ -514,9 +652,9 @@ class AppShellJourney(unittest.TestCase):
         self.assertEqual(page.evaluate(f"localStorage.getItem('flux:draft:{user_id}:home')"), unfinished, "stored per account and context")
 
         # A view switch remounts the composer; the text comes back.
-        views.get_by_role("link", name="Tasks").click()
-        expect(page.get_by_role("heading", name="Nothing is waiting for you")).to_be_visible()
-        views.get_by_role("link", name="Conversation").click()
+        page.get_by_role("link", name="Home", exact=True).first.click()
+        expect(page.get_by_role("heading", level=2, name=re.compile("^Good ")) ).to_be_visible()
+        page.get_by_role("navigation", name="Places").get_by_role("link", name="Sketchbook").click()
         expect(composer).to_have_value(unfinished)
         expect(state).to_have_text("Draft kept on this device")
 
@@ -541,7 +679,7 @@ class AppShellJourney(unittest.TestCase):
 
     def test_04b_reading_position_is_kept_per_view(self) -> None:
         page = self.page()
-        page.goto("/")
+        page.goto("/map")
         user_id = page.evaluate("fetch('/api/v1/me').then(r => r.json()).then(b => b.user.id)")
         key = f"flux.captures.{user_id}"
         saved = page.evaluate(f"localStorage.getItem('{key}')")
@@ -549,7 +687,7 @@ class AppShellJourney(unittest.TestCase):
         page.evaluate(f"localStorage.setItem('{key}', JSON.stringify({json.dumps(notes)}))")
         try:
             page.reload()
-            scroller = page.locator(".convo .pane-scroll")
+            scroller = page.locator(".sk-page")
             expect(page.get_by_text("note 40:")).to_be_attached()
             # Home loads blocks above these notes after they render (private drafts, the offer to move
             # browser notes, #190 HOME-3); the position is a pixel offset, so it is taken once they have.
@@ -559,20 +697,19 @@ class AppShellJourney(unittest.TestCase):
             page.wait_for_timeout(100)
             # The note at the top of the column: blocks above the notes can load later and change the
             # pixel offset (the browser keeps the same note in view), so the place is checked by content.
-            first_visible = """() => { const s = document.querySelector('.convo .pane-scroll'); const top = s.getBoundingClientRect().top;
+            first_visible = """() => { const s = document.querySelector('.sk-page'); const top = s.getBoundingClientRect().top;
               const note = [...s.querySelectorAll('.note')].find((el) => el.getBoundingClientRect().bottom > top + 1);
               return note ? note.querySelector('.note__text').textContent : null; }"""
             anchor = page.evaluate(first_visible)
             self.assertIsNotNone(anchor)
-            views = page.get_by_role("navigation", name="Views")
-            views.get_by_role("link", name="Wiki").click()
+            page.goto("/docs")
             expect(page.get_by_role("heading", name="No docs yet")).to_be_visible()
-            views.get_by_role("link", name="Conversation").click()
+            page.get_by_role("navigation", name="Places").get_by_role("link", name="Sketchbook").click()
             expect(page.get_by_role("button", name=re.compile(r"^Move 40 notes"))).to_be_visible()
             page.wait_for_load_state("networkidle")
             # Restored by content, not pixels: a block that loads above the notes after the restore (drafts,
             # the move offer) shifts the offset while the browser keeps the same note in view.
-            self.assertGreater(page.locator(".convo .pane-scroll").evaluate("el => el.scrollTop"), 0, "a position was restored")
+            self.assertGreater(page.locator(".sk-page").evaluate("el => el.scrollTop"), 0, "a position was restored")
             self.assertEqual(page.evaluate(first_visible), anchor, "the same note is at the top after a view switch")
             page.reload()
             expect(page.get_by_text("note 40:")).to_be_attached()
@@ -581,12 +718,12 @@ class AppShellJourney(unittest.TestCase):
             page.wait_for_load_state("networkidle")
             self.assertEqual(page.evaluate(first_visible), anchor, "the same note is at the top after a reload")
         finally:
-            page.evaluate(f"localStorage.setItem('{key}', {json.dumps(saved)}); localStorage.removeItem('flux:scroll:{user_id}:/')" if saved else f"localStorage.removeItem('{key}'); localStorage.removeItem('flux:scroll:{user_id}:/')")
+            page.evaluate(f"localStorage.setItem('{key}', {json.dumps(saved)}); localStorage.removeItem('flux:scroll:{user_id}:/map')" if saved else f"localStorage.removeItem('{key}'); localStorage.removeItem('flux:scroll:{user_id}:/map')")
             self.save_state(page)
 
     def test_04c_personal_assistant_needs_a_connection(self) -> None:
         page = self.page()
-        page.goto("/")
+        page.goto("/map")
         composer = page.get_by_label("Private note", exact=True)
         composer.fill("Which sensor works in the dark?")
         # With no assistant of their own, the spark button leads to "Connect your AI" (#189); nothing is
@@ -618,7 +755,7 @@ class AppShellJourney(unittest.TestCase):
         self.assertEqual(page.evaluate("getComputedStyle(document.body).backgroundColor"), "rgb(11, 11, 11)", "the dark outer background")
         self.assertEqual(page.locator(".app__main").evaluate("el => getComputedStyle(el).backgroundColor"), "rgb(17, 17, 17)", "the dark panel")
         shot(page, "desktop-1440-dark")
-        page.get_by_role("button", name="Details", exact=True).click()
+        open_details(page)
         expect(page.get_by_role("complementary", name="Details")).to_be_visible()
         shot(page, "desktop-1440-details-dark")
 
@@ -631,66 +768,33 @@ class AppShellJourney(unittest.TestCase):
 
     # ---------------------------------------------------------------- phone layout
 
-    def test_06_phone_drawer_sheet_and_targets(self) -> None:
+    def test_06_phone_capsule_sheet_and_targets(self) -> None:
         page = self.page(phone=True)
         page.goto("/")
         expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
         expect(page.get_by_role("complementary", name="Sidebar")).to_have_count(0)
-        composer = page.get_by_label("Private note", exact=True)
-        composer_box = box(page, page.locator(".composer"))
-        # #266 PF-1: the bar of main places sits at the bottom and the composer right above it; the
-        # views are chips under the header.
+        # #341: the capsule floats at the bottom with the round Search and the one "+"; Home has no view chips (#342).
         bar_box = box(page, page.get_by_role("navigation", name="Main places"))
-        self.assertAlmostEqual(bar_box["y"] + bar_box["height"], PHONE["height"], delta=2, msg="the places bar is pinned to the bottom")
-        self.assertAlmostEqual(composer_box["y"] + composer_box["height"], bar_box["y"], delta=2, msg="the composer sits right above the places bar")
-        self.assertLess(box(page, page.get_by_role("navigation", name="Views"))["y"], composer_box["y"], "the view chips sit at the top")
+        self.assertLess(bar_box["y"] + bar_box["height"], PHONE["height"] - 6, "the places capsule floats above the bottom edge")
+        greeting = page.get_by_role("heading", level=2, name=re.compile(r"^Good (morning|afternoon|evening), Jo$"))
+        expect(greeting).to_be_visible()
+        expect(page.get_by_role("navigation", name="Views")).to_have_count(0)
         shot(page, "phone-390-light")
 
         # Coarse pointer: primary targets are at least 44px.
-        menu = page.get_by_role("button", name="Open navigation")
-        details_button = page.get_by_role("button", name="Details", exact=True)
-        targets = [menu, details_button, *[page.get_by_role("navigation", name="Views").get_by_role("link", name=n, exact=True) for n in ("Conversation", "Map", "Tasks", "Wiki")]]
+        targets = [page.get_by_role("link", name="Settings and account"), page.get_by_role("button", name="Search", exact=True),
+                   page.get_by_role("button", name="Create", exact=True), page.get_by_role("link", name="All my tasks")]
         for target in targets:
             size = box(page, target)
             self.assertGreaterEqual(round(min(size["width"], size["height"]), 2), 44, f"44px target: {target}")
-        self.assertGreaterEqual(round(box(page, page.get_by_role("button", name="Save note"))["height"], 2), 44)
-        expect(composer).to_be_editable()
-        # #437: the places bar labels are at least the phone meta size (12.5px, final design §2), and
-        # the composer's audience line wraps inside the viewport instead of clipping mid-word.
+        # #437: the places bar labels are at least the phone meta size (12.5px, final design §2).
+        # Home has no composer since #342 (notes moved to the Sketchbook), so its audience line is not measured here.
         for size in page.locator(".ui-bottomnav__label").evaluate_all("els => els.map(e => parseFloat(getComputedStyle(e).fontSize))"):
             self.assertGreaterEqual(size, 12.5, "places bar label at least 12.5px")
-        where = page.locator(".composer__audience").first
-        self.assertLessEqual(box(page, where)["x"] + box(page, where)["width"], PHONE["width"], "the audience line fits the phone")
-        self.assertFalse(where.evaluate("el => el.scrollWidth > el.clientWidth + 1"), "the audience line is not clipped")
 
-        menu.click()
-        drawer = page.get_by_role("dialog", name="Flux")
-        expect(drawer).to_be_visible()
-        expect(menu).to_have_attribute("aria-expanded", "true")
-        # The drawer slides in with a running transform (#271): places are measured once the slide has ended.
-        drawer.evaluate("el => Promise.all(el.getAnimations({ subtree: true }).map((animation) => animation.finished.then(() => true, () => false)))")
-        # The sidebar is a 260px drawer with the places as 44px+ rows.
-        drawer_places = drawer.get_by_role("navigation", name="Places")
-        expect(drawer_places).to_be_visible()
-        self.assertLessEqual(round(box(page, drawer)["width"]), 260)
-        for name in ("Home", "Inbox", "Sketchbook"):
-            # Layout reports fractional pixels: a 44 px row was measured as 43.99997 px (#271), so two decimals decide.
-            self.assertGreaterEqual(round(box(page, drawer_places.get_by_role("link", name=name))["height"], 2), 44, f"44px place target: {name}")
-        self.assertTrue(drawer.evaluate("el => el.contains(document.activeElement)"), "focus moves into the drawer")
-        self.assertTrue(page.evaluate("document.getElementById('root').inert"), "the page behind the drawer is inert")
-        # Tab stays inside the drawer.
-        for _ in range(8):
-            page.keyboard.press("Tab")
-            self.assertTrue(drawer.evaluate("el => el.contains(document.activeElement)"), "focus stays in the drawer")
-        shot(page, "phone-390-drawer-light")
-        page.keyboard.press("Escape")
-        expect(page.get_by_role("dialog")).to_have_count(0)
-        expect(menu).to_be_focused()
-        menu.click()
-        page.get_by_role("dialog", name="Flux").get_by_role("button", name="Close navigation").click()
-        expect(page.get_by_role("dialog")).to_have_count(0)
-
-        details_button.click()
+        # Home's quiet Details button opens a full-screen sheet; the title menus of projects are in test_phone_final.
+        details = page.locator("#content .home").get_by_role("button", name="Details", exact=True)
+        details.click()
         sheet = page.get_by_role("dialog", name="Details")
         expect(sheet).to_be_visible()
         page.wait_for_timeout(400)
@@ -699,8 +803,7 @@ class AppShellJourney(unittest.TestCase):
         shot(page, "phone-390-details-light")
         page.keyboard.press("Escape")
         expect(page.get_by_role("dialog")).to_have_count(0)
-        expect(details_button).to_be_focused()
-        details_button.click()
+        details.click()
         page.get_by_role("dialog", name="Details").get_by_role("button", name="Close details").click()
         expect(page.get_by_role("dialog")).to_have_count(0)
 
@@ -709,11 +812,6 @@ class AppShellJourney(unittest.TestCase):
         page.goto("/")
         expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
         shot(page, "phone-390-dark")
-        page.get_by_role("button", name="Open navigation").click()
-        expect(page.get_by_role("dialog", name="Flux")).to_be_visible()
-        shot(page, "phone-390-drawer-dark")
-
-        page.keyboard.press("Escape")
         page.goto("/map")
         # Sketching itself is covered by tests/ui/test_sketches.py (#69).
         expect(page.get_by_role("button", name="New sketch")).to_be_visible()
@@ -726,11 +824,11 @@ class AppShellJourney(unittest.TestCase):
 
         signin = self.page(phone=True, dark=True, signed_in=False)
         signin.goto("/sign-in")
-        expect(signin.get_by_role("heading", name="Sign in to Flux")).to_be_visible()
+        expect(signin.get_by_role("heading", name="Sign in")).to_be_visible()
         shot(signin, "sign-in-phone-dark")
 
     def test_07a_phone_enlarged_text_keeps_every_place_in_view(self) -> None:
-        # #437 (HIG-11, HIG-19): with the text size doubled (html 16 -> 32 px, as the SoftVolume checks do), all four
+        # #437 (HIG-11, HIG-19): with the text size doubled (html 16 -> 32 px, as the SoftVolume checks do), all three
         # places stay on the screen, each label whole and apart from its neighbours. The page's scrollWidth can stay
         # at the viewport width while the bar clips its last label, so each label's own bounds are measured.
         measure = """els => els.map((item) => {
@@ -745,7 +843,7 @@ class AppShellJourney(unittest.TestCase):
                 page.goto("/")
                 expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
                 items = page.get_by_role("navigation", name="Main places").locator(".ui-bottomnav__item")
-                self.assertEqual(items.count(), 4, "the places bar holds Home, Inbox, Messages and Projects")
+                self.assertEqual(items.count(), 3, "the capsule holds Home, Projects and Inbox (#341)")
                 normal = min(place["size"] for place in items.evaluate_all(measure))
                 page.add_style_tag(content="html { font-size: 32px !important; }")
                 places = sorted(items.evaluate_all(measure), key=lambda place: place["left"])
@@ -812,7 +910,7 @@ class AppShellJourney(unittest.TestCase):
         calm = self.page(reduced_motion="reduce")
         calm.goto("/")
         self.assertEqual(calm.evaluate("parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--dur-3'))"), 0)
-        calm.get_by_role("button", name="Details", exact=True).click()
+        open_details(calm)
         panel = calm.get_by_role("complementary", name="Details")
         expect(panel).to_be_visible()
         self.assertEqual(panel.evaluate("el => el.getAnimations().length"), 0, "no panel animation under reduced motion")
@@ -878,11 +976,9 @@ class AppShellJourney(unittest.TestCase):
 
     def test_11_sign_out_then_protected_routes_redirect(self) -> None:
         page = self.page(phone=True)
-        page.goto("/map")
-        page.get_by_role("button", name="Open navigation").click()
-        drawer = page.get_by_role("dialog", name="Flux")
-        # On the phone the drawer's account row opens Settings, which signs out (#266 PF-5).
-        drawer.get_by_role("link", name=re.compile(rf"{NAME}.*settings and sign out")).click()
+        page.goto("/")
+        # On the phone the avatar opens Settings, which signs out (#266 PF-5, #341).
+        page.get_by_role("link", name="Settings and account").click()
         expect(page).to_have_url(f"{ORIGIN}/settings")
         # Settings → Account holds Sign out (#350).
         page.get_by_role("link", name=re.compile("^Account")).click()
@@ -893,7 +989,7 @@ class AppShellJourney(unittest.TestCase):
         page.goto("/map")
         expect(page).to_have_url(re.compile(r"/sign-in\?next=%2Fmap$"))
         page.reload()
-        expect(page.get_by_role("heading", name="Sign in to Flux")).to_be_visible()
+        expect(page.get_by_role("heading", name="Sign in")).to_be_visible()
 
     def person_with_a_task(self, name: str, *, slow: bool = True, service_workers: str = "allow") -> tuple[Page, str, str]:
         """A new account in its own tab with one restricted project and one task in it."""
@@ -921,7 +1017,7 @@ class AppShellJourney(unittest.TestCase):
         """Signs out while the tab still waits for answers, then lets every answer arrive."""
         page.get_by_role("button", name=re.compile(rf"{name}.*account and sign out")).click()
         page.get_by_role("dialog", name="Account").get_by_role("button", name="Sign out").click()
-        expect(page.get_by_role("heading", name="Sign in to Flux")).to_be_visible()
+        expect(page.get_by_role("heading", name="Sign in")).to_be_visible()
         expect(page.get_by_role("status").filter(has_text="You’re signed out.")).to_be_visible()
         # What the tab was loading before sign-out answers now, while the sign-in page's own check
         # of the session is still out; then that check answers too. (That check is the sign-in
@@ -934,7 +1030,7 @@ class AppShellJourney(unittest.TestCase):
         # Sign-out ends on the sign-in page and stays there: nothing loaded for the previous account
         # takes the tab back, neither its address nor its page.
         expect(page).to_have_url(f"{ORIGIN}/sign-in")
-        expect(page.get_by_role("heading", name="Sign in to Flux")).to_be_visible()
+        expect(page.get_by_role("heading", name="Sign in")).to_be_visible()
         expect(page.get_by_text("Something went wrong")).to_have_count(0)
         self.assertEqual(page.evaluate("location.pathname + location.search"), "/sign-in")
 
@@ -990,7 +1086,7 @@ class AppShellJourney(unittest.TestCase):
         expect(owner.get_by_role("heading", level=1, name="Home")).to_be_visible()
         new_from_sidebar(owner, "Project")
         owner.get_by_label("Your space").fill("Lamp lab")
-        owner.get_by_label("Project name").fill("Gesture lamp")
+        owner.get_by_label("What is it about?").fill("Gesture lamp")
 
         def lose_first_committed(path: str):
             # The server commits the first POST but its 201 never arrives (#29 AC-4): Retry must not duplicate it.
@@ -1027,7 +1123,7 @@ class AppShellJourney(unittest.TestCase):
         ws = spaces[0]
         projects = owner.context.request.get(f"{ORIGIN}/api/v1/workspaces/{ws['id']}/projects?limit=100").json()
         self.assertEqual([p["id"] for p in projects["items"]], [project_id], "a retried project whose first response was lost is not created twice")
-        owner.get_by_role("link", name="Home").click()
+        owner.get_by_role("link", name="Sketchbook").click()
         owner.get_by_label("Private note", exact=True).fill("home address 123; PIR avoids storing images")
         lost_draft = lose_first_committed(f"**/api/v1/workspaces/{ws['id']}/drafts")
         owner.get_by_role("button", name="Save note").click()
@@ -1043,7 +1139,7 @@ class AppShellJourney(unittest.TestCase):
         owner.get_by_role("navigation", name="Projects").get_by_role("link", name="Gesture lamp").click()
         owner.get_by_label("Write a message").fill("Try a PIR sensor before considering a camera")
         owner.get_by_role("button", name="Send message").click()
-        expect(owner.locator(".project-convo__message > p").filter(has_text="Try a PIR sensor before considering a camera")).to_be_visible()
+        expect(owner.locator(".project-convo__message > .message-bubble > p").filter(has_text="Try a PIR sensor before considering a camera")).to_be_visible()
         # Sending is instant (#264): the root shows at once and gets its conversation when it is stored.
         expect(owner.locator("[data-client-message-id]")).to_have_count(0)
         # One project conversation (UI116-1): the root joins the stream; its replies open beside it.
@@ -1070,8 +1166,9 @@ class AppShellJourney(unittest.TestCase):
         owner.get_by_label("Reply", exact=True).fill("This is the version we should prototype")
         owner.get_by_role("button", name="Send reply").click()
         expect(owner.get_by_text("This is the version we should prototype", exact=True)).to_be_visible()
-        source = owner.get_by_role("link", name="Source: Privacy options · v1")
+        source = owner.get_by_role("link", name=re.compile("Privacy options.*Wiki page · v1"))
         expect(source).to_be_visible()
+        expect(source.locator(".wiki-card__glyph svg")).to_have_count(1)
         source.click()
         expect(owner.get_by_text("PIR avoids storing images")).to_be_visible()
         owner.go_back()
@@ -1143,7 +1240,7 @@ class AppShellJourney(unittest.TestCase):
         threads = owner.context.request.get(f"{ORIGIN}/api/v1/projects/{project_id}/conversations").json()["items"]
         self.assertEqual(sum(thread["firstMessageBody"] == "Revisit after lost opening" for thread in threads), 1)
         owner.goto(f"/projects/{project_id}/conversations/{conversation_id}")
-        expect(owner.get_by_role("link", name="Source: Privacy options · v1")).to_be_visible()
+        expect(owner.get_by_role("link", name=re.compile("Privacy options.*Wiki page · v1"))).to_be_visible()
 
         read_failures = {"count": 0}
         def fail_first_citation(route) -> None:
@@ -1194,9 +1291,8 @@ class AppShellJourney(unittest.TestCase):
         phone.goto(f"/projects/{project_id}/conversations/{conversation_id}")
         expect(phone.get_by_text("Agreed. Test low light too.", exact=True)).to_be_visible()
         phone.get_by_label("Reply", exact=True).fill("Phone draft survives a view switch")
-        # A project has its own context; leave through the drawer and return without losing text.
-        phone.get_by_role("button", name="Open navigation").click()
-        phone.get_by_role("dialog", name="Flux").get_by_role("link", name="Home").click()
+        # A project has its own context; leave to Home and return without losing text.
+        phone.goto("/")
         phone.go_back()
         expect(phone.get_by_label("Reply", exact=True)).to_have_value("Phone draft survives a view switch")
         expect(phone.locator(".project-convo__current-thread")).to_contain_text("Try a PIR sensor before considering a camera")
@@ -1250,7 +1346,7 @@ class AppShellJourney(unittest.TestCase):
         owner.get_by_role("button", name="Create account").click()
         new_from_sidebar(owner, "Project")
         owner.get_by_label("Your space").fill("Many ideas")
-        owner.get_by_label("Project name").fill("Busy project")
+        owner.get_by_label("What is it about?").fill("Busy project")
         owner.get_by_role("button", name="Create project").click()
         project_id = owner.locator(".project-convo").get_attribute("data-project-id")
         self.assertTrue(project_id)
@@ -1368,7 +1464,7 @@ class AppShellJourney(unittest.TestCase):
         page.get_by_role("button", name="Create account").click()
         new_from_sidebar(page, "Project")
         page.get_by_label("Your space").fill("Research space")
-        page.get_by_label("Project name").fill("Sensor study")
+        page.get_by_label("What is it about?").fill("Sensor study")
         page.get_by_role("button", name="Create project").click()
         expect(page.get_by_role("heading", level=1, name="Sensor study")).to_be_visible()
 
@@ -1413,6 +1509,144 @@ class AppShellJourney(unittest.TestCase):
         self.assertEqual(connections.status, 200, connections.text())
         self.assertEqual(len(connections.json()), 1)
         self.assertIsNotNone(connections.json()[0]["revokedAt"])
+
+    def sign_up_and_create_project(self, page: Page, name: str) -> None:
+        page.goto("/sign-up")
+        page.get_by_label("Name").fill("Leaving Owner")
+        page.get_by_label("Email").fill(f"leaving+{int(time.time() * 1000)}@example.test")
+        page.get_by_label("Password").fill(PASSWORD)
+        page.get_by_role("button", name="Create account").click()
+        new_from_sidebar(page, "Project")
+        page.get_by_label("Your space").fill("Research space")
+        page.get_by_label("What is it about?").fill(name)
+        page.get_by_role("button", name="Create project").click()
+        expect(page.get_by_role("heading", level=1, name=name)).to_be_visible()
+
+    def hold_details_code(self, page: Page) -> list:
+        """Holds the Details panel's code download (a new project opens that panel by itself)."""
+        held: list = []
+        pattern = re.compile(r"/assets/Details-[^/]+\.js(?:\?.*)?$")
+        page.route(pattern, lambda route: held.append(route))
+
+        def release() -> None:
+            page.unroute(pattern)
+            for route in held:
+                try:
+                    route.abort("aborted")
+                except Exception:  # noqa: BLE001 - the page is already closed
+                    pass
+
+        self.addCleanup(release)
+        return held
+
+    def wait_until_held(self, page: Page, held: list) -> None:
+        deadline = time.monotonic() + 5
+        while not held:
+            self.assertLess(time.monotonic(), deadline, "the Details code request never arrived")
+            page.wait_for_timeout(10)
+
+    def test_14a_leaving_while_the_details_panel_is_still_loading_starts_no_request(self) -> None:
+        """A page that is being left starts no request, however the app reacts to the leave (#471)."""
+        # A new project opens its Details panel; its code is still downloading when the person
+        # follows a link out. The failed download and the address change that comes with the same
+        # commit used to start /me and the project's people after beforeunload.
+        page = self.page(signed_in=False, service_workers="block")
+        page.add_init_script(FETCH_RECORDER)
+        started: list[str] = []
+        page.on("console", lambda message: started.append(message.text) if message.text.startswith("started-while-leaving ") else None)
+        held = self.hold_details_code(page)
+        self.sign_up_and_create_project(page, "Sensor study")
+        self.wait_until_held(page, held)
+        page.goto("/connect-agent")
+        expect(page.get_by_role("heading", name="Your agent connections")).to_be_visible()
+        page.evaluate("1")  # events of the document that was left have all arrived
+        self.assertEqual(started, [], "no request started after beforeunload")
+
+    def test_14b_a_panel_that_mounts_while_the_page_is_left_reads_once_the_page_is_live(self) -> None:
+        """Its mount-time reads wait for the grace of a cancelled navigation, and then run (#471)."""
+        page = self.page(signed_in=False, service_workers="block")
+        page.add_init_script(FETCH_RECORDER)
+        held = self.hold_details_code(page)
+        self.sign_up_and_create_project(page, "Sensor study")
+        self.wait_until_held(page, held)
+        # A leave that is cancelled never reaches pagehide. The panel's code arrives in that moment.
+        start = page.evaluate("() => { window.dispatchEvent(new Event('beforeunload')); return performance.now(); }")
+        held[0].continue_()
+        page.wait_for_function("(start) => window.__fetches.some(([at, url]) => at >= start && /\\/grants$/.test(url))", arg=start, timeout=6000)
+        reads = page.evaluate(
+            "(start) => window.__fetches.filter(([at, url]) => at >= start && /\\/(members|grants)$/.test(url)).map(([at]) => at - start)",
+            start,
+        )
+        self.assertTrue(reads, "the panel read the project's people after all")
+        self.assertGreaterEqual(min(reads), 990, f"no read started while the leave could still happen: {reads}")
+
+    def test_14c_a_read_wanted_while_leaving_runs_when_the_leave_is_cancelled(self) -> None:
+        """A read a page wants while it is being left waits, and then runs: nothing stays stale (#471)."""
+        page = self.page(signed_in=False)
+        page.add_init_script(FETCH_RECORDER)
+        self.sign_up_and_create_project(page, "Sensor study")
+        # A leave that is cancelled never reaches pagehide. The browser coming back online is when
+        # the project's agent owners are read again. Start once the page has been quiet for a moment,
+        # so only what the leave itself holds back is measured.
+        result = page.evaluate(
+            """async () => {
+                let seen = -1;
+                for (let round = 0; round < 10 && seen !== window.__fetches.length; round += 1) {
+                    seen = window.__fetches.length;
+                    await new Promise((resolve) => setTimeout(resolve, 600));
+                }
+                const start = performance.now();
+                window.dispatchEvent(new Event('beforeunload'));
+                window.dispatchEvent(new Event('online'));
+                await new Promise((resolve) => setTimeout(resolve, 2500));
+                const people = window.__fetches.filter(([at, url]) => at >= start && /\\/people$/.test(url)).map(([at]) => at - start);
+                return { people };
+            }"""
+        )
+        self.assertTrue(result["people"], "the read that waited ran once the page was live again")
+        self.assertGreaterEqual(min(result["people"]), 990, f"no read started while the leave could still happen: {result['people']}")
+
+    def open_while_leaving(self, page: Page, path: str) -> float:
+        """beforeunload, then the router opens `path` with no click or key press (either would prove the page stays)."""
+        return page.evaluate(
+            """(path) => {
+                const start = performance.now();
+                window.dispatchEvent(new Event('beforeunload'));
+                const idx = ((history.state && history.state.idx) || 0) + 1;
+                history.pushState({ usr: null, key: `leave-${idx}`, idx }, '', path);
+                window.dispatchEvent(new PopStateEvent('popstate', { state: history.state }));
+                return start;
+            }""",
+            path,
+        )
+
+    def assert_read_waits_for_the_grace(self, page: Page, start: float, url: str) -> None:
+        page.wait_for_function("([start, url]) => window.__fetches.some(([at, u]) => at >= start && u.includes(url))", arg=[start, url], timeout=8000)
+        reads = page.evaluate("([start, url]) => window.__fetches.filter(([at, u]) => at >= start && u.includes(url)).map(([at]) => at - start)", [start, url])
+        self.assertGreaterEqual(min(reads), 990, f"{url} was not read while the leave could still happen: {reads}")
+
+    def test_14d_the_sign_in_page_asks_for_single_sign_on_only_once_the_page_is_live(self) -> None:
+        """A sign-in page that opens while the page is being left reads its capabilities after the grace (#471)."""
+        page = self.page(signed_in=False)
+        page.add_init_script(FETCH_RECORDER)
+        page.goto("/sign-up")
+        expect(page.get_by_role("button", name="Create account")).to_be_visible()
+        start = self.open_while_leaving(page, "/sign-in")
+        expect(page.get_by_role("heading", name="Sign in")).to_be_visible()
+        self.assert_read_waits_for_the_grace(page, start, "/api/v1/auth/capabilities")
+
+    def test_14e_the_assistant_setup_reads_its_connections_only_once_the_page_is_live(self) -> None:
+        """Settings > Assistant opened while the page is being left lists the owner's connections after the grace (#471)."""
+        page = self.page(signed_in=False)
+        page.add_init_script(FETCH_RECORDER)
+        page.goto("/sign-up")
+        page.get_by_label("Name").fill("Leaving Owner")
+        page.get_by_label("Email").fill(f"leaving-setup+{int(time.time() * 1000)}@example.test")
+        page.get_by_label("Password").fill(PASSWORD)
+        page.get_by_role("button", name="Create account").click()
+        expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
+        start = self.open_while_leaving(page, "/settings/assistant")
+        self.assert_read_waits_for_the_grace(page, start, "/api/v1/background-compute-connections")
 
 
 if __name__ == "__main__":

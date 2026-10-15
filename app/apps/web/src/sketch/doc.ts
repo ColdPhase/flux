@@ -1,8 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { DEFAULT_THOUGHT_SIZE, type SketchDetail, type Thought, type ThoughtFile, type ThoughtLink, type ThoughtShape } from '@flux/contracts';
+import type { SketchDetail, Thought, ThoughtLink } from '@flux/contracts';
 import { ApiError, NetworkError } from '../api/client';
 import * as api from '../api/sketches';
 import { useStreamEvents } from '../api/stream';
+import type { SharedMap } from '../editing/map';
+import { applyLocal, type Me, type NewThought, type Op } from './projection.js';
+
+export { applyLocal, applyLivePreviews, type Me, type NewThought, type Op } from './projection.js';
 
 /**
  * One sketch as the person edits it (issue #69). Changes apply locally at once and are sent in
@@ -13,71 +17,25 @@ import { useStreamEvents } from '../api/stream';
  * Conflicts: a move, resize, shape change or removal made against a stale version is retried
  * once on the current version (the person's intent for that field wins, other fields stay as
  * the server has them). A stale text edit is not forced: the latest text is shown instead.
+ *
+ * This is the ordinary map, unchanged from before live editing (#228). It is used whenever the
+ * live capability is not `configured` (#239 review); `useLiveSketchDoc` (live-doc.ts) is the live one.
  */
 
-export interface NewThought {
-  id: string;
-  text: string;
-  x: number;
-  y: number;
-  width?: number;
-  height?: number;
-  shape?: ThoughtShape;
-  placement?: { type: 'draft'; id: string; title: string | null } | null;
-  /** The message it came from (#96); only a message of the sketch's own DM is restored on the server. */
-  source?: Thought['source'];
-  /** Its image (#252): a staged file on first save, or the same published file when Undo restores the thought. */
-  file?: ThoughtFile;
-}
-
-export type Op =
-  | { kind: 'add'; thought: NewThought; link?: { id: string; fromId: string; label: string | null } }
-  | { kind: 'update'; id: string; changes: Partial<Pick<Thought, 'text' | 'width' | 'height' | 'shape'>> }
-  | { kind: 'move'; moves: { id: string; x: number; y: number }[] }
-  | { kind: 'remove'; id: string }
-  | { kind: 'link'; link: { id: string; fromId: string; toId: string; label: string | null } }
-  | { kind: 'unlink'; id: string }
-  | { kind: 'rename'; title: string };
-
 export type LoadState = 'loading' | 'ready' | 'not-found' | 'failed';
-export interface Me { id: string; name: string }
+export class DraftSaveNotSentError extends Error {}
+export interface DraftSaveOptions {
+    /** An unknown restore or a phone's earlier connected attempt may confirm/edit an existing thought, never create its link. */
+    existingOnly?: ReadonlySet<string>;
+    expectedText?: ReadonlyMap<string, string>;
+    desiredText?: ReadonlyMap<string, string>;
+    editKeys?: ReadonlyMap<string, string>;
+    retry?: ReadonlySet<string>;
+    onAttempt?(item: { thought: NewThought; parent: { id: string; linkId: string } | null; key: string }): void;
+  }
+
 
 const uuid = () => crypto.randomUUID();
-
-function localThought(me: Me, sketchId: string, input: NewThought): Thought {
-  const now = new Date().toISOString();
-  return {
-    id: input.id, sketchId, text: input.text, x: input.x, y: input.y, width: input.width ?? DEFAULT_THOUGHT_SIZE.width,
-    height: input.height ?? DEFAULT_THOUGHT_SIZE.height, shape: input.shape ?? 'card', placement: input.placement ?? null,
-    source: input.source ?? null, ...(input.file ? { file: input.file } : {}),
-    createdBy: { kind: 'human', id: me.id, name: me.name }, version: 0, createdAt: now, updatedAt: now,
-  };
-}
-
-/** The sketch after `op`, as the person expects to see it before the server answers. */
-export function applyLocal(sketch: SketchDetail, op: Op, me: Me): SketchDetail {
-  switch (op.kind) {
-    case 'add': {
-      const thoughts = [...sketch.thoughts, localThought(me, sketch.id, op.thought)];
-      const links = op.link ? [...sketch.links, { id: op.link.id, sketchId: sketch.id, fromId: op.link.fromId, toId: op.thought.id, label: op.link.label, createdAt: new Date().toISOString() }] : sketch.links;
-      return { ...sketch, thoughts, links };
-    }
-    case 'update':
-      return { ...sketch, thoughts: sketch.thoughts.map((t) => (t.id === op.id ? { ...t, ...op.changes } : t)) };
-    case 'move': {
-      const to = new Map(op.moves.map((m) => [m.id, m]));
-      return { ...sketch, thoughts: sketch.thoughts.map((t) => (to.has(t.id) ? { ...t, x: to.get(t.id)!.x, y: to.get(t.id)!.y } : t)) };
-    }
-    case 'remove':
-      return { ...sketch, thoughts: sketch.thoughts.filter((t) => t.id !== op.id), links: sketch.links.filter((l) => l.fromId !== op.id && l.toId !== op.id) };
-    case 'link':
-      return { ...sketch, links: [...sketch.links, { ...op.link, sketchId: sketch.id, createdAt: new Date().toISOString() }] };
-    case 'unlink':
-      return { ...sketch, links: sketch.links.filter((l) => l.id !== op.id) };
-    case 'rename':
-      return { ...sketch, title: op.title };
-  }
-}
 
 /** Operations that undo `op` when applied to the sketch after it. */
 export function inverse(before: SketchDetail, op: Op): Op[] {
@@ -325,7 +283,7 @@ export function useSketchDoc(sketchId: string, me: Me) {
    * Applies operations as one undoable step. `coalesce` (keyboard nudges) merges repeated moves
    * into the previous step and sends the final positions once the keys rest.
    */
-  const perform = useCallback((ops: Op[], label: string, options: { coalesce?: boolean; undoable?: boolean } = {}) => {
+  const perform = useCallback((ops: Op[], label: string, options: { coalesce?: boolean; undoable?: boolean; lease?: Promise<unknown> } = {}) => {
     let current = ref.current;
     if (!current || !ops.length) return;
     const inverses: Op[][] = [];
@@ -375,45 +333,68 @@ export function useSketchDoc(sketchId: string, me: Me) {
    * list, #252) are sent in order and stop at the first failure; only the confirmed ones join the document, as one
    * undo step. Returns the confirmed thought IDs; the caller keeps the rest of its draft with their IDs and keys.
    */
-  const saveThoughts = useCallback(async (items: { thought: NewThought; parent: { id: string; linkId: string } | null; key: string }[]): Promise<string[]> => {
+  const saveThoughts = useCallback(async (items: { thought: NewThought; parent: { id: string; linkId: string } | null; key: string }[], options?: DraftSaveOptions): Promise<string[]> => {
     flushMoves();
     inFlight.current += 1;
     setSaving(true);
     setProblem(null);
     const saved: string[] = [];
+    let unconfirmed = false;
+    let changedEarlier = false;
     const operation = queue.current.then(async () => {
       for (const { thought, parent, key } of items) {
-        let created: { thought: Thought; link: ThoughtLink | null };
-        try {
-          created = await withRetry(() => api.addThought(sketchId, {
-            id: thought.id, text: thought.text, x: thought.x, y: thought.y, width: thought.width, height: thought.height,
-            ...(thought.file ? { fileId: thought.file.id } : {}),
-            ...(parent ? { linkFrom: { thoughtId: parent.id, linkId: parent.linkId } } : {}),
-          }, key));
-        } catch (error) {
-          // The draft's stable ID already exists: an earlier save of this draft committed although every response was
-          // lost, and its text may predate edits made since. Finish that save instead of failing forever: the newer
-          // text becomes an ordinary edit at the version just read, so another author's change still conflicts.
-          if (!(error instanceof ApiError && error.status === 409 && error.code === 'THOUGHT_EXISTS')) throw error;
+        let created: { thought: Thought; link: ThoughtLink | null; reconciled?: boolean; currentLinks?: ThoughtLink[] };
+        const recoverExisting = async (failure: unknown) => {
           const current = await api.getSketch(sketchId);
           const existing = current.thoughts.find((item) => item.id === thought.id);
-          if (!existing) throw error;
-          const text = existing.text === thought.text ? existing
-            : await withRetry(() => api.updateThought(sketchId, existing.id, { text: thought.text }, existing.version, `${key}-text`));
-          created = { thought: text, link: parent ? current.links.find((item) => item.id === parent.linkId) ?? null : null };
+          if (!existing) { if (options?.existingOnly?.has(thought.id)) unconfirmed = true; throw failure; }
+          const expected = options?.expectedText?.get(thought.id);
+          const wanted = options?.desiredText?.get(thought.id) ?? thought.text;
+          const untouchedOwnCreation = expected === undefined && existing.version === 1 && existing.createdBy.id === meRef.current.id;
+          if (existing.text !== wanted && existing.text !== expected && !untouchedOwnCreation) {
+            changedEarlier = true;
+            patchThought(existing, true);
+            throw new Error('Earlier saved thought was changed');
+          }
+          const text = existing.text === wanted ? existing
+            : await withRetry(() => api.updateThought(sketchId, existing.id, { text: wanted }, existing.version, `${options?.editKeys?.get(thought.id) ?? key}-text`));
+          return { thought: text, link: parent ? current.links.find((item) => item.id === parent.linkId) ?? null : null, reconciled: true,
+            currentLinks: current.links.filter((item) => item.fromId === thought.id || item.toId === thought.id) };
+        };
+        if (options?.existingOnly?.has(thought.id)) {
+          created = await recoverExisting(new Error('Earlier connected save is not confirmed'));
+        } else {
+          options?.onAttempt?.({ thought, parent, key });
+          try {
+            created = await withRetry(() => api.addThought(sketchId, {
+              id: thought.id, text: thought.text, x: thought.x, y: thought.y, width: thought.width, height: thought.height,
+              ...(thought.file ? { fileId: thought.file.id } : {}),
+              ...(parent ? { linkFrom: { thoughtId: parent.id, linkId: parent.linkId } } : {}),
+            }, key));
+            // A cached creation receipt describes the earlier write, not a peer's later state.
+            if (options?.retry?.has(thought.id)) created = await recoverExisting(new Error('Earlier saved thought is no longer present'));
+          } catch (error) {
+            // A stable ID may already exist after a lost response. Confirm its current state
+            // and only refine the known earlier text with the ordinary version check.
+            if (!(error instanceof ApiError && error.status === 409 && error.code === 'THOUGHT_EXISTS')) throw error;
+            created = await recoverExisting(error);
+          }
         }
         const current = ref.current;
         if (!current) break;
-        versions.current.set(created.thought.id, created.thought.version);
+        const latest = current.thoughts.find((item) => item.id === created.thought.id);
+        const confirmed = latest && latest.version > created.thought.version ? latest : created.thought;
+        versions.current.set(confirmed.id, confirmed.version);
+        const links = created.currentLinks ? [...current.links.filter((item) => item.fromId !== confirmed.id && item.toId !== confirmed.id), ...created.currentLinks] : current.links;
         commit({ ...current,
-          thoughts: [...current.thoughts.filter((item) => item.id !== created.thought.id), created.thought],
-          links: created.link ? [...current.links.filter((item) => item.id !== created.link!.id), created.link] : current.links,
+          thoughts: [...current.thoughts.filter((item) => item.id !== created.thought.id), confirmed],
+          links: created.link ? [...links.filter((item) => item.id !== created.link!.id), created.link] : links,
         });
         saved.push(created.thought.id);
       }
-    }).catch(() => {
+    }).catch((error: unknown) => {
       const rest = items.length - saved.length;
-      setProblem(items.length === 1
+      setProblem(error instanceof DraftSaveNotSentError ? 'No request was sent. This browser could not safely retain the save state; your text is kept. Try again when storage is available.' : changedEarlier ? 'Someone changed the earlier saved thought. Your text is kept; cancel to inspect their version before editing again.' : unconfirmed ? 'The earlier draft’s save is not confirmed yet. Your text is kept; check the shared map before starting another thought.' : items.length === 1
         ? 'The thought could not be saved. Your draft is kept; check access and its parent, then try again.'
         : saved.length
           ? `Saved ${saved.length} of ${items.length} thoughts. The other ${rest} are kept in your draft; check access and their parent, then try again.`
@@ -435,10 +416,7 @@ export function useSketchDoc(sketchId: string, me: Me) {
     queue.current = operation;
     await operation;
     return saved;
-  }, [commit, flushMoves, reload, sketchId]);
-
-  const saveThought = useCallback(async (thought: NewThought, parent: { id: string; linkId: string } | null, key: string): Promise<boolean> =>
-    (await saveThoughts([{ thought, parent, key }])).length === 1, [saveThoughts]);
+  }, [commit, flushMoves, patchThought, reload, sketchId]);
 
   /**
    * Text belongs to the version opened by the editor, even if the stream learns a newer one.
@@ -494,8 +472,51 @@ export function useSketchDoc(sketchId: string, me: Me) {
 
   useEffect(() => () => flushMoves(), [flushMoves]);
 
-  return { sketch, load, saving, problem, clearProblem: () => setProblem(null), canUndo: undoLabel !== null, perform, saveThought, saveThoughts, saveText, undo, reload, newId: uuid };
+  // Label editing shares the write queue so a newly created connection is saved first.
+  // Compare-and-set conflicts reach the editor: never silently rebase another person's label.
+  const saveLinkLabel = useCallback(async (id: string, label: string | null, expectedLabel: string | null, key: string) => {
+    flushMoves();
+    inFlight.current += 1;
+    setSaving(true);
+    const operation = queue.current.then(async () => {
+      const link = await withRetry(() => api.updateLinkLabel(sketchId, id, label, expectedLabel, key));
+      const current = ref.current;
+      if (current) commit({ ...current, links: current.links.map((item) => item.id === id ? link : item) });
+      // An idempotent replay can contain an older result than a subsequent peer edit.
+      staleRef.current = true;
+      return link;
+    }).catch((error: unknown) => {
+      staleRef.current = true;
+      throw error;
+    }).finally(() => {
+      inFlight.current -= 1;
+      finishedWrites.current += 1;
+      if (inFlight.current) return;
+      setSaving(false);
+      if (staleRef.current) { staleRef.current = false; void reload(); }
+    });
+    queue.current = operation.then(() => undefined, () => undefined);
+    return operation;
+  }, [commit, flushMoves, reload, sketchId]);
+
+  return { sketch, confirmedThoughts: sketch?.thoughts ?? null, load, saving, problem, clearProblem: () => setProblem(null), canUndo: undoLabel !== null, perform, saveThoughts, saveText, saveLinkLabel, undo, reload, newId: uuid, ...ORDINARY };
 }
+
+/** No live room, movement, presence or server undo: the ordinary map's inert live fields. */
+const ORDINARY = {
+  liveStatus: 'unavailable' as SharedMap['status'],
+  liveCanWrite: true,
+  ownGesture: null as SharedMap['ownGesture'],
+  previews: new Map() as SharedMap['previews'],
+  peers: new Map() as SharedMap['peers'],
+  privateMovement: null as SharedMap['privateMovement'],
+  discardPrivateMovement: (): void => {},
+  beginGesture: (): boolean => true,
+  previewGesture: (): void => {},
+  cancelGesture: (): void => {},
+  finishGesture: (): Promise<{ leaseId: string; versions: Map<string, number> }> | undefined => undefined,
+  presence: (): void => {},
+};
 
 export type SketchDoc = ReturnType<typeof useSketchDoc>;
 export type { ThoughtLink };

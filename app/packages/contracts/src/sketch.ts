@@ -226,6 +226,8 @@ export interface UpdateThoughtCommand {
   height?: number;
   shape?: ThoughtShape;
   expectedVersion?: number;
+  /** #228: resize uses the same server-issued transient lease as movement. */
+  leaseId?: string;
 }
 
 /**
@@ -235,6 +237,8 @@ export interface UpdateThoughtCommand {
  */
 export interface MoveThoughtsCommand {
   moves: { id: string; x: number; y: number; expectedVersion: number }[];
+  /** #228: server-issued drag lease, checked in the same native CAS transaction. */
+  leaseId?: string;
 }
 export interface MovedThoughts {
   thoughts: Thought[];
@@ -251,6 +255,21 @@ export interface CreateLinkCommand {
   fromId: string;
   toId: string;
   label?: string | null;
+}
+
+/** Changes only an existing connection's label; an empty or blank label clears it. */
+export interface UpdateLinkLabelCommand {
+  label: string | null;
+  /** The label last read by the caller. Required; a changed label answers 409. */
+  expectedLabel: string | null;
+}
+
+/** Nothing changed. Show the current label before offering another save. */
+export interface LinkLabelConflict {
+  error: string;
+  code: 'LABEL_CONFLICT';
+  currentLabel: string | null;
+  current: ThoughtLink;
 }
 
 /** Where a promotion copies the sketch: a new restricted project, or an existing project the caller can change. */

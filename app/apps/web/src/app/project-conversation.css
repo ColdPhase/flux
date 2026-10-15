@@ -92,7 +92,7 @@ button.project-convo__contribution { cursor: pointer; }
 /* Ask my assistant (#68) sits after Sources; only Sources pulls into the box's padding. */
 .project-convo__sources-btn + .composer__ask { margin-left: 0; }
 
-/* F-026: one author column for people and agents, with a 32px face and 12px gap. Each
+/* F-026: a 32px author face and 12px gap on the author's side. Each
    bubble is only as wide as its content (up to 560px), so its actions stay beside it. */
 .project-convo__in { max-width: calc(var(--col) + 2 * var(--space-page)); padding: 30px var(--space-page) 12px; }
 .project-convo__day { justify-content: center; gap: 12px; margin: 5px 0 27px; font-size: var(--fs-sm); font-weight: 400; color: var(--t3); }
@@ -115,6 +115,12 @@ button.project-convo__contribution { cursor: pointer; }
 .project-convo__message > :not(.ui-avatar, .author-face) { max-width: 100%; min-width: 0; }
 .project-convo__message .ws-attach { max-width: 100%; }
 .project-convo__message.is-mine > p { border-radius: var(--r-lg) 6px var(--r-lg) var(--r-lg); background-color: var(--inv); background-image: var(--grad-inv); color: var(--oninv); }
+/* Own messages belong on the right, including the queued message before it is saved (#481).
+   Move the group, not the text's reading direction; references and photos follow their author. */
+.project-convo__message.is-mine { margin-left: auto; align-items: flex-end; padding-left: 0; padding-right: 44px; }
+.project-convo__message.is-mine > :is(.ui-avatar, .author-face) { left: auto; right: 0; }
+.project-convo__message.is-mine > .project-convo__message-meta { justify-content: flex-end; }
+.project-convo__message.is-mine.is-arrived { box-shadow: inset -3px 0 0 var(--t1); }
 
 /* Composer: a two-row card in the same column, text above and its tools below, with the
    audience and keyboard hint under the card. */
@@ -132,8 +138,9 @@ button.project-convo__contribution { cursor: pointer; }
 .project-convo__composer .project-convo__error, .project-convo__composer .project-convo__hint { order: 3; }
 @media (max-width: 680px) {
   .project-convo__in { padding: 22px 17px 12px; }
-  /* The same author column on the phone: 32px face plus a 10px gap. */
+  /* On either side, the phone keeps the 32px face plus a 10px gap. */
   .project-convo__message { max-width: 100%; padding-left: 42px; }
+  .project-convo__message.is-mine { padding-left: 0; padding-right: 42px; }
   .project-convo__message > p { padding: 11px 14px; }
   .project-convo__composer { padding: 8px 14px 15px; padding-bottom: max(15px, env(safe-area-inset-bottom)); }
   .project-convo__composer .composer__box { padding: 11px 13px; border-radius: 9px; }
@@ -150,3 +157,38 @@ button.project-convo__contribution { cursor: pointer; }
 
 
 .project-convo__material-read { text-decoration: underline; text-underline-offset: 2px; }
+
+/* New project in one step (#351, F-026 S20): a name and a template in one card; people and agents come later. */
+.project-new { max-width: 720px; padding-top: 40px; }
+.project-new__card { display: flex; flex-direction: column; gap: 18px; padding: 22px; border-radius: 22px; background: var(--el); box-shadow: var(--sh-pop); }
+.project-new__head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.project-new__head h2 { font-size: 20px; font-weight: 600; letter-spacing: -.02em; }
+.project-new__head span { margin-left: auto; font-size: 12px; color: var(--t3); }
+.project-new__space { font-size: var(--fs-sm); color: var(--t3); margin: -8px 0 0; }
+.project-new__templates { border: 0; margin: 0; padding: 0; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.project-new__templates legend { padding: 0; margin-bottom: 8px; font-size: var(--fs-sm); font-weight: 500; }
+.project-new__grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.project-new__template { position: relative; display: flex; flex-direction: column; gap: 6px; padding: 14px; border-radius: var(--r); background: var(--bg); box-shadow: var(--sh-card); cursor: pointer; }
+.project-new__template b { font-size: 14px; font-weight: 600; }
+.project-new__template span { font-size: 12px; line-height: 16px; color: var(--t3); }
+.project-new__template input { position: absolute; inset: 0; margin: 0; opacity: 0; cursor: pointer; }
+.project-new__template:has(input:checked) { box-shadow: var(--sh-card), 0 0 0 2px var(--t1); }
+.project-new__template:has(input:focus-visible) { outline: 2px solid var(--t1); outline-offset: 3px; }
+.project-new__note { display: flex; align-items: center; gap: 12px; margin: 0; padding: 14px; border-radius: 16px; background: var(--sub); font-size: 13px; line-height: 19px; color: var(--t2); }
+.project-new__note b { color: var(--t1); font-weight: 600; }
+.project-new__note > :first-child { flex: none; }
+.project-new__foot { display: flex; align-items: center; gap: 8px; }
+.project-new__foot span { flex: 1; font-size: 12px; color: var(--t3); }
+@media (max-width: 640px) {
+  .project-new { padding-top: 12px; }
+  .project-new__card { padding: 4px 0 0; background: transparent; box-shadow: none; }
+  .project-new__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .project-new__template { padding: 14px; }
+  .project-new__template b { font-size: 15px; }
+  .project-new__template span { font-size: 13px; }
+  .project-new__note { border-radius: 18px; font-size: 14px; line-height: 20px; }
+  .project-new__foot { flex-wrap: wrap; }
+  .project-new__foot span { flex-basis: 100%; order: 3; text-align: center; }
+  .project-new__foot .ui-btn { flex: 1; min-height: 52px; }
+  .project-new__foot .ui-btn--secondary { display: none; }
+}

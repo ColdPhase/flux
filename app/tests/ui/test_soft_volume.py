@@ -14,7 +14,7 @@ import uuid
 from playwright.sync_api import Browser, Page, expect, sync_playwright
 
 from contrast import MEASURE
-from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
+from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, open_details, shot, start_forwarder
 
 PASSWORD = "soft volume everywhere"
 # The final design's tokens (docs/design/final/README.md §2).
@@ -73,6 +73,11 @@ class SoftVolume(unittest.TestCase):
         family = node.evaluate("e => getComputedStyle(e).fontFamily")
         # CSSOM may serialize a family containing spaces with or without quotes.
         self.assertEqual(family.split(",")[0].strip(" \"'"), "Geist Mono", family)
+
+    def assert_sans(self, node) -> None:
+        # File names are text, not numbers or labels: Geist, served by Flux (F-026 §2).
+        family = node.evaluate("e => getComputedStyle(e).fontFamily")
+        self.assertEqual(family.split(",")[0].strip(" \"'"), "Geist", family)
 
     def ensure_account(self) -> None:
         if self.state:
@@ -176,10 +181,15 @@ class SoftVolume(unittest.TestCase):
                     page.goto(f"/projects/{self.ids['project']}/conversations/{self.ids['conversation']}")
                     replies = page.get_by_role("complementary", name="Replies")
                     timestamp = replies.locator(".thread__root-meta time")
-                    filename = replies.locator(".message-files a span").first
+                    row = replies.locator(".message-files .file-row").first
+                    filename = row.locator(".file-row__name")
+                    label = row.locator(".file-icon__label")
                     expect(timestamp).to_be_visible()
                     expect(filename).to_have_text("calibration.csv")
-                    for node in (timestamp, filename):
+                    expect(label).to_have_text("CSV")
+                    # The name is text (Geist); the timestamp and the file's type label are mono.
+                    self.assert_sans(filename)
+                    for node in (timestamp, label):
                         self.assert_mono(node)
                     # Exercise the actual upload draft, not an injected font demonstration.
                     with page.expect_file_chooser() as chooser:
@@ -188,12 +198,16 @@ class SoftVolume(unittest.TestCase):
                     draft = replies.locator(".composer-files__name")
                     expect(draft).to_contain_text("delivery.csv")
                     expect(draft).to_contain_text("Ready, private")
-                    self.assert_mono(draft)
+                    self.assert_sans(draft)
+                    draft_label = replies.locator(".composer-thumb:not(.is-photo) .file-icon__label")
+                    expect(draft_label).to_have_text("CSV")
+                    self.assert_mono(draft_label)
                     page.evaluate("document.fonts.ready")
                     shot(page, f"338-{self.engine}-files-{'390' if phone else '1440'}-{scheme}")
                     page.goto(f"/projects/{self.ids['project']}/tasks")
-                    page.get_by_role("radio", name="List", exact=True).click()
-                    counter = page.locator(".ws-view__n").first
+                    if not phone:  # the phone is always the list
+                        page.get_by_role("radio", name="List", exact=True).click()
+                    counter = (page.locator(".ws-task .ui-task-number") if phone else page.locator(".ws-view__n")).first
                     expect(counter).to_be_visible()
                     self.assert_mono(counter)
                     page.wait_for_function("() => ['Geist', 'Geist Mono'].every(name => [...document.fonts].some(f => f.family.replace(/\"/g, '') === name && f.status === 'loaded'))")
@@ -226,7 +240,8 @@ class SoftVolume(unittest.TestCase):
                 with self.subTest(scheme=scheme, phone=phone):
                     page = self.page(scheme=scheme, phone=phone)
                     page.goto(f"/projects/{self.ids['project']}/tasks")
-                    page.get_by_role("radio", name="List", exact=True).click()
+                    if not phone:  # the phone is always the list
+                        page.get_by_role("radio", name="List", exact=True).click()
                     for status, word in STATES.items():
                         task = page.locator(f"li[data-work-id='{self.ids[status]}']")
                         row = task.locator(".ui-glyph--" + status)
@@ -253,7 +268,8 @@ class SoftVolume(unittest.TestCase):
                     page.goto(f"/dm/{self.ids['dm']}")
                     expect(page.locator(".dm-msg__meta time").first).to_be_visible()
                     self.assert_mono(page.locator(".dm-msg__meta time").first)
-                    page.get_by_role("button", name="Details", exact=True).click()
+                    open_details(page)
+                    page.wait_for_timeout(400)  # the panel finishes fading in before contrast is measured
                     avatar = page.locator(".details__person .ui-avatar--me")
                     expect(avatar).to_have_text("AS")
                     page.wait_for_function("""() => { const el = document.querySelector('.details__person .ui-avatar--me');

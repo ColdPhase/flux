@@ -1,18 +1,19 @@
-import { useCallback, useId, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { Link, useRevalidator } from 'react-router';
 import type { Agent, ObjectLink, Project, WorkspaceMember, WorkStatus, WorkDetailObject, WorkDetailProjection } from '@flux/contracts';
-import { WORK_STATUSES } from '@flux/contracts';
 import { ApiError } from '../api/client';
-import { AgentIdentity, Button, Icon, Input, StatusGlyph } from '../ui';
+import { useStreamEvents } from '../api/stream';
+import { AgentIdentity, Avatar, Button, Icon, Input, StatusGlyph, useToast } from '../ui';
 import { getProject, listWorkspaceMembers } from '../app/conversation-api';
 import { useShellData } from '../app/data';
 import { useRegisterLiveHere } from '../live/LiveProvider';
 import { LiveEntry } from '../live/LiveEntry';
 import { useShellActions, type ObjectView, type WorkFormView } from '../app/shellContext';
-import { acceptDecision, createResult, listAgents, proposeDecision, updateWork } from './api';
+import { acceptDecision, createResult, listAgents, proposeDecision, undoTaskCreation, updateWork } from './api';
 import { STATUS_LABEL, decisionLine, firstLine, isFinished, linked, resultLine, shortDate, taskNumber } from './format';
 import { docsLinking } from '../docs/AddToDoc';
 import { useAgentOwners } from '../agents/owners';
+import { HandOffDialog } from '../agents/HandOff';
 import { useProjectShell } from '../project/data';
 import { useWorkRead } from './useWorkRead';
 import { useNativeOwn, useWorkChoices, useDetailRelations, type DetailRelations, type DetailChoices } from './useDetailReads';
@@ -20,6 +21,7 @@ import { WorkPagination } from './WorkPagination';
 import { TaskDiscussionSection } from './TaskDiscussion';
 import { TaskThoughtLinks } from './TaskThoughtLinks';
 import { ReadyToClose, TaskPullRequests } from '../github/TaskPullRequests';
+import { PanelMeta, StatusControl, TitleField, useStateKeys } from './TaskParts';
 
 // The Details panel for work items, decisions and results, and the two forms that start from a
 // message (#101). Everything shown here is visible to the people with access to the project;
@@ -86,6 +88,11 @@ export function WorkDetails({ view }: { view: ObjectView | WorkFormView }) {
   const [tick, setTick] = useState(0);
   const revalidator = useRevalidator();
   const reload = useCallback(() => { setTick((value) => value + 1); revalidator.revalidate(); }, [revalidator]);
+  // A change to this project's work by anyone (for example an Undo of a task's creation, #238) re-reads the open
+  // object, so no other tab or account keeps acting on what it showed before. Private drafts are kept.
+  useStreamEvents(accountId, (event) => {
+    if (event.objectType === 'project' && event.objectId === projectId && /^project\.(work|decision|result|link)_/.test(event.kind)) setTick((value) => value + 1);
+  }, () => setTick((value) => value + 1));
   const load = useCallback((signal: AbortSignal) => loadContext(projectId, signal), [projectId]);
   const contextRead = useWorkRead(projectId ? { accountId, projectId, selector: 'detail-context' } : null, load, tick, revalidator.state === 'idle');
   const context = contextRead.phase === 'ready' || contextRead.phase === 'refreshing' ? contextRead.value : null;
@@ -214,30 +221,52 @@ function IdsLine({ children }: { children: ReactNode }) {
 function WorkPanel({ item, context, detail, relations, reload, commands }: { item: OwnWork; context: Context; detail: WorkDetailProjection; relations: DetailRelations; reload: () => void; commands: PanelCommands }) {
   const { openDetails } = useShellActions();
   const { me } = useShellData();
-  const writable = context.project.access !== 'viewer';
+  // A task whose creation was undone (#238) stays as read-only history: no change, live or new-target control.
+  const reverted = item.lifecycle?.state === 'creation_reverted' ? item.lifecycle : null;
+  const writable = context.project.access !== 'viewer' && !reverted;
   const { busy, error } = commands.state;
   const { setBusy, setError, setBlocker, isCurrent } = commands;
   const blocker = commands.state.blocker ?? item.blocker ?? '';
-  const statusId = useId();
   const ownerId = useId();
+  const [handingOff, setHandingOff] = useState(false);
+  const owners = useAgentOwners(context.project);
   const decisions = linked(relations.links, item.id, 'decision');
   const results = linked(relations.links, item.id, 'result');
   const parkedBy = item.parked ? detail.context.find((decision) => decision.id === item.parked!.decisionId) : null;
   // An open task is the most specific place to work together, and a fragment others can open.
   const liveAnchor = { projectId: item.projectId, context: { type: 'work' as const, id: item.id }, label: item.title };
-  useRegisterLiveHere(liveAnchor, { ref: { type: 'work', id: item.id, version: item.version }, label: item.title, what: 'task' });
+  useRegisterLiveHere(reverted ? null : liveAnchor, reverted ? null : { ref: { type: 'work', id: item.id, version: item.version }, label: item.title, what: 'task' });
 
   // The same change of the same version retried after a lost response reuses its command UUID: it never
   // contributes the saved blocker to the task conversation twice. A different change gets a new one.
   const attempt = useRef<{ key: string; id: string } | null>(null);
-  async function change(command: Parameters<typeof updateWork>[1]) {
-    const key = JSON.stringify([item.id, item.version, command]);
+  const latest = useRef(item);
+  useEffect(() => { latest.current = item; });
+  const toast = useToast();
+  async function change(command: Parameters<typeof updateWork>[1], base: Pick<OwnWork, 'id' | 'version'> = item): Promise<boolean> {
+    const key = JSON.stringify([base.id, base.version, command]);
     if (attempt.current?.key !== key) attempt.current = { key, id: crypto.randomUUID() };
     setBusy(true); setError('');
-    try { await updateWork(item, command, attempt.current.id); attempt.current = null; if (isCurrent()) reload(); }
-    catch (cause) { if (!isCurrent()) return; setError(readable(cause)); if (cause instanceof ApiError && cause.status === 409) { attempt.current = null; reload(); } }
+    try { await updateWork(base, command, attempt.current.id); attempt.current = null; if (isCurrent()) reload(); return true; }
+    catch (cause) { if (!isCurrent()) return false; setError(readable(cause)); if (cause instanceof ApiError && cause.status === 409) { attempt.current = null; reload(); } return false; }
     finally { setBusy(false); }
   }
+  // One tap or a key changes the state at once, and the toast takes it back (S9).
+  async function setState(next: WorkStatus) {
+    if (!writable || busy || next === item.status) return;
+    // Undo restores what this change replaced: leaving "blocked" clears its reason, so the reason goes back too.
+    const before = { status: item.status, blocker: item.status === 'blocked' ? item.blocker : null };
+    if (await change({ status: next })) {
+      // Finishing parked work also unparks it, and the contract cannot park it again, so Undo would leave it unparked: no Undo for that change.
+      if (item.parked && (next === 'done' || next === 'not_pursued')) {
+        toast({ message: `${taskNumber(item)} is now ${STATUS_LABEL[next].toLowerCase()} and no longer parked`, timeout: 8000 });
+        return;
+      }
+      const restore = before.status === 'blocked' && before.blocker ? { status: before.status, blocker: before.blocker } : { status: before.status };
+      toast({ message: `${taskNumber(item)} is now ${STATUS_LABEL[next].toLowerCase()}`, timeout: 8000, action: { label: 'Undo', onClick: () => { void change(restore, latest.current); } } });
+    }
+  }
+  useStateKeys(writable, (status) => void setState(status));
   const ownerValue = item.owner ? `${item.owner.kind}:${item.owner.id}` : '';
   const people = context.members.length ? context.members.map((member) => ({ value: `human:${member.userId}`, label: member.userId === me.user.id ? `${member.name} (you)` : member.name }))
     : [{ value: `human:${me.user.id}`, label: `${me.user.name} (you)` }];
@@ -247,37 +276,66 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
 
   return (
     <div className="details wd" data-detail-kind="work" data-detail-id={item.id}>
-      <p className="details__eyebrow wd-eyebrow"><StatusGlyph status={item.status} size={14} /><span>Task <span className="ui-task-number">{taskNumber(item)}</span> · <span className="wd-project-name">{context.project.name}</span> · {STATUS_LABEL[item.status]}{item.parked ? ' · parked, not done' : ''}</span></p>
-      <h3 className="details__title">{item.title}</h3>
+      <PanelMeta>{taskNumber(item)}</PanelMeta>
+      <p className="wd-where"><span className="ui-task-number">{taskNumber(item)}</span> · <span className="wd-project-name">{context.project.name}</span>{item.parked ? ' · parked, not done' : ''}</p>
+      <TitleField title={item.title} editable={writable} onSave={(title) => change({ title })} />
       {item.outcome ? <p className="details__lead">{item.outcome}</p> : null}
-      {item.status === 'blocked' && item.blocker ? <p className="wd-blocker"><Icon name="alert" size={14} />Blocked: {item.blocker}</p> : null}
-      <ReadyToClose item={item} writable={writable} busy={busy} done={() => void change({ status: 'done' })} />
-      {!isFinished(item) ? <LiveEntry variant="inline" anchor={liveAnchor} /> : null}
 
-      {writable ? (
-        <fieldset className="wd-controls" disabled={busy}>
-          <legend className="ui-vh">Change this work</legend>
-          <label htmlFor={statusId}>Status</label>
-          <select id={statusId} value={item.status} onChange={(event) => void change({ status: event.target.value as WorkStatus })}>
-            {WORK_STATUSES.map((status) => <option key={status} value={status}>{STATUS_LABEL[status]}</option>)}
-          </select>
-          <label htmlFor={ownerId}>Owner</label>
-          <select id={ownerId} value={ownerValue} onChange={(event) => {
-            const [kind, ...rest] = event.target.value.split(':');
-            void change({ owner: event.target.value ? { kind: kind as 'human' | 'agent', id: rest.join(':') } : null });
-          }}>
-            <option value="">Nobody yet</option>
-            <optgroup label="People">{people.map((person) => <option key={person.value} value={person.value}>{person.label}</option>)}</optgroup>
-            {agents.length ? <optgroup label="Agents">{agents.map((agent) => <option key={agent.value} value={agent.value}>{agent.label}</option>)}</optgroup> : null}
-          </select>
-          {item.status === 'blocked' ? (
+      <dl className="wd-rows">
+        <div className="wd-row">
+          <dt id={`${ownerId}-status`}>Status</dt>
+          <dd>{writable ? <StatusControl status={item.status} disabled={busy} onChoose={(status) => void setState(status)} /> : <span className="wd-value"><StatusGlyph status={item.status} size={16} /><span>{reverted ? 'Creation undone · read-only history' : STATUS_LABEL[item.status]}</span></span>}</dd>
+        </div>
+        <div className="wd-row">
+          <dt><label htmlFor={ownerId}>Owner</label></dt>
+          <dd>
+            {item.owner ? (item.owner.kind === 'agent' ? <AgentIdentity name={item.owner.name} owner={owners.get(item.owner.id)} /> : <Avatar name={item.owner.name} size="sm" tone={item.owner.id === me.user.id ? 'me' : 'neutral'} />) : null}
+            {writable ? (
+              <select id={ownerId} className="wd-owner" disabled={busy} value={ownerValue} onChange={(event) => {
+                const [kind, ...rest] = event.target.value.split(':');
+                void change({ owner: event.target.value ? { kind: kind as 'human' | 'agent', id: rest.join(':') } : null });
+              }}>
+                <option value="">Nobody yet</option>
+                <optgroup label="People">{people.map((person) => <option key={person.value} value={person.value}>{person.label}</option>)}</optgroup>
+                {agents.length ? <optgroup label="Agents">{agents.map((agent) => <option key={agent.value} value={agent.value}>{agent.label}</option>)}</optgroup> : null}
+              </select>
+            ) : <span className="wd-value" id={ownerId}>{item.owner?.name ?? 'Nobody yet'}</span>}
+          </dd>
+        </div>
+        <div className="wd-row">
+          <dt>Came from</dt>
+          <dd className="wd-from"><CameFrom item={item} links={relations.links} project={context.project} empty={emptyLinks(relations, 'Added directly on the Tasks tab.')} /></dd>
+        </div>
+      </dl>
+      {writable && !isFinished(item) ? <Button variant="secondary" className="wd-handoff" onClick={() => setHandingOff(true)}>Hand off to an agent</Button> : null}
+
+      {item.status === 'blocked' ? (
+        <section className="wd-blocker" aria-label="Blocker">
+          <div className="wd-blocker__head"><span className="ui-pill ui-pill--inv">Blocked</span>
+            {writable ? <Button variant="quiet" className="wd-blocker__resolve" disabled={busy} onClick={() => void setState('in_progress')}>Resolve</Button> : null}</div>
+          {writable ? (
             <form className="wd-blocker-form" onSubmit={(event) => { event.preventDefault(); void change({ blocker: blocker.trim() || null }); }}>
               <Input label="What is it waiting for?" value={blocker} onChange={(event) => setBlocker(event.target.value)} maxLength={2000} />
-              <Button type="submit" variant="secondary" busy={busy}>Save</Button>
+              <Button type="submit" variant="secondary" busy={busy} disabled={blocker.trim() === (item.blocker ?? '')}>Save</Button>
             </form>
-          ) : null}
-        </fieldset>
+          ) : <p>{item.blocker || 'Waiting for something; no reason written.'}</p>}
+        </section>
       ) : null}
+      {writable ? <HandOffDialog open={handingOff} onClose={() => setHandingOff(false)} project={context.project} task={{ id: item.id, version: item.version, number: item.number, title: item.title }} onDone={reload} /> : null}
+      <ReadyToClose item={item} writable={writable} busy={busy} done={() => void change({ status: 'done' })} />
+      {!reverted && !isFinished(item) ? <LiveEntry variant="inline" anchor={liveAnchor} /> : null}
+
+      {reverted ? <section className="details__sec wd-history" data-task-lifecycle="creation_reverted" aria-labelledby={`wd-history-${item.id}`}>
+        <p className="wd-muted">Creation undone by {reverted.revertedBy.name} on {shortDate(reverted.revertedAt)}. This task stays here as history.</p>
+        <h4 id={`wd-history-${item.id}`}>Activity</h4>
+        <ol className="wd-history__events" aria-label="Task activity">
+          <li><span className="wd-history__action">Created by</span><HistoryActor actor={item.createdBy} owners={owners} />
+            <time dateTime={item.createdAt}>{historyTime(item.createdAt)}</time></li>
+          <li><span className="wd-history__action">Creation undone by</span><HistoryActor actor={reverted.revertedBy} owners={owners} />
+            <time dateTime={reverted.revertedAt}>{historyTime(reverted.revertedAt)}</time></li>
+        </ol>
+      </section> : null}
+      {item.creationUndo?.eligible && writable ? <UndoCreation key={`${me.user.id}:${item.id}:${item.version}`} item={item} userId={me.user.id} reload={reload} isCurrent={isCurrent} /> : null}
       {error ? <p className="wd-error" role="alert">{error}</p> : null}
 
       {item.parked ? (
@@ -301,29 +359,20 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
       <TaskPullRequests item={item} project={context.project} writable={writable} reload={reload} />
 
       <RelationPages relations={relations} />
-      <section className="details__sec" aria-labelledby="wd-from">
-        <h4 id="wd-from">Came from</h4>
-        <Sources links={relations.links} id={item.id} project={context.project} />
-        {!relations.links.some((link) => link.from.id === item.id && link.role === 'source') && !item.planIntent ? <p className="wd-muted">{emptyLinks(relations, 'Added directly on the Tasks tab.')}</p> : null}
-        {item.planIntent ? (
-          <p className="wd-plan">Planned from <Link className="wd-inline" to={`/materials/${item.planIntent.materialId}/versions/${item.planIntent.version}`}>plan revision {item.planIntent.version}</Link>
-            {' '}as <code>{item.planIntent.intentKey}</code>. This task stays tied to that revision.</p>
-        ) : null}
+
+      <section className="details__sec" aria-labelledby="wd-results">
+        <div className="wd-sechead"><h4 id="wd-results">Results</h4>
+          {writable ? <Button variant="secondary" icon="plus" onClick={() => openDetails({ kind: 'attach-result', projectId: item.projectId, workId: item.id })}>Attach a result</Button> : null}</div>
+        <Linked empty={emptyLinks(relations, isFinished(item) ? 'Finished without a written result.' : 'No result yet. Small tasks do not need one.')} items={results.map((entry) => ({ key: entry.link.id, label: entry.title, open: () => openDetails({ kind: 'result', id: entry.id, projectId: context.project.id }) }))} />
       </section>
       <TaskThoughtLinks item={item} project={context.project} links={relations.links} writable={writable} reload={reload}
         empty={emptyLinks(relations, 'Not linked to a thought yet.')} />
 
-      <TaskDiscussionSection key={`${me.user.id}:${context.project.id}:${item.id}`} workId={item.id} project={context.project} members={context.members} me={{ id: me.user.id, name: me.user.name }} />
+      <TaskDiscussionSection key={`${me.user.id}:${context.project.id}:${item.id}`} readOnly={!!reverted} revision={detail.observedAt} workId={item.id} project={context.project} number={item.number} members={context.members} me={{ id: me.user.id, name: me.user.name }} />
 
       <section className="details__sec" aria-labelledby="wd-decisions">
         <h4 id="wd-decisions">Decisions</h4>
         <Linked empty={emptyLinks(relations, 'No decision refers to this work yet.')} items={decisions.map((entry) => ({ key: entry.link.id, label: entry.title, hint: entry.link.role === 'still_applies' ? 'still applies' : undefined, open: () => openDetails({ kind: 'decision', id: entry.id, projectId: context.project.id }) }))} />
-      </section>
-
-      <section className="details__sec" aria-labelledby="wd-results">
-        <h4 id="wd-results">Results</h4>
-        <Linked empty={emptyLinks(relations, isFinished(item) ? 'Finished without a written result.' : 'No result yet. Small tasks do not need one.')} items={results.map((entry) => ({ key: entry.link.id, label: entry.title, open: () => openDetails({ kind: 'result', id: entry.id, projectId: context.project.id }) }))} />
-        {writable ? <div className="wd-actions"><Button variant="secondary" icon="plus" onClick={() => openDetails({ kind: 'attach-result', projectId: item.projectId, workId: item.id })}>Attach a result</Button></div> : null}
       </section>
 
       <OtherRelationships object={item} relations={relations} project={context.project} />
@@ -331,6 +380,67 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
       <Audience project={context.project} />
       <IdsLine>Added by {item.createdBy.name} · {shortDate(item.createdAt)} · version {item.version}</IdsLine>
     </div>
+  );
+}
+
+function historyTime(value: string) {
+  return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value));
+}
+
+function HistoryActor({ actor, owners }: { actor: OwnWork['createdBy']; owners: ReturnType<typeof useAgentOwners> }) {
+  return actor.kind === 'agent'
+    ? <AgentIdentity name={actor.name} owner={owners.get(actor.id)} />
+    : <strong>{actor.name}</strong>;
+}
+
+/**
+ * "Undo task creation" (#238): only for a server-derived eligible task. One command identity per intended Undo
+ * survives a remount and a lost response, so a retry returns the same receipt instead of a second notice.
+ */
+function UndoCreation({ item, userId, reload, isCurrent }: { item: OwnWork; userId: string; reload: () => void; isCurrent: () => boolean }) {
+  const identityKey = `flux:creation-undo:${userId}:${item.projectId}:${item.id}:${item.version}`;
+  const attempt = useRef<string | null>(null);
+  const pending = useRef<AbortController | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  useEffect(() => () => pending.current?.abort(), []);
+  async function undo() {
+    if (busy || !isCurrent()) return;
+    if (!attempt.current) {
+      try { attempt.current = sessionStorage.getItem(identityKey); } catch { /* An in-memory retry still works. */ }
+      attempt.current ??= crypto.randomUUID();
+      try { sessionStorage.setItem(identityKey, attempt.current); } catch { /* Storage may be disabled. */ }
+    }
+    const controller = new AbortController(); pending.current = controller;
+    setBusy(true); setError('');
+    try {
+      await undoTaskCreation(item, attempt.current, controller.signal);
+      try { sessionStorage.removeItem(identityKey); } catch { /* No persisted retry to remove. */ }
+      if (!controller.signal.aborted && isCurrent()) reload();
+    } catch (cause) {
+      if (!controller.signal.aborted && isCurrent()) setError(cause instanceof ApiError && cause.status === 409
+        ? 'This task has changed or been used. Refresh its details before trying again.' : readable(cause));
+    } finally { if (!controller.signal.aborted) setBusy(false); }
+  }
+  return <section className="details__sec" aria-label="Undo task creation">
+    <Button variant="secondary" busy={busy} disabled={busy} onClick={() => void undo()}>Undo task creation</Button>
+    <p className="wd-muted">Available while this AI-created task is unchanged and unused. Its history stays visible.</p>
+    {error ? <p className="wd-error" role="alert">{error} <button type="button" className="wd-inline" onClick={reload}>Refresh details</button></p> : null}
+  </section>;
+}
+
+/** Where the task came from, as one value: its sources, or the plan revision that made it. */
+function CameFrom({ item, links, project, empty }: { item: OwnWork; links: ObjectLink[]; project: Project; empty: string }) {
+  const has = links.some((link) => link.from.id === item.id && link.role === 'source');
+  return (
+    <>
+      <Sources links={links} id={item.id} project={project} />
+      {item.planIntent ? (
+        <p className="wd-plan">Planned from <Link className="wd-inline" to={`/materials/${item.planIntent.materialId}/versions/${item.planIntent.version}`}>plan revision {item.planIntent.version}</Link>
+          {' '}as <code>{item.planIntent.intentKey}</code>. This task stays tied to that revision.</p>
+      ) : null}
+      {!has && !item.planIntent ? <span className="wd-muted">{empty}</span> : null}
+    </>
   );
 }
 
@@ -529,7 +639,7 @@ function ProposeDecision({ view, context, contextStatus, revision, isCurrent }: 
   const { me } = useShellData();
   const candidates = useWorkChoices(me.user.id, view.projectId, { purpose: 'choices', choice: 'accepted_decisions' }, !!context, revision);
   const current = candidates.page?.items.filter((item) => item.kind === 'decision') ?? [];
-  const [title, setTitle] = useState(view.source ? firstLine(view.source.text) : '');
+  const [title, setTitle] = useState(view.source ? firstLine(view.source.text) : view.title ?? '');
   const [rationale, setRationale] = useState('');
   const [supersedes, setSupersedes] = useState('');
   const selected = useNativeOwn(me.user.id, view.projectId, 'decision', supersedes || undefined, !!context, revision);

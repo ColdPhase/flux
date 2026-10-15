@@ -45,6 +45,8 @@ export const authUsers = pgTable('auth_users', {
   name: text('name').notNull(),
   email: text('email').notNull().unique(),
   emailVerified: boolean('email_verified').notNull().default(false),
+  /** Set on a password sign-up while sign-up is `verified` (migration 0091, #313): no password sign-in until the address is verified. */
+  verificationRequired: boolean('verification_required').notNull().default(false),
   image: text('image'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -73,6 +75,8 @@ export const authAccounts = pgTable('auth_accounts', {
   refreshTokenExpiresAt: timestamp('refresh_token_expires_at', { withTimezone: true }),
   scope: text('scope'),
   password: text('password'),
+  /** When the identity provider last confirmed this identity (migration 0071, #312); null for a password account. */
+  confirmedAt: timestamp('confirmed_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [
@@ -88,6 +92,61 @@ export const authVerifications = pgTable('auth_verifications', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [index('auth_verifications_identifier_idx').on(table.identifier)]);
+
+/**
+ * A provider sign-in whose email is held by another account (migration 0091, #313). A pending row is the proof,
+ * from the verified ID token, that this browser may ask to claim the address of an UNVERIFIED account; claiming
+ * writes the audit trail. The token is a secret in a cookie; only its hash is stored.
+ */
+export const authEmailClaims = pgTable('auth_email_claims', {
+  id: text('id').primaryKey(),
+  tokenHash: text('token_hash').notNull().unique(),
+  providerId: text('provider_id').notNull(),
+  subject: text('subject').notNull(),
+  email: text('email').notNull(),
+  heldBy: text('held_by').notNull(),
+  state: text('state').notNull().default('pending'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  claimedAt: timestamp('claimed_at', { withTimezone: true }),
+  releasedEmail: text('released_email'),
+});
+
+/** How a session signed in (migration 0066, #310): password or provider id, the IdP's `sid`, and when it vouched. */
+export const authSessionIdentities = pgTable('auth_session_identities', {
+  sessionId: text('session_id').primaryKey().references(() => authSessions.id, { onDelete: 'cascade' }),
+  method: text('method').notNull(),
+  idpSid: text('idp_sid'),
+  confirmedAt: timestamp('confirmed_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+/**
+ * The standing check of a person's account at the identity provider (migration 0070, #311). The sealed
+ * offline refresh token lives only here; backups keep this table's definition but not its rows.
+ */
+export const authIdpStanding = pgTable('auth_idp_standing', {
+  userId: text('user_id').notNull().references(() => authUsers.id, { onDelete: 'cascade' }),
+  providerId: text('provider_id').notNull(),
+  state: text('state').notNull().default('ok'),
+  reason: text('reason'),
+  refreshTokenEnc: text('refresh_token_enc'),
+  /** The provider session (`sid`) the stored token was issued for (migration 0085, #314). */
+  refreshTokenSid: text('refresh_token_sid'),
+  confirmedAt: timestamp('confirmed_at', { withTimezone: true }),
+  stateChangedAt: timestamp('state_changed_at', { withTimezone: true }).notNull().defaultNow(),
+  lastCheckAt: timestamp('last_check_at', { withTimezone: true }),
+  lastOutcome: text('last_outcome'),
+  nextCheckAt: timestamp('next_check_at', { withTimezone: true }).notNull().defaultNow(),
+  leaseId: text('lease_id'),
+  leaseUntil: timestamp('lease_until', { withTimezone: true }),
+}, (table) => [primaryKey({ columns: [table.userId, table.providerId] })]);
+
+/** Seen back-channel logout token ids (migration 0073, #314): a `jti` is accepted once per provider until it expires. */
+export const authLogoutTokens = pgTable('auth_logout_tokens', {
+  providerId: text('provider_id').notNull(),
+  jti: text('jti').notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+}, (table) => [primaryKey({ columns: [table.providerId, table.jti] }), index('auth_logout_tokens_expires_idx').on(table.expiresAt)]);
 
 // Better Auth MCP/OAuth provider models (migration 0009).
 export const jwks = pgTable("jwks", {
@@ -326,6 +385,8 @@ export const projects = pgTable('projects', {
   name: text('name').notNull(),
   visibility: text('visibility', { enum: ['workspace', 'restricted'] }).notNull().default('workspace'),
   createdBy: text('created_by').notNull(),
+  /** Optional views added on purpose (#351); existing projects were given all of them (migration 0064). */
+  views: text('views').array().notNull().default(sql`'{}'::text[]`),
   version: integer('version').notNull().default(1),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -400,6 +461,17 @@ export const pushSubscriptions = pgTable('push_subscriptions', {
   index('push_subscriptions_session_id_idx').on(table.sessionId),
 ]);
 
+export const assistantJoinQuestionIdentitySnapshots = pgTable('assistant_join_question_identity_snapshots', {
+  joinRequestId: uuid('join_request_id').notNull(),
+  openingVersion: integer('opening_version').notNull(),
+  assistantId: uuid('assistant_id').notNull(),
+  assistantName: text('assistant_name').notNull(),
+  ownerId: text('owner_id').notNull(),
+  ownerName: text('owner_name').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  notificationLinkedAt: timestamp('notification_linked_at', { withTimezone: true }),
+}, (table) => [primaryKey({ columns: [table.joinRequestId, table.openingVersion] }), check('assistant_join_question_identity_version_check', sql`${table.openingVersion} > 0`)]);
+
 export const notifications = pgTable('notifications', {
   id: uuid('id').primaryKey(),
   userId: text('user_id').notNull().references(() => authUsers.id, { onDelete: 'cascade' }),
@@ -418,10 +490,24 @@ export const notifications = pgTable('notifications', {
   inInbox: boolean('in_inbox').notNull().default(true),
   deliveryKind: text('delivery_kind').$type<'ordinary' | 'morning_summary'>().notNull().default('ordinary'),
   summarySources: jsonb('summary_sources').$type<NotificationSourceRef[]>(),
+  assistantJoinRequestId: uuid('assistant_join_request_id'),
+  assistantJoinOpeningVersion: integer('assistant_join_opening_version'),
 }, (table) => [
   index('notifications_user_created_idx').on(table.userId, table.createdAt.desc()),
   index('notifications_source_idx').on(table.sourceType, table.sourceId),
+  foreignKey({ columns: [table.assistantJoinRequestId, table.assistantJoinOpeningVersion], foreignColumns: [assistantJoinQuestionIdentitySnapshots.joinRequestId, assistantJoinQuestionIdentitySnapshots.openingVersion] }),
+  check('notifications_assistant_join_identity_pair_check', sql`(${table.assistantJoinRequestId} IS NULL) = (${table.assistantJoinOpeningVersion} IS NULL)`),
 ]);
+// What a person did with an item of their Inbox "Needs you" queue (migration 0063, #342).
+export const needsYouStates = pgTable('needs_you_states', {
+  userId: text('user_id').notNull().references(() => authUsers.id, { onDelete: 'cascade' }),
+  itemKey: text('item_key').notNull(),
+  state: text('state', { enum: ['done', 'declined', 'snoozed'] }).notNull(),
+  until: timestamp('until', { withTimezone: true }),
+  untilWorkId: uuid('until_work_id'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [primaryKey({ columns: [table.userId, table.itemKey] })]);
 // Per-recipient stream index (migration 0004), written by recordEvent.
 export const eventAudience = pgTable('event_audience', {
   recipient: text('recipient').notNull(),
@@ -614,7 +700,7 @@ export const agentConnections = pgTable('agent_connections', {
   agentId: uuid('agent_id').notNull(),
   name: text('name').notNull().default('External connection'),
   clientDesignation: text('client_designation', { enum: ['claude_code', 'codex', 'other'] }).notNull().default('other'),
-  computeSource: text('compute_source', { enum: ['user_operated_claude_code', 'user_operated_external_client'] }).notNull().default('user_operated_external_client'),
+  computeSource: text('compute_source', { enum: ['user_operated_claude_code', 'user_operated_external_client', 'owner_assistant'] }).notNull().default('user_operated_external_client'),
   scopes: text('scopes', { enum: ['flux.context.read', 'flux.proposal.write', 'flux.action.execute'] }).array().notNull(),
   revokedAt: timestamp('revoked_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -624,6 +710,32 @@ export const agentConnections = pgTable('agent_connections', {
   index('agent_connections_owner_idx').on(table.ownerUserId, table.createdAt, table.id),
   foreignKey({ columns: [table.workspaceId, table.agentId], foreignColumns: [agents.workspaceId, agents.id] }),
 ]);
+
+/** F-027 safety settings; area/project permission state is only in the S6 policy (0077). */
+export const assistantSettings = pgTable('assistant_settings', {
+  workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
+  ownerUserId: text('owner_user_id').notNull().references(() => authUsers.id, { onDelete: 'cascade' }),
+  agentId: uuid('agent_id').notNull(), connectionId: uuid('connection_id').notNull().unique(),
+  approvalMode: text('approval_mode', { enum: ['act', 'ask'] }).notNull().default('act'),
+  changesPerRun: integer('changes_per_run').notNull().default(20),
+  backgroundRunsPerDay: integer('background_runs_per_day').notNull().default(24),
+  projectMode: text('project_mode', { enum: ['all', 'chosen'] }).notNull().default('all'),
+  version: integer('version').notNull().default(1),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [primaryKey({ columns: [table.workspaceId, table.ownerUserId] }),
+  foreignKey({ columns: [table.workspaceId, table.agentId], foreignColumns: [agents.workspaceId, agents.id] }),
+  foreignKey({ columns: [table.workspaceId, table.connectionId], foreignColumns: [agentConnections.workspaceId, agentConnections.id] }).onDelete('cascade')]);
+
+export const assistantJoinRequests = pgTable('assistant_join_requests', {
+  id: uuid('id').primaryKey(), workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
+  projectId: uuid('project_id').notNull(), ownerUserId: text('owner_user_id').notNull().references(() => authUsers.id, { onDelete: 'cascade' }),
+  connectionId: uuid('connection_id').notNull().references(() => assistantSettings.connectionId, { onDelete: 'cascade' }),
+  state: text('state', { enum: ['pending', 'accepted', 'declined'] }).notNull().default('pending'),
+  version: integer('version').notNull().default(1),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(), updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [unique().on(table.connectionId, table.projectId),
+  foreignKey({ columns: [table.workspaceId, table.projectId], foreignColumns: [projects.workspaceId, projects.id] }).onDelete('cascade')]);
 
 export const agentConnectionProjects = pgTable('agent_connection_projects', {
   workspaceId: uuid('workspace_id').notNull(),
@@ -676,7 +788,22 @@ export const agentOauthBindings = pgTable('agent_oauth_bindings', {
   clientId: text('client_id').notNull(),
   generation: integer('generation').notNull().default(1),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  // How the sign-in that last consented to this grant happened (migration 0083, #310 AC-3). Kept after the browser session ends.
+  authMethod: text('auth_method'),
+  authIdpSid: text('auth_idp_sid'),
+  authConfirmedAt: timestamp('auth_confirmed_at', { withTimezone: true }),
 }, (table) => [unique().on(table.ownerUserId, table.connectionId, table.clientId)]);
+
+/** Immutable authentication provenance for one minted OAuth authorization-code family (#310, 0086). */
+export const oauthGrantAuthentication = pgTable('oauth_grant_authentication', {
+  authorizationCodeId: text('authorization_code_id').primaryKey(),
+  userId: text('user_id').notNull().references(() => authUsers.id, { onDelete: 'cascade' }),
+  referenceId: text('reference_id').notNull(),
+  authMethod: text('auth_method').notNull(),
+  authIdpSid: text('auth_idp_sid'),
+  authConfirmedAt: timestamp('auth_confirmed_at', { withTimezone: true }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
 
 export const agentOauthFlows = pgTable('agent_oauth_flows', {
   ownerUserId: text('owner_user_id').notNull().references(() => authUsers.id),
@@ -751,6 +878,8 @@ export const agentCommandReceipts = pgTable('agent_command_receipts', {
   primaryKey({ columns: [table.connectionId, table.clientCommandId] }),
   foreignKey({ columns: [table.connectionId, table.runtimeSessionId], foreignColumns: [agentRuntimeSessions.connectionId, agentRuntimeSessions.id] }),
   foreignKey({ columns: [table.connectionId, table.grantId], foreignColumns: [agentStandingGrants.connectionId, agentStandingGrants.id] }),
+  // The Agents view's latest-activity read per connection and project (migration 0062, #347).
+  index('agent_command_receipts_activity_idx').on(table.connectionId, table.projectId, table.completedAt.desc()),
 ]);
 
 // The co-work playbook a client reports having loaded for one runtime session (migration 0041, #160).
@@ -776,6 +905,50 @@ export const agentProjectPolicies = pgTable('agent_project_policies', {
   publishedByUserId: text('published_by_user_id').notNull().references(() => authUsers.id, { onDelete: 'restrict' }),
   publishedAt: timestamp('published_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [primaryKey({ columns: [table.projectId, table.revision] })]);
+
+// A person ended an external agent's work on a task (migration 0065, #347 S13). The task, its owner and its co-work
+// units change through their own commands in the same transaction; this is the record of who did it and when.
+export const agentStops = pgTable('agent_stops', {
+  id: uuid('id').primaryKey(),
+  workspaceId: uuid('workspace_id').notNull(),
+  projectId: uuid('project_id').notNull(),
+  taskId: uuid('task_id').notNull(),
+  agentId: uuid('agent_id').notNull(),
+  stoppedBy: text('stopped_by').notNull().references(() => authUsers.id, { onDelete: 'cascade' }),
+  unitsStopped: integer('units_stopped').notNull(),
+  stoppedAt: timestamp('stopped_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  index('agent_stops_project_idx').on(table.projectId, table.stoppedAt.desc()),
+  foreignKey({ columns: [table.workspaceId, table.projectId], foreignColumns: [projects.workspaceId, projects.id] }).onDelete('cascade'),
+  foreignKey({ columns: [table.workspaceId, table.projectId, table.taskId], foreignColumns: [projectWorkItems.workspaceId, projectWorkItems.projectId, projectWorkItems.id] }).onDelete('cascade'),
+  foreignKey({ columns: [table.workspaceId, table.agentId], foreignColumns: [agents.workspaceId, agents.id] }).onDelete('cascade'),
+]);
+
+// An agent's question to a person with ready-made answers (migration 0065, #347 S14). The question is the agent's
+// ordinary message; this adds the options and, once given, the single answer (a chosen option or free text).
+export const agentQuestions = pgTable('agent_questions', {
+  id: uuid('id').primaryKey(),
+  workspaceId: uuid('workspace_id').notNull(),
+  projectId: uuid('project_id').notNull(),
+  conversationId: uuid('conversation_id').notNull(),
+  messageId: uuid('message_id').notNull().unique(),
+  taskId: uuid('task_id'),
+  agentId: uuid('agent_id').notNull(),
+  askedUserId: text('asked_user_id').notNull().references(() => authUsers.id, { onDelete: 'cascade' }),
+  question: text('question').notNull(),
+  options: jsonb('options').$type<string[]>().notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  answeredOption: integer('answered_option'),
+  answerText: text('answer_text'),
+  answeredBy: text('answered_by').references(() => authUsers.id, { onDelete: 'set null' }),
+  answerMessageId: uuid('answer_message_id'),
+  answeredAt: timestamp('answered_at', { withTimezone: true }),
+}, (table) => [
+  index('agent_questions_project_idx').on(table.projectId, table.createdAt.desc()),
+  foreignKey({ columns: [table.workspaceId, table.projectId, table.conversationId], foreignColumns: [projectConversations.workspaceId, projectConversations.projectId, projectConversations.id] }).onDelete('cascade'),
+  foreignKey({ columns: [table.workspaceId, table.projectId, table.messageId], foreignColumns: [projectMessages.workspaceId, projectMessages.projectId, projectMessages.id] }).onDelete('cascade'),
+  foreignKey({ columns: [table.workspaceId, table.agentId], foreignColumns: [agents.workspaceId, agents.id] }).onDelete('cascade'),
+]);
 
 // Sketches: thoughts on a map and the links between them (migration 0007, issue #69).
 export const sketches = pgTable('sketches', {
@@ -890,6 +1063,15 @@ export const projectWorkItems = pgTable('project_work_items', {
   createdById: text('created_by_id').notNull(),
   clientCommandId: uuid('client_command_id'),
   requestFingerprint: text('request_fingerprint'),
+  creationOrigin: text('creation_origin', { enum: ['native_agent', 'ai_proposal', 'human'] }),
+  creationBaselineVersion: integer('creation_baseline_version'),
+  creationBaseline: jsonb('creation_baseline'),
+  creationProposalId: uuid('creation_proposal_id'),
+  firstPersistedUseAt: timestamp('first_persisted_use_at', { withTimezone: true }),
+  creationRevertedAt: timestamp('creation_reverted_at', { withTimezone: true }),
+  creationRevertedByKind: text('creation_reverted_by_kind', { enum: ['human', 'agent'] }),
+  creationRevertedById: text('creation_reverted_by_id'),
+  creationReversionNoticeId: uuid('creation_reversion_notice_id'),
   /** Bounded array of distinct trimmed statements (#152, migration 0039); `[]` for tasks without any. */
   criteria: jsonb('criteria').$type<string[]>().notNull().default(sql`'[]'::jsonb`),
   version: integer('version').notNull().default(1),
@@ -944,15 +1126,29 @@ export const projectTaskNotices = pgTable('project_task_notices', {
   workspaceId: uuid('workspace_id').notNull(),
   projectId: uuid('project_id').notNull(),
   workId: uuid('work_id').notNull(),
-  kind: text('kind', { enum: ['task.created'] }).notNull(),
+  kind: text('kind', { enum: ['task.created', 'task.creation_reverted'] }).notNull(),
   createdByKind: text('created_by_kind', { enum: ['human', 'agent'] }).notNull(),
   createdById: text('created_by_id').notNull(),
   sources: jsonb('sources').$type<import('@flux/contracts').ObjectRef[]>().notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
 }, (table) => [
   unique().on(table.workId, table.kind),
+  unique('task_notice_scope_identity').on(table.workspaceId, table.projectId, table.workId, table.id),
   index('project_task_notices_project_idx').on(table.projectId, table.createdAt, table.id),
   foreignKey({ columns: [table.workspaceId, table.projectId, table.workId], foreignColumns: [projectWorkItems.workspaceId, projectWorkItems.projectId, projectWorkItems.id] }).onDelete('cascade'),
+]);
+
+/** Exact immutable reversion command receipts, separate from the native update/result shape checks. */
+export const taskCreationUndoReceipts = pgTable('task_creation_undo_receipts', {
+  workspaceId: uuid('workspace_id').notNull(), projectId: uuid('project_id').notNull(),
+  actorKind: text('actor_kind', { enum: ['human', 'agent'] }).notNull(), actorId: text('actor_id').notNull(),
+  clientCommandId: uuid('client_command_id').notNull(), requestFingerprint: text('request_fingerprint').notNull(),
+  workId: uuid('work_id').notNull(), noticeId: uuid('notice_id').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  primaryKey({ columns: [table.projectId, table.actorKind, table.actorId, table.clientCommandId] }),
+  foreignKey({ columns: [table.workspaceId, table.projectId, table.workId], foreignColumns: [projectWorkItems.workspaceId, projectWorkItems.projectId, projectWorkItems.id] }),
+  foreignKey({ columns: [table.workspaceId, table.projectId, table.workId, table.noticeId], foreignColumns: [projectTaskNotices.workspaceId, projectTaskNotices.projectId, projectTaskNotices.workId, projectTaskNotices.id] }),
 ]);
 
 /** A task never manufactures a conversation. Its first genuine message binds the root. */
@@ -1036,7 +1232,7 @@ export const agentProposals = pgTable('agent_proposals', {
   projectId: uuid('project_id').notNull(),
   agentId: uuid('agent_id').notNull(),
   ownerUserId: text('owner_user_id').notNull().references(() => authUsers.id),
-  computeSource: text('compute_source', { enum: ['user_operated_claude_code', 'user_operated_external_client'] }).notNull(),
+  computeSource: text('compute_source', { enum: ['user_operated_claude_code', 'user_operated_external_client', 'owner_assistant'] }).notNull(),
   agentGrantId: uuid('agent_grant_id').notNull(),
   agentGrantRole: text('agent_grant_role', { enum: ['contributor'] }).notNull(),
   sourceMaterialId: uuid('source_material_id').notNull(),
@@ -1377,6 +1573,8 @@ export const notificationPreferences = pgTable('notification_preferences', {
   quietStart: integer('quiet_start').notNull().default(1320),
   quietEnd: integer('quiet_end').notNull().default(420),
   timeZone: text('time_zone').notNull().default('UTC'),
+  /** Focus mode (F-026 S19): push and email wait until this instant. */
+  pausedUntil: timestamp('paused_until', { withTimezone: true }),
   // Migration 0072 (#350, F-026 S22): the morning summary and the local day it last went out.
   summaryEnabled: boolean('summary_enabled').notNull().default(false),
   summaryAt: integer('summary_at').notNull().default(540),
@@ -1688,6 +1886,7 @@ export const githubTaskRules = pgTable('github_task_rules', {
   expectedVersion: integer('expected_version').notNull(), expectedStatus: text('expected_status', { enum: WORK_STATUS }).notNull(),
   expectedBlocker: text('expected_blocker'), blockedBy: text('blocked_by', { enum: ['check', 'closed'] }),
   readyToClose: boolean('ready_to_close').notNull().default(false),
+  revision: integer('revision').notNull().default(1),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [foreignKey({ columns: [t.workspaceId, t.projectId, t.taskId], foreignColumns: [projectWorkItems.workspaceId, projectWorkItems.projectId, projectWorkItems.id] }).onDelete('cascade')]);
 export const githubTaskRuleChanges = pgTable('github_task_rule_changes', {
@@ -1707,3 +1906,140 @@ export const githubRuleDefaults = pgTable('github_rule_defaults', {
   setByUserId: text('set_by_user_id').references(() => authUsers.id, { onDelete: 'set null' }),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [foreignKey({ columns: [t.workspaceId, t.projectId], foreignColumns: [projects.workspaceId, projects.id] }).onDelete('cascade')]);
+
+// #228: committed shared wiki heads, retired generations and immutable author/update history.
+// Authorization remains in core; each writer locks the native material before this head.
+export const docLiveHeads = pgTable('doc_live_heads', {
+  docId: uuid('doc_id').primaryKey(), workspaceId: uuid('workspace_id').notNull(), projectId: uuid('project_id').notNull(),
+  generation: uuid('generation').notNull(), sequence: bigint('sequence', { mode: 'number' }).notNull().default(0),
+  body: text('body').notNull(), hash: text('hash').notNull(), savedVersion: integer('saved_version').notNull(),
+  savedSequence: bigint('saved_sequence', { mode: 'number' }).notNull().default(0),
+  /** The codec state snapshot at snapshotSequence; the logged updates after it complete the state (0084). */
+  codecState: jsonb('codec_state').$type<Record<string, unknown>>(),
+  snapshotSequence: bigint('snapshot_sequence', { mode: 'number' }).notNull().default(0),
+  /** Changes with every codec state change (commit, enrollment, initialization, retirement). */
+  revision: bigint('revision', { mode: 'number' }).notNull().default(0),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  foreignKey({ columns: [t.workspaceId, t.projectId, t.docId], foreignColumns: [projectMaterials.workspaceId, projectMaterials.projectId, projectMaterials.id] }).onDelete('cascade'),
+  foreignKey({ columns: [t.workspaceId, t.projectId, t.docId, t.savedVersion], foreignColumns: [projectMaterialVersions.workspaceId, projectMaterialVersions.projectId, projectMaterialVersions.materialId, projectMaterialVersions.version] }),
+  check('doc_live_head_sequence', sql`${t.sequence} BETWEEN 0 AND 9007199254740991 AND ${t.savedSequence} BETWEEN 0 AND ${t.sequence}`),
+  check('doc_live_head_hash', sql`${t.hash} ~ '^[a-f0-9]{64}$'`),
+  check('doc_live_head_body', sql`char_length(${t.body}) <= 100000`),
+  check('doc_live_head_codec_bytes', sql`${t.codecState} IS NULL OR octet_length(${t.codecState}::text) <= 8388608`),
+  check('doc_live_head_snapshot', sql`${t.snapshotSequence} BETWEEN 0 AND ${t.sequence} AND ${t.revision} BETWEEN 0 AND 9007199254740991`),
+]);
+
+/** A native clean write changes generation, preserving the old ledger/receipts rather than rewriting them. */
+export const docLiveArchives = pgTable('doc_live_archives', {
+  docId: uuid('doc_id').notNull().references(() => projectMaterials.id, { onDelete: 'cascade' }),
+  generation: uuid('generation').notNull(), sequence: bigint('sequence', { mode: 'number' }).notNull(),
+  body: text('body').notNull(), hash: text('hash').notNull(), savedVersion: integer('saved_version').notNull(),
+  savedSequence: bigint('saved_sequence', { mode: 'number' }).notNull(), codecState: jsonb('codec_state').$type<Record<string, unknown>>(),
+  /** Snapshot position of codecState; NULL on archives from before 0084, whose state is complete. */
+  snapshotSequence: bigint('snapshot_sequence', { mode: 'number' }),
+  retiredAt: timestamp('retired_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [primaryKey({ columns: [t.docId, t.generation] }),
+  check('doc_live_archive_sequence', sql`${t.sequence} BETWEEN 0 AND 9007199254740991 AND ${t.savedSequence} BETWEEN 0 AND ${t.sequence}`),
+  check('doc_live_archive_hash', sql`${t.hash} ~ '^[a-f0-9]{64}$'`),
+  check('doc_live_archive_body', sql`char_length(${t.body}) <= 100000`),
+  check('doc_live_archive_codec_bytes', sql`${t.codecState} IS NULL OR octet_length(${t.codecState}::text) <= 8388608`),
+  check('doc_live_archive_snapshot', sql`${t.snapshotSequence} IS NULL OR ${t.snapshotSequence} BETWEEN 0 AND ${t.sequence}`)]);
+
+/** A semantic no-op has an immutable receipt but no contributing journal sequence. */
+export const docLiveUpdates = pgTable('doc_live_updates', {
+  docId: uuid('doc_id').notNull().references(() => projectMaterials.id, { onDelete: 'cascade' }), generation: uuid('generation').notNull(),
+  sequence: bigint('sequence', { mode: 'number' }).notNull(), actorId: text('actor_id').notNull().references(() => authUsers.id),
+  commandId: uuid('command_id').notNull(), fingerprint: text('fingerprint').notNull(), bytes: text('bytes').notNull(),
+  /** The ledger entries this update appended (0084); NULL before 0084, when heads held the whole state. */
+  ledger: jsonb('ledger').$type<Record<string, unknown>>(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [primaryKey({ columns: [t.docId, t.generation, t.sequence] }), unique().on(t.actorId, t.commandId),
+  check('doc_live_update_sequence', sql`${t.sequence} BETWEEN 1 AND 9007199254740991`),
+  check('doc_live_update_fingerprint', sql`${t.fingerprint} ~ '^[a-f0-9]{64}$'`),
+  check('doc_live_update_bytes', sql`octet_length(${t.bytes}) <= 11184812`),
+  check('doc_live_update_ledger', sql`${t.ledger} IS NULL OR (jsonb_typeof(${t.ledger}) = 'object' AND octet_length(${t.ledger}::text) <= 8388608)`)]);
+
+/** Ownership never expires or changes; only the active instance lease is renewable. */
+export const docLiveReplicas = pgTable('doc_live_replicas', {
+  docId: uuid('doc_id').notNull().references(() => projectMaterials.id, { onDelete: 'cascade' }), generation: uuid('generation').notNull(),
+  replicaId: bigint('replica_id', { mode: 'number' }).notNull(),
+  ownerKind: text('owner_kind', { enum: ['human', 'server'] }).notNull().default('human'),
+  actorId: text('actor_id').references(() => authUsers.id),
+  instanceId: uuid('instance_id').notNull(), connectionId: uuid('connection_id'),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+}, (t) => [primaryKey({ columns: [t.docId, t.generation, t.replicaId] }),
+  check('doc_live_replica_owner', sql`(${t.ownerKind} = 'human' AND ${t.actorId} IS NOT NULL) OR (${t.ownerKind} = 'server' AND ${t.actorId} IS NULL)`),
+  check('doc_live_replica_id', sql`${t.replicaId} BETWEEN 0 AND 9007199254740991`)]);
+
+export const docLiveSnapshots = pgTable('doc_live_snapshots', {
+  docId: uuid('doc_id').notNull(), version: integer('version').notNull(), workspaceId: uuid('workspace_id').notNull(), projectId: uuid('project_id').notNull(),
+  generation: uuid('generation').notNull(), fromSequence: bigint('from_sequence', { mode: 'number' }).notNull(),
+  toSequence: bigint('to_sequence', { mode: 'number' }).notNull(), hash: text('hash').notNull(),
+  contributors: jsonb('contributors').$type<{ kind: 'human'; id: string }[]>().notNull(),
+}, (t) => [primaryKey({ columns: [t.docId, t.version] }),
+  foreignKey({ columns: [t.workspaceId, t.projectId, t.docId, t.version], foreignColumns: [projectMaterialVersions.workspaceId, projectMaterialVersions.projectId, projectMaterialVersions.materialId, projectMaterialVersions.version] }).onDelete('cascade'),
+  check('doc_live_snapshot_interval', sql`${t.fromSequence} BETWEEN 0 AND ${t.toSequence} AND ${t.toSequence} <= 9007199254740991`),
+  check('doc_live_snapshot_hash', sql`${t.hash} ~ '^[a-f0-9]{64}$'`),
+  check('doc_live_snapshot_contributors', sql`jsonb_typeof(${t.contributors}) = 'array' AND octet_length(${t.contributors}::text) <= 8388608`)]);
+
+/** Shared across all rooms/operations: an actor's UUID cannot change namespace or payload. */
+export const liveEditingIntents = pgTable('live_editing_intents', {
+  actorId: text('actor_id').notNull().references(() => authUsers.id), commandId: uuid('command_id').notNull(),
+  workspaceId: uuid('workspace_id').notNull(), kind: text('kind', { enum: ['wiki', 'map'] }).notNull(),
+  resourceId: uuid('resource_id').notNull(), generation: uuid('generation').notNull(), operation: text('operation').notNull(),
+  fingerprint: text('fingerprint').notNull(), byteLength: integer('byte_length').notNull(),
+  receipt: jsonb('receipt').$type<Record<string, unknown>>().notNull(), createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [primaryKey({ columns: [t.actorId, t.commandId] }),
+  check('live_editing_intent_kind', sql`${t.kind} IN ('wiki','map')`),
+  check('live_editing_intent_fingerprint', sql`${t.fingerprint} ~ '^[a-f0-9]{64}$'`),
+  check('live_editing_intent_bytes', sql`${t.byteLength} BETWEEN 0 AND 8388608`),
+  check('live_editing_intent_receipt', sql`jsonb_typeof(${t.receipt}) = 'object' AND octet_length(${t.receipt}::text) <= 8388608`)]);
+
+/** Current server-identified cursor leases; no saved/source/history projection reads this table. */
+export const docLivePresence = pgTable('doc_live_presence', {
+  connectionId: uuid('connection_id').primaryKey(), docId: uuid('doc_id').notNull().references(() => projectMaterials.id, { onDelete: 'cascade' }),
+  generation: uuid('generation').notNull(), actorId: text('actor_id').notNull().references(() => authUsers.id),
+  sessionId: text('session_id').notNull().references(() => authSessions.id, { onDelete: 'cascade' }),
+  cursor: jsonb('cursor').$type<{ anchor: string; head: string }>().notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+}, (t) => [check('doc_live_presence_cursor', sql`jsonb_typeof(${t.cursor}) = 'object' AND octet_length(${t.cursor}::text) <= 4096`)]);
+
+
+export const mapLiveHeads = pgTable('map_live_heads', {
+  sketchId: uuid('sketch_id').primaryKey().references(() => sketches.id,{onDelete:'cascade'}),
+  workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id), generation: uuid('generation').notNull(),
+  sequence: bigint('sequence',{mode:'number'}).notNull().default(0), updatedAt: timestamp('updated_at',{withTimezone:true}).notNull().defaultNow(),
+},t=>[unique().on(t.sketchId,t.generation),foreignKey({columns:[t.workspaceId,t.sketchId],foreignColumns:[sketches.workspaceId,sketches.id]}).onDelete('cascade'),check('map_live_head_sequence',sql`${t.sequence} BETWEEN 0 AND 9007199254740991`)]);
+export const mapLiveJournal = pgTable('map_live_journal', {
+  sketchId: uuid('sketch_id').notNull().references(() => sketches.id,{onDelete:'cascade'}), generation: uuid('generation').notNull(),
+  sequence: bigint('sequence',{mode:'number'}).notNull(), actorKind: text('actor_kind',{enum:['human','agent']}).notNull(),
+  actorId: text('actor_id').notNull(), commandId: uuid('command_id').notNull(), fingerprint:text('fingerprint').notNull(),
+  change: jsonb('change').$type<Record<string,unknown>>().notNull(), createdAt: timestamp('created_at',{withTimezone:true}).notNull().defaultNow(),
+},(t)=>[primaryKey({columns:[t.sketchId,t.generation,t.sequence]}),unique().on(t.actorKind,t.actorId,t.commandId),check('map_live_journal_sequence',sql`${t.sequence} BETWEEN 1 AND 9007199254740991`),check('map_live_journal_actor',sql`${t.actorKind} IN ('human','agent')`),check('map_live_journal_fingerprint',sql`${t.fingerprint} ~ '^[a-f0-9]{64}$'`),check('map_live_journal_bytes',sql`jsonb_typeof(${t.change})='object' AND octet_length(${t.change}::text)<=8388608`)]);
+export const mapLiveObjectVersions = pgTable('map_live_object_versions', {
+  kind:text('kind',{enum:['thought','link']}).notNull(), objectId:uuid('object_id').notNull(),
+  sketchId:uuid('sketch_id').notNull().references(() => sketches.id,{onDelete:'cascade'}), version:bigint('version',{mode:'number'}).notNull(),
+},(t)=>[primaryKey({columns:[t.kind,t.objectId]}),check('map_live_object_kind',sql`${t.kind} IN ('thought','link')`),check('map_live_object_version',sql`${t.version} BETWEEN 1 AND 9007199254740991`)]);
+export const mapLiveUndone = pgTable('map_live_undone', {
+  sketchId:uuid('sketch_id').notNull(),generation:uuid('generation').notNull(),
+  originalSequence:bigint('original_sequence',{mode:'number'}).notNull(),inverseSequence:bigint('inverse_sequence',{mode:'number'}).notNull(),
+},(t)=>[primaryKey({columns:[t.sketchId,t.generation,t.originalSequence]}),
+  foreignKey({columns:[t.sketchId,t.generation,t.originalSequence],foreignColumns:[mapLiveJournal.sketchId,mapLiveJournal.generation,mapLiveJournal.sequence]}).onDelete('cascade'),
+  foreignKey({columns:[t.sketchId,t.generation,t.inverseSequence],foreignColumns:[mapLiveJournal.sketchId,mapLiveJournal.generation,mapLiveJournal.sequence]}).onDelete('cascade')]);
+export const mapLiveGestures = pgTable('map_live_gestures', {
+  leaseId:uuid('lease_id').primaryKey(),sketchId:uuid('sketch_id').notNull().references(()=>sketches.id,{onDelete:'cascade'}),
+  generation:uuid('generation').notNull(),gestureId:uuid('gesture_id').notNull(),actorId:text('actor_id').notNull().references(()=>authUsers.id),
+  sessionId:text('session_id').notNull().references(()=>authSessions.id,{onDelete:'cascade'}),connectionId:uuid('connection_id'),
+  sequence:bigint('sequence',{mode:'number'}).notNull().default(0),
+  thoughts:jsonb('thoughts').$type<{id:string;expectedVersion:number}[]>().notNull(),
+  positions:jsonb('positions').$type<{id:string;x:number;y:number;width?:number;height?:number}[]>().notNull().default([]),
+  expiresAt:timestamp('expires_at',{withTimezone:true}).notNull(),
+},(t)=>[unique().on(t.actorId,t.sessionId,t.sketchId,t.generation,t.gestureId),foreignKey({columns:[t.sketchId,t.generation],foreignColumns:[mapLiveHeads.sketchId,mapLiveHeads.generation]}).onDelete('cascade'),check('map_live_gesture_sequence',sql`${t.sequence} BETWEEN 0 AND 9007199254740991`),check('map_live_gesture_thoughts',sql`jsonb_typeof(${t.thoughts})='array' AND jsonb_array_length(${t.thoughts}) BETWEEN 1 AND 200 AND octet_length(${t.thoughts}::text)<=65536`),check('map_live_gesture_positions',sql`jsonb_typeof(${t.positions})='array' AND jsonb_array_length(${t.positions})<=200 AND octet_length(${t.positions}::text)<=65536`)]);
+export const mapLivePresence = pgTable('map_live_presence', {
+  connectionId:uuid('connection_id').primaryKey(),sketchId:uuid('sketch_id').notNull().references(()=>sketches.id,{onDelete:'cascade'}),
+  generation:uuid('generation').notNull(),actorId:text('actor_id').notNull().references(()=>authUsers.id),
+  sessionId:text('session_id').notNull().references(()=>authSessions.id,{onDelete:'cascade'}),
+  selected:jsonb('selected').$type<string[]>().notNull(),cursor:jsonb('cursor').$type<{x:number;y:number}>(),
+  expiresAt:timestamp('expires_at',{withTimezone:true}).notNull(),
+},t=>[foreignKey({columns:[t.sketchId,t.generation],foreignColumns:[mapLiveHeads.sketchId,mapLiveHeads.generation]}).onDelete('cascade'),check('map_live_presence_selected',sql`jsonb_typeof(${t.selected})='array' AND jsonb_array_length(${t.selected})<=16`),check('map_live_presence_cursor',sql`${t.cursor} IS NULL OR jsonb_typeof(${t.cursor})='object' AND octet_length(${t.cursor}::text)<=256`)]);

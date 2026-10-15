@@ -173,6 +173,42 @@ describe('search: one query across Flux, only what you may read', () => {
     assert.ok(byNia.items.every((item) => item.author === 'Nia Berg'), 'only Nia’s writing');
   });
 
+  test('a project is found by its name for whoever may open it, and opens its home', async () => {
+    const found = await search(nia, 'gesture lamp');
+    const hit = found.items.find((item) => item.kind === 'project');
+    assert.ok(hit, 'the restricted project is found by its name');
+    assert.equal(text(hit.title), 'Gesture lamp');
+    assert.equal(hit.label, 'Project · restricted');
+    assert.deepEqual(hit.target, { type: 'project', projectId: lamp.id });
+    assert.deepEqual(hit.place, { type: 'workspace', id: ws.id, name: 'Studio' });
+    assert.equal(found.counts.project, 1);
+    assert.deepEqual(kinds(await search(nia, { q: 'lam', type: 'project' })), ['project'], 'a prefix finds it while typing');
+    // Every member may open the workspace-visible project, so every member finds it by name.
+    assert.deepEqual(titles(await search(olek, 'open notes')), ['Open notes']);
+  });
+
+  test('a project the reader may not open is not found, by name, by id or in the counts', async () => {
+    const empty = { items: [], next: null, counts: {}, countsCapped: false };
+    // Olek is a member without a grant on the restricted project; Gus is a guest with a grant on the open one only.
+    assert.deepEqual(await search(olek, 'gesture lamp'), empty);
+    assert.deepEqual(await search(gus, 'gesture lamp'), empty);
+    assert.deepEqual(await search(olek, { q: 'lam', type: 'project' }), empty);
+    const body = JSON.stringify(await search(olek, 'lamp'));
+    assert.equal(body.includes('Gesture lamp'), false);
+    assert.equal(body.includes(lamp.id), false);
+  });
+
+  test('a renamed project is found under its new name only, and a deleted project leaves no result', async () => {
+    const harbour = await createProject(ari, ws.id, 'Harbour kiosk', 'workspace');
+    assert.deepEqual(kinds(await search(ari, 'harbour')), ['project']);
+    // The index follows the row: a rename in the same transaction replaces the old name.
+    await pool.query('UPDATE projects SET name = $2 WHERE id = $1', [harbour.id, 'Quay signals']);
+    assert.equal((await search(ari, 'harbour')).items.length, 0);
+    assert.deepEqual((await search(ari, 'quay signals')).items.map((item) => item.target), [{ type: 'project', projectId: harbour.id }]);
+    await pool.query('DELETE FROM projects WHERE id = $1', [harbour.id]);
+    assert.equal((await search(ari, 'quay signals')).items.length, 0);
+  });
+
   test('type filters narrow results while counts cover every type', async () => {
     const answer = await search(nia, { q: 'sensor', type: 'material' });
     assert.deepEqual(kinds(answer), ['material']);
@@ -398,4 +434,43 @@ describe('search: hidden matches never change the answer or the work', () => {
     const saturatedTime = await median();
     assert.ok(saturatedTime < baselineTime * 5 + 250, `median ${saturatedTime.toFixed(1)} ms with hidden matches vs ${baselineTime.toFixed(1)} ms before`);
   });
+});
+
+test('hidden work matches leave visible work results, counts and indexed work identical', { timeout: 60_000 }, async () => {
+  const [owner, reader] = await Promise.all(['work-search-owner', 'work-search-reader'].map(person));
+  const ws = await workspace(owner, 'Work search privacy');
+  await addMember(owner, ws.id, reader, 'member');
+  const visible = await createProject(owner, ws.id, 'Visible work', 'workspace');
+  const hidden = await createProject(owner, ws.id, 'Restricted work', 'restricted');
+  const marker = `workprivacyprobe${randomUUID().replaceAll('-', '')}`;
+  const task = json<WorkItem>(await post(owner, `/api/v1/projects/${visible.id}/work`, { title: marker }), 201);
+  const query = { q: marker, type: 'work', limit: 5 };
+  await pool.query('ANALYZE search_documents, project_work_items');
+  const before = await search(reader, query);
+  const beforeWork = await explain(reader, query);
+  assert.ok(beforeWork.nodes.some((node) => node.includes('project_work_items')), 'the positive visible work lookup is measured');
+  const fewestBuffers = async () => Math.min(...await Promise.all([0, 1, 2].map(async () => (await explain(reader, query)).buffers)));
+  const beforeBuffers = await fewestBuffers();
+  assert.deepEqual(before.items.map((hit) => hit.target), [{ type: 'work', projectId: visible.id, id: task.id }]);
+  assert.equal(before.counts.work, 1);
+  assert.equal(before.next, null);
+  // Complete bounded persistence fixtures exercise the real work search trigger, without changing audiences.
+  for (let start = 0; start < 200; start += 100) await pool.query(`
+    INSERT INTO project_work_items(id,workspace_id,project_id,title,outcome,status,created_by_kind,created_by_id)
+    SELECT gen_random_uuid(),$1,$2,$3||' hidden '||n,'','open','human',$4 FROM generate_series($5::int,$6::int) n`,
+  [ws.id, hidden.id, marker, owner.id, start + 1, start + 100]);
+  assert.equal((await pool.query('SELECT count(*)::int AS n FROM project_work_items WHERE project_id=$1', [hidden.id])).rows[0].n, 200);
+  await pool.query('ANALYZE search_documents, project_work_items');
+  assert.deepEqual(await search(reader, query), before, 'hidden work changes neither results, counts nor next');
+  const work = ({ rows, indexRows, indexScans, lookups }: SearchWork) => ({ rows, indexRows, indexScans, lookups });
+  const afterWork = await explain(reader, query);
+  assert.deepEqual(work(afterWork), work(beforeWork), 'every scan row, including the task lookup, stays independent of hidden work');
+  // Whole-statement buffers include active_work, as well as search_documents. Shared index entry-tree
+  // growth may add one page per key lookup plus two per scan; allow four pages for the two UUID probes.
+  const bufferGrowth = (await fewestBuffers()) - beforeBuffers;
+  const treeSlack = afterWork.indexScans * (afterWork.lookups + 2) + 4;
+  assert.ok(bufferGrowth <= treeSlack, `whole-query buffers (including work) grew ${bufferGrowth}, allowed ${treeSlack}`);
+  const inside = await search(owner, query);
+  assert.equal(inside.counts.work, 201);
+  assert.ok(inside.next, 'positive control sees the actual restricted work');
 });

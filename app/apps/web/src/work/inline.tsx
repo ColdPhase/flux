@@ -2,7 +2,7 @@ import { useCallback, useRef, useState } from 'react';
 import { useRevalidator } from 'react-router';
 import { messagePreview, type ConversationMessage, type NativeWorkRow, type Project, type ProjectWorkSummary } from '@flux/contracts';
 import { ApiError } from '../api/client';
-import { Icon, useMediaQuery } from '../ui';
+import { Icon } from '../ui';
 import { useShellActions } from '../app/shellContext';
 import { useShellData } from '../app/data';
 import { createWork, type ProjectWork } from './api';
@@ -33,7 +33,7 @@ export function stateParts(lists: ProjectWork, canDecide: boolean): StatePart[] 
   if (active.length) {
     const names = [...new Set(active.map((item) => item.owner?.name.trim().split(/\s+/)[0]).filter(Boolean))];
     const who = names.length ? ` (${names.join(', ')})` : '';
-    parts.push({ key: 'work', icon: null, dot: 'progress', text: `${active.length === 1 ? `In progress: ${active[0]!.title}` : `${active.length} in progress`}${who}`, short: `Work in progress${who}`, title: active.length === 1 ? `${active[0]!.title}${who}` : `${active.length} items in progress${who}`, open: { kind: 'work', id: active[0]!.id } });
+    parts.push({ key: 'work', icon: null, dot: 'progress', text: `${active.length === 1 ? `Task in progress: ${active[0]!.title}` : `${active.length} tasks in progress`}${who}`, short: `Tasks in progress${who}`, title: active.length === 1 ? `Task in progress: ${active[0]!.title}${who}` : `${active.length} tasks in progress${who}`, open: { kind: 'work', id: active[0]!.id } });
   }
   if (blocked.length) parts.push({ key: 'blocked', icon: 'alert', tone: 'warn', text: `${blocked.length} blocked`, short: `${blocked.length} blocked`, title: blocked.length === 1 ? blocked[0]!.title : `${blocked.length} blocked items`, open: { kind: 'work', id: blocked[0]!.id } });
   if (open.length) {
@@ -154,7 +154,7 @@ export function MessageObjects({ message, projectId, preview, thread = null, thr
  * Creates work from a message in one action. A failed attempt keeps its Idempotency-Key, so
  * retrying after a lost response returns the same work item instead of a duplicate.
  */
-export function useCreateWorkFromMessage(project: Project) {
+export function useCreateWorkFromMessage(project: Pick<Project, 'id'>) {
   const { openDetails } = useShellActions();
   const revalidator = useRevalidator();
   const keys = useRef(new Map<string, string>());
@@ -173,34 +173,21 @@ export function useCreateWorkFromMessage(project: Project) {
       setFailed({ messageId: message.id, text: cause instanceof ApiError && cause.status === 403 ? 'You can read this project but not add work.' : cause instanceof Error ? cause.message : 'Could not create the work.' });
     } finally { setBusy(null); }
   }, [openDetails, project.id, revalidator]);
-  return { create, busy, failed };
-}
-
-/**
- * Quiet actions under a message, named by what they make (Task, Decision, Result) and Details (#189):
- * shown on hover and focus with a pointer and keyboard; on touch
- * one "Make from this message" button opens them, so a phone feed is not a wall of buttons.
- * On a pointer they float over the message's corner and take no room in the feed. "Details" shows everything linked to this message (#117); readers without write access
- * get only that.
- */
-export function MessageActions({ projectId, message, onCreateWork, busy, writable = true }: { projectId: string; message: ConversationMessage; onCreateWork: () => void; busy: boolean; writable?: boolean }) {
-  const { openDetails } = useShellActions();
-  const touch = useMediaQuery('(hover: none)');
-  const [open, setOpen] = useState(false);
-  const source = { messageId: message.id, text: message.body };
-  const { me } = useShellData();
-  const details = <button type="button" className="ws-act" onClick={() => openDetails({ kind: 'overview', messageId: message.id, selection: { accountId: me.user.id, projectId, message } })} aria-label="Details of this message"><Icon name="panel" size={14} />Details</button>;
-  if (!writable) return <div className="ws-acts">{details}</div>;
-  if (touch && !open) {
-    // One quiet 44 px overflow button in the message's corner instead of a row under every message.
-    return <div className="ws-acts ws-acts--more"><button type="button" className="ws-act ws-more" aria-expanded="false" aria-label="Make from this message" onClick={() => setOpen(true)}><Icon name="more" size={16} /></button></div>;
-  }
-  return (
-    <div className="ws-acts" role="group" aria-label="Make something from this message">
-      <button type="button" className="ws-act" onClick={onCreateWork} aria-busy={busy || undefined} disabled={busy}><Icon name="tasks" size={14} />{busy ? 'Creating…' : 'Task'}</button>
-      <button type="button" className="ws-act" onClick={() => openDetails({ kind: 'propose-decision', projectId, source })}><Icon name="rule" size={14} />Decision</button>
-      <button type="button" className="ws-act" onClick={() => openDetails({ kind: 'attach-result', projectId, source })}><Icon name="result" size={14} />Result</button>
-      {details}
-    </div>
-  );
+  // A task made from words typed in the composer (`/task …`, `/handoff …`), retried with the same key.
+  const createText = useCallback(async (text: string): Promise<boolean> => {
+    const key = keys.current.get(`text:${text}`) ?? crypto.randomUUID();
+    keys.current.set(`text:${text}`, key);
+    setBusy(`text:${text}`); setFailed(null);
+    try {
+      const item = await createWork(project.id, { title: firstLine(text) }, key);
+      keys.current.delete(`text:${text}`);
+      revalidator.revalidate();
+      openDetails({ kind: 'work', id: item.id });
+      return true;
+    } catch (cause) {
+      setFailed({ messageId: `text:${text}`, text: cause instanceof ApiError && cause.status === 403 ? 'You can read this project but not add work.' : cause instanceof Error ? cause.message : 'Could not create the work.' });
+      return false;
+    } finally { setBusy(null); }
+  }, [openDetails, project.id, revalidator]);
+  return { create, createText, busy, failed };
 }

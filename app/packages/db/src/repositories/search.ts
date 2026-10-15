@@ -15,7 +15,7 @@ export type SearchExecutor = Pick<NodePgDatabase<typeof schema>, 'select' | 'exe
  */
 
 /** `search_documents.kind` (the contracts' `SearchKind`; this package does not depend on contracts). */
-export type SearchKindRow = 'message' | 'dm_message' | 'material' | 'doc' | 'work' | 'decision' | 'result' | 'sketch' | 'thought' | 'draft' | 'person';
+export type SearchKindRow = 'project' | 'message' | 'dm_message' | 'material' | 'doc' | 'work' | 'decision' | 'result' | 'sketch' | 'thought' | 'draft' | 'person';
 type SearchKind = SearchKindRow;
 /** Highlighted text: plain and matched parts. */
 export type SearchTextRow = { text: string; match: boolean }[];
@@ -155,6 +155,11 @@ function hitConditions(plan: SearchPlanRows, withKinds: boolean): SQL {
   const conditions: SQL[] = [
     sql`sd.keys && (SELECT lookups FROM aud)`,
     sql`sd.audience_key = ANY ((SELECT keys FROM aud)::text[])`,
+    // Work IDs are UUIDs; other kinds (including people) can carry arbitrary text IDs.
+    // Keep the indexed UUID side intact and apply lifecycle before page/count/probe limits.
+    // A correlated scalar projection cannot become a hashed scan of unrelated tasks.
+    sql`(sd.kind <> 'work' OR COALESCE((SELECT active_work.creation_reverted_at IS NULL FROM project_work_items active_work
+      WHERE active_work.id = (CASE WHEN sd.kind = 'work' THEN sd.object_id::uuid END)), false))`,
     plan.fuzzy ? sql`(sd.tsv @@ ${tsquery(plan)} OR sd.title %> ${plan.text})` : sql`sd.tsv @@ ${tsquery(plan)}`,
   ];
   if (withKinds && plan.kinds?.length) conditions.push(sql`sd.kind IN (${sql.join(plan.kinds.map((kind) => sql`${kind}`), sql`, `)})`);

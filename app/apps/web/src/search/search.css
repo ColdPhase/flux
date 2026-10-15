@@ -14,6 +14,7 @@
   background: var(--sub); color: var(--t2); box-shadow: inset 0 0 0 1px var(--line);
 }
 .sr__ic--decision, .sr__ic--result { color: var(--t1); }
+.sr__ic--project { color: var(--t1); font-size: var(--fs-md); font-weight: 600; }
 .sr__main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .sr__title {
   font-size: var(--fs-md); font-weight: 500; line-height: var(--lh-tight); color: var(--t1);

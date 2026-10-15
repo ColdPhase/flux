@@ -6,6 +6,7 @@ export { ErrorState } from './ErrorState';
 export { Icon, type IconName } from './Icon';
 export { Input } from './Input';
 export { MEDIA, choosesInPlace, duration, flip, isObscured, play, sendsOnEnter, useArrivals, useLoopPause, useMediaQuery, useTravelingHighlight } from './motion';
+export { DetentSheet, SheetGrabber } from './DetentSheet';
 export { applyStoredReduceMotion, prefersReducedMotion, setReduceMotion, useReduceMotion } from './motion-preference';
 export { Drawer, Overlay, Sheet, focusableIn, trapTab } from './Overlay';
 export { AgentIdentity, AgentTag } from './AgentIdentity';
@@ -13,4 +14,4 @@ export { AGENT_HUES, FluxLockup, FluxLogo, Kreska, agentHue, type AgentHue, type
 export { StatusGlyph, TaskState, TASK_STATE_WORD } from './StatusGlyph';
 export { SidePanel, useSidePanelMode, type SidePanelMode } from './SidePanel';
 export { BottomNav, Tabs, type BottomNavItem, type TabItem } from './Tabs';
-export { ToastProvider, useToast, type ToastOptions } from './Toast';
+export { ToastProvider, useToast, useToastScope, useToastTop, type ToastAction, type ToastOptions } from './Toast';

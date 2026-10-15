@@ -14,6 +14,7 @@ import { ConversationStream, useConversationRoots, useTaskNotices } from './Conv
 import { ThreadDrawer, ThreadRoot, type ThreadMode } from './ThreadDrawer';
 import type { ProjectData } from './ProjectConversation';
 import './one-conversation.css';
+import { useCreateWorkFromMessage } from '../work/inline';
 
 /** What the conversation pane needs in each place: the stream's composer, or one open thread. */
 export interface PaneProps {
@@ -64,6 +65,7 @@ export function OneConversation({ data, Pane }: { data: ProjectData; Pane: Compo
   if ((conversation?.id ?? null) !== shownId) { setShownId(conversation?.id ?? null); setClosing(null); }
   const thread = conversation && conversation.id !== closing ? conversation : null;
   const writable = project.access !== 'viewer';
+  const makeWork = useCreateWorkFromMessage(project);
   const owners = useAgentOwners(project);
 
   const onDenied = useCallback((cause: unknown) => {
@@ -150,7 +152,8 @@ export function OneConversation({ data, Pane }: { data: ProjectData; Pane: Compo
           <Pane key={thread.id} data={data} variant="thread" rootMessageId={rootMessage?.id ?? null}
             focusComposer={!!state?.focusComposer} onThreadSize={roots.threadSize}
             rootHeader={({ preview, taskRow }) => <ThreadRoot message={rootMessage} projectId={project.id} body={rootMessage?.body ?? thread.firstMessageBody} author={rootMessage ? author(rootMessage) : null}
-              agentOwner={rootMessage?.authorId === null ? agentAuthorOwner(rootMessage.author, owners) ?? null : null} meId={me.user.id} writable={writable} replies={replies} task={root?.task ?? null} taskRow={taskRow} preview={preview} onDenied={onDenied} />} />
+              agentOwner={rootMessage?.authorId === null ? agentAuthorOwner(rootMessage.author, owners) ?? null : null} meId={me.user.id} writable={writable} replies={replies} task={root?.task ?? null} taskRow={taskRow} preview={preview} onDenied={onDenied}
+              photo={{ place: project.name, onReply: writable ? () => document.getElementById('thread-composer')?.focus() : undefined, onCreateTask: writable && rootMessage ? () => void makeWork.create(rootMessage) : undefined }} />} />
         </ThreadDrawer>
       ) : null}
     </div>
