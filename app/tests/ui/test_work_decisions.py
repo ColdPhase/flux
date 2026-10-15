@@ -18,6 +18,7 @@ import uuid
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
 from author_columns import assert_author_column
+from create_window import add_task, submit_button, title_field
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UI_BROWSER, UPSTREAM, open_details, shot, start_forwarder, view_tab
 
 PASSWORD = "decisions need reasons"
@@ -132,6 +133,9 @@ class WorkDecisionsJourney(unittest.TestCase):
         message = page.locator(f"#message-{self.messages['idea']}")
         message.hover()
         message.get_by_role("button", name="Task", exact=True).click()
+        # The one Create window opens with the message as its source, then the task opens in Details (#345).
+        expect(title_field(page)).to_have_value(IDEA)
+        submit_button(page).click()
         panel = self.details(page)
         expect(panel.get_by_role("heading", name=IDEA)).to_be_visible()
         expect(panel.get_by_role("button", name="Status", exact=True)).to_contain_text("Open")
@@ -236,12 +240,10 @@ class WorkDecisionsJourney(unittest.TestCase):
         page = self.page("owner")
         page.goto(f"/projects/{self.project_id}/tasks")
         page.get_by_role("radio", name="List", exact=True).click()
-        page.get_by_label("New task").fill("Mount the camera in the lamp head")
-        page.get_by_role("button", name="Add task").click()
+        add_task(page, "Mount the camera in the lamp head")
         panel = self.details(page)
         expect(panel.get_by_role("heading", name="Mount the camera in the lamp head")).to_be_visible()
-        page.get_by_label("New task").fill("Design the diffuser")
-        page.get_by_role("button", name="Add task").click()
+        add_task(page, "Design the diffuser")
         expect(panel.get_by_role("heading", name="Design the diffuser")).to_be_visible()
 
         # Attaching a result to work opened that task's own conversation (#154), now the project's newest one:
@@ -296,6 +298,8 @@ class WorkDecisionsJourney(unittest.TestCase):
         create = message.get_by_role("button", name="Task", exact=True)
         self.assertGreaterEqual(create.bounding_box()["height"], 44, "touch target")
         create.tap()
+        expect(title_field(page)).to_have_value(FINDING)
+        submit_button(page).tap()
         sheet = page.get_by_role("dialog", name="Details")
         expect(sheet.get_by_role("heading", name=FINDING)).to_be_visible()
         expect(sheet).to_contain_text("Everyone with access to Gesture lamp")

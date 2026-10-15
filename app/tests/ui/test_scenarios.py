@@ -53,6 +53,7 @@ from pathlib import Path
 
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
+from create_window import create_other, open_from_tasks, submit_button
 from test_app_shell import show_map_as, DESKTOP, ORIGIN, PHONE, UPSTREAM, open_details, open_what_matters, shot, start_forwarder
 
 UI_BROWSER = os.environ.get("FLUX_UI_BROWSER", "chromium")
@@ -441,7 +442,7 @@ class ScenarioJourney:
             page.get_by_role("link", name="Create a project").tap()
         else:
             page.get_by_role("complementary", name="Sidebar").get_by_role("button", name="New", exact=True).click()
-            page.get_by_role("menu", name="New").get_by_role("menuitem", name="Project", exact=True).click()
+            create_other(page, "Project")
         page.get_by_label("Your space").fill(WORKSPACE)
         page.get_by_label("What is it about?").fill(MARKET)
         self.tap(page.get_by_role("button", name="Create project"))
@@ -765,9 +766,9 @@ class ScenarioJourney:
         s["doc_v1"] = doc["body"]
 
         # Task first, map later: Jonas adds the order in Tasks and links it to Variant B from its Details (test_2b).
-        jonas.goto(f"/projects/{lamp}/tasks?view=list" + ("&new=task" if self.phone else ""))  # the phone opens its task field through New → Task
-        jonas.get_by_label("New task", exact=True).fill(ORDER_TASK)
-        self.tap(jonas.get_by_role("button", name="Add task", exact=True))
+        jonas.goto(f"/projects/{lamp}/tasks?view=list")
+        open_from_tasks(jonas).fill(ORDER_TASK)
+        self.tap(submit_button(jonas))
         expect(self.details(jonas).get_by_role("heading", name=ORDER_TASK)).to_be_visible()
         order = next(item for item in self.work_items("jonas") if item["title"] == ORDER_TASK)
         s["order_task"] = order["id"]

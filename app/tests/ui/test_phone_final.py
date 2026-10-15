@@ -210,7 +210,8 @@ class PhoneFinal(unittest.TestCase):
                 shot(page, f"341-create-{size['width']}-{'dark' if dark else 'light'}")
                 sheet.get_by_role("button", name=re.compile("^Task")).click()
                 expect(page).to_have_url(re.compile(r"/tasks"))
-                expect(page.get_by_role("dialog", name="Create")).to_have_count(0)
+                # The Task tile opens the one Create window in this project; the sheet itself is gone.
+                expect(page.get_by_role("dialog", name="Create").get_by_label("Title", exact=True)).to_be_visible()
 
     def test_04_create_message_and_thought_use_the_places_that_make_them(self):
         page = self.page(SIZES[0])
@@ -409,24 +410,27 @@ class PhoneFinal(unittest.TestCase):
                 self.assert_no_sideways_scroll(page, size["width"])
 
     def test_11_create_sheet_selection_and_text_persist_and_create_only_in_selected_project(self):
+        # The "+" sheet has one way to create: its Task tile opens the one Create window (#345) in the chosen project.
         page = self.page(SIZES[0])
         page.goto("/projects")
         title = f"Print bed labels {uuid.uuid4().hex[:8]}"
         page.get_by_role("button", name="Create", exact=True).click()
         project_picker = page.get_by_role("dialog", name="Create").get_by_role("combobox")
         project_picker.select_option(self.second_project["id"])
-        field = page.get_by_role("textbox", name="Create a task from text")
+        page.get_by_role("dialog", name="Create").get_by_role("button", name="Task", exact=True).click()
+        field = page.get_by_role("dialog", name="Create").get_by_label("Title", exact=True)
         expect(field).to_be_visible()
         field.fill(title)
 
-        # An unfinished quick task stays private to this account and project across reload.
+        # An unfinished task stays private to this account and project across reload (the window's kept draft).
         page.reload()
         page.get_by_role("button", name="Create", exact=True).click()
+        page.get_by_role("dialog", name="Create").get_by_role("button", name="Task", exact=True).click()
         project_picker = page.get_by_role("dialog", name="Create").get_by_role("combobox")
         expect(project_picker).to_have_value(self.second_project["id"])
-        field = page.get_by_role("textbox", name="Create a task from text")
+        field = page.get_by_role("dialog", name="Create").get_by_label("Title", exact=True)
         expect(field).to_have_value(title)
-        field.press("Enter")
+        page.get_by_role("dialog", name="Create").get_by_role("button", name=re.compile("^Create task")).click()
         expect(page.locator("#details")).to_contain_text(title)
         selected_work = self.call(page, "GET", f"/api/v1/projects/{self.second_project['id']}/work?limit=100")
         first_work = self.call(page, "GET", f"/api/v1/projects/{self.project['id']}/work?limit=100")

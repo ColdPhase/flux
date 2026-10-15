@@ -604,8 +604,7 @@ function RootItem(props: RootItemProps | QueuedRootProps) {
       <QuestionCard projectId={project.id} messageId={message.id} meId={meId} writable={writable} />
       {message.contribution ? <ContributionMark contribution={message.contribution} onOpenResult={onOpenResult} /> : null}
       <Replies root={root} open={open} writable={writable} onOpen={(reply) => onOpen(root, reply)} />
-      <MessageActions projectId={project.id} message={message} writable={writable} busy={makeWork.busy === message.id} onCreateWork={() => void makeWork.create(message)} />
-      {makeWork.failed?.messageId === message.id ? <p className="ws-act-error" role="alert">{makeWork.failed.text} <button type="button" onClick={() => void makeWork.create(message)}>Retry</button></p> : null}
+      <MessageActions projectId={project.id} message={message} writable={writable} onCreateWork={() => makeWork.create(message)} />
     </li>
   );
 }
