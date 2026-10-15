@@ -52,7 +52,8 @@ test('all pages render quiet comparisons and insufficient evidence with current 
       // must restore the whole project before landing on real persisted work/results.
       const views = page.getByRole('navigation', { name: 'Task views' });
       const jumps = page.getByRole('navigation', { name: 'Project work sections' });
-      for (const [label, target] of [['Results', 'g-results'], ['Work', 'g-open']] as const) {
+      // Results have no group in Tasks (#342); the cited result is checked below from the suggestion itself.
+      for (const [label, target] of [['Work', 'g-open']] as const) {
         // The phone's saved view is Mine (it has no group views); the computer's is a group plus Only mine.
         const mine = page.getByRole('group', { name: 'Whose tasks' });
         if (viewport.width === 390) await mine.getByRole('button', { name: 'Mine', exact: true }).tap();
@@ -94,6 +95,10 @@ test('all pages render quiet comparisons and insufficient evidence with current 
       assert.ok(!(await evidence.innerText()).includes('Repeat the low-light gesture trial'), 'a source removed from the project exposes no old title');
       assert.ok(await evidence.locator('li').count() > await comparison.locator('.ws-proposal__sources').first().locator('li').count(), 'the full inspected set stays separate from the citation subset');
       assert.ok(!(await comparison.innerText()).includes('Earlier suggestion'), 'the recorded vector is not described as legacy');
+      await comparison.locator('.ws-proposal__sources').first().getByRole('button', { name: /^Camera trial missed the target · cited version/ }).click();
+      await page.locator('#details', { hasText: 'Camera trial missed the target' }).waitFor();
+      await page.keyboard.press('Escape');
+      await page.locator('#details').waitFor({ state: 'detached' });
       await insufficient.locator('.ws-proposal__toggle').click();
       await insufficient.locator('summary').click();
       assert.match(await insufficient.innerText(), /no matching ToF measurement/);

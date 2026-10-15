@@ -398,7 +398,7 @@ export function ProjectTasks() {
     <div className="ws-proposals-gate" style={titlesShown ? undefined : { visibility: 'hidden' }} aria-busy={titlesShown ? undefined : true}>
     <ProjectProposals outcomes={outcomes} people={shell?.people ?? null} projectName={project.name}
       resultTitles={resultTitles}
-      workCount={data?.summary.workTotal ?? 0} resultCount={0}
+      workCount={data?.summary.workTotal ?? 0}
       workJumpId={data?.summary.all.in_progress ? 'g-progress' : data?.summary.all.blocked ? 'g-blocked' : data?.summary.all.open ? 'g-open' : data?.summary.all.parked ? 'g-parked' : 'g-finished'}
       jumpToSection={jumpToSection} writable={writable} refresh={() => { if (listing) refresh(); else refreshBoard(); revalidator.revalidate(); }}
       openResult={(id) => openDetails({ kind: 'result', id, projectId: project.id })}
