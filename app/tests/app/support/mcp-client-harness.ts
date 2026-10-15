@@ -111,10 +111,11 @@ export async function authorizeInBrowser(browser: Chromium, email: string, spec:
 const authorizeUrl = /(https?:\/\/[^\s"']*\/api\/auth\/oauth2\/authorize\?[^\s"']+)/;
 
 /** Each client's own commands: add Flux, authenticate through Flux's OAuth, then ask the client for its MCP status. */
-export async function connectClient(browser: Chromium, email: string, home: ClientHome, clientId: string) {
+export async function connectClient(browser: Chromium, email: string, home: ClientHome, clientId?: string) {
   const { spec, env, cwd } = home;
   if (spec.client === 'codex') {
-    const add = run('codex', ['mcp', 'add', 'flux', '--url', mcpUrl, '--oauth-client-id', clientId, '-c', `mcp_oauth_callback_port=${spec.port}`], env, cwd);
+    const add = run('codex', ['mcp', 'add', 'flux', '--url', mcpUrl,
+      ...(clientId ? ['--oauth-client-id', clientId] : []), '-c', `mcp_oauth_callback_port=${spec.port}`], env, cwd);
     // `mcp add` starts the login itself when the server offers OAuth; otherwise `mcp login` does.
     let match: RegExpMatchArray | null = await waitFor(add, authorizeUrl, 'codex mcp add').catch(() => null);
     let login = add;
@@ -131,6 +132,7 @@ export async function connectClient(browser: Chromium, email: string, home: Clie
     const listed = await sh('codex', ['mcp', 'list'], env, cwd);
     assert.match(listed.output, /flux/); assert.doesNotMatch(listed.output, /Not logged in|Unsupported/i, listed.output);
   } else {
+    if (!clientId) throw new Error('Claude pre-registered fixture requires its own client ID');
     const add = await sh(claudeBin, ['mcp', 'add', '--transport', 'http', '--scope', 'user', '--client-id', clientId, '--callback-port', String(spec.port), 'flux', mcpUrl], env, cwd);
     assert.equal(add.code, 0, add.output);
     // Claude Code refuses to log in without a terminal; `script` gives it one and the paste prompt waits on stdin.
