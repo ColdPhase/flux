@@ -248,7 +248,7 @@ class RuntimeConsole(unittest.TestCase):
         page.route("**/api/v1/agent-runtime", lambda route: route.fulfill(status=200, content_type="application/json", body=json.dumps(signed_out)))
         page.reload()
         expect(page.get_by_role("note").filter(has_text="Anthropic didn’t confirm the sign-out.")).to_contain_text(
-            "Flux deleted the login from your runtime anyway. To be sure it can’t be used, end the session in your Claude account or Anthropic Console settings.")
+            "Flux deleted the login from your Claude Code space anyway. To be sure it can’t be used, end the session in your Claude account or Anthropic Console settings.")
         self.phone_layout(page, "section.rt")
         shot(page, "runtime-signout-failed-phone-390")
 
@@ -271,19 +271,20 @@ class RuntimeConsole(unittest.TestCase):
         expect(page.locator(".xterm-rows")).to_contain_text("Paste code here if prompted", use_inner_text=True)
         expect(page.get_by_role("link", name=re.compile(r"Open the sign-in page \(claude\.com\)"))).to_be_visible()
         shot(page, "runtime-console-desktop-1440")
-        # The terminal takes typing directly too: a wrong code is refused by the CLI's own prompt.
+        # The terminal takes typing directly too: a wrong code is refused by the CLI's own prompt, which
+        # keeps waiting for the right one (Claude Code 2.1.285 does not exit on it), so Flux reports nothing yet.
         page.locator(".rt-term").click()
         page.keyboard.type("not-a-code")
         page.keyboard.press("Enter")
+        expect(page.locator(".xterm-rows")).to_contain_text("Invalid code. Please make sure the full code was copied.", use_inner_text=True)
+        expect(page.get_by_role("status").filter(has_text="Claude Code is waiting for you to sign in.")).to_be_visible()
+        expect(page.locator(".rt-outcome")).to_have_count(0)
+        shot(page, "runtime-wrong-code-desktop-1440")
+        page.get_by_role("button", name="Cancel sign-in").click()
         outcome = page.locator(".rt-outcome")
         expect(outcome.get_by_role("heading", name="Not signed in")).to_be_visible()
-        expect(outcome).to_contain_text("Claude Code ended without reporting a login")
+        expect(outcome).to_contain_text("You cancelled the sign-in. Runtime access stays disabled until cleanup is confirmed")
         shot(page, "runtime-not-signed-in-desktop-1440")
-        page.get_by_role("button", name="Start again").click()
-        page.get_by_role("button", name="Start sign-in").click()
-        expect(page.locator(".xterm-rows")).to_contain_text("Paste code here if prompted", use_inner_text=True)
-        page.get_by_role("button", name="Cancel sign-in").click()
-        expect(page.locator(".rt-outcome")).to_contain_text("You cancelled the sign-in. Runtime access stays disabled until cleanup is confirmed")
         current = self.api(page, "GET", "/api/v1/agent-runtime")
         self.assertIsNone(current["connections"]["claude_code"])
         if current["binding"] is not None:
@@ -295,17 +296,24 @@ class RuntimeConsole(unittest.TestCase):
     @unittest.skipUnless(RUNTIME, "needs the runtime profile (scripts/check_agent_runtime.sh)")
     def test_08_remove_runtime_at_phone_width(self) -> None:
         page = self.page()
-        # The preceding cancelled console requires full recovery. Bind only after it is gone.
+        # The preceding cancelled console requires full recovery. Bind only after it is gone and a slot is
+        # ready again: until the recovered slot's supervisor restarts, bind answers 503 "starting; try again
+        # shortly" (the status reports pool "starting"), as the API contract says.
         deadline = time.time() + 60
-        while self.api(page, "GET", "/api/v1/agent-runtime")["binding"] is not None and time.time() < deadline:
+        while time.time() < deadline:
+            current = self.api(page, "GET", "/api/v1/agent-runtime")
+            if current["binding"] is None and current["pool"] == "available":
+                break
             time.sleep(0.2)
-        self.assertIsNone(self.api(page, "GET", "/api/v1/agent-runtime")["binding"])
+        current = self.api(page, "GET", "/api/v1/agent-runtime")
+        self.assertIsNone(current["binding"])
+        self.assertEqual(current["pool"], "available")
         self.api(page, "POST", "/api/v1/agent-runtime/binding")
         page.goto("/settings/agents")
         section = page.locator("section.rt")
         section.get_by_role("button", name="Remove Claude Code from Flux…").tap()
         confirm = page.get_by_role("group", name="Remove Claude Code from Flux")
-        expect(confirm).to_contain_text("Flux signs Claude Code out first, then deletes your runtime’s files")
+        expect(confirm).to_contain_text("Flux signs Claude Code out first, then deletes its files from your space on this server and frees the space for someone else.")
         self.phone_layout(page, "section.rt")
         shot(page, "runtime-remove-phone-390")
         confirm.get_by_role("button", name="Sign out and remove").tap()
