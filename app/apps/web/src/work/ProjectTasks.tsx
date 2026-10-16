@@ -62,9 +62,9 @@ const RETIRED_DECISION_VIEWS = ['needs', 'rules'];
  * the groups that have something. The chosen view and "Only mine" live in the URL, so returning
  * from a source or Details comes back to the same view and reading position.
  */
-function TaskViews({ counts, status, mine, onStatus, onMine }: {
-  counts: WorkCounts | null; status: GroupId | null; mine: boolean;
-  onStatus: (status: GroupId | null) => void; onMine: (mine: boolean) => void;
+function TaskViews({ counts, status, onStatus }: {
+  counts: WorkCounts | null; status: GroupId | null;
+  onStatus: (status: GroupId | null) => void;
 }) {
   const row = useRef<HTMLDivElement>(null);
   // Keep the chosen view in sight by scrolling only the row sideways; scrollIntoView would also
@@ -89,7 +89,6 @@ function TaskViews({ counts, status, mine, onStatus, onMine }: {
           </button>
         ))}
       </div>
-      <label className="ws-mine"><input type="checkbox" checked={mine} onChange={(event) => onMine(event.target.checked)} /> Only mine</label>
     </nav>
   );
 }
@@ -107,9 +106,9 @@ function rememberMode(userId: string, mode: Mode) {
 }
 
 /**
- * The Tasks toolbar: an underline search, Kanban | List, Mine on the board and the one primary action, "+ Task". The List keeps
- * its own "Only mine" among its views. The search filters the board's loaded cards; the List is
- * read in bounded pages from the server, so it has no search that could only see one page.
+ * The Tasks toolbar (S6, T2): Board | List, Mine and the search in the same places in both views, then the one
+ * primary action, "+ Task". The search filters the board's loaded cards; the List is read in bounded pages from
+ * the server, so its search is dimmed rather than removed, which keeps every other control where it is.
  */
 function Toolbar({ mode, onMode, query, onQuery, mine, onMine, writable, onNew }: {
   mode: Mode; onMode: (mode: Mode) => void; query: string; onQuery: (query: string) => void;
@@ -127,16 +126,16 @@ function Toolbar({ mode, onMode, query, onQuery, mine, onMine, writable, onNew }
   };
   return (
     <div className="tb-bar">
-      {mode === 'board' ? (
-        <div className={`tb-search${query ? ' has-query' : ''}`}>
-          <Icon name="search" size={14} />
-          <span className="tb-search__l" aria-hidden="true">Search</span>
-          <label className="ui-vh" htmlFor={searchId}>Search tasks</label>
-          <input id={searchId} type="search" value={query} placeholder="Search tasks" autoComplete="off" maxLength={200}
-            onChange={(event) => onQuery(event.target.value)}
-            onKeyDown={(event) => { if (event.key === 'Escape' && query) { event.preventDefault(); event.stopPropagation(); onQuery(''); } }} />
-        </div>
-      ) : null}
+      <div className={`tb-search${query ? ' has-query' : ''}${mode === 'list' ? ' is-dimmed' : ''}`}>
+        <Icon name="search" size={14} />
+        <span className="tb-search__l" aria-hidden="true">Search</span>
+        <label className="ui-vh" htmlFor={searchId}>Search tasks</label>
+        <input id={searchId} type="search" value={query} placeholder="Search tasks" autoComplete="off" maxLength={200}
+          disabled={mode === 'list'} aria-describedby={mode === 'list' ? `${searchId}-note` : undefined}
+          onChange={(event) => onQuery(event.target.value)}
+          onKeyDown={(event) => { if (event.key === 'Escape' && query) { event.preventDefault(); event.stopPropagation(); onQuery(''); } }} />
+        {mode === 'list' ? <span className="ui-vh" id={`${searchId}-note`}>Search works on the board</span> : null}
+      </div>
       <div className="tb-bar__end">
         <div className="tb-mode" role="radiogroup" aria-label="Show tasks as" ref={radios} onKeyDown={onRadioKey}>
           {(['board', 'list'] as const).map((value) => (
@@ -146,9 +145,7 @@ function Toolbar({ mode, onMode, query, onQuery, mine, onMine, writable, onNew }
             </button>
           ))}
         </div>
-        {mode === 'board' ? (
-          <button type="button" className="tb-mine" aria-pressed={mine} onClick={() => onMine(!mine)}><Icon name="person" size={15} /><span>Mine</span></button>
-        ) : null}
+        <button type="button" className="tb-mine" aria-pressed={mine} onClick={() => onMine(!mine)}><Icon name="person" size={15} /><span>Mine</span></button>
         {writable ? <Button variant="primary" icon="plus" className="tb-add" onClick={onNew}><span className="ui-vh">New </span>Task</Button> : null}
       </div>
     </div>
@@ -420,7 +417,7 @@ export function ProjectTasks() {
               <button type="button" aria-pressed={mine} onClick={() => setView({ mine: true })}>Mine</button>
               <button type="button" aria-pressed={!mine} onClick={() => setView({ mine: false, status: null })}>All</button>
             </div>
-          ) : <TaskViews counts={counts} status={status} mine={mine} onStatus={(next) => setView({ status: next })} onMine={(next) => setView({ mine: next })} />}
+          ) : <TaskViews counts={counts} status={status} onStatus={(next) => setView({ status: next })} />}
           <WorkPagination noun="tasks" page={data} busy={read.phase !== 'ready' && read.phase !== 'unavailable'} onCursor={movePage} onRefresh={refresh} />
         </div>
         {read.phase === 'unavailable' ? <ErrorState title="Work could not be loaded" actions={<button type="button" className="ws-none__b" onClick={refresh}>Refresh work</button>}><p>Your private draft is kept. Refresh to read the current view.</p></ErrorState> : null}

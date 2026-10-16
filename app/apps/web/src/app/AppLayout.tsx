@@ -84,6 +84,7 @@ function AppLayoutContent() {
   // A page inside Settings (#266 PF-5): on the phone its header leads back instead of opening the drawer.
   const settingsPage = /^\/settings\/./.test(location.pathname);
   const navDrawer = useMediaQuery(MEDIA.navDrawer);
+  const tablet = useMediaQuery(MEDIA.tablet);
   const phone = useMediaQuery(MEDIA.phone);
   const panelMode = useSidePanelMode();
   const [navOpen, setNavOpen] = useState(false);
@@ -395,9 +396,11 @@ function AppLayoutContent() {
   const addViewItems: MoreItem[] = project && shownProjectViews && projectId && project.project.access !== 'viewer'
     ? addableViews(shownProjectViews).map((view) => ({ label: `Add ${VIEW_LABEL[view]}`, run: () => void addView(projectId, view) })) : [];
   const moreItems: MoreItem[] = [
-    ...('noDetails' in place ? [] : [{ label: 'Details', run: () => { setDetailsView('place'); toggleDetails(true); } }]),
+    ...('noDetails' in place ? [] : [{ label: activeProject ? 'Project details' : activeDm ? 'Message info' : 'Details', run: () => { setDetailsView('place'); toggleDetails(true); } }]),
     ...(activeProject && projectId ? [{ label: 'What matters', run: () => { setDetailsView({ kind: 'recap', projectId }); toggleDetails(true); } }] : []),
     ...addViewItems,
+    // With no room for the faces (a narrow header), "Who can see this" moves into More (Spokój rule 3).
+    ...(project?.people ? [{ label: 'Who can see this', run: openAudience, narrow: true }] : []),
     { label: focus.uncertain ? 'Check notification pause' : 'Focus', keys: 'F', checked: focusing, run: () => void focus.toggle() },
     { label: railed ? 'Show the sidebar' : 'Hide the sidebar', keys: '[', run: toggleRail },
   ];
@@ -426,7 +429,6 @@ function AppLayoutContent() {
   const mainPlace = ['/projects', '/inbox', '/search', '/dm', '/settings'].includes(location.pathname) || /^\/inbox\//.test(location.pathname);
   const homePage = /^\/(tasks|map|docs)(\/|$)/.test(location.pathname);
   const backOnly = settingsPage || location.pathname === '/projects/new' || dmId === 'new' || homePage;
-  const phoneDockVisible = phone && !detailsOpen && !phoneHidesDock(location.pathname);
   const phoneHeader = (
     <header className={`phead${mainPlace ? ' phead--large' : ''}`}>
       {backOnly ? (
@@ -441,7 +443,7 @@ function AppLayoutContent() {
       ) : activeDm && dmViews ? (
         <><PhoneBack onBack={() => goBack('/projects')} />
           <PhoneTitleMenu title={activeDm.title} items={dmViews.map((view) => ({ id: view.id, label: view.label, to: view.to, icon: view.id === 'messages' ? 'chat' as const : 'edit' as const, current: view.id === (/\/sketches/.test(location.pathname) ? 'sketches' : 'messages') }))}
-            onDetails={detailsEntry} detailsLabel="Details and people"
+            onDetails={detailsEntry} detailsLabel="Message info"
             subtitle={`${/\/sketches/.test(location.pathname) ? 'Sketches' : 'Messages'} · ${activeDm.audience}`} /></>
       ) : location.pathname === '/' ? (
         <div className="phead__id">
@@ -455,7 +457,7 @@ function AppLayoutContent() {
         <span className="top__actions" ref={setActionSlot} />
         {activeProject && /^\/projects\/[^/]+\/conversations\//.test(location.pathname) ? <ProjectAgentStop projectId={activeProject.id} /> : null}
         {activeProject ? <LiveEntry /> : null}
-        {(activeProject || activeDm) && !phoneDockVisible ? searchButton : null}
+        {activeProject || activeDm ? searchButton : null}
         {!backOnly && !activeProject && !activeDm && location.pathname !== '/settings' ? <PhoneAvatar name={me.user.name} /> : null}
       </div>
     </header>
@@ -465,15 +467,21 @@ function AppLayoutContent() {
     <ShellContext.Provider value={shell}>
     {/* One live session per tab, above the routes, so navigation keeps it (#62). */}
     <LiveProvider meId={me.user.id}>
-    <div className={`app${phone && !phoneHidesDock(location.pathname) && phoneOffersCreate(location.pathname) ? ' app--fab' : ''}`} ref={appRef}>
+    <div className={`app${phone && !detailsOpen && phoneOffersCreate(location.pathname) ? ' app--fab' : ''}`} ref={appRef}>
       <a className="ui-skip" href="#content">Skip to content</a>
       {phone ? null : navDrawer ? (
         <Drawer open={navOpen && navDrawer} onClose={() => setNavOpen(false)} labelledBy={drawerTitleId} id="nav-drawer" className="nav-drawer">
           <Sidebar {...sidebarProps} onClose={() => setNavOpen(false)} titleId={drawerTitleId} />
         </Drawer>
       ) : (
-        <aside className={`app__side${railed || focusing ? ' app__side--rail' : ''}`} aria-label="Sidebar"><Sidebar {...sidebarProps} collapsed={railed || focusing} onToggleCollapsed={focusing ? () => void focus.toggle() : toggleRail} /></aside>
+        // Tablet (Spokój): the sidebar is the 64 px rail; its expand control opens the same sidebar as a drawer.
+        <aside className={`app__side${railed || focusing || tablet ? ' app__side--rail' : ''}`} aria-label="Sidebar"><Sidebar {...sidebarProps} collapsed={railed || focusing || tablet} onToggleCollapsed={focusing ? () => void focus.toggle() : tablet ? () => setNavOpen(true) : toggleRail} /></aside>
       )}
+      {!phone && !navDrawer && tablet ? (
+        <Drawer open={navOpen} onClose={() => setNavOpen(false)} labelledBy={drawerTitleId} id="nav-drawer" className="nav-drawer">
+          <Sidebar {...sidebarProps} onClose={() => setNavOpen(false)} titleId={drawerTitleId} />
+        </Drawer>
+      ) : null}
 
       <div className="app__main">
         {phone ? phoneHeader : (
@@ -505,22 +513,25 @@ function AppLayoutContent() {
         )}
         <RouteProgress />
         <LiveBar />
-        <div className="app__pane" id="content" ref={paneRef} tabIndex={-1}>
-          <Outlet />
-          <DeferredLiveStage />
+        {/* The conversation and its one panel share a row under the one header (Spokój, F-026 layout per screen). */}
+        <div className="app__body">
+          <div className="app__pane" id="content" ref={paneRef} tabIndex={-1}>
+            <Outlet />
+            <DeferredLiveStage />
+          </div>
+          <SidePanel open={detailsOpen} onClose={() => toggleDetails(false)} title={recapOpen ? 'What matters' : 'Details'} chip={objectChip} id="details"
+            context={phone && (detailsView === 'place' || typeof detailsView === 'object' && detailsView.kind === 'overview') ? <OverviewContext /> : undefined}>
+            <DeferredDetails view={detailsView} workspace={workspace} placeTitle={place.title} dm={activeDm ? { id: activeDm.id, kind: activeDm.kind, title: activeDm.title, me: me.user.name, people: activeDm.people, audience: activeDm.audience } : null} onBack={() => setDetailsView('place')} onClose={() => toggleDetails(false)} />
+          </SidePanel>
         </div>
-        {phoneDockVisible ? (
-          <PhoneDock places={places} onSearch={shell.openSearch} onCreate={() => setCreateOpen(true)} create={phoneOffersCreate(location.pathname)} />
+        {phone && !detailsOpen && (!phoneHidesDock(location.pathname) || phoneOffersCreate(location.pathname)) ? (
+          <PhoneDock places={places} onSearch={shell.openSearch} onCreate={() => setCreateOpen(true)} create={phoneOffersCreate(location.pathname)} capsule={!phoneHidesDock(location.pathname)} />
         ) : null}
       </div>
 
       {phone ? <PhoneCreate open={createOpen} onClose={() => setCreateOpen(false)} projects={projects} projectId={projectId} go={(to) => void navigate(to)} onThought={() => startCapture(navigate)} /> : null}
       <CreateHost request={create} onClose={() => setCreate(null)} />
       <DeferredJumpTo open={jumpOpen} onClose={() => setJumpOpen(false)} userId={me.user.id} />
-      <SidePanel open={detailsOpen} onClose={() => toggleDetails(false)} title={recapOpen ? 'What matters' : 'Details'} chip={objectChip} id="details"
-        context={phone && (detailsView === 'place' || typeof detailsView === 'object' && detailsView.kind === 'overview') ? <OverviewContext /> : undefined}>
-        <DeferredDetails view={detailsView} workspace={workspace} placeTitle={place.title} dm={activeDm ? { id: activeDm.id, kind: activeDm.kind, title: activeDm.title, me: me.user.name, people: activeDm.people, audience: activeDm.audience } : null} onBack={() => setDetailsView('place')} onClose={() => toggleDetails(false)} />
-      </SidePanel>
     </div>
     </LiveProvider>
     </ShellContext.Provider>

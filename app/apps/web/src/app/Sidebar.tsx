@@ -73,16 +73,17 @@ export function Sidebar({ projects, directMessages, user, session, onClose, titl
   if (collapsed && !onClose) {
     return (
       <div className="side side--rail">
+        {/* The toggle leads the rail, as the collapse control leads the expanded sidebar's top row (S1). */}
+        <IconButton icon="sidebar" label="Expand sidebar" aria-keyshortcuts="[" className="side__toggle" onClick={onToggleCollapsed} />
         <span className="side__glyph" role="img" aria-label="Flux" id={titleId}><FluxLogo size={28} /></span>
         <NewMenu compact onNew={onNew} />
         <nav className="side__rail-places" aria-label="Places">
+          <button type="button" className="side__ib" aria-label="Search" aria-keyshortcuts={searchKeys} onClick={openSearch}><Icon name="search" size={18} /></button>
           <Link to="/" className="side__ib" aria-label="Home" aria-current={home ? 'page' : undefined}><Icon name="home" size={18} /></Link>
           <Link to="/inbox" className="side__ib" aria-label={inboxUnread ? `Inbox, ${inboxUnread} new` : 'Inbox'} aria-current={inbox ? 'page' : undefined}>
             <Icon name="inbox" size={18} />{inboxUnread ? <span className="side__count side__count--rail" aria-hidden="true">{inboxUnread}</span> : null}
           </Link>
           <Link to="/map" className="side__ib" aria-label="Sketchbook" title="Only you can see your sketchbook" aria-current={sketchbook ? 'page' : undefined}><Icon name="edit" size={18} /></Link>
-          <Link to="/dm" className="side__ib" aria-label="Messages" aria-current={location.pathname === '/dm' ? 'page' : undefined}><Icon name="chat" size={18} /></Link>
-          <button type="button" className="side__ib" aria-label="Search" aria-keyshortcuts={searchKeys} onClick={openSearch}><Icon name="search" size={18} /></button>
         </nav>
         <div className="side__rail-scroll">
         <nav className="side__rail-projects" aria-label="Projects">
@@ -93,6 +94,7 @@ export function Sidebar({ projects, directMessages, user, session, onClose, titl
           ))}
         </nav>
         <nav className="side__rail-dms" aria-label="Private conversations">
+          <Link to="/dm" className="side__ib" aria-label="Messages" aria-current={location.pathname === '/dm' ? 'page' : undefined}><Icon name="chat" size={18} /></Link>
           {directMessages.map((dm) => (
             <NavLink key={dm.id} to={`/dm/${dm.id}`} end={false} className="side__rail-dm"
               aria-label={dm.hasNew ? `${dm.title}, new messages` : dm.title} title={`${dm.title} · ${dm.audience}`}>
@@ -104,7 +106,6 @@ export function Sidebar({ projects, directMessages, user, session, onClose, titl
         </div>
         <WorkingAgent compact />
         <UserMenu compact name={user.name} email={user.email} sessionExpiresAt={session.expiresAt} />
-        <IconButton icon="sidebar" label="Expand sidebar" aria-keyshortcuts="[" className="side__toggle" onClick={onToggleCollapsed} />
       </div>
     );
   }

@@ -12,6 +12,9 @@
   box-shadow: inset 0 -1px 0 var(--line2); transition: box-shadow var(--dur-1) ease, color var(--dur-1) ease;
 }
 .tb-search:focus-within { box-shadow: inset 0 -2px 0 var(--t1); color: var(--t2); }
+/* The List has no search of its own: dimmed in place, so the toolbar keeps its controls where they are (rule 7). */
+.tb-search.is-dimmed { opacity: .45; box-shadow: none; }
+.tb-search input:disabled { cursor: default; }
 .tb-search input { flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; background: none; font-size: var(--fs-md); color: var(--t1); outline: none; }
 .tb-search input::placeholder { color: var(--t3); }
 .tb-bar__end { display: contents; }

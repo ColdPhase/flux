@@ -83,7 +83,7 @@
   --header-h: 56px;  /* page and project headers */
   --side-w: 248px;
   --rail-w: 64px;
-  --panel-w: 408px;
+  --panel-w: 420px;  /* Spokój: computer 1440 */
   --col: 790px;      /* reading column */
 
   /* Motion. Only colour, opacity and transform animate. Pressing scales to .97 and springs back in
@@ -146,7 +146,7 @@
   --agent-indigo: #abbcef; --agent-plum: #d4afdc; --agent-rose: #e9aab3;
 }
 
-@media (max-width: 1200px) { :root { --space-page: 26px; --panel-w: 375px; } }
+@media (max-width: 1200px) { :root { --space-page: 26px; --panel-w: 380px; } }
 @media (max-width: 1000px) { :root { --space-page: 22px; } }
 @media (max-width: 760px) { :root { --space-page: 18px; --sheet-inset: 8px; } }
 /* The phone: larger small and body text (S17). */
@@ -162,7 +162,9 @@
   :root[data-text-size="small"] { font-size: 93.75%; }
   :root[data-text-size="large"] { font-size: 112.5%; }
 }
-@media (min-width: 1600px) { :root { --space-page: 44px; --panel-w: 430px; } }
+@media (min-width: 1600px) { :root { --space-page: 44px; } }
+/* Spokój: large screens keep the panel at 480 px; the extra width is margin, never a third column. */
+@media (min-width: 1920px) { :root { --panel-w: 480px; } }
 
 @media (pointer: coarse) {
   :root { --ctl: 44px; --ctl-lg: 44px; }

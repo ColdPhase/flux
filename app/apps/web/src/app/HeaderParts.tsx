@@ -46,7 +46,8 @@ export function FocusPill({ until, onEnd, uncertain = false }: { until: Date; on
   );
 }
 
-export interface MoreItem { label: string; run: () => void; keys?: string; checked?: boolean }
+/** `narrow`: offered here only when the header has no room for the faces (Spokój rule 3). */
+export interface MoreItem { label: string; run: () => void; keys?: string; checked?: boolean; narrow?: boolean }
 
 /** More (⋯): the place's quieter actions, each with its key shown (F-026 §4, S18). */
 export function MoreMenu({ items, label = 'More', icon = 'more' }: { items: MoreItem[]; label?: string; icon?: 'more' | 'plus' }) {
@@ -80,7 +81,7 @@ export function MoreMenu({ items, label = 'More', icon = 'more' }: { items: More
         <div ref={menu} id={id} className="newmenu__menu top__more-menu" role="menu" aria-label={label} onKeyDown={onKeyDown}>
           {items.map((item) => (
             <button key={item.label} type="button" role={item.checked === undefined ? 'menuitem' : 'menuitemcheckbox'} aria-checked={item.checked}
-              className="newmenu__item" aria-keyshortcuts={item.keys} onClick={() => { button.current?.focus(); setOpen(false); item.run(); }}>
+              className={`newmenu__item${item.narrow ? ' top__more-narrow' : ''}`} aria-keyshortcuts={item.keys} onClick={() => { button.current?.focus(); setOpen(false); item.run(); }}>
               <span>{item.label}</span>{item.keys ? <kbd aria-hidden="true">{item.keys}</kbd> : null}
             </button>
           ))}

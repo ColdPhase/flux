@@ -573,13 +573,13 @@ class TasksBoardJourney(unittest.TestCase):
 
     def test_10_tablet_and_laptop_use_their_width(self) -> None:
         page = self.board("ada", viewport=TABLET, touch=True)
-        expect(page.get_by_role("navigation", name="Task status")).to_be_visible()
+        # Spokój layout per screen: the tablet's sidebar is the rail, so the board has room for its columns side by side
+        # and needs no status overview.
+        expect(page.get_by_role("navigation", name="Task status")).to_have_count(0)
         doing = self.column(page, "In progress")
         expect(doing.locator(".tb-card")).to_have_count(4)
-        first, second = doing.locator(".tb-card").nth(0).bounding_box(), doing.locator(".tb-card").nth(1).bounding_box()
-        assert first and second
-        self.assertLess(abs(first["y"] - second["y"]), 2, "the wider column shows two cards side by side")
-        self.assertGreater(second["x"], first["x"] + first["width"] - 1)
+        for name in ("In progress", "Open", "Done"):
+            expect(self.column(page, name)).to_be_visible()
         self.no_sideways_scroll(page, TABLET["width"], "tablet")
         shot(page, "tasks-board-820-light")
         # On a narrow board an overview names every status and one column shows at a time; "Move to…" works by touch.

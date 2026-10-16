@@ -279,7 +279,7 @@ function DmContent({ initial }: { initial: Dm }) {
   if (gone) return <DmUnavailable />;
   const canSend = composer.canSend && !recipientGone;
   const selectButton = actionSlot && messages.length && !recipientGone ? createPortal(
-    <Button ref={selectButtonRef} variant="quiet" icon="check" aria-pressed={selecting} className="dm-select-btn" onClick={() => toggleSelecting(!selecting)}>Select</Button>,
+    <Button ref={selectButtonRef} variant="quiet" icon="check" aria-pressed={selecting} className="dm-select-btn" onClick={() => toggleSelecting(!selecting)}>Choose messages</Button>,
     actionSlot,
   ) : null;
   // Stored messages, then the ones being sent, grouped by day and author as one list.

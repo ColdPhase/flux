@@ -340,8 +340,9 @@ class TasksFinalJourney(unittest.TestCase):
         for dark in (False, True):
             with self.subTest(dark=dark):
                 page = self.tasks(phone=True, dark=dark)
-                expect(page.locator(".phone-dock__search")).to_have_count(1)
-                expect(page.get_by_role("button", name="Search", exact=True)).to_have_count(1)
+                # Spokój (#507): no capsule in a project's views; Search is the header's round control.
+                expect(page.locator(".phone-dock__search")).to_have_count(0)
+                expect(page.locator("header").get_by_role("button", name="Search", exact=True)).to_have_count(1)
                 expect(page.locator(".tb-bar")).to_be_hidden()  # no search, board switch, Decisions or New Task tools
                 expect(page.get_by_role("radiogroup", name="Show tasks as")).to_be_hidden()
                 expect(page.get_by_label("Search tasks")).to_be_hidden()
@@ -510,7 +511,8 @@ class TasksFinalJourney(unittest.TestCase):
                     self.assertEqual(self.task(page, 'labels')['version'], stored['version'])
                     page.locator('.ui-toast__close').tap()
                     expect(page.locator('.ui-toast')).to_have_count(0)
-                    page.get_by_role('navigation', name='Main places').get_by_role('link', name='Home', exact=True).tap()
+                    # Spokój (#507): a project's views have no capsule; Home is one navigation away.
+                    page.goto(f"{ORIGIN}/")
                     expect(page.get_by_role('heading', level=1, name='Home')).to_be_visible()
 
     def test_12_desktop_feedback_keeps_the_final_task_title_readable(self) -> None:
@@ -643,14 +645,14 @@ class TasksFinalJourney(unittest.TestCase):
         page.wait_for_function("() => document.getAnimations().every(a => a.playState !== 'running' || a.effect?.getComputedTiming().endTime === Infinity)")
         page.wait_for_function("""() => {
             const toast = document.querySelector('.ui-toast');
-            const nav = document.querySelector('.ui-bottomnav');
+            const nav = document.querySelector('.ui-bottomnav') ?? document.querySelector('.phone-fab');
             return toast && nav && getComputedStyle(toast).transform === 'none'
                 && toast.getAnimations().every(a => a.playState !== 'running')
                 && toast.getBoundingClientRect().bottom <= nav.getBoundingClientRect().top - 8;
         }""")
         observed = page.evaluate("""() => {
             const toast = document.querySelector('.ui-toast');
-            const nav = document.querySelector('.ui-bottomnav');
+            const nav = document.querySelector('.ui-bottomnav') ?? document.querySelector('.phone-fab');
             const fab = document.querySelector('.phone-fab');
             const t = toast.getBoundingClientRect(), n = nav.getBoundingClientRect();
             const f = fab?.getBoundingClientRect() ?? null;

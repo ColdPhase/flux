@@ -194,6 +194,8 @@ export function useMediaQuery(query: string): boolean {
 export const MEDIA = {
   navDrawer: '(max-width: 680px)',
   panelOverlay: '(max-width: 1000px)',
+  /** Tablet (Spokój, layout per screen): the sidebar is the 64 px rail and its expand control opens the drawer. */
+  tablet: '(max-width: 900px)',
   phone: '(max-width: 640px)',
   /** Touch-first devices: Enter adds a line in composers and the send button sends (#189). */
   touch: '(hover: none)',

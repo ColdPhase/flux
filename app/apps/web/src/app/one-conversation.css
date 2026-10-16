@@ -36,6 +36,8 @@
 /* One panel look (F-026 S4): beside the stream a raised card like the detail panel; over it a sheet with a grabber and two heights. */
 .thread--docked { margin: 10px 10px 10px 0; background: var(--el); border: 0; border-radius: var(--r-panel); box-shadow: var(--sh-pop); overflow: hidden; }
 .ui-detent-sheet.thread { background: var(--el); }
+/* A tablet's thread sheet keeps its reading measure inside the wider pane (adaptive-layout-rules, Spokój rail). */
+@media (min-width: 681px) and (max-width: 900px) { .thread--sheet { padding-inline: 56px; } }
 .ui-detent-sheet.thread .thread__head { border-bottom: 0; }
 @media (prefers-reduced-motion: no-preference) {
   .ui-detent-sheet.thread { animation: thread-in var(--dur-3) var(--ease-sheet) both; }

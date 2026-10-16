@@ -196,7 +196,7 @@ svg { flex: none; }
   box-shadow: var(--sh-pop); outline: none;
 }
 .ui-overlay--left .ui-overlay__surface { left: 0; top: 0; bottom: 0; width: min(288px, 100%); }
-.ui-overlay--right .ui-overlay__surface { right: 0; top: 0; bottom: 0; width: min(420px, 100%); }
+.ui-overlay--right .ui-overlay__surface { right: 0; top: 0; bottom: 0; width: min(var(--panel-w), 100%); }
 .ui-overlay--bottom .ui-overlay__surface { inset: 0; box-shadow: none; }
 .ui-overlay--right .ui-overlay__surface { border-radius: var(--r-panel) 0 0 var(--r-panel); }
 .ui-drawer { background: var(--side); }
@@ -264,7 +264,7 @@ svg { flex: none; }
 /* The phone Create control floats above the dock. Keep action feedback above it too, so its
    persistent Undo toast cannot intercept Create while both are visible. */
 body:has(.phone-fab) .ui-toasts {
-  --toast-bottom: max(20px, calc(env(safe-area-inset-bottom) + 12px), calc(var(--ui-bottomnav-inset, 0px) + 74px));
+  --toast-bottom: max(20px, calc(env(safe-area-inset-bottom) + 12px), calc(var(--ui-bottomnav-inset, 0px) + 82px));
 }
 .ui-toast {
   display: flex; align-items: center; gap: 10px; min-height: 44px; max-width: 100%; padding: 4px 6px 4px 16px; border-radius: var(--r-pill);
