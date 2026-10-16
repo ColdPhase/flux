@@ -1,6 +1,6 @@
 """Persisted native state agrees across Details, the phone's state row and Tasks (#136).
 
-On the computer the project's current state is in Details ("Now in this project"): its header is one
+On the computer the project's current state is in Details ("Now"): its header is one
 row without a state line (F-026 §4, #340). The phone keeps its state row until its own header (#341).
 
 Actual authenticated browser/API data; viewport captures are emulation, not device acceptance.
@@ -90,9 +90,9 @@ class ProjectStateJourney(unittest.TestCase):
         return owner, project
 
     def now_in_project(self, page):
-        """The computer's current state: Details, then "Now in this project"."""
+        """The computer's current state: Details, then "Now"."""
         open_details(page)
-        return page.locator("#details").get_by_role("region", name="Now in this project")
+        return page.locator("#details").get_by_role("region", name="Now", exact=True)
 
     def faces(self, page):
         return page.locator("header.top").get_by_role("button", name=re.compile("who can see this project$"))
@@ -109,7 +109,7 @@ class ProjectStateJourney(unittest.TestCase):
         task = self.work(page, project, "Prepare the ToF sensor experiment for the library")
         page.reload()
         now = self.now_in_project(page)
-        row = now.get_by_role("button", name=re.compile("^Open task.*" + re.escape(task["title"])))
+        row = now.get_by_role("button", name=re.compile("^Open: " + re.escape(task["title"])))
         expect(row).to_be_visible()
         shot(page, "136-state-single-open-desktop")
         row.click()
@@ -124,13 +124,13 @@ class ProjectStateJourney(unittest.TestCase):
         page, project = self.scene()
         task = self.work(page, project, "Measure low-light gesture reliability")
         page.goto(f"/projects/{project['id']}")
-        expect(self.now_in_project(page).get_by_role("button", name=re.compile("^Open task"))).to_be_visible()
+        expect(self.now_in_project(page).get_by_role("button", name=re.compile("^Open: "))).to_be_visible()
         task = self.call(page, "PATCH", f"/api/v1/work/{task['id']}", {"status": "blocked", "blocker": "Waiting for the sensor delivery"},
             headers={"if-match": f'"{task["version"]}"'})
         page.reload()
         now = self.now_in_project(page)
         expect(now.get_by_role("button", name=re.compile("^Blocked.*" + re.escape(task["title"])))).to_be_visible()
-        expect(now.get_by_role("button", name=re.compile("^Open task"))).to_have_count(0)
+        expect(now.get_by_role("button", name=re.compile("^Open: "))).to_have_count(0)
         self.call(page, "PATCH", f"/api/v1/work/{task['id']}", {"status": "done", "blocker": None},
             headers={"if-match": f'"{task["version"]}"'})
         page.reload()
@@ -200,15 +200,14 @@ class ProjectStateJourney(unittest.TestCase):
                     expect(page.locator(".ws-state-row")).to_have_count(0)
                     open_details(page, tap=True)
                     panel = page.get_by_role("dialog", name="Details")
-                    expect(panel.get_by_role("region", name="Now in this project")).to_contain_text("Open")
-                    expect(panel.get_by_role("region", name="Sketches")).to_contain_text("to browse saved sketches")
-                    expect(panel.get_by_role("region", name="Docs")).to_contain_text("to read saved documents")
+                    expect(panel.get_by_role("region", name="Now", exact=True)).to_contain_text("Open")
+                    expect(panel.get_by_role("region", name="In this project").get_by_role("link")).to_have_text([re.compile("^Map"), re.compile("^Wiki"), re.compile("^Tasks")])
                     shot(page, f"136-state-overview-{width}")
                     panel.get_by_role("button", name=re.compile("Open.*Keep a manual switch available")).click()
                     expect(panel.get_by_role("heading", name="Keep a manual switch available", exact=True)).to_be_visible()
                     panel.get_by_role("button", name="Close details", exact=True).click()
                 else:
-                    expect(self.now_in_project(page).get_by_role("button", name=re.compile("^Open task"))).to_be_visible()
+                    expect(self.now_in_project(page).get_by_role("button", name=re.compile("^Open: "))).to_be_visible()
                     page.get_by_role("button", name="Close details", exact=True).click()
                     expect(page.get_by_role("link", name="New conversation", exact=True)).to_have_count(0)
                 self.assertLessEqual(page.locator("body").evaluate("el => el.scrollWidth"), width)
@@ -319,7 +318,8 @@ class ProjectStateJourney(unittest.TestCase):
                 expect(result_row).to_contain_text("Negative result")
                 for row in (rule_row, result_row):
                     row.scroll_into_view_if_needed()
-                    self.assert_text_is_unclipped(row.locator(".ov-row__t"))
+                    # The rule is a small card (#512), the result a row.
+                    self.assert_text_is_unclipped(row.locator(".ov-rule__t, .ov-row__t"))
                     # Any additional state metadata must remain readable; the semantic checks
                     # do not require repeating a title that the row already communicates.
                     if row.locator(".ov-row__s").count():
@@ -381,7 +381,7 @@ class ProjectStateJourney(unittest.TestCase):
                     shot(page, f"136-state-blocked-{width}-text-{int(scale * 100)}-{'writer' if who == 'Ada State' else 'reader'}")
                     open_details(page, tap=True)
                     panel = page.get_by_role("dialog", name="Details")
-                    expect(panel.get_by_role("region", name="Now in this project")).to_contain_text("Blocked")
+                    expect(panel.get_by_role("region", name="Now", exact=True)).to_contain_text("Blocked")
                     panel.get_by_role("button", name=re.compile("Blocked.*Wait for the calibration sensor")).click()
                     expect(panel.get_by_role("heading", name=blocked["title"], exact=True)).to_be_visible()
                     self.assertEqual(self.call(page, "GET", f"/api/v1/work/{blocked['id']}")["status"], "blocked")

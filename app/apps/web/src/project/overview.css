@@ -29,3 +29,25 @@
 @media (pointer: coarse) {
   .ov-row { min-height: 44px; }
 }
+/* The project's own Details (#512): its head, then Now, In this project, People and Connected, one look. */
+.ov-head { display: flex; align-items: center; gap: 12px; margin: 2px 0 4px; }
+.ov-head__b { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.ov-head .details__title { margin: 0; overflow-wrap: anywhere; }
+.ov-head .ov-audience { margin: 0; overflow-wrap: anywhere; }
+.ov-tile { flex: none; display: grid; place-items: center; width: 40px; height: 40px; border-radius: var(--r); background: var(--sub); color: var(--t1); font-size: var(--fs-lg); font-weight: 600; }
+.ov--project .details__sec h4 { margin-bottom: 6px; font-size: var(--fs-md); font-weight: 600; color: var(--t1); }
+.ov--project .ov-row { align-items: center; }
+.ov--project .ov-row__ic { margin-top: 0; }
+.ov-row__n { flex: none; align-self: center; font-size: var(--fs-sm); color: var(--t3); font-variant-numeric: tabular-nums; }
+/* Now: a task is one line with its state glyph and number; the current rule is one small card. */
+.ov-lines li + li { border-top: 0; }
+.ov-line { display: flex; align-items: center; gap: 10px; width: calc(100% + 16px); min-height: 36px; margin: 0 -8px; padding: 6px 8px; border-radius: var(--r); color: var(--t1); text-align: left; transition: var(--tr); }
+.ov-line:hover { background: var(--hov); }
+.ov-line__g { flex: none; color: var(--t2); }
+.ov-line__t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-md); line-height: 1.4; }
+.ov-line__n { flex: none; min-width: 2ch; text-align: right; font-size: var(--fs-sm); color: var(--t3); font-variant-numeric: tabular-nums; }
+.ov-rule { display: block; width: 100%; margin-top: 10px; padding: 10px 12px; border-radius: var(--r-lg); background: var(--sub); box-shadow: inset 0 0 0 1px var(--line); text-align: left; transition: var(--tr); }
+.ov-rule:hover { background: var(--hov); }
+.ov-rule__k { display: flex; align-items: center; gap: 6px; font-size: var(--fs-xs); color: var(--t3); }
+.ov-rule__t { display: block; margin-top: 4px; font-size: var(--fs-md); color: var(--t1); line-height: 1.45; overflow-wrap: anywhere; }
+@media (pointer: coarse) { .ov-line { min-height: 44px; } }

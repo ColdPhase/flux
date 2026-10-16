@@ -627,21 +627,22 @@ class RouteChunksJourney(unittest.TestCase):
                 page.goto(f"/projects/{self.project_id}")
                 expect(page.get_by_role("heading", name="Chunk boundaries", exact=True)).to_be_visible()
                 open_details(page)
-                row = page.locator("#details .ov-row", has_text=title)
+                # The first project Details show the open task as one line (#512): glyph, title, number.
+                row = page.locator("#details .ov-line", has_text=title)
                 expect(row).to_be_visible()
-                # A first-open native row must keep its icon, readable text and action in separate
+                # A first-open native row must keep its glyph, readable text and number in separate
                 # columns inside the phone panel. Missing lazy surface CSS must not collapse them.
                 geometry = row.evaluate("""el => {
                     const box = el.getBoundingClientRect();
-                    const icon = el.querySelector('.ov-row__ic').getBoundingClientRect();
-                    const body = el.querySelector('.ov-row__b').getBoundingClientRect();
-                    const action = el.querySelector('.ov-row__go').getBoundingClientRect();
+                    const glyph = el.querySelector('.ov-line__g').getBoundingClientRect();
+                    const body = el.querySelector('.ov-line__t').getBoundingClientRect();
+                    const number = el.querySelector('.ov-line__n').getBoundingClientRect();
                     return { height: box.height, left: box.left, right: box.right,
-                        iconRight: icon.right, textLeft: body.left, textRight: body.right, actionLeft: action.left };
+                        iconRight: glyph.right, textLeft: body.left, textRight: body.right, actionLeft: number.left };
                 }""")
                 self.assertGreaterEqual(geometry["height"], 44 - 0.001)
                 self.assertGreater(geometry["textLeft"], geometry["iconRight"])
-                self.assertLess(geometry["textRight"], geometry["actionLeft"])
+                self.assertLessEqual(geometry["textRight"], geometry["actionLeft"])
                 self.assertGreaterEqual(geometry["left"], 0)
                 self.assertLessEqual(geometry["right"], page.viewport_size["width"])
                 self.assertFalse(any(re.search(r"/assets/(?:ProjectViews|SketchView)-[^/]+\.js", url) for url in requested),

@@ -203,7 +203,7 @@ class NewProject(unittest.TestCase):
         page.get_by_role("button", name="Create project").tap()
         expect(page).to_have_url(re.compile(r"/projects/[0-9a-f-]{36}\?new=1"))
         pid = re.search(r"/projects/([0-9a-f-]{36})", page.url).group(1)
-        # Close "Who can see this", which a new project opens.
+        # Close "People", which a new project opens.
         page.goto(f"/projects/{pid}")
         # On the phone the views live in the title's menu (#341); a view not added yet is an "Add …" row there.
         title = page.get_by_role("heading", level=1).get_by_role("button")

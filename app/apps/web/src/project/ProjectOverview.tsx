@@ -1,19 +1,21 @@
 import { Fragment, useCallback, useEffect, useState, type ReactNode } from 'react';
 import { Link } from 'react-router';
-import type { DecisionRowProjection, NamedPrincipal, NativeWorkRow, WorkRowProjection, ResultRowProjection } from '@flux/contracts';
-import { AgentIdentity, Icon, MEDIA, useMediaQuery, type IconName } from '../ui';
+import type { DecisionRowProjection, NamedPrincipal, NativeWorkRow, WorkReadRef, WorkRowProjection, WorkStatus, ResultRowProjection } from '@flux/contracts';
+import { AgentIdentity, Icon, MEDIA, StatusGlyph, TASK_STATE_WORD, useMediaQuery, type IconName } from '../ui';
 import { useShellData } from '../app/data';
 import { useShellActions, type DetailsView, type OverviewView } from '../app/shellContext';
 import { STATUS_LABEL, decisionLine } from '../work/format';
 import { summaryStateParts } from '../work/state-summary';
 import { useProjectWorkSummary } from '../work/WorkReadContext';
 import { useOverviewWork } from '../work/useOverviewWork';
+import { getWorkReferenceRows } from '../work/read-api';
+import { useWorkRead } from '../work/useWorkRead';
 import { WorkPagination } from '../work/WorkPagination';
 import { audienceLine, useProjectShell } from './data';
 import { ProjectAccess } from '../people/ProjectAccess';
 import { docUrl } from '../docs/api';
 import { useOpenConversation } from './OverviewContext';
-import { agentDisplayName } from '../docs/format';
+import { agentDisplayName, shortDate } from '../docs/format';
 import { agentAuthorOwner, useAgentOwners } from '../agents/owners';
 import './overview.css';
 
@@ -23,6 +25,8 @@ interface Row {
   kind: string;
   title: string;
   sub?: ReactNode;
+  /** A short count or word at the row's right, before the chevron. */
+  end?: string;
   need?: boolean;
   open?: DetailsView;
   to?: string;
@@ -32,6 +36,33 @@ interface Row {
 /** Sub-line parts joined with " · "; an agent's identity (Kreska, "Agent", "for <owner>") stays one part. */
 function dotted(parts: ReactNode[]): ReactNode {
   return parts.filter(Boolean).map((part, index) => <Fragment key={index}>{index ? ' · ' : null}{part}</Fragment>);
+}
+
+/** A single page of objects has no pager (#512, AC-6); while the page is unread the pager keeps its own loading state. */
+const multiPage = (page: { previousCursor: string | null; nextCursor: string | null } | null) => !page || !!page.previousCursor || !!page.nextCursor;
+
+/** One row: its kind, title and sub-line, a count at the right, and where it goes. */
+function RowItems({ rows }: { rows: Row[] }) {
+  const { openDetails } = useShellActions();
+  return (
+    <ul className="ov-rows">
+      {rows.map((row) => {
+        const body = <>
+          <Icon name={row.icon} size={16} className="ov-row__ic" />
+          <span className="ov-row__b">
+            {row.kind ? <span className="ov-row__k">{row.kind}</span> : null}
+            <span className="ov-row__t">{row.title}</span>
+            {row.sub ? <span className={`ov-row__s${row.need ? ' ws-need' : ''}`}>{row.sub}</span> : null}
+          </span>
+          {row.end ? <span className="ov-row__n">{row.end}</span> : null}
+          <Icon name="chevron-right" size={16} className="ov-row__go" />
+        </>;
+        return <li key={row.key}>{row.to
+          ? <Link className="ov-row" to={row.to}>{body}</Link>
+          : <button type="button" className="ov-row" data-work-kind={row.native?.kind} data-work-id={row.native?.id} onClick={() => openDetails(row.open)}>{body}</button>}</li>;
+      })}
+    </ul>
+  );
 }
 
 function Rows({ label, rows, empty, controls }: { label: string; rows: Row[]; empty?: ReactNode; controls?: ReactNode }) {
@@ -60,10 +91,11 @@ function Rows({ label, rows, empty, controls }: { label: string; rows: Row[]; em
             const body = <>
               <Icon name={row.icon} size={16} className="ov-row__ic" />
               <span className="ov-row__b">
-                <span className="ov-row__k">{row.kind}</span>
+                {row.kind ? <span className="ov-row__k">{row.kind}</span> : null}
                 <span className="ov-row__t">{row.title}</span>
                 {row.sub ? <span className={`ov-row__s${row.need ? ' ws-need' : ''}`}>{row.sub}</span> : null}
               </span>
+              {row.end ? <span className="ov-row__n">{row.end}</span> : null}
               <Icon name="chevron-right" size={16} className="ov-row__go" />
             </>;
             return <li key={row.key}>{row.to
@@ -77,6 +109,48 @@ function Rows({ label, rows, empty, controls }: { label: string; rows: Row[]; em
   );
 }
 
+/** The task rows and the rule of the project's "Now" (#512, AC-3): each object once, in one line or one small card. */
+interface NowTask { key: string; id: string; status: WorkStatus; title: string }
+
+function NowSection({ projectId, tasks, rule, others }: { projectId: string; tasks: NowTask[]; rule: WorkReadRef | null; others: Row[] }) {
+  const { me } = useShellData();
+  const { openDetails } = useShellActions();
+  // The task's number and the rule's date are read for exactly these objects; the rows show at once.
+  const refs = [...tasks.map((task) => `work:${task.id}`), ...(rule ? [`decision:${rule.id}`] : [])].sort().join(',');
+  const scope = refs ? { accountId: me.user.id, projectId, selector: `now:${refs}` } : null;
+  const load = useCallback((signal: AbortSignal) => getWorkReferenceRows(projectId, refs, signal), [projectId, refs]);
+  const read = useWorkRead(scope, load);
+  const items = read.phase === 'ready' || read.phase === 'refreshing' ? read.value.items : [];
+  const numberOf = (id: string) => { const row = items.find((item) => item.kind === 'work' && item.id === id); return row?.kind === 'work' ? `#${row.number}` : ''; };
+  const accepted = rule ? items.find((item): item is DecisionRowProjection => item.kind === 'decision' && item.id === rule.id)?.decidedAt ?? null : null;
+  if (!tasks.length && !rule && !others.length) return null;
+  return (
+    <section className="details__sec ov-sec" aria-labelledby="ov-now">
+      <h4 id="ov-now">Now</h4>
+      {tasks.length ? (
+        <ul className="ov-rows ov-lines">
+          {tasks.map((task) => (
+            <li key={task.key}>
+              <button type="button" className="ov-line" onClick={() => openDetails({ kind: 'work', id: task.id })}>
+                <StatusGlyph status={task.status} size={16} className="ov-line__g" />
+                <span className="ov-line__t" title={task.title}><span className="ui-vh">{TASK_STATE_WORD[task.status]}: </span>{task.title}</span>
+                <span className="ov-line__n">{numberOf(task.id)}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      {others.length ? <RowItems rows={others} /> : null}
+      {rule ? (
+        <button type="button" className="ov-rule" onClick={() => openDetails({ kind: 'decision', id: rule.id })}>
+          <span className="ov-rule__k"><Icon name="rule" size={13} />Current rule{accepted ? <> · accepted {shortDate(accepted)}</> : null}</span>
+          <span className="ov-rule__t">{rule.title}</span>
+        </button>
+      ) : null}
+    </section>
+  );
+}
+
 /**
  * Details for a project (#117, direction C "overview"): what the open conversation — or one of
  * its messages — is connected to, each one step away: the current state, linked work, decisions
@@ -86,7 +160,7 @@ function Rows({ label, rows, empty, controls }: { label: string; rows: Row[]; em
 export function ProjectOverview({ messageId, selection, focusPeople = null, onBack }: { messageId?: string; selection?: OverviewView['selection']; focusPeople?: object | null; onBack: () => void }) {
   const shell = useProjectShell();
   const open = useOpenConversation();
-  const { me } = useShellData();
+  const { me, workspaces } = useShellData();
   const { openDetails } = useShellActions();
   const phone = useMediaQuery(MEDIA.navDrawer);
   const read = useOverviewWork(me.user.id, shell?.project.id ?? null, open?.conversation?.id ?? null, messageId);
@@ -110,6 +184,9 @@ export function ProjectOverview({ messageId, selection, focusPeople = null, onBa
   const message = messageId && read.page ? conversation?.messages.find((item) => item.id === messageId)
     ?? open?.roots?.roots.find((root) => root.message.id === messageId)?.message ?? selected : null;
   const messageMode = !!messageId;
+  // The project's own Details (no thread, no message) are the structured overview of #512; a thread's or a
+  // message's Details list what it touches.
+  const projectMode = !messageMode && !conversation;
   const base = `/projects/${project.id}`;
 
   // One native row window for every matching role, including Related-only objects.
@@ -173,21 +250,48 @@ export function ProjectOverview({ messageId, selection, focusPeople = null, onBa
   // The project's current state, without repeating what is already linked here.
   const state = stateParts.filter((part) => !linkedIds.has(`${part.open.kind}:${part.open.id}`)).map((part): Row => ({
     key: part.key, icon: part.icon ?? (part.key === 'work' ? 'tasks' : 'rule'), kind: part.key === 'rule' ? 'Current rule' : part.key === 'result' ? 'Latest result' : part.key === 'proposal' ? 'Proposed decision' : part.key === 'blocked' ? 'Blocked' : part.key === 'open' ? 'Open task' : part.key === 'history' ? (part.open.kind === 'work' ? 'Earlier work' : 'Earlier decision') : 'In progress',
-    title: part.title, need: part.tone === 'need', sub: part.text, open: part.open,
+    title: part.title, need: part.tone === 'need', sub: part.text.includes(part.title) ? undefined : part.text, open: part.open,
   }));
+  // "Now" in the project's own Details (#512, AC-3): its blocked, in-progress and open tasks, the rule once, and what needs a look.
+  const summaryState = projectMode ? current.summary?.state ?? null : null;
+  const nowTasks: NowTask[] = [];
+  if (summaryState?.blocked.first) nowTasks.push({ key: 'blocked', id: summaryState.blocked.first.id, status: 'blocked', title: summaryState.blocked.first.title });
+  if (summaryState?.active.first) nowTasks.push({ key: 'active', id: summaryState.active.first.id, status: 'in_progress', title: summaryState.active.first.title });
+  if (summaryState?.open.first) nowTasks.push({ key: 'open', id: summaryState.open.first.id, status: 'open', title: summaryState.open.first.title });
+  // A proposed decision, the latest result, or (with nothing else going on) the earlier work: a short row each, as before.
+  const nowOthers: Row[] = projectMode ? state.filter((row) => row.key === 'proposal' || row.key === 'result' || row.key === 'history') : [];
+  const count = (n: number | undefined, one: string, many: string) => (n ? `${n} ${n === 1 ? one : many}` : undefined);
+  const inProject: Row[] = projectMode ? [
+    { key: 'in-map', icon: 'map', kind: '', title: 'Map', end: count(sketches?.total, 'sketch', 'sketches'), to: `${base}/map` },
+    { key: 'in-wiki', icon: 'doc', kind: '', title: 'Wiki', end: count(docs?.length, 'page', 'pages'), to: `${base}/docs` },
+    { key: 'in-tasks', icon: 'tasks', kind: '', title: 'Tasks', end: current.summary?.unfinishedTotal ? `${current.summary.unfinishedTotal} open` : undefined, to: `${base}/tasks` },
+  ] : [];
+  const connected: Row[] = projectMode && project.access === 'manager' ? [{ key: 'github', icon: 'link', kind: '', title: 'GitHub repositories', to: `${base}/github` }] : [];
+  const space = workspaces.find((item) => item.id === project.workspaceId);
   const author: ReactNode = message ? (message.authorId === null
     ? <AgentIdentity name={agentDisplayName(message.author)} owner={agentAuthorOwner(message.author, owners)} icon={14} />
     : message.authorId === me.user.id ? 'you' : people?.find((person) => person.id === message.authorId)?.name ?? 'a member') : null;
   const title: ReactNode = messageMode ? message ? <>Message from {author}</> : 'Message' : conversation ? conversation.firstMessageBody.split('\n')[0] || 'Conversation' : project.name;
 
   return (
-    <div className="details ov" data-overview-phase={read.objects.phase} data-overview-observed-at={read.page?.observedAt} data-overview-relations-phase={read.relations.phase} data-overview-relations-observed-at={read.links?.observedAt}>
+    <div className={`details ov${projectMode ? ' ov--project' : ''}`} data-overview-phase={read.objects.phase} data-overview-observed-at={read.page?.observedAt} data-overview-relations-phase={read.relations.phase} data-overview-relations-observed-at={read.links?.observedAt}>
       {messageMode ? <button type="button" className="details__back" onClick={onBack}><Icon name="chevron-left" size={14} />{conversation ? 'This conversation' : 'Project'}</button> : null}
-      {/* The project's own overview is titled with its name, so its eyebrow says what this is (#266). */}
-      <p className="details__eyebrow">{!conversation && !messageMode ? 'Project overview' : <>{project.name}{conversation && !messageMode ? ' · Conversation' : ''}</>}</p>
-      <h3 className="details__title">{title}</h3>
-      {message ? <p className="details__lead ov-quote">{message.body.length > 280 ? `${message.body.slice(0, 279)}…` : message.body}</p> : null}
-      <p className="ov-audience"><Icon name={project.visibility === 'workspace' ? 'people' : 'lock'} size={13} />{audienceLine(people, me.user.id, project.visibility === 'workspace')}</p>
+      {projectMode ? (
+        // The project itself, once: its tile and name, then who is in it and its space (#512, AC-2).
+        <header className="ov-head">
+          <span className="ov-tile" aria-hidden="true">{project.name.trim().charAt(0).toUpperCase()}</span>
+          <div className="ov-head__b">
+            <h3 className="details__title">{project.name}</h3>
+            <p className="ov-audience">{audienceLine(people, me.user.id, project.visibility === 'workspace')}{space ? <> · {space.name}</> : null}</p>
+          </div>
+        </header>
+      ) : <>
+        {/* A thread's or a message's Details name it and the project (#266). */}
+        <p className="details__eyebrow">{project.name}{conversation && !messageMode ? ' · Conversation' : ''}</p>
+        <h3 className="details__title">{title}</h3>
+        {message ? <p className="details__lead ov-quote">{message.body.length > 280 ? `${message.body.slice(0, 279)}…` : message.body}</p> : null}
+        <p className="ov-audience"><Icon name={project.visibility === 'workspace' ? 'people' : 'lock'} size={13} />{audienceLine(people, me.user.id, project.visibility === 'workspace')}</p>
+      </>}
       {phone && !messageMode ? <section className="details__sec ov-sec" aria-label="Project summary">
         <button type="button" className="ov-row" onClick={() => openDetails({ kind: 'recap', projectId: project.id })}>
           <Icon name="leaf" size={16} className="ov-row__ic" />
@@ -199,26 +303,30 @@ export function ProjectOverview({ messageId, selection, focusPeople = null, onBa
       <Rows label={messageMode ? 'Made from this message' : 'Linked in this conversation'} rows={linked}
         controls={read.objects.phase !== 'idle' ? <>
           {read.objects.phase === 'unavailable' ? <p className="wd-error" role="alert">Linked objects could not be loaded. <button type="button" className="ui-link" onClick={read.refreshObjects}>Refresh linked objects</button></p> : null}
-          <WorkPagination page={read.page} busy={read.objectBusy} label="Overview object pages" onCursor={read.moveObjects} onRefresh={read.refreshObjects} />
+          {/* One page is not paginated (#512, AC-6). */}
+          {multiPage(read.page) ? <WorkPagination page={read.page} busy={read.objectBusy} label="Overview object pages" onCursor={read.moveObjects} onRefresh={read.refreshObjects} /> : null}
         </> : undefined}
         empty={read.page?.total === 0 ? (project.access !== 'viewer' ? 'Nothing linked yet. Any message can become work, a decision or a result.' : 'Nothing linked yet.') : read.page && !rows.length ? 'No linked objects on this page. Return to the previous page or refresh.' : undefined} />
-      {state.length ? <Rows label={conversation ? 'Elsewhere in this project' : 'Now in this project'} rows={state} /> : null}
+      {projectMode
+        ? <NowSection projectId={project.id} tasks={nowTasks} rule={summaryState?.rule ?? null} others={nowOthers} />
+        : state.length ? <Rows label={conversation ? 'Elsewhere in this project' : 'Now in this project'} rows={state} /> : null}
       {!messageMode && !current.summary ? <p className="ov-empty" role="status">{current.phase === 'unavailable' ? 'Current work unavailable.' : 'Loading current work…'}</p> : null}
       {rows.length ? <div className="ov-relations">
         <p className="ov-note">Sources, thoughts and docs linked to the {rows.length} shown {rows.length === 1 ? 'object' : 'objects'}.</p>
         {read.relations.phase === 'unavailable' ? <p className="wd-error" role="alert">Object links could not be loaded. <button type="button" className="ui-link" onClick={read.refreshRelations}>Refresh object links</button></p> : null}
-        <WorkPagination page={read.links} busy={read.relationBusy} label="Overview relation pages" noun="links" onCursor={read.moveRelations} onRefresh={read.refreshRelations} />
+        {multiPage(read.links) ? <WorkPagination page={read.links} busy={read.relationBusy} label="Overview relation pages" noun="links" onCursor={read.moveRelations} onRefresh={read.refreshRelations} /> : null}
       </div> : null}
       <Rows label="Sources" rows={[...sources.values()]} />
-      <Rows label={messageMode ? 'On a sketch' : 'Sketches'} rows={sketchRows} empty={!messageMode && noLinkedContext && sketches?.total === 0 ? <>No sketches yet. <Link to={`${base}/map`}>Open the Map</Link> {project.access === 'viewer' ? 'to browse saved sketches.' : 'to think out loud together.'}</> : undefined} />
-      {moreSketches ? <p className="ov-more"><Link to={`${base}/map`}>All {sketches.total} sketches</Link></p> : null}
-      <Rows label="Docs" rows={[...docRows.values()]} empty={!messageMode && noLinkedContext && docs?.length === 0 ? <>No docs yet. <Link to={`${base}/docs`}>Open Docs</Link> {project.access === 'viewer' ? 'to read saved documents.' : 'to keep what you learn.'}</> : undefined} />
-      {moreDocs ? <p className="ov-more"><Link to={`${base}/docs`}>All {docs.length} docs</Link></p> : null}
+      {projectMode ? <Rows label="In this project" rows={inProject} /> : <>
+        <Rows label={messageMode ? 'On a sketch' : 'Sketches'} rows={sketchRows} empty={!messageMode && noLinkedContext && sketches?.total === 0 ? <>No sketches yet. <Link to={`${base}/map`}>Open the Map</Link> {project.access === 'viewer' ? 'to browse saved sketches.' : 'to think out loud together.'}</> : undefined} />
+        {moreSketches ? <p className="ov-more"><Link to={`${base}/map`}>All {sketches.total} sketches</Link></p> : null}
+        <Rows label="Docs" rows={[...docRows.values()]} empty={!messageMode && noLinkedContext && docs?.length === 0 ? <>No docs yet. <Link to={`${base}/docs`}>Open Docs</Link> {project.access === 'viewer' ? 'to read saved documents.' : 'to keep what you learn.'}</> : undefined} />
+        {moreDocs ? <p className="ov-more"><Link to={`${base}/docs`}>All {docs.length} docs</Link></p> : null}
+      </>}
 
-      {!message && project.access === 'manager' ? <p className="ov-more"><Link to={`${base}/github`}>GitHub repositories</Link></p> : null}
       {/* Exactly who can open it, and for its managers the controls to change that (#188). */}
       <ProjectAccess project={project} people={people} focusToken={focusPeople} />
-      <p className="details__keys"><kbd>Esc</kbd> closes this panel</p>
+      {projectMode ? <Rows label="Connected" rows={connected} /> : !message && project.access === 'manager' ? <p className="ov-more"><Link to={`${base}/github`}>GitHub repositories</Link></p> : null}
     </div>
   );
 }

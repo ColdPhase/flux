@@ -10,8 +10,9 @@ import { diffDocs, diffStats, readableRefs, type DiffRow } from './diff';
 import { draftKey, readKept } from './drafts';
 import { STATE_LABEL, authorLabel, docLinks, kindLabel, longDate, pathOfLink, shortDate } from './format';
 import { DocProse } from './DocProse';
-import { DownloadButton, PageMenu, ShareButton, WikiBar, WikiIcon } from './WikiParts';
-import { EditedBy, Outline, useProse } from './WikiRead';
+import { DimIcon, DownloadButton, PageMenu, ShareButton, WikiBar, WikiIcon } from './WikiParts';
+import { EditedBy, Outline, OutlineChip, useProse } from './WikiRead';
+import { blockDiff } from './block-diff';
 import { useAgentOwners } from '../agents/owners';
 import { useWiki } from './wiki-context';
 import './docs.css';
@@ -253,25 +254,28 @@ function DocReading({ live }: { live: LiveReadingState | null }) {
   const historyTo = `${base}/history${current ? '' : `?to=${shown.version}`}`;
   const historyLabel = `History, ${doc.version} ${doc.version === 1 ? 'version' : 'versions'}`;
   const keptLink = kept ? <Link className="wiki-bar__kept" to={edit}>Unsaved changes in this tab</Link> : null;
-  const editButton = writable && current
-    ? <Link className={`ui-btn ui-btn--primary ${compact ? 'wiki-edit' : 'wiki-bar__primary'}`} to={edit} aria-keyshortcuts="e"><Icon name="edit" size={16} />Edit</Link> : null;
+  // An earlier version is read only: on the computer Edit stays in its place, dimmed (#511, AC-4).
+  const editButton = !writable ? null : current
+    ? <Link className={`ui-btn ui-btn--primary ${compact ? 'wiki-edit' : 'wiki-bar__primary'}`} data-slot="primary" to={edit} aria-keyshortcuts="e"><Icon name="edit" size={16} />Edit</Link>
+    : compact ? null : <button type="button" className="ui-btn ui-btn--primary wiki-bar__primary" data-slot="primary" disabled><Icon name="edit" size={16} />Edit</button>;
   return (
     <>
-      <WikiBar compactInHeader phoneMeta={<span className="wiki-bar__title"><b>Wiki</b> · {docs.length} {docs.length === 1 ? 'page' : 'pages'}</span>} meta={compact
-        ? <span className="wiki-bar__title"><b>Wiki</b> · {docs.length} {docs.length === 1 ? 'page' : 'pages'}</span>
-        : <><span className="doc-head__k">{STATE_LABEL[shown.state]} · version {shown.version}{current ? '' : ` of ${doc.version}`}</span>{keptLink}</>}>
+      <WikiBar compactInHeader phoneMeta={<span className="wiki-bar__title"><b>Wiki</b> · {docs.length} {docs.length === 1 ? 'page' : 'pages'}</span>}
+        primary={compact ? undefined : editButton} meta={compact
+          ? <span className="wiki-bar__title"><b>Wiki</b> · {docs.length} {docs.length === 1 ? 'page' : 'pages'}</span>
+          : <><span className="doc-head__k">{STATE_LABEL[shown.state]} · version {shown.version}{current ? '' : ` of ${doc.version}`}</span>{keptLink}</>}>
         {compact ? (
           <PageMenu sharePath={current ? base : `${base}/versions/${shown.version}`} shareVersion={current ? null : shown.version}
             shown={{ title: shown.title, body: text, version: shown.version, current }}
             history={<Link className="wiki-pop__item" to={historyTo} aria-label={historyLabel}><WikiIcon name="history" /><span><b>History</b><small>{doc.version} {doc.version === 1 ? 'version' : 'versions'}, {STATE_LABEL[shown.state].toLowerCase()}</small></span></Link>} />
         ) : (
           <>
-            <Link className="ui-icon-btn" to={historyTo} aria-label={historyLabel} data-tip={`History · ${doc.version} ${doc.version === 1 ? 'version' : 'versions'}`}>
+            <OutlineChip headings={headings} scroller={prose?.closest<HTMLElement>('.wiki-main') ?? null} />
+            <Link className="ui-icon-btn" data-slot="history" to={historyTo} aria-label={historyLabel} data-tip={`History · ${doc.version} ${doc.version === 1 ? 'version' : 'versions'}`}>
               <WikiIcon name="history" />
             </Link>
             <ShareButton path={current ? base : `${base}/versions/${shown.version}`} version={current ? null : shown.version} />
             <DownloadButton shown={{ title: shown.title, body: text, version: shown.version, current }} />
-            {editButton}
           </>
         )}
       </WikiBar>
@@ -346,22 +350,41 @@ function DiffView({ rows }: { rows: DiffRow[] }) {
   );
 }
 
+/** What changed between two versions: the page as it reads, or its exact Markdown text (#511, AC-1, AC-2). */
 function Changes({ from, to }: { from: DocVersion | null; to: DocVersion }) {
+  const [view, setView] = useState<'rendered' | 'markdown'>('rendered');
+  const onClick = useReferenceClicks();
   const rows = useMemo(() => {
     const titles = new Map([...(from?.mentions ?? []), ...to.mentions].filter((item) => item.title).map((item) => [`${item.type}:${item.id}`, item.title]));
     return diffDocs(readableRefs(from?.body ?? '', titles), readableRefs(to.body, titles));
   }, [from, to]);
+  const page = useMemo(() => blockDiff(from?.html ?? '', to.html), [from, to.html]);
   const stats = diffStats(rows);
   const facts: ReactNode[] = [];
   if (from && from.title !== to.title) facts.push(<li key="t">Title: <del>{from.title}</del> → <ins>{to.title}</ins></li>);
-  if (from && from.state !== to.state) facts.push(<li key="s">State: {STATE_LABEL[from.state]} → {STATE_LABEL[to.state]}</li>);
   return (
     <section className="doc-changes" aria-labelledby="doc-changes-h">
-      <h3 id="doc-changes-h">{from ? <>Version {from.version} → {to.version}</> : <>Version {to.version}, the first</>}</h3>
+      <header className="doc-changes__top">
+        <h2 id="doc-changes-h">
+          {from ? <>v{from.version} → v{to.version}</> : <>Version {to.version}, the first</>}
+          <span className="doc-changes__stat"> · +{stats.added} −{stats.removed}</span>
+          {from && from.state !== to.state ? <span className="doc-changes__stat"> · {STATE_LABEL[from.state]} → {STATE_LABEL[to.state]}</span> : null}
+        </h2>
+        <div className="doc-seg" role="group" aria-label="Show the changes as">
+          <button type="button" aria-pressed={view === 'rendered'} onClick={() => setView('rendered')}>Rendered</button>
+          <button type="button" aria-pressed={view === 'markdown'} onClick={() => setView('markdown')}>Markdown</button>
+        </div>
+      </header>
       <p className="doc-changes__why">{from ? <>From {authorLabel(from.author)}’s version of {longDate(from.createdAt)} to </> : null}{authorLabel(to.author)}’s of {longDate(to.createdAt)} · {to.reason}</p>
       {facts.length ? <ul className="doc-changes__facts">{facts}</ul> : null}
-      <p className="doc-muted">{stats.added} {stats.added === 1 ? 'line' : 'lines'} added · {stats.removed} removed</p>
-      <DiffView rows={rows} />
+      {view === 'markdown' ? <DiffView rows={rows} /> : page.changed ? (
+        <>
+          <section className="doc-changes__page" aria-label="Changes in the text">
+            <DocProse html={page.html} onClick={onClick} />
+          </section>
+          <p className="doc-changes__key" aria-hidden="true"><ins>text</ins> added <del>text</del> removed</p>
+        </>
+      ) : <p className="doc-muted">The text is the same in both versions.</p>}
     </section>
   );
 }
@@ -369,7 +392,7 @@ function Changes({ from, to }: { from: DocVersion | null; to: DocVersion }) {
 /** Every version with its author, time and reason, and what changed between two of them. */
 export function DocHistory() {
   const { doc, versions, from, to } = useLoaderData() as HistoryData;
-  const { project } = useWiki();
+  const { project, writable, compact } = useWiki();
   const [, setSearch] = useSearchParams();
   const base = docUrl(project.id, doc.id);
   const compare = (next: { from?: number; to?: number }) => {
@@ -377,26 +400,37 @@ export function DocHistory() {
     const source = next.from ?? (next.to ? target - 1 : from?.version ?? target - 1);
     setSearch(source >= 1 && source !== target ? { from: String(source), to: String(target) } : { to: String(target) });
   };
+  // Restore brings back the earlier side of the comparison: the chosen version, or the one before
+  // the current page. It opens the editor with that text; nothing changes until Save version.
+  const restore = to.version !== doc.version ? to.version : from?.version ?? null;
+  const primary = !writable ? null : restore
+    ? <Link className="ui-btn ui-btn--quiet wiki-bar__primary wiki-bar__restore" data-slot="primary" to={`${base}/edit?restore=${restore}`}><Icon name="undo" size={14} />Restore v{restore}</Link>
+    : <button type="button" className="ui-btn ui-btn--quiet wiki-bar__primary wiki-bar__restore" data-slot="primary" disabled><Icon name="undo" size={14} />Restore</button>;
   return (
     <>
-      <WikiBar meta={<span className="doc-head__k">History · {doc.version} {doc.version === 1 ? 'version' : 'versions'}</span>}>
-        <Link className="ui-btn ui-btn--quiet wiki-bar__back" to={base}><Icon name="chevron-left" size={14} />Back to the page</Link>
+      <WikiBar meta={<span className="doc-head__k">History · {doc.version} {doc.version === 1 ? 'version' : 'versions'}</span>}
+        back={<Link className="ui-btn ui-btn--quiet wiki-bar__back" to={base}><Icon name="chevron-left" size={14} />Back to the page</Link>}
+        primary={primary}>
+        {compact ? null : <>
+          <OutlineChip headings={null} />
+          <DimIcon slot="history" name="history" label="History" />
+          <DimIcon slot="share" name="share" label="Share this page" />
+          <DimIcon slot="download" name="download" label="Download" />
+        </>}
       </WikiBar>
       <div className="wiki-doc wiki-doc--wide doc doc-history" data-shift>
-        <p className="wiki-doc__crumb"><Icon name="doc" size={13} /><span>{project.name}</span></p>
-        <header className="doc-head">
-          <h2 className="doc-head__t">What changed in “{doc.title}”</h2>
-          <p className="doc-head__change">Every version stays as it was written. Messages that cite a version keep reading that version.</p>
-        </header>
         <div className="doc-history__grid">
           <section className="doc-history__list" aria-labelledby="doc-versions-h">
-            <h3 className="doc-group__h" id="doc-versions-h">Versions</h3>
+            <h2 className="doc-group__h" id="doc-versions-h">Versions</h2>
             <ol className="doc-versions">
               {versions.map((item) => (
                 <li key={item.version}>
                   <button type="button" className="doc-version" aria-current={item.version === to.version ? 'true' : undefined} onClick={() => compare({ to: item.version })}>
-                    <span className="doc-version__n">v{item.version}</span>
-                    <span className="doc-version__b"><span className="doc-version__t">{item.reason}</span><span className="doc-version__s">{authorLabel(item.author)} · {shortDate(item.createdAt)}{item.state === 'draft' ? ' · draft' : ''}</span></span>
+                    <span className="doc-version__dot" aria-hidden="true" />
+                    <span className="doc-version__b">
+                      <span className="doc-version__t">{item.reason}</span>
+                      <span className="doc-version__s">v{item.version} · {STATE_LABEL[item.state]} · {authorLabel(item.author)} · {shortDate(item.createdAt)}</span>
+                    </span>
                   </button>
                   <Link className="doc-version__open" to={item.version === doc.version ? base : `${base}/versions/${item.version}`} aria-label={`Read version ${item.version}`}>Read</Link>
                 </li>

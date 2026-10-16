@@ -1,16 +1,16 @@
 import { lazy, Suspense, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from 'react';
 import { Link, useLoaderData, useNavigate, useNavigation, useRevalidator, type LoaderFunctionArgs } from 'react-router';
-import { DOC_LIMITS, docRef, type Doc, type Project } from '@flux/contracts';
+import { DOC_LIMITS, docRef, type Doc, type DocVersion, type Project } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { Button, Icon, useMediaQuery } from '../ui';
 import { useShellData } from '../app/data';
-import { createDoc, docUrl, getDoc, previewDoc, updateDoc } from './api';
+import { createDoc, docUrl, getDoc, getVersion, previewDoc, updateDoc } from './api';
 import { diffDocs, readableRefs, type DiffRow } from './diff';
 import { documentDraftGeneration, draftKey, keep, readKept, type Fields, type Kept } from './drafts';
 import { STATE_LABEL, authorLabel, longDate } from './format';
 import { DocProse } from './DocProse';
 import { LinkPicker, type PickedRef } from './LinkPicker';
-import { WikiBar } from './WikiParts';
+import { EditBar } from './PageBars';
 import { useWiki } from './wiki-context';
 import './docs.css';
 import { editingCapability, useEditingCapability } from '../editing/capability';
@@ -26,13 +26,15 @@ function OrdinaryEditor({ fallback }: { doc: Doc; project: Project; userId: stri
 // from; when someone saved in between, the text is kept and the person chooses what to do.
 // Unsaved text survives a reload in this tab. It sits in the wiki's document pane (#136).
 
-interface EditData { doc: Doc | null }
+interface EditData { doc: Doc | null; /** An earlier version the editor starts from (Restore, #511): saved only when the person saves. */ restore: DocVersion | null }
 
 export async function docEditLoader({ params, request }: LoaderFunctionArgs): Promise<EditData> {
   // The capability is known before the first render, so the editor never mounts the wrong kind first.
   const [doc] = await Promise.all([params.docId ? getDoc(params.docId, request.signal) : null, editingCapability()]);
   if (doc && doc.projectId.toLowerCase() !== (params.projectId ?? '').toLowerCase()) throw new Response('Not found', { status: 404 });
-  return { doc };
+  const wanted = Number(new URL(request.url).searchParams.get('restore'));
+  const restore = doc && Number.isInteger(wanted) && wanted >= 1 && wanted < doc.version ? await getVersion(doc.id, wanted, request.signal) : null;
+  return { doc, restore };
 }
 
 const isMac = typeof navigator !== 'undefined' && /Mac|iP(hone|ad|od)/.test(navigator.platform);
@@ -55,20 +57,22 @@ function ChangeList({ title, rows }: { title: string; rows: DiffRow[] }) {
 }
 
 export function DocEditor() {
-  const { doc } = useLoaderData() as EditData;
+  const { doc, restore } = useLoaderData() as EditData;
   const { project } = useWiki();
   const { me } = useShellData();
   const capability = useEditingCapability();
   // A private draft and its pending effects belong to exactly one editor lifetime.
   // Version revalidation in the same lifetime still preserves conflict handling.
-  const ordinary = <ScopedDocEditor key={JSON.stringify([me.user.id, project.id, doc?.id ?? 'new'])} project={project} doc={doc} accountId={me.user.id} />;
-  // Without a configured live capability this is the ordinary editor, unchanged.
-  if (!doc || capability !== 'configured') return ordinary;
+  const ordinary = <ScopedDocEditor key={JSON.stringify([me.user.id, project.id, doc?.id ?? 'new'])} project={project} doc={doc} restore={restore} accountId={me.user.id} />;
+  // Without a configured live capability this is the ordinary editor, unchanged. Restoring an earlier
+  // version (#511) saves that text as the next version, which the ordinary editor does.
+  if (!doc || capability !== 'configured' || restore) return ordinary;
   const scope = `${me.user.id}:${doc.id}`;
   return <Suspense fallback={null}><LiveDocEditor key={scope} doc={doc} project={project} userId={me.user.id} fallback={ordinary} /></Suspense>;
 }
 
-function ScopedDocEditor({ project, doc, accountId }: EditData & { project: Project; accountId: string }) {
+function ScopedDocEditor({ project, doc, restore, accountId }: EditData & { project: Project; accountId: string }) {
+  const { compact } = useWiki();
   const navigate = useNavigate();
   const revalidator = useRevalidator();
   const navigation = useNavigation();
@@ -102,11 +106,15 @@ function ScopedDocEditor({ project, doc, accountId }: EditData & { project: Proj
   const wide = useMediaQuery('(min-width: 1280px)');
   const storageKey = draftKey(accountId, doc?.id ?? null, project.id);
   const draftLifetime = useMemo(() => documentDraftGeneration(), [storageKey]);
-  const initial = useMemo<Kept>(() => readKept(storageKey) ?? {
+  // Restore starts from an earlier version, unless unsaved text in this tab would be replaced: that text wins and says so.
+  const [restoring] = useState<'applied' | 'kept' | null>(() => (restore ? (readKept(storageKey) ? 'kept' : 'applied') : null));
+  const initial = useMemo<Kept>(() => (restore && restoring === 'applied' ? {
+    title: restore.title, body: restore.body, state: doc?.state ?? 'draft', reason: `Restored version ${restore.version}`, base: doc?.version ?? 0,
+  } : readKept(storageKey) ?? {
     title: doc?.title ?? '', body: doc?.body ?? '', state: doc?.state ?? 'draft', reason: '', base: doc?.version ?? 0,
     // Only the first render reads storage; later renders keep the editor's own state.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }), []);
   const [fields, setFields] = useState<Fields>({ title: initial.title, body: initial.body, state: initial.state, reason: initial.reason });
   const [base, setBase] = useState(initial.base);
   const [baseBody, setBaseBody] = useState(doc?.body ?? '');
@@ -124,7 +132,7 @@ function ScopedDocEditor({ project, doc, accountId }: EditData & { project: Proj
   const titleId = useId();
   const bodyId = useId();
   const reasonId = useId();
-  const restored = !!readKept(storageKey) && (initial.body !== (doc?.body ?? '') || initial.title !== (doc?.title ?? ''));
+  const restored = restoring !== 'applied' && !!readKept(storageKey) && (initial.body !== (doc?.body ?? '') || initial.title !== (doc?.title ?? ''));
 
   const dirty = fields.title !== (doc?.title ?? '') || fields.body !== (doc?.body ?? '') || fields.state !== (doc?.state ?? 'draft');
   useEffect(() => { keep(storageKey, dirty || fields.reason ? { ...fields, base, attempt } : null, draftLifetime); }, [storageKey, fields, base, dirty, attempt, draftLifetime]);
@@ -208,13 +216,19 @@ function ScopedDocEditor({ project, doc, accountId }: EditData & { project: Proj
   const theirChanges = useMemo(() => (conflict ? diffDocs(readableRefs(baseBody, titles), readableRefs(conflict.body, titles)) : []), [conflict, baseBody, titles]);
   const myChanges = useMemo(() => (conflict ? diffDocs(readableRefs(baseBody, titles), readableRefs(fields.body, titles)) : []), [conflict, baseBody, fields.body, titles]);
   const back = doc ? docUrl(project.id, doc.id) : `/projects/${project.id}/docs`;
+  const formId = useId();
+  const saveDisabled = reconciling || !!conflict || (!!doc && !dirty);
 
   return (
     <>
-      <WikiBar meta={<span className="doc-head__k">{doc ? <>Editing version {base} · a save makes version {base + 1}</> : 'New page'}</span>} />
-      <form className={`wiki-doc doc-edit${mode === 'both' ? ' doc-edit--both' : ''}`} data-shift onSubmit={(event) => void save(event)} onKeyDown={onKey} aria-labelledby={titleId}>
+      <EditBar back={back} backLabel={doc ? 'Back to the page' : 'Back to the wiki'} historyTo={doc ? `${back}/history` : null}
+        meta={<span className="doc-head__k">{doc ? <>Editing version {base} · saves as {base + 1}</> : 'New page'}</span>}
+        primary={<Button type="submit" form={formId} variant="primary" className="wiki-bar__primary" data-slot="primary" busy={busy} disabled={saveDisabled} aria-keyshortcuts={isMac ? 'Meta+S' : 'Control+S'}>{doc ? 'Save version' : 'Create page'}</Button>} />
+      <form id={formId} className={`wiki-doc doc-edit${mode === 'both' ? ' doc-edit--both' : ''}`} data-shift onSubmit={(event) => void save(event)} onKeyDown={onKey} aria-labelledby={titleId}>
         <p className="wiki-doc__crumb"><Icon name="lock" size={12} /><span>Everyone in {project.name} can read it</span></p>
         {restored ? <p className="doc-notice"><Icon name="undo" size={14} />Your unsaved text from earlier is back.</p> : null}
+        {restore && restoring === 'applied' ? <p className="doc-notice" role="status"><Icon name="undo" size={14} />Version {restore.version} is in the editor. Save version to make it the page again; earlier versions stay as they are.</p> : null}
+        {restore && restoring === 'kept' ? <p className="doc-notice" role="status"><Icon name="alert" size={14} />Your unsaved text in this tab is kept, so version {restore.version} was not opened. Cancel it first to restore version {restore.version}.</p> : null}
 
         {conflict ? (
           <div className="doc-conflict" role="alert">
@@ -279,7 +293,7 @@ function ScopedDocEditor({ project, doc, accountId }: EditData & { project: Proj
           </div>
           <div className="doc-edit__acts">
             <Link className="ui-btn ui-btn--quiet" to={back} onClick={() => keep(storageKey, null, draftLifetime)}>Cancel</Link>
-            <Button type="submit" variant="primary" busy={busy} disabled={reconciling || !!conflict || (!!doc && !dirty)} aria-keyshortcuts={isMac ? 'Meta+S' : 'Control+S'}>{doc ? 'Save version' : 'Create page'}</Button>
+            {compact ? <Button type="submit" variant="primary" busy={busy} disabled={saveDisabled} aria-keyshortcuts={isMac ? 'Meta+S' : 'Control+S'}>{doc ? 'Save version' : 'Create page'}</Button> : null}
           </div>
         </div>
         {error ? <p className="doc-error" role="alert">{error}</p> : null}

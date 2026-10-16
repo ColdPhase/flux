@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState, type MouseEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
 import { createPortal } from 'react-dom';
 import type { NamedPrincipal, NativeWorkRow } from '@flux/contracts';
 import { AgentIdentity, Avatar, Icon, Kreska, prefersReducedMotion, StatusGlyph, TASK_STATE_WORD } from '../ui';
 import { getWorkReferenceRows } from '../work/read-api';
 import type { AgentOwners } from '../agents/owners';
 import { ago, longDate, shortDate } from './format';
+import { WikiIcon } from './WikiParts';
 
 // The reading side of the wiki as drawn (F-026, #354): who edited the page, the "On this page"
 // outline from its headings, and the references the page holds, a task as its glyph, #number and
@@ -197,8 +198,12 @@ function RefMark({ mark, owners }: { mark: Mark; owners: AgentOwners }) {
   );
 }
 
-/** "On this page": the page's headings; the one being read is marked, and each moves focus to its heading. */
-export function Outline({ headings, scroller }: { headings: Heading[]; scroller: HTMLElement | null }) {
+/**
+ * "On this page": the page's headings; the one being read is marked, and each moves focus to its heading.
+ * In a wide reading pane it is the sticky column beside the page; in a narrower one the page toolbar's
+ * chip opens it as a list instead (#511, AC-3). It is never placed below the page.
+ */
+export function Outline({ headings, scroller, onOpen, list = false }: { headings: Heading[]; scroller: HTMLElement | null; onOpen?: () => void; list?: boolean }) {
   const [current, setCurrent] = useState<string | null>(null);
   useEffect(() => {
     if (!scroller || !headings.length) return;
@@ -222,18 +227,70 @@ export function Outline({ headings, scroller }: { headings: Heading[]; scroller:
     node.scrollIntoView({ block: 'start', behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
     node.focus({ preventScroll: true });
     setCurrent(id);
+    onOpen?.();
   };
   const base = Math.min(...headings.map((heading) => heading.level));
+  const links = (
+    <ul>
+      {headings.map((heading) => (
+        <li key={heading.id} data-level={heading.level - base}>
+          <a href={`#${heading.id}`} aria-current={heading.id === current ? 'location' : undefined} onClick={(event) => open(event, heading.id)}>{heading.text}</a>
+        </li>
+      ))}
+    </ul>
+  );
+  if (list) return <nav className="wiki-outline-pop" aria-label="On this page">{links}</nav>;
   return (
     <aside className="wiki-outline" aria-label="On this page">
       <p className="wiki-outline__h">On this page</p>
-      <ul>
-        {headings.map((heading) => (
-          <li key={heading.id} data-level={heading.level - base}>
-            <a href={`#${heading.id}`} aria-current={heading.id === current ? 'location' : undefined} onClick={(event) => open(event, heading.id)}>{heading.text}</a>
-          </li>
-        ))}
-      </ul>
+      {links}
     </aside>
+  );
+}
+
+/** Whether the reading pane is wide enough for the outline's own column (the same 860px as the stylesheet's container). */
+function useOutlineColumn(pane: HTMLElement | null) {
+  const [wide, setWide] = useState(false);
+  useEffect(() => {
+    if (!pane) return undefined;
+    // The observer reports the pane's size once it starts watching, and again whenever it changes.
+    const observer = new ResizeObserver(() => setWide(pane.clientWidth > 860));
+    observer.observe(pane);
+    return () => observer.disconnect();
+  }, [pane]);
+  return wide;
+}
+
+/**
+ * The page toolbar's "On this page" slot (#511, AC-3, AC-4): always in the same place. In a pane too
+ * narrow for the outline's column it opens the list below the toolbar; where the column is beside the
+ * page, and in editing, history or a page of one heading, it is dimmed.
+ */
+export function OutlineChip({ headings, scroller }: { headings: Heading[] | null; scroller?: HTMLElement | null }) {
+  const [open, setOpen] = useState(false);
+  const wrap = useRef<HTMLDivElement>(null);
+  const column = useOutlineColumn(scroller ?? null);
+  const active = !!headings && headings.length > 1 && !column;
+  useEffect(() => {
+    if (!open) return;
+    const outside = (event: PointerEvent) => { if (!wrap.current?.contains(event.target as Node)) setOpen(false); };
+    const key = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      setOpen(false);
+      wrap.current?.querySelector<HTMLButtonElement>('button')?.focus();
+    };
+    document.addEventListener('pointerdown', outside);
+    document.addEventListener('keydown', key);
+    return () => { document.removeEventListener('pointerdown', outside); document.removeEventListener('keydown', key); };
+  }, [open]);
+  return (
+    <div className="wiki-outline-chip" data-slot="outline" ref={wrap}>
+      <button type="button" className="ui-btn ui-btn--quiet wiki-outline-chip__btn" aria-label="On this page" aria-expanded={active ? open : undefined}
+        disabled={!active} data-tip={active ? 'On this page' : undefined} onClick={() => setOpen((value) => !value)}>
+        <WikiIcon name="outline" />
+        <span className="wiki-outline-chip__label">On this page <span aria-hidden="true">▾</span></span>
+      </button>
+      {open && active ? <Outline headings={headings!} scroller={scroller ?? null} list onOpen={() => setOpen(false)} /> : null}
+    </div>
   );
 }
