@@ -381,8 +381,9 @@ account, F-020).
   negative result) and observes no run and no CLI call.
 - **AST-2.3** O-007 comparison rules still refuse a `runtime` account (existing #58
   test kept).
-- **AST-2.4** With paid hosting set, runtime sign-in, jobs and reactions on a
-  subscription are refused with one plain sentence (app test).
+- **AST-2.4** Removed (founder direction 2026-10-16, [#493](https://github.com/ColdPhase/flux/issues/493)).
+  There is no separate paid-hosting setting: paid hosting keeps the existing operator switch
+  `FLUX_AGENT_RUNTIME` off ([AIM-3](ai-modes.md)), and no other setting is added.
 
 ## AST-3 — One assistant, one permission surface
 
@@ -1876,7 +1877,7 @@ are unchanged.
   version), `assistant_job_runs` (job, run, state, result line, times), and the
   morning summary's "written by the assistant" flag on the owner's notification
   settings.
-- **Tests.** AST-2.1, AST-2.4, AST-7.1 to AST-7.6, AST-7.9 to AST-7.11, AST-10.3 (first
+- **Tests.** AST-2.1, AST-7.1 to AST-7.6, AST-7.9 to AST-7.11, AST-10.3 (first
   half), AST-9.1 (scheduled) with a controlled clock and two workers.
 - **Depends on.** A1, A4; #280 for `runtime` runs (the `server` engine works first);
   #350's morning summary (merged in PR #370).
@@ -1940,7 +1941,7 @@ are unchanged.
 | AST-1.1, AST-1.2 | #277 (then A10 for copy) |
 | AST-1.3, AST-1.4 | A10 |
 | AST-1.5–AST-1.8 | A12 |
-| AST-2.1, AST-2.4 | A8 (sign-in refusal on paid hosting: A10) |
+| AST-2.1 | A8 |
 | AST-2.2 | A9 |
 | AST-2.3, AST-4.4, AST-4.2 (read part) | #280 (A2) |
 | AST-3.1, AST-3.3, AST-3.4 | A1 |
