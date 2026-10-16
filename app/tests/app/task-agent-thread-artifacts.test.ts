@@ -255,6 +255,8 @@ test('actual retained native87 history upgrades to88 without pulses, seeds old b
   const upTo88=[...beforeManifest,manifest.find(m=>m.version===88)!];
   try{
     for(const migration of beforeManifest){await fixture.pool.query(await readFile(`packages/db/migrations/${migration.name}`,'utf8'));await fixture.pool.query('INSERT INTO flux_schema_version(version) VALUES($1) ON CONFLICT DO NOTHING',[migration.version]);}
+    // The app code under test reads columns that migrations after 88 add (0102 waiting_for_user_id); this earlier fixture gets that one column.
+    await fixture.pool.query('ALTER TABLE project_work_items ADD COLUMN waiting_for_user_id text');
     const client=await fixture.pool.connect();try{
       await client.query('BEGIN');await client.query('SET CONSTRAINTS ALL DEFERRED');
       // Restore only this isolated fixture's two guarded tables, preserving the ACTUAL
@@ -265,7 +267,10 @@ test('actual retained native87 history upgrades to88 without pulses, seeds old b
       for(const[table]of specs){
         const jsonColumns=new Set((await client.query<{column_name:string}>(`SELECT column_name FROM information_schema.columns
           WHERE table_schema='public' AND table_name=$1 AND data_type IN ('json','jsonb')`,[table])).rows.map(r=>r.column_name));
-        for(const row of retained.get(table)!){const columns=Object.keys(row);await client.query(`INSERT INTO ${table}(${columns.map(c=>`"${c}"`).join(',')}) VALUES(${columns.map((_,i)=>`$${i+1}`).join(',')})`,
+        // Columns added after 88 (for example 0102) do not exist in this earlier fixture.
+        const present=new Set((await client.query<{column_name:string}>(`SELECT column_name FROM information_schema.columns
+          WHERE table_schema='public' AND table_name=$1`,[table])).rows.map(r=>r.column_name));
+        for(const row of retained.get(table)!){const columns=Object.keys(row).filter(c=>present.has(c));if(!columns.length)throw new Error(`no shared columns for ${table}`);await client.query(`INSERT INTO ${table}(${columns.map(c=>`"${c}"`).join(',')}) VALUES(${columns.map((_,i)=>`$${i+1}`).join(',')})`,
           columns.map(c=>jsonColumns.has(c)&&row[c]!==null?JSON.stringify(row[c]):row[c]));}
       }
       await client.query('SET CONSTRAINTS ALL IMMEDIATE');
