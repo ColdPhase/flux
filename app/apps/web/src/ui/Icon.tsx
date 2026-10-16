@@ -61,6 +61,8 @@ const paths = {
   /** Work objects (#101): a decision (rule) and a result (checked document). */
   rule: <><path d="M8 2l5.5 3v6L8 14l-5.5-3V5z" /><path d="M5.75 8.1l1.6 1.6 3-3.2" /></>,
   result: <><path d="M4 2.5h5l3 3v8H4z" /><path d="M6 9.25l1.5 1.5 2.75-3" /></>,
+  /** A project goal (#520): a small flag. */
+  goal: <><path d="M4 14V2.5" /><path d="M4 3h7.5l-1.75 2.75L11.5 8.5H4" /></>,
   flask: <><path d="M6.5 2.5h3M7 2.5v4L3.5 12.5a1 1 0 00.9 1.5h7.2a1 1 0 00.9-1.5L9 6.5v-4" /><path d="M5 10h6" /></>,
   /** Live sessions (#62): together, microphone, camera, screen, quiet, leave, zoom, show. */
   together: <><circle cx="5.25" cy="6" r="2" /><circle cx="10.75" cy="6" r="2" /><path d="M1.75 12.75c.4-1.9 1.75-3 3.5-3s3.1 1.1 3.5 3M7.25 12.75c.4-1.9 1.75-3 3.5-3s3.1 1.1 3.5 3" /></>,
