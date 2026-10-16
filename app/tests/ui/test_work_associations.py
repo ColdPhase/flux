@@ -46,6 +46,7 @@ class MessageWorkJourney(unittest.TestCase):
         proposal = api(owner, "POST", cls.root + "/decisions", {"title": "Keep the manual off switch", "sources": [sources[0]]}, 201)
         result = api(owner, "POST", cls.root + "/results", {"title": "The shield reduced noise", "finding": "positive", "sources": [sources[0]]}, 201)
         cls.expected = {("work", work["id"]) for work in cls.work} | {("decision", item["id"]) for item in (old, current, proposal)} | {("result", result["id"])}
+        cls.expected_titles = {(kind, item["id"]): item["title"] for kind, items in (("work", cls.work), ("decision", (old, current, proposal)), ("result", (result,))) for item in items}
         api(owner, "POST", cls.root + "/work", {"title": "Related only; not made from either message", "related": [sources[0]]}, 201)
         long = api(owner, "POST", cls.root + "/conversations", {"body": "Library installation notes from the first measurement", "clientMessageId": str(uuid.uuid4())}, 201)
         cls.long_conversation = long["id"]; cls.long_messages = [long["messages"][0]["id"]]
@@ -133,7 +134,28 @@ class MessageWorkJourney(unittest.TestCase):
                 page.locator(".thread__feed").get_by_role("button",name="Result: The shield reduced noise",exact=True).scroll_into_view_if_needed()
                 shot(page, f"bounded-message-objects-mixed-{'phone' if phone else 'desktop'}")
                 if phone:
-                    self.assertTrue(page.locator(".thread__feed .ws-chip__t").evaluate_all("els=>els.every(el=>el.scrollWidth<=el.clientWidth+1 && el.scrollHeight<=el.clientHeight+1 && getComputedStyle(el).whiteSpace==='normal')"),"every distinguishing native title is fully visible on the phone")
+                    # #501 AC-2 supersedes full visual wrapping: retain the exact native
+                    # title for assistive technology while the visible line ellipsizes.
+                    cards = page.locator(".thread__feed .ws-chip")
+                    truncated = 0
+                    for index in range(cards.count()):
+                        card = cards.nth(index)
+                        kind, identity = card.get_attribute("data-work-kind"), card.get_attribute("data-work-id")
+                        title = self.expected_titles[(kind, identity)]
+                        expect(card).to_have_accessible_name(f"{kind.capitalize()}: {title}")
+                        expect(card.locator(".ws-chip__t")).to_have_text(title)
+                        layout = card.evaluate("""el => {
+                          const t=el.querySelector('.ws-chip__t'), k=el.querySelector('.ws-chip__k');
+                          const s=getComputedStyle(t), r=el.getBoundingClientRect(), state=k.getBoundingClientRect();
+                          return {wrap:s.whiteSpace,overflow:s.overflow,textOverflow:s.textOverflow,
+                            height:t.clientHeight,lineHeight:parseFloat(s.lineHeight),truncated:t.scrollWidth>t.clientWidth+1,
+                            state:k.textContent,stateFits:k.scrollWidth<=k.clientWidth+1 && state.left>=r.left && state.right<=r.right};
+                        }""")
+                        self.assertEqual((layout["wrap"], layout["overflow"], layout["textOverflow"]), ("nowrap", "hidden", "ellipsis"), layout)
+                        self.assertLessEqual(layout["height"], layout["lineHeight"]+1, layout)
+                        self.assertTrue(layout["state"].strip() and layout["stateFits"], layout)
+                        truncated += layout["truncated"]
+                    self.assertGreater(truncated, 0, "long native titles exercise actual phone ellipsis")
                 expect(edges.get_by_role("button")).to_have_count(0)
                 pane=page.locator(".thread__feed")
                 if phone and os.environ.get("FLUX_UI_BROWSER", "chromium") == "webkit":
