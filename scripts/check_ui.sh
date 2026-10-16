@@ -5,6 +5,7 @@
 # (an absolute path), e.g. FLUX_UI_SCREENSHOT_DIR="$PWD/docs/design/app-shell".
 # Arguments name test modules (or Module.Class.test) to run only those, e.g.
 # ./scripts/check_ui.sh test_docs test_people; without arguments every module runs.
+# An unknown module is refused before Docker starts, like a wrong FLUX_UI_BROWSER.
 set -eu
 
 cd "$(dirname "$0")/.."
@@ -15,6 +16,16 @@ case "$FLUX_UI_BROWSER" in
   chromium|webkit) ;;
   *) printf '%s\n' 'FLUX_UI_BROWSER must be chromium or webkit' >&2; exit 2 ;;
 esac
+for target in "$@"; do
+  module=${target%%.*}
+  case "$module" in
+    ''|*[!A-Za-z0-9_]*) printf 'unknown UI test module: %s\n' "$module" >&2; exit 2 ;;
+  esac
+  if [ ! -f "app/tests/ui/$module.py" ]; then
+    printf 'unknown UI test module: %s\n' "$module" >&2
+    exit 2
+  fi
+done
 project="flux-ui-$(date +%s)-$$"
 export POSTGRES_USER=flux
 export POSTGRES_DB=flux

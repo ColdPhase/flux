@@ -20,8 +20,8 @@ export const publishAgentPolicy = (projectId: string, command: PublishAgentProje
 /** A request is durable but grants nothing; only a current project manager may allow it. */
 export const requestAssistantJoin = (projectId: string) =>
   request<AssistantJoinRequest>(assistantJoinRequestPath(projectId), { method: 'POST' });
-export const allowAssistantJoin = (projectId: string, requestId: string) =>
-  request<AssistantJoinRequest>(`${assistantJoinRequestPath(projectId)}/${requestId}/allow`, { method: 'POST' });
+export const allowAssistantJoin = (projectId: string, requestId: string, openingVersion?: number) =>
+  request<AssistantJoinRequest>(`${assistantJoinRequestPath(projectId)}/${requestId}/allow`, { method: 'POST', headers: openingVersion === undefined ? undefined : { 'if-match': `"${openingVersion}"` } });
 /** Who stopped which agent's work in a project, newest first (S13, #347). */
 export const getAgentStops = (projectId: string, signal?: AbortSignal) => request<AgentStops>(projectAgentStopsPath(projectId), { signal });
 

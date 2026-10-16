@@ -46,6 +46,37 @@ test('five areas map through S6; only read removes effects and reserved co-work 
   for (const entry of AGENT_MCP_ENTRIES.filter((e) => e.operation?.startsWith('map.'))) assert.ok(!read.enabledEntryIds.includes(entry.id), entry.name);
 });
 
+test('#522: private assistant discovery is owner-only while an MCP connection sharing its identity stays visible', async () => {
+  const f = await setup('roster-privacy');
+  const roster = async (reader: Person) => expectStatus(await reader.browser.request('GET', `/api/v1/projects/${f.managed.id}/agents`), 200) as unknown as ProjectAgents;
+  const people = async (reader: Person) => expectStatus(await reader.browser.request('GET', `/api/v1/projects/${f.managed.id}/people`), 200) as { id: string }[];
+  const agents = async (reader: Person) => expectStatus(await reader.browser.request('GET', `/api/v1/workspaces/${f.ws.id}/agents`), 200) as { id: string }[];
+  expectStatus(await f.owner.browser.request('POST', `/api/v1/projects/${f.managed.id}/grants`, { body: { principal: { kind: 'human', id: f.owner.id }, role: 'contributor' } }), 201);
+  const grants = async (reader: Person) => expectStatus(await reader.browser.request('GET', `/api/v1/projects/${f.managed.id}/grants`), 200) as { principal: { kind: string; id: string } }[];
+  assert.equal((await grants(f.manager)).some((row) => row.principal.id === f.agent.id), false, 'grant discovery hides foreign assistant-only identities even from workspace managers');
+  assert.equal((await grants(f.manager)).some((row) => row.principal.kind === 'human' && row.principal.id === f.owner.id), true, 'ordinary human grants remain visible');
+  assert.equal((await grants(f.owner)).some((row) => row.principal.id === f.agent.id), true, 'own assistant grant remains visible');
+  const own = await roster(f.owner);
+  assert.equal(own.connections.length, 1); assert.equal(own.connections[0]?.assistant, true, 'the owner retains its eligible hand-off choice');
+  assert.deepEqual((await roster(f.manager)).connections, [], 'even a workspace owner never discovers another person’s assistant connection');
+  assert.equal((await people(f.manager)).some((row) => row.id === f.agent.id), false, 'private identity absent from another member’s project people');
+  assert.equal((await agents(f.manager)).some((row) => row.id === f.agent.id), false, 'private identity absent from another member’s workspace agent picker');
+  assert.equal((await people(f.owner)).some((row) => row.id === f.agent.id), true, 'own identity remains available for own authorized use');
+  expectStatus(await f.manager.browser.request('GET', assistantSettingsPath(f.ws.id, f.owner.id)), 404);
+
+  const external = expectStatus(await f.owner.browser.request('POST', '/api/v1/agent-connections', { body: {
+    agentId: f.agent.id, selectedProjectIds: [f.managed.id], scopes: ['flux.context.read'], name: 'Ines coding client', clientDesignation: 'codex',
+  } }), 201) as { id: string };
+  const shared = await roster(f.manager);
+  assert.deepEqual(shared.connections.map((row) => row.id), [external.id], 'the explicitly connected MCP client is still public to project members');
+  assert.equal((await grants(f.manager)).some((row) => row.principal.id === f.agent.id), true, 'an explicitly shared MCP identity retains its ordinary grant');
+  assert.equal(shared.connections[0]?.assistant, undefined);
+  assert.equal(shared.connections[0]?.own, false);
+  assert.equal(shared.connections[0]?.owner.id, f.owner.id);
+  assert.equal((await people(f.manager)).some((row) => row.id === f.agent.id), true, 'public MCP identity is not hidden merely because its owner also selected it for their assistant');
+  expectStatus(await f.manager.browser.request('DELETE', `/api/v1/agent-connections/${external.id}`), 404);
+});
+
 test('enablement atomically creates one identity/policy/settings, auto-joins only managed projects, and engine changes retain it', async () => {
   const f = await setup('identity'); const saved = (await settings(f.owner, f.ws.id)).body;
   assert.equal(saved.approvalMode, 'act'); assert.equal(saved.changesPerRun, 20); assert.equal(saved.backgroundRunsPerDay, 24);
@@ -122,7 +153,7 @@ test('a join request gives no authority, is deduplicated/manager-scoped, and man
   assert.deepEqual([snapshot.assistant_id, snapshot.assistant_name, snapshot.owner_id, snapshot.owner_name], [agent.id, 'Joining assistant', requester.id, originalOwnerName]);
   const firstInbox = expectStatus(await manager.browser.request('GET', '/api/v1/inbox'), 200) as { items: { id: string; url: string | null; assistantRequestIdentity?: unknown }[] };
   const firstItem = firstInbox.items.find((item) => item.id === notifications.find((row: { user_id: string }) => row.user_id === manager.id)!.id)!;
-  assert.equal(firstItem.url, assistantJoinInboxPath(destination.id));
+  assert.equal(firstItem.url, assistantJoinInboxPath(firstItem.id));
   assert.deepEqual(firstItem.assistantRequestIdentity, { joinRequestId: first.id, openingVersion: 1, assistantId: agent.id,
     assistantName: 'Joining assistant', ownerId: requester.id, ownerName: originalOwnerName });
   const needsYou = expectStatus(await manager.browser.request('GET', '/api/v1/needs-you'), 200) as { items: { key: string; kind: string; title: string; detail: string; project: { id: string; name: string } | null; from: { kind: string; id: string; name: string } | null; at: string; url: string; assistantRequestIdentity?: unknown }[] };
@@ -131,7 +162,7 @@ test('a join request gives no authority, is deduplicated/manager-scoped, and man
     from: joinNeed.from, url: joinNeed.url, assistantRequestIdentity: joinNeed.assistantRequestIdentity }, {
     key: `note:${firstItem.id}`, kind: 'question', title: `${originalOwnerName}'s assistant asks to join`, detail: 'Join destination · Requested contributor access.',
     project: { id: destination.id, name: 'Join destination' }, from: { kind: 'agent', id: agent.id, name: 'Joining assistant' },
-    url: assistantJoinInboxPath(destination.id), assistantRequestIdentity: firstItem.assistantRequestIdentity,
+    url: assistantJoinInboxPath(firstItem.id), assistantRequestIdentity: firstItem.assistantRequestIdentity,
   }, 'Needs You keeps the cycle snapshot, public assistant name, Agent identity and current project context');
   assert.match(joinNeed.at, /^\d{4}-\d\d-/);
   const firstItemRead = expectStatus(await manager.browser.request('GET', `/api/v1/inbox/${firstItem.id}`), 200) as { assistantRequestIdentity?: unknown };
@@ -143,6 +174,8 @@ test('a join request gives no authority, is deduplicated/manager-scoped, and man
   await pool.query('UPDATE agents SET name=$1 WHERE id=$2', ['Renamed assistant', agent.id]);
   await pool.query('UPDATE auth_users SET name=$1 WHERE id=$2', ['Renamed owner', requester.id]);
   expectStatus(await requester.browser.request('POST', endpoint), 201);
+  expectStatus(await manager.browser.request('POST', `${endpoint}/${first.id}/allow`, { headers: { 'if-match': '"1"' } }), 409);
+  assert.equal((await pool.query('SELECT id FROM project_grants WHERE project_id=$1 AND agent_id=$2', [destination.id, agent.id])).rowCount, 0, 'an old question cannot authorize a reopened request');
   const cycles = (await pool.query(`SELECT n.assistant_join_opening_version, s.assistant_name, s.owner_name, s.notification_linked_at FROM notifications n
     JOIN assistant_join_question_identity_snapshots s ON n.assistant_join_request_id=s.join_request_id AND n.assistant_join_opening_version=s.opening_version
     WHERE n.source_id=$1 AND n.user_id=$2 ORDER BY n.assistant_join_opening_version`, [destination.id, manager.id])).rows;
@@ -163,7 +196,7 @@ test('a join request gives no authority, is deduplicated/manager-scoped, and man
     { joinRequestId: first.id, openingVersion: 3, assistantId: agent.id, assistantName: 'Renamed assistant', ownerId: requester.id, ownerName: 'Renamed owner' },
   ], 'Needs You preserves the old cycle identity and displays the new snapshot only for the reopened request');
   const managerView = expectStatus(await manager.browser.request('GET', `/api/v1/projects/${destination.id}/agents`), 200) as unknown as ProjectAgents;
-  assert.equal(managerView.joinRequests?.[0]?.id, first.id);
+  assert.equal(managerView.joinRequests, undefined, 'project roster never discovers someone else’s assistant; explicit manager review stays in Inbox (#522)');
   const otherView = expectStatus(await bystander.browser.request('GET', `/api/v1/projects/${destination.id}/agents`), 200) as unknown as ProjectAgents;
   assert.equal(otherView.joinRequests, undefined, 'an ordinary reader sees no one else\'s join request');
   assert.equal(otherView.assistantJoin, undefined, 'an ordinary reader sees no one else’s assistant request action');
