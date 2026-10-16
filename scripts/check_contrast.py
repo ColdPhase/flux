@@ -20,6 +20,7 @@ TOKENS = Path(__file__).resolve().parent.parent / "app/apps/web/src/ui/tokens.cs
 # stop of a gradient token. --t3 is muted text and also holds 4.5:1 on the quiet fills (--side, --sub,
 # --hov), so meta text in the sidebar, in chips and on hovered rows passes (#433).
 PAIRS = [
+    ("--t1", "--own", 4.5, "own message text"),
     ("--t1", "--bg", 4.5, "body text on the screen"),
     ("--t1", "--el", 4.5, "text in cards, bubbles and fields"),
     ("--t1", "--side", 4.5, "sidebar item text"),

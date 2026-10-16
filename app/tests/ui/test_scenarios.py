@@ -55,6 +55,7 @@ from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_play
 
 from create_window import create_other, linked_labels, open_from_tasks, submit_button
 from message_gestures import open_message_menu
+from message_gestures import open_message_menu
 from test_app_shell import show_map_as, DESKTOP, ORIGIN, PHONE, UPSTREAM, open_details, open_what_matters, shot, start_forwarder
 
 UI_BROWSER = os.environ.get("FLUX_UI_BROWSER", "chromium")
@@ -576,7 +577,8 @@ class ScenarioJourney:
         # Ada replies in the thread; the reply inherits the project audience without a checkbox.
         page = self.page("ada")
         page.goto(f"/projects/{lamp}")
-        self.tap(page.locator(f"#message-{s['m1']}").get_by_role("button", name="Reply", exact=True))
+        menu = open_message_menu(page.locator(f"#message-{s['m1']}"), phone=self.phone)
+        self.tap(menu.get_by_role("menuitem", name="Reply in thread", exact=True))
         thread = page.get_by_role("complementary", name="Replies")
         expect(thread.locator(".thread__root")).to_contain_text(JONAS_ROOT)
         expect(thread.locator(".composer__audience")).to_contain_text("Jonas and you")

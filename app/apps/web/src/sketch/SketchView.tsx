@@ -764,7 +764,7 @@ function SketchEditor({ sketchId, projectId, dmId, back = '/map', doc }: ViewPro
       </button>
       <span className="sk-div" aria-hidden="true" />
       <button type="button" className="ui-btn ui-btn--quiet sk-add" onClick={() => add(selection[selection.length - 1] ?? null)}><Icon name="plus" size={14} />Thought</button>
-      {coarse ? <button type="button" className="ui-btn ui-btn--quiet sk-select-several" aria-label="Select several" aria-pressed={selectSeveral} onClick={() => { setSelectSeveral(!selectSeveral); say(selectSeveral ? 'Tapping selects one thought' : 'Tap thoughts to add them to the selection'); }}><Icon name="check" size={14} /><span className="sk-bl">Select several</span></button> : null}
+      {coarse ? <button type="button" className="ui-btn ui-btn--quiet sk-select-several" aria-label="Select several" title="Select several" aria-pressed={selectSeveral} onClick={() => { setSelectSeveral(!selectSeveral); say(selectSeveral ? 'Tapping selects one thought' : 'Tap thoughts to add them to the selection'); }}><Icon name="check" size={14} /><span className="sk-bl">Select several</span></button> : null}
       {sketch.scope === 'project' ? <button type="button" className="ui-btn ui-btn--quiet sk-task-btn" aria-disabled={!selection.length} onClick={() => makeWork()} aria-label="Create task from selected thoughts"><Icon name="tasks" size={14} />Create task</button> : null}
       <span className="sk-div" aria-hidden="true" />
       <button type="button" className="sk-tool" aria-label="Undo" data-tip="Undo" aria-disabled={!doc.canUndo} onClick={undo}><Icon name="undo" size={16} /></button>

@@ -155,7 +155,6 @@
 .sk-ghost { position: absolute; left: 0; top: 0; display: grid; place-items: center; border-radius: var(--r-lg); border: 1.5px dashed var(--t2);
   color: var(--t2); font-size: .75rem; pointer-events: none; z-index: 1; }
 .sk-ghost--draft { color: var(--t3); border-color: var(--t3); }
-.sk-ghost__hint { position: absolute; left: 0; top: 0; margin: 0; font-size: var(--fs-xs); color: var(--t3); white-space: nowrap; pointer-events: none; }
 /* S15: on a phone the map is for viewing and adding; the way to connect and arrange is said on the screen. */
 .sk-phone__note { display: inline-flex; align-items: center; gap: 8px; margin: 0; padding: 6px 14px; border-radius: var(--r-pill); background: var(--el);
   box-shadow: var(--sh-card), inset 0 0 0 1px var(--line); font-size: var(--fs-md); color: var(--t2); }
@@ -313,7 +312,7 @@
 .sk-draft__context { margin: 0 0 var(--s-2); font-size: var(--fs-sm); color: var(--t2); overflow-wrap: anywhere; }
 .sk-draft textarea { width: 100%; min-height: 64px; padding: var(--s-2) var(--s-3); font-family: var(--font); resize: vertical; }
 .sk-draft__actions { display: flex; align-items: center; flex-wrap: wrap; gap: var(--s-2); margin-top: var(--s-2); }
-.sk-draft__actions span { color: var(--t3); font-size: var(--fs-xs); }
+.sk-draft__actions span { color: var(--t2); font-size: var(--fs-sm); }
 .sk-edit-controls { display: flex; gap: var(--s-2); margin: 0 var(--s-4) var(--s-3); }
 /* #252: a paste becomes one private draft: several rows, a link, or a privately staged image with its caption. */
 .sk-draft__lines { display: grid; gap: var(--s-1); margin: 0; padding: 0; list-style: none; max-height: min(45vh, 360px); overflow-y: auto; }
@@ -348,7 +347,7 @@ span.sk-li-img { width: 160px; height: 96px; }
 .sk-page--map { position: relative; overflow: hidden; }
 .sk-page--map .sk--map { position: relative; flex: 1; min-height: 0; width: 100%; max-width: none; margin: 0; padding: 0; gap: 0; container: sk-pane / inline-size; }
 /* Beside the sidebar a tablet's pane is narrow: "Select several" is its icon alone there, so Undo stays on the toolbar's one row in the Map and the List. */
-@container sk-pane (max-width: 680px) { .sk-dock .sk-select-several { padding: 0 11px; } .sk-dock .sk-select-several .sk-bl { display: none; } }
+@container sk-pane (max-width: 680px) { .sk-dock .sk-select-several { padding: 0 11px; min-width: 44px; justify-content: center; } .sk-dock .sk-select-several .sk-bl { display: none; } }
 .sk--map .sk-canvas-wrap { position: absolute; inset: 0; display: block; flex: none; height: auto; min-height: 0; padding: 0; }
 .sk--map .sk-canvas { height: 100%; box-sizing: border-box; padding: 56px 0 100px; border-radius: 0; box-shadow: none; background-color: var(--bg); }
 .sk-over { position: absolute; left: 14px; top: 12px; right: 14px; z-index: 8; display: flex; flex-direction: column; align-items: flex-start; gap: 8px;

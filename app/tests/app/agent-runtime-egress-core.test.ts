@@ -154,7 +154,8 @@ describe('the /mcp forwarder', () => {
 
   test('forwards /mcp with a fixed set of headers, and answers with a fixed set', async () => {
     const response = await fetch(`http://127.0.0.1:${port(forwarder)}/mcp`, { method: 'POST', body: '{"jsonrpc":"2.0"}',
-      headers: { authorization: 'Bearer run.token.here', 'content-type': 'application/json', cookie: 'flux=session', 'x-forwarded-for': '10.0.0.1', 'mcp-session-id': 's1' } });
+      headers: { authorization: 'Bearer run.token.here', 'content-type': 'application/json', cookie: 'flux=session', 'x-forwarded-for': '10.0.0.1', 'mcp-session-id': 's1',
+        'mcp-protocol-version': '2026-07-28', 'mcp-method': 'tools/call', 'mcp-name': 'flux_get_doc', 'mcp-param-region': 'eu', 'x-mcp-other': 'no' } });
     assert.equal(response.status, 401);
     assert.equal(response.headers.get('www-authenticate'), 'Bearer');
     assert.equal(response.headers.get('set-cookie'), null);
@@ -166,6 +167,10 @@ describe('the /mcp forwarder', () => {
     assert.equal(last.headers.cookie, undefined);
     assert.equal(last.headers['x-forwarded-for'], undefined);
     assert.equal(last.headers['mcp-session-id'], 's1');
+    // MCP 2026-07-28's own headers reach the route (#460, F-022 T5); anything else does not.
+    assert.deepEqual([last.headers['mcp-protocol-version'], last.headers['mcp-method'], last.headers['mcp-name'], last.headers['mcp-param-region']],
+      ['2026-07-28', 'tools/call', 'flux_get_doc', 'eu']);
+    assert.equal(last.headers['x-mcp-other'], undefined);
   });
 
   test('refuses every other path, method, CONNECT and an oversized body without reaching the API', async () => {

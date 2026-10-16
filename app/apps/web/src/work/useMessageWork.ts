@@ -108,6 +108,10 @@ function useMessageReadingPosition(ref: RefObject<HTMLElement | null>, node: HTM
       const held = pointed.current;
       if (!held || !held.row.isConnected || !pane.contains(held.row)) { pointed.current = null; return false; }
       if (performance.now() - held.at > POINTER_AIM_MS) return false;
+      // A native scroll the reader started (wheel, keys, touch) owns the position until it ends: writing
+      // scrollTop now would cancel an animated scroll mid-gesture (WebKit stops short of where the
+      // reader was going). Each scroll event re-aims the pointer, so nothing is lost; scrollend settles.
+      if (readerMoved.current) return true;
       const delta = held.row.getBoundingClientRect().top - held.top;
       if (Math.abs(delta) > 0.5) { pane.scrollTop += delta; ownScroll.current = pane.scrollTop; lastTop.current = pane.scrollTop; }
       return true;

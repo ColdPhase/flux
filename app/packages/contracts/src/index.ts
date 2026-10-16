@@ -33,6 +33,8 @@ export interface FixtureOauthClientRegistered {
 export const AUTH_BASE_PATH = '/api/auth';
 export const IDENTITY_CAPABILITIES_PATH = '/api/v1/auth/capabilities';
 export const ME_PATH = '/api/v1/me';
+/** Sent with a ME_PATH request by a page that may be signed out: the answer is 200 `null` instead of a 401 that the browser logs (#546). */
+export const ME_PROBE_HEADER = 'x-flux-session-probe';
 export const SESSIONS_PATH = '/api/v1/sessions';
 export const REVOKE_OTHER_SESSIONS_PATH = '/api/v1/sessions/revoke-others';
 

@@ -18,7 +18,18 @@ function refuse(body: unknown, code: number, message: string, data?: Record<stri
  * PC-1 admission, inside the verified bearer boundary. The SDK remains the only era classifier;
  * malformed modern claims never reach legacy serving. No negotiated session stores an identity.
  */
-export function createFluxMcpHandler(factory: () => McpServer) {
+/**
+ * The refusal of a tool a personal run's token may not call (F-027 AST-4.2/AST-4.4): the same structured
+ * result S6 returns for a switched-off capability, before anything runs.
+ */
+function refusedTool(body: unknown) {
+  const id = object(body)?.id;
+  return Response.json({ jsonrpc: '2.0', id: typeof id === 'string' || typeof id === 'number' ? id : null, result: {
+    content: [{ type: 'text', text: JSON.stringify({ code: 'MCP_ENTRY_UNAVAILABLE', error: 'This capability is unavailable' }) }], isError: true,
+  } });
+}
+
+export function createFluxMcpHandler(factory: () => McpServer, options: { refuseTool?: (name: string) => boolean } = {}) {
   const handler = createMcpHandler(factory, { legacy: 'stateless' });
   return { async fetch(request: Request): Promise<Response> {
     if (request.method !== 'POST' || !isJsonContentType(request.headers.get('content-type'))) return handler.fetch(request);
@@ -29,6 +40,11 @@ export function createFluxMcpHandler(factory: () => McpServer) {
     try { body = JSON.parse(read.text); } catch { return handler.fetch(request); }
     // An array cannot execute even one member, including an otherwise permitted write.
     if (Array.isArray(body)) return refuse(body, -32600, 'JSON-RPC batches are not supported');
+    const call = object(body);
+    if (options.refuseTool && call?.method === 'tools/call' && call.id !== undefined) {
+      const name = object(call.params)?.name;
+      if (typeof name !== 'string' || options.refuseTool(name)) return refusedTool(body);
+    }
     if (!await isLegacyRequest(request, body)) return handler.fetch(request, { parsedBody: body });
     const rpc = object(body);
     if (!rpc) return handler.fetch(request, { parsedBody: body });

@@ -44,7 +44,7 @@ export const emptyAccount = (): RunAccount => ({ micros: 0, inputTokens: 0, outp
 export function reconcileRequest(account: RunAccount, usage: { inputTokens: number; outputTokens: number; reportedCostMicros?: number | null },
   price: Pick<AiPrice, 'inputMicrosPerMTok' | 'outputMicrosPerMTok'>, reservedMicros: number): boolean {
   const micros = boundedUsageMicros(price, usage, {
-    maxInputTokens: PERSONAL_RUN_LIMITS.maxInputTokens, maxOutputTokens: PERSONAL_RUN_LIMITS.maxOutputTokens, reservedMicros: reservedMicros - account.micros,
+    maxInputTokens: PERSONAL_RUN_LIMITS.maxToolInputTokens, maxOutputTokens: PERSONAL_RUN_LIMITS.maxOutputTokens, reservedMicros: reservedMicros - account.micros,
   });
   if (micros === null) { account.unknown = true; return false; }
   account.micros += micros;
@@ -56,7 +56,7 @@ export function reconcileRequest(account: RunAccount, usage: { inputTokens: numb
 
 /** Whether another request, at its largest possible cost, still fits what is left of the reservation. */
 export function nextRequestFits(account: RunAccount, price: Pick<AiPrice, 'inputMicrosPerMTok' | 'outputMicrosPerMTok'>, reservedMicros: number): boolean {
-  return account.micros + maxRequestMicros(price, PERSONAL_RUN_LIMITS.maxInputTokens, PERSONAL_RUN_LIMITS.maxOutputTokens) <= reservedMicros;
+  return account.micros + maxRequestMicros(price, PERSONAL_RUN_LIMITS.maxToolInputTokens, PERSONAL_RUN_LIMITS.maxOutputTokens) <= reservedMicros;
 }
 
 /** Why a run stopped at one of its own limits ("Limit reached"): the turn cap, the money reservation, one request's input bound or the clock. */
@@ -157,7 +157,7 @@ export async function runToolLoop(options: LoopOptions): Promise<LoopResult> {
     const next = await gate();
     if (next) return { end: { kind: 'halted', status: next.status }, account, turns: turn };
     let tokens = conservativeTokenEstimate(requestParts(request));
-    if (tokens <= PERSONAL_RUN_LIMITS.maxInputTokens && compute.countInputTokens) {
+    if (tokens <= PERSONAL_RUN_LIMITS.maxToolInputTokens && compute.countInputTokens) {
       try {
         tokens = boundedInputTokens(tokens, await compute.countInputTokens(request));
       } catch {
@@ -165,7 +165,7 @@ export async function runToolLoop(options: LoopOptions): Promise<LoopResult> {
         return { end: { kind: 'failed', result: { kind: 'failed', reason: 'provider_error', billed: 'none' } }, account, turns: turn };
       }
     }
-    if (tokens > PERSONAL_RUN_LIMITS.maxInputTokens) return { end: { kind: 'limit', limit: 'input' }, account, turns: turn };
+    if (tokens > PERSONAL_RUN_LIMITS.maxToolInputTokens) return { end: { kind: 'limit', limit: 'input' }, account, turns: turn };
     // The tools, the gate and the count above all took time: the clock is read again at the dispatch
     // boundary, so no request starts after the deadline. What the calls already changed stays.
     if (now() >= deadline) return { end: { kind: 'limit', limit: 'time' }, account, turns: turn };

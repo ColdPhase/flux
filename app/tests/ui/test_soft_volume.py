@@ -180,7 +180,7 @@ class SoftVolume(unittest.TestCase):
                     page.on("request", lambda request: fonts.append(request.url) if request.resource_type == "font" else None)
                     page.goto(f"/projects/{self.ids['project']}/conversations/{self.ids['conversation']}")
                     replies = page.get_by_role("complementary", name="Replies")
-                    timestamp = replies.locator(".thread__root-meta time")
+                    timestamp = replies.locator(".thread__root .message-time time")
                     row = replies.locator(".message-files .file-row").first
                     filename = row.locator(".file-row__name")
                     label = row.locator(".file-icon__label")
@@ -259,15 +259,15 @@ class SoftVolume(unittest.TestCase):
                     self.assertGreaterEqual(value["ratio"], 3, (scheme, phone, value))
                     shot(page, f"338-{self.engine}-task-parked-{'390' if phone else '1440'}-{scheme}")
 
-    def test_06_own_dm_initials_and_real_shortcuts_are_readable(self) -> None:
+    def test_06_own_dm_initials_are_readable(self) -> None:
         self.ensure_dm()
         for scheme in ("light", "dark"):
             for phone in (False, True):
                 with self.subTest(scheme=scheme, phone=phone):
                     page = self.page(scheme=scheme, phone=phone)
                     page.goto(f"/dm/{self.ids['dm']}")
-                    expect(page.locator(".dm-msg__meta time").first).to_be_visible()
-                    self.assert_mono(page.locator(".dm-msg__meta time").first)
+                    expect(page.locator(".dm-msg .message-time time").first).to_be_visible()
+                    self.assert_mono(page.locator(".dm-msg .message-time time").first)
                     open_details(page)
                     page.wait_for_timeout(400)  # the panel finishes fading in before contrast is measured
                     avatar = page.locator(".details__person .ui-avatar--me")
@@ -277,9 +277,8 @@ class SoftVolume(unittest.TestCase):
                         if (Number(getComputedStyle(n).opacity) !== 1) return false; } return true; }""")
                     value = page.evaluate(MEASURE, {"selector": ".details__person .ui-avatar--me"})
                     self.assertGreaterEqual(value["ratio"], 4.5, (scheme, phone, value))
-                    shortcut = page.locator(".details__keys kbd").first
-                    expect(shortcut).to_be_visible()
-                    self.assert_mono(shortcut)
+                    # #512 AC-6 removed the "Esc closes this panel" footer (Esc lives in the close button's tooltip).
+                    expect(page.locator(".details__keys")).to_have_count(0)
                     shot(page, f"338-{self.engine}-dm-details-{'390' if phone else '1440'}-{scheme}")
 
     def test_07_details_title_scales_with_200_percent_text(self) -> None:

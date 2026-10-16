@@ -418,7 +418,7 @@ class AdaptiveMatrix(AdaptiveBase):
         question = page.locator(".project-convo__message").filter(has_text="Question for the next session")
         replies = question.locator(".convo-replies__open")
         replies.scroll_into_view_if_needed()
-        self.primary(page, question.get_by_role("button", name="Reply", exact=True), "a message's Reply")
+        self.primary(page, replies, "a message's existing thread")
         replies.click()
         thread = page.get_by_role("complementary", name="Replies")
         expect(thread).to_be_visible()

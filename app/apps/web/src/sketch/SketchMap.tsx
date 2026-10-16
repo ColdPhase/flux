@@ -348,7 +348,7 @@ export function SketchMap(props: SketchMapProps) {
       const gap = 12;
       const maxX = Math.max(14, pane.width - box.width - 14);
       const maxY = Math.max(14, pane.height - box.height - 14);
-      const obstacles = [...wrap.parentElement!.querySelectorAll<HTMLElement>('.sk-node, .sk-work-slot, .sk-actions, .sk-ghost--draft, .sk-head, .sk-dock__row, .sk-origin, .sk-copies')]
+      const obstacles = [...wrap.parentElement!.querySelectorAll<HTMLElement>('.sk-node, .sk-work-slot, .sk-actions, .sk-ghost--draft, .sk-wires .sk-wire, .sk-head, .sk-dock__row, .sk-dock .sk-line, .sk-dock > .sk-hint, .sk-origin, .sk-copies')]
         .map((el) => {
           const r = el.getBoundingClientRect();
           return { left: r.left - pane.left, top: r.top - pane.top, right: r.right - pane.left, bottom: r.bottom - pane.top,
@@ -967,22 +967,19 @@ export function SketchMap(props: SketchMapProps) {
             })}
           </div>
           {thoughtNodes}
-          {plus && last && lastThought ? (!compact ? (() => {
+          {plus && last && lastThought ? (!compact ? (hasComposition ? null : (() => {
             // Controls keep their on-screen size at every zoom (touch targets stay 44px).
             const x = plus.x + last.w / 2;
             const keep = `scale(${1 / zoom})`;
             const at = plus.y < 56 ? `translate(${x}px, ${plus.y + last.h + 8}px) ${keep} translateX(-50%)` : `translate(${x}px, ${plus.y - 8}px) ${keep} translate(-50%, -100%)`;
             return selectionBar({ transform: at }, plus.y >= 56);
-          })() : null) : linkAnchor && last ? (() => {
+          })()) : null) : linkAnchor && last ? (() => {
             // People who can only look still open a selected link.
             const at = place(last);
             return <div className="sk-actions" style={{ transform: `translate(${at.x + last.w / 2}px, ${at.y + last.h + 6}px) scale(${1 / zoom}) translateX(-50%)` }}>{linkAnchor}</div>;
           })() : null}
           {wire && !wire.over && wireFrom ? (
-            <>
-              <div className="sk-ghost" aria-hidden="true" style={{ transform: `translate(${wire.x - origin.x}px, ${wire.y - origin.y}px)`, width: DEFAULT_THOUGHT_SIZE.width, height: DEFAULT_THOUGHT_SIZE.height }}>New thought</div>
-              <p className="sk-ghost__hint" aria-hidden="true" style={{ transform: `translate(${wire.x - origin.x}px, ${wire.y - origin.y + DEFAULT_THOUGHT_SIZE.height + 6}px)` }}>Release to add a connected thought</p>
-            </>
+            <div className="sk-ghost" aria-hidden="true" style={{ transform: `translate(${wire.x - origin.x}px, ${wire.y - origin.y}px)`, width: DEFAULT_THOUGHT_SIZE.width, height: DEFAULT_THOUGHT_SIZE.height }}>New thought</div>
           ) : null}
           {props.draft && !compact ? (
             <div className="sk-ghost sk-ghost--draft" aria-hidden="true" style={{ transform: `translate(${props.draft.x - origin.x}px, ${props.draft.y - origin.y}px)`, width: DEFAULT_THOUGHT_SIZE.width, height: DEFAULT_THOUGHT_SIZE.height }}>{props.draft.label}</div>
@@ -997,7 +994,7 @@ export function SketchMap(props: SketchMapProps) {
     </div>
       {!compact ? <div className="sk-corner"><Minimap canvas={canvasRef} zoom={zoom} origin={origin} rects={rects} />{zoomControls}</div> : null}
       <div className="sk-dock" ref={dockRef}>
-        {!compact ? props.hint : null}
+        {!compact ? (wire ? <p className="sk-hint" aria-hidden="true">{wire.over ? 'Release to link' : 'Release to add a connected thought'}</p> : props.hint) : null}
         {props.dock ? <div className="sk-dock__row">{props.dock}</div> : null}
       </div>
       {compact ? <button type="button" className="sk-edit-btn sk-map-options" aria-haspopup="dialog" aria-expanded={phoneMenuOpen && phoneMenu === 'map'} onClick={(event) => {
