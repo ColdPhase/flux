@@ -52,7 +52,7 @@ changes to it; agents implement it and do not re-decide it.
 | `--line2` | `rgba(0,0,0,.14)` | `rgba(255,255,255,.16)` | Strong outlines |
 | `--t1` | `#18181B` | `#F0F0F0` | Primary text |
 | `--t2` | `#4A4A4A` | `#BDBDBD` | Secondary text (APCA Lc at least 60 on `--bg`, `--el` and `--sub`) |
-| `--t3` | `#6B6B6B` | `#A1A1A1` | Meta text (at least 4.5:1 on `--bg` and `--el`; APCA Lc at least 45) |
+| `--t3` | `#636363` | `#A1A1A1` | Meta text (at least 4.5:1 on `--bg`, `--el`, `--side`, `--sub` and `--hov`; APCA Lc at least 45) |
 | `--inv` / `--oninv` | `#18181B` / `#FFFFFF` | `#F0F0F0` / `#111111` | Inverted chips, the primary button |
 | `--own` | `#E7E7EA` | `#313134` | Own message bubbles ([Spokój](../spokoj/README.md#token), 2026-10-15) |
 
