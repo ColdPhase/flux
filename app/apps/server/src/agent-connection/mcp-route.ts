@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { requireMcpAuth } from '@better-auth/mcp';
-import { AGENT_MCP_ENTRIES, assistantRunTools } from '@flux/contracts';
+import type { AgentScope } from '@flux/contracts';
+import { AGENT_MCP_ENTRIES, agentScopeRefusal, assistantRunTools } from '@flux/contracts';
 import { enforce, evaluateProject, loadActor, requireAgentMcpEntry, type Database, type Transaction } from '@flux/core';
 import { lockAgentMcpPolicy } from '@flux/db';
 import type { FluxAuth } from '../identity/auth.js';
@@ -42,6 +43,8 @@ export function registerMcpRoute(app: FastifyInstance, db: Database, auth: FluxA
     // against the live connection before even listing tools.
     let dispatch: McpDispatch;
     let run: RunTokenClaims | undefined;
+    // Partial consent (#548): only what the token carries and the connection still grants.
+    let granted: string[] = [];
     try {
       const referenceId = token.flux_grant_reference;
       // New references bind the verified, AS-owned client_id to one durable grant.
@@ -55,6 +58,7 @@ export function registerMcpRoute(app: FastifyInstance, db: Database, auth: FluxA
           throw new Error('Invalid grant');
         const policy = await lockAgentMcpPolicy(tx, connectionId);
         if (!policy) throw new Error('Policy unavailable');
+        granted = scopes.filter((scope) => grant.connection.scopes.includes(scope as AgentScope));
         if (runClaims) {
           // A personal run's token (F-027 A2): its run is in flight under this token's id, and the route lists
           // exactly the run's tools that the owner's switches still allow (Off means off, AST-4).
@@ -70,11 +74,11 @@ export function registerMcpRoute(app: FastifyInstance, db: Database, auth: FluxA
       });
     }
     const cursorSecret = (await auth.$context).secret;
-    const handler = createFluxMcpHandler(() => createFluxMcpServer(db, { ownerUserId, connectionId, scopes, dispatch,
+    const handler = createFluxMcpHandler(() => createFluxMcpServer(db, { ownerUserId, connectionId, scopes: granted, dispatch,
       clientId: typeof token.client_id === 'string' ? token.client_id : null,
       grantReferenceId: typeof token.flux_grant_reference === 'string' ? token.flux_grant_reference : null,
       ...(run ? { run } : {}),
-    }, cursorSecret), run ? { refuseTool: (name) => !run!.tools.includes(name) } : {});
+    }, cursorSecret), { refuseScope: (name) => agentScopeRefusal(name, granted), ...(run ? { refuseTool: (name: string) => !run!.tools.includes(name) } : {}) });
     // Protected bytes are handed to the transport only while the live policy and access still hold.
     const referenceId = typeof token.flux_grant_reference === 'string' ? token.flux_grant_reference : connectionId;
     const fence = { async check(tx: Transaction) {

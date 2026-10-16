@@ -187,6 +187,13 @@ class HandOffJourney(unittest.TestCase):
         row.click()
         expect(page.get_by_role("region", name="Agent policy")).to_have_count(0)
 
+    def test_04b_a_read_only_connection_says_it_can_only_read(self) -> None:
+        page = self.open_agents()
+        page.locator(f'.agents-row[data-agent="{self.ids["agent_reader"]}"] .agents-row__btn').click()
+        detail = page.get_by_role("complementary", name="Reader agent, details")
+        expect(detail.get_by_test_id("agent-permissions")).to_have_text("Can read projects")
+        shot(page, "agents-detail-read-only-permissions")
+
     def test_04_the_detail_panel_opens_on_the_working_agent(self) -> None:
         page = self.open_agents()
         detail = page.get_by_role("complementary", name="Claude Code agent, details")
@@ -194,6 +201,7 @@ class HandOffJourney(unittest.TestCase):
         claude = page.locator(f'.agents-row[data-agent="{self.ids["agent_claude"]}"] .agents-row__btn')
         expect(claude).to_have_attribute("aria-pressed", "true")
         expect(detail).to_contain_text("for Ada Kowalska (you)")
+        expect(detail.get_by_test_id("agent-permissions")).to_have_text("Can read projects · Can suggest changes")
         expect(detail.get_by_role("region", name="Now")).to_contain_text("Calibrate the probes at two soil depths")
         expect(detail.get_by_role("region", name="Can")).to_contain_text("It can’t accept decisions")
         expect(detail.get_by_role("region", name="Recent")).to_be_visible()

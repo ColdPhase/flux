@@ -136,7 +136,9 @@ export function agentConnectionRepository(db: Database, policy: AgentConnectionP
           eq(schema.authSessions.id, sessionId), eq(schema.authSessions.userId, ownerUserId),
           gt(schema.authSessions.expiresAt, new Date()))).for('share');
         const connection = session ? await resolveCurrent(tx, ownerUserId, connectionId) : null;
-        if (!connection || connection.computeSource === 'owner_assistant' || flow.expiresAt <= new Date() || flow.scopes.some((scope) => scope !== 'offline_access' && !connection.scopes.includes(scope as 'flux.context.read' | 'flux.proposal.write' | 'flux.action.execute')))
+        if (!connection || connection.computeSource === 'owner_assistant' || flow.expiresAt <= new Date()
+          // Partial consent (#548): a connection may grant fewer permissions than the client asks for, but not none of them.
+          || !flow.scopes.some((scope) => connection.scopes.includes(scope as 'flux.context.read' | 'flux.proposal.write' | 'flux.action.execute')))
           return 'CONNECTION_NOT_FOUND';
         const [client] = await tx.select({ id: schema.oauthClient.clientId }).from(schema.oauthClient)
           .where(and(eq(schema.oauthClient.clientId, flow.clientId), or(eq(schema.oauthClient.disabled, false), isNull(schema.oauthClient.disabled)))).for('share');
@@ -160,8 +162,8 @@ export function agentConnectionRepository(db: Database, policy: AgentConnectionP
     consentForOauth(ownerUserId: string, sessionId: string, flow: AgentOauthFlow) {
       return db.transaction(async (tx) => {
         const grant = await resolveFlow(tx, ownerUserId, sessionId, flow.fingerprint);
-        if (!grant || grant.clientId !== flow.clientId || flow.scopes.some((scope) => scope !== 'offline_access'
-          && !grant.connection.scopes.includes(scope as 'flux.context.read' | 'flux.proposal.write' | 'flux.action.execute'))) return null;
+        const granted = flow.scopes.filter((scope) => scope === 'offline_access' || grant?.connection.scopes.includes(scope as 'flux.context.read' | 'flux.proposal.write' | 'flux.action.execute'));
+        if (!grant || grant.clientId !== flow.clientId || !granted.some((scope) => scope !== 'offline_access')) return null;
         const [client] = await tx.select({ name: schema.oauthClient.name }).from(schema.oauthClient).where(and(
           eq(schema.oauthClient.clientId, flow.clientId), or(eq(schema.oauthClient.disabled, false), isNull(schema.oauthClient.disabled)))).for('share');
         if (!client) return null;
@@ -169,7 +171,7 @@ export function agentConnectionRepository(db: Database, policy: AgentConnectionP
         // resolveFlow holds the central policy's locks while these names are read.
         const selectedProjects = await tx.select({ id: schema.projects.id, name: schema.projects.name }).from(schema.projects)
           .where(inArray(schema.projects.id, grant.connection.selectedProjectIds)).orderBy(schema.projects.id);
-        return { clientName: client.name ?? flow.clientId, scopes: [...flow.scopes], connection: grant.connection,
+        return { clientName: client.name ?? flow.clientId, scopes: granted, notGranted: flow.scopes.filter((scope) => !granted.includes(scope)), connection: grant.connection,
           agentName: agent!.name, selectedProjects };
       });
     },

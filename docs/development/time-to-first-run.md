@@ -213,9 +213,11 @@ against a running stack and a real Claude Code client.
    refuses a flow whose scopes the connection does not all contain, and the route returns 404.
    Ticking **Run approved project actions** under **Allowed actions** fixes it, and a standing
    grant is still needed before any action runs. The README step 3 now says so.
-2. **The message is misleading.** A scope mismatch reads as "no longer available". Whether a
-   connection should cover a subset of the requested scopes is a separate decision, not made here;
-   see the follow-up named under "Not measured" below.
+2. **The message was misleading, and the refusal is gone (#548).** A scope mismatch read as "no
+   longer available". Founder direction 2026-10-16: a connection may cover a subset of the requested
+   scopes. `chooseFlow` now accepts it, the consent page names what is and is not granted, the token
+   carries exactly the granted scopes, and a tool outside them answers that the permission wasn't
+   granted. The README's default connection (Read and propose) now consents for Claude Code.
 3. **`claude mcp login` needs a terminal.** Without one it stops with "stdin isn't a terminal".
    In a terminal it prints the authorize URL and waits. Without a consent it stops with
    "Authentication timeout" after a few minutes. The README now says both.

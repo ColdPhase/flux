@@ -309,6 +309,7 @@ export function AgentConnectionPage() {
       </fieldset>
       <fieldset className="connection__group" disabled={busy || !agentId}>
         <legend>Allowed actions</legend>
+        <p className="connection__help">You can grant fewer permissions than an agent asks for. It gets only the ones ticked here, and anything else it tries is refused.</p>
         <div className="connection__checks">{ALL_SCOPES.map((scope) => <label key={scope}>
           <input type="checkbox" checked={scopes.includes(scope)} onChange={(event) => {
             setScopes((current) => event.target.checked ? [...current, scope] : current.filter((item) => item !== scope));
@@ -359,12 +360,10 @@ export function AgentConsentPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const projectNames = new Map(context.selectedProjects?.map((project) => [project.id, project.name]) ?? []);
-  const requestedProjectActions = context.scopes.filter((scope) => ALL_SCOPES.includes(scope as AgentScope));
-  const projectActionsMatch = requestedProjectActions.length === context.connection.scopes.length
-    && context.connection.scopes.every((scope) => requestedProjectActions.includes(scope));
+  const notGranted = context.notGranted ?? [];
   async function decide(accept: boolean) {
     setBusy(true); setError(null);
-    try { followOAuthRedirect(await decideAgentConsent(accept, oauthQuery)); }
+    try { followOAuthRedirect(await decideAgentConsent(accept, oauthQuery, context.scopes)); }
     catch (cause) { setError(describeError(cause)); setBusy(false); }
   }
   return <section className="connection connection--consent" aria-label="Agent access consent">
@@ -375,9 +374,13 @@ export function AgentConsentPage() {
     <ConsentDestination context={context} />
     <ConnectionSummary connection={context.connection} agentName={context.agentName ?? `Agent ${context.connection.agentId.slice(0, 8)}`} projectNames={projectNames} showScopes={false} />
     <div className="connection__requested">
-      <h2>Requested by this client</h2>
-      <p>{projectActionsMatch ? 'The requested project actions match your saved selection.' : 'This client requests fewer project actions than your saved selection.'} Approval does not add projects or agent grants.</p>
+      <h2>This client will be allowed</h2>
+      <p>{notGranted.length ? 'You can grant fewer permissions than a client asks for. It gets only the ones below, and the rest are refused.' : 'These are the permissions this connection has.'} Approval does not add projects or agent grants.</p>
       <ScopeList scopes={context.scopes} />
+      {notGranted.length ? <>
+        <p className="connection__help" data-testid="not-granted">Asked for, not granted:</p>
+        <ul className="connection__scopes">{notGranted.map((scope) => <li key={scope}><span><strong>{SCOPE_LABELS[scope as AgentScope]?.title ?? scope}</strong></span></li>)}</ul>
+      </> : null}
     </div>
     <p className="connection__help">Your external client handles compute. Flux does not receive provider credentials or verify how the client is billed. You can revoke this connection in Flux; access also ends if a project grant is removed.</p>
     <div className="connection__footer">

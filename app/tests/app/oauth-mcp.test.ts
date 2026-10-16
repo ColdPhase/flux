@@ -160,8 +160,11 @@ test('issued OAuth bearer reads and proposes through MCP, then connection revoca
   assert.equal((bootstrap.runtime as { clientId: string }).clientId, clientId);
   const discovery = await mcp(bearer, 48, 'tools/list');
   const tools = (discovery.message?.result as { tools: { name: string }[] }).tools;
-  assert.deepEqual(new Set((bootstrap.capabilities as { name: string }[]).map((row) => row.name)), new Set(tools.map((row) => row.name)),
-    'bootstrap capability names come from actual registered MCP tools');
+  const capabilityRows = bootstrap.capabilities as { name: string; operation: string | null }[];
+  // This token has no action scope (#548): tools/list omits the action tools, and bootstrap still names them as unavailable.
+  assert.deepEqual(new Set(capabilityRows.filter((row) => row.operation === null).map((row) => row.name)), new Set(tools.map((row) => row.name)),
+    'bootstrap capability names come from actual registered MCP tools; the listing holds exactly the granted ones');
+  assert.ok(capabilityRows.some((row) => row.name === 'flux_create_task') && !tools.some((row) => row.name === 'flux_create_task'));
   const writes = (bootstrap.capabilities as { name: string; operation: string | null; available: boolean }[]).filter((row) => row.operation !== null);
   assert.deepEqual(writes.map(({ name, operation, available }) => ({ name, operation, available })),
     [{ name: 'flux_create_task', operation: 'work.create', available: false }, { name: 'flux_update_task', operation: 'work.update', available: false },
@@ -314,8 +317,6 @@ test('three named connections share one actual client; same-session choices, ref
     { body: { oauth_query: flowC.oauthQuery } }), 404);
   expect(await owner.request('POST', `/api/v1/agent-connections/${a.id}/select-for-oauth`,
     { body: { oauth_query: flowA.oauthQuery } }), 204);
-  expect(await owner.request('POST', `/api/v1/agent-connections/${b.id}/select-for-oauth`,
-    { body: { oauth_query: flowA.oauthQuery } }), 404); // A read/propose connection cannot accept action scope.
   expect(await owner.request('POST', `/api/v1/agent-connections/${b.id}/select-for-oauth`,
     { body: { oauth_query: flowB.oauthQuery } }), 204);
   expect(await owner.request('POST', `/api/v1/agent-connections/${a.id}/select-for-oauth`,

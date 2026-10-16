@@ -119,9 +119,10 @@ export async function continueAgentOAuth(oauthQuery: string) {
   });
 }
 
-export async function decideAgentConsent(accept: boolean, oauthQuery: string) {
+/** Approval names exactly the granted scopes, so the token carries no more than the connection allows (#548). */
+export async function decideAgentConsent(accept: boolean, oauthQuery: string, scopes?: readonly string[]) {
   return request<OAuthRedirect>(`${AUTH_BASE_PATH}/oauth2/consent`, {
-    method: 'POST', body: { accept, oauth_query: oauthQuery },
+    method: 'POST', body: { accept, oauth_query: oauthQuery, ...(accept && scopes?.length ? { scope: scopes.join(' ') } : {}) },
   });
 }
 

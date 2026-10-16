@@ -36,7 +36,10 @@ export interface AgentOauthConsentContext {
   /** The client_id's host when the client_id is an https URL (a Client ID Metadata Document); null for a client registered on this server. */
   clientIdHost: string | null;
   redirect: AgentOauthRedirect;
+  /** What approval grants: the client's request narrowed to this connection's permissions (partial consent, #548). */
   scopes: string[];
+  /** Requested by the client but not part of this connection; approval leaves these out. */
+  notGranted: string[];
   connection: AgentConnection;
   agentName: string;
   selectedProjects: { id: string; name: string }[];
