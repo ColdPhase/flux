@@ -66,6 +66,34 @@ function textNodes(root: Element): Text[] {
   return nodes;
 }
 
+interface Change { value: string; added?: boolean; removed?: boolean }
+
+/**
+ * A run of changed words reads as one phrase: spaces between two changes join them, so "Two sensors
+ * reached the gateway" is one added phrase, not five words with gaps between their marks.
+ */
+function phrases(changes: Change[]): Change[] {
+  const out: Change[] = [];
+  let run: { removed: string; added: string; space: string } | null = null;
+  const close = () => {
+    if (!run) return;
+    if (run.removed) out.push({ value: run.removed, removed: true });
+    if (run.added) out.push({ value: run.added, added: true });
+    if (run.space) out.push({ value: run.space });
+    run = null;
+  };
+  for (const change of changes) {
+    if (change.added || change.removed) {
+      run ??= { removed: '', added: '', space: '' };
+      if (run.space) { run.removed += run.space; run.added += run.space; run.space = ''; }
+      if (change.removed) run.removed += change.value; else run.added += change.value;
+    } else if (run && !change.value.trim()) run.space += change.value;
+    else { close(); out.push(change); }
+  }
+  close();
+  return out;
+}
+
 /**
  * The newer block with its added words wrapped in <ins> and the removed words put back as <del> where
  * they stood. Null when the two share too little to read as one changed block.
@@ -75,7 +103,7 @@ function wordMerge(before: Element, after: Element): Element | null {
   const nodes = textNodes(result);
   const oldText = textNodes(before).map((node) => node.data).join('');
   const newText = nodes.map((node) => node.data).join('');
-  const changes = diffWordsWithSpace(oldText, newText);
+  const changes = phrases(diffWordsWithSpace(oldText, newText));
   const common = changes.filter((change) => !change.added && !change.removed && change.value.trim()).reduce((total, change) => total + change.value.length, 0);
   const longest = Math.max(oldText.replace(/\s+/g, '').length, newText.replace(/\s+/g, '').length);
   if (!longest || common / longest < MIN_COMMON) return null;

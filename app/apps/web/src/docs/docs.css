@@ -465,7 +465,7 @@
 .doc-changes__page .wiki-chg--added { background: color-mix(in srgb, var(--t1) 8%, transparent); text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--t1) 60%, transparent); text-underline-offset: 3px; border-radius: 4px; }
 .doc-changes__page .wiki-chg--removed, .doc-changes__page .wiki-chg--removed :is(td, th, li, strong, a, h1, h2, h3, h4) { color: var(--t3); text-decoration: line-through; text-decoration-color: var(--t3); }
 /* The primary action keeps one width in read, edit and history, so the controls before it never shift (#511, AC-4). */
-.wiki-bar .wiki-bar__primary { min-width: 120px; padding: 0 12px; justify-content: center; gap: 6px; }
+.wiki-bar .wiki-bar__primary { min-width: 136px; padding: 0 12px; justify-content: center; gap: 6px; }
 /* In a narrow pane (a tablet with the page list open) the state takes the first row, the icons the second,
    and the primary is its icon alone; the same in every state, so nothing moves between them. */
 @container wikimain (max-width: 560px) {

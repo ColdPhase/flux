@@ -5,7 +5,7 @@ import { AgentIdentity, Icon, MEDIA, StatusGlyph, TASK_STATE_WORD, useMediaQuery
 import { useShellData } from '../app/data';
 import { useShellActions, type DetailsView, type OverviewView } from '../app/shellContext';
 import { STATUS_LABEL, decisionLine } from '../work/format';
-import { summaryStateParts } from '../work/state-summary';
+import { summaryStateParts, type StatePart } from '../work/state-summary';
 import { useProjectWorkSummary } from '../work/WorkReadContext';
 import { useOverviewWork } from '../work/useOverviewWork';
 import { getWorkReferenceRows } from '../work/read-api';
@@ -36,6 +36,14 @@ interface Row {
 /** Sub-line parts joined with " · "; an agent's identity (Kreska, "Agent", "for <owner>") stays one part. */
 function dotted(parts: ReactNode[]): ReactNode {
   return parts.filter(Boolean).map((part, index) => <Fragment key={index}>{index ? ' · ' : null}{part}</Fragment>);
+}
+
+/** What a state line says beyond its kind and title: the title, and the kind's own words, are not said twice (#512, AC-3). */
+function stateSub(part: StatePart): string | undefined {
+  if (part.key === 'rule') return undefined;
+  if (part.key === 'result') return part.text.startsWith('Negative') ? 'Negative result' : undefined;
+  if (part.key === 'work' && part.text.startsWith('Task in progress: ')) return /\(([^)]*)\)$/.exec(part.text)?.[1];
+  return part.text;
 }
 
 /** A single page of objects has no pager (#512, AC-6); while the page is unread the pager keeps its own loading state. */
@@ -250,7 +258,7 @@ export function ProjectOverview({ messageId, selection, focusPeople = null, onBa
   // The project's current state, without repeating what is already linked here.
   const state = stateParts.filter((part) => !linkedIds.has(`${part.open.kind}:${part.open.id}`)).map((part): Row => ({
     key: part.key, icon: part.icon ?? (part.key === 'work' ? 'tasks' : 'rule'), kind: part.key === 'rule' ? 'Current rule' : part.key === 'result' ? 'Latest result' : part.key === 'proposal' ? 'Proposed decision' : part.key === 'blocked' ? 'Blocked' : part.key === 'open' ? 'Open task' : part.key === 'history' ? (part.open.kind === 'work' ? 'Earlier work' : 'Earlier decision') : 'In progress',
-    title: part.title, need: part.tone === 'need', sub: part.text.includes(part.title) ? undefined : part.text, open: part.open,
+    title: part.title, need: part.tone === 'need', sub: stateSub(part), open: part.open,
   }));
   // "Now" in the project's own Details (#512, AC-3): its blocked, in-progress and open tasks, the rule once, and what needs a look.
   const summaryState = projectMode ? current.summary?.state ?? null : null;
