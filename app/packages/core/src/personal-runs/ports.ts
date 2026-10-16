@@ -72,7 +72,7 @@ export interface RunRecord {
   createdAt: Date;
   dispatchedAt: Date | null;
   completedAt: Date | null;
-  /** 0098 (F-022 T5, F-027 A2): the engine, the run's own end states and its MCP token (never the token itself). */
+  /** 0100 (F-022 T5, F-027 A2): the engine, the run's own end states and its MCP token (never the token itself). */
   engine: AssistantEngine;
   endReason: AssistantRunEndReason | null;
   planLimitResetsAt: Date | null;

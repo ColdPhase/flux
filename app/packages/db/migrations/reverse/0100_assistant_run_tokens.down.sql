@@ -3,7 +3,7 @@
 DO $$ BEGIN
   IF EXISTS (SELECT 1 FROM personal_run_enablements WHERE engine = 'runtime')
     OR EXISTS (SELECT 1 FROM personal_runs WHERE engine = 'runtime') THEN
-    RAISE EXCEPTION 'Runtime assistants and their runs must be removed before reversing 0098';
+    RAISE EXCEPTION 'Runtime assistants and their runs must be removed before reversing 0100';
   END IF;
 END $$;
 ALTER TABLE personal_runs

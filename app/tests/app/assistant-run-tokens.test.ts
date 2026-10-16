@@ -50,7 +50,7 @@ async function row(runId: string) {
 
 describe('the run token and the worker as an MCP client of /mcp (F-027 A2, A6; #280, #484)', () => {
   let owner: Person; let ws: Workspace; let place: Project; let other: Project; let thread: Conversation;
-  let agentId: string; let docId: string; let otherDocId: string; let bigDocId: string;
+  let agentId: string; let docId: string; let otherDocId: string; let bigThreadId: string;
   const WIKI_CANARY = `wiki-canary-${randomBytes(4).toString('hex')}`;
   const OTHER_CANARY = `other-project-canary-${randomBytes(4).toString('hex')}`;
   const DM_CANARY = `dm-canary-${randomBytes(4).toString('hex')}`;
@@ -89,7 +89,11 @@ describe('the run token and the worker as an MCP client of /mcp (F-027 A2, A6; #
     thread = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/conversations`,
       { body: { body: 'Camera fails below 5 lux in the low-light test', clientMessageId: randomUUID() } }), 201) as Conversation;
     docId = (expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/docs`, { body: { title: 'Sensor notes', body: `The sensor is a PIR. ${WIKI_CANARY}` } }), 201) as { id: string }).id;
-    bigDocId = (expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/docs`, { body: { title: 'Big log', body: 'log line. '.repeat(2_000) } }), 201) as { id: string }).id;
+    // Ten long messages: one page of ten is past 16 KiB, so a run's read of it hits the per-call bound (#484).
+    bigThreadId = (expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/conversations`,
+      { body: { body: 'long message. '.repeat(300), clientMessageId: randomUUID() } }), 201) as Conversation).id;
+    for (let i = 1; i < 10; i += 1)
+      expectStatus(await owner.browser.request('POST', `/api/v1/conversations/${bigThreadId}/messages`, { body: { body: 'long message. '.repeat(300), clientMessageId: randomUUID() } }), 201);
     otherDocId = (expectStatus(await owner.browser.request('POST', `/api/v1/projects/${other.id}/docs`, { body: { title: 'Elsewhere', body: OTHER_CANARY } }), 201) as { id: string }).id;
     const privateMap = expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/sketches`, { body: { title: PRIVATE_CANARY, scope: 'private' } }), 201) as { id: string };
     expectStatus(await owner.browser.request('POST', `/api/v1/sketches/${privateMap.id}/thoughts`, { body: { text: PRIVATE_CANARY, x: 0, y: 0 } }), 201);
@@ -220,7 +224,7 @@ describe('the run token and the worker as an MCP client of /mcp (F-027 A2, A6; #
   test('a tool result over 16 KiB is not returned and the run ends in its own state', async () => {
     const replies: PersonalComputeResult[] = [
       { kind: 'completed', text: 'reading', stopReason: 'tool_use', usage: { inputTokens: 500, outputTokens: 20 },
-        toolCalls: [{ id: 'c1', name: 'flux_get_doc', input: { projectId: place.id, id: bigDocId } }] },
+        toolCalls: [{ id: 'c1', name: 'flux_get_conversation', input: { projectId: place.id, id: bigThreadId } }] },
       { kind: 'completed', text: 'done', stopReason: 'end_turn', usage: { inputTokens: 500, outputTokens: 20 } },
     ];
     compute.respond = async () => replies.shift()!;
@@ -229,7 +233,28 @@ describe('the run token and the worker as an MCP client of /mcp (F-027 A2, A6; #
     const stored = await row(started.run.id);
     assert.deepEqual([stored.status, stored.end_reason, stored.mcp_limit, stored.answer_body], ['cap_reached', 'mcp_results_too_large', 'call', null]);
     const second = compute.dispatched.at(-1)!;
-    assert.ok(!JSON.stringify(second.turns ?? []).includes('log line. log line. log line.'), 'the oversized result never reached the provider');
+    assert.ok(!JSON.stringify(second.turns ?? []).includes('long message. long message. long message.'), 'the oversized result never reached the provider');
+  });
+
+  test('#484: a run\'s flux_get_doc on a 50,000-character doc returns a first page under 16 KiB with a next-page cursor, and the run does not end', async () => {
+    const body = 'log line. '.repeat(5_000);
+    const longDocId = (expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/docs`, { body: { title: 'Long log', body } }), 201) as { id: string }).id;
+    const runId = await inFlight();
+    const grant = await token(runId);
+    const readPage = (id: number, args: Record<string, unknown>) => mcp(grant.token, id, 'tools/call', { name: 'flux_get_doc', arguments: { projectId: place.id, id: longDocId, ...args } });
+    const first = await readPage(1, {});
+    assert.equal((first.message?.result as { isError?: boolean } | undefined)?.isError, undefined, 'the first page is returned, not refused');
+    const content = (first.message?.result as { content: unknown[] }).content;
+    assert.ok(Buffer.byteLength(JSON.stringify(content), 'utf8') < 16 * 1024, 'the first page fits one tool result');
+    const page = JSON.parse((content[0] as { text: string }).text) as { body: string; totalLength: number; nextOffset: number | null; version: number };
+    assert.equal(page.totalLength, 50_000);
+    assert.equal(page.nextOffset, page.body.length, 'a next-page cursor continues where the first page ended');
+    const second = await readPage(2, { offset: page.nextOffset, version: page.version });
+    const next = JSON.parse(((second.message?.result as { content: { text: string }[] }).content[0]!).text) as { body: string; offset: number };
+    assert.equal(next.offset, page.nextOffset);
+    assert.equal(page.body + next.body, body.slice(0, page.body.length + next.body.length), 'pages join without gaps');
+    assert.equal((await mcp(grant.token, 3, 'tools/call', { name: 'flux_list_contexts', arguments: {} })).status, 200, 'the run still reads after paging');
+    await end(runId);
   });
 
   test('revoking the assistant connection mid-run makes the next MCP call fail with 403 and ends the run', async () => {

@@ -1691,7 +1691,7 @@ export const personalRunEnablements = pgTable('personal_run_enablements', {
   dailyCapCents: integer('daily_cap_cents').notNull().default(100),
   timeZone: text('time_zone').notNull().default('UTC'),
   status: text('status', { enum: ['active', 'paused'] }).notNull().default('active'),
-  /** 0098 (F-022 T5): the owner's API key connection (`server`) or their own Claude Code (`runtime`). */
+  /** 0100 (F-022 T5): the owner's API key connection (`server`) or their own Claude Code (`runtime`). */
   engine: text('engine', { enum: ['server', 'runtime'] }).notNull().default('server'),
   version: integer('version').notNull().default(1),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -1744,7 +1744,7 @@ export const personalRuns = pgTable('personal_runs', {
   dispatchedAt: timestamp('dispatched_at', { withTimezone: true }),
   completedAt: timestamp('completed_at', { withTimezone: true }),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-  // 0098 (F-022 T5, F-027 A2): the engine, the run's own end states and its run token. The token itself is
+  // 0100 (F-022 T5, F-027 A2): the engine, the run's own end states and its run token. The token itself is
   // never stored: only the hash of the worker's one-time minting nonce, its id, expiry and exact tools.
   engine: text('engine', { enum: ['server', 'runtime'] }).notNull().default('server'),
   endReason: text('end_reason', { enum: ASSISTANT_RUN_END_REASONS }),

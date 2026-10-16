@@ -173,7 +173,7 @@ that `PersonalToolHost` and the API composes `toolTurns` (10); switched off, eve
   `flux_place` (project and conversation), `jti`, audience `/mcp`, lifetime `RUN_TOKEN_LIMITS.lifetimeSeconds`
   (300). It records the `jti`, the expiry and the exact tools (`assistantRunTools`: the read tools the
   owner's switches enable, sorted; the co-work bootstrap and playbook never). Every refusal is the same 404.
-  Migration 0098 adds the columns; the token itself is never stored.
+  Migration 0100 adds the columns; the token itself is never stored.
 - **At `/mcp`** (`agent-connection/run-token.ts`). A bearer with run claims also needs: the run in flight
   for its owner, the minted `jti`, not closed, not expired, not stopped, its place, and the owner's
   assistant connection. Each request lists exactly the run's tools that the live switches still allow
@@ -213,7 +213,7 @@ token); `RUNTIME_RUN_LIMITS` (20 a day, 10 turns, 300 s wall clock, 60 s without
 The worker's `managerPersonalRuntime` resolves the owner's own slot and binding from the database and
 streams the run through `runtime-manager` (`streamManagerRun`); the slot's `run.ts` runs the fixed
 template, checks `system/init`, reduces the JSONL to closed frames and ends each run in its own outcome.
-Each end has its own `end_reason` (0098); a dispatched runtime run costs nothing in Flux and its usage is
+Each end has its own `end_reason` (0100); a dispatched runtime run costs nothing in Flux and its usage is
 `unknown` (not visible to Flux). The committed answer has token-shaped strings and the run token replaced
 by "[removed: looked like a secret]" (`answer_redacted`). A `server` run on an API key is redacted the same
 way before its answer or proposal is committed (token patterns only: its context holds no run token;
