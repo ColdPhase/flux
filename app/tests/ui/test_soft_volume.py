@@ -259,7 +259,7 @@ class SoftVolume(unittest.TestCase):
                     self.assertGreaterEqual(value["ratio"], 3, (scheme, phone, value))
                     shot(page, f"338-{self.engine}-task-parked-{'390' if phone else '1440'}-{scheme}")
 
-    def test_06_own_dm_initials_and_real_shortcuts_are_readable(self) -> None:
+    def test_06_own_dm_initials_are_readable(self) -> None:
         self.ensure_dm()
         for scheme in ("light", "dark"):
             for phone in (False, True):
@@ -277,9 +277,8 @@ class SoftVolume(unittest.TestCase):
                         if (Number(getComputedStyle(n).opacity) !== 1) return false; } return true; }""")
                     value = page.evaluate(MEASURE, {"selector": ".details__person .ui-avatar--me"})
                     self.assertGreaterEqual(value["ratio"], 4.5, (scheme, phone, value))
-                    shortcut = page.locator(".details__keys kbd").first
-                    expect(shortcut).to_be_visible()
-                    self.assert_mono(shortcut)
+                    # #512 AC-6 removed the "Esc closes this panel" footer (Esc lives in the close button's tooltip).
+                    expect(page.locator(".details__keys")).to_have_count(0)
                     shot(page, f"338-{self.engine}-dm-details-{'390' if phone else '1440'}-{scheme}")
 
     def test_07_details_title_scales_with_200_percent_text(self) -> None:
