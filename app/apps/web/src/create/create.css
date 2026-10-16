@@ -69,7 +69,11 @@
 
 /* The phone's sheet: it rises from the bottom and takes the height of what it holds. */
 .ui-overlay--bottom .create { inset: auto 0 0 0; max-height: 92dvh; border-radius: var(--r-sheet) var(--r-sheet) 0 0; box-shadow: var(--sh-pop); padding-bottom: env(safe-area-inset-bottom); }
-.ui-overlay--bottom .create .create__head { position: relative; padding: 22px 14px 0 16px; touch-action: none; }
+.ui-overlay--bottom .create .create__head { position: relative; gap: 4px; padding: 22px 8px 0 12px; touch-action: none; }
+/* Five tabs and Close fit a 390px phone; a narrower one (or larger text) scrolls the tabs sideways, and the head still
+   drags the sheet. */
+.ui-overlay--bottom .create .create__tabs .ui-tabs__bar { padding: 2px; touch-action: pan-x; }
+.ui-overlay--bottom .create .create__tabs .ui-tabs__tab { padding: 0 8px; }
 .ui-overlay--bottom .create .create__head::before { content: ""; position: absolute; left: 50%; top: 8px; width: 36px; height: 5px; margin-left: -18px; border-radius: 3px; background: var(--line2); }
 .ui-overlay--bottom .create .create__x { width: 40px; height: 40px; background: var(--el); box-shadow: var(--sh-1); }
 .ui-overlay--bottom .create .create__scroll { padding: 12px 20px 8px; gap: 12px; }
