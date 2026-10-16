@@ -106,7 +106,7 @@ export function useProjectGoalDetails(project: Project, meId: string): { menu: R
         <span className="ov-row__b">
           <span className="ov-row__k">{reached ? 'Goal reached' : 'Goal'}</span>
           <span className="ov-row__t ov-goal__t">{goal.title}</span>
-          <span className="ov-row__s"><time dateTime={reached ? goal.reachedAt! : goal.setAt} title={when(reached ? goal.reachedAt! : goal.setAt)}>{by}</time></span>
+          <span className="ov-row__s" title={when(reached ? goal.reachedAt! : goal.setAt)}>{by}</span>
         </span>
         {error ? <p className="ov-goal__error" role="alert">{error}</p> : null}
       </section>
