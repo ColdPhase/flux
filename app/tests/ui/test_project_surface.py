@@ -376,7 +376,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
         expect(page.get_by_text("Everyone in Gesture lamp")).to_be_visible()
         page.get_by_role("link", name="Sketches", exact=True).click()
         expect(page).to_have_url(re.compile(rf"/projects/{self.ids['project']}/map$"))
-        expect(page.get_by_role("list", name="Sketches in Gesture lamp").get_by_role("link")).to_have_count(2)
+        expect(page.get_by_role("list", name="Sketches in Gesture lamp").get_by_role("link")).to_have_count(1)  # the new sketch is empty, so it is not listed (#508 AC-3)
         # Everyone in the project sees it; nobody else does.
         listed = self.api(self.page("jonas"), "GET", f"/api/v1/workspaces/{self.ids['workspace']}/sketches?projectId={self.ids['project']}&limit=50", status=200)
         self.assertIn(sketch_id, [item["id"] for item in listed["items"]])
