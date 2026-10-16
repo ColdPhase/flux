@@ -1,3 +1,5 @@
+import type { ProjectGoal } from './project-goals.js';
+
 // Wire types for workspaces, projects, grants, agents and drafts (issue #29, AC-2).
 // Every route below requires a live session. An object the caller cannot see answers
 // 404; a visible object the caller may not change answers 403. Error bodies are ApiError.
@@ -118,6 +120,11 @@ export interface Project {
   access: ProjectAccess;
   /** Optional views added on purpose, by a template or from More. Use also shows a view (map with sketches, wiki with docs, agents with an agent). Existing projects have all of them. */
   views: ProjectViewId[];
+  /**
+   * The project's optional shared goal (#520): the current one, or the most recently reached one while
+   * no goal is current. Null for a project that never had one: nothing about goals shows then.
+   */
+  goal: ProjectGoal | null;
   version: number;
   createdAt: string;
 }

@@ -9,7 +9,7 @@ import { docUseCases } from '../../apps/server/src/docs/adapters.js';
 import { wikiAuthority } from '../../apps/server/src/editing/authority.js';
 import type { SessionContext } from '../../apps/server/src/identity/session.js';
 import * as Y from 'yjs';
-import { workUseCases } from '../../apps/server/src/work/adapters.js';
+import { nativeWorkInTransaction,workUseCases } from '../../apps/server/src/work/adapters.js';
 import { conversationStore } from '../../apps/server/src/conversation/store.js';
 import { diskFileStorage } from '../../apps/server/src/files/storage.js';
 import { actionScene } from './support/mcp-actions.js';
@@ -250,7 +250,8 @@ test('actual retained native87 history upgrades to88 without pulses, seeds old b
   // migrator order (sorted, missing files only), so this legacy fixture is main's current ledger plus those.
   const manifest=await readMigrationManifest('packages/db/migrations',FLUX_SCHEMA_VERSION);
   const lateBefore88=manifest.filter(m=>m.version===82||m.version===87);
-  const beforeManifest=[...manifest.filter(m=>![82,87,88,89].includes(m.version)),...lateBefore88];
+  // Main's historical ledger stops at 97; later files (0098+) build on the thread tables.
+  const beforeManifest=[...manifest.filter(m=>![82,87,88,89].includes(m.version)&&m.version<=97),...lateBefore88];
   const upTo88=[...beforeManifest,manifest.find(m=>m.version===88)!];
   try{
     for(const migration of beforeManifest){await fixture.pool.query(await readFile(`packages/db/migrations/${migration.name}`,'utf8'));await fixture.pool.query('INSERT INTO flux_schema_version(version) VALUES($1) ON CONFLICT DO NOTHING',[migration.version]);}
@@ -323,4 +324,26 @@ test('a live co-editing save of a doc a closed task cites resets that task budge
   assert.equal(await threadBudget(a.id),0,'the live save reset the closed task budget');
   await nativeThreadPost(f,threadCommand(f,a.id,f.grantId));
   assert.equal(await threadBudget(a.id),1,'the reset task can post again');
+});
+
+test('editing a doc an unused AI-created task links to resets its budget but keeps Undo; a task-targeted use still ends it (#553)',async()=>{
+  const f=await setup();let d=await doc(f,'Baseline content');
+  const item=await db.transaction(async tx=>{const native=nativeWorkInTransaction(tx);
+    const created=await native.createWork({kind:'agent',id:f.agentId},f.projectId,{title:'Unused linked task'});await native.flushEvents();return created;});
+  // Creation can only pin a material version, and a later link is itself a use: seed the unpinned current-doc link directly.
+  await pool.query(`INSERT INTO project_object_links(id,workspace_id,project_id,role,from_type,from_id,to_type,to_id,to_version,created_by_kind,created_by_id)
+    VALUES($1,$2,$3,'related','work',$4,'doc',$5,NULL,'agent',$6)`,[randomUUID(),f.workspaceId,f.projectId,item.id,d.id,f.agentId]);
+  const state=async()=>({used:(await pool.query('SELECT first_persisted_use_at FROM project_work_items WHERE id=$1',[item.id])).rows[0].first_persisted_use_at as Date|null,
+    undo:(expect(await f.owner.request('GET',`/api/v1/work/${item.id}`),200) as unknown as WorkItem).creationUndo});
+  const resets=async()=>(await pool.query('SELECT count(*)::int n FROM agent_thread_artifact_resets WHERE task_id=$1',[item.id])).rows[0].n as number;
+  assert.deepEqual(await state(),{used:null,undo:{eligible:true,reason:'eligible'}});
+  d=expect(await edit(f,d,{body:'A genuinely new observation.'}),200) as unknown as Doc;
+  assert.equal(await resets(),1,'the content edit still resets the agent-thread turn budget');
+  assert.deepEqual(await state(),{used:null,undo:{eligible:true,reason:'eligible'}},'a linked doc edit is not use of the task');
+  expect(await edit(f,d,{body:'Another real observation.'}),200);assert.equal(await resets(),2);
+  assert.equal((await state()).used,null);
+  expect(await f.owner.request('POST',`/api/v1/projects/${f.projectId}/results`,
+    {body:{title:'Real result',finding:'positive',evidence:'Observed behavior',work:[item.id],clientCommandId:randomUUID()}}),201);
+  const used=await state();assert.ok(used.used,'a result about the task is a task-targeted use');assert.equal(used.undo?.eligible,false);assert.equal(used.undo?.reason,'task_used');
+  assert.equal((await f.owner.request('POST',`/api/v1/work/${item.id}/creation-undo`,{body:{clientCommandId:randomUUID(),expectedVersion:item.version}})).status,409);
 });

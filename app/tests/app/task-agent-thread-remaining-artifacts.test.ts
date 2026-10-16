@@ -7,7 +7,7 @@ import { NotFoundError,type Database,type GithubProvider,type Principal } from '
 import type { CreatedThought,GithubPullFacts,Sketch,Thought,WorkItem } from '@flux/contracts';
 import { sketchUseCases } from '../../apps/server/src/sketches/adapters.js';
 import { taskDiscussionUseCases } from '../../apps/server/src/work/task-discussions.js';
-import { workUseCases } from '../../apps/server/src/work/adapters.js';
+import { nativeWorkInTransaction,workUseCases } from '../../apps/server/src/work/adapters.js';
 import { diskFileStorage } from '../../apps/server/src/files/storage.js';
 import { createGithubUseCases } from '../../apps/server/src/github/adapters.js';
 import { githubWebhookRoutes } from '../../apps/server/src/github/webhook.js';
@@ -197,11 +197,12 @@ test('closed internal thought-source native adapter and supported file/PR creati
     try{const pid=await bounded(held.promise);
       other=winner==='artifact'?f.owner.request('POST',`/api/v1/work/${item.id}/creation-undo`,{body:undo}):effect(db);void other.catch(()=>undefined);
       await waitUntilBlockedBy(pool,pid);release.resolve();await bounded(first);
-      if(winner==='artifact')assert.equal((await bounded(other) as{status:number}).status,409);
+      if(winner==='artifact')assert.equal((await bounded(other) as{status:number}).status,kind==='thought'?200:409); // #553: a linked-thought edit is not use
       else if(kind==='thought')await bounded(other); // Reverted provenance does not poison an unrelated source edit.
       else await assert.rejects(bounded(other));
       const state=(await pool.query('SELECT first_persisted_use_at,creation_reverted_at FROM project_work_items WHERE id=$1',[item.id])).rows[0];
-      assert.equal(state.creation_reverted_at===null,winner==='artifact');assert.equal(state.first_persisted_use_at===null,winner==='undo');
+      const undone=winner==='undo'||kind==='thought';
+      assert.equal(state.creation_reverted_at===null,!undone);assert.equal(state.first_persisted_use_at===null,undone);
       assert.equal(await count(kind,item.id),winner==='artifact'?1:0);
       assert.equal((await pool.query("SELECT count(*)::int n FROM project_conversations WHERE space='agents' AND work_id=$1",[item.id])).rows[0].n,0);
       if(kind==='file'&&winner==='undo')assert.equal((await pool.query('SELECT published_at FROM project_files WHERE id=$1',[file.id])).rows[0].published_at,null);
@@ -225,4 +226,24 @@ test('closed native thought-source fixture preserves public refusal and actual p
   expect(await f.owner.request('DELETE',`/api/v1/agent-connections/${f.connectionId}/action-grants/${grant.id}`),204);
   await assert.rejects(internalNativeWork(f,{...input,clientCommandId:randomUUID()},{title:'Denied current grant',sources:[{type:'thought',id:t.id}]}));
   assert.equal(await f.tasks(),before);assert.equal(await f.used(grant.id),0);
+});
+
+test('editing a thought an unused AI-created task links to resets its budget but keeps Undo; a task-targeted use still ends it (#553)',async()=>{
+  const f=await setup(),s=await map(f);let t=await thought(f,s,'Initial task source');
+  const item=await db.transaction(async tx=>{const native=nativeWorkInTransaction(tx);
+    const created=await native.createWork({kind:'agent',id:f.agentId},f.projectId,{title:'Unused thought-linked task',sources:[{type:'thought',id:t.id}]});await native.flushEvents();return created;});
+  const state=async()=>({used:(await pool.query('SELECT first_persisted_use_at FROM project_work_items WHERE id=$1',[item.id])).rows[0].first_persisted_use_at as Date|null,
+    undo:(await f.read(item.id) as unknown as WorkItem).creationUndo});
+  assert.deepEqual(await state(),{used:null,undo:{eligible:true,reason:'eligible'}});
+  t=expect(await edit(f,s,t,{text:'A genuinely new measured result'}),200) as unknown as Thought;
+  assert.equal(await count('thought',item.id),1,'the content edit still resets the agent-thread turn budget');
+  assert.deepEqual(await state(),{used:null,undo:{eligible:true,reason:'eligible'}},'a linked thought edit is not use of the task');
+  const grant=await f.grant('map.thought.update','execute',10,s.id);
+  toolValue(await f.tool('flux_update_thought',{projectId:f.projectId,runtimeSessionId:f.runtimeSessionId,grantId:grant.id,clientCommandId:randomUUID(),peerRequestClass:'execute',
+    sources:[],mapId:s.id,thoughtId:t.id,expectedVersion:t.version,changes:{text:'Native content progress'}}));
+  assert.equal(await count('thought',item.id),2);assert.deepEqual(await state(),{used:null,undo:{eligible:true,reason:'eligible'}});
+  expect(await f.owner.request('POST',`/api/v1/projects/${f.projectId}/results`,
+    {body:{title:'Real result',finding:'positive',evidence:'Observed behavior',work:[item.id],clientCommandId:randomUUID()}}),201);
+  const used=await state();assert.ok(used.used,'a result about the task is a task-targeted use');assert.equal(used.undo?.reason,'task_used');
+  assert.equal((await f.owner.request('POST',`/api/v1/work/${item.id}/creation-undo`,{body:{clientCommandId:randomUUID(),expectedVersion:item.version}})).status,409);
 });

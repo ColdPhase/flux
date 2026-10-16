@@ -81,3 +81,13 @@ button.convo-notice__src:focus-visible { outline: 2px solid var(--t1); outline-o
   .convo-since { top: 8px; }
 }
 @media (max-width: 680px) and (hover: none) { .project-convo__message { width: 100%; } }
+
+/* A reached project goal (#520, Prostota phone-goal): the card once per goal and device, then one quiet line.
+   It sits in the stream in its place, never over content. */
+.convo-goal { max-width: min(600px, 100%); margin: 24px 0; list-style: none; }
+.convo-goal .goal { padding: 24px 20px 20px; }
+.convo-goal__line { display: flex; align-items: baseline; gap: 8px; margin: 0; padding-left: 44px; color: var(--t2); font-size: var(--fs-sm); line-height: 20px; }
+.convo-goal__line > svg { flex: none; align-self: center; margin-left: -22px; color: var(--t3); }
+.convo-goal__line > span { min-width: 0; overflow-wrap: anywhere; }
+.convo-goal__line b { font-weight: 600; color: var(--t1); }
+.convo-goal__line time { flex: none; font-size: var(--fs-xs); color: var(--t3); font-variant-numeric: tabular-nums; }
