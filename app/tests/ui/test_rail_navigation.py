@@ -206,7 +206,7 @@ class RailNavigation(unittest.TestCase):
                 agent = self.api(page, "POST", f"/api/v1/workspaces/{ids['workspace']}/agents", {"name": "Garden analyst", "owner": "self"}, 201)
                 self.api(page, "POST", f"/api/v1/projects/{project}/grants", {"principal": {"kind": "agent", "id": agent["id"]}, "role": "viewer"}, 201)
                 self.api(page, "POST", "/api/v1/personal-assistant", {"consentVersion": "o-008-2026-10-02", "agentId": agent["id"],
-                    "perRunCents": 6, "dailyCapCents": 100, "timeZone": "Europe/Warsaw"}, 201)
+                    "perRunCents": 8, "dailyCapCents": 100, "timeZone": "Europe/Warsaw"}, 201)
                 conversation = self.api(page, "POST", f"/api/v1/projects/{project}/conversations", {
                     "body": "Compare the sensors for the east garden bed.", "clientMessageId": str(uuid.uuid4())}, 201)
                 mock("/__script", {"reset": True, "delay": 30})

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useState, type FormEvent } from 'react';
 import { Link } from 'react-router';
-import { AI_PROVIDERS, aiConnectionLabel, maxRequestMicros, PERSONAL_RUN_CONSENT_VERSION, PERSONAL_RUN_LIMITS, PERSONAL_RUNTIME_CONSENT_VERSION,
+import { AI_PROVIDERS, aiConnectionLabel, aiModelCallsTools, maxRequestMicros, PERSONAL_RUN_CONSENT_VERSION, PERSONAL_RUN_LIMITS, personalRunMaxInputTokens, PERSONAL_RUNTIME_CONSENT_VERSION,
   type Agent, type AgentRuntimePayer, type BackgroundComputeConnection, type PersonalAssistantStatus } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { useShellData } from '../app/data';
@@ -19,7 +19,7 @@ import { AssistantProjectAccess } from './AssistantProjectAccess';
 // consent, caps and pause. Nothing here can see or use anyone else's assistant or payer. The
 // server decides; this page says truthfully what it decided and why an assistant cannot run.
 
-const PER_RUN = [6, 10, 20, 30, 50].filter((value) => value >= PERSONAL_RUN_LIMITS.perRunCents.min && value <= PERSONAL_RUN_LIMITS.perRunCents.max);
+const PER_RUN = [6, 8, 10, 20, 30, 50].filter((value) => value >= PERSONAL_RUN_LIMITS.perRunCents.min && value <= PERSONAL_RUN_LIMITS.perRunCents.max);
 const DAILY = [10, 50, 100, 200, 500, 1000].filter((value) => value >= PERSONAL_RUN_LIMITS.dailyCapCents.min && value <= PERSONAL_RUN_LIMITS.dailyCapCents.max);
 
 export function browserTimeZone() {
@@ -260,9 +260,11 @@ function Setup({ status, agents, workspaces, name, onEnabled, onAgent }: {
   // The disclosure and the consent describe exactly the connection being enabled: its provider, model,
   // price, largest request and payer, never the server's default choice (#192 review B2).
   const selected = owned.find((item) => item.id === connectionId) ?? null;
+  // A model that can call tools runs with them, and its requests may carry more input (#484).
+  const maxInputTokens = selected ? personalRunMaxInputTokens(aiModelCallsTools(selected.provider, selected.model)) : status.disclosure.maxInputTokens;
   const shown: PersonalAssistantStatus = selected ? { ...status, disclosure: { ...status.disclosure, provider: selected.provider, model: selected.model,
-    price: selected.price ? { ...selected.price } : null,
-    maxRunMicros: selected.price ? maxRequestMicros(selected.price, PERSONAL_RUN_LIMITS.maxInputTokens, PERSONAL_RUN_LIMITS.maxOutputTokens) : null } } : status;
+    price: selected.price ? { ...selected.price } : null, maxInputTokens,
+    maxRunMicros: selected.price ? maxRequestMicros(selected.price, maxInputTokens, PERSONAL_RUN_LIMITS.maxOutputTokens) : null } } : status;
   const payer = selected ? { organization: selected.payerOrganization, workspace: selected.providerWorkspace } : null;
   const timeZone = browserTimeZone();
   // Turning it on waits for the list of the owner's connections and names the chosen one; with none

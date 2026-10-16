@@ -37,6 +37,26 @@ const textOf = (content: unknown) => (Array.isArray(content) ? content : [])
   .map((part) => (part && typeof part === 'object' && (part as { type?: unknown }).type === 'text' ? String((part as { text?: unknown }).text ?? '') : '[non-text content]'))
   .join('\n');
 
+/**
+ * The tool schema as the model sees it, without what costs tokens and tells it nothing (#484): the draft
+ * `$schema` URL, the regular expression that zod writes beside every `format: "uuid"` or `"date-time"` (the
+ * format already says it; `/mcp` still validates the value), and the safe-integer range of an unbounded
+ * integer. Every other keyword (types, ranges, defaults, enums, required, descriptions) is kept.
+ */
+export function compactToolSchema(schema: unknown): unknown {
+  if (Array.isArray(schema)) return schema.map(compactToolSchema);
+  if (!schema || typeof schema !== 'object') return schema;
+  const node = schema as Record<string, unknown>;
+  const redundantPattern = typeof node.format === 'string' && ['uuid', 'date-time'].includes(node.format);
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(node)) {
+    if (key === '$schema' || (key === 'pattern' && redundantPattern)) continue;
+    if ((key === 'minimum' && value === -Number.MAX_SAFE_INTEGER) || (key === 'maximum' && value === Number.MAX_SAFE_INTEGER)) continue;
+    out[key] = compactToolSchema(value);
+  }
+  return out;
+}
+
 /** The production tool host: one MCP client per run, on the run's token. `mcpUrl` is the API's `/mcp`. */
 export function mcpToolHost(tokens: PersonalRunTokenIssuer, mcpUrl: string, fetchImpl: typeof fetch = fetch): PersonalToolHost {
   return async (run) => {
@@ -52,7 +72,7 @@ export function mcpToolHost(tokens: PersonalRunTokenIssuer, mcpUrl: string, fetc
       const tools: PersonalTool[] = (listed.result.tools as Record<string, unknown>[])
         .filter((tool) => typeof tool.name === 'string' && exact.has(tool.name))
         .map((tool) => ({ name: tool.name as string, description: typeof tool.description === 'string' ? tool.description : String(tool.title ?? tool.name),
-          inputSchema: tool.inputSchema && typeof tool.inputSchema === 'object' ? tool.inputSchema as Record<string, unknown> : { type: 'object' } }));
+          inputSchema: tool.inputSchema && typeof tool.inputSchema === 'object' ? compactToolSchema(tool.inputSchema) as Record<string, unknown> : { type: 'object' } }));
       let closed = false;
       const session: PersonalToolSession = {
         tools,

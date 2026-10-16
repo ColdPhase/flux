@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { PERSONAL_RUN_LIMITS, type AiPrice } from '@flux/contracts';
+import { PERSONAL_RUN_LIMITS, personalRunMaxInputTokens, type AiPrice } from '@flux/contracts';
 import { boundedInputTokens, conservativeTokenEstimate } from '../ai/estimate.js';
 import { ForbiddenError, NotFoundError } from '../access/errors.js';
 import type { Principal } from '../principal.js';
@@ -9,6 +9,7 @@ import type {
   PersonalCompute, PersonalComputeRequest, PersonalComputeResult, PersonalConnection, PersonalConnectionLookup,
   PersonalRunPorts, PersonalRunTokenIssuer, PersonalRunUnitOfWork, PersonalRuntime, PersonalToolHost, PersonalToolSession, RunChanges, RunRecord,
 } from './ports.js';
+import { redactSecrets } from './redaction.js';
 import { createRuntimeRunProcessor, type RuntimeCaps } from './runtime-run.js';
 import { updateAndAnnounce } from './progress.js';
 import { requestParts, runToolLoop, type LoopResult, type RunAccount } from './tool-loop.js';
@@ -155,20 +156,20 @@ async function readSources(ports: PersonalRunPorts, run: RunRecord): Promise<{ s
  * by the same conservative Flux estimate (F-020 PROV-3); a provider with a token-count endpoint may
  * raise that estimate, never lower it. A count sends the input to the provider, so `beforeCount`
  * rechecks the run's standing before every count request and ends the fit with its outcome when the
- * run may no longer send anything.
+ * run may no longer send anything. A run with tools has the larger bound (#484).
  */
 async function fit(compute: PersonalCompute, base: Omit<PersonalComputeRequest, 'input'>, run: RunRecord,
-  read: { sources: SuppliedSource[]; earlier: string | null }, beforeCount: () => Promise<PersonalRunOutcome | null>) {
+  read: { sources: SuppliedSource[]; earlier: string | null }, beforeCount: () => Promise<PersonalRunOutcome | null>, maxInputTokens: number) {
   let sources = read.sources;
   for (;;) {
     const request = { ...base, input: requestInput(run, sources, read.earlier) };
     let tokens = conservativeTokenEstimate(requestParts(request));
-    if (tokens <= PERSONAL_RUN_LIMITS.maxInputTokens && compute.countInputTokens) {
+    if (tokens <= maxInputTokens && compute.countInputTokens) {
       const refused = await beforeCount();
       if (refused) return { refused: true as const, outcome: refused };
       tokens = boundedInputTokens(tokens, await compute.countInputTokens(request));
     }
-    if (tokens <= PERSONAL_RUN_LIMITS.maxInputTokens) return { refused: false as const, request, sources };
+    if (tokens <= maxInputTokens) return { refused: false as const, request, sources };
     const oldest = sources.findIndex((source) => source.ref.type === 'message');
     if (oldest === -1) return null;
     sources = sources.filter((_, index) => index !== oldest);
@@ -251,7 +252,7 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
       const located = await ports.runs.findRun(runId);
       if (!located || located.status !== 'dispatching') return 'skipped';
       const initial = await recheck(ports, connections, compute, located, 'before_commit', true).catch((error: unknown) => { if (isAccessDenial(error)) return { refusal: 'denied' as const }; throw error; });
-      const preview = result?.kind === 'completed' ? parseOutput(result.text, sources, result.stopReason !== 'max_tokens') : null;
+      const preview = result?.kind === 'completed' ? parseOutput(redactSecrets(result.text).text, sources, result.stopReason !== 'max_tokens') : null;
       const refs = [...sources.map((source) => source.ref), ...(preview?.proposal?.finishesWorkId ? [{ type: 'work', id: preview.proposal.finishesWorkId }] : [])];
       const taskFence = !('refusal' in initial) && preview
         ? await ports.runs.prepareTaskUse(located.projectId, located.conversationId, refs) : null;
@@ -275,12 +276,14 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
       // Access, grant, pause or connection changed after the read: the output is withheld.
       if ('refusal' in checked) return (await updateAndAnnounce(ports, run.id, ended(checked.refusal, 'before_commit', charge))).status;
       const truncated = result.stopReason === 'max_tokens';
-      const parsed = parseOutput(result.text, sources, !truncated);
+      // The same redaction as a runtime answer's (F-022 AIM-3, F-027 AST-9, #484): token-shaped strings never reach the conversation.
+      const redacted = redactSecrets(result.text);
+      const parsed = parseOutput(redacted.text, sources, !truncated);
       const agent: Principal = { kind: 'agent', id: run.agentId };
       const committedAt = new Date();
       const updated = await updateAndAnnounce(ports, run.id, ended(truncated ? 'truncated' : 'completed', null, {
         ...charge, answerBody: parsed.body || (parsed.proposal ? 'Drafted a proposal.' : '(No answer text.)'),
-        answerTruncated: truncated, answerSources: parsed.sources, committedAt,
+        answerTruncated: truncated, answerSources: parsed.sources, answerRedacted: redacted.changed, committedAt,
       }));
       if (parsed.proposal) {
         const proposal = await ports.runs.insertProposal({
@@ -319,7 +322,7 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
         connection: { id: connection.id, keyRef: connection.keyRef, provider: connection.provider, baseUrl: connection.baseUrl }, model: run.model,
         maxTokens: PERSONAL_RUN_LIMITS.maxOutputTokens, effort: PERSONAL_RUN_LIMITS.effort,
         system: session ? TOOL_SYSTEM_PROMPT : SYSTEM_PROMPT, ...(session ? { tools: session.tools } : {}),
-      }, run, read, beforeSend);
+      }, run, read, beforeSend, personalRunMaxInputTokens(!!session));
     } catch {
       // The preflight count failed (provider down, key refused). Counting is free and nothing
       // was dispatched: the run ends at zero cost and the owner may retry it as a new run.

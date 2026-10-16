@@ -36,7 +36,7 @@ export function registerAgentDomainReads(server: AgentToolRegistrar, db: Databas
   }
 
   server.registerTool('flux_list_contexts', { title: 'List selected Flux projects',
-    description: 'List the selected projects still readable by this current connection.', inputSchema: z.object({}), annotations },
+    description: 'List the selected projects this connection can still read.', inputSchema: z.object({}), annotations },
   () => result(null, async ({ tx, connection, principal, requireProject }) => {
     const projects = [];
     for (const id of [...connection.selectedProjectIds].sort()) {
@@ -48,12 +48,12 @@ export function registerAgentDomainReads(server: AgentToolRegistrar, db: Databas
   }));
 
   server.registerTool('flux_list_materials', { title: 'List project sources',
-    description: 'A bounded page of current material and wiki IDs, titles and versions. No private draft provenance.',
+    description: 'A page of material and wiki IDs, titles and versions. No private drafts.',
     inputSchema: projectPage, annotations }, ({ projectId, ...query }) => result(projectId, async ({ tx, principal }) =>
     ({ projectId, ...await conversationStore(tx).listSourceMaterials(principal, projectId, query) })));
 
   server.registerTool('flux_read_material', { title: 'Read a project material',
-    description: 'Read current source text in explicit 20,000-character pages. Continue with nextOffset and this exact version.',
+    description: 'Read source text in 20,000-character pages; continue with nextOffset and the same version.',
     inputSchema: z.object({ projectId: z.uuid(), materialId: z.uuid(), ...chunk }), annotations },
   ({ projectId, materialId, offset, version }) => result(projectId, async ({ tx, principal, requireObject }) => {
     await requireObject(projectId, 'material', materialId);
@@ -63,29 +63,29 @@ export function registerAgentDomainReads(server: AgentToolRegistrar, db: Databas
   }));
 
   server.registerTool('flux_list_work', { title: 'List native project tasks',
-    description: 'A bounded page of the same tasks shown in the project board, including current versions and links.',
+    description: 'A page of the project board\'s tasks, with versions and links.',
     inputSchema: projectPage, annotations }, ({ projectId, ...query }) => result(projectId, ({ tx, principal }) => workUseCases(tx).listWork(principal, projectId, query)));
-  server.registerTool('flux_get_work', { title: 'Read a native task', description: 'Read one current task in the selected project.',
+  server.registerTool('flux_get_work', { title: 'Read a native task', description: 'Read one task.',
     inputSchema: object, annotations }, ({ projectId, id }) => result(projectId, async ({ tx, principal, requireObject }) => {
     await requireObject(projectId, 'work', id); return workUseCases(tx).getWork(principal, id);
   }));
-  server.registerTool('flux_list_decisions', { title: 'List project decisions', description: 'A bounded page of proposed, accepted and superseded decisions.',
+  server.registerTool('flux_list_decisions', { title: 'List project decisions', description: 'A page of decisions: proposed, accepted and superseded.',
     inputSchema: projectPage, annotations }, ({ projectId, ...query }) => result(projectId, ({ tx, principal }) => workUseCases(tx).listDecisions(principal, projectId, query)));
-  server.registerTool('flux_get_decision', { title: 'Read a project decision', description: 'Read one current decision, its actual authors and status.',
+  server.registerTool('flux_get_decision', { title: 'Read a project decision', description: 'Read one decision, its authors and status.',
     inputSchema: object, annotations }, ({ projectId, id }) => result(projectId, async ({ tx, principal, requireObject }) => {
     await requireObject(projectId, 'decision', id); return workUseCases(tx).getDecision(principal, id);
   }));
-  server.registerTool('flux_list_results', { title: 'List project results', description: 'A bounded page of canonical positive and negative results.',
+  server.registerTool('flux_list_results', { title: 'List project results', description: 'A page of positive and negative results.',
     inputSchema: projectPage, annotations }, ({ projectId, ...query }) => result(projectId, ({ tx, principal }) => workUseCases(tx).listResults(principal, projectId, query)));
-  server.registerTool('flux_get_result', { title: 'Read a project result', description: 'Read one immutable result and its source links.',
+  server.registerTool('flux_get_result', { title: 'Read a project result', description: 'Read one result and its source links.',
     inputSchema: object, annotations }, ({ projectId, id }) => result(projectId, async ({ tx, principal, requireObject }) => {
     await requireObject(projectId, 'result', id); return workUseCases(tx).getResult(principal, id);
   }));
 
-  server.registerTool('flux_list_docs', { title: 'List project wiki', description: 'A bounded page of wiki titles, versions and publication states.',
+  server.registerTool('flux_list_docs', { title: 'List project wiki', description: 'A page of wiki titles, versions and publication states.',
     inputSchema: projectPage, annotations }, ({ projectId, ...query }) => result(projectId, ({ tx, principal }) => docUseCases(tx).listProjectDocs(principal, projectId, query)));
   server.registerTool('flux_get_doc', { title: 'Read project wiki text',
-    description: 'Read a current wiki document in explicit 20,000-character pages. Continue with nextOffset and this exact version.',
+    description: 'Read a wiki document in 20,000-character pages; continue with nextOffset and the same version.',
     inputSchema: z.object({ projectId: z.uuid(), id: z.uuid(), ...chunk }), annotations },
   ({ projectId, id, offset, version }) => result(projectId, async ({ tx, principal, requireObject }) => {
     await requireObject(projectId, 'doc', id);
@@ -94,20 +94,20 @@ export function registerAgentDomainReads(server: AgentToolRegistrar, db: Databas
     return { ...doc, ...textChunk(body, doc.version, offset, version) };
   }));
 
-  server.registerTool('flux_list_conversations', { title: 'List project conversations', description: 'A bounded page of canonical project discussions.',
+  server.registerTool('flux_list_conversations', { title: 'List project conversations', description: 'A page of project conversations.',
     inputSchema: projectPage, annotations }, ({ projectId, ...query }) => result(projectId, ({ tx, principal }) => conversationUseCases(conversationStore(tx)).listConversations(principal, projectId, query)));
   server.registerTool('flux_get_conversation', { title: 'Read a project conversation',
-    description: 'Read at most 50 canonical messages. Use nextBeforeSequence for older contributions.',
+    description: 'Read up to 50 messages; use nextBeforeSequence for older ones.',
     inputSchema: z.object({ projectId: z.uuid(), id: z.uuid(), limit: z.int().min(1).max(50).default(20), beforeSequence: z.int().min(1).optional() }), annotations },
   ({ projectId, id, ...query }) => result(projectId, async ({ tx, principal, requireObject }) => {
     await requireObject(projectId, 'conversation', id);
     return conversationUseCases(conversationStore(tx)).getConversation(principal, id, query);
   }));
 
-  server.registerTool('flux_list_maps', { title: 'List project maps', description: 'A bounded page of project maps. Private and direct-message maps are excluded.',
+  server.registerTool('flux_list_maps', { title: 'List project maps', description: 'A page of project maps. Private and direct-message maps are excluded.',
     inputSchema: projectPage, annotations }, ({ projectId, ...query }) => result(projectId, ({ tx, principal, workspaceId }) => sketchUseCases(tx).list(principal, workspaceId, { projectId, ...query })));
   server.registerTool('flux_get_map', { title: 'Read a project map',
-    description: 'Read paged thoughts and links, each at most 50. Continuations require the returned updatedAt checkpoint.',
+    description: 'Read thoughts and links, up to 50 of each per page; to continue, pass the returned updatedAt as expectedUpdatedAt.',
     inputSchema: z.object({ projectId: z.uuid(), id: z.uuid(), ...page, linkOffset: z.int().min(0).max(10_000).default(0), expectedUpdatedAt: z.string().max(64).optional() }), annotations },
   ({ projectId, id, limit, offset, linkOffset, expectedUpdatedAt }) => result(projectId, async ({ tx, principal, requireObject }) => {
     await requireObject(projectId, 'sketch', id);
@@ -115,7 +115,7 @@ export function registerAgentDomainReads(server: AgentToolRegistrar, db: Databas
   }));
 
   server.registerTool('flux_search_project', { title: 'Search a selected project',
-    description: 'Search canonical project content with bounded snippets, counts and an authenticated continuation. Private, direct-message and person results are excluded.',
+    description: 'Search project content: snippets, counts and a cursor for more. Private, direct-message and person results are excluded.',
     inputSchema: z.object({ projectId: z.uuid(), q: z.string().min(1).max(200), type: z.enum(['message', 'doc', 'material', 'work', 'decision', 'result', 'sketch']).optional(),
       cursor: z.string().max(500).optional(), limit: page.limit }), annotations },
   ({ projectId, ...query }) => {

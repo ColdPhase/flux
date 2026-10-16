@@ -228,7 +228,7 @@ class PersonalAssistantJourney(unittest.TestCase):
         expect(turn_on).to_be_disabled()
         page.get_by_role("button", name="Create your assistant here").click()
         expect(page.get_by_label("In Lamp studio")).to_have_value(re.compile(r"[0-9a-f-]{36}"))
-        page.get_by_label("Up to per request", exact=True).select_option(label="$0.06")
+        page.get_by_label("Up to per request", exact=True).select_option(label="$0.08")
         page.get_by_label("Daily cap", exact=True).select_option(label="$1.00")
         shot(page, "assistant-1440-settings-consent")
         expect(turn_on).to_be_disabled()
@@ -237,7 +237,7 @@ class PersonalAssistantJourney(unittest.TestCase):
         expect(page.get_by_role("heading", name="Ready · only you can use it")).to_be_visible()
         expect(page.get_by_text("of your $1.00 daily cap", exact=False)).to_be_visible()
         status = self.status(page)
-        self.assertEqual((status["state"], status["enablement"]["perRunCents"], status["enablement"]["dailyCapCents"]), ("ready", 6, 100))
+        self.assertEqual((status["state"], status["enablement"]["perRunCents"], status["enablement"]["dailyCapCents"]), ("ready", 8, 100))
         self.assertEqual(status["enablement"]["consent"]["version"], "o-008-2026-10-02")
         self.assertEqual((status["enablement"]["consent"]["provider"], status["enablement"]["consent"]["model"]), ("anthropic", "claude-sonnet-5"))
         type(self).ids["agent"] = status["enablement"]["agents"][0]["agentId"]

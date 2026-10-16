@@ -124,6 +124,12 @@ export interface PersonalRunTokenGrant {
 export const PERSONAL_RUN_LIMITS = {
   effort: 'low',
   maxInputTokens: 16_000,
+  /**
+   * The input bound of one request of a run with tools (#484): the Flux tool definitions travel with every
+   * request and its earlier turns, so a tool run may send twice the single-request bound. Its reservation is
+   * priced at this bound, so the owner's per-run ceiling must cover one such request. The daily cap is unchanged.
+   */
+  maxToolInputTokens: 32_000,
   maxOutputTokens: 1_500,
   /**
    * The most requests ("turns") of one run with a tool loop (F-027 AST-6 limits, AST-8): the run
@@ -132,9 +138,12 @@ export const PERSONAL_RUN_LIMITS = {
    */
   maxTurns: 10,
   prompt: 4_000,
-  perRunCents: { default: 6, min: 6, max: 50 },
+  perRunCents: { default: 8, min: 6, max: 50 },
   dailyCapCents: { default: 100, min: 10, max: 1_000 },
 } as const;
+
+/** The input bound of one request of a run: the larger one when the run can call tools (#484). */
+export const personalRunMaxInputTokens = (tools: boolean): number => (tools ? PERSONAL_RUN_LIMITS.maxToolInputTokens : PERSONAL_RUN_LIMITS.maxInputTokens);
 
 export type PersonalRunEnablementStatus = 'active' | 'paused';
 

@@ -122,7 +122,7 @@ class WorkingAgentJourney(unittest.TestCase):
         agent = self.api(page, "POST", f"/api/v1/workspaces/{ws['id']}/agents", {"name": "Garden analyst", "owner": "self"}, 201)
         self.api(page, "POST", f"/api/v1/projects/{project['id']}/grants", {"principal": {"kind": "agent", "id": agent["id"]}, "role": "viewer"}, 201)
         self.api(page, "POST", "/api/v1/personal-assistant", {"consentVersion": "o-008-2026-10-02", "agentId": agent["id"],
-            "perRunCents": 6, "dailyCapCents": 100, "timeZone": "Europe/Warsaw"}, 201)
+            "perRunCents": 8, "dailyCapCents": 100, "timeZone": "Europe/Warsaw"}, 201)
         conversation = self.api(page, "POST", f"/api/v1/projects/{project['id']}/conversations", {
             "body": "Which soil sensor should we test in the east garden bed?", "clientMessageId": str(uuid.uuid4())}, 201)
         self.api(page, "POST", f"/api/v1/conversations/{conversation['id']}/messages", {

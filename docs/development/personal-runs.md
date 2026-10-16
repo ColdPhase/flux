@@ -132,8 +132,8 @@ that `PersonalToolHost` and the API composes `toolTurns` (10); switched off, eve
   the Responses API for tool calling, which Flux does not speak yet, so they answer in one request.
   Persisting the owner's mark and the account row's "This model can answer but can't make changes"
   are not part of this change.
-- **Reservation.** `toolRunReservationMicros`: turns × the largest request (16,000 × input price +
-  1,500 × output price), never above the owner's per-run ceiling and never below one request.
+- **Reservation.** `toolRunReservationMicros`: turns × the largest request of a tool run (32,000 ×
+  input price + 1,500 × output price; `PERSONAL_RUN_LIMITS.maxToolInputTokens`, #484), never above the owner's per-run ceiling and never below one request.
   `createPersonalRunUseCases({ toolTurns })` applies it to a connection that can call tools; the
   default is 1 (today's single request) and no composition sets more yet. `PERSONAL_RUN_LIMITS.maxTurns`
   is 10 (AST-6).
@@ -189,12 +189,20 @@ that `PersonalToolHost` and the API composes `toolTurns` (10); switched off, eve
   connection ends a run that holds a token `revoked` at the next standing check.
 - **Ambient context** follows the switches too: with conversations, tasks or maps Off, a `server`
   request carries none of their messages, open work or selected thought; the owner's request is input.
-- **Measured 2026-10-16** (`assistant-run-tokens.test.ts`, a test diagnostic): with every switch on, the
-  run lists 18 read tools whose definitions take 14,464 bytes, so with the 16,000-token per-request
-  input bound at one token per byte (PROV-3) a fake provider that keeps calling `flux_list_contexts`
-  reaches the input bound (`cap_reached`) at its 2nd request. With only the always-on project tools it
-  reaches the 10-turn cap. The bound and the estimate are unchanged here; whether to raise the bound
-  for tool runs or shorten the tool definitions is an open question for the owner of F-020/F-027.
+- **Tool definitions and the input bound** (2026-10-16, founder direction on #484). Measured with
+  `assistant-run-tokens.test.ts` (a test diagnostic, every switch on): the run lists 18 read tools whose
+  definitions took 14,464 bytes, so at one token per byte (PROV-3) and the 16,000-token bound a fake
+  provider that kept calling `flux_list_contexts` reached the input bound at its 2nd request. Now the
+  definitions take 7,729 bytes (-47%) and ten turns fit. Two changes: the tool descriptions are shorter
+  (`agent-connection/domain-reads.ts`, `bootstrap.ts`, descriptions only; the schemas `/mcp` serves are unchanged), and the
+  worker drops from each schema what costs tokens but tells the model nothing (`compactToolSchema` in
+  `apps/worker/src/personal-runs/mcp-session.ts`: the `$schema` URL, zod's regular expression beside
+  `format: "uuid"`/`"date-time"`, the unbounded safe-integer range; `/mcp` still validates). The
+  per-request input bound of a run with tools is `PERSONAL_RUN_LIMITS.maxToolInputTokens`, 32,000
+  (`personalRunMaxInputTokens`); a request without tools keeps 16,000. A tool run's largest request is
+  priced at 32,000 (Sonnet 5: $0.079), so the owner's per-request limit must cover it and its default is
+  $0.08 (`PERSONAL_RUN_LIMITS.perRunCents`; a run on a connection with a lower limit is `unavailable` /
+  `run_cost_over_limit`, and the owner raises it). The daily cap is unchanged.
 
 ## Runs on the owner's own Claude Code (F-022 T5, #280)
 
@@ -207,7 +215,9 @@ streams the run through `runtime-manager` (`streamManagerRun`); the slot's `run.
 template, checks `system/init`, reduces the JSONL to closed frames and ends each run in its own outcome.
 Each end has its own `end_reason` (0098); a dispatched runtime run costs nothing in Flux and its usage is
 `unknown` (not visible to Flux). The committed answer has token-shaped strings and the run token replaced
-by "[removed: looked like a secret]" (`answer_redacted`). An enablement names its engine; a runtime
+by "[removed: looked like a secret]" (`answer_redacted`). A `server` run on an API key is redacted the same
+way before its answer or proposal is committed (token patterns only: its context holds no run token;
+2026-10-16, #484). An enablement names its engine; a runtime
 enablement has no key connection and its own consent. Operator view: [agent runtime](../operations/agent-runtime.md#runs-f-022-t5-280).
 
 **Observed 2026-10-16 with the pinned real Claude Code 2.1.285** (`tests/app/e2e/runtime-run-claude.e2e.ts`, run in
@@ -290,7 +300,7 @@ tokens:
 
 - **Ask mode.** A ✦ *Ask my assistant* button in the composer, or `/ai <prompt>` at the start
   of the box, shows "Your assistant ×" and one line: who sees the answer and "paid by you, up
-  to $0.06" — or, calmly, why not (not set up → *Connect your AI*; paused → *Resume*; capped →
+  to $0.08" — or, calmly, why not (not set up → *Connect your AI*; paused → *Resume*; capped →
   *Raise cap*; unavailable → the reason, e.g. "In-app AI is turned off on this Flux server").
   Send stays disabled when blocked; Esc, × or Backspace in an empty box return to a plain
   reply, which always works. One request, then the composer is a reply again. A refused ask
@@ -353,7 +363,8 @@ interpretation and proposal shape, and adds the accept path AC-7 needs.
 
 Amounts are integer micro-dollars. A run reserves its largest possible cost at the
 connection's price (F-020 PROV-3): 16 000 × the input price + 1 500 × the output
-price per token, rounded up. It is reserved when the run is created, in the same
+price per token, rounded up (32 000 × the input price for a model that can call
+tools, #484). It is reserved when the run is created, in the same
 transaction as the run row and the job, under the owner's enablement row lock.
 The owner's per-run setting (`per_run_cents × 10 000`) is the ceiling that
 reservation must fit: a connection whose largest request exceeds it cannot be
@@ -363,8 +374,9 @@ enabled (`PERSONAL_RUN_COST_OVER_LIMIT`) and is `unavailable` /
 reservations of in-flight and `unknown` runs since the owner's local midnight.
 `released` runs cost nothing. Usage is charged at the connection's price, or at the
 provider-reported cost when the response carries one (OpenRouter). For Claude
-Sonnet 5 at $2/M and $10/M the reservation is 16 000 × 2 + 1 500 × 10 = 47 000
-micros ($0.047), below the default $0.06 ceiling.
+Sonnet 5 at $2/M and $10/M the request without tools is 16 000 × 2 + 1 500 × 10 =
+47 000 micros ($0.047) and the request with tools 32 000 × 2 + 1 500 × 10 = 79 000
+micros ($0.079); the default ceiling is $0.08 (`PERSONAL_RUN_LIMITS.perRunCents`).
 
 ## HTTP API
 
@@ -436,8 +448,8 @@ A run reads, as its agent, only project-audience objects of the requested place:
 
 It never reads DMs, drafts, private sketches or other projects. The fit drops the
 oldest messages until the conservative Flux estimate (raised, never lowered, by a
-provider count where the wire format has one) fits 16 000 tokens, or ends the run as
-`input_too_large`.
+provider count where the wire format has one) fits 16 000 tokens (32 000 for a run
+with tools), or ends the run as `input_too_large`.
 
 At commit, citations `[S<n>]` count only for supplied sources. A
 `<proposal>{…}</proposal>` block becomes a proposal only when it is well formed.

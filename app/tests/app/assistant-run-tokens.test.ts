@@ -32,6 +32,8 @@ const tokens = runTokenIssuer(db, apiUrl);
 const processor = createPersonalRunProcessor({ uow: personalRunWorkerUnitOfWork(db), connections, compute, stopPollMs: 20,
   tools: mcpToolHost(tokens, `${apiUrl}/mcp`), tokens });
 const human = (someone: Person): Principal => ({ kind: 'human', id: someone.id });
+/** The bytes of the 18 read tool definitions with every switch on (one token per byte, PROV-3): 14,464 before #484, 7,729 after (2026-10-16). */
+const TOOL_DEFINITION_BYTES = 8_000;
 const sha256 = (value: string) => createHash('sha256').update(value).digest('hex');
 const claims = (token: string) => JSON.parse(Buffer.from(token.split('.')[1]!, 'base64url').toString()) as Record<string, unknown>;
 const toolText = (message: Record<string, unknown> | null) => JSON.stringify(message);
@@ -287,16 +289,23 @@ describe('the run token and the worker as an MCP client of /mcp (F-027 A2, A6; #
   });
 
   test('AST-8.2 through /mcp: a provider that keeps calling tools stops at the turn cap, every call made through the route', async (t) => {
-    // Measured, not asserted: with every switch on, how many turns fit the per-request input bound.
+    // With every switch on the run lists 18 read tools. Their definitions travel with every request, so they
+    // are kept short (#484): measured below, bounded here, and ten turns fit the 32,000-token tool-run input bound.
     compute.respond = async () => ({ kind: 'completed', text: 'again', stopReason: 'tool_use', usage: { inputTokens: 500, outputTokens: 20 },
       toolCalls: [{ id: `c${compute.dispatched.length}`, name: 'flux_list_contexts', input: {} }] });
     const full = await ask();
     const fullOutcome = await processor.process(full.run.id);
-    t.diagnostic(`all switches on: ${fullOutcome} after ${compute.dispatched.length} requests; ${JSON.stringify(compute.dispatched[0]?.tools ?? []).length} bytes of tool definitions, `
-      + `${compute.dispatched[0]?.tools?.length ?? 0} tools`);
+    const fullTools = compute.dispatched[0]?.tools ?? [];
+    const fullBytes = JSON.stringify(fullTools).length;
+    t.diagnostic(`all switches on: ${fullOutcome} after ${compute.dispatched.length} requests; ${fullBytes} bytes of tool definitions, ${fullTools.length} tools`);
+    assert.equal(fullTools.length, 18);
+    assert.ok(fullBytes <= TOOL_DEFINITION_BYTES, `the run's tool definitions take ${fullBytes} bytes; keep them under ${TOOL_DEFINITION_BYTES} (they are input of every request)`);
+    assert.ok(!JSON.stringify(fullTools).includes('"$schema"') && !JSON.stringify(fullTools).includes('"pattern"'), 'no draft URL or uuid regular expression on the wire');
+    assert.ok(fullTools.every((tool) => tool.name !== 'flux_get_conversation' || JSON.stringify(tool.inputSchema).includes('"beforeSequence"')), 'the parameters themselves are kept');
+    assert.equal(fullOutcome, 'cap_reached');
+    assert.equal(compute.dispatched.length, PERSONAL_RUN_LIMITS.maxTurns, 'ten turns fit within the tool-run input bound with every tool on');
     compute.dispatched = [];
-    // Only the always-on project tools: each request carries the run's tool definitions, and the per-request
-    // input bound (16,000 at one token per byte, PROV-3) leaves room for ten turns only with a short list.
+    // Only the always-on project tools: a shorter list, the same ten turns.
     const current = await settings();
     expectStatus(await owner.browser.request('PATCH', assistantSettingsPath(ws.id, owner.id), { body: { areas: { tasks: 'off', wiki: 'off', maps: 'off', conversations: 'off', decisions: 'off' } },
       headers: { 'if-match': `"${current.version}"` } }), 200);

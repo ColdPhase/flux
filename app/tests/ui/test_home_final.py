@@ -249,7 +249,7 @@ class HomeFinal(unittest.TestCase):
         project = api("POST", f"/api/v1/workspaces/{workspace['id']}/projects", {"name": "Garden sensor trial", "visibility": "restricted"}, 201)
         agent = api("POST", f"/api/v1/workspaces/{workspace['id']}/agents", {"name": "Garden analyst", "owner": "self"}, 201)
         api("POST", f"/api/v1/projects/{project['id']}/grants", {"principal": {"kind": "agent", "id": agent["id"]}, "role": "viewer"}, 201)
-        api("POST", "/api/v1/personal-assistant", {"consentVersion": "o-008-2026-10-02", "agentId": agent["id"], "perRunCents": 6, "dailyCapCents": 100, "timeZone": "Europe/Warsaw"}, 201)
+        api("POST", "/api/v1/personal-assistant", {"consentVersion": "o-008-2026-10-02", "agentId": agent["id"], "perRunCents": 8, "dailyCapCents": 100, "timeZone": "Europe/Warsaw"}, 201)
         conversation = api("POST", f"/api/v1/projects/{project['id']}/conversations", {"body": "Which soil sensor should we test in the east bed?", "clientMessageId": str(uuid.uuid4())}, 201)
         mock("/__script", {"reset": True, "delay": 15})
         run = api("POST", f"/api/v1/conversations/{conversation['id']}/assistant-runs", {"clientRunId": str(uuid.uuid4()), "kind": "ask", "prompt": "Compare the readings."}, 202)

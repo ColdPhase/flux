@@ -46,7 +46,7 @@ let host: PersonalToolHost = async () => { opened += 1; return session; };
 const processor = createPersonalRunProcessor({ uow: personalRunWorkerUnitOfWork(db), connections, compute, stopPollMs: 20, tools: (run, connection) => host(run, connection) });
 const human = (someone: Person): Principal => ({ kind: 'human', id: someone.id });
 
-const MAX_USAGE = { inputTokens: PERSONAL_RUN_LIMITS.maxInputTokens, outputTokens: PERSONAL_RUN_LIMITS.maxOutputTokens };
+const MAX_USAGE = { inputTokens: PERSONAL_RUN_LIMITS.maxToolInputTokens, outputTokens: PERSONAL_RUN_LIMITS.maxOutputTokens };
 const toolUse = (turn: number, usage = { inputTokens: 1_000, outputTokens: 50 }): PersonalComputeResult => ({
   kind: 'completed', text: `step ${turn}`, stopReason: 'tool_use', usage, replay: { turn },
   toolCalls: [{ id: `call-${turn}`, name: 'flux_update_work', input: { id: 'w1', title: `step ${turn}` } }],
@@ -94,38 +94,39 @@ describe('the server tool loop in the worker (AST-8.2, AST-8.3; fake provider an
       return (await row(started.run.id)).reserved_micros;
     };
     await useConnection({}, 50);
-    assert.equal(await reserved(), 470_000, '10 × (16,000 × $2/M + 1,500 × $10/M) fits the $0.50 ceiling');
+    assert.equal(await reserved(), 500_000, '10 × (32,000 × $2/M + 1,500 × $10/M) is capped by the $0.50 ceiling');
     await useConnection({}, 20);
     assert.equal(await reserved(), 200_000, 'capped by the owner\'s per-run ceiling');
-    await useConnection({}, 6);
-    assert.equal(await reserved(), 60_000, 'the $0.06 default ceiling');
+    await useConnection({}, 8);
+    assert.equal(await reserved(), 80_000, 'the $0.08 default ceiling holds one 79,000 request');
     assert.equal(await reserved(singleRequestRuns), 47_000, 'a worker without the tool loop reserves the single request of O-008');
     await useConnection({ toolCalling: false }, 50);
     assert.equal(await reserved(), 47_000, 'a model marked without tool calling is one request');
     await useConnection({ provider: 'openai', model: 'gpt-6-astra' }, 50);
     assert.equal(await reserved(), 47_000, 'so is one Flux\'s table lists as needing the Responses API');
+    await assert.rejects(useConnection({}, 6), { code: 'PERSONAL_RUN_COST_OVER_LIMIT' }, 'one request with tools can cost more than the $0.06 ceiling: choose a higher one');
     assert.equal(compute.dispatched.length, 0);
   });
 
   test('AST-8.2: a fake provider that keeps calling tools stops at the money reservation; the changes made stay, the cost is never above the reservation', async () => {
-    await useConnection({}, 20); // reservation 200,000 = 4 maximum requests of 47,000 and a rest
+    await useConnection({}, 30); // reservation 300,000 = 3 maximum requests of 79,000 and a rest
     compute.respond = async () => toolUse(compute.dispatched.length, MAX_USAGE);
     const started = await ask();
     assert.equal(await processor.process(started.run.id), 'cap_reached');
     const stored = await row(started.run.id);
-    assert.equal(stored.reserved_micros, 200_000);
-    assert.equal(compute.dispatched.length, 4, 'a fifth request could have cost more than is left');
-    assert.deepEqual(session.changes.map((call) => call.id), ['call-1', 'call-2', 'call-3'], 'the calls of the first three turns were made; the last turn\'s was not');
-    assert.deepEqual([stored.status, stored.stopped_at_stage, stored.cost_state, stored.charged_micros], ['cap_reached', 'before_dispatch', 'observed', 4 * 47_000]);
+    assert.equal(stored.reserved_micros, 300_000);
+    assert.equal(compute.dispatched.length, 3, 'a fourth request could have cost more than is left');
+    assert.deepEqual(session.changes.map((call) => call.id), ['call-1', 'call-2'], 'the calls of the first two turns were made; the last turn\'s was not');
+    assert.deepEqual([stored.status, stored.stopped_at_stage, stored.cost_state, stored.charged_micros], ['cap_reached', 'before_dispatch', 'observed', 3 * 79_000]);
     assert.ok(stored.charged_micros <= stored.reserved_micros, 'never above the reservation');
-    assert.deepEqual([stored.input_tokens, stored.output_tokens], [4 * 16_000, 4 * 1_500], 'the usage of every request is kept, summed');
+    assert.deepEqual([stored.input_tokens, stored.output_tokens], [3 * 32_000, 3 * 1_500], 'the usage of every request is kept, summed');
     assert.equal(stored.answer_body, null, 'a run that hit its limit posts nothing');
     assert.equal(session.closed, 1);
     // Each request carried the tools and the earlier turns with their results.
     assert.deepEqual(compute.dispatched[0]!.tools, FLUX_TOOLS);
     assert.equal(compute.dispatched[0]!.system, TOOL_SYSTEM_PROMPT);
-    assert.deepEqual(compute.dispatched[3]!.turns!.map((turn) => turn.results[0]!.content), ['done call-1', 'done call-2', 'done call-3']);
-    assert.deepEqual(compute.dispatched[3]!.turns![0]!.replay, { turn: 1 }, 'the provider\'s own assistant message goes back unchanged');
+    assert.deepEqual(compute.dispatched[2]!.turns!.map((turn) => turn.results[0]!.content), ['done call-1', 'done call-2']);
+    assert.deepEqual(compute.dispatched[2]!.turns![0]!.replay, { turn: 1 }, 'the provider\'s own assistant message goes back unchanged');
   });
 
   test('AST-8.2: a fake provider that keeps calling tools stops at the turn cap', async () => {
@@ -138,6 +139,20 @@ describe('the server tool loop in the worker (AST-8.2, AST-8.3; fake provider an
     assert.equal(session.changes.length, PERSONAL_RUN_LIMITS.maxTurns - 1);
     assert.deepEqual([stored.status, stored.cost_state, stored.charged_micros], ['cap_reached', 'observed', PERSONAL_RUN_LIMITS.maxTurns * 2_500]);
     assert.equal(session.closed, 1);
+  });
+
+  test('an API-key answer is redacted like a runtime answer: token-shaped strings never reach the conversation (#484)', async () => {
+    await useConnection({}, 50);
+    const secret = 'sk-ant-api03-AbCdEfGhIjKlMnOpQrSt';
+    for (const [text, redacted] of [[`Fact: the key is ${secret} and Bearer abc.def-123 [S1].`, true], ['Fact: nothing secret here [S1].', false]] as const) {
+      compute.respond = async () => ({ kind: 'completed', stopReason: 'end_turn', text, usage: { inputTokens: 500, outputTokens: 20 } });
+      const started = await ask();
+      assert.equal(await processor.process(started.run.id), 'completed');
+      const stored = (await pool.query('SELECT answer_body, answer_redacted FROM personal_runs WHERE id = $1', [started.run.id])).rows[0] as { answer_body: string; answer_redacted: boolean };
+      assert.equal(stored.answer_redacted, redacted);
+      assert.ok(!stored.answer_body.includes(secret) && !stored.answer_body.includes('abc.def-123'), 'the secret is not stored');
+      if (redacted) assert.ok(stored.answer_body.includes('[removed: looked like a secret]'));
+    }
   });
 
   test('a run that ends in the model\'s answer commits it, charges the sum of its requests and closes its tools once', async () => {
@@ -234,15 +249,15 @@ describe('the server tool loop in the worker (AST-8.2, AST-8.3; fake provider an
   test('a request outside its token limits makes the run\'s cost unknown: the whole reservation stays counted, nothing is posted, what ran stays', async () => {
     await useConnection({}, 50);
     compute.respond = async () => (compute.dispatched.length === 1 ? toolUse(1)
-      : { kind: 'completed', stopReason: 'end_turn', text: 'Fact: ok [S1].', usage: { inputTokens: 16_001, outputTokens: 10 } });
+      : { kind: 'completed', stopReason: 'end_turn', text: 'Fact: ok [S1].', usage: { inputTokens: 32_001, outputTokens: 10 } });
     const started = await ask();
     assert.equal(await processor.process(started.run.id), 'provider_failed');
     const stored = await row(started.run.id);
     assert.deepEqual([stored.cost_state, stored.charged_micros, stored.input_tokens, stored.answer_body], ['unknown', 0, null, null]);
-    assert.equal(stored.reserved_micros, 470_000);
+    assert.equal(stored.reserved_micros, 500_000);
     assert.equal(session.changes.length, 1);
     const status = await runs.status(human(owner));
-    assert.ok(status.today!.reservedMicros >= 470_000, 'the daily cap still counts the whole reservation');
+    assert.ok(status.today!.reservedMicros >= 500_000, 'the daily cap still counts the whole reservation');
   });
 
   test('a request that fails after the first turn keeps the earlier charge when nothing was sent, and the whole reservation when it may have been billed', async () => {

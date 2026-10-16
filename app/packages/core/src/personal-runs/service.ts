@@ -3,6 +3,7 @@ import {
   PERSONAL_RUN_CONSENT_VERSION,
   PERSONAL_RUN_LIMITS,
   PERSONAL_RUNTIME_CONSENT_VERSION,
+  personalRunMaxInputTokens,
   RUNTIME_RUN_LIMITS,
   type AssistantAnswer,
   type AssistantRun,
@@ -122,10 +123,12 @@ export async function usableConnection(connections: PersonalConnectionLookup, pr
     const other = await connections.resolve(enablement.ownerUserId);
     return { problem: other && other.status === 'active' && other.ownerUserId === enablement.ownerUserId ? 'connection_changed' : 'no_connection' };
   }
-  const oneRequest = runReservationMicros(connection.price);
+  // A run with tools has the larger per-request input bound (#484): one such request must fit the ceiling.
+  const tools = turns > 1 && connectionCallsTools(connection);
+  const oneRequest = runReservationMicros(connection.price, tools);
   if (oneRequest === null) return { problem: 'price_unknown' };
   if (oneRequest > centsToMicros(enablement.perRunCents)) return { problem: 'run_cost_over_limit' };
-  const reservedMicros = turns > 1 && connectionCallsTools(connection) ? toolRunReservationMicros(connection.price, centsToMicros(enablement.perRunCents), turns) ?? oneRequest : oneRequest;
+  const reservedMicros = tools ? toolRunReservationMicros(connection.price, centsToMicros(enablement.perRunCents), turns) ?? oneRequest : oneRequest;
   return { problem: null, connection, reservedMicros };
 }
 
@@ -190,10 +193,11 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, t
     const connection = providerEnabled ? await connections.resolve(owner, named?.connectionId ?? undefined) : null;
     const usable = connection && connection.status === 'active' && connection.ownerUserId === owner ? connection : null;
     // The disclosure names the caller's own connection: its provider, model and price (F-020).
+    const withTools = toolTurns > 1 && !!usable && connectionCallsTools(usable);
     const disclosure = {
       consentVersion: PERSONAL_RUN_CONSENT_VERSION, provider: usable?.provider ?? null, model: usable?.model ?? null,
-      price: usable?.price ? { ...usable.price } : null, maxRunMicros: usable ? runReservationMicros(usable.price) : null,
-      maxInputTokens: PERSONAL_RUN_LIMITS.maxInputTokens, maxOutputTokens: PERSONAL_RUN_LIMITS.maxOutputTokens,
+      price: usable?.price ? { ...usable.price } : null, maxRunMicros: usable ? runReservationMicros(usable.price, withTools) : null,
+      maxInputTokens: personalRunMaxInputTokens(withTools), maxOutputTokens: PERSONAL_RUN_LIMITS.maxOutputTokens,
       dataSent: 'project_place_excerpts',
     } as const;
     // Whether the owner has any active connection: with `connection_changed` the consented one is
@@ -347,7 +351,7 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, t
           throw new ConflictError('Connect your own AI key before enabling your assistant', 'PERSONAL_RUN_CONNECTION_REQUIRED');
         // PROV-3: a connection without a known price cannot be enabled; a model whose largest
         // request exceeds the chosen per-run ceiling would never run.
-        const reservation = runReservationMicros(connection.price);
+        const reservation = runReservationMicros(connection.price, toolTurns > 1 && connectionCallsTools(connection));
         if (reservation === null) throw new ConflictError('Your AI connection has no known price', 'PERSONAL_RUN_PRICE_UNKNOWN');
         if (reservation > centsToMicros(input.perRunCents))
           throw new ConflictError('One request to this model can cost more than your per-request limit', 'PERSONAL_RUN_COST_OVER_LIMIT');
