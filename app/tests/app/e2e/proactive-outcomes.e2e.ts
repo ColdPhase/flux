@@ -244,8 +244,12 @@ test('owner usage distinguishes known, uncertain and no-cost requests and surviv
     assert.ok(await history.getByText('Bedside gesture lamp', { exact: true }).count() > 0, 'failed refresh retains the explicit stale snapshot');
     await page.unroute('**/api/v1/background-compute-usage');
     const marked = (await api(page, 'GET', '/api/v1/background-compute-connections/current')).data as { name: string; keyLastFour: string };
+    // #513: connections are disconnected on AI connections; usage stays on Background suggestions.
+    await page.goto(`${origin.origin}/settings/ai-connections`);
     await page.getByRole('button', { name: `Disconnect ${marked.name}, key ending ${marked.keyLastFour}`, exact: true }).click();
-    await page.getByRole('heading', { name: 'Connect your background source', exact: true }).waitFor();
+    await page.getByRole('heading', { name: 'Add an AI connection', exact: true }).waitFor();
+    await page.goto(`${origin.origin}/settings/background-compute`);
+    await page.locator('.background-usage').waitFor();
     await page.getByRole('button', { name: 'Refresh usage', exact: true }).click();
     const accounting = (await api(page, 'GET', '/api/v1/background-compute-usage')).data as BackgroundComputeUsage;
     assert.equal(accounting.currentLimits, null); assert.equal(accounting.conservativeCountedCents, 15);
