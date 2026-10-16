@@ -335,6 +335,7 @@ class TasksFinalJourney(unittest.TestCase):
 
     def test_05d_confirmed_card_retires_after_current_mine_reads_exclude_it(self) -> None:
         page=self.tasks();self.set_status(page,"supplier","open");page.get_by_role("button",name="Mine",exact=True).click();page.reload()
+        peer=self.page("jonas")
         supplier=self.ids['supplier'];phase={'undo':False,'all':False,'peer':False};held=[];seen=[];events=[]
         page.evaluate("window.__groupControl={doneOpen:false,doneFinished:false,undoOpen:false,undoFinished:false,peerEmpty:[],keys:[]}")
         page.evaluate("document.addEventListener('keydown',event=>window.__groupControl.keys.push({key:event.key,tag:event.target.tagName,cls:event.target.className}),true)")
@@ -374,7 +375,7 @@ class TasksFinalJourney(unittest.TestCase):
             self.wait_status(page,'supplier','in_progress')
             expect(self.card(page.get_by_role('region',name='In progress',exact=True),SUPPLIER).get_by_role('button',name=SUPPLIER,exact=True)).to_be_focused()
             current=self.task(page,'supplier')
-            self.api(page,'PATCH',f"/api/v1/work/{supplier}",{'owner':{'kind':'human','id':JONAS['id']},'clientCommandId':str(uuid.uuid4())},status=200,headers={'if-match':f'"{current["version"]}"'})
+            self.api(peer,'PATCH',f"/api/v1/work/{supplier}",{'owner':{'kind':'human','id':JONAS['id']},'clientCommandId':str(uuid.uuid4())},status=200,headers={'if-match':f'"{current["version"]}"'})
             phase['peer']=True
             page.evaluate("window.dispatchEvent(new Event('focus'))")
             page.wait_for_function("window.__groupControl.peerEmpty.length===4")
