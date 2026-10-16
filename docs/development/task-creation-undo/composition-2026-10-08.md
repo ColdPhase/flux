@@ -123,7 +123,7 @@ and runtime-auth files.
 - The branch's separate footprint gate (`migration-footprints.md`, `footprints.ts`, its
   tests and fixtures) is removed. Main's `task-creation-undo-compatibility.ts` guard is the
   single compatibility check and is extended for 96 and 97.
-- Required evidence: the real migration CLI on a ledger 94/95 database that holds runtime
+- Required evidence: the real migration CLI on a ledger 94 and a ledger 95 database that hold runtime
   binding and connection rows, run twice, exits 0 with the exact ledger and preserved rows.
   The composition with focus 59 and Undo 60 keeps the requirements stated above.
 
