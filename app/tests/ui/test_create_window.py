@@ -1028,5 +1028,34 @@ class CreateWindow(unittest.TestCase):
         expect(palette.get_by_role("option", name=re.compile("Cargo bike co-op|^Home"))).to_have_count(0)
         expect(palette).to_contain_text("Only what you can open is searched.")
 
+    def test_20_a_guest_sees_why_the_message_tab_has_no_one_to_pick_and_cannot_send(self) -> None:
+        """#555: a guest cannot list the space's people (403), so the Message tab says what a guest can do, not that nobody is there."""
+        self.ensure_account()
+        guest_email = f"guest.create+{int(time.time() * 1000)}@example.test"
+        guest_context = self.browser.new_context(base_url=ORIGIN, color_scheme="light", locale="en-GB", timezone_id="Europe/Warsaw",
+                                                 service_workers="block", viewport=DESKTOP)
+        self.addCleanup(guest_context.close)
+        guest = guest_context.new_page()
+        guest.goto("/sign-up")
+        guest.get_by_label("Name").fill("Kai Create Guest")
+        guest.get_by_label("Email").fill(guest_email)
+        guest.get_by_label("Password").fill(PASSWORD)
+        guest.get_by_role("button", name="Create account").click()
+        expect(guest.get_by_role("heading", level=1, name="Home")).to_be_visible()
+        # Its own space, so the shared workspace of the other tests keeps its people.
+        owner = self.page()
+        space = self.api(owner, "POST", "/api/v1/workspaces", {"name": "Guest space"}, 201)
+        self.api(owner, "POST", f"/api/v1/workspaces/{space['id']}/members", {"email": guest_email, "role": "guest"}, 201)
+        guest.goto("/")
+        expect(guest.get_by_role("heading", level=1, name="Home")).to_be_visible()
+        guest.get_by_role("complementary", name="Sidebar").get_by_role("button", name=re.compile("^New")).click()
+        expect(window(guest)).to_be_visible()
+        create_other(guest, "Message")
+        panel = window(guest).get_by_role("tabpanel")
+        expect(panel.locator(".create__where")).to_contain_text("Guests can reply in conversations they are added to, but cannot start one.")
+        expect(window(guest)).not_to_contain_text("Nobody else is in your spaces yet")
+        expect(window(guest).get_by_role("button", name="Send message")).to_be_disabled()
+        shot(guest, "555-create-message-guest-1440-light")
+
 if __name__ == "__main__":
     unittest.main()
