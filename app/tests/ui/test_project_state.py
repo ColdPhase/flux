@@ -318,14 +318,13 @@ class ProjectStateJourney(unittest.TestCase):
                 expect(result_row).to_contain_text("Negative result")
                 for row in (rule_row, result_row):
                     row.scroll_into_view_if_needed()
-                    # The rule is a small card (#512), the result a row.
-                    self.assert_text_is_unclipped(row.locator(".ov-rule__t, .ov-row__t"))
-                    # Any additional state metadata must remain readable; the semantic checks
-                    # do not require repeating a title that the row already communicates.
-                    if row.locator(".ov-row__s").count():
-                        self.assert_text_is_unclipped(row.locator(".ov-row__s"))
-                        wrapping = row.locator(".ov-row__s").evaluate("e => ({scroll:e.scrollWidth,width:e.clientWidth})")
-                        self.assertLessEqual(wrapping["scroll"], wrapping["width"] + 1, wrapping)
+                # The rule is a small card whose long title wraps and stays readable; the result is one line
+                # (#512): its title ends in an ellipsis with the whole title on it, and the row stays in the panel.
+                self.assert_text_is_unclipped(rule_row.locator(".ov-rule__t"))
+                expect(result_row.locator(".ov-line__t")).to_have_attribute("title", result_title)
+                row_box, panel_box = result_row.bounding_box(), page.locator("#details").bounding_box()
+                self.assertLessEqual(row_box["x"] + row_box["width"], panel_box["x"] + panel_box["width"] + 1)
+                self.assertGreaterEqual(row_box["x"], panel_box["x"] - 1)
                 shot(page, f"136-state-long-metadata-{width}")
 
     def test_06_material_draft_hides_on_downgrade_and_returns_on_upgrade(self):

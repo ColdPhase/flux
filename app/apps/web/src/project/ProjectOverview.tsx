@@ -120,7 +120,7 @@ function Rows({ label, rows, empty, controls }: { label: string; rows: Row[]; em
 /** The task rows and the rule of the project's "Now" (#512, AC-3): each object once, in one line or one small card. */
 interface NowTask { key: string; id: string; status: WorkStatus; title: string }
 
-function NowSection({ projectId, tasks, rule, others }: { projectId: string; tasks: NowTask[]; rule: WorkReadRef | null; others: Row[] }) {
+function NowSection({ projectId, tasks, rule, lines, others }: { projectId: string; tasks: NowTask[]; rule: WorkReadRef | null; lines: Row[]; others: Row[] }) {
   const { me } = useShellData();
   const { openDetails } = useShellActions();
   // The task's number and the rule's date are read for exactly these objects; the rows show at once.
@@ -131,11 +131,11 @@ function NowSection({ projectId, tasks, rule, others }: { projectId: string; tas
   const items = read.phase === 'ready' || read.phase === 'refreshing' ? read.value.items : [];
   const numberOf = (id: string) => { const row = items.find((item) => item.kind === 'work' && item.id === id); return row?.kind === 'work' ? `#${row.number}` : ''; };
   const accepted = rule ? items.find((item): item is DecisionRowProjection => item.kind === 'decision' && item.id === rule.id)?.decidedAt ?? null : null;
-  if (!tasks.length && !rule && !others.length) return null;
+  if (!tasks.length && !rule && !lines.length && !others.length) return null;
   return (
     <section className="details__sec ov-sec" aria-labelledby="ov-now">
       <h4 id="ov-now">Now</h4>
-      {tasks.length ? (
+      {tasks.length || lines.length ? (
         <ul className="ov-rows ov-lines">
           {tasks.map((task) => (
             <li key={task.key}>
@@ -143,6 +143,15 @@ function NowSection({ projectId, tasks, rule, others }: { projectId: string; tas
                 <StatusGlyph status={task.status} size={16} className="ov-line__g" />
                 <span className="ov-line__t" title={task.title}><span className="ui-vh">{TASK_STATE_WORD[task.status]}: </span>{task.title}</span>
                 <span className="ov-line__n">{numberOf(task.id)}</span>
+              </button>
+            </li>
+          ))}
+          {lines.map((row) => (
+            <li key={row.key}>
+              <button type="button" className="ov-line" onClick={() => openDetails(row.open)}>
+                <Icon name={row.icon} size={16} className="ov-line__g" />
+                <span className="ov-line__t" title={row.title}><span className="ui-vh">{row.kind}: </span>{row.title}</span>
+                <span className={`ov-line__n${row.need ? ' ws-need' : ''}`}>{row.end}</span>
               </button>
             </li>
           ))}
@@ -266,8 +275,12 @@ export function ProjectOverview({ messageId, selection, focusPeople = null, onBa
   if (summaryState?.blocked.first) nowTasks.push({ key: 'blocked', id: summaryState.blocked.first.id, status: 'blocked', title: summaryState.blocked.first.title });
   if (summaryState?.active.first) nowTasks.push({ key: 'active', id: summaryState.active.first.id, status: 'in_progress', title: summaryState.active.first.title });
   if (summaryState?.open.first) nowTasks.push({ key: 'open', id: summaryState.open.first.id, status: 'open', title: summaryState.open.first.title });
-  // A proposed decision, the latest result, or (with nothing else going on) the earlier work: a short row each, as before.
-  const nowOthers: Row[] = projectMode ? state.filter((row) => row.key === 'proposal' || row.key === 'result' || row.key === 'history') : [];
+  // A proposed decision and the latest result are one line each; with nothing else going on, the earlier work is a short row.
+  const nowLines: Row[] = projectMode ? stateParts.filter((part) => part.key === 'proposal' || part.key === 'result').map((part): Row => ({
+    key: part.key, icon: part.key === 'result' ? 'result' : 'rule', kind: part.key === 'result' ? 'Latest result' : 'Proposed decision', title: part.title,
+    end: part.key === 'result' ? (part.text.startsWith('Negative') ? 'Negative result' : 'Result') : part.tone === 'need' ? 'Needs you' : 'Proposed', need: part.tone === 'need', open: part.open,
+  })) : [];
+  const nowOthers: Row[] = projectMode ? state.filter((row) => row.key === 'history') : [];
   const count = (n: number | undefined, one: string, many: string) => (n ? `${n} ${n === 1 ? one : many}` : undefined);
   const inProject: Row[] = projectMode ? [
     { key: 'in-map', icon: 'map', kind: '', title: 'Map', end: count(sketches?.total, 'sketch', 'sketches'), to: `${base}/map` },
@@ -316,7 +329,7 @@ export function ProjectOverview({ messageId, selection, focusPeople = null, onBa
         </> : undefined}
         empty={read.page?.total === 0 ? (project.access !== 'viewer' ? 'Nothing linked yet. Any message can become work, a decision or a result.' : 'Nothing linked yet.') : read.page && !rows.length ? 'No linked objects on this page. Return to the previous page or refresh.' : undefined} />
       {projectMode
-        ? <NowSection projectId={project.id} tasks={nowTasks} rule={summaryState?.rule ?? null} others={nowOthers} />
+        ? <NowSection projectId={project.id} tasks={nowTasks} rule={summaryState?.rule ?? null} lines={nowLines} others={nowOthers} />
         : state.length ? <Rows label={conversation ? 'Elsewhere in this project' : 'Now in this project'} rows={state} /> : null}
       {!messageMode && !current.summary ? <p className="ov-empty" role="status">{current.phase === 'unavailable' ? 'Current work unavailable.' : 'Loading current work…'}</p> : null}
       {rows.length ? <div className="ov-relations">

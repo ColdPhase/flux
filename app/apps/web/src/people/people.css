@@ -5,7 +5,6 @@
 .people__item + .people__item { border-top: 1px solid var(--line); }
 .people__row { display: flex; align-items: center; gap: 10px; min-height: 52px; padding: 8px 0; }
 .people__row .ui-avatar { flex: none; font-size: 12px; color: var(--t2); }
-.people__row .ui-avatar--me { color: var(--oninv); }
 .people__who { display: flex; flex: 1; flex-direction: column; min-width: 0; font-size: var(--fs-md); line-height: 1.45; }
 .people__who b { font-weight: 500; color: var(--t1); overflow-wrap: anywhere; }
 .people__who span { font-size: var(--fs-sm); color: var(--t3); overflow-wrap: anywhere; }
