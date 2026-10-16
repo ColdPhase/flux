@@ -22,6 +22,8 @@ export const listBackgroundRules = (projectId: string, signal?: AbortSignal) =>
   request<ProactiveComparisonRule[]>(projectRules(projectId), { signal });
 export const createBackgroundRule = (projectId: string, command: CreateProactiveComparisonRule) =>
   request<ProactiveComparisonRule>(projectRules(projectId), { method: 'POST', body: command });
+/** The one sentence for background suggestions when this server does not run them (#513): Agents and AI and their page. */
+export const BACKGROUND_OFF_LINE = 'Off on this Flux server · not available until your admin turns it on';
 /** Whether this instance runs background comparisons, so a rule can be enabled (#58). */
 export const backgroundComparisonRuntime = (signal?: AbortSignal) =>
   request<BackgroundComparisonRuntime>(backgroundComparisonRuntimePath, { signal });

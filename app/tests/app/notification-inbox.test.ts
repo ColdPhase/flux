@@ -3,7 +3,7 @@ import { after, before, describe, test } from 'node:test';
 import { PgBoss } from 'pg-boss';
 import { loadPushSenderConfig, NotFoundError } from '@flux/core';
 import type { InboxResponse } from '@flux/contracts';
-import { deliverPush } from '../../apps/worker/src/push/index.js';
+import { createVapidAuthorizer, deliverPush } from '../../apps/worker/src/push/index.js';
 import { createNotifier } from '../../apps/server/src/push/adapters.js';
 import { connectionString, db, pool } from './support/db.js';
 import { capturingNotifier } from './support/notifier.js';
@@ -16,6 +16,7 @@ before(() => boss.start());
 after(() => boss.stop());
 
 const sender = loadPushSenderConfig();
+const vapid = createVapidAuthorizer();
 const notify = createNotifier(db, boss);
 
 describe('in-app inbox', () => {
@@ -91,7 +92,7 @@ describe('notification audience follows the source (access policy)', () => {
     const revoked = await owner.browser.request('DELETE', `/api/v1/projects/${projectId}/grants/${grantId}`);
     assert.equal(revoked.status, 204, revoked.text);
 
-    assert.deepEqual(await deliverPush({ db, config: sender }, captured.jobs[0]!), { outcome: 'skipped', reason: 'recipient can no longer see the notification source' });
+    assert.deepEqual(await deliverPush({ db, vapid, config: sender }, captured.jobs[0]!), { outcome: 'skipped', reason: 'recipient can no longer see the notification source' });
     assert.equal((await recordedPushes(subscription.mockId)).length, 0, 'nothing reached the device');
     const after = (await viewer.browser.request('GET', '/api/v1/inbox')).json as InboxResponse;
     assert.deepEqual(after, { items: [], unread: 0 }, 'not listed and not counted');

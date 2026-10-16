@@ -1,12 +1,13 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
-import type { NeedsYouItem, NeedsYouKind } from '@flux/contracts';
+import type { InboxItem, NeedsYouItem, NeedsYouKind } from '@flux/contracts';
 import { createPortal } from 'react-dom';
 import { Button, ErrorState, Icon, Kreska, MEDIA, Spinner, Tabs, useMediaQuery, type TabItem } from '../ui';
 import { useShellActions } from '../app/shellContext';
 import { useSmallMoments } from '../app/smallMoments';
 import { useShellData } from '../app/data';
 import { announceInboxChange, getInboxItem, markInboxRead } from './api';
+import { AssistantJoinReview } from './AssistantJoinReview';
 import { NeedsYouCard, type CardHandlers } from './NeedsYouCard';
 import { useNeedsYou } from './needsYou';
 import { useNeedsYouActions } from './useNeedsYouActions';
@@ -61,12 +62,15 @@ export function InboxView() {
   const queue = useNeedsYou(me.user.id);
   const handlers = useNeedsYouActions(queue);
   // `?show=decisions` is where the retired Decisions view's links lead.
-  const [asked] = useSearchParams();
+  const [asked, setAsked] = useSearchParams();
   const [filter, setFilter] = useState<Filter>(() => FILTERS.find((entry) => `${entry.id}s` === asked.get('show') || entry.id === asked.get('show'))?.id ?? 'all');
   const [selected, setSelected] = useState<string | null>(null);
   const [menu, setMenu] = useState<string | null>(null);
 
   const all = useMemo(() => queue.items ?? [], [queue.items]);
+  const reviewing = all.find((item) => item.assistantRequestIdentity && item.project?.id === asked.get('assistantProject')
+    && item.assistantRequestIdentity.joinRequestId === asked.get('assistantRequest')
+    && String(item.assistantRequestIdentity.openingVersion) === asked.get('openingVersion'));
   const counts = useMemo(() => {
     const result: Record<Filter, number> = { all: all.length, decision: 0, question: 0, blocked: 0, mention: 0 };
     for (const item of all) result[item.kind] += 1;
@@ -130,6 +134,10 @@ export function InboxView() {
           </p>
         </>
       )}
+      {reviewing ? <AssistantJoinReview key={`${reviewing.key}:${reviewing.assistantRequestIdentity!.openingVersion}`} item={reviewing} onClose={() => {
+        const next = new URLSearchParams(asked); next.delete('assistantProject'); next.delete('assistantRequest'); next.delete('openingVersion');
+        setAsked(next, { replace: true }); announceInboxChange();
+      }} /> : null}
     </div></div>
   );
 }
@@ -143,18 +151,24 @@ export function InboxOpen() {
   const { id = '' } = useParams();
   const navigate = useNavigate();
   const [gone, setGone] = useState(false);
-  const started = useRef(false);
+  const [notification, setNotification] = useState<InboxItem | null>(null);
   useEffect(() => {
-    if (started.current) return;
-    started.current = true;
-    getInboxItem(id).then((item) => {
-      void markInboxRead(item.id).then(announceInboxChange, () => undefined);
+    const controller = new AbortController();
+    getInboxItem(id, controller.signal).then((item) => {
+      if (controller.signal.aborted) return;
+      if (item.assistantRequestIdentity && item.source.type === 'project') { setNotification(item); return; }
+      if (!item.assistantRequestIdentity) void markInboxRead(item.id).then(announceInboxChange, () => undefined);
       navigate(item.url ?? '/inbox', { replace: true });
-    }, () => setGone(true));
+    }, () => { if (!controller.signal.aborted) setGone(true); });
+    return () => controller.abort();
   }, [id, navigate]);
   return (
     <div className="pane-scroll"><div className="pane-in">
-      {gone ? (
+      {notification?.id === id && notification.assistantRequestIdentity && notification.source.type === 'project' ?
+        <AssistantJoinReview key={id} item={{ assistantRequestIdentity: notification.assistantRequestIdentity,
+          project: { id: notification.source.id, name: notification.body.replace(/ · Requested contributor access\.$/, '') } }}
+          onClose={() => { announceInboxChange(); void navigate('/inbox', { replace: true }); }} />
+        : gone ? (
         <div className="inbox-gone">
           <Icon name="lock" size={16} />
           <div>

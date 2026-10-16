@@ -193,8 +193,9 @@ Flux has exactly two AI modes ([F-022](decisions.md), [AI modes](ai-modes.md)).
 
 - The agent in Flux on an owner's AI connection: `FLUX_PERSONAL_RUNS`.
 - Background comparisons: `FLUX_BACKGROUND_COMPARISONS`.
-- The owner's own Claude Code in a runtime slot: `FLUX_AGENT_RUNTIME`. Codex in a runtime slot is
-  unavailable in this version.
+- The owner's own Claude Code or Codex in a runtime slot: `FLUX_AGENT_RUNTIME`. Codex must work in
+  v0.1 (founder direction 2026-10-16, [#281](https://github.com/ColdPhase/flux/issues/281)), not be
+  marked "coming soon".
 - Live media is a separate overlay (`docker/compose.live.yaml`) and is not part of the release's
   operator `compose.yaml` yet.
 
