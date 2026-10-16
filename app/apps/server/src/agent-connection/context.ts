@@ -4,6 +4,7 @@ import { agentProjectReads, DomainError, enforce, evaluateProject, loadActor, re
 import { agentProjectObjectRows, lockAgentMcpPolicy } from '@flux/db';
 import { createAgentConnectionStore } from './store.js';
 import type { McpDispatch } from './mcp-dispatch.js';
+import { requireLiveRun, type RunTokenClaims } from './run-token.js';
 
 /** Constructed only from the verified authorization-server bearer, never MCP clientInfo. */
 export interface FluxMcpClaims {
@@ -14,6 +15,11 @@ export interface FluxMcpClaims {
   scopes: readonly string[];
   /** Supplied only by the verified HTTP composition; native internal adapters keep their existing envelope. */
   dispatch?: McpDispatch;
+  /**
+   * A personal run's token (F-027 A2): only from the verified bearer's signed `flux_run_id`/`flux_place`.
+   * The run must stay in flight and every tool reaches only its place.
+   */
+  run?: RunTokenClaims;
 }
 export type VerifiedFluxMcpClaims = FluxMcpClaims & { dispatch: McpDispatch };
 
@@ -37,11 +43,13 @@ export function withAgentConnection<T>(db: Database, claims: FluxMcpClaims, scop
 export async function agentConnectionInTransaction(tx: Transaction, claims: FluxMcpClaims, scope: AgentScope,
   projectId: string | null): Promise<FluxAgentReadContext> {
     const store = createAgentConnectionStore(tx);
-    const grant = await (claims.dispatch ? store.grantForMcp : store.grantForOauth)(claims.ownerUserId,
+    const grant = await (claims.run ? store.grantForRun : claims.dispatch ? store.grantForMcp : store.grantForOauth)(claims.ownerUserId,
       claims.grantReferenceId ?? claims.connectionId);
     if (!grant || grant.connection.id !== claims.connectionId || grant.clientId !== null && grant.clientId !== claims.clientId)
       throw new DomainError(404, 'CONNECTION_NOT_FOUND', 'Connection not found');
     const row = grant.connection;
+    // A run token works only while its run is in flight, under its own id, for the owner's assistant.
+    if (claims.run) await requireLiveRun(tx, { ownerUserId: claims.ownerUserId, connectionId: claims.connectionId, run: claims.run }, { newCall: true, lock: true });
     if (!claims.scopes.includes(scope) || !row.scopes.includes(scope))
       throw new DomainError(403, 'MCP_SCOPE_REQUIRED', 'The connection lacks the required scope');
     const mcpPolicy = claims.dispatch ? await lockAgentMcpPolicy(tx, row.id) : null;
@@ -61,7 +69,9 @@ export async function agentConnectionInTransaction(tx: Transaction, claims: Flux
     }
     const connection: AgentConnectionContext = {
       connectionId: row.id, ownerUserId: row.ownerUserId, agentId: row.agentId,
-      selectedProjectIds: mcpPolicy ? mcpPolicy.selectedProjectIds.filter((id) => row.selectedProjectIds.includes(id)) : row.selectedProjectIds,
+      // A run reaches only its place (F-022): the selection narrows to the run's project.
+      selectedProjectIds: (mcpPolicy ? mcpPolicy.selectedProjectIds.filter((id) => row.selectedProjectIds.includes(id)) : row.selectedProjectIds)
+        .filter((id) => !claims.run || id === claims.run.projectId),
       scopes: row.scopes.filter((selected) => claims.scopes.includes(selected)), computeSource: row.computeSource,
     };
     const requireProject = async (id: string, action: 'project.read' | 'project.write' = 'project.read') => {

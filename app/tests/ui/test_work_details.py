@@ -192,7 +192,15 @@ class NativeDetailsJourney(unittest.TestCase):
         field=panel.get_by_label("Evidence",exact=True);field.fill("The measured numbers and unfinished conclusion must survive the conflict")
         panel.get_by_role("radio",name="Negative",exact=True).check();finish=panel.get_by_role("checkbox",name=re.compile("This finishes"));expect(finish).to_be_visible();finish.check()
         current=self.native("work",work["id"]);api(self.ctx,"PATCH",f"/api/v1/work/{work['id']}",{"status":"not_pursued","expectedVersion":current["version"]})
-        panel.get_by_role("button",name="Attach result",exact=True).click();expect(panel.get_by_role("alert")).to_contain_text("Someone changed this")
+        # Force the live-refresh ordering that formerly disabled Save before it
+        # could report a conflict. The checked action still owns its old version.
+        expect(panel).to_contain_text("cannot be finished by this result")
+        expect(panel.get_by_role("button",name="Attach result",exact=True)).to_be_enabled()
+        with page.expect_response(lambda response: response.request.method == "POST" and response.url.endswith("/results")) as conflict:
+            panel.get_by_role("button",name="Attach result",exact=True).click()
+        self.assertEqual(conflict.value.status,409)
+        self.assertEqual(conflict.value.request.post_data_json["finishes"]["expectedVersion"],current["version"])
+        expect(panel.get_by_role("alert")).to_contain_text("Someone changed this")
         expect(panel).to_contain_text("cannot be finished by this result")
         expect(title).to_have_value("The earlier version changed while writing this result");expect(field).to_have_value("The measured numbers and unfinished conclusion must survive the conflict")
         expect(panel.get_by_label("For work",exact=True)).to_have_value(work["id"]);expect(panel.get_by_role("button",name="Attach result",exact=True)).to_be_disabled()
@@ -384,3 +392,186 @@ class NativeDetailsJourney(unittest.TestCase):
                 self.ready(panel)
                 expect(nav).to_contain_text("1–50 of")
                 expect(nav.get_by_role("button", name="Next", exact=True)).to_be_enabled()
+
+    def test_13_blocker_and_title_drafts_keep_their_base_across_live_changes_and_retries(self):
+        other = self.browser.new_context(service_workers="block", base_url=ORIGIN)
+        self.addCleanup(other.close)
+        email = f"conflict-peer-{uuid.uuid4()}@example.test"
+        api(other, "POST", "/api/auth/sign-up/email", {"name": "Jonas Berg", "email": email, "password": "Read every conflicting measurement"})
+        user = api(other, "GET", "/api/v1/me")["user"]["id"]
+        api(self.ctx, "POST", f"/api/v1/workspaces/{self.workspace}/members", {"email": email, "role": "member"}, 201)
+        api(self.ctx, "POST", self.root + "/grants", {"principal": {"kind": "human", "id": user}, "role": "contributor"}, 201)
+        for field in ("blocker", "title"):
+            with self.subTest(field=field):
+                task = api(self.ctx, "POST", self.root + "/work", {"title": "Compare the conflicting measurement"}, 201)
+                task = api(self.ctx, "PATCH", f"/api/v1/work/{task['id']}", {"status": "blocked", "blocker": "Original blocker", "expectedVersion": task["version"]})
+                page = self.page(); panel = self.open(page, "work", task["id"])
+                if field == "title":
+                    panel.get_by_title("Edit title", exact=True).click()
+                    draft = panel.get_by_role("textbox", name="Task title", exact=True)
+                else:
+                    draft = panel.get_by_label("What is it waiting for?", exact=True)
+                draft.fill("My carefully preserved draft")
+                url = f"/api/v1/work/{task['id']}"
+                for number in (1, 2):
+                    current = api(other, "GET", url)
+                    api(other, "PATCH", url, {field: f"Peer measurement {number}", "expectedVersion": current["version"]})
+                    # A visible live snapshot proves the concurrent version reached the
+                    # panel before Save, including the second change after its first 409.
+                    expect(panel).to_contain_text(f"Now: Peer measurement {number}")
+                    with page.expect_response(lambda response: response.request.method == "PATCH" and response.url.endswith(url)) as refused:
+                        if field == "title": draft.press("Enter")
+                        else: panel.get_by_role("button", name="Save", exact=True).click()
+                    self.assertEqual(refused.value.status, 409)
+                    expect(panel.get_by_role("alert")).to_contain_text("Someone changed this")
+                    expect(draft).to_have_value("My carefully preserved draft")
+                    shot(page, f"task-conflict-{field}-{number}")
+                    self.assertEqual(api(other, "GET", url)[field], f"Peer measurement {number}")
+                with page.expect_response(lambda response: response.request.method == "PATCH" and response.url.endswith(url)) as saved:
+                    if field == "title": draft.press("Enter")
+                    else: panel.get_by_role("button", name="Save", exact=True).click()
+                self.assertEqual(saved.value.status, 200)
+                self.assertEqual(api(other, "GET", url)[field], "My carefully preserved draft")
+
+    def test_14_owner_choice_conflicts_keep_the_selection_and_require_explicit_retry(self):
+        task = api(self.ctx, "POST", self.root + "/work", {"title": "Review who owns the next measurement"}, 201)
+        page = self.page(); panel = self.open(page, "work", task["id"])
+        owner = panel.get_by_label("Owner", exact=True)
+        owner.focus()
+        url = f"/api/v1/work/{task['id']}"
+        current = api(self.ctx, "PATCH", url, {"title": "The peer revised the measurement", "expectedVersion": task["version"]})
+        expect(panel.get_by_title("Edit title", exact=True)).to_have_text("The peer revised the measurement")
+        with page.expect_response(lambda response: response.request.method == "PATCH" and response.url.endswith(url)) as conflict:
+            owner.select_option(f"human:{self.user}")
+        self.assertEqual(conflict.value.status, 409)
+        expect(owner).to_have_value(f"human:{self.user}")
+        expect(panel).to_contain_text("Now: Nobody yet")
+        expect(panel.get_by_role("alert")).to_contain_text("Someone changed this")
+        api(self.ctx, "PATCH", url, {"title": "The peer revised it again", "expectedVersion": current["version"]})
+        expect(panel.get_by_title("Edit title", exact=True)).to_have_text("The peer revised it again")
+        retry = panel.get_by_role("button", name="Retry owner change", exact=True)
+        with page.expect_response(lambda response: response.request.method == "PATCH" and response.url.endswith(url)) as second:
+            retry.click()
+        self.assertEqual(second.value.status, 409)
+        expect(owner).to_have_value(f"human:{self.user}")
+        with page.expect_response(lambda response: response.request.method == "PATCH" and response.url.endswith(url)) as saved:
+            retry.click()
+        self.assertEqual(saved.value.status, 200)
+        self.assertEqual(self.native("work", task["id"])["owner"]["id"], self.user)
+        expect(retry).to_have_count(0)
+
+    def test_15_successful_blocker_save_retires_the_draft_before_a_peer_refresh(self):
+        task = api(self.ctx, "POST", self.root + "/work", {"title": "Retire each stored blocker draft"}, 201)
+        task = api(self.ctx, "PATCH", f"/api/v1/work/{task['id']}", {"status": "blocked", "blocker": "Original", "expectedVersion": task["version"]})
+        page = self.page(); panel = self.open(page, "work", task["id"])
+        field = panel.get_by_label("What is it waiting for?", exact=True)
+        field.fill("My first stored blocker")
+        save = panel.get_by_role("button", name="Save", exact=True)
+        with page.expect_response(lambda response: response.request.method == "PATCH" and response.url.endswith(task['id'])) as stored:
+            save.click()
+        self.assertEqual(stored.value.status, 200)
+        expect(field).to_have_value("My first stored blocker")
+        expect(save).to_be_disabled()
+        current = self.native("work", task["id"])
+        api(self.ctx, "PATCH", f"/api/v1/work/{task['id']}", {"blocker": "The peer's newer blocker", "expectedVersion": current["version"]})
+        expect(field).to_have_value("The peer's newer blocker")
+        expect(save).to_be_disabled()
+        self.assertEqual(self.native("work", task["id"])["blocker"], "The peer's newer blocker")
+
+    def test_16_clean_field_focus_ends_before_a_later_edit(self):
+        task = api(self.ctx, "POST", self.root + "/work", {"title": "End clean property editing sessions"}, 201)
+        url = f"/api/v1/work/{task['id']}"
+        task = api(self.ctx, "PATCH", url, {"status": "blocked", "blocker": "Original blocker", "expectedVersion": task["version"]})
+        page = self.page(); panel = self.open(page, "work", task["id"])
+        owner = panel.get_by_label("Owner", exact=True)
+        owner.focus(); owner.press("Tab")
+        task = api(self.ctx, "PATCH", url, {"title": "A fresh title after clean owner focus", "expectedVersion": task["version"]})
+        expect(panel.get_by_title("Edit title", exact=True)).to_have_text(task["title"])
+        with page.expect_response(lambda response: response.request.method == "PATCH" and response.url.endswith(url)) as assigned:
+            owner.select_option(f"human:{self.user}")
+        self.assertEqual(assigned.value.status, 200, "a new clean owner session uses the currently visible version")
+        expect(panel.get_by_role("button", name="Retry owner change", exact=True)).to_have_count(0)
+        field = panel.get_by_label("What is it waiting for?", exact=True)
+        field.focus(); field.press("Tab")
+        task = self.native("work", task["id"])
+        api(self.ctx, "PATCH", url, {"blocker": "A fresh blocker after clean focus", "expectedVersion": task["version"]})
+        expect(field).to_have_value("A fresh blocker after clean focus")
+        field.fill("My new blocker session")
+        with page.expect_response(lambda response: response.request.method == "PATCH" and response.url.endswith(url)) as stored:
+            panel.get_by_role("button", name="Save", exact=True).click()
+        self.assertEqual(stored.value.status, 200, "a new clean blocker session uses the currently visible version")
+        expect(panel.get_by_role("alert")).to_have_count(0)
+
+    def test_17_finishing_a_changed_open_task_requires_review_of_each_new_version(self):
+        task = api(self.ctx, "POST", self.root + "/work", {"title": "Review the version this result finishes"}, 201)
+        page = self.page(); panel = self.open(page, "work", task["id"])
+        panel.get_by_role("button", name="Attach a result", exact=True).click()
+        panel = page.locator("#details .wd"); self.choices_ready(panel, "Result work choices")
+        panel.get_by_label("Finding", exact=True).fill("The reviewed measurement is complete")
+        panel.get_by_label("Evidence", exact=True).fill("Two measured calibration passes")
+        panel.get_by_role("radio", name="Positive", exact=True).check()
+        panel.get_by_role("checkbox", name=re.compile("This finishes")).check()
+        submit = panel.get_by_role("button", name="Attach result", exact=True)
+        for number in (1, 2):
+            current = self.native("work", task["id"])
+            api(self.ctx, "PATCH", f"/api/v1/work/{task['id']}", {"title": f"Reviewed calibration version {number}", "expectedVersion": current["version"]})
+            expect(panel.get_by_role("checkbox", name=f"This finishes “Reviewed calibration version {number}”", exact=True)).to_be_checked()
+            with page.expect_response(lambda response: response.request.method == "POST" and response.url.endswith("/results")) as conflict:
+                submit.click()
+            self.assertEqual(conflict.value.status, 409)
+            expect(submit).to_be_disabled()
+            panel.get_by_role("button", name="Finish current version", exact=True).click()
+            expect(submit).to_be_enabled()
+        submit.click()
+        expect(page.locator('.wd[data-detail-kind="result"]')).to_contain_text("The reviewed measurement is complete")
+        self.assertEqual(self.native("work", task["id"])["status"], "done")
+
+    def test_18_late_success_preserves_newer_title_and_blocker_drafts_with_their_own_base(self):
+        for field_name in ("blocker", "title"):
+            with self.subTest(field=field_name):
+                task = api(self.ctx, "POST", self.root + "/work", {"title": "Keep text entered after Save"}, 201)
+                url = f"/api/v1/work/{task['id']}"
+                task = api(self.ctx, "PATCH", url, {"status": "blocked", "blocker": "Original blocker", "expectedVersion": task["version"]})
+                page = self.page(); panel = self.open(page, "work", task["id"])
+                if field_name == "title":
+                    panel.get_by_title("Edit title", exact=True).click()
+                    field = panel.get_by_role("textbox", name="Task title", exact=True)
+                else:
+                    field = panel.get_by_label("What is it waiting for?", exact=True)
+                held = []
+                def hold(route):
+                    if route.request.method != "PATCH":
+                        route.continue_(); return
+                    response = route.fetch()
+                    self.assertEqual(response.status, 200)
+                    held.append((route, response))
+                    page.evaluate("window.__draftSaveHeld = true")
+                page.route("**" + url, hold)
+                field.fill("My submitted draft A")
+                if field_name == "title": field.press("Enter")
+                else: panel.get_by_role("button", name="Save", exact=True).click()
+                page.wait_for_function("window.__draftSaveHeld === true")
+                field.fill("My newer unsaved draft B")
+                stored = self.native("work", task["id"])
+                self.assertEqual(stored[field_name], "My submitted draft A")
+                api(self.ctx, "PATCH", url, {field_name: "Peer revision C", "expectedVersion": stored["version"]})
+                expect(panel).to_contain_text("Now: Peer revision C")
+                route, response = held.pop()
+                with page.expect_response(lambda response: response.request.method == "PATCH" and response.url.endswith(url)) as released:
+                    route.fulfill(response=response)
+                released.value.finished()
+                if field_name == "title": expect(field).to_have_attribute("aria-busy", "false")
+                else: expect(panel.get_by_role("button", name="Save", exact=True)).to_be_enabled()
+                expect(field).to_have_value("My newer unsaved draft B")
+                page.unroute("**" + url, hold)
+                with page.expect_response(lambda response: response.request.method == "PATCH" and response.url.endswith(url)) as conflict:
+                    if field_name == "title": field.press("Enter")
+                    else: panel.get_by_role("button", name="Save", exact=True).click()
+                self.assertEqual(conflict.value.status, 409, "newer draft is based on our own acknowledged save, not the later peer revision")
+                expect(field).to_have_value("My newer unsaved draft B")
+                self.assertEqual(self.native("work", task["id"])[field_name], "Peer revision C")
+                with page.expect_response(lambda response: response.request.method == "PATCH" and response.url.endswith(url)) as saved:
+                    if field_name == "title": field.press("Enter")
+                    else: panel.get_by_role("button", name="Save", exact=True).click()
+                self.assertEqual(saved.value.status, 200)
+                self.assertEqual(self.native("work", task["id"])[field_name], "My newer unsaved draft B")

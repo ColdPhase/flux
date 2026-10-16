@@ -1,5 +1,5 @@
 import { request as httpRequest } from 'node:http';
-import { parseSupervisorFrame, resultMatches, type StepOutcome, type SupervisorError, type SupervisorFrame, type SupervisorResult } from './frames.js';
+import { parseSupervisorFrame, resultMatches, type RunFrame, type StepOutcome, type SupervisorError, type SupervisorFrame, type SupervisorResult } from './frames.js';
 import { DEFAULT_FRAME_LIMITS, FrameStreamError, NdjsonReader, type FrameLimits } from './ndjson.js';
 import { RUNTIME_PORTS } from './names.js';
 import { requestBody, type SupervisorRequest } from './requests.js';
@@ -20,8 +20,14 @@ export const SUPERVISOR_TIMEOUTS_MS: Record<SupervisorRequest['kind'], number> =
 
 const MAX_STEPS = 16;
 
+/**
+ * A run's stream (F-022 T5): its start-up lists, one frame per Flux tool call and the answer, which may be
+ * up to the largest answer bound once JSON-escaped.
+ */
+export const RUN_FRAME_LIMITS: FrameLimits = { lineBytes: 512 * 1024, totalBytes: 4 * 1024 * 1024, frames: 2048 };
+
 export function callSupervisor(target: SupervisorTarget, request: SupervisorRequest,
-  options: { timeoutMs?: number; limits?: FrameLimits } = {}): Promise<SupervisorCallOutcome> {
+  options: { timeoutMs?: number; limits?: FrameLimits; onRun?: (frame: RunFrame) => void } = {}): Promise<SupervisorCallOutcome> {
   const body = Buffer.from(JSON.stringify(requestBody(request)));
   const timeoutMs = options.timeoutMs ?? SUPERVISOR_TIMEOUTS_MS[request.kind];
   return new Promise((resolve) => {
@@ -44,7 +50,7 @@ export function callSupervisor(target: SupervisorTarget, request: SupervisorRequ
         return;
       }
       if (!/^application\/x-ndjson(;|$)/.test(String(res.headers['content-type'] ?? ''))) { finish({ ok: false, code: 'protocol' }); return; }
-      const reader = new NdjsonReader<SupervisorFrame>(parseSupervisorFrame, options.limits ?? DEFAULT_FRAME_LIMITS);
+      const reader = new NdjsonReader<SupervisorFrame>(parseSupervisorFrame, options.limits ?? (request.kind === 'run' ? RUN_FRAME_LIMITS : DEFAULT_FRAME_LIMITS));
       const steps: { step: string; outcome: StepOutcome; client?: string }[] = [];
       let bootId: string | null = null;
       let terminal: SupervisorCallOutcome | null = null;
@@ -59,6 +65,12 @@ export function callSupervisor(target: SupervisorTarget, request: SupervisorRequ
         if (bootId === null) throw new FrameStreamError('invalid_frame');
         // Console frames belong to the sign-in console's stream (console.ts), never to a request's answer.
         if (frame.t === 'console') throw new FrameStreamError('invalid_frame');
+        // Run frames belong to a run's answer only.
+        if (frame.t === 'run') {
+          if (request.kind !== 'run') throw new FrameStreamError('invalid_frame');
+          options.onRun?.(frame);
+          return;
+        }
         if (frame.t === 'step') {
           if (steps.length >= MAX_STEPS) throw new FrameStreamError('too_many_frames');
           steps.push({ step: frame.step, outcome: frame.outcome, ...(frame.client ? { client: frame.client } : {}) });

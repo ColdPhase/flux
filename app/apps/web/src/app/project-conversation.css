@@ -24,7 +24,7 @@
 .project-convo__message-meta strong { color: var(--t1); font-size: var(--fs-md); font-weight: 600; }
 .project-convo__message-meta > span { font-family: var(--mono); visibility: hidden; font-variant-numeric: tabular-nums; }
 .project-convo__message:hover .project-convo__message-meta > span, .project-convo__message:focus-within .project-convo__message-meta > span { visibility: visible; }
-.project-convo__message > p, .material-view__body { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.55; margin: 2px 0 0; }
+.project-convo__message > p:not(.photo-meta), .material-view__body { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.55; margin: 2px 0 0; }
 .project-convo__source { display: inline-flex; align-items: center; min-height: 24px; margin-top: 4px; padding: 0 8px; border-radius: var(--r-sm); background: var(--sub); font-size: var(--fs-xs); color: var(--t2); text-decoration: none; }
 .project-convo__source:hover { background: var(--hov); color: var(--t1); }
 .project-convo__contribution { gap: 5px; margin-right: 6px; border: 0; cursor: default; }
@@ -111,12 +111,12 @@ button.project-convo__contribution { cursor: pointer; }
    The box takes the full 600px measure, so they stay clear of the name, time and number; the
    bubble inside stays as wide as its text. */
 @media (hover: hover) and (min-width: 641px) { .project-convo__message { min-width: min(600px, 100%); } }
-.project-convo__message > p { max-width: 100%; margin: 0; padding: 9px 13px; border-radius: 6px var(--r-lg) var(--r-lg) var(--r-lg); background: var(--el); box-shadow: var(--sh-1); font-size: var(--fs-base); line-height: var(--lh); }
+.project-convo__message > p:not(.photo-meta) { max-width: 100%; margin: 0; padding: 9px 13px; border-radius: 6px var(--r-lg) var(--r-lg) var(--r-lg); background: var(--el); box-shadow: var(--sh-1); font-size: var(--fs-base); line-height: var(--lh); }
 /* Everything under a message (sources, linked work, decisions, results, actions) stays inside its
    column; a long linked title shortens with an ellipsis instead of running off the side. */
 .project-convo__message > :not(.ui-avatar, .author-face) { max-width: 100%; min-width: 0; }
 .project-convo__message .ws-attach { max-width: 100%; }
-.project-convo__message.is-mine > p { border-radius: var(--r-lg) 6px var(--r-lg) var(--r-lg); background-color: var(--inv); background-image: var(--grad-inv); color: var(--oninv); }
+.project-convo__message.is-mine > p:not(.photo-meta) { border-radius: var(--r-lg) 6px var(--r-lg) var(--r-lg); background-color: var(--inv); background-image: var(--grad-inv); color: var(--oninv); }
 /* Own messages belong on the right, including the queued message before it is saved (#481).
    Move the group, not the text's reading direction; references and photos follow their author. */
 .project-convo__message.is-mine { margin-left: auto; align-items: flex-end; padding-left: 0; padding-right: 44px; }
@@ -143,7 +143,7 @@ button.project-convo__contribution { cursor: pointer; }
   /* On either side, the phone keeps the 32px face plus a 10px gap. */
   .project-convo__message { max-width: 100%; padding-left: 42px; }
   .project-convo__message.is-mine { padding-left: 0; padding-right: 42px; }
-  .project-convo__message > p { padding: 11px 14px; }
+  .project-convo__message > p:not(.photo-meta) { padding: 11px 14px; }
   .project-convo__composer { padding: 8px 14px 15px; padding-bottom: max(15px, env(safe-area-inset-bottom)); }
   .project-convo__composer .composer__box { padding: 11px 13px; border-radius: 9px; }
 }
@@ -193,4 +193,27 @@ button.project-convo__contribution { cursor: pointer; }
   .project-new__foot span { flex-basis: 100%; order: 3; text-align: center; }
   .project-new__foot .ui-btn { flex: 1; min-height: 52px; }
   .project-new__foot .ui-btn--secondary { display: none; }
+}
+
+/* Spokój author runs: own messages have no identity column. */
+.project-convo__message { min-width: 0; max-width: min(600px, 100%); width: fit-content; }
+.project-convo__message.is-mine { padding-right: 0; }
+.project-convo__message.is-continued { margin-top: 4px; }
+.project-convo__message.is-continued > .project-convo__message-meta { display: none; }
+.project-convo__message.is-open, .project-convo__message.is-arrived, .project-convo__message.is-mine.is-arrived { box-shadow: none; background: none; }
+.project-convo__message.is-arrived > .message-bubble { background: var(--sub); }
+.message-time { margin-top: 5px; color: var(--t3); font-family: var(--mono); font-size: var(--fs-xs); line-height: 1.5; }
+@media (max-width: 680px) { .project-convo__message.is-mine { padding-right: 0; } }
+
+.thread__root { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; }
+.thread__root.is-mine { align-items: flex-end; }
+.thread__root > .message-bubble { max-width: 100%; }
+
+.project-convo__message:has(.message-bubble :is(.ws-chip, .wiki-card, .message-files, .link-preview), > .photo-grid),
+.thread__root:has(.message-bubble :is(.ws-chip, .wiki-card, .message-files, .link-preview), > .photo-grid) { min-width: min(344px, 100%); }
+.project-convo__message.is-mine:has(.message-bubble :is(.ws-chip, .wiki-card, .message-files, .link-preview), > .photo-grid),
+.thread__root.is-mine:has(.message-bubble :is(.ws-chip, .wiki-card, .message-files, .link-preview), > .photo-grid) { min-width: min(300px, 100%); }
+@media (max-width: 680px) {
+  .project-convo__message:not(.is-mine):has(.message-bubble :is(.ws-chip, .wiki-card, .message-files, .link-preview), > .photo-grid),
+  .thread__root:not(.is-mine):has(.message-bubble :is(.ws-chip, .wiki-card, .message-files, .link-preview), > .photo-grid) { min-width: min(342px, 100%); }
 }

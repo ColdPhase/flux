@@ -251,6 +251,15 @@ const rowsOf = (page: ProjectWorkView | null) => page?.items.filter((item): item
 /** Tasks of this group that the bounded first page does not show. */
 const beyond = (page: ProjectWorkView | null) => page ? Math.max(0, page.total - page.items.length) : 0;
 const SOURCE_EDGES = 100;
+interface ConfirmedTask {
+  item: WorkItem;
+  row: BoardTask | null;
+  scope: string;
+  generations: readonly number[];
+}
+const withStoredState = (row: BoardTask, saved: WorkItem): BoardTask => ({
+  ...row, status: saved.status, version: saved.version, owner: saved.owner, blocker: saved.blocker, updatedAt: saved.updatedAt,
+});
 
 export function TaskBoard({ project, openRead, meId, mine, query, writable, revision, openWork, refresh, showInList, clearFilters }: TaskBoardProps) {
   const owners = useAgentOwners(project);
@@ -261,7 +270,7 @@ export function TaskBoard({ project, openRead, meId, mine, query, writable, revi
   // Moves in flight (shown in their target column) and the stored result of each finished move
   // until the board's own reads catch up with that version.
   const [pending, setPending] = useState<Record<string, ColumnId>>({});
-  const [confirmed, setConfirmed] = useState<Record<string, WorkItem>>({});
+  const [confirmed, setConfirmed] = useState<Record<string, ConfirmedTask>>({});
   const [notice, setNotice] = useState<Notice | null>(null);
   const [spoken, setSpoken] = useState('');
   const [arrived, setArrived] = useState<string | null>(null);
@@ -277,14 +286,6 @@ export function TaskBoard({ project, openRead, meId, mine, query, writable, revi
   const attempts = useRef(new Map<string, string>());
   const timers = useRef<{ notice?: number; arrived?: number }>({});
   const latest = useRef<BoardTask[]>([]);
-  const shownSaved = useCallback((saved: WorkItem) => {
-    setConfirmed((now) => ({ ...now, [saved.id]: saved }));
-    window.clearTimeout(timers.current.arrived);
-    setArrived(saved.id);
-    timers.current.arrived = window.setTimeout(() => setArrived(null), 1200);
-  }, []);
-  const changeState = useStateChange(shownSaved, refresh);
-
   // The Open column is the Tasks tab's own read; the other groups are read here, each a bounded
   // first page that re-reads with the tab's refreshes and the router's revalidation.
   const idle = useRevalidator().state === 'idle';
@@ -299,18 +300,53 @@ export function TaskBoard({ project, openRead, meId, mine, query, writable, revi
   const unavailable = reads.some((read) => read.phase === 'unavailable');
   const waitingFor: Record<ColumnId, boolean> = { open: !openPage, in_progress: !progressPage || !blockedPage, done: !finishedPage };
 
+  const confirmationScope = JSON.stringify([meId, project.id, mine, query.trim().toLowerCase()]);
+  const readGenerations = useRef<readonly number[]>([]);
+  useLayoutEffect(() => { readGenerations.current = reads.map((read) => read.generation); });
+  const rememberSaved = useCallback((saved: WorkItem, before: BoardTask | undefined) => {
+    const generations = readGenerations.current;
+    setConfirmed((now) => ({ ...now, [saved.id]: {
+      item: saved, row: before ? withStoredState(before, saved) : null, scope: confirmationScope, generations,
+    } }));
+  }, [confirmationScope]);
+  const shownSaved = useCallback((saved: WorkItem) => {
+    rememberSaved(saved, latest.current.find((row) => row.id === saved.id));
+    window.clearTimeout(timers.current.arrived);
+    setArrived(saved.id);
+    timers.current.arrived = window.setTimeout(() => setArrived(null), 1200);
+  }, [rememberSaved]);
+  const changeState = useStateChange(shownSaved, refresh);
+
+  // A server acknowledgment outlives staggered group snapshots, but not its read scope or a
+  // newer authoritative observation. Once every group has completed a later read, absence is
+  // authoritative too (for example deletion/access changes), so a later refresh cannot revive it.
+  const observedRows = reads.flatMap((read) => rowsOf(loaded(read)));
+  let retained = confirmed;
+  for (const [id, saved] of Object.entries(confirmed)) {
+    const retired = saved.scope !== confirmationScope || unavailable
+      || observedRows.some((row) => row.id === id && row.version >= saved.item.version)
+      || reads.every((read, index) => read.phase === 'ready' && read.generation > (saved.generations[index] ?? -1));
+    if (retired) { if (retained === confirmed) retained = { ...confirmed }; delete retained[id]; }
+  }
+  if (retained !== confirmed) setConfirmed(retained);
+
   // One row per task across the column reads (each its own observation); the newest version wins.
   const rows = new Map<string, BoardTask>();
   for (const row of [...rowsOf(openPage), ...rowsOf(progressPage), ...rowsOf(blockedPage), ...rowsOf(finishedPage)]) {
     const seen = rows.get(row.id);
     if (!seen || row.version > seen.version) rows.set(row.id, row);
   }
+  // Keep the actual acknowledged row through the gap between its old and new groups. Without
+  // it the focused button is removed, and the next real keyboard event lands on document.body.
+  if (!unavailable && reads.every((read) => read.phase === 'ready' || read.phase === 'refreshing')) {
+    for (const [id, saved] of Object.entries(retained)) {
+      if (saved.scope === confirmationScope && saved.row && !rows.has(id)) rows.set(id, saved.row);
+    }
+  }
   const items = [...rows.values()]
     .map((item) => {
-      const saved = confirmed[item.id];
-      return saved && saved.version > item.version
-        ? { ...item, status: saved.status, version: saved.version, owner: saved.owner, blocker: saved.blocker, updatedAt: saved.updatedAt }
-        : item;
+      const saved = retained[item.id];
+      return saved?.scope === confirmationScope && saved.item.version > item.version ? withStoredState(item, saved.item) : item;
     })
     // Work a pivot parked is set aside, not part of the plan: the List shows it.
     .filter((item) => !item.parked || isFinished(item));
@@ -394,7 +430,7 @@ export function TaskBoard({ project, openRead, meId, mine, query, writable, revi
     try {
       const saved = await updateWork(item, { status }, commandId);
       attempts.current.delete(key);
-      setConfirmed((now) => ({ ...now, [item.id]: saved }));
+      rememberSaved(saved, item);
       window.clearTimeout(timers.current.arrived);
       setArrived(item.id);
       timers.current.arrived = window.setTimeout(() => setArrived(null), 1200);

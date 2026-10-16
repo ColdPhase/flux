@@ -40,7 +40,7 @@ function PanelContent({ title, titleId, headerStart, chip, hint, context, onClos
           : <h2 className="ui-panel__title" id={titleId}>{title}</h2>}
         {chip ? <span className="ui-panel__meta" id={PANEL_META_ID} /> : null}
         {chip && hint ? <span className="ui-panel__hint" aria-hidden="true">Drag up for more</span> : <span className="ui-panel__fill" />}
-        <IconButton icon="x" label={`Close ${title.toLowerCase()}`} onClick={onClose} className="ui-panel__close" />
+        <IconButton icon="x" label={`Close ${title.toLowerCase()}`} data-tip="Close · Esc" onClick={onClose} className="ui-panel__close" />
       </div>
       {context}
       <div className="ui-panel__body" ref={bodyRef} tabIndex={-1}>{children}</div>

@@ -5,10 +5,12 @@ import { useRevalidator } from 'react-router';
 import type { Project, ProjectAccess as Access, ProjectGrant, ProjectGrantRole, ProjectPerson, WorkspaceMember } from '@flux/contracts';
 import { useShellData } from '../app/data';
 import { useShellActions } from '../app/shellContext';
-import { ACCESS_LABEL } from '../project/data';
 import { AgentTag, Avatar, Button, Icon, Kreska, prefersReducedMotion } from '../ui';
 import { ROLE_LABEL, attemptKeys, firstName, grantPerson, isManagerRole, levelFor, listGrants, listMembers, problemText, revokeGrant } from './api';
 import './people.css';
+
+/** Each person's role in one or two words. */
+const ROLE_SHORT: Record<Access, string> = { manager: 'Manages', contributor: 'Can write', viewer: 'Can read' };
 
 /** A change to one person's access: set a grant, or remove it. */
 type Change = { kind: 'grant'; role: ProjectGrantRole } | { kind: 'revoke' };
@@ -17,8 +19,8 @@ interface Option { id: string; label: string; change: Change; confirm: string; p
 interface Roster { members: WorkspaceMember[]; grants: ProjectGrant[] }
 
 /**
- * "Who can see this" for a project (#188, AC-2): exactly who can open it now, read from the server's
- * access policy, and why. Owners and admins of the workspace (the project's managers) give a
+ * "People" for a project (#188, AC-2; #512, AC-5): exactly who can open it now, read from the server's
+ * access policy, each with their role, and in one sentence who else can. Owners and admins of the workspace (the project's managers) give a
  * workspace member access as a writer or reader, change or remove it, or keep someone out with an
  * explicit deny. Each change names its exact consequence before it is confirmed; nothing is
  * granted implicitly. Everyone else sees the same list read-only.
@@ -31,6 +33,9 @@ export function ProjectAccess({ project, people, focusToken }: { project: Projec
   const [roster, setRoster] = useState<Roster | null>(null);
   const [rosterFailed, setRosterFailed] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
+  const [managing, setManaging] = useState(false);
+  const [giving, setGiving] = useState(false);
+  const inviteRef = useRef<HTMLButtonElement>(null);
   const [done, setDone] = useState('');
   const manager = project.access === 'manager';
   const workspaceName = workspaces.find((space) => space.id === project.workspaceId)?.name ?? 'this workspace';
@@ -78,16 +83,6 @@ export function ProjectAccess({ project, people, focusToken }: { project: Projec
   const keptOut = roster ? roster.grants.filter((grant) => grant.role === 'denied' && grant.principal.kind === 'human').map((grant) => ({ grant, member: memberOf(grant.principal.id) })).filter((row): row is { grant: ProjectGrant; member: WorkspaceMember } => !!row.member) : [];
   const candidates = roster ? roster.members.filter((member) => member.userId !== me.user.id && grantOf(member.userId)?.role !== 'denied'
     && levelFor(member.role, project.visibility, grantOf(member.userId)?.role ?? null) === null) : [];
-
-  /** Why someone can open it, in words, when the manager's roster is known. */
-  const why = (person: ProjectPerson): string | null => {
-    if (person.kind === 'agent') return null;
-    const member = memberOf(person.id);
-    if (!member) return null;
-    if (isManagerRole(member.role)) return `${ROLE_LABEL[member.role]} of ${workspaceName}`;
-    if (grantOf(person.id)) return 'Given access here';
-    return `Everyone in ${workspaceName}`;
-  };
 
   const optionsFor = (member: WorkspaceMember): Option[] => {
     const grant = grantOf(member.userId);
@@ -140,26 +135,30 @@ export function ProjectAccess({ project, people, focusToken }: { project: Projec
         : `${first} ${option.id === 'contributor' ? 'can now write in' : 'can now read'} ${project.name}.`);
   };
 
-  const meRow = <li className="people__item"><div className="people__row"><Avatar name={me.user.name} size="md" tone="me" /><span className="people__who"><b>{me.user.name} (you)</b><span>{ACCESS_LABEL[project.access]}</span></span></div></li>;
+  const restricted = project.visibility === 'restricted';
+  const meRow = <li className="people__item"><div className="people__row"><Avatar name={me.user.name} size="md" tone="me" /><span className="people__who"><b>{me.user.name} <span className="people__you">· you</span></b></span><span className="people__role">{ROLE_SHORT[project.access]}</span></div></li>;
+  // Invite: someone already in the space is given access here; someone new is first added to the space.
+  const invite = () => {
+    if (!roster) return;
+    if (!candidates.length) { openDetails({ kind: 'people', workspaceId: project.workspaceId }); return; }
+    setGiving((open) => !open);
+  };
 
   return (
     <section className="details__sec access" aria-labelledby="ov-people">
-      <h4 id="ov-people" ref={headingRef} tabIndex={-1}>Who can see this</h4>
-      <p className="access__mode"><Icon name={project.visibility === 'restricted' ? 'lock' : 'people'} size={13} />
-        {project.visibility === 'restricted'
-          ? <span><b>Restricted.</b> Only the people listed here can open it; others in {workspaceName} don’t see it at all.</span>
-          : <span><b>Open to {workspaceName}.</b> Members can write here unless listed below with less access; guests only with access given here.</span>}
-      </p>
+      <div className="access__head">
+        <h4 id="ov-people" ref={headingRef} tabIndex={-1}>People</h4>
+        {manager ? <Button ref={inviteRef} variant="quiet" icon="plus" className="access__invite" disabled={!roster} aria-expanded={giving} onClick={invite}>Invite</Button> : null}
+      </div>
       {people ? (
         <ul className="people__list" aria-label={`People who can see ${project.name}`}>
           {meRow}
           {others.map((person) => {
             const member = person.kind === 'human' ? memberOf(person.id) : null;
-            const options = member && manager ? optionsFor(member) : [];
-            const reason = manager ? why(person) : null;
+            const options = member && manager && managing ? optionsFor(member) : [];
             return (
               <AccessRow key={`${person.kind}:${person.id}`} name={person.name} agent={person.kind === 'agent'}
-                label={`${ACCESS_LABEL[person.access]}${reason ? ` · ${reason}` : ''}`} access={person.access}
+                label={ROLE_SHORT[person.access]} access={person.access}
                 options={options} editing={editing === person.id} onEdit={(open) => { setDone(''); setEditing(open ? person.id : null); }}
                 onApply={member ? (option, key) => apply(member, option, key) : undefined} workspaceName={workspaceName} />
             );
@@ -167,12 +166,12 @@ export function ProjectAccess({ project, people, focusToken }: { project: Projec
         </ul>
       ) : <p>Everyone with access to {project.name}.</p>}
 
-      {manager && keptOut.length ? (
+      {manager && managing && keptOut.length ? (
         <>
           <h4 className="access__sub" id="ov-kept-out">Kept out</h4>
           <ul className="people__list" aria-labelledby="ov-kept-out">
             {keptOut.map(({ member }) => (
-              <AccessRow key={member.userId} name={member.name} label={`Kept out · ${ROLE_LABEL[member.role]} of ${workspaceName}`} access={null}
+              <AccessRow key={member.userId} name={member.name} label="Kept out" note={`${ROLE_LABEL[member.role]} of ${workspaceName}`} access={null}
                 options={optionsFor(member)} editing={editing === member.userId} onEdit={(open) => { setDone(''); setEditing(open ? member.userId : null); }}
                 onApply={(option, key) => apply(member, option, key)} workspaceName={workspaceName} />
             ))}
@@ -182,22 +181,28 @@ export function ProjectAccess({ project, people, focusToken }: { project: Projec
 
       <p className="people__done" role="status">{done ? <><Icon name="check" size={13} />{done}</> : null}</p>
 
-      {manager ? (
-        roster ? (
-          <GiveAccess project={project} candidates={candidates} workspaceName={workspaceName} onlyMe={roster.members.length <= 1}
-            onGranted={(member, role) => changed(`${firstName(member.name)} ${role === 'contributor' ? 'can now write in' : 'can now read'} ${project.name}.`)}
-            onAddPeople={() => openDetails({ kind: 'people', workspaceId: project.workspaceId })} />
-        ) : rosterFailed ? (
-          <p className="people__notice" role="alert"><Icon name="alert" size={13} />Who could be given access couldn’t be loaded.<button type="button" onClick={load}>Try again</button></p>
-        ) : null
-      ) : <p className="ov-note">Only owners and admins of {workspaceName} change who can see this.</p>}
-      <p className="ov-note">Direct messages with these people stay private; nothing in them is shared with this project.</p>
+      {manager && rosterFailed && !roster ? (
+        <p className="people__notice" role="alert"><Icon name="alert" size={13} />Who could be given access couldn’t be loaded.<button type="button" onClick={load}>Try again</button></p>
+      ) : null}
+      {manager && roster ? (
+        <GiveAccess project={project} candidates={candidates} workspaceName={workspaceName} open={giving}
+          onClose={() => { setGiving(false); requestAnimationFrame(() => inviteRef.current?.focus()); }}
+          onGranted={(member, role) => { setGiving(false); changed(`${firstName(member.name)} ${role === 'contributor' ? 'can now write in' : 'can now read'} ${project.name}.`); }}
+          onAddPeople={() => openDetails({ kind: 'people', workspaceId: project.workspaceId })} />
+      ) : null}
+
+      {/* Who can open it, in one sentence; its managers change it from here. */}
+      <p className="access__line">
+        <Icon name={restricted ? 'lock' : 'people'} size={13} />
+        <span>{restricted ? 'Only the people listed here can open it.' : `Everyone in ${workspaceName} can open it; guests only by invitation.`}
+          {manager ? <> <Button variant="link" className="access__change" aria-expanded={managing} onClick={() => { setManaging((on) => !on); setEditing(null); setDone(''); }}>Change access</Button></> : null}</span>
+      </p>
     </section>
   );
 }
 
-function AccessRow({ name, agent = false, label, access, options, editing, onEdit, onApply, workspaceName }: {
-  name: string; agent?: boolean; label: string; access: Access | null; options: Option[]; editing: boolean;
+function AccessRow({ name, agent = false, label, note, access, options, editing, onEdit, onApply, workspaceName }: {
+  name: string; agent?: boolean; label: string; note?: string; access: Access | null; options: Option[]; editing: boolean;
   onEdit: (open: boolean) => void; onApply?: (option: Option, key: string) => Promise<void>; workspaceName: string;
 }) {
   const editId = useId();
@@ -207,7 +212,8 @@ function AccessRow({ name, agent = false, label, access, options, editing, onEdi
     <li className={`people__item${editing ? ' is-editing' : ''}`}>
       <div className="people__row">
         {agent ? <Kreska size={26} /> : <Avatar name={name} size="md" />}
-        <span className="people__who"><b>{name}{agent ? <> <AgentTag /></> : null}</b><span className={access === null ? 'access__out' : undefined}>{label}</span></span>
+        <span className="people__who"><b>{name}{agent ? <> <AgentTag /></> : null}</b>{note ? <span>{note}</span> : null}</span>
+        <span className={`people__role${access === null ? ' access__out' : ''}`}>{label}</span>
         {options.length && onApply ? (
           <Button ref={changeRef} variant="quiet" className="people__change" aria-expanded={editing} aria-controls={editing ? editId : undefined} onClick={() => onEdit(!editing)}>
             Change<span className="ui-vh"> access for {name}</span>
@@ -267,12 +273,11 @@ function AccessEditor({ id, name, options, onApply, onClose, workspaceName }: {
   );
 }
 
-/** Give one workspace member access, after naming exactly who gains it and what they can do. */
-function GiveAccess({ project, candidates, workspaceName, onlyMe, onGranted, onAddPeople }: {
-  project: Project; candidates: WorkspaceMember[]; workspaceName: string; onlyMe: boolean;
+/** Give one workspace member access, after naming exactly who gains it and what they can do. Invite opens it. */
+function GiveAccess({ project, candidates, workspaceName, open, onClose, onGranted, onAddPeople }: {
+  project: Project; candidates: WorkspaceMember[]; workspaceName: string; open: boolean; onClose: () => void;
   onGranted: (member: WorkspaceMember, role: 'contributor' | 'viewer') => void; onAddPeople: () => void;
 }) {
-  const [open, setOpen] = useState(false);
   const [personId, setPersonId] = useState('');
   const [role, setRole] = useState<'contributor' | 'viewer'>('contributor');
   const [busy, setBusy] = useState(false);
@@ -280,11 +285,11 @@ function GiveAccess({ project, candidates, workspaceName, onlyMe, onGranted, onA
   const keys = useRef(attemptKeys());
   const formId = useId();
   const selectRef = useRef<HTMLSelectElement>(null);
-  const openRef = useRef<HTMLButtonElement>(null);
   const person = candidates.find((member) => member.userId === personId) ?? null;
 
   useEffect(() => { if (open) selectRef.current?.focus(); }, [open]);
-  const close = () => { setOpen(false); setPersonId(''); setRole('contributor'); setProblem(''); requestAnimationFrame(() => openRef.current?.focus()); };
+  const reset = () => { setPersonId(''); setRole('contributor'); setProblem(''); };
+  const close = () => { reset(); onClose(); };
 
   async function give() {
     if (!person || busy) return;
@@ -292,29 +297,14 @@ function GiveAccess({ project, candidates, workspaceName, onlyMe, onGranted, onA
     try {
       await grantPerson(project.id, person.userId, role, keys.current.for(`${person.userId}:${role}`));
       keys.current.done();
-      setOpen(false); setPersonId(''); setRole('contributor');
+      reset();
       onGranted(person, role);
     } catch (error) {
       setProblem(problemText(error, { workspace: workspaceName, who: person.name }));
     } finally { setBusy(false); }
   }
 
-  const addPeople = <Button variant="link" className="access__link" onClick={onAddPeople}>{onlyMe ? `Add people to ${workspaceName}` : `Someone new? Add them to ${workspaceName} first`}</Button>;
-  if (!candidates.length) {
-    return (
-      <div className="access__give">
-        <p className="ov-note">{onlyMe ? `Nobody else is in ${workspaceName} yet.` : `Everyone in ${workspaceName} can already see this, or is kept out.`}</p>
-        {addPeople}
-      </div>
-    );
-  }
-  if (!open) {
-    return (
-      <div className="access__give">
-        <Button ref={openRef} variant="secondary" icon="plus" onClick={() => setOpen(true)}>Give someone access</Button>
-      </div>
-    );
-  }
+  if (!open) return null;
   return (
     <div className="access__give people__edit" role="group" aria-labelledby={`${formId}-h`} onKeyDown={(event) => { if (event.key === 'Escape') { event.stopPropagation(); close(); } }}>
       <h4 id={`${formId}-h`} className="access__sub">Give someone access</h4>
@@ -342,7 +332,7 @@ function GiveAccess({ project, candidates, workspaceName, onlyMe, onGranted, onA
         <Button variant="secondary" onClick={close}>Cancel</Button>
       </div>
       {problem ? <p className="people__notice" role="alert"><Icon name="alert" size={13} />{problem}</p> : null}
-      {addPeople}
+      <Button variant="link" className="access__link" onClick={onAddPeople}>Someone new? Add them to {workspaceName} first</Button>
     </div>
   );
 }

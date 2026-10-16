@@ -163,6 +163,7 @@
 .lv-switch__knob { position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; box-shadow: var(--sh-card); transition: transform var(--dur-2) var(--ease-out); }
 .lv-switch[aria-checked="true"] .lv-switch__track { background: var(--t1); }
 .lv-switch[aria-checked="true"] .lv-switch__knob { transform: translateX(12px); }
+.lv-switch[aria-checked="true"] .lv-switch__knob { background: var(--oninv); }
 .lv-switch__b { display: flex; flex-direction: column; }
 .lv-switch__b b { font-size: var(--fs-md); font-weight: 500; color: var(--t1); }
 .lv-switch__b span { font-size: var(--fs-xs); color: var(--t3); line-height: 1.45; }

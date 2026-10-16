@@ -1,0 +1,92 @@
+diff --git a/app/tests/ui/test_work_associations.py b/app/tests/ui/test_work_associations.py
+index a3a7df73..07ddc636 100644
+--- a/app/tests/ui/test_work_associations.py
++++ b/app/tests/ui/test_work_associations.py
+@@ -12,6 +12,8 @@ from test_app_shell import ORIGIN, UPSTREAM, shot, start_forwarder
+ from test_work_pagination import api
+ 
+ 
++PROBE_JS = "(() => {\n  const trace=window.__associationProbe={fetch:[],dom:[]};let seq=0;\n  const original=window.fetch.bind(window);\n  window.fetch=(input,init)=>{\n    const url=String(input instanceof Request?input.url:input);\n    const wanted=url.includes('/work-associations?')||url.endsWith('/api/v1/me');\n    trace.fetch.push({kind:'invoke',url,at:performance.now(),aborted:init?.signal?.aborted});const promise=original(input,init);if(!wanted)return promise;\n    const id=++seq;trace.fetch.push({kind:'start',id,url,at:performance.now()});\n    return promise.then(response=>{\n      trace.fetch.push({kind:'resolved',id,url,status:response.status,at:performance.now()});\n      const text=response.text.bind(response);\n      response.text=()=>text().then(value=>{\n        let body;try{body=JSON.parse(value);}catch{body=null;}\n        trace.fetch.push({kind:'body',id,url,bytes:value.length,at:performance.now(),\n          detail:url.includes('/work-associations?')?{observedAt:body?.observedAt,items:body?.items?.map(item=>({id:item.id,kind:item.kind})),sources:body?.sources,edges:body?.edges?.items?.map(edge=>({id:edge.id,from:edge.from,to:edge.to}))}:{hasUser:!!body?.user?.id,hasSession:!!body?.session?.id}});\n        return value;\n      },error=>{trace.fetch.push({kind:'body-error',id,url,error:String(error),at:performance.now()});throw error;});\n      return response;\n    },error=>{trace.fetch.push({kind:'fetch-error',id,url,error:String(error),at:performance.now()});throw error;});\n  };\n  const observe=()=>{\n    let previous='';new MutationObserver(()=>{\n      const pane=document.querySelector('.thread__pane'),feed=document.querySelector('.thread__feed');\n      const value={phase:pane?.dataset.associationsPhase,observedAt:pane?.dataset.associationsObservedAt,\n        chips:document.querySelectorAll('#thread .ws-chip').length,scrollTop:feed?.scrollTop,\n        messages:feed?[...feed.querySelectorAll('[data-message-id]')].filter(row=>{const r=row.getBoundingClientRect(),p=feed.getBoundingClientRect();return r.bottom>p.top&&r.top<p.bottom;}).map(row=>row.dataset.messageId):[]};\n      const key=JSON.stringify(value);if(key!==previous&&trace.dom.length<200){previous=key;trace.dom.push({at:performance.now(),...value});}\n    }).observe(document.body,{childList:true,subtree:true,attributes:true});\n  };\n  if(document.body)observe();else addEventListener('DOMContentLoaded',observe,{once:true});\n})();\n"
++
+ class MessageWorkJourney(unittest.TestCase):
+     @classmethod
+     def setUpClass(cls):
+@@ -226,31 +228,53 @@ class MessageWorkJourney(unittest.TestCase):
+ 
+     def test_06_paused_router_revalidation_retires_viewport_selector_aba(self):
+         page=self.page();reads=[]
+-        page.on("request",lambda request:reads.append(parse_qs(urlsplit(request.url).query)["messageIds"][0]) if self.thread_read(request.url) else None)
+-        page.goto(f"/projects/{self.project}/conversations/{self.long_conversation}#message-{self.long_messages[1]}")
+-        expect(page.locator("#thread").get_by_role("button",name="Work: Revisit the first measurement",exact=True)).to_be_visible();self.ready(page)
+-        original_selector=reads[-1];held=[];paused=[]
+-        def hold_scope(route):
+-            if parse_qs(urlsplit(route.request.url).query)["messageIds"][0]==original_selector and not held:
+-                response=route.fetch();self.assertEqual(response.status,200);held.append((route,response));page.evaluate("window.__associationHeld=true")
+-            else:route.continue_()
+-        page.route("**/work-associations?**",hold_scope)
+-        page.evaluate("window.dispatchEvent(new Event('focus'))");page.wait_for_function("window.__associationHeld===true")
+-        def pause_auth(route):
+-            response=route.fetch();self.assertEqual(response.status,200);paused.append((route,response));page.evaluate("window.__authHeld=true")
+-        page.route("**/api/v1/me",pause_auth)
+-        page.evaluate("window.dispatchEvent(new Event('focus'))");page.wait_for_function("window.__authHeld===true")
+-        pane=page.locator(".thread__feed");pane.hover();page.mouse.wheel(0,100000)
+-        page.wait_for_function("el=>{const row=document.querySelector('[data-message-id=\"'+el+'\"]');const pane=row.closest('.thread__feed');return row.getBoundingClientRect().top<pane.getBoundingClientRect().bottom;}",arg=self.long_messages[-1])
+-        expect(page.locator(".thread__pane")).to_have_attribute("data-associations-phase","loading")
+-        page.mouse.wheel(0,-100000);page.wait_for_function("document.querySelector('.thread__feed').scrollTop===0")
+-        expect(page.locator(".thread__pane")).to_have_attribute("data-associations-phase","loading")
+-        route,response=held.pop();route.fulfill(response=response)
+-        expect(page.locator(".thread__pane")).to_have_attribute("data-associations-phase","loading")
+-        page.unroute("**/work-associations?**",hold_scope)
+-        self.assertEqual(len(paused),1)
+-        route,response=paused.pop();route.fulfill(response=response);page.unroute("**/api/v1/me",pause_auth)
+-        self.ready(page);expect(page.locator("#thread").get_by_role("button",name="Work: Revisit the first measurement",exact=True)).to_be_visible()
++        network=[];request_ids={};loader=[]
++        page.on('console',lambda message:loader.append(message.text) if message.text.startswith('ASSOC_LOADER ') else None)
++        def record(kind,request,**extra):
++            if self.thread_read(request.url) or request.url.endswith('/api/v1/me'):
++                request_id=request_ids.setdefault(request,len(request_ids)+1)
++                network.append({'kind':kind,'id':request_id,'url':request.url,'method':request.method,**extra})
++        page.on('request',lambda request:record('request',request))
++        page.on('response',lambda response:record('response',response.request,status=response.status))
++        page.on('requestfinished',lambda request:record('finished',request))
++        page.on('requestfailed',lambda request:record('failed',request,error=request.failure))
++        cdp=page.context.new_cdp_session(page);cdp.send('Network.enable');native_ids=set()
++        def native_request(event):
++            url=event['request']['url']
++            if '/api/' in url:
++                native_ids.add(event['requestId']);network.append({'kind':'native-request','id':event['requestId'],'url':url})
++        cdp.on('Network.requestWillBeSent',native_request)
++        cdp.on('Network.loadingFinished',lambda event:network.append({'kind':'native-finished','id':event['requestId'],'bytes':event['encodedDataLength']}) if event['requestId'] in native_ids else None)
++        cdp.on('Network.loadingFailed',lambda event:network.append({'kind':'native-failed','id':event['requestId'],'error':event['errorText'],'canceled':event['canceled']}) if event['requestId'] in native_ids else None)
++        page.add_init_script(PROBE_JS)
++        try:
++            page.on("request",lambda request:reads.append(parse_qs(urlsplit(request.url).query)["messageIds"][0]) if self.thread_read(request.url) else None)
++            page.goto(f"/projects/{self.project}/conversations/{self.long_conversation}#message-{self.long_messages[1]}")
++            expect(page.locator("#thread").get_by_role("button",name="Work: Revisit the first measurement",exact=True)).to_be_visible();self.ready(page)
++            original_selector=reads[-1];held=[];paused=[]
++            def hold_scope(route):
++                if parse_qs(urlsplit(route.request.url).query)["messageIds"][0]==original_selector and not held:
++                    response=route.fetch();self.assertEqual(response.status,200);held.append((route,response));page.evaluate("window.__associationHeld=true")
++                else:route.continue_()
++            page.route("**/work-associations?**",hold_scope)
++            page.evaluate("window.dispatchEvent(new Event('focus'))");page.wait_for_function("window.__associationHeld===true")
++            def pause_auth(route):
++                response=route.fetch();self.assertEqual(response.status,200);paused.append((route,response));page.evaluate("window.__authHeld=true")
++            page.route("**/api/v1/me",pause_auth)
++            page.evaluate("window.dispatchEvent(new Event('focus'))");page.wait_for_function("window.__authHeld===true")
++            pane=page.locator(".thread__feed");pane.hover();page.mouse.wheel(0,100000)
++            page.wait_for_function("el=>{const row=document.querySelector('[data-message-id=\"'+el+'\"]');const pane=row.closest('.thread__feed');return row.getBoundingClientRect().top<pane.getBoundingClientRect().bottom;}",arg=self.long_messages[-1])
++            expect(page.locator(".thread__pane")).to_have_attribute("data-associations-phase","loading")
++            page.mouse.wheel(0,-100000);page.wait_for_function("document.querySelector('.thread__feed').scrollTop===0")
++            expect(page.locator(".thread__pane")).to_have_attribute("data-associations-phase","loading")
++            route,response=held.pop();route.fulfill(response=response)
++            expect(page.locator(".thread__pane")).to_have_attribute("data-associations-phase","loading")
++            page.unroute("**/work-associations?**",hold_scope)
++            self.assertEqual(len(paused),1)
++            route,response=paused.pop();route.fulfill(response=response);page.unroute("**/api/v1/me",pause_auth)
++            self.ready(page);expect(page.locator("#thread").get_by_role("button",name="Work: Revisit the first measurement",exact=True)).to_be_visible()
++        finally:
++            print('\nASSOCIATION_DIAGNOSTIC '+json.dumps({'loader':loader,'network':network,'browser':page.evaluate('window.__associationProbe'),'remainingHeld':len(locals().get('held',[])),'remainingPaused':len(locals().get('paused',[])),'pane':page.locator('.thread__pane').get_attribute('data-associations-phase')}))
+ 
+     def test_07_restored_feed_observes_older_and_newer_native_batches(self):
+         page=self.page();material_reads=[];native_recoveries=[];holding=[True]

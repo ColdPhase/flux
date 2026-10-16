@@ -6,6 +6,7 @@ import uuid
 from urllib.parse import urlsplit
 
 from playwright.sync_api import expect, sync_playwright
+from create_window import linked_labels, submit_button, title_field
 from test_app_shell import ORIGIN, UPSTREAM, shot, start_forwarder
 from test_work_pagination import api
 
@@ -63,9 +64,13 @@ class SketchWorkDetailsJourney(unittest.TestCase):
                         page.get_by_role('button', name='Thought actions', exact=True).tap()
                     create = page.get_by_role("button", name="Create task from selected thoughts", exact=True)
                     expect(create).to_have_attribute("aria-disabled", "false")
+                    # #509 (from #345): the Create window opens with the thought as its source; its Create task makes the work.
+                    create.click()
+                    expect(title_field(page)).to_have_value(self.text)
+                    expect(linked_labels(page)).to_have_text([self.text])
                     with page.expect_response(lambda response: response.request.method == "POST"
                         and urlsplit(response.url).path == f"/api/v1/projects/{self.project}/work") as saved:
-                        create.click()
+                        submit_button(page).click()
                     self.assertEqual(saved.value.status, 201)
                     item = saved.value.json()
                     self.assertEqual(item["projectId"], self.project)

@@ -210,7 +210,7 @@ class ConnectAiJourney(unittest.TestCase):
         self.assertEqual(status["state"], "not_enabled")
         assistant = self.api(ines, "POST", f"/api/v1/workspaces/{self.ids['workspace']}/agents", {"name": "Ines personal assistant", "owner": "self"}, status=201)
         type(self).ids["assistant_agent"] = assistant["id"]
-        self.api(ines, "POST", "/api/v1/personal-assistant", {"consentVersion": CONSENT, "agentId": assistant["id"], "perRunCents": 6,
+        self.api(ines, "POST", "/api/v1/personal-assistant", {"consentVersion": CONSENT, "agentId": assistant["id"], "perRunCents": 8,
                  "dailyCapCents": 100, "timeZone": "Europe/Warsaw"}, status=201)
         ines.goto(f"/projects/{self.ids['project']}/agents")
         rows = ines.get_by_role("list", name="Agents in this project").get_by_role("listitem")

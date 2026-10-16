@@ -130,6 +130,14 @@ on their behalf and no message goes to an audience of one:
   server's calm explanation instead of a thread. An open 1:1 whose other person left keeps its
   history, shows a quiet notice above the composer, and disables sending.
 
+## Accepted follow-up boundaries (#503)
+
+The current API above is the implemented slice, not a permanent prohibition on private
+threads or deliberate task copies. The independently reviewed
+[message follow-up contract](message-presentation-followups.md) records their audience and
+copy boundaries before implementation. PR #529 supplies presentation only; these capabilities
+and real grouped viewing receipts remain required, unimplemented follow-ups.
+
 ## Not yet connected
 
 The "since you left" return view (#106) summarizes project and sketch events only. Showing DM

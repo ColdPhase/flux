@@ -41,9 +41,9 @@ unused proof permits first Save; neither is an unknown save on every viewport.
 Unknown and historical markerless copies only confirm an existing server thought
 and use an ordinary guarded refinement. An absent thought retains the original
 text/IDs/coordinates/key with an unresolved-save message; widening alone cannot
-recover lost canonical information. Confirmation does not create a link or infer
-personal outline grouping from the stale draft's parent. Unrelated grouping and
-drafts stay intact. A refinement is submitted only by explicit Save, against the
+recover lost canonical information. Confirmation does not create a link from the
+stale draft's parent, so the List does not place it there either (#510: the List is
+the map's tree). Unrelated drafts stay intact. A refinement is submitted only by explicit Save, against the
 version just read and the known earlier text; a different peer text is shown
 without overwriting it and the person's retained text stays recoverable.
 
@@ -71,8 +71,8 @@ copies. Another tab never sees this tab's draft.
 
 Save locks the submitted text while the existing authorized atomic thought+
 optional-link command runs. Only a confirmed response adds the thought to the
-local document, records its normal undo step, groups its ID in this person's list
-and clears the draft. A failed/uncertain response retains the text and the stable
+local document, records its normal undo step and clears the draft; its link places it
+under its parent in the List (#510). A failed/uncertain response retains the text and the stable
 client IDs/key for explicit retry; no replacement ID or partial-link command is
 created. The server rechecks the intended parent and current write access.
 Editing after a failed attempt gives the refinement its own edit key while

@@ -804,6 +804,11 @@ class AppShellJourney(unittest.TestCase):
         sheet_box = box(page, sheet)
         self.assertEqual((round(sheet_box["x"]), round(sheet_box["y"]), round(sheet_box["width"]), round(sheet_box["height"])), (0, 0, PHONE["width"], PHONE["height"]), "Details is a full-screen sheet")
         shot(page, "phone-390-details-light")
+        # #433: when a dialog surface itself holds keyboard focus, it shows a visible inset ring.
+        page.keyboard.press("Shift")
+        ring = page.evaluate("""() => { const s = document.querySelector('.ui-overlay__surface'); s.setAttribute('tabindex', '-1'); s.focus();
+          const cs = getComputedStyle(s); return {visible: s.matches(':focus-visible'), style: cs.outlineStyle, width: parseFloat(cs.outlineWidth), offset: parseFloat(cs.outlineOffset)}; }""")
+        self.assertTrue(ring["visible"] and ring["style"] == "solid" and ring["width"] >= 2 and ring["offset"] < 0, ring)
         page.keyboard.press("Escape")
         expect(page.get_by_role("dialog")).to_have_count(0)
         details.click()
@@ -1149,7 +1154,8 @@ class AppShellJourney(unittest.TestCase):
         expect(owner).to_have_url(f"{ORIGIN}/projects/{project_id}")
         opening = owner.locator(".project-convo__message").filter(has_text="Try a PIR sensor before considering a camera")
         conversation_id = opening.get_attribute("data-conversation-id")
-        opening.get_by_role("button", name="Reply", exact=True).click()
+        opening.hover()
+        opening.get_by_role("button", name="Reply in thread", exact=True).click()
         expect(owner).to_have_url(re.compile(rf"/conversations/{conversation_id}$"))
         open_sources(owner, thread_of(owner))
         owner.get_by_role("button", name="Add material").click()
@@ -1400,7 +1406,7 @@ class AppShellJourney(unittest.TestCase):
         owner.evaluate("window.dispatchEvent(new Event('focus'))")
         expect(owner.get_by_text("Reply 121", exact=True)).to_be_visible()
         self.assertEqual(replies.count(), 121, "revalidation retains every loaded sequence")
-        self.assertEqual([int(text.lstrip('#')) for text in thread_of(owner).locator(".project-convo__message-meta span").all_text_contents()], list(range(2, 123)))
+        self.assertEqual([re.search(r'(?:Missed reply|Reply) \d+', text).group(0) for text in replies.all_inner_texts()], [f"Reply {index:03}" for index in range(1, 121)] + ["Reply 121"])
 
         # More than one server window arrives while this page is idle. Refresh must fill
         # the middle before presenting the new tail beside already loaded history.
@@ -1410,7 +1416,7 @@ class AppShellJourney(unittest.TestCase):
         owner.evaluate("window.dispatchEvent(new Event('focus'))")
         expect(owner.get_by_text("Missed reply 59", exact=True)).to_be_visible()
         expect(replies).to_have_count(181)
-        self.assertEqual([int(text.lstrip('#')) for text in thread_of(owner).locator(".project-convo__message-meta span").all_text_contents()], list(range(2, 183)))
+        self.assertEqual([re.search(r'(?:Missed reply|Reply) \d+', text).group(0) for text in replies.all_inner_texts()], [f"Reply {index:03}" for index in range(1, 121)] + ["Reply 121"] + [f"Missed reply {index}" for index in range(60)])
 
         # Hold the browser's POST, then prove the in-flight text cannot be overwritten.
         owner.evaluate("""() => {

@@ -21,6 +21,7 @@
   --side: #ebebed;
   --bg: #f4f4f5;
   --el: #ffffff;
+  --own: #e7e7ea;
   --sub: #ebebec;
   --hov: #e3e3e5;
   --line: rgba(0, 0, 0, .07);
@@ -28,8 +29,8 @@
   /* Text; --t3 keeps at least 4.5:1 on --bg and --el */
   --t1: #18181b;
   --t2: #4a4a4a;
-  --t3: #6b6b6b;
-  /* Inverted: the primary button, own bubbles, chosen chips, toasts */
+  --t3: #636363;
+  /* Inverted: the primary button, chosen chips, toasts */
   --inv: #18181b;
   --oninv: #ffffff;
   --scrim: rgba(0, 0, 0, .28);
@@ -54,7 +55,7 @@
   --font: "Geist", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   --mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   --fs-xs: .75rem;      /* 12: meta, times, counts */
-  --fs-sm: .75rem;      /* 12: labels, chips, small buttons */
+  --fs-sm: .75rem;      /* 12 (same size as --fs-xs on purpose; separate names keep meta and labels tunable apart): labels, chips, small buttons */
   --fs-md: .8125rem;    /* 13: navigation, tabs, controls */
   --fs-base: .875rem;   /* 14: reading text, bubbles, inputs */
   --fs-lg: 1rem;        /* 16: section titles */
@@ -108,7 +109,7 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     color-scheme: dark;
-    --side: #0b0b0b; --bg: #111111; --el: #1c1c1c; --sub: #242424; --hov: #2c2c2c;
+    --side: #0b0b0b; --bg: #111111; --el: #1c1c1c; --own: #313134; --sub: #242424; --hov: #2c2c2c;
     --line: rgba(255, 255, 255, .08); --line2: rgba(255, 255, 255, .16);
     --t1: #f0f0f0; --t2: #bdbdbd; --t3: #a1a1a1; --inv: #f0f0f0; --oninv: #111111;
     --scrim: rgba(0, 0, 0, .6); --dot: #2e2e2e;
@@ -128,7 +129,7 @@
 }
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --side: #0b0b0b; --bg: #111111; --el: #1c1c1c; --sub: #242424; --hov: #2c2c2c;
+  --side: #0b0b0b; --bg: #111111; --el: #1c1c1c; --own: #313134; --sub: #242424; --hov: #2c2c2c;
   --line: rgba(255, 255, 255, .08); --line2: rgba(255, 255, 255, .16);
   --t1: #f0f0f0; --t2: #bdbdbd; --t3: #a1a1a1; --inv: #f0f0f0; --oninv: #111111;
   --scrim: rgba(0, 0, 0, .6); --dot: #2e2e2e;

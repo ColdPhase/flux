@@ -228,7 +228,7 @@ class PersonalAssistantJourney(unittest.TestCase):
         expect(turn_on).to_be_disabled()
         page.get_by_role("button", name="Create your assistant here").click()
         expect(page.get_by_label("In Lamp studio")).to_have_value(re.compile(r"[0-9a-f-]{36}"))
-        page.get_by_label("Up to per request", exact=True).select_option(label="$0.06")
+        page.get_by_label("Up to per request", exact=True).select_option(label="$0.08")
         page.get_by_label("Daily cap", exact=True).select_option(label="$1.00")
         shot(page, "assistant-1440-settings-consent")
         expect(turn_on).to_be_disabled()
@@ -237,7 +237,7 @@ class PersonalAssistantJourney(unittest.TestCase):
         expect(page.get_by_role("heading", name="Ready · only you can use it")).to_be_visible()
         expect(page.get_by_text("of your $1.00 daily cap", exact=False)).to_be_visible()
         status = self.status(page)
-        self.assertEqual((status["state"], status["enablement"]["perRunCents"], status["enablement"]["dailyCapCents"]), ("ready", 6, 100))
+        self.assertEqual((status["state"], status["enablement"]["perRunCents"], status["enablement"]["dailyCapCents"]), ("ready", 8, 100))
         self.assertEqual(status["enablement"]["consent"]["version"], "o-008-2026-10-02")
         self.assertEqual((status["enablement"]["consent"]["provider"], status["enablement"]["consent"]["model"]), ("anthropic", "claude-sonnet-5"))
         type(self).ids["agent"] = status["enablement"]["agents"][0]["agentId"]
@@ -358,7 +358,12 @@ class PersonalAssistantJourney(unittest.TestCase):
         self.assertEqual(sent[0]["retry_count"], "0")
         body = sent[0]["body"]
         self.assertEqual((body["model"], body["max_tokens"], body["output_config"]), ("claude-sonnet-5", 1500, {"effort": "low"}))
-        self.assertNotIn("tools", body)
+        # F-027 A6 (#484): the run offers its exact switch-derived read tools, listed by /mcp to its run token;
+        # the mock answers without calling one, so the run stays one request.
+        tools = sorted(tool["name"] for tool in body.get("tools", []))
+        self.assertIn("flux_get_conversation", tools)
+        for absent in ("flux_create_task", "flux_update_doc", "flux_create_unit", "flux_bootstrap", "flux_claim_unit", "flux_create_proposal"):
+            self.assertNotIn(absent, tools)
         self.assertIn(KAI_REPLY, json.dumps(body))
         self.assertNotIn(DM_TOKEN, json.dumps(body))
         run = self.own_runs(jo)[0]

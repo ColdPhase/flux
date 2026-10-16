@@ -104,6 +104,11 @@ function isFinishedFixtureRoute(cause: unknown): boolean {
 /** F-026 / #481: a 32px face on the author's side; neutral notices retain their left column. */
 async function assertAuthorColumn(row: Locator, width: number) {
   await row.waitFor();
+  if (await row.evaluate((el) => el.matches('.project-convo__message.is-mine, .thread__root.is-mine'))) {
+    assert.equal(await row.locator(':scope > .author-face, :scope > .ui-avatar, :scope > .thread__root-meta').count(), 0, 'own messages have no visible avatar or name (Spokój)');
+    assert.match((await row.getAttribute('aria-label')) ?? '', /^(Your message|Message from you)$/);
+    return;
+  }
   const geometry = await row.evaluate((el) => {
     const face = el.querySelector<HTMLElement>(':scope > :is(.ui-avatar, .author-face), :scope > .thread__root-meta > :is(.ui-avatar, .author-face)')!;
     const meta = el.querySelector<HTMLElement>('.project-convo__message-meta, .thread__root-meta, .convo-notice__meta, .agents-msg__meta')!;
@@ -228,7 +233,7 @@ test('agent root renders without a human DM link, real human reply persists, and
     assert.match(await row.innerText(), /Trial analyst\s*Agent/);
     assert.equal(await row.locator('.kreska').count() > 0, true, 'an agent author is Kreska, never initials (#339)');
     assert.equal(await row.locator('a[href*="/dm/new"]').count(), 0);
-    assert.equal(await row.locator('.project-convo__message-meta time').getAttribute('datetime'), root.createdAt);
+    assert.equal(await row.locator('.message-time time').getAttribute('datetime'), root.createdAt);
     // One project conversation (UI116-1): the root is in the stream, its replies and reply box in the thread beside it.
     const audience = page.locator('#thread .project-convo__composer .composer__audience').filter({ hasText: '1 agent' });
     await audience.waitFor();

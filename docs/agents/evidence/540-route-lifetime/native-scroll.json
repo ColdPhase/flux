@@ -1,0 +1,306 @@
+{
+  "browser": "WebKit26.5",
+  "diagnostic_exit": 0,
+  "comparisons": [
+    {
+      "gesture": "key",
+      "anchor": "auto",
+      "remove": false,
+      "result": {
+        "events": [
+          {
+            "kind": "keydown",
+            "at": 25,
+            "top": 9760,
+            "height": 20076,
+            "key": "PageDown",
+            "delta": null,
+            "trusted": true
+          },
+          {
+            "kind": "keyup",
+            "at": 26,
+            "top": 9760,
+            "height": 20076,
+            "key": "PageDown",
+            "delta": null,
+            "trusted": true
+          },
+          {
+            "kind": "scroll",
+            "at": 238,
+            "top": 10233,
+            "height": 20076,
+            "key": null,
+            "delta": null,
+            "trusted": true
+          }
+        ],
+        "final": 10233,
+        "max": 19485,
+        "anchorSupported": true
+      }
+    },
+    {
+      "gesture": "key",
+      "anchor": "auto",
+      "remove": true,
+      "result": {
+        "events": [
+          {
+            "kind": "keydown",
+            "at": 20,
+            "top": 9760,
+            "height": 20076,
+            "key": "PageDown",
+            "delta": null,
+            "trusted": true
+          },
+          {
+            "kind": "keyup",
+            "at": 21,
+            "top": 9760,
+            "height": 20076,
+            "key": "PageDown",
+            "delta": null,
+            "trusted": true
+          },
+          {
+            "kind": "remove",
+            "at": 61,
+            "top": 9828,
+            "height": 20000
+          },
+          {
+            "kind": "scroll",
+            "at": 70,
+            "top": 9828,
+            "height": 20000,
+            "key": null,
+            "delta": null,
+            "trusted": true
+          }
+        ],
+        "final": 9828,
+        "max": 19409,
+        "anchorSupported": true
+      }
+    },
+    {
+      "gesture": "key",
+      "anchor": "none",
+      "remove": false,
+      "result": {
+        "events": [
+          {
+            "kind": "keydown",
+            "at": 21,
+            "top": 9760,
+            "height": 20076,
+            "key": "PageDown",
+            "delta": null,
+            "trusted": true
+          },
+          {
+            "kind": "keyup",
+            "at": 21,
+            "top": 9760,
+            "height": 20076,
+            "key": "PageDown",
+            "delta": null,
+            "trusted": true
+          },
+          {
+            "kind": "scroll",
+            "at": 224,
+            "top": 10233,
+            "height": 20076,
+            "key": null,
+            "delta": null,
+            "trusted": true
+          }
+        ],
+        "final": 10233,
+        "max": 19485,
+        "anchorSupported": true
+      }
+    },
+    {
+      "gesture": "key",
+      "anchor": "none",
+      "remove": true,
+      "result": {
+        "events": [
+          {
+            "kind": "keydown",
+            "at": 16,
+            "top": 9760,
+            "height": 20076,
+            "key": "PageDown",
+            "delta": null,
+            "trusted": true
+          },
+          {
+            "kind": "keyup",
+            "at": 17,
+            "top": 9760,
+            "height": 20076,
+            "key": "PageDown",
+            "delta": null,
+            "trusted": true
+          },
+          {
+            "kind": "remove",
+            "at": 20,
+            "top": 9763,
+            "height": 20000
+          },
+          {
+            "kind": "scroll",
+            "at": 223,
+            "top": 10233,
+            "height": 20000,
+            "key": null,
+            "delta": null,
+            "trusted": true
+          }
+        ],
+        "final": 10233,
+        "max": 19409,
+        "anchorSupported": true
+      }
+    },
+    {
+      "gesture": "wheel",
+      "anchor": "auto",
+      "remove": false,
+      "result": {
+        "events": [
+          {
+            "kind": "wheel",
+            "at": 96,
+            "top": 255,
+            "height": 20076,
+            "key": null,
+            "delta": 100000,
+            "trusted": true
+          },
+          {
+            "kind": "scroll",
+            "at": 304,
+            "top": 19485,
+            "height": 20076,
+            "key": null,
+            "delta": null,
+            "trusted": true
+          }
+        ],
+        "final": 19485,
+        "max": 19485,
+        "anchorSupported": true
+      }
+    },
+    {
+      "gesture": "wheel",
+      "anchor": "auto",
+      "remove": true,
+      "result": {
+        "events": [
+          {
+            "kind": "wheel",
+            "at": 96,
+            "top": 255,
+            "height": 20076,
+            "key": null,
+            "delta": 100000,
+            "trusted": true
+          },
+          {
+            "kind": "remove",
+            "at": 159,
+            "top": 10735,
+            "height": 20000
+          },
+          {
+            "kind": "scroll",
+            "at": 175,
+            "top": 10735,
+            "height": 20000,
+            "key": null,
+            "delta": null,
+            "trusted": true
+          }
+        ],
+        "final": 10735,
+        "max": 19409,
+        "anchorSupported": true
+      }
+    },
+    {
+      "gesture": "wheel",
+      "anchor": "none",
+      "remove": false,
+      "result": {
+        "events": [
+          {
+            "kind": "wheel",
+            "at": 96,
+            "top": 255,
+            "height": 20076,
+            "key": null,
+            "delta": 100000,
+            "trusted": true
+          },
+          {
+            "kind": "scroll",
+            "at": 304,
+            "top": 19485,
+            "height": 20076,
+            "key": null,
+            "delta": null,
+            "trusted": true
+          }
+        ],
+        "final": 19485,
+        "max": 19485,
+        "anchorSupported": true
+      }
+    },
+    {
+      "gesture": "wheel",
+      "anchor": "none",
+      "remove": true,
+      "result": {
+        "events": [
+          {
+            "kind": "wheel",
+            "at": 112,
+            "top": 255,
+            "height": 20076,
+            "key": null,
+            "delta": 100000,
+            "trusted": true
+          },
+          {
+            "kind": "remove",
+            "at": 176,
+            "top": 10755,
+            "height": 20000
+          },
+          {
+            "kind": "scroll",
+            "at": 304,
+            "top": 19409,
+            "height": 20000,
+            "key": null,
+            "delta": null,
+            "trusted": true
+          }
+        ],
+        "final": 19409,
+        "max": 19409,
+        "anchorSupported": true
+      }
+    }
+  ]
+}

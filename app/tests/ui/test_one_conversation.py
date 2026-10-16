@@ -222,7 +222,8 @@ class OneConversationJourney(unittest.TestCase):
         # Each root says how many replies it has; the reply action opens the same thread.
         expect(self.root(page, "r1").get_by_role("button", name=re.compile(r"^2 replies"))).to_be_visible()
         expect(self.root(page, "r2").get_by_role("button", name=re.compile(r"^1 reply"))).to_be_visible()
-        expect(self.root(page, "r3").get_by_role("button", name="Reply", exact=True)).to_be_visible()
+        self.root(page, "r3").hover()
+        expect(self.root(page, "r3").get_by_role("button", name="Reply in thread", exact=True)).to_be_visible()
         expect(self.root(page, "r3").get_by_role("button", name=re.compile(r"repl(y|ies) ·"))).to_have_count(0)
         expect(stream.locator(".project-convo__day", has_text="Today")).to_have_count(1)
         # No thread is open and no topic is needed: one composer writes the next root.
@@ -264,8 +265,8 @@ class OneConversationJourney(unittest.TestCase):
         page.goto(self.project_url())
         stream = self.stream(page)
         expect(stream.locator(".project-convo__message").first).to_be_visible()
-        times = [text.strip() for text in stream.locator(".project-convo__message-meta time").all_inner_texts()]
-        self.assertTrue(times, "each root shows its time")
+        times = [text.strip() for text in stream.locator(".message-time time").all_inner_texts()]
+        self.assertTrue(times, "each author run ends with a time")
         self.assertEqual([text for text in times if not re.fullmatch(r"[1-9]\d?:\d\d\s[AP]M", text)], [], "a natural 12-hour clock")
 
     def test_02_a_thread_opens_beside_the_stream_and_takes_a_reply(self) -> None:
@@ -335,7 +336,8 @@ class OneConversationJourney(unittest.TestCase):
         self.assertAlmostEqual(closed["y"], start["y"], delta=4, msg="closing returns to the same place in the stream")
         expect(r1.get_by_role("button", name=re.compile(r"^3 replies"))).to_be_focused()
         # Reply on a root without replies opens its thread with the reply box ready; Esc closes it.
-        self.root(page, "r3").get_by_role("button", name="Reply", exact=True).click()
+        self.root(page, "r3").hover()
+        self.root(page, "r3").get_by_role("button", name="Reply in thread", exact=True).click()
         expect(page).to_have_url(re.compile(rf"/conversations/{self.ids['c3']}$"))
         expect(page.locator("#thread-composer")).to_be_focused()
         expect(self.thread(page)).to_contain_text("Reply to this message. No new topic needed.")
@@ -774,10 +776,8 @@ class OneConversationJourney(unittest.TestCase):
                 page.goto(self.project_url(f"/conversations/{self.ids['c1']}"))
                 expect(self.thread(page).locator(f"#message-{self.ids['first']}")).to_be_visible()
                 for selector in (f"#message-{self.ids['r1']} .convo-replies__open", f"#message-{self.ids['r1']} .convo-replies__when",
-                                 ".thread__title", ".thread__n", ".thread__hint", ".thread__root-meta time", ".thread__root > .message-bubble > p",
-                                 f"#message-{self.ids['first']} > .message-bubble > p", f"#message-{self.ids['r3']} .convo-replies__reply"):
-                    if selector.endswith("convo-replies__reply"):
-                        page.locator(selector).hover()
+                                 ".thread__title", ".thread__n", ".thread__hint", ".thread__root .message-time time", ".thread__root > .message-bubble > p",
+                                 f"#message-{self.ids['first']} > .message-bubble > p", f"#message-{self.ids['r3']} .message-time time"):
                     page.wait_for_function("""selector => {
                       const el = document.querySelector(selector); if (!el) return false;
                       for (let n = el; n; n = n.parentElement) if (Number(getComputedStyle(n).opacity) !== 1) return false;
@@ -798,14 +798,14 @@ class OneConversationJourney(unittest.TestCase):
                 self.assertGreaterEqual(hovered["ratio"], 4.5, (theme, "reply link on hover", hovered))
                 page.mouse.move(1, 1)
                 page.wait_for_timeout(250)
-                outline = page.locator(f"{root} > .message-bubble").evaluate("e => { const s = getComputedStyle(e); return [s.outlineStyle, s.outlineWidth, s.outlineColor]; }")
-                ink = page.evaluate("""() => { const probe = document.createElement('i'); probe.style.color = 'var(--t1)';
-                  document.body.append(probe); const color = getComputedStyle(probe).color; probe.remove(); return color; }""")
-                self.assertEqual(outline, ["solid", "2px", ink], (theme, "the open root has a solid ring in the primary ink"))
-                colour = [int(channel) for channel in re.findall(r"\d+", ink)[:3]]
-                # The ring sits 2px outside the bubble, on the stream: measured against the stream.
-                background = page.evaluate(MEASURE, {"selector": root})["background"]
-                self.assertGreaterEqual(contrast(colour, background), 3, (theme, "open root ring", colour, background))
+                selected = page.locator(f"{root} > .message-bubble").evaluate("""e => {
+                  const s=getComputedStyle(e), probe=document.createElement('i'); probe.style.background='var(--sub)';
+                  document.body.append(probe); const fill=getComputedStyle(probe).backgroundColor; probe.remove();
+                  return {outline:s.outlineStyle, background:s.backgroundColor, fill};
+                }""")
+                self.assertEqual(selected["outline"], "none", "selection has no ring")
+                self.assertEqual(selected["background"], selected["fill"], "selection has the Spokój soft fill")
+
 
 
 if __name__ == "__main__":

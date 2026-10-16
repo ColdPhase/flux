@@ -1049,7 +1049,8 @@ Reuse the worker and pg-boss, as O-007's comparisons and the morning summary do:
     per-run cap; a run whose next turn would exceed it stops as "Limit reached" and
     keeps its committed changes. The daily cap is unchanged. PROV-3's reconciliation
     applies per request.
-  - The input bound applies per request; MCP result caps bound what tools return.
+  - The input bound applies per request: 32,000 input tokens for a request of a run with tools
+    (founder direction, 2026-10-16, #484), 16,000 for one without; MCP result caps bound what tools return.
 
 ### Acceptance (AST-8)
 

@@ -19,7 +19,7 @@ from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, open_details, shot,
 PASSWORD = "soft volume everywhere"
 # The final design's tokens (docs/design/final/README.md §2).
 LIGHT = {"--side": "#ebebed", "--bg": "#f4f4f5", "--el": "#ffffff", "--sub": "#ebebec", "--hov": "#e3e3e5",
-         "--t1": "#18181b", "--t2": "#4a4a4a", "--t3": "#6b6b6b", "--inv": "#18181b", "--oninv": "#ffffff"}
+         "--t1": "#18181b", "--t2": "#4a4a4a", "--t3": "#636363", "--inv": "#18181b", "--oninv": "#ffffff"}
 DARK = {"--side": "#0b0b0b", "--bg": "#111111", "--el": "#1c1c1c", "--sub": "#242424", "--hov": "#2c2c2c",
         "--t1": "#f0f0f0", "--t2": "#bdbdbd", "--t3": "#a1a1a1", "--inv": "#f0f0f0", "--oninv": "#111111"}
 # The served CSS is minified (#ffffff becomes #fff), so values are compared as resolved colours.
@@ -180,7 +180,7 @@ class SoftVolume(unittest.TestCase):
                     page.on("request", lambda request: fonts.append(request.url) if request.resource_type == "font" else None)
                     page.goto(f"/projects/{self.ids['project']}/conversations/{self.ids['conversation']}")
                     replies = page.get_by_role("complementary", name="Replies")
-                    timestamp = replies.locator(".thread__root-meta time")
+                    timestamp = replies.locator(".thread__root .message-time time")
                     row = replies.locator(".message-files .file-row").first
                     filename = row.locator(".file-row__name")
                     label = row.locator(".file-icon__label")
@@ -259,7 +259,7 @@ class SoftVolume(unittest.TestCase):
                     self.assertGreaterEqual(value["ratio"], 3, (scheme, phone, value))
                     shot(page, f"338-{self.engine}-task-parked-{'390' if phone else '1440'}-{scheme}")
 
-    def test_06_own_dm_initials_and_real_shortcuts_are_readable(self) -> None:
+    def test_06_own_dm_initials_are_readable(self) -> None:
         self.ensure_dm()
         for scheme in ("light", "dark"):
             for phone in (False, True):
@@ -277,9 +277,8 @@ class SoftVolume(unittest.TestCase):
                         if (Number(getComputedStyle(n).opacity) !== 1) return false; } return true; }""")
                     value = page.evaluate(MEASURE, {"selector": ".details__person .ui-avatar--me"})
                     self.assertGreaterEqual(value["ratio"], 4.5, (scheme, phone, value))
-                    shortcut = page.locator(".details__keys kbd").first
-                    expect(shortcut).to_be_visible()
-                    self.assert_mono(shortcut)
+                    # #512 AC-6 removed the "Esc closes this panel" footer (Esc lives in the close button's tooltip).
+                    expect(page.locator(".details__keys")).to_have_count(0)
                     shot(page, f"338-{self.engine}-dm-details-{'390' if phone else '1440'}-{scheme}")
 
     def test_07_details_title_scales_with_200_percent_text(self) -> None:

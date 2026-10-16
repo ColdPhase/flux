@@ -55,6 +55,7 @@ class TasksFinalJourney(unittest.TestCase):
             start_forwarder(ORIGIN, UPSTREAM)
         cls.pw = sync_playwright().start()
         cls.browser = getattr(cls.pw, os.environ.get("FLUX_UI_BROWSER", "chromium")).launch()
+        print("\nActual Tasks engine: " + cls.browser.browser_type.name)
         expect.set_options(timeout=8000)
 
     @classmethod
@@ -289,6 +290,119 @@ class TasksFinalJourney(unittest.TestCase):
         self.row(page, SUPPLIER).locator(".ws-item").focus()
         page.keyboard.press("z")
         self.wait_status(page, "supplier", "open")
+
+    def test_05c_group_refresh_after_undo_preserves_the_focused_keyboard_target(self) -> None:
+        page=self.tasks();self.set_status(page,"supplier","open");page.reload()
+        supplier=self.ids['supplier'];phase={'undo':False};held=[];seen=[];events=[]
+        page.evaluate("window.__groupControl={doneOpen:false,doneFinished:false,undoOpen:false,undoFinished:false,keys:[]}")
+        page.evaluate("document.addEventListener('keydown',event=>window.__groupControl.keys.push({key:event.key,tag:event.target.tagName,cls:event.target.className}),true)")
+        def groups(route):
+            response=route.fetch();body=response.json();url=route.request.url
+            group=re.search(r'[?&]group=([^&]+)',url).group(1)
+            row=next((item for item in body['items'] if item['id']==supplier),None)
+            seen.append({'group':group,'task':None if row is None else {'status':row['status'],'version':row['version']},'undo':phase['undo']})
+            if phase['undo'] and group in ('open','finished'):
+                held.append((group,route,response))
+                page.evaluate("group=>window.__groupControl[group==='open'?'undoOpen':'undoFinished']=true",group)
+            else:
+                route.fulfill(response=response)
+                if group=='open' and row is None:page.evaluate("window.__groupControl.doneOpen=true")
+                if group=='finished' and row is not None and row['status']=='done':page.evaluate("window.__groupControl.doneFinished=true")
+        page.route('**/work-view?**',groups)
+        page.on('request',lambda request:events.append({'method':request.method,'body':request.post_data_json,'ifMatch':request.headers.get('if-match')}) if request.method=='PATCH' else None)
+        try:
+            self.card(page,SUPPLIER).get_by_role('button',name=SUPPLIER,exact=True).focus();page.keyboard.press('4')
+            expect(page.locator('.ui-toast')).to_contain_text(f"#{self.numbers['supplier']} done")
+            page.wait_for_function("window.__groupControl.doneOpen && window.__groupControl.doneFinished")
+            page.evaluate("()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))")
+            phase['undo']=True;page.keyboard.press('z')
+            expect(page.locator('.ui-toast').filter(has_text='back to open')).to_be_visible()
+            page.wait_for_function("window.__groupControl.undoOpen && window.__groupControl.undoFinished")
+            target=self.card(page.get_by_role('region',name='Open',exact=True),SUPPLIER).get_by_role('button',name=SUPPLIER,exact=True)
+            target.focus();expect(target).to_be_focused()
+            page.evaluate("window.__focusedBeforeRefresh=document.activeElement")
+            finished=[item for item in held if item[0]=='finished']
+            for entry in finished:
+                held.remove(entry);entry[1].fulfill(response=entry[2])
+            page.evaluate("()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))")
+            before=page.evaluate("id=>({connected:window.__focusedBeforeRefresh.isConnected,active:document.activeElement.className,cards:document.querySelectorAll('[data-card-id=\"'+id+'\"]').length})",supplier)
+            page.keyboard.press('2')
+            self.wait_status(page,'supplier','in_progress')
+            expect(self.card(page.get_by_role('region',name='In progress',exact=True),SUPPLIER).get_by_role('button',name=SUPPLIER,exact=True)).to_be_focused()
+        finally:
+            print('\nTASK_GROUP_CONTROL '+json.dumps({'seen':seen,'patches':events,'browser':page.evaluate('window.__groupControl'),'beforeKey':locals().get('before')}))
+            for _,route,response in held:route.fulfill(response=response)
+
+    def test_05d_confirmed_card_retires_after_current_mine_reads_exclude_it(self) -> None:
+        page=self.tasks();self.set_status(page,"supplier","open");page.get_by_role("button",name="Mine",exact=True).click();page.reload()
+        peer=self.page("jonas")
+        supplier=self.ids['supplier'];phase={'undo':False,'all':False,'peer':False};held=[];seen=[];events=[]
+        page.evaluate("window.__groupControl={doneOpen:false,doneFinished:false,undoOpen:false,undoFinished:false,peerEmpty:[],keys:[]}")
+        page.evaluate("document.addEventListener('keydown',event=>window.__groupControl.keys.push({key:event.key,tag:event.target.tagName,cls:event.target.className}),true)")
+        def groups(route):
+            response=route.fetch();body=response.json();url=route.request.url
+            group=re.search(r'[?&]group=([^&]+)',url).group(1)
+            row=next((item for item in body['items'] if item['id']==supplier),None)
+            seen.append({'group':group,'task':None if row is None else {'status':row['status'],'version':row['version']},'undo':phase['undo']})
+            if phase['undo'] and (phase['all'] or group in ('open','finished')):
+                held.append((group,route,response))
+                if phase['peer'] and row is None:page.evaluate("group=>{if(!window.__groupControl.peerEmpty.includes(group))window.__groupControl.peerEmpty.push(group)}",group)
+                page.evaluate("group=>window.__groupControl[group==='open'?'undoOpen':'undoFinished']=true",group)
+            else:
+                route.fulfill(response=response)
+                if group=='open' and row is None:page.evaluate("window.__groupControl.doneOpen=true")
+                if group=='finished' and row is not None and row['status']=='done':page.evaluate("window.__groupControl.doneFinished=true")
+        page.route('**/work-view?**',groups)
+        page.on('request',lambda request:events.append({'method':request.method,'body':request.post_data_json,'ifMatch':request.headers.get('if-match')}) if request.method=='PATCH' else None)
+        try:
+            self.card(page,SUPPLIER).get_by_role('button',name=SUPPLIER,exact=True).focus();page.keyboard.press('4')
+            expect(page.locator('.ui-toast')).to_contain_text(f"#{self.numbers['supplier']} done")
+            page.wait_for_function("window.__groupControl.doneOpen && window.__groupControl.doneFinished")
+            page.evaluate("()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))")
+            phase['undo']=True;page.keyboard.press('z')
+            expect(page.locator('.ui-toast').filter(has_text='back to open')).to_be_visible()
+            page.wait_for_function("window.__groupControl.undoOpen && window.__groupControl.undoFinished")
+            target=self.card(page.get_by_role('region',name='Open',exact=True),SUPPLIER).get_by_role('button',name=SUPPLIER,exact=True)
+            target.focus();expect(target).to_be_focused()
+            page.evaluate("window.__focusedBeforeRefresh=document.activeElement")
+            finished=[item for item in held if item[0]=='finished']
+            for entry in finished:
+                held.remove(entry);entry[1].fulfill(response=entry[2])
+            page.evaluate("()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))")
+            before=page.evaluate("id=>({connected:window.__focusedBeforeRefresh.isConnected,active:document.activeElement.className,cards:document.querySelectorAll('[data-card-id=\"'+id+'\"]').length})",supplier)
+            phase['all']=True
+            page.keyboard.press('2')
+            self.wait_status(page,'supplier','in_progress')
+            expect(self.card(page.get_by_role('region',name='In progress',exact=True),SUPPLIER).get_by_role('button',name=SUPPLIER,exact=True)).to_be_focused()
+            current=self.task(page,'supplier')
+            self.api(peer,'PATCH',f"/api/v1/work/{supplier}",{'owner':{'kind':'human','id':JONAS['id']},'clientCommandId':str(uuid.uuid4())},status=200,headers={'if-match':f'"{current["version"]}"'})
+            phase['peer']=True
+            page.evaluate("window.dispatchEvent(new Event('focus'))")
+            page.wait_for_function("window.__groupControl.peerEmpty.length===4")
+            # Every actual Mine response lacks this task after the peer changes its owner.
+            # Do not release the older successful In-progress row: absence itself must retire it.
+            for entry in held[:]:
+                if all(item['id']!=supplier for item in entry[2].json()['items']):
+                    held.remove(entry);entry[1].fulfill(response=entry[2])
+            expect(self.card(page,SUPPLIER)).to_have_count(0)
+            phase['undo']=False
+            for _,route,response in held:route.fulfill(response=response)
+            held.clear()
+            page.get_by_label('Search tasks',exact=True).fill('school')
+            expect(self.card(page,SUPPLIER)).to_have_count(0)
+            page.get_by_label('Search tasks',exact=True).fill('')
+            expect(self.card(page,SUPPLIER)).to_have_count(0)
+            # Returning to All reads the authoritative peer owner, rather than reviving our cached row.
+            page.get_by_role('button',name='Mine',exact=True).click()
+            expect(self.card(page,SUPPLIER)).to_contain_text('Jonas')
+
+        finally:
+            print('\nTASK_GROUP_CONTROL '+json.dumps({'seen':seen,'patches':events,'browser':page.evaluate('window.__groupControl'),'beforeKey':locals().get('before')}))
+            phase['undo']=False
+            for _,route,response in held:route.fulfill(response=response)
+            current=self.task(page,'supplier')
+            if current['owner']['id']!=ADA['id']:
+                self.api(page,'PATCH',f"/api/v1/work/{supplier}",{'owner':{'kind':'human','id':ADA['id']},'clientCommandId':str(uuid.uuid4())},status=200,headers={'if-match':f'"{current["version"]}"'})
 
     def test_05b_undo_of_a_blocked_task_restores_status_blocker_and_two_versions(self) -> None:
         page = self.tasks()
@@ -568,17 +682,15 @@ class TasksFinalJourney(unittest.TestCase):
                 pane = page.locator('.tb-root > .pane-scroll')
                 held = []
                 address = re.compile(r'/api/v1/work/' + self.ids['supplier'] + r'$')
-                def hold(route):
-                    response = route.fetch()
-                    if route.request.method == 'PATCH':
-                        held.append((route, response))
+                def hold(route, *, held=held, page=page):
+                    if route.request.method == 'PATCH' and not held:
+                        held.append((route, route.fetch()))
+                        page.evaluate("window.__statePatchHeld = true")
                     else:
-                        route.fulfill(response=response)
+                        route.continue_()
                 page.route(address, hold)
                 self.row(page, SUPPLIER).get_by_role('button', name='Open. Set to In progress').click()
-                deadline = time.time() + 8
-                while not held and time.time() < deadline:
-                    page.wait_for_timeout(50)
+                page.wait_for_function("window.__statePatchHeld === true")
                 self.assertEqual(len(held), 1)
                 self.assertEqual(held[0][1].status, 200, 'the delayed answer is a genuinely stored change')
                 middle = page.locator(f'.ws-task[data-work-id="{ids[9]}"] .ws-item')
@@ -587,7 +699,10 @@ class TasksFinalJourney(unittest.TestCase):
                 page.wait_for_timeout(100)
                 before = middle.bounding_box()['y']
                 held[0][0].fulfill(response=held[0][1])
-                page.unroute(address, hold)
+                # Keep interception until this context closes. Removing the last route here races
+                # Chromium's Fetch.disable against the state change's follow-up /me request
+                # (microsoft/playwright#41802); that request can disappear before reaching the API.
+                # Later requests pass through above, so only this first PATCH is held.
                 toast = page.locator('.ui-toast').filter(has_text=f"#{self.numbers['supplier']} in progress")
                 expect(toast).to_be_visible()
                 page.wait_for_timeout(300)

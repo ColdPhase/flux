@@ -105,8 +105,10 @@ class ConnectionLabels(unittest.TestCase):
                 shot(page, f'connection-labels-map-desktop-{scheme}-{UI_BROWSER}')
                 show_map_as(page, 'List')
                 item = page.locator('.sk-li-t', has_text=map_connect.A)
-                item.click()
-                page.get_by_role('toolbar', name='Sketch tools').get_by_role('button', name='Connections', exact=True).click()
+                item.locator('.sk-outline-title').click()
+                # #510 AC-4: Connections lives in the selected row's "More actions".
+                item.get_by_role('button', name='More actions', exact=True).click()
+                page.locator(f'li[data-id="{item.get_attribute("data-id")}"] > .sk-outline-menu').get_by_role('button', name='Connections', exact=True).click()
                 expect(page.get_by_role('dialog', name='Connections', exact=True)).to_contain_text('depends on the enclosure')
                 shot(page, f'connection-labels-list-desktop-{scheme}-{UI_BROWSER}')
                 page.context.close()
@@ -261,7 +263,7 @@ class ConnectionLabels(unittest.TestCase):
         self.assert_no_overflow(page)
         shot(page, f'connection-labels-phone-view-only-{UI_BROWSER}')
         show_map_as(page, 'List', touch=True)
-        expect(page.locator('.sk-li-s, .sk-outline-label').filter(has_text='range').first).to_be_visible()
+        expect(page.locator('.sk-outline-tag').filter(has_text='range').first).to_be_visible()
         expect(page.get_by_role('button', name='Connections', exact=True)).to_have_count(0)
 
     def test_07_a_replayed_receipt_refreshes_the_newer_saved_label(self):

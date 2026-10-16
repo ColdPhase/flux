@@ -5,6 +5,12 @@
 > the rest of this decision stays in force, except that the input bound is now the
 > provider-neutral Flux estimate ([PROV-3](model-providers.md#prov-3--cost-caps-and-token-bounds)).
 
+> **Revised 2026-10-16 by founder direction ([#484](https://github.com/ColdPhase/flux/issues/484)).**
+> A request of a run with tools allows up to 32,000 input tokens instead of 16,000 (a single request
+> without tools keeps 16,000). Its largest request is priced at that bound: at Sonnet 5 it is
+> $0.079, so the **default per-request limit is $0.08** (the owner may still set $0.06 where the
+> model's largest request fits). The daily cap is unchanged.
+
 > **Revised 2026-10-09 by founder direction ([F-027](assistant.md), questions 1–4 and
 > 11).** The assistant may change things itself through the same MCP tools and
 > executor as external agents, under the owner's switches and approval mode ("Do it
@@ -101,8 +107,10 @@ O-005 Claude Code path and this key path. Human work never needs either.
    included), at low effort. It uses no provider-hosted web search, code
    execution, MCP connector or automatic tool loop. At O-007's documented
    2026-09-28 rate ($2/M input, $10/M output), the nominal maximum is $0.047.
-   The **default per-run reservation is $0.06**, and the owner may set it from
-   $0.06 to $0.50. The **default daily cap is $1.00** (owner-set, $0.10–$10.00,
+   The **default per-run reservation is $0.08** (it was $0.06 for the single
+   request; a request of a run with tools, 2026-10-16, may carry 32,000 input
+   tokens and reserves up to $0.079), and the owner may set it from $0.06 to
+   $0.50 where the model's largest request fits. The **default daily cap is $1.00** (owner-set, $0.10–$10.00,
    resetting at 00:00 in the owner's time zone), with one personal run in
    flight per owner. #58 background runs keep their own O-007 limit.
    - Before dispatch, the run atomically reserves its ceiling against the daily
