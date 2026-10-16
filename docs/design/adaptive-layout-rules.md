@@ -143,10 +143,7 @@ remain reachable. Own messages stay on the right and other people's on the left.
 measured and reported as open, never as passing, and the matrix fails when one stops showing, so a
 closed gap must be removed from the list.
 
-| Fixture | Gap | Owner that closes it |
-| --- | --- | --- |
-| 640×360, 844×390 | The sticky tab bar and the composer leave less than 44 px of stream between them, so a Reply target is covered | Phone shell PR [#414](https://github.com/ColdPhase/flux/pull/414) |
-| 844×390 | The sticky status overview covers a task card, so a pointer cannot open it at this height. The journey opens it through the element's own click and measures the rest | Tasks layout PR [#375](https://github.com/ColdPhase/flux/pull/375) |
+No gaps are open: `KNOWN_GAPS` is empty.
 
 **Wide caps.** `WIDE_CAPS` in the test names two ADAPT-2 caps. Both are measured by `test_07`, which
 fails once a cap disappears. Measured in CSS px at 1920, 2560 and 3840: the map plane is 1032, 1032
