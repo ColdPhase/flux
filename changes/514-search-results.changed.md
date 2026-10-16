@@ -1,0 +1,1 @@
+- Search results are grouped (Wiki, Tasks, Map, Messages, Files, People and projects) with "Show N more", snippets are one plain line without Markdown, tasks show their glyph and number, and the place filter is the last chip of the kind row, which on the phone fades at its edge to show that it scrolls ([#514](https://github.com/ColdPhase/flux/issues/514)).

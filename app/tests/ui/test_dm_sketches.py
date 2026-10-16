@@ -294,7 +294,7 @@ class DmSketchJourney(unittest.TestCase):
         page = self.page("jo")
         # "60 GHz radar sees through the shade" is Kai's thought in the DM sketch; its copy lives in Gesture lamp.
         page.goto(f"/search?q=shade&place=dm:{self.dm_id}")
-        results = page.get_by_role("list", name="Results")
+        results = page.get_by_role("region", name="Results")
         expect(results.get_by_role("link")).to_have_count(1)
         expect(results).to_contain_text("60 GHz radar")
         expect(results).to_contain_text("Kai Lind")

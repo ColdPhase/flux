@@ -1,5 +1,6 @@
 import { and, asc, count, desc, eq, inArray, or, sql, type SQL } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
+import { UNTITLED_SKETCH } from '@flux/contracts';
 import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
 
@@ -98,12 +99,17 @@ export function sketchRows(db: DbExecutor) {
 
   return {
     /** Rows of `workspaceId` matching `audience` (the policy's list condition), newest change first. */
-    async list(workspaceId: string, audience: SQL, filter: { projectId?: string; dmId?: string; scope?: 'private' }, page: { limit: number; offset: number }) {
+    async list(workspaceId: string, audience: SQL, filter: { projectId?: string; dmId?: string; scope?: 'private'; hideEmpty?: boolean }, page: { limit: number; offset: number }) {
+      // An empty sketch (no thought, still the default title) is left out before the limit and in the total (#508).
+      const withContent = sql`(EXISTS (SELECT 1 FROM ${t} WHERE ${t.sketchId} = ${s.id}) OR btrim(${s.title}) NOT IN ('', ${UNTITLED_SKETCH}))`;
       const where = and(eq(s.workspaceId, workspaceId), audience, filter.projectId ? eq(s.projectId, filter.projectId) : undefined,
-        filter.dmId ? eq(s.dmId, filter.dmId) : undefined, filter.scope ? eq(s.scope, filter.scope) : undefined);
+        filter.dmId ? eq(s.dmId, filter.dmId) : undefined, filter.scope ? eq(s.scope, filter.scope) : undefined, filter.hideEmpty ? withContent : undefined);
       const rows = await selectSketches().where(where).orderBy(desc(s.updatedAt), asc(s.id)).limit(page.limit).offset(page.offset);
+      const counted = rows.length ? await db.select({ sketchId: t.sketchId, n: count() }).from(t)
+        .where(inArray(t.sketchId, rows.map(({ row }) => row.id))).groupBy(t.sketchId) : [];
+      const thoughts = new Map(counted.map((entry) => [entry.sketchId, Number(entry.n)]));
       const [total] = await db.select({ total: count() }).from(s).where(where);
-      return { items: rows.map(toSketchRecord), total: total?.total ?? 0 };
+      return { items: rows.map((row) => ({ ...toSketchRecord(row), thoughtCount: thoughts.get(row.row.id) ?? 0 })), total: total?.total ?? 0 };
     },
     findSketch,
     async insertSketch(sketch: NewSketchRow) {

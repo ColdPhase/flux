@@ -66,6 +66,7 @@ export function presentSketch(record: SketchRecord, access: 'read' | 'write'): S
     id: record.id, workspaceId: record.workspaceId, scope: record.scope, projectId: record.projectId, dmId: record.dmId, title: record.title,
     createdBy: record.createdBy, origin: record.copied ? { kind: 'dm_copy', copiedBy: record.copied.by, copiedAt: iso(record.copied.at) } : null,
     access, version: record.version, createdAt: iso(record.createdAt), updatedAt: iso(record.updatedAt),
+    ...(record.thoughtCount === undefined ? {} : { thoughtCount: record.thoughtCount }),
   };
 }
 
@@ -200,9 +201,11 @@ export function createSketchUseCases(uow: SketchUnitOfWork) {
       const dmId = valid.optionalId(query.dmId, 'dmId') ?? undefined;
       if (query.scope !== undefined && query.scope !== 'private') throw new InvalidInputError('scope can only be private', 'INVALID_SCOPE');
       const scope = query.scope;
+      if (query.hideEmpty !== undefined && typeof query.hideEmpty !== 'boolean') throw new InvalidInputError('hideEmpty must be true or false');
+      const hideEmpty = query.hideEmpty === true;
       return uow.run(async (ports) => {
         await ports.access.requireWorkspace(principal, workspaceId);
-        const { items, total } = await ports.sketches.listVisible(principal, workspaceId, { projectId, dmId, scope }, page);
+        const { items, total } = await ports.sketches.listVisible(principal, workspaceId, { projectId, dmId, scope, hideEmpty }, page);
         const sketches: Sketch[] = [];
         for (const item of items) {
           const access = await ports.access.accessOf(principal, item.id);
