@@ -59,7 +59,7 @@ const RETIRED_DECISION_VIEWS = ['needs', 'rules'];
 
 /**
  * One readable row of views instead of a board of clipped columns (#136 AC-2): All, then only
- * the groups that have something. The chosen view and "Only mine" live in the URL, so returning
+ * the groups that have something. The chosen view and "Mine" live in the URL, so returning
  * from a source or Details comes back to the same view and reading position.
  */
 function TaskViews({ counts, status, onStatus }: {

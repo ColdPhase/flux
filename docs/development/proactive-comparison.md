@@ -116,7 +116,7 @@ emulation is not real-device installation or notification evidence. It verifies 
 stored versions and resulting work through the API after reload. A person also
 creates work manually after both proposals are gone, so the continuing project
 workflow does not depend on an available model connection.
-When a saved Tasks status or Only mine view hides ordinary work, the
+When a saved Tasks status or Mine view hides ordinary work, the
 outcome section's Work link restores All before scrolling to the real
 destination. Results have no group or jump in Tasks (#342); a cited result opens in the details panel from its suggestion. Quiet outcomes remain a separate project section above Task views.
 

@@ -59,7 +59,7 @@ test('all pages render quiet comparisons and insufficient evidence with current 
         if (viewport.width === 390) await mine.getByRole('button', { name: 'Mine', exact: true }).tap();
         else {
           await views.getByRole('button', { name: /^Open / }).click();
-          await page.getByRole('button', { name: 'Mine', exact: true }).click();
+          await page.locator('.tb-bar').getByRole('button', { name: 'Mine', exact: true }).click();
         }
         assert.equal(await page.locator(`#${target}`).count(), 0, 'the destination is hidden by the saved view');
         const jump = jumps.getByRole('button', { name: new RegExp(`^${label} `) });
@@ -70,7 +70,7 @@ test('all pages render quiet comparisons and insufficient evidence with current 
           assert.equal(await mine.getByRole('button', { name: 'Mine', exact: true }).getAttribute('aria-pressed'), 'false');
         } else {
           assert.equal(await views.getByRole('button', { name: 'All', exact: true }).getAttribute('aria-pressed'), 'true');
-          assert.equal(await page.getByRole('button', { name: 'Mine', exact: true }).getAttribute('aria-pressed'), 'false');
+          assert.equal(await page.locator('.tb-bar').getByRole('button', { name: 'Mine', exact: true }).getAttribute('aria-pressed'), 'false');
         }
         await page.waitForFunction((id) => {
           const bounds = document.getElementById(id)?.getBoundingClientRect();
