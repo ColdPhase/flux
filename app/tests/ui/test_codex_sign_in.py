@@ -1,4 +1,4 @@
-"""Browser tests for Sign in with ChatGPT (F-022 T6 #281; F-027 AST-1.6 and AST-1.8, card A12).
+"""Browser tests for the guided sign-in cards: ChatGPT (F-022 T6 #281; F-027 AST-1.6, AST-1.8) and Claude (AST-1.5), slice A12.
 
 scripts/check_ui.sh runs with the agent runtime off, so the runtime status, the console ticket and the
 console WebSocket are stubbed here: the stubbed socket sends exactly the closed messages the API relays
@@ -26,6 +26,7 @@ STAMP = int(time.time() * 1000)
 ADA = {"name": "Ada Codex", "email": f"ada.codex+{STAMP}@example.test"}
 CODE = "K7Q2-9XFRT"
 
+CLAUDE_URL = "https://claude.com/cai/oauth/authorize?code=true&client_id=fake&state=st4te_-x"
 SIGNED_OUT = {
     "enabled": True, "clients": {"claude_code": "available", "codex": "available"}, "commercialTerms": None,
     "idleReleaseDays": None, "pool": "available", "lastRelease": None,
@@ -66,7 +67,8 @@ class CodexSignIn(unittest.TestCase):
         self.addCleanup(context.close)
         return context
 
-    def stubbed(self, *, phone: bool, script: list[dict], status: dict | None = None, dark: bool = False) -> tuple[Page, list[dict]]:
+    def stubbed(self, *, phone: bool, script: list[dict], status: dict | None = None, dark: bool = False, resume: dict | None = None,
+                clipboard: str | bool | None = False) -> tuple[Page, list[dict]]:
         """A page whose runtime status, ticket and console socket are stubbed; the socket answers `attach` with `script`."""
         context = self.context(phone=phone, dark=dark)
         received: list[dict] = []
@@ -77,6 +79,19 @@ class CodexSignIn(unittest.TestCase):
             route.fulfill(status=200, content_type="application/json", body=json.dumps({"ticket": "stub-ticket", "expiresAt": "2026-10-16T10:01:00.000Z"}))
 
         context.route(re.compile(r".*/api/v1/agent-runtime/console$"), ticket)
+
+        def resume_route(route) -> None:
+            received.append({"resume": json.loads(route.request.post_data or "{}")})
+            if resume is None:
+                route.fulfill(status=404, content_type="application/json", body=json.dumps({"error": "No sign-in is waiting in this session", "code": "AGENT_RUNTIME_NO_PENDING_SIGN_IN"}))
+            else:
+                route.fulfill(status=200, content_type="application/json", body=json.dumps({"ticket": "stub-resume", "expiresAt": "2026-10-16T10:01:00.000Z", **resume}))
+
+        context.route(re.compile(r".*/api/v1/agent-runtime/console/resume$"), resume_route)
+        # The clipboard is stubbed in both engines: Chromium grants it, WebKit has no permission to grant.
+        if clipboard is not False:
+          context.add_init_script("Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async () => undefined, readText: "
+                                  + ("async () => { throw new DOMException('denied', 'NotAllowedError'); }" if clipboard is None else f"async () => {json.dumps(clipboard)}") + " } });")
 
         def console(ws) -> None:
             def on_message(message) -> None:
@@ -215,6 +230,93 @@ class CodexSignIn(unittest.TestCase):
         page.get_by_role("button", name="Done, finish sign-in").click()
         self.assertIn({"ticket": {"client": "codex", "method": "api_key"}}, received)
         self.until(page, lambda: {"t": "in", "d": "\u0004\u0004"} in received, "the end-of-input reached the console")
+
+    def claude_card(self, *, phone: bool, dark: bool = False, clipboard: str | None = None, **options):
+        page, received = self.stubbed(phone=phone, dark=dark, script=[{"t": "state", "state": "running"}, {"t": "link", "url": CLAUDE_URL}], clipboard=clipboard, **options)
+        page.goto("/settings/agents/claude-code")
+        page.get_by_role("button", name="Sign in with Claude").click()
+        return page, received
+
+    def test_08_claude_card_open_claude_and_paste_from_the_clipboard(self) -> None:
+        """AST-1.5: "Open claude.ai" with the URL the CLI printed, "Paste" sends the clipboard to the CLI's prompt; the terminal is under Show details."""
+        for phone in (True, False):
+            page, received = self.claude_card(phone=phone, clipboard="the-code#st4te_-x")
+            expect(page.get_by_text("Sign in to Claude:")).to_be_visible()
+            expect(page.get_by_text("Open claude.ai and approve.")).to_be_visible()
+            expect(page.get_by_text("Paste the code here.")).to_be_visible()
+            opener = page.get_by_role("link", name="Open claude.ai")
+            expect(opener).to_have_attribute("href", CLAUDE_URL)
+            expect(opener).to_have_attribute("rel", "noopener noreferrer")
+            details = page.locator(".rt-device details.rt-more")
+            self.assertFalse(details.evaluate("d => d.open"), "the terminal starts folded under Show details")
+            expect(details.locator("summary")).to_have_text("Show details")
+            if phone:
+                self.assertGreaterEqual(opener.bounding_box()["height"], 44)
+                self.assertGreaterEqual(page.get_by_role("button", name="Paste", exact=True).bounding_box()["height"], 44)
+            self.no_sideways_scroll(page)
+            shot(page, f"claude-card-{'phone-390' if phone else 'desktop-1440'}-light")
+            page.get_by_role("button", name="Paste", exact=True).click()
+            self.until(page, lambda: {"t": "in", "d": "the-code#st4te_-x\r"} in received, f"the clipboard text to reach the CLI's prompt ({received})")
+            expect(page.get_by_text(re.compile("Code sent"))).to_be_visible()
+            page.context.close()
+
+    def test_08b_claude_card_dark_and_other_ways(self) -> None:
+        for phone in (True, False):
+            page, received = self.claude_card(phone=phone, dark=True)
+            expect(page.get_by_role("link", name="Open claude.ai")).to_be_visible()
+            self.no_sideways_scroll(page)
+            shot(page, f"claude-card-{'phone-390' if phone else 'desktop-1440'}-dark")
+            page.context.close()
+        page, received = self.stubbed(phone=False, script=[{"t": "state", "state": "running"}, {"t": "link", "url": CLAUDE_URL}])
+        page.goto("/settings/agents/claude-code")
+        expect(page.get_by_role("radio")).to_have_count(0)
+        page.locator("details.rt-more summary").filter(has_text="Other ways to sign in").click()
+        expect(page.get_by_role("button", name=re.compile("^Single sign-on"))).to_be_visible()
+        page.get_by_role("button", name=re.compile("^Anthropic Console")).click()
+        self.assertIn({"ticket": {"client": "claude_code", "method": "console"}}, received)
+        expect(page.get_by_role("link", name="Open the Anthropic Console")).to_have_attribute("href", CLAUDE_URL)
+
+    def test_08c_an_unreadable_clipboard_opens_the_box_under_show_details(self) -> None:
+        page, received = self.claude_card(phone=True)  # reading the clipboard is denied
+        page.get_by_role("button", name="Paste", exact=True).click()
+        expect(page.get_by_text(re.compile("can’t read your clipboard"))).to_be_visible()
+        box = page.get_by_label("Paste the code from the sign-in page")
+        expect(box).to_be_visible()
+        self.assertGreaterEqual(float(box.evaluate("el => parseFloat(getComputedStyle(el).fontSize)")), 16)
+        box.fill("typed-code#st4te_-x")
+        page.get_by_role("button", name="Send").click()
+        self.until(page, lambda: {"t": "in", "d": "typed-code#st4te_-x\r"} in received, "the typed code to reach the prompt")
+        self.no_sideways_scroll(page)
+
+    def test_09_a_reload_while_signing_in_takes_the_same_sign_in_back(self) -> None:
+        """AST-1.5 / AST-1.6: with a sign-in pending in this session, the page asks to resume it and attaches with that ticket; no new sign-in starts."""
+        pending = copy.deepcopy(SIGNED_OUT)
+        pending["auth"] = {"claude_code": "signing_in"}
+        page, received = self.stubbed(phone=True, status=pending, resume={"client": "claude_code", "method": "claude_account"},
+                                      script=[{"t": "state", "state": "running"}, {"t": "link", "url": CLAUDE_URL}])
+        page.goto("/settings/agents/claude-code")
+        expect(page.get_by_role("link", name="Open claude.ai")).to_have_attribute("href", CLAUDE_URL)
+        self.assertIn({"resume": {"client": "claude_code"}}, received)
+        self.assertTrue(any(item.get("t") == "attach" and item.get("ticket") == "stub-resume" for item in received))
+        self.assertFalse(any("ticket" in item and isinstance(item["ticket"], dict) for item in received), "no new sign-in was started")
+        page.context.close()
+
+        pending["auth"] = {"codex": "signing_in"}
+        page, received = self.stubbed(phone=True, status=pending, resume={"client": "codex", "method": "device_code"},
+                                      script=[{"t": "state", "state": "running"}, {"t": "device", "url": "https://auth.openai.com/codex/device", "code": CODE}])
+        page.goto("/settings/agents/codex")
+        expect(page.locator(".rt-device__code")).to_have_text(CODE)
+        self.assertTrue(any(item.get("t") == "attach" and item.get("ticket") == "stub-resume" for item in received))
+
+    def test_09b_another_session_is_refused_and_sees_nothing(self) -> None:
+        pending = copy.deepcopy(SIGNED_OUT)
+        pending["auth"] = {"claude_code": "signing_in"}
+        page, received = self.stubbed(phone=False, status=pending, script=[])  # the resume answer is 404: not this session's sign-in
+        page.goto("/settings/agents/claude-code")
+        expect(page.get_by_text("Another sign-in, check or sign-out is still in progress.")).to_be_visible()
+        expect(page.get_by_role("button", name="Sign in with Claude")).to_be_disabled()
+        expect(page.get_by_role("link", name="Open claude.ai")).to_have_count(0)
+        self.assertFalse(any(item.get("t") == "attach" for item in received))
 
     def until(self, page: Page, check, what: str, timeout_ms: int = 10000) -> None:
         """Waits on state: each evaluate lets Playwright deliver pending socket events; no fixed sleep."""

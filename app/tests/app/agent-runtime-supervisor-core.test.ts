@@ -8,7 +8,7 @@ import { Lane } from '../../apps/runtime/src/supervisor/server.js';
 import { CODEX_FEATURE_REVIEW, codexRunOverrides, LOGOUT_TEMPLATES, STATUS_TEMPLATES } from '../../apps/runtime/src/supervisor/templates.js';
 import { classifyCodexError, classifyError, effectiveConfigHolds } from '../../apps/runtime/src/supervisor/run.js';
 import { APP_SERVER_METHODS, openAppServer, readRateLimits } from '../../apps/runtime/src/supervisor/app-server.js';
-import { deviceSignInReader } from '../../apps/runtime/src/supervisor/device.js';
+import { claudeSignInReader, deviceSignInReader } from '../../apps/runtime/src/supervisor/device.js';
 import { statusFacts } from '../../apps/runtime/src/supervisor/status.js';
 import { portOf, startTestSlot, type TestSlot } from './support/runtime-slot.js';
 
@@ -385,6 +385,16 @@ describe('Codex in the slot (F-022 T6, #281): its JSONL words, status, preflight
       assert.deepEqual(methods.filter((method) => method !== 'initialized'), ['initialize', 'config/read'], 'nothing else reached the app-server');
       assert.deepEqual(APP_SERVER_METHODS, ['initialize', 'config/read', 'account/rateLimits/read']);
     } finally { await slot.close(); }
+  });
+
+  test('the Claude sign-in reader: only the sign-in URL, once, whole lines only, Anthropic hosts only', () => {
+    const url = 'https://claude.com/cai/oauth/authorize?code=true&client_id=abc-1&scope=a%3Ab+c&state=xyz_-1';
+    const reader = claudeSignInReader();
+    assert.deepEqual(reader.feed(`Opening browser to sign in…\nIf the browser didn't open, visit: \u001b]8;;${url}\u0007\u001b[94m${url.slice(0, 40)}`), [], 'not before the line ends');
+    assert.deepEqual(reader.feed(`${url.slice(40)}\u001b[39m\u001b]8;;\u0007\r\nPaste code here if prompted > `), [{ t: 'signin', e: 'url', url }]);
+    assert.deepEqual(reader.feed(`visit: ${url}\n`), [], 'once');
+    assert.deepEqual(claudeSignInReader().feed('visit: https://evil.example/cai/oauth/authorize?code=true\n'), [], 'only Anthropic\'s hosts');
+    assert.deepEqual(claudeSignInReader().feed('visit: http://claude.com/cai/oauth/authorize?code=true\n'), [], 'https only');
   });
 
   test('the device sign-in reader: the URL and code once, Journey 6\'s two failures once each, nothing from other text', () => {

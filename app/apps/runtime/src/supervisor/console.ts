@@ -4,7 +4,7 @@ import {
   type ClientStatus, type SupervisorError, type SupervisorFrame, type SupervisorRequest,
 } from '@flux/runtime-protocol';
 import { openBinding } from './data.js';
-import { deviceSignInReader } from './device.js';
+import { claudeSignInReader, deviceSignInReader } from './device.js';
 import { clientStatus, installedClient, type SupervisorConfig } from './handlers.js';
 import { realClock, signalGroup, spawnPty as nodePty, type PtyProcess } from './pty.js';
 import { cliEnvironment, loginArgv } from './templates.js';
@@ -79,8 +79,8 @@ export function serveConsole(config: SupervisorConfig, lane: ConsoleLane, socket
       };
       const lifetime = clock.setTimeout(() => stop('timed_out'), lifetimeMs);
       running = { pty, stop };
-      // ChatGPT device sign-in only: the URL, the code and Journey 6's two failures, read in memory (device.ts).
-      const device = request.client === 'codex' && request.method === 'device_code' ? deviceSignInReader() : null;
+      // The sign-in URL (Claude Code) or the URL, code and Journey 6's two failures (ChatGPT device sign-in), read in memory (device.ts).
+      const device = request.client === 'codex' ? (request.method === 'device_code' ? deviceSignInReader() : null) : claudeSignInReader();
       pty.onData((data) => {
         if (ending === 'disconnected') return;
         const bytes = Buffer.from(data, 'utf8');

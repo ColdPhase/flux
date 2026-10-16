@@ -112,7 +112,12 @@ describe('each sign-in method runs exactly its command in a PTY', () => {
       const host = method === 'console' ? 'https://platform.claude.com/oauth/authorize' : 'https://claude.com/cai/oauth/authorize';
       assert.match(login.output, new RegExp(`\\u001b\\]8;;${host.replace(/[/.]/g, '\\$&')}\\?[^\\u0007]+\\u0007`));
       if (method === 'sso') assert.match(login.output, /login_method=sso/);
-      assert.deepEqual(login.controls.map((frame) => frame.t), ['accepted', 'console']);
+      assert.deepEqual(login.controls.map((frame) => frame.t), ['accepted', 'console', 'signin']);
+      // F-027 A12: the slot recognises only the sign-in URL, once, for the owner's card (AST-1.5, AST-1.7).
+      // eslint-disable-next-line no-control-regex
+      const shownUrl = /\u001b\]8;;([^\u0007]+)\u0007/.exec(login.output)![1]!;
+      assert.deepEqual(login.controls.filter((frame) => frame.t === 'signin'), [{ t: 'signin', e: 'url', url: shownUrl }]);
+      assert.ok(!JSON.stringify(login.controls.filter((frame) => frame.t !== 'signin')).includes(shownUrl), 'the URL is in no other frame');
       const started = await calls(home);
       assert.deepEqual(started.map((entry) => entry.argv), [[...LOGIN_TEMPLATES.claude_code[method]!]], 'exactly the method\'s command');
       assert.equal(started[0]!.tty, true, 'in a terminal');
@@ -553,11 +558,11 @@ describe('the API\'s console tickets and browser messages', () => {
     const requestTypes = [...contract.matchAll(/export (?:interface|type) (AgentRuntime(?:Console(?:Request|ClientMessage)|ClientRequest))\b[^{]*\{([^}]*)\}/g)];
     assert.ok(requestTypes.length >= 2, 'the request types were found');
     for (const [, name, body] of requestTypes) assert.doesNotMatch(body!, FORBIDDEN, name);
-    // Every field a person can type into on the runtime's pages: the sign-in method (radio) and the code
+    // Every field a person can type into on the runtime's pages: the code
     // for the CLI's own prompt. Nothing else.
     const pages = await Promise.all(['RuntimeSection.tsx', 'ClaudeCodeSignIn.tsx', 'CodexSignIn.tsx', 'SignInConsole.tsx'].map((file) => readFile(`apps/web/src/agent-runtime/${file}`, 'utf8')));
     const fields = pages.flatMap((page) => [...page.matchAll(/<(input|textarea|select)\b[^>]*>/g)].map((match) => match[0]));
-    assert.deepEqual(fields.map((field) => /type="radio"/.test(field) ? 'radio' : /id="rt-code"/.test(field) ? 'code' : field), ['radio', 'code']);
+    assert.deepEqual(fields.map((field) => /type="radio"/.test(field) ? 'radio' : /id="rt-code"/.test(field) ? 'code' : field), ['code']);
     for (const field of fields) assert.doesNotMatch(field, FORBIDDEN);
     const labels = pages.flatMap((page) => [...page.matchAll(/<label\b[^>]*>([^<]*)/g)].map((match) => match[1]!.trim()).filter(Boolean));
     assert.ok(labels.includes('Paste the code from the sign-in page'), JSON.stringify(labels));
@@ -636,5 +641,14 @@ describe('ChatGPT sign-in in the console: `codex login` (F-022 T6, F-027 A12, #2
     assert.deepEqual([codex?.client, codex?.method], ['codex', 'device_code']);
     assert.equal(tickets.redeem(tickets.issue({ ownerUserId: 'ada', client: 'codex', method: 'sso' }, 's').ticket, 'ada', 's'), null);
     assert.equal(tickets.redeem(tickets.issue({ ownerUserId: 'ada', client: 'claude_code', method: 'device_code' }, 's').ticket, 'ada', 's'), null);
+  });
+
+  test('a reattach ticket is bound to the owner and to the session that asked for it (F-027 AST-1.5/1.6)', () => {
+    const tickets = new ConsoleTickets('a'.repeat(48));
+    const { ticket } = tickets.issue({ ownerUserId: 'ada', client: 'claude_code', method: 'claude_account', reattach: true }, 's1');
+    assert.equal(tickets.redeem(ticket, 'ada', 's1')?.reattach, true);
+    assert.equal(tickets.redeem(ticket, 'ada', 's2'), null, 'a new session of the same owner');
+    assert.equal(tickets.redeem(ticket, 'jonas', 's1'), null, 'another owner');
+    assert.equal(tickets.redeem(tickets.issue({ ownerUserId: 'ada', client: 'claude_code', method: 'claude_account' }, 's1').ticket, 'ada', 's1')?.reattach, false);
   });
 });

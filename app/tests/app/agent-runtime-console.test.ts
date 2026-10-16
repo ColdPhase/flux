@@ -160,10 +160,27 @@ describe('the console is the owner\'s own, in this session only', () => {
     const again = await openConsole(adaBrowser);
     attach(again, ticket);
     assert.equal(await again.closed, 4403, 'a ticket is used once');
-    // Leaving the page (closing the socket) ends the sign-in in the slot.
+    // F-027 AST-1.5: a dropped connection (a reload) keeps the sign-in; the same session takes it back with
+    // a fresh single-use reattach ticket and sees the same terminal; a stale socket's input is refused.
     const pid = (await fakeCalls(home))[0]!.pid;
-    assert.equal(alive(pid), true);
-    own.socket.close(1000);
+    own.socket.terminate();
+    await own.closed;
+    assert.equal(alive(pid), true, 'the CLI keeps waiting after a dropped connection');
+    const resumed = expectStatus(await adaBrowser.request('POST', `${AGENT_RUNTIME_CONSOLE_PATH}/resume`, { body: { client: 'claude_code' } }), 200) as { ticket: string; method: string };
+    assert.equal(resumed.method, 'sso');
+    for (const stranger of [adaOther, boBrowser]) {
+      const refused = await stranger.request('POST', `${AGENT_RUNTIME_CONSOLE_PATH}/resume`, { body: { client: 'claude_code' } });
+      assert.equal(refused.status, 404, 'another session or owner has nothing to resume');
+    }
+    const back = await openConsole(adaBrowser);
+    attach(back, resumed.ticket);
+    await until('the redrawn prompt and the card link', () => back.output.includes(PROMPT) && back.messages.some((message) => message.t === 'link'));
+    const second = await openConsole(adaBrowser);
+    attach(second, resumed.ticket);
+    assert.equal(await second.closed, 4403, 'a reattach ticket is used once');
+    assert.deepEqual((await fakeCalls(home)).map((call) => call.argv), [['auth', 'login', '--sso']], 'no second CLI started');
+    // Leaving the page (closing the socket with its reason) ends the sign-in in the slot.
+    back.socket.close(1000, 'left');
     await until('the CLI to be ended in the slot', () => !alive(pid), 5_000);
     assert.equal((await status(adaBrowser)).connections.claude_code?.state ?? 'signed_out', 'signed_out', 'a console that ended unseen signs nothing in');
   });
@@ -204,7 +221,8 @@ describe('signing in through the console', () => {
     attach(view, await ticketFor(browser, 'claude_account'));
     await until('the prompt', () => view.output.includes(PROMPT));
     assert.ok(view.output.includes('\u001b]8;;https://claude.com/cai/oauth/authorize?'), 'the CLI\'s sign-in URL, as its own hyperlink');
-    assert.deepEqual(view.messages, [{ t: 'state', state: 'starting' }, { t: 'state', state: 'running' }]);
+    assert.deepEqual(view.messages.filter((message) => message.t !== 'link'), [{ t: 'state', state: 'starting' }, { t: 'state', state: 'running' }]);
+    assert.equal(view.messages.filter((message) => message.t === 'link').length, 1, 'the sign-in URL reaches this card once');
     assert.equal((await status(browser)).connections.claude_code, null, 'not signed in while the CLI waits');
     typeInto(view, pastedLine(view.output, code));
     assert.equal(await view.closed, 1000);

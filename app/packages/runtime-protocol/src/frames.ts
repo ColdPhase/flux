@@ -103,10 +103,13 @@ export type SupervisorResult =
  */
 export const DEVICE_URL = /^https:\/\/auth\.openai\.com\/codex\/device$/;
 export const DEVICE_CODE = /^[A-Z0-9]{4,8}-[A-Z0-9]{4,8}$/;
+/** Claude Code's sign-in page (`claude auth login`): only Anthropic's own https hosts, one URL of a few hundred characters. */
+export const CLAUDE_SIGN_IN_URL = /^https:\/\/(?:claude\.com|platform\.claude\.com|claude\.ai)\/[\w./-]{1,64}\?[\w%.~+=&:-]{1,1500}$/;
 export const SIGN_IN_PROBLEMS = ['device_auth_disabled', 'code_expired'] as const;
 export type SignInProblem = (typeof SIGN_IN_PROBLEMS)[number];
 export type SignInFrame =
   | { t: 'signin'; e: 'device'; url: string; code: string }
+  | { t: 'signin'; e: 'url'; url: string }
   | { t: 'signin'; e: 'problem'; problem: SignInProblem };
 
 export type SupervisorFrame =
@@ -167,6 +170,7 @@ const FRAMES: Check<SupervisorFrame>[] = [
   object({ t: literal('error'), code: oneOf(SUPERVISOR_ERRORS) }),
   object({ t: literal('console'), state: oneOf(['started', 'exited', 'timed_out'] as const) }),
   object({ t: literal('signin'), e: literal('device'), url: str(DEVICE_URL, 64), code: str(DEVICE_CODE, 17) }),
+  object({ t: literal('signin'), e: literal('url'), url: str(CLAUDE_SIGN_IN_URL, 1600) }),
   object({ t: literal('signin'), e: literal('problem'), problem: oneOf(SIGN_IN_PROBLEMS) }),
   object({ t: literal('run'), e: literal('init'), tools: arrayOf(str(INIT_NAME, 128), 64),
     servers: arrayOf(object({ name: str(INIT_NAME, 128), status: str(/^[a-z_-]{1,32}$/, 32) }), 16) }),

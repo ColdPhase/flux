@@ -183,23 +183,24 @@ class RuntimeConsole(unittest.TestCase):
         page.goto("/settings/agents")
         page.get_by_role("link", name="Sign in with Claude").tap()
         expect(page).to_have_url(re.compile(r"/settings/agents/claude-code$"))
-        expect(page.get_by_role("group", name="How do you want to sign in?")).to_be_visible()
-        for title in ("Claude account", "Anthropic Console", "Single sign-on (SSO)"):
-            expect(page.get_by_role("radio", name=re.compile(re.escape(title)))).to_be_visible()
-        page.get_by_role("radio", name=re.compile("Anthropic Console")).tap()
-        expect(page.locator(".rt-method.is-on")).to_contain_text("Who pays: Your Anthropic Console organization (API billing, cost not reported to Flux).")
+        expect(page.get_by_role("button", name="Sign in with Claude")).to_be_visible()
+        expect(page.get_by_role("radio")).to_have_count(0)
+        page.locator("details.rt-more summary").filter(has_text="Other ways to sign in").tap()
+        for title in ("Anthropic Console", "Single sign-on (SSO)"):
+            expect(page.get_by_role("button", name=re.compile(re.escape(title)))).to_be_visible()
+        expect(page.get_by_role("button", name=re.compile("Anthropic Console"))).to_contain_text("Who pays: Your Anthropic Console organization (API billing, cost not reported to Flux).")
         self.phone_layout(page, ".rt-page")
         self.no_credential_fields(page)
         shot(page, "runtime-methods-phone-390")
-        page.get_by_role("button", name="Start sign-in").tap()
-        expect(page.get_by_role("status").filter(has_text="Claude Code is waiting for you to sign in.")).to_be_visible()
-        expect(page.locator(".xterm-rows")).to_contain_text("Paste code here if prompted", use_inner_text=True)
-        opener = page.get_by_role("link", name=re.compile(r"Open the sign-in page \(platform\.claude\.com\)"))
+        page.get_by_role("button", name=re.compile("Anthropic Console")).tap()
+        expect(page.get_by_text("Sign in to Claude:")).to_be_visible()
+        opener = page.get_by_role("link", name="Open the Anthropic Console")
         expect(opener).to_be_visible()
         self.assertTrue(opener.get_attribute("href").startswith("https://platform.claude.com/oauth/authorize?"))
         self.assertEqual(opener.get_attribute("rel"), "noopener noreferrer")
+        page.get_by_text("Show details").tap()
+        expect(page.locator(".xterm-rows")).to_contain_text("Paste code here if prompted", use_inner_text=True)
         self.phone_layout(page, ".rt-page")
-        self.no_credential_fields(page)
         shot(page, "runtime-console-phone-390")
         code = page.get_by_label("Paste the code from the sign-in page")
         code.tap()
@@ -209,6 +210,7 @@ class RuntimeConsole(unittest.TestCase):
         page.get_by_role("button", name="Send").tap()
         outcome = page.locator(".rt-outcome")
         expect(outcome.get_by_role("heading", name="Signed in")).to_be_visible()
+        expect(outcome.get_by_role("heading", name="Signed in · o***@example.org")).to_be_visible()
         expect(outcome).to_contain_text("Claude Code reports a login as o***@example.org")
         expect(outcome).to_contain_text("Who pays: Your Anthropic Console organization (API billing, cost not reported to Flux).")
         self.phone_layout(page, ".rt-page")
@@ -266,10 +268,11 @@ class RuntimeConsole(unittest.TestCase):
     def test_07_desktop_console_a_wrong_code_and_cancel(self) -> None:
         page = self.page(phone=False)
         page.goto("/settings/agents/claude-code")
-        page.get_by_role("radio", name=re.compile("Claude account")).check()
-        page.get_by_role("button", name="Start sign-in").click()
+        page.get_by_role("button", name="Sign in with Claude").click()
+        expect(page.get_by_role("link", name="Open claude.ai")).to_have_attribute("href", re.compile(r"^https://claude\.com/cai/oauth/authorize\?"))
+        shot(page, "runtime-card-desktop-1440")
+        page.get_by_text("Show details").click()
         expect(page.locator(".xterm-rows")).to_contain_text("Paste code here if prompted", use_inner_text=True)
-        expect(page.get_by_role("link", name=re.compile(r"Open the sign-in page \(claude\.com\)"))).to_be_visible()
         shot(page, "runtime-console-desktop-1440")
         # The terminal takes typing directly too: a wrong code is refused by the CLI's own prompt, which
         # keeps waiting for the right one (Claude Code 2.1.285 does not exit on it), so Flux reports nothing yet.
@@ -277,7 +280,7 @@ class RuntimeConsole(unittest.TestCase):
         page.keyboard.type("not-a-code")
         page.keyboard.press("Enter")
         expect(page.locator(".xterm-rows")).to_contain_text("Invalid code. Please make sure the full code was copied.", use_inner_text=True)
-        expect(page.get_by_role("status").filter(has_text="Claude Code is waiting for you to sign in.")).to_be_visible()
+        expect(page.get_by_role("link", name="Open claude.ai")).to_be_visible()
         expect(page.locator(".rt-outcome")).to_have_count(0)
         shot(page, "runtime-wrong-code-desktop-1440")
         page.get_by_role("button", name="Cancel sign-in").click()
@@ -306,10 +309,10 @@ class RuntimeConsole(unittest.TestCase):
                 break
             time.sleep(0.2)
         page.goto("/settings/agents/claude-code")
-        page.get_by_role("radio", name=re.compile("Claude account")).check()
-        page.get_by_role("button", name="Start sign-in").click()
-        opener = page.get_by_role("link", name=re.compile(r"Open the sign-in page"))
+        page.get_by_role("button", name="Sign in with Claude").click()
+        opener = page.get_by_role("link", name="Open claude.ai")
         expect(opener).to_be_visible()
+        page.get_by_text("Show details").click()
         state = re.search(r"[?&]state=([\w-]+)", opener.get_attribute("href")).group(1)
         page.get_by_label("Paste the code from the sign-in page").fill(f"fake-reject-code#{state}")
         page.get_by_role("button", name="Send").click()
@@ -323,7 +326,54 @@ class RuntimeConsole(unittest.TestCase):
         self.assertEqual(current["connections"]["claude_code"]["state"], "signed_out")
         self.assertIsNone(current["connections"]["claude_code"]["signedInAt"])
         outcome.get_by_role("button", name="Start again").click()
-        expect(page.get_by_role("group", name="How do you want to sign in?")).to_be_visible()
+        expect(page.get_by_role("button", name="Sign in with Claude")).to_be_visible()
+
+    @unittest.skipUnless(RUNTIME, "needs the runtime profile (scripts/check_agent_runtime.sh)")
+    def test_07c_paste_and_a_reload_keep_the_same_sign_in_and_other_sessions_see_nothing(self) -> None:
+        """AST-1.5: [ Paste ] reads the clipboard; a reload re-attaches the SAME CLI process (same URL state); another session sees nothing."""
+        page = self.page(phone=False)
+        deadline = time.time() + 60
+        while time.time() < deadline:
+            current = self.api(page, "GET", "/api/v1/agent-runtime")
+            if current["binding"] is None and current["pool"] == "available":
+                break
+            time.sleep(0.2)
+        clip = {"value": ""}
+        page.expose_function("fluxClipboard", lambda: clip["value"])
+        page.add_init_script("Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async () => undefined, readText: () => window.fluxClipboard() } });")
+        page.goto("/settings/agents/claude-code")
+        page.get_by_role("button", name="Sign in with Claude").click()
+        opener = page.get_by_role("link", name="Open claude.ai")
+        expect(opener).to_be_visible()
+        url = opener.get_attribute("href")
+        state = re.search(r"[?&]state=([\w-]+)", url).group(1)
+        # Reload while the code is valid: the same session takes the same sign-in back, with the same URL.
+        page.reload()
+        expect(page.get_by_role("link", name="Open claude.ai")).to_have_attribute("href", url)
+        page.get_by_text("Show details").click()
+        expect(page.locator(".xterm-rows")).to_contain_text("Paste code here if prompted", use_inner_text=True)
+        # A new session of the same owner sees no URL, cannot resume, and cannot attach with the old session's ticket.
+        other = self.browser.new_context(base_url=ORIGIN, viewport=DESKTOP, service_workers="block")
+        self.addCleanup(other.close)
+        second = other.new_page()
+        second.goto("/sign-in")
+        second.get_by_label("Email").fill(RAE["email"])
+        second.get_by_label("Password").fill(PASSWORD)
+        second.get_by_role("button", name="Sign in").click()
+        expect(second).not_to_have_url(re.compile(r"/sign-in"))
+        resumed = second.request.fetch(f"{ORIGIN}/api/v1/agent-runtime/console/resume", method="POST", headers={"origin": ORIGIN, "content-type": "application/json"}, data=json.dumps({"client": "claude_code"}))
+        self.assertEqual(resumed.status, 404)
+        second.goto("/settings/agents/claude-code")
+        expect(second.get_by_text("Another sign-in, check or sign-out is still in progress.")).to_be_visible()
+        expect(second.get_by_role("link", name="Open claude.ai")).to_have_count(0)
+        # The paste: the clipboard text goes to the original CLI's prompt, which completes the sign-in.
+        clip["value"] = f"fake-code-from-the-clipboard#{state}"
+        page.get_by_role("button", name="Paste", exact=True).click()
+        outcome = page.locator(".rt-outcome")
+        expect(outcome.get_by_role("heading", name=re.compile("^Signed in"))).to_be_visible()
+        expect(outcome).to_contain_text("o***@example.org")
+        shot(page, "runtime-signed-in-desktop-1440")
+        self.assertEqual(self.api(page, "GET", "/api/v1/agent-runtime")["connections"]["claude_code"]["state"], "signed_in")
 
     @unittest.skipUnless(RUNTIME, "needs the runtime profile (scripts/check_agent_runtime.sh)")
     def test_08_remove_runtime_at_phone_width(self) -> None:
@@ -487,18 +537,20 @@ class RuntimeConsole(unittest.TestCase):
                                      "opening Settings does not import either sign-in route or terminal")
                     page.goto("/settings/assistant/claude-code")
                     expect(page).to_have_url(re.compile(r"/settings/agents/claude-code$"))
-                    expect(page.get_by_role("group", name="How do you want to sign in?", exact=True)).to_be_visible()
+                    expect(page.get_by_role("button", name="Sign in with Claude", exact=True)).to_be_visible()
                     if not phone:
                         expect(page.get_by_role("heading", name="Sign in to Claude Code", exact=True)).to_be_visible()
                     self.assertTrue(any("ClaudeCodeSignIn-" in url for url in assets), "the destination imports its actual route")
                     self.assertFalse(any("SignInConsole-" in url for url in assets), "choosing a method does not import the terminal")
-                    self.assertEqual(page.get_by_role("radio").count(), 3, "all real supported Claude sign-in methods remain")
+                    page.locator("details.rt-more summary").filter(has_text="Other ways to sign in").click()
+                    for other in ("Anthropic Console", "Single sign-on"):
+                        expect(page.get_by_role("button", name=re.compile(f"^{other}"))).to_be_visible()  # every supported method remains
                     if phone:
                         self.phone_layout(page, ".rt-page")
                     shot(page, f"runtime-composed-methods-{'phone-390' if phone else 'desktop-1440'}-{theme}-{UI_BROWSER}")
                     # Only the status read is substituted. The actual off server owns this attempted command.
                     with page.expect_response(lambda response: response.url.endswith("/api/v1/agent-runtime/console")) as reply:
-                        page.get_by_role("button", name="Start sign-in", exact=True).click()
+                        page.get_by_role("button", name="Sign in with Claude", exact=True).click()
                     self.assertEqual(reply.value.status, 409, "the actual off server refuses admission")
                     self.assertEqual(reply.value.json()["code"], "AGENT_RUNTIME_OFF")
                     expect(page.get_by_role("alert")).to_have_text("The agent runtime is off on this instance")

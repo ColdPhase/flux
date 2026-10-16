@@ -3,7 +3,7 @@ import { Link } from 'react-router';
 import type { AgentRuntimeStatus, CodexSignInMethod } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { Button, ErrorState, Icon, Spinner } from '../ui';
-import { consoleTicket, getRuntime } from './api';
+import { consoleTicket, getRuntime, resumeConsole } from './api';
 import { CODEX_METHODS, PAYER, SIGN_IN_PROBLEM } from './copy';
 import { BeforeSignIn } from './RuntimeSection';
 import type { ConsoleOutcome } from './SignInConsole';
@@ -28,7 +28,14 @@ export function CodexSignIn() {
   const [error, setError] = useState('');
   useEffect(() => {
     const controller = new AbortController();
-    getRuntime(controller.signal).then(setStatus).catch(() => { if (!controller.signal.aborted) setFailed(true); });
+    getRuntime(controller.signal).then(async (current) => {
+      setStatus(current);
+      // A reload while a sign-in is pending: this session takes the same sign-in back (F-027 AST-1.6).
+      if (current.auth?.codex) {
+        const pending = await resumeConsole('codex').catch(() => null);
+        if (pending && !controller.signal.aborted && CODEX_METHODS.some((option) => option.id === pending.method)) setStep({ kind: 'console', method: pending.method as CodexSignInMethod, ticket: pending.ticket });
+      }
+    }).catch(() => { if (!controller.signal.aborted) setFailed(true); });
     return () => controller.abort();
   }, []);
 
