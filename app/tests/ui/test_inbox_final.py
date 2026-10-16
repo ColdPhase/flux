@@ -125,6 +125,70 @@ class InboxFinal(unittest.TestCase):
     def card(self, page: Page, title: str):
         return page.locator(".nyc", has_text=title)
 
+    def hold_reads_after_snooze(self, page: Page) -> dict:
+        """Holds the queue reads that follow a snooze, and the Undo that follows (#519).
+
+        The reads are requested after the server stores the snooze, and the page then Undoes it. Their
+        answers are the queue from before Undo, so they arrive late, while the Undo is still on its way:
+        `release()` delivers them then. Returns {"read": [(route, answer)], "undo": [route], "release": fn}.
+        """
+        state = {"armed": False, "hold": False}
+        held: dict = {"read": [], "undo": []}
+        # Counts the queue reads that are still waiting for their answer, to know when late answers have landed.
+        page.evaluate(r"""() => {
+          window.__needsYouPending = 0;
+          const native = window.fetch;
+          window.fetch = (input, init) => {
+            const url = typeof input === 'string' ? input : input.url;
+            if (!/\/api\/v1\/needs-you(\?|$)/.test(url)) return native(input, init);
+            window.__needsYouPending += 1;
+            const done = () => { window.__needsYouPending -= 1; };
+            return native(input, init).then((response) => { response.clone().text().finally(done); return response; }, (error) => { done(); throw error; });
+          };
+        }""")
+
+        def on_item(route) -> None:
+            if route.request.method == "DELETE" and state["hold"] and not held["undo"]:
+                held["undo"].append(route)
+                return
+            if route.request.method != "POST":
+                route.continue_()
+                return
+            # The snooze is stored before the page hears of it; reads from now on are the late ones.
+            response = route.fetch()
+            if not state["armed"]:
+                state["armed"] = state["hold"] = True
+            route.fulfill(response=response)
+
+        def on_queue(route) -> None:
+            if state["hold"]:
+                held["read"].append((route, route.fetch()))
+            else:
+                route.continue_()
+
+        def release() -> None:
+            state["hold"] = False
+            for route, answer in held["read"]:
+                route.fulfill(response=answer)
+
+        def let_undo_through() -> None:
+            # A check that failed first must not leave the Undo held for the tests after it.
+            while held["undo"]:
+                held["undo"].pop().continue_()
+
+        self.addCleanup(let_undo_through)
+        page.route(re.compile(r"/api/v1/needs-you/[^?]+$"), on_item)
+        page.route(re.compile(r"/api/v1/needs-you(\?.*)?$"), on_queue)
+        return {**held, "release": release}
+
+    def until(self, page: Page, check, what: str, seconds: float = 20) -> None:
+        """Polls inside Playwright so routed requests keep being answered while it waits."""
+        end = time.time() + seconds
+        while not check():
+            if time.time() > end:
+                raise AssertionError(f"timed out waiting for {what}")
+            page.wait_for_timeout(25)
+
     # ---------------------------------------------------------------- the queue (AC-1, AC-3)
 
     def test_01_one_queue_with_filters_and_the_decision_card(self) -> None:
@@ -223,14 +287,35 @@ class InboxFinal(unittest.TestCase):
         decision.get_by_role("button", name="Not now").click()
         menu = page.get_by_role("menu", name="Ask me again")
         expect(menu.get_by_role("menuitem")).to_have_text([re.compile("^Tomorrow morning"), re.compile("^Next week"), re.compile("^When #1 is done"), re.compile("^Decline for good")])
-        # Three: when the task it affects is done.
+        # Three: when the task it affects is done. The reads that follow the snooze are answered only after Undo.
+        held = self.hold_reads_after_snooze(page)
         page.keyboard.press("3")
         expect(page.get_by_role("status").filter(has_text="Back when #1 is done")).to_be_visible()
         expect(decision).to_have_count(0)
+        self.until(page, lambda: held["read"], "the read after the snooze")
         self.wait_for(lambda: (self.queue(None)["count"], self.queue(None)["later"]) == (3, 1), "the snooze to be stored")
+        # Watches the decision card from now on: it may appear, but once it is back it must never leave.
+        page.evaluate("""(title) => {
+          const watch = { appeared: false, vanished: false };
+          const shown = () => [...document.querySelectorAll('.nyc')].some((card) => card.textContent.includes(title));
+          new MutationObserver(() => {
+            if (shown()) watch.appeared = true;
+            else if (watch.appeared) watch.vanished = true;
+          }).observe(document.body, { childList: true, subtree: true, characterData: true });
+          window.__decisionWatch = watch;
+        }""", DECISION)
         page.keyboard.press("z")
         expect(decision).to_have_count(1)
+        self.until(page, lambda: held["undo"], "the Undo request")
+        # The late answers land while the Undo is still on its way, then the Undo is let through.
+        held["release"]()
+        self.until(page, lambda: page.evaluate("() => window.__needsYouPending === 0"), "the late reads to be answered")
+        # Let React paint what the answer changed before reading the watch.
+        page.evaluate("() => new Promise((done) => requestAnimationFrame(() => setTimeout(done, 0)))")
+        self.assertEqual(page.evaluate("() => window.__decisionWatch"), {"appeared": True, "vanished": False}, "the restored decision never left the Inbox")
+        held["undo"].pop().continue_()
         self.wait_for(lambda: self.queue(None)["later"] == 0, "the snooze to be undone")
+        expect(decision).to_have_count(1)
 
         # The restored first card is current again. Move to its neighbour and back before using S;
         # this proves the keyboard handler sees the restored queue, not its previous item list.
