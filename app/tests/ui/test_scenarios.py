@@ -53,7 +53,7 @@ from pathlib import Path
 
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
-from create_window import create_other, open_from_tasks, submit_button
+from create_window import create_other, linked_labels, open_from_tasks, submit_button
 from message_gestures import open_message_menu
 from test_app_shell import show_map_as, DESKTOP, ORIGIN, PHONE, UPSTREAM, open_details, open_what_matters, shot, start_forwarder
 
@@ -650,8 +650,11 @@ class ScenarioJourney:
                 self.thought(page, thoughts[text]).click(modifiers=["Shift"])
             expect(page.locator(".sk-node[aria-pressed='true']")).to_have_count(3)
         create = page.get_by_role("button", name="Create task from selected thoughts", exact=True)
+        # #509 (from #345): Create task opens the Create window with the selected thoughts as its sources.
+        self.tap(create)
+        expect(linked_labels(page)).to_have_count(1 if self.phone else 3)
         with page.expect_response(lambda r: r.request.method == "POST" and urllib.parse.urlsplit(r.url).path == f"/api/v1/projects/{lamp}/work") as saved:
-            self.tap(create)
+            self.tap(submit_button(page))
         self.assertEqual(saved.value.status, 201)
         experiment = saved.value.json()
         s["experiment"] = experiment["id"]

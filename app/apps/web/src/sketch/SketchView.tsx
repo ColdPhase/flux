@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
-import { Link, Navigate, useLocation, useParams, useRevalidator } from 'react-router';
-import { DEFAULT_THOUGHT_SIZE, imageTypeOf, SKETCH_LIMITS, THOUGHT_SHAPES, type SketchDetail } from '@flux/contracts';
+import { Link, Navigate, useLocation, useParams } from 'react-router';
+import { DEFAULT_THOUGHT_SIZE, imageTypeOf, SKETCH_LIMITS, THOUGHT_SHAPES, WORK_LIMITS, type SketchDetail } from '@flux/contracts';
 import { Button, EmptyState, Icon, MEDIA, Spinner, useMediaQuery } from '../ui';
 import { getProject } from '../api/sketches';
 import { ApiError, NetworkError } from '../api/client';
@@ -9,7 +9,7 @@ import { useStreamEvents } from '../api/stream';
 import { useShellData } from '../app/data';
 import { useShellActions } from '../app/shellContext';
 import { setReloadRetention } from '../app/reload-retention';
-import { createWork } from '../work/api';
+import { firstLine } from '../work/format';
 import { DraftSaveNotSentError, useSketchDoc, type Op } from './doc';
 import { useLiveSketchDoc, type LiveSketchDoc } from './live-doc';
 import { useEditingCapability } from '../editing/capability';
@@ -18,6 +18,7 @@ import { freeSpot, rectOf } from './geometry';
 import { SketchList } from './SketchList';
 import { SketchMap } from './SketchMap';
 import { ConnectionLabels, type ConnectionTarget } from './ConnectionLabels';
+import { planReparent } from './outline';
 import { useOutline } from './useOutline';
 import { useThoughtDraft, type DraftLine, type ThoughtDraft } from './createdDraft';
 import { DraftCapture, draftReady } from './DraftCapture';
@@ -174,7 +175,6 @@ function SketchEditor({ sketchId, projectId, dmId, back = '/map', doc }: ViewPro
   const thoughtKey = thoughtIds.join(',');
   const stableIds = useMemo(() => thoughtKey ? thoughtKey.split(',') : [], [thoughtKey]);
   const tasks = useThoughtTasks(me.user.id, taskProjectId, stableIds, taskRevision);
-  const revalidator = useRevalidator();
   const workRefresh = useRef<number | null>(null);
   useEffect(() => () => { if (workRefresh.current !== null) window.clearTimeout(workRefresh.current); }, []);
   useStreamEvents(me.user.id, (event) => {
@@ -536,19 +536,20 @@ function SketchEditor({ sketchId, projectId, dmId, back = '/map', doc }: ViewPro
    */
   const reparent = (id: string, parentId: string | null, how: 'indent' | 'outdent') => {
     if (!sketch || !canWrite || phone) return;
-    const row = personalOutline.outline.byId.get(id);
     const thought = find(id);
-    if (!row || !thought) return;
-    const between = (a: string, b: string) => sketch.links.find((l) => (l.fromId === a && l.toId === b) || (l.fromId === b && l.toId === a));
-    const ops: Op[] = [];
-    if (row.link) ops.push({ kind: 'unlink', id: row.link.id });
-    if (parentId) {
-      const existing = between(parentId, id);
-      if (existing) ops.push({ kind: 'unlink', id: existing.id });
-      ops.push({ kind: 'link', link: { id: doc.newId(), fromId: parentId, toId: id, label: existing?.label ?? row.link?.label ?? null } });
+    if (!thought) return;
+    const plan = planReparent(sketch.thoughts, sketch.links, personalOutline.state, id, parentId, doc.newId());
+    if (!plan.ok) {
+      // A thought with another parent would read under that one instead (the oldest wins): say so, change nothing.
+      const other = find(plan.thoughtId);
+      const under = plan.under ? find(plan.under) : undefined;
+      say(!other || !under ? `${quote(thought.text)} can’t be moved there. Use Connections.`
+        : other.id === id ? `${quote(thought.text)} is also under ${quote(under.text)}. Use Connections to change that.`
+        : `Moving ${quote(thought.text)} there would also move ${quote(other.text)}. Use Connections.`);
+      return;
     }
-    if (!ops.length) return;
-    doc.perform(ops, how === 'indent' ? 'indented a thought' : 'outdented a thought');
+    if (!plan.steps.length) return;
+    doc.perform(plan.steps, how === 'indent' ? 'indented a thought' : 'outdented a thought');
     setSelection([id]);
     say(`${how === 'indent' ? 'Indented' : 'Outdented'} ${quote(thought.text)}`, true);
   };
@@ -585,24 +586,20 @@ function SketchEditor({ sketchId, projectId, dmId, back = '/map', doc }: ViewPro
     say(`Shape: ${next === 'card' ? 'card' : next === 'pill' ? 'pill' : 'circle'}`, true);
   };
 
-  // #101: selected thoughts of a project sketch become one work item in one action; the map
-  // keeps its thoughts and the work links back to them.
-  const { openDetails } = useShellActions();
-  const workAttempt = useRef<{ ids: string; key: string } | null>(null);
-  const makeWork = async () => {
+  // #101, #509 (moved from #345): the selected thoughts of a project sketch become one task through the one Create window,
+  // with the thoughts as its linked sources; the person completes it there. The map keeps its thoughts.
+  const { openDetails, openCreate } = useShellActions();
+  const makeWork = () => {
     const thoughts = selection.flatMap((id) => { const t = find(id); return t ? [t] : []; });
     if (!thoughts.length || !sketch?.projectId) { say('Select thoughts first, then Create task'); return; }
-    const ids = thoughts.map((t) => t.id).join(',');
-    if (workAttempt.current?.ids !== ids) workAttempt.current = { ids, key: crypto.randomUUID() };
     const title = thoughts.length === 1 ? thoughts[0]!.text : `Explore: ${thoughts.map((t) => t.text).join(', ')}`;
-    try {
-      const item = await createWork(sketch.projectId, { title: title.slice(0, 200), sources: thoughts.map((t) => ({ type: 'thought' as const, id: t.id })) }, workAttempt.current.key);
-      workAttempt.current = null;
-      setTaskRevision((value) => value + 1);
-      revalidator.revalidate();
-      say(`Created task ${quote(item.title)}; the thoughts stay on the map`);
-      openDetails({ kind: 'work', id: item.id, projectId: item.projectId });
-    } catch { say('Could not create the work yet. Wait for “Saved”, then try again.'); }
+    openCreate({
+      kind: 'task',
+      projectId: sketch.projectId,
+      title: title.slice(0, WORK_LIMITS.title),
+      sources: thoughts.map((t) => ({ ref: { type: 'thought' as const, id: t.id }, label: firstLine(t.text, 80) })),
+      onCreated: () => { setTaskRevision((value) => value + 1); say(`Created a task from ${thoughts.length === 1 ? quote(thoughts[0]!.text) : `${thoughts.length} thoughts`}; the thoughts stay on the map`); },
+    });
   };
 
   const undo = () => {
@@ -767,8 +764,8 @@ function SketchEditor({ sketchId, projectId, dmId, back = '/map', doc }: ViewPro
       </button>
       <span className="sk-div" aria-hidden="true" />
       <button type="button" className="ui-btn ui-btn--quiet sk-add" onClick={() => add(selection[selection.length - 1] ?? null)}><Icon name="plus" size={14} />Thought</button>
-      {coarse ? <button type="button" className="ui-btn ui-btn--quiet" aria-pressed={selectSeveral} onClick={() => { setSelectSeveral(!selectSeveral); say(selectSeveral ? 'Tapping selects one thought' : 'Tap thoughts to add them to the selection'); }}><Icon name="check" size={14} /><span className="sk-bl">Select several</span></button> : null}
-      {sketch.scope === 'project' ? <button type="button" className="ui-btn ui-btn--quiet sk-task-btn" aria-disabled={!selection.length} onClick={() => void makeWork()} aria-label="Create task from selected thoughts"><Icon name="tasks" size={14} />Create task</button> : null}
+      {coarse ? <button type="button" className="ui-btn ui-btn--quiet sk-select-several" aria-label="Select several" aria-pressed={selectSeveral} onClick={() => { setSelectSeveral(!selectSeveral); say(selectSeveral ? 'Tapping selects one thought' : 'Tap thoughts to add them to the selection'); }}><Icon name="check" size={14} /><span className="sk-bl">Select several</span></button> : null}
+      {sketch.scope === 'project' ? <button type="button" className="ui-btn ui-btn--quiet sk-task-btn" aria-disabled={!selection.length} onClick={() => makeWork()} aria-label="Create task from selected thoughts"><Icon name="tasks" size={14} />Create task</button> : null}
       <span className="sk-div" aria-hidden="true" />
       <button type="button" className="sk-tool" aria-label="Undo" data-tip="Undo" aria-disabled={!doc.canUndo} onClick={undo}><Icon name="undo" size={16} /></button>
     </div>
@@ -795,7 +792,7 @@ function SketchEditor({ sketchId, projectId, dmId, back = '/map', doc }: ViewPro
           </div>
           <SketchMap {...shared} coarse={coarse} compact={phone} helpId={helpId} heights={heights} dock={dock} hint={hint} viewModes={viewModes} hand={hand}
             onLabel={(linkId) => setConnectionTarget({ linkId })} onConnections={(thoughtId) => setConnectionTarget({ thoughtId })}
-            bar={{ project: sketch.scope === 'project', canUndo: doc.canUndo, helpOpen, onShape: cycleShape, onTask: () => void makeWork(), onUndo: undo, onHelp: () => setHelpOpen(!helpOpen) }}
+            bar={{ project: sketch.scope === 'project', canUndo: doc.canUndo, helpOpen, onShape: cycleShape, onTask: () => makeWork(), onUndo: undo, onHelp: () => setHelpOpen(!helpOpen) }}
             onConnect={connectTo} onAddAt={(parentId, x, y) => add(parentId, '', false, { x, y })} onConnectFrom={connectFromDot} onAddThought={() => add(selection[selection.length - 1] ?? null)}
             draftEditor={shownDraft ? draftForm : null} draft={shownDraft && !shownDraft.lines && !sketch.thoughts.some((thought) => thought.id === shownDraft.id)
               ? { x: shownDraft.x, y: shownDraft.y, parentId: shownDraft.parentId, label: shownDraft.attempt ? 'Save not confirmed' : shownDraft.unknown ? 'Saved state unknown' : 'Draft · not saved' }
@@ -819,7 +816,7 @@ function SketchEditor({ sketchId, projectId, dmId, back = '/map', doc }: ViewPro
     : 'Arrows move between thoughts; Left and Right fold and unfold a branch. Alt with Up or Down moves a thought among its neighbours in your list only.';
   const list = <SketchList {...shared} arrange={!phone} helpId={helpId} personalOutline={personalOutline} onNavigate={navigateThought}
     onReparent={reparent} onConnectFrom={connectFromDot} onConnections={(thoughtId) => setConnectionTarget({ thoughtId })}
-    onTask={sketch.scope === 'project' ? () => void makeWork() : null} onSay={(text) => say(text)} />;
+    onTask={sketch.scope === 'project' ? () => makeWork() : null} onSay={(text) => say(text)} />;
   const connections = connectionTarget ? <ConnectionLabels sketch={sketch} target={connectionTarget} editable={canWrite && !phone}
     onSave={doc.saveLinkLabel} onDraftChange={setConnectionDraft} onClose={closeConnections} /> : null;
 

@@ -140,6 +140,42 @@ export function buildOutline(thoughts: readonly Thought[], links: readonly Thoug
   return { rows, byId: new Map(rows.map((row) => [row.thought.id, row])) };
 }
 
+export type ReparentStep = { kind: 'link'; link: { id: string; fromId: string; toId: string; label: string | null } } | { kind: 'unlink'; id: string };
+/** Either the connection changes to apply, in order, or the thought that would not stay where the person put it, and under which thought it would read instead. */
+export type ReparentPlan = { ok: true; steps: ReparentStep[] } | { ok: false; thoughtId: string; under: string | null };
+
+/**
+ * Tab / Shift+Tab (#510 AC-6): puts `id` under `parentId` (null: the top level) by moving the connection to its parent.
+ * A thought with several parents reads under the oldest one, so before anything is sent the connections are projected
+ * and the tree rebuilt: if the thought (or another one) would land anywhere but where it was meant to, nothing changes.
+ * The new connection comes before the old one is removed, so a failure part-way leaves a second parent, never an orphan;
+ * only an existing connection between the same two thoughts goes first, because a pair holds one connection.
+ */
+export function planReparent(thoughts: readonly Thought[], links: readonly ThoughtLink[], state: OutlineState, id: string, parentId: string | null, newLinkId: string): ReparentPlan {
+  const before = buildOutline(thoughts, links, state);
+  const row = before.byId.get(id);
+  if (!row) return { ok: true, steps: [] };
+  const existing = parentId ? links.find((item) => (item.fromId === parentId && item.toId === id) || (item.fromId === id && item.toId === parentId)) : undefined;
+  const label = existing?.label ?? row.link?.label ?? null;
+  const reuse = !!existing && existing.fromId === parentId && existing.label === label;
+  const steps: ReparentStep[] = [];
+  if (parentId && !reuse) {
+    if (existing) steps.push({ kind: 'unlink', id: existing.id });
+    steps.push({ kind: 'link', link: { id: newLinkId, fromId: parentId, toId: id, label } });
+  }
+  if (row.link && row.link.id !== existing?.id) steps.push({ kind: 'unlink', id: row.link.id });
+  const removed = new Set(steps.flatMap((step) => step.kind === 'unlink' ? [step.id] : []));
+  const added = steps.flatMap((step): ThoughtLink[] => step.kind === 'link' ? [{ ...step.link, sketchId: row.thought.sketchId, createdAt: row.thought.createdAt }] : []);
+  const after = buildOutline(thoughts, [...links.filter((item) => !removed.has(item.id)), ...added], state);
+  const landed = after.byId.get(id);
+  if (landed && landed.parentId !== parentId) return { ok: false, thoughtId: id, under: landed.parentId };
+  for (const other of before.rows) {
+    const next = after.byId.get(other.thought.id);
+    if (other.thought.id !== id && next && next.parentId !== other.parentId) return { ok: false, thoughtId: other.thought.id, under: next.parentId };
+  }
+  return { ok: true, steps };
+}
+
 /** The sibling before or after a row in the tree, for indenting and moving (#510 AC-6). */
 export function sibling(outline: Outline, id: string, step: -1 | 1): string | null {
   const row = outline.byId.get(id);

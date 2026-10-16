@@ -28,9 +28,10 @@
 .sk-outline-list > li > .sk-outline-row .sk-outline-title { font-weight: 600; }
 .sk-outline-main > .sk-li-edit { flex: 1 1 100%; min-width: 0; }
 .sk-outline-meta, .sk-li-s { flex: none; font-size: var(--fs-xs); color: var(--t3); line-height: 1.4; white-space: nowrap; }
-/* #510 AC-3: the date keeps its room so nothing shifts when it shows on hover, focus or selection. */
+/* #510 AC-3: the date keeps its room so nothing shifts when it shows on hover or focus; the selected row shows its actions there instead (board A04). */
 .sk-outline-row .sk-li-s { display: inline; opacity: 0; transition: opacity var(--dur-1) var(--ease-out); }
-.sk-outline-row:hover .sk-li-s, .sk-outline-row:focus .sk-li-s, .sk-outline-row.is-selected .sk-li-s { opacity: 1; }
+.sk-outline-row:hover .sk-li-s, .sk-outline-row:focus .sk-li-s { opacity: 1; }
+.sk-outline-row.is-selected .sk-li-s { display: none; }
 .sk-outline-also { display: inline; min-width: 0; max-width: 100%; font-size: var(--fs-xs); color: var(--t3); line-height: 1.4; overflow-wrap: anywhere; }
 .sk-outline-also svg { margin-right: 4px; vertical-align: -1px; }
 .sk-outline-also button { min-height: 24px; border-radius: var(--r-sm); color: var(--t2); text-align: left; overflow-wrap: anywhere; font: inherit; }
@@ -59,7 +60,6 @@
   .sk-outline-end { margin-top: 0; margin-bottom: 0; }
   .sk-outline-title { line-height: 1.45; }
   .sk-outline-row .sk-li-s { display: none; }
-  .sk-outline-row.is-selected .sk-li-s { display: inline; }
 }
 @media (pointer: coarse) {
   .sk-outline-row { min-height: 44px; }

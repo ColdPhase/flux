@@ -20,6 +20,7 @@ import uuid
 
 from playwright.sync_api import Browser, Locator, Page, expect, sync_playwright
 
+from create_window import dialog, linked_labels, submit_button
 from test_app_shell import show_map_as, DESKTOP, ORIGIN, PHONE, SHOTS, UPSTREAM, shot, start_forwarder
 from contrast import MEASURE
 
@@ -560,6 +561,9 @@ class MapTaskCountJourney(unittest.TestCase):
         # Create task on the map: the new task is counted at once.
         self.node(page, "later").click()
         page.get_by_role("toolbar", name="Sketch tools").get_by_role("button", name="Create task from selected thoughts").click()
+        expect(linked_labels(page)).to_have_text([LATER])
+        submit_button(page).click()
+        expect(dialog(page)).to_have_count(0)
         expect(page.locator(".details__title")).to_have_text(LATER)
         expect(self.badge(page, "later")).to_have_accessible_name(tasks_label(1, LATER))
         self.assertEqual(self.expected_counts(page), {"dark": 4, "camera": 1, "quiet": 1, "drafted": 1, "later": 1})

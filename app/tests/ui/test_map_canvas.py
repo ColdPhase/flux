@@ -344,7 +344,19 @@ class MapCanvasJourney(unittest.TestCase):
                 }
                 on_map = {name: control.bounding_box() for name, control in controls.items()}
                 expect(page.locator('.sk-hint')).to_be_visible()
+                tools = page.get_by_role('toolbar', name='Sketch tools')
+
+                def one_row():
+                    centres = tools.get_by_role('button').evaluate_all('buttons => buttons.map((b) => { const r = b.getBoundingClientRect(); return r.top + r.height / 2; })')
+                    self.assertLessEqual(max(centres) - min(centres), 2, f'{width}: every tool is on one row: {centres}')
+                one_row()
+                if touch:
+                    # Beside the sidebar a tablet's pane is narrow: "Select several" is its icon alone, so Undo stays on the one row.
+                    several = tools.get_by_role('button', name='Select several', exact=True)
+                    expect(several).to_be_visible()
+                    expect(several.locator('.sk-bl')).to_be_hidden()
                 show_map_as(page, 'List')
+                one_row()
                 expect(page.get_by_role('tree', name='Thoughts in Plane directions')).to_be_visible()
                 on_list = {name: control.bounding_box() for name, control in controls.items()}
                 for name in controls:

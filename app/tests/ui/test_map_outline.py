@@ -244,8 +244,13 @@ class MapOutlineJourney(unittest.TestCase):
         expect(date).to_have_css("opacity", "1")
         # AC-4: actions appear only on the selected row: Edit · + Child · Create task · ⋯.
         expect(page.locator(".sk-outline-actions")).to_have_count(0)
+        tops = lambda: page.locator(".sk-li-t").evaluate_all("rows => rows.map(row => Math.round(row.getBoundingClientRect().top))")
+        before_tops = tops()
         self.pick(page, 2)
         expect(page.locator(".sk-outline-actions")).to_have_count(1)
+        # The selected row shows its actions where the date was (board A04), and no row below it moves.
+        expect(self.row(page, 2).locator(".sk-li-s")).to_be_hidden()
+        self.assertEqual(tops(), before_tops, "selecting a row moves nothing")
         names = self.row(page, 2).locator(".sk-outline-actions button").evaluate_all("buttons => buttons.map(b => b.getAttribute('aria-label') || b.textContent.trim())")
         self.assertEqual(names, ["Edit", "Add a child thought", "Create task from selected thoughts", "More actions"])
         menu = self.more(page, 2)
@@ -342,6 +347,13 @@ class MapOutlineJourney(unittest.TestCase):
         tools.get_by_role("button", name="Undo", exact=True).click()
         expect(self.row(page, 5)).to_have_attribute("aria-level", "3")
         self.wait_graph(page, lambda data: sorted((l["fromId"], l["toId"], l["label"]) for l in data["links"]) == baseline)
+        # A thought with another parent that would keep it under that parent is not moved at all: the status line says so (#554 review).
+        self.pick(page, 4)
+        self.row(page, 4).press("Shift+Tab")
+        expect(page.locator(".sk-status")).to_contain_text("is also under")
+        expect(page.locator(".sk-status")).to_contain_text("Use Connections")
+        expect(self.row(page, 4)).to_have_attribute("aria-level", "2")
+        self.assertEqual(self.pairs(page), baseline, "nothing was sent")
         # ⌥↑/⌥↓ change only this person's reading order among siblings; the map is unchanged.
         before = self.stored(page)
         order = lambda: page.locator(f'li[data-id="{self.thoughts[0]}"] > ul > li').evaluate_all("items => items.map(item => item.dataset.id)")
@@ -478,7 +490,7 @@ class MapOutlineJourney(unittest.TestCase):
             pop.get_by_role("radio", name=scheme, exact=True).click()
             page.keyboard.press("Escape")
             self.pick(page, 3)
-            for selector in ('.sk-outline-title', '.sk-outline-row.is-selected .sk-li-s', '.sk-outline-also button', '.sk-outline-actions button', '.sk-outline-keys'):
+            for selector in ('.sk-outline-title', '.sk-outline-also button', '.sk-outline-actions button', '.sk-outline-keys'):
                 page.wait_for_function("selector => { const node = document.querySelector(selector); if (!node) return false; for (let el = node; el; el = el.parentElement) if (Number(getComputedStyle(el).opacity) !== 1) return false; return true; }", arg=selector)
                 measured = page.evaluate(MEASURE, {"selector": selector})
                 measurements.append({"theme": scheme, **measured})

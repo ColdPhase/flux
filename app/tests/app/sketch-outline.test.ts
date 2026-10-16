@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { Thought, ThoughtLink } from '@flux/contracts';
-import { buildOutline, emptyOutline, OUTLINE_STORE_BYTES, OUTLINE_STORE_LIMIT, readOutline, readStoredOutline, rememberThoughts, sibling, swapOrder, visibleRows, writeStoredOutline } from '../../apps/web/src/sketch/outline.js';
+import { buildOutline, emptyOutline, OUTLINE_STORE_BYTES, OUTLINE_STORE_LIMIT, planReparent, readOutline, readStoredOutline, rememberThoughts, sibling, swapOrder, visibleRows, writeStoredOutline } from '../../apps/web/src/sketch/outline.js';
 
 const id = (value: number) => `00000000-0000-4000-8000-${String(value).padStart(12, '0')}`;
 const thought = (value: number, createdAt = `2026-09-30T10:00:${String(value).padStart(2, '0')}.000Z`): Thought => ({
@@ -114,4 +114,47 @@ test('graphs exceeding the preference cap still render once and converge without
   const outline = buildOutline(thoughts, [], first);
   assert.equal(outline.rows.length, thoughts.length);
   assert.equal(new Set(outline.rows.map((row) => row.thought.id)).size, thoughts.length);
+});
+
+test('#510 AC-6: Tab with another parent is refused when the thought would read under that parent instead', () => {
+  // 1 has children 3 and 4; 2 is a separate root; 4 is also connected from 2. Indenting 4 under 3 would read under 2 (the older).
+  const thoughts = [thought(1), thought(2), thought(3), thought(4)];
+  const links = [link(1, 3), link(1, 4), link(2, 4)];
+  const state = rememberThoughts(emptyOutline(), thoughts);
+  assert.equal(buildOutline(thoughts, links, state).byId.get(id(4))?.parentId, id(1));
+  assert.deepEqual(planReparent(thoughts, links, state, id(4), id(3), id(777)), { ok: false, thoughtId: id(4), under: id(2) });
+});
+
+test('Tab moves the connection to the new parent: the new connection first, the old one after, the label kept', () => {
+  const thoughts = [thought(1), thought(2), thought(3)];
+  const labelled: ThoughtLink = { ...link(1, 3), label: 'range' };
+  const links = [link(1, 2), labelled];
+  const state = rememberThoughts(emptyOutline(), thoughts);
+  const plan = planReparent(thoughts, links, state, id(3), id(2), id(777));
+  assert.deepEqual(plan, { ok: true, steps: [
+    { kind: 'link', link: { id: id(777), fromId: id(2), toId: id(3), label: 'range' } },
+    { kind: 'unlink', id: labelled.id },
+  ] });
+  // The same moved again from the new place reads where it was meant to.
+  const moved = buildOutline(thoughts, [links[0]!, { ...labelled, id: id(777), fromId: id(2), toId: id(3) }], state);
+  assert.equal(moved.byId.get(id(3))?.parentId, id(2));
+});
+
+test('Tab onto a parent that is already connected reuses that connection; the other direction is replaced first', () => {
+  const thoughts = [thought(1), thought(2), thought(3)];
+  const state = rememberThoughts(emptyOutline(), thoughts);
+  // 3 hangs under 1 and is also under 2: indenting it under 2 only drops the connection from 1.
+  const also = [link(1, 2), link(1, 3), link(2, 3)];
+  assert.deepEqual(planReparent(thoughts, also, state, id(3), id(2), id(777)), { ok: true, steps: [{ kind: 'unlink', id: link(1, 3).id }] });
+  // 3 drew a connection towards 2, which reads under 1: indenting 3 under 2 first removes that pair's connection, adds the new one, then drops 1 -> 3.
+  const reverse = [link(1, 2), link(1, 3), link(3, 2)];
+  assert.deepEqual(planReparent(thoughts, reverse, state, id(3), id(2), id(777)), { ok: true, steps: [
+    { kind: 'unlink', id: link(3, 2).id }, { kind: 'link', link: { id: id(777), fromId: id(2), toId: id(3), label: null } }, { kind: 'unlink', id: link(1, 3).id }] });
+});
+
+test('Shift+Tab to the top level is refused while another parent would keep the thought under it', () => {
+  const thoughts = [thought(1), thought(2), thought(3)];
+  const state = rememberThoughts(emptyOutline(), thoughts);
+  assert.deepEqual(planReparent(thoughts, [link(1, 3)], state, id(3), null, id(777)), { ok: true, steps: [{ kind: 'unlink', id: link(1, 3).id }] });
+  assert.deepEqual(planReparent(thoughts, [link(1, 3), link(2, 3)], state, id(3), null, id(777)), { ok: false, thoughtId: id(3), under: id(2) });
 });

@@ -33,7 +33,9 @@ personal forest. Where this section and the older text below differ, this sectio
   beside the selected one, `+` adds a child, Space opens the thought for editing (F2 too), Delete
   removes. **Tab / Shift+Tab** put the selected thought under the row above it or one level out:
   its connection to its parent moves to the new parent (keeping its label), and outdenting from
-  the top branch disconnects it; one undoable graph step. A selected row takes Tab; Escape clears
+  the top branch disconnects it; one undoable graph step. The new connection is sent before the old one is
+  removed. A thought that has another parent would still read under that parent (the oldest wins), so
+  nothing changes: the status line says it is also under that thought and points to Connections. A selected row takes Tab; Escape clears
   the selection and Tab then leaves the list. Shift+F10 moves to the row's actions.
   **⌥↑ / ⌥↓** move a thought among its siblings in this person's reading order only.
 - **Personal state** is the reading order and the folded branches (same storage, bounds and
@@ -47,22 +49,28 @@ personal forest. Where this section and the older text below differ, this sectio
 
 ## Presentation contract
 
-- The outline is personal to the signed-in person, workspace, sketch and browser.
+> **Partly superseded (#510, 2026-10-16).** The first four bullets below describe the retired
+> personal forest (a flat start, **Group in list…**, a private parent choice, "Connect never
+> changes a level"). The List is now the map's tree, as the Spokój section above says. The
+> storage bullet still holds for the reading order and folded branches; the saved parent
+> choices it mentions are read and ignored.
+
+- **Superseded.** The outline is personal to the signed-in person, workspace, sketch and browser.
   A fresh browser, missing/corrupt state or unavailable storage starts every
   authorized thought at the top level, ordered by immutable `createdAt`, then ID.
   Existing records do not say which link was a deliberate parent. Millisecond
   timestamps are insufficient to reconstruct that history, so no relation is
   guessed to be a parent. This conservative initial view is an explicit limit.
-- **Group in list…** chooses Top level or an existing, currently authorized linked
+- **Superseded: Group in list… is retired.** It chose Top level or an existing, currently authorized linked
   thought. It names that this is the person's list, and has a separate **Undo list
   grouping**. It changes no graph record, position, API or collaborator's outline.
   Choosing a descendant is disallowed. Adding a new linked thought supplies the
   same deliberate local child intent, including when added from Canvas.
-- Ordinary **Connect**, including a relation from a deep thought to a new root or
+- **Superseded: a later Connect can move a thought under an older parent.** Ordinary **Connect**, including a relation from a deep thought to a new root or
   shallow thought, never changes an existing level. Expanding, searching, switching
   Map/List and following a relation never mutate graph records or canvas positions.
   Every current thought occurs once; additional links remain named relations.
-- A branch requires its current parent and a current graph link between them.
+- **Superseded by the map's connections.** A branch requires its current parent and a current graph link between them.
   Deleting a parent or its link detaches the child to the top level. ID-only previous
   choices are retained within the bounded local state, so graph undo can restore
   the branch when the same thought and link return. Missing parents do not leave
@@ -78,6 +86,11 @@ personal forest. Where this section and the older text below differ, this sectio
 
 ## Reading and returning
 
+> **Partly superseded (#510, 2026-10-16).** The grouping-undo paragraph and "Related to …"
+> naming below are retired: the tree comes from the connections, **also under …** names the
+> other parents, and Tab / Shift+Tab move a connection in one graph undo step. Following,
+> returning, focus and keyboard reading rules still apply.
+
 Grouping undo reverses only that thought's last explicit parent choice. Later
 independent child placements, ordering and collapse choices stay current. Consecutive
 undos restore each affected thought's prior choice, including the difference
@@ -86,7 +99,7 @@ records. The independent #134 behavior review exposed and the operation-specific
 correction tests cover this boundary.
 
 Use quiet neutral hierarchy guides, shared selected/focus/link tokens and named
-**Related to …** buttons close to the thought. Existing graph links are undirected;
+**also under …** buttons (formerly **Related to …**) close to the thought. Existing graph links are undirected;
 their labels are displayed without inventing arrow direction or ownership. Core
 Edit/Add actions appear beside the selected entry; grouping and further links are
 disclosed on demand. Read-only people can navigate or group their personal list,
@@ -111,6 +124,9 @@ indentation to three steps on a phone and expose the complete ancestor path;
 never shrink the content to fit deeper levels.
 
 ## Verification
+
+> The browser checks for grouping undo below were replaced by the tree's checks
+> (`tests/ui/test_map_outline.py`, `tests/app/sketch-outline.test.ts`, #510).
 
 Unit checks exercise the deterministic forest, later relations, multiple parents,
 cycles, missing endpoints, deletion/undo and malformed/bounded storage. Docker
