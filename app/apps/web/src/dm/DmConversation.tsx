@@ -106,9 +106,9 @@ function DmContent({ initial }: { initial: Dm }) {
   const [refreshTick, setRefreshTick] = useState(0);
   const [receiptTick, setReceiptTick] = useState(0);
   const splitRef = useRef<HTMLDivElement>(null);
-  const phone = useMediaQuery(MEDIA.navDrawer);
+  const drawer = useMediaQuery(MEDIA.navDrawer);
   const [wide, setWide] = useState(true);
-  const mode: ThreadMode = phone || !wide ? 'sheet' : 'docked';
+  const mode: ThreadMode = drawer || !wide ? 'sheet' : 'docked';
   const opener = useRef<string | null>(null);
   const [replyFocus, setReplyFocus] = useState(false);
   // #537: the task copy being previewed. Nothing is written until it is confirmed there.
