@@ -161,26 +161,11 @@ test('issued OAuth bearer reads and proposes through MCP, then connection revoca
   const discovery = await mcp(bearer, 48, 'tools/list');
   const tools = (discovery.message?.result as { tools: { name: string }[] }).tools;
   const capabilityRows = bootstrap.capabilities as { name: string; operation: string | null }[];
-  // This token has no action scope (#548): tools/list omits the action tools, and bootstrap still names them as unavailable.
-  assert.deepEqual(new Set(capabilityRows.filter((row) => row.operation === null).map((row) => row.name)), new Set(tools.map((row) => row.name)),
-    'bootstrap capability names come from actual registered MCP tools; the listing holds exactly the granted ones');
-  assert.ok(capabilityRows.some((row) => row.name === 'flux_create_task') && !tools.some((row) => row.name === 'flux_create_task'));
-  const writes = (bootstrap.capabilities as { name: string; operation: string | null; available: boolean }[]).filter((row) => row.operation !== null);
-  assert.deepEqual(writes.map(({ name, operation, available }) => ({ name, operation, available })),
-    [{ name: 'flux_create_task', operation: 'work.create', available: false }, { name: 'flux_update_task', operation: 'work.update', available: false },
-      { name: 'flux_undo_task_creation', operation: 'work.creation.revert', available: false },
-      { name: 'flux_record_result', operation: 'result.record', available: false }, { name: 'flux_propose_decision', operation: 'decision.propose', available: false },
-      ...['flux_create_map:map.create', 'flux_rename_map:map.rename', 'flux_add_thought:map.thought.create', 'flux_update_thought:map.thought.update',
-        'flux_remove_thought:map.thought.delete', 'flux_move_thoughts:map.positions.update', 'flux_link_thoughts:map.link.create',
-        'flux_unlink_thoughts:map.link.delete', 'flux_create_doc:doc.create', 'flux_update_doc:doc.update',
-        'flux_start_conversation:conversation.create', 'flux_reply_in_conversation:conversation.reply',
-        'flux_ask_question:conversation.reply',
-        // #153's co-work unit creation, unit claim/renew/release/completion/transfer and request claim/decline; no resolve tool.
-        'flux_create_unit:cowork.unit.create', 'flux_claim_unit:cowork.claim', 'flux_renew_unit:cowork.renew',
-        'flux_release_unit:cowork.release', 'flux_complete_unit:cowork.unit.complete', 'flux_transfer_unit:cowork.unit.transfer',
-        'flux_claim_request:cowork.request.claim', 'flux_decline_request:cowork.request.respond']
-        .map((entry) => ({ name: entry.split(':')[0], operation: entry.split(':')[1], available: false }))],
-    'only the verified native work, map, doc, conversation and co-work actions are advertised, unavailable without the action scope');
+  // This token has no action scope (#548): tools/list and bootstrap both omit the action tools.
+  assert.deepEqual(new Set(capabilityRows.map((row) => row.name)), new Set(tools.map((row) => row.name)),
+    'bootstrap names exactly the tools listed for this grant (#548)');
+  assert.ok(!capabilityRows.some((row) => row.name === 'flux_create_task'), 'a tool outside the grant is neither listed nor named');
+  assert.deepEqual(capabilityRows.filter((row) => row.operation !== null), [], 'no action tool is advertised without the action scope');
   const unscoped = await mcp(bearer, 147, 'tools/call', { name: 'flux_create_task', arguments: { projectId,
     runtimeSessionId: (bootstrap.runtime as { id: string }).id, grantId: randomUUID(), clientCommandId: randomUUID(),
     peerRequestClass: 'plan', sources: [], task: { title: 'Not without the action scope' } } });

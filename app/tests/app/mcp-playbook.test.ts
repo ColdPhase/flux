@@ -44,7 +44,7 @@ async function connected(projects: number, scopes = ['flux.context.read', 'flux.
   [randomUUID(), clientId, [redirectUri], ['authorization_code', 'refresh_token'], ['code'], [...scopes, 'offline_access']]);
   await pool.query('INSERT INTO oauth_client_resource (id, client_id, resource_id, created_at) VALUES ($1, $2, $3, now())',
     [randomUUID(), clientId, `${publicOrigin}/mcp`]);
-  const tokens = await oauthToken(owner, String(connection.id), clientId, redirectUri, await beginOauth(owner, clientId, redirectUri));
+  const tokens = await oauthToken(owner, String(connection.id), clientId, redirectUri, await beginOauth(owner, clientId, redirectUri, { scope: [...scopes, 'offline_access'].join(' ') }));
   let id = 200;
   const call = async (method: string, params: Record<string, unknown> = {}) => {
     const response = await mcp(tokens.access_token, id++, method, params);
@@ -63,7 +63,8 @@ async function connected(projects: number, scopes = ['flux.context.read', 'flux.
 }
 
 test('the authenticated MCP connection serves the playbook as a resource and binds Start/Resume to one selected project', async () => {
-  const f = await connected(1);
+  // The full grant: the playbook is one fixed bundle and names the action tools, which a narrower grant does not list (#548).
+  const f = await connected(1, ['flux.context.read', 'flux.proposal.write', 'flux.action.execute']);
   const reference = coworkPlaybookReference();
   const tools = (await f.call('tools/list') as { tools: { name: string }[] }).tools.map((tool) => tool.name);
   assert.deepEqual(coworkPlaybookTools().filter((name) => !tools.includes(name)), [], 'the playbook names only registered tools');

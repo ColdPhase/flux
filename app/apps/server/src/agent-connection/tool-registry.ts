@@ -46,7 +46,8 @@ export function agentToolRegistry(server: McpServer, dispatch: McpDispatch, boun
       } };
     },
     capabilities(scopes: readonly AgentScope[], policy: AgentMcpPolicy): AgentToolCapability[] {
-      return [...entries.values()].map((item) => {
+      // The listing and bootstrap agree (#548): a tool outside the grant is neither listed nor named here.
+      return [...entries.values()].filter((item) => !granted || granted.includes(item.requiredScope)).map((item) => {
         const entry = AGENT_MCP_ENTRIES.find((candidate) => candidate.kind === 'tool' && candidate.name === item.name)!;
         return { ...item, classes: [...item.classes], available: scopes.includes(item.requiredScope)
           && policy.enabledEntryIds.includes(entry.id)
