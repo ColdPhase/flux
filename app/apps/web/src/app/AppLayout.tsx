@@ -155,8 +155,6 @@ function AppLayoutContent() {
   const focus = useFocus(me.user.id);
   const focusing = !!focus.until && !phone;
   const toggleFocus = focus.toggle;
-  // "[", the sidebar control and the More menu share one rule: under Focus, ending Focus shows the sidebar (F-026 rule 7).
-  const toggleSidebar = useCallback(() => { if (focusing) void toggleFocus(); else toggleRail(); }, [focusing, toggleFocus, toggleRail]);
 
   const projectId = location.pathname.match(/^\/projects\/([^/]+)/)?.[1];
   const detailsOwner = useMemo(() => ({ accountId: me.user.id, projectId }), [me.user.id, projectId]);
@@ -178,9 +176,9 @@ function AppLayoutContent() {
     actionSlot,
     metadataSlot, viewMenuMetadataSlot,
     toggleFocus() { void toggleFocus(); },
-    toggleSidebar,
+    toggleSidebar() { if (focusing) void toggleFocus(); else toggleRail(); },
     sidebarHidden: railed || focusing,
-  }), [toggleDetails, actionSlot, metadataSlot, viewMenuMetadataSlot, projectId, detailsOwner, toggleSidebar, railed, toggleFocus, focusing]);
+  }), [toggleDetails, actionSlot, metadataSlot, viewMenuMetadataSlot, projectId, detailsOwner, toggleRail, railed, toggleFocus, focusing]);
 
   // A link inside an overlaid panel or sheet (#117 overview) leads to its destination.
   const [shownPath, setShownPath] = useState(location.pathname);
@@ -232,7 +230,7 @@ function AppLayoutContent() {
     const onKey = (event: KeyboardEvent) => {
       if (event.metaKey || event.ctrlKey || event.altKey || event.defaultPrevented || isTyping(event.target)) return;
       if (document.getElementById('root')?.inert) return;
-      if (event.key === '[') { event.preventDefault(); toggleSidebar(); return; }
+      if (event.key === '[') { event.preventDefault(); toggleRail(); return; }
       const key = event.key.toLowerCase();
       if (key === 'f' && !phone) { event.preventDefault(); void toggleFocus(); return; }
       if (key === 'g') { leader = Date.now(); return; }
@@ -240,7 +238,7 @@ function AppLayoutContent() {
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [toggleSidebar, toggleFocus, navigate, phone]);
+  }, [toggleRail, toggleFocus, navigate, phone]);
 
 
   // Typing on a touch phone (#266 PF-3): the view bar steps aside for the keyboard once a text field
@@ -426,7 +424,7 @@ function AppLayoutContent() {
     ...(activeProject && projectId ? [{ label: 'What matters', run: () => { setDetailsView({ kind: 'recap', projectId }); toggleDetails(true); } }] : []),
     ...addViewItems,
     { label: focus.uncertain ? 'Check notification pause' : 'Focus', keys: 'F', checked: focusing, run: () => void focus.toggle() },
-    { label: railed || focusing ? 'Show the sidebar' : 'Hide the sidebar', keys: '[', run: toggleSidebar },
+    { label: railed ? 'Show the sidebar' : 'Hide the sidebar', keys: '[', run: toggleRail },
   ];
 
   // The phone's header (F-026 §4 Phone): inside a project or a conversation the round Back and the
@@ -499,7 +497,7 @@ function AppLayoutContent() {
           <Sidebar {...sidebarProps} onClose={() => setNavOpen(false)} titleId={drawerTitleId} />
         </Drawer>
       ) : (
-        <aside className={`app__side${railed || focusing ? ' app__side--rail' : ''}`} aria-label="Sidebar"><Sidebar {...sidebarProps} collapsed={railed || focusing} onToggleCollapsed={toggleSidebar} /></aside>
+        <aside className={`app__side${railed || focusing ? ' app__side--rail' : ''}`} aria-label="Sidebar"><Sidebar {...sidebarProps} collapsed={railed || focusing} onToggleCollapsed={focusing ? () => void focus.toggle() : toggleRail} /></aside>
       )}
 
       <div className="app__main">
