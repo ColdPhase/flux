@@ -759,10 +759,12 @@ class InboxFinal(unittest.TestCase):
         expect(page.get_by_role("heading", name="Nothing needs you right now")).to_be_visible()
         expect(page.get_by_text("Enjoy the quiet.")).to_be_visible()
         expect(page.get_by_text(re.compile(r"^\d+ done today$"))).to_be_visible()
-        expect(page.get_by_text("all clear · all projects")).to_be_visible()
+        # #437 / E06: an empty Inbox is Kreska, one sentence and the settings link; the filters wait for something to filter.
+        expect(page.get_by_role("tab")).to_have_count(0)
+        expect(page.get_by_text("all clear · all projects")).to_have_count(0)
         expect(page.get_by_role("link", name="Notification settings").last).to_be_visible()
         expect(page.get_by_role("navigation", name="Places").get_by_role("link", name="Inbox", exact=True).locator(".side__count")).to_have_count(0)
-        page.get_by_role("tab", name=re.compile("^Questions")).click()
+        page.goto("/inbox?show=questions")
         expect(page.get_by_role("heading", name="No questions wait for you")).to_be_visible()
         shot(page, "inbox-final-desktop-1440-clear")
         self.assertEqual(self.queue(None)["count"], 0)
@@ -784,6 +786,11 @@ class InboxFinal(unittest.TestCase):
         expect(decision.get_by_role("button", name="Discuss")).to_be_visible()
         # The title opens the item in the detail sheet, so it is a touch target too.
         self.assertGreaterEqual(box(page, decision.locator(".nyc__open"))["height"], 44)
+        # #437: the tab labels meet the 12.5px phone meta minimum and the unread dot clears the Inbox icon.
+        self.assertGreaterEqual(page.evaluate("Math.min(...[...document.querySelectorAll('.ui-bottomnav__label')].map((e) => parseFloat(getComputedStyle(e).fontSize)))"), 12.5)
+        clear = page.evaluate("""() => { const dot = document.querySelector('.ui-bottomnav__dot'); const icon = dot.parentElement.querySelector('svg');
+          const d = dot.getBoundingClientRect(), i = icon.getBoundingClientRect(); return d.left >= i.right - 1 || d.bottom <= i.top + 1; }""")
+        self.assertTrue(clear, "the unread dot does not cover the icon")
         shot(page, "inbox-final-phone-390")
         # A swipe left reveals Not now and Done; Done applies at once and offers Undo.
         question = self.card(page, "asked you")
