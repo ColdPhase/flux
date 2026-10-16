@@ -137,10 +137,12 @@ test('an existing database applies the lower missing 0048 and then 0060, keeps o
     before = await shape();
     await assert.rejects(reverse(), /0060 reversal refused/); assert.deepEqual(await shape(), before);
     await db.query('DELETE FROM agent_standing_grants WHERE id=$1', [revertGrant]);
-    await db.query('INSERT INTO flux_schema_version(version) VALUES(99)');
+    // Derived from this image, never a fixed number: a fixed one becomes a real migration file and collides with it.
+    const later = FLUX_SCHEMA_VERSION + 1;
+    await db.query('INSERT INTO flux_schema_version(version) VALUES($1)', [later]);
     before = await shape();
-    await assert.rejects(reverse(), /versions without files.*99/); assert.deepEqual(await shape(), before);
-    await db.query('DELETE FROM flux_schema_version WHERE version=99');
+    await assert.rejects(reverse(), new RegExp(`versions without files.*${later}`)); assert.deepEqual(await shape(), before);
+    await db.query('DELETE FROM flux_schema_version WHERE version=$1', [later]);
 
     // A reverted task is read only for every column 0048 knows, yet a later migration can backfill its own new column
     // (for example a task number): history stays exact without blocking a future additive migration.

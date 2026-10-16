@@ -6,6 +6,8 @@ import { fileRows } from './files.js';
 
 export interface ArtifactBoundary { kind:'doc'|'material'|'result'|'decision'|'thought'|'github_pr'|'file';id:string;revision:string;contentIdentity?:string }
 type Retained={readonly ids:readonly string[];mark(ids?:readonly string[]):Promise<void>};
+/** A content edit to a linked doc, material or thought resets the thread budget but is not use of the task (#553, #238 AC-U2). */
+const isContentEdit=(kind:ArtifactBoundary['kind'])=>kind==='doc'||kind==='material'||kind==='thought';
 /** Private canonical mutation hook only. No reset flag, authority, transactions, content store or public entry. */
 export function artifactResetRows(tx:DbExecutor){return{
   async publishedFile(scope:ArtifactScope,fileId:string,retained:Retained){
@@ -23,9 +25,9 @@ export function artifactResetRows(tx:DbExecutor){return{
           WHERE l.workspace_id=f.workspace_id AND l.project_id=f.project_id AND l.from_type='work' AND l.from_id=w.id
             AND l.to_type='thought' AND l.to_id=t.id AND l.role IN('source','related'))))
       WHERE f.id=${fileId} ORDER BY w.id`);
-    await this.record(scope,{kind:'file',id:file.id,revision:'published',contentIdentity:file.sha256+':'+file.size},recipients.rows.map(r=>r.id),retained);
+    await this.record(scope,{kind:'file',id:file.id,revision:'published',contentIdentity:file.sha256+':'+file.size},recipients.rows.map(r=>r.id),retained,file.thoughtId!==null);
   },
-  async record(scope:ArtifactScope,boundary:ArtifactBoundary,taskIds:readonly string[],retained:Retained){
+  async record(scope:ArtifactScope,boundary:ArtifactBoundary,taskIds:readonly string[],retained:Retained,contentEdit=isContentEdit(boundary.kind)){
     const recipients=[...new Set(taskIds)].sort();if(recipients.some(id=>!retained.ids.includes(id)))throw new TaskUseRefusal('TASK_TARGET_SET_CHANGED');
     const old=await tx.execute<{id:string}>(sql`SELECT id FROM agent_thread_artifact_boundaries WHERE kind=${boundary.kind} AND source_id=${boundary.id} AND revision=${boundary.revision}`);
     if(old.rows.length)return;
@@ -36,7 +38,7 @@ export function artifactResetRows(tx:DbExecutor){return{
     const changed:string[]=[];
     for(const task of recipients){const row=await tx.execute<{task_id:string}>(sql`INSERT INTO agent_thread_artifact_resets(task_id,boundary_id,workspace_id,project_id)
       VALUES(${task},${id},${scope.workspaceId},${scope.projectId}) ON CONFLICT DO NOTHING RETURNING task_id`);if(row.rows.length)changed.push(task);}
-    if(changed.length)await retained.mark(changed);
+    if(changed.length&&!contentEdit)await retained.mark(changed);
   },
   async canonical(scope:ArtifactScope,artifact:CanonicalArtifact,boundary:ArtifactBoundary,retained:Retained){
     await this.record(scope,boundary,await canonicalArtifactTaskIds(tx,scope,artifact),retained);

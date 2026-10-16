@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router';
-import type { Conversation, ConversationMessage, ConversationRoot, ConversationRootWindow, NativeWorkRow, Page, Project, ReturnSummary, TaskCreationNotice } from '@flux/contracts';
+import type { Conversation, ConversationMessage, ConversationRoot, ConversationRootWindow, NativeWorkRow, Page, Project, ProjectGoal, ReturnSummary, TaskCreationNotice } from '@flux/contracts';
 import { AgentIdentity, Avatar, Button, EmptyState, Icon, IconButton, Kreska, Opening, StatusGlyph, useArrivals } from '../ui';
 import { newBelowText } from '../ui/motion-rules';
 import { MessageObjects, useCreateWorkFromMessage } from '../work/inline';
@@ -21,6 +21,7 @@ import { getReturnSummary } from '../returns/api';
 import { useProjectShell } from '../project/data';
 import { cite as citeMessage, quoteOf } from './citeBus';
 import { foldEntries, foldSummary, firstUnread, noticeSource, rootAuthor, sinceLine, sourcePhrase } from './conversationEvents';
+import { GoalStreamEntry } from '../project/ProjectGoal';
 import './conversation-final.css';
 
 // One project conversation (UI116-1, 2026-10-02): a chronological stream of roots. Each root is the
@@ -44,26 +45,31 @@ function mergeNotices(current: TaskCreationNotice[], incoming: TaskCreationNotic
 
 /**
  * One entry of the stream, in time order: a root, or one compact task-created announcement (UI116-3)
- * linking its task. An announcement is never a root and has no thread; the task's first genuine
- * contribution is the root its discussion grows under.
+ * linking its task, or a project goal a person marked reached (#520). An announcement is never a root and
+ * has no thread; the task's first genuine contribution is the root its discussion grows under.
  */
 export type StreamEntry =
   | { kind: 'root'; key: string; at: string; root: ConversationRoot }
-  | { kind: 'notice'; key: string; at: string; notice: TaskCreationNotice };
+  | { kind: 'notice'; key: string; at: string; notice: TaskCreationNotice }
+  | { kind: 'goal'; key: string; at: string; goal: ProjectGoal };
+
+const ORDER: Record<StreamEntry['kind'], number> = { notice: 0, root: 1, goal: 2 };
 
 /**
- * Roots and announcements by time; at the same instant the announcement comes first. While earlier
- * roots are still unloaded, announcements older than the first loaded root wait with them, so the
- * stream never shows an announcement out of its place.
+ * Roots, announcements and reached goals by time; at the same instant the announcement comes first and the
+ * goal last. While earlier roots are still unloaded, announcements and goals older than the first loaded root
+ * wait with them, so the stream never shows one out of its place.
  */
-export function streamEntries(roots: ConversationRoot[], notices: TaskCreationNotice[] = [], hasOlder = false): StreamEntry[] {
+export function streamEntries(roots: ConversationRoot[], notices: TaskCreationNotice[] = [], hasOlder = false, goals: ProjectGoal[] = []): StreamEntry[] {
   const from = hasOlder ? roots[0]?.message.createdAt ?? null : null;
   const entries: StreamEntry[] = [
     ...roots.map((root) => ({ kind: 'root' as const, key: root.conversationId, at: root.message.createdAt, root })),
     ...notices.filter((notice) => from === null || notice.createdAt >= from)
       .map((notice) => ({ kind: 'notice' as const, key: `notice-${notice.id}`, at: notice.createdAt, notice })),
+    ...goals.flatMap((goal) => goal.reachedAt && (from === null || goal.reachedAt >= from)
+      ? [{ kind: 'goal' as const, key: `goal-${goal.id}`, at: goal.reachedAt, goal }] : []),
   ];
-  return entries.sort((a, b) => a.at.localeCompare(b.at) || (a.kind === b.kind ? 0 : a.kind === 'notice' ? -1 : 1));
+  return entries.sort((a, b) => a.at.localeCompare(b.at) || ORDER[a.kind] - ORDER[b.kind]);
 }
 
 /**
@@ -247,6 +253,8 @@ export interface StreamProps {
   roots: ConversationRoots;
   /** The loaded task announcements (UI116-3), oldest first. */
   notices: TaskCreationNotice[];
+  /** The project's reached goals (#520). */
+  goals?: ProjectGoal[];
   author: (message: ConversationMessage) => string;
   audience: string;
   /** The root whose thread is open beside the stream. */
@@ -262,7 +270,7 @@ export interface StreamProps {
 }
 
 /** The project's stream of roots, oldest first, with day dividers, each root's thread size and reply action. */
-export function ConversationStream({ project, meId, meName, roots: stream, notices, author, audience, openId, reveal, arrived, endToken, onOpen, onDenied }: StreamProps) {
+export function ConversationStream({ project, meId, meName, roots: stream, notices, goals = [], author, audience, openId, reveal, arrived, endToken, onOpen, onDenied }: StreamProps) {
   const owners = useAgentOwners(project);
   // Roots the person sent from the stream's composer (#264): queued ones at the end, and confirmed ones
   // shown at once in their place until the stream's own read includes them.
@@ -272,8 +280,8 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
   const outbox = outboxView(roots.map((root) => root.message), composer.pending, composer.sent, meId);
   const rootKey = (root: ConversationRoot) => { const key = outbox.keyOf(root.message.id); return key === root.message.id ? root.conversationId : key; };
   const domId = (root: ConversationRoot) => { const key = outbox.keyOf(root.message.id); return key === root.message.id ? `message-${root.message.id}` : key; };
-  const entries = streamEntries(roots, notices, stream.hasOlder);
-  const display = foldEntries<Extract<StreamEntry, { kind: 'root' }>, Extract<StreamEntry, { kind: 'notice' }>>(entries);
+  const entries = streamEntries(roots, notices, stream.hasOlder, goals);
+  const display = foldEntries<Extract<StreamEntry, { kind: 'root' | 'goal' }>, Extract<StreamEntry, { kind: 'notice' }>>(entries);
   const authorOf = useMemo(() => rootAuthor(roots, author), [roots, author]);
   const rootMessageIds = useMemo(() => new Set(roots.map((root) => root.message.id)), [roots]);
   const navigate = useNavigate();
@@ -329,7 +337,7 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
     const feed = feedRef.current;
     const column = columnRef.current;
     if (reveal || !feed || !column) return;
-    return openOnWholeMessages(feed, column, '.project-convo__message, .convo-notice, .convo-fold');
+    return openOnWholeMessages(feed, column, '.project-convo__message, .convo-notice, .convo-fold, .convo-goal');
     // Once, when the stream opens; later arrivals are handled below.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -388,7 +396,8 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
   // Genuine arrivals (#155, UI116-5): a short rise for new entries the reader sees arrive. A reader who is
   // with earlier content is never moved; a quiet line says what is new below until they reach the end.
   const [newBelow, setNewBelow] = useState({ messages: 0, tasks: 0 });
-  const entryIds = [...entries.map((entry) => entry.kind === 'root' ? domId(entry.root) : `notice-${entry.notice.id}`), ...outbox.pending.map((item) => `pending-${item.id}`)];
+  // A reached goal is not a message or a task update: it never counts as "new below".
+  const entryIds = [...entries.flatMap((entry) => entry.kind === 'root' ? [domId(entry.root)] : entry.kind === 'notice' ? [`notice-${entry.notice.id}`] : []), ...outbox.pending.map((item) => `pending-${item.id}`)];
   useArrivals(feedRef, entryIds, (id) => document.getElementById(id), (arrived) => {
     const feed = feedRef.current;
     if (!feed || stickRef.current) return;
@@ -455,7 +464,7 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
         pinRef.current = pinned && pinned.bottom > top && pinned.top < bottom ? { id: pinRef.current!.id, offset: pinned.top - top } : null;
       }
       anchorRef.current = null;
-      for (const item of feed.querySelectorAll<HTMLElement>('.project-convo__message, .convo-notice, .convo-fold')) {
+      for (const item of feed.querySelectorAll<HTMLElement>('.project-convo__message, .convo-notice, .convo-fold, .convo-goal')) {
         const box = item.getBoundingClientRect();
         if (box.bottom > top + 1) { anchorRef.current = { id: item.id, offset: box.top - top }; break; }
       }
@@ -544,6 +553,7 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
                 const noticeItem = (notice: TaskCreationNotice) => <NoticeItem key={`notice-${notice.id}`} notice={notice} meId={meId} owners={owners} row={referenceWork.rows.get(`work:${notice.workId}`) ?? null}
                   authorOf={authorOf} hasMessage={(id) => rootMessageIds.has(id)} onOpenTask={(id) => openDetails({ kind: 'work', id })} />;
                 if (entry.kind === 'notice') return [divider, noticeItem(entry.notice)];
+                if (entry.kind === 'goal') return [divider, <GoalStreamEntry key={entry.key} goal={entry.goal} project={project} meId={meId} />];
                 if (entry.kind === 'fold') {
                   const folded = entry.notices.map((item) => item.notice);
                   return [divider, <NoticeFold key={entry.key} fold={{ key: entry.key, notices: folded }} summary={foldSummary(folded, authorOf, (notice) => notice.createdBy.name?.split(/\s+/)[0] ?? 'Someone')}>{folded.map(noticeItem)}</NoticeFold>];
