@@ -78,8 +78,10 @@ async function cliStep(config: SupervisorConfig, client: RuntimeClient, dir: str
 export async function clientStatus(config: SupervisorConfig, client: RuntimeClient, dir: string): Promise<ClientStatus> {
   let reported: { signedIn: boolean; facts: ClientStatus['facts'] } = { signedIn: false, facts: null };
   if (await installed(config.cliPaths[client])) {
-    const run = await runFixed(config.cliPaths[client], STATUS_TEMPLATES[client], { env: cliEnvironment(client, dir, config.egressHost), cwd: dir, timeoutMs: config.cliTimeoutMs });
-    reported = statusFacts(client, run.timedOut ? null : run.code, run.stdout);
+    const run = await runFixed(config.cliPaths[client], STATUS_TEMPLATES[client], { env: cliEnvironment(client, dir, config.egressHost), cwd: dir, timeoutMs: config.cliTimeoutMs,
+      readStderr: client === 'codex' });
+    // Codex prints its status on stderr (codex-rs `cli/src/login.rs`), Claude Code on stdout.
+    reported = statusFacts(client, run.timedOut ? null : run.code, client === 'codex' ? run.stderr : run.stdout);
   }
   const size = await bindingBytes(dir, config.bindingLimitBytes);
   return { client, signedIn: reported.signedIn, facts: reported.facts, credentialFile: await credentialFileState(dir, client), bindingBytes: size.bytes, bindingOverLimit: size.overLimit };

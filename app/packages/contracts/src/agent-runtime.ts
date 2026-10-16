@@ -35,16 +35,17 @@ export type ClaudeCodeSignInMethod = (typeof CLAUDE_CODE_SIGN_IN_METHODS)[number
 export const CODEX_SIGN_IN_METHODS = ['device_code', 'api_key', 'access_token'] as const;
 export type CodexSignInMethod = (typeof CODEX_SIGN_IN_METHODS)[number];
 /**
- * The stored sign-in fact of a runtime connection, for either client. The sign-in console accepts only
- * the Claude methods (`ClaudeCodeSignInMethod`); Codex facts are recorded by their own paths.
+ * The stored sign-in fact of a runtime connection, for either client: the console runs each client's
+ * own login command with one of its methods (Codex since F-022 T6, #281).
  */
 export type AgentRuntimeSignInMethod = ClaudeCodeSignInMethod | CodexSignInMethod;
 
 /**
  * Who pays for a runtime connection's use, from its sign-in status (F-022 "Payer and data"): the
- * owner's Claude plan, their Anthropic Console organization, or not reported. Never shown as zero.
+ * owner's Claude plan, their Anthropic Console organization, their ChatGPT plan, their OpenAI API
+ * organization (Codex, T6 #281), or not reported. Never shown as zero.
  */
-export type AgentRuntimePayer = 'claude_plan' | 'anthropic_console' | 'unknown';
+export type AgentRuntimePayer = 'claude_plan' | 'anthropic_console' | 'chatgpt_plan' | 'openai_api' | 'unknown';
 
 export type AgentRuntimeConnectionState = 'signed_out' | 'signed_in' | 'sign_in_again';
 
@@ -123,6 +124,10 @@ export type AgentRuntimeConsoleClientMessage =
  */
 export type AgentRuntimeConsoleServerMessage =
   | { t: 'state'; state: 'starting' | 'running' | 'checking' }
+  /** ChatGPT device sign-in (F-027 A12, #281): the URL and one-time code Codex printed, for the card only; never stored. */
+  | { t: 'device'; url: string; code: string }
+  /** A failure Journey 6 names: device code sign-in is off in ChatGPT, or the code expired. */
+  | { t: 'problem'; problem: 'device_auth_disabled' | 'code_expired' }
   | { t: 'done'; ended: 'exited' | 'timed_out'; disposition: 'accepted' | 'superseded'; signedIn: boolean; status: AgentRuntimeStatus }
   | { t: 'error'; code: AgentRuntimeConsoleError };
 

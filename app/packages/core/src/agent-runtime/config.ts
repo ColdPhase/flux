@@ -13,8 +13,8 @@ export interface AgentRuntimeConfig {
   manager: { url: string; secret: string } | null;
 }
 
-/** Codex stays off in this version until its hosts and checks are recorded (F-022 T6). */
-export const RUNTIME_CLIENTS_SUPPORTED: Record<AgentRuntimeClient, boolean> = { claude_code: true, codex: false };
+/** Both CLIs run in this version: Codex since its hosts and checks were recorded (F-022 T6, #281). */
+export const RUNTIME_CLIENTS_SUPPORTED: Record<AgentRuntimeClient, boolean> = { claude_code: true, codex: true };
 
 const SECRET = /^[A-Za-z0-9_-]{32,256}$/;
 const DATE = /^(\d{4})-(\d{2})-(\d{2})$/;

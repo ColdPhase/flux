@@ -419,13 +419,17 @@ export interface PersonalRuntimeStanding {
   state: 'off' | 'signed_out' | 'sign_in_again' | 'signed_in';
   payer: AgentRuntimePayer | null;
   accountLabel: string | null;
+  /** The CLI this standing describes (Codex since F-022 T6, #281); null when the runtime is off. */
+  client?: PersonalRuntimeClient | null;
 }
+export type PersonalRuntimeClient = 'claude_code' | 'codex';
 export interface PersonalRuntimeAvailability {
-  standing(ownerUserId: string): Promise<PersonalRuntimeStanding>;
+  /** One CLI's standing, or without `client` the owner's most recently signed-in available CLI. */
+  standing(ownerUserId: string, client?: PersonalRuntimeClient): Promise<PersonalRuntimeStanding>;
 }
 
 /** Where one owner's runtime run goes: their bound slot and binding directory, never chosen by a request. */
-export interface PersonalRuntimeTarget { slot: string; bindingId: string }
+export interface PersonalRuntimeTarget { slot: string; bindingId: string; client?: PersonalRuntimeClient }
 
 /** What the runtime reported while a run ran (the CLI's JSONL reduced by the slot to closed shapes). */
 export type PersonalRuntimeEvent =
@@ -451,8 +455,8 @@ export interface PersonalRuntimeRunRequest {
  */
 export interface PersonalRuntime {
   readonly enabled: boolean;
-  /** The owner's signed-in Claude Code, or why it cannot run now. */
-  target(ownerUserId: string): Promise<{ ok: true; target: PersonalRuntimeTarget } | { ok: false; reason: 'off' | 'sign_in_again' | 'unavailable' }>;
+  /** The owner's signed-in CLI of the run (Claude Code or Codex), or why it cannot run now. */
+  target(ownerUserId: string, client?: PersonalRuntimeClient): Promise<{ ok: true; target: PersonalRuntimeTarget } | { ok: false; reason: 'off' | 'sign_in_again' | 'unavailable' }>;
   run(target: PersonalRuntimeTarget, request: PersonalRuntimeRunRequest, onEvent: (event: PersonalRuntimeEvent) => void): Promise<PersonalRuntimeEnd>;
   /** SIGINT, then SIGTERM, then kill (F-022 "Stop"). `stopping`: the slot acknowledged the stop. */
   stop(target: PersonalRuntimeTarget, runId: string): Promise<'stopping' | 'not_running' | 'failed'>;

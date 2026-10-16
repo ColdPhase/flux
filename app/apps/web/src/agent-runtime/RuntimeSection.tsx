@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link } from 'react-router';
-import { AGENT_RUNTIME_ERRORS, type AgentRuntimeConnection, type AgentRuntimeStatus } from '@flux/contracts';
+import { AGENT_RUNTIME_ERRORS, type AgentRuntimeClient, type AgentRuntimeConnection, type AgentRuntimeStatus } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { Button, Icon, Spinner } from '../ui';
 import { checkRuntime, dismissNotice, getRuntime, removeRuntime, signOutRuntime } from './api';
@@ -16,7 +16,17 @@ import './runtime.css';
 const failure = (error: unknown, fallback: string) => (error instanceof ApiError && error.status < 500 ? error.message : fallback);
 
 /** What the owner is told before signing in (F-022 "Settings says, before sign-in"). */
-export function BeforeSignIn({ status }: { status: AgentRuntimeStatus }) {
+export function BeforeSignIn({ status, client = 'claude_code' }: { status: AgentRuntimeStatus; client?: AgentRuntimeClient }) {
+  if (client === 'codex') {
+    return (
+      <ul className="rt-facts" aria-label="Before you sign in">
+        <li><b>Who can see your login</b><span>Your login is kept in your own space on this Flux server, never in Flux’s database. The person who runs this server can technically read that storage, so sign in only on a server whose operator you trust.</span></li>
+        <li><b>OpenAI’s rules</b><span>OpenAI calls API keys the right default for automation and allows a ChatGPT sign-in when you need to work as your own Codex account. It may restrict this kind of use.</span></li>
+        <li><b>Who pays</b><span>It depends on how you sign in: your ChatGPT plan, your organization’s ChatGPT workspace, or your OpenAI API organization. Flux cannot see plan limits or costs, and never pays or switches to another payer.</span></li>
+        <li><b>What Flux keeps</b><span>Only how you signed in and the time. Never your password, the sign-in code or the login itself.</span></li>
+      </ul>
+    );
+  }
   return (
     <ul className="rt-facts" aria-label="Before you sign in">
       <li><b>Who can see your login</b><span>Your login is kept in your own space on this Flux server, never in Flux’s database. The person who runs this server can technically read that storage, so sign in only on a server whose operator you trust.</span></li>
@@ -28,10 +38,10 @@ export function BeforeSignIn({ status }: { status: AgentRuntimeStatus }) {
   );
 }
 
-function SignedIn({ connection }: { connection: AgentRuntimeConnection }) {
+function SignedIn({ connection, cli = 'Claude Code' }: { connection: AgentRuntimeConnection; cli?: string }) {
   return (
-    <ul className="rt-facts" aria-label="Your sign-in">
-      <li><b>{accountLabel(connection.signInMethod)}</b><span>{[connection.accountLabel, connection.plan].filter(Boolean).join(' · ') || 'Claude Code reports a login'}{connection.signedInAt ? <>, signed in <time dateTime={connection.signedInAt}>{dateTime(connection.signedInAt)}</time></> : null}</span></li>
+    <ul className="rt-facts" aria-label={`Your ${cli} sign-in`}>
+      <li><b>{accountLabel(connection.signInMethod)}</b><span>{[connection.accountLabel, connection.plan].filter(Boolean).join(' · ') || `${cli} reports a login`}{connection.signedInAt ? <>, signed in <time dateTime={connection.signedInAt}>{dateTime(connection.signedInAt)}</time></> : null}</span></li>
       <li><b>Who pays</b><span>{PAYER[connection.payer ?? 'unknown']}</span></li>
     </ul>
   );
@@ -84,7 +94,7 @@ export function RuntimeSection({ otherWays }: { otherWays: ReactNode }) {
   }, [load]);
   // Reads never replace a newer action result; while an action owns the view, skip polling.
   useEffect(() => {
-    if (busy || (status?.binding?.state !== 'releasing' && !status?.auth?.claude_code)) return;
+    if (busy || (status?.binding?.state !== 'releasing' && !status?.auth?.claude_code && !status?.auth?.codex)) return;
     const timer = window.setTimeout(() => load(), 2000);
     return () => window.clearTimeout(timer);
   }, [status, load, busy]);
@@ -120,7 +130,9 @@ export function RuntimeSection({ otherWays }: { otherWays: ReactNode }) {
   if (!status) return <section className="nset__sec rt" aria-labelledby="rt-h"><h3 id="rt-h">Claude Code in Flux</h3><p className="inbox__loading"><Spinner label="Loading Claude Code in Flux" /></p></section>;
 
   // AST-1.2: when the server does not offer sign-in, one plain sentence and the API key choices; no sign-in button.
-  if (!status.enabled || status.clients.claude_code !== 'available') {
+  const claudeOn = status.clients.claude_code === 'available';
+  const codexOn = status.clients.codex === 'available';
+  if (!status.enabled || (!claudeOn && !codexOn)) {
     return (
       <section className="nset__sec rt" aria-labelledby="rt-h">
         <h3 id="rt-h">Claude Code in Flux</h3>
@@ -131,11 +143,19 @@ export function RuntimeSection({ otherWays }: { otherWays: ReactNode }) {
     );
   }
 
-  const connection = status.connections.claude_code;
+  // The section's heading follows Claude Code when it is offered, else Codex (F-022 T6 #281); Codex, when
+  // offered beside it, has its own short block below.
+  const primary: AgentRuntimeClient = claudeOn ? 'claude_code' : 'codex';
+  const cli = primary === 'codex' ? 'Codex' : 'Claude Code';
+  const connection = status.connections[primary];
   const binding = status.binding;
   const signedIn = connection?.state === 'signed_in';
   const removing = binding?.state === 'releasing';
-  const authPending = status.auth?.claude_code;
+  const authPending = status.auth?.[primary];
+  const codex = status.connections.codex;
+  const codexSignedIn = codexOn && codex?.state === 'signed_in';
+  const codexPending = status.auth?.codex;
+  const codexAgain = codex?.state === 'sign_in_again';
   const again = binding?.state === 'sign_in_again' || connection?.state === 'sign_in_again';
   const release = status.lastRelease;
   const lastReported = Boolean(busy || errorContext?.uncertain);
@@ -147,7 +167,7 @@ export function RuntimeSection({ otherWays }: { otherWays: ReactNode }) {
 
   return (
     <section className="nset__sec rt" aria-labelledby="rt-h">
-      <h3 id="rt-h" className="aset__state"><span className={`aset__dot${signedIn ? ' is-ready' : ''}`} aria-hidden="true" />Claude Code in Flux · {lastReported ? 'last reported: ' : ''}{removing ? 'removing' : signedIn ? 'signed in' : again ? 'sign in again' : 'not signed in'}</h3>
+      <h3 id="rt-h" className="aset__state"><span className={`aset__dot${signedIn ? ' is-ready' : ''}`} aria-hidden="true" />{cli} in Flux · {lastReported ? 'last reported: ' : ''}{removing ? 'removing' : signedIn ? 'signed in' : again ? 'sign in again' : 'not signed in'}</h3>
       {confirmedSignOut ? <p className="nset__note" role="status"><b>Signed out of Claude Code in Flux.</b> <time dateTime={confirmedSignOut.at}>{dateTime(confirmedSignOut.at)}</time>.</p> : null}
       {connection?.signOut?.failed && !signedIn ? (
         <p className="nset__problem" role="note"><Icon name="alert" size={14} /><span><b>Anthropic didn’t confirm the sign-out.</b> Flux deleted the login from your Claude Code space anyway. To be sure it can’t be used, end the session in your Claude account or Anthropic Console settings.</span></p>
@@ -162,29 +182,46 @@ export function RuntimeSection({ otherWays }: { otherWays: ReactNode }) {
       {authPending ? <p className="nset__note" role="status"><Spinner /> {authPending === 'signing_out' ? 'Sign-out requested. Access is disabled while Claude Code signs out and its files are removed.' : authPending === 'signing_in' ? 'A sign-in is still in progress.' : 'Checking the current sign-in…'}</p> : null}
       {status.authCompletion?.disposition === 'superseded' ? <p className="nset__problem" role="status">This operation’s result was no longer current and was not accepted. The current state is shown here.</p> : null}
       {error ? <p id="rt-error" className="nset__error" role="alert"><Icon name="alert" size={14} />{error}</p> : null}
-      {!signedIn && !removing && !authPending ? (
+      {!removing && !authPending && !codexPending && ((claudeOn && !signedIn) || !codexSignedIn) ? (
         <ul className="sset-card rt-choices">
-          <li>
+          {claudeOn && !signedIn ? <li>
             <Link to="/settings/agents/claude-code" className="sset-row sset-row--link">
               <span className="sset-row__b"><span className="sset-row__t">Sign in with Claude</span><span className="sset-row__s">Use the plan you already pay for</span></span>
               <span className="sset-row__go"><span className="sset-row__go-label">{again ? 'Sign in again' : 'Sign in'}</span></span>
             </Link>
-          </li>
-          <li>
-            <div className="sset-row rt-choice--off" aria-disabled="true">
-              <span className="sset-row__b"><span className="sset-row__t">Sign in with ChatGPT</span><span className="sset-row__s">Not available on this Flux server yet</span></span>
-            </div>
-          </li>
+          </li> : null}
+          {!codexSignedIn ? <li>
+            {codexOn ? (
+              <Link to="/settings/agents/codex" className="sset-row sset-row--link">
+                <span className="sset-row__b"><span className="sset-row__t">Sign in with ChatGPT</span><span className="sset-row__s">Use the plan you already pay for</span></span>
+                <span className="sset-row__go"><span className="sset-row__go-label">{codexAgain ? 'Sign in again' : 'Sign in'}</span></span>
+              </Link>
+            ) : (
+              <div className="sset-row rt-choice--off" aria-disabled="true">
+                <span className="sset-row__b"><span className="sset-row__t">Sign in with ChatGPT</span><span className="sset-row__s">Not offered on this Flux server</span></span>
+              </div>
+            )}
+          </li> : null}
         </ul>
       ) : null}
       {connection?.accountChange ? (
         <div className="nset__problem rt-notice" role="alert">
           <Icon name="alert" size={14} />
           <span><b>Signed in to a different account than before.</b> {connection.accountChange.previousLabel ? <>It was {connection.accountChange.previousLabel}; now it is {connection.accountLabel ?? 'another account'}.</> : <>It is now {connection.accountLabel ?? 'another account'}.</>} This changed on {dateTime(connection.accountChange.at)}. If you didn’t do this, sign out here now and change your Flux password.</span>
-          <Button variant="quiet" busy={busy === 'notice'} onClick={() => void act('notice', () => dismissNotice('claude_code'), 'Couldn’t save. Try again.')}>Got it</Button>
+          <Button variant="quiet" busy={busy === 'notice'} onClick={() => void act('notice', () => dismissNotice(primary), 'Couldn’t save. Try again.')}>Got it</Button>
         </div>
       ) : null}
-      {signedIn && connection ? <SignedIn connection={connection} /> : null}
+      {signedIn && connection ? <SignedIn connection={connection} cli={cli} /> : null}
+      {primary === 'claude_code' && codexSignedIn && codex && !removing ? (
+        <div className="rt-codex" aria-label="Codex in Flux">
+          <h4 className="rt-sub"><span className="aset__dot is-ready" aria-hidden="true" /> Codex in Flux · signed in</h4>
+          <SignedIn connection={codex} cli="Codex" />
+          <div className="aset__actions rt-actions">
+            {!codexPending ? <Button variant="secondary" busy={busy === 'check-codex'} onClick={() => void act('check-codex', () => checkRuntime('codex'), 'Couldn’t check. Try again.')}>Check ChatGPT sign-in</Button> : null}
+            <Button variant="secondary" busy={busy === 'signout-codex'} onClick={() => void act('signout-codex', () => signOutRuntime('codex'), 'Sign-out could not be confirmed. Access remains disabled while the space recovers; both clients may need to sign in again.')}>Sign out of ChatGPT</Button>
+          </div>
+        </div>
+      ) : null}
       {!signedIn && !removing ? (
         status.pool === 'full' && !binding
           ? <p className="nset__problem" role="note"><Icon name="alert" size={14} /><span><b>Every Claude Code space on this server is in use.</b> You can still use an API key here, or Claude Code on your own computer through <Link className="ui-link" to="/connect-agent">Local co-work</Link>.</span></p>
@@ -192,8 +229,8 @@ export function RuntimeSection({ otherWays }: { otherWays: ReactNode }) {
       ) : null}
       {removing ? null : (
         <div className="aset__actions rt-actions">
-          {signedIn && !authPending ? <Button variant="secondary" busy={busy === 'check'} onClick={() => void act('check', () => checkRuntime('claude_code'), 'Couldn’t check. Try again.')}>Check sign-in</Button> : null}
-          {signedIn ? <Button variant="secondary" busy={busy === 'signout'} onClick={() => void act('signout', () => signOutRuntime('claude_code'), 'Sign-out could not be confirmed. Access remains disabled while the Claude Code space recovers; both clients may need to sign in again.')}>Sign out</Button> : null}
+          {signedIn && !authPending ? <Button variant="secondary" busy={busy === 'check'} onClick={() => void act('check', () => checkRuntime(primary), 'Couldn’t check. Try again.')}>Check sign-in</Button> : null}
+          {signedIn ? <Button variant="secondary" busy={busy === 'signout'} onClick={() => void act('signout', () => signOutRuntime(primary), 'Sign-out could not be confirmed. Access remains disabled while the Claude Code space recovers; both clients may need to sign in again.')}>Sign out</Button> : null}
           {binding && !confirmRemove ? <Button variant="quiet" onClick={() => setConfirmRemove(true)}>Remove Claude Code from Flux…</Button> : null}
         </div>
       )}

@@ -2,8 +2,9 @@ import { spawn } from 'node:child_process';
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { FLUX_TOOL_NAME, INIT_NAME, type RunOutcome, type SupervisorRequest, type SupervisorResult } from '@flux/runtime-protocol';
+import { openAppServer, readRateLimits } from './app-server.js';
 import type { Outcome, Send, SupervisorConfig } from './handlers.js';
-import { CLIENT_DIRS, cliEnvironment, RUN_TEMPLATES } from './templates.js';
+import { CLIENT_DIRS, cliEnvironment, CODEX_FEATURE_REVIEW, codexRunOverrides, RUN_TEMPLATES } from './templates.js';
 
 // One run of the owner's CLI in their binding directory (F-022 AIM-3 "Run" and "Hardening", T5 #280).
 //
@@ -12,7 +13,10 @@ import { CLIENT_DIRS, cliEnvironment, RUN_TEMPLATES } from './templates.js';
 // token) names in the Flux server's Authorization header. The slot reads the CLI's JSONL and passes on only
 // closed shapes: its start-up tool and server names, each Flux tool it calls, and at the end its answer. The
 // first `system/init` is checked here: any tool but the run's exact Flux tools (and `EndConversation`), or
-// any MCP server but a connected Flux, stops the CLI with no answer. Two timeouts (no event, wall clock),
+// any MCP server but a connected Flux, stops the CLI with no answer. For Codex (T6 #281) the authoritative
+// check is every `item.*` event of `codex exec --json`: anything but an agent message, reasoning, or an
+// `mcp_tool_call` to the `flux` server with one of the run's exact tools stops it at that item; a blocking
+// `config/read` preflight first confirms the `-c` overrides took effect. Two timeouts (no event, wall clock),
 // the answer bound and Stop (SIGINT, then SIGTERM, then kill) end it in their own states. Nothing the CLI
 // prints is logged. After the run no transcript is left in the binding directory.
 
@@ -27,7 +31,12 @@ const MAX_LINE_BYTES = 1024 * 1024;
 const MAX_STDOUT_BYTES = 16 * 1024 * 1024;
 const MCP_PREFIX = 'mcp__flux__';
 /** Transcript and session state a CLI could leave in its home; removed after every run (no transcript is kept). */
-const TRANSCRIPT_DIRS = ['projects', 'todos', 'shell-snapshots', 'session-env', 'transcripts'];
+const TRANSCRIPT_DIRS: Record<RunRequest['client'], string[]> = {
+  claude_code: ['projects', 'todos', 'shell-snapshots', 'session-env', 'transcripts'],
+  codex: ['sessions', 'archived_sessions', 'history.jsonl', 'log', 'shell_snapshots', 'memories'],
+};
+/** How long the Codex app-server may take for its preflight or its rate-limit read. */
+export const APP_SERVER_TIMEOUT_MS = 15_000;
 
 type RunRequest = Extract<SupervisorRequest, { kind: 'run' }>;
 
@@ -40,6 +49,19 @@ export function stopRun(config: SupervisorConfig, runId: string): 'stopping' | '
   if (!current || current.runId !== runId) return 'not_running';
   current.stop();
   return 'stopping';
+}
+
+/**
+ * Codex's error text in plain categories (codex-rs at rust-v0.160.1, read 2026-10-16): a plan limit is
+ * `UsageLimitReachedError` ("You’ve hit your usage limit. … try again at 3:05 PM.") or the API's "Quota
+ * exceeded"; an expired login is the auth manager's "… Please log out and sign in again." or a 401. The
+ * reset time is NOT parsed from the text (local wording); the app-server read supplies it (step two).
+ */
+export function classifyCodexError(text: string): RunOutcome {
+  if (/hit your usage limit|usage limit reached|quota exceeded|upgrade to plus/i.test(text)) return 'plan_limit';
+  if (/sign in again|refresh token|not logged in|unexpected status 401|\b401 unauthorized|token could not be refreshed/i.test(text)) return 'sign_in_again';
+  if (/usage policy|refus|content policy|safety/i.test(text)) return 'refused';
+  return 'crashed';
 }
 
 /** The CLI's error result in plain categories (wording first verified against a real account in T10). */
@@ -56,11 +78,57 @@ export function classifyError(text: string): { outcome: RunOutcome; resetsAt: st
 }
 
 async function removeTranscripts(dir: string, client: RunRequest['client']) {
-  for (const name of TRANSCRIPT_DIRS) await rm(join(dir, CLIENT_DIRS[client], name), { recursive: true, force: true }).catch(() => undefined);
+  for (const name of TRANSCRIPT_DIRS[client]) await rm(join(dir, CLIENT_DIRS[client], name), { recursive: true, force: true }).catch(() => undefined);
+}
+
+const isObject = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value);
+
+/**
+ * The Codex preflight (F-022 "Optional preflight", kept because the pinned app-server's `config/read` merges
+ * the root `-c` overrides as its session-flags layer: codex-rs `app-server/src/config_manager.rs`): the
+ * effective configuration must have every reviewed feature off, web search disabled and Flux as the only
+ * MCP server, required, with exactly the run's tools. Anything else, or no answer, refuses the run.
+ */
+export function effectiveConfigHolds(config: unknown, tools: readonly string[], mcpUrl: string): boolean {
+  if (!isObject(config)) return false;
+  const features = isObject(config.features) ? config.features : {};
+  for (const [key, review] of Object.entries(CODEX_FEATURE_REVIEW)) if (review.action === 'off' && features[key] !== false) return false;
+  if (config.web_search !== 'disabled') return false;
+  const servers = isObject(config.mcp_servers) ? config.mcp_servers : null;
+  if (!servers || Object.keys(servers).length !== 1 || !isObject(servers.flux)) return false;
+  const flux = servers.flux;
+  const listed = Array.isArray(flux.enabled_tools) ? flux.enabled_tools : null;
+  return flux.url === mcpUrl && flux.bearer_token_env_var === 'FLUX_RUN_TOKEN' && flux.required === true && !!listed
+    && listed.length === tools.length && listed.every((tool, index) => tool === tools[index]);
+}
+
+async function codexPreflight(config: SupervisorConfig, dir: string, request: RunRequest, mcpUrl: string): Promise<'ok' | 'local_tool' | 'crashed'> {
+  let session;
+  try {
+    session = await openAppServer(config.cliPaths.codex, dir, config.egressHost, { timeoutMs: APP_SERVER_TIMEOUT_MS, overrides: codexRunOverrides(request.tools, mcpUrl, RUN_BRIEF) });
+    const read = await session.request('config/read', {});
+    return effectiveConfigHolds(isObject(read) ? read.config : null, request.tools, mcpUrl) ? 'ok' : 'local_tool';
+  } catch {
+    return 'crashed';
+  } finally {
+    session?.close();
+  }
+}
+
+/** Step two of a Codex plan limit: `account/rateLimits/read` for the reset time; unreadable is unknown (null). */
+async function codexResetTime(config: SupervisorConfig, dir: string): Promise<string | null> {
+  let session;
+  try {
+    session = await openAppServer(config.cliPaths.codex, dir, config.egressHost, { timeoutMs: APP_SERVER_TIMEOUT_MS });
+    return readRateLimits(await session.request('account/rateLimits/read', {})).resetsAt;
+  } catch {
+    return null;
+  } finally {
+    session?.close();
+  }
 }
 
 export async function runCli(config: SupervisorConfig, request: RunRequest, dir: string, send: Send): Promise<Outcome> {
-  if (request.client !== 'claude_code') return { error: 'not_available' };
   if (active.has(config)) return { error: 'busy' };
   const mcpUrl = config.mcpUrl ?? `http://${config.egressHost}:8080/mcp`;
   const runDir = join(config.tmpDir, `run-${request.runId}`);
@@ -70,6 +138,18 @@ export async function runCli(config: SupervisorConfig, request: RunRequest, dir:
   // The Authorization header names the variable; the token itself is never written to a file or an argument.
   await writeFile(mcpConfigPath, JSON.stringify({ mcpServers: { flux: { type: 'http', url: mcpUrl, headers: { Authorization: 'Bearer ${FLUX_RUN_TOKEN}' } } } }), { mode: 0o600 });
   const argv = RUN_TEMPLATES[request.client]({ tools: request.tools, caps: request.caps, mcpConfigPath, mcpUrl, brief: RUN_BRIEF });
+  const codex = request.client === 'codex';
+  if (codex) {
+    // Held as the slot's run while the preflight runs, so a second run is refused as busy.
+    active.set(config, { runId: request.runId, stop: () => undefined });
+    const preflight = await codexPreflight(config, dir, request, mcpUrl);
+    if (preflight !== 'ok') {
+      active.delete(config);
+      await rm(runDir, { recursive: true, force: true }).catch(() => undefined);
+      await removeTranscripts(dir, request.client);
+      return { result: { kind: 'run', runId: request.runId, outcome: preflight, answer: null, resetsAt: null, turns: 0 } };
+    }
+  }
   const env = cliEnvironment(request.client, dir, config.egressHost, { FLUX_RUN_TOKEN: request.runToken });
   const allowed = new Set([...request.tools.map((tool) => `${MCP_PREFIX}${tool}`), 'EndConversation']);
 
@@ -102,7 +182,58 @@ export async function runCli(config: SupervisorConfig, request: RunRequest, dir:
     let idle = later(request.caps.idleSeconds * 1000, () => terminate('no_event'));
     later(request.caps.wallClockSeconds * 1000, () => terminate('wall_clock'));
 
-    const handle = (event: Record<string, unknown>) => {
+    // Codex: the last agent message is the answer; each Flux tool call counts as a turn (F-022 "Caps").
+    let lastMessage: string | null = null;
+    let failure: string | null = null;
+    const toolItems = new Set<string>();
+    const handleCodex = (event: Record<string, unknown>) => {
+      if (outcome) return;
+      const type = typeof event.type === 'string' ? event.type : '';
+      if (type.startsWith('item.')) {
+        const item = isObject(event.item) ? event.item : null;
+        const kind = item && typeof item.type === 'string' ? item.type : '';
+        if (kind === 'reasoning') return;
+        if (kind === 'agent_message') {
+          if (type === 'item.completed' && typeof item!.text === 'string') lastMessage = item!.text;
+          return;
+        }
+        if (kind === 'mcp_tool_call') {
+          const tool = typeof item!.tool === 'string' ? item!.tool : '';
+          // A call to anything but the run's exact Flux tools on the `flux` server: a local tool exists after all.
+          if (item!.server !== 'flux' || !FLUX_TOOL_NAME.test(tool) || !request.tools.includes(tool)) { terminate('local_tool'); return; }
+          const id = typeof item!.id === 'string' ? item!.id : `${toolItems.size}`;
+          if (!toolItems.has(id)) {
+            toolItems.add(id);
+            turns = toolItems.size;
+            // The answer is one more turn: a call that leaves no turn for it ends the run at the cap.
+            if (turns >= request.caps.maxTurns) { terminate('max_turns'); return; }
+            send({ t: 'run', e: 'tool', name: tool });
+          }
+          return;
+        }
+        // command_execution, file_change, web_search, todo_list, collab_tool_call, error or anything new.
+        terminate('local_tool');
+        return;
+      }
+      if (type === 'error') { failure = typeof event.message === 'string' ? event.message : ''; return; }
+      if (type === 'turn.failed') {
+        resultSeen = true;
+        const error = isObject(event.error) ? event.error : {};
+        outcome = classifyCodexError(typeof error.message === 'string' ? error.message : failure ?? '');
+        later(STOP_GRACE_MS, () => { killGroup('SIGTERM'); later(STOP_GRACE_MS, () => killGroup('SIGKILL')); });
+        return;
+      }
+      if (type === 'turn.completed') {
+        resultSeen = true;
+        later(STOP_GRACE_MS, () => { killGroup('SIGTERM'); later(STOP_GRACE_MS, () => killGroup('SIGKILL')); });
+        turns = toolItems.size + 1;
+        const text = lastMessage ?? '';
+        if (Buffer.byteLength(text, 'utf8') > request.caps.maxAnswerBytes) outcome = 'answer_too_large';
+        else { answer = text; outcome = 'completed'; }
+      }
+      // thread.started, turn.started and anything else that is not an item carry no tool.
+    };
+    const handleClaude = (event: Record<string, unknown>) => {
       if (outcome) return;
       if (!initSeen) {
         // The read-back: the first event must be the start-up lists, and they must hold nothing but Flux.
@@ -170,7 +301,7 @@ export async function runCli(config: SupervisorConfig, request: RunRequest, dir:
         let event: unknown;
         try { event = JSON.parse(line); } catch { terminate('unknown'); return; }
         if (!event || typeof event !== 'object' || Array.isArray(event)) { terminate('unknown'); return; }
-        handle(event as Record<string, unknown>);
+        (codex ? handleCodex : handleClaude)(event as Record<string, unknown>);
       }
       // A line longer than any event the CLI writes is a broken stream.
       if (pending.length > MAX_LINE_BYTES) terminate('unknown');
@@ -184,13 +315,16 @@ export async function runCli(config: SupervisorConfig, request: RunRequest, dir:
       done = true;
       for (const timer of timers) clearTimeout(timer);
       killGroup('SIGKILL');
-      // No result: a clean exit with a cut stream is unknown; any other exit is a crash.
+      // No result: a clean exit with a cut stream is unknown; any other exit is a crash (Codex: classified by its last error).
+      if (!outcome && codex && failure !== null && !stopping) outcome = classifyCodexError(failure);
       if (!outcome) outcome = resultSeen ? 'unknown' : stopping ? 'stopped' : code === 0 || pending.length ? 'unknown' : 'crashed';
       resolve({ kind: 'run', runId: request.runId, outcome, answer: outcome === 'completed' ? answer : null, resetsAt: outcome === 'plan_limit' ? resetsAt : null, turns });
     };
     child.on('error', () => settle(null));
     child.on('close', (code) => settle(code));
   });
+  // Codex's plan limit, step two: the reset time from the allowlisted app-server, in the same serial lane.
+  if (codex && result.outcome === 'plan_limit') result.resetsAt = await codexResetTime(config, dir);
   active.delete(config);
   await rm(runDir, { recursive: true, force: true }).catch(() => undefined);
   await removeTranscripts(dir, request.client);

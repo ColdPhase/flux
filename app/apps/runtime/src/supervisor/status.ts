@@ -41,12 +41,26 @@ export function accountDigest(address: string, organization: string | null): str
 }
 
 /**
+ * `codex login status` (codex-rs `cli/src/login.rs` at rust-v0.160.1, read 2026-10-16): on stderr, exit 0,
+ * "Logged in using ChatGPT", "Logged in using an API key - <masked>", "Logged in using access token" (and
+ * personal access token, workload identity or Bedrock variants); exit 1 with "Not logged in". It names
+ * neither the account nor the plan, so those stay unknown. The methods get Codex-only names, so a payer is
+ * never mistaken for Claude's `api_key`.
+ */
+export function codexStatusFacts(text: string): { signedIn: boolean; facts: ClientFacts | null } {
+  const line = /Logged in using ([^\n]{1,80})/.exec(text)?.[1] ?? '';
+  if (!line) return { signedIn: false, facts: null };
+  const method = /^ChatGPT\b/.test(line) ? 'chatgpt' : /^an API key\b/.test(line) ? 'openai_api_key' : /^(?:personal )?access token\b/.test(line) ? 'access_token' : 'unknown';
+  return { signedIn: true, facts: { authMethod: method, plan: null, accountLabel: null, accountDigest: null } };
+}
+
+/**
  * Signed in only when the status command exited 0 and, if it printed JSON, that JSON does not say
  * `loggedIn: false`. Facts come from the JSON when it is there.
  */
 export function statusFacts(client: RuntimeClient, exitCode: number | null, stdout: string): { signedIn: boolean; facts: ClientFacts | null } {
   if (exitCode !== 0) return { signedIn: false, facts: null };
-  if (client !== 'claude_code') return { signedIn: true, facts: null };
+  if (client === 'codex') return codexStatusFacts(stdout);
   let parsed: unknown;
   try { parsed = JSON.parse(stdout.trim()); } catch { parsed = undefined; }
   if (!isObject(parsed)) return { signedIn: true, facts: { authMethod: 'unknown', plan: null, accountLabel: null, accountDigest: null } };

@@ -64,7 +64,7 @@ export function callSupervisor(target: SupervisorTarget, request: SupervisorRequ
         }
         if (bootId === null) throw new FrameStreamError('invalid_frame');
         // Console frames belong to the sign-in console's stream (console.ts), never to a request's answer.
-        if (frame.t === 'console') throw new FrameStreamError('invalid_frame');
+        if (frame.t === 'console' || frame.t === 'signin') throw new FrameStreamError('invalid_frame');
         // Run frames belong to a run's answer only.
         if (frame.t === 'run') {
           if (request.kind !== 'run') throw new FrameStreamError('invalid_frame');

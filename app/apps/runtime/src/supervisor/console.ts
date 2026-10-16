@@ -4,6 +4,7 @@ import {
   type ClientStatus, type SupervisorError, type SupervisorFrame, type SupervisorRequest,
 } from '@flux/runtime-protocol';
 import { openBinding } from './data.js';
+import { deviceSignInReader } from './device.js';
 import { clientStatus, installedClient, type SupervisorConfig } from './handlers.js';
 import { realClock, signalGroup, spawnPty as nodePty, type PtyProcess } from './pty.js';
 import { cliEnvironment, loginArgv } from './templates.js';
@@ -78,6 +79,8 @@ export function serveConsole(config: SupervisorConfig, lane: ConsoleLane, socket
       };
       const lifetime = clock.setTimeout(() => stop('timed_out'), lifetimeMs);
       running = { pty, stop };
+      // ChatGPT device sign-in only: the URL, the code and Journey 6's two failures, read in memory (device.ts).
+      const device = request.client === 'codex' && request.method === 'device_code' ? deviceSignInReader() : null;
       pty.onData((data) => {
         if (ending === 'disconnected') return;
         const bytes = Buffer.from(data, 'utf8');
@@ -85,6 +88,7 @@ export function serveConsole(config: SupervisorConfig, lane: ConsoleLane, socket
         // More output than any sign-in prints: end it like a lost connection.
         if (output > CONSOLE_LIMITS.outputTotalBytes) { stop('disconnected'); link.destroy(); return; }
         link.send(encodeOutput(bytes));
+        for (const frame of device?.feed(data) ?? []) send(frame);
       });
       pty.onExit(({ exitCode }) => {
         clock.clearTimeout(lifetime);

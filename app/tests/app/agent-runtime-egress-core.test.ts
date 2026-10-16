@@ -41,7 +41,8 @@ describe('egress policy', () => {
 
   test('allowed hosts follow the enabled clients; the installer host is never a slot host', () => {
     assert.deepEqual([...allowedHosts(['claude_code'])], ['api.anthropic.com', 'claude.ai', 'claude.com', 'platform.claude.com']);
-    assert.deepEqual([...allowedHosts(['codex'])], [], 'Codex hosts are recorded in T6; until then nothing');
+    assert.deepEqual([...allowedHosts(['codex'])], ['auth.openai.com', 'chatgpt.com', 'api.openai.com'], 'Codex hosts from its pinned source (T6 #281)');
+    for (const telemetry of ['ab.chatgpt.com', 'api.github.com', 'registry.npmjs.org', 'o33249.ingest.us.sentry.io']) assert.ok(!allowedHosts(['codex']).has(telemetry), telemetry);
     assert.deepEqual([...allowedHosts([])], []);
     for (const hosts of Object.values(VENDOR_HOSTS)) for (const host of INSTALL_HOSTS) assert.ok(!hosts.includes(host));
   });

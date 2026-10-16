@@ -35,6 +35,9 @@ function bindingView(binding: RuntimeBindingRow, idleDays: number | null) {
 export function runtimePayer(authMethod: string | null): AgentRuntimePayer {
   if (authMethod === 'claude.ai') return 'claude_plan';
   if (authMethod === 'api_key') return 'anthropic_console';
+  // Codex (T6 #281): the slot names its `login status` methods so they never collide with Claude's.
+  if (authMethod === 'chatgpt') return 'chatgpt_plan';
+  if (authMethod === 'openai_api_key') return 'openai_api';
   return 'unknown';
 }
 

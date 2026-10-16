@@ -5,10 +5,19 @@ import { RUNTIME_CLIENTS, type RuntimeClient } from '@flux/runtime-protocol';
 // hosts its CLI documents, on port 443, and Flux only through the exact `/mcp` route. These parsers
 // see bytes a compromised slot controls, so they are small, strict and fuzz-tested.
 
-/** Claude Code's documented hosts (research 2026-10-05 §2.1). Codex's are recorded from its pinned source in T6. */
+/**
+ * Claude Code's documented hosts (research 2026-10-05 §2.1). Codex's, recorded from its pinned source
+ * (openai/codex rust-v0.160.1, c3e23d4, read 2026-10-16; T6 #281): `auth.openai.com` for sign-in, device
+ * codes and token refresh (codex-rs `login/src/server.rs`, `login/src/auth/manager.rs`,
+ * `login/src/device_code_auth.rs`); `chatgpt.com` for the ChatGPT backend, its model traffic and the rate
+ * limits (`core/src/config/mod.rs` chatgpt_base_url, `model-provider-info/src/lib.rs`); `api.openai.com`
+ * for an API-key sign-in (`model-provider-info/src/lib.rs`). Not allowed: telemetry (`ab.chatgpt.com`,
+ * off by `analytics.enabled=false`), feedback uploads (Sentry; only on the TUI's /feedback), update checks
+ * (GitHub, npm; TUI only and off by `check_for_update_on_startup=false`) and plugin sync (GitHub; plugins off).
+ */
 export const VENDOR_HOSTS: Record<RuntimeClient, readonly string[]> = {
   claude_code: ['api.anthropic.com', 'claude.ai', 'claude.com', 'platform.claude.com'],
-  codex: [],
+  codex: ['auth.openai.com', 'chatgpt.com', 'api.openai.com'],
 };
 /** Only the one-shot `runtime-install` reaches the installer's download host, on its own network. */
 export const INSTALL_HOSTS: readonly string[] = ['downloads.claude.ai'];

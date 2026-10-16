@@ -165,6 +165,7 @@ export const router = createBrowserRouter([
               // F-022 T4: the console and terminal load only when this route opens.
               { path: 'agents/claude-code', ...secondary(async () => ({ Component: (await import('./agent-runtime/ClaudeCodeSignIn')).ClaudeCodeSignIn })) },
               { path: 'assistant/claude-code', element: <Navigate to="/settings/agents/claude-code" replace /> },
+              { path: 'agents/codex', ...secondary(async () => ({ Component: (await import('./agent-runtime/CodexSignIn')).CodexSignIn })) },
               { path: 'shortcuts', ...secondary(async () => ({ Component: (await settingsPage()).KeyboardShortcuts })) },
               { path: 'assistant', ...secondary(async () => ({ Component: (await import('./assistant/AssistantSettings')).AssistantSettings })) },
               { path: 'assistant/how', ...secondary(async () => ({ Component: (await import('./assistant/AssistantSettings')).AssistantHowItWorks })) },
