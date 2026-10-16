@@ -41,7 +41,17 @@ def add_task(page: Page, title: str) -> None:
     expect(dialog(page)).to_have_count(0)
 
 
+def window(page: Page) -> Locator:
+    """The Create window whichever tab it shows: its name follows the tab ("New task", "New thought", …)."""
+    return page.get_by_role("dialog", name=re.compile(r"^New (task|thought|message|decision|project)$"))
+
+
+def kind_tab(page: Page, name: str) -> Locator:
+    return window(page).get_by_role("tablist", name="Create").get_by_role("tab", name=name, exact=True)
+
+
 def create_other(page: Page, name: str) -> None:
-    """From the open Create window: Project, Message or Private note (what the old New menu offered)."""
+    """From the open Create window: one of its other tabs (Thought, Message, Decision or Project, #521)."""
     expect(dialog(page)).to_be_visible()
-    dialog(page).get_by_role("button", name=name, exact=True).click()
+    kind_tab(page, name).click()
+    expect(kind_tab(page, name)).to_have_attribute("aria-selected", "true")

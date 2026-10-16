@@ -197,7 +197,7 @@ This records the required final behavior; it does not assert that all of it is i
   available regardless of the rule or provider.
 
 Production activation is off by default. **Operator switch (proposed 2026-10-03 in #212,
-pending peer acceptance on #58):** the worker runtime and rule enabling exist only when the
+accepted 2026-10-16 by founder direction on #58):** the worker runtime and rule enabling exist only when the
 instance operator sets `FLUX_BACKGROUND_COMPARISONS=on` for both the API and the worker. It is
 empty by default, the release `docker/compose.yaml` does not pass it, and an operator must not
 switch it on before the mock verification gates (fake-provider usage, cost, caps, cancellation and crash reconciliation, [development notes](../development/proactive-comparison.md)) pass; a real-provider bill is not required (founder direction 2026-10-08).
@@ -318,7 +318,7 @@ reconsider every project with an enabled rule once and report the recovery.
 Cursor, due-project rows and candidate due time use one new migration numbered
 by actual merge order. Portable internal scheduling ports have focused DB and
 worker composition. Production enabling and provider registration stay off by default (the
-proposed operator switch above, pending acceptance on #58) and must not be switched on until their
+operator switch above, accepted 2026-10-16 on #58) and must not be switched on until their
 separate fake-provider verification gates pass. This section records
 the accepted contract, not completed scheduling or production evidence.
 
@@ -353,7 +353,14 @@ and existing authorized result navigation, with no new API fields.
 
 ## Private owner setup (partial implementation)
 
-Open the account menu → **Your background suggestions**. Saving the connection
+Connections live on one page for the assistant and background suggestions alike
+(#513): Settings → Agents and AI → **Use an API key** opens **AI connections**
+(`/settings/ai-connections`), with the owner's connections and the form to add one.
+**Background suggestions** (`/settings/background-compute`, also from the account
+menu → **Your background suggestions**) holds one status line with a link to AI
+connections, the owner's local usage with recent requests, and the project rules.
+When this server does not run comparisons, the status line says so, usage and rules
+stay, and enabling a rule is shown as unavailable. Saving a connection
 requires a provider and model of the owner's choice (F-020: no provider is
 preselected; an OpenAI-compatible endpoint also needs its base URL, and a model
 without a listed or table price takes an owner price, without which no rule can be
@@ -366,7 +373,7 @@ is shown; replacement never retrieves the earlier key. A failed replacement
 preserves that earlier connection. Disconnecting removes Flux's ciphertext; the
 payer must revoke the provider key separately when appropriate.
 
-Select an accessible project and your own personal agent. A project manager can
+On Background suggestions, select an accessible project and your own personal agent. A project manager can
 explicitly grant that agent contributor access; creating the agent or grant does
 not authorize paid computation. Confirm the project scope, quiet effect and
 allowance to create a **paused** rule. Pause/revoke remain versioned; a revoked

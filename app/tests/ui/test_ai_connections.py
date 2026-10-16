@@ -18,7 +18,7 @@ import urllib.request
 
 from playwright.sync_api import Browser, Page, expect, sync_playwright
 
-from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
+from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, box, shot, start_forwarder
 
 MOCK = os.environ.get("FLUX_OPENAI_MOCK_URL", "http://127.0.0.1:8091")
 ENDPOINT = "http://openai-mock:8091/v1"
@@ -36,6 +36,7 @@ PROVIDERS = ["Anthropic", "OpenAI", "OpenRouter", "Google Gemini", "OpenAI-compa
 def mock_requests() -> list[dict]:
     with urllib.request.urlopen(f"{MOCK}/__requests", timeout=5) as response:
         return json.loads(response.read())["requests"]
+
 
 
 class AiConnectionSettings(unittest.TestCase):
@@ -77,7 +78,7 @@ class AiConnectionSettings(unittest.TestCase):
         return json.loads(response.text())
 
     def fill_consent(self, page: Page, key: str) -> None:
-        page.get_by_label("Background API key", exact=True).fill(key)
+        page.get_by_label("API key", exact=True).fill(key)
         page.get_by_label("Provider organization", exact=True).fill("Ada's lab")
         page.get_by_label("Provider workspace", exact=True).fill("Sensors")
         page.get_by_label("Per-request local allowance (USD)").fill("0.20")
@@ -103,8 +104,8 @@ class AiConnectionSettings(unittest.TestCase):
 
     def test_02_every_provider_is_offered_the_same_way_and_none_is_preselected(self) -> None:
         page = self.page()
-        page.goto("/settings/background-compute")
-        expect(page.get_by_role("heading", name="Connect your background source")).to_be_visible()
+        page.goto("/settings/ai-connections")
+        expect(page.get_by_role("heading", name="Add an AI connection")).to_be_visible()
         provider = page.get_by_label("Provider", exact=True)
         expect(provider).to_have_value("")
         options = [text.strip() for text in provider.locator("option").all_inner_texts()]
@@ -117,7 +118,7 @@ class AiConnectionSettings(unittest.TestCase):
 
     def test_03_an_openai_compatible_endpoint_lists_its_models_through_the_server_and_takes_an_owner_price(self) -> None:
         page = self.page()
-        page.goto("/settings/background-compute")
+        page.goto("/settings/ai-connections")
         page.get_by_label("Provider", exact=True).select_option(label="OpenAI-compatible endpoint")
         expect(page.locator("#background-key-help")).to_contain_text("If it needs none, enter any placeholder")
         page.get_by_label("Endpoint base URL").fill(ENDPOINT)
@@ -149,7 +150,7 @@ class AiConnectionSettings(unittest.TestCase):
 
     def test_04_a_table_priced_model_needs_no_price_and_names_its_provider(self) -> None:
         page = self.page()
-        page.goto("/settings/background-compute")
+        page.goto("/settings/ai-connections")
         page.get_by_role("button", name="Add a connection").click()
         page.get_by_label("Connection name").fill("Work Anthropic")
         page.get_by_label("Provider", exact=True).select_option(label="Anthropic")
@@ -175,7 +176,7 @@ class AiConnectionSettings(unittest.TestCase):
 
     def test_05_a_private_endpoint_the_operator_has_not_allowed_is_refused_and_the_key_is_cleared(self) -> None:
         page = self.page()
-        page.goto("/settings/background-compute")
+        page.goto("/settings/ai-connections")
         before = self.current(page)
         page.get_by_role("button", name="Add a connection").click()
         page.get_by_label("Provider", exact=True).select_option(label="OpenAI-compatible endpoint")
@@ -189,14 +190,14 @@ class AiConnectionSettings(unittest.TestCase):
         page.get_by_role("button", name="Save connection and consent").click()
         alert = page.get_by_role("alert")
         expect(alert).to_contain_text("This endpoint cannot be used")
-        expect(page.get_by_label("Background API key", exact=True)).to_have_value("")
+        expect(page.get_by_label("API key", exact=True)).to_have_value("")
         self.assertEqual(self.current(page), before, "a refused connection changes nothing")
         self.no_key_anywhere(page)
         shot(page, "ai-connection-1440-endpoint-refused")
 
     def test_06_the_form_fits_a_phone_and_the_price_fields_are_touch_sized(self) -> None:
         page = self.page(phone=True)
-        page.goto("/settings/background-compute")
+        page.goto("/settings/ai-connections")
         page.get_by_role("button", name="Add a connection").tap()
         page.get_by_label("Provider", exact=True).select_option(label="OpenRouter")
         page.get_by_label("Model", exact=True).fill("vendor/model-without-a-listing")
@@ -274,6 +275,93 @@ class AiConnectionSettings(unittest.TestCase):
         expect(page.get_by_role("alert")).to_contain_text("Nothing was turned on")
         self.assertEqual(len(sent), 1)
         self.assertEqual(sent[0].get("connectionId"), chosen["id"], "the request names the connection the consent described")
+
+    def test_09_every_entry_point_opens_the_one_ai_connections_page(self) -> None:
+        """#513 B2: "Use an API key", each key row and the assistant's set-up hint lead to one AI connections page,
+        titled as such, with the connection list and form; nothing there claims a connection enables nothing."""
+        page = self.page()
+        page.goto("/settings/agents")
+        flux = page.get_by_role("region", name="Agent in Flux", exact=True)
+        api_key = flux.get_by_role("link", name=re.compile("^Use an API key"))
+        expect(api_key).to_have_attribute("href", "/settings/ai-connections")
+        # "Use an API key" and the two connections saved by the earlier tests, all on the same page.
+        expect(flux.locator('a.sset-row[href="/settings/ai-connections"]')).to_have_count(3)
+        expect(flux.locator('a.sset-row', has_text="Work Anthropic")).to_have_attribute("href", "/settings/ai-connections")
+        api_key.click()
+        expect(page).to_have_url(re.compile(r"/settings/ai-connections$"))
+        expect(page.locator("header.top").get_by_role("heading", level=1, name="AI connections", exact=True)).to_be_visible()
+        expect(page.get_by_role("heading", level=2, name="AI connections", exact=True)).to_be_visible()
+        # On the phone the header alone names the page (#513: one title).
+        phone = self.page(phone=True)
+        phone.goto("/settings/ai-connections")
+        expect(phone.locator(".app__main header").get_by_role("heading", level=1, name="AI connections", exact=True)).to_be_visible()
+        expect(phone.get_by_role("button", name="Add a connection", exact=True)).to_be_visible()
+        expect(phone.get_by_role("heading", name="AI connections", exact=True)).to_have_count(1)
+        shot(phone, "ai-connections-390-page")
+        expect(page.get_by_role("navigation", name="Settings sections").get_by_role("link", name="Agents and AI")).to_have_attribute("aria-current", "page")
+        expect(page.locator(".background-settings__connection")).to_have_count(2)
+        expect(page.get_by_role("heading", name=re.compile("background suggestions", re.I))).to_have_count(0)
+        self.assertNotIn("enables nothing", page.locator(".background-settings").inner_text())
+        expect(page.get_by_role("link", name="Back to Agents and AI")).to_have_attribute("href", "/settings/agents")
+        shot(page, "ai-connections-1440-page")
+        # The assistant's set-up hint, shown when no key of its own is connected (a stubbed status), points there too.
+        real = page.request.get(f"{ORIGIN}/api/v1/personal-assistant").json()
+        stub = {**real, "state": "not_enabled", "enablement": None, "setup": {"provider": "on", "connection": "none"}}
+        page.route("**/api/v1/personal-assistant", lambda route: route.fulfill(status=200, content_type="application/json", body=json.dumps(stub))
+                   if route.request.method == "GET" else route.continue_())
+        page.goto("/settings/assistant")
+        hint = page.get_by_role("note").filter(has_text="Your own AI key isn’t connected")
+        expect(hint.get_by_role("link", name="AI connections")).to_have_attribute("href", "/settings/ai-connections")
+
+    @staticmethod
+    def runtime_answer(status: str):
+        """A route handler that answers the background runtime read with the given status."""
+        body = json.dumps({"status": status})
+        return lambda route: route.fulfill(status=200, content_type="application/json", body=body)
+
+    def test_10_background_keeps_usage_and_rules_under_one_status_line_and_no_control_moves(self) -> None:
+        """#513 B1, B2 and Spokój rule 7: with background suggestions off (this server) and on (a stubbed runtime),
+        Background suggestions shows one status line with AI connections beside it, then usage and project rules, in
+        the same places; it has no connection form. AI connections looks the same in both states."""
+        positions: dict[str, dict] = {}
+        for runtime in ("unavailable", "available"):
+            for phone in (False, True):
+                page = self.page(phone=phone)
+                page.route("**/api/v1/background-comparisons/runtime", self.runtime_answer(runtime))
+                page.goto("/settings/background-compute")
+                note = page.get_by_role("note")
+                expect(note).to_have_text("Off on this Flux server · not available until your admin turns it on" if runtime == "unavailable" else "On · uses Work Anthropic")
+                link = page.locator(".background-settings__status").get_by_role("link", name="AI connections", exact=True)
+                expect(link).to_have_attribute("href", "/settings/ai-connections")
+                usage = page.get_by_role("heading", name="Your local usage", exact=True)
+                rules = page.get_by_role("heading", name="Rules for your projects", exact=True)
+                expect(usage).to_be_visible()
+                expect(rules).to_be_visible()
+                expect(page.get_by_label("Project", exact=True)).to_be_enabled()
+                expect(page.get_by_role("button", name="View recent requests", exact=True)).to_be_visible()
+                page.wait_for_function("document.getAnimations().every((a) => a.playState !== 'running')")
+                self.assertTrue(box(page, note)["y"] < box(page, usage)["y"] < box(page, rules)["y"], "the status line first, then usage and rules")
+                # The connections and their form are on AI connections only.
+                expect(page.get_by_label("API key", exact=True)).to_have_count(0)
+                expect(page.get_by_role("button", name=re.compile("^Disconnect"))).to_have_count(0)
+                if phone:
+                    self.assertGreaterEqual(box(page, link)["height"], 44, "AI connections is a 44 px target on touch")
+                    self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), PHONE["width"])
+                status = page.locator(".background-settings__status")
+                spots = {name: (round(b["x"]), round(b["y"]), round(b["width"]), round(b["height"])) for name, b in
+                         (("status", box(page, status)), ("link", box(page, link)), ("usage", box(page, usage)), ("rules", box(page, rules)))}
+                spots["note-x"] = round(box(page, note)["x"])
+                shot(page, f"background-{'390' if phone else '1440'}-{runtime}")
+                page.goto("/settings/ai-connections")
+                add = page.get_by_role("button", name="Add a connection", exact=True)
+                expect(add).to_be_visible()
+                page.wait_for_function("document.getAnimations().every((a) => a.playState !== 'running')")
+                added = box(page, add)
+                spots["add"] = (round(added["x"]), round(added["y"]), round(added["width"]), round(added["height"]))
+                positions[f"{runtime}-{'phone' if phone else 'computer'}"] = spots
+        for device in ("computer", "phone"):
+            self.assertEqual(positions[f"unavailable-{device}"], positions[f"available-{device}"],
+                             f"{device}: the status line, AI connections, usage, rules and Add a connection keep their places")
 
 
 if __name__ == "__main__":

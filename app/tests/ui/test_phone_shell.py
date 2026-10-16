@@ -319,23 +319,30 @@ class PhoneShellJourney(unittest.TestCase):
         page.get_by_role("link", name="Settings and account").click()
         expect(page).to_have_url(f"{ORIGIN}/settings")
         expect(page.get_by_role("heading", level=1, name="Settings")).to_be_visible()
-        # Settings (#350): Appearance, This phone, Agents and AI, then the other sections as rows.
-        self.assertEqual(page.locator(".sset-in > h2.sset-sec").all_inner_texts(), ["Appearance", "This phone", "Agents and AI", "More"])
+        # Spokój E04p: the account, then Appearance, Notifications and Agents and AI as rows; Keyboard shortcuts only with a keyboard.
+        expect(page.locator('a[href="/settings/account"]')).to_have_count(1)
+        self.assertEqual([text.split("\n")[0] for text in page.locator("ul.sset-card a.sset-row").all_inner_texts()],
+                         ["Appearance", "Notifications", "Agents and AI"])
+        page.get_by_role("link", name=re.compile("^Appearance")).click()
+        expect(page).to_have_url(f"{ORIGIN}/settings/appearance")
         expect(page.get_by_role("radiogroup", name="Theme")).to_be_visible()
         page.get_by_role("radio", name="Dark").click()
         self.assertEqual(page.evaluate("document.documentElement.dataset.theme"), "dark")
         page.get_by_role("radio", name="System").click()
+        page.locator("header").get_by_role("button", name="Back", exact=True).click()
+        expect(page).to_have_url(f"{ORIGIN}/settings")
         for title, url, heading in (("Notifications", "/settings/notifications", "Settings"),
-                                    ("Your assistant", "/settings/assistant", "Your assistant"),
-                                    ("Background suggestions", "/settings/background-compute", "Background suggestions"),
+                                    ("Agents and AI", "/settings/agents", "Settings"),
                                     ("Account", "/settings/account", "Settings")):
-            page.get_by_role("link", name=re.compile(f"^{title}")).click()
+            page.locator(f'a[href="{url}"]').click()
             expect(page).to_have_url(f"{ORIGIN}{url}")
             expect(page.get_by_role("heading", level=1, name=heading)).to_be_visible()
             back = page.locator("header").get_by_role("button", name="Back", exact=True)
             self.assertGreaterEqual(min(self.box(back)["width"], self.box(back)["height"]), 44)
             back.click()
             expect(page).to_have_url(f"{ORIGIN}/settings")
+        page.get_by_role("link", name=re.compile("^Agents and AI")).click()
+        expect(page.get_by_role("link", name=re.compile("^Local co-work on this computer"))).to_be_visible()
         page.get_by_role("link", name=re.compile("^Local co-work on this computer")).click()
         expect(page).to_have_url(f"{ORIGIN}/connect-agent")
         page.get_by_role("link", name="Settings").click()
