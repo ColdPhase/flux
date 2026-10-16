@@ -232,8 +232,12 @@ class InboxFinal(unittest.TestCase):
         expect(decision).to_have_count(1)
         self.wait_for(lambda: self.queue(None)["later"] == 0, "the snooze to be undone")
 
-        # Undo returns the card, but selection remains at its former neighbour. Move back to the
-        # decision explicitly before testing S on that card.
+        # The restored first card is current again. Move to its neighbour and back before using S;
+        # this proves the keyboard handler sees the restored queue, not its previous item list.
+        expect(decision).to_have_attribute("aria-current", "true")
+        question = self.card(page, "asked you")
+        page.keyboard.press("j")
+        expect(question).to_have_attribute("aria-current", "true")
         page.keyboard.press("k")
         expect(decision).to_have_attribute("aria-current", "true")
         # S opens the menu for the selected card; one is tomorrow morning, and Undo returns it.
