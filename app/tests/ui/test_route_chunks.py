@@ -240,7 +240,7 @@ class RouteChunksJourney(unittest.TestCase):
                 with page.expect_navigation(wait_until="domcontentloaded"):
                     page.get_by_role("button", name="Reload Flux", exact=True).click()
                 self.assertGreater(page.evaluate("performance.timeOrigin"), origin)
-                expect(page.get_by_role("heading", name="Agents and AI", exact=True)).to_be_visible()
+                expect(page.get_by_role("heading", name="Appearance", exact=True)).to_be_visible()
                 self.notes(page)
                 expect(page.get_by_placeholder("Write a note…")).to_have_value(persisted)
 
@@ -608,14 +608,14 @@ class RouteChunksJourney(unittest.TestCase):
                         page.get_by_role("button", name="Reload Flux", exact=True).click()
                     after = page.evaluate("performance.timeOrigin")
                     self.assertGreater(after, before, "A real new document must reset the failed module graph")
-                    expect(page.get_by_role("heading", name="Agents and AI", exact=True)).to_be_visible()
+                    expect(page.get_by_role("heading", name="Appearance", exact=True)).to_be_visible()
                     expect(page.locator(".ui-error")).to_have_count(0)
                     self.assertTrue(any(item["event"] == "response" and item["url"] == refused[0] and item["status"] == 200 for item in assets[before_reload_assets:]), "The recovered document must fetch the actual formerly unavailable route chunk successfully")
                 finally:
                     evidence = os.environ.get("FLUX_UI_SCREENSHOTS")
                     if evidence:
                         diagnostic = {"engine": engine, "beforeReloadAssetIndex": before_reload_assets, "beforeTimeOrigin": before, "afterTimeOrigin": page.evaluate("performance.timeOrigin"), "assets": assets,
-                                      "errorText": page.locator(".ui-error").all_text_contents(), "settingsContent": page.get_by_role("heading", name="Agents and AI", exact=True).count()}
+                                      "errorText": page.locator(".ui-error").all_text_contents(), "settingsContent": page.get_by_role("heading", name="Appearance", exact=True).count()}
                         Path(evidence).mkdir(parents=True, exist_ok=True)
                         (Path(evidence) / f"route-code-reload-{engine}.json").write_text(json.dumps(diagnostic, indent=2))
 
