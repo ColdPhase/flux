@@ -131,6 +131,24 @@ class WaitingFor(unittest.TestCase):
                 line_blocked.click()
                 expect(page.locator(f".wd[data-detail-id='{task['id']}']")).to_be_visible()
 
+    def test_05_undo_from_the_list_puts_back_the_person_and_does_not_say_the_blocker_again(self):
+        for phone in (False, True):
+            with self.subTest(phone=phone):
+                tag = "phone" if phone else "computer"; title = f"Fit the rail {tag}"; reason = f"Rail is late {tag}"
+                task = self.block(self.task(title), blocker=reason, waitingFor={"kind": "human", "id": self.kai})
+                page = self.page("ada", phone); page.goto(f"/projects/{self.project}/tasks")
+                if not phone: page.get_by_role("radio", name="List", exact=True).click()
+                row = page.locator(".ws-task").filter(has_text=title).first
+                row.get_by_role("button", name=re.compile(r"^Blocked\. Set to")).click()
+                toast = page.locator(".ui-toast"); expect(toast).to_be_visible()
+                self.assertNotEqual(api(self.ada_ctx, "GET", f"/api/v1/work/{task['id']}")["status"], "blocked")
+                toast.get_by_role("button", name="Undo").click()
+                expect(page.locator(".ui-toast").filter(has_text="back to blocked")).to_be_visible()
+                back = api(self.ada_ctx, "GET", f"/api/v1/work/{task['id']}")
+                self.assertEqual((back["status"], back["blocker"], back["waitingFor"]["id"]), ("blocked", reason, self.kai))
+                page.goto(f"/projects/{self.project}")
+                expect(page.get_by_text(reason, exact=True)).to_have_count(1)
+
 
 if __name__ == "__main__":
     unittest.main()

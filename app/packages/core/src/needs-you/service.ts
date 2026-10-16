@@ -124,7 +124,7 @@ export function createNeedsYou(ports: NeedsYouPorts, now: () => Date = () => new
         detail: waitedOn ? (reason ?? task.title) : task.title, project: { id: task.projectId, name: projectNames.get(task.projectId) ?? 'Project' },
         from: null, at: iso(task.updatedAt), url: `/projects/${task.projectId}/tasks?open=work:${task.id}`,
         decision: null, reason: null,
-        blocked: { workId: task.id, number: task.number, version: task.version, blocker: task.blocker, since: iso(task.updatedAt), waitingFor: waitingTask ? ref(waitingTask) : null,
+        blocked: { workId: task.id, number: task.number, version: task.version, blocker: task.blocker, since: iso(task.updatedAt), waitingForUserId: task.waitingFor?.id ?? null, waitingFor: waitingTask ? ref(waitingTask) : null,
           ...(waitedOn ? { waitedBy: asker } : {}) },
         snoozeTask: waitingTask ? ref(waitingTask) : null,
       });
