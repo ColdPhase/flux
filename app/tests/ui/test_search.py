@@ -224,12 +224,12 @@ class SearchJourney(unittest.TestCase):
         see_all.click()
         expect(page).to_have_url(re.compile(r"/search\?q=sensor$"))
         expect(page.get_by_role("heading", level=1, name="Search")).to_be_visible()
-        results = page.get_by_role("list", name="Results")
+        results = page.get_by_role("region", name="Results")
         expect(results.get_by_role("link").first).to_be_visible()
         chips = page.get_by_role("group", name="Kind of result")
         expect(chips.get_by_role("button", name=re.compile(r"^All"))).to_have_attribute("aria-pressed", "true")
         expect(chips.get_by_role("button", name=re.compile(r"^Messages"))).to_contain_text("6")
-        expect(chips.get_by_role("button", name=re.compile(r"^Docs"))).to_contain_text("1")
+        expect(chips.get_by_role("button", name=re.compile(r"^Wiki"))).to_contain_text("1")
         shot(page, "search-page-desktop-1440")
         tasks = chips.get_by_role("button", name=re.compile(r"^Tasks"))
         tasks.click()
@@ -247,6 +247,9 @@ class SearchJourney(unittest.TestCase):
         # The announced status counts in the singular for one result (#217).
         expect(page.locator('p.ui-vh[role="status"]')).to_have_text("1 result")
         page.get_by_role("combobox", name="Place").select_option(label="All places")
+        # Wait for the results of every place: a row that is on screen while they load is gone once they are grouped.
+        expect(results).to_have_attribute("aria-busy", "false")
+        expect(results.get_by_role("link").nth(1)).to_be_visible()
         # ↓ from the field moves through the results; ↑ from the first returns to the field.
         search_box = page.get_by_role("searchbox", name="Search Flux")
         search_box.focus()
@@ -266,7 +269,7 @@ class SearchJourney(unittest.TestCase):
     def test_06_a_member_outside_the_project_never_sees_it(self) -> None:
         page = self.page("olek")
         page.goto("/search?q=sensor")
-        results = page.get_by_role("list", name="Results")
+        results = page.get_by_role("region", name="Results")
         expect(results.get_by_role("link")).to_have_count(1)
         expect(results).to_contain_text("The workshop is on Thursday, bring a sensor kit.")
         chips = page.get_by_role("group", name="Kind of result")
@@ -347,7 +350,7 @@ class SearchJourney(unittest.TestCase):
         expect(page).to_have_url(re.compile(rf"/projects/{self.ids['lamp']}/tasks$"))
         expect(page.get_by_role("dialog", name="Details")).to_contain_text("Mount the infrared sensor in the lamp base")
         page.goto("/search?q=sensor")
-        results = page.get_by_role("list", name="Results")
+        results = page.get_by_role("region", name="Results")
         expect(results.get_by_role("link").first).to_be_visible()
         self.no_horizontal_scroll(page)
         for index in range(3):
@@ -359,7 +362,7 @@ class SearchJourney(unittest.TestCase):
     def test_09_dark_desktop_page(self) -> None:
         page = self.page("nia", dark=True)
         page.goto("/search?q=infrared")
-        expect(page.get_by_role("list", name="Results").get_by_role("link").first).to_be_visible()
+        expect(page.get_by_role("region", name="Results").get_by_role("link").first).to_be_visible()
         shot(page, "search-page-desktop-1440-dark")
 
 
@@ -491,7 +494,7 @@ class SearchJourney(unittest.TestCase):
         expect(page.get_by_role("heading", level=1, name="Gesture lamp")).to_be_visible()
 
         page.goto("/search?q=lamp&type=project")
-        results = page.get_by_role("list", name="Results")
+        results = page.get_by_role("region", name="Results")
         expect(results.get_by_role("link")).to_have_count(1)
         expect(results).to_contain_text("Gesture lamp")
         chips = page.get_by_role("group", name="Kind of result")

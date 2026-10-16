@@ -67,6 +67,7 @@ function merge(current: DmMessage[], incoming: DmMessage[]) {
 function DmContent({ initial }: { initial: Dm }) {
   // Touch devices add a line with Enter and send with the button (#189).
   const touch = useMediaQuery(MEDIA.touch);
+  const phone = useMediaQuery(MEDIA.phone);
   const { me } = useShellData();
   const revalidator = useRevalidator();
   const audienceId = useId();
@@ -349,8 +350,10 @@ function DmContent({ initial }: { initial: Dm }) {
   const typing = useTyping(me.user.id, !gone && !selecting ? { kind: 'dm', id: dm.id } : null, !recipientGone);
   if (gone) return <DmUnavailable />;
   const canSend = composer.canSend && !recipientGone;
-  const selectButton = actionSlot && messages.length && !recipientGone ? createPortal(
-    <Button ref={selectButtonRef} variant="quiet" icon="check" aria-pressed={selecting} className="dm-select-btn" onClick={() => toggleSelecting(!selecting)}>Select</Button>,
+  // On the phone the header keeps only Back, the title, Together and Search (Spokój #507): choosing starts by the composer.
+  const canChoose = messages.length > 0 && !recipientGone;
+  const selectButton = actionSlot && canChoose && !phone ? createPortal(
+    <Button ref={selectButtonRef} variant="quiet" icon="check" aria-pressed={selecting} className="dm-select-btn" onClick={() => toggleSelecting(!selecting)}>Choose messages</Button>,
     actionSlot,
   ) : null;
   const threadOpen = !!threadId && !!messages.length;
@@ -410,7 +413,8 @@ function DmContent({ initial }: { initial: Dm }) {
       ) : null}
       <div className="composer dm__composer" hidden={selecting}>
         <div className="composer__in">
-          <p className="composer__audience" id={audienceId}><Icon name="lock" size={13} />{audience}<span aria-hidden="true"> · </span><span className="composer__where">direct message</span></p>
+          <p className="composer__audience"><span id={audienceId}><Icon name="lock" size={13} />{audience}<span aria-hidden="true"> · </span><span className="composer__where">direct message</span></span>
+            {phone && canChoose ? <Button ref={selectButtonRef} variant="quiet" icon="check" className="dm-select-btn dm-select-btn--phone" onClick={() => toggleSelecting(true)}>Choose messages</Button> : null}</p>
           {goneNotice ? <p className="dm__notice" role="status"><Icon name="lock" size={13} />{goneNotice}</p> : null}
           <ConnectionLine />
           <div className="composer__box" aria-disabled={recipientGone || undefined}>

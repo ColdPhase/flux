@@ -54,12 +54,12 @@ test('all pages render quiet comparisons and insufficient evidence with current 
       const jumps = page.getByRole('navigation', { name: 'Project work sections' });
       // Results have no group in Tasks (#342); the cited result is checked below from the suggestion itself.
       for (const [label, target] of [['Work', 'g-open']] as const) {
-        // The phone's saved view is Mine (it has no group views); the computer's is a group plus Only mine.
+        // The phone's saved view is Mine (it has no group views); the computer's is a group plus the toolbar's Mine toggle.
         const mine = page.getByRole('group', { name: 'Whose tasks' });
         if (viewport.width === 390) await mine.getByRole('button', { name: 'Mine', exact: true }).tap();
         else {
           await views.getByRole('button', { name: /^Open / }).click();
-          await views.getByRole('checkbox', { name: 'Only mine', exact: true }).check();
+          await page.locator('.tb-bar').getByRole('button', { name: 'Mine', exact: true }).click();
         }
         assert.equal(await page.locator(`#${target}`).count(), 0, 'the destination is hidden by the saved view');
         const jump = jumps.getByRole('button', { name: new RegExp(`^${label} `) });
@@ -70,7 +70,7 @@ test('all pages render quiet comparisons and insufficient evidence with current 
           assert.equal(await mine.getByRole('button', { name: 'Mine', exact: true }).getAttribute('aria-pressed'), 'false');
         } else {
           assert.equal(await views.getByRole('button', { name: 'All', exact: true }).getAttribute('aria-pressed'), 'true');
-          assert.equal(await views.getByRole('checkbox', { name: 'Only mine', exact: true }).isChecked(), false);
+          assert.equal(await page.locator('.tb-bar').getByRole('button', { name: 'Mine', exact: true }).getAttribute('aria-pressed'), 'false');
         }
         await page.waitForFunction((id) => {
           const bounds = document.getElementById(id)?.getBoundingClientRect();

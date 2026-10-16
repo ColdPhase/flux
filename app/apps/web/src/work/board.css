@@ -12,14 +12,14 @@
   box-shadow: inset 0 -1px 0 var(--line2); transition: box-shadow var(--dur-1) ease, color var(--dur-1) ease;
 }
 .tb-search:focus-within { box-shadow: inset 0 -2px 0 var(--t1); color: var(--t2); }
+/* The List has no search of its own: dimmed in place, so the toolbar keeps its controls where they are (rule 7). */
+.tb-search.is-dimmed { opacity: .45; box-shadow: none; }
+.tb-search input:disabled { cursor: default; }
 .tb-search input { flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; background: none; font-size: var(--fs-md); color: var(--t1); outline: none; }
 .tb-search input::placeholder { color: var(--t3); }
-.tb-bar__end { display: contents; }
-.tb-mode { order: 0; }
-.tb-mine { order: 1; }
-.tb-search { order: 2; margin-left: 8px; }
-.tb-dr { order: 8; margin-left: auto; }
-.tb-add.ui-btn { order: 9; }
+/* In reading order: [Board | List] [Mine] [Search tasks], then "+ Task" at the far end (Spokój S6). */
+.tb-search { margin-left: 8px; }
+.tb-add.ui-btn { margin-left: auto; }
 .tb-mode { display: inline-flex; gap: 2px; padding: 2px; border-radius: var(--r-pill); background: var(--sub); box-shadow: inset 0 1px 2px rgba(0, 0, 0, .06); }
 .tb-mode__b {
   display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-height: 26px; min-width: 26px; padding: 0 12px;

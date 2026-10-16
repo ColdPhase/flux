@@ -79,6 +79,8 @@ export interface WorkRowProjection extends NativeRowBase {
   status: WorkStatus;
   owner: NamedPrincipal | null;
   blocker: string | null;
+  /** The one person a blocked task waits for (#550). */
+  waitingFor: NamedPrincipal | null;
   parked: WorkItem['parked'];
   parkedBy: WorkReadRef | null;
   rule: WorkReadRef | null;

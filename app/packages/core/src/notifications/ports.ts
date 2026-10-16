@@ -51,7 +51,7 @@ export interface DmMessageFacts {
   participantIds: string[];
 }
 
-export interface WorkFacts { id: string; projectId: string; projectName: string; title: string; ownerUserId: string | null }
+export interface WorkFacts { id: string; projectId: string; projectName: string; title: string; number: number; ownerUserId: string | null; waitingForUserId: string | null; status: string; blocker: string | null }
 
 export interface ReviewFacts {
   id: string;

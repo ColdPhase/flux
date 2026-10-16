@@ -135,8 +135,8 @@ def phone_menu(page: Page, tap: bool = False):
 
 
 def view_tab(page: Page, name: str, tap: bool = False) -> None:
-    """A project view by its name: the header's segmented control, or on the phone the title's menu (#341)."""
-    if page.viewport_size["width"] <= 640:
+    """A project view by its name: the header's segmented control, or below 900 px the title's menu (#341, #505)."""
+    if page.viewport_size["width"] <= 900:
         link = phone_menu(page, tap).get_by_role("link", name=re.compile(f"^{name}"))
     else:
         link = page.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile(f"^{name}"))
@@ -162,7 +162,8 @@ def open_details(page: Page, tap: bool = False) -> None:
         home.click()
         return
     header.get_by_role("button", name="More", exact=True).click()
-    page.get_by_role("menu", name="More").get_by_role("menuitem", name="Details").click()
+    # One meaning per word (#506 AC-4): "Project details" in a project, "Message info" in a direct message.
+    page.get_by_role("menu", name="More").get_by_role("menuitem", name=re.compile(r"^(Details|Project details|Message info)$")).click()
 
 
 def open_what_matters(page: Page, tap: bool = False) -> None:
@@ -533,21 +534,22 @@ class AppShellJourney(unittest.TestCase):
         self.assertEqual(marker, ["rgb(255, 255, 255)", True], "the current place is a raised white pill (F-026 §4)")
         expect(sidebar.get_by_text("No projects yet")).to_be_visible()
         expect(sidebar.get_by_role("button", name=re.compile("^New"))).to_have_attribute("aria-keyshortcuts", "C")
-        views = page.get_by_role("navigation", name="Views")
-        # Home's personal views sit in the header's one row; project-header views are covered by
+        # Home has no views bar (#508); its quiet links lead to the personal pages. Project-header views are covered by
         # test_project_header.py and retain Conversation · Map · Tasks · Wiki · Agents (#340).
-        expect(page.locator("header.top").get_by_role("navigation", name="Views")).to_be_visible()
-        for label in ("Overview", "Map", "Tasks", "Wiki"):
-            expect(views.get_by_role("link", name=label, exact=True)).to_be_visible()
-        expect(views.get_by_role("link", name="Overview")).to_have_attribute("aria-current", "page")
+        views = page.get_by_role("navigation", name="Views")
+        expect(views).to_have_count(0)
+        for label in ("All my tasks", "Sketchbook", "Wiki"):
+            expect(page.locator(".home__more").get_by_role("link", name=label, exact=True)).to_be_visible()
         expect(page.get_by_role("heading", level=2, name=re.compile("^Good "))).to_be_visible()
         expect(page.get_by_role("region", name="Needs you")).to_be_visible()
         expect(page.get_by_role("region", name="Projects")).to_be_visible()
         shot(page, "desktop-1440-home-light")
 
         # Private notes moved from Home's former conversation into Your notes in the Sketchbook.
-        views.get_by_role("link", name="Map", exact=True).click()
+        places.get_by_role("link", name="Sketchbook", exact=True).click()
         expect(page).to_have_url(f"{ORIGIN}/map")
+        expect(page.get_by_role("heading", level=1, name="Sketchbook", exact=True)).to_be_visible()
+        expect(page.get_by_role("navigation", name="Views")).to_have_count(0)
         expect(page.get_by_role("heading", name="Start a sketch")).to_be_visible()
         composer = page.get_by_label("Private note", exact=True)
         # Your notes is a normal-flow section of the Sketchbook, not the old Home-pinned composer.
@@ -585,14 +587,17 @@ class AppShellJourney(unittest.TestCase):
         self.assertEqual(len(page.evaluate("fetch('/api/v1/workspaces').then(r => r.json())")), 1, "still one space")
         shot(page, "desktop-1440-light")
 
-        indicator = page.locator(".top__views .ui-tabs__indicator")
-        before = indicator.evaluate("el => el.style.transform")
-        views.get_by_role("link", name="Tasks").click()
+        # The personal pages stay reachable and keep Back: Home's quiet links, then the browser's Back (#508 AC-5).
+        places.get_by_role("link", name="Home").click()
+        expect(page.get_by_role("heading", level=2, name=re.compile("^Good "))).to_be_visible()
+        page.locator(".home__more").get_by_role("link", name="All my tasks", exact=True).click()
         expect(page).to_have_url(f"{ORIGIN}/tasks")
         expect(page.get_by_role("heading", name="Nothing is waiting for you")).to_be_visible()
-        self.assertNotEqual(before, indicator.evaluate("el => el.style.transform"), "the pill moves to the chosen view")
-        views.get_by_role("link", name="Map", exact=True).click()
-        expect(page.get_by_role("heading", name="Start a sketch")).to_be_visible()
+        expect(page.get_by_role("navigation", name="Views")).to_have_count(0)
+        page.go_back()
+        expect(page).to_have_url(f"{ORIGIN}/")
+        page.locator(".home__more").get_by_role("link", name="Sketchbook", exact=True).click()
+        expect(page.get_by_role("heading", level=1, name="Sketchbook", exact=True)).to_be_visible()
         shot(page, "desktop-1440-map-light")
 
         # Details is in More (#340); the header has no separate Details button on the computer.

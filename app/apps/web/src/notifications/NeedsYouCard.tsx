@@ -121,7 +121,7 @@ export function NeedsYouCard({ item, variant = 'card', selected = false, handler
   const identity = item.assistantRequestIdentity;
   const label = identity ? `${KIND_WORD[item.kind]}: ${identity.assistantName}, Agent for ${identity.ownerName}: ${item.title}` : `${KIND_WORD[item.kind]}: ${item.title}`;
   const meta = (identity ? [`for ${identity.ownerName}`, KIND_WORD[item.kind], project]
-    : decision ? ['Proposed decision', project] : item.kind === 'blocked' ? ['Your task', project, ago(item.at)] : [KIND_WORD[item.kind], project]).filter(Boolean).join(' · ');
+    : decision ? ['Proposed decision', project] : item.kind === 'blocked' ? [item.blocked?.waitedBy ? 'Waiting on you' : 'Your task', project, ago(item.at)] : [KIND_WORD[item.kind], project]).filter(Boolean).join(' · ');
   const who = item.from?.name ?? null;
 
   const actions = (
@@ -135,7 +135,7 @@ export function NeedsYouCard({ item, variant = 'card', selected = false, handler
       ) : item.kind === 'blocked' ? (
         <>
           <Button variant="secondary" onClick={() => handlers.open(item)}>Open task</Button>
-          <Button variant="quiet" onClick={() => handlers.unblock(item)}>Unblock</Button>
+          {item.blocked?.waitedBy ? null : <Button variant="quiet" onClick={() => handlers.unblock(item)}>Unblock</Button>}
         </>
       ) : (
         <Button variant="secondary" onClick={() => handlers.open(item)}>{item.assistantRequestIdentity ? 'Review' : item.reason === 'invitation' ? 'Open' : 'Reply'}</Button>

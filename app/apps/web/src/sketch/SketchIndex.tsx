@@ -8,7 +8,7 @@ import { ensurePersonalSpace } from '../app/personalSpace';
 import { YourNotes } from '../app/YourNotes';
 import { useReadingPosition } from '../app/drafts';
 import { useStreamEvents } from '../api/stream';
-import { audience, sketchHref, when } from './format';
+import { audience, sketchHref, thoughtsLine, when } from './format';
 import './sketch.css';
 
 interface Listed { sketch: Sketch; projectName: string | null }
@@ -96,6 +96,8 @@ export function SketchIndex() {
   return (
     <div className="sk-page" ref={scroller}>
       <div className="sk sk--index">
+        {/* The header names the Sketchbook; this is its one privacy line, at every width (#508). */}
+        <p className="sk-book__private"><Icon name="lock" size={13} />Only you can see this until you share or move something to a project.</p>
         {state === 'loading' ? <div className="sk-page--center"><Spinner label="Loading sketches" /></div> : null}
         {state === 'failed' ? (
           <div className="view-empty">
@@ -108,7 +110,6 @@ export function SketchIndex() {
           <div className="view-empty">
             <EmptyState icon="map" title="Start a sketch" action={action}>
               <p>Maps are for thinking out loud: put thoughts down, connect them and move them around. Nothing on a map has to become work.</p>
-              <p>A new sketch is private to you.</p>
             </EmptyState>
           </div>
         ) : null}
@@ -125,7 +126,7 @@ export function SketchIndex() {
                     <Icon name="map" size={16} />
                     <span className="sk-index__b">
                       <span className="sk-index__t">{sketch.title}</span>
-                      <span className="sk-index__s">{sketch.scope === 'dm' ? `${directMessages.find((dm) => dm.id === sketch.dmId)?.audience ?? 'A direct message'}, in a direct message` : audience(sketch, me.user.id, projectName)} · changed {when(sketch.updatedAt)}</span>
+                      <span className="sk-index__s">{thoughtsLine(sketch)}{sketch.scope === 'dm' ? `${directMessages.find((dm) => dm.id === sketch.dmId)?.audience ?? 'A direct message'}, in a direct message` : audience(sketch, me.user.id, projectName)} · changed {when(sketch.updatedAt)}</span>
                     </span>
                   </Link>
                 </li>

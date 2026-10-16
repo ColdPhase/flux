@@ -14,6 +14,8 @@ const criteria = z.array(text(WORK_LIMITS.criterion)).max(WORK_LIMITS.criteria);
 const dependencyIds = z.array(id).max(WORK_LIMITS.dependencies);
 
 /** Standing-grant native work actions through the shared one-transaction executor (`action-execution.ts`). */
+const waitingForUserId = z.string().min(1).max(200).describe('Optional: the one person a blocked task waits for, by user id. They get an Inbox item. Blocked tasks only.');
+
 export function registerAgentWorkActions(tools: AgentToolRegistry, db: Database, claims: FluxMcpClaims) {
   const execute = nativeActionExecutor(db, claims);
   const register = (operation: AgentOperation) => tools.forScope('flux.action.execute', { operation, classes: AGENT_OPERATION_CLASSES[operation] });
@@ -27,13 +29,14 @@ export function registerAgentWorkActions(tools: AgentToolRegistry, db: Database,
     inputSchema: z.strictObject({ ...execution(['execute', 'plan']), task: z.strictObject({
       title: text(WORK_LIMITS.title), outcome: z.string().max(WORK_LIMITS.outcome).optional(),
       status: z.enum(WORK_STATUSES).optional(), blocker: z.string().max(WORK_LIMITS.blocker).optional(),
+      waitingForUserId: waitingForUserId.optional(),
       criteria: criteria.optional(), dependencyIds: dependencyIds.optional(),
       planIntent: z.strictObject({ materialId: id, version, intentKey: text(WORK_LIMITS.intentKey) }).optional(),
     }) }),
     annotations,
-  }, async ({ task, ...input }) => {
+  }, async ({ task: { waitingForUserId: waiting, ...task }, ...input }) => {
     try {
-      const created: CreateWorkCommand = { ...task, ...materialSources(input) };
+      const created: CreateWorkCommand = { ...task, ...(waiting ? { waitingFor: { kind: 'human', id: waiting } } : {}), ...materialSources(input) };
       return toolResult(await execute(input, 'work.create', null, created as unknown as AgentJsonValue, async ({ work: native, agent }) => {
         const work = await native.createWork(agent, input.projectId, created);
         return { value: { workId: work.id, number: work.number, version: work.version }, postconditions: [{ kind: 'work', id: work.id, version: work.version }] };
@@ -43,19 +46,21 @@ export function registerAgentWorkActions(tools: AgentToolRegistry, db: Database,
 
   register('work.update').registerTool('flux_update_task', {
     title: 'Change a project task under a standing grant',
-    description: 'Change one existing native Flux task at the exact version you last read: title, outcome, status, blocker, '
+    description: 'Change one existing native Flux task at the exact version you last read: title, outcome, status, blocker, who it waits for (waitingForUserId, a project member; blocked tasks only), '
       + 'done-when criteria (replaces the list) or prerequisites (replaces the set). Needs a live work.update standing grant '
       + 'for this task or project and the runtime from flux_bootstrap. A changed task is a version conflict; read it again. '
       + 'Starting or finishing requires every prerequisite to be done. A plan intent cannot be changed.',
     inputSchema: z.strictObject({ ...execution(['execute', 'plan']), workId: id, expectedVersion: version, changes: z.strictObject({
       title: text(WORK_LIMITS.title).optional(), outcome: z.string().max(WORK_LIMITS.outcome).optional(),
       status: z.enum(WORK_STATUSES).optional(), blocker: z.string().max(WORK_LIMITS.blocker).nullable().optional(),
+      waitingForUserId: waitingForUserId.nullable().optional(),
       criteria: criteria.optional(), dependencyIds: dependencyIds.optional(),
     }) }),
     annotations,
   }, async ({ workId, expectedVersion, changes, ...input }) => {
     try {
-      const update: UpdateWorkCommand = changes;
+      const { waitingForUserId: waiting, ...rest } = changes;
+      const update: UpdateWorkCommand = { ...rest, ...(waiting === undefined ? {} : { waitingFor: waiting === null ? null : { kind: 'human', id: waiting } }) };
       return toolResult(await execute(input, 'work.update', workId, { expectedVersion, changes: update } as unknown as AgentJsonValue,
         async ({ work: native, agent }) => {
           const work = await native.updateWork(agent, workId, update, expectedVersion);

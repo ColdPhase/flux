@@ -56,6 +56,10 @@ export interface NeedsYouBlocked {
   since: string;
   /** What it waits for: the first unfinished prerequisite, when it has any. */
   waitingFor: NeedsYouTaskRef | null;
+  /** Set when this item is for the person a blocked task waits for (#550): who is waiting, "Ada is waiting for you". */
+  waitedBy?: string | null;
+  /** The person a blocked task waits for, so an Undo of Unblock can put them back. */
+  waitingForUserId?: string | null;
 }
 
 export interface NeedsYouItem {

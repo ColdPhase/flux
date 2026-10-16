@@ -51,12 +51,12 @@ const planIntent = { type: ['object', 'null'], required: ['materialId', 'version
   properties: { materialId: { type: 'string' }, version: { type: 'integer' }, intentKey: { type: 'string' } } } as const;
 
 const createWork = { type: 'object', required: ['title'], additionalProperties: false, properties: {
-  title, outcome: { type: 'string', maxLength: WORK_LIMITS.outcome }, owner: principalRef, status,
+  title, outcome: { type: 'string', maxLength: WORK_LIMITS.outcome }, owner: principalRef, status, waitingFor: principalRef,
   blocker: { type: 'string', maxLength: WORK_LIMITS.blocker }, sources: refs, related: refs, clientCommandId: { type: 'string', format: 'uuid' },
   criteria, dependencyIds, planIntent,
 } } as const;
 const updateWork = { type: 'object', additionalProperties: false, minProperties: 1, properties: {
-  title, outcome: { type: 'string', maxLength: WORK_LIMITS.outcome }, owner: principalRef, status,
+  title, outcome: { type: 'string', maxLength: WORK_LIMITS.outcome }, owner: principalRef, status, waitingFor: principalRef, restore: { type: 'boolean', enum: [true] },
   blocker: { type: ['string', 'null'], maxLength: WORK_LIMITS.blocker }, parked: { type: 'boolean', enum: [false] }, expectedVersion: version,
   expectedGithubRuleRevision: { type: 'integer', minimum: 0 },
   clientCommandId: { type: 'string', format: 'uuid' },

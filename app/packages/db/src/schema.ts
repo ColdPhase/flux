@@ -1110,6 +1110,8 @@ export const projectWorkItems = pgTable('project_work_items', {
   outcome: text('outcome').notNull().default(''),
   status: text('status', { enum: ['open', 'in_progress', 'blocked', 'done', 'not_pursued'] }).notNull().default('open'),
   blocker: text('blocker'),
+  /** Who a blocked task waits for (#550, migration 0102); null unless blocked. */
+  waitingForUserId: text('waiting_for_user_id').references(() => authUsers.id, { onDelete: 'set null' }),
   ownerUserId: text('owner_user_id'),
   ownerAgentId: uuid('owner_agent_id'),
   parkedByDecisionId: uuid('parked_by_decision_id'),
@@ -1190,6 +1192,23 @@ export const projectTaskNotices = pgTable('project_task_notices', {
   unique().on(table.workId, table.kind),
   unique('task_notice_scope_identity').on(table.workspaceId, table.projectId, table.workId, table.id),
   index('project_task_notices_project_idx').on(table.projectId, table.createdAt, table.id),
+  foreignKey({ columns: [table.workspaceId, table.projectId, table.workId], foreignColumns: [projectWorkItems.workspaceId, projectWorkItems.projectId, projectWorkItems.id] }).onDelete('cascade'),
+]);
+
+/** One short conversation line each time a task becomes blocked or unblocked (#550, migration 0102). */
+export const projectTaskUpdates = pgTable('project_task_updates', {
+  id: uuid('id').primaryKey(),
+  workspaceId: uuid('workspace_id').notNull(),
+  projectId: uuid('project_id').notNull(),
+  workId: uuid('work_id').notNull(),
+  kind: text('kind', { enum: ['task.blocked', 'task.unblocked'] }).notNull(),
+  createdByKind: text('created_by_kind', { enum: ['human', 'agent'] }).notNull(),
+  createdById: text('created_by_id').notNull(),
+  waitingForUserId: text('waiting_for_user_id').references(() => authUsers.id, { onDelete: 'set null' }),
+  reason: text('reason'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  index('project_task_updates_project_idx').on(table.projectId, table.createdAt.desc(), table.id.desc()),
   foreignKey({ columns: [table.workspaceId, table.projectId, table.workId], foreignColumns: [projectWorkItems.workspaceId, projectWorkItems.projectId, projectWorkItems.id] }).onDelete('cascade'),
 ]);
 

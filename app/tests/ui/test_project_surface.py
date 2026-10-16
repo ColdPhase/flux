@@ -482,7 +482,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
         expect(page.get_by_text("Everyone in Gesture lamp")).to_be_visible()
         page.get_by_role("link", name="Sketches", exact=True).click()
         expect(page).to_have_url(re.compile(rf"/projects/{self.ids['project']}/map$"))
-        expect(page.get_by_role("list", name="Sketches in Gesture lamp").get_by_role("link")).to_have_count(2)
+        expect(page.get_by_role("list", name="Sketches in Gesture lamp").get_by_role("link")).to_have_count(1)  # the new sketch is empty, so it is not listed (#508 AC-3)
         # Everyone in the project sees it; nobody else does.
         listed = self.api(self.page("jonas"), "GET", f"/api/v1/workspaces/{self.ids['workspace']}/sketches?projectId={self.ids['project']}&limit=50", status=200)
         self.assertIn(sketch_id, [item["id"] for item in listed["items"]])
@@ -513,6 +513,9 @@ class ProjectSurfaceJourney(unittest.TestCase):
         expect(sheet.get_by_role("heading", name="Use a ToF sensor, not the camera, for gestures")).to_be_visible()
         sheet.get_by_role("button", name="Close details").tap()
         view_tab(page, "Map", tap=True)
+        # A project whose only listed sketch has content opens it directly (empty sketches are not listed, #508); the index is /map.
+        expect(page).to_have_url(re.compile(rf"/projects/{self.ids['project']}/map/[0-9a-f-]+$"))
+        page.goto(f"/projects/{self.ids['project']}/map")
         expect(page.get_by_role("list", name="Sketches in Gesture lamp")).to_be_visible()
         shot(page, "project-map-phone-390")
 
@@ -663,11 +666,12 @@ class ProjectSurfaceJourney(unittest.TestCase):
                 self.close_create(page)
                 if not phone:  # Phone Tasks has only Mine | All, not group views.
                     views = page.get_by_role("navigation", name="Task views")
-                    views.get_by_label("Only mine").check()
+                    mine_toggle = page.get_by_role("button", name="Mine", exact=True)
+                    mine_toggle.click()
                     views.get_by_role("button", name="All", exact=True).click()
                     expect(open_from_tasks(page)).to_have_value(draft)
                     self.close_create(page)
-                    views.get_by_label("Only mine").uncheck()
+                    mine_toggle.click()
                     views.get_by_role("button", name="In progress", exact=False).click()
                     views.get_by_role("button", name="All", exact=True).click()
                 page.locator(".ws-list").get_by_role("button", name=re.compile("Test the camera in low light")).click()

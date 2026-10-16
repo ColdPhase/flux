@@ -86,6 +86,16 @@ describe('fake claude auth login', () => {
     assert.ok(!existsSync(join(s.config, '.credentials.json')));
   });
 
+  test('a pasted code starting fake-reject- fails the login without a scenario file', async () => {
+    const s = await session();
+    const login = start(claude, ['auth', 'login'], s);
+    await login.until(() => login.state.stdout.includes('Paste code here'));
+    login.send(`fake-reject-x#${stateOf(login.state.stdout)}\n`);
+    assert.equal(await login.exited, 1);
+    assert.match(login.state.stderr, /^Login failed: /m);
+    assert.ok(!existsSync(join(s.config, '.credentials.json')));
+  });
+
   test('login_timeout and closed input: a timeout exits 1, closed input keeps waiting as the real CLI does', async () => {
     const s = await session('login_timeout');
     const timeout = await runToEnd(claude, ['auth', 'login'], s);

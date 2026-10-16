@@ -505,7 +505,7 @@ class ScenarioJourney:
         s.update(dm=dm)
 
         # Only the camera, sensor and privacy messages seed a shared sketch; no project yet.
-        self.tap(page.get_by_role("button", name="Select", exact=True))
+        self.tap(page.get_by_role("button", name="Choose messages", exact=True))
         bar = page.get_by_role("region", name="Selected messages")
         expect(bar).to_contain_text("No project is created.")
         for index in (1, 2, 3):
@@ -1117,7 +1117,7 @@ class ScenarioJourney:
         self.tap(dialog.get_by_role("option", name=re.compile("See all results")))
         expect(page).to_have_url(re.compile(r"/search\?q=lux"))
         chips = page.get_by_role("group", name="Kind of result")
-        for kind in ("Messages", "Docs", "Results", "Sketches"):
+        for kind in ("Messages", "Wiki", "Results", "Map"):
             expect(chips.get_by_role("button", name=re.compile(f"^{kind}"))).to_be_visible()
         self.shot(page, "5-search")
         kinds = lambda q: {item["kind"] for item in self.api("ada", "GET", f"/api/v1/search?q={urllib.parse.quote(q)}&limit=50", status=200)["items"]}  # noqa: E731

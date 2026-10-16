@@ -255,6 +255,8 @@ test('actual retained native87 history upgrades to88 without pulses, seeds old b
   const upTo88=[...beforeManifest,manifest.find(m=>m.version===88)!];
   try{
     for(const migration of beforeManifest){await fixture.pool.query(await readFile(`packages/db/migrations/${migration.name}`,'utf8'));await fixture.pool.query('INSERT INTO flux_schema_version(version) VALUES($1) ON CONFLICT DO NOTHING',[migration.version]);}
+    // The app code under test reads columns that migrations after 88 add (0102 waiting_for_user_id); this earlier fixture gets that one column.
+    await fixture.pool.query('ALTER TABLE project_work_items ADD COLUMN waiting_for_user_id text');
     const client=await fixture.pool.connect();try{
       await client.query('BEGIN');await client.query('SET CONSTRAINTS ALL DEFERRED');
       // Restore only this isolated fixture's two guarded tables, preserving the ACTUAL

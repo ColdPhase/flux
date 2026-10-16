@@ -113,7 +113,7 @@ class DmSketchJourney(unittest.TestCase):
         page = self.page("jo")
         page.goto(f"/dm/{self.dm_id}")
         expect(page.locator(".dm-msg__body", has_text="gestures")).to_be_visible()
-        select = page.get_by_role("button", name="Select", exact=True)
+        select = page.get_by_role("button", name="Choose messages", exact=True)
         select.click()
         expect(select).to_have_attribute("aria-pressed", "true")
         bar = page.get_by_role("region", name="Selected messages")
@@ -192,7 +192,7 @@ class DmSketchJourney(unittest.TestCase):
         page.goto(f"/dm/{self.dm_id}")
         page.wait_for_function("navigator.serviceWorker.controller?.state === 'activated'")
         expect(page.get_by_test_id("flux-update-prompt")).to_have_count(0)
-        select = page.get_by_role("button", name="Select", exact=True)
+        select = page.get_by_role("button", name="Choose messages", exact=True)
         select.tap()
         self.message(page, 1).locator(".dm-msg__body").tap()
         bar = page.get_by_role("region", name="Selected messages")
@@ -294,7 +294,7 @@ class DmSketchJourney(unittest.TestCase):
         page = self.page("jo")
         # "60 GHz radar sees through the shade" is Kai's thought in the DM sketch; its copy lives in Gesture lamp.
         page.goto(f"/search?q=shade&place=dm:{self.dm_id}")
-        results = page.get_by_role("list", name="Results")
+        results = page.get_by_role("region", name="Results")
         expect(results.get_by_role("link")).to_have_count(1)
         expect(results).to_contain_text("60 GHz radar")
         expect(results).to_contain_text("Kai Lind")
@@ -333,7 +333,7 @@ class DmSketchJourney(unittest.TestCase):
         expect(jo.get_by_role("toolbar", name="Sketch tools")).to_have_count(0)
         jo.goto(f"/dm/{self.dm_id}")
         expect(jo.locator(".dm__notice")).to_contain_text("left this conversation")
-        expect(jo.get_by_role("button", name="Select", exact=True)).to_have_count(0)
+        expect(jo.get_by_role("button", name="Choose messages", exact=True)).to_have_count(0)
         shot(jo, "dm-sketch-left")
 
 

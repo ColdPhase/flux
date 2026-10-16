@@ -286,7 +286,7 @@ docker exec -u 1000:1000 "$t_cid" sh -c "printf logout_fails > /data/$t_binding/
 out=$(live console-sign-out T); printf '%s\n' "$out"
 [ "$(value "$out" SIGN_OUT_FAILED)" = true ] || fail "a failed logout was not reported"
 if docker exec "$t_cid" test -e "/data/$t_binding/claude/.credentials.json"; then fail "a failed logout left the login"; fi
-# The console and its notices in a browser, at phone width and on a desktop (tests/ui/test_runtime_console.py).
+# The console, its notices and a failed sign-in (a code starting fake-reject-) in a browser, at phone width and on a desktop (tests/ui/test_runtime_console.py).
 if [ -n "${FLUX_RUNTIME_SCREENSHOT_DIR:-}" ]; then mkdir -p "$FLUX_RUNTIME_SCREENSHOT_DIR"; export FLUX_UI_SCREENSHOT_DIR="$FLUX_RUNTIME_SCREENSHOT_DIR"; fi
 compose --profile ui build ui-test
 compose --profile ui run --rm --no-deps -e FLUX_UI_RUNTIME=on -w /work/tests/ui ui-test python3 -m unittest -v test_runtime_console

@@ -162,6 +162,8 @@ export interface WorkItem extends ProjectObject {
   status: WorkStatus;
   /** Only while blocked. */
   blocker: string | null;
+  /** Only while blocked: the one person it waits for (#550), a member of the project; null for no one. */
+  waitingFor: NamedPrincipal | null;
   owner: NamedPrincipal | null;
   /** Set when a pivot parked the work. Parking keeps the status: parked work is not done. */
   parked: { decisionId: string; at: string } | null;
@@ -203,6 +205,8 @@ export interface CreateWorkCommand {
   owner?: PrincipalRef | null;
   status?: WorkStatus;
   blocker?: string;
+  /** Who a blocked task waits for (#550): a person with access to the project. Applies to blocked work only. */
+  waitingFor?: PrincipalRef | null;
   /** Messages, sketch thoughts or material versions the work comes from. They are linked, never moved or copied. */
   sources?: ObjectRef[];
   /** Other objects of the project to connect (thoughts, decisions, results, messages). */
@@ -225,7 +229,10 @@ export interface TaskCreationNotice {
   workspaceId: string;
   projectId: string;
   workId: string;
-  kind: 'task.created' | 'task.creation_reverted';
+  kind: 'task.created' | 'task.creation_reverted' | 'task.blocked' | 'task.unblocked';
+  /** For a blocked line (#550): who the task waits for and the reason, as the line said them. */
+  waitingFor?: NamedPrincipal | null;
+  reason?: string | null;
   /** Current lifecycle; original notice identity and actor remain unchanged. */
   lifecycle?: TaskLifecycle;
   /** Current task label; the exact historical identity/creator/sources below are retained. */
@@ -255,6 +262,13 @@ export interface UpdateWorkCommand extends VersionPrecondition {
   owner?: PrincipalRef | null;
   status?: WorkStatus;
   blocker?: string | null;
+  /** Who a blocked task waits for (#550); `null` clears it. It also clears when the task leaves Blocked. */
+  waitingFor?: PrincipalRef | null;
+  /**
+   * An Undo: this change puts back what an earlier one replaced. It contributes no blocker message, so Undo never
+   * posts the same blocker twice (#550).
+   */
+  restore?: boolean;
   /** `false` takes parked work back into the plan. Parking happens only through a pivot. */
   parked?: false;
   /** Replaces the whole list. */

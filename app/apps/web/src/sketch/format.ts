@@ -8,6 +8,12 @@ export function when(iso: string) {
   return new Date().toDateString() === date.toDateString() ? time.format(date) : `${day.format(date)}, ${time.format(date)}`;
 }
 
+/** "3 thoughts · " for a listed sketch with thoughts (#508), else nothing. */
+export function thoughtsLine(sketch: Sketch) {
+  const n = sketch.thoughtCount ?? 0;
+  return n ? `${n} ${n === 1 ? 'thought' : 'thoughts'} · ` : '';
+}
+
 export function firstName(name: string) {
   return name.trim().split(/\s+/)[0] || name;
 }

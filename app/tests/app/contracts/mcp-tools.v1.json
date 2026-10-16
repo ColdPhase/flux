@@ -1285,6 +1285,11 @@
                 "maxLength": 200,
                 "minLength": 1,
                 "type": "string"
+              },
+              "waitingForUserId": {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
               }
             },
             "required": [
@@ -3758,6 +3763,18 @@
                 "maxLength": 200,
                 "minLength": 1,
                 "type": "string"
+              },
+              "waitingForUserId": {
+                "anyOf": [
+                  {
+                    "maxLength": 200,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
               }
             },
             "type": "object"

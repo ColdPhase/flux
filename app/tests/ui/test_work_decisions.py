@@ -401,7 +401,7 @@ class WorkDecisionsJourney(unittest.TestCase):
         expect(page).to_have_url(re.compile(r"/tasks\?(?=[^#]*show=mine)"))
         expect(page.get_by_role("group", name="Whose tasks").get_by_role("button", name="Mine", exact=True)).to_have_attribute("aria-pressed", "true")
 
-        # Computer: the group views keep whole labels with counts, a pressed state and Only mine.
+        # Computer: the group views keep whole labels with counts, a pressed state, and one Mine in the toolbar.
         desk = self.page("partner")
         desk.goto(f"/projects/{self.project_id}/tasks?status=blocked")
         views = desk.get_by_role("navigation", name="Task views")
@@ -411,14 +411,14 @@ class WorkDecisionsJourney(unittest.TestCase):
         region = desk.get_by_role("region", name=re.compile("^Blocked"))
         expect(region).to_contain_text(mine)
         expect(region).to_contain_text(theirs)
-        views.get_by_label("Only mine").check()
+        desk.get_by_role("button", name="Mine", exact=True).click()
         self.assertIn("show=mine", desk.url)
         expect(region).not_to_contain_text(theirs)
         desk.goto(f"/projects/{self.project_id}/tasks?status=parked&show=mine")
         expect(desk.get_by_role("navigation", name="Task views").get_by_role("button", name=re.compile("^Parked"))).to_have_attribute("aria-pressed", "true")
         expect(desk.locator(".ws-none")).to_contain_text("Nothing of yours in parked right now.")
         desk.get_by_role("button", name="Show everyone’s").click()
-        expect(desk.get_by_role("navigation", name="Task views").get_by_label("Only mine")).not_to_be_checked()
+        expect(desk.get_by_role("button", name="Mine", exact=True)).to_have_attribute("aria-pressed", "false")
 
         # Keyboard on desktop: views are buttons in reading order with a visible pressed state.
         desk = self.page("partner")

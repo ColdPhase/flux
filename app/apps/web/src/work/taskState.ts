@@ -17,7 +17,7 @@ export const STATE_KEYS: Record<string, WorkStatus> = { '1': 'open', '2': 'in_pr
 export const nextStatus = (status: WorkStatus): WorkStatus =>
   status === 'open' ? 'in_progress' : status === 'in_progress' ? 'done' : status === 'blocked' ? 'in_progress' : 'open';
 
-export type StateTarget = Pick<WorkRowProjection, 'id' | 'number' | 'title' | 'status' | 'blocker' | 'version'>;
+export type StateTarget = Pick<WorkRowProjection, 'id' | 'number' | 'title' | 'status' | 'blocker' | 'version'> & Partial<Pick<WorkRowProjection, 'waitingFor'>>;
 
 const lower = (status: WorkStatus) => STATUS_LABEL[status].toLowerCase();
 
@@ -68,7 +68,11 @@ export function useStateChange(saved: (item: WorkItem) => void, done: () => void
         action: {
           label: 'Undo', key: 'Z',
           onClick: () => {
-            const back = { status: item.status, ...(item.status === 'blocked' && item.blocker ? { blocker: item.blocker } : {}) };
+            // A put-back blocker and person are not said or announced again (restore).
+            const blockedBack = item.status === 'blocked' && (item.blocker || item.waitingFor);
+            const back = { status: item.status, ...(item.status === 'blocked' && item.blocker ? { blocker: item.blocker } : {}),
+              ...(item.status === 'blocked' && item.waitingFor ? { waitingFor: { kind: 'human' as const, id: item.waitingFor.id } } : {}),
+              ...(blockedBack ? { restore: true as const } : {}) };
             void (async () => {
               if (!(await sameSession())) return;
               try {

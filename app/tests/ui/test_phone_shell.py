@@ -131,10 +131,11 @@ class PhoneShellJourney(unittest.TestCase):
                 self.assertEqual(page.evaluate("document.documentElement.scrollWidth"), width, "no sideways scroll")
                 shot(page, f"266-home-phone-{width}")
 
-                # Inside a project the capsule stays with Projects current; the views are in the title.
+                # Inside a project there is no capsule (#507 AC-2): Search is in the header, and the views are in the title.
                 page.goto(f"/projects/{self.project['id']}/tasks")
                 expect(page.get_by_role("navigation", name="Project views")).to_have_count(0)
-                expect(page.get_by_role("navigation", name="Main places").get_by_role("link", name="Projects")).to_have_attribute("aria-current", "page")
+                expect(page.get_by_role("navigation", name="Main places")).to_have_count(0)
+                expect(page.locator("header").get_by_role("button", name="Search", exact=True)).to_have_count(1)
                 header = self.box(page.locator("header"))
                 self.assertLessEqual(header["y"] + header["height"], 80, "a single compact header")
                 menu = self.open_views(page)
@@ -178,7 +179,7 @@ class PhoneShellJourney(unittest.TestCase):
                 menu = self.open_views(page)
             menu.get_by_role("link", name=re.compile(f"^{name}")).click()
             expect(page).to_have_url(re.compile(f"/projects/{self.project['id']}{path}"))
-            expect(bar.get_by_role("link", name="Projects")).to_have_attribute("aria-current", "page")
+            expect(bar).to_have_count(0)
             menu = self.open_views(page)
             expect(menu.get_by_role("link", name=re.compile(f"^{name}"))).to_have_attribute("aria-current", "page")
             expect(menu.locator('[aria-current="page"]')).to_have_count(1)
@@ -255,7 +256,6 @@ class PhoneShellJourney(unittest.TestCase):
         self.assertEqual(field.evaluate("el => getComputedStyle(el).fontSize"), "16px", "no iOS zoom on focus")
         self.assertGreaterEqual(self.box(field)["height"], 44, "a 44px field")
         # A tap on the card's empty space focuses the field.
-        page.locator(".phead__sub").click()
         card = self.box(box)
         page.mouse.click(card["x"] + card["width"] - 6, card["y"] + 4)
         expect(field).to_be_focused()
