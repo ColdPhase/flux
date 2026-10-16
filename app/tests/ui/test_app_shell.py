@@ -803,6 +803,11 @@ class AppShellJourney(unittest.TestCase):
         sheet_box = box(page, sheet)
         self.assertEqual((round(sheet_box["x"]), round(sheet_box["y"]), round(sheet_box["width"]), round(sheet_box["height"])), (0, 0, PHONE["width"], PHONE["height"]), "Details is a full-screen sheet")
         shot(page, "phone-390-details-light")
+        # #433: when a dialog surface itself holds keyboard focus, it shows a visible inset ring.
+        page.keyboard.press("Shift")
+        ring = page.evaluate("""() => { const s = document.querySelector('.ui-overlay__surface'); s.setAttribute('tabindex', '-1'); s.focus();
+          const cs = getComputedStyle(s); return {visible: s.matches(':focus-visible'), style: cs.outlineStyle, width: parseFloat(cs.outlineWidth), offset: parseFloat(cs.outlineOffset)}; }""")
+        self.assertTrue(ring["visible"] and ring["style"] == "solid" and ring["width"] >= 2 and ring["offset"] < 0, ring)
         page.keyboard.press("Escape")
         expect(page.get_by_role("dialog")).to_have_count(0)
         details.click()

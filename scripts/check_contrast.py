@@ -17,8 +17,8 @@ from pathlib import Path
 TOKENS = Path(__file__).resolve().parent.parent / "app/apps/web/src/ui/tokens.css"
 
 # (foreground, background, minimum ratio, purpose). A name ending in @0 or @1 is the first or last
-# stop of a gradient token. --t3 is muted text: it is used only on --bg and --el; text on the quiet
-# fills (--side, --sub, --hov) is --t2 or --t1.
+# stop of a gradient token. --t3 is muted text and also holds 4.5:1 on the quiet fills (--side, --sub,
+# --hov), so meta text in the sidebar, in chips and on hovered rows passes (#433).
 PAIRS = [
     ("--t1", "--bg", 4.5, "body text on the screen"),
     ("--t1", "--el", 4.5, "text in cards, bubbles and fields"),
@@ -32,6 +32,9 @@ PAIRS = [
     ("--t2", "--hov", 4.5, "secondary text on hover"),
     ("--t3", "--bg", 4.5, "meta text on the screen"),
     ("--t3", "--el", 4.5, "meta text in cards and bubbles"),
+    ("--t3", "--side", 4.5, "meta text in the sidebar"),
+    ("--t3", "--sub", 4.5, "meta text in chips and segmented tracks"),
+    ("--t3", "--hov", 4.5, "meta text on hovered rows"),
     ("--oninv", "--inv", 4.5, "inverted text: own bubbles, chosen chips, toasts"),
     ("--oninv", "--grad-inv@0", 4.5, "primary button label, top of its gradient"),
     ("--oninv", "--grad-inv@1", 4.5, "primary button label, bottom of its gradient"),
