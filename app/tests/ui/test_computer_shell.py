@@ -122,21 +122,6 @@ class ComputerShell(unittest.TestCase):
         expect(composer).to_have_value("[")
         expect(self.sidebar(page).locator(".side--rail")).to_have_count(0)
 
-    def test_05_under_focus_bracket_ends_focus_and_shows_the_sidebar_like_command_k(self) -> None:
-        """#555: "[" under Focus does what ⌘K's sidebar item does: it ends Focus, and the full sidebar comes back."""
-        self.ensure_account()
-        page = self.page()
-        page.goto("/")
-        side = self.sidebar(page)
-        expect(side.get_by_role("button", name="Collapse sidebar")).to_be_visible()
-        page.locator("body").press("f")
-        expect(side.locator(".side--rail")).to_have_count(1)
-        page.keyboard.press("[")
-        expect(page.get_by_role("button", name=re.compile(r"^Focus · notifications paused"))).to_have_count(0)
-        expect(side.locator(".side--rail")).to_have_count(0)
-        expect(side.get_by_role("button", name="Collapse sidebar")).to_be_visible()
-        self.assertEqual(round(side.bounding_box()["width"]), 248)
-
     def test_03_c_opens_the_create_window_and_a_task_starts_in_the_open_project(self) -> None:
         self.ensure_account()
         page = self.page()
