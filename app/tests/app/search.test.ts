@@ -115,6 +115,9 @@ describe('search: one query across Flux, only what you may read', () => {
     const workHit = byKind('work')[0]!;
     assert.equal(workHit.label, 'Task');
     assert.deepEqual(workHit.target, { type: 'work', projectId: lamp.id, id: work.id });
+    // A task's row shows its glyph and "#n" (#514): its number and status come with the result.
+    assert.deepEqual(workHit.task, { number: work.number, status: 'open' });
+    assert.ok(answer.items.filter((item) => item.kind !== 'work').every((item) => item.task === undefined), 'only tasks carry one');
     // The task's number in its project leads its text, so "#n" finds it (#276); the outcome follows.
     assert.equal(text(workHit.snippet), `#${work.number}\nNumbers for the low-light case`);
     assert.equal(byKind('thought')[0]!.label, 'Thought in “Lamp shapes”');

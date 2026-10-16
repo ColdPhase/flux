@@ -6,6 +6,8 @@
  * cursor come only from objects the caller may read at the moment of the request: the server
  * applies the access policy inside the SQL before ranking, limiting, counting and highlighting.
  */
+import type { WorkStatus } from './work.js';
+
 export const SEARCH_PATH = '/api/v1/search';
 
 /** What a result is. `dm_message` results belong to the `message` filter and `thought` results to `sketch`. */
@@ -80,6 +82,8 @@ export interface SearchResult {
   /** When this text was written or last changed. */
   at: string;
   target: SearchTarget;
+  /** A task's number in its project and its status, so its row shows the glyph and "#12" (#514). */
+  task?: { number: number; status: WorkStatus };
 }
 
 export interface SearchResponse {

@@ -55,6 +55,8 @@ export interface SearchRow {
   dmId: string | null;
   dmName: string | null;
   sketchTitle: string | null;
+  /** A task's number in its project (#514). */
+  workNumber: number | null;
   version: number | null;
   currentVersion: number | null;
   status: string | null;
