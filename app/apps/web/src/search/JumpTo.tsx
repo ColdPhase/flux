@@ -6,21 +6,27 @@ import { useShellActions } from '../app/shellContext';
 import { Button, Icon, Kreska, MEDIA, Overlay, Spinner, useMediaQuery, type IconName } from '../ui';
 import { listAgents } from '../work/api';
 import { targetHref } from './api';
-import { useRecentPlaces, useRecentSearches, type RecentPlace } from './recent';
+import { placeOfPath, useRecentPlaces, useRecentSearches, type RecentPlace } from './recent';
 import { ResultBody } from './ResultRow';
 import { useSearch } from './useSearch';
 import './search.css';
 
 type Option =
   | { kind: 'result'; id: string; result: SearchResult }
-  | { kind: 'place'; id: string; place: RecentPlace }
+  | { kind: 'place'; id: string; place: RecentPlace; label: string; icon: IconName }
   | { kind: 'all'; id: string }
   | { kind: 'command'; id: string; section: string; label: string; icon: IconName; keys?: string[]; run: () => void }
   | { kind: 'agent'; id: string; agent: Agent };
 
-/** The views a recent place names beside its title, so two views of one project read apart. */
-const PLACE_VIEW: Record<string, string> = { map: 'Map', tasks: 'Tasks', docs: 'Wiki', wiki: 'Wiki', agents: 'Agents', inbox: 'Inbox' };
-const placeView = (path: string) => PLACE_VIEW[path.split('/').filter(Boolean).pop() ?? ''];
+/** A project's views as its header names them, so two views of one project read apart in "Recent". */
+const PROJECT_VIEW: Record<string, { label: string; icon: IconName }> = {
+  conversation: { label: 'Conversation', icon: 'chat' }, tasks: { label: 'Tasks', icon: 'tasks' }, map: { label: 'Map', icon: 'map' },
+  docs: { label: 'Wiki', icon: 'doc' }, agents: { label: 'Agents', icon: 'spark' },
+};
+const OWN_PLACE: Record<string, { label: string; icon: IconName }> = {
+  home: { label: 'Home', icon: 'home' }, 'home:tasks': { label: 'Home · Tasks', icon: 'tasks' }, 'home:docs': { label: 'Home · Wiki', icon: 'doc' },
+  sketchbook: { label: 'Sketchbook', icon: 'edit' }, inbox: { label: 'Inbox', icon: 'inbox' },
+};
 
 /** `@` searches people and agents, `#` tasks by number or title; anything else searches everything. */
 type Scope = 'all' | 'people' | 'tasks' | 'agents' | 'wiki';
@@ -93,7 +99,7 @@ function JumpBody({ onClose, userId, phone }: { onClose: () => void; userId: str
   // Searches are remembered for the Search page; ⌘K's empty state lists the places the person opened (F-026 E02).
   const recent = useRecentSearches(userId);
   const recentPlaces = useRecentPlaces(userId);
-  const { projects, workspaces } = useShellData();
+  const { projects, workspaces, directMessages } = useShellData();
   const { openCreate, openDetails, toggleFocus, toggleRail, sidebarHidden } = useShellActions();
   const location = useLocation();
   const here = location.pathname.match(/^\/projects\/([^/]+)/)?.[1];
@@ -124,10 +130,22 @@ function JumpBody({ onClose, userId, phone }: { onClose: () => void; userId: str
     { kind: 'command', section: 'Create', id: 'create-thought', label: 'New thought on the Map', icon: 'edit', run: () => navigate(mapHref) },
     ...(here ? [{ kind: 'command' as const, section: 'Create', id: 'create-decision', label: 'Propose a decision', icon: 'rule' as const, run: () => openDetails({ kind: 'propose-decision', projectId: here }) }] : []),
   ];
-  // With no query: the recent places (not this one), then the four actions with their keys as drawn (E02).
-  const places = recentPlaces.filter((place) => place.path !== location.pathname);
+  // With no query: up to four recent places (not the one in view, and only those the person can still open, named as
+  // their header names them), then the four actions with their keys as drawn (E02).
+  const hereKey = placeOfPath(location.pathname)?.key;
+  const named = (place: RecentPlace): { label: string; icon: IconName } | null => {
+    const own = OWN_PLACE[place.key];
+    if (own) return own;
+    const [kind, id, view] = place.key.split(':');
+    if (kind === 'dm') { const dm = directMessages.find((item) => item.id === id); return dm ? { label: dm.title, icon: 'person' } : null; }
+    const project = kind === 'project' ? projects.find((item) => item.id === id) : undefined;
+    const shown = view ? PROJECT_VIEW[view] : undefined;
+    return project && shown ? { label: `${project.name} · ${shown.label}`, icon: shown.icon } : null;
+  };
+  const places = recentPlaces.filter((place) => place.key !== hereKey)
+    .flatMap((place) => { const name = named(place); return name ? [{ place, ...name }] : []; }).slice(0, 4);
   const emptyOptions: Option[] = [
-    ...places.map((place): Option => ({ kind: 'place', id: `place-${place.path}`, place })),
+    ...places.map(({ place, label, icon }): Option => ({ kind: 'place', id: `place-${place.key}`, place, label, icon })),
     { kind: 'command', section: 'Actions', id: 'action-new-task', label: 'New task', icon: 'plus', keys: ['C'], run: () => openCreate({ kind: 'task', ...(here ? { projectId: here } : {}) }) },
     { kind: 'command', section: 'Actions', id: 'action-inbox', label: 'Go to Inbox', icon: 'inbox', keys: ['G', 'I'], run: () => navigate('/inbox') },
     ...(phone ? [] : [
@@ -204,7 +222,7 @@ function JumpBody({ onClose, userId, phone }: { onClose: () => void; userId: str
       <div className="jump__body">
         {!text && !places.length ? <p className="jump__hint">Find a message, a material and each of its versions, a task, a rule, a result, a thought or a person. Only what you can open is searched.</p> : null}
         {options.length ? (
-          <ul className="jump__list" role="listbox" id={listId} aria-label={rest ? 'Results' : scope === 'all' ? 'Recent and actions' : 'Results'}>
+          <ul className="jump__list" role="listbox" id={listId} aria-label={rest || scope !== 'all' ? 'Results' : places.length ? 'Recent places and actions' : 'Actions'}>
             {options.map((option, index) => {
               const section = sectionOf(option, scope);
               const before = index ? sectionOf(options[index - 1]!, scope) : null;
@@ -215,7 +233,7 @@ function JumpBody({ onClose, userId, phone }: { onClose: () => void; userId: str
                   className={`jump__opt${option.kind === 'result' ? ' sr' : ''}${option.kind === 'all' ? ' jump__all' : ''}${index === current ? ' is-active' : ''}`}
                   onMouseMove={() => { if (index !== current) setActive(index); }} onClick={() => choose(option)}>
                   {option.kind === 'result' ? <ResultBody result={option.result} />
-                    : option.kind === 'place' ? <><Icon name="clock" size={14} className="jump__ric" /><span className="jump__rtext">{option.place.title}</span>{placeView(option.place.path) ? <small className="jump__side">{placeView(option.place.path)}</small> : null}</>
+                    : option.kind === 'place' ? <><Icon name={option.icon} size={15} className="jump__ric" /><span className="jump__rtext">{option.label}</span></>
                     : option.kind === 'command' ? <><Icon name={option.icon} size={15} className="jump__ric" /><span className="jump__rtext">{option.label}</span>{option.keys ? <span className="jump__keys" aria-hidden="true">{option.keys.map((key) => <kbd key={key} className="jump__key">{key}</kbd>)}</span> : null}</>
                     : option.kind === 'agent' ? <><Icon name="spark" size={15} className="jump__ric" /><span className="jump__rtext">{option.agent.name}</span><small className="jump__side">Agent</small></>
                     : <><span className="jump__alltext">See all results for “{rest}”</span><Icon name="chevron-right" size={14} /></>}
@@ -235,7 +253,7 @@ function JumpBody({ onClose, userId, phone }: { onClose: () => void; userId: str
           <p className="jump__empty">{/[\p{L}\p{N}]{2,}/u.test(rest) ? <>Nothing you can open matches “{rest}”. Try fewer or different words.</> : 'Type at least two letters of a word.'}</p>
         ) : state.status === 'failed' ? <p className="jump__empty" role="alert">{state.message}</p> : null}
       </div>
-      <p className="jump__foot" aria-hidden="true">{options.length ? <><span><kbd>↑</kbd><kbd>↓</kbd> move</span><span><kbd>↵</kbd> open</span></> : null}<span><kbd>@</kbd> people and agents</span><span><kbd>#</kbd> task number</span><span><kbd>Esc</kbd> close</span></p>
+      <p className="jump__foot" aria-hidden="true">{options.length ? <><span className="jump__keyhint"><kbd>↑</kbd><kbd>↓</kbd> move</span><span className="jump__keyhint"><kbd>↵</kbd> open</span></> : null}<span><kbd>@</kbd> people and agents</span><span><kbd>#</kbd> task number</span><span className="jump__keyhint"><kbd>Esc</kbd> close</span></p>
     </div>
   );
 }

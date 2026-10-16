@@ -18,7 +18,6 @@ import uuid
 
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
-from create_window import create_other
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, box, open_details, shot, start_forwarder
 
 PASSWORD = "messages between friends"
@@ -125,8 +124,8 @@ class DirectMessageJourney(unittest.TestCase):
         page.locator("#side-dms").get_by_role("link", name="Messages", exact=True).click()
         expect(page.get_by_role("heading", name="No direct messages yet")).to_be_visible()
         expect(page.get_by_text("not workspace owners or admins")).to_be_visible()
-        page.get_by_role("complementary", name="Sidebar").get_by_role("button", name="New", exact=True).click()
-        create_other(page, "Message")
+        # The Create window's Message tab writes in a project's conversation (#521); a direct message starts here.
+        page.locator(".view-empty").get_by_role("link", name="New message").click()
         expect(page.get_by_role("heading", level=1, name="New message")).to_be_visible()
         people = page.get_by_role("list", name="People")
         expect(people.get_by_text("Kai Tanaka")).to_be_visible()

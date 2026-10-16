@@ -10,7 +10,7 @@ import { DeferredDetails, DeferredJumpTo, DeferredLiveStage } from './DeferredSu
 import { RouteProgress } from './RouteProgress';
 import { useInboxDot } from '../notifications/dot';
 import { placeOf } from './place';
-import { rememberPlace } from '../search/recent';
+import { placeOfPath, rememberPlace } from '../search/recent';
 import { ShellContext, type CreateRequest, type DetailsView } from './shellContext';
 import { Sidebar } from './Sidebar';
 import { VIEWS, startCapture, viewIndex } from './views';
@@ -151,6 +151,7 @@ function AppLayoutContent() {
   // Focus mode (`F`, F-026 S19): the rail, a quiet header, and push and email held by the server.
   const focus = useFocus(me.user.id);
   const focusing = !!focus.until && !phone;
+  const toggleFocus = focus.toggle;
 
   const projectId = location.pathname.match(/^\/projects\/([^/]+)/)?.[1];
   const detailsOwner = useMemo(() => ({ accountId: me.user.id, projectId }), [me.user.id, projectId]);
@@ -170,10 +171,10 @@ function AppLayoutContent() {
     openNavigation() { setDetailsOpen(false); setNavOpen(true); },
     actionSlot,
     metadataSlot,
-    toggleFocus() { void focus.toggle(); },
+    toggleFocus() { void toggleFocus(); },
     toggleRail,
     sidebarHidden: railed,
-  }), [toggleDetails, actionSlot, metadataSlot, projectId, detailsOwner, toggleRail, railed, focus.toggle]);
+  }), [toggleDetails, actionSlot, metadataSlot, projectId, detailsOwner, toggleRail, railed, toggleFocus]);
 
   // A link inside an overlaid panel or sheet (#117 overview) leads to its destination.
   const [shownPath, setShownPath] = useState(location.pathname);
@@ -220,7 +221,6 @@ function AppLayoutContent() {
 
   // "[" collapses or expands the sidebar, "F" turns focus on and off, and "G" then "I" goes to the
   // Inbox (F-026 §4 keyboard).
-  const toggleFocus = focus.toggle;
   useEffect(() => {
     let leader = 0;
     const onKey = (event: KeyboardEvent) => {
@@ -391,12 +391,13 @@ function AppLayoutContent() {
   // The computer's header is one row (F-026 §4): the name, the place's views as a segmented control,
   // then what needs you, the people and agents, and More. Focus keeps only the name, the view and
   // the way out.
-  // ⌘K's "Recent" lists the places the person opened on this device (F-026 E02); search and setup pages are not places.
-  const placeTitle = place.title;
+  // ⌘K's "Recent" lists the places the person opened on this device (F-026 E02): a project's view, a direct message, the
+  // Inbox, Home. A project or conversation this account cannot open (the not-found page) is not remembered.
+  const openable = projectId ? !!activeProject : dmId && dmId !== 'new' ? !!activeDm : true;
   useEffect(() => {
-    if (!placeTitle || /^\/(search|settings|projects\/new|dm\/new)/.test(location.pathname)) return;
-    rememberPlace(me.user.id, { path: location.pathname, title: placeTitle });
-  }, [location.pathname, placeTitle, me.user.id]);
+    const opened = placeOfPath(location.pathname);
+    if (opened && openable) rememberPlace(me.user.id, opened);
+  }, [location.pathname, openable, me.user.id]);
   const rowViews = phone ? null
     : activeProject && projectViews ? { items: projectViews, label: 'Project views' }
       : dmViews ? { items: dmViews, label: 'Direct message views' }

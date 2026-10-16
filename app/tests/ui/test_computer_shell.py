@@ -132,9 +132,9 @@ class ComputerShell(unittest.TestCase):
         expect(window).to_be_visible()
         # New opens the one Create window (#345) on Task; Thought, Message, Decision and Project are its tabs (F-026 S3, E02).
         expect(window.get_by_label("Title", exact=True)).to_be_focused()
-        kinds = window.get_by_role("group", name="Create")
-        self.assertEqual([item.strip() for item in kinds.get_by_role("button").all_inner_texts()], ["Task", "Thought", "Message", "Decision", "Project"])
-        expect(kinds.get_by_role("button", name="Task", exact=True)).to_have_attribute("aria-pressed", "true")
+        kinds = window.get_by_role("tablist", name="Create")
+        self.assertEqual([item.strip() for item in kinds.get_by_role("tab").all_inner_texts()], ["Task", "Thought", "Message", "Decision", "Project"])
+        expect(kinds.get_by_role("tab", name="Task", exact=True)).to_have_attribute("aria-selected", "true")
         page.keyboard.press("Escape")
         expect(window).to_have_count(0)
         page.goto(f"/projects/{self.ids['projects'][0]}")

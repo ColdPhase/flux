@@ -285,7 +285,7 @@ class SearchJourney(unittest.TestCase):
         dialog.locator("[role=option].sr").first.click()
         # The search itself is remembered for the Search page; ⌘K's empty state lists the places opened (F-026 E02).
         dialog, field = self.jump(page, "")
-        expect(dialog.get_by_role("listbox", name="Recent and actions")).to_contain_text("Home")
+        expect(dialog.get_by_role("listbox", name="Recent places and actions")).to_contain_text("Home")
         page.keyboard.press("Escape")
         stored = page.evaluate("Object.keys(localStorage).filter((k) => k.startsWith('flux.search.recent.'))")
         self.assertEqual(stored, [f"flux.search.recent.{PEOPLE['nia']['id']}"])

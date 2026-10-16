@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { Link, Navigate, useLoaderData, useLocation, useRevalidator, useSearchParams, type LoaderFunctionArgs } from 'react-router';
 import type { Project, ProactiveComparisonOutcome, ProjectWorkViewQuery, WorkCounts, WorkItem, WorkObjectType, WorkRowProjection } from '@flux/contracts';
-import { Button, EmptyState, ErrorState, GoalReached, Icon, MEDIA, useMediaQuery } from '../ui';
+import { Button, EmptyState, ErrorState, Icon, MEDIA, useMediaQuery } from '../ui';
 import { getProject } from '../app/conversation-api';
 import { useShellActions } from '../app/shellContext';
 import { useShellData } from '../app/data';
@@ -227,9 +227,6 @@ export function ProjectTasks() {
   const data = read.phase === 'ready' || read.phase === 'refreshing' ? read.value : null;
   const writable = (data?.summary.access ?? project.access) !== 'viewer';
   const counts = data ? mine ? data.summary.mine : data.summary.all : null;
-  // The project's goal is reached when its tasks are all finished (at least one). Projects have no goal record yet, so
-  // the project stands for its goal; the moment itself is once per goal and device (#520).
-  const goalReached = !!data && data.summary.all.finished > 0 && data.summary.all.open + data.summary.all.in_progress + data.summary.all.blocked === 0;
   const viewKey = taskViewKey(me.user.id, project.id, status, mine);
   const readingKey = listing ? `${viewKey}:reading:${cursor ?? 'first'}` : `${taskViewKey(me.user.id, project.id, null, mine)}:board:reading`;
   const saveReading = useWorkReadingPosition(scroller, readingKey, data !== null, data?.summary.observedAt);
@@ -404,7 +401,6 @@ export function ProjectTasks() {
     <div className="tb-root">
       <Toolbar mode={mode} onMode={chooseMode} query={boardSearch} onQuery={setBoardSearch} mine={mine} onMine={(next) => setView({ mine: next })} writable={writable} onNew={startNew} />
       <div className="pane-scroll" ref={scroller}>
-      {goalReached ? <GoalReached goalId={project.id} title="All tasks done" project={project.name} /> : null}
       {!listing ? (
         <div className="tb" data-work-observed-at={data?.summary.observedAt}>
           {parkedCount || waiting ? <nav className="tb-also" aria-label="Also elsewhere">{inboxLink}{parkedCount ? <button type="button" className="tb-also__b" onClick={() => setView({ mode: 'list', status: 'parked' })}>{parkedCount} parked by a pivot</button> : null}</nav> : null}

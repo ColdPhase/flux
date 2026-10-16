@@ -124,8 +124,6 @@ export function GoalReached({ goalId, title, project, actions }: { goalId: strin
   const [first] = useState(() => !goalMomentSeen(goalId));
   const on = useSmallMoments();
   useEffect(() => { if (first) markGoalMomentSeen(goalId); }, [first, goalId]);
-  // Once per goal on this device: a later visit shows nothing, so the words never nag.
-  if (!first) return null;
   return (
     <section className="goal" aria-label="Goal reached">
       {on && first ? <Kreska expression="celebrate" size={88} /> : null}
