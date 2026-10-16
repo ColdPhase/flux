@@ -1,6 +1,6 @@
 import { Fragment, useCallback, useEffect, useState, type ReactNode } from 'react';
 import { Link } from 'react-router';
-import type { DecisionRowProjection, NamedPrincipal, NativeWorkRow, WorkReadRef, WorkRowProjection, WorkStatus, ResultRowProjection } from '@flux/contracts';
+import type { DecisionRowProjection, NamedPrincipal, NativeWorkRow, Project, WorkReadRef, WorkRowProjection, WorkStatus, ResultRowProjection } from '@flux/contracts';
 import { AgentIdentity, Icon, MEDIA, StatusGlyph, TASK_STATE_WORD, useMediaQuery, type IconName } from '../ui';
 import { useShellData } from '../app/data';
 import { useShellActions, type DetailsView, type OverviewView } from '../app/shellContext';
@@ -17,7 +17,11 @@ import { docUrl } from '../docs/api';
 import { useOpenConversation } from './OverviewContext';
 import { agentDisplayName, shortDate } from '../docs/format';
 import { agentAuthorOwner, useAgentOwners } from '../agents/owners';
+import { useProjectGoalDetails } from './ProjectGoal';
 import './overview.css';
+
+/** Hooks run before the shell is known; this stands in for it and is never shown. */
+const EMPTY_PROJECT: Project = { id: '', workspaceId: '', name: '', visibility: 'restricted', access: 'viewer', views: [], goal: null, version: 0, createdAt: '' };
 
 interface Row {
   key: string;
@@ -183,6 +187,7 @@ export function ProjectOverview({ messageId, selection, focusPeople = null, onBa
   const read = useOverviewWork(me.user.id, shell?.project.id ?? null, open?.conversation?.id ?? null, messageId);
   const current = useProjectWorkSummary();
   const owners = useAgentOwners(shell?.project);
+  const goal = useProjectGoalDetails(shell?.project ?? EMPTY_PROJECT, me.user.id);
   if (!shell) return null;
   const { project, people, sketches, docs } = shell;
   // An agent is named with Kreska, the "Agent" tag and its owner; a person by name only.
@@ -305,13 +310,16 @@ export function ProjectOverview({ messageId, selection, focusPeople = null, onBa
             <h3 className="details__title">{project.name}</h3>
             <p className="ov-audience">{audienceLine(people, me.user.id, project.visibility === 'workspace')}{space ? <> · {space.name}</> : null}</p>
           </div>
+          {goal.menu}
         </header>
+        {goal.line}
       ) : <>
         {/* A thread's or a message's Details name it and the project (#266). */}
         <p className="details__eyebrow">{project.name}{conversation && !messageMode ? ' · Conversation' : ''}</p>
-        <h3 className="details__title">{title}</h3>
+        <div className="ov-head ov-head--plain"><h3 className="details__title">{title}</h3>{messageMode ? null : goal.menu}</div>
         {message ? <p className="details__lead ov-quote">{message.body.length > 280 ? `${message.body.slice(0, 279)}…` : message.body}</p> : null}
         <p className="ov-audience"><Icon name={project.visibility === 'workspace' ? 'people' : 'lock'} size={13} />{audienceLine(people, me.user.id, project.visibility === 'workspace')}</p>
+        {messageMode ? null : goal.line}
       </>}
       {phone && !messageMode ? <section className="details__sec ov-sec" aria-label="Project summary">
         <button type="button" className="ov-row" onClick={() => openDetails({ kind: 'recap', projectId: project.id })}>
