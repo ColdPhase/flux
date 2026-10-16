@@ -99,11 +99,16 @@ export const RUN_TEMPLATES: { [C in RuntimeClient]: (input: RunTemplateInput) =>
  * 2026-10-16) and what Flux does with each: `off` is passed as `-c features.<key>=false`; `kept` names why
  * it gives the run no tool, file, shell, network or sub-agent. `memories` is default-off and switched off
  * anyway (F-022). The contract test fails on a default-on feature this table does not name, so a new one
- * needs review before a new pin. `secret_auth_storage` is on only on Windows; the runtime is Linux.
+ * needs review before a new pin. `secret_auth_storage` is on only on Windows; the runtime is Linux. Features
+ * the pinned `codex features list` shows as `removed` are not live and need no review. Checked against the
+ * real pinned binary offline on 2026-10-16 (contract/check-codex.ts): every `off` feature is off except
+ * `unified_exec` (`staysOn`), and `config/read` reflects the overrides.
  */
-export const CODEX_FEATURE_REVIEW: Record<string, { action: 'off' } | { action: 'kept'; why: string }> = {
+export const CODEX_FEATURE_REVIEW: Record<string, { action: 'off'; staysOn?: string } | { action: 'kept'; why: string }> = {
   daemon_auto_start: { action: 'off' }, shell_tool: { action: 'off' }, view_image: { action: 'off' }, sleep_tool: { action: 'off' },
-  unified_exec: { action: 'off' }, unified_exec_tty: { action: 'off' }, shell_snapshot: { action: 'off' }, code_mode_host: { action: 'off' },
+  unified_exec: { action: 'off', staysOn: 'the pinned Codex keeps it on whatever -c says (only managed requirements disable it: codex-rs core/src/tools/spec_plan.rs); '
+    + 'harmless here, because no command tool is registered at all while shell_tool is off (same function), and the JSONL check stops any command_execution' },
+  unified_exec_tty: { action: 'off' }, shell_snapshot: { action: 'off' }, code_mode_host: { action: 'off' },
   write_stdin_approval: { action: 'off' }, hooks: { action: 'off' }, worktrees: { action: 'off' }, multi_agent: { action: 'off' },
   apps: { action: 'off' }, tool_suggest: { action: 'off' }, plugins: { action: 'off' }, in_app_browser: { action: 'off' },
   in_app_chat: { action: 'off' }, in_app_dictation: { action: 'off' }, in_app_local_automation: { action: 'off' }, in_app_updates: { action: 'off' },

@@ -299,8 +299,13 @@ root on the host or every owner's credentials.
 - `runtime-egress` does two things:
   - It is an HTTPS proxy that allows only the vendor hosts each CLI documents.
     Claude Code: `api.anthropic.com`, `claude.ai`, `claude.com` and
-    `platform.claude.com`. No primary source lists Codex's OpenAI hosts yet. T6
-    records them from the pinned Codex source, and Codex stays off until then.
+    `platform.claude.com`. Codex (recorded by T6 #281 from the pinned source,
+    openai/codex `rust-v0.160.1`, read 2026-10-16): `auth.openai.com` (sign-in,
+    device codes, token refresh), `chatgpt.com` (the ChatGPT backend, its model
+    traffic and rate limits) and `api.openai.com` (an API-key sign-in). Telemetry
+    (`ab.chatgpt.com`), feedback uploads and update checks are not allowed: the run
+    passes `analytics.enabled=false` and `check_for_update_on_startup=false`, and
+    the others are TUI-only or behind switched-off features.
     The recorded hosts remain reachable during cleanup even after the operator
     turns clients off, so their logout commands can run. Login and runs still refuse
     while disabled. TLS hides paths, so CONNECT cannot restrict this to a logout URL.
@@ -341,7 +346,7 @@ ChatGPT ], completion read from `codex login status`. Journey 6 of F-027 adds ro
    | Claude Code | SSO | `claude auth login --sso` |
    | Codex | ChatGPT account, device code | `codex login --device-auth` |
    | Codex | OpenAI API key, typed at the CLI's prompt | `codex login --with-api-key` |
-   | Codex | ChatGPT Enterprise access token, typed at the CLI's prompt | `codex login --with-access-token`, if the pinned version has it (T6) |
+   | Codex | ChatGPT Enterprise access token, typed at the CLI's prompt | `codex login --with-access-token` (present in `rust-v0.160.1`, T6) |
 
    - Codex's browser-callback login needs `localhost:1455` to be reachable from
      the owner's browser. A remote runtime does not provide that. Codex documents
@@ -567,20 +572,28 @@ matching agent connection:
      ```
      with `ENABLE_CLAUDEAI_MCP_SERVERS=false`, `DISABLE_UPDATES=1` and
      `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`.
-   - **Codex:**
+   - **Codex** (T6 #281, revised 2026-10-16 against the pinned source, see below):
      ```text
      codex exec --json --ephemeral --ignore-user-config --sandbox read-only --skip-git-repo-check
        -c cli_auth_credentials_store=file
-       -c features.shell_tool=false -c features.unified_exec=false -c features.apps=false
-       -c features.multi_agent=false -c features.skill_mcp_dependency_install=false
-       -c web_search=disabled -c tools.web_search=false -c tools.view_image=false
-       -c features.hooks=false -c features.goals=false
-       -c features.remote_plugin=false -c features.memories=false
+       -c features.<key>=false   for every default-on feature of the pinned version not reviewed as
+                                 harmless (shell_tool, unified_exec, view_image, apps, multi_agent,
+                                 skill_mcp_dependency_install, hooks, goals, remote_plugin, code_mode_host,
+                                 browser_use, computer_use, image_generation, plugins, … and memories)
+       -c web_search="disabled" -c analytics.enabled=false -c check_for_update_on_startup=false
+       -c developer_instructions=<brief>
        -c mcp_servers.flux.url=<Flux MCP route through runtime-egress>
-       -c mcp_servers.flux.bearer_token_env_var=FLUX_RUN_TOKEN
+       -c mcp_servers.flux.bearer_token_env_var="FLUX_RUN_TOKEN"
        -c mcp_servers.flux.required=true
        -c 'mcp_servers.flux.enabled_tools=["<tool>", …]'   (exact and non-empty)
+       -                                                    (the prompt on stdin)
      ```
+     The reviewed list is `CODEX_FEATURE_REVIEW` in `app/apps/runtime/src/supervisor/templates.ts`.
+     Two keys of the 2026-10-05 text are not keys of the pinned Codex: `tools.view_image` (ignored
+     with a warning; `features.view_image` is the switch) and `tools.web_search=false` (a boolean is
+     accepted and ignored; `web_search="disabled"` is the switch). Both were replaced. Source:
+     openai/codex `rust-v0.160.1` (c3e23d4), `codex-rs/config/src/config_toml.rs` and
+     `codex-rs/features/src/lib.rs`, read 2026-10-16.
 4. One adapter per CLI maps its JSONL to the existing owner-only progress events
    (`assistant_run.changed.v1`). The final text is redacted, then commits through
    the personal-run path, shown as "Jo's assistant · asked by Jo".
@@ -627,11 +640,23 @@ shell, files, web, image, app, sub-agent or other MCP tool.
     stops the CLI at once, and nothing is committed. This is the Codex
     counterpart of Claude Code's `system/init` check. It cannot undo a step that
     has already started, so the overrides stay as the preventive layer.
-  - **Optional preflight.** `config/read` returns "the effective configuration on
+  - **Preflight (kept).** `config/read` returns "the effective configuration on
     disk after resolving configuration layering", from a separate app-server
     process, so it may not reflect `-c`. T6 checks it against the pinned binary,
     which needs no account. Flux keeps it as a blocking preflight only if it
-    reflects the overrides; otherwise it is dropped.
+    reflects the overrides; otherwise it is dropped. **Result (2026-10-16):** the
+    pinned app-server merges the root `-c` overrides as its session-flags layer
+    (`codex-rs/app-server/src/config_manager.rs`), and the real `codex-cli 0.160.1`,
+    run offline, returned them from `config/read`. The preflight is kept: before
+    each run the slot starts `codex app-server` with the run's overrides (never the
+    run token) and refuses the run unless every reviewed feature is off, web search
+    is disabled and Flux is the only, required MCP server with exactly the run's tools.
+  - **Default-on features.** The same offline check compares `codex features list`
+    with the reviewed list; an unreviewed default-on feature fails it. Observed:
+    `unified_exec` stays on whatever `-c` says (only managed requirements disable it),
+    which is harmless because no command tool is registered while `shell_tool` is
+    off (`codex-rs/core/src/tools/spec_plan.rs`), and the JSONL check stops any
+    `command_execution` anyway.
   - The app-server client allows only `initialize`, `config/read` and, to confirm
     a plan limit, `account/rateLimits/read`. wenext measured that app-server's
     `command/exec` still runs with the shell flags off.
@@ -671,7 +696,11 @@ values; the owner may lower them.
 and nothing falls back to an API key.
 
 - Codex: a text marker, then a confirming `account/rateLimits/read` through the
-  same allowlisted app-server client (wenext's two steps).
+  same allowlisted app-server client (wenext's two steps). The marker is the CLI's
+  `UsageLimitReachedError` text ("You’ve hit your usage limit …") or "Quota
+  exceeded" in `turn.failed`/`error`; the reset time comes only from the read (the
+  window at 100 %, `resetsAt` in Unix seconds), because the text prints a local
+  clock time. An unreadable read leaves the reset unknown.
 - Claude Code: the CLI's error result only.
 - A limit Flux could not read shows as "unknown", never as zero. Flux does not
   retry before the reset time the CLI reports.

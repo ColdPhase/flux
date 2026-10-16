@@ -58,9 +58,8 @@ organization). Have you accepted them?  [y/N]
   client. To turn the runtime off, empty `FLUX_AGENT_RUNTIME` and run `./flux up` (see
   [Switching off](#switching-off-purging-reset-and-clean)).
 - **Enter means yes, for Codex.** `Enter` on the first question writes `FLUX_AGENT_RUNTIME=codex`.
-  **Codex stays unavailable in this version** (its network hosts and checks arrive with F-022 T6), so
-  the profile starts and Settings shows Codex as pending until then. `n` writes nothing and does not ask
-  the second question.
+  Codex is available since F-022 T6 (#281): owners sign in with ChatGPT on Settings → Agents and AI.
+  `n` writes nothing and does not ask the second question.
 - **Claude Code needs a typed `y`.** The second question records *your* statement that you have agreed to
   Anthropic's Commercial Terms (see [Before you switch it on](#before-you-switch-it-on)), so `Enter`, `n`
   or any other answer does not make it. `y` writes `FLUX_AGENT_RUNTIME=codex,claude_code` and
@@ -98,9 +97,8 @@ FLUX_AGENT_RUNTIME=claude_code
 FLUX_AGENT_RUNTIME_COMMERCIAL_TERMS=2026-10-05   # the date you agreed with Anthropic
 ```
 
-Then `./flux up`. The values are `claude_code`, `codex`, or `claude_code,codex`. **Codex is accepted but
-stays unavailable in this version**: its network hosts and checks arrive with F-022 T6, so Settings shows
-it as pending.
+Then `./flux up`. The values are `claude_code`, `codex`, or `claude_code,codex`. Codex needs no operator
+statement; Claude Code needs the Commercial Terms date.
 
 `./flux up` then also builds and starts the Compose profile `runtime`:
 
@@ -284,9 +282,10 @@ Recorded from the T3 review (#331); none of them is hidden by the checks.
   `FLUX_AGENT_RUNTIME_IDLE_DAYS` (a binding that never ran counts from its creation). Accepted (#331 m5).
 - **`runtime-egress` is not vendor-exclusive (m6).** Cleanup must still reach a vendor after you switch its
   client off (TLS hides the request path), so the proxy allows the recorded hosts of every client at all
-  times; the supervisor, not the proxy, refuses login, status and runs for a client that is off. Today
-  only Claude Code's hosts are recorded, so a Codex-only deployment also allows them. Do not describe the
-  runtime as isolating one vendor's hosts from another's.
+  times; the supervisor, not the proxy, refuses login, status and runs for a client that is off. So a
+  Codex-only deployment also allows Claude Code's hosts, and the reverse (Codex: `auth.openai.com`,
+  `chatgpt.com`, `api.openai.com`). Do not describe the runtime as isolating one vendor's hosts from
+  another's.
 - **The proxy does not check the TLS server name against the `CONNECT` host (m6).** It relays bytes without
   terminating TLS, so it cannot see the name a slot asks for. An allowed host's address is not shown to
   serve only that host: a vendor address may sit on shared infrastructure that also serves other names. A
@@ -350,6 +349,13 @@ automated checks use fake CLIs. **Sign-in assertion table, run on 2026-10-08:** 
 installed Claude Code 2.1.285 (`linux-x64-musl`, SHA-256 `7b4414af…eaf102` from the signed manifest), and
 every flag and subcommand of the templates is in the help of Claude Code 2.1.285 and codex-cli 0.160.1,
 except `--max-turns`, which `claude --help` does not list but the CLI accepts (a made-up flag is refused).
+**Codex part, run on 2026-10-16 (T6 #281):** `apps/runtime/src/contract/check-codex.ts` against the
+checksum-verified `codex-cli 0.160.1` (`codex-x86_64-unknown-linux-musl`, SHA-256 `9226581b…a33f`) in
+`docker run --network none` (by hand; not through the script): every default-on feature of `codex features
+list` is in the reviewed list, every override switches its feature off except `unified_exec`, which the
+pinned Codex keeps on (recorded, harmless while `shell_tool` is off), `config/read` reflects the run's `-c`
+overrides (so the blocking preflight is kept), and the app-server client refuses `command/exec`. No real
+ChatGPT or OpenAI account was used; runs, sign-in and plan limits are verified with the fake `codex` only.
 Run it again whenever a pin changes. It proves the flags exist, not how the CLIs behave in a run (T5, T6).
 
 ## Checks

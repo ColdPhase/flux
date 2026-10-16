@@ -24,13 +24,13 @@ const env = { PATH: '/usr/local/bin:/usr/bin:/bin', HOME: `${home}/home`, CODEX_
 const failures: string[] = [];
 const report: Record<string, unknown> = { checkedAt: new Date().toISOString() };
 
-/** `name  stage  true|false` lines of `codex features list`. */
+/** `name  stage  true|false` lines of `codex features list`; `removed` features are not live and are left out. */
 async function features(args: readonly string[]): Promise<Map<string, boolean>> {
   const { stdout } = await run(codex, [...args, 'features', 'list'], { env, cwd: home, timeout: 30_000, maxBuffer: 4 * 1024 * 1024 });
   const found = new Map<string, boolean>();
   for (const line of stdout.split('\n')) {
-    const match = /^([a-z0-9_]+)\s+.*\s(true|false)\s*$/.exec(line.trim());
-    if (match) found.set(match[1]!, match[2] === 'true');
+    const match = /^([a-z0-9_]+)\s+(.*?)\s+(true|false)\s*$/.exec(line.trim());
+    if (match && match[2] !== 'removed') found.set(match[1]!, match[3] === 'true');
   }
   return found;
 }
@@ -47,7 +47,10 @@ try {
   const unknown = defaultOn.filter((key) => !Object.hasOwn(CODEX_FEATURE_REVIEW, key));
   for (const key of unknown) failures.push(`default-on feature not reviewed: ${key}`);
   const applied = await features(overrides);
-  const stillOn = Object.entries(CODEX_FEATURE_REVIEW).filter(([key, review]) => review.action === 'off' && applied.get(key) !== false).map(([key]) => key);
+  const stillOn = Object.entries(CODEX_FEATURE_REVIEW).filter(([key, review]) => review.action === 'off' && !review.staysOn && applied.get(key) !== false).map(([key]) => key);
+  report.staysOnAsRecorded = Object.entries(CODEX_FEATURE_REVIEW).filter(([key, review]) => review.action === 'off' && review.staysOn && applied.get(key) !== false).map(([key]) => key);
+  // A feature recorded as staying on that the binary now switches off is a contract change too: review it.
+  for (const [key, review] of Object.entries(CODEX_FEATURE_REVIEW)) if (review.action === 'off' && review.staysOn && applied.get(key) === false) failures.push(`recorded as staying on but now off: ${key}`);
   for (const key of stillOn) failures.push(`override did not switch off: ${key}`);
   report.offApplied = Object.keys(CODEX_FEATURE_REVIEW).length - stillOn.length;
 
