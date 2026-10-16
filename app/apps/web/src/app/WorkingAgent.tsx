@@ -124,7 +124,9 @@ const face = (run: AssistantRun): KreskaExpression =>
   run.stopRequested ? 'idle' : run.status === 'queued' ? 'waiting' : run.status === 'reading' ? 'reading' : 'thinking';
 
 const doing = (run: AssistantRun) =>
-  run.stopRequested ? 'stopping…' : run.status === 'queued' ? 'getting ready' : run.status === 'reading' ? 'reading the conversation' : 'writing an answer';
+  run.stopRequested ? 'stopping…' : run.status === 'queued' ? 'getting ready'
+    // F-027 AST-10: the owner's own Claude Code reads for itself; one plain word while it works.
+    : run.engine === 'runtime' ? 'working…' : run.status === 'reading' ? 'reading the conversation' : 'writing an answer';
 
 /** The person's own external agents that work on a task now. Reads on mount, focus, every event and a slow timer. */
 function useOwnWorkingAgents(identity: string) {

@@ -49,6 +49,8 @@ import { notificationRoutes } from './notifications/routes.js';
 import { searchRoutes } from './search/routes.js';
 import { personalRunRoutes } from './personal-runs/routes.js';
 import { personalRunServerComposition } from './personal-runs/composition.js';
+import { registerPersonalRunTokenRoute } from './personal-runs/run-tokens.js';
+import { personalRuntimeAvailability } from './personal-runs/runtime.js';
 import { exportRoutes } from './export/routes.js';
 import { agentRuntimeRoutes } from './agent-runtime/routes.js';
 import { typingRoutes } from './typing/routes.js';
@@ -208,6 +210,8 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
   registerMcpRoute(app, db, identity.auth, identityConfig.publicOrigin, config.fixture.failureInjection && !!config.fixture.token,
     identity.standing && identityConfig.oidc ? { checker: identity.standing, label: identityConfig.oidc.label } : null,
     identity.confirmation, identityConfig.oidc?.label);
+  // A personal run's MCP token (F-027 A2): signed here, the authorization server, for the worker only.
+  registerPersonalRunTokenRoute(app, db, identity.auth, identityConfig.publicOrigin);
   await app.register(returnRoutes, { db, sessions: identity });
   await app.register(projectGoalRoutes, { db, sessions: identity });
   await app.register(needsYouRoutes, { db, sessions: identity });
@@ -217,7 +221,8 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
   const personalRuns = personalRunServerComposition(env, db);
   if (personalRuns.mode !== 'production') app.log.warn({ mode: personalRuns.mode }, 'TEST ONLY: personal runs use fixture connections and a mock provider');
   await app.register(assistantRoutes, { db, sessions: identity, boss });
-  await app.register(personalRunRoutes, { db, sessions: identity, boss, connections: personalRuns.connections, providerEnabled: personalRuns.providerEnabled });
+  await app.register(personalRunRoutes, { db, sessions: identity, boss, connections: personalRuns.connections, providerEnabled: personalRuns.providerEnabled,
+    toolTurns: personalRuns.toolTurns, runtime: personalRuntimeAvailability(config.agentRuntime, db) });
   await app.register(searchRoutes, { db, sessions: identity, cursorSecret: identityConfig.secret, exposeWork });
   await app.register(exportRoutes, { db, sessions: identity, publicOrigin: identityConfig.publicOrigin, storage: fileStorage });
   // The `runtime` transport (F-022 AIM-3): off unless the operator set FLUX_AGENT_RUNTIME.

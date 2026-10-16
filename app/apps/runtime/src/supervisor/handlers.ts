@@ -7,11 +7,12 @@ import { runFixed } from './process.js';
 import type { ConsoleClock, SpawnPty } from './pty.js';
 import { statusFacts } from './status.js';
 import { cliEnvironment, LOGOUT_TEMPLATES, STATUS_TEMPLATES } from './templates.js';
+import { runCli, stopRun } from './run.js';
 
 // One handler per request of the closed set. A handler answers with zero or more `step` frames and
 // exactly one `result` or `error`. Login runs only in the sign-in console (console.ts, T4): as a plain
-// request it is refused. Run arrives in T5: it is already checked here against the closed set, the
-// operator's switch and the binding directory, and then refused as `not_available`.
+// request it is refused. Run (T5, run.ts) is checked against the closed set, the operator's switch and the
+// binding directory before the CLI starts; a run answers with `run` frames and its result.
 
 export interface SupervisorConfig {
   slot: string;
@@ -23,6 +24,8 @@ export interface SupervisorConfig {
   enabled: RuntimeClient[];
   cliPaths: Record<RuntimeClient, string>;
   egressHost: string;
+  /** The Flux MCP route as the CLI reaches it (default `http://<egress>:8080/mcp`, runtime-egress's forwarder); tests point it elsewhere. */
+  mcpUrl?: string;
   /** F-022 "Limits": the supervisor refuses a run while the binding directory exceeds this. */
   bindingLimitBytes: number;
   cliTimeoutMs: number;
@@ -127,12 +130,12 @@ export async function handle(config: SupervisorConfig, request: SupervisorReques
       if (!open.ok) return { error: open.code };
       if ((await bindingBytes(open.dir, config.bindingLimitBytes)).overLimit) return { error: 'binding_too_large' };
       if (!(await installed(config.cliPaths[request.client]))) return { error: 'not_installed' };
-      return { error: 'not_available' };
+      return runCli(config, request, open.dir, send);
     }
     case 'stop': {
       const open = await openBinding(config.dataDir, request.bindingId);
       if (!open.ok) return { error: open.code };
-      return { result: { kind: 'stop', runId: request.runId, state: 'not_running' } };
+      return { result: { kind: 'stop', runId: request.runId, state: stopRun(config, request.runId) } };
     }
     case 'logout': {
       const open = await openBinding(config.dataDir, request.bindingId);

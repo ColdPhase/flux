@@ -3,6 +3,8 @@ import {
   aiModelCallsTools,
   PERSONAL_RUN_CONSENT_VERSION,
   PERSONAL_RUN_LIMITS,
+  PERSONAL_RUNTIME_CONSENT_VERSION,
+  personalRunMaxInputTokens,
   WORK_LIMITS,
   type AiPrice,
   type AssistantRunKind,
@@ -43,13 +45,18 @@ export function timeZone(value: unknown): string {
 
 export function normalizeEnable(command: EnablePersonalRunsCommand) {
   if (!command || typeof command !== 'object') throw new InvalidInputError('An enablement is required');
-  if (command.consentVersion !== PERSONAL_RUN_CONSENT_VERSION)
-    throw new RuleViolationError(`Accept the current disclosure ${PERSONAL_RUN_CONSENT_VERSION}`, 'CONSENT_VERSION_MISMATCH');
+  if (command.engine !== undefined && command.engine !== 'server' && command.engine !== 'runtime') throw new InvalidInputError('engine must be server or runtime');
+  const engine = command.engine ?? 'server';
+  // Each engine has its own disclosure: the runtime's payer is the owner's plan and its data goes to Anthropic (F-022 AIM-3).
+  const consent = engine === 'runtime' ? PERSONAL_RUNTIME_CONSENT_VERSION : PERSONAL_RUN_CONSENT_VERSION;
+  if (command.consentVersion !== consent)
+    throw new RuleViolationError(`Accept the current disclosure ${consent}`, 'CONSENT_VERSION_MISMATCH');
+  if (engine === 'runtime' && command.connectionId !== undefined) throw new InvalidInputError('A runtime assistant uses no API key connection');
   const perRunCents = cents(command.perRunCents, 'perRunCents', PERSONAL_RUN_LIMITS.perRunCents);
   const dailyCapCents = cents(command.dailyCapCents, 'dailyCapCents', PERSONAL_RUN_LIMITS.dailyCapCents);
   if (perRunCents > dailyCapCents) throw new InvalidInputError('perRunCents cannot exceed dailyCapCents');
   const connectionId = command.connectionId === undefined ? null : id(command.connectionId, 'connectionId');
-  return { agentId: id(command.agentId, 'agentId'), connectionId, perRunCents, dailyCapCents, timeZone: timeZone(command.timeZone) };
+  return { agentId: id(command.agentId, 'agentId'), connectionId, perRunCents, dailyCapCents, timeZone: timeZone(command.timeZone), engine };
 }
 
 export function normalizeUpdate(command: UpdatePersonalRunsCommand) {
@@ -137,11 +144,12 @@ export function runTokensWithinLimits(usage: PersonalComputeUsage): boolean {
 }
 
 /**
- * What one run reserves (PROV-3): its largest possible cost at the connection's price, or null
- * when the connection has no known price and cannot be used.
+ * What one request reserves (PROV-3): its largest possible cost at the connection's price, or null
+ * when the connection has no known price and cannot be used. A run with tools (#484) has the larger
+ * input bound.
  */
-export function runReservationMicros(price: Pick<AiPrice, 'inputMicrosPerMTok' | 'outputMicrosPerMTok'> | null): number | null {
-  return requestReservationMicros(price, PERSONAL_RUN_LIMITS.maxInputTokens, PERSONAL_RUN_LIMITS.maxOutputTokens);
+export function runReservationMicros(price: Pick<AiPrice, 'inputMicrosPerMTok' | 'outputMicrosPerMTok'> | null, tools = false): number | null {
+  return requestReservationMicros(price, personalRunMaxInputTokens(tools), PERSONAL_RUN_LIMITS.maxOutputTokens);
 }
 
 /**
@@ -152,7 +160,7 @@ export function runReservationMicros(price: Pick<AiPrice, 'inputMicrosPerMTok' |
  */
 export function toolRunReservationMicros(price: Pick<AiPrice, 'inputMicrosPerMTok' | 'outputMicrosPerMTok'> | null, perRunCapMicros: number,
   turns: number = PERSONAL_RUN_LIMITS.maxTurns): number | null {
-  const one = runReservationMicros(price);
+  const one = runReservationMicros(price, true);
   if (one === null) return null;
   return Math.max(one, Math.min(one * Math.max(1, Math.floor(turns)), perRunCapMicros));
 }

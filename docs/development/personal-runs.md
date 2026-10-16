@@ -105,9 +105,8 @@ in [AI providers](ai-providers.md#provider-kinds-and-wire-formats).
 
 Contract: [F-027 AST-8](../product/assistant.md#ast-8--engines-the-server-tool-loop-and-the-runtime).
 This part is the provider side and the loop's limits; the tools themselves are the worker's MCP
-client of `/mcp` with the run token (A2), which is the next slice. Until a worker composes a
-`PersonalToolHost`, every run is one request with no tools, exactly as before; production
-composes none.
+client of `/mcp` with the run token (below, #484). With the provider switched on the worker composes
+that `PersonalToolHost` and the API composes `toolTurns` (10); switched off, every run stays one request.
 
 - **Port.** `PersonalComputeRequest` gains optional `tools` (neutral `PersonalTool`: name,
   description, JSON Schema) and `turns` (the earlier turns, each with the calls the model made,
@@ -133,8 +132,8 @@ composes none.
   the Responses API for tool calling, which Flux does not speak yet, so they answer in one request.
   Persisting the owner's mark and the account row's "This model can answer but can't make changes"
   are not part of this change.
-- **Reservation.** `toolRunReservationMicros`: turns × the largest request (16,000 × input price +
-  1,500 × output price), never above the owner's per-run ceiling and never below one request.
+- **Reservation.** `toolRunReservationMicros`: turns × the largest request of a tool run (32,000 ×
+  input price + 1,500 × output price; `PERSONAL_RUN_LIMITS.maxToolInputTokens`, #484), never above the owner's per-run ceiling and never below one request.
   `createPersonalRunUseCases({ toolTurns })` applies it to a connection that can call tools; the
   default is 1 (today's single request) and no composition sets more yet. `PERSONAL_RUN_LIMITS.maxTurns`
   is 10 (AST-6).
@@ -162,6 +161,77 @@ composes none.
   fixtures in `support/provider-tool-fixtures.ts`, a local mock server), `personal-runs-tool-loop-core.test.ts`
   (reservation, reconciliation and the loop with fakes) and `personal-runs-tools.test.ts` (AST-8.2 and AST-8.3
   through the real worker and database, with a fake provider and a fake tool session).
+
+## Run token and the worker's MCP client (F-027 A2 and A6, #280, #484)
+
+- **Minting** (`apps/server/src/personal-runs/run-tokens.ts`, INTERNAL `POST /api/internal/v1/personal-runs/:id/run-token`).
+  The API is the authorization server: it signs the token with the same JWKS as every MCP access token
+  (`auth.api.signJWT`). The worker stores the SHA-256 of a one-time nonce on the in-flight run
+  (`personalRunTokenRows.arm`, `reading` or `dispatching` only) and sends the nonce once. The API mints one
+  token per run for the owner's `owner_assistant` connection in the run's workspace: `sub` and
+  `flux_owner_user_id` the owner, `flux_connection_id`, `scope` `flux.context.read`, `flux_run_id`,
+  `flux_place` (project and conversation), `jti`, audience `/mcp`, lifetime `RUN_TOKEN_LIMITS.lifetimeSeconds`
+  (300). It records the `jti`, the expiry and the exact tools (`assistantRunTools`: the read tools the
+  owner's switches enable, sorted; the co-work bootstrap and playbook never). Every refusal is the same 404.
+  Migration 0100 adds the columns; the token itself is never stored.
+- **At `/mcp`** (`agent-connection/run-token.ts`). A bearer with run claims also needs: the run in flight
+  for its owner, the minted `jti`, not closed, not expired, not stopped, its place, and the owner's
+  assistant connection. Each request lists exactly the run's tools that the live switches still allow
+  (`restrictTo`); any other tool call gets the S6 refusal (`MCP_ENTRY_UNAVAILABLE`) before anything runs;
+  resources and prompts are not offered. Every tool reaches only the run's project. Results are bounded
+  (`boundRunResult`): over 16 KiB per result or 64 KiB per run, the result is replaced by an error and the
+  run records `mcp_limit`; the processor ends it `cap_reached` with `end_reason = mcp_results_too_large`.
+  The delivery fence rechecks the run, so nothing reaches a token after its run ended.
+- **Worker** (`apps/worker/src/personal-runs/mcp-session.ts`, `run-tokens.ts`). `mcpToolHost` mints the
+  token, lists the tools (MCP 2026-07-28, stateless HTTP) and offers the model only the minted ones; a
+  refused call (401/403 or a JSON-RPC error) is an error result; `close` ends the token
+  (`run_token_closed_at`). `FLUX_API_INTERNAL_URL` (default `http://api:8080`). A revoked assistant
+  connection ends a run that holds a token `revoked` at the next standing check.
+- **Ambient context** follows the switches too: with conversations, tasks or maps Off, a `server`
+  request carries none of their messages, open work or selected thought; the owner's request is input.
+- **Tool definitions and the input bound** (2026-10-16, founder direction on #484). Measured with
+  `assistant-run-tokens.test.ts` (a test diagnostic, every switch on): the run lists 18 read tools whose
+  definitions took 14,464 bytes, so at one token per byte (PROV-3) and the 16,000-token bound a fake
+  provider that kept calling `flux_list_contexts` reached the input bound at its 2nd request. Now the
+  definitions take 7,729 bytes (-47%) and ten turns fit. Two changes: the tool descriptions are shorter
+  (`agent-connection/domain-reads.ts`, `bootstrap.ts`, descriptions only; the schemas `/mcp` serves are unchanged), and the
+  worker drops from each schema what costs tokens but tells the model nothing (`compactToolSchema` in
+  `apps/worker/src/personal-runs/mcp-session.ts`: the `$schema` URL, zod's regular expression beside
+  `format: "uuid"`/`"date-time"`, the unbounded safe-integer range; `/mcp` still validates). The
+  per-request input bound of a run with tools is `PERSONAL_RUN_LIMITS.maxToolInputTokens`, 32,000
+  (`personalRunMaxInputTokens`); a request without tools keeps 16,000. A tool run's largest request is
+  priced at 32,000 (Sonnet 5: $0.079), so the owner's per-request limit must cover it and its default is
+  $0.08 (`PERSONAL_RUN_LIMITS.perRunCents`; a run on a connection with a lower limit is `unavailable` /
+  `run_cost_over_limit`, and the owner raises it). The daily cap is unchanged.
+
+## Runs on the owner's own Claude Code (F-022 T5, #280)
+
+`createRuntimeRunProcessor` (`core/personal-runs/runtime-run.ts`) handles a run whose `engine` is
+`runtime`: the same standing checks before the CLI starts, while it runs (stop, a result bound, a
+revocation, about once a second) and inside the commit; no source reading (the CLI reads through the run
+token); `RUNTIME_RUN_LIMITS` (20 a day, 10 turns, 300 s wall clock, 60 s without an event, 16 KiB answer).
+The worker's `managerPersonalRuntime` resolves the owner's own slot and binding from the database and
+streams the run through `runtime-manager` (`streamManagerRun`); the slot's `run.ts` runs the fixed
+template, checks `system/init`, reduces the JSONL to closed frames and ends each run in its own outcome.
+Each end has its own `end_reason` (0100); a dispatched runtime run costs nothing in Flux and its usage is
+`unknown` (not visible to Flux). The committed answer has token-shaped strings and the run token replaced
+by "[removed: looked like a secret]" (`answer_redacted`). A `server` run on an API key is redacted the same
+way before its answer or proposal is committed (token patterns only: its context holds no run token;
+2026-10-16, #484). An enablement names its engine; a runtime
+enablement has no key connection and its own consent. Operator view: [agent runtime](../operations/agent-runtime.md#runs-f-022-t5-280).
+
+**Observed 2026-10-16 with the pinned real Claude Code 2.1.285** (`tests/app/e2e/runtime-run-claude.e2e.ts`, run in
+the `mcp-clients` image against the scripted local model, no account): started with the run template's exact argv and
+the slot's environment, its `system/init` has the fields `agents, analytics_disabled, apiKeySource, capabilities,
+claude_code_version, cwd, fast_mode_disabled_reason, fast_mode_state, mcp_servers, messaging_socket_path, model,
+output_style, per_turn_effort_active, permissionMode, plugins, product_feedback_disabled, session_id, skills,
+slash_commands, subtype, tools, type, uuid, view_mode`; `tools` lists exactly the run's 18 switch-derived Flux tools
+(no built-in tool and no `EndConversation`); `mcp_servers` is `[{"name":"flux","status":"connected","source":"dynamic"}]`;
+and its Flux call was answered through `/mcp`, so `FLUX_RUN_TOKEN` reached the MCP `Authorization` header through
+`${FLUX_RUN_TOKEN}` expansion (no `headersHelper` is needed). Plan-limit, expired-login and refusal wording still
+needs a real account (T10). The same live check found that `runtime-egress`'s `/mcp` forwarder dropped MCP
+2026-07-28's `Mcp-Method` and `Mcp-Name` headers (the route answered 400); it now forwards them, `Mcp-Wire-Codec`
+and `Mcp-Param-*`.
 
 ## Switching production on
 
@@ -230,7 +300,7 @@ tokens:
 
 - **Ask mode.** A ✦ *Ask my assistant* button in the composer, or `/ai <prompt>` at the start
   of the box, shows "Your assistant ×" and one line: who sees the answer and "paid by you, up
-  to $0.06" — or, calmly, why not (not set up → *Connect your AI*; paused → *Resume*; capped →
+  to $0.08" — or, calmly, why not (not set up → *Connect your AI*; paused → *Resume*; capped →
   *Raise cap*; unavailable → the reason, e.g. "In-app AI is turned off on this Flux server").
   Send stays disabled when blocked; Esc, × or Backspace in an empty box return to a plain
   reply, which always works. One request, then the composer is a reply again. A refused ask
@@ -293,7 +363,8 @@ interpretation and proposal shape, and adds the accept path AC-7 needs.
 
 Amounts are integer micro-dollars. A run reserves its largest possible cost at the
 connection's price (F-020 PROV-3): 16 000 × the input price + 1 500 × the output
-price per token, rounded up. It is reserved when the run is created, in the same
+price per token, rounded up (32 000 × the input price for a model that can call
+tools, #484). It is reserved when the run is created, in the same
 transaction as the run row and the job, under the owner's enablement row lock.
 The owner's per-run setting (`per_run_cents × 10 000`) is the ceiling that
 reservation must fit: a connection whose largest request exceeds it cannot be
@@ -303,8 +374,9 @@ enabled (`PERSONAL_RUN_COST_OVER_LIMIT`) and is `unavailable` /
 reservations of in-flight and `unknown` runs since the owner's local midnight.
 `released` runs cost nothing. Usage is charged at the connection's price, or at the
 provider-reported cost when the response carries one (OpenRouter). For Claude
-Sonnet 5 at $2/M and $10/M the reservation is 16 000 × 2 + 1 500 × 10 = 47 000
-micros ($0.047), below the default $0.06 ceiling.
+Sonnet 5 at $2/M and $10/M the request without tools is 16 000 × 2 + 1 500 × 10 =
+47 000 micros ($0.047) and the request with tools 32 000 × 2 + 1 500 × 10 = 79 000
+micros ($0.079); the default ceiling is $0.08 (`PERSONAL_RUN_LIMITS.perRunCents`).
 
 ## HTTP API
 
@@ -376,8 +448,8 @@ A run reads, as its agent, only project-audience objects of the requested place:
 
 It never reads DMs, drafts, private sketches or other projects. The fit drops the
 oldest messages until the conservative Flux estimate (raised, never lowered, by a
-provider count where the wire format has one) fits 16 000 tokens, or ends the run as
-`input_too_large`.
+provider count where the wire format has one) fits 16 000 tokens (32 000 for a run
+with tools), or ends the run as `input_too_large`.
 
 At commit, citations `[S<n>]` count only for supplied sources. A
 `<proposal>{…}</proposal>` block becomes a proposal only when it is well formed.
@@ -410,11 +482,11 @@ behaviour or accessibility.
 
 ## Not yet done
 
-- The tool loop's production side (#406 rest): the worker's MCP client with the run token, the
-  switch-derived tool list, AST-3.2 parity and the `server` parts of AST-4.2 and AST-9.1, the
+- The rest of #406/#484: AST-3.2's handoff, catalog and owner-Apply parity (they need A3/A4), the
   persisted owner mark and the account row's note for a model without tool calling, a "Limit reached"
   status and copy, the Responses API for the OpenAI models that need it, and the Gemini
   thought-signature field name (unverified against Google's pages).
+- Effect tools for runs (A3/A4): this step lists read tools only.
 - #124's key custody, the real connection lookup and key resolver, the foreign key
   from `connection_id`, and the operator switch (see [Switching production on](#switching-production-on)).
 - A provider pass against the real API (with a real key, by its owner), including billing on

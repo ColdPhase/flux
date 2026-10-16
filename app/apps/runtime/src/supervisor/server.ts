@@ -24,8 +24,8 @@ export class Lane {
     this.tail = result.then(() => undefined, () => undefined).then(() => { this.pending -= 1; });
     return result;
   }
-  /** Runs `task` only if nothing else is in the lane or waiting for it (the sign-in console). */
-  tryRun(task: () => Promise<void>): Promise<void> | null {
+  /** Runs `task` only if nothing else is in the lane or waiting for it (the sign-in console, a run). */
+  tryRun<T>(task: () => Promise<T>): Promise<T> | null {
     return this.pending > 0 ? null : this.run(task);
   }
 }
@@ -95,7 +95,8 @@ export function createSupervisorServer(config: SupervisorConfig, onReleased: () 
       }
     };
     const lanePass = request.kind === 'stop' || (request.kind === 'status' && !request.client);
-    const running = lanePass ? work() : lane.run(work);
+    // A run never waits behind a sign-in, a status check or another run: the slot answers `busy` (F-022 "Caps").
+    const running = lanePass ? work() : request.kind === 'run' ? lane.tryRun(work) : lane.run(work);
     if (!running) { send({ t: 'error', code: 'busy' }); res.end(); return; }
     if (request.kind === 'release') { closing = true; for (const end of consoles) end(); }
     const outcome = await running;

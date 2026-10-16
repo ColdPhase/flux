@@ -107,7 +107,8 @@ The table rows come from these pages (all vendor claims):
 Gemini's promotional prices that double on 2027-01-01 (3.6–3.8 Flash) are left out. A stale table
 row would under-reserve, so for those models the owner enters the price.
 
-- A personal run reserves `16,000 × input + 1,500 × output` at the connection's price. The owner's
+- A personal run reserves `16,000 × input + 1,500 × output` at the connection's price (`32,000 × input`
+  for a request of a run with tools, 2026-10-16, #484). The owner's
   per-run setting is the ceiling it must fit (`PERSONAL_RUN_COST_OVER_LIMIT`, `run_cost_over_limit`).
 - A comparison reserves `8,000 × input + 1,200 × output`, at least O-007's $0.05.
 - Usage is charged at the connection's price, or reconciled at the cost the provider reported in

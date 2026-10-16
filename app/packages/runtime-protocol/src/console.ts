@@ -42,7 +42,8 @@ export type ToSupervisor =
 
 /** The manager's own refusal on the API's leg (the supervisor was unreachable, refused the secret, …). */
 export interface RelayError { t: 'relay_error'; code: ManagerError }
-export type ConsoleControl = SupervisorFrame | RelayError;
+/** A run's frames never belong to a sign-in console's stream. */
+export type ConsoleControl = Exclude<SupervisorFrame, { t: 'run' }> | RelayError;
 
 export type FromSupervisor = { type: 'control'; frame: ConsoleControl } | { type: 'output'; data: Buffer };
 
@@ -109,7 +110,8 @@ const isRelayError = object({ t: literal('relay_error'), code: oneOf(MANAGER_ERR
 /** A control frame: exactly a closed supervisor frame or the manager's relay error. */
 export function parseConsoleControl(value: unknown): ConsoleControl | null {
   if (isRelayError(value)) return value as RelayError;
-  return parseSupervisorFrame(value);
+  const frame = parseSupervisorFrame(value);
+  return frame && frame.t !== 'run' ? frame : null;
 }
 
 type Direction = 'to_supervisor' | 'from_supervisor';

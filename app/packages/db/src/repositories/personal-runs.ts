@@ -1,6 +1,7 @@
 import { prepareReferencedTaskUse } from './task-targets.js';
 import { fileRows } from './files.js';
 import { and, asc, desc, eq, inArray, isNotNull, notInArray, sql, type SQL } from 'drizzle-orm';
+import { assistantAreasFromPolicy, type AssistantAreas } from '@flux/contracts';
 import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
 
@@ -19,13 +20,14 @@ type SourceRef =
   | { type: 'message'; id: string; revision: number }
   | { type: 'work'; id: string; revision: number }
   | { type: 'thought'; id: string; sketchId: string; revision: number };
-type NewEnablement = Omit<EnablementRow, 'status' | 'version' | 'consentedAt' | 'createdAt' | 'updatedAt'>;
+type NewEnablement = Omit<EnablementRow, 'status' | 'version' | 'consentedAt' | 'createdAt' | 'updatedAt' | 'engine'> & { engine?: EnablementRow['engine'] };
 type EnablementChanges = Partial<Pick<EnablementRow, 'perRunCents' | 'dailyCapCents' | 'timeZone' | 'status'>>;
 type NewRun = Pick<RunRow, 'id' | 'workspaceId' | 'projectId' | 'conversationId' | 'ownerUserId' | 'agentId' | 'connectionId'
   | 'clientRunId' | 'requestFingerprint' | 'kind' | 'prompt' | 'targetSketchId' | 'targetThoughtId' | 'continuesRunId' | 'retryOfRunId'
-  | 'reservedMicros' | 'provider' | 'model'>;
+  | 'reservedMicros' | 'provider' | 'model'> & { engine?: RunRow['engine'] };
 type RunChanges = Partial<Pick<RunRow, 'status' | 'stoppedAtStage' | 'stopRequestedAt' | 'costState' | 'chargedMicros' | 'inputTokens'
-  | 'outputTokens' | 'answerBody' | 'answerTruncated' | 'committedAt' | 'dispatchedAt' | 'completedAt'> & { answerSources: SourceRef[] }>;
+  | 'outputTokens' | 'answerBody' | 'answerTruncated' | 'committedAt' | 'dispatchedAt' | 'completedAt' | 'endReason' | 'planLimitResetsAt'
+  | 'stopAcknowledgedAt' | 'answerRedacted'> & { answerSources: SourceRef[] }>;
 type NewProposal = Pick<ProposalRow, 'id' | 'workspaceId' | 'projectId' | 'runId' | 'ownerUserId' | 'fact' | 'interpretation'
   | 'resultTitle' | 'resultFinding' | 'resultEvidence' | 'finishesWorkId'>;
 type ProposalChanges = Partial<Pick<ProposalRow, 'status' | 'decidedBy' | 'decidedAt' | 'resultId'>>;
@@ -146,7 +148,9 @@ export function personalRunRows(db: DbExecutor) {
       const stale = and(eq(r.ownerUserId, ownerUserId), sql`${r.updatedAt} < now() - (${olderThanSeconds}::int * interval '1 second')`);
       const undispatched = await db.update(r).set({ status: 'unavailable', costState: 'released', chargedMicros: 0, completedAt: new Date(), updatedAt: new Date() })
         .where(and(stale, inArray(r.status, ['queued', 'reading']))).returning();
-      const lost = await db.update(r).set({ status: 'provider_failed', costState: 'unknown', completedAt: new Date(), updatedAt: new Date() })
+      // A runtime run whose worker vanished may have changed things through its token: its end is unknown, never rerun.
+      const lost = await db.update(r).set({ status: 'provider_failed', costState: 'unknown', completedAt: new Date(), updatedAt: new Date(),
+        endReason: sql`CASE WHEN ${r.engine} = 'runtime' THEN 'unknown' ELSE ${r.endReason} END` })
         .where(and(stale, eq(r.status, 'dispatching'))).returning();
       return [...undispatched, ...lost].map(toRun);
     },
@@ -156,6 +160,7 @@ export function personalRunRows(db: DbExecutor) {
       const rows = await db.update(r).set({
         status: sql`CASE WHEN ${r.status} = 'dispatching' THEN 'provider_failed' ELSE 'unavailable' END`,
         costState: sql`CASE WHEN ${r.status} = 'dispatching' THEN 'unknown' ELSE 'released' END`,
+        endReason: sql`CASE WHEN ${r.status} = 'dispatching' AND ${r.engine} = 'runtime' THEN 'unknown' ELSE ${r.endReason} END`,
         chargedMicros: 0, completedAt: new Date(), updatedAt: new Date(),
       }).where(sql`${r.id} IN (SELECT id FROM personal_runs WHERE status IN (${sql.join(IN_FLIGHT.map((state) => sql`${state}`), sql`, `)})
         AND updated_at < now() - (${olderThanSeconds}::int * interval '1 second')
@@ -228,6 +233,31 @@ export function personalRunRows(db: DbExecutor) {
     async updateProposal(id: string, changes: ProposalChanges) {
       const [row] = await db.update(p).set({ ...changes, version: sql`${p.version} + 1`, updatedAt: new Date() }).where(eq(p.id, id)).returning();
       return row!;
+    },
+
+    async assistantConnectionLive(ownerUserId: string, workspaceId: string) {
+      const [row] = await db.select({ id: schema.agentConnections.id }).from(schema.assistantSettings)
+        .innerJoin(schema.agentConnections, eq(schema.agentConnections.id, schema.assistantSettings.connectionId))
+        .where(and(eq(schema.assistantSettings.ownerUserId, ownerUserId), eq(schema.assistantSettings.workspaceId, workspaceId),
+          eq(schema.agentConnections.computeSource, 'owner_assistant'), sql`${schema.agentConnections.revokedAt} IS NULL`));
+      return Boolean(row);
+    },
+
+    async assistantAreas(ownerUserId: string, workspaceId: string): Promise<AssistantAreas | null> {
+      const policies = schema.agentConnectionMcpPolicies;
+      const [row] = await db.select({ capabilities: policies.enabledCapabilityIds, entries: policies.enabledEntryIds }).from(schema.assistantSettings)
+        .innerJoin(policies, eq(policies.connectionId, schema.assistantSettings.connectionId))
+        .where(and(eq(schema.assistantSettings.ownerUserId, ownerUserId), eq(schema.assistantSettings.workspaceId, workspaceId)));
+      return row ? assistantAreasFromPolicy({ enabledCapabilityIds: [...row.capabilities] as never, enabledEntryIds: [...row.entries] }) : null;
+    },
+
+    async runtimeRunsToday(ownerUserId: string, timeZone: string, exceptRunId?: string) {
+      const start = sql`(date_trunc('day', now() AT TIME ZONE ${timeZone}) AT TIME ZONE ${timeZone})`;
+      const result = await db.execute(sql`SELECT count(*)::int AS runs FROM personal_runs
+        WHERE owner_user_id = ${ownerUserId} AND engine = 'runtime' AND created_at >= ${start}
+          AND (dispatched_at IS NOT NULL OR status IN ('queued', 'reading', 'dispatching'))
+          ${exceptRunId ? sql`AND id <> ${exceptRunId}` : sql``}`);
+      return Number((result.rows[0] as { runs: number }).runs);
     },
 
     async listProposals(projectId: string, window: Window) {
