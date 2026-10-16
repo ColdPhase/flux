@@ -231,6 +231,12 @@ class FilesReferencesPhotos(unittest.TestCase):
         cls.browser.close()
         cls.pw.stop()
 
+    @staticmethod
+    def leave_quietly(page: Page, path: str) -> None:
+        """Let the current view's reads finish, then load the next document: WebKit reports a read cancelled by a navigation as a page error."""
+        page.wait_for_load_state("networkidle")
+        page.goto(path)
+
     def page(self, who: str = "ada", phone: bool = False, dark: bool = False, path: str | None = None) -> Page:
         options: dict = {"base_url": ORIGIN, "locale": "en-GB", "timezone_id": "Europe/Warsaw", "storage_state": self.states[who],
                          "color_scheme": "dark" if dark else "light"}
@@ -267,8 +273,10 @@ class FilesReferencesPhotos(unittest.TestCase):
         expect(caption).to_be_visible()
         # Both reading order and geometry matter: CSS-only reordering is insufficient.
         self.assertTrue(grid.evaluate("(media, caption) => !!(media.compareDocumentPosition(caption) & Node.DOCUMENT_POSITION_FOLLOWING)", caption.element_handle()), "caption follows the media in document order")
-        photo_box, caption_box = grid.bounding_box(), caption.bounding_box()
-        self.assertGreaterEqual(caption_box["y"], photo_box["y"] + photo_box["height"] - 0.001, "descriptive caption is below the complete photo/grid")
+        # Both boxes are read in one task, once the photos have loaded: two separate reads straddle a late layout shift.
+        grid.evaluate("media => Promise.all([...media.querySelectorAll('img')].map(image => image.complete ? undefined : image.decode().catch(() => undefined)))")
+        below = """([media, caption]) => caption.getBoundingClientRect().top >= media.getBoundingClientRect().bottom - 0.001"""
+        grid.page.wait_for_function(below, arg=[grid.element_handle(), caption.element_handle()])
 
     def assert_grid_aligned(self, scope) -> None:
         """The photo and its caption share one edge (F-026 AC-3: one group): the left edge for others' messages,
@@ -639,7 +647,7 @@ class FilesReferencesPhotos(unittest.TestCase):
                         (f"/projects/{self.ids['project']}", f"#message-{self.ids['files']}"),
                         (f"/projects/{self.ids['project']}/conversations/{self.ids['conversation:' + self.ids['files']]}", ".thread__root"),
                     ):
-                        page.goto(path)
+                        self.leave_quietly(page, path)
                         row = page.locator(root_selector)
                         row.scroll_into_view_if_needed()
                         expect(row.locator(".link-preview")).to_be_visible()
@@ -656,7 +664,7 @@ class FilesReferencesPhotos(unittest.TestCase):
                             value = page.evaluate(MEASURE, {"selector": selector})
                             self.assertGreaterEqual(value["ratio"], 4.5, (dark, phone, selector, value))
                     # A plain own thread root also has the shared filled shell, not the former unframed text.
-                    page.goto(f"/projects/{self.ids['project']}/conversations/{self.ids['conversation:' + self.ids['plain']]}")
+                    self.leave_quietly(page, f"/projects/{self.ids['project']}/conversations/{self.ids['conversation:' + self.ids['plain']]}")
                     bubble = page.locator(".thread__root > .message-bubble")
                     expect(bubble).to_be_visible()
                     style = bubble.evaluate("""e => { const s=getComputedStyle(e), p=document.createElement('i');
@@ -670,7 +678,7 @@ class FilesReferencesPhotos(unittest.TestCase):
                         (f"/projects/{self.ids['project']}", f"#message-{self.ids['photo-only']} > .photo-meta"),
                         (f"/projects/{self.ids['project']}/conversations/{self.ids['conversation:' + self.ids['files']]}", f"#message-{self.ids['photo-reply']} > .photo-meta"),
                     ):
-                        page.goto(path)
+                        self.leave_quietly(page, path)
                         metadata = page.locator(selector)
                         metadata.scroll_into_view_if_needed()
                         expect(metadata).to_be_visible()
