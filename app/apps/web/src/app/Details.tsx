@@ -58,7 +58,8 @@ export function Details({ view, workspace, placeTitle, dm = null, onBack, onClos
       </div>
     );
   }
-  const home = placeTitle === 'Home';
+  // Home and the Sketchbook (#508) are private to you.
+  const home = placeTitle === 'Home' || placeTitle === 'Sketchbook';
   return (
     <div className="details">
       <p className="details__eyebrow">{placeTitle}</p>

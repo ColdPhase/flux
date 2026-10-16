@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
 import { Link, useSearchParams } from 'react-router';
-import { SEARCH_FILTER_TYPES, type SearchFilterType } from '@flux/contracts';
+import { SEARCH_FILTER_TYPES, type SearchFilterType, type SearchKind, type SearchResult } from '@flux/contracts';
 import { Button, EmptyState, Icon, Spinner } from '../ui';
 import { useShellData } from '../app/data';
 import { targetHref } from './api';
@@ -10,9 +10,21 @@ import { useSearch } from './useSearch';
 import './search.css';
 
 const FILTER_LABELS: Record<SearchFilterType, string> = {
-  project: 'Projects', message: 'Messages', doc: 'Docs', material: 'Materials', work: 'Tasks', decision: 'Decisions', result: 'Results',
-  sketch: 'Sketches', draft: 'Drafts', person: 'People',
+  project: 'Projects', message: 'Messages', doc: 'Wiki', material: 'Files', work: 'Tasks', decision: 'Decisions', result: 'Results',
+  sketch: 'Map', draft: 'Drafts', person: 'People',
 };
+
+/** The groups a results page is shown in (#514), in order. */
+const GROUPS: { id: string; label: string; kinds: SearchKind[] }[] = [
+  { id: 'doc', label: 'Wiki', kinds: ['doc'] },
+  { id: 'work', label: 'Tasks', kinds: ['work', 'decision', 'result'] },
+  { id: 'map', label: 'Map', kinds: ['sketch', 'thought', 'draft'] },
+  { id: 'message', label: 'Messages', kinds: ['message', 'dm_message'] },
+  { id: 'material', label: 'Files', kinds: ['material'] },
+  { id: 'people', label: 'People and projects', kinds: ['project', 'person'] },
+];
+/** Rows a group shows before "Show N more". */
+const GROUP_ROWS = 3;
 
 function isFilter(value: string | null): value is SearchFilterType {
   return !!value && (SEARCH_FILTER_TYPES as readonly string[]).includes(value);
@@ -28,7 +40,11 @@ export function SearchPage() {
   const { me, projects, directMessages } = useShellData();
   const recent = useRecentSearches(me.user.id);
   const inputId = useId();
-  const listRef = useRef<HTMLOListElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  const filtersRef = useRef<HTMLDivElement>(null);
+  // On the phone the chip row scrolls sideways; a soft fade at its edge says it continues (#514, #438-6).
+  const [continues, setContinues] = useState(false);
+  const [open, setOpen] = useState<Set<string>>(() => new Set());
   const q = params.get('q') ?? '';
   const [draft, setDraft] = useState(q);
   const typeParam = params.get('type');
@@ -63,6 +79,16 @@ export function SearchPage() {
   const counts = answer?.counts ?? {};
   const total = Object.values(counts).reduce((sum, n) => sum + (n ?? 0), 0);
 
+  useEffect(() => {
+    const row = filtersRef.current;
+    if (!row) return;
+    const measure = () => setContinues(row.scrollWidth - row.scrollLeft - row.clientWidth > 2);
+    measure();
+    row.addEventListener('scroll', measure, { passive: true });
+    window.addEventListener('resize', measure);
+    return () => { row.removeEventListener('scroll', measure); window.removeEventListener('resize', measure); };
+  }, [answer, type, place]);
+
   const moveFocus = (event: KeyboardEvent<HTMLElement>) => {
     if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
     const links = [...(listRef.current?.querySelectorAll<HTMLAnchorElement>('a.sr') ?? [])];
@@ -87,15 +113,7 @@ export function SearchPage() {
           </div>
         </form>
 
-        <div className="search__filters">
-          <div className="search__place">
-            <select aria-label="Place" value={place ?? ''} onChange={(event) => set('place', event.target.value || null)}>
-              <option value="">All places</option>
-              {projects.map((project) => <option key={project.id} value={`project:${project.id}`}># {project.name}</option>)}
-              {directMessages.map((dm) => <option key={dm.id} value={`dm:${dm.id}`}>{dm.title}</option>)}
-              <option value="private">Only you</option>
-            </select>
-          </div>
+        <div className="search__filters" ref={filtersRef} data-continues={continues}>
           <div className="search__chips" role="group" aria-label="Kind of result">
             <button type="button" className="search__chip" aria-pressed={!type} onClick={() => set('type', null)}>
               All{answer && draft.trim() ? <span className="search__n">{total}{answer.countsCapped ? '+' : ''}</span> : null}
@@ -109,6 +127,15 @@ export function SearchPage() {
                 </button>
               );
             })}
+          </div>
+          {/* The place filter is the last chip of the kind row (#514); outside the group, which names kinds only. */}
+          <div className="search__place">
+            <select aria-label="Place" value={place ?? ''} onChange={(event) => set('place', event.target.value || null)}>
+              <option value="">All places</option>
+              {projects.map((project) => <option key={project.id} value={`project:${project.id}`}># {project.name}</option>)}
+              {directMessages.map((dm) => <option key={dm.id} value={`dm:${dm.id}`}>{dm.title}</option>)}
+              <option value="private">Only you</option>
+            </select>
           </div>
         </div>
 
@@ -130,13 +157,29 @@ export function SearchPage() {
           <p className="search__problem" role="alert"><Icon name="alert" size={14} />{state.message}<button type="button" className="ui-link" onClick={retry}>Retry</button></p>
         ) : items.length ? (
           <>
-            <ol className="search__list" ref={listRef} aria-label="Results" aria-busy={state.status === 'loading'}>
-              {items.map((result) => (
-                <li key={result.id}>
-                  <Link className="sr" to={targetHref(result.target)} onClick={onResultClick}><ResultBody result={result} /></Link>
-                </li>
-              ))}
-            </ol>
+            <div ref={listRef} role="region" aria-label="Results" aria-busy={state.status === 'loading'}>
+              {GROUPS.map((group) => {
+                const found = items.filter((result) => group.kinds.includes(result.kind));
+                if (!found.length) return null;
+                const expanded = open.has(group.id);
+                const shown = expanded ? found : found.slice(0, GROUP_ROWS);
+                return (
+                  <section className="search__group" key={group.id} aria-label={group.label}>
+                    <h2 className="search__group-h">{group.label}</h2>
+                    <ol className="search__list">
+                      {shown.map((result: SearchResult) => (
+                        <li key={result.id}>
+                          <Link className="sr" to={targetHref(result.target)} onClick={onResultClick}><ResultBody result={result} /></Link>
+                        </li>
+                      ))}
+                    </ol>
+                    {found.length > GROUP_ROWS && !expanded ? (
+                      <button type="button" className="ui-link search__group-more" onClick={() => setOpen((current) => new Set(current).add(group.id))}>Show {found.length - GROUP_ROWS} more</button>
+                    ) : null}
+                  </section>
+                );
+              })}
+            </div>
             {answer?.next ? <div className="search__more"><Button variant="secondary" busy={moreBusy} onClick={() => void loadMore()}>Show more results</Button></div> : null}
           </>
         ) : state.status === 'ready' ? (

@@ -4,7 +4,7 @@ import type { Sketch } from '@flux/contracts';
 import { Button, EmptyState, Icon, Spinner, useToast } from '../ui';
 import { useShellData } from '../app/data';
 import { useStreamEvents } from '../api/stream';
-import { when } from '../sketch/format';
+import { thoughtsLine, when } from '../sketch/format';
 import { createProjectSketch, listProjectSketches, useProjectShell } from './data';
 import '../sketch/sketch.css';
 import './project.css';
@@ -100,7 +100,7 @@ export function ProjectMap() {
                     <Icon name="map" size={16} />
                     <span className="sk-index__b">
                       <span className="sk-index__t">{sketch.title}</span>
-                      <span className="sk-index__s">Started by {sketch.createdBy.id === me.user.id ? 'you' : sketch.createdBy.name} · changed {when(sketch.updatedAt)}</span>
+                      <span className="sk-index__s">{thoughtsLine(sketch)}Started by {sketch.createdBy.id === me.user.id ? 'you' : sketch.createdBy.name} · changed {when(sketch.updatedAt)}</span>
                     </span>
                   </Link>
                 </li>

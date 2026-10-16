@@ -19,8 +19,9 @@ export interface ProjectShell {
 }
 
 export const listProjectPeople = (projectId: string, signal?: AbortSignal) => request<ProjectPerson[]>(projectPeoplePath(projectId), { signal });
+/** A project's sketches, without empty ones (#508): the Map index, Details and the pickers list only sketches with something on them. */
 export const listProjectSketches = (workspaceId: string, projectId: string, limit: number, offset: number, signal?: AbortSignal) =>
-  request<SketchPage>(`${workspaceSketchesPath(workspaceId)}?limit=${limit}&offset=${offset}&projectId=${encodeURIComponent(projectId)}`, { signal });
+  request<SketchPage>(`${workspaceSketchesPath(workspaceId)}?limit=${limit}&offset=${offset}&projectId=${encodeURIComponent(projectId)}&hideEmpty=true`, { signal });
 export const createProjectSketch = (workspaceId: string, projectId: string, title: string, idempotencyKey: string) =>
   request<Sketch>(workspaceSketchesPath(workspaceId), { method: 'POST', body: { title, scope: 'project', projectId }, headers: { 'idempotency-key': idempotencyKey } });
 

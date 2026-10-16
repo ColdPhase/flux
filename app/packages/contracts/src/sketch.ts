@@ -29,6 +29,8 @@ export const sketchPromotionPath = (sketchId: string) => `${sketchPath(sketchId)
  * changes) until that person reopens it.
  */
 export type SketchScope = 'project' | 'private' | 'dm';
+/** The title a new sketch starts with until someone names it. */
+export const UNTITLED_SKETCH = 'Untitled sketch';
 export type ThoughtShape = 'card' | 'pill' | 'circle';
 export const THOUGHT_SHAPES: readonly ThoughtShape[] = ['card', 'pill', 'circle'];
 
@@ -79,6 +81,8 @@ export interface Sketch {
   version: number;
   createdAt: string;
   updatedAt: string;
+  /** How many thoughts the sketch has; given in sketch lists (#508). */
+  thoughtCount?: number;
 }
 
 /**
@@ -163,6 +167,8 @@ export interface SketchListQuery extends PageQuery {
   dmId?: string;
   /** Only private sketches: the person's own sketchbook (#189). */
   scope?: 'private';
+  /** Leave out sketches nobody put anything on: no thought and still {@link UNTITLED_SKETCH} (#508). */
+  hideEmpty?: boolean;
 }
 export type SketchPage = Page<Sketch>;
 
