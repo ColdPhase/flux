@@ -128,13 +128,20 @@ class ConnectAiJourney(unittest.TestCase):
         expect(flux).to_be_visible()
         expect(app).to_be_visible()
         # Agent in Flux: the assistant, and the instance's switch said in one plain sentence (AST-1.2).
-        expect(flux.get_by_role("link", name=re.compile("^Your assistant Agent"))).to_have_attribute("href", "/settings/assistant")
+        card = flux.get_by_role("region", name=re.compile("^Your assistant"))
+        expect(card.get_by_role("link", name="Set up", exact=True)).to_have_attribute("href", "/settings/assistant")
+        expect(card.get_by_role("link", name="How it works")).to_have_attribute("href", "/settings/assistant/how")
         expect(flux).to_contain_text(OFF_SENTENCE)
         expect(flux.get_by_role("link", name=re.compile("^Sign in with"))).to_have_count(0)
         expect(flux.get_by_text("Sign in with Claude", exact=True)).to_have_count(0)
         expect(flux.get_by_text("Sign in with ChatGPT", exact=True)).to_have_count(0)
-        # The API key choices are shown plainly when sign-in is off.
-        expect(flux.get_by_role("link", name=re.compile("^Use an API key"))).to_be_visible()
+        # The API key choices are shown plainly when sign-in is off, and lead to the one AI connections page (#513).
+        api_key = flux.get_by_role("link", name=re.compile("^Use an API key"))
+        expect(api_key).to_be_visible()
+        expect(api_key).to_have_attribute("href", "/settings/ai-connections")
+        # AI setup starts with the assistant card (Spokój E04, #513 M4); the ways to connect follow it.
+        self.assertTrue(self.above(card, flux.get_by_text(OFF_SENTENCE)), "the assistant card comes before the ways to connect")
+        self.assertTrue(self.above(card, api_key))
         # Your agent app: mode (b) connections; no client guide with command-line words on this page.
         expect(app.get_by_role("link", name=re.compile(f"^{CONNECTION}"))).to_have_attribute("href", "/connect-agent")
         expect(app.get_by_role("link", name="Local co-work on this computer")).to_have_attribute("href", "/connect-agent")
@@ -148,10 +155,17 @@ class ConnectAiJourney(unittest.TestCase):
         page.goto("/settings/agents")
         expect(page.get_by_role("region", name=MODE_A, exact=True)).to_be_visible()
         expect(page.get_by_role("region", name=MODE_B_PAGE, exact=True)).to_be_visible()
+        # #513 M4: on the phone the whole assistant card is on the first screen, before the ways to connect.
+        card = page.get_by_role("region", name=re.compile("^Your assistant"))
+        expect(card.get_by_role("link", name="How it works")).to_be_visible()
+        card_box = card.bounding_box()
+        self.assertIsNotNone(card_box)
+        self.assertLessEqual(card_box["y"] + card_box["height"], PHONE["height"], f"the assistant card fits the first screen: {card_box}")
+        self.assertTrue(self.above(card, page.get_by_text(OFF_SENTENCE)))
         self.no_horizontal_scroll(page)
         shot(page, "connect-ai-phone-390")
         page.goto("/settings")
-        expect(page.get_by_role("link", name="Local co-work on this computer")).to_be_visible()
+        expect(page.get_by_role("link", name=re.compile("^Agents and AI"))).to_be_visible()
         self.no_horizontal_scroll(page)
 
     def test_04_details_and_the_assistant_empty_state_link_there(self) -> None:
@@ -190,18 +204,23 @@ class ConnectAiJourney(unittest.TestCase):
         expect(rows.filter(has_text=CONNECTION)).to_have_count(1)
         expect(rows.filter(has_text=CONNECTION)).to_contain_text("for Ines Moreau")
 
-    def test_06_the_agents_view_shows_each_entrys_mode(self) -> None:
+    def test_06_the_project_lists_only_mcp_while_own_assistant_stays_in_settings(self) -> None:
         ines = self.page("ines")
         status = self.api(ines, "GET", "/api/v1/personal-assistant", status=200)
         self.assertEqual(status["state"], "not_enabled")
-        self.api(ines, "POST", "/api/v1/personal-assistant", {"consentVersion": CONSENT, "agentId": self.ids["agent"], "perRunCents": 6,
+        assistant = self.api(ines, "POST", f"/api/v1/workspaces/{self.ids['workspace']}/agents", {"name": "Ines personal assistant", "owner": "self"}, status=201)
+        type(self).ids["assistant_agent"] = assistant["id"]
+        self.api(ines, "POST", "/api/v1/personal-assistant", {"consentVersion": CONSENT, "agentId": assistant["id"], "perRunCents": 6,
                  "dailyCapCents": 100, "timeZone": "Europe/Warsaw"}, status=201)
         ines.goto(f"/projects/{self.ids['project']}/agents")
         rows = ines.get_by_role("list", name="Agents in this project").get_by_role("listitem")
-        # Both rows belong to Ines: her assistant (its own external-client entry) and her MCP connection.
+        # Project lists contain only MCP connections, even for the assistant owner (#522).
+        expect(rows).to_have_count(1)
+        expect(ines.get_by_text("Ines personal assistant", exact=False)).to_have_count(0)
+        expect(ines.get_by_role("region", name="Assistant join requests")).to_have_count(0)
         expect(rows.filter(has_text=CONNECTION)).to_have_count(1)
         expect(rows.filter(has_text=CONNECTION)).to_contain_text("for Ines")
-        # The settings page lists the same assistant with its AI connection, its payer and each use.
+        # Settings keeps the owner’s assistant, payer and permitted project access reachable.
         ines.goto("/settings/agents")
         flux = ines.get_by_role("region", name=MODE_A, exact=True)
         expect(flux).to_contain_text("Paid by")
@@ -244,6 +263,88 @@ class ConnectAiJourney(unittest.TestCase):
         self.assertEqual(len(live), 1)
         self.assertIsNone(live[0].get("revokedAt"))
 
+    def assert_phone_roster_summary(self, page: Page, count: int) -> None:
+        unit = "client" if count == 1 else "clients"
+        subtitle = page.locator("header.phead .phead__sub")
+        expect(subtitle).to_contain_text(f"{count} MCP {unit}")
+        # Generated content is visible but omitted from textContent/Playwright text assertions.
+        rendered = subtitle.evaluate(r"""element => {
+          const generated = (node, pseudo) => {
+            const content = getComputedStyle(node, pseudo).content;
+            return content === 'none' || content === 'normal' ? '' : content.replace(/^["']|["']$/g, '');
+          };
+          const text = node => node.nodeType === Node.TEXT_NODE ? node.textContent
+            : generated(node, '::before') + [...node.childNodes].map(text).join('') + generated(node, '::after');
+          return text(element).replace(/\s+/g, ' ').trim();
+        }""")
+        self.assertEqual(rendered, f"Agents · 2 people · {count} MCP {unit}", "the rendered subtitle has exactly one separator between each part")
+
+    def assert_phone_title_focus_inset(self, page: Page) -> None:
+        menu = page.locator(".phead__menu")
+        expect(menu).to_be_focused()
+        geometry = menu.evaluate("""button => {
+          const box = button.getBoundingClientRect(), style = getComputedStyle(button);
+          const name = button.querySelector('.phead__name').getBoundingClientRect();
+          const icon = button.querySelector('svg').getBoundingClientRect();
+          const subtitle = button.closest('.phead__title').querySelector('.phead__sub').getBoundingClientRect();
+          return {width:box.width,height:box.height,visible:button.matches(':focus-visible'),
+            outlineWidth:parseFloat(style.outlineWidth),outlineStyle:style.outlineStyle,outlineColor:style.outlineColor,
+            contentLeft:name.left,contentRight:icon.right,
+            outlineLeft:box.left - parseFloat(style.outlineOffset) - parseFloat(style.outlineWidth),
+            outlineRight:box.right + parseFloat(style.outlineOffset) + parseFloat(style.outlineWidth),
+            outlineBottom:box.bottom + parseFloat(style.outlineOffset) + parseFloat(style.outlineWidth), subtitleTop:subtitle.top};
+        }""")
+        self.assertGreaterEqual(geometry["height"], 44)
+        self.assertGreaterEqual(geometry["width"], 44)
+        self.assertTrue(geometry["visible"])
+        self.assertEqual(geometry["outlineStyle"], "solid")
+        self.assertGreaterEqual(geometry["outlineWidth"], 2)
+        self.assertNotIn(geometry["outlineColor"], ("transparent", "rgba(0, 0, 0, 0)"))
+        self.assertLessEqual(geometry["outlineLeft"] + geometry["outlineWidth"], geometry["contentLeft"], "focus outline stays outside title text")
+        self.assertLessEqual(geometry["contentRight"], geometry["outlineRight"] - geometry["outlineWidth"], "focus outline stays outside the title chevron")
+        self.assertLessEqual(geometry["outlineBottom"], geometry["subtitleTop"], "visible title focus does not overlap the subtitle")
+
+    def test_07b_owner_and_member_mcp_visibility_on_computer_and_phone(self) -> None:
+        for phone in (False, True):
+            for who in ("ines", "tom"):
+                with self.subTest(phone=phone, who=who):
+                    page = self.page(who, phone=phone)
+                    page.goto(f"/projects/{self.ids['project']}/agents")
+                    rows = page.get_by_role("list", name="Agents in this project").get_by_role("listitem")
+                    expect(rows).to_have_count(1)
+                    expect(rows).to_contain_text(CONNECTION)
+                    expect(rows).to_contain_text("for Ines Moreau")
+                    expect(rows).to_contain_text("Codex")
+                    expect(page.get_by_text("Ines personal assistant", exact=False)).to_have_count(0)
+                    if phone:
+                        self.assert_phone_roster_summary(page, 1)
+                        page.locator(".phead__menu").click()
+                        expect(page.locator(".phone-menu__item").filter(has_text=re.compile("^Agents"))).to_contain_text("1 MCP client")
+                        shot(page, f"menu-{who}-phone-390-{UI_BROWSER}")
+                        page.keyboard.press("Escape")
+                        self.assert_phone_title_focus_inset(page)
+                    shot(page, f"roster-{who}-{'phone-390' if phone else 'desktop-1440'}-{UI_BROWSER}")
+                    rows.get_by_role("button").first.click()
+                    panel = page.locator(".agents-detail")
+                    if who == "ines":
+                        expect(panel.get_by_role("button", name=re.compile("^Hand off to "))).to_have_count(1)
+                    else:
+                        expect(panel.get_by_role("button", name=re.compile("Stop|Take back|Revoke|Remove|Hand off|^Ask ", re.I))).to_have_count(0)
+                        view = self.api(page, "GET", f"/api/v1/projects/{self.ids['project']}/agents", status=200)
+                        self.assertEqual(len(view["connections"]), 1)
+                        self.assertFalse(any(connection.get("assistant") for connection in view["connections"]))
+                        people = self.api(page, "GET", f"/api/v1/projects/{self.ids['project']}/people", status=200)
+                        self.assertNotIn(self.ids["assistant_agent"], [person["id"] for person in people])
+                        self.assertIn(self.ids["agent"], [person["id"] for person in people])
+                    self.no_horizontal_scroll(page)
+                    shot(page, f"agent-visibility-{who}-{'phone-390' if phone else 'desktop-1440'}-{UI_BROWSER}")
+                    if who == "ines":
+                        page.goto("/settings/assistant")
+                        expect(page.get_by_role("heading", name="Your assistant", exact=True)).to_be_visible()
+                        expect(page.get_by_role("region", name="Your assistant’s project access")).to_contain_text("Your assistant has access to this project.")
+                        page.get_by_role("region", name="Your assistant’s project access").scroll_into_view_if_needed()
+                        shot(page, f"assistant-own-settings-{'phone-390' if phone else 'desktop-1440'}-{UI_BROWSER}")
+
     def stub_runtime_on(self, page: Page) -> None:
         """A stubbed status with the runtime on (the check suite runs with it off); the sign-in pages are not read here."""
         page.route(re.compile(r".*/api/v1/agent-runtime$"), lambda route: route.fulfill(status=200, content_type="application/json", body=json.dumps(RUNTIME_ON)))
@@ -257,12 +358,14 @@ class ConnectAiJourney(unittest.TestCase):
             flux = page.get_by_role("region", name=MODE_A, exact=True)
             claude = flux.get_by_role("link", name=re.compile("^Sign in with Claude"))
             chatgpt = flux.get_by_text("Sign in with ChatGPT", exact=True)
-            assistant = flux.get_by_role("link", name=re.compile("^Your assistant Agent"))
+            assistant = flux.get_by_role("region", name=re.compile("^Your assistant"))
             expect(claude).to_be_visible()
             expect(chatgpt).to_be_visible()
             expect(flux).not_to_contain_text(OFF_SENTENCE)
             self.assertTrue(self.above(claude, chatgpt), "Sign in with Claude is above Sign in with ChatGPT")
-            self.assertTrue(self.above(chatgpt, assistant), "the sign-in choices are above the assistant row")
+            # Spokój E04 (#513 M4): AI setup starts with the assistant card; the sign-in choices follow it, still
+            # before every API key choice (AST-1.1).
+            self.assertTrue(self.above(assistant, claude), "the assistant card is above the sign-in choices")
             # Negative control: the same check must reject the reverse order of two elements that are really in that order.
             self.assertFalse(self.above(chatgpt, claude), "negative control: reversed order is rejected")
             # The API key choices are folded under "Other ways to connect" and not visible until opened.
@@ -307,12 +410,107 @@ class ConnectAiJourney(unittest.TestCase):
                 self.assertIsNone(match, f"jargon on the page (runtime {'on' if runtime_on else 'off'}): {match and match.group(0)}")
                 page.context.close()
 
+    def test_10_the_assistant_card_says_in_one_line_when_in_app_ai_is_off(self) -> None:
+        """#513 AC-3 (M5): with in-app AI off on the server (a stubbed status), the card says so once, in its status
+        line, with no facts and no "How it works". With nothing set up, Set up stays in its place, dimmed (Spokój
+        rule 7); an assistant that is set up keeps its Manage link there."""
+        def stub(page: Page, body: dict) -> None:
+            page.route(re.compile(r".*/api/v1/personal-assistant$"), lambda route: route.fulfill(
+                status=200, content_type="application/json", body=json.dumps(body)) if route.request.method == "GET" else route.continue_())
+
+        def one_off_line(card, step: str) -> None:
+            expect(card).to_contain_text("In-app AI is off on this Flux server")
+            text = card.inner_text()
+            self.assertEqual(len(re.findall(r"(?i)\boff\b", text)), 1, f"the off state is said once: {text!r}")
+            lines = [" ".join(line.split()) for line in text.splitlines()]
+            self.assertEqual([line for line in lines if line and line not in ("Your assistant", "Agent", "Your assistant Agent", step)],
+                             ["In-app AI is off on this Flux server"], f"one line besides the name, the Agent tag and {step}: {text!r}")
+            expect(card.locator(".sset-assistant__facts")).to_have_count(0)
+            expect(card.get_by_role("link", name="How it works")).to_have_count(0)
+
+        def same_place(a: dict | None, b: dict | None) -> None:
+            self.assertIsNotNone(a)
+            self.assertIsNotNone(b)
+            self.assertAlmostEqual(a["y"], b["y"], delta=1, msg=f"the step keeps its row: {a} vs {b}")
+            self.assertAlmostEqual(a["x"] + a["width"], b["x"] + b["width"], delta=1, msg=f"the step keeps its right edge: {a} vs {b}")
+
+        for phone in (False, True):
+            on = self.page("ines", phone=phone)
+            on.goto("/settings/agents")
+            live = on.get_by_role("region", name=re.compile("^Your assistant"))
+            # test_06 turned Ines's assistant on, so the live card offers Manage.
+            step = live.get_by_role("link", name="Manage", exact=True)
+            expect(step).to_be_visible()
+            expect(live.locator(".sset-assistant__facts li")).to_have_count(3)
+            real = self.api(on, "GET", "/api/v1/personal-assistant", status=200)
+            self.assertIsNotNone(real["enablement"], "test_06 turned Ines's assistant on")
+            off = {**real, "state": "unavailable", "setup": {"provider": "off", "connection": "none"}}
+            # Nothing set up: Set up stays where it is, dimmed.
+            page = self.page("ines", phone=phone)
+            stub(page, {**off, "enablement": None})
+            page.goto("/settings/agents")
+            card = page.get_by_role("region", name=re.compile("^Your assistant"))
+            one_off_line(card, "Set up")
+            expect(card.get_by_role("link")).to_have_count(0)
+            dimmed = card.get_by_role("button", name="Set up", exact=True)
+            expect(dimmed).to_be_disabled()
+            same_place(step.bounding_box(), dimmed.bounding_box())
+            shot(page, f"connect-ai-assistant-off-{'phone-390' if phone else 'desktop-1440'}")
+            # Set up already: Manage stays, so the person can still pause or remove it.
+            managed = self.page("ines", phone=phone)
+            stub(managed, off)
+            managed.goto("/settings/agents")
+            card = managed.get_by_role("region", name=re.compile("^Your assistant"))
+            one_off_line(card, "Manage")
+            manage = card.get_by_role("link", name="Manage", exact=True)
+            expect(manage).to_have_attribute("href", "/settings/assistant")
+            expect(card.get_by_role("button", name="Set up")).to_have_count(0)
+            same_place(step.bounding_box(), manage.bounding_box())
+
     def above(self, first, second) -> bool:
         a = first.bounding_box()
         b = second.bounding_box()
         self.assertIsNotNone(a, "first element is visible")
         self.assertIsNotNone(b, "second element is visible")
         return a["y"] < b["y"]
+
+
+
+    def test_10_phone_counts_clients_and_refreshes_after_final_mcp_revocation(self) -> None:
+        owner = self.page("ines", phone=True)
+        owner.goto(f"/projects/{self.ids['project']}/agents")
+        self.assertIn(self.ids["assistant_agent"], [person["id"] for person in self.api(owner, "GET", f"/api/v1/projects/{self.ids['project']}/people", status=200)], "own assistant remains in the authorized audience")
+        extra = self.api(owner, "POST", "/api/v1/agent-connections", {"agentId": self.ids["agent"], "selectedProjectIds": [self.ids["project"]],
+                         "scopes": ["flux.context.read"], "name": "Ines second client", "clientDesignation": "claude_code"}, status=201)
+        pages = {"ines": owner, "tom": self.page("tom", phone=True)}
+        for who, page in pages.items():
+            page.goto(f"/projects/{self.ids['project']}/agents")
+            expect(page.get_by_role("list", name="Agents in this project").get_by_role("listitem")).to_have_count(2)
+            self.assert_phone_roster_summary(page, 2)
+            page.locator(".phead__menu").click()
+            expect(page.locator(".phone-menu__item").filter(has_text=re.compile("^Agents"))).to_contain_text("2 MCP clients")
+            shot(page, f"menu-two-clients-{who}-phone-390-{UI_BROWSER}")
+            page.keyboard.press("Escape")
+            self.assert_phone_title_focus_inset(page)
+        for connection_id, count in ((extra["id"], 1), (self.ids["connection"], 0)):
+            removed = owner.request.fetch(f"{ORIGIN}/api/v1/agent-connections/{connection_id}", method="DELETE", headers={"origin": ORIGIN})
+            self.assertEqual(removed.status, 204, removed.text())
+            for who, page in pages.items():
+                page.evaluate("() => window.dispatchEvent(new Event('focus'))")
+                if count:
+                    expect(page.get_by_role("list", name="Agents in this project").get_by_role("listitem")).to_have_count(count)
+                else:
+                    expect(page.locator(".agents-row")).to_have_count(0)
+                self.assert_phone_roster_summary(page, count)
+                page.locator(".phead__menu").click()
+                expect(page.locator(".phone-menu__item").filter(has_text=re.compile("^Agents"))).to_contain_text(f"{count} MCP {'client' if count == 1 else 'clients'}")
+                if not count:
+                    shot(page, f"menu-revoked-{who}-phone-390-{UI_BROWSER}")
+                page.keyboard.press("Escape")
+                self.assert_phone_title_focus_inset(page)
+                if not count:
+                    shot(page, f"roster-revoked-{who}-phone-390-{UI_BROWSER}")
+        self.assertIn(self.ids["assistant_agent"], [person["id"] for person in self.api(owner, "GET", f"/api/v1/projects/{self.ids['project']}/people", status=200)], "MCP revocation changes no own assistant authority")
 
 
 if __name__ == "__main__":

@@ -591,11 +591,10 @@ class AgentsViewJourney(unittest.TestCase):
         response = marek.request.fetch(f"{ORIGIN}/api/v1/agent-connections/{active[0]['id']}", method="DELETE", headers={"origin": ORIGIN})
         self.assertEqual(response.status, 204, response.text())
         page.evaluate("() => window.dispatchEvent(new Event('focus'))")
-        # The connection leaves the list; Marek's agent keeps its project access, so it stays a row with nothing of its client.
+        # #522: without a live MCP connection, no native agent fallback remains in the project roster.
         marek_row = connections.filter(has_text="Marek's coding agent")
-        expect(marek_row).to_have_count(1)
-        expect(marek_row).not_to_contain_text("Workshop PC", timeout=20000)
-        expect(marek_row).to_contain_text("Nothing handed to it")
+        expect(marek_row).to_have_count(0, timeout=20000)
+        expect(connections).to_have_count(2)
         self.assertFalse(any("Workshop PC" in text for text in connections.all_inner_texts()), "Marek's revoked connection is gone")
         self.assertTrue(page.evaluate("() => window.__fluxSameDocument === true"), "the list changed without a reload")
 

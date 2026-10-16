@@ -12,6 +12,7 @@ import { enableAssistant, getAssistantStatus, pauseAssistant, removeAssistant, r
 import { dollars, micros, perMillion, stateLine, unavailableText } from './format';
 import '../notifications/notifications.css';
 import './assistant.css';
+import { AssistantProjectAccess } from './AssistantProjectAccess';
 
 // Your assistant (#68 AC-8, O-008 §1/§3/§6): only the signed-in person's own enablement,
 // consent, caps and pause. Nothing here can see or use anyone else's assistant or payer. The
@@ -20,7 +21,7 @@ import './assistant.css';
 const PER_RUN = [6, 10, 20, 30, 50].filter((value) => value >= PERSONAL_RUN_LIMITS.perRunCents.min && value <= PERSONAL_RUN_LIMITS.perRunCents.max);
 const DAILY = [10, 50, 100, 200, 500, 1000].filter((value) => value >= PERSONAL_RUN_LIMITS.dailyCapCents.min && value <= PERSONAL_RUN_LIMITS.dailyCapCents.max);
 
-function browserTimeZone() {
+export function browserTimeZone() {
   try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; } catch { return 'UTC'; }
 }
 const failure = (error: unknown, fallback: string) => (error instanceof ApiError && error.status < 500 ? error.message : fallback);
@@ -60,10 +61,38 @@ export function AssistantSettings() {
   );
 }
 
+/** Settings → Your assistant → How it works: what leaves Flux, who pays and the caps, in one plain page. */
+export function AssistantHowItWorks() {
+  const [status, setStatus] = useState<PersonalAssistantStatus | null>(null);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    const controller = new AbortController();
+    getAssistantStatus(controller.signal).then(setStatus, () => { if (!controller.signal.aborted) setFailed(true); });
+    return () => controller.abort();
+  }, []);
+  return (
+    <div className="pane-scroll"><div className="pane-in nset aset">
+      <div className="inbox__head">
+        <div>
+          <h2>How your assistant works</h2>
+          <p>Only you can use it. It answers in a project conversation when you ask, and Flux works fully without it.</p>
+        </div>
+      </div>
+      {status ? (
+        <section className="nset__sec" aria-label="Details">
+          <Disclosure status={status} perRun={PERSONAL_RUN_LIMITS.perRunCents.default} daily={PERSONAL_RUN_LIMITS.dailyCapCents.default} timeZone={browserTimeZone()} />
+        </section>
+      ) : failed ? <p className="nset__error" role="alert"><Icon name="alert" size={14} />This could not load. Try again.</p>
+        : <p className="inbox__loading"><Spinner label="Loading how your assistant works" /></p>}
+      <p className="nset__note"><Link className="ui-link" to="/settings/agents">Back to Agents and AI</Link></p>
+    </div></div>
+  );
+}
+
 /** Why the assistant cannot run on this server, when that is the case. Never pretends it can. */
 function SetupProblem({ status }: { status: PersonalAssistantStatus }) {
   if (status.setup.provider === 'off') return <p className="nset__problem" role="note"><Icon name="alert" size={14} /><span><b>In-app AI is turned off on this Flux server.</b> Nothing is sent to an AI provider, and Flux works as usual. Your own MCP client, such as Claude Code or Codex, can still connect through a <Link className="ui-link" to="/connect-agent">personal Flux grant</Link>.</span></p>;
-  if (status.setup.connection === 'none') return <p className="nset__problem" role="note"><Icon name="alert" size={14} /><span><b>Your own AI key isn’t connected.</b> Add an AI connection with your own key in <Link className="ui-link" to="/settings/background-compute">AI connections</Link>, from any supported provider. Nobody else’s key is ever used for you.</span></p>;
+  if (status.setup.connection === 'none') return <p className="nset__problem" role="note"><Icon name="alert" size={14} /><span><b>Your own AI key isn’t connected.</b> Add an AI connection with your own key in <Link className="ui-link" to="/settings/ai-connections">AI connections</Link>, from any supported provider. Nobody else’s key is ever used for you.</span></p>;
   return null;
 }
 
@@ -98,7 +127,7 @@ function AgentPicker({ workspace, agents, value, onChange, onAgent, name, disabl
 const providerName = (status: PersonalAssistantStatus) =>
   status.disclosure.provider ? (status.disclosure.provider === 'openai_compatible' ? 'your own endpoint' : AI_PROVIDERS[status.disclosure.provider].label) : 'your connection’s AI provider';
 
-function Disclosure({ status, perRun, daily, timeZone, payer: chosenPayer, connection }: {
+export function Disclosure({ status, perRun, daily, timeZone, payer: chosenPayer, connection }: {
   status: PersonalAssistantStatus; perRun: number; daily: number; timeZone: string; payer?: { organization: string; workspace: string } | null;
   /** The chosen connection, named in full when the person has several. */
   connection?: BackgroundComputeConnection | null;
@@ -270,6 +299,7 @@ function Enabled({ status, agents, workspaces, name, onChange, onRemoved, onAgen
           value={enablement.agents.find((item) => item.workspaceId === space.id)?.agentId ?? ''} onAgent={onAgent}
           onChange={(agentId) => { if (agentId) void act(`agent-${space.id}`, () => selectAssistantAgent(agentId), 'Assistant chosen'); }} />)}
       </section>
+      <AssistantProjectAccess />
       <section className="nset__sec" aria-labelledby="aset-consent">
         <h3 id="aset-consent">What you agreed to</h3>
         <p className="nset__lead">On {new Date(enablement.consent.acceptedAt).toLocaleDateString(undefined, { dateStyle: 'medium' })} · disclosure {enablement.consent.version}</p>

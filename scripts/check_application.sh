@@ -1,7 +1,25 @@
 #!/bin/sh
+# Without arguments: the whole Docker suite (every API test file, browser and restart checks).
+# With arguments: paths of API test files under app/tests/app/, as seen from app/, e.g.
+# ./scripts/check_application.sh tests/app/search.test.ts. Only those files run in the test
+# service, on the same stack; the browser, restart and unavailable-configuration checks are skipped.
 set -eu
 
 cd "$(dirname "$0")/.."
+for file in "$@"; do
+  name=${file#tests/app/}
+  case "$file:$name" in
+    tests/app/*:*.ts) ;;
+    *) printf 'not an API test file under app/tests/app/: %s\n' "$file" >&2; exit 2 ;;
+  esac
+  case "$name" in
+    */*|*..*) printf 'not an API test file under app/tests/app/: %s\n' "$file" >&2; exit 2 ;;
+  esac
+  if [ ! -f "app/$file" ]; then
+    printf 'API test file not found: %s\n' "$file" >&2
+    exit 2
+  fi
+done
 project="flux-test-$(date +%s)-$$"
 export POSTGRES_USER=flux
 export POSTGRES_DB=flux
@@ -65,6 +83,16 @@ export FLUX_VAPID_SUBJECT="mailto:push-test@example.test"
 if [ -z "$FLUX_VAPID_PUBLIC_KEY" ] || [ -z "$FLUX_VAPID_PRIVATE_KEY" ]; then
   echo "VAPID key generation failed: $keys" >&2
   exit 1
+fi
+
+if [ "$#" -gt 0 ]; then
+  $compose run --rm test node_modules/.bin/tsx --test --test-concurrency=1 "$@"
+  if $compose logs --no-color api worker providermock | grep -F 'owner-budget-key-' >/dev/null; then
+    echo 'Background provider key appeared in API, worker or provider-mock logs' >&2
+    exit 1
+  fi
+  echo 'Named API test files only: browser, restart, unavailable-configuration and background checks skipped.'
+  exit 0
 fi
 
 $compose run --rm test

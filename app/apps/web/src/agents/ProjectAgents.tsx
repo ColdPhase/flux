@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from 'react';
-import { flushSync } from 'react-dom';
+import { createPortal, flushSync } from 'react-dom';
 import { Link, useLoaderData, useLocation, useNavigation, useRevalidator, useSearchParams, type LoaderFunctionArgs } from 'react-router';
 import type { AgentOperation, AgentQuestion, AgentStop, ConversationMessage, ProjectAgentConnection, ProjectAgentRequest, ProjectAgents as ProjectAgentsData, TaskDiscussion, WorkRowProjection, WorkStatus } from '@flux/contracts';
 import { ApiError, NetworkError } from '../api/client';
 import { useStreamEvents } from '../api/stream';
 import { useShellData } from '../app/data';
+import { useShellActions } from '../app/shellContext';
 import { outboxView, useComposerDraft, useComposerScope } from '../composer/draft';
 import { AttachButton, ComposerFiles, MessageContent } from '../composer/Files';
 import { LinkPreviews, MessageText } from '../app/MessageText';
@@ -24,7 +25,6 @@ import { useProjectQuestions, useQuestionList } from './questions';
 import { useLatestAgentLine } from './latest';
 import { agentAuthorOwner, useAgentOwners } from './owners';
 import { ProjectPolicy } from './ProjectPolicy';
-import { AssistantJoinRequests } from './AssistantJoinRequests';
 import { WORK_ROLE, agentEntries, connectionState, currentWorkLine, firstName, isAgentWorking, mayDo, shortOwner, tasksHeldBy, teammateOf, type AgentEntry } from './roster';
 import { useSessionClock } from './useSessionClock';
 import { useTyping } from '../typing/useTyping';
@@ -484,9 +484,9 @@ function StopButton({ label, text, busy, onClick, className }: { label: string; 
 /** What a row may offer on its lead row: Stop (in progress) or Take back (open or blocked), and whether it is busy. */
 interface RowStop { label: string; text: string; busy: boolean; run: () => void }
 
-function AgentRow({ entry, view, duplicate, short, now, selected, dropping, stop, onOpen, onDropTask, onDropping }: {
+function AgentRow({ entry, view, duplicate, short, now, selected, dropping, stop, canDrop, onOpen, onDropTask, onDropping }: {
   entry: AgentEntry; view: RowView; duplicate: boolean; short: string | null; now: number; selected: boolean; dropping: boolean;
-  stop: RowStop | null; onOpen: () => void; onDropTask: (taskId: string) => void; onDropping: (on: boolean) => void;
+  stop: RowStop | null; canDrop: boolean; onOpen: () => void; onDropTask: (taskId: string) => void; onDropping: (on: boolean) => void;
 }) {
   const last = entry.connection?.lastActivity;
   // Two connections of one agent are told apart by client and connection; the meta then starts with the agent's name (P2-6).
@@ -496,9 +496,9 @@ function AgentRow({ entry, view, duplicate, short, now, selected, dropping, stop
   ) : null;
   return (
     <li className="agents-row" data-agent={entry.agentId} data-state={entry.connection ? shownState(entry.connection, now) : undefined} data-working={view.working || undefined} data-drop={dropping || undefined}
-      onDragOver={(event) => { if (event.dataTransfer.types.includes(TASK_DRAG)) { event.preventDefault(); onDropping(true); } }}
+      onDragOver={(event) => { if (canDrop && event.dataTransfer.types.includes(TASK_DRAG)) { event.preventDefault(); onDropping(true); } }}
       onDragLeave={() => onDropping(false)}
-      onDrop={(event) => { const id = event.dataTransfer.getData(TASK_DRAG); onDropping(false); if (id) { event.preventDefault(); onDropTask(id); } }}>
+      onDrop={(event) => { const id = event.dataTransfer.getData(TASK_DRAG); onDropping(false); if (canDrop && id) { event.preventDefault(); onDropTask(id); } }}>
       <button type="button" className="agents-row__btn" aria-pressed={selected} onClick={onOpen}>
         <Kreska size={36} expression={view.expression} hue={agentHue(entry.agentId)} className="agents-row__icon" />
         <span className="agents-row__body">
@@ -627,6 +627,7 @@ const questionLink = (projectId: string, question: AgentQuestion) => question.ta
 
 export function ProjectAgents() {
   const data = useLoaderData() as ProjectAgentsData;
+  const { metadataSlot, viewMenuMetadataSlot } = useShellActions();
   const shell = useProjectShell();
   const { me } = useShellData();
   const location = useLocation();
@@ -672,7 +673,7 @@ export function ProjectAgents() {
   const asked = useMemo(() => questions.filter((question) => question.askedUserId === me.user.id && !question.answer), [questions, me.user.id]);
 
   const sortedConnections = useMemo(() => [...connections.list].sort((a, b) => RANK[shownState(a, connections.now)] - RANK[shownState(b, connections.now)]), [connections.list, connections.now]);
-  const listed = useMemo(() => agentEntries(shell?.people ?? null, sortedConnections), [shell?.people, sortedConnections]);
+  const listed = useMemo(() => agentEntries(shell?.people ?? null, sortedConnections).filter((entry) => entry.connection && !entry.connection.assistant), [shell?.people, sortedConnections]);
   const heldBy = (agentId: string) => tasksHeldBy(agentId, rows);
   const lastStopOf = (agentId: string) => agentStops.stops.find((item) => item.agent.id === agentId) ?? null;
   const leads = useMemo(() => leadKeys(listed, connections.now), [listed, connections.now]);
@@ -695,10 +696,10 @@ export function ProjectAgents() {
   };
   // After Stop or Take back the panel stays on that agent, with focus on its heading (#347 N4).
   const [refocusKey, setRefocusKey] = useState<string | null>(null);
-  // Stop, or Take back, is offered to who the server lets stop: a manager and the agent's owner (the task's creator is told by the server).
+  // The project roster offers management controls only to this connection’s owner (#522).
   const stopOf = (entry: AgentEntry): RowStop | null => {
     const held = heldBy(entry.agentId)[0];
-    if (!held || !canWrite || !(shell?.project.access === 'manager' || entry.ownerId === me.user.id)) return null;
+    if (!held || !canWrite || entry.ownerId !== me.user.id) return null;
     const busy = stopper.busy === `${entry.agentId}:${held.id}`;
     const inProgress = held.status === 'in_progress';
     return {
@@ -745,6 +746,8 @@ export function ProjectAgents() {
   // above the sticky composer on any screen.
   return (
     <div className="pane-scroll agents-scroll">
+    {metadataSlot ? createPortal(<span className="agents-header-meta">{listed.length} MCP {listed.length === 1 ? 'client' : 'clients'}</span>, metadataSlot) : null}
+    {viewMenuMetadataSlot ? createPortal(<span>{listed.length} MCP {listed.length === 1 ? 'client' : 'clients'}</span>, viewMenuMetadataSlot) : null}
     <div className="agents" data-detail={beside ? (latestDetail || canOpenThread ? 'open' : undefined) : (latestDetail && !canOpenThread ? 'open' : undefined)}
       data-thread-open={canOpenThread ? 'true' : undefined}>
       <div className="agents__main">
@@ -758,15 +761,13 @@ export function ProjectAgents() {
             {entries.map((entry) => (
               <AgentRow key={entry.key} entry={entry} view={views.get(entry.key)!} now={connections.now} selected={latestDetail?.key === entry.key}
                 duplicate={listed.filter((other) => other.agentId === entry.agentId).length > 1} short={shortOwner(entry, me.user.id)}
-                dropping={dropping === entry.key} stop={leads.has(entry.key) ? stopOf(entry) : null} onOpen={() => open(entry.key)}
+                dropping={dropping === entry.key} canDrop={canWrite && entry.ownerId === me.user.id} stop={leads.has(entry.key) ? stopOf(entry) : null} onOpen={() => open(entry.key)}
                 onDropTask={(id) => dropTask(entry.agentId, id)} onDropping={(on) => setDropping((current) => on ? entry.key : current === entry.key ? null : current)} />
             ))}
           </ul>
         ) : (
           <p className="agents__no-connections">No agents here yet. Connect one below; people can still discuss tasks in Conversation.</p>
         )}
-        <AssistantJoinRequests key={`${projectId}:${me.user.id}`} projectId={projectId} meId={me.user.id} meName={me.user.name}
-          view={connections.view} names={names} canManage={shell?.project.access === 'manager'} onRefresh={connections.refresh} />
         <ul className="agents-links">
           <li><Link className="agents-link" to={requests ? questionLink(projectId, requests) : '/inbox'}>
             <span className="agents-link__icon"><Icon name="inbox" size={16} /></span>
@@ -806,7 +807,7 @@ export function ProjectAgents() {
         <AgentDetail key={latestDetail.key} entry={latestDetail} held={heldBy(latestDetail.agentId)} meId={me.user.id} projectId={projectId} now={connections.now}
           stops={agentStops.stops.filter((item) => item.agent.id === latestDetail.agentId)} stop={leads.has(latestDetail.key) ? stopOf(latestDetail) : null}
           asking={asked.find((question) => question.agent.id === latestDetail.agentId) ?? null} refocus={refocusKey === latestDetail.key} onRefocused={() => setRefocusKey(null)}
-          canHandOff={canWrite && !!shell} onHandOff={() => setHandOff({ agentId: latestDetail.agentId, task: null })} onClose={() => open(null)} onThread={openThread} />
+          canHandOff={canWrite && !!shell && latestDetail.ownerId === me.user.id} onHandOff={() => setHandOff({ agentId: latestDetail.agentId, task: null })} onClose={() => open(null)} onThread={openThread} />
       ) : null}
       {task && !beside ? (
         <section className="agents-thread-sheet" aria-label={`#${task.number} · ${task.title}`}>{threadPane('sheet')}</section>

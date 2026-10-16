@@ -1,13 +1,14 @@
 import { getCapabilities, getLinkState, startLink, startSso } from '../api/auth';
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { Form, Link, Outlet, useLocation, useNavigation, useSearchParams } from 'react-router';
-import { aiConnectionLabel, type AgentConnection, type BackgroundComputeConnection, type PersonalAssistantStatus, type IdentityCapabilities } from '@flux/contracts';
+import { aiConnectionLabel, PERSONAL_RUN_LIMITS, type AgentConnection, type BackgroundComputeConnection, type PersonalAssistantStatus, type IdentityCapabilities } from '@flux/contracts';
 import { listAgentConnections } from '../agent-connection/api';
 import { getAssistantStatus } from '../assistant/api';
-import { listBackgroundConnections } from '../proactive-comparison/api';
+import { BACKGROUND_OFF_LINE, backgroundComparisonRuntime, listBackgroundConnections } from '../proactive-comparison/api';
+import { dollars } from '../assistant/format';
 import { NotificationsButton } from '../pwa';
 import { AgentTag, Avatar, Button, Icon, Kreska, MEDIA, Spinner, agentHue, setReduceMotion, useMediaQuery, useReduceMotion } from '../ui';
-import { RuntimeSection, WhichAccount } from '../agent-runtime/RuntimeSection';
+import { RuntimeSection } from '../agent-runtime/RuntimeSection';
 import '../agent-connection/connection.css';
 import { useShellData } from './data';
 import { setSmallMoments, useSmallMoments } from './smallMoments';
@@ -16,15 +17,16 @@ import { setTheme, useTheme, type ThemeChoice } from './theme';
 import './reading.css';
 import './settings.css';
 
-// Settings (F-026, #350): one calm place with Account, Appearance, Notifications, Agents and AI and
-// Keyboard shortcuts. On the computer a section list sits beside the page; on the phone Settings
-// is one page (Appearance, This phone, Agents and AI) that leads to the others.
+// Settings (F-026, #350; Spokój #513): one calm place with Account, Appearance, Notifications, Agents and AI
+// and Keyboard shortcuts, in that order on every device. On the computer the section list sits beside the
+// page; on the phone Settings is that list (the account card, then the sections) and each section is a page.
+// Keyboard shortcuts appear only where there is a keyboard, so not on touch-only phones and tablets.
 
 const SECTIONS: { to: string; label: string; match: RegExp }[] = [
   { to: '/settings/account', label: 'Account', match: /^\/settings\/account$/ },
   { to: '/settings', label: 'Appearance', match: /^\/settings(\/appearance)?$/ },
   { to: '/settings/notifications', label: 'Notifications', match: /^\/settings\/notifications/ },
-  { to: '/settings/agents', label: 'Agents and AI', match: /^\/settings\/(agents|assistant|background-compute)/ },
+  { to: '/settings/agents', label: 'Agents and AI', match: /^\/settings\/(agents|assistant|background-compute|ai-connections)/ },
   { to: '/settings/shortcuts', label: 'Keyboard shortcuts', match: /^\/settings\/shortcuts$/ },
 ];
 
@@ -32,11 +34,13 @@ const SECTIONS: { to: string; label: string; match: RegExp }[] = [
 export function SettingsLayout() {
   const { pathname } = useLocation();
   const phone = useMediaQuery(MEDIA.phone);
+  // A touch-only tablet has no keyboard to use shortcuts with (AC-1).
+  const touch = useMediaQuery(MEDIA.touch);
   return (
     <div className="sset">
       {phone ? null : (
         <nav className="sset__nav" aria-label="Settings sections">
-          {SECTIONS.map((section) => (
+          {SECTIONS.filter((section) => !touch || section.to !== '/settings/shortcuts').map((section) => (
             <Link key={section.to} to={section.to} className="sset__link" aria-current={section.match.test(pathname) ? 'page' : undefined}>
               {section.label}
             </Link>
@@ -182,61 +186,109 @@ function ReduceMotionSwitch() {
   return <SwitchRow label="Reduce motion" checked={reduce} onChange={setReduceMotion} />;
 }
 
-const DESIGNATION: Record<AgentConnection['clientDesignation'], string> = { claude_code: 'Claude Code', codex: 'Codex', other: 'another app' };
 const ASSISTANT_STATE: Record<PersonalAssistantStatus['state'], string> = {
   not_enabled: 'not set up', ready: 'in Flux', paused: 'paused', capped: 'daily limit reached', unavailable: 'unavailable',
 };
+const DESIGNATION: Record<AgentConnection['clientDesignation'], string> = { claude_code: 'Claude Code', codex: 'Codex', other: 'another app' };
+const THEME_LABEL: Record<ThemeChoice, string> = { light: 'Light', dark: 'Dark', system: 'System' };
 
 /**
- * Agents and AI: the person's own agents with their colours (the only place outside the Agents
- * view where agents have colour), their connections, and the existing AI settings.
+ * The assistant card (Spokój E04): Kreska, name, "Agent", one status line, three short facts and one
+ * primary step. Costs, data and consent live in the set-up step and on "How it works".
  */
-function AgentsAndAi({ full, page = false }: { full: boolean; page?: boolean }) {
+function AssistantCard({ userId, status }: { userId: string; status: PersonalAssistantStatus | null }) {
+  // In-app AI off on this server (AC-3): the card says so in its one status line. Manage stays for an assistant
+  // that is set up; with nothing set up, Set up stays in its place, dimmed.
+  const off = status?.setup.provider === 'off';
+  return (
+    <section className="sset-card sset-assistant" aria-labelledby="assistant-card">
+      <div className="sset-assistant__head">
+        <span className="sset-row__ic" aria-hidden="true"><Kreska size={26} hue={agentHue(`assistant:${userId}`)} /></span>
+        <div className="sset-row__b">
+          <h4 className="sset-row__t" id="assistant-card"><span className="sset-row__identity">Your assistant <AgentTag /></span></h4>
+          <span className="sset-row__s">{off ? 'In-app AI is off on this Flux server' : `for you · ${status ? ASSISTANT_STATE[status.state] : 'loading'}`}</span>
+          {status?.enablement && !off ? <span className="sset-row__s">Paid by {status.enablement.consent.payer.organization} · {aiConnectionLabel(status.enablement.consent.provider, status.enablement.consent.model)} · Assistant {status.enablement.status === 'active' ? 'on' : 'paused'}</span> : null}
+        </div>
+        {off && !status?.enablement ? <Button variant="primary" disabled>Set up</Button>
+          : <Link className="ui-btn ui-btn--primary" to="/settings/assistant">{status?.enablement ? 'Manage' : 'Set up'}</Link>}
+      </div>
+      {off ? null : (
+        <>
+          <ul className="sset-assistant__facts">
+            <li>Answers only when you ask it, in a project you choose.</li>
+            <li>Uses your own AI connection. You pay your provider, never Flux.</li>
+            <li>Stops at a daily cap you set (default {dollars(PERSONAL_RUN_LIMITS.dailyCapCents.default)}).</li>
+          </ul>
+          <Link className="ui-link sset-assistant__how" to="/settings/assistant/how">How it works</Link>
+        </>
+      )}
+    </section>
+  );
+}
+
+/** Background suggestions: a link when the server runs them, one status line when it does not (Spokój E04 ③). */
+function BackgroundRow({ runtime }: { runtime: 'available' | 'unavailable' | null }) {
+  if (runtime === 'unavailable') {
+    return (
+      <li className="sset-row">
+        <span className="sset-row__ic" aria-hidden="true"><Icon name="leaf" size={16} /></span>
+        <span className="sset-row__b"><span className="sset-row__t">Background suggestions</span><span className="sset-row__s">{BACKGROUND_OFF_LINE}</span></span>
+      </li>
+    );
+  }
+  return <LinkRow to="/settings/background-compute" icon={<Icon name="leaf" size={16} />} title="Background suggestions"
+    detail="Optional comparisons from your own connection and allowance" action="Manage" />;
+}
+
+/**
+ * Agents and AI, on its own page (Settings → Agents and AI, and the phone's section): the assistant card first,
+ * then the sign-in choices with the API key ones under them (#277 Connect AI), background suggestions, and the
+ * person's own agent apps with their colours (the only place outside the Agents view where agents have colour).
+ */
+function AgentsAndAi() {
   const { me } = useShellData();
   const [connections, setConnections] = useState<AgentConnection[] | null>(null);
   const [assistant, setAssistant] = useState<PersonalAssistantStatus | null>(null);
+  const [runtime, setRuntime] = useState<'available' | 'unavailable' | null>(null);
   const [keys, setKeys] = useState<BackgroundComputeConnection[] | null>(null);
   const [failed, setFailed] = useState(false);
   useEffect(() => {
     const controller = new AbortController();
     listAgentConnections(controller.signal).then(setConnections, (error: unknown) => { if (!controller.signal.aborted) { setConnections([]); setFailed(!!error); } });
     getAssistantStatus(controller.signal).then(setAssistant, () => undefined);
+    backgroundComparisonRuntime(controller.signal).then((answer) => setRuntime(answer.status), () => { if (!controller.signal.aborted) setRuntime('unavailable'); });
     // The caller's own AI connections only; the list is owner-scoped on the server.
-    if (page) listBackgroundConnections(controller.signal).then(setKeys, () => { if (!controller.signal.aborted) setKeys([]); });
+    listBackgroundConnections(controller.signal).then(setKeys, () => { if (!controller.signal.aborted) setKeys([]); });
     return () => controller.abort();
-  }, [page]);
+  }, []);
   const mine = (connections ?? []).filter((connection) => !connection.revokedAt && connection.ownerUserId === me.user.id);
   // Other ways to connect: the API key choices (F-027 AST-1.2: shown plainly when sign-in is off).
   const otherWays = (
     <>
       <ul className="sset-card">
-        <LinkRow to="/settings/background-compute" icon={<Icon name="key" size={16} />} title="Use an API key"
+        <LinkRow to="/settings/ai-connections" icon={<Icon name="key" size={16} />} title="Use an API key"
           detail="Your own key from a provider, with your own limits and payer" action="Manage" />
-        {page ? (keys ?? []).map((key) => (
-          <LinkRow key={key.id} to="/settings/background-compute" icon={<Icon name="key" size={16} />}
+        {(keys ?? []).map((key) => (
+          <LinkRow key={key.id} to="/settings/ai-connections" icon={<Icon name="key" size={16} />}
             title={<>{key.name}<span className="sset-row__meta"> · {aiConnectionLabel(key.provider, key.model)}</span></>}
             detail={`Paid by ${key.payerOrganization} · Assistant ${assistant?.enablement?.connectionId === key.id ? 'on' : 'off'} · Background suggestions ${key.usedForBackground ? 'on' : 'off'}`} action="Manage" />
-        )) : null}
+        ))}
       </ul>
-      {page && keys !== null && !keys.length ? <p className="sset-note">No AI connection of your own yet. Add one under Background suggestions to use your assistant.</p> : null}
+      {keys !== null && !keys.length ? <p className="sset-note">No AI connection of your own yet. Add one under Use an API key to use your assistant.</p> : null}
     </>
   );
   return (
     <>
-      {/* F-022 T2 (#277), F-027 AST-1: the sign-in choices first, then the API key choices under "Other ways to connect". */}
+      {/* Spokój E04: the assistant card first. Then the one Connect AI entry (F-022 T2, #277; F-027 AST-1): the
+          sign-in choices, with the API key choices under them, and background suggestions. */}
       <section aria-labelledby="ai-in-flux">
         <h3 className="sset-sub" id="ai-in-flux">Agent in Flux</h3>
         <p className="sset-note sset-note--sub">Works inside Flux when you ask. You choose the AI and who pays for it.</p>
-        {page ? <RuntimeSection otherWays={otherWays} /> : null}
-        <ul className="sset-card">
-          <LinkRow to="/settings/assistant" icon={<Kreska size={22} hue={agentHue(`assistant:${me.user.id}`)} />}
-            title={<><span className="sset-row__identity">Your assistant{' '}<AgentTag /></span><span className="sset-row__meta"> · for you · {assistant ? ASSISTANT_STATE[assistant.state] : 'in Flux'}</span></>}
-            detail={page && assistant?.enablement ? `Paid by ${assistant.enablement.consent.payer.organization} · ${aiConnectionLabel(assistant.enablement.consent.provider, assistant.enablement.consent.model)} · Assistant ${assistant.enablement.status === 'active' ? 'on' : 'paused'}` : undefined}
-            action="Manage" />
-          {full ? <LinkRow to="/settings/background-compute" icon={<Icon name="leaf" size={16} />} title="Background suggestions"
-            detail="Optional comparisons from your own connection and allowance" action="Manage" /> : null}
+        <AssistantCard userId={me.user.id} status={assistant} />
+        <RuntimeSection otherWays={otherWays} />
+        <ul className="sset-card sset-gap">
+          <BackgroundRow runtime={runtime} />
         </ul>
-        {page ? null : <>{otherWays}<WhichAccount /></>}
       </section>
       <section aria-labelledby="ai-agent-app">
         <h3 className="sset-sub" id="ai-agent-app">Your agent app</h3>
@@ -256,8 +308,8 @@ function AgentsAndAi({ full, page = false }: { full: boolean; page?: boolean }) 
   );
 }
 
-/** Settings → Appearance with Agents and AI below (the drawn computer page), and the phone's Settings page. */
-export function SettingsHome() {
+/** Settings → Appearance: one neutral palette, text size, motion and Kreska; on the phone also This phone. */
+export function SettingsAppearance() {
   const phone = useMediaQuery(MEDIA.phone);
   return (
     <div className="pane-scroll">
@@ -273,30 +325,62 @@ export function SettingsHome() {
           {phone ? <TextSizeFollowsPhone /> : <><TextSizeChoice /><ReduceMotionSwitch /></>}
           <KreskaSwitch />
         </div>
-        <h2 className="sset-sec" id="agents-and-ai">Agents and AI</h2>
-        <AgentsAndAi full={phone} />
-        {phone ? (
-          <>
-            <h2 className="sset-sec">More</h2>
-            <ul className="sset-card">
-              <LinkRow to="/settings/notifications" icon={<Icon name="bell" size={16} />} title="Notifications" detail="Needs you, quiet hours, morning summary" />
-              <LinkRow to="/settings/shortcuts" icon={<Icon name="key" size={16} />} title="Keyboard shortcuts" detail="For a keyboard on a tablet or computer" />
-              <LinkRow to="/settings/account" icon={<Icon name="person" size={16} />} title="Account" detail="Your sign-in, this session and sign out" />
-            </ul>
-          </>
-        ) : null}
       </div>
     </div>
   );
 }
 
-/** Settings → Agents and AI on its own page: the agents, connections and every AI setting. */
+/**
+ * Settings on the phone (Spokój E04p): the account, the same sections in the same order as the computer's
+ * list (Keyboard shortcuts only with a keyboard, so not here), and Sign out.
+ */
+function PhoneSettings() {
+  const { me } = useShellData();
+  const theme = useTheme();
+  const [assistant, setAssistant] = useState<PersonalAssistantStatus | null>(null);
+  useEffect(() => {
+    const controller = new AbortController();
+    getAssistantStatus(controller.signal).then(setAssistant, () => undefined);
+    return () => controller.abort();
+  }, []);
+  return (
+    <div className="pane-scroll">
+      <div className="pane-in sset-in" data-shift>
+        {/* The header already says "Settings": one title on the phone. */}
+        <Link to="/settings/account" className="sset-card sset-me sset-me--link">
+          <Avatar name={me.user.name} tone="me" size="lg" />
+          <span className="sset-me__b"><b>{me.user.name}</b><span>{me.user.email}</span></span>
+          <Icon name="chevron-right" size={14} className="sset-row__go" />
+        </Link>
+        <ul className="sset-card sset-gap">
+          <LinkRow to="/settings/appearance" icon={<Icon name="sun" size={16} />} title="Appearance" detail={THEME_LABEL[theme]} />
+          <LinkRow to="/settings/notifications" icon={<Icon name="bell" size={16} />} title="Notifications" detail="Needs you, quiet hours, morning summary" />
+          <LinkRow to="/settings/agents" icon={<Icon name="spark" size={16} />} title="Agents and AI" detail={assistant ? `Assistant ${ASSISTANT_STATE[assistant.state]}` : undefined} />
+        </ul>
+        <Form method="post" action="/sign-out" className="sset-card sset-gap">
+          <button type="submit" className="sset-row sset-row--link">
+            <span className="sset-row__ic" aria-hidden="true"><Icon name="sign-out" size={16} /></span>
+            <span className="sset-row__b"><span className="sset-row__t">Sign out</span></span>
+          </button>
+        </Form>
+      </div>
+    </div>
+  );
+}
+
+/** The Settings index: Appearance on the computer (the section list is beside it), the section list on the phone. */
+export function SettingsHome() {
+  const phone = useMediaQuery(MEDIA.phone);
+  return phone ? <PhoneSettings /> : <SettingsAppearance />;
+}
+
+/** Settings → Agents and AI on its own page: the assistant, Connect AI, background suggestions and agent apps. */
 export function SettingsAgents() {
   return (
     <div className="pane-scroll">
       <div className="pane-in sset-in" data-shift>
         <PageHead title="Agents and AI" lead="Your agents work for you and are always marked as agents. Colours appear only here and in the Agents view." />
-        <AgentsAndAi full page />
+        <AgentsAndAi />
       </div>
     </div>
   );

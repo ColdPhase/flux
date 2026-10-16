@@ -52,6 +52,8 @@
   .background-settings__limits { grid-template-columns: 1fr; gap: 8px; }
   .background-settings__metadata > div { grid-template-columns: 1fr; gap: 1px; }
 }
+/* On the phone the header already names the page: one title (#513). */
+@media (max-width: 640px) { .sset-in.background-settings .background-settings__head h2 { display: none; } }
 @media (pointer: coarse) {
   .background-settings__fields input:not([type=checkbox]), .background-settings__price input { font-size: 16px; min-height: 44px; }
   .background-settings__select input, .background-settings__select select, .background-settings__fields select { font-size: 16px; min-height: 44px; }
@@ -68,3 +70,8 @@
 .background-settings__connection-head h4 { margin: 0; font-size: var(--fs-base); font-weight: 600; overflow-wrap: anywhere; }
 .background-settings__badge { font-size: var(--fs-xs); font-weight: 500; color: var(--t1); }
 
+/* Spokój #513: one status line at the top, with AI connections beside it in every state. The fixed row
+   height keeps the link and everything below in place whether the line takes one or two lines. */
+.background-settings__status { display: flex; align-items: center; gap: 12px; min-height: 52px; margin: 8px 0 4px; }
+.background-settings__status .background-settings__note { flex: 1 1 auto; min-width: 0; margin: 0; }
+.background-settings__status .background-settings__back { flex: none; margin-top: 0; }

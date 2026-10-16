@@ -1,5 +1,4 @@
 import { assistantJoinRows, assistantJoinView, lockAssistantOwner } from '@flux/db';
-import { assistantJoinInboxPath } from '@flux/contracts';
 import { ConflictError, NotFoundError, assertAuthorized, createNotification, evaluateProject, getProject,
   grantProject, isUuid, type Database, type Principal } from '@flux/core';
 import type { PgBoss } from 'pg-boss';
@@ -33,7 +32,7 @@ export function assistantJoinUseCases(db: Database, boss: Pick<PgBoss, 'send'>) 
             if (!(await evaluateProject({ kind: 'human', id: candidate.userId }, 'project.manage', projectId, tx, { lock: true })).allowed) continue;
             const notification = await createNotification(notificationUnitOfWork(tx, pgBossQueue(boss)), {
               userId: candidate.userId, source: { type: 'project', id: projectId }, title,
-              body: `${project.name} · Requested contributor access.`, url: assistantJoinInboxPath(projectId),
+              body: `${project.name} · Requested contributor access.`,
             });
             await rows.markQuestion(notification.id);
             await rows.linkQuestion(notification.id, request.row.id, request.row.version);
@@ -42,7 +41,7 @@ export function assistantJoinUseCases(db: Database, boss: Pick<PgBoss, 'send'>) 
         return assistantJoinView(request.row, identity.agentId);
       });
     },
-    respond(principal: Principal, projectId: string, requestId: string, allow: boolean) {
+    respond(principal: Principal, projectId: string, requestId: string, allow: boolean, openingVersion?: number) {
       human(principal, projectId);
       if (!isUuid(requestId)) throw unavailable();
       return db.transaction(async (tx) => {
@@ -56,6 +55,8 @@ export function assistantJoinUseCases(db: Database, boss: Pick<PgBoss, 'send'>) 
         if (!request) throw unavailable();
         const identity = await rows.forOwner(request.ownerUserId, request.workspaceId);
         if (!identity || identity.connectionId !== request.connectionId) throw unavailable();
+        if (openingVersion !== undefined && request.version !== openingVersion)
+          throw new ConflictError('This request has changed. Review the current Inbox question.', 'ASSISTANT_JOIN_REQUEST_STALE');
         if (request.state !== 'pending') return assistantJoinView(request, identity.agentId);
         if (!(await evaluateProject({ kind: 'human', id: request.ownerUserId }, 'project.read', projectId, tx, { lock: true })).allowed)
           throw new ConflictError('The owner no longer has access here', 'ASSISTANT_JOIN_REQUEST_STALE');

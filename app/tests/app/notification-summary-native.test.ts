@@ -5,7 +5,7 @@ import { PgBoss } from 'pg-boss';
 import { loadPushSenderConfig, sendMorningSummaries, type PushSendJob, type SummaryUnitOfWork } from '@flux/core';
 import type { NotificationPreferences, NotificationSourceRef, UpdateNotificationPreferencesCommand } from '@flux/contracts';
 import { summaryUnitOfWork } from '../../apps/worker/src/jobs/morning-summary.js';
-import { deliverPush } from '../../apps/worker/src/push/index.js';
+import { createVapidAuthorizer, deliverPush } from '../../apps/worker/src/push/index.js';
 import { connectionString, db, pool } from './support/db.js';
 import { addMember, expectStatus, grant, person, project, workspace, type Person } from './support/people.js';
 import { decryptPush, recordedPushes, subscribe } from './support/push.js';
@@ -17,6 +17,7 @@ const queue = new PgBoss({ connectionString, migrate: false });
 before(() => queue.start());
 after(() => queue.stop());
 const sender = loadPushSenderConfig();
+const vapid = createVapidAuthorizer();
 const NOW = new Date('2034-06-12T00:05:00Z');
 const INITIAL_CLAIM = '2034-06-10';
 
@@ -107,12 +108,12 @@ async function admit(f: Fixture) {
 }
 
 async function skipped(f: Fixture) {
-  assert.equal((await deliverPush({ db, config: sender }, f.jobs[0]!)).outcome, 'skipped');
+  assert.equal((await deliverPush({ db, vapid, config: sender }, f.jobs[0]!)).outcome, 'skipped');
   assert.equal((await recordedPushes(f.subscription.mockId)).length, 0, 'no aggregate, including a generic fallback, leaves the server');
 }
 
 async function delivered(f: Fixture, job = f.jobs[0]!) {
-  assert.equal((await deliverPush({ db, config: sender }, job)).outcome, 'sent');
+  assert.equal((await deliverPush({ db, vapid, config: sender }, job)).outcome, 'sent');
   const pushes = await recordedPushes(f.subscription.mockId);
   assert.equal(pushes.length, 1, 'restored current authority/preferences really permit one encrypted push');
   const push = pushes[0]!;
