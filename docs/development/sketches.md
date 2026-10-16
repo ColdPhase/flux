@@ -67,7 +67,7 @@ concurrent revocation is either seen or waits.
 
 | Route | Notes |
 | --- | --- |
-| `GET /api/v1/workspaces/:id/sketches?projectId=` | Returns a page of visible sketches, newest change first. The filter is applied before the limit and the total. `?scope=private` returns only private sketches (the sketchbook, #189); no other scope value is accepted. |
+| `GET /api/v1/workspaces/:id/sketches?projectId=` | Returns a page of visible sketches, newest change first. The filter is applied before the limit and the total. `?scope=private` returns only private sketches (the sketchbook, #189); no other scope value is accepted. `?hideEmpty=true` leaves out sketches with no thought that still have the default title "Untitled sketch" (#508). Each listed sketch carries `thoughtCount`. |
 | `POST /api/v1/workspaces/:id/sketches` | Takes `{ title, scope: 'project' \| 'private', projectId? }`. |
 | `GET /api/v1/sketches/:id` | Returns the sketch with its thoughts and links. The ETag is the sketch version. |
 | `PATCH /api/v1/sketches/:id` | Renames the sketch. Needs `If-Match`. |
@@ -93,8 +93,9 @@ author receives the events of a private sketch. The stream's `objectType` is `sk
 
 ## Web
 
-- `/map` is Home's Map tab, the private sketchbook. It lists your private sketches
-  (`?scope=private`) and has **New sketch**, which creates a private sketch. If you have
+- `/map` is the Sketchbook, private to you. It lists your private sketches
+  (`?scope=private&hideEmpty=true`, so an empty sketch you left is not listed; the project Map
+  and Details do the same, #508) and has **New sketch**, which creates a private sketch. If you have
   no workspace yet, it first creates a personal one. Project sketches live in their
   project's Map tab and DM sketches in their DM (#189).
 - A sketch opens only where it lives: `/projects/:projectId/map/:sketchId` for a project

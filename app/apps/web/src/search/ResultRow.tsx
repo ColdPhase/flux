@@ -1,5 +1,6 @@
-import type { SearchKind, SearchPlace, SearchResult, SearchText } from '@flux/contracts';
-import { Icon, type IconName } from '../ui';
+import type { SearchKind, SearchPlace, SearchResult, SearchText, WorkStatus } from '@flux/contracts';
+import { Icon, StatusGlyph, type IconName } from '../ui';
+import { plainSnippet } from './plain';
 
 // One search result in direction C: what it is in human language, the matching text with the
 // matched words marked, and where it lives, who wrote it and when. Shared by Jump to… and the page.
@@ -34,19 +35,32 @@ export function placeText(place: SearchPlace) {
   }
 }
 
+/** A task's text starts with its number ("#12", so that "#12" finds it); the row shows the number beside the title, not again in the snippet. */
+function withoutTaskNumber(snippet: SearchText | null, number: number | undefined): SearchText | null {
+  if (!snippet || number === undefined) return snippet;
+  const [first, ...others] = snippet;
+  const lead = `#${number}`;
+  if (!first || !first.text.startsWith(lead) || /\d/.test(first.text.charAt(lead.length))) return snippet;
+  const kept = [{ ...first, text: first.text.slice(lead.length).replace(/^\s+/, '') }, ...others].filter((part) => part.text);
+  return kept.length ? kept : null;
+}
+
 /** The body of a row; the caller supplies the element (a link on the page, an option in Jump to…). */
 export function ResultBody({ result }: { result: SearchResult }) {
   // In a DM with the author, "With Ari · Ari" would say the same thing twice.
   const author = result.kind === 'person' || (result.place.type === 'dm' && result.place.name === result.author) ? null : result.author;
   const meta = [result.label, placeText(result.place), author].filter(Boolean);
+  const { task } = result;
+  const snippet = withoutTaskNumber(plainSnippet(result.snippet), task?.number);
   return (
     <>
       {result.kind === 'project'
         ? <span className="sr__ic sr__ic--project" aria-hidden="true">{(result.title.map((part) => part.text).join('').trim()[0] ?? '?').toUpperCase()}</span>
-        : <span className={`sr__ic sr__ic--${result.kind}`} aria-hidden="true"><Icon name={ICONS[result.kind]} size={15} /></span>}
+        : task ? <span className="sr__ic sr__ic--work" aria-hidden="true"><StatusGlyph status={task.status as WorkStatus} size={14} /></span>
+          : <span className={`sr__ic sr__ic--${result.kind}`} aria-hidden="true"><Icon name={ICONS[result.kind]} size={15} /></span>}
       <span className="sr__main">
-        <span className="sr__title"><Highlighted parts={result.title} /></span>
-        {result.snippet ? <span className="sr__snip"><Highlighted parts={result.snippet} /></span> : null}
+        <span className="sr__title">{task ? <span className="sr__num">#{task.number} </span> : null}<Highlighted parts={result.title} /></span>
+        {snippet ? <span className="sr__snip"><Highlighted parts={snippet} /></span> : null}
         <span className="sr__meta">
           {meta.map((item, index) => (
             <span key={index} className={index === 1 ? 'sr__place' : undefined}>

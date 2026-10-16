@@ -16,16 +16,26 @@ function ViewEmpty({ icon, title, level = 2, children }: { icon: IconName; title
   return <div className="view-empty"><EmptyState icon={icon} title={title} level={level}>{children}</EmptyState></div>;
 }
 
-const timeFormat = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' });
+const timeFormat = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' });
 const dayFormat = new Intl.DateTimeFormat(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+
+/** "1:02 PM", or "9:05" on a 24-hour clock: the hour has no leading zero (#508). */
+function clock(date: Date) {
+  return timeFormat.formatToParts(date).map((part) => (part.type === 'hour' ? part.value.replace(/^0(?=\d)/, '') : part.value)).join('');
+}
 
 /** Your own private drafts: the only drafts Home lists. */
 const ownPrivate = (userId: string) => (item: Draft) => item.visibility === 'private' && item.owner.kind === 'human' && item.owner.id === userId;
 
+/** Words in Geist, numbers in Geist Mono (#508). */
+function Figures({ text }: { text: string }) {
+  return <>{text.split(/(\d[\d:]*)/).map((part, index) => (index % 2 ? <span key={index} className="note__num">{part}</span> : part))}</>;
+}
+
 function when(iso: string) {
   const date = new Date(iso);
   const today = new Date().toDateString() === date.toDateString();
-  return today ? timeFormat.format(date) : `${dayFormat.format(date)}, ${timeFormat.format(date)}`;
+  return today ? clock(date) : `${dayFormat.format(date)}, ${clock(date)}`;
 }
 
 /**
@@ -249,7 +259,7 @@ function NotesSection() {
         {serverDrafts.length ? (
           <section className="notes" aria-label="Private drafts">
             <p className="notes__h"><Icon name="lock" size={13} />Private drafts · saved in your space</p>
-            <ol className="notes__list">{serverDrafts.map((item) => <li className={`note${arrivedDraft === item.id ? ' is-arrived' : ''}`} key={item.id} id={`draft-${item.id}`} tabIndex={-1}><p className="note__text">{item.body}</p><div className="note__meta">You · v{item.version} · <time dateTime={item.updatedAt}>{when(item.updatedAt)}</time></div></li>)}</ol>
+            <ol className="notes__list">{serverDrafts.map((item) => <li className={`note${arrivedDraft === item.id ? ' is-arrived' : ''}`} key={item.id} id={`draft-${item.id}`} tabIndex={-1}><p className="note__text">{item.body}</p><div className="note__meta"><time dateTime={item.updatedAt}><Figures text={when(item.updatedAt)} /></time></div></li>)}</ol>
             {draftsRead < draftsTotal ? <Button variant="quiet" busy={moreBusy} onClick={() => void loadMoreDrafts()}>Show more drafts</Button> : null}
           </section>
         ) : null}
@@ -276,7 +286,7 @@ function NotesSection() {
                 <li key={item.id} className="note" id={`capture-${item.id}`}>
                   <p className="note__text">{item.text}</p>
                   <div className="note__meta">
-                    <time dateTime={item.createdAt}>{when(item.createdAt)}</time>
+                    <time dateTime={item.createdAt}><Figures text={when(item.createdAt)} /></time>
                     <button type="button" className="note__del" onClick={() => remove(item.id)} aria-label={`Delete note: ${item.text.slice(0, 40)}`}>Delete</button>
                   </div>
                 </li>

@@ -23,6 +23,8 @@ export interface SketchRecord {
   version: number;
   createdAt: Date;
   updatedAt: Date;
+  /** How many thoughts it has; set by sketch lists (#508). */
+  thoughtCount?: number;
 }
 
 /** The message a thought was started from; `dmId`/`messageId` only inside the DM itself. */
@@ -160,9 +162,12 @@ export interface NewLink {
 export type ThoughtChanges = Partial<Pick<ThoughtRecord, 'text' | 'x' | 'y' | 'width' | 'height' | 'shape'>>;
 
 /** Rows only; the repository makes no access decisions (the use cases ask {@link SketchAccess}). */
+/** `hideEmpty` leaves out sketches with no thought that still have the default title (#508). */
+export interface SketchListFilter { projectId?: string; dmId?: string; scope?: 'private'; hideEmpty?: boolean }
+
 export interface SketchRepository {
   /** The sketches of `workspaceId` that pass the policy's list filter for `principal`, newest change first. */
-  listVisible(principal: Principal, workspaceId: string, filter: { projectId?: string; dmId?: string; scope?: 'private' }, page: Required<PageQuery>): Promise<{ items: SketchRecord[]; total: number }>;
+  listVisible(principal: Principal, workspaceId: string, filter: SketchListFilter, page: Required<PageQuery>): Promise<{ items: SketchRecord[]; total: number }>;
   /** One sketch by id; call only after the access port allowed it. */
   findSketch(id: string): Promise<SketchRecord | null>;
   insertSketch(sketch: NewSketch): Promise<SketchRecord>;

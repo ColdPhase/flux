@@ -3,7 +3,7 @@ import { flushSync } from 'react-dom';
 import type { ProjectPerson } from '@flux/contracts';
 import { Outlet, useLocation, useNavigate, useParams, useRevalidator } from 'react-router';
 import { useStreamEvents } from '../api/stream';
-import { Drawer, IconButton, MEDIA, SidePanel, Tabs, duration, flip, play, useMediaQuery, useToast, useSidePanelMode, type TabItem } from '../ui';
+import { Drawer, IconButton, MEDIA, SidePanel, Tabs, duration, flip, play, useMediaQuery, useToast, useSidePanelMode } from '../ui';
 import { useShellData } from './data';
 import { registerServiceWorker, syncPushSubscription } from '../pwa';
 import { DeferredDetails, DeferredJumpTo, DeferredLiveStage } from './DeferredSurfaces';
@@ -12,7 +12,7 @@ import { useInboxDot } from '../notifications/dot';
 import { placeOf } from './place';
 import { ShellContext, type CreateRequest, type DetailsView } from './shellContext';
 import { Sidebar } from './Sidebar';
-import { VIEWS, startCapture, viewIndex } from './views';
+import { startCapture, viewIndex } from './views';
 import { PROJECT_VIEWS, type ProjectViewId } from '@flux/contracts';
 import { addProjectView } from './conversation-api';
 import { addableViews, audienceLine, shownViews, useProjectShell } from '../project/data';
@@ -337,7 +337,6 @@ function AppLayoutContent() {
     { id: 'docs', label: 'Wiki', to: `/projects/${projectId}/docs`, end: false },
     { id: 'agents', label: 'Agents', to: `/projects/${projectId}/agents` },
   ].filter((view) => !(PROJECT_VIEWS as readonly string[]).includes(view.id) || !shownProjectViews || shownProjectViews.has(view.id as ProjectViewId)) : null;
-  const homeViews: TabItem[] = VIEWS.map((view) => ({ id: view.id, label: view.label, to: view.path, end: view.path === '/' }));
   const places = phonePlaces(location.pathname, inboxUnread);
   const audienceOpen = project?.project.visibility === 'workspace';
   const audience = project ? audienceLine(project.people, me.user.id, audienceOpen) : 'People with project access';
@@ -361,34 +360,37 @@ function AppLayoutContent() {
     { id: 'sketches', label: 'Sketches', to: `/dm/${activeDm.id}/sketches`, end: false, ...(dmSketches ? { count: dmSketches, countLabel: `, ${dmSketches} ${dmSketches === 1 ? 'sketch' : 'sketches'}` } : {}) },
   ] : null;
   const place = location.pathname === '/projects'
-    ? { crumb: null, title: 'Projects', topic: 'Every project you can open', views: false, noDetails: true }
+    ? { crumb: null, title: 'Projects', topic: 'Every project you can open', noDetails: true }
     : /^\/settings(\/(appearance|account|notifications|agents|shortcuts)(\/.*)?)?$/.test(location.pathname)
-    ? { crumb: null, title: 'Settings', topic: 'Appearance, notifications, agents and AI', views: false, noDetails: true }
+    ? { crumb: null, title: 'Settings', topic: 'Appearance, notifications, agents and AI', noDetails: true }
     : backgroundSettings
-    ? { crumb: null, title: 'Background suggestions', topic: 'Your usage and project rules', views: false, noDetails: true }
+    ? { crumb: null, title: 'Background suggestions', topic: 'Your usage and project rules', noDetails: true }
     : aiConnections
-    ? { crumb: null, title: 'AI connections', topic: 'Your own keys, payers and allowances', views: false, noDetails: true }
+    ? { crumb: null, title: 'AI connections', topic: 'Your own keys, payers and allowances', noDetails: true }
     : location.pathname === '/search'
-    ? { crumb: null, title: 'Search', topic: 'Only what you can open is searched', views: false, noDetails: true }
+    ? { crumb: null, title: 'Search', topic: 'Only what you can open is searched', noDetails: true }
     : location.pathname === '/settings/assistant/how'
-    ? { crumb: null, title: 'How your assistant works', topic: 'Only you can use it · optional', views: false, noDetails: true }
+    ? { crumb: null, title: 'How your assistant works', topic: 'Only you can use it · optional', noDetails: true }
     : location.pathname === '/settings/assistant'
-    ? { crumb: null, title: 'Your assistant', topic: 'Only you can use it · optional', views: false, noDetails: true }
+    ? { crumb: null, title: 'Your assistant', topic: 'Only you can use it · optional', noDetails: true }
     : activeProject
-    ? { crumb: activeProject.workspaceName ?? null, title: activeProject.name, topic: audience, views: false }
+    ? { crumb: activeProject.workspaceName ?? null, title: activeProject.name, topic: audience }
+    : location.pathname === '/map'
+    // The Sketchbook is named as such (#508); its privacy line is the first line of the page, at every width.
+    ? { crumb: null, title: 'Sketchbook', topic: '' }
     : where === 'inbox'
       ? location.pathname.startsWith('/settings/')
-        ? { crumb: null, title: 'Notification settings', topic: 'What reaches you, where and when', views: false, noDetails: true }
-        : { crumb: null, title: 'Inbox', topic: 'What involves you, with a link to each source', views: false, noDetails: true }
+        ? { crumb: null, title: 'Notification settings', topic: 'What reaches you, where and when', noDetails: true }
+        : { crumb: null, title: 'Inbox', topic: 'What involves you, with a link to each source', noDetails: true }
     : where === 'dm'
       ? activeDm
         // A DM's header names its exact audience (design principle 5).
-        ? { crumb: null, title: activeDm.title, topic: activeDm.audience, views: false }
+        ? { crumb: null, title: activeDm.title, topic: activeDm.audience }
         : dmId === 'new'
-          ? { crumb: null, title: 'New message', topic: 'Only the people you choose can read it', views: false, noDetails: true }
-          : { crumb: null, title: 'Direct messages', topic: 'Conversations with people, outside any project', views: false, noDetails: true }
+          ? { crumb: null, title: 'New message', topic: 'Only the people you choose can read it', noDetails: true }
+          : { crumb: null, title: 'Direct messages', topic: 'Conversations with people, outside any project', noDetails: true }
       // Home's Tasks span every workspace, so no single workspace is named above them (#190).
-      : { crumb: location.pathname.startsWith('/tasks') ? null : workspace?.name ?? null, title: 'Home', topic: 'Your private notes and where you left off', views: true };
+      : { crumb: location.pathname.startsWith('/tasks') ? null : workspace?.name ?? null, title: 'Home', topic: 'Your private notes and where you left off' };
   // The phone Wiki is drawn with its title as the view menu and no chip row of views (F-026 §4, #354).
   // A place without its own Details (Search, Inbox, the DM list) never keeps the generic panel open.
   if ('noDetails' in place && detailsOpen && detailsView === 'place') setDetailsOpen(false);
@@ -399,7 +401,7 @@ function AppLayoutContent() {
   const rowViews = phone ? null
     : activeProject && projectViews ? { items: projectViews, label: 'Project views' }
       : dmViews ? { items: dmViews, label: 'Direct message views' }
-        : place.views ? { items: homeViews, label: 'Views' } : null;
+        : null;
   const viewName = activeProject ? PROJECT_VIEW_NAMES[Math.max(0, viewOrder(location.pathname))] : null;
   const addViewItems: MoreItem[] = project && shownProjectViews && projectId && project.project.access !== 'viewer'
     ? addableViews(shownProjectViews).map((view) => ({ label: `Add ${VIEW_LABEL[view]}`, run: () => void addView(projectId, view) })) : [];
