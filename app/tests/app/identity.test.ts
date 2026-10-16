@@ -47,6 +47,17 @@ describe('human identity', () => {
     stale.cookies.set('flux.session_token', token);
     assert.equal((await stale.request('GET', '/api/v1/me')).status, 401, 'signed-out session is rejected');
     assert.equal((await new Browser().request('GET', '/api/v1/me')).status, 401, 'anonymous request is rejected');
+    // A signed-out page asks with the probe header and gets a 200 null, which the console does not log (#546).
+    const probe = { 'x-flux-session-probe': '1' };
+    for (const asking of [stale, new Browser()]) {
+      const answer = await asking.request('GET', '/api/v1/me', { headers: probe });
+      assert.equal(answer.status, 200, 'the probe is not a 401 when nobody is signed in');
+      assert.equal(answer.json, null);
+    }
+    const { browser: signedIn } = await signIn(email, password);
+    const probed = await signedIn.request('GET', '/api/v1/me', { headers: probe });
+    assert.equal(probed.status, 200);
+    assert.equal((probed.json as Me).user.email, email, 'the probe returns the person when signed in');
   });
 
   test('wrong password and unknown account are rejected without a session', async () => {

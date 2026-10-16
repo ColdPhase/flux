@@ -20,6 +20,9 @@ function tcp(host, port, ms = 3000) {
   });
 }
 const unreachable = (outcome) => !['open', 'refused'].includes(outcome);
+// A target whose service is listening answers a connection that reaches it with 'open'. A 'refused' there can come from a
+// router that answers for an unrouted Docker subnet on a busy host (a false failure, #524), so it is no breach; only
+// 'open' is. Targets with nothing listening keep the strict rule: any answer at all means the host was reached.
 
 /** Sends one raw HTTP request to runtime-egress and returns the status line's code. */
 function raw(port, text, ms = 15000) {
@@ -59,10 +62,11 @@ const targets = [
   ['the host on its default-bridge address', env.FLUX_PROBE_GATEWAY, 22],
   ['the Docker API on the host', env.FLUX_PROBE_GATEWAY, 2375],
 ];
+const nothingListens = new Set(['the cloud metadata address', 'the internet without the proxy', 'the host on its default-bridge address', 'the Docker API on the host']);
 for (const [name, host, port] of targets) {
   if (!host) { record(`${name}: target known`, false, 'missing'); continue; }
   const outcome = await tcp(host, port);
-  record(`${name} (${host}:${port}) is unreachable`, unreachable(outcome), outcome);
+  record(`${name} (${host}:${port}) is unreachable`, nothingListens.has(name) ? unreachable(outcome) : outcome !== 'open', outcome);
 }
 // runtime-manager is on this network to call the supervisor, but listens on none of the slot networks.
 const manager = await tcp('runtime-manager', 7600);
