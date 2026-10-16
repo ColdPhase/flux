@@ -170,7 +170,7 @@ export default function SignInConsole({ ticket, methodTitle, onEnd, cliName = 'C
         <div className="rt-device" aria-live="polite">
           {device ? (
             <>
-              <p className="rt-device__lead">Enter this code on chatgpt.com:</p>
+              <p className="rt-device__lead">Enter this code on {device.url.host}:</p>
               <p className="rt-device__code" aria-label={`Code ${device.code.split('').join(' ')}`}>{device.code}</p>
               <Button variant="primary" onClick={() => void copyAndOpen()}><Icon name="link" size={14} />Copy and open ChatGPT</Button>
               <p className="nset__note" role="status">{copied ? 'Code copied. ' : ''}Flux notices when you’re done. There is nothing to paste back.</p>

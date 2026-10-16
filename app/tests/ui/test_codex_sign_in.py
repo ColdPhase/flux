@@ -133,7 +133,7 @@ class CodexSignIn(unittest.TestCase):
             code = page.locator(".rt-device__code")
             expect(code).to_have_text(CODE)
             self.assertGreaterEqual(float(code.evaluate("el => parseFloat(getComputedStyle(el).fontSize)")), 24, "the code is large")
-            expect(page.get_by_text("Enter this code on chatgpt.com:")).to_be_visible()
+            expect(page.get_by_text("Enter this code on auth.openai.com:")).to_be_visible()
             button = page.get_by_role("button", name="Copy and open ChatGPT")
             expect(button).to_be_visible()
             expect(page.get_by_text(re.compile("Flux notices when you’re done"))).to_be_visible()
