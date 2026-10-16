@@ -26,6 +26,8 @@
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .sset-card { box-shadow: inset 0 0 0 1px var(--line), 0 1px 2px rgba(0,0,0,.4), 0 8px 20px -8px rgba(0,0,0,.6); } }
 /* .sset-row resets border, so a row after a row needs the higher-specificity hairline (#434). */
 .sset-card > * + *, .sset-card > li + li, .sset-card > .sset-row + .sset-row { border-top: 1px solid var(--line); }
+/* The account and assistant cards are one block each, not a list of rows: no hairlines inside (#513). */
+.sset-card.sset-me > *, .sset-card.sset-assistant > * { border-top: 0; }
 .sset-row {
   display: flex; align-items: center; gap: 12px; width: 100%; min-height: 52px; padding: 9px 18px;
   color: var(--t1); text-align: left; text-decoration: none; background: none; border: 0; font: inherit;
@@ -94,13 +96,18 @@
 .sset-me__b .sset-me__session { margin-top: 2px; font-size: 12.5px; color: var(--t3); }
 /* The assistant card (Spokój E04): one head row, three facts, one primary step. */
 .sset-assistant { padding: 0; }
-.sset-assistant__head { display: flex; align-items: center; gap: 12px; padding: 14px 18px; }
+/* Top-aligned, so Set up / Manage stays on the name's row whether one, two or three lines follow (rule 7). */
+.sset-assistant__head { display: flex; align-items: flex-start; gap: 12px; padding: 14px 18px; }
+.sset-assistant__head h4 { margin: 0; }
 .sset-assistant__head .sset-row__t { font-size: var(--fs-md); font-weight: 600; }
 .sset-assistant__head > .ui-btn { flex: none; }
+/* The ways to connect follow the assistant card (#513 M4) with the same gap as the other cards. */
+.sset-assistant + .rt { margin-top: 22px; }
 .sset-assistant__facts { margin: 0; padding: 0 18px 0 58px; font-size: var(--fs-sm); line-height: 1.5; color: var(--t2); }
 .sset-assistant__facts li + li { margin-top: 2px; }
 .sset-assistant__how { display: inline-block; margin: 10px 18px 14px 58px; font-size: var(--fs-sm); }
-.sset-assistant__line { margin: 0; padding: 0 18px 14px 58px; font-size: var(--fs-sm); line-height: 1.5; color: var(--t2); }
+/* On touch, "How it works" is a 44 px target without moving the text (#513 M3). */
+@media (pointer: coarse) { .sset-assistant__how { display: inline-flex; align-items: center; min-height: 44px; min-width: 44px; margin: 0 18px 4px 58px; } }
 .sset-me--link { text-decoration: none; color: var(--t1); transition: var(--tr); }
 .sset-me--link:hover { background: var(--hov); }
 .sset-me--link:focus-visible { outline: 2px solid var(--t1); outline-offset: -2px; }

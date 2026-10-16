@@ -155,6 +155,11 @@ class SettingsJourney(unittest.TestCase):
         self.addCleanup(lambda: self.assertEqual(errors, [], "no uncaught page errors"))
         return page
 
+    def settle(self, page: Page) -> None:
+        """Wait for the page's reads and entrance motion before a screenshot."""
+        page.wait_for_load_state("networkidle")
+        page.wait_for_function("document.getAnimations().every((a) => a.playState !== 'running')")
+
     def no_colour_picker(self, page: Page) -> None:
         expect(page.locator("input[type=color]")).to_have_count(0)
         expect(page.get_by_text(re.compile("accent", re.I)).filter(has_not_text="no accent")).to_have_count(0)
@@ -229,12 +234,22 @@ class SettingsJourney(unittest.TestCase):
         expect(card).to_contain_text("for you · not set up")
         expect(card.locator(".sset-assistant__facts li")).to_have_count(3)
         expect(card.get_by_role("link", name="How it works")).to_have_attribute("href", "/settings/assistant/how")
+        # #513 M2: the card is one block: no hairline inside it and no browser heading margin above the name.
+        self.assertEqual(card.evaluate("el => [...el.children].map((child) => getComputedStyle(child).borderTopWidth)"), ["0px", "0px", "0px"])
+        self.assertEqual(card.locator("h4").evaluate("el => [getComputedStyle(el).marginTop, getComputedStyle(el).marginBottom]"), ["0px", "0px"])
         # Agents have their colour here (and only in the Agents section); the Appearance switch's Kreska is monochrome.
         expect(card.locator(".agent-tag")).to_have_text("Agent")
         self.assertRegex(card.locator(".sset-row__ic > .kreska").get_attribute("class") or "", r"kreska--(clay|ochre|sage|teal|indigo|plum|rose)")
         # Background suggestions are off on this test server: one status line, no form (Spokój AC-4).
         expect(page.get_by_role("link", name=re.compile("^Background suggestions"))).to_have_count(0)
         expect(page.get_by_text("Off on this Flux server · ask your admin to turn it on", exact=True)).to_be_visible()
+        self.settle(page)
+        shot(page, "settings-desktop-1440-agents-light")
+        dark = self.page(dark=True)
+        dark.goto("/settings/agents")
+        expect(dark.get_by_text("Off on this Flux server · ask your admin to turn it on", exact=True)).to_be_visible()
+        self.settle(dark)
+        shot(dark, "settings-desktop-1440-agents-dark")
         page.goto("/settings")
         self.assertNotRegex(page.get_by_role("switch", name="Kreska in loading and empty screens").locator("xpath=..").locator(".kreska").get_attribute("class") or "", r"kreska--")
         expect(cards.first).to_be_visible()
@@ -250,6 +265,8 @@ class SettingsJourney(unittest.TestCase):
         expect(page.get_by_role("heading", level=2, name="How your assistant works")).to_be_visible()
         expect(page.get_by_text("What leaves Flux")).to_be_visible()
         expect(page.get_by_text("Who pays")).to_be_visible()
+        # The AI pages end with the same way back (#513).
+        expect(page.get_by_role("link", name="Back to Agents and AI")).to_have_attribute("href", "/settings/agents")
 
     def test_04_keyboard_shortcuts_list_every_key_of_the_guide(self) -> None:
         page = self.page()
@@ -271,7 +288,8 @@ class SettingsJourney(unittest.TestCase):
         expect(page.get_by_role("button", name=re.compile("^Sign out"))).to_be_visible()
         nav = page.get_by_role("navigation", name="Settings sections")
         for path, current in (("/settings/notifications", "Notifications"), ("/settings/appearance", "Appearance"),
-                              ("/settings/background-compute", "Agents and AI"), ("/settings/notifications/verify?token=nope", "Notifications")):
+                              ("/settings/background-compute", "Agents and AI"), ("/settings/ai-connections", "Agents and AI"),
+                              ("/settings/notifications/verify?token=nope", "Notifications")):
             page.goto(path)
             expect(nav.get_by_role("link", name=current)).to_have_attribute("aria-current", "page")
             if path == "/settings/notifications":
@@ -290,7 +308,8 @@ class SettingsJourney(unittest.TestCase):
     # ---------------------------------------------------------------- phone
 
     def phone_targets(self, page: Page) -> None:
-        controls = page.locator("a.sset-row, button.sset-row, button.sset-theme, button.sset-switch, .sset-row--stack button, .sset-choice input")
+        controls = page.locator("a.sset-row, button.sset-row, a.sset-me--link, .sset-assistant a, .sset-assistant button, button.sset-theme, button.sset-switch, "
+                                ".sset-row--stack button, .sset-choice input")
         scroller = page.locator(".sset__page .pane-scroll")
         previous_scroll = scroller.evaluate("el => el.scrollTop")
         self.assertGreater(controls.count(), 0, "native settings controls are rendered")
@@ -303,8 +322,12 @@ class SettingsJourney(unittest.TestCase):
         for dark in (False, True):
             page = self.page(phone=True, dark=dark)
             page.goto("/settings")
-            expect(page.get_by_role("heading", level=2, name="Settings")).to_be_visible()
+            # #513 M1: one "Settings" title, the header's.
+            expect(page.locator("header").get_by_role("heading", level=1, name="Settings", exact=True)).to_be_visible()
+            expect(page.get_by_role("heading", name="Settings", exact=True)).to_have_count(1)
             expect(page.get_by_role("navigation", name="Settings sections")).to_have_count(0)
+            # #513 M2: the account card is one block, with no hairline inside it.
+            self.assertEqual(set(page.locator("a.sset-me--link").evaluate("el => [...el.children].map((child) => getComputedStyle(child).borderTopWidth)")), {"0px"})
             # The phone list (Spokój E04p): the account, then the same sections in the same order. Keyboard
             # shortcuts show only with a keyboard, so not here. Agents and AI holds the assistant and background.
             expect(page.get_by_role("link", name=re.compile(f"^{NAME}"))).to_have_attribute("href", "/settings/account")
@@ -346,6 +369,12 @@ class SettingsJourney(unittest.TestCase):
         page.wait_for_load_state("networkidle")
         page.wait_for_function("document.getAnimations().every((a) => a.playState !== 'running')")
         self.phone_targets(page)
+        shot(page, "settings-phone-390-agents-light")
+        dark_agents = self.page(phone=True, dark=True)
+        dark_agents.goto("/settings/agents")
+        expect(dark_agents.get_by_role("region", name=re.compile("^Your assistant"))).to_be_visible()
+        self.settle(dark_agents)
+        shot(dark_agents, "settings-phone-390-agents-dark")
         page.get_by_role("button", name="Back").tap()
         expect(page).to_have_url(re.compile(r"/settings$"))
         page.get_by_role("link", name=re.compile(f"^{NAME}")).tap()
@@ -460,16 +489,49 @@ class SettingsJourney(unittest.TestCase):
         for phone in (False, True):
             page = self.page(phone=phone)
             page.goto("/settings/background-compute")
-            expect(page.get_by_role("heading", level=2, name="Background suggestions")).to_be_visible()
-            expect(page.get_by_role("status").filter(has_text="Off on this Flux server")).to_be_visible()
+            expect(page.locator(".app__main header").get_by_role("heading", level=1, name="Background suggestions", exact=True)).to_be_visible()
+            # The phone shows one title, the header's (#513); the computer also names the page above its status line.
+            expect(page.get_by_role("heading", level=2, name="Your background suggestions", exact=True)).to_have_count(0 if phone else 1)
+            expect(page.get_by_role("note").filter(has_text="Off on this Flux server")).to_be_visible()
             focused = page.evaluate("document.activeElement?.tagName ?? null")
             self.assertNotIn(focused, ("H1", "H2", "H3", "H4"), "no heading has focus on load")
             self.assertEqual(page.evaluate("[...document.querySelectorAll('h1,h2,h3,h4')].filter((h) => h.matches(':focus-visible')).length"), 0,
                              "no heading shows a focus ring on load")
             # Negative control: a heading that really is focused is seen by the same check.
-            page.evaluate("document.querySelector('.background-settings h2').setAttribute('tabindex', '-1')")
-            page.evaluate("document.querySelector('.background-settings h2').focus()")
-            self.assertEqual(page.evaluate("document.activeElement?.tagName ?? null"), "H2")
+            page.evaluate("document.querySelector('.app__main header h1').setAttribute('tabindex', '-1')")
+            page.evaluate("document.querySelector('.app__main header h1').focus()")
+            self.assertEqual(page.evaluate("document.activeElement?.tagName ?? null"), "H1")
+
+    def test_10_a_touch_only_tablet_lists_no_keyboard_shortcuts(self) -> None:
+        """AC-1: Keyboard shortcuts appear only with a keyboard; a touch-only tablet's section list leaves them out."""
+        context = self.browser.new_context(base_url=ORIGIN, storage_state=self.state, viewport={"width": 1024, "height": 768},
+                                           device_scale_factor=1, has_touch=True, locale="en-GB")
+        self.addCleanup(context.close)
+        page = context.new_page()
+        page.goto("/settings")
+        nav = page.get_by_role("navigation", name="Settings sections")
+        expect(nav.get_by_role("link", name="Agents and AI")).to_be_visible()
+        touch_only = page.evaluate("matchMedia('(hover: none)').matches")
+        if UI_BROWSER == "chromium":
+            self.assertTrue(touch_only, "Chromium emulates a touch-only tablet here")
+        self.assertEqual(nav.get_by_role("link").all_inner_texts(), SECTIONS[:-1] if touch_only else SECTIONS)
+        # Control: the same width with a mouse keeps the section (test_01 checks it at 1440 too).
+        mouse = self.browser.new_context(base_url=ORIGIN, storage_state=self.state, viewport={"width": 1024, "height": 768}, device_scale_factor=1, locale="en-GB")
+        self.addCleanup(mouse.close)
+        other = mouse.new_page()
+        other.goto("/settings")
+        expect(other.get_by_role("navigation", name="Settings sections").get_by_role("link", name="Keyboard shortcuts")).to_be_visible()
+
+    def test_11_phone_how_it_works_has_its_title_and_leads_back_to_agents_and_ai(self) -> None:
+        """#513: opened from a link, "How it works" names itself in the phone header, and Back leads to Agents and AI."""
+        page = self.page(phone=True)
+        page.goto("/settings/assistant/how")
+        header = page.locator("header")
+        expect(header.get_by_role("heading", level=1, name="How your assistant works", exact=True)).to_be_visible()
+        expect(page.get_by_text("What leaves Flux")).to_be_visible()
+        header.get_by_role("button", name="Back", exact=True).tap()
+        expect(page).to_have_url(re.compile(r"/settings/agents$"))
+        expect(page.get_by_role("region", name=re.compile("^Your assistant"))).to_be_visible()
 
 
 if __name__ == "__main__":

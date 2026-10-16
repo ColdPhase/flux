@@ -169,6 +169,7 @@ export const router = createBrowserRouter([
               { path: 'assistant', ...secondary(async () => ({ Component: (await import('./assistant/AssistantSettings')).AssistantSettings })) },
               { path: 'assistant/how', ...secondary(async () => ({ Component: (await import('./assistant/AssistantSettings')).AssistantHowItWorks })) },
               { path: 'background-compute', ...secondary(async () => { const page = await import('./proactive-comparison/BackgroundComputeSettings'); return { Component: page.BackgroundComputeSettings, loader: page.backgroundComputeLoader }; }) },
+              { path: 'ai-connections', ...secondary(async () => { const page = await import('./proactive-comparison/BackgroundComputeSettings'); return { Component: page.AiConnectionsSettings, loader: page.aiConnectionsLoader }; }) },
             ],
           },
           { path: '*', Component: NotFoundView },

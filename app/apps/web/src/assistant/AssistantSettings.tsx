@@ -83,7 +83,7 @@ export function AssistantHowItWorks() {
         </section>
       ) : failed ? <p className="nset__error" role="alert"><Icon name="alert" size={14} />This could not load. Try again.</p>
         : <p className="inbox__loading"><Spinner label="Loading how your assistant works" /></p>}
-      <p className="nset__note"><Link className="ui-link" to="/settings/assistant">Set up or manage your assistant</Link></p>
+      <p className="nset__note"><Link className="ui-link" to="/settings/agents">Back to Agents and AI</Link></p>
     </div></div>
   );
 }
@@ -91,7 +91,7 @@ export function AssistantHowItWorks() {
 /** Why the assistant cannot run on this server, when that is the case. Never pretends it can. */
 function SetupProblem({ status }: { status: PersonalAssistantStatus }) {
   if (status.setup.provider === 'off') return <p className="nset__problem" role="note"><Icon name="alert" size={14} /><span><b>In-app AI is turned off on this Flux server.</b> Nothing is sent to an AI provider, and Flux works as usual. Your own MCP client, such as Claude Code or Codex, can still connect through a <Link className="ui-link" to="/connect-agent">personal Flux grant</Link>.</span></p>;
-  if (status.setup.connection === 'none') return <p className="nset__problem" role="note"><Icon name="alert" size={14} /><span><b>Your own AI key isn’t connected.</b> Add an AI connection with your own key in <Link className="ui-link" to="/settings/background-compute">AI connections</Link>, from any supported provider. Nobody else’s key is ever used for you.</span></p>;
+  if (status.setup.connection === 'none') return <p className="nset__problem" role="note"><Icon name="alert" size={14} /><span><b>Your own AI key isn’t connected.</b> Add an AI connection with your own key in <Link className="ui-link" to="/settings/ai-connections">AI connections</Link>, from any supported provider. Nobody else’s key is ever used for you.</span></p>;
   return null;
 }
 

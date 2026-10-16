@@ -10,12 +10,18 @@ import { comparisonReserveText, ConnectionFields, priceSourceText, priceText } f
 import { ProjectRuleSettings } from './ProjectRuleSettings';
 import './background.css';
 
+/** Settings → Agents and AI → Background suggestions: the status line, local usage and project rules. */
 export async function backgroundComputeLoader({ request }: LoaderFunctionArgs) {
   const [connections, usage, runtime] = await Promise.all([
     listBackgroundConnections(request.signal), currentBackgroundUsage(request.signal),
     backgroundComparisonRuntime(request.signal).then((answer) => answer.status, () => 'unavailable' as const),
   ]);
   return { connections, usage, runtime };
+}
+
+/** Settings → Agents and AI → AI connections: the owner's own connections and the form to add one. */
+export async function aiConnectionsLoader({ request }: LoaderFunctionArgs) {
+  return { connections: await listBackgroundConnections(request.signal) };
 }
 const money = (cents: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(cents / 100);
 const checks = ['workspaceScoped', 'payerAuthority', 'providerBilling', 'projectDisclosure'] as const;
@@ -42,19 +48,14 @@ function failure(error: unknown) {
 }
 
 /**
- * Owner-only AI connections (F-020 PROV-1): one or more, each with its own key, payer and allowance.
- * Background suggestions use the one the owner marks; removing it stops them, with no fallback.
- * Saving consent does not activate background execution.
+ * Owner-only AI connections (F-020 PROV-1), one stable page for the assistant and background suggestions
+ * alike (Spokój #513): one or more, each with its own key, payer and allowance. Background suggestions use
+ * the one the owner marks; removing it stops them, with no fallback. Saving a connection turns nothing on.
  */
-export function BackgroundComputeSettings() {
-  const initial = useLoaderData() as { connections: BackgroundComputeConnection[]; usage: BackgroundComputeUsage; runtime: 'available' | 'unavailable' };
-  // Spokój AC-4: where the server does not run background suggestions, one status line replaces the form.
-  const runtime = initial.runtime;
+export function AiConnectionsSettings() {
+  const initial = useLoaderData() as { connections: BackgroundComputeConnection[] };
   const [connections, setConnections] = useState(initial.connections);
   const connection = connections.find((item) => item.usedForBackground) ?? null;
-  const [usage, setUsage] = useState(initial.usage);
-  const [usageBusy, setUsageBusy] = useState(false);
-  const [usageError, setUsageError] = useState('');
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
   // Only to word the key help for the provider chosen in the form.
@@ -63,7 +64,6 @@ export function BackgroundComputeSettings() {
   const [error, setError] = useState('');
   const [saved, setSaved] = useState('');
   const formRef = useRef<HTMLFormElement>(null);
-  const historyRef = useRef<HTMLDetailsElement>(null);
   const connectSectionRef = useRef<HTMLElement>(null);
   const statusRef = useRef<HTMLParagraphElement>(null);
   const errorRef = useRef<HTMLParagraphElement>(null);
@@ -83,12 +83,6 @@ export function BackgroundComputeSettings() {
     formRef.current?.querySelector<HTMLInputElement>('input[name="apiKey"]')?.focus({ preventScroll: true });
     connectSectionRef.current?.scrollIntoView({ block: 'start' });
   }, [editing]);
-  async function refreshUsage() {
-    setUsageBusy(true); setUsageError('');
-    try { setUsage(await currentBackgroundUsage()); }
-    catch { setUsageError('Usage could not be refreshed. The figures above are from the last update.'); }
-    finally { setUsageBusy(false); }
-  }
   const announce = (message: string) => {
     setSaved(message);
     focusAfterRender.current = 'status';
@@ -135,7 +129,6 @@ export function BackgroundComputeSettings() {
       setConnections(await listBackgroundConnections().catch(() => [added, ...connections.map((item) => (added.usedForBackground ? { ...item, usedForBackground: false } : item))]));
       setEditing(false);
       announce(added.usedForBackground ? 'Connection saved and used for background suggestions. No rule was enabled.' : 'Connection saved. No rule was enabled.');
-      await refreshUsage();
     } catch (cause) { setError(failure(cause)); focusAfterRender.current = 'error'; }
     finally {
       // The key exists only in this password input and the same-origin request, never app storage.
@@ -155,7 +148,6 @@ export function BackgroundComputeSettings() {
       announce(target.usedForBackground
         ? 'Disconnected in Flux. Background suggestions stop until you choose another connection; none takes over by itself.'
         : 'Disconnected in Flux. New requests cannot use this key.');
-      await refreshUsage();
     } catch (cause) { setError(failure(cause)); focusAfterRender.current = 'error'; }
     finally { setBusy(false); }
   }
@@ -171,8 +163,12 @@ export function BackgroundComputeSettings() {
     finally { setBusy(false); }
   }
 
-  // The AI connections (for the assistant too) and the add form.
-  const connectionsAndForm = (<>
+  return <div className="pane-scroll"><div className="pane-in sset-in background-settings">
+    <header className="background-settings__head">
+      <h2>AI connections</h2>
+      <p>Your own keys from AI providers, for your assistant and background suggestions. Only you can see or change them.</p>
+    </header>
+    <p ref={statusRef} className="background-settings__saved" tabIndex={-1} role="status">{saved}</p>
     {connections.length ? <section className="background-settings__section" aria-labelledby="background-current">
       <div className="background-settings__section-head">
         <h3 id="background-current">Your AI connections</h3>
@@ -208,17 +204,17 @@ export function BackgroundComputeSettings() {
 
     {!connections.length || editing ? <section ref={connectSectionRef} className="background-settings__section" aria-labelledby="background-connect">
       <div className="background-settings__section-head">
-        <h3 id="background-connect">{connections.length ? 'Add a connection' : 'Connect your background source'}</h3>
+        <h3 id="background-connect">{connections.length ? 'Add a connection' : 'Add an AI connection'}</h3>
         {/* Backing out is possible from the top of a long form, on a phone too. */}
         {connections.length ? <Button variant="quiet" onClick={cancelAdding}>Cancel adding</Button> : null}
       </div>
       {error ? <p id="background-connect-error" ref={errorRef} className="background-settings__error" role="alert" tabIndex={-1}>{error}</p> : null}
-      <p className="background-settings__help">Choose any supported provider and model; every one takes the same path in Flux. A named-project rule may send its published human evidence for one camera/sensor comparison. It can prepare a quiet suggestion; people choose whether to use it.</p>
+      <p className="background-settings__help">Choose any supported provider and model; every one takes the same path in Flux. Your assistant uses the connection you choose when you set it up; background suggestions use the one marked for them.</p>
       <form ref={formRef} onSubmit={(event) => void connect(event)}>
         <fieldset disabled={busy} className="background-settings__fields">
           <label>Connection name<input name="connectionName" autoComplete="off" maxLength={80} placeholder="For example: Work OpenRouter" /></label>
           <ConnectionFields connection={null} disabled={busy} onProvider={setFormProvider} />
-          <label>Background API key<input name="apiKey" type="password" autoComplete="off" spellCheck={false} required minLength={8} maxLength={512}
+          <label>API key<input name="apiKey" type="password" autoComplete="off" spellCheck={false} required minLength={8} maxLength={512}
             aria-describedby={`background-key-help${error ? ' background-connect-error' : ''}`} /></label>
           <p id="background-key-help" className="background-settings__help">{keyHelp} This field is cleared after every save attempt; enter a new key to try again.</p>
           <label>Provider organization<input name="payerOrganization" autoComplete="off" required minLength={2} maxLength={120} /></label>
@@ -242,26 +238,42 @@ export function BackgroundComputeSettings() {
         </fieldset>
       </form>
     </section> : null}
-  </>);
+    <Link className="background-settings__back" to="/settings/agents">Back to Agents and AI</Link>
+  </div></div>;
+}
 
-  if (runtime === 'unavailable') {
-    // Off on this server: one status line. The connections the assistant uses stay under a folded section.
-    return <div className="pane-scroll"><div className="pane-in background-settings">
-      <header className="background-settings__head">
-        <h2>Background suggestions</h2>
-      </header>
-      <p className="background-settings__note" role="status">Off on this Flux server · ask your admin to turn it on. Saving a connection enables nothing.</p>
-      <details className="background-settings__more" open={connections.length > 0 || undefined}>
-        <summary>AI connections for your assistant</summary>
-        {connectionsAndForm}
-      </details>
-      <Link className="background-settings__back" to="/settings/agents">Back to Agents and AI</Link>
-    </div></div>;
+/** The one status line at the top of Background suggestions: the same place whether the server runs them or not. */
+function BackgroundStatus({ runtime, connection }: { runtime: 'available' | 'unavailable'; connection: BackgroundComputeConnection | null }) {
+  return <div className="background-settings__status">
+    <p className="background-settings__note" role="note">{runtime === 'unavailable'
+      ? 'Off on this Flux server · not available until your admin turns it on.'
+      : connection ? `On · uses ${connection.name}.` : 'On · no AI connection is chosen for them yet.'}</p>
+    <Link className="background-settings__back" to="/settings/ai-connections">AI connections</Link>
+  </div>;
+}
+
+/**
+ * Background suggestions (F-020, #513): one status line, then the owner's local usage and project rules.
+ * Both stay when the server does not run them, so past requests stay visible and a rule can still be
+ * paused or revoked; enabling is dimmed. The connections themselves live on AI connections.
+ */
+export function BackgroundComputeSettings() {
+  const initial = useLoaderData() as { connections: BackgroundComputeConnection[]; usage: BackgroundComputeUsage; runtime: 'available' | 'unavailable' };
+  const connection = initial.connections.find((item) => item.usedForBackground) ?? null;
+  const [usage, setUsage] = useState(initial.usage);
+  const [usageBusy, setUsageBusy] = useState(false);
+  const [usageError, setUsageError] = useState('');
+  const historyRef = useRef<HTMLDetailsElement>(null);
+  async function refreshUsage() {
+    setUsageBusy(true); setUsageError('');
+    try { setUsage(await currentBackgroundUsage()); }
+    catch { setUsageError('Usage could not be refreshed. The figures above are from the last update.'); }
+    finally { setUsageBusy(false); }
   }
-  return <div className="pane-scroll"><div className="pane-in background-settings">
+  return <div className="pane-scroll"><div className="pane-in sset-in background-settings">
     <header className="background-settings__head">
       <h2>Your background suggestions</h2>
-      <p>Only you can configure this connection and its allowance. Each project needs your separate rule.</p>
+      <p>Only you can configure them. Each project needs your separate rule.</p>
       <Button variant="link" className="background-settings__history-shortcut" onClick={() => {
         const history = historyRef.current;
         if (!history) return;
@@ -271,10 +283,9 @@ export function BackgroundComputeSettings() {
         summary?.scrollIntoView({ block: 'start' });
       }}>View recent requests</Button>
     </header>
-    <p ref={statusRef} className="background-settings__saved" tabIndex={-1} role="status">{saved}</p>
-    {connectionsAndForm}
+    <BackgroundStatus runtime={initial.runtime} connection={connection} />
     <BackgroundUsage usage={usage} busy={usageBusy} error={usageError} refresh={() => void refreshUsage()} historyRef={historyRef} />
     <ProjectRuleSettings connection={connection} />
-    <Link className="background-settings__back" to="/">Continue in Flux</Link>
+    <Link className="background-settings__back" to="/settings/agents">Back to Agents and AI</Link>
   </div></div>;
 }

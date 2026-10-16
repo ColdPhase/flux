@@ -135,8 +135,13 @@ class ConnectAiJourney(unittest.TestCase):
         expect(flux.get_by_role("link", name=re.compile("^Sign in with"))).to_have_count(0)
         expect(flux.get_by_text("Sign in with Claude", exact=True)).to_have_count(0)
         expect(flux.get_by_text("Sign in with ChatGPT", exact=True)).to_have_count(0)
-        # The API key choices are shown plainly when sign-in is off.
-        expect(flux.get_by_role("link", name=re.compile("^Use an API key"))).to_be_visible()
+        # The API key choices are shown plainly when sign-in is off, and lead to the one AI connections page (#513).
+        api_key = flux.get_by_role("link", name=re.compile("^Use an API key"))
+        expect(api_key).to_be_visible()
+        expect(api_key).to_have_attribute("href", "/settings/ai-connections")
+        # AI setup starts with the assistant card (Spokój E04, #513 M4); the ways to connect follow it.
+        self.assertTrue(self.above(card, flux.get_by_text(OFF_SENTENCE)), "the assistant card comes before the ways to connect")
+        self.assertTrue(self.above(card, api_key))
         # Your agent app: mode (b) connections; no client guide with command-line words on this page.
         expect(app.get_by_role("link", name=re.compile(f"^{CONNECTION}"))).to_have_attribute("href", "/connect-agent")
         expect(app.get_by_role("link", name="Local co-work on this computer")).to_have_attribute("href", "/connect-agent")
@@ -150,6 +155,13 @@ class ConnectAiJourney(unittest.TestCase):
         page.goto("/settings/agents")
         expect(page.get_by_role("region", name=MODE_A, exact=True)).to_be_visible()
         expect(page.get_by_role("region", name=MODE_B_PAGE, exact=True)).to_be_visible()
+        # #513 M4: on the phone the whole assistant card is on the first screen, before the ways to connect.
+        card = page.get_by_role("region", name=re.compile("^Your assistant"))
+        expect(card.get_by_role("link", name="How it works")).to_be_visible()
+        card_box = card.bounding_box()
+        self.assertIsNotNone(card_box)
+        self.assertLessEqual(card_box["y"] + card_box["height"], PHONE["height"], f"the assistant card fits the first screen: {card_box}")
+        self.assertTrue(self.above(card, page.get_by_text(OFF_SENTENCE)))
         self.no_horizontal_scroll(page)
         shot(page, "connect-ai-phone-390")
         page.goto("/settings")
@@ -264,7 +276,9 @@ class ConnectAiJourney(unittest.TestCase):
             expect(chatgpt).to_be_visible()
             expect(flux).not_to_contain_text(OFF_SENTENCE)
             self.assertTrue(self.above(claude, chatgpt), "Sign in with Claude is above Sign in with ChatGPT")
-            self.assertTrue(self.above(chatgpt, assistant), "the sign-in choices are above the assistant row")
+            # Spokój E04 (#513 M4): AI setup starts with the assistant card; the sign-in choices follow it, still
+            # before every API key choice (AST-1.1).
+            self.assertTrue(self.above(assistant, claude), "the assistant card is above the sign-in choices")
             # Negative control: the same check must reject the reverse order of two elements that are really in that order.
             self.assertFalse(self.above(chatgpt, claude), "negative control: reversed order is rejected")
             # The API key choices are folded under "Other ways to connect" and not visible until opened.
@@ -308,6 +322,40 @@ class ConnectAiJourney(unittest.TestCase):
                 match = JARGON.search(text)
                 self.assertIsNone(match, f"jargon on the page (runtime {'on' if runtime_on else 'off'}): {match and match.group(0)}")
                 page.context.close()
+
+    def test_10_the_assistant_card_says_in_one_line_when_in_app_ai_is_off(self) -> None:
+        """#513 AC-3 (M5): with in-app AI off on the server (a stubbed status), the card says so once, in its status
+        line: no facts and no "How it works", and its primary step stays in the same place, dimmed (Spokój rule 7)."""
+        for phone in (False, True):
+            on = self.page("ines", phone=phone)
+            on.goto("/settings/agents")
+            live = on.get_by_role("region", name=re.compile("^Your assistant"))
+            step = live.get_by_role("link", name=re.compile("^(Set up|Manage)$"))
+            expect(step).to_be_visible()
+            expect(live.locator(".sset-assistant__facts li")).to_have_count(3)
+            real = self.api(on, "GET", "/api/v1/personal-assistant", status=200)
+            off_status = {**real, "state": "unavailable", "enablement": None, "setup": {"provider": "off", "connection": "none"}}
+            page = self.page("ines", phone=phone)
+            page.route(re.compile(r".*/api/v1/personal-assistant$"), lambda route: route.fulfill(
+                status=200, content_type="application/json", body=json.dumps(off_status)) if route.request.method == "GET" else route.continue_())
+            page.goto("/settings/agents")
+            card = page.get_by_role("region", name=re.compile("^Your assistant"))
+            expect(card).to_contain_text("In-app AI is off on this Flux server")
+            text = card.inner_text()
+            self.assertEqual(len(re.findall(r"(?i)\boff\b", text)), 1, f"the off state is said once: {text!r}")
+            lines = [" ".join(line.split()) for line in text.splitlines()]
+            self.assertEqual([line for line in lines if line and line not in ("Your assistant", "Agent", "Your assistant Agent", "Set up")],
+                             ["In-app AI is off on this Flux server"], f"one line besides the name, the Agent tag and Set up: {text!r}")
+            expect(card.locator(".sset-assistant__facts")).to_have_count(0)
+            expect(card.get_by_role("link")).to_have_count(0)
+            dimmed = card.get_by_role("button", name="Set up", exact=True)
+            expect(dimmed).to_be_disabled()
+            a, b = step.bounding_box(), dimmed.bounding_box()
+            self.assertIsNotNone(a)
+            self.assertIsNotNone(b)
+            self.assertAlmostEqual(a["y"], b["y"], delta=1, msg=f"the step keeps its row: {a} vs {b}")
+            self.assertAlmostEqual(a["x"] + a["width"], b["x"] + b["width"], delta=1, msg=f"the step keeps its right edge: {a} vs {b}")
+            shot(page, f"connect-ai-assistant-off-{'phone-390' if phone else 'desktop-1440'}")
 
     def above(self, first, second) -> bool:
         a = first.bounding_box()

@@ -108,7 +108,7 @@ export function ProjectRuleSettings({ connection }: { connection: BackgroundComp
     {saved ? <p ref={statusRef} className="background-settings__saved" role="status" tabIndex={-1}>{saved}</p> : null}
     {selected && ready ? <>
       <p className="background-settings__help">Scope: human evidence published in <strong>{selected.name}</strong>; no private captures, DMs or other projects. Suggestions are visible to this project's readers.</p>
-      {!writable ? <p className="background-settings__note">Your project access is read-only. You cannot create or change a rule here. Disconnect your background connection above to stop all use of that key.</p> : null}
+      {!writable ? <p className="background-settings__note">Your project access is read-only. You cannot create or change a rule here. Disconnect your connection under AI connections to stop all use of that key.</p> : null}
       {current ? <>
         <dl className="background-settings__metadata">
           <div><dt>Status</dt><dd>{current.status === 'enabled' ? 'Enabled' : 'Paused'} · version {current.version}</dd></div>
