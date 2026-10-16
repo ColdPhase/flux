@@ -12,6 +12,7 @@ import { enableAssistant, getAssistantStatus, pauseAssistant, removeAssistant, r
 import { dollars, micros, perMillion, stateLine, unavailableText } from './format';
 import '../notifications/notifications.css';
 import './assistant.css';
+import { AssistantProjectAccess } from './AssistantProjectAccess';
 
 // Your assistant (#68 AC-8, O-008 §1/§3/§6): only the signed-in person's own enablement,
 // consent, caps and pause. Nothing here can see or use anyone else's assistant or payer. The
@@ -270,6 +271,7 @@ function Enabled({ status, agents, workspaces, name, onChange, onRemoved, onAgen
           value={enablement.agents.find((item) => item.workspaceId === space.id)?.agentId ?? ''} onAgent={onAgent}
           onChange={(agentId) => { if (agentId) void act(`agent-${space.id}`, () => selectAssistantAgent(agentId), 'Assistant chosen'); }} />)}
       </section>
+      <AssistantProjectAccess />
       <section className="nset__sec" aria-labelledby="aset-consent">
         <h3 id="aset-consent">What you agreed to</h3>
         <p className="nset__lead">On {new Date(enablement.consent.acceptedAt).toLocaleDateString(undefined, { dateStyle: 'medium' })} · disclosure {enablement.consent.version}</p>
