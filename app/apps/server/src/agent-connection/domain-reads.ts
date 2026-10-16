@@ -118,7 +118,7 @@ export function registerAgentDomainReads(server: AgentToolRegistrar, db: Databas
   }));
 
   server.registerTool('flux_list_conversations', { title: 'List project conversations', description: 'A page of project conversations.',
-    inputSchema: projectPage, annotations }, ({ projectId, ...query }) => result(projectId, ({ tx, principal }) => conversationUseCases(conversationStore(tx)).listConversations(principal, projectId, query)));
+    inputSchema: projectPage, annotations }, ({ projectId, ...query }) => result(projectId, ({ tx, principal }) => conversationUseCases(conversationStore(tx)).listConversations(principal, projectId, capped(query))));
   server.registerTool('flux_get_conversation', { title: 'Read a project conversation',
     description: 'Read up to 50 messages; use nextBeforeSequence for older ones.',
     inputSchema: z.object({ projectId: z.uuid(), id: z.uuid(), limit: z.int().min(1).max(50).default(20), beforeSequence: z.int().min(1).optional() }), annotations },
