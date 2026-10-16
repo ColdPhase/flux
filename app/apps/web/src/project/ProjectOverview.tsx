@@ -302,8 +302,8 @@ export function ProjectOverview({ messageId, selection, focusPeople = null, onBa
   return (
     <div className={`details ov${projectMode ? ' ov--project' : ''}`} data-overview-phase={read.objects.phase} data-overview-observed-at={read.page?.observedAt} data-overview-relations-phase={read.relations.phase} data-overview-relations-observed-at={read.links?.observedAt}>
       {messageMode ? <button type="button" className="details__back" onClick={onBack}><Icon name="chevron-left" size={14} />{conversation ? 'This conversation' : 'Project'}</button> : null}
-      {projectMode ? (
-        // The project itself, once: its tile and name, then who is in it and its space (#512, AC-2).
+      {projectMode ? <>
+        {/* The project itself, once: its tile and name, then who is in it and its space (#512, AC-2). */}
         <header className="ov-head">
           <span className="ov-tile" aria-hidden="true">{project.name.trim().charAt(0).toUpperCase()}</span>
           <div className="ov-head__b">
@@ -313,7 +313,7 @@ export function ProjectOverview({ messageId, selection, focusPeople = null, onBa
           {goal.menu}
         </header>
         {goal.line}
-      ) : <>
+      </> : <>
         {/* A thread's or a message's Details name it and the project (#266). */}
         <p className="details__eyebrow">{project.name}{conversation && !messageMode ? ' · Conversation' : ''}</p>
         <div className="ov-head ov-head--plain"><h3 className="details__title">{title}</h3>{messageMode ? null : goal.menu}</div>
