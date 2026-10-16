@@ -575,6 +575,9 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
 /* The view menu: a card under the header. */
 .ui-overlay--center .phone-menu { top: calc(64px + env(safe-area-inset-top)); width: calc(100% - 24px); max-height: calc(100dvh - 96px); border-radius: 26px; padding: 18px 8px 8px; overflow-y: auto; }
 .phone-menu__t { margin: 0 12px 10px; font-size: 1.0625rem; font-weight: 600; letter-spacing: -.02em; }
+/* The project's current goal under its name (#520, phone-viewsmenu): the title keeps its own gap above the list. */
+.phone-menu__t:has(+ .phone-menu__goal) { margin-bottom: 2px; }
+.phone-menu__goal { margin: 0 12px 12px; color: var(--t3); font-size: var(--fs-base); line-height: 1.35; overflow-wrap: anywhere; }
 .phone-menu__list { margin: 0; padding: 0; list-style: none; }
 .phone-menu__item {
   display: flex; align-items: center; gap: 14px; width: 100%; min-height: 52px; padding: 0 14px; border-radius: 18px;

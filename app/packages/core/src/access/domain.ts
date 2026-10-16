@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { and, asc, desc, eq, isNull, sql, type SQL } from 'drizzle-orm';
-import { schema, eventRepository } from '@flux/db';
+import { schema, eventRepository, projectGoalRows } from '@flux/db';
 import type {
   AddMemberCommand,
   Agent,
@@ -33,6 +33,7 @@ import { PROJECT_TEMPLATES, PROJECT_VIEWS, TEMPLATE_VIEWS } from '@flux/contract
 import type { Database, Executor, Principal } from '../types.js';
 import { ConflictError, ForbiddenError, InvalidInputError, NotFoundError, PreconditionRequiredError, RuleViolationError, VersionConflictError } from './errors.js';
 import { policyEventPorts, recordEvent } from '../events.js';
+import { presentProjectGoal } from '../project-goals/service.js';
 import {
   accessName,
   enforce,
@@ -134,10 +135,16 @@ function toWorkspace(row: typeof schema.workspaces.$inferSelect, role: Workspace
   return { id: row.id, name: row.name, role, version: row.version, createdAt: row.createdAt.toISOString() };
 }
 
-function toProject(row: typeof schema.projects.$inferSelect, level: number): Project {
+function toProject(row: typeof schema.projects.$inferSelect, level: number, goal: Project['goal'] = null): Project {
   const access = accessName(level);
   if (!access) throw new Error('Invisible project serialized');
-  return { id: row.id, workspaceId: row.workspaceId, name: row.name, visibility: row.visibility, access, views: row.views as ProjectViewId[], version: row.version, createdAt: row.createdAt.toISOString() };
+  return { id: row.id, workspaceId: row.workspaceId, name: row.name, visibility: row.visibility, access, views: row.views as ProjectViewId[], goal, version: row.version, createdAt: row.createdAt.toISOString() };
+}
+
+/** The goal each project shows (#520): its current goal, or else its most recently reached one. */
+async function shownGoals(db: Executor, projectIds: string[]): Promise<Map<string, Project['goal']>> {
+  const rows = await projectGoalRows(db).shown(projectIds);
+  return new Map([...rows].map(([id, row]) => [id, presentProjectGoal(row)]));
 }
 
 function toGrant(row: typeof schema.projectGrants.$inferSelect): ProjectGrant {
@@ -329,11 +336,12 @@ export async function addProjectView(principal: Principal, projectId: string, co
     // the second reads the first's array, instead of both holding FOR SHARE and deadlocking on the update.
     await lockProjectForGrantChange(tx, projectId);
     const { project, level } = enforce(await evaluateProject(principal, 'project.write', projectId, tx, { lock: true }), 'project');
-    if (project!.views.includes(view)) return toProject(project!, level);
+    const goal = (await shownGoals(tx, [projectId])).get(projectId) ?? null;
+    if (project!.views.includes(view)) return toProject(project!, level, goal);
     const [row] = await tx.update(schema.projects).set({ views: [...project!.views, view], version: sql`${schema.projects.version} + 1`, updatedAt: new Date() })
       .where(eq(schema.projects.id, projectId)).returning();
     await recordEvent(events(tx), principal, project!.workspaceId, 'project.view_added.v1', projectId, { view });
-    return toProject(row!, level);
+    return toProject(row!, level, goal);
   });
 }
 
@@ -347,12 +355,13 @@ export async function listProjects(principal: Principal, workspaceId: string, qu
     .from(schema.projects).where(filter)
     .orderBy(asc(schema.projects.createdAt), asc(schema.projects.id))
     .limit(page.limit).offset(page.offset);
-  return { items: rows.map((row) => toProject(row.project, row.level)), total: counted?.count ?? 0, ...page };
+  const goals = await shownGoals(db, rows.map((row) => row.project.id));
+  return { items: rows.map((row) => toProject(row.project, row.level, goals.get(row.project.id) ?? null)), total: counted?.count ?? 0, ...page };
 }
 
 export async function getProject(principal: Principal, projectId: string, db: Database): Promise<Project> {
   const { project, level } = enforce(await evaluateProject(principal, 'project.read', projectId, db), 'project');
-  return toProject(project!, level);
+  return toProject(project!, level, (await shownGoals(db, [projectId])).get(projectId) ?? null);
 }
 
 export async function listProjectGrants(principal: Principal, projectId: string, db: Database): Promise<ProjectGrant[]> {

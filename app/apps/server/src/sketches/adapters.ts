@@ -150,8 +150,6 @@ export function sketchPorts(tx: Database, storage?: FileStorage): SketchPorts {
           if(before&&before.text===after.text)return;
           const recipients=await canonicalArtifactTaskIds(tx,scope,{kind:'thought',id:after.id});
           await artifactResetRows(tx).record(scope,{kind:'thought',id:after.id,revision:String(after.version)},recipients,retained);
-          // A real saved source effect still counts as use when an old canonical identity suppresses its reset.
-          if(recipients.length)await retained.mark(recipients);
         },
         file:(fileId)=>artifactResetRows(tx).publishedFile(scope,fileId,retained),
       };
