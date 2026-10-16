@@ -55,7 +55,9 @@ describe('egress policy', () => {
     await listen(proxy);
     try {
       assert.match(await rawExchange(port(proxy), 'CONNECT api.anthropic.com:443 HTTP/1.1\r\n\r\nsign-out', 500), /200 Connection Established[\s\S]*sign-out$/);
-      for (const host of ['downloads.claude.ai', 'example.com', 'api.openai.com']) {
+      // Codex's sign-out host too (T6 #281): its token revoke is on auth.openai.com.
+      assert.match(await rawExchange(port(proxy), 'CONNECT auth.openai.com:443 HTTP/1.1\r\n\r\nsign-out', 500), /200 Connection Established[\s\S]*sign-out$/);
+      for (const host of ['downloads.claude.ai', 'example.com', 'ab.chatgpt.com', 'api.github.com']) {
         assert.match(await rawExchange(port(proxy), `CONNECT ${host}:443 HTTP/1.1\r\n\r\n`), /^HTTP\/1\.1 403/, host);
       }
     } finally { proxy.closeAllConnections(); proxy.close(); vendor.close(); }
