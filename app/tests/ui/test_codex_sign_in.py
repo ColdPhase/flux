@@ -182,7 +182,7 @@ class CodexSignIn(unittest.TestCase):
             again = page.get_by_role("button", name="Get a new code")
             expect(again).to_be_visible()
             again.click()
-            self.until(page, lambda: sum(1 for item in received if "ticket" in item) == 2, f"Get a new code to start a new sign-in ({received})")
+            self.until(page, lambda: sum(1 for item in received if isinstance(item.get("ticket"), dict)) == 2, f"Get a new code to start a new sign-in ({received})")
             page.context.close()
 
     def test_06_signed_in_says_who_pays_and_settings_shows_codex(self) -> None:
