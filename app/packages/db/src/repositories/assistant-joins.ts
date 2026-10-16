@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { and, eq, ne, sql } from 'drizzle-orm';
-import type { AssistantJoinRequest } from '@flux/contracts';
+import { assistantJoinInboxPath, type AssistantJoinRequest } from '@flux/contracts';
 import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
 
@@ -67,7 +67,7 @@ export function assistantJoinRows(tx: DbExecutor) {
         throw new Error('Assistant join-question cycle identity is immutable');
     },
     async linkQuestion(notificationId: string, joinRequestId: string, openingVersion: number) {
-      await tx.update(schema.notifications).set({ assistantJoinRequestId: joinRequestId, assistantJoinOpeningVersion: openingVersion })
+      await tx.update(schema.notifications).set({ assistantJoinRequestId: joinRequestId, assistantJoinOpeningVersion: openingVersion, url: assistantJoinInboxPath(notificationId) })
         .where(eq(schema.notifications.id, notificationId));
       await tx.update(schema.assistantJoinQuestionIdentitySnapshots).set({ notificationLinkedAt: sql`coalesce(${schema.assistantJoinQuestionIdentitySnapshots.notificationLinkedAt}, now())` })
         .where(and(eq(schema.assistantJoinQuestionIdentitySnapshots.joinRequestId, joinRequestId),

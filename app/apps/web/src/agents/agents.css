@@ -89,51 +89,6 @@
   .agents-detail__bar { display: block; }
 }
 
-/* The hand-off dialog (S12): the agent, then what it may do here, then confirm. */
-.handoff { display: flex; flex-direction: column; min-height: 0; flex: 1; padding: var(--s-4) var(--s-5) var(--s-5); gap: var(--s-4); }
-.handoff__head { display: flex; align-items: center; gap: var(--s-3); min-width: 0; }
-.handoff__step { flex: none; padding: 3px 10px; border-radius: var(--r-pill); background: var(--sub); font-size: var(--fs-sm); font-weight: 600; }
-.handoff__what { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-sm); color: var(--t2); }
-.handoff__close { flex: none; display: inline-grid; place-items: center; width: var(--ctl); height: var(--ctl); border: 0; border-radius: var(--r-pill); background: transparent; color: var(--t1); cursor: pointer; }
-.handoff__close:hover { background: var(--sub); }
-.handoff__body { display: flex; flex-direction: column; gap: var(--s-3); min-height: 0; flex: 1; overflow-y: auto; }
-.handoff__title { margin: 0; font-size: var(--fs-xl); font-weight: 600; letter-spacing: -0.02em; overflow-wrap: anywhere; }
-.handoff__list { display: flex; flex-direction: column; gap: var(--s-1); }
-.handoff__agent {
-  position: relative; display: flex; align-items: center; gap: var(--s-3); min-height: 60px; padding: var(--s-2) var(--s-3);
-  border-radius: var(--r); cursor: pointer; box-shadow: inset 0 0 0 2px transparent;
-}
-.handoff__agent:hover { background: var(--sub); }
-.handoff__agent[data-checked] { background: var(--sub); box-shadow: inset 0 0 0 2px var(--t1); }
-.handoff__agent:has(input:focus-visible) { outline: 2px solid var(--t1); outline-offset: 2px; }
-.handoff__agent input { position: absolute; opacity: 0; width: 1px; height: 1px; pointer-events: none; }
-.handoff__who { display: flex; flex-direction: column; min-width: 0; flex: 1; }
-.handoff__who b { font-weight: 600; font-size: var(--fs-base); overflow-wrap: anywhere; }
-.handoff__who small { font-size: var(--fs-sm); color: var(--t2); overflow-wrap: anywhere; }
-.handoff__mark { flex: none; display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px var(--t2); color: var(--oninv); }
-.handoff__agent[data-checked] .handoff__mark { background: var(--inv); box-shadow: none; }
-.handoff__chosen { display: flex; align-items: center; gap: var(--s-3); }
-.handoff__can { margin: 0; padding: var(--s-3) var(--s-4); border-radius: var(--r); background: var(--sub); font-size: var(--fs-base); line-height: 1.55; color: var(--t2); overflow-wrap: anywhere; }
-.handoff__can b { color: var(--t1); font-weight: 600; }
-.handoff__can:not([data-allowed]) { box-shadow: inset 0 0 0 1px var(--line2); }
-.handoff__note { margin: 0; font-size: var(--fs-sm); line-height: 1.5; color: var(--t2); }
-.handoff__error { margin: 0; font-size: var(--fs-sm); color: var(--t1); font-weight: 600; }
-.handoff__task { display: flex; align-items: center; gap: var(--s-2); }
-.handoff__task label { font-size: var(--fs-sm); color: var(--t3); }
-.handoff__task select { flex: 1; min-width: 0; min-height: var(--ctl); font: inherit; font-size: var(--fs-base); color: var(--t1); background: transparent; border: 1px solid var(--line2); border-radius: var(--r); padding: 0 var(--s-3); }
-.handoff__foot { display: flex; align-items: center; justify-content: flex-end; gap: var(--s-2); }
-.handoff__tip { flex: 1; min-width: 0; font-size: var(--fs-xs); color: var(--t3); }
-.handoff__kbd { margin-left: var(--s-2); }
-@media (pointer: coarse), (hover: none) { .handoff__tip, .handoff__kbd { display: none; } }
-@media (max-width: 640px) {
-  .handoff { padding-bottom: calc(var(--s-5) + env(safe-area-inset-bottom)); }
-  .handoff__foot .ui-btn { min-height: var(--ctl-lg); flex: 1; }
-  .handoff__foot .ui-btn--primary { flex: 2; }
-  .ui-overlay--bottom .ui-overlay__surface.handoff-sheet {
-    inset: auto 0 0; height: min(82dvh, 760px); max-height: calc(100dvh - env(safe-area-inset-top) - 12px);
-    border-radius: var(--r-sheet) var(--r-sheet) 0 0; box-shadow: var(--sh-pop);
-  }
-}
 
 .agents__task {
   display: flex; align-items: center; gap: var(--s-3); flex-wrap: wrap;
@@ -263,3 +218,7 @@
   .agents-row__stop--take { display: none; }
   .agents-row__now { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 }
+
+/* Keep the Agents title's keyboard focus inside its existing 44px control, above its metadata. */
+.phead__title:has(.agents-header-meta) .phead__menu { padding-inline: 4px; margin-inline: -4px; }
+.phead__title:has(.agents-header-meta) .phead__menu:focus-visible { outline-offset: -3px; }

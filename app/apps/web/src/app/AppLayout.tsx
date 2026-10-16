@@ -159,6 +159,7 @@ function AppLayoutContent() {
   useLayoutEffect(() => { detailsScope.current = detailsOwner; return () => { detailsScope.current = null; }; }, [detailsOwner]);
   const [actionSlot, setActionSlot] = useState<HTMLElement | null>(null);
   const [metadataSlot, setMetadataSlot] = useState<HTMLElement | null>(null);
+  const [viewMenuMetadataSlot, setViewMenuMetadataSlot] = useState<HTMLElement | null>(null);
   const shell = useMemo(() => ({
     openDetails(view: DetailsView = 'place') {
       if (detailsScope.current !== detailsOwner) return;
@@ -170,11 +171,11 @@ function AppLayoutContent() {
     openSearch() { setNavOpen(false); setJumpOpen(true); },
     openNavigation() { setDetailsOpen(false); setNavOpen(true); },
     actionSlot,
-    metadataSlot,
+    metadataSlot, viewMenuMetadataSlot,
     toggleFocus() { void toggleFocus(); },
     toggleRail,
     sidebarHidden: railed,
-  }), [toggleDetails, actionSlot, metadataSlot, projectId, detailsOwner, toggleRail, railed, toggleFocus]);
+  }), [toggleDetails, actionSlot, metadataSlot, viewMenuMetadataSlot, projectId, detailsOwner, toggleRail, railed, toggleFocus]);
 
   // A link inside an overlaid panel or sheet (#117 overview) leads to its destination.
   const [shownPath, setShownPath] = useState(location.pathname);
@@ -316,6 +317,7 @@ function AppLayoutContent() {
   // Map tab to the sketch (or list) that was open there.
   const onOtherView = /^\/projects\/[^/]+\/(tasks|map|docs|agents|github)(\/|$)/.test(location.pathname);
   const onMap = /^\/projects\/[^/]+\/map(\/|$)/.test(location.pathname);
+  const onAgents = /^\/projects\/[^/]+\/agents(\/|$)/.test(location.pathname);
   const onWiki = /^\/projects\/[^/]+\/docs(\/|$)/.test(location.pathname);
   useEffect(() => {
     if (!projectId || (onOtherView && !onMap)) return;
@@ -419,16 +421,16 @@ function AppLayoutContent() {
   const goBack = (fallback: string) => { if (location.key !== 'default') void navigate(-1); else void navigate(fallback); };
   const searchButton = <IconButton icon="search" label="Search" size={20} className="phead__round" onClick={shell.openSearch} />;
   const detailsEntry = () => { setDetailsView('place'); toggleDetails(true); };
-  const peopleLine = (people: ProjectPerson[] | null) => {
+  const peopleLine = (people: ProjectPerson[] | null, includeAgents = true) => {
     if (!people) return '';
     const humans = people.filter((person) => person.kind === 'human').length;
-    const agents = people.length - humans;
+    const agents = includeAgents ? people.length - humans : 0;
     return `${humans} ${humans === 1 ? 'person' : 'people'}${agents ? ` · ${agents} ${agents === 1 ? 'agent' : 'agents'}` : ''}`;
   };
   const currentProjectView = ['conversation', 'map', 'tasks', 'docs', 'agents'][Math.max(0, viewOrder(location.pathname))];
   const projectMenu: PhoneMenuItem[] = projectViews ? ([
     ['conversation', 'chat', undefined], ['tasks', 'tasks', openWork ? `${openWork} open` : undefined], ['map', 'edit', undefined], ['docs', 'doc', undefined],
-    ['agents', 'spark', project?.people?.some((person) => person.kind === 'agent') ? `${project.people.filter((person) => person.kind === 'agent').length} agents` : undefined],
+    ['agents', 'spark', onAgents ? <span ref={setViewMenuMetadataSlot} /> : undefined],
   ] as const).flatMap(([id, icon, note]) => {
     // A view the project has not added yet (#351) is not in the menu; "Add …" rows offer it.
     const view = projectViews.find((item) => item.id === id);
@@ -446,9 +448,9 @@ function AppLayoutContent() {
       ) : activeProject && projectViews ? (
         <><PhoneBack onBack={() => goBack('/projects')} />
           <PhoneTitleMenu title={place.title} items={projectMenu} onDetails={detailsEntry}
-            metadataSlot={onWiki ? setMetadataSlot : undefined}
+            metadataSlot={onWiki || onAgents ? setMetadataSlot : undefined}
             adds={addViewItems.map((item) => ({ label: item.label, run: item.run }))}
-            subtitle={onWiki ? peopleLine(project?.people ?? null) : [PROJECT_VIEW_NAMES[Math.max(0, viewOrder(location.pathname))], peopleLine(project?.people ?? null)].filter(Boolean).join(' · ')} /></>
+            subtitle={onWiki ? peopleLine(project?.people ?? null) : [PROJECT_VIEW_NAMES[Math.max(0, viewOrder(location.pathname))], peopleLine(project?.people ?? null, !onAgents)].filter(Boolean).join(' · ')} /></>
       ) : activeDm && dmViews ? (
         <><PhoneBack onBack={() => goBack('/projects')} />
           <PhoneTitleMenu title={activeDm.title} items={dmViews.map((view) => ({ id: view.id, label: view.label, to: view.to, icon: view.id === 'messages' ? 'chat' as const : 'edit' as const, current: view.id === (/\/sketches/.test(location.pathname) ? 'sketches' : 'messages') }))}
