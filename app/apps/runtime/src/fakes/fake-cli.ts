@@ -23,7 +23,8 @@ import { GOLDEN_HELP } from '../contract/goldens.js';
 // credential file written without a sign-in (the contract table's seeded state) has no account, and
 // `auth status` then reports `email: null`. On a terminal the URL is an OSC 8 hyperlink, as the real CLI draws it.
 //
-// Scenarios (`fake-scenario`): login_failed (the exchange fails: `Login failed: …`, exit 1),
+// Scenarios (`fake-scenario`): login_failed (the exchange fails: `Login failed: …`, exit 1; a pasted code
+// starting `fake-reject-` does the same without a file),
 // login_timeout (no code arrives in time; the wording is the fake's own, the real one is unknown),
 // login_hangs (waits at the prompt for good), login_without_credentials (succeeds without writing a
 // login), console_profile (a `--console` login stores a keyless Anthropic profile OUTSIDE
@@ -117,6 +118,7 @@ async function claudeLogin(argv: string[], flags: string[]): Promise<number> {
     return 1;
   }
   const next = lineReader();
+  let accepted = '';
   for (;;) {
     const line = await next();
     if (line === null) await forever(); // closed input: the real CLI keeps waiting (for the browser's callback)
@@ -124,9 +126,12 @@ async function claudeLogin(argv: string[], flags: string[]): Promise<number> {
     const [code = '', pastedState = '', ...rest] = line.trim().split('#');
     record('claude_code', argv, { event: 'code', code: line.trim() });
     if (!code || !pastedState || rest.length || pastedState !== state) { err('Invalid code. Please make sure the full code was copied.\n'); continue; }
+    accepted = code;
     break;
   }
-  if (mode === 'login_failed') { err('Login failed: Request failed with status code 400\n'); return 1; }
+  // A pasted code that starts `fake-reject-` fails the exchange like login_failed: a browser test cannot seed
+  // `fake-scenario` (the binding home exists only after the console starts), so the code itself selects it.
+  if (mode === 'login_failed' || accepted.startsWith('fake-reject-')) { err('Login failed: Request failed with status code 400\n'); return 1; }
   const secret = readHome('claude_code', 'fake-secret') || 'fake-secret-not-seeded';
   const method = flags.includes('--console') ? 'console' : flags.includes('--sso') ? 'sso' : 'claude_account';
   if (mode === 'console_profile' && method === 'console') writeProfile(secret);
