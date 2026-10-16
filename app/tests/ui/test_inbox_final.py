@@ -29,6 +29,22 @@ DECISION = "Measure soil moisture first; frost warnings later"
 REASON = "Overwatering is the problem now; frost only matters in spring."
 
 
+def mark(page: Page, name: str) -> None:
+    """Records an event on the page, so a test waits for it with `seen` rather than a fixed sleep."""
+    page.evaluate("(name) => { window.__marks[name] = (window.__marks[name] || 0) + 1; }", name)
+
+
+def seen(page: Page, name: str, count: int = 1) -> None:
+    """Waits until the page has recorded `name` at least `count` times. Routes keep being answered meanwhile."""
+    page.wait_for_function("([name, count]) => (window.__marks[name] || 0) >= count", arg=[name, count])
+
+
+def settled(page: Page) -> None:
+    """Waits until no queue read is waiting for its answer, then until the page has painted what it changed."""
+    page.wait_for_function("() => window.__needsYouPending === 0")
+    page.evaluate("() => new Promise((done) => requestAnimationFrame(() => setTimeout(done, 0)))")
+
+
 class InboxFinal(unittest.TestCase):
     """Tests run in name order; each one leaves the queue as the next expects it."""
 
@@ -58,7 +74,7 @@ class InboxFinal(unittest.TestCase):
         assert cls.browser.browser_type.name == UI_BROWSER
         expect.set_options(timeout=15000)
         for key, (name, email) in PEOPLE.items():
-            context = cls.browser.new_context(base_url=ORIGIN)
+            context = cls.browser.new_context(base_url=ORIGIN, service_workers="block")
             response = context.request.post("/api/auth/sign-up/email", data={"email": email, "password": PASSWORD, "name": name}, headers={"origin": ORIGIN})
             assert response.status == 200, response.text()
             cls.ids[key] = context.request.get("/api/v1/me").json()["user"]["id"]
@@ -99,7 +115,7 @@ class InboxFinal(unittest.TestCase):
             options.update(viewport=PHONE, device_scale_factor=3, is_mobile=True, has_touch=True)
         else:
             options.update(viewport=DESKTOP, device_scale_factor=1)
-        context = self.browser.new_context(**options)
+        context = self.browser.new_context(service_workers="block", **options)
         self.addCleanup(context.close)
         page = context.new_page()
         errors: list[str] = []
@@ -124,6 +140,129 @@ class InboxFinal(unittest.TestCase):
 
     def card(self, page: Page, title: str):
         return page.locator(".nyc", has_text=title)
+
+    def watch_queue_reads(self, page: Page) -> None:
+        """Counts the queue reads still waiting for an answer, and starts the page's event marks (see `mark`)."""
+        page.evaluate(r"""() => {
+          window.__marks = {};
+          window.__needsYouPending = 0;
+          const native = window.fetch;
+          window.fetch = (input, init) => {
+            const url = typeof input === 'string' ? input : input.url;
+            if (!/\/api\/v1\/needs-you(\?|$)/.test(url)) return native(input, init);
+            window.__needsYouPending += 1;
+            const done = () => { window.__needsYouPending -= 1; };
+            return native(input, init).then((response) => { response.clone().text().finally(done); return response; }, (error) => { done(); throw error; });
+          };
+        }""")
+
+    def hold_reads_after_snooze(self, page: Page) -> dict:
+        """Holds the queue reads that follow a snooze, and the Undo that follows (#519).
+
+        The reads are requested after the server stores the snooze, and the page then Undoes it. Their
+        answers are the queue from before Undo, so they arrive late, while the Undo is still on its way:
+        `release()` delivers them then. Returns {"read": [(route, answer)], "undo": [route], "release": fn}.
+        """
+        self.watch_queue_reads(page)
+        state = {"armed": False, "hold": False}
+        held: dict = {"read": [], "undo": []}
+
+        def on_item(route) -> None:
+            if route.request.method == "DELETE" and state["hold"] and not held["undo"]:
+                held["undo"].append(route)
+                mark(page, "undo")
+                return
+            if route.request.method != "POST":
+                route.continue_()
+                return
+            # The snooze is stored before the page hears of it; reads from now on are the late ones.
+            response = route.fetch()
+            if not state["armed"]:
+                state["armed"] = state["hold"] = True
+            route.fulfill(response=response)
+
+        def on_queue(route) -> None:
+            if state["hold"]:
+                held["read"].append((route, route.fetch()))
+                mark(page, "heldRead")
+            else:
+                route.continue_()
+
+        def release() -> None:
+            state["hold"] = False
+            for route, answer in held["read"]:
+                route.fulfill(response=answer)
+
+        def let_undo_through() -> None:
+            # A check that failed first must not leave the Undo held for the tests after it.
+            while held["undo"]:
+                held["undo"].pop().continue_()
+
+        self.addCleanup(let_undo_through)
+        page.route(re.compile(r"/api/v1/needs-you/[^?]+$"), on_item)
+        page.route(re.compile(r"/api/v1/needs-you(\?.*)?$"), on_queue)
+        return {**held, "release": release}
+
+    def hold_snooze_in_flight(self, page: Page) -> dict:
+        """Holds a snooze's answer and Undo's DELETE, and lets the queue reads be answered by the server (#519).
+
+        The server stores the snooze before its answer is released, so the page hears of the snooze only at
+        `release_answer()`, when Undo is already in flight. The DELETE waits until `release_delete()`. Every queue
+        read is answered by the server as it is (still snoozed, while the DELETE waits); each answer is appended
+        to `served`, and the read is marked on the page once the page has it.
+        """
+        self.watch_queue_reads(page)
+        held: dict = {"answer": None, "delete": None, "served": []}
+
+        def on_item(route) -> None:
+            if route.request.method == "POST":
+                held["answer"] = (route, route.fetch())
+                mark(page, "snooze")
+            elif route.request.method == "DELETE":
+                held["delete"] = route
+                mark(page, "undo")
+            else:
+                route.continue_()
+
+        def on_queue(route) -> None:
+            response = route.fetch()
+            held["served"].append(response.json())
+            route.fulfill(response=response)
+            mark(page, "reads")
+
+        def release_answer() -> None:
+            if held["answer"] is not None:
+                route, answer = held["answer"]
+                held["answer"] = None
+                route.fulfill(response=answer)
+
+        def release_delete() -> None:
+            if held["delete"] is not None:
+                route, held["delete"] = held["delete"], None
+                route.continue_()
+
+        # A check that fails first must not leave the snooze or the Undo held for the tests after it.
+        self.addCleanup(release_answer)
+        self.addCleanup(release_delete)
+        page.route(re.compile(r"/api/v1/needs-you/[^?]+$"), on_item)
+        page.route(re.compile(r"/api/v1/needs-you(\?.*)?$"), on_queue)
+        return {"served": held["served"], "release_answer": release_answer, "release_delete": release_delete}
+
+    def watch_card(self, page: Page, title: str):
+        """Watches a card from now on: it may come and go, but once it has appeared it must never leave (#519).
+
+        Returns a reader of the watch, {"appeared": bool, "vanished": bool}.
+        """
+        page.evaluate("""(title) => {
+          const shown = () => [...document.querySelectorAll('.nyc')].some((card) => card.textContent.includes(title));
+          const watch = { appeared: shown(), vanished: false };
+          new MutationObserver(() => {
+            if (shown()) watch.appeared = true;
+            else if (watch.appeared) watch.vanished = true;
+          }).observe(document.body, { childList: true, subtree: true, characterData: true });
+          window.__cardWatch = watch;
+        }""", title)
+        return lambda: page.evaluate("() => window.__cardWatch")
 
     # ---------------------------------------------------------------- the queue (AC-1, AC-3)
 
@@ -223,14 +362,25 @@ class InboxFinal(unittest.TestCase):
         decision.get_by_role("button", name="Not now").click()
         menu = page.get_by_role("menu", name="Ask me again")
         expect(menu.get_by_role("menuitem")).to_have_text([re.compile("^Tomorrow morning"), re.compile("^Next week"), re.compile("^When #1 is done"), re.compile("^Decline for good")])
-        # Three: when the task it affects is done.
+        # Three: when the task it affects is done. The reads that follow the snooze are answered only after Undo.
+        held = self.hold_reads_after_snooze(page)
         page.keyboard.press("3")
         expect(page.get_by_role("status").filter(has_text="Back when #1 is done")).to_be_visible()
         expect(decision).to_have_count(0)
+        seen(page, "heldRead")
         self.wait_for(lambda: (self.queue(None)["count"], self.queue(None)["later"]) == (3, 1), "the snooze to be stored")
+        # Watches the decision card from now on: it may appear, but once it is back it must never leave.
+        watch = self.watch_card(page, DECISION)
         page.keyboard.press("z")
         expect(decision).to_have_count(1)
+        seen(page, "undo")
+        # The late answers land while the Undo is still on its way, then the Undo is let through.
+        held["release"]()
+        settled(page)
+        self.assertEqual(watch(), {"appeared": True, "vanished": False}, "the restored decision never left the Inbox")
+        held["undo"].pop().continue_()
         self.wait_for(lambda: self.queue(None)["later"] == 0, "the snooze to be undone")
+        expect(decision).to_have_count(1)
 
         # The restored first card is current again. Move to its neighbour and back before using S;
         # this proves the keyboard handler sees the restored queue, not its previous item list.
@@ -263,6 +413,50 @@ class InboxFinal(unittest.TestCase):
         page.keyboard.press("Escape")
         expect(page.get_by_role("menu", name="Ask me again")).to_have_count(0)
         expect(decision).to_have_count(1)
+
+    def test_04b_undo_before_the_snooze_is_answered_keeps_the_card(self) -> None:
+        """Undo while the snooze's answer is still on its way (#519, the window after Undo).
+
+        The page hears of the snooze only after Undo has restored the card. The read that starts then is answered
+        by a server that still holds the snooze, because Undo's DELETE waits. The card, and the keyboard selection
+        on it, must stay as they are until Undo has reached the server.
+        """
+        page = self.page()
+        page.goto("/inbox")
+        decision = self.card(page, DECISION)
+        expect(decision).to_have_count(1)
+        gate = self.hold_snooze_in_flight(page)
+        decision.get_by_role("button", name="Not now").click()
+        page.get_by_role("menuitem", name=re.compile("^Tomorrow morning")).click()
+        expect(decision).to_have_count(0)
+        seen(page, "snooze")
+        page.keyboard.press("z")
+        expect(decision).to_have_attribute("aria-current", "true")
+        watch = self.watch_card(page, DECISION)
+        reads = len(gate["served"])
+        gate["release_answer"]()
+        seen(page, "reads", reads + 1)
+        settled(page)
+        self.assertNotIn(f"decision:{self.decision['id']}", [item["key"] for item in gate["served"][-1]["items"]], "the server still holds the snooze while Undo waits")
+        self.assertEqual(watch(), {"appeared": True, "vanished": False}, "the restored decision never left the Inbox after the read that started after Undo")
+        expect(decision).to_have_attribute("aria-current", "true")
+        # Selection while Undo waits: down to the neighbour and back lands on the restored decision.
+        page.keyboard.press("j")
+        expect(self.card(page, "asked you")).to_have_attribute("aria-current", "true")
+        page.keyboard.press("k")
+        expect(decision).to_have_attribute("aria-current", "true")
+        expect(page.locator('.nyc[aria-current="true"]')).to_have_count(1)
+        # Undo reaches the server; the read after it finds the decision back, and it stays current.
+        reads = len(gate["served"])
+        with page.expect_response(lambda response: response.request.method == "DELETE" and "/api/v1/needs-you/" in response.url) as undone:
+            gate["release_delete"]()
+        self.assertTrue(undone.value.ok, "the server must acknowledge Undo")
+        seen(page, "reads", reads + 1)
+        settled(page)
+        self.assertEqual(watch(), {"appeared": True, "vanished": False}, "the restored decision never left the Inbox after Undo")
+        expect(decision).to_have_count(1)
+        expect(decision).to_have_attribute("aria-current", "true")
+        self.assertEqual(self.queue(None)["later"], 0, "the snooze is undone on the server")
 
     def test_05_the_task_snooze_ends_when_the_task_is_done(self) -> None:
         page = self.page()
@@ -313,6 +507,29 @@ class InboxFinal(unittest.TestCase):
         self.wait_for(lambda: self.contexts["ada"].request.get(f"/api/v1/decisions/{proposed['id']}").json()["status"] == "accepted", "the accept sent on leaving")
         page.get_by_role("button", name="Undo").click()
         expect(page.get_by_role("status").filter(has_text="already accepted")).to_be_visible()
+
+    def test_07a_another_persons_item_shows_during_an_accept_window(self) -> None:
+        """An accept is not pending: while its Undo window is open, a new item from someone else shows at once (#519).
+
+        The page starts the read itself (focus), so the item must appear while the "Accepted" toast is still up.
+        It does not wait for the window to end, which a pending accept would make it do.
+        """
+        proposed = self.post("jonas", f"/api/v1/projects/{self.project_id}/decisions", {"title": "Sow the clover by the gate", "rationale": "It fixes nitrogen."})
+        self.wait_for(lambda: any(item["key"] == f"decision:{proposed['id']}" for item in self.queue(None)["items"]), "the new decision")
+        page = self.page()
+        page.goto("/inbox")
+        card = self.card(page, "Sow the clover")
+        expect(card).to_have_count(1)
+        card.get_by_role("button", name=re.compile("^Accept")).click()
+        toast = page.get_by_role("status").filter(has_text="Accepted")
+        expect(toast).to_be_visible()
+        self.post("jonas", f"/api/v1/projects/{self.project_id}/decisions", {"title": "Mulch the paths before the frost", "rationale": "Less mud in March."})
+        page.evaluate("() => window.dispatchEvent(new Event('focus'))")
+        expect(self.card(page, "Mulch the paths")).to_have_count(1)
+        expect(toast).to_be_visible()
+        # The window ends and the accept is sent: the decision is accepted on the server.
+        expect(toast).to_have_count(0)
+        self.wait_for(lambda: self.contexts["ada"].request.get(f"/api/v1/decisions/{proposed['id']}").json()["status"] == "accepted", "the accept to be sent")
 
     # ---------------------------------------------------------------- blocked tasks and mentions
 
