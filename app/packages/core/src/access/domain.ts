@@ -357,7 +357,7 @@ export async function getProject(principal: Principal, projectId: string, db: Da
 
 export async function listProjectGrants(principal: Principal, projectId: string, db: Database): Promise<ProjectGrant[]> {
   enforce(await evaluateProject(principal, 'project.manage', projectId, db), 'project');
-  const rows = await db.select().from(schema.projectGrants).where(eq(schema.projectGrants.projectId, projectId))
+  const rows = await db.select().from(schema.projectGrants).where(and(eq(schema.projectGrants.projectId, projectId), sql`(${schema.projectGrants.agentId} is null or ${visibleAgentIdentity(principal, projectId, sql`${schema.projectGrants.agentId}`)})`))
     .orderBy(asc(schema.projectGrants.createdAt), asc(schema.projectGrants.id));
   return rows.map(toGrant);
 }
@@ -369,6 +369,16 @@ export async function listProjectGrants(principal: Principal, projectId: string,
  * member is left out exactly as on their own next request. The candidates are the
  * workspace's members and agents; a project that nobody else can read lists only its managers.
  */
+/** Personal assistant identities are private discovery state; shared message attribution is separate (#522). */
+function visibleAgentIdentity(principal: Principal, projectId?: string, agentId: SQL = sql`${schema.agents.id}`): SQL {
+  const assistant = schema.assistantSettings, connection = schema.agentConnections, selection = schema.agentConnectionProjects;
+  return sql`(not exists (select 1 from ${assistant} where ${assistant.agentId} = ${agentId}
+    and ${principal.kind === 'human' ? sql`${assistant.ownerUserId} <> ${principal.id}` : sql`true`})
+    or exists (select 1 from ${connection} inner join ${selection} on ${selection.connectionId} = ${connection.id}
+      where ${connection.agentId} = ${agentId} and ${connection.computeSource} <> 'owner_assistant'
+      and ${connection.revokedAt} is null ${projectId ? sql`and ${selection.projectId} = ${projectId}` : sql``}))`;
+}
+
 export async function listProjectPeople(principal: Principal, projectId: string, db: Database): Promise<ProjectPerson[]> {
   const { project } = enforce(await evaluateProject(principal, 'project.read', projectId, db), 'project');
   const workspaceId = project!.workspaceId;
@@ -377,7 +387,7 @@ export async function listProjectPeople(principal: Principal, projectId: string,
     .innerJoin(schema.authUsers, eq(schema.authUsers.id, schema.workspaceMembers.userId))
     .where(eq(schema.workspaceMembers.workspaceId, workspaceId));
   const agents = await db.select({ id: schema.agents.id, name: schema.agents.name, ownerUserId: schema.agents.ownerUserId }).from(schema.agents)
-    .where(and(eq(schema.agents.workspaceId, workspaceId), isNull(schema.agents.revokedAt)));
+    .where(and(eq(schema.agents.workspaceId, workspaceId), isNull(schema.agents.revokedAt), visibleAgentIdentity(principal, projectId)));
   const candidates = [
     ...humans.map((row) => ({ kind: 'human' as const, id: row.id, name: row.name })),
     ...agents.map((row) => ({ kind: 'agent' as const, id: row.id, name: row.name })),
@@ -487,7 +497,7 @@ export async function createAgent(principal: Principal, workspaceId: string, com
 
 export async function listAgents(principal: Principal, workspaceId: string, db: Database): Promise<Agent[]> {
   enforce(await evaluateWorkspace(principal, 'workspace.read_members', workspaceId, db), 'workspace');
-  const rows = await db.select().from(schema.agents).where(eq(schema.agents.workspaceId, workspaceId))
+  const rows = await db.select().from(schema.agents).where(and(eq(schema.agents.workspaceId, workspaceId), visibleAgentIdentity(principal)))
     .orderBy(asc(schema.agents.createdAt), asc(schema.agents.id));
   return rows.map(toAgent);
 }

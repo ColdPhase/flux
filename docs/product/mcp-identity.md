@@ -146,6 +146,11 @@ it loses.
 - **Flux keeps its per-connection binding and consent.** The token carries a Flux
   connection id and a grant reference. The consent page names the client, the
   connection, the projects and the scopes, and shows where access goes (#294).
+  **Partial consent (founder direction 2026-10-16, [#320](https://github.com/ColdPhase/flux/issues/320)):**
+  when the person grants only some requested scopes (for example read-only), the connection works
+  with exactly the granted scopes. A tool outside the grant returns a clear "not allowed" error
+  that names the missing permission, and the Agents view shows what the agent can do. This replaces
+  the earlier refusal of a connection that lacks any requested scope; the implementation is #548.
   Revoking a connection or a standing grant applies at the next call. An IdP cannot
   express "Hubert / Codex for projects X and Y with execute scope", so B would need
   a second, Flux-side binding step after the IdP's consent.

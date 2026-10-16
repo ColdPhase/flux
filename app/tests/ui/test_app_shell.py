@@ -983,7 +983,7 @@ class AppShellJourney(unittest.TestCase):
         page.get_by_role("link", name="Settings and account").click()
         expect(page).to_have_url(f"{ORIGIN}/settings")
         # Settings → Account holds Sign out (#350).
-        page.get_by_role("link", name=re.compile("^Account")).click()
+        page.locator('a[href="/settings/account"]').click()
         expect(page).to_have_url(f"{ORIGIN}/settings/account")
         page.get_by_role("button", name=re.compile("^Sign out")).click()
         expect(page).to_have_url(f"{ORIGIN}/sign-in")

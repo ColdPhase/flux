@@ -124,9 +124,15 @@ docker run --rm --network none flux-unit node_modules/.bin/tsx --test tests/app/
 docker image rm flux-unit
 ```
 
-Other API test files need the database and the API, so for now they run only in
-`./scripts/check_application.sh`
-([#424](https://github.com/ColdPhase/flux/issues/424) adds a one-file option).
+API test files need the database and the API. Name them to run only those on the
+Docker stack (paths as seen from `app/`); the browser, restart and
+unavailable-configuration checks are skipped in this form:
+
+```sh
+./scripts/check_application.sh tests/app/search.test.ts
+```
+
+Use the full `./scripts/check_application.sh` for broad impact.
 
 Repository and documentation checks:
 
