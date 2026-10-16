@@ -439,14 +439,14 @@ def run_profile(browser,data,label,viewport,cpu,report):
         item["continuity"]["resizePreservesDraft"] = field.input_value()==draft
         item["continuity"]["resizePreservesFocusSelection"] = selection_before == field.evaluate("el => ({start:el.selectionStart,end:el.selectionEnd,focused:document.activeElement===el})")
         close_create(page)
-        page.get_by_label("Only mine").check()
+        page.get_by_role("button", name="Mine", exact=True).click()
         item["continuity"]["onlyMinePreservesDraft"] = draft_value(page)==draft
         item["continuity"]["onlyMineRows"] = page.locator(".ws-list > li").count()
         mine_counts = page.evaluate("""() => Object.fromEntries([...document.querySelectorAll('.ws-view')].slice(1).map(b => [b.childNodes[0].textContent.trim(),Number(b.querySelector('.ws-view__n')?.textContent)]))""")
         item["continuity"]["onlyMineCounts"] = mine_counts
         item["continuity"]["onlyMineCountsVerified"] = item["continuity"]["onlyMineRows"]==506 and mine_counts=={
             "Needs you":1,"In progress":150,"Blocked":75,"Open":235,"Parked":15,"Finished":25,"Results":5}
-        page.get_by_label("Only mine").uncheck()
+        page.get_by_role("button", name="Mine", exact=True).click()
         page.get_by_role("navigation",name="Task views").get_by_role("button",name=re.compile("^Blocked")).click()
         item["continuity"]["viewPreservesDraft"] = draft_value(page)==draft
         deep = page.locator(".ws-item").filter(has=page.locator(".ws-item__t",has_text=data["deep"]["title"]))

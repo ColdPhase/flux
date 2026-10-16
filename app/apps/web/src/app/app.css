@@ -57,7 +57,9 @@ body:has(.app) { background: var(--side); }
   margin-bottom: max(var(--sheet-inset), env(safe-area-inset-bottom));
   background: var(--bg); border-radius: var(--r-panel); box-shadow: var(--sh-card);
 }
-.app__pane { flex: 1; min-height: 0; display: flex; flex-direction: column; outline: none; }
+.app__pane { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; outline: none; }
+/* The conversation and the one docked panel share a row beneath the header (Spokój layout per screen). */
+.app__body { position: relative; flex: 1; min-width: 0; min-height: 0; display: flex; }
 
 /* ---------- Sidebar: places, projects and messages ---------- */
 .side {
@@ -147,8 +149,14 @@ body:has(.app) { background: var(--side); }
 
 /* The 64px rail (S19): icons only. */
 .app__side--rail { width: var(--rail-w); }
+/* A tablet's sidebar is the rail (Spokój layout per screen). Its width follows the viewport in the same layout as a
+   resize, so turning a tablet never passes through a frame with the wide sidebar on a narrow screen, which would
+   clamp the map's camera; the rail's contents follow a frame later. */
+@media (max-width: 900px) { .app__side { width: var(--rail-w); } }
 .side--rail { align-items: center; gap: 6px; padding: 14px 12px 12px; }
 .side--rail > :not(.side__rail-scroll) { flex-shrink: 0; }
+/* Centred like the collapse control in the expanded sidebar's 40 px top row, so the toggle stays put (S1). */
+.side--rail > .side__toggle { margin-block: max(0px, calc((40px - var(--ctl)) / 2)); }
 .side__rail-places, .side__rail-projects, .side__rail-dms { display: flex; flex-direction: column; align-items: center; gap: 6px; }
 /* Project and private-conversation lists scroll; Stop and the current account stay at the foot. */
 .side__rail-scroll { flex: 1; min-height: 0; width: var(--rail-w); padding: 4px; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; scrollbar-width: thin; }
@@ -269,14 +277,17 @@ a.me__btn[aria-current="page"] { background: var(--sub); }
 .top__focus { display: inline-flex; align-items: center; gap: 8px; }
 .top__focus-pill { height: 28px; padding: 0 12px; gap: 6px; font-weight: 600; cursor: pointer; }
 @media (pointer: coarse) { .top__needs, .top__focus-pill { min-height: 44px; } .top__audience.top__faces { min-height: 44px; } }
-/* A narrower panel (a tablet, a small window beside the sidebar) gives the views their own line under
-   the name instead of hiding some of them (F-015 adaptive workspaces); 1280 px and wider stay one row. */
-@container main (max-width: 900px) {
-  .top--row { flex-wrap: wrap; row-gap: 10px; }
-  .top--row .top__title { flex: 1 1 0; }
-  .top--row .top__right { order: 2; }
-  .top--row .top__views { order: 3; flex: 0 0 100%; }
+/* Spokój rule 3: the header is one row at every width, with the panel open or closed (the panel sits under it).
+   When the views leave too little room, the people and Together move into "⋯"; the views and More stay put. */
+.top__more-narrow { display: none; }
+@container main (max-width: 860px) {
+  .top--row:has(> .top__views) .top__right > :is(.top__faces, .lv-entry) { display: none; }
+  .top--row:has(> .top__views) .top__more-narrow { display: flex; }
 }
+/* A tablet's project title is the view menu (the phone's), so the row keeps the people and Together. */
+.top.top--row:has(> .phead__id) { padding-block: 10px; }
+.top--row > .phead__id { flex: 1 1 auto; }
+.newmenu__item[aria-disabled="true"] { opacity: .45; cursor: default; }
 .views { flex: none; border-bottom: 1px solid var(--line); }
 .views .ui-tabs__bar { gap: 15px; padding: 0 calc(var(--space-page) - 6px); }
 /* 6px inline padding keeps labels 27px apart and gives the focus ring room inside the tab: the bar
@@ -374,6 +385,7 @@ a.me__btn[aria-current="page"] { background: var(--sub); }
 .ask__connect { font-size: var(--fs-xs); }
 .composer__audience { display: flex; align-items: center; gap: 6px; margin: 0 2px 6px; font-size: var(--fs-xs); font-weight: 500; color: var(--t2); }
 .composer__audience svg { color: var(--t3); }
+.dm__composer .composer__audience > span > svg { margin-right: 6px; vertical-align: -2px; }
 .composer__where { color: var(--t3); font-weight: 400; }
 
 /* Private notes on Home */
@@ -427,6 +439,8 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
 /* ---------- ≤680: the sidebar becomes a 260px drawer on the chrome ---------- */
 .ui-overlay--left .nav-drawer { width: min(260px, 100%); background: var(--side); }
 .nav-drawer .side { width: auto; padding: 24px 23px 0; padding-top: max(24px, env(safe-area-inset-top)); }
+/* A tablet opens it from the rail: its close control sits in the rail toggle's top row (Spokój S1). */
+@media (min-width: 681px) { .nav-drawer .side { padding-top: max(14px, env(safe-area-inset-top)); } }
 .nav-drawer .side__item { font-size: 13px; min-height: 47px; }
 .nav-drawer .me__pop { width: auto; right: 8px; }
 /* ---------- ≤1000: side panel overlays instead of docking ---------- */
@@ -494,6 +508,9 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
 @media (max-width: 640px) {
   .composer > .composer__in > .composer__audience { display: block; min-width: 0; line-height: 1.45; overflow-wrap: anywhere; }
   .composer > .composer__in > .composer__audience svg { margin-right: 4px; vertical-align: -2px; }
+  /* A direct message's "Choose messages" sits at the end of this line on the phone, not in the header (Spokój #507). */
+  .dm__composer .composer__audience:has(> .dm-select-btn--phone) { display: flex; align-items: center; gap: 8px; }
+  .dm-select-btn--phone.ui-btn { flex: none; min-height: 44px; margin: -12px -8px -12px auto; padding: 0 8px; }
   .composer__hint:has(> .composer__state--idle:only-child), .composer__hint:has(> .composer__keys + .composer__state--idle) { display: none; }
 }
 
@@ -501,8 +518,9 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
    A floating capsule Home · Projects · Inbox with a round Search, one "+" above it, and a header whose
    title is the view menu. A conversation has none of the dock: the composer sits at the bottom. Sizes
    are in rem, so the system text size applies. */
+/* Every phone header is one 56 px row (Spokój rule 7, AC-3): 44 px controls with 6 px above and below. */
 .phead {
-  display: flex; align-items: center; gap: 10px; flex: none; min-height: 64px; padding: calc(8px + env(safe-area-inset-top)) 14px 8px;
+  display: flex; align-items: center; gap: 10px; flex: none; box-sizing: border-box; min-height: 56px; padding: calc(6px + env(safe-area-inset-top)) 14px 6px;
 }
 .phead__id { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; }
 .phead__logo { display: inline-flex; flex: none; }
@@ -513,6 +531,15 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
   font: inherit; color: var(--t1); text-align: left;
 }
 .phead__menu svg { flex: none; color: var(--t2); }
+/* The title menu is a 44 px target in the same band as Back and Search; its view line sits inside the target's
+   lower band, so the whole header stays one 56 px row (Spokój #507) and the focus ring frames the title and its
+   view line instead of crossing it. */
+.phead__title h1:has(> .phead__menu) { position: relative; z-index: 1; margin-block: -1px -20px; }
+.phead__title h1 > .phead__menu { display: flex; padding-bottom: 19px; }
+/* A Wiki page's own menu holds Together (and the page actions), so the header keeps one control in that place. */
+.phead:has(.wiki-header-actions) .phead__right > .lv-entry { display: none; }
+/* The narrowest phones keep the view's name whole; the people are in Details. */
+@media (max-width: 340px) { .phead__people { display: none; } }
 .phead__name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .phead__word { font-size: 1.5rem; font-weight: 600; letter-spacing: -.04em; }
 .phead__sub { margin: 0; font-size: .8125rem; line-height: 1.35; color: var(--t2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -520,15 +547,16 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
 .phead__meta-slot:not(:empty)::before { content: ' · '; }
 .phead__meta-slot .wiki-header-meta { font-size: inherit; }
 .phead__right { display: flex; align-items: center; gap: 8px; flex: none; }
+.phead__right > .top__actions:empty { display: none; }
 .phead__round.ui-icon-btn, .phead__avatar {
   width: 44px; height: 44px; border-radius: 50%; background: var(--el); color: var(--t1); box-shadow: var(--sh-card);
   display: inline-grid; place-items: center;
 }
 .phead__avatar { text-decoration: none; }
 .phead__avatar .ui-avatar { box-shadow: none; }
-.phead--large .phead__title h1 { font-size: 1.75rem; letter-spacing: -.035em; line-height: 1.15; }
-.phead--large { min-height: 72px; align-items: flex-end; }
-.phead--large .phead__sub { margin-top: 2px; }
+.phead--large .phead__title h1 { font-size: 1.25rem; letter-spacing: -.02em; line-height: 1.2; }
+.phead--large { min-height: 56px; align-items: center; }
+.phead--large .phead__sub { margin-top: 0; }
 
 .phone-dock {
   position: relative; z-index: 2; display: flex; flex: none; align-items: center; gap: 10px;
@@ -552,6 +580,7 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
   flex: none; width: 62px; height: 62px; border-radius: 50%; display: grid; place-items: center;
   background: var(--el); color: var(--t1); box-shadow: var(--sh-pop), inset 0 0 0 1px var(--line);
 }
+.phone-dock--solo { position: absolute; left: 0; right: 0; bottom: max(14px, env(safe-area-inset-bottom)); height: 0; padding: 0; }
 .phone-fab {
   position: absolute; right: 18px; bottom: calc(100% + 4px); width: 56px; height: 56px; border-radius: 50%;
   display: grid; place-items: center; background: var(--inv); color: var(--oninv); box-shadow: var(--sh-pri), 0 10px 24px -8px rgba(0, 0, 0, .35);
@@ -575,6 +604,7 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
 }
 /* The view menu: a card under the header. */
 .ui-overlay--center .phone-menu { top: calc(64px + env(safe-area-inset-top)); width: calc(100% - 24px); max-height: calc(100dvh - 96px); border-radius: 26px; padding: 18px 8px 8px; overflow-y: auto; }
+@media (min-width: 641px) { .ui-overlay--center .phone-menu { width: min(400px, calc(100% - 32px)); } }
 .phone-menu__t { margin: 0 12px 10px; font-size: 1.0625rem; font-weight: 600; letter-spacing: -.02em; }
 /* The project's current goal under its name (#520, phone-viewsmenu): the title keeps its own gap above the list. */
 .phone-menu__t:has(+ .phone-menu__goal) { margin-bottom: 2px; }

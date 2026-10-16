@@ -52,7 +52,7 @@ for (const [label, target, expectedView] of [['Work', 'g-open', 'All']] as const
           const phone = width === 390; const mine = page.getByRole('group', { name: 'Whose tasks' });
           if (!phone) {
             await views.getByRole('button', { name: /^Open / }).click();
-            await views.getByRole('checkbox', { name: 'Only mine', exact: true }).check();
+            await page.locator('.tb-bar').getByRole('button', { name: 'Mine', exact: true }).click();
             await page.locator('.ws-none').waitFor();
             assert.equal(await page.locator(`#${target}`).count(), 0);
           }
@@ -74,7 +74,7 @@ if (phone) {
           } else {
             const chosen = views.getByRole('button', { name: 'All', exact: true });
             assert.equal(await chosen.getAttribute('aria-pressed'), 'true');
-            assert.equal(await views.getByRole('checkbox', { name: 'Only mine', exact: true }).isChecked(), false);
+            assert.equal(await page.locator('.tb-bar').getByRole('button', { name: 'Mine', exact: true }).getAttribute('aria-pressed'), 'false');
           }
           const path = 'work-view?kinds=work&limit=50';
           const read = await api(page, 'GET', `/api/v1/projects/${fixture.projectId}/${path}`);

@@ -28,7 +28,9 @@ export function phonePlaces(pathname: string, inboxUnread: number): BottomNavIte
 export function phoneHidesDock(pathname: string): boolean {
   if (/^\/projects\/new$/.test(pathname) || pathname === '/dm/new') return true;
   if (/^\/projects\/[^/]+(\/conversations\/[^/]+)?$/.test(pathname)) return true;
-  return /^\/dm\/[^/]+$/.test(pathname);
+  // Spokój (rule 7): a project's views and a direct message's sketches keep the header's Search, not the capsule.
+  if (/^\/projects\/[^/]+\/(tasks|map|docs|agents)(\/|$)/.test(pathname)) return true;
+  return /^\/dm\/[^/]+(\/sketches)?$/.test(pathname);
 }
 
 /** The places that offer "+": lists and views, not editors, sketches, settings or Search. */
@@ -36,16 +38,24 @@ export function phoneOffersCreate(pathname: string): boolean {
   return /^\/(inbox|dm|projects|tasks|map|docs)?$/.test(pathname) || /^\/projects\/[^/]+\/(tasks|map|docs|agents)$/.test(pathname);
 }
 
-export function PhoneDock({ places, onSearch, onCreate, create }: { places: BottomNavItem[]; onSearch: () => void; onCreate: () => void; create: boolean }) {
+/**
+ * The floating capsule (places and round Search) and the "+" above it. Inside a project's views and a direct
+ * message's sketches (Spokój rule 7) the capsule steps aside: Search is in the header, and only the "+" floats.
+ */
+export function PhoneDock({ places, onSearch, onCreate, create, capsule = true }: { places: BottomNavItem[]; onSearch: () => void; onCreate: () => void; create: boolean; capsule?: boolean }) {
   return (
-    <div className="phone-dock app__viewbar">
+    <div className={`phone-dock app__viewbar${capsule ? '' : ' phone-dock--solo'}`}>
       {create ? (
         <button type="button" className="phone-fab" aria-label="Create" aria-haspopup="dialog" onClick={onCreate}>
           <Icon name="plus" size={24} />
         </button>
       ) : null}
-      <BottomNav className="phone-dock__bar" label="Main places" items={places} />
-      <button type="button" className="phone-dock__search" aria-label="Search" onClick={onSearch}><Icon name="search" size={22} /></button>
+      {capsule ? (
+        <>
+          <BottomNav className="phone-dock__bar" label="Main places" items={places} />
+          <button type="button" className="phone-dock__search" aria-label="Search" onClick={onSearch}><Icon name="search" size={22} /></button>
+        </>
+      ) : null}
     </div>
   );
 }
@@ -78,7 +88,7 @@ export function PhoneTitleMenu({ title, subtitle, items, onDetails, detailsLabel
     <div className="phead__id">
       {lead}
       <div className="phead__title">
-        <h1 id={titleId}>
+        <h1 id={titleId} title={title}>
           <button type="button" className="phead__menu" aria-haspopup="dialog" aria-expanded={open} aria-controls={open ? menuId : undefined} onClick={() => setOpen(true)}>
             <span className="phead__name">{title}</span><Icon name="chevron-down" size={14} />
           </button>

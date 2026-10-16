@@ -368,7 +368,8 @@ class DetailPanelFinal(unittest.TestCase):
                 # The same drag: up opens full, down steps to half, down again closes.
                 page.wait_for_timeout(700)
                 top = sheet.bounding_box()["y"]
-                self.drag(page, top + 14, 120)
+                # Up by 120 px from the grabber, measured from the sheet's own top: the header's height moves the sheet.
+                self.drag(page, top + 14, max(top - 106, 4))
                 expect(sheet).to_have_attribute("data-height", "full")
                 page.wait_for_timeout(700)
                 self.drag(page, sheet.bounding_box()["y"] + 14, 640)

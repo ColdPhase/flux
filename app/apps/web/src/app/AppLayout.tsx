@@ -88,6 +88,7 @@ function AppLayoutContent() {
   // Back from a direct link goes to the page that leads there: the AI pages to Agents and AI (#513).
   const settingsParent = /^\/settings\/(assistant|background-compute|ai-connections)(\/|$)/.test(location.pathname) ? '/settings/agents' : '/settings';
   const navDrawer = useMediaQuery(MEDIA.navDrawer);
+  const tablet = useMediaQuery(MEDIA.tablet);
   const phone = useMediaQuery(MEDIA.phone);
   const panelMode = useSidePanelMode();
   const [navOpen, setNavOpen] = useState(false);
@@ -234,7 +235,8 @@ function AppLayoutContent() {
     const onKey = (event: KeyboardEvent) => {
       if (event.metaKey || event.ctrlKey || event.altKey || event.defaultPrevented || isTyping(event.target)) return;
       if (document.getElementById('root')?.inert) return;
-      if (event.key === '[') { event.preventDefault(); toggleSidebar(); return; }
+      // On a tablet the sidebar is always the rail (Spokój); "[" opens it as the drawer instead.
+      if (event.key === '[') { event.preventDefault(); if (tablet) setNavOpen((open) => !open); else toggleSidebar(); return; }
       const key = event.key.toLowerCase();
       if (key === 'f' && !phone) { event.preventDefault(); void toggleFocus(); return; }
       if (key === 'g') { leader = Date.now(); return; }
@@ -242,7 +244,7 @@ function AppLayoutContent() {
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [toggleSidebar, toggleFocus, navigate, phone]);
+  }, [toggleSidebar, toggleFocus, navigate, phone, tablet]);
 
 
   // Typing on a touch phone (#266 PF-3): the view bar steps aside for the keyboard once a text field
@@ -423,14 +425,17 @@ function AppLayoutContent() {
       : dmViews ? { items: dmViews, label: 'Direct message views' }
         : null;
   const viewName = activeProject ? PROJECT_VIEW_NAMES[Math.max(0, viewOrder(location.pathname))] : null;
-  const addViewItems: MoreItem[] = project && shownProjectViews && projectId && project.project.access !== 'viewer'
+  const addViewItems: { label: string; run: () => void }[] = project && shownProjectViews && projectId && project.project.access !== 'viewer'
     ? addableViews(shownProjectViews).map((view) => ({ label: `Add ${VIEW_LABEL[view]}`, run: () => void addView(projectId, view) })) : [];
   const moreItems: MoreItem[] = [
-    ...('noDetails' in place ? [] : [{ label: 'Details', run: () => { setDetailsView('place'); toggleDetails(true); } }]),
+    // A header with no room for them (Spokój rule 3) moves the people and Together here; the views stay in the row.
+    ...(project?.people ? [{ label: 'Who can see this', run: openAudience, narrow: true }] : []),
+    ...(activeProject ? [{ label: 'Together', node: <LiveEntry variant="more" /> }] : []),
+    ...('noDetails' in place ? [] : [{ label: activeProject ? 'Project details' : activeDm ? 'Message info' : 'Details', run: () => { setDetailsView('place'); toggleDetails(true); } }]),
     ...(activeProject && projectId ? [{ label: 'What matters', run: () => { setDetailsView({ kind: 'recap', projectId }); toggleDetails(true); } }] : []),
     ...addViewItems,
     { label: focus.uncertain ? 'Check notification pause' : 'Focus', keys: 'F', checked: focusing, run: () => void focus.toggle() },
-    { label: railed || focusing ? 'Show the sidebar' : 'Hide the sidebar', keys: '[', run: toggleSidebar },
+    tablet ? { label: 'Show the sidebar', keys: '[', run: () => setNavOpen(true) } : { label: railed || focusing ? 'Show the sidebar' : 'Hide the sidebar', keys: '[', run: toggleSidebar },
   ];
 
   // The phone's header (F-026 §4 Phone): inside a project or a conversation the round Back and the
@@ -454,10 +459,10 @@ function AppLayoutContent() {
     const view = projectViews.find((item) => item.id === id);
     return view ? [{ id, label: view.label, to: view.to, icon, note, current: currentProjectView === id }] : [];
   }) : [];
+  const tabletMenu = tablet && !phone && !focusing && !!activeProject && projectMenu.length > 0;
   const mainPlace = ['/projects', '/inbox', '/search', '/dm', '/settings'].includes(location.pathname) || /^\/inbox\//.test(location.pathname);
   const homePage = /^\/(tasks|map|docs)(\/|$)/.test(location.pathname);
   const backOnly = settingsPage || location.pathname === '/projects/new' || dmId === 'new' || homePage;
-  const phoneDockVisible = phone && !detailsOpen && !phoneHidesDock(location.pathname);
   const phoneHeader = (
     <header className={`phead${mainPlace ? ' phead--large' : ''}`}>
       {backOnly ? (
@@ -469,11 +474,11 @@ function AppLayoutContent() {
             goal={project?.project.goal && !project.project.goal.reachedAt ? project.project.goal.title : undefined}
             metadataSlot={onWiki || onAgents ? setMetadataSlot : undefined}
             adds={addViewItems.map((item) => ({ label: item.label, run: item.run }))}
-            subtitle={onWiki ? peopleLine(project?.people ?? null) : [PROJECT_VIEW_NAMES[Math.max(0, viewOrder(location.pathname))], peopleLine(project?.people ?? null, !onAgents)].filter(Boolean).join(' · ')} /></>
+            subtitle={onWiki ? peopleLine(project?.people ?? null) : <>{PROJECT_VIEW_NAMES[Math.max(0, viewOrder(location.pathname))]}{project?.people ? <span className="phead__people"> · {peopleLine(project.people, !onAgents)}</span> : null}</>} /></>
       ) : activeDm && dmViews ? (
         <><PhoneBack onBack={() => goBack('/projects')} />
           <PhoneTitleMenu title={activeDm.title} items={dmViews.map((view) => ({ id: view.id, label: view.label, to: view.to, icon: view.id === 'messages' ? 'chat' as const : 'edit' as const, current: view.id === (/\/sketches/.test(location.pathname) ? 'sketches' : 'messages') }))}
-            onDetails={detailsEntry} detailsLabel="Details and people"
+            onDetails={detailsEntry} detailsLabel="Message info"
             subtitle={`${/\/sketches/.test(location.pathname) ? 'Sketches' : 'Messages'} · ${activeDm.audience}`} /></>
       ) : location.pathname === '/' ? (
         <div className="phead__id">
@@ -486,8 +491,8 @@ function AppLayoutContent() {
       <div className="phead__right">
         <span className="top__actions" ref={setActionSlot} />
         {activeProject && /^\/projects\/[^/]+\/conversations\//.test(location.pathname) ? <ProjectAgentStop projectId={activeProject.id} /> : null}
-        {activeProject ? <LiveEntry /> : null}
-        {(activeProject || activeDm) && !phoneDockVisible ? searchButton : null}
+        {/* The same two controls in every project view and direct message (Spokój #507); Together is dimmed where it is unavailable. */}
+        {activeProject || activeDm ? <><LiveEntry />{searchButton}</> : null}
         {!backOnly && !activeProject && !activeDm && location.pathname !== '/settings' ? <PhoneAvatar name={me.user.name} /> : null}
       </div>
     </header>
@@ -497,15 +502,21 @@ function AppLayoutContent() {
     <ShellContext.Provider value={shell}>
     {/* One live session per tab, above the routes, so navigation keeps it (#62). */}
     <LiveProvider meId={me.user.id}>
-    <div className={`app${phone && !phoneHidesDock(location.pathname) && phoneOffersCreate(location.pathname) ? ' app--fab' : ''}`} ref={appRef}>
+    <div className={`app${phone && !detailsOpen && phoneOffersCreate(location.pathname) ? ' app--fab' : ''}`} ref={appRef}>
       <a className="ui-skip" href="#content">Skip to content</a>
       {phone ? null : navDrawer ? (
         <Drawer open={navOpen && navDrawer} onClose={() => setNavOpen(false)} labelledBy={drawerTitleId} id="nav-drawer" className="nav-drawer">
           <Sidebar {...sidebarProps} onClose={() => setNavOpen(false)} titleId={drawerTitleId} />
         </Drawer>
       ) : (
-        <aside className={`app__side${railed || focusing ? ' app__side--rail' : ''}`} aria-label="Sidebar"><Sidebar {...sidebarProps} collapsed={railed || focusing} onToggleCollapsed={toggleSidebar} /></aside>
+        // Tablet (Spokój): the sidebar is the 64 px rail (its width is set in CSS); its expand control opens the sidebar as a drawer.
+        <aside className={`app__side${railed || focusing ? ' app__side--rail' : ''}`} aria-label="Sidebar"><Sidebar {...sidebarProps} collapsed={railed || focusing || tablet} onToggleCollapsed={focusing ? () => void focus.toggle() : tablet ? () => setNavOpen(true) : toggleSidebar} /></aside>
       )}
+      {!phone && !navDrawer && tablet ? (
+        <Drawer open={navOpen} onClose={() => setNavOpen(false)} labelledBy={drawerTitleId} id="nav-drawer" className="nav-drawer">
+          <Sidebar {...sidebarProps} onClose={() => setNavOpen(false)} titleId={drawerTitleId} />
+        </Drawer>
+      ) : null}
 
       <div className="app__main">
         {phone ? phoneHeader : (
@@ -514,13 +525,18 @@ function AppLayoutContent() {
             <IconButton icon="menu" label="Open navigation" size={18} aria-expanded={navOpen} aria-controls={navOpen ? 'nav-drawer' : undefined}
               aria-haspopup="dialog" data-tip-align="start" onClick={() => { setDetailsOpen(false); setNavOpen(true); }} className="top__menu" />
           ) : null}
-          <div className="top__title">
-            {place.crumb && !activeProject ? <><span className="top__crumb">{place.crumb}</span><span className="top__slash" aria-hidden="true">/</span></> : null}
-            <h1 title={place.title}>{place.title}</h1>
-            {focusing && viewName ? <span className="top__topic">{viewName}</span>
-              : !rowViews || where === 'dm' ? <span className="top__topic">{activeProject ? null : place.topic}</span> : null}
-          </div>
-          {rowViews && !focusing ? <Tabs variant="segmented" className="top__views" label={rowViews.label} items={rowViews.items} /> : null}
+          {tabletMenu ? (
+            // A tablet's project title is the view menu, as on the phone (Spokój layout per screen).
+            <PhoneTitleMenu title={place.title} items={projectMenu} onDetails={null} subtitle={viewName} />
+          ) : (
+            <div className="top__title">
+              {place.crumb && !activeProject ? <><span className="top__crumb">{place.crumb}</span><span className="top__slash" aria-hidden="true">/</span></> : null}
+              <h1 title={place.title}>{place.title}</h1>
+              {focusing && viewName ? <span className="top__topic">{viewName}</span>
+                : !rowViews || where === 'dm' ? <span className="top__topic">{activeProject ? null : place.topic}</span> : null}
+            </div>
+          )}
+          {rowViews && !focusing && !tabletMenu ? <Tabs variant="segmented" className="top__views" label={rowViews.label} items={rowViews.items} /> : null}
           <div className="top__right" data-shift>
             {/* A view can put one quiet action here (a DM's Select, #96). */}
             <span className="top__actions" ref={setActionSlot} />
@@ -537,22 +553,25 @@ function AppLayoutContent() {
         )}
         <RouteProgress />
         <LiveBar />
-        <div className="app__pane" id="content" ref={paneRef} tabIndex={-1}>
-          <Outlet />
-          <DeferredLiveStage />
+        {/* The conversation and its one panel share a row under the one header (Spokój, F-026 layout per screen). */}
+        <div className="app__body">
+          <div className="app__pane" id="content" ref={paneRef} tabIndex={-1}>
+            <Outlet />
+            <DeferredLiveStage />
+          </div>
+          <SidePanel open={detailsOpen} onClose={() => toggleDetails(false)} title={recapOpen ? 'What matters' : 'Details'} chip={objectChip} id="details"
+            context={phone && (detailsView === 'place' || typeof detailsView === 'object' && detailsView.kind === 'overview') ? <OverviewContext message={typeof detailsView === 'object' && detailsView.kind === 'overview' && !!detailsView.messageId} /> : undefined}>
+            <DeferredDetails view={detailsView} workspace={workspace} placeTitle={place.title} dm={activeDm ? { id: activeDm.id, kind: activeDm.kind, title: activeDm.title, me: me.user.name, people: activeDm.people, audience: activeDm.audience } : null} onBack={() => setDetailsView('place')} onClose={() => toggleDetails(false)} />
+          </SidePanel>
         </div>
-        {phoneDockVisible ? (
-          <PhoneDock places={places} onSearch={shell.openSearch} onCreate={() => setCreateOpen(true)} create={phoneOffersCreate(location.pathname)} />
+        {phone && !detailsOpen && (!phoneHidesDock(location.pathname) || phoneOffersCreate(location.pathname)) ? (
+          <PhoneDock places={places} onSearch={shell.openSearch} onCreate={() => setCreateOpen(true)} create={phoneOffersCreate(location.pathname)} capsule={!phoneHidesDock(location.pathname)} />
         ) : null}
       </div>
 
       {phone ? <PhoneCreate open={createOpen} onClose={() => setCreateOpen(false)} projects={projects} projectId={projectId} go={(to) => void navigate(to)} onThought={() => startCapture(navigate)} /> : null}
       <CreateHost request={create} onClose={() => setCreate(null)} />
       <DeferredJumpTo open={jumpOpen} onClose={() => setJumpOpen(false)} userId={me.user.id} />
-      <SidePanel open={detailsOpen} onClose={() => toggleDetails(false)} title={recapOpen ? 'What matters' : 'Details'} chip={objectChip} id="details"
-        context={phone && (detailsView === 'place' || typeof detailsView === 'object' && detailsView.kind === 'overview') ? <OverviewContext message={typeof detailsView === 'object' && detailsView.kind === 'overview' && !!detailsView.messageId} /> : undefined}>
-        <DeferredDetails view={detailsView} workspace={workspace} placeTitle={place.title} dm={activeDm ? { id: activeDm.id, kind: activeDm.kind, title: activeDm.title, me: me.user.name, people: activeDm.people, audience: activeDm.audience } : null} onBack={() => setDetailsView('place')} onClose={() => toggleDetails(false)} />
-      </SidePanel>
     </div>
     </LiveProvider>
     </ShellContext.Provider>

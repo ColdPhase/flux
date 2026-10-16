@@ -192,8 +192,9 @@ class PhoneFinal(unittest.TestCase):
                 expect(plus).to_have_count(1)
                 fab = self.box(plus)
                 self.assertGreaterEqual(min(fab["width"], fab["height"]), 44)
-                bar = self.box(page.get_by_role("navigation", name="Main places"))
-                self.assertLessEqual(fab["y"] + fab["height"], bar["y"], "the plus floats above the capsule")
+                # Spokój rule 7: a project's views have no capsule (Search is in the header); the plus floats alone.
+                expect(page.get_by_role("navigation", name="Main places")).to_have_count(0)
+                self.assertLessEqual(fab["y"] + fab["height"], size["height"] - 8, "the plus floats above the bottom edge")
                 self.assertGreater(fab["x"], size["width"] / 2, "on the thumb side")
                 header = page.locator("header")
                 expect(header.get_by_role("button", name=re.compile(r"^(New|Add|Create)", re.I))).to_have_count(0)
@@ -393,18 +394,27 @@ class PhoneFinal(unittest.TestCase):
                 page = self.page(size, dark)
                 page.goto(f"/projects/{self.project['id']}/tasks")
                 sizes = lambda selector: page.locator(selector).first.evaluate("el => parseFloat(getComputedStyle(el).fontSize)")  # noqa: E731
+                # A project view (Spokój #507): the header's round controls and the floating plus are 44 px targets.
                 self.assertGreaterEqual(sizes(".phead__sub"), 12.5, "meta text")
-                self.assertGreaterEqual(sizes(".phone-dock__bar .ui-bottomnav__label"), 12.5, "tab labels")
-                for selector in (".phead__round", ".phone-dock__search", ".phone-fab"):
+                for selector in (".phead__round", ".phone-fab"):
                     item = self.box(page.locator(selector).first)
                     self.assertGreaterEqual(min(item["width"], item["height"]), 44, selector)
-                labels = page.locator(".phone-dock__bar .ui-bottomnav__label")
-                for index in range(labels.count()):
-                    self.assertTrue(labels.nth(index).evaluate("el => el.scrollWidth <= el.clientWidth + 1"), "tab labels are not clipped")
-                # rem: the page's own text size scales them.
+                # rem: the page's own text size scales the header's meta text.
                 before = sizes(".phead__sub")
                 page.evaluate("document.documentElement.style.fontSize = '20px'")
                 self.assertAlmostEqual(sizes(".phead__sub"), before * 1.25, delta=0.6)
+                page.evaluate("document.documentElement.style.fontSize = ''")
+                self.assert_no_sideways_scroll(page, size["width"])
+                # Home carries the capsule: its tab labels and round Search are targets, not clipped.
+                page.goto("/")
+                self.assertGreaterEqual(sizes(".phone-dock__bar .ui-bottomnav__label"), 12.5, "tab labels")
+                item = self.box(page.locator(".phone-dock__search").first)
+                self.assertGreaterEqual(min(item["width"], item["height"]), 44, "Search")
+                labels = page.locator(".phone-dock__bar .ui-bottomnav__label")
+                for index in range(labels.count()):
+                    self.assertTrue(labels.nth(index).evaluate("el => el.scrollWidth <= el.clientWidth + 1"), "tab labels are not clipped")
+                before = sizes(".phone-dock__bar .ui-bottomnav__label")
+                page.evaluate("document.documentElement.style.fontSize = '20px'")
                 self.assertAlmostEqual(sizes(".phone-dock__bar .ui-bottomnav__label"), before * 1.25, delta=0.6)
                 page.evaluate("document.documentElement.style.fontSize = ''")
                 self.assert_no_sideways_scroll(page, size["width"])

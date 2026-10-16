@@ -292,7 +292,8 @@ class ConnectAiJourney(unittest.TestCase):
             contentLeft:name.left,contentRight:icon.right,
             outlineLeft:box.left - parseFloat(style.outlineOffset) - parseFloat(style.outlineWidth),
             outlineRight:box.right + parseFloat(style.outlineOffset) + parseFloat(style.outlineWidth),
-            outlineBottom:box.bottom + parseFloat(style.outlineOffset) + parseFloat(style.outlineWidth), subtitleTop:subtitle.top};
+            outlineBottom:box.bottom + parseFloat(style.outlineOffset) + parseFloat(style.outlineWidth),
+            subtitleTop:subtitle.top, subtitleBottom:subtitle.bottom, subtitleLeft:subtitle.left, subtitleRight:subtitle.right};
         }""")
         self.assertGreaterEqual(geometry["height"], 44)
         self.assertGreaterEqual(geometry["width"], 44)
@@ -302,7 +303,11 @@ class ConnectAiJourney(unittest.TestCase):
         self.assertNotIn(geometry["outlineColor"], ("transparent", "rgba(0, 0, 0, 0)"))
         self.assertLessEqual(geometry["outlineLeft"] + geometry["outlineWidth"], geometry["contentLeft"], "focus outline stays outside title text")
         self.assertLessEqual(geometry["contentRight"], geometry["outlineRight"] - geometry["outlineWidth"], "focus outline stays outside the title chevron")
-        self.assertLessEqual(geometry["outlineBottom"], geometry["subtitleTop"], "visible title focus does not overlap the subtitle")
+        # The 56 px phone header (Spokój #507 AC-3) puts the view line inside the title's 44 px target: the visible
+        # focus frames the title and its view line whole instead of crossing the subtitle.
+        self.assertGreaterEqual(geometry["outlineBottom"], geometry["subtitleBottom"], "visible title focus does not cross the subtitle")
+        self.assertLessEqual(geometry["outlineLeft"], geometry["subtitleLeft"], "visible title focus does not cross the subtitle")
+        self.assertGreaterEqual(geometry["outlineRight"], geometry["subtitleRight"], "visible title focus does not cross the subtitle")
 
     def test_07b_owner_and_member_mcp_visibility_on_computer_and_phone(self) -> None:
         for phone in (False, True):

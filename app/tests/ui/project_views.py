@@ -7,13 +7,13 @@ from urllib.parse import urlparse
 
 from playwright.sync_api import Locator, Page
 
-PHONE_MAX = 640
+TITLE_MENU_MAX = 900
 
 
 def title_menu(page: Page) -> bool:
-    """True where the title is the view menu: all project views on a phone-width screen (#341)."""
+    """True where the title is the view menu: all project views on a phone (#341) or tablet (Spokój, #505 AC-2)."""
     size = page.viewport_size or {"width": 1440}
-    return size["width"] <= PHONE_MAX and bool(re.search(r"^/projects/[^/]+(?:/|$)", urlparse(page.url).path))
+    return size["width"] <= TITLE_MENU_MAX and bool(re.search(r"^/projects/[^/]+(?:/|$)", urlparse(page.url).path))
 
 
 def project_views(page: Page) -> Locator:

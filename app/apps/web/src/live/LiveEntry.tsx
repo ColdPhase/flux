@@ -38,7 +38,8 @@ export function audienceOf(people: ProjectPerson[] | null | undefined, meId: str
  * project's people quietly. A running session at this anchor becomes “Join”.
  */
 export function LiveEntry({ variant = 'header', anchor: given, onAction }: {
-  variant?: 'header' | 'inline' | 'menu'; anchor?: LiveAnchor | null; onAction?(): void;
+  /** `more`: the header's Together as a row of More (⋯), where a narrow header moves it (Spokój rule 3). */
+  variant?: 'header' | 'inline' | 'menu' | 'more'; anchor?: LiveAnchor | null; onAction?(): void;
 }) {
   const live = useLive();
   const here = useLiveHere();
@@ -52,7 +53,22 @@ export function LiveEntry({ variant = 'header', anchor: given, onAction }: {
   const noteId = useId();
   const nameOf = (id: string) => projectPeople?.find((person) => person.id === id)?.name ?? live.nameOf(id);
 
-  if (!anchor || live.capability === 'loading') return null;
+  // Spokój rule 7: the header's Together keeps its place in every view. Where there is nothing to work on together
+  // (nothing open to anchor a session, a session already joined, or still checking) it is dimmed, not removed.
+  const dimmed = (reason: string) => variant === 'more' ? (
+    <button type="button" role="menuitem" className="newmenu__item top__more-narrow" data-more-row aria-disabled="true" aria-describedby={noteId}>
+      <span>Together</span><span id={noteId} className="ui-vh">{reason}</span>
+    </button>
+  ) : variant === 'header' ? (
+    <span className="lv-entry">
+      <Button variant="quiet" icon="together" className="lv-entry__btn" aria-disabled="true" aria-label="Together" aria-describedby={noteId}>
+        <span className="lv-entry__label">Together</span>
+      </Button>
+      <span id={noteId} className="ui-vh">{reason}</span>
+    </span>
+  ) : null;
+  if (live.capability === 'loading') return dimmed('Checking whether live sessions are available.');
+  if (!anchor) return dimmed('Open a conversation, task, sketch or page to work on it together.');
   const inSession = live.phase === 'in' || live.phase === 'joining' || live.phase === 'rejoining' || live.phase === 'starting';
   const busy = live.phase === 'starting' || live.phase === 'joining';
   const here_ = sessionAt(items, anchor);
@@ -63,6 +79,7 @@ export function LiveEntry({ variant = 'header', anchor: given, onAction }: {
   if (!configured) {
     // Explained once, behind the header's "Together" (#189): a task does not repeat it.
     if (variant === 'inline') return null;
+    if (variant === 'more') return dimmed('Live sessions are not available on this Flux server.');
     if (variant === 'menu') return (
       <div className="lv-menu">
         <Button variant="quiet" icon="together" className="lv-menu__act" aria-expanded={open}
@@ -87,8 +104,9 @@ export function LiveEntry({ variant = 'header', anchor: given, onAction }: {
   }
 
   if (inSession) {
+    if (variant === 'header' || variant === 'more') return dimmed('You are in a live session.');
     if (live.session && sameContext(live.session.context, anchor.context))
-      return variant !== 'header' ? <p className="lv-inline-note lv-inline-note--on"><span className="lv-dot" aria-hidden="true" />You are in the live session for this {word}.</p> : null;
+      return <p className="lv-inline-note lv-inline-note--on"><span className="lv-dot" aria-hidden="true" />You are in the live session for this {word}.</p>;
     return null;
   }
 
@@ -102,6 +120,12 @@ export function LiveEntry({ variant = 'header', anchor: given, onAction }: {
     if (joinable) void live.join(here_, anchor);
     else void live.start(anchor);
   };
+
+  if (variant === 'more') return (
+    <button type="button" role="menuitem" className="newmenu__item top__more-narrow" data-more-row aria-describedby={noteId} onClick={() => { onAction?.(); act(); }}>
+      <span>{joinable ? 'Join' : 'Together'}</span><span id={noteId} className="ui-vh">{joinable ? `${label}. Microphone and camera stay off.` : `Work on this ${word} together. ${audience}.`}</span>
+    </button>
+  );
 
   if (variant === 'menu') return (
     <div className="lv-menu">

@@ -276,23 +276,27 @@ class MotionJourney(unittest.TestCase):
         # 200% zoom of a 1440×900 window is a 720×450 CSS viewport at twice the pixel density.
         page = self.page(viewport={"width": 720, "height": 450}, scale=2)
         page.goto(f"/projects/{self.projects[1]}")
-        self.assert_glide_on(page, 1)
+        # Below 900 px the sidebar is the rail (Spokój, #505 AC-2): it marks the open project, and the sidebar
+        # it opens as a drawer keeps the highlight on that row.
+        expect(page.locator(".side--rail .side__rail-project.is-open")).to_have_attribute("href", f"/projects/{self.projects[1]}")
         self.assertLessEqual(page.evaluate("() => document.documentElement.scrollWidth"), 720)
-        mark = page.locator(".top__views .ui-tabs__indicator").bounding_box()
-        tab = page.get_by_role("navigation", name="Project views").get_by_role("link", name="Conversation").bounding_box()
-        self.assertTrue(mark and tab and tab["x"] - 1 <= mark["x"] <= tab["x"] + tab["width"])
+        page.locator(".side--rail").get_by_role("button", name="Expand sidebar").click()
+        self.assert_drawer_glide_on(page, self.projects[1])
         shot(page, "motion-zoom-200")
         # Up to 680px the sidebar is still a drawer (the phone itself has none since #341).
         phone = self.page(viewport={"width": 660, "height": 844}, scale=3)
         phone.goto(f"/projects/{self.projects[2]}")
         phone.get_by_role("button", name="Open navigation").click()
-        drawer = phone.locator("#nav-drawer")
-        expect(drawer.locator(".side__glide")).to_have_attribute("data-target", self.projects[2])
-        phone.wait_for_function("() => !document.querySelector('#nav-drawer .side__glide').getAnimations().length")
-        geo = phone.evaluate("""(id) => { const g = document.querySelector('#nav-drawer .side__glide').getBoundingClientRect();
-          const r = document.querySelector(`#nav-drawer .side__project[data-glide-id="${id}"]`).getBoundingClientRect(); return [g.top - r.top, g.height - r.height]; }""", self.projects[2])
-        self.assertTrue(all(abs(value) <= 1.01 for value in geo), geo)
+        self.assert_drawer_glide_on(phone, self.projects[2])
         shot(phone, "motion-phone-drawer")
+
+    def assert_drawer_glide_on(self, page, project):
+        drawer = page.locator("#nav-drawer")
+        expect(drawer.locator(".side__glide")).to_have_attribute("data-target", project)
+        page.wait_for_function("() => !document.querySelector('#nav-drawer .side__glide').getAnimations().length")
+        geo = page.evaluate("""(id) => { const g = document.querySelector('#nav-drawer .side__glide').getBoundingClientRect();
+          const r = document.querySelector(`#nav-drawer .side__project[data-glide-id="${id}"]`).getBoundingClientRect(); return [g.top - r.top, g.height - r.height]; }""", project)
+        self.assertTrue(all(abs(value) <= 1.01 for value in geo), geo)
 
     def test_06b_script_driven_motion_lasts_its_token_in_the_production_build(self):
         # #264: the minifier turns `--dur-3: 200ms` into `.2s`; read as a bare number that made the drawer's

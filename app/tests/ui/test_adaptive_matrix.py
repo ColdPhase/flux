@@ -317,25 +317,29 @@ class AdaptiveBase(unittest.TestCase):
     def phone(self, page: Page) -> bool:
         return page.viewport_size["width"] <= 640
 
+    def title_menu(self, page: Page) -> bool:
+        """Below 900 px the project title is the view menu: the phone's (#341) and the tablet's (Spokój, #505 AC-2)."""
+        return page.viewport_size["width"] <= 900
+
     def tabs(self, page: Page) -> Locator:
-        """The project's views: the header's segmented control, or on the phone the menu the title opens (#341)."""
-        if self.phone(page):
+        """The project's views: the header's segmented control, or below 900 px the menu the title opens."""
+        if self.title_menu(page):
             return page.get_by_role("dialog").filter(has=page.locator(".phone-menu__list"))
         return page.get_by_role("navigation", name="Project views")
 
     def open_menu(self, page: Page) -> None:
-        if self.phone(page) and not self.tabs(page).count():
+        if self.title_menu(page) and not self.tabs(page).count():
             page.get_by_role("heading", level=1).get_by_role("button").click()
             expect(self.tabs(page)).to_be_visible()
 
     def tab(self, page: Page, name: str) -> None:
         self.open_menu(page)
         self.tabs(page).get_by_role("link", name=re.compile(f"^{name}")).click()
-        if self.phone(page):
+        if self.title_menu(page):
             expect(self.tabs(page)).to_have_count(0)
             self.open_menu(page)
         expect(self.tabs(page).get_by_role("link", name=re.compile(f"^{name}"))).to_have_attribute("aria-current", "page")
-        if self.phone(page):
+        if self.title_menu(page):
             page.keyboard.press("Escape")
             expect(self.tabs(page)).to_have_count(0)
 
@@ -388,9 +392,13 @@ class AdaptiveMatrix(AdaptiveBase):
         self.open_menu(page)
         expect(self.tabs(page).get_by_role("link")).to_have_count(len(TABS))
         names = [re.sub(r"[,\n].*$", "", label, flags=re.S).strip() for label in self.tabs(page).get_by_role("link").all_inner_texts()]
-        self.assertEqual(names, PHONE_TABS if width <= 640 else TABS, f"project views keep their names and order at {size}")
+        self.assertEqual(names, PHONE_TABS if width <= 900 else TABS, f"project views keep their names and order at {size}")
         for name in TABS:
             self.primary(page, self.tabs(page).get_by_role("link", name=re.compile(f"^{name}")), f"the {name} tab")
+        if 640 < width <= 900:
+            # The tablet's title menu holds only the views; Details stays in More.
+            page.keyboard.press("Escape")
+            expect(self.tabs(page)).to_have_count(0)
         if width <= 680 and width > 640:
             self.primary(page, page.get_by_role("button", name="Open navigation"), "Open navigation")
         self.primary(page, self.details_button(page), "Details")
