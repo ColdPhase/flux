@@ -102,7 +102,12 @@ runtime. A person without their own connection sees setup/unavailable there,
 with the ordinary human workflow still available. These #57 ownership,
 source and output boundaries apply to later run interfaces as well.
 
-**Conditional later modes:** Codex CLI and cloud app connectors need their own
+**Required for v0.1 (founder direction 2026-10-16, [#160](https://github.com/ColdPhase/flux/issues/160)
+and [#281](https://github.com/ColdPhase/flux/issues/281)):** Codex works as an MCP client over the
+start instructions on Start work, like Claude Code, and as the owner's Codex in the agent runtime
+(ChatGPT sign-in, `codex exec` runs, plan-limit detection). Codex is not shipped as "coming soon".
+
+**Conditional later modes:** Codex cloud app connectors need their own
 actual compatibility, auth and reachability tests before the supported list
 grows. An embedded/API/local Flux-operated agent requires a separately accepted
 compute owner, secret handling, payer consent, budget and runtime contract.
