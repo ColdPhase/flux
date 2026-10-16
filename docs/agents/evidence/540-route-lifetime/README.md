@@ -1,7 +1,9 @@
 # Paused association recovery: lost shell-loader request (#540)
 
-Investigated 2026-10-16 on PR #528. The repair changes the test fixture, not the
-product's association retirement or router/session guards.
+Investigated 2026-10-16 on PR #528. The interception repair changes the test
+fixture, not the product's association retirement or router/session guards.
+Required WebKit verification additionally exposed interrupted native scrolling;
+that separate product repair is described below.
 
 ## Actual application failure
 
@@ -79,3 +81,55 @@ FLUX_UI_PORT=26102 FLUX_UI_MAILPIT_PORT=26103 ./scripts/check_ui.sh \
 
 Full UI and final application checks remain separate PR gates. These targeted
 observations do not imply that either full suite passed.
+
+## WebKit: a separate active-scroll interruption
+
+The complete module at `3289adbd` passed Chromium (8 tests, 21.929 seconds,
+EXIT 0), but WebKit failed (8 tests, 57.170 seconds, EXIT 1): phone screenshot
+positioning invoked an unsupported mouse-wheel API; test06 stopped before its
+final-message viewport condition; test08's single PageDown stopped at the held
+batch. Those failures are not hidden by the interception repair.
+
+Actual-app scroll/offset tracing showed native movement before both desktop
+failures. At the loading transition the old association content collapsed by
+76 pixels; the native offset changed and the animation stopped. There were no
+application scrollTop writes during either gesture. The initial native-div
+capture in that same diagnostic produced no events and is not a valid baseline.
+
+The separate [neutral WebKit control](native-scroll.py), with no Flux scripts,
+records [these comparisons](native-scroll.json):
+
+| Native gesture | Stable content, auto | Remove 76px, auto | Remove 76px, none |
+| --- | ---: | ---: | ---: |
+| One PageDown from 9760 | 10233 | 9828 (stopped) | 10233 |
+| One wheel from 255 | 19485 (end) | 10735 (stopped) | 19409 (new end) |
+
+Both stable-content `none` controls also complete. The neutral diagnostic exits
+0 to report all comparisons; it is separate from application acceptance. Run it
+in the same pinned UI-test Docker image, mounting `native-scroll.py` read-only,
+as for the adjacent interception probe. No sleeps, changed animation preferences
+or application event handlers are used.
+
+The [independently accepted repair contract](../../../development/thread-reading-position-2026-10-16.md)
+keeps the original single native wheel/PageDown assertions in both engines,
+disables competing automatic anchoring only on the thread feed, and requires its
+existing reading-position owner to protect settled loading anchors and end
+following. New actual-app controls cover a settled reader whose viewport resize
+retires the batch under a held real read, both after a finished wheel and after
+non-scrolling pointer/focus input, plus end-follow/leave-end on viewport changes.
+The existing owner distinguishes observed scroll motion from input alone and
+returns ownership to settled-anchor restoration on native `scrollend`. The phone-only screenshot positioning uses native scroll-into-view;
+it does not replace either tested gesture. Final-head results belong in the PR
+handoff; the failed historical WebKit run remains failed.
+
+The independent source review identified a second settled-reader boundary:
+pointer/focus input could leave `readerMoved` true without any subsequent scroll
+or `scrollend`. The actual-app negative control verifies those input events, zero
+scroll/end events, a real held changed selector and retiring content; it fails
+the unchanged anchor assertion by **76 pixels** (1 test, 9.555 seconds, EXIT 1).
+The owner now marks motion when it observes a reader scroll (including a pending
+scroll detected before its event), rather than on every input. Test11 keeps this
+regression alongside the wheel-ended control. Two earlier attempts never reached
+the held transition because they captured the initial 51-ID window before the
+older-message seek; they are setup failures, not anchor evidence. New controls
+explicitly await the older 100-ID request before selecting the resize boundary.

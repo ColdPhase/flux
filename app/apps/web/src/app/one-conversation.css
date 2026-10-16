@@ -48,7 +48,9 @@
 .thread--sheet .thread__head { padding-left: 6px; }
 .thread--sheet .thread__close { order: -1; margin-left: 0; }
 .thread__pane { display: flex; flex: 1; flex-direction: column; min-height: 0; }
-.thread__feed { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; }
+/* useMessageReadingPosition owns anchors; native anchoring cancels WebKit gestures
+   when a retired association batch changes the content above the viewport (#540). */
+.thread__feed { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; overflow-anchor: none; }
 /* Laid out but hidden until its first bounded reads settle (#155, at most 1 s), so nothing shifts as they arrive. */
 .thread__feed.is-opening { visibility: hidden; }
 .thread__in { padding: 18px 20px 12px; }
