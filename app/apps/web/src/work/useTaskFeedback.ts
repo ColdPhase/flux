@@ -46,12 +46,19 @@ export function useTaskFeedback(ref: RefObject<HTMLElement | null>, enabled: boo
   useLayoutEffect(() => {
     const pane = ref.current;
     if (!pane) return;
-    const resize = () => current.current();
+    // Updating the reserved margin changes this observed pane's own size. Defer
+    // and coalesce writes until after ResizeObserver has finished delivering.
+    let frame: number | null = null;
+    const resize = () => {
+      if (frame !== null) return;
+      frame = window.requestAnimationFrame(() => { frame = null; current.current(); });
+    };
     const observer = new ResizeObserver(resize);
     observer.observe(pane);
     window.addEventListener('resize', resize);
     return () => {
       observer.disconnect(); window.removeEventListener('resize', resize);
+      if (frame !== null) window.cancelAnimationFrame(frame);
       if (owned.current) owned.current.node.style.marginBottom = owned.current.margin;
       owned.current = null;
     };
