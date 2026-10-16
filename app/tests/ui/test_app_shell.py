@@ -1405,7 +1405,7 @@ class AppShellJourney(unittest.TestCase):
         owner.evaluate("window.dispatchEvent(new Event('focus'))")
         expect(owner.get_by_text("Reply 121", exact=True)).to_be_visible()
         self.assertEqual(replies.count(), 121, "revalidation retains every loaded sequence")
-        self.assertEqual([int(text.lstrip('#')) for text in thread_of(owner).locator(".project-convo__message-meta span").all_text_contents()], list(range(2, 123)))
+        self.assertEqual([re.search(r'(?:Missed reply|Reply) \d+', text).group(0) for text in replies.all_inner_texts()], [f"Reply {index:03}" for index in range(1, 121)] + ["Reply 121"])
 
         # More than one server window arrives while this page is idle. Refresh must fill
         # the middle before presenting the new tail beside already loaded history.
@@ -1415,7 +1415,7 @@ class AppShellJourney(unittest.TestCase):
         owner.evaluate("window.dispatchEvent(new Event('focus'))")
         expect(owner.get_by_text("Missed reply 59", exact=True)).to_be_visible()
         expect(replies).to_have_count(181)
-        self.assertEqual([int(text.lstrip('#')) for text in thread_of(owner).locator(".project-convo__message-meta span").all_text_contents()], list(range(2, 183)))
+        self.assertEqual([re.search(r'(?:Missed reply|Reply) \d+', text).group(0) for text in replies.all_inner_texts()], [f"Reply {index:03}" for index in range(1, 121)] + ["Reply 121"] + [f"Missed reply {index}" for index in range(60)])
 
         # Hold the browser's POST, then prove the in-flight text cannot be overwritten.
         owner.evaluate("""() => {
