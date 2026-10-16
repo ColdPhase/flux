@@ -1,6 +1,6 @@
-import { BINDING_ID, BOOT_ID, RUNTIME_CLIENTS, SLOT_NAME, UUID, type RuntimeClient } from './names.js';
-import { SUPERVISOR_REQUESTS, type SupervisorRequestKind } from './requests.js';
-import { arrayOf, bool, int, isPlainObject, literal, object, oneOf, str, type Check } from './shape.js';
+import { BINDING_ID, BOOT_ID, FLUX_TOOL_NAME, RUNTIME_CLIENTS, SLOT_NAME, UUID, type RuntimeClient } from './names.js';
+import { RUN_CAP_BOUNDS, SUPERVISOR_REQUESTS, type SupervisorRequestKind } from './requests.js';
+import { arrayOf, bool, int, isPlainObject, literal, object, oneOf, str, text, type Check } from './shape.js';
 
 // What a supervisor answers: a stream of newline-delimited JSON frames. The manager reads it with the
 // bounded reader in ndjson.ts and checks every frame against these closed shapes, because this stream
@@ -65,8 +65,29 @@ export interface ClientStatus {
   bindingOverLimit: boolean;
 }
 
+/**
+ * How a run ended in the slot (F-022 T5: each end has its own state). `completed`: the CLI's result is the
+ * answer. `local_tool`: its start-up tool list named anything but the run's exact Flux tools or a connected
+ * Flux server, and it was stopped. `unknown`: its stream broke; nothing is known about what it did.
+ */
+export const RUN_OUTCOMES = [
+  'completed', 'stopped', 'local_tool', 'sign_in_again', 'plan_limit', 'max_turns', 'wall_clock', 'no_event', 'crashed', 'answer_too_large', 'unknown', 'refused',
+] as const;
+export type RunOutcome = (typeof RUN_OUTCOMES)[number];
+
+/** A name in the CLI's start-up list (a tool, or an MCP server), reduced by the slot; never its arguments. */
+export const INIT_NAME = /^[A-Za-z0-9_.:-]{1,128}$/;
+export const ISO_INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{3})?Z$/;
+
+/** What a run reports while it runs: the CLI's start-up lists, then each Flux tool it calls. */
+export type RunFrame =
+  | { t: 'run'; e: 'init'; tools: string[]; servers: { name: string; status: string }[] }
+  | { t: 'run'; e: 'tool'; name: string };
+
 export type SupervisorResult =
   | { kind: 'bind'; bindingId: string }
+  /** The CLI's answer (at most the run's answer size) only when `completed`. */
+  | { kind: 'run'; runId: string; outcome: RunOutcome; answer: string | null; resetsAt: string | null; turns: number }
   | { kind: 'status'; slot: SlotReport }
   | { kind: 'status'; client: ClientStatus }
   | { kind: 'logout'; client: RuntimeClient; logout: StepOutcome }
@@ -81,6 +102,7 @@ export type SupervisorFrame =
   | { t: 'result'; result: SupervisorResult }
   /** Sign-in console only: the PTY started, or its command ended (by exiting or after the lifetime). */
   | { t: 'console'; state: 'started' | 'exited' | 'timed_out' }
+  | RunFrame
   | { t: 'error'; code: SupervisorError };
 
 const client = oneOf(RUNTIME_CLIENTS);
@@ -109,8 +131,11 @@ const isClientStatus = object({
   bindingBytes: int(0, Number.MAX_SAFE_INTEGER), bindingOverLimit: bool,
 }) as unknown as Check<ClientStatus>;
 
+const nullableIso = nullable(str(ISO_INSTANT, 30));
 const RESULTS: Check<SupervisorResult>[] = [
   object({ kind: literal('bind'), bindingId: str(BINDING_ID, 36) }),
+  object({ kind: literal('run'), runId: str(UUID, 36), outcome: oneOf(RUN_OUTCOMES), answer: nullable(text(RUN_CAP_BOUNDS.maxAnswerBytes.max)),
+    resetsAt: nullableIso, turns: int(0, 1000) }),
   object({ kind: literal('status'), slot: isSlotReport }),
   object({ kind: literal('status'), client: isClientStatus }),
   object({ kind: literal('logout'), client, logout: outcome }),
@@ -127,6 +152,9 @@ const FRAMES: Check<SupervisorFrame>[] = [
   object({ t: literal('result'), result: isSupervisorResult }),
   object({ t: literal('error'), code: oneOf(SUPERVISOR_ERRORS) }),
   object({ t: literal('console'), state: oneOf(['started', 'exited', 'timed_out'] as const) }),
+  object({ t: literal('run'), e: literal('init'), tools: arrayOf(str(INIT_NAME, 128), 64),
+    servers: arrayOf(object({ name: str(INIT_NAME, 128), status: str(/^[a-z_-]{1,32}$/, 32) }), 16) }),
+  object({ t: literal('run'), e: literal('tool'), name: str(FLUX_TOOL_NAME, 67) }),
 ] as unknown as Check<SupervisorFrame>[];
 
 /** The frame, or null when the value is not exactly one of the closed frame shapes. */

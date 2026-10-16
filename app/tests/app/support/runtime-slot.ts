@@ -28,6 +28,8 @@ async function fakeWrapper(dir: string, name: 'claude' | 'codex') {
 }
 
 export async function startTestSlot(options: { slot?: string; enabled?: RuntimeClient[]; bindingLimitBytes?: number; cliTimeoutMs?: number; withClis?: boolean;
+  /** T5: where the CLI reaches the Flux MCP route (the API in the test stack). */
+  mcpUrl?: string;
   /** T4: the sign-in console's timers and lifetime. */
   console?: Pick<SupervisorConfig, 'clock' | 'consoleLifetimeMs'> } = {}): Promise<TestSlot> {
   const root = await mkdtemp(join(tmpdir(), 'flux-slot-'));
@@ -51,6 +53,7 @@ export async function startTestSlot(options: { slot?: string; enabled?: RuntimeC
     egressHost: 'runtime-egress',
     bindingLimitBytes: options.bindingLimitBytes ?? 256 * 1024 * 1024,
     cliTimeoutMs: options.cliTimeoutMs ?? 10_000,
+    ...(options.mcpUrl ? { mcpUrl: options.mcpUrl } : {}),
     ...options.console,
   };
   const state = { released: 0 };

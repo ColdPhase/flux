@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { requireMcpAuth } from '@better-auth/mcp';
-import { AGENT_MCP_ENTRIES } from '@flux/contracts';
+import { AGENT_MCP_ENTRIES, assistantRunTools } from '@flux/contracts';
 import { enforce, evaluateProject, loadActor, requireAgentMcpEntry, type Database, type Transaction } from '@flux/core';
 import { lockAgentMcpPolicy } from '@flux/db';
 import type { FluxAuth } from '../identity/auth.js';
@@ -11,6 +11,7 @@ import { createAgentConnectionStore } from './store.js';
 import { createMcpDispatch, type McpDispatch } from './mcp-dispatch.js';
 import { createMcpRelay, fenceResponse } from './mcp-relay.js';
 import { createFluxMcpHandler } from './mcp-protocol.js';
+import { requireLiveRun, runTokenClaims, type RunTokenClaims } from './run-token.js';
 
 /** The only remote MCP entry point. A new tool server is bound to each verified bearer request. */
 export function registerMcpRoute(app: FastifyInstance, db: Database, auth: FluxAuth, publicOrigin: string, testDeliveryGate = false,
@@ -19,7 +20,8 @@ export function registerMcpRoute(app: FastifyInstance, db: Database, auth: FluxA
     const ownerUserId = token.flux_owner_user_id;
     const connectionId = token.flux_connection_id;
     const scopes = typeof token.scope === 'string' ? token.scope.split(/\s+/).filter(Boolean) : [];
-    if (typeof ownerUserId !== 'string' || typeof connectionId !== 'string' || token.sub !== ownerUserId) {
+    const runClaims = runTokenClaims(token);
+    if (typeof ownerUserId !== 'string' || typeof connectionId !== 'string' || token.sub !== ownerUserId || runClaims === 'invalid') {
       return new Response(JSON.stringify({ error: 'Agent connection is unavailable' }), {
         status: 403, headers: { 'content-type': 'application/json' },
       });
@@ -39,18 +41,27 @@ export function registerMcpRoute(app: FastifyInstance, db: Database, auth: FluxA
     // A signed JWT remains valid until expiry, so revocation must be checked
     // against the live connection before even listing tools.
     let dispatch: McpDispatch;
+    let run: RunTokenClaims | undefined;
     try {
       const referenceId = token.flux_grant_reference;
       // New references bind the verified, AS-owned client_id to one durable grant.
       // Explicit historic JWTs have no grant-reference claim and retain their existing format.
       if (referenceId !== undefined && typeof referenceId !== 'string') throw new Error('Invalid grant');
       dispatch = await db.transaction(async (tx) => {
-        const grant = await createAgentConnectionStore(tx).grantForMcp(ownerUserId,
+        const store = createAgentConnectionStore(tx);
+        const grant = await (runClaims ? store.grantForRun : store.grantForMcp)(ownerUserId,
           typeof referenceId === 'string' ? referenceId : connectionId);
         if (!grant || grant.connection.id !== connectionId || grant.clientId !== null && grant.clientId !== token.client_id)
           throw new Error('Invalid grant');
         const policy = await lockAgentMcpPolicy(tx, connectionId);
         if (!policy) throw new Error('Policy unavailable');
+        if (runClaims) {
+          // A personal run's token (F-027 A2): its run is in flight under this token's id, and the route lists
+          // exactly the run's tools that the owner's switches still allow (Off means off, AST-4).
+          const live = await requireLiveRun(tx, { ownerUserId, connectionId, run: runClaims }, { newCall: true, lock: true });
+          const allowed = new Set(assistantRunTools(policy, grant.connection.scopes.filter((scope) => scopes.includes(scope))));
+          run = { ...runClaims, tools: live.runTools.filter((name) => allowed.has(name)) };
+        }
         return createMcpDispatch(policy.version);
       });
     } catch {
@@ -62,11 +73,15 @@ export function registerMcpRoute(app: FastifyInstance, db: Database, auth: FluxA
     const handler = createFluxMcpHandler(() => createFluxMcpServer(db, { ownerUserId, connectionId, scopes, dispatch,
       clientId: typeof token.client_id === 'string' ? token.client_id : null,
       grantReferenceId: typeof token.flux_grant_reference === 'string' ? token.flux_grant_reference : null,
-    }, cursorSecret));
+      ...(run ? { run } : {}),
+    }, cursorSecret), run ? { refuseTool: (name) => !run!.tools.includes(name) } : {});
     // Protected bytes are handed to the transport only while the live policy and access still hold.
     const referenceId = typeof token.flux_grant_reference === 'string' ? token.flux_grant_reference : connectionId;
     const fence = { async check(tx: Transaction) {
-      const grant = await createAgentConnectionStore(tx).grantForMcp(ownerUserId, referenceId);
+      // Nothing more reaches a run token once its run ended, was stopped or its token closed.
+      if (run) await requireLiveRun(tx, { ownerUserId, connectionId, run }, { newCall: false, lock: true });
+      const store = createAgentConnectionStore(tx);
+      const grant = await (run ? store.grantForRun : store.grantForMcp)(ownerUserId, referenceId);
       if (!grant || grant.connection.id !== connectionId || grant.clientId !== null && grant.clientId !== token.client_id)
         throw new Error('Connection unavailable');
       const policy = await lockAgentMcpPolicy(tx, connectionId);

@@ -53,7 +53,7 @@ export function registerAgentBootstrap(tools: AgentToolRegistry, db: Database, c
     } catch (error) { return toolError(error); }
   });
   read.registerTool('flux_project_orientation', { title: 'Index selected project sources',
-    description: 'A bounded page of canonical IDs, labels and exact versions/checkpoints for one source kind. No bodies, private maps/DMs/draft provenance or guessed goal/plan classifications.',
+    description: 'A page of IDs, labels and exact versions or checkpoints for one source kind. No bodies, private maps, DMs or drafts, and no guessed goal or plan classes.',
     inputSchema: z.strictObject({ projectId: z.uuid(), kind: z.enum(AGENT_SOURCE_KINDS), ...page }), annotations: { readOnlyHint: true } },
   async ({ projectId, kind, ...query }) => {
     requireMcpSourceKinds(claims, [kind]);
@@ -63,7 +63,7 @@ export function registerAgentBootstrap(tools: AgentToolRegistry, db: Database, c
     })); } catch (error) { return toolError(error); }
   });
   read.registerTool('flux_changes_since', { title: 'Compare recorded source checkpoints',
-    description: 'Compare at most 50 recorded canonical checkpoints under current authorization. Returns changed metadata, unchanged identities and content-free unavailable outcomes. This does not discover every new or removed project object; use project orientation for discovery.',
+    description: 'Compare up to 50 recorded checkpoints under current authorization: changed metadata, unchanged identities and content-free unavailable outcomes. It does not discover new or removed objects; use project orientation for that.',
     inputSchema: z.strictObject({ projectId: z.uuid(), known: z.array(checkpoint).max(50) }), annotations: { readOnlyHint: true } },
   async ({ projectId, known }) => {
     requireMcpSourceKinds(claims, known.map((item) => item.kind));

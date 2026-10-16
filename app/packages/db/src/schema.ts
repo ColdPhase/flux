@@ -2,7 +2,7 @@ import { eq, ne, sql } from 'drizzle-orm';
 import type { InspectedComparisonSource, NotificationSourceRef } from '@flux/contracts';
 import { pgTable, text, timestamp, date, uuid, integer, smallint, jsonb, boolean, bigserial, bigint, index, uniqueIndex, primaryKey, foreignKey, unique, check, type AnyPgColumn, type PgTableExtraConfigValue } from 'drizzle-orm/pg-core';
 import { AGENT_OPERATIONS, AGENT_PEER_REQUEST_CLASSES, type AgentJsonValue, type AgentPostcondition, type CoWorkSourceRef } from '@flux/contracts';
-import { AI_PROVIDER_KINDS, BACKGROUND_CONSENT_VERSIONS, type AiProviderKind, type PersonalRunConsentVersion } from '@flux/contracts';
+import { AI_PROVIDER_KINDS, ASSISTANT_RUN_END_REASONS, BACKGROUND_CONSENT_VERSIONS, type AiProviderKind, type PersonalRunConsentVersion } from '@flux/contracts';
 
 export const samples = pgTable('samples', {
   id: uuid('id').primaryKey(),
@@ -1717,6 +1717,8 @@ export const personalRunEnablements = pgTable('personal_run_enablements', {
   dailyCapCents: integer('daily_cap_cents').notNull().default(100),
   timeZone: text('time_zone').notNull().default('UTC'),
   status: text('status', { enum: ['active', 'paused'] }).notNull().default('active'),
+  /** 0100 (F-022 T5): the owner's API key connection (`server`) or their own Claude Code (`runtime`). */
+  engine: text('engine', { enum: ['server', 'runtime'] }).notNull().default('server'),
   version: integer('version').notNull().default(1),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -1768,6 +1770,20 @@ export const personalRuns = pgTable('personal_runs', {
   dispatchedAt: timestamp('dispatched_at', { withTimezone: true }),
   completedAt: timestamp('completed_at', { withTimezone: true }),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  // 0100 (F-022 T5, F-027 A2): the engine, the run's own end states and its run token. The token itself is
+  // never stored: only the hash of the worker's one-time minting nonce, its id, expiry and exact tools.
+  engine: text('engine', { enum: ['server', 'runtime'] }).notNull().default('server'),
+  endReason: text('end_reason', { enum: ASSISTANT_RUN_END_REASONS }),
+  planLimitResetsAt: timestamp('plan_limit_resets_at', { withTimezone: true }),
+  stopAcknowledgedAt: timestamp('stop_acknowledged_at', { withTimezone: true }),
+  answerRedacted: boolean('answer_redacted').notNull().default(false),
+  runTokenNonceHash: text('run_token_nonce_hash'),
+  runTokenJti: uuid('run_token_jti'),
+  runTokenExpiresAt: timestamp('run_token_expires_at', { withTimezone: true }),
+  runTokenClosedAt: timestamp('run_token_closed_at', { withTimezone: true }),
+  runTools: text('run_tools').array().notNull().default(sql`'{}'::text[]`),
+  mcpResultBytes: integer('mcp_result_bytes').notNull().default(0),
+  mcpLimit: text('mcp_limit', { enum: ['call', 'run'] }),
 }, (table) => [
   unique().on(table.ownerUserId, table.clientRunId),
   unique().on(table.workspaceId, table.projectId, table.id),

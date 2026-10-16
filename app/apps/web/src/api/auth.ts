@@ -1,16 +1,11 @@
-import { AUTH_BASE_PATH, IDENTITY_CAPABILITIES_PATH, ME_PATH, type IdentityCapabilities, type MeResponse } from '@flux/contracts';
+import { AUTH_BASE_PATH, IDENTITY_CAPABILITIES_PATH, ME_PATH, ME_PROBE_HEADER, type IdentityCapabilities, type MeResponse } from '@flux/contracts';
 import { ApiError, request } from './client';
 
 export type { MeResponse };
 
-/** The signed-in person, or null when there is no live session. Other failures propagate. */
-export async function getMe(signal?: AbortSignal): Promise<MeResponse | null> {
-  try {
-    return await request<MeResponse>(ME_PATH, { signal });
-  } catch (error) {
-    if (error instanceof ApiError && error.status === 401) return null;
-    throw error;
-  }
+/** The signed-in person, or null when there is no live session. Other failures propagate. Signed out is a 200 `null`, not a 401 the console logs (#546). */
+export function getMe(signal?: AbortSignal): Promise<MeResponse | null> {
+  return request<MeResponse | null>(ME_PATH, { signal, headers: { [ME_PROBE_HEADER]: '1' } });
 }
 
 export function getCapabilities(signal?: AbortSignal) {

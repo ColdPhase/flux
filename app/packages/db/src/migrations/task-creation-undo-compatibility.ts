@@ -82,7 +82,7 @@ export async function assertTaskCreationUndoMigrationCompatibility(db: Reader, a
   if (applied.includes(97)) {
     // AFTER UPDATE OF state, FOR EACH ROW (type bits 1 row + 16 update), no WHEN clause, no arguments.
     if (!authTrigger || authTrigger.enabled !== 'O' || authTrigger.type !== 17 || authTrigger.function !== runtimeAuthFunction ||
-      authTrigger.conditional || authTrigger.arguments !== 0) problems.push('mismatched runtime-auth 0097 lifecycle trigger');
+      authTrigger.function_oid !== authFunction?.oid || authTrigger.conditional || authTrigger.arguments !== 0) problems.push('mismatched runtime-auth 0097 lifecycle trigger');
   } else if (authTrigger) problems.push('unsupported legacy runtime-auth lifecycle trigger');
   const reserved = applied.filter((version) => [57, 58].includes(version));
   if (reserved.length) problems.push(`unsupported reserved ledger versions ${reserved.join(',')} (numeric identity is not catalog identity)`);

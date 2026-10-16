@@ -24,7 +24,7 @@ import {
   type SelectPersonalAgentCommand,
   type UpdatePersonalRunsCommand,
 } from '@flux/contracts';
-import type { Database, PersonalConnectionLookup } from '@flux/core';
+import type { Database, PersonalConnectionLookup, PersonalRuntimeAvailability } from '@flux/core';
 import type { SessionResolver } from '../identity/index.js';
 import { commandRunner, expectedVersion, useDomainErrors, versionEtag, type ReplayCheck } from '../http/commands.js';
 import { assistantProposalUseCases, personalRunUseCases, pgBossPersonalRunQueue } from './adapters.js';
@@ -36,13 +36,17 @@ interface Options {
   /** Production leaves both out: no connection lookup (#124) and the provider switch off. */
   connections?: PersonalConnectionLookup;
   providerEnabled?: boolean;
+  /** The most requests of one run when the worker runs the tool loop (F-027 AST-8, #484). */
+  toolTurns?: number;
+  /** The owner's own Claude Code in the agent runtime (F-022 AIM-3, #280). */
+  runtime?: PersonalRuntimeAvailability;
 }
 
 const page = { type: 'object', additionalProperties: false, properties: { limit: { type: 'integer' }, offset: { type: 'integer' } } } as const;
 const cents = (range: { min: number; max: number }) => ({ type: 'integer', minimum: range.min, maximum: range.max }) as const;
 const version = { type: 'integer', minimum: 1 } as const;
 const enable = { type: 'object', required: ['consentVersion', 'agentId'], additionalProperties: false, properties: {
-  consentVersion: { type: 'string', maxLength: 64 }, agentId: { type: 'string' }, connectionId: { type: 'string' },
+  consentVersion: { type: 'string', maxLength: 64 }, agentId: { type: 'string' }, connectionId: { type: 'string' }, engine: { type: 'string', enum: ['server', 'runtime'] },
   perRunCents: cents(PERSONAL_RUN_LIMITS.perRunCents), dailyCapCents: cents(PERSONAL_RUN_LIMITS.dailyCapCents), timeZone: { type: 'string', maxLength: 64 },
 } } as const;
 const update = { type: 'object', additionalProperties: false, properties: {
@@ -70,11 +74,11 @@ const ownState: ReplayCheck = async () => undefined;
  * calls one core use case. Nothing here reads an owner, agent or connection from the request:
  * the session is the owner. The server only queues runs; the worker dispatches them.
  */
-export async function personalRunRoutes(app: FastifyInstance, { db, sessions, boss, connections, providerEnabled }: Options) {
+export async function personalRunRoutes(app: FastifyInstance, { db, sessions, boss, connections, providerEnabled, toolTurns, runtime }: Options) {
   useDomainErrors(app);
   const { principal, command } = commandRunner(db, sessions);
   const queue = pgBossPersonalRunQueue(boss);
-  const composition = { queue, connections, providerEnabled };
+  const composition = { queue, connections, providerEnabled, ...(toolTurns !== undefined ? { toolTurns } : {}), ...(runtime ? { runtime } : {}) };
   const runs = personalRunUseCases(db, composition);
   const proposals = assistantProposalUseCases(db, queue);
 

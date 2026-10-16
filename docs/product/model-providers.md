@@ -22,6 +22,13 @@ support inside the Flux agent. Implementation is tracked in
 > Provider-hosted tools stay off; there are still no automatic retries. A model
 > without tool calling keeps the one-request shape and cannot change anything.
 
+> **Revised 2026-10-16 by founder direction ([#484](https://github.com/ColdPhase/flux/issues/484)).**
+> A request of a run with tools may carry up to **32,000** input tokens (PROV-3's bound stays 16,000
+> for a request without tools), and the Flux tool definitions sent to the model are shortened
+> without losing meaning. A run with tools prices its largest request at that bound, so the owner's
+> per-request limit must cover it (Sonnet 5: $0.079, so the default limit is now $0.08). The owner's
+> daily cap is unchanged.
+
 This decision **supersedes the Anthropic-only provider scope** of
 [O-007](background-compute.md) and [O-008](personal-runs-compute.md), O-008's
 deferral of local models, and the Anthropic preflight count as the input bound
@@ -301,11 +308,12 @@ Choices made within the contract, for review:
   listed and no price was invented.
 - **Reservation.** A personal run reserves the formula at the connection's price; O-008's per-run
   setting is the ceiling it must fit, so a model whose largest request exceeds it is refused at
-  enable and at invoke. A background comparison reserves the formula with O-007's 5-cent floor.
+  enable and at invoke. For a model that can call tools the largest request is the 32,000-token one
+  (2026-10-16, #484); a model without tool calling keeps the 16,000-token request. A background comparison reserves the formula with O-007's 5-cent floor.
 - **Input bound.** The Flux estimate is one token per UTF-8 byte plus framing. Byte-level BPE and
   SentencePiece tokenizers (with byte fallback) emit at least one byte per token, so this is an
   upper bound for any text, including CJK, emoji and digit runs; it halves the prose that fits in
-  16,000 tokens compared with a per-two-bytes estimate. Anthropic's count endpoint is still called
+  16,000 tokens (32,000 for a run with tools) compared with a per-two-bytes estimate. Anthropic's count endpoint is still called
   when the estimate fits, and only a higher count is used.
 - **Charge bound.** A personal run whose reported usage exceeds its token limits, or whose
   reconciled cost exceeds its reservation (including a large OpenRouter `usage.cost`), ends

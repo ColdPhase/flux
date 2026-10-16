@@ -1,8 +1,10 @@
-import { isSlotReport, isSupervisorResult, SUPERVISOR_ERRORS, type SlotReport, type SupervisorResult } from './frames.js';
+import { request as httpRequest } from 'node:http';
+import { isSlotReport, isSupervisorResult, parseSupervisorFrame, SUPERVISOR_ERRORS, type RunFrame, type SlotReport, type SupervisorFrame, type SupervisorResult } from './frames.js';
+import { NdjsonReader } from './ndjson.js';
 import { RUNTIME_PORTS, SLOT_NAME, UUID } from './names.js';
 import { requestBody, type SupervisorRequest } from './requests.js';
 import { arrayOf, object, oneOf, str, type Check } from './shape.js';
-import { SUPERVISOR_TIMEOUTS_MS } from './supervisor-client.js';
+import { RUN_FRAME_LIMITS, SUPERVISOR_TIMEOUTS_MS } from './supervisor-client.js';
 
 // The manager's HTTP API on the `runtime-control` network (F-022 "The manager"). Only the API and the
 // worker call it, with the service secret. It maps nothing itself: callers name the slot and binding
@@ -78,4 +80,64 @@ export function createRuntimeManagerClient({ url, secret, fetch: fetchImpl = fet
       return { ok: true, bootId: answer.body.bootId, result: answer.body.result };
     },
   };
+}
+
+export type ManagerRunOutcome =
+  | { ok: true; result: Extract<SupervisorResult, { kind: 'run' }> }
+  /** `broken`: the stream ended or broke without an answer, after it started (the run's effects are unknown). */
+  | { ok: false; code: ManagerError | 'broken' };
+
+/**
+ * The worker's side of a run (F-022 T5): one POST to the manager, read as a bounded stream of the slot's run
+ * frames (handed to `onRun` as they arrive) and then exactly one result or error. A stream that breaks after
+ * it started is `broken`; a refusal before it started keeps its code.
+ */
+export function streamManagerRun({ url, secret }: Omit<ManagerClientOptions, 'fetch'>, slot: string, request: Extract<SupervisorRequest, { kind: 'run' }>,
+  onRun: (frame: RunFrame) => void): Promise<ManagerRunOutcome> {
+  if (!SLOT_NAME.test(slot)) return Promise.resolve({ ok: false, code: 'unknown_slot' });
+  const target = new URL(managerRequestPath(slot, 'run'), url.replace(/\/+$/, '') + '/');
+  const body = Buffer.from(JSON.stringify(requestBody(request)));
+  return new Promise((resolve) => {
+    let settled = false;
+    let started = false;
+    const finish = (outcome: ManagerRunOutcome) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      req.destroy();
+      resolve(outcome);
+    };
+    const timer = setTimeout(() => finish({ ok: false, code: started ? 'broken' : 'timeout' }), SUPERVISOR_TIMEOUTS_MS.run + 5_000);
+    const req = httpRequest({ host: target.hostname, port: Number(target.port || 80), method: 'POST', path: target.pathname, agent: false,
+      headers: { authorization: `Bearer ${secret}`, 'content-type': 'application/json', 'content-length': body.length } }, (res) => {
+      if (/^application\/json(;|$)/.test(String(res.headers['content-type'] ?? ''))) {
+        // A refusal before the run: the manager's JSON error.
+        const parts: Buffer[] = [];
+        res.on('data', (chunk: Buffer) => { if (parts.reduce((n, part) => n + part.length, 0) < 64 * 1024) parts.push(chunk); });
+        res.on('end', () => {
+          try {
+            const answer = JSON.parse(Buffer.concat(parts).toString('utf8')) as unknown;
+            finish(isManagerError(answer) ? { ok: false, code: answer.error } : { ok: false, code: 'protocol' });
+          } catch { finish({ ok: false, code: 'protocol' }); }
+        });
+        res.on('error', () => finish({ ok: false, code: 'unreachable' }));
+        return;
+      }
+      if (res.statusCode !== 200 || !/^application\/x-ndjson(;|$)/.test(String(res.headers['content-type'] ?? ''))) { finish({ ok: false, code: 'protocol' }); return; }
+      const reader = new NdjsonReader<SupervisorFrame>(parseSupervisorFrame, RUN_FRAME_LIMITS);
+      const accept = (frame: SupervisorFrame) => {
+        if (frame.t === 'run') { started = true; onRun(frame); return; }
+        if (frame.t === 'error') { finish({ ok: false, code: started && frame.code === 'internal' ? 'broken' : frame.code }); return; }
+        if (frame.t === 'result' && frame.result.kind === 'run' && frame.result.runId === request.runId) { finish({ ok: true, result: frame.result }); return; }
+        throw new Error('unexpected frame');
+      };
+      res.on('data', (chunk: Buffer) => {
+        try { for (const frame of reader.push(chunk)) accept(frame); } catch { finish({ ok: false, code: started ? 'broken' : 'protocol' }); }
+      });
+      res.on('end', () => finish({ ok: false, code: started ? 'broken' : 'protocol' }));
+      res.on('error', () => finish({ ok: false, code: started ? 'broken' : 'unreachable' }));
+    });
+    req.on('error', () => finish({ ok: false, code: started ? 'broken' : 'unreachable' }));
+    req.end(body);
+  });
 }

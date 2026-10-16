@@ -62,3 +62,5 @@ done
 # Both native modes use fresh homes. Delivery evidence alone is not full Start/Resume/recovery acceptance.
 $compose run --rm mcp-clients
 $compose run --rm -e FLUX_TEST_CODEX_MODERN=1 mcp-clients
+# F-022 T5 (#280): the real Claude Code with the runtime's exact run argv and a run token (system/init read-back, FLUX_RUN_TOKEN).
+$compose run --rm mcp-clients sh -c 'node apps/runtime/dist/install/main.js && exec node_modules/.bin/tsx --test tests/app/e2e/runtime-run-claude.e2e.ts'

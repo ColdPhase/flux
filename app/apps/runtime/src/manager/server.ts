@@ -1,7 +1,7 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import {
-  callSupervisor, managerSlotsPath, parseSupervisorRequest, REQUEST_LIMITS, SLOT_NAME,
-  type ManagedSlot, type ManagerError, type SupervisorCallOutcome, type SupervisorRequest, type SupervisorTarget,
+  callSupervisor, encodeFrame, managerSlotsPath, parseSupervisorRequest, REQUEST_LIMITS, SLOT_NAME, SUPERVISOR_ERRORS,
+  type ManagedSlot, type ManagerError, type RunFrame, type SupervisorCallOutcome, type SupervisorError, type SupervisorRequest, type SupervisorTarget,
 } from '@flux/runtime-protocol';
 import { authorized } from '../shared/auth.js';
 import { relayConsole } from './console.js';
@@ -16,7 +16,7 @@ import { relayConsole } from './console.js';
 export interface ManagerConfig {
   secret: string;
   slots: Map<string, SupervisorTarget>;
-  call?: (target: SupervisorTarget, request: SupervisorRequest) => Promise<SupervisorCallOutcome>;
+  call?: (target: SupervisorTarget, request: SupervisorRequest, options?: { onRun?: (frame: RunFrame) => void }) => Promise<SupervisorCallOutcome>;
   log?: (event: Record<string, unknown>) => void;
 }
 
@@ -75,6 +75,7 @@ export function createManagerServer(config: ManagerConfig): Server {
     if (!parsed.ok) { json(res, STATUS[parsed.code]!, { error: parsed.code }); return; }
     // A sign-in runs only in the console, which is an upgrade (console.ts), never a plain request.
     if (parsed.request.kind === 'login') { json(res, 400, { error: 'invalid_request' }); return; }
+    if (parsed.request.kind === 'run') { await relayRun(res, call, target, parsed.request, (event) => log({ ...event, slot })); return; }
     const started = Date.now();
     const outcome = await call(target, parsed.request);
     log({ event: 'request', slot, kind: parsed.request.kind, outcome: outcome.ok ? 'ok' : outcome.code, ms: Date.now() - started });
@@ -84,6 +85,27 @@ export function createManagerServer(config: ManagerConfig): Server {
   server.on('upgrade', (req, socket, head) => relayConsole({ secret: config.secret, slots: config.slots, log }, req, socket, head));
   server.on('clientError', (_error, socket) => { socket.destroy(); });
   return server;
+}
+
+/**
+ * A run (F-022 T5) answers as a stream: the slot's run frames as they arrive, each already checked against
+ * the closed shapes, then its result or one error. The worker reads it with the same bounded reader. If the
+ * worker goes away mid-run, the slot is told to stop the CLI. Nothing of the run is logged but its outcome.
+ */
+async function relayRun(res: ServerResponse, call: NonNullable<ManagerConfig['call']>, target: SupervisorTarget,
+  request: Extract<SupervisorRequest, { kind: 'run' }>, log: (event: Record<string, unknown>) => void) {
+  const started = Date.now();
+  res.writeHead(200, { 'content-type': 'application/x-ndjson', 'cache-control': 'no-store' });
+  let finished = false;
+  res.on('close', () => {
+    if (!finished) void call(target, { kind: 'stop', bindingId: request.bindingId, runId: request.runId }).catch(() => undefined);
+  });
+  const outcome = await call(target, request, { onRun: (frame) => { if (!res.writableEnded) res.write(encodeFrame(frame)); } });
+  finished = true;
+  log({ event: 'request', kind: 'run', outcome: outcome.ok ? (outcome.result.kind === 'run' ? outcome.result.outcome : 'protocol') : outcome.code, ms: Date.now() - started });
+  // A transport failure travels as the slot's own `internal` (the run's frames already told what was seen).
+  const code: SupervisorError = outcome.ok ? 'internal' : (SUPERVISOR_ERRORS as readonly string[]).includes(outcome.code) ? outcome.code as SupervisorError : 'internal';
+  res.end(encodeFrame(outcome.ok ? { t: 'result', result: outcome.result } : { t: 'error', code }));
 }
 
 /** Slot targets from the manager's environment: `FLUX_RUNTIME_SLOT_<n>=<secret>` names `runtime-<n>`. */

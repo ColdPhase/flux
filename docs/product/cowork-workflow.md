@@ -169,6 +169,12 @@ attributed message" in the people's thread. **Everything else in CW-2 stands:**
   the project is erased (migration 0098, #530). Each real content change adds one boundary
   and one witness. They outlive a deleted doc, thought or file, because a thought recreated
   under the same id must not reset a task again.
+- **Erasing a project.** A whole project can be deleted in one transaction. Everything that
+  belongs to it goes with it and nothing is kept for it elsewhere: its tasks, docs, maps, files and
+  threads, the drafts attached to it, agent action receipts and standing grants, task discussions,
+  and the proactive rules with their candidates, proposals and outcomes. No such row outlives
+  its project (migration 0101, #551), and the thread provenance above keeps its own immutability
+  until its owner goes.
 - **Delivery.** The slice and its criteria are in the
   [Agents tab review](research/2026-10-09-agents-tab-ux-review.md#slice-for-agent-threads-in-agents).
   Until that slice ships, agents keep using the task thread, and the rules above are the

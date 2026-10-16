@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useId, useState, type FormEvent } from 'react';
 import { Link } from 'react-router';
-import { AI_PROVIDERS, aiConnectionLabel, maxRequestMicros, PERSONAL_RUN_CONSENT_VERSION, PERSONAL_RUN_LIMITS, type Agent, type BackgroundComputeConnection, type PersonalAssistantStatus } from '@flux/contracts';
+import { AI_PROVIDERS, aiConnectionLabel, aiModelCallsTools, maxRequestMicros, PERSONAL_RUN_CONSENT_VERSION, PERSONAL_RUN_LIMITS, personalRunMaxInputTokens, PERSONAL_RUNTIME_CONSENT_VERSION,
+  type Agent, type AgentRuntimePayer, type BackgroundComputeConnection, type PersonalAssistantStatus } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { useShellData } from '../app/data';
 import { createPersonalAgent } from '../agent-connection/api';
@@ -9,7 +10,7 @@ import { Button, ErrorState, Icon, Spinner } from '../ui';
 import { whenPageLive } from '../api/pageLeaving';
 import { listBackgroundConnections } from '../proactive-comparison/api';
 import { enableAssistant, getAssistantStatus, pauseAssistant, removeAssistant, resumeAssistant, selectAssistantAgent, updateAssistant } from './api';
-import { dollars, micros, perMillion, stateLine, unavailableText } from './format';
+import { dollars, micros, perMillion, runtimePayerDetail, runtimePayerText, stateLine, unavailableText } from './format';
 import '../notifications/notifications.css';
 import './assistant.css';
 import { AssistantProjectAccess } from './AssistantProjectAccess';
@@ -18,7 +19,7 @@ import { AssistantProjectAccess } from './AssistantProjectAccess';
 // consent, caps and pause. Nothing here can see or use anyone else's assistant or payer. The
 // server decides; this page says truthfully what it decided and why an assistant cannot run.
 
-const PER_RUN = [6, 10, 20, 30, 50].filter((value) => value >= PERSONAL_RUN_LIMITS.perRunCents.min && value <= PERSONAL_RUN_LIMITS.perRunCents.max);
+const PER_RUN = [6, 8, 10, 20, 30, 50].filter((value) => value >= PERSONAL_RUN_LIMITS.perRunCents.min && value <= PERSONAL_RUN_LIMITS.perRunCents.max);
 const DAILY = [10, 50, 100, 200, 500, 1000].filter((value) => value >= PERSONAL_RUN_LIMITS.dailyCapCents.min && value <= PERSONAL_RUN_LIMITS.dailyCapCents.max);
 
 export function browserTimeZone() {
@@ -56,7 +57,7 @@ export function AssistantSettings() {
       </div>
       {status.enablement
         ? <Enabled status={status} agents={agents} workspaces={workspaces} onChange={done} onRemoved={() => { setStatus(null); load(); }} onAgent={(agent) => setAgents((current) => [...(current ?? []), agent])} name={me.user.name} />
-        : <Setup status={status} agents={agents} workspaces={workspaces} name={me.user.name} onEnabled={(next) => done(next, 'Assistant turned on')} onAgent={(agent) => setAgents((current) => [...(current ?? []), agent])} />}
+        : <SetupChoice status={status} agents={agents} workspaces={workspaces} name={me.user.name} onEnabled={(next) => done(next, 'Assistant turned on')} onAgent={(agent) => setAgents((current) => [...(current ?? []), agent])} />}
     </div></div>
   );
 }
@@ -147,6 +148,88 @@ export function Disclosure({ status, perRun, daily, timeZone, payer: chosenPayer
   );
 }
 
+type SetupProps = {
+  status: PersonalAssistantStatus; agents: Agent[]; workspaces: { id: string; name: string }[]; name: string;
+  onEnabled: (status: PersonalAssistantStatus) => void; onAgent: (agent: Agent) => void;
+};
+
+/**
+ * Subscriptions first (F-027 AST-1): signed in to Claude Code here, the assistant runs on that plan; an API
+ * key stays one tap away. Without a Claude sign-in this is the API-key setup as before.
+ */
+function SetupChoice(props: SetupProps) {
+  const [keyWay, setKeyWay] = useState(false);
+  if (props.status.setup.runtime?.state !== 'signed_in' || keyWay) return <Setup {...props} />;
+  return <RuntimeSetup {...props} onKeyWay={() => setKeyWay(true)} />;
+}
+
+/** What turning the assistant on with Claude Code means (F-022 AIM-3 "Payer and data", the O-008 notice for `runtime`). */
+function RuntimeDisclosure({ payer }: { payer: AgentRuntimePayer | null | undefined }) {
+  return (
+    <ul className="aset__facts">
+      <li><b>Account</b><span>Agent in Flux · Claude Code · {runtimePayerText(payer)}. Claude Code runs unchanged in your own place on this Flux server, signed in as you.</span></li>
+      <li><b>Who pays</b><span>{runtimePayerDetail(payer)[0]!.toUpperCase()}{runtimePayerDetail(payer).slice(1)}. Flux can’t tell whether a request used your plan’s limits or paid extra usage. Never another person or the workspace.</span></li>
+      <li><b>What leaves Flux</b><span>What your request needs from the one project you ask in, read by Claude Code through Flux and only from the areas you switched on, other members’ messages included. Never your direct messages, private notes, private maps or other projects.</span></li>
+      <li><b>Where it goes</b><span>To Anthropic, under your Claude account’s settings. On personal Claude plans Anthropic may train on it unless you turned that off in Claude’s privacy settings.</span></li>
+      <li><b>Who sees answers</b><span>The people in that conversation. They see that your assistant uses Claude, never your plan or account.</span></li>
+      <li><b>Limits</b><span>Up to 20 requests a day, 5 minutes and 10 steps each. If your plan’s limit is reached it pauses and says so. It never switches to an API key.</span></li>
+    </ul>
+  );
+}
+
+function RuntimeSetup({ status, agents, workspaces, name, onEnabled, onAgent, onKeyWay }: SetupProps & { onKeyWay: () => void }) {
+  const [chosen, setChosen] = useState<Record<string, string>>(() => Object.fromEntries(workspaces.map((space) => [space.id, agents.find((agent) => agent.workspaceId === space.id)?.id ?? ''])));
+  const [consent, setConsent] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const picked = Object.entries(chosen).filter(([, agentId]) => agentId);
+  const payer = status.setup.runtime?.payer ?? null;
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    if (!consent || !picked.length || busy) return;
+    setBusy(true); setError('');
+    try {
+      let next = await enableAssistant({ consentVersion: PERSONAL_RUNTIME_CONSENT_VERSION, agentId: picked[0]![1], engine: 'runtime', timeZone: browserTimeZone() });
+      for (const [, agentId] of picked.slice(1)) next = await selectAssistantAgent(agentId);
+      onEnabled(next);
+    } catch (cause) {
+      setError(cause instanceof ApiError && cause.code === 'PERSONAL_RUN_RUNTIME_SIGN_IN' ? 'Sign in to Claude again to keep using your assistant. Nothing was turned on.'
+        : cause instanceof ApiError && cause.code === 'PERSONAL_RUN_RUNTIME_OFF' ? 'This Flux doesn’t allow signing in with a subscription yet. Nothing was turned on.'
+          : failure(cause, 'Couldn’t turn it on. Try again.'));
+    } finally { setBusy(false); }
+  }
+  return (
+    <>
+      <section className="nset__sec" aria-labelledby="aset-state">
+        <h3 id="aset-state">Not set up</h3>
+        <p className="nset__lead">You’re signed in to Claude here{status.setup.runtime?.accountLabel ? ` as ${status.setup.runtime.accountLabel}` : ''}. Your assistant can use that plan. Nothing runs until you turn it on.</p>
+      </section>
+      <form className="nset__sec" aria-labelledby="aset-consent" onSubmit={(event) => void submit(event)}>
+        <h3 id="aset-consent">Before you turn it on</h3>
+        <RuntimeDisclosure payer={payer} />
+        <fieldset className="aset__fields" disabled={busy}>
+          <legend className="ui-vh">Assistant</legend>
+          <div className="aset__agents">
+            <p className="nset__label">Your assistant</p>
+            {workspaces.map((space) => <AgentPicker key={space.id} workspace={space} agents={agents} name={name} value={chosen[space.id] ?? ''} disabled={busy}
+              onAgent={onAgent} onChange={(agentId) => setChosen((current) => ({ ...current, [space.id]: agentId }))} />)}
+            <p className="nset__note">It reads a project only where it has been given access, and never more than you can.</p>
+          </div>
+          <label className="aset__consent">
+            <input type="checkbox" checked={consent} onChange={(event) => setConsent(event.target.checked)} />
+            <span>I agree that what my requests need from the project I ask in is sent to Anthropic through my own Claude Code, under my Claude account’s settings.</span>
+          </label>
+        </fieldset>
+        {error ? <p className="nset__error" role="alert"><Icon name="alert" size={14} />{error}</p> : null}
+        <div className="aset__actions">
+          <Button type="submit" variant="primary" busy={busy} disabled={!consent || !picked.length}>Turn on my assistant</Button>
+          <Button variant="quiet" onClick={onKeyWay}>Use an API key instead</Button>
+        </div>
+      </form>
+    </>
+  );
+}
+
 function Setup({ status, agents, workspaces, name, onEnabled, onAgent }: {
   status: PersonalAssistantStatus; agents: Agent[]; workspaces: { id: string; name: string }[]; name: string;
   onEnabled: (status: PersonalAssistantStatus) => void; onAgent: (agent: Agent) => void;
@@ -177,9 +260,11 @@ function Setup({ status, agents, workspaces, name, onEnabled, onAgent }: {
   // The disclosure and the consent describe exactly the connection being enabled: its provider, model,
   // price, largest request and payer, never the server's default choice (#192 review B2).
   const selected = owned.find((item) => item.id === connectionId) ?? null;
+  // A model that can call tools runs with them, and its requests may carry more input (#484).
+  const maxInputTokens = selected ? personalRunMaxInputTokens(aiModelCallsTools(selected.provider, selected.model)) : status.disclosure.maxInputTokens;
   const shown: PersonalAssistantStatus = selected ? { ...status, disclosure: { ...status.disclosure, provider: selected.provider, model: selected.model,
-    price: selected.price ? { ...selected.price } : null,
-    maxRunMicros: selected.price ? maxRequestMicros(selected.price, PERSONAL_RUN_LIMITS.maxInputTokens, PERSONAL_RUN_LIMITS.maxOutputTokens) : null } } : status;
+    price: selected.price ? { ...selected.price } : null, maxInputTokens,
+    maxRunMicros: selected.price ? maxRequestMicros(selected.price, maxInputTokens, PERSONAL_RUN_LIMITS.maxOutputTokens) : null } } : status;
   const payer = selected ? { organization: selected.payerOrganization, workspace: selected.providerWorkspace } : null;
   const timeZone = browserTimeZone();
   // Turning it on waits for the list of the owner's connections and names the chosen one; with none
@@ -272,6 +357,7 @@ function Enabled({ status, agents, workspaces, name, onChange, onRemoved, onAgen
   const used = today ? today.chargedMicros + today.reservedMicros : 0;
   const cap = (today?.capCents ?? enablement.dailyCapCents) * 10_000;
   const paused = status.state === 'paused';
+  const runtime = enablement.engine === 'runtime';
   return (
     <>
       <section className="nset__sec" aria-labelledby="aset-state">
@@ -284,14 +370,18 @@ function Enabled({ status, agents, workspaces, name, onChange, onRemoved, onAgen
             : <Button variant="secondary" busy={busy === 'pause'} onClick={() => void act('pause', pauseAssistant, 'Paused')}>Pause</Button>}
         </div>
       </section>
-      <section className="nset__sec" aria-labelledby="aset-today">
+      {runtime ? <section className="nset__sec" aria-labelledby="aset-today">
+        <h3 id="aset-today">Account</h3>
+        <p className="nset__lead">Agent in Flux · Claude Code · {runtimePayerText(status.setup.runtime?.payer)}</p>
+        <p className="nset__note">Usage counts on {runtimePayerDetail(status.setup.runtime?.payer)}. Up to 20 requests a day, 5 minutes and 10 steps each. At a limit it stops and says so. It never switches to an API key.</p>
+      </section> : <section className="nset__sec" aria-labelledby="aset-today">
         <h3 id="aset-today">Today</h3>
         <div className="aset__meter" role="meter" aria-valuemin={0} aria-valuemax={cap} aria-valuenow={Math.min(used, cap)} aria-label={`${micros(used)} of your ${dollars(enablement.dailyCapCents)} daily cap`}>
           <span style={{ width: `${Math.min(100, cap ? (used / cap) * 100 : 0)}%` }} />
         </div>
         <p className="nset__note">{micros(today?.chargedMicros ?? 0)} used{today?.reservedMicros ? ` and ${micros(today.reservedMicros)} held for work in progress` : ''} of your {dollars(enablement.dailyCapCents)} daily cap. At the cap it stops and says so. It never switches to another payer.</p>
         <CapsForm key={`${enablement.perRunCents}:${enablement.dailyCapCents}`} status={status} busy={busy === 'caps'} onSave={(perRunCents, dailyCapCents) => act('caps', () => updateAssistant({ perRunCents, dailyCapCents, expectedVersion: enablement.version }), 'Limits saved')} />
-      </section>
+      </section>}
       <section className="nset__sec" aria-labelledby="aset-agents">
         <h3 id="aset-agents">Your assistant in each workspace</h3>
         <p className="nset__lead">It reads a project only where it has been given access, and never more than you can.</p>
@@ -303,7 +393,8 @@ function Enabled({ status, agents, workspaces, name, onChange, onRemoved, onAgen
       <section className="nset__sec" aria-labelledby="aset-consent">
         <h3 id="aset-consent">What you agreed to</h3>
         <p className="nset__lead">On {new Date(enablement.consent.acceptedAt).toLocaleDateString(undefined, { dateStyle: 'medium' })} · disclosure {enablement.consent.version}</p>
-        <Disclosure status={status} perRun={enablement.perRunCents} daily={enablement.dailyCapCents} timeZone={enablement.timeZone} />
+        {runtime ? <RuntimeDisclosure payer={status.setup.runtime?.payer} />
+          : <Disclosure status={status} perRun={enablement.perRunCents} daily={enablement.dailyCapCents} timeZone={enablement.timeZone} />}
         {confirmRemove ? <div className="details__confirm" role="group" aria-label="Turn off your assistant">
           <p>Your assistant stops at once and your consent is removed. Its earlier answers stay in their conversations.</p>
           <div className="aset__actions">
