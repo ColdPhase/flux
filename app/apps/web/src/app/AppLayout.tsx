@@ -467,7 +467,7 @@ function AppLayoutContent() {
           <PhoneTitleMenu title={place.title} items={projectMenu} onDetails={detailsEntry}
             metadataSlot={onWiki || onAgents ? setMetadataSlot : undefined}
             adds={addViewItems.map((item) => ({ label: item.label, run: item.run }))}
-            subtitle={onWiki ? peopleLine(project?.people ?? null) : [PROJECT_VIEW_NAMES[Math.max(0, viewOrder(location.pathname))], peopleLine(project?.people ?? null, !onAgents)].filter(Boolean).join(' · ')} /></>
+            subtitle={onWiki ? peopleLine(project?.people ?? null) : <>{PROJECT_VIEW_NAMES[Math.max(0, viewOrder(location.pathname))]}{project?.people ? <span className="phead__people"> · {peopleLine(project.people, !onAgents)}</span> : null}</>} /></>
       ) : activeDm && dmViews ? (
         <><PhoneBack onBack={() => goBack('/projects')} />
           <PhoneTitleMenu title={activeDm.title} items={dmViews.map((view) => ({ id: view.id, label: view.label, to: view.to, icon: view.id === 'messages' ? 'chat' as const : 'edit' as const, current: view.id === (/\/sketches/.test(location.pathname) ? 'sketches' : 'messages') }))}

@@ -135,8 +135,8 @@ def phone_menu(page: Page, tap: bool = False):
 
 
 def view_tab(page: Page, name: str, tap: bool = False) -> None:
-    """A project view by its name: the header's segmented control, or on the phone the title's menu (#341)."""
-    if page.viewport_size["width"] <= 640:
+    """A project view by its name: the header's segmented control, or below 900 px the title's menu (#341, #505)."""
+    if page.viewport_size["width"] <= 900:
         link = phone_menu(page, tap).get_by_role("link", name=re.compile(f"^{name}"))
     else:
         link = page.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile(f"^{name}"))

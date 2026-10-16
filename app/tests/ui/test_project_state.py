@@ -285,16 +285,23 @@ class ProjectStateJourney(unittest.TestCase):
                     page = self.page(width=width, height=1180)
                     page.goto(f"/projects/{project['id']}")
                     header = page.locator("header.top")
-                    # One row from 1280 px (F-026 §4); a narrower panel gives the views their own line.
-                    # A long name shortens; the views, the people and More stay.
-                    self.assertLessEqual(header.bounding_box()["height"], 72 if width >= 1280 else 130, "a long title never stacks the header")
+                    # One row at every width (Spokój rule 3): a long name shortens; the views (below 900 px the
+                    # title's view menu) and More stay, and where the row has no room the people move into More.
+                    self.assertLessEqual(header.bounding_box()["height"], 72, "a long title never stacks the header")
                     title = header.get_by_role("heading", level=1)
                     expect(title).to_have_attribute("title", name)
                     self.assertGreaterEqual(title.bounding_box()["width"], 80, "the name keeps a readable start")
-                    expect(header.get_by_role("navigation", name="Project views")).to_be_visible()
+                    if width <= 900:
+                        expect(title.get_by_role("button")).to_be_visible()
+                    else:
+                        expect(header.get_by_role("navigation", name="Project views")).to_be_visible()
                     expect(header.get_by_role("button", name="More", exact=True)).to_be_in_viewport()
                     self.assertLessEqual(page.locator("body").evaluate("el => el.scrollWidth"), width)
-                    self.faces(page).click()
+                    if width <= 900 or page.locator(".app__main").evaluate("el => el.clientWidth") > 860:
+                        self.faces(page).click()
+                    else:
+                        header.get_by_role("button", name="More", exact=True).click()
+                        page.get_by_role("menu", name="More").get_by_role("menuitem", name="Who can see this").click()
                     expect(page.locator("#details").get_by_role("heading", name=name, exact=True)).to_be_visible()
                     page.get_by_role("button", name="Close details", exact=True).click()
                     if width in (744, 820, 1280):

@@ -86,7 +86,7 @@ export function PhoneTitleMenu({ title, subtitle, items, onDetails, detailsLabel
     <div className="phead__id">
       {lead}
       <div className="phead__title">
-        <h1 id={titleId}>
+        <h1 id={titleId} title={title}>
           <button type="button" className="phead__menu" aria-haspopup="dialog" aria-expanded={open} aria-controls={open ? menuId : undefined} onClick={() => setOpen(true)}>
             <span className="phead__name">{title}</span><Icon name="chevron-down" size={14} />
           </button>

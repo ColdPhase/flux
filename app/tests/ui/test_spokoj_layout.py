@@ -76,9 +76,13 @@ class SpokojLayout(unittest.TestCase):
             assert response.status == 200, response.text()
         for title, status in (("Order six capacitive probes", "in_progress"), ("Ask the school for two ESP32 kits", "open"), ("Calibrate the rain gauge", "blocked")):
             cls.call(page, "POST", f"/api/v1/projects/{cls.project_id}/work", {"title": title, "status": status}, 201)
-        # A conversation: Together has something to anchor to there and is dimmed in the other views.
+        # A conversation and a Wiki page: Together has something to anchor to there and is dimmed in the other views.
         cls.call(page, "POST", f"/api/v1/projects/{cls.project_id}/conversations",
                  {"body": "Where should the first probes go: the raised beds or the greenhouse?", "clientMessageId": str(uuid.uuid4())}, 201)
+        response = page.request.fetch(f"{ORIGIN}/api/v1/projects/{cls.project_id}/docs", method="POST",
+                                      headers={"origin": ORIGIN, "content-type": "application/json", "idempotency-key": str(uuid.uuid4())},
+                                      data=json.dumps({"title": "Hardware", "body": "Six capacitive probes and two ESP32 boards.", "state": "published"}))
+        assert response.status == 201, response.text()
         page.goto(f"/dm/new?workspace={workspace['id']}&with={cls.kai_id}")
         expect(page).to_have_url(re.compile(r"/dm/[0-9a-f-]{36}$"))
         cls.dm_path = page.url.removeprefix(ORIGIN)
@@ -354,7 +358,7 @@ class SpokojLayout(unittest.TestCase):
                     if size is TABLET:
                         boxes["title"] = self.box(header.get_by_role("heading", level=1).get_by_role("button"))
                     # Together is in every view; where nothing is open to work on together it is dimmed, not removed.
-                    if path:
+                    if path in ("/map", "/tasks", "/agents"):
                         expect(header.get_by_role("button", name="Together", exact=True)).to_have_attribute("aria-disabled", "true")
                     if first is None:
                         first = boxes
@@ -440,9 +444,14 @@ class SpokojLayout(unittest.TestCase):
                     controls = {
                         "Back": self.box(header.get_by_role("button", name="Back", exact=True)),
                         "title": self.box(header.get_by_role("heading", level=1).get_by_role("button")),
-                        "Together": self.box(header.get_by_role("button", name="Together", exact=True)),
                         "Search": self.box(header.get_by_role("button", name="Search", exact=True)),
                     }
+                    if path.endswith("/docs"):
+                        # A Wiki page's one menu holds Together and the page's actions; it takes Together's place.
+                        controls["Together"] = self.box(header.get_by_role("button", name="More", exact=True))
+                        expect(header.get_by_role("button", name="Together", exact=True)).to_be_hidden()
+                    else:
+                        controls["Together"] = self.box(header.get_by_role("button", name="Together", exact=True))
                     self.assertEqual(header.locator("button:visible").count(), 4, f"{path}: {header.locator('button:visible').all_inner_texts()}")
                     for name, box in controls.items():
                         self.assertGreaterEqual(min(box["width"], box["height"]), 44, f"{name} at {path}")
