@@ -53,6 +53,10 @@ A failed migration file rolls back its own transaction; earlier new migrations o
 upgrade stay applied, which is why the instructions restore the backup rather than restarting
 the old version on the partly migrated database.
 
+Migration 0089 takes its table locks with `NOWAIT`, so any conflicting lock, autovacuum
+included, fails it at once and leaves 0082, 0087 and 0088 recorded; run `./flux upgrade`
+again and it applies 0089 and the later files.
+
 ## Verified behavior
 
 `./scripts/check_backup.sh` starts a checkout of the **previous main's schema**: the newest
