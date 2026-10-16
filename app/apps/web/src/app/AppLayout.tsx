@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import type { ProjectPerson } from '@flux/contracts';
-import { Outlet, useLocation, useNavigate, useParams, useRevalidator } from 'react-router';
+import { Outlet, useLocation, useMatches, useNavigate, useParams, useRevalidator } from 'react-router';
 import { useStreamEvents } from '../api/stream';
 import { Drawer, IconButton, MEDIA, SidePanel, Tabs, duration, flip, play, useMediaQuery, useToast, useSidePanelMode, type TabItem } from '../ui';
 import { useShellData } from './data';
@@ -10,6 +10,7 @@ import { DeferredDetails, DeferredJumpTo, DeferredLiveStage } from './DeferredSu
 import { RouteProgress } from './RouteProgress';
 import { useInboxDot } from '../notifications/dot';
 import { placeOf } from './place';
+import { placeOfPath, rememberPlace } from '../search/recent';
 import { ShellContext, type CreateRequest, type DetailsView } from './shellContext';
 import { Sidebar } from './Sidebar';
 import { VIEWS, startCapture, viewIndex } from './views';
@@ -153,6 +154,9 @@ function AppLayoutContent() {
   // Focus mode (`F`, F-026 S19): the rail, a quiet header, and push and email held by the server.
   const focus = useFocus(me.user.id);
   const focusing = !!focus.until && !phone;
+  const toggleFocus = focus.toggle;
+  // "[", the sidebar control and the More menu share one rule: under Focus, ending Focus shows the sidebar (F-026 rule 7).
+  const toggleSidebar = useCallback(() => { if (focusing) void toggleFocus(); else toggleRail(); }, [focusing, toggleFocus, toggleRail]);
 
   const projectId = location.pathname.match(/^\/projects\/([^/]+)/)?.[1];
   const detailsOwner = useMemo(() => ({ accountId: me.user.id, projectId }), [me.user.id, projectId]);
@@ -173,7 +177,10 @@ function AppLayoutContent() {
     openNavigation() { setDetailsOpen(false); setNavOpen(true); },
     actionSlot,
     metadataSlot, viewMenuMetadataSlot,
-  }), [toggleDetails, actionSlot, metadataSlot, viewMenuMetadataSlot, projectId, detailsOwner]);
+    toggleFocus() { void toggleFocus(); },
+    toggleSidebar,
+    sidebarHidden: railed || focusing,
+  }), [toggleDetails, actionSlot, metadataSlot, viewMenuMetadataSlot, projectId, detailsOwner, toggleSidebar, railed, toggleFocus, focusing]);
 
   // A link inside an overlaid panel or sheet (#117 overview) leads to its destination.
   const [shownPath, setShownPath] = useState(location.pathname);
@@ -220,13 +227,12 @@ function AppLayoutContent() {
 
   // "[" collapses or expands the sidebar, "F" turns focus on and off, and "G" then "I" goes to the
   // Inbox (F-026 §4 keyboard).
-  const toggleFocus = focus.toggle;
   useEffect(() => {
     let leader = 0;
     const onKey = (event: KeyboardEvent) => {
       if (event.metaKey || event.ctrlKey || event.altKey || event.defaultPrevented || isTyping(event.target)) return;
       if (document.getElementById('root')?.inert) return;
-      if (event.key === '[') { event.preventDefault(); toggleRail(); return; }
+      if (event.key === '[') { event.preventDefault(); toggleSidebar(); return; }
       const key = event.key.toLowerCase();
       if (key === 'f' && !phone) { event.preventDefault(); void toggleFocus(); return; }
       if (key === 'g') { leader = Date.now(); return; }
@@ -234,7 +240,7 @@ function AppLayoutContent() {
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [toggleRail, toggleFocus, navigate, phone]);
+  }, [toggleSidebar, toggleFocus, navigate, phone]);
 
 
   // Typing on a touch phone (#266 PF-3): the view bar steps aside for the keyboard once a text field
@@ -396,6 +402,18 @@ function AppLayoutContent() {
   // The computer's header is one row (F-026 §4): the name, the place's views as a segmented control,
   // then what needs you, the people and agents, and More. Focus keeps only the name, the view and
   // the way out.
+  // ⌘K's "Recent" lists the places the person opened on this device (F-026 E02): a project's view, a direct message, the
+  // Inbox, Home. A project or conversation this account cannot open (the not-found page) is not remembered.
+  const openable = projectId ? !!activeProject : dmId && dmId !== 'new' ? !!activeDm : true;
+  // A Wiki page is remembered with its own title, read from the doc the reader loaded (its current title, for any version).
+  const matches = useMatches();
+  const shownDoc = (matches[matches.length - 1]?.loaderData as { doc?: { title?: unknown } } | undefined)?.doc;
+  const docTitle = typeof shownDoc?.title === 'string' && shownDoc.title.trim() ? shownDoc.title : undefined;
+  useEffect(() => {
+    const opened = placeOfPath(location.pathname);
+    if (!opened || !openable) return;
+    rememberPlace(me.user.id, opened.key.endsWith(':docs') && docTitle && /\/docs\/[^/]+$/.test(opened.path) ? { ...opened, title: docTitle } : opened);
+  }, [location.pathname, openable, me.user.id, docTitle]);
   const rowViews = phone ? null
     : activeProject && projectViews ? { items: projectViews, label: 'Project views' }
       : dmViews ? { items: dmViews, label: 'Direct message views' }
@@ -408,7 +426,7 @@ function AppLayoutContent() {
     ...(activeProject && projectId ? [{ label: 'What matters', run: () => { setDetailsView({ kind: 'recap', projectId }); toggleDetails(true); } }] : []),
     ...addViewItems,
     { label: focus.uncertain ? 'Check notification pause' : 'Focus', keys: 'F', checked: focusing, run: () => void focus.toggle() },
-    { label: railed ? 'Show the sidebar' : 'Hide the sidebar', keys: '[', run: toggleRail },
+    { label: railed || focusing ? 'Show the sidebar' : 'Hide the sidebar', keys: '[', run: toggleSidebar },
   ];
 
   // The phone's header (F-026 §4 Phone): inside a project or a conversation the round Back and the
@@ -481,7 +499,7 @@ function AppLayoutContent() {
           <Sidebar {...sidebarProps} onClose={() => setNavOpen(false)} titleId={drawerTitleId} />
         </Drawer>
       ) : (
-        <aside className={`app__side${railed || focusing ? ' app__side--rail' : ''}`} aria-label="Sidebar"><Sidebar {...sidebarProps} collapsed={railed || focusing} onToggleCollapsed={focusing ? () => void focus.toggle() : toggleRail} /></aside>
+        <aside className={`app__side${railed || focusing ? ' app__side--rail' : ''}`} aria-label="Sidebar"><Sidebar {...sidebarProps} collapsed={railed || focusing} onToggleCollapsed={toggleSidebar} /></aside>
       )}
 
       <div className="app__main">
