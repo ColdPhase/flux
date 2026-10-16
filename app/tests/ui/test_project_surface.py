@@ -407,6 +407,9 @@ class ProjectSurfaceJourney(unittest.TestCase):
         expect(sheet.get_by_role("heading", name="Use a ToF sensor, not the camera, for gestures")).to_be_visible()
         sheet.get_by_role("button", name="Close details").tap()
         view_tab(page, "Map", tap=True)
+        # A project whose only listed sketch has content opens it directly (empty sketches are not listed, #508); the index is /map.
+        expect(page).to_have_url(re.compile(rf"/projects/{self.ids['project']}/map/[0-9a-f-]+$"))
+        page.goto(f"/projects/{self.ids['project']}/map")
         expect(page.get_by_role("list", name="Sketches in Gesture lamp")).to_be_visible()
         shot(page, "project-map-phone-390")
 
