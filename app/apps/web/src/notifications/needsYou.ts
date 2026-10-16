@@ -27,10 +27,16 @@ export interface Queue {
   doneToday: number;
   failed: boolean;
   reload: () => void;
-  /** Removes an item at once (it was handled here); the next read confirms. Reads started before it do not undo it. */
-  hide: (key: string) => void;
-  /** Puts an item back at its place without waiting for the next read (Undo). Reads started before it do not undo it. */
-  show: (item: NeedsYouItem) => void;
+  /**
+   * Removes an item at once (it was handled here). `settled` is the server write for it: until that settles
+   * (success or failure), reads are not applied, and the queue is read again once nothing is pending.
+   */
+  hide: (key: string, settled: Promise<unknown>) => void;
+  /**
+   * Puts an item back at its place without waiting for the next read (Undo). `settled` is the server write Undo
+   * sends, if any; the same rule as for `hide` applies until it settles.
+   */
+  show: (item: NeedsYouItem, settled?: Promise<unknown>) => void;
 }
 
 const sorted = (items: NeedsYouItem[]) => {
@@ -49,6 +55,8 @@ export function useNeedsYou(userId: string): Queue {
   const [, redraw] = useState(0);
   // Counts local hide and show. A read that started before the latest one may predate its server write (#519).
   const localChanges = useRef(0);
+  // Local changes whose server write has not settled. A read started meanwhile may still show what they removed.
+  const pending = useRef(0);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reload = useCallback(() => setVersion((n) => n + 1), []);
   const soon = useCallback(() => {
@@ -56,14 +64,27 @@ export function useNeedsYou(userId: string): Queue {
     timer.current = setTimeout(reload, 1200);
   }, [reload]);
   useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
+  // Each local change is pending until its write has answered, success or failure; then the queue is read again.
+  const track = useCallback((settled: Promise<unknown>) => {
+    pending.current += 1;
+    const end = () => {
+      pending.current -= 1;
+      if (pending.current === 0) soon();
+    };
+    settled.then(end, end);
+  }, [soon]);
 
   useEffect(() => {
     const controller = new AbortController();
     const started = localChanges.current;
+    const busy = pending.current > 0;
     getNeedsYou(controller.signal).then((response) => {
-      // The answer may lack what this person just Undid, or still hold what they just handled. Drop it and
-      // read again soon; until then the local change stands.
-      if (started !== localChanges.current) { soon(); return; }
+      // The answer may lack what this person just Undid, or still hold what they just handled (#519). It is not
+      // applied; the local state stands, and the queue is read again once no local change is pending.
+      if (busy || started !== localChanges.current) {
+        if (pending.current === 0) soon();
+        return;
+      }
       setState({ userId, response, failed: false });
     }, (error: unknown) => {
       if (error instanceof DOMException && error.name === 'AbortError') return;
@@ -85,10 +106,10 @@ export function useNeedsYou(userId: string): Queue {
   useStreamEvents(userId, soon, reload);
 
   const mine = state.userId === userId ? state : { userId, response: null, failed: false };
-  const hide = useCallback((key: string) => { localChanges.current += 1; setState((previous) => previous.response
-    ? { ...previous, response: { ...previous.response, items: previous.response.items.filter((item) => item.key !== key), count: Math.max(0, previous.response.count - 1) } } : previous); }, []);
-  const show = useCallback((item: NeedsYouItem) => { localChanges.current += 1; redraw((n) => n + 1); setState((previous) => previous.response && !previous.response.items.some((entry) => entry.key === item.key)
-    ? { ...previous, response: { ...previous.response, items: sorted([...previous.response.items, item]), count: previous.response.count + 1 } } : previous); }, []);
+  const hide = useCallback((key: string, settled: Promise<unknown>) => { localChanges.current += 1; track(settled); setState((previous) => previous.response
+    ? { ...previous, response: { ...previous.response, items: previous.response.items.filter((item) => item.key !== key), count: Math.max(0, previous.response.count - 1) } } : previous); }, [track]);
+  const show = useCallback((item: NeedsYouItem, settled?: Promise<unknown>) => { localChanges.current += 1; if (settled) track(settled); redraw((n) => n + 1); setState((previous) => previous.response && !previous.response.items.some((entry) => entry.key === item.key)
+    ? { ...previous, response: { ...previous.response, items: sorted([...previous.response.items, item]), count: previous.response.count + 1 } } : previous); }, [track]);
   // A decision this person just accepted is not shown while the accept is waiting or on its way.
   const accepting = acceptingIds();
   const items = mine.response ? mine.response.items.filter((item) => !(item.decision && accepting.has(item.decision.id))) : null;
