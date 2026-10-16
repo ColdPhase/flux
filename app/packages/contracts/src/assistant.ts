@@ -32,6 +32,24 @@ export function compileAssistantAreas(areas: Readonly<AssistantAreas>): Pick<Age
   return { enabledCapabilityIds: [...capabilityIds].sort(), enabledEntryIds: entries.map((entry) => entry.id).sort() };
 }
 
+/**
+ * Capabilities whose tools are never offered to the assistant (F-027 AST-3 "Not offered to the
+ * assistant"): the co-work bootstrap, the playbook and the runtime-session reads of external clients.
+ */
+const NOT_FOR_RUNS = new Set<AgentMcpCapabilityId>(['cowork.playbook.read', 'connection.runtime.read']);
+
+/**
+ * The exact Flux tools of one assistant run, from the owner's switches (F-027 AST-4, A2): every read tool
+ * the saved S6 policy enables, sorted. #280's first delivery step lists only read tools (F-027 question
+ * 18); effect tools follow in slices A3 and A4. The same list serves `server` and `runtime` runs, so both
+ * engines see the same tools and the MCP route lists exactly these to the run's token.
+ */
+export function assistantRunTools(policy: Pick<AgentMcpPolicy, 'enabledCapabilityIds' | 'enabledEntryIds'>, scopes: readonly string[]): string[] {
+  return AGENT_MCP_ENTRIES.filter((entry) => entry.kind === 'tool' && entry.requiredScope === 'flux.context.read' && scopes.includes(entry.requiredScope)
+    && policy.enabledEntryIds.includes(entry.id) && entry.requiredCapabilities.every((id) => policy.enabledCapabilityIds.includes(id) && !NOT_FOR_RUNS.has(id)))
+    .map((entry) => entry.name).sort();
+}
+
 /** Projection only; the saved S6 policy remains the single authority store. */
 export function assistantAreasFromPolicy(policy: Pick<AgentMcpPolicy, 'enabledCapabilityIds' | 'enabledEntryIds'>): AssistantAreas {
   const result = { ...DEFAULT_ASSISTANT_AREAS };

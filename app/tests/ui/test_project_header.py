@@ -115,7 +115,7 @@ class ProjectHeader(unittest.TestCase):
             current = views.get_by_role("link", name="Conversation").bounding_box()
             pill = views.locator(".ui-tabs__indicator").bounding_box()
             self.assertAlmostEqual(pill["width"], current["width"], delta=1.5)
-            # People and agents as faces, which open "Who can see this".
+            # People and agents as faces, which open "People".
             faces = header.get_by_role("button", name=re.compile("who can see this project$"))
             expect(faces.locator(".ui-avatar")).to_have_count(1)
             # Nothing needs Ada in a new project, so no chip claims it.
@@ -124,7 +124,7 @@ class ProjectHeader(unittest.TestCase):
         page.get_by_role("link", name="Tasks").click()
         expect(views.get_by_role("link", name="Tasks")).to_have_attribute("aria-current", "page")
         faces.click()
-        expect(page.get_by_role("complementary", name="Details").get_by_role("region", name="Who can see this")).to_be_visible()
+        expect(page.get_by_role("complementary", name="Details").get_by_role("region", name="People", exact=True)).to_be_visible()
 
     def test_02_more_lists_details_focus_and_the_sidebar_with_keys(self) -> None:
         self.ensure_project()

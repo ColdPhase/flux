@@ -27,8 +27,8 @@
 }
 @media (pointer: coarse) { .convo-replies button { min-height: 44px; min-width: 44px; justify-content: center; } }
 /* The root whose thread is open, marked without colour alone: its control is also expanded. */
-/* The open root is ringed just outside its bubble, so the ring reads on light and inverted bubbles alike. */
-.project-convo__message.is-open > .message-bubble { outline: 2px solid var(--t1); outline-offset: 2px; }
+/* Spokój marks the selected source with a quiet fill. */
+.project-convo__message.is-open > .message-bubble { background: var(--sub); outline: none; }
 
 /* ---------- The thread ---------- */
 .thread { display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--bg); outline: none; }
@@ -48,13 +48,15 @@
 .thread--sheet .thread__head { padding-left: 6px; }
 .thread--sheet .thread__close { order: -1; margin-left: 0; }
 .thread__pane { display: flex; flex: 1; flex-direction: column; min-height: 0; }
-.thread__feed { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; }
+/* useMessageReadingPosition owns anchors; native anchoring cancels WebKit gestures
+   when a retired association batch changes the content above the viewport (#540). */
+.thread__feed { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; overflow-anchor: none; }
 /* Laid out but hidden until its first bounded reads settle (#155, at most 1 s), so nothing shifts as they arrive. */
 .thread__feed.is-opening { visibility: hidden; }
 .thread__in { padding: 18px 20px 12px; }
 .thread__root { position: relative; display: flex; flex-direction: column; align-items: flex-start; width: fit-content; max-width: 100%; padding-left: 44px; }
 .thread__root > :not(.ui-avatar, .author-face) { min-width: 0; max-width: 100%; }
-.thread__root.is-mine { margin-left: auto; align-items: flex-end; padding-left: 0; padding-right: 44px; }
+.thread__root.is-mine { margin-left: auto; align-items: flex-end; padding-left: 0; padding-right: 0; }
 .thread__root.is-mine > .thread__root-meta { justify-content: flex-end; }
 .thread__root-meta { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; margin-bottom: 8px; color: var(--t3); font-size: var(--fs-xs); }
 .thread__root-meta > :is(.ui-avatar, .author-face) { position: absolute; left: 0; top: 0; }
@@ -66,8 +68,8 @@
 .thread__hint::after { content: ""; flex: 1; height: 1px; background: var(--line); }
 .thread__list { list-style: none; margin: 0; padding: 0; }
 /* Roots and replies retain the 32px author face on the side belonging to their author. */
-.thread .project-convo__message { min-width: min(220px, 100%); max-width: 100%; }
-.thread .project-convo__message > p, .thread .project-convo__message > .message-bubble { padding: 10px 13px; }
+.thread .project-convo__message { min-width: 0; max-width: 100%; }
+.thread .project-convo__message > p:not(.photo-meta), .thread .project-convo__message > .message-bubble { padding: 10px 13px; }
 .thread .project-convo__message + .project-convo__message { margin-top: 18px; }
 .thread .project-convo__day { margin: 4px 0 18px; }
 .thread .project-convo__composer { padding: 8px 14px 14px; padding-bottom: max(14px, env(safe-area-inset-bottom)); }
@@ -76,10 +78,12 @@
 @media (max-width: 680px) {
   .thread__in { padding: 16px 17px 12px; }
   .thread__root { padding-left: 42px; }
-  .thread__root.is-mine { padding-left: 0; padding-right: 42px; }
+  .thread__root.is-mine { padding-left: 0; padding-right: 0; }
 }
 @media (prefers-reduced-motion: no-preference) {
   .thread--docked { animation: thread-dock var(--dur-2) var(--ease-out) both; }
 }
 @keyframes thread-in { from { transform: translateX(24px); opacity: 0; } to { transform: none; opacity: 1; } }
 @keyframes thread-dock { from { opacity: 0; } to { opacity: 1; } }
+
+.thread .project-convo__message.is-continued { margin-top: 4px; }

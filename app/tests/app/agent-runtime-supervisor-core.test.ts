@@ -6,6 +6,7 @@ import { after, before, describe, test } from 'node:test';
 import { callSupervisor, NdjsonReader, parseSupervisorFrame, type ClientStatus, type SupervisorCallOutcome, type SupervisorRequest } from '@flux/runtime-protocol';
 import { Lane } from '../../apps/runtime/src/supervisor/server.js';
 import { LOGOUT_TEMPLATES, STATUS_TEMPLATES } from '../../apps/runtime/src/supervisor/templates.js';
+import { classifyError } from '../../apps/runtime/src/supervisor/run.js';
 import { portOf, startTestSlot, type TestSlot } from './support/runtime-slot.js';
 
 // F-022 T3: a slot's supervisor, in process, over temporary /data and /tmp with the TEST ONLY fake CLIs.
@@ -168,14 +169,16 @@ describe('fixed command templates and a clean CLI environment', () => {
     }
   });
 
-  test('a client the operator did not enable is refused; login runs only in the console and run waits for T5', async () => {
+  test('a client the operator did not enable is refused; login runs only in the console; a run without a reachable Flux stops at its read-back', async () => {
     assert.deepEqual(await call(slot, { kind: 'status', bindingId, client: 'codex' }), { ok: false, code: 'client_off' });
     // A sign-in is never a plain request: only the console's upgrade runs `auth login` (T4).
     assert.deepEqual(await call(slot, { kind: 'login', bindingId, client: 'codex', method: 'device_code', cols: 80, rows: 24 }), { ok: false, code: 'invalid_request' });
     assert.deepEqual(await call(slot, { kind: 'login', bindingId, client: 'claude_code', method: 'sso', cols: 80, rows: 24 }), { ok: false, code: 'invalid_request' });
     const run: SupervisorRequest = { kind: 'run', bindingId, client: 'claude_code', runId: randomUUID(), prompt: 'Hello', runToken: 'aa.bb.cc', tools: ['flux_get_doc'],
       caps: { maxTurns: 10, wallClockSeconds: 300, idleSeconds: 60, maxAnswerBytes: 16384 } };
-    assert.deepEqual(await call(slot, run), { ok: false, code: 'not_available' });
+    // T5: the run starts; with no Flux MCP server reachable its start-up list shows no connected Flux, so it stops with no answer.
+    const ran = await call(slot, run);
+    assert.ok(ran.ok && ran.result.kind === 'run' && ran.result.outcome === 'local_tool' && ran.result.answer === null, JSON.stringify(ran));
     assert.deepEqual(await call(slot, { ...run, bindingId: randomUUID() }), { ok: false, code: 'no_binding' });
     const stop = await call(slot, { kind: 'stop', bindingId, runId: randomUUID() });
     assert.ok(stop.ok && stop.result.kind === 'stop' && stop.result.state === 'not_running');
@@ -290,5 +293,16 @@ describe('one serial lane', () => {
     await new Promise((done) => setTimeout(done, 0));
     assert.deepEqual(order, ['start a', 'end a', 'start b', 'end b', 'start c', 'end c']);
     assert.equal(lane.busy, false);
+  });
+});
+
+describe('a run\'s error results (F-022 T5; the wording is first verified against a real account in T10)', () => {
+  test('a plan limit, an expired login and a refusal each have their own outcome; anything else is a crash', () => {
+    assert.deepEqual(classifyError('Claude AI usage limit reached|1791374400'), { outcome: 'plan_limit', resetsAt: '2026-10-07T12:00:00.000Z' });
+    assert.deepEqual(classifyError('5-hour limit reached ∙ resets 2pm'), { outcome: 'plan_limit', resetsAt: null });
+    for (const text of ['Invalid API key · Please run /login', 'OAuth token has expired. Please run /login', 'Not logged in', 'API Error: 401 authentication_error'])
+      assert.equal(classifyError(text).outcome, 'sign_in_again', text);
+    assert.equal(classifyError('Claude refused this request under the usage policy').outcome, 'refused');
+    assert.equal(classifyError('Something else went wrong').outcome, 'crashed');
   });
 });

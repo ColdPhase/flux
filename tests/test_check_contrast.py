@@ -33,7 +33,7 @@ class FailuresOnlyTest(unittest.TestCase):
 
     def test_a_weak_token_prints_that_pair_and_exits_1(self) -> None:
         css = TOKENS.read_text()
-        original = "--t3: #6b6b6b;"
+        original = "--t3: #636363;"
         self.assertIn(original, css, "fixture expects the light muted text token")
         with tempfile.TemporaryDirectory() as tmp:
             broken = Path(tmp) / "tokens.css"
@@ -66,7 +66,8 @@ class FailuresOnlyTest(unittest.TestCase):
         self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
         failing = result.stdout.strip().splitlines()[:-1]
         self.assertTrue(failing, result.stdout)
-        self.assertTrue(all(line.startswith("FAIL dark  APCA") and "--t3 on" in line for line in failing), result.stdout)
+        self.assertTrue(all(line.startswith("FAIL dark") and "--t3 on" in line for line in failing), result.stdout)
+        self.assertTrue(any("APCA" in line for line in failing), result.stdout)
 
     def test_apca_matches_the_reference_extremes(self) -> None:
         spec = importlib.util.spec_from_file_location("check_contrast", SCRIPT)

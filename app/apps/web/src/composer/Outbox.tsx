@@ -3,7 +3,7 @@ import { Icon, Kreska } from '../ui';
 import { useSmallMoments } from '../app/smallMoments';
 import { useConnection } from './connection';
 import type { DraftFile, PendingSend } from './draft';
-import { FileIcon, typeLine, useObjectUrl } from './Attachments';
+import { MessageBubble, FileIcon, typeLine, useObjectUrl } from './Attachments';
 import { selectedFile, uploadLabel } from './draft';
 import { looksLikePhoto } from './fileKind';
 import './composer.css';
@@ -61,11 +61,11 @@ export function PendingFiles({ files, send, body }: { files: readonly DraftFile[
         {photos.slice(0, 4).map((file, index) => <PendingPhoto key={file.uploadId} file={file} send={send} more={index === 3 ? photos.length - 4 : 0} />)}
       </ul>
     </div> : null}
-    <div className="message-bubble">{body}
+    <MessageBubble>{body}
       {others.length ? <ol className="message-files is-pending" aria-label={others.length === 1 ? '1 attached file' : `${others.length} attached files`}>{others.map((file) => <li key={file.uploadId}>
         <span className="file-row"><FileIcon name={file.name} /><span className="file-row__text"><span className="file-row__name">{file.name}</span><small>{typeLine(file)}{file.state === 'uploading' ? ` · ${uploadLabel(file)}` : null}</small></span></span>
       </li>)}</ol> : null}
-    </div>
+    </MessageBubble>
   </>;
 }
 

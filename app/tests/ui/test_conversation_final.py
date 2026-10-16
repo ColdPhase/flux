@@ -171,10 +171,11 @@ class ConversationFinal(unittest.TestCase):
             xs = faces.evaluate_all(f"{visible}.map(el => Math.round(el.getBoundingClientRect().x))")
             self.assertGreater(len(xs), 3)
             self.assertEqual(len(set(xs)), 1, f"{label}: other authors' faces share one left edge, saw {sorted(set(xs))}")
-            own = page.locator(".project-convo__message.is-mine > :is(.ui-avatar, .author-face)")
+            expect(page.locator(".project-convo__message.is-mine > :is(.ui-avatar, .author-face)")).to_have_count(0)
+            own = page.locator(".project-convo__message.is-mine > .message-bubble")
             rights = own.evaluate_all(f"{visible}.map(el => Math.round(el.getBoundingClientRect().right))")
             self.assertGreater(len(rights), 0)
-            self.assertEqual(len(set(rights)), 1, f"{label}: own faces share one right edge, saw {sorted(set(rights))}")
+            self.assertEqual(len(set(rights)), 1, f"{label}: own bubbles share one right edge")
             self.assertGreater(min(rights), max(xs) + 32, f"{label}: own messages are on the right")
             # 20 px avatars appear only as owners in task rows.
             small = page.locator(".project-convo__feed .ui-avatar--sm").evaluate_all("items => items.filter(el => el.getClientRects().length).map(el => !!el.closest('.convo-notice__owner, .convo-fold__faces'))")

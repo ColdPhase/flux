@@ -118,7 +118,8 @@ class TypingJourney(unittest.TestCase):
         """Opens another conversation's thread from its root in the stream (its reply count, or Reply)."""
         root = page.locator(f'li[data-conversation-id="{self.conversations[index]}"]')
         replies = root.locator(".convo-replies__open")
-        (replies if replies.count() else root.locator(".convo-replies__reply")).click()
+        root.hover()
+        (replies if replies.count() else root.get_by_role("button", name="Reply in thread", exact=True)).click()
 
     def measure(self, name, action, assertion, maximum):
         start = time.monotonic()

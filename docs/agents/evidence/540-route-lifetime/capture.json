@@ -1,0 +1,98 @@
+{
+  "investigation_date": "2026-10-16",
+  "product_head": "3d110cef190581f0cb928fe72b501d76c681a8d3",
+  "capture": "astra1: original test ordering plus capture.patch, first repetition fails ready/loading",
+  "browser": "Chromium 151.0.7922.34 (Playwright 1.62.0)",
+  "exit": 1,
+  "tests": 1,
+  "duration_seconds": 16.091,
+  "phase": "loading",
+  "remaining_held": 0,
+  "remaining_paused": 0,
+  "browser_fetch_tail": [
+    {
+      "kind": "start",
+      "id": 8,
+      "url": "/api/v1/me",
+      "at": 1429.300000011921
+    },
+    {
+      "kind": "resolved",
+      "id": 8,
+      "url": "/api/v1/me",
+      "status": 200,
+      "at": 1640.800000011921
+    },
+    {
+      "kind": "body",
+      "id": 8,
+      "url": "/api/v1/me",
+      "bytes": 317,
+      "at": 1641,
+      "detail": {
+        "hasUser": true,
+        "hasSession": true
+      }
+    },
+    {
+      "kind": "invoke",
+      "url": "/api/v1/workspaces",
+      "at": 1641,
+      "aborted": false
+    }
+  ],
+  "native_tail": [
+    {
+      "kind": "native-request",
+      "id": "82.136",
+      "url": "http://127.0.0.1:26102/api/v1/me"
+    },
+    {
+      "kind": "native-finished",
+      "id": "82.136",
+      "bytes": 545
+    },
+    {
+      "kind": "native-request",
+      "id": "82.158",
+      "url": "http://127.0.0.1:26102/api/v1/workspaces"
+    }
+  ],
+  "workspace_terminal_events": [],
+  "server": {
+    "final_me": [
+      {
+        "time": 1792116465149,
+        "reqId": "req-9k",
+        "msg": "incoming request",
+        "status": null
+      },
+      {
+        "time": 1792116465154,
+        "reqId": "req-9k",
+        "msg": "request completed",
+        "status": 200
+      }
+    ],
+    "workspace_arrivals_after_final_me": 0,
+    "last_logged_time": 1792116475402
+  },
+  "limits": [
+    "No Network.responseReceived listener for /workspaces; absence of a response is not separately measured.",
+    "Fetch.disable timing was not captured directly. Its attribution uses final-route removal ordering and upstream Chromium evidence."
+  ],
+  "source_and_log_sha256": {
+    "astra1-source.patch": "1f2b0a5b3c8ec9dd207bbb2e24bc0f0bfa4e76c5261f7a7120fc7fe77c6e7fe0",
+    "astra1.log": "e255339d99a365aeb0d62a19e6b7d074938567bc2be6fb237fbed7ea4cb77f75"
+  },
+  "positive_control": {
+    "product_head": "3d110cef190581f0cb928fe72b501d76c681a8d3",
+    "change": "same capture plus retained auth route and post-release forwarding",
+    "tests": 30,
+    "duration_seconds": 53.224,
+    "exit": 0,
+    "ready_panes": 30,
+    "completed_final_workspace_requests": 30,
+    "source_sha256": "55b91bdcf0aaffe60e9cafccf4f8fc9053e2990f5759926688e9b3e2c8e64759"
+  }
+}

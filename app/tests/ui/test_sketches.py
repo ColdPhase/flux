@@ -261,11 +261,15 @@ class SketchJourney(unittest.TestCase):
         expect(page.get_by_role("button", name=re.compile(r"^Zoom 150%"))).to_be_visible()
         canvas = page.locator(".sk-canvas")
         c = box(page, canvas)
-        page.mouse.move(c["x"] + c["width"] - 30, c["y"] + c["height"] - 60)
+        # #509: the plane reaches past the thoughts on every side, so the view starts away from 0/0;
+        # compare the view before and after the drag on empty space, clear of the corner controls.
+        before = canvas.evaluate("el => [el.scrollLeft, el.scrollTop]")
+        page.mouse.move(c["x"] + c["width"] / 2, c["y"] + c["height"] - 130)
         page.mouse.down()
-        page.mouse.move(c["x"] + c["width"] - 200, c["y"] + c["height"] - 160, steps=8)
+        page.mouse.move(c["x"] + c["width"] / 2 - 170, c["y"] + c["height"] - 230, steps=8)
         page.mouse.up()
-        self.assertGreater(canvas.evaluate("el => el.scrollLeft + el.scrollTop"), 0, "dragging empty space pans")
+        after = canvas.evaluate("el => [el.scrollLeft, el.scrollTop]")
+        self.assertEqual((after[0] - before[0], after[1] - before[1]), (170, 100), "dragging empty space pans")
         page.get_by_role("button", name=re.compile(r"^Zoom 150%")).click()
         expect(page.get_by_role("button", name=re.compile(r"^Zoom 100%"))).to_be_visible()
 
@@ -309,25 +313,32 @@ class SketchJourney(unittest.TestCase):
     def test_05_list_view_is_the_accessible_alternative(self) -> None:
         page = self.open_sketch()
         page.get_by_role("radio", name="List").click()
-        items = page.get_by_role("list", name="Thoughts in Lamp ideas")
+        items = page.get_by_role("tree", name="Thoughts in Lamp ideas")
         expect(items).to_be_visible()
-        expect(items.get_by_role("listitem")).to_have_count(3)
-        expect(items).to_contain_text("Related to")
-        item = items.locator(".sk-li-t", has_text="Swipe to dim, hold to switch off")
+        expect(items.get_by_role("treeitem")).to_have_count(3)
+        # #510: the map's tree. The lamp is the root; the ToF sensor, also connected from the swipe, sits
+        # under the lamp once and names its other parent.
+        expect(items.get_by_role("treeitem", name="Gesture-controlled desk lamp")).to_have_attribute("aria-level", "1")
+        tof = items.get_by_role("treeitem", name="ToF distance sensor")
+        expect(tof).to_have_attribute("aria-level", "2")
+        expect(tof).to_contain_text("also under Swipe to dim, hold to switch off")
+        item = items.get_by_role("treeitem", name="Swipe to dim, hold to switch off")
         item.focus()
-        page.keyboard.press("Enter")
+        # #510 AC-6: Space opens the thought; Enter would add a new one beside it.
+        page.keyboard.press("Space")
         page.get_by_label("Thought text").fill("Swipe to dim, hold for off")
         page.keyboard.press("Enter")
-        expect(items.locator(".sk-li-t", has_text="Swipe to dim, hold for off")).to_be_focused()
+        expect(items.get_by_role("treeitem", name="Swipe to dim, hold for off")).to_be_focused()
         page.keyboard.press("+")
         page.get_by_label("Thought text").fill("60 GHz radar through the shade")
         page.keyboard.press("Enter")
-        expect(items.get_by_role("listitem")).to_have_count(4)
+        expect(items.get_by_role("treeitem")).to_have_count(4)
+        expect(items.get_by_role("treeitem", name="60 GHz radar through the shade")).to_have_attribute("aria-level", "3")
         self.saved(page)
         shot(page, "sketch-desktop-1280-list")
         # The choice of view is remembered.
         page.reload()
-        expect(page.get_by_role("list", name="Thoughts in Lamp ideas")).to_be_visible()
+        expect(page.get_by_role("tree", name="Thoughts in Lamp ideas")).to_be_visible()
         page.get_by_role("radio", name="Map").click()
         expect(page.get_by_role("group", name="Sketch: Lamp ideas")).to_be_visible()
         texts = [t["text"] for t in self.stored(page)["thoughts"]]
@@ -367,7 +378,7 @@ class SketchJourney(unittest.TestCase):
         self.assertGreaterEqual(box(page, plus)["width"], 44, "touch target")
         expect(page.get_by_text("Tap a thought to select it")).to_be_visible()
         show_map_as(page, "List", touch=True)
-        expect(page.get_by_role("list", name="Thoughts in Lamp ideas")).to_be_visible()
+        expect(page.get_by_role("tree", name="Thoughts in Lamp ideas")).to_be_visible()
         shot(page, "sketch-phone-390-list")
         show_map_as(page, "Map", touch=True)
         page.goto("/map")
@@ -562,8 +573,8 @@ class SketchJourney(unittest.TestCase):
             page.wait_for_function("() => { const el = document.querySelector('.sk-canvas'); return el.scrollLeft === 0 && el.scrollTop === 0; }")
         else:
             # Fit has finished when the graph's top-left corner sits 24 px (at the fitted zoom) inside the
-            # padded viewport. That is not scroll 0/0 on the plane: the plane keeps 104 px of room above a
-            # thought at y=24 for its selection actions (#482), so a fitted view starts that far down.
+            # padded viewport. That is not scroll 0/0 on the plane: the plane reaches past the thoughts on
+            # every side (#509) and keeps room above them for selection actions (#482).
             page.wait_for_function(
                 """() => {
                     const el = document.querySelector('.sk-canvas');
@@ -573,8 +584,7 @@ class SketchJourney(unittest.TestCase):
                     const at = node.getBoundingClientRect();
                     const style = getComputedStyle(el);
                     const zoom = at.width / 240;
-                    return el.scrollLeft === 0
-                        && Math.abs(at.left - view.left - (parseFloat(style.paddingLeft) || 0) - 24 * zoom) < 1.5
+                    return Math.abs(at.left - view.left - (parseFloat(style.paddingLeft) || 0) - 24 * zoom) < 1.5
                         && Math.abs(at.top - view.top - (parseFloat(style.paddingTop) || 0) - 24 * zoom) < 1.5;
                 }"""
             )

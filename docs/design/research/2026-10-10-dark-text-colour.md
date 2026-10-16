@@ -20,7 +20,7 @@ mode?
   dark-theme secondary and meta text contrast"). The design contract is
   `docs/design/final/README.md` (rows `--t2` and `--t3`), which also records the
   historical values.
-- Light theme, unchanged: `t1 #18181b`, `t2 #4a4a4a`, `t3 #6b6b6b`.
+- Light theme: `t1 #18181b`, `t2 #4a4a4a`; `t3` was `#6b6b6b` and is now `#636363` (#433): AA 4.5:1 on `--side`, `--sub` and `--hov` as well as `--bg` and `--el`.
 - Surfaces: dark `--bg #111111`, `--el #1c1c1c`. Text is Geist.
   `-webkit-font-smoothing: antialiased` is set globally
   (`app/apps/web/src/ui/ui.css:8`).

@@ -11,7 +11,7 @@ export function ProjectSetup() {
   async function submit(event: FormEvent) {
     event.preventDefault();
     const project = await create(projectName);
-    // A new project is restricted; its "Who can see this" opens next, to add people (#188).
+    // A new project is restricted; its "People" opens next, to add people (#188).
     if (project) navigate(`/projects/${project.id}?new=1&open=people`);
   }
   const cancel = () => navigate(-1);

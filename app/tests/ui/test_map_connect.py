@@ -10,6 +10,7 @@ import uuid
 
 from playwright.sync_api import expect, sync_playwright
 
+from create_window import dialog, linked_labels, submit_button, title_field
 from test_app_shell import ORIGIN, PHONE, SHOTS, UPSTREAM, open_map_options, show_map_as, shot, start_forwarder
 from contrast import MEASURE
 from test_map_paste import PASTE, IMAGE
@@ -17,6 +18,7 @@ from test_thought_drafts import EXHAUST_SESSION_STORAGE
 
 COMPUTER = {'width': 1440, 'height': 900}
 A, B, C = 'Weatherproof enclosure', 'Calibrate the probes', 'Frost warnings later'
+TEXT = {A: f'{A} volunteers can open', B: f'{B} at two soil depths', C: f'{C}, one probe at the gateway'}
 
 
 class MapConnectJourney(unittest.TestCase):
@@ -67,7 +69,7 @@ class MapConnectJourney(unittest.TestCase):
         sketch = self.api(page.context, 'POST', f'/api/v1/workspaces/{self.workspace}/sketches',
             {'title': 'Community garden sensors', 'scope': 'project', 'projectId': project}, 201)['id']
         self.ids = {}
-        rows = ((A, f'{A} volunteers can open', 40, 40), (B, f'{B} at two soil depths', 420, 40), (C, f'{C}, one probe at the gateway', 40, 260))
+        rows = ((A, TEXT[A], 40, 40), (B, TEXT[B], 420, 40), (C, TEXT[C], 40, 260))
         for key, text, x, y in rows[:1 if solo else 3]:
             body = {'text': text, 'x': x, 'y': y}
             if link and key == C:
@@ -115,6 +117,13 @@ class MapConnectJourney(unittest.TestCase):
         page.mouse.move(point[0], point[1], steps=12)
         return point
 
+    def box_overlaps(self, page, first, second):
+        """Whether the rendered boxes of two selectors share any area."""
+        return page.evaluate('''([a, b]) => {
+          const x = document.querySelector(a).getBoundingClientRect(), y = document.querySelector(b).getBoundingClientRect();
+          return x.left < y.right - 0.5 && y.left < x.right - 0.5 && x.top < y.bottom - 0.5 && y.top < x.bottom - 0.5;
+        }''', [first, second])
+
     def test_01_drag_a_dot_to_connect_and_release_on_empty_space(self):
         for scheme in ('light', 'dark'):
             with self.subTest(scheme=scheme):
@@ -132,7 +141,13 @@ class MapConnectJourney(unittest.TestCase):
                 point = (canvas['x'] + canvas['width'] * 0.75, canvas['y'] + canvas['height'] * 0.7)
                 self.drag_dot(page, B, point=point)
                 expect(page.locator('.sk-ghost')).to_contain_text('New thought')
-                expect(page.get_by_text('Release to add a connected thought')).to_be_visible()
+                hint = page.get_by_text('Release to add a connected thought')
+                expect(hint).to_be_visible()
+                expect(page.locator('.sk-status')).to_have_count(0, timeout=2000)
+                self.assertNotIn('Linked', page.locator('.sk-dock').inner_text(), 'no stale status while a new drag is in progress')
+                page.evaluate("() => document.querySelector('.sk-dock p.sk-hint').classList.add('probe-hint')")
+                for other in ('.sk-minimap', '.sk-zoom', '.sk-dock__row', '.sk-head'):
+                    self.assertFalse(self.box_overlaps(page, '.probe-hint', other), f'the release hint stays clear of {other}')
                 shot(page, f'map-connect-release-1440-{scheme}')
                 page.mouse.up()
                 draft = page.get_by_role('form', name='New thought draft')
@@ -141,6 +156,10 @@ class MapConnectJourney(unittest.TestCase):
                 expect(page.locator('.sk-ghost--draft')).to_be_visible()
                 self.assertEqual(len(self.stored(page, sketch)['thoughts']), 3, 'nothing is shared before it is saved')
                 draft.get_by_label('Thought text').fill('Solar panel on the enclosure?')
+                for other in ('.sk-ghost--draft', '.sk-wires .sk-wire:last-child', '.sk-head', '.sk-dock__row', '.sk-dock .sk-line', '.sk-minimap', '.sk-zoom'):
+                    self.assertFalse(self.box_overlaps(page, '.sk-composition', other), f'the draft panel stays clear of {other}')
+                context = page.evaluate(MEASURE, {'selector': '.sk-draft__context', 'backgroundSelector': '.sk-draft'})
+                self.assertGreaterEqual(context['ratio'], 7, 'the draft context line is readable secondary text')
                 shot(page, f'map-connect-local-draft-1440-{scheme}')
                 draft.get_by_label('Thought text').press('Enter')
                 expect(page.locator('.sk-node')).to_have_count(4)
@@ -177,9 +196,21 @@ class MapConnectJourney(unittest.TestCase):
         expect(page.locator('.sk-node[aria-pressed="true"]')).to_have_count(2)
         tools = page.get_by_role('toolbar', name='Sketch tools')
         expect(tools.get_by_text('Create task', exact=True)).to_be_visible()
+        # #509 (from #345): Create task opens the Create window with the thoughts as its sources; the task exists only after
+        # the window's own Create task.
+        posted = []
+        page.on('request', lambda r: posted.append(r.url) if r.method == 'POST' and r.url.endswith(f'/projects/{self.project}/work') else None)
+        tools.get_by_role('button', name='Create task from selected thoughts').click()
+        expect(dialog(page)).to_be_visible()
+        expect(title_field(page)).to_have_value(f'Explore: {TEXT[A]}, {TEXT[B]}')
+        expect(linked_labels(page)).to_have_text([TEXT[A], TEXT[B]])
+        self.assertEqual(posted, [], 'nothing is created before the window\'s Create task')
+        shot(page, 'map-create-task-window-1440-light')
         with page.expect_response(lambda r: r.request.method == 'POST' and r.url.endswith(f'/projects/{self.project}/work')) as saved:
-            tools.get_by_role('button', name='Create task from selected thoughts').click()
+            submit_button(page).click()
         self.assert_task_sources(page, saved.value.json()['id'], {A, B}, {C})
+        expect(dialog(page)).to_have_count(0)
+        expect(page.locator('.sk-node[aria-pressed="true"]')).to_have_count(2)
 
     def test_04_tablet_touch_selects_several_with_select_several(self):
         page = self.page({'width': 820, 'height': 1180}, touch=True)
@@ -189,8 +220,10 @@ class MapConnectJourney(unittest.TestCase):
         page.locator('.sk-node', has_text=A).tap()
         page.locator('.sk-node', has_text=B).tap()
         expect(page.locator('.sk-node[aria-pressed="true"]')).to_have_count(2)
+        tools.get_by_role('button', name='Create task from selected thoughts').tap()
+        expect(linked_labels(page)).to_have_text([TEXT[A], TEXT[B]])
         with page.expect_response(lambda r: r.request.method == 'POST' and r.url.endswith(f'/projects/{self.project}/work')) as saved:
-            tools.get_by_role('button', name='Create task from selected thoughts').tap()
+            submit_button(page).tap()
         self.assert_task_sources(page, saved.value.json()['id'], {A, B}, {C})
 
     def test_05_phone_views_and_adds_only(self):
@@ -379,8 +412,11 @@ class MapConnectJourney(unittest.TestCase):
         page.locator('.sk-node', has_text=B).tap()
         actions.tap()
         shot(page, 'map-phone-thought-actions-390-light')
+        sheet.get_by_role('button', name='Create task from selected thoughts', exact=True).tap()
+        expect(title_field(page)).to_have_value(TEXT[B])
+        expect(linked_labels(page)).to_have_text([TEXT[B]])
         with page.expect_response(lambda response: response.request.method == 'POST' and f'/projects/{self.project}/work' in response.url) as saved:
-            sheet.get_by_role('button', name='Create task from selected thoughts', exact=True).tap()
+            submit_button(page).tap()
         self.assertEqual(saved.value.status, 201)
         self.assert_task_sources(page, saved.value.json()['id'], {B}, {A, C})
 
@@ -493,6 +529,17 @@ class MapConnectJourney(unittest.TestCase):
                         if visible:
                             overlap = max(0, min(e['right'], node['right']) - max(e['left'], node['left'])) * max(0, min(e['bottom'], node['bottom']) - max(e['top'], node['top']))
                             self.assertEqual(overlap, 0, f'composition keeps visible thought {node["id"]} uncovered')
+                    if viewport['width'] > 640:
+                        for other in ('.sk-head', '.sk-dock__row', '.sk-minimap', '.sk-zoom'):
+                            self.assertFalse(self.box_overlaps(page, '.sk-composition', other), f'{viewport["width"]}: the draft panel stays clear of {other}')
+                        for node in page.locator('.sk-node').all():
+                            if node.evaluate('(el, c) => { const r = el.getBoundingClientRect(); return r.right > c.left && r.left < c.right && r.bottom > c.top && r.top < c.bottom; }', c):
+                                nb = node.bounding_box()
+                                head = page.locator('.sk-head').bounding_box()
+                                self.assertTrue(nb['y'] >= head['y'] + head['height'] - 0.5 or nb['x'] >= head['x'] + head['width'] - 0.5 or nb['x'] + nb['width'] <= head['x'] + 0.5 or nb['y'] + nb['height'] <= head['y'] + 0.5, f'{viewport["width"]}: no thought under the header pill')
+                                self.assertLessEqual(nb['x'] + nb['width'], c['right'] + 1, f'{viewport["width"]}: no thought is clipped at the right edge')
+                        for other in ('.sk-head', '.sk-dock__row', '.sk-minimap'):
+                            self.assertFalse(self.box_overlaps(page, '.sk-actions', other) if page.locator('.sk-actions').count() else False)
                     self.assertGreaterEqual(c['height'], 120, 'the phone retains a useful map viewport')
                     self.assertEqual(canvas.evaluate('el => ({left:el.scrollLeft, top:el.scrollTop})'), camera)
                     self.assertEqual(self.stored(page, sketch), before, 'composition changes no graph data')

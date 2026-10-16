@@ -5,7 +5,6 @@
 .people__item + .people__item { border-top: 1px solid var(--line); }
 .people__row { display: flex; align-items: center; gap: 10px; min-height: 52px; padding: 8px 0; }
 .people__row .ui-avatar { flex: none; font-size: 12px; color: var(--t2); }
-.people__row .ui-avatar--me { color: var(--oninv); }
 .people__who { display: flex; flex: 1; flex-direction: column; min-width: 0; font-size: var(--fs-md); line-height: 1.45; }
 .people__who b { font-weight: 500; color: var(--t1); overflow-wrap: anywhere; }
 .people__who span { font-size: var(--fs-sm); color: var(--t3); overflow-wrap: anywhere; }
@@ -32,9 +31,13 @@
 .people .details__sec .ov-note { margin-top: 10px; }
 
 /* Project access (#188, AC-2) */
-.access__mode { display: flex; align-items: flex-start; gap: 6px; margin: 0 0 6px; font-size: var(--fs-sm) !important; color: var(--t2) !important; line-height: 1.5 !important; }
-.access__mode svg { flex: none; margin-top: 3px; color: var(--t3); }
-.access__mode b { font-weight: 600; color: var(--t1); }
+.access__head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 4px; }
+.access__head h4 { margin: 0; }
+.access__invite.ui-btn { min-height: 28px; margin-right: -8px; padding: 0 8px; color: var(--t2); }
+.people__you { font-weight: 400; color: var(--t3); }
+.access__line { display: flex; align-items: flex-start; gap: 6px; margin: 12px 0 0; font-size: var(--fs-sm) !important; color: var(--t2) !important; line-height: 1.5 !important; }
+.access__line svg { flex: none; margin-top: 3px; color: var(--t3); }
+.access__change.ui-btn { display: inline; min-height: 0; padding: 0; font-size: inherit; font-weight: 600; color: var(--t1); text-decoration: underline; text-underline-offset: 3px; vertical-align: baseline; }
 .access__sub { margin: 18px 0 4px !important; }
 .people__edit .access__sub { margin: 0 !important; }
 .access__out { color: var(--t2) !important; }
@@ -59,7 +62,8 @@
 .promote__grant span span { display: block; font-size: var(--fs-sm); color: var(--t3); }
 
 @media (pointer: coarse) {
-  .people__change.ui-btn { min-height: 44px; }
+  .people__change.ui-btn, .access__invite.ui-btn { min-height: 44px; }
+  .access__change.ui-btn { min-height: 44px; display: inline-flex; align-items: center; }
   .people__field select { min-height: 44px; font-size: 16px; }
   .access__seg-b { min-height: 44px; }
   .promote__grant { min-height: 44px; }

@@ -33,7 +33,7 @@ export function serveConsole(config: SupervisorConfig, lane: ConsoleLane, socket
   const spawn = config.spawnPty ?? nodePty;
   const lifetimeMs = config.consoleLifetimeMs ?? CONSOLE_LIMITS.lifetimeMs;
   const link = new ConsoleLink(socket, new ConsoleFrameReader('to_supervisor'));
-  const send = (frame: SupervisorFrame) => link.send(encodeControl(frame));
+  const send = (frame: Exclude<SupervisorFrame, { t: 'run' }>) => link.send(encodeControl(frame));
   const refuse = (code: SupervisorError) => { send({ t: 'error', code }); link.close(); };
   let opened = false;
   let running: { pty: PtyProcess; stop: (why: Ending) => void } | null = null;

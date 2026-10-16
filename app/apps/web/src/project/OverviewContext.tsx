@@ -10,12 +10,15 @@ export function useOpenConversation(): { conversation: Conversation | null; mate
   return (match?.loaderData as { conversation: Conversation | null; materials: Material[]; roots?: ConversationRootWindow } | undefined) ?? null;
 }
 
-/** The owning context stays visible when a phone reader scrolls down to sources. */
-export function OverviewContext() {
+/**
+ * The owning context stays visible when a phone reader scrolls down to sources. The project's own Details
+ * name the project in their head (#512), so this is for a thread's or a message's Details.
+ */
+export function OverviewContext({ message = false }: { message?: boolean }) {
   const shell = useProjectShell();
   const open = useOpenConversation();
   const { me } = useShellData();
-  if (!shell) return null;
+  if (!shell || (!open?.conversation && !message)) return null;
   const title = open?.conversation?.firstMessageBody.split('\n')[0];
   return <div className="ov-panel-context" aria-label="Overview context">
     <strong>{shell.project.name}</strong>

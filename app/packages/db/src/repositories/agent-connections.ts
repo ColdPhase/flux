@@ -33,7 +33,11 @@ export function agentConnectionRepository(db: Database, policy: AgentConnectionP
     .from(schema.agentConnectionProjects).where(eq(schema.agentConnectionProjects.connectionId, id)))
     .map((row) => row.id);
 
-  const resolveCurrent = async (tx: Transaction, ownerUserId: string, connectionId: string, mcp = false) => {
+  /**
+   * `reach` (a personal run's read-only token, F-027 A2): the project access the bearer actually needs. Without it, a
+   * connection holding a write scope must reach a project with write access, as before.
+   */
+  const resolveCurrent = async (tx: Transaction, ownerUserId: string, connectionId: string, mcp = false, reach?: 'project.read') => {
     const [row] = await tx.select().from(schema.agentConnections).where(and(
       eq(schema.agentConnections.id, connectionId), eq(schema.agentConnections.ownerUserId, ownerUserId),
       isNull(schema.agentConnections.revokedAt))).for('share');
@@ -51,7 +55,7 @@ export function agentConnectionRepository(db: Database, policy: AgentConnectionP
       isNull(schema.agents.revokedAt))).for('share');
     if (!agent) return null;
     if (!selectedProjectIds.length) return null;
-    const action = row.scopes.some((scope) => scope === 'flux.proposal.write' || scope === 'flux.action.execute') ? 'project.write' : 'project.read';
+    const action = reach ?? (row.scopes.some((scope) => scope === 'flux.proposal.write' || scope === 'flux.action.execute') ? 'project.write' : 'project.read');
     if (!mcp) {
       for (const projectId of selectedProjectIds.sort()) {
         if (await policy.authorizeProject(row.agentId, projectId, action, tx) !== row.workspaceId) return null;
@@ -170,12 +174,12 @@ export function agentConnectionRepository(db: Database, policy: AgentConnectionP
       });
     },
 
-    async grantForOauth(ownerUserId: string, referenceId: string, mcp = false): Promise<AgentOauthGrant | null> {
+    async grantForOauth(ownerUserId: string, referenceId: string, mcp = false, reach?: 'project.read'): Promise<AgentOauthGrant | null> {
       return db.transaction(async (tx) => {
         if (!referenceId.startsWith('flux-grant:')) {
           // Explicit old token format: never consulted by a new browser request.
           if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(referenceId)) return null;
-          const connection = await resolveCurrent(tx, ownerUserId, referenceId, mcp);
+          const connection = await resolveCurrent(tx, ownerUserId, referenceId, mcp, reach);
           return connection ? { referenceId, clientId: null, connection } : null;
         }
         const bindingId = referenceId.slice('flux-grant:'.length);
@@ -204,5 +208,7 @@ export function agentConnectionRepository(db: Database, policy: AgentConnectionP
   return { ...repository,
     /** Original identity/ceiling only; the caller must apply the live policy and actual project action. */
     grantForMcp: (ownerUserId: string, referenceId: string) => repository.grantForOauth(ownerUserId, referenceId, true),
+    /** A personal run's token (read only in #280's first step): the connection reaches a project it can read. */
+    grantForRun: (ownerUserId: string, connectionId: string) => repository.grantForOauth(ownerUserId, connectionId, true, 'project.read'),
   };
 }

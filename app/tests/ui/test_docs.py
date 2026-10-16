@@ -234,11 +234,12 @@ class DocsJourney(unittest.TestCase):
             expect(versions.first).to_contain_text("Night light brightness")
             expect(versions.first).to_contain_text(PARTNER["name"])
             diff = page.get_by_label("Changes in the text")
-            expect(diff.locator(".doc-diff__row--added ins")).to_contain_text(["at 5% brightness"])
-            expect(diff.locator(".doc-diff__row--removed").first).to_contain_text("Two quick waves")
+            # The rendered comparison reads as the page: added words are marked where they stand, headings are headings.
+            expect(diff.locator("li", has_text="Two quick waves")).to_contain_text("at 5% brightness")
+            expect(diff.locator("li ins")).to_contain_text(["at 5% brightness"])
             page.get_by_label("Compare with").select_option("1")
-            expect(page.get_by_role("heading", name="Version 1 → 3")).to_be_visible()
-            expect(diff.locator(".doc-diff__row--added")).to_contain_text(["## Open questions"])
+            expect(page.get_by_role("heading", name=re.compile("^v1 → v3"))).to_be_visible()
+            expect(diff.locator(".wiki-chg--added", has_text="Open questions")).to_have_count(1)
             shot(page, f"docs-history-desktop-{name}")
         # An earlier version reads as written, and says so.
         page.goto(f"/projects/{self.project_id}/docs/{self.doc_id}/versions/1")
@@ -302,7 +303,7 @@ class DocsJourney(unittest.TestCase):
         self.assertEqual(self.doc(page)["reason"], "Edited the text")
         page.get_by_role("button", name="More").tap()
         page.get_by_role("link", name=re.compile("^History")).tap()
-        expect(page.get_by_label("Changes in the text").locator(".doc-diff__row--added")).to_contain_text(["## Next"])
+        expect(page.get_by_label("Changes in the text").locator(".wiki-chg--added")).to_contain_text(["Next"])
         shot(page, "docs-history-phone-390")
 
     # ---------------------------------------------------------------- hostile text
@@ -320,6 +321,113 @@ class DocsJourney(unittest.TestCase):
         self.assertEqual(prose.locator("a").count(), 0, "no hostile link became clickable")
         expect(prose.locator(".doc-ref--missing")).to_have_text("missing")
         expect(page.locator(".doc-notice")).to_contain_text("not in this project or no longer exists")
+
+    # ---------------------------------------------------------------- history reads like the page (#511)
+
+    def test_08_history_reads_like_the_page_and_keeps_the_exact_text(self) -> None:
+        owner = self.page("owner")
+        first = ("## Sensors\n\n- Capacitive soil probe\n- DS18B20 probe\n\n## Radio\n\n"
+                 "The far beds report over LoRa. Range is not tested yet.\n\n| Bed | Distance |\n| --- | ---: |\n| Far east | 120 m |\n")
+        second = ("## Sensors\n\n- Capacitive soil probe\n- DS18B20 probe\n- Shed gateway\n\n## Radio\n\n"
+                  "The far beds report over LoRa. Two sensors reached the gateway from 140 m.\n\n| Bed | Distance |\n| --- | ---: |\n| Far east | 140 m |\n| Shed | 60 m |\n")
+        doc = self.api(owner, "POST", f"/api/v1/projects/{self.project_id}/docs", {"title": "Garden radio", "body": first, "reason": "First notes"}, status=201)
+        self.api(owner, "PATCH", f"/api/v1/docs/{doc['id']}", {"body": second, "state": "published", "reason": "Added the LoRa range test"}, status=200,
+                 headers={"if-match": '"1"', "idempotency-key": str(uuid.uuid4())})
+        page = self.page("owner")
+        page.goto(f"/projects/{self.project_id}/docs/{doc['id']}")
+        page_h2 = page.locator(".doc-prose h2").first.evaluate("el => getComputedStyle(el).fontSize + '/' + getComputedStyle(el).fontWeight")
+        page.get_by_role("link", name=re.compile("^History")).click()
+
+        # AC-2: versions are a timeline (version, summary, author, state, date); the header reads "v1 → v2 · +N −M · Draft → Published".
+        versions = page.locator(".doc-versions > li")
+        expect(versions).to_have_count(2)
+        expect(versions.first).to_contain_text("Added the LoRa range test")
+        expect(versions.first).to_contain_text("v2 · Published")
+        expect(versions.first).to_contain_text(OWNER["name"])
+        expect(versions.last).to_contain_text("v1 · Draft")
+        expect(page.get_by_role("heading", name=re.compile(r"^v1 → v2 · \+\d+ −\d+ · Draft → Published$"))).to_be_visible()
+        expect(page.locator(".doc-versions .doc-version[aria-current='true']")).to_contain_text("Added the LoRa range test")
+
+        # AC-1: the changes are the page itself, in its typography: headings, a list, a table.
+        diff = page.get_by_label("Changes in the text")
+        expect(diff.locator(".doc-prose h2")).to_have_text(["Sensors", "Radio"])
+        self.assertEqual(diff.locator(".doc-prose h2").first.evaluate("el => getComputedStyle(el).fontSize + '/' + getComputedStyle(el).fontWeight"), page_h2)
+        expect(diff.locator("li.wiki-chg--added")).to_have_text(["Shed gateway"])
+        expect(diff.locator("p ins")).to_have_text(["Two sensors reached the gateway from 140 m"])
+        expect(diff.locator("p del")).to_have_text(["Range is not tested yet"])
+        table = diff.locator(".doc-table table")
+        expect(table).to_have_count(1)
+        expect(table.locator("th")).to_have_text(["Bed", "Distance"])
+        expect(table.locator("td ins")).to_have_text(["140"])
+        expect(table.locator("td del")).to_have_text(["120"])
+        expect(table.locator("tr.wiki-chg--added")).to_contain_text("Shed")
+        for raw in ("| ---", "## ", "- Shed gateway"):
+            self.assertNotIn(raw, diff.inner_text(), "the rendered view shows no raw Markdown")
+        # Added text has a soft fill and an underline; removed text is struck through in --t3.
+        look = diff.locator("p ins").evaluate("""el => { const s = getComputedStyle(el); return { line: s.textDecorationLine, fill: s.backgroundColor }; }""")
+        self.assertIn("underline", look["line"])
+        self.assertNotIn(look["fill"], ("rgba(0, 0, 0, 0)", "transparent"))
+        struck = diff.locator("p del").evaluate("""el => { const s = getComputedStyle(el); const probe = document.createElement('span'); probe.style.color = 'var(--t3)'; document.body.append(probe);
+            const t3 = getComputedStyle(probe).color; probe.remove(); return { line: s.textDecorationLine, color: s.color, t3 }; }""")
+        self.assertIn("line-through", struck["line"])
+        self.assertEqual(struck["color"], struck["t3"], "removed text is --t3")
+        shot(page, "wiki-history-rendered-desktop-1440-light")
+
+        # AC-2: "Rendered | Markdown" keeps the exact text.
+        rendered = page.get_by_role("button", name="Rendered")
+        markdown = page.get_by_role("button", name="Markdown", exact=True)
+        expect(rendered).to_have_attribute("aria-pressed", "true")
+        markdown.click()
+        expect(markdown).to_have_attribute("aria-pressed", "true")
+        expect(page.locator(".doc-diff__row--added")).to_contain_text(["- Shed gateway"])
+        expect(page.locator(".doc-diff__row--added", has_text="| Shed | 60 m |")).to_have_count(1)
+        expect(diff.locator(".doc-prose")).to_have_count(0)
+        shot(page, "wiki-history-markdown-desktop-1440-light")
+        rendered.click()
+        expect(diff.locator(".doc-prose h2")).to_have_count(2)
+        page.emulate_media(color_scheme="dark")
+        shot(page, "wiki-history-rendered-desktop-1440-dark")
+        page.emulate_media(color_scheme="light")
+
+        # Restore is a quiet action in the toolbar's primary place. It brings the earlier text into the
+        # editor; nothing changes until the person saves it as a new version.
+        restore = page.locator(".wiki-bar").get_by_role("link", name="Restore v1")
+        expect(restore).to_have_class(re.compile(r"ui-btn--quiet"))
+        restore.click()
+        expect(page).to_have_url(re.compile(r"/edit\?restore=1$"))
+        text = page.get_by_label("Text (Markdown)")
+        expect(page.locator(".doc-notice", has_text="Version 1 is in the editor")).to_be_visible()
+        self.assertEqual(text.input_value().strip(), first.strip())
+        self.assertEqual(self.doc(owner, doc["id"])["version"], 2, "nothing changed yet")
+        page.locator(".wiki-bar").get_by_role("button", name="Save version").click()
+        expect(page.locator(".doc-head__k")).to_have_text("Published · version 3")
+        saved = self.doc(owner, doc["id"])
+        self.assertEqual((saved["version"], saved["body"].strip(), saved["reason"]), (3, first.strip(), "Restored version 1"))
+
+        # The phone reads the same comparison in one column, without sideways scrolling.
+        phone = self.page("owner", phone=True)
+        phone.goto(f"/projects/{self.project_id}/docs/{doc['id']}/history?from=2&to=3")
+        changes = phone.get_by_label("Changes in the text")
+        expect(changes.locator(".doc-prose h2")).to_have_text(["Sensors", "Radio"])
+        expect(phone.get_by_role("heading", name=re.compile(r"^v2 → v3"))).to_be_visible()
+        self.assertLessEqual(phone.evaluate("document.documentElement.scrollWidth"), PHONE["width"])
+        shot(phone, "wiki-history-rendered-phone-390-light")
+        phone.emulate_media(color_scheme="dark")
+        shot(phone, "wiki-history-rendered-phone-390-dark")
+
+    def test_09_history_of_hostile_text_does_not_run(self) -> None:
+        """The rendered comparison is built from the server's sanitized HTML only (#511): nothing in it runs."""
+        page = self.page("owner")
+        first = "Plain start.\n\n<img src=x onerror=\"alert('img')\">\n\n[click me](javascript:alert('link'))\n"
+        second = first + "\n<script>alert('script')</script>\n\n| a | b |\n| --- | --- |\n| <b onmouseover=alert(1)>x</b> | y |\n"
+        doc = self.api(page, "POST", f"/api/v1/projects/{self.project_id}/docs", {"title": "Hostile history", "body": first}, status=201)
+        self.api(page, "PATCH", f"/api/v1/docs/{doc['id']}", {"body": second, "reason": "More pasted text"}, status=200,
+                 headers={"if-match": '"1"', "idempotency-key": str(uuid.uuid4())})
+        page.goto(f"/projects/{self.project_id}/docs/{doc['id']}/history")
+        changes = page.get_by_label("Changes in the text")
+        expect(changes).to_contain_text("<script>alert('script')</script>")
+        self.assertEqual(changes.locator("img, script, iframe, [onerror], [onmouseover]").count(), 0)
+        self.assertEqual(changes.locator("a").count(), 0, "no hostile link became clickable")
 
 
 if __name__ == "__main__":

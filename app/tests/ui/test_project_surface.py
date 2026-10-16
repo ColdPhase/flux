@@ -330,11 +330,12 @@ class ProjectSurfaceJourney(unittest.TestCase):
         linked = panel.get_by_role("region", name="Linked in this conversation")
         for title in ("Test the camera in low light", "Order two VL53L5CX boards", "Use a ToF sensor, not the camera, for gestures", "Keep a manual off switch on the base", "Camera caught 38% of gestures at 5 lux"):
             expect(linked.get_by_role("button", name=re.compile(re.escape(title)))).to_be_visible()
+        expect(panel.get_by_role("navigation", name="Overview object pages"), "one page of objects has no pager (#512)").to_have_count(0)
         expect(panel.get_by_role("region", name="Sources").get_by_role("link", name=re.compile("Low-light test notes"))).to_be_visible()
         expect(panel.get_by_role("region", name="Sketches").get_by_role("link", name=re.compile("Sensing options"))).to_be_visible()
         expect(panel.get_by_role("region", name="Docs").get_by_role("link", name=re.compile("What we learned about low light"))).to_be_visible()
-        people = panel.get_by_role("region", name="Who can see this")
-        for name in ("Ada Kowalska (you)", "Jonas Berg", "Nia Okafor"):
+        people = panel.get_by_role("region", name="People", exact=True)
+        for name in ("Ada Kowalska", "Jonas Berg", "Nia Okafor"):
             expect(people).to_contain_text(name)
         expect(people).not_to_contain_text("Lee Park")
         shot(page, "project-details-desktop-1440")
@@ -360,6 +361,111 @@ class ProjectSurfaceJourney(unittest.TestCase):
         panel.get_by_role("region", name="Sketches").get_by_role("link", name=re.compile("Sensing options")).click()
         expect(page).to_have_url(re.compile(rf"/projects/{self.ids['project']}/map/{self.ids['sketch']}$"))
         expect(page.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile("^Map"))).to_have_attribute("aria-current", "page")
+
+    def panel_shell(self, panel) -> dict:
+        """What makes a panel the one shell: its card, its head's height and where its close button sits."""
+        return panel.evaluate("""el => {
+            const box = el.getBoundingClientRect(), head = el.querySelector('.ui-panel__head').getBoundingClientRect();
+            const close = el.querySelector('.ui-panel__close').getBoundingClientRect(), style = getComputedStyle(el);
+            return { left: box.left, top: box.top, right: box.right, bottom: box.bottom, head: head.height,
+                closeFromRight: box.right - close.right, closeFromTop: close.top - box.top, radius: style.borderTopLeftRadius, shadow: style.boxShadow };
+        }""")
+
+    def test_05b_project_details_are_one_look_at_the_project(self) -> None:
+        """#512: the project's own Details, in the one panel shell: its head, Now, In this project, People, Connected."""
+        page = self.page("ada")
+        page.goto(f"/projects/{self.ids['project']}")
+        open_details(page)
+        panel = self.details(page)
+        expect(panel.get_by_role("heading", name="Gesture lamp", exact=True)).to_be_visible()
+        expect(panel.get_by_role("region", name="Now", exact=True)).to_be_visible()
+
+        # AC-2: the project's tile and name, then who is in it and its space.
+        head = panel.locator(".ov-head")
+        expect(head.locator(".ov-tile")).to_have_text("G")
+        expect(head).to_contain_text("Jonas")
+        expect(head).to_contain_text("Riverside Makers")
+
+        # AC-3: open and blocked tasks are one line each with their glyph and #number; the rule is one card with its date.
+        now = panel.get_by_role("region", name="Now", exact=True)
+        progress = now.get_by_role("button", name=re.compile("^In progress: Test the camera in low light"))
+        expect(progress).to_contain_text("#1")
+        expect(progress.locator(".ui-glyph--in_progress")).to_have_count(1)
+        waiting = now.get_by_role("button", name=re.compile("^Open: Order two VL53L5CX boards"))
+        expect(waiting).to_contain_text("#2")
+        self.assertLess(progress.bounding_box()["height"], 48, "a task is one line")
+        rule = now.get_by_role("button", name=re.compile("^Current rule"))
+        expect(rule).to_contain_text("Use a ToF sensor, not the camera, for gestures")
+        expect(rule).to_contain_text(re.compile(r"accepted (\d+ \w+|\w+ \d+)"))
+        text = panel.inner_text()
+        for title in ("Test the camera in low light", "Order two VL53L5CX boards", "Use a ToF sensor, not the camera, for gestures"):
+            self.assertEqual(text.count(title), 1, f"{title!r} appears once in Details")
+        self.assertNotIn("Current rule: ", text)
+        self.assertNotIn("Task in progress", text)
+
+        # AC-4: Map, Wiki and Tasks are three rows with counts that open the views.
+        project = panel.get_by_role("region", name="In this project", exact=True)
+        rows = project.get_by_role("link")
+        expect(rows).to_have_text([re.compile(r"^Map\s*1 sketch"), re.compile(r"^Wiki\s*1 page"), re.compile(r"^Tasks\s*2 open")])
+        expect(panel.get_by_role("region", name="Sketches", exact=True)).to_have_count(0)
+        expect(panel.get_by_role("region", name="Docs", exact=True)).to_have_count(0)
+        self.assertEqual(self.api(page, "GET", f"/api/v1/projects/{self.ids['project']}/work-summary", status=200)["unfinishedTotal"], 2)
+
+        # AC-5: people with their role and Invite; who can see it in one sentence with Change access; GitHub under Connected.
+        people = panel.get_by_role("region", name="People", exact=True)
+        expect(people.get_by_role("button", name="Invite")).to_be_visible()
+        listed = people.get_by_role("list", name="People who can see Gesture lamp").get_by_role("listitem")
+        expect(listed).to_have_count(3)
+        expect(listed.filter(has_text="Ada Kowalska")).to_contain_text("· you")
+        expect(listed.filter(has_text="Ada Kowalska")).to_contain_text("Manages")
+        expect(listed.filter(has_text="Jonas Berg")).to_contain_text("Can write")
+        expect(people.locator(".access__line")).to_have_text(re.compile("^Only the people listed here can open it\\.\\s*Change access$"))
+        expect(people.get_by_role("button", name="Change access", exact=True)).to_be_visible()
+        expect(people.get_by_role("button", name=re.compile("^Change access for"))).to_have_count(0)
+        connected = panel.get_by_role("region", name="Connected", exact=True)
+        expect(connected.get_by_role("link", name=re.compile("^GitHub repositories"))).to_have_attribute("href", f"/projects/{self.ids['project']}/github")
+
+        # AC-6: no "Esc closes this panel" footer (Esc is in the close button's tooltip); one page of anything has no pager.
+        expect(panel).not_to_contain_text("closes this panel")
+        expect(panel.get_by_role("button", name="Close details")).to_have_attribute("data-tip", "Close · Esc")
+        expect(panel.get_by_role("navigation", name=re.compile("pages$"))).to_have_count(0)
+        shot(page, "project-details-one-look-desktop-1440-light")
+
+        # AC-1: the same shell as a task: the card, the head's height and the close button's place do not change.
+        details_shell = self.panel_shell(panel)
+        progress.click()
+        expect(panel.get_by_role("heading", name="Test the camera in low light")).to_be_visible()
+        task_shell = self.panel_shell(panel)
+        for key, value in details_shell.items():
+            if isinstance(value, float):
+                self.assertAlmostEqual(value, task_shell[key], delta=0.6, msg=f"{key}: Details {details_shell} vs task {task_shell}")
+            else:
+                self.assertEqual(value, task_shell[key], key)
+        shot(page, "project-task-panel-desktop-1440-light")
+        page.goto(f"/projects/{self.ids['project']}")
+        open_details(page)
+
+        # The rows open what they name.
+        rows.filter(has_text="Wiki").click()
+        expect(page).to_have_url(re.compile(rf"/projects/{self.ids['project']}/docs"))
+        page.go_back()
+        page.emulate_media(color_scheme="dark")
+        open_details(page)
+        expect(panel.get_by_role("region", name="In this project", exact=True)).to_be_visible()
+        shot(page, "project-details-one-look-desktop-1440-dark")
+
+        # The phone shows the same look in its sheet, in one column.
+        for scheme in ("light", "dark"):
+            phone = self.page("ada", phone=True)
+            phone.emulate_media(color_scheme=scheme)
+            phone.goto(f"/projects/{self.ids['project']}")
+            open_details(phone, tap=True)
+            sheet = phone.get_by_role("dialog", name="Details")
+            expect(sheet.locator(".ov-head").get_by_role("heading", name="Gesture lamp", exact=True)).to_be_visible()
+            expect(sheet.get_by_role("region", name="Now", exact=True).get_by_role("button", name=re.compile("^In progress: Test the camera"))).to_be_visible()
+            expect(sheet.get_by_role("region", name="In this project", exact=True).get_by_role("link")).to_have_count(3)
+            self.assertLessEqual(phone.evaluate("document.documentElement.scrollWidth"), PHONE["width"])
+            shot(phone, f"project-details-one-look-phone-390-{scheme}")
 
     # ---------------------------------------------------------------- Map tab
 
@@ -401,7 +507,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
         open_details(page, tap=True)
         sheet = page.get_by_role("dialog", name="Details")
         expect(sheet.get_by_role("region", name="Linked in this conversation").get_by_role("button", name=re.compile("Keep a manual off switch"))).to_be_visible()
-        expect(sheet.get_by_role("region", name="Who can see this")).to_contain_text("Nia Okafor")
+        expect(sheet.get_by_role("region", name="People", exact=True)).to_contain_text("Nia Okafor")
         shot(page, "project-details-phone-390")
         sheet.get_by_role("region", name="Linked in this conversation").get_by_role("button", name=re.compile("Use a ToF sensor")).tap()
         expect(sheet.get_by_role("heading", name="Use a ToF sensor, not the camera, for gestures")).to_be_visible()
@@ -418,7 +524,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
         expect(page.locator("header .phead__sub")).to_contain_text("2 people")
         shot(page, "project-long-title-phone-390")
         open_details(page, tap=True)
-        expect(page.get_by_role("dialog", name="Details").get_by_role("region", name="Who can see this")).to_contain_text("Jonas Berg")
+        expect(page.get_by_role("dialog", name="Details").get_by_role("region", name="People", exact=True)).to_contain_text("Jonas Berg")
 
 
     # ---------------------------------------------------------------- sidebar: current place and touch targets

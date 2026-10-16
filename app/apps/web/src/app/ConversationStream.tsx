@@ -12,7 +12,7 @@ import { MessageWorkPages } from '../work/MessageWorkPages';
 import { useShellActions } from './shellContext';
 import { listConversationRoots, listTaskNotices } from './conversation-api';
 import { QuestionCard, WhenNoQuestion } from '../agents/QuestionCard';
-import { AgentAuthor, AuthorFace, ContributionMark, OPENING_REVEAL_MS, SourceCitation, clock, day, openOnWholeMessages, pendingMessageRow, when } from './messageParts';
+import { AgentAuthor, AuthorFace, ContributionMark, OPENING_REVEAL_MS, SourceCitation, MessageDay, MessageTime, sameMessageAuthor, clock, day, openOnWholeMessages, pendingMessageRow, when } from './messageParts';
 import { agentAuthorOwner, useAgentOwners, type AgentOwners } from '../agents/owners';
 import { MessageContent } from '../composer/Files';
 import { LinkPreviews, MessageText } from './MessageText';
@@ -549,7 +549,7 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
               {[...display.flatMap((entry, index) => {
                 const label = dayOf[index]!;
                 const key = entry.kind === 'root' ? rootKey(entry.root) : entry.key;
-                const divider = index === 0 || dayOf[index - 1] !== label ? <li className="project-convo__day" key={`day-${key}`}><span>{label}</span></li> : null;
+                const divider = index === 0 || dayOf[index - 1] !== label ? <MessageDay key={`day-${key}`} label={label} /> : null;
                 const noticeItem = (notice: TaskCreationNotice) => <NoticeItem key={`notice-${notice.id}`} notice={notice} meId={meId} owners={owners} row={referenceWork.rows.get(`work:${notice.workId}`) ?? null}
                   authorOf={authorOf} hasMessage={(id) => rootMessageIds.has(id)} onOpenTask={(id) => openDetails({ kind: 'work', id })} />;
                 if (entry.kind === 'notice') return [divider, noticeItem(entry.notice)];
@@ -559,17 +559,24 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
                   return [divider, <NoticeFold key={entry.key} fold={{ key: entry.key, notices: folded }} summary={foldSummary(folded, authorOf, (notice) => notice.createdBy.name?.split(/\s+/)[0] ?? 'Someone')}>{folded.map(noticeItem)}</NoticeFold>];
                 }
                 const { root } = entry;
+                const previous = display[index - 1], next = display[index + 1];
+                const continued = previous?.kind === 'root' && sameMessageAuthor(previous.root.message, root.message);
+                const nextMessage = next?.kind === 'root' ? next.root.message : !next && outbox.pending[0] ? { authorId: meId, createdAt: outbox.pending[0].at } : undefined;
+                const groupLast = !sameMessageAuthor(root.message, nextMessage);
                 // A root confirmed from its queued message keeps that list item: it does not move or arrive twice (#264).
-                return [divider, <RootItem key={key} owners={owners} root={root} project={project} meId={meId} author={author} messageWork={messageWork}
+                return [divider, <RootItem key={key} continued={continued} groupLast={groupLast} owners={owners} root={root} project={project} meId={meId} author={author} messageWork={messageWork}
                   taskRow={root.task ? referenceWork.rows.get(`work:${root.task.workId}`) ?? null : null}
                   open={root.conversationId === openId} arrived={arrived === root.message.id} makeWork={makeWork} onOpen={openRoot}
                   onOpenResult={(resultId) => openDetails({ kind: 'result', id: resultId })} onDenied={onDenied} />];
               }), ...outbox.pending.flatMap((item, index) => {
                 const label = day(item.at);
                 const previous = index ? day(outbox.pending[index - 1]!.at) : dayOf.at(-1);
-                const divider = previous !== label ? <li className="project-convo__day" key={`day-pending-${item.id}`}><span>{label}</span></li> : null;
+                const divider = previous !== label ? <MessageDay key={`day-pending-${item.id}`} label={label} /> : null;
+                const lastEntry = display.at(-1);
+                const priorMessage = index ? { authorId: meId, createdAt: outbox.pending[index - 1]!.at } : lastEntry?.kind === 'root' ? lastEntry.root.message : undefined;
+                const continued = sameMessageAuthor(priorMessage, { authorId: meId, createdAt: item.at });
                 // The same component as a stored root, so the root that replaces it keeps this list item (#264).
-                return [divider, <RootItem key={`pending-${item.id}`} pending={item} name={meName} onRetry={() => composer.retry(item.id)} onRemove={() => composer.remove(item.id)} />];
+                return [divider, <RootItem key={`pending-${item.id}`} continued={continued} pending={item} name={meName} onRetry={() => composer.retry(item.id)} onRemove={() => composer.remove(item.id)} />];
               })]}
             </ol>
           ) : null}
@@ -680,13 +687,14 @@ function SinceLine({ projectId, roots, onJump }: { projectId: string; roots: Con
 }
 
 type RootItemProps = {
+  continued?: boolean; groupLast?: boolean;
   root: ConversationRoot; project: Project; owners: AgentOwners; meId: string; author: (message: ConversationMessage) => string;
   messageWork: MessageWorkRead; taskRow: NativeWorkRow | null;
   open: boolean; arrived: boolean; makeWork: ReturnType<typeof useCreateWorkFromMessage>;
   onOpen: (root: ConversationRoot, reply: boolean) => void; onOpenResult: (resultId: string) => void; onDenied: (cause: unknown) => void;
 };
 /** A root the person sent that is not stored yet (#264). */
-type QueuedRootProps = { pending: PendingSend; name: string; onRetry: () => void; onRemove: () => void };
+type QueuedRootProps = { continued?: boolean; pending: PendingSend; name: string; onRetry: () => void; onRemove: () => void };
 
 /**
  * One root of the stream, or the person's queued root that becomes it: one component and one list
@@ -706,18 +714,17 @@ function RootItem(props: RootItemProps | QueuedRootProps) {
   const touch = useTouchActions(actions);
   if (!stored || !message || !actions) {
     const queued = props as QueuedRootProps;
-    return pendingMessageRow({ place: 'stream', keyed: false, item: queued.pending, name: queued.name, onRetry: queued.onRetry, onRemove: queued.onRemove });
+    return pendingMessageRow({ place: 'stream', continued: queued.continued, keyed: false, item: queued.pending, name: queued.name, onRetry: queued.onRetry, onRemove: queued.onRemove });
   }
   const { root, project, owners, meId, messageWork, taskRow, open, arrived, makeWork, onOpen, onOpenResult, onDenied } = stored;
   const mine = message.authorId === meId;
   return (
-    <li {...touch.props} id={`message-${message.id}`} data-message-id={message.id} tabIndex={-1} data-conversation-id={root.conversationId}
-      className={`project-convo__message${mine ? ' is-mine' : ''}${arrived ? ' is-arrived' : ''}${open ? ' is-open' : ''} ${touch.props.className}`}>
-      <AuthorFace kind={message.authorId === null ? 'agent' : 'human'} name={name} mine={mine} />
-      <div className="project-convo__message-meta">
+    <li {...touch.props} id={`message-${message.id}`} data-message-id={message.id} aria-label={mine ? 'Your message' : `${name}’s message`} tabIndex={-1} data-conversation-id={root.conversationId}
+      className={`project-convo__message${mine ? ' is-mine' : ''}${arrived ? ' is-arrived' : ''}${open ? ' is-open' : ''}${stored.continued ? ' is-continued' : ''} ${touch.props.className}`}>
+      {!mine && !stored.continued ? <AuthorFace kind={message.authorId === null ? 'agent' : 'human'} name={name} mine={mine} /> : null}
+      {!mine && !stored.continued ? <div className="project-convo__message-meta">
         <strong>{mine ? `${name} · you` : message.authorId === null ? <AgentAuthor message={message} owner={agentAuthorOwner(message.author, owners)} /> : <Link className="project-convo__person" to={`/dm/new?workspace=${project.workspaceId}&with=${message.authorId}`} title={`Message ${name} directly`}>{name}</Link>}</strong>
-        <time dateTime={message.createdAt} title={when(message.createdAt)}>{clock(message.createdAt)}</time>
-      </div>
+      </div> : null}
       <MessageContent body={message.body ? <WhenNoQuestion projectId={project.id} messageId={message.id}><p><MessageText body={message.body} people={people} /></p></WhenNoQuestion> : null} files={message.files} context={{ author: name, at: message.createdAt, caption: message.body, place: project.name, onReply: writable ? () => onOpen(root, true) : undefined, onCreateTask: writable ? () => void makeWork.create(message) : undefined }}>
         <LinkPreviews body={message.body} />
         <MessageObjects message={message} projectId={project.id} preview={messageWork.previews?.get(message.id) ?? null} thread={root.task ?? null} threadRow={taskRow} />
@@ -725,7 +732,8 @@ function RootItem(props: RootItemProps | QueuedRootProps) {
       </MessageContent>
       <QuestionCard projectId={project.id} messageId={message.id} meId={meId} writable={writable} />
       {message.contribution ? <ContributionMark contribution={message.contribution} onOpenResult={onOpenResult} /> : null}
-      <Replies root={root} open={open} writable={writable} onOpen={(reply) => onOpen(root, reply)} />
+      <Replies root={root} open={open} onOpen={(reply) => onOpen(root, reply)} />
+      {stored.groupLast !== false ? <MessageTime at={message.createdAt} /> : null}
       <MessageActions {...actions} />
       {touch.node}
     </li>
@@ -733,9 +741,9 @@ function RootItem(props: RootItemProps | QueuedRootProps) {
 }
 
 /** Under a root: how many replies its thread has, and the reply action. Both open the thread beside the stream. */
-function Replies({ root, open, writable, onOpen }: { root: ConversationRoot; open: boolean; writable: boolean; onOpen: (reply: boolean) => void }) {
+function Replies({ root, open, onOpen }: { root: ConversationRoot; open: boolean; onOpen: (reply: boolean) => void }) {
   const count = root.replyCount;
-  if (!count && !writable) return null;
+  if (!count) return null;
   const last = root.lastReplyAt ? (day(root.lastReplyAt) === 'Today' ? clock(root.lastReplyAt) : day(root.lastReplyAt)) : null;
   return (
     <div className="convo-replies">
@@ -744,11 +752,7 @@ function Replies({ root, open, writable, onOpen }: { root: ConversationRoot; ope
           <Icon name="chat" size={13} />{count} {count === 1 ? 'reply' : 'replies'}{last ? <span className="convo-replies__when">· last {last}</span> : null}
         </button>
       ) : null}
-      {writable ? (
-        <button type="button" className="convo-replies__reply" aria-expanded={count ? undefined : open} aria-controls={open ? 'thread' : undefined} onClick={() => onOpen(true)}>
-          {count ? null : <Icon name="chat" size={13} />}Reply
-        </button>
-      ) : null}
+
     </div>
   );
 }

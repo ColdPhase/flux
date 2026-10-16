@@ -53,7 +53,8 @@ from pathlib import Path
 
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
-from create_window import create_other, open_from_tasks, submit_button
+from create_window import create_other, linked_labels, open_from_tasks, submit_button
+from message_gestures import open_message_menu
 from message_gestures import open_message_menu
 from test_app_shell import show_map_as, DESKTOP, ORIGIN, PHONE, UPSTREAM, open_details, open_what_matters, shot, start_forwarder
 
@@ -369,7 +370,7 @@ class ScenarioJourney:
         self.tap(self.thought(page, parent_id))
         if self.phone:
             row = page.locator(f'.sk-outline-list li[data-id="{parent_id}"]').first
-            row.get_by_role("button", name="Add thought", exact=True).first.tap()
+            row.get_by_role("button", name="Add a child thought", exact=True).first.tap()
         else:
             page.get_by_role("button", name=re.compile("^Add a thought connected to")).click()
         editor = page.get_by_label("Thought text")
@@ -385,8 +386,8 @@ class ScenarioJourney:
         return new_id
 
     def give_access(self, page: Page, key: str, read_only: bool) -> None:
-        region = page.get_by_role("region", name="Who can see this")
-        self.tap(region.get_by_role("button", name="Give someone access"))
+        region = page.get_by_role("region", name="People", exact=True)
+        self.tap(region.get_by_role("button", name="Invite"))
         give = region.get_by_role("group", name="Give someone access")
         give.get_by_label("Person").select_option(value=self.ids[key])
         if read_only:
@@ -576,7 +577,8 @@ class ScenarioJourney:
         # Ada replies in the thread; the reply inherits the project audience without a checkbox.
         page = self.page("ada")
         page.goto(f"/projects/{lamp}")
-        self.tap(page.locator(f"#message-{s['m1']}").get_by_role("button", name="Reply", exact=True))
+        menu = open_message_menu(page.locator(f"#message-{s['m1']}"), phone=self.phone)
+        self.tap(menu.get_by_role("menuitem", name="Reply in thread", exact=True))
         thread = page.get_by_role("complementary", name="Replies")
         expect(thread.locator(".thread__root")).to_contain_text(JONAS_ROOT)
         expect(thread.locator(".composer__audience")).to_contain_text("Jonas and you")
@@ -650,8 +652,11 @@ class ScenarioJourney:
                 self.thought(page, thoughts[text]).click(modifiers=["Shift"])
             expect(page.locator(".sk-node[aria-pressed='true']")).to_have_count(3)
         create = page.get_by_role("button", name="Create task from selected thoughts", exact=True)
+        # #509 (from #345): Create task opens the Create window with the selected thoughts as its sources.
+        self.tap(create)
+        expect(linked_labels(page)).to_have_count(1 if self.phone else 3)
         with page.expect_response(lambda r: r.request.method == "POST" and urllib.parse.urlsplit(r.url).path == f"/api/v1/projects/{lamp}/work") as saved:
-            self.tap(create)
+            self.tap(submit_button(page))
         self.assertEqual(saved.value.status, 201)
         experiment = saved.value.json()
         s["experiment"] = experiment["id"]
@@ -721,7 +726,8 @@ class ScenarioJourney:
         self.open_map(page)
         badge = (page.locator(f'.sk-outline-list li[data-id="{thoughts[CAMERA]}"] .sk-work').first if self.phone
                  else page.locator(f'.sk-node[data-id="{thoughts[CAMERA]}"] + .sk-work-slot .sk-work'))
-        expect(badge).to_contain_text("1 task")
+        # The map shows a count; the List a chip with the task's number and state (#510 AC-3). Both name it.
+        expect(badge).to_have_accessible_name(re.compile(r"^1 task linked to "))
         self.tap(badge)
         chooser_dialog = page.get_by_role("dialog").filter(has_text="linked to this thought")
         task_link = chooser_dialog.locator(f'a[data-work-id="{experiment["id"]}"]')
@@ -815,7 +821,7 @@ class ScenarioJourney:
         thoughts = self.s["thoughts"]
         self.tap(self.thought(page, thoughts[CAMERA]))
         self.tap(self.thought(page, thoughts[LOW_LIGHT]))
-        expect(page.locator('.sk-li-t[aria-pressed="true"]')).to_have_count(2, timeout=3000)
+        expect(page.locator('.sk-li-t[aria-selected="true"]')).to_have_count(2, timeout=3000)
 
     def test_2b_an_existing_task_links_to_a_thought_in_the_browser(self) -> None:
         """#44 scenario 2, "repeat with task creation preceding the map link" (#289): a task made first in Tasks is
@@ -912,7 +918,8 @@ class ScenarioJourney:
         self.open_map(ada)
         badge = (ada.locator(f'.sk-outline-list li[data-id="{s["variant_b"]}"] .sk-work').first if self.phone
                  else ada.locator(f'.sk-node[data-id="{s["variant_b"]}"] + .sk-work-slot .sk-work'))
-        expect(badge).to_contain_text("1 task")
+        # The map shows a count; the List a chip with the task's number and state (#510 AC-3). Both name it.
+        expect(badge).to_have_accessible_name(re.compile(r"^1 task linked to "))
         self.tap(badge)
         expect(ada.locator(".sk-tasks__list")).to_contain_text(ORDER_TASK[:60])
         self.shot(ada, "2b-map-count")

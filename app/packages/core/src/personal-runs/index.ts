@@ -10,3 +10,5 @@ export {
 export { emptyAccount, nextRequestFits, reconcileRequest, requestParts, runToolLoop, type Gate, type LoopEnd, type LoopLimit, type LoopOptions, type LoopResult, type RunAccount } from './tool-loop.js';
 export { announce as announceRunProgress } from './progress.js';
 export { TEST_FIXTURE_API_KEY, TEST_FIXTURE_KEY_REF, testFixturePersonalConnections } from './test-fixture.js';
+export { createRuntimeRunProcessor, localToolInInit, runtimePrompt } from './runtime-run.js';
+export { redactSecrets, REDACTED_SECRET } from './redaction.js';

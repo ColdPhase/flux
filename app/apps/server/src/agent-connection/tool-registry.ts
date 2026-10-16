@@ -12,9 +12,13 @@ interface ToolConfiguration<I extends z.ZodType> {
 export interface AgentToolRegistrar {
   registerTool<I extends z.ZodType>(name: string, config: ToolConfiguration<I>, callback: ToolCallback<I>): void;
 }
-/** Capability entries are written only when the corresponding real MCP tool is registered. */
-export function agentToolRegistry(server: McpServer, dispatch: McpDispatch) {
+/**
+ * Capability entries are written only when the corresponding real MCP tool is registered. `bound`, set for
+ * a personal run's token only, sees every tool result before it is returned (F-022 "Caps").
+ */
+export function agentToolRegistry(server: McpServer, dispatch: McpDispatch, bound?: (result: unknown) => Promise<unknown>) {
   const entries = new Map<string, Omit<AgentToolCapability, 'available'>>();
+  const handles = new Map<string, { disable(): void }>();
   return {
     forScope(requiredScope: AgentScope, effect?: { operation: AgentOperation; classes: readonly AgentPeerRequestClass[] }): AgentToolRegistrar {
       return { registerTool<I extends z.ZodType>(name: string, config: ToolConfiguration<I>, callback: ToolCallback<I>) {
@@ -26,9 +30,10 @@ export function agentToolRegistry(server: McpServer, dispatch: McpDispatch) {
         // Proxy preserves the SDK's schema-dependent callback type and forwards
         // its original receiver/arguments without reconstructing a conditional signature.
         const guarded = new Proxy(callback, { apply(target, receiver, args) {
-          return dispatch.run('tool', name, () => Reflect.apply(target, receiver, args));
+          const output = dispatch.run('tool', name, () => Reflect.apply(target, receiver, args));
+          return bound ? Promise.resolve(output).then(bound) : output;
         } });
-        server.registerTool(name, config, guarded);
+        handles.set(name, server.registerTool(name, config, guarded));
         entries.set(name, { name, title: config.title, requiredScope, operation: effect?.operation ?? null, classes: effect?.classes ?? [] });
       } };
     },
@@ -39,6 +44,13 @@ export function agentToolRegistry(server: McpServer, dispatch: McpDispatch) {
           && policy.enabledEntryIds.includes(entry.id)
           && entry.requiredCapabilities.every((id) => policy.enabledCapabilityIds.includes(id)) };
       });
+    },
+    /**
+     * Lists and runs only `names` (a personal run's exact tools, F-022 "Agent connection and permissions");
+     * every other registered tool is disabled for this request's server, so it is neither listed nor called.
+     */
+    restrictTo(names: ReadonlySet<string>) {
+      for (const [name, handle] of handles) if (!names.has(name)) handle.disable();
     },
     verifyManifest() {
       const declared = AGENT_MCP_ENTRIES.filter((entry) => entry.kind === 'tool').map((entry) => entry.name).sort();

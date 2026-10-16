@@ -9,7 +9,8 @@ import { Button, Icon, useMediaQuery } from '../ui';
 import { LinkPicker, type PickedRef } from '../docs/LinkPicker';
 import { docUrl, getDoc } from '../docs/api';
 import { STATE_LABEL } from '../docs/format';
-import { WikiBar } from '../docs/WikiParts';
+import { EditBar } from '../docs/PageBars';
+import { useWiki } from '../docs/wiki-context';
 import { SharedWiki } from './wiki';
 import { decode64 } from './wire';
 import './editing.css';
@@ -245,6 +246,8 @@ export function LiveDocEditor({ doc, project, userId, fallback }: { doc: Doc; pr
   const comparison = useRef<HTMLTextAreaElement>(null);
   const titleId = useId();
   const reasonId = useId();
+  const formId = useId();
+  const { compact } = useWiki();
   const [legacy] = useState(() => { try { const value = JSON.parse(sessionStorage.getItem(`flux:doc-edit:${userId}:${doc.id}`) ?? 'null') as { body?: string } | null; return typeof value?.body === 'string' && value.body.length <= DOC_LIMITS.body ? value.body : null; } catch { return null; } });
   if (client?.status === 'unavailable') return fallback;
   const privateText = client?.privateBody ?? legacy;
@@ -270,11 +273,14 @@ export function LiveDocEditor({ doc, project, userId, fallback }: { doc: Doc; pr
   };
   const insert = (ref: PickedRef) => { handleRef.current?.insert(`[${ref.title.replace(/[\\[\]]/g, '\\$&')}](${docRef(ref.type, ref.id)})`); setPicker(false); };
   const busySave = busy || !!client?.pendingSave;
+  const saveDisabled = busy || !!metadataConflict || !client?.editable || (client?.pendingCount ?? 0) > 0 || !title.trim();
   // The wiki's document pane (#197): the same bar, form and save row as the private editor, with
   // the shared working copy's status in place of a private draft (#239 review).
   return <>
-    <WikiBar meta={<span className="doc-head__k">Shared working copy · last saved version {client?.head?.savedVersion ?? doc.version}</span>} />
-    <form className={`wiki-doc doc-edit${displayedMode === 'both' ? ' doc-edit--both' : ''}`} data-shift aria-labelledby={titleId} onSubmit={(event) => void save(event)} onKeyDown={(event) => {
+    <EditBar back={docUrl(project.id, doc.id)} backLabel="Back to the page" historyTo={`${docUrl(project.id, doc.id)}/history`}
+      meta={<span className="doc-head__k">Shared working copy · last saved version {client?.head?.savedVersion ?? doc.version}</span>}
+      primary={<Button type="submit" form={formId} variant="primary" className="wiki-bar__primary" data-slot="primary" icon="check" disabled={saveDisabled} aria-label={busy ? 'Saving…' : 'Save version'}><span className="wiki-bar__label">{busy ? 'Saving…' : 'Save version'}</span></Button>} />
+    <form id={formId} className={`wiki-doc doc-edit${displayedMode === 'both' ? ' doc-edit--both' : ''}`} data-shift aria-labelledby={titleId} onSubmit={(event) => void save(event)} onKeyDown={(event) => {
       if ((event.ctrlKey || event.metaKey) && (event.key.toLowerCase() === 's' || event.key === 'Enter')) { event.preventDefault(); void save(); }
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') { event.preventDefault(); setPicker(true); }
     }}>
@@ -306,7 +312,7 @@ export function LiveDocEditor({ doc, project, userId, fallback }: { doc: Doc; pr
         </div>
         <div className="doc-edit__acts">
           <Link className="ui-btn ui-btn--quiet" to={docUrl(project.id, doc.id)}>Back to doc</Link>
-          <Button type="submit" variant="primary" disabled={busy || !!metadataConflict || !client?.editable || client.pendingCount > 0 || !title.trim()}>{busy ? 'Saving…' : 'Save version'}</Button>
+          {compact ? <Button type="submit" variant="primary" disabled={saveDisabled}>{busy ? 'Saving…' : 'Save version'}</Button> : null}
         </div>
       </div>
     </form>

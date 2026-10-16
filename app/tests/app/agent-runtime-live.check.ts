@@ -3,8 +3,9 @@ import { randomUUID } from 'node:crypto';
 import { readFile, writeFile } from 'node:fs/promises';
 import WebSocket from 'ws';
 import {
-  AGENT_RUNTIME_BINDING_PATH, AGENT_RUNTIME_CONSOLE_PATH, AGENT_RUNTIME_PATH, AGENT_RUNTIME_SIGN_OUT_PATH, backgroundComputeConnectionsPath,
-  type AgentRuntimeConsoleServerMessage, type AgentRuntimeStatus,
+  AGENT_RUNTIME_BINDING_PATH, AGENT_RUNTIME_CONSOLE_PATH, AGENT_RUNTIME_PATH, AGENT_RUNTIME_SIGN_OUT_PATH, assistantRunPath, backgroundComputeConnectionsPath,
+  conversationAssistantRunsPath, PERSONAL_ASSISTANT_PATH, PERSONAL_RUNTIME_CONSENT_VERSION,
+  type AgentRuntimeConsoleServerMessage, type AgentRuntimeStatus, type AssistantRun, type PersonalAssistantStatus,
 } from '@flux/contracts';
 import { createDatabase } from '@flux/db';
 import { apiUrl, publicOrigin, signIn } from './support/http.js';
@@ -289,6 +290,34 @@ const steps: Record<string, (...args: string[]) => Promise<void>> = {
     console.log(`BINDING_STATE=${view.binding!.state}`);
   },
   /** Seeded-secret absence: the fake login's marker never reaches the database. */
+  /**
+   * T5 (#280): the owner (signed in to the fake Claude Code) turns the assistant on with Claude Code and asks
+   * in a project conversation. The real worker runs the CLI in their slot; it reads Flux through
+   * runtime-egress's /mcp forwarder with the run token, and its answer is committed for the conversation.
+   */
+  async 'runtime-run'(label) {
+    const someone = await owner(label!);
+    const ws = expectStatus(await someone.browser.request('POST', '/api/v1/workspaces', { body: { name: 'Runtime run' } }), 201) as { id: string };
+    const project = expectStatus(await someone.browser.request('POST', `/api/v1/workspaces/${ws.id}/projects`, { body: { name: 'Lamp sensor', visibility: 'workspace' } }), 201) as { id: string };
+    const thread = expectStatus(await someone.browser.request('POST', `/api/v1/projects/${project.id}/conversations`,
+      { body: { body: 'Camera fails below 5 lux', clientMessageId: randomUUID() } }), 201) as { id: string };
+    const agent = expectStatus(await someone.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`, { body: { name: 'My assistant', owner: 'self' } }), 201) as { id: string };
+    const assistant = await someone.browser.request('GET', PERSONAL_ASSISTANT_PATH);
+    assert.equal((assistant.json as PersonalAssistantStatus).setup.runtime.state, 'signed_in', 'the API sees the owner signed in to Claude Code');
+    const enabled = await someone.browser.request('POST', PERSONAL_ASSISTANT_PATH, { body: { consentVersion: PERSONAL_RUNTIME_CONSENT_VERSION, agentId: agent.id, engine: 'runtime' } });
+    assert.equal(enabled.status, 201, enabled.text);
+    const started = expectStatus(await someone.browser.request('POST', conversationAssistantRunsPath(thread.id),
+      { body: { clientRunId: randomUUID(), kind: 'ask', prompt: 'Which projects can you see?' } }), 202) as AssistantRun;
+    assert.equal(started.engine, 'runtime');
+    const run = await until('the run to end', async () => expectStatus(await someone.browser.request('GET', assistantRunPath(started.id)), 200) as AssistantRun,
+      (value) => !['queued', 'reading', 'dispatching'].includes(value.status), 120);
+    assert.equal(run.status, 'completed', JSON.stringify(run));
+    assert.match(run.answer?.body ?? '', /^Done: I read 1 things in this project\.$/);
+    const answers = expectStatus(await someone.browser.request('GET', `/api/v1/conversations/${thread.id}/assistant-answers`), 200) as { items: { runId: string }[] };
+    assert.ok(answers.items.some((item) => item.runId === run.id), 'the answer is committed for the conversation');
+    console.log(`RUN=${run.id}`);
+    console.log(`PROJECT=${project.id}`);
+  },
   async 'no-secret-in-db'(marker) {
     const { rows } = await pool.query<{ found: boolean }>(`SELECT EXISTS (SELECT 1 FROM agent_runtime_connections c WHERE c::text LIKE $1)
       OR EXISTS (SELECT 1 FROM agent_runtime_bindings b WHERE b::text LIKE $1) OR EXISTS (SELECT 1 FROM agent_runtime_slots s WHERE s::text LIKE $1) AS found`, [`%${marker}%`]);

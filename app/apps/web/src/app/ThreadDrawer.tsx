@@ -4,7 +4,7 @@ import { IconButton } from '../ui';
 import { DetentSheet } from '../ui/DetentSheet';
 import { DiscussedTask, MessageObjects } from '../work/inline';
 import type { MessageWorkPreview } from '../work/message-associations';
-import { AgentAuthor, AuthorFace, SourceCitation, clock, day, when } from './messageParts';
+import { AgentAuthor, AuthorFace, SourceCitation, MessageTime } from './messageParts';
 import { MessageContent, type PhotoActions } from '../composer/Files';
 import { LinkPreviews, MessageText } from './MessageText';
 import { useProjectShell } from '../project/data';
@@ -57,11 +57,10 @@ export function ThreadRoot({ message, projectId, body, author, agentOwner = null
   return (
     <>
       <article className={`thread__root${mine ? ' is-mine' : ''}`} id={message ? `thread-root-${message.id}` : undefined} data-message-id={message?.id} aria-label={author ? `Message from ${mine ? 'you' : author}` : 'Opening message'}>
-        {message && author ? (
+        {message && author && !mine ? (
           <div className="thread__root-meta">
             <AuthorFace kind={message.authorId === null ? 'agent' : 'human'} name={author} mine={mine} />
             <strong>{mine ? `${author} · you` : message.authorId === null ? <AgentAuthor message={message} owner={agentOwner} /> : author}</strong>
-            <time dateTime={message.createdAt} title={when(message.createdAt)}>{day(message.createdAt)} · {clock(message.createdAt)}</time>
           </div>
         ) : null}
         <MessageContent body={message?.body || !message ? <WhenNoQuestion projectId={projectId} messageId={message?.id ?? null}><p><MessageText body={body} people={people} /></p></WhenNoQuestion> : null} files={message?.files} context={message ? { author: author ?? undefined, at: message.createdAt, caption: message.body, ...photo } : undefined}>
@@ -70,6 +69,7 @@ export function ThreadRoot({ message, projectId, body, author, agentOwner = null
             : task ? <div className="ws-attach"><DiscussedTask task={task} row={taskRow} /></div> : null}
           {message?.source ? <SourceCitation materialId={message.source.materialId} version={message.source.version} onDenied={onDenied} /> : null}
         </MessageContent>
+        {message ? <MessageTime at={message.createdAt} /> : null}
         {message ? <QuestionCard projectId={projectId} messageId={message.id} meId={meId} writable={writable} /> : null}
       </article>
       <p className="thread__hint">{replies ? `${replies} ${replies === 1 ? 'reply' : 'replies'}` : writable ? 'Reply to this message. No new topic needed.' : 'No replies yet.'}</p>
