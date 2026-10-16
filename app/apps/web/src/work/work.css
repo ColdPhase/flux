@@ -381,3 +381,7 @@ button.wd-link:active:not(:disabled) { background: var(--sub); transform: scale(
   .message-bubble .ws-attach { width: 100%; }
   .message-bubble .ws-attach > .ws-chip > .ws-chip__t { white-space: normal; overflow-wrap: anywhere; }
 }
+
+/* A reference never wraps letter by letter on a phone (#501). */
+.message-bubble .ws-attach > .ws-chip > .ws-chip__t { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.message-bubble .ws-attach > .ws-chip > .ws-chip__k { white-space: nowrap; max-width: none; }

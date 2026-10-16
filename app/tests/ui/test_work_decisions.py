@@ -480,7 +480,7 @@ class WorkDecisionsJourney(unittest.TestCase):
         expect(page.locator(f"#message-{self.messages['pivot']}")).not_to_have_class(re.compile("is-mine"))
         expect(page.locator(f"#message-{self.messages['idea']}")).not_to_have_class(re.compile("is-mine"))
         # Complete names and genuine own-message identity remain visible.
-        expect(page.locator(f"#message-{self.messages['finding']}")).to_contain_text("Kai Berg · you")
+        expect(page.locator(f"#message-{self.messages['finding']}")).to_have_attribute("aria-label", "Your message")
         expect(page.locator(f"#message-{self.messages['idea']}")).to_contain_text("Ada Lind")
         self.assert_columns(page, "desktop")
         # Hover actions never cover the author or time on either side.
@@ -488,7 +488,7 @@ class WorkDecisionsJourney(unittest.TestCase):
             message = page.locator(f"#message-{self.messages[key]}")
             message.hover()
             acts = message.locator(".msg-acts").bounding_box()
-            for part in (message.locator(".project-convo__message-meta strong"), message.locator(".project-convo__message-meta time")):
+            for part in (message.locator(".message-bubble"), message.locator(".message-time")):
                 box = part.bounding_box()
                 assert acts and box
                 apart = acts["x"] + acts["width"] <= box["x"] or box["x"] + box["width"] <= acts["x"] or acts["y"] + acts["height"] <= box["y"] or box["y"] + box["height"] <= acts["y"]

@@ -127,3 +127,22 @@
 @media (max-width: 640px) { .dm-msg__body { max-width: 92%; } }
 /* While selecting messages (#96) every row starts with its check, own messages included. */
 .dm--selecting .dm-msg.is-mine .dm-msg__row { grid-template-columns: 32px minmax(0, 1fr); }
+
+/* Shared bubble and clock, with the same author columns as project messages. */
+.dm-msg__row { grid-template-columns: 32px minmax(0, 1fr); gap: 12px; }
+.dm-msg__face .ui-avatar { width: 32px; height: 32px; }
+.dm-msg.is-mine .dm-msg__row { display: flex; justify-content: flex-end; }
+.dm-msg.is-mine .dm-msg__face { display: none; }
+.dm-msg__main { max-width: min(600px, 100%); }
+.dm-msg__body, .dm-msg.is-mine .dm-msg__body { padding: 0; max-width: 100%; background: none; border-radius: 0; }
+.dm-msg--cont { margin-top: 4px; }
+.dm-msg__meta { margin-bottom: 7px; }
+.dm-msg.is-arrived, .dm-msg.is-picked { box-shadow: none; border-radius: var(--r); }
+.dm-msg.is-arrived .message-bubble { background: var(--sub); }
+.dm-msg.is-picked .message-time { color: var(--t2); }
+.dm--selecting .dm-msg.is-mine .dm-msg__row { display: grid; }
+.dm__day { margin: 20px 0; }
+
+.dm-msg { margin-top: 24px; }
+.dm-msg.dm-msg--cont { margin-top: 4px; }
+.dm-msg .dm-msg__row { padding-top: 0; padding-bottom: 0; }

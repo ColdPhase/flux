@@ -264,12 +264,17 @@ export function MessageFiles({ files, context }: { files?: MessageFile[]; contex
 }
 
 /** The media comes first; its caption, file rows and native references share one message bubble, then a single photo's meta. */
+/** The one visible bubble shell for stored and queued messages on every conversation surface. */
+export function MessageBubble({ children }: { children: ReactNode }) {
+  return <div className="message-bubble">{children}</div>;
+}
+
 export function MessageContent({ files, context, body, children }: { files?: MessageFile[]; context?: PhotoContext; body?: ReactNode; children?: ReactNode }) {
   const photos = files?.filter((file) => looksLikePhoto(file.name)) ?? [];
   const others = files?.filter((file) => !looksLikePhoto(file.name));
   return <>
     {photos.length ? <PhotoGrid photos={photos} context={context} /> : null}
-    <div className="message-bubble">{body}<MessageFiles files={others} />{children}</div>
+    <MessageBubble>{body}<MessageFiles files={others} />{children}</MessageBubble>
     <PhotoMeta photos={photos} />
   </>;
 }

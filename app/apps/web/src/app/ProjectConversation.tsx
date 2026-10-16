@@ -27,7 +27,7 @@ import { AnswerItem, AskBar, ProposalCard, WorkingLine } from '../assistant/Conv
 import { askError as askErrorText, askState } from '../assistant/format';
 import { grantAgentProject } from '../agent-connection/api';
 import { agentAuthorLabel } from '../docs/format';
-import { AgentAuthor, AuthorFace, ContributionMark, OPENING_REVEAL_MS, SourceCitation, clock, day, pendingMessageRow, when } from './messageParts';
+import { AgentAuthor, AuthorFace, ContributionMark, OPENING_REVEAL_MS, SourceCitation, MessageDay, MessageTime, sameMessageAuthor, clock, day, pendingMessageRow, when } from './messageParts';
 import { agentAuthorOwner, useAgentOwners, type AgentOwners } from '../agents/owners';
 import { OneConversation, type PaneProps } from './OneConversation';
 import { ComposerHint, ComposerMenu, composerOptions, composerTrigger, type ComposerOption } from './ComposerMenu';
@@ -553,9 +553,9 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
         <section aria-label="Replies to this message" className="project-convo__messages">
           {conversation ? <>
             {olderCursor ? <Button variant="quiet" busy={olderBusy} onClick={() => void loadOlder()}>Load earlier replies</Button> : null}
-            <ol className="thread__list">{[...entries.flatMap((entry) => {
+            <ol className="thread__list">{[...entries.flatMap((entry, index) => {
               const label = day(entry.at);
-              const divider = label !== lastDay ? <li className="project-convo__day" key={`day-${entry.type === 'message' ? outbox.keyOf(entry.message.id) : entry.key}`}><span>{label}</span></li> : null;
+              const divider = label !== lastDay ? <MessageDay key={`day-${entry.type === 'message' ? outbox.keyOf(entry.message.id) : entry.key}`} label={label} /> : null;
               lastDay = label;
               if (entry.type === 'answer') {
                 const answer = entry.answer;
@@ -572,15 +572,21 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
                   onAskAbout={writable ? () => { setAsking(true); document.getElementById(composerId)?.focus(); } : null} />];
               }
               const message = entry.message;
+              const previous = entries[index - 1], next = entries[index + 1];
+              const continued = previous?.type === 'message' && sameMessageAuthor(previous.message, message);
+              const nextMessage = next?.type === 'message' ? next.message : !next && outbox.pending[0] ? { authorId: me.user.id, createdAt: outbox.pending[0].at } : undefined;
+              const groupLast = !sameMessageAuthor(message, nextMessage);
               // A reply confirmed from its queued message keeps that list item: it does not move or arrive twice (#264).
-              return [divider, <ThreadReply key={outbox.keyOf(message.id)} message={message} mine={message.authorId === me.user.id} meId={me.user.id} arrived={arrived === message.id} name={messageAuthor(message)}
+              return [divider, <ThreadReply key={outbox.keyOf(message.id)} continued={continued} groupLast={groupLast} message={message} mine={message.authorId === me.user.id} meId={me.user.id} arrived={arrived === message.id} name={messageAuthor(message)}
                 project={project} owners={owners} people={people} preview={messageWork.previews?.get(message.id) ?? null} makeWork={makeWork} writable={writable}
                 onOpenResult={(resultId) => openDetails({ kind: 'result', id: resultId })} onDenied={hideIfDenied} />];
-            }), ...outbox.pending.flatMap((item) => {
+            }), ...outbox.pending.flatMap((item, index) => {
               const label = day(item.at);
-              const divider = label !== lastDay ? <li className="project-convo__day" key={`day-pending-${item.id}`}><span>{label}</span></li> : null;
+              const divider = label !== lastDay ? <MessageDay key={`day-pending-${item.id}`} label={label} /> : null;
               lastDay = label;
-              return [divider, <ThreadReply key={`pending-${item.id}`} pending={item} name={me.user.name} onRetry={() => publicComposer.retry(item.id)} onRemove={() => publicComposer.remove(item.id)} />];
+              const previous = index ? { authorId: me.user.id, createdAt: outbox.pending[index - 1]!.at } : entries.at(-1)?.type === 'message' ? messages.at(-1) : undefined;
+              const continued = sameMessageAuthor(previous, { authorId: me.user.id, createdAt: item.at });
+              return [divider, <ThreadReply key={`pending-${item.id}`} continued={continued} pending={item} name={me.user.name} onRetry={() => publicComposer.retry(item.id)} onRemove={() => publicComposer.remove(item.id)} />];
             })]}
             {assistant.run ? <WorkingLine key={assistant.run.id} run={assistant.run} onStop={assistant.stop} onRetry={() => assistant.retry(assistant.run!.id)} onDismiss={assistant.dismissRun} /> : null}
             </ol>
@@ -626,11 +632,12 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
 
 /** One reply of the open thread: the message with its actions (hover, swipe, long press) and what was made from it. */
 type ThreadReplyProps = {
+  continued?: boolean; groupLast?: boolean;
   message: ConversationMessage; mine: boolean; meId: string; arrived: boolean; name: string; project: Project; owners: AgentOwners; people: ProjectPerson[] | null;
   preview: MessageWorkPreview | null; makeWork: ReturnType<typeof useCreateWorkFromMessage>; writable: boolean;
   onOpenResult: (resultId: string) => void; onDenied: (cause: unknown) => void;
 };
-type QueuedReplyProps = { pending: PendingSend; name: string; onRetry: () => void; onRemove: () => void };
+type QueuedReplyProps = { continued?: boolean; pending: PendingSend; name: string; onRetry: () => void; onRemove: () => void };
 
 /**
  * One reply of the open thread, or the person's queued reply that becomes it: one component and one list
@@ -648,13 +655,13 @@ function ThreadReply(props: ThreadReplyProps | QueuedReplyProps) {
   const touch = useTouchActions(actions);
   if (!stored || !message || !actions) {
     const queued = props as QueuedReplyProps;
-    return pendingMessageRow({ place: 'thread', keyed: false, item: queued.pending, name: queued.name, onRetry: queued.onRetry, onRemove: queued.onRemove });
+    return pendingMessageRow({ place: 'thread', continued: queued.continued, keyed: false, item: queued.pending, name: queued.name, onRetry: queued.onRetry, onRemove: queued.onRemove });
   }
   const { mine, meId, arrived, name, project, owners, people, preview, writable, onOpenResult, onDenied } = stored;
   return (
-    <li {...touch.props} id={`message-${message.id}`} data-message-id={message.id} tabIndex={-1} className={`project-convo__message${mine ? ' is-mine' : ''}${arrived ? ' is-arrived' : ''} ${touch.props.className}`}>
-      <AuthorFace kind={message.authorId === null ? 'agent' : 'human'} name={name} mine={mine} />
-      <div className="project-convo__message-meta"><strong>{mine ? `${name} · you` : message.authorId === null ? <AgentAuthor message={message} owner={agentAuthorOwner(message.author, owners)} /> : <Link className="project-convo__person" to={`/dm/new?workspace=${project.workspaceId}&with=${message.authorId}`} title={`Message ${name} directly`}>{name}</Link>}</strong><time dateTime={message.createdAt} title={when(message.createdAt)}>{clock(message.createdAt)}</time><span>#{message.sequence}</span></div>
+    <li {...touch.props} id={`message-${message.id}`} data-message-id={message.id} aria-label={mine ? 'Your message' : `${name}’s message`} tabIndex={-1} className={`project-convo__message${mine ? ' is-mine' : ''}${arrived ? ' is-arrived' : ''}${stored.continued ? ' is-continued' : ''} ${touch.props.className}`}>
+      {!mine && !stored.continued ? <AuthorFace kind={message.authorId === null ? 'agent' : 'human'} name={name} mine={mine} /> : null}
+      {!mine && !stored.continued ? <div className="project-convo__message-meta"><strong>{mine ? `${name} · you` : message.authorId === null ? <AgentAuthor message={message} owner={agentAuthorOwner(message.author, owners)} /> : <Link className="project-convo__person" to={`/dm/new?workspace=${project.workspaceId}&with=${message.authorId}`} title={`Message ${name} directly`}>{name}</Link>}</strong></div> : null}
       <MessageContent body={message.body ? <WhenNoQuestion projectId={project.id} messageId={message.id}><p><MessageText body={message.body} people={people} /></p></WhenNoQuestion> : null} files={message.files} context={{ author: name, at: message.createdAt, caption: message.body, place: project.name, onReply: writable ? actions.onReply : undefined, onCreateTask: writable ? actions.onCreateWork : undefined }}>
         <LinkPreviews body={message.body} />
         <MessageObjects message={message} projectId={project.id} preview={preview} />
@@ -662,6 +669,7 @@ function ThreadReply(props: ThreadReplyProps | QueuedReplyProps) {
       </MessageContent>
       <QuestionCard projectId={project.id} messageId={message.id} meId={meId} writable={writable} />
       {message.contribution ? <ContributionMark contribution={message.contribution} onOpenResult={onOpenResult} /> : null}
+      {stored.groupLast !== false ? <MessageTime at={message.createdAt} /> : null}
       <MessageActions {...actions} />
       {touch.node}
     </li>

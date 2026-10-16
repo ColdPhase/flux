@@ -18,7 +18,7 @@ import uuid
 
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
-from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, box, open_details, shot, start_forwarder
+from test_app_shell import DESKTOP, ORIGIN, PHONE, UI_BROWSER, UPSTREAM, box, open_details, shot, start_forwarder
 
 PASSWORD = "messages between friends"
 STAMP = int(time.time() * 1000)
@@ -45,7 +45,7 @@ class DirectMessageJourney(unittest.TestCase):
         if UPSTREAM:
             start_forwarder(ORIGIN, UPSTREAM)
         cls.pw = sync_playwright().start()
-        cls.browser = cls.pw.chromium.launch()
+        cls.browser = getattr(cls.pw, UI_BROWSER).launch()
         expect.set_options(timeout=10000)
         # Accounts and the shared workspace come from the public API, as a person's browser would.
         for key, (name, email) in PEOPLE.items():
@@ -317,10 +317,13 @@ class DirectMessageJourney(unittest.TestCase):
         post = lambda page, path, body: page.request.post(path, data=body, headers={"origin": ORIGIN})  # noqa: E731
         lee = self.page("lee")
         lee.goto("/")
+        # WebKit reports a read cancelled by the next navigation as a page error: let each view's reads finish first.
+        lee.wait_for_load_state("networkidle")
         said = post(lee, f"/api/v1/projects/{self.project_id}/conversations", {"body": "Housing printed; it fits the sensor.", "clientMessageId": str(uuid.uuid4())})
         self.assertEqual(said.status, 201, said.text())
         ada = self.page("ada")
         ada.goto("/")
+        ada.wait_for_load_state("networkidle")
         opened = post(ada, f"/api/v1/workspaces/{self.workspace_id}/dms", {"participantIds": [self.ids["lee"]]})
         self.assertIn(opened.status, (200, 201), opened.text())
         pair_id = opened.json()["id"]
@@ -337,6 +340,7 @@ class DirectMessageJourney(unittest.TestCase):
         self.assertNotIn(pair_id, ada.url)
 
         # The existing 1:1 stays readable for Ada, with a quiet notice and sending disabled.
+        ada.wait_for_load_state("networkidle")
         ada.goto(f"/dm/{pair_id}")
         expect(ada.get_by_text("Thanks for the housing!")).to_be_visible()
         expect(ada.locator(".dm__notice")).to_have_text("Lee left this conversation. They can reopen it by messaging you.")

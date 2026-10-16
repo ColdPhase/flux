@@ -16,6 +16,8 @@ import { useShellActions } from '../app/shellContext';
 import { Avatar, Button, Icon, MEDIA, sendsOnEnter, useMediaQuery, useToast } from '../ui';
 import { audienceLine, dmTitle, othersIn } from './names';
 import { pageBackTo } from '../app/seekMessage';
+import { MessageContent } from '../composer/Files';
+import { MessageDay, MessageTime, clock, day } from '../app/messageParts';
 import './dm.css';
 
 /**
@@ -57,24 +59,12 @@ function merge(current: HumanConversationMessage[], incoming: HumanConversationM
   return [...byId.values()].sort((a, b) => a.sequence - b.sequence);
 }
 
-const time = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' });
-const day = new Intl.DateTimeFormat(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
-function dayLabel(iso: string) {
-  const date = new Date(iso);
-  const today = new Date();
-  const yesterday = new Date(); yesterday.setDate(today.getDate() - 1);
-  if (date.toDateString() === today.toDateString()) return 'Today';
-  if (date.toDateString() === yesterday.toDateString()) return 'Yesterday';
-  return day.format(date);
-}
-
 function DmContent({ initial }: { initial: Dm }) {
   // Touch devices add a line with Enter and send with the button (#189).
   const touch = useMediaQuery(MEDIA.touch);
   const { me } = useShellData();
   const revalidator = useRevalidator();
   const audienceId = useId();
-  const hintId = useId();
   const [dm, setDm] = useState(initial);
   const [messages, setMessages] = useState(initial.messages);
   const [people, setPeople] = useState(() => new Map(initial.people.map((p) => [p.id, p])));
@@ -287,9 +277,10 @@ function DmContent({ initial }: { initial: Dm }) {
     ...outbox.pending.map((item) => ({ kind: 'pending' as const, item, authorId: me.user.id, at: item.at }))];
   const rows = lines.map((line, index) => {
     const previous = lines[index - 1];
-    const label = dayLabel(line.at);
-    const newDay = !previous || dayLabel(previous.at) !== label;
-    return { line, label, newDay, continued: !newDay && previous?.authorId === line.authorId };
+    const label = day(line.at);
+    const newDay = !previous || day(previous.at) !== label;
+    const next = lines[index + 1];
+    return { line, label, newDay, continued: !newDay && previous?.authorId === line.authorId, groupLast: !next || next.authorId !== line.authorId || day(next.at) !== label };
   });
   return (
     <div className={`dm${selecting ? ' dm--selecting' : ''}`} data-dm-id={dm.id}
@@ -312,18 +303,18 @@ function DmContent({ initial }: { initial: Dm }) {
           {olderCursor ? <div className="dm__older"><Button variant="quiet" busy={olderBusy} onClick={() => void loadOlder()}>Show earlier messages</Button></div> : null}
           {rows.length ? (
             <ol className="dm__list" aria-label="Messages">
-              {rows.map(({ line, label, newDay, continued }) => {
+              {rows.map(({ line, label, newDay, continued, groupLast }) => {
                 if (line.kind === 'pending') {
                   const { item } = line;
                   return (
                     <li key={`pending-${item.id}`} id={`pending-${item.id}`} data-client-message-id={item.id} data-send-state={item.state}
                       className={`dm-msg is-mine is-pending${continued ? ' dm-msg--cont' : ''}${item.state === 'failed' ? ' is-failed-send' : ''}`}>
-                      {newDay ? <p className="dm__day"><span>{label}</span></p> : null}
+                      {newDay ? <MessageDay as="p" label={label} /> : null}
                       <div className="dm-msg__row">
-                        <span className="dm-msg__face">{continued ? null : <Avatar name={me.user.name} size="md" tone="me" />}</span>
-                        <div className="dm-msg__main">
-                          {continued ? null : <p className="dm-msg__meta"><b>You</b></p>}
-                          <p className="dm-msg__body">{item.body}</p>
+
+                        <div className="dm-msg__main is-mine">
+
+                          <MessageContent body={<p className="dm-msg__body">{item.body}</p>} />
                           <OutboxStatus item={item} onRetry={() => composer.retry(item.id)} onRemove={() => composer.remove(item.id)} />
                         </div>
                       </div>
@@ -335,20 +326,21 @@ function DmContent({ initial }: { initial: Dm }) {
                 const isPicked = selecting && picked.includes(message.id);
                 return (
                   // A message confirmed from its queued one keeps that list item: nothing moves (#264).
-                  <li key={outbox.keyOf(message.id)} id={`message-${message.id}`} tabIndex={-1} className={`dm-msg${mine ? ' is-mine' : ''}${continued ? ' dm-msg--cont' : ''}${arrived === message.id ? ' is-arrived' : ''}${isPicked ? ' is-picked' : ''}`} data-sequence={message.sequence} data-message-id={message.id}>
-                    {newDay ? <p className="dm__day"><span>{label}</span></p> : null}
+                  <li key={outbox.keyOf(message.id)} id={`message-${message.id}`} tabIndex={-1} className={`dm-msg${mine ? ' is-mine' : ''}${continued ? ' dm-msg--cont' : ''}${arrived === message.id ? ' is-arrived' : ''}${isPicked ? ' is-picked' : ''}`} data-sequence={message.sequence} data-message-id={message.id} aria-label={mine ? 'Your message' : `${nameOf(message.authorId)}’s message`}>
+                    {newDay ? <MessageDay as="p" label={label} /> : null}
                     {/* While selecting, the whole row toggles; the check is the keyboard and screen reader control. */}
                     <div className="dm-msg__row" onClick={selecting ? (event) => { if (!(event.target as HTMLElement).closest('.dm-msel')) pick(message.id); } : undefined}>
                       {selecting ? (
                         <button type="button" className="dm-msel" aria-pressed={isPicked} onClick={() => pick(message.id)}
-                          aria-label={`Select ${mine ? 'your' : `${nameOf(message.authorId)}’s`} message, ${time.format(new Date(message.createdAt))}`}>
+                          aria-label={`Select ${mine ? 'your' : `${nameOf(message.authorId)}’s`} message, ${clock(message.createdAt)}`}>
                           <i><Icon name="check" size={12} /></i>
                         </button>
                       ) : null}
-                      <span className="dm-msg__face">{continued ? null : <Avatar name={mine ? me.user.name : nameOf(message.authorId)} size="md" tone={mine ? 'me' : 'neutral'} />}</span>
-                      <div className="dm-msg__main">
-                        {continued ? null : <p className="dm-msg__meta"><b>{nameOf(message.authorId)}</b><time dateTime={message.createdAt}>{time.format(new Date(message.createdAt))}</time></p>}
-                        <p className="dm-msg__body">{message.body}</p>
+                      <span className="dm-msg__face">{continued || mine ? null : <Avatar name={mine ? me.user.name : nameOf(message.authorId)} size="lg" tone={mine ? 'me' : 'neutral'} />}</span>
+                      <div className={`dm-msg__main${mine ? ' is-mine' : ''}`}>
+                        {continued || mine ? null : <p className="dm-msg__meta"><b>{nameOf(message.authorId)}</b></p>}
+                        <MessageContent body={<p className="dm-msg__body">{message.body}</p>} />
+                        {groupLast ? <MessageTime at={message.createdAt} /> : null}
                       </div>
                     </div>
                   </li>
@@ -378,13 +370,13 @@ function DmContent({ initial }: { initial: Dm }) {
           <div className="composer__box" aria-disabled={recipientGone || undefined}>
             <label className="ui-vh" htmlFor="dm-composer">Message {title}</label>
             <textarea id="dm-composer" ref={textareaRef} rows={1} value={draft} onChange={(event) => change(event.target.value)} onBlur={typing.stop} onKeyDown={onKey}
-              disabled={recipientGone} placeholder={recipientGone ? 'Nobody else is in this conversation' : `Message ${others.length === 1 ? others[0]!.name.split(/\s+/)[0] : title}…`} aria-describedby={`${audienceId} ${hintId}`} />
+              disabled={recipientGone} placeholder={recipientGone ? 'Nobody else is in this conversation' : `Message ${others.length === 1 ? others[0]!.name.split(/\s+/)[0] : title}…`} aria-describedby={audienceId} />
             <button type="button" className="composer__send" aria-label="Send message" aria-disabled={!canSend} onClick={() => void send()}><Icon name="send" /></button>
           </div>
           <TypingNotice {...typing} />
           <SendAnnouncer pending={composer.pending} />
           {composer.error && composer.error !== goneNotice ? <p className="dm__error" role="alert"><Icon name="alert" size={13} />{composer.error}</p> : null}
-          <p className="composer__hint" id={hintId}><span className="composer__keys">Enter sends · Shift+Enter adds a line · </span>Unsent text stays in this tab</p>
+          <p hidden className="composer__hint" ><span className="composer__keys">Enter sends · Shift+Enter adds a line · </span>Unsent text stays in this tab</p>
         </div>
       </div>
     </div>

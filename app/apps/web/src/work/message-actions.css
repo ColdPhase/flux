@@ -55,3 +55,17 @@
 .msg-touch__sr:focus-visible { top: 0; right: 0; width: auto; height: 44px; padding: 0 14px; overflow: visible; clip-path: none; border-radius: 12px; background: var(--el);
   box-shadow: var(--sh-pop), inset 0 0 0 1px var(--line); font-size: var(--fs-md); color: var(--t1); z-index: 2; }
 @media (hover: none) { .project-convo__feed, .thread__feed { overflow-x: hidden; } }
+
+/* The toolbar sits beside a bubble without covering its text. */
+@media (hover: hover) {
+  .project-convo__message:has(> .msg-acts) { max-width: min(600px, calc(100% - 112px)); }
+  .project-convo__message > .msg-acts { top: 24px; left: 100%; right: auto; margin-left: 6px; }
+  .project-convo__message.is-mine > .msg-acts { left: auto; right: 100%; margin: 0 6px 0 0; }
+  .thread .project-convo__message:has(> .msg-acts) > .project-convo__message-meta { padding: 0; }
+}
+@media (hover: hover) {
+  .thread .project-convo__message:has(> .msg-acts) { max-width: calc(100% - 44px); }
+  .thread .project-convo__message:has(.message-bubble :is(.ws-chip, .wiki-card, .message-files, .link-preview, .photo-grid)) { min-width: min(344px, calc(100% - 44px)); }
+  .thread .project-convo__message.is-mine:has(.message-bubble :is(.ws-chip, .wiki-card, .message-files, .link-preview, .photo-grid)) { min-width: min(300px, calc(100% - 44px)); }
+  .thread .msg-acts { flex-direction: column; padding: 2px; }
+}

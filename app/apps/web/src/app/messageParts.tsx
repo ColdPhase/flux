@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router';
 import type { ConversationMessage } from '@flux/contracts';
-import { AgentIdentity, Avatar, Icon } from '../ui';
+import { AgentIdentity, Icon } from '../ui';
 import type { PendingSend } from '../composer/draft';
 import { OutboxStatus, PendingFiles, PendingSource } from '../composer/Outbox';
 import { getMaterialVersion } from './conversation-api';
@@ -94,8 +94,8 @@ export function AgentAuthor({ message, owner }: { message: Extract<ConversationM
  * the stream or thread, shaped like the stored message that replaces it. It is a plain list item (not
  * a component of its own), so the stored message with the same key reuses it and nothing is redrawn.
  */
-export function pendingMessageRow({ item, name, place, keyed = true, onRetry, onRemove }: {
-  item: PendingSend; name: string; place: 'stream' | 'thread';
+export function pendingMessageRow({ item, place, continued = false, keyed = true, onRetry, onRemove }: {
+  item: PendingSend; name: string; place: 'stream' | 'thread'; continued?: boolean;
   /** False when a component returns it: its key then sits on that component, as on the stored message's. */
   keyed?: boolean; onRetry: () => void; onRemove: () => void;
 }) {
@@ -105,12 +105,26 @@ export function pendingMessageRow({ item, name, place, keyed = true, onRetry, on
   const status = <OutboxStatus inline={inMeta} item={item} onRetry={onRetry} onRemove={onRemove} />;
   return (
     <li key={keyed ? `pending-${item.id}` : undefined} id={`pending-${item.id}`} data-client-message-id={item.id} data-send-state={item.state}
-      className={`project-convo__message is-mine is-pending is-pending-${place}${item.state === 'failed' ? ' is-failed-send' : ''}`}>
-      <Avatar name={name} size="lg" tone="me" />
-      <div className="project-convo__message-meta"><strong>{name} · you</strong>{inMeta ? status : null}</div>
+      className={`project-convo__message is-mine is-pending is-pending-${place}${continued ? ' is-continued' : ''}${item.state === 'failed' ? ' is-failed-send' : ''}`}>
+
+      {inMeta ? status : null}
       <PendingFiles body={item.body ? <p>{item.body}</p> : null} files={item.files} send={{ state: item.state, onRetry }} />
       <PendingSource item={item} className="project-convo__source" />
       {inMeta ? null : status}
     </li>
   );
+}
+
+/** Shared author-run boundaries across stream, thread and private conversation. */
+export function sameMessageAuthor(a: { authorId: string | null; createdAt: string; author?: { id?: string } } | undefined, b: { authorId: string | null; createdAt: string; author?: { id?: string } } | undefined) {
+  return !!a && !!b && (a.authorId ?? a.author?.id) === (b.authorId ?? b.author?.id)
+    && new Date(a.createdAt).toDateString() === new Date(b.createdAt).toDateString();
+}
+
+export function MessageTime({ at }: { at: string }) {
+  return <div className="message-time"><time dateTime={at} title={when(at)}>{clock(at)}</time></div>;
+}
+
+export function MessageDay({ label, as: Tag = 'li' }: { label: string; as?: 'li' | 'p' }) {
+  return <Tag className="message-day project-convo__day"><span>{label}</span></Tag>;
 }

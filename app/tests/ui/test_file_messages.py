@@ -13,7 +13,6 @@ import os
 import re
 import struct
 import time
-import re
 import unittest
 import uuid
 import zlib
@@ -21,6 +20,7 @@ from urllib.parse import urlparse
 
 from playwright.sync_api import Browser, Page, expect, sync_playwright
 
+from contrast import MEASURE
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, start_forwarder
 
 UI_BROWSER = os.environ.get("FLUX_UI_BROWSER", "chromium")
@@ -202,6 +202,7 @@ class FilesReferencesPhotos(unittest.TestCase):
             cls.ids[f"conversation:{started['messages'][0]['id']}"] = started["messages"][0]["conversationId"]
             return started["messages"][0]["id"]
 
+        cls.ids["plain"] = root("jonas", "The probes can wait until the rain stops.", [])
         cls.ids["files"] = root("jonas", "Drawing and range readings from Saturday, see #8 and ask @Ada: https://www.thethingsnetwork.org/docs/gateways/placement-guide/",
                                 [("probe-v2-drawing.pdf", PDF), ("lora-range-far-beds.csv", CSV), ("voice-note.m4a", VOICE)])
         cls.ids["two"] = root("jonas", "Sensor 3 is in, far east bed", [("IMG_2041.png", FIELD), ("IMG_2042.png", BOARD)])
@@ -229,6 +230,12 @@ class FilesReferencesPhotos(unittest.TestCase):
     def tearDownClass(cls) -> None:
         cls.browser.close()
         cls.pw.stop()
+
+    @staticmethod
+    def leave_quietly(page: Page, path: str) -> None:
+        """Let the current view's reads finish, then load the next document: WebKit reports a read cancelled by a navigation as a page error."""
+        page.wait_for_load_state("networkidle")
+        page.goto(path)
 
     def page(self, who: str = "ada", phone: bool = False, dark: bool = False, path: str | None = None) -> Page:
         options: dict = {"base_url": ORIGIN, "locale": "en-GB", "timezone_id": "Europe/Warsaw", "storage_state": self.states[who],
@@ -266,8 +273,10 @@ class FilesReferencesPhotos(unittest.TestCase):
         expect(caption).to_be_visible()
         # Both reading order and geometry matter: CSS-only reordering is insufficient.
         self.assertTrue(grid.evaluate("(media, caption) => !!(media.compareDocumentPosition(caption) & Node.DOCUMENT_POSITION_FOLLOWING)", caption.element_handle()), "caption follows the media in document order")
-        photo_box, caption_box = grid.bounding_box(), caption.bounding_box()
-        self.assertGreaterEqual(caption_box["y"], photo_box["y"] + photo_box["height"] - 0.001, "descriptive caption is below the complete photo/grid")
+        # Both boxes are read in one task, once the photos have loaded: two separate reads straddle a late layout shift.
+        grid.evaluate("media => Promise.all([...media.querySelectorAll('img')].map(image => image.complete ? undefined : image.decode().catch(() => undefined)))")
+        below = """([media, caption]) => caption.getBoundingClientRect().top >= media.getBoundingClientRect().bottom - 0.001"""
+        grid.page.wait_for_function(below, arg=[grid.element_handle(), caption.element_handle()])
 
     def assert_grid_aligned(self, scope) -> None:
         """The photo and its caption share one edge (F-026 AC-3: one group): the left edge for others' messages,
@@ -535,6 +544,55 @@ class FilesReferencesPhotos(unittest.TestCase):
                 expect(viewer).to_have_count(0)
                 self.assertEqual(urlparse(page.url).path, f"/projects/{self.ids['project']}", "the stream stays where it is")
 
+    def test_narrow_media_widths_and_viewport_bounds(self) -> None:
+        for width in (320, 375, 390):
+            for dark in (False, True):
+                for who in ("jonas", "ada"):
+                    with self.subTest(width=width, dark=dark, who=who):
+                        page = self.page(who, phone=True, dark=dark)
+                        page.set_viewport_size({"width": width, "height": 844})
+                        for surface, path, cases in (
+                            ("project", f"/projects/{self.ids['project']}", (
+                                (f"#message-{self.ids['files']}", ".message-bubble"),
+                                (f"#message-{self.ids['two']}", ".photo-grid"),
+                                (f"#message-{self.ids['photo-only']}", ".photo-grid"),
+                            )),
+                            ("thread", f"/projects/{self.ids['project']}/conversations/{self.ids['conversation:' + self.ids['files']]}", (
+                                (".thread__root", ".message-bubble"),
+                                (f"#message-{self.ids['photo-reply']}", ".photo-grid"),
+                                (f"#message-{self.ids['photo-reply']}", ".message-bubble"),
+                            )),
+                        ):
+                            page.goto(path)
+                            for selector, child in cases:
+                                row = page.locator(selector)
+                                row.scroll_into_view_if_needed()
+                                target = row.locator(f":scope > {child}")
+                                expect(target).to_be_visible()
+                                target.evaluate("""async element => {
+                                  await document.fonts.ready;
+                                  for (let node=element; node; node=node.parentElement)
+                                    await Promise.all(node.getAnimations().filter(animation => animation.effect.getTiming().iterations !== Infinity)
+                                      .map(animation => animation.finished.catch(() => {})));
+                                }""")
+                                geometry = target.evaluate("""element => {
+                                  const box=element.getBoundingClientRect(), parent=element.parentElement,
+                                    style=getComputedStyle(parent);
+                                  return {width:box.width, available:parent.clientWidth-parseFloat(style.paddingLeft)-parseFloat(style.paddingRight)};
+                                }""")
+                                self.assertGreaterEqual(geometry["width"], min(300, geometry["available"]) - 1, (selector, child, geometry))
+                                bounds = row.evaluate("""element => [element, ...element.querySelectorAll('.message-bubble,.photo-grid,.ws-chip,.file-row,.link-preview,.photo-meta')]
+                                  .filter(item => item.getClientRects().length).map(item => {
+                                    const box=item.getBoundingClientRect(); return {kind:item.className,left:box.left,right:box.right};
+                                  })""")
+                                for box in bounds:
+                                    self.assertGreaterEqual(box["left"], -1, box)
+                                    self.assertLessEqual(box["right"], width + 1, box)
+                                self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), width)
+                            if who == "jonas" and SHOTS:
+                                page.screenshot(path=os.path.join(SHOTS, f"spokoj-media-{surface}-{width}-{'dark' if dark else 'light'}-{UI_BROWSER}.png"))
+                        page.context.close()
+
     def test_native_references_share_root_and_reply_bubbles(self) -> None:
         for phone in (False, True):
             for dark in (False, True):
@@ -579,6 +637,63 @@ class FilesReferencesPhotos(unittest.TestCase):
                     card = reply.locator(f'.ws-chip[data-work-id="{self.ids["reply-task"]}"]').bounding_box()
                     self.assertGreaterEqual(bubble["width"], grid["width"] - 1, "the caption bubble is as wide as the photo")
                     self.assertGreaterEqual(card["width"], bubble["width"] - 26 - 1, "the task card fills its bubble")
+
+    def test_spokoj_own_file_link_and_thread_root_contrast(self) -> None:
+        for dark in (False, True):
+            for phone in (False, True):
+                with self.subTest(dark=dark, phone=phone):
+                    page = self.page("jonas", dark=dark, phone=phone)
+                    for path, root_selector in (
+                        (f"/projects/{self.ids['project']}", f"#message-{self.ids['files']}"),
+                        (f"/projects/{self.ids['project']}/conversations/{self.ids['conversation:' + self.ids['files']]}", ".thread__root"),
+                    ):
+                        self.leave_quietly(page, path)
+                        row = page.locator(root_selector)
+                        row.scroll_into_view_if_needed()
+                        expect(row.locator(".link-preview")).to_be_visible()
+                        for part in (".file-row__name", ".file-row__text small", ".link-preview strong", ".link-preview__site"):
+                            selector = f"{root_selector} {part}"
+                            expect(page.locator(selector).first).to_be_visible()
+                            page.wait_for_function("""selector => {
+                              const target = document.querySelector(selector);
+                              if (!target) return false;
+                              for (let node=target; node; node=node.parentElement)
+                                if (Number(getComputedStyle(node).opacity) !== 1) return false;
+                              return true;
+                            }""", arg=selector)
+                            value = page.evaluate(MEASURE, {"selector": selector})
+                            self.assertGreaterEqual(value["ratio"], 4.5, (dark, phone, selector, value))
+                    # A plain own thread root also has the shared filled shell, not the former unframed text.
+                    self.leave_quietly(page, f"/projects/{self.ids['project']}/conversations/{self.ids['conversation:' + self.ids['plain']]}")
+                    bubble = page.locator(".thread__root > .message-bubble")
+                    expect(bubble).to_be_visible()
+                    style = bubble.evaluate("""e => { const s=getComputedStyle(e), p=document.createElement('i');
+                      p.style.background='var(--own)'; document.body.append(p); const own=getComputedStyle(p).backgroundColor; p.remove();
+                      return {fill:s.backgroundColor, own, padding:parseFloat(s.paddingLeft), radius:parseFloat(s.borderTopLeftRadius)}; }""")
+                    self.assertEqual(style["fill"], style["own"], style)
+                    self.assertGreater(style["padding"], 0, style)
+                    self.assertGreater(style["radius"], 0, style)
+                    # Photo filename/size is a plain metadata line, not another own-message bubble.
+                    for path, selector in (
+                        (f"/projects/{self.ids['project']}", f"#message-{self.ids['photo-only']} > .photo-meta"),
+                        (f"/projects/{self.ids['project']}/conversations/{self.ids['conversation:' + self.ids['files']]}", f"#message-{self.ids['photo-reply']} > .photo-meta"),
+                    ):
+                        self.leave_quietly(page, path)
+                        metadata = page.locator(selector)
+                        metadata.scroll_into_view_if_needed()
+                        expect(metadata).to_be_visible()
+                        appearance = metadata.evaluate("""element => {
+                          const style=getComputedStyle(element), probe=document.createElement('i');
+                          probe.style.color='var(--t3)'; document.body.append(probe);
+                          const colour=getComputedStyle(probe).color; probe.remove();
+                          return {image:style.backgroundImage,background:style.backgroundColor,shadow:style.boxShadow,
+                            padding:parseFloat(style.paddingLeft)+parseFloat(style.paddingRight), colour:style.color, expected:colour};
+                        }""")
+                        self.assertEqual(appearance["image"], "none", appearance)
+                        self.assertEqual(appearance["background"], "rgba(0, 0, 0, 0)", appearance)
+                        self.assertEqual(appearance["shadow"], "none", appearance)
+                        self.assertEqual(appearance["padding"], 0, appearance)
+                        self.assertEqual(appearance["colour"], appearance["expected"], appearance)
 
     def test_composer_thumbnails_drop_and_photo_states(self) -> None:
         for phone in (False, True):
