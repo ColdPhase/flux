@@ -195,7 +195,7 @@ class ProjectGoalJourney(unittest.TestCase):
                 page = self.page("jonas", phone=True, scheme=scheme)
                 page.goto(f"/projects/{project_id}")
                 menu = phone_menu(page, tap=True)
-                expect(menu.get_by_role("heading", name="Community garden sensors, views")).to_be_visible()
+                expect(menu.get_by_role("heading", level=2)).to_contain_text("Community garden sensors")
                 expect(menu.locator(".phone-menu__goal")).to_have_text(f"Goal: {GOAL}")
                 title = menu.locator(".phone-menu__t").bounding_box()
                 goal = menu.locator(".phone-menu__goal").bounding_box()

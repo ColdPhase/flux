@@ -4,7 +4,7 @@ import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
 
 /**
- * Drizzle rows for a project's goals (#520, migration 0098). They satisfy the `ProjectGoalRepository`
+ * Drizzle rows for a project's goals (#520, migration 0099). They satisfy the `ProjectGoalRepository`
  * port of `packages/core/src/project-goals/ports.ts` structurally and make no access decisions: the
  * core use cases authorize first. Names come from the accounts, "Former member" when one is gone.
  */

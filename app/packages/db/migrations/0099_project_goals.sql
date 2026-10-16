@@ -1,3 +1,4 @@
+-- 0099 (0098 is reserved by #530 agent thread erasure, which merges first).
 -- A project's optional shared goal (#520, F-028, docs/product/project-goals.md): one sentence the
 -- team may set, marked reached by a person, never inferred from tasks, PRs or agents. A project has
 -- at most one current (unreached) goal; reached rows stay as its history, so an ongoing project can

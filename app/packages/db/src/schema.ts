@@ -424,7 +424,7 @@ export const projects = pgTable('projects', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [unique().on(table.workspaceId, table.id)]);
 
-/** A project's optional goal (#520, migration 0098): at most one unreached row per project; reached rows are its history. */
+/** A project's optional goal (#520, migration 0099): at most one unreached row per project; reached rows are its history. */
 export const projectGoals = pgTable('project_goals', {
   id: uuid('id').primaryKey(),
   workspaceId: uuid('workspace_id').notNull(),

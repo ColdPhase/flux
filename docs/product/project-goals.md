@@ -60,7 +60,7 @@ content. No confetti.
 
 ## Data and contract
 
-- Table `project_goals` (migration 0098): `id`, `workspace_id`, `project_id`, `title`, `set_by`,
+- Table `project_goals` (migration 0099; 0098 is #530's): `id`, `workspace_id`, `project_id`, `title`, `set_by`,
   `set_at`, `reached_at`, `reached_by`. At most one row with `reached_at IS NULL` per project.
 - `Project.goal` (`@flux/contracts`): the current goal, or the most recently reached one while no
   goal is current; `null` for a project that never had one.

@@ -432,7 +432,7 @@ class SmallMomentsJourney(unittest.TestCase):
         page.locator(".convo-goal--card").get_by_role("button", name="Write a wrap-up").click()
         expect(page).to_have_url(re.compile(rf"/projects/{project_id}/docs/new$"))
         expect(page.get_by_label("Title")).to_have_value("Wrap-up: Every probe survives the winter")
-        self.assertEqual(json.loads(page.request.get(f"{ORIGIN}/api/v1/projects/{project_id}/docs").text()), [], "a draft until the person saves it")
+        self.assertEqual(json.loads(page.request.get(f"{ORIGIN}/api/v1/projects/{project_id}/docs").text())["total"], 0, "a draft until the person saves it")
         self.assertEqual(page.evaluate(f"localStorage.getItem('flux.goal.{goal_id}')"), "1")
         page.go_back()
         expect(page.locator(".convo-goal__line")).to_contain_text("Goal reached · Every probe survives the winter")
