@@ -70,8 +70,9 @@ test('actual canonical sign-in and runtime-auth SQL refuse individually and mixe
   }
 });
 
-test('a ledger 94/95 database with runtime binding and connection rows upgrades through sign-in 0096 and runtime-auth 0097', { timeout: 120_000 }, async () => {
-  const fixture = await fixtureDatabase(await manifestBefore(96));
+// manifestBefore(95) is a ledger 94 database and manifestBefore(96) a ledger 95 one.
+for (const first of [95, 96]) test(`a ledger ${first - 1} database with runtime binding and connection rows upgrades through sign-in 0096 and runtime-auth 0097`, { timeout: 120_000 }, async () => {
+  const fixture = await fixtureDatabase(await manifestBefore(first));
   const signInColumns = ['account_fingerprint', 'previous_account_label', 'account_changed_at', 'signed_out_at', 'sign_out_failed'];
   // Rows as the pre-0096 schema wrote them: the new sign-in columns are left out of the comparison.
   const connectionRows = async () => (await fixture.db.query('SELECT to_jsonb(t)::text AS row FROM agent_runtime_connections t ORDER BY id'))
@@ -144,6 +145,7 @@ test('unversioned and partial canonical/focus/Undo footprints refuse despite a n
     'ALTER TABLE project_work_items DISABLE TRIGGER task_creation_history_guard',
     'CREATE SCHEMA legacy_guard_impostor; CREATE FUNCTION legacy_guard_impostor.flux_guard_task_creation_history() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NEW; END $$; DROP TRIGGER task_creation_history_guard ON project_work_items; CREATE TRIGGER task_creation_history_guard BEFORE UPDATE ON project_work_items FOR EACH ROW EXECUTE FUNCTION legacy_guard_impostor.flux_guard_task_creation_history()',
     "CREATE OR REPLACE FUNCTION flux_guard_task_creation_receipt() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NEW; END $$",
+    'CREATE SCHEMA runtime_auth_impostor; CREATE FUNCTION runtime_auth_impostor.invalidate_runtime_auth_operations() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NEW; END $$; DROP TRIGGER agent_runtime_auth_lifecycle ON agent_runtime_bindings; CREATE TRIGGER agent_runtime_auth_lifecycle AFTER UPDATE OF state ON agent_runtime_bindings FOR EACH ROW EXECUTE FUNCTION runtime_auth_impostor.invalidate_runtime_auth_operations()',
     'ALTER TABLE agent_standing_grants DROP CONSTRAINT agent_standing_grants_operation_check; ALTER TABLE agent_standing_grants ADD CONSTRAINT agent_standing_grants_operation_check CHECK(true)',
   ];
   for (const change of changes) {
