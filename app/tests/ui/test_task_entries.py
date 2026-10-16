@@ -32,10 +32,6 @@ PEOPLE = {
 OTHER = {"ada": "jonas", "jonas": "ada"}
 
 
-def opens(title: str):
-    return re.compile(rf"^(#\d+ )?{re.escape(title)}$")
-
-
 class TaskEntries(unittest.TestCase):
     """Tests run in name order and share three accounts, one project and one sketch."""
 
@@ -50,8 +46,16 @@ class TaskEntries(unittest.TestCase):
         if UPSTREAM:
             start_forwarder(ORIGIN, UPSTREAM)
         cls.pw = sync_playwright().start()
-        cls.browser = cls.pw.chromium.launch()
-        expect.set_options(timeout=10000)
+        try:
+            cls.browser = cls.pw.chromium.launch()
+            expect.set_options(timeout=10000)
+            cls.seed()
+        except BaseException:
+            cls.tearDownClass()
+            raise
+
+    @classmethod
+    def seed(cls) -> None:
         for key, (name, email) in PEOPLE.items():
             context = cls.browser.new_context(service_workers="block", base_url=ORIGIN)
             response = context.request.post("/api/auth/sign-up/email", data={"email": email, "password": PASSWORD, "name": name}, headers={"origin": ORIGIN})
@@ -82,7 +86,8 @@ class TaskEntries(unittest.TestCase):
     def tearDownClass(cls) -> None:
         for context in cls.contexts.values():
             context.close()
-        cls.browser.close()
+        if getattr(cls, "browser", None) is not None:
+            cls.browser.close()
         cls.pw.stop()
 
     def page(self, who: str) -> Page:
@@ -150,7 +155,9 @@ class TaskEntries(unittest.TestCase):
         self.assertEqual(self.task_total(), before + 1, "the retry does not create a second task")
 
     def check_views(self, who: str, work_id: str, title: str, first_word: str, root_id: str, conversation_id: str, on_map: str | None) -> None:
-        """Conversation, Tasks, Agents (and Map when the task has a thought) show the same root."""
+        """Conversation, Tasks, Agents (and Map when the task has a thought) show the same root, author and one task each."""
+        creator = PEOPLE[who][0]
+        root_author = PEOPLE[OTHER[who]][0]
         pid = self.ids["project"]
         thread = f"/projects/{pid}/conversations/{conversation_id}"
         page = self.page(who)
@@ -158,31 +165,42 @@ class TaskEntries(unittest.TestCase):
         root = page.locator(f"#message-{root_id}")
         expect(root).to_be_visible()
         expect(root.get_by_role("button", name=f"Discussion of task: {title}")).to_be_visible()
-        expect(page.locator(f".convo-notice[data-work-id='{work_id}']")).to_have_count(1)
+        expect(root.locator(".project-convo__message-meta strong")).to_have_text(root_author)
+        notices = page.locator(f".convo-notice[data-work-id='{work_id}']")
+        expect(notices).to_have_count(1)
+        expect(notices.locator(".convo-notice__meta strong")).to_contain_text(creator.split()[0])
 
         page.goto(f"/projects/{pid}/tasks?view=board")
-        page.locator(".tb-card").filter(has_text=title).get_by_role("button", name=title, exact=True).click()
+        cards = page.locator(".tb-card").filter(has_text=title)
+        expect(cards).to_have_count(1)
+        cards.get_by_role("button", name=title, exact=True).click()
         details = page.locator("#details")
         expect(details.get_by_role("heading", name=title)).to_be_visible()
         link = details.get_by_role("region", name="Discussion").get_by_role("link")
+        expect(link).to_contain_text(root_author)
         expect(link).to_contain_text(first_word)
         expect(link).to_have_attribute("href", thread)
 
         page.goto(f"/projects/{pid}/agents?task={work_id}")
-        thread_region = page.get_by_role("region", name=re.compile(rf"^Thread of {re.escape(title)}")).first
+        thread_region = page.get_by_role("region", name=re.compile(rf"^Thread of {re.escape(title)}"))
+        expect(thread_region).to_have_count(1)
+        expect(thread_region.locator(".agents-msg", has_text=first_word)).to_contain_text(root_author)
         expect(thread_region).to_contain_text(first_word)
         expect(page.get_by_role("link", name="Open in Conversation")).to_have_attribute("href", thread)
 
         if on_map:
             page.goto(f"/projects/{pid}/map/{self.ids['sketch']}")
             badge = page.locator(f'.sk-node[data-id="{self.ids[f"thought-{who}"]}"] + .sk-work-slot .sk-work')
+            expect(badge).to_have_count(1)
             expect(badge).to_have_accessible_name(re.compile(r"^1 task linked to"))
             badge.click()
             chooser = page.get_by_role("dialog", name=self.ids[f"text-{who}"], exact=True)
-            chooser.get_by_role("link").first.click()
+            expect(chooser.get_by_role("link")).to_have_count(1)
+            chooser.get_by_role("link").click()
             details = page.locator("#details")
             expect(details.get_by_role("heading", name=title)).to_be_visible()
             link = details.get_by_role("region", name="Discussion").get_by_role("link")
+            expect(link).to_contain_text(root_author)
             expect(link).to_contain_text(first_word)
             expect(link).to_have_attribute("href", thread)
         shot(page, f"task-entry-{on_map or 'views'}-{who}")
