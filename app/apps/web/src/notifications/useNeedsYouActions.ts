@@ -5,7 +5,7 @@ import { ApiError } from '../api/client';
 import { useShellActions } from '../app/shellContext';
 import { useToast } from '../ui';
 import { updateWork } from '../work/api';
-import { announceInboxChange } from './api';
+import { announceAcceptedInboxItem, announceInboxChange } from './api';
 import type { CardHandlers, SnoozeChoice } from './NeedsYouCard';
 import { nextWeek, tomorrowMorning } from './format';
 import { ACCEPT_UNDO_MS, flushAccepts, startAccept } from './pendingAccept';
@@ -31,18 +31,21 @@ export function useNeedsYouActions(queue: Queue): CardHandlers {
 
   /** Stores the choice, shows the toast, and reverses the choice on Undo. */
   const resolve = useCallback((item: NeedsYouItem, command: ResolveNeedsYouCommand, message: string) => {
+    const current = latest.current;
     const stored = resolveNeedsYou(item.key, command).then(announceInboxChange);
-    latest.current.hide(item.key, stored);
+    const intent = current.hide(item.key, stored);
     stored.catch((error: unknown) => {
-      latest.current.show(item);
+      if (!intent.isCurrent()) return;
+      current.show(item);
       toast({ message: apiMessage(error, 'That did not work. Try again.'), tone: 'danger' });
     });
     toast({ message, action: { label: 'Undo', key: 'Z', onClick: () => {
       // Undo may come while the choice is still on its way: the DELETE follows it, and the item is pending until then.
       const restored = stored.then(() => restoreNeedsYou(item.key)).then(announceInboxChange);
-      latest.current.show(item, restored);
+      const undoIntent = current.show(item, restored);
       restored.catch(() => {
-        latest.current.reload();
+        if (!undoIntent.isCurrent()) return;
+        current.reload();
         toast({ message: 'Undo did not work. The item is back after a refresh.', tone: 'danger' });
       });
     } } });
@@ -59,22 +62,25 @@ export function useNeedsYouActions(queue: Queue): CardHandlers {
     },
 
     accept(item: NeedsYouItem) {
+      const current = latest.current;
       const decision = item.decision;
       if (!decision) return;
       // Not pending while the window is open: every read already hides a decision being accepted (acceptingIds).
       const handle = startAccept({ id: decision.id, version: decision.version }, (outcome) => {
+        // acceptingIds is cleared before this callback; remove the cached item before any fresh read lands.
+        if (outcome === 'accepted') announceAcceptedInboxItem(current.userId, item.key);
         announceInboxChange();
         if (outcome === 'accepted') return;
-        latest.current.show(item);
-        latest.current.reload();
+        current.show(item);
+        current.reload();
         toast(outcome === 'conflict'
           ? { message: 'This decision changed before it was accepted. Nothing was accepted. Open it to look again.', tone: 'danger' }
           : { message: 'Could not accept. Nothing changed. Try again.', tone: 'danger' });
       });
-      latest.current.hide(item.key);
+      current.hide(item.key);
       // Undo is offered for ACCEPT_UNDO_MS only: the toast closes with the window, so it never outlives it.
       toast({ message: 'Accepted', tone: 'success', timeout: ACCEPT_UNDO_MS, action: { label: 'Undo', key: 'Z', onClick: () => {
-        if (handle.undo()) { latest.current.show(item); return; }
+        if (handle.undo()) { current.show(item); return; }
         // It was already sent (the place was left, or the window ended): a decision is never un-accepted.
         toast({ message: 'It is already accepted. To change direction, propose a new decision.' });
       } } });
@@ -91,21 +97,24 @@ export function useNeedsYouActions(queue: Queue): CardHandlers {
     },
 
     unblock(item: NeedsYouItem) {
+      const current = latest.current;
       const blocked = item.blocked;
       if (!blocked) return;
       // Work that waits for another task starts only when that task is done, so it goes back to Open.
       const status = blocked.waitingFor ? 'open' : 'in_progress';
       const changed = updateWork({ id: blocked.workId, version: blocked.version }, { status, blocker: null }, crypto.randomUUID());
-      latest.current.hide(item.key, changed);
+      const intent = current.hide(item.key, changed);
       changed.then(announceInboxChange, (error: unknown) => {
-        latest.current.show(item);
+        if (!intent.isCurrent()) return;
+        current.show(item);
         toast({ message: apiMessage(error, 'The task could not be unblocked. Open it to look again.'), tone: 'danger' });
       });
       toast({ message: 'Blocker cleared', action: { label: 'Undo', key: 'Z', onClick: () => {
         const restored = changed.then((work) => updateWork(work, { status: 'blocked', blocker: blocked.blocker }, crypto.randomUUID())).then(announceInboxChange);
-        latest.current.show(item, restored);
+        const undoIntent = current.show(item, restored);
         restored.catch(() => {
-          latest.current.reload();
+          if (!undoIntent.isCurrent()) return;
+          current.reload();
           toast({ message: 'Undo did not work. Open the task to block it again.', tone: 'danger' });
         });
       } } });
