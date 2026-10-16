@@ -176,7 +176,9 @@ unverified until the operator deployment is exercised.
 ## Initial tools and proposal
 
 `flux_list_contexts` returns only selected, currently readable projects (at most
-50 by the connection limit), with no count of inaccessible projects. Next call
+50 by the connection limit), with no count of inaccessible projects. Each carries
+the project's optional goal (`{ title, reachedAt }` or `null`, #520); agents read
+it and no tool changes it ([project goals](../product/project-goals.md)). Next call
 `flux_list_materials` with a selected `projectId` to discover current material and
 doc IDs, titles and versions. The picker returns at most 100 rows per page
 (`limit` 1–100, default 50; `offset` 0–10000), ordered by latest update, and

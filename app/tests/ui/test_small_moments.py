@@ -1,5 +1,5 @@
 """Kreska's small moments (#352, final design F-026 §3): the splash, project loading, the empty Inbox,
-the offline line, no results, pull to refresh, goal reached and the wink in the toast.
+the offline line, no results, pull to refresh, goal reached (#520) and the wink in the toast.
 
 Real accounts and projects through the public API against the running Compose app. Each moment has its
 words; Settings → Appearance turns the face off and the words stay; reduced motion animates nothing.
@@ -12,6 +12,7 @@ import os
 import re
 import time
 import unittest
+import uuid
 
 from playwright.sync_api import Browser, Page, expect, sync_playwright
 
@@ -21,6 +22,7 @@ PASSWORD = "a quiet small moment"
 SWITCH = "Kreska in loading and empty screens"
 EMAIL = f"ada.moments+{int(time.time() * 1000)}@example.test"
 KRESKA_ANIMATIONS = "document.getAnimations().filter(a => a.effect?.target?.closest?.('.kreska, .opening, .boot, .pull, .goal')).length"
+GOAL_ANIMATIONS = "document.getAnimations().filter(a => a.effect?.target?.closest?.('.goal, .convo-goal')).length"
 
 
 class SmallMomentsJourney(unittest.TestCase):
@@ -83,6 +85,35 @@ class SmallMomentsJourney(unittest.TestCase):
 
     def me(self, page: Page) -> str:
         return json.loads(page.request.get(f"{ORIGIN}/api/v1/me").text())["user"]["id"]
+
+    def goal_change(self, page: Page, project_id: str, method: str, path: str, body: dict | None = None) -> dict:
+        """A goal change through the API (#520) with the project version the caller just read."""
+        version = json.loads(page.request.get(f"{ORIGIN}/api/v1/projects/{project_id}").text())["version"]
+        headers = {"origin": ORIGIN, "if-match": f'"{version}"'}
+        if body is not None:
+            headers["content-type"] = "application/json"
+        response = page.request.fetch(f"{ORIGIN}/api/v1/projects/{project_id}/{path}", method=method, headers=headers,
+                                      data=json.dumps(body) if body is not None else None)
+        self.assertEqual(response.status, 200, response.text())
+        return json.loads(response.text())
+
+    def reached_goal(self, page: Page, name: str, title: str) -> tuple[str, str]:
+        """A project whose agent reported in the conversation and whose person then marked the goal reached."""
+        project = self.api(page, "POST", f"/api/v1/workspaces/{self.ids['workspace']}/projects", {"name": name, "visibility": "restricted"})
+        self.api(page, "POST", f"/api/v1/projects/{project['id']}/conversations", {"body": "Sensor 6 just reported. That's all six beds.", "clientMessageId": str(uuid.uuid4())})
+        self.goal_change(page, project["id"], "PUT", "goal", {"title": title})
+        state = self.goal_change(page, project["id"], "POST", "goal/reached")
+        return project["id"], state["goal"]["id"]
+
+    def assert_goal_card_in_place(self, page: Page, card) -> None:
+        """The card is part of the stream, above the composer, and nothing covers it."""
+        expect(card).to_be_in_viewport()
+        box = card.bounding_box()
+        composer = page.get_by_role("textbox").first.bounding_box()
+        self.assertLessEqual(box["y"] + box["height"], composer["y"] + 1, "the card never covers the composer")
+        self.assertTrue(card.evaluate("node => !!node.closest('.project-convo__message-list')"), "it is a stream entry, not an overlay")
+        covered = card.evaluate("node => { const r = node.getBoundingClientRect(); const hit = document.elementFromPoint(r.left + r.width / 2, r.top + 24); return !node.contains(hit); }")
+        self.assertFalse(covered, "nothing lies over the card")
 
     def test_01_empty_inbox_is_done_with_its_words_in_both_themes_and_sizes(self) -> None:
         self.ensure_account()
@@ -332,6 +363,79 @@ class SmallMomentsJourney(unittest.TestCase):
         expect(page.get_by_text("Refreshing…")).to_be_visible()
         page.wait_for_timeout(1500)
         self.assertEqual(len(reads), 1, reads)
+
+    def test_12_goal_reached_celebrates_once_per_goal_and_device(self) -> None:
+        """#520 AC-2/AC-5/AC-6: the card at the reached point, once per goal and device, then one quiet line."""
+        self.ensure_account()
+        project_id, goal_id = self.reached_goal(self.page(), "Community garden sensors", "All six beds report moisture")
+        for phone, scheme in ((False, "light"), (True, "dark")):
+            with self.subTest(phone=phone, scheme=scheme):
+                page = self.page(phone=phone, scheme=scheme)  # a fresh device: it has not seen this goal
+                page.goto(f"/projects/{project_id}")
+                card = page.locator(".convo-goal--card")
+                expect(card).to_be_visible()
+                expect(card.locator(".kreska")).to_have_attribute("data-expression", "celebrate")
+                expect(card.get_by_role("heading", name="All six beds report moisture")).to_be_visible()
+                expect(card).to_contain_text("Community garden sensors · goal reached")
+                expect(card.get_by_role("button", name="Write a wrap-up")).to_be_visible()
+                expect(card.get_by_role("button", name="Keep going")).to_be_visible()
+                # It follows the agent's report in the stream, and never covers content; no confetti, no motion.
+                order = page.locator(".project-convo__message-list > li:not(.project-convo__day)").evaluate_all("items => items.map(item => item.className)")
+                self.assertRegex(order[-1], "convo-goal", order)
+                self.assertRegex(order[-2], "project-convo__message", order)
+                self.assert_goal_card_in_place(page, card)
+                self.assertEqual(page.evaluate(GOAL_ANIMATIONS), 0)
+                shot(page, f"520-goal-card-{'phone' if phone else 'desktop'}-{scheme}")
+                # Seen once it is on screen: it never returns for this goal on this device.
+                page.wait_for_function(f"localStorage.getItem('flux.goal.{goal_id}') === '1'")
+                if phone:
+                    card.get_by_role("button", name="Keep going").tap()
+                    expect(card).to_have_count(0)
+                page.reload()
+                line = page.locator(".convo-goal__line")
+                expect(line).to_contain_text("Goal reached · All six beds report moisture · you")
+                expect(page.locator(".convo-goal--card")).to_have_count(0)
+                expect(page.locator(".convo-goal .kreska")).to_have_count(0)
+                if phone:
+                    shot(page, f"520-goal-line-phone-{scheme}")
+
+    def test_13_with_moments_off_or_reduced_motion_the_goal_card_keeps_its_words(self) -> None:
+        """#520 AC-3/AC-4: Small moments off shows the same words with no face; reduced motion is a static frame."""
+        self.ensure_account()
+        setup = self.page()
+        for case in ("off", "reduced"):
+            with self.subTest(case=case):
+                project_id, _ = self.reached_goal(setup, f"Cargo bikes {case}", "Two shared cargo bikes by spring")
+                page = self.page(phone=True, reduced=case == "reduced")
+                if case == "off":
+                    page.add_init_script("try { localStorage.setItem('flux.kreska', 'off'); } catch (e) {}")
+                page.goto(f"/projects/{project_id}")
+                card = page.locator(".convo-goal--card")
+                expect(card.get_by_role("heading", name="Two shared cargo bikes by spring")).to_be_visible()
+                expect(card).to_contain_text(f"Cargo bikes {case} · goal reached")
+                expect(card.get_by_role("button", name="Keep going")).to_be_visible()
+                if case == "off":
+                    expect(card.locator(".kreska")).to_have_count(0)
+                    shot(page, "520-goal-card-moments-off-phone")
+                else:
+                    expect(card.locator(".kreska")).to_have_attribute("data-expression", "celebrate")
+                self.assert_goal_card_in_place(page, card)
+                self.assertEqual(page.evaluate(GOAL_ANIMATIONS), 0)
+                self.assertEqual(page.evaluate(KRESKA_ANIMATIONS), 0)
+
+    def test_14_write_a_wrap_up_starts_a_wiki_page_draft(self) -> None:
+        """#520 AC-2: Write a wrap-up opens a new Wiki page draft named after the goal; nothing is saved yet."""
+        self.ensure_account()
+        page = self.page()
+        project_id, goal_id = self.reached_goal(page, "Soil sensors wrap-up", "Every probe survives the winter")
+        page.goto(f"/projects/{project_id}")
+        page.locator(".convo-goal--card").get_by_role("button", name="Write a wrap-up").click()
+        expect(page).to_have_url(re.compile(rf"/projects/{project_id}/docs/new$"))
+        expect(page.get_by_label("Title")).to_have_value("Wrap-up: Every probe survives the winter")
+        self.assertEqual(json.loads(page.request.get(f"{ORIGIN}/api/v1/projects/{project_id}/docs").text()), [], "a draft until the person saves it")
+        self.assertEqual(page.evaluate(f"localStorage.getItem('flux.goal.{goal_id}')"), "1")
+        page.go_back()
+        expect(page.locator(".convo-goal__line")).to_contain_text("Goal reached · Every probe survives the winter")
 
 
 if __name__ == "__main__":

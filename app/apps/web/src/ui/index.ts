@@ -15,4 +15,4 @@ export { StatusGlyph, TaskState, TASK_STATE_WORD } from './StatusGlyph';
 export { SidePanel, useSidePanelMode, type SidePanelMode } from './SidePanel';
 export { BottomNav, Tabs, type BottomNavItem, type TabItem } from './Tabs';
 export { ToastProvider, useToast, useToastScope, useToastTop, type ToastAction, type ToastOptions } from './Toast';
-export { GoalReached, Mascot, Opening, PullToRefresh } from './Moments';
+export { GoalReached, Mascot, Opening, PullToRefresh, goalMomentSeen, markGoalMomentSeen } from './Moments';

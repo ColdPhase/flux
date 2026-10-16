@@ -65,6 +65,7 @@ export interface SessionSummary {
 }
 
 export * from './access.js';
+export * from './project-goals.js';
 export * from './push.js';
 export * from './conversation.js';
 export * from './files.js';

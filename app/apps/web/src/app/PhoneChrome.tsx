@@ -61,8 +61,10 @@ export interface PhoneMenuItem { id: string; label: string; to: string; icon: Ic
  * The title is the view menu: it names the project (or Home, or the conversation) and the view
  * shown, and opens the places inside it. "Details, goal and people" is the last row.
  */
-export function PhoneTitleMenu({ title, subtitle, items, onDetails, detailsLabel = 'Details, goal and people', lead, adds = [], metadataSlot }: {
+export function PhoneTitleMenu({ title, subtitle, items, onDetails, detailsLabel = 'Details, goal and people', lead, goal, adds = [], metadataSlot }: {
   title: string; subtitle: ReactNode; items: PhoneMenuItem[]; onDetails: (() => void) | null; detailsLabel?: string; lead?: ReactNode;
+  /** The project's current goal under its name, as drawn (#520, phone-viewsmenu); nothing without one. */
+  goal?: string;
   /** "Add Map", "Add Wiki", "Add Agents" for a view the project has not added yet (#351), quiet at the end. */
   adds?: { label: string; run: () => void }[];
   /** Compact view metadata such as the Wiki page count, placed inline with the phone subtitle. */
@@ -85,6 +87,7 @@ export function PhoneTitleMenu({ title, subtitle, items, onDetails, detailsLabel
       </div>
       <Overlay open={open} onClose={() => setOpen(false)} placement="center" labelledBy={`${menuId}-t`} id={menuId} className="phone-menu" initialFocus={firstRef}>
         <h2 className="phone-menu__t" id={`${menuId}-t`}>{title}<span className="ui-vh">, views</span></h2>
+        {goal ? <p className="phone-menu__goal"><span className="ui-vh">Goal: </span>{goal}</p> : null}
         <ul className="phone-menu__list">
           {items.map((item, index) => (
             <li key={item.id}>

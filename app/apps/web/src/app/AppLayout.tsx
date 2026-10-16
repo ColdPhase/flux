@@ -134,6 +134,8 @@ function AppLayoutContent() {
     }
   };
   useStreamEvents(me.user.id, (event) => {
+    // A project goal changed (#520): the open project's Details, view menu and conversation read it again.
+    if (event.objectType === 'project' && event.kind.startsWith('project.goal_') && location.pathname.startsWith(`/projects/${event.objectId}`)) { revalidator.revalidate(); return; }
     if (event.objectType !== 'dm') return;
     const known = directMessages.some((dm) => dm.id === event.objectId);
     if (!known || event.kind !== 'dm.message_sent.v1' || location.pathname === '/dm') revalidator.revalidate();
@@ -437,6 +439,7 @@ function AppLayoutContent() {
       ) : activeProject && projectViews ? (
         <><PhoneBack onBack={() => goBack('/projects')} />
           <PhoneTitleMenu title={place.title} items={projectMenu} onDetails={detailsEntry}
+            goal={project?.project.goal && !project.project.goal.reachedAt ? project.project.goal.title : undefined}
             metadataSlot={onWiki || onAgents ? setMetadataSlot : undefined}
             adds={addViewItems.map((item) => ({ label: item.label, run: item.run }))}
             subtitle={onWiki ? peopleLine(project?.people ?? null) : [PROJECT_VIEW_NAMES[Math.max(0, viewOrder(location.pathname))], peopleLine(project?.people ?? null, !onAgents)].filter(Boolean).join(' · ')} /></>

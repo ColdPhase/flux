@@ -424,6 +424,22 @@ export const projects = pgTable('projects', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [unique().on(table.workspaceId, table.id)]);
 
+/** A project's optional goal (#520, migration 0098): at most one unreached row per project; reached rows are its history. */
+export const projectGoals = pgTable('project_goals', {
+  id: uuid('id').primaryKey(),
+  workspaceId: uuid('workspace_id').notNull(),
+  projectId: uuid('project_id').notNull(),
+  title: text('title').notNull(),
+  setBy: text('set_by').notNull().references(() => authUsers.id),
+  setAt: timestamp('set_at', { withTimezone: true }).notNull().defaultNow(),
+  reachedAt: timestamp('reached_at', { withTimezone: true }),
+  reachedBy: text('reached_by').references(() => authUsers.id),
+}, (table) => [
+  foreignKey({ columns: [table.workspaceId, table.projectId], foreignColumns: [projects.workspaceId, projects.id] }).onDelete('cascade'),
+  uniqueIndex('project_goals_current_idx').on(table.projectId).where(sql`${table.reachedAt} IS NULL`),
+  index('project_goals_reached_idx').on(table.projectId, table.reachedAt.desc()).where(sql`${table.reachedAt} IS NOT NULL`),
+]);
+
 export const agents = pgTable('agents', {
   id: uuid('id').primaryKey(),
   workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),

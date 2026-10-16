@@ -135,7 +135,7 @@ export function OneConversation({ data, Pane }: { data: ProjectData; Pane: Compo
 
   const audience = audienceLine(people, me.user.id, project.visibility === 'workspace');
   const stream = (
-    <ConversationStream project={project} meId={me.user.id} meName={me.user.name} roots={roots} notices={notices} author={author}
+    <ConversationStream project={project} meId={me.user.id} meName={me.user.name} roots={roots} notices={notices} goals={data.goals} author={author}
       audience={audience} openId={thread?.id ?? null} reveal={reveal} arrived={arrived} endToken={endToken} onOpen={open} onDenied={onDenied} />
   );
   const rootMessage = root?.message ?? thread?.messages.find((message) => message.sequence === 1) ?? null;
