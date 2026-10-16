@@ -93,7 +93,7 @@ svg { flex: none; }
 .ui-icon-btn[aria-expanded="true"] { background: var(--sub); color: var(--t1); }
 
 /* Text links inside prose */
-.ui-link { color: var(--t1); text-decoration: underline; text-underline-offset: 3px; text-decoration-thickness: 1px; border-radius: 3px; font-weight: 500; transition: var(--tr); }
+.ui-link { color: var(--t1); text-decoration: underline; text-underline-offset: 3px; text-decoration-thickness: 1px; border-radius: var(--r-tag); font-weight: 500; transition: var(--tr); }
 .ui-link:hover { text-decoration-thickness: 2px; }
 
 /* ---------- Input ---------- */
@@ -138,7 +138,7 @@ svg { flex: none; }
 .ui-tabs__label::after { content: attr(data-text); height: 0; overflow: hidden; visibility: hidden; font-weight: 650; pointer-events: none; user-select: none; }
 .ui-tabs__count { font-family: var(--mono); font-size: var(--fs-xs); color: var(--t3); font-variant-numeric: tabular-nums; }
 .ui-tabs__indicator {
-  position: absolute; left: 0; bottom: 0; width: 1px; height: 2px; border-radius: 1px; background: var(--inv);
+  position: absolute; left: 0; bottom: 0; width: 1px; height: 2px; border-radius: var(--r-pill); background: var(--inv);
   transform-origin: 0 0; pointer-events: none; opacity: 0; transition: transform var(--dur-3) var(--ease-glide), opacity var(--dur-1) ease;
 }
 @media (pointer: coarse) { .ui-tabs__tab { min-height: 44px; padding: 0 12px; --tab-pad: 12px; } }
@@ -195,6 +195,7 @@ svg { flex: none; }
   position: absolute; display: flex; flex-direction: column; min-height: 0; background: var(--el);
   box-shadow: var(--sh-pop); outline: none;
 }
+.ui-overlay__surface:focus-visible { outline: 2px solid var(--t1); outline-offset: -2px; }
 .ui-overlay--left .ui-overlay__surface { left: 0; top: 0; bottom: 0; width: min(288px, 100%); }
 .ui-overlay--right .ui-overlay__surface { right: 0; top: 0; bottom: 0; width: min(420px, 100%); }
 .ui-overlay--bottom .ui-overlay__surface { inset: 0; box-shadow: none; }
@@ -218,7 +219,7 @@ svg { flex: none; }
 }
 .ui-detent-sheet[data-height="full"] { height: calc(100% - 12px); }
 .ui-grabber { position: relative; flex: none; display: grid; place-items: center; align-self: center; width: 120px; max-width: 100%; height: 44px; margin: 0 auto -16px; z-index: 1; padding: 0; touch-action: none; }
-.ui-grabber span { width: 36px; height: 5px; border-radius: 3px; background: var(--line2); transition: width var(--dur-2) ease; }
+.ui-grabber span { width: 36px; height: 5px; border-radius: var(--r-pill); background: var(--line2); transition: width var(--dur-2) ease; }
 .ui-grabber, .ui-grabber *, .ui-detent-sheet .ui-panel__head, .ui-detent-sheet .ui-panel__head *, .ui-detent-sheet .thread__head, .ui-detent-sheet .thread__head * { touch-action: none; }
 .ui-grabber:hover span { width: 44px; }
 /* The keyboard button is visually hidden; its focus ring is drawn on the visible handle. */
@@ -358,9 +359,9 @@ body:has(.phone-fab) .ui-toasts {
   background: var(--el); color: var(--t1); font-weight: 600; letter-spacing: 0;
   box-shadow: inset 0 0 0 1px var(--line), var(--sh-1);
 }
-.ui-avatar--sm { width: 20px; height: 20px; font-size: 9px; }
-.ui-avatar--md { width: 26px; height: 26px; font-size: 11px; }
-.ui-avatar--lg { width: 32px; height: 32px; font-size: 12px; }
+.ui-avatar--sm { width: 20px; height: 20px; font-size: max(.5625rem, 9px); }
+.ui-avatar--md { width: 26px; height: 26px; font-size: .6875rem; }
+.ui-avatar--lg { width: 32px; height: 32px; font-size: .75rem; }
 .ui-avatar--me { background: var(--el); color: var(--t1); }
 
 /* A looping mark pauses while hidden, off screen or under a modal (#155, motion.ts useLoopPause). */
