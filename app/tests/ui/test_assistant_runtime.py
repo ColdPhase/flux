@@ -231,6 +231,33 @@ class AssistantRuntime(unittest.TestCase):
         self.no_horizontal_scroll(page)
         shot(page, "runtime-390-light-plan-limit")
 
+    def test_06_codex_runs_use_the_chatgpt_words(self) -> None:
+        """#281 / F-027 Journey 6: on the owner's own Codex, the plan-limit and sign-in lines name ChatGPT, the ask bar the ChatGPT plan."""
+        page = self.page(phone=True)
+        stub = self.status_stub(page, enabled=True)
+        stub["setup"]["runtime"] = {"state": "signed_in", "payer": "chatgpt_plan", "accountLabel": None, "client": "codex"}
+        stub["enablement"]["consent"].update(provider="openai", model="codex", payer={"organization": "Your ChatGPT plan", "workspace": "Codex"})
+        runs = [self.run_json(id=str(uuid.uuid4()), runtimeClient="codex", status="unavailable", endReason="plan_limit",
+                              planLimitResetsAt=f"{time.strftime('%Y-%m-%dT%H:%M:%S', time.gmtime(RESET_EPOCH))}.000Z", completedAt="2026-10-16T09:01:00.000Z"),
+                self.run_json(id=str(uuid.uuid4()), runtimeClient="codex", status="unavailable", endReason="sign_in_again", completedAt="2026-10-16T09:02:00.000Z")]
+        page.route("**/api/v1/personal-assistant", lambda route: route.fulfill(status=200, content_type="application/json", body=json.dumps(stub))
+                   if route.request.method == "GET" else route.continue_())
+        page.route(re.compile(r".*/api/v1/conversations/[0-9a-f-]{36}/assistant-runs$"), lambda route: route.fulfill(
+            status=202, content_type="application/json", body=json.dumps(runs.pop(0))))
+        page.goto(f"/projects/{self.ids['project']}/conversations/{self.ids['conversation']}")
+        composer = page.locator("#thread-composer")
+        composer.fill("/ai Summarize the sensor notes")
+        expect(page.locator("#project-ask")).to_contain_text("on your ChatGPT plan")
+        page.get_by_role("button", name="Send to your assistant").tap()
+        working = page.locator(".assistant-working")
+        expect(working).to_contain_text("Paused: your ChatGPT plan’s limit is reached until 12:00.")
+        self.no_horizontal_scroll(page)
+        shot(page, "runtime-390-light-codex-plan-limit")
+        working.get_by_role("button", name="Dismiss").tap()
+        composer.fill("/ai Summarize the sensor notes")
+        page.get_by_role("button", name="Send to your assistant").tap()
+        expect(working).to_contain_text("Sign in to ChatGPT again to keep using your assistant.")
+
 
 if __name__ == "__main__":
     unittest.main()
