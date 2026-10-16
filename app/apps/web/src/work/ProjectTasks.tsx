@@ -124,8 +124,18 @@ function Toolbar({ mode, onMode, query, onQuery, mine, onMine, writable, onNew }
     onMode(next);
     requestAnimationFrame(() => radios.current?.querySelector<HTMLElement>(`[data-mode="${next}"]`)?.focus());
   };
+  // In reading order, as drawn: [Board | List] [Mine] [Search tasks] … [+ Task].
   return (
     <div className="tb-bar">
+      <div className="tb-mode" role="radiogroup" aria-label="Show tasks as" ref={radios} onKeyDown={onRadioKey}>
+        {(['board', 'list'] as const).map((value) => (
+          <button key={value} type="button" role="radio" className="tb-mode__b" data-mode={value} aria-checked={mode === value}
+            tabIndex={mode === value ? 0 : -1} onClick={() => onMode(value)}>
+            <span className="tb-mode__l">{value === 'board' ? 'Board' : 'List'}</span>
+          </button>
+        ))}
+      </div>
+      <button type="button" className="tb-mine" aria-pressed={mine} onClick={() => onMine(!mine)}><Icon name="person" size={15} /><span>Mine</span></button>
       <div className={`tb-search${query ? ' has-query' : ''}${mode === 'list' ? ' is-dimmed' : ''}`}>
         <Icon name="search" size={14} />
         <span className="tb-search__l" aria-hidden="true">Search</span>
@@ -136,18 +146,7 @@ function Toolbar({ mode, onMode, query, onQuery, mine, onMine, writable, onNew }
           onKeyDown={(event) => { if (event.key === 'Escape' && query) { event.preventDefault(); event.stopPropagation(); onQuery(''); } }} />
         {mode === 'list' ? <span className="ui-vh" id={`${searchId}-note`}>Search works on the board</span> : null}
       </div>
-      <div className="tb-bar__end">
-        <div className="tb-mode" role="radiogroup" aria-label="Show tasks as" ref={radios} onKeyDown={onRadioKey}>
-          {(['board', 'list'] as const).map((value) => (
-            <button key={value} type="button" role="radio" className="tb-mode__b" data-mode={value} aria-checked={mode === value}
-              tabIndex={mode === value ? 0 : -1} onClick={() => onMode(value)}>
-              <span className="tb-mode__l">{value === 'board' ? 'Board' : 'List'}</span>
-            </button>
-          ))}
-        </div>
-        <button type="button" className="tb-mine" aria-pressed={mine} onClick={() => onMine(!mine)}><Icon name="person" size={15} /><span>Mine</span></button>
-        {writable ? <Button variant="primary" icon="plus" className="tb-add" onClick={onNew}><span className="ui-vh">New </span>Task</Button> : null}
-      </div>
+      {writable ? <Button variant="primary" icon="plus" className="tb-add" onClick={onNew}><span className="ui-vh">New </span>Task</Button> : null}
     </div>
   );
 }
@@ -418,7 +417,7 @@ export function ProjectTasks() {
               <button type="button" aria-pressed={!mine} onClick={() => setView({ mine: false, status: null })}>All</button>
             </div>
           ) : <TaskViews counts={counts} status={status} onStatus={(next) => setView({ status: next })} />}
-          <WorkPagination noun="tasks" page={data} busy={read.phase !== 'ready' && read.phase !== 'unavailable'} onCursor={movePage} onRefresh={refresh} />
+          <WorkPagination noun="tasks" page={data} busy={read.phase !== 'ready' && read.phase !== 'unavailable'} onCursor={movePage} onRefresh={refresh} stepsWhenPaged />
         </div>
         {read.phase === 'unavailable' ? <ErrorState title="Work could not be loaded" actions={<button type="button" className="ws-none__b" onClick={refresh}>Refresh work</button>}><p>Your private draft is kept. Refresh to read the current view.</p></ErrorState> : null}
         {nothing ? <div className="view-empty"><EmptyState icon="tasks" title="No tasks yet"><p>A task starts when one of you makes it from a message, or adds it here. Not every idea has to become a task.</p></EmptyState></div> : null}

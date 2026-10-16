@@ -231,7 +231,8 @@ function AppLayoutContent() {
     const onKey = (event: KeyboardEvent) => {
       if (event.metaKey || event.ctrlKey || event.altKey || event.defaultPrevented || isTyping(event.target)) return;
       if (document.getElementById('root')?.inert) return;
-      if (event.key === '[') { event.preventDefault(); toggleRail(); return; }
+      // On a tablet the sidebar is always the rail (Spokój); "[" opens it as the drawer instead.
+      if (event.key === '[') { event.preventDefault(); if (tablet) setNavOpen((open) => !open); else toggleRail(); return; }
       const key = event.key.toLowerCase();
       if (key === 'f' && !phone) { event.preventDefault(); void toggleFocus(); return; }
       if (key === 'g') { leader = Date.now(); return; }
@@ -239,7 +240,7 @@ function AppLayoutContent() {
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [toggleRail, toggleFocus, navigate, phone]);
+  }, [toggleRail, toggleFocus, navigate, phone, tablet]);
 
 
   // Typing on a touch phone (#266 PF-3): the view bar steps aside for the keyboard once a text field
@@ -418,16 +419,17 @@ function AppLayoutContent() {
       : dmViews ? { items: dmViews, label: 'Direct message views' }
         : place.views ? { items: homeViews, label: 'Views' } : null;
   const viewName = activeProject ? PROJECT_VIEW_NAMES[Math.max(0, viewOrder(location.pathname))] : null;
-  const addViewItems: MoreItem[] = project && shownProjectViews && projectId && project.project.access !== 'viewer'
+  const addViewItems: { label: string; run: () => void }[] = project && shownProjectViews && projectId && project.project.access !== 'viewer'
     ? addableViews(shownProjectViews).map((view) => ({ label: `Add ${VIEW_LABEL[view]}`, run: () => void addView(projectId, view) })) : [];
   const moreItems: MoreItem[] = [
+    // A header with no room for them (Spokój rule 3) moves the people and Together here; the views stay in the row.
+    ...(project?.people ? [{ label: 'Who can see this', run: openAudience, narrow: true }] : []),
+    ...(activeProject ? [{ label: 'Together', node: <LiveEntry variant="more" /> }] : []),
     ...('noDetails' in place ? [] : [{ label: activeProject ? 'Project details' : activeDm ? 'Message info' : 'Details', run: () => { setDetailsView('place'); toggleDetails(true); } }]),
     ...(activeProject && projectId ? [{ label: 'What matters', run: () => { setDetailsView({ kind: 'recap', projectId }); toggleDetails(true); } }] : []),
     ...addViewItems,
-    // With no room for the faces (a narrow header), "Who can see this" moves into More (Spokój rule 3).
-    ...(project?.people ? [{ label: 'Who can see this', run: openAudience, narrow: true }] : []),
     { label: focus.uncertain ? 'Check notification pause' : 'Focus', keys: 'F', checked: focusing, run: () => void focus.toggle() },
-    { label: railed ? 'Show the sidebar' : 'Hide the sidebar', keys: '[', run: toggleRail },
+    tablet ? { label: 'Show the sidebar', keys: '[', run: () => setNavOpen(true) } : { label: railed ? 'Show the sidebar' : 'Hide the sidebar', keys: '[', run: toggleRail },
   ];
 
   // The phone's header (F-026 §4 Phone): inside a project or a conversation the round Back and the
@@ -451,6 +453,7 @@ function AppLayoutContent() {
     const view = projectViews.find((item) => item.id === id);
     return view ? [{ id, label: view.label, to: view.to, icon, note, current: currentProjectView === id }] : [];
   }) : [];
+  const tabletMenu = tablet && !phone && !focusing && !!activeProject && projectMenu.length > 0;
   const mainPlace = ['/projects', '/inbox', '/search', '/dm', '/settings'].includes(location.pathname) || /^\/inbox\//.test(location.pathname);
   const homePage = /^\/(tasks|map|docs)(\/|$)/.test(location.pathname);
   const backOnly = settingsPage || location.pathname === '/projects/new' || dmId === 'new' || homePage;
@@ -481,8 +484,8 @@ function AppLayoutContent() {
       <div className="phead__right">
         <span className="top__actions" ref={setActionSlot} />
         {activeProject && /^\/projects\/[^/]+\/conversations\//.test(location.pathname) ? <ProjectAgentStop projectId={activeProject.id} /> : null}
-        {activeProject ? <LiveEntry /> : null}
-        {activeProject || activeDm ? searchButton : null}
+        {/* The same two controls in every project view and direct message (Spokój #507); Together is dimmed where it is unavailable. */}
+        {activeProject || activeDm ? <><LiveEntry />{searchButton}</> : null}
         {!backOnly && !activeProject && !activeDm && location.pathname !== '/settings' ? <PhoneAvatar name={me.user.name} /> : null}
       </div>
     </header>
@@ -499,8 +502,8 @@ function AppLayoutContent() {
           <Sidebar {...sidebarProps} onClose={() => setNavOpen(false)} titleId={drawerTitleId} />
         </Drawer>
       ) : (
-        // Tablet (Spokój): the sidebar is the 64 px rail; its expand control opens the same sidebar as a drawer.
-        <aside className={`app__side${railed || focusing || tablet ? ' app__side--rail' : ''}`} aria-label="Sidebar"><Sidebar {...sidebarProps} collapsed={railed || focusing || tablet} onToggleCollapsed={focusing ? () => void focus.toggle() : tablet ? () => setNavOpen(true) : toggleRail} /></aside>
+        // Tablet (Spokój): the sidebar is the 64 px rail (its width is set in CSS); its expand control opens the sidebar as a drawer.
+        <aside className={`app__side${railed || focusing ? ' app__side--rail' : ''}`} aria-label="Sidebar"><Sidebar {...sidebarProps} collapsed={railed || focusing || tablet} onToggleCollapsed={focusing ? () => void focus.toggle() : tablet ? () => setNavOpen(true) : toggleRail} /></aside>
       )}
       {!phone && !navDrawer && tablet ? (
         <Drawer open={navOpen} onClose={() => setNavOpen(false)} labelledBy={drawerTitleId} id="nav-drawer" className="nav-drawer">
@@ -515,13 +518,18 @@ function AppLayoutContent() {
             <IconButton icon="menu" label="Open navigation" size={18} aria-expanded={navOpen} aria-controls={navOpen ? 'nav-drawer' : undefined}
               aria-haspopup="dialog" data-tip-align="start" onClick={() => { setDetailsOpen(false); setNavOpen(true); }} className="top__menu" />
           ) : null}
-          <div className="top__title">
-            {place.crumb && !activeProject ? <><span className="top__crumb">{place.crumb}</span><span className="top__slash" aria-hidden="true">/</span></> : null}
-            <h1 title={place.title}>{place.title}</h1>
-            {focusing && viewName ? <span className="top__topic">{viewName}</span>
-              : !rowViews || where === 'dm' ? <span className="top__topic">{activeProject ? null : place.topic}</span> : null}
-          </div>
-          {rowViews && !focusing ? <Tabs variant="segmented" className="top__views" label={rowViews.label} items={rowViews.items} /> : null}
+          {tabletMenu ? (
+            // A tablet's project title is the view menu, as on the phone (Spokój layout per screen).
+            <PhoneTitleMenu title={place.title} items={projectMenu} onDetails={null} subtitle={viewName} />
+          ) : (
+            <div className="top__title">
+              {place.crumb && !activeProject ? <><span className="top__crumb">{place.crumb}</span><span className="top__slash" aria-hidden="true">/</span></> : null}
+              <h1 title={place.title}>{place.title}</h1>
+              {focusing && viewName ? <span className="top__topic">{viewName}</span>
+                : !rowViews || where === 'dm' ? <span className="top__topic">{activeProject ? null : place.topic}</span> : null}
+            </div>
+          )}
+          {rowViews && !focusing && !tabletMenu ? <Tabs variant="segmented" className="top__views" label={rowViews.label} items={rowViews.items} /> : null}
           <div className="top__right" data-shift>
             {/* A view can put one quiet action here (a DM's Select, #96). */}
             <span className="top__actions" ref={setActionSlot} />

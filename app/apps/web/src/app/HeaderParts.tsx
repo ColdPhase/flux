@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
+import { Fragment, useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import type { ProjectPerson } from '@flux/contracts';
 import { Avatar, Icon, IconButton, Kreska } from '../ui';
 import { clock } from './focus';
@@ -46,8 +46,15 @@ export function FocusPill({ until, onEnd, uncertain = false }: { until: Date; on
   );
 }
 
-/** `narrow`: offered here only when the header has no room for the faces (Spokój rule 3). */
-export interface MoreItem { label: string; run: () => void; keys?: string; checked?: boolean; narrow?: boolean }
+/**
+ * `narrow`: offered here only when the header has no room for it (Spokój rule 3). `node` is a row that keeps its own
+ * state (the header's Together); a click on its enabled `[data-more-row]` closes the menu.
+ */
+export type MoreItem = { label: string; run: () => void; keys?: string; checked?: boolean; narrow?: boolean }
+  | { label: string; node: ReactNode };
+
+/** The menu's rows that are shown: rows a wide header keeps in its own row are in the menu but hidden, and the keys skip them. */
+const shownRows = (menu: HTMLElement | null) => [...(menu?.querySelectorAll<HTMLElement>('[role^="menuitem"]') ?? [])].filter((el) => el.getClientRects().length > 0);
 
 /** More (⋯): the place's quieter actions, each with its key shown (F-026 §4, S18). */
 export function MoreMenu({ items, label = 'More', icon = 'more' }: { items: MoreItem[]; label?: string; icon?: 'more' | 'plus' }) {
@@ -57,7 +64,7 @@ export function MoreMenu({ items, label = 'More', icon = 'more' }: { items: More
   const id = useId();
   useEffect(() => {
     if (!open) return undefined;
-    menu.current?.querySelector<HTMLElement>('[role^="menuitem"]')?.focus();
+    shownRows(menu.current)[0]?.focus();
     const away = (event: PointerEvent) => {
       if (!menu.current?.contains(event.target as Node) && !button.current?.contains(event.target as Node)) setOpen(false);
     };
@@ -66,11 +73,11 @@ export function MoreMenu({ items, label = 'More', icon = 'more' }: { items: More
   }, [open]);
   const close = () => { setOpen(false); button.current?.focus(); };
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    const entries = [...(menu.current?.querySelectorAll<HTMLElement>('[role^="menuitem"]') ?? [])];
-    const at = entries.indexOf(document.activeElement as HTMLElement);
+    const shown = shownRows(menu.current);
+    const at = shown.indexOf(document.activeElement as HTMLElement);
     if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); close(); }
-    else if (event.key === 'ArrowDown') { event.preventDefault(); entries[(at + 1) % entries.length]?.focus(); }
-    else if (event.key === 'ArrowUp') { event.preventDefault(); entries[(at - 1 + entries.length) % entries.length]?.focus(); }
+    else if (event.key === 'ArrowDown') { event.preventDefault(); shown[(at + 1) % shown.length]?.focus(); }
+    else if (event.key === 'ArrowUp') { event.preventDefault(); shown[(at - 1 + shown.length) % shown.length]?.focus(); }
     else if (event.key === 'Tab') setOpen(false);
   };
   return (
@@ -78,8 +85,9 @@ export function MoreMenu({ items, label = 'More', icon = 'more' }: { items: More
       <IconButton ref={button} icon={icon} label={label} aria-haspopup="menu" aria-expanded={open} aria-controls={open ? id : undefined}
         onClick={() => setOpen((value) => !value)} />
       {open ? (
-        <div ref={menu} id={id} className="newmenu__menu top__more-menu" role="menu" aria-label={label} onKeyDown={onKeyDown}>
-          {items.map((item) => (
+        <div ref={menu} id={id} className="newmenu__menu top__more-menu" role="menu" aria-label={label} onKeyDown={onKeyDown}
+          onClick={(event) => { if ((event.target as Element).closest('[data-more-row]:not([aria-disabled="true"])')) close(); }}>
+          {items.map((item) => 'node' in item ? <Fragment key={item.label}>{item.node}</Fragment> : (
             <button key={item.label} type="button" role={item.checked === undefined ? 'menuitem' : 'menuitemcheckbox'} aria-checked={item.checked}
               className={`newmenu__item${item.narrow ? ' top__more-narrow' : ''}`} aria-keyshortcuts={item.keys} onClick={() => { button.current?.focus(); setOpen(false); item.run(); }}>
               <span>{item.label}</span>{item.keys ? <kbd aria-hidden="true">{item.keys}</kbd> : null}

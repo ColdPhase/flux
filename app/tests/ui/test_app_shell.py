@@ -162,7 +162,8 @@ def open_details(page: Page, tap: bool = False) -> None:
         home.click()
         return
     header.get_by_role("button", name="More", exact=True).click()
-    page.get_by_role("menu", name="More").get_by_role("menuitem", name="Details").click()
+    # One meaning per word (#506 AC-4): "Project details" in a project, "Message info" in a direct message.
+    page.get_by_role("menu", name="More").get_by_role("menuitem", name=re.compile(r"^(Details|Project details|Message info)$")).click()
 
 
 def open_what_matters(page: Page, tap: bool = False) -> None:

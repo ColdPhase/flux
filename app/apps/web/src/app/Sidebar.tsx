@@ -73,9 +73,8 @@ export function Sidebar({ projects, directMessages, user, session, onClose, titl
   if (collapsed && !onClose) {
     return (
       <div className="side side--rail">
-        {/* The toggle leads the rail, as the collapse control leads the expanded sidebar's top row (S1). */}
+        {/* The toggle is in the top row, where the expanded sidebar's collapse control is (S1, Spokój anchors). */}
         <IconButton icon="sidebar" label="Expand sidebar" aria-keyshortcuts="[" className="side__toggle" onClick={onToggleCollapsed} />
-        <span className="side__glyph" role="img" aria-label="Flux" id={titleId}><FluxLogo size={28} /></span>
         <NewMenu compact onNew={onNew} />
         <nav className="side__rail-places" aria-label="Places">
           <button type="button" className="side__ib" aria-label="Search" aria-keyshortcuts={searchKeys} onClick={openSearch}><Icon name="search" size={18} /></button>
