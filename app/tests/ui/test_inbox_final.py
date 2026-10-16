@@ -769,6 +769,25 @@ class InboxFinal(unittest.TestCase):
         shot(page, "inbox-final-desktop-1440-clear")
         self.assertEqual(self.queue(None)["count"], 0)
 
+    def test_11b_empty_inbox_with_a_snoozed_item_keeps_the_later_count(self) -> None:
+        """#437: hiding the empty Inbox's summary must not hide "N for later", the way back to snoozed items."""
+        snoozed = self.post("jonas", f"/api/v1/projects/{self.project_id}/decisions", {"title": "Paint the shed green", "rationale": "It hides in the garden."})
+        self.wait_for(lambda: self.queue(None)["count"] == 1, "the new decision")
+        page = self.page()
+        page.goto("/inbox")
+        self.card(page, "Paint the shed green").get_by_role("button", name="Not now").click()
+        page.keyboard.press("1")
+        expect(page.get_by_role("status").filter(has_text="Back tomorrow morning")).to_be_visible()
+        self.wait_for(lambda: self.queue(None)["later"] == 1, "the snooze to be stored")
+        page.reload()
+        expect(page.get_by_role("heading", name="Nothing needs you right now")).to_be_visible()
+        expect(page.get_by_text("all clear · all projects · 1 for later")).to_be_visible()
+        self.contexts["ada"].request.delete(f"/api/v1/needs-you/{requests_quote('decision:' + snoozed['id'])}", headers={"origin": ORIGIN})
+        self.wait_for(lambda: self.queue(None)["later"] == 0, "the snooze to be undone")
+        page.reload()
+        expect(self.card(page, "Paint the shed green")).to_have_count(1)
+        self.contexts["ada"].request.post(f"/api/v1/needs-you/{requests_quote('decision:' + snoozed['id'])}", data={"action": "done"}, headers={"origin": ORIGIN})
+
     # ---------------------------------------------------------------- phone and dark
 
     def test_12_phone_inbox_cards_and_swipe_tray(self) -> None:
