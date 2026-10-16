@@ -52,5 +52,5 @@ export interface NeedsYouPorts {
   access: NeedsYouAccess;
   repository: NeedsYouRepository;
   inbox: NeedsYouInbox;
-  work: Pick<WorkRepository, 'listAssignedVisible' | 'links' | 'titles' | 'names' | 'findWork' | 'findDecision' | 'taskPlans'>;
+  work: Pick<WorkRepository, 'listAssignedVisible' | 'listBlockedFor' | 'links' | 'titles' | 'names' | 'findWork' | 'findDecision' | 'taskPlans'>;
 }

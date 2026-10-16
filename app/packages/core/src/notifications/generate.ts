@@ -115,16 +115,25 @@ export async function candidatesFor(event: GeneratorEvent, facts: NotificationFa
     case 'project.work_created.v1':
     case 'project.work_updated.v1': {
       const assignee = typeof event.data.assignedTo === 'string' ? event.data.assignedTo : null;
+      const waiting = typeof event.data.waitingFor === 'string' ? event.data.waitingFor : null;
       const workId = id(event.data.workId);
-      if (!assignee || !workId || !reachable(assignee)) return [];
+      if (!workId || (!assignee && !waiting)) return [];
       const work = await facts.work(workId);
+      if (!work || work.projectId !== event.objectId) return [];
+      const result: Candidate[] = [];
       // Assigned again to someone else since: that later event notifies them instead.
-      if (!work || work.projectId !== event.objectId || work.ownerUserId !== assignee) return [];
-      return [{
+      if (assignee && reachable(assignee) && work.ownerUserId === assignee) result.push({
         userId: assignee, reason: 'assigned', source: { type: 'project', id: work.projectId },
         title: `${await actorName(facts, event.actorId)} assigned you ${quote(excerpt(work.title, 80))}`,
         body: `Work in ${work.projectName}`, url: `/projects/${work.projectId}/tasks?open=work:${work.id}`,
-      }];
+      });
+      // Someone named you as the one a blocked task waits for (#550); not if it was unblocked or re-pointed since.
+      if (waiting && reachable(waiting) && work.waitingForUserId === waiting && work.status === 'blocked') result.push({
+        userId: waiting, reason: 'assigned', source: { type: 'project', id: work.projectId },
+        title: `${await actorName(facts, event.actorId)} is waiting for you: #${work.number} ${excerpt(work.title, 80)}`,
+        body: work.blocker ? excerpt(work.blocker) : `Blocked in ${work.projectName}`, url: `/projects/${work.projectId}/tasks?open=work:${work.id}`,
+      });
+      return result;
     }
     case 'project.decision_proposed.v1':
     case 'project.result_recorded.v1': {

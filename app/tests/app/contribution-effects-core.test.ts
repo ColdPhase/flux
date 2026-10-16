@@ -21,7 +21,7 @@ function world(options: { writable?: boolean; taskIds?: string[]; hook?: boolean
   const log: string[] = [];
   const tasks = new Map<string, WorkRecord>();
   const taskIds = options.taskIds ?? [randomUUID(), randomUUID(), randomUUID()];
-  for (const [index, id] of taskIds.entries()) tasks.set(id, { id, workspaceId, projectId, number: index + 1, title: `Task ${id.slice(0, 4)}`, outcome: '', criteria: [], status: 'open', blocker: null,
+  for (const [index, id] of taskIds.entries()) tasks.set(id, { id, workspaceId, projectId, number: index + 1, title: `Task ${id.slice(0, 4)}`, outcome: '', criteria: [], status: 'open', blocker: null, waitingFor: null,
     owner: null, parked: null, createdBy: { kind: 'human', id: 'creator' }, version: 1, createdAt: at, updatedAt: at });
   const messages: DiscussionMessage[] = [];
   const conversations = new Map<string, { id: string; workspaceId: string; projectId: string; createdBy: ActorRef; createdAt: Date }>();
@@ -61,6 +61,7 @@ function world(options: { writable?: boolean; taskIds?: string[]; hook?: boolean
       const row = tasks.get(id);
       return row ? copy(row) : null;
     },
+    async insertTaskUpdate() { /* the conversation line of a block or unblock (#550) is not part of this order */ },
     async updateWork(id: string, changes: Partial<WorkRecord>) {
       log.push('work.update');
       const row = tasks.get(id)!;

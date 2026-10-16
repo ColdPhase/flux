@@ -26,6 +26,8 @@ export interface WorkRecord {
   outcome: string;
   status: WorkStatus;
   blocker: string | null;
+  /** The person a blocked task waits for (#550); null unless blocked. */
+  waitingFor: ActorRef | null;
   owner: ActorRef | null;
   parked: { decisionId: string; at: Date } | null;
   /** Distinct trimmed statements; `[]` for tasks that never had any (#152). */
@@ -95,10 +97,13 @@ export interface TaskCreationNoticeRecord {
   projectId: string;
   workId: string;
   workTitle: string;
-  kind: 'task.created' | 'task.creation_reverted';
+  kind: 'task.created' | 'task.creation_reverted' | 'task.blocked' | 'task.unblocked';
   workNumber: number;
   createdBy: ActorRef;
   sources: ObjectRef[];
+  /** For a blocked line (#550): who the task waits for and the reason, as the line said them. */
+  waitingFor?: ActorRef | null;
+  reason?: string | null;
   createdAt: Date;
 }
 /** The two native commands that keep a durable retry receipt (#154); creation keeps its own identity on the task row. */
@@ -112,7 +117,7 @@ export interface NativeCommandReceipt {
   /** Contribution messages this command made on canonical task threads. */
   messageIds: string[];
 }
-export type WorkChanges = Partial<Pick<WorkRecord, 'title' | 'outcome' | 'status' | 'blocker' | 'owner' | 'parked' | 'criteria'>>;
+export type WorkChanges = Partial<Pick<WorkRecord, 'title' | 'outcome' | 'status' | 'blocker' | 'waitingFor' | 'owner' | 'parked' | 'criteria'>>;
 export type NewDecision = Pick<DecisionRecord, 'id' | 'workspaceId' | 'projectId' | 'title' | 'rationale' | 'proposedBy' | 'supersedesId'>;
 export type DecisionChanges = Partial<Pick<DecisionRecord, 'status' | 'decidedBy' | 'decidedAt' | 'supersededById' | 'supersededAt'>>;
 export type NewResult = Omit<ResultRecord, 'createdAt'>;
@@ -167,6 +172,13 @@ export interface WorkRepository extends TaskGraphReader {
   /** Called in the same transaction as the work row, links and stream event. */
   insertCreationNotice(work: WorkRecord, sources: ObjectRef[]): Promise<void>;
   listTaskNotices(projectId: string, page: PageWindow): Promise<Paged<TaskCreationNoticeRecord>>;
+  /** One "blocked" or "unblocked" line of the conversation (#550), in the transaction of the change. */
+  insertTaskUpdate(work: WorkRecord, update: { kind: 'task.blocked' | 'task.unblocked'; by: ActorRef; waitingFor: ActorRef | null; reason: string | null }): Promise<void>;
+  /**
+   * Blocked, unfinished, unparked work in visible projects that concerns `userId`: they own it, it waits for
+   * them, or an agent they own holds it (#550).
+   */
+  listBlockedFor(principal: Principal, workspaceId: string, userId: string, page: PageWindow): Promise<Paged<WorkRecord>>;
   /**
    * Acquires the durable native-command lock before looking up an earlier command of this exact actor,
    * project, operation and client command UUID. Taken before any task lock.

@@ -602,6 +602,23 @@ function NoticeItem({ notice, meId, owners, row, authorOf, hasMessage, onOpenTas
   const creator = notice.createdBy;
   const name = creator.name ?? (creator.kind === 'agent' ? 'Agent' : 'Member');
   const mine = creator.kind === 'human' && creator.id === meId;
+  // One short line when a task becomes blocked or unblocked (#550): "#14 blocked · waiting for Kai".
+  if (notice.kind === 'task.blocked' || notice.kind === 'task.unblocked') {
+    const why = notice.kind === 'task.blocked' ? (notice.waitingFor ? `waiting for ${notice.waitingFor.name}` : notice.reason?.trim() ?? '') : '';
+    const words = `#${notice.workNumber} ${notice.kind === 'task.blocked' ? 'blocked' : 'unblocked'}${why ? ` · ${why.length > 80 ? `${why.slice(0, 79).trimEnd()}…` : why}` : ''}`;
+    return (
+      <li className="convo-notice convo-notice--update" id={`notice-${notice.id}`} data-work-id={notice.workId}>
+        <AuthorFace kind={creator.kind} name={name} mine={mine} />
+        <div className="convo-notice__body">
+          <p className="convo-notice__meta">
+            {creator.kind === 'agent' ? <strong><AgentIdentity name={name} owner={owners.get(creator.id)} icon={false} /></strong> : <strong>{name}{mine ? ' · you' : ''}</strong>}
+            <button type="button" className="convo-notice__src" data-native-ref={`work:${notice.workId}`} onClick={() => onOpenTask(notice.workId)} aria-label={`Open task #${notice.workNumber} ${title}`}>{words}</button>
+            <time dateTime={notice.createdAt} title={when(notice.createdAt)}>{clock(notice.createdAt)}</time>
+          </p>
+        </div>
+      </li>
+    );
+  }
   const source = noticeSource(notice, authorOf);
   const phrase = sourcePhrase(source);
   const owner = current?.owner ?? null;

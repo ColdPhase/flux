@@ -29,6 +29,9 @@ export function workRepository(tx: DbExecutor): WorkRepository {
     githubRules: (taskIds) => githubRows(tx).taskRules(taskIds),
     suspendGithubRule: (task) => githubRows(tx).suspendRuleForOverride(task),
     /** The policy's own list condition (`visibleFilter`) is applied before the limit and in the total. */
+    async listBlockedFor(principal, workspaceId, userId, page) {
+      return rows.listBlockedFor(workspaceId, userId, await visibleFilter(principal, workspaceId, 'project', tx), page);
+    },
     async listAssignedVisible(principal, workspaceId, owner, page) {
       return rows.listAssigned(workspaceId, owner, await visibleFilter(principal, workspaceId, 'project', tx), page);
     },

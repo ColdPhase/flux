@@ -60,8 +60,8 @@ export function createNeedsYou(ports: NeedsYouPorts, now: () => Date = () => new
     const blocked: WorkRecord[] = [];
     for (const workspaceId of workspaceIds) {
       for (const id of await ports.access.visibleProjects(principal, workspaceId)) projects.add(id);
-      const page = await ports.work.listAssignedVisible(principal, workspaceId, { kind: 'human', id: userId }, { limit: 200, offset: 0 });
-      blocked.push(...page.items.filter((work) => work.status === 'blocked'));
+      // Tasks they own, tasks waiting for them and tasks held by an agent they own (#550).
+      blocked.push(...(await ports.work.listBlockedFor(principal, workspaceId, userId, { limit: 200, offset: 0 })).items);
     }
 
     // Proposed decisions the person can accept now.
@@ -109,15 +109,23 @@ export function createNeedsYou(ports: NeedsYouPorts, now: () => Date = () => new
 
     // The person's blocked tasks.
     const plans = blocked.length ? await ports.work.taskPlans(blocked.map((task) => task.id)) : new Map();
+    const askers = await ports.work.names(blocked.flatMap((task) => (task.waitingFor?.id === userId ? [task.owner ?? task.createdBy] : [])));
     for (const task of blocked) {
       const waiting = plans.get(task.id)?.prerequisites.find((item: { status: string; parked: boolean; id: string }) => !OVER.has(item.status));
       const waitingTask = waiting ? await work(waiting.id) : null;
+      // The person waited on hears it as "Ada is waiting for you"; the owner (or an agent owner's person) keeps the plain item.
+      const waitedOn = task.waitingFor?.id === userId && !(task.owner?.kind === 'human' && task.owner.id === userId);
+      const asker = waitedOn ? askers.get(`${(task.owner ?? task.createdBy).kind}:${(task.owner ?? task.createdBy).id}`) ?? 'Someone' : null;
+      const reason = task.blocker?.trim() ? excerpt(task.blocker, 120) : null;
       items.push({
-        key: `blocked:${task.id}`, kind: 'blocked', title: task.blocker?.trim() ? `#${task.number} is blocked: ${excerpt(task.blocker, 120)}` : `#${task.number} ${task.title} is blocked`,
-        detail: task.title, project: { id: task.projectId, name: projectNames.get(task.projectId) ?? 'Project' },
+        key: `blocked:${task.id}`, kind: 'blocked',
+        title: waitedOn ? `${asker} is waiting for you: #${task.number} ${excerpt(task.title, 80)}${reason ? ` · ${reason}` : ''}`
+          : reason ? `#${task.number} is blocked: ${reason}` : `#${task.number} ${task.title} is blocked`,
+        detail: waitedOn ? (reason ?? task.title) : task.title, project: { id: task.projectId, name: projectNames.get(task.projectId) ?? 'Project' },
         from: null, at: iso(task.updatedAt), url: `/projects/${task.projectId}/tasks?open=work:${task.id}`,
         decision: null, reason: null,
-        blocked: { workId: task.id, number: task.number, version: task.version, blocker: task.blocker, since: iso(task.updatedAt), waitingFor: waitingTask ? ref(waitingTask) : null },
+        blocked: { workId: task.id, number: task.number, version: task.version, blocker: task.blocker, since: iso(task.updatedAt), waitingFor: waitingTask ? ref(waitingTask) : null,
+          ...(waitedOn ? { waitedBy: asker } : {}) },
         snoozeTask: waitingTask ? ref(waitingTask) : null,
       });
     }

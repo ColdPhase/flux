@@ -304,7 +304,7 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
   async function setState(next: WorkStatus) {
     if (!writable || busy || next === item.status) return;
     // Undo restores what this change replaced: leaving "blocked" clears its reason, so the reason goes back too.
-    const before = { status: item.status, blocker: item.status === 'blocked' ? item.blocker : null };
+    const before = { status: item.status, blocker: item.status === 'blocked' ? item.blocker : null, waitingFor: item.status === 'blocked' ? item.waitingFor : null };
     if (await change({ status: next })) {
       // Finishing parked work also unparks it, and the contract cannot park it again, so Undo would leave it unparked: no Undo for that change.
       // The one wink (F-026 §3) on a task closed: the words carry it without the face.
@@ -313,7 +313,10 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
         toast({ message: `${taskNumber(item)} is now ${STATUS_LABEL[next].toLowerCase()} and no longer parked`, timeout: 8000, mascot });
         return;
       }
-      const restore = before.status === 'blocked' && before.blocker ? { status: before.status, blocker: before.blocker } : { status: before.status };
+      // A put-back blocker is not said again in the task's conversation (restore).
+      const restore = before.status === 'blocked' && (before.blocker || before.waitingFor)
+        ? { status: before.status, ...(before.blocker ? { blocker: before.blocker } : {}), ...(before.waitingFor ? { waitingFor: { kind: 'human' as const, id: before.waitingFor.id } } : {}), restore: true as const }
+        : { status: before.status };
       // Closing says it in the words of the wink (#N done); the other states keep their status label.
       const words = next === 'done' ? `${taskNumber(item)} done` : `${taskNumber(item)} is now ${STATUS_LABEL[next].toLowerCase()}`;
       toast({ message: words, timeout: 8000, mascot, action: { label: 'Undo', onClick: () => { void change(restore, latest.current); } } });
@@ -324,6 +327,9 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
   const people = context.members.length ? context.members.map((member) => ({ value: `human:${member.userId}`, label: member.userId === me.user.id ? `${member.name} (you)` : member.name }))
     : [{ value: `human:${me.user.id}`, label: `${me.user.name} (you)` }];
   if (item.owner && !people.some((person) => person.value === ownerValue) && item.owner.kind === 'human') people.push({ value: ownerValue, label: item.owner.name });
+  const waitingId = useId();
+  const waitingPeople = people.map((person) => ({ ...person, id: person.value.slice('human:'.length) }));
+  if (item.waitingFor && !waitingPeople.some((person) => person.id === item.waitingFor!.id)) waitingPeople.push({ value: `human:${item.waitingFor.id}`, id: item.waitingFor.id, label: item.waitingFor.name });
   const agents = context.agents.map((agent) => ({ value: `agent:${agent.id}`, label: `${agent.name} (agent)` }));
   if (item.owner?.kind === 'agent' && !agents.some((agent) => agent.value === ownerValue)) agents.push({ value: ownerValue, label: `${item.owner.name} (agent)` });
 
@@ -376,6 +382,16 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
               <Button type="submit" variant="secondary" busy={busy} disabled={blocker.trim() === (item.blocker ?? '')}>Save</Button>
             </form>
           ) : <p>{item.blocker || 'Waiting for something; no reason written.'}</p>}
+          {writable ? (
+            <div className="wd-waiting">
+              <label htmlFor={waitingId}>Waiting for</label>
+              <select id={waitingId} className="wd-owner" disabled={busy} value={item.waitingFor?.id ?? ''}
+                onChange={(event) => void change({ waitingFor: event.target.value ? { kind: 'human', id: event.target.value } : null })}>
+                <option value="">No one in particular</option>
+                {waitingPeople.map((person) => <option key={person.id} value={person.id}>{person.label}</option>)}
+              </select>
+            </div>
+          ) : item.waitingFor ? <p className="wd-muted">Waiting for {item.waitingFor.name}</p> : null}
         </section>
       ) : null}
       {writable ? <HandOffDialog open={handingOff} onClose={() => setHandingOff(false)} project={context.project} task={{ id: item.id, version: item.version, number: item.number, title: item.title }} onDone={reload} /> : null}
