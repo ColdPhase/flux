@@ -14,6 +14,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlencode, urlsplit, urlunsplit
 
 from playwright.sync_api import expect, sync_playwright
+from create_window import submit_button
 from test_app_shell import ORIGIN, UPSTREAM, shot, start_forwarder
 
 STAMP = int(time.time() * 1000)
@@ -516,8 +517,9 @@ class SharedComposerJourney(unittest.TestCase):
         thought = self.api(page, "POST", f"/api/v1/sketches/{sketch['id']}/thoughts", {"text": "Measure the negative camera result", "x": 0, "y": 0}, 201)["thought"]
         page.goto(f"/projects/{project['id']}/map/{sketch['id']}")
         page.locator(f".sk-node[data-id='{thought['id']}']").click()
+        page.get_by_role("button", name="Create task from selected thoughts").click()
         with page.expect_response(lambda response: response.request.method == "POST" and response.url.endswith(f"/projects/{project['id']}/work")) as created:
-            page.get_by_role("button", name="Create task from selected thoughts").click()
+            submit_button(page).click()
         task = created.value.json()
         details = page.get_by_role("region", name="Discussion")
         box = details.get_by_label("First message about this task")

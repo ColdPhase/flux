@@ -55,7 +55,6 @@ export function Details({ view, workspace, placeTitle, dm = null, onBack, onClos
           <p>Replies go to exactly these people. Someone who leaves, or leaves the workspace, stops seeing the conversation at once, including earlier messages.</p>
         </section>
         <LeaveDm id={dm.id} kind={dm.kind} />
-        <p className="details__keys"><kbd>Esc</kbd> closes this panel</p>
       </div>
     );
   }
@@ -74,8 +73,6 @@ export function Details({ view, workspace, placeTitle, dm = null, onBack, onClos
       </section>
 
       <PeopleEntries />
-
-      <p className="details__keys"><kbd>Esc</kbd> closes this panel</p>
     </div>
   );
 }

@@ -258,10 +258,12 @@ places, with no change to the rules above:
   leaves. Guests, who may not read the roster, see only their own place. `ACCOUNT_NOT_FOUND`
   asks for an account at this Flux address first (v1 sends no invitations), and `ALREADY_MEMBER`,
   `OWNER_REQUIRED` and `LAST_OWNER` have their own sentences.
-- **Who can see this** (a project's Details, also opened from the header's audience line and
-  after creating a project) lists `listProjectPeople` and, for managers, the grants: give a
-  member write or read access, change or remove it, keep someone out (`denied`) or let them
-  back in. Each change shows its exact consequence before it is confirmed.
+- **People** (a project's Details, also opened from the header's audience line and after
+  creating a project) lists `listProjectPeople` with each person's role and says in one
+  sentence who else can open the project. For managers, **Invite** gives a workspace member
+  write or read access (or opens the workspace's People to add someone new), and **Change
+  access** shows each person's Change: change or remove a grant, keep someone out (`denied`) or
+  let them back in. Each change shows its exact consequence before it is confirmed (#512).
 
 Every POST and PATCH sends an `Idempotency-Key`, reused when the same change is retried.
 

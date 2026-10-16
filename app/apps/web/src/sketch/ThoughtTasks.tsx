@@ -137,10 +137,15 @@ export function ThoughtTasks({ thought, tasks: entry, projectId, variant, onOpen
           event.currentTarget.focus({ preventScroll: true });
           if (open) close(true); else setOpen(true);
         }}>
-        <Icon name="tasks" size={12} />
-        {/* Worded and with a chevron in the List too, so it reads as a button, not as metadata. */}
-        <span>{count(total)}</span>
-        <Icon name="chevron-right" size={11} />
+        {/* #510 AC-3: in the List, a chip with the first task's state and number; the chooser lists them all. */}
+        {variant === 'list' && entry.tasks[0] ? <>
+          <StatusGlyph status={entry.tasks[0].status} size={12} />
+          <span>{taskNumber(entry.tasks[0])} {STATUS_LABEL[entry.tasks[0].status]}{total > 1 ? ` +${total - 1}` : ''}</span>
+        </> : <>
+          <Icon name="tasks" size={12} />
+          <span>{count(total)}</span>
+          <Icon name="chevron-right" size={11} />
+        </>}
       </button>
       {phone
         ? <Sheet open={open} onClose={() => close(true)} labelledBy={titleId} className="sk-tasks-sheet">{body}</Sheet>

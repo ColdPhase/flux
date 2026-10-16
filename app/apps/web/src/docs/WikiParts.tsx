@@ -24,6 +24,7 @@ const PATHS = {
   download: <><path d="M8 2.75v7.5M4.75 7L8 10.25 11.25 7" /><path d="M2.75 11.25v1.5a.5.5 0 00.5.5h9.5a.5.5 0 00.5-.5v-1.5" /></>,
   upload: <><path d="M8 10.25v-7.5M4.75 6L8 2.75 11.25 6" /><path d="M2.75 11.25v1.5a.5.5 0 00.5.5h9.5a.5.5 0 00.5-.5v-1.5" /></>,
   more: <><circle cx="3.5" cy="8" r=".9" fill="currentColor" /><circle cx="8" cy="8" r=".9" fill="currentColor" /><circle cx="12.5" cy="8" r=".9" fill="currentColor" /></>,
+  outline: <><path d="M3 4h10M3 8h6.5M3 12h8" /></>,
   archive: <><rect x="2.5" y="3" width="11" height="3" rx="1" /><path d="M3.5 6v6.25a.75.75 0 00.75.75h7.5a.75.75 0 00.75-.75V6M6.5 8.75h3" /></>,
 };
 export type WikiIconName = keyof typeof PATHS;
@@ -37,8 +38,14 @@ export function WikiIcon({ name, size = 16 }: { name: WikiIconName; size?: numbe
 
 const isMac = typeof navigator !== 'undefined' && /Mac|iP(hone|ad|od)/.test(navigator.platform);
 
-/** The quiet row above every wiki document: what is shown on the left, actions on the right. */
-export function WikiBar({ meta, phoneMeta, children, compactInHeader = false }: { meta: ReactNode; phoneMeta?: ReactNode; children?: ReactNode; compactInHeader?: boolean }) {
+/**
+ * The one page toolbar (#511, AC-4): the state on the left (with Back first when there is one), then
+ * the icons in a fixed order, focus, and the primary action far right. Read, edit and history keep
+ * every control at the same place; a control that does not apply is dimmed, never removed.
+ */
+export function WikiBar({ meta, back, primary, phoneMeta, children, compactInHeader = false }: {
+  meta: ReactNode; back?: ReactNode; primary?: ReactNode; phoneMeta?: ReactNode; children?: ReactNode; compactInHeader?: boolean;
+}) {
   const { compact } = useWiki();
   const { metadataSlot, actionSlot } = useShellActions();
   if (compact && compactInHeader && metadataSlot && actionSlot) {
@@ -49,8 +56,8 @@ export function WikiBar({ meta, phoneMeta, children, compactInHeader = false }: 
   }
   const bar = (
     <div className="wiki-bar">
-      <div className="wiki-bar__meta">{meta}</div>
-      <div className="wiki-bar__acts">{compact ? null : <FocusToggle />}{children}</div>
+      <div className="wiki-bar__meta">{back}{meta}</div>
+      <div className="wiki-bar__acts">{children}{compact ? null : <FocusToggle />}{primary}</div>
     </div>
   );
   return bar;
@@ -102,17 +109,22 @@ function ProjectActions() {
 function FocusToggle() {
   const { focus, setFocus } = useWiki();
   return (
-    <button type="button" className="ui-icon-btn wiki-bar__focus" aria-pressed={focus} aria-label="Focus on the page"
+    <button type="button" className="ui-icon-btn wiki-bar__focus" data-slot="focus" aria-pressed={focus} aria-label="Focus on the page"
       data-tip={focus ? 'Show the page list' : 'Focus on the page'} onClick={() => setFocus(!focus)}>
       <WikiIcon name={focus ? 'shrink' : 'expand'} />
     </button>
   );
 }
 
+/** An icon that does not apply here: it keeps its place in the toolbar and is dimmed (#511, AC-4). */
+export function DimIcon({ slot, name, label }: { slot: string; name: WikiIconName; label: string }) {
+  return <button type="button" className="ui-icon-btn wiki-bar__dim" data-slot={slot} disabled aria-label={label}><WikiIcon name={name} /></button>;
+}
+
 /** Closes the open popover; with `restore`, focus returns to its button. */
 const ClosePopover = createContext<(restore?: boolean) => void>(() => undefined);
 
-function Popover({ icon, label, title, children }: { icon: WikiIconName; label: string; title: string; children: ReactNode }) {
+function Popover({ icon, label, title, slot, children }: { icon: WikiIconName; label: string; title: string; slot?: string; children: ReactNode }) {
   const [open, setOpen] = useState(false);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const popRef = useRef<HTMLDivElement>(null);
@@ -140,7 +152,7 @@ function Popover({ icon, label, title, children }: { icon: WikiIconName; label: 
   };
 
   return (
-    <div className="wiki-pop-wrap">
+    <div className="wiki-pop-wrap" data-slot={slot}>
       <button ref={buttonRef} type="button" className="ui-icon-btn" aria-label={label} aria-haspopup="dialog" aria-expanded={open}
         aria-controls={open ? id : undefined} data-tip={open ? undefined : label} onClick={() => setOpen((value) => !value)}>
         <WikiIcon name={icon} />
@@ -152,7 +164,7 @@ function Popover({ icon, label, title, children }: { icon: WikiIconName; label: 
 
 /** A link to the page (or the earlier version on screen), with exactly who can open it. */
 export function ShareButton({ path, version }: { path: string; version: number | null }) {
-  return <Popover icon="share" label="Share this page" title="Share this page"><ShareBody path={path} version={version} /></Popover>;
+  return <Popover icon="share" label="Share this page" title="Share this page" slot="share"><ShareBody path={path} version={version} /></Popover>;
 }
 
 function ShareBody({ path, version }: { path: string; version: number | null }) {
@@ -198,7 +210,7 @@ interface Shown { title: string; body: string; version: number; current: boolean
 
 /** This page (or version) as Markdown for everyone who can read it; the whole project for managers. */
 export function DownloadButton({ shown }: { shown: Shown }) {
-  return <Popover icon="download" label="Download" title="Download"><DownloadBody shown={shown} /></Popover>;
+  return <Popover icon="download" label="Download" title="Download" slot="download"><DownloadBody shown={shown} /></Popover>;
 }
 
 function DownloadBody({ shown }: { shown: Shown }) {

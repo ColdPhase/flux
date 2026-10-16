@@ -329,7 +329,7 @@ class WorkDecisionsJourney(unittest.TestCase):
         page.get_by_role("radio", name="List", exact=True).click()
         # The project's state is in Details (#340): the rule in force, found among 101 tasks.
         open_details(page)
-        expect(page.locator("#details").get_by_role("region", name="Now in this project").get_by_role("button", name=re.compile("^Current rule"))).to_contain_text("Oldest rule: battery powered")
+        expect(page.locator("#details").get_by_role("region", name="Now", exact=True).get_by_role("button", name=re.compile("^Current rule"))).to_contain_text("Oldest rule: battery powered")
         page.get_by_role("button", name="Close details", exact=True).click()
         views=page.get_by_role("navigation",name="Task views")
         expect(views.get_by_role("button",name=re.compile("^Open"))).to_contain_text("101")

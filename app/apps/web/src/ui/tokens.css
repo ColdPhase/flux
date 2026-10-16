@@ -29,7 +29,7 @@
   /* Text; --t3 keeps at least 4.5:1 on --bg and --el */
   --t1: #18181b;
   --t2: #4a4a4a;
-  --t3: #6b6b6b;
+  --t3: #636363;
   /* Inverted: the primary button, chosen chips, toasts */
   --inv: #18181b;
   --oninv: #ffffff;
@@ -55,7 +55,7 @@
   --font: "Geist", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   --mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   --fs-xs: .75rem;      /* 12: meta, times, counts */
-  --fs-sm: .75rem;      /* 12: labels, chips, small buttons */
+  --fs-sm: .75rem;      /* 12 (same size as --fs-xs on purpose; separate names keep meta and labels tunable apart): labels, chips, small buttons */
   --fs-md: .8125rem;    /* 13: navigation, tabs, controls */
   --fs-base: .875rem;   /* 14: reading text, bubbles, inputs */
   --fs-lg: 1rem;        /* 16: section titles */

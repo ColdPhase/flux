@@ -205,3 +205,30 @@ class LiveMapProjectionJourney(LiveFixture):
         self.assertNotIn(third['id'], thought_by_id)
         self.assertIn(link['id'], [item['id'] for item in after['links']])
         self.assertEqual((await self.api(kai, 'GET', f'/api/v1/sketches/{self.map_id}/live'))['generation'], generation)
+
+    async def test_signed_positions_preview_and_land_for_the_peer(self):
+        """#509 AC-2: on the live map a thought moves into negative space; the peer sees the preview and the landing."""
+        await self.create_map(2)
+        ada, kai = self.pages['ada'], self.pages['kai']
+        first = self.thoughts[0]
+        owner = ada.locator(f'.sk-node[data-id="{first["id"]}"]')
+        peer = kai.locator(f'.sk-node[data-id="{first["id"]}"]')
+        version = await owner.get_attribute('data-thought-version')
+        # Pan into the empty plane above and left of the first thought, then drop it there.
+        await ada.locator('.sk-canvas').evaluate('el => { el.scrollLeft -= 300; el.scrollTop -= 300; }')
+        bounds = await owner.bounding_box()
+        self.assertIsNotNone(bounds)
+        await ada.mouse.move(bounds['x'] + 20, bounds['y'] + 20)
+        await ada.mouse.down()
+        await ada.mouse.move(bounds['x'] - 180, bounds['y'] - 140, steps=6)
+        await expect(peer).to_have_attribute('data-live-mover', 'Ada North')
+        await expect(peer).to_have_attribute('data-thought-x', str(first['x'] - 200))
+        await ada.mouse.up()
+        await expect(owner).not_to_have_attribute('data-thought-version', version)
+        await self.map_saved(ada)
+        stored = next(item for item in (await self.api(kai, 'GET', f'/api/v1/sketches/{self.map_id}'))['thoughts'] if item['id'] == first['id'])
+        self.assertEqual((stored['x'], stored['y']), (first['x'] - 200, first['y'] - 160))
+        self.assertLess(stored['x'], 0)
+        self.assertLess(stored['y'], 0)
+        await expect(peer).to_have_attribute('data-thought-x', str(stored['x']))
+        await expect(peer).to_have_attribute('data-thought-y', str(stored['y']))

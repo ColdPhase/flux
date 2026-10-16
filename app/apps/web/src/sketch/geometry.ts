@@ -7,6 +7,9 @@ export interface Rect { x: number; y: number; w: number; h: number }
 /** Space kept around the content so the canvas never ends at a thought's edge. */
 export const PAD = 24;
 
+/** Empty plane beyond the thoughts on every side, so the map has no edge (#509). */
+export const PLANE_MARGIN = 1200;
+
 interface Anchor { x: number; y: number; horizontal: boolean; sign: number }
 
 /** Side anchors when two boxes sit side by side; top/bottom only when they overlap horizontally. */
@@ -49,8 +52,8 @@ export function freeSpot(rects: Rect[], from: Rect | null, size: { w: number; h:
     ? [[0, from.h + 32], [0, from.h + 140], [0, from.h + 250]]
     : [[from.w + 56, 0], [from.w + 56, 110], [from.w + 56, -110], [from.w + 56, 220], [0, from.h + 40], [2 * (from.w + 56), 0]];
   for (const [dx, dy] of tries) {
-    const x = Math.max(PAD, from.x + dx!);
-    const y = Math.max(PAD, from.y + dy!);
+    const x = from.x + dx!;
+    const y = from.y + dy!;
     if (!hits(x, y)) return { x, y };
   }
   let y = from.y + from.h + 40;
