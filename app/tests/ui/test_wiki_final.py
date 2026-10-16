@@ -390,7 +390,7 @@ class WikiFinal(unittest.TestCase):
         expect(dialog.get_by_role("status")).to_contain_text("The browser did not allow copying")
         dialog.get_by_role("button", name="See who has access", exact=True).click()
         expect(dialog).to_have_count(0)
-        expect(page.locator("#details").get_by_role("heading", name="Who can see this", exact=True)).to_be_visible()
+        expect(page.locator("#details").get_by_role("heading", name="People", exact=True)).to_be_visible()
         page.get_by_role("button", name="Close details", exact=True).click()
         expect(page.locator("header.phead").get_by_role("button", name="More", exact=True)).to_be_focused()
 
@@ -407,7 +407,7 @@ class WikiFinal(unittest.TestCase):
         expect(details).to_contain_text("Project, goal and people")
         details.click()
         expect(dialog).to_have_count(0)
-        expect(page.locator("#details").get_by_role("heading", name="Who can see this", exact=True)).to_be_visible()
+        expect(page.locator("#details").get_by_role("heading", name="People", exact=True)).to_be_visible()
         page.get_by_role("button", name="Close details", exact=True).click()
         expect(more).to_be_focused()
 
@@ -627,6 +627,22 @@ class WikiReferences(unittest.TestCase):
         expect(who.locator("svg").first).to_be_visible()
         expect(page.locator("a.doc-decision").first.locator(".doc-decision__meta .agent-tag")).to_have_count(1)
         expect(page.locator("a.doc-decision").first.locator(".doc-decision__meta .agent-for")).to_have_text("for Ada Kowalska")
+
+    def test_history_names_an_agent_author_in_the_timeline(self) -> None:
+        """An agent's version reads "name · agent" in the timeline (#511). The author is stubbed in the list
+        response: a real agent write is not part of this module's fixtures."""
+        context = self.browser.new_context(base_url=ORIGIN, service_workers="block", viewport=DESKTOP, storage_state=self.state)
+        self.addCleanup(context.close)
+        page = context.new_page()
+        agent = {"kind": "agent", "id": self.agent_id, "name": "Alex"}
+
+        def versions(route):
+            data = route.fetch().json()
+            data["items"][0]["author"] = agent
+            route.fulfill(json=data)
+        page.route(re.compile(r".*/api/v1/docs/[0-9a-f-]{36}/versions(\?.*)?$"), versions)
+        page.goto(f"{self.url}/history")
+        expect(page.locator(".doc-versions > li").first).to_contain_text("Alex · agent")
 
 
 if __name__ == "__main__":

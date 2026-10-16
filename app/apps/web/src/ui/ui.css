@@ -242,7 +242,8 @@ svg { flex: none; }
 .ui-panel__fill { flex: 1; }
 .ui-panel__hint { flex: 1; margin-right: 8px; text-align: right; color: var(--t3); font-size: var(--fs-sm); }
 .ui-panel--docked, .ui-panel--overlay { background: var(--el); }
-.ui-panel--docked:has(.ui-panel__chip) { margin: 10px 10px 10px 0; border: 0; border-radius: var(--r-panel); box-shadow: var(--sh-pop); }
+/* One shell for a task, a thread and the project's details (#512, AC-1): a card with the same head height and close place. */
+.ui-panel--docked { margin: 10px 10px 10px 0; border: 0; border-radius: var(--r-panel); box-shadow: var(--sh-pop); }
 .ui-panel__body {
   position: relative; flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain;
   padding: 20px 22px 28px; padding-bottom: max(28px, env(safe-area-inset-bottom));

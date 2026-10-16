@@ -4,7 +4,7 @@ Runs with the other tests/ui modules through scripts/check_ui.sh against the run
 application. Four people and two workspaces: Ada owns Riverside Makers, Lee owns Harbour Studio.
 From Home's Details, Ada adds Kai, Lee and Mia to Riverside Makers by email (the form is driven by
 the keyboard), meets the "no account yet" and "already here" messages, and changes Lee's role.
-Members and guests see the people read-only. A new project opens its "Who can see this", where Ada
+Members and guests see the people read-only. A new project opens its "People", where Ada
 gives Kai access, changes and removes it; on a workspace-visible project reached from the header's
 audience line she keeps Lee out and lets him back in. A restricted project stays invisible (sidebar
 and search) to everyone not given access. A DM sketch becomes a project with and without "Also
@@ -129,7 +129,14 @@ class PeopleJourney(unittest.TestCase):
         form.get_by_role("button", name=re.compile("^Add to ")).click()
 
     def access_region(self, page: Page):
-        return page.get_by_role("region", name="Who can see this")
+        return page.get_by_role("region", name="People", exact=True)
+
+    def manage_access(self, region) -> None:
+        """"Change access" in the sentence shows each person's Change button (#512, AC-5)."""
+        toggle = region.get_by_role("button", name="Change access", exact=True)
+        if toggle.get_attribute("aria-expanded") != "true":
+            toggle.click()
+            expect(toggle).to_have_attribute("aria-expanded", "true")
 
     def sidebar_projects(self, page: Page):
         return page.get_by_role("navigation", name="Projects")
@@ -293,11 +300,11 @@ class PeopleJourney(unittest.TestCase):
         expect(page).to_have_url(re.compile(r"/projects/[0-9a-f-]{36}\?new=1$"))
         type(self).kiln = re.search(r"/projects/([0-9a-f-]{36})", page.url).group(1)
         region = self.access_region(page)
-        expect(region.get_by_role("heading", name="Who can see this")).to_be_focused()
-        expect(region).to_contain_text("Restricted. Only the people listed here can open it; others in Riverside Makers don’t see it at all.")
+        expect(region.get_by_role("heading", name="People", exact=True)).to_be_focused()
+        expect(region).to_contain_text("Only the people listed here can open it.")
         expect(page.locator(".top__audience")).to_contain_text("Only you")
 
-        region.get_by_role("button", name="Give someone access").click()
+        region.get_by_role("button", name="Invite").click()
         give = region.get_by_role("group", name="Give someone access")
         expect(give.get_by_label("Person")).to_be_focused()
         # Only people who can't see it yet are offered: not Ada herself.
@@ -321,7 +328,7 @@ class PeopleJourney(unittest.TestCase):
         give.get_by_role("button", name="Give Kai access").click()
         expect(region.locator(".people__done")).to_have_text("Kai can now write in Kiln controller.")
         kai_row = region.get_by_role("list", name=f"People who can see {RESTRICTED}").get_by_role("listitem").filter(has_text="Kai Tanaka")
-        expect(kai_row).to_contain_text("Can write · Given access here")
+        expect(kai_row).to_contain_text("Can write")
         expect(page.locator(".top__audience")).to_contain_text("Kai and you · only you two")
         status, grants = self.api(page, f"/api/v1/projects/{self.kiln}/grants")
         self.assertEqual(status, 200)
@@ -351,7 +358,8 @@ class PeopleJourney(unittest.TestCase):
         page.goto(f"/projects/{self.kiln}")
         page.locator(".top__audience").click()
         region = self.access_region(page)
-        expect(region.get_by_role("heading", name="Who can see this")).to_be_focused()
+        expect(region.get_by_role("heading", name="People", exact=True)).to_be_focused()
+        self.manage_access(region)
         region.get_by_role("button", name="Change access for Kai Tanaka").click()
         editor = region.get_by_role("group", name="Change access for Kai Tanaka")
         expect(editor.get_by_label("Access")).to_be_focused()
@@ -383,10 +391,11 @@ class PeopleJourney(unittest.TestCase):
         expect(audience).to_contain_text("you")
         audience.click()
         region = self.access_region(page)
-        expect(region.get_by_role("heading", name="Who can see this")).to_be_focused()
-        expect(region).to_contain_text("Open to Riverside Makers. Members can write here unless listed below with less access; guests only with access given here.")
+        expect(region.get_by_role("heading", name="People", exact=True)).to_be_focused()
+        expect(region).to_contain_text("Everyone in Riverside Makers can open it; guests only by invitation.")
         lee_row = region.get_by_role("listitem").filter(has_text="Lee Moreno")
-        expect(lee_row).to_contain_text("Can write · Everyone in Riverside Makers")
+        expect(lee_row).to_contain_text("Can write")
+        self.manage_access(region)
         region.get_by_role("button", name="Change access for Lee Moreno").click()
         editor = region.get_by_role("group", name="Change access for Lee Moreno")
         editor.get_by_label("Access").select_option(label="Keep out of this project")
@@ -395,7 +404,8 @@ class PeopleJourney(unittest.TestCase):
         editor.get_by_role("button", name="Keep Lee out").click()
         expect(region.locator(".people__done")).to_have_text("Lee is kept out of Garden sensors.")
         kept = region.get_by_role("list", name="Kept out")
-        expect(kept.get_by_role("listitem").filter(has_text="Lee Moreno")).to_contain_text("Kept out · Member of Riverside Makers")
+        expect(kept.get_by_role("listitem").filter(has_text="Lee Moreno")).to_contain_text(re.compile("Kept out"))
+        expect(kept.get_by_role("listitem").filter(has_text="Lee Moreno")).to_contain_text("Member of Riverside Makers")
         self.assertEqual(self.api(lee, f"/api/v1/projects/{self.garden}")[0], 404)
         status, grants = self.api(page, f"/api/v1/projects/{self.garden}/grants")
         self.assertEqual([(g["principal"]["id"], g["role"]) for g in grants], [(self.ids["lee"], "denied")])
@@ -418,8 +428,9 @@ class PeopleJourney(unittest.TestCase):
         theirs = self.access_region(kai)
         expect(theirs.get_by_role("list", name=f"People who can see {OPEN}").get_by_role("listitem")).to_have_count(3)
         expect(theirs.get_by_role("button", name=re.compile("^Change access"))).to_have_count(0)
-        expect(theirs.get_by_role("button", name="Give someone access")).to_have_count(0)
-        expect(theirs).to_contain_text("Only owners and admins of Riverside Makers change who can see this.")
+        expect(theirs.get_by_role("button", name="Invite")).to_have_count(0)
+        expect(theirs.get_by_role("button", name="Change access", exact=True)).to_have_count(0)
+        expect(theirs).to_contain_text("Everyone in Riverside Makers can open it; guests only by invitation.")
         shot(kai, "people-desktop-1440-project-access-read-only")
 
     def test_08_promote_a_dm_sketch_with_and_without_giving_access(self) -> None:
@@ -520,6 +531,7 @@ class PeopleJourney(unittest.TestCase):
             open_details(page, tap=True)
             region = self.access_region(page)
             expect(page.locator(".ov-audience")).not_to_contain_text("only")
+            self.manage_access(region)
             region.get_by_role("button", name="Change access for Kai Tanaka").click()
             expect(region.get_by_role("group", name="Change access for Kai Tanaka")).to_be_visible()
             self.no_horizontal_scroll(page, PHONE["width"])

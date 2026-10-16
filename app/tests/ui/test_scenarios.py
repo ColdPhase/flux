@@ -385,8 +385,8 @@ class ScenarioJourney:
         return new_id
 
     def give_access(self, page: Page, key: str, read_only: bool) -> None:
-        region = page.get_by_role("region", name="Who can see this")
-        self.tap(region.get_by_role("button", name="Give someone access"))
+        region = page.get_by_role("region", name="People", exact=True)
+        self.tap(region.get_by_role("button", name="Invite"))
         give = region.get_by_role("group", name="Give someone access")
         give.get_by_label("Person").select_option(value=self.ids[key])
         if read_only:

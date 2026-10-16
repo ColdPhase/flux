@@ -177,7 +177,10 @@ class WikiPanesJourney(unittest.TestCase):
         self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), width, "no horizontal page scroll")
         for selector in (".wiki", ".wiki-main", ".wiki-doc"):
             overflow = page.evaluate(f"(() => {{ const el = document.querySelector('{selector}'); return el.scrollWidth - el.clientWidth; }})()")
-            self.assertLessEqual(overflow, 0, f"{selector} does not overflow sideways")
+            wide = page.evaluate(f"""(() => {{ const box = document.querySelector('{selector}').getBoundingClientRect();
+                return [...document.querySelector('{selector}').querySelectorAll('*')].filter((el) => el.getBoundingClientRect().right > box.right + 0.5)
+                  .slice(0, 4).map((el) => el.tagName + '.' + el.className + ' ' + Math.round(el.getBoundingClientRect().right - box.right)); }})()""") if overflow > 0 else []
+            self.assertLessEqual(overflow, 0, f"{selector} does not overflow sideways (past the edge: {wide})")
 
     # ---------------------------------------------------------------- set up
 
@@ -487,7 +490,7 @@ class WikiPanesJourney(unittest.TestCase):
         expect(versions).to_have_count(2)
         expect(versions.first).to_contain_text("Added the privacy section")
         expect(versions.first).to_contain_text(PARTNER["name"])
-        expect(page.get_by_label("Changes in the text").locator(".doc-diff__row--added")).to_contain_text(["## Privacy"])
+        expect(page.get_by_label("Changes in the text").locator(".wiki-chg--added")).to_contain_text(["Privacy"])
         shot(page, "wiki-history-desktop-1440")
         page.get_by_role("link", name="Read version 1").click()
         expect(page).to_have_url(re.compile(re.escape(self.url("lamp", "/versions/1")) + "$"))
@@ -619,7 +622,7 @@ class WikiPanesJourney(unittest.TestCase):
         expect(partner.get_by_role("heading", level=2, name=LAMP)).to_be_visible()
         share.click()
         dialog.get_by_role("button", name="See who has access").click()
-        expect(page.locator("#details").get_by_role("heading", name="Who can see this")).to_be_visible()
+        expect(page.locator("#details").get_by_role("heading", name="People", exact=True)).to_be_visible()
 
     # ---------------------------------------------------------------- focus mode
 
@@ -787,6 +790,77 @@ class WikiPanesJourney(unittest.TestCase):
         shot(page, "wiki-tablet-820-focus")
         page.locator(".wiki-bar").get_by_role("button", name="Focus on the page").tap()
         expect(self.index(page)).to_be_visible()
+
+    TOOLBAR = ("outline", "history", "share", "download", "focus", "primary")
+
+    def toolbar_places(self, page: Page) -> dict[str, list[float]]:
+        """Each control of the page toolbar by its slot, as [left, right, top, bottom] in CSS pixels."""
+        return page.locator(".wiki-bar [data-slot]").evaluate_all(
+            "els => Object.fromEntries(els.map((e) => { const r = e.getBoundingClientRect(); return [e.dataset.slot, [r.left, r.right, r.top, r.bottom]]; }))")
+
+    def test_14_one_toolbar_and_the_outline_keep_their_places(self) -> None:
+        # #511 AC-3, AC-4 and AC-5: the outline is never below the page, and the toolbar's controls stay
+        # put from read to edit to history, at computer and laptop widths. The test records the place of
+        # every control per slot in the three states and fails when one moves.
+        for name, viewport in (("1440", DESKTOP), ("1100", {"width": 1100, "height": 760})):
+            page = self.page("owner", viewport=viewport)
+            page.goto(self.url("lamp"))
+            expect(page.get_by_role("heading", level=2, name=LAMP)).to_be_visible()
+            bar = page.locator(".wiki-bar")
+            expect(bar).to_contain_text("Published · version 2")
+            expect(page.locator(".wiki-bar__back")).to_have_count(0)
+            read = self.toolbar_places(page)
+            # The outline: a sticky column beside the page (its icon is dimmed), or a chip that opens it. Never below the page.
+            prose = page.locator(".doc-prose").bounding_box()
+            outline = page.locator(".wiki-outline")
+            chip = bar.get_by_role("button", name="On this page")
+            if outline.is_visible():
+                self.assertGreaterEqual(outline.bounding_box()["x"], prose["x"] + prose["width"] - 1, "the outline stands beside the page")
+                expect(chip).to_be_disabled()
+            else:
+                expect(outline).to_be_hidden()
+                expect(chip).to_be_enabled()
+                chip.click()
+                expect(chip).to_have_attribute("aria-expanded", "true")
+                opened = page.get_by_role("navigation", name="On this page").get_by_role("link")
+                expect(opened.first).to_have_text("What we want")
+                shot(page, f"wiki-outline-chip-{name}")
+                page.keyboard.press("Escape")
+                expect(page.get_by_role("navigation", name="On this page")).to_have_count(0)
+                expect(chip).to_be_focused()
+                # The list moves focus to its heading and closes.
+                chip.click()
+                opened.filter(has_text="Privacy").click()
+                expect(page.get_by_role("navigation", name="On this page")).to_have_count(0)
+                expect(page.locator(".doc-prose h2", has_text="Privacy")).to_be_focused()
+                page.evaluate("document.querySelector('.wiki-main').scrollTo(0, 0)")
+            self.assertEqual(read["outline"][0] < read["history"][0] < read["share"][0] < read["download"][0] < read["focus"][0] < read["primary"][0], True, read)
+            shot(page, f"wiki-toolbar-{name}-read")
+            page.get_by_role("link", name="Edit", exact=True).click()
+            expect(bar).to_contain_text("Editing version 2 · saves as 3")
+            expect(bar.get_by_role("button", name="Save version")).to_be_visible()
+            edit = self.toolbar_places(page)
+            self.assertEqual(page.locator(".wiki-bar__back").count(), 1, "Back is on the left in edit")
+            for label in ("On this page", "Share this page", "Download"):
+                expect(bar.get_by_role("button", name=label)).to_be_disabled()
+            shot(page, f"wiki-toolbar-{name}-edit")
+            page.goto(self.url("lamp", "/history"))
+            expect(bar).to_contain_text("History · 2 versions")
+            expect(bar.get_by_role("link", name=re.compile("^Restore v1"))).to_be_visible()
+            history = self.toolbar_places(page)
+            self.assertEqual(page.locator(".wiki-bar__back").count(), 1, "Back is on the left in history")
+            for label in ("On this page", "History", "Share this page", "Download"):
+                expect(bar.get_by_role("button", name=label)).to_be_disabled()
+            shot(page, f"wiki-toolbar-{name}-history")
+            # Every control keeps its place; the primary action is the last one, far right, in each state.
+            for state, places in (("edit", edit), ("history", history)):
+                self.assertEqual(list(places), list(read), (name, state))
+                for slot in self.TOOLBAR:
+                    moved = max(abs(a - b) for a, b in zip(read[slot], places[slot]))
+                    self.assertLessEqual(moved, 0.5, f"{slot} moved by {moved}px from read to {state} at {name}: {read[slot]} -> {places[slot]}")
+            # Back is the leftmost control of the toolbar; the page's own state follows it.
+            back = page.locator(".wiki-bar__back").bounding_box()
+            self.assertLessEqual(back["x"], bar.locator(".doc-head__k").bounding_box()["x"])
 
     def test_13b_wiki_page_reference_chips_keep_routes_audiences_and_versions(self) -> None:
         setup = self.page("owner")
