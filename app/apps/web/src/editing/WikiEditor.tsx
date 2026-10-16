@@ -279,7 +279,7 @@ export function LiveDocEditor({ doc, project, userId, fallback }: { doc: Doc; pr
   return <>
     <EditBar back={docUrl(project.id, doc.id)} backLabel="Back to the page" historyTo={`${docUrl(project.id, doc.id)}/history`}
       meta={<span className="doc-head__k">Shared working copy · last saved version {client?.head?.savedVersion ?? doc.version}</span>}
-      primary={<Button type="submit" form={formId} variant="primary" className="wiki-bar__primary" data-slot="primary" disabled={saveDisabled}>{busy ? 'Saving…' : 'Save version'}</Button>} />
+      primary={<Button type="submit" form={formId} variant="primary" className="wiki-bar__primary" data-slot="primary" icon="check" disabled={saveDisabled} aria-label={busy ? 'Saving…' : 'Save version'}><span className="wiki-bar__label">{busy ? 'Saving…' : 'Save version'}</span></Button>} />
     <form id={formId} className={`wiki-doc doc-edit${displayedMode === 'both' ? ' doc-edit--both' : ''}`} data-shift aria-labelledby={titleId} onSubmit={(event) => void save(event)} onKeyDown={(event) => {
       if ((event.ctrlKey || event.metaKey) && (event.key.toLowerCase() === 's' || event.key === 'Enter')) { event.preventDefault(); void save(); }
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') { event.preventDefault(); setPicker(true); }

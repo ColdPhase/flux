@@ -177,7 +177,10 @@ class WikiPanesJourney(unittest.TestCase):
         self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), width, "no horizontal page scroll")
         for selector in (".wiki", ".wiki-main", ".wiki-doc"):
             overflow = page.evaluate(f"(() => {{ const el = document.querySelector('{selector}'); return el.scrollWidth - el.clientWidth; }})()")
-            self.assertLessEqual(overflow, 0, f"{selector} does not overflow sideways")
+            wide = page.evaluate(f"""(() => {{ const box = document.querySelector('{selector}').getBoundingClientRect();
+                return [...document.querySelector('{selector}').querySelectorAll('*')].filter((el) => el.getBoundingClientRect().right > box.right + 0.5)
+                  .slice(0, 4).map((el) => el.tagName + '.' + el.className + ' ' + Math.round(el.getBoundingClientRect().right - box.right)); }})()""") if overflow > 0 else []
+            self.assertLessEqual(overflow, 0, f"{selector} does not overflow sideways (past the edge: {wide})")
 
     # ---------------------------------------------------------------- set up
 

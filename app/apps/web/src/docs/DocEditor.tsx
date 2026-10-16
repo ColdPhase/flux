@@ -223,7 +223,7 @@ function ScopedDocEditor({ project, doc, restore, accountId }: EditData & { proj
     <>
       <EditBar back={back} backLabel={doc ? 'Back to the page' : 'Back to the wiki'} historyTo={doc ? `${back}/history` : null}
         meta={<span className="doc-head__k">{doc ? <>Editing version {base} · saves as {base + 1}</> : 'New page'}</span>}
-        primary={<Button type="submit" form={formId} variant="primary" className="wiki-bar__primary" data-slot="primary" busy={busy} disabled={saveDisabled} aria-keyshortcuts={isMac ? 'Meta+S' : 'Control+S'}>{doc ? 'Save version' : 'Create page'}</Button>} />
+        primary={<Button type="submit" form={formId} variant="primary" className="wiki-bar__primary" data-slot="primary" icon="check" busy={busy} disabled={saveDisabled} aria-label={doc ? 'Save version' : 'Create page'} aria-keyshortcuts={isMac ? 'Meta+S' : 'Control+S'}><span className="wiki-bar__label">{doc ? 'Save version' : 'Create page'}</span></Button>} />
       <form id={formId} className={`wiki-doc doc-edit${mode === 'both' ? ' doc-edit--both' : ''}`} data-shift onSubmit={(event) => void save(event)} onKeyDown={onKey} aria-labelledby={titleId}>
         <p className="wiki-doc__crumb"><Icon name="lock" size={12} /><span>Everyone in {project.name} can read it</span></p>
         {restored ? <p className="doc-notice"><Icon name="undo" size={14} />Your unsaved text from earlier is back.</p> : null}

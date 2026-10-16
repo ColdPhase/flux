@@ -396,7 +396,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
         self.assertLess(progress.bounding_box()["height"], 48, "a task is one line")
         rule = now.get_by_role("button", name=re.compile("^Current rule"))
         expect(rule).to_contain_text("Use a ToF sensor, not the camera, for gestures")
-        expect(rule).to_contain_text(re.compile(r"accepted \w+ \d+"))
+        expect(rule).to_contain_text(re.compile(r"accepted (\d+ \w+|\w+ \d+)"))
         text = panel.inner_text()
         for title in ("Test the camera in low light", "Order two VL53L5CX boards", "Use a ToF sensor, not the camera, for gestures"):
             self.assertEqual(text.count(title), 1, f"{title!r} appears once in Details")

@@ -38,7 +38,7 @@ and sets `FLUX_PUBLIC_ORIGIN` ([operations](../operations/README.md),
 
 1. Open the URL and create an account.
 2. Create your first project. Flux asks for a name for your space; use your team's name.
-3. A new project is restricted. Open its **Who can see this** to add the teammates who have
+3. A new project is restricted. Open its **People** (Invite) to add the teammates who have
    accounts on the same installation.
 
 ## 3. Connect your own agent

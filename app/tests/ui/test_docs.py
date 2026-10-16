@@ -234,9 +234,9 @@ class DocsJourney(unittest.TestCase):
             expect(versions.first).to_contain_text("Night light brightness")
             expect(versions.first).to_contain_text(PARTNER["name"])
             diff = page.get_by_label("Changes in the text")
-            # The rendered comparison reads as the page: changed blocks carry a mark, headings are headings.
-            expect(diff.locator(".wiki-chg--added")).to_contain_text(["at 5% brightness"])
-            expect(diff.locator(".wiki-chg--removed").first).to_contain_text("Two quick waves")
+            # The rendered comparison reads as the page: added words are marked where they stand, headings are headings.
+            expect(diff.locator("li", has_text="Two quick waves")).to_contain_text("at 5% brightness")
+            expect(diff.locator("li ins")).to_contain_text(["at 5% brightness"])
             page.get_by_label("Compare with").select_option("1")
             expect(page.get_by_role("heading", name=re.compile("^v1 → v3"))).to_be_visible()
             expect(diff.locator(".wiki-chg--added", has_text="Open questions")).to_have_count(1)

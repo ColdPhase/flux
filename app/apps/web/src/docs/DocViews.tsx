@@ -256,8 +256,8 @@ function DocReading({ live }: { live: LiveReadingState | null }) {
   const keptLink = kept ? <Link className="wiki-bar__kept" to={edit}>Unsaved changes in this tab</Link> : null;
   // An earlier version is read only: on the computer Edit stays in its place, dimmed (#511, AC-4).
   const editButton = !writable ? null : current
-    ? <Link className={`ui-btn ui-btn--primary ${compact ? 'wiki-edit' : 'wiki-bar__primary'}`} data-slot="primary" to={edit} aria-keyshortcuts="e"><Icon name="edit" size={16} />Edit</Link>
-    : compact ? null : <button type="button" className="ui-btn ui-btn--primary wiki-bar__primary" data-slot="primary" disabled><Icon name="edit" size={16} />Edit</button>;
+    ? <Link className={`ui-btn ui-btn--primary ${compact ? 'wiki-edit' : 'wiki-bar__primary'}`} data-slot="primary" to={edit} aria-label="Edit" aria-keyshortcuts="e"><Icon name="edit" size={16} /><span className="wiki-bar__label">Edit</span></Link>
+    : compact ? null : <button type="button" className="ui-btn ui-btn--primary wiki-bar__primary" data-slot="primary" aria-label="Edit" disabled><Icon name="edit" size={16} /><span className="wiki-bar__label">Edit</span></button>;
   return (
     <>
       <WikiBar compactInHeader phoneMeta={<span className="wiki-bar__title"><b>Wiki</b> · {docs.length} {docs.length === 1 ? 'page' : 'pages'}</span>}
@@ -404,8 +404,8 @@ export function DocHistory() {
   // the current page. It opens the editor with that text; nothing changes until Save version.
   const restore = to.version !== doc.version ? to.version : from?.version ?? null;
   const primary = !writable ? null : restore
-    ? <Link className="ui-btn ui-btn--quiet wiki-bar__primary wiki-bar__restore" data-slot="primary" to={`${base}/edit?restore=${restore}`}><Icon name="undo" size={14} />Restore v{restore}</Link>
-    : <button type="button" className="ui-btn ui-btn--quiet wiki-bar__primary wiki-bar__restore" data-slot="primary" disabled><Icon name="undo" size={14} />Restore</button>;
+    ? <Link className="ui-btn ui-btn--quiet wiki-bar__primary wiki-bar__restore" data-slot="primary" to={`${base}/edit?restore=${restore}`} aria-label={`Restore v${restore}`}><Icon name="undo" size={14} /><span className="wiki-bar__label">Restore v{restore}</span></Link>
+    : <button type="button" className="ui-btn ui-btn--quiet wiki-bar__primary wiki-bar__restore" data-slot="primary" aria-label="Restore" disabled><Icon name="undo" size={14} /><span className="wiki-bar__label">Restore</span></button>;
   return (
     <>
       <WikiBar meta={<span className="doc-head__k">History · {doc.version} {doc.version === 1 ? 'version' : 'versions'}</span>}

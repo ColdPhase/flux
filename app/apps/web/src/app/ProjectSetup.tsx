@@ -38,7 +38,7 @@ export function ProjectSetup() {
       const project = await createProject(space.id, projectName.trim(), template, intents.keyFor(projectIntent));
       intents.settle(projectIntent);
       revalidator.revalidate();
-      // A new project is restricted; its "Who can see this" opens next, to add people (#188).
+      // A new project is restricted; its "People" opens next, to add people (#188).
       navigate(`/projects/${project.id}?new=1&open=people`);
     } catch (cause) { setError(cause instanceof ApiError ? cause.message : 'Could not create this project. Try again.'); }
     finally { setBusy(false); }
