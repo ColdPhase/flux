@@ -73,6 +73,8 @@ export interface ShellActions {
   actionSlot: HTMLElement | null;
   /** A project view's quiet context beside its title, such as the compact Wiki's page count. */
   metadataSlot: HTMLElement | null;
+  /** Metadata for the current project view in the phone view menu. */
+  viewMenuMetadataSlot?: HTMLElement | null;
 }
 
 export const ShellContext = createContext<ShellActions>({ openDetails: () => undefined, openCreate: () => undefined, openSearch: () => undefined, openNavigation: () => undefined, actionSlot: null, metadataSlot: null });

@@ -32,7 +32,7 @@ export interface ProjectAgentConnection {
   agent: { id: string; name: string };
   /** True when the caller owns the connection. */
   own: boolean;
-  /** One owner assistant, independent of engine; never an external client label. */
+  /** Own assistant only: available to its owner’s hand-off/settings, never a project Agents list row (#522). */
   assistant?: true;
   state: ProjectAgentConnectionState;
   /** The open session's start and end; null unless `session_open`. */
@@ -61,7 +61,7 @@ export interface ProjectAgentRequest {
 export interface ProjectAgents {
   projectId: string;
   connections: ProjectAgentConnection[];
-  /** Pending joins visible only to current managers or the requesting owner. */
+  /** The requesting owner’s pending joins for their assistant settings; managers review explicit requests in Inbox (#522). */
   joinRequests?: AssistantJoinRequest[];
   /** Only the reader’s own active assistant in this project’s workspace; asking grants no access. */
   assistantJoin?: { agentId: string; canRequest: boolean };

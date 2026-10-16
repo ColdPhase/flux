@@ -89,7 +89,7 @@ export function useNeedsYouActions(queue: Queue): CardHandlers {
     open(item: NeedsYouItem) {
       if (item.kind === 'decision' && item.decision && item.project) openDetails({ kind: 'decision', id: item.decision.id, projectId: item.project.id });
       else if (item.kind === 'blocked' && item.blocked && item.project) openDetails({ kind: 'work', id: item.blocked.workId, projectId: item.project.id });
-      else void navigate(item.url);
+      else void navigate(item.assistantRequestIdentity && item.project ? `/inbox/${encodeURIComponent(item.key.replace(/^note:/, ""))}` : item.url);
     },
 
     discuss(item: NeedsYouItem) {

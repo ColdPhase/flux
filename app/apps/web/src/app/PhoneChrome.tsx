@@ -65,7 +65,7 @@ export function PhoneBack({ onBack }: { onBack: () => void }) {
   return <IconButton icon="chevron-left" label="Back" size={20} className="phead__round phead__back" data-tip-align="start" onClick={onBack} />;
 }
 
-export interface PhoneMenuItem { id: string; label: string; to: string; icon: IconName; note?: string; current?: boolean; end?: boolean }
+export interface PhoneMenuItem { id: string; label: string; to: string; icon: IconName; note?: ReactNode; current?: boolean; end?: boolean }
 
 /**
  * The title is the view menu: it names the project (or Home, or the conversation) and the view
