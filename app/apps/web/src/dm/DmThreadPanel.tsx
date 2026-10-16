@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import type { DmMessage, DmPerson, DmThread } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { dmReceipts, getDmThread, observeDmMessages, olderDmReplies } from '../api/direct-messages';
+import { ComposerBox } from '../composer/ComposerBox';
 import { outboxView, useComposerDraft, useComposerScope } from '../composer/draft';
 import { SendAnnouncer } from '../composer/Outbox';
 import { Button, Icon, MEDIA, sendsOnEnter, useMediaQuery } from '../ui';
@@ -142,13 +143,10 @@ export function DmThreadPanel({ dmId, rootId, mode, meId, meName, nameOf, audien
         </div>
         <div className="composer dm__composer dm-thread__composer">
           <div className="composer__in">
-            <p className="composer__audience"><Icon name="lock" size={13} />{audience}<span aria-hidden="true"> · </span><span className="composer__where">private reply</span></p>
-            <div className="composer__box" aria-disabled={!writable || undefined}>
-              <label className="ui-vh" htmlFor="dm-thread-composer">Reply in thread</label>
-              <textarea id="dm-thread-composer" ref={field} rows={1} value={draft} onChange={(event) => composer.setBody(event.target.value)} onKeyDown={onKey}
-                disabled={!writable} placeholder={writable ? 'Reply…' : 'Nobody else is in this conversation'} />
-              <button type="button" className="composer__send" aria-label="Send reply" aria-disabled={!composer.canSend || !writable} onClick={() => void send()}><Icon name="send" /></button>
-            </div>
+            <ComposerBox id="dm-thread-composer" label="Reply in thread" fieldRef={field} value={draft} onChange={(value) => composer.setBody(value)} onKeyDown={onKey}
+              disabled={!writable} boxDisabled={!writable} placeholder={writable ? 'Reply in thread…' : 'Nobody else is in this conversation'}
+              sendLabel="Send reply" sendDisabled={!composer.canSend || !writable} onSend={() => void send()} />
+            <p className="composer__audience"><Icon name="lock" size={13} /><span>{audience}<span aria-hidden="true"> · </span><span className="composer__where">private reply</span></span></p>
             <SendAnnouncer pending={composer.pending} />
             {composer.error ? <p className="dm__error" role="alert"><Icon name="alert" size={13} />{composer.error}</p> : null}
           </div>

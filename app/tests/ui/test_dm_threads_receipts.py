@@ -2,7 +2,7 @@
 
 Four people share a workspace: Ada, Kai and Lee are in the group message "Lamp crew", Max is in the
 workspace but not in it. They cover: actions beside the bubble instead of a permanent Reply (computer) and
-swipe left and long press (phone); a private reply thread whose count stays under its root and which
+swipe right and long press (phone); a private reply thread whose count stays under its root and which
 survives a reload; real "Seen by" receipts that need every message of a run to be observed (offscreen
 messages do not count) and update live; and an explicit excerpt-to-task copy that previews the text, the
 project and the audience, writes nothing on cancel, copies only the chosen excerpt and survives a lost
@@ -336,7 +336,7 @@ class DmThreadsReceipts(unittest.TestCase):
         expect(maxp.get_by_text(CHOSEN).first).to_be_visible()
         self.assertEqual(maxp.request.get(f"/api/v1/dms/{self.dm_id}").status, 404)
 
-    def test_07_phone_swipe_left_long_press_and_the_sheets(self) -> None:
+    def test_07_phone_swipe_right_long_press_and_the_sheets(self) -> None:
         page = self.page("kai", phone=True)
         page.goto(f"/dm/{self.dm_id}")
         expect(page.locator(".dm-msg").first).to_be_visible()
@@ -345,21 +345,16 @@ class DmThreadsReceipts(unittest.TestCase):
         self.scrolled(page)
         # The thread count row is visible without any gesture.
         expect(row.locator(".dm-replies")).to_have_text("1 reply")
-        # A swipe the way a finger makes it: each step waits for the row to have followed the one before.
+        # A swipe right the way a finger makes it: each step waits for the row to have followed the one before.
         body = row.locator(".dm-msg__body")
         x, y = centre(body)
         touch(body, "pointerdown", x, y)
-        touch(body, "pointermove", x - 40, y)
+        touch(body, "pointermove", x + 40, y)
         expect(row).to_have_class(re.compile(r"is-dragging"))
-        touch(body, "pointermove", x - 150, y)
-        expect(row).to_have_css("transform", re.compile(r"matrix\(1, 0, 0, 1, -150, 0\)"))
-        touch(body, "pointerup", x - 150, y)
-        expect(row).to_have_class(re.compile(r"is-swiped"))
-        swipe_actions = row.get_by_role("group", name="Swipe actions")
-        expect(swipe_actions.get_by_role("button", name="Reply in thread")).to_be_visible()
-        expect(swipe_actions.locator("button")).to_have_text(["Reply in thread", "Create task"])
+        touch(body, "pointermove", x + 80, y)
+        expect(row).to_have_css("transform", re.compile(r"matrix\(1, 0, 0, 1, 80, 0\)"))
         shot(page, "dm-threads-phone-swipe-light")
-        swipe_actions.get_by_role("button", name="Reply in thread").click()
+        touch(body, "pointerup", x + 80, y)
         panel = page.locator("[data-dm-thread]")
         expect(panel).to_be_visible()
         expect(panel.locator(".dm-msg__body", has_text="long hold to switch off")).to_be_visible()
@@ -381,14 +376,15 @@ class DmThreadsReceipts(unittest.TestCase):
         shot(page, "dm-threads-phone-copy-light")
         dialog.get_by_role("button", name="Cancel").click()
         expect(dialog).to_have_count(0)
-        # The plain gesture helper (a burst of pointer events) swipes any other message too, and nothing swipes right.
+        # The plain gesture helper (a burst of pointer events): nothing swipes left, and a short swipe right springs back.
         other = self.row(page, self.run_y)
         other.scroll_into_view_if_needed()
         self.scrolled(page)
-        swipe(other.locator(".dm-msg__body"), 120)
-        expect(other.get_by_role("group", name="Swipe actions")).to_be_hidden()
         swipe(other.locator(".dm-msg__body"), -150)
-        expect(other).to_have_class(re.compile(r"is-swiped"))
+        expect(other).not_to_have_class(re.compile(r"is-swiped"))
+        swipe(other.locator(".dm-msg__body"), 40)
+        expect(other).not_to_have_class(re.compile(r"is-swiped"))
+        expect(page.locator("[data-dm-thread]")).to_have_count(0)
 
     def test_08_project_conversation_roots_and_thread_replies_show_real_receipts(self) -> None:
         import uuid

@@ -1,4 +1,4 @@
-import { Fragment, type ReactNode } from 'react';
+import { Fragment } from 'react';
 import type { ProjectPerson } from '@flux/contracts';
 import { Avatar, Kreska } from '../ui';
 import './composer-menu.css';
@@ -73,9 +73,4 @@ export function ComposerMenu({ id, options, active, onPick, onHover, trigger }: 
       {trigger === '/' ? <div className="cmenu__f" aria-hidden="true">Type @ to mention people and agents</div> : null}
     </div>
   );
-}
-
-/** The quiet line in the box that says the two triggers exist (S5). */
-export function ComposerHint(): ReactNode {
-  return <span className="composer__hint">Type <kbd>@</kbd> to mention · <kbd>/</kbd> for actions</span>;
 }

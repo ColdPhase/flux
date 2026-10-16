@@ -345,13 +345,13 @@ a.me__btn[aria-current="page"] { background: var(--sub); }
 .composer { flex: none; padding: 8px 24px 16px; padding-bottom: max(16px, env(safe-area-inset-bottom)); }
 .composer__in { max-width: var(--col); margin: 0 auto; }
 .composer__box {
-  display: flex; align-items: flex-end; gap: 8px; padding: 8px 8px 8px 15px; border-radius: var(--r-composer);
+  display: flex; align-items: center; gap: 4px; padding: 6px 6px 6px 8px; border-radius: var(--r-composer);
   box-shadow: var(--sh-field); background: var(--el); transition: var(--tr);
 }
 .composer__box:focus-within { box-shadow: inset 0 0 0 1.5px var(--t1), var(--sh-1); }
 .composer__box[aria-disabled="true"] { background: var(--sub); }
 .composer__box textarea {
-  flex: 1; min-height: 32px; max-height: 180px; padding: 5px 0; border: 0; resize: none; background: transparent;
+  field-sizing: content; flex: 1; min-height: 32px; max-height: 180px; padding: 6px 4px; border: 0; resize: none; background: transparent;
   font-size: var(--fs-base); line-height: 1.5; outline: none;
 }
 .composer__box textarea::placeholder { color: var(--t3); opacity: 1; }
@@ -372,6 +372,8 @@ a.me__btn[aria-current="page"] { background: var(--sub); }
 .composer__attach { display: grid; place-items: center; width: 32px; height: 32px; flex: none; border-radius: var(--r); color: var(--t3); transition: var(--tr); }
 .composer__attach:hover:not(:disabled) { background: var(--hov); color: var(--t1); }
 .composer__attach:disabled { opacity: .5; cursor: default; }
+.composer__attach[aria-disabled="true"] { opacity: .45; cursor: default; }
+.composer__attach[aria-disabled="true"]:hover { background: transparent; color: var(--t3); }
 .composer__attach:focus-visible { outline: 2px solid var(--t1); outline-offset: 0; }
 /* ✦ Ask my assistant (#57): one quiet button in the box; no connection means an honest note. */
 .composer__ask { display: grid; place-items: center; width: 32px; height: 32px; flex: none; margin-left: -8px; border-radius: var(--r); color: var(--t3); transition: var(--tr); }
@@ -381,8 +383,12 @@ a.me__btn[aria-current="page"] { background: var(--sub); }
 .ask__who { display: inline-flex; align-items: center; gap: 6px; min-height: 24px; padding: 0 2px 0 9px; border-radius: var(--r-pill); background: var(--sub); color: var(--t1); font-weight: 500; }
 .ask__off.ui-icon-btn { width: 22px; height: 22px; min-height: 22px; border-radius: 50%; color: var(--t1); }
 .ask__connect { font-size: var(--fs-xs); }
-.composer__audience { display: flex; align-items: center; gap: 6px; margin: 0 2px 6px; font-size: var(--fs-xs); font-weight: 500; color: var(--t2); }
-.composer__audience svg { color: var(--t3); }
+.composer__audience { display: flex; align-items: center; gap: 6px; margin: 6px 4px 0; font-size: var(--fs-xs); font-weight: 500; color: var(--t2); }
+.composer__audience svg { color: var(--t3); flex: none; }
+/* A place's one extra tool sits at the end of the audience line, never in the box (#504). */
+.composer__line { display: flex; align-items: center; gap: 6px; }
+.composer__line > :first-child { flex: 1; min-width: 0; }
+.composer__line .composer__ask { margin: 0; }
 .dm__composer .composer__audience > span > svg { margin-right: 6px; vertical-align: -2px; }
 .composer__where { color: var(--t3); font-weight: 400; }
 
@@ -461,8 +467,8 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
   .me__item { min-height: 44px; }
   .seg__b { min-height: 44px; }
   .brand { min-height: 44px; }
-  .composer__box { padding: 4px 4px 4px 14px; align-items: center; }
-  .composer__box textarea { min-height: 44px; padding: 10px 0; }
+  .composer__box { padding: 4px 4px 4px 6px; }
+  .composer__box textarea { min-height: 44px; padding: 10px 4px; }
   .composer__send, .composer__ask, .composer__attach { width: 44px; height: 44px; }
   /* 16px text: iOS zooms the page into any smaller field on focus. */
   .composer__box textarea { font-size: 16px; }

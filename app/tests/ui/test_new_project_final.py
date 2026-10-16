@@ -263,7 +263,7 @@ class NewProject(unittest.TestCase):
         # She moves on to project B and starts a message.
         page.get_by_role("complementary", name="Sidebar").get_by_role("link", name=re.compile("Late B")).click()
         expect(page).to_have_url(re.compile(f"/projects/{b['id']}"))
-        composer = page.get_by_placeholder(re.compile("Write a message"))
+        composer = page.get_by_placeholder(re.compile("Message · @ mention"))
         composer.fill("Half a thought for B")
         route, response = held[0]
         route.fulfill(response=response)
