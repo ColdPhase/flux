@@ -117,6 +117,10 @@ export interface ObserveMessagesResult { observed: number }
 export interface MessageReceiptsQuery { runs: string[][] }
 export interface MessageReceiptsResult { runs: { messageIds: string[]; seenBy: DmPerson[] }[] }
 
+/** The same receipts for the project's conversation (#534): its roots and the replies of one thread. */
+export const projectObservationsPath = (projectId: string) => `/api/v1/projects/${projectId}/observations`;
+export const projectReceiptsPath = (projectId: string) => `/api/v1/projects/${projectId}/receipts`;
+
 export const RECEIPT_LIMITS = { messagesPerCall: 50, runsPerCall: 20, messagesPerQuery: 200 } as const;
 
 /**

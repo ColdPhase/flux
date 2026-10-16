@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom';
 import { Link, useLoaderData, useLocation, useNavigate, useRevalidator, useSearchParams, type LoaderFunctionArgs } from 'react-router';
 import type { Dm, DmMessage, DmPerson, DmTaskCopyResult } from '@flux/contracts';
 import { ApiError } from '../api/client';
-import { getDm, olderDmMessages } from '../api/direct-messages';
+import { dmReceipts, getDm, observeDmMessages, olderDmMessages } from '../api/direct-messages';
 import { outboxView, useComposerDraft, useComposerScope } from '../composer/draft';
 import { ConnectionLine, SendAnnouncer } from '../composer/Outbox';
 import { createDmSketch } from '../api/sketches';
@@ -22,7 +22,7 @@ import { DmBubble } from './DmBubble';
 import { DmTaskCopy } from './DmTaskCopy';
 import { DmThreadPanel } from './DmThreadPanel';
 import { groupRows } from './rows';
-import { ownRuns, useObservation, useReceipts } from './receipts';
+import { ownRuns, useObservation, useReceipts } from '../app/receipts';
 import './dm.css';
 
 /**
@@ -296,9 +296,10 @@ function DmContent({ initial }: { initial: Dm }) {
   const rows = groupRows(lines);
   // #534: what this person observed, and who observed every message of their own whole runs.
   const feedBox = feedRef;
-  useObservation({ dmId: dm.id, meId: me.user.id, enabled: !gone && !selecting, feed: feedBox, messages: shown, depend: shown.length });
+  useObservation({ scope: dm.id, observe: (ids) => observeDmMessages(dm.id, ids), enabled: !gone && !selecting, feed: feedBox,
+    ids: shown.filter((m) => m.authorId !== me.user.id).map((m) => m.id), depend: shown.length });
   const runs = ownRuns(lines.map((line) => ({ id: line.message?.id ?? null, authorId: line.authorId, createdAt: line.at })), me.user.id, olderCursor !== null);
-  const seen = useReceipts({ dmId: dm.id, runs, tick: receiptTick + refreshTick });
+  const seen = useReceipts({ scope: dm.id, fetchReceipts: (list, signal) => dmReceipts(dm.id, list, signal), runs, tick: receiptTick + refreshTick });
 
   function openThread(rootId: string, reply: boolean) {
     opener.current = rootId;

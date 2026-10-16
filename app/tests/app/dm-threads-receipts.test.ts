@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { before, describe, test } from 'node:test';
-import type { Dm, DmMessage, DmTaskCopyPreview, DmTaskCopyResult, DmThread, MessageReceiptsResult, Page, WorkItem, Workspace } from '@flux/contracts';
+import type { Conversation, ConversationMessage, Dm, DmMessage, DmTaskCopyPreview, DmTaskCopyResult, DmThread, MessageReceiptsResult, Page, WorkItem, Workspace } from '@flux/contracts';
 import { pool } from './support/db.js';
 import { addMember, expectStatus, grant, person, project, removeMember, workspace, type Person } from './support/people.js';
 
@@ -431,6 +431,73 @@ describe('DM reply threads, viewing receipts and task copies', () => {
       const gone = await preview(jo, dm.id, { messageId: root.id, projectId: lamp.id });
       expectStatus(gone, 409);
       assert.equal((gone.json as { code: string }).code, 'DM_RECIPIENT_LEFT');
+    });
+  });
+
+  describe('project conversation receipts (#534)', () => {
+    const projectPath = (projectId: string) => `/api/v1/projects/${projectId}`;
+    const startRoot = async (actor: Person, projectId: string, body: string) =>
+      (expectStatus(await actor.browser.request('POST', `${projectPath(projectId)}/conversations`, { body: { body, clientMessageId: randomUUID() } }), 201, 'start') as Conversation);
+    const replyIn = async (actor: Person, conversationId: string, body: string) =>
+      expectStatus(await actor.browser.request('POST', `/api/v1/conversations/${conversationId}/messages`, { body: { body, clientMessageId: randomUUID() } }), 201, 'reply') as ConversationMessage;
+    const seeP = (actor: Person, projectId: string, ids: string[]) => actor.browser.request('POST', `${projectPath(projectId)}/observations`, { body: { messageIds: ids } });
+    const receiptsP = (actor: Person, projectId: string, runs: string[][]) => actor.browser.request('POST', `${projectPath(projectId)}/receipts`, { body: { runs } });
+    const namesP = async (actor: Person, projectId: string, runs: string[][]) =>
+      (expectStatus(await receiptsP(actor, projectId, runs), 200, 'project receipts') as MessageReceiptsResult).runs.map((run) => run.seenBy.map((p) => p.name).sort());
+
+    test('roots and thread replies: Seen by needs every message of the run, only current readers are named, and access is exact', async () => {
+      const [jo, kai, lee] = await trio();
+      const outsider = (await trio())[0];
+      const lamp = await project(ada, ws.id, 'Receipts project', 'restricted');
+      await grant(ada, lamp.id, jo, 'contributor');
+      await grant(ada, lamp.id, kai, 'contributor');
+      await grant(ada, lamp.id, lee, 'viewer');
+      const r1 = await startRoot(jo, lamp.id, 'First root');
+      const r2 = await startRoot(jo, lamp.id, 'Second root');
+      const m1 = r1.messages[0]!;
+      const m2 = r2.messages[0]!;
+      assert.deepEqual(await namesP(jo, lamp.id, [[m1.id, m2.id]]), [[]]);
+      expectStatus(await seeP(kai, lamp.id, [m2.id]), 200);
+      assert.deepEqual(await namesP(jo, lamp.id, [[m1.id, m2.id], [m2.id]]), [[], ['th-kai']], 'one message of a run is not the run');
+      expectStatus(await seeP(kai, lamp.id, [m1.id, m2.id]), 200);
+      expectStatus(await seeP(lee, lamp.id, [m1.id, m2.id]), 200);
+      assert.deepEqual(await namesP(jo, lamp.id, [[m1.id, m2.id]]), [['th-kai', 'th-lee']], 'a read-only reader is a reader');
+      assert.equal((expectStatus(await seeP(kai, lamp.id, [m1.id]), 200) as { observed: number }).observed, 0, 'idempotent');
+
+      // Thread replies are their own level, within one conversation.
+      const a1 = await replyIn(jo, r1.id, 'reply one');
+      const a2 = await replyIn(jo, r1.id, 'reply two');
+      expectStatus(await seeP(kai, lamp.id, [a1.id]), 200);
+      assert.deepEqual(await namesP(jo, lamp.id, [[a1.id, a2.id], [a1.id]]), [[], ['th-kai']]);
+      expectStatus(await seeP(kai, lamp.id, [a2.id]), 200);
+      assert.deepEqual(await namesP(jo, lamp.id, [[a1.id, a2.id]]), [['th-kai']]);
+
+      // Runs are checked against the stored messages.
+      const code = (r: { json: unknown }) => (r.json as { code: string }).code;
+      const k1 = await startRoot(kai, lamp.id, 'Kai root between');
+      const r3 = await startRoot(jo, lamp.id, 'Third root');
+      assert.equal(code(expectStatus2(await receiptsP(jo, lamp.id, [[m2.id, r3.messages[0]!.id]]), 422)), 'RECEIPT_RUN_INVALID', 'a run cannot skip a root of someone else');
+      assert.equal(code(expectStatus2(await receiptsP(jo, lamp.id, [[m1.id, a1.id]]), 422)), 'RECEIPT_RUN_INVALID', 'a root and a reply are different places');
+      assert.equal(code(expectStatus2(await receiptsP(kai, lamp.id, [[m1.id, m2.id]]), 422)), 'RECEIPT_RUN_INVALID', 'only your own runs');
+      expectStatus(await receiptsP(kai, lamp.id, [[k1.messages[0]!.id]]), 200);
+
+      // The viewer is the session; guessed, foreign and outsider requests are refused and write nothing.
+      const before = (await pool.query('SELECT count(*)::int AS n FROM project_message_observations')).rows[0].n;
+      expectStatus(await outsiderObserve(outsider), 404);
+      expectStatus(await seeP(outsider, lamp.id, [m1.id]), 404, 'a member without a grant');
+      expectStatus(await receiptsP(outsider, lamp.id, [[m1.id]]), 404);
+      expectStatus(await seeP(dave, lamp.id, [m1.id]), 404, 'another tenant');
+      expectStatus(await seeP(kai, lamp.id, [m1.id, randomUUID()]), 404, 'a guessed id');
+      const other = await project(ada, ws.id, 'Another project', 'workspace');
+      const foreign = (await startRoot(ada, other.id, 'Elsewhere')).messages[0]!;
+      expectStatus(await seeP(kai, lamp.id, [foreign.id]), 404, 'a message of another project');
+      assert.equal((await pool.query('SELECT count(*)::int AS n FROM project_message_observations')).rows[0].n, before);
+
+      // Revoked readers are never named, whatever they saw; they cannot observe any more.
+      await grant(ada, lamp.id, kai, 'denied');
+      assert.deepEqual(await namesP(jo, lamp.id, [[m1.id, m2.id], [a1.id, a2.id]]), [['th-lee'], []]);
+      expectStatus(await seeP(kai, lamp.id, [m1.id]), 404, 'revoked: observe');
+      async function outsiderObserve(who: Person) { return who.browser.request('POST', `${projectPath(lamp.id)}/observations`, { body: { messageIds: [m1.id], viewerId: jo.id } }); }
     });
   });
 });

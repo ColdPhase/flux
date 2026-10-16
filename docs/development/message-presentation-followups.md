@@ -2,7 +2,7 @@
 
 Accepted boundary, 2026-10-16: the coordinator adopted the independent PR #529 peer
 assessment under the [delegated product authority](../product/autonomy.md).
-This records required future behavior, **not implemented endpoints or schema**.
+The DM threads, receipts and task copy below are implemented as described in [direct messages](direct-messages.md#reply-threads-receipts-and-task-copies-536-534-537).
 PR #529 provides the shared presentation slice. #503 AC-5 remains open for the
 DM capabilities below; #534 tracks the unimplemented receipts in AC-3.
 

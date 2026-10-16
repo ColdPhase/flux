@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState, type RefObject } from 'react';
-import { RECEIPT_LIMITS, type DmMessage, type DmPerson } from '@flux/contracts';
-import { dmReceipts, observeDmMessages } from '../api/direct-messages';
-import { sameMessageAuthor } from '../app/messageParts';
+import { RECEIPT_LIMITS, type DmPerson, type MessageReceiptsResult, type ObserveMessagesResult } from '@flux/contracts';
+import { sameMessageAuthor } from './messageParts';
 
 /**
  * Viewing receipts for a private conversation (#534). What counts as "observed": a message written by someone else
@@ -16,17 +15,18 @@ const SEEN_RATIO = 0.6;
 
 const watching = () => document.visibilityState === 'visible' && document.hasFocus();
 
-export function useObservation({ dmId, meId, enabled, feed, messages, depend }: {
-  dmId: string; meId: string; enabled: boolean; feed: RefObject<HTMLElement | null>;
-  /** The messages on screen; only other people's are watched. */
-  messages: readonly DmMessage[]; depend?: unknown;
+export function useObservation({ scope, observe, enabled, feed, ids: watched, depend }: {
+  /** The conversation the writes belong to; what was written is remembered per scope. */
+  scope: string; observe: (ids: string[]) => Promise<ObserveMessagesResult>; enabled: boolean; feed: RefObject<HTMLElement | null>;
+  /** The ids of other people's messages on screen: only those are watched. Each element carries `data-observe-id`. */
+  ids: readonly string[]; depend?: unknown;
 }) {
   const sent = useRef(new Set<string>());
   const queue = useRef(new Set<string>());
   const flushing = useRef(false);
   const flushTimer = useRef(0);
 
-  const ids = messages.filter((m) => m.authorId !== meId).map((m) => m.id).join(',');
+  const ids = watched.join(',');
   useEffect(() => {
     const root = feed.current;
     if (!enabled || !root || !ids) return;
@@ -35,7 +35,7 @@ export function useObservation({ dmId, meId, enabled, feed, messages, depend }: 
       flushing.current = true;
       const batch = [...queue.current].slice(0, RECEIPT_LIMITS.messagesPerCall);
       batch.forEach((id) => queue.current.delete(id));
-      try { await observeDmMessages(dmId, batch); batch.forEach((id) => sent.current.add(id)); }
+      try { await observe(batch); batch.forEach((id) => sent.current.add(id)); }
       catch { /* A failed write is retried the next time the message is observed: nothing is claimed meanwhile. */ }
       finally {
         flushing.current = false;
@@ -74,7 +74,7 @@ export function useObservation({ dmId, meId, enabled, feed, messages, depend }: 
       io.disconnect(); timers.forEach((timer) => window.clearTimeout(timer));
       document.removeEventListener('visibilitychange', back); window.removeEventListener('focus', back);
     };
-  }, [dmId, enabled, feed, ids, depend]);
+  }, [scope, enabled, feed, ids, depend]);
   useEffect(() => () => window.clearTimeout(flushTimer.current), []);
 }
 
@@ -103,24 +103,37 @@ export function ownRuns(lines: readonly Line[], meId: string, hasEarlier: boolea
 }
 
 /** Who observed every message of each of the person's own whole runs; refetched when the runs or `tick` change. */
-export function useReceipts({ dmId, runs, tick }: { dmId: string; runs: readonly OwnRun[]; tick: number }) {
-  const key = `${dmId}|${runs.map((run) => run.ids.join('+')).join('|')}`;
+export function useReceipts({ scope, fetchReceipts, runs, tick }: {
+  scope: string; fetchReceipts: (runs: string[][], signal: AbortSignal) => Promise<MessageReceiptsResult>; runs: readonly OwnRun[]; tick: number;
+}) {
+  const key = `${scope}|${runs.map((run) => run.ids.join('+')).join('|')}`;
   const [answer, setAnswer] = useState<{ key: string; seen: Map<string, DmPerson[]> }>({ key: '', seen: new Map() });
   useEffect(() => {
     // The newest runs only: older ones are bounded by the request limits and are not at the reading edge.
     const wanted = runs.slice(-RECEIPT_LIMITS.runsPerCall).filter((run) => run.ids.length <= RECEIPT_LIMITS.messagesPerCall);
     if (!wanted.length) return;
     const controller = new AbortController();
-    dmReceipts(dmId, wanted.map((run) => run.ids), controller.signal).then((result) => {
+    fetchReceipts(wanted.map((run) => run.ids), controller.signal).then((result) => {
       if (controller.signal.aborted) return;
       setAnswer({ key, seen: new Map(result.runs.map((run, index) => [wanted[index]!.last, run.seenBy])) });
     }).catch(() => { /* Without an answer nothing is claimed. */ });
     return () => controller.abort();
     // `key` stands for the runs.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dmId, key, tick]);
+  }, [scope, key, tick]);
   // An answer for other runs is never shown against these.
   return answer.key === key ? answer.seen : EMPTY;
 }
 
 const EMPTY = new Map<string, DmPerson[]>();
+
+/** A tick every few seconds while the page is visible, for surfaces whose receipts have no live event (the project's conversation). */
+export function useReceiptTick(enabled: boolean, ms = 8000) {
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    if (!enabled) return;
+    const timer = window.setInterval(() => { if (document.visibilityState === 'visible') setTick((value) => value + 1); }, ms);
+    return () => window.clearInterval(timer);
+  }, [enabled, ms]);
+  return tick;
+}

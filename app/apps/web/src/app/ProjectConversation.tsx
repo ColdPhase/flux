@@ -9,7 +9,7 @@ import { LinkPreviews, MessageText } from './MessageText';
 import { ConnectionLine, SendAnnouncer } from '../composer/Outbox';
 import { fluxAnswers, onFluxAnswered } from '../composer/connection';
 import { Button, Icon, Input, MEDIA, sendsOnEnter, useArrivals, useMediaQuery } from '../ui';
-import { getConversation, getMaterialVersion, getProject, listConversationRoots, listDrafts, listMaterials, listTaskNotices, listWorkspaceMembers, olderMessages, publishMaterial } from './conversation-api';
+import { getConversation, getMaterialVersion, getProject, listConversationRoots, listDrafts, listMaterials, listTaskNotices, listWorkspaceMembers, observeProjectMessages, olderMessages, projectReceipts, publishMaterial } from './conversation-api';
 import { pageBackTo } from './seekMessage';
 import { useShellData } from './data';
 import { MessageObjects, useCreateWorkFromMessage } from '../work/inline';
@@ -27,6 +27,7 @@ import { AnswerItem, AskBar, ProposalCard, WorkingLine } from '../assistant/Conv
 import { askError as askErrorText, askState } from '../assistant/format';
 import { grantAgentProject } from '../agent-connection/api';
 import { agentAuthorLabel } from '../docs/format';
+import { ownRuns, useObservation, useReceiptTick, useReceipts } from './receipts';
 import { AgentAuthor, AuthorFace, ContributionMark, OPENING_REVEAL_MS, SourceCitation, MessageDay, MessageTime, sameMessageAuthor, clock, day, pendingMessageRow, when } from './messageParts';
 import { agentAuthorOwner, useAgentOwners, type AgentOwners } from '../agents/owners';
 import { OneConversation, type PaneProps } from './OneConversation';
@@ -511,6 +512,18 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
     } catch (cause) { hideIfDenied(cause); setReadFailure({ message: readableError(cause), retry: () => void cite(material) }); }
   }
 
+  // #534: a thread's replies are watched like the stream's roots, and "Seen by" needs every reply of the person's own run.
+  const replyEntries = conversation ? feedEntries(messages.filter((message) => message.sequence > 1), assistant.answers, !!olderCursor) : [];
+  const receiptLines = [...replyEntries.map((entry) => entry.type === 'message'
+    ? { id: entry.message.id as string | null, authorId: entry.message.authorId === null ? entry.message.author.id : entry.message.authorId, createdAt: entry.message.createdAt }
+    : { id: null, authorId: `~${entry.key}`, createdAt: entry.at }),
+    ...outbox.pending.map((item) => ({ id: null, authorId: me.user.id, createdAt: item.at }))];
+  const receiptRuns = ownRuns(receiptLines, me.user.id, !!olderCursor);
+  const receiptTick = useReceiptTick(receiptRuns.length > 0);
+  const seen = useReceipts({ scope: `${project.id}/${conversation?.id ?? ''}`, fetchReceipts: (list, signal) => projectReceipts(project.id, list, signal), runs: receiptRuns, tick: receiptTick });
+  useObservation({ scope: project.id, observe: (ids) => observeProjectMessages(project.id, ids), enabled: !!conversation && revealed, feed: scrollRef,
+    ids: replyEntries.flatMap((entry) => entry.type === 'message' && entry.message.authorId !== me.user.id ? [entry.message.id] : []), depend: replyEntries.length });
+
   if (accessLost) return <div className="pane-scroll"><div className="pane-in project-setup" role="alert"><h2>Project unavailable</h2><p>Your access to this project may have changed. Reload to check current access.</p></div></div>;
   const ask = askState(assistant.status, audienceShort);
   // The root sits at the thread's top (and in the stream); the list holds its replies and answers.
@@ -579,7 +592,8 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
               // A reply confirmed from its queued message keeps that list item: it does not move or arrive twice (#264).
               return [divider, <ThreadReply key={outbox.keyOf(message.id)} continued={continued} groupLast={groupLast} message={message} mine={message.authorId === me.user.id} meId={me.user.id} arrived={arrived === message.id} name={messageAuthor(message)}
                 project={project} owners={owners} people={people} preview={messageWork.previews?.get(message.id) ?? null} makeWork={makeWork} writable={writable}
-                onOpenResult={(resultId) => openDetails({ kind: 'result', id: resultId })} onDenied={hideIfDenied} />];
+                onOpenResult={(resultId) => openDetails({ kind: 'result', id: resultId })} onDenied={hideIfDenied}
+                observed={message.authorId !== me.user.id} seenBy={(seen.get(message.id) ?? []).map((person) => person.name)} />];
             }), ...outbox.pending.flatMap((item, index) => {
               const label = day(item.at);
               const divider = label !== lastDay ? <MessageDay key={`day-pending-${item.id}`} label={label} /> : null;
@@ -635,6 +649,8 @@ type ThreadReplyProps = {
   continued?: boolean; groupLast?: boolean;
   message: ConversationMessage; mine: boolean; meId: string; arrived: boolean; name: string; project: Project; owners: AgentOwners; people: ProjectPerson[] | null;
   preview: MessageWorkPreview | null; makeWork: ReturnType<typeof useCreateWorkFromMessage>; writable: boolean;
+  /** Another person's reply is watched for viewing receipts; `seenBy` names who observed every reply of this author run. */
+  observed?: boolean; seenBy?: readonly string[];
   onOpenResult: (resultId: string) => void; onDenied: (cause: unknown) => void;
 };
 type QueuedReplyProps = { continued?: boolean; pending: PendingSend; name: string; onRetry: () => void; onRemove: () => void };
@@ -659,7 +675,7 @@ function ThreadReply(props: ThreadReplyProps | QueuedReplyProps) {
   }
   const { mine, meId, arrived, name, project, owners, people, preview, writable, onOpenResult, onDenied } = stored;
   return (
-    <li {...touch.props} id={`message-${message.id}`} data-message-id={message.id} aria-label={mine ? 'Your message' : `${name}’s message`} tabIndex={-1} className={`project-convo__message${mine ? ' is-mine' : ''}${arrived ? ' is-arrived' : ''}${stored.continued ? ' is-continued' : ''} ${touch.props.className}`}>
+    <li {...touch.props} id={`message-${message.id}`} data-message-id={message.id} {...(stored.observed ? { 'data-observe-id': message.id } : {})} aria-label={mine ? 'Your message' : `${name}’s message`} tabIndex={-1} className={`project-convo__message${mine ? ' is-mine' : ''}${arrived ? ' is-arrived' : ''}${stored.continued ? ' is-continued' : ''} ${touch.props.className}`}>
       {!mine && !stored.continued ? <AuthorFace kind={message.authorId === null ? 'agent' : 'human'} name={name} mine={mine} /> : null}
       {!mine && !stored.continued ? <div className="project-convo__message-meta"><strong>{mine ? `${name} · you` : message.authorId === null ? <AgentAuthor message={message} owner={agentAuthorOwner(message.author, owners)} /> : <Link className="project-convo__person" to={`/dm/new?workspace=${project.workspaceId}&with=${message.authorId}`} title={`Message ${name} directly`}>{name}</Link>}</strong></div> : null}
       <MessageContent body={message.body ? <WhenNoQuestion projectId={project.id} messageId={message.id}><p><MessageText body={message.body} people={people} /></p></WhenNoQuestion> : null} files={message.files} context={{ author: name, at: message.createdAt, caption: message.body, place: project.name, onReply: writable ? actions.onReply : undefined, onCreateTask: writable ? actions.onCreateWork : undefined }}>
@@ -669,7 +685,7 @@ function ThreadReply(props: ThreadReplyProps | QueuedReplyProps) {
       </MessageContent>
       <QuestionCard projectId={project.id} messageId={message.id} meId={meId} writable={writable} />
       {message.contribution ? <ContributionMark contribution={message.contribution} onOpenResult={onOpenResult} /> : null}
-      {stored.groupLast !== false ? <MessageTime at={message.createdAt} /> : null}
+      {stored.groupLast !== false ? <MessageTime at={message.createdAt} seenBy={stored.seenBy} /> : null}
       <MessageActions {...actions} />
       {touch.node}
     </li>

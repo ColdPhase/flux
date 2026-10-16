@@ -390,7 +390,40 @@ class DmThreadsReceipts(unittest.TestCase):
         swipe(other.locator(".dm-msg__body"), -150)
         expect(other).to_have_class(re.compile(r"is-swiped"))
 
-    def test_08_dark_theme_screens(self) -> None:
+    def test_08_project_conversation_roots_and_thread_replies_show_real_receipts(self) -> None:
+        import uuid
+
+        def start(who: str, body: str) -> dict:
+            return self.post(who, f"/api/v1/projects/{self.project_id}/conversations", {"body": body, "clientMessageId": str(uuid.uuid4())}, 201)
+
+        first = start("ada", "Sensor board arrives Thursday.")
+        second = start("ada", "I will wire the first prototype on Friday.")
+        a, b = first["messages"][0]["id"], second["messages"][0]["id"]
+        ada = self.page("ada")
+        ada.goto(f"/projects/{self.project_id}")
+        expect(ada.locator(f"#message-{b}")).to_be_visible()
+        expect(ada.locator(".message-seen")).to_have_count(0)
+        # Kai reads the end of the stream: both roots of Ada's run are on his screen, so the footer appears live.
+        kai = self.page("kai")
+        kai.goto(f"/projects/{self.project_id}")
+        expect(kai.locator(f"#message-{b}")).to_be_in_viewport()
+        expect(ada.locator(f"#message-{b} .message-seen")).to_have_text(re.compile(r"Seen by Kai$"), timeout=30000)
+        expect(ada.locator(f"#message-{a} .message-seen")).to_have_count(0)
+        # A thread: Ada's reply is claimed only once Kai has the thread open.
+        self.post("ada", f"/api/v1/conversations/{second['id']}/messages", {"body": "Reply from the bench.", "clientMessageId": str(uuid.uuid4())}, 201)
+        ada.goto(f"/projects/{self.project_id}/conversations/{second['id']}")
+        reply = ada.locator("[id^=message-].is-mine", has_text="Reply from the bench.")
+        expect(reply).to_be_visible()
+        expect(reply.locator(".message-seen")).to_have_count(0)
+        kai.goto(f"/projects/{self.project_id}/conversations/{second['id']}")
+        expect(kai.locator("[id^=message-]", has_text="Reply from the bench.")).to_be_in_viewport()
+        expect(reply.locator(".message-seen")).to_have_text(re.compile(r"Seen by Kai$"), timeout=30000)
+        shot(ada, "dm-threads-desktop-project-thread-seen-light")
+        # The API agrees, and an outsider to the project's audience learns nothing.
+        runs = ada.request.post(f"/api/v1/projects/{self.project_id}/receipts", data={"runs": [[a, b]]}, headers={"origin": ORIGIN})
+        self.assertEqual([[p["name"] for p in run["seenBy"]] for run in runs.json()["runs"]], [["Kai Tanaka"]])
+
+    def test_09_dark_theme_screens(self) -> None:
         page = self.page("ada", dark=True)
         page.goto(f"/dm/{self.dm_id}?thread={self.root}")
         expect(page.locator("[data-dm-thread] .dm-msg__body", has_text="long hold")).to_be_visible()

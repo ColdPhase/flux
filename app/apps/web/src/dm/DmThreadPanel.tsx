@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import type { DmMessage, DmPerson, DmThread } from '@flux/contracts';
 import { ApiError } from '../api/client';
-import { getDmThread, olderDmReplies } from '../api/direct-messages';
+import { dmReceipts, getDmThread, observeDmMessages, olderDmReplies } from '../api/direct-messages';
 import { outboxView, useComposerDraft, useComposerScope } from '../composer/draft';
 import { SendAnnouncer } from '../composer/Outbox';
 import { Button, Icon, MEDIA, sendsOnEnter, useMediaQuery } from '../ui';
@@ -9,7 +9,7 @@ import { ThreadDrawer, type ThreadMode } from '../app/ThreadDrawer';
 import '../app/one-conversation.css';
 import { DmBubble } from './DmBubble';
 import { groupRows } from './rows';
-import { ownRuns, useObservation, useReceipts } from './receipts';
+import { ownRuns, useObservation, useReceipts } from '../app/receipts';
 
 function merge(current: DmMessage[], incoming: DmMessage[]) {
   const byId = new Map(current.map((message) => [message.id, message]));
@@ -103,8 +103,9 @@ export function DmThreadPanel({ dmId, rootId, mode, meId, meName, nameOf, audien
     ...outbox.pending.map((item) => ({ message: null, item, authorId: meId, at: item.at }))];
   const rows = groupRows(lines);
   const runs = ownRuns(shown.map((m) => ({ id: m.id, authorId: m.authorId, createdAt: m.createdAt })).concat(outbox.pending.map((item) => ({ id: null as unknown as string, authorId: meId, createdAt: item.at }))), meId, older !== null);
-  const seen = useReceipts({ dmId, runs, tick: receiptTick });
-  useObservation({ dmId, meId, enabled: canObserve && !!root, feed, messages: root ? [root, ...shown] : shown, depend: shown.length });
+  const seen = useReceipts({ scope: `${dmId}/${rootId}`, fetchReceipts: (list, signal) => dmReceipts(dmId, list, signal), runs, tick: receiptTick });
+  useObservation({ scope: dmId, observe: (list) => observeDmMessages(dmId, list), enabled: canObserve && !!root, feed,
+    ids: (root ? [root, ...shown] : shown).filter((m) => m.authorId !== meId).map((m) => m.id), depend: shown.length });
   const count = root?.replyCount ?? shown.length;
 
   return (
