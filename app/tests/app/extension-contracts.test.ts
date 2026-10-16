@@ -86,13 +86,12 @@ function compareMcp(before: Json, after: Json): ContractChange[] {
   ];
 }
 
-async function connectedAgent() {
+async function connectedAgent(scopes = ['flux.context.read', 'flux.proposal.write', 'flux.action.execute']) {
   const { browser: owner } = await register(uniqueEmail('contracts'), 'correct horse battery staple');
   const ws = expect(await owner.request('POST', '/api/v1/workspaces', { body: { name: 'Contract pins' } }), 201);
   const agent = expect(await owner.request('POST', `/api/v1/workspaces/${ws.id}/agents`, { body: { name: 'Contract agent', owner: 'self' } }), 201);
   const place = expect(await owner.request('POST', `/api/v1/workspaces/${ws.id}/projects`, { body: { name: 'Contract project', visibility: 'restricted' } }), 201);
   expect(await owner.request('POST', `/api/v1/projects/${place.id}/grants`, { body: { principal: { kind: 'agent', id: agent.id }, role: 'contributor' } }), 201);
-  const scopes = ['flux.context.read', 'flux.proposal.write'];
   const connection = expect(await owner.request('POST', '/api/v1/agent-connections', { body: { agentId: agent.id, selectedProjectIds: [place.id], scopes } }), 201);
   const clientId = `flux-test-${randomUUID()}`;
   const redirectUri = 'http://127.0.0.1:19737/callback';
@@ -103,7 +102,7 @@ async function connectedAgent() {
   [randomUUID(), clientId, [redirectUri], ['authorization_code', 'refresh_token'], ['code'], [...scopes, 'offline_access']]);
   await pool.query('INSERT INTO oauth_client_resource (id, client_id, resource_id, created_at) VALUES ($1, $2, $3, now())',
     [randomUUID(), clientId, `${publicOrigin}/mcp`]);
-  const tokens = await oauthToken(owner, String(connection.id), clientId, redirectUri, await beginOauth(owner, clientId, redirectUri));
+  const tokens = await oauthToken(owner, String(connection.id), clientId, redirectUri, await beginOauth(owner, clientId, redirectUri, { scope: [...scopes, 'offline_access'].join(' ') }));
   let id = 500;
   const call = async (method: string, params: Record<string, unknown> = {}) => {
     const response = await mcp(tokens.access_token, id++, method, params);
@@ -139,8 +138,9 @@ async function liveMcpContract(snapshotCodes: readonly string[]) {
   assert.equal((bootstrap.trusted as Json).playbook.toolContractVersion, COWORK_PLAYBOOK.toolContractVersion,
     'bootstrap reports the tool contract version the snapshot is keyed by');
 
-  // A refused call shows the error envelope: no action scope on this connection.
-  const refused = (await f.call('tools/call', { name: 'flux_create_task', arguments: { projectId: f.projectId,
+  // A refused call shows the error envelope: a grant without the action scope (#548; the listing above is the full grant's).
+  const narrow = await connectedAgent(['flux.context.read', 'flux.proposal.write']);
+  const refused = (await narrow.call('tools/call', { name: 'flux_create_task', arguments: { projectId: narrow.projectId,
     runtimeSessionId: (bootstrap.runtime as Json).id, grantId: randomUUID(), clientCommandId: randomUUID(),
     peerRequestClass: 'plan', sources: [], task: { title: 'Refused without the action scope' } } })).message!.result as Json;
   const envelope = JSON.parse(refused.content[0].text);

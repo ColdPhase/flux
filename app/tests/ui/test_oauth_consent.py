@@ -81,14 +81,14 @@ class OauthConsentJourney(unittest.TestCase):
             self.assertEqual(response.status, status, f"{method} {path}: {response.text()}")
         return json.loads(response.text()) if response.text() else {}
 
-    def authorize(self, page: Page, client: str, redirect: str) -> str:
+    def authorize(self, page: Page, client: str, redirect: str, scope: str = SCOPES) -> str:
         """Opens the client's authorization request in the browser and continues to the consent page."""
         verifier = secrets.token_urlsafe(32)
         challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b"=").decode()
         state = str(uuid.uuid4())
         query = urllib.parse.urlencode({"client_id": self.ids[client], "redirect_uri": redirect, "response_type": "code",
                                         "code_challenge": challenge, "code_challenge_method": "S256", "state": state,
-                                        "scope": SCOPES, "resource": f"{ORIGIN}/mcp", "prompt": "consent"})
+                                        "scope": scope, "resource": f"{ORIGIN}/mcp", "prompt": "consent"})
         page.goto(f"/api/auth/oauth2/authorize?{query}")
         expect(page.get_by_role("heading", level=1, name="Choose what your agent can use")).to_be_visible()
         page.locator(".connection__saved").filter(has_text="Studio laptop").get_by_role("radio").check()
@@ -139,6 +139,26 @@ class OauthConsentJourney(unittest.TestCase):
         callback = urllib.parse.parse_qs(urllib.parse.urlsplit(page.url).query)
         self.assertEqual(callback["state"], [state])
         self.assertTrue(callback.get("code"), "the local client receives a code")
+
+    def test_02b_a_client_asking_for_more_than_the_connection_has_gets_only_the_granted_permissions(self) -> None:
+        """#548: the person may grant fewer permissions than the client asks for; the page says which, and approval sends exactly those."""
+        page = self.page()
+        page.context.route(f"{LOCAL_REDIRECT}**", lambda route: route.fulfill(body="Connection authorized", content_type="text/plain"))
+        sent: list[dict] = []
+        page.on("request", lambda request: sent.append(json.loads(request.post_data)) if request.url.endswith("/oauth2/consent") and request.post_data else None)
+        self.authorize(page, "local", LOCAL_REDIRECT, SCOPES + " flux.action.execute")
+        requested = page.locator(".connection__requested")
+        expect(requested).to_contain_text("This client will be allowed")
+        expect(requested.locator(".connection__scopes").first).to_contain_text("Read selected project context")
+        expect(requested.locator(".connection__scopes").first).not_to_contain_text("Run approved project actions")
+        expect(requested.get_by_test_id("not-granted")).to_be_visible()
+        expect(requested.locator(".connection__scopes").nth(1)).to_have_text("Run approved project actions")
+        shot(page, "oauth-consent-desktop-partial")
+        page.get_by_role("button", name="Allow access").click()
+        page.wait_for_url(f"{LOCAL_REDIRECT}?**")
+        self.assertEqual(len(sent), 1)
+        self.assertEqual(sorted(sent[0]["scope"].split()), ["flux.context.read", "flux.proposal.write", "offline_access"])
+        self.assertTrue(urllib.parse.parse_qs(urllib.parse.urlsplit(page.url).query).get("code"), "the client still receives a code")
 
     def test_03_phone_a_web_redirect_is_named_and_warned_in_touch_sizes_then_denied(self) -> None:
         page = self.page(phone=True)

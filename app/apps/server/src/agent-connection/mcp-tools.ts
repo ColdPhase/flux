@@ -45,7 +45,7 @@ export function createFluxMcpServer(db: Database, claims: FluxMcpClaims & { disp
   const server = new McpServer({ name: 'flux', version: '0.1.0' }, {
     instructions: run ? RUN_SERVER_INSTRUCTIONS : coworkServerInstructions(), supportedProtocolVersions: [...FLUX_MCP_PROTOCOL_VERSIONS],
   });
-  const tools = agentToolRegistry(server, claims.dispatch, run ? (result) => boundRunResult(db, run.id, result as { content?: unknown }) : undefined);
+  const tools = agentToolRegistry(server, claims.dispatch, run ? (result) => boundRunResult(db, run.id, result as { content?: unknown }) : undefined, claims.scopes);
   registerAgentPlaybook(run ? toolsOnly(server) : server, tools, db, claims);
   registerAgentPolicyResource(run ? toolsOnly(server) : server, db, claims);
   registerAgentDomainReads(tools.forScope('flux.context.read'), db, claims, cursorSecret);

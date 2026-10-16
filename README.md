@@ -101,10 +101,10 @@ next steps. It runs on your computer with your own model account, which Flux nev
    seeds no agent.
 3. **Grant it the project.** Under **New connection**, name the connection and pick your client.
    Next to "Community garden sensors", keep **Read and propose** and choose **Grant**; only a
-   project manager can do this, and Ada is one. Under **Allowed actions**, tick all three: Claude
-   Code asks for all three when it connects, and a connection without **Run approved project
-   actions** is refused at consent. Each action still needs its own grant from you (step 6).
-   Tick the project and choose **Save connection**.
+   project manager can do this, and Ada is one. Under **Allowed actions**, tick what the agent may
+   do. Claude Code asks for all three when it connects, but you can grant fewer: it gets only the
+   ones you ticked, and a tool outside them answers that the permission wasn't granted. Each
+   action still needs its own grant from you (step 6). Tick the project and choose **Save connection**.
 4. **Add Flux to your client** with the commands the page shows:
 
    ```sh

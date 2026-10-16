@@ -186,7 +186,7 @@ export function projectAgentRepository(db: Database, policy: ProjectAgentPolicy)
           const session = usable.has(connection.id) ? sessions.get(connection.id) : undefined;
           const last = activity.get(connection.id);
           return {
-            id: connection.id, name: connection.name, clientDesignation: connection.clientDesignation,
+            id: connection.id, name: connection.name, clientDesignation: connection.clientDesignation, scopes: [...connection.scopes],
             owner: { id: connection.ownerUserId, name: ownerName }, agent: { id: connection.agentId, name: agentName },
             own: connection.ownerUserId === reader.id,
             ...(connection.computeSource === 'owner_assistant' ? { assistant: true as const } : {}),

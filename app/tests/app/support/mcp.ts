@@ -54,7 +54,7 @@ export async function oauthToken(browser: Browser, connectionId: string, clientI
     assert.deepEqual(display.redirect, { kind: 'loopback', host: new URL(redirectUri).host });
     assert.equal(display.clientIdHost, null);
     const consent = expect(await browser.request('POST', '/api/auth/oauth2/consent',
-      { body: { accept: true, oauth_query: oauthQuery } }), 200);
+      { body: { accept: true, oauth_query: oauthQuery, scope: (display.scopes as string[]).join(' ') } }), 200);
     callback = new URL(String(consent.url ?? consent.redirect_uri));
   }
   assert.equal(callback.origin, new URL(redirectUri).origin);

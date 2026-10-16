@@ -63,6 +63,20 @@ export const AGENT_MCP_ENTRIES: readonly AgentMcpEntry[] = [
   alias('prompt', 'resume_work', 'cowork.playbook.read', 'project.identity.read'),
 ];
 
+/** What each permission lets an agent do, in plain words (the Agents view and the refusal text say these). */
+export const AGENT_SCOPE_PLAIN: Readonly<Record<AgentScope, string>> = {
+  'flux.context.read': 'read projects',
+  'flux.proposal.write': 'suggest changes',
+  'flux.action.execute': 'run approved actions',
+};
+/** The refusal for a tool whose permission the person did not grant; null when the tool needs nothing missing. */
+export function agentScopeRefusal(toolName: string, granted: readonly string[]): { code: 'MCP_SCOPE_REQUIRED'; error: string } | null {
+  const entry = AGENT_MCP_ENTRIES.find((item) => item.kind === 'tool' && item.name === toolName);
+  if (!entry || granted.includes(entry.requiredScope)) return null;
+  return { code: 'MCP_SCOPE_REQUIRED',
+    error: `This agent can't use ${toolName}: permission '${entry.requiredScope}' (${AGENT_SCOPE_PLAIN[entry.requiredScope]}) wasn't granted` };
+}
+
 export interface AgentMcpPolicy {
   connectionId: string;
   version: number;

@@ -90,11 +90,10 @@ test('the co-work tools are registered for the action scope, listed with their o
   assert.equal(COWORK_PLAYBOOK.version, '1.4.0');
   assert.ok((codex.bootstrap.gaps as string[]).includes('coordination_unavailable'), 'the inbox, admission and recovery are still a gap');
 
-  // A connection without the action scope sees them unavailable and is refused before any effect.
+  // A connection without the action scope is not shown them (#548) and is refused before any effect.
   const reader = await f.connect(f.hubert, 'Hubert reader', ['flux.context.read']);
   const readable = reader.bootstrap.capabilities as { name: string; available: boolean }[];
-  assert.deepEqual(readable.filter((item) => COWORK_TOOLS.some((tool) => tool.name === item.name)).map((item) => item.available),
-    COWORK_TOOLS.map(() => false));
+  assert.deepEqual(readable.filter((item) => COWORK_TOOLS.some((tool) => tool.name === item.name)), []);
   const a = await f.task('Native outcome A');
   const refused = toolFailure(await reader.tool('flux_create_unit', { ...reader.base(randomUUID(), 'execute'), taskId: a.id, unitKey: 'take',
     expectedTaskVersion: a.version, assignmentConnectionId: reader.connectionId, parent: null }));

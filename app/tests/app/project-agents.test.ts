@@ -37,7 +37,7 @@ test('project readers see every current connection with owner, client and truthf
   assert.deepEqual({ state: configured.state, name: configured.name, client: configured.clientDesignation, session: configured.session },
     { state: 'not_signed_in', name: 'Codex laptop', client: 'codex', session: null });
   // Nothing beyond identity and state reaches the browser.
-  assert.deepEqual(Object.keys(active).sort(), ['agent', 'clientDesignation', 'currentWork', 'id', 'lastActivity', 'name', 'own', 'owner', 'requests', 'session', 'state']);
+  assert.deepEqual(Object.keys(active).sort(), ['agent', 'clientDesignation', 'currentWork', 'id', 'lastActivity', 'name', 'own', 'owner', 'requests', 'scopes', 'session', 'state']);
   assert.deepEqual([active.currentWork, active.requests], [null, []], 'no unit or open request until one is created (#160 AC-5)');
 
   const workspaceId = f.workspaceId;
