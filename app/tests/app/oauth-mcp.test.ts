@@ -79,7 +79,7 @@ test('issued OAuth bearer reads and proposes through MCP, then connection revoca
   const listed = await mcp(bearer, 1, 'tools/call', { name: 'flux_list_contexts', arguments: {} });
   assert.equal(listed.status, 200, `MCP call returned ${listed.status}: ${JSON.stringify(listed.message)}`);
   assert.deepEqual(toolValue(listed.message).projects, [{ id: projectId,
-    name: 'Selected restricted project', workspaceId }]);
+    name: 'Selected restricted project', workspaceId, goal: null }]);
   const sources = await mcp(bearer, 5, 'tools/call', { name: 'flux_list_materials', arguments: { projectId, limit: 1 } });
   assert.equal(sources.status, 200);
   const firstPage = toolValue(sources.message);

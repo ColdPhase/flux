@@ -42,6 +42,7 @@ import { agentMcpPolicyRoutes } from './agent-connection/mcp-policy-routes.js';
 import { proactiveComparisonRoutes } from './proactive-comparison/routes.js';
 import { registerMcpRoute } from './agent-connection/mcp-route.js';
 import { returnRoutes } from './returns/routes.js';
+import { projectGoalRoutes } from './project-goals/routes.js';
 import { needsYouRoutes } from './needs-you/routes.js';
 import { docRoutes } from './docs/routes.js';
 import { notificationRoutes } from './notifications/routes.js';
@@ -208,6 +209,7 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
     identity.standing && identityConfig.oidc ? { checker: identity.standing, label: identityConfig.oidc.label } : null,
     identity.confirmation, identityConfig.oidc?.label);
   await app.register(returnRoutes, { db, sessions: identity });
+  await app.register(projectGoalRoutes, { db, sessions: identity });
   await app.register(needsYouRoutes, { db, sessions: identity });
   await app.register(docRoutes, { db, sessions: identity });
   await app.register(notificationRoutes, { db, sessions: identity, smtp: identityConfig.smtp, publicOrigin: identityConfig.publicOrigin });
