@@ -70,7 +70,7 @@ for (const [engine, mobile] of [['chromium', false], ['webkit', true]] as const)
       const managerContext = await browser.newContext(options); contexts.push(managerContext);
       const viewerContext = await browser.newContext(options); contexts.push(viewerContext);
       const path = `/projects/${place.id}/agents`;
-      const ownerPage = await signedIn(ownerContext, owner, path);
+      const ownerPage = await signedIn(ownerContext, owner, '/settings/assistant');
       const ownRequests = ownerPage.getByRole('region', { name: 'Assistant join requests' });
       const ask = ownRequests.getByRole('button', { name: 'Ask a manager to add my assistant', exact: true });
       await expect(ask).toBeVisible(); await theme(ownerPage, 'light'); await capture(ownerPage, `join-${engine}-owner-request-light`);
@@ -106,14 +106,29 @@ for (const [engine, mobile] of [['chromium', false], ['webkit', true]] as const)
          await capture(managerPage, `join-${engine}-manager-needs-you-${choice}`);
          if (evidence) await invitation.screenshot({ path: join(evidence, `join-${engine}-needs-you-card-${choice}.png`) });
        }
-      await invitation.getByRole('button', { name: 'Review', exact: true }).click(); await expect(managerPage).toHaveURL(`${origin}${path}`);
+      const review = invitation.getByRole('button', { name: 'Review', exact: true });
+      if (mobile) assert.ok((await review.boundingBox())!.height >= 44);
+      await review.focus(); await review.press('Enter'); await expect(managerPage).toHaveURL(/\/inbox\/[0-9a-f-]+$/);
+      // A pending question remains actionable after it leaves Needs You (legacy read + older than 14 days).
+      const notification = (await pool.query('SELECT id FROM notifications WHERE assistant_join_request_id=$1 AND user_id=$2', [pending[0]!.id, manager.id])).rows[0];
+      await pool.query("UPDATE notifications SET read_at=now(), created_at=now()-interval '15 days' WHERE id=$1", [notification.id]);
+      await managerPage.goto(`${origin}/inbox`);
+      await expect(managerPage.locator('.nyc').filter({ hasText: 'Ada’s assistant' })).toHaveCount(0);
+      const unauthorized = await viewerContext.request.get(`${origin}/api/v1/inbox/${notification.id}`);
+      assert.equal(unauthorized.status(), 404, 'another recipient cannot load the question identity');
+      await managerPage.goto(`${origin}/inbox/${notification.id}`);
       const requests = managerPage.getByRole('region', { name: 'Assistant join requests' });
       await theme(managerPage, 'light'); await capture(managerPage, `join-${engine}-manager-row-light`);
-      const review = requests.locator('.agents-join__toggle');
-      await review.focus(); await review.press('Enter');
       const allow = requests.getByRole('button', { name: 'Allow', exact: true });
       await expect(allow).toBeVisible();
-      if (mobile) { assert.ok((await review.boundingBox())!.height >= 44); assert.ok((await allow.boundingBox())!.height >= 44); }
+      const inset = await requests.evaluate((element) => {
+        const surface = element.getBoundingClientRect();
+        return [...element.querySelectorAll('h2, p, footer')].map((child) => {
+          const box = child.getBoundingClientRect(); return { left: box.left - surface.left, right: surface.right - box.right };
+        });
+      });
+      assert.ok(inset.every((box) => box.left >= 16 && box.right >= 16), 'review copy and actions stay inside the dialog inset');
+      if (mobile) assert.ok((await allow.boundingBox())!.height >= 44);
       await capture(managerPage, `join-${engine}-manager-review-light`);
       await theme(managerPage, 'dark'); await capture(managerPage, `join-${engine}-manager-review-dark`);
       // A refused answer keeps the real pending record; the successful retry uses the actual API.
@@ -126,8 +141,14 @@ for (const [engine, mobile] of [['chromium', false], ['webkit', true]] as const)
       assert.equal((await pool.query('SELECT role FROM project_grants WHERE project_id=$1 AND agent_id=$2', [place.id,agent.id])).rows[0].role, 'contributor');
       assert.equal((await pool.query('SELECT state FROM assistant_join_requests WHERE id=$1', [pending[0]!.id])).rows[0].state, 'accepted');
       await ownerPage.reload(); await expect(ownerPage.getByRole('button', { name: 'Ask a manager to add my assistant', exact: true })).toHaveCount(0);
-      await expect(ownerPage.locator('.agents-list')).toContainText('Ada’s assistant');
-      assert.ok(await ownerPage.locator('.agents-list .agent-tag').count(), 'the joined assistant stays visibly an Agent');
+      await expect(ownerPage.getByRole('region', { name: 'Your assistant’s project access' })).toContainText('Your assistant has access to this project.');
+      await ownerPage.goto(`${origin}${path}`);
+      await expect(ownerPage.locator('.agents-list')).toHaveCount(0);
+      await expect(ownerPage.getByRole('region', { name: 'Assistant join requests' })).toHaveCount(0);
+      await outsiderPage.reload();
+      await expect(outsiderPage.locator('.agents-list')).toHaveCount(0);
+      const memberPeople = await viewerContext.request.get(`${origin}/api/v1/projects/${place.id}/people`);
+      assert.equal((await memberPeople.json() as { id: string }[]).some((person) => person.id === agent.id), false, 'another member never discovers the assistant as a project member (#522)');
       if (evidence) writeFileSync(join(evidence, `join-${engine}-manifest.json`), JSON.stringify({ sourceSha: process.env.FLUX_E2E_SOURCE_SHA,
         engine, viewport: options.viewport, cssZoom: 1, themes: ['light','dark'], compute: 'fake metadata only; zero model calls',
         observed: ['Request→Needs You question with immutable assistant/owner identity→manager Review/Allow', 'no grant before Allow', 'ordinary reader sees no request and API Allow403', 'contributor grant persisted after Allow', 'failed Allow keeps pending request', 'keyboard Enter', ...(mobile ? ['44px targets'] : [])] }, null, 2));

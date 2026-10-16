@@ -263,3 +263,7 @@
   .agents-row__stop--take { display: none; }
   .agents-row__now { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 }
+
+/* Keep the Agents title's keyboard focus inside its existing 44px control, above its metadata. */
+.phead__title:has(.agents-header-meta) .phead__menu { padding-inline: 4px; margin-inline: -4px; }
+.phead__title:has(.agents-header-meta) .phead__menu:focus-visible { outline-offset: -3px; }
