@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import unittest
 import uuid
@@ -16,7 +17,7 @@ class MessageWorkJourney(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         if UPSTREAM: start_forwarder(ORIGIN, UPSTREAM)
-        cls.pw = sync_playwright().start(); cls.browser = cls.pw.chromium.launch()
+        cls.pw = sync_playwright().start(); cls.browser = getattr(cls.pw, os.environ.get("FLUX_UI_BROWSER", "chromium")).launch()
         expect.set_options(timeout=10000)
         cls.contexts, cls.users, emails = [], [], []
         for name in ("Ada Kowalska", "Ada Nowak"):
@@ -134,7 +135,11 @@ class MessageWorkJourney(unittest.TestCase):
                 if phone:
                     self.assertTrue(page.locator(".thread__feed .ws-chip__t").evaluate_all("els=>els.every(el=>el.scrollWidth<=el.clientWidth+1 && el.scrollHeight<=el.clientHeight+1 && getComputedStyle(el).whiteSpace==='normal')"),"every distinguishing native title is fully visible on the phone")
                 expect(edges.get_by_role("button")).to_have_count(0)
-                pane=page.locator(".thread__feed");pane.hover();page.mouse.wheel(0,100000)
+                pane=page.locator(".thread__feed")
+                if phone and os.environ.get("FLUX_UI_BROWSER", "chromium") == "webkit":
+                    # Native positioning for this screenshot; mobile WebKit has no wheel API.
+                    pane.locator(".ws-chip").last.scroll_into_view_if_needed()
+                else: pane.hover();page.mouse.wheel(0,100000)
                 page.wait_for_function("()=>new Promise(resolve=>{let last=-1,stable=0;const check=()=>{const p=document.querySelector('.thread__feed');stable=p.scrollTop===last?stable+1:0;last=p.scrollTop;if(stable>8)resolve(true);else requestAnimationFrame(check);};requestAnimationFrame(check);})")
                 shot(page, f"bounded-message-objects-{'phone' if phone else 'desktop'}")
                 page.reload(); self.ready(page)
@@ -236,7 +241,9 @@ class MessageWorkJourney(unittest.TestCase):
             else:route.continue_()
         page.route("**/work-associations?**",hold_scope)
         page.evaluate("window.dispatchEvent(new Event('focus'))");page.wait_for_function("window.__associationHeld===true")
+        auth_holding=True
         def pause_auth(route):
+            if not auth_holding: route.continue_(); return
             response=route.fetch();self.assertEqual(response.status,200);paused.append((route,response));page.evaluate("window.__authHeld=true")
         page.route("**/api/v1/me",pause_auth)
         page.evaluate("window.dispatchEvent(new Event('focus'))");page.wait_for_function("window.__authHeld===true")
@@ -249,7 +256,11 @@ class MessageWorkJourney(unittest.TestCase):
         expect(page.locator(".thread__pane")).to_have_attribute("data-associations-phase","loading")
         page.unroute("**/work-associations?**",hold_scope)
         self.assertEqual(len(paused),1)
-        route,response=paused.pop();route.fulfill(response=response);page.unroute("**/api/v1/me",pause_auth)
+        # Keep interception active while /me starts the shell loader's /workspaces read.
+        # Removing the last route here can orphan that request in Chromium 151 (#540).
+        # Context cleanup owns the route; later auth reads go to the real server.
+        auth_holding=False
+        route,response=paused.pop();route.fulfill(response=response)
         self.ready(page);expect(page.locator("#thread").get_by_role("button",name="Work: Revisit the first measurement",exact=True)).to_be_visible()
 
     def test_07_restored_feed_observes_older_and_newer_native_batches(self):
@@ -312,3 +323,57 @@ class MessageWorkJourney(unittest.TestCase):
         newest=self.anchor(page);holding[0]=False;route.fulfill(response=response);self.ready(page)
         self.assert_anchor(page,newest)
         page.unroute_all(behavior="ignoreErrors")
+
+    def scroll_until_settled(self, page, delta):
+        pane=page.locator(".thread__feed")
+        pane.evaluate("el=>{window.__readerSettled=false;el.addEventListener('scrollend',()=>window.__readerSettled=true,{once:true});}")
+        pane.hover();page.mouse.wheel(0,delta)
+        page.wait_for_function("window.__readerSettled===true")
+        page.mouse.move(0,0)
+
+    def test_09_settled_reader_keeps_anchor_while_a_resized_selector_is_loading(self):
+        self.settled_selector_anchor(False)
+
+    def test_11_non_scrolling_pointer_and_focus_keep_the_settled_loading_anchor(self):
+        self.settled_selector_anchor(True)
+
+    def settled_selector_anchor(self, non_scrolling_input):
+        page=self.page();reads=[]
+        page.on("request",lambda request:reads.append(parse_qs(urlsplit(request.url).query)["messageIds"][0]) if self.thread_read(request.url) else None)
+        with page.expect_request(lambda request: self.thread_read(request.url) and self.long_messages[1] in parse_qs(urlsplit(request.url).query)["messageIds"][0].split(',') and len(parse_qs(urlsplit(request.url).query)["messageIds"][0].split(','))==100):
+            page.goto(f"/projects/{self.project}/conversations/{self.long_conversation}#message-{self.long_messages[1]}")
+        expect(page.locator("#thread").get_by_role("button",name="Work: Revisit the first measurement",exact=True)).to_be_visible();self.ready(page)
+        original=reads[-1];pane=page.locator(".thread__feed")
+        page.locator(f"#thread [data-message-id='{self.long_messages[100]}']").evaluate("row=>{const p=row.closest('.thread__feed');p.scrollTop+=row.getBoundingClientRect().top-p.getBoundingClientRect().bottom-20;}")
+        page.wait_for_function("()=>new Promise(resolve=>{let last=-1,stable=0;const check=()=>{const p=document.querySelector('.thread__feed');stable=p.scrollTop===last?stable+1:0;last=p.scrollTop;if(stable>8)resolve(true);else requestAnimationFrame(check);};requestAnimationFrame(check);})")
+        self.scroll_until_settled(page,1);self.ready(page);self.assertEqual(reads[-1],original)
+        if non_scrolling_input:
+            pane.evaluate("el=>{window.__nonScrollingInput={top:el.scrollTop,scrolls:0,ends:0,focus:0,pointer:0};for(const [type,key] of [['scroll','scrolls'],['scrollend','ends'],['focusin','focus'],['pointermove','pointer']])el.addEventListener(type,()=>window.__nonScrollingInput[key]++);}")
+            pane.hover();page.mouse.move(0,0)
+            page.locator(f"#thread [data-message-id='{self.long_messages[98]}']").evaluate("el=>{el.focus({preventScroll:true});el.blur();}")
+            self.assertTrue(pane.evaluate("el=>el.scrollTop===window.__nonScrollingInput.top && window.__nonScrollingInput.scrolls===0 && window.__nonScrollingInput.ends===0 && window.__nonScrollingInput.focus>0 && window.__nonScrollingInput.pointer>0"),"pointer and focus input occurred without a new scroll or scrollend")
+        anchor=self.anchor(page);before_height=pane.evaluate("el=>el.scrollHeight");held=[];holding=[True]
+        def hold(route):
+            if holding[0] and self.thread_read(route.request.url) and parse_qs(urlsplit(route.request.url).query)["messageIds"][0]!=original:
+                response=route.fetch();self.assertEqual(response.status,200);held.append((route,response));page.evaluate("window.__settledReadHeld=true")
+            else:route.continue_()
+        page.route("**/work-associations?**",hold)
+        page.set_viewport_size({"width":1500,"height":1100})
+        page.wait_for_function("window.__settledReadHeld===true")
+        expect(page.locator(".thread__pane")).to_have_attribute("data-associations-phase","loading")
+        self.assertEqual(len(held),1);self.assertNotEqual(reads[-1],original)
+        self.assertLess(pane.evaluate("el=>el.scrollHeight"),before_height,"retired association content really collapsed above the reader")
+        self.assert_anchor(page,anchor)
+        holding[0]=False;route,response=held.pop();route.fulfill(response=response);self.ready(page)
+        self.assert_anchor(page,anchor)
+
+    def test_10_viewport_changes_follow_the_end_until_the_reader_leaves_it(self):
+        page=self.page();page.goto(f"/projects/{self.project}/conversations/{self.long_conversation}");self.ready(page)
+        self.scroll_until_settled(page,100000);self.ready(page)
+        at_end="()=>{const p=document.querySelector('.thread__feed');return Math.abs(p.scrollHeight-p.clientHeight-p.scrollTop)<=1;}"
+        page.wait_for_function(at_end)
+        page.set_viewport_size({"width":1500,"height":700});page.wait_for_function(at_end)
+        self.scroll_until_settled(page,-500);self.ready(page)
+        self.assertFalse(page.evaluate(at_end));anchor=self.anchor(page)
+        page.set_viewport_size({"width":1500,"height":900})
+        self.assert_anchor(page,anchor);self.assertFalse(page.evaluate(at_end))

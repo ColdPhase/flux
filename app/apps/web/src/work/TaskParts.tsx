@@ -116,14 +116,16 @@ function StatusMenu({ status, disabled, onChoose }: { status: WorkStatus; disabl
  * Enter or leaving it saves, Esc puts the old title back. The field stays open with the person's
  * text until the save is confirmed, so a failed save can be retried without retyping.
  */
-export function TitleField({ title, editable, onEdit, onSave }: { title: string; editable: boolean; onEdit?: () => void; onSave: (title: string) => Promise<boolean> }) {
+export function TitleField({ title, editable, onEdit, onDraftChange, onSave }: { title: string; editable: boolean; onEdit?: () => void; onDraftChange?: () => void; onSave: (title: string) => Promise<boolean> }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(title);
+  const [original, setOriginal] = useState(title);
   const [saving, setSaving] = useState(false);
   const field = useRef<HTMLTextAreaElement>(null);
   const opener = useRef<HTMLButtonElement>(null);
   const labelId = useId();
   const attempted = useRef<string | null>(null);
+  const edits = useRef(0);
   useLayoutEffect(() => {
     const el = field.current;
     if (!editing || !el) return;
@@ -149,9 +151,10 @@ export function TitleField({ title, editable, onEdit, onSave }: { title: string;
     if (fromBlur && attempted.current === next) return;
     attempted.current = next;
     setSaving(true);
+    const edit = edits.current;
     const ok = await onSave(next);
     setSaving(false);
-    if (ok) { attempted.current = null; leave(); }
+    if (ok) { attempted.current = null; if (edits.current === edit) leave(); }
   }
   function cancel() {
     attempted.current = null;
@@ -165,15 +168,16 @@ export function TitleField({ title, editable, onEdit, onSave }: { title: string;
         <>
           <span className="ui-vh" id={labelId}>Task title</span>
           <textarea ref={field} aria-labelledby={labelId} rows={1} maxLength={200} value={draft} className="wd-title__field" aria-busy={saving}
-            onChange={(event) => setDraft(event.target.value.replace(/\n/g, ' '))}
+            onChange={(event) => { edits.current++; onDraftChange?.(); setDraft(event.target.value.replace(/\n/g, ' ')); }}
             onBlur={() => void save(true)}
             onKeyDown={(event) => {
               if (event.key === 'Enter' && !event.nativeEvent.isComposing) { event.preventDefault(); void save(false); }
               else if (event.key === 'Escape' && !event.nativeEvent.isComposing) { event.preventDefault(); event.stopPropagation(); cancel(); }
             }} />
+          {title !== original ? <span className="wd-muted">Now: {title}</span> : null}
         </>
       ) : (
-        <button ref={opener} type="button" className="wd-title__text" title="Edit title" onClick={() => { setDraft(title); setEditing(true); onEdit?.(); }}>{title}</button>
+        <button ref={opener} type="button" className="wd-title__text" title="Edit title" onClick={() => { setDraft(title); setOriginal(title); setEditing(true); onEdit?.(); }}>{title}</button>
       )}
     </h3>
   );

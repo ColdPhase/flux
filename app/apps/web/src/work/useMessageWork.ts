@@ -91,6 +91,7 @@ function useMessageReadingPosition(ref: RefObject<HTMLElement | null>, node: HTM
     const toEnd = () => { pane.scrollTop = pane.scrollHeight; ownScroll.current = pane.scrollTop; lastTop.current = pane.scrollTop; };
     // Record a position: the reader's (any scroll this hook did not write) or this hook's own.
     const observe = (reader: boolean) => {
+      if (reader) readerMoved.current = true;
       if (atEnd()) following.current = true;
       else if (reader && pane.scrollTop < lastTop.current - 1) following.current = false;
       lastTop.current = pane.scrollTop;
@@ -122,7 +123,7 @@ function useMessageReadingPosition(ref: RefObject<HTMLElement | null>, node: HTM
     const left = () => { pointed.current = null; };
     // Input away from the end means the reader is with earlier messages: stop following the end,
     // so growth below does not pull what they are reading or pointing at out from under them.
-    const release = watchReaderInput(pane, () => { readerMoved.current = true; if (!atEnd()) following.current = false; });
+    const release = watchReaderInput(pane, () => { if (!atEnd()) following.current = false; });
     // Scroll events arrive with the next rendered frame. A reader's scroll that has happened but
     // whose event has not arrived yet (input, then scrollIntoView or focus) is still the
     // reader's position: record it instead of restoring an anchor saved before it. The same
@@ -142,9 +143,10 @@ function useMessageReadingPosition(ref: RefObject<HTMLElement | null>, node: HTM
       // Even a no-op scrollTop assignment interrupts native smooth key/touch scrolling.
       if (Math.abs(target - pane.scrollTop) > 0.5) { pane.scrollTop = target; ownScroll.current = pane.scrollTop; lastTop.current = pane.scrollTop; }
     }
-    // Reader input (readerMoved, set above) survives intermediate observations in the same
-    // native gesture. During an active gesture let native scroll anchoring preserve the
-    // message; writing scrollTop on a loading transition would interrupt smooth scrolling.
+    // Observed reader motion survives intermediate observations in the same native gesture.
+    // Pointer/focus input alone must not suspend a settled loading anchor.
+    // Do not write scrollTop while it is moving; scrollend returns settled loading
+    // transitions to this owner rather than competing browser scroll anchoring.
     if (ready) save();
     const scrolled = () => {
       const own = ownScroll.current;
@@ -156,16 +158,19 @@ function useMessageReadingPosition(ref: RefObject<HTMLElement | null>, node: HTM
       if (reader && held) aim(document.elementFromPoint(held.x, held.y), held.x, held.y, held.at);
       observe(reader);
     };
+    const settled = () => { readerMoved.current = false; save(true); };
     const grew = () => { if (keepPointed()) return; if (following.current && !atEnd()) toEnd(); };
     const resize = new ResizeObserver(grew);
     resize.observe(pane);
     if (pane.firstElementChild) resize.observe(pane.firstElementChild);
     pane.addEventListener('scroll', scrolled, { passive: true });
+    pane.addEventListener('scrollend', settled);
     pane.addEventListener('pointermove', point, { passive: true });
     pane.addEventListener('pointerleave', left, { passive: true });
     return () => {
       resize.disconnect();
       pane.removeEventListener('scroll', scrolled);
+      pane.removeEventListener('scrollend', settled);
       pane.removeEventListener('pointermove', point); pane.removeEventListener('pointerleave', left);
       release();
     };
