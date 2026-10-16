@@ -110,7 +110,7 @@ export function useNeedsYouActions(queue: Queue): CardHandlers {
         toast({ message: apiMessage(error, 'The task could not be unblocked. Open it to look again.'), tone: 'danger' });
       });
       toast({ message: 'Blocker cleared', action: { label: 'Undo', key: 'Z', onClick: () => {
-        const restored = changed.then((work) => updateWork(work, { status: 'blocked', blocker: blocked.blocker }, crypto.randomUUID())).then(announceInboxChange);
+        const restored = changed.then((work) => updateWork(work, { status: 'blocked', ...(blocked.blocker ? { blocker: blocked.blocker } : {}), ...(blocked.waitingForUserId ? { waitingFor: { kind: 'human' as const, id: blocked.waitingForUserId } } : {}), restore: true }, crypto.randomUUID())).then(announceInboxChange);
         const undoIntent = current.show(item, restored);
         restored.catch(() => {
           if (!undoIntent.isCurrent()) return;

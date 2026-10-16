@@ -31,6 +31,7 @@ export function toWorkRecord(row: WorkRow) {
   return {
     id: row.id, workspaceId: row.workspaceId, projectId: row.projectId, number: row.number, title: row.title, outcome: row.outcome,
     status: row.status, blocker: row.blocker,
+    waitingFor: row.waitingForUserId ? { kind: 'human' as const, id: row.waitingForUserId } : null,
     creationOrigin: row.creationOrigin, creationBaselineVersion: row.creationBaselineVersion, firstPersistedUseAt: row.firstPersistedUseAt,
     creationRevertedAt: row.creationRevertedAt, creationReversionNoticeId: row.creationReversionNoticeId,
     creationRevertedBy: row.creationRevertedByKind && row.creationRevertedById ? { kind: row.creationRevertedByKind, id: row.creationRevertedById } : null,
@@ -157,6 +158,17 @@ export function workRows(db: DbExecutor) {
     listDecisions: (projectId: string, window: Window) => paged(db, d, eq(d.projectId, projectId), window, toDecisionRecord),
     listResults: (projectId: string, window: Window) => paged(db, r, eq(r.projectId, projectId), window, toResultRecord),
 
+    /** Blocked work that concerns `userId` (#550): theirs, waiting for them, or held by an agent they own. */
+    async listBlockedFor(workspaceId: string, userId: string, visibleProjects: SQL, window: Window) {
+      const where = and(
+        eq(w.workspaceId, workspaceId), eq(w.status, 'blocked'), isNull(w.creationRevertedAt), isNull(w.parkedAt),
+        or(eq(w.ownerUserId, userId), eq(w.waitingForUserId, userId),
+          sql`${w.ownerAgentId} IN (SELECT ${schema.agents.id} FROM ${schema.agents} WHERE ${schema.agents.ownerUserId} = ${userId})`),
+        sql`${w.projectId} IN (SELECT ${schema.projects.id} FROM ${schema.projects} WHERE ${visibleProjects})`,
+      )!;
+      return paged(db, w, where, window, toWorkRecord);
+    },
+
     /** Unfinished, unparked work of `owner` in projects matching `visibleProjects` (a condition over `projects`). */
     async listAssigned(workspaceId: string, owner: Actor, visibleProjects: SQL, window: Window) {
       const where = and(
@@ -173,10 +185,10 @@ export function workRows(db: DbExecutor) {
       const [row] = options.lock ? await query.for('update') : await query;
       return row ? toWorkRecord(row) : null;
     },
-    async insertWork(work: { id: string; workspaceId: string; projectId: string; title: string; outcome: string; status: WorkRow['status']; blocker: string | null; owner: Actor | null; createdBy: Actor; criteria?: string[]; clientCommandId?: string; requestFingerprint?: string }) {
+    async insertWork(work: { id: string; workspaceId: string; projectId: string; title: string; outcome: string; status: WorkRow['status']; blocker: string | null; waitingFor?: Actor | null; owner: Actor | null; createdBy: Actor; criteria?: string[]; clientCommandId?: string; requestFingerprint?: string }) {
       const [row] = await db.insert(w).values({
         id: work.id, workspaceId: work.workspaceId, projectId: work.projectId, title: work.title, outcome: work.outcome,
-        status: work.status, blocker: work.blocker, ...ownerColumns(work.owner), createdByKind: work.createdBy.kind, createdById: work.createdBy.id,
+        status: work.status, blocker: work.blocker, waitingForUserId: work.waitingFor?.id ?? null, ...ownerColumns(work.owner), createdByKind: work.createdBy.kind, createdById: work.createdBy.id,
         criteria: work.criteria ?? [], clientCommandId: work.clientCommandId ?? null, requestFingerprint: work.requestFingerprint ?? null,
       }).returning();
       return toWorkRecord(row!);
@@ -210,23 +222,44 @@ export function workRows(db: DbExecutor) {
         projectId: work.projectId, workId: work.id, kind: 'task.created', createdByKind: work.createdBy.kind,
         createdById: work.createdBy.id, sources, createdAt: work.createdAt });
     },
+    async insertTaskUpdate(work: ReturnType<typeof toWorkRecord>, update: { kind: 'task.blocked' | 'task.unblocked'; by: Actor; waitingFor: Actor | null; reason: string | null }) {
+      await db.insert(schema.projectTaskUpdates).values({ id: randomUUID(), workspaceId: work.workspaceId, projectId: work.projectId,
+        workId: work.id, kind: update.kind, createdByKind: update.by.kind, createdById: update.by.id,
+        waitingForUserId: update.waitingFor?.id ?? null, reason: update.reason });
+    },
+    /** Creation notices and blocked/unblocked lines (#550) as one stream, newest first. */
     async listTaskNotices(projectId: string, window: Window) {
       const n = schema.projectTaskNotices;
-      const [count] = await db.select({ total: sql<number>`count(*)::int` }).from(n).where(eq(n.projectId, projectId));
-      const rows = await db.select({ notice: n, workTitle: w.title, workNumber: w.number }).from(n)
-        .innerJoin(w, and(eq(w.id, n.workId), eq(w.projectId, n.projectId), eq(w.workspaceId, n.workspaceId)))
-        .where(eq(n.projectId, projectId)).orderBy(desc(n.createdAt), desc(n.id)).limit(window.limit).offset(window.offset);
-      return { total: count?.total ?? 0, items: rows.map(({ notice, workTitle, workNumber }) => ({ id: notice.id,
-        workspaceId: notice.workspaceId, projectId: notice.projectId, workId: notice.workId, workTitle, workNumber, kind: notice.kind,
-        createdBy: { kind: notice.createdByKind, id: notice.createdById }, sources: notice.sources, createdAt: notice.createdAt })) };
+      const u = schema.projectTaskUpdates;
+      const [count] = await db.select({ total: sql<number>`(SELECT count(*) FROM ${n} WHERE ${n.projectId} = ${projectId}) + (SELECT count(*) FROM ${u} WHERE ${u.projectId} = ${projectId})` }).from(sql`(SELECT 1) AS one`);
+      const result = await db.execute(sql`
+        SELECT e.*, w.title AS work_title, w.number AS work_number FROM (
+          SELECT n.id, n.workspace_id, n.project_id, n.work_id, n.kind, n.created_by_kind, n.created_by_id, n.sources, NULL::text AS waiting_for_user_id, NULL::text AS reason, n.created_at
+            FROM project_task_notices n WHERE n.project_id = ${projectId}
+          UNION ALL
+          SELECT u.id, u.workspace_id, u.project_id, u.work_id, u.kind, u.created_by_kind, u.created_by_id, '[]'::jsonb AS sources, u.waiting_for_user_id, u.reason, u.created_at
+            FROM project_task_updates u WHERE u.project_id = ${projectId}
+        ) e JOIN project_work_items w ON w.id = e.work_id AND w.project_id = e.project_id AND w.workspace_id = e.workspace_id
+        ORDER BY e.created_at DESC, e.id DESC LIMIT ${window.limit} OFFSET ${window.offset}`);
+      const rows = result.rows as { id: string; workspace_id: string; project_id: string; work_id: string; kind: 'task.created' | 'task.creation_reverted' | 'task.blocked' | 'task.unblocked';
+        created_by_kind: 'human' | 'agent'; created_by_id: string; sources: import('@flux/contracts').ObjectRef[]; waiting_for_user_id: string | null; reason: string | null;
+        created_at: Date | string; work_title: string; work_number: number }[];
+      return { total: Number(count?.total ?? 0), items: rows.map((row) => ({ id: row.id,
+        workspaceId: row.workspace_id, projectId: row.project_id, workId: row.work_id, workTitle: row.work_title, workNumber: row.work_number, kind: row.kind,
+        createdBy: { kind: row.created_by_kind, id: row.created_by_id }, sources: row.sources,
+        ...(row.kind === 'task.blocked' ? { waitingFor: row.waiting_for_user_id ? { kind: 'human' as const, id: row.waiting_for_user_id } : null, reason: row.reason } : {}),
+        createdAt: new Date(row.created_at) })) };
     },
-    async updateWork(id: string, changes: { title?: string; outcome?: string; status?: WorkRow['status']; blocker?: string | null; owner?: Actor | null; parked?: { decisionId: string; at: Date } | null; criteria?: string[] }) {
+    async updateWork(id: string, changes: { title?: string; outcome?: string; status?: WorkRow['status']; blocker?: string | null; waitingFor?: Actor | null; owner?: Actor | null; parked?: { decisionId: string; at: Date } | null; criteria?: string[] }) {
       const [row] = await db.update(w).set({
         ...(changes.title !== undefined ? { title: changes.title } : {}),
         ...(changes.outcome !== undefined ? { outcome: changes.outcome } : {}),
         ...(changes.criteria !== undefined ? { criteria: changes.criteria } : {}),
         ...(changes.status !== undefined ? { status: changes.status } : {}),
         ...(changes.blocker !== undefined ? { blocker: changes.blocker } : {}),
+        // Whoever moves a task out of Blocked, a person or a GitHub rule, also ends the wait.
+        ...(changes.waitingFor !== undefined ? { waitingForUserId: changes.waitingFor?.id ?? null }
+          : changes.status !== undefined && changes.status !== 'blocked' ? { waitingForUserId: null } : {}),
         ...ownerColumns(changes.owner),
         ...(changes.parked !== undefined ? { parkedByDecisionId: changes.parked?.decisionId ?? null, parkedAt: changes.parked?.at ?? null } : {}),
         version: sql`${w.version} + 1`, updatedAt: new Date(),

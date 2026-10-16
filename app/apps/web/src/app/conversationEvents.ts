@@ -48,6 +48,14 @@ export function sourcePhrase(source: NoticeSource): { lead: string; link?: strin
 export function foldSummary(notices: TaskCreationNotice[], authorOf: (messageId: string) => string | null, nameOf: (notice: TaskCreationNotice) => string): string {
   const groups = new Map<string, { name: string; count: number; where: string }>();
   for (const notice of notices) {
+    // A blocked or unblocked line (#550) is an update of a task, not a new one.
+    if (notice.kind === 'task.blocked' || notice.kind === 'task.unblocked') {
+      const key = `${notice.createdBy.kind}:${notice.createdBy.id}:updated`;
+      const group = groups.get(key) ?? { name: nameOf(notice), count: 0, where: '\0updated' };
+      group.count += 1;
+      groups.set(key, group);
+      continue;
+    }
     const source = noticeSource(notice, authorOf);
     const where = source.kind === 'map' ? ' on the Map' : source.kind === 'none' ? '' : source.kind === 'message' ? ' from messages' : source.kind === 'material' ? ' from a source' : '';
     const name = nameOf(notice);
@@ -56,7 +64,8 @@ export function foldSummary(notices: TaskCreationNotice[], authorOf: (messageId:
     group.count += 1;
     groups.set(key, group);
   }
-  return [...groups.values()].map((group) => `${group.name} added ${group.count === 1 ? 'a task' : `${group.count} tasks`}${group.where}`).join(', ');
+  return [...groups.values()].map((group) => group.where === '\0updated' ? `${group.name} updated ${group.count === 1 ? 'a task' : `${group.count} tasks`}`
+    : `${group.name} added ${group.count === 1 ? 'a task' : `${group.count} tasks`}${group.where}`).join(', ');
 }
 
 /** The stream as drawn: roots, single announcements and folded runs of announcements. */

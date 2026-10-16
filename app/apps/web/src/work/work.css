@@ -165,6 +165,8 @@ button.ws-task__glyph:active { background: var(--hov); }
 .wd-blocker__head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .wd-blocker__resolve { margin-right: -10px; }
 .wd-blocker-form { margin-top: 10px; }
+.wd-waiting { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-size: var(--fs-md); }
+.wd-waiting label { color: var(--t2); white-space: nowrap; }
 .wd-blocker p { margin: 10px 0 0; font-size: var(--fs-md); }
 .wd-sechead { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .wd-sechead h4 { margin: 0; }

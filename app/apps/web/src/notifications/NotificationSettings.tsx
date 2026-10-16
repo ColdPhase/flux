@@ -26,12 +26,12 @@ const ROWS: Record<NotificationReason, { label: string; hint: string }> = {
   question: { label: 'Questions to you', hint: 'Someone asks you directly' },
   dm: { label: 'Direct messages', hint: 'Messages to you, outside projects' },
   reply: { label: 'Replies', hint: 'In conversations you started or joined' },
-  assigned: { label: 'Work assigned to you', hint: 'Someone else makes you the owner' },
+  assigned: { label: 'Work assigned to you', hint: 'Someone else makes you the owner, or says a blocked task is waiting for you' },
   review: { label: 'Reviews for you', hint: 'Decisions and results about your work or agent' },
   invitation: { label: 'Invitations to work together', hint: 'Someone asks you to join them at a task, map, doc or conversation' },
 };
 const LEVELS: { id: NotificationLevel; label: string; detail?: string }[] = [
-  { id: 'needsYou', label: 'Only “Needs you”', detail: 'Decisions, agent questions, blockers on your tasks, mentions' },
+  { id: 'needsYou', label: 'Only “Needs you”', detail: 'Decisions, agent questions, mentions, work assigned to you, tasks waiting for you' },
   { id: 'everything', label: 'Everything', detail: 'Also every reply in conversations you are part of' },
   { id: 'nothing', label: 'Nothing' },
 ];

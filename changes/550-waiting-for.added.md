@@ -1,0 +1,1 @@
+- A blocked task can name the one person it waits for (Details, the Create window, `flux_create_task`/`flux_update_task` as `waitingForUserId`); they get an Inbox item and a push, and the conversation shows one line when a task is blocked or unblocked ([#550](https://github.com/ColdPhase/flux/issues/550)).

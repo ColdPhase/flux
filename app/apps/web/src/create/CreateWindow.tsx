@@ -179,7 +179,7 @@ function PickChip({ label, icon, shown, value, onChange, children }: { label: st
 
 interface PanelProps { ids: PanelIds; phone: boolean; carried: Carried; projectId: string; onProject: (id: string) => void; onClose: () => void }
 
-interface SavedForm { title: string; outcome: string; status: WorkStatus; blocker: string; owner: string; sources: { ref: ObjectRef; label: string }[] }
+interface SavedForm { title: string; outcome: string; status: WorkStatus; blocker: string; owner: string; waiting?: string; sources: { ref: ObjectRef; label: string }[] }
 const sameRefs = (a: ObjectRef[], b: ObjectRef[]) => a.length === b.length && a.every((ref, i) => ref.type === b[i]!.type && ref.id === b[i]!.id);
 
 /**
@@ -238,6 +238,10 @@ function TaskForm({ ids, request, prefilled, phone, carried, projectId, onProjec
   // An owner belongs to one project's people: another project starts with none.
   const owner = ownerPick.projectId === projectId ? ownerPick.value : '';
   const setOwner = (value: string) => setOwnerPick({ projectId, value });
+  // The one person a blocked task waits for (#550); like an owner, one project's people.
+  const [waitingPick, setWaitingPick] = useState({ projectId, value: saved?.waiting ?? '' });
+  const waiting = status === 'blocked' && waitingPick.projectId === projectId ? waitingPick.value : '';
+  const setWaiting = (value: string) => setWaitingPick({ projectId, value });
   // Sources belong to the project they were picked in: another project (from any tab's picker) starts with none, rather
   // than failing on submit.
   const [sourcesFor, setSourcesFor] = useState(() => ({ projectId, list: saved?.sources ?? request.sources ?? [] }));
@@ -275,6 +279,7 @@ function TaskForm({ ids, request, prefilled, phone, carried, projectId, onProjec
   const people = useMemo(() => (loaded?.members.length ? loaded.members.map((m) => ({ value: `human:${m.userId}`, label: m.userId === me.user.id ? `${m.name} (you)` : m.name }))
     : [{ value: `human:${me.user.id}`, label: `${me.user.name} (you)` }]), [loaded, me.user.id, me.user.name]);
   const agents = (loaded?.agents ?? []).map((agent) => ({ value: `agent:${agent.id}`, label: `${agent.name} (agent)` }));
+  const waitingLabel = people.find((o) => o.value === waiting)?.label.replace(/ \((you|agent)\)$/, '') ?? 'No one';
   const ownerLabel = [...people, ...agents].find((o) => o.value === owner)?.label.replace(/ \((you|agent)\)$/, '') ?? 'No owner';
 
   const text = oneLine(title);
@@ -290,6 +295,7 @@ function TaskForm({ ids, request, prefilled, phone, carried, projectId, onProjec
       ...(outcome.trim() ? { outcome: outcome.trim() } : {}),
       ...(status !== 'open' ? { status } : {}),
       ...(status === 'blocked' ? { blocker: blocker.trim() } : {}),
+      ...(waiting ? { waitingFor: { kind: 'human' as const, id: waiting.slice('human:'.length) } } : {}),
       ...(owner ? { owner: { kind: owner.startsWith('agent:') ? 'agent' as const : 'human' as const, id: owner.slice(owner.indexOf(':') + 1) } } : {}),
       ...(sources.length ? { sources: sources.map((s) => s.ref) } : {}),
     };
@@ -300,7 +306,7 @@ function TaskForm({ ids, request, prefilled, phone, carried, projectId, onProjec
     let key = records.find((record) => record.payload === payload)?.key ?? crypto.randomUUID() as string;
     if (attempt.current?.payload === payload) key = attempt.current.key;
     attempt.current = { payload, key };
-    const form: SavedForm = { title: text, outcome, status, blocker, owner, sources };
+    const form: SavedForm = { title: text, outcome, status, blocker, owner, waiting, sources };
     const next = [...records.filter((record) => record.payload !== payload), { payload, key, form }].slice(-UNRESOLVED_LIMIT);
     pending.setText(JSON.stringify(next));
     setBusy(true); setError('');
@@ -359,6 +365,10 @@ function TaskForm({ ids, request, prefilled, phone, carried, projectId, onProjec
           <optgroup label="People">{people.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}</optgroup>
           {agents.length ? <optgroup label="Agents">{agents.map((a) => <option key={a.value} value={a.value}>{a.label}</option>)}</optgroup> : null}
         </PickChip>
+        {status === 'blocked' ? <PickChip label="Waiting for" icon={<Icon name="person" size={14} />} shown={waitingLabel} value={waiting} onChange={setWaiting}>
+          <option value="">No one in particular</option>
+          {people.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
+        </PickChip> : null}
         <div className="create__prop">
           <span className="create__lab" aria-hidden="true">Link</span>
           <div className="create__links">
