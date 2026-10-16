@@ -1,5 +1,6 @@
 import type { Page, VersionPrecondition } from './access.js';
 import type { AiPrice, AiProviderKind } from './ai-providers.js';
+import type { AgentRuntimePayer } from './agent-runtime.js';
 import type { ResultFinding } from './work.js';
 
 /**
@@ -44,8 +45,75 @@ export const ASSISTANT_RUN_IN_FLIGHT = ['queued', 'reading', 'dispatching'] as c
  * is the provider-neutral revision of F-020 (#179), naming the connection's provider, model and price.
  */
 export const PERSONAL_RUN_CONSENT_VERSION = 'o-008-2026-10-02';
-export const PERSONAL_RUN_CONSENT_VERSIONS = ['o-008-2026-09-28', PERSONAL_RUN_CONSENT_VERSION] as const;
+/**
+ * The consent of an assistant that runs on the owner's own Claude Code in the agent runtime (F-022
+ * AIM-3 "Payer and data", #280): the owner's plan pays (not visible to Flux), and the place's content
+ * goes to Anthropic under the owner's account settings, which may allow training on consumer plans.
+ */
+export const PERSONAL_RUNTIME_CONSENT_VERSION = 'f-022-runtime-2026-10-16';
+export const PERSONAL_RUN_CONSENT_VERSIONS = ['o-008-2026-09-28', PERSONAL_RUN_CONSENT_VERSION, PERSONAL_RUNTIME_CONSENT_VERSION] as const;
 export type PersonalRunConsentVersion = (typeof PERSONAL_RUN_CONSENT_VERSIONS)[number];
+
+/**
+ * The engine of the owner's assistant (F-022 mode (a)): `server`, the worker calls the provider with the
+ * owner's own API key (F-020), or `runtime`, the owner's own signed-in Claude Code in their runtime slot
+ * (AIM-3). Both reach Flux only through the MCP route with a run token (F-027 AST-8).
+ */
+export const ASSISTANT_ENGINES = ['server', 'runtime'] as const;
+export type AssistantEngine = (typeof ASSISTANT_ENGINES)[number];
+
+/**
+ * The bounds of a `runtime` run (F-022 "Caps"; they replace the money reservation, the single request and
+ * the input bound for `runtime`). The values are the decision's starting values.
+ */
+export const RUNTIME_RUN_LIMITS = {
+  runsPerDay: 20,
+  maxTurns: 10,
+  wallClockSeconds: 300,
+  idleSeconds: 60,
+  maxAnswerBytes: 16 * 1024,
+} as const;
+
+/**
+ * A run's MCP token (F-022 "Agent connection and permissions", F-027 A2): it lives no longer than the
+ * run's clock, and the MCP route bounds what tools return to it, per call and per run (F-022 "Caps").
+ */
+export const RUN_TOKEN_LIMITS = {
+  lifetimeSeconds: 300,
+  resultBytesPerCall: 16 * 1024,
+  resultBytesPerRun: 64 * 1024,
+} as const;
+
+/**
+ * Why a run ended without an answer, when its status alone does not say (F-022 T5: each end has its own
+ * state). `sign_in_again`: the CLI's login expired or was signed out at the vendor. `plan_limit`: the CLI
+ * reported a plan limit (nothing falls back to an API key). `wall_clock` and `no_event`: the run's two
+ * timeouts. `crashed`: the CLI exited without a result. `answer_too_large`: the answer passed its bound.
+ * `mcp_results_too_large`: a tool result or the run's results passed the route's bound. `local_tool`: the
+ * CLI showed a tool or MCP server other than the run's exact Flux tools. `slot_busy`: the slot's serial
+ * lane was taken (a sign-in, a status check or another run). `unknown`: the CLI's stream broke; whether it
+ * changed anything is not known and it is never rerun. `max_turns`: the turn cap. `refused`: the model
+ * refused the request.
+ */
+export const ASSISTANT_RUN_END_REASONS = [
+  'sign_in_again', 'plan_limit', 'wall_clock', 'no_event', 'crashed', 'answer_too_large', 'mcp_results_too_large',
+  'local_tool', 'slot_busy', 'unknown', 'max_turns', 'refused',
+] as const;
+export type AssistantRunEndReason = (typeof ASSISTANT_RUN_END_REASONS)[number];
+
+/**
+ * INTERNAL, worker to API only (F-027 A2): the API is the authorization server, so it signs a run's MCP
+ * token. The worker proves it holds the run with a one-time nonce whose hash it stored on the run row; the
+ * token is minted once, for an in-flight run only, and is never stored.
+ */
+export const personalRunTokenPath = (runId: string) => `/api/internal/v1/personal-runs/${runId}/run-token`;
+export interface PersonalRunTokenRequest { nonce: string }
+export interface PersonalRunTokenGrant {
+  token: string;
+  /** The run's exact Flux tools, from the owner's switches when the token was minted (F-027 AST-4). */
+  tools: string[];
+  expiresAt: string;
+}
 
 /**
  * Per-run request limits and caps of O-008 §3, the same for every provider and model (F-020
@@ -87,6 +155,8 @@ export interface PersonalRunEnablement {
   /** IANA time zone in which the daily cap resets at midnight. */
   timeZone: string;
   status: PersonalRunEnablementStatus;
+  /** Where runs go: the owner's API key connection or their own Claude Code in the runtime. */
+  engine: AssistantEngine;
   /** The owner's assistant agent per workspace; its project grants bound what a run may read. */
   agents: { workspaceId: string; agentId: string }[];
   version: number;
@@ -99,7 +169,9 @@ export type PersonalAssistantState = 'not_enabled' | 'ready' | 'paused' | 'cappe
  * `price_unknown`: the connection has no known price, so nothing can be reserved (PROV-3).
  * `run_cost_over_limit`: the model's largest request costs more than the owner's per-run ceiling.
  */
-export type PersonalAssistantUnavailableReason = 'no_connection' | 'connection_changed' | 'provider_off' | 'price_unknown' | 'run_cost_over_limit';
+export type PersonalAssistantUnavailableReason = 'no_connection' | 'connection_changed' | 'provider_off' | 'price_unknown' | 'run_cost_over_limit'
+  /** A runtime assistant: the operator switched Claude Code sign-in off, or the owner must sign in to Claude again. */
+  | 'runtime_off' | 'runtime_sign_in';
 
 /** `GET /api/v1/personal-assistant`: only ever the caller's own state. */
 export interface PersonalAssistantStatus {
@@ -111,7 +183,15 @@ export interface PersonalAssistantStatus {
    * instead of pretending: the operator's provider switch (O-008 §6) and whether the caller has
    * a usable key connection of their own (O-007/#124). Never another person's.
    */
-  setup: { provider: 'on' | 'off'; connection: 'active' | 'none' };
+  setup: {
+    provider: 'on' | 'off'; connection: 'active' | 'none';
+    /**
+     * The caller's own Claude Code in the agent runtime (F-022 AIM-3): `off` when the operator has not
+     * enabled it; otherwise whether the caller is signed in. `payer` comes from the CLI's reported
+     * `authMethod` only (never shown as zero).
+     */
+    runtime: { state: 'off' | 'signed_out' | 'sign_in_again' | 'signed_in'; payer: AgentRuntimePayer | null; accountLabel: string | null };
+  };
   /** Today's use in the owner's time zone; null without an enablement. */
   today: { chargedMicros: number; reservedMicros: number; capCents: number; resetsAt: string } | null;
   /**
@@ -139,6 +219,11 @@ export interface EnablePersonalRunsCommand {
   agentId: string;
   /** Which of the caller's own AI connections the assistant uses (F-020 PROV-1); default: their newest. */
   connectionId?: string;
+  /**
+   * `runtime`: the caller's own signed-in Claude Code (consent `PERSONAL_RUNTIME_CONSENT_VERSION`); no API
+   * key connection is used. Default `server`.
+   */
+  engine?: AssistantEngine;
   perRunCents?: number;
   dailyCapCents?: number;
   timeZone?: string;
@@ -216,6 +301,13 @@ export interface AssistantRun {
   /** Where a recheck refused the run: access, grant, pause, cap or connection. */
   stoppedAtStage: 'before_read' | 'before_dispatch' | 'before_commit' | null;
   stopRequested: boolean;
+  /** The runtime confirmed the stop (F-022 "Stop": requested and acknowledged are separate). */
+  stopAcknowledged: boolean;
+  engine: AssistantEngine;
+  /** Why it ended without an answer, when the status alone does not say; null otherwise. */
+  endReason: AssistantRunEndReason | null;
+  /** With `plan_limit`: when the CLI said the plan resets, if it said so. */
+  planLimitResetsAt: string | null;
   cost: {
     state: AssistantRunCostState;
     reservedMicros: number;

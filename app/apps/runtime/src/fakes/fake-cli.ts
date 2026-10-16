@@ -190,11 +190,120 @@ async function codexDeviceLogin(argv: string[]): Promise<number> {
   return 0;
 }
 
+/** The values after a flag up to the next `--` flag (`--allowedTools a b c`). */
+function flagValues(argv: string[], flag: string): string[] {
+  const at = argv.indexOf(flag);
+  if (at === -1) return [];
+  const values: string[] = [];
+  for (let i = at + 1; i < argv.length && !argv[i]!.startsWith('--'); i += 1) values.push(argv[i]!);
+  return values;
+}
+
+/** `${VAR}` in an MCP header, from the CLI's own environment (as Claude Code expands it). */
+const expand = (value: string) => value.replace(/\$\{([A-Z0-9_]+)\}/g, (_match, name: string) => process.env[name] ?? '');
+
+interface RunScript {
+  calls?: { name: string; args?: Record<string, unknown> }[];
+  probes?: { name: string; args?: Record<string, unknown> }[];
+  answer?: string;
+  /** A pause before each call after the first (a model thinking between turns). */
+  delayMs?: number;
+}
+
+/**
+ * `claude -p --output-format stream-json …` (F-022 T5): reads the prompt on stdin, connects to the Flux MCP
+ * server named in `--mcp-config` with the Authorization header that config names (expanding
+ * `${FLUX_RUN_TOKEN}` from its environment), prints `system/init` with the tools that server lists, makes
+ * REAL MCP calls and prints a `result`. A run script in the home (`fake-run.json`) chooses the calls, the
+ * answer (`{{results}}` is replaced by what the calls returned) and silent `probes` (calls made without a
+ * tool-use event, as a CLI ignoring its permissions would). Every MCP answer is recorded in
+ * `fake-calls.jsonl` (the token never is). Scenarios: run_extra_tool, run_extra_server, run_expired_login,
+ * run_plan_limit, run_hang (no event after init), run_slow (events forever, never a result), run_crash,
+ * run_big_answer, run_secret_answer, run_broken_stream, run_ignore_sigint, run_max_turns. Without
+ * `--no-session-persistence` it writes a transcript under `projects/`, as the real CLI would.
+ */
+async function claudeRun(argv: string[]): Promise<number> {
+  const mode = scenario('claude_code');
+  const emit = (event: Record<string, unknown>) => out(`${JSON.stringify(event)}\n`);
+  let stopping = false;
+  process.on('SIGINT', () => { if (mode === 'run_ignore_sigint') return; stopping = true; process.exit(130); });
+  process.on('SIGTERM', () => process.exit(143));
+  const chunks: Buffer[] = [];
+  for await (const chunk of process.stdin) chunks.push(chunk as Buffer);
+  const prompt = Buffer.concat(chunks).toString('utf8');
+  const configPath = argv[argv.indexOf('--mcp-config') + 1] ?? '';
+  const server = (JSON.parse(readFileSync(configPath, 'utf8')) as { mcpServers: Record<string, { url: string; headers?: Record<string, string> }> }).mcpServers.flux!;
+  const headers = Object.fromEntries(Object.entries(server.headers ?? {}).map(([name, value]) => [name.toLowerCase(), expand(value)]));
+  const token = process.env.FLUX_RUN_TOKEN ?? '';
+  record('claude_code', argv, { event: 'run', promptBytes: prompt.length, prompt, allowed: flagValues(argv, '--allowedTools'),
+    authorization: headers.authorization === undefined ? 'none' : token && headers.authorization === `Bearer ${token}` ? 'run_token' : 'other',
+    persist: !argv.includes('--no-session-persistence') });
+  if (!argv.includes('--no-session-persistence')) {
+    mkdirSync(join(home('claude_code'), 'projects', 'flux-run'), { recursive: true });
+    writeFileSync(join(home('claude_code'), 'projects', 'flux-run', 'session.jsonl'), `${JSON.stringify({ type: 'user', prompt })}\n`);
+  }
+  let id = 0;
+  const mcp = async (method: string, params: Record<string, unknown>) => {
+    const name = typeof params.name === 'string' ? params.name : null;
+    const response = await fetch(server.url, { method: 'POST', headers: { ...headers, 'content-type': 'application/json', accept: 'application/json',
+      'mcp-protocol-version': '2026-07-28', 'mcp-method': method, ...(name ? { 'mcp-name': name } : {}) },
+      body: JSON.stringify({ jsonrpc: '2.0', id: ++id, method, params: { ...params, _meta: { 'io.modelcontextprotocol/protocolVersion': '2026-07-28',
+        'io.modelcontextprotocol/clientInfo': { name: 'fake-claude', version: '2.1.285' }, 'io.modelcontextprotocol/clientCapabilities': {} } } }) });
+    const text = await response.text();
+    let body: { result?: Record<string, unknown>; error?: { message?: string } } = {};
+    try { body = JSON.parse(text) as typeof body; } catch { /* a refusal without JSON */ }
+    return { status: response.status, body };
+  };
+  const listed = await mcp('tools/list', {}).catch(() => ({ status: 0, body: {} as { result?: Record<string, unknown> } }));
+  const names = listed.status === 200 && Array.isArray(listed.body.result?.tools) ? (listed.body.result!.tools as { name: string }[]).map((tool) => tool.name) : [];
+  record('claude_code', argv, { event: 'tools_list', status: listed.status, tools: names });
+  const session = randomBytes(8).toString('hex');
+  emit({ type: 'system', subtype: 'init', cwd: process.cwd(), session_id: session, model: 'claude-fake', permissionMode: 'dontAsk', apiKeySource: 'none',
+    claude_code_version: '2.1.285', output_style: 'default', slash_commands: [], agents: [], skills: [], plugins: [], uuid: randomBytes(16).toString('hex'),
+    tools: [...names.map((name) => `mcp__flux__${name}`), ...(mode === 'run_extra_tool' ? ['Bash'] : [])],
+    mcp_servers: [{ name: 'flux', status: listed.status === 200 ? 'connected' : 'failed' }, ...(mode === 'run_extra_server' ? [{ name: 'other', status: 'connected' }] : [])] });
+  if (mode === 'run_crash') { err('fake claude: crashed\n'); return 1; }
+  if (mode === 'run_broken_stream') { out('{"type":"assistant","message":{"content":[{"type":"te'); return 0; }
+  if (mode === 'run_hang') await forever();
+  if (mode === 'run_slow') { for (;;) { emit({ type: 'stream_event', event: { type: 'ping' }, session_id: session }); await new Promise((wait) => setTimeout(wait, 500)); } }
+  if (mode === 'run_ignore_sigint') { for (;;) { emit({ type: 'stream_event', event: { type: 'ping' }, session_id: session }); await new Promise((wait) => setTimeout(wait, 500)); } }
+  if (mode === 'run_expired_login') { emit({ type: 'result', subtype: 'success', is_error: true, result: 'Invalid API key · Please run /login', num_turns: 1, session_id: session }); return 1; }
+  if (mode === 'run_plan_limit') { emit({ type: 'result', subtype: 'success', is_error: true, result: 'Claude AI usage limit reached|1791374400', num_turns: 1, session_id: session }); return 1; }
+  if (mode === 'run_max_turns') { emit({ type: 'result', subtype: 'error_max_turns', is_error: true, num_turns: 10, session_id: session }); return 1; }
+  let script: RunScript = {};
+  try { script = JSON.parse(readHome('claude_code', 'fake-run.json') || '{}') as RunScript; } catch { /* no script */ }
+  const results: { name: string; isError: boolean; text: string }[] = [];
+  const call = async (name: string, args: Record<string, unknown>) => {
+    const answer = await mcp('tools/call', { name, arguments: args });
+    const content = answer.body.result?.content;
+    const text = Array.isArray(content) ? content.map((part) => String((part as { text?: unknown }).text ?? '')).join('\n') : answer.body.error?.message ?? '';
+    const isError = answer.status !== 200 || answer.body.result?.isError === true || answer.body.error !== undefined;
+    record('claude_code', argv, { event: 'tool_result', name, status: answer.status, isError, text });
+    return { name, isError, text };
+  };
+  for (const probe of script.probes ?? []) await call(probe.name, probe.args ?? {});
+  for (const [index, planned] of (script.calls ?? [{ name: 'flux_list_contexts' }]).entries()) {
+    if (stopping) return 130;
+    if (index > 0 && script.delayMs) await new Promise((wait) => setTimeout(wait, Math.min(script.delayMs!, 30_000)));
+    const useId = `toolu_${index + 1}`;
+    emit({ type: 'assistant', session_id: session, message: { id: `msg_${index + 1}`, role: 'assistant', content: [{ type: 'tool_use', id: useId, name: `mcp__flux__${planned.name}`, input: planned.args ?? {} }] } });
+    const result = await call(planned.name, planned.args ?? {});
+    results.push(result);
+    emit({ type: 'user', session_id: session, message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: useId, content: result.text, is_error: result.isError }] } });
+  }
+  let answer = (script.answer ?? 'Done: I read {{count}} things in this project.').replace('{{count}}', String(results.length)).replace('{{results}}', JSON.stringify(results));
+  if (mode === 'run_big_answer') answer = 'x'.repeat(20 * 1024);
+  if (mode === 'run_secret_answer') answer = `Here: sk-ant-api03-${randomBytes(12).toString('hex')} and the token ${token} and Bearer ${token}.`;
+  emit({ type: 'result', subtype: 'success', is_error: false, result: answer, num_turns: results.length + 1, session_id: session, total_cost_usd: 0 });
+  return 0;
+}
+
 export async function fakeCli(client: FakeClient, argv: string[]): Promise<number> {
   const words = command(argv);
   const key = words.join(' ');
   const flags = words.filter((word) => word.startsWith('-'));
   record(client, argv);
+  if (client === 'claude_code' && words[0] === '-p') return claudeRun(argv);
   if (client === 'claude_code' && words[0] === 'auth' && words[1] === 'login' && !flags.includes('--help')) return claudeLogin(argv, words.slice(2));
   if (client === 'codex' && key === 'login --device-auth') return codexDeviceLogin(argv);
   const mode = scenario(client);

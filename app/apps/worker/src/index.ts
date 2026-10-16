@@ -31,7 +31,8 @@ await registerDraftSummaryWorker(boss, db);
 // The morning summary (#350, S22): one push a day per person who turned it on.
 await registerMorningSummary(boss, db);
 // Personal assistant runs (#68): the payload is a run id; every step rechecks the owner.
-const personalRuns = personalRunWorkerComposition(process.env, db);
+const agentRuntimeConfig = loadAgentRuntimeConfig(process.env);
+const personalRuns = personalRunWorkerComposition(process.env, db, agentRuntimeConfig);
 if (personalRuns.mode !== 'production') console.warn(JSON.stringify({ warning: 'TEST ONLY: personal runs use fixture connections and a mock provider', mode: personalRuns.mode }));
 const personalRunRecovery = await registerPersonalRunWorker(boss, db, personalRuns);
 // Background comparisons (#58): only when the operator switched them on; otherwise unscheduled.
@@ -39,7 +40,7 @@ const comparisonsOn = backgroundComparisonsEnabled(process.env);
 await registerComparisonWorker(boss, db, { enabled: comparisonsOn, masterKey: comparisonsOn ? loadBackgroundMasterKey() : null, provider: comparisonProviders(process.env) });
 await registerIdempotencyCleanup(boss, db);
 // The `runtime` transport (F-022 T3): reconciles slot bindings at start and periodically; off by default.
-const agentRuntime = startAgentRuntimeReconciler({ config: loadAgentRuntimeConfig(process.env), db, pool, env: process.env });
+const agentRuntime = startAgentRuntimeReconciler({ config: agentRuntimeConfig, db, pool, env: process.env });
 console.log('Flux worker ready');
 const stop = async () => { await agentRuntime.stop(); await personalRunRecovery.stop(); await generator.stop(); await boss.stop(); email.close(); await pool.end(); process.exit(0); };
 process.on('SIGTERM', stop);

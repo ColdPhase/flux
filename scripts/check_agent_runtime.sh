@@ -262,6 +262,26 @@ live console-no-fields T
 # A failed logout still deletes the login and tells the owner.
 seed_login
 live console-sign-in T claude_account "$console_code" "$console_secret" >/dev/null
+
+step "9c. A run on the owner's own Claude Code (T5 #280): the real worker, the slot, the fake CLI reading Flux through runtime-egress's /mcp"
+out=$(live runtime-run T); printf '%s\n' "$out"
+docker exec "$t_cid" cat "/data/$t_binding/claude/fake-calls.jsonl" | python3 -c '
+import json, sys
+calls = [json.loads(line) for line in sys.stdin if line.strip()]
+run = [c for c in calls if c.get("event") == "run"]
+assert len(run) == 1, run
+assert run[0]["authorization"] == "run_token", run[0]["authorization"]
+assert "FLUX_RUN_TOKEN" in run[0]["envNames"]
+assert not any(arg.startswith("eyJ") for arg in run[0]["argv"]), "the token is an argument"
+listed = [c for c in calls if c.get("event") == "tools_list"]
+assert listed and listed[0]["status"] == 200 and "flux_list_contexts" in listed[0]["tools"], listed
+results = [c for c in calls if c.get("event") == "tool_result"]
+assert results and all(r["status"] == 200 and not r["isError"] for r in results), results
+print("the CLI got the run token only in FLUX_RUN_TOKEN, reached /mcp through runtime-egress and its call was answered")'
+[ -z "$(docker exec "$t_cid" ls -A /tmp)" ] || fail "the run left files in the slot's /tmp"
+if docker exec "$t_cid" test -e "/data/$t_binding/claude/projects"; then fail "a transcript remains in the binding directory"; fi
+docker exec -u 1000:1000 "$t_cid" sh -c "rm -f /data/$t_binding/claude/fake-calls.jsonl"
+
 docker exec -u 1000:1000 "$t_cid" sh -c "printf logout_fails > /data/$t_binding/claude/fake-scenario"
 out=$(live console-sign-out T); printf '%s\n' "$out"
 [ "$(value "$out" SIGN_OUT_FAILED)" = true ] || fail "a failed logout was not reported"

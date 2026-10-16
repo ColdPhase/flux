@@ -357,7 +357,12 @@ class PersonalAssistantJourney(unittest.TestCase):
         self.assertEqual(sent[0]["retry_count"], "0")
         body = sent[0]["body"]
         self.assertEqual((body["model"], body["max_tokens"], body["output_config"]), ("claude-sonnet-5", 1500, {"effort": "low"}))
-        self.assertNotIn("tools", body)
+        # F-027 A6 (#484): the run offers its exact switch-derived read tools, listed by /mcp to its run token;
+        # the mock answers without calling one, so the run stays one request.
+        tools = sorted(tool["name"] for tool in body.get("tools", []))
+        self.assertIn("flux_get_conversation", tools)
+        for absent in ("flux_create_task", "flux_update_doc", "flux_create_unit", "flux_bootstrap", "flux_claim_unit", "flux_create_proposal"):
+            self.assertNotIn(absent, tools)
         self.assertIn(KAI_REPLY, json.dumps(body))
         self.assertNotIn(DM_TOKEN, json.dumps(body))
         run = self.own_runs(jo)[0]

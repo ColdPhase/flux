@@ -1,4 +1,4 @@
-import type { AssistantRun, AssistantRunStatus, PersonalAssistantStatus } from '@flux/contracts';
+import type { AgentRuntimePayer, AssistantRun, AssistantRunStatus, PersonalAssistantStatus } from '@flux/contracts';
 import { ApiError, NetworkError } from '../api/client';
 
 // Words of the personal assistant (#57 design, #68). Calm and exact: they say what happened, who
@@ -19,10 +19,27 @@ export function perMillion(value: number) {
 
 export const WORKING: readonly AssistantRunStatus[] = ['queued', 'reading', 'dispatching'];
 export const isWorking = (run: AssistantRun) => WORKING.includes(run.status);
+/** A run on the owner's own Claude Code (F-022 AIM-3); older answers and stubs have no engine. */
+export const onRuntime = (run: Pick<AssistantRun, 'engine'>) => run.engine === 'runtime';
+
+/** The payer of a runtime assistant in plain words, from the CLI's reported method (F-022 "Payer and data"). */
+export function runtimePayerText(payer: AgentRuntimePayer | null | undefined) {
+  return payer === 'claude_plan' ? 'your Claude plan' : payer === 'anthropic_console' ? 'your Anthropic Console organization' : 'your Claude account';
+}
+/** The longer payer line: never zero, never a number Flux cannot see. */
+export function runtimePayerDetail(payer: AgentRuntimePayer | null | undefined) {
+  return payer === 'anthropic_console' ? 'your Anthropic Console organization (API billing, cost not reported to Flux)'
+    : payer === 'claude_plan' ? 'your Claude plan (plan limits or paid extra usage, not visible to Flux)' : 'your Claude account (usage not visible to Flux)';
+}
+
+/** "14:00": the reset time of a plan limit in the reader's clock. */
+const clock = (iso: string) => new Date(iso).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
 
 /** The owner's working line while a run is in flight. */
 export function workingText(run: AssistantRun) {
   if (run.stopRequested) return 'Stopping… nothing will be posted.';
+  // F-027 AST-10: one plain word while the owner's own Claude Code works.
+  if (onRuntime(run)) return 'Working…';
   switch (run.status) {
     case 'queued': return 'Your assistant is getting ready…';
     case 'reading': return 'Your assistant is reading this conversation…';
@@ -30,8 +47,35 @@ export function workingText(run: AssistantRun) {
   }
 }
 
+/**
+ * Why a run on the owner's own Claude Code ended without an answer (F-027 AST-10 Journey 6, F-022 T5: each
+ * end has its own words). Read-only runs change nothing, so each line says so.
+ */
+function runtimeEndedText(run: AssistantRun): string | null {
+  switch (run.endReason) {
+    case 'plan_limit': return run.planLimitResetsAt ? `Paused: your Claude plan’s limit is reached until ${clock(run.planLimitResetsAt)}.`
+      : 'Paused: your Claude plan’s limit is reached. Claude didn’t say until when.';
+    case 'sign_in_again': return 'Sign in to Claude again to keep using your assistant.';
+    case 'refused': return 'Claude refused this request. Nothing was changed.';
+    case 'no_event': case 'crashed': return 'Claude isn’t answering right now. Nothing was changed.';
+    case 'unknown': return 'Claude stopped answering partway. Nothing was changed, and it won’t run again by itself.';
+    case 'wall_clock': return 'I stopped after 5 minutes, the limit for one request. Nothing was posted.';
+    case 'max_turns': return 'I stopped at the most steps for one request. Nothing was posted.';
+    case 'answer_too_large': return 'Limit reached: the answer was too long to post. Nothing was posted.';
+    case 'local_tool': return 'Stopped: Claude Code offered tools Flux doesn’t allow. Nothing was posted.';
+    case 'slot_busy': return 'Your Claude Code was busy (signing in or checking). Nothing was posted. Try again in a moment.';
+    default: return null;
+  }
+}
+
 /** Why a run ended without an answer. Always says that nothing was posted. */
 export function endedText(run: AssistantRun): string | null {
+  if (run.endReason === 'mcp_results_too_large') return 'Limit reached: this needed more reading than one request allows. Nothing was posted.';
+  if (onRuntime(run)) {
+    const words = runtimeEndedText(run);
+    if (words) return words;
+    if (run.status === 'cap_reached') return 'That’s your daily limit of requests. Nothing was posted.';
+  }
   switch (run.status) {
     case 'stopped': return 'Stopped. Nothing was posted.';
     case 'denied': return 'Your assistant can no longer read or post in this project. Nothing was posted.';
@@ -45,7 +89,8 @@ export function endedText(run: AssistantRun): string | null {
   }
 }
 
-export const canRetry = (run: AssistantRun) => run.status === 'provider_failed' || run.status === 'stopped';
+export const canRetry = (run: AssistantRun) => run.status === 'provider_failed' || run.status === 'stopped'
+  || (onRuntime(run) && (run.endReason === 'slot_busy' || run.endReason === 'wall_clock' || run.endReason === 'max_turns'));
 
 export type AskState =
   | { kind: 'ready'; note: string }
@@ -55,17 +100,21 @@ export type AskState =
 export function askState(status: PersonalAssistantStatus | null, audience: string): AskState {
   if (!status) return { kind: 'blocked', note: 'Checking your assistant…', action: null };
   const cap = status.enablement ? dollars(status.enablement.perRunCents) : '';
+  const runtime = status.enablement?.engine === 'runtime';
   switch (status.state) {
-    case 'ready': return { kind: 'ready', note: `Answer shown to ${audience} · paid by you, up to ${cap}` };
+    case 'ready': return { kind: 'ready', note: runtime ? `Answer shown to ${audience} · on ${runtimePayerText(status.setup.runtime?.payer)}` : `Answer shown to ${audience} · paid by you, up to ${cap}` };
     case 'not_enabled': return { kind: 'blocked', note: 'You haven’t set up your assistant. Nobody else’s can be used for you.', action: 'connect', actionLabel: 'Connect your AI' };
     case 'paused': return { kind: 'blocked', note: 'Your assistant is paused.', action: 'resume', actionLabel: 'Resume' };
-    case 'capped': return { kind: 'blocked', note: `Stopped at today’s ${dollars(status.today?.capCents ?? 0)} cap. It won’t use another payer.`, action: 'settings', actionLabel: 'Raise cap' };
+    case 'capped': return runtime ? { kind: 'blocked', note: 'That’s 20 requests today, your daily limit. It won’t use another account.', action: 'settings', actionLabel: 'Assistant settings' }
+      : { kind: 'blocked', note: `Stopped at today’s ${dollars(status.today?.capCents ?? 0)} cap. It won’t use another payer.`, action: 'settings', actionLabel: 'Raise cap' };
     default: return { kind: 'blocked', note: unavailableText(status), action: 'settings', actionLabel: 'Assistant settings' };
   }
 }
 
 export function unavailableText(status: PersonalAssistantStatus) {
   switch (status.unavailableReason) {
+    case 'runtime_sign_in': return 'Sign in to Claude again to keep using your assistant.';
+    case 'runtime_off': return 'This Flux doesn’t allow signing in with a subscription yet.';
     case 'provider_off': return 'In-app AI is turned off on this Flux server, so nothing is sent.';
     case 'connection_changed': return 'The AI connection your assistant used was removed. Another one needs its own consent: remove your assistant, then turn it on with that connection.';
     case 'price_unknown': return 'Your AI connection has no known price, so nothing is sent.';

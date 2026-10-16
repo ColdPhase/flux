@@ -120,7 +120,7 @@ describe('personal assistant runs (#68, fake compute: no provider pass is claime
     const status = expectStatus(await hubert.browser.request('GET', '/api/v1/personal-assistant'), 200) as PersonalAssistantStatus;
     assert.equal(status.state, 'unavailable');
     assert.equal(status.unavailableReason, 'provider_off');
-    assert.deepEqual(status.setup, { provider: 'off', connection: 'none' }, 'the UI can say why, truthfully');
+    assert.deepEqual(status.setup, { provider: 'off', connection: 'none', runtime: { state: 'off', payer: null, accountLabel: null } }, 'the UI can say why, truthfully');
     assert.equal(status.enablement?.connectionId, hubertConnection);
     assert.equal(status.enablement?.consent.version, PERSONAL_RUN_CONSENT_VERSION);
     const refused = await hubert.browser.request('POST', `/api/v1/conversations/${thread.id}/assistant-runs`, { body: { clientRunId: randomUUID(), kind: 'ask', prompt: 'Summarize' } });

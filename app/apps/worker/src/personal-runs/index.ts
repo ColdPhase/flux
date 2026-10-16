@@ -8,12 +8,18 @@ import {
   type Database,
   type PersonalCompute,
   type PersonalConnectionLookup,
+  type PersonalRunTokenIssuer,
+  type PersonalRuntime,
+  type PersonalToolHost,
 } from '@flux/core';
 import { personalRunWorkerUnitOfWork } from './adapters.js';
 import { startPersonalRunRecovery } from './recovery.js';
 
 export { personalRunWorkerUnitOfWork } from './adapters.js';
 export { personalRunWorkerComposition } from './composition.js';
+export { mcpToolHost } from './mcp-session.js';
+export { runTokenIssuer } from './run-tokens.js';
+export { managerPersonalRuntime } from './runtime-engine.js';
 
 /**
  * Consumes `personal-run.dispatch.v1` (#68). The payload is a run id only; the processor rechecks
@@ -22,12 +28,17 @@ export { personalRunWorkerComposition } from './composition.js';
  * has no usable connection and the provider is off, so every run ends `unavailable` at zero cost.
  * The queue never retries a dispatch (`PERSONAL_RUN_QUEUE`, created by the migrator).
  */
-export async function registerPersonalRunWorker(boss: PgBoss, db: Database, options: { connections?: PersonalConnectionLookup; compute?: PersonalCompute } = {}) {
+export async function registerPersonalRunWorker(boss: PgBoss, db: Database, options: {
+  connections?: PersonalConnectionLookup; compute?: PersonalCompute; tools?: PersonalToolHost; tokens?: PersonalRunTokenIssuer; runtime?: PersonalRuntime;
+} = {}) {
   const uow = personalRunWorkerUnitOfWork(db);
   const processor = createPersonalRunProcessor({
     uow,
     connections: options.connections ?? noPersonalConnections,
     compute: options.compute ?? unavailablePersonalCompute,
+    ...(options.tools ? { tools: options.tools } : {}),
+    ...(options.tokens ? { tokens: options.tokens } : {}),
+    ...(options.runtime ? { runtime: options.runtime } : {}),
   });
   await boss.work<{ runId: string }>(PERSONAL_RUN_JOB, async (jobs) => {
     for (const job of jobs) {

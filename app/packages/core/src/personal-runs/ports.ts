@@ -1,7 +1,7 @@
 import type { MessageFile, MessageContribution } from '@flux/contracts';
 import type {
-  AiPrice, AiProviderKind, AssistantProposalStatus, AssistantRunCostState, AssistantRunKind, AssistantRunStatus, AssistantSourceRef,
-  PersonalRunConsentVersion, PersonalRunEnablementStatus, ResultFinding,
+  AiPrice, AiProviderKind, AgentRuntimePayer, AssistantAreas, AssistantEngine, AssistantProposalStatus, AssistantRunCostState, AssistantRunEndReason,
+  AssistantRunKind, AssistantRunStatus, AssistantSourceRef, PersonalRunConsentVersion, PersonalRunEnablementStatus, PersonalRunTokenGrant, ResultFinding,
 } from '@flux/contracts';
 import type { AssistantIdentityPort } from '../assistant/ports.js';
 import type { Principal } from '../principal.js';
@@ -27,13 +27,15 @@ export interface EnablementRecord {
   dailyCapCents: number;
   timeZone: string;
   status: PersonalRunEnablementStatus;
+  /** `runtime`: the owner's own Claude Code (F-022 AIM-3); `connectionId` is then null. */
+  engine: AssistantEngine;
   agents: { workspaceId: string; agentId: string }[];
   version: number;
   createdAt: Date;
   updatedAt: Date;
 }
 
-export type NewEnablement = Omit<EnablementRecord, 'agents' | 'version' | 'status' | 'consentedAt' | 'createdAt' | 'updatedAt'>;
+export type NewEnablement = Omit<EnablementRecord, 'agents' | 'version' | 'status' | 'consentedAt' | 'createdAt' | 'updatedAt' | 'engine'> & { engine?: AssistantEngine };
 export type EnablementChanges = Partial<Pick<EnablementRecord, 'perRunCents' | 'dailyCapCents' | 'timeZone' | 'status'>>;
 
 export interface RunRecord {
@@ -70,13 +72,26 @@ export interface RunRecord {
   createdAt: Date;
   dispatchedAt: Date | null;
   completedAt: Date | null;
+  /** 0098 (F-022 T5, F-027 A2): the engine, the run's own end states and its MCP token (never the token itself). */
+  engine: AssistantEngine;
+  endReason: AssistantRunEndReason | null;
+  planLimitResetsAt: Date | null;
+  stopAcknowledgedAt: Date | null;
+  answerRedacted: boolean;
+  runTokenJti: string | null;
+  runTokenClosedAt: Date | null;
+  runTools: string[];
+  mcpResultBytes: number;
+  /** A tool result passed the MCP route's bound for one call or for the run (F-022 "Caps"). */
+  mcpLimit: 'call' | 'run' | null;
 }
 
 export type NewRun = Pick<RunRecord, 'id' | 'workspaceId' | 'projectId' | 'conversationId' | 'ownerUserId' | 'agentId' | 'connectionId'
   | 'clientRunId' | 'requestFingerprint' | 'kind' | 'prompt' | 'targetSketchId' | 'targetThoughtId' | 'continuesRunId' | 'retryOfRunId'
-  | 'reservedMicros' | 'provider' | 'model'>;
+  | 'reservedMicros' | 'provider' | 'model'> & { engine?: AssistantEngine };
 export type RunChanges = Partial<Pick<RunRecord, 'status' | 'stoppedAtStage' | 'stopRequestedAt' | 'costState' | 'chargedMicros'
-  | 'inputTokens' | 'outputTokens' | 'answerBody' | 'answerTruncated' | 'answerSources' | 'committedAt' | 'dispatchedAt' | 'completedAt'>>;
+  | 'inputTokens' | 'outputTokens' | 'answerBody' | 'answerTruncated' | 'answerSources' | 'committedAt' | 'dispatchedAt' | 'completedAt'
+  | 'endReason' | 'planLimitResetsAt' | 'stopAcknowledgedAt' | 'answerRedacted'>>;
 
 export interface ProposalRecord {
   id: string;
@@ -162,6 +177,18 @@ export interface PersonalRunRepository {
   /** Applies the changes and increments the version; the caller holds the row lock. */
   updateProposal(id: string, changes: ProposalChanges): Promise<ProposalRecord>;
   listProposals(projectId: string, page: PageWindow): Promise<Paged<ProposalRecord>>;
+  /**
+   * Whether the owner's assistant connection in the workspace (F-027 AST-3) is live. Runs that hold a run
+   * token end `revoked` once it is revoked; older isolated fake repositories may omit it.
+   */
+  assistantConnectionLive?(ownerUserId: string, workspaceId: string): Promise<boolean>;
+  /**
+   * The owner's switches in the workspace, from the assistant connection's S6 policy (F-027 AST-4). Null
+   * without an assistant connection. A `server` request never assembles an Off area as ambient context.
+   */
+  assistantAreas?(ownerUserId: string, workspaceId: string): Promise<AssistantAreas | null>;
+  /** The owner's `runtime` runs that started since the start of their local day (F-022 "Caps": runs per day). */
+  runtimeRunsToday?(ownerUserId: string, timeZone: string, exceptRunId?: string): Promise<number>;
 }
 
 /** Adapter over the core access policy. It never reveals objects the principal cannot see. */
@@ -375,4 +402,58 @@ export interface ProposalPorts extends PersonalRunPorts {
 
 export interface ProposalUnitOfWork {
   run<T>(work: (ports: ProposalPorts) => Promise<T>): Promise<T>;
+}
+
+/**
+ * A run's MCP token (F-027 A2), minted by the API (Flux's authorization server) for the worker. `issue`
+ * returns null when the run is no longer in flight or the owner's assistant connection is unavailable;
+ * `close` ends the token whatever the run does next. The token is never stored.
+ */
+export interface PersonalRunTokenIssuer {
+  issue(runId: string): Promise<PersonalRunTokenGrant | null>;
+  close(runId: string): Promise<void>;
+}
+
+/** The owner's own Claude Code in the agent runtime, as the server sees it (F-022 AIM-3). */
+export interface PersonalRuntimeStanding {
+  state: 'off' | 'signed_out' | 'sign_in_again' | 'signed_in';
+  payer: AgentRuntimePayer | null;
+  accountLabel: string | null;
+}
+export interface PersonalRuntimeAvailability {
+  standing(ownerUserId: string): Promise<PersonalRuntimeStanding>;
+}
+
+/** Where one owner's runtime run goes: their bound slot and binding directory, never chosen by a request. */
+export interface PersonalRuntimeTarget { slot: string; bindingId: string }
+
+/** What the runtime reported while a run ran (the CLI's JSONL reduced by the slot to closed shapes). */
+export type PersonalRuntimeEvent =
+  | { kind: 'init'; tools: string[]; mcpServers: { name: string; status: string }[] }
+  | { kind: 'tool'; name: string };
+
+/** How a runtime run ended. `unavailable`: the slot refused or could not be reached before the CLI ran. */
+export type PersonalRuntimeEnd =
+  | { kind: 'answer'; text: string; turns: number }
+  | { kind: 'ended'; reason: AssistantRunEndReason | 'stopped' | 'unavailable'; planResetsAt?: Date | null };
+
+export interface PersonalRuntimeRunRequest {
+  runId: string;
+  prompt: string;
+  runToken: string;
+  tools: string[];
+  caps: { maxTurns: number; wallClockSeconds: number; idleSeconds: number; maxAnswerBytes: number };
+}
+
+/**
+ * The worker's side of the `runtime` transport for runs (F-022 AIM-3 "Run"): it asks runtime-manager to run
+ * the owner's CLI in their slot. `enabled` is the operator's switch. Every call happens outside a transaction.
+ */
+export interface PersonalRuntime {
+  readonly enabled: boolean;
+  /** The owner's signed-in Claude Code, or why it cannot run now. */
+  target(ownerUserId: string): Promise<{ ok: true; target: PersonalRuntimeTarget } | { ok: false; reason: 'off' | 'sign_in_again' | 'unavailable' }>;
+  run(target: PersonalRuntimeTarget, request: PersonalRuntimeRunRequest, onEvent: (event: PersonalRuntimeEvent) => void): Promise<PersonalRuntimeEnd>;
+  /** SIGINT, then SIGTERM, then kill (F-022 "Stop"). `stopping`: the slot acknowledged the stop. */
+  stop(target: PersonalRuntimeTarget, runId: string): Promise<'stopping' | 'not_running' | 'failed'>;
 }
