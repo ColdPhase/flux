@@ -126,8 +126,10 @@ class CodexSignIn(unittest.TestCase):
                 {"t": "device", "url": "https://auth.openai.com/codex/device", "code": CODE},
             ])
             page.goto("/settings/agents/codex")
-            expect(page.get_by_role("heading", level=2, name="Sign in to ChatGPT")).to_be_visible()
+            if not phone:  # on a phone the pane's own header names the page
+                expect(page.get_by_role("heading", level=2, name="Sign in to ChatGPT")).to_be_visible()
             page.get_by_role("button", name="Get a code").click()
+            expect(page.get_by_role("heading", level=3, name="Sign in to ChatGPT")).to_be_visible()
             code = page.locator(".rt-device__code")
             expect(code).to_have_text(CODE)
             self.assertGreaterEqual(float(code.evaluate("el => parseFloat(getComputedStyle(el).fontSize)")), 24, "the code is large")
@@ -148,6 +150,8 @@ class CodexSignIn(unittest.TestCase):
     def test_04_copy_and_open_opens_chatgpt_and_copies_the_code(self) -> None:
         page, _ = self.stubbed(phone=False, script=[{"t": "state", "state": "running"}, {"t": "device", "url": "https://auth.openai.com/codex/device", "code": CODE}])
         page.context.grant_permissions(["clipboard-read", "clipboard-write"], origin=ORIGIN)
+        # The vendor's page is stubbed: no request leaves the test.
+        page.context.route("https://auth.openai.com/**", lambda route: route.fulfill(status=200, content_type="text/html", body="<title>stub</title>"))
         page.goto("/settings/agents/codex")
         page.get_by_role("button", name="Get a code").click()
         with page.context.expect_page() as opened:
@@ -178,7 +182,7 @@ class CodexSignIn(unittest.TestCase):
             again = page.get_by_role("button", name="Get a new code")
             expect(again).to_be_visible()
             again.click()
-            self.until(page, lambda: sum(1 for item in received if "ticket" in item) == 2, "Get a new code to start a new sign-in")
+            self.until(page, lambda: sum(1 for item in received if "ticket" in item) == 2, f"Get a new code to start a new sign-in ({received})")
             page.context.close()
 
     def test_06_signed_in_says_who_pays_and_settings_shows_codex(self) -> None:
