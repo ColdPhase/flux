@@ -96,12 +96,14 @@ export function InboxView() {
     <div className="pane-scroll"><div className="pane-in nyq">
       {/* On the computer the summary and the filters sit in the header row, as drawn; on a phone they head the list. */}
       {(() => {
-        const bar = (
+        // An empty Inbox is only Kreska, one sentence and the settings link (E06): nothing to filter yet. Snoozed items keep the summary, which says how many are for later.
+        const bar = queue.items?.length === 0 && filter === 'all' && !queue.later ? null : (
           <>
             <p className="nyq__summary" aria-live="polite">{summary}{queue.later ? ` · ${queue.later} for later` : ''}</p>
             <Tabs variant="segmented" className="nyq__filters" label="Show" items={tabs} value={filter} onChange={(id) => setFilter(id as Filter)} />
           </>
         );
+        if (!bar) return null;
         return !phone && actionSlot ? createPortal(<div className="nyq__bar nyq__bar--head">{bar}</div>, actionSlot) : <div className="nyq__bar">{bar}</div>;
       })()}
       {queue.failed && queue.items === null ? (

@@ -136,13 +136,6 @@ export function Sidebar({ projects, directMessages, user, session, onClose, titl
             <Icon name="inbox" className="side__ic" /><span className="side__label">Inbox</span>
             {inboxUnread ? <span className="side__count" aria-hidden="true">{inboxUnread}</span> : null}
           </Link>
-          {place === 'inbox' ? (
-            <div className="side__threads">
-              <NavLink to="/settings/notifications" className="side__item" onClick={navigate}>
-                <Icon name="bell" className="side__ic" /><span className="side__label">Notification settings</span>
-              </NavLink>
-            </div>
-          ) : null}
           <Link to="/map" className="side__item" aria-current={sketchbook ? 'page' : undefined} onClick={navigate} title="Only you can see your sketchbook">
             <Icon name="edit" className="side__ic" /><span className="side__label">Sketchbook</span>
           </Link>

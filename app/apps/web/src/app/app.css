@@ -130,8 +130,6 @@ body:has(.app) { background: var(--side); }
 .side__sub { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: var(--fs-xs); font-weight: 400; color: var(--t2); white-space: nowrap; }
 .side__label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .side__dm .ui-avatar { flex: none; }
-.side__threads { margin: 0 0 6px 18px; padding-left: 8px; border-left: 1px solid var(--line); }
-.side__threads .side__item { min-height: 32px; padding: 5px 8px; font-size: var(--fs-sm); }
 
 /* A working agent with Stop (S13): only while a real run executes. */
 .agentlive { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 8px 0; padding: 8px 8px 8px 10px; border-radius: 14px; background: var(--el); box-shadow: var(--sh-card); }
@@ -453,14 +451,13 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
 }
 /* ---------- Coarse pointers: 44px targets ---------- */
 @media (pointer: coarse) {
-  .side__item, .side__person, .side__threads .side__item { min-height: 44px; }
+  .side__item, .side__person { min-height: 44px; }
   .side__new, .side__search { min-height: 44px; }
   .side__search { width: 44px; }
   .me__settings, .side__ib, .side__rail-project, .side__rail-dm, .newmenu--compact .side__new, .me--compact .me__btn { width: 44px; height: 44px; min-height: 44px; }
   .side__add { width: 44px; height: 44px; margin: -10px -10px -10px 0; }
   /* The 44px "+" reaches 10px below its heading row: an empty state there starts below it. */
   .side__head + .side__empty { padding-top: 12px; }
-  .side__threads .ui-btn { min-height: 44px; }
   .me__item { min-height: 44px; }
   .seg__b { min-height: 44px; }
   .brand { min-height: 44px; }
@@ -575,7 +572,8 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
 @media (max-width: 340px) { .phead:has(.wiki-header-meta) { gap: 4px; } }
 .phone-dock__bar .ui-bottomnav__pill::before { display: none; }
 .phone-dock__bar .ui-bottomnav__item:is([aria-current="page"], [data-pending]) { background: var(--sub); color: var(--t1); font-weight: 600; }
-.phone-dock__bar .ui-bottomnav__dot { top: 0; right: 2px; width: 10px; height: 10px; box-shadow: 0 0 0 2px var(--el); }
+/* The unread dot sits clear of the icon's top-right corner (#437). */
+.phone-dock__bar .ui-bottomnav__dot { top: 2px; right: auto; left: calc(50% + 12px); width: 10px; height: 10px; box-shadow: 0 0 0 2px var(--el); }
 .phone-dock__search {
   flex: none; width: 62px; height: 62px; border-radius: 50%; display: grid; place-items: center;
   background: var(--el); color: var(--t1); box-shadow: var(--sh-pop), inset 0 0 0 1px var(--line);

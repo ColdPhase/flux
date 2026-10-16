@@ -759,13 +759,34 @@ class InboxFinal(unittest.TestCase):
         expect(page.get_by_role("heading", name="Nothing needs you right now")).to_be_visible()
         expect(page.get_by_text("Enjoy the quiet.")).to_be_visible()
         expect(page.get_by_text(re.compile(r"^\d+ done today$"))).to_be_visible()
-        expect(page.get_by_text("all clear · all projects")).to_be_visible()
+        # #437 / E06: an empty Inbox is Kreska, one sentence and the settings link; the filters wait for something to filter.
+        expect(page.get_by_role("tab")).to_have_count(0)
+        expect(page.get_by_text("all clear · all projects")).to_have_count(0)
         expect(page.get_by_role("link", name="Notification settings").last).to_be_visible()
         expect(page.get_by_role("navigation", name="Places").get_by_role("link", name="Inbox", exact=True).locator(".side__count")).to_have_count(0)
-        page.get_by_role("tab", name=re.compile("^Questions")).click()
+        page.goto("/inbox?show=questions")
         expect(page.get_by_role("heading", name="No questions wait for you")).to_be_visible()
         shot(page, "inbox-final-desktop-1440-clear")
         self.assertEqual(self.queue(None)["count"], 0)
+
+    def test_11b_empty_inbox_with_a_snoozed_item_keeps_the_later_count(self) -> None:
+        """#437: hiding the empty Inbox's summary must not hide "N for later", the way back to snoozed items."""
+        snoozed = self.post("jonas", f"/api/v1/projects/{self.project_id}/decisions", {"title": "Paint the shed green", "rationale": "It hides in the garden."})
+        self.wait_for(lambda: self.queue(None)["count"] == 1, "the new decision")
+        page = self.page()
+        page.goto("/inbox")
+        self.card(page, "Paint the shed green").get_by_role("button", name="Not now").click()
+        page.keyboard.press("1")
+        expect(page.get_by_role("status").filter(has_text="Back tomorrow morning")).to_be_visible()
+        self.wait_for(lambda: self.queue(None)["later"] == 1, "the snooze to be stored")
+        page.reload()
+        expect(page.get_by_role("heading", name="Nothing needs you right now")).to_be_visible()
+        expect(page.get_by_text("all clear · all projects · 1 for later")).to_be_visible()
+        self.contexts["ada"].request.delete(f"/api/v1/needs-you/{requests_quote('decision:' + snoozed['id'])}", headers={"origin": ORIGIN})
+        self.wait_for(lambda: self.queue(None)["later"] == 0, "the snooze to be undone")
+        page.reload()
+        expect(self.card(page, "Paint the shed green")).to_have_count(1)
+        self.contexts["ada"].request.post(f"/api/v1/needs-you/{requests_quote('decision:' + snoozed['id'])}", data={"action": "done"}, headers={"origin": ORIGIN})
 
     # ---------------------------------------------------------------- phone and dark
 
@@ -784,6 +805,11 @@ class InboxFinal(unittest.TestCase):
         expect(decision.get_by_role("button", name="Discuss")).to_be_visible()
         # The title opens the item in the detail sheet, so it is a touch target too.
         self.assertGreaterEqual(box(page, decision.locator(".nyc__open"))["height"], 44)
+        # #437: the tab labels meet the 12.5px phone meta minimum and the unread dot clears the Inbox icon.
+        self.assertGreaterEqual(page.evaluate("Math.min(...[...document.querySelectorAll('.ui-bottomnav__label')].map((e) => parseFloat(getComputedStyle(e).fontSize)))"), 12.5)
+        clear = page.evaluate("""() => { const dot = document.querySelector('.ui-bottomnav__dot'); const icon = dot.parentElement.querySelector('svg');
+          const d = dot.getBoundingClientRect(), i = icon.getBoundingClientRect(); return d.left >= i.right - 1 || d.bottom <= i.top + 1; }""")
+        self.assertTrue(clear, "the unread dot does not cover the icon")
         shot(page, "inbox-final-phone-390")
         # A swipe left reveals Not now and Done; Done applies at once and offers Undo.
         question = self.card(page, "asked you")

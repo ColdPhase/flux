@@ -233,7 +233,8 @@ class NotificationJourney(unittest.TestCase):
     def test_03_preferences_quiet_hours_and_a_muted_place(self) -> None:
         page = self.page("ada")
         page.goto("/inbox")
-        page.get_by_role("navigation", name="Places").get_by_role("link", name="Notification settings").click()
+        expect(page.get_by_role("navigation", name="Places").get_by_role("link", name="Notification settings")).to_have_count(0)  # #437 item 9
+        page.goto("/settings/notifications")
         expect(page).to_have_url(re.compile(r"/settings/notifications$"))
         expect(page.get_by_role("heading", level=1, name="Settings")).to_be_visible()
         expect(page.get_by_role("heading", level=2, name="Notifications")).to_be_visible()
