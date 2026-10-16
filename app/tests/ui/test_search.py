@@ -283,12 +283,15 @@ class SearchJourney(unittest.TestCase):
         dialog, field = self.jump(page, "hallway")
         expect(dialog.locator("[role=option].sr").first).to_be_visible()
         dialog.locator("[role=option].sr").first.click()
+        # The search itself is remembered for the Search page; ⌘K's empty state lists the places opened (F-026 E02).
         dialog, field = self.jump(page, "")
-        recent = dialog.get_by_role("listbox", name="Recent searches")
-        expect(recent).to_contain_text("hallway")
+        expect(dialog.get_by_role("listbox", name="Recent and actions")).to_contain_text("Home")
         page.keyboard.press("Escape")
         stored = page.evaluate("Object.keys(localStorage).filter((k) => k.startsWith('flux.search.recent.'))")
         self.assertEqual(stored, [f"flux.search.recent.{PEOPLE['nia']['id']}"])
+        page.goto("/search")
+        expect(page.get_by_role("heading", level=2, name="Recent searches")).to_be_visible()
+        expect(page.locator(".search__recent")).to_contain_text("hallway")
         page.get_by_role("button", name=re.compile("Nia Berg")).click()
         page.get_by_role("dialog", name="Account").get_by_role("button", name="Sign out").click()
         expect(page).to_have_url(f"{ORIGIN}/sign-in")
@@ -300,7 +303,7 @@ class SearchJourney(unittest.TestCase):
         expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
         type(self).states["nia"] = page.context.storage_state()
         dialog, field = self.jump(page, "")
-        expect(dialog.get_by_role("listbox", name="Recent searches")).to_have_count(0)
+        expect(dialog).not_to_contain_text("hallway")
         expect(dialog).to_contain_text("Only what you can open is searched.")
 
     # ---------------------------------------------------------------- phone

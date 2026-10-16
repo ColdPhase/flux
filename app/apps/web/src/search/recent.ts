@@ -43,13 +43,52 @@ export function useRecentSearches(userId: string) {
   return { items, remember, clear };
 }
 
-/** Sign-out: forget every account's recent searches in this browser. */
+/** A place the person opened (its address and name), kept per account on this device for ⌘K's "Recent" (F-026 E02). */
+export interface RecentPlace { path: string; title: string }
+const PLACE_PREFIX = 'flux.places.recent.';
+const PLACE_MAX = 4;
+const placeCache = new Map<string, RecentPlace[]>();
+const PLACES_EMPTY: RecentPlace[] = [];
+
+function loadPlaces(userId: string): RecentPlace[] {
+  const cached = placeCache.get(userId);
+  if (cached) return cached;
+  let items: RecentPlace[] = [];
+  try {
+    const parsed: unknown = JSON.parse(localStorage.getItem(PLACE_PREFIX + userId) ?? '[]');
+    if (Array.isArray(parsed)) {
+      items = parsed.filter((item): item is RecentPlace => !!item && typeof item.path === 'string' && typeof item.title === 'string'
+        && item.path.startsWith('/') && item.title.length > 0).slice(0, PLACE_MAX);
+    }
+  } catch { items = []; }
+  placeCache.set(userId, items);
+  return items;
+}
+
+/** Records the place in view as the most recent one (the same place moves to the front, never twice). */
+export function rememberPlace(userId: string, place: RecentPlace) {
+  const next = [place, ...loadPlaces(userId).filter((item) => item.path !== place.path)].slice(0, PLACE_MAX);
+  placeCache.set(userId, next);
+  try { localStorage.setItem(PLACE_PREFIX + userId, JSON.stringify(next)); } catch { /* kept for this visit */ }
+  listeners.forEach((listener) => listener());
+}
+
+export function useRecentPlaces(userId: string): RecentPlace[] {
+  return useSyncExternalStore(
+    (listener) => { listeners.add(listener); return () => listeners.delete(listener); },
+    () => loadPlaces(userId),
+    () => PLACES_EMPTY,
+  );
+}
+
+/** Sign-out: forget every account's recent searches and places in this browser. */
 export function forgetRecentSearches() {
   cache.clear();
+  placeCache.clear();
   try {
     for (let index = localStorage.length - 1; index >= 0; index -= 1) {
       const key = localStorage.key(index);
-      if (key?.startsWith(PREFIX)) localStorage.removeItem(key);
+      if (key?.startsWith(PREFIX) || key?.startsWith(PLACE_PREFIX)) localStorage.removeItem(key);
     }
   } catch { /* storage unavailable */ }
   listeners.forEach((listener) => listener());

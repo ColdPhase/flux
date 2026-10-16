@@ -226,10 +226,13 @@ class CreateWindow(unittest.TestCase):
         expect(palette).to_have_count(0)
         expect(title_field(page)).to_have_value("probes")
         page.keyboard.press("Escape")
+        # With no query: the four actions with their keys (E02); Go to Inbox runs.
         palette, field = self.jump(page, "")
-        expect(palette.get_by_role("option", name="New thought on the Map")).to_be_visible()
-        palette.get_by_role("option", name="New thought on the Map").click()
-        expect(page).to_have_url(re.compile(rf"/projects/{self.ids['project']}/map$"))
+        for name in ("New task", "Go to Inbox", "Focus mode", "Hide the sidebar"):
+            expect(palette.get_by_role("option", name=name, exact=True)).to_be_visible()
+        expect(palette.get_by_role("option", name="New thought on the Map")).to_have_count(0)
+        palette.get_by_role("option", name="Go to Inbox", exact=True).click()
+        expect(page).to_have_url(re.compile(r"/inbox$"))
 
     def test_07_at_finds_agents_and_hash_finds_tasks_by_number_with_the_keyboard_only(self) -> None:
         self.ensure_account()
@@ -515,7 +518,7 @@ class CreateWindow(unittest.TestCase):
                 expect(sheet.get_by_role("button", name=re.compile("^Remove link to"))).to_be_visible()
                 page.evaluate("() => Promise.all(document.getAnimations().filter((a) => a.effect?.getTiming().iterations !== Infinity).map((a) => a.finished.catch(() => null)))")
                 targets = {"Close": sheet.get_by_role("button", name="Close"), "Project picker": sheet.locator(".create__place"),
-                           "Project": sheet.get_by_role("group", name="Create something else").get_by_role("button", name="Project", exact=True),
+                           "Project": sheet.get_by_role("group", name="Create").get_by_role("button", name="Project", exact=True),
                            "Remove link": sheet.get_by_role("button", name=re.compile("^Remove link to"))}
                 for name, target in targets.items():
                     box = target.bounding_box()
@@ -615,6 +618,28 @@ class CreateWindow(unittest.TestCase):
         stored = [item for item in self.work(page) if item["title"] == "Cross command first"]
         self.assertEqual(len(stored), 1, "one persisted task")
         self.assertEqual(stored[0]["outcome"], "First command details")
+
+    def test_17_the_kind_tabs_keep_the_typed_title_and_task_is_the_default(self) -> None:
+        """F-026 S3 / E02: Task is pressed by default; Decision leaves for its own place and the typed title waits for C."""
+        self.ensure_account()
+        page = self.page()
+        page.goto(f"/projects/{self.ids['project']}")
+        expect(page.get_by_role("heading", level=1, name="Community garden sensors")).to_be_visible()
+        page.locator("body").press("c")
+        window = dialog(page)
+        expect(window).to_be_visible()
+        kinds = window.get_by_role("group", name="Create")
+        expect(kinds.get_by_role("button", name="Task", exact=True)).to_have_attribute("aria-pressed", "true")
+        expect(kinds.get_by_role("button", name="Thought", exact=True)).to_have_attribute("aria-pressed", "false")
+        title_field(page).fill("Kept across the tabs")
+        kinds.get_by_role("button", name="Decision", exact=True).click()
+        expect(window).to_have_count(0)
+        expect(page.get_by_role("heading", name="Propose a decision")).to_be_visible()
+        page.keyboard.press("Escape")
+        page.locator("body").press("c")
+        expect(title_field(page)).to_have_value("Kept across the tabs")
+        expect(dialog(page).get_by_role("group", name="Create").get_by_role("button", name="Task", exact=True)).to_have_attribute("aria-pressed", "true")
+        page.keyboard.press("Escape")
 
 if __name__ == "__main__":
     unittest.main()

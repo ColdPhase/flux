@@ -136,6 +136,8 @@ function TaskForm({ request, phone, projectId, onProject, onClose }: { request: 
   const [linking, setLinking] = useState(false);
   const [another, setAnother] = useState(false);
   const [busy, setBusy] = useState(false);
+  // Set synchronously before the first await, so a second submit in the same tick never sends another command.
+  const inFlight = useRef(false);
   const [error, setError] = useState('');
   const [context, setContext] = useState<{ projectId: string; value: Context | null } | null>(null);
   const attempt = useRef<{ payload: string; key: string } | null>(null);
@@ -170,7 +172,8 @@ function TaskForm({ request, phone, projectId, onProject, onClose }: { request: 
 
   async function submit(event?: FormEvent) {
     event?.preventDefault();
-    if (!ready || busy) return;
+    if (!ready || busy || inFlight.current) return;
+    inFlight.current = true;
     const command: CreateWorkCommand = {
       title: text,
       ...(outcome.trim() ? { outcome: outcome.trim() } : {}),
@@ -207,7 +210,7 @@ function TaskForm({ request, phone, projectId, onProject, onClose }: { request: 
       openDetails({ kind: 'work', id: item.id, projectId });
     } catch (cause) {
       if (mounted.current) setError(cause instanceof ApiError && cause.status === 403 ? 'You can read this project but not add tasks.' : cause instanceof Error ? cause.message : 'Could not create the task.');
-    } finally { if (mounted.current) setBusy(false); }
+    } finally { inFlight.current = false; if (mounted.current) setBusy(false); }
   }
   /** Create another: the next task starts empty in the same project, with the same status and owner. */
   function done(item: WorkItem) {
@@ -221,22 +224,39 @@ function TaskForm({ request, phone, projectId, onProject, onClose }: { request: 
     if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) { event.preventDefault(); void submit(); }
   };
   const elsewhere = (run: () => void) => { onClose(); requestAnimationFrame(run); };
+  // Another kind (the tabs) leaves this window. A typed title stays in this project's draft, so C brings it back; when that
+  // draft already holds other text, the window stays open and says so, rather than overwrite it.
+  const leave = (run: () => void) => {
+    if (prefilled && own.trim()) {
+      if (draft.text.trim()) { setError('This project already has a draft. Create the task or clear the draft first, so this title is not lost.'); return; }
+      draft.setText(own);
+      toast({ message: 'Title kept as this project’s draft', tone: 'neutral', timeout: 3000 });
+    }
+    elsewhere(run);
+  };
   // A typed title goes with the task to the project the picker shows; that project's own kept draft is never overwritten.
+  // Sources belong to the project they were picked in, so a change drops them rather than failing on submit.
   const changeProject = (id: string) => {
     if (id === projectId) return;
     if (!prefilled && draft.text && !readDraft(me.user.id, `project-work:${id}`).trim()) {
       writeDraft(me.user.id, `project-work:${id}`, draft.text);
       draft.clear();
     }
+    if (sources.length) setSources([]);
+    setLinking(false);
     onProject(id);
   };
+  const kinds = (
+    <KindTabs hasProject={!!projectId} onThought={() => leave(() => startCapture(go))} onMessage={() => leave(() => go('/dm/new'))}
+      onDecision={() => leave(() => go(`/projects/${projectId}?open=propose-decision`))} onProject={() => leave(() => go('/projects/new'))} />
+  );
 
   if (noPlace) return (
     <div className="create__in">
       <div className="create__head ui-panel__head"><h2 className="create__h">New task</h2><button type="button" className="create__x" aria-label="Close" onClick={onClose}><Icon name="x" size={18} /></button></div>
+      {kinds}
       <div className="create__scroll">
         <p className="create__note">A task belongs to a project. Create a project first.</p>
-        <OtherCreates onProject={() => elsewhere(() => go('/projects/new'))} onMessage={() => elsewhere(() => go('/dm/new'))} onNote={() => elsewhere(() => startCapture(go))} />
       </div>
     </div>
   );
@@ -250,6 +270,7 @@ function TaskForm({ request, phone, projectId, onProject, onClose }: { request: 
         </>}
         <button type="button" className="create__x" aria-label="Close" onClick={onClose}><Icon name="x" size={18} /></button>
       </div>
+      {kinds}
       <div className="create__scroll">
         <label className="ui-vh" htmlFor={titleId}>Title</label>
         <input ref={titleRef} id={titleId} className="create__title" value={title} maxLength={WORK_LIMITS.title} disabled={busy} placeholder="What needs doing?"
@@ -289,26 +310,28 @@ function TaskForm({ request, phone, projectId, onProject, onClose }: { request: 
           {draft.storage === 'visit' || (pending.text && pending.storage === 'visit')
             ? draft.text ? 'Draft kept for this visit. Reloading may lose it.' : 'Draft changes are kept for this visit. Reloading may restore older text.'
             : 'Draft kept on this device'}</p> : null}
-        {!phone ? <OtherCreates onProject={() => elsewhere(() => go('/projects/new'))} onMessage={() => elsewhere(() => go('/dm/new'))} onNote={() => elsewhere(() => startCapture(go))} /> : null}
       </div>
       <div className="create__foot">
         <p className="create__note">Goes to Tasks · Conversation gets a one-line note</p>
         <label className="create__another"><input type="checkbox" role="switch" checked={another} onChange={(event) => setAnother(event.target.checked)} /><span className="create__sw" aria-hidden="true" />Create another{phone ? ' after this' : ''}</label>
         <Button type="submit" variant="primary" size="lg" busy={busy} disabled={!ready} className="create__go">Create task{phone ? null : <kbd aria-hidden="true">{mac ? '⌘↵' : 'Ctrl ↵'}</kbd>}</Button>
       </div>
-      {phone ? <OtherCreates onProject={() => elsewhere(() => go('/projects/new'))} onMessage={() => elsewhere(() => go('/dm/new'))} onNote={() => elsewhere(() => startCapture(go))} /> : null}
     </form>
   );
 }
 
-/** Project, Message and Private note stay one step away from the same window (the New menu's other entries). */
-function OtherCreates({ onProject, onMessage, onNote }: { onProject: () => void; onMessage: () => void; onNote: () => void }) {
+/**
+ * The kinds of the one Create window (F-026 S3, E02): Task is this window; Thought, Message, Decision and Project are
+ * tabs in the same place. Task is pressed; the others open their own place from here.
+ */
+function KindTabs({ hasProject, onThought, onMessage, onDecision, onProject }: { hasProject: boolean; onThought: () => void; onMessage: () => void; onDecision: () => void; onProject: () => void }) {
   return (
-    <div className="create__other" role="group" aria-label="Create something else">
-      <span>Or create</span>
-      <button type="button" onClick={onProject}>Project</button>
-      <button type="button" onClick={onMessage}>Message</button>
-      <button type="button" onClick={onNote}>Private note</button>
+    <div className="create__tabs" role="group" aria-label="Create">
+      <button type="button" aria-pressed="true">Task</button>
+      <button type="button" aria-pressed="false" onClick={onThought}>Thought</button>
+      <button type="button" aria-pressed="false" onClick={onMessage}>Message</button>
+      <button type="button" aria-pressed="false" disabled={!hasProject} title={hasProject ? undefined : 'A decision belongs to a project'} onClick={onDecision}>Decision</button>
+      <button type="button" aria-pressed="false" onClick={onProject}>Project</button>
     </div>
   );
 }

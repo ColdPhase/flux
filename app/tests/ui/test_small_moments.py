@@ -333,6 +333,43 @@ class SmallMomentsJourney(unittest.TestCase):
         page.wait_for_timeout(1500)
         self.assertEqual(len(reads), 1, reads)
 
+    def test_12_a_reached_goal_celebrates_once_per_goal_and_follows_the_switch(self) -> None:
+        self.ensure_account()
+        page = self.page()
+        workspace = self.ids["workspace"]
+        owner = {"kind": "human", "id": self.me(page)}
+        # A project's goal is reached when its tasks are all finished (#520): one open task means no goal yet.
+        project = self.api(page, "POST", f"/api/v1/workspaces/{workspace}/projects", {"name": "Goal garden", "visibility": "restricted"})
+        task = self.api(page, "POST", f"/api/v1/projects/{project['id']}/work", {"title": "Last bed", "owner": owner})
+        page.goto(f"/projects/{project['id']}/tasks")
+        expect(page.locator(".tb-root")).to_be_visible()
+        expect(page.locator(".goal")).to_have_count(0)
+        self.set_task_status(page, task["id"], "done")
+        # The first show: Kreska celebrates with the goal in words beside it, and it never covers the tasks.
+        page.goto(f"/projects/{project['id']}/tasks")
+        expect(page.locator(".goal")).to_be_visible()
+        expect(page.locator(".goal .kreska")).to_have_attribute("data-expression", "celebrate")
+        expect(page.locator(".goal__title")).to_have_text("All tasks done")
+        expect(page.locator(".goal__sub")).to_have_text("Goal garden · goal reached")
+        self.assertEqual(page.evaluate(f"localStorage.getItem('flux.goal.{project['id']}')"), "1")
+        shot(page, "520-goal-reached-computer")
+        # Once per goal on this device: a later visit to the same goal says nothing.
+        page.goto(f"/projects/{project['id']}/tasks")
+        expect(page.locator(".tb-root")).to_be_visible()
+        expect(page.locator(".goal")).to_have_count(0)
+        # Settings → Appearance off: the same words show with no face, for a goal reached now.
+        page.goto("/settings")
+        switch = page.get_by_role("switch", name=SWITCH)
+        switch.click()
+        expect(switch).to_have_attribute("aria-checked", "false")
+        second = self.api(page, "POST", f"/api/v1/workspaces/{workspace}/projects", {"name": "Second bed", "visibility": "restricted"})
+        only = self.api(page, "POST", f"/api/v1/projects/{second['id']}/work", {"title": "Only bed", "owner": owner})
+        self.set_task_status(page, only["id"], "done")
+        page.goto(f"/projects/{second['id']}/tasks")
+        expect(page.locator(".goal__sub")).to_have_text("Second bed · goal reached")
+        expect(page.locator(".goal .kreska")).to_have_count(0)
+        expect(page.locator(".goal__title")).to_have_text("All tasks done")
+
 
 if __name__ == "__main__":
     unittest.main()
