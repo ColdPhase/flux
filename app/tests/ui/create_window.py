@@ -19,6 +19,11 @@ def submit_button(page: Page) -> Locator:
     return dialog(page).get_by_role("button", name=re.compile("^Create task"))
 
 
+def linked_labels(page: Page) -> Locator:
+    """The window's "Link" chips: what the task comes from (a message, or the thoughts of a Map selection, #509)."""
+    return dialog(page).locator(".create__chip--link")
+
+
 def open_from_tasks(page: Page) -> Locator:
     """Opens the window from Tasks and returns the title field: the toolbar's "Task" on the computer, the phone's "+" sheet on the phone."""
     if (page.viewport_size or {"width": 1500})["width"] <= 640:

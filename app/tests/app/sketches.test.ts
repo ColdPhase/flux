@@ -257,6 +257,9 @@ describe('sketch access', () => {
       body: { moves: [{ id: one.id, x: -40, y: 5, expectedVersion: 4 }, { id: two.id, x: 400, y: 5, expectedVersion: 2 }] },
     }), 200) as MovedThoughts;
     assert.deepEqual(moved.thoughts.map((t) => t.version), [5, 3]);
+    // #509: the plane has no edge; signed positions are stored as they were moved.
+    assert.deepEqual(moved.thoughts.map((t) => [t.x, t.y]), [[-40, 5], [400, 5]]);
+    assert.deepEqual((await detail(alice, sketch.id)).thoughts.map((t) => [t.x, t.y]), [[-40, 5], [400, 5]]);
 
     // Renaming the sketch needs its version too.
     expectStatus(await alice.browser.request('PATCH', `/api/v1/sketches/${sketch.id}`, { body: { title: 'Renamed' } }), 428);

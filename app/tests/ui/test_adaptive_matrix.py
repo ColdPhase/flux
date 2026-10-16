@@ -728,9 +728,13 @@ class AdaptiveTransitions(AdaptiveBase):
         canvas = self.open_map(page)
         page.get_by_role("button", name=re.compile(r"^Zoom \d+%, reset to 100%")).click()
         expect(page.get_by_role("button", name="Zoom 100%, reset to 100%")).to_be_visible()
-        camera = self.set_camera(page, 64, 96)
-        self.assertEqual(camera, {"left": 64, "top": 96}, "the fixture map scrolls both ways at 1366 px")
         hold = page.locator(f'.sk-node[data-id="{self.ids["thoughts"]["hold"]}"]')
+        # #509: the plane reaches past the thoughts on every side, so a camera away from its origin is
+        # one that keeps the selected thought in view: centre it, then move a little.
+        hold.evaluate("el => el.scrollIntoView({ block: 'center', inline: 'center' })")
+        start = page.evaluate(CAMERA)
+        camera = self.set_camera(page, start["left"] + 64, start["top"] + 96)
+        self.assertEqual(camera, {"left": start["left"] + 64, "top": start["top"] + 96}, "the fixture map scrolls both ways at 1366 px")
         hold.click()
         expect(hold).to_have_attribute("aria-pressed", "true")
         for width in (1280, 1024, 981, 980, 820, 641, 640, 390, 320, 640, 820, 1024, 1366):
