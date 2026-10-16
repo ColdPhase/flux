@@ -45,8 +45,12 @@ test('a project that exists before 0101 keeps every row through the upgrade and 
           WHERE table_schema='public' AND table_name=$1 AND data_type IN ('json','jsonb')`, [table])).rows.map((r) => r.column_name));
         const generated = new Set((await client.query<{ column_name: string }>(`SELECT column_name FROM information_schema.columns
           WHERE table_schema='public' AND table_name=$1 AND is_generated='ALWAYS'`, [table])).rows.map((r) => r.column_name));
+        // Columns and tables added after 0101 (for example 0102) do not exist in this earlier fixture.
+        const present = new Set((await client.query<{ column_name: string }>(`SELECT column_name FROM information_schema.columns
+          WHERE table_schema='public' AND table_name=$1`, [table])).rows.map((r) => r.column_name));
         for (const row of found) {
-          const columns = Object.keys(row).filter((c) => !generated.has(c));
+          const columns = Object.keys(row).filter((c) => !generated.has(c) && present.has(c));
+          if (!columns.length) continue;
           await client.query(`INSERT INTO "${table}"(${columns.map((c) => `"${c}"`).join(',')}) OVERRIDING SYSTEM VALUE VALUES(${columns.map((_, i) => `$${i + 1}`).join(",")})`,
             columns.map((c) => jsonColumns.has(c) && row[c] !== null ? JSON.stringify(row[c]) : row[c]));
         }
