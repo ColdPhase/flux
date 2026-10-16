@@ -92,6 +92,19 @@
 .sset-me__b b { font-size: var(--fs-lg); font-weight: 600; color: var(--t1); overflow-wrap: anywhere; }
 .sset-me__b span { font-size: var(--fs-sm); color: var(--t2); overflow-wrap: anywhere; }
 .sset-me__b .sset-me__session { margin-top: 2px; font-size: 12.5px; color: var(--t3); }
+/* The assistant card (Spokój E04): one head row, three facts, one primary step. */
+.sset-assistant { padding: 0; }
+.sset-assistant__head { display: flex; align-items: center; gap: 12px; padding: 14px 18px; }
+.sset-assistant__head .sset-row__t { font-size: var(--fs-md); font-weight: 600; }
+.sset-assistant__head > .ui-btn { flex: none; }
+.sset-assistant__facts { margin: 0; padding: 0 18px 0 58px; font-size: var(--fs-sm); line-height: 1.5; color: var(--t2); }
+.sset-assistant__facts li + li { margin-top: 2px; }
+.sset-assistant__how { display: inline-block; margin: 10px 18px 14px 58px; font-size: var(--fs-sm); }
+.sset-assistant__line { margin: 0; padding: 0 18px 14px 58px; font-size: var(--fs-sm); line-height: 1.5; color: var(--t2); }
+.sset-me--link { text-decoration: none; color: var(--t1); transition: var(--tr); }
+.sset-me--link:hover { background: var(--hov); }
+.sset-me--link:focus-visible { outline: 2px solid var(--t1); outline-offset: -2px; }
+.sset-me--link .sset-row__go { margin-left: auto; color: var(--t3); }
 /* Keyboard shortcuts. */
 .sset-keys { width: 100%; border-collapse: collapse; }
 .sset-keys tr + tr td, .sset-keys tr + tr th { border-top: 1px solid var(--line); }

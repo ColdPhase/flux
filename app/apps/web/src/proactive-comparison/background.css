@@ -68,3 +68,8 @@
 .background-settings__connection-head h4 { margin: 0; font-size: var(--fs-base); font-weight: 600; overflow-wrap: anywhere; }
 .background-settings__badge { font-size: var(--fs-xs); font-weight: 500; color: var(--t1); }
 
+
+/* Off on the server (Spokój AC-4): the assistant's connections fold under one line. */
+.background-settings__more { margin-top: 16px; }
+.background-settings__more > summary { cursor: pointer; font-weight: 600; padding: 10px 0; }
+.background-settings__more > summary:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; border-radius: 4px; }

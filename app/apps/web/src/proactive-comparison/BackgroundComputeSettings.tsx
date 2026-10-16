@@ -1,18 +1,21 @@
-import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from 'react';
+import { useLayoutEffect, useRef, useState, type FormEvent } from 'react';
 import { Link, useLoaderData, type LoaderFunctionArgs } from 'react-router';
 import { AI_PROVIDERS, aiConnectionLabel, isAiProviderKind, type AiProviderKind, type BackgroundComputeConnection, type BackgroundComputeUsage,
   type ConnectBackgroundComputeCommand } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { Button } from '../ui';
-import { connectBackgroundCompute, currentBackgroundUsage, listBackgroundConnections, markBackgroundConnection, revokeBackgroundConnection } from './api';
+import { backgroundComparisonRuntime, connectBackgroundCompute, currentBackgroundUsage, listBackgroundConnections, markBackgroundConnection, revokeBackgroundConnection } from './api';
 import { BackgroundUsage } from './BackgroundUsage';
 import { comparisonReserveText, ConnectionFields, priceSourceText, priceText } from './ConnectionFields';
 import { ProjectRuleSettings } from './ProjectRuleSettings';
 import './background.css';
 
 export async function backgroundComputeLoader({ request }: LoaderFunctionArgs) {
-  const [connections, usage] = await Promise.all([listBackgroundConnections(request.signal), currentBackgroundUsage(request.signal)]);
-  return { connections, usage };
+  const [connections, usage, runtime] = await Promise.all([
+    listBackgroundConnections(request.signal), currentBackgroundUsage(request.signal),
+    backgroundComparisonRuntime(request.signal).then((answer) => answer.status, () => 'unavailable' as const),
+  ]);
+  return { connections, usage, runtime };
 }
 const money = (cents: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(cents / 100);
 const checks = ['workspaceScoped', 'payerAuthority', 'providerBilling', 'projectDisclosure'] as const;
@@ -44,7 +47,9 @@ function failure(error: unknown) {
  * Saving consent does not activate background execution.
  */
 export function BackgroundComputeSettings() {
-  const initial = useLoaderData() as { connections: BackgroundComputeConnection[]; usage: BackgroundComputeUsage };
+  const initial = useLoaderData() as { connections: BackgroundComputeConnection[]; usage: BackgroundComputeUsage; runtime: 'available' | 'unavailable' };
+  // Spokój AC-4: where the server does not run background suggestions, one status line replaces the form.
+  const runtime = initial.runtime;
   const [connections, setConnections] = useState(initial.connections);
   const connection = connections.find((item) => item.usedForBackground) ?? null;
   const [usage, setUsage] = useState(initial.usage);
@@ -58,7 +63,6 @@ export function BackgroundComputeSettings() {
   const [error, setError] = useState('');
   const [saved, setSaved] = useState('');
   const formRef = useRef<HTMLFormElement>(null);
-  const headingRef = useRef<HTMLHeadingElement>(null);
   const historyRef = useRef<HTMLDetailsElement>(null);
   const connectSectionRef = useRef<HTMLElement>(null);
   const statusRef = useRef<HTMLParagraphElement>(null);
@@ -67,7 +71,6 @@ export function BackgroundComputeSettings() {
   // Focus moves once the element it names is committed (#271). A requestAnimationFrame callback
   // can run before React renders the new error or the restored button, and then focuses nothing.
   const focusAfterRender = useRef<'status' | 'error' | 'add' | null>(null);
-  useEffect(() => { headingRef.current?.focus(); }, []);
   useLayoutEffect(() => {
     const target = focusAfterRender.current;
     const node = target === 'status' ? statusRef.current : target === 'error' ? errorRef.current : target === 'add' ? addRef.current : null;
@@ -168,22 +171,8 @@ export function BackgroundComputeSettings() {
     finally { setBusy(false); }
   }
 
-  return <div className="pane-scroll"><div className="pane-in background-settings">
-    <header className="background-settings__head">
-      <h2 ref={headingRef} tabIndex={-1}>Your background suggestions</h2>
-      <p>Only you can configure this connection and its allowance. Each project needs your separate rule.</p>
-      <Button variant="link" className="background-settings__history-shortcut" onClick={() => {
-        const history = historyRef.current;
-        if (!history) return;
-        history.open = true;
-        const summary = history.querySelector('summary');
-        summary?.focus({ preventScroll: true });
-        summary?.scrollIntoView({ block: 'start' });
-      }}>View recent requests</Button>
-    </header>
-    <p className="background-settings__note" role="note">Background execution is not available on this instance yet. Saving a connection does not enable a rule. You can keep working without AI.</p>
-    <p ref={statusRef} className="background-settings__saved" tabIndex={-1} role="status">{saved}</p>
-
+  // The AI connections (for the assistant too) and the add form.
+  const connectionsAndForm = (<>
     {connections.length ? <section className="background-settings__section" aria-labelledby="background-current">
       <div className="background-settings__section-head">
         <h3 id="background-current">Your AI connections</h3>
@@ -253,6 +242,37 @@ export function BackgroundComputeSettings() {
         </fieldset>
       </form>
     </section> : null}
+  </>);
+
+  if (runtime === 'unavailable') {
+    // Off on this server: one status line. The connections the assistant uses stay under a folded section.
+    return <div className="pane-scroll"><div className="pane-in background-settings">
+      <header className="background-settings__head">
+        <h2>Background suggestions</h2>
+      </header>
+      <p className="background-settings__note" role="status">Off on this Flux server · ask your admin to turn it on. Saving a connection enables nothing.</p>
+      <details className="background-settings__more" open={connections.length > 0 || undefined}>
+        <summary>AI connections for your assistant</summary>
+        {connectionsAndForm}
+      </details>
+      <Link className="background-settings__back" to="/settings/agents">Back to Agents and AI</Link>
+    </div></div>;
+  }
+  return <div className="pane-scroll"><div className="pane-in background-settings">
+    <header className="background-settings__head">
+      <h2>Your background suggestions</h2>
+      <p>Only you can configure this connection and its allowance. Each project needs your separate rule.</p>
+      <Button variant="link" className="background-settings__history-shortcut" onClick={() => {
+        const history = historyRef.current;
+        if (!history) return;
+        history.open = true;
+        const summary = history.querySelector('summary');
+        summary?.focus({ preventScroll: true });
+        summary?.scrollIntoView({ block: 'start' });
+      }}>View recent requests</Button>
+    </header>
+    <p ref={statusRef} className="background-settings__saved" tabIndex={-1} role="status">{saved}</p>
+    {connectionsAndForm}
     <BackgroundUsage usage={usage} busy={usageBusy} error={usageError} refresh={() => void refreshUsage()} historyRef={historyRef} />
     <ProjectRuleSettings connection={connection} />
     <Link className="background-settings__back" to="/">Continue in Flux</Link>

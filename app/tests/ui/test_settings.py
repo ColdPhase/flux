@@ -217,27 +217,39 @@ class SettingsJourney(unittest.TestCase):
     def test_03_agents_and_ai_keep_every_existing_setting(self) -> None:
         page = self.page()
         page.goto("/settings")
-        expect(page.get_by_role("heading", level=2, name="Agents and AI")).to_be_visible()
+        # Appearance does not repeat the Agents and AI section (Spokój AC-2).
+        expect(page.get_by_role("heading", level=2, name="Agents and AI")).to_have_count(0)
+        self.assertNotIn("Your assistant", page.locator(".sset__page").inner_text())
         page.get_by_role("navigation", name="Settings sections").get_by_role("link", name="Agents and AI").click()
         expect(page).to_have_url(re.compile(r"/settings/agents$"))
         cards = page.locator(".sset-card")
         expect(page.get_by_role("link", name=re.compile("^Local co-work on this computer"))).to_have_attribute("href", "/connect-agent")
-        assistant = page.get_by_role("link", name=re.compile("^Your assistant Agent · for you"))
-        expect(assistant).to_have_attribute("href", "/settings/assistant")
-        expect(page.get_by_role("link", name=re.compile("^Background suggestions"))).to_have_attribute("href", "/settings/background-compute")
+        # The assistant card (Spokój AC-3): name, Agent, one status line, three facts and one primary step.
+        card = page.get_by_role("region", name=re.compile("^Your assistant"))
+        expect(card).to_contain_text("for you · not set up")
+        expect(card.locator(".sset-assistant__facts li")).to_have_count(3)
+        expect(card.get_by_role("link", name="How it works")).to_have_attribute("href", "/settings/assistant/how")
         # Agents have their colour here (and only in the Agents section); the Appearance switch's Kreska is monochrome.
-        expect(assistant.locator(".agent-tag")).to_have_text("Agent")
-        self.assertRegex(assistant.locator(".sset-row__ic > .kreska").get_attribute("class") or "", r"kreska--(clay|ochre|sage|teal|indigo|plum|rose)")
+        expect(card.locator(".agent-tag")).to_have_text("Agent")
+        self.assertRegex(card.locator(".sset-row__ic > .kreska").get_attribute("class") or "", r"kreska--(clay|ochre|sage|teal|indigo|plum|rose)")
+        # Background suggestions are off on this test server: one status line, no form (Spokój AC-4).
+        expect(page.get_by_role("link", name=re.compile("^Background suggestions"))).to_have_count(0)
+        expect(page.get_by_text("Off on this Flux server · ask your admin to turn it on", exact=True)).to_be_visible()
         page.goto("/settings")
         self.assertNotRegex(page.get_by_role("switch", name="Kreska in loading and empty screens").locator("xpath=..").locator(".kreska").get_attribute("class") or "", r"kreska--")
         expect(cards.first).to_be_visible()
         page.goto("/settings/agents")
-        assistant = page.get_by_role("link", name=re.compile("^Your assistant Agent · for you"))
-        assistant.click()
+        card = page.get_by_role("region", name=re.compile("^Your assistant"))
+        card.get_by_role("link", name="Set up", exact=True).click()
         expect(page).to_have_url(re.compile(r"/settings/assistant$"))
         expect(page.locator("header.top").get_by_role("heading", level=1, name="Your assistant")).to_be_visible()
         expect(page.get_by_role("navigation", name="Settings sections").get_by_role("link", name="Agents and AI")).to_have_attribute("aria-current", "page")
         shot(page, "settings-desktop-1440-assistant")
+        # How it works: the costs, data and consent words, on their own page.
+        page.goto("/settings/assistant/how")
+        expect(page.get_by_role("heading", level=2, name="How your assistant works")).to_be_visible()
+        expect(page.get_by_text("What leaves Flux")).to_be_visible()
+        expect(page.get_by_text("Who pays")).to_be_visible()
 
     def test_04_keyboard_shortcuts_list_every_key_of_the_guide(self) -> None:
         page = self.page()
@@ -291,18 +303,28 @@ class SettingsJourney(unittest.TestCase):
         for dark in (False, True):
             page = self.page(phone=True, dark=dark)
             page.goto("/settings")
-            expect(page.get_by_role("radiogroup", name="Theme")).to_be_visible()
+            expect(page.get_by_role("heading", level=2, name="Settings")).to_be_visible()
             expect(page.get_by_role("navigation", name="Settings sections")).to_have_count(0)
-            self.assertEqual(page.locator(".sset-in > h2.sset-sec").all_inner_texts(), ["Appearance", "This phone", "Agents and AI", "More"])
+            # The phone list (Spokój E04p): the account, then the same sections in the same order. Keyboard
+            # shortcuts show only with a keyboard, so not here. Agents and AI holds the assistant and background.
+            expect(page.get_by_role("link", name=re.compile(f"^{NAME}"))).to_have_attribute("href", "/settings/account")
+            rows = [text.split("\n")[0] for text in page.locator("ul.sset-card a.sset-row").all_inner_texts()]
+            self.assertEqual(rows, ["Appearance", "Notifications", "Agents and AI"])
+            expect(page.get_by_role("link", name=re.compile("^Keyboard shortcuts"))).to_have_count(0)
+            expect(page.get_by_role("button", name=re.compile("^Sign out"))).to_be_visible()
+            self.phone_targets(page)
+            shot(page, f"settings-phone-390-settings-{'dark' if dark else 'light'}")
+            # Appearance opens as its own page with the theme choices, This phone and Kreska.
+            page.get_by_role("link", name=re.compile("^Appearance")).tap()
+            expect(page).to_have_url(re.compile(r"/settings/appearance$"))
             themes = page.get_by_role("radiogroup", name="Theme")
+            expect(themes).to_be_visible()
             self.assertEqual(themes.get_by_role("radio").all_inner_texts(), ["Light", "Dark", "System"])
             expect(page.get_by_text("One neutral palette. There is no accent color to pick.")).to_be_visible()
             expect(page.get_by_role("switch", name="Kreska in small moments")).to_be_visible()
             expect(page.get_by_text("Notifications on this phone")).to_be_visible()
             self.no_colour_picker(page)
-            expect(page.get_by_role("link", name=re.compile("^Your assistant Agent")).locator(".agent-tag")).to_have_text("Agent")
             self.phone_targets(page)
-            shot(page, f"settings-phone-390-settings-{'dark' if dark else 'light'}")
             themes.get_by_role("radio", name="Light" if dark else "Dark").tap()
             self.assertEqual(page.evaluate("document.documentElement.dataset.theme"), "light" if dark else "dark")
 
@@ -317,11 +339,20 @@ class SettingsJourney(unittest.TestCase):
         shot(page, "settings-phone-390-notifications-light")
         page.get_by_role("button", name="Back").tap()
         expect(page).to_have_url(re.compile(r"/settings$"))
-        page.get_by_role("link", name=re.compile("^Keyboard shortcuts")).tap()
-        expect(page.get_by_role("table", name="Keyboard shortcuts").locator("tbody tr")).to_have_count(len(SHORTCUTS))
+        page.get_by_role("link", name=re.compile("^Agents and AI")).tap()
+        expect(page).to_have_url(re.compile(r"/settings/agents$"))
+        expect(page.get_by_role("region", name=re.compile("^Your assistant"))).to_be_visible()
+        # The page's async reads (connections, assistant, runtime) and its entrance motion settle before the targets are measured.
+        page.wait_for_load_state("networkidle")
+        page.wait_for_function("document.getAnimations().every((a) => a.playState !== 'running')")
+        self.phone_targets(page)
         page.get_by_role("button", name="Back").tap()
-        page.get_by_role("link", name=re.compile("^Account")).tap()
+        expect(page).to_have_url(re.compile(r"/settings$"))
+        page.get_by_role("link", name=re.compile(f"^{NAME}")).tap()
+        expect(page).to_have_url(re.compile(r"/settings/account$"))
         expect(page.get_by_role("button", name=re.compile("^Sign out"))).to_be_visible()
+        page.wait_for_load_state("networkidle")
+        page.wait_for_function("document.getAnimations().every((a) => a.playState !== 'running')")
         self.phone_targets(page)
         dark = self.page(phone=True, dark=True)
         dark.goto("/settings/notifications")
@@ -395,7 +426,7 @@ class SettingsJourney(unittest.TestCase):
             self.assertFalse(has_minimum_touch_size(size), str(size))
 
         page = self.page(phone=True)
-        page.goto("/settings")
+        page.goto("/settings/appearance")
         switch = page.get_by_role("switch", name="Kreska in small moments")
         assert_touch_target(self, page, switch)
         # Keep the decorative row unchanged while removing the button's actual extension.
@@ -422,6 +453,23 @@ class SettingsJourney(unittest.TestCase):
                 assert_touch_target(self, page, theme)
             style.evaluate("el => el.remove()")
         assert_touch_target(self, page, theme)
+
+
+    def test_09_no_heading_takes_a_focus_ring_on_load(self) -> None:
+        """Spokój AC-5: opening Background suggestions moves no focus to its heading, so no heading shows a ring."""
+        for phone in (False, True):
+            page = self.page(phone=phone)
+            page.goto("/settings/background-compute")
+            expect(page.get_by_role("heading", level=2, name="Background suggestions")).to_be_visible()
+            expect(page.get_by_role("status").filter(has_text="Off on this Flux server")).to_be_visible()
+            focused = page.evaluate("document.activeElement?.tagName ?? null")
+            self.assertNotIn(focused, ("H1", "H2", "H3", "H4"), "no heading has focus on load")
+            self.assertEqual(page.evaluate("[...document.querySelectorAll('h1,h2,h3,h4')].filter((h) => h.matches(':focus-visible')).length"), 0,
+                             "no heading shows a focus ring on load")
+            # Negative control: a heading that really is focused is seen by the same check.
+            page.evaluate("document.querySelector('.background-settings h2').setAttribute('tabindex', '-1')")
+            page.evaluate("document.querySelector('.background-settings h2').focus()")
+            self.assertEqual(page.evaluate("document.activeElement?.tagName ?? null"), "H2")
 
 
 if __name__ == "__main__":

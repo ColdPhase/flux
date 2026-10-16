@@ -38,6 +38,18 @@ def mock_requests() -> list[dict]:
         return json.loads(response.read())["requests"]
 
 
+
+def open_connections(page) -> None:
+    """Background suggestions are off on this server (the test instance), so the AI connection form sits under a
+    folded section (Spokój AC-4). Open it the way a person does before using the form."""
+    details = page.locator("details.background-settings__more")
+    # The page renders after its loader, so wait for the folded section before reading its state.
+    expect(details).to_have_count(1)
+    if not details.evaluate("el => el.open"):
+        details.locator("summary").click()
+    expect(details).to_have_attribute("open", "")
+
+
 class AiConnectionSettings(unittest.TestCase):
     """Tests run in name order and share one owner."""
 
@@ -104,6 +116,7 @@ class AiConnectionSettings(unittest.TestCase):
     def test_02_every_provider_is_offered_the_same_way_and_none_is_preselected(self) -> None:
         page = self.page()
         page.goto("/settings/background-compute")
+        open_connections(page)
         expect(page.get_by_role("heading", name="Connect your background source")).to_be_visible()
         provider = page.get_by_label("Provider", exact=True)
         expect(provider).to_have_value("")
@@ -118,6 +131,7 @@ class AiConnectionSettings(unittest.TestCase):
     def test_03_an_openai_compatible_endpoint_lists_its_models_through_the_server_and_takes_an_owner_price(self) -> None:
         page = self.page()
         page.goto("/settings/background-compute")
+        open_connections(page)
         page.get_by_label("Provider", exact=True).select_option(label="OpenAI-compatible endpoint")
         expect(page.locator("#background-key-help")).to_contain_text("If it needs none, enter any placeholder")
         page.get_by_label("Endpoint base URL").fill(ENDPOINT)
@@ -150,6 +164,7 @@ class AiConnectionSettings(unittest.TestCase):
     def test_04_a_table_priced_model_needs_no_price_and_names_its_provider(self) -> None:
         page = self.page()
         page.goto("/settings/background-compute")
+        open_connections(page)
         page.get_by_role("button", name="Add a connection").click()
         page.get_by_label("Connection name").fill("Work Anthropic")
         page.get_by_label("Provider", exact=True).select_option(label="Anthropic")
@@ -176,6 +191,7 @@ class AiConnectionSettings(unittest.TestCase):
     def test_05_a_private_endpoint_the_operator_has_not_allowed_is_refused_and_the_key_is_cleared(self) -> None:
         page = self.page()
         page.goto("/settings/background-compute")
+        open_connections(page)
         before = self.current(page)
         page.get_by_role("button", name="Add a connection").click()
         page.get_by_label("Provider", exact=True).select_option(label="OpenAI-compatible endpoint")
@@ -197,6 +213,7 @@ class AiConnectionSettings(unittest.TestCase):
     def test_06_the_form_fits_a_phone_and_the_price_fields_are_touch_sized(self) -> None:
         page = self.page(phone=True)
         page.goto("/settings/background-compute")
+        open_connections(page)
         page.get_by_role("button", name="Add a connection").tap()
         page.get_by_label("Provider", exact=True).select_option(label="OpenRouter")
         page.get_by_label("Model", exact=True).fill("vendor/model-without-a-listing")

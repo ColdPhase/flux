@@ -128,7 +128,9 @@ class ConnectAiJourney(unittest.TestCase):
         expect(flux).to_be_visible()
         expect(app).to_be_visible()
         # Agent in Flux: the assistant, and the instance's switch said in one plain sentence (AST-1.2).
-        expect(flux.get_by_role("link", name=re.compile("^Your assistant Agent"))).to_have_attribute("href", "/settings/assistant")
+        card = flux.get_by_role("region", name=re.compile("^Your assistant"))
+        expect(card.get_by_role("link", name="Set up", exact=True)).to_have_attribute("href", "/settings/assistant")
+        expect(card.get_by_role("link", name="How it works")).to_have_attribute("href", "/settings/assistant/how")
         expect(flux).to_contain_text(OFF_SENTENCE)
         expect(flux.get_by_role("link", name=re.compile("^Sign in with"))).to_have_count(0)
         expect(flux.get_by_text("Sign in with Claude", exact=True)).to_have_count(0)
@@ -151,7 +153,7 @@ class ConnectAiJourney(unittest.TestCase):
         self.no_horizontal_scroll(page)
         shot(page, "connect-ai-phone-390")
         page.goto("/settings")
-        expect(page.get_by_role("link", name="Local co-work on this computer")).to_be_visible()
+        expect(page.get_by_role("link", name=re.compile("^Agents and AI"))).to_be_visible()
         self.no_horizontal_scroll(page)
 
     def test_04_details_and_the_assistant_empty_state_link_there(self) -> None:
@@ -257,7 +259,7 @@ class ConnectAiJourney(unittest.TestCase):
             flux = page.get_by_role("region", name=MODE_A, exact=True)
             claude = flux.get_by_role("link", name=re.compile("^Sign in with Claude"))
             chatgpt = flux.get_by_text("Sign in with ChatGPT", exact=True)
-            assistant = flux.get_by_role("link", name=re.compile("^Your assistant Agent"))
+            assistant = flux.get_by_role("region", name=re.compile("^Your assistant"))
             expect(claude).to_be_visible()
             expect(chatgpt).to_be_visible()
             expect(flux).not_to_contain_text(OFF_SENTENCE)

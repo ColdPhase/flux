@@ -177,7 +177,7 @@ class ReadingAndMotion(unittest.TestCase):
         # A stored Large choice (from the computer) must not scale the phone: the phone keeps the system size.
         # The init script stores it before the first render, so no reload races the first load's requests.
         phone.context.add_init_script("localStorage.setItem('flux.textSize', 'large')")
-        phone.goto("/settings")
+        phone.goto("/settings/appearance")
         self.assertEqual(self.root_font_size(phone), "16px")
         self.assertEqual(phone.get_by_role("radiogroup", name="Text size").count(), 0)
         row = phone.locator(".sset-row", has_text="Text size")
@@ -227,7 +227,7 @@ class ReadingAndMotion(unittest.TestCase):
 
     def test_05_reduce_motion_is_not_shown_on_the_phone(self) -> None:
         page = self.page(phone=True)
-        page.goto("/settings")
+        page.goto("/settings/appearance")
         expect(page.get_by_role("radiogroup", name="Theme")).to_be_visible()
         self.assertEqual(page.get_by_role("switch", name="Reduce motion").count(), 0)
         self.assertEqual(page.get_by_text("Reduce motion").count(), 0)

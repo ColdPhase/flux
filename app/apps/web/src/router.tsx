@@ -157,7 +157,7 @@ export const router = createBrowserRouter([
             ...secondary(async () => ({ Component: (await settingsPage()).SettingsLayout })),
             children: [
               { index: true, ...secondary(async () => ({ Component: (await settingsPage()).SettingsHome })) },
-              { path: 'appearance', ...secondary(async () => ({ Component: (await settingsPage()).SettingsHome })) },
+              { path: 'appearance', ...secondary(async () => ({ Component: (await settingsPage()).SettingsAppearance })) },
               { path: 'account', ...secondary(async () => ({ Component: (await settingsPage()).SettingsAccount })) },
               { path: 'notifications', ...secondary(async () => ({ Component: (await import('./notifications/NotificationSettings')).NotificationSettings })) },
               { path: 'notifications/verify', ...secondary(async () => ({ Component: (await import('./notifications/NotificationSettings')).VerifyAddress })) },
@@ -167,6 +167,7 @@ export const router = createBrowserRouter([
               { path: 'assistant/claude-code', element: <Navigate to="/settings/agents/claude-code" replace /> },
               { path: 'shortcuts', ...secondary(async () => ({ Component: (await settingsPage()).KeyboardShortcuts })) },
               { path: 'assistant', ...secondary(async () => ({ Component: (await import('./assistant/AssistantSettings')).AssistantSettings })) },
+              { path: 'assistant/how', ...secondary(async () => ({ Component: (await import('./assistant/AssistantSettings')).AssistantHowItWorks })) },
               { path: 'background-compute', ...secondary(async () => { const page = await import('./proactive-comparison/BackgroundComputeSettings'); return { Component: page.BackgroundComputeSettings, loader: page.backgroundComputeLoader }; }) },
             ],
           },
