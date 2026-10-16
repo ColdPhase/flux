@@ -86,6 +86,13 @@ mapper, the MCP tool result and each unit of work, without parsing messages.
 The eligibility reads also require the exact produced version, a creation baseline equal to the current own fields
 (`creation_baseline`, recorded in the creation transaction) and no current prerequisite.
 
+**A linked edit is not use (#553, founder direction 2026-10-16).** Only work on the task itself ends Undo: the uses
+above. A content edit to a doc or to a map thought that the task links to without a pinned version (and a file
+placed on such a thought) still resets the task's agent-thread turn budget, but it never marks the task used, so
+Undo stays available. In `artifactResetRows.record` the `doc`, `material` and `thought` boundaries therefore record
+the reset without `mark`; results, decisions, discussion files and PR links keep marking. A doc that saves a
+mention of the task still marks it through the mention set (`replaceMentions`), because a saved mention is a use.
+
 ## History, retries and consumers (AC-U3, AC-U4)
 
 Undo commits one row change (lifecycle marker and version), one `task.creation_reverted` notice, one immutable

@@ -452,6 +452,8 @@ function MessageForm({ ids, phone, carried, onClose }: PanelProps) {
   const toast = useToast();
   const go = useNavigate();
   const [people, setPeople] = useState<{ workspaceId: string; members: WorkspaceMember[] }[] | null>(null);
+  // A guest cannot list the members of a space (403): their people are none, and the copy says why.
+  const [guest, setGuest] = useState(false);
   const [to, setTo] = useState('');
   const [busy, setBusy] = useState(false);
   const inFlight = useRef(false);
@@ -463,8 +465,14 @@ function MessageForm({ ids, phone, carried, onClose }: PanelProps) {
   useEffect(() => {
     if (!ids.active || people !== null) return undefined;
     const controller = new AbortController();
-    void Promise.all(workspaces.map(async (space) => ({ workspaceId: space.id, members: (await listWorkspaceMembers(space.id, controller.signal).catch(forbidden)).filter((member) => member.userId !== me.user.id) })))
-      .then((lists) => setPeople(lists.filter((list) => list.members.length)))
+    void Promise.all(workspaces.map(async (space) => {
+      const listed = await listWorkspaceMembers(space.id, controller.signal).then((members) => ({ members, denied: false }), (error: unknown) => {
+        if (error instanceof ApiError && error.status === 403) return { members: [], denied: true };
+        throw error;
+      });
+      return { workspaceId: space.id, members: listed.members.filter((member) => member.userId !== me.user.id), denied: listed.denied };
+    }))
+      .then((lists) => { setGuest(lists.some((list) => list.denied)); setPeople(lists.filter((list) => list.members.length)); })
       .catch(() => { if (!controller.signal.aborted) setPeople([]); });
     return () => controller.abort();
   }, [ids.active, people, workspaces, me.user.id]);
@@ -495,7 +503,7 @@ function MessageForm({ ids, phone, carried, onClose }: PanelProps) {
     } finally { inFlight.current = false; setBusy(false); }
   }
   const spaceName = (id: string) => workspaces.find((space) => space.id === id)?.name ?? 'Space';
-  const where = people === null ? <span>{ids.active ? 'Loading people…' : null}</span> : !people.length ? <span>Nobody else is in your spaces yet</span> : (
+  const where = people === null ? <span>{ids.active ? 'Loading people…' : null}</span> : !people.length ? <span>{guest ? 'Guests can reply in conversations they are added to, but cannot start one.' : 'Nobody else is in your spaces yet'}</span> : (
     <label className="create__chip create__chip--quiet"><Icon name="person" size={13} /><span>{person ? `To ${person.name}` : 'Choose a person'}</span><Icon name="chevron-down" size={12} />
       <select aria-label="To" value={to} onChange={(event) => { setTo(event.target.value); setError(''); }}>
         <option value="">Choose a person</option>
