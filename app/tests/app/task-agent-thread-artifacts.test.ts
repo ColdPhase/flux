@@ -250,7 +250,8 @@ test('actual retained native87 history upgrades to88 without pulses, seeds old b
   // migrator order (sorted, missing files only), so this legacy fixture is main's current ledger plus those.
   const manifest=await readMigrationManifest('packages/db/migrations',FLUX_SCHEMA_VERSION);
   const lateBefore88=manifest.filter(m=>m.version===82||m.version===87);
-  const beforeManifest=[...manifest.filter(m=>![82,87,88,89].includes(m.version)),...lateBefore88];
+  // Main's historical ledger stops at 97; later files (0098+) build on the thread tables.
+  const beforeManifest=[...manifest.filter(m=>![82,87,88,89].includes(m.version)&&m.version<=97),...lateBefore88];
   const upTo88=[...beforeManifest,manifest.find(m=>m.version===88)!];
   try{
     for(const migration of beforeManifest){await fixture.pool.query(await readFile(`packages/db/migrations/${migration.name}`,'utf8'));await fixture.pool.query('INSERT INTO flux_schema_version(version) VALUES($1) ON CONFLICT DO NOTHING',[migration.version]);}
