@@ -267,10 +267,7 @@ test('actual retained native87 history upgrades to88 without pulses, seeds old b
       for(const[table]of specs){
         const jsonColumns=new Set((await client.query<{column_name:string}>(`SELECT column_name FROM information_schema.columns
           WHERE table_schema='public' AND table_name=$1 AND data_type IN ('json','jsonb')`,[table])).rows.map(r=>r.column_name));
-        // Columns added after 88 (for example 0102) do not exist in this earlier fixture.
-        const present=new Set((await client.query<{column_name:string}>(`SELECT column_name FROM information_schema.columns
-          WHERE table_schema='public' AND table_name=$1`,[table])).rows.map(r=>r.column_name));
-        for(const row of retained.get(table)!){const columns=Object.keys(row).filter(c=>present.has(c));if(!columns.length)throw new Error(`no shared columns for ${table}`);await client.query(`INSERT INTO ${table}(${columns.map(c=>`"${c}"`).join(',')}) VALUES(${columns.map((_,i)=>`$${i+1}`).join(',')})`,
+        for(const row of retained.get(table)!){const columns=Object.keys(row);await client.query(`INSERT INTO ${table}(${columns.map(c=>`"${c}"`).join(',')}) VALUES(${columns.map((_,i)=>`$${i+1}`).join(',')})`,
           columns.map(c=>jsonColumns.has(c)&&row[c]!==null?JSON.stringify(row[c]):row[c]));}
       }
       await client.query('SET CONSTRAINTS ALL IMMEDIATE');
