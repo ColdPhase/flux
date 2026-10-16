@@ -37,6 +37,12 @@ export const unsubscribe = (token: string) => request<UnsubscribeResponse>(`${NO
 export const INBOX_CHANGED = 'flux:inbox-changed';
 export const announceInboxChange = () => window.dispatchEvent(new Event(INBOX_CHANGED));
 
+/** Removes accepted proposals from every mounted queue before their next read (Inbox to Home navigation). */
+export interface AcceptedInboxItem { ownerId: string; key: string }
+export const NEEDS_YOU_ACCEPTED = 'flux:needs-you-accepted';
+export const announceAcceptedInboxItem = (ownerId: string, key: string) =>
+  window.dispatchEvent(new CustomEvent<AcceptedInboxItem>(NEEDS_YOU_ACCEPTED, { detail: { ownerId, key } }));
+
 /** A confirmed pause belongs to the account that saved it. */
 export interface PauseChange { ownerId: string; until: string | null; uncertain?: true; notice?: string }
 export const PAUSE_CHANGED = 'flux:pause-changed';

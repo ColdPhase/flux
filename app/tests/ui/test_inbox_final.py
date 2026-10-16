@@ -458,6 +458,99 @@ class InboxFinal(unittest.TestCase):
         expect(decision).to_have_attribute("aria-current", "true")
         self.assertEqual(self.queue(None)["later"], 0, "the snooze is undone on the server")
 
+    def test_04c_unrelated_updates_arrive_while_a_write_is_unanswered(self) -> None:
+        """A pending Not now protects only its item, even when the write eventually fails (#541)."""
+        page = self.page()
+        page.goto("/inbox")
+        original = self.card(page, DECISION)
+        expect(original).to_have_count(1)
+        self.watch_queue_reads(page)
+        held = {"write": None, "new": None}
+
+        def on_item(route):
+            if route.request.method == "POST":
+                held["write"] = route
+                mark(page, "writeHeld")
+            else:
+                route.continue_()
+
+        def on_queue(route):
+            answer = route.fetch()
+            payload = answer.json()
+            route.fulfill(response=answer)
+            if held["new"] and any(item["key"] == f"decision:{held['new']['id']}" for item in payload["items"]):
+                self.assertTrue(answer.ok)
+                mark(page, "newRead")
+
+        def release():
+            if held["write"]:
+                route, held["write"] = held["write"], None
+                route.fulfill(status=503, json={"message": "Controlled unavailable write"})
+
+        self.addCleanup(release)
+        page.route(re.compile(r"/api/v1/needs-you/[^?]+$"), on_item)
+        page.route(re.compile(r"/api/v1/needs-you(\?.*)?$"), on_queue)
+        original.get_by_role("button", name="Not now").click()
+        page.get_by_role("menuitem", name=re.compile("^Tomorrow morning")).click()
+        seen(page, "writeHeld")
+        expect(original).to_have_count(0)
+        held["new"] = self.post("jonas", f"/api/v1/projects/{self.project_id}/decisions", {"title": "Protect the greenhouse controller", "rationale": "Keep it dry."})
+        key = requests_quote(f"decision:{held['new']['id']}")
+        self.addCleanup(lambda: self.post("ada", f"/api/v1/needs-you/{key}", {"action": "done"}))
+        page.evaluate("() => window.dispatchEvent(new Event('focus'))")
+        seen(page, "newRead")
+        settled(page)
+        self.assertIsNotNone(held["write"], "the write remains unanswered during the successful read")
+        expect(original).to_have_count(0)
+        expect(self.card(page, "Protect the greenhouse controller")).to_have_count(1)
+        release()
+        expect(original).to_have_count(1)
+        expect(self.card(page, "Protect the greenhouse controller")).to_have_count(1)
+        expect(page.get_by_role("status").filter(has_text="Controlled unavailable write")).to_be_visible()
+
+    def test_04d_an_older_failure_cannot_reverse_a_newer_choice(self) -> None:
+        page = self.page()
+        page.goto("/inbox")
+        original = self.card(page, DECISION)
+        expect(original).to_have_count(1)
+        self.watch_queue_reads(page)
+        held = []
+
+        def on_item(route):
+            if route.request.method == "POST":
+                held.append(route)
+                mark(page, "writeHeld")
+            else:
+                route.continue_()
+
+        def release():
+            while held:
+                held.pop().abort()
+
+        self.addCleanup(release)
+        page.route(re.compile(r"/api/v1/needs-you/[^?]+$"), on_item)
+        original.get_by_role("button", name="Not now").click()
+        page.get_by_role("menuitem", name=re.compile("^Tomorrow morning")).click()
+        seen(page, "writeHeld")
+        page.keyboard.press("z")
+        expect(original).to_have_attribute("aria-current", "true")
+        page.keyboard.press("e")
+        seen(page, "writeHeld", 2)
+        expect(original).to_have_count(0)
+        older = held.pop(0)
+        with page.expect_response(lambda response: response.status == 503 and response.request.method == "POST"):
+            older.fulfill(status=503, json={"message": "Earlier snooze failed"})
+        page.evaluate("() => window.dispatchEvent(new Event('focus'))")
+        settled(page)
+        expect(original).to_have_count(0)
+        expect(page.get_by_role("status").filter(has_text="Marked done")).to_be_visible()
+        with page.expect_response(lambda response: response.ok and response.request.method == "POST" and "/api/v1/needs-you/" in response.url):
+            held.pop().continue_()
+        self.assertNotIn(f"decision:{self.decision['id']}", [item["key"] for item in self.queue(None)["items"]])
+        page.keyboard.press("z")
+        expect(original).to_have_count(1)
+        self.wait_for(lambda: any(item["key"] == f"decision:{self.decision['id']}" for item in self.queue(None)["items"]), "the latest Done to be undone")
+
     def test_05_the_task_snooze_ends_when_the_task_is_done(self) -> None:
         page = self.page()
         page.goto("/inbox")
@@ -515,21 +608,98 @@ class InboxFinal(unittest.TestCase):
         It does not wait for the window to end, which a pending accept would make it do.
         """
         proposed = self.post("jonas", f"/api/v1/projects/{self.project_id}/decisions", {"title": "Sow the clover by the gate", "rationale": "It fixes nitrogen."})
-        self.wait_for(lambda: any(item["key"] == f"decision:{proposed['id']}" for item in self.queue(None)["items"]), "the new decision")
         page = self.page()
         page.goto("/inbox")
         card = self.card(page, "Sow the clover")
         expect(card).to_have_count(1)
+        # Control the product's real Undo clock, independently of machine speed or toast hover.
+        page.clock.install(time=time.time())
+        page.clock.pause_at(time.time() + 1)
         card.get_by_role("button", name=re.compile("^Accept")).click()
         toast = page.get_by_role("status").filter(has_text="Accepted")
         expect(toast).to_be_visible()
         self.post("jonas", f"/api/v1/projects/{self.project_id}/decisions", {"title": "Mulch the paths before the frost", "rationale": "Less mud in March."})
         page.evaluate("() => window.dispatchEvent(new Event('focus'))")
         expect(self.card(page, "Mulch the paths")).to_have_count(1)
-        expect(toast).to_be_visible()
-        # The window ends and the accept is sent: the decision is accepted on the server.
-        expect(toast).to_have_count(0)
+        expect(card).to_have_count(0)
+        self.assertEqual(self.contexts["ada"].request.get(f"/api/v1/decisions/{proposed['id']}").json()["status"], "proposed", "the incoming item appears before Accept is sent")
+        page.mouse.move(0, 0)
+        page.clock.run_for(6001)
         self.wait_for(lambda: self.contexts["ada"].request.get(f"/api/v1/decisions/{proposed['id']}").json()["status"] == "accepted", "the accept to be sent")
+        expect(toast).to_have_count(0)
+
+    def test_07b_accept_success_never_reveals_the_cached_proposal(self) -> None:
+        self.accept_success_preserves_hidden_proposal(home=False)
+
+    def test_07c_accept_success_never_reveals_the_home_cached_proposal(self) -> None:
+        self.accept_success_preserves_hidden_proposal(home=True)
+
+    def accept_success_preserves_hidden_proposal(self, *, home: bool) -> None:
+        """A read during Accept caches the proposal; success must hide it before a fresh read (#541)."""
+        proposed = self.post("jonas", f"/api/v1/projects/{self.project_id}/decisions", {"title": "Cover the rain gauge", "rationale": "Keep leaves out."})
+        page = self.page()
+        page.goto("/inbox")
+        card = self.card(page, "Cover the rain gauge")
+        expect(card).to_have_count(1)
+        self.watch_queue_reads(page)
+        page.clock.install(time=time.time())
+        page.clock.pause_at(time.time() + 1)
+        card.get_by_role("button", name=re.compile("^Accept")).click()
+        held = []
+        state = {"hold": False}
+        accepted = []
+        if home:
+            def on_accept(route):
+                accepted.append(route)
+                mark(page, "acceptHeld")
+            page.route(re.compile(r"/api/v1/decisions/[^/]+/accept$"), on_accept)
+            page.get_by_role("navigation", name="Places").get_by_role("link", name="Home").click()
+            seen(page, "acceptHeld")
+            self.addCleanup(lambda: [route.abort() for route in accepted])
+
+        def on_queue(route):
+            answer = route.fetch()
+            if state["hold"]:
+                held.append((route, answer))
+                mark(page, "heldRead")
+            else:
+                self.assertIn(f"decision:{proposed['id']}", [item["key"] for item in answer.json()["items"]])
+                route.fulfill(response=answer)
+                mark(page, "cachedRead")
+
+        def release():
+            state["hold"] = False
+            while held:
+                route, answer = held.pop()
+                route.fulfill(response=answer)
+
+        self.addCleanup(release)
+        page.route(re.compile(r"/api/v1/needs-you(\?.*)?$"), on_queue)
+        page.evaluate("() => window.dispatchEvent(new Event('focus'))")
+        seen(page, "cachedRead")
+        page.wait_for_function("() => window.__needsYouPending === 0")
+        page.clock.run_for(1)
+        expect(card).to_have_count(0)
+        page.evaluate("""() => {
+          window.__reappeared = false;
+          new MutationObserver(() => {
+            if ([...document.querySelectorAll('.nyc')].some(card => card.textContent.includes('Cover the rain gauge'))) window.__reappeared = true;
+          }).observe(document.body, { childList: true, subtree: true, characterData: true });
+        }""")
+        state["hold"] = True
+        # Home navigation sends Accept; otherwise a real page-leave event sends it without advancing Undo.
+        if home:
+            accepted.pop().continue_()
+        else:
+            page.evaluate("() => window.dispatchEvent(new Event('pagehide'))")
+        seen(page, "heldRead")
+        page.clock.run_for(1)
+        self.assertEqual(self.contexts["ada"].request.get(f"/api/v1/decisions/{proposed['id']}").json()["status"], "accepted")
+        expect(card).to_have_count(0)
+        self.assertFalse(page.evaluate("() => window.__reappeared"), "the cached proposal never reappears after success")
+        release()
+        page.clock.run_for(1)
+        expect(card).to_have_count(0)
 
     # ---------------------------------------------------------------- blocked tasks and mentions
 
