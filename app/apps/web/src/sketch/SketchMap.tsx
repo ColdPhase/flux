@@ -1,8 +1,8 @@
-import { Fragment, memo, type CSSProperties, type ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type WheelEvent } from 'react';
+import { Fragment, memo, type CSSProperties, type ReactNode, type RefObject, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react';
 import { DEFAULT_THOUGHT_SIZE, SKETCH_LIMITS, type LiveMapPosition, type SketchDetail, type Thought } from '@flux/contracts';
 import { Icon, IconButton, Sheet, StatusGlyph } from '../ui';
 import { STATUS_LABEL, taskNumber } from '../work/format';
-import { linkPath, PAD, project, rectOf, type Rect } from './geometry';
+import { linkPath, PAD, PLANE_MARGIN, project, rectOf, type Rect } from './geometry';
 import { provenance, quote } from './format';
 import { ThoughtEditor } from './ThoughtEditor';
 import { ThoughtImage } from './ThoughtImage';
@@ -77,6 +77,8 @@ export interface SketchMapProps {
   livePreviews: Map<string, { generation: string; gestureId: string; leaseId: string; sequence: number }>;
   ownGesture: { id: string; sequence: number; generation: string } | null | undefined;
   liveEnabled: boolean;
+  /** The hand tool (#509 AC-1): dragging anywhere pans the plane, thoughts included. */
+  hand: boolean;
 }
 
 const ZOOMS = [0.5, 0.67, 0.8, 0.9, 1, 1.1, 1.25, 1.5];
@@ -124,6 +126,18 @@ export function SketchMap(props: SketchMapProps) {
   const [compositionHeight, setCompositionHeight] = useState(240);
   const [compositionPosition, setCompositionPosition] = useState<{ left: number; top: number } | null>(null);
   const phoneToolsRef = useRef<HTMLDivElement>(null);
+  // The zoom and minimap rise above the bottom toolbar and its line where the pane is too narrow for
+  // them beside it. The tallest height seen keeps them clear however the toolbar or the hint wraps,
+  // and they only ever move up once, not with every status line (Spokój rule 7).
+  const dockRef = useRef<HTMLDivElement>(null);
+  const [dockHeight, setDockHeight] = useState(64);
+  useLayoutEffect(() => {
+    const el = dockRef.current;
+    if (compact || !el || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(() => { const h = Math.ceil(el.getBoundingClientRect().height); setDockHeight((before) => Math.max(before, h)); });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [compact]);
   const [phoneToolsHeight, setPhoneToolsHeight] = useState(150);
   // Larger reading text and optional Undo/status rows must never cover a thought's task count.
   // Reserve the actual dock height; widths and graph positions remain display-only geometry.
@@ -140,6 +154,31 @@ export function SketchMap(props: SketchMapProps) {
   const [offset, setOffset] = useState<{ ids: string[]; base: Thought[]; dx: number; dy: number } | null>(null);
   const [size, setSize] = useState<{ id: string; w: number; h: number } | null>(null);
   const [panning, setPanning] = useState(false);
+  // #509 AC-1: holding Space while the canvas itself (or nothing) has focus pans like the hand tool.
+  // Space on a focused thought or control keeps its own meaning (select, press), so it is never captured there.
+  const [spaceHeld, setSpaceHeld] = useState(false);
+  const spaceRef = useRef(false);
+  useEffect(() => {
+    const down = (event: globalThis.KeyboardEvent) => {
+      const target = event.target;
+      if (event.key !== ' ' || !(target instanceof HTMLElement) || (target !== canvasRef.current && target !== document.body)) return;
+      event.preventDefault();
+      if (!spaceRef.current) { spaceRef.current = true; setSpaceHeld(true); }
+    };
+    const up = (event: globalThis.KeyboardEvent) => {
+      if (event.key === ' ' && spaceRef.current) { spaceRef.current = false; setSpaceHeld(false); }
+    };
+    const release = () => { spaceRef.current = false; setSpaceHeld(false); };
+    window.addEventListener('keydown', down, true);
+    window.addEventListener('keyup', up, true);
+    window.addEventListener('blur', release);
+    return () => {
+      window.removeEventListener('keydown', down, true);
+      window.removeEventListener('keyup', up, true);
+      window.removeEventListener('blur', release);
+    };
+  }, []);
+  const panMode = props.hand || spaceHeld;
   // The dot shows while the pointer is over its thought or itself (mouse only; touch shows it on the selection).
   const [hover, setHover] = useState<string | null>(null);
   const [more, setMore] = useState(false);
@@ -213,8 +252,8 @@ export function SketchMap(props: SketchMapProps) {
     let next = t;
     // The live map moves from the positions at the gesture's start; the ordinary map, as before #228, from the current ones.
     if (offset && moving.has(t.id)) {
-      if (props.liveEnabled) { const base = moving.get(t.id) ?? t; next = { ...next, x: clamp(base.x + offset.dx, 0, SKETCH_LIMITS.coordinate), y: clamp(base.y + offset.dy, 0, SKETCH_LIMITS.coordinate) }; }
-      else next = { ...next, x: Math.max(0, t.x + offset.dx), y: Math.max(0, t.y + offset.dy) };
+      if (props.liveEnabled) { const base = moving.get(t.id) ?? t; next = { ...next, x: bounded(base.x + offset.dx), y: bounded(base.y + offset.dy) }; }
+      else next = { ...next, x: bounded(t.x + offset.dx), y: bounded(t.y + offset.dy) };
     }
     if (size?.id === t.id) next = { ...next, width: size.w, height: size.h };
     return next;
@@ -236,9 +275,20 @@ export function SketchMap(props: SketchMapProps) {
     const placeBar = () => {
       bar.style.maxWidth = `${Math.max(0, canvas.clientWidth - 16)}px`;
       bar.style.marginLeft = '0px';
+      const { above } = bar.dataset;
       const view = canvas.getBoundingClientRect();
       const bounds = bar.getBoundingClientRect();
-      const dx = Math.max(view.left + 8 - bounds.left, Math.min(0, view.right - 8 - bounds.right));
+      let dx = Math.max(view.left + 8 - bounds.left, Math.min(0, view.right - 8 - bounds.right));
+      // Above the thought, clear of the floating header and notices where there is room beside them:
+      // the actions move right past them. They stay above the thought either way, so they never
+      // cover its connection labels (#481).
+      const floating = [...(wrapRef.current?.parentElement?.querySelectorAll<HTMLElement>('.sk-over > *') ?? [])].map((el) => el.getBoundingClientRect());
+      const hit = (left: number) => floating.find((r) => r.width && r.bottom > bounds.top && r.top < bounds.bottom && r.right > left && r.left < left + bounds.width);
+      const blocked = above ? hit(bounds.left + dx) : undefined;
+      if (blocked) {
+        const right = blocked.right + 8 - bounds.left;
+        if (bounds.left + right + bounds.width <= view.right - 8 && !hit(bounds.left + right)) dx = right;
+      }
       bar.style.marginLeft = `${dx / zoom}px`;
     };
     placeBar();
@@ -256,16 +306,30 @@ export function SketchMap(props: SketchMapProps) {
   // Moving every top-row thought changes the preview's minY. Deriving the plane origin
   // from that minY moved every untouched thought too, invalidating its memoized props.
   // Keep signed native bounds for the plane; phone projection, live rects, sizes and Fit
-  // still use the actual displayed graph.
-  const originPoints = compact || !props.liveEnabled ? [...rects.values()] : props.confirmedThoughts ?? sketch.thoughts;
-  const origin = { x: Math.min(0, ...originPoints.map((r) => r.x - PAD)), y: Math.min(0, ...originPoints.map((r) => r.y - (compact ? PAD : 128))) };
+  // still use the actual displayed graph. A thought being dragged past the edge does not move
+  // the origin under the pointer; the plane grows when the move lands (#509).
+  const originPoints = compact ? [...rects.values()] : props.liveEnabled ? props.confirmedThoughts ?? sketch.thoughts : sketch.thoughts;
+  // #509: the plane reaches a margin beyond the thoughts in every direction, so the view pans past
+  // the first thought up or left as well. The phone's two columns keep their own edges.
+  const margin = compact ? 0 : PLANE_MARGIN;
+  const origin = { x: Math.min(0, ...originPoints.map((r) => r.x - PAD)) - margin, y: Math.min(0, ...originPoints.map((r) => r.y - (compact ? PAD : 128))) - margin };
   let width = 0;
   let height = 0;
   for (const r of rects.values()) { width = Math.max(width, r.x + r.w - origin.x); height = Math.max(height, r.y + r.h - origin.y); }
   // Room to keep sketching beyond the last thought.
-  width += projection ? 0 : 240;
-  height += 160;
+  width += compact ? 0 : PLANE_MARGIN;
+  height += compact ? 160 : PLANE_MARGIN;
   const place = (r: Rect) => ({ x: r.x - origin.x, y: r.y - origin.y });
+  // When the origin moves, every thought's place changes with it while the view compensates: that
+  // change must not animate, or the whole map would slide across the screen (#509).
+  const [lastOrigin, setLastOrigin] = useState(origin);
+  const [reframing, setReframing] = useState(false);
+  if (lastOrigin.x !== origin.x || lastOrigin.y !== origin.y) { setLastOrigin(origin); setReframing(true); }
+  useEffect(() => {
+    if (!reframing) return;
+    const frame = requestAnimationFrame(() => setReframing(false));
+    return () => cancelAnimationFrame(frame);
+  }, [reframing]);
   const last = selection.length ? rects.get(selection[selection.length - 1]!) : undefined;
   const lastThought = selection.length ? shown.find((t) => t.id === selection[selection.length - 1]) : undefined;
   const byId = new Map(shown.map((t) => [t.id, t]));
@@ -437,6 +501,49 @@ export function SketchMap(props: SketchMapProps) {
   });
   useLayoutEffect(() => { geometry.current = { rects, origin, zoom }; });
 
+  // #509: the plane has no fixed edge, so its origin follows the outermost thoughts. When it moves
+  // (a thought landed beyond the edge) the view moves with it, so nothing on screen jumps. A zoom
+  // keeps the plane point under its anchor (the pointer, the pinch or the view's centre) in place.
+  const shownView = useRef<{ mode: Mode; zoom: number; x: number; y: number } | null>(null);
+  const zoomAnchor = useRef<{ cx: number; cy: number; px: number; py: number } | null>(null);
+  const keepAnchor = useCallback((el: HTMLElement, anchor: { cx: number; cy: number; px: number; py: number }, o: { x: number; y: number }, z: number) => {
+    const box = zoomedRef.current?.getBoundingClientRect();
+    if (!box) return;
+    el.scrollLeft += box.left + (anchor.px - o.x) * z - anchor.cx;
+    el.scrollTop += box.top + (anchor.py - o.y) * z - anchor.cy;
+  }, []);
+  useLayoutEffect(() => {
+    const el = canvasRef.current;
+    const before = shownView.current;
+    shownView.current = { mode, zoom, x: origin.x, y: origin.y };
+    const anchor = zoomAnchor.current;
+    zoomAnchor.current = null;
+    if (!el || !before || before.mode !== mode || mode !== 'plane') return;
+    if (anchor && before.zoom !== zoom) keepAnchor(el, anchor, origin, zoom);
+    else if (before.zoom === zoom && (before.x !== origin.x || before.y !== origin.y)) {
+      el.scrollLeft += (before.x - origin.x) * zoom;
+      el.scrollTop += (before.y - origin.y) * zoom;
+    } else return;
+    record(el);
+  });
+  /** Zoom to `next`, keeping the plane point at client `cx`,`cy` (default: the middle of the visible map) still. */
+  const zoomAt = useCallback((next: number, cx?: number, cy?: number) => {
+    const el = canvasRef.current;
+    const box = zoomedRef.current?.getBoundingClientRect();
+    const { origin: o, zoom: z } = geometry.current;
+    const target = clamp(Math.round(next * 1000) / 1000, ZOOMS[0]!, ZOOMS[ZOOMS.length - 1]!);
+    if (el && box && modeRef.current === 'plane' && target !== z) {
+      const view = el.getBoundingClientRect();
+      const style = getComputedStyle(el);
+      const top = view.top + (parseFloat(style.paddingTop) || 0);
+      const bottom = view.top + el.clientHeight - (parseFloat(style.paddingBottom) || 0);
+      const x = cx ?? view.left + el.clientWidth / 2;
+      const y = cy ?? (top + bottom) / 2;
+      zoomAnchor.current = { cx: x, cy: y, px: (x - box.left) / z + o.x, py: (y - box.top) / z + o.y };
+    }
+    setZoom(target);
+  }, [setZoom]);
+
   // Fit: show the whole graph when it fits at a readable size, otherwise start at its top left.
   const fit = useCallback(() => {
     const canvas = canvasRef.current;
@@ -458,8 +565,15 @@ export function SketchMap(props: SketchMapProps) {
     // Round down so a fitted graph never grows beyond that measured viewport.
     // The floating header and tools sit over the padding of the canvas: fit what is left between them.
     const style = getComputedStyle(canvas);
-    const room = canvas.clientHeight - (parseFloat(style.paddingTop) || 0) - (parseFloat(style.paddingBottom) || 0);
-    const z = Math.max(coarseRef.current ? FIT_MIN_COARSE : FIT_MIN, Math.floor(Math.min(1, canvas.clientWidth / (maxX - minX), room / (maxY - minY)) * 100) / 100);
+    const top = parseFloat(style.paddingTop) || 0;
+    const room = canvas.clientHeight - top - (parseFloat(style.paddingBottom) || 0);
+    let scale = Math.min(1, canvas.clientWidth / (maxX - minX), room / (maxY - minY));
+    // #509: the fitted graph starts at the top left and stays clear of the minimap and zoom in the
+    // bottom-right corner, beside them or above them, whichever keeps it larger.
+    const view = canvas.getBoundingClientRect();
+    const corner = wrapRef.current?.querySelector('.sk-corner')?.getBoundingClientRect();
+    if (corner?.width) scale = Math.min(scale, Math.max((corner.left - view.left - 8) / (maxX - minX), (corner.top - view.top - top - 8) / (maxY - minY)));
+    const z = Math.max(coarseRef.current ? FIT_MIN_COARSE : FIT_MIN, Math.floor(scale * 100) / 100);
     setZoom(z);
     cameras.current.plane = { left: Math.max(0, (minX - o.x) * z), top: Math.max(0, (minY - o.y) * z) };
     requestAnimationFrame(apply);
@@ -473,19 +587,71 @@ export function SketchMap(props: SketchMapProps) {
   }, [hasThoughts, fit]);
   const highlighted = (id: string) => selection.includes(id) || connectFrom === id;
 
-  const onWheel = (event: WheelEvent<HTMLDivElement>) => {
-    if (!event.ctrlKey && !event.metaKey) return;
-    event.preventDefault();
-    setZoom((z) => (event.deltaY < 0 ? zoomIn(z) : zoomOut(z)));
-  };
-  // React's wheel listener is passive; Ctrl-wheel must be cancellable to replace the browser zoom.
+  // #509 AC-3: Ctrl/⌘ + wheel (a trackpad pinch arrives the same way) zooms smoothly around the
+  // pointer; a plain wheel or two-finger scroll pans natively. React's wheel listener is passive, and
+  // the zoom must be cancellable to replace the browser's page zoom.
   useEffect(() => {
     const el = canvasRef.current;
     if (!el) return;
-    const block = (event: globalThis.WheelEvent) => { if (event.ctrlKey || event.metaKey) event.preventDefault(); };
-    el.addEventListener('wheel', block, { passive: false });
-    return () => el.removeEventListener('wheel', block);
-  }, []);
+    const wheel = (event: globalThis.WheelEvent) => {
+      if (!event.ctrlKey && !event.metaKey) return;
+      event.preventDefault();
+      const delta = event.deltaY * (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? 400 : 1);
+      zoomAt(geometry.current.zoom * Math.exp(-delta * 0.002), event.clientX, event.clientY);
+    };
+    el.addEventListener('wheel', wheel, { passive: false });
+    return () => el.removeEventListener('wheel', wheel);
+  }, [zoomAt]);
+  // Two fingers on a touch screen pinch-zoom around their midpoint and move the view with it.
+  useEffect(() => {
+    const el = canvasRef.current;
+    if (!el || compact) return;
+    let pinch: { distance: number; zoom: number; px: number; py: number } | null = null;
+    const points = (event: TouchEvent) => {
+      const [a, b] = [event.touches[0]!, event.touches[1]!];
+      return { distance: Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY), cx: (a.clientX + b.clientX) / 2, cy: (a.clientY + b.clientY) / 2 };
+    };
+    const start = (event: TouchEvent) => {
+      if (event.touches.length !== 2) { pinch = null; return; }
+      const box = zoomedRef.current?.getBoundingClientRect();
+      if (!box) return;
+      const { distance, cx, cy } = points(event);
+      const { origin: o, zoom: z } = geometry.current;
+      pinch = { distance: Math.max(1, distance), zoom: z, px: (cx - box.left) / z + o.x, py: (cy - box.top) / z + o.y };
+    };
+    const move = (event: TouchEvent) => {
+      if (!pinch || event.touches.length !== 2) return;
+      event.preventDefault();
+      const { distance, cx, cy } = points(event);
+      const next = clamp(Math.round(pinch.zoom * (distance / pinch.distance) * 1000) / 1000, ZOOMS[0]!, ZOOMS[ZOOMS.length - 1]!);
+      const anchor = { cx, cy, px: pinch.px, py: pinch.py };
+      if (next === geometry.current.zoom) { keepAnchor(el, anchor, geometry.current.origin, next); return; }
+      zoomAnchor.current = anchor;
+      setZoom(next);
+    };
+    const end = (event: TouchEvent) => { if (event.touches.length < 2) pinch = null; };
+    el.addEventListener('touchstart', start, { passive: true });
+    el.addEventListener('touchmove', move, { passive: false });
+    el.addEventListener('touchend', end, { passive: true });
+    el.addEventListener('touchcancel', end, { passive: true });
+    return () => {
+      el.removeEventListener('touchstart', start);
+      el.removeEventListener('touchmove', move);
+      el.removeEventListener('touchend', end);
+      el.removeEventListener('touchcancel', end);
+    };
+  }, [compact, keepAnchor, setZoom]);
+
+  // #509 AC-6: with the map itself focused, arrows move the view (Shift further); thoughts keep their own arrows.
+  const onCanvasKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.target !== event.currentTarget || event.altKey || event.metaKey || event.ctrlKey) return;
+    const step = event.shiftKey ? 240 : 48;
+    const [dx, dy] = ({ ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] } as Record<string, [number, number]>)[event.key] ?? [0, 0];
+    if (!dx && !dy) return;
+    event.preventDefault();
+    event.currentTarget.scrollLeft += dx;
+    event.currentTarget.scrollTop += dy;
+  };
 
   const begin = (event: ReactPointerEvent, next: Omit<Drag, 'pointerId' | 'sx' | 'sy' | 'moved' | 'started' | 'base'>) => {
     drag.current = { ...next, base: sketch.thoughts.filter((thought) => next.ids.includes(thought.id)).map((thought) => ({ ...thought })), pointerId: event.pointerId, sx: event.clientX, sy: event.clientY, moved: false, started: false };
@@ -493,13 +659,15 @@ export function SketchMap(props: SketchMapProps) {
   };
 
   const onNodePointerDown = (event: ReactPointerEvent<HTMLButtonElement>, id: string) => {
-    if (event.button !== 0 || editing?.id === id || !arrange) return;
+    // With the hand tool or Space held, a thought is part of the plane: the plane pans.
+    if (panMode || event.button !== 0 || editing?.id === id || !arrange) return;
     // On touch, only a selected thought drags; elsewhere a finger scrolls the map.
     if (event.pointerType !== 'mouse' && !selection.includes(id)) return;
     begin(event, { kind: 'move', id, ids: selection.includes(id) ? selection : [id] });
   };
 
   const onDotPointerDown = (event: ReactPointerEvent<HTMLButtonElement>, id: string) => {
+    if (panMode) return;
     event.stopPropagation();
     if (event.button !== 0 || !arrange) return;
     begin(event, { kind: 'link', id, ids: [id] });
@@ -513,8 +681,10 @@ export function SketchMap(props: SketchMapProps) {
 
   const onPlanePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
     const target = event.target as HTMLElement;
+    if (event.button !== 0 || target.closest('input, textarea, [contenteditable="true"]')) return;
+    // Empty space pans with a mouse; the hand tool and Space pan from anywhere, with any pointer.
     const empty = target === event.currentTarget || target.classList.contains('sk-plane');
-    if (event.button !== 0 || !empty || event.pointerType !== 'mouse') return;
+    if (!panMode && (!empty || event.pointerType !== 'mouse')) return;
     const canvas = canvasRef.current!;
     begin(event, { kind: 'pan', ids: [], scrollLeft: canvas.scrollLeft, scrollTop: canvas.scrollTop });
   };
@@ -545,11 +715,11 @@ export function SketchMap(props: SketchMapProps) {
       const box = zoomedRef.current!.getBoundingClientRect();
       const hit = document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>('.sk-node, .sk-dot, .sk-work-slot');
       const over = hit?.dataset.id ?? hit?.dataset.for ?? null;
-      setWire({ from: d.id!, x: Math.max(0, Math.round((event.clientX - box.left) / zoom + origin.x)), y: Math.max(0, Math.round((event.clientY - box.top) / zoom + origin.y)), over: over && over !== d.id ? over : null });
+      setWire({ from: d.id!, x: bounded(Math.round((event.clientX - box.left) / zoom + origin.x)), y: bounded(Math.round((event.clientY - box.top) / zoom + origin.y)), over: over && over !== d.id ? over : null });
     } else if (d.kind === 'move') {
       // Offsets are in stored plane units; the phone projection compresses x.
       setOffset({ ids: d.ids, base: d.base, dx: Math.round(dx * scaleX), dy: Math.round(dy) });
-      props.onGesturePreview(d.base.map((thought) => ({ id: thought.id, x: clamp(Math.round(thought.x + dx * scaleX), 0, SKETCH_LIMITS.coordinate), y: clamp(Math.round(thought.y + dy), 0, SKETCH_LIMITS.coordinate) })));
+      props.onGesturePreview(d.base.map((thought) => ({ id: thought.id, x: bounded(Math.round(thought.x + dx * scaleX)), y: bounded(Math.round(thought.y + dy)) })));
     } else {
       const t = byId.get(d.id!) ?? sketch.thoughts.find((x) => x.id === d.id);
       const base = (props.liveEnabled ? d.base.find((x) => x.id === d.id) : sketch.thoughts.find((x) => x.id === d.id)) ?? t!;
@@ -577,17 +747,17 @@ export function SketchMap(props: SketchMapProps) {
       setWire(null);
       if (!end || !arrange) return;
       if (end.over) props.onConnect(d.id!, end.over);
-      else if (!hitsDot(event, d.id!)) props.onAddAt(d.id!, end.x, Math.max(0, end.y - Math.round(DEFAULT_THOUGHT_SIZE.height / 2)));
+      else if (!hitsDot(event, d.id!)) props.onAddAt(d.id!, end.x, bounded(end.y - Math.round(DEFAULT_THOUGHT_SIZE.height / 2)));
       return;
     }
     if (d.kind === 'move' && offset) {
       props.onMove(d.ids.flatMap((id) => {
         if (!props.liveEnabled) {
           const t = sketch.thoughts.find((x) => x.id === id);
-          return t ? [{ id, x: Math.max(0, t.x + offset.dx), y: Math.max(0, t.y + offset.dy) }] : [];
+          return t ? [{ id, x: bounded(t.x + offset.dx), y: bounded(t.y + offset.dy) }] : [];
         }
         const t = d.base.find((x) => x.id === id);
-        return t ? [{ id, x: clamp(t.x + offset.dx, 0, SKETCH_LIMITS.coordinate), y: clamp(t.y + offset.dy, 0, SKETCH_LIMITS.coordinate) }] : [];
+        return t ? [{ id, x: bounded(t.x + offset.dx), y: bounded(t.y + offset.dy) }] : [];
       }), 'drag');
     }
     if (d.kind === 'resize' && size) props.onResize(size.id, size.w, size.h, 'drag');
@@ -634,7 +804,7 @@ export function SketchMap(props: SketchMapProps) {
     if (!selection.includes(thought.id)) props.onPick(thought.id, false);
     props.onMove(ids.flatMap((id) => {
       const t = sketch.thoughts.find((x) => x.id === id);
-      return t ? [{ id, x: Math.max(0, t.x + dx), y: Math.max(0, t.y + dy) }] : [];
+      return t ? [{ id, x: bounded(t.x + dx), y: bounded(t.y + dy) }] : [];
     }), 'keyboard');
     requestAnimationFrame(() => nodes.current.get(thought.id)?.scrollIntoView({ block: 'nearest', inline: 'nearest' }));
   };
@@ -666,13 +836,13 @@ export function SketchMap(props: SketchMapProps) {
   ) : null;
 
   /** The actions of the selection float above the thought on a computer. */
-  const selectionBar = (style?: CSSProperties) => {
+  const selectionBar = (style?: CSSProperties, above?: boolean) => {
     if (!plus || !last || !lastThought) return null;
     const single = selection.length === 1;
     const label = quote(lastThought.text);
     const close = (run: () => void) => () => { setMore(false); run(); };
       return (
-        <div ref={selectionBarRef} className="sk-actions" role="toolbar" aria-label="Selection actions" style={style}>
+        <div ref={selectionBarRef} className="sk-actions" role="toolbar" aria-label="Selection actions" style={style} data-above={above ? 'true' : undefined}>
           {single ? <button type="button" className="sk-edit-btn" aria-label={`Edit ${label}`} onClick={() => props.onEdit(lastThought.id)}>Edit</button> : null}
           {single && !compact ? <button type="button" className="sk-edit-btn" aria-label="Connect" aria-pressed={connectFrom === lastThought.id} onClick={() => props.onConnectFrom(lastThought.id)}>Connect</button> : null}
           {single && !compact ? <button type="button" className="sk-edit-btn" onClick={() => props.onConnections(lastThought.id)}>Connections</button> : null}
@@ -701,12 +871,14 @@ export function SketchMap(props: SketchMapProps) {
     pendingPhoneAction.current = run;
     setPhoneMenuOpen(false);
   };
+  // #509 AC-3: − level + | Fit, in their own group at the bottom right of the map.
   const zoomControls = (
     <div className="sk-zoom" role="group" aria-label="Zoom">
+      <button type="button" aria-label="Zoom out" data-tip="Zoom out" disabled={zoom <= ZOOMS[0]!} onClick={() => zoomAt(zoomOut(zoom))}><Icon name="minus" size={14} /></button>
+      <button type="button" className="sk-zoom__level" aria-label={`Zoom ${Math.round(zoom * 100)}%, reset to 100%`} onClick={() => zoomAt(1)}>{Math.round(zoom * 100)}%</button>
+      <button type="button" aria-label="Zoom in" data-tip="Zoom in" disabled={zoom >= ZOOMS[ZOOMS.length - 1]!} onClick={() => zoomAt(zoomIn(zoom))}><Icon name="plus" size={14} /></button>
+      <span className="sk-div" aria-hidden="true" />
       <button type="button" className="sk-zoom__fit" aria-label="Fit the sketch to the view" onClick={fit}>Fit</button>
-      <button type="button" aria-label="Zoom out" data-tip="Zoom out" disabled={zoom <= ZOOMS[0]!} onClick={() => setZoom(zoomOut(zoom))}><Icon name="minus" size={14} /></button>
-      <button type="button" className="sk-zoom__level" aria-label={`Zoom ${Math.round(zoom * 100)}%, reset to 100%`} onClick={() => setZoom(1)}>{Math.round(zoom * 100)}%</button>
-      <button type="button" aria-label="Zoom in" data-tip="Zoom in" disabled={zoom >= ZOOMS[ZOOMS.length - 1]!} onClick={() => setZoom(zoomIn(zoom))}><Icon name="plus" size={14} /></button>
     </div>
   );
 
@@ -737,13 +909,13 @@ export function SketchMap(props: SketchMapProps) {
   }
 
   return (
-    <div ref={wrapRef} className={`sk-canvas-wrap sk-canvas-wrap--controls${hasComposition ? ' has-composition' : ''}`} style={compact ? { '--sk-phone-tools-height': `${hasComposition ? compositionHeight : phoneToolsHeight}px` } as CSSProperties : undefined}>
-    <div className={`sk-canvas${panning ? ' is-panning' : ''}${connectFrom ? ' is-connecting' : ''}${wire ? ' is-wiring' : ''}`} ref={canvasRef} role="group"
+    <div ref={wrapRef} className={`sk-canvas-wrap sk-canvas-wrap--controls${hasComposition ? ' has-composition' : ''}`} style={(compact ? { '--sk-phone-tools-height': `${hasComposition ? compositionHeight : phoneToolsHeight}px` } : { '--sk-dock-h': `${dockHeight}px` }) as unknown as CSSProperties}>
+    <div className={`sk-canvas${panning ? ' is-panning' : ''}${panMode ? ' is-hand' : ''}${connectFrom ? ' is-connecting' : ''}${wire ? ' is-wiring' : ''}`} ref={canvasRef} role="group" tabIndex={0}
       data-live-own-gesture={props.ownGesture?.id} data-live-own-sequence={props.ownGesture?.sequence} data-live-generation={props.ownGesture?.generation}
-      aria-label={`Sketch: ${sketch.title}`} aria-describedby={helpId} onWheel={onWheel}>
-      <div className="sk-zoomed" ref={zoomedRef} style={{ width: width * zoom, height: height * zoom }}
+      aria-label={`Sketch: ${sketch.title}`} aria-describedby={helpId} onKeyDown={onCanvasKeyDown}>
+      <div className="sk-zoomed" ref={zoomedRef} data-origin-x={origin.x} data-origin-y={origin.y} style={{ width: width * zoom, height: height * zoom }}
         onPointerDown={onPlanePointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerCancel}>
-        <div className="sk-plane" style={{ width, height, transform: zoom === 1 ? undefined : `scale(${zoom})` }}>
+        <div className={`sk-plane${reframing ? ' is-reframing' : ''}`} style={{ width, height, transform: zoom === 1 ? undefined : `scale(${zoom})` }}>
           <svg className="sk-edges" width={width} height={height} aria-hidden="true">
             {sketch.links.map((link) => {
               const a = rects.get(link.fromId);
@@ -800,7 +972,7 @@ export function SketchMap(props: SketchMapProps) {
             const x = plus.x + last.w / 2;
             const keep = `scale(${1 / zoom})`;
             const at = plus.y < 56 ? `translate(${x}px, ${plus.y + last.h + 8}px) ${keep} translateX(-50%)` : `translate(${x}px, ${plus.y - 8}px) ${keep} translate(-50%, -100%)`;
-            return selectionBar({ transform: at });
+            return selectionBar({ transform: at }, plus.y >= 56);
           })() : null) : linkAnchor && last ? (() => {
             // People who can only look still open a selected link.
             const at = place(last);
@@ -823,12 +995,10 @@ export function SketchMap(props: SketchMapProps) {
         </div>
       </div>
     </div>
-      <div className="sk-dock">
+      {!compact ? <div className="sk-corner"><Minimap canvas={canvasRef} zoom={zoom} origin={origin} rects={rects} />{zoomControls}</div> : null}
+      <div className="sk-dock" ref={dockRef}>
         {!compact ? props.hint : null}
-        <div className="sk-dock__row">
-          {props.dock}
-          {!compact ? zoomControls : null}
-        </div>
+        {props.dock ? <div className="sk-dock__row">{props.dock}</div> : null}
       </div>
       {compact ? <button type="button" className="sk-edit-btn sk-map-options" aria-haspopup="dialog" aria-expanded={phoneMenuOpen && phoneMenu === 'map'} onClick={(event) => {
         event.currentTarget.focus({ preventScroll: true }); setPhoneMenu('map'); setPhoneMenuOpen(true);
@@ -874,6 +1044,71 @@ export function SketchMap(props: SketchMapProps) {
           </>}
         </div>
       </Sheet> : null}
+    </div>
+  );
+}
+
+const MINIMAP = { w: 172, h: 112 };
+const MINIMAP_PAD = 24;
+type Frame = { x0: number; y0: number; k: number; dx: number; dy: number };
+
+/**
+ * The whole map at a glance (#509 AC-4): every thought and the part of the plane on screen. A click
+ * or a drag on it centres the view there. Drawn in plane units, so it stays right at every zoom; the
+ * frame holds the thoughts and the view together, and stays still while a drag moves the view. The
+ * arrows on the focused map are its keyboard equivalent, so it is hidden from assistive technology.
+ */
+function Minimap({ canvas, zoom, origin, rects }: { canvas: RefObject<HTMLDivElement | null>; zoom: number; origin: { x: number; y: number }; rects: Map<string, Rect> }) {
+  const [view, setView] = useState({ left: 0, top: 0, w: 0, h: 0 });
+  const box = useRef<HTMLDivElement>(null);
+  const drag = useRef<{ pointerId: number; frame: Frame } | null>(null);
+  const [frozen, setFrozen] = useState<Frame | null>(null);
+  useEffect(() => {
+    const el = canvas.current;
+    if (!el) return;
+    const read = () => setView({ left: el.scrollLeft / zoom, top: el.scrollTop / zoom, w: el.clientWidth / zoom, h: el.clientHeight / zoom });
+    read();
+    el.addEventListener('scroll', read, { passive: true });
+    const ro = new ResizeObserver(read);
+    ro.observe(el);
+    return () => { el.removeEventListener('scroll', read); ro.disconnect(); };
+  }, [canvas, zoom]);
+  const boxes = [...rects.values()].map((r) => ({ x: r.x - origin.x, y: r.y - origin.y, w: r.w, h: r.h }));
+  if (!boxes.length) return null;
+  const fresh = (): Frame => {
+    const x0 = Math.min(view.left, ...boxes.map((b) => b.x - MINIMAP_PAD));
+    const y0 = Math.min(view.top, ...boxes.map((b) => b.y - MINIMAP_PAD));
+    const x1 = Math.max(view.left + view.w, ...boxes.map((b) => b.x + b.w + MINIMAP_PAD));
+    const y1 = Math.max(view.top + view.h, ...boxes.map((b) => b.y + b.h + MINIMAP_PAD));
+    const k = Math.min(MINIMAP.w / Math.max(1, x1 - x0), MINIMAP.h / Math.max(1, y1 - y0));
+    return { x0, y0, k, dx: (MINIMAP.w - (x1 - x0) * k) / 2, dy: (MINIMAP.h - (y1 - y0) * k) / 2 };
+  };
+  const frame = frozen ?? fresh();
+  const at = (x: number, y: number) => ({ x: frame.dx + (x - frame.x0) * frame.k, y: frame.dy + (y - frame.y0) * frame.k });
+  const go = (event: ReactPointerEvent<HTMLDivElement>, f: Frame) => {
+    const el = canvas.current;
+    const rect = box.current?.getBoundingClientRect();
+    if (!el || !rect) return;
+    const px = (event.clientX - rect.left - f.dx) / f.k + f.x0;
+    const py = (event.clientY - rect.top - f.dy) / f.k + f.y0;
+    el.scrollTo({ left: px * zoom - el.clientWidth / 2, top: py * zoom - el.clientHeight / 2 });
+  };
+  const press = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0) return;
+    drag.current = { pointerId: event.pointerId, frame };
+    setFrozen(frame);
+    event.currentTarget.setPointerCapture(event.pointerId);
+    go(event, frame);
+  };
+  const move = (event: ReactPointerEvent<HTMLDivElement>) => { if (drag.current?.pointerId === event.pointerId) go(event, drag.current.frame); };
+  const release = () => { drag.current = null; setFrozen(null); };
+  const shown = at(view.left, view.top);
+  return (
+    <div ref={box} className="sk-minimap" aria-hidden="true" onPointerDown={press} onPointerMove={move} onPointerUp={release} onPointerCancel={release}>
+      <svg width={MINIMAP.w} height={MINIMAP.h}>
+        {boxes.map((b, i) => { const p = at(b.x, b.y); return <rect key={i} x={p.x} y={p.y} width={Math.max(3, b.w * frame.k)} height={Math.max(2, b.h * frame.k)} rx={1.5} />; })}
+      </svg>
+      <div className="sk-minimap__view" style={{ left: shown.x, top: shown.y, width: view.w * frame.k, height: view.h * frame.k }} />
     </div>
   );
 }
@@ -982,6 +1217,11 @@ const ThoughtNode = memo(function ThoughtNode({ thought, x, y, w, h, selected, d
     </>
   );
 });
+
+/** Plane positions are signed: the map has no edge at 0 (#509), only the contract's limit. */
+function bounded(value: number) {
+  return clamp(value, -SKETCH_LIMITS.coordinate, SKETCH_LIMITS.coordinate);
+}
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));

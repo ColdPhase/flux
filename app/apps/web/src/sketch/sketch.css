@@ -49,10 +49,18 @@
 .sk-canvas { position: relative; overflow: auto; height: clamp(360px, calc(100dvh - 300px), 720px); border-radius: var(--r-lg);
   background-color: var(--sub); background-image: radial-gradient(var(--line2) 1px, transparent 1.3px); background-size: 20px 20px;
   box-shadow: inset 0 0 0 1px var(--line); overscroll-behavior: contain; }
+/* #509 AC-1: empty space shows the hand; it closes while the plane is dragged. With the hand tool
+   or Space held, every part of the plane pans, and a finger drags the plane instead of scrolling it. */
+.sk-zoomed { cursor: grab; }
+.sk-canvas.is-hand, .sk-canvas.is-hand * { cursor: grab; }
 .sk-canvas.is-panning, .sk-canvas.is-panning * { cursor: grabbing; }
+.sk-canvas.is-hand { touch-action: none; }
+/* Two fingers pinch the map itself (#509 AC-3), not the page; the phone keeps S15 and page zoom. */
+@media (min-width: 641px) { .sk--map .sk-canvas:not(.is-hand) { touch-action: pan-x pan-y; } }
 .sk-canvas:focus-visible { outline-offset: -2px; }
 .sk-zoomed { position: relative; min-width: 100%; min-height: 100%; }
 .sk-plane { position: absolute; left: 0; top: 0; min-width: 100%; min-height: 100%; transform-origin: 0 0; }
+.sk-plane.is-reframing .sk-node, .sk-plane.is-reframing .sk-work-slot { transition: none; }
 .sk-edges, .sk-wires { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; }
 .sk-edges path { fill: none; stroke: var(--sk-edge); stroke-width: 1.5; transition: stroke var(--dur-1) var(--ease-out); }
 .sk-edges path.is-on { stroke: var(--t1); stroke-width: 2; }
@@ -197,19 +205,7 @@
 .sk-first b, .sk-empty-list b { font-weight: 500; color: var(--t2); }
 .sk-help { max-width: 58ch; font-size: var(--fs-xs); color: var(--t3); line-height: 1.7; }
 
-.sk-list { list-style: none; margin: 0; padding: 0; }
-.sk-list > li { padding: 6px 0 8px; }
-.sk-list > li + li { border-top: 1px solid var(--line); }
-.sk-li-t { display: flex; align-items: center; gap: 8px; width: calc(100% + 16px); min-height: 32px; margin: 0 -8px; padding: 4px 8px; border-radius: var(--r);
-  text-align: left; font-size: var(--fs-md); font-weight: 500; color: var(--t1); transition: var(--tr); overflow-wrap: anywhere; }
-.sk-li-t:hover { background: var(--hov); }
-.sk-li-t[aria-pressed="true"] { background: transparent; }
-/* A selected row is highlighted as a whole: title, provenance and links together. */
-.sk-list > li { margin: 0 -8px; padding: 6px 8px 8px; border-radius: var(--r); transition: var(--tr); }
-.sk-list > li:has(> .sk-li-t[aria-pressed="true"]) { background: var(--sub); }
-.sk-list > li .sk-li-t { width: 100%; margin: 0; padding: 4px 0; }
 .sk-li-s, .sk-li-l { display: block; font-size: var(--fs-sm); color: var(--t3); line-height: 1.5; }
-.sk-li-l b { font-weight: 500; color: var(--t2); }
 .sk-li-edit { display: block; width: 100%; min-height: 36px; resize: none; overflow: hidden; font: 500 var(--fs-md)/1.35 var(--font); padding: 6px 8px; border: 0;
   border-radius: var(--r); background: var(--bg); color: var(--t1); box-shadow: inset 0 0 0 1.5px var(--t1); outline: none; }
 
@@ -228,7 +224,7 @@
 /* #96: DM sketches. "Make it a project…" sits beside Map/List; copies and origins are one quiet line each. */
 .sk-promote { margin-left: auto; }
 .sk-copies { list-style: none; margin: 0; padding: 0; }
-.sk-origin__short, .sk-bl--short { display: none; }
+.sk-origin__short { display: none; }
 @media (max-width: 640px) { .sk-origin__short { display: inline; } }
 .sk-copies li, .sk-origin { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 6px; font-size: var(--fs-sm); color: var(--t3); animation: sk-note-in var(--dur-2) var(--ease-out) backwards; }
 .sk-copies svg { color: var(--t1); }
@@ -274,7 +270,7 @@
   .sk-plus--labelled { width: auto; }
   .sk-plus--labelled { width: auto; gap: 6px; padding: 0 16px 0 14px; border-radius: var(--r-pill); font-size: var(--fs-md); font-weight: 500; }
 .sk-edit-btn { min-height: 44px; min-width: 44px; padding: 0 16px; font-size: var(--fs-md); }
-  .sk-li-t, .sk-li-edit, .sk-title { min-height: 44px; }
+  .sk-li-edit, .sk-title { min-height: 44px; }
   .sk-zoom button, .sk-zoom .sk-zoom__fit { min-width: 44px; height: 44px; }
   /* The count stays compact inside the thought; its touch target reaches 44px around it. */
   .sk { --sk-work-h: 28px; }
@@ -301,10 +297,8 @@
   .sk-bar { flex-direction: column; align-items: stretch; padding: 2px; gap: 0; }
   /* One row of tools, each an icon over a short label (#266 PF-6): the canvas gets the second row
      back. Below about 340px the row scrolls sideways instead of wrapping. */
-  .sk-tools, .sk-tools--seven { display: flex; flex-wrap: nowrap; justify-content: space-between; gap: 0; overflow-x: auto; scrollbar-width: none; }
+  .sk-tools { display: flex; flex-wrap: nowrap; justify-content: space-between; gap: 0; overflow-x: auto; scrollbar-width: none; }
   .sk-tools::-webkit-scrollbar { display: none; }
-  .sk-tools--seven .sk-bl--long { display: none; }
-  .sk-tools--seven .sk-bl--short { display: inline; }
   .sk-div { display: none; }
   .sk-bar .sk-tools .ui-btn { flex: 1 0 auto; min-width: 44px; flex-direction: column; justify-content: center; gap: 1px; padding: 3px 2px; font-size: 10.5px; line-height: 1.2; }
   .sk-status { flex: none; padding: 0 8px 6px; white-space: normal; }
@@ -352,7 +346,9 @@ span.sk-li-img { width: 160px; height: 96px; }
 /* F-026 map: the canvas fills the work pane, dotted edge to edge. The header, notices and drafts float at the
    top left, the tools at the bottom centre, and the selection's actions above the selected thought. */
 .sk-page--map { position: relative; overflow: hidden; }
-.sk-page--map .sk--map { position: relative; flex: 1; min-height: 0; width: 100%; max-width: none; margin: 0; padding: 0; gap: 0; }
+.sk-page--map .sk--map { position: relative; flex: 1; min-height: 0; width: 100%; max-width: none; margin: 0; padding: 0; gap: 0; container: sk-pane / inline-size; }
+/* Beside the sidebar a tablet's pane is narrow: "Select several" is its icon alone there, so Undo stays on the toolbar's one row in the Map and the List. */
+@container sk-pane (max-width: 680px) { .sk-dock .sk-select-several { padding: 0 11px; } .sk-dock .sk-select-several .sk-bl { display: none; } }
 .sk--map .sk-canvas-wrap { position: absolute; inset: 0; display: block; flex: none; height: auto; min-height: 0; padding: 0; }
 .sk--map .sk-canvas { height: 100%; box-sizing: border-box; padding: 56px 0 100px; border-radius: 0; box-shadow: none; background-color: var(--bg); }
 .sk-over { position: absolute; left: 14px; top: 12px; right: 14px; z-index: 8; display: flex; flex-direction: column; align-items: flex-start; gap: 8px;
@@ -375,11 +371,10 @@ span.sk-li-img { width: 160px; height: 96px; }
 .sk-dock { position: absolute; left: 0; right: 0; bottom: 16px; z-index: 7; display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 0 12px; pointer-events: none; }
 .sk-dock__row { pointer-events: auto; display: flex; align-items: center; gap: 6px; max-width: 100%; padding: 5px 8px 5px 5px; border-radius: var(--r-pill);
   background: var(--el); box-shadow: var(--sh-pop), inset 0 0 0 1px var(--line); }
-.sk-dock__row:not(:has(.sk-tools)) { padding: 2px; }
 .sk-line { display: flex; flex-direction: column; align-items: center; gap: 2px; max-width: 100%; }
 .sk-hint, .sk--map .sk-status { margin: 0; padding: 0; flex: none; max-width: min(640px, 100%); font-size: var(--fs-sm); color: var(--t3); text-align: center; white-space: normal; overflow: visible; }
 .sk--map .sk-status:empty { display: none; }
-.sk-dock .sk-tools { gap: 4px; flex-wrap: nowrap; flex: none; }
+.sk-dock .sk-tools { gap: 4px; flex-wrap: wrap; justify-content: center; flex: 0 1 auto; min-width: 0; }
 .sk-dock__row { flex-wrap: wrap; justify-content: center; }
 .sk-dock__row > *, .sk-dock .sk-tools > * { flex: none; }
 .sk-dock .ui-btn { min-height: 36px; padding: 0 14px; border-radius: var(--r-pill); gap: 6px; }
@@ -391,8 +386,6 @@ span.sk-li-img { width: 160px; height: 96px; }
 .sk-tool:hover { background: var(--hov); color: var(--t1); }
 .sk-tool[aria-pressed="true"] { background: var(--sub); color: var(--t1); }
 .sk-tool[aria-disabled="true"] { opacity: .5; }
-.sk-dock .sk-zoom { position: static; padding: 0; box-shadow: none; background: transparent; margin: 0 0 0 4px; border-left: 1px solid var(--line); padding-left: 6px; }
-.sk-dock__row:not(:has(.sk-tools)) .sk-zoom { margin: 0; border: 0; padding: 0; }
 .sk--map .sk-help:not(.is-open) { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .sk--map .sk-help.is-open { position: absolute; left: 50%; bottom: 110px; z-index: 9; width: min(560px, calc(100% - 28px)); max-width: none; margin: 0; padding: 12px 16px; transform: translateX(-50%);
   border-radius: var(--r-lg); background: var(--el); box-shadow: var(--sh-pop), inset 0 0 0 1px var(--line); font-size: var(--fs-sm); color: var(--t2); }
@@ -450,3 +443,22 @@ span.sk-li-img { width: 160px; height: 96px; }
 .sk-undo { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 16px; border-radius: var(--r-pill); background: var(--el); color: var(--t1);
   box-shadow: var(--sh-card), inset 0 0 0 1px var(--line); font-size: var(--fs-md); font-weight: 500; }
 .sk-undo svg { color: var(--t2); }
+/* #509 AC-3/AC-4: the zoom controls sit at the bottom right with the minimap above them. Where the
+   pane is too narrow for them beside the centred tools, they rise above the tools instead, so the
+   tools never move and nothing overlaps. */
+.sk--map .sk-canvas-wrap { container-type: size; }
+.sk-corner { position: absolute; right: 16px; bottom: 16px; z-index: 7; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; pointer-events: none; }
+.sk-corner > * { pointer-events: auto; }
+@container (max-width: 1080px) { .sk-corner { bottom: calc(16px + var(--sk-dock-h, 64px) + 8px); } }
+/* A short pane keeps the zoom controls and lets the minimap go; the arrows and Fit still reach every thought. */
+@container (max-height: 560px) { .sk-minimap { display: none; } }
+.sk-corner .sk-zoom { position: static; margin: 0; padding: 4px; gap: 2px; border-radius: var(--r-pill); background: var(--el); box-shadow: var(--sh-pop), inset 0 0 0 1px var(--line); }
+.sk-corner .sk-zoom button { border-radius: var(--r-pill); }
+.sk-zoom .sk-div { height: 18px; margin: 0 2px; }
+.sk-minimap { position: relative; width: 172px; height: 112px; overflow: hidden; border-radius: var(--r-lg); background: var(--el);
+  box-shadow: var(--sh-card), inset 0 0 0 1px var(--line); cursor: pointer; touch-action: none; }
+.sk-minimap svg { display: block; }
+.sk-minimap rect { fill: var(--t3); opacity: .6; }
+.sk-minimap__view { position: absolute; box-sizing: border-box; border-radius: 4px; background: color-mix(in srgb, var(--t1) 5%, transparent); box-shadow: inset 0 0 0 1.5px var(--t2); pointer-events: none; }
+/* The toolbar's groups: pointer tools | adding | undo (Spokój board A03). */
+.sk-dock .sk-tools .sk-div { height: 20px; margin: 0 2px; background: var(--line2); }
