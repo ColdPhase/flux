@@ -130,13 +130,39 @@ on their behalf and no message goes to an audience of one:
   server's calm explanation instead of a thread. An open 1:1 whose other person left keeps its
   history, shows a quiet notice above the composer, and disables sending.
 
+## Reply threads, receipts and task copies (#536, #534, #537)
+
+Migration `0103_message_receipts_dm_threads.sql` (numbered 0103; the coordinator renumbers at merge).
+
+- **Threads (#536).** `dm_messages.thread_root_id` names a root of the same DM (composite key
+  `(dm_id, thread_root_id)`; a trigger refuses a reply to a reply). Every existing message stays a root.
+  The conversation window returns roots only, each with `replyCount`. `GET /api/v1/dms/:dmId/threads/:rootId`
+  (newest window, `beforeSequence`) and `POST .../threads/:rootId/replies` use the same `dm.read`/`dm.write`
+  check and locks as the DM, the same `clientMessageId` retry (the fingerprint includes the root) and the
+  1:1 recipient-left `409`. A foreign, unknown or reply root is `404 DM_MESSAGE_NOT_FOUND`. The reply event is
+  `dm.message_sent.v1` with `{ messageId, rootId }`; audience and replay are the DM's.
+- **Receipts (#534).** An observation is a row in `dm_message_observations` (or
+  `project_message_observations`) for the session's person and one message of that DM or project; the body
+  never names a viewer. `POST .../observations` needs current access (the DM row locked) and refuses the whole
+  request if any id is not a message of it. The client observes another person's message only after it has
+  been at least 60% visible for 700 ms while the page is visible and focused. `POST .../receipts` takes runs
+  of the caller's own consecutive messages of one level (roots, or one thread's replies); the server checks
+  each run against the stored messages (one author, nothing skipped) and answers the CURRENT participants
+  (project: current readers) other than the author who observed every message of the run. Those who left or
+  lost access are never named. The client omits a run that starts at the first loaded message while earlier
+  ones exist, or that is still being sent. New observations record `dm.observed.v1` (no data). The project
+  conversation has no event; its footer refreshes every 8 s while visible.
+- **Task copy (#537).** `POST .../task-copy/preview` (changes nothing) returns the excerpt (a substring of the
+  message, default all of it), the destination, the projects the caller can change and the destination's
+  audience; `POST .../task-copies` carries the preview `token` (caller, DM, message version, excerpt, project,
+  every reader). It locks workspace and project, then the caller's membership and the DM, rechecks, and
+  creates the task through the work use case; a changed audience answers `409 TASK_COPY_CHANGED` with a fresh
+  preview. The task holds the excerpt only; who copied it and when are its creator and creation time. It
+  keeps no source link, no author, DM or message id, and records no DM event.
+
 ## Accepted follow-up boundaries (#503)
 
-The current API above is the implemented slice, not a permanent prohibition on private
-threads or deliberate task copies. The independently reviewed
-[message follow-up contract](message-presentation-followups.md) records their audience and
-copy boundaries before implementation. PR #529 supplies presentation only; these capabilities
-and real grouped viewing receipts remain required, unimplemented follow-ups.
+The [message follow-up contract](message-presentation-followups.md) still governs these capabilities.
 
 ## Not yet connected
 

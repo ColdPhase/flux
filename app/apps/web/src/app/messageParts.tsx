@@ -121,8 +121,17 @@ export function sameMessageAuthor(a: { authorId: string | null; createdAt: strin
     && new Date(a.createdAt).toDateString() === new Date(b.createdAt).toDateString();
 }
 
-export function MessageTime({ at }: { at: string }) {
-  return <div className="message-time"><time dateTime={at} title={when(at)}>{clock(at)}</time></div>;
+/** "Seen by Kai", "Kai and Lena", "Kai, Lena and 2 others": real observers of a whole author run (#534). */
+export function seenLabel(names: readonly string[]) {
+  if (!names.length) return '';
+  const first = names.map((name) => name.trim().split(/\s+/)[0] || name);
+  if (first.length <= 2) return `Seen by ${first.join(' and ')}`;
+  return `Seen by ${first.slice(0, 2).join(', ')} and ${first.length - 2} ${first.length - 2 === 1 ? 'other' : 'others'}`;
+}
+
+export function MessageTime({ at, seenBy = [] }: { at: string; seenBy?: readonly string[] }) {
+  return <div className="message-time"><time dateTime={at} title={when(at)}>{clock(at)}</time>
+    {seenBy.length ? <span className="message-seen" title={seenBy.join(', ')}> · {seenLabel(seenBy)}</span> : null}</div>;
 }
 
 export function MessageDay({ label, as: Tag = 'li' }: { label: string; as?: 'li' | 'p' }) {

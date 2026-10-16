@@ -2,7 +2,7 @@ import { useCallback, useLayoutEffect, useMemo, useRef, useSyncExternalStore } f
 import { FILE_LIMITS, type Conversation, type ConversationMessage, type SendMessageCommand, type StagedFile } from '@flux/contracts';
 import { ApiError, NetworkError } from '../api/client';
 import { reply, startConversation } from '../app/conversation-api';
-import { sendDmMessage } from '../api/direct-messages';
+import { sendDmMessage, sendDmReply } from '../api/direct-messages';
 import { contributeToTask, stageFile } from './api';
 import { assumeReachable, connectionState, onConnectionChange, reportReachable, reportUnreachable } from './connection';
 import { forgetReloadRetention, setReloadRetention } from '../app/reload-retention';
@@ -261,7 +261,12 @@ async function deliver(projectId: string, context: string, command: SendMessageC
   }
   if (context.startsWith('conversation:')) return { id: command.clientMessageId, message: await reply(context.slice('conversation:'.length), command) };
   if (context.startsWith('task:')) return { id: command.clientMessageId, message: await contributeToTask(context.slice('task:'.length), { ...command, kind: 'text' }) };
-  if (context.startsWith('dm:')) return { id: command.clientMessageId, message: await sendDmMessage(context.slice('dm:'.length), { body: command.body, clientMessageId: command.clientMessageId }) };
+  if (context.startsWith('dm:')) {
+    // `dm:<dmId>` posts to the conversation, `dm:<dmId>/<rootId>` is a private reply in that message's thread (#536).
+    const [dmId, rootId] = context.slice('dm:'.length).split('/');
+    const body = { body: command.body, clientMessageId: command.clientMessageId };
+    return { id: command.clientMessageId, message: rootId ? await sendDmReply(dmId!, rootId, body) : await sendDmMessage(dmId!, body) };
+  }
   throw new Error('This composer does not publish messages.');
 }
 

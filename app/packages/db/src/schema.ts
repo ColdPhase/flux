@@ -1518,11 +1518,37 @@ export const dmMessages = pgTable('dm_messages', {
   requestFingerprint: text('request_fingerprint').notNull(),
   sequence: integer('sequence').notNull(),
   body: text('body').notNull(),
+  /** Null for a root; a reply names a root of the same DM (migration 0103, #536). */
+  threadRootId: uuid('thread_root_id'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [
   unique().on(table.dmId, table.sequence),
   unique().on(table.dmId, table.authorId, table.clientMessageId),
   foreignKey({ columns: [table.workspaceId, table.dmId], foreignColumns: [dms.workspaceId, dms.id] }).onDelete('cascade'),
+]);
+
+/** Who observed which DM message (migration 0103, #534). Reads always join the current participants. */
+export const dmMessageObservations = pgTable('dm_message_observations', {
+  workspaceId: uuid('workspace_id').notNull(),
+  dmId: uuid('dm_id').notNull(),
+  messageId: uuid('message_id').notNull(),
+  viewerId: text('viewer_id').notNull().references(() => authUsers.id, { onDelete: 'cascade' }),
+  observedAt: timestamp('observed_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  primaryKey({ columns: [table.messageId, table.viewerId] }),
+  index('dm_message_observations_viewer_idx').on(table.dmId, table.viewerId),
+]);
+
+/** Who observed which project message, roots and thread replies alike (migration 0103, #534). */
+export const projectMessageObservations = pgTable('project_message_observations', {
+  workspaceId: uuid('workspace_id').notNull(),
+  projectId: uuid('project_id').notNull(),
+  messageId: uuid('message_id').notNull(),
+  viewerId: text('viewer_id').notNull().references(() => authUsers.id, { onDelete: 'cascade' }),
+  observedAt: timestamp('observed_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  primaryKey({ columns: [table.messageId, table.viewerId] }),
+  index('project_message_observations_viewer_idx').on(table.projectId, table.viewerId),
 ]);
 
 // Return points: where each person last looked at a place (migration 0009, issue #106).
