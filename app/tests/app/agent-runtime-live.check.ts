@@ -305,7 +305,7 @@ const steps: Record<string, (...args: string[]) => Promise<void>> = {
     const assistant = await someone.browser.request('GET', PERSONAL_ASSISTANT_PATH);
     assert.equal((assistant.json as PersonalAssistantStatus).setup.runtime.state, 'signed_in', 'the API sees the owner signed in to Claude Code');
     const enabled = await someone.browser.request('POST', PERSONAL_ASSISTANT_PATH, { body: { consentVersion: PERSONAL_RUNTIME_CONSENT_VERSION, agentId: agent.id, engine: 'runtime' } });
-    assert.equal(enabled.status, 200, enabled.text);
+    assert.equal(enabled.status, 201, enabled.text);
     const started = expectStatus(await someone.browser.request('POST', conversationAssistantRunsPath(thread.id),
       { body: { clientRunId: randomUUID(), kind: 'ask', prompt: 'Which projects can you see?' } }), 202) as AssistantRun;
     assert.equal(started.engine, 'runtime');

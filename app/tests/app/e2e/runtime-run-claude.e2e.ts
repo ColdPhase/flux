@@ -81,7 +81,9 @@ test('the pinned real claude, run with the runtime\'s exact argv, shows only the
   t.diagnostic(`system/init mcp_servers: ${JSON.stringify(init.mcp_servers)}`);
   const tools = (init.tools as string[]).filter((tool) => tool !== 'EndConversation').sort();
   assert.deepEqual(tools, grant.tools.map((tool) => `mcp__flux__${tool}`).sort(), 'the start-up list is exactly the run\'s switch-derived Flux tools');
-  assert.deepEqual(init.mcp_servers, [{ name: 'flux', status: 'connected' }], 'Flux is the only MCP server, connected with the run token');
+  // 2.1.285 adds `source` ("dynamic" for --mcp-config); the read-back uses only `name` and `status`.
+  assert.deepEqual((init.mcp_servers as { name: string; status: string }[]).map(({ name, status }) => ({ name, status })), [{ name: 'flux', status: 'connected' }],
+    'Flux is the only MCP server, connected with the run token');
   const offered = model.requests.find((request) => request.tools.some((name) => name.startsWith('mcp__flux__')))?.tools ?? [];
   assert.deepEqual(offered.filter((name) => name !== 'EndConversation').sort(), tools, 'the model is offered the same list');
   const result = events.find((event) => event.type === 'result');

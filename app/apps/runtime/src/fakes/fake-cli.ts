@@ -261,7 +261,9 @@ async function claudeRun(argv: string[]): Promise<number> {
   emit({ type: 'system', subtype: 'init', cwd: process.cwd(), session_id: session, model: 'claude-fake', permissionMode: 'dontAsk', apiKeySource: 'none',
     claude_code_version: '2.1.285', output_style: 'default', slash_commands: [], agents: [], skills: [], plugins: [], uuid: randomBytes(16).toString('hex'),
     tools: [...names.map((name) => `mcp__flux__${name}`), ...(mode === 'run_extra_tool' ? ['Bash'] : [])],
-    mcp_servers: [{ name: 'flux', status: listed.status === 200 ? 'connected' : 'failed' }, ...(mode === 'run_extra_server' ? [{ name: 'other', status: 'connected' }] : [])] });
+    // The field set of the pinned real CLI's `system/init` (2.1.285, observed 2026-10-16 against the scripted model).
+    mcp_servers: [{ name: 'flux', status: listed.status === 200 ? 'connected' : 'failed', source: 'dynamic' },
+      ...(mode === 'run_extra_server' ? [{ name: 'other', status: 'connected', source: 'dynamic' }] : [])] });
   if (mode === 'run_crash') { err('fake claude: crashed\n'); return 1; }
   if (mode === 'run_broken_stream') { out('{"type":"assistant","message":{"content":[{"type":"te'); return 0; }
   if (mode === 'run_hang') await forever();

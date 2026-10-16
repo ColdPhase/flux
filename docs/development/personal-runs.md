@@ -210,6 +210,19 @@ Each end has its own `end_reason` (0098); a dispatched runtime run costs nothing
 by "[removed: looked like a secret]" (`answer_redacted`). An enablement names its engine; a runtime
 enablement has no key connection and its own consent. Operator view: [agent runtime](../operations/agent-runtime.md#runs-f-022-t5-280).
 
+**Observed 2026-10-16 with the pinned real Claude Code 2.1.285** (`tests/app/e2e/runtime-run-claude.e2e.ts`, run in
+the `mcp-clients` image against the scripted local model, no account): started with the run template's exact argv and
+the slot's environment, its `system/init` has the fields `agents, analytics_disabled, apiKeySource, capabilities,
+claude_code_version, cwd, fast_mode_disabled_reason, fast_mode_state, mcp_servers, messaging_socket_path, model,
+output_style, per_turn_effort_active, permissionMode, plugins, product_feedback_disabled, session_id, skills,
+slash_commands, subtype, tools, type, uuid, view_mode`; `tools` lists exactly the run's 18 switch-derived Flux tools
+(no built-in tool and no `EndConversation`); `mcp_servers` is `[{"name":"flux","status":"connected","source":"dynamic"}]`;
+and its Flux call was answered through `/mcp`, so `FLUX_RUN_TOKEN` reached the MCP `Authorization` header through
+`${FLUX_RUN_TOKEN}` expansion (no `headersHelper` is needed). Plan-limit, expired-login and refusal wording still
+needs a real account (T10). The same live check found that `runtime-egress`'s `/mcp` forwarder dropped MCP
+2026-07-28's `Mcp-Method` and `Mcp-Name` headers (the route answered 400); it now forwards them, `Mcp-Wire-Codec`
+and `Mcp-Param-*`.
+
 ## Switching production on
 
 Done in #179 (F-020 PROV-1), 2026-10-03:

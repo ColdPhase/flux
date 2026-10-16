@@ -85,14 +85,27 @@ export function createProxyServer({ allow, resolve = defaultResolve, connect = d
   return server;
 }
 
-const FORWARDED_REQUEST_HEADERS = ['authorization', 'content-type', 'accept', 'mcp-session-id', 'mcp-protocol-version', 'last-event-id', 'user-agent'];
+// MCP 2026-07-28 (#460) repeats the method and the tool or resource name in Mcp-Method and Mcp-Name, may name its
+// wire codec and carries SEP-2243 Mcp-Param-* headers; the route refuses a modern request without them (F-022 T5).
+const FORWARDED_REQUEST_HEADERS = ['authorization', 'content-type', 'accept', 'mcp-session-id', 'mcp-protocol-version', 'mcp-method', 'mcp-name',
+  'mcp-wire-codec', 'last-event-id', 'user-agent'];
+const MCP_PARAM = /^mcp-param-[a-z0-9-]{1,64}$/;
+const MAX_PARAM_HEADERS = 32;
 const FORWARDED_RESPONSE_HEADERS = ['content-type', 'mcp-session-id', 'www-authenticate', 'cache-control'];
 
-function pick(headers: IncomingHttpHeaders, names: string[]) {
+function pick(headers: IncomingHttpHeaders, names: string[], params = false) {
   const out: Record<string, string> = {};
   for (const name of names) {
     const value = headers[name];
     if (typeof value === 'string' && value.length <= 8192) out[name] = value;
+  }
+  if (params) {
+    let count = 0;
+    for (const [name, value] of Object.entries(headers)) {
+      if (!MCP_PARAM.test(name) || typeof value !== 'string' || value.length > 8192) continue;
+      if (++count > MAX_PARAM_HEADERS) break;
+      out[name] = value;
+    }
   }
   return out;
 }
@@ -114,7 +127,7 @@ export function createMcpForwarder({ upstream, log = () => undefined }: { upstre
       return;
     }
     const forward = httpRequest({ host: upstream.host, port: upstream.port, method: req.method, path: '/mcp', agent: false,
-      headers: { ...pick(req.headers, FORWARDED_REQUEST_HEADERS), ...(declared !== undefined ? { 'content-length': declared } : {}) } }, (answer) => {
+      headers: { ...pick(req.headers, FORWARDED_REQUEST_HEADERS, true), ...(declared !== undefined ? { 'content-length': declared } : {}) } }, (answer) => {
       res.writeHead(answer.statusCode ?? 502, pick(answer.headers, FORWARDED_RESPONSE_HEADERS));
       answer.pipe(res);
     });
