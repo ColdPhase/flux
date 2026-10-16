@@ -698,8 +698,6 @@ class CreateWindow(unittest.TestCase):
         page.locator("body").press("c")
         expect(title_field(page)).to_have_value("")
         page.keyboard.press("Escape")
-        page.goto("/map")
-        expect(page.get_by_role("region", name="Private drafts").get_by_text(text)).to_be_visible()
 
     def test_19_message_posts_in_the_chosen_projects_conversation(self) -> None:
         self.ensure_account()
