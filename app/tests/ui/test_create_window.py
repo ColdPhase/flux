@@ -16,7 +16,7 @@ import uuid
 from playwright.sync_api import Browser, Page, expect, sync_playwright
 
 from message_gestures import open_message_menu
-from create_window import dialog, open_from_tasks, submit_button, title_field
+from create_window import create_other, dialog, kind_tab, open_from_tasks, submit_button, title_field, window
 from native_work_performance import TASKS_READY, close_create, draft_value, open_create
 from touch_targets import has_minimum_touch_size
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
@@ -226,10 +226,13 @@ class CreateWindow(unittest.TestCase):
         expect(palette).to_have_count(0)
         expect(title_field(page)).to_have_value("probes")
         page.keyboard.press("Escape")
+        # With no query: the four actions with their keys (E02); Go to Inbox runs.
         palette, field = self.jump(page, "")
-        expect(palette.get_by_role("option", name="New thought on the Map")).to_be_visible()
-        palette.get_by_role("option", name="New thought on the Map").click()
-        expect(page).to_have_url(re.compile(rf"/projects/{self.ids['project']}/map$"))
+        for name in ("New task", "Go to Inbox", "Focus mode", "Hide the sidebar"):
+            expect(palette.get_by_role("option", name=name, exact=True)).to_be_visible()
+        expect(palette.get_by_role("option", name="New thought on the Map")).to_have_count(0)
+        palette.get_by_role("option", name="Go to Inbox", exact=True).click()
+        expect(page).to_have_url(re.compile(r"/inbox$"))
 
     def test_07_at_finds_agents_and_hash_finds_tasks_by_number_with_the_keyboard_only(self) -> None:
         self.ensure_account()
@@ -515,7 +518,7 @@ class CreateWindow(unittest.TestCase):
                 expect(sheet.get_by_role("button", name=re.compile("^Remove link to"))).to_be_visible()
                 page.evaluate("() => Promise.all(document.getAnimations().filter((a) => a.effect?.getTiming().iterations !== Infinity).map((a) => a.finished.catch(() => null)))")
                 targets = {"Close": sheet.get_by_role("button", name="Close"), "Project picker": sheet.locator(".create__place"),
-                           "Project": sheet.get_by_role("group", name="Create something else").get_by_role("button", name="Project", exact=True),
+                           "Project": sheet.get_by_role("tablist", name="Create").get_by_role("tab", name="Project", exact=True),
                            "Remove link": sheet.get_by_role("button", name=re.compile("^Remove link to"))}
                 for name, target in targets.items():
                     box = target.bounding_box()
@@ -615,6 +618,444 @@ class CreateWindow(unittest.TestCase):
         stored = [item for item in self.work(page) if item["title"] == "Cross command first"]
         self.assertEqual(len(stored), 1, "one persisted task")
         self.assertEqual(stored[0]["outcome"], "First command details")
+
+    # ---------------------------------------------------------------- #521: the kinds as tabs in the same window
+
+    def open_window(self, page: Page, path: str | None = None) -> None:
+        """C on a project's conversation (or `path`): the window opens on Task with its title focused."""
+        page.goto(path or f"/projects/{self.ids['project']}")
+        expect(page.get_by_role("heading", level=1, name="Community garden sensors")).to_be_visible()
+        page.locator("body").press("c")
+        expect(title_field(page)).to_be_focused()
+
+    def test_17_the_kinds_are_tabs_in_one_window_and_the_title_goes_with_the_person(self) -> None:
+        """F-026 S3 / E02: Task is the default; Thought, Message, Decision and Project are tabs with ←/→ in the same window,
+        and the typed text is in each of them (a thought, a message, a decision, a project's name)."""
+        self.ensure_account()
+        page = self.page()
+        self.open_window(page)
+        tabs = window(page).get_by_role("tablist", name="Create")
+        expect(tabs.get_by_role("tab")).to_have_text(["Task", "Thought", "Message", "Decision", "Project"])
+        expect(kind_tab(page, "Task")).to_have_attribute("aria-selected", "true")
+        expect(window(page).get_by_role("heading")).to_have_count(0)  # the window is named after its tab; no heading repeats it
+        expect(window(page).get_by_role("tabpanel")).to_have_count(1)
+        text = f"Carried across the tabs {uuid.uuid4().hex[:6]}"
+        title_field(page).fill(text)
+        # The keyboard: ←/→ move between the tabs and keep focus on them; the window and its text stay.
+        kind_tab(page, "Task").focus()
+        fields = (("Thought", "Thought", "New thought"), ("Message", "Message", "New message"), ("Decision", "Decision", "New decision"),
+                  ("Project", "What is it about?", "New project"))
+        for tab, label, name in fields:
+            page.keyboard.press("ArrowRight")
+            expect(kind_tab(page, tab)).to_be_focused()
+            expect(kind_tab(page, tab)).to_have_attribute("aria-selected", "true")
+            panel = page.get_by_role("dialog", name=name).get_by_role("tabpanel")
+            expect(panel).to_have_count(1)
+            self.assertEqual(panel.get_attribute("aria-labelledby"), kind_tab(page, tab).get_attribute("id"))
+            expect(panel.get_by_role("textbox", name=label, exact=True)).to_have_value(text)
+            if tab == "Decision":
+                expect(panel.get_by_role("combobox", name="Project")).to_have_value(self.ids["project"])
+            if tab == "Message":
+                expect(panel.get_by_role("combobox", name="Project")).to_have_count(0)  # a direct message, not a project's
+        page.keyboard.press("ArrowRight")
+        expect(kind_tab(page, "Task")).to_be_focused()
+        expect(title_field(page)).to_have_value(text)
+        page.keyboard.press("ArrowLeft")
+        expect(kind_tab(page, "Project")).to_have_attribute("aria-selected", "true")
+        page.keyboard.press("Home")
+        expect(kind_tab(page, "Task")).to_have_attribute("aria-selected", "true")
+        expect(page.get_by_role("dialog")).to_have_count(1)
+        # A pointer on a tab goes on to its text; a change there comes back to Task.
+        kind_tab(page, "Decision").click()
+        decision = page.get_by_role("dialog", name="New decision").get_by_role("textbox", name="Decision", exact=True)
+        expect(decision).to_be_focused()
+        page.keyboard.press("End")
+        page.keyboard.type(" today")
+        kind_tab(page, "Task").click()
+        expect(title_field(page)).to_have_value(f"{text} today")
+        expect(title_field(page)).to_be_focused()
+        # A blank window keeps the text as this project's draft: closing never loses it.
+        page.keyboard.press("Escape")
+        expect(window(page)).to_have_count(0)
+        page.locator("body").press("c")
+        expect(title_field(page)).to_have_value(f"{text} today")
+        expect(kind_tab(page, "Task")).to_have_attribute("aria-selected", "true")
+
+    def test_18_thought_saves_a_private_note_from_the_window(self) -> None:
+        self.ensure_account()
+        page = self.page()
+        self.open_window(page)
+        text = f"Ask the library about a second sensor shelf {uuid.uuid4().hex[:6]}"
+        title_field(page).fill(text)
+        create_other(page, "Thought")
+        thought = page.get_by_role("dialog", name="New thought")
+        expect(thought.get_by_role("textbox", name="Thought", exact=True)).to_have_value(text)
+        expect(thought.get_by_role("tabpanel").locator(".create__where")).to_contain_text("Only you")
+        thought.get_by_role("button", name=re.compile("^Save thought")).click()
+        expect(window(page)).to_have_count(0)
+        expect(page.locator(".ui-toast").filter(has_text="Thought saved to Your notes")).to_be_visible()
+        drafts = self.api(page, "GET", f"/api/v1/workspaces/{self.ids['workspace']}/drafts?limit=100", status=200)["items"]
+        self.assertEqual([(item["body"], item["visibility"]) for item in drafts if item["body"] == text], [(text, "private")])
+        # What it was made from is done with: the next window starts blank.
+        page.locator("body").press("c")
+        expect(title_field(page)).to_have_value("")
+        page.keyboard.press("Escape")
+
+    def test_19_message_is_a_private_direct_message_with_nobody_chosen_by_default(self) -> None:
+        """Message means one thing everywhere (the phone's "+" Message, New message): a direct message. Nobody is chosen until
+        the person picks someone, so it cannot go to a project by mistake. Sending is covered in test_direct_messages."""
+        self.ensure_account()
+        page = self.page()
+        self.open_window(page, f"/projects/{self.ids['project']}/tasks")
+        title_field(page).fill("Who has the spare probe cables?")
+        create_other(page, "Message")
+        message = page.get_by_role("dialog", name="New message")
+        panel = message.get_by_role("tabpanel")
+        expect(panel.get_by_role("textbox", name="Message", exact=True)).to_have_value("Who has the spare probe cables?")
+        expect(panel.locator(".create__where")).to_have_text("Nobody else is in your spaces yet")
+        expect(panel.locator(".create__foot")).to_contain_text("only the two of you can read it")
+        expect(panel.get_by_role("button", name=re.compile("^Send message"))).to_be_disabled()
+
+    def test_20_decision_proposes_in_the_project_and_opens_it_in_details(self) -> None:
+        self.ensure_account()
+        page = self.page()
+        self.open_window(page)
+        text = f"Use capacitive probes only {uuid.uuid4().hex[:6]}"
+        title_field(page).fill(text)
+        create_other(page, "Decision")
+        decision = page.get_by_role("dialog", name="New decision")
+        expect(decision.get_by_role("textbox", name="Decision", exact=True)).to_have_value(text)
+        decision.get_by_label("Why", exact=True).fill("Resistive probes corrode within a season")
+        decision.get_by_role("button", name=re.compile("^Propose decision")).click()
+        expect(window(page)).to_have_count(0)
+        details = page.get_by_role("complementary", name="Details")
+        expect(details.get_by_role("heading", name=text)).to_be_visible()
+        stored = [item for item in self.api(page, "GET", f"/api/v1/projects/{self.ids['project']}/decisions?limit=100", status=200)["items"] if item["title"] == text]
+        self.assertEqual(len(stored), 1)
+        self.assertEqual(stored[0]["status"], "proposed")
+
+    def test_21_project_creates_one_from_the_typed_name_and_a_template(self) -> None:
+        self.ensure_account()
+        page = self.page()
+        self.open_window(page)
+        name = f"Seed library {uuid.uuid4().hex[:6]}"
+        title_field(page).fill(name)
+        create_other(page, "Project")
+        project = page.get_by_role("dialog", name="New project")
+        expect(project.get_by_role("textbox", name="What is it about?", exact=True)).to_have_value(name)
+        expect(project.get_by_role("tabpanel").locator(".create__where")).to_have_text("In Garden sensors")
+        project.get_by_role("combobox", name="Start from").select_option("research")
+        expect(project.get_by_role("tabpanel").locator(".create__foot")).to_contain_text("Starts with Conversation + Wiki")
+        project.get_by_role("button", name=re.compile("^Create project")).click()
+        expect(page.get_by_role("heading", level=1, name=name)).to_be_visible()
+        expect(page).to_have_url(re.compile(r"/projects/[0-9a-f-]{36}"))
+        made = [item for item in self.api(page, "GET", f"/api/v1/workspaces/{self.ids['workspace']}/projects?limit=100", status=200)["items"] if item["name"] == name]
+        self.assertEqual(len(made), 1)
+
+    def test_22_a_double_submit_sends_one_command_and_sources_stay_in_their_project(self) -> None:
+        self.ensure_account()
+        page = self.page()
+        posts: list[str] = []
+        creates = re.compile(r"/api/v1/(projects/[^/?]+/(?:work|conversations|decisions))$")
+        page.on("request", lambda request: posts.append(creates.search(request.url).group(1)) if request.method == "POST" and creates.search(request.url) else None)
+        twice = "() => { const form = document.querySelector('.create__panel:not([hidden])'); form.requestSubmit(); form.requestSubmit(); }"
+        page.goto(f"/projects/{self.ids['project']}/tasks")
+        field = open_from_tasks(page)
+        title = f"Only once {uuid.uuid4().hex[:6]}"
+        field.fill(title)
+        page.evaluate(twice)
+        expect(dialog(page)).to_have_count(0)
+        self.assertEqual(posts, [f"projects/{self.ids['project']}/work"])
+        self.assertEqual(len([item for item in self.work(page) if item["title"] == title]), 1)
+        # The same guard holds in another tab.
+        posts.clear()
+        page.locator("body").press("c")
+        title_field(page).fill(f"Proposed once {uuid.uuid4().hex[:6]}")
+        create_other(page, "Decision")
+        page.evaluate(twice)
+        expect(window(page)).to_have_count(0)
+        self.assertEqual(posts, [f"projects/{self.ids['project']}/decisions"])
+        # A message's link belongs to its project: another project starts without it, so the task is made there.
+        made = self.thread(page, "Sources stay home: label the bed rows")
+        page.goto(f"/projects/{self.ids['project']}/conversations/{made['conversation']}")
+        message = page.locator(f"#message-{made['message']}")
+        message.hover()
+        message.get_by_role("button", name="Create task", exact=True).click()
+        links = dialog(page).get_by_role("button", name=re.compile("^Remove link to"))
+        expect(links).to_have_count(1)
+        dialog(page).get_by_role("combobox", name="Project").select_option(self.ids["other"])
+        expect(links).to_have_count(0)
+        submit_button(page).click()
+        expect(dialog(page)).to_have_count(0)
+        stored = [item for item in self.api(page, "GET", f"/api/v1/projects/{self.ids['other']}/work?limit=100", status=200)["items"] if item["title"] == "Sources stay home: label the bed rows"]
+        self.assertEqual(len(stored), 1)
+        self.assertEqual(stored[0]["links"], [])
+
+    # ---------------------------------------------------------------- #521: the empty ⌘K
+
+    def visit(self, page: Page, path: str, heading: str | None = None) -> None:
+        page.goto(path)
+        if heading:
+            expect(page.get_by_role("heading", level=1, name=heading)).to_be_visible()
+
+    def option_names(self, listbox) -> list[str]:
+        """Each option's accessible name: a recent place is "<name> · <kind>" (its row shows the kind at the end, E02)."""
+        expect(listbox.get_by_role("option").first).to_be_visible()
+        return listbox.evaluate("el => [...el.querySelectorAll('[role=option]')].map((o) => o.getAttribute('aria-label') ?? o.querySelector('.jump__rtext').textContent)")
+
+    def test_23_empty_command_k_lists_recent_places_then_the_actions_with_the_keyboard(self) -> None:
+        self.ensure_account()
+        page = self.page()
+        project, other = self.ids["project"], self.ids["other"]
+        doc = self.api(page, "POST", f"/api/v1/projects/{project}/docs", {"title": "How the garden sensors work", "body": "Probes, radio, battery."}, 201)
+        # No recent place yet but the one in view: only the actions, and the list says so.
+        self.visit(page, "/", "Home")
+        page.evaluate("Object.keys(localStorage).filter((k) => k.startsWith('flux.places.recent.')).forEach((k) => localStorage.removeItem(k))")
+        self.visit(page, "/", "Home")
+        palette, field = self.jump(page, "")
+        expect(palette.get_by_role("listbox", name="Actions")).to_be_visible()
+        expect(palette.get_by_role("option")).to_have_text([re.compile("^New task"), re.compile("^Go to Inbox"), re.compile("^Focus mode"), re.compile("^Hide the sidebar")])
+        page.keyboard.press("Escape")
+        expect(palette).to_have_count(0)
+        # Places by identity, most recent first: a second visit moves a place up once, a doc's version is its doc (named by
+        # its own title), and the place in view and pages that are not places (not found) are left out.
+        self.visit(page, f"/projects/{project}", "Community garden sensors")
+        self.visit(page, f"/projects/{project}/tasks", "Community garden sensors")
+        self.visit(page, f"/projects/{other}", "Cargo bike co-op")
+        self.visit(page, f"/projects/{project}/tasks?status=open", "Community garden sensors")
+        page.goto(f"/projects/{project}/docs/{doc['id']}/versions/1")
+        expect(page.get_by_role("heading", name="How the garden sensors work").first).to_be_visible()
+        page.goto(f"/projects/{project}/nowhere")
+        expect(page.get_by_role("heading", name="This page doesn’t exist")).to_be_visible()
+        self.visit(page, f"/projects/{project}", "Community garden sensors")
+        palette, field = self.jump(page, "")
+        listbox = palette.get_by_role("listbox", name="Recent places and actions")
+        self.assertEqual(self.option_names(listbox), ["How the garden sensors work · Wiki", "Community garden sensors · Tasks", "Cargo bike co-op · Conversation", "Home",
+                                                      "New task", "Go to Inbox", "Focus mode", "Hide the sidebar"])
+        options = listbox.get_by_role("option")
+        expect(options.first.locator(".jump__side")).to_have_text("Wiki")
+        expect(options.nth(3).locator(".jump__side")).to_have_count(0)
+        expect(listbox.locator(".jump__sh")).to_have_text(["Recent", "Actions"])
+        expect(options.nth(5).locator(".jump__key")).to_have_text(["G", "I"])
+        expect(palette.locator(".jump__foot")).to_have_text(re.compile(r"# task number.*@ people and agents"))
+        shot(page, "521-empty-palette-1440-light")
+        # ↑↓ move (and wrap), Enter opens, Esc closes.
+        selected = palette.locator("[role=option][aria-selected=true]")
+        expect(selected).to_have_attribute("aria-label", "How the garden sensors work · Wiki")
+        field.press("ArrowUp")
+        expect(selected).to_have_text(re.compile("^Hide the sidebar"))
+        for _ in range(3):
+            field.press("ArrowDown")
+        expect(selected).to_have_attribute("aria-label", "Cargo bike co-op · Conversation")
+        self.assertEqual(field.get_attribute("aria-activedescendant"), selected.get_attribute("id"))
+        field.press("Enter")
+        expect(palette).to_have_count(0)
+        expect(page).to_have_url(re.compile(rf"/projects/{other}$"))
+        palette, field = self.jump(page, "")
+        names = self.option_names(palette.get_by_role("listbox", name="Recent places and actions"))
+        self.assertEqual(names[:2], ["Community garden sensors · Conversation", "How the garden sensors work · Wiki"])
+        # The Wiki page opens at the doc itself, not the version that was open.
+        palette.get_by_role("option", name="How the garden sensors work · Wiki", exact=True).click()
+        expect(page).to_have_url(re.compile(rf"/projects/{project}/docs/{doc['id']}$"))
+        palette, field = self.jump(page, "")
+        field.press("Escape")
+        expect(palette).to_have_count(0)
+
+    def test_24_focus_mode_and_hide_the_sidebar_run_from_the_empty_command_k(self) -> None:
+        self.ensure_account()
+        page = self.page()
+        self.visit(page, f"/projects/{self.ids['project']}", "Community garden sensors")
+        side = page.get_by_role("complementary", name="Sidebar")
+        expect(side.locator(".side--rail")).to_have_count(0)
+        palette, field = self.jump(page, "")
+        field.press("ArrowUp")  # the last action
+        expect(palette.locator("[role=option][aria-selected=true]")).to_have_text(re.compile("^Hide the sidebar"))
+        field.press("Enter")
+        expect(side.locator(".side--rail")).to_have_count(1)
+        palette, field = self.jump(page, "")
+        palette.get_by_role("option", name="Show the sidebar", exact=True).click()
+        expect(side.locator(".side--rail")).to_have_count(0)
+        pill = page.get_by_role("button", name=re.compile(r"^Focus · notifications paused until"))
+        palette, field = self.jump(page, "")
+        palette.get_by_role("option", name="Focus mode", exact=True).click()
+        expect(pill).to_be_visible()
+        expect(side.locator(".side--rail")).to_have_count(1)
+        self.assertIsNotNone(self.api(page, "GET", "/api/v1/notification-preferences", status=200)["pause"]["until"])
+        # Focus folds the sidebar to its rail, so the action says what it would do now.
+        palette, field = self.jump(page, "")
+        expect(palette.get_by_role("option", name="Show the sidebar", exact=True)).to_be_visible()
+        expect(palette.get_by_role("option", name="Hide the sidebar", exact=True)).to_have_count(0)
+        palette.get_by_role("option", name="Focus mode", exact=True).click()
+        expect(pill).to_have_count(0)
+        expect(side.locator(".side--rail")).to_have_count(0)
+        self.assertIsNone(self.api(page, "GET", "/api/v1/notification-preferences", status=200)["pause"]["until"])
+
+    def test_25_the_phone_search_sheet_shows_the_same_empty_content_without_keys(self) -> None:
+        self.ensure_account()
+        page = self.page(phone=True)
+        page.goto(f"/projects/{self.ids['other']}")
+        expect(page.locator(".project-convo")).to_be_visible()
+        page.goto(f"/projects/{self.ids['project']}/tasks")
+        expect(page.get_by_role("button", name="Search", exact=True)).to_be_visible()
+        page.get_by_role("button", name="Search", exact=True).tap()
+        sheet = page.get_by_role("dialog", name="Jump to")
+        listbox = sheet.get_by_role("listbox", name="Recent places and actions")
+        # The same recent places and actions; the phone has no sidebar to hide and no focus mode, and no keys to press.
+        self.assertEqual(self.option_names(listbox), ["Cargo bike co-op · Conversation", "Home", "New task", "Go to Inbox"])
+        expect(listbox.locator(".jump__keys").first).to_be_hidden()
+        for option in listbox.get_by_role("option").all():
+            self.assertGreaterEqual(option.bounding_box()["height"], 44)
+        listbox.get_by_role("option", name="Go to Inbox", exact=True).tap()
+        expect(page).to_have_url(re.compile(r"/inbox$"))
+
+    def test_26_screenshots_of_the_tabs_and_the_empty_command_k(self) -> None:
+        """Evidence for the visual review (AC-3): computer 1440 and phone 390, light and dark, Chromium and WebKit."""
+        self.ensure_account()
+        user = self.api(self.page(), "GET", "/api/v1/me", status=200)["user"]["id"]
+        places = [{"key": f"project:{self.ids['other']}:conversation", "path": f"/projects/{self.ids['other']}"}, {"key": "home", "path": "/"}]
+        webkit = self.pw.webkit.launch()
+        self.addCleanup(webkit.close)
+        for engine, browser in (("chromium", self.browser), ("webkit", webkit)):
+            for scheme in ("light", "dark"):
+                for phone in (False, True):
+                    size = "390" if phone else "1440"
+                    page = self.page(scheme, phone=phone, browser=browser)
+                    # The recent places this device already holds (test_23 builds them by visiting): one load, so no
+                    # navigation interrupts a page's reads.
+                    page.add_init_script(f"localStorage.setItem({json.dumps('flux.places.recent.' + user)}, {json.dumps(json.dumps(places))})")
+                    page.goto(f"/projects/{self.ids['project']}/tasks")
+                    if phone:
+                        page.get_by_role("button", name="Create", exact=True).tap()
+                        page.get_by_role("dialog", name="Create").get_by_role("button", name="Task", exact=True).tap()
+                    else:
+                        expect(page.get_by_role("heading", level=1, name="Community garden sensors")).to_be_visible()
+                        page.locator("body").press("c")
+                    expect(title_field(page)).to_be_visible()
+                    title_field(page).fill("Order two spare capacitive probes")
+                    shot(page, f"521-create-task-{size}-{scheme}-{engine}")
+                    kind_tab(page, "Message").click()
+                    expect(page.get_by_role("dialog", name="New message").get_by_role("textbox", name="Message", exact=True)).to_be_visible()
+                    shot(page, f"521-create-message-{size}-{scheme}-{engine}")
+                    kind_tab(page, "Project").click()
+                    expect(page.get_by_role("dialog", name="New project").get_by_role("textbox", name="What is it about?", exact=True)).to_be_visible()
+                    shot(page, f"521-create-project-{size}-{scheme}-{engine}")
+                    page.keyboard.press("Escape")
+                    expect(window(page)).to_have_count(0)
+                    if phone:
+                        page.get_by_role("button", name="Search", exact=True).tap()
+                    else:
+                        page.keyboard.press("Control+k")
+                    expect(page.get_by_role("dialog", name="Jump to").get_by_role("listbox", name="Recent places and actions")).to_be_visible()
+                    shot(page, f"521-empty-palette-{size}-{scheme}-{engine}")
+
+    def test_27_the_window_and_its_controls_keep_their_place_across_the_tabs(self) -> None:
+        """Spokój rule 7: the tabs, Close and the primary action stay where they are whichever tab shows (1440 and 390)."""
+        self.ensure_account()
+        webkit = self.pw.webkit.launch()
+        self.addCleanup(webkit.close)
+        settle = "() => Promise.all(document.getAnimations().filter((a) => a.effect?.getTiming().iterations !== Infinity).map((a) => a.finished.catch(() => null)))"
+        for engine, browser, phone in (("chromium", self.browser, False), ("chromium", self.browser, True), ("webkit", webkit, True)):
+            with self.subTest(engine=engine, phone=phone):
+                page = self.page(phone=phone, browser=browser)
+                page.goto(f"/projects/{self.ids['project']}/tasks")
+                if phone:
+                    page.get_by_role("button", name="Create", exact=True).tap()
+                    page.get_by_role("dialog", name="Create").get_by_role("button", name="Task", exact=True).tap()
+                else:
+                    expect(page.get_by_role("heading", level=1, name="Community garden sensors")).to_be_visible()
+                    page.locator("body").press("c")
+                expect(title_field(page)).to_be_visible()
+                title_field(page).fill("Order two spare capacitive probes")
+                boxes: dict[str, dict] = {}
+                for tab in ("Task", "Thought", "Message", "Decision", "Project", "Task"):
+                    kind_tab(page, tab).click()
+                    expect(kind_tab(page, tab)).to_have_attribute("aria-selected", "true")
+                    page.evaluate(settle)
+                    shown = {"window": window(page), "tabs": window(page).get_by_role("tablist", name="Create"),
+                             "close": window(page).get_by_role("button", name="Close"), "primary": window(page).get_by_role("tabpanel").locator(".create__go")}
+                    now = {name: target.bounding_box() for name, target in shown.items()}
+                    for name, box in now.items():
+                        assert box, name
+                        if name in boxes:
+                            for edge in ("x", "y", "width", "height"):
+                                if name == "primary" and edge in ("x", "width") and not phone:
+                                    continue  # each kind's own label ("Create task", "Save thought") sets the button's width
+                                self.assertAlmostEqual(box[edge], boxes[name][edge], delta=0.5, msg=f"{engine} {'390' if phone else '1440'} {name} {edge} on {tab}")
+                        else:
+                            boxes[name] = box
+                    if not phone:
+                        # The primary action keeps its right edge on the computer.
+                        self.assertAlmostEqual(now["primary"]["x"] + now["primary"]["width"], boxes["primary"]["x"] + boxes["primary"]["width"], delta=0.5)
+
+    def test_28_a_one_line_field_shows_carried_lines_on_one_line_and_keeps_the_text(self) -> None:
+        self.ensure_account()
+        page = self.page()
+        self.open_window(page)
+        create_other(page, "Thought")
+        thought = page.get_by_role("dialog", name="New thought").get_by_role("textbox", name="Thought", exact=True)
+        thought.fill("line one\nline two")
+        kind_tab(page, "Task").click()
+        expect(title_field(page)).to_have_value("line one line two")
+        kind_tab(page, "Decision").click()
+        expect(page.get_by_role("dialog", name="New decision").get_by_role("textbox", name="Decision", exact=True)).to_have_value("line one line two")
+        kind_tab(page, "Project").click()
+        expect(page.get_by_role("dialog", name="New project").get_by_role("textbox", name="What is it about?", exact=True)).to_have_value("line one line two")
+        kind_tab(page, "Thought").click()
+        expect(thought).to_have_value("line one\nline two")
+
+    def test_29_recent_places_leave_with_the_account_on_sign_out(self) -> None:
+        """Runs last: the account signs in again and the shared session follows it."""
+        self.ensure_account()
+        page = self.page()
+        self.visit(page, f"/projects/{self.ids['other']}", "Cargo bike co-op")
+        self.visit(page, "/", "Home")
+        self.assertTrue(page.evaluate("Object.keys(localStorage).some((k) => k.startsWith('flux.places.recent.'))"))
+        page.get_by_role("button", name=re.compile("Ada Create")).click()
+        page.get_by_role("dialog", name="Account").get_by_role("button", name="Sign out").click()
+        expect(page).to_have_url(re.compile(r"/sign-in"))
+        self.assertEqual(page.evaluate("Object.keys(localStorage).filter((k) => k.startsWith('flux.places.recent.'))"), [])
+        # Signing in again on a project page (not Home): nothing remembered from before, so ⌘K lists only the actions.
+        page.goto(f"/projects/{self.ids['project']}/tasks")
+        expect(page).to_have_url(re.compile(r"/sign-in"))
+        page.get_by_label("Email").fill(EMAIL)
+        page.get_by_label("Password").fill(PASSWORD)
+        page.get_by_role("button", name="Sign in").click()
+        expect(page).to_have_url(re.compile(rf"/projects/{self.ids['project']}/tasks"))
+        expect(page.get_by_role("heading", level=1, name="Community garden sensors")).to_be_visible()
+        type(self).state = page.context.storage_state()
+        palette, field = self.jump(page, "")
+        expect(palette.get_by_role("listbox", name="Actions")).to_be_visible()
+        expect(palette.get_by_role("option", name=re.compile("Cargo bike co-op|^Home"))).to_have_count(0)
+        expect(palette).to_contain_text("Only what you can open is searched.")
+
+    def test_20_a_guest_sees_why_the_message_tab_has_no_one_to_pick_and_cannot_send(self) -> None:
+        """#555: a guest cannot list the space's people (403), so the Message tab says what a guest can do, not that nobody is there."""
+        self.ensure_account()
+        guest_email = f"guest.create+{int(time.time() * 1000)}@example.test"
+        guest_context = self.browser.new_context(base_url=ORIGIN, color_scheme="light", locale="en-GB", timezone_id="Europe/Warsaw",
+                                                 service_workers="block", viewport=DESKTOP)
+        self.addCleanup(guest_context.close)
+        guest = guest_context.new_page()
+        guest.goto("/sign-up")
+        guest.get_by_label("Name").fill("Kai Create Guest")
+        guest.get_by_label("Email").fill(guest_email)
+        guest.get_by_label("Password").fill(PASSWORD)
+        guest.get_by_role("button", name="Create account").click()
+        expect(guest.get_by_role("heading", level=1, name="Home")).to_be_visible()
+        # Its own space, so the shared workspace of the other tests keeps its people.
+        owner = self.page()
+        space = self.api(owner, "POST", "/api/v1/workspaces", {"name": "Guest space"}, 201)
+        self.api(owner, "POST", f"/api/v1/workspaces/{space['id']}/members", {"email": guest_email, "role": "guest"}, 201)
+        guest.goto("/")
+        expect(guest.get_by_role("heading", level=1, name="Home")).to_be_visible()
+        guest.get_by_role("complementary", name="Sidebar").get_by_role("button", name=re.compile("^New")).click()
+        expect(window(guest)).to_be_visible()
+        create_other(guest, "Message")
+        panel = window(guest).get_by_role("tabpanel")
+        expect(panel.locator(".create__where")).to_contain_text("Guests can reply in conversations they are added to, but cannot start one.")
+        expect(window(guest)).not_to_contain_text("Nobody else is in your spaces yet")
+        expect(window(guest).get_by_role("button", name="Send message")).to_be_disabled()
+        shot(guest, "555-create-message-guest-1440-light")
 
 if __name__ == "__main__":
     unittest.main()

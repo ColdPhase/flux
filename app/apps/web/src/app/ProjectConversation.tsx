@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { Link, useLoaderData, useLocation, useNavigate, useRevalidator, type LoaderFunctionArgs, type ShouldRevalidateFunctionArgs } from 'react-router';
-import type { AssistantAnswer, ConversationMessage, Conversation, ConversationRootWindow, Draft, Material, Page, Project, ProjectPerson, TaskCreationNotice, WorkspaceMember } from '@flux/contracts';
+import type { AssistantAnswer, ConversationMessage, Conversation, ConversationRootWindow, Draft, Material, Page, Project, ProjectGoal, ProjectPerson, TaskCreationNotice, WorkspaceMember } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { outboxView, useComposerDraft, useComposerScope, type PendingSend } from '../composer/draft';
 import { takeHandedFiles } from '../composer/handoff';
@@ -36,15 +36,20 @@ import { QuestionCard, WhenNoQuestion } from '../agents/QuestionCard';
 import { useProjectQuestions } from '../agents/questions';
 import { useTyping } from '../typing/useTyping';
 import { TypingNotice } from '../typing/TypingNotice';
+import { listProjectGoals } from '../project/goal';
 import './project-conversation.css';
 
 /** The project's one conversation (UI116-1): the newest roots and task announcements (UI116-3), and the thread a URL opens. */
-export interface ProjectData { project: Project; roots: ConversationRootWindow; notices: Page<TaskCreationNotice>; materials: Material[]; materialTotal: number; members: WorkspaceMember[]; conversation: Conversation | null }
+export interface ProjectData {
+  project: Project; roots: ConversationRootWindow; notices: Page<TaskCreationNotice>; materials: Material[]; materialTotal: number; members: WorkspaceMember[]; conversation: Conversation | null;
+  /** The project's reached goals (#520), each one entry in the stream at the moment it was reached. */
+  goals: ProjectGoal[];
+}
 export async function projectConversationLoader({ params, request }: LoaderFunctionArgs): Promise<ProjectData> {
   const projectId = params.projectId!;
   const project = await getProject(projectId, request.signal);
   // Work, decisions and results come with the project (#117 parent route).
-  const [roots, notices, materials, members] = await Promise.all([
+  const [roots, notices, materials, members, goals] = await Promise.all([
     listConversationRoots(projectId, {}, request.signal),
     // Announcements add to the stream; a failure that is not about access leaves the stream readable without them.
     listTaskNotices(projectId, {}, request.signal).catch((error: unknown) => {
@@ -56,10 +61,15 @@ export async function projectConversationLoader({ params, request }: LoaderFunct
       if (error instanceof ApiError && error.status === 403) return [];
       throw error;
     }),
+    // Only a project that had a goal reads its history; the stream stays readable without it.
+    project.goal ? listProjectGoals(projectId, request.signal).then((list) => list.items.filter((goal) => goal.reachedAt)).catch((error: unknown) => {
+      if (error instanceof ApiError && [401, 403, 404].includes(error.status)) throw error;
+      return [];
+    }) : Promise.resolve([]),
   ]);
   const conversation = params.conversationId ? await getConversation(params.conversationId, request.signal) : null;
   if (conversation && conversation.projectId !== projectId) throw new Response('Not found', { status: 404 });
-  return { project, roots, notices, materials: materials.items, materialTotal: materials.total, members, conversation };
+  return { project, roots, notices, materials: materials.items, materialTotal: materials.total, members, conversation, goals };
 }
 /** The stream stays mounted while a thread opens or closes; its loader refreshes the open thread then. */
 export function shouldRevalidateProjectConversation({ currentParams, nextParams, defaultShouldRevalidate }: ShouldRevalidateFunctionArgs) {

@@ -107,26 +107,24 @@ export function PullToRefresh({ onRefresh, children }: { onRefresh: () => void; 
   );
 }
 
-/** A goal's moment plays once: the person has seen it for this goal on this device. */
-function goalMomentSeen(goalId: string): boolean {
+/** A goal's moment plays once: the person has seen it for this goal on this device. Without storage it counts as seen. */
+export function goalMomentSeen(goalId: string): boolean {
   try { return localStorage.getItem(`flux.goal.${goalId}`) === '1'; } catch { return true; }
 }
 
-function markGoalMomentSeen(goalId: string) {
+export function markGoalMomentSeen(goalId: string) {
   try { localStorage.setItem(`flux.goal.${goalId}`, '1'); } catch { /* without storage it is not repeated this visit either: the caller holds the state */ }
 }
 
 /**
- * A project goal was reached: Celebrate once per goal, with the goal in words beside it and no confetti.
- * It stays where it is (never over content) and never returns for the same goal on this device.
+ * A project goal was reached (#520): Celebrate, with the goal in words beside it and no confetti. The caller
+ * shows it once per goal and device (`goalMomentSeen`); the face follows Settings → Appearance and the words
+ * stay. It stays where it is in the stream (never over content); Kreska's celebrate frame does not move.
  */
-export function GoalReached({ goalId, title, project, actions }: { goalId: string; title: string; project: string; actions?: ReactNode }) {
-  const [first] = useState(() => !goalMomentSeen(goalId));
-  const on = useSmallMoments();
-  useEffect(() => { if (first) markGoalMomentSeen(goalId); }, [first, goalId]);
+export function GoalReached({ title, project, actions }: { title: string; project: string; actions?: ReactNode }) {
   return (
     <section className="goal" aria-label="Goal reached">
-      {on && first ? <Kreska expression="celebrate" size={88} /> : null}
+      <Mascot expression="celebrate" size={88} />
       <h2 className="goal__title">{title}</h2>
       <p className="goal__sub">{project} · goal reached</p>
       {actions ? <div className="goal__actions">{actions}</div> : null}

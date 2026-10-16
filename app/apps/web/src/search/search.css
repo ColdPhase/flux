@@ -44,14 +44,13 @@
 .jump__close { display: inline-flex; align-items: center; min-height: 32px; padding: 0 6px; border-radius: var(--r-sm); color: var(--t1); font-size: var(--fs-md); }
 .jump__close:hover { background: var(--hov); }
 .jump__body { flex: 1; min-height: 0; overflow-y: auto; padding: 6px; overscroll-behavior: contain; }
-.jump__clear { font-size: var(--fs-xs); color: var(--t3); padding: 4px 6px; border-radius: var(--r-sm); }
-.jump__clear:hover { color: var(--t1); background: var(--hov); }
 .jump__list { list-style: none; margin: 0; padding: 0; }
 .jump__opt:not(.sr) { display: flex; align-items: center; gap: 10px; min-height: 36px; padding: 0 10px; border-radius: var(--r); color: var(--t2); font-size: var(--fs-md); cursor: pointer; }
 .jump__opt:not(.sr).is-active { background: var(--hov); color: var(--t1); }
 .jump__ric { color: var(--t3); }
-.jump__sh { padding: 10px 10px 4px; font-size: var(--fs-xs); font-weight: 500; color: var(--t3); }
-.jump__key { margin-left: auto; font: 500 11px var(--mono); color: var(--t3); background: var(--sub); border-radius: 6px; padding: 1px 6px; }
+.jump__sh { display: flex; align-items: center; justify-content: space-between; padding: 10px 10px 4px; font-size: var(--fs-xs); font-weight: 500; color: var(--t3); }
+.jump__keys { display: flex; gap: 4px; margin-left: auto; }
+.jump__key { font: 500 11px var(--mono); color: var(--t3); background: var(--sub); border-radius: 6px; padding: 1px 6px; }
 .jump__side { margin-left: auto; padding-left: 12px; font-size: var(--fs-xs); color: var(--t3); white-space: nowrap; }
 .jump__opt:not(.sr) .jump__rtext { flex: 0 1 auto; }
 .jump__rtext, .jump__alltext { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -103,6 +102,10 @@
 .search__note { margin-top: 10px; font-size: var(--fs-xs); color: var(--t3); }
 .search__problem { display: flex; align-items: center; gap: 8px; margin-top: 16px; font-size: var(--fs-sm); color: var(--t2); }
 
+/* Touch has no keys to press: the actions' key chips and the move / open / close hints are hidden; the # and @ hints stay. */
+@media (hover: none) {
+  .jump__keys, .jump__keyhint { display: none !important; }
+}
 @media (pointer: coarse) {
   .search__chip, .search__place select, .search__again, .jump__opt:not(.sr) { min-height: 44px; }
   .sr { min-height: 44px; }
