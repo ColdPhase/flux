@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router';
 import { Button, Input, Kreska } from '../ui';
-import { TEMPLATES, useNewProject } from './newProject';
+import { NEW_PROJECT_AUDIENCE, TEMPLATES, useNewProject } from './newProject';
 
 /** A new project in one step: what it is about and what to start from. People and agents come later (S20). */
 export function ProjectSetup() {
@@ -41,7 +41,7 @@ export function ProjectSetup() {
           </p>
           {error ? <p role="alert" className="project-convo__error">{error}</p> : null}
           <div className="project-new__foot">
-            <span>You and the workspace’s owners and admins can see it until you invite someone</span>
+            <span>{NEW_PROJECT_AUDIENCE}</span>
             <Button variant="secondary" onClick={cancel}>Cancel</Button>
             <Button type="submit" variant="primary" busy={busy}>Create project</Button>
           </div>

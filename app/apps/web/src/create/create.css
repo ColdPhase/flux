@@ -1,7 +1,9 @@
 /* The Create window and sheet (F-026 S3, #345). Tokens only; the picker's frame is concentric with its tile
    (6px tile + 4px inset = 10px frame), never a rounded square inside a pill. */
 
-.ui-overlay--center .create { top: 11vh; width: min(640px, calc(100% - 32px)); max-height: 78vh; border-radius: var(--r-lg); overflow: hidden; }
+/* One height for every tab (Spokój rule 7): the tabs, Close and the primary action never move when the kind changes; each
+   panel's scroll area takes up the difference. */
+.ui-overlay--center .create { top: 11vh; width: min(640px, calc(100% - 32px)); height: min(384px, 78vh); max-height: 78vh; border-radius: var(--r-lg); overflow: hidden; }
 .create__in { display: flex; flex-direction: column; min-height: 0; max-height: inherit; flex: 1; }
 /* One head row (E02): the kinds as tabs, then Close. Each kind's panel below has the same rows: where it goes, its text
    and properties, and its foot with the one primary action. */
@@ -67,8 +69,8 @@
 .create__another input:focus-visible + .create__sw { outline: 2px solid var(--t1); outline-offset: 2px; }
 
 
-/* The phone's sheet: it rises from the bottom and takes the height of what it holds. */
-.ui-overlay--bottom .create { inset: auto 0 0 0; max-height: 92dvh; border-radius: var(--r-sheet) var(--r-sheet) 0 0; box-shadow: var(--sh-pop); padding-bottom: env(safe-area-inset-bottom); }
+/* The phone's sheet rises from the bottom with one height for every tab, as the window keeps (rule 7). */
+.ui-overlay--bottom .create { inset: auto 0 0 0; height: min(600px, 92dvh); max-height: 92dvh; border-radius: var(--r-sheet) var(--r-sheet) 0 0; box-shadow: var(--sh-pop); padding-bottom: env(safe-area-inset-bottom); }
 .ui-overlay--bottom .create .create__head { position: relative; gap: 4px; padding: 22px 8px 0 12px; touch-action: none; }
 /* Five tabs and Close fit a 390px phone; a narrower one (or larger text) scrolls the tabs sideways, and the head still
    drags the sheet. */

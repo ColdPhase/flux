@@ -75,14 +75,15 @@ export interface ShellActions {
   metadataSlot: HTMLElement | null;
   /** Metadata for the current project view in the phone view menu. */
   viewMenuMetadataSlot?: HTMLElement | null;
-  /** The keyboard actions ⌘K lists (F-026 E02): Focus mode (`F`) and the computer sidebar's rail (`[`). */
+  /** The keyboard actions ⌘K lists (F-026 E02): Focus mode (`F`) and the computer sidebar (`[`). */
   toggleFocus(): void;
-  toggleRail(): void;
-  /** True while the computer sidebar is collapsed to its rail. */
+  /** Hides or shows the computer sidebar; while focus holds it on its rail, showing it ends focus, as the sidebar's own button does. */
+  toggleSidebar(): void;
+  /** True while the computer sidebar is on its rail, by choice or by focus mode. */
   sidebarHidden: boolean;
 }
 
-export const ShellContext = createContext<ShellActions>({ openDetails: () => undefined, openCreate: () => undefined, openSearch: () => undefined, openNavigation: () => undefined, actionSlot: null, metadataSlot: null, toggleFocus: () => undefined, toggleRail: () => undefined, sidebarHidden: false });
+export const ShellContext = createContext<ShellActions>({ openDetails: () => undefined, openCreate: () => undefined, openSearch: () => undefined, openNavigation: () => undefined, actionSlot: null, metadataSlot: null, toggleFocus: () => undefined, toggleSidebar: () => undefined, sidebarHidden: false });
 
 export function useShellActions(): ShellActions {
   return useContext(ShellContext);

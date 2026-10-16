@@ -95,7 +95,7 @@
 .search__note { margin-top: 10px; font-size: var(--fs-xs); color: var(--t3); }
 .search__problem { display: flex; align-items: center; gap: 8px; margin-top: 16px; font-size: var(--fs-sm); color: var(--t2); }
 
-/* Keys mean nothing without a keyboard: touch shows the actions and the @ / # hints, not the keys. */
+/* Touch has no keys to press: the actions' key chips and the move / open / close hints are hidden; the # and @ hints stay. */
 @media (hover: none) {
   .jump__keys, .jump__keyhint { display: none !important; }
 }

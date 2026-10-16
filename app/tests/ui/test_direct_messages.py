@@ -356,5 +356,38 @@ class DirectMessageJourney(unittest.TestCase):
         expect(lee.get_by_text("Welcome back, Lee.")).to_be_visible()
 
 
+    def test_09_the_create_windows_message_tab_sends_a_private_direct_message(self) -> None:
+        """#521: Message in the Create window is a direct message, as the phone's "+" Message is. Nobody is chosen at first, so
+        nothing is sent until the person picks who reads it, and it never reaches the project."""
+        ada = self.page("ada")
+        ada.goto(f"/projects/{self.project_id}")
+        expect(ada.get_by_role("heading", level=1, name="Garden sensors")).to_be_visible()
+        ada.locator("body").press("c")
+        window = ada.get_by_role("dialog", name="New task")
+        window.get_by_label("Title", exact=True).fill("Can you bring the spare probe cables on Thursday?")
+        window.get_by_role("tablist", name="Create").get_by_role("tab", name="Message", exact=True).click()
+        message = ada.get_by_role("dialog", name="New message").get_by_role("tabpanel")
+        expect(message.get_by_role("textbox", name="Message", exact=True)).to_have_value("Can you bring the spare probe cables on Thursday?")
+        to = message.get_by_role("combobox", name="To")
+        expect(to).to_have_value("")
+        send = message.get_by_role("button", name=re.compile("^Send message"))
+        expect(send).to_be_disabled()
+        self.assertEqual(sorted(to.locator("option").all_inner_texts()[1:]), ["Kai Tanaka", "Lee Moreno"])
+        to.select_option(value=f"{self.workspace_id}:{self.ids['kai']}")
+        expect(message.locator(".create__foot")).to_contain_text("Only you and Kai Tanaka can read it")
+        send.click()
+        expect(ada.get_by_role("dialog", name="New message")).to_have_count(0)
+        ada.locator(".ui-toast").filter(has_text="Sent to Kai Tanaka").get_by_role("button", name="Open").click()
+        expect(ada).to_have_url(re.compile(r"/dm/[0-9a-f-]{36}$"))
+        expect(ada.locator(".dm-msg__body", has_text="Can you bring the spare probe cables on Thursday?")).to_be_visible()
+        dm_id = ada.url.rsplit("/", 1)[-1]
+        status, dm = self.api(ada, f"/api/v1/dms/{dm_id}")
+        self.assertEqual(status, 200)
+        self.assertEqual((dm["kind"], sorted(dm["audience"]["participantIds"])), ("pair", sorted([self.ids["ada"], self.ids["kai"]])))
+        self.assertEqual(dm["messages"][-1]["body"], "Can you bring the spare probe cables on Thursday?")
+        status, roots = self.api(ada, f"/api/v1/projects/{self.project_id}/conversation-roots?limit=50")
+        self.assertFalse([root for root in roots["roots"] if root["message"]["body"].startswith("Can you bring the spare probe cables")])
+
+
 if __name__ == "__main__":
     unittest.main()

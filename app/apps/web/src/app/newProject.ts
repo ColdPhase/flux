@@ -14,6 +14,9 @@ export const TEMPLATES: { id: ProjectTemplate; name: string; has: string }[] = [
   { id: 'blank', name: 'Blank', has: 'Conversation only' },
 ];
 
+/** Who can see a new project (restricted, #188) until people are invited: the page and the Create window say the same. */
+export const NEW_PROJECT_AUDIENCE = 'You and the workspace’s owners and admins can see it until you invite someone';
+
 /**
  * Making a project (S20), shared by this page and the Create window's Project tab: the person's space (named here when
  * they have none yet), a template, and one key per intent, so a retry after a lost answer never makes a second space or

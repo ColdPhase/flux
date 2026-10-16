@@ -2,13 +2,14 @@ import { useEffect, useId, useMemo, useRef, useState, type FormEvent, type Mouse
 import { useLocation, useNavigate, useRevalidator } from 'react-router';
 import { WORK_LIMITS, WORK_STATUSES, type Agent, type CreateWorkCommand, type ObjectRef, type Project, type WorkItem, type WorkspaceMember, type WorkStatus } from '@flux/contracts';
 import { ApiError } from '../api/client';
+import { openDm, sendDmMessage } from '../api/direct-messages';
 import { useIntentKeys } from '../api/intent-keys';
 import { getProject } from '../api/sketches';
 import { noteTitle } from '../app/captures';
-import { createPrivateDraft, listWorkspaceMembers, startConversation } from '../app/conversation-api';
+import { createPrivateDraft, listWorkspaceMembers } from '../app/conversation-api';
 import { useShellData } from '../app/data';
 import { readDraft, useDraft, writeDraft } from '../app/drafts';
-import { TEMPLATES, useNewProject } from '../app/newProject';
+import { NEW_PROJECT_AUDIENCE, TEMPLATES, useNewProject } from '../app/newProject';
 import { AccountChangedError, assertSignedInAs, ensurePersonalSpace } from '../app/personalSpace';
 import { useShellActions, type CreateRequest } from '../app/shellContext';
 import { searchFlux } from '../search/api';
@@ -23,8 +24,9 @@ import './create.css';
 
 const mac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform);
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-/** One line for a title-like field: a message carried into it keeps its words, not its line breaks. */
-const oneLine = (text: string) => text.replace(/\s*\n\s*/g, ' ').trim();
+/** A one-line field shows a carried text on one line (its words, not its line breaks) and leaves the text itself as it is. */
+const flat = (text: string) => text.replace(/\s*\n\s*/g, ' ');
+const oneLine = (text: string) => flat(text).trim();
 
 type Kind = 'task' | 'thought' | 'message' | 'decision' | 'project';
 const KINDS: { id: Kind; label: string; name: string }[] = [
@@ -343,7 +345,7 @@ function TaskForm({ ids, request, prefilled, phone, carried, projectId, onProjec
       <Go label="Create task" busy={busy} ready={ready} phone={phone} />
     </>}>
       <label className="ui-vh" htmlFor={ids.field}>Title</label>
-      <input ref={titleRef} id={ids.field} className="create__title" value={title} maxLength={WORK_LIMITS.title} disabled={busy} placeholder="What needs doing?"
+      <input ref={titleRef} id={ids.field} className="create__title" value={flat(title)} maxLength={WORK_LIMITS.title} disabled={busy} placeholder="What needs doing?"
         aria-describedby={!prefilled && (draft.text || draft.storage === 'visit') ? noteId : undefined}
         onChange={(event) => setTitle(event.target.value)} />
       <textarea className="create__details" aria-label="Details" rows={2} value={outcome} maxLength={WORK_LIMITS.outcome} disabled={busy}
@@ -439,44 +441,77 @@ function ThoughtForm({ ids, phone, carried, projectId, onClose }: PanelProps) {
   );
 }
 
-/** Message: a new message in the chosen project's conversation, the same one its composer sends. */
-function MessageForm({ ids, phone, carried, projectId, onProject, onClose }: PanelProps) {
-  const { projects } = useShellData();
+/**
+ * Message: a direct message to one person, as the phone's "+" Message and New message start it. Only the two of you can
+ * read it, and nobody is chosen until the person picks someone, so a private message never goes anywhere by default.
+ * A group starts on the Messages page; a project's conversation has its own composer.
+ */
+function MessageForm({ ids, phone, carried, onClose }: PanelProps) {
+  const { me, workspaces } = useShellData();
+  const revalidator = useRevalidator();
   const toast = useToast();
   const go = useNavigate();
+  const [people, setPeople] = useState<{ workspaceId: string; members: WorkspaceMember[] }[] | null>(null);
+  const [to, setTo] = useState('');
   const [busy, setBusy] = useState(false);
   const inFlight = useRef(false);
   const [error, setError] = useState('');
-  // A retry of the same send reuses its client message id, so a lost answer never posts it twice.
+  // A retry reuses its keys: the same conversation opens once and a lost answer never sends the message twice.
+  const opening = useRef<{ to: string; key: string } | null>(null);
   const attempt = useRef<{ payload: string; id: string } | null>(null);
-  const project = projects.find((item) => item.id === projectId);
+  // The people of the person's spaces, read when the tab is first shown.
+  useEffect(() => {
+    if (!ids.active || people !== null) return undefined;
+    const controller = new AbortController();
+    void Promise.all(workspaces.map(async (space) => ({ workspaceId: space.id, members: (await listWorkspaceMembers(space.id, controller.signal).catch(forbidden)).filter((member) => member.userId !== me.user.id) })))
+      .then((lists) => setPeople(lists.filter((list) => list.members.length)))
+      .catch(() => { if (!controller.signal.aborted) setPeople([]); });
+    return () => controller.abort();
+  }, [ids.active, people, workspaces, me.user.id]);
+  const [toSpace, toUser] = to ? to.split(':') : [];
+  const person = people?.find((list) => list.workspaceId === toSpace)?.members.find((member) => member.userId === toUser);
   const body = carried.text.trim();
-  const ready = !!body && !!project && !busy;
+  const ready = !!body && !!person && !busy;
   async function submit() {
-    if (!ready || !project || inFlight.current) return;
+    if (!ready || !person || !toSpace || inFlight.current) return;
     inFlight.current = true;
     setBusy(true); setError('');
     const snapshot = carried.begin();
-    const payload = JSON.stringify([project.id, body]);
-    if (attempt.current?.payload !== payload) attempt.current = { payload, id: crypto.randomUUID() };
+    if (opening.current?.to !== to) opening.current = { to, key: crypto.randomUUID() };
     try {
-      await startConversation(project.id, { body, clientMessageId: attempt.current.id });
+      const dm = await openDm(toSpace, [person.userId], opening.current.key);
+      const payload = JSON.stringify([dm.id, body]);
+      if (attempt.current?.payload !== payload) attempt.current = { payload, id: crypto.randomUUID() };
+      await sendDmMessage(dm.id, { body, clientMessageId: attempt.current.id });
       attempt.current = null;
       carried.made(snapshot);
+      revalidator.revalidate();
       onClose();
-      toast({ message: `Posted in ${project.name}`, tone: 'success', timeout: 4000, action: { label: 'Open', onClick: () => go(`/projects/${project.id}`) } });
+      toast({ message: `Sent to ${person.name}`, tone: 'success', timeout: 4000, action: { label: 'Open', onClick: () => go(`/dm/${dm.id}`) } });
     } catch (cause) {
-      setError(cause instanceof ApiError && cause.status === 403 ? 'You can read this project but not post in it.' : 'Could not post the message. Your text is still here; try again.');
+      setError(cause instanceof ApiError && (cause.code === 'DM_RECIPIENT_LEFT' || cause.code === 'DM_RECIPIENT_UNAVAILABLE') ? cause.message
+        : cause instanceof ApiError && cause.code === 'DM_PARTICIPANT_UNAVAILABLE' ? 'This person is no longer in this space.'
+          : cause instanceof ApiError && cause.status === 403 ? 'You can’t start conversations in this space.' : 'Could not send the message. Your text is still here; try again.');
     } finally { inFlight.current = false; setBusy(false); }
   }
+  const spaceName = (id: string) => workspaces.find((space) => space.id === id)?.name ?? 'Space';
+  const where = people === null ? <span>{ids.active ? 'Loading people…' : null}</span> : !people.length ? <span>Nobody else is in your spaces yet</span> : (
+    <label className="create__chip create__chip--quiet"><Icon name="person" size={13} /><span>{person ? `To ${person.name}` : 'Choose a person'}</span><Icon name="chevron-down" size={12} />
+      <select aria-label="To" value={to} onChange={(event) => { setTo(event.target.value); setError(''); }}>
+        <option value="">Choose a person</option>
+        {people.map((list) => {
+          const options = list.members.map((member) => <option key={member.userId} value={`${list.workspaceId}:${member.userId}`}>{member.name}</option>);
+          return people.length > 1 ? <optgroup key={list.workspaceId} label={spaceName(list.workspaceId)}>{options}</optgroup> : options;
+        })}
+      </select>
+    </label>
+  );
   return (
-    <Panel ids={ids} where={<ProjectWhere ids={ids} projectId={projectId} onProject={onProject} phone={phone} />} onSubmit={() => void submit()}
-      foot={<><p className="create__note">{project ? 'Goes to the conversation · everyone in the project can read it' : 'A message goes to a project’s conversation'}</p><Go label="Post message" busy={busy} ready={ready} phone={phone} /></>}>
-      {project ? <>
-        <textarea id={ids.field} className="create__text" aria-label="Message" rows={3} value={carried.text} maxLength={100_000} disabled={busy} placeholder="Write to everyone in the project…"
-          onChange={(event) => { carried.set(event.target.value); setError(''); }} />
-        {error ? <p className="create__error" role="alert">{error}</p> : null}
-      </> : <p className="create__note">There is no project yet. Make one in the Project tab, then write in its conversation.</p>}
+    <Panel ids={ids} where={where} onSubmit={() => void submit()}
+      foot={<><p className="create__note">{person ? `Only you and ${person.name} can read it` : 'A direct message: only the two of you can read it'}</p><Go label="Send message" busy={busy} ready={ready} phone={phone} /></>}>
+      <textarea id={ids.field} className="create__text" aria-label="Message" rows={3} value={carried.text} maxLength={100_000} disabled={busy} placeholder="Write a message…"
+        onChange={(event) => { carried.set(event.target.value); setError(''); }} />
+      {error ? <p className="create__error" role="alert">{error}</p> : null}
     </Panel>
   );
 }
@@ -517,7 +552,7 @@ function DecisionForm({ ids, phone, carried, projectId, onProject, onClose }: Pa
     <Panel ids={ids} where={<ProjectWhere ids={ids} projectId={projectId} onProject={onProject} phone={phone} />} onSubmit={() => void submit()}
       foot={<><p className="create__note">{project ? 'A person with write access accepts it' : 'A decision belongs to a project'}</p><Go label="Propose decision" busy={busy} ready={ready} phone={phone} /></>}>
       {project ? <>
-        <input id={ids.field} className="create__name" aria-label="Decision" value={carried.text} maxLength={WORK_LIMITS.title} disabled={busy} placeholder="What is being decided?"
+        <input id={ids.field} className="create__name" aria-label="Decision" value={flat(carried.text)} maxLength={WORK_LIMITS.title} disabled={busy} placeholder="What is being decided?"
           onChange={(event) => { carried.set(event.target.value); setError(''); }} />
         <textarea className="create__details" aria-label="Why" rows={2} value={why} maxLength={WORK_LIMITS.rationale} disabled={busy} placeholder="Why this is the right call (optional)"
           onChange={(event) => { setWhy(event.target.value); setError(''); }} />
@@ -550,13 +585,14 @@ function ProjectForm({ ids, phone, carried, onClose }: PanelProps) {
     : <input className="create__space" aria-label="Your space" value={spaceName} maxLength={200} disabled={busy} placeholder="Name your space first" onChange={(event) => setSpaceName(event.target.value)} />;
   return (
     <Panel ids={ids} where={where} onSubmit={() => void submit()} foot={<><p className="create__note">Starts with {chosen.has} · invite people and agents later</p><Go label="Create project" busy={busy} ready={canCreate} phone={phone} /></>}>
-      <input id={ids.field} className="create__name" aria-label="What is it about?" value={carried.text} maxLength={WORK_LIMITS.title} disabled={busy} placeholder="What is it about?"
+      <input id={ids.field} className="create__name" aria-label="What is it about?" value={flat(carried.text)} maxLength={WORK_LIMITS.title} disabled={busy} placeholder="What is it about?"
         onChange={(event) => carried.set(event.target.value)} />
       <div className="create__props">
         <PickChip label="Start from" icon={<Icon name="board" size={14} />} shown={chosen.name} value={template} onChange={(value) => setTemplate(value as typeof template)}>
           {TEMPLATES.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.has}</option>)}
         </PickChip>
       </div>
+      <p className="create__note">{NEW_PROJECT_AUDIENCE}</p>
       <TooLong text={name} limit={WORK_LIMITS.title} />
       {error ? <p className="create__error" role="alert">{error}</p> : null}
     </Panel>

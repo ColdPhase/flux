@@ -48,7 +48,12 @@ export function useRecentSearches(userId: string) {
  * an address: Home, the Sketchbook, the Inbox, one direct message, or one view of one project. Opening it again moves it to
  * the front with the address last seen there, so a project's Wiki is one place whichever page or version was open.
  */
-export interface RecentPlace { key: string; path: string }
+export interface RecentPlace {
+  key: string;
+  path: string;
+  /** The object's own title when the place is one object, e.g. a Wiki page; a view is named by its project and view. */
+  title?: string;
+}
 const PLACE_PREFIX = 'flux.places.recent.';
 /** Kept a little longer than shown, so the place in view and places no longer open to the person can be left out. */
 const PLACE_MAX = 8;
@@ -89,7 +94,7 @@ function loadPlaces(userId: string): RecentPlace[] {
     const parsed: unknown = JSON.parse(localStorage.getItem(PLACE_PREFIX + userId) ?? '[]');
     if (Array.isArray(parsed)) {
       items = parsed.filter((item): item is RecentPlace => !!item && typeof item.key === 'string' && typeof item.path === 'string'
-        && placeOfPath(item.path)?.key === item.key).slice(0, PLACE_MAX);
+        && placeOfPath(item.path)?.key === item.key && (item.title === undefined || typeof item.title === 'string')).slice(0, PLACE_MAX);
     }
   } catch { items = []; }
   placeCache.set(userId, items);
@@ -99,7 +104,7 @@ function loadPlaces(userId: string): RecentPlace[] {
 /** Records the place in view as the most recent one (the same place moves to the front, never twice). */
 export function rememberPlace(userId: string, place: RecentPlace) {
   const current = loadPlaces(userId);
-  if (current[0]?.key === place.key && current[0].path === place.path) return;
+  if (current[0]?.key === place.key && current[0].path === place.path && current[0].title === place.title) return;
   const next = [place, ...current.filter((item) => item.key !== place.key)].slice(0, PLACE_MAX);
   placeCache.set(userId, next);
   try { localStorage.setItem(PLACE_PREFIX + userId, JSON.stringify(next)); } catch { /* kept for this visit */ }

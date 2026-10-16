@@ -13,20 +13,25 @@ import './search.css';
 
 type Option =
   | { kind: 'result'; id: string; result: SearchResult }
-  | { kind: 'place'; id: string; place: RecentPlace; label: string; icon: IconName }
+  | { kind: 'place'; id: string; place: RecentPlace; label: string; side?: string; icon: IconName }
   | { kind: 'all'; id: string }
   | { kind: 'command'; id: string; section: string; label: string; icon: IconName; keys?: string[]; run: () => void }
   | { kind: 'agent'; id: string; agent: Agent };
 
-/** A project's views as its header names them, so two views of one project read apart in "Recent". */
-const PROJECT_VIEW: Record<string, { label: string; icon: IconName }> = {
-  conversation: { label: 'Conversation', icon: 'chat' }, tasks: { label: 'Tasks', icon: 'tasks' }, map: { label: 'Map', icon: 'map' },
-  docs: { label: 'Wiki', icon: 'doc' }, agents: { label: 'Agents', icon: 'spark' },
+/**
+ * A recent row as E02 draws it: the place's own name, and its kind at the end. A project's view is named by the project
+ * with the view as its kind, so two views of one project read apart; a Wiki page by its own title.
+ */
+interface PlaceName { label: string; side?: string; icon: IconName }
+const PROJECT_VIEW: Record<string, { side: string; icon: IconName }> = {
+  conversation: { side: 'Conversation', icon: 'chat' }, tasks: { side: 'Tasks', icon: 'tasks' }, map: { side: 'Map', icon: 'map' },
+  docs: { side: 'Wiki', icon: 'doc' }, agents: { side: 'Agents', icon: 'spark' },
 };
-const OWN_PLACE: Record<string, { label: string; icon: IconName }> = {
-  home: { label: 'Home', icon: 'home' }, 'home:tasks': { label: 'Home · Tasks', icon: 'tasks' }, 'home:docs': { label: 'Home · Wiki', icon: 'doc' },
+const OWN_PLACE: Record<string, PlaceName> = {
+  home: { label: 'Home', icon: 'home' }, 'home:tasks': { label: 'Home', side: 'Tasks', icon: 'tasks' }, 'home:docs': { label: 'Home', side: 'Wiki', icon: 'doc' },
   sketchbook: { label: 'Sketchbook', icon: 'edit' }, inbox: { label: 'Inbox', icon: 'inbox' },
 };
+const placeName = (name: PlaceName) => (name.side ? `${name.label} · ${name.side}` : name.label);
 
 /** `@` searches people and agents, `#` tasks by number or title; anything else searches everything. */
 type Scope = 'all' | 'people' | 'tasks' | 'agents' | 'wiki';
@@ -100,7 +105,7 @@ function JumpBody({ onClose, userId, phone }: { onClose: () => void; userId: str
   const recent = useRecentSearches(userId);
   const recentPlaces = useRecentPlaces(userId);
   const { projects, workspaces, directMessages } = useShellData();
-  const { openCreate, openDetails, toggleFocus, toggleRail, sidebarHidden } = useShellActions();
+  const { openCreate, openDetails, toggleFocus, toggleSidebar, sidebarHidden } = useShellActions();
   const location = useLocation();
   const here = location.pathname.match(/^\/projects\/([^/]+)/)?.[1];
   // On the phone the chips choose the scope; on the computer `@` and `#` do (⌘K is unchanged).
@@ -133,24 +138,26 @@ function JumpBody({ onClose, userId, phone }: { onClose: () => void; userId: str
   // With no query: up to four recent places (not the one in view, and only those the person can still open, named as
   // their header names them), then the four actions with their keys as drawn (E02).
   const hereKey = placeOfPath(location.pathname)?.key;
-  const named = (place: RecentPlace): { label: string; icon: IconName } | null => {
+  const named = (place: RecentPlace): PlaceName | null => {
     const own = OWN_PLACE[place.key];
     if (own) return own;
     const [kind, id, view] = place.key.split(':');
-    if (kind === 'dm') { const dm = directMessages.find((item) => item.id === id); return dm ? { label: dm.title, icon: 'person' } : null; }
+    if (kind === 'dm') { const dm = directMessages.find((item) => item.id === id); return dm ? { label: dm.title, side: 'Message', icon: 'person' } : null; }
     const project = kind === 'project' ? projects.find((item) => item.id === id) : undefined;
     const shown = view ? PROJECT_VIEW[view] : undefined;
-    return project && shown ? { label: `${project.name} · ${shown.label}`, icon: shown.icon } : null;
+    if (!project || !shown) return null;
+    // A Wiki page is named by its own title; the doc it folds its versions into is the place.
+    return { label: view === 'docs' && place.title && /\/docs\/[^/]+$/.test(place.path) ? place.title : project.name, side: shown.side, icon: shown.icon };
   };
   const places = recentPlaces.filter((place) => place.key !== hereKey)
     .flatMap((place) => { const name = named(place); return name ? [{ place, ...name }] : []; }).slice(0, 4);
   const emptyOptions: Option[] = [
-    ...places.map(({ place, label, icon }): Option => ({ kind: 'place', id: `place-${place.key}`, place, label, icon })),
+    ...places.map(({ place, label, side, icon }): Option => ({ kind: 'place', id: `place-${place.key}`, place, label, side, icon })),
     { kind: 'command', section: 'Actions', id: 'action-new-task', label: 'New task', icon: 'plus', keys: ['C'], run: () => openCreate({ kind: 'task', ...(here ? { projectId: here } : {}) }) },
     { kind: 'command', section: 'Actions', id: 'action-inbox', label: 'Go to Inbox', icon: 'inbox', keys: ['G', 'I'], run: () => navigate('/inbox') },
     ...(phone ? [] : [
       { kind: 'command' as const, section: 'Actions', id: 'action-focus', label: 'Focus mode', icon: 'focus' as const, keys: ['F'], run: toggleFocus },
-      { kind: 'command' as const, section: 'Actions', id: 'action-rail', label: sidebarHidden ? 'Show the sidebar' : 'Hide the sidebar', icon: 'sidebar' as const, keys: ['['], run: toggleRail },
+      { kind: 'command' as const, section: 'Actions', id: 'action-rail', label: sidebarHidden ? 'Show the sidebar' : 'Hide the sidebar', icon: 'sidebar' as const, keys: ['['], run: toggleSidebar },
     ]),
   ];
   const results: Option[] = shown.map((result) => ({ kind: 'result' as const, id: result.id, result }));
@@ -199,7 +206,7 @@ function JumpBody({ onClose, userId, phone }: { onClose: () => void; userId: str
       {phone ? <h2 className="jump__title">Search</h2> : null}
       <div className="jump__field">
         <Icon name="search" size={16} className="jump__icon" />
-        <input ref={inputRef} className="jump__input" type="search" value={query} placeholder="Search or create · @ people · # tasks"
+        <input ref={inputRef} className="jump__input" type="search" value={query} placeholder="Search or create · # tasks · @ people"
           role="combobox" aria-expanded={options.length > 0} aria-controls={listId} aria-autocomplete="list" aria-label="Jump to"
           aria-describedby={statusId} aria-activedescendant={options.length ? `${listId}-${current}` : undefined}
           enterKeyHint="search" autoComplete="off" spellCheck={false}
@@ -229,11 +236,11 @@ function JumpBody({ onClose, userId, phone }: { onClose: () => void; userId: str
               // Section names are plain text: the list holds options only, so nothing interactive sits inside it.
               const head = section && section !== before ? <li key={`h-${section}`} role="presentation" className="jump__sh">{section}</li> : null;
               return [head, (
-                <li key={option.id} id={`${listId}-${index}`} role="option" aria-selected={index === current}
+                <li key={option.id} id={`${listId}-${index}`} role="option" aria-selected={index === current} aria-label={option.kind === 'place' ? placeName(option) : undefined}
                   className={`jump__opt${option.kind === 'result' ? ' sr' : ''}${option.kind === 'all' ? ' jump__all' : ''}${index === current ? ' is-active' : ''}`}
                   onMouseMove={() => { if (index !== current) setActive(index); }} onClick={() => choose(option)}>
                   {option.kind === 'result' ? <ResultBody result={option.result} />
-                    : option.kind === 'place' ? <><Icon name={option.icon} size={15} className="jump__ric" /><span className="jump__rtext">{option.label}</span></>
+                    : option.kind === 'place' ? <><Icon name={option.icon} size={15} className="jump__ric" /><span className="jump__rtext">{option.label}</span>{option.side ? <small className="jump__side">{option.side}</small> : null}</>
                     : option.kind === 'command' ? <><Icon name={option.icon} size={15} className="jump__ric" /><span className="jump__rtext">{option.label}</span>{option.keys ? <span className="jump__keys" aria-hidden="true">{option.keys.map((key) => <kbd key={key} className="jump__key">{key}</kbd>)}</span> : null}</>
                     : option.kind === 'agent' ? <><Icon name="spark" size={15} className="jump__ric" /><span className="jump__rtext">{option.agent.name}</span><small className="jump__side">Agent</small></>
                     : <><span className="jump__alltext">See all results for “{rest}”</span><Icon name="chevron-right" size={14} /></>}
@@ -253,7 +260,7 @@ function JumpBody({ onClose, userId, phone }: { onClose: () => void; userId: str
           <p className="jump__empty">{/[\p{L}\p{N}]{2,}/u.test(rest) ? <>Nothing you can open matches “{rest}”. Try fewer or different words.</> : 'Type at least two letters of a word.'}</p>
         ) : state.status === 'failed' ? <p className="jump__empty" role="alert">{state.message}</p> : null}
       </div>
-      <p className="jump__foot" aria-hidden="true">{options.length ? <><span className="jump__keyhint"><kbd>↑</kbd><kbd>↓</kbd> move</span><span className="jump__keyhint"><kbd>↵</kbd> open</span></> : null}<span><kbd>@</kbd> people and agents</span><span><kbd>#</kbd> task number</span><span className="jump__keyhint"><kbd>Esc</kbd> close</span></p>
+      <p className="jump__foot" aria-hidden="true">{options.length ? <><span className="jump__keyhint"><kbd>↑</kbd><kbd>↓</kbd> move</span><span className="jump__keyhint"><kbd>↵</kbd> open</span></> : null}<span><kbd>#</kbd> task number</span><span><kbd>@</kbd> people and agents</span><span className="jump__keyhint"><kbd>Esc</kbd> close</span></p>
     </div>
   );
 }

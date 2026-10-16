@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import type { ProjectPerson } from '@flux/contracts';
-import { Outlet, useLocation, useNavigate, useParams, useRevalidator } from 'react-router';
+import { Outlet, useLocation, useMatches, useNavigate, useParams, useRevalidator } from 'react-router';
 import { useStreamEvents } from '../api/stream';
 import { Drawer, IconButton, MEDIA, SidePanel, Tabs, duration, flip, play, useMediaQuery, useToast, useSidePanelMode, type TabItem } from '../ui';
 import { useShellData } from './data';
@@ -173,9 +173,9 @@ function AppLayoutContent() {
     actionSlot,
     metadataSlot, viewMenuMetadataSlot,
     toggleFocus() { void toggleFocus(); },
-    toggleRail,
-    sidebarHidden: railed,
-  }), [toggleDetails, actionSlot, metadataSlot, viewMenuMetadataSlot, projectId, detailsOwner, toggleRail, railed, toggleFocus]);
+    toggleSidebar() { if (focusing) void toggleFocus(); else toggleRail(); },
+    sidebarHidden: railed || focusing,
+  }), [toggleDetails, actionSlot, metadataSlot, viewMenuMetadataSlot, projectId, detailsOwner, toggleRail, railed, toggleFocus, focusing]);
 
   // A link inside an overlaid panel or sheet (#117 overview) leads to its destination.
   const [shownPath, setShownPath] = useState(location.pathname);
@@ -396,10 +396,15 @@ function AppLayoutContent() {
   // ⌘K's "Recent" lists the places the person opened on this device (F-026 E02): a project's view, a direct message, the
   // Inbox, Home. A project or conversation this account cannot open (the not-found page) is not remembered.
   const openable = projectId ? !!activeProject : dmId && dmId !== 'new' ? !!activeDm : true;
+  // A Wiki page is remembered with its own title, read from the doc the reader loaded (its current title, for any version).
+  const matches = useMatches();
+  const shownDoc = (matches[matches.length - 1]?.loaderData as { doc?: { title?: unknown } } | undefined)?.doc;
+  const docTitle = typeof shownDoc?.title === 'string' && shownDoc.title.trim() ? shownDoc.title : undefined;
   useEffect(() => {
     const opened = placeOfPath(location.pathname);
-    if (opened && openable) rememberPlace(me.user.id, opened);
-  }, [location.pathname, openable, me.user.id]);
+    if (!opened || !openable) return;
+    rememberPlace(me.user.id, opened.key.endsWith(':docs') && docTitle && /\/docs\/[^/]+$/.test(opened.path) ? { ...opened, title: docTitle } : opened);
+  }, [location.pathname, openable, me.user.id, docTitle]);
   const rowViews = phone ? null
     : activeProject && projectViews ? { items: projectViews, label: 'Project views' }
       : dmViews ? { items: dmViews, label: 'Direct message views' }
