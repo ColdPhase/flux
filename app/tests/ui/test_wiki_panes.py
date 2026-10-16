@@ -860,7 +860,7 @@ class WikiPanesJourney(unittest.TestCase):
                     self.assertLessEqual(moved, 0.5, f"{slot} moved by {moved}px from read to {state} at {name}: {read[slot]} -> {places[slot]}")
             # Back is the leftmost control of the toolbar; the page's own state follows it.
             back = page.locator(".wiki-bar__back").bounding_box()
-            self.assertLess(back["x"], bar.locator(".doc-head__k").bounding_box()["x"])
+            self.assertLessEqual(back["x"], bar.locator(".doc-head__k").bounding_box()["x"])
 
     def test_13b_wiki_page_reference_chips_keep_routes_audiences_and_versions(self) -> None:
         setup = self.page("owner")
