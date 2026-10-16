@@ -1,11 +1,9 @@
 import assert from 'node:assert/strict';
-import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
-import type { CreatedThought, Sketch, WorkItem } from '@flux/contracts';
 import { pool } from './support/db.js';
-import { actionScene } from './support/mcp-actions.js';
 import { expect } from './support/mcp.js';
-import { fillThread, threadBudget, type ThreadNativeScene } from './support/internal-agent-threads.js';
+import { threadBudget } from './support/internal-agent-threads.js';
+import { eraseProject, erasedWithProject, fullProject, projectReferences } from './support/project-erasure-scene.js';
 
 // #530 / 0098: agent-thread rows and their content-free provenance leave only together with their owner.
 const threadTables = ['agent_thread_artifact_boundaries', 'agent_thread_artifact_resets', 'agent_thread_artifact_mutations',
@@ -25,65 +23,6 @@ const boundaryKinds = async (projectId: string) => (await pool.query(
 const refused = (constraint: string) => (error: unknown) =>
   !!error && typeof error === 'object' && 'code' in error && error.code === '23514' && 'constraint' in error && error.constraint === constraint;
 
-/**
- * Erases a whole project. The first three deletes clear existing references outside the agent-thread tables
- * (agent action receipts and standing grants, task discussions) that block any project deletion today; they are
- * not part of 0098. Guard events reference receipts through a deferred key, so they go with the project below.
- */
-async function eraseProject(projectId: string) {
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-    await client.query('DELETE FROM agent_command_receipts WHERE project_id=$1', [projectId]);
-    await client.query('DELETE FROM agent_standing_grants WHERE project_id=$1', [projectId]);
-    await client.query('DELETE FROM project_task_discussions WHERE project_id=$1', [projectId]);
-    await client.query('DELETE FROM projects WHERE id=$1', [projectId]);
-    await client.query('COMMIT');
-  } catch (error) {
-    await client.query('ROLLBACK');
-    throw error;
-  } finally {
-    client.release();
-  }
-}
-
-async function upload(f: ThreadNativeScene, text: string) {
-  const response = await fetch(new URL(`/api/v1/projects/${f.projectId}/files?uploadId=${randomUUID()}&name=erasure.txt`, f.owner.base), {
-    method: 'POST', headers: { 'content-type': 'application/octet-stream', cookie: f.owner.cookieHeader(), origin: f.owner.defaultOrigin }, body: text,
-  });
-  assert.equal(response.status, 201);
-  return await response.json() as { id: string };
-}
-
-/** One project with every installed artifact kind, a real thread (native turns and a human boundary) and resets. */
-async function fullProject() {
-  const f = await actionScene(pool), grant = await f.grant('conversation.reply', 'execute', 100);
-  const task = expect(await f.owner.request('POST', `/api/v1/projects/${f.projectId}/work`, { body: { title: 'Erased with its project' } }), 201) as unknown as WorkItem;
-  await fillThread(f, task.id, grant.id);
-  expect(await f.owner.request('POST', `/api/v1/work/${task.id}/agent-thread`,
-    { body: { body: 'A person answers in the thread.', clientMessageId: randomUUID() } }), 201);
-  expect(await f.owner.request('POST', `/api/v1/projects/${f.projectId}/docs`,
-    { body: { title: 'Erasure notes', body: `[The task](flux:work/${task.id}) has a measured note.`, state: 'published' } }), 201);
-  expect(await f.owner.request('PATCH', `/api/v1/materials/${f.source.materialId}`,
-    { body: { clientMutationId: randomUUID(), expectedVersion: f.source.version, body: 'A revised release plan.' } }), 200);
-  expect(await f.owner.request('POST', `/api/v1/projects/${f.projectId}/results`,
-    { body: { title: 'Measured', finding: 'positive', evidence: 'Observed behavior', work: [task.id], clientCommandId: randomUUID() } }), 201);
-  expect(await f.owner.request('POST', `/api/v1/projects/${f.projectId}/decisions`,
-    { body: { title: 'Keep the rule', rationale: 'Observed data', affects: [task.id] } }), 201);
-  const map = expect(await f.owner.request('POST', `/api/v1/workspaces/${f.workspaceId}/sketches`,
-    { body: { title: 'Erasure map', scope: 'project', projectId: f.projectId } }), 201) as unknown as Sketch;
-  const { thought } = expect(await f.owner.request('POST', `/api/v1/sketches/${map.id}/thoughts`,
-    { body: { id: randomUUID(), text: 'First thought', x: 20, y: 20 }, headers: { 'idempotency-key': randomUUID() } }), 201) as unknown as CreatedThought;
-  expect(await f.owner.request('POST', `/api/v1/projects/${f.projectId}/links`,
-    { body: { from: { type: 'work', id: task.id }, to: { type: 'thought', id: thought.id } } }), 201);
-  expect(await f.owner.request('PATCH', `/api/v1/sketches/${map.id}/thoughts/${thought.id}`,
-    { body: { text: 'A changed thought' }, headers: { 'if-match': `"${thought.version}"`, 'idempotency-key': randomUUID() } }), 200);
-  const file = await upload(f, `erasure ${randomUUID()}`);
-  expect(await f.owner.request('POST', `/api/v1/work/${task.id}/discussion`,
-    { body: { body: 'A published work product', attachmentIds: [file.id], clientMessageId: randomUUID() } }), 201);
-  return { ...f, task };
-}
-
 test('erasing a project removes its thread rows and provenance; ordinary updates and deletes stay refused', { timeout: 120_000 }, async () => {
   const f = await fullProject();
   // A second project in the same workspace keeps every row.
@@ -94,6 +33,9 @@ test('erasing a project removes its thread rows and provenance; ordinary updates
   assert.ok(keptBefore.agent_thread_artifact_boundaries > 0 && keptBefore.agent_thread_artifact_mutations > 0);
 
   const p = f.projectId, before = await rows(p);
+  const references = await projectReferences(p);
+  for (const table of erasedWithProject) assert.ok(references[table]! > 0, `${table} is seeded`);
+  const keptReferences = await projectReferences(kept.id);
   assert.deepEqual(await boundaryKinds(p), ['decision', 'doc', 'file', 'material', 'result', 'thought']);
   for (const [key, value] of Object.entries(before)) assert.ok(value > 0, `${key} is seeded`);
   assert.equal(before.agent_thread_guard_events, 6, 'five native turns and one human boundary');
@@ -120,6 +62,10 @@ test('erasing a project removes its thread rows and provenance; ordinary updates
   for (const [key, value] of Object.entries(await rows(p))) assert.equal(value, 0, `${key} is erased with the project`);
   assert.equal((await pool.query('SELECT count(*)::int n FROM agent_thread_artifact_resets WHERE task_id=$1', [f.task.id])).rows[0].n, 0);
   assert.deepEqual(await rows(kept.id), keptBefore);
+  // Nothing in any table that names a project still names the erased one, and the other project is untouched.
+  for (const [table, count] of Object.entries(await projectReferences(p))) assert.equal(count, 0, `${table} keeps no row of the erased project`);
+  assert.deepEqual(await projectReferences(kept.id), keptReferences);
+  assert.equal((await pool.query('SELECT count(*)::int n FROM agent_command_receipts WHERE grant_id IN (SELECT id FROM agent_standing_grants WHERE project_id=$1)', [p])).rows[0].n, 0);
 });
 
 test('erasing a task removes its own thread, guard events and resets; the project keeps boundaries and witnesses', { timeout: 120_000 }, async () => {
