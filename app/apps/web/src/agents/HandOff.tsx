@@ -11,6 +11,7 @@ import { contributeToTask } from '../composer/api';
 import { getAgentPolicy, getProjectAgents } from './api';
 import { agentEntries, connectionState, currentWorkLine, firstName, isAgentWorking, mayDo, tasksHeldBy, teammateOf, type AgentEntry } from './roster';
 import { useSessionClock } from './useSessionClock';
+import './handoff.css';
 
 /** The task being handed off; `version` is the one its owner is changed from. */
 export interface HandOffTask { id: string; version: number; number: number; title: string }
@@ -35,7 +36,7 @@ export function loadLine(entry: AgentEntry, held: readonly WorkRowProjection[], 
   const work = entry.connection?.currentWork;
   if (work) return currentWorkLine(work, isAgentWorking(entry, now));
   const first = held[0];
-  if (!first) return 'no task now';
+  if (!first) return `${state === 'online' ? 'online' : state === 'offline' ? 'offline' : 'not signed in yet'} · no task now`;
   const where = state === 'online' ? '' : ` · ${state === 'not_signed_in' ? 'not signed in yet' : 'offline'}`;
   return `has #${first.number}${where}${held.length > 1 ? `, ${held.length - 1} more handed` : ''}`;
 }
@@ -77,8 +78,8 @@ export function HandOffDialog({ open, onClose, project, task, agentId = null, on
   const phone = useMediaQuery(MEDIA.phone);
   const body = open ? <HandOffBody onClose={onClose} project={project} task={task ?? null} agentId={agentId} onDone={onDone} /> : null;
   return phone
-    ? <Sheet open={open} onClose={onClose} label="Hand off a task" className="handoff-sheet">{body}</Sheet>
-    : <Overlay placement="center" open={open} onClose={onClose} label="Hand off a task">{body}</Overlay>;
+    ? <Sheet open={open} onClose={onClose} label="Hand off a task" className="handoff-sheet"><div className="ui-grabber" aria-hidden="true"><span /></div>{body}</Sheet>
+    : <Overlay placement="center" open={open} onClose={onClose} label="Hand off a task" className="handoff-dialog">{body}</Overlay>;
 }
 
 function HandOffBody({ onClose, project, task: given, agentId, onDone }: {
@@ -129,6 +130,7 @@ function HandOffBody({ onClose, project, task: given, agentId, onDone }: {
       .map((entry) => all.find((other) => other.agentId === entry.agentId && isAgentWorking(other, now))
         ?? all.find((other) => other.agentId === entry.agentId && other.connection?.currentWork) ?? entry);
   }, [loaded, humans, now]);
+  const empty = !!loaded && !entries.some((item) => item.access !== null);
   const held = (id: string) => tasksHeldBy(id, loaded?.tasks ?? []);
   const task: HandOffTask | null = given && taskId === given.id ? given : loaded?.tasks.find((row) => row.id === taskId) ?? null;
   const entry = entries.find((item) => item.agentId === chosen) ?? null;
@@ -152,7 +154,7 @@ function HandOffBody({ onClose, project, task: given, agentId, onDone }: {
     try { append(await readPage(cursor)); } catch { setPageFailed(true); } finally { setPaging(false); }
   };
   // A page of tasks that all have an agent is not "no task": keep reading until one is free or the list ends.
-  const reading = !!loaded && !given && !!cursor && !free.length && !pageFailed;
+  const reading = !!loaded && !empty && !given && !!cursor && !free.length && !pageFailed;
   useEffect(() => {
     if (!reading || !cursor) return undefined;
     const controller = new AbortController();
@@ -211,6 +213,26 @@ function HandOffBody({ onClose, project, task: given, agentId, onDone }: {
   const status = !loaded ? (loadFailed ? 'Agents couldn’t be loaded.' : 'Loading agents…') : null;
   const ready = !!task && !!entry && (teammate || grant.canTake);
 
+  if (empty) return (
+    <div className="handoff handoff--empty" aria-labelledby={titleId}>
+      <header className="handoff__head">
+        <span className="handoff__step">Hand off</span>
+        <span className="handoff__what">{given ? <><span className="ui-task-number">#{given.number}</span> · {given.title}</> : 'Hand off a task'}</span>
+        <button type="button" className="handoff__close" aria-label="Close" onClick={onClose}><Icon name="x" size={16} /></button>
+      </header>
+      <div className="handoff__body handoff__empty">
+        <Kreska size={56} expression="idle" />
+        <h2 className="handoff__title" id={titleId}>No agents in this project yet</h2>
+        <p>Connect Claude Code, Codex or your assistant once. After that, handing off a task takes two clicks.</p>
+      </div>
+      <footer className="handoff__foot">
+        <span className="handoff__tip">The task stays yours until you hand it off.</span>
+        <Button variant="secondary" onClick={onClose}>Cancel</Button>
+        <Link ref={(node) => { first.current = node; }} className="ui-btn ui-btn--primary" to="/connect-agent" onClick={onClose}>Connect an agent</Link>
+      </footer>
+    </div>
+  );
+
   return (
     <form className="handoff" aria-labelledby={titleId} onSubmit={next} onKeyDown={onKeyDown} data-step={step}>
       <header className="handoff__head">
@@ -234,7 +256,6 @@ function HandOffBody({ onClose, project, task: given, agentId, onDone }: {
             )}
             {pageFailed ? <p className="handoff__note" role="alert">More tasks couldn’t be read. <button type="button" className="ui-link" onClick={() => { setPageFailed(false); void loadMore(); }}>Try again</button></p> : null}
             {status ? <p className="handoff__note" role="status">{status}</p> : null}
-            {loaded && !entries.length ? <p className="handoff__note">No agents are connected here yet. {manager ? 'Connect one first.' : 'Ask a project manager to connect one.'} <Link className="ui-link" to="/connect-agent">Connect an agent</Link></p> : null}
             <div className="handoff__list" role="radiogroup" aria-label="Agent">
               {entries.map((item, index) => {
                 const busyWith = held(item.agentId);
@@ -248,7 +269,7 @@ function HandOffBody({ onClose, project, task: given, agentId, onDone }: {
                       onChange={() => setChosen(item.agentId)} />
                     <Kreska size={36} expression={kreskaFor(item, now)} hue={agentHue(item.agentId)} />
                     <span className="handoff__who"><b>{item.name}</b>
-                      <small>{asks && item.owner ? `for ${item.owner} · ${firstName(item.owner)} decides` : [item.owner ? `for ${item.owner}` : null, item.connection?.name, note].filter(Boolean).join(' · ')}</small></span>
+                      <small>{asks && item.owner ? `for ${item.owner} · ${firstName(item.owner)} decides · ${note}` : [item.owner ? `for ${item.owner}` : null, item.connection?.name, note].filter(Boolean).join(' · ')}</small></span>
                     <span className="handoff__mark" aria-hidden="true">{chosen === item.agentId ? <Icon name="check" size={14} /> : null}</span>
                   </label>
                 );
