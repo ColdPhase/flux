@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   NEEDS_YOU_PATH,
   needsYouItemPath,
@@ -57,7 +57,7 @@ export function useNeedsYou(userId: string): Queue {
   // Showing an item again re-renders even when the answer already holds it (it was only filtered out).
   const [, redraw] = useState(0);
   // Item-scoped intent survives reads made before its write settles (#519, #541).
-  const changes = useMemo(() => new Map<string, { item: NeedsYouItem | null; pending: boolean }>(), [userId]);
+  const scope = useRef({ userId, changes: new Map<string, { item: NeedsYouItem | null; pending: boolean }>() });
   const active = useRef(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reload = useCallback(() => setVersion((n) => n + 1), []);
@@ -67,25 +67,29 @@ export function useNeedsYou(userId: string): Queue {
     timer.current = setTimeout(reload, 1200);
   }, [reload]);
   useEffect(() => {
+    scope.current = { userId, changes: new Map() };
     active.current = true;
     return () => { active.current = false; if (timer.current) clearTimeout(timer.current); };
-  }, []);
+  }, [userId]);
   const change = useCallback((key: string, item: NeedsYouItem | null, settled?: Promise<unknown>) => {
+    const owner = scope.current;
+    if (!active.current || owner.userId !== userId) return { isCurrent: () => false };
     const entry = { item, pending: !!settled };
-    changes.set(key, entry);
+    owner.changes.set(key, entry);
     if (settled) {
       const end = () => {
         // An earlier write must not clear the later Undo's protection.
         entry.pending = false;
-        soon();
+        if (scope.current === owner) soon();
       };
       settled.then(end, end);
     }
-    return { isCurrent: () => changes.get(key) === entry };
-  }, [changes, soon]);
+    return { isCurrent: () => active.current && scope.current === owner && owner.changes.get(key) === entry };
+  }, [userId, soon]);
 
   useEffect(() => {
     const controller = new AbortController();
+    const changes = scope.current.changes;
     // Remember which intents this read can authoritatively reconcile. A write may settle before its answer.
     const started = new Map([...changes].filter(([, entry]) => !entry.pending));
     getNeedsYou(controller.signal).then((response) => {
@@ -107,7 +111,7 @@ export function useNeedsYou(userId: string): Queue {
       setState((previous) => ({ userId, response: previous.userId === userId ? previous.response : null, failed: true }));
     });
     return () => controller.abort();
-  }, [userId, version, changes]);
+  }, [userId, version]);
   const hide = useCallback((key: string, settled?: Promise<unknown>) => { const intent = change(key, null, settled); setState((previous) => previous.userId === userId && previous.response
     ? { ...previous, response: { ...previous.response, items: previous.response.items.filter((item) => item.key !== key), count: Math.max(0, previous.response.count - 1) } } : previous); return intent; }, [change, userId]);
   const show = useCallback((item: NeedsYouItem, settled?: Promise<unknown>) => { const intent = change(item.key, item, settled); redraw((n) => n + 1); setState((previous) => previous.userId === userId && previous.response && !previous.response.items.some((entry) => entry.key === item.key)
