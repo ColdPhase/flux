@@ -40,7 +40,8 @@ export function projectAgentRepository(db: Database, policy: ProjectAgentPolicy)
         const candidates = await tx.select({ connection: schema.agentConnections, agentName: schema.agents.name, ownerName: schema.authUsers.name })
           .from(schema.agentConnectionProjects)
           .innerJoin(schema.agentConnections, and(eq(schema.agentConnections.id, schema.agentConnectionProjects.connectionId),
-            isNull(schema.agentConnections.revokedAt)))
+            isNull(schema.agentConnections.revokedAt),
+            or(ne(schema.agentConnections.computeSource, 'owner_assistant'), eq(schema.agentConnections.ownerUserId, reader.id))))
           .innerJoin(schema.agents, and(eq(schema.agents.id, schema.agentConnections.agentId),
             eq(schema.agents.ownerUserId, schema.agentConnections.ownerUserId), isNull(schema.agents.revokedAt)))
           .innerJoin(schema.authUsers, eq(schema.authUsers.id, schema.agentConnections.ownerUserId))
@@ -52,7 +53,6 @@ export function projectAgentRepository(db: Database, policy: ProjectAgentPolicy)
           if (await allows({ kind: 'agent', id: row.connection.agentId }, 'project.read', projectId)
             && await allows({ kind: 'human', id: row.connection.ownerUserId }, 'project.read', projectId)) current.push(row);
         }
-        const manages = await allows(reader, 'project.manage', projectId);
         const asked = await tx.select({ request: schema.assistantJoinRequests, agentId: schema.assistantSettings.agentId })
           .from(schema.assistantJoinRequests)
           .innerJoin(schema.assistantSettings, and(eq(schema.assistantSettings.connectionId, schema.assistantJoinRequests.connectionId),
@@ -60,7 +60,7 @@ export function projectAgentRepository(db: Database, policy: ProjectAgentPolicy)
           .innerJoin(schema.agentConnections, and(eq(schema.agentConnections.id, schema.assistantSettings.connectionId),
             isNull(schema.agentConnections.revokedAt), eq(schema.agentConnections.computeSource, 'owner_assistant')))
           .where(and(eq(schema.assistantJoinRequests.projectId, projectId), eq(schema.assistantJoinRequests.state, 'pending'),
-            ...(manages ? [] : [eq(schema.assistantJoinRequests.ownerUserId, reader.id)])))
+            eq(schema.assistantJoinRequests.ownerUserId, reader.id)))
           .orderBy(schema.assistantJoinRequests.createdAt, schema.assistantJoinRequests.id);
         const joinRequests = [];
         for (const row of asked) if (await allows({ kind: 'human', id: row.request.ownerUserId }, 'project.read', projectId))

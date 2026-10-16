@@ -141,6 +141,9 @@ class HandOffJourney(unittest.TestCase):
         self.api(ada, "POST", f"/api/v1/projects/{pid}/grants", {"principal": {"kind": "agent", "id": agents["reader"]}, "role": "viewer"}, status=201)
         self.api(ada, "POST", "/api/v1/agent-connections", {"agentId": agents["claude"], "selectedProjectIds": [pid],
                  "scopes": ["flux.context.read", "flux.proposal.write"], "name": "Desk laptop", "clientDesignation": "claude_code"}, status=201)
+        # A project roster lists MCP connections only (#522); a read-only agent still has its own connection.
+        self.api(ada, "POST", "/api/v1/agent-connections", {"agentId": agents["reader"], "selectedProjectIds": [pid],
+                 "scopes": ["flux.context.read"], "name": "Read-only client", "clientDesignation": "codex"}, status=201)
         busy = self.api(ada, "POST", f"/api/v1/projects/{pid}/work", {"title": "Calibrate the probes at two soil depths", "status": "in_progress",
                         "owner": {"kind": "agent", "id": agents["claude"]}}, status=201)
         ids = {"workspace": ws["id"], "project": pid, "busy": busy["id"], **{f"agent_{k}": v for k, v in agents.items()}}
@@ -160,7 +163,7 @@ class HandOffJourney(unittest.TestCase):
             # No claimed unit on a live session here, so the handed task is not "working" (C-1; #347 P1-1).
             expect(claude).to_contain_text("Handed #1 · not signed in yet")
             expect(claude).not_to_have_attribute("data-working", "true")
-            expect(rows.filter(has_text="Reader agent")).to_contain_text("nothing handed to it")
+            expect(rows.filter(has_text="Reader agent")).to_contain_text("Not signed in from your client yet")
             expect(page.get_by_text("2 in this project", exact=True)).to_be_visible()
             # Requests, Policy and "Connect your own agent": one row each, below the list.
             expect(page.get_by_role("link", name=re.compile("^Agent questions"))).to_have_attribute("href", "/inbox")
@@ -658,6 +661,8 @@ class HandOffJourney(unittest.TestCase):
                 self.api(page, "POST", f"/api/v1/projects/{project}/grants",
                          {"principal": {"kind": "agent", "id": agent}, "role": "contributor"}, status=201)
                 task = self.api(page, "POST", f"/api/v1/projects/{project}/work", {"title": "Check the probes after rain"}, status=201)
+                self.api(page, "POST", "/api/v1/agent-connections", {"agentId": agent, "selectedProjectIds": [project],
+                         "scopes": ["flux.context.read", "flux.proposal.write"], "name": "Field laptop", "clientDesignation": "codex"}, status=201)
                 grants = self.api(page, "GET", f"/api/v1/projects/{project}/grants", status=200)
                 page.goto(f"/projects/{project}/agents")
                 page.get_by_role("button", name="Hand off a task").tap()
