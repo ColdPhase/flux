@@ -447,16 +447,16 @@ class WorkDecisionsJourney(unittest.TestCase):
         for key in ("finding", "pivot", "idea"):
             message = page.locator(f"#message-{self.messages[key]}")
             assert_author_column(self, message, page.viewport_size["width"], f"{label}: {key}")
-            meta = message.locator(".project-convo__message-meta").bounding_box()
             bubble = message.locator(":scope > .message-bubble").bounding_box()
             if key == "finding":
-                self.assertAlmostEqual(bubble["x"] + bubble["width"], meta["x"] + meta["width"], delta=1,
-                                       msg=f"{label}: own message ends at the author's right edge")
+                # #529: an own message carries no author line; its bubble is the right-aligned edge (checked below).
+                expect(message.locator(".project-convo__message-meta")).to_have_count(0)
             else:
+                meta = message.locator(".project-convo__message-meta").bounding_box()
                 self.assertAlmostEqual(bubble["x"], meta["x"], delta=1, msg=f"{label}: {key} starts at the author-name edge")
         edges = page.locator(".thread__list").evaluate("el => { const r = el.getBoundingClientRect(); return {left:r.left, right:r.right}; }")
         inset = 42 if page.viewport_size["width"] <= 680 else 44
-        self.assertAlmostEqual(mine["x"] + mine["width"], edges["right"] - inset, delta=1, msg=f"{label}: own bubble is right-aligned")
+        self.assertAlmostEqual(mine["x"] + mine["width"], edges["right"], delta=1, msg=f"{label}: own bubble is right-aligned (#529: no avatar column on own messages)")
         self.assertAlmostEqual(theirs["x"], edges["left"] + inset, delta=1, msg=f"{label}: other bubble is left-aligned")
         own_fill = page.locator(f"#message-{self.messages['finding']} > .message-bubble").evaluate("el => getComputedStyle(el).backgroundColor")
         other_fill = page.locator(f"#message-{self.messages['pivot']} > .message-bubble").evaluate("el => getComputedStyle(el).backgroundColor")
