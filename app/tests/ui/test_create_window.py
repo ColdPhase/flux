@@ -897,6 +897,8 @@ class CreateWindow(unittest.TestCase):
     def test_26_screenshots_of_the_tabs_and_the_empty_command_k(self) -> None:
         """Evidence for the visual review (AC-3): computer 1440 and phone 390, light and dark; WebKit for the phone."""
         self.ensure_account()
+        user = self.api(self.page(), "GET", "/api/v1/me", status=200)["user"]["id"]
+        places = [{"key": f"project:{self.ids['other']}:conversation", "path": f"/projects/{self.ids['other']}"}, {"key": "home", "path": "/"}]
         webkit = self.pw.webkit.launch()
         self.addCleanup(webkit.close)
         for engine, browser in (("chromium", self.browser), ("webkit", webkit)):
@@ -906,8 +908,9 @@ class CreateWindow(unittest.TestCase):
                         continue
                     size = "390" if phone else "1440"
                     page = self.page(scheme, phone=phone, browser=browser)
-                    page.goto(f"/projects/{self.ids['other']}")
-                    expect(page.locator(".project-convo")).to_be_visible()
+                    # The recent places this device already holds (test_23 builds them by visiting): one load, so no
+                    # navigation interrupts a page's reads.
+                    page.add_init_script(f"localStorage.setItem({json.dumps('flux.places.recent.' + user)}, {json.dumps(json.dumps(places))})")
                     page.goto(f"/projects/{self.ids['project']}/tasks")
                     if phone:
                         page.get_by_role("button", name="Create", exact=True).tap()
