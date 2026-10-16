@@ -126,6 +126,18 @@ export function SketchMap(props: SketchMapProps) {
   const [compositionHeight, setCompositionHeight] = useState(240);
   const [compositionPosition, setCompositionPosition] = useState<{ left: number; top: number } | null>(null);
   const phoneToolsRef = useRef<HTMLDivElement>(null);
+  // The zoom and minimap rise above the bottom toolbar and its line where the pane is too narrow for
+  // them beside it. The tallest height seen keeps them clear however the toolbar or the hint wraps,
+  // and they only ever move up once, not with every status line (Spokój rule 7).
+  const dockRef = useRef<HTMLDivElement>(null);
+  const [dockHeight, setDockHeight] = useState(64);
+  useLayoutEffect(() => {
+    const el = dockRef.current;
+    if (compact || !el || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(() => { const h = Math.ceil(el.getBoundingClientRect().height); setDockHeight((before) => Math.max(before, h)); });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [compact]);
   const [phoneToolsHeight, setPhoneToolsHeight] = useState(150);
   // Larger reading text and optional Undo/status rows must never cover a thought's task count.
   // Reserve the actual dock height; widths and graph positions remain display-only geometry.
@@ -263,9 +275,20 @@ export function SketchMap(props: SketchMapProps) {
     const placeBar = () => {
       bar.style.maxWidth = `${Math.max(0, canvas.clientWidth - 16)}px`;
       bar.style.marginLeft = '0px';
+      const { above } = bar.dataset;
       const view = canvas.getBoundingClientRect();
       const bounds = bar.getBoundingClientRect();
-      const dx = Math.max(view.left + 8 - bounds.left, Math.min(0, view.right - 8 - bounds.right));
+      let dx = Math.max(view.left + 8 - bounds.left, Math.min(0, view.right - 8 - bounds.right));
+      // Above the thought, clear of the floating header and notices where there is room beside them:
+      // the actions move right past them. They stay above the thought either way, so they never
+      // cover its connection labels (#481).
+      const floating = [...(wrapRef.current?.parentElement?.querySelectorAll<HTMLElement>('.sk-over > *') ?? [])].map((el) => el.getBoundingClientRect());
+      const hit = (left: number) => floating.find((r) => r.width && r.bottom > bounds.top && r.top < bounds.bottom && r.right > left && r.left < left + bounds.width);
+      const blocked = above ? hit(bounds.left + dx) : undefined;
+      if (blocked) {
+        const right = blocked.right + 8 - bounds.left;
+        if (bounds.left + right + bounds.width <= view.right - 8 && !hit(bounds.left + right)) dx = right;
+      }
       bar.style.marginLeft = `${dx / zoom}px`;
     };
     placeBar();
@@ -297,6 +320,16 @@ export function SketchMap(props: SketchMapProps) {
   width += compact ? 0 : PLANE_MARGIN;
   height += compact ? 160 : PLANE_MARGIN;
   const place = (r: Rect) => ({ x: r.x - origin.x, y: r.y - origin.y });
+  // When the origin moves, every thought's place changes with it while the view compensates: that
+  // change must not animate, or the whole map would slide across the screen (#509).
+  const [lastOrigin, setLastOrigin] = useState(origin);
+  const [reframing, setReframing] = useState(false);
+  if (lastOrigin.x !== origin.x || lastOrigin.y !== origin.y) { setLastOrigin(origin); setReframing(true); }
+  useEffect(() => {
+    if (!reframing) return;
+    const frame = requestAnimationFrame(() => setReframing(false));
+    return () => cancelAnimationFrame(frame);
+  }, [reframing]);
   const last = selection.length ? rects.get(selection[selection.length - 1]!) : undefined;
   const lastThought = selection.length ? shown.find((t) => t.id === selection[selection.length - 1]) : undefined;
   const byId = new Map(shown.map((t) => [t.id, t]));
@@ -803,13 +836,13 @@ export function SketchMap(props: SketchMapProps) {
   ) : null;
 
   /** The actions of the selection float above the thought on a computer. */
-  const selectionBar = (style?: CSSProperties) => {
+  const selectionBar = (style?: CSSProperties, above?: boolean) => {
     if (!plus || !last || !lastThought) return null;
     const single = selection.length === 1;
     const label = quote(lastThought.text);
     const close = (run: () => void) => () => { setMore(false); run(); };
       return (
-        <div ref={selectionBarRef} className="sk-actions" role="toolbar" aria-label="Selection actions" style={style}>
+        <div ref={selectionBarRef} className="sk-actions" role="toolbar" aria-label="Selection actions" style={style} data-above={above ? 'true' : undefined}>
           {single ? <button type="button" className="sk-edit-btn" aria-label={`Edit ${label}`} onClick={() => props.onEdit(lastThought.id)}>Edit</button> : null}
           {single && !compact ? <button type="button" className="sk-edit-btn" aria-label="Connect" aria-pressed={connectFrom === lastThought.id} onClick={() => props.onConnectFrom(lastThought.id)}>Connect</button> : null}
           {single && !compact ? <button type="button" className="sk-edit-btn" onClick={() => props.onConnections(lastThought.id)}>Connections</button> : null}
@@ -876,13 +909,13 @@ export function SketchMap(props: SketchMapProps) {
   }
 
   return (
-    <div ref={wrapRef} className={`sk-canvas-wrap sk-canvas-wrap--controls${hasComposition ? ' has-composition' : ''}`} style={compact ? { '--sk-phone-tools-height': `${hasComposition ? compositionHeight : phoneToolsHeight}px` } as CSSProperties : undefined}>
+    <div ref={wrapRef} className={`sk-canvas-wrap sk-canvas-wrap--controls${hasComposition ? ' has-composition' : ''}`} style={(compact ? { '--sk-phone-tools-height': `${hasComposition ? compositionHeight : phoneToolsHeight}px` } : { '--sk-dock-h': `${dockHeight}px` }) as unknown as CSSProperties}>
     <div className={`sk-canvas${panning ? ' is-panning' : ''}${panMode ? ' is-hand' : ''}${connectFrom ? ' is-connecting' : ''}${wire ? ' is-wiring' : ''}`} ref={canvasRef} role="group" tabIndex={0}
       data-live-own-gesture={props.ownGesture?.id} data-live-own-sequence={props.ownGesture?.sequence} data-live-generation={props.ownGesture?.generation}
       aria-label={`Sketch: ${sketch.title}`} aria-describedby={helpId} onKeyDown={onCanvasKeyDown}>
-      <div className="sk-zoomed" ref={zoomedRef} style={{ width: width * zoom, height: height * zoom }}
+      <div className="sk-zoomed" ref={zoomedRef} data-origin-x={origin.x} data-origin-y={origin.y} style={{ width: width * zoom, height: height * zoom }}
         onPointerDown={onPlanePointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerCancel}>
-        <div className="sk-plane" style={{ width, height, transform: zoom === 1 ? undefined : `scale(${zoom})` }}>
+        <div className={`sk-plane${reframing ? ' is-reframing' : ''}`} style={{ width, height, transform: zoom === 1 ? undefined : `scale(${zoom})` }}>
           <svg className="sk-edges" width={width} height={height} aria-hidden="true">
             {sketch.links.map((link) => {
               const a = rects.get(link.fromId);
@@ -939,7 +972,7 @@ export function SketchMap(props: SketchMapProps) {
             const x = plus.x + last.w / 2;
             const keep = `scale(${1 / zoom})`;
             const at = plus.y < 56 ? `translate(${x}px, ${plus.y + last.h + 8}px) ${keep} translateX(-50%)` : `translate(${x}px, ${plus.y - 8}px) ${keep} translate(-50%, -100%)`;
-            return selectionBar({ transform: at });
+            return selectionBar({ transform: at }, plus.y >= 56);
           })() : null) : linkAnchor && last ? (() => {
             // People who can only look still open a selected link.
             const at = place(last);
@@ -963,7 +996,7 @@ export function SketchMap(props: SketchMapProps) {
       </div>
     </div>
       {!compact ? <div className="sk-corner"><Minimap canvas={canvasRef} zoom={zoom} origin={origin} rects={rects} />{zoomControls}</div> : null}
-      <div className="sk-dock">
+      <div className="sk-dock" ref={dockRef}>
         {!compact ? props.hint : null}
         {props.dock ? <div className="sk-dock__row">{props.dock}</div> : null}
       </div>

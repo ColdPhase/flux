@@ -366,7 +366,8 @@ class ThoughtDraftJourney(unittest.TestCase):
         expect(page.locator(".sk-status")).to_contain_text("text is kept")
         expect(page.get_by_label("Thought text")).to_have_value("Keep the manual off switch")
         self.assertEqual(self.stored(page), self.before)
-        page.get_by_role('toolbar', name='Sketch tools').get_by_role('button', name='Edit', exact=True).click()
+        # #510: Edit is a row action and hides while the row is being edited; the kept text stays open.
+        expect(page.locator('.sk-outline-actions')).to_have_count(0)
         expect(page.get_by_label('Thought text')).to_have_value('Keep the manual off switch')
         shot(page, 'thought-edit-failure-desktop')
         self.assertTrue(page.locator('.sk-status').evaluate('e => e.scrollWidth <= e.clientWidth + 1 && e.scrollHeight <= e.clientHeight + 1'), 'The complete failed-save recovery wording must fit its rendered row, allowing one rounded CSS pixel')
@@ -654,7 +655,7 @@ class ThoughtDraftJourney(unittest.TestCase):
         expect(form).to_contain_text("Connected to “Capture a gesture without recording camera images” on save")
 
         # The count on another thought opens its chooser over the live draft; Escape and Close leave the draft alone.
-        row_count = page.locator(f'.sk-outline-list > li[data-id="{child["id"]}"] .sk-work')
+        row_count = page.locator(f'.sk-outline-list li[data-id="{child["id"]}"] > .sk-outline-row .sk-work')
         chooser = page.get_by_role("dialog", name=child["text"], exact=True)
         row_count.click()
         expect(chooser).to_be_visible()
@@ -729,7 +730,7 @@ class ThoughtDraftJourney(unittest.TestCase):
         field.fill(text)
         expect(page.get_by_role("form", name="New thought draft")).to_contain_text("Top level")
 
-        row_count = page.locator(f'.sk-outline-list > li[data-id="{child["id"]}"] .sk-work')
+        row_count = page.locator(f'.sk-outline-list li[data-id="{child["id"]}"] > .sk-outline-row .sk-work')
         row_count.scroll_into_view_if_needed()
         row_count.tap()
         sheet = page.get_by_role("dialog", name=child["text"], exact=True)

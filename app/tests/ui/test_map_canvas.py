@@ -109,6 +109,9 @@ class MapCanvasJourney(unittest.TestCase):
         moved_view = page.locator('.sk-canvas').evaluate('el => { const from = [el.scrollLeft, el.scrollTop]; el.scrollLeft -= 300; el.scrollTop -= 300; return [from[0] - el.scrollLeft, from[1] - el.scrollTop]; }')
         self.assertEqual(moved_view, [300, 300], 'the view pans past the first thought, up and left')
         before = other.bounding_box()
+        plane = page.locator('.sk-zoomed')
+        state = lambda: [plane.get_attribute('data-origin-x'), plane.get_attribute('data-origin-y'), *self.scroll(page), page.locator('.sk-zoom__level').inner_text()]
+        was = state()
         start = self.center(node)
         self.drag(page, start, (start[0] - 220, start[1] - 160))
         # The save is confirmed when the thought's version moves on; only then is the stored position read.
@@ -118,8 +121,8 @@ class MapCanvasJourney(unittest.TestCase):
         self.assertLess(moved['y'], 0)
         # The plane grew up and left; the view moved with it, so nothing else jumped.
         after = other.bounding_box()
-        self.assertAlmostEqual(after['x'], before['x'], delta=1)
-        self.assertAlmostEqual(after['y'], before['y'], delta=1)
+        self.assertAlmostEqual(after['x'], before['x'], delta=1, msg=f'origin/scroll/zoom {was} -> {state()}')
+        self.assertAlmostEqual(after['y'], before['y'], delta=1, msg=f'origin/scroll/zoom {was} -> {state()}')
         # The moved thought lands where it was dropped and the plane still reaches beyond it.
         landed = node.bounding_box()
         self.assertAlmostEqual(landed['x'] + landed['width'] / 2, start[0] - 220, delta=2)

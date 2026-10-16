@@ -721,7 +721,8 @@ class ScenarioJourney:
         self.open_map(page)
         badge = (page.locator(f'.sk-outline-list li[data-id="{thoughts[CAMERA]}"] .sk-work').first if self.phone
                  else page.locator(f'.sk-node[data-id="{thoughts[CAMERA]}"] + .sk-work-slot .sk-work'))
-        expect(badge).to_contain_text("1 task")
+        # The map shows a count; the List a chip with the task's number and state (#510 AC-3). Both name it.
+        expect(badge).to_have_accessible_name(re.compile(r"^1 task linked to "))
         self.tap(badge)
         chooser_dialog = page.get_by_role("dialog").filter(has_text="linked to this thought")
         task_link = chooser_dialog.locator(f'a[data-work-id="{experiment["id"]}"]')
@@ -912,7 +913,8 @@ class ScenarioJourney:
         self.open_map(ada)
         badge = (ada.locator(f'.sk-outline-list li[data-id="{s["variant_b"]}"] .sk-work').first if self.phone
                  else ada.locator(f'.sk-node[data-id="{s["variant_b"]}"] + .sk-work-slot .sk-work'))
-        expect(badge).to_contain_text("1 task")
+        # The map shows a count; the List a chip with the task's number and state (#510 AC-3). Both name it.
+        expect(badge).to_have_accessible_name(re.compile(r"^1 task linked to "))
         self.tap(badge)
         expect(ada.locator(".sk-tasks__list")).to_contain_text(ORDER_TASK[:60])
         self.shot(ada, "2b-map-count")

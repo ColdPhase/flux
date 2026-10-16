@@ -347,9 +347,10 @@ class MapTaskCountJourney(unittest.TestCase):
         page.get_by_role("button", name=re.compile(r"^Zoom \d+%, reset to 100%$")).click()
         page.get_by_role("button", name="Zoom in", exact=True).click()
         expect(page.locator(".sk-zoom__level")).to_have_text("110%")
-        # The plane reaches past the thoughts on every side (#509): move the view a little from where
-        # it opened, keeping the counted thought in view, so a jump back would show.
-        moved = page.locator(".sk-canvas").evaluate("(el) => { el.scrollLeft += 40; el.scrollTop += 30; return [el.scrollLeft, el.scrollTop]; }")
+        # The plane reaches past the thoughts on every side and the zoom keeps the middle of the view
+        # (#509): bring the counted thought to the middle, a camera away from where the map opened.
+        self.node(page, "dark").evaluate("(el) => el.scrollIntoView({ block: 'center', inline: 'center' })")
+        moved = page.locator(".sk-canvas").evaluate("(el) => [el.scrollLeft, el.scrollTop]")
         badge = self.badge(page, "dark")
         badge.focus()
         before = self.camera(page)

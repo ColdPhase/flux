@@ -226,15 +226,18 @@ export function SketchList({ sketch, meId, selection, connectFrom, editing, canW
             onClick={(event) => { quiet(event); view.toggle(thought.id); focus(thought.id); }}><Icon name={collapsed ? 'chevron-right' : 'chevron-down'} size={14} /></button>
             : <span className="sk-outline-leaf" aria-hidden="true" />}
           {label ? <span className="sk-outline-tag" id={tagId}>{label}</span> : null}
-          {editing?.id === thought.id && canWrite
-            ? <ThoughtEditor key={`${editing.id}:${editing.attempt}`} className="sk-li-edit" initial={editing.initial} disabled={editing.saving} onChange={on.onEditText} onDone={on.onFinishEdit} />
-            : <span className="sk-outline-title" id={titleId}>{thought.text}</span>}
-          {placement ? <span className="sk-outline-meta">{placement}</span> : null}
-          {also.length ? <span className="sk-outline-also" onClick={quiet}><Icon name="link" size={12} /><span>also under </span>{also.map(({ other, relation }, at) => (
-            <Fragment key={relation.id}>{at ? ', ' : ''}<button type="button" aria-label={`Also under ${other.thought.text}`} onClick={() => follow(thought.id, other.thought.id)}>{other.thought.text}</button></Fragment>
-          ))}</span> : null}
+          <span className="sk-outline-main">
+            {editing?.id === thought.id && canWrite
+              ? <ThoughtEditor key={`${editing.id}:${editing.attempt}`} className="sk-li-edit" initial={editing.initial} disabled={editing.saving} onChange={on.onEditText} onDone={on.onFinishEdit} />
+              : <span className="sk-outline-title" id={titleId}>{thought.text}</span>}
+            {placement ? <span className="sk-outline-meta">{placement}</span> : null}
+            {also.length ? <span className="sk-outline-also" onClick={quiet}><Icon name="link" size={12} /><span>also under </span>{also.map(({ other, relation }, at) => (
+              <Fragment key={relation.id}>{at ? ', ' : ''}<button type="button" aria-label={`Also under ${other.thought.text}`} onClick={() => follow(thought.id, other.thought.id)}>{other.thought.text}</button></Fragment>
+            ))}</span> : null}
+          </span>
+          {/* The row's end: the date (on hover or focus, its room kept), the selected row's actions and, last, the task chip, so it never moves. */}
+          <span className="sk-outline-end">
           <span className="sk-li-s">{provenance(thought, meId)}</span>
-          {linked?.count && projectId ? <span className="sk-outline-chip" onClick={quiet}><ThoughtTasks thought={thought} tasks={linked} projectId={projectId} variant="list" onOpenTask={on.onOpenTask} /></span> : null}
           {acting ? <span className="sk-outline-actions" role="group" aria-label={`Actions for ${quote(thought.text)}`} onClick={quiet} onKeyDown={(event) => closeMore(event, thought.id)}>
             {canWrite ? <>
               <button type="button" onClick={() => on.onEdit(thought.id)}><Icon name="edit" size={12} />Edit</button>
@@ -243,6 +246,8 @@ export function SketchList({ sketch, meId, selection, connectFrom, editing, canW
             </> : null}
             <button type="button" className="sk-outline-more" aria-label="More actions" aria-expanded={more} onClick={() => setMoreId(more ? null : thought.id)}><Icon name="more" size={14} /></button>
           </span> : null}
+          {linked?.count && projectId ? <span className="sk-outline-chip" onClick={quiet}><ThoughtTasks thought={thought} tasks={linked} projectId={projectId} variant="list" onOpenTask={on.onOpenTask} /></span> : null}
+          </span>
         </div>
         {more ? <div className="sk-outline-menu" role="group" aria-label={`More actions for ${quote(thought.text)}`} onKeyDown={(event) => closeMore(event, thought.id)}>
           {arrange && canWrite ? <>

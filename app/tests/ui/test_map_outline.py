@@ -279,6 +279,12 @@ class MapOutlineJourney(unittest.TestCase):
         page.keyboard.press("ArrowRight")
         expect(self.row(page, 2)).to_be_focused()
         page.keyboard.press("ArrowLeft")
+        expect(self.row(page, 2)).to_have_attribute("aria-expanded", "false")
+        expect(self.row(page, 3)).to_have_count(0)
+        page.keyboard.press("ArrowRight")
+        expect(self.row(page, 3)).to_be_visible()
+        page.keyboard.press("ArrowLeft")
+        page.keyboard.press("ArrowLeft")
         expect(self.row(page, 1)).to_be_focused()
         page.keyboard.press("ArrowLeft")
         expect(self.row(page, 2)).to_have_count(0)
@@ -289,6 +295,8 @@ class MapOutlineJourney(unittest.TestCase):
         expect(self.row(page, 7)).to_be_focused()
         page.keyboard.press("Home")
         expect(self.row(page, 0)).to_be_focused()
+        self.row(page, 2).get_by_role("button", name=re.compile("^Expand ")).click()
+        expect(self.row(page, 3)).to_be_visible()
         self.assertEqual(self.stored(page), before, "reading never writes the graph")
         self.save(page)
 
@@ -485,6 +493,9 @@ class MapOutlineJourney(unittest.TestCase):
             self.pick(page, 3)
             for name, viewport in (("desktop-1440", DESKTOP), ("desktop-2560", {"width": 2560, "height": 1440}), ("tablet-820", {"width": 820, "height": 1180}), ("phone-390", PHONE)):
                 page.set_viewport_size(viewport)
+                # The phone has its own List page: wait for the layout of this width before measuring.
+                page.wait_for_function("() => (innerWidth <= 640) === !document.querySelector('.sk-page--list')")
+                expect(self.row(page, 3)).to_be_visible()
                 self.row(page, 3).scroll_into_view_if_needed()
                 shot(page, f"map-outline-{scheme}-{name}")
                 self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), viewport["width"], "no horizontal document overflow")

@@ -60,6 +60,7 @@
 .sk-canvas:focus-visible { outline-offset: -2px; }
 .sk-zoomed { position: relative; min-width: 100%; min-height: 100%; }
 .sk-plane { position: absolute; left: 0; top: 0; min-width: 100%; min-height: 100%; transform-origin: 0 0; }
+.sk-plane.is-reframing .sk-node, .sk-plane.is-reframing .sk-work-slot { transition: none; }
 .sk-edges, .sk-wires { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; }
 .sk-edges path { fill: none; stroke: var(--sk-edge); stroke-width: 1.5; transition: stroke var(--dur-1) var(--ease-out); }
 .sk-edges path.is-on { stroke: var(--t1); stroke-width: 2; }
@@ -373,7 +374,7 @@ span.sk-li-img { width: 160px; height: 96px; }
 .sk-line { display: flex; flex-direction: column; align-items: center; gap: 2px; max-width: 100%; }
 .sk-hint, .sk--map .sk-status { margin: 0; padding: 0; flex: none; max-width: min(640px, 100%); font-size: var(--fs-sm); color: var(--t3); text-align: center; white-space: normal; overflow: visible; }
 .sk--map .sk-status:empty { display: none; }
-.sk-dock .sk-tools { gap: 4px; flex-wrap: nowrap; flex: none; }
+.sk-dock .sk-tools { gap: 4px; flex-wrap: wrap; justify-content: center; flex: 0 1 auto; min-width: 0; }
 .sk-dock__row { flex-wrap: wrap; justify-content: center; }
 .sk-dock__row > *, .sk-dock .sk-tools > * { flex: none; }
 .sk-dock .ui-btn { min-height: 36px; padding: 0 14px; border-radius: var(--r-pill); gap: 6px; }
@@ -445,10 +446,12 @@ span.sk-li-img { width: 160px; height: 96px; }
 /* #509 AC-3/AC-4: the zoom controls sit at the bottom right with the minimap above them. Where the
    pane is too narrow for them beside the centred tools, they rise above the tools instead, so the
    tools never move and nothing overlaps. */
-.sk--map .sk-canvas-wrap { container-type: inline-size; }
+.sk--map .sk-canvas-wrap { container-type: size; }
 .sk-corner { position: absolute; right: 16px; bottom: 16px; z-index: 7; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; pointer-events: none; }
 .sk-corner > * { pointer-events: auto; }
-@container (max-width: 1080px) { .sk-corner { bottom: 80px; } }
+@container (max-width: 1080px) { .sk-corner { bottom: calc(16px + var(--sk-dock-h, 64px) + 8px); } }
+/* A short pane keeps the zoom controls and lets the minimap go; the arrows and Fit still reach every thought. */
+@container (max-height: 560px) { .sk-minimap { display: none; } }
 .sk-corner .sk-zoom { position: static; margin: 0; padding: 4px; gap: 2px; border-radius: var(--r-pill); background: var(--el); box-shadow: var(--sh-pop), inset 0 0 0 1px var(--line); }
 .sk-corner .sk-zoom button { border-radius: var(--r-pill); }
 .sk-zoom .sk-div { height: 18px; margin: 0 2px; }

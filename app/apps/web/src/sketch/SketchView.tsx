@@ -240,7 +240,7 @@ function SketchEditor({ sketchId, projectId, dmId, back = '/map', doc }: ViewPro
   const describe = (ids: string[]) => {
     if (!ids.length) say('');
     else if (ids.length === 1) say(`${quote(find(ids[0]!)?.text ?? '')} selected`, false, true);
-    else say(`${ids.length} thoughts selected · Connect links them`, false, true);
+    else say(`${ids.length} thoughts selected`, false, true);
   };
 
   const connectTo = (from: string, to: string) => {
@@ -866,14 +866,10 @@ function SketchEditor({ sketchId, projectId, dmId, back = '/map', doc }: ViewPro
 
         {canWrite ? (
           <div className={`sk-bar${doc.problem ? ' sk-bar--problem' : ''}`}>
-            <div className={`sk-tools${sketch.scope === 'project' ? ' sk-tools--seven' : ''}`} role="toolbar" aria-label="Sketch tools">
+            {/* #510 AC-4: Edit, + Child and Create task are the selected row's own actions on the phone too. */}
+            <div className="sk-tools" role="toolbar" aria-label="Sketch tools">
             <button type="button" className="ui-btn ui-btn--quiet sk-add" onClick={() => add(selection[selection.length - 1] ?? null)}><Icon name="plus" size={14} />Thought</button>
-            <button type="button" className="ui-btn ui-btn--quiet" aria-disabled={selection.length !== 1} onClick={() => {
-              if (selection.length !== 1) { say('Select one thought, then Edit'); return; }
-              startEdit(selection[0]!);
-            }} aria-label="Edit"><Icon name="edit" size={14} /><span className="sk-bl">Edit</span></button>
             <button type="button" className="ui-btn ui-btn--quiet" aria-disabled={!selection.length} onClick={() => remove(selection)} aria-label="Remove from sketch"><Icon name="trash" size={14} /><span className="sk-bl">Remove</span></button>
-            {sketch.scope === 'project' ? <button type="button" className="ui-btn ui-btn--quiet" aria-disabled={!selection.length} onClick={() => void makeWork()} aria-label="Create task from selected thoughts"><Icon name="tasks" size={14} /><span className="sk-bl sk-bl--long">Create task</span><span className="sk-bl sk-bl--short">Task</span></button> : null}
             <span className="sk-div" aria-hidden="true" />
             <button type="button" className="ui-btn ui-btn--quiet" aria-disabled={!doc.canUndo} onClick={undo} aria-label="Undo"><Icon name="undo" size={14} /><span className="sk-bl">Undo</span></button>
             </div>
