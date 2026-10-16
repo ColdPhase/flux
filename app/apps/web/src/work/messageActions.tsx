@@ -11,7 +11,24 @@ import './message-actions.css';
 // hand off) and long press (the message menu), plus the same menu for keyboards and screen readers.
 // Nothing swipes right. Decisions and results stay reachable from the menu, so no object is lost.
 
+/**
+ * A private direct-message bubble (#536, #537): reply in its thread and create a task from an excerpt. Nothing
+ * else is offered (no decision, result, hand-off or Details), because none of those exist for a private message.
+ */
+export interface DmActionOptions {
+  kind: 'dm';
+  /** The message text, for Copy text. */
+  body: string;
+  /** False when the conversation takes no new messages (a 1:1 whose other person left). */
+  writable: boolean;
+  /** Creating a task needs a project the person can change; the preview says so when there is none. */
+  onCreateWork: () => void;
+  onReply?: () => void;
+  onCite?: undefined;
+}
+
 export interface MessageActionOptions {
+  kind?: 'project';
   projectId: string;
   message: ConversationMessage;
   writable: boolean;
@@ -27,22 +44,30 @@ export interface MessageActionOptions {
 interface MenuItem { id: string; label: string; icon: IconName | 'kreska'; run: () => void; disabled?: boolean; secondary?: boolean }
 
 /** The menu's items, in the drawn order: reply, task, hand off, cite, copy; then what makes objects. */
-function useMenuItems(options: MessageActionOptions | null): MenuItem[] {
+function useMenuItems(options: MessageActionOptions | DmActionOptions | null): MenuItem[] {
   const { openDetails } = useShellActions();
   const { me } = useShellData();
   const toast = useToast();
   if (!options) return [];
-  const { projectId, message, writable, onCreateWork, onReply, onCite } = options;
-  const source = { messageId: message.id, text: message.body };
+  const text = options.kind === 'dm' ? options.body : options.message.body;
   const copy = () => {
     const done = () => toast({ message: 'Copied', timeout: 2000 });
     const failed = () => toast({ message: 'Could not copy this text', tone: 'danger' });
     if (!navigator.clipboard) { failed(); return; }
-    navigator.clipboard.writeText(message.body).then(done, failed);
+    navigator.clipboard.writeText(text).then(done, failed);
   };
+  const copyItem: MenuItem[] = text ? [{ id: 'copy', label: 'Copy text', icon: 'copy', run: copy }] : [];
+  if (options.kind === 'dm') {
+    return [
+      ...(options.writable && options.onReply ? [{ id: 'reply', label: 'Reply in thread', icon: 'reply' as const, run: options.onReply }] : []),
+      ...(options.writable ? [{ id: 'task', label: 'Create task', icon: 'plus-circle' as const, run: options.onCreateWork }] : []),
+      ...copyItem,
+    ];
+  }
+  const { projectId, message, writable, onCreateWork, onReply, onCite } = options;
+  const source = { messageId: message.id, text: message.body };
   const details: MenuItem = { id: 'details', label: 'Details', icon: 'panel', secondary: true,
     run: () => openDetails({ kind: 'overview', messageId: message.id, selection: { accountId: me.user.id, projectId, message } }) };
-  const copyItem: MenuItem[] = message.body ? [{ id: 'copy', label: 'Copy text', icon: 'copy', run: copy }] : [];
   if (!writable) return [...copyItem, details];
   return [
     ...(onReply ? [{ id: 'reply', label: 'Reply in thread', icon: 'reply' as const, run: onReply }] : []),
@@ -109,7 +134,7 @@ function MessageMenu({ items, anchor, press, onClose, label }: { items: MenuItem
  * The computer's actions on one message: reply in thread, create a task and a menu. They appear over the
  * message's corner on hover and focus and take no room in the stream; a phone has gestures instead.
  */
-export function MessageActions(options: MessageActionOptions) {
+export function MessageActions(options: MessageActionOptions | DmActionOptions) {
   const touch = useMediaQuery('(hover: none)');
   const items = useMenuItems(options);
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
@@ -117,7 +142,7 @@ export function MessageActions(options: MessageActionOptions) {
   if (touch) return null;
   const { writable, onCreateWork, onReply } = options;
   return (
-    <div className="msg-acts" role="group" aria-label="Message actions">
+    <div className="msg-acts" role="group" aria-label={options.kind === 'dm' ? 'Actions on this message' : 'Message actions'}>
       {writable && onReply ? <button type="button" className="msg-acts__b" aria-label="Reply in thread" data-tip="Reply in thread" onClick={onReply}><Icon name="reply" size={16} /></button> : null}
       {writable ? <button type="button" className="msg-acts__b" aria-label="Create task" data-tip="Create task" onClick={onCreateWork}><Icon name="plus-circle" size={16} /></button> : null}
       <button ref={more} type="button" className="msg-acts__b" aria-label="More actions" data-tip="More actions" aria-haspopup="menu" aria-expanded={!!anchor} onClick={(event) => setAnchor(anchor ? null : event.currentTarget)}><Icon name="more" size={16} /></button>
@@ -149,7 +174,7 @@ interface TouchProps<E extends HTMLElement> {
  * returned props go on the message's list item and `node` inside it. A visually hidden button opens the same
  * menu for keyboards and screen readers, who cannot long press.
  */
-export function useTouchActions<E extends HTMLElement = HTMLLIElement>(options: MessageActionOptions | null): { props: TouchProps<E>; node: ReactNode } {
+export function useTouchActions<E extends HTMLElement = HTMLLIElement>(options: MessageActionOptions | DmActionOptions | null): { props: TouchProps<E>; node: ReactNode } {
   const touch = useMediaQuery('(hover: none)');
   const items = useMenuItems(options);
   const ref = useRef<E>(null);
@@ -236,7 +261,7 @@ export function useTouchActions<E extends HTMLElement = HTMLLIElement>(options: 
       <div className="msg-swipe" role="group" aria-label="Swipe actions" hidden={!revealed && !offset} inert={!revealed}>
         {writable && onReply ? <button type="button" className="msg-swipe__b" onClick={swipeAction(onReply)}><Icon name="reply" size={20} />Reply in thread</button> : null}
         {writable ? <button type="button" className="msg-swipe__b" onClick={swipeAction(onCreateWork)}><Icon name="plus-circle" size={20} />Create task</button> : null}
-        {writable ? <button type="button" className="msg-swipe__b" onClick={swipeAction(onCreateWork)}><Kreska size={20} />Hand off</button> : null}
+        {writable && options.kind !== 'dm' ? <button type="button" className="msg-swipe__b" onClick={swipeAction(onCreateWork)}><Kreska size={20} />Hand off</button> : null}
       </div>
       <button type="button" className="msg-touch__sr" aria-haspopup="menu" aria-expanded={menu?.kind === 'button'} onClick={(event) => { opener.current = event.currentTarget; setMenu({ kind: 'button', anchor: event.currentTarget.parentElement?.querySelector<HTMLElement>('.message-bubble > p') ?? event.currentTarget }); }}>Message actions</button>
       {menu ? <MessageMenu items={items} anchor={menu.anchor} press={menu.kind === 'press'} label="Message actions"

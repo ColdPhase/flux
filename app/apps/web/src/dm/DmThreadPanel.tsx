@@ -1,0 +1,162 @@
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import type { DmMessage, DmPerson, DmThread } from '@flux/contracts';
+import { ApiError } from '../api/client';
+import { getDmThread, olderDmReplies } from '../api/direct-messages';
+import { outboxView, useComposerDraft, useComposerScope } from '../composer/draft';
+import { SendAnnouncer } from '../composer/Outbox';
+import { Button, Icon, MEDIA, sendsOnEnter, useMediaQuery } from '../ui';
+import { ThreadDrawer, type ThreadMode } from '../app/ThreadDrawer';
+import '../app/one-conversation.css';
+import { DmBubble } from './DmBubble';
+import { groupRows } from './rows';
+import { ownRuns, useObservation, useReceipts } from './receipts';
+
+function merge(current: DmMessage[], incoming: DmMessage[]) {
+  const byId = new Map(current.map((message) => [message.id, message]));
+  for (const message of incoming) byId.set(message.id, message);
+  return [...byId.values()].sort((a, b) => a.sequence - b.sequence);
+}
+
+/**
+ * The private replies to one message (#536): docked beside the conversation on a wide screen, a sheet over it on a
+ * phone. Its audience is the conversation's current participants and nothing else; every read, send and refresh
+ * asks the server again. Esc and the close control give focus back to the message that opened it.
+ */
+export function DmThreadPanel({ dmId, rootId, mode, meId, meName, nameOf, audience, writable, refreshTick, receiptTick, focusComposer, focusOnOpen, canObserve,
+  onClose, onDenied, onCreateTask, onCount }: {
+  dmId: string; rootId: string; mode: ThreadMode; meId: string; meName: string; nameOf: (id: string) => string; audience: string; writable: boolean;
+  refreshTick: number; receiptTick: number; focusComposer: boolean; focusOnOpen: boolean; canObserve: boolean;
+  onClose: () => void; onDenied: (cause: unknown) => void; onCreateTask: (message: DmMessage, excerpt: string | undefined) => void;
+  onCount: (rootId: string, replies: number) => void;
+}) {
+  const touch = useMediaQuery(MEDIA.touch);
+  const [thread, setThread] = useState<DmThread | null>(null);
+  const [replies, setReplies] = useState<DmMessage[]>([]);
+  const [people, setPeople] = useState<Map<string, DmPerson>>(new Map());
+  const [older, setOlder] = useState<number | null>(null);
+  const [olderBusy, setOlderBusy] = useState(false);
+  const feed = useRef<HTMLDivElement>(null);
+  const field = useRef<HTMLTextAreaElement>(null);
+  const loading = useRef(false);
+  const composer = useComposerDraft(meId, 'dm', `dm:${dmId}/${rootId}`);
+  const captureScope = useComposerScope(composer.key);
+  const draft = composer.draft.body;
+  const shown = useMemo(() => merge(replies, composer.sent.map((item) => item.message as DmMessage)), [replies, composer.sent]);
+  const outbox = outboxView(shown, composer.pending, composer.sent, meId);
+
+  const learn = useCallback((list: DmPerson[]) => setPeople((current) => { const next = new Map(current); for (const p of list) next.set(p.id, p); return next; }), []);
+  const label = (id: string) => (people.get(id)?.name ?? nameOf(id));
+  const load = useCallback(async () => {
+    if (loading.current) return;
+    loading.current = true;
+    try {
+      const next = await getDmThread(dmId, rootId);
+      setThread(next); learn(next.people);
+      setReplies((current) => merge(current, next.replies));
+      setOlder((current) => (current === null ? next.messagePage.nextBeforeSequence : current));
+      onCount(rootId, next.root.replyCount);
+    } catch (cause) { onDenied(cause); }
+    finally { loading.current = false; }
+  }, [dmId, rootId, learn, onCount, onDenied]);
+  // Reading the thread from the server is what this effect is for.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { void load(); }, [load, refreshTick]);
+
+  const opening = thread === null;
+  useLayoutEffect(() => { const el = feed.current; if (el) el.scrollTop = el.scrollHeight; }, [opening, shown.length]);
+  useEffect(() => { if (!opening && focusComposer) field.current?.focus({ preventScroll: true }); }, [opening, focusComposer]);
+  useLayoutEffect(() => {
+    const el = field.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+  }, [draft]);
+
+  async function loadOlder() {
+    if (!older || olderBusy) return;
+    setOlderBusy(true);
+    try {
+      const page = await olderDmReplies(dmId, rootId, older);
+      learn(page.people);
+      setReplies((current) => merge(current, page.replies));
+      setOlder(page.messagePage.nextBeforeSequence);
+    } catch (cause) { onDenied(cause); }
+    finally { setOlderBusy(false); }
+  }
+
+  async function send() {
+    if (!writable) return;
+    const outcome = composer.submit(shown.at(-1)?.sequence ?? 0);
+    if (!outcome) return;
+    const active = captureScope();
+    const result = await outcome;
+    if (!active()) return;
+    if (result.status === 'delivered') { setReplies((current) => merge(current, [result.message as DmMessage])); void load(); return; }
+    if (result.status === 'failed') onDenied(result.cause);
+  }
+  function onKey(event: KeyboardEvent<HTMLTextAreaElement>) {
+    if (sendsOnEnter(event, touch)) { event.preventDefault(); void send(); }
+  }
+
+  const root = thread?.root ?? null;
+  const lines = [...shown.map((message) => ({ message, authorId: message.authorId, at: message.createdAt })),
+    ...outbox.pending.map((item) => ({ message: null, item, authorId: meId, at: item.at }))];
+  const rows = groupRows(lines);
+  const runs = ownRuns(shown.map((m) => ({ id: m.id, authorId: m.authorId, createdAt: m.createdAt })).concat(outbox.pending.map((item) => ({ id: null as unknown as string, authorId: meId, createdAt: item.at }))), meId, older !== null);
+  const seen = useReceipts({ dmId, runs, tick: receiptTick });
+  useObservation({ dmId, meId, enabled: canObserve && !!root, feed, messages: root ? [root, ...shown] : shown, depend: shown.length });
+  const count = root?.replyCount ?? shown.length;
+
+  return (
+    <ThreadDrawer mode={mode} count={count} focusOnOpen={focusOnOpen} onClose={onClose} title={undefined}>
+      <div className="thread__pane dm-thread" data-dm-thread={rootId}>
+        <div className="thread__feed" ref={feed}>
+          <div className="thread__in dm__in">
+            {root ? (
+              <ol className="dm__list dm-thread__root" aria-label="Message">
+                <DmBubble key={root.id} message={root} mine={root.authorId === meId} name={label(root.authorId)} continued={false} groupLast day={null}
+                  writable={writable} selecting={false} picked={false} arrived={false} observed={root.authorId !== meId} seenBy={[]} nav="thread"
+                  onReply={() => field.current?.focus()} onCreateTask={onCreateTask} onPick={() => undefined} />
+              </ol>
+            ) : <p className="thread__hint" role="status">Opening…</p>}
+            <p className="thread__hint">{count ? `${count} ${count === 1 ? 'reply' : 'replies'}` : writable ? 'Reply to this message. Only the people in this conversation can read it.' : 'No replies yet.'}</p>
+            {older ? <div className="dm__older"><Button variant="quiet" busy={olderBusy} onClick={() => void loadOlder()}>Show earlier replies</Button></div> : null}
+            <ol className="dm__list thread__list" aria-label="Replies">
+              {rows.map(({ line, label: dayLabel, newDay, continued, groupLast }) => {
+                const mine = line.authorId === meId;
+                if (!line.message) {
+                  const item = (line as { item: NonNullable<ReturnType<typeof outbox.pending.at>> }).item;
+                  return <DmBubble key={`pending-${item.id}`} message={null} pending={item} mine name={meName} continued={continued} groupLast={groupLast} day={newDay ? dayLabel : null}
+                    writable={writable} selecting={false} picked={false} arrived={false} observed={false} seenBy={[]} nav="thread"
+                    onCreateTask={onCreateTask} onPick={() => undefined} onRetry={() => composer.retry(item.id)} onRemove={() => composer.remove(item.id)} />;
+                }
+                const message = line.message;
+                return <DmBubble key={outbox.keyOf(message.id)} message={message} mine={mine} name={mine ? meName : label(message.authorId)} continued={continued} groupLast={groupLast}
+                  day={newDay ? dayLabel : null} writable={writable} selecting={false} picked={false} arrived={false} observed={!mine} nav="thread"
+                  seenBy={(seen.get(message.id) ?? []).map((p) => p.name)}
+                  onReply={() => field.current?.focus()} onCreateTask={onCreateTask} onPick={() => undefined} />;
+              })}
+            </ol>
+          </div>
+        </div>
+        <div className="composer dm__composer dm-thread__composer">
+          <div className="composer__in">
+            <p className="composer__audience"><Icon name="lock" size={13} />{audience}<span aria-hidden="true"> · </span><span className="composer__where">private reply</span></p>
+            <div className="composer__box" aria-disabled={!writable || undefined}>
+              <label className="ui-vh" htmlFor="dm-thread-composer">Reply in thread</label>
+              <textarea id="dm-thread-composer" ref={field} rows={1} value={draft} onChange={(event) => composer.setBody(event.target.value)} onKeyDown={onKey}
+                disabled={!writable} placeholder={writable ? 'Reply…' : 'Nobody else is in this conversation'} />
+              <button type="button" className="composer__send" aria-label="Send reply" aria-disabled={!composer.canSend || !writable} onClick={() => void send()}><Icon name="send" /></button>
+            </div>
+            <SendAnnouncer pending={composer.pending} />
+            {composer.error ? <p className="dm__error" role="alert"><Icon name="alert" size={13} />{composer.error}</p> : null}
+          </div>
+        </div>
+      </div>
+    </ThreadDrawer>
+  );
+}
+
+export function isMissing(cause: unknown) {
+  return cause instanceof ApiError && (cause.status === 404 || cause.status === 401);
+}

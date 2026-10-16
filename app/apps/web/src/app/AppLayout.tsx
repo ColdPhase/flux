@@ -140,7 +140,8 @@ function AppLayoutContent() {
   useStreamEvents(me.user.id, (event) => {
     // A project goal changed (#520): the open project's Details, view menu and conversation read it again.
     if (event.objectType === 'project' && event.kind.startsWith('project.goal_') && location.pathname.startsWith(`/projects/${event.objectId}`)) { revalidator.revalidate(); return; }
-    if (event.objectType !== 'dm') return;
+    // Someone saw a message (#534): only the open conversation shows it, and it asks for itself.
+    if (event.objectType !== 'dm' || event.kind === 'dm.observed.v1') return;
     const known = directMessages.some((dm) => dm.id === event.objectId);
     if (!known || event.kind !== 'dm.message_sent.v1' || location.pathname === '/dm') revalidator.revalidate();
   }, () => revalidator.revalidate());

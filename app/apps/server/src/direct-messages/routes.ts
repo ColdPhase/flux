@@ -3,6 +3,10 @@ import {
   DMS_PATH,
   type ConversationWindowQuery,
   type CreateDmCommand,
+  type DmTaskCopyCommand,
+  type DmTaskCopyPreviewCommand,
+  type MessageReceiptsQuery,
+  type ObserveMessagesCommand,
   type PageQuery,
   type SendDmMessageCommand,
   type UpdateDmCommand,
@@ -87,6 +91,48 @@ export async function dmRoutes(app: FastifyInstance, { db, sessions }: DmRouteOp
   }, async (request, reply) => command(request, reply, {
     operation: `POST ${DM}/messages`, scope: dmScope(request.params.dmId), status: 201,
     run: (actor, conn) => dmUseCases(conn).send(actor, request.params.dmId, request.body),
+    replay: readDm(request.params.dmId),
+  }));
+
+  // Private replies (#536): the thread of one root. Every route answers 404 for anyone but a current participant.
+  const THREAD = `${DM}/threads/:rootId`;
+  app.get<{ Params: { dmId: string; rootId: string }; Querystring: ConversationWindowQuery }>(THREAD, {
+    schema: { querystring: { type: 'object', additionalProperties: false, properties: { limit: { type: 'integer' }, beforeSequence: { type: 'integer' } } } },
+  }, async (request) => dms.thread(await principal(request), request.params.dmId, request.params.rootId, request.query));
+
+  app.post<{ Params: { dmId: string; rootId: string }; Body: SendDmMessageCommand }>(`${THREAD}/replies`, {
+    schema: {
+      body: {
+        type: 'object', required: ['body', 'clientMessageId'], additionalProperties: false,
+        properties: { body: { type: 'string', minLength: 1, maxLength: 100_000 }, clientMessageId: { type: 'string' }, source: { type: 'object' }, attachmentIds: {} },
+      },
+    },
+  }, async (request, reply) => command(request, reply, {
+    operation: `POST ${THREAD}/replies`, scope: dmScope(request.params.dmId), status: 201,
+    run: (actor, conn) => dmUseCases(conn).reply(actor, request.params.dmId, request.params.rootId, request.body),
+    replay: readDm(request.params.dmId),
+  }));
+
+  // Viewing receipts (#534). The viewer is the session's person; the body never names one.
+  app.post<{ Params: { dmId: string }; Body: ObserveMessagesCommand }>(`${DM}/observations`, {
+    schema: { body: { type: 'object', required: ['messageIds'], additionalProperties: false, properties: { messageIds: { type: 'array', minItems: 1, maxItems: 50, items: id } } } },
+  }, async (request) => dms.observe(await principal(request), request.params.dmId, request.body));
+
+  app.post<{ Params: { dmId: string }; Body: MessageReceiptsQuery }>(`${DM}/receipts`, {
+    schema: { body: { type: 'object', required: ['runs'], additionalProperties: false, properties: { runs: { type: 'array', minItems: 1, maxItems: 20, items: { type: 'array', minItems: 1, maxItems: 50, items: id } } } } },
+  }, async (request) => dms.receipts(await principal(request), request.params.dmId, request.body));
+
+  // An explicit excerpt copy into a project task (#537). The preview changes nothing; only the commit writes.
+  app.post<{ Params: { dmId: string }; Body: DmTaskCopyPreviewCommand }>(`${DM}/task-copy/preview`, {
+    schema: { body: { type: 'object', required: ['messageId'], additionalProperties: false, properties: { messageId: id, excerpt: { type: 'string', maxLength: 100_000 }, projectId: id } } },
+  }, async (request) => dms.previewTaskCopy(await principal(request), request.params.dmId, request.body));
+
+  app.post<{ Params: { dmId: string }; Body: DmTaskCopyCommand }>(`${DM}/task-copies`, {
+    schema: { body: { type: 'object', required: ['messageId', 'excerpt', 'projectId', 'token', 'clientCommandId'], additionalProperties: false,
+      properties: { messageId: id, excerpt: { type: 'string', minLength: 1, maxLength: 100_000 }, projectId: id, token: { type: 'string', minLength: 1, maxLength: 200 }, clientCommandId: id } } },
+  }, async (request, reply) => command(request, reply, {
+    operation: `POST ${DM}/task-copies`, scope: dmScope(request.params.dmId), status: 201,
+    run: (actor, conn) => dmUseCases(conn).copyToTask(actor, request.params.dmId, request.body),
     replay: readDm(request.params.dmId),
   }));
 

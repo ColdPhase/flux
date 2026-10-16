@@ -1,4 +1,4 @@
-import type { DmKind, DmPerson, PageQuery } from '@flux/contracts';
+import type { DmKind, DmPerson, PageQuery, PromotionPerson, WorkItem } from '@flux/contracts';
 import type { Principal } from '../principal.js';
 
 /**
@@ -33,6 +33,10 @@ export interface DmMessageRecord {
   sequence: number;
   requestFingerprint: string;
   createdAt: Date;
+  /** Null for a root; a reply names a root of the same DM (#536). */
+  threadRootId: string | null;
+  /** Replies of a root; always 0 for a reply. */
+  replyCount: number;
 }
 
 /** Adapter over the core access policy (`evaluateDm`, `evaluateWorkspace`, `loadActor`). */
@@ -69,6 +73,7 @@ export interface NewDmMessage {
   clientMessageId: string;
   requestFingerprint: string;
   body: string;
+  threadRootId?: string | null;
 }
 
 /** Rows only; the repository makes no access decisions (the use cases ask {@link DmAccess}). */
@@ -96,19 +101,47 @@ export interface DmRepository {
   findMessage(dmId: string, authorId: string, clientMessageId: string): Promise<DmMessageRecord | null>;
   /** Allocates the next sequence of the DM, stores the message and records the activity time. */
   appendMessage(message: NewDmMessage): Promise<DmMessageRecord>;
+  /** One message of this DM, root or reply; null for any other id (including another DM's). */
+  message(dmId: string, messageId: string): Promise<DmMessageRecord | null>;
+  /** The newest `limit` replies of one root below `beforeSequence` (all when null), ascending. */
+  threadWindow(dmId: string, rootId: string, window: { limit: number; beforeSequence: number | null }): Promise<{ messages: DmMessageRecord[]; hasMoreBefore: boolean }>;
+  /** Author, sequence and level of the messages of this DM among `ids`; ids of other DMs are absent. */
+  messageFacts(dmId: string, ids: string[]): Promise<{ id: string; authorId: string; sequence: number; threadRootId: string | null }[]>;
+  /** Messages of one level (the roots when `rootId` is null, else that root's replies) with sequence in [from, to]. */
+  levelRange(dmId: string, rootId: string | null, from: number, to: number): Promise<{ id: string; authorId: string }[]>;
+  /** Idempotent per message and viewer; returns how many rows were written now. */
+  observe(workspaceId: string, dmId: string, viewerId: string, ids: string[]): Promise<number>;
+  /** Current participants other than `excludeId` who observed every one of `ids`. */
+  viewersOfAll(dmId: string, ids: string[], excludeId: string): Promise<DmPerson[]>;
   /** Display names of these people. */
   names(userIds: string[]): Promise<DmPerson[]>;
 }
 
-export type DmEventKind = 'dm.created.v1' | 'dm.message_sent.v1' | 'dm.changed.v1';
+export type DmEventKind = 'dm.created.v1' | 'dm.message_sent.v1' | 'dm.changed.v1' | 'dm.observed.v1';
 
 /** Records a versioned event for the stream in the unit of work (identifiers only, never content). */
 export interface DmEventLog {
   record(principal: Principal, workspaceId: string, kind: DmEventKind, dmId: string, data: Record<string, unknown>): Promise<void>;
 }
 
+/**
+ * What copying a private message excerpt into a project task needs from the project side (#537). Implemented over
+ * the same project use cases and access policy as the sketch promotion: no second authority.
+ */
+export interface DmTaskCopy {
+  /** Projects the caller may change, sorted by name. */
+  targets(principal: Principal, workspaceId: string): Promise<{ id: string; name: string }[]>;
+  /** Who can open a task in this project now (the policy's list, per person). Throws like `project.write`. */
+  audience(principal: Principal, workspaceId: string, projectId: string): Promise<{ people: PromotionPerson[]; projectName: string }>;
+  /** Locks the rows every change of that audience locks (workspace, then the project), FOR SHARE, until commit. */
+  lockDestination(workspaceId: string, projectId: string): Promise<void>;
+  /** The project's own task creation, in this unit of work: its checks, retry identity, events and history. */
+  createTask(principal: Principal, projectId: string, command: { title: string; outcome: string; clientCommandId: string }): Promise<WorkItem>;
+}
+
 export interface DmPorts {
   access: DmAccess;
+  taskCopy: DmTaskCopy;
   dms: DmRepository;
   events: DmEventLog;
 }

@@ -2,12 +2,12 @@ import { useTyping } from '../typing/useTyping';
 import { TypingNotice } from '../typing/TypingNotice';
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
-import { Link, useLoaderData, useLocation, useNavigate, useRevalidator, type LoaderFunctionArgs } from 'react-router';
-import type { HumanConversationMessage, Dm, DmPerson } from '@flux/contracts';
+import { Link, useLoaderData, useLocation, useNavigate, useRevalidator, useSearchParams, type LoaderFunctionArgs } from 'react-router';
+import type { Dm, DmMessage, DmPerson, DmTaskCopyResult } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { getDm, olderDmMessages } from '../api/direct-messages';
 import { outboxView, useComposerDraft, useComposerScope } from '../composer/draft';
-import { ConnectionLine, OutboxStatus, SendAnnouncer } from '../composer/Outbox';
+import { ConnectionLine, SendAnnouncer } from '../composer/Outbox';
 import { createDmSketch } from '../api/sketches';
 import { sketchHref } from '../sketch/format';
 import { useStreamEvents } from '../api/stream';
@@ -16,8 +16,13 @@ import { useShellActions } from '../app/shellContext';
 import { Avatar, Button, Icon, MEDIA, sendsOnEnter, useMediaQuery, useToast } from '../ui';
 import { audienceLine, dmTitle, othersIn } from './names';
 import { pageBackTo } from '../app/seekMessage';
-import { MessageContent } from '../composer/Files';
-import { MessageDay, MessageTime, clock, day } from '../app/messageParts';
+import { taskHref } from '../sketch/ThoughtTasks';
+import type { ThreadMode } from '../app/ThreadDrawer';
+import { DmBubble } from './DmBubble';
+import { DmTaskCopy } from './DmTaskCopy';
+import { DmThreadPanel } from './DmThreadPanel';
+import { groupRows } from './rows';
+import { ownRuns, useObservation, useReceipts } from './receipts';
 import './dm.css';
 
 /**
@@ -53,7 +58,7 @@ function DmUnavailable() {
   );
 }
 
-function merge(current: HumanConversationMessage[], incoming: HumanConversationMessage[]) {
+function merge(current: DmMessage[], incoming: DmMessage[]) {
   const byId = new Map(current.map((message) => [message.id, message]));
   for (const message of incoming) byId.set(message.id, message);
   return [...byId.values()].sort((a, b) => a.sequence - b.sequence);
@@ -80,7 +85,7 @@ function DmContent({ initial }: { initial: Dm }) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const messagesRef = useRef(messages);
   // A message confirmed here shows at once, in its queued place, until the DM's own read includes it.
-  const shown = useMemo(() => merge(messages, composer.sent.map((item) => item.message as HumanConversationMessage)), [messages, composer.sent]);
+  const shown = useMemo(() => merge(messages, composer.sent.map((item) => item.message as DmMessage)), [messages, composer.sent]);
   const outbox = outboxView(shown, composer.pending, composer.sent, me.user.id);
   const refreshing = useRef(false);
   useEffect(() => { messagesRef.current = messages; }, [messages]);
@@ -93,6 +98,20 @@ function DmContent({ initial }: { initial: Dm }) {
   const startAttempt = useRef<{ ids: string; key: string } | null>(null);
   const selectButtonRef = useRef<HTMLButtonElement>(null);
   const { actionSlot } = useShellActions();
+  // #536: the open thread lives in the address (?thread=<root>), so reload and Back reflect the same state.
+  const [params, setParams] = useSearchParams();
+  const location = useLocation();
+  const threadId = params.get('thread');
+  const [refreshTick, setRefreshTick] = useState(0);
+  const [receiptTick, setReceiptTick] = useState(0);
+  const splitRef = useRef<HTMLDivElement>(null);
+  const phone = useMediaQuery(MEDIA.navDrawer);
+  const [wide, setWide] = useState(true);
+  const mode: ThreadMode = phone || !wide ? 'sheet' : 'docked';
+  const opener = useRef<string | null>(null);
+  const [replyFocus, setReplyFocus] = useState(false);
+  // #537: the task copy being previewed. Nothing is written until it is confirmed there.
+  const [copy, setCopy] = useState<{ message: DmMessage; excerpt: string | undefined } | null>(null);
 
   const title = dmTitle(dm, me.user.id);
   const audience = audienceLine(dm, me.user.id);
@@ -139,8 +158,20 @@ function DmContent({ initial }: { initial: Dm }) {
   }, [denied, initial.id, learn]);
 
   useStreamEvents(me.user.id, (event) => {
-    if (event.objectType === 'dm' && event.objectId === initial.id) void refresh();
-  }, () => { void refresh(); });
+    if (event.objectType !== 'dm' || event.objectId !== initial.id) return;
+    // Someone saw a message: only the "Seen by" lines ask again, not the whole conversation.
+    if (event.kind === 'dm.observed.v1') { setReceiptTick((tick) => tick + 1); return; }
+    void refresh(); setRefreshTick((tick) => tick + 1);
+  }, () => { void refresh(); setRefreshTick((tick) => tick + 1); });
+  useLayoutEffect(() => {
+    const split = splitRef.current;
+    if (!split) return;
+    const measure = () => setWide(split.clientWidth >= 760);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(split);
+    return () => observer.disconnect();
+  }, []);
   useEffect(() => {
     const onVisible = () => { if (document.visibilityState === 'visible') void refresh(); };
     document.addEventListener('visibilitychange', onVisible);
@@ -148,7 +179,7 @@ function DmContent({ initial }: { initial: Dm }) {
     return () => { document.removeEventListener('visibilitychange', onVisible); window.removeEventListener('focus', onVisible); };
   }, [refresh]);
   // A search result opens on that whole message when it is in the loaded window (#114); otherwise on the latest.
-  const hash = useLocation().hash;
+  const hash = location.hash;
   const arrived = hash.startsWith('#message-') ? hash.slice('#message-'.length) : null;
   const arrivedLoaded = !!arrived && messages.some((message) => message.id === arrived);
   // Older than the loaded window: page back until the message is loaded, then show it.
@@ -196,7 +227,7 @@ function DmContent({ initial }: { initial: Dm }) {
     const result = await outcome;
     if (!active()) return;
     if (result.status === 'delivered') {
-      setMessages((current) => merge(current, [result.message as HumanConversationMessage]));
+      setMessages((current) => merge(current, [result.message as DmMessage]));
       return;
     }
     if (result.status !== 'failed') return;
@@ -259,6 +290,55 @@ function DmContent({ initial }: { initial: Dm }) {
     }
   }
 
+  // Stored messages, then the ones being sent, grouped by day and author as one list.
+  const lines = [...shown.map((message) => ({ message, item: null, authorId: message.authorId, at: message.createdAt })),
+    ...outbox.pending.map((item) => ({ message: null, item, authorId: me.user.id, at: item.at }))];
+  const rows = groupRows(lines);
+  // #534: what this person observed, and who observed every message of their own whole runs.
+  const feedBox = feedRef;
+  useObservation({ dmId: dm.id, meId: me.user.id, enabled: !gone && !selecting, feed: feedBox, messages: shown, depend: shown.length });
+  const runs = ownRuns(lines.map((line) => ({ id: line.message?.id ?? null, authorId: line.authorId, createdAt: line.at })), me.user.id, olderCursor !== null);
+  const seen = useReceipts({ dmId: dm.id, runs, tick: receiptTick + refreshTick });
+
+  function openThread(rootId: string, reply: boolean) {
+    opener.current = rootId;
+    setReplyFocus(reply);
+    const next = new URLSearchParams(params);
+    next.set('thread', rootId);
+    // Opening another thread replaces the open one, so closing is still one step back to the conversation.
+    setParams(next, { replace: !!threadId, state: { dmThread: true } });
+  }
+  function closeThread() {
+    const target = opener.current ?? threadId;
+    opener.current = null;
+    if ((location.state as { dmThread?: boolean } | null)?.dmThread) navigate(-1);
+    else { const next = new URLSearchParams(params); next.delete('thread'); setParams(next, { replace: true }); }
+    setReplyFocus(false);
+    // The message that opened it takes focus back, with the reading position where it was.
+    requestAnimationFrame(() => requestAnimationFrame(() => document.getElementById(`message-${target}`)?.focus({ preventScroll: true })));
+  }
+  const threadDenied = useCallback((cause: unknown) => {
+    if (cause instanceof ApiError && cause.status === 404 && !denied(cause)) return;
+    denied(cause);
+  }, [denied]);
+  const threadCount = useCallback((rootId: string, replies: number) => {
+    setMessages((current) => current.some((m) => m.id === rootId && m.replyCount !== replies) ? current.map((m) => m.id === rootId ? { ...m, replyCount: replies } : m) : current);
+  }, []);
+  const copyTrigger = useRef<string | null>(null);
+  function startCopy(message: DmMessage, excerpt: string | undefined) {
+    copyTrigger.current = message.id;
+    setCopy({ message, excerpt });
+  }
+  function stopCopy() {
+    const target = copyTrigger.current;
+    setCopy(null);
+    requestAnimationFrame(() => (target ? document.getElementById(`message-${target}`) : null)?.focus({ preventScroll: true }));
+  }
+  function copied(result: DmTaskCopyResult) {
+    stopCopy();
+    toast({ message: `Task created in ${result.project.name}`, action: { label: 'Open task', onClick: () => navigate(taskHref(result.project.id, result.task.id)) } });
+  }
+
   // A 1:1 whose other person left (or was removed) has nobody to send to: say so, disable sending.
   const counterpart = dm.kind === 'pair' ? dm.counterpart : null;
   const recipientGone = Boolean(counterpart && !dm.participants.some((p) => p.id === counterpart.id));
@@ -272,17 +352,10 @@ function DmContent({ initial }: { initial: Dm }) {
     <Button ref={selectButtonRef} variant="quiet" icon="check" aria-pressed={selecting} className="dm-select-btn" onClick={() => toggleSelecting(!selecting)}>Select</Button>,
     actionSlot,
   ) : null;
-  // Stored messages, then the ones being sent, grouped by day and author as one list.
-  const lines = [...shown.map((message) => ({ kind: 'message' as const, message, authorId: message.authorId, at: message.createdAt })),
-    ...outbox.pending.map((item) => ({ kind: 'pending' as const, item, authorId: me.user.id, at: item.at }))];
-  const rows = lines.map((line, index) => {
-    const previous = lines[index - 1];
-    const label = day(line.at);
-    const newDay = !previous || day(previous.at) !== label;
-    const next = lines[index + 1];
-    return { line, label, newDay, continued: !newDay && previous?.authorId === line.authorId, groupLast: !next || next.authorId !== line.authorId || day(next.at) !== label };
-  });
+  const threadOpen = !!threadId && !!messages.length;
   return (
+    <div className={`convo-split dm-split${threadOpen ? ` has-thread is-${mode}` : ''}`} ref={splitRef}>
+    <div className="convo-split__stream" inert={threadOpen && mode === 'sheet'}>
     <div className={`dm${selecting ? ' dm--selecting' : ''}`} data-dm-id={dm.id}
       onKeyDown={(event) => { if (selecting && event.key === 'Escape') { event.preventDefault(); toggleSelecting(false); } }}>
       {selectButton}
@@ -304,47 +377,19 @@ function DmContent({ initial }: { initial: Dm }) {
           {rows.length ? (
             <ol className="dm__list" aria-label="Messages">
               {rows.map(({ line, label, newDay, continued, groupLast }) => {
-                if (line.kind === 'pending') {
-                  const { item } = line;
-                  return (
-                    <li key={`pending-${item.id}`} id={`pending-${item.id}`} data-client-message-id={item.id} data-send-state={item.state}
-                      className={`dm-msg is-mine is-pending${continued ? ' dm-msg--cont' : ''}${item.state === 'failed' ? ' is-failed-send' : ''}`}>
-                      {newDay ? <MessageDay as="p" label={label} /> : null}
-                      <div className="dm-msg__row">
-
-                        <div className="dm-msg__main is-mine">
-
-                          <MessageContent body={<p className="dm-msg__body">{item.body}</p>} />
-                          <OutboxStatus item={item} onRetry={() => composer.retry(item.id)} onRemove={() => composer.remove(item.id)} />
-                        </div>
-                      </div>
-                    </li>
-                  );
+                if (!line.message) {
+                  const item = line.item!;
+                  return <DmBubble key={`pending-${item.id}`} message={null} pending={item} mine name={me.user.name} continued={continued} groupLast={groupLast} day={newDay ? label : null}
+                    writable={!recipientGone} selecting={false} picked={false} arrived={false} observed={false} seenBy={[]} nav="stream"
+                    onCreateTask={startCopy} onPick={pick} onRetry={() => composer.retry(item.id)} onRemove={() => composer.remove(item.id)} />;
                 }
-                const { message } = line;
+                const message = line.message;
                 const mine = message.authorId === me.user.id;
-                const isPicked = selecting && picked.includes(message.id);
-                return (
-                  // A message confirmed from its queued one keeps that list item: nothing moves (#264).
-                  <li key={outbox.keyOf(message.id)} id={`message-${message.id}`} tabIndex={-1} className={`dm-msg${mine ? ' is-mine' : ''}${continued ? ' dm-msg--cont' : ''}${arrived === message.id ? ' is-arrived' : ''}${isPicked ? ' is-picked' : ''}`} data-sequence={message.sequence} data-message-id={message.id} aria-label={mine ? 'Your message' : `${nameOf(message.authorId)}’s message`}>
-                    {newDay ? <MessageDay as="p" label={label} /> : null}
-                    {/* While selecting, the whole row toggles; the check is the keyboard and screen reader control. */}
-                    <div className="dm-msg__row" onClick={selecting ? (event) => { if (!(event.target as HTMLElement).closest('.dm-msel')) pick(message.id); } : undefined}>
-                      {selecting ? (
-                        <button type="button" className="dm-msel" aria-pressed={isPicked} onClick={() => pick(message.id)}
-                          aria-label={`Select ${mine ? 'your' : `${nameOf(message.authorId)}’s`} message, ${clock(message.createdAt)}`}>
-                          <i><Icon name="check" size={12} /></i>
-                        </button>
-                      ) : null}
-                      <span className="dm-msg__face">{continued || mine ? null : <Avatar name={mine ? me.user.name : nameOf(message.authorId)} size="lg" tone={mine ? 'me' : 'neutral'} />}</span>
-                      <div className={`dm-msg__main${mine ? ' is-mine' : ''}`}>
-                        {continued || mine ? null : <p className="dm-msg__meta"><b>{nameOf(message.authorId)}</b></p>}
-                        <MessageContent body={<p className="dm-msg__body">{message.body}</p>} />
-                        {groupLast ? <MessageTime at={message.createdAt} /> : null}
-                      </div>
-                    </div>
-                  </li>
-                );
+                // A message confirmed from its queued one keeps that list item: nothing moves (#264).
+                return <DmBubble key={outbox.keyOf(message.id)} message={message} mine={mine} name={mine ? me.user.name : nameOf(message.authorId)} continued={continued} groupLast={groupLast}
+                  day={newDay ? label : null} writable={!recipientGone} selecting={selecting} picked={selecting && picked.includes(message.id)} arrived={arrived === message.id}
+                  observed={!mine} seenBy={(seen.get(message.id) ?? []).map((p) => p.name)} nav="stream"
+                  onReply={() => openThread(message.id, true)} onOpenThread={(root) => openThread(root.id, false)} onCreateTask={startCopy} onPick={pick} />;
               })}
             </ol>
           ) : (
@@ -379,6 +424,15 @@ function DmContent({ initial }: { initial: Dm }) {
           <p hidden className="composer__hint" ><span className="composer__keys">Enter sends · Shift+Enter adds a line · </span>Unsent text stays in this tab</p>
         </div>
       </div>
+    </div>
+    </div>
+    {threadOpen ? (
+      <DmThreadPanel key={threadId} dmId={dm.id} rootId={threadId!} mode={mode} meId={me.user.id} meName={me.user.name} nameOf={nameOf}
+        audience={audience} writable={!recipientGone} refreshTick={refreshTick} receiptTick={receiptTick} focusComposer={replyFocus} focusOnOpen={!replyFocus} canObserve
+        onClose={closeThread} onDenied={threadDenied} onCreateTask={startCopy} onCount={threadCount} />
+    ) : null}
+    {copy ? <DmTaskCopy dmId={dm.id} message={copy.message} excerpt={copy.excerpt} participants={dm.participants} onClose={() => stopCopy()}
+      onCreated={copied} onUnavailable={(cause) => { setLeftNotice(cause instanceof ApiError && cause.code?.startsWith('DM_RECIPIENT') ? cause.message : leftNotice); void refresh(); denied(cause); }} /> : null}
     </div>
   );
 }
