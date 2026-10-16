@@ -82,8 +82,11 @@ function AppLayoutContent() {
   const { me, workspace, projects, directMessages } = useShellData();
   const location = useLocation();
   const backgroundSettings = location.pathname === '/settings/background-compute';
+  const aiConnections = location.pathname === '/settings/ai-connections';
   // A page inside Settings (#266 PF-5): on the phone its header leads back instead of opening the drawer.
   const settingsPage = /^\/settings\/./.test(location.pathname);
+  // Back from a direct link goes to the page that leads there: the AI pages to Agents and AI (#513).
+  const settingsParent = /^\/settings\/(assistant|background-compute|ai-connections)(\/|$)/.test(location.pathname) ? '/settings/agents' : '/settings';
   const navDrawer = useMediaQuery(MEDIA.navDrawer);
   const phone = useMediaQuery(MEDIA.phone);
   const panelMode = useSidePanelMode();
@@ -181,7 +184,7 @@ function AppLayoutContent() {
   const [shownPath, setShownPath] = useState(location.pathname);
   if (shownPath !== location.pathname) {
     setShownPath(location.pathname);
-    if ((panelMode !== 'docked' || backgroundSettings) && detailsOpen) setDetailsOpen(false);
+    if ((panelMode !== 'docked' || backgroundSettings || aiConnections) && detailsOpen) setDetailsOpen(false);
   }
   // `?open=work:<id>` (a notification's link, #116, a search result, #114, or a doc reference, #112)
   // opens that object in Details on its project; `?open=people` (a new project, #188) opens its
@@ -366,9 +369,13 @@ function AppLayoutContent() {
     : /^\/settings(\/(appearance|account|notifications|agents|shortcuts)(\/.*)?)?$/.test(location.pathname)
     ? { crumb: null, title: 'Settings', topic: 'Appearance, notifications, agents and AI', views: false, noDetails: true }
     : backgroundSettings
-    ? { crumb: null, title: 'Background suggestions', topic: 'Your connection and allowance', views: false, noDetails: true }
+    ? { crumb: null, title: 'Background suggestions', topic: 'Your usage and project rules', views: false, noDetails: true }
+    : aiConnections
+    ? { crumb: null, title: 'AI connections', topic: 'Your own keys, payers and allowances', views: false, noDetails: true }
     : location.pathname === '/search'
     ? { crumb: null, title: 'Search', topic: 'Only what you can open is searched', views: false, noDetails: true }
+    : location.pathname === '/settings/assistant/how'
+    ? { crumb: null, title: 'How your assistant works', topic: 'Only you can use it · optional', views: false, noDetails: true }
     : location.pathname === '/settings/assistant'
     ? { crumb: null, title: 'Your assistant', topic: 'Only you can use it · optional', views: false, noDetails: true }
     : activeProject
@@ -448,7 +455,7 @@ function AppLayoutContent() {
   const phoneHeader = (
     <header className={`phead${mainPlace ? ' phead--large' : ''}`}>
       {backOnly ? (
-        <><PhoneBack onBack={() => goBack(settingsPage ? '/settings' : homePage ? '/' : '/projects')} />
+        <><PhoneBack onBack={() => goBack(settingsPage ? settingsParent : homePage ? '/' : '/projects')} />
           <div className="phead__id"><div className="phead__title"><h1>{location.pathname === '/projects/new' ? 'New project' : place.title}</h1></div></div></>
       ) : activeProject && projectViews ? (
         <><PhoneBack onBack={() => goBack('/projects')} />

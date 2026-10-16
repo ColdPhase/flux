@@ -82,8 +82,8 @@ export interface DeliveryDependencies {
   db: Database;
   config: PushSenderConfig;
   agent?: https.Agent;
-  /** The worker's VAPID authorizer; without one, each delivery signs its own JWT. */
-  vapid?: VapidAuthorizer;
+  /** The worker's one VAPID authorizer, so deliveries reuse a JWT per push service. */
+  vapid: VapidAuthorizer;
   log?: (message: string, details?: Record<string, unknown>) => void;
 }
 

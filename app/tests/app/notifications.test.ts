@@ -20,7 +20,7 @@ import type { InboxItem, InboxResponse, NotificationPreferences, NotificationRea
 import { emailUnitOfWork, handleEmailJob, smtpNotificationMailer } from '../../apps/worker/src/notifications/index.js';
 import { summaryUnitOfWork } from '../../apps/worker/src/jobs/morning-summary.js';
 import { PgBoss } from 'pg-boss';
-import { deliverPush } from '../../apps/worker/src/push/index.js';
+import { createVapidAuthorizer, deliverPush } from '../../apps/worker/src/push/index.js';
 import { loadPushSenderConfig } from '@flux/core';
 import { connectionString, db, pool } from './support/db.js';
 import { Browser, mailpitUrl, publicOrigin, register, signIn } from './support/http.js';
@@ -37,6 +37,7 @@ const origin = mailConfig.origin;
 const smtp = smtpNotificationMailer(mailConfig);
 after(() => smtp.close());
 // Sends the jobs delivery itself queues (a promoted same-mailbox copy, #329).
+const vapid = createVapidAuthorizer();
 const queue = new PgBoss({ connectionString, migrate: false });
 before(() => queue.start());
 after(() => queue.stop());
@@ -372,7 +373,7 @@ describe('email and push delivery', () => {
     const emailJob = await pool.query('SELECT start_after FROM pgboss.job WHERE name=$1 AND data->>\'emailId\'=$2', [NOTIFICATION_EMAIL_JOB, email!.id]);
     assert.equal(new Date(emailJob.rows[0].start_after).getTime(), until.getTime());
     assert.equal((await mailsTo(focused.email)).length, 0, 'no email before Resume');
-    assert.deepEqual(await deliverPush({ db, config: loadPushSenderConfig() }, { notificationId: item.id, subscriptionId, userId: focused.id }), { outcome: 'deferred', until });
+    assert.deepEqual(await deliverPush({ db, vapid, config: loadPushSenderConfig() }, { notificationId: item.id, subscriptionId, userId: focused.id }), { outcome: 'deferred', until });
     assert.deepEqual(await deliverNotificationEmail({ available: true, origin, uow: emailUnitOfWork(db, queue), mailer: smtp }, { emailId: email!.id }), { outcome: 'deferred', until });
     // Enable today's due time only after the unread source exists, so a real scheduler
     // cannot claim an empty day before this controlled summary is admitted.
@@ -380,7 +381,7 @@ describe('email and push delivery', () => {
     await sendMorningSummaries(summaryUnitOfWork(db, queue), new Date());
     const summaries = (await pool.query("SELECT id FROM notifications WHERE user_id=$1 AND delivery_kind='morning_summary'", [focused.id])).rows;
     assert.equal(summaries.length, 1);
-    assert.deepEqual(await deliverPush({ db, config: loadPushSenderConfig() }, { notificationId: summaries[0].id, subscriptionId, userId: focused.id }), { outcome: 'deferred', until });
+    assert.deepEqual(await deliverPush({ db, vapid, config: loadPushSenderConfig() }, { notificationId: summaries[0].id, subscriptionId, userId: focused.id }), { outcome: 'deferred', until });
     await waitFor(async () => {
       const jobs = await pool.query('SELECT state,start_after FROM pgboss.job WHERE name=$1 AND data->>\'notificationId\'=$2', [PUSH_SEND_JOB, summaries[0].id]);
       return jobs.rows.some(row => new Date(row.start_after).getTime() === until.getTime())
@@ -388,11 +389,11 @@ describe('email and push delivery', () => {
     }, 'the real ready summary job to defer before direct Resume delivery');
     assert.equal((await recordedPushes(subscription.mockId)).length, 0, 'neither ordinary nor summary push escapes focus');
     await prefs(focused, { pause: { until: null } });
-    assert.equal((await deliverPush({ db, config: loadPushSenderConfig() }, { notificationId: item.id, subscriptionId, userId: focused.id })).outcome, 'sent');
+    assert.equal((await deliverPush({ db, vapid, config: loadPushSenderConfig() }, { notificationId: item.id, subscriptionId, userId: focused.id })).outcome, 'sent');
     assert.equal((await deliverNotificationEmail({ available: true, origin, uow: emailUnitOfWork(db, queue), mailer: smtp }, { emailId: email!.id })).outcome, 'sent');
     await waitForMails(focused.email, 1, 'one email after Resume');
     assert.equal((await mailsTo(focused.email)).length, 1);
-    assert.equal((await deliverPush({ db, config: loadPushSenderConfig() }, { notificationId: summaries[0].id, subscriptionId, userId: focused.id })).outcome, 'sent');
+    assert.equal((await deliverPush({ db, vapid, config: loadPushSenderConfig() }, { notificationId: summaries[0].id, subscriptionId, userId: focused.id })).outcome, 'sent');
     assert.equal((await recordedPushes(subscription.mockId)).length, 2, 'ordinary and summary delivery both resume');
     await prefs(focused, { morningSummary: { enabled: false } });
   });
@@ -412,7 +413,7 @@ describe('email and push delivery', () => {
     await removeMember(owner, workspaceId, leaver);
     const outcome = await deliverNotificationEmail({ available: true, origin, uow: emailUnitOfWork(db, queue), mailer: smtp }, { emailId: email!.id });
     assert.deepEqual(outcome, { outcome: 'skipped', reason: 'recipient can no longer read the source' });
-    const push = await deliverPush({ db, config: loadPushSenderConfig() }, { notificationId: item.id, subscriptionId, userId: leaver.id } satisfies PushSendJob);
+    const push = await deliverPush({ db, vapid, config: loadPushSenderConfig() }, { notificationId: item.id, subscriptionId, userId: leaver.id } satisfies PushSendJob);
     assert.equal(push.outcome, 'skipped');
     assert.equal((await mailsTo(leaver.email)).length, 0);
     assert.equal((await recordedPushes(subscription.mockId)).length, 0);
@@ -1031,7 +1032,7 @@ describe('review fixes: exact unsubscribe, bounded verification, quiet hours at 
     const requeued = await pool.query(`SELECT start_after FROM pgboss.job WHERE name = $1 AND data->>'emailId' = $2`, [NOTIFICATION_EMAIL_JOB, emailId]);
     assert.equal(requeued.rowCount, 1, 'the email job is queued again for the end of quiet hours');
     assert.equal(new Date(requeued.rows[0].start_after).getTime(), until.getTime());
-    const push = await deliverPush({ db, config: loadPushSenderConfig() }, { notificationId, subscriptionId, userId: reader.id });
+    const push = await deliverPush({ db, vapid, config: loadPushSenderConfig() }, { notificationId, subscriptionId, userId: reader.id });
     assert.equal(push.outcome, 'deferred');
     assert.equal((await emailRows(reader.id))[0]!.status, 'queued');
     assert.equal((await mailsTo(reader.email)).length, 0);
@@ -1040,7 +1041,7 @@ describe('review fixes: exact unsubscribe, bounded verification, quiet hours at 
     // When quiet hours end (here: turned off), the same row and subscription send once.
     await prefs(reader, { quietHours: { enabled: false } });
     assert.deepEqual(await deliverNotificationEmail(options, { emailId }), { outcome: 'sent', addressKind: 'account' });
-    assert.equal((await deliverPush({ db, config: loadPushSenderConfig() }, { notificationId, subscriptionId, userId: reader.id })).outcome, 'sent');
+    assert.equal((await deliverPush({ db, vapid, config: loadPushSenderConfig() }, { notificationId, subscriptionId, userId: reader.id })).outcome, 'sent');
     await waitForMails(reader.email, 1, 'the released email');
     assert.equal((await recordedPushes(subscription.mockId)).length, 1);
   });

@@ -198,11 +198,18 @@ content and never nags.
   - **There is no tab bar in a conversation;** the composer sits at the bottom.
 - **Sheets.** They have a grabber and two heights: half (the conversation stays visible) and full
   (dragged up).
-- **Gestures.**
-  - **Swipe left always reveals actions**: Done, Not now, Hand off, Reply in thread.
-  - Long press opens a message menu: Reply in thread, Create task, Hand off to an agent, Cite,
-    Copy text.
-  - Nothing swipes right.
+- **Gestures.** Founder amendment 2026-10-16 ([#343](https://github.com/ColdPhase/flux/issues/343)),
+  replacing the earlier phone gestures:
+  - **In a conversation, long press** on a message opens its menu: Reply in thread, Create task,
+    Hand off to an agent, Cite and Copy text. Done and Not now also appear there only when the
+    message is waiting for you in your Inbox (a question to you or an @mention), and act on that
+    Inbox item. Other messages get no Done or Not now.
+  - **Swipe right** on a message opens Reply in thread. This overrides the earlier "nothing swipes
+    right".
+  - **No swipe-left actions on messages.** Messages have no done or snooze state.
+  - **Swipe stays only in the Inbox and Tasks lists** (Done and Not now, as in Gmail). Every
+    swipe action has a visible button or menu alternative, because a gesture is never the only
+    way to an action. On the computer, hover actions are unchanged.
 - **Targets and text.** Touch targets are at least 44 px. Meta text is at least 12.5 px. Body
   text is 15–16 px.
 
@@ -242,7 +249,7 @@ The canvas labels S1–S22 and P1–P12 refer to these rules.
 | S3 | One "+" or `C` opens the same Create window or sheet everywhere: Tasks, the Map, a message menu, ⌘K. |
 | S4 | One detail panel on the computer and one sheet on the phone, for tasks, decisions, agents and threads. |
 | S5 | The composer has `@` to mention and `/` for actions (`/task`, `/decide`, `/handoff`, `/file`), with no separate buttons. |
-| S6 | Hover actions on a message (computer). Swipe left for actions and long press for the menu (phone). |
+| S6 | Hover actions on a message (computer). Long press for the menu and swipe right to reply in thread (phone), as amended 2026-10-16 (#343). |
 | S7 | A "Since you left: …" line jumps to the first unread item. |
 | S8 | Several task updates in a row fold into one expandable line. |
 | S9 | One tap on the state glyph (or `1`–`5`) changes the state. Swipe left, then Done, then a toast with **Undo**. |
@@ -324,7 +331,10 @@ tokens or S/P rules above:
   state: task, Wiki page, decision, map thought, cited message. In text they are inline chips
   aligned to the text baseline: `@person`, `#4`, a Wiki page.
 - **A link** shows a preview: the site icon, the domain, the title, the description and an
-  optional image.
+  optional image. Founder direction 2026-10-16 ([#469](https://github.com/ColdPhase/flux/issues/469)):
+  the Flux server may fetch link previews (title, description, image, site name). Fetching blocks
+  private, loopback and link-local addresses (SSRF), allows only http and https, sets a timeout and
+  a size limit, caches the result, and respects the privacy of the place where the link appears.
 - **A photo** has no file frame. It has radius 16 and its caption below. 2–4 photos form a grid,
   with "+N" on the last one.
   - Sending, offline and failure show on the photo itself: progress in %, "sends when you're
@@ -387,7 +397,7 @@ Every screen is also on the canvas, where it can be toggled light or dark.
   one "+" replaces it).
 - Separate "Ask an agent" and "Cite" buttons in the composer (S5).
 - The "Create work" wording (P8).
-- Rightward swipes.
+- Rightward swipes, except swipe right on a message to reply in thread (#343, 2026-10-16).
 - Connecting and arranging map thoughts on the phone (S15).
 
 ## 9. Accepting an implementation
