@@ -232,13 +232,19 @@ describe('a run on the owner\'s own Claude Code in the agent runtime (F-022 T5, 
   });
 
   test('tool results past the route\'s bound end the run in its own state', async () => {
-    await script({ calls: [{ name: 'flux_get_doc', args: { projectId: place.id, id: bigDocId } }], answer: 'read it' });
+    // A run's pages stay under the 16 KiB per-call bound (#484), so the run total (64 KiB) is what a long read passes.
+    const read = { name: 'flux_get_doc', args: { projectId: place.id, id: bigDocId } };
+    await script({ calls: Array.from({ length: 10 }, () => read), answer: 'read it' });
     const started = await ask();
     assert.equal(await processor.process(started.run.id), 'cap_reached');
     const stored = await row(started.run.id);
     assert.deepEqual([stored.end_reason, stored.answer_body], ['mcp_results_too_large', null]);
-    const result = (await calls()).find((entry) => entry.event === 'tool_result') as { isError: boolean; text: string } | undefined;
-    if (result) assert.ok(result.isError && !result.text.includes('log line. log line.'), 'the oversized result was not returned');
+    const results = (await calls()).filter((entry) => entry.event === 'tool_result') as { isError: boolean; text: string }[];
+    assert.ok(results.length >= 2 && !results[0]!.isError, 'earlier pages were returned');
+    const refused = results.find((entry) => entry.isError);
+    if (refused) assert.ok(!refused.text.includes('log line. log line.'), 'the over-budget result was not returned');
+    assert.ok(results.filter((entry) => !entry.isError).reduce((sum, entry) => sum + Buffer.byteLength(entry.text), 0) <= 64 * 1024, 'the CLI never received more than the per-run total');
+    assert.ok(results.every((entry) => Buffer.byteLength(entry.text) <= 16 * 1024), 'no single result passed the call bound');
   });
 
   test('Stop records requested and acknowledged separately; SIGINT, then SIGTERM for a CLI that ignores it', async () => {
