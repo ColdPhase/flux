@@ -277,11 +277,11 @@ carries identifiers and the status only; the owner's client refetches `GET /api/
 
 ## WebSocket commands
 
-Not implemented. `GET /api/v1/stream` is server-to-client only: the connection ignores every
-client frame, and the API test pins that an `assistant.run` or `assistant.stop` frame does
-nothing. The UI therefore invokes and stops through the HTTP API, which resolves the owner
-from the session. A command channel on the stream (session revalidation per command,
-replies, rate limits) is its own change.
+Not planned (founder direction 2026-10-16, [#68](https://github.com/ColdPhase/flux/issues/68)).
+The HTTP requests are enough and there is no user-visible difference. `GET /api/v1/stream` stays
+server-to-client only: the connection ignores every client frame, and the API test pins that an
+`assistant.run` or `assistant.stop` frame does nothing. The UI invokes and stops through the HTTP
+API, which resolves the owner from the session.
 
 ## UI (AC-8)
 
@@ -479,15 +479,11 @@ behaviour or accessibility.
   from `connection_id`, and the operator switch (see [Switching production on](#switching-production-on)).
 - A provider pass against the real API (with a real key, by its owner), including billing on
   cancellation and lost responses.
-- The WebSocket commands `assistant.run` and `assistant.stop` (the stream has no client
-  command channel).
-- Done actions with undo, such as adding a map thought, and *Ask my assistant* on a map
-  thought (`map_thought` runs exist in the API; no UI entry yet).
-- The header ✦ status button and the "someone else's assistant" panel of the design.
+- The "someone else's assistant" panel of the design. (Dropped from the plan, founder direction
+  2026-10-16 on #68: the WebSocket commands, the map-thought *Ask* entry and the header status
+  button.)
 - Real-device (phone/tablet) and screen-reader checks of the UI.
 - A sweep of runs a crashed worker left behind. Today the owner's next invoke
   ends their own in-flight runs untouched for 15 minutes: a queued or reading run
   at zero cost, a dispatching one as `provider_failed` with its reservation kept
   as `unknown`. The job itself expires after 5 minutes.
-- `draftedBy` on the result object itself. Today the accepted proposal holds
-  `resultId` and the "drafted by" attribution.
