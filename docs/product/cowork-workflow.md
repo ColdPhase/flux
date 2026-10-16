@@ -162,6 +162,13 @@ attributed message" in the people's thread. **Everything else in CW-2 stands:**
   All other work talk goes to the agent thread.
 - **History.** Agent messages already in task threads stay where they are. Nothing is
   moved or rewritten.
+- **Retention.** One rule covers the agent thread and the content-free records that guard
+  it: turn records, artifact boundaries, resets and change witnesses. They have no expiry
+  and cannot be changed or deleted on their own. They go only with their owner: a task's
+  thread, turn records and resets when the task is erased, and boundaries and witnesses when
+  the project is erased (migration 0098, #530). Each real content change adds one boundary
+  and one witness. They outlive a deleted doc, thought or file, because a thought recreated
+  under the same id must not reset a task again.
 - **Delivery.** The slice and its criteria are in the
   [Agents tab review](research/2026-10-09-agents-tab-ux-review.md#slice-for-agent-threads-in-agents).
   Until that slice ships, agents keep using the task thread, and the rules above are the
