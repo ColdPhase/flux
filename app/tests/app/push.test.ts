@@ -30,6 +30,7 @@ before(() => boss.start());
 after(() => boss.stop());
 
 const sender = loadPushSenderConfig();
+const vapid = createVapidAuthorizer();
 const notify = createNotifier(db, boss);
 
 async function subscriptionExists(id: string) {
@@ -223,7 +224,7 @@ describe('push delivery rechecks (in process)', () => {
     const { subscription, id, job } = await prepared();
     const other = await pushRecipient('recheck-new-owner');
     await pool.query('UPDATE push_subscriptions SET user_id = $1 WHERE id = $2', [other.userId, id]);
-    assert.deepEqual(await deliverPush({ db, config: sender }, job), { outcome: 'skipped', reason: 'recipient, subscription or notification no longer matches' });
+    assert.deepEqual(await deliverPush({ db, vapid, config: sender }, job), { outcome: 'skipped', reason: 'recipient, subscription or notification no longer matches' });
     assert.equal((await recordedPushes(subscription.mockId)).length, 0);
   });
 
@@ -239,29 +240,29 @@ describe('push delivery rechecks (in process)', () => {
     assert.equal(captured.jobs.length, 1);
     await pool.query('DELETE FROM auth_users WHERE id = $1', [me.user.id]);
     assert.equal(await subscriptionExists(id), false, 'the account\'s subscriptions are gone');
-    assert.equal((await deliverPush({ db, config: sender }, captured.jobs[0]!)).outcome, 'skipped');
+    assert.equal((await deliverPush({ db, vapid, config: sender }, captured.jobs[0]!)).outcome, 'skipped');
     assert.equal((await recordedPushes(subscription.mockId)).length, 0);
   });
 
   test('an expired session stops delivery and removes the subscription', async () => {
     const { subscription, sessionId, id, job } = await prepared();
     await pool.query("UPDATE auth_sessions SET expires_at = now() - interval '1 minute' WHERE id = $1", [sessionId]);
-    assert.deepEqual(await deliverPush({ db, config: sender }, job), { outcome: 'removed', status: null, reason: 'the subscribing session has ended' });
+    assert.deepEqual(await deliverPush({ db, vapid, config: sender }, job), { outcome: 'removed', status: null, reason: 'the subscribing session has ended' });
     assert.equal(await subscriptionExists(id), false);
     assert.equal((await recordedPushes(subscription.mockId)).length, 0);
   });
 
   test('404 removes the subscription, 503 is retried, 400 is recorded without retry', async () => {
     const missing = await prepared('missing');
-    assert.equal((await deliverPush({ db, config: sender }, missing.job)).outcome, 'removed');
+    assert.equal((await deliverPush({ db, vapid, config: sender }, missing.job)).outcome, 'removed');
     assert.equal(await subscriptionExists(missing.id), false);
 
     const busy = await prepared('busy');
-    await assert.rejects(deliverPush({ db, config: sender }, busy.job), (error: unknown) => error instanceof RetryableDeliveryError && error.status === 503);
+    await assert.rejects(deliverPush({ db, vapid, config: sender }, busy.job), (error: unknown) => error instanceof RetryableDeliveryError && error.status === 503);
     assert.equal(await subscriptionExists(busy.id), true, 'a temporary failure keeps the subscription');
 
     const bad = await prepared('bad');
-    assert.deepEqual(await deliverPush({ db, config: sender }, bad.job), { outcome: 'rejected', status: 400, reason: 'push service answered 400' });
+    assert.deepEqual(await deliverPush({ db, vapid, config: sender }, bad.job), { outcome: 'rejected', status: 400, reason: 'push service answered 400' });
     const row = await pool.query('SELECT last_failure_status FROM push_subscriptions WHERE id = $1', [bad.id]);
     assert.equal(row.rows[0]?.last_failure_status, 400);
   });
@@ -270,7 +271,7 @@ describe('push delivery rechecks (in process)', () => {
     const { subscription, job } = await prepared();
     assert.equal(sender.status, 'available');
     if (sender.status !== 'available') return;
-    const result = await deliverPush({ db, config: { ...sender, allowPrivateNetwork: false } }, job);
+    const result = await deliverPush({ db, vapid, config: { ...sender, allowPrivateNetwork: false } }, job);
     assert.equal(result.outcome, 'rejected');
     assert.match((result as { reason: string }).reason, /non-public address/);
     assert.equal((await recordedPushes(subscription.mockId)).length, 0, 'nothing reached the private host');
@@ -314,7 +315,7 @@ describe('push delivery rechecks (in process)', () => {
 
   test('skips quietly when push is unavailable; the inbox row remains', async () => {
     const { job } = await prepared();
-    assert.deepEqual(await deliverPush({ db, config: { status: 'unavailable', reason: 'not configured' } }, job), { outcome: 'skipped', reason: 'push unavailable' });
+    assert.deepEqual(await deliverPush({ db, vapid, config: { status: 'unavailable', reason: 'not configured' } }, job), { outcome: 'skipped', reason: 'push unavailable' });
     assert.equal((await pool.query('SELECT 1 FROM notifications WHERE id = $1', [job.notificationId])).rowCount, 1);
   });
 });
@@ -327,7 +328,7 @@ describe('subscriptions are bound to the signed-in session', () => {
   }
 
   async function assertNotDelivered(jobs: PushSendJob[], mockId: string) {
-    for (const job of jobs) assert.equal((await deliverPush({ db, config: sender }, job)).outcome, 'skipped');
+    for (const job of jobs) assert.equal((await deliverPush({ db, vapid, config: sender }, job)).outcome, 'skipped');
     assert.equal((await recordedPushes(mockId)).length, 0, 'nothing reached the device');
   }
 
@@ -355,7 +356,7 @@ describe('subscriptions are bound to the signed-in session', () => {
     const phoneJob = jobs.find((job) => job.subscriptionId === phoneSubscription.id)!;
     await assertNotDelivered([phoneJob], phoneSubscription.subscription.mockId);
     const laptopJob = jobs.find((job) => job.subscriptionId === laptopSubscription.id)!;
-    assert.equal((await deliverPush({ db, config: sender }, laptopJob)).outcome, 'sent');
+    assert.equal((await deliverPush({ db, vapid, config: sender }, laptopJob)).outcome, 'sent');
   });
 
   test('revoke-others deletes the other sessions\' subscriptions', async () => {
