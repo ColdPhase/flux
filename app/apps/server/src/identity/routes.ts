@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import {
   IDENTITY_CAPABILITIES_PATH,
   ME_PATH,
+  ME_PROBE_HEADER,
   REVOKE_OTHER_SESSIONS_PATH,
   SESSIONS_PATH,
   type ApiError,
@@ -46,7 +47,11 @@ export interface IdentityRouteOptions {
 export function registerIdentityRoutes(app: FastifyInstance, { sessions, store, passwordReset, signup, ssoOnly, linkable, sso }: IdentityRouteOptions) {
   app.get(IDENTITY_CAPABILITIES_PATH, async (): Promise<IdentityCapabilities> => ({ passwordReset, signup, ssoOnly, linkable, sso: await sso() }));
 
-  app.get(ME_PATH, async (request): Promise<MeResponse> => {
+  app.get(ME_PATH, async (request, reply): Promise<MeResponse> => {
+    if (request.headers[ME_PROBE_HEADER] === '1') {
+      const found = await sessions.resolveSession(request.headers);
+      if (!found) return reply.type('application/json').send('null') as never;
+    }
     const context = await sessions.requirePrincipal(request);
     return { principal: context.principal, user: context.user, session: { id: context.sessionId, expiresAt: context.expiresAt.toISOString() } };
   });

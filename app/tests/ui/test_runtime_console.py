@@ -294,6 +294,38 @@ class RuntimeConsole(unittest.TestCase):
             self.assertEqual(current["lastRelease"]["reason"], "auth_recovery")
 
     @unittest.skipUnless(RUNTIME, "needs the runtime profile (scripts/check_agent_runtime.sh)")
+    def test_07b_a_failed_sign_in_says_so_and_offers_start_again(self) -> None:
+        # The TEST ONLY fake CLI fails the exchange for a code starting `fake-reject-` (the scenario file
+        # cannot be seeded before the browser starts the sign-in).
+        page = self.page(phone=False)
+        # The cancelled console before this one requires full recovery; sign in only once a slot is ready.
+        deadline = time.time() + 60
+        while time.time() < deadline:
+            current = self.api(page, "GET", "/api/v1/agent-runtime")
+            if current["binding"] is None and current["pool"] == "available":
+                break
+            time.sleep(0.2)
+        page.goto("/settings/agents/claude-code")
+        page.get_by_role("radio", name=re.compile("Claude account")).check()
+        page.get_by_role("button", name="Start sign-in").click()
+        opener = page.get_by_role("link", name=re.compile(r"Open the sign-in page"))
+        expect(opener).to_be_visible()
+        state = re.search(r"[?&]state=([\w-]+)", opener.get_attribute("href")).group(1)
+        page.get_by_label("Paste the code from the sign-in page").fill(f"fake-reject-code#{state}")
+        page.get_by_role("button", name="Send").click()
+        outcome = page.locator(".rt-outcome")
+        expect(outcome.get_by_role("heading", name="Not signed in")).to_be_visible()
+        expect(outcome.get_by_role("alert")).to_contain_text("Claude Code ended without reporting a login, so you are not signed in.")
+        expect(outcome.get_by_role("button", name="Start again")).to_be_visible()
+        expect(page.get_by_role("heading", name="Signed in", exact=True)).to_have_count(0)
+        shot(page, "runtime-failed-sign-in-desktop-1440")
+        current = self.api(page, "GET", "/api/v1/agent-runtime")
+        self.assertEqual(current["connections"]["claude_code"]["state"], "signed_out")
+        self.assertIsNone(current["connections"]["claude_code"]["signedInAt"])
+        outcome.get_by_role("button", name="Start again").click()
+        expect(page.get_by_role("group", name="How do you want to sign in?")).to_be_visible()
+
+    @unittest.skipUnless(RUNTIME, "needs the runtime profile (scripts/check_agent_runtime.sh)")
     def test_08_remove_runtime_at_phone_width(self) -> None:
         page = self.page()
         # The preceding cancelled console requires full recovery. Bind only after it is gone and a slot is
@@ -304,11 +336,13 @@ class RuntimeConsole(unittest.TestCase):
             current = self.api(page, "GET", "/api/v1/agent-runtime")
             if current["binding"] is None and current["pool"] == "available":
                 break
+            if current["binding"] is not None and current["binding"]["state"] == "active":
+                break  # a failed sign-in (test_07b) keeps its binding: the owner stays bound and signed out
             time.sleep(0.2)
         current = self.api(page, "GET", "/api/v1/agent-runtime")
-        self.assertIsNone(current["binding"])
-        self.assertEqual(current["pool"], "available")
-        self.api(page, "POST", "/api/v1/agent-runtime/binding")
+        if current["binding"] is None:
+            self.assertEqual(current["pool"], "available")
+            self.api(page, "POST", "/api/v1/agent-runtime/binding")
         page.goto("/settings/agents")
         section = page.locator("section.rt")
         section.get_by_role("button", name="Remove Claude Code from Flux…").tap()

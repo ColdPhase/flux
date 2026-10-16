@@ -276,7 +276,7 @@ API-key runs, for `/mcp`.
 
 Recorded from the T3 review (#331); none of them is hidden by the checks.
 
-- **A slot can be bound without a sign-in (m5, open under #331).** The web client no longer binds when the owner
+- **A slot can be bound without a sign-in (m5, accepted under #331).** The web client no longer binds when the owner
   opens Settings: a binding starts only when a sign-in console is opened, at ticket time, and the console's
   attach then binds again under the owner's session. The API route `POST /api/v1/agent-runtime/binding` still
   binds a slot with no sign-in, so any signed-in account on the instance can call it. Your controls: close or

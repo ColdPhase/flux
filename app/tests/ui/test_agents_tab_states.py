@@ -324,9 +324,14 @@ class AgentsTabStates(unittest.TestCase):
     def test_05_take_back_a_held_task(self) -> None:
         ada = self.page("ada")
         ada.goto(f"/projects/{self.ids['project']}/agents")
-        self.row(ada, "jonas_claude").get_by_role("button", name="Take back #2").click()
-        # A teammate's agent is named by its owner in the toast (#347 N10).
-        expect(ada.get_by_text("Took #2 back from Jonas’s Claude Code")).to_be_visible()
+        # #522: management controls belong to the connection's owner, so a colleague (even the workspace owner) has no Take back.
+        expect(self.row(ada, "jonas_claude")).to_be_visible()
+        expect(self.row(ada, "jonas_claude").get_by_role("button", name=re.compile("^Take back"))).to_have_count(0)
+        self.assertIsNotNone(self.task("task2")["owner"])
+        jonas = self.page("jonas")
+        jonas.goto(f"/projects/{self.ids['project']}/agents")
+        self.row(jonas, "jonas_claude").get_by_role("button", name="Take back #2").click()
+        expect(jonas.get_by_text("Took #2 back from Claude Code")).to_be_visible()
         self.assertIsNone(self.task("task2")["owner"])
         # Negative control: an agent that holds nothing (Notes) has neither Stop nor Take back.
         expect(self.row(ada, "notes")).to_be_visible()

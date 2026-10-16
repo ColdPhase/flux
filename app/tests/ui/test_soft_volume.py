@@ -266,8 +266,8 @@ class SoftVolume(unittest.TestCase):
                 with self.subTest(scheme=scheme, phone=phone):
                     page = self.page(scheme=scheme, phone=phone)
                     page.goto(f"/dm/{self.ids['dm']}")
-                    expect(page.locator(".dm-msg__meta time").first).to_be_visible()
-                    self.assert_mono(page.locator(".dm-msg__meta time").first)
+                    expect(page.locator(".dm-msg .message-time time").first).to_be_visible()
+                    self.assert_mono(page.locator(".dm-msg .message-time time").first)
                     open_details(page)
                     page.wait_for_timeout(400)  # the panel finishes fading in before contrast is measured
                     avatar = page.locator(".details__person .ui-avatar--me")
