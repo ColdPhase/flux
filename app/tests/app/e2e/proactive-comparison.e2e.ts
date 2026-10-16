@@ -265,6 +265,9 @@ test('owner-only background setup persists consent, clears keys and preserves an
   await page.getByRole('heading', { name: 'Your background suggestions', exact: true }).waitFor();
   assert.equal(await page.getByRole('dialog', { name: 'Account', exact: true }).count(), 0);
   assert.match(await page.getByRole('note').innerText(), /not available/);
+  // #513: the connections and their form live on one AI connections page, linked beside the status line.
+  await page.getByRole('link', { name: 'AI connections', exact: true }).click();
+  await page.getByRole('heading', { name: 'Add an AI connection', exact: true }).waitFor();
   assert.equal((await api('GET', '/api/v1/background-compute-connections/current')).data, null);
   let writes = 0;
   page.on('request', (request) => {
@@ -275,7 +278,7 @@ test('owner-only background setup persists consent, clears keys and preserves an
   await page.getByLabel('Provider', { exact: true }).selectOption({ label: 'Anthropic' });
   await page.getByLabel('Model', { exact: true }).fill('claude-sonnet-5');
   await page.getByText('Flux price table, checked 2026-10-02', { exact: false }).waitFor();
-  await page.getByLabel('Background API key', { exact: true }).fill('sk-ant-fixture-background-setup-key-ABCD');
+  await page.getByLabel('API key', { exact: true }).fill('sk-ant-fixture-background-setup-key-ABCD');
   await page.getByLabel('Provider organization', { exact: true }).fill('Fixture Sensor Research');
   await page.getByLabel('Provider workspace', { exact: true }).fill('Fixture Only');
   await page.getByLabel('Maximum requests a day').fill('2');
@@ -319,8 +322,8 @@ test('owner-only background setup persists consent, clears keys and preserves an
   try {
     await page.goto(origin.origin);
     assert.equal((await api('POST', '/api/auth/sign-in/email', { email: fixture.peerEmail, password: fixture.password })).status, 200);
-    await page.goto(`${origin.origin}/settings/background-compute`);
-    await page.getByRole('heading', { name: 'Connect your background source', exact: true }).waitFor();
+    await page.goto(`${origin.origin}/settings/ai-connections`);
+    await page.getByRole('heading', { name: 'Add an AI connection', exact: true }).waitFor();
     assert.equal(await page.getByRole('heading', { name: 'Your AI connections', exact: true }).count(), 0);
     assert.ok(!(await page.locator('.background-settings').innerText()).includes('Fixture Sensor Research'));
     assert.equal((await api('GET', '/api/v1/background-compute-connections/current')).data, null);
@@ -337,12 +340,12 @@ test('owner-only background setup persists consent, clears keys and preserves an
   page = await touchContext.newPage();
   page.on('pageerror', (error) => errors.push(error.message));
   try {
-    await page.goto(`${origin.origin}/settings/background-compute`);
+    await page.goto(`${origin.origin}/settings/ai-connections`);
     await page.getByRole('heading', { name: 'Your AI connections', exact: true }).waitFor();
     await page.locator('.background-settings__help').first().tap();
     await page.screenshot({ path: `/state/background-setup-${viewport.width}-saved.png`, fullPage: true });
     await page.getByRole('button', { name: 'Add a connection', exact: true }).tap();
-    const key = page.getByLabel('Background API key', { exact: true });
+    const key = page.getByLabel('API key', { exact: true });
     const cancel = page.getByRole('button', { name: 'Cancel adding', exact: true });
     const openingCancelBounds = await cancel.boundingBox();
     assert.ok(openingCancelBounds && openingCancelBounds.y >= 0 &&
@@ -382,18 +385,18 @@ test('owner-only background setup persists consent, clears keys and preserves an
   await page.getByLabel('Model', { exact: true }).fill('claude-sonnet-5');
   await page.getByLabel('Provider organization', { exact: true }).fill('Fixture Sensor Research');
   await page.getByLabel('Provider workspace', { exact: true }).fill('Fixture Only');
-  await page.getByLabel('Background API key', { exact: true }).fill('invalid-fixture-key');
+  await page.getByLabel('API key', { exact: true }).fill('invalid-fixture-key');
   for (const check of await page.locator('.background-settings__check input').all()) await check.check();
   // Native minimum-length validation would stop this fixture; a syntactically long invalid key reaches server validation.
-  await page.getByLabel('Background API key', { exact: true }).fill('invalid-fixture-key-with-enough-characters');
+  await page.getByLabel('API key', { exact: true }).fill('invalid-fixture-key-with-enough-characters');
   await page.getByRole('button', { name: 'Save connection and consent', exact: true }).click();
   await page.getByRole('alert').waitFor();
   await page.waitForFunction(() => document.querySelector('.background-settings__error') === document.activeElement);
   await page.screenshot({ path: '/state/background-setup-1440-error.png', fullPage: true });
-  assert.equal(await page.getByLabel('Background API key', { exact: true }).inputValue(), '', 'failed requests also clear the key');
+  assert.equal(await page.getByLabel('API key', { exact: true }).inputValue(), '', 'failed requests also clear the key');
   assert.equal(((await api('GET', '/api/v1/background-compute-connections/current')).data as { id: string }).id, first.id,
     'a failed addition keeps the earlier connection in use');
-  await page.getByLabel('Background API key', { exact: true }).fill('sk-ant-fixture-background-setup-key-WXYZ');
+  await page.getByLabel('API key', { exact: true }).fill('sk-ant-fixture-background-setup-key-WXYZ');
   await page.getByRole('button', { name: 'Save connection and consent', exact: true }).click();
   await page.getByRole('heading', { name: 'Add a connection', exact: true }).waitFor({ state: 'hidden' });
   const replacement = (await api('GET', '/api/v1/background-compute-connections/current')).data as { id: string; keyLastFour: string; name: string };
@@ -404,7 +407,7 @@ test('owner-only background setup persists consent, clears keys and preserves an
   assert.equal((await api('GET', '/api/v1/background-compute-connections/current')).data, null,
     'the remaining connection does not take over');
   await page.getByRole('button', { name: `Disconnect ${first.name}, key ending ${first.keyLastFour}`, exact: true }).click();
-  await page.getByRole('heading', { name: 'Connect your background source', exact: true }).waitFor();
+  await page.getByRole('heading', { name: 'Add an AI connection', exact: true }).waitFor();
   assert.equal((await api('GET', '/api/v1/background-compute-connections/current')).data, null);
   await page.reload();
   assert.equal((await api('GET', '/api/v1/background-compute-connections/current')).data, null);

@@ -28,7 +28,7 @@ older Prostota drawing differ, this page wins.
 5. **One pattern for one thing.** One message bubble in projects, direct messages and
    threads; one panel shell for tasks, threads and project details; one composer.
 6. **Selection is a soft fill.** No white rings or vertical bars. A highlighted source fades
-   after 2 s. Message actions appear on hover (computer) or long press / swipe left (phone).
+   after 2 s. Message actions appear on hover (computer) or long press (phone); swipe right replies in thread (founder amendment 2026-10-16, [#343](https://github.com/ColdPhase/flux/issues/343)).
 7. **A control never changes place.** Switching a view or a state changes the content, never
    the position of a control. The view switcher is always on the left, the primary action
    always on the right, the sidebar toggle always in the top row. Unavailable actions are
