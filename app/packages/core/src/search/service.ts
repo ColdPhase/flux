@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import {
-  SEARCH_FILTER_TYPES, SEARCH_LIMITS,
+  SEARCH_FILTER_TYPES, SEARCH_LIMITS, WORK_STATUSES,
   type SearchFilterType, type SearchKind, type SearchQuery, type SearchResponse, type SearchResult,
 } from '@flux/contracts';
 import { InvalidInputError } from '../access/errors.js';
@@ -134,8 +134,15 @@ function cursorScope(search: NormalizedSearch) {
   return createHash('sha256').update(JSON.stringify([search.text, search.type ?? '', place, author])).digest('base64url');
 }
 
+/** A task's number and status for its row (#514), when the row has both. */
+function taskOf(row: SearchRow): SearchResult['task'] {
+  const status = WORK_STATUSES.find((known) => known === row.status);
+  return row.kind === 'work' && row.workNumber !== null && status ? { number: row.workNumber, status } : undefined;
+}
+
 function toResult(row: SearchRow): SearchResult {
   const source = SEARCH_SOURCES[row.kind];
+  const task = taskOf(row);
   const main = source.textIsTitle && row.snippet ? row.snippet : row.title;
   return {
     id: `${row.kind}:${row.objectId}${row.version !== null && (row.kind === 'material' || row.kind === 'doc') ? `:${row.version}` : ''}`,
@@ -143,6 +150,7 @@ function toResult(row: SearchRow): SearchResult {
     label: source.label(row),
     title: main.length ? main : [{ text: 'Untitled', match: false }],
     snippet: source.textIsTitle ? null : row.snippet,
+    ...(task ? { task } : {}),
     place: searchPlaceOf(row),
     author: row.author?.kind === 'agent' ? `${row.authorName ?? 'Agent'} (agent)` : row.authorName,
     at: row.at.toISOString(),

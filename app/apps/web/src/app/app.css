@@ -390,6 +390,7 @@ a.me__btn[aria-current="page"] { background: var(--sub); }
 .note + .note { border-top: 1px solid var(--line); }
 .note__text { color: var(--t1); white-space: pre-wrap; overflow-wrap: anywhere; max-width: 64ch; }
 .note__meta { display: flex; align-items: center; gap: 8px; margin-top: 2px; font-size: var(--fs-xs); color: var(--t3); font-variant-numeric: tabular-nums; }
+.note__num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
 .note__del { min-height: 24px; padding: 0 6px; border-radius: var(--r-sm); color: var(--t3); opacity: 0; transition: var(--tr); }
 .note:hover .note__del, .note__del:focus-visible { opacity: 1; }
 .note__del:hover { background: var(--hov); color: var(--t1); }

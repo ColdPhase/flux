@@ -717,7 +717,8 @@ class SketchJourney(unittest.TestCase):
         self.assertEqual(page.evaluate("() => window.__leave"), {"beforeunload": 1, "pagehide": 0}, "the leave was cancelled, not carried out")
         expect(home).to_be_visible()
 
-        page.get_by_role("navigation", name="Views").get_by_role("link", name="Map").click()
+        # Home has no views bar (#508): the Sketchbook is a place in the sidebar.
+        page.get_by_role("navigation", name="Places").get_by_role("link", name="Sketchbook", exact=True).click()
         expect(page.get_by_role("link", name=re.compile("Lamp ideas"))).to_be_visible()
         expect(page).to_have_url(re.compile(r"/map$"))
 

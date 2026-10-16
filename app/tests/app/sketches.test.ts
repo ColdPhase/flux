@@ -300,6 +300,32 @@ describe('sketch access', () => {
     assert.equal(events.rows[0].n, 2, 'one event per applied change, none for replays');
   });
 
+  test('hideEmpty leaves out sketches with no thought and the default title, and a list gives each thought count (#508)', async () => {
+    const list = async (actor: Person, query: string) => expectStatus(await actor.browser.request('GET', `/api/v1/workspaces/${ws.id}/sketches?${query}`), 200) as SketchPage;
+    const empty = await createSketch(carol, ws.id, { title: 'Untitled sketch', scope: 'private' });
+    const named = await createSketch(carol, ws.id, { title: 'Bed layout', scope: 'private' });
+    const filled = await createSketch(carol, ws.id, { title: 'Untitled sketch', scope: 'private' });
+    await addThought(carol, filled.id, { text: 'Beans on the south side', x: 0, y: 0 });
+    await addThought(carol, filled.id, { text: 'Radio range', x: 200, y: 0 });
+    const projectEmpty = await createSketch(bob, ws.id, { title: 'Untitled sketch', scope: 'project', projectId: lamp.id });
+
+    const all = await list(carol, 'scope=private');
+    assert.ok([empty, named, filled].every((sketch) => all.items.some((item) => item.id === sketch.id)), 'without hideEmpty every sketch is listed');
+    const shown = await list(carol, 'scope=private&hideEmpty=true');
+    assert.ok(!shown.items.some((item) => item.id === empty.id), 'an empty, untitled sketch is not listed');
+    assert.ok(shown.items.some((item) => item.id === named.id), 'a named sketch stays, even with no thought');
+    assert.equal(shown.items.find((item) => item.id === filled.id)?.thoughtCount, 2, 'a sketch with thoughts stays and counts them');
+    assert.equal(shown.items.find((item) => item.id === named.id)?.thoughtCount, 0);
+    assert.equal(shown.total, all.total - 1, 'the total leaves the empty sketch out too');
+    // The filter runs before the limit: a page of one is the newest sketch with content, not an empty slot.
+    const first = await list(carol, 'scope=private&hideEmpty=true&limit=1');
+    assert.equal(first.items.length, 1);
+    assert.notEqual(first.items[0]!.id, empty.id);
+    const shownProject = await list(bob, `projectId=${lamp.id}&hideEmpty=true`);
+    assert.ok(!shownProject.items.some((item) => item.id === projectEmpty.id), 'the project Map index leaves it out too');
+    expectStatus(await carol.browser.request('GET', `/api/v1/workspaces/${ws.id}/sketches?hideEmpty=maybe`), 400, 'hideEmpty is true or false');
+  });
+
   test('input is validated', async () => {
     const sketch = await createSketch(alice, ws.id, { title: 'Checks', scope: 'private' });
     const cases: [Record<string, unknown>, string][] = [

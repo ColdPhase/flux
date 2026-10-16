@@ -80,6 +80,7 @@ export interface SearchRowRecord {
   dmId: string | null;
   dmName: string | null;
   sketchTitle: string | null;
+  workNumber: number | null;
   version: number | null;
   currentVersion: number | null;
   status: string | null;
@@ -207,7 +208,7 @@ function pageStatement(audiences: SearchAudienceRows[], plan: SearchPlanRows): S
     -- One result per object: of several matching versions of a material, the newest.
     hits AS (SELECT * FROM matched WHERE newest = 1)
     SELECT h.id::text AS id, h.score::text AS score, h.at::text AS at_key, h.at, h.kind, h.workspace_id, w.name AS workspace_name,
-      h.object_id, h.parent_id, h.project_id, coalesce(h.dm_id, d.id) AS dm_id, p.name AS project_name, h.version, pm.current_version, h.status, sk.title AS sketch_title,
+      h.object_id, h.parent_id, h.project_id, coalesce(h.dm_id, d.id) AS dm_id, p.name AS project_name, h.version, pm.current_version, h.status, sk.title AS sketch_title, wi.number AS work_number,
       h.author_kind, h.author_id, coalesce(au.name, ag.name) AS author_name, length(h.body) > 0 AS has_body,
       ts_headline('simple', ${clean(sql`h.title`)}, ${q}, ${TITLE_OPTIONS}) AS title_headline,
       CASE WHEN length(h.body) = 0 THEN NULL
@@ -224,6 +225,7 @@ function pageStatement(audiences: SearchAudienceRows[], plan: SearchPlanRows): S
     LEFT JOIN agents ag ON ag.id = (CASE WHEN h.author_kind = 'agent' THEN h.author_id::uuid END)
     LEFT JOIN project_materials pm ON pm.id = (CASE WHEN h.kind IN ('material', 'doc') THEN h.object_id::uuid END)
     LEFT JOIN sketches sk ON h.kind = 'thought' AND sk.id = h.parent_id
+    LEFT JOIN project_work_items wi ON h.kind = 'work' AND wi.id = h.object_id::uuid
     LEFT JOIN dms d ON d.id = (CASE WHEN h.kind = 'dm_message' THEN h.parent_id ELSE h.dm_id END)
     ORDER BY h.score DESC, h.at DESC, h.id DESC`;
 }
@@ -240,7 +242,7 @@ interface PageRow {
   object_id: string; parent_id: string | null; project_id: string | null; dm_id: string | null; project_name: string | null; version: number | null;
   current_version: number | null; status: string | null; sketch_title: string | null; author_name: string | null; has_body: boolean;
   author_kind: 'human' | 'agent' | null; author_id: string | null;
-  title_headline: string | null; body_headline: string | null; dm_name: string | null;
+  title_headline: string | null; body_headline: string | null; dm_name: string | null; work_number: number | null;
 }
 
 /**
@@ -334,6 +336,7 @@ export function searchRows(db: SearchExecutor) {
         dmId: row.dm_id,
         dmName: row.dm_name,
         sketchTitle: row.sketch_title,
+        workNumber: row.work_number,
         version: row.version,
         currentVersion: row.current_version,
         status: row.status,
