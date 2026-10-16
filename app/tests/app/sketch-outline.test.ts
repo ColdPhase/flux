@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { Thought, ThoughtLink } from '@flux/contracts';
-import { buildOutline, emptyOutline, groupingChoices, OUTLINE_STORE_BYTES, OUTLINE_STORE_LIMIT, readOutline, readStoredOutline, rememberThoughts, visibleRows, writeStoredOutline } from '../../apps/web/src/sketch/outline.js';
+import { buildOutline, emptyOutline, OUTLINE_STORE_BYTES, OUTLINE_STORE_LIMIT, readOutline, readStoredOutline, rememberThoughts, sibling, swapOrder, visibleRows, writeStoredOutline } from '../../apps/web/src/sketch/outline.js';
 
 const id = (value: number) => `00000000-0000-4000-8000-${String(value).padStart(12, '0')}`;
 const thought = (value: number, createdAt = `2026-09-30T10:00:${String(value).padStart(2, '0')}.000Z`): Thought => ({
@@ -10,55 +10,69 @@ const thought = (value: number, createdAt = `2026-09-30T10:00:${String(value).pa
 });
 const link = (from: number, to: number, value = from * 100 + to): ThoughtLink => ({ id: id(value), sketchId: id(900), fromId: id(from), toId: id(to), label: null, createdAt: '2026-09-30T10:01:00.000Z' });
 
-test('fresh graphs, including cycles and identical birth timestamps, conservatively start as deterministic roots', () => {
-  const thoughts = [thought(3), thought(2), thought(1), thought(4, thought(2).createdAt)];
-  const outline = buildOutline(thoughts, [link(1, 2), link(2, 3), link(3, 1), link(4, 3)], emptyOutline());
-  assert.deepEqual(outline.rows.map((row) => row.thought.id), [id(1), id(2), id(4), id(3)]);
-  assert.ok(outline.rows.every((row) => row.depth === 0));
-  assert.equal(new Set(outline.rows.map((row) => row.thought.id)).size, thoughts.length);
-});
-
-test('depth 3/4 and roots/shallower nodes retain their levels when ordinary relations add multiple parents and cycles', () => {
-  const thoughts = Array.from({ length: 8 }, (_, index) => thought(index + 1));
-  const state = rememberThoughts(emptyOutline(), thoughts);
-  state.parents = { [id(2)]: id(1), [id(3)]: id(2), [id(4)]: id(3), [id(5)]: id(4), [id(7)]: id(6) };
-  const links = [link(1, 2), link(2, 3), link(3, 4), link(4, 5), link(6, 7)];
-  const before = buildOutline(thoughts, links, state);
-  const after = buildOutline(thoughts, [...links, link(6, 4), link(5, 6), link(7, 4), link(5, 7), link(1, 5)], state);
-  assert.deepEqual(after.rows.map((row) => [row.thought.id, row.depth, row.parentId]), before.rows.map((row) => [row.thought.id, row.depth, row.parentId]));
-  assert.equal(after.byId.get(id(4))?.depth, 3);
-  assert.equal(after.byId.get(id(5))?.depth, 4);
-  assert.equal(after.byId.get(id(6))?.depth, 0);
-  assert.equal(after.byId.get(id(7))?.depth, 1);
-  assert.equal(after.byId.get(id(8))?.depth, 0);
-});
-
-test('a missing parent or graph edge detaches without erasing the ID-only intent, and graph undo restores it', () => {
-  const thoughts = [thought(1), thought(2), thought(3)];
-  const state = rememberThoughts(emptyOutline(), thoughts);
-  state.parents = { [id(2)]: id(1), [id(3)]: id(2) };
-  const links = [link(1, 2), link(2, 3)];
-  const removedParent = buildOutline([thoughts[0]!, thoughts[2]!], [links[0]!], state);
-  assert.equal(removedParent.byId.get(id(3))?.depth, 0);
-  assert.equal(buildOutline(thoughts, [links[0]!], state).byId.get(id(3))?.depth, 0);
-  const restored = buildOutline(thoughts, links, state);
-  assert.equal(restored.byId.get(id(3))?.depth, 2);
-  assert.deepEqual(state.parents, { [id(2)]: id(1), [id(3)]: id(2) });
-});
-
-test('malformed saved cycles resolve deterministically; grouping only offers authorized linked non-descendants', () => {
-  const thoughts = [thought(1), thought(2), thought(3), thought(4)];
-  const links = [link(1, 2), link(2, 3), link(3, 1), link(1, 99)];
-  const state = rememberThoughts(emptyOutline(), thoughts);
-  state.parents = { [id(1)]: id(3), [id(2)]: id(1), [id(3)]: id(2), [id(4)]: id(99) };
-  const corrupted = buildOutline(thoughts, links, state);
-  assert.ok(corrupted.rows.every((row) => row.depth === 0));
-  state.parents = { [id(2)]: id(1), [id(3)]: id(2) };
-  const outline = buildOutline(thoughts, links, state);
-  assert.deepEqual(groupingChoices(id(1), outline, links), []);
-  assert.deepEqual(groupingChoices(id(3), outline, links).map((row) => row.thought.id), [id(1), id(2)]);
-  assert.deepEqual(visibleRows(outline, [id(1)]).map((row) => row.thought.id), [id(1), id(4)]);
+test('#510: the list is the map\'s tree: a thought sits under the thought its connection was drawn from', () => {
+  const thoughts = Array.from({ length: 6 }, (_, index) => thought(index + 1));
+  const outline = buildOutline(thoughts, [link(1, 2), link(2, 3), link(1, 4), link(5, 6)], emptyOutline());
+  assert.deepEqual(outline.rows.map((row) => [row.thought.id, row.depth, row.parentId]), [
+    [id(1), 0, null], [id(2), 1, id(1)], [id(3), 2, id(2)], [id(4), 1, id(1)], [id(5), 0, null], [id(6), 1, id(5)],
+  ]);
+  assert.deepEqual(outline.byId.get(id(1))?.children, [id(2), id(4)]);
+  assert.equal(outline.byId.get(id(3))?.link?.id, link(2, 3).id);
   assert.deepEqual(outline.byId.get(id(3))?.ancestors, [id(1), id(2)]);
+});
+
+test('several parents: the oldest is the branch, the others are "also under"; every link shows exactly once', () => {
+  const thoughts = Array.from({ length: 5 }, (_, index) => thought(index + 1));
+  // 3 is connected from 1 (oldest) and 2; 4 from 2 and then from 1; 5 draws towards its own parent.
+  const links = [link(2, 3), link(1, 3), link(1, 2), link(2, 4), link(1, 4), link(4, 5), link(5, 2)];
+  const outline = buildOutline(thoughts, links, emptyOutline());
+  assert.equal(outline.byId.get(id(3))?.parentId, id(1));
+  assert.deepEqual(outline.byId.get(id(3))?.also.map((item) => item.id), [id(2)]);
+  assert.equal(outline.byId.get(id(4))?.parentId, id(1));
+  assert.deepEqual(outline.byId.get(id(4))?.also.map((item) => item.id), [id(2)]);
+  assert.equal(outline.byId.get(id(2))?.parentId, id(1));
+  assert.deepEqual(outline.byId.get(id(2))?.also.map((item) => item.id), [id(5)], 'a later connection towards it reads also under');
+  assert.equal(new Set(outline.rows.map((row) => row.thought.id)).size, thoughts.length, 'every thought once');
+  const shown = outline.rows.flatMap((row) => [...(row.link ? [row.link.id] : []), ...row.also.map((item) => item.link.id)]);
+  assert.deepEqual([...shown].sort(), links.map((item) => item.id).sort(), 'every connection is a branch or an "also under"');
+});
+
+test('pure cycles, missing endpoints and self links resolve deterministically without losing a thought', () => {
+  const thoughts = [thought(3), thought(2), thought(1), thought(4, thought(2).createdAt)];
+  const links = [link(1, 2), link(2, 3), link(3, 1), link(4, 3), link(1, 99), link(4, 4, 444)];
+  const outline = buildOutline(thoughts, links, emptyOutline());
+  assert.equal(outline.rows.length, 4);
+  assert.equal(new Set(outline.rows.map((row) => row.thought.id)).size, 4);
+  assert.ok(outline.rows.some((row) => row.depth === 0), 'a cycle still has a root');
+  assert.deepEqual(buildOutline([...thoughts].reverse(), [...links].reverse(), emptyOutline()).rows.map((row) => [row.thought.id, row.parentId]),
+    outline.rows.map((row) => [row.thought.id, row.parentId]), 'input order does not matter');
+});
+
+test('the tree depends only on the graph: removing a thought detaches its children, and restoring it restores them', () => {
+  const thoughts = [thought(1), thought(2), thought(3), thought(4)];
+  const links = [link(1, 2), link(2, 3), link(3, 4), link(1, 4)];
+  const state = rememberThoughts(emptyOutline(), thoughts);
+  const before = buildOutline(thoughts, links, state);
+  assert.equal(before.byId.get(id(4))?.parentId, id(1));
+  const removed = buildOutline([thoughts[0]!, thoughts[2]!, thoughts[3]!], [links[3]!, links[2]!], state);
+  assert.equal(removed.byId.get(id(3))?.depth, 0);
+  // Undo restores the same links with new creation times; the tree is the same.
+  const restored = buildOutline(thoughts, [links[3]!, ...links.slice(0, 3).map((item) => ({ ...item, createdAt: '2026-10-01T00:00:00.000Z' }))], state);
+  assert.deepEqual(restored.rows.map((row) => [row.thought.id, row.parentId, row.depth]), before.rows.map((row) => [row.thought.id, row.parentId, row.depth]));
+});
+
+test('siblings follow the personal reading order; moving swaps only the two remembered siblings', () => {
+  const thoughts = [thought(1), thought(2), thought(3), thought(4)];
+  const links = [link(1, 2), link(1, 3), link(1, 4)];
+  const state = rememberThoughts(emptyOutline(), thoughts);
+  const outline = buildOutline(thoughts, links, state);
+  assert.equal(sibling(outline, id(3), -1), id(2));
+  assert.equal(sibling(outline, id(2), -1), null);
+  assert.equal(sibling(outline, id(1), 1), null);
+  const moved = buildOutline(thoughts, links, swapOrder(state, id(3), id(2)));
+  assert.deepEqual(moved.byId.get(id(1))?.children, [id(3), id(2), id(4)]);
+  assert.deepEqual(visibleRows(moved, [id(1)]).map((row) => row.thought.id), [id(1)]);
+  assert.equal(swapOrder(state, id(3), id(99)), state);
 });
 
 test('renaming/moving/reordered server arrays preserve local outline order and never mutate graph input', () => {

@@ -1,4 +1,9 @@
-"""#134: personal outline against the running authorized graph, not a mock tree."""
+"""#510 (Spokój board A04) over #134: the List is the map's tree against the running authorized graph.
+
+Connections record which thought they were drawn from; a thought sits under the oldest thought with a
+connection drawn to it and names its other parents ("also under …"). Tab / Shift+Tab move a thought's
+connection on the map, ⌥↑/⌥↓ change only this person's reading order, and folding is personal too.
+"""
 from __future__ import annotations
 
 import json
@@ -23,6 +28,9 @@ LABELS = [
     "Try a deliberate hold before switching the lamp off",
     "Disconnected idea · mechanical brightness control",
 ]
+# Created as children of the thought before them (1–4, 6), then connected 5→3, 4→5, 6→3, 4→6, 0→4.
+CREATED = (0, 1, 2, 3, 4, 0, 1, 0)
+TREE = (0, 1, 2, 3, 1, 2, 2, 0)
 
 
 class MapOutlineJourney(unittest.TestCase):
@@ -89,7 +97,10 @@ class MapOutlineJourney(unittest.TestCase):
         show_map_as(page, "List")
         expect(page.locator(".sk-head")).to_contain_text("Bedside interaction directions")
         if self.stored(page)["thoughts"]:
-            expect(page.get_by_role("list", name="Thoughts in Bedside interaction directions")).to_be_visible()
+            expect(self.tree(page)).to_be_visible()
+
+    def tree(self, page):
+        return page.get_by_role("tree", name="Thoughts in Bedside interaction directions")
 
     def api(self, page, method, path, body=None, status=200, headers=None):
         response = page.request.fetch(path, method=method, data=body, headers={"origin": ORIGIN, **(headers or {})})
@@ -98,6 +109,9 @@ class MapOutlineJourney(unittest.TestCase):
 
     def stored(self, page):
         return self.api(page, "GET", f"/api/v1/sketches/{self.sketch_id}")
+
+    def pairs(self, page):
+        return sorted((link["fromId"], link["toId"], link["label"]) for link in self.stored(page)["links"])
 
     def work(self, page):
         return self.api(page, "GET", f"/api/v1/projects/{self.project_id}/work?limit=100")
@@ -112,57 +126,73 @@ class MapOutlineJourney(unittest.TestCase):
         self.fail("the expected committed graph state did not arrive")
 
     def row(self, page, index):
-        return page.locator(f'.sk-outline-list > li[data-id="{self.thoughts[index]}"]')
+        """The tree item: the focusable row of one thought."""
+        return page.locator(f'.sk-li-t[data-id="{self.thoughts[index]}"]')
 
-    def title(self, page, index):
-        return self.row(page, index).locator(".sk-li-t")
+    def pick(self, page, index):
+        self.row(page, index).locator(".sk-outline-title").click()
+        expect(self.row(page, index)).to_have_attribute("aria-selected", "true")
 
     def levels(self, page):
-        return page.locator(".sk-outline-list > li").evaluate_all("rows => Object.fromEntries(rows.map(row => [row.dataset.id, Number(row.dataset.depth)]))")
+        return page.locator(".sk-li-t").evaluate_all("rows => Object.fromEntries(rows.map(row => [row.dataset.id, Number(row.getAttribute('aria-level')) - 1]))")
+
+    def expected(self, levels):
+        return {self.thoughts[index]: level for index, level in enumerate(levels)}
+
+    def more(self, page, index):
+        self.row(page, index).get_by_role("button", name="More actions", exact=True).click()
+        return page.locator(f'li[data-id="{self.thoughts[index]}"] > .sk-outline-menu')
+
+    def saved(self, page):
+        expect(page.locator(".sk-status")).to_contain_text("Saved")
 
     def save(self, page):
         type(self).states["owner"] = page.context.storage_state()
 
     def add(self, page, text, parent_index=None):
         if parent_index is None:
-            selected = page.locator('.sk-li-t[aria-pressed="true"]')
+            selected = page.locator('.sk-li-t[aria-selected="true"]')
             if selected.count():
                 selected.first.focus()
                 page.keyboard.press("Escape")
             page.get_by_role("toolbar", name="Sketch tools").get_by_role("button", name="Thought", exact=True).click()
         else:
-            self.title(page, parent_index).click()
-            self.row(page, parent_index).get_by_role("button", name="Add thought", exact=True).click()
+            self.pick(page, parent_index)
+            self.row(page, parent_index).get_by_role("button", name="Add a child thought", exact=True).click()
         editor = page.get_by_label("Thought text")
         editor.fill(text)
         editor.press("Enter")
-        expect(page.locator(".sk-status")).to_contain_text("Saved")
+        self.saved(page)
         return next(thought["id"] for thought in self.stored(page)["thoughts"] if thought["text"] == text)
 
     def connect(self, page, source_index, target_index):
-        self.title(page, source_index).click()
-        page.get_by_role("toolbar", name="Sketch tools").get_by_role("button", name="Connect", exact=True).click()
-        self.title(page, target_index).click()
-        expect(page.locator(".sk-status")).to_contain_text("Saved")
+        self.pick(page, source_index)
+        self.more(page, source_index).get_by_role("button", name="Connect…", exact=True).click()
+        self.row(page, target_index).locator(".sk-outline-title").click()
+        expect(page.locator(".sk-status")).to_contain_text("Linked")
+        self.saved(page)
 
-    def group(self, page, source_index, parent_index=None):
-        self.title(page, source_index).click()
-        self.row(page, source_index).get_by_role("button", name="Group in list…", exact=True).click()
-        select = self.row(page, source_index).get_by_role("combobox")
-        select.select_option(self.thoughts[parent_index] if parent_index is not None else "")
-        self.row(page, source_index).get_by_role("button", name="Apply grouping", exact=True).click()
-
-    def test_01_deep_branches_and_ordinary_cross_links_remain_stable_after_reload(self):
+    def test_01_the_list_is_the_maps_tree_with_also_under_and_reloads_the_same(self):
         page = self.page()
         self.open(page)
         for index, text in enumerate(LABELS):
             parent = index - 1 if index in (1, 2, 3, 4, 6) else None
             self.thoughts[index] = self.add(page, text, parent)
-        expected = {self.thoughts[index]: level for index, level in enumerate((0, 1, 2, 3, 4, 0, 1, 0))}
-        self.assertEqual(self.levels(page), expected)
+        self.assertEqual(self.levels(page), self.expected(CREATED), "a thought added under another is its child")
         for source, target in ((5, 3), (4, 5), (6, 3), (4, 6), (0, 4)):
             self.connect(page, source, target)
-            self.assertEqual(self.levels(page), expected, "ordinary relations never change a parent or root")
+        expect(self.row(page, 4)).to_have_attribute("aria-level", "2")
+        self.assertEqual(self.levels(page), self.expected(TREE), "each thought sits under its oldest parent on the map")
+        # Every thought occurs once; its other parents are named, so no connection is lost from view.
+        expect(page.locator(".sk-li-t")).to_have_count(8)
+        expect(self.row(page, 3).locator(".sk-outline-also")).to_have_text(f"also under {LABELS[5]}, {LABELS[6]}")
+        expect(self.row(page, 4).locator(".sk-outline-also")).to_have_text(f"also under {LABELS[3]}")
+        expect(self.row(page, 6).locator(".sk-outline-also")).to_have_text(f"also under {LABELS[5]}")
+        expect(self.row(page, 0).locator(".sk-outline-also")).to_have_count(0)
+        # Screen readers get a tree with levels and folding.
+        expect(self.row(page, 0)).to_have_attribute("aria-expanded", "true")
+        expect(self.row(page, 7)).not_to_have_attribute("aria-expanded", re.compile("."))
+        expect(self.tree(page).get_by_role("group").first).to_be_visible()
         type(self).baseline = self.stored(page)
         self.assertEqual(len(self.baseline["thoughts"]), 8)
         self.assertEqual(len(self.baseline["links"]), 10)
@@ -171,213 +201,266 @@ class MapOutlineJourney(unittest.TestCase):
         type(self).work_baseline = self.work(page)
         self.assertEqual(len(self.work_baseline["items"]), 2)
         page.reload()
-        expect(self.title(page, 4)).to_be_visible()
-        self.assertEqual(self.levels(page), expected)
+        expect(self.row(page, 4)).to_be_visible()
+        self.assertEqual(self.levels(page), self.expected(TREE))
         self.assertEqual(self.stored(page), self.baseline)
         self.save(page)
+        # The tree comes from the map, not from this browser: a fresh browser shows the same structure.
         fresh = self.page(fresh=True)
         self.open(fresh)
-        self.assertTrue(all(level == 0 for level in self.levels(fresh).values()), "fresh browser never guesses a historical parent from relations")
+        self.assertEqual(self.levels(fresh), self.expected(TREE))
         self.assertEqual(self.stored(fresh), self.baseline)
 
-    def test_02_collapsed_cross_link_reveals_exact_destination_and_back_restores_place(self):
+    def test_02_labels_tags_task_chips_dates_on_hover_and_actions_only_on_the_selected_row(self):
         page = self.page()
         self.open(page)
-        self.row(page, 0).get_by_role("button", name=re.compile("^Collapse ")).click()
-        expect(self.title(page, 4)).to_have_count(0)
-        self.title(page, 5).click()
+        link = next(item for item in self.baseline["links"] if item["fromId"] == self.thoughts[0] and item["toId"] == self.thoughts[1])
+        self.api(page, "PATCH", f"/api/v1/sketches/{self.sketch_id}/links/{link['id']}", {"label": "problem", "expectedLabel": None}, headers={"idempotency-key": f"label-{STAMP}"})
+        page.reload()
+        show_map_as(page, "List")
+        # AC-2: the connection's label is a small tag before the child's title, and part of its name.
+        tag = self.row(page, 1).locator(".sk-outline-tag")
+        expect(tag).to_have_text("problem")
+        self.assertLess(tag.bounding_box()["x"], self.row(page, 1).locator(".sk-outline-title").bounding_box()["x"])
+        expect(self.row(page, 1)).to_have_accessible_name(f"problem {LABELS[1]}")
+        # AC-3: linked tasks are a chip at the row's end with a state glyph and number; it opens every task.
+        chip = self.row(page, 4).locator(".sk-work")
+        expect(chip).to_have_text(re.compile(r"^#\d+ Open \+1$"))
+        expect(chip).to_have_accessible_name(f"2 tasks linked to “{LABELS[4][:47]}…”")
+        self.assertGreater(chip.bounding_box()["x"], self.row(page, 4).locator(".sk-outline-title").bounding_box()["x"])
+        chip.click()
+        expect(page.get_by_role("dialog", name=LABELS[4], exact=True).get_by_role("link")).to_have_count(2)
+        page.keyboard.press("Escape")
+        # Dates show on hover or focus only, and keep their room so nothing moves when they appear.
+        date = self.row(page, 7).locator(".sk-li-s")
+        expect(date).to_have_css("opacity", "0")
+        before = chip.bounding_box()
+        self.row(page, 7).hover()
+        expect(date).to_have_css("opacity", "1")
+        self.row(page, 4).hover()
+        self.assertEqual(chip.bounding_box(), before)
+        page.mouse.move(5, 5)
+        self.row(page, 7).focus()
+        expect(date).to_have_css("opacity", "1")
+        # AC-4: actions appear only on the selected row: Edit · + Child · Create task · ⋯.
+        expect(page.locator(".sk-outline-actions")).to_have_count(0)
+        self.pick(page, 2)
+        expect(page.locator(".sk-outline-actions")).to_have_count(1)
+        names = self.row(page, 2).locator(".sk-outline-actions button").evaluate_all("buttons => buttons.map(b => b.getAttribute('aria-label') || b.textContent.trim())")
+        self.assertEqual(names, ["Edit", "Add a child thought", "Create task from selected thoughts", "More actions"])
+        menu = self.more(page, 2)
+        expect(menu.get_by_role("button")).to_have_text(["IndentTab", "Outdent⇧Tab", "Move up⌥↑", "Move down⌥↓", "Connect…", "Connections", "Remove"])
+        page.keyboard.press("Escape")
+        shot(page, "map-outline-tree-1440-light")
+        self.api(page, "PATCH", f"/api/v1/sketches/{self.sketch_id}/links/{link['id']}", {"label": None, "expectedLabel": "problem"}, headers={"idempotency-key": f"unlabel-{STAMP}"})
+        self.wait_graph(page, lambda data: all(item["label"] is None for item in data["links"]))
+
+    def test_03_folding_following_also_under_and_back_restore_the_place(self):
+        page = self.page()
+        self.open(page)
         before = self.stored(page)
-        self.row(page, 5).locator(".sk-outline-related").get_by_role("button", name=f"Related to {LABELS[4]}", exact=True).click()
-        expect(self.title(page, 4)).to_be_focused()
-        expect(self.title(page, 4)).to_have_attribute("aria-pressed", "true")
-        page.get_by_role("button", name=f"Back to “{LABELS[5]}”", exact=True).click()
-        expect(self.title(page, 5)).to_be_focused()
-        expect(self.title(page, 4)).to_have_count(0)
+        self.row(page, 1).get_by_role("button", name=re.compile("^Collapse ")).click()
+        expect(self.row(page, 3)).to_have_count(0)
+        self.pick(page, 4)
+        self.row(page, 4).get_by_role("button", name=f"Also under {LABELS[3]}", exact=True).click()
+        expect(self.row(page, 3)).to_be_focused()
+        expect(self.row(page, 3)).to_have_attribute("aria-selected", "true")
+        page.get_by_role("button", name=f"Back to “{LABELS[4][:47]}…”", exact=True).click()
+        expect(self.row(page, 4)).to_be_focused()
+        expect(self.row(page, 3)).to_have_count(0)
         self.assertEqual(self.stored(page), before)
         self.assertEqual(self.work(page), self.work_baseline, "many-to-many work links keep the exact thought IDs")
-        self.row(page, 0).get_by_role("button", name=re.compile("^Expand ")).click()
-        self.title(page, 0).focus()
+        # Keyboard: arrows move and select, Left folds or goes to the parent, Right unfolds or enters.
+        self.row(page, 1).get_by_role("button", name=re.compile("^Expand ")).click()
+        self.row(page, 0).focus()
         page.keyboard.press("ArrowDown")
-        expect(self.title(page, 1)).to_be_focused()
-        self.title(page, 7).click()
-        expect(self.title(page, 7)).to_be_focused()
-        self.title(page, 1).focus()
+        expect(self.row(page, 1)).to_be_focused()
+        expect(self.row(page, 1)).to_have_attribute("aria-selected", "true")
         page.keyboard.press("ArrowRight")
-        expect(self.title(page, 2)).to_be_focused()
+        expect(self.row(page, 2)).to_be_focused()
         page.keyboard.press("ArrowLeft")
-        expect(self.title(page, 3)).to_have_count(0)
+        expect(self.row(page, 1)).to_be_focused()
         page.keyboard.press("ArrowLeft")
-        expect(self.title(page, 1)).to_be_focused()
-        self.title(page, 1).press("ArrowRight")
-        self.title(page, 2).press("ArrowRight")
-        expect(page.locator(".sk-outline-path ol")).to_have_count(0)
-        self.row(page, 4).locator(".sk-outline-path summary").click()
-        path = self.row(page, 4).locator(".sk-outline-path ol")
-        expect(path).to_be_visible()
-        expect(path.get_by_role("button")).to_have_count(4)
-        expect(page.locator(".sk-outline-path ol")).to_have_count(1)
-        path.get_by_role("button", name=f"Go to ancestor {LABELS[1]}", exact=True).click()
-        expect(self.title(page, 1)).to_be_focused()
-        page.locator(".sk-outline-back").click()
-        expect(self.title(page, 4)).to_be_focused()
-        self.assertEqual(self.stored(page), before)
+        expect(self.row(page, 2)).to_have_count(0)
+        expect(self.row(page, 1)).to_have_attribute("aria-expanded", "false")
+        page.keyboard.press("ArrowRight")
+        expect(self.row(page, 2)).to_be_visible()
+        page.keyboard.press("End")
+        expect(self.row(page, 7)).to_be_focused()
+        page.keyboard.press("Home")
+        expect(self.row(page, 0)).to_be_focused()
+        self.assertEqual(self.stored(page), before, "reading never writes the graph")
         self.save(page)
 
-    def test_03_explicit_linked_only_grouping_and_local_undo_include_collapsed_target(self):
+    def test_04_tab_and_shift_tab_move_the_connection_alt_arrows_reorder_and_undo_restores(self):
         page = self.page()
         self.open(page)
+        baseline = self.pairs(page)
+        tools = page.get_by_role("toolbar", name="Sketch tools")
+        # Tab puts the selected thought under the one above it: on the map it is connected from there.
+        self.pick(page, 7)
+        self.row(page, 7).press("Tab")
+        expect(self.row(page, 7)).to_have_attribute("aria-level", "2")
+        expect(self.row(page, 7)).to_be_focused()
+        self.saved(page)
+        self.wait_graph(page, lambda data: any(l["fromId"] == self.thoughts[0] and l["toId"] == self.thoughts[7] for l in data["links"]))
+        # Shift+Tab from the top branch takes it back out; its connection goes with it.
+        self.row(page, 7).press("Shift+Tab")
+        expect(self.row(page, 7)).to_have_attribute("aria-level", "1")
+        self.wait_graph(page, lambda data: sorted((l["fromId"], l["toId"], l["label"]) for l in data["links"]) == baseline)
+        # The first child has nothing above it to go under.
+        self.pick(page, 2)
+        self.row(page, 2).press("Tab")
+        expect(page.locator(".sk-status")).to_contain_text("Nothing above")
+        expect(self.row(page, 2)).to_have_attribute("aria-level", "3")
+        # A thought with two parents goes under the one above it; the connection there is reused.
+        self.pick(page, 6)
+        self.row(page, 6).press("Tab")
+        expect(self.row(page, 6)).to_have_attribute("aria-level", "4")
+        expect(self.row(page, 6).locator(".sk-outline-also")).to_have_count(0)
+        self.saved(page)
+        moved = self.wait_graph(page, lambda data: not any(l["fromId"] == self.thoughts[4] and l["toId"] == self.thoughts[6] for l in data["links"]))
+        self.assertTrue(any(l["fromId"] == self.thoughts[5] and l["toId"] == self.thoughts[6] for l in moved["links"]))
+        self.assertEqual(len(moved["thoughts"]), 8, "indenting changes connections only")
+        tools.get_by_role("button", name="Undo", exact=True).click()
+        expect(self.row(page, 6)).to_have_attribute("aria-level", "3")
+        expect(self.row(page, 6).locator(".sk-outline-also")).to_have_text(f"also under {LABELS[5]}")
+        self.wait_graph(page, lambda data: sorted((l["fromId"], l["toId"], l["label"]) for l in data["links"]) == baseline)
+        # Shift+Tab one level out: under the grandparent, after its parent.
+        self.pick(page, 5)
+        self.row(page, 5).press("Shift+Tab")
+        expect(self.row(page, 5)).to_have_attribute("aria-level", "2")
+        self.saved(page)
+        tools.get_by_role("button", name="Undo", exact=True).click()
+        expect(self.row(page, 5)).to_have_attribute("aria-level", "3")
+        self.wait_graph(page, lambda data: sorted((l["fromId"], l["toId"], l["label"]) for l in data["links"]) == baseline)
+        # ⌥↑/⌥↓ change only this person's reading order among siblings; the map is unchanged.
         before = self.stored(page)
-        self.row(page, 0).get_by_role("button", name=re.compile("^Collapse ")).click()
-        self.group(page, 5, 3)
-        expect(self.title(page, 5)).to_be_focused()
-        self.assertEqual(self.row(page, 5).get_attribute("data-depth"), "4")
-        self.assertEqual(self.row(page, 6).get_attribute("data-depth"), "5")
-        page.get_by_role("button", name="Undo list grouping", exact=True).click()
-        self.assertEqual(self.row(page, 5).get_attribute("data-depth"), "0")
-        self.assertEqual(self.row(page, 6).get_attribute("data-depth"), "1")
-        self.title(page, 0).click()
-        self.row(page, 0).get_by_role("button", name="Group in list…", exact=True).click()
-        options = self.row(page, 0).get_by_role("combobox").locator("option").evaluate_all("options => options.map(option => option.value)")
-        self.assertEqual(options, [""], "descendants and unlinked thoughts cannot become parents")
-        self.row(page, 0).get_by_role("button", name="Cancel", exact=True).click()
-        self.assertEqual(self.stored(page), before, "grouping and its undo never write the graph")
-        self.assertEqual(self.work(page), self.work_baseline)
+        order = lambda: page.locator(f'li[data-id="{self.thoughts[0]}"] > ul > li').evaluate_all("items => items.map(item => item.dataset.id)")
+        self.assertEqual(order(), [self.thoughts[1], self.thoughts[4]])
+        self.pick(page, 4)
+        self.row(page, 4).press("Alt+ArrowUp")
+        expect(self.row(page, 4)).to_be_focused()
+        self.assertEqual(order(), [self.thoughts[4], self.thoughts[1]])
+        self.row(page, 4).press("Alt+ArrowUp")
+        expect(page.locator(".sk-status")).to_contain_text("already first")
+        page.reload()
+        show_map_as(page, "List")
+        self.assertEqual(order(), [self.thoughts[4], self.thoughts[1]], "the reading order is remembered")
+        self.pick(page, 4)
+        self.row(page, 4).press("Alt+ArrowDown")
+        self.assertEqual(order(), [self.thoughts[1], self.thoughts[4]])
+        self.assertEqual(self.stored(page), before)
+        # Escape clears the selection; Tab then leaves the row instead of indenting it.
+        self.row(page, 4).press("Escape")
+        expect(self.row(page, 4)).to_have_attribute("aria-selected", "false")
+        self.row(page, 4).press("Tab")
+        expect(self.row(page, 4)).not_to_be_focused()
+        self.assertEqual(self.pairs(page), baseline)
         self.save(page)
 
-    def test_03b_grouping_undo_preserves_later_child_intent_and_exact_override_history(self):
-        page = self.page()
-        self.open(page)
-        self.group(page, 5, 3)
-        added = self.add(page, "Independent child placed after grouping", 4)
-        added_row = page.locator(f'.sk-outline-list > li[data-id="{added}"]')
-        expect(added_row).to_have_attribute("data-depth", "5")
-        persisted = self.stored(page)
-        self.group(page, 6, 4)
-        undo = page.get_by_role("button", name="Undo list grouping", exact=True)
-        undo.click()
-        expect(self.row(page, 6)).to_have_attribute("data-depth", "5")
-        expect(added_row).to_have_attribute("data-depth", "5")
-        undo.click()
-        expect(self.row(page, 5)).to_have_attribute("data-depth", "0")
-        expect(self.row(page, 6)).to_have_attribute("data-depth", "1")
-        expect(added_row).to_have_attribute("data-depth", "5")
-        self.assertEqual(self.stored(page), persisted, "list undos preserve the exact committed graph")
-        key = f"{self.ids['owner']}:{self.workspace_id}:{self.sketch_id}"
-        parents = page.evaluate("key => JSON.parse(localStorage.getItem('flux.sketch.outlines.v1')).find(entry => entry.key === key).state.parents", key)
-        self.assertIn(self.thoughts[5], parents)
-        self.assertIsNone(parents[self.thoughts[5]], "an explicit root override stays explicit after undo")
-        self.assertEqual(parents[added], self.thoughts[4])
-
-        fresh = self.page(fresh=True)
-        self.open(fresh)
-        self.group(fresh, 1, 0)
-        self.group(fresh, 1)
-        fresh_undo = fresh.get_by_role("button", name="Undo list grouping", exact=True)
-        fresh_undo.click()
-        expect(self.row(fresh, 1)).to_have_attribute("data-depth", "1")
-        fresh_undo.click()
-        expect(self.row(fresh, 1)).to_have_attribute("data-depth", "0")
-        fresh.wait_for_function("arg => !Object.hasOwn(JSON.parse(localStorage.getItem('flux.sketch.outlines.v1')).find(entry => entry.key === arg.key).state.parents, arg.id)", arg={"key": key, "id": self.thoughts[1]})
-        self.assertEqual(self.stored(fresh), persisted, "consecutive same-thought undos also leave the graph unchanged")
-        shot(page, "map-outline-independent-child-after-grouping-undo")
-        # The graph Undo is separate from local grouping Undo and removes this test's new child.
-        page.get_by_role("toolbar", name="Sketch tools").get_by_role("button", name="Undo", exact=True).click()
-        self.wait_graph(page, lambda data: all(thought["id"] != added for thought in data["thoughts"]))
-
-    def test_04_rename_delete_graph_undo_and_search_reveal_preserve_exact_ids(self):
+    def test_05_enter_space_rename_delete_graph_undo_and_search_reveal_preserve_exact_ids(self):
         page = self.page()
         self.open(page)
         original = self.stored(page)
-        self.title(page, 4).focus()
-        page.keyboard.press("Enter")
-        renamed = LABELS[4] + " · receiver code review"
+        # Space opens a thought; a renamed parent updates every "also under" that names it.
+        self.row(page, 5).focus()
+        page.keyboard.press("Space")
+        renamed = LABELS[5] + " · after nine"
         page.get_by_label("Thought text").fill(renamed)
         page.get_by_label("Thought text").press("Enter")
-        expect(page.locator(".sk-status")).to_contain_text("Saved")
-        expect(self.row(page, 5).locator(".sk-outline-related")).to_contain_text(renamed)
-        self.assertEqual(self.stored(page)["thoughts"][-1]["id"] in self.thoughts.values(), True)
-        self.title(page, 3).focus()
+        self.saved(page)
+        expect(self.row(page, 3).locator(".sk-outline-also")).to_contain_text(renamed)
+        expect(self.row(page, 6).locator(".sk-outline-also")).to_contain_text(renamed)
+        # Enter adds a new thought beside the focused one (here at the top level); Undo removes it.
+        self.row(page, 7).focus()
+        page.keyboard.press("Enter")
+        editor = page.get_by_role("form", name="New thought draft").get_by_label("Thought text")
+        editor.fill("A new top-level direction")
+        editor.press("Enter")
+        self.saved(page)
+        added = page.locator(".sk-li-t", has_text="A new top-level direction")
+        expect(added).to_have_attribute("aria-level", "1")
+        page.get_by_role("toolbar", name="Sketch tools").get_by_role("button", name="Undo", exact=True).click()
+        expect(added).to_have_count(0)
+        self.wait_graph(page, lambda data: len(data["thoughts"]) == 8)
+        # Delete and graph Undo restore the exact thought and connection IDs, and so the same tree.
+        self.row(page, 2).focus()
         page.keyboard.press("Delete")
-        expect(page.locator(".sk-status")).to_contain_text("Saved")
-        expect(self.title(page, 3)).to_have_count(0)
-        self.assertEqual(self.row(page, 4).get_attribute("data-depth"), "0")
-        self.wait_graph(page, lambda data: all(thought["id"] != self.thoughts[3] for thought in data["thoughts"]))
+        self.saved(page)
+        expect(self.row(page, 2)).to_have_count(0)
+        self.assertEqual(self.row(page, 3).get_attribute("aria-level"), "4", "its child now sits under its oldest other parent")
+        self.wait_graph(page, lambda data: all(thought["id"] != self.thoughts[2] for thought in data["thoughts"]))
         page.get_by_role("toolbar", name="Sketch tools").get_by_role("button", name="Undo", exact=True).click()
         expect(page.locator(".sk-status")).to_contain_text("Undid: removed a thought")
         expected_links = {link["id"] for link in original["links"]}
-        restored = self.wait_graph(page, lambda data: any(thought["id"] == self.thoughts[3] for thought in data["thoughts"]) and {link["id"] for link in data["links"]} == expected_links)
-        expect(self.title(page, 3)).to_be_visible()
-        self.assertEqual(self.row(page, 4).get_attribute("data-depth"), "4")
+        restored = self.wait_graph(page, lambda data: any(thought["id"] == self.thoughts[2] for thought in data["thoughts"]) and {link["id"] for link in data["links"]} == expected_links)
+        expect(self.row(page, 2)).to_be_visible()
+        self.assertEqual(self.levels(page), self.expected(TREE))
         self.assertEqual({item["id"] for item in restored["thoughts"]}, {item["id"] for item in original["thoughts"]})
-        self.assertEqual({item["id"] for item in restored["links"]}, {item["id"] for item in original["links"]})
-        self.title(page, 4).focus()
-        page.keyboard.press("Enter")
-        page.get_by_label("Thought text").fill(LABELS[4])
+        self.row(page, 5).focus()
+        page.keyboard.press("F2")
+        page.get_by_label("Thought text").fill(LABELS[5])
         page.get_by_label("Thought text").press("Enter")
-        expect(page.locator(".sk-status")).to_contain_text("Saved")
-        self.wait_graph(page, lambda data: next(thought["text"] for thought in data["thoughts"] if thought["id"] == self.thoughts[4]) == LABELS[4])
-        self.row(page, 0).get_by_role("button", name=re.compile("^Collapse ")).click()
-        page.goto(f"/projects/{self.project_id}/map/{self.sketch_id}#thought-{self.thoughts[4]}")
-        expect(self.title(page, 4)).to_be_focused()
-        expect(self.title(page, 4)).to_have_attribute("aria-pressed", "true")
+        self.saved(page)
+        self.wait_graph(page, lambda data: next(thought["text"] for thought in data["thoughts"] if thought["id"] == self.thoughts[5]) == LABELS[5])
+        # Search reveals a folded destination; the selection is shared with the Map.
+        self.row(page, 1).get_by_role("button", name=re.compile("^Collapse ")).click()
+        page.goto(f"/projects/{self.project_id}/map/{self.sketch_id}#thought-{self.thoughts[3]}")
+        expect(self.row(page, 3)).to_be_focused()
+        expect(self.row(page, 3)).to_have_attribute("aria-selected", "true")
         before = self.stored(page)
         show_map_as(page, "Map")
-        expect(page.locator(f'.sk-node[data-id="{self.thoughts[4]}"]')).to_have_attribute("aria-pressed", "true")
+        expect(page.locator(f'.sk-node[data-id="{self.thoughts[3]}"]')).to_have_attribute("aria-pressed", "true")
         show_map_as(page, "List")
-        self.assertEqual(self.row(page, 4).get_attribute("data-depth"), "4")
+        self.assertEqual(self.row(page, 3).get_attribute("aria-level"), "4")
         # Exercise the real router arrival contract used by LiveProvider without a fake SFU.
-        # Media/session transport remains the separate opt-in live profile's responsibility.
         self.row(page, 0).get_by_role("button", name=re.compile("^Collapse ")).click()
-        self.row(page, 5).get_by_role("button", name=re.compile("^Collapse ")).click()
         page.evaluate("""ids => {
             history.pushState({usr: {liveSelect: ids, liveFollow: true}, key: 'outline-live-arrival', idx: (history.state?.idx ?? 0) + 1}, '', location.pathname);
             dispatchEvent(new PopStateEvent('popstate'));
-        }""", [self.thoughts[4], self.thoughts[6], "00000000-0000-4000-8000-000000000000"])
-        expect(self.title(page, 4)).to_be_focused()
-        expect(self.title(page, 4)).to_have_attribute("aria-pressed", "true")
-        expect(self.title(page, 6)).to_have_attribute("aria-pressed", "true")
-        expect(page.locator('.sk-li-t[aria-pressed="true"]')).to_have_count(2)
-        self.row(page, 0).get_by_role("button", name=re.compile("^Collapse ")).click()
-        expect(self.title(page, 4)).to_have_count(0)
-        self.row(page, 0).get_by_role("button", name=re.compile("^Expand ")).click()
+        }""", [self.thoughts[3], self.thoughts[6], "00000000-0000-4000-8000-000000000000"])
+        expect(self.row(page, 3)).to_be_focused()
+        expect(self.row(page, 3)).to_have_attribute("aria-selected", "true")
+        expect(self.row(page, 6)).to_have_attribute("aria-selected", "true")
+        expect(page.locator('.sk-li-t[aria-selected="true"]')).to_have_count(2)
         self.assertEqual(self.stored(page), before)
         self.save(page)
 
-    def test_05_viewer_local_grouping_is_readonly_and_private_placement_stays_restricted(self):
+    def test_06_viewer_reads_the_same_tree_without_graph_actions_and_private_placement_stays_restricted(self):
         owner = self.page()
         data = self.api(owner, "POST", f"/api/v1/sketches/{self.sketch_id}/thoughts", {"text": "Compare calibration notes without sharing the private source", "x": 0, "y": 300, "placement": {"type": "draft", "id": self.private_draft}, "linkFrom": {"thoughtId": self.thoughts[0]}}, status=201)
         placed_id = data["thought"]["id"]
         viewer = self.page("viewer")
         self.open(viewer)
         expect(viewer.get_by_role("toolbar", name="Sketch tools")).to_have_count(0)
-        expect(viewer.locator(".sk-outline-list")).not_to_contain_text("PRIVATE CALIBRATION NOTES")
-        expect(viewer.locator(f'.sk-outline-list > li[data-id="{placed_id}"]')).to_contain_text("Draft you can’t open")
+        expect(self.tree(viewer)).not_to_contain_text("PRIVATE CALIBRATION NOTES")
+        placed = viewer.locator(f'.sk-li-t[data-id="{placed_id}"]')
+        expect(placed).to_contain_text("Draft you can’t open")
+        expect(placed).to_have_attribute("aria-level", "2")
+        levels = self.levels(viewer)
+        self.assertEqual({key: value for key, value in levels.items() if key != placed_id}, self.expected(TREE), "the viewer sees the same tree")
         before = self.stored(viewer)
-        self.group(viewer, 1, 0)
-        self.assertEqual(self.row(viewer, 1).get_attribute("data-depth"), "1")
+        self.pick(viewer, 1)
         expect(self.row(viewer, 1).get_by_role("button", name="Edit", exact=True)).to_have_count(0)
-        expect(self.row(viewer, 1).get_by_role("button", name="Add thought", exact=True)).to_have_count(0)
-        self.title(viewer, 1).focus()
-        for key in ("Enter", "+", "Delete"):
-            viewer.keyboard.press(key)
+        expect(self.row(viewer, 1).get_by_role("button", name="Add a child thought", exact=True)).to_have_count(0)
+        expect(self.more(viewer, 1).get_by_role("button")).to_have_text(["Move up⌥↑", "Move down⌥↓", "Connections"])
+        self.row(viewer, 1).focus()
+        for key in ("Enter", "Space", "+", "Delete", "Tab"):
+            self.row(viewer, 1).press(key)
+            self.row(viewer, 1).focus()
         expect(viewer.get_by_label("Thought text")).to_have_count(0)
         self.assertEqual(self.stored(viewer), before)
         raw = viewer.evaluate("localStorage.getItem('flux.sketch.outlines.v1')")
         self.assertNotIn("PRIVATE", raw)
         self.assertNotIn(LABELS[0], raw)
-        self.assertTrue(all(level == 0 for level in self.levels(self._fresh_owner()).values()), "viewer grouping never changes the owner's fresh view")
         self.api(owner, "POST", f"/api/v1/projects/{self.project_id}/grants", {"principal": {"kind": "human", "id": self.ids["viewer"]}, "role": "denied"}, status=201)
         self.api(viewer, "GET", f"/api/v1/sketches/{self.sketch_id}", status=404)
         viewer.goto(f"/map/{self.sketch_id}")
         expect(viewer.get_by_role("heading", name="This sketch isn’t available")).to_be_visible()
         expect(viewer.locator("body")).not_to_contain_text(LABELS[4])
 
-    def _fresh_owner(self):
-        page = self.page(fresh=True)
-        self.open(page)
-        return page
-
-    def test_06_render_matched_light_dark_phone_tablet_and_enlarged_text(self):
+    def test_07_render_matched_light_dark_phone_tablet_and_enlarged_text(self):
         measurements = []
         for scheme in ("Light", "Dark"):
             page = self.page()
@@ -386,8 +469,8 @@ class MapOutlineJourney(unittest.TestCase):
             pop = page.get_by_role("dialog", name="Account", exact=True)
             pop.get_by_role("radio", name=scheme, exact=True).click()
             page.keyboard.press("Escape")
-            self.title(page, 4).click()
-            for selector in ('.sk-li-t', '.sk-li-s', '.sk-outline-related button', '.sk-outline-selected', '.sk-outline-path summary'):
+            self.pick(page, 3)
+            for selector in ('.sk-outline-title', '.sk-outline-row.is-selected .sk-li-s', '.sk-outline-also button', '.sk-outline-actions button', '.sk-outline-keys'):
                 page.wait_for_function("selector => { const node = document.querySelector(selector); if (!node) return false; for (let el = node; el; el = el.parentElement) if (Number(getComputedStyle(el).opacity) !== 1) return false; return true; }", arg=selector)
                 measured = page.evaluate(MEASURE, {"selector": selector})
                 measurements.append({"theme": scheme, **measured})
@@ -399,51 +482,59 @@ class MapOutlineJourney(unittest.TestCase):
             page = self.page()
             page.emulate_media(color_scheme=scheme)
             self.open(page)
-            self.title(page, 4).click()
-            for name, viewport in (("desktop-1440", DESKTOP), ("desktop-1280", {"width": 1280, "height": 800}), ("phone-390", PHONE), ("tablet-820", {"width": 820, "height": 1180})):
+            self.pick(page, 3)
+            for name, viewport in (("desktop-1440", DESKTOP), ("desktop-2560", {"width": 2560, "height": 1440}), ("tablet-820", {"width": 820, "height": 1180}), ("phone-390", PHONE)):
                 page.set_viewport_size(viewport)
-                self.title(page, 4).scroll_into_view_if_needed()
+                self.row(page, 3).scroll_into_view_if_needed()
                 shot(page, f"map-outline-{scheme}-{name}")
                 self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), viewport["width"], "no horizontal document overflow")
-                title = self.title(page, 4).bounding_box()
+                title = self.row(page, 3).locator(".sk-outline-title").bounding_box()
                 self.assertGreater(title["width"], 190 if viewport["width"] == 390 else 300, "deep indentation leaves readable content")
             page.set_viewport_size(PHONE)
             page.add_style_tag(content=":root { --fs-xs: 24px !important; --fs-sm: 26px !important; --fs-md: 28px !important; --fs-base: 30px !important; --fs-lg: 34px !important; --fs-xl: 40px !important; --fs-2xl: 48px !important; }")
-            self.assertEqual(self.title(page, 4).evaluate("node => getComputedStyle(node).fontSize"), "28px", "actual row text is enlarged")
-            self.title(page, 4).scroll_into_view_if_needed()
+            self.assertEqual(self.row(page, 3).locator(".sk-outline-title").evaluate("node => getComputedStyle(node).fontSize"), "28px", "actual row text is enlarged")
+            self.row(page, 3).scroll_into_view_if_needed()
             shot(page, f"map-outline-{scheme}-phone-enlarged")
             self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), PHONE["width"])
         touch = self.page(viewport=PHONE, is_mobile=True, has_touch=True)
         self.open(touch)
-        self.row(touch, 0).get_by_role("button", name=re.compile("^Collapse ")).tap()
-        self.title(touch, 5).tap()
-        self.row(touch, 5).locator(".sk-outline-related").get_by_role("button", name=f"Related to {LABELS[4]}", exact=True).tap()
-        expect(self.title(touch, 4)).to_have_attribute("aria-pressed", "true")
-        expect(self.title(touch, 4)).to_be_focused()
-        expect(self.title(touch, 4)).to_be_in_viewport(ratio=1)
-        expect(self.row(touch, 4).locator('.sk-li-s').first).to_be_in_viewport(ratio=1)
-        expect(self.row(touch, 4).locator('.sk-outline-path summary')).to_be_in_viewport(ratio=1)
-        back = touch.get_by_role("button", name=f"Back to “{LABELS[5]}”", exact=True)
+        self.row(touch, 1).get_by_role("button", name=re.compile("^Collapse ")).tap()
+        self.row(touch, 4).locator(".sk-outline-title").tap()
+        self.row(touch, 4).get_by_role("button", name=f"Also under {LABELS[3]}", exact=True).tap()
+        expect(self.row(touch, 3)).to_have_attribute("aria-selected", "true")
+        expect(self.row(touch, 3)).to_be_focused()
+        expect(self.row(touch, 3)).to_be_in_viewport(ratio=1)
+        back = touch.get_by_role("button", name=f"Back to “{LABELS[4][:47]}…”", exact=True)
         self.assertGreaterEqual(back.bounding_box()["y"], 0)
         self.assertLess(back.bounding_box()["y"], PHONE["height"], "the return action stays in the phone viewport")
-        shot(touch, "map-outline-phone-related-follow-back")
+        self.assertGreaterEqual(back.bounding_box()["height"], 44)
+        shot(touch, "map-outline-phone-also-under-back")
         back.tap()
-        expect(self.title(touch, 4)).to_have_count(0)
+        expect(self.row(touch, 3)).to_have_count(0)
 
-    def test_07_unavailable_and_corrupt_storage_keep_this_visit_useful_without_claiming_reload_persistence(self):
+    def test_08_unavailable_and_corrupt_storage_keep_the_tree_and_this_visit_useful(self):
         blocked = self.page(fresh=True)
         blocked.add_init_script("Storage.prototype.getItem = () => { throw new DOMException('Blocked', 'SecurityError'); }; Storage.prototype.setItem = () => { throw new DOMException('Blocked', 'SecurityError'); };")
         self.open(blocked)
         before = self.stored(blocked)
-        self.assertTrue(all(level == 0 for level in self.levels(blocked).values()))
-        self.group(blocked, 1, 0)
-        self.assertEqual(self.row(blocked, 1).get_attribute("data-depth"), "1")
+        current = self.levels(blocked)
+        self.assertEqual(current[self.thoughts[3]], 3, "the tree comes from the map even without storage")
+        order = lambda page: page.locator(f'li[data-id="{self.thoughts[0]}"] > ul > li').evaluate_all("items => items.map(item => item.dataset.id)")
+        first = order(blocked)
+        self.pick(blocked, 4)
+        self.row(blocked, 4).press("Alt+ArrowUp")
+        self.assertNotEqual(order(blocked), first, "reordering works for this visit")
         blocked.reload()
         show_map_as(blocked, "List")
-        self.assertTrue(all(level == 0 for level in self.levels(blocked).values()))
+        self.assertEqual(order(blocked), first, "without storage the order is not kept after a reload")
+        self.assertEqual(self.levels(blocked), current)
         self.assertEqual(self.stored(blocked), before)
         corrupt = self.page()
         corrupt.add_init_script("localStorage.setItem('flux.sketch.outlines.v1', '{bad cached title');")
         self.open(corrupt)
-        self.assertTrue(all(level == 0 for level in self.levels(corrupt).values()))
+        self.assertEqual(self.levels(corrupt), current)
         self.assertEqual(self.stored(corrupt), before)
+
+
+if __name__ == "__main__":
+    unittest.main()

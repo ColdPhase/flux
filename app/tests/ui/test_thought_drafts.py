@@ -422,8 +422,10 @@ class ThoughtDraftJourney(unittest.TestCase):
                 else:
                     page.get_by_role("button", name="Cancel", exact=True).click()
                 show_map_as(page, 'List')
-                page.locator(f'.sk-li-t[data-id="{self.parent}"]').click()
-                page.get_by_role('toolbar', name='Sketch tools').get_by_role('button', name='Edit', exact=True).click()
+                row = page.locator(f'.sk-li-t[data-id="{self.parent}"]')
+                row.click()
+                # #510 AC-4: Edit is one of the selected row's own actions.
+                row.get_by_role('button', name='Edit', exact=True).click()
                 page.get_by_label('Thought text').fill('Keep the manual off switch within reach')
                 shot(page, f'thought-edit-{theme}-{name}-list')
                 page.get_by_role('button', name='Cancel edit', exact=True).click()

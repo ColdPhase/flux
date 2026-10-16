@@ -369,7 +369,7 @@ class ScenarioJourney:
         self.tap(self.thought(page, parent_id))
         if self.phone:
             row = page.locator(f'.sk-outline-list li[data-id="{parent_id}"]').first
-            row.get_by_role("button", name="Add thought", exact=True).first.tap()
+            row.get_by_role("button", name="Add a child thought", exact=True).first.tap()
         else:
             page.get_by_role("button", name=re.compile("^Add a thought connected to")).click()
         editor = page.get_by_label("Thought text")
@@ -815,7 +815,7 @@ class ScenarioJourney:
         thoughts = self.s["thoughts"]
         self.tap(self.thought(page, thoughts[CAMERA]))
         self.tap(self.thought(page, thoughts[LOW_LIGHT]))
-        expect(page.locator('.sk-li-t[aria-pressed="true"]')).to_have_count(2, timeout=3000)
+        expect(page.locator('.sk-li-t[aria-selected="true"]')).to_have_count(2, timeout=3000)
 
     def test_2b_an_existing_task_links_to_a_thought_in_the_browser(self) -> None:
         """#44 scenario 2, "repeat with task creation preceding the map link" (#289): a task made first in Tasks is

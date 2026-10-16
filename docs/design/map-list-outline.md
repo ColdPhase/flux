@@ -6,6 +6,45 @@ thought without mistaking that relation for a new parent. This implements the
 accepted rule that hierarchy is distinct from a graph relation
 over the existing undirected graph; it does not add domain hierarchy.
 
+## Spokój update: the List is the map's tree (#510, 2026-10-16)
+
+Founder direction [Spokój](spokoj/README.md) board A04 (#510) replaces this page's flat
+personal forest. Where this section and the older text below differ, this section wins.
+
+- **Structure comes from the map.** A connection records which thought it was drawn from
+  (`fromId`). A thought sits under the oldest thought, in this person's reading order, with a
+  connection drawn to it; its other such connections read **also under …** (named buttons that
+  follow to that thought, with **Back to …**). A connection that would close a loop is shown the
+  same way, and a thought nothing was drawn to is a root. Every current thought occurs once and
+  every connection is either a branch or an "also under", so many-to-many relations and task
+  links stay visible (Prostota "Kept map and board behaviour"). The tree depends only on the
+  current graph and the reading order, so a graph undo restores the same tree. A later Connect
+  can therefore move a thought under an older parent; that is the map's structure, shown.
+- **Rows.** Connector lines join a parent to its children; a branch folds. The connection's
+  label is a small tag before the child's title. Linked tasks are a chip at the row's end (state
+  glyph, number, state, "+N") that opens the same chooser as the map's count. Dates and
+  provenance show on hover, focus or selection only and keep their room, so nothing moves.
+  Edit · + Child · Create task · ⋯ appear on the selected row only; ⋯ holds Indent, Outdent,
+  Move up, Move down, Connect…, Connections and Remove (graph actions only for people who can
+  write, and Indent/Outdent/Connect not on a phone, S15).
+- **Keyboard and screen readers.** The rows are a `tree` of `treeitem`s with `aria-level`,
+  `aria-expanded` and `aria-selected`; one row is in the tab order. Arrows move between rows and
+  select them; Left/Right fold, unfold, go to the parent or the first child. Enter adds a thought
+  beside the selected one, `+` adds a child, Space opens the thought for editing (F2 too), Delete
+  removes. **Tab / Shift+Tab** put the selected thought under the row above it or one level out:
+  its connection to its parent moves to the new parent (keeping its label), and outdenting from
+  the top branch disconnects it; one undoable graph step. A selected row takes Tab; Escape clears
+  the selection and Tab then leaves the list. Shift+F10 moves to the row's actions.
+  **⌥↑ / ⌥↓** move a thought among its siblings in this person's reading order only.
+- **Personal state** is the reading order and the folded branches (same storage, bounds and
+  ID-only rules as below). **Group in list…**, its separate undo and the personal parent
+  overrides are retired: two ways to restructure, one shared and one private, contradicted
+  "the List shows the structure of the map". Older saved parent choices are read and ignored.
+- **Layout.** On a computer and tablet the List keeps the map's frame: the "Sketches · name ·
+  Map|List" pill at the same top left and the same bottom toolbar (Select and Move around dimmed)
+  in exactly the same places, without the map's drag hint (Spokój rule 7). The phone keeps its
+  List page with the tools above the rows.
+
 ## Presentation contract
 
 - The outline is personal to the signed-in person, workspace, sketch and browser.

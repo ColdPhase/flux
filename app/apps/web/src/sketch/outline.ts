@@ -1,6 +1,9 @@
 import type { Thought, ThoughtLink } from '@flux/contracts';
 
-/** A personal display preference, never a domain parent or authorization cache (#134). */
+/**
+ * A personal reading preference (#134): the order of siblings and the folded branches. The tree itself
+ * comes from the map's connections (#510); `parents` is kept only so older saved preferences still read.
+ */
 export interface OutlineState {
   version: 1;
   order: string[];
@@ -13,6 +16,10 @@ export interface OutlineRow {
   depth: number;
   ancestors: string[];
   children: string[];
+  /** The connection to the parent: its label is the row's tag (#510 AC-2). */
+  link: ThoughtLink | null;
+  /** Other thoughts this one is connected under ("also under …", #510 AC-2), in reading order. */
+  also: { id: string; link: ThoughtLink }[];
 }
 export interface Outline {
   rows: OutlineRow[];
@@ -81,39 +88,40 @@ export function rememberThoughts(state: OutlineState, thoughts: readonly Thought
   return { version: 1, order, parents: Object.fromEntries(Object.entries(state.parents).filter(([id]) => remembered.has(id))), collapsed: state.collapsed.filter((id) => remembered.has(id)) };
 }
 
-export function linkedPairs(links: readonly ThoughtLink[]): Set<string> {
-  return new Set(links.map((link) => pair(link.fromId, link.toId)));
-}
-export const pair = (a: string, b: string) => a < b ? `${a}:${b}` : `${b}:${a}`;
-
-/** Fresh graphs are roots. Only remembered explicit choices can become a displayed edge. */
+/**
+ * The map as a tree (#510 AC-1). Connections record which thought they were drawn from. A thought sits
+ * under the oldest thought (in reading order) with a connection drawn to it; its other such connections
+ * read "also under …". A connection that would close a loop is a relation too, and thoughts nothing was
+ * drawn to are roots. The tree depends only on the current graph and the reading order, so an undo that
+ * restores the graph restores the tree. Siblings follow the personal reading order (creation by default).
+ * Every current thought occurs exactly once; every connection is either a branch or an "also under".
+ */
 export function buildOutline(thoughts: readonly Thought[], links: readonly ThoughtLink[], state: OutlineState): Outline {
   const present = new Map(thoughts.map((thought) => [thought.id, thought]));
   const remembered = new Set(state.order);
   const order = [...state.order.filter((id) => present.has(id)), ...[...present.values()].filter((thought) => !remembered.has(thought.id)).sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id)).map((thought) => thought.id)];
-  const pairs = linkedPairs(links);
-  const parents = new Map(order.map((id) => {
-    const parent = state.parents[id];
-    return [id, parent && parent !== id && present.has(parent) && pairs.has(pair(id, parent)) ? parent : null] as const;
-  }));
-  // Corrupt local cycles are detached together, independent of input traversal order.
-  const done = new Set<string>();
+  const rank = new Map(order.map((id, index) => [id, index]));
+  const byRank = (a: string, b: string) => rank.get(a)! - rank.get(b)!;
+  const incoming = new Map<string, ThoughtLink[]>();
+  for (const link of links) {
+    if (link.fromId === link.toId || !present.has(link.fromId) || !present.has(link.toId)) continue;
+    const list = incoming.get(link.toId) ?? [];
+    list.push(link);
+    incoming.set(link.toId, list);
+  }
+  const parents = new Map<string, ThoughtLink>();
+  const above = (id: string, target: string) => {
+    for (let next: string | undefined = id; next; next = parents.get(next)?.fromId) if (next === target) return true;
+    return false;
+  };
   for (const id of order) {
-    const path: string[] = [];
-    const seen = new Map<string, number>();
-    let next: string | null = id;
-    while (next && !done.has(next)) {
-      const start = seen.get(next);
-      if (start !== undefined) { for (const cyclic of path.slice(start)) parents.set(cyclic, null); break; }
-      seen.set(next, path.length);
-      path.push(next);
-      next = parents.get(next) ?? null;
-    }
-    for (const visited of path) done.add(visited);
+    const candidates = (incoming.get(id) ?? []).sort((a, b) => byRank(a.fromId, b.fromId));
+    const link = candidates.find((candidate) => !above(candidate.fromId, id));
+    if (link) parents.set(id, link);
   }
   const children = new Map<string | null, string[]>();
   for (const id of order) {
-    const parent = parents.get(id) ?? null;
+    const parent = parents.get(id)?.fromId ?? null;
     const list = children.get(parent) ?? [];
     list.push(id);
     children.set(parent, list);
@@ -124,19 +132,33 @@ export function buildOutline(thoughts: readonly Thought[], links: readonly Thoug
   while (stack.length) {
     const { id, ancestors } = stack.pop()!;
     const rowChildren = children.get(id) ?? [];
-    rows.push({ thought: present.get(id)!, parentId: parents.get(id) ?? null, depth: ancestors.length, ancestors, children: rowChildren });
+    const link = parents.get(id) ?? null;
+    rows.push({ thought: present.get(id)!, parentId: link?.fromId ?? null, depth: ancestors.length, ancestors, children: rowChildren, link,
+      also: (incoming.get(id) ?? []).filter((item) => item !== link).map((item) => ({ id: item.fromId, link: item })) });
     for (const child of [...rowChildren].reverse()) stack.push({ id: child, ancestors: [...ancestors, id] });
   }
   return { rows, byId: new Map(rows.map((row) => [row.thought.id, row])) };
 }
 
+/** The sibling before or after a row in the tree, for indenting and moving (#510 AC-6). */
+export function sibling(outline: Outline, id: string, step: -1 | 1): string | null {
+  const row = outline.byId.get(id);
+  if (!row) return null;
+  const siblings = row.parentId ? outline.byId.get(row.parentId)?.children ?? [] : outline.rows.filter((item) => item.depth === 0).map((item) => item.thought.id);
+  return siblings[siblings.indexOf(id) + step] ?? null;
+}
+
+/** Swaps two remembered thoughts in the personal reading order; anything not remembered stays put. */
+export function swapOrder(state: OutlineState, a: string, b: string): OutlineState {
+  const i = state.order.indexOf(a);
+  const j = state.order.indexOf(b);
+  if (i < 0 || j < 0) return state;
+  const order = [...state.order];
+  [order[i], order[j]] = [order[j]!, order[i]!];
+  return { ...state, order };
+}
+
 export function visibleRows(outline: Outline, collapsed: readonly string[]): OutlineRow[] {
   const hidden = new Set(collapsed);
   return outline.rows.filter((row) => !row.ancestors.some((id) => hidden.has(id)));
-}
-
-/** Existing authorized graph neighbors only, with descendants removed to avoid local cycles. */
-export function groupingChoices(id: string, outline: Outline, links: readonly ThoughtLink[]): OutlineRow[] {
-  const neighbors = new Set(links.flatMap((link) => link.fromId === id ? [link.toId] : link.toId === id ? [link.fromId] : []));
-  return outline.rows.filter((row) => neighbors.has(row.thought.id) && !row.ancestors.includes(id));
 }

@@ -55,6 +55,11 @@ def tasks_label(count: int, text: str) -> str:
     return f"{count} {'task' if count == 1 else 'tasks'} linked to {quote(text)}"
 
 
+def chip(count: int) -> re.Pattern:
+    """The List's task chip (#510 AC-3): "#12 In progress", and "+2" when more tasks are linked."""
+    return re.compile(r"^#\d+ [A-Z][a-z]+(?: [a-z]+)*" + (rf" \+{count - 1}" if count > 1 else "") + "$")
+
+
 class MapTaskCountJourney(unittest.TestCase):
     """Tests run in name order and share three accounts, one project and its sketch."""
 
@@ -167,7 +172,7 @@ class MapTaskCountJourney(unittest.TestCase):
         if mode == "Map":
             expect(page.locator(".sk-node")).to_have_count(5)
         else:
-            expect(page.get_by_role("list", name="Thoughts in Sensing directions")).to_be_visible()
+            expect(page.get_by_role("tree", name="Thoughts in Sensing directions")).to_be_visible()
 
     def node(self, page: Page, key: str) -> Locator:
         return page.locator(f'.sk-node[data-id="{self.thoughts[key]}"]')
@@ -176,7 +181,7 @@ class MapTaskCountJourney(unittest.TestCase):
         return page.locator(f'.sk-node[data-id="{self.thoughts[key]}"] + .sk-work-slot .sk-work')
 
     def row_badge(self, page: Page, key: str) -> Locator:
-        return page.locator(f'.sk-outline-list > li[data-id="{self.thoughts[key]}"] .sk-work')
+        return page.locator(f'.sk-outline-list li[data-id="{self.thoughts[key]}"] > .sk-outline-row .sk-work')
 
     def chooser(self, page: Page, text: str) -> Locator:
         return page.get_by_role("dialog", name=text, exact=True)
@@ -190,7 +195,7 @@ class MapTaskCountJourney(unittest.TestCase):
             transform: plane ? plane.style.transform : null,
             zoom: document.querySelector('.sk-zoom__level')?.textContent ?? null,
             page: document.querySelector('.sk-page').scrollTop,
-            selected: [...document.querySelectorAll('.sk-node[aria-pressed="true"], .sk-li-t[aria-pressed="true"]')].map((el) => el.dataset.id),
+            selected: [...document.querySelectorAll('.sk-node[aria-pressed="true"], .sk-li-t[aria-selected="true"]')].map((el) => el.dataset.id),
           };
         }""")
 
@@ -265,7 +270,9 @@ class MapTaskCountJourney(unittest.TestCase):
         for key, count in counts.items():
             if count:
                 expect(self.row_badge(page, key)).to_have_accessible_name(tasks_label(count, texts[key]))
-                expect(self.row_badge(page, key)).to_have_text(f"{count} {'task' if count == 1 else 'tasks'}")
+                # #510 AC-3: a chip with the first task's state glyph, number and state, and how many more.
+                expect(self.row_badge(page, key)).to_have_text(chip(count))
+                expect(self.row_badge(page, key).locator("svg").first).to_be_visible()
             else:
                 expect(self.row_badge(page, key)).to_have_count(0)
         for title in (ORDER, CALIBRATE, PROTOCOL, DIFFUSER):
@@ -340,11 +347,13 @@ class MapTaskCountJourney(unittest.TestCase):
         page.get_by_role("button", name=re.compile(r"^Zoom \d+%, reset to 100%$")).click()
         page.get_by_role("button", name="Zoom in", exact=True).click()
         expect(page.locator(".sk-zoom__level")).to_have_text("110%")
-        page.locator(".sk-canvas").evaluate("(el) => { el.scrollLeft = 300; el.scrollTop = 150; }")
+        # The plane reaches past the thoughts on every side (#509): move the view a little from where
+        # it opened, keeping the counted thought in view, so a jump back would show.
+        moved = page.locator(".sk-canvas").evaluate("(el) => { el.scrollLeft += 40; el.scrollTop += 30; return [el.scrollLeft, el.scrollTop]; }")
         badge = self.badge(page, "dark")
         badge.focus()
         before = self.camera(page)
-        self.assertEqual((before["left"], before["top"]), (300, 150), "a camera away from the origin")
+        self.assertEqual([before["left"], before["top"]], moved, "a camera away from where the map opened")
         self.assertEqual(before["transform"], "scale(1.1)")
         self.assertEqual(before["selected"], [self.thoughts["camera"]])
 
@@ -441,7 +450,7 @@ class MapTaskCountJourney(unittest.TestCase):
         self.chooser(page, DARK_ROOM).get_by_role("link", name=re.compile(re.escape(ORDER))).click()
         expect(page.locator(".details__title")).to_have_text(ORDER)
         show_map_as(page, "List")
-        expect(self.row_badge(page, "dark")).to_have_text("3 tasks")
+        expect(self.row_badge(page, "dark")).to_have_text(chip(3))
         # Compared as the owner, who can also read the private placement.
         self.unchanged(self.page())
 
@@ -494,7 +503,7 @@ class MapTaskCountJourney(unittest.TestCase):
 
             show_map_as(page, "List", touch=True)
             row = self.row_badge(page, "dark")
-            expect(row).to_have_text("3 tasks")
+            expect(row).to_have_text(chip(3))
             self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), PHONE["width"], "the List with counts fits too")
             row_box = row.bounding_box()
             self.assertGreaterEqual(row_box["height"], 44)
@@ -529,7 +538,7 @@ class MapTaskCountJourney(unittest.TestCase):
             shot(page, f"map-task-count-{theme.lower()}-1440")
             page.keyboard.press("Escape")
             show_map_as(page, "List")
-            measure(page, theme, f'.sk-outline-list > li[data-id="{self.thoughts["dark"]}"] .sk-work')
+            measure(page, theme, f'.sk-outline-list li[data-id="{self.thoughts["dark"]}"] > .sk-outline-row .sk-work')
         if SHOTS:
             (SHOTS / "map-task-count-contrast.json").write_text(json.dumps(measurements, indent=2) + "\n")
 

@@ -1,48 +1,66 @@
-/* The personal reading outline (#134). */
+/* The map as a tree (#510, Spokój board A04; #134 reading preferences). Connector lines, a connection's
+   label as a small tag, "also under …", task chips at the row's end, dates on hover or focus only and
+   the actions on the selected row. Nothing that appears moves a control: dates keep their room. */
+.sk-list-scroll { position: absolute; inset: 0; overflow-y: auto; overscroll-behavior: contain; padding: 72px 24px 140px; }
+.sk-list-scroll .sk-outline { max-width: 860px; margin: 0 auto; }
 .sk-outline { min-width: 0; }
-.sk-outline-return { position: sticky; top: 0; z-index: 4; display: flex; align-items: center; flex-wrap: wrap; gap: 4px 16px; padding: 4px 0 8px; background: var(--bg); border-bottom: 1px solid var(--line); }
-.sk-outline-back, .sk-outline-undo { display: inline-flex; align-items: center; gap: 4px; min-height: 28px; border-radius: var(--r-sm); color: var(--t1, var(--t1)); font-size: var(--fs-sm); text-align: left; overflow-wrap: anywhere; }
-.sk-outline-back:hover, .sk-outline-undo:hover { text-decoration: underline; }
-.sk-outline-list > li { position: relative; --outline-offset: calc(var(--outline-depth) * 18px); padding-inline-start: calc(8px + var(--outline-offset)); }
-.sk-outline-list > li:not([data-depth="0"])::before { content: ''; position: absolute; inset-inline-start: calc(var(--outline-offset) - 2px); top: 9px; bottom: 10px; width: 1px; background: var(--line2); pointer-events: none; }
-.sk-outline-list > li[data-selected="true"] { background: var(--sub, var(--sub)); }
-.sk-outline-row { display: flex; align-items: flex-start; gap: 2px; min-width: 0; }
-.sk-outline-row > .sk-li-t { flex: 1; min-width: 0; align-items: flex-start; justify-content: space-between; padding: 5px 4px; font-weight: 500; }
-.sk-outline-row > .sk-li-edit { flex: 1; min-width: 0; }
-/* UI116-4: the row's task count opens the same chooser as on the map. */
-.sk-outline-row > .sk-work--list { flex: none; min-height: 32px; padding: 0 6px; font-size: var(--fs-sm); font-variant-numeric: tabular-nums; }
-.sk-outline-selected { flex: none; display: inline-flex; margin-top: 3px; color: var(--t1, var(--t1)); }
-.sk-outline-toggle, .sk-outline-leaf { display: grid; place-items: center; flex: none; width: 24px; min-height: 32px; border-radius: var(--r-sm); color: var(--t3); }
+.sk-outline-return { position: sticky; top: 0; z-index: 4; display: flex; align-items: center; flex-wrap: wrap; gap: 4px 16px; padding: 4px 0 8px; margin-bottom: 4px; background: var(--bg); border-bottom: 1px solid var(--line); }
+.sk-list-scroll .sk-outline-return { top: -8px; padding-top: 8px; }
+.sk-outline-back { display: inline-flex; align-items: center; gap: 4px; min-height: 28px; border-radius: var(--r-sm); color: var(--t1); font-size: var(--fs-sm); text-align: left; overflow-wrap: anywhere; }
+.sk-outline-back:hover { text-decoration: underline; }
+
+.sk-outline-list, .sk-outline-list ul { list-style: none; margin: 0; padding: 0; }
+.sk-outline-list ul { margin-left: 13px; padding-left: 22px; border-left: 1px solid var(--line2); }
+.sk-outline-list li { position: relative; }
+.sk-outline-list ul > li::before { content: ''; position: absolute; left: -22px; top: 20px; width: 16px; height: 1px; background: var(--line2); pointer-events: none; }
+.sk-outline-row { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; min-width: 0; min-height: 40px; padding: 4px 10px 4px 6px; border-radius: var(--r-lg); cursor: default; transition: var(--tr); }
+.sk-outline-row:hover { background: var(--el); }
+.sk-outline-row.is-selected { background: var(--el); box-shadow: inset 0 0 0 1px var(--line2); }
+.sk-outline-row:focus { outline: none; }
+.sk-outline-row:focus-visible { outline: 2px solid var(--t1); outline-offset: -2px; }
+.sk-outline-toggle, .sk-outline-leaf { display: grid; place-items: center; flex: none; width: 24px; min-height: 28px; margin-right: -4px; border-radius: var(--r-sm); color: var(--t2); }
 .sk-outline-toggle:hover { background: var(--hov); color: var(--t1); }
-.sk-outline-leaf::after { content: ''; width: 4px; height: 4px; border-radius: 50%; background: var(--t3); }
-.sk-outline-body { min-width: 0; margin-inline-start: 30px; }
-.sk-outline-related button, .sk-outline-path button { display: inline; min-height: 24px; border-radius: var(--r-sm); color: var(--t1, var(--t1)); text-decoration: underline; text-underline-offset: 2px; text-align: left; white-space: normal; overflow-wrap: anywhere; font: inherit; }
-.sk-outline-related { margin-top: 3px; overflow-wrap: anywhere; }
-.sk-outline-label { color: var(--t3); }
-.sk-outline-path, .sk-outline-more-links { color: var(--t3); font-size: var(--fs-sm); line-height: 1.5; }
-.sk-outline-path summary, .sk-outline-more-links summary { width: fit-content; min-height: 24px; border-radius: var(--r-sm); cursor: pointer; }
-.sk-outline-path ol { list-style: none; padding: 2px 0 4px 12px; margin: 0; border-inline-start: 1px solid var(--line2); }
-.sk-outline-path li { padding-block: 1px; }
-.sk-outline-more-links > span { display: block; padding: 2px 0; }
-.sk-outline-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 12px; margin-top: 4px; }
-.sk-outline-actions > button { display: inline-flex; align-items: center; gap: 5px; min-height: 28px; padding: 0 4px; border-radius: var(--r-sm); font-size: var(--fs-sm); color: var(--t2); }
-.sk-outline-actions > button:hover { background: var(--hov); color: var(--t1); }
-.sk-outline-grouping { display: grid; gap: 6px; max-width: 460px; padding: 10px 0 4px; font-size: var(--fs-sm); }
-.sk-outline-grouping label { display: grid; gap: 4px; font-weight: 500; color: var(--t2); }
-.sk-outline-grouping select { width: 100%; min-width: 0; min-height: var(--ctl); border: 1px solid var(--line2); border-radius: var(--r); padding: 0 8px; font: inherit; background: var(--el); color: var(--t1); }
-.sk-outline-grouping select:focus-visible { outline: 2px solid var(--t1); outline-offset: 1px; }
-.sk-outline-grouping > div { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-.sk-outline-hint { color: var(--t3); }
+.sk-outline-tag { flex: none; padding: 0 7px; border-radius: 7px; background: var(--sub); color: var(--t2); font-size: var(--fs-xs); line-height: 20px; white-space: nowrap; }
+.sk-outline-title { flex: 1 1 14em; min-width: 0; font-size: var(--fs-md); font-weight: 500; color: var(--t1); line-height: 1.45; overflow-wrap: anywhere; white-space: pre-line; }
+.sk-outline-list > li > .sk-outline-row .sk-outline-title { font-weight: 600; }
+.sk-outline-row > .sk-li-edit { flex: 1 1 14em; min-width: 0; }
+.sk-outline-meta, .sk-li-s { flex: none; font-size: var(--fs-xs); color: var(--t3); line-height: 1.4; white-space: nowrap; }
+/* #510 AC-3: the date keeps its room so nothing shifts when it shows on hover, focus or selection. */
+.sk-outline-row .sk-li-s { display: inline; opacity: 0; transition: opacity var(--dur-1) var(--ease-out); }
+.sk-outline-row:hover .sk-li-s, .sk-outline-row:focus .sk-li-s, .sk-outline-row.is-selected .sk-li-s { opacity: 1; }
+.sk-outline-also { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 0 4px; min-width: 0; max-width: 100%; font-size: var(--fs-xs); color: var(--t3); line-height: 1.4; }
+.sk-outline-also svg { flex: none; }
+.sk-outline-also button { min-height: 24px; border-radius: var(--r-sm); color: var(--t2); text-align: left; overflow-wrap: anywhere; font: inherit; }
+.sk-outline-also button:hover { color: var(--t1); text-decoration: underline; text-underline-offset: 2px; }
+/* UI116-4: the chip opens the same chooser of every linked task as the map's count. */
+.sk-outline-chip { display: inline-flex; flex: none; }
+.sk-outline-chip .sk-work--list { min-height: 24px; padding: 0 9px; border-radius: var(--r-pill); background: var(--sub); color: var(--t2); font-size: var(--fs-xs); font-variant-numeric: tabular-nums; }
+.sk-outline-chip .sk-work--list svg { color: inherit; }
+.sk-outline-actions { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 2px; margin-left: auto; }
+.sk-outline-actions > button, .sk-outline-menu > button { display: inline-flex; align-items: center; gap: 5px; min-height: 28px; padding: 0 8px; border-radius: var(--r-sm); font-size: var(--fs-sm); font-weight: 500; color: var(--t2); }
+.sk-outline-actions > button:hover, .sk-outline-menu > button:hover, .sk-outline-actions > button[aria-expanded="true"] { background: var(--hov); color: var(--t1); }
+.sk-outline-menu { display: flex; flex-wrap: wrap; gap: 2px 4px; margin: 4px 0 6px 30px; padding: 4px; border-radius: var(--r-lg); background: var(--el); box-shadow: var(--sh-card), inset 0 0 0 1px var(--line); width: fit-content; max-width: calc(100% - 30px); }
+.sk-outline-menu > button[aria-pressed="true"] { background: var(--sub); color: var(--t1); }
+.sk-outline-menu kbd, .sk-outline-keys kbd { padding: 0 5px; border: 1px solid var(--line2); border-radius: 5px; font: 500 11px/16px var(--mono); color: var(--t3); }
+.sk-outline-menu kbd { margin-left: 2px; }
+.sk-outline-body { margin: 0 0 4px 34px; min-width: 0; }
+.sk-outline-keys { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 10px 0 0; padding: 8px 10px; border-top: 1px solid var(--line); font-size: var(--fs-xs); color: var(--t3); }
+.sk-outline-keys span { display: inline-flex; align-items: center; gap: 4px; }
 @media (max-width: 640px) {
-  .sk-outline-list > li { --outline-offset: calc(min(var(--outline-depth), 3) * 12px); }
-  .sk-outline-row > .sk-li-t { line-height: 1.45; }
-  .sk-outline-body { margin-inline-start: 28px; }
+  .sk-outline-list ul { margin-left: 11px; padding-left: 12px; }
+  .sk-outline-list ul > li::before { left: -12px; width: 8px; }
+  /* Deep branches stop indenting after three steps; the row's level is still announced. */
+  .sk-outline-list ul ul ul ul { margin-left: 0; padding-left: 0; border-left: 0; }
+  .sk-outline-list ul ul ul ul > li::before { display: none; }
+  .sk-outline-row { padding-left: 2px; }
+  .sk-outline-title { line-height: 1.45; }
+  .sk-outline-row .sk-li-s { display: none; }
+  .sk-outline-row.is-selected .sk-li-s { display: inline; }
 }
 @media (pointer: coarse) {
+  .sk-outline-row { min-height: 44px; }
   .sk-outline-toggle, .sk-outline-leaf { width: 36px; min-height: 44px; }
-  .sk-outline-row > .sk-work--list { min-width: 44px; min-height: 44px; justify-content: center; }
-  .sk-outline-body { margin-inline-start: 42px; }
-  .sk-outline-actions > button, .sk-outline-back, .sk-outline-undo, .sk-outline-path summary, .sk-outline-more-links summary, .sk-outline-related button, .sk-outline-path button { min-height: 44px; }
-  .sk-outline-related button, .sk-outline-path button { display: inline-block; padding-block: 10px; }
-  .sk-outline-grouping select { min-height: 44px; }
+  .sk-outline-chip .sk-work--list, .sk-outline-actions > button, .sk-outline-menu > button, .sk-outline-back, .sk-outline-also button { min-height: 44px; }
+  .sk-outline-chip .sk-work--list { min-width: 44px; justify-content: center; }
+  .sk-outline-body { margin-left: 42px; }
 }
