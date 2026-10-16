@@ -4,7 +4,7 @@ import { AI_PROVIDERS, aiConnectionLabel, isAiProviderKind, type AiProviderKind,
   type ConnectBackgroundComputeCommand } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { Button } from '../ui';
-import { backgroundComparisonRuntime, connectBackgroundCompute, currentBackgroundUsage, listBackgroundConnections, markBackgroundConnection, revokeBackgroundConnection } from './api';
+import { BACKGROUND_OFF_LINE, backgroundComparisonRuntime, connectBackgroundCompute, currentBackgroundUsage, listBackgroundConnections, markBackgroundConnection, revokeBackgroundConnection } from './api';
 import { BackgroundUsage } from './BackgroundUsage';
 import { comparisonReserveText, ConnectionFields, priceSourceText, priceText } from './ConnectionFields';
 import { ProjectRuleSettings } from './ProjectRuleSettings';
@@ -246,8 +246,7 @@ export function AiConnectionsSettings() {
 function BackgroundStatus({ runtime, connection }: { runtime: 'available' | 'unavailable'; connection: BackgroundComputeConnection | null }) {
   return <div className="background-settings__status">
     <p className="background-settings__note" role="note">{runtime === 'unavailable'
-      ? 'Off on this Flux server · not available until your admin turns it on.'
-      : connection ? `On · uses ${connection.name}.` : 'On · no AI connection is chosen for them yet.'}</p>
+      ? BACKGROUND_OFF_LINE : connection ? `On · uses ${connection.name}` : 'On · no AI connection is chosen for them yet'}</p>
     <Link className="background-settings__back" to="/settings/ai-connections">AI connections</Link>
   </div>;
 }

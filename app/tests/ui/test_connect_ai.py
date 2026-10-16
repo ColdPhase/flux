@@ -412,37 +412,60 @@ class ConnectAiJourney(unittest.TestCase):
 
     def test_10_the_assistant_card_says_in_one_line_when_in_app_ai_is_off(self) -> None:
         """#513 AC-3 (M5): with in-app AI off on the server (a stubbed status), the card says so once, in its status
-        line: no facts and no "How it works", and its primary step stays in the same place, dimmed (Spokój rule 7)."""
-        for phone in (False, True):
-            on = self.page("ines", phone=phone)
-            on.goto("/settings/agents")
-            live = on.get_by_role("region", name=re.compile("^Your assistant"))
-            step = live.get_by_role("link", name=re.compile("^(Set up|Manage)$"))
-            expect(step).to_be_visible()
-            expect(live.locator(".sset-assistant__facts li")).to_have_count(3)
-            real = self.api(on, "GET", "/api/v1/personal-assistant", status=200)
-            off_status = {**real, "state": "unavailable", "enablement": None, "setup": {"provider": "off", "connection": "none"}}
-            page = self.page("ines", phone=phone)
+        line, with no facts and no "How it works". With nothing set up, Set up stays in its place, dimmed (Spokój
+        rule 7); an assistant that is set up keeps its Manage link there."""
+        def stub(page: Page, body: dict) -> None:
             page.route(re.compile(r".*/api/v1/personal-assistant$"), lambda route: route.fulfill(
-                status=200, content_type="application/json", body=json.dumps(off_status)) if route.request.method == "GET" else route.continue_())
-            page.goto("/settings/agents")
-            card = page.get_by_role("region", name=re.compile("^Your assistant"))
+                status=200, content_type="application/json", body=json.dumps(body)) if route.request.method == "GET" else route.continue_())
+
+        def one_off_line(card, step: str) -> None:
             expect(card).to_contain_text("In-app AI is off on this Flux server")
             text = card.inner_text()
             self.assertEqual(len(re.findall(r"(?i)\boff\b", text)), 1, f"the off state is said once: {text!r}")
             lines = [" ".join(line.split()) for line in text.splitlines()]
-            self.assertEqual([line for line in lines if line and line not in ("Your assistant", "Agent", "Your assistant Agent", "Set up")],
-                             ["In-app AI is off on this Flux server"], f"one line besides the name, the Agent tag and Set up: {text!r}")
+            self.assertEqual([line for line in lines if line and line not in ("Your assistant", "Agent", "Your assistant Agent", step)],
+                             ["In-app AI is off on this Flux server"], f"one line besides the name, the Agent tag and {step}: {text!r}")
             expect(card.locator(".sset-assistant__facts")).to_have_count(0)
-            expect(card.get_by_role("link")).to_have_count(0)
-            dimmed = card.get_by_role("button", name="Set up", exact=True)
-            expect(dimmed).to_be_disabled()
-            a, b = step.bounding_box(), dimmed.bounding_box()
+            expect(card.get_by_role("link", name="How it works")).to_have_count(0)
+
+        def same_place(a: dict | None, b: dict | None) -> None:
             self.assertIsNotNone(a)
             self.assertIsNotNone(b)
             self.assertAlmostEqual(a["y"], b["y"], delta=1, msg=f"the step keeps its row: {a} vs {b}")
             self.assertAlmostEqual(a["x"] + a["width"], b["x"] + b["width"], delta=1, msg=f"the step keeps its right edge: {a} vs {b}")
+
+        for phone in (False, True):
+            on = self.page("ines", phone=phone)
+            on.goto("/settings/agents")
+            live = on.get_by_role("region", name=re.compile("^Your assistant"))
+            # test_06 turned Ines's assistant on, so the live card offers Manage.
+            step = live.get_by_role("link", name="Manage", exact=True)
+            expect(step).to_be_visible()
+            expect(live.locator(".sset-assistant__facts li")).to_have_count(3)
+            real = self.api(on, "GET", "/api/v1/personal-assistant", status=200)
+            self.assertIsNotNone(real["enablement"], "test_06 turned Ines's assistant on")
+            off = {**real, "state": "unavailable", "setup": {"provider": "off", "connection": "none"}}
+            # Nothing set up: Set up stays where it is, dimmed.
+            page = self.page("ines", phone=phone)
+            stub(page, {**off, "enablement": None})
+            page.goto("/settings/agents")
+            card = page.get_by_role("region", name=re.compile("^Your assistant"))
+            one_off_line(card, "Set up")
+            expect(card.get_by_role("link")).to_have_count(0)
+            dimmed = card.get_by_role("button", name="Set up", exact=True)
+            expect(dimmed).to_be_disabled()
+            same_place(step.bounding_box(), dimmed.bounding_box())
             shot(page, f"connect-ai-assistant-off-{'phone-390' if phone else 'desktop-1440'}")
+            # Set up already: Manage stays, so the person can still pause or remove it.
+            managed = self.page("ines", phone=phone)
+            stub(managed, off)
+            managed.goto("/settings/agents")
+            card = managed.get_by_role("region", name=re.compile("^Your assistant"))
+            one_off_line(card, "Manage")
+            manage = card.get_by_role("link", name="Manage", exact=True)
+            expect(manage).to_have_attribute("href", "/settings/assistant")
+            expect(card.get_by_role("button", name="Set up")).to_have_count(0)
+            same_place(step.bounding_box(), manage.bounding_box())
 
     def above(self, first, second) -> bool:
         a = first.bounding_box()

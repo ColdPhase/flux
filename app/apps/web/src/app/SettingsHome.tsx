@@ -4,7 +4,7 @@ import { Form, Link, Outlet, useLocation, useNavigation, useSearchParams } from 
 import { aiConnectionLabel, PERSONAL_RUN_LIMITS, type AgentConnection, type BackgroundComputeConnection, type PersonalAssistantStatus, type IdentityCapabilities } from '@flux/contracts';
 import { listAgentConnections } from '../agent-connection/api';
 import { getAssistantStatus } from '../assistant/api';
-import { backgroundComparisonRuntime, listBackgroundConnections } from '../proactive-comparison/api';
+import { BACKGROUND_OFF_LINE, backgroundComparisonRuntime, listBackgroundConnections } from '../proactive-comparison/api';
 import { dollars } from '../assistant/format';
 import { NotificationsButton } from '../pwa';
 import { AgentTag, Avatar, Button, Icon, Kreska, MEDIA, Spinner, agentHue, setReduceMotion, useMediaQuery, useReduceMotion } from '../ui';
@@ -197,7 +197,8 @@ const THEME_LABEL: Record<ThemeChoice, string> = { light: 'Light', dark: 'Dark',
  * primary step. Costs, data and consent live in the set-up step and on "How it works".
  */
 function AssistantCard({ userId, status }: { userId: string; status: PersonalAssistantStatus | null }) {
-  // In-app AI off on this server (AC-3): the card says so in its one status line; Set up stays in place, dimmed.
+  // In-app AI off on this server (AC-3): the card says so in its one status line. Manage stays for an assistant
+  // that is set up; with nothing set up, Set up stays in its place, dimmed.
   const off = status?.setup.provider === 'off';
   return (
     <section className="sset-card sset-assistant" aria-labelledby="assistant-card">
@@ -208,7 +209,7 @@ function AssistantCard({ userId, status }: { userId: string; status: PersonalAss
           <span className="sset-row__s">{off ? 'In-app AI is off on this Flux server' : `for you · ${status ? ASSISTANT_STATE[status.state] : 'loading'}`}</span>
           {status?.enablement && !off ? <span className="sset-row__s">Paid by {status.enablement.consent.payer.organization} · {aiConnectionLabel(status.enablement.consent.provider, status.enablement.consent.model)} · Assistant {status.enablement.status === 'active' ? 'on' : 'paused'}</span> : null}
         </div>
-        {off ? <Button variant="primary" disabled>Set up</Button>
+        {off && !status?.enablement ? <Button variant="primary" disabled>Set up</Button>
           : <Link className="ui-btn ui-btn--primary" to="/settings/assistant">{status?.enablement ? 'Manage' : 'Set up'}</Link>}
       </div>
       {off ? null : (
@@ -231,7 +232,7 @@ function BackgroundRow({ runtime }: { runtime: 'available' | 'unavailable' | nul
     return (
       <li className="sset-row">
         <span className="sset-row__ic" aria-hidden="true"><Icon name="leaf" size={16} /></span>
-        <span className="sset-row__b"><span className="sset-row__t">Background suggestions</span><span className="sset-row__s">Off on this Flux server · ask your admin to turn it on</span></span>
+        <span className="sset-row__b"><span className="sset-row__t">Background suggestions</span><span className="sset-row__s">{BACKGROUND_OFF_LINE}</span></span>
       </li>
     );
   }

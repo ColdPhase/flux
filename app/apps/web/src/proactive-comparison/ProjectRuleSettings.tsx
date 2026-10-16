@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { workspaceAgentsPath, type Agent, type BackgroundComputeConnection, type Project, type ProjectGrant, type ProactiveComparisonRule } from '@flux/contracts';
 import { ApiError, request } from '../api/client';
@@ -21,7 +21,7 @@ export function ProjectRuleSettings({ connection }: { connection: BackgroundComp
   const [agentId, setAgentId] = useState('');
   const [refresh, setRefresh] = useState(0);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState<ReactNode>('');
   const [saved, setSaved] = useState('');
   const statusRef = useRef<HTMLParagraphElement>(null);
   const errorRef = useRef<HTMLParagraphElement>(null);
@@ -70,8 +70,8 @@ export function ProjectRuleSettings({ connection }: { connection: BackgroundComp
     try { await action(); setSaved(message); requestAnimationFrame(() => statusRef.current?.focus()); }
     catch (cause) {
       if (cause instanceof ApiError && cause.code === 'AGENT_NOT_FOUND') setError('Choose your own agent with contributor access to this project. A project manager can grant that access.');
-      else if (cause instanceof ApiError && cause.code === 'BACKGROUND_CONNECTION_REQUIRED') setError('Mark one of your AI connections for background suggestions above, then enable the rule.');
-      else if (cause instanceof ApiError && cause.code === 'BACKGROUND_PRICE_UNKNOWN') setError('That connection has no known price, so nothing can be reserved. Set its price above first.');
+      else if (cause instanceof ApiError && cause.code === 'BACKGROUND_CONNECTION_REQUIRED') setError(<>Mark one of your connections for background suggestions under <Link className="ui-link" to="/settings/ai-connections">AI connections</Link>, then enable the rule.</>);
+      else if (cause instanceof ApiError && cause.code === 'BACKGROUND_PRICE_UNKNOWN') setError(<>That connection has no known price, so nothing can be reserved. Add it again with a price under <Link className="ui-link" to="/settings/ai-connections">AI connections</Link> first.</>);
       else if (cause instanceof ApiError && cause.code === 'BACKGROUND_BUDGET_TOO_LOW') setError('This rule needs more than your connection allows. Lower the rule’s allowance or raise the connection’s limits.');
       else if (cause instanceof ApiError && cause.code === 'BACKGROUND_RUNTIME_UNAVAILABLE') { setRuntime('unavailable'); setError('Background execution is unavailable on this instance. Your rule stays paused.'); }
       else if (cause instanceof ApiError && cause.code === 'VERSION_CONFLICT') {

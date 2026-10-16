@@ -353,7 +353,14 @@ and existing authorized result navigation, with no new API fields.
 
 ## Private owner setup (partial implementation)
 
-Open the account menu → **Your background suggestions**. Saving the connection
+Connections live on one page for the assistant and background suggestions alike
+(#513): Settings → Agents and AI → **Use an API key** opens **AI connections**
+(`/settings/ai-connections`), with the owner's connections and the form to add one.
+**Background suggestions** (`/settings/background-compute`, also from the account
+menu → **Your background suggestions**) holds one status line with a link to AI
+connections, the owner's local usage with recent requests, and the project rules.
+When this server does not run comparisons, the status line says so, usage and rules
+stay, and enabling a rule is shown as unavailable. Saving a connection
 requires a provider and model of the owner's choice (F-020: no provider is
 preselected; an OpenAI-compatible endpoint also needs its base URL, and a model
 without a listed or table price takes an owner price, without which no rule can be
@@ -366,7 +373,7 @@ is shown; replacement never retrieves the earlier key. A failed replacement
 preserves that earlier connection. Disconnecting removes Flux's ciphertext; the
 payer must revoke the provider key separately when appropriate.
 
-Select an accessible project and your own personal agent. A project manager can
+On Background suggestions, select an accessible project and your own personal agent. A project manager can
 explicitly grant that agent contributor access; creating the agent or grant does
 not authorize paid computation. Confirm the project scope, quiet effect and
 allowance to create a **paused** rule. Pause/revoke remain versioned; a revoked

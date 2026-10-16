@@ -27,6 +27,8 @@ PASSWORD = "settings stay calm and findable"
 STAMP = int(time.time() * 1000)
 NAME, EMAIL = "Ada Kowalska", f"ada.settings+{STAMP}@example.test"
 SECTIONS = ["Account", "Appearance", "Notifications", "Agents and AI", "Keyboard shortcuts"]
+# The one sentence Agents and AI and the Background suggestions page use when the server does not run them (#513).
+BACKGROUND_OFF = "Off on this Flux server · not available until your admin turns it on"
 # Guide §4, in order: every shortcut and its action.
 SHORTCUTS = [
     ("C", "New (task by default)"), ("⌘K", "Search or run"), ("GI", "Go to Inbox"), ("JorK", "Move in a list"), ("E", "Done"),
@@ -242,12 +244,12 @@ class SettingsJourney(unittest.TestCase):
         self.assertRegex(card.locator(".sset-row__ic > .kreska").get_attribute("class") or "", r"kreska--(clay|ochre|sage|teal|indigo|plum|rose)")
         # Background suggestions are off on this test server: one status line, no form (Spokój AC-4).
         expect(page.get_by_role("link", name=re.compile("^Background suggestions"))).to_have_count(0)
-        expect(page.get_by_text("Off on this Flux server · ask your admin to turn it on", exact=True)).to_be_visible()
+        expect(page.get_by_text(BACKGROUND_OFF, exact=True)).to_be_visible()
         self.settle(page)
         shot(page, "settings-desktop-1440-agents-light")
         dark = self.page(dark=True)
         dark.goto("/settings/agents")
-        expect(dark.get_by_text("Off on this Flux server · ask your admin to turn it on", exact=True)).to_be_visible()
+        expect(dark.get_by_text(BACKGROUND_OFF, exact=True)).to_be_visible()
         self.settle(dark)
         shot(dark, "settings-desktop-1440-agents-dark")
         page.goto("/settings")
@@ -492,7 +494,7 @@ class SettingsJourney(unittest.TestCase):
             expect(page.locator(".app__main header").get_by_role("heading", level=1, name="Background suggestions", exact=True)).to_be_visible()
             # The phone shows one title, the header's (#513); the computer also names the page above its status line.
             expect(page.get_by_role("heading", level=2, name="Your background suggestions", exact=True)).to_have_count(0 if phone else 1)
-            expect(page.get_by_role("note").filter(has_text="Off on this Flux server")).to_be_visible()
+            expect(page.get_by_role("note")).to_have_text(BACKGROUND_OFF)
             focused = page.evaluate("document.activeElement?.tagName ?? null")
             self.assertNotIn(focused, ("H1", "H2", "H3", "H4"), "no heading has focus on load")
             self.assertEqual(page.evaluate("[...document.querySelectorAll('h1,h2,h3,h4')].filter((h) => h.matches(':focus-visible')).length"), 0,

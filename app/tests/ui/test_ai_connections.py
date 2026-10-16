@@ -330,7 +330,7 @@ class AiConnectionSettings(unittest.TestCase):
                 page.route("**/api/v1/background-comparisons/runtime", self.runtime_answer(runtime))
                 page.goto("/settings/background-compute")
                 note = page.get_by_role("note")
-                expect(note).to_contain_text("Off on this Flux server · not available" if runtime == "unavailable" else "On · uses Work Anthropic")
+                expect(note).to_have_text("Off on this Flux server · not available until your admin turns it on" if runtime == "unavailable" else "On · uses Work Anthropic")
                 link = page.locator(".background-settings__status").get_by_role("link", name="AI connections", exact=True)
                 expect(link).to_have_attribute("href", "/settings/ai-connections")
                 usage = page.get_by_role("heading", name="Your local usage", exact=True)
