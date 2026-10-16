@@ -88,7 +88,7 @@ export function CodexSignIn() {
 
         {step.kind === 'console' ? (
           <Suspense fallback={<p className="inbox__loading"><Spinner label="Opening the sign-in" /></p>}>
-            <SignInConsole ticket={step.ticket} cliName="Codex" input={step.method === 'device_code' ? 'none' : 'key'}
+            <SignInConsole ticket={step.ticket} cliName="Codex" input={step.method === 'device_code' ? 'none' : 'terminal'}
               methodTitle={step.method === 'device_code' ? 'Sign in to ChatGPT' : CODEX_METHODS.find((option) => option.id === step.method)!.title}
               onEnd={(outcome) => { if (outcome.status) setStatus(outcome.status); setStep({ kind: 'outcome', outcome }); }} />
           </Suspense>

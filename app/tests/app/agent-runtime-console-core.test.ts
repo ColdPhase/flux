@@ -555,7 +555,7 @@ describe('the API\'s console tickets and browser messages', () => {
     for (const [, name, body] of requestTypes) assert.doesNotMatch(body!, FORBIDDEN, name);
     // Every field a person can type into on the runtime's pages: the sign-in method (radio) and the code
     // for the CLI's own prompt. Nothing else.
-    const pages = await Promise.all(['RuntimeSection.tsx', 'ClaudeCodeSignIn.tsx', 'SignInConsole.tsx'].map((file) => readFile(`apps/web/src/agent-runtime/${file}`, 'utf8')));
+    const pages = await Promise.all(['RuntimeSection.tsx', 'ClaudeCodeSignIn.tsx', 'CodexSignIn.tsx', 'SignInConsole.tsx'].map((file) => readFile(`apps/web/src/agent-runtime/${file}`, 'utf8')));
     const fields = pages.flatMap((page) => [...page.matchAll(/<(input|textarea|select)\b[^>]*>/g)].map((match) => match[0]));
     assert.deepEqual(fields.map((field) => /type="radio"/.test(field) ? 'radio' : /id="rt-code"/.test(field) ? 'code' : field), ['radio', 'code']);
     for (const field of fields) assert.doesNotMatch(field, FORBIDDEN);
@@ -564,5 +564,77 @@ describe('the API\'s console tickets and browser messages', () => {
     for (const label of labels) assert.doesNotMatch(label, FORBIDDEN);
     // Control: the matcher catches such a field.
     for (const name of ['setupToken', 'setup_token', 'CLAUDE_CODE_OAUTH_TOKEN', 'auth.json', 'apiKey', 'sessionKey', 'Paste your API key']) assert.match(name, FORBIDDEN);
+  });
+});
+
+describe('ChatGPT sign-in in the console: `codex login` (F-022 T6, F-027 A12, #281)', () => {
+  async function codexBound(slot: TestSlot, scenario?: string) {
+    const bindingId = randomUUID();
+    bindingBoots.set(bindingId, slot.config.bootId);
+    assert.ok((await callSupervisor(target(slot), { kind: 'bind', bindingId })).ok);
+    const home = join(slot.config.dataDir, bindingId, 'codex');
+    if (scenario) await writeFile(join(home, 'fake-scenario'), scenario, { mode: 0o600 });
+    return { bindingId, home };
+  }
+  const codexOpen = (bindingId: string, method: string) => encodeOpen({ bindingId, bootId: bindingBoots.get(bindingId)!, client: 'codex', method, cols: 80, rows: 24 });
+  const signin = (login: Login) => login.controls.filter((frame) => frame.t === 'signin');
+
+  test('device code: the slot recognises only the URL and the code, in memory; completion is read from `codex login status`', () => withSlot(async (slot) => {
+    const { bindingId, home } = await codexBound(slot);
+    const login = await connect(portOf(slot.url), slot.config.secret);
+    login.link.send(codexOpen(bindingId, 'device_code'));
+    await login.ended;
+    const started = await calls(home);
+    assert.deepEqual(started.filter((entry) => !entry.event).map((entry) => entry.argv), [[...LOGIN_TEMPLATES.codex.device_code!], ['-c', 'cli_auth_credentials_store=file', 'login', 'status']]);
+    const code = (started.find((entry) => entry.event === 'device_code') as unknown as { userCode: string }).userCode;
+    assert.deepEqual(signin(login), [{ t: 'signin', e: 'device', url: 'https://auth.openai.com/codex/device', code }], 'exactly one card frame, with the code the CLI printed');
+    const done = result(login);
+    assert.ok(done?.kind === 'login', JSON.stringify(login.controls));
+    assert.deepEqual([done.exitCode, done.status.signedIn, done.status.facts], [0, true, { authMethod: 'chatgpt', plan: null, accountLabel: null, accountDigest: null }]);
+    // AST-1.7: the code appears only in the card frame and the CLI's own output; nothing in the slot keeps it.
+    assert.ok(!JSON.stringify(login.controls.filter((frame) => frame.t !== 'signin')).includes(code));
+    for (const file of await readdir(home)) if (file !== 'fake-calls.jsonl') assert.ok(!(await readFile(join(home, file), 'utf8')).includes(code), file);
+    assert.deepEqual(await readdir(slot.config.tmpDir), []);
+  }, { enabled: ['codex'] }));
+
+  test('Journey 6: "device code sign-in is off" reaches the card as its own problem, before any code', () => withSlot(async (slot) => {
+    const { bindingId } = await codexBound(slot, 'device_auth_disabled');
+    const login = await connect(portOf(slot.url), slot.config.secret);
+    login.link.send(codexOpen(bindingId, 'device_code'));
+    await login.ended;
+    assert.deepEqual(signin(login), [{ t: 'signin', e: 'problem', problem: 'device_auth_disabled' }]);
+    const done = result(login);
+    assert.ok(done?.kind === 'login');
+    assert.equal(done.status.signedIn, false);
+  }, { enabled: ['codex'] }));
+
+  test('Journey 6: an expired code on its own slot', () => withSlot(async (slot) => {
+    const { bindingId } = await codexBound(slot, 'login_timeout');
+    const login = await connect(portOf(slot.url), slot.config.secret);
+    login.link.send(codexOpen(bindingId, 'device_code'));
+    await login.ended;
+    assert.deepEqual(signin(login).filter((frame) => frame.t === 'signin' && frame.e === 'problem'), [{ t: 'signin', e: 'problem', problem: 'code_expired' }]);
+  }, { enabled: ['codex'] }));
+
+  test('an API key is typed into the CLI\'s own input (no Flux field) and read to its end; status reports an OpenAI API key', () => withSlot(async (slot) => {
+    const { bindingId, home } = await codexBound(slot);
+    const login = await connect(portOf(slot.url), slot.config.secret);
+    login.link.send(codexOpen(bindingId, 'api_key'));
+    await until('the CLI to start', async () => (await calls(home)).length > 0);
+    login.link.send(encodeInput(Buffer.from('sk-proj-fake-key-123\r\u0004\u0004')));
+    await login.ended;
+    const done = result(login);
+    assert.ok(done?.kind === 'login', JSON.stringify(login.controls));
+    assert.deepEqual([done.status.signedIn, done.status.facts?.authMethod], [true, 'openai_api_key']);
+    assert.deepEqual(signin(login), [], 'no card frame outside the device sign-in');
+    assert.ok(!JSON.stringify(login.controls).includes('sk-proj-fake-key-123'));
+  }, { enabled: ['codex'] }));
+
+  test('a Codex ticket carries only a Codex method; a Claude method for Codex (or the reverse) is refused', () => {
+    const tickets = new ConsoleTickets('a'.repeat(48));
+    const codex = tickets.redeem(tickets.issue({ ownerUserId: 'ada', client: 'codex', method: 'device_code' }, 's').ticket, 'ada', 's');
+    assert.deepEqual([codex?.client, codex?.method], ['codex', 'device_code']);
+    assert.equal(tickets.redeem(tickets.issue({ ownerUserId: 'ada', client: 'codex', method: 'sso' }, 's').ticket, 'ada', 's'), null);
+    assert.equal(tickets.redeem(tickets.issue({ ownerUserId: 'ada', client: 'claude_code', method: 'device_code' }, 's').ticket, 'ada', 's'), null);
   });
 });
