@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import unittest
 import uuid
@@ -16,7 +17,7 @@ class MessageWorkJourney(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         if UPSTREAM: start_forwarder(ORIGIN, UPSTREAM)
-        cls.pw = sync_playwright().start(); cls.browser = cls.pw.chromium.launch()
+        cls.pw = sync_playwright().start(); cls.browser = getattr(cls.pw, os.environ.get("FLUX_UI_BROWSER", "chromium")).launch()
         expect.set_options(timeout=10000)
         cls.contexts, cls.users, emails = [], [], []
         for name in ("Ada Kowalska", "Ada Nowak"):
@@ -236,7 +237,9 @@ class MessageWorkJourney(unittest.TestCase):
             else:route.continue_()
         page.route("**/work-associations?**",hold_scope)
         page.evaluate("window.dispatchEvent(new Event('focus'))");page.wait_for_function("window.__associationHeld===true")
+        auth_holding=True
         def pause_auth(route):
+            if not auth_holding: route.continue_(); return
             response=route.fetch();self.assertEqual(response.status,200);paused.append((route,response));page.evaluate("window.__authHeld=true")
         page.route("**/api/v1/me",pause_auth)
         page.evaluate("window.dispatchEvent(new Event('focus'))");page.wait_for_function("window.__authHeld===true")
@@ -249,7 +252,11 @@ class MessageWorkJourney(unittest.TestCase):
         expect(page.locator(".thread__pane")).to_have_attribute("data-associations-phase","loading")
         page.unroute("**/work-associations?**",hold_scope)
         self.assertEqual(len(paused),1)
-        route,response=paused.pop();route.fulfill(response=response);page.unroute("**/api/v1/me",pause_auth)
+        # Keep interception active while /me starts the shell loader's /workspaces read.
+        # Removing the last route here can orphan that request in Chromium 151 (#540).
+        # Context cleanup owns the route; later auth reads go to the real server.
+        auth_holding=False
+        route,response=paused.pop();route.fulfill(response=response)
         self.ready(page);expect(page.locator("#thread").get_by_role("button",name="Work: Revisit the first measurement",exact=True)).to_be_visible()
 
     def test_07_restored_feed_observes_older_and_newer_native_batches(self):
