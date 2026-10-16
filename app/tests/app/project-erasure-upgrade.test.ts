@@ -50,7 +50,7 @@ test('a project that exists before 0101 keeps every row through the upgrade and 
           WHERE table_schema='public' AND table_name=$1`, [table])).rows.map((r) => r.column_name));
         for (const row of found) {
           const columns = Object.keys(row).filter((c) => !generated.has(c) && present.has(c));
-          if (!columns.length) continue;
+          if (!columns.length) throw new Error(`no shared columns for ${table}`);
           await client.query(`INSERT INTO "${table}"(${columns.map((c) => `"${c}"`).join(',')}) OVERRIDING SYSTEM VALUE VALUES(${columns.map((_, i) => `$${i + 1}`).join(",")})`,
             columns.map((c) => jsonColumns.has(c) && row[c] !== null ? JSON.stringify(row[c]) : row[c]));
         }
