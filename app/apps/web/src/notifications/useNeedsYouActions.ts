@@ -61,23 +61,20 @@ export function useNeedsYouActions(queue: Queue): CardHandlers {
     accept(item: NeedsYouItem) {
       const decision = item.decision;
       if (!decision) return;
-      // Pending from the click until the accept is sent, or Undo cancels it: `ended` settles exactly then.
-      let end!: () => void;
-      const ended = new Promise<void>((resolve) => { end = resolve; });
-      latest.current.hide(item.key, ended);
+      // Not pending while the window is open: every read already hides a decision being accepted (acceptingIds).
       const handle = startAccept({ id: decision.id, version: decision.version }, (outcome) => {
-        end();
         announceInboxChange();
-        if (outcome === 'accepted' || outcome === 'replaced') return;
+        if (outcome === 'accepted') return;
         latest.current.show(item);
         latest.current.reload();
         toast(outcome === 'conflict'
           ? { message: 'This decision changed before it was accepted. Nothing was accepted. Open it to look again.', tone: 'danger' }
           : { message: 'Could not accept. Nothing changed. Try again.', tone: 'danger' });
       });
+      latest.current.hide(item.key);
       // Undo is offered for ACCEPT_UNDO_MS only: the toast closes with the window, so it never outlives it.
       toast({ message: 'Accepted', tone: 'success', timeout: ACCEPT_UNDO_MS, action: { label: 'Undo', key: 'Z', onClick: () => {
-        if (handle.undo()) { end(); latest.current.show(item); return; }
+        if (handle.undo()) { latest.current.show(item); return; }
         // It was already sent (the place was left, or the window ended): a decision is never un-accepted.
         toast({ message: 'It is already accepted. To change direction, propose a new decision.' });
       } } });

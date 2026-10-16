@@ -12,8 +12,7 @@ import { acceptDecision } from '../work/api';
 /** How long Undo is offered. */
 export const ACCEPT_UNDO_MS = 6000;
 
-/** `replaced`: a newer accept of the same decision took its place before this one was sent. */
-export type AcceptOutcome = 'accepted' | 'conflict' | 'failed' | 'replaced';
+export type AcceptOutcome = 'accepted' | 'conflict' | 'failed';
 
 interface Waiting {
   decision: { id: string; version: number };
@@ -43,7 +42,7 @@ async function send(entry: Waiting, keepalive: boolean) {
 /** Starts the delayed accept of one decision; `undo()` cancels it while it still waits. */
 export function startAccept(decision: { id: string; version: number }, settle: (outcome: AcceptOutcome) => void, delay = ACCEPT_UNDO_MS) {
   const existing = waiting.get(decision.id);
-  if (existing) { clearTimeout(existing.timer); waiting.delete(decision.id); accepting.delete(decision.id); existing.settle('replaced'); }
+  if (existing) { clearTimeout(existing.timer); waiting.delete(decision.id); accepting.delete(decision.id); }
   const entry: Waiting = {
     decision, key: crypto.randomUUID(), settle,
     timer: setTimeout(() => { waiting.delete(decision.id); void send(entry, false); }, delay),

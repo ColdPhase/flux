@@ -439,6 +439,7 @@ class InboxFinal(unittest.TestCase):
         settled(page)
         self.assertNotIn(f"decision:{self.decision['id']}", [item["key"] for item in gate["served"][-1]["items"]], "the server still holds the snooze while Undo waits")
         self.assertEqual(watch(), {"appeared": True, "vanished": False}, "the restored decision never left the Inbox after the read that started after Undo")
+        expect(decision).to_have_attribute("aria-current", "true")
         # Selection while Undo waits: down to the neighbour and back lands on the restored decision.
         page.keyboard.press("j")
         expect(self.card(page, "asked you")).to_have_attribute("aria-current", "true")
@@ -506,6 +507,29 @@ class InboxFinal(unittest.TestCase):
         self.wait_for(lambda: self.contexts["ada"].request.get(f"/api/v1/decisions/{proposed['id']}").json()["status"] == "accepted", "the accept sent on leaving")
         page.get_by_role("button", name="Undo").click()
         expect(page.get_by_role("status").filter(has_text="already accepted")).to_be_visible()
+
+    def test_07a_another_persons_item_shows_during_an_accept_window(self) -> None:
+        """An accept is not pending: while its Undo window is open, a new item from someone else shows at once (#519).
+
+        The page starts the read itself (focus), so the item must appear while the "Accepted" toast is still up.
+        It does not wait for the window to end, which a pending accept would make it do.
+        """
+        proposed = self.post("jonas", f"/api/v1/projects/{self.project_id}/decisions", {"title": "Sow the clover by the gate", "rationale": "It fixes nitrogen."})
+        self.wait_for(lambda: any(item["key"] == f"decision:{proposed['id']}" for item in self.queue(None)["items"]), "the new decision")
+        page = self.page()
+        page.goto("/inbox")
+        card = self.card(page, "Sow the clover")
+        expect(card).to_have_count(1)
+        card.get_by_role("button", name=re.compile("^Accept")).click()
+        toast = page.get_by_role("status").filter(has_text="Accepted")
+        expect(toast).to_be_visible()
+        self.post("jonas", f"/api/v1/projects/{self.project_id}/decisions", {"title": "Mulch the paths before the frost", "rationale": "Less mud in March."})
+        page.evaluate("() => window.dispatchEvent(new Event('focus'))")
+        expect(self.card(page, "Mulch the paths")).to_have_count(1)
+        expect(toast).to_be_visible()
+        # The window ends and the accept is sent: the decision is accepted on the server.
+        expect(toast).to_have_count(0)
+        self.wait_for(lambda: self.contexts["ada"].request.get(f"/api/v1/decisions/{proposed['id']}").json()["status"] == "accepted", "the accept to be sent")
 
     # ---------------------------------------------------------------- blocked tasks and mentions
 

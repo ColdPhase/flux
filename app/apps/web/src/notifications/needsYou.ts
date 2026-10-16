@@ -28,10 +28,10 @@ export interface Queue {
   failed: boolean;
   reload: () => void;
   /**
-   * Removes an item at once (it was handled here). `settled` is the server write for it: until that settles
-   * (success or failure), reads are not applied, and the queue is read again once nothing is pending.
+   * Removes an item at once (it was handled here). `settled`, when given, is the server write for it: until that
+   * settles (success or failure), reads are not applied, and the queue is read again once nothing is pending.
    */
-  hide: (key: string, settled: Promise<unknown>) => void;
+  hide: (key: string, settled?: Promise<unknown>) => void;
   /**
    * Puts an item back at its place without waiting for the next read (Undo). `settled` is the server write Undo
    * sends, if any; the same rule as for `hide` applies until it settles.
@@ -106,7 +106,7 @@ export function useNeedsYou(userId: string): Queue {
   useStreamEvents(userId, soon, reload);
 
   const mine = state.userId === userId ? state : { userId, response: null, failed: false };
-  const hide = useCallback((key: string, settled: Promise<unknown>) => { localChanges.current += 1; track(settled); setState((previous) => previous.response
+  const hide = useCallback((key: string, settled?: Promise<unknown>) => { localChanges.current += 1; if (settled) track(settled); setState((previous) => previous.response
     ? { ...previous, response: { ...previous.response, items: previous.response.items.filter((item) => item.key !== key), count: Math.max(0, previous.response.count - 1) } } : previous); }, [track]);
   const show = useCallback((item: NeedsYouItem, settled?: Promise<unknown>) => { localChanges.current += 1; if (settled) track(settled); redraw((n) => n + 1); setState((previous) => previous.response && !previous.response.items.some((entry) => entry.key === item.key)
     ? { ...previous, response: { ...previous.response, items: sorted([...previous.response.items, item]), count: previous.response.count + 1 } } : previous); }, [track]);
