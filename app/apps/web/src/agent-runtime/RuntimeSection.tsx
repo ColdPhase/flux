@@ -40,7 +40,7 @@ export function BeforeSignIn({ status, client = 'claude_code' }: { status: Agent
 
 function SignedIn({ connection, cli = 'Claude Code' }: { connection: AgentRuntimeConnection; cli?: string }) {
   return (
-    <ul className="rt-facts" aria-label={`Your ${cli} sign-in`}>
+    <ul className="rt-facts" aria-label={cli === 'Codex' ? 'Your Codex sign-in' : 'Your sign-in'}>
       <li><b>{accountLabel(connection.signInMethod)}</b><span>{[connection.accountLabel, connection.plan].filter(Boolean).join(' · ') || `${cli} reports a login`}{connection.signedInAt ? <>, signed in <time dateTime={connection.signedInAt}>{dateTime(connection.signedInAt)}</time></> : null}</span></li>
       <li><b>Who pays</b><span>{PAYER[connection.payer ?? 'unknown']}</span></li>
     </ul>
