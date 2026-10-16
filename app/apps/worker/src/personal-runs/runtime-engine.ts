@@ -4,7 +4,7 @@ import {
 } from '@flux/core';
 import { personalRuntimeRow, touchRuntimeBinding } from '@flux/db';
 
-// The worker's side of a personal run on the owner's own Claude Code (F-022 AIM-3 "Run", #280): it asks
+// The worker's side of a personal run on the owner's own Claude Code or Codex (F-022 AIM-3 "Run", #280, #281): it asks
 // runtime-manager to run the CLI in the owner's own slot and binding directory, read from the database for
 // the run's owner, never from a request. The slot's run frames become progress; its result becomes the
 // run's end. Nothing of the CLI's output is logged.
@@ -31,14 +31,15 @@ function eventOf(frame: RunFrame): PersonalRuntimeEvent {
 
 export function managerPersonalRuntime(config: AgentRuntimeConfig, db: Database): PersonalRuntime {
   const manager = config.manager;
-  const enabled = !!manager && clientAvailability(config).claude_code === 'available';
+  const states = clientAvailability(config);
+  const enabled = !!manager && (states.claude_code === 'available' || states.codex === 'available');
   const client = manager ? createRuntimeManagerClient(manager) : null;
   return {
     enabled,
-    async target(ownerUserId) {
-      if (!enabled) return { ok: false, reason: 'off' };
-      const row = await personalRuntimeRow(db, ownerUserId);
-      if (row.state === 'signed_in' && row.slot && row.bindingId) return { ok: true, target: { slot: row.slot, bindingId: row.bindingId } };
+    async target(ownerUserId, cli = 'claude_code') {
+      if (!enabled || states[cli] !== 'available') return { ok: false, reason: 'off' };
+      const row = await personalRuntimeRow(db, ownerUserId, [cli]);
+      if (row.state === 'signed_in' && row.slot && row.bindingId) return { ok: true, target: { slot: row.slot, bindingId: row.bindingId, client: cli } };
       return { ok: false, reason: row.state === 'sign_in_again' ? 'sign_in_again' : 'unavailable' };
     },
     async run(target, request, onEvent) {
@@ -50,7 +51,7 @@ export function managerPersonalRuntime(config: AgentRuntimeConfig, db: Database)
         idleSeconds: Math.min(Math.max(request.caps.idleSeconds, RUN_CAP_BOUNDS.idleSeconds.min), RUN_CAP_BOUNDS.idleSeconds.max),
         maxAnswerBytes: Math.min(Math.max(request.caps.maxAnswerBytes, RUN_CAP_BOUNDS.maxAnswerBytes.min), RUN_CAP_BOUNDS.maxAnswerBytes.max),
       };
-      const outcome = await streamManagerRun(manager, target.slot, { kind: 'run', bindingId: target.bindingId, client: 'claude_code', runId: request.runId,
+      const outcome = await streamManagerRun(manager, target.slot, { kind: 'run', bindingId: target.bindingId, client: target.client ?? 'claude_code', runId: request.runId,
         prompt: request.prompt, runToken: request.runToken, tools: request.tools, caps }, (frame) => onEvent(eventOf(frame)));
       return endOf(outcome);
     },

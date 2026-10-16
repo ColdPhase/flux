@@ -5,8 +5,11 @@ import { join } from 'node:path';
 import { after, before, describe, test } from 'node:test';
 import { callSupervisor, NdjsonReader, parseSupervisorFrame, type ClientStatus, type SupervisorCallOutcome, type SupervisorRequest } from '@flux/runtime-protocol';
 import { Lane } from '../../apps/runtime/src/supervisor/server.js';
-import { LOGOUT_TEMPLATES, STATUS_TEMPLATES } from '../../apps/runtime/src/supervisor/templates.js';
-import { classifyError } from '../../apps/runtime/src/supervisor/run.js';
+import { CODEX_FEATURE_REVIEW, codexRunOverrides, LOGOUT_TEMPLATES, STATUS_TEMPLATES } from '../../apps/runtime/src/supervisor/templates.js';
+import { classifyCodexError, classifyError, effectiveConfigHolds } from '../../apps/runtime/src/supervisor/run.js';
+import { APP_SERVER_METHODS, openAppServer, readRateLimits } from '../../apps/runtime/src/supervisor/app-server.js';
+import { deviceSignInReader } from '../../apps/runtime/src/supervisor/device.js';
+import { statusFacts } from '../../apps/runtime/src/supervisor/status.js';
 import { portOf, startTestSlot, type TestSlot } from './support/runtime-slot.js';
 
 // F-022 T3: a slot's supervisor, in process, over temporary /data and /tmp with the TEST ONLY fake CLIs.
@@ -304,5 +307,94 @@ describe('a run\'s error results (F-022 T5; the wording is first verified agains
       assert.equal(classifyError(text).outcome, 'sign_in_again', text);
     assert.equal(classifyError('Claude refused this request under the usage policy').outcome, 'refused');
     assert.equal(classifyError('Something else went wrong').outcome, 'crashed');
+  });
+});
+
+describe('Codex in the slot (F-022 T6, #281): its JSONL words, status, preflight, app-server allowlist and feature review', () => {
+  test('error text: plan limit, expired login, refusal, anything else a crash', () => {
+    assert.equal(classifyCodexError('You’ve hit your usage limit. Upgrade to Pro (https://chatgpt.com/explore/pro), visit https://chatgpt.com/codex/settings/usage to purchase more credits or try again at 3:05 PM.'), 'plan_limit');
+    assert.equal(classifyCodexError('You’ve hit your usage limit. Try again later.'), 'plan_limit');
+    assert.equal(classifyCodexError('Quota exceeded. Check your plan and billing details.'), 'plan_limit');
+    for (const text of ['Your access token could not be refreshed because your refresh token has expired. Please log out and sign in again.',
+      'Your access token could not be refreshed. Please log out and sign in again.', 'unexpected status 401 Unauthorized: {"detail":"x"}']) {
+      assert.equal(classifyCodexError(text), 'sign_in_again', text);
+    }
+    assert.equal(classifyCodexError('stream disconnected before completion'), 'crashed');
+  });
+
+  test('`codex login status` on stderr: ChatGPT, an API key or an access token; not logged in is signed out', () => {
+    assert.deepEqual(statusFacts('codex', 0, 'Logged in using ChatGPT\n'), { signedIn: true, facts: { authMethod: 'chatgpt', plan: null, accountLabel: null, accountDigest: null } });
+    assert.equal(statusFacts('codex', 0, 'Logged in using an API key - sk-proj-***\n').facts?.authMethod, 'openai_api_key');
+    assert.equal(statusFacts('codex', 0, 'Logged in using access token\n').facts?.authMethod, 'access_token');
+    assert.deepEqual(statusFacts('codex', 1, 'Not logged in\n'), { signedIn: false, facts: null });
+    assert.deepEqual(statusFacts('codex', 0, ''), { signedIn: false, facts: null }, 'exit 0 without the line is not a sign-in');
+  });
+
+  test('rate limits: the window at 100 % and its reset (Unix seconds); any other shape is unknown, never zero', () => {
+    assert.deepEqual(readRateLimits({ rateLimits: { primary: { usedPercent: 100, resetsAt: 1791374400 }, secondary: { usedPercent: 30, resetsAt: 1791900000 } } }),
+      { limited: true, resetsAt: new Date(1791374400 * 1000).toISOString() });
+    assert.deepEqual(readRateLimits({ rateLimits: { primary: { usedPercent: 40 } } }), { limited: false, resetsAt: null });
+    for (const junk of [null, {}, { rateLimits: {} }, { rateLimits: { primary: { usedPercent: 'x' } } }]) assert.deepEqual(readRateLimits(junk), { limited: null, resetsAt: null });
+  });
+
+  test('the preflight accepts only the effective config with every reviewed feature off, web search disabled and Flux alone with the exact tools', () => {
+    const tools = ['flux_list_contexts', 'flux_get_doc'];
+    const url = 'http://runtime-egress:8080/mcp';
+    const config = { features: Object.fromEntries(Object.entries(CODEX_FEATURE_REVIEW).filter(([, review]) => review.action === 'off').map(([key]) => [key, false])),
+      web_search: 'disabled', mcp_servers: { flux: { url, bearer_token_env_var: 'FLUX_RUN_TOKEN', required: true, enabled_tools: tools } } };
+    assert.equal(effectiveConfigHolds(config, tools, url), true);
+    assert.equal(effectiveConfigHolds({ ...config, features: { ...config.features, shell_tool: true } }, tools, url), false);
+    assert.equal(effectiveConfigHolds({ ...config, web_search: 'cached' }, tools, url), false);
+    assert.equal(effectiveConfigHolds({ ...config, mcp_servers: { ...config.mcp_servers, github: { url: 'https://x' } } }, tools, url), false);
+    assert.equal(effectiveConfigHolds({ ...config, mcp_servers: { flux: { ...config.mcp_servers.flux, enabled_tools: [...tools, 'flux_create_task'] } } }, tools, url), false);
+    assert.equal(effectiveConfigHolds({ ...config, mcp_servers: { flux: { ...config.mcp_servers.flux, required: false } } }, tools, url), false);
+    assert.equal(effectiveConfigHolds({}, tools, url), false);
+    assert.throws(() => codexRunOverrides([], url, 'brief'), /non-empty/);
+  });
+
+  test('every default-on feature of the pinned Codex is reviewed; the review switches off every tool feature named in F-022', () => {
+    // codex-rs/features/src/lib.rs at rust-v0.160.1 (c3e23d4, read 2026-10-16): Stable features with default_enabled true
+    // (`secret_auth_storage` is on only on Windows). scripts/check_runtime_cli_contract.sh checks this against the binary's `features list`.
+    const PINNED_DEFAULT_ON = ['daemon_auto_start', 'shell_tool', 'view_image', 'sleep_tool', 'unified_exec', 'unified_exec_tty', 'shell_snapshot', 'content_item_kinds',
+      'code_mode_host', 'write_stdin_approval', 'hooks', 'enable_request_compression', 'unbounded_connection_retries', 'worktrees', 'system_proxy_fallback', 'multi_agent',
+      'apps', 'tool_suggest', 'plugins', 'in_app_browser', 'in_app_chat', 'in_app_dictation', 'in_app_local_automation', 'in_app_updates', 'browser_use',
+      'browser_use_full_cdp_access', 'browser_use_external', 'computer_use', 'remote_plugin', 'plugin_sharing', 'image_generation', 'skill_mcp_dependency_install',
+      'skill_search', 'mentions_v2', 'guardian_approval', 'guardian_reuse_parent_compaction', 'goals', 'tool_call_mcp_elicitation', 'auth_elicitation', 'fast_mode',
+      'realtime_conversation', 'compaction_image_budget', 'workspace_dependencies'];
+    assert.deepEqual(PINNED_DEFAULT_ON.filter((key) => !Object.hasOwn(CODEX_FEATURE_REVIEW, key)), [], 'an unreviewed default-on feature');
+    for (const key of ['shell_tool', 'unified_exec', 'apps', 'multi_agent', 'skill_mcp_dependency_install', 'hooks', 'goals', 'remote_plugin', 'memories', 'view_image',
+      'code_mode_host', 'browser_use', 'computer_use', 'image_generation', 'plugins', 'daemon_auto_start']) assert.equal(CODEX_FEATURE_REVIEW[key]?.action, 'off', key);
+    const argv = codexRunOverrides(['flux_get_doc'], 'http://x:8080/mcp', 'brief');
+    assert.ok(argv.includes('web_search="disabled"') && argv.includes('mcp_servers.flux.required=true') && argv.includes('mcp_servers.flux.enabled_tools=["flux_get_doc"]'));
+    assert.ok(!argv.some((value) => value.startsWith('tools.view_image')), '`tools.view_image` is not a key of the pinned Codex; features.view_image is');
+  });
+
+  test('the app-server client sends only initialize, config/read and account/rateLimits/read; command/exec is refused before it is written', async () => {
+    const slot = await startTestSlot({ enabled: ['codex'] });
+    try {
+      const bindingId = randomUUID();
+      assert.ok((await callSupervisor(target(slot), { kind: 'bind', bindingId })).ok);
+      const dir = join(slot.config.dataDir, bindingId);
+      const session = await openAppServer(slot.config.cliPaths.codex, dir, '127.0.0.1', { timeoutMs: 10_000 });
+      for (const method of ['command/exec', 'thread/start', 'turn/start', 'config/write', 'initialize']) {
+        await assert.rejects(session.request(method, {}), (error: Error) => error.name === 'AppServerMethodRefused', method);
+      }
+      assert.ok(await session.request('config/read', {}));
+      session.close();
+      const methods = (await calls(slot, bindingId, 'codex') as unknown as { event?: string; method?: string }[]).filter((entry) => entry.event === 'app_server').map((entry) => entry.method);
+      assert.deepEqual(methods.filter((method) => method !== 'initialized'), ['initialize', 'config/read'], 'nothing else reached the app-server');
+      assert.deepEqual(APP_SERVER_METHODS, ['initialize', 'config/read', 'account/rateLimits/read']);
+    } finally { await slot.close(); }
+  });
+
+  test('the device sign-in reader: the URL and code once, Journey 6\'s two failures once each, nothing from other text', () => {
+    const reader = deviceSignInReader();
+    assert.deepEqual(reader.feed('Welcome to Codex\n1. Open this link\n   \u001b[94mhttps://auth.openai.com/codex/device\u001b[0m\n\n2. Enter this one-time code '), []);
+    assert.deepEqual(reader.feed('\u001b[90m(expires in 15 minutes)\u001b[0m\r\n   \u001b[94mAB12-CD34E\u001b[0m\r\n'), [{ t: 'signin', e: 'device', url: 'https://auth.openai.com/codex/device', code: 'AB12-CD34E' }]);
+    assert.deepEqual(reader.feed('again https://auth.openai.com/codex/device one-time code\n XY12-ZZZZZ\n'), [], 'once');
+    assert.deepEqual(reader.feed('Error logging in with device code: device auth timed out after 15 minutes\n'), [{ t: 'signin', e: 'problem', problem: 'code_expired' }]);
+    const other = deviceSignInReader();
+    assert.deepEqual(other.feed('Error logging in with device code: device code login is not enabled for this Codex server.\n'), [{ t: 'signin', e: 'problem', problem: 'device_auth_disabled' }]);
+    assert.deepEqual(deviceSignInReader().feed('https://evil.example/codex/device one-time code\n AB12-CD34E\n'), [], 'only the issuer\'s page');
   });
 });

@@ -160,8 +160,9 @@ export function createRuntimeRunProcessor({ uow, runtime, tokens, stopPollMs, ho
       if (claimed.done) return claimed.status;
       const run = claimed.run;
 
-      // The owner's own signed-in Claude Code, in their own slot: never chosen by a request.
-      const located = runtime ? await runtime.target(run.ownerUserId).catch(() => ({ ok: false as const, reason: 'unavailable' as const })) : null;
+      // The owner's own signed-in CLI of this run (the vendor its consent named), in their own slot: never
+      // chosen by a request.
+      const located = runtime ? await runtime.target(run.ownerUserId, run.provider === 'openai' ? 'codex' : 'claude_code').catch(() => ({ ok: false as const, reason: 'unavailable' as const })) : null;
       if (!located?.ok) {
         const signIn = located?.reason === 'sign_in_again';
         return finish(run.id, 'reading', () => ended('unavailable', 'before_dispatch', { ...free, ...(signIn ? { endReason: 'sign_in_again' as const } : {}) }));

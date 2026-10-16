@@ -74,8 +74,8 @@ async function bind(label: string) {
 const PROMPT = 'Paste code here if prompted > ';
 type ConsoleRun = { messages: AgentRuntimeConsoleServerMessage[]; output: string; raw: string; code: number };
 
-async function ticket(someone: Person, method: string) {
-  return (expectStatus(await someone.browser.request('POST', AGENT_RUNTIME_CONSOLE_PATH, { body: { client: 'claude_code', method } }), 200) as { ticket: string }).ticket;
+async function ticket(someone: Person, method: string, client: 'claude_code' | 'codex' = 'claude_code') {
+  return (expectStatus(await someone.browser.request('POST', AGENT_RUNTIME_CONSOLE_PATH, { body: { client, method } }), 200) as { ticket: string }).ticket;
 }
 
 /** One console: attach with `ticketValue`, then type `input` at the prompt (or leave at the prompt). */
@@ -210,7 +210,7 @@ const steps: Record<string, (...args: string[]) => Promise<void>> = {
     const someone = await owner('watcher');
     const on = await status(someone);
     assert.equal(on.enabled, true);
-    assert.deepEqual(on.clients, { claude_code: 'available', codex: 'off' });
+    assert.deepEqual(on.clients, { claude_code: 'available', codex: 'available' });
     assert.equal(on.commercialTerms?.agreedOn, '2026-10-05', 'the Commercial Terms statement is recorded with its date');
     assert.equal(on.pool, 'available');
     console.log(`READY=${await readySlots()}`);
@@ -317,6 +317,51 @@ const steps: Record<string, (...args: string[]) => Promise<void>> = {
     assert.ok(answers.items.some((item) => item.runId === run.id), 'the answer is committed for the conversation');
     console.log(`RUN=${run.id}`);
     console.log(`PROJECT=${project.id}`);
+  },
+  /**
+   * T6 (#281): ChatGPT's device sign-in through the API's console: the card gets the URL and the code the fake
+   * `codex login --device-auth` printed, completion is read from `codex login status`, and neither the code
+   * nor the URL reaches the database (AST-1.7).
+   */
+  async 'codex-sign-in'(label) {
+    const someone = await owner(label!);
+    const run = await runConsole(someone, await ticket(someone, 'device_code', 'codex'), null);
+    const device = run.messages.find((message) => message.t === 'device');
+    assert.ok(device && device.t === 'device' && device.url === 'https://auth.openai.com/codex/device' && /^[A-Z0-9]{4,8}-[A-Z0-9]{4,8}$/.test(device.code), JSON.stringify(run.messages));
+    assert.ok(run.output.includes(device.code), 'control: the CLI printed the code');
+    const done = run.messages.at(-1);
+    assert.ok(done?.t === 'done' && done.signedIn, JSON.stringify(run.messages));
+    const answer = await status(someone);
+    assert.equal(answer.connections.codex?.state, 'signed_in');
+    assert.equal(answer.connections.codex?.payer, 'chatgpt_plan');
+    assert.deepEqual(await databaseHolds([device.code]), [], 'the database holds the device code');
+    console.log(`CODEX_SIGNED_IN=${done.signedIn}`);
+  },
+  /**
+   * T6 (#281): the same owner turns the assistant on again, now with Codex (the CLI they signed in to last), and
+   * asks. The real worker runs the fake `codex exec --json` in their slot through runtime-egress's /mcp.
+   */
+  async 'codex-run'(label) {
+    const someone = await owner(label!);
+    const removed = await someone.browser.request('DELETE', PERSONAL_ASSISTANT_PATH);
+    assert.ok(removed.status === 204 || removed.status === 404, removed.text);
+    const before = expectStatus(await someone.browser.request('GET', PERSONAL_ASSISTANT_PATH), 200) as PersonalAssistantStatus;
+    assert.deepEqual([before.setup.runtime.state, before.setup.runtime.client, before.setup.runtime.payer], ['signed_in', 'codex', 'chatgpt_plan']);
+    const ws = expectStatus(await someone.browser.request('POST', '/api/v1/workspaces', { body: { name: 'Codex run' } }), 201) as { id: string };
+    const project = expectStatus(await someone.browser.request('POST', `/api/v1/workspaces/${ws.id}/projects`, { body: { name: 'Lamp sensor', visibility: 'workspace' } }), 201) as { id: string };
+    const thread = expectStatus(await someone.browser.request('POST', `/api/v1/projects/${project.id}/conversations`,
+      { body: { body: 'Camera fails below 5 lux', clientMessageId: randomUUID() } }), 201) as { id: string };
+    const agent = expectStatus(await someone.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`, { body: { name: 'My Codex assistant', owner: 'self' } }), 201) as { id: string };
+    const enabled = await someone.browser.request('POST', PERSONAL_ASSISTANT_PATH, { body: { consentVersion: PERSONAL_RUNTIME_CONSENT_VERSION, agentId: agent.id, engine: 'runtime' } });
+    assert.equal(enabled.status, 201, enabled.text);
+    const started = expectStatus(await someone.browser.request('POST', conversationAssistantRunsPath(thread.id),
+      { body: { clientRunId: randomUUID(), kind: 'ask', prompt: 'Which projects can you see?' } }), 202) as AssistantRun;
+    assert.equal(started.runtimeClient, 'codex');
+    const run = await until('the Codex run to end', async () => expectStatus(await someone.browser.request('GET', assistantRunPath(started.id)), 200) as AssistantRun,
+      (value) => !['queued', 'reading', 'dispatching'].includes(value.status), 120);
+    assert.equal(run.status, 'completed', JSON.stringify(run));
+    assert.match(run.answer?.body ?? '', /^Done: I read 1 things in this project\.$/);
+    console.log(`CODEX_RUN=${run.id}`);
   },
   async 'no-secret-in-db'(marker) {
     const { rows } = await pool.query<{ found: boolean }>(`SELECT EXISTS (SELECT 1 FROM agent_runtime_connections c WHERE c::text LIKE $1)

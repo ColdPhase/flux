@@ -15,6 +15,8 @@
 # without slot volumes; restore reconciliation; switching off; purge; reset removing the volumes.
 # FLUX_RUNTIME_SCREENSHOT_DIR (absolute) keeps the browser step's screenshots.
 #
+# T6 (#281) adds Codex: the switch lists both clients, ChatGPT's device sign-in runs through the console and
+# one assistant run goes to the owner's fake Codex.
 # Host load: run it alone under the shared Docker lock. Set FLUX_RUNTIME_TEST_PORT for concurrent runs.
 set -eu
 
@@ -92,7 +94,7 @@ live off
 step "2. Switch on (claude_code with the Commercial Terms date); the fifth slot gets its secret"
 # The live steps sign the same test owners in many times from one address.
 env_set FLUX_AUTH_RATE_LIMIT false
-env_set FLUX_AGENT_RUNTIME claude_code
+env_set FLUX_AGENT_RUNTIME claude_code,codex
 if ./flux up 2>"$work/up.err"; then fail "claude_code started without the Commercial Terms statement"; fi
 grep -q 'FLUX_AGENT_RUNTIME_COMMERCIAL_TERMS' "$work/up.err" || fail "the refusal does not name FLUX_AGENT_RUNTIME_COMMERCIAL_TERMS"
 env_set FLUX_AGENT_RUNTIME_COMMERCIAL_TERMS 2026-10-05
@@ -282,6 +284,29 @@ print("the CLI got the run token only in FLUX_RUN_TOKEN, reached /mcp through ru
 if docker exec "$t_cid" test -e "/data/$t_binding/claude/projects"; then fail "a transcript remains in the binding directory"; fi
 docker exec -u 1000:1000 "$t_cid" sh -c "rm -f /data/$t_binding/claude/fake-calls.jsonl"
 
+step "9d. Codex (T6 #281): ChatGPT device sign-in through the console, then a run on the owner's own Codex (fake codex exec --json)"
+out=$(live codex-sign-in T); printf '%s\n' "$out"
+[ "$(value "$out" CODEX_SIGNED_IN)" = true ] || fail "the Codex device sign-in did not complete"
+out=$(live codex-run T); printf '%s\n' "$out"
+docker exec "$t_cid" cat "/data/$t_binding/codex/fake-calls.jsonl" | python3 -c '
+import json, sys
+calls = [json.loads(line) for line in sys.stdin if line.strip()]
+run = [c for c in calls if c.get("event") == "run"]
+assert len(run) == 1, run
+assert run[0]["authorization"] == "run_token", run[0]["authorization"]
+assert "FLUX_RUN_TOKEN" in run[0]["envNames"]
+assert not any(arg.startswith("eyJ") for arg in run[0]["argv"]), "the token is an argument"
+overrides = run[0]["overrides"]
+assert overrides["features"]["shell_tool"] is False and overrides["web_search"] == "disabled", overrides
+assert list(overrides["mcp_servers"]) == ["flux"] and overrides["mcp_servers"]["flux"]["required"] is True
+methods = [c.get("method") for c in calls if c.get("event") == "app_server" and c.get("method") != "initialized"]
+assert methods == ["initialize", "config/read"], methods
+results = [c for c in calls if c.get("event") == "tool_result"]
+assert results and all(r["status"] == 200 and not r["isError"] for r in results), results
+print("Codex got the run token only in FLUX_RUN_TOKEN, every override, the preflight, and reached /mcp through runtime-egress")'
+[ -z "$(docker exec "$t_cid" ls -A /tmp)" ] || fail "the Codex run left files in the slot's /tmp"
+if docker exec "$t_cid" test -e "/data/$t_binding/codex/sessions"; then fail "a Codex transcript remains in the binding directory"; fi
+
 docker exec -u 1000:1000 "$t_cid" sh -c "printf logout_fails > /data/$t_binding/claude/fake-scenario"
 out=$(live console-sign-out T); printf '%s\n' "$out"
 [ "$(value "$out" SIGN_OUT_FAILED)" = true ] || fail "a failed logout was not reported"
@@ -351,7 +376,7 @@ fi
 ./flux runtime status | grep -q 'no binding' || true
 
 step "15. ./flux reset signs out first and removes the slot volumes"
-env_set FLUX_AGENT_RUNTIME claude_code
+env_set FLUX_AGENT_RUNTIME claude_code,codex
 ./flux up
 live wait-ready 5 >/dev/null
 out=$(live bind M); m_slot=$(value "$out" SLOT); m_binding=$(value "$out" BINDING)

@@ -199,7 +199,11 @@ export interface PersonalAssistantStatus {
      * enabled it; otherwise whether the caller is signed in. `payer` comes from the CLI's reported
      * `authMethod` only (never shown as zero).
      */
-    runtime: { state: 'off' | 'signed_out' | 'sign_in_again' | 'signed_in'; payer: AgentRuntimePayer | null; accountLabel: string | null };
+    runtime: {
+      state: 'off' | 'signed_out' | 'sign_in_again' | 'signed_in'; payer: AgentRuntimePayer | null; accountLabel: string | null;
+      /** Which of the owner's CLIs this is (Codex since F-022 T6, #281); null when off. Optional for older servers. */
+      client?: 'claude_code' | 'codex' | null;
+    };
   };
   /** Today's use in the owner's time zone; null without an enablement. */
   today: { chargedMicros: number; reservedMicros: number; capCents: number; resetsAt: string } | null;
@@ -313,6 +317,8 @@ export interface AssistantRun {
   /** The runtime confirmed the stop (F-022 "Stop": requested and acknowledged are separate). */
   stopAcknowledged: boolean;
   engine: AssistantEngine;
+  /** A `runtime` run's CLI (F-022 T6 #281), for its own words ("ChatGPT" or "Claude"); null otherwise. Optional for older servers. */
+  runtimeClient?: 'claude_code' | 'codex' | null;
   /** Why it ended without an answer, when the status alone does not say; null otherwise. */
   endReason: AssistantRunEndReason | null;
   /** With `plan_limit`: when the CLI said the plan resets, if it said so. */

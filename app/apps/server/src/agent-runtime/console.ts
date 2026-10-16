@@ -2,7 +2,8 @@ import { createHash, createHmac, hkdfSync, randomBytes, timingSafeEqual } from '
 import type { WebSocket } from 'ws';
 import {
   AGENT_RUNTIME_CONSOLE_INPUT_CHARS, AGENT_RUNTIME_CONSOLE_LIFETIME_MS, AGENT_RUNTIME_CONSOLE_SIZE,
-  type AgentRuntimeConsoleClientMessage, type AgentRuntimeConsoleError, type AgentRuntimeConsoleServerMessage, type ClaudeCodeSignInMethod,
+  CLAUDE_CODE_SIGN_IN_METHODS, CODEX_SIGN_IN_METHODS, type AgentRuntimeClient, type AgentRuntimeConsoleClientMessage, type AgentRuntimeConsoleError,
+  type AgentRuntimeConsoleServerMessage, type AgentRuntimeSignInMethod,
 } from '@flux/contracts';
 import type { AgentRuntimeUseCases, RuntimeAuthOperation } from '@flux/core';
 import {
@@ -26,7 +27,10 @@ import {
 const TICKET_TTL_MS = 60_000;
 const ATTACH_WITHIN_MS = 10_000;
 
-export interface ConsoleTicket { ownerUserId: string; client: 'claude_code'; method: ClaudeCodeSignInMethod }
+export interface ConsoleTicket { ownerUserId: string; client: AgentRuntimeClient; method: AgentRuntimeSignInMethod }
+
+/** The methods of each CLI's own login command the console runs (F-022; Codex since T6 #281). */
+export const CONSOLE_METHODS: Record<AgentRuntimeClient, readonly AgentRuntimeSignInMethod[]> = { claude_code: CLAUDE_CODE_SIGN_IN_METHODS, codex: CODEX_SIGN_IN_METHODS };
 export interface VerifiedConsoleTicket extends ConsoleTicket { nonce: { digest: string; expiresAt: Date } }
 
 export class ConsoleTickets {
@@ -59,10 +63,11 @@ export class ConsoleTickets {
     const now = this.now();
     if (typeof fields.e !== 'number' || !Number.isFinite(fields.e) || fields.e <= now
       || typeof fields.n !== 'string' || !/^[A-Za-z0-9_-]{16}$/.test(fields.n)) return null;
-    if (fields.o !== ownerUserId || fields.s !== ConsoleTickets.sessionTag(sessionId) || fields.c !== 'claude_code') return null;
-    if (fields.m !== 'claude_account' && fields.m !== 'console' && fields.m !== 'sso') return null;
+    if (fields.o !== ownerUserId || fields.s !== ConsoleTickets.sessionTag(sessionId) || (fields.c !== 'claude_code' && fields.c !== 'codex')) return null;
+    const client: AgentRuntimeClient = fields.c;
+    if (!CONSOLE_METHODS[client].includes(fields.m as AgentRuntimeSignInMethod)) return null;
     // Pure verification. Only the shared PostgreSQL claim consumes the digest.
-    return { ownerUserId, client: 'claude_code', method: fields.m,
+    return { ownerUserId, client, method: fields.m as AgentRuntimeSignInMethod,
       nonce: { digest: createHash('sha256').update(fields.n).digest('hex'), expiresAt: new Date(fields.e) } };
   }
 }
@@ -176,6 +181,12 @@ export function serveBrowserConsole(socket: WebSocket, owner: { userId: string; 
       return;
     }
     if (frame.t === 'step') return;
+    // The device code and URL go to this owner's card only, in memory (F-027 AST-1.7): never logged or stored.
+    if (frame.t === 'signin') {
+      if (attachment?.ticket.client !== 'codex') { fail('unavailable', CONSOLE_CLOSE.unavailable); return; }
+      send(frame.e === 'device' ? { t: 'device', url: frame.url, code: frame.code } : { t: 'problem', problem: frame.problem });
+      return;
+    }
     if (frame.t === 'console') { send({ t: 'state', state: frame.state === 'started' ? 'running' : 'checking' }); return; }
     if (frame.t === 'relay_error') { fail(frame.code === 'busy' ? 'busy' : 'unavailable', CONSOLE_CLOSE.unavailable); return; }
     if (frame.t === 'error') { fail(frame.code === 'busy' ? 'busy' : frame.code === 'internal' || frame.code === 'not_installed' ? 'unavailable' : 'refused', CONSOLE_CLOSE.unavailable); return; }

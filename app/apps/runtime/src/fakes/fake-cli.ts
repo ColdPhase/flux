@@ -172,6 +172,12 @@ function claudeStatus(text: boolean): { body: string; loggedIn: boolean } {
 /** Codex `login --device-auth`: the real banner (ANSI colours as the CLI emits them), then the poll. */
 async function codexDeviceLogin(argv: string[]): Promise<number> {
   const mode = scenario('codex');
+  // The account has not turned on device code sign-in: the user-code request answers 404 (codex-rs
+  // `login/src/device_code_auth.rs`), before any banner, and `codex login` reports it on stderr.
+  if (mode === 'device_auth_disabled') {
+    err('Error logging in with device code: device code login is not enabled for this Codex server. Use the browser login or verify the server URL.\n');
+    return 1;
+  }
   const grey = (text: string) => `\u001b[90m${text}\u001b[0m`;
   const blue = (text: string) => `\u001b[94m${text}\u001b[0m`;
   const issuer = 'https://auth.openai.com';
@@ -305,6 +311,208 @@ async function claudeRun(argv: string[]): Promise<number> {
   return 0;
 }
 
+/** Codex's `-c key=value` options as a nested object, with TOML-ish values (booleans, numbers, JSON strings and arrays, else a bare string). */
+function codexOverrides(argv: string[]): Record<string, unknown> {
+  const root: Record<string, unknown> = {};
+  for (let i = 0; i < argv.length; i += 1) {
+    if (argv[i] !== '-c' && argv[i] !== '--config') continue;
+    const pair = argv[i + 1] ?? '';
+    i += 1;
+    const at = pair.indexOf('=');
+    if (at < 1) continue;
+    const raw = pair.slice(at + 1);
+    let value: unknown = raw;
+    if (raw === 'true' || raw === 'false') value = raw === 'true';
+    else if (/^-?\d+(\.\d+)?$/.test(raw)) value = Number(raw);
+    else if (/^["[]/.test(raw)) { try { value = JSON.parse(raw); } catch { value = raw; } }
+    const keys = pair.slice(0, at).split('.');
+    let node = root;
+    for (const key of keys.slice(0, -1)) node = (node[key] ??= {}) as Record<string, unknown>;
+    node[keys.at(-1)!] = value;
+  }
+  return root;
+}
+
+/** One MCP call over the streamable HTTP route, as a client with the given headers. */
+function mcpClient(url: string, headers: Record<string, string>, clientName: string, version: string) {
+  let id = 0;
+  return async (method: string, params: Record<string, unknown>) => {
+    const name = typeof params.name === 'string' ? params.name : null;
+    const response = await fetch(url, { method: 'POST', headers: { ...headers, 'content-type': 'application/json', accept: 'application/json',
+      'mcp-protocol-version': '2026-07-28', 'mcp-method': method, ...(name ? { 'mcp-name': name } : {}) },
+      body: JSON.stringify({ jsonrpc: '2.0', id: ++id, method, params: { ...params, _meta: { 'io.modelcontextprotocol/protocolVersion': '2026-07-28',
+        'io.modelcontextprotocol/clientInfo': { name: clientName, version }, 'io.modelcontextprotocol/clientCapabilities': {} } } }) });
+    const text = await response.text();
+    let body: { result?: Record<string, unknown>; error?: { message?: string } } = {};
+    try { body = JSON.parse(text) as typeof body; } catch { /* a refusal without JSON */ }
+    return { status: response.status, body };
+  };
+}
+
+/**
+ * `codex exec --json … -` (F-022 T6 #281), with the event and item shapes of the pinned CLI (codex-rs
+ * `exec/src/exec_events.rs` at rust-v0.160.1): reads the prompt on stdin, connects to the `flux` MCP server
+ * its `-c` options name with the bearer token from the variable they name, lists the tools `enabled_tools`
+ * leaves, makes REAL MCP calls and prints `thread.started`, `turn.started`, `item.*` and `turn.completed`.
+ * Like the real CLI, a tool its overrides did not switch off is used: without `features.shell_tool=false`
+ * it runs a command (a `command_execution` item). Run script (`fake-run.json`) as for the fake `claude`.
+ * Scenarios: run_command_execution, run_file_change, run_web_search, run_other_mcp, run_resource_tool,
+ * run_todo_list, run_plan_limit, run_expired_login, run_hang, run_slow, run_crash, run_broken_stream,
+ * run_ignore_sigint, run_big_answer, run_secret_answer, run_error_item. Without `--ephemeral` it writes a
+ * session under `sessions/`, as the real CLI would.
+ */
+async function codexRun(argv: string[]): Promise<number> {
+  const mode = scenario('codex');
+  const emit = (event: Record<string, unknown>) => out(`${JSON.stringify(event)}\n`);
+  let stopping = false;
+  process.on('SIGINT', () => { if (mode === 'run_ignore_sigint') return; stopping = true; process.exit(130); });
+  process.on('SIGTERM', () => process.exit(143));
+  const chunks: Buffer[] = [];
+  for await (const chunk of process.stdin) chunks.push(chunk as Buffer);
+  const prompt = Buffer.concat(chunks).toString('utf8');
+  const config = codexOverrides(argv);
+  const features = (config.features ?? {}) as Record<string, unknown>;
+  const flux = ((config.mcp_servers ?? {}) as Record<string, Record<string, unknown>>).flux ?? {};
+  const tokenVariable = typeof flux.bearer_token_env_var === 'string' ? flux.bearer_token_env_var : '';
+  const token = tokenVariable ? process.env[tokenVariable] ?? '' : '';
+  const enabled = Array.isArray(flux.enabled_tools) ? (flux.enabled_tools as string[]) : null;
+  record('codex', argv, { event: 'run', promptBytes: prompt.length, prompt, allowed: enabled ?? [], overrides: config,
+    authorization: !tokenVariable ? 'none' : token && token === process.env.FLUX_RUN_TOKEN ? 'run_token' : 'other', persist: !argv.includes('--ephemeral') });
+  if (!argv.includes('--ephemeral')) {
+    mkdirSync(join(home('codex'), 'sessions', '2026'), { recursive: true });
+    writeFileSync(join(home('codex'), 'sessions', '2026', 'rollout.jsonl'), `${JSON.stringify({ type: 'user', prompt })}\n`);
+  }
+  const mcp = mcpClient(String(flux.url ?? ''), token ? { authorization: `Bearer ${token}` } : {}, 'fake-codex', '0.160.1');
+  const listed = await mcp('tools/list', {}).catch(() => ({ status: 0, body: {} as { result?: Record<string, unknown> } }));
+  const served = listed.status === 200 && Array.isArray(listed.body.result?.tools) ? (listed.body.result!.tools as { name: string }[]).map((tool) => tool.name) : [];
+  const names = enabled ? served.filter((name) => enabled.includes(name)) : served;
+  record('codex', argv, { event: 'tools_list', status: listed.status, tools: names });
+  emit({ type: 'thread.started', thread_id: randomBytes(8).toString('hex') });
+  emit({ type: 'turn.started' });
+  if (flux.required === true && listed.status !== 200) {
+    emit({ type: 'error', message: 'MCP server `flux` failed to start' });
+    emit({ type: 'turn.failed', error: { message: 'required MCP servers failed to initialize: flux' } });
+    return 1;
+  }
+  let item = 0;
+  const next = () => `item_${item++}`;
+  const local = (kind: string, fields: Record<string, unknown>) => {
+    const id = next();
+    emit({ type: 'item.started', item: { id, type: kind, ...fields, status: 'in_progress' } });
+    record('codex', argv, { event: 'local_item', kind });
+  };
+  if (mode === 'run_crash') { err('fake codex: crashed\n'); return 1; }
+  if (mode === 'run_broken_stream') { out('{"type":"item.completed","item":{"id":"item_0","type":"agent_mes'); return 0; }
+  if (mode === 'run_hang') await forever();
+  if (mode === 'run_slow' || mode === 'run_ignore_sigint') {
+    for (;;) { emit({ type: 'item.updated', item: { id: 'item_r', type: 'reasoning', text: 'Thinking…' } }); await new Promise((wait) => setTimeout(wait, 500)); }
+  }
+  if (mode === 'run_expired_login') {
+    const message = 'Your access token could not be refreshed because your refresh token has expired. Please log out and sign in again.';
+    emit({ type: 'error', message });
+    emit({ type: 'turn.failed', error: { message } });
+    return 1;
+  }
+  if (mode === 'run_plan_limit') {
+    const message = 'You’ve hit your usage limit. Upgrade to Pro (https://chatgpt.com/explore/pro), visit https://chatgpt.com/codex/settings/usage to purchase more credits or try again at 3:05 PM.';
+    emit({ type: 'error', message });
+    emit({ type: 'turn.failed', error: { message } });
+    return 1;
+  }
+  // A local tool the overrides left on, or a scenario's own: the real CLI would use it.
+  if (features.shell_tool !== false || mode === 'run_command_execution') local('command_execution', { command: 'cat ~/.codex/auth.json', aggregated_output: '', exit_code: null });
+  else if (mode === 'run_file_change') local('file_change', { changes: [{ path: 'notes.md', kind: 'add' }] });
+  else if (mode === 'run_web_search' || config.web_search !== 'disabled') local('web_search', { query: 'flux', action: { type: 'search', query: 'flux' } });
+  else if (mode === 'run_other_mcp') local('mcp_tool_call', { server: 'github', tool: 'search_issues', arguments: {}, result: null, error: null });
+  else if (mode === 'run_resource_tool') local('mcp_tool_call', { server: 'flux', tool: 'read_mcp_resource', arguments: { server: 'flux', uri: 'flux://playbook/flux.cowork/1.0.0' }, result: null, error: null });
+  else if (mode === 'run_todo_list') emit({ type: 'item.started', item: { id: next(), type: 'todo_list', items: [{ text: 'Read', completed: false }] } });
+  else if (mode === 'run_error_item') emit({ type: 'item.completed', item: { id: next(), type: 'error', message: 'Codex is ignoring 1 unrecognized configuration setting(s).' } });
+  let script: RunScript = {};
+  try { script = JSON.parse(readHome('codex', 'fake-run.json') || '{}') as RunScript; } catch { /* no script */ }
+  const results: { name: string; isError: boolean; text: string }[] = [];
+  const call = async (name: string, args: Record<string, unknown>) => {
+    const answer = await mcp('tools/call', { name, arguments: args });
+    const content = answer.body.result?.content;
+    const text = Array.isArray(content) ? content.map((part) => String((part as { text?: unknown }).text ?? '')).join('\n') : answer.body.error?.message ?? '';
+    const isError = answer.status !== 200 || answer.body.result?.isError === true || answer.body.error !== undefined;
+    record('codex', argv, { event: 'tool_result', name, status: answer.status, isError, text });
+    return { name, isError, text, content };
+  };
+  for (const probe of script.probes ?? []) await call(probe.name, probe.args ?? {});
+  emit({ type: 'item.completed', item: { id: next(), type: 'reasoning', text: 'Reading the project through Flux.' } });
+  for (const [index, planned] of (script.calls ?? [{ name: 'flux_list_contexts' }]).entries()) {
+    if (stopping) return 130;
+    if (index > 0 && script.delayMs) await new Promise((wait) => setTimeout(wait, Math.min(script.delayMs!, 30_000)));
+    const id = next();
+    const base = { id, type: 'mcp_tool_call', server: 'flux', tool: planned.name, arguments: planned.args ?? {} };
+    emit({ type: 'item.started', item: { ...base, result: null, error: null, status: 'in_progress' } });
+    const result = await call(planned.name, planned.args ?? {});
+    results.push(result);
+    emit({ type: 'item.completed', item: { ...base, result: result.isError ? null : { content: result.content ?? [], structured_content: null },
+      error: result.isError ? { message: result.text } : null, status: result.isError ? 'failed' : 'completed' } });
+  }
+  let answer = (script.answer ?? 'Done: I read {{count}} things in this project.').replace('{{count}}', String(results.length)).replace('{{results}}', JSON.stringify(results.map(({ name, isError, text }) => ({ name, isError, text }))));
+  if (mode === 'run_big_answer') answer = 'x'.repeat(20 * 1024);
+  if (mode === 'run_secret_answer') answer = `Here: sk-proj-${randomBytes(12).toString('hex')} and the token ${token} and Bearer ${token}.`;
+  emit({ type: 'item.completed', item: { id: next(), type: 'agent_message', text: answer } });
+  emit({ type: 'turn.completed', usage: { input_tokens: 1200, cached_input_tokens: 0, cache_write_input_tokens: 0, output_tokens: 80, reasoning_output_tokens: 0 } });
+  return 0;
+}
+
+/**
+ * `codex app-server` (codex-rs `app-server-protocol` at rust-v0.160.1): JSON-RPC over stdio without the
+ * `jsonrpc` field, one message per line. Answers `initialize`, `config/read` (the effective configuration:
+ * here exactly the root `-c` overrides, as the pinned server merges them as its session-flags layer) and
+ * `account/rateLimits/read` (from `fake-rate-limits.json` in the home, or a limit reached with a reset).
+ * Every method it receives is recorded, so tests see that Flux sends nothing else. Scenarios:
+ * config_ignores_overrides (config/read without the `-c` layer), rate_limits_unreadable (an error).
+ */
+async function codexAppServer(argv: string[]): Promise<number> {
+  const mode = scenario('codex');
+  const config = codexOverrides(argv);
+  let initialized = false;
+  const reply = (message: Record<string, unknown>) => out(`${JSON.stringify(message)}\n`);
+  const next = lineReader();
+  for (;;) {
+    const line = await next();
+    if (line === null) return 0;
+    if (!line.trim()) continue;
+    let message: { id?: number; method?: string; params?: unknown };
+    try { message = JSON.parse(line) as typeof message; } catch { continue; }
+    record('codex', argv, { event: 'app_server', method: message.method ?? null });
+    if (message.id === undefined) continue;
+    if (message.method === 'initialize') {
+      if (initialized) { reply({ id: message.id, error: { code: -32600, message: 'Already initialized' } }); continue; }
+      initialized = true;
+      reply({ id: message.id, result: { userAgent: 'codex_cli_rs/0.160.1 (fake)', codexHome: home('codex'), platformFamily: 'unix', platformOs: 'linux' } });
+      continue;
+    }
+    if (!initialized) { reply({ id: message.id, error: { code: -32600, message: 'Not initialized' } }); continue; }
+    if (message.method === 'config/read') { reply({ id: message.id, result: { config: mode === 'config_ignores_overrides' ? {} : config, origins: {} } }); continue; }
+    if (message.method === 'account/rateLimits/read') {
+      if (mode === 'rate_limits_unreadable') { reply({ id: message.id, error: { code: -32603, message: 'failed to fetch rate limits' } }); continue; }
+      let rateLimits: unknown = { primary: { usedPercent: 100, windowDurationMins: 300, resetsAt: 1791374400 }, secondary: { usedPercent: 40, windowDurationMins: 10080, resetsAt: 1791900000 }, planType: 'plus' };
+      try { rateLimits = JSON.parse(readHome('codex', 'fake-rate-limits.json') || 'null') ?? rateLimits; } catch { /* default */ }
+      reply({ id: message.id, result: { rateLimits } });
+      continue;
+    }
+    // A real app-server has many more methods (command/exec among them); the fake answers none of them.
+    reply({ id: message.id, error: { code: -32601, message: `fake app-server: ${String(message.method).slice(0, 40)} not implemented` } });
+  }
+}
+
+/** `codex login --with-api-key` / `--with-access-token`: the credential is read from stdin to its end. */
+async function codexStdinLogin(argv: string[], kind: 'api_key' | 'access_token'): Promise<number> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of process.stdin) chunks.push(chunk as Buffer);
+  const value = Buffer.concat(chunks).toString('utf8').trim();
+  record('codex', argv, { event: 'stdin_login', kind, bytes: value.length });
+  if (!value) { err('Error: no credential on stdin\n'); return 1; }
+  writeFileSync(credentials('codex'), JSON.stringify(kind === 'api_key' ? { auth_mode: 'apikey', OPENAI_API_KEY: value } : { auth_mode: 'access_token', access_token: value }), { mode: 0o600 });
+  err('Successfully logged in\n');
+  return 0;
+}
+
 export async function fakeCli(client: FakeClient, argv: string[]): Promise<number> {
   const words = command(argv);
   const key = words.join(' ');
@@ -313,6 +521,10 @@ export async function fakeCli(client: FakeClient, argv: string[]): Promise<numbe
   if (client === 'claude_code' && words[0] === '-p') return claudeRun(argv);
   if (client === 'claude_code' && words[0] === 'auth' && words[1] === 'login' && !flags.includes('--help')) return claudeLogin(argv, words.slice(2));
   if (client === 'codex' && key === 'login --device-auth') return codexDeviceLogin(argv);
+  if (client === 'codex' && key === 'login --with-api-key') return codexStdinLogin(argv, 'api_key');
+  if (client === 'codex' && key === 'login --with-access-token') return codexStdinLogin(argv, 'access_token');
+  if (client === 'codex' && words[0] === 'exec' && words.includes('--json')) return codexRun(argv);
+  if (client === 'codex' && key === 'app-server') return codexAppServer(argv);
   const mode = scenario(client);
   if (key === '--version') { out(client === 'claude_code' ? '2.1.285 (Claude Code) [fake]\n' : 'codex-cli 0.160.1 [fake]\n'); return 0; }
   const help = GOLDEN_HELP[client][words.filter((word) => word !== '-h' && word !== '--help').concat('--help').join(' ')];
@@ -332,9 +544,11 @@ export async function fakeCli(client: FakeClient, argv: string[]): Promise<numbe
   }
   // Codex writes its status and logout lines to stderr, never stdout.
   if (client === 'codex' && key === 'login status') {
-    const signedIn = existsSync(credentials(client));
-    err(signedIn ? 'Logged in using ChatGPT\n' : 'Not logged in\n');
-    return signedIn ? 0 : 1;
+    if (!existsSync(credentials(client))) { err('Not logged in\n'); return 1; }
+    let mode = 'chatgpt';
+    try { mode = String((JSON.parse(readFileSync(credentials(client), 'utf8')) as { auth_mode?: string }).auth_mode ?? mode); } catch { /* the default */ }
+    err(mode === 'apikey' ? 'Logged in using an API key - sk-proj-***\n' : mode === 'access_token' ? 'Logged in using access token\n' : 'Logged in using ChatGPT\n');
+    return 0;
   }
   if (client === 'codex' && key === 'logout') {
     if (mode === 'logout_fails') { err('Error logging out: could not reach the auth server\n'); return 1; }

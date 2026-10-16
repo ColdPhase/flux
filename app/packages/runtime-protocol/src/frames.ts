@@ -96,8 +96,22 @@ export type SupervisorResult =
   /** The sign-in console ended: the CLI exited or reached the console's lifetime; then its status. */
   | { kind: 'login'; client: RuntimeClient; ended: 'exited' | 'timed_out'; exitCode: number | null; status: ClientStatus };
 
+/**
+ * The one exception to "nothing parses console output" (F-027 AST-1, A12; #281): during `codex login
+ * --device-auth` the slot recognises the verification URL and the one-time code in the CLI's output, in
+ * memory, so the sign-in card can draw them; and the two failures Journey 6 names. Never stored or logged.
+ */
+export const DEVICE_URL = /^https:\/\/auth\.openai\.com\/codex\/device$/;
+export const DEVICE_CODE = /^[A-Z0-9]{4,8}-[A-Z0-9]{4,8}$/;
+export const SIGN_IN_PROBLEMS = ['device_auth_disabled', 'code_expired'] as const;
+export type SignInProblem = (typeof SIGN_IN_PROBLEMS)[number];
+export type SignInFrame =
+  | { t: 'signin'; e: 'device'; url: string; code: string }
+  | { t: 'signin'; e: 'problem'; problem: SignInProblem };
+
 export type SupervisorFrame =
   | { t: 'accepted'; kind: SupervisorRequestKind; bootId: string }
+  | SignInFrame
   | { t: 'step'; step: 'logout' | 'delete' | 'verify'; outcome: StepOutcome; client?: RuntimeClient }
   | { t: 'result'; result: SupervisorResult }
   /** Sign-in console only: the PTY started, or its command ended (by exiting or after the lifetime). */
@@ -152,6 +166,8 @@ const FRAMES: Check<SupervisorFrame>[] = [
   object({ t: literal('result'), result: isSupervisorResult }),
   object({ t: literal('error'), code: oneOf(SUPERVISOR_ERRORS) }),
   object({ t: literal('console'), state: oneOf(['started', 'exited', 'timed_out'] as const) }),
+  object({ t: literal('signin'), e: literal('device'), url: str(DEVICE_URL, 64), code: str(DEVICE_CODE, 17) }),
+  object({ t: literal('signin'), e: literal('problem'), problem: oneOf(SIGN_IN_PROBLEMS) }),
   object({ t: literal('run'), e: literal('init'), tools: arrayOf(str(INIT_NAME, 128), 64),
     servers: arrayOf(object({ name: str(INIT_NAME, 128), status: str(/^[a-z_-]{1,32}$/, 32) }), 16) }),
   object({ t: literal('run'), e: literal('tool'), name: str(FLUX_TOOL_NAME, 67) }),

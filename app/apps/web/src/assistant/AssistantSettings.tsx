@@ -10,7 +10,7 @@ import { Button, ErrorState, Icon, Spinner } from '../ui';
 import { whenPageLive } from '../api/pageLeaving';
 import { listBackgroundConnections } from '../proactive-comparison/api';
 import { enableAssistant, getAssistantStatus, pauseAssistant, removeAssistant, resumeAssistant, selectAssistantAgent, updateAssistant } from './api';
-import { dollars, micros, perMillion, runtimePayerDetail, runtimePayerText, stateLine, unavailableText } from './format';
+import { dollars, micros, perMillion, runtimeNames, runtimePayerDetail, runtimePayerText, stateLine, unavailableText, type RuntimeClientName } from './format';
 import '../notifications/notifications.css';
 import './assistant.css';
 import { AssistantProjectAccess } from './AssistantProjectAccess';
@@ -164,14 +164,18 @@ function SetupChoice(props: SetupProps) {
 }
 
 /** What turning the assistant on with Claude Code means (F-022 AIM-3 "Payer and data", the O-008 notice for `runtime`). */
-function RuntimeDisclosure({ payer }: { payer: AgentRuntimePayer | null | undefined }) {
+function RuntimeDisclosure({ payer, client }: { payer: AgentRuntimePayer | null | undefined; client?: RuntimeClientName }) {
+  const names = runtimeNames(client);
+  const detail = runtimePayerDetail(payer, client);
+  const codex = client === 'codex';
   return (
     <ul className="aset__facts">
-      <li><b>Account</b><span>Agent in Flux · Claude Code · {runtimePayerText(payer)}. Claude Code runs unchanged in your own place on this Flux server, signed in as you.</span></li>
-      <li><b>Who pays</b><span>{runtimePayerDetail(payer)[0]!.toUpperCase()}{runtimePayerDetail(payer).slice(1)}. Flux can’t tell whether a request used your plan’s limits or paid extra usage. Never another person or the workspace.</span></li>
-      <li><b>What leaves Flux</b><span>What your request needs from the one project you ask in, read by Claude Code through Flux and only from the areas you switched on, other members’ messages included. Never your direct messages, private notes, private maps or other projects.</span></li>
-      <li><b>Where it goes</b><span>To Anthropic, under your Claude account’s settings. On personal Claude plans Anthropic may train on it unless you turned that off in Claude’s privacy settings.</span></li>
-      <li><b>Who sees answers</b><span>The people in that conversation. They see that your assistant uses Claude, never your plan or account.</span></li>
+      <li><b>Account</b><span>Agent in Flux · {names.cli} · {runtimePayerText(payer, client)}. {names.cli} runs unchanged in your own place on this Flux server, signed in as you.</span></li>
+      <li><b>Who pays</b><span>{detail[0]!.toUpperCase()}{detail.slice(1)}. Flux can’t tell whether a request used your plan’s limits or paid extra usage. Never another person or the workspace.</span></li>
+      <li><b>What leaves Flux</b><span>What your request needs from the one project you ask in, read by {names.cli} through Flux and only from the areas you switched on, other members’ messages included. Never your direct messages, private notes, private maps or other projects.</span></li>
+      <li><b>Where it goes</b><span>{codex ? 'To OpenAI, under your ChatGPT or OpenAI account’s settings. On personal ChatGPT plans OpenAI may train on it unless you turned that off in ChatGPT’s data controls.'
+        : 'To Anthropic, under your Claude account’s settings. On personal Claude plans Anthropic may train on it unless you turned that off in Claude’s privacy settings.'}</span></li>
+      <li><b>Who sees answers</b><span>The people in that conversation. They see that your assistant uses {names.plan}, never your plan or account.</span></li>
       <li><b>Limits</b><span>Up to 20 requests a day, 5 minutes and 10 steps each. If your plan’s limit is reached it pauses and says so. It never switches to an API key.</span></li>
     </ul>
   );
@@ -193,7 +197,7 @@ function RuntimeSetup({ status, agents, workspaces, name, onEnabled, onAgent, on
       for (const [, agentId] of picked.slice(1)) next = await selectAssistantAgent(agentId);
       onEnabled(next);
     } catch (cause) {
-      setError(cause instanceof ApiError && cause.code === 'PERSONAL_RUN_RUNTIME_SIGN_IN' ? 'Sign in to Claude again to keep using your assistant. Nothing was turned on.'
+      setError(cause instanceof ApiError && cause.code === 'PERSONAL_RUN_RUNTIME_SIGN_IN' ? `Sign in to ${runtimeNames(status.setup.runtime?.client).plan} again to keep using your assistant. Nothing was turned on.`
         : cause instanceof ApiError && cause.code === 'PERSONAL_RUN_RUNTIME_OFF' ? 'This Flux doesn’t allow signing in with a subscription yet. Nothing was turned on.'
           : failure(cause, 'Couldn’t turn it on. Try again.'));
     } finally { setBusy(false); }
@@ -206,7 +210,7 @@ function RuntimeSetup({ status, agents, workspaces, name, onEnabled, onAgent, on
       </section>
       <form className="nset__sec" aria-labelledby="aset-consent" onSubmit={(event) => void submit(event)}>
         <h3 id="aset-consent">Before you turn it on</h3>
-        <RuntimeDisclosure payer={payer} />
+        <RuntimeDisclosure payer={payer} client={status.setup.runtime?.client} />
         <fieldset className="aset__fields" disabled={busy}>
           <legend className="ui-vh">Assistant</legend>
           <div className="aset__agents">
@@ -217,7 +221,8 @@ function RuntimeSetup({ status, agents, workspaces, name, onEnabled, onAgent, on
           </div>
           <label className="aset__consent">
             <input type="checkbox" checked={consent} onChange={(event) => setConsent(event.target.checked)} />
-            <span>I agree that what my requests need from the project I ask in is sent to Anthropic through my own Claude Code, under my Claude account’s settings.</span>
+            <span>{status.setup.runtime?.client === 'codex' ? 'I agree that what my requests need from the project I ask in is sent to OpenAI through my own Codex, under my ChatGPT or OpenAI account’s settings.'
+              : 'I agree that what my requests need from the project I ask in is sent to Anthropic through my own Claude Code, under my Claude account’s settings.'}</span>
           </label>
         </fieldset>
         {error ? <p className="nset__error" role="alert"><Icon name="alert" size={14} />{error}</p> : null}
@@ -372,8 +377,8 @@ function Enabled({ status, agents, workspaces, name, onChange, onRemoved, onAgen
       </section>
       {runtime ? <section className="nset__sec" aria-labelledby="aset-today">
         <h3 id="aset-today">Account</h3>
-        <p className="nset__lead">Agent in Flux · Claude Code · {runtimePayerText(status.setup.runtime?.payer)}</p>
-        <p className="nset__note">Usage counts on {runtimePayerDetail(status.setup.runtime?.payer)}. Up to 20 requests a day, 5 minutes and 10 steps each. At a limit it stops and says so. It never switches to an API key.</p>
+        <p className="nset__lead">Agent in Flux · {runtimeNames(status.setup.runtime?.client).cli} · {runtimePayerText(status.setup.runtime?.payer, status.setup.runtime?.client)}</p>
+        <p className="nset__note">Usage counts on {runtimePayerDetail(status.setup.runtime?.payer, status.setup.runtime?.client)}. Up to 20 requests a day, 5 minutes and 10 steps each. At a limit it stops and says so. It never switches to an API key.</p>
       </section> : <section className="nset__sec" aria-labelledby="aset-today">
         <h3 id="aset-today">Today</h3>
         <div className="aset__meter" role="meter" aria-valuemin={0} aria-valuemax={cap} aria-valuenow={Math.min(used, cap)} aria-label={`${micros(used)} of your ${dollars(enablement.dailyCapCents)} daily cap`}>
@@ -393,7 +398,7 @@ function Enabled({ status, agents, workspaces, name, onChange, onRemoved, onAgen
       <section className="nset__sec" aria-labelledby="aset-consent">
         <h3 id="aset-consent">What you agreed to</h3>
         <p className="nset__lead">On {new Date(enablement.consent.acceptedAt).toLocaleDateString(undefined, { dateStyle: 'medium' })} · disclosure {enablement.consent.version}</p>
-        {runtime ? <RuntimeDisclosure payer={status.setup.runtime?.payer} />
+        {runtime ? <RuntimeDisclosure payer={status.setup.runtime?.payer} client={status.setup.runtime?.client} />
           : <Disclosure status={status} perRun={enablement.perRunCents} daily={enablement.dailyCapCents} timeZone={enablement.timeZone} />}
         {confirmRemove ? <div className="details__confirm" role="group" aria-label="Turn off your assistant">
           <p>Your assistant stops at once and your consent is removed. Its earlier answers stay in their conversations.</p>

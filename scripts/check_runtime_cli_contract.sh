@@ -41,3 +41,8 @@ docker run --rm $harden --network none --tmpfs /tmp:rw,size=64m \
 docker run --rm $harden --network none --tmpfs /tmp:rw,size=64m \
   -v "$volume:/opt/flux-tools:ro" "flux-agent-runtime-install:$tag" \
   node apps/runtime/dist/contract/check-auth.js /opt/flux-tools/claude/bin/claude /opt/flux-runtime/codex/bin/codex
+# T6 #281: Codex's default-on features against the reviewed list, the overrides applied, `config/read`
+# reflecting them (the preflight's premise) and the app-server client refusing `command/exec`.
+# shellcheck disable=SC2086
+docker run --rm $harden --network none --tmpfs /tmp:rw,size=64m \
+  "flux-agent-runtime-install:$tag" node apps/runtime/dist/contract/check-codex.js /opt/flux-runtime/codex/bin/codex

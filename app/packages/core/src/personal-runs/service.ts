@@ -24,7 +24,7 @@ import {
 import type { Principal } from '../principal.js';
 import { expectedVersion, id, isId, page } from '../work/validation.js';
 import type {
-  EnablementRecord, PersonalConnection, PersonalConnectionLookup, PersonalRunPorts, PersonalRunUnitOfWork, PersonalRuntimeAvailability, PersonalRuntimeStanding, RunRecord,
+  EnablementRecord, PersonalConnection, PersonalConnectionLookup, PersonalRunPorts, PersonalRunUnitOfWork, PersonalRuntimeAvailability, PersonalRuntimeClient, PersonalRuntimeStanding, RunRecord,
 } from './ports.js';
 import { announce, updateAndAnnounce } from './progress.js';
 import {
@@ -48,6 +48,13 @@ export class PersonalRunCappedError extends DomainError {
 const IN_FLIGHT = new Set(['queued', 'reading', 'dispatching']);
 /** The provenance model of a runtime answer: Claude Code chooses the model under the owner's account. */
 export const RUNTIME_MODEL = 'claude-code';
+/** The model label of a run on the owner's own Codex (F-022 T6, #281); the CLI's own model is not reported. */
+export const CODEX_RUNTIME_MODEL = 'codex';
+/** Where a runtime run's content goes and how it is labelled: the vendor of the owner's CLI. */
+export const runtimeVendor = (client: PersonalRuntimeClient | null | undefined) => (client === 'codex'
+  ? { provider: 'openai' as const, model: CODEX_RUNTIME_MODEL, name: 'Codex' } : { provider: 'anthropic' as const, model: RUNTIME_MODEL, name: 'Claude Code' });
+/** The CLI an enablement consented to, from the vendor its consent names. */
+export const runtimeClientOf = (provider: string | null | undefined): PersonalRuntimeClient => (provider === 'openai' ? 'codex' : 'claude_code');
 /** A run untouched this long was left by a crashed worker (the job itself expires after 5 minutes). */
 export const STALE_AFTER_SECONDS = 15 * 60;
 const iso = (date: Date) => date.toISOString();
@@ -97,7 +104,7 @@ export async function runView(ports: PersonalRunPorts, record: RunRecord): Promi
     target: record.targetSketchId && record.targetThoughtId ? { type: 'thought', sketchId: record.targetSketchId, thoughtId: record.targetThoughtId } : null,
     continuesRunId: record.continuesRunId, retryOfRunId: record.retryOfRunId, status: record.status,
     stoppedAtStage: record.stoppedAtStage, stopRequested: record.stopRequestedAt !== null, stopAcknowledged: record.stopAcknowledgedAt !== null,
-    engine: record.engine, endReason: record.endReason, planLimitResetsAt: record.planLimitResetsAt ? iso(record.planLimitResetsAt) : null,
+    engine: record.engine, runtimeClient: record.engine === 'runtime' ? runtimeClientOf(record.provider) : null, endReason: record.endReason, planLimitResetsAt: record.planLimitResetsAt ? iso(record.planLimitResetsAt) : null,
     cost: { state: record.costState, reservedMicros: record.reservedMicros, chargedMicros: record.chargedMicros, inputTokens: record.inputTokens, outputTokens: record.outputTokens },
     answer: await answerView(ports, record),
     createdAt: iso(record.createdAt), dispatchedAt: record.dispatchedAt ? iso(record.dispatchedAt) : null,
@@ -180,11 +187,17 @@ const RUNTIME_OFF: PersonalRuntimeStanding = { state: 'off', payer: null, accoun
 
 /** The consent's payer line for a runtime assistant, from the CLI's reported method only (F-022 "Payer and data"). */
 function runtimePayerLabel(standing: PersonalRuntimeStanding) {
-  return standing.payer === 'claude_plan' ? 'Your Claude plan' : standing.payer === 'anthropic_console' ? 'Your Anthropic Console organization' : 'Your Claude account';
+  switch (standing.payer) {
+    case 'claude_plan': return 'Your Claude plan';
+    case 'anthropic_console': return 'Your Anthropic Console organization';
+    case 'chatgpt_plan': return 'Your ChatGPT plan';
+    case 'openai_api': return 'Your OpenAI API organization';
+    default: return standing.client === 'codex' ? 'Your ChatGPT or OpenAI account' : 'Your Claude account';
+  }
 }
 
 export function createPersonalRunUseCases({ uow, connections, providerEnabled, toolTurns = 1, runtime }: PersonalRunDeps) {
-  const runtimeStanding = async (owner: string) => (runtime ? await runtime.standing(owner).catch(() => RUNTIME_OFF) : RUNTIME_OFF);
+  const runtimeStanding = async (owner: string, client?: PersonalRuntimeClient) => (runtime ? await runtime.standing(owner, client).catch(() => RUNTIME_OFF) : RUNTIME_OFF);
   /** Why a runtime assistant cannot run now, or null when it can. */
   const runtimeProblem = (standing: PersonalRuntimeStanding): PersonalAssistantUnavailableReason | null =>
     standing.state === 'off' ? 'runtime_off' : standing.state === 'signed_in' ? null : 'runtime_sign_in';
@@ -204,11 +217,12 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, t
     // gone but another exists, so setup must not also say that no key is connected.
     const other = !usable && providerEnabled && named ? await connections.resolve(owner) : null;
     const owns = Boolean(usable) || (other?.status === 'active' && other.ownerUserId === owner);
-    const standing = await runtimeStanding(owner);
+    // A runtime assistant's standing is its consented CLI's; before consent, the CLI it would consent to.
+    const standing = await runtimeStanding(owner, named?.engine === 'runtime' ? runtimeClientOf(named.consentProvider) : undefined);
     const setup = {
       provider: providerEnabled ? 'on' as const : 'off' as const,
       connection: owns ? 'active' as const : 'none' as const,
-      runtime: { state: standing.state, payer: standing.payer, accountLabel: standing.accountLabel },
+      runtime: { state: standing.state, payer: standing.payer, accountLabel: standing.accountLabel, client: standing.state === 'off' ? null : standing.client ?? 'claude_code' },
     };
     const enablement = await ports.runs.enablement(owner);
     if (!enablement) return { state: 'not_enabled', unavailableReason: null, enablement: null, setup, today: null, disclosure };
@@ -270,7 +284,8 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, t
     if (!enablement) throw new ConflictError('Your assistant is not enabled', 'PERSONAL_RUN_NOT_ENABLED');
     if (enablement.status === 'paused') throw new ConflictError('Your assistant is paused', 'PERSONAL_RUN_PAUSED');
     const onRuntime = enablement.engine === 'runtime';
-    const problem = onRuntime ? runtimeProblem(await runtimeStanding(owner)) : null;
+    const runtimeClient = onRuntime ? runtimeClientOf(enablement.consentProvider) : null;
+    const problem = onRuntime ? runtimeProblem(await runtimeStanding(owner, runtimeClient ?? undefined)) : null;
     if (problem) throw unavailable(problem);
     const usableNow = onRuntime ? null : await usableConnection(connections, providerEnabled, enablement, toolTurns);
     if (usableNow?.problem) throw unavailable(usableNow.problem);
@@ -288,7 +303,8 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, t
     if (!usableNow) {
       // F-022 "Caps": a runtime run reserves no money; it counts against the owner's runs per day.
       if (ports.runs.runtimeRunsToday && await ports.runs.runtimeRunsToday(owner, enablement.timeZone) >= RUNTIME_RUN_LIMITS.runsPerDay) throw new PersonalRunCappedError();
-      reservation = { reservedMicros: 0, provider: 'anthropic', model: RUNTIME_MODEL };
+      const vendor = runtimeVendor(runtimeClient);
+      reservation = { reservedMicros: 0, provider: vendor.provider, model: vendor.model };
     } else {
       const spend = await ports.runs.spendToday(owner, enablement.timeZone);
       // PROV-3: the run reserves its largest possible cost at the connection's price.
@@ -330,14 +346,16 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, t
         const { workspaceId } = await ports.access.requireInvoke(principal, input.agentId, { lock: true });
         if (await ports.runs.enablement(owner, { lock: true })) throw new ConflictError('Your assistant is already enabled', 'PERSONAL_RUN_ALREADY_ENABLED');
         if (input.engine === 'runtime') {
-          // The owner's own signed-in Claude Code (F-022 AIM-3): its consent names the plan as payer and
-          // Anthropic as where the place's content goes. No API key connection is used or needed.
+          // The owner's own signed-in Claude Code or Codex (F-022 AIM-3, T6): its consent names the plan as
+          // payer and the CLI's vendor as where the place's content goes, so the runs use that CLI only.
+          // No API key connection is used or needed.
           const standing = await runtimeStanding(owner);
-          if (standing.state === 'off') throw new ConflictError('Claude Code sign-in is off on this Flux server', 'PERSONAL_RUN_RUNTIME_OFF');
-          if (standing.state !== 'signed_in') throw new ConflictError('Sign in to Claude in Settings first', 'PERSONAL_RUN_RUNTIME_SIGN_IN');
+          if (standing.state === 'off') throw new ConflictError('Subscription sign-in is off on this Flux server', 'PERSONAL_RUN_RUNTIME_OFF');
+          if (standing.state !== 'signed_in') throw new ConflictError('Sign in to Claude or ChatGPT in Settings first', 'PERSONAL_RUN_RUNTIME_SIGN_IN');
+          const vendor = runtimeVendor(standing.client);
           const created = await ports.runs.insertEnablement({
-            ownerUserId: owner, connectionId: null, consentVersion: PERSONAL_RUNTIME_CONSENT_VERSION, consentProvider: 'anthropic', consentModel: RUNTIME_MODEL,
-            consentPayerOrganization: runtimePayerLabel(standing), consentPayerWorkspace: standing.accountLabel ?? 'Claude Code',
+            ownerUserId: owner, connectionId: null, consentVersion: PERSONAL_RUNTIME_CONSENT_VERSION, consentProvider: vendor.provider, consentModel: vendor.model,
+            consentPayerOrganization: runtimePayerLabel(standing), consentPayerWorkspace: standing.accountLabel ?? vendor.name,
             perRunCents: input.perRunCents, dailyCapCents: input.dailyCapCents, timeZone: input.timeZone, engine: 'runtime',
           });
           if (!created) throw new ConflictError('Your assistant is already enabled', 'PERSONAL_RUN_ALREADY_ENABLED');

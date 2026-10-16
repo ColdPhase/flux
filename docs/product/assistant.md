@@ -210,7 +210,7 @@ second.
 
     ```text
     Sign in to ChatGPT
-    Enter this code on chatgpt.com:
+    Enter this code on auth.openai.com:
           ABCD-1234
     [ Copy and open ChatGPT ]
     Flux notices when you're done.        Show details ⌄

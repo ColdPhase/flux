@@ -1,15 +1,15 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import {
   AGENT_RUNTIME_BINDING_PATH, AGENT_RUNTIME_CHECK_PATH, AGENT_RUNTIME_CLIENTS, AGENT_RUNTIME_CONSOLE_PATH, AGENT_RUNTIME_ERRORS, AGENT_RUNTIME_NOTICE_PATH,
-  AGENT_RUNTIME_PATH, AGENT_RUNTIME_SIGN_OUT_PATH, CLAUDE_CODE_SIGN_IN_METHODS,
-  type AgentRuntimeClient, type AgentRuntimeConsoleTicket, type ClaudeCodeSignInMethod,
+  AGENT_RUNTIME_PATH, AGENT_RUNTIME_SIGN_OUT_PATH, CLAUDE_CODE_SIGN_IN_METHODS, CODEX_SIGN_IN_METHODS,
+  type AgentRuntimeClient, type AgentRuntimeConsoleTicket,
 } from '@flux/contracts';
 import { agentRuntimeUseCases, InvalidInputError, type AgentRuntimeConfig, type Database } from '@flux/core';
 import { agentRuntimeStore } from '@flux/db';
 import { createRuntimeManagerClient, runtimeManagerPort } from '@flux/runtime-protocol';
 import type { SessionResolver } from '../identity/index.js';
 import { forbidden, UNAUTHENTICATED, useDomainErrors } from '../http/errors.js';
-import { accountFingerprinter, ConsoleTickets, serveBrowserConsole } from './console.js';
+import { accountFingerprinter, CONSOLE_METHODS, ConsoleTickets, serveBrowserConsole } from './console.js';
 
 /**
  * The owner's agent runtime (F-022 AIM-3). T3 #278: `GET /api/v1/agent-runtime`, `POST` and `DELETE
@@ -67,10 +67,11 @@ export async function agentRuntimeRoutes(app: FastifyInstance, { db, sessions, c
   // The console: a ticket for this owner and this session, for one method of the fixed list.
   app.post(AGENT_RUNTIME_CONSOLE_PATH, async (request, reply) => {
     const session = await sessions.requirePrincipal(request);
-    const { client, method } = fields(request, { client: ['claude_code'] as const, method: CLAUDE_CODE_SIGN_IN_METHODS });
+    const { client, method } = fields(request, { client: AGENT_RUNTIME_CLIENTS, method: [...CLAUDE_CODE_SIGN_IN_METHODS, ...CODEX_SIGN_IN_METHODS] });
+    if (!CONSOLE_METHODS[client as AgentRuntimeClient].includes(method)) throw new InvalidInputError('This sign-in method belongs to the other program', AGENT_RUNTIME_ERRORS.invalidInput);
     // Checks the switch, the program and the slot now, so the person hears why before any terminal opens.
     await runtime.consoleTarget(session.user.id, client);
-    const ticket: AgentRuntimeConsoleTicket = tickets.issue({ ownerUserId: session.user.id, client, method: method as ClaudeCodeSignInMethod }, session.sessionId);
+    const ticket: AgentRuntimeConsoleTicket = tickets.issue({ ownerUserId: session.user.id, client: client as AgentRuntimeClient, method }, session.sessionId);
     return reply.headers(noStore).send(ticket);
   });
   const attached = new WeakMap<FastifyRequest, { userId: string; sessionId: string }>();

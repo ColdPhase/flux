@@ -252,9 +252,11 @@ describe('binding a slot to its owner', () => {
     }
   });
 
-  test('Codex is pending in this version even when the operator lists it', async () => {
+  test('Codex is available when the operator lists it (F-022 T6, #281); a client the operator did not list is off', async () => {
     const runtime = agentRuntimeUseCases({ ...on, clients: ['claude_code', 'codex'] }, memoryStore().store, fakeManager([]).manager);
-    assert.deepEqual((await runtime.status('ada')).clients, { claude_code: 'available', codex: 'pending' });
+    assert.deepEqual((await runtime.status('ada')).clients, { claude_code: 'available', codex: 'available' });
+    const claudeOnly = agentRuntimeUseCases(on, memoryStore().store, fakeManager([]).manager);
+    assert.equal((await claudeOnly.status('ada')).clients.codex, 'off');
   });
 
   test('a slot that refuses the bind (stray entry) leaves the pool and the owner may try again', async () => {
@@ -423,7 +425,7 @@ describe('sign-in to Claude Code (T4 #279)', () => {
     return (await runtime.recordSignIn('ada', { operation, method }, { ...reported, bootId: operation.bootId })).status;
   }
 
-  test('the console runs in the owner\'s own slot, bound first; off, Codex and a removed runtime are refused', async () => {
+  test('the console runs in the owner\'s own slot, bound first; off, a client the operator did not list and a removed runtime are refused', async () => {
     const { runtime, target } = await owned();
     assert.equal(target.slot, 'runtime-1');
     assert.equal((await runtime.status('ada')).binding?.state, 'active');
@@ -539,6 +541,10 @@ describe('sign-in to Claude Code (T4 #279)', () => {
   test('the payer comes from the reported method only, never guessed', () => {
     assert.equal(runtimePayer('claude.ai'), 'claude_plan');
     assert.equal(runtimePayer('api_key'), 'anthropic_console');
+    // Codex (T6 #281): the slot names its methods so a payer is never mistaken for Claude's.
+    assert.equal(runtimePayer('chatgpt'), 'chatgpt_plan');
+    assert.equal(runtimePayer('openai_api_key'), 'openai_api');
+    assert.equal(runtimePayer('access_token'), 'unknown');
     for (const method of ['unknown', 'oauth_token', 'third_party', 'api_key_helper', null]) assert.equal(runtimePayer(method), 'unknown');
   });
 });
