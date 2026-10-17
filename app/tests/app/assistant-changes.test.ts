@@ -473,6 +473,25 @@ describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A
     await complete(run.runId);
   });
 
+  test('#580 review: a 90 KB applied page edit commits cleanly; a 70 KB waiting change is refused with 413 and nothing is written', async () => {
+    const mine = await doc(owner, 'Long log');
+    const theirs = await doc(peer, 'Their long log');
+    const run = await liveRun();
+    const big = 'measurement line. '.repeat(5_000);
+    const saved = await run.call('flux_update_doc', { docId: mine.id, expectedVersion: mine.version, changes: { body: big } });
+    assert.equal(result(saved.message)?.isError, undefined, text(saved.message));
+    assert.equal((await docBody(mine.id)).body, big);
+    const [applied] = await changesOf(run.runId);
+    assert.equal(applied!.state, 'applied');
+    const kept = (await pool.query(`SELECT octet_length(prepared_command::text) AS n FROM assistant_changes WHERE id = $1`, [applied!.id])).rows[0].n as number;
+    assert.ok(kept < 1_000, 'an applied change keeps only a summary of its call');
+    const tooLarge = await run.call('flux_update_doc', { docId: theirs.id, expectedVersion: theirs.version, changes: { body: 'x'.repeat(70_000) } });
+    assert.equal(refusalCode(tooLarge.message), 'ASSISTANT_CHANGE_TOO_LARGE');
+    assert.equal((await changesOf(run.runId)).length, 1, 'nothing written for the refused waiting change');
+    assert.equal((await docBody(theirs.id)).body, 'First text');
+    await complete(run.runId);
+  });
+
   test('the change log goes with its project when the project is erased', async () => {
     const scratch = await createProject(owner, ws.id, 'Scratch', 'workspace');
     const conversation = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${scratch.id}/conversations`,

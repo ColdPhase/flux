@@ -46,6 +46,11 @@ export function assistantChangeRows(db: DbExecutor) {
       const [row] = await db.select().from(c).where(and(eq(c.runId, runId), eq(c.clientCommandId, clientCommandId)));
       return row ?? null;
     },
+    /** The size the `prepared_command` CHECK measures: the jsonb value's text. */
+    async preparedBytes(command: unknown): Promise<number> {
+      const row = await first<{ bytes: number }>(db, sql`SELECT octet_length((${JSON.stringify(command)}::jsonb)::text) AS bytes`);
+      return Number(row?.bytes ?? Number.MAX_SAFE_INTEGER);
+    },
     async lock(id: string): Promise<AssistantChangeRow | null> {
       const [row] = await db.select().from(c).where(eq(c.id, id)).for('update');
       return row ?? null;

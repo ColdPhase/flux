@@ -47,6 +47,16 @@ export function redactCall<T>(value: T): T {
 }
 
 const enforceRead = (allowed: boolean) => { if (!allowed) throw new DomainError(404, 'PROJECT_NOT_FOUND', 'Project not found'); };
+/**
+ * What an applied or skipped change keeps of its call: the tool and which fields it changed (a status value only),
+ * enough for its words ("close task"). Only a waiting change keeps the full call, because only it is replayed.
+ */
+export function callSummary(call: AssistantCall): AssistantCall {
+  const changes = call.args.changes;
+  if (!changes || typeof changes !== 'object' || Array.isArray(changes)) return { tool: call.tool, args: {} };
+  return { tool: call.tool, args: { changes: Object.fromEntries(Object.entries(changes as Record<string, unknown>)
+    .map(([key, value]) => [key, key === 'status' && typeof value === 'string' ? value : true])) } };
+}
 const invalidated = (message: string) => new DomainError(403, 'ASSISTANT_CHANGE_INVALIDATED', message);
 export const SKIPPED = 'ASSISTANT_CHANGE_SKIPPED';
 const isVersionConflict = (error: unknown) => error instanceof DomainError && error.status === 409
@@ -268,7 +278,8 @@ export function assistantChangeExecutor(db: Database, claims: FluxMcpClaims) {
             if (outcome.reason === 'outside_rights' && !decider)
               for (const member of await needsYouRows(tx).workspaceMembersOfProject(input.projectId, 50))
                 if (member.id !== claims.ownerUserId && (await evaluateProject({ kind: 'human', id: member.id }, 'project.write', input.projectId, tx)).allowed) { decider = member.id; break; }
-            if (Buffer.byteLength(JSON.stringify(call), 'utf8') > ASSISTANT_CHANGE_LIMITS.preparedBytes)
+            // Measured exactly as the column's CHECK measures it (jsonb text), before anything is written.
+            if (await rows.preparedBytes(call) > ASSISTANT_CHANGE_LIMITS.preparedBytes)
               throw new DomainError(413, 'ASSISTANT_CHANGE_TOO_LARGE', 'This change is too large to keep for your OK');
             await rows.insert({ id: randomUUID(), workspaceId: authority.workspaceId, projectId: input.projectId, runId, ownerUserId: claims.ownerUserId,
               agentId: authority.agentId, clientCommandId: input.clientCommandId, fingerprint, tool: call.tool, operation, objectType: target.objectType,
@@ -300,7 +311,7 @@ export function assistantChangeExecutor(db: Database, claims: FluxMcpClaims) {
           const createdAt = new Date();
           await rows.insert({ id: randomUUID(), workspaceId: authority.workspaceId, projectId: input.projectId, runId, ownerUserId: claims.ownerUserId,
             agentId: authority.agentId, clientCommandId: input.clientCommandId, fingerprint, tool: call.tool, operation, objectType: target.objectType,
-            objectId: target.objectId ?? createdId, objectTitle: target.title, state: 'applied', authority: 'owner_request', preparedCommand: call, policyVersion: authority.policyVersion,
+            objectId: target.objectId ?? createdId, objectTitle: target.title, state: 'applied', authority: 'owner_request', preparedCommand: callSummary(call), policyVersion: authority.policyVersion,
             beforeVersion: target.beforeVersion, afterVersion: after, receipt, createdAt,
             expiresAt: new Date(createdAt.getTime() + ASSISTANT_CHANGE_LIMITS.expiryDays * 86_400_000) });
         }
@@ -320,7 +331,7 @@ export function assistantChangeExecutor(db: Database, claims: FluxMcpClaims) {
           const createdAt = new Date();
           await rows.insert({ id: randomUUID(), workspaceId: held.workspaceId, projectId: input.projectId, runId, ownerUserId: claims.ownerUserId,
             agentId: held.agentId, clientCommandId: input.clientCommandId, fingerprint, tool: call.tool, operation, objectType: target.objectType,
-            objectId: target.objectId, objectTitle: target.title, state: 'refused', refusal, preparedCommand: call, otherUserId: null, policyVersion: held.policyVersion, beforeVersion: target.beforeVersion,
+            objectId: target.objectId, objectTitle: target.title, state: 'refused', refusal, preparedCommand: callSummary(call), otherUserId: null, policyVersion: held.policyVersion, beforeVersion: target.beforeVersion,
             createdAt, expiresAt: new Date(createdAt.getTime() + ASSISTANT_CHANGE_LIMITS.expiryDays * 86_400_000) });
         });
         throw new DomainError(409, SKIPPED, refusal);
