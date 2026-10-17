@@ -265,7 +265,11 @@ describe('a run on the owner\'s own Claude Code in the agent runtime (F-022 T5, 
 
   test('a second concurrent run: refused while one is in flight; a busy slot ends a run as slot_busy', async () => {
     const first = await ask();
+    // F-027 A4: one request may wait behind the working one; a third is refused.
+    const behind = await ask();
+    assert.equal(behind.run.status, 'queued');
     await assert.rejects(ask(), (error: unknown) => (error as { code?: string }).code === 'PERSONAL_RUN_IN_FLIGHT');
+    await pool.query(`UPDATE personal_runs SET status = 'stopped', completed_at = now(), cost_state = 'released', charged_micros = 0 WHERE id = $1`, [behind.run.id]);
     // The slot's lane is serial (sign-in, status, run and sign-out never overlap): a sign-out that is still
     // running makes the run busy at once; it never waits in the lane.
     await scenario('logout_hangs');

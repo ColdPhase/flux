@@ -2,7 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { AGENT_MCP_ENTRIES, ASSISTANT_CHANGE_LIMITS, assistantChangeWords, type AgentJsonValue, type AgentOperation, type AgentPostcondition,
   type AgentScope, type AssistantObjectType, type AuthenticatedAgentRuntime } from '@flux/contracts';
 import { assistantChangeRows, lockAgentMcpPolicy, needsYouRows, sketchRows, type AssistantChangeRow, type DbExecutor } from '@flux/db';
-import { classifyAssistantChange, DomainError, evaluateProject, loadActor, redactSecrets, type Database,
+import { changedParagraphs, classifyAssistantChange, DomainError, fieldWords, type UndoRecord, evaluateProject, loadActor, redactSecrets, type Database,
   type Transaction } from '@flux/core';
 import { nativeConversationsInEventSession } from '../conversation/store.js';
 import { nativeDocsInEventSession } from '../docs/adapters.js';
@@ -46,6 +46,7 @@ export function redactCall<T>(value: T): T {
   return value;
 }
 
+const created = (title: string): UndoRecord => ({ plan: { kind: 'created' }, before: null, after: title || null });
 const enforceRead = (allowed: boolean) => { if (!allowed) throw new DomainError(404, 'PROJECT_NOT_FOUND', 'Project not found'); };
 /**
  * What an applied or skipped change keeps of its call: the tool and which fields it changed (a status value only),
@@ -74,6 +75,8 @@ interface Target {
   /** The other person who made it (a person only), for "Jonas's task" and as a suggestion's recipient. */
   maker: string | null;
   beforeVersion: number | null; typist: { id: string; name: string } | null;
+  /** What Undo needs, read before the change (A4); null when the change cannot be taken back. */
+  undo: UndoRecord | null;
   words: ReturnType<typeof assistantChangeWords>;
 }
 
@@ -84,11 +87,11 @@ async function describe(tx: Transaction, operation: string, objectId: string | n
   const ours = (maker: { userId: string | null; agentId: string | null } | null) => !!maker && (maker.userId === owner || maker.agentId === agentId);
   const otherPerson = (maker: { userId: string | null; agentId: string | null } | null) => maker?.userId && maker.userId !== owner ? maker.userId : null;
   const base = { objectType: OBJECT[operation] ?? 'work', objectId, title: '', mine: true, removal: false, maker: null, beforeVersion: null, typist: null,
-    words: assistantChangeWords(operation) } satisfies Target;
+    undo: null as UndoRecord | null, words: assistantChangeWords(operation) } satisfies Target;
   const text = (value: unknown) => typeof value === 'string' ? value.slice(0, 200) : '';
   switch (operation) {
     case 'work.create': case 'doc.create': case 'map.create': case 'decision.propose':
-      return { ...base, objectId: null, title: text(payload.title) };
+      return { ...base, objectId: null, title: text(payload.title), undo: operation === 'decision.propose' || operation === 'map.create' ? null : created(text(payload.title)) };
     case 'result.record': {
       const finishes = payload.finishes as { id?: string } | undefined;
       const work = finishes?.id ? await rows.work(finishes.id) : null;
@@ -102,17 +105,26 @@ async function describe(tx: Transaction, operation: string, objectId: string | n
       const changes = (payload.changes ?? {}) as Record<string, unknown>;
       const words = assistantChangeWords(operation, { status: changes.status as string | undefined, titleOnly: Object.keys(changes).length === 1 && 'title' in changes });
       if (!work) return { ...base, words, mine: false };
+      const tracked = ['title', 'outcome', 'status', 'blocker'];
+      const fields = Object.fromEntries(Object.keys(changes).filter((key) => tracked.includes(key))
+        .map((key) => [key, { before: (work as Record<string, unknown>)[key] ?? null, after: changes[key] ?? null }]));
+      const undo: UndoRecord | null = Object.keys(fields).length && Object.keys(fields).length === Object.keys(changes).length
+        ? { plan: { kind: 'fields', fields }, ...fieldWords(fields) } : null;
       // A task is yours when you or your assistant own it, or, with no owner, made it.
       const maker = work.ownerUserId || work.ownerAgentId ? { userId: work.ownerUserId, agentId: work.ownerAgentId }
         : { userId: work.createdByKind === 'human' ? work.createdById : null, agentId: work.createdByKind === 'agent' ? work.createdById : null };
-      return { ...base, words, title: `#${work.number} ${work.title}`.slice(0, 200), mine: ours(maker), maker: otherPerson(maker),
+      return { ...base, words, undo, title: `#${work.number} ${work.title}`.slice(0, 200), mine: ours(maker), maker: otherPerson(maker),
         beforeVersion: typeof payload.expectedVersion === 'number' ? payload.expectedVersion : work.version };
     }
     case 'doc.update': {
       const doc = objectId ? await rows.doc(objectId) : null;
       if (!doc) return { ...base, mine: false };
       const mine = ours(doc) && !await rows.docEditedByOthers(doc.id, owner, agentId);
-      return { ...base, title: doc.title, mine, maker: otherPerson(doc), typist: await rows.liveTypist(doc.id, owner),
+      const changes = (payload.changes ?? {}) as Record<string, unknown>;
+      const names = (['title', 'body', 'state'] as const).filter((key) => typeof changes[key] === 'string' && changes[key] !== (doc as Record<string, unknown>)[key]);
+      const words = names.includes('body') ? { before: null, after: (() => { const n = changedParagraphs(doc.body, String(changes.body));
+        return `${n} paragraph${n === 1 ? '' : 's'} changed`; })() } : fieldWords(Object.fromEntries(names.map((key) => [key, { before: (doc as Record<string, unknown>)[key], after: changes[key] }])));
+      return { ...base, undo: names.length ? { plan: { kind: 'doc', fields: names }, ...words } : null, title: doc.title, mine, maker: otherPerson(doc), typist: await rows.liveTypist(doc.id, owner),
         beforeVersion: typeof payload.expectedVersion === 'number' ? payload.expectedVersion : doc.version };
     }
     case 'map.rename': {
@@ -121,18 +133,27 @@ async function describe(tx: Transaction, operation: string, objectId: string | n
     }
     case 'map.thought.create': case 'map.link.create': {
       const map = objectId ? await rows.map(objectId) : null;
-      return { ...base, objectId: null, title: operation === 'map.thought.create' ? text(payload.text) : map?.title ?? '' };
+      return { ...base, objectId: null, title: operation === 'map.thought.create' ? text(payload.text) : map?.title ?? '', undo: created(operation === 'map.thought.create' ? text(payload.text) : '') };
     }
     case 'map.thought.update': case 'map.thought.delete': {
       const [thought] = await rows.thoughts([String(payload.thoughtId)]);
-      return { ...base, objectId: thought?.id ?? null, title: thought?.text.slice(0, 200) ?? '', mine: ours(thought ?? null), maker: otherPerson(thought ?? null),
+      const changes = (payload.changes ?? {}) as Record<string, unknown>;
+      const fields = thought ? Object.fromEntries((['text', 'x', 'y'] as const).filter((key) => key in changes && changes[key] !== thought[key])
+        .map((key) => [key, { before: thought[key], after: changes[key] }])) : {};
+      const undo: UndoRecord | null = operation === 'map.thought.update' && Object.keys(fields).length && Object.keys(changes).every((key) => key in fields)
+        ? { plan: { kind: 'fields', fields }, ...fieldWords(fields) } : null;
+      return { ...base, undo, objectId: thought?.id ?? null, title: thought?.text.slice(0, 200) ?? '', mine: ours(thought ?? null), maker: otherPerson(thought ?? null),
         removal: operation === 'map.thought.delete', beforeVersion: thought?.version ?? null };
     }
     case 'map.positions.update': {
       const moves = (payload.moves ?? []) as { id: string }[];
       const thoughts = await rows.thoughts(moves.map((move) => move.id));
       const others = thoughts.filter((thought) => !ours(thought));
-      return { ...base, objectId: null, title: `${moves.length} thought${moves.length === 1 ? '' : 's'}`,
+      const undo: UndoRecord | null = thoughts.length === moves.length ? { plan: { kind: 'positions', moves: moves.map((move) => {
+        const old = thoughts.find((item) => item.id === move.id)!; const to = move as unknown as { x: number; y: number };
+        return { id: move.id, before: { x: old.x, y: old.y }, after: { x: to.x, y: to.y } };
+      }) }, before: null, after: `${moves.length} moved` } : null;
+      return { ...base, undo, objectId: null, title: `${moves.length} thought${moves.length === 1 ? '' : 's'}`,
         mine: thoughts.length === moves.length && !others.length, maker: others.map(otherPerson).find(Boolean) ?? null };
     }
     case 'map.link.delete': {
@@ -299,7 +320,14 @@ export function assistantChangeExecutor(db: Database, claims: FluxMcpClaims) {
           throw invalidated('You can no longer change this. Ask again');
         }
         const produced = await effect(natives(tx, session, authority.runtime, live, input.clientCommandId, operation, fingerprint, releases));
-        const receipt = { value: produced.value, postconditions: produced.postconditions, authority: approval?.purpose ?? 'owner_request', runId,
+        // What the change really wrote (a redacted text differs from the call), so Undo compares with the truth.
+        let undo = target.undo;
+        if (undo?.plan.kind === 'fields' && objectId) {
+          const live = operation === 'work.update' ? await rows.work(objectId) : (await rows.thoughts([target.objectId ?? objectId]))[0];
+          if (live) undo = { ...undo, plan: { kind: 'fields', fields: Object.fromEntries(Object.entries(undo.plan.fields)
+            .map(([key, value]) => [key, { before: value.before, after: (live as Record<string, unknown>)[key] ?? null }])) } };
+        }
+        const receipt = { value: produced.value, postconditions: produced.postconditions, ...(undo ? { undo } : {}), authority: approval?.purpose ?? 'owner_request', runId,
           engine: authority.run.engine, ownerUserId: claims.ownerUserId, agentId: authority.agentId, preparedBy: authority.agentId,
           ...(approval?.decidedBy ? { approvedBy: approval.decidedBy } : {}) } as unknown as Record<string, unknown>;
         const after = afterVersion(produced.postconditions);

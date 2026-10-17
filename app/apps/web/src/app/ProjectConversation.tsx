@@ -576,7 +576,7 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
                 const workTitle = proposal?.change.finishes ? referenceWork.rows.get(`work:${proposal.change.finishes.workId}`)?.title ?? 'a work item' : null;
                 const runChanges = assistantChanges.byRun.get(answer.runId);
                 return [divider, <AnswerItem key={entry.key} answer={answer} mine={answer.assistant.ownerUserId === me.user.id} lookups={lookups} when={when} clock={clock}
-                  proposal={proposal} changes={runChanges ? <WaitingChanges changes={runChanges} onChanged={assistantChanges.refresh} /> : null}
+                  proposal={proposal} resultInMessage={!!runChanges?.some((change) => change.state === 'applied' || change.state === 'applied_after_wait')} changes={runChanges ? <WaitingChanges changes={runChanges} onChanged={assistantChanges.refresh} /> : null}
                   proposalControls={proposal ? <ProposalCard proposal={proposal} workTitle={workTitle} {...proposalAuthority(proposal.change.finishes)} onRefreshTarget={referenceWork.refresh} meId={me.user.id}
                     onDecide={async (decision) => {
                       try { await assistant.decide(proposal, decision); } finally { revalidator.revalidate(); }
@@ -607,6 +607,8 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
               <li key={`changes-${runId}`} className="project-convo__message assistant-waiting-item"><WaitingChanges changes={runChanges} onChanged={assistantChanges.refresh} /></li>
             ))}
             {assistant.run ? <WorkingLine key={assistant.run.id} run={assistant.run} onStop={assistant.stop} onRetry={() => assistant.retry(assistant.run!.id)} onDismiss={assistant.dismissRun} /> : null}
+            {assistant.queued ? <li className="assistant-queued" aria-live="polite">Next: “{assistant.queued.prompt.length > 60 ? `${assistant.queued.prompt.slice(0, 60)}…` : assistant.queued.prompt}”. It starts when this one ends ·
+              <Button variant="link" onClick={() => void assistant.cancelQueued().catch(() => undefined)}>Cancel</Button></li> : null}
             </ol>
           </> : null}
         </section>

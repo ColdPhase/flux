@@ -260,7 +260,11 @@ describe('personal assistant runs (#68, fake compute: no provider pass is claime
     assert.equal(again.run.id, first.run.id);
     assert.equal(again.created, false);
     await assert.rejects(runs.invoke(human(hubert), thread.id, { clientRunId, kind: 'summarize', prompt: 'Something else' }), { code: 'IDEMPOTENCY_CONFLICT' });
+    // F-027 A4: one request may wait behind the working one; a third is refused.
+    const behind = await ask(hubert);
+    assert.equal(behind.run.status, 'queued');
     await assert.rejects(ask(hubert), { code: 'PERSONAL_RUN_IN_FLIGHT' });
+    await pool.query(`UPDATE personal_runs SET status = 'stopped', completed_at = now(), cost_state = 'released', charged_micros = 0 WHERE id = $1`, [behind.run.id]);
 
     // Stopped before read, through the API.
     const stopped = expectStatus(await hubert.browser.request('POST', `/api/v1/assistant-runs/${first.run.id}/stop`), 200) as AssistantRun;

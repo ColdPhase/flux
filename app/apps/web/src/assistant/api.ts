@@ -3,7 +3,7 @@ import {
   assistantProposalAcceptPath, assistantProposalDismissPath, assistantRunPath, assistantRunRetryPath, assistantRunStopPath,
   conversationAssistantAnswersPath, conversationAssistantRunsPath, projectAssistantProposalsPath,
   assistantChangeActionPath, assistantRunChangesActionPath, conversationAssistantChangesPath,
-  type AssistantChange, type AssistantChangeDecision, type AssistantChangesDecided,
+  type AssistantChange, type AssistantChangeDecision, type AssistantChangesDecided, type AssistantRunUndone,
   type AssistantAnswer, type AssistantProposal, type AssistantRun, type EnablePersonalRunsCommand, type InvokeAssistantRunCommand,
   type Page, type PersonalAssistantStatus, type UpdatePersonalRunsCommand,
 } from '@flux/contracts';
@@ -48,3 +48,7 @@ export const sendChange = (change: Pick<AssistantChange, 'id' | 'version'>) =>
 export const applyRunChanges = (runId: string) => request<AssistantChangesDecided>(assistantRunChangesActionPath(runId, 'apply'), { method: 'POST', body: {} });
 export const notNowRunChanges = (runId: string) => request<AssistantChangesDecided>(assistantRunChangesActionPath(runId, 'not-now'), { method: 'POST', body: {} });
 export const moveRunChangesToInbox = (runId: string) => request<{ moved: number }>(assistantRunChangesActionPath(runId, 'inbox'), { method: 'POST', body: {} });
+// Undo (F-027 A4): one change, or the whole run's message. The server refuses cleanly when the object changed since.
+export const undoChange = (change: Pick<AssistantChange, 'id'>) =>
+  request<AssistantChangeDecision>(assistantChangeActionPath(change.id, 'undo'), { method: 'POST', body: {} });
+export const undoRunChanges = (runId: string) => request<AssistantRunUndone>(assistantRunChangesActionPath(runId, 'undo'), { method: 'POST', body: {} });

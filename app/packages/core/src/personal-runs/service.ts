@@ -298,7 +298,7 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, t
     const taskFence = await ports.runs.prepareTaskUse(place.projectId, conversationId.toLowerCase());
     // A run a crashed worker left behind must not block the owner forever (the job expires after 5 minutes).
     for (const ended of await ports.runs.endStale(owner, STALE_AFTER_SECONDS)) await announce(ports, ended);
-    if (await ports.runs.hasRunInFlight(owner)) throw new ConflictError('Your assistant is already working on a request', 'PERSONAL_RUN_IN_FLIGHT');
+    if (await ports.runs.inFlightCount(owner) >= 2) throw new ConflictError('Your assistant is already working on a request', 'PERSONAL_RUN_IN_FLIGHT');
     let reservation: { reservedMicros: number; provider: PersonalConnection['provider']; model: string };
     if (!usableNow) {
       // F-022 "Caps": a runtime run reserves no money; it counts against the owner's runs per day.

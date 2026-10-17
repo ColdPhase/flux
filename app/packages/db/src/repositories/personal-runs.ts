@@ -120,9 +120,21 @@ export function personalRunRows(db: DbExecutor) {
 
     findRun,
 
-    async hasRunInFlight(ownerUserId: string) {
-      const rows = await db.select({ id: r.id }).from(r).where(and(eq(r.ownerUserId, ownerUserId), inArray(r.status, IN_FLIGHT))).limit(1);
+    async inFlightCount(ownerUserId: string) {
+      const rows = await db.select({ id: r.id }).from(r).where(and(eq(r.ownerUserId, ownerUserId), inArray(r.status, IN_FLIGHT))).limit(3);
+      return rows.length;
+    },
+
+    async laneBusy(ownerUserId: string, exceptRunId: string) {
+      const rows = await db.select({ id: r.id }).from(r).where(and(eq(r.ownerUserId, ownerUserId), inArray(r.status, ['reading', 'dispatching']), sql`${r.id} <> ${exceptRunId}`)).limit(1);
       return rows.length > 0;
+    },
+
+    async startableQueued(limit: number) {
+      const rows = await db.execute(sql`SELECT DISTINCT ON (q.owner_user_id) q.id FROM personal_runs q WHERE q.status = 'queued'
+        AND NOT EXISTS (SELECT 1 FROM personal_runs a WHERE a.owner_user_id = q.owner_user_id AND a.status IN ('reading', 'dispatching'))
+        ORDER BY q.owner_user_id, q.created_at, q.id LIMIT ${limit}`);
+      return (rows.rows as { id: string }[]).map((row) => row.id);
     },
 
     prepareTaskUse: (projectId: string, conversationId: string, sources: readonly { type: string; id: string }[] = []) =>

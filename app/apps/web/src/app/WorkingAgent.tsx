@@ -33,7 +33,7 @@ function useWorkingRun(identity: string) {
     const current = () => scope.live && lifetime.current === scope && revision === scope.revision && !controller.signal.aborted;
     void listOwnRuns(controller.signal).then((page) => {
       if (!current()) return;
-      const run = page.items.find(isWorking) ?? null;
+      const run = page.items.find((item) => isWorking(item) && item.status !== 'queued') ?? page.items.find(isWorking) ?? null;
       setSnapshot((previous) => ({ identity, run, stopping: false,
         failed: previous.identity === identity && previous.run?.id === run?.id && previous.failed }));
     }, () => {
