@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { and, asc, desc, eq, gt, inArray, isNull, or, sql } from 'drizzle-orm';
-import type { CoWorkEnqueueCommand, CoWorkRequestLimits, CoWorkRequestRecord, CoWorkInboxRecord, CoWorkSourceRef } from '@flux/contracts';
+import { coWorkRequestStatus, type CoWorkEnqueueCommand, CoWorkRequestLimits, CoWorkRequestRecord, CoWorkInboxRecord, CoWorkSourceRef } from '@flux/contracts';
 import { prepareReferencedTaskUse, referencedTaskIds } from './task-targets.js';
 import type { TaskUseFence } from './task-use.js';
 import * as schema from '../schema.js';
@@ -35,7 +35,8 @@ function inbox(row: { request: Row; unitState: string; unitGeneration: number; a
   const request = record(row.request);
   const lost = request.state === 'claimed' && (row.unitState !== 'claimed' || row.leaseExpired
     || request.claimedGeneration !== row.unitGeneration || row.assignment !== request.recipientConnectionId);
-  return { ...request, effectiveState: row.requestExpired ? 'expired' : lost ? 'queued' : request.state,
+  const effectiveState = row.requestExpired ? 'expired' : lost ? 'queued' : request.state;
+  return { ...request, effectiveState, status: coWorkRequestStatus(effectiveState),
     readinessReason: row.requestExpired ? 'request_expired'
       : row.assignment !== request.recipientConnectionId ? 'assignment_changed'
       : row.unitState === 'completed' || row.unitState === 'stopped' ? 'unit_closed' : lost ? 'claim_lost' : null };

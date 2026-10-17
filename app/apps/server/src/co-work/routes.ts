@@ -17,7 +17,8 @@ export async function coWorkRoutes(app: FastifyInstance, { db, sessions }: { db:
     return {
       taskId: task.id,
       requests: rows.requests.map((row) => ({ id: row.id, kind: row.kind as TaskCoordinationRequest['kind'],
-        state: row.state as TaskCoordinationRequest['state'], reason: row.reason, target: row.target, responseRef: row.responseRef,
+        state: row.state as TaskCoordinationRequest['state'], status: row.status as TaskCoordinationRequest['status'],
+        reason: row.reason, nextBoundary: row.nextBoundary, target: row.target, responseRef: row.responseRef,
         sender: { connectionId: row.senderConnectionId, name: row.senderName },
         recipient: { connectionId: row.recipientConnectionId, name: row.recipientName }, createdAt: row.createdAt, updatedAt: row.updatedAt })),
       verdicts: rows.verdicts.map((row) => ({ requestId: row.requestId, verdict: row.verdict, target: row.target,

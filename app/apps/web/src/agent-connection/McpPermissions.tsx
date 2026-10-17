@@ -19,7 +19,7 @@ const LABEL: Partial<Record<AgentMcpCapabilityId, string>> = {
   'conversation.create': 'Start conversations', 'conversation.reply': 'Reply in conversations',
   'cowork.unit.create': 'Create work units', 'cowork.claim': 'Take work units', 'cowork.renew': 'Renew work units',
   'cowork.release': 'Release work units', 'cowork.unit.complete': 'Complete work units',
-  'cowork.unit.transfer': 'Transfer work units', 'cowork.request.claim': 'Take work requests',
+  'cowork.unit.transfer': 'Transfer work units', 'cowork.unit.decline': 'Decline transferred work units', 'cowork.request.claim': 'Take work requests',
   'cowork.request.respond': 'Respond to work requests',
 };
 const READ = new Set<AgentMcpCapabilityId>(AGENT_MCP_READ_CAPABILITIES);

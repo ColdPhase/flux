@@ -9,9 +9,17 @@ export const COWORK_DECLINE_REASONS = ['capability', 'policy', 'scope', 'source_
 export type CoWorkDeclineReason = typeof COWORK_DECLINE_REASONS[number];
 /** The recipient's live claim on its own unit plus the exact request it acts on. */
 export interface CoWorkRequestClaimInput { generation: number; leaseId: string; requestId: string; expectedRequestVersion: number }
-export type CoWorkResponseInput = CoWorkRequestClaimInput & (
+/** Bounded, content-free deferral vocabulary (CW-3): why the recipient puts a queued request off, and at which safe boundary it returns. */
+export const COWORK_DEFER_REASONS = ['busy', 'dependency', 'offline', 'capability', 'policy'] as const;
+export const COWORK_DEFER_BOUNDARIES = ['after_step', 'after_tests', 'after_release', 'on_dependency', 'on_resume', 'on_capability'] as const;
+export type CoWorkDeferReason = typeof COWORK_DEFER_REASONS[number];
+export type CoWorkDeferBoundary = typeof COWORK_DEFER_BOUNDARIES[number];
+/** A deferral needs no unit claim (a busy recipient defers without taking the request), only the request version. */
+export interface CoWorkDeferInput { outcome: 'deferred'; requestId: string; expectedRequestVersion: number;
+  reason: CoWorkDeferReason; nextBoundary: CoWorkDeferBoundary; dependencyRef: CoWorkSourceRef | null }
+export type CoWorkResponseInput = (CoWorkRequestClaimInput & (
   | { outcome: 'resolved'; response: { [key: string]: AgentJsonValue } }
-  | { outcome: 'declined'; reason: CoWorkDeclineReason });
+  | { outcome: 'declined'; reason: CoWorkDeclineReason })) | CoWorkDeferInput;
 export interface CoWorkRecipientUnit {
   id: string;
   projectId: string;
@@ -69,6 +77,18 @@ export function normalizeCoWorkResponse(payload: unknown): CoWorkResponseInput {
     if (!COWORK_DECLINE_REASONS.includes(value.reason as CoWorkDeclineReason)) throw new InvalidInputError('A bounded decline reason is required');
     return { ...fence(value), outcome, reason: value.reason as CoWorkDeclineReason };
   }
+  if (outcome === 'deferred') {
+    const value = exact(payload, ['requestId', 'expectedRequestVersion', 'outcome', 'reason', 'nextBoundary', 'dependencyRef']);
+    const { requestId, expectedRequestVersion } = fence({ ...value, generation: 1, leaseId: '00000000-0000-0000-0000-000000000000' });
+    if (!COWORK_DEFER_REASONS.includes(value.reason as CoWorkDeferReason)
+      || !COWORK_DEFER_BOUNDARIES.includes(value.nextBoundary as CoWorkDeferBoundary))
+      throw new InvalidInputError('A concrete deferral reason and boundary are required');
+    const dependencyRef = value.dependencyRef === null ? null : normalizeCoWorkSource(value.dependencyRef);
+    if ((value.reason === 'dependency' || value.nextBoundary === 'on_dependency') && !dependencyRef)
+      throw new InvalidInputError('The actual dependency reference is required');
+    return { outcome, requestId, expectedRequestVersion, reason: value.reason as CoWorkDeferReason,
+      nextBoundary: value.nextBoundary as CoWorkDeferBoundary, dependencyRef };
+  }
   throw new InvalidInputError('A response outcome is required');
 }
 
@@ -85,7 +105,7 @@ function liveUnit(context: CoWorkContext, facts: CoWorkResponseFacts, input: CoW
   return unit;
 }
 /** Addressed to exactly this connection and unit; anything else is the same content-free unavailable outcome. */
-function addressed(context: CoWorkContext, facts: CoWorkResponseFacts, input: CoWorkRequestClaimInput): CoWorkLockedRequest {
+function addressed(context: CoWorkContext, facts: CoWorkResponseFacts, input: Pick<CoWorkRequestClaimInput, 'requestId' | 'expectedRequestVersion'>): CoWorkLockedRequest {
   const request = facts.request;
   if (!request || request.id !== input.requestId || request.recipientConnectionId !== context.connectionId || request.unitId !== facts.unit.id)
     throw new NotFoundError('Request', 'COWORK_REQUEST_UNAVAILABLE');
@@ -107,7 +127,7 @@ export function requireCoWorkRequestClaim(context: CoWorkContext, facts: CoWorkR
 }
 
 /** Respond only to a request claimed under the unit's live generation. */
-export function requireCoWorkResponse(context: CoWorkContext, facts: CoWorkResponseFacts, input: CoWorkResponseInput): void {
+export function requireCoWorkResponse(context: CoWorkContext, facts: CoWorkResponseFacts, input: Exclude<CoWorkResponseInput, CoWorkDeferInput>): void {
   const unit = liveUnit(context, facts, input);
   const request = addressed(context, facts, input);
   if (request.state !== 'claimed') throw new ConflictError('Claim this request before responding', 'COWORK_REQUEST_NOT_CLAIMED');
@@ -121,4 +141,19 @@ export function normalizeCoWorkResponseRef(value: unknown): CoWorkSourceRef {
   try { ref = normalizeCoWorkSource(value); } catch { throw new NotFoundError('Response', 'COWORK_RESPONSE_UNAVAILABLE'); }
   if (ref.type === 'github_pr') throw new NotFoundError('Response', 'COWORK_RESPONSE_UNAVAILABLE');
   return ref;
+}
+
+/**
+ * Defer a queued (or already deferred) request addressed to this connection's own unit at a safe boundary. It needs
+ * no live claim: a busy recipient puts a request off without taking it, and nothing interrupts its current work. A
+ * request already claimed under a live claim is answered, declined or released, not deferred.
+ */
+export function requireCoWorkDefer(context: CoWorkContext, facts: CoWorkResponseFacts, input: CoWorkDeferInput): void {
+  const { unit } = facts;
+  if (unit.assignmentConnectionId !== context.connectionId || unit.projectId !== context.projectId)
+    throw new NotFoundError('Work unit', 'COWORK_UNIT_NOT_FOUND');
+  if (unit.state === 'stopped') throw stoppedError();
+  if (unit.state === 'completed') throw new ConflictError('This unit is finished', 'COWORK_REQUEST_CLOSED');
+  const request = addressed(context, facts, input);
+  if (request.state === 'claimed') throw new ConflictError('This request is claimed; answer, decline or release it', 'COWORK_REQUEST_CLAIMED');
 }

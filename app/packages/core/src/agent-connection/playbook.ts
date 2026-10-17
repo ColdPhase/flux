@@ -33,7 +33,7 @@ export interface CoworkPlaybook {
 
 const playbook: CoworkPlaybook = {
   bundleId: 'flux.cowork',
-  version: '1.6.0',
+  version: '1.7.0',
   toolContractVersion: 1,
   startPayload: `Start my authorized Flux work in the bound project. Load this playbook and the authenticated bootstrap first. \
 Understand the project's current plan, wiki, relevant conversations, decisions and existing tasks before planning or creating more \
@@ -168,7 +168,7 @@ reasoning, transcripts or secrets.`,
     {
       id: 'request_review_fix', title: 'Request help, review and fixes',
       tools: ['flux_claim_unit', 'flux_create_unit', 'flux_send_request', 'flux_coordination_inbox', 'flux_claim_request',
-        'flux_resolve_request', 'flux_decline_request'], providers: ['coordination', 'repository_references'],
+        'flux_resolve_request', 'flux_decline_request', 'flux_defer_request'], providers: ['coordination', 'repository_references'],
       text: `To ask another connection for help, a review, a fix or a hand-off, open a unit for it on the same task with \
 flux_create_unit (a review unit for a review) and address one request to that unit with flux_send_request. The request names \
 the exact target (the task, material or doc at its version, the result or message, or a verified PR head), the sources and \
@@ -179,6 +179,9 @@ flux_coordination_inbox between steps, never in a loop. flux_claim_request picks
 answer it by first recording the answer as an ordinary record (a result, a reply in the task's agents' thread, a doc \
 version) and then naming that record with flux_resolve_request, or decline with flux_decline_request and the reason that \
 applies (capability, policy, scope or source_changed). A decline is a visible outcome for the sender, not a silent drop. \
+If you cannot take a queued request now, put it off with flux_defer_request: a reason (busy, dependency, offline, capability or \
+policy) and the safe boundary it returns at; this needs no claim, never interrupts your current work, and the sender sees it \
+as deferred, not lost. \
 These need your live claim on that unit (its generation and lease ID) from flux_claim_unit; COWORK_CLAIM_LOST means you do \
 not hold it, so claim the unit first instead of retrying. A review is of the exact version the request named only: resolve \
 it with a verdict, passed or changes_requested. A new version makes the verdict stale; a fix asks for one fresh review of \
@@ -187,13 +190,14 @@ check.`,
     },
     {
       id: 'block_transfer_stop', title: 'Block, transfer or stop',
-      tools: ['flux_update_task', 'flux_release_unit', 'flux_transfer_unit'], providers: [],
+      tools: ['flux_update_task', 'flux_release_unit', 'flux_transfer_unit', 'flux_decline_unit'], providers: [],
       text: `If you are blocked, record why, what you tried, what answer or event you need and the next action; with a work.update \
 grant, set the task to blocked with that blocker text. If you hold a unit, release it with flux_release_unit and a checkpoint \
 naming that blocker, so the unit stays paused and your connection is free. Then choose other ready work within your grants, or \
 end your turn. To hand a unit to another connection that should continue it, transfer it under your live claim with \
 flux_transfer_unit (with a cowork.unit.transfer grant). The other connection gains no authority from this: it claims the unit \
-with its own owner's grant. An author never hands review of its own work to itself, and requests still open on the unit must \
+with its own owner's grant, or refuses it with flux_decline_unit (a cowork.unit.decline grant) before claiming: the unit then \
+returns paused to you with its checkpoint. An author never hands review of its own work to itself, and requests still open on the unit must \
 be answered or declined first. If a grant is revoked or expires, the scope is removed or the connection is disconnected, stop \
 new effects at once, keep what you were allowed to record and tell your owner; distinguish a stop you were asked to do from \
 one you have completed.`,

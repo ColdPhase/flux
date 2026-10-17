@@ -17,7 +17,7 @@ export interface CoWorkUnitTransitionScope {
   /** The acting connection: the holder for a new transition, the original actor for a replay. */
   holderConnectionId: string;
   unitId: string;
-  /** Transfer only: the connection the unit is handed to. */
+  /** Transfer: the connection the unit is handed to. Decline: the prior assignee it returns to. */
   assigneeConnectionId: string | null;
 }
 /** The holder's exact live claim, repeated in the conditional update's `WHERE` clause. */
@@ -31,7 +31,7 @@ function unit(row: UnitRow) {
   return { id: row.id, workspaceId: row.workspaceId, projectId: row.projectId, taskId: row.taskId,
     lineageTaskId: row.lineageTaskId, runId: row.runId, unitKey: row.unitKey, role: row.role,
     assignmentConnectionId: row.assignmentConnectionId, state: row.state, version: row.version, generation: row.generation,
-    checkpointId: row.checkpointId, outcomeRef: row.outcomeRef ?? null,
+    checkpointId: row.checkpointId, transferredFromConnectionId: row.transferredFromConnectionId ?? null, outcomeRef: row.outcomeRef ?? null,
     lease: row.leaseId ? { id: row.leaseId, runtimeSessionId: row.leaseSessionId!, expiresAt: row.leaseExpiresAt! } : null };
 }
 export type CoWorkTransitionUnitRecord = ReturnType<typeof unit>;
@@ -118,9 +118,32 @@ export function coworkUnitTransitionRows(tx: DbExecutor) {
     async transfer(scope: CoWorkUnitTransitionScope, fence: CoWorkUnitTransitionFence, assigneeConnectionId: string) {
       const [row] = await tx.update(units).set({ assignmentConnectionId: assigneeConnectionId, state: 'pending',
         generation: sql`${units.generation} + 1`, version: sql`${units.version} + 1`, leaseId: null, leaseSessionId: null,
-        leaseExpiresAt: null, updatedAt: sql`clock_timestamp()` }).where(and(held(scope, fence), sql`EXISTS (
+        leaseExpiresAt: null, transferredFromConnectionId: scope.holderConnectionId, updatedAt: sql`clock_timestamp()` }).where(and(held(scope, fence), sql`EXISTS (
           SELECT 1 FROM agent_connections assignee WHERE assignee.id = ${assigneeConnectionId}::uuid
             AND assignee.workspace_id = ${scope.workspaceId}::uuid AND assignee.revoked_at IS NULL)`)).returning();
+      return row ? unit(row) : null;
+    },
+    /** Unlocked read of who handed a unit over, to take that connection's slot in order before locking; re-checked under lock. */
+    async handedOverBy(scope: Pick<CoWorkUnitTransitionScope, 'workspaceId' | 'projectId' | 'unitId'>) {
+      const [row] = await tx.select({ from: units.transferredFromConnectionId }).from(units)
+        .where(and(inProject(scope), eq(units.id, scope.unitId)));
+      return row?.from ?? null;
+    },
+    /**
+     * Declined by the receiving assignee before it ever claimed the unit: back, paused, to the connection that handed it
+     * over, with its checkpoint and task untouched. Null if the unit is no longer pending for this connection at this
+     * version, was not handed over by `scope.assigneeConnectionId`, has open requests, or that connection is gone.
+     */
+    async decline(scope: CoWorkUnitTransitionScope, expectedVersion: number) {
+      const prior = scope.assigneeConnectionId;
+      if (!prior) return null;
+      const [row] = await tx.update(units).set({ assignmentConnectionId: prior, state: 'paused', transferredFromConnectionId: null,
+        generation: sql`${units.generation} + 1`, version: sql`${units.version} + 1`, leaseId: null, leaseSessionId: null,
+        leaseExpiresAt: null, updatedAt: sql`clock_timestamp()` }).where(and(inProject(scope), eq(units.id, scope.unitId),
+        eq(units.assignmentConnectionId, scope.holderConnectionId), eq(units.state, 'pending'), eq(units.version, expectedVersion),
+        eq(units.transferredFromConnectionId, prior), sql`NOT EXISTS (${openRequestsOf(sql`${units.id}`)})`, sql`EXISTS (
+          SELECT 1 FROM agent_connections prior WHERE prior.id = ${prior}::uuid
+            AND prior.workspace_id = ${scope.workspaceId}::uuid AND prior.revoked_at IS NULL)`)).returning();
       return row ? unit(row) : null;
     },
     /** Canonical current unit for the post-state hook; content-free. */

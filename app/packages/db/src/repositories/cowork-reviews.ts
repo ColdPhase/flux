@@ -9,7 +9,7 @@ export type CoWorkReviewVerdict = 'passed' | 'changes_requested';
 export interface CoWorkVerdictInput { requestId: string; verdict: CoWorkReviewVerdict; evidenceRef: CoWorkSourceRef;
   reviewerConnectionId: string; reviewerOwnerId: string }
 /** One request as people may see it: who asked whom for what, on which exact target, and where it stands. */
-export interface CoWorkTaskRequestRow { id: string; kind: string; state: string; reason: string | null; target: CoWorkSourceRef;
+export interface CoWorkTaskRequestRow { id: string; kind: string; state: string; status: string; nextBoundary: string | null; reason: string | null; target: CoWorkSourceRef;
   senderConnectionId: string; senderName: string; recipientConnectionId: string; recipientName: string; createdAt: string;
   updatedAt: string; responseRef: CoWorkSourceRef | null }
 export interface CoWorkTaskVerdictRow { requestId: string; verdict: CoWorkReviewVerdict; target: CoWorkSourceRef;
@@ -45,7 +45,17 @@ export function coworkReviewRows(tx: DbExecutor) {
     async task(workspaceId: string, projectId: string, taskId: string, limit = 50) {
       const requests = await tx.execute<Record<string, unknown>>(sql`
         SELECT r.id, r.kind, CASE WHEN r.state IN ('queued', 'deferred', 'claimed') AND r.expires_at <= clock_timestamp()
-            THEN 'expired' ELSE r.state END AS state, r.reason, r.target, r.response_ref,
+            THEN 'expired' ELSE r.state END AS state,
+          CASE WHEN r.state IN ('queued', 'deferred', 'claimed') AND r.expires_at <= clock_timestamp() THEN 'expired'
+            WHEN r.state = 'claimed' AND EXISTS (SELECT 1 FROM cowork_units live WHERE live.id = r.unit_id AND live.state = 'claimed'
+              AND live.generation = r.claimed_generation AND live.assignment_connection_id = r.recipient_connection_id
+              AND live.lease_expires_at > clock_timestamp()) THEN 'working'
+            WHEN r.state IN ('queued', 'deferred', 'claimed') AND NOT EXISTS (SELECT 1 FROM agent_connections c
+              WHERE c.id = r.recipient_connection_id AND c.revoked_at IS NULL
+                AND EXISTS (SELECT 1 FROM agent_runtime_sessions s WHERE s.connection_id = c.id AND s.revoked_at IS NULL
+                  AND s.expires_at > clock_timestamp())) THEN 'offline'
+            WHEN r.state = 'claimed' THEN 'queued'
+            ELSE r.state END AS status, r.next_boundary, r.reason, r.target, r.response_ref,
           r.sender_connection_id, ${name('r.sender_connection_id')} AS sender_name,
           r.recipient_connection_id, ${name('r.recipient_connection_id')} AS recipient_name,
           r.created_at::text AS created_at, r.updated_at::text AS updated_at
@@ -59,7 +69,8 @@ export function coworkReviewRows(tx: DbExecutor) {
         FROM cowork_review_verdicts v WHERE v.workspace_id = ${workspaceId}::uuid AND v.project_id = ${projectId}::uuid
           AND v.work_id = ${taskId}::uuid ORDER BY v.created_at DESC, v.request_id DESC LIMIT ${limit}`);
       return {
-        requests: requests.rows.map((row): CoWorkTaskRequestRow => ({ id: String(row.id), kind: String(row.kind), state: String(row.state),
+        requests: requests.rows.map((row): CoWorkTaskRequestRow => ({ id: String(row.id), kind: String(row.kind), state: String(row.state), status: String(row.status),
+          nextBoundary: (row.next_boundary as string | null) ?? null,
           reason: (row.reason as string | null) ?? null, target: row.target as CoWorkSourceRef,
           responseRef: (row.response_ref as CoWorkSourceRef | null) ?? null,
           senderConnectionId: String(row.sender_connection_id), senderName: String(row.sender_name),

@@ -478,6 +478,8 @@ the composition does its own #152 `prepare`/`complete`, so these tools do not us
 | `flux_release_unit` | `cowork.release` | execute, review, plan | Park the unit with a typed checkpoint written in the same transaction |
 | `flux_complete_unit` | `cowork.unit.complete` | execute, review, plan | Finish the unit with one exact native outcome reference |
 | `flux_transfer_unit` | `cowork.unit.transfer` | execute, review, plan | Hand the unit to another eligible connection, which claims it with its own grant |
+| `flux_decline_unit` | `cowork.unit.decline` | execute, review, plan | The receiver refuses a transferred unit before claiming it; it returns paused to the prior assignee |
+| `flux_defer_request` | `cowork.request.respond` | execute, review, plan | Put a queued request off with a reason and a safe boundary, without claiming it |
 | `flux_claim_request` | `cowork.request.claim` | execute, review, plan | Pick up a request addressed to the caller's unit, under its live unit claim |
 | `flux_decline_request` | `cowork.request.respond` | execute, review, plan | Decline a picked-up request with a bounded reason |
 | `flux_resolve_request` | `cowork.request.respond` | execute, review, plan | Resolve a picked-up request naming an existing native record as evidence; a review also takes a verdict pinned to the request's target |

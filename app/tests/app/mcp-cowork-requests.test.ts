@@ -184,3 +184,84 @@ test('a non-review request is resolved with evidence only; a verdict on it is re
   assert.deepEqual(coordination.requests.map((r) => [r.kind, r.state, r.responseRef]), [['handoff', 'resolved', evidence]]);
   assert.deepEqual(coordination.verdicts, []);
 });
+
+test('the recipient defers a queued request with a reason and boundary without claiming; status is honest: queued, deferred, offline, working, cancelled', async () => {
+  const f = await scene();
+  const codex = await f.connect(f.hubert, 'Hubert Codex'), marekClaude = await f.connect(f.marek, 'Marek Claude');
+  const a = await f.task('Native outcome A');
+  const take = await codex.standing('cowork.unit.create', a.id, 'execute');
+  const root = toolValue(await codex.tool('flux_create_unit', { ...codex.base(take.id, 'execute'), taskId: a.id, unitKey: 'take',
+    expectedTaskVersion: a.version, assignmentConnectionId: codex.connectionId, parent: null }));
+  const rootUnit = String(root.unitId);
+  const rootClaim = await codex.claimUnit(rootUnit, 'execute');
+  const openHelp = await codex.standing('cowork.unit.create', a.id, 'plan');
+  const helper = toolValue(await codex.tool('flux_create_unit', { ...codex.base(openHelp.id, 'plan'), taskId: a.id, unitKey: 'help',
+    expectedTaskVersion: a.version, assignmentConnectionId: marekClaude.connectionId,
+    parent: { unitId: rootUnit, generation: rootClaim.generation, leaseId: rootClaim.lease.id } }));
+  const helpUnit = String(helper.unitId);
+  const ask = await codex.standing('cowork.request', rootUnit, 'execute');
+  const target = { type: 'work', id: a.id, version: a.version };
+  const send = async (intentKey: string, kind: string) => { const reply = await codex.tool('flux_send_request', { ...codex.base(ask.id, 'execute'),
+    unitId: rootUnit, generation: rootClaim.generation, leaseId: rootClaim.lease.id, recipientUnitId: helpUnit,
+    expectedRecipientUnitVersion: await f.unitVersion(helpUnit), recipientConnectionId: marekClaude.connectionId, intentKey, parentRequestId: null,
+    kind, target, sourceRefs: [{ type: 'material', id: f.material.materialId, version: 1 }], criteriaRefs: [target], peerUnblocking: false });
+    if ((reply?.result as { isError?: boolean } | undefined)?.isError) assert.fail(JSON.stringify(toolFailure(reply)));
+    return toolValue(reply); };
+  const sent = await send('help-1', 'help');
+  const requestId = String(sent.requestId);
+  const second = await send('handoff-1', 'handoff');
+  const read = async () => (expectStatus(await f.hubert.browser.request('GET', `/api/v1/work/${a.id}/coordination`), 200) as TaskCoordination).requests;
+  const card = async (id = requestId) => (await read()).find((r) => r.id === id)!;
+  assert.deepEqual([(await card()).state, (await card()).status, (await card()).nextBoundary], ['queued', 'queued', null]);
+
+  // Deferral: no claim on the recipient's unit is needed, a busy peer is not interrupted, and the sender sees why.
+  const respond = await marekClaude.standing('cowork.request.respond', helpUnit, 'plan');
+  const defer = (change: Record<string, unknown> = {}, clientCommandId: string = randomUUID()) => marekClaude.tool('flux_defer_request',
+    { ...marekClaude.base(respond.id, 'plan', clientCommandId), unitId: helpUnit, requestId, expectedRequestVersion: 1, reason: 'busy',
+      nextBoundary: 'after_step', ...change });
+  assert.equal(toolFailure(await defer({ reason: 'dependency', nextBoundary: 'after_step' })).code, 'INVALID_INPUT', 'a dependency names its record');
+  assert.ok(schemaRefused(await defer({ reason: 'because' })), 'free-text reasons are refused by the schema');
+  assert.equal(toolFailure(await defer({ expectedRequestVersion: 7 })).code, 'COWORK_VERSION_CONFLICT');
+  assert.equal(await f.used(respond.id), 0, 'refusals debit nothing');
+  const command = randomUUID();
+  const deferred = toolValue(await defer({}, command));
+  assert.deepEqual(deferred, { requestId, version: 2, state: 'deferred', responseRef: null });
+  assert.deepEqual(toolValue(await defer({}, command)), deferred, 'a retry replays');
+  assert.equal(await f.used(respond.id), 1);
+  assert.deepEqual([await card()].map((r) => [r.state, r.status, r.reason, r.nextBoundary]), [['deferred', 'deferred', 'busy', 'after_step']]);
+  const inbox = toolValue(await marekClaude.tool('flux_coordination_inbox', { projectId: f.p.id })).requests as { id: string; state: string; status: string }[];
+  assert.deepEqual(inbox.map((r) => [r.id === requestId ? 'deferred one' : 'other', r.state, r.status]),
+    [['deferred one', 'deferred', 'deferred'], ['other', 'queued', 'queued']]);
+  // It can be deferred again to a dependency, naming an exact current record.
+  const redeferred = toolValue(await defer({ expectedRequestVersion: 2, reason: 'dependency', nextBoundary: 'on_dependency',
+    dependencyRef: { type: 'material', id: f.material.materialId, version: 1 } }));
+  assert.equal(redeferred.version, 3);
+  // Another connection cannot defer it.
+  const codexRespond = await codex.standing('cowork.request.respond', null, 'plan');
+  assert.equal(toolFailure(await codex.tool('flux_defer_request', { ...codex.base(codexRespond.id, 'plan'), unitId: helpUnit, requestId,
+    expectedRequestVersion: 3, reason: 'busy', nextBoundary: 'after_step' })).code, 'COWORK_UNIT_NOT_FOUND');
+
+  // A recipient without a live session is offline, whatever the request says; its return makes it deferred again.
+  await pool.query('UPDATE agent_runtime_sessions SET revoked_at = now() WHERE connection_id = $1', [marekClaude.connectionId]);
+  assert.equal((await card()).status, 'offline');
+  await pool.query('UPDATE agent_runtime_sessions SET revoked_at = NULL WHERE connection_id = $1', [marekClaude.connectionId]);
+  assert.equal((await card()).status, 'deferred');
+
+  // Taking it up shows it as working; a claimed request is answered, not deferred.
+  const unitClaim = await marekClaude.claimUnit(helpUnit, 'plan', await f.unitVersion(helpUnit));
+  const claimGrant = await marekClaude.standing('cowork.request.claim', helpUnit, 'plan');
+  const claimed = toolValue(await marekClaude.tool('flux_claim_request', { ...marekClaude.base(claimGrant.id, 'plan'), unitId: helpUnit,
+    generation: unitClaim.generation, leaseId: unitClaim.lease.id, requestId, expectedRequestVersion: 3 }));
+  assert.equal(claimed.state, 'claimed');
+  assert.deepEqual([(await card()).state, (await card()).status], ['claimed', 'working']);
+  assert.equal(toolFailure(await defer({ expectedRequestVersion: Number(claimed.version) })).code, 'COWORK_REQUEST_CLAIMED');
+
+  // A cancelled request is shown as cancelled, not as lost or still waiting.
+  await pool.query(`UPDATE cowork_requests SET state='cancelled', reason='sender_cancelled', version=version+1 WHERE id=$1`, [second.requestId]);
+  assert.deepEqual([(await card(String(second.requestId))).state, (await card(String(second.requestId))).status], ['cancelled', 'cancelled']);
+});
+
+/** A strict schema refusal: the SDK reports it as a tool error or a JSON-RPC error, never a domain effect. */
+function schemaRefused(message: Record<string, unknown> | null) {
+  return !!message?.error || (message?.result as { isError?: boolean } | undefined)?.isError === true;
+}

@@ -58,6 +58,7 @@ const OPERATION_LABEL: Record<AgentOperation, string> = {
   'cowork.request.claim': 'picked up a request', 'cowork.request.respond': 'answered a request',
   'cowork.unit.create': 'set up work on a task', 'cowork.unit.complete': 'finished its work on a task',
   'cowork.unit.transfer': 'handed work on a task to another agent',
+  'cowork.unit.decline': 'handed work on a task back to the agent that sent it',
 };
 
 const time = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' });

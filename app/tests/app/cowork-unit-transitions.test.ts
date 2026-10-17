@@ -362,6 +362,57 @@ test('the holder transfers its unit; the assignee claims it with its own grant; 
   assert.deepEqual([done.state, done.assignmentConnectionId], ['completed', f.marekClaude.connection.id]);
 });
 
+test('the receiving assignee declines a transferred unit before claiming: it returns paused to the prior assignee with its checkpoint; later is refused', async () => {
+  const f = await setup();
+  const { w } = f;
+  // The prior assignee pauses with a checkpoint, claims again and hands the unit over: the checkpoint is its instruction.
+  const releaseGrant = await grantOf(w, f.codex, 'cowork.release', f.root.unitId, 'execute');
+  const released = await db.transaction((tx) => coWorkClaimInTransaction(tx, f.codex.claims, command(w, f.codex, 'cowork.release', f.root.unitId,
+    'execute', releaseGrant.id, { ...f.fence, checkpoint: { summary: 'Drafted the outline', nextAction: 'Write section two', blocker: null } }), CLAIMS));
+  const reclaimed = await claimUnit(w, f.codex, f.root.unitId, 'execute', released.version);
+  const moved = await f.own.run(f.own.handOver({ ...fenceOf(reclaimed), assignmentConnectionId: f.marekClaude.connection.id }));
+  const before = await unitRow(f.root.unitId);
+  assert.equal(before.transferred_from_connection_id, f.codex.connection.id);
+  const checkpoint = before.checkpoint_id;
+  assert.ok(checkpoint);
+
+  const mine = await holder(w, f.marekClaude, f.root.unitId, 'execute');
+  const declineGrant = await grantOf(w, f.marekClaude, 'cowork.unit.decline', f.root.unitId, 'execute');
+  const decline = (change: Record<string, unknown> = {}) => command(w, f.marekClaude, 'cowork.unit.decline', f.root.unitId, 'execute',
+    declineGrant.id, { expectedVersion: moved.version, ...change });
+  const run = (input: AgentExecutionCommand) => mine.run(input);
+  // Fences: a stale version, a copied field and the former holder (who no longer has the unit) are refused without effects.
+  await refusedWithoutEffects(w, [f.codex, f.marekClaude], () => run(decline({ expectedVersion: moved.version + 1 })), 'COWORK_VERSION_CONFLICT');
+  await refusedWithoutEffects(w, [f.codex, f.marekClaude], () => run(decline({ outcome: 'x' })), 'INVALID_INPUT');
+  const codexGrant = await grantOf(w, f.codex, 'cowork.unit.decline', null, 'execute');
+  await refusedWithoutEffects(w, [f.codex, f.marekClaude], () => db.transaction((tx) => coWorkUnitTransitionInTransaction(tx, f.codex.claims,
+    command(w, f.codex, 'cowork.unit.decline', f.root.unitId, 'execute', codexGrant.id, { expectedVersion: moved.version }), TRANSITIONS)),
+  'COWORK_UNIT_NOT_FOUND');
+
+  const input = decline();
+  const declined = await run(input);
+  assert.deepEqual(declined, { unitId: f.root.unitId, taskId: f.a.id, role: 'execute', assignmentConnectionId: f.codex.connection.id,
+    version: moved.version + 1, state: 'paused', outcomeRef: null });
+  const after = await unitRow(f.root.unitId);
+  assert.deepEqual([after.state, after.assignment_connection_id, after.transferred_from_connection_id, after.checkpoint_id, after.lease_id,
+    after.work_id, after.run_id, after.outcome_ref], ['paused', f.codex.connection.id, null, checkpoint, null, f.a.id, f.root.runId, null]);
+  assert.equal(after.generation, before.generation + 1, 'the receiver\'s generation is fenced out');
+  assert.deepEqual(await run(input), declined, 'a retried command replays');
+  assert.equal(await usedOf(declineGrant.id), 1);
+  // The prior assignee claims the paused unit again and receives its checkpoint; the decliner cannot decline twice.
+  const again = await claimUnit(w, f.codex, f.root.unitId, 'execute', declined.version);
+  assert.equal(again.state, 'claimed');
+  await rejects(run(input), 'COMMAND_POSTSTATE_STALE');
+  await rejects(run(decline({ expectedVersion: declined.version })), 'COWORK_UNIT_NOT_FOUND');
+
+  // Once a receiver has claimed a transferred unit it owns it: no decline.
+  const second = await db.transaction((tx) => coWorkUnitTransitionInTransaction(tx, f.codex.claims, command(w, f.codex, 'cowork.unit.transfer',
+    f.root.unitId, 'execute', f.own.transfer.id, { ...fenceOf(again), assignmentConnectionId: f.marekClaude.connection.id }), TRANSITIONS));
+  const marekClaim = await claimUnit(w, f.marekClaude, f.root.unitId, 'execute', second.version);
+  assert.equal((await unitRow(f.root.unitId)).transferred_from_connection_id, null);
+  await refusedWithoutEffects(w, [f.codex, f.marekClaude], () => run(decline({ expectedVersion: marekClaim.version })), 'COWORK_DECLINE_REFUSED');
+});
+
 test('a transfer receipt stays stale after the unit returns to the same assignee and state through a full cycle', async () => {
   const f = await setup();
   const { w } = f;

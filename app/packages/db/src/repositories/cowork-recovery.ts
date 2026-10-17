@@ -1,5 +1,5 @@
 import { and, asc, eq, inArray, sql, type SQL } from 'drizzle-orm';
-import type { CoWorkInboxRecord } from '@flux/contracts';
+import { coWorkRequestStatus, type CoWorkInboxRecord } from '@flux/contracts';
 import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
 
@@ -72,7 +72,8 @@ export function coworkRecoveryRows(tx: DbExecutor) {
         void _fingerprint; void _updatedAt;
         const lost = request.state === 'claimed' && (row.state !== 'claimed' || row.leaseExpired
           || row.generation !== request.claimedGeneration || row.assignment !== scope.connectionId);
-        return { ...request, effectiveState: row.expired ? 'expired' : lost ? 'queued' : request.state,
+        const effectiveState = row.expired ? 'expired' : lost ? 'queued' : request.state;
+        return { ...request, effectiveState, status: coWorkRequestStatus(effectiveState),
           readinessReason: row.expired ? 'request_expired' : row.assignment !== scope.connectionId ? 'assignment_changed'
             : row.state === 'completed' || row.state === 'stopped' ? 'unit_closed' : lost ? 'claim_lost' : null };
       });

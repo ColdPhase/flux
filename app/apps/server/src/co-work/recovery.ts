@@ -42,14 +42,14 @@ class RecoveryCursor {
 
 /** Bounded authorized pending references, without payer identities, fingerprints or content. */
 export type CoWorkRecoveryRequest = Pick<CoWorkInboxRecord, 'id' | 'unitId' | 'taskId' | 'senderConnectionId' | 'kind' | 'target'
-  | 'sourceRefs' | 'criteriaRefs' | 'state' | 'effectiveState' | 'readinessReason' | 'version' | 'reason' | 'nextBoundary'
+  | 'sourceRefs' | 'criteriaRefs' | 'state' | 'status' | 'effectiveState' | 'readinessReason' | 'version' | 'reason' | 'nextBoundary'
   | 'dependencyRef' | 'responseRef' | 'expiresAt' | 'createdAt'>;
 export interface CoWorkRecoveryPage { requests: CoWorkRecoveryRequest[]; continuation: string | null;
   recovery: 'snapshot' | 'continuation' | 'resync_required'; coverage: 'current_authorized_native_pending_references' }
 function projectRequest(r: CoWorkInboxRecord): CoWorkRecoveryRequest {
-  const { id, unitId, taskId, senderConnectionId, kind, target, sourceRefs, criteriaRefs, state, effectiveState, readinessReason,
+  const { id, unitId, taskId, senderConnectionId, kind, target, sourceRefs, criteriaRefs, state, status, effectiveState, readinessReason,
     version, reason, nextBoundary, dependencyRef, responseRef, expiresAt, createdAt } = r;
-  return { id, unitId, taskId, senderConnectionId, kind, target, sourceRefs, criteriaRefs, state, effectiveState, readinessReason,
+  return { id, unitId, taskId, senderConnectionId, kind, target, sourceRefs, criteriaRefs, state, status, effectiveState, readinessReason,
     version, reason, nextBoundary, dependencyRef, responseRef, expiresAt, createdAt };
 }
 
