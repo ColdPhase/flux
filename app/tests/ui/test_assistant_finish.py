@@ -1,9 +1,9 @@
-"""Browser tests for the rest of the assistant screen and journeys (F-027 A7, #407; AST-10.1, 10.5, 10.9 to 10.11, AST-3.6).
+"""Browser tests for the rest of the assistant screen and journeys (F-027 A7, #407; AST-10.1, 10.5, 10.9 to 10.11).
 
 Same stubbed-engine approach as test_assistant_screen. This module covers: the request appearing in the stream as sent
 (Journey 1 step 6), Close on the waiting row (steps 8 and 9), "Ask my assistant…" outside a conversation (AST-10.10),
 suggestions only where the assistant is a member, the non-manager row that names the manager, turn-on that reuses what an
-earlier try made, the subscription-off row, the Agents tab's policy row (AST-3.6) and axe on the assistant screens (AST-10.11).
+earlier try made, the subscription-off row and axe on the assistant screens (AST-10.11). The Agents tab's policy row (AST-3.6) is test_agents_handoff's.
 """
 
 from __future__ import annotations
@@ -325,13 +325,6 @@ class AssistantFinish(unittest.TestCase):
                 self.assertEqual(len(told), 1)
                 bar.get_by_role("button", name="Use an API key instead").click()
                 expect(page).to_have_url(re.compile(r"/settings/ai-connections$"))
-
-    # ---------------------------------------------------------------- AST-3.6: the Agents tab tells the truth
-
-    def test_12_the_agents_tab_policy_row_says_what_assistants_do(self) -> None:
-        page = self.page()
-        page.goto(f"/projects/{self.ids['project']}/agents")
-        expect(page.get_by_text("Agents read and propose; people accept. Assistants also edit for their owner, with Undo.")).to_be_visible()
 
     # ---------------------------------------------------------------- AST-10.11: axe on the assistant screens
 

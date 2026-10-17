@@ -568,13 +568,15 @@ matching agent connection:
        --strict-mcp-config --mcp-config <tmpfs file: Flux MCP URL, Authorization from FLUX_RUN_TOKEN>
        --allowedTools mcp__flux__<tool> …          (exact names, no wildcard)
        --permission-mode dontAsk --permission-prompts none
-       --no-session-persistence --max-turns N --append-system-prompt <brief>
+       --no-session-persistence --max-turns N [--model <alias>] --append-system-prompt <brief>
      ```
-     with `ENABLE_CLAUDEAI_MCP_SERVERS=false`, `DISABLE_UPDATES=1` and
+     (`--model` only when the owner chose the assistant's model, F-027 AST-11: `sonnet`, `opus` or `haiku`;
+     without it Claude Code uses the account's default) with `ENABLE_CLAUDEAI_MCP_SERVERS=false`, `DISABLE_UPDATES=1` and
      `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`.
    - **Codex** (T6 #281, revised 2026-10-16 against the pinned source, see below):
      ```text
      codex exec --json --ephemeral --ignore-user-config --sandbox read-only --skip-git-repo-check
+       [-m <model>]                                         (only when the owner chose the assistant's model, F-027 AST-11)
        -c cli_auth_credentials_store=file
        -c features.<key>=false   for every default-on feature of the pinned version not reviewed as
                                  harmless (shell_tool, unified_exec, view_image, apps, multi_agent,

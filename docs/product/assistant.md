@@ -1336,7 +1336,7 @@ in the same line. Nothing ever falls back to another account on its own.
 | Vendor doesn't accept the chosen model | "Your Claude plan didn't accept Opus. Nothing was changed." | [ Choose another model ] (AST-11) |
 | A switch is off | "I can't edit the Wiki: that's switched off for me." | [ Allow Wiki edits and try again ] |
 | Not in the project, Ada manages it | "I'm not in this project yet." | [ Add my assistant here ] |
-| Not in the project, Ada doesn't manage it | "I'm not in this project yet. A manager can add me." | [ Ask Jonas to add me ] → "Asked Jonas to add me. I'll do this when he does." |
+| Not in the project, Ada doesn't manage it | "I'm not in this project yet. A manager can add me." | [ Ask Jonas to add me ] → "Asked Jonas to add me. I'll do this when they do." (the name is the project's manager when there is one, otherwise "a manager"; "they" because the text cannot know a person's pronoun; revised 2026-10-17, #407) |
 | Outside her rights | "Jonas owns #8. Suggest this change to him?" | [ Send to Jonas ] |
 | Someone changed it meanwhile | "Skipped #4: Jonas changed it while I worked." | [ Open ] |
 | Subscription sign-in off on this Flux | "This Flux doesn't allow signing in with a subscription yet." | [ Tell whoever runs Flux ] [ Use an API key instead ] |
@@ -1744,11 +1744,13 @@ setting, the **assistant's model**, owned by its owner.
 
 ### Contract surface
 
-- `GET /api/v1/personal-assistant/model` returns the caller's own `{ company, current, default,
-  options[{ id, name, note, callsTools }] }`; with no account connected, `options` is empty.
+- `GET /api/v1/personal-assistant/model` returns the caller's own `{ engine, account, company, current,
+  default, saved, options[{ id, name, note, callsTools }] }`; with no account connected, `options` is empty.
+  `?connectionId=` names the API key connection being set up, for the turn-on form of an owner with several.
   `PUT` with `{ model }` changes it (409 `ASSISTANT_MODEL_UNAVAILABLE` for the cases above;
   409 `PERSONAL_RUN_NOT_ENABLED` without an assistant). `POST /api/v1/personal-assistant`
-  (*Turn on*) takes an optional `model`. Both address the caller's own assistant only, so no
+  (*Turn on*) takes an optional `model`; naming none stores none (the legacy default above), and the screens
+  always name the list's default. Both address the caller's own assistant only, so no
   other person, role or guest can read or change another's (there is no owner id to name).
 - Storage: `personal_run_enablements.assistant_model` (migration 0110, NULL = none chosen).
   The runtime request carries an optional `model` the supervisor checks against a closed pattern
