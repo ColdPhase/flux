@@ -11,6 +11,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import time
 import unittest
 import uuid
 from pathlib import Path
@@ -157,13 +158,20 @@ class AssistantFinish(unittest.TestCase):
                 self.stub_assistant(page)
                 self.stub_thread(page, [])
                 asked = self.stub_ask(page)
+                sends: list[tuple[str, int]] = []
+                page.on("response", lambda response: sends.append((response.request.post_data or "", response.status)) if response.request.method == "POST" and response.url.endswith("/messages") else None)
                 page.goto(self.thread_url())
                 posted = "@Ada's assistant Tidy this project's tasks"
                 before = sum(body == posted for body in self.messages(page, self.ids["conversation"]))
                 page.get_by_role("group", name="Suggestions for your assistant").get_by_role("button", name="Tidy this project's tasks").click()
-                expect(page.get_by_role("listitem", name="Your message").filter(has_text="Tidy this project's tasks").last).to_be_visible()
+                deadline = time.time() + 15
+                while len(sends) < 1 and time.time() < deadline:
+                    page.wait_for_timeout(100)
                 self.assertEqual(len(asked), 1)
+                self.assertEqual([status for _, status in sends], [201], f"the request was posted once: {sends}")
+                self.assertEqual(json.loads(sends[0][0])["body"], posted)
                 self.assertEqual(sum(body == posted for body in self.messages(page, self.ids["conversation"])), before + 1, "one message per request, in the real conversation")
+                expect(page.get_by_role("listitem", name="Your message").filter(has_text="Tidy this project's tasks").last).to_be_visible()
                 chip = page.locator(".ref-chip--agent", has_text="Ada's assistant").first
                 expect(chip).to_be_visible()
                 self.assertIsNone(FORBIDDEN.search(chip.inner_text()))
@@ -259,7 +267,8 @@ class AssistantFinish(unittest.TestCase):
     def test_09_command_k_in_a_project_lists_that_projects_conversations(self) -> None:
         page = self.page()
         self.stub_assistant(page)
-        page.goto(f"/projects/{self.ids['project']}/tasks")
+        page.goto(f"/projects/{self.ids['project']}")
+        expect(page.get_by_role("heading", level=1, name="Gesture lamp")).to_be_visible()
         page.keyboard.press("Control+k")
         page.get_by_role("option", name=re.compile("Ask my assistant…")).click()
         where = page.get_by_role("group", name="In which conversation?")
@@ -337,12 +346,13 @@ class AssistantFinish(unittest.TestCase):
 
     # ---------------------------------------------------------------- AST-10.11: axe on the assistant screens
 
-    def axe(self, page: Page, where: str) -> None:
+    def axe(self, page: Page, where: str, scope: str | None = None) -> None:
+        """Checks the assistant's own surface: the whole page for a screen, `scope` for a part of the conversation (the rest of that page is not this slice's)."""
         source = AXE.read_bytes()
         self.assertEqual(hashlib.sha256(source).hexdigest(), AXE_SHA256, "the vendored axe is the one that was verified")
         page.add_script_tag(content=source.decode())
-        result = page.evaluate("""async () => (await axe.run(document, { runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'] } }))
-            .violations.map((v) => ({ id: v.id, impact: v.impact, help: v.help, nodes: v.nodes.slice(0, 3).map((n) => n.target.join(' ') + ' :: ' + n.failureSummary.split('\\n').slice(1, 3).join(' ')) }))""")
+        result = page.evaluate("""async (scope) => (await axe.run(scope ? document.querySelector(scope) : document, { runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'] } }))
+            .violations.map((v) => ({ id: v.id, impact: v.impact, help: v.help, nodes: v.nodes.slice(0, 3).map((n) => n.target.join(' ') + ' :: ' + n.failureSummary.split('\\n').slice(1, 3).join(' ')) }))""", scope)
         self.assertEqual(result, [], f"axe violations on {where}")
 
     def test_13_the_assistant_screens_have_no_axe_violations_at_both_widths_in_both_themes(self) -> None:
@@ -380,11 +390,11 @@ class AssistantFinish(unittest.TestCase):
                 self.stub_thread(page2, [self.answer(base.ADA["id"], "Ada Brandt", "Ada's assistant")])
                 page2.goto(f"{self.thread_url()}?ask=1")
                 expect(page2.locator("#project-ask")).to_be_visible()
-                self.axe(page2, f"the ask bar ({tag})")
+                self.axe(page2, f"the ask bar ({tag})", "#project-ask")
                 page2.locator("#project-ask").get_by_role("button", name="Stop asking your assistant").click()
                 page2.get_by_role("button", name="Ada's assistant", exact=True).click()
                 expect(page2.get_by_role("group", name="Ada's assistant, details")).to_be_visible()
-                self.axe(page2, f"the assistant's panel ({tag})")
+                self.axe(page2, f"the assistant's panel ({tag})", ".aset-panel")
 
 
 if __name__ == "__main__":

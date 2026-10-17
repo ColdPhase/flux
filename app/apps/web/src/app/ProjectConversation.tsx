@@ -148,7 +148,8 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
   const [menuClosedAt, setMenuClosedAt] = useState<string | null>(null);
   const [commandHint, setCommandHint] = useState('');
   // The signed-in person's own assistant (#68): ask mode, their working line, shared answers.
-  const assistant = useConversationAssistant({ meId: me.user.id, meName: me.user.name, projectId: project.id, conversationId: conversation?.id ?? null });
+  const assistant = useConversationAssistant({ meId: me.user.id, meName: me.user.name, projectId: project.id, conversationId: conversation?.id ?? null,
+    onPosted: (message) => setMessages((current) => mergeMessages(current, [message])) });
   const canWrite = project.access !== 'viewer';
   const trigger = canWrite && !asking ? composerTrigger(draft, caret) : null;
   // "My assistant" in the @ list: first once it is ready; while it is not set up, first until the Home card is dismissed, then last.

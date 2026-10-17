@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ASSISTANT_RUN_CHANGED_EVENT, type AssistantActivity, type AssistantAnswer, type AssistantProposal, type AssistantRun, type AssistantRunKind, type PersonalAssistantStatus } from '@flux/contracts';
+import { ASSISTANT_RUN_CHANGED_EVENT, type ConversationMessage, type AssistantActivity, type AssistantAnswer, type AssistantProposal, type AssistantRun, type AssistantRunKind, type PersonalAssistantStatus } from '@flux/contracts';
 import { useStreamEvents } from '../api/stream';
 import { reply } from '../app/conversation-api';
 import { getProjectAgents } from '../agents/api';
@@ -51,7 +51,11 @@ export interface ConversationAssistant {
   refreshStatus(): void;
 }
 
-export function useConversationAssistant({ meId, meName, projectId, conversationId }: { meId: string; meName?: string; projectId: string; conversationId: string | null }): ConversationAssistant {
+export function useConversationAssistant({ meId, meName, projectId, conversationId, onPosted }: {
+  meId: string; meName?: string; projectId: string; conversationId: string | null;
+  /** The request as it was posted to the conversation (the stream message of Journey 1 step 6), so the pane can show it at once. */
+  onPosted?: (message: ConversationMessage) => void;
+}): ConversationAssistant {
   const [status, setStatus] = useState<PersonalAssistantStatus | null>(null);
   const [membership, setMembership] = useState<{ member: boolean | null; requested: boolean }>({ member: null, requested: false });
   const [answers, setAnswers] = useState<AssistantAnswer[]>([]);
@@ -175,7 +179,8 @@ export function useConversationAssistant({ meId, meName, projectId, conversation
       // replay after a lost answer posts it once. A Continue is part of the earlier request and posts nothing.
       if (!options.continuesRunId && meName) {
         const first = meName.trim().split(/\s+/)[0] || meName;
-        await reply(conversationId, { body: `@${first}'s assistant ${prompt}`, clientMessageId: started.clientRunId }).catch(() => undefined);
+        const posted = await reply(conversationId, { body: `@${first}'s assistant ${prompt}`, clientMessageId: started.clientRunId }).catch(() => null);
+        if (posted) onPosted?.(posted);
       }
       return started;
     },

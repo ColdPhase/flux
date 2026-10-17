@@ -185,7 +185,10 @@
 .aset-model__menu { position: absolute; z-index: 30; left: 0; display: grid; min-width: 260px; max-width: min(340px, calc(100vw - 32px)); padding: 4px; border-radius: var(--r-lg); background: var(--el); box-shadow: var(--sh-card); }
 .aset-model__menu--down { top: 100%; margin-top: 4px; }
 .aset-model__menu--up { bottom: 100%; margin-bottom: 4px; }
-.aset-model--chip .aset-model__menu--up { bottom: calc(100% - 10px); }
+/* The chip's list hangs from the ask bar, not from the chip, so it stays inside a phone's width. */
+.assistant-ask { position: relative; }
+.aset-model--chip { position: static; }
+.aset-model--chip .aset-model__menu { left: 0; }
 .aset-model__item { display: flex; align-items: flex-start; gap: 8px; width: 100%; min-height: 44px; padding: 8px 10px; border: 0; border-radius: var(--r-sm); background: none; color: var(--t1); font: inherit; font-size: var(--fs-md); text-align: left; cursor: pointer; }
 .aset-model__item:hover, .aset-model__item:focus-visible { background: var(--hov); }
 .aset-model__tick { flex: none; width: 14px; padding-top: 4px; }
