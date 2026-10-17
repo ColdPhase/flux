@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent } from 'react';
 import { Link } from 'react-router';
 import { taskCoordinationPacketPath, type TaskCoordination, type TaskCoordinationRequest, type TaskCoordinationVerdict } from '@flux/contracts';
 import { ApiError, NetworkError } from '../api/client';
@@ -95,6 +95,24 @@ function Card({ workId, projectId, taskNumber, card, verdict, onChange, onReload
     } finally { setBusy(false); }
   };
 
+  const packetName = `flux-handoff-${taskNumber}-${card.id.slice(0, 8)}.json`;
+  const downloadPacket = async (event: MouseEvent<HTMLAnchorElement>) => {
+    event.preventDefault();
+    try {
+      const response = await fetch(taskCoordinationPacketPath(workId, card.id), { credentials: 'same-origin' });
+      if (!response.ok) return;
+      const url = URL.createObjectURL(await response.blob());
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = packetName;
+      anchor.hidden = true;
+      document.body.append(anchor);
+      anchor.click();
+      anchor.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 30_000);
+    } catch { /* a failed download leaves the card as it is */ }
+  };
+
   return (
     <li className="rcard" data-request-id={card.id} data-status={card.status} data-kind={card.kind}>
       <p className="rcard__head">
@@ -114,7 +132,7 @@ function Card({ workId, projectId, taskNumber, card, verdict, onChange, onReload
           ? <button type="button" className="ui-link rcard__action" onClick={() => onOpenMessage(original.messageId)}>Open original message</button>
           : <Link className="ui-link rcard__action" to={elsewhere!}>Open original message</Link>) : null}
         <a className="ui-link rcard__action" href={taskCoordinationPacketPath(workId, card.id)}
-          download={`flux-handoff-${taskNumber}-${card.id.slice(0, 8)}.json`}>Download packet</a>
+          download={packetName} onClick={(event) => void downloadPacket(event)}>Download packet</a>
         {card.canCancel ? (confirming
           ? <span className="rcard__confirm" role="group" aria-label="Cancel this request?">
               <span className="rcard__ask">Cancel this request?</span>
