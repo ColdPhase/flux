@@ -1327,6 +1327,9 @@ class AppShellJourney(unittest.TestCase):
         expect(phone.locator(".project-convo__current-thread")).to_contain_text("Try a PIR sensor before considering a camera")
         phone.set_viewport_size({"width": 390, "height": 500})
         phone.get_by_label("Reply", exact=True).focus()
+        phone.wait_for_function(
+            "() => { const el = document.querySelector('[role=\"dialog\"] .project-convo__composer, .thread .project-convo__composer'); if (!el) return false; const r = el.getBoundingClientRect(); return r.height > 0 && r.bottom <= 500; }"
+        )
         composer = thread_of(phone).locator(".project-convo__composer").bounding_box()
         self.assertIsNotNone(composer)
         self.assertLessEqual(composer["y"] + composer["height"], 500, "focused composer remains inside a reduced phone viewport")
