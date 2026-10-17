@@ -122,8 +122,11 @@ export async function cancelCoWorkRequest(db: Database, principal: Principal, wo
       SELECT workspace_id, project_id FROM project_work_items WHERE id = ${workId.toLowerCase()}::uuid`)).rows[0];
     if (!located) throw new NotFoundError('Work item', 'WORK_NOT_FOUND');
     const projectId = located.project_id, workspaceId = located.workspace_id;
-    // 404 for someone who cannot read the project, 403 for a viewer; access rows are locked against a concurrent removal.
-    enforce(await evaluateProject(principal, 'project.write', projectId, tx, { lock: true }), 'project');
+    // The same 404 for an unknown task and for one the person cannot read; 403 for a viewer. Access rows are locked against
+    // a concurrent removal.
+    const access = await evaluateProject(principal, 'project.write', projectId, tx, { lock: true });
+    if (!access.visible) throw new NotFoundError('Work item', 'WORK_NOT_FOUND');
+    enforce(access, 'project');
     const actor = await cancelActor(tx, principal, projectId);
     const scope = { workspaceId, projectId, taskId: workId.toLowerCase() };
     const rows = coworkCardRows(tx);

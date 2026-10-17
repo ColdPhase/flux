@@ -87,9 +87,11 @@ test('the packet is a bounded reference packet: titles only while they exist at 
   assert.deepEqual([packet.request.id, packet.request.kind, packet.request.state, packet.request.sender, packet.request.recipient],
     [requestId, 'review', 'queued', { name: 'Codex', ownerName: 'cw-hubert' }, { name: 'Marek Claude', ownerName: 'cw-marek' }]);
   assert.deepEqual(packet.target, { type: 'work', id: a.id, version: a.version, title: `#${a.number} Native outcome A`, available: true });
-  assert.deepEqual(packet.sources, [
-    { type: 'message', id: thread.id, version: null, title: 'Please review the finished comparison and say what is missing.', available: true },
-    { type: 'material', id: f.material.materialId, version: 1, title: 'Review findings', available: true }]);
+  // The request keeps its sources in a canonical order of its own; the packet follows it.
+  const byType = (references: CoWorkHandoffPacket['sources']) => [...references].sort((a, b) => a.type.localeCompare(b.type));
+  assert.deepEqual(byType(packet.sources), [
+    { type: 'material', id: f.material.materialId, version: 1, title: 'Review findings', available: true },
+    { type: 'message', id: thread.id, version: null, title: 'Please review the finished comparison and say what is missing.', available: true }]);
   assert.deepEqual(packet.originalMessage, { messageId: thread.id, conversationId: thread.conversationId, space: 'agents', taskId: a.id });
   assert.deepEqual(packet.checkpoint && { ...packet.checkpoint, createdAt: undefined }, { summary: 'Read the plan and the first finding',
     nextAction: 'Compare the second finding with the baseline', blocker: null, sources: [{ materialId: f.material.materialId, version: 1 }], createdAt: undefined });
@@ -103,7 +105,7 @@ test('the packet is a bounded reference packet: titles only while they exist at 
   expectStatus(await f.hubert.browser.request('PATCH', `/api/v1/materials/${f.material.materialId}`, { body: { clientMutationId: randomUUID(),
     expectedVersion: 1, body: 'A third finding' } }), 200);
   const moved = (await f.hubert.browser.request('GET', packetPath(a.id, requestId))).json as CoWorkHandoffPacket;
-  assert.deepEqual(moved.sources[1], { type: 'material', id: f.material.materialId, version: 1, title: null, available: false });
+  assert.deepEqual(moved.sources.find((source) => source.type === 'material'), { type: 'material', id: f.material.materialId, version: 1, title: null, available: false });
 
   // Anyone who can read the task downloads it; nobody else does, and it is bound to its own task.
   for (const reader of [f.ada, f.vera, f.marek]) assert.equal((await reader.browser.request('GET', packetPath(a.id, requestId))).status, 200);
@@ -126,6 +128,8 @@ test('cancelling: a manager and the owners of the sender and recipient may, othe
   const sent = toolValue(await review.send('review-1', target));
   const requestId = String(sent.requestId);
   const before = await f.request(requestId);
+  // The grants are minted while Marek still manages the project; later he is only a contributor who owns his agent.
+  const claimGrant = await marekClaude.standing('cowork.request.claim', review.reviewUnit, 'review');
 
   // Negative controls leave the request untouched: a contributor who owns neither agent, a viewer, a stranger, a wrong
   // version, a malformed command, a request of another task and a signed-out caller.
@@ -159,7 +163,6 @@ test('cancelling: a manager and the owners of the sender and recipient may, othe
   // The recipient agent no longer sees it, and claiming it is refused; its grant is not debited.
   const inbox = toolValue(await marekClaude.call('flux_coordination_inbox', { projectId: f.p.id })).requests as unknown[];
   assert.deepEqual(inbox, []);
-  const claimGrant = await marekClaude.standing('cowork.request.claim', review.reviewUnit, 'review');
   const fence = { unitId: review.reviewUnit, generation: review.reviewClaim.generation, leaseId: review.reviewClaim.lease.id, requestId };
   assert.equal(toolFailure(await marekClaude.call('flux_claim_request', { ...marekClaude.base(claimGrant.id, 'review'), ...fence, expectedRequestVersion: 2 })).code,
     'COWORK_REQUEST_CLOSED');
@@ -193,7 +196,7 @@ test('cancelling a claimed request closes it: the agent\'s answer is refused and
   assert.equal(gone.status, 200);
   assert.equal((gone.json as { state: string }).state, 'cancelled');
   assert.equal(toolFailure(await resolve(first, claimed.version + 1)).code, 'COWORK_REQUEST_CLOSED');
-  assert.equal((await pool.query('SELECT count(*)::int AS n FROM cowork_review_verdicts')).rows[0].n, 0);
+  assert.equal((await pool.query('SELECT count(*)::int AS n FROM cowork_review_verdicts WHERE work_id = $1', [a.id])).rows[0].n, 0);
   assert.equal(await f.used(respond.id), 0, 'the refused answer debited nothing');
 
   // A resolved request is closed for good.
@@ -332,7 +335,7 @@ test('review is by a separate non-author: the author, an execution grant, anothe
   const executeOnly = await hubertClaude.standing('cowork.request.claim', null, 'execute');
   assert.equal(failureCode(await hubertClaude.call('flux_claim_request', { ...hubertClaude.base(executeOnly.id, 'execute'), ...review.fence(requestId), expectedRequestVersion: 1 })),
     'COWORK_UNIT_NOT_FOUND');
-  assert.equal((await pool.query('SELECT count(*)::int AS n FROM cowork_review_verdicts')).rows[0].n, 0);
+  assert.equal((await pool.query('SELECT count(*)::int AS n FROM cowork_review_verdicts WHERE work_id = $1', [a.id])).rows[0].n, 0);
 
   // The reviewer (the author\'s own owner, another connection, as the default allows) passes version 1.
   const passed = await review.verdict(requestId, 1, 'passed');
@@ -389,9 +392,12 @@ test('swapping executor and reviewer is an assignment: the finished unit and its
   // The roles swap: Marek\'s agent now executes in a new run and Codex reviews. Nobody changes login, assignee or past authorship.
   const next = await f.take(marekClaude, a, 'take-2');
   const reviewUnit = await f.openUnit(marekClaude, next, a, 'review', codex, 'review-swapped');
-  // Codex\'s execution grant cannot claim a review unit: the swap validates the grant of the new role.
-  const executeGrant = await codex.standing('cowork.claim', reviewUnit, 'execute');
-  assert.ok(failureCode(await codex.call('flux_claim_unit', { ...codex.base(executeGrant.id, 'execute'), unitId: reviewUnit, expectedVersion: 1 })));
+  // Codex\'s execution grant cannot claim a review unit: the swap validates the grant of the new role. A grant naming that unit
+  // as an execute unit cannot even be made; a wide execute grant is refused at the claim.
+  assert.equal((await codex.who.browser.request('POST', `/api/v1/agent-connections/${codex.connectionId}/action-grants`, { body: { clientCommandId: randomUUID(),
+    projectId: f.p.id, operation: 'cowork.claim', peerRequestClass: 'execute', maximumUses: 3, objectId: reviewUnit, expiresAt: new Date(Date.now() + 3_600_000).toISOString() } })).status, 404);
+  const executeGrant = await codex.standing('cowork.claim', null, 'execute');
+  assert.equal(failureCode(await codex.call('flux_claim_unit', { ...codex.base(executeGrant.id, 'execute'), unitId: reviewUnit, expectedVersion: 1 })), 'COWORK_UNIT_NOT_FOUND');
   assert.equal((await f.unit(reviewUnit)).state, 'pending');
   const reviewClaim = await codex.claimUnit(reviewUnit, 'review');
   assert.equal(reviewClaim.generation, 1);

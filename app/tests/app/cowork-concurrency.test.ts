@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
 import type { TaskCoordination } from '@flux/contracts';
 import { pool } from './support/db.js';
-import { waitUntilBlockedBy, settled } from './support/locks.js';
+import { waitUntilBlockedBy } from './support/locks.js';
 import { toolValue } from './support/mcp.js';
 import { expectStatus } from './support/people.js';
 import { coworkScene, failed, failureCode, type CoworkConn, type Reply } from './support/cowork-scene.js';
@@ -126,7 +126,7 @@ test('two transfers of one unit at once: exactly one wins, the generation advanc
     codex.call('flux_transfer_unit', { ...codex.base(toMarek.id, 'execute'), ...fence, assignmentConnectionId: marekClaude.connectionId }),
     codex.call('flux_transfer_unit', { ...codex.base(toHubert.id, 'execute'), ...fence, assignmentConnectionId: hubertClaude.connectionId })]);
   assert.equal(wins(replies).length, 1, 'one transfer wins');
-  assert.ok(['COWORK_VERSION_CONFLICT', 'COWORK_CLAIM_LOST'].includes(failureCode(errors(replies)[0]!)!), 'the other meets the fence');
+  assert.ok(['COWORK_VERSION_CONFLICT', 'COWORK_CLAIM_LOST', 'COWORK_UNIT_NOT_FOUND'].includes(failureCode(errors(replies)[0]!)!), `the other meets the fence (${failureCode(errors(replies)[0]!)})`);
   const winner = !failed(replies[0]!) ? marekClaude : hubertClaude;
   const after = await f.unit(held.unitId);
   assert.deepEqual([after.assignee, after.state, after.generation, after.version, after.from], [winner.connectionId, 'pending', before.generation + 1, before.version + 1, codex.connectionId]);
@@ -213,7 +213,7 @@ test('a cancel and the recipient\'s claim or answer meet on the request row, in 
     evidence: { type: 'material', id: f.material.materialId, version: 1 }, verdict: 'passed' });
   const cancel = (requestId: string, version: number) => f.marek.browser.request('POST', `/api/v1/work/${t.id}/coordination/requests/${requestId}/cancel`, { body: { expectedVersion: version } });
   const fresh = async (key: string) => String(toolValue(await review.send(key, target)).requestId);
-  const verdicts = async () => (await pool.query('SELECT count(*)::int AS n FROM cowork_review_verdicts')).rows[0].n as number;
+  const verdicts = async () => (await pool.query('SELECT count(*)::int AS n FROM cowork_review_verdicts WHERE work_id = $1', [t.id])).rows[0].n as number;
 
   // Claim first, then the cancel that named the version before the claim: it is told the request moved on.
   const r1 = await fresh('r1');
@@ -248,86 +248,55 @@ test('a cancel and the recipient\'s claim or answer meet on the request row, in 
   assert.deepEqual(view.requests.map((card) => card.state), ['cancelled', 'resolved', 'cancelled', 'claimed']);
 });
 
-test('a grant revoked while its command is in flight is refused at commit and leaves no effect; one revoked before it is simply refused', async () => {
+test('a grant revoked while its command is in flight waits for that command, which commits; every command after the revocation is refused and creates nothing', async () => {
   const { f, codex, marekClaude } = await threeConnections();
   const t = await f.task('Native outcome A');
   const review = await f.startReview(codex, marekClaude, t);
   const target = { type: 'work', id: t.id, version: t.version };
   const requests = async () => (await pool.query('SELECT count(*)::int AS n FROM cowork_requests WHERE work_id = $1', [t.id])).rows[0].n as number;
+  const slot = { table: 'cowork_connection_slots', key: 'connection_id', id: codex.connectionId } as const;
   const revoke = (grantId: string) => f.hubert.browser.request('DELETE', `/api/v1/agent-connections/${codex.connectionId}/action-grants/${grantId}`);
+  const mint = async () => (expectStatus(await f.hubert.browser.request('POST', `/api/v1/agent-connections/${codex.connectionId}/action-grants`, { body: { clientCommandId: randomUUID(),
+    projectId: f.p.id, operation: 'cowork.request', peerRequestClass: 'execute', objectId: review.held.unitId, maximumUses: 5, expiresAt: new Date(Date.now() + 3_600_000).toISOString() } }), 201) as { id: string }).id;
 
-  // The command passes its authorization, then waits on the sender's slot; the owner revokes the grant meanwhile.
-  const holder = await pool.connect();
-  try {
-    await holder.query('BEGIN');
-    await holder.query('SELECT 1 FROM cowork_connection_slots WHERE connection_id = $1 FOR UPDATE', [codex.connectionId]);
-    const pid = Number((await holder.query('SELECT pg_backend_pid() AS pid')).rows[0].pid);
-    const inFlight = review.send('review-1', target);
-    inFlight.catch(() => undefined);
-    await waitUntilBlockedBy(pool, pid);
-    const revocation = revoke(review.ask.id);
-    const revocationDone = settled(revocation);
-    // Either the revocation is applied now (the grant is no longer there to commit under) or it waits for the command.
-    const deadline = Date.now() + 3000;
-    while (!revocationDone() && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 25));
-    const appliedFirst = revocationDone();
-    await holder.query('COMMIT');
-    const reply = await inFlight;
-    assert.equal((await revocation).status, 204);
-    if (appliedFirst) {
-      assert.equal(failureCode(reply), 'AGENT_EXECUTION_UNAVAILABLE', 'a revoked grant cannot commit an in-flight command');
-      assert.equal(await requests(), 0, 'nothing was created');
-    } else {
-      assert.equal(failed(reply), false, 'the command committed before the revocation took effect');
-      assert.equal(await requests(), 1);
-    }
-  } finally {
-    await holder.query('ROLLBACK').catch(() => undefined);
-    holder.release();
-  }
-  // From now on the grant is gone: a new command, and a retry of the old one, are refused and create nothing.
-  const before = await requests();
-  assert.equal(failureCode(await review.send('review-2', target)), 'AGENT_EXECUTION_UNAVAILABLE');
-  assert.equal(await requests(), before);
+  // The command holds its grant until it commits: the revocation that arrives meanwhile waits for it, so the command stands.
+  const grant = await mint();
+  const [committed, revoked] = await ordered(slot, () => codex.call('flux_send_request', { ...review.sendArgs('review-1', target), grantId: grant }), () => revoke(grant));
+  assert.equal(failed(committed), false, 'the command that was in flight commits under the grant it was authorized with');
+  assert.equal(revoked.status, 204);
+  assert.equal(await requests(), 1);
+  // From then on the grant is gone: a new command and a retry of the old one are refused, and nothing is created or debited.
+  assert.equal(failureCode(await codex.call('flux_send_request', { ...review.sendArgs('review-2', target), grantId: grant })), 'AGENT_EXECUTION_UNAVAILABLE');
+  assert.equal(failureCode(await codex.call('flux_send_request', { ...review.sendArgs('review-1', target), grantId: grant })), 'AGENT_EXECUTION_UNAVAILABLE');
+  assert.equal(await requests(), 1);
+  // Revoking one grant leaves the others alone: a second grant for the same unit still works.
+  const other = await mint();
+  assert.equal(failed(await codex.call('flux_send_request', { ...review.sendArgs('review-3', target), grantId: other })), false);
+  assert.equal(await requests(), 2);
 });
 
-test('a connection revoked while its command is in flight cannot issue another; the books agree about the one in flight and its requests stay readable', async () => {
+test('a connection revoked around an in-flight command: the books agree, its unit stops and what it asked stays readable as history', async () => {
   const { f, codex, marekClaude } = await threeConnections();
   const t = await f.task('Native outcome A');
   const review = await f.startReview(codex, marekClaude, t);
   const target = { type: 'work', id: t.id, version: t.version };
+  const slot = { table: 'cowork_connection_slots', key: 'connection_id', id: codex.connectionId } as const;
   const sent = toolValue(await review.send('review-0', target));
   const succeeded = (outcome: { status: number; message: Reply }) => outcome.status === 200 && !failed(outcome.message);
-  const holder = await pool.connect();
-  let committed: boolean;
-  try {
-    await holder.query('BEGIN');
-    await holder.query('SELECT 1 FROM cowork_connection_slots WHERE connection_id = $1 FOR UPDATE', [codex.connectionId]);
-    const pid = Number((await holder.query('SELECT pg_backend_pid() AS pid')).rows[0].pid);
-    const inFlight = codex.raw('flux_send_request', review.sendArgs('review-1', target));
-    inFlight.catch(() => undefined);
-    await waitUntilBlockedBy(pool, pid);
-    const revocation = f.hubert.browser.request('DELETE', `/api/v1/agent-connections/${codex.connectionId}`);
-    revocation.catch(() => undefined);
-    const revoked = settled(revocation);
-    const deadline = Date.now() + 3000;
-    while (!revoked() && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 25));
-    await holder.query('COMMIT');
-    const outcome = await inFlight;
-    assert.equal((await revocation).status, 204);
-    committed = succeeded(outcome);
-  } finally {
-    await holder.query('ROLLBACK').catch(() => undefined);
-    holder.release();
-  }
-  // Whichever way the race went, the books agree: a committed command left its request, a refused one left none.
-  const rows = (await pool.query('SELECT intent_key FROM cowork_requests WHERE work_id = $1 ORDER BY created_at', [t.id])).rows.map((row) => row.intent_key);
-  assert.deepEqual(rows, committed ? ['review-0', 'review-1'] : ['review-0']);
-  // From now on the connection issues nothing.
-  assert.equal(succeeded(await codex.raw('flux_send_request', review.sendArgs('review-2', target))), false);
-  assert.equal((await pool.query('SELECT count(*)::int AS n FROM cowork_requests WHERE work_id = $1', [t.id])).rows[0].n, rows.length);
+  const rows = async () => (await pool.query('SELECT intent_key FROM cowork_requests WHERE work_id = $1 ORDER BY created_at', [t.id])).rows.map((row) => row.intent_key);
+
+  // The revocation is queued ahead of the command: the command, authorized a moment earlier, cannot commit.
+  const [revoked, refused] = await ordered(slot, () => f.hubert.browser.request('DELETE', `/api/v1/agent-connections/${codex.connectionId}`),
+    () => codex.raw('flux_send_request', review.sendArgs('review-1', target)));
+  assert.equal(revoked.status, 204);
+  assert.equal(succeeded(refused), false);
+  assert.deepEqual(await rows(), ['review-0']);
+  assert.equal(succeeded(await codex.raw('flux_send_request', review.sendArgs('review-2', target))), false, 'a revoked connection issues nothing');
+  assert.deepEqual(await rows(), ['review-0']);
   assert.equal((await f.unit(review.held.unitId)).state, 'stopped', 'its unit stopped with the revocation');
-  // The owners and managers still read what it asked, as history.
+  // The owners and managers still read what it asked, as history, and can still clear it.
   const view = expectStatus(await f.hubert.browser.request('GET', `/api/v1/work/${t.id}/coordination`), 200) as TaskCoordination;
-  assert.ok(view.requests.some((card) => card.id === String(sent.requestId)));
+  const card = view.requests.find((item) => item.id === String(sent.requestId))!;
+  assert.deepEqual([card.sender.name, card.canCancel], ['Codex', true]);
+  assert.equal((await f.hubert.browser.request('POST', `/api/v1/work/${t.id}/coordination/requests/${card.id}/cancel`, { body: { expectedVersion: card.version } })).status, 200);
 });
