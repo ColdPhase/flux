@@ -438,6 +438,12 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
     return () => { stopped = true; window.removeEventListener('online', flush); window.clearInterval(timer); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [heldHere, conversation?.id]);
+  const scrollToEnd = () => {
+    const feed = scrollRef.current;
+    if (!feed) return;
+    feed.scrollTop = feed.scrollHeight;
+    feed.dispatchEvent(new Event('scroll'));
+  };
   async function sendToAssistant() {
     if (!conversation || !writable || askBusy || askState(assistant.status, audience).kind !== 'ready') return;
     const command = helperComposer.begin();
@@ -446,10 +452,11 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
     setAskFailure('');
     try {
       noteAssistantUse(me.user.id);
+      scrollToEnd();
       await assistant.ask(command.body, { clientRunId: command.clientMessageId });
       helperComposer.finish(command.clientMessageId);
       // The run's working line joins the end of the thread; follow it as a sent message does, or it starts off screen.
-      if (active()) requestAnimationFrame(() => { const feed = scrollRef.current; if (feed && active()) feed.scrollTop = feed.scrollHeight; });
+      if (active()) { scrollToEnd(); requestAnimationFrame(() => { if (active()) scrollToEnd(); }); }
       if (active()) setAsking(false);
     } catch (cause) {
       // Offline: the request waits as "Sends when you're back" and goes out once, under the same id, on reconnect (AST-10.15).
@@ -531,7 +538,7 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
     if (!outcome) return;
     const active = captureScope();
     if (!conversation) onSending?.();
-    else requestAnimationFrame(() => { const feed = scrollRef.current; if (feed && active()) feed.scrollTop = feed.scrollHeight; });
+    else requestAnimationFrame(() => { if (active()) scrollToEnd(); });
     const result = await outcome;
     if (!active()) return;
     if (result.status === 'delivered') {
