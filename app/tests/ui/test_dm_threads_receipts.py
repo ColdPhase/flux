@@ -471,6 +471,21 @@ class DmThreadsReceipts(unittest.TestCase):
             page.wait_for_timeout(500)
             self.assertLessEqual(stop_counting(page)["max"], 1, f"{who}: two toolbars never show together")
             shot(page, f"dm-threads-desktop-thread-replies-{who}")
+            # Keyboard focus on the thread's root (its own list) and the pointer on a reply or on the conversation behind:
+            # still one toolbar, the one under the pointer.
+            page.mouse.move(2, 2)
+            page.locator("[data-dm-thread] .dm-thread__root .message-bubble").click(position={"x": 20, "y": 6})
+            page.keyboard.press("Tab")
+            page.wait_for_timeout(250)
+            self.assertEqual(len(showing(page)), 1, f"{who}: Tab shows the root's toolbar")
+            focused = showing(page)[0]["id"]
+            replies.nth(2).locator(".message-bubble").hover()
+            page.wait_for_timeout(300)
+            self.assertEqual([bar["id"] for bar in showing(page)], [(replies.nth(2).get_attribute("data-message-id"))], f"{who}: the pointer wins over the root's focus")
+            stream = page.locator(".dm__feed .dm-msg[data-message-id]").last
+            stream.locator(".message-bubble").hover()
+            page.wait_for_timeout(300)
+            self.assertEqual([bar["id"] for bar in showing(page)], [stream.get_attribute("data-message-id")], f"{who}: nor does a focused thread toolbar stay with the pointer on the conversation ({focused})")
             page.context.close()
 
 
