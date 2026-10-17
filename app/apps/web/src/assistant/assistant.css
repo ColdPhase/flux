@@ -53,6 +53,19 @@
 .assistant-waiting__list input { margin-top: 3px; }
 .assistant-waiting__list small { display: block; color: var(--t3); font-size: var(--fs-xs); }
 
+.assistant-message { margin-top: 10px; padding: 12px 14px; border-radius: var(--r-lg); background: var(--el); box-shadow: inset 0 0 0 1px var(--line2); }
+.assistant-message__head { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: var(--fs-md); font-weight: 600; color: var(--t1); overflow-wrap: anywhere; }
+.assistant-message__note, .assistant-message__skipped { margin-top: 6px; font-size: var(--fs-sm); line-height: 1.5; color: var(--t2); overflow-wrap: anywhere; }
+.assistant-message__rows { display: grid; gap: 8px; margin: 10px 0 0; padding: 0; list-style: none; font-size: var(--fs-sm); }
+.assistant-message__rows li { display: grid; grid-template-columns: auto 1fr; column-gap: 8px; row-gap: 2px; align-items: baseline; min-width: 0; }
+.assistant-message__kind { color: var(--t3); font-size: var(--fs-xs); }
+.assistant-message__title { color: var(--t1); overflow-wrap: anywhere; }
+.assistant-message__diff, .assistant-message__item { grid-column: 2; color: var(--t2); font-size: var(--fs-xs); overflow-wrap: anywhere; }
+.assistant-message__item { display: flex; align-items: center; gap: 8px; }
+.assistant-message__item .ui-link { font-size: var(--fs-sm); min-height: 24px; }
+.assistant-message > .ui-btn { margin-top: 6px; }
+.assistant-queued { margin-top: 6px; font-size: var(--fs-sm); color: var(--t2); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
 .assistant-ask__blocked { color: var(--t2); }
 .assistant-ask__error { flex-basis: 100%; color: var(--t1); }
 

@@ -143,7 +143,12 @@ export interface PersonalRunRepository {
   locateConversation(conversationId: string): Promise<{ workspaceId: string; projectId: string } | null>;
   runByClientId(ownerUserId: string, clientRunId: string): Promise<RunRecord | null>;
   findRun(id: string, options?: { lock?: boolean }): Promise<RunRecord | null>;
-  hasRunInFlight(ownerUserId: string): Promise<boolean>;
+  /** The owner's runs that are queued, reading or dispatching: one working and one waiting behind it at most (AST-6 queue). */
+  inFlightCount(ownerUserId: string): Promise<number>;
+  /** Another run of this owner holds the lane (reading or dispatching), so this queued one waits for it. */
+  laneBusy(ownerUserId: string, exceptRunId: string): Promise<boolean>;
+  /** Queued runs whose owner's lane is free, oldest first: the next request starts when the one before it ends. */
+  startableQueued(limit: number): Promise<string[]>;
   insertRun(run: NewRun): Promise<RunRecord>;
   updateRun(id: string, changes: RunChanges): Promise<RunRecord>;
   /**

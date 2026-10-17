@@ -163,6 +163,13 @@ export interface AssistantChange {
   sent: boolean;
   /** Who approved it ("approved by Ada"), for a change applied after a wait. */
   decidedBy: { id: string; name: string } | null;
+  /** Where the run is: its message (header, Undo) shows once it is no longer working. */
+  runState: 'working' | 'done' | 'stopped' | 'failed';
+  /** Before and after of what the change did, in words ("Probes", "Calibrate the probes"); null when there is nothing to show. */
+  before: string | null;
+  after: string | null;
+  /** An applied change the assistant can still take back (the domain may still refuse: "Changed since"). */
+  undoable: boolean;
   version: number;
   createdAt: string;
   expiresAt: string;
@@ -173,13 +180,15 @@ export interface AssistantChangeDecision {
   message: string | null;
 }
 export interface AssistantChangesDecided { changes: AssistantChangeDecision[] }
+/** Undo of a whole run's message: each item's result and the sentence "Undid 5 changes. 2 changed since: #4, #7". */
+export interface AssistantRunUndone { changes: AssistantChangeDecision[]; undone: number; changedSince: string[]; message: string }
 
 export const conversationAssistantChangesPath = (conversationId: string) => `/api/v1/conversations/${conversationId}/assistant-changes`;
 export const assistantRunChangesPath = (runId: string) => `/api/v1/assistant-runs/${runId}/changes`;
 /** `apply` (Apply all), `not-now`, or `inbox` (the owner left the conversation) for a run's waiting changes. */
-export const assistantRunChangesActionPath = (runId: string, action: 'apply' | 'not-now' | 'inbox') => `/api/v1/assistant-runs/${runId}/changes/${action}`;
-/** `apply`, `not-now` or `send` (a suggestion) for one change; the body names its `expectedVersion`. */
-export const assistantChangeActionPath = (changeId: string, action: 'apply' | 'not-now' | 'send') => `/api/v1/assistant-changes/${changeId}/${action}`;
+export const assistantRunChangesActionPath = (runId: string, action: 'apply' | 'not-now' | 'inbox' | 'undo') => `/api/v1/assistant-runs/${runId}/changes/${action}`;
+/** `apply`, `not-now`, `send` (a suggestion) or `undo` for one change; the body names its `expectedVersion`. */
+export const assistantChangeActionPath = (changeId: string, action: 'apply' | 'not-now' | 'send' | 'undo') => `/api/v1/assistant-changes/${changeId}/${action}`;
 
 const PHRASES: Record<string, { phrase: string; verb: string; noun: string }> = {
   'work.create': { phrase: 'add', verb: 'Add', noun: 'task' },
@@ -222,4 +231,17 @@ export function assistantChangeSummary(changes: readonly Pick<AssistantChange, '
 export function assistantBatchVerb(changes: readonly Pick<AssistantChange, 'verb'>[]): string {
   const verbs = new Set(changes.map((change) => change.verb));
   return verbs.size === 1 ? [...verbs][0]! : 'Apply';
+}
+
+/** The run message's header: "Done: added 2 tasks, edited 1 page", or "Stopped after 3 changes" (AST-6.4, AST-10.13). */
+export function assistantMessageHeader(changes: readonly Pick<AssistantChange, 'phrase' | 'runState'>[]): string {
+  if (changes.length && changes[0]!.runState === 'stopped') return `Stopped after ${changes.length} change${changes.length === 1 ? '' : 's'}`;
+  return `Done: ${assistantChangeSummary(changes.map((change) => ({ phrase: assistantPastPhrase(change.phrase) })))}`;
+}
+const PAST: Record<string, string> = { add: 'added', change: 'changed', close: 'closed', rename: 'renamed', record: 'recorded', propose: 'proposed',
+  edit: 'edited', remove: 'removed', move: 'moved', post: 'posted' };
+/** "add task" becomes "added task" for a message about what already happened. */
+export function assistantPastPhrase(phrase: string): string {
+  const space = phrase.indexOf(' ');
+  return `${PAST[phrase.slice(0, space)] ?? phrase.slice(0, space)} ${phrase.slice(space + 1)}`;
 }

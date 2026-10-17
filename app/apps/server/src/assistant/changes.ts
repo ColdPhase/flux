@@ -2,11 +2,12 @@ import type { FastifyInstance } from 'fastify';
 import type { PgBoss } from 'pg-boss';
 import {
   ASSISTANT_CHANGE_LIMITS, ASSISTANT_LIMITS, assistantChangeActionPath, assistantChangeWords, assistantRunChangesActionPath, assistantRunChangesPath,
-  conversationAssistantChangesPath, type AssistantChange, type AssistantChangeDecision,
+  conversationAssistantChangesPath, type AssistantChange, type AssistantChangeDecision, type AssistantRunUndone,
 } from '@flux/contracts';
 import { assistantChangeRows, type AssistantChangeRow, type DbExecutor } from '@flux/db';
-import { assistantChangeLine, ConflictError, createNotification, DomainError, evaluateProject, isUuid, NotFoundError, type Database,
+import { assistantChangeLine, ConflictError, undoSentence, type UndoRecord, createNotification, DomainError, evaluateProject, isUuid, NotFoundError, type Database,
   type Principal } from '@flux/core';
+import { CHANGED_SINCE, undoChange } from './undo.js';
 import type { SessionResolver } from '../identity/index.js';
 import { expectedVersion } from '../http/commands.js';
 import { notificationUnitOfWork, pgBossQueue } from '../push/adapters.js';
@@ -57,6 +58,14 @@ export async function reexecuteChange(db: Database, change: AssistantChangeRow, 
 }
 const stale = (code: string) => /VERSION_CONFLICT|STALE|CHANGED|DOC_UNCHANGED|NOT_FOUND/.test(code) && code !== 'ASSISTANT_CHANGE_UNAVAILABLE';
 
+const undoOf = (row: AssistantChangeRow) => (row.receipt as { undo?: UndoRecord } | null)?.undo ?? null;
+const runStateOf = (run: { status: string; stopRequestedAt: Date | null } | undefined): AssistantChange['runState'] => {
+  if (!run) return 'done';
+  if (['queued', 'reading', 'dispatching'].includes(run.status) && !run.stopRequestedAt) return 'working';
+  if (run.status === 'stopped' || run.stopRequestedAt) return 'stopped';
+  return run.status === 'completed' || run.status === 'truncated' ? 'done' : 'failed';
+};
+
 export function assistantChangeUseCases(db: Database, boss?: Pick<PgBoss, 'send'>, clock: () => Date = () => new Date()) {
   const rows = () => assistantChangeRows(db as DbExecutor);
   const owner = (principal: Principal) => {
@@ -66,6 +75,7 @@ export function assistantChangeUseCases(db: Database, boss?: Pick<PgBoss, 'send'
   async function view(list: AssistantChangeRow[], conversations: Map<string, string>): Promise<AssistantChange[]> {
     const names = await rows().names(list.flatMap((row) => [row.ownerUserId, row.otherUserId, row.suggestToUserId, row.decidedBy].filter((id): id is string => !!id)));
     const settings = new Map<string, number>();
+    const states = await rows().runStates([...new Set(list.map((row) => row.runId))]);
     const out: AssistantChange[] = [];
     for (const row of list) {
       const key = `${row.ownerUserId}:${row.workspaceId}`;
@@ -79,7 +89,9 @@ export function assistantChangeUseCases(db: Database, boss?: Pick<PgBoss, 'send'
         objectType: row.objectType, objectId: row.objectId, objectTitle: row.objectTitle, state: row.state, waitReason: row.waitReason, phrase, verb: words.verb,
         line: assistantChangeLine({ state: row.state, waitReason: row.waitReason, phrase, noun: words.noun, objectTitle: row.objectTitle, existing: row.objectId !== null,
           ownerName: names.get(row.ownerUserId) ?? '', otherName: otherId ? names.get(otherId) ?? null : null, limit: settings.get(key)!,
-          sent: !!row.sentAt, refusal: row.refusal, decidedByName: row.state === 'applied_after_wait' && row.decidedBy ? names.get(row.decidedBy) ?? null : null }),
+          sent: !!row.sentAt, refusal: row.refusal, decidedByName: (row.state === 'applied_after_wait' || row.state === 'undone') && row.decidedBy ? names.get(row.decidedBy) ?? null : null }),
+        runState: runStateOf(states.get(row.runId)), before: undoOf(row)?.before ?? null, after: undoOf(row)?.after ?? null,
+        undoable: (row.state === 'applied' || row.state === 'applied_after_wait') && !!undoOf(row),
         suggestTo: row.suggestToUserId ? { id: row.suggestToUserId, name: names.get(row.suggestToUserId) ?? '' } : null, sent: !!row.sentAt,
         decidedBy: row.decidedBy ? { id: row.decidedBy, name: names.get(row.decidedBy) ?? '' } : null,
         version: row.version, createdAt: row.createdAt.toISOString(), expiresAt: row.expiresAt.toISOString() });
@@ -128,6 +140,12 @@ export function assistantChangeUseCases(db: Database, boss?: Pick<PgBoss, 'send'
     await refuse(row, message);
     return { change: await viewOne((await rows().find(row.id))!), message };
   }
+  /** One change's Undo; null when it was undone, otherwise the plain words for why not. */
+  async function undoOne(principal: Principal, row: AssistantChangeRow): Promise<string | null> {
+    const names = await rows().names([row.ownerUserId]);
+    const result = await undoChange(db, row, { kind: 'human', id: row.ownerUserId }, names.get(row.ownerUserId) ?? 'Someone');
+    return result.done ? result.message : result.message ?? CHANGED_SINCE;
+  }
   async function notNow(principal: Principal, changeId: string, expected?: number): Promise<AssistantChangeDecision> {
     const userId = owner(principal);
     const row = await own(principal, changeId);
@@ -175,6 +193,23 @@ export function assistantChangeUseCases(db: Database, boss?: Pick<PgBoss, 'send'
       return { changes };
     },
     notNow,
+    /** Take back one applied change: a new version restoring what the assistant changed, if still untouched (AST-6.2). */
+    async undo(principal: Principal, changeId: string): Promise<AssistantChangeDecision> {
+      const row = await own(principal, changeId);
+      const message = await undoOne(principal, row);
+      return { change: await viewOne((await rows().find(row.id))!), message };
+    },
+    /** The message's Undo always means all of it: each undoable change in turn, then "Undid 5 changes. 2 changed since: #4, #7". */
+    async undoRun(principal: Principal, runId: string): Promise<AssistantRunUndone> {
+      const list = (await ownRun(principal, runId)).filter((row) => row.state === 'applied' || row.state === 'applied_after_wait').reverse();
+      const changes: AssistantChangeDecision[] = []; const changedSince: string[] = []; let undone = 0;
+      for (const row of list) {
+        const message = await undoOne(principal, row);
+        if (message === null || message === 'Moved to your drafts') undone++; else changedSince.push(row.objectType === 'work' ? row.objectTitle.split(' ')[0]! : row.objectTitle || row.operation);
+        changes.push({ change: await viewOne((await rows().find(row.id))!), message });
+      }
+      return { changes, undone, changedSince, message: undoSentence(undone, changedSince) };
+    },
     async notNowAll(principal: Principal, runId: string): Promise<{ changes: AssistantChangeDecision[] }> {
       const list = (await ownRun(principal, runId)).filter((row) => row.state === 'waiting');
       const changes: AssistantChangeDecision[] = [];
@@ -255,12 +290,14 @@ export function registerAssistantChangeRoutes(app: FastifyInstance, db: Database
     reply.headers(noStore).send(await changes.forRun(await who(request), request.params.runId)));
   app.post<{ Params: { runId: string } }>(assistantRunChangesActionPath(':runId', 'apply'), async (request) => changes.applyAll(await who(request), request.params.runId));
   app.post<{ Params: { runId: string } }>(assistantRunChangesActionPath(':runId', 'not-now'), async (request) => changes.notNowAll(await who(request), request.params.runId));
+  app.post<{ Params: { runId: string } }>(assistantRunChangesActionPath(':runId', 'undo'), async (request) => changes.undoRun(await who(request), request.params.runId));
   app.post<{ Params: { runId: string } }>(assistantRunChangesActionPath(':runId', 'inbox'), async (request) => changes.toInbox(await who(request), request.params.runId));
   const body = { type: 'object', additionalProperties: false, properties: { expectedVersion: { type: 'integer', minimum: 1, maximum: 2_147_483_647 } } } as const;
   app.post<{ Params: { changeId: string } }>(assistantChangeActionPath(':changeId', 'apply'), { schema: { body: { ...body, nullable: true } } }, async (request) =>
     changes.apply(await who(request), request.params.changeId, expectedVersion(request)));
   app.post<{ Params: { changeId: string } }>(assistantChangeActionPath(':changeId', 'not-now'), { schema: { body: { ...body, nullable: true } } }, async (request) =>
     changes.notNow(await who(request), request.params.changeId, expectedVersion(request)));
+  app.post<{ Params: { changeId: string } }>(assistantChangeActionPath(':changeId', 'undo'), async (request) => changes.undo(await who(request), request.params.changeId));
   app.post<{ Params: { changeId: string } }>(assistantChangeActionPath(':changeId', 'send'), { schema: { body: { ...body, nullable: true } } }, async (request) =>
     changes.send(await who(request), request.params.changeId, expectedVersion(request)));
   // The live-Wiki deferral rechecks when typists finish, and seven-day expiry, every 15 seconds.

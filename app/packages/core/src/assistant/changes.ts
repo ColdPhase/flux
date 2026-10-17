@@ -62,7 +62,7 @@ export function assistantChangeLine(input: AssistantChangeLineInput): string | n
     case 'applied_after_wait': return input.decidedByName ? `Approved by ${input.decidedByName}` : 'Applied when the page was free';
     case 'not_now': return 'Not now';
     case 'expired': return `Expired: ${input.phrase} · Ask again`;
-    case 'undone': return `Undone`;
+    case 'undone': return input.decidedByName ? `Undone by ${input.decidedByName}` : 'Undone';
     case 'refused': return input.refusal ?? 'Not applied';
     case 'waiting': break;
   }

@@ -2,11 +2,11 @@ import assert from 'node:assert/strict';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { before, beforeEach, describe, test } from 'node:test';
 import {
-  ASSISTANT_RUN_EFFECT_TOOLS, assistantChangeActionPath, assistantRunChangesActionPath, assistantSettingsPath, conversationAssistantChangesPath,
+  ASSISTANT_RUN_EFFECT_TOOLS, assistantChangeActionPath, assistantMessageHeader, assistantRunChangesPath, assistantRunChangesActionPath, assistantSettingsPath, conversationAssistantChangesPath,
   NEEDS_YOU_PATH, PERSONAL_RUN_CONSENT_VERSION, PERSONAL_RUN_LIMITS, personalRunTokenPath,
-  type AssistantChange, type AssistantSettings, type Conversation, type NeedsYouResponse, type Project, type Workspace,
+  type AssistantChange, type AssistantRunUndone, type AssistantSettings, type Conversation, type NeedsYouResponse, type Project, type Workspace,
 } from '@flux/contracts';
-import { createPersonalRunProcessor, type PersonalComputeResult, type Principal } from '@flux/core';
+import { createPersonalRunProcessor, recoverPersonalRuns, type PersonalComputeResult, type Principal } from '@flux/core';
 import { personalRunTokenRows } from '@flux/db';
 import { personalRunUseCases } from '../../apps/server/src/personal-runs/adapters.js';
 import { assistantChangeUseCases } from '../../apps/server/src/assistant/changes.js';
@@ -490,6 +490,144 @@ describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A
     assert.equal((await changesOf(run.runId)).length, 1, 'nothing written for the refused waiting change');
     assert.equal((await docBody(theirs.id)).body, 'First text');
     await complete(run.runId);
+  });
+
+  // --- A4 (#404): the run's message, Undo, Stop, recovery and the queue ---
+  const listRun = async (runId: string) => (expectStatus(await owner.browser.request('GET', assistantRunChangesPath(runId)), 200) as { items: AssistantChange[] }).items;
+  const undoRun = async (runId: string) => expectStatus(await owner.browser.request('POST', assistantRunChangesActionPath(runId, 'undo'), { body: {} }), 200) as AssistantRunUndone;
+  const patchWork = async (who: Person, id: string, version: number, body: Record<string, unknown>) =>
+    expectStatus(await who.browser.request('PATCH', `/api/v1/work/${id}`, { body, headers: { 'if-match': `"${version}"` } }), 200);
+
+  test('AST-6.1: "add two tasks and update the probes page" makes two tasks and one page version by the assistant, three change-log rows and one message "Done: added 2 tasks, edited 1 page" with Undo', async () => {
+    const page = await doc(owner, 'Probes', 'Probe notes\n\nSecond paragraph');
+    const run = await liveRun();
+    await run.call('flux_create_task', { task: { title: 'Calibrate the probes' } });
+    await run.call('flux_create_task', { task: { title: 'Order spare probes' } });
+    await run.call('flux_update_doc', { docId: page.id, expectedVersion: page.version, changes: { body: 'Probe notes\n\nSecond paragraph, now complete' } });
+    const authors = (await pool.query(`SELECT author_agent_id FROM project_material_versions WHERE material_id = $1 AND version = $2`, [page.id, page.version + 1])).rows;
+    assert.deepEqual(authors, [{ author_agent_id: agentId }], 'one page version authored by the assistant agent');
+    assert.equal((await changesOf(run.runId)).length, 3);
+    // While it works there is no message yet; once it ended the one message has its header, rows and before/after.
+    assert.ok((await listRun(run.runId)).every((change) => change.runState === 'working'));
+    await complete(run.runId);
+    const items = await listRun(run.runId);
+    assert.equal(assistantMessageHeader(items), 'Done: added 2 tasks, edited 1 page');
+    assert.ok(items.every((change) => change.undoable && change.runState === 'done'));
+    assert.equal(items.find((change) => change.operation === 'doc.update')!.after, '1 paragraph changed');
+    assert.equal(items.find((change) => change.operation === 'work.create')!.after, 'Calibrate the probes');
+  });
+
+  test('AST-6.2: Undo restores the page as a new version and removes both tasks; field-level: a state change does not block a rename, an edit of the same title does', async () => {
+    const page = await doc(owner, 'Wiring', 'Wire notes');
+    const renamed = await task(owner, 'Probes');
+    const retitled = await task(owner, 'Lamp driver');
+    const run = await liveRun();
+    const made = JSON.parse(text((await run.call('flux_create_task', { task: { title: 'Fresh task' } })).message)) as { workId: string };
+    await run.call('flux_update_doc', { docId: page.id, expectedVersion: page.version, changes: { body: 'Wire notes, extended' } });
+    await run.call('flux_update_task', { workId: renamed.id, expectedVersion: renamed.version, changes: { title: 'Calibrate the probes at two depths' } });
+    await run.call('flux_update_task', { workId: retitled.id, expectedVersion: retitled.version, changes: { title: 'Lamp driver, rev B' } });
+    await complete(run.runId);
+    // A person moves the renamed task to In progress; another edits the other title.
+    const current = (await pool.query(`SELECT version FROM project_work_items WHERE id = $1`, [renamed.id])).rows[0].version as number;
+    await patchWork(peer, renamed.id, current, { status: 'in_progress' });
+    const other = (await pool.query(`SELECT version FROM project_work_items WHERE id = $1`, [retitled.id])).rows[0].version as number;
+    await patchWork(peer, retitled.id, other, { title: 'Lamp driver v3' });
+    // Another member cannot undo it.
+    expectStatus(await peer.browser.request('POST', assistantRunChangesActionPath(run.runId, 'undo'), { body: {} }), 404);
+    const undone = await undoRun(run.runId);
+    assert.equal(undone.undone, 3);
+    assert.deepEqual(undone.changedSince, [`#${retitled.number}`]);
+    assert.equal(undone.message, `Undid 3 changes. 1 changed since: #${retitled.number}`);
+    assert.equal((await docBody(page.id)).body, 'Wire notes', 'the earlier text is back');
+    assert.equal((await docBody(page.id)).current_version, page.version + 2, 'as a new version, never a rewrite');
+    const rows = (await pool.query(`SELECT id, title, status FROM project_work_items WHERE id = ANY($1)`, [[renamed.id, retitled.id, made.workId]])).rows as { id: string; title: string; status: string }[];
+    assert.deepEqual(rows.find((row) => row.id === renamed.id), { id: renamed.id, title: 'Probes', status: 'in_progress' }, 'the rename is undone, the state stays');
+    assert.equal(rows.find((row) => row.id === retitled.id)!.title, 'Lamp driver v3', 'the edited title is untouched');
+    const log = await changesOf(run.runId);
+    assert.deepEqual(log.map((row) => row.state), ['undone', 'undone', 'undone', 'applied'], 'a refused item stays applied');
+    assert.equal(log[0]!.decided_by, owner.id, 'the Undo is recorded as the owner\'s');
+    const listed = await listRun(run.runId);
+    assert.equal(listed.find((change) => change.state === 'undone')!.line, 'Undone by ac-ada');
+    // Undoing the same message again does only what is left, and says "Changed since" for the one that did.
+    const again = await undoRun(run.runId);
+    assert.equal(again.undone, 0);
+    const single = expectStatus(await owner.browser.request('POST', assistantChangeActionPath(log[3]!.id, 'undo'), { body: {} }), 200) as { message: string | null };
+    assert.equal(single.message, 'Changed since. Open it');
+    expectStatus(await peer.browser.request('POST', assistantChangeActionPath(log[3]!.id, 'undo'), { body: {} }), 404);
+  });
+
+  test('AST-6.2: a created thought and link are removed; a created page moves to drafts; a map thought text is restored only when untouched', async () => {
+    const sketch = await map(owner);
+    const mine = await thought(owner, sketch.id, 'Sensor rig');
+    const run = await liveRun();
+    const added = JSON.parse(text((await run.call('flux_add_thought', { mapId: sketch.id, thought: { text: 'Mount the lamp', x: 40, y: 40, linkFrom: { thoughtId: thoughtId(mine) } } })).message)) as { thoughtId: string; linkId: string };
+    await run.call('flux_update_thought', { mapId: sketch.id, thoughtId: thoughtId(mine), expectedVersion: thoughtVersion(mine), changes: { text: 'Sensor rig v2' } });
+    const page = JSON.parse(text((await run.call('flux_create_doc', { doc: { title: 'Mounting', body: 'How to mount', state: 'published' } })).message)) as { docId: string };
+    await complete(run.runId);
+    const undone = await undoRun(run.runId);
+    assert.equal(undone.undone, 3, undone.message);
+    assert.equal((await pool.query(`SELECT count(*)::int AS n FROM sketch_thoughts WHERE id = $1`, [added.thoughtId])).rows[0].n, 0, 'the created thought is removed');
+    assert.equal((await pool.query(`SELECT count(*)::int AS n FROM sketch_links WHERE id = $1`, [added.linkId])).rows[0].n, 0);
+    assert.equal((await pool.query(`SELECT text FROM sketch_thoughts WHERE id = $1`, [thoughtId(mine)])).rows[0].text, 'Sensor rig');
+    const moved = (await pool.query(`SELECT v.state FROM project_materials m JOIN project_material_versions v ON v.material_id = m.id AND v.version = m.current_version WHERE m.id = $1`, [page.docId])).rows[0];
+    assert.equal(moved.state, 'draft', 'moved to the owner\'s drafts');
+    assert.ok(undone.changes.some((entry) => entry.message === 'Moved to your drafts'));
+  });
+
+  test('AST-6.3: a worker killed after two committed changes leaves a message with exactly those two changes once recovery ends the run', async () => {
+    const run = await liveRun();
+    await run.call('flux_create_task', { task: { title: 'Committed one' } });
+    await run.call('flux_create_task', { task: { title: 'Committed two' } });
+    await pool.query(`UPDATE personal_runs SET updated_at = now() - interval '1 hour' WHERE id = $1`, [run.runId]);
+    assert.ok(await recoverPersonalRuns(personalRunWorkerUnitOfWork(db)) >= 1);
+    const items = await listRun(run.runId);
+    assert.equal(items.length, 2);
+    assert.ok(items.every((change) => change.runState === 'failed' && change.undoable), 'a dead run still posts what it changed, with Undo');
+    assert.equal(assistantMessageHeader(items), 'Done: added 2 tasks');
+  });
+
+  test('AST-6.4: Stop makes the next tool call fail with 403, keeps the committed changes and the message says "Stopped after 2 changes"', async () => {
+    const run = await liveRun();
+    await run.call('flux_create_task', { task: { title: 'Before the stop one' } });
+    await run.call('flux_create_task', { task: { title: 'Before the stop two' } });
+    expectStatus(await owner.browser.request('POST', `/api/v1/assistant-runs/${run.runId}/stop`), 200);
+    const refused = await run.call('flux_create_task', { task: { title: 'After the stop' } });
+    assert.equal(refused.status, 403);
+    assert.equal((await pool.query(`SELECT count(*)::int AS n FROM project_work_items WHERE title = 'After the stop' AND project_id = $1`, [place.id])).rows[0].n, 0);
+    const items = await listRun(run.runId);
+    assert.equal(items.length, 2);
+    assert.equal(assistantMessageHeader(items), 'Stopped after 2 changes');
+    assert.ok(items.every((change) => change.undoable));
+  });
+
+  test('AST-6.6: receipts record the owner, the agent, the engine and the run id; no log row or receipt holds a vendor credential', async () => {
+    const run = await liveRun();
+    await run.call('flux_create_task', { task: { title: 'Receipt check sk-ant-api03-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA' } });
+    await complete(run.runId);
+    const [row] = await changesOf(run.runId);
+    assert.deepEqual([row!.receipt!.ownerUserId, row!.receipt!.agentId, row!.receipt!.runId, typeof row!.receipt!.engine], [owner.id, agentId, run.runId, 'string']);
+    const everything = JSON.stringify((await pool.query(`SELECT * FROM assistant_changes WHERE run_id = $1`, [run.runId])).rows);
+    assert.ok(!everything.includes('sk-ant-'), 'no seeded secret in the change log');
+    assert.ok(!everything.includes(run.token), 'no run token in the change log');
+  });
+
+  test('AST-6.8: a request behind the working one waits in the lane, starts when it ends, and a third is refused; others see nothing of it', async () => {
+    const first = await runs.invoke(human(owner), thread.id, { clientRunId: randomUUID(), kind: 'ask', prompt: 'Tidy the project' });
+    const behind = await runs.invoke(human(owner), thread.id, { clientRunId: randomUUID(), kind: 'ask', prompt: 'Turn this into tasks' });
+    assert.equal(behind.run.status, 'queued');
+    await assert.rejects(runs.invoke(human(owner), thread.id, { clientRunId: randomUUID(), kind: 'ask', prompt: 'A third' }), { code: 'PERSONAL_RUN_IN_FLIGHT' });
+    await pool.query(`UPDATE personal_runs SET status = 'reading' WHERE id = $1`, [first.run.id]);
+    assert.equal(await processor.process(behind.run.id), 'skipped', 'it waits while the first works');
+    assert.equal((await pool.query(`SELECT status FROM personal_runs WHERE id = $1`, [behind.run.id])).rows[0].status, 'queued');
+    const startable = () => personalRunWorkerUnitOfWork(db).run((ports) => ports.runs.startableQueued(50));
+    assert.ok(!(await startable()).includes(behind.run.id), 'not startable while the lane is busy');
+    await pool.query(`UPDATE personal_runs SET status = 'completed', completed_at = now() WHERE id = $1`, [first.run.id]);
+    assert.ok((await startable()).includes(behind.run.id), 'startable once the first ended');
+    // Cancel is Stop of the queued request, at zero cost.
+    const cancelled = expectStatus(await owner.browser.request('POST', `/api/v1/assistant-runs/${behind.run.id}/stop`), 200) as { status: string };
+    assert.equal(cancelled.status, 'stopped');
+    // Others in the place cannot see the owner's run.
+    expectStatus(await peer.browser.request('GET', `/api/v1/assistant-runs/${behind.run.id}`), 404);
   });
 
   test('the change log goes with its project when the project is erased', async () => {

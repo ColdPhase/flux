@@ -77,7 +77,7 @@ class AssistantChanges(unittest.TestCase):
         change = {"id": str(uuid.uuid4()), "runId": self.ids["run"], "projectId": self.ids["project"], "conversationId": self.ids["conversation"],
                   "operation": "work.create", "objectType": "work", "objectId": None, "objectTitle": "Label the sensor cables", "state": "waiting",
                   "waitReason": "ask", "phrase": "add task", "verb": "Add", "line": "You asked me to check with you first", "suggestTo": None, "sent": False,
-                  "decidedBy": None, "version": 1, "createdAt": NOW, "expiresAt": WEEK}
+                  "decidedBy": None, "runState": "done", "before": None, "after": None, "undoable": False, "version": 1, "createdAt": NOW, "expiresAt": WEEK}
         change.update(values)
         return change
 
@@ -171,7 +171,10 @@ class AssistantChanges(unittest.TestCase):
         card.get_by_role("checkbox", name=re.compile("remove thought")).uncheck()
         expect(card.get_by_role("button", name="Add", exact=True)).to_be_visible()
         card.get_by_role("button", name="Add", exact=True).click()
-        expect(card).to_contain_text("Done: add task Label the sensor cables · Approved by Ada Brandt")
+        message = page.locator(".assistant-message")
+        expect(message).to_contain_text("Done: added 1 task")
+        expect(message).to_contain_text("Label the sensor cables")
+        expect(message).to_contain_text("Approved by Ada Brandt")
         expect(card).to_contain_text("Waiting for you: remove 1 thought")
         self.assertEqual([call[1] for call in calls], ["apply"])
         # Send to Jonas: only now does the suggestion reach him.

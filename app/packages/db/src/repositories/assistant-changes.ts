@@ -118,27 +118,40 @@ export function assistantChangeRows(db: DbExecutor) {
     },
     async work(id: string) {
       const w = schema.projectWorkItems;
-      const [row] = await db.select({ id: w.id, projectId: w.projectId, number: w.number, title: w.title, version: w.version, ownerUserId: w.ownerUserId,
+      const [row] = await db.select({ id: w.id, projectId: w.projectId, number: w.number, title: w.title, outcome: w.outcome, status: w.status,
+        blocker: w.blocker, version: w.version, ownerUserId: w.ownerUserId,
         ownerAgentId: w.ownerAgentId, createdByKind: w.createdByKind, createdById: w.createdById }).from(w).where(eq(w.id, id));
       return row ?? null;
     },
     async doc(id: string) {
-      return first<{ id: string; projectId: string; title: string; version: number; userId: string | null; agentId: string | null }>(db, sql`
-        SELECT m.id, m.project_id AS "projectId", v.title, m.current_version AS version, m.created_by AS "userId", m.created_by_agent_id AS "agentId"
+      return first<{ id: string; projectId: string; title: string; body: string; state: 'draft' | 'published' | null; version: number; userId: string | null; agentId: string | null }>(db, sql`
+        SELECT m.id, m.project_id AS "projectId", v.title, v.body, v.state, m.current_version AS version, m.created_by AS "userId", m.created_by_agent_id AS "agentId"
         FROM project_materials m JOIN project_material_versions v ON v.material_id = m.id AND v.version = m.current_version
         WHERE m.id = ${id} AND m.kind = 'doc'`);
+    },
+    /** One version of a page, to restore the earlier text as a new version (A4 Undo). */
+    async docVersion(id: string, version: number) {
+      return first<{ title: string; body: string; state: 'draft' | 'published' | null }>(db, sql`
+        SELECT title, body, state FROM project_material_versions WHERE material_id = ${id} AND version = ${version}`);
+    },
+    /** How each run stands: working, ended, or stopped by its owner (the message header, A4). */
+    async runStates(runIds: string[]): Promise<Map<string, { status: string; stopRequestedAt: Date | null }>> {
+      if (!runIds.length) return new Map();
+      const r = schema.personalRuns;
+      const rows = await db.select({ id: r.id, status: r.status, stopRequestedAt: r.stopRequestedAt }).from(r).where(inArray(r.id, runIds));
+      return new Map(rows.map((row) => [row.id, { status: row.status, stopRequestedAt: row.stopRequestedAt }]));
     },
     async map(id: string) {
       return first<{ id: string; title: string; version: number; userId: string | null; agentId: string | null }>(db, sql`
         SELECT id, title, version, created_by_user_id AS "userId", created_by_agent_id AS "agentId" FROM sketches WHERE id = ${id}`);
     },
-    async thoughts(ids: string[]): Promise<{ id: string; text: string; version: number; userId: string | null; agentId: string | null }[]> {
+    async thoughts(ids: string[]): Promise<{ id: string; sketchId: string; text: string; x: number; y: number; version: number; userId: string | null; agentId: string | null }[]> {
       if (!ids.length) return [];
       const t = schema.sketchThoughts;
-      return db.select({ id: t.id, text: t.text, version: t.version, userId: t.createdByUserId, agentId: t.createdByAgentId }).from(t).where(inArray(t.id, ids));
+      return db.select({ id: t.id, sketchId: t.sketchId, text: t.text, x: t.x, y: t.y, version: t.version, userId: t.createdByUserId, agentId: t.createdByAgentId }).from(t).where(inArray(t.id, ids));
     },
-    async link(id: string): Promise<ObjectMaker | null> {
-      return first<ObjectMaker>(db, sql`SELECT created_by_user_id AS "userId", created_by_agent_id AS "agentId" FROM sketch_links WHERE id = ${id}`);
+    async link(id: string): Promise<(ObjectMaker & { sketchId: string }) | null> {
+      return first<ObjectMaker & { sketchId: string }>(db, sql`SELECT sketch_id AS "sketchId", created_by_user_id AS "userId", created_by_agent_id AS "agentId" FROM sketch_links WHERE id = ${id}`);
     },
     /** Who last changed an object: a page's current version author, otherwise the latest event about it (a day back at most). */
     async lastActor(objectId: string): Promise<{ id: string; name: string } | null> {

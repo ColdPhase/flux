@@ -134,10 +134,12 @@ function sourceSummary(count: number) {
   return `${count} ${count === 1 ? 'source' : 'sources'} from this project`;
 }
 
-export function AnswerItem({ answer, mine, lookups, when, clock, proposal, proposalControls, changes = null, onRetry, onContinue, onAskAbout }: {
+export function AnswerItem({ answer, mine, lookups, when, clock, proposal, proposalControls, changes = null, resultInMessage = false, onRetry, onContinue, onAskAbout }: {
   answer: AssistantAnswer;
   /** The owner's waiting changes of this run (F-027 A3); only ever the owner's own. */
   changes?: ReactNode;
+  /** The run's message already says what it did: a bare "Done…" result line is not repeated above it (AST-10.13). */
+  resultInMessage?: boolean;
   mine: boolean;
   lookups: SourceLookups;
   when: (iso: string) => string;
@@ -165,7 +167,7 @@ export function AnswerItem({ answer, mine, lookups, when, clock, proposal, propo
         <time dateTime={answer.committedAt} title={when(answer.committedAt)}>{clock(answer.committedAt)}</time>
       </div>
       <p className="assistant-answer__request">“{answer.request.prompt}”</p>
-      <AnswerBody answer={answer} lookups={lookups} />
+      {resultInMessage && /^done\b[^\n]{0,160}$/i.test(answer.body.trim()) ? null : <AnswerBody answer={answer} lookups={lookups} />}
       {answer.truncated ? <p className="assistant-answer__truncated"><Icon name="alert" size={13} />Stopped at the length limit, so this answer is incomplete.</p> : null}
       {proposal ? proposalControls : null}
       {changes}

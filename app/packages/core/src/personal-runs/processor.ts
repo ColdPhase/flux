@@ -416,6 +416,8 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
       const claimed = await uow.run(async (ports) => {
         const run = await ports.runs.findRun(id, { lock: true });
         if (!run || run.status !== 'queued') return null;
+        // One lane per owner: a request behind the one that is working waits for it to end (AST-6 queue).
+        if (await ports.runs.laneBusy(run.ownerUserId, run.id)) return null;
         const checked = await recheck(ports, connections, compute, run, 'before_read', true).catch((error: unknown) => {
           if (isAccessDenial(error)) return { refusal: 'denied' as const };
           throw error;

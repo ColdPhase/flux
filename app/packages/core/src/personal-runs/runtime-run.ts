@@ -152,6 +152,8 @@ export function createRuntimeRunProcessor({ uow, runtime, tokens, stopPollMs, ho
       const claimed = await uow.run(async (ports) => {
         const run = await ports.runs.findRun(id, { lock: true });
         if (!run || run.status !== 'queued') return null;
+        // One lane per owner: a request behind the one that is working waits for it to end (AST-6 queue).
+        if (await ports.runs.laneBusy(run.ownerUserId, run.id)) return null;
         const refusal = await checked(ports, run, 'before_read', true);
         if (refusal) return { done: true as const, status: (await updateAndAnnounce(ports, run.id, ended(refusal, 'before_read', free))).status };
         return { done: false as const, run: await updateAndAnnounce(ports, run.id, { status: 'reading' }) };
