@@ -1,6 +1,7 @@
 /* A task's request cards in its agents' thread (#400 AC-4): one quiet card per durable request, above the messages. */
 .rcards { display: flex; flex-direction: column; gap: var(--s-2); }
 .rcards__list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--s-2); }
+.rcards__title { margin: 0; font-size: var(--fs-xs); color: var(--t3); }
 .rcards__more { margin: 0; font-size: var(--fs-sm); color: var(--t3); }
 .rcard { display: flex; flex-direction: column; gap: 2px; padding: var(--s-3) var(--s-4); border-radius: var(--r-card); background: var(--el); box-shadow: var(--sh-card); min-width: 0; }
 .rcard[data-status="resolved"], .rcard[data-status="declined"], .rcard[data-status="superseded"], .rcard[data-status="expired"], .rcard[data-status="cancelled"] { background: var(--sub); box-shadow: none; }

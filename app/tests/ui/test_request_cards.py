@@ -91,7 +91,7 @@ class Coordination:
         elif request.method == "GET" and url.endswith("/packet"):
             self.packets.append(url)
             route.fulfill(body=json.dumps({"schema": "flux.cowork.packet/1"}), content_type="application/json",
-                          headers={"content-disposition": 'attachment; filename="flux-handoff-12-00000001.json"'})
+                          headers={"content-disposition": 'attachment; filename="flux-handoff-1-00000000.json"'})
         elif request.method == "POST" and url.endswith("/cancel"):
             body = json.loads(request.post_data or "{}")
             self.cancels.append(body)
@@ -248,7 +248,7 @@ class RequestCardsJourney(unittest.TestCase):
             link = page.get_by_role("region", name=REGION).locator("[data-request-id$='000000000001']").get_by_role("link", name="Download packet")
             with page.expect_download() as download:
                 link.click()
-            self.assertEqual(download.value.suggested_filename, "flux-handoff-12-00000001.json")
+            self.assertEqual(download.value.suggested_filename, "flux-handoff-1-00000000.json")
             self.assertEqual(len(stub.packets), 1)
             self.assertRegex(stub.packets[0], rf"/api/v1/work/{self.ids['task']}/coordination/requests/00000000-0000-4000-8000-000000000001/packet$")
 
@@ -256,13 +256,15 @@ class RequestCardsJourney(unittest.TestCase):
         page, stub = self.cards("hubert", can_cancel=True)
         card = page.get_by_role("region", name=REGION).locator("[data-request-id$='000000000001']")
         download = card.get_by_role("link", name="Download packet")
-        before = download.bounding_box()
+        card.scroll_into_view_if_needed()
+        offset = lambda: download.bounding_box()["y"] - card.bounding_box()["y"]  # noqa: E731
+        before = offset()
         card.get_by_role("button", name="Cancel request").click()
         group = card.get_by_role("group", name="Cancel this request?")
         expect(group).to_be_visible()
         self.assertEqual(stub.cancels, [], "asking changes nothing")
         # The controls before it do not move while it asks (Spokój rule 7).
-        self.assertEqual(download.bounding_box(), before)
+        self.assertEqual(offset(), before)
         group.get_by_role("button", name="Keep it").click()
         expect(group).to_have_count(0)
         expect(card.get_by_role("button", name="Cancel request")).to_be_visible()
@@ -271,7 +273,7 @@ class RequestCardsJourney(unittest.TestCase):
         expect(card).to_contain_text("Cancelled by Hubert Nowak")
         expect(card.get_by_role("button", name="Cancel request")).to_have_count(0)
         self.assertEqual(stub.cancels, [{"expectedVersion": 1}])
-        self.assertEqual(download.bounding_box(), before, "nothing before it moved when the request closed")
+        self.assertEqual(offset(), before, "nothing before it moved when the request closed")
 
     def test_07_a_refused_cancel_says_why_and_shows_the_request_as_it_is(self) -> None:
         page, stub = self.cards("hubert", can_cancel=True)
@@ -328,7 +330,7 @@ class RequestCardsJourney(unittest.TestCase):
         rule = hubert.get_by_role("region", name="Who may review")
         expect(rule).to_be_visible()
         expect(rule.get_by_role("radio", name=re.compile("^Another connection"))).to_be_checked()
-        rule.get_by_role("radio", name=re.compile("^Another person’s agent")).check()
+        rule.get_by_role("radio", name=re.compile("^Another person’s agent")).click()
         expect(rule.get_by_role("status")).to_contain_text("Saved. It applies from the next review.")
         self.assertEqual(self.api(hubert, "GET", path, status=200)["reviewSeparation"], "distinct_owner")
         shot(hubert, "review-rule-1440")

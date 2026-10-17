@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Link } from 'react-router';
 import { taskCoordinationPacketPath, type TaskCoordination, type TaskCoordinationRequest, type TaskCoordinationVerdict } from '@flux/contracts';
 import { ApiError, NetworkError } from '../api/client';
@@ -12,7 +12,7 @@ import './requests.css';
 /**
  * A task's request cards in its agents' thread (#400 AC-4, #153): each help, review, fix or hand-off request as one card read
  * from the durable record, in plain words. The thread is their face, never their store. Open requests come first, then the
- * latest closed ones. Everyone who can read the task reads the cards and downloads a request's reference packet; only a
+ * latest closed ones. They sit at the end of the thread, above the composer. Everyone who can read the task reads the cards and downloads a request's reference packet; only a
  * project manager or the owner of either agent (the server says: `canCancel`) can cancel an open one. A card never acts for
  * the agents: it claims, answers and acknowledges nothing. The parent keys it by task, so a different task starts fresh.
  */
@@ -68,8 +68,8 @@ function useTaskCoordination(workId: string, projectId: string, meId: string) {
   return { data, replace, reload: () => reload.current() };
 }
 
-function Card({ workId, projectId, card, verdict, onChange, onReload, onOpenMessage }: {
-  workId: string; projectId: string; card: TaskCoordinationRequest; verdict: TaskCoordinationVerdict | undefined;
+function Card({ workId, projectId, taskNumber, card, verdict, onChange, onReload, onOpenMessage }: {
+  workId: string; projectId: string; taskNumber: number; card: TaskCoordinationRequest; verdict: TaskCoordinationVerdict | undefined;
   onChange: (card: TaskCoordinationRequest) => void; onReload: () => void; onOpenMessage: (messageId: string) => void;
 }) {
   const [confirming, setConfirming] = useState(false);
@@ -113,7 +113,8 @@ function Card({ workId, projectId, card, verdict, onChange, onReload, onOpenMess
         {original ? (inThread
           ? <button type="button" className="ui-link rcard__action" onClick={() => onOpenMessage(original.messageId)}>Open original message</button>
           : <Link className="ui-link rcard__action" to={elsewhere!}>Open original message</Link>) : null}
-        <a className="ui-link rcard__action" href={taskCoordinationPacketPath(workId, card.id)} download>Download packet</a>
+        <a className="ui-link rcard__action" href={taskCoordinationPacketPath(workId, card.id)}
+          download={`flux-handoff-${taskNumber}-${card.id.slice(0, 8)}.json`}>Download packet</a>
         {card.canCancel ? (confirming
           ? <span className="rcard__confirm" role="group" aria-label="Cancel this request?">
               <span className="rcard__ask">Cancel this request?</span>
@@ -127,20 +128,38 @@ function Card({ workId, projectId, card, verdict, onChange, onReload, onOpenMess
   );
 }
 
-export function RequestCards({ workId, projectId, meId, onOpenMessage }: {
-  workId: string; projectId: string; meId: string; onOpenMessage: (messageId: string) => void;
+export function RequestCards({ workId, projectId, taskNumber, meId, onOpenMessage }: {
+  workId: string; projectId: string; taskNumber: number; meId: string; onOpenMessage: (messageId: string) => void;
 }) {
   const { data, replace, reload } = useTaskCoordination(workId, projectId, meId);
   const [all, setAll] = useState(false);
-  if (!data || !data.requests.length) return null;
+  const section = useRef<HTMLElement>(null);
+  const shown = !!data && data.requests.length > 0;
+  // The cards sit at the end of the thread, above the composer, where the thread opens. A reader who was at the end stays
+  // there while they appear, grow or fold; one reading earlier messages is never moved.
+  useLayoutEffect(() => {
+    const element = section.current;
+    const pane = element?.closest<HTMLElement>('.agents-thread-scroll, .agents-scroll');
+    if (!element || !pane) return;
+    const remaining = () => pane.scrollHeight - pane.scrollTop - pane.clientHeight;
+    let atEnd = remaining() - element.offsetHeight < 40;
+    if (atEnd) pane.scrollTop = pane.scrollHeight;
+    const onScroll = () => { atEnd = remaining() < 40; };
+    const observer = new ResizeObserver(() => { if (atEnd) pane.scrollTop = pane.scrollHeight; });
+    observer.observe(element);
+    pane.addEventListener('scroll', onScroll, { passive: true });
+    return () => { observer.disconnect(); pane.removeEventListener('scroll', onScroll); };
+  }, [shown]);
+  if (!data || !shown) return null;
   const { open, closed, earlier } = splitCards(data.requests);
   const visible = new Set([...open, ...closed, ...(all ? earlier : [])].map((card) => card.id));
   const verdicts = new Map(data.verdicts.map((verdict) => [verdict.requestId, verdict]));
   return (
-    <section className="rcards" aria-label="Requests between agents">
+    <section className="rcards" aria-label="Requests between agents" ref={section}>
+      <p className="rcards__title" aria-hidden="true">Requests</p>
       <ol className="rcards__list">
         {data.requests.filter((card) => visible.has(card.id)).map((card) => (
-          <Card key={card.id} workId={workId} projectId={projectId} card={card} verdict={verdicts.get(card.id)} onChange={replace} onReload={reload} onOpenMessage={onOpenMessage} />
+          <Card key={card.id} workId={workId} projectId={projectId} taskNumber={taskNumber} card={card} verdict={verdicts.get(card.id)} onChange={replace} onReload={reload} onOpenMessage={onOpenMessage} />
         ))}
       </ol>
       {earlier.length && !all ? <p className="rcards__more"><button type="button" className="ui-link" onClick={() => setAll(true)}>Show {earlier.length} earlier {earlier.length === 1 ? 'request' : 'requests'}</button></p> : null}
