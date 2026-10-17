@@ -15,6 +15,8 @@ from test_work_pagination import api
 from native_touch import drag_touch, native_touch_driver
 
 PASSWORD = "One panel for every object"
+# Every finite animation (a sheet arriving) has finished; endless indicators are ignored.
+SETTLED = "() => document.getAnimations().every((a) => a.playState !== 'running' || a.effect?.getComputedTiming().endTime === Infinity)"
 
 
 class UnifiedPanel(unittest.TestCase):
@@ -168,7 +170,7 @@ class UnifiedPanel(unittest.TestCase):
         shot(page, "unified-panel-thread-from-task-phone")
         thread.get_by_role("button", name=re.compile(r"^Task #\d+$")).tap()
         expect(page.get_by_role("dialog", name="Details").locator(".wd")).to_be_visible()
-        page.wait_for_timeout(700)  # the sheet has finished settling before the next touch
+        page.wait_for_function(SETTLED)  # the sheet has finished settling before the next touch
         sheet = page.get_by_role("dialog", name="Details")
         top = sheet.bounding_box()["y"]
         drag_touch(page, top + 14, 830)
@@ -405,7 +407,7 @@ class UnifiedPanel(unittest.TestCase):
         expect(tasks).to_be_visible()
         expect(page.locator("[data-detent-sheet]")).to_have_count(1)
         expect(page.locator(".sk-tasks-sheet")).to_have_count(0)
-        page.wait_for_timeout(900)
+        page.wait_for_function(SETTLED)
         shot(page, "unified-panel-thought-tasks-phone")
         sheet.get_by_role("link", name=re.compile("Choose the mast height")).tap()
         expect(sheet.locator(".wd[data-detail-kind='work']")).to_be_visible()
@@ -430,17 +432,21 @@ class UnifiedPanel(unittest.TestCase):
                         page.goto(f"/projects/{self.project}/tasks?open=work:{task['id']}")
                         sheet = page.get_by_role("dialog", name="Details")
                         expect(sheet.locator(".wd")).to_be_visible()
-                        page.wait_for_timeout(900)
+                        page.wait_for_function(SETTLED)
                         shot(page, f"unified-panel-task-{device}-{scheme}")
                         sheet.get_by_role("link", name=re.compile("Message: Should the first sensors")).tap()
                         expect(page.get_by_role("dialog", name="Replies").locator(".thread")).to_be_visible()
-                        page.wait_for_timeout(900)
+                        page.wait_for_function(SETTLED)
                         shot(page, f"unified-panel-thread-{device}-{scheme}")
                     else:
                         shot(page, f"unified-panel-task-{device}-{scheme}")
                         panel.get_by_role("link", name=re.compile("Message: Should the first sensors")).click()
                         expect(panel.locator(".thread")).to_be_visible()
                         shot(page, f"unified-panel-thread-{device}-{scheme}")
+                    page.goto(f"/projects/{self.project}/tasks?open=decision:{self.decision['id']}")
+                    expect(page.locator("#details .wd[data-detail-kind='decision']")).to_be_visible()
+                    page.wait_for_function(SETTLED)
+                    shot(page, f"unified-panel-decision-{device}-{scheme}")
 
 
 if __name__ == "__main__":

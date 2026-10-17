@@ -11,6 +11,9 @@ from test_work_pagination import api
 from native_touch import drag_touch, native_touch_driver
 
 
+# Every finite animation (a sheet arriving) has finished; endless indicators are ignored.
+SETTLED = "() => document.getAnimations().every((a) => a.playState !== 'running' || a.effect?.getComputedTiming().endTime === Infinity)"
+
 class DetailPanelFinal(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -281,7 +284,7 @@ class DetailPanelFinal(unittest.TestCase):
                 sheet = page.get_by_role("dialog", name="Details")
                 expect(sheet.locator(".wd")).to_be_visible()
                 expect(sheet).to_have_attribute("data-height", "half")
-                page.wait_for_timeout(900)  # the sheet has finished sliding in
+                page.wait_for_function(SETTLED)  # the sheet has finished sliding in
                 grabber = sheet.locator(".ui-grabber")
                 expect(grabber).to_be_visible()
                 half = sheet.bounding_box()
@@ -403,7 +406,7 @@ class DetailPanelFinal(unittest.TestCase):
         thread = page.get_by_role("dialog", name="Replies")
         expect(thread).to_be_visible()
         expect(thread).to_have_attribute("data-height", "full")
-        page.wait_for_timeout(900)  # the sheet has finished sliding in
+        page.wait_for_function(SETTLED)  # the sheet has finished sliding in
         handle = thread.locator(".ui-grabber").bounding_box()
         self.assertGreaterEqual(handle["height"], 44, "the thread grabber is a real 44px target")
         self.assertGreaterEqual(handle["width"], 44)

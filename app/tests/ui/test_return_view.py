@@ -237,8 +237,8 @@ class ReturnViewJourney(unittest.TestCase):
         expect(changes.filter(has_text="Ari started “Camera misses 62% of gestures at 5 lux”")).to_have_count(1)
         expect(panel.get_by_role("link", name=re.compile("Ari recorded a result: Camera misses 62% of gestures"))).to_contain_text("It did not work out, about “Mount the PIR sensor in the lamp base”")
         expect(panel.get_by_role("link", name=re.compile("New material: Low-light test plan"))).to_have_attribute("href", re.compile(r"^/materials/.+/versions/1$"))
-        # The conversation stays readable beside the panel.
-        expect(page.locator(f"#message-{self.ids['question']}")).to_be_visible()
+        # The conversation stays readable beside the panel: What matters takes the thread's one panel, the stream stays.
+        expect(page.locator(".project-convo__message").filter(has_text="Camera or sensor for the bedside lamp?")).to_be_visible()
         # Summarize is sized to its label; the completion action keeps its full width.
         summarize = panel.get_by_role("button", name="Summarize")
         s_box = summarize.bounding_box()

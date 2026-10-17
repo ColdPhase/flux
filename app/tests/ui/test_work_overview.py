@@ -78,10 +78,19 @@ class OverviewWorkJourney(unittest.TestCase):
         return overview
 
     def open(self, page):
+        # An open thread is the one panel; on a phone it is a modal sheet that covers the header, so the conversation's
+        # Details are opened at a computer's width and the window is then narrowed to the phone's (#488).
+        phone = page.viewport_size["width"] <= 640
+        size = page.viewport_size
+        if phone: page.set_viewport_size({"width": 1500, "height": 900})
         page.goto(f"/projects/{self.project}/conversations/{self.conversation}")
         expect(page.get_by_label("Write a message", exact=True)).to_be_visible()
-        # An open thread is the one panel (a sheet on a phone, which dims the header): Details take its place.
+        # Details take the thread's place in the one panel.
         open_details(page)
+        if phone:
+            self.ready(page)
+            page.set_viewport_size(size)
+            expect(page.get_by_role("dialog", name="Details")).to_be_visible()
         return self.ready(page)
 
     def identities(self, page):

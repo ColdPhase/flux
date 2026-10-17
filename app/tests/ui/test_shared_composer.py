@@ -409,8 +409,8 @@ class SharedComposerJourney(unittest.TestCase):
                 box = page.get_by_label("Write to this task")
                 box.fill("The phone keeps this careful night measurement")
                 if width < 681:
-                    # The thread's own heading stands where the task picker was (#347 P1-2: no picker; the thread opens from the Now card).
-                    picker, field = page.locator('.thread__head').bounding_box(), box.bounding_box()
+                    # The thread's own heading (its task, #488) stands where the task picker was (#347 P1-2: no picker; the thread opens from the Now card).
+                    picker, field = page.locator('.agents-thread__task').bounding_box(), box.bounding_box()
                     assert picker and field
                     self.assertLessEqual(field['y'] - picker['y'] - picker['height'], 180,
                                          'the empty human thread starts near its task, without onboarding or a blank spacer')
