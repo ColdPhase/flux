@@ -1112,6 +1112,8 @@ export const projectWorkItems = pgTable('project_work_items', {
   blocker: text('blocker'),
   /** Who a blocked task waits for (#550, migration 0102); null unless blocked. */
   waitingForUserId: text('waiting_for_user_id').references(() => authUsers.id, { onDelete: 'set null' }),
+  /** The calendar day it is due (#488, migration 0108): `YYYY-MM-DD`, no time zone, no time; null for none. */
+  dueOn: date('due_on', { mode: 'string' }),
   ownerUserId: text('owner_user_id'),
   ownerAgentId: uuid('owner_agent_id'),
   parkedByDecisionId: uuid('parked_by_decision_id'),
@@ -1209,6 +1211,22 @@ export const projectTaskUpdates = pgTable('project_task_updates', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [
   index('project_task_updates_project_idx').on(table.projectId, table.createdAt.desc(), table.id.desc()),
+  foreignKey({ columns: [table.workspaceId, table.projectId, table.workId], foreignColumns: [projectWorkItems.workspaceId, projectWorkItems.projectId, projectWorkItems.id] }).onDelete('cascade'),
+]);
+
+/** One row per changed status, owner, due date or title of a task, with who made it (#488, migration 0108). */
+export const projectTaskActivity = pgTable('project_task_activity', {
+  id: uuid('id').primaryKey(),
+  workspaceId: uuid('workspace_id').notNull(),
+  projectId: uuid('project_id').notNull(),
+  workId: uuid('work_id').notNull(),
+  kind: text('kind', { enum: ['status', 'owner', 'due', 'title'] }).notNull(),
+  actorKind: text('actor_kind', { enum: ['human', 'agent'] }).notNull(),
+  actorId: text('actor_id').notNull(),
+  detail: jsonb('detail').$type<Record<string, unknown>>().notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  index('project_task_activity_work_idx').on(table.workId, table.createdAt.desc(), table.id.desc()),
   foreignKey({ columns: [table.workspaceId, table.projectId, table.workId], foreignColumns: [projectWorkItems.workspaceId, projectWorkItems.projectId, projectWorkItems.id] }).onDelete('cascade'),
 ]);
 

@@ -75,8 +75,11 @@ export interface GithubTasks {
   find(taskId: string, lock?: boolean): Promise<GithubTaskState | null>;
   /** The project graph lock, then the complete ascending pass over these tasks and their direct prerequisites. */
   lockForRules(workspaceId: string, projectId: string, taskIds: readonly string[]): Promise<Map<string, GithubTaskState>>;
-  /** Changes status and blocker under the locks above and increments the version. */
-  move(taskId: string, change: { status: WorkStatus; blocker: string | null }): Promise<GithubTaskState>;
+  /**
+   * Changes status and blocker under the locks above and increments the version. The status change joins the task's
+   * activity (#488) as made by `by`, the rule's author, on whose behalf the rule acts, marked as automated.
+   */
+  move(taskId: string, change: { status: WorkStatus; blocker: string | null }, by: { kind: 'human'; id: string }): Promise<GithubTaskState>;
   /**
    * Queues `project.work_updated.v1` (identifiers only) in this unit's final event batch. `automated`: the change was
    * made by a task rule on its author's behalf, marked `automation: 'github_rule'` so readers and consumers never

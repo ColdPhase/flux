@@ -16,6 +16,8 @@ import {
   type WorkItem,
   type WorkObjectType,
   type WorkResult,
+  type TaskActivityPage,
+  type TaskActivityQuery,
   type TaskCreationNotice,
   type TaskCreationUndoEligibility,
   type UndoTaskCreationCommand,
@@ -29,6 +31,7 @@ import { assertNoDependencyCycle, assertPrerequisitesMet, creationFingerprint, d
 import * as valid from './validation.js';
 import { creationUndoEligibility, mayUndoTaskCreation, type TaskCreationUndoFacts } from './creation-undo.js';
 import { presentGithubRule, type GithubRuleReading } from '../github/rules.js';
+import { readTaskActivity } from './task-activity.js';
 
 // Work, decision and result use cases (issue #101). Each runs in one unit of work: it asks the
 // access port first (reads: project read; changes: project write with the access rows locked),
@@ -124,6 +127,7 @@ async function presenter(ports: WorkPorts, ids: string[], actors: (ActorRef | nu
       return {
         ...base(record), number: record.number, title: record.title, outcome: record.outcome, criteria: record.criteria, status: record.status, blocker: record.blocker,
         waitingFor: record.waitingFor ? named(record.waitingFor) : null,
+        dueOn: record.dueOn,
         dependencyIds: plan.prerequisites.map((item) => item.id),
         prerequisites: plan.prerequisites.map((item) => ({ ...item, met: item.status === 'done' && !item.parked })),
         planIntent: plan.planIntent,
@@ -301,6 +305,14 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
       const record = (await ports.work.findWork(id))!;
       return { ...await presentWork(ports, record), creationUndo: await undoEligibility(ports, principal, record) };
     }),
+    /**
+     * The history of a task's status, owner, due date and title (#488), newest first: who changed it and when. It is
+     * readable by exactly those who can read the task, including a task whose creation was undone.
+     */
+    getTaskActivity: (principal: Principal, workId: string, query?: TaskActivityQuery): Promise<TaskActivityPage> => uow.run(async (ports) => {
+      const task = await authorized(ports, principal, 'work', workId, 'read');
+      return readTaskActivity(ports, task, query);
+    }),
     getDecision: (principal: Principal, decisionId: string) => uow.run(async (ports) => {
       const { id } = await authorized(ports, principal, 'decision', decisionId, 'read');
       return presentDecision(ports, (await ports.work.findDecision(id))!);
@@ -356,6 +368,7 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
       const owner = command.owner === undefined ? null : valid.owner(command.owner);
       const waitingFor = waitingForOf(command.waitingFor);
       if (waitingFor && status !== 'blocked') throw new InvalidInputError('A person to wait for applies to blocked work only');
+      const dueOn = valid.dueOn(command.dueOn ?? null);
       const sources = valid.refs(command.sources, valid.SOURCE_TYPES, 'sources');
       const related = valid.refs(command.related, valid.ANY_TYPES, 'related');
       const criteria = valid.criteria(command.criteria);
@@ -365,8 +378,8 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
       // The retry fingerprint keeps its original shape (older stored creations still match) and adds the plan
       // fields only when present. The intent fingerprint is the canonical creation, without retry identity.
       const plan = { ...(criteria.length ? { criteria } : {}), ...(dependencyIds.length ? { dependencyIds } : {}), ...(planIntent ? { planIntent } : {}) };
-      const requestFingerprint = clientCommandId ? createHash('sha256').update(JSON.stringify({ title, outcome, status, blocker, owner, ...(waitingFor ? { waitingFor } : {}), sources, related, ...plan })).digest('hex') : undefined;
-      const intentFingerprint = planIntent ? creationFingerprint({ title, outcome, status, blocker, owner, sources, related, criteria, dependencyIds }) : undefined;
+      const requestFingerprint = clientCommandId ? createHash('sha256').update(JSON.stringify({ title, outcome, status, blocker, owner, ...(waitingFor ? { waitingFor } : {}), ...(dueOn ? { dueOn } : {}), sources, related, ...plan })).digest('hex') : undefined;
+      const intentFingerprint = planIntent ? creationFingerprint({ title, outcome, status, blocker, owner, dueOn, sources, related, criteria, dependencyIds }) : undefined;
       return uow.run(async (ports) => {
         const { workspaceId } = await ports.access.requireProject(principal, 'write', project, { lock: true });
         // The plan material's row lock precedes the command identity and the graph lock, like every source.
@@ -404,7 +417,7 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
         requireDependencyScope(useFence.projectIds, project);
 
         const scope = { workspaceId, projectId: project };
-        const record = await ports.work.insertWork({ id: randomUUID(), ...scope, title, outcome, status, blocker, waitingFor, owner, createdBy: by, criteria, clientCommandId, requestFingerprint });
+        const record = await ports.work.insertWork({ id: randomUUID(), ...scope, title, outcome, status, blocker, waitingFor, dueOn, owner, createdBy: by, criteria, clientCommandId, requestFingerprint });
         // A brand-new task cannot be anyone's prerequisite yet, so these edges cannot close a cycle.
         if (dependencyIds.length) {
           await ports.work.replaceDependencies(scope, record.id, dependencyIds);
@@ -444,6 +457,7 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
       if (command.owner !== undefined) changes.owner = valid.owner(command.owner);
       if (command.blocker !== undefined) changes.blocker = command.blocker === null || command.blocker === '' ? null : valid.text(command.blocker, 'blocker', WORK_LIMITS.blocker) || null;
       if (command.waitingFor !== undefined) changes.waitingFor = waitingForOf(command.waitingFor);
+      if (command.dueOn !== undefined) changes.dueOn = valid.dueOn(command.dueOn);
       if (command.restore !== undefined && command.restore !== true) throw new InvalidInputError('restore can only be true');
       if (command.parked !== undefined) {
         if (command.parked !== false) throw new InvalidInputError('parked can only be set to false; a pivot parks work');
@@ -506,7 +520,7 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
         if (changes.owner !== undefined) await requireOwner(ports, projectId, changes.owner);
         if (changes.waitingFor) await requireWaitingFor(ports, projectId, changes.waitingFor);
         if (dependencyIds !== undefined) await assertNoDependencyCycle(ports.work, workspaceId, id, dependencyIds);
-        const record = await ports.work.updateWork(id, changes);
+        const record = await ports.work.updateWork(id, changes, by);
         // A person's override suspends the task's rule now, not at the next delivery. Finishing work leaves it: a rule
         // never acts on finished work, and its one-tap Done is how "Ready to close" ends.
         if (overrides && !FINISHED.has(nextStatus)) await ports.work.suspendGithubRule({ id, fromStatus: current.status, status: record.status, version: record.version });
@@ -611,7 +625,7 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
           await ports.work.resetArtifact?.({workspaceId,projectId},{kind:'decision',id:superseded.id,revision:`${superseded.version}:${superseded.status}`},useFence);
         }
         const record = await ports.work.updateDecision(id, { status: 'accepted', decidedBy: by.id, decidedAt: now });
-        for (const work of parked) await ports.work.updateWork(work.id, { parked: { decisionId: id, at: now } });
+        for (const work of parked) await ports.work.updateWork(work.id, { parked: { decisionId: id, at: now } }, by);
         const scope = { workspaceId, projectId };
         await ports.work.insertLinks(linkRows(scope, { type: 'decision', id }, 'still_applies', workRefs(stillApplies), by));
         await ports.work.resetArtifact?.(scope,{kind:'decision',id:record.id,revision:`${record.version}:${record.status}`},useFence);
@@ -692,7 +706,7 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
         await ports.work.insertLinks([...linkRows(scope, from, 'source', sources, by), ...linkRows(scope, from, 'about', [...workRefs(workIds), ...decisions], by)]);
         await ports.work.resetArtifact?.(scope,{kind:'result',id:record.id,revision:'created'},useFence);
         if (finished && finished.status !== 'done') {
-          await ports.work.updateWork(finished.id, { status: 'done', blocker: null });
+          await ports.work.updateWork(finished.id, { status: 'done', blocker: null }, by);
           await assertPrerequisitesMet(ports.work, workspaceId, finished.id);
         }
         await useFence.mark(directTasks);

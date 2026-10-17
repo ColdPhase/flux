@@ -11,6 +11,8 @@ import type { GithubTaskRule } from './github.js';
 export const projectWorkPath = (projectId: string) => `/api/v1/projects/${projectId}/work`;
 export const projectTaskNoticesPath = (projectId: string) => `/api/v1/projects/${projectId}/task-notices`;
 export const taskDiscussionPath = (workId: string) => `/api/v1/work/${workId}/discussion`;
+/** The history of a task's status, owner, due date and title (#488), newest first. */
+export const taskActivityPath = (workId: string) => `/api/v1/work/${workId}/activity`;
 
 /**
  * A direct public contribution to a task thread. `handoff` marks an explicit public instruction to the next
@@ -64,6 +66,9 @@ export type LinkOwnerType = WorkObjectType | 'doc';
  */
 export const WORK_LIMITS = { title: 200, outcome: 4000, blocker: 2000, rationale: 20_000, evidence: 20_000, links: 50,
   criteria: 20, criterion: 1000, dependencies: 50, intentKey: 120 } as const;
+
+/** A page of a task's activity (#488): `limit` 1-`max`, `default` when omitted. */
+export const TASK_ACTIVITY_PAGE = { default: 30, max: 50 } as const;
 
 /** A stable reference to something in the same project. Material references pin a version. */
 export type ObjectRef =
@@ -164,6 +169,11 @@ export interface WorkItem extends ProjectObject {
   blocker: string | null;
   /** Only while blocked: the one person it waits for (#550), a member of the project; null for no one. */
   waitingFor: NamedPrincipal | null;
+  /**
+   * The calendar day it is due (#488): `YYYY-MM-DD`, with no time zone and no time, so it is the same day for everyone;
+   * null for none. Years 1970-9999.
+   */
+  dueOn: string | null;
   owner: NamedPrincipal | null;
   /** Set when a pivot parked the work. Parking keeps the status: parked work is not done. */
   parked: { decisionId: string; at: string } | null;
@@ -207,6 +217,8 @@ export interface CreateWorkCommand {
   blocker?: string;
   /** Who a blocked task waits for (#550): a person with access to the project. Applies to blocked work only. */
   waitingFor?: PrincipalRef | null;
+  /** The calendar day it is due (#488), `YYYY-MM-DD`; omitted or null for none. */
+  dueOn?: string | null;
   /** Messages, sketch thoughts or material versions the work comes from. They are linked, never moved or copied. */
   sources?: ObjectRef[];
   /** Other objects of the project to connect (thoughts, decisions, results, messages). */
@@ -264,6 +276,8 @@ export interface UpdateWorkCommand extends VersionPrecondition {
   blocker?: string | null;
   /** Who a blocked task waits for (#550); `null` clears it. It also clears when the task leaves Blocked. */
   waitingFor?: PrincipalRef | null;
+  /** The calendar day it is due (#488), `YYYY-MM-DD`; `null` clears it. Changing only the due date is an ordinary versioned change. */
+  dueOn?: string | null;
   /**
    * An Undo: this change puts back what an earlier one replaced. It contributes no blocker message, so Undo never
    * posts the same blocker twice (#550).
@@ -278,6 +292,44 @@ export interface UpdateWorkCommand extends VersionPrecondition {
    * cycles, itself and tasks of other projects are rejected. A plan intent can never be changed here.
    */
   dependencyIds?: string[];
+}
+
+/** What a task's activity keeps (#488): one entry per changed field. Creation is not an entry; readers derive it from `createdBy`/`createdAt`. */
+export type TaskActivityKind = 'status' | 'owner' | 'due' | 'title';
+
+export interface TaskActivityEntry {
+  id: string;
+  kind: TaskActivityKind;
+  /** When the change was committed. */
+  at: string;
+  /** Who made it: the person or agent that acted, named as the task names its owner and creator. */
+  actor: NamedPrincipal;
+  /**
+   * Set when the change was made by a task rule of a linked pull request on its author's behalf (`actor` is that author),
+   * so a reader never mistakes it for the author's own action.
+   */
+  automation?: 'github_rule';
+  /** `kind: 'status'`. `blocker` and `waitingFor` are what a move into Blocked said; null for any other `to`. */
+  status?: { from: WorkStatus; to: WorkStatus; blocker: string | null; waitingFor: NamedPrincipal | null };
+  /** `kind: 'owner'`. Null is nobody. */
+  owner?: { from: NamedPrincipal | null; to: NamedPrincipal | null };
+  /** `kind: 'due'`. Calendar dates, `YYYY-MM-DD`, or null for none. */
+  due?: { from: string | null; to: string | null };
+  /** `kind: 'title'`. */
+  title?: { from: string; to: string };
+}
+
+/** One newest-first page of a task's activity. Pass `nextBefore` as `before` for the next older page; null at the end. */
+export interface TaskActivityPage {
+  workId: string;
+  items: TaskActivityEntry[];
+  nextBefore: string | null;
+}
+
+/** Query of `GET /api/v1/work/:workId/activity`. `before` is the opaque cursor of an earlier page. */
+export interface TaskActivityQuery {
+  limit?: number;
+  before?: string;
 }
 
 export interface ProposeDecisionCommand {

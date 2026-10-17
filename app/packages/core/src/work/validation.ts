@@ -51,6 +51,22 @@ export function owner(value: unknown): PrincipalRef | null {
   return { kind: ref.kind, id: ref.kind === 'agent' ? ref.id.toLowerCase() : ref.id };
 }
 
+/**
+ * A due date (#488): a real calendar day as `YYYY-MM-DD` in the years 1970-9999, with no time zone and no time, or null
+ * for none. "2026-02-31", "2026-2-3", a timestamp or an empty string is refused rather than adjusted.
+ */
+export function dueOn(value: unknown): string | null {
+  if (value === null) return null;
+  const refused = () => new InvalidInputError('dueOn must be a calendar date as YYYY-MM-DD from 1970 to 9999, or null');
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) throw refused();
+  const year = Number(value.slice(0, 4)), month = Number(value.slice(5, 7)), day = Number(value.slice(8, 10));
+  if (year < 1970 || year > 9999) throw refused();
+  // Date.UTC rolls an impossible day into the next month; a real date comes back unchanged.
+  const real = new Date(Date.UTC(year, month - 1, day));
+  if (real.getUTCFullYear() !== year || real.getUTCMonth() !== month - 1 || real.getUTCDate() !== day) throw refused();
+  return value;
+}
+
 export function ref(value: unknown, allowed: readonly ObjectRef['type'][], label: string): ObjectRef {
   const raw = value as { type?: unknown; id?: unknown; version?: unknown } | undefined;
   if (!raw || typeof raw !== 'object' || typeof raw.type !== 'string' || !allowed.includes(raw.type as ObjectRef['type']))
