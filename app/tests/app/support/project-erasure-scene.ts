@@ -34,7 +34,7 @@ export async function projectReferences(projectId: string) {
 
 /**
  * Rows of the features that 0101 lets leave with their project: receipts, grants, discussions, drafts, proactive rows;
- * and the task activity of 0108 (#488), which follows its task.
+ * and the task activity of 0112 (#488), which follows its task.
  */
 export const erasedWithProject = ['agent_command_receipts', 'agent_standing_grants', 'project_task_discussions', 'drafts', 'proactive_comparison_rules',
   'proactive_comparison_proposals', 'proactive_comparison_insufficient_outcomes', 'project_task_activity'] as const;
@@ -77,7 +77,7 @@ export async function upload(f: ThreadNativeScene, text: string) {
 export async function fullProject() {
   const f = await actionScene(pool), grant = await f.grant('conversation.reply', 'execute', 100);
   const created = expect(await f.owner.request('POST', `/api/v1/projects/${f.projectId}/work`, { body: { title: 'Erased with its project' } }), 201) as unknown as WorkItem;
-  // A due date makes the task's activity (#488, migration 0108) part of the scene: its rows erase with the task.
+  // A due date makes the task's activity (#488, migration 0112) part of the scene: its rows erase with the task.
   const task = expect(await f.owner.request('PATCH', `/api/v1/work/${created.id}`,
     { body: { dueOn: '2026-12-01', clientCommandId: randomUUID() }, headers: { 'if-match': `"${created.version}"` } }), 200) as unknown as WorkItem;
   await fillThread(f, task.id, grant.id);

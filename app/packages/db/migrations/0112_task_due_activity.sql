@@ -1,4 +1,4 @@
--- 0108 (#488, the task panel of Prostota): a task can have a due date, and every change of its status, owner, due date or
+-- 0112 (#488, the task panel of Prostota): a task can have a due date, and every change of its status, owner, due date or
 -- title is kept as one row of its activity with the real person or agent who made it and when.
 -- The due date is a calendar date: no time zone and no time. Existing tasks have none; no backfill. Existing tasks also
 -- have no activity before this migration: their creation is derived from created_by/created_at, and nothing is guessed.

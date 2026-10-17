@@ -5,14 +5,14 @@ import { test } from 'node:test';
 import { assertExactMigrationLedger, FLUX_SCHEMA_VERSION, readAppliedMigrationVersions, readMigrationManifest } from '@flux/db';
 import { pool } from './support/db.js';
 
-// Migration 0108 (#488): a task's due date, and the activity of its status, owner, due date and title.
+// Migration 0112 (#488): a task's due date, and the activity of its status, owner, due date and title.
 
-test('0108 adds the due date and the task activity table, and keeps both consistent', async () => {
+test('0112 adds the due date and the task activity table, and keeps both consistent', async () => {
   const manifest = await readMigrationManifest('packages/db/migrations', FLUX_SCHEMA_VERSION);
-  assert.equal(manifest.find((file) => file.version === 108)?.name, '0108_task_due_activity.sql');
+  assert.equal(manifest.find((file) => file.version === 112)?.name, '0112_task_due_activity.sql');
   assertExactMigrationLedger(manifest, await readAppliedMigrationVersions(pool));
   // The reversal exists next to it and undoes exactly what it added.
-  assert.match(await readFile('packages/db/migrations/reverse/0108_task_due_activity.down.sql', 'utf8'), /DROP TABLE project_task_activity;\s*ALTER TABLE project_work_items DROP COLUMN due_on;/);
+  assert.match(await readFile('packages/db/migrations/reverse/0112_task_due_activity.down.sql', 'utf8'), /DROP TABLE project_task_activity;\s*ALTER TABLE project_work_items DROP COLUMN due_on;/);
 
   const column = (await pool.query("SELECT data_type, is_nullable FROM information_schema.columns WHERE table_name = 'project_work_items' AND column_name = 'due_on'")).rows;
   assert.deepEqual(column, [{ data_type: 'date', is_nullable: 'YES' }], 'a calendar date, and existing tasks have none');

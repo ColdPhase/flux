@@ -94,7 +94,7 @@ It must be a real date from 1970 to 9999 (`2026-02-31` is `400 INVALID_INPUT`); 
 `PATCH` changes it like any other field: a versioned change that honours `If-Match` (409 `VERSION_CONFLICT`) and
 `clientCommandId`, needs write access (a viewer gets 403) and leaves the task's other fields alone. The list rows, the
 work detail and the task carry it. MCP does not take or show it yet. It is stored in `project_work_items.due_on`
-(migration 0108).
+(migration 0112).
 
 **Activity.** Every successful change of **status, owner, due date or title** keeps one row of
 `project_task_activity` per field that really changed, made by the principal that acted (a person or an agent, whichever
@@ -103,7 +103,7 @@ the rule's author and is marked `automation: 'github_rule'`), at the time of the
 `WorkRepository.updateWork`, the one function every change of a task ends in, in the transaction of the change, so a replay
 of the same `clientCommandId` or `Idempotency-Key`, a refused change and a change that leaves the fields as they were
 (its version still moves) keep nothing. Creation is not an entry (readers derive it from `createdBy`/`createdAt`), and
-neither are an outcome, criteria, prerequisites, a blocker edit alone or parking; tasks from before 0108 have no entries.
+neither are an outcome, criteria, prerequisites, a blocker edit alone or parking; tasks from before 0112 have no entries.
 `GET /api/v1/work/:workId/activity` returns `TaskActivityPage` (`{ workId, items, nextBefore }`), newest first with a
 stable keyset on (time, id). `status` entries say the reason and the person waited for when the task became blocked (an
 Undo that restores them is a status change too); `owner` entries name both owners, agents with the owner they show to

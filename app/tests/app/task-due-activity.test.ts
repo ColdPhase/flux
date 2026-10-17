@@ -9,7 +9,7 @@ import { toolValue } from './support/mcp.js';
 import { addMember, expectStatus, grant, person, project as createProject, workspace, type Person } from './support/people.js';
 import { eraseProject } from './support/project-erasure-scene.js';
 
-// A task has a due date and a real history (#488, migration 0108). The due date is a calendar day with no time zone. Every
+// A task has a due date and a real history (#488, migration 0112). The due date is a calendar day with no time zone. Every
 // change of status, owner, due date or title keeps one activity entry with the person or agent who made it and when, whichever
 // path made it; a read of the activity needs exactly the access to read the task.
 

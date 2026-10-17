@@ -14,7 +14,7 @@ test('a project that exists before 0101 keeps every row through the upgrade and 
   const references = await projectReferences(p);
   for (const table of erasedWithProject) assert.ok(references[table]! > 0, `${table} is seeded`);
   // The search index is derived by triggers from the rows below, so it is not copied.
-  // Tables created after 0101 (0108 project_task_activity) do not exist in the schema-100 copy; they erase through their task.
+  // Tables created after 0101 (0112 project_task_activity) do not exist in the schema-100 copy; they erase through their task.
   const createdLater = new Set(['project_task_activity']);
   const tables = Object.entries(references).filter(([table, n]) => n > 0 && table !== 'search_documents' && !createdLater.has(table)).map(([table]) => table);
 
@@ -47,7 +47,7 @@ test('a project that exists before 0101 keeps every row through the upgrade and 
           WHERE table_schema='public' AND table_name=$1 AND data_type IN ('json','jsonb')`, [table])).rows.map((r) => r.column_name));
         const generated = new Set((await client.query<{ column_name: string }>(`SELECT column_name FROM information_schema.columns
           WHERE table_schema='public' AND table_name=$1 AND is_generated='ALWAYS'`, [table])).rows.map((r) => r.column_name));
-        // Only these columns were added after 0101 (0102 waiting_for_user_id, 0108 due_on); any other missing column must fail.
+        // Only these columns were added after 0101 (0102 waiting_for_user_id, 0112 due_on); any other missing column must fail.
         const later = new Set(['waiting_for_user_id', 'due_on']);
         for (const row of found) {
           const columns = Object.keys(row).filter((c) => !generated.has(c) && !later.has(c));
