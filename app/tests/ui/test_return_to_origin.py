@@ -50,13 +50,6 @@ PLACE = """([feed, target, at]) => {
   const pane = document.querySelector(feed);
   pane.scrollTop += document.querySelector(target).getBoundingClientRect().top - pane.getBoundingClientRect().top - at;
 }"""
-# The message at the top of a feed (the reader's anchor) and how far below the top it begins.
-FIRST = """(feed) => {
-  const pane = document.querySelector(feed);
-  const top = pane.getBoundingClientRect().top;
-  const row = [...pane.querySelectorAll('[data-message-id]')].find((item) => item.getBoundingClientRect().bottom > top);
-  return [row.id, row.getBoundingClientRect().top - top];
-}"""
 AWAY = """(feed) => { const el = document.querySelector(feed); return el.scrollHeight - el.clientHeight - el.scrollTop; }"""
 
 
@@ -297,11 +290,10 @@ class ReturnToOrigin(unittest.TestCase):
         page.goto(f"/projects/{self.project}/conversations/{self.thread}")
         self.wait_thread(page)
         feed, target = ".thread__feed", f"#message-{self.chip_reply}"
-        sheet = page.locator("#thread[data-detent-sheet]")
-        if tap:
-            self.assertEqual(sheet.count(), 1, "a tablet and a phone show the thread as a sheet")
-        if sheet.count():
-            # A sheet: the person may have lowered it to half height.
+        # The thread is the one panel: a sheet on the phone (the person may have lowered it to half height), an overlay on a tablet.
+        sheet = page.locator("#details[data-detent-sheet]")
+        if size == "phone":
+            expect(sheet).to_have_count(1)
             self.activate(sheet.locator(".ui-grabber"), tap)
             expect(sheet).to_have_attribute("data-height", "half")
         self.read_at(page, feed, target, 20 if size == "phone" else 120, touch=tap and engine == "webkit")
@@ -309,60 +301,35 @@ class ReturnToOrigin(unittest.TestCase):
         page.locator(f"{target} button.ws-chip").scroll_into_view_if_needed()
         page.wait_for_timeout(600)
         before = self.offset(page, feed, target)
-        height = page.locator("#thread").bounding_box()["height"]
+        height = page.locator("#details").bounding_box()["height"]
         url, history = page.url, page.evaluate("history.length")
         chip = page.locator(f"{target} button.ws-chip")
         expect(chip).to_have_count(1)
         self.press_in_place(page, chip, tap)
+        # The task takes the panel's place and leaves the panel's own way back to the thread (one back pattern, not a second control).
         panel = page.locator("#details")
-        expect(panel).to_be_visible()
-        expect(panel.get_by_text("Order the ToF boards").first).to_be_visible()
-        back = self.origin_back(page, "Thread")
-        expect(back).to_have_count(1)
+        expect(panel.get_by_role("heading", name="Order the ToF boards")).to_be_visible()
+        back = panel.locator(".ui-panel__back")
+        expect(back).to_have_text("Thread")
+        expect(self.origin_back(page)).to_have_count(0)
         shot(page, f"592-task-chip-{engine}-{size}")
         self.activate(back, tap)
-        expect(panel).to_have_count(0)
+        expect(page.locator("#thread")).to_be_visible()
+        expect(panel.locator(".ui-panel__back")).to_have_count(0)
         self.assertEqual(page.url, url, "opening and closing a panel keeps the route")
         self.assertEqual(page.evaluate("history.length"), history, "a panel is not a history entry")
         expect(page.locator("#thread")).to_be_visible()
         page.wait_for_timeout(1000)
         expect(page.locator("#thread-composer")).to_have_value("Draft reply: the ToF board first")
         self.assert_same(before, self.offset(page, feed, target), "the reply with the chip stays where it was")
-        self.assertLess(abs(page.locator("#thread").bounding_box()["height"] - height), 2, "the thread keeps its height")
-        if sheet.count():
+        self.assertLess(abs(page.locator("#details").bounding_box()["height"] - height), 2, "the thread keeps its height")
+        if size == "phone":
             expect(sheet).to_have_attribute("data-height", "half")
 
     def test_04_thread_task_chip_back(self):
         for engine in self.browsers:
             with self.subTest(engine=engine):
                 self.thread_journey(engine, "desktop")
-
-    def test_04b_a_scroll_after_the_layout_settled_is_the_readers(self):
-        """After the thread docks or becomes a sheet and settles, focus moving to another reply is the reader's place: closing the panel keeps it, not the place before."""
-        for engine in self.browsers:
-            with self.subTest(engine=engine):
-                page = self.page(engine)
-                page.goto(f"/projects/{self.project}/conversations/{self.thread}")
-                self.wait_thread(page)
-                feed, target = ".thread__feed", f"#message-{self.chip_reply}"
-                self.read_at(page, feed, target, 120)
-                chip = page.locator(f"{target} button.ws-chip")
-                chip.scroll_into_view_if_needed()
-                page.wait_for_timeout(500)
-                first_before, _ = page.evaluate(FIRST, feed)
-                self.press_in_place(page, chip, False)
-                expect(page.locator("#details")).to_be_visible()
-                page.wait_for_timeout(2200)
-                page.locator(f"#message-{self.replies[CHIP_AT + 12]}").focus()
-                page.wait_for_timeout(500)
-                moved, offset = page.evaluate(FIRST, feed)
-                self.assertNotEqual(moved, first_before, "focus took the reader to other replies")
-                self.origin_back(page, "Thread").click()
-                expect(page.locator("#details")).to_have_count(0)
-                page.wait_for_timeout(1200)
-                again, after = page.evaluate(FIRST, feed)
-                self.assertEqual(again, moved, "the reader's new place is kept, not the place before it")
-                self.assert_same(offset, after, "the message at the top stays where it was")
 
     # ---- an open thread, a cited wiki page in it, and back ----
 
@@ -372,10 +339,9 @@ class ReturnToOrigin(unittest.TestCase):
         page.goto(f"/projects/{self.project}/conversations/{self.thread}")
         self.wait_thread(page)
         feed, target = ".thread__feed", f"#message-{self.cite_reply}"
-        sheet = page.locator("#thread[data-detent-sheet]")
-        if tap:
-            self.assertEqual(sheet.count(), 1, "a tablet and a phone show the thread as a sheet")
-        if sheet.count():
+        sheet = page.locator("#details[data-detent-sheet]")
+        if size == "phone":
+            expect(sheet).to_have_count(1)
             self.activate(sheet.locator(".ui-grabber"), tap)
             expect(sheet).to_have_attribute("data-height", "half")
         self.read_at(page, feed, target, 20 if size == "phone" else 110, touch=tap and engine == "webkit")
@@ -383,7 +349,7 @@ class ReturnToOrigin(unittest.TestCase):
         page.locator(f"{target} .wiki-card").scroll_into_view_if_needed()
         page.wait_for_timeout(600)
         before = self.offset(page, feed, target)
-        height = page.locator("#thread").bounding_box()["height"]
+        height = page.locator("#details").bounding_box()["height"]
         url, history = page.url, page.evaluate("history.length")
         self.reply("jonas", self.thread, f"A late reply while you read the shortlist ({engine}, {size}).")
         self.press_in_place(page, page.locator(f"{target} .wiki-card"), tap)
@@ -398,8 +364,8 @@ class ReturnToOrigin(unittest.TestCase):
         expect(page.locator("#thread-composer")).to_have_value("Draft reply: shortlist first")
         self.assert_same(before, self.offset(page, feed, target), "the cited reply stays where it was in the thread")
         self.assertGreater(page.evaluate(AWAY, feed), 100, "the thread did not jump to its end")
-        self.assertLess(abs(page.locator("#thread").bounding_box()["height"] - height), 2, "the thread keeps its height")
-        if sheet.count():
+        self.assertLess(abs(page.locator("#details").bounding_box()["height"] - height), 2, "the thread keeps its height")
+        if size == "phone":
             expect(sheet).to_have_attribute("data-height", "half")
         shot(page, f"592-thread-wiki-returned-{engine}-{size}")
 
@@ -430,9 +396,8 @@ class ReturnToOrigin(unittest.TestCase):
         link.scroll_into_view_if_needed()
         self.activate(link, tap)
         expect(panel.get_by_role("heading", name="Use the distance sensor")).to_be_visible()
-        back = self.origin_back(page)
-        expect(back).to_have_count(1)
-        self.assertRegex(back.get_attribute("aria-label"), rf"^Back to #\d+ Check the lamp sensor {DECIDED:02}$")
+        back = panel.locator(".ui-panel__back")
+        expect(back).to_have_text(re.compile(r"^Task #\d+$"))
         shot(page, f"592-linked-decision-{engine}-{size}")
         url, history = page.url, page.evaluate("history.length")
         self.activate(back, tap)

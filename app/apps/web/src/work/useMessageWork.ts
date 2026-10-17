@@ -54,8 +54,6 @@ function useMessageBatch(ref: RefObject<HTMLElement | null>, ids: string[], node
   return available;
 }
 
-/** How long after a change of the feed's width the scroll it causes is taken for layout (#592). */
-const LAYOUT_SETTLE_MS = 1500;
 const THAW_KEYS = new Set(['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' ']);
 /** A pointer that moved this recently is aiming at the message under it; a parked one is not. */
 const POINTER_AIM_MS = 2000;
@@ -91,7 +89,7 @@ function useMessageReadingPosition(ref: RefObject<HTMLElement | null>, node: HTM
   // move it out from under a pointer that is aiming at it (moved within POINTER_AIM_MS), even
   // at the end.
   const pointed = useRef<{ row: HTMLElement; top: number; at: number; x: number; y: number } | null>(null);
-  // Until this time the scroll that follows a change of the feed's width is layout, not the reader: it keeps the anchor (#592).
+  // Until this time (after a reference was followed) what the layout does is not the reader: the anchor is kept (#592).
   const frozenUntil = useRef(0);
   const save = useCallback((intent = false) => {
     const pane = ref.current;
@@ -139,23 +137,6 @@ function useMessageReadingPosition(ref: RefObject<HTMLElement | null>, node: HTM
       if (Math.abs(delta) > 0.5) { pane.scrollTop += delta; ownScroll.current = pane.scrollTop; lastTop.current = pane.scrollTop; }
       return true;
     };
-    // The feed's width changes when the thread docks beside the stream or becomes a sheet (a panel opening or closing, #592) and
-    // when the window is resized: lines wrap differently, so the same scroll offset is another message. The settled anchor
-    // is put back, never the offset, and stays the anchor for a moment after the last change or until the reader's own input
-    // (scrolling, a key, focus moving into the feed): the scroll such a change causes and a pointer-aimed message are layout,
-    // not the reader, and are not recorded.
-    let width = pane.clientWidth;
-    const widthChanged = () => { if (pane.clientWidth === width) return false; width = pane.clientWidth; return true; };
-    const reanchor = () => {
-      frozenUntil.current = performance.now() + LAYOUT_SETTLE_MS;
-      pointed.current = null;
-      if (following.current) { if (!atEnd()) toEnd(); return; }
-      const kept = anchor.current;
-      const row = kept ? [...pane.querySelectorAll<HTMLElement>('[data-message-id],[data-answer-run]')].find((item) => item.id === kept.id) : null;
-      if (!kept || !row) return;
-      const delta = row.getBoundingClientRect().top - pane.getBoundingClientRect().top - kept.offset;
-      if (Math.abs(delta) > 0.5) { pane.scrollTop += delta; ownScroll.current = pane.scrollTop; lastTop.current = pane.scrollTop; }
-    };
     const aim = (target: Element | null, x: number, y: number, at: number) => {
       const row = target?.closest<HTMLElement>('[data-message-id],[data-answer-run]') ?? null;
       pointed.current = row && pane.contains(row) ? { row, top: row.getBoundingClientRect().top, at, x, y } : null;
@@ -193,7 +174,6 @@ function useMessageReadingPosition(ref: RefObject<HTMLElement | null>, node: HTM
     // transitions to this owner rather than competing browser scroll anchoring.
     if (ready) save();
     const scrolled = () => {
-      if (widthChanged()) { reanchor(); return; }
       const own = ownScroll.current;
       ownScroll.current = null;
       // A scroll this hook did not write moved the view (the reader, or the app bringing a
@@ -204,11 +184,7 @@ function useMessageReadingPosition(ref: RefObject<HTMLElement | null>, node: HTM
       observe(reader);
     };
     const settled = () => { readerMoved.current = false; save(true); };
-    const grew = () => {
-      if (widthChanged()) { reanchor(); return; }
-      if (keepPointed()) return;
-      if (following.current && !atEnd()) toEnd();
-    };
+    const grew = () => { if (keepPointed()) return; if (following.current && !atEnd()) toEnd(); };
     const resize = new ResizeObserver(grew);
     resize.observe(pane);
     if (pane.firstElementChild) resize.observe(pane.firstElementChild);

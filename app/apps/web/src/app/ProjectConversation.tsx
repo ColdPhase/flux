@@ -36,7 +36,7 @@ import { ownRuns, useObservation, useReceiptTick, useReceipts } from './receipts
 import { AgentAuthor, AuthorFace, ContributionMark, OPENING_REVEAL_MS, SourceCitation, SourceTag, MessageDay, MessageTime, sameMessageAuthor, clock, day, pendingMessageRow, when } from './messageParts';
 import { agentAuthorOwner, useAgentOwners, type AgentOwners } from '../agents/owners';
 import { OneConversation, type PaneProps } from './OneConversation';
-import { recall, useArrival } from '../place/memory';
+import { currentEntry, isBooted, recall, useArrival } from '../place/memory';
 import { threadPlace } from '../work/useMessageWork';
 import { ComposerBox } from '../composer/ComposerBox';
 import { ComposerMenu, composerOptions, composerTrigger, type ComposerOption } from './ComposerMenu';
@@ -244,9 +244,13 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
     return refs;
   })])].sort(), [assistant.answers, assistant.proposals, discussedTask]);
   const referenceWork = useReferenceWork(me.user.id, project.id, referenceIds, feedNode, !accessLost);
-  // Coming back to an entry with this thread open: its replies return to where they were left (#592).
+  // Coming back to an entry with this thread open, or back to the thread from an object that covered it in the panel (it was
+  // unmounted meanwhile): its replies return to where they were left (#592). A reload opens the thread as it always opens.
   const arrival = useArrival();
-  const [threadRestore] = useState(() => conversation && arrival ? threadPlace(recall('thread', arrival)) : null);
+  const [threadRestore] = useState(() => {
+    const from = arrival ?? (isBooted() ? currentEntry() : null);
+    return conversation && from ? threadPlace(recall('thread', from)) : null;
+  });
   const messageWork = useMessageWork(me.user.id, project.id, accessLost ? null : conversation?.id ?? null, sourceIds, scrollRef, feedNode, referenceWork.readingRevision, threadRestore);
   // Opening (#155): the replies, their task chips, referenced rows and the header's state line come from
   // separate bounded reads. The thread shows once the first of each has settled (at most OPENING_REVEAL_MS),
