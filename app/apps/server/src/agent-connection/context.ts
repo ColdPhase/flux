@@ -5,6 +5,7 @@ import { agentProjectObjectRows, lockAgentMcpPolicy } from '@flux/db';
 import { createAgentConnectionStore } from './store.js';
 import type { McpDispatch } from './mcp-dispatch.js';
 import { requireLiveRun, type RunTokenClaims } from './run-token.js';
+import type { AssistantApproval } from './assistant-changes.js';
 
 /** Constructed only from the verified authorization-server bearer, never MCP clientInfo. */
 export interface FluxMcpClaims {
@@ -20,6 +21,11 @@ export interface FluxMcpClaims {
    * The run must stay in flight and every tool reaches only its place.
    */
   run?: RunTokenClaims;
+  /**
+   * Server-owned only (F-027 A3): the owner's Apply or the live-Wiki deferral re-executing one saved change.
+   * Never constructed from a bearer or tool input.
+   */
+  approval?: AssistantApproval;
 }
 export type VerifiedFluxMcpClaims = FluxMcpClaims & { dispatch: McpDispatch };
 

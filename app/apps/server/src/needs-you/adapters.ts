@@ -6,6 +6,7 @@ import {
   visibleFilter,
   type Database,
   type NeedsYouAccess,
+  type NeedsYouAssistant,
 } from '@flux/core';
 import { notificationRepository } from '../push/adapters.js';
 import { workRepository } from '../work/adapters.js';
@@ -39,8 +40,9 @@ export function policyNeedsYouAccess(db: Database): NeedsYouAccess {
 }
 
 /** The "Needs you" use cases bound to a connection. */
-export const needsYouUseCases = (db: Database) => createNeedsYou({
+export const needsYouUseCases = (db: Database, assistant?: NeedsYouAssistant) => createNeedsYou({
   access: policyNeedsYouAccess(db),
+  ...(assistant ? { assistant } : {}),
   repository: needsYouRows(db),
   inbox: notificationRepository(db),
   work: workRepository(db),
