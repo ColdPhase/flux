@@ -159,7 +159,8 @@ class OneConversationJourney(unittest.TestCase):
         return page.get_by_role("region", name="Messages")
 
     def thread(self, page: Page):
-        return page.get_by_role("complementary", name="Replies")
+        # The one panel: a complementary beside the stream on a computer, a dialog (overlay or sheet) on a tablet and a phone.
+        return page.get_by_role("complementary", name="Replies").or_(page.get_by_role("dialog", name="Replies"))
 
     def root(self, page: Page, key: str):
         return page.locator(f"#message-{self.ids[key]}")
@@ -282,7 +283,7 @@ class OneConversationJourney(unittest.TestCase):
         expect(page).to_have_url(re.compile(rf"/projects/{self.ids['project']}/conversations/{self.ids['c1']}$"))
         thread = self.thread(page)
         expect(thread).to_be_visible()
-        expect(thread).to_be_focused()
+        expect(thread.locator(".ui-panel__body")).to_be_focused()
         expect(thread.locator(".thread__root")).to_contain_text(OPENING)
         expect(thread.locator(f"#message-{self.ids['first']}")).to_contain_text(FIRST_REPLY)
         expect(thread.locator(f"#message-{self.ids['second']}")).to_contain_text(SECOND_REPLY)
@@ -311,16 +312,18 @@ class OneConversationJourney(unittest.TestCase):
         expect(page.locator("#details").get_by_role("heading", name="Message from Jonas Berg")).to_be_visible()
         page.wait_for_timeout(300)
         expect(r1, "the opened root stays in view while Details is open").to_be_in_viewport()
-        page.locator("#details").get_by_role("button", name="Close details").click()
+        # Details took the thread's place in the one panel, with the way back to it.
+        page.locator("#details").get_by_role("button", name="Thread", exact=True).click()
+        expect(thread.locator(".thread__root")).to_contain_text(OPENING)
         page.wait_for_timeout(300)
-        expect(r1, "and after Details closes").to_be_in_viewport()
+        expect(r1, "and after the way back to the thread").to_be_in_viewport()
         composer = thread.get_by_label("Reply", exact=True)
         composer.fill("Agreed, ToF first. I will order the boards.")
         thread.get_by_role("button", name="Send reply").click()
         expect(thread.locator(".project-convo__message", has_text="Agreed, ToF first.")).to_be_visible()
         expect(composer).to_have_value("")
         expect(r1.get_by_role("button", name=re.compile(r"^3 replies"))).to_be_visible()
-        expect(thread.locator(".thread__n")).to_have_text(re.compile("3"))
+        expect(thread.locator(".ui-panel__meta")).to_have_text(re.compile("3"))
         page.wait_for_timeout(300)
         expect(r1, "a reply in the open thread leaves its root in view in the stream").to_be_in_viewport()
         saved = self.api(page, "GET", f"/api/v1/conversations/{self.ids['c1']}", status=200)
@@ -623,14 +626,15 @@ class OneConversationJourney(unittest.TestCase):
         sheet, header, pane = thread.bounding_box(), page.locator("header").bounding_box(), page.locator(".app__pane").bounding_box()
         assert sheet and header and pane
         self.assertEqual((round(sheet["x"]), round(sheet["width"])), (0, PHONE["width"]), "a full-width sheet")
-        self.assertAlmostEqual(sheet["y"], pane["y"] + 12, delta=1, msg="the full sheet covers the work area, a grabber's breadth below its top")
-        self.assertAlmostEqual(sheet["y"] + sheet["height"], pane["y"] + pane["height"], delta=1)
+        self.assertAlmostEqual(sheet["y"], 12, delta=1, msg="the full sheet is the one sheet, a grabber's breadth below the top")
+        self.assertAlmostEqual(sheet["y"] + sheet["height"], page.viewport_size["height"], delta=1)
+        expect(page.locator("[data-detent-sheet]")).to_have_count(1)
         expect(page.locator("header")).to_be_visible()
         close = thread.get_by_role("button", name="Close replies")
         close_box = close.bounding_box()
         assert close_box
-        self.assertGreaterEqual(min(close_box["width"], close_box["height"]), 44, "a 44px way back")
-        self.assertLess(close_box["x"], 60, "the way back sits first, at the left")
+        self.assertGreaterEqual(min(close_box["width"], close_box["height"]), 44, "a 44px close")
+        self.assertAlmostEqual(close_box["x"] + close_box["width"], sheet["x"] + sheet["width"] - 12, delta=1, msg="Close sits at the same right inset as on every panel")
         composer = page.locator("#thread-composer")
         composer.tap()
         composer.fill("I will bring the lux meter tonight.")
@@ -754,9 +758,11 @@ class OneConversationJourney(unittest.TestCase):
         thread = self.thread(tablet)
         expect(thread).to_be_visible()
         tablet.wait_for_timeout(400)
-        box, pane = thread.bounding_box(), tablet.locator(".app__pane").bounding_box()
-        assert box and pane
-        self.assertAlmostEqual(box["width"], pane["width"], delta=2, msg="too narrow to dock: the thread is a sheet over the stream")
+        box = thread.bounding_box()
+        assert box
+        self.assertAlmostEqual(box["x"] + box["width"], 820, delta=2, msg="the thread is the one panel at the right edge, over the conversation")
+        self.assertLessEqual(box["width"], 400)
+        expect(tablet.locator("aside.ui-panel, [role=dialog].ui-panel")).to_have_count(1)
         self.no_sideways_scroll(tablet)
         shot(tablet, "one-conversation-tablet-820-thread-light")
 
@@ -776,7 +782,7 @@ class OneConversationJourney(unittest.TestCase):
                 page.goto(self.project_url(f"/conversations/{self.ids['c1']}"))
                 expect(self.thread(page).locator(f"#message-{self.ids['first']}")).to_be_visible()
                 for selector in (f"#message-{self.ids['r1']} .convo-replies__open", f"#message-{self.ids['r1']} .convo-replies__when",
-                                 ".thread__title", ".thread__n", ".thread__hint", ".thread__root .message-time time", ".thread__root > .message-bubble > p",
+                                 ".ui-panel__kind", ".ui-panel__meta", ".thread__hint", ".thread__root .message-time time", ".thread__root > .message-bubble > p",
                                  f"#message-{self.ids['first']} > .message-bubble > p", f"#message-{self.ids['r3']} .message-time time"):
                     page.wait_for_function("""selector => {
                       const el = document.querySelector(selector); if (!el) return false;

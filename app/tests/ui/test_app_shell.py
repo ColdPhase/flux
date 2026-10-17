@@ -117,8 +117,8 @@ def open_sources(page: Page, scope=None) -> None:
 
 
 def thread_of(page: Page):
-    """The open root's thread beside the stream (UI116-1)."""
-    return page.get_by_role("complementary", name="Replies")
+    """The open root's thread in the one panel: beside the stream on a computer, a sheet or overlay on a phone or tablet (UI116-1, #488)."""
+    return page.get_by_role("complementary", name="Replies").or_(page.get_by_role("dialog", name="Replies"))
 
 
 def new_from_sidebar(page: Page, item: str) -> None:
@@ -129,6 +129,12 @@ def new_from_sidebar(page: Page, item: str) -> None:
 
 def phone_menu(page: Page, tap: bool = False):
     """The phone's view menu: the title opens it (#341)."""
+    # An open thread is the one sheet and dims the header (#488): a person closes it before using the title menu.
+    open_thread = page.get_by_role("dialog", name="Replies")
+    if open_thread.count():
+        close = open_thread.get_by_role("button", name="Close replies")
+        close.tap() if tap else close.click()
+        expect(open_thread).to_have_count(0)
     opener = page.get_by_role("heading", level=1).get_by_role("button")
     opener.tap() if tap else opener.click()
     return page.get_by_role("dialog").filter(has=page.locator(".phone-menu__list"))

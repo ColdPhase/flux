@@ -488,12 +488,13 @@ class FilesReferencesPhotos(unittest.TestCase):
             with self.subTest(phone=phone, surface="details"):
                 details_path = f"/projects/{self.ids['project']}/tasks?open=work:{self.ids['task']}"
                 page = self.page("ada", phone=phone, path=details_path)
-                details = page.get_by_role("region", name="Discussion")
-                self.assert_caption_below(details, ":scope > .message-bubble .wd-discussion__body")
-                self.assert_meta_below_caption(details)
-                expect(details.locator(".wd-discussion__body .ref-chip[data-ref=task]")).to_have_text("#8")
-                expect(details.get_by_role("list", name="Link preview")).to_be_visible()
-                self.assertEqual(details.locator("a a").count(), 0, "a link in the discussion card is not nested in the card's own link")
+                details = page.get_by_role("region", name="Activity")
+                root = details.locator(f'[data-message-id="{self.ids["task-root"]}"] .wd-act__bubble')
+                self.assert_caption_below(root)
+                self.assert_meta_below_caption(root)
+                expect(root.locator(".ref-chip[data-ref=task]")).to_have_text("#8")
+                expect(root.get_by_role("list", name="Link preview")).to_be_visible()
+                self.assertEqual(root.locator("a a").count(), 0, "a link in the discussion card is not nested in the card's own link")
                 opener, viewer = self.open_in(page, details, "Open photo IMG_2050.png")
                 page.keyboard.press("Escape")
                 expect(viewer).to_have_count(0)
@@ -502,10 +503,10 @@ class FilesReferencesPhotos(unittest.TestCase):
                 page.keyboard.press("Escape")  # a second Escape still closes Details (negative control)
                 expect(details).to_have_count(0)
                 page = self.page("ada", phone=phone, path=details_path)  # Details entered again on a fresh page
-                details = page.get_by_role("region", name="Discussion")
+                details = page.get_by_role("region", name="Activity")
                 _, viewer = self.open_in(page, details, "Open photo IMG_2050.png")
                 viewer.get_by_role("button", name="Reply", exact=True).click()
-                expect(details.get_by_label("Write to this task")).to_be_focused()
+                expect(page.locator("#details").get_by_label("Write to this task")).to_be_focused()
                 if phone:
                     _, viewer = self.open_in(page, details, "Open photo IMG_2050.png")
                     self.create_task_from(page, viewer, self.ids["task-root"])

@@ -114,14 +114,14 @@ class StopAndQuestions(unittest.TestCase):
         for scheme in ("light", "dark"):
             page = self.page("ada", scheme=scheme)
             page.goto(f"/projects/{self.ids['project']}/agents")
-            now = page.get_by_role("complementary", name="Claude Code agent, details").get_by_role("region", name="Now")
+            now = page.get_by_role("region", name="Claude Code agent, details").get_by_role("region", name="Now")
             expect(now).to_contain_text("Calibrate the probes at two soil depths")
             expect(now).to_contain_text("task in progress")
             row = page.locator(f'.agents-row[data-agent="{self.ids["agent"]}"]')
             expect(row).to_contain_text("Handed #1 · not signed in yet")
             stop = row.get_by_role("button", name="Stop Claude Code agent")
             expect(stop).to_be_visible()
-            expect(page.get_by_role("complementary", name="Claude Code agent, details").get_by_role("button", name="Stop Claude Code agent")).to_be_visible()
+            expect(page.get_by_role("region", name="Claude Code agent, details").get_by_role("button", name="Stop Claude Code agent")).to_be_visible()
             shot(page, f"stop-agents-desktop-{scheme}")
         # Jonas writes here but is neither a manager nor the agent's owner: no Stop to press.
         jonas = self.page("jonas")
@@ -131,7 +131,7 @@ class StopAndQuestions(unittest.TestCase):
         # The panel's Message opens the task's thread.
         page = self.page("ada")
         page.goto(f"/projects/{self.ids['project']}/agents")
-        page.get_by_role("complementary", name="Claude Code agent, details").get_by_role("button", name="Message").click()
+        page.get_by_role("region", name="Claude Code agent, details").get_by_role("button", name="Message").click()
         expect(page.get_by_role("region", name="Thread of Calibrate the probes at two soil depths")).to_be_visible()
 
     def test_03_the_sidebar_card_shows_the_working_agent_and_stops_it(self) -> None:
@@ -173,7 +173,7 @@ class StopAndQuestions(unittest.TestCase):
         expect(row).to_contain_text("Stopped by you · #1")
         expect(row.get_by_role("button", name=re.compile("^Stop"))).to_have_count(0)
         row.locator(".agents-row__btn").click()
-        recent = page.get_by_role("complementary", name="Claude Code agent, details").get_by_role("region", name="Recent")
+        recent = page.get_by_role("region", name="Claude Code agent, details").get_by_role("region", name="Recent")
         expect(recent).to_contain_text("Stopped by you")
         # Everyone who reads the project sees it.
         jonas = self.page("jonas")
@@ -371,7 +371,8 @@ class StopAndQuestions(unittest.TestCase):
         number = self.task("fifth")["number"]
         pid, conversation_id = self.ids["project"], self.question["conversation"]
         page = self.page("ada", phone=True)
-        page.goto(f"/projects/{pid}/conversations/{conversation_id}")
+        # The project's conversation itself: an open thread is the one sheet, and a sheet dims the header (Spokój A09).
+        page.goto(f"/projects/{pid}")
         header_stop = page.locator(".phead").get_by_role("button", name="Stop Claude Code agent")
         expect(header_stop).to_be_visible()
         overflow = page.evaluate("() => document.documentElement.scrollWidth - document.documentElement.clientWidth")

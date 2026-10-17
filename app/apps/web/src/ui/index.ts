@@ -12,7 +12,7 @@ export { Drawer, Overlay, Sheet, focusableIn, trapTab } from './Overlay';
 export { AgentIdentity, AgentTag } from './AgentIdentity';
 export { AGENT_HUES, FluxLockup, FluxLogo, Kreska, agentHue, type AgentHue, type KreskaExpression } from './Kreska';
 export { StatusGlyph, TaskState, TASK_STATE_WORD } from './StatusGlyph';
-export { PanelMeta, SidePanel, useSidePanelMode, type SidePanelMode } from './SidePanel';
+export { PanelActions, PanelGlyph, PanelMeta, SidePanel, useSidePanelMode, type SidePanelMode } from './SidePanel';
 export { BottomNav, Tabs, type BottomNavItem, type TabItem } from './Tabs';
 export { ToastProvider, useToast, useToastScope, useToastTop, type ToastAction, type ToastOptions } from './Toast';
 export { GoalReached, Mascot, Opening, PullToRefresh, goalMomentSeen, markGoalMomentSeen } from './Moments';

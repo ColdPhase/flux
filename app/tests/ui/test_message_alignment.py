@@ -170,7 +170,7 @@ class MessageAlignment(unittest.TestCase):
                     shot(page, f"message-alignment-stream-{'phone' if phone else 'desktop'}-{'dark' if dark else 'light'}-{UI_BROWSER}")
                 root = page.locator(f"#message-{self.roots['ada']['messages'][0]['id']}")
                 root.get_by_role("button", name=re.compile(r"^2 replies")).click()
-                thread = page.get_by_role("complementary", name="Replies")
+                thread = page.get_by_role("complementary", name="Replies").or_(page.get_by_role("dialog", name="Replies"))
                 self.assert_side(page, thread.locator(".thread__root"), who == "ada")
                 for key, reply in self.replies.items():
                     row = thread.locator(f"#message-{reply['id']}")
@@ -201,7 +201,7 @@ class MessageAlignment(unittest.TestCase):
                     page = self.page(phone=phone)
                     suffix = f"/conversations/{self.roots['ada']['id']}" if thread else ""
                     page.goto(f"/projects/{self.project}{suffix}")
-                    scope = page.get_by_role("complementary", name="Replies") if thread else page.get_by_role("region", name="Messages")
+                    scope = page.get_by_role("complementary", name="Replies").or_(page.get_by_role("dialog", name="Replies")) if thread else page.get_by_role("region", name="Messages")
                     field = page.locator("#thread-composer" if thread else "#project-composer")
                     body = f"The probe is ready for tomorrow {uuid.uuid4().hex[:6]}."
                     path = f"/api/v1/conversations/{self.roots['ada']['id']}/messages" if thread else f"/api/v1/projects/{self.project}/conversations"
@@ -248,7 +248,7 @@ class MessageAlignment(unittest.TestCase):
                     root = page.locator(f"#message-{self.short['messages'][0]['id']}")
                     self.assert_reference_width(page, root)
                     root.get_by_role("button", name=re.compile(r"^1 reply")).click()
-                    thread = page.get_by_role("complementary", name="Replies")
+                    thread = page.get_by_role("complementary", name="Replies").or_(page.get_by_role("dialog", name="Replies"))
                     self.assert_reference_width(page, thread.locator(".thread__root"))
                     self.assert_reference_width(page, thread.locator(f"#message-{self.short_reply['id']}"))
                     shot(page, f"spokoj-one-word-{width}-{'dark' if dark else 'light'}-{UI_BROWSER}")

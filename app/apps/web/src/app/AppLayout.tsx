@@ -62,7 +62,8 @@ function viewOrder(pathname: string) {
 const SIDEBAR_KEY = 'flux.sidebar';
 
 /** A view that takes the panel's whole content: opening another one over it leaves "‹ back" (Spokój rule 2). */
-const replaces = (view: DetailsView) => typeof view === 'object' && (view.kind === 'owned' || view.kind === 'thought-tasks' || view.kind === 'work' || view.kind === 'decision' || view.kind === 'result');
+const REPLACING = new Set(['owned', 'thought-tasks', 'work', 'decision', 'result', 'attach-result', 'propose-decision']);
+const replaces = (view: DetailsView) => typeof view === 'object' && REPLACING.has(view.kind);
 const KIND_LABEL: Record<string, string> = { work: 'Task', decision: 'Decision', result: 'Result', 'thought-tasks': 'Tasks' };
 
 function isTyping(target: EventTarget | null) {
@@ -127,6 +128,7 @@ function AppLayoutContent() {
   }, [detailsOpen, panelMode]);
 
   const ownedRef = useRef<OwnedPanel | null>(null);
+  const closeRef = useRef<() => void>(() => undefined);
   const now = useRef({ detailsOpen, detailsView, toggleDetails });
   useLayoutEffect(() => { now.current = { detailsOpen, detailsView, toggleDetails }; });
   // The open object names itself for the way back ("Task #2"); without a name its kind does.
@@ -144,6 +146,14 @@ function AppLayoutContent() {
     now.current = { ...current, detailsView: { kind: 'owned' } };
     if (!current.detailsOpen) current.toggleDetails(true);
   }, [labelOf]);
+  const reopenPanel = useCallback((key: string) => {
+    if (ownedRef.current?.key !== key) return;
+    const current = now.current;
+    if (current.detailsOpen && isOwned(current.detailsView)) return;
+    setDetailsView({ kind: 'owned' });
+    now.current = { ...current, detailsView: { kind: 'owned' } };
+    if (!current.detailsOpen) current.toggleDetails(true);
+  }, []);
   const hidePanel = useCallback((key: string) => {
     if (ownedRef.current?.key !== key) return;
     ownedRef.current = null;
@@ -216,8 +226,10 @@ function AppLayoutContent() {
       if (detailsScope.current !== detailsOwner) return;
       const next = typeof view === 'object' && 'id' in view ? { ...view, projectId: view.projectId ?? projectId } : view;
       const current = now.current;
-      // Opened from the panel, an object replaces the one shown and keeps the way back; any other opening starts afresh.
-      if (options?.back === 'push' && current.detailsOpen && replaces(current.detailsView) && replaces(next)) {
+      // Opened from the panel, an object replaces the one shown and keeps the way back; so does anything that takes the place of a
+      // thread or an agent a view owns, which has no other way back. Any other opening starts afresh.
+      const covers = current.detailsOpen && isOwned(current.detailsView) && ownedRef.current && !isOwned(next);
+      if (options?.back !== 'keep' && ((options?.back === 'push' && current.detailsOpen && replaces(current.detailsView) && replaces(next)) || covers)) {
         setTrail((list) => [...list, { label: labelOf(current.detailsView), view: current.detailsView }]);
       } else if (options?.back !== 'keep') setTrail([]);
       panelLabel.current = null;
@@ -227,7 +239,7 @@ function AppLayoutContent() {
     },
     /** The open object's name for "‹ back" from the next one ("Task #2"). */
     labelPanel(label: string | null) { panelLabel.current = label; },
-    showPanel, hidePanel, panelSlot, panelKey: detailsOpen && isOwned(detailsView) ? owned?.key ?? null : null,
+    showPanel, hidePanel, reopenPanel, closePanel: () => closeRef.current(), panelSlot, panelKey: detailsOpen && isOwned(detailsView) ? owned?.key ?? null : null,
     /** On the phone a request that does not yet say what to create opens the "+" sheet first (#341). */
     openCreate(request: CreateRequest = {}) { setNavOpen(false); setJumpOpen(false); if (phone && !request.kind) setCreateOpen(true); else setCreate(request); },
     openSearch() { setNavOpen(false); setJumpOpen(true); },
@@ -237,7 +249,7 @@ function AppLayoutContent() {
     toggleFocus() { void toggleFocus(); },
     toggleSidebar,
     sidebarHidden: railed || focusing,
-  }), [toggleDetails, actionSlot, metadataSlot, viewMenuMetadataSlot, projectId, detailsOwner, toggleSidebar, railed, toggleFocus, focusing, showPanel, hidePanel, panelSlot, detailsOpen, detailsView, owned, labelOf]);
+  }), [toggleDetails, actionSlot, metadataSlot, viewMenuMetadataSlot, projectId, detailsOwner, toggleSidebar, railed, toggleFocus, focusing, showPanel, hidePanel, reopenPanel, panelSlot, detailsOpen, detailsView, owned, labelOf]);
 
   // A link inside an overlaid panel or sheet (#117 overview) leads to its destination.
   const [shownPath, setShownPath] = useState(location.pathname);
@@ -429,6 +441,7 @@ function AppLayoutContent() {
     ownedShown?.onClose();
     toggleDetails(false);
   };
+  useLayoutEffect(() => { closeRef.current = closePanel; });
   // "What matters" (#133): a quiet count of what needs you; refreshed when the panel closes.
   const needsYou = useNeedsYou(activeProject ? projectId ?? null : null, recapOpen);
   const toggleRecap = () => {
@@ -564,7 +577,7 @@ function AppLayoutContent() {
       )}
       <div className="phead__right">
         <span className="top__actions" ref={setActionSlot} />
-        {activeProject && /^\/projects\/[^/]+\/conversations\//.test(location.pathname) ? <ProjectAgentStop projectId={activeProject.id} /> : null}
+        {activeProject && /^\/projects\/[^/]+(\/conversations\/|\/?$)/.test(location.pathname) ? <ProjectAgentStop projectId={activeProject.id} /> : null}
         {/* The same two controls in every project view and direct message (Spokój #507); Together is dimmed where it is unavailable. */}
         {activeProject || activeDm ? <><LiveEntry />{searchButton}</> : null}
         {!backOnly && !activeProject && !activeDm && location.pathname !== '/settings' ? <PhoneAvatar name={me.user.name} /> : null}
@@ -633,7 +646,7 @@ function AppLayoutContent() {
             <Outlet />
             <DeferredLiveStage />
           </div>
-          <SidePanel open={detailsOpen} onClose={closePanel} title={recapOpen ? 'What matters' : ownedShown ? ownedShown.label : 'Details'} chip={objectChip} id="details" back={back} startFull={ownedShown?.startFull}
+          <SidePanel open={detailsOpen} onClose={closePanel} title={recapOpen ? 'What matters' : ownedShown ? ownedShown.label : 'Details'} closeLabel={ownedShown?.closeLabel} chip={objectChip} id="details" back={back} startFull={ownedShown?.startFull}
             context={phone && (detailsView === 'place' || typeof detailsView === 'object' && detailsView.kind === 'overview') ? <OverviewContext message={typeof detailsView === 'object' && detailsView.kind === 'overview' && !!detailsView.messageId} /> : undefined}>
             {isOwned(detailsView) ? <div className="ui-panel__slot" ref={setPanelSlot} /> : <DeferredDetails view={detailsView} workspace={workspace} placeTitle={place.title} dm={activeDm ? { id: activeDm.id, kind: activeDm.kind, title: activeDm.title, me: me.user.name, people: activeDm.people, audience: activeDm.audience } : null} onBack={() => setDetailsView('place')} onClose={() => toggleDetails(false)} />}
           </SidePanel>

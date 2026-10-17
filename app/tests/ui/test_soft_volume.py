@@ -179,7 +179,7 @@ class SoftVolume(unittest.TestCase):
                     fonts: list[str] = []
                     page.on("request", lambda request: fonts.append(request.url) if request.resource_type == "font" else None)
                     page.goto(f"/projects/{self.ids['project']}/conversations/{self.ids['conversation']}")
-                    replies = page.get_by_role("complementary", name="Replies")
+                    replies = page.get_by_role("complementary", name="Replies").or_(page.get_by_role("dialog", name="Replies"))
                     timestamp = replies.locator(".thread__root .message-time time")
                     row = replies.locator(".message-files .file-row").first
                     filename = row.locator(".file-row__name")

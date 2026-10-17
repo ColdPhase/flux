@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
+import { useRef, useState, type KeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 
 /**
  * The handle of a two-height sheet: a real 44px target with a small bar for touch and mouse, and a
@@ -17,18 +17,14 @@ export function SheetGrabber({ full, onToggle }: { full: boolean; onToggle: () =
 /**
  * The one phone sheet (F-026 S4): a grabber and two heights, half (the work behind stays in view) and full.
  * A drag up on the grabber or header opens the full height, a drag down steps back to half and from half
- * closes; Esc closes; focus moves in when it opens when asked. Mouse input and the grabber's own buttons
- * are not dragged. The content is the children. The Details sheet sits in a modal overlay and the Thread
- * sheet sits over its conversation, both through this component.
+ * closes; Esc closes. Mouse input and the grabber's own buttons are not dragged. The content is the children:
+ * a task, a decision, a thread, an agent or a thought's tasks, one after another in the same sheet, which keeps its
+ * height while the content changes. It sits in a modal overlay.
  */
-export function DetentSheet({ as: Tag = 'div', onClose, detent = true, startFull = false, focusOnOpen = false, className, children, ...rest }: {
-  as?: 'div' | 'aside';
+export function DetentSheet({ onClose, startFull = false, className, children, ...rest }: {
   onClose: () => void;
-  /** False keeps the same element and children but not the sheet: the thread docked beside its stream is not a sheet, and must not remount when it becomes one. */
-  detent?: boolean;
+  /** It opens at full height (a thread); the height then stays while the content changes. */
   startFull?: boolean;
-  /** Focus the sheet itself when it opens, unless something inside already has focus. */
-  focusOnOpen?: boolean;
   className?: string;
   id?: string;
   role?: string;
@@ -37,13 +33,7 @@ export function DetentSheet({ as: Tag = 'div', onClose, detent = true, startFull
   children: ReactNode;
 }) {
   const [full, setFull] = useState(startFull);
-  const ref = useRef<HTMLDivElement & HTMLElement>(null);
   const start = useRef<{ id: number; x: number; y: number } | null>(null);
-  useEffect(() => {
-    if (focusOnOpen && !ref.current?.contains(document.activeElement)) ref.current?.focus({ preventScroll: true });
-    // When it opens; a composer may take focus first.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
   const onKeyDown = (event: KeyboardEvent<HTMLElement>) => {
     // Escape that ends an input method's composition, or closes a menu or field inside, is not a request to close.
     if (event.key !== 'Escape' || event.defaultPrevented || event.nativeEvent.isComposing) return;
@@ -54,7 +44,7 @@ export function DetentSheet({ as: Tag = 'div', onClose, detent = true, startFull
     onPointerDown(event: ReactPointerEvent<HTMLElement>) {
       if (event.pointerType === 'mouse' || !event.isPrimary) return;
       const target = event.target as HTMLElement;
-      if (!target.closest('.thread__head, .ui-panel__head, .ui-grabber')) return;
+      if (!target.closest('.ui-panel__head, .ui-grabber')) return;
       if (target.closest('input, textarea, select, [contenteditable="true"]')) return;
       start.current = { id: event.pointerId, x: event.clientX, y: event.clientY };
     },
@@ -71,12 +61,11 @@ export function DetentSheet({ as: Tag = 'div', onClose, detent = true, startFull
     },
     onPointerCancel() { start.current = null; },
   };
-  const Element = Tag as 'div';
   return (
-    <Element ref={ref} {...rest} tabIndex={-1} className={[detent ? 'ui-detent-sheet' : '', className].filter(Boolean).join(' ')}
-      data-detent-sheet={detent ? '' : undefined} data-height={detent ? (full ? 'full' : 'half') : undefined} onKeyDown={onKeyDown} {...(detent ? handlers : {})}>
-      {detent ? <SheetGrabber full={full} onToggle={() => setFull((value) => !value)} /> : null}
+    <div {...rest} tabIndex={-1} className={['ui-detent-sheet', className].filter(Boolean).join(' ')}
+      data-detent-sheet="" data-height={full ? 'full' : 'half'} onKeyDown={onKeyDown} {...handlers}>
+      <SheetGrabber full={full} onToggle={() => setFull((value) => !value)} />
       {children}
-    </Element>
+    </div>
   );
 }

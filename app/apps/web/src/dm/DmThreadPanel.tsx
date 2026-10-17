@@ -109,7 +109,7 @@ export function DmThreadPanel({ dmId, rootId, meId, meName, nameOf, audience, wr
   const count = root?.replyCount ?? shown.length;
 
   return (
-    <div className="thread" id="thread">
+    <>
       <PanelMeta>{count} {count === 1 ? 'reply' : 'replies'}</PanelMeta>
       <div className="thread__pane dm-thread" data-dm-thread={rootId}>
         <div className="thread__feed" ref={feed}>
@@ -152,7 +152,7 @@ export function DmThreadPanel({ dmId, rootId, meId, meName, nameOf, audience, wr
           </div>
         </div>
       </div>
-    </div>
+    </>
   );
 }
 

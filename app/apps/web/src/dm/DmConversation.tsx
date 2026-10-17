@@ -18,7 +18,7 @@ import { Avatar, Button, Icon, MEDIA, sendsOnEnter, useMediaQuery, useToast } fr
 import { audienceLine, dmTitle, othersIn } from './names';
 import { pageBackTo } from '../app/seekMessage';
 import { taskHref } from '../sketch/ThoughtTasks';
-import { useOwnedPanel } from '../app/ownedPanel';
+import { OwnedPanelContent, useOwnedPanel } from '../app/ownedPanel';
 import { DmBubble } from './DmBubble';
 import { DmTaskCopy } from './DmTaskCopy';
 import { DmThreadPanel } from './DmThreadPanel';
@@ -417,10 +417,12 @@ function DmContent({ initial }: { initial: Dm }) {
       </div>
     </div>
     </div>
-    {threadOpen && slot ? createPortal(
+    {threadOpen && slot ? (
+      <OwnedPanelContent slot={slot} className="thread" id="thread">
       <DmThreadPanel key={threadId} dmId={dm.id} rootId={threadId!} meId={me.user.id} meName={me.user.name} nameOf={nameOf}
         audience={audience} writable={!recipientGone} refreshTick={refreshTick} receiptTick={receiptTick} focusComposer={replyFocus} canObserve
-        onDenied={threadDenied} onCreateTask={startCopy} onCount={threadCount} />, slot) : null}
+        onDenied={threadDenied} onCreateTask={startCopy} onCount={threadCount} />
+      </OwnedPanelContent>) : null}
     {copy ? <DmTaskCopy dmId={dm.id} message={copy.message} excerpt={copy.excerpt} participants={dm.participants} onClose={() => stopCopy()}
       onCreated={copied} onUnavailable={(cause) => { setLeftNotice(cause instanceof ApiError && cause.code?.startsWith('DM_RECIPIENT') ? cause.message : leftNotice); void refresh(); denied(cause); }} /> : null}
     </div>

@@ -418,8 +418,8 @@ class SearchJourney(unittest.TestCase):
                 dialog.locator("[role=option].sr").first.click()
                 details = page.locator("#details")
                 expect(details.get_by_role("heading", name=target["title"], exact=True)).to_be_visible()
-                expect(details.locator(".wd-where .ui-task-number")).to_have_text("#2")
-                expect(details.locator(".wd-project-name")).to_have_text(place["name"])
+                expect(details.locator(".ui-panel__meta")).to_have_text("#2")
+                expect(details.locator(".wd__foot")).to_contain_text(f"Everyone in {place['name']}")
                 self.no_horizontal_scroll(page)
                 shot(page, f"task-number-jump-{'phone-390' if phone else 'desktop-1440'}")
 
@@ -441,18 +441,15 @@ class SearchJourney(unittest.TestCase):
                     result.click()
                     details = page.locator("#details")
                     expect(details.get_by_role("heading", name=tasks[number - 1]["title"], exact=True)).to_be_visible()
-                    expect(details.locator(".wd-where .ui-task-number")).to_have_text(f"#{number}")
-                    expect(details.locator(".wd-project-name")).to_have_text(place["name"])
+                    expect(details.locator(".ui-panel__meta")).to_have_text(f"#{number}")
+                    expect(details.locator(".wd__foot")).to_contain_text(f"Everyone in {place['name']}")
                     expect(details.locator("[data-detail-relations-phase]")).to_have_attribute("data-detail-relations-phase", "ready")
                     expect(details.get_by_role("navigation", name="Object relationship pages")).to_have_count(0)
-                    status = details.get_by_role("radiogroup" if phone else "button", name="Status", exact=True)
-                    if phone:
-                        expect(status.get_by_role("radio", checked=True)).to_have_text("Open")
-                    else:
-                        expect(status).to_contain_text("Open")
-                    expect(details.get_by_label("Owner", exact=True)).to_have_value("")
-                    for name in ("Owner",) if phone else ("Status", "Owner"):
-                        field_box = (status if name == "Status" else details.get_by_label(name, exact=True)).bounding_box()
+                    status = details.get_by_role("button", name="Status", exact=True)
+                    expect(status).to_contain_text("Open")
+                    expect(details.get_by_role("button", name="Owner", exact=True)).to_contain_text("Assign")
+                    for name in ("Status", "Owner"):
+                        field_box = details.get_by_role("button", name=name, exact=True).bounding_box()
                         label_box = details.locator(".wd-row dt", has_text=name).evaluate(
                             "node => { const range = document.createRange(); range.selectNodeContents(node); return range.getBoundingClientRect().toJSON(); }")
                         self.assertGreaterEqual(field_box["x"] - label_box["x"] - label_box["width"], 11,
@@ -462,12 +459,12 @@ class SearchJourney(unittest.TestCase):
                 # The shared type tokens use rem. Enlarge actual text through the root size;
                 # parseFloat(.75rem) followed by px would shrink it to 1.5px instead of 24px.
                 page.evaluate("document.documentElement.style.fontSize = '200%'")
-                number_label = details.locator(".wd-where .ui-task-number")
+                number_label = details.locator(".ui-panel__meta")
                 expect(number_label).to_be_visible()
-                expect(details.locator(".wd-project-name")).to_be_visible()
+                expect(details.locator(".wd__foot")).to_be_visible()
                 self.assertGreaterEqual(number_label.evaluate("node => parseFloat(getComputedStyle(node).fontSize)"), 20)
-                for name in ("Owner",) if phone else ("Status", "Owner"):
-                    field_box = (status if name == "Status" else details.get_by_label(name, exact=True)).bounding_box()
+                for name in ("Status", "Owner"):
+                    field_box = details.get_by_role("button", name=name, exact=True).bounding_box()
                     label_box = details.locator(".wd-row dt", has_text=name).evaluate(
                         "node => { const range = document.createRange(); range.selectNodeContents(node); return range.getBoundingClientRect().toJSON(); }")
                     self.assertGreaterEqual(field_box["x"] - label_box["x"] - label_box["width"], 11,

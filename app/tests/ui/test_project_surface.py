@@ -198,7 +198,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
         # with its thread open beside it, and the centre uses the pane (#136) with readable bubbles.
         expect(page.get_by_role("complementary", name="Sidebar").get_by_role("link", name=re.compile("^Should the lamp react"))).to_have_count(0)
         expect(page.locator(f"#message-{self.ids['m_opening']}").get_by_role("button", name=re.compile("^6 replies"))).to_have_attribute("aria-expanded", "true")
-        expect(page.get_by_role("complementary", name="Replies")).to_be_visible()
+        expect(page.get_by_role("complementary", name="Replies").or_(page.get_by_role("dialog", name="Replies"))).to_be_visible()
         column = page.locator(".project-convo__in").bounding_box()
         assert column
         self.assertLessEqual(column["width"], 1000, "conversation pane")

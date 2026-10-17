@@ -15,7 +15,7 @@ import { getTaskDiscussion } from '../composer/api';
 import { readAgentThread, type AgentThreadView } from './agentThread';
 import { useProjectShell } from '../project/data';
 import { AgentIdentity, AuthorFace, Button, Icon, Kreska, PanelMeta, StatusGlyph, agentHue, useMediaQuery, type KreskaExpression } from '../ui';
-import { useOwnedPanel } from '../app/ownedPanel';
+import { OwnedPanelContent, useOwnedPanel } from '../app/ownedPanel';
 import { STATUS_LABEL } from '../work/format';
 import { useNativeOwn, useWorkChoices } from '../work/useDetailReads';
 import { agentDisplayName } from '../docs/format';
@@ -771,7 +771,7 @@ export function ProjectAgents() {
   const requests = asked[0] ?? null;
   // A task's thread or an agent's details open in the one panel, as a task does (F-026 S4); this view keeps their state.
   const slot = useOwnedPanel(task ? {
-    key: `thread:${threadKind}:${task.id}`, chip: threadKind === 'agents' ? 'Agents’ thread' : 'Thread', label: 'Thread', startFull: true,
+    key: `thread:${threadKind}:${task.id}`, chip: threadKind === 'agents' ? 'Agents’ thread' : 'Thread', label: `#${task.number} · ${task.title}`, closeLabel: 'Close thread', startFull: true,
     ...(latestDetail ? { back: { label: latestDetail.name, run: closeThread } } : {}), onClose: closePanel,
   } : latestDetail ? { key: `agent:${latestDetail.key}`, chip: 'Agent', label: latestDetail.name, onClose: closePanel } : null);
 
@@ -833,20 +833,23 @@ export function ProjectAgents() {
         ) : null}
         <Link className="agents-link agents-link--connect" to="/connect-agent"><span className="agents-link__icon"><Icon name="plus" size={16} /></span><span className="agents-link__text">Connect your own agent</span><span className="agents-link__go">Local MCP<Icon name="chevron-right" size={14} /></span></Link>
       </div>
-      {slot ? createPortal(task ? (
-        <div className="agents-thread-panel">
+      {slot ? (task ? (
+        <OwnedPanelContent slot={slot} className="agents-thread-panel">
           <PanelMeta>{`#${task.number}`}</PanelMeta>
+          <h3 className="agents-thread__task">{task.title}</h3>
           {/* The thread's own scroller: its head stays on screen while the messages scroll (#347 N3). */}
           <div className="agents-thread-scroll">
             <TaskThread key={`${threadKind}:${me.user.id}:${projectId}:${task.id}`} kind={threadKind} task={task} projectId={projectId} meId={me.user.id} names={names} canWrite={canWrite} changingScope={changingScope} />
           </div>
-        </div>
+        </OwnedPanelContent>
       ) : latestDetail ? (
-        <AgentDetail key={latestDetail.key} entry={latestDetail} held={heldBy(latestDetail.agentId)} meId={me.user.id} projectId={projectId} now={connections.now}
-          stops={agentStops.stops.filter((item) => item.agent.id === latestDetail.agentId)} stop={leads.has(latestDetail.key) ? stopOf(latestDetail) : null}
-          asking={asked.find((question) => question.agent.id === latestDetail.agentId) ?? null} refocus={refocusKey === latestDetail.key} onRefocused={() => setRefocusKey(null)}
-          canHandOff={canWrite && !!shell && latestDetail.ownerId === me.user.id} onHandOff={() => setHandOff({ agentId: latestDetail.agentId, task: null })} onThread={openThread} />
-      ) : null, slot) : null}
+        <OwnedPanelContent slot={slot} className="agents-detail-panel">
+          <AgentDetail key={latestDetail.key} entry={latestDetail} held={heldBy(latestDetail.agentId)} meId={me.user.id} projectId={projectId} now={connections.now}
+            stops={agentStops.stops.filter((item) => item.agent.id === latestDetail.agentId)} stop={leads.has(latestDetail.key) ? stopOf(latestDetail) : null}
+            asking={asked.find((question) => question.agent.id === latestDetail.agentId) ?? null} refocus={refocusKey === latestDetail.key} onRefocused={() => setRefocusKey(null)}
+            canHandOff={canWrite && !!shell && latestDetail.ownerId === me.user.id} onHandOff={() => setHandOff({ agentId: latestDetail.agentId, task: null })} onThread={openThread} />
+        </OwnedPanelContent>
+      ) : null) : null}
       {!task && wanted && choices.read.phase === 'unavailable' ? (
         <p className="agents__no-tasks" role="alert">Open tasks could not be loaded. <button type="button" className="ui-link" onClick={choices.onRefresh}>Refresh tasks</button></p>
       ) : null}

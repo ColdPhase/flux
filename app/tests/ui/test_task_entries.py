@@ -176,10 +176,9 @@ class TaskEntries(unittest.TestCase):
         cards.get_by_role("button", name=title, exact=True).click()
         details = page.locator("#details")
         expect(details.get_by_role("heading", name=title)).to_be_visible()
-        link = details.get_by_role("region", name="Discussion").get_by_role("link")
-        expect(link).to_contain_text(root_author)
-        expect(link).to_contain_text(first_word)
-        expect(link).to_have_attribute("href", thread)
+        activity = details.get_by_role("region", name="Activity")
+        expect(activity.locator("li[data-message-id]").filter(has_text=first_word)).to_contain_text(root_author.split()[0])
+        expect(activity.get_by_role("link", name="Open in Conversation")).to_have_attribute("href", thread)
 
         page.goto(f"/projects/{pid}/agents?task={work_id}")
         thread_region = page.get_by_role("region", name=re.compile(rf"^Thread of {re.escape(title)}"))
@@ -199,10 +198,9 @@ class TaskEntries(unittest.TestCase):
             chooser.get_by_role("link").click()
             details = page.locator("#details")
             expect(details.get_by_role("heading", name=title)).to_be_visible()
-            link = details.get_by_role("region", name="Discussion").get_by_role("link")
-            expect(link).to_contain_text(root_author)
-            expect(link).to_contain_text(first_word)
-            expect(link).to_have_attribute("href", thread)
+            activity = details.get_by_role("region", name="Activity")
+            expect(activity.locator("li[data-message-id]").filter(has_text=first_word)).to_contain_text(root_author.split()[0])
+            expect(activity.get_by_role("link", name="Open in Conversation")).to_have_attribute("href", thread)
         shot(page, f"task-entry-{on_map or 'views'}-{who}")
 
     def discussion_root(self, who: str, work_id: str, body: str) -> tuple[str, str]:

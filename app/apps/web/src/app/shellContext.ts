@@ -74,6 +74,8 @@ export interface OwnedPanel {
   /** The kind in the head ("Thread", "Agent") and the surface's name ("Replies", "Agent"). */
   chip: string;
   label: string;
+  /** The close control's name when "Close <label>" does not say it (a long title). */
+  closeLabel?: string;
   /** "‹ Task #1": a way back to where the person came from; the label is its name. */
   back?: { label: string; run: () => void };
   /** Esc and the close control: the view updates its address and stops registering the panel. `keepPanel`: the panel stays for what replaces it. */
@@ -125,13 +127,17 @@ export interface ShellActions {
   showPanel(panel: OwnedPanel): void;
   /** The view stopped owning that panel: it closes unless the panel already shows something else. */
   hidePanel(key: string): void;
+  /** Closes the panel as Esc and its close control do: a view-owned panel leaves its address first. */
+  closePanel(): void;
+  /** Shows that view-owned panel again when something else closed or covered it while the view kept it open. */
+  reopenPanel(key: string): void;
   /** The element inside the panel the owner renders into, while the panel shows the owned view. */
   panelSlot: HTMLElement | null;
   /** The key of the view-owned panel the panel shows now, or null. */
   panelKey: string | null;
 }
 
-export const ShellContext = createContext<ShellActions>({ openDetails: () => undefined, labelPanel: () => undefined, openCreate: () => undefined, openSearch: () => undefined, openNavigation: () => undefined, actionSlot: null, metadataSlot: null, toggleFocus: () => undefined, toggleSidebar: () => undefined, sidebarHidden: false, showPanel: () => undefined, hidePanel: () => undefined, panelSlot: null, panelKey: null });
+export const ShellContext = createContext<ShellActions>({ openDetails: () => undefined, labelPanel: () => undefined, openCreate: () => undefined, openSearch: () => undefined, openNavigation: () => undefined, actionSlot: null, metadataSlot: null, toggleFocus: () => undefined, toggleSidebar: () => undefined, sidebarHidden: false, showPanel: () => undefined, hidePanel: () => undefined, reopenPanel: () => undefined, closePanel: () => undefined, panelSlot: null, panelKey: null });
 
 export function useShellActions(): ShellActions {
   return useContext(ShellContext);

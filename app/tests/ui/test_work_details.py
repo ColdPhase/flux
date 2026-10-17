@@ -61,6 +61,16 @@ class NativeDetailsJourney(unittest.TestCase):
         panel=page.locator(f".wd[data-detail-kind='{kind}'][data-detail-id='{id}']");expect(panel).to_be_visible()
         self.ready(panel);return panel
 
+    def blocker(self,panel):
+        """The blocker's field shows only while it is edited: open it from the card."""
+        field=panel.get_by_label("What is it waiting for?",exact=True)
+        if field.count()==0:panel.get_by_role("region",name="Blocker").get_by_role("button",name="Edit",exact=True).click()
+        return field
+    def owner_menu(self,page,panel):
+        """The owner is a menu on its row; opening it keeps the version the person saw."""
+        button=panel.get_by_role("button",name="Owner",exact=True);button.click()
+        return button,page.get_by_role("menu",name="Owner")
+
     def ready(self,panel):expect(panel.locator("[data-detail-relations-phase]")).to_have_attribute("data-detail-relations-phase","ready")
     def choices_ready(self,panel,name):
         nav=panel.get_by_role("navigation",name=name)
@@ -83,7 +93,7 @@ class NativeDetailsJourney(unittest.TestCase):
                     if "/work-relations?" in response.url and response.status==200:observed.append(response.json())
                     if re.search(r"/api/v1/(work|decisions|results)/[0-9a-f-]+$",response.url):legacy.append(response.url)
                 page.on("response",collect);panel=self.open(page,"work",self.target["id"])
-                expect(panel).to_contain_text(self.target["outcome"]);expect(panel.get_by_label("Owner",exact=True)).to_have_value(f"human:{self.user}")
+                expect(panel).to_contain_text(self.target["outcome"]);expect(panel.get_by_role("button",name="Owner",exact=True)).to_contain_text("Ada Kowalska")
                 expect(panel.get_by_role("region",name="Other relationships").get_by_role("link")).to_have_attribute("href",f"/projects/{self.project}/conversations/{self.conversation}#message-{self.message}")
                 for version in (1,2):expect(panel.locator(f'a[href="/materials/{self.material}/versions/{version}"]')).to_have_count(1)
                 expect(panel.locator(f'a[href="/projects/{self.project}/map/{self.sketch}#thought-{self.thought}"]')).to_have_count(1)
@@ -100,7 +110,7 @@ class NativeDetailsJourney(unittest.TestCase):
         self.assertEqual(self.records(),before,"read/navigation preserves native target fields and links")
 
     def test_02_required_relation_failure_retains_blocker_draft_and_has_no_false_empty(self):
-        page=self.page();panel=self.open(page,"work",self.target["id"]);field=panel.get_by_label("What is it waiting for?",exact=True)
+        page=self.page();panel=self.open(page,"work",self.target["id"]);field=self.blocker(panel)
         field.fill("My unfinished blocker explanation is private until saved")
         page.route("**/work-relations?**",lambda route:route.fulfill(status=503,json={"code":"WORK_READ_UNAVAILABLE","error":"Fixture unavailable"}))
         panel.get_by_role("navigation",name="Object relationship pages").get_by_role("button",name="Refresh",exact=True).click()
@@ -247,7 +257,7 @@ class NativeDetailsJourney(unittest.TestCase):
         expect(page).to_have_url(re.compile(f"/projects/{second}$"));expect(panel).to_have_attribute("data-detail-id",self.result["id"])
         panel.get_by_role("region",name="Reports on").get_by_role("button",name=re.compile("Compare both shielded")).click()
         panel=page.locator("#details .wd");expect(panel).to_have_attribute("data-detail-id",self.target["id"]);self.ready(panel)
-        expect(panel).to_contain_text("Everyone with access to Library lighting measurements")
+        expect(panel).to_contain_text("Everyone in Library lighting measurements")
         expect(panel.get_by_role("heading",name="Not available",exact=True)).to_have_count(0)
 
     def test_09_doc_source_link_does_not_promise_a_missing_section_or_new_version(self):
@@ -410,7 +420,7 @@ class NativeDetailsJourney(unittest.TestCase):
                     panel.get_by_title("Edit title", exact=True).click()
                     draft = panel.get_by_role("textbox", name="Task title", exact=True)
                 else:
-                    draft = panel.get_by_label("What is it waiting for?", exact=True)
+                    draft = self.blocker(panel)
                 draft.fill("My carefully preserved draft")
                 url = f"/api/v1/work/{task['id']}"
                 for number in (1, 2):
@@ -436,15 +446,14 @@ class NativeDetailsJourney(unittest.TestCase):
     def test_14_owner_choice_conflicts_keep_the_selection_and_require_explicit_retry(self):
         task = api(self.ctx, "POST", self.root + "/work", {"title": "Review who owns the next measurement"}, 201)
         page = self.page(); panel = self.open(page, "work", task["id"])
-        owner = panel.get_by_label("Owner", exact=True)
-        owner.focus()
+        owner, menu = self.owner_menu(page, panel)
         url = f"/api/v1/work/{task['id']}"
         current = api(self.ctx, "PATCH", url, {"title": "The peer revised the measurement", "expectedVersion": task["version"]})
         expect(panel.get_by_title("Edit title", exact=True)).to_have_text("The peer revised the measurement")
         with page.expect_response(lambda response: response.request.method == "PATCH" and response.url.endswith(url)) as conflict:
-            owner.select_option(f"human:{self.user}")
+            menu.get_by_role("menuitemradio", name=re.compile("Ada Kowalska")).click()
         self.assertEqual(conflict.value.status, 409)
-        expect(owner).to_have_value(f"human:{self.user}")
+        expect(owner).to_contain_text("Ada Kowalska")
         expect(panel).to_contain_text("Now: Nobody yet")
         expect(panel.get_by_role("alert")).to_contain_text("Someone changed this")
         api(self.ctx, "PATCH", url, {"title": "The peer revised it again", "expectedVersion": current["version"]})
@@ -453,7 +462,7 @@ class NativeDetailsJourney(unittest.TestCase):
         with page.expect_response(lambda response: response.request.method == "PATCH" and response.url.endswith(url)) as second:
             retry.click()
         self.assertEqual(second.value.status, 409)
-        expect(owner).to_have_value(f"human:{self.user}")
+        expect(owner).to_contain_text("Ada Kowalska")
         with page.expect_response(lambda response: response.request.method == "PATCH" and response.url.endswith(url)) as saved:
             retry.click()
         self.assertEqual(saved.value.status, 200)
@@ -464,16 +473,21 @@ class NativeDetailsJourney(unittest.TestCase):
         task = api(self.ctx, "POST", self.root + "/work", {"title": "Retire each stored blocker draft"}, 201)
         task = api(self.ctx, "PATCH", f"/api/v1/work/{task['id']}", {"status": "blocked", "blocker": "Original", "expectedVersion": task["version"]})
         page = self.page(); panel = self.open(page, "work", task["id"])
-        field = panel.get_by_label("What is it waiting for?", exact=True)
+        card = panel.get_by_role("region", name="Blocker")
+        field = self.blocker(panel)
         field.fill("My first stored blocker")
         save = panel.get_by_role("button", name="Save", exact=True)
         with page.expect_response(lambda response: response.request.method == "PATCH" and response.url.endswith(task['id'])) as stored:
             save.click()
         self.assertEqual(stored.value.status, 200)
-        expect(field).to_have_value("My first stored blocker")
-        expect(save).to_be_disabled()
+        # Saved, the card shows it and the field is gone: nothing is left to type over.
+        expect(card).to_contain_text("My first stored blocker")
+        expect(field).to_have_count(0)
         current = self.native("work", task["id"])
         api(self.ctx, "PATCH", f"/api/v1/work/{task['id']}", {"blocker": "The peer's newer blocker", "expectedVersion": current["version"]})
+        expect(card).to_contain_text("The peer's newer blocker")
+        # The retired draft does not come back over the peer's text.
+        field = self.blocker(panel)
         expect(field).to_have_value("The peer's newer blocker")
         expect(save).to_be_disabled()
         self.assertEqual(self.native("work", task["id"])["blocker"], "The peer's newer blocker")
@@ -483,18 +497,24 @@ class NativeDetailsJourney(unittest.TestCase):
         url = f"/api/v1/work/{task['id']}"
         task = api(self.ctx, "PATCH", url, {"status": "blocked", "blocker": "Original blocker", "expectedVersion": task["version"]})
         page = self.page(); panel = self.open(page, "work", task["id"])
-        owner = panel.get_by_label("Owner", exact=True)
-        owner.focus(); owner.press("Tab")
+        owner, menu = self.owner_menu(page, panel)
+        page.keyboard.press("Escape")
+        expect(menu).to_have_count(0)
         task = api(self.ctx, "PATCH", url, {"title": "A fresh title after clean owner focus", "expectedVersion": task["version"]})
         expect(panel.get_by_title("Edit title", exact=True)).to_have_text(task["title"])
+        owner, menu = self.owner_menu(page, panel)
         with page.expect_response(lambda response: response.request.method == "PATCH" and response.url.endswith(url)) as assigned:
-            owner.select_option(f"human:{self.user}")
+            menu.get_by_role("menuitemradio", name=re.compile("Ada Kowalska")).click()
         self.assertEqual(assigned.value.status, 200, "a new clean owner session uses the currently visible version")
         expect(panel.get_by_role("button", name="Retry owner change", exact=True)).to_have_count(0)
-        field = panel.get_by_label("What is it waiting for?", exact=True)
-        field.focus(); field.press("Tab")
+        field = self.blocker(panel)
+        panel.get_by_role("region", name="Blocker").get_by_role("button", name="Cancel", exact=True).click()
+        expect(field).to_have_count(0)
         task = self.native("work", task["id"])
         api(self.ctx, "PATCH", url, {"blocker": "A fresh blocker after clean focus", "expectedVersion": task["version"]})
+        # The live update reaches the card before a new session opens: it starts from the version the person sees.
+        expect(panel.get_by_role("region", name="Blocker")).to_contain_text("A fresh blocker after clean focus")
+        field = self.blocker(panel)
         expect(field).to_have_value("A fresh blocker after clean focus")
         field.fill("My new blocker session")
         with page.expect_response(lambda response: response.request.method == "PATCH" and response.url.endswith(url)) as stored:
@@ -537,7 +557,7 @@ class NativeDetailsJourney(unittest.TestCase):
                     panel.get_by_title("Edit title", exact=True).click()
                     field = panel.get_by_role("textbox", name="Task title", exact=True)
                 else:
-                    field = panel.get_by_label("What is it waiting for?", exact=True)
+                    field = self.blocker(panel)
                 held = []
                 def hold(route):
                     if route.request.method != "PATCH":
