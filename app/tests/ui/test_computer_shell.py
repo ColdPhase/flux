@@ -190,13 +190,16 @@ class ComputerShell(unittest.TestCase):
         task.focus()
         page.keyboard.press("t")
         expect(page.get_by_role("dialog", name="New task").get_by_label("Title", exact=True)).to_have_value(re.compile("^Can someone order"))
-        # Typing r or t in a field never triggers them.
+        # Typing r or t in a field never triggers them, even right after a message was focused.
         page.keyboard.press("Escape")
+        message.hover()
+        reply.focus()
         field = page.get_by_label("Write a message", exact=True)
-        field.click()
+        field.focus()
         page.keyboard.type("rt")
         expect(field).to_have_value("rt")
         expect(page.get_by_role("dialog", name="New task")).to_have_count(0)
+        expect(page.locator("#thread-composer")).to_have_count(0)
 
     def test_05c_z_undoes_the_newest_visible_undo_toast_and_does_nothing_without_one(self) -> None:
         self.ensure_account()

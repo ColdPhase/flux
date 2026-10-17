@@ -561,10 +561,9 @@ class AppShellJourney(unittest.TestCase):
         expect(audience).to_be_visible()
         expect(audience).to_contain_text("Only you")
         self.assertTrue(composer.evaluate("el => el.closest('.ynotes') !== null"), "the private note composer belongs to Your notes")
-        composer_box = box(page, composer)
-        audience_box = box(page, audience)
-        # One composer in six places (#343): the privacy line is part of the composer box, in the same place everywhere.
-        self.assertLess(abs(audience_box["y"] - composer_box["y"]), 160, "the privacy label belongs to the composer")
+        # One composer in six places (#343): the privacy line is part of the composer, inside its container.
+        self.assertTrue(audience.evaluate("(el) => el.closest('.composer') !== null"), "the privacy label is inside the composer container")
+        self.assertTrue(composer.evaluate("(el) => el.closest('.composer') === document.querySelector('.composer__audience').closest('.composer')"), "the label and the input share one composer")
         shot(page, "desktop-1440-sketchbook-empty-light")
 
         # Quick capture: Enter saves a private note, which survives a reload.
