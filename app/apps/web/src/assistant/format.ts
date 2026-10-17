@@ -1,4 +1,4 @@
-import type { AgentRuntimePayer, AssistantRun, AssistantRunStatus, PersonalAssistantStatus } from '@flux/contracts';
+import { aiConnectionLabel, assistantModelName, type AgentRuntimePayer, type AiProviderKind, type AssistantRun, type AssistantRunStatus, type PersonalAssistantStatus } from '@flux/contracts';
 import { ApiError, NetworkError } from '../api/client';
 
 // Words of the personal assistant (#57 design, #68). Calm and exact: they say what happened, who
@@ -16,6 +16,18 @@ export function micros(value: number) {
 export function perMillion(value: number) {
   return `$${(value / 1_000_000).toFixed(value % 10_000 === 0 ? 2 : 4)}`;
 }
+
+/**
+ * What answered, for the message's footer (F-027 AST-11): "Claude · Sonnet" for a Claude plan model the owner chose; a run on
+ * the plan's own default keeps "Anthropic · Claude Code", and an API key names its provider and model id (PROV-2).
+ */
+export function answeredBy(provenance: { provider: AiProviderKind; model: string }) {
+  if (['sonnet', 'opus', 'haiku'].includes(provenance.model)) return `Claude · ${assistantModelName(provenance.model)}`;
+  return aiConnectionLabel(provenance.provider, provenance.model === 'claude-code' ? 'Claude Code' : provenance.model);
+}
+
+/** What a run recorded, in the words of the list: "Sonnet", or the plan's default for a run before the choice existed. */
+export const runModelName = (model: string) => (model === 'claude-code' || model === 'codex' ? "your plan's default" : assistantModelName(model));
 
 export const WORKING: readonly AssistantRunStatus[] = ['queued', 'reading', 'dispatching'];
 export const isWorking = (run: AssistantRun) => WORKING.includes(run.status);
@@ -76,6 +88,7 @@ function runtimeEndedText(run: AssistantRun): string | null {
       : `Paused: your ${plan} plan’s limit is reached. ${plan} didn’t say until when.`;
     case 'sign_in_again': return `Sign in to ${plan} again to keep using your assistant.`;
     case 'refused': return `${plan} refused this request. Nothing was changed.`;
+    case 'model_unavailable': return `Your ${plan} plan didn’t accept ${runModelName(run.model)}. Nothing was changed.`;
     case 'no_event': case 'crashed': return `${plan} isn’t answering right now. Nothing was changed.`;
     case 'unknown': return `${plan} stopped answering partway. Nothing was changed, and it won’t run again by itself.`;
     case 'wall_clock': return 'I stopped after 5 minutes, the limit for one request. Nothing was posted.';

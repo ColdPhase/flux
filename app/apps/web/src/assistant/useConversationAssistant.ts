@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ASSISTANT_RUN_CHANGED_EVENT, type AssistantActivity, type AssistantAnswer, type AssistantProposal, type AssistantRun, type AssistantRunKind, type PersonalAssistantStatus } from '@flux/contracts';
 import { useStreamEvents } from '../api/stream';
+import { reply } from '../app/conversation-api';
+import { getProjectAgents } from '../agents/api';
 import {
   acceptProposal, askAssistant, dismissProposal, getAssistantActivity, getAssistantStatus, getRun, listAnswers, listOwnRuns, listProposals, resumeAssistant, retryRun, stopRun,
 } from './api';
 import { isWorking } from './format';
+import { rememberAskedConversation } from './lastAsked';
 
 // The assistant inside one project conversation (#68 AC-8). The answers and proposals are the
 // conversation's shared objects; the status and the working run are the signed-in person's own
@@ -32,6 +35,13 @@ export interface ConversationAssistant {
   others: AssistantActivity['working'];
   /** Changes whenever the shared part of the conversation was refreshed: an assistant started or stopped working, an answer arrived. */
   tick: number;
+  /**
+   * Whether the person's assistant is a member of this project (F-027 AST-10 "Delight details": suggestions only where it
+   * is): null while unknown or when they have no assistant in this workspace. `requested`: they asked, a manager has not yet.
+   */
+  member: boolean | null;
+  requested: boolean;
+  refreshMembership(): void;
   ask(prompt: string, options?: { kind?: AssistantRunKind; continuesRunId?: string; clientRunId?: string }): Promise<AssistantRun>;
   stop(): Promise<void>;
   retry(runId: string): Promise<void>;
@@ -41,8 +51,9 @@ export interface ConversationAssistant {
   refreshStatus(): void;
 }
 
-export function useConversationAssistant({ meId, projectId, conversationId }: { meId: string; projectId: string; conversationId: string | null }): ConversationAssistant {
+export function useConversationAssistant({ meId, meName, projectId, conversationId }: { meId: string; meName?: string; projectId: string; conversationId: string | null }): ConversationAssistant {
   const [status, setStatus] = useState<PersonalAssistantStatus | null>(null);
+  const [membership, setMembership] = useState<{ member: boolean | null; requested: boolean }>({ member: null, requested: false });
   const [answers, setAnswers] = useState<AssistantAnswer[]>([]);
   const [proposals, setProposals] = useState(new Map<string, AssistantProposal>());
   const [run, setRun] = useState<AssistantRun | null>(null);
@@ -59,6 +70,14 @@ export function useConversationAssistant({ meId, projectId, conversationId }: { 
     if (!conversationId) return;
     try { setOthers((await getAssistantActivity(conversationId)).working.filter((item) => item.ownerId !== meId)); } catch { /* the line is a courtesy; a missing one is not an error */ }
   }, [conversationId, meId]);
+  const hasAssistant = !!status?.enablement;
+  const refreshMembership = useCallback(() => {
+    getProjectAgents(projectId).then((view) => {
+      const requested = view.joinRequests?.some((item) => item.ownerUserId === meId && item.state === 'pending') ?? false;
+      setMembership({ member: view.assistantJoin ? !view.assistantJoin.canRequest && !requested : null, requested });
+    }, () => undefined);
+  }, [projectId, meId]);
+  useEffect(() => { if (hasAssistant) refreshMembership(); }, [hasAssistant, refreshMembership]);
   const refreshShared = useCallback(async () => {
     if (!conversationId) return;
     void refreshActivity();
@@ -132,7 +151,7 @@ export function useConversationAssistant({ meId, projectId, conversationId }: { 
   }, [queued, track]);
 
   return {
-    status, answers, proposals, run, queued, others, tick, refreshStatus,
+    status, answers, proposals, run, queued, others, tick, refreshStatus, member: membership.member, requested: membership.requested, refreshMembership,
     async cancelQueued() {
       if (!queued) return;
       track(await stopRun(queued.id));
@@ -150,6 +169,14 @@ export function useConversationAssistant({ meId, projectId, conversationId }: { 
         ...(options.continuesRunId ? { continuesRunId: options.continuesRunId } : {}),
       });
       track(started);
+      rememberAskedConversation(meId, projectId, conversationId);
+      // J1 step 6: the request appears in the stream as sent, "@Ada's assistant tidy this project's tasks", so everyone sees what was
+      // asked and whose assistant it is. It follows the run (a refused run leaves nothing behind) under the request's own id, so a
+      // replay after a lost answer posts it once. A Continue is part of the earlier request and posts nothing.
+      if (!options.continuesRunId && meName) {
+        const first = meName.trim().split(/\s+/)[0] || meName;
+        await reply(conversationId, { body: `@${first}'s assistant ${prompt}`, clientMessageId: started.clientRunId }).catch(() => undefined);
+      }
       return started;
     },
     async stop() {

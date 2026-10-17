@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useId, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import { Link } from 'react-router';
-import { AI_PROVIDERS, aiConnectionLabel, aiModelCallsTools, maxRequestMicros, PERSONAL_RUN_CONSENT_VERSION, PERSONAL_RUN_LIMITS, personalRunMaxInputTokens, PERSONAL_RUNTIME_CONSENT_VERSION,
+import { AI_PROVIDERS, aiConnectionLabel, aiModelCallsTools, type AssistantModelChoice, maxRequestMicros, PERSONAL_RUN_CONSENT_VERSION, PERSONAL_RUN_LIMITS, personalRunMaxInputTokens, PERSONAL_RUNTIME_CONSENT_VERSION,
   type Agent, type AgentRuntimePayer, type BackgroundComputeConnection, type PersonalAssistantStatus } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { useShellData } from '../app/data';
@@ -10,6 +10,8 @@ import { Button, ErrorState, Icon, Kreska, Spinner } from '../ui';
 import { whenPageLive } from '../api/pageLeaving';
 import { listBackgroundConnections } from '../proactive-comparison/api';
 import { enableAssistant, getAssistantStatus, pauseAssistant, removeAssistant, resumeAssistant, selectAssistantAgent, updateAssistant } from './api';
+import { ModelPicker } from './ModelPicker';
+import { fetchAssistantModel, refreshAssistantModel, useAssistantModel } from './model';
 import { dollars, micros, perMillion, runtimeNames, runtimePayerDetail, runtimePayerText, stateLine, unavailableText, type RuntimeClientName } from './format';
 import '../notifications/notifications.css';
 import './assistant.css';
@@ -44,7 +46,7 @@ export function AssistantSettings() {
   }, [workspaces, me.user.id]);
   useEffect(fetchAll, [fetchAll]);
   const load = () => { setFailed(false); fetchAll(); };
-  const done = (next: PersonalAssistantStatus, message: string) => { setStatus(next); setSaved(message); window.setTimeout(() => setSaved(''), 2500); };
+  const done = (next: PersonalAssistantStatus, message: string) => { setStatus(next); setSaved(message); window.setTimeout(() => setSaved(''), 2500); void refreshAssistantModel(); };
 
   if (failed) return <div className="pane-scroll"><div className="pane-in"><ErrorState title="Your assistant settings couldn’t load" actions={<Button variant="secondary" onClick={load}>Try again</Button>}><p>Nothing changed. Human work goes on as usual.</p></ErrorState></div></div>;
   if (!status || !agents) return <div className="pane-scroll"><div className="pane-in"><p className="inbox__loading"><Spinner label="Loading your assistant" /></p></div></div>;
@@ -195,30 +197,43 @@ function RuntimeSetup({ status, agents, workspaces, name, onEnabled, onAgent, on
   const [more, setMore] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  // The assistants made by an earlier try: a retry after a failed Turn on reuses them and never makes a second one.
+  const made = useRef<Record<string, string>>({});
+  const running = useRef(false);
+  // The model (F-027 AST-11): the list's default is preselected; the choice is sent with Turn on and saved with it.
+  const { choice } = useAssistantModel();
+  const [picked, setPicked] = useState<string | null>(null);
+  const model = picked ?? choice?.default ?? null;
   const payer = status.setup.runtime?.payer ?? null;
   const names = runtimeNames(status.setup.runtime?.client);
   const company = status.setup.runtime?.client === 'codex' ? 'OpenAI' : 'Anthropic';
   const first = name.trim().split(/\s+/)[0] || name;
   // "Turn on" is the consent (F-027 Journey 1 step 4): no check box. A workspace without an assistant of yours gets one.
   async function turnOn() {
-    if (busy) return;
+    if (busy || running.current) return;
+    running.current = true;
     setBusy(true); setError('');
     try {
-      const picked: string[] = [];
+      const agentIds: string[] = [];
       for (const space of workspaces) {
-        let agentId = chosen[space.id] ?? '';
-        if (!agentId && !more) { const agent = await createPersonalAgent(space.id, `${first}’s assistant`); onAgent(agent); agentId = agent.id; }
-        if (agentId) picked.push(agentId);
+        let agentId = chosen[space.id] || agents.find((agent) => agent.workspaceId === space.id)?.id || made.current[space.id] || '';
+        if (!agentId && !more) {
+          const agent = await createPersonalAgent(space.id, `${first}’s assistant`);
+          made.current[space.id] = agent.id;
+          setChosen((current) => ({ ...current, [space.id]: agent.id }));
+          onAgent(agent); agentId = agent.id;
+        }
+        if (agentId) agentIds.push(agentId);
       }
-      if (!picked.length) { setError('Choose where your assistant works.'); return; }
-      let next = await enableAssistant({ consentVersion: PERSONAL_RUNTIME_CONSENT_VERSION, agentId: picked[0]!, engine: 'runtime', timeZone: browserTimeZone() });
-      for (const agentId of picked.slice(1)) next = await selectAssistantAgent(agentId);
+      if (!agentIds.length) { setError('Choose where your assistant works.'); return; }
+      let next = await enableAssistant({ consentVersion: PERSONAL_RUNTIME_CONSENT_VERSION, agentId: agentIds[0]!, engine: 'runtime', timeZone: browserTimeZone(), ...(model ? { model } : {}) });
+      for (const agentId of agentIds.slice(1)) next = await selectAssistantAgent(agentId);
       onEnabled(next);
     } catch (cause) {
       setError(cause instanceof ApiError && cause.code === 'PERSONAL_RUN_RUNTIME_SIGN_IN' ? `Sign in to ${names.plan} again to keep using your assistant. Nothing was turned on.`
         : cause instanceof ApiError && cause.code === 'PERSONAL_RUN_RUNTIME_OFF' ? 'This Flux doesn’t allow signing in with a subscription yet. Nothing was turned on.'
           : failure(cause, 'Couldn’t turn it on. Try again.'));
-    } finally { setBusy(false); }
+    } finally { running.current = false; setBusy(false); }
   }
   return (
     <section className="nset__sec aset-ready" aria-labelledby="aset-ready">
@@ -230,6 +245,9 @@ function RuntimeSetup({ status, agents, workspaces, name, onEnabled, onAgent, on
         <li>Others in the conversation see what you ask it and what it does.</li>
       </ul>
       <p className="nset__note">Uses your {names.plan} plan. Flux can&apos;t see its limits. What it reads goes to {company} under your account&apos;s settings.</p>
+      {choice?.options.length && model ? <div className="aset-ready__model">
+        <ModelPicker options={choice.options} value={model} variant="field" disabled={busy} onSelect={setPicked} />
+      </div> : null}
       {more ? <div className="aset__agents">
         <RuntimeDisclosure payer={payer} client={status.setup.runtime?.client} />
         {workspaces.map((space) => <AgentPicker key={space.id} workspace={space} agents={agents} name={name} value={chosen[space.id] ?? ''} disabled={busy}
@@ -262,13 +280,25 @@ function Setup({ status, agents, workspaces, name, onEnabled, onAgent }: {
   const [ownedState, setOwnedState] = useState<'loading' | 'loaded' | 'failed'>('loading');
   const [connectionId, setConnectionId] = useState('');
   // A consent given while one connection was shown never carries over to another.
-  const choose = (id: string) => { setConnectionId(id); setConsent(false); };
+  const [pickedModel, setPickedModel] = useState<string | null>(null);
+  const choose = (id: string) => { setConnectionId(id); setConsent(false); setPickedModel(null); };
+  // The model (F-027 AST-11) is chosen from the list of the connection being enabled; the connection's own model is preselected.
+  const [fetched, setFetched] = useState<{ connectionId: string; list: AssistantModelChoice } | null>(null);
+  useEffect(() => {
+    if (!connectionId) return undefined;
+    const controller = new AbortController();
+    fetchAssistantModel(connectionId, controller.signal).then((list) => setFetched({ connectionId, list }), () => undefined);
+    return () => controller.abort();
+  }, [connectionId]);
+  const modelList = fetched?.connectionId === connectionId ? fetched.list : null;
+  const model = pickedModel ?? modelList?.default ?? null;
+  const modelOption = modelList?.options.find((option) => option.id === model) ?? null;
   useEffect(() => {
     const controller = new AbortController();
     // A page being left starts no read (#471); one whose navigation was cancelled reads once it is live.
     const waiting = whenPageLive(() => {
       listBackgroundConnections(controller.signal)
-        .then((items) => { setOwned(items); setConnectionId(items[0]?.id ?? ''); setConsent(false); setOwnedState('loaded'); })
+        .then((items) => { setOwned(items); setConnectionId(items[0]?.id ?? ''); setConsent(false); setPickedModel(null); setOwnedState('loaded'); })
         .catch(() => { if (!controller.signal.aborted) { setOwned([]); setOwnedState('failed'); } });
     });
     return () => { waiting(); controller.abort(); };
@@ -293,7 +323,7 @@ function Setup({ status, agents, workspaces, name, onEnabled, onAgent }: {
     setBusy(true); setError('');
     try {
       let next = await enableAssistant({ consentVersion: PERSONAL_RUN_CONSENT_VERSION, agentId: picked[0]![1], perRunCents: perRun, dailyCapCents: daily, timeZone,
-        ...(selected ? { connectionId: selected.id } : {}) });
+        ...(selected ? { connectionId: selected.id } : {}), ...(selected && model ? { model } : {}) });
       for (const [, agentId] of picked.slice(1)) next = await selectAssistantAgent(agentId);
       onEnabled(next);
     } catch (cause) {
@@ -321,6 +351,11 @@ function Setup({ status, agents, workspaces, name, onEnabled, onAgent }: {
               {owned.map((item) => <option key={item.id} value={item.id}>{item.name} · {aiConnectionLabel(item.provider, item.model)}</option>)}
             </select>
           </label> : null}
+          {modelList?.options.length && model ? <div className="aset__field aset__field--model">
+            <span>Model</span>
+            <ModelPicker options={modelList.options} value={model} variant="field" disabled={!usable || busy} onSelect={setPickedModel} />
+          </div> : null}
+          {selected && modelOption && model !== selected.model ? <p className="nset__note">{modelOption.note}. The cost shown above is for {selected.model}.</p> : null}
           <label className="aset__field">Up to per request
             <select aria-label="Up to per request" value={perRun} onChange={(event) => setPerRun(Number(event.target.value))}>{PER_RUN.map((value) => <option key={value} value={value}>{dollars(value)}</option>)}</select>
           </label>

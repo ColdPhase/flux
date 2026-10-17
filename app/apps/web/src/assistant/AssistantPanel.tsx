@@ -4,6 +4,7 @@ import { AI_PROVIDERS, assistantCanSentence, assistantSettingsPath, type AiProvi
 import { request } from '../api/client';
 import { AgentTag, Button, Icon, Kreska, MEDIA, Overlay, agentHue, useMediaQuery } from '../ui';
 import { getAssistantStatus, listOwnRuns, pauseAssistant, resumeAssistant, stopRun } from './api';
+import { AssistantModelControl } from './ModelPicker';
 
 // The assistant's panel (F-027 AST-10 Journey 3): tap its name on any message. Now, Recent, Can and Message for its
 // owner; for everyone else one line about who pays and where what it reads goes. "Pause my assistant" is on the panel
@@ -84,6 +85,7 @@ function Body({ onClose, name, mine, ownerName, provider, userId, onMessage }: {
             <li key={run.id}><span>{RECENT_WORD[run.status] ?? 'Done'}: {run.prompt.length > 60 ? `${run.prompt.slice(0, 59)}…` : run.prompt}</span></li>))}</ul> : <p>Nothing yet.</p>}
         </section>
         <section aria-labelledby="aset-panel-can"><h3 id="aset-panel-can">Can</h3><p data-testid="assistant-can">{can || 'Loading…'}</p></section>
+        <div className="aset-model-row"><AssistantModelControl variant="field" placement="up" /></div>
       </> : <p data-testid="assistant-others">Uses {companyName(provider)} through {ownerName}&apos;s account. What it reads here goes to {dataTo(provider)}.</p>}
       {error ? <p role="alert" className="nset__error">{error}</p> : null}
       <footer className="aset-panel__foot">
