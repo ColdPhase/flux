@@ -137,14 +137,16 @@ class AssistantSchedules(unittest.TestCase):
         page.wait_for_function("() => document.getAnimations().filter((a) => a.effect && a.effect.getComputedTiming().iterations !== Infinity && a.playState === 'running').length === 0")
 
     def layout(self, card: Locator, **parts: Locator) -> dict:
-        """Where each control is, measured from the card's own corner so scrolling the pane changes nothing."""
-        origin = card.bounding_box()
-        assert origin is not None
-        out = {}
-        for name, locator in parts.items():
-            x, y, width, height = self.box(locator)
-            out[name] = (round(x - origin["x"], 1), round(y - origin["y"], 1), width, height)
-        return out
+        """Where each control is, measured from the card's own corner in one pass once the pane has stopped moving (scrolling or closing a sheet)."""
+        card.evaluate("""(node) => new Promise((resolve) => {
+          let last = null; let same = 0;
+          const tick = () => { const top = node.getBoundingClientRect().top; same = top === last ? same + 1 : 0; last = top; if (same >= 5) resolve(true); else requestAnimationFrame(tick); };
+          tick();
+        })""")
+        handles = [card.element_handle(), *[locator.element_handle() for locator in parts.values()]]
+        rects = card.page.evaluate("""(nodes) => nodes.map((node) => { const r = node.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height }; })""", handles)
+        origin = rects[0]
+        return {name: (round(rect["x"] - origin["x"], 1), round(rect["y"] - origin["y"], 1), round(rect["width"], 1), round(rect["height"], 1)) for name, rect in zip(parts, rects[1:])}
 
     def screen(self, page: Page) -> Locator:
         page.goto("/settings/assistant")
@@ -552,6 +554,82 @@ class AssistantSchedules(unittest.TestCase):
                 self.assertGreaterEqual(detail.get_by_role("switch", name="On", exact=True).locator("xpath=ancestor::*[contains(@class,'sset-row')][1]").bounding_box()["height"], 44)
                 if dark:
                     shot(page, f"schedules-detail-{self.tag(phone, dark)}")
+        self.clear(self.page())
+
+
+    # ---------------------------------------------------------------- in a conversation
+
+    def test_12_runs_of_one_schedule_in_a_row_fold_into_one_line_until_a_person_posts(self) -> None:
+        """AST-7.11: "Ada's assistant · Hourly tidy · 2 updates" opens to each run's own message; a person's message ends the fold."""
+        for phone in (False, True):
+            with self.subTest(phone=phone):
+                page = self.page(phone=phone)
+                schedule = {"id": str(uuid.uuid4()), "title": "Hourly tidy"}
+                runs = [str(uuid.uuid4()) for _ in range(3)]
+                self.api(page, "POST", f"/api/v1/conversations/{self.ids['conversation']}/messages", {"body": f"Thanks, that helps {phone}", "clientMessageId": str(uuid.uuid4())}, status=201)
+
+                def answer(run: str, at: str) -> dict:
+                    return {"runId": run, "conversationId": self.ids["conversation"], "projectId": self.ids["project"], "audience": {"kind": "project", "projectId": self.ids["project"]},
+                            "assistant": {"ownerUserId": ADA["id"], "label": "Ada's assistant"}, "askedBy": {"id": ADA["id"], "name": "Ada"},
+                            "request": {"kind": "scheduled", "prompt": "Tidy the sensor tasks"}, "body": f"Renamed the probe task ({run[:4]}).", "truncated": False,
+                            "provenance": {"provider": "anthropic", "model": "claude-code"}, "sources": [], "proposalId": None, "committedAt": at, "schedule": schedule}
+                answers = [answer(runs[0], "2026-01-01T09:00:00.000Z"), answer(runs[1], "2026-01-01T10:00:00.000Z"), answer(runs[2], "2099-01-01T09:00:00.000Z")]
+                page.route(re.compile(r".*/api/v1/conversations/[0-9a-f-]{36}/assistant-answers\?.*"), lambda route: self.json(route, {"items": answers, "total": 3, "limit": 100, "offset": 0}))
+                page.goto(f"/projects/{self.ids['project']}/conversations/{self.ids['conversation']}")
+                fold = page.locator("[data-schedule-fold]")
+                expect(fold).to_have_count(1)
+                expect(fold).to_contain_text("Ada's assistant")
+                expect(fold).to_contain_text("Hourly tidy · 2 updates")
+                expect(fold.get_by_role("button", name=re.compile("Hourly tidy"))).to_have_attribute("aria-expanded", "false")
+                for run in runs[:2]:
+                    expect(fold.locator(f"[data-answer-run='{run}']")).to_be_hidden()
+                # The run after a person's message stands on its own.
+                expect(page.locator(f"[data-answer-run='{runs[2]}']")).to_be_visible()
+                self.assertEqual(page.locator(f"[data-answer-run='{runs[2]}']").evaluate("(node) => !!node.closest('[data-schedule-fold]')"), False)
+                self.assertGreaterEqual(fold.get_by_role("button", name=re.compile("Hourly tidy")).bounding_box()["height"], 32)
+                shot(page, f"schedules-fold-{self.tag(phone)}")
+                fold.get_by_role("button", name=re.compile("Hourly tidy")).click()
+                expect(fold.get_by_role("button", name=re.compile("Hourly tidy"))).to_have_attribute("aria-expanded", "true")
+                for run in runs[:2]:
+                    expect(fold.locator(f"[data-answer-run='{run}']")).to_be_visible()
+                self.no_horizontal_scroll(page)
+
+    def test_13_a_plan_limit_offers_do_it_at_the_reset_time_and_makes_a_one_off(self) -> None:
+        """AST-7 "Do it later": one tap makes a one-off schedule of the same request, posting in its conversation."""
+        for phone in (False, True):
+            with self.subTest(phone=phone):
+                page = self.page(phone=phone)
+                self.clear(page)
+                real = self.api(page, "GET", "/api/v1/personal-assistant", status=200)
+                stub = json.loads(json.dumps(real))
+                stub["setup"] = {"provider": "off", "connection": "none", "runtime": {"state": "signed_in", "payer": "claude_plan", "accountLabel": "a***@example.test"}}
+                stub["enablement"].update(engine="runtime", connectionId=None)
+                reset = datetime.now(ZoneInfo("UTC")) + timedelta(hours=2)
+                run = {"id": str(uuid.uuid4()), "clientRunId": str(uuid.uuid4()), "workspaceId": self.ids["workspace"], "projectId": self.ids["project"], "conversationId": self.ids["conversation"],
+                       "kind": "ask", "prompt": "Summarize the sensor notes", "target": None, "continuesRunId": None, "retryOfRunId": None, "status": "unavailable", "stoppedAtStage": None,
+                       "stopRequested": False, "stopAcknowledged": False, "engine": "runtime", "endReason": "plan_limit", "planLimitResetsAt": reset.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+                       "cost": {"state": "reserved", "reservedMicros": 0, "chargedMicros": 0, "inputTokens": None, "outputTokens": None},
+                       "answer": None, "createdAt": "2026-10-16T09:00:00.000Z", "dispatchedAt": "2026-10-16T09:00:01.000Z", "completedAt": "2026-10-16T09:01:00.000Z"}
+                page.route("**/api/v1/personal-assistant", lambda route: self.json(route, stub) if route.request.method == "GET" else route.continue_())
+                page.route(re.compile(r".*/api/v1/conversations/[0-9a-f-]{36}/assistant-runs$"), lambda route: self.json(route, run, 202))
+                page.goto(f"/projects/{self.ids['project']}/conversations/{self.ids['conversation']}")
+                page.locator("#thread-composer").fill("/ai Summarize the sensor notes")
+                page.get_by_role("button", name="Send to your assistant").click()
+                working = page.locator(".assistant-working")
+                clock = reset.astimezone(ZoneInfo(ZONE)).strftime("%H:%M")
+                expect(working).to_contain_text(f"until {clock}.")
+                button = working.get_by_role("button", name=f"Do it at {clock}")
+                expect(button).to_be_visible()
+                self.assertGreaterEqual(button.bounding_box()["height"], 32)
+                shot(page, f"schedules-do-it-at-{self.tag(phone)}")
+                button.click()
+                expect(working).to_contain_text(f"I’ll do it at {clock}.")
+                jobs = self.jobs(page)
+                self.assertEqual(len(jobs), 1)
+                self.assertEqual([jobs[0]["schedule"]["kind"], jobs[0]["text"], jobs[0]["conversationId"], jobs[0]["enabled"]], ["once", "Summarize the sensor notes", self.ids["conversation"], True])
+                self.assertTrue(jobs[0]["words"].startswith("Once, "))
+                self.assertEqual(jobs[0]["schedule"]["at"], reset.strftime("%Y-%m-%dT%H:%M:%S.000Z"), "it runs at the plan's reset time")
+                self.no_horizontal_scroll(page)
         self.clear(self.page())
 
 

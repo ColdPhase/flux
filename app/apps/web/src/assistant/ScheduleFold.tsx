@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react';
-import { AgentTag, Icon, Kreska } from '../ui';
+import { Icon, Kreska } from '../ui';
 
 /**
  * Several runs of one schedule in a row, with no person's message between them, as one line (F-027 AST-7 "Output", S8):
@@ -16,7 +16,7 @@ export function ScheduleFold({ id, assistant, title, changes, today, runs, child
     <li className="convo-fold" id={id} data-schedule-fold>
       <button type="button" className="convo-fold__b" aria-expanded={open} aria-controls={listId} onClick={() => setOpen((value) => !value)}>
         <span className="convo-fold__faces" aria-hidden="true"><Kreska size={20} /></span>
-        <span className="convo-fold__t"><b>{assistant}</b> <AgentTag /><span className="convo-fold__s"> · {title} · {count}</span></span>
+        <span className="convo-fold__t"><b>{assistant}</b><span className="convo-fold__s"> · {title} · {count}</span></span>
         <Icon name={open ? 'chevron-up' : 'chevron-down'} size={16} />
       </button>
       <ol id={listId} className="convo-fold__list" hidden={!open}>{children}</ol>
