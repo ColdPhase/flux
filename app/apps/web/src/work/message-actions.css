@@ -16,12 +16,12 @@
 .msg-acts:has([aria-expanded="true"]) { opacity: 1; pointer-events: auto; transition: opacity var(--dur-1) var(--ease-out); }
 /* The pointer wins over a focused message, wherever it is in the conversation (the stream, the thread, a thread's root):
    while one message is hovered no other toolbar shows, unless its own menu is open. The sibling forms cover one list
-   (and are what WebKit honours for it); the last covers messages in different lists of the same conversation. */
+   (and are what WebKit honours for it); the last covers messages in different lists of the conversation and its panel. */
 .project-convo__message:hover ~ .project-convo__message > .msg-acts:not(:has([aria-expanded="true"])),
 .project-convo__message:has(~ .project-convo__message:hover) > .msg-acts:not(:has([aria-expanded="true"])),
 .dm-msg:hover ~ .dm-msg .dm-msg__main > .msg-acts:not(:has([aria-expanded="true"])),
 .dm-msg:has(~ .dm-msg:hover) .dm-msg__main > .msg-acts:not(:has([aria-expanded="true"])),
-.convo-split:has(:is(.dm-msg, .project-convo__message):hover) :is(.dm-msg, .project-convo__message):not(:hover) .msg-acts:not(:has([aria-expanded="true"])) { opacity: 0; pointer-events: none; transition: none; }
+.app__body:has(:is(.dm-msg, .project-convo__message):hover) :is(.dm-msg, .project-convo__message):not(:hover) .msg-acts:not(:has([aria-expanded="true"])) { opacity: 0; pointer-events: none; transition: none; }
 /* An own message sits on the right: its pill takes the left side of the bubble, the others' the right. */
 .project-convo__message > .msg-acts { left: calc(100% + var(--acts-gap)); }
 .project-convo__message.is-mine > .msg-acts { left: auto; right: calc(100% + var(--acts-gap)); }
