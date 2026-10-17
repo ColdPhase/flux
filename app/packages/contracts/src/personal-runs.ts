@@ -254,7 +254,11 @@ export interface SelectPersonalAgentCommand {
   agentId: string;
 }
 
-export type AssistantRunKind = 'ask' | 'summarize' | 'map_thought';
+/**
+ * What started a run. `scheduled` and `morning_summary` are started by Flux's own tick for the owner's schedules and
+ * morning summary (F-027 A8); only the first three can be asked for through the API.
+ */
+export type AssistantRunKind = 'ask' | 'summarize' | 'map_thought' | 'scheduled' | 'morning_summary';
 
 /** A map thought on a project sketch of the conversation's project. */
 export interface AssistantRunTarget {
@@ -307,6 +311,8 @@ export interface AssistantRun {
   conversationId: string;
   kind: AssistantRunKind;
   prompt: string;
+  /** A background run whose answer is not shown in its conversation (a schedule keeps its result in Recent). Absent on older servers. */
+  silent?: boolean;
   target: AssistantRunTarget | null;
   continuesRunId: string | null;
   retryOfRunId: string | null;
@@ -372,6 +378,8 @@ export interface AssistantAnswer {
   sources: AssistantSourceRef[];
   proposalId: string | null;
   committedAt: string;
+  /** The schedule that posted this answer in the conversation (F-027 AST-7 "Output"); null for a request. */
+  schedule?: { id: string; title: string } | null;
 }
 
 export type AssistantAnswerPage = Page<AssistantAnswer>;

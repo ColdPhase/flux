@@ -39,7 +39,7 @@ export function summaryTitle(count: number, more: boolean) {
 
 export interface SummaryCandidate {
   userId: string;
-  preferences: Pick<StoredPreferences, 'summaryEnabled' | 'summaryAt' | 'timeZone' | 'channels'>;
+  preferences: Pick<StoredPreferences, 'summaryEnabled' | 'summaryAt' | 'timeZone' | 'channels'> & Partial<Pick<StoredPreferences, 'summaryByAssistant'>>;
   lastOn: string | null;
 }
 
@@ -55,6 +55,11 @@ export interface SummaryPorts {
   insertSummary(row: { id: string; userId: string; source: NotificationSourceRef; sources: NotificationSourceRef[]; title: string; body: string; url: string }): Promise<void>;
   deliverableSubscriptions(userId: string): Promise<string[]>;
   enqueuePush(job: { notificationId: string; subscriptionId: string; userId: string }): Promise<unknown>;
+  /**
+   * F-027 A8: when the person asked their assistant to write the summary, starts that run in this same transaction (the claimed
+   * day commits with it). False when the assistant cannot write it now: the plain summary goes out, as before.
+   */
+  assistantSummary?: { start(userId: string, day: string, now: Date): Promise<boolean> };
 }
 
 export interface SummaryUnitOfWork {
@@ -72,6 +77,7 @@ export interface SummaryUnitOfWork {
 export async function sendMorningSummaries(uow: SummaryUnitOfWork, now: Date = new Date()) {
   let sent = 0;
   let empty = 0;
+  let writing = 0;
   for (const candidate of await uow.candidates()) {
     const day = summaryDueOn(candidate.preferences, candidate.lastOn, now);
     if (!day) continue;
@@ -80,23 +86,32 @@ export async function sendMorningSummaries(uow: SummaryUnitOfWork, now: Date = n
       const currentDay = current && summaryDueOn(current.preferences, current.lastOn, now);
       if (!currentDay) return 'changed' as const;
       if (!await ports.claimDay(candidate.userId, currentDay)) return 'claimed' as const;
-      const rows = await ports.unread(candidate.userId, MORNING_SUMMARY_LOOKBACK + 1);
-      const readable: NotificationSourceRef[] = [];
-      for (const row of rows) if (!await ports.isMuted(candidate.userId, row.source) && readsSource(await ports.authorizer.canRead(candidate.userId, row.source), row.source)) readable.push(row.source);
-      if (!readable.length) return 'empty' as const;
-      const more = readable.length > MORNING_SUMMARY_LOOKBACK;
-      const id = randomUUID();
-      await ports.insertSummary({
-        id, userId: candidate.userId, source: readable[0]!, sources: readable, url: '/inbox',
-        title: summaryTitle(Math.min(readable.length, MORNING_SUMMARY_LOOKBACK), more), body: 'Your morning summary from Flux',
-      });
-      for (const subscriptionId of await ports.deliverableSubscriptions(candidate.userId)) {
-        await ports.enqueuePush({ notificationId: id, subscriptionId, userId: candidate.userId });
-      }
-      return 'sent' as const;
+      // The assistant writes the text and its one push when it finishes; if it cannot start, this plain summary goes out.
+      if (current.preferences.summaryByAssistant && ports.assistantSummary && await ports.assistantSummary.start(candidate.userId, currentDay, now)) return 'writing' as const;
+      return deliverPlainSummary(ports, candidate.userId);
     });
     if (outcome === 'sent') sent++;
     if (outcome === 'empty') empty++;
+    if (outcome === 'writing') writing++;
   }
-  return { sent, empty };
+  // `writing` appears only when the assistant has runs on the way (F-027 A8); the plain tick keeps its shape.
+  return writing ? { sent, empty, writing } : { sent, empty };
+}
+
+/** The plain #350 summary: one push counting what still waits, from sources the person can read now. Nobody is told about an empty inbox. */
+export async function deliverPlainSummary(ports: SummaryPorts, userId: string, line?: string): Promise<'sent' | 'empty'> {
+  const rows = await ports.unread(userId, MORNING_SUMMARY_LOOKBACK + 1);
+  const readable: NotificationSourceRef[] = [];
+  for (const row of rows) if (!await ports.isMuted(userId, row.source) && readsSource(await ports.authorizer.canRead(userId, row.source), row.source)) readable.push(row.source);
+  if (!readable.length) return 'empty';
+  const more = readable.length > MORNING_SUMMARY_LOOKBACK;
+  const id = randomUUID();
+  await ports.insertSummary({
+    id, userId, source: readable[0]!, sources: readable, url: '/inbox',
+    title: line ?? summaryTitle(Math.min(readable.length, MORNING_SUMMARY_LOOKBACK), more), body: 'Your morning summary from Flux',
+  });
+  for (const subscriptionId of await ports.deliverableSubscriptions(userId)) {
+    await ports.enqueuePush({ notificationId: id, subscriptionId, userId });
+  }
+  return 'sent';
 }

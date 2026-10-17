@@ -3,6 +3,7 @@ import { Link } from 'react-router';
 import type { ReturnNextStep, WorkItem } from '@flux/contracts';
 import { Icon, Kreska, MEDIA, StatusGlyph, useMediaQuery } from '../ui';
 import { MeetAssistantCard } from '../assistant/MeetAssistant';
+import { MorningLine } from '../assistant/MorningLine';
 import { NeedsYouCard } from '../notifications/NeedsYouCard';
 import { useNeedsYou } from '../notifications/needsYou';
 import { useNeedsYouActions } from '../notifications/useNeedsYouActions';
@@ -103,6 +104,7 @@ export function Home() {
       <HomeWorkingAgents />
       <p className="home__date">{dateFormat.format(now)}</p>
       <h2 className="home__hello">{greeting(now.getHours())}, {firstName}</h2>
+      <MorningLine />
 
       {phone ? <ContinueCard userId={me.user.id} workspaceIds={workspaceIds} /> : null}
       {phone ? <WorkingAgent /> : null}

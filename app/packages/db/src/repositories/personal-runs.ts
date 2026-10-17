@@ -24,10 +24,10 @@ type NewEnablement = Omit<EnablementRow, 'status' | 'version' | 'consentedAt' | 
 type EnablementChanges = Partial<Pick<EnablementRow, 'perRunCents' | 'dailyCapCents' | 'timeZone' | 'status'>>;
 type NewRun = Pick<RunRow, 'id' | 'workspaceId' | 'projectId' | 'conversationId' | 'ownerUserId' | 'agentId' | 'connectionId'
   | 'clientRunId' | 'requestFingerprint' | 'kind' | 'prompt' | 'targetSketchId' | 'targetThoughtId' | 'continuesRunId' | 'retryOfRunId'
-  | 'reservedMicros' | 'provider' | 'model'> & { engine?: RunRow['engine'] };
+  | 'reservedMicros' | 'provider' | 'model'> & { engine?: RunRow['engine']; silent?: boolean; authority?: RunRow['authority']; backgroundLabel?: string | null };
 type RunChanges = Partial<Pick<RunRow, 'status' | 'stoppedAtStage' | 'stopRequestedAt' | 'costState' | 'chargedMicros' | 'inputTokens'
   | 'outputTokens' | 'answerBody' | 'answerTruncated' | 'committedAt' | 'dispatchedAt' | 'completedAt' | 'endReason' | 'planLimitResetsAt'
-  | 'stopAcknowledgedAt' | 'answerRedacted'> & { answerSources: SourceRef[] }>;
+  | 'stopAcknowledgedAt' | 'answerRedacted' | 'silent'> & { answerSources: SourceRef[] }>;
 type NewProposal = Pick<ProposalRow, 'id' | 'workspaceId' | 'projectId' | 'runId' | 'ownerUserId' | 'fact' | 'interpretation'
   | 'resultTitle' | 'resultFinding' | 'resultEvidence' | 'finishesWorkId'>;
 type ProposalChanges = Partial<Pick<ProposalRow, 'status' | 'decidedBy' | 'decidedAt' | 'resultId'>>;
@@ -36,6 +36,8 @@ const e = schema.personalRunEnablements;
 const a = schema.personalRunAgents;
 const r = schema.personalRuns;
 const p = schema.assistantProposals;
+/** The same words as `nothingToChange` in core (a posting schedule never posts them). */
+const NOTHING_TO_CHANGE = '^\\W*done\\W*\\s*nothing to change\\W*$';
 const IN_FLIGHT: ('queued' | 'reading' | 'dispatching')[] = ['queued', 'reading', 'dispatching'];
 const FINISHED_WORK: ('done' | 'not_pursued')[] = ['done', 'not_pursued'];
 
@@ -198,8 +200,16 @@ export function personalRunRows(db: DbExecutor) {
 
     listOwnRuns: (ownerUserId: string, window: Window) => pagedRuns(eq(r.ownerUserId, ownerUserId), 'newest', window),
 
+    // A schedule that posts never posts "Done: nothing to change" (AST-7.11); a silent background run is never listed.
     listAnswers: (conversationId: string, window: Window) =>
-      pagedRuns(and(eq(r.conversationId, conversationId), isNotNull(r.committedAt))!, 'committed', window),
+      pagedRuns(and(eq(r.conversationId, conversationId), isNotNull(r.committedAt), eq(r.silent, false),
+        sql`NOT (${r.kind} = 'scheduled' AND ${r.answerBody} ~* ${NOTHING_TO_CHANGE})`)!, 'committed', window),
+
+    async jobOfRun(runId: string) {
+      const [row] = await db.select({ id: schema.assistantJobs.id, title: schema.assistantJobs.title }).from(schema.assistantJobRuns)
+        .innerJoin(schema.assistantJobs, eq(schema.assistantJobs.id, schema.assistantJobRuns.jobId)).where(eq(schema.assistantJobRuns.runId, runId)).limit(1);
+      return row ?? null;
+    },
 
     async names(userIds: string[]) {
       const unique = [...new Set(userIds)];

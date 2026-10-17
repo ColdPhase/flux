@@ -62,6 +62,11 @@ export interface MorningSummary {
   enabled: boolean;
   /** Local time "HH:MM". */
   at: string;
+  /**
+   * The person's assistant writes its text (F-027 AST-7). Turned on only through the assistant (`ASSISTANT_MORNING_SUMMARY_PATH`), which
+   * shows the note about background use once; a preference update can only turn it off.
+   */
+  byAssistant: boolean;
 }
 
 /**

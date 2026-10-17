@@ -1873,11 +1873,26 @@ are unchanged.
 - **Files.** `app/packages/core/src/assistant/jobs.ts`, `app/apps/worker/src/assistant/`
   (tick, as `proactive-comparison/index.ts`), `app/apps/worker/src/jobs/morning-summary.ts`,
   routes, Settings → Notifications row, Home greeting, web part.
-- **Migration 0080** `assistant_jobs` (owner, workspace, project, text, schedule kind and
+- **Migration 0109** (the number 0080 here was a placeholder; 0109 was the next free number after #587 and #403/#404, 2026-10-17) `assistant_jobs` (owner, workspace, project, text, schedule kind and
   fields or cron, time zone, on, prepared-off flag, next and last run, failure streak,
   version), `assistant_job_runs` (job, run, state, result line, times), and the
   morning summary's "written by the assistant" flag on the owner's notification
   settings.
+  **Decisions made in the slice (2026-10-17).** (1) A firing is an ordinary personal run of kind
+  `scheduled` or `morning_summary`, started through the same use cases as a request
+  (`startBackground`); `personal_runs.silent` keeps its answer out of the conversation it is anchored in
+  (the project's latest conversation; a schedule that posts uses its chosen conversation), and silent runs
+  do not read that conversation as context. (2) The tick (`assistant.background.tick.v1`, every minute) is
+  safe with two workers: a due schedule is picked with `FOR UPDATE SKIP LOCKED`, a firing's history row is
+  unique per (schedule, time) and the run's client id derives from the same two. (3) "Set up by asking" has
+  no tool: the owner's own request may end its answer with one `<schedule>` block, which Flux removes from
+  the posted words and turns into an **off** schedule marked prepared; a background run's block is dropped.
+  (4) The morning summary run is given the facts by Flux (the unread Inbox items the person can read, never a
+  direct message) and has no tools; `assistant_morning_summaries` holds the day's state until the next
+  minute's tick writes the line and sends the one push, or sends the plain summary. (5) The note about
+  background use is recorded per owner and account in `assistant_background_notes`; the API refuses *Turn on*
+  without the note's version when the account has not seen it. Not in this slice: the "Your plan includes
+  monthly API credits" line of the note.
 - **Tests.** AST-2.1, AST-7.1 to AST-7.6, AST-7.9 to AST-7.11, AST-10.3 (first
   half), AST-9.1 (scheduled) with a controlled clock and two workers.
 - **Depends on.** A1, A4; #280 for `runtime` runs (the `server` engine works first);

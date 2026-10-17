@@ -27,6 +27,7 @@ import {
 import type { Database, PersonalConnectionLookup, PersonalRuntimeAvailability } from '@flux/core';
 import type { SessionResolver } from '../identity/index.js';
 import { commandRunner, expectedVersion, useDomainErrors, versionEtag, type ReplayCheck } from '../http/commands.js';
+import { registerAssistantJobRoutes } from '../assistant/jobs.js';
 import { assistantProposalUseCases, personalRunUseCases, pgBossPersonalRunQueue } from './adapters.js';
 
 interface Options {
@@ -81,6 +82,8 @@ export async function personalRunRoutes(app: FastifyInstance, { db, sessions, bo
   const composition = { queue, connections, providerEnabled, ...(toolTurns !== undefined ? { toolTurns } : {}), ...(runtime ? { runtime } : {}) };
   const runs = personalRunUseCases(db, composition);
   const proposals = assistantProposalUseCases(db, queue);
+  // The owner's schedules and morning summary (F-027 A8) run on the same composition: the same connection, switch and runtime.
+  registerAssistantJobRoutes(app, db, sessions, boss, composition);
 
   app.get(PERSONAL_ASSISTANT_PATH, async (request) => runs.status(await principal(request)));
   app.post<{ Body: EnablePersonalRunsCommand }>(PERSONAL_ASSISTANT_PATH, { schema: { body: enable } },

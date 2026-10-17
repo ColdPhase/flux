@@ -1679,6 +1679,8 @@ export const notificationPreferences = pgTable('notification_preferences', {
   summaryEnabled: boolean('summary_enabled').notNull().default(false),
   summaryAt: integer('summary_at').notNull().default(540),
   summaryLastOn: date('summary_last_on', { mode: 'string' }),
+  /** Migration 0109 (F-027 A8): the assistant writes the summary's text; the plain one is the fallback. */
+  summaryByAssistant: boolean('summary_by_assistant').notNull().default(false),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -1763,7 +1765,7 @@ export const personalRuns = pgTable('personal_runs', {
   connectionId: uuid('connection_id'),
   clientRunId: uuid('client_run_id').notNull(),
   requestFingerprint: text('request_fingerprint').notNull(),
-  kind: text('kind', { enum: ['ask', 'summarize', 'map_thought'] }).notNull(),
+  kind: text('kind', { enum: ['ask', 'summarize', 'map_thought', 'scheduled', 'morning_summary'] }).notNull(),
   prompt: text('prompt').notNull(),
   targetSketchId: uuid('target_sketch_id'),
   targetThoughtId: uuid('target_thought_id'),
@@ -1806,6 +1808,8 @@ export const personalRuns = pgTable('personal_runs', {
   // 0108 (F-027 A4): what started the run; a background run carries its short name for the lane's lines.
   authority: text('authority', { enum: ['owner_request', 'owner_schedule', 'owner_reaction'] }).notNull().default('owner_request'),
   backgroundLabel: text('background_label'),
+  /** 0109 (F-027 A8): a background run's answer is not shown in its conversation (it is kept in Recent). */
+  silent: boolean('silent').notNull().default(false),
 }, (table) => [
   unique().on(table.ownerUserId, table.clientRunId),
   unique().on(table.workspaceId, table.projectId, table.id),
@@ -1882,6 +1886,69 @@ export const assistantChanges = pgTable('assistant_changes', {
   foreignKey({ columns: [table.workspaceId, table.projectId, table.runId], foreignColumns: [personalRuns.workspaceId, personalRuns.projectId, personalRuns.id] }).onDelete('cascade'),
   foreignKey({ columns: [table.workspaceId, table.agentId], foreignColumns: [agents.workspaceId, agents.id] }).onDelete('cascade'),
 ]);
+
+/** The owner's schedules and their history (migration 0109, F-027 A8 #408, AST-7). Owner-only. */
+export const ASSISTANT_JOB_KINDS = ['daily', 'weekdays', 'weekly', 'hourly', 'cron', 'once'] as const;
+export const assistantJobs = pgTable('assistant_jobs', {
+  id: uuid('id').primaryKey(),
+  workspaceId: uuid('workspace_id').notNull(),
+  ownerUserId: text('owner_user_id').notNull().references(() => authUsers.id, { onDelete: 'cascade' }),
+  projectId: uuid('project_id').notNull(),
+  title: text('title').notNull(),
+  text: text('text').notNull(),
+  scheduleKind: text('schedule_kind', { enum: ASSISTANT_JOB_KINDS }).notNull(),
+  schedule: jsonb('schedule').$type<Record<string, unknown>>().notNull(),
+  timeZone: text('time_zone').notNull(),
+  conversationId: uuid('conversation_id'),
+  postToConversation: boolean('post_to_conversation').notNull().default(false),
+  enabled: boolean('enabled').notNull().default(false),
+  prepared: boolean('prepared').notNull().default(false),
+  preparedRunId: uuid('prepared_run_id').references(() => personalRuns.id, { onDelete: 'set null' }),
+  pausedReason: text('paused_reason', { enum: ['failures'] }),
+  nextRunAt: timestamp('next_run_at', { withTimezone: true }),
+  lastRunAt: timestamp('last_run_at', { withTimezone: true }),
+  failureStreak: integer('failure_streak').notNull().default(0),
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
+  version: integer('version').notNull().default(1),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  foreignKey({ columns: [table.workspaceId, table.projectId], foreignColumns: [projects.workspaceId, projects.id] }).onDelete('cascade'),
+  foreignKey({ columns: [table.workspaceId, table.projectId, table.conversationId], foreignColumns: [projectConversations.workspaceId, projectConversations.projectId, projectConversations.id] }).onDelete('cascade'),
+]);
+
+export const assistantJobRuns = pgTable('assistant_job_runs', {
+  id: uuid('id').primaryKey(),
+  jobId: uuid('job_id').notNull().references(() => assistantJobs.id, { onDelete: 'cascade' }),
+  ownerUserId: text('owner_user_id').notNull().references(() => authUsers.id, { onDelete: 'cascade' }),
+  firedAt: timestamp('fired_at', { withTimezone: true }).notNull(),
+  firedBy: text('fired_by', { enum: ['schedule', 'now'] }).notNull(),
+  runId: uuid('run_id').references(() => personalRuns.id, { onDelete: 'set null' }),
+  state: text('state', { enum: ['running', 'done', 'skipped', 'failed'] }).notNull(),
+  resultLine: text('result_line').notNull().default(''),
+  needsYou: boolean('needs_you').notNull().default(false),
+  startedAt: timestamp('started_at', { withTimezone: true }).notNull().defaultNow(),
+  finishedAt: timestamp('finished_at', { withTimezone: true }),
+}, (table) => [unique().on(table.jobId, table.firedAt, table.firedBy)]);
+
+/** The owner saw the note about background use of a subscription, once per account (AST-2.1). */
+export const assistantBackgroundNotes = pgTable('assistant_background_notes', {
+  ownerUserId: text('owner_user_id').notNull().references(() => authUsers.id, { onDelete: 'cascade' }),
+  accountKey: text('account_key').notNull(),
+  noteVersion: text('note_version').notNull(),
+  acceptedAt: timestamp('accepted_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [primaryKey({ columns: [table.ownerUserId, table.accountKey] })]);
+
+/** One row per owner and local day while the assistant writes the morning summary (AST-7.6). */
+export const assistantMorningSummaries = pgTable('assistant_morning_summaries', {
+  ownerUserId: text('owner_user_id').notNull().references(() => authUsers.id, { onDelete: 'cascade' }),
+  day: date('day', { mode: 'string' }).notNull(),
+  runId: uuid('run_id').references(() => personalRuns.id, { onDelete: 'set null' }),
+  state: text('state', { enum: ['writing', 'written', 'plain'] }).notNull(),
+  line: text('line'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  settledAt: timestamp('settled_at', { withTimezone: true }),
+}, (table) => [primaryKey({ columns: [table.ownerUserId, table.day] })]);
 
 // Durable co-work control metadata (#153, migration0035). Domain content stays native.
 export const coworkConnectionSlots = pgTable('cowork_connection_slots', {

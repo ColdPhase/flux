@@ -49,6 +49,8 @@ export interface StoredPreferences {
   /** The morning summary (S22), at `summaryAt` minutes after local midnight in `timeZone`. */
   summaryEnabled: boolean;
   summaryAt: number;
+  /** F-027 A8: the assistant writes the summary's text (turned on in the assistant flow, which records the note of AST-2.1). */
+  summaryByAssistant: boolean;
 }
 
 export const DEFAULT_PREFERENCES: StoredPreferences = {
@@ -61,6 +63,7 @@ export const DEFAULT_PREFERENCES: StoredPreferences = {
   pausedUntil: null,
   summaryEnabled: false,
   summaryAt: 9 * 60,
+  summaryByAssistant: false,
 };
 
 const NEEDS_YOU = new Set<NotificationReason>(NEEDS_YOU_REASONS);
@@ -170,6 +173,12 @@ export function applyPreferenceChange(current: StoredPreferences, command: Updat
       next.summaryEnabled = summary.enabled;
     }
     if (summary.at !== undefined) next.summaryAt = parseClock(summary.at, 'morningSummary.at', 'INVALID_MORNING_SUMMARY');
+    // The assistant writing the summary starts only in the assistant's own flow, which records the note of AST-2.1.
+    if (summary.byAssistant !== undefined) {
+      if (summary.byAssistant !== false) throw new InvalidInputError('Ask your assistant to write the summary from its screen', 'INVALID_MORNING_SUMMARY');
+      next.summaryByAssistant = false;
+    }
+    if (next.summaryEnabled === false) next.summaryByAssistant = false;
   }
   return next;
 }

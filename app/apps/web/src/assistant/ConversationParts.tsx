@@ -5,6 +5,8 @@ import { ApiError, NetworkError } from '../api/client';
 import { AgentTag, Button, Icon, IconButton, Kreska, useLoopPause, type KreskaExpression } from '../ui';
 import { useSmallMoments } from '../app/smallMoments';
 import { AssistantPanel, companyName } from './AssistantPanel';
+import { DoItAt } from './DoItAt';
+import { ReadySchedule } from './ReadySchedule';
 import { useShellActions } from '../app/shellContext';
 import { canRetry, endedText, isWorking, onRuntime, workingText, type AskState } from './format';
 import { failure } from './WaitingChanges';
@@ -89,6 +91,7 @@ export function WorkingLine({ run, onStop, onRetry, onDismiss, changed = 0 }: { 
         {working && !run.stopRequested ? <Button variant="secondary" icon="stop" busy={busy} onClick={() => void act(onStop)}>Stop</Button> : null}
         {!working && run.endReason === 'sign_in_again' ? <Link className="ui-btn ui-btn--secondary" to="/settings/agents">Sign in</Link> : null}
         {!working && run.endReason === 'plan_limit' && !run.planLimitResetsAt ? <Button variant="secondary" onClick={onDismiss}>Try again later</Button> : null}
+        {!working && run.endReason === 'plan_limit' && run.planLimitResetsAt && run.kind === 'ask' ? <DoItAt run={run} onDone={onDismiss} /> : null}
         {!working && canRetry(run) ? <Button variant="quiet" busy={busy} onClick={() => void act(onRetry)}>Retry</Button> : null}
         {!working ? <IconButton icon="x" label="Dismiss" onClick={onDismiss} /> : null}
       </div>
@@ -210,6 +213,7 @@ export function AnswerItem({ answer, mine, lookups, when, clock, proposal, propo
       {answer.truncated ? <p className="assistant-answer__truncated"><Icon name="alert" size={13} />Stopped at the length limit, so this answer is incomplete.</p> : null}
       {proposal ? proposalControls : null}
       {changes}
+      {mine ? <ReadySchedule runId={answer.runId} projectId={answer.projectId} body={answer.body} /> : null}
       <div className="assistant-answer__foot">
         <span>{sourceSummary(answer.sources.length)} · {aiConnectionLabel(answer.provenance.provider, answer.provenance.model === 'claude-code' ? 'Claude Code' : answer.provenance.model)}</span>
         {mine ? <>

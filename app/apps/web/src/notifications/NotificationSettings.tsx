@@ -14,6 +14,7 @@ import { ApiError } from '../api/client';
 import { useShellData } from '../app/data';
 import { clock } from '../app/focus';
 import { SwitchRow } from '../app/SettingsHome';
+import { SummaryByAssistant } from '../assistant/SummaryByAssistant';
 import { NotificationsButton } from '../pwa';
 import { getPushState } from '../pwa/push';
 import { Button, ErrorState, Icon, Spinner, useToast } from '../ui';
@@ -634,6 +635,9 @@ function MorningSummaryRow({ prefs, onChange, feedback }: { prefs: NotificationP
           <span className="nset__zone-note">{zoneLabel(zone)}, the time zone of quiet hours. Nothing is sent when Inbox is empty.</span>
         </div>
       ) : null}
+      {summary.enabled ? <SummaryByAssistant byAssistant={!!summary.byAssistant} at={summary.at}
+        onApplied={(on) => onChange(on ? { morningSummary: { enabled: true } } : { morningSummary: { byAssistant: false } },
+          (current) => ({ ...current, morningSummary: { ...current.morningSummary, byAssistant: on } }))} /> : null}
     </div>
   );
 }
