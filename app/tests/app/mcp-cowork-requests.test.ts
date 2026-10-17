@@ -108,12 +108,12 @@ test('a review request travels send -> inbox -> claim -> resolve with a pinned v
   assert.equal(toolFailure(await resolve({})).code, 'COWORK_VERDICT_REQUIRED');
   assert.equal(toolFailure(await resolve({ verdict: 'passed', evidence: { type: 'result', id: randomUUID() } })).code, 'COWORK_RESPONSE_UNAVAILABLE');
   assert.equal(await f.used(respond.id), 0);
-  assert.equal((await pool.query('SELECT count(*)::int AS n FROM cowork_review_verdicts')).rows[0].n, 0);
+  assert.equal((await pool.query('SELECT count(*)::int AS n FROM cowork_review_verdicts WHERE work_id=$1', [a.id])).rows[0].n, 0);
   const resolvedCommand = randomUUID();
   const resolved = toolValue(await resolve({ verdict: 'passed' }, resolvedCommand));
   assert.deepEqual(resolved, { requestId: sent.requestId, version: Number(claimed.version) + 1, state: 'resolved', responseRef: evidence });
   assert.deepEqual(toolValue(await resolve({ verdict: 'passed' }, resolvedCommand)), resolved, 'a retry replays the resolution');
-  assert.equal((await pool.query('SELECT count(*)::int AS n FROM cowork_review_verdicts')).rows[0].n, 1);
+  assert.equal((await pool.query('SELECT count(*)::int AS n FROM cowork_review_verdicts WHERE work_id=$1', [a.id])).rows[0].n, 1);
 
   // People who can read the task see the request card and the verdict; it applies to the current version.
   const read = async (who: Person = f.hubert) => expectStatus(await who.browser.request('GET', `/api/v1/work/${a.id}/coordination`), 200) as TaskCoordination;

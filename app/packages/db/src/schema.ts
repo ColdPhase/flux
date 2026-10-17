@@ -2034,6 +2034,8 @@ export const coworkRequests = pgTable('cowork_requests', {
   version: integer('version').notNull().default(1), reason: text('reason'), nextBoundary: text('next_boundary'),
   dependencyRef: jsonb('dependency_ref').$type<CoWorkSourceRef>(),
   claimedGeneration: integer('claimed_generation'), responseRef: jsonb('response_ref').$type<CoWorkSourceRef>(),
+  /** 0111: the person who cancelled the request from its card; null for any other state. */
+  cancelledBy: text('cancelled_by').references(() => authUsers.id, { onDelete: 'set null' }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(), updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table): PgTableExtraConfigValue[] => [
   unique().on(table.lineageId, table.intentKey), unique().on(table.lineageId, table.id),
@@ -2043,6 +2045,16 @@ export const coworkRequests = pgTable('cowork_requests', {
   foreignKey({ columns: [table.lineageId, table.parentRequestId], foreignColumns: [coworkRequests.lineageId, coworkRequests.id] }),
   index('cowork_requests_recipient_idx').on(table.workspaceId, table.projectId, table.recipientConnectionId, table.createdAt, table.id),
 ]);
+/**
+ * A project manager's explicit review rule (0111, #153 AC-4): `distinct_connection` (the default when there is no row)
+ * lets another connection of the author's own owner review; `distinct_owner` requires another owner.
+ */
+export const coworkReviewPolicies = pgTable('cowork_review_policies', {
+  projectId: uuid('project_id').primaryKey().references(() => projects.id, { onDelete: 'cascade' }),
+  reviewSeparation: text('review_separation', { enum: ['distinct_connection', 'distinct_owner'] }).notNull(),
+  updatedBy: text('updated_by').references(() => authUsers.id, { onDelete: 'set null' }),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
 export const coworkDeliveryIntents = pgTable('cowork_delivery_intents', {
   id: uuid('id').primaryKey(), requestId: uuid('request_id').notNull().unique().references(() => coworkRequests.id, { onDelete: 'cascade' }),
   acknowledgedAt: timestamp('acknowledged_at', { withTimezone: true }), createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

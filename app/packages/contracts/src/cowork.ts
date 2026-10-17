@@ -84,18 +84,32 @@ export interface TaskCoordinationRequest {
   id: string;
   kind: CoWorkRequestKind;
   state: CoWorkRequestState;
+  /** The version the card was read at; a cancel names it so it never acts on a request that moved on. */
+  version: number;
   /** Honest status: queued, deferred, working, offline, cancelled or the closing outcome. */
   status: CoWorkRequestStatus;
   reason: string | null;
   /** For a deferred request, the safe checkpoint at which the recipient will take it up. */
   nextBoundary: string | null;
   target: CoWorkSourceRef;
+  /** The target's title while it still exists at the named version; null otherwise (nothing else about it is shown). */
+  targetTitle: string | null;
+  targetAvailable: boolean;
   responseRef: CoWorkSourceRef | null;
-  sender: { connectionId: string; name: string };
-  recipient: { connectionId: string; name: string };
+  /** A message the request names as its target or source and the reader may open, if any. */
+  originalMessage: CoWorkOriginalMessage | null;
+  sender: { connectionId: string; name: string; ownerName: string };
+  recipient: { connectionId: string; name: string; ownerName: string };
+  /** The person who cancelled it, for a cancelled request. */
+  cancelledBy: { name: string } | null;
+  /** Whether the reader may cancel it now: a project manager, or the owner of the sender or recipient, while it is open. */
+  canCancel: boolean;
   createdAt: string;
   updatedAt: string;
+  expiresAt: string;
 }
+/** A message in a conversation the reader can open: a person's conversation or a task's agents' thread. */
+export interface CoWorkOriginalMessage { messageId: string; conversationId: string; space: 'people' | 'agents'; taskId: string | null }
 export type CoWorkReviewVerdictValue = 'passed' | 'changes_requested';
 export interface TaskCoordinationVerdict {
   requestId: string;
@@ -111,3 +125,43 @@ export interface TaskCoordinationVerdict {
 }
 export interface TaskCoordination { taskId: string; requests: TaskCoordinationRequest[]; verdicts: TaskCoordinationVerdict[] }
 export const taskCoordinationPath = (workId: string) => `/api/v1/work/${workId}/coordination`;
+
+/** Cancel an open request from its card (#400 AC-4). A manager, or the owner of the sender or recipient agent, may. */
+export interface CancelCoWorkRequestCommand { expectedVersion: number }
+export const taskCoordinationCancelPath = (workId: string, requestId: string) => `/api/v1/work/${workId}/coordination/requests/${requestId}/cancel`;
+
+/**
+ * A handoff packet (#153 AC-2): the references of one request, bounded and read for the person downloading it now.
+ * It carries identities, titles that exist at the named versions and the unit's last checkpoint; never a credential,
+ * grant, lease, fingerprint, prompt or the content of a source. A reference that no longer exists at its version is
+ * listed as unavailable without a title.
+ */
+export interface CoWorkPacketReference { type: CoWorkSourceRef['type']; id: string | null; version: number | null; title: string | null; available: boolean }
+export interface CoWorkHandoffPacket {
+  schema: 'flux.cowork.packet/1';
+  generatedAt: string;
+  request: { id: string; kind: CoWorkRequestKind; state: CoWorkRequestState; status: CoWorkRequestStatus; reason: string | null;
+    nextBoundary: string | null; priority: number; peerUnblocking: boolean; createdAt: string; expiresAt: string;
+    sender: { name: string; ownerName: string }; recipient: { name: string; ownerName: string } };
+  task: { id: string; number: number; title: string; status: string; version: number };
+  target: CoWorkPacketReference;
+  sources: CoWorkPacketReference[];
+  criteria: CoWorkPacketReference[];
+  response: CoWorkPacketReference | null;
+  originalMessage: CoWorkOriginalMessage | null;
+  checkpoint: { summary: string; nextAction: string; blocker: string | null; sources: { materialId: string; version: number }[]; createdAt: string } | null;
+  verdict: { verdict: CoWorkReviewVerdictValue; current: boolean; createdAt: string } | null;
+}
+export const taskCoordinationPacketPath = (workId: string, requestId: string) => `/api/v1/work/${workId}/coordination/requests/${requestId}/packet`;
+
+/** How separate a reviewer must be from the author: another connection (the default) or another owner. */
+export type CoWorkReviewRule = 'distinct_connection' | 'distinct_owner';
+export interface CoWorkReviewPolicy {
+  projectId: string;
+  reviewSeparation: CoWorkReviewRule;
+  /** Null until a manager chose explicitly; the default then applies. */
+  updatedAt: string | null;
+  updatedBy: { id: string; name: string } | null;
+}
+export interface SetCoWorkReviewPolicyCommand { reviewSeparation: CoWorkReviewRule }
+export const projectReviewPolicyPath = (projectId: string) => `/api/v1/projects/${projectId}/review-policy`;

@@ -23,6 +23,8 @@ import { getProjectAgents } from './api';
 import { HandOffDialog, type HandOffTask } from './HandOff';
 import { useAgentStops, useStopAgent } from './stop';
 import { QuestionCard, WhenNoQuestion } from './QuestionCard';
+import { RequestCards } from './RequestCards';
+import { ReviewRule } from './ReviewRule';
 import { useProjectQuestions, useQuestionList } from './questions';
 import { useLatestAgentLine } from './latest';
 import { agentAuthorOwner, useAgentOwners } from './owners';
@@ -269,15 +271,44 @@ function TaskThread({ kind, task, projectId, meId, names, canWrite, changingScop
   const taskLink = kind === 'agents' && !accessLost ? `/projects/${projectId}/tasks?open=work:${task.id}` : null;
 
   // The agents' thread pages back by sequence; the task thread's earlier messages are in Conversation.
-  const earlier = async () => {
-    const oldest = messages[0]?.sequence;
-    if (!oldest) return;
+  // It reads the oldest message from what is shown now, so it can be repeated until a message is reached.
+  const earlier = async (): Promise<boolean> => {
+    const oldest = shown.current?.messages[0]?.sequence;
+    if (!oldest) return false;
     const active = captureScope();
     try {
       const page = await readThread(kind, task.id, { beforeSequence: oldest });
       if (active()) show((current) => current ? { ...current, messages: mergeMessages(page.messages, current.messages), messagePage: page.messagePage } : current);
-    } catch { if (active()) setLoadError('Earlier messages could not be loaded.'); }
+      return active();
+    } catch { if (active()) setLoadError('Earlier messages could not be loaded.'); return false; }
   };
+
+  // "Open original message" of a request card (#400 AC-4): the message comes into view and fades its highlight after 2 s
+  // (Spokój rule 6). A message older than the page is reached by paging back, a bounded number of pages.
+  const openMessage = async (messageId: string) => {
+    for (let pages = 0; pages < 20; pages += 1) {
+      const row = document.querySelector<HTMLElement>(`[data-message-id="${CSS.escape(messageId)}"]`);
+      if (row) {
+        row.scrollIntoView({ block: 'center' });
+        row.focus({ preventScroll: true });
+        row.setAttribute('data-arrived', 'true');
+        window.setTimeout(() => row.removeAttribute('data-arrived'), 2000);
+        return;
+      }
+      if (!shown.current?.messagePage.hasMoreBefore || !await earlier()) return;
+      await new Promise<void>((resolve) => { requestAnimationFrame(() => resolve()); });
+    }
+  };
+  // A link to a message in this thread (`#message-…`) lands on it once the thread has loaded.
+  const arrivedAt = useRef<string | null>(null);
+  useEffect(() => {
+    if (kind !== 'agents' || !discussion || accessLost) return;
+    const target = window.location.hash.startsWith('#message-') ? window.location.hash.slice('#message-'.length) : null;
+    if (!target || arrivedAt.current === `${task.id}:${target}`) return;
+    arrivedAt.current = `${task.id}:${target}`;
+    void openMessage(target);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per loaded thread and link
+  }, [kind, task.id, !!discussion, accessLost]);
 
   const send = async (event?: FormEvent) => {
     event?.preventDefault();
@@ -322,7 +353,7 @@ function TaskThread({ kind, task, projectId, meId, names, canWrite, changingScop
           const name = authorName(message, names);
           return (
             // A confirmed message keeps its queued item, so nothing moves or is announced twice (#264).
-            <li key={outbox.keyOf(message.id)} data-message-id={message.id} className={`agents-msg${own ? ' agents-msg--own' : ''}${agent ? ' agents-msg--agent' : ''}`}>
+            <li key={outbox.keyOf(message.id)} data-message-id={message.id} tabIndex={-1} className={`agents-msg${own ? ' agents-msg--own' : ''}${agent ? ' agents-msg--agent' : ''}`}>
               <AuthorFace kind={agent ? 'agent' : 'human'} name={name} mine={own} />
               <span className="agents-msg__meta">
                 {agent ? <AgentIdentity name={name} owner={message.author.kind === 'agent' ? agentAuthorOwner(message.author, owners) : undefined} icon={false} /> : <b>{name}{own ? ' · you' : ''}</b>}
@@ -348,6 +379,7 @@ function TaskThread({ kind, task, projectId, meId, names, canWrite, changingScop
         ))]}
       </ol>}
       {discussion?.messagePage.hasMoreBefore && !accessLost ? <p className="agents-thread__empty">{kind === 'agents' ? <button type="button" className="ui-link" onClick={() => void earlier()}>Show earlier messages</button> : <>Earlier messages are in the task's thread in {inConversation ? <Link className="ui-link" to={inConversation}>Conversation</Link> : 'Conversation'}.</>}</p> : null}
+      {kind === 'agents' && !accessLost ? <RequestCards key={task.id} workId={task.id} projectId={projectId} taskNumber={task.number} meId={meId} onOpenMessage={(messageId) => void openMessage(messageId)} /> : null}
       <div ref={end} />
       <form className="agents-composer" onSubmit={(event) => { void send(event); }}>
         {canWrite ? <ConnectionLine /> : null}
@@ -818,6 +850,7 @@ export function ProjectAgents() {
           <div id="agents-policy">
             <ProjectPolicy key={projectId} projectId={projectId} meId={me.user.id} canEdit={shell?.project.access === 'manager'}
               managers={(shell?.people ?? []).filter((person) => person.kind === 'human' && person.access === 'manager').map((person) => person.name)} />
+            <ReviewRule key={projectId} projectId={projectId} meId={me.user.id} canEdit={shell?.project.access === 'manager'} />
           </div>
         ) : null}
         {canWrite && entries.length && rows.length ? (

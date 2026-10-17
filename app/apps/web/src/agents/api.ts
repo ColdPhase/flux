@@ -1,4 +1,5 @@
 import { agentProjectPolicyPath, agentQuestionAnswerPath, ownWorkingAgentsPath, projectAgentQuestionsPath, projectAgentStopsPath, projectAgentsPath,
+  projectReviewPolicyPath, taskCoordinationCancelPath, taskCoordinationPath, type CoWorkReviewPolicy, type CoWorkReviewRule, type TaskCoordination, type TaskCoordinationRequest,
   assistantJoinRequestPath, type AssistantJoinRequest, type AgentProjectPolicy, type AgentQuestion, type AgentQuestions, type AgentStop, type AgentStops, type AnswerAgentQuestionCommand, type OwnWorkingAgents,
   type ProjectAgents, type PublishAgentProjectPolicyCommand, type StopAgentCommand } from '@flux/contracts';
 import { request } from '../api/client';
@@ -41,3 +42,13 @@ export const getAgentQuestions = (projectId: string, signal?: AbortSignal) => re
 /** The asked person's answer: an option or their own words. The same answer again returns the stored one (`409 QUESTION_ANSWERED` for another). */
 export const answerAgentQuestion = (questionId: string, command: AnswerAgentQuestionCommand, idempotencyKey: string) =>
   request<AgentQuestion>(agentQuestionAnswerPath(questionId), { method: 'POST', body: command, headers: { 'idempotency-key': idempotencyKey } });
+
+/** A task's request cards and review verdicts (#153, #400 AC-4); whoever can read the task reads them. */
+export const getTaskCoordination = (workId: string, signal?: AbortSignal) => request<TaskCoordination>(taskCoordinationPath(workId), { signal });
+/** Cancels an open request at the version the person saw. Repeating it after a lost answer succeeds without a second change. */
+export const cancelCoWorkRequest = (workId: string, requestId: string, expectedVersion: number) =>
+  request<TaskCoordinationRequest>(taskCoordinationCancelPath(workId, requestId), { method: 'POST', body: { expectedVersion } });
+/** A project's rule for how separate a reviewer must be from the author (#153 AC-4). Readers read it; managers set it. */
+export const getReviewPolicy = (projectId: string, signal?: AbortSignal) => request<CoWorkReviewPolicy>(projectReviewPolicyPath(projectId), { signal });
+export const setReviewPolicy = (projectId: string, reviewSeparation: CoWorkReviewRule) =>
+  request<CoWorkReviewPolicy>(projectReviewPolicyPath(projectId), { method: 'PUT', body: { reviewSeparation } });

@@ -1,0 +1,34 @@
+/* A task's request cards in its agents' thread (#400 AC-4): one quiet card per durable request, above the messages. */
+.rcards { display: flex; flex-direction: column; gap: var(--s-2); }
+.rcards__list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--s-2); }
+.rcards__title { margin: 0; font-size: var(--fs-xs); color: var(--t3); }
+.rcards__more { margin: 0; font-size: var(--fs-sm); color: var(--t3); }
+.rcard { display: flex; flex-direction: column; gap: 2px; padding: var(--s-3) var(--s-4); border-radius: var(--r-card); background: var(--el); box-shadow: var(--sh-card); min-width: 0; }
+.rcard[data-status="resolved"], .rcard[data-status="declined"], .rcard[data-status="superseded"], .rcard[data-status="expired"], .rcard[data-status="cancelled"] { background: var(--sub); box-shadow: none; }
+.rcard p { margin: 0; overflow-wrap: anywhere; }
+.rcard__head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px var(--s-2); font-size: var(--fs-sm); color: var(--t2); }
+.rcard__kind { color: var(--t1); font-weight: 600; }
+.rcard__who { min-width: 0; }
+.rcard__agent { color: var(--t1); }
+.rcard__owner { color: var(--t3); }
+.rcard__time { margin-left: auto; font-size: var(--fs-xs); color: var(--t3); font-variant-numeric: tabular-nums; }
+.rcard__target { font-size: var(--fs-base); color: var(--t1); }
+.rcard__state { font-size: var(--fs-sm); color: var(--t2); }
+.rcard__verdict { font-size: var(--fs-sm); color: var(--t1); font-weight: 500; }
+.rcard__verdict[data-current="false"] { color: var(--t3); font-weight: 400; }
+.rcard__actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-1) var(--s-4); margin-top: var(--s-1); font-size: var(--fs-sm); }
+.rcard__action { background: none; border: 0; padding: 0; font: inherit; font-size: var(--fs-sm); cursor: pointer; }
+.rcard__action:focus-visible { outline: 2px solid var(--t1); outline-offset: 2px; }
+.rcard__cancel { margin-left: auto; color: var(--t2); }
+.rcard__confirm { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); margin-left: auto; }
+.rcard__ask { color: var(--t1); }
+.rcard__error { font-size: var(--fs-sm); color: var(--t1); }
+@media (pointer: coarse) {
+  .rcard__action { min-height: 44px; display: inline-flex; align-items: center; }
+}
+
+/* The message a card points to: a soft fill that fades after 2 s (Spokój rule 6), no ring or bar. */
+.agents-msg:focus-visible { outline: none; }
+.agents-msg[data-arrived] { background: var(--sub); border-radius: var(--r-card); animation: agents-arrived 2s ease-out forwards; }
+@keyframes agents-arrived { from { background: var(--sub); } to { background: transparent; } }
+@media (prefers-reduced-motion: reduce) { .agents-msg[data-arrived] { animation: none; } }

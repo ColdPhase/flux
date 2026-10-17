@@ -124,6 +124,8 @@ The handoff UI can open the original source message and download a versioned
 reference packet after current authorization, without credentials/active grants
 or hidden source metadata. Swapping executor/reviewer is an assignment choice,
 never a profile switch or rewriting previous artifact authorship.
+(Implemented 2026-10-17: each request card in the task's agents' thread opens its original message and downloads its
+reference packet; see [Request cards, handoff packet, cancel and the review rule](../development/cowork-coordination.md).)
 
 An atomic claim gives one active author for a work unit and a fencing generation.
 Review is a separate work unit. Checkpoints contain observable progress, sources,

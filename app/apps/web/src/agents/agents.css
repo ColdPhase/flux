@@ -145,6 +145,7 @@
 .agents-composer__error { margin: var(--s-2) 0 0; font-size: var(--fs-sm); color: var(--t1); }
 
 @media (max-width: 680px) {
+  .agents-scroll { scroll-padding-bottom: calc(var(--ctl-lg) + var(--s-6)); }
   .agents-msg { padding-left: 42px; }
   .agents { padding: var(--s-4); gap: var(--s-4); }
   .agents__title { font-size: var(--fs-xl); }
