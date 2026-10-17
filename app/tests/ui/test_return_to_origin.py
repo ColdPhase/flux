@@ -415,9 +415,14 @@ class ReturnToOrigin(unittest.TestCase):
         self.activate(source, tap)
         expect(page).to_have_url(re.compile(r"/projects/[0-9a-f-]{36}/conversations/[0-9a-f-]{36}#message-"))
         self.assertEqual(page.evaluate("history.length"), history + 1)
-        back = self.origin_back(page, "Tasks")
-        expect(back).to_have_count(1)
-        self.activate(back, tap)
+        if size == "desktop":
+            back = self.origin_back(page, "Tasks")
+            expect(back).to_have_count(1)
+            self.activate(back, tap)
+        else:
+            # Here the panel stays over the page as a modal overlay or sheet and covers its header (and leaving the thread it
+            # shows leaves the page's address, #601): the browser's Back and the phone's gesture are the way to the task list.
+            page.go_back()
         expect(page).to_have_url(listing)
         self.assertIn("show=mine", listing)
         expect(page.locator("#details").get_by_role("heading", name=f"Check the lamp sensor {DECIDED:02}")).to_be_visible()

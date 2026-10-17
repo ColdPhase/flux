@@ -38,16 +38,18 @@ the [thread reading-position owner](thread-reading-position-2026-10-16.md), whic
    older than the newest window), the thread's `useMessageReadingPosition` (seeded with the kept anchor, so its own
    restoring puts the message back at the same offset even when new messages arrived), `useWorkReadingPosition` for
    the Tasks board and list, and one generic `.pane-scroll` tracker in the shell for Search, the Inbox, a wiki page and
-   the pages that read. Panels keep their own body scroll. An anchor that is gone (a deleted message) falls back to
-   the screen's usual opening, never an error. When the thread's width changes (docking beside the stream, becoming a
-   sheet, a window resize) the same owner puts the settled anchor back, never the scroll offset, and keeps it for 1.5 s
-   or until the reader's own input (wheel, touch, scroll keys, the scroll bar, focus moving into the feed): the scroll
-   such a change causes, a pointer-aimed message, and what the layout does while the next screen loads after a
-   reference was followed are layout, not the reader, and are never recorded as the place.
-6. **A panel object's way back is the same control.** An object opened in Details from a page leads back to that page
-   ("‹ Conversation", "‹ Thread", "‹ #12 Order sensors"); an object opened from another object leads back to it and
-   restores its scroll. The panel's head carries it (`SidePanel.headerStart`), including on the phone's sheet. The
-   panel stack and whether the panel was open are part of the entry's place, so Back to a page restores its panel.
+   the pages that read. An anchor that is gone (a deleted message) falls back to the screen's usual opening, never an
+   error. What the layout does after a reference was followed (a progress line pushing the feed down, a pointer-aimed
+   message) is not where the reader was: the owner keeps the anchor it wrote as the reference was followed, until the
+   reader's own input or 3 s.
+6. **The panel keeps its one back (#488, Spokój rules 2 and 5).** The one panel (a task, a decision, a thread, an agent)
+   already leads back one step at a time: an object opened from inside it replaces its content and leaves "‹ Task #1",
+   "‹ Thread". That is the only back inside the panel; there is no second origin control or stack there. An object opened
+   over a page from a chip leaves the page beside it (or under the sheet): closing the panel is the way back. A thread
+   that an object covered and the panel then shows again is mounted again, so it reads its kept place and its draft
+   (a remount within one history entry restores; a reload does not). The panel's object, its trail, its scroll and the
+   sheet's height belong to the entry's place: Back to a page restores them. A thread or an agent a view owns is kept by
+   its own route, and an object that was opened over such a thread is not reopened over it: the thread shows.
 
 ## Where the control sits (rule 7)
 
@@ -55,7 +57,7 @@ the [thread reading-position owner](thread-reading-position-2026-10-16.md), whic
   every destination. It is absent, not hidden, when there is no origin, so a page reached from the sidebar looks as it
   does today. The title and the view tabs that follow it keep their order.
 - **Phone:** it takes the place of the round Back (or heads the title row on a screen that has none): one control in
-  one place. **Panel:** first in the panel head, before the kind chip, on the computer and in the phone's sheet.
+  one place. The panel's own "‹ back" (above) is a different thing: a step inside the panel, not a way to another page.
 - The label is the origin's name, truncated at 16 rem; the accessible name is "Back to <name>". It is a 32 px target
   (44 px on touch).
 
@@ -71,8 +73,9 @@ an address directly or reloading it keeps the ordinary "isn’t available" page.
 
 `app/tests/ui/test_return_to_origin.py` (Chromium and WebKit; 1440 × 900, 820 × 1180 and 390 × 844 with the display
 mode reported as standalone): the five journeys of the issue (a conversation scrolled up → wiki card; a thread →
-task chip; Tasks with a filter and an open panel → linked decision; search → result; Inbox → item), each asserting
-the route, the open panel or thread, the visible anchor message and the draft, plus the control's place, history
+task chip → the panel's back; Tasks with a filter and an open panel → linked decision → the panel's back and a source
+page; search → result; Inbox → item), each asserting the route, the open panel or thread, the visible anchor message
+and the draft (or the filter, selection and query where a page has no composer), plus the control's place, history
 (one entry, Back one step, Forward again, reload keeps the target), and a revoked origin. Browser Back is driven
 with `go_back`; Alt+← and the phone gesture are the same router POP and are not separately scripted.
 
