@@ -20,6 +20,6 @@ export function ConnectionSetup({ settings, known }: { settings: McpPermissionSe
           : !settings.setup.authorizationRecorded ? <p>This saved selection has no current client authorization. Authorize it when your client opens Flux.</p>
             : settings.setup.session ? <p>The session is valid until <time dateTime={settings.setup.session.expiresAt}>{new Date(settings.setup.session.expiresAt).toLocaleString()}</time>. It does not show whether the client is online or working.</p>
               : <p>A current client authorization is recorded. This does not verify the client or its ability to start work.</p>}
-    <p>Built-in Start and Resume are pending. This connection is not ready to launch work from Flux.</p>
+    <p>Flux does not launch work and cannot see whether the client is online. Claude Code starts with Flux's Start work prompt; Codex starts when you ask it to start work on Flux and it reads Flux's playbook.</p>
   </section>;
 }

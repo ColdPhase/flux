@@ -348,7 +348,7 @@ test('actual owner setup stays pending, refreshes lost authorization, and keeps 
           const { page, panel } = await open(context, f.email);
           const setup = panel.getByRole('region', { name: 'Connection setup', exact: true });
           await setup.getByRole('heading', { name: 'Client session open · activation pending', exact: true }).waitFor();
-          assert.equal(await setup.getByText('Built-in Start and Resume are pending. This connection is not ready to launch work from Flux.', { exact: true }).count(), 1);
+          assert.equal(await setup.getByText("Flux does not launch work and cannot see whether the client is online. Claude Code starts with Flux's Start work prompt; Codex starts when you ask it to start work on Flux and it reads Flux's playbook.", { exact: true }).count(), 1);
           assert.equal(await page.getByRole('button', { name: /^(Start work|Resume work)$/ }).count(), 0, 'OAuth/bootstrap records do not manufacture a working launch control');
           for (const theme of ['light', 'dark'] as const) {
             await page.emulateMedia({ colorScheme: theme });

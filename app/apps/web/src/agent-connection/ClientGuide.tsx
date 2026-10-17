@@ -26,7 +26,7 @@ export function ClientGuide({ origin }: { origin: string }) {
   const url = `${origin}/mcp`;
   return <div className="connection__guide">
     <h2>Connect your MCP client</h2>
-    <p>Built-in setup, Start and Resume are pending. These client settings authorize access; they do not launch work from Flux.</p>
+    <p>These client settings authorize access. Flux does not launch work from your client; you start it in the client.</p>
     <p>Add this Flux address to the client you already use. Each client opens this page to ask for your consent, and each gets exactly the same access you approve here.</p>
     {isLoopbackOrigin(origin)
       ? <p>This address works only on this computer. A client on another computer needs an HTTPS address for this Flux server, which its operator sets up.</p>
@@ -35,12 +35,16 @@ export function ClientGuide({ origin }: { origin: string }) {
       <h3 id="guide-claude-code">Claude Code</h3>
       <code>claude mcp add --transport http flux {url}</code>
       <code>claude mcp login flux</code>
+      <p>To start work, use Flux's Start work prompt in Claude Code.</p>
     </section>
     <section className="connection__client" aria-labelledby="guide-codex">
       <h3 id="guide-codex">Codex</h3>
       <code>codex mcp add flux --url {url}</code>
       <code>codex mcp login flux</code>
       <p>Codex starts signing in when it adds the server; run the login command if it asks you to.</p>
+      <h4>Start work</h4>
+      <p>In Codex, ask it to start work on Flux. It reads Flux's playbook.</p>
+      <p>Flux is tested with Codex 0.160.1. A Codex that speaks MCP 2025-06-18 or 2026-07-28 connects; one that offers another version is refused with “Unsupported protocol version”. Update Codex to a tested version.</p>
     </section>
     <section className="connection__client" aria-labelledby="guide-other">
       <h3 id="guide-other">Another MCP client</h3>
