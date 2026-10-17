@@ -204,9 +204,7 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
   const author = (id: string) => id === me.user.id ? me.user.name : members.find((member) => member.userId === id)?.name ?? 'Member';
   const messageAuthor = (item: ConversationMessage) => item.authorId !== null ? author(item.authorId) : agentAuthorLabel(item.author);
   const owners = useAgentOwners(project);
-  // Replies reach the whole project audience. Name a reply target only while every voice in the thread is human;
-  // with a genuine agent author the named people would not match the visible thread.
-    // The signed-in person's own assistant (#68): ask mode, their working line, shared answers.
+  // The signed-in person's own assistant (#68): ask mode, their working line, shared answers.
   const assistant = useConversationAssistant({ meId: me.user.id, projectId: project.id, conversationId: conversation?.id ?? null });
   // Bounded native reads (#155): the visible replies' chips, and the tasks that answers, proposals and the
   // discussed task refer to. Neither is the project's work collection.

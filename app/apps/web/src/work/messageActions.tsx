@@ -4,13 +4,15 @@ import type { ConversationMessage } from '@flux/contracts';
 import { Icon, Kreska, useMediaQuery, useToast, type IconName } from '../ui';
 import { useShellActions } from '../app/shellContext';
 import { useShellData } from '../app/data';
+import { useNeedsYou } from '../notifications/needsYou';
+import { useNeedsYouActions } from '../notifications/useNeedsYouActions';
 import './message-actions.css';
 
 // Actions on one message (F-026 S6). On a computer they appear on hover and focus: reply in a thread,
 // create a task, and a menu with the rest. On a phone they are two gestures, a long press (the message menu)
 // and a swipe right (Reply in thread), plus the same menu for keyboards and screen readers (founder direction
-// 2026-10-16 on #343). A message has no done or snooze state, so nothing swipes left and the menu has no Done
-// or Not now: those stay in Inbox and Tasks. Decisions and results stay in the menu.
+// 2026-10-16 on #343). A message has no done or snooze state, so nothing swipes left; Done and Not now are in
+// the menu only for a message that is waiting in the person's Inbox. Decisions and results stay in the menu.
 
 /**
  * A private direct-message bubble (#536, #537): reply in its thread and create a task from an excerpt. Nothing
@@ -18,6 +20,8 @@ import './message-actions.css';
  */
 export interface DmActionOptions {
   kind: 'dm';
+  /** The message, to find the Inbox item it raised (a question or an @mention), if any. */
+  messageId?: string;
   /** The message text, for Copy text. */
   body: string;
   /** False when the conversation takes no new messages (a 1:1 whose other person left). */
@@ -41,6 +45,8 @@ export interface MessageActionOptions {
   /** Quotes the message into the composer. */
   onCite?: () => void;
 }
+
+const messageOf = (options: MessageActionOptions | DmActionOptions) => options.kind === 'dm' ? options.messageId ?? null : options.message.id;
 
 interface MenuItem { id: string; label: string; icon: IconName | 'kreska'; run: () => void; disabled?: boolean; secondary?: boolean }
 
@@ -84,8 +90,26 @@ function useMenuItems(options: MessageActionOptions | DmActionOptions | null): M
   ];
 }
 
+/**
+ * Done and Not now for a message that is waiting in the person's Inbox (a question to them or an @mention),
+ * acting on that item exactly as the Inbox does (#343, founder direction 2026-10-16). Other messages get
+ * nothing: Inbox stays the one queue and a message has no state of its own. Read when the menu opens.
+ */
+function useWaiting(messageId: string | null): MenuItem[] {
+  const { me } = useShellData();
+  const queue = useNeedsYou(me.user.id);
+  const handlers = useNeedsYouActions(queue);
+  const item = messageId ? queue.items?.find((entry) => entry.url.endsWith(`#message-${messageId}`)) : undefined;
+  if (!item) return [];
+  return [
+    { id: 'inbox-done', label: 'Done', icon: 'check', secondary: true, run: () => handlers.done(item) },
+    { id: 'inbox-later', label: 'Not now', icon: 'clock', secondary: true, run: () => handlers.snooze(item, 'tomorrow') },
+  ];
+}
+
 /** A menu under its anchor: arrow keys, Escape and a click outside close or move; focus returns to the opener. */
-function MessageMenu({ items, anchor, press, onClose, label }: { items: MenuItem[]; anchor: HTMLElement; press: boolean; onClose: (restoreFocus: boolean) => void; label: string }) {
+function MessageMenu({ items: own, anchor, press, onClose, label, messageId }: { items: MenuItem[]; anchor: HTMLElement; press: boolean; onClose: (restoreFocus: boolean) => void; label: string; messageId: string | null }) {
+  const items = [...own, ...useWaiting(messageId)];
   const menu = useRef<HTMLDivElement>(null);
   const [place, setPlace] = useState<CSSProperties>({ top: 0, left: 0, opacity: 0 });
   useLayoutEffect(() => {
@@ -147,7 +171,7 @@ export function MessageActions(options: MessageActionOptions | DmActionOptions) 
       {writable && onReply ? <button type="button" className="msg-acts__b" aria-label="Reply in thread" data-tip="Reply in thread" onClick={onReply}><Icon name="reply" size={16} /></button> : null}
       {writable ? <button type="button" className="msg-acts__b" aria-label="Create task" data-tip="Create task" onClick={onCreateWork}><Icon name="plus-circle" size={16} /></button> : null}
       <button ref={more} type="button" className="msg-acts__b" aria-label="More actions" data-tip="More actions" aria-haspopup="menu" aria-expanded={!!anchor} onClick={(event) => setAnchor(anchor ? null : event.currentTarget)}><Icon name="more" size={16} /></button>
-      {anchor ? <MessageMenu items={items} anchor={anchor} press={false} label="Message actions"
+      {anchor ? <MessageMenu items={items} anchor={anchor} press={false} label="Message actions" messageId={messageOf(options)}
         onClose={(restore) => { setAnchor(null); if (restore) more.current?.focus(); }} /> : null}
     </div>
   );
@@ -251,7 +275,7 @@ export function useTouchActions<E extends HTMLElement = HTMLLIElement>(options: 
     <>
       <span className={`msg-swipe${offset >= REPLY_AT ? ' is-ready' : ''}`} aria-hidden="true" hidden={!offset}><Icon name="reply" size={20} /></span>
       <button type="button" className="msg-touch__sr" aria-haspopup="menu" aria-expanded={menu?.kind === 'button'} onClick={(event) => { opener.current = event.currentTarget; setMenu({ kind: 'button', anchor: event.currentTarget.parentElement?.querySelector<HTMLElement>('.message-bubble > p') ?? event.currentTarget }); }}>Message actions</button>
-      {menu ? <MessageMenu items={items} anchor={menu.anchor} press={menu.kind === 'press'} label="Message actions"
+      {menu ? <MessageMenu items={items} anchor={menu.anchor} press={menu.kind === 'press'} label="Message actions" messageId={messageOf(options)}
         onClose={(restore) => { setMenu(null); if (restore) opener.current?.focus({ preventScroll: true }); }} /> : null}
     </>
   );

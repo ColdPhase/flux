@@ -6,6 +6,7 @@ Screenshots (one-composer-<place>-<device>.png) go to FLUX_UI_SCREENSHOTS when s
 """
 from __future__ import annotations
 
+import re
 import time
 import unittest
 import uuid
@@ -105,7 +106,7 @@ class OneComposer(unittest.TestCase):
                     expect(field).to_be_visible()
                     expect(field).to_have_attribute("placeholder", PLACEHOLDERS[name])
                     box = field.locator("xpath=ancestor::div[contains(@class,'composer__box')]")
-                    expect(box.get_by_role("button", name="Attach files", exact=True)).to_be_visible()
+                    expect(box.get_by_role("button", name=re.compile("^Attach files"))).to_be_visible()
                     field.scroll_into_view_if_needed()
                     seen[name] = self.measure(field)
                     self.assertEqual(seen[name]["kinds"], ["BUTTON.attach", "TEXTAREA", "BUTTON.send"], name)
@@ -130,11 +131,15 @@ class OneComposer(unittest.TestCase):
     def test_03_the_plus_takes_files_where_they_are_kept_and_is_greyed_where_not(self) -> None:
         page = self.page()
         page.goto(f"/dm/{self.dm}")
-        plus = page.locator("#dm-composer").locator("xpath=ancestor::div[contains(@class,'composer__box')]").get_by_role("button", name="Attach files", exact=True)
+        plus = page.locator("#dm-composer").locator("xpath=ancestor::div[contains(@class,'composer__box')]").get_by_role("button", name=re.compile("^Attach files"))
         expect(plus).to_have_attribute("aria-disabled", "true")
+        expect(plus).to_have_accessible_name("Attach files (not available here)")
+        expect(plus).to_have_accessible_description("This place takes text only.")
+        plus.click(force=True)
+        expect(page.get_by_text("Files cannot be added here.")).to_be_visible()
         page.goto(f"/projects/{self.project}")
         with page.expect_file_chooser() as chooser:
-            page.locator("#project-composer").locator("xpath=ancestor::div[contains(@class,'composer__box')]").get_by_role("button", name="Attach files", exact=True).click()
+            page.locator("#project-composer").locator("xpath=ancestor::div[contains(@class,'composer__box')]").get_by_role("button", name=re.compile("^Attach files")).click()
         chooser.value.set_files({"name": "measurements.bin", "mimeType": "application/octet-stream", "buffer": b"\x00\x01"})
         expect(page.get_by_role("list", name="Files in your draft")).to_be_visible()
 
