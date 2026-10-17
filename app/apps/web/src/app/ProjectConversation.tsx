@@ -86,6 +86,8 @@ function readableError(error: unknown) {
   if (error instanceof ApiError && error.status === 403) return 'You can read this project, but cannot post here.';
   return error instanceof Error ? error.message : 'Could not save. Try again.';
 }
+/** A request made offline, held under its own id until it can go out (AST-10.15). */
+interface WaitingAsk { conversationId: string; prompt: string; clientRunId: string }
 interface MaterialFormSnapshot { open: boolean; title: string; body: string; url: string; sourceDraft: Draft | null; mutationId: string }
 function savedMaterialForm(key: string): MaterialFormSnapshot {
   try {
@@ -386,21 +388,53 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
     setAskFailure(''); composer.setBody(input);
   }
   function exitAsk() { setAsking(false); setAskFailure(''); document.getElementById(composerId)?.focus(); }
-  const [waitingAsk, setWaitingAsk] = useState<{ conversationId: string; prompt: string; clientRunId: string } | null>(null);
-  const waitingId = waitingAsk?.clientRunId;
+  // Requests made offline wait in order, each under its own id, and go out one at a time on reconnect (AST-10.15). The ref is
+  // the list the flush reads; the state only mirrors it for rendering.
+  const [waitingAsks, setWaitingAsks] = useState<WaitingAsk[]>([]);
+  const waitingRef = useRef<WaitingAsk[]>([]);
+  const sendingRef = useRef(false);
+  const changeWaiting = (change: (list: WaitingAsk[]) => WaitingAsk[]) => { waitingRef.current = change(waitingRef.current); setWaitingAsks(waitingRef.current); };
+  const holdAsk = (ask: WaitingAsk) => changeWaiting((list) => (list.some((item) => item.clientRunId === ask.clientRunId) ? list : [...list, ask]));
+  const waitingHere = waitingAsks.filter((item) => item.conversationId === conversation?.id);
+  const offline = useRef<{ ask: typeof assistant.ask; refused: (ask: WaitingAsk, cause: unknown) => void }>({ ask: assistant.ask, refused: () => undefined });
+  // A held request the server refuses on reconnect comes back as the person's own text with the reason, as a refused ask does.
   useEffect(() => {
-    if (!waitingAsk || waitingAsk.conversationId !== conversation?.id) return undefined;
-    let sending = false;
+    offline.current = {
+      ask: assistant.ask,
+      refused: (ask, cause) => {
+        const kept = helperComposer.draft.body;
+        helperComposer.setBody(kept.trim() ? `${ask.prompt}\n${kept}` : ask.prompt);
+        setAskFailure(askErrorText(cause)); setAskFailureCode(cause instanceof ApiError ? cause.code : null); setAsking(true);
+        assistant.refreshStatus();
+      },
+    };
+  });
+  const heldHere = waitingHere.length > 0;
+  useEffect(() => {
+    if (!heldHere || !conversation) return undefined;
+    const here = conversation.id;
+    let stopped = false;
     const flush = () => {
-      if (sending || !navigator.onLine) return;
-      sending = true;
-      assistant.ask(waitingAsk.prompt, { clientRunId: waitingAsk.clientRunId }).then(() => setWaitingAsk(null), (cause) => { sending = false; if (!(cause instanceof NetworkError)) { setWaitingAsk(null); setAskFailure(askErrorText(cause)); } });
+      if (stopped || sendingRef.current || !navigator.onLine) return;
+      const next = waitingRef.current.find((item) => item.conversationId === here);
+      if (!next) return;
+      sendingRef.current = true;
+      offline.current.ask(next.prompt, { clientRunId: next.clientRunId }).then(() => {
+        sendingRef.current = false;
+        changeWaiting((list) => list.filter((item) => item.clientRunId !== next.clientRunId));
+        flush();
+      }, (cause) => {
+        sendingRef.current = false;
+        if (cause instanceof NetworkError) return;
+        changeWaiting((list) => list.filter((item) => item.clientRunId !== next.clientRunId));
+        offline.current.refused(next, cause);
+      });
     };
     window.addEventListener('online', flush);
     const timer = window.setInterval(flush, 4000);
-    return () => { window.removeEventListener('online', flush); window.clearInterval(timer); };
+    return () => { stopped = true; window.removeEventListener('online', flush); window.clearInterval(timer); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [waitingId, conversation?.id]);
+  }, [heldHere, conversation?.id]);
   async function sendToAssistant() {
     if (!conversation || !writable || askBusy || askState(assistant.status, audience).kind !== 'ready') return;
     const command = helperComposer.begin();
@@ -418,7 +452,7 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
       // Offline: the request waits as "Sends when you're back" and goes out once, under the same id, on reconnect (AST-10.15).
       if (cause instanceof NetworkError && conversation) {
         helperComposer.finish(command.clientMessageId);
-        setWaitingAsk({ conversationId: conversation.id, prompt: command.body, clientRunId: command.clientMessageId });
+        holdAsk({ conversationId: conversation.id, prompt: command.body, clientRunId: command.clientMessageId });
         if (active()) setAsking(false);
         return;
       }
@@ -657,7 +691,7 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
               <li key={`changes-${runId}`} className="project-convo__message assistant-waiting-item"><WaitingChanges changes={runChanges} onChanged={assistantChanges.refresh} /></li>
             ))}
             {assistant.run ? <WorkingLine key={assistant.run.id} run={assistant.run} onStop={assistant.stop} onRetry={() => assistant.retry(assistant.run!.id)} onDismiss={assistant.dismissRun} /> : null}
-            {waitingAsk && waitingAsk.conversationId === conversation?.id ? <li className="assistant-queued" aria-live="polite">Sends when you&apos;re back</li> : null}
+            {waitingHere.map((item) => <li key={item.clientRunId} className="assistant-queued" aria-live="polite">Sends when you&apos;re back</li>)}
             {assistant.queued ? <li className="assistant-queued" aria-live="polite">Next: “{assistant.queued.prompt.length > 60 ? `${assistant.queued.prompt.slice(0, 60)}…` : assistant.queued.prompt}”. It starts when this one ends ·
               <Button variant="link" onClick={() => void assistant.cancelQueued().catch(() => undefined)}>Cancel</Button></li> : null}
             </ol>
@@ -685,7 +719,7 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
         noteAssistantUse(me.user.id);
         const clientRunId = crypto.randomUUID();
         void assistant.ask(text, { clientRunId }).then(() => requestAnimationFrame(() => { const feed = scrollRef.current; if (feed) feed.scrollTop = feed.scrollHeight; }))
-          .catch((cause) => { if (cause instanceof NetworkError && conversation) setWaitingAsk({ conversationId: conversation.id, prompt: text, clientRunId }); else { setAskFailure(askErrorText(cause)); setAskFailureCode(cause instanceof ApiError ? cause.code : null); setAsking(true); } });
+          .catch((cause) => { if (cause instanceof NetworkError && conversation) holdAsk({ conversationId: conversation.id, prompt: text, clientRunId }); else { setAskFailure(askErrorText(cause)); setAskFailureCode(cause instanceof ApiError ? cause.code : null); setAsking(true); } });
       }} /> : null}
       {asking && writable ? <AskBar id="project-ask" state={ask} error={notIn ? (project.access === 'manager' ? 'I\'m not in this project yet.' : 'I\'m not in this project yet. A manager can add me.') : askFailure} errorAction={grantAction} onExit={exitAsk} onAction={(action) => {
         if (action === 'connect') openDetails('connect-ai');

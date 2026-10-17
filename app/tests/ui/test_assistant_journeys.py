@@ -179,6 +179,7 @@ class AssistantJourneys(unittest.TestCase):
                 page.goto("/settings/assistant")
                 summary = page.get_by_text("Recent · today: 2 changes")
                 expect(summary).to_be_visible()
+                self.assertIn("›", page.evaluate("getComputedStyle(document.querySelector('.aset-recent > summary'), '::after').content"), "the closed row ends in the drawn ›")
                 summary.click()
                 row = page.locator(".aset-recent__list li").first
                 expect(row).to_contain_text("Done: renamed task #3 Calibrate the probes")
@@ -227,6 +228,42 @@ class AssistantJourneys(unittest.TestCase):
         page.context.set_offline(False)
         expect(page.get_by_text("Sends when you're back")).to_have_count(0)
         self.assertEqual([body["prompt"] for body in asked], ["Catch me up"], "sent once")
+
+    def test_06b_a_held_request_the_server_refuses_comes_back_with_the_reason(self) -> None:
+        page = self.page()
+        self.stub_assistant(page)
+        self.stub_thread(page, [])
+        asked = self.stub_runs(page, lambda body: (409, {"code": "PERSONAL_RUN_PAUSED", "message": "Your assistant is paused"}))
+        page.goto(self.thread_url())
+        chips = page.get_by_role("group", name="Suggestions for your assistant")
+        expect(chips).to_be_visible()
+        page.context.set_offline(True)
+        chips.get_by_role("button", name="Catch me up").click()
+        expect(page.get_by_text("Sends when you're back")).to_be_visible()
+        page.context.set_offline(False)
+        # Refused on reconnect: not lost. The words are back in the ask field and the reason shows, as for a refused ask.
+        expect(page.get_by_text("Sends when you're back")).to_have_count(0)
+        expect(page.locator("#project-ask")).to_contain_text("Your assistant is paused.")
+        expect(page.get_by_role("textbox", name="Ask your assistant")).to_have_value("Catch me up")
+        self.assertEqual([body["prompt"] for body in asked], ["Catch me up"], "refused once, not retried")
+
+    def test_06c_requests_held_offline_keep_their_order_and_each_goes_out_once(self) -> None:
+        page = self.page()
+        self.stub_assistant(page)
+        self.stub_thread(page, [])
+        asked = self.stub_runs(page, lambda body: (202, self.run_json(clientRunId=body["clientRunId"], prompt=body["prompt"])))
+        page.goto(self.thread_url())
+        chips = page.get_by_role("group", name="Suggestions for your assistant")
+        expect(chips).to_be_visible()
+        page.context.set_offline(True)
+        chips.get_by_role("button", name="Catch me up").click()
+        chips.get_by_role("button", name="Turn this thread into tasks").click()
+        expect(page.get_by_text("Sends when you're back")).to_have_count(2)
+        self.assertEqual(asked, [])
+        page.context.set_offline(False)
+        expect(page.get_by_text("Sends when you're back")).to_have_count(0)
+        self.assertEqual([body["prompt"] for body in asked], ["Catch me up", "Turn this thread into tasks"], "in order, once each")
+        self.assertEqual(len({body["clientRunId"] for body in asked}), 2, "each under its own id")
 
     # ---------------------------------------------------------------- AST-10.9: Journey 6 states
 

@@ -155,7 +155,10 @@
 .assistant-suggestions__chip:hover { background: var(--hov); }
 
 .aset-recent { margin-top: 8px; }
-.aset-recent > summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; font-size: var(--fs-sm); font-weight: 600; color: var(--t2); }
+.aset-recent > summary { min-height: 44px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; font-size: var(--fs-sm); font-weight: 600; color: var(--t2); }
+/* The closed row ends in "›", as drawn; it turns down when open. */
+.aset-recent > summary::after { content: '›'; content: '›' / ''; font-size: var(--fs-lg); line-height: 1; color: var(--t3); }
+.aset-recent[open] > summary::after { transform: rotate(90deg); }
 .aset-recent__list { display: grid; margin: 0; padding: 0; list-style: none; }
 .aset-recent__list li { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; min-height: 44px; padding: 6px 0; border-top: 1px solid var(--line); font-size: var(--fs-sm); }
 .aset-recent__t { flex: 1 1 200px; min-width: 0; overflow-wrap: anywhere; }
