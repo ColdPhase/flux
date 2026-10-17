@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
+import { useEffect, useId, useRef, useState, type KeyboardEvent, type RefObject } from 'react';
 import { Link } from 'react-router';
 import type { ObjectLink, Project, Sketch, Thought } from '@flux/contracts';
 import { ApiError } from '../api/client';
@@ -17,15 +17,16 @@ interface TaskThoughtLinksProps {
   project: Project;
   /** The task's links, as the panel reads them. Thoughts it came from are listed under "Came from". */
   links: ObjectLink[];
-  /** Shown when no thought is linked here. */
-  empty: string;
-  writable: boolean;
   reload: () => void;
 }
 
 const LINK_FAILURE = 'Could not link it. Try again.';
 
-export function TaskThoughtLinks({ item, project, links, empty, writable, reload }: TaskThoughtLinksProps) {
+/**
+ * The task's thought linking as one state two places share (#488): the "Link thought" action in the panel's one row of
+ * actions, and the linked thoughts with their picker below it, which appear only once there is something to show.
+ */
+export function useThoughtLinks({ item, project, links, reload }: TaskThoughtLinksProps) {
   const [open, setOpen] = useState(false);
   const [maps, setMaps] = useState<{ items: Sketch[] } | 'failed' | null>(null);
   const [mapId, setMapId] = useState('');
@@ -97,22 +98,34 @@ export function TaskThoughtLinks({ item, project, links, empty, writable, reload
     }
   }
 
+  // The button's ref stays apart from the state the views read.
+  return { toggle, links: { item, project, open, setOpen, maps, mapId, setMapId, current, candidates, busy, error, setError, status, setStatus, sectionId, panelId, mapFieldId, listed, close, onKeyDown, link } };
+}
+
+export type ThoughtLinks = ReturnType<typeof useThoughtLinks>['links'];
+
+/** "Link thought": one small action beside Hand off and Result. */
+export function LinkThoughtButton({ links, toggle }: { links: ThoughtLinks; toggle: RefObject<HTMLButtonElement | null> }) {
+  return (
+    <Button ref={toggle} variant="secondary" size="sm" icon="link" disabled={links.busy} aria-expanded={links.open} aria-controls={links.panelId}
+      onKeyDown={links.onKeyDown} onClick={() => { links.setError(''); links.setStatus(''); links.setOpen((value) => !value); }}>Link thought</Button>
+  );
+}
+
+/** The thoughts the task is linked to and the picker that adds one; empty and closed it shows nothing (Spokój rule 4). */
+export function LinkedThoughts({ links }: { links: ThoughtLinks }) {
+  const { item, project, open, maps, mapId, setMapId, current, candidates, busy, error, status, sectionId, panelId, mapFieldId, listed, close, onKeyDown, link } = links;
+  if (!listed.length && !open && !status && !error) return null;
   return (
     <section className="details__sec" aria-labelledby={sectionId} onKeyDown={onKeyDown}>
       <h4 id={sectionId}>Linked thoughts</h4>
       {listed.length ? (
         <ul className="wd-links">
-          {listed.map((link) => {
-            const body = <><span>{link.toTitle || 'Untitled thought'}</span><small>On the map</small><Icon name="chevron-right" size={14} /></>;
-            return <li key={link.id}>{link.sketchId ? <Link className="wd-link" to={`/projects/${project.id}/map/${link.sketchId}#thought-${link.to.id}`}>{body}</Link> : <span className="wd-link">{body}</span>}</li>;
+          {listed.map((entry) => {
+            const body = <><span>{entry.toTitle || 'Untitled thought'}</span><small>On the map</small><Icon name="chevron-right" size={14} /></>;
+            return <li key={entry.id}>{entry.sketchId ? <Link className="wd-link" to={`/projects/${project.id}/map/${entry.sketchId}#thought-${entry.to.id}`}>{body}</Link> : <span className="wd-link">{body}</span>}</li>;
           })}
         </ul>
-      ) : <p className="wd-muted">{empty}</p>}
-      {writable ? (
-        <div className="wd-actions">
-          <Button ref={toggle} variant="secondary" icon="link" disabled={busy} aria-expanded={open} aria-controls={panelId}
-            onClick={() => { setError(''); setStatus(''); setOpen((value) => !value); }}>Link to a thought</Button>
-        </div>
       ) : null}
       {open ? (
         <div id={panelId} className="wd-pick" role="group" aria-label={`Thoughts to link to ${item.title}`}>

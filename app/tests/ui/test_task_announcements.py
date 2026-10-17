@@ -405,20 +405,23 @@ class TaskAnnouncements(unittest.TestCase):
         self.notice(page, work_id).get_by_role("button", name=opens_task(title)).click()
         details = page.locator("#details")
         expect(details.get_by_role("heading", name=title)).to_be_visible()
-        return details.get_by_role("region", name="Discussion")
+        return details
 
     def test_09_details_shows_the_tasks_root_and_opens_its_thread(self) -> None:
         page = self.page("ada")
         page.goto(f"/projects/{self.ids['project']}")
-        section = self.open_task_from_stream(page, self.ids["measure"], MEASURE)
-        link = section.get_by_role("link")
-        expect(link).to_contain_text("Jonas Berg")
-        expect(link).to_contain_text(FIRST_WORD)
-        expect(link).to_contain_text("2 replies · Open in Conversation")
+        panel = self.open_task_from_stream(page, self.ids["measure"], MEASURE)
+        activity = panel.get_by_role("region", name="Activity")
+        root = activity.locator("li[data-message-id]").filter(has_text=FIRST_WORD)
+        expect(root).to_contain_text("Jonas")
+        expect(root.locator("time")).to_have_attribute("datetime", re.compile(r"^\d{4}-"))
+        link = activity.get_by_role("link", name="Open in Conversation")
         shot(page, "task-announcements-details-discussion")
         link.click()
         expect(page).to_have_url(re.compile(f"/conversations/{self.ids['thread']}"))
-        expect(page.locator("#thread").locator(".project-convo__message", has_text=FIRST_REPLY)).to_be_visible()
+        # The thread replaces the task's content in the one panel, with the way back.
+        expect(page.locator("#details #thread").locator(".project-convo__message", has_text=FIRST_REPLY)).to_be_visible()
+        expect(page.locator("#details").get_by_role("button", name=re.compile(r"^Task #\d+$"))).to_be_visible()
 
     def test_10_details_starts_the_discussion_once_even_after_a_lost_answer(self) -> None:
         page = self.page("ada")
@@ -474,14 +477,14 @@ class TaskAnnouncements(unittest.TestCase):
                 if request.method == "POST" and request.url.endswith(f"/work/{self.ids['from_message']}/discussion") else None)
         queued.get_by_role("button", name="Retry").click()
         page.unroute("**/api/v1/me")
-        expect(page).to_have_url(re.compile(r"/conversations/[0-9a-f-]+#message-"))
+        # Stored, it stays in the task's Activity; the panel does not navigate away from the task (#488).
+        expect(section.get_by_role("list", name="Task activity").locator("li[data-message-id]")).to_have_count(1)
         self.assertEqual(retried, sent, "the retry reuses the first attempt's client message id")
         discussion = self.api(page, "GET", f"/api/v1/work/{self.ids['from_message']}/discussion", status=200)
         self.assertEqual([message["body"] for message in discussion["messages"]], [text], "stored exactly once")
         self.assertEqual(discussion["root"]["authorId"], self.ids["ada"])
         root = page.locator(f"#message-{discussion['rootMessageId']}")
         expect(root.get_by_role("button", name=f"Discussion of task: {FROM_MESSAGE}")).to_be_visible()
-        expect(page.locator("#thread")).to_be_visible()
         self.assertEqual(self.counts(page), (before[0], before[1], before[2] + 1), "one new root; no announcement or task")
         cleared = page.evaluate("key => JSON.parse(localStorage.getItem(key))", key)
         self.assertEqual({field: cleared[field] for field in ('version', 'body', 'files', 'references', 'unconfirmed')},
@@ -493,7 +496,7 @@ class TaskAnnouncements(unittest.TestCase):
         page = self.page("lee")
         page.goto(f"/projects/{self.ids['project']}")
         section = self.open_task_from_stream(page, self.ids["measure"], MEASURE)
-        expect(section.get_by_role("link")).to_contain_text(FIRST_WORD)
+        expect(section.get_by_role("list", name="Task activity")).to_contain_text(FIRST_WORD)
         page.locator("#details").get_by_role("button", name="Close details").click()
         section = self.open_task_from_stream(page, self.ids["live"], LIVE_TASK)
         expect(section).to_contain_text("Nobody has written about this task yet.")

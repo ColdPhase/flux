@@ -525,7 +525,7 @@ class AgentsViewJourney(unittest.TestCase):
         page.goto(f"/projects/{self.ids['project']}/agents?task={self.ids['task']}")
         expect(page.get_by_role("region", name=f"Thread of {TASK}")).to_be_visible()
         expect(page.get_by_label("Write to this task")).to_be_visible()
-        expect(page.get_by_role("list", name="Agents in this project")).to_be_hidden()
+        expect(page.locator("[data-detent-sheet]")).to_be_visible()
         # Every message is reachable: the view scrolls, and at its end the newest message sits above
         # the sticky composer instead of under it (independent delta review of 466daf8).
         thread = page.get_by_role("region", name=f"Thread of {TASK}")
@@ -552,9 +552,10 @@ class AgentsViewJourney(unittest.TestCase):
         shot(page, "agents-phone-390")
         # Closing the sheet returns to the entries, all three still there.
         page.get_by_role("button", name="Close thread").tap()
+        expect(page.locator("[data-detent-sheet]")).to_have_count(0)
         expect(page.get_by_role("list", name="Agents in this project").get_by_role("listitem")).to_have_count(3)
         expect(page.get_by_role("list", name="Agents in this project")).to_be_visible()
-        # Negative control: with the list drawn under the sheet (the pre-sheet layout), the to_be_hidden check above fails.
+        # The list stays under the one sheet, dimmed and inert, and is usable again once it closes.
 
     def test_07_the_thread_links_to_conversation_and_stays_by_the_composer(self) -> None:
         page = self.open_agents("hubert")

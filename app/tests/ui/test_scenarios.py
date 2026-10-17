@@ -579,7 +579,7 @@ class ScenarioJourney:
         page.goto(f"/projects/{lamp}")
         menu = open_message_menu(page.locator(f"#message-{s['m1']}"), phone=self.phone)
         self.tap(menu.get_by_role("menuitem", name="Reply in thread", exact=True))
-        thread = page.get_by_role("complementary", name="Replies")
+        thread = page.get_by_role("complementary", name="Replies").or_(page.get_by_role("dialog", name="Replies"))
         expect(thread.locator(".thread__root")).to_contain_text(JONAS_ROOT)
         expect(thread.locator(".composer__audience")).to_contain_text("Jonas and you")
         expect(thread.get_by_role("checkbox")).to_have_count(0)
@@ -716,10 +716,10 @@ class ScenarioJourney:
 
         # The same task thread from the task and from the map.
         page.goto(f"/projects/{lamp}/tasks?open=work:{experiment['id']}")
-        discussion = page.get_by_role("region", name="Discussion")
+        discussion = page.get_by_role("region", name="Activity")
         expect(discussion).to_contain_text(RESULT)
         self.tap(discussion.get_by_role("link", name=re.compile("Open in Conversation")))
-        thread = page.get_by_role("complementary", name="Replies")
+        thread = page.get_by_role("complementary", name="Replies").or_(page.get_by_role("dialog", name="Replies"))
         expect(thread).to_contain_text(RESULT)
         task_thread = self.api("ada", "GET", f"/api/v1/work/{experiment['id']}/discussion", status=200)
         expect(page).to_have_url(re.compile(rf"/conversations/{task_thread['conversationId']}"))
@@ -838,8 +838,9 @@ class ScenarioJourney:
         card = jonas.locator(f".wd[data-detail-kind='work'][data-detail-id='{s['order_task']}']")
         expect(card).to_be_visible()
         section = card.get_by_role("region", name="Linked thoughts")
-        expect(section.get_by_text("Not linked to a thought yet.")).to_be_visible()
-        control = section.get_by_role("button", name="Link to a thought")
+        # Nothing is linked, so there is no Linked thoughts section yet: the action is in the one row of actions.
+        expect(section).to_have_count(0)
+        control = card.get_by_role("button", name="Link thought")
         picker = card.get_by_role("group", name=re.compile("^Thoughts to link to "))
         if self.phone:
             self.tap(control)
@@ -877,7 +878,7 @@ class ScenarioJourney:
         self.tap(cancel)
         expect(picker).to_have_count(0)
         expect(control).to_be_focused()
-        expect(section.get_by_text("Not linked to a thought yet.")).to_be_visible()
+        expect(section).to_have_count(0)
         cancelled = self.api("jonas", "GET", f"/api/v1/work/{s['order_task']}", status=200)
         self.assertEqual([link for link in cancelled["links"] if link["to"]["type"] == "thought"], [], "Cancel stores no relation")
         self.tap(control)

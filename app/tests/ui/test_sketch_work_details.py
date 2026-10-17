@@ -78,7 +78,7 @@ class SketchWorkDetailsJourney(unittest.TestCase):
                     expect(panel).to_be_visible()
                     expect(panel.locator("[data-detail-relations-phase]")).to_have_attribute("data-detail-relations-phase", "ready")
                     expect(panel).to_contain_text(self.text)
-                    expect(panel).to_contain_text("Everyone with access to Library lighting measurements")
+                    expect(panel).to_contain_text("Everyone in Library lighting measurements")
                     expect(panel.get_by_role("heading", name="Not available", exact=True)).to_have_count(0)
                     self.assertEqual(urlsplit(page.url).path, canonical)
                     native = api(self.ctx, "GET", f"/api/v1/work/{item['id']}")

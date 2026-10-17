@@ -185,7 +185,8 @@ class MapTaskCountJourney(unittest.TestCase):
         return page.locator(f'.sk-outline-list li[data-id="{self.thoughts[key]}"] > .sk-outline-row .sk-work')
 
     def chooser(self, page: Page, text: str) -> Locator:
-        return page.get_by_role("dialog", name=text, exact=True)
+        # A popover named by its thought on a computer; on a phone the one sheet (#488), named by its kind.
+        return page.get_by_role("dialog", name=text, exact=True).or_(page.get_by_role("dialog", name="Details: Tasks", exact=True))
 
     def camera(self, page: Page) -> dict:
         return page.evaluate("""() => {
@@ -498,7 +499,7 @@ class MapTaskCountJourney(unittest.TestCase):
                 self.assertGreaterEqual(link_box["height"], 44, "each task is a 44px touch target")
             page.wait_for_timeout(400)
             shot(page, f"map-task-count-phone-390-{scheme}")
-            sheet.get_by_role("button", name="Close", exact=True).tap()
+            sheet.get_by_role("button", name="Close details", exact=True).tap()
             expect(sheet).to_have_count(0)
             expect(badge).to_be_focused()
             self.assertEqual(self.camera(page), before, "closing the sheet keeps the phone camera")

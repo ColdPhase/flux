@@ -5,7 +5,7 @@ export type ButtonVariant = 'primary' | 'secondary' | 'quiet' | 'link' | 'danger
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant;
-  size?: 'md' | 'lg';
+  size?: 'sm' | 'md' | 'lg';
   icon?: IconName;
   /** Shows a spinner and keeps the button focusable but inactive. */
   busy?: boolean;
@@ -21,7 +21,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
   { variant = 'secondary', size = 'md', icon, busy = false, block = false, className, children, type = 'button', disabled, onClick, ...rest },
   ref,
 ) {
-  const classes = ['ui-btn', `ui-btn--${variant}`, size === 'lg' && 'ui-btn--lg', block && 'ui-btn--block', className].filter(Boolean).join(' ');
+  const classes = ['ui-btn', `ui-btn--${variant}`, size === 'lg' && 'ui-btn--lg', size === 'sm' && 'ui-btn--sm', block && 'ui-btn--block', className].filter(Boolean).join(' ');
   return (
     <button
       ref={ref}

@@ -105,7 +105,7 @@ class PersonalAssistantJourney(unittest.TestCase):
         return page
 
     def opening(self, page: Page):
-        return page.get_by_role("complementary", name="Replies").locator(".thread__root")
+        return page.get_by_role("complementary", name="Replies").or_(page.get_by_role("dialog", name="Replies")).locator(".thread__root")
 
     def composer(self, page: Page):
         return page.locator("#thread-composer")

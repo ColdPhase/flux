@@ -148,7 +148,7 @@ class ReturnViewJourney(unittest.TestCase):
         self.wait_saved(page, "home")
         page.goto(f"/projects/{self.project_id}/conversations/{self.conversation_id}")
         # One project conversation (UI116-1): the conversation's root opens with its thread beside the stream.
-        expect(page.get_by_role("complementary", name="Replies").locator(".thread__root")).to_contain_text(OPENING)
+        expect(page.get_by_role("complementary", name="Replies").or_(page.get_by_role("dialog", name="Replies")).locator(".thread__root")).to_contain_text(OPENING)
         # Opening a project no longer moves its point (#133); nothing competes with the conversation.
         expect(page.get_by_role("region", name="Since you left")).to_have_count(0)
         page.wait_for_timeout(500)
@@ -508,7 +508,7 @@ class ReturnViewJourney(unittest.TestCase):
         # "What matters" counts the same changes (the project point is older than Home's view).
         expect(page.locator("header.top").get_by_role("button", name=re.compile("needs you$"))).to_contain_text(re.compile(r"\d"))
         # Audience preview before writing: the thread's composer names who will read the reply.
-        expect(page.get_by_role("complementary", name="Replies").locator(".composer__audience")).to_have_text(re.compile("Ari and you · only you two · saved to Gesture lamp"))
+        expect(page.get_by_role("complementary", name="Replies").or_(page.get_by_role("dialog", name="Replies")).locator(".composer__audience")).to_have_text(re.compile("Ari and you · only you two · saved to Gesture lamp"))
         # Following the card was continuing: back on Home it has moved on, now and after a reload.
         page.get_by_role("link", name="Home").first.click()
         expect(page.get_by_role("heading", level=2, name=re.compile("^Good (morning|afternoon|evening), Nia$"))).to_be_visible()
@@ -525,7 +525,7 @@ class ReturnViewJourney(unittest.TestCase):
         composer.tap()
         composer.fill("Thanks, I will print the clip tonight.")
         expect(composer).to_be_in_viewport()
-        expect(phone.get_by_role("complementary", name="Replies").locator(".composer__audience")).to_be_in_viewport()
+        expect(phone.get_by_role("complementary", name="Replies").or_(phone.get_by_role("dialog", name="Replies")).locator(".composer__audience")).to_be_in_viewport()
         self.no_horizontal_scroll(phone)
         shot(phone, "matched-project-phone-390-composer")
         phone.get_by_role("button", name="Send reply").tap()

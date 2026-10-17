@@ -20,7 +20,7 @@ STAMP = int(time.time() * 1000)
 PEOPLE = {"ada": ("Ada Kowalska", f"ada.oc+{STAMP}@example.test"), "jonas": ("Jonas Berg", f"jonas.oc+{STAMP}@example.test")}
 PLACEHOLDERS = {
     "conversation": "Message · @ mention · / actions", "thread": "Reply in thread…", "dm": "Message Jonas…",
-    "task": "Write about #1…", "dm-thread": "Reply in thread…", "notes": "Write a note…",
+    "task": "Write about #1 · @ · /", "dm-thread": "Reply in thread…", "notes": "Write a note…",
 }
 
 
@@ -80,7 +80,7 @@ class OneComposer(unittest.TestCase):
         yield "thread", f"/projects/{self.project}/conversations/{self.conversation}", "#thread-composer"
         yield "dm", f"/dm/{self.dm}", "#dm-composer"
         yield "dm-thread", f"/dm/{self.dm}?thread={self.dm_root}", "#dm-thread-composer"
-        yield "task", f"/projects/{self.project}/tasks?open=work:{self.task}", f"#details .wd-discussion-form textarea"
+        yield "task", f"/projects/{self.project}/tasks?open=work:{self.task}", "#details .wd-composer textarea"
         yield "notes", "/map", "#composer"
 
     def measure(self, field):

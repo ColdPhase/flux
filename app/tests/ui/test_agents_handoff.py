@@ -190,13 +190,13 @@ class HandOffJourney(unittest.TestCase):
     def test_04b_a_read_only_connection_says_it_can_only_read(self) -> None:
         page = self.open_agents()
         page.locator(f'.agents-row[data-agent="{self.ids["agent_reader"]}"] .agents-row__btn').click()
-        detail = page.get_by_role("complementary", name="Reader agent, details")
+        detail = page.get_by_role("region", name="Reader agent, details")
         expect(detail.get_by_test_id("agent-permissions")).to_have_text("Can read projects")
         shot(page, "agents-detail-read-only-permissions")
 
     def test_04_the_detail_panel_opens_on_the_working_agent(self) -> None:
         page = self.open_agents()
-        detail = page.get_by_role("complementary", name="Claude Code agent, details")
+        detail = page.get_by_role("region", name="Claude Code agent, details")
         expect(detail).to_be_visible()
         claude = page.locator(f'.agents-row[data-agent="{self.ids["agent_claude"]}"] .agents-row__btn')
         expect(claude).to_have_attribute("aria-pressed", "true")
@@ -210,11 +210,11 @@ class HandOffJourney(unittest.TestCase):
         expect(page.get_by_role("button", name="Stop Reader agent")).to_have_count(0)
         shot(page, "handoff-agents-detail-desktop")
         page.locator(f'.agents-row[data-agent="{self.ids["agent_reader"]}"] .agents-row__btn').click()
-        expect(page.get_by_role("complementary", name="Reader agent, details")).to_be_visible()
+        expect(page.get_by_role("region", name="Reader agent, details")).to_be_visible()
         expect(page).to_have_url(re.compile(r"agent=connection|agent=agent"))
         page.locator(f'.agents-row[data-agent="{self.ids["agent_claude"]}"] .agents-row__btn').click()
         # The agent's task opens its thread under the list.
-        page.get_by_role("complementary", name="Claude Code agent, details").get_by_role("button", name=re.compile("^Open the thread of #")).click()
+        page.get_by_role("region", name="Claude Code agent, details").get_by_role("button", name=re.compile("^Open the thread of #")).click()
         expect(page.get_by_role("region", name="Agents’ thread of Calibrate the probes at two soil depths")).to_be_visible()
         expect(page.locator("select#agents-task")).to_have_count(0)
 
@@ -313,13 +313,14 @@ class HandOffJourney(unittest.TestCase):
             assert box
             self.assertGreaterEqual(box["height"], 44, "a touch target of at least 44px")
             shot(page, f"handoff-agents-phone-{scheme}")
-            # An agent opens as its own page and goes back to the list.
+            # An agent opens in the one sheet over the list and closes back to it.
             page.get_by_role("button", name=re.compile("Reader agent")).tap()
-            detail = page.get_by_role("complementary", name="Reader agent, details")
+            detail = page.get_by_role("region", name="Reader agent, details")
             expect(detail).to_be_visible()
-            expect(page.get_by_role("list", name="Agents in this project")).to_be_hidden()
+            expect(page.get_by_role("dialog", name=re.compile("^Reader agent"))).to_be_visible()
             shot(page, f"handoff-agent-phone-{scheme}")
-            detail.get_by_role("button", name="Agents").tap()
+            page.get_by_role("button", name="Close reader agent").tap()
+            expect(page.get_by_role("dialog", name=re.compile("^Reader agent"))).to_have_count(0)
             expect(page.get_by_role("list", name="Agents in this project")).to_be_visible()
             button.tap()
             dialog = page.get_by_role("dialog", name="Hand off a task")
@@ -347,7 +348,7 @@ class HandOffJourney(unittest.TestCase):
             touch = bool(kwargs.get("phone"))
             row = page.locator(f'.agents-row[data-agent="{self.ids["agent_claude"]}"] .agents-row__btn')
             (row.tap if touch else row.click)()
-            detail = page.get_by_role("complementary", name="Claude Code agent, details")
+            detail = page.get_by_role("region", name="Claude Code agent, details")
             expect(detail).to_be_visible()
             link = detail.get_by_role("region", name="Now").get_by_role("button", name=re.compile("^Open the thread of #"))
             (link.tap if touch else link.click)()
@@ -379,17 +380,18 @@ class HandOffJourney(unittest.TestCase):
             expect(recent_thread).to_be_visible()
         # Where the panel sits beside the list both stay on screen.
         wide = self.open_agents()
-        wide.get_by_role("complementary", name="Claude Code agent, details").get_by_role("button", name=re.compile("^Open the thread of #")).click()
+        wide.get_by_role("region", name="Claude Code agent, details").get_by_role("button", name=re.compile("^Open the thread of #")).click()
         expect(wide.get_by_role("region", name=f"Agents’ thread of {title}")).to_be_visible()
-        # The thread takes the right column in place of the panel; closing it returns to the panel (#347 P1-2).
-        expect(wide.get_by_role("complementary", name="Claude Code agent, details")).to_have_count(0)
-        wide.get_by_role("button", name="Close thread").click()
-        expect(wide.get_by_role("complementary", name="Claude Code agent, details")).to_be_visible()
+        # The thread takes the panel's place with "‹ Claude Code agent" back to the agent (#347 P1-2, #488).
+        expect(wide.get_by_role("region", name="Claude Code agent, details")).to_have_count(0)
+        wide.get_by_role("button", name="Claude Code agent", exact=True).click()
+        expect(wide.get_by_role("region", name="Claude Code agent, details")).to_be_visible()
+        expect(wide.locator("aside.ui-panel")).to_have_count(1)
 
     def test_11_the_agent_panel_asks_for_a_task_before_confirmation(self) -> None:
         page = self.open_agents()
         grants_before = self.api(page, "GET", f"/api/v1/projects/{self.ids['project']}/grants", status=200)
-        page.get_by_role("complementary", name="Claude Code agent, details").get_by_role("button", name="Hand off to Claude Code agent").click()
+        page.get_by_role("region", name="Claude Code agent, details").get_by_role("button", name="Hand off to Claude Code agent").click()
         dialog = page.get_by_role("dialog", name="Hand off a task")
         # No task is known yet, so this is step 1 with the agent already chosen, never an empty confirmation.
         expect(dialog.get_by_text("Step 1 of 2")).to_be_visible()
@@ -587,7 +589,7 @@ class HandOffJourney(unittest.TestCase):
                         expect(row).not_to_have_attribute("data-working", "true")
                         expect(page.get_by_text("1 in this project", exact=True)).to_be_visible()
                     (row.locator(".agents-row__btn").tap if phone else row.locator(".agents-row__btn").click)()
-                    detail = page.get_by_role("complementary", name="Claude Code agent, details")
+                    detail = page.get_by_role("region", name="Claude Code agent, details")
                     expect(detail.locator(".agents-detail__head > .kreska")).to_have_attribute("data-expression", expression)
                     now = detail.get_by_role("region", name="Now")
                     expect(now).to_contain_text(availability)
@@ -611,11 +613,11 @@ class HandOffJourney(unittest.TestCase):
                         page.go_forward()
                         expect(thread).to_be_visible()
                     else:
-                        # Wide: the thread takes the right column beside the list, which keeps the agent selected (#347 P1-2);
-                        # closing the thread returns to the same agent's panel.
+                        # Wide: the thread takes the panel beside the list, which keeps the agent selected (#347 P1-2);
+                        # "‹" returns to the same agent's panel.
                         expect(row).to_be_visible()
                         expect(row.locator(".agents-row__btn")).to_have_attribute("aria-pressed", "true")
-                        page.get_by_role("button", name="Close thread").click()
+                        page.get_by_role("button", name="Claude Code agent", exact=True).click()
                         expect(detail).to_be_visible()
                         expect(detail.get_by_role("region", name="Now")).to_contain_text(availability)
                     page.unroute_all(behavior="ignoreErrors")

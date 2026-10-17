@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router';
 import type { ConversationMessage } from '@flux/contracts';
 import { AgentIdentity, Icon } from '../ui';
@@ -8,6 +8,25 @@ import { getMaterialVersion } from './conversation-api';
 import { readerActive, watchReaderInput } from '../work/readerIntent';
 
 // Pieces of a project message shared by the stream of roots and the thread beside it (UI116-1).
+
+/** The message a task came from, while a link from the task's panel has just arrived at it (Spokój A08): its tag reads "Source of #1". */
+export const SourceOfContext = createContext<{ messageId: string; label: string } | null>(null);
+
+/**
+ * "Source of #1": a quiet tag on the message a task came from. It stays two seconds and then goes, with the soft fill,
+ * so nothing is left marked on the conversation (Spokój rule 6).
+ */
+export function SourceTag({ messageId }: { messageId: string }) {
+  const source = useContext(SourceOfContext);
+  const [shown, setShown] = useState(true);
+  const mine = source?.messageId === messageId;
+  useEffect(() => {
+    if (!mine) return;
+    const timer = window.setTimeout(() => setShown(false), 2000);
+    return () => window.clearTimeout(timer);
+  }, [mine]);
+  return mine && shown ? <span className="convo-source-tag" data-source-tag>{source.label}</span> : null;
+}
 
 export function when(iso: string) { return new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }); }
 // A natural clock as drawn ("11:02", or "4:55 PM" in a 12-hour locale), never a zero-padded "04:55 PM" (#436).

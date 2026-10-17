@@ -3,7 +3,7 @@ import { Link, useRevalidator } from 'react-router';
 import type { Agent, ObjectLink, Project, WorkspaceMember, WorkStatus, WorkDetailObject, WorkDetailProjection } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { useStreamEvents } from '../api/stream';
-import { AgentIdentity, Avatar, Button, Icon, Input, PanelMeta, StatusGlyph, useToast } from '../ui';
+import { AgentIdentity, Avatar, Button, Icon, Input, Kreska, PanelActions, PanelGlyph, PanelMeta, StatusGlyph, useToast } from '../ui';
 import { getProject, listWorkspaceMembers } from '../app/conversation-api';
 import { useShellData } from '../app/data';
 import { useRegisterLiveHere } from '../live/LiveProvider';
@@ -18,11 +18,13 @@ import { useProjectShell } from '../project/data';
 import { useWorkRead } from './useWorkRead';
 import { useNativeOwn, useWorkChoices, useDetailRelations, type DetailRelations, type DetailChoices } from './useDetailReads';
 import { WorkPagination } from './WorkPagination';
-import { TaskDiscussionSection } from './TaskDiscussion';
-import { AgentThreadLink } from '../agents/AgentThreadLink';
-import { TaskThoughtLinks } from './TaskThoughtLinks';
+import { ActivityTimeline, TaskComposer, useTaskActivity } from './TaskActivity';
+import { LinkThoughtButton, LinkedThoughts, useThoughtLinks } from './TaskThoughtLinks';
+import { PropertyMenu } from './PropertyMenu';
+import { MoreMenu, type MoreItem } from '../app/HeaderParts';
+import { useComposerDraft } from '../composer/draft';
 import { ReadyToClose, TaskPullRequests } from '../github/TaskPullRequests';
-import { StatusControl, TitleField, useStateKeys } from './TaskParts';
+import { DueField, StatusControl, TitleField, useStateKeys } from './TaskParts';
 
 // The Details panel for work items, decisions and results, and the two forms that start from a
 // message (#101). Everything shown here is visible to the people with access to the project;
@@ -119,11 +121,10 @@ export function WorkDetails({ view }: { view: ObjectView | WorkFormView }) {
 }
 
 function RelationPages({ relations }: { relations: DetailRelations }) {
-  // Only a successful, complete first observation proves there are no links. A later
-  // empty page must retain navigation/Refresh, and pending or failed reads remain visible.
-  const emptyEntry = relations.read.phase === 'ready' && relations.complete && relations.page?.total === 0 && !relations.links.length;
+  // Pagination shows only when there is another page (Spokój rule 4); a pending or failed read stays visible.
+  const paged = !relations.page || !!relations.page.previousCursor || !!relations.page.nextCursor || relations.page.before > 0;
   return <div data-detail-relations-phase={relations.read.phase} data-detail-relations-observed-at={relations.page?.observedAt}>
-    {!emptyEntry ? <WorkPagination {...relations} page={relations.page} label="Object relationship pages" noun="links" /> : null}
+    {paged ? <WorkPagination {...relations} page={relations.page} label="Object relationship pages" noun="links" stepsWhenPaged /> : null}
     {relations.read.phase === 'unavailable' ? <p className="wd-error" role="alert">Relationships could not be loaded. <button type="button" className="wd-inline" onClick={relations.onRefresh}>Refresh relationships</button></p> : null}
     {relations.page && !relations.complete ? <p className="wd-muted">Linked sections show this page of relationships. Browse all pages to explore every link.</p> : null}
   </div>;
@@ -154,7 +155,8 @@ function Linked({ items, empty }: { items: { key: string; label: ReactNode; open
   return <ul className="wd-links">{items.map((item) => <li key={item.key}><button type="button" className="wd-link" onClick={item.open}><span>{item.label}</span>{item.hint ? <small>{item.hint}</small> : null}<Icon name="chevron-right" size={14} /></button></li>)}</ul>;
 }
 
-function Sources({ links, id, project }: { links: ObjectLink[]; id: string; project: Project }) {
+/** The other ends a task, decision or result came from; `of` names the task a message link arrives for ("Source of #1"). */
+function Sources({ links, id, project, of }: { links: ObjectLink[]; id: string; project: Project; of?: string }) {
   const sources = links.filter((link) => link.from.id === id && link.role === 'source');
   if (!sources.length) return null;
   return (
@@ -165,7 +167,7 @@ function Sources({ links, id, project }: { links: ObjectLink[]; id: string; proj
           : link.to.type === 'material' ? `/materials/${link.to.id}/versions/${link.to.version}`
             : link.to.type === 'thought' && link.sketchId ? `/projects/${project.id}/map/${link.sketchId}#thought-${link.to.id}` : null;
         const kind = link.to.type === 'message' ? 'Message' : link.to.type === 'thought' ? 'Thought' : `Material v${link.to.type === 'material' ? link.to.version : ''}`;
-        return <li key={link.id}>{to ? <Link className="wd-link" to={to}><span><b>{kind}:</b> {link.toTitle}</span><Icon name="chevron-right" size={14} /></Link> : null}</li>;
+        return <li key={link.id}>{to ? <Link className="wd-link" to={to} state={link.to.type === 'message' ? { keepPanel: true, ...(of ? { sourceOf: of } : {}) } : undefined}><span><b>{kind}:</b> {link.toTitle}</span><Icon name="chevron-right" size={14} /></Link> : null}</li>;
       })}
     </ul>
   );
@@ -231,11 +233,19 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
   const { busy, error } = commands.state;
   const { setBusy, setError, setBlocker, isCurrent } = commands;
   const blocker = commands.state.blocker ?? item.blocker ?? '';
-  const ownerId = useId();
   const [handingOff, setHandingOff] = useState(false);
+  const [editingBlocker, setEditingBlocker] = useState(false);
+  // Closing the blocker's field (Save or Cancel) gives focus back to its Edit, so the keyboard keeps its place.
+  const editButton = useRef<HTMLButtonElement>(null);
+  const wasEditing = useRef(false);
+  useEffect(() => {
+    if (wasEditing.current && !editingBlocker) editButton.current?.focus({ preventScroll: true });
+    wasEditing.current = editingBlocker;
+  }, [editingBlocker]);
   const owners = useAgentOwners(context.project);
   const decisions = linked(relations.links, item.id, 'decision');
   const results = linked(relations.links, item.id, 'result');
+  const docs = docsLinking(relations.links, item.id);
   const parkedBy = item.parked ? detail.context.find((decision) => decision.id === item.parked!.decisionId) : null;
   // An open task is the most specific place to work together, and a fragment others can open.
   const liveAnchor = { projectId: item.projectId, context: { type: 'work' as const, id: item.id }, label: item.title };
@@ -262,6 +272,7 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
   const blockerBase = useRef<number | null>(null);
   const fieldEdits = useRef({ title: 0, blocker: 0 });
   const ownerBase = useRef<number | null>(null);
+  // The owner the person chose and has not yet saved: it stays shown, with a retry, when the save is refused or conflicts.
   const [ownerDraft, setOwnerDraft] = useState<string | null>(null);
   const rebase = useRef<{ title?: number; blocker?: number; owner?: number }>({});
   useEffect(() => {
@@ -286,7 +297,7 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
       delete rebase.current[field];
       if (fieldEdits.current[field] === edit) {
         base.current = null;
-        if (field === 'blocker') setBlocker(undefined);
+        if (field === 'blocker') { setBlocker(undefined); setEditingBlocker(false); }
       } else {
         // Text entered while the answer waited is a new draft after our own
         // stored change. Only that acknowledged version becomes its base.
@@ -295,6 +306,8 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
     });
     return ok;
   }
+  // The owner is chosen from the menu against the version the person saw when it opened; a change that came in meanwhile is a
+  // conflict they are told about, and choosing again saves over the latest version.
   async function saveOwner(value: string) {
     const [kind, ...rest] = value.split(':');
     const version = ownerBase.current ?? item.version;
@@ -331,144 +344,166 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
   const people = context.members.length ? context.members.map((member) => ({ value: `human:${member.userId}`, label: member.userId === me.user.id ? `${member.name} (you)` : member.name }))
     : [{ value: `human:${me.user.id}`, label: `${me.user.name} (you)` }];
   if (item.owner && !people.some((person) => person.value === ownerValue) && item.owner.kind === 'human') people.push({ value: ownerValue, label: item.owner.name });
-  const waitingId = useId();
   const waitingPeople = people.map((person) => ({ ...person, id: person.value.slice('human:'.length) }));
   if (item.waitingFor && !waitingPeople.some((person) => person.id === item.waitingFor!.id)) waitingPeople.push({ value: `human:${item.waitingFor.id}`, id: item.waitingFor.id, label: item.waitingFor.name });
   const agents = context.agents.map((agent) => ({ value: `agent:${agent.id}`, label: `${agent.name} (agent)` }));
   if (item.owner?.kind === 'agent' && !agents.some((agent) => agent.value === ownerValue)) agents.push({ value: ownerValue, label: `${item.owner.name} (agent)` });
+  const ownerOptions = [
+    { value: '', label: 'Nobody yet', icon: <Icon name="person" size={16} /> },
+    ...people.map((person) => ({ ...person, group: 'People', icon: <Avatar name={person.label} size="sm" /> })),
+    ...agents.map((agent) => ({ ...agent, group: 'Agents', icon: <Kreska size={16} /> })),
+  ];
+  const shownOwner = ownerDraft ?? ownerValue;
+  const ownerView = shownOwner
+    ? (shownOwner.startsWith('agent:')
+      ? <AgentIdentity name={(agents.find((agent) => agent.value === shownOwner)?.label ?? item.owner?.name ?? '').replace(/ \(agent\)$/, '')} owner={owners.get(shownOwner.slice('agent:'.length))} icon={16} />
+      : <><Avatar name={people.find((person) => person.value === shownOwner)?.label ?? item.owner?.name ?? ''} size="sm" tone={shownOwner === `human:${me.user.id}` ? 'me' : 'neutral'} /><span>{people.find((person) => person.value === shownOwner)?.label ?? item.owner?.name}</span></>)
+    : <><Icon name="person" size={16} /><span className="wd-muted">{ownerDraft === '' ? 'Nobody yet' : 'Assign'}</span></>;
+  const waitingOptions = [{ value: '', label: 'No one in particular' }, ...waitingPeople.map((person) => ({ value: person.id, label: person.label }))];
+  const finished = isFinished(item);
+  const { toggle: thoughtToggle, links: thoughts } = useThoughtLinks({ item, project: context.project, links: relations.links, reload });
+  const composer = useComposerDraft(me.user.id, context.project.id, `task:${item.id}`);
+  const activity = useTaskActivity({ item, links: relations.links, project: context.project, members: context.members, me: { id: me.user.id, name: me.user.name }, revision: detail.observedAt });
+  const composerId = useId();
+  const linkedThoughts = relations.links.some((link) => link.from.type === 'work' && link.from.id === item.id && link.to.type === 'thought' && link.role !== 'source');
+  const nothingLinked = !results.length && !decisions.length && !docs.length && !linkedThoughts;
+  const copyLink = () => {
+    const url = `${window.location.origin}/projects/${context.project.id}/tasks?open=work:${item.id}`;
+    void navigator.clipboard?.writeText(url).then(() => toast({ message: 'Link copied', timeout: 3000 }), () => toast({ message: 'The link could not be copied.', tone: 'danger' }));
+  };
+  const more: MoreItem[] = [{ label: 'Copy link', run: copyLink }];
 
   return (
-    <div className="details wd" data-detail-kind="work" data-detail-id={item.id}>
+    <div className="details wd wd--task" data-detail-kind="work" data-detail-id={item.id} data-version={item.version}>
       <PanelMeta>{taskNumber(item)}</PanelMeta>
-      <p className="wd-where"><span className="ui-task-number">{taskNumber(item)}</span> · <span className="wd-project-name">{context.project.name}</span>{item.parked ? ' · parked, not done' : ''}</p>
-      <TitleField title={item.title} editable={writable} onEdit={() => { titleBase.current = item.version; }}
-        onDraftChange={() => { fieldEdits.current.title++; }} onSave={(title) => saveField('title', title)} />
-      {item.outcome ? <p className="details__lead">{item.outcome}</p> : null}
+      <PanelGlyph><StatusGlyph status={item.status} size={14} /></PanelGlyph>
+      <PanelActions><MoreMenu label="Task actions" items={more} /></PanelActions>
+      <div className="wd__scroll">
+        {item.parked ? <p className="wd-where">Parked, not done</p> : null}
+        <TitleField title={item.title} editable={writable} onEdit={() => { titleBase.current = item.version; }}
+          onDraftChange={() => { fieldEdits.current.title++; }} onSave={(title) => saveField('title', title)} />
+        {item.outcome ? <p className="details__lead">{item.outcome}</p> : null}
 
-      <dl className="wd-rows">
-        <div className="wd-row">
-          <dt id={`${ownerId}-status`}>Status</dt>
-          <dd>{writable ? <StatusControl status={item.status} disabled={busy} onChoose={(status) => void setState(status)} /> : <span className="wd-value"><StatusGlyph status={item.status} size={16} /><span>{reverted ? 'Creation undone · read-only history' : STATUS_LABEL[item.status]}</span></span>}</dd>
-        </div>
-        <div className="wd-row">
-          <dt><label htmlFor={ownerId}>Owner</label></dt>
-          <dd>
-            {item.owner ? (item.owner.kind === 'agent' ? <AgentIdentity name={item.owner.name} owner={owners.get(item.owner.id)} /> : <Avatar name={item.owner.name} size="sm" tone={item.owner.id === me.user.id ? 'me' : 'neutral'} />) : null}
-            {writable ? (
-              <select id={ownerId} className="wd-owner" disabled={busy} value={ownerDraft ?? ownerValue} onFocus={() => { ownerBase.current ??= item.version; }} onPointerDown={() => { ownerBase.current ??= item.version; }} onBlur={() => { if (ownerDraft === null) ownerBase.current = null; }} onKeyDown={(event) => { if (event.key === 'Escape' && ownerDraft === null) ownerBase.current = null; else ownerBase.current ??= item.version; }} onChange={(event) => {
-                ownerBase.current ??= item.version;
-                setOwnerDraft(event.target.value);
-                void saveOwner(event.target.value);
-              }}>
-                <option value="">Nobody yet</option>
-                <optgroup label="People">{people.map((person) => <option key={person.value} value={person.value}>{person.label}</option>)}</optgroup>
-                {agents.length ? <optgroup label="Agents">{agents.map((agent) => <option key={agent.value} value={agent.value}>{agent.label}</option>)}</optgroup> : null}
-              </select>
-            ) : <span className="wd-value" id={ownerId}>{item.owner?.name ?? 'Nobody yet'}</span>}
-            {writable && ownerDraft !== null && !busy ? <><span className="wd-muted">Now: {item.owner?.name ?? 'Nobody yet'}</span><Button variant="quiet" onClick={() => void saveOwner(ownerDraft)}>Retry owner change</Button></> : null}
-          </dd>
-        </div>
-        <div className="wd-row">
-          <dt>Came from</dt>
-          <dd className="wd-from"><CameFrom item={item} links={relations.links} project={context.project} empty={emptyLinks(relations, 'Added directly on the Tasks tab.')} /></dd>
-        </div>
-      </dl>
-      {writable && !isFinished(item) ? <Button variant="secondary" className="wd-handoff" onClick={() => setHandingOff(true)}>Hand off to an agent</Button> : null}
+        <dl className="wd-rows">
+          <div className="wd-row">
+            <dt>Status</dt>
+            <dd>{writable ? <StatusControl status={item.status} disabled={busy} onChoose={(status) => void setState(status)} /> : <span className="wd-value"><StatusGlyph status={item.status} size={16} /><span>{reverted ? 'Creation undone · read-only history' : STATUS_LABEL[item.status]}</span></span>}</dd>
+          </div>
+          <div className="wd-row">
+            <dt>Owner</dt>
+            <dd>{writable
+              ? <>
+                <PropertyMenu label="Owner" value={shownOwner} options={ownerOptions} disabled={busy} onOpen={() => { ownerBase.current ??= item.version; }}
+                  onClose={() => { if (ownerDraft === null) ownerBase.current = null; }} onChoose={(value) => { setOwnerDraft(value); void saveOwner(value); }}>{ownerView}</PropertyMenu>
+                {ownerDraft !== null && !busy ? <><span className="wd-muted">Now: {item.owner?.name ?? 'Nobody yet'}</span><Button variant="quiet" size="sm" onClick={() => void saveOwner(ownerDraft)}>Retry owner change</Button></> : null}
+              </>
+              : <span className="wd-value">{item.owner ? ownerView : 'Nobody yet'}</span>}</dd>
+          </div>
+          <div className="wd-row">
+            <dt>Came from</dt>
+            <dd className="wd-from"><CameFrom item={item} links={relations.links} project={context.project} empty={emptyLinks(relations, 'Added directly on the Tasks tab.')} /></dd>
+          </div>
+          <div className="wd-row">
+            <dt>Due</dt>
+            <dd><DueField value={item.dueOn} editable={writable} finished={finished} disabled={busy} onSave={(day) => change({ dueOn: day })} /></dd>
+          </div>
+        </dl>
+        {reverted ? <p className="wd-muted wd-history" data-task-lifecycle="creation_reverted">Creation undone by {reverted.revertedBy.name} on {shortDate(reverted.revertedAt)}. This task stays here as history.</p> : null}
 
-      {item.status === 'blocked' ? (
-        <section className="wd-blocker" aria-label="Blocker">
-          <div className="wd-blocker__head"><span className="ui-pill ui-pill--inv">Blocked</span>
-            {writable ? <Button variant="quiet" className="wd-blocker__resolve" disabled={busy} onClick={() => void setState('in_progress')}>Resolve</Button> : null}</div>
-          {writable ? (
-            <form className="wd-blocker-form" onSubmit={(event) => { event.preventDefault(); void saveField('blocker', blocker.trim() || null); }}>
-              <Input label="What is it waiting for?" value={blocker} onFocus={() => { blockerBase.current ??= item.version; }} onBlur={() => { if (blocker.trim() === (item.blocker ?? '')) { blockerBase.current = null; setBlocker(undefined); } }} onChange={(event) => { fieldEdits.current.blocker++; blockerBase.current ??= item.version; setBlocker(event.target.value); }} maxLength={2000} />
-              {commands.state.blocker !== undefined && item.blocker !== blocker ? <p className="wd-muted">Now: {item.blocker || 'No blocker written.'}</p> : null}
-              <Button type="submit" variant="secondary" busy={busy} disabled={blocker.trim() === (item.blocker ?? '')}>Save</Button>
-            </form>
-          ) : <p>{item.blocker || 'Waiting for something; no reason written.'}</p>}
-          {writable ? (
-            <div className="wd-waiting">
-              <label htmlFor={waitingId}>Waiting for</label>
-              <select id={waitingId} className="wd-owner" disabled={busy} value={item.waitingFor?.id ?? ''}
-                onChange={(event) => void change({ waitingFor: event.target.value ? { kind: 'human', id: event.target.value } : null })}>
-                <option value="">No one in particular</option>
-                {waitingPeople.map((person) => <option key={person.id} value={person.id}>{person.label}</option>)}
-              </select>
+        {item.status === 'blocked' ? (
+          <section className="wd-blocker" aria-label="Blocker">
+            <div className="wd-blocker__head">
+              <span className="ui-pill ui-pill--inv">Blocked</span>
+              <p className="wd-blocker__text">
+                {item.waitingFor ? <>Waiting for <b>{item.waitingFor.name}</b>{item.blocker ? ` · ${item.blocker}` : ''}</> : item.blocker || 'Waiting for something; no reason written.'}
+              </p>
+              {writable && !editingBlocker ? <div className="wd-blocker__acts">
+                <Button ref={editButton} variant="quiet" size="sm" disabled={busy} onClick={() => { blockerBase.current ??= item.version; setEditingBlocker(true); }}>Edit</Button>
+                <Button variant="quiet" size="sm" className="wd-blocker__resolve" disabled={busy} onClick={() => void setState('in_progress')}>Resolve</Button>
+              </div> : null}
             </div>
-          ) : item.waitingFor ? <p className="wd-muted">Waiting for {item.waitingFor.name}</p> : null}
-        </section>
-      ) : null}
-      {writable ? <HandOffDialog open={handingOff} onClose={() => setHandingOff(false)} project={context.project} task={{ id: item.id, version: item.version, number: item.number, title: item.title }} onDone={reload} /> : null}
-      <ReadyToClose item={item} writable={writable} busy={busy} done={() => void setState('done')} />
-      {!reverted && !isFinished(item) ? <LiveEntry variant="inline" anchor={liveAnchor} /> : null}
+            {writable && editingBlocker ? (
+              <form className="wd-blocker-form" onSubmit={(event) => { event.preventDefault(); void saveField('blocker', blocker.trim() || null); }}>
+                <Input label="What is it waiting for?" value={blocker} autoFocus onChange={(event) => { fieldEdits.current.blocker++; blockerBase.current ??= item.version; setBlocker(event.target.value); }} maxLength={2000} />
+                {commands.state.blocker !== undefined && item.blocker !== blocker ? <p className="wd-muted">Now: {item.blocker || 'No blocker written.'}</p> : null}
+                <div className="wd-waiting">
+                  <span id="wd-waiting-label">Waiting for</span>
+                  <PropertyMenu label="Waiting for" value={item.waitingFor?.id ?? ''} options={waitingOptions} disabled={busy}
+                    onChoose={(value) => void change({ waitingFor: value ? { kind: 'human', id: value } : null })}>
+                    <span>{item.waitingFor?.name ?? 'No one in particular'}</span>
+                  </PropertyMenu>
+                </div>
+                <div className="wd-blocker__form-acts">
+                  <Button variant="quiet" size="sm" onClick={() => { blockerBase.current = null; setBlocker(undefined); setEditingBlocker(false); }}>Cancel</Button>
+                  <Button type="submit" variant="secondary" size="sm" busy={busy} disabled={blocker.trim() === (item.blocker ?? '')}>Save</Button>
+                </div>
+              </form>
+            ) : null}
+          </section>
+        ) : null}
+        {error ? <p className="wd-error" role="alert">{error}</p> : null}
 
-      {reverted ? <section className="details__sec wd-history" data-task-lifecycle="creation_reverted" aria-labelledby={`wd-history-${item.id}`}>
-        <p className="wd-muted">Creation undone by {reverted.revertedBy.name} on {shortDate(reverted.revertedAt)}. This task stays here as history.</p>
-        <h4 id={`wd-history-${item.id}`}>Activity</h4>
-        <ol className="wd-history__events" aria-label="Task activity">
-          <li><span className="wd-history__action">Created by</span><HistoryActor actor={item.createdBy} owners={owners} />
-            <time dateTime={item.createdAt}>{historyTime(item.createdAt)}</time></li>
-          <li><span className="wd-history__action">Creation undone by</span><HistoryActor actor={reverted.revertedBy} owners={owners} />
-            <time dateTime={reverted.revertedAt}>{historyTime(reverted.revertedAt)}</time></li>
-        </ol>
-      </section> : null}
-      {item.creationUndo?.eligible && writable ? <UndoCreation key={`${me.user.id}:${item.id}:${item.version}`} item={item} userId={me.user.id} reload={reload} isCurrent={isCurrent} /> : null}
-      {error ? <p className="wd-error" role="alert">{error}</p> : null}
+        {writable ? (
+          <div className="wd-acts" role="group" aria-label="Task actions">
+            {/* Finished work cannot be handed off: the action is dimmed, not removed, so nothing else moves (Spokój rule 7). */}
+            <Button variant="secondary" size="sm" icon="chevron-right" aria-label="Hand off to an agent" disabled={finished} onClick={() => setHandingOff(true)}>Hand off</Button>
+            <Button variant="secondary" size="sm" icon="plus" aria-label="Attach a result" onClick={() => openDetails({ kind: 'attach-result', projectId: item.projectId, workId: item.id }, { back: 'push' })}>Result</Button>
+            <LinkThoughtButton links={thoughts} toggle={thoughtToggle} />
+          </div>
+        ) : null}
+        {writable ? <HandOffDialog open={handingOff} onClose={() => setHandingOff(false)} project={context.project} task={{ id: item.id, version: item.version, number: item.number, title: item.title }} onDone={reload} /> : null}
+        <ReadyToClose item={item} writable={writable} busy={busy} done={() => void setState('done')} />
+        {!reverted && !finished ? <LiveEntry variant="inline" anchor={liveAnchor} /> : null}
+        <LinkedThoughts links={thoughts} />
 
-      {item.parked ? (
-        <section className="details__sec" aria-labelledby="wd-parked">
-          <h4 id="wd-parked">Parked by a pivot</h4>
-          <p>Set aside on {shortDate(item.parked.at)} when {parkedBy ? <button type="button" className="wd-inline" onClick={() => openDetails({ kind: 'decision', id: parkedBy.id, projectId: context.project.id })}>“{parkedBy.title}”</button> : 'a new decision'} was accepted. It keeps its status and can come back.</p>
-          {writable ? <div className="wd-actions"><Button variant="secondary" busy={busy} onClick={() => void change({ parked: false })}>Bring back into the plan</Button></div> : null}
-        </section>
-      ) : null}
+        {item.creationUndo?.eligible && writable ? <UndoCreation key={`${me.user.id}:${item.id}:${item.version}`} item={item} userId={me.user.id} reload={reload} isCurrent={isCurrent} /> : null}
 
-      {item.criteria.length ? (
-        <section className="details__sec" aria-labelledby={`wd-criteria-${item.id}`}>
-          <h4 id={`wd-criteria-${item.id}`}>Done when</h4>
-          <ul className="wd-criteria">{item.criteria.map((criterion) => <li key={criterion}>{criterion}</li>)}</ul>
-          <p className="wd-muted">Written down by whoever planned it. Flux does not check them off.</p>
-        </section>
-      ) : null}
+        {item.parked ? (
+          <section className="details__sec" aria-labelledby="wd-parked">
+            <h4 id="wd-parked">Parked by a pivot</h4>
+            <p>Set aside on {shortDate(item.parked.at)} when {parkedBy ? <button type="button" className="wd-inline" onClick={() => openDetails({ kind: 'decision', id: parkedBy.id, projectId: context.project.id }, { back: 'push' })}>“{parkedBy.title}”</button> : 'a new decision'} was accepted. It keeps its status and can come back.</p>
+            {writable ? <div className="wd-actions"><Button variant="secondary" busy={busy} onClick={() => void change({ parked: false })}>Bring back into the plan</Button></div> : null}
+          </section>
+        ) : null}
 
-      {item.prerequisites.length ? <Prerequisites item={item} openDetails={openDetails} /> : null}
+        {item.criteria.length ? (
+          <section className="details__sec" aria-labelledby={`wd-criteria-${item.id}`}>
+            <h4 id={`wd-criteria-${item.id}`}>Done when</h4>
+            <ul className="wd-criteria">{item.criteria.map((criterion) => <li key={criterion}>{criterion}</li>)}</ul>
+            <p className="wd-muted">Written down by whoever planned it. Flux does not check them off.</p>
+          </section>
+        ) : null}
 
-      <TaskPullRequests item={item} project={context.project} writable={writable} reload={reload} />
+        {item.prerequisites.length ? <Prerequisites item={item} openDetails={(view) => openDetails(view, { back: 'push' })} /> : null}
 
-      <RelationPages relations={relations} />
+        <TaskPullRequests item={item} project={context.project} writable={writable} reload={reload} />
 
-      <section className="details__sec" aria-labelledby="wd-results">
-        <div className="wd-sechead"><h4 id="wd-results">Results</h4>
-          {writable ? <Button variant="secondary" icon="plus" onClick={() => openDetails({ kind: 'attach-result', projectId: item.projectId, workId: item.id })}>Attach a result</Button> : null}</div>
-        <Linked empty={emptyLinks(relations, isFinished(item) ? 'Finished without a written result.' : 'No result yet. Small tasks do not need one.')} items={results.map((entry) => ({ key: entry.link.id, label: entry.title, open: () => openDetails({ kind: 'result', id: entry.id, projectId: context.project.id }) }))} />
-      </section>
-      <TaskThoughtLinks item={item} project={context.project} links={relations.links} writable={writable} reload={reload}
-        empty={emptyLinks(relations, 'Not linked to a thought yet.')} />
+        <RelationPages relations={relations} />
 
-      <TaskDiscussionSection key={`${me.user.id}:${context.project.id}:${item.id}`} readOnly={!!reverted} revision={detail.observedAt} workId={item.id} project={context.project} number={item.number} members={context.members} me={{ id: me.user.id, name: me.user.name }} />
-      <AgentThreadLink workId={item.id} projectId={context.project.id} revision={detail.observedAt} />
+        {results.length ? (
+          <section className="details__sec" aria-labelledby="wd-results">
+            <h4 id="wd-results">Results</h4>
+            <Linked items={results.map((entry) => ({ key: entry.link.id, label: entry.title, open: () => openDetails({ kind: 'result', id: entry.id, projectId: context.project.id }, { back: 'push' }) }))} />
+          </section>
+        ) : null}
+        {decisions.length ? (
+          <section className="details__sec" aria-labelledby="wd-decisions">
+            <h4 id="wd-decisions">Decisions</h4>
+            <Linked items={decisions.map((entry) => ({ key: entry.link.id, label: entry.title, hint: entry.link.role === 'still_applies' ? 'still applies' : undefined, open: () => openDetails({ kind: 'decision', id: entry.id, projectId: context.project.id }, { back: 'push' }) }))} />
+          </section>
+        ) : null}
+        <OtherRelationships object={item} relations={relations} project={context.project} />
+        {docs.length ? <InDocs object={item} project={context.project} relations={relations} /> : null}
 
-      <section className="details__sec" aria-labelledby="wd-decisions">
-        <h4 id="wd-decisions">Decisions</h4>
-        <Linked empty={emptyLinks(relations, 'No decision refers to this work yet.')} items={decisions.map((entry) => ({ key: entry.link.id, label: entry.title, hint: entry.link.role === 'still_applies' ? 'still applies' : undefined, open: () => openDetails({ kind: 'decision', id: entry.id, projectId: context.project.id }) }))} />
-      </section>
-
-      <OtherRelationships object={item} relations={relations} project={context.project} />
-      <InDocs object={item} project={context.project} relations={relations} />
-      <Audience project={context.project} />
-      <IdsLine>Added by {item.createdBy.name} · {shortDate(item.createdAt)} · version {item.version}</IdsLine>
+        <ActivityTimeline state={activity} composer={composer} item={item} project={context.project} me={{ id: me.user.id, name: me.user.name }} writable={writable} composerId={composerId}
+          empty={nothingLinked && relations.read.phase === 'ready' && relations.complete ? <p className="wd-muted wd-act__none">No results, decisions or Wiki pages yet.</p> : null} />
+      </div>
+      <div className="wd__foot" data-version={item.version}>
+        <TaskComposer state={activity} composer={composer} item={item} writable={writable} readOnly={!!reverted} id={composerId}
+          audience={`Everyone in ${context.project.name} · added by ${item.createdBy.kind === 'human' ? item.createdBy.name.split(/\s+/)[0] : item.createdBy.name} · ${shortDate(item.createdAt)}`} />
+      </div>
     </div>
   );
-}
-
-function historyTime(value: string) {
-  return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value));
-}
-
-function HistoryActor({ actor, owners }: { actor: OwnWork['createdBy']; owners: ReturnType<typeof useAgentOwners> }) {
-  return actor.kind === 'agent'
-    ? <AgentIdentity name={actor.name} owner={owners.get(actor.id)} />
-    : <strong>{actor.name}</strong>;
 }
 
 /**
@@ -512,7 +547,7 @@ function CameFrom({ item, links, project, empty }: { item: OwnWork; links: Objec
   const has = links.some((link) => link.from.id === item.id && link.role === 'source');
   return (
     <>
-      <Sources links={links} id={item.id} project={project} />
+      <Sources links={links} id={item.id} project={project} of={taskNumber(item)} />
       {item.planIntent ? (
         <p className="wd-plan">Planned from <Link className="wd-inline" to={`/materials/${item.planIntent.materialId}/versions/${item.planIntent.version}`}>plan revision {item.planIntent.version}</Link>
           {' '}as <code>{item.planIntent.intentKey}</code>. This task stays tied to that revision.</p>
@@ -742,7 +777,8 @@ function ProposeDecision({ view, context, contextStatus, revision, isCurrent }: 
       }, attempt);
       if (!isCurrent()) return;
       revalidator.revalidate();
-      openDetails({ kind: 'decision', id: decision.id, projectId: view.projectId });
+      // The form took the place of what it was opened from; the new decision does too, so "‹ back" still leads there.
+      openDetails({ kind: 'decision', id: decision.id, projectId: view.projectId }, { back: 'keep' });
     } catch (cause) { if (isCurrent()) setError(readable(cause)); }
     finally { if (isCurrent()) setBusy(false); }
   }
@@ -812,7 +848,7 @@ function AttachResult({ view, context, contextStatus, reload, revision, isCurren
       }, attempt);
       if (!isCurrent()) return;
       revalidator.revalidate();
-      openDetails({ kind: 'result', id: result.id, projectId: view.projectId });
+      openDetails({ kind: 'result', id: result.id, projectId: view.projectId }, { back: 'keep' });
     } catch (cause) {
       if (!isCurrent()) return;
       setError(readable(cause));

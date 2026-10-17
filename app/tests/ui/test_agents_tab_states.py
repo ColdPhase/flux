@@ -279,20 +279,19 @@ class AgentsTabStates(unittest.TestCase):
         expect(card).to_contain_text("PR 42 is ready at a1b2c3d.")
         expect(card).not_to_contain_text("Thanks, keep going.")
         card.click()
-        expect(page.get_by_role("region", name="#1 · Fix the reconnect loop in the lamp firmware")).to_be_visible()
+        expect(page.get_by_role("complementary", name=re.compile(r"^#1 · Fix the reconnect loop in the lamp firmware"))).to_be_visible()
         expect(page.locator("select#agents-task")).to_have_count(0)
         shot(page, "agents-tab-latest-desktop")
         # Negative control: Ada's Claude Code holds #3 and has written nothing there, so its card says so instead of another person's line.
         page.goto(f"/projects/{self.ids['project']}/agents?agent=connection:{self.ids['conn_claude']}")
         expect(page.get_by_role("button", name="Open the thread of #3")).to_contain_text("No message from it on this task yet.")
-        # On the phone the Now card opens the thread as a sheet, and the sheet hides the task's hand-off button.
+        # On the phone the Now card opens the thread in the one sheet.
         phone = self.page("ada", phone=True)
         self.stub_thread(phone, "task1", {self.ids["m2"]: {"body": "PR 42 is ready at a1b2c3d.", **self.as_agent("codex")}})
         phone.goto(f"/projects/{self.ids['project']}/agents")
         self.row(phone, "codex").get_by_role("button").first.click()
         phone.get_by_role("button", name="Open the thread of #1").tap()
-        expect(phone.get_by_role("region", name="#1 · Fix the reconnect loop in the lamp firmware")).to_be_visible()
-        expect(phone.get_by_role("button", name="Hand off a task")).to_be_hidden()
+        expect(phone.get_by_role("dialog", name=re.compile(r"^#1 · Fix the reconnect loop in the lamp firmware"))).to_be_visible()
         shot(phone, "agents-tab-latest-phone")
 
     def test_03_waiting_for_you_and_blocked_are_on_the_rows(self) -> None:
@@ -333,7 +332,7 @@ class AgentsTabStates(unittest.TestCase):
         expect(requests.locator(".agents-link__count")).to_have_text("1")
         requests.click()
         expect(ada).to_have_url(re.compile(rf"task={self.ids['task1']}"))
-        expect(ada.get_by_role("region", name="#1 · Fix the reconnect loop in the lamp firmware").locator(".qcard").first).to_be_visible()
+        expect(ada.locator("#details .qcard").first).to_be_visible()
         # Negative control: a question asked of someone else is not Jonas's request.
         jonas = self.page("jonas")
         self.stub_questions(jonas, [question])
@@ -426,7 +425,7 @@ class AgentsTabStates(unittest.TestCase):
         # On a phone the row's Stop is in the agent's panel (as Take back is, test_15).
         # Claude Code holds #3 (in progress, Ada's own); earlier tests stop Codex and Lab helper.
         self.row(phone, "claude").locator(".agents-row__btn").tap()
-        phone.get_by_role("complementary", name="Claude Code, details").get_by_role("button", name="Stop Claude Code").tap()
+        phone.get_by_role("region", name="Claude Code, details").get_by_role("button", name="Stop Claude Code").tap()
         action = phone.get_by_role("button", name="Hand back")
         expect(action).to_be_visible()
         # The toast enters with a scale transform, so the layout height is read (offsetHeight ignores transforms).
@@ -435,37 +434,41 @@ class AgentsTabStates(unittest.TestCase):
         # Negative control: the old padding-only action was about 33 px high, so this assertion fails without the coarse-pointer rule.
 
     def test_09_the_phone_thread_is_a_sheet_over_the_list_with_a_way_back_to_the_agent(self) -> None:
-        # #347 review N2 and P1-2: on a phone the thread covers the Agents pane; its title and "‹" are on screen; "‹" returns to the agent.
+        # #347 review N2 and P1-2, #488: on a phone the thread is the one sheet; its title, "‹ Codex" and close are on screen; "‹" returns to the agent.
         page = self.page("ada", phone=True)
         page.goto(f"/projects/{self.ids['project']}/agents")
         self.row(page, "codex").locator(".agents-row__btn").tap()
         page.get_by_role("button", name="Open the thread of #1").tap()
-        expect(page.locator(".agents-thread-sheet")).to_be_visible()
-        title = page.locator(".thread__title").bounding_box()
-        back = page.get_by_role("button", name="Close thread").bounding_box()
-        assert title and back
-        for name, box in (("title", title), ("back", back)):
+        sheet = page.get_by_role("dialog", name=re.compile(r"^#1 · Fix the reconnect loop"))
+        expect(sheet).to_be_visible()
+        expect(page.locator("[data-detent-sheet]")).to_have_count(1)
+        title = sheet.locator(".agents-thread__task").bounding_box()
+        back = sheet.get_by_role("button", name="Codex").bounding_box()
+        close = sheet.get_by_role("button", name="Close thread").bounding_box()
+        assert title and back and close
+        for name, box in (("title", title), ("back", back), ("close", close)):
             self.assertTrue(0 <= box["y"] and box["y"] + box["height"] <= 844, f"the thread {name} is on screen: {box}")
-        expect(page.get_by_role("button", name="Hand off a task")).to_be_hidden()
-        page.get_by_role("button", name="Close thread").tap()
+        sheet.get_by_role("button", name="Codex").tap()
         # Negative control: the old in-flow thread put its title below the fold, and "‹" went to the list instead of the agent.
-        expect(page.get_by_role("complementary", name="Codex, details")).to_be_visible()
+        expect(page.get_by_role("region", name="Codex, details")).to_be_visible()
+        expect(page.locator("[data-detent-sheet]")).to_have_count(1)
         shot(page, "agents-tab-phone-sheet")
 
     def test_10_the_docked_thread_keeps_its_title_and_close_in_view(self) -> None:
-        # #347 review N3: opening the thread on the computer scrolls its title into view, not out of it.
+        # #347 review N3, #488: opening the thread on the computer shows its title and close in the one panel, not out of it.
         page = self.page("ada")
         page.goto(f"/projects/{self.ids['project']}/agents")
         self.row(page, "codex").locator(".agents-row__btn").click()
         page.get_by_role("button", name="Open the thread of #1").click()
-        expect(page.get_by_role("region", name="#1 · Fix the reconnect loop in the lamp firmware")).to_be_visible()
-        title = page.locator(".thread__title").bounding_box()
-        close = page.get_by_role("button", name="Close thread").bounding_box()
-        pane = page.locator(".agents-scroll").bounding_box()
+        panel = page.get_by_role("complementary", name=re.compile(r"^#1 · Fix the reconnect loop in the lamp firmware"))
+        expect(panel).to_be_visible()
+        title = panel.locator(".agents-thread__task").bounding_box()
+        close = panel.get_by_role("button", name="Close thread").bounding_box()
+        pane = panel.bounding_box()
         assert title and close and pane
         for name, box in (("title", title), ("close", close)):
             self.assertTrue(0 <= box["y"] and box["y"] + box["height"] <= 900, f"the thread {name} is in the window: {box}")
-            self.assertGreaterEqual(box["y"], pane["y"] - 1, f"the thread {name} is in the pane's visible area, not under its header: {box} pane {pane}")
+            self.assertGreaterEqual(box["y"], pane["y"] - 1, f"the thread {name} is inside the panel: {box} panel {pane}")
         # Negative control: the old shared scroll moved the pane to the thread's end, so the title sat above the pane's top.
 
     def test_11_stop_keeps_the_panel_and_focus_on_the_stopped_agent(self) -> None:
@@ -473,11 +476,11 @@ class AgentsTabStates(unittest.TestCase):
         page = self.page("ada")
         self.stub_connections(page, {self.ids["conn_codex"]: self.working("task1", "Fix the reconnect loop in the lamp firmware")})
         page.goto(f"/projects/{self.ids['project']}/agents")
-        detail = page.get_by_role("complementary", name="Codex, details")
+        detail = page.get_by_role("region", name="Codex, details")
         expect(detail).to_be_visible()
         detail.get_by_role("button", name="Stop Codex").click()
         expect(page.get_by_text("Stopped Codex on #1")).to_be_visible()
-        expect(page.get_by_role("complementary", name="Codex, details")).to_be_visible()
+        expect(page.get_by_role("region", name="Codex, details")).to_be_visible()
         focused = page.evaluate("() => document.activeElement && document.activeElement.classList.contains('agents-detail__name') ? document.activeElement.textContent : ''")
         self.assertIn("Codex", focused, "focus stays on the stopped agent")
         # Negative control: the old list re-sort moved the panel to Jonas's or Lab's agent and its heading took focus.
@@ -489,7 +492,7 @@ class AgentsTabStates(unittest.TestCase):
         page = self.page("ada")
         self.stub_questions(page, [self.question(asked=ADA["id"], text="Merge PR 42 now, or wait?", message=self.ids["m2"], task=self.ids["task1"])])
         page.goto(f"/projects/{self.ids['project']}/agents?agent=connection:{self.ids['conn_codex']}")
-        panel = page.get_by_role("complementary", name="Codex, details")
+        panel = page.get_by_role("region", name="Codex, details")
         expect(panel.get_by_role("region", name="Now")).to_contain_text("Waiting for your answer")
         expect(panel.get_by_role("region", name="Now")).to_contain_text("Asks: “Merge PR 42 now, or wait?”")
         # Jonas's agent holds #2 again, blocked: the task is set back the way a person sets it.
@@ -498,7 +501,7 @@ class AgentsTabStates(unittest.TestCase):
         self.api(ada, "PATCH", f"/api/v1/work/{self.ids['task2']}", {"owner": {"kind": "agent", "id": self.ids["jonas_claude"]}, "status": "blocked",
                  "blocker": "Waiting for the probe drawing"}, status=200, headers={"if-match": f'"{current["version"]}"'})
         page.goto(f"/projects/{self.ids['project']}/agents?agent=connection:{self.ids['conn_jonas_claude']}")
-        expect(page.get_by_role("complementary", name="Claude Code, details").get_by_role("region", name="Now")).to_contain_text("Blocked · Waiting for the probe drawing")
+        expect(page.get_by_role("region", name="Claude Code, details").get_by_role("region", name="Now")).to_contain_text("Blocked · Waiting for the probe drawing")
         # Negative control: the old panel said "Handed to it, not started" for the blocked agent and "In progress" for the waiting one.
 
     def test_13_the_now_card_describes_its_latest_line(self) -> None:
@@ -519,8 +522,8 @@ class AgentsTabStates(unittest.TestCase):
         card = page.get_by_role("button", name="Open the thread of #1")
         card.focus()
         page.keyboard.press("Enter")
-        expect(page.get_by_role("region", name="#1 · Fix the reconnect loop in the lamp firmware")).to_be_visible()
-        inside = page.evaluate("() => !!(document.activeElement && document.activeElement.closest('.thread'))")
+        expect(page.get_by_role("complementary", name=re.compile(r"^#1 · Fix the reconnect loop in the lamp firmware"))).to_be_visible()
+        inside = page.evaluate("() => !!(document.activeElement && document.activeElement.closest('#details'))")
         self.assertTrue(inside, "focus is in the thread")
         # Negative control: focus fell to the page body after Enter (the old unmount).
 
@@ -539,7 +542,7 @@ class AgentsTabStates(unittest.TestCase):
         self.assertEqual(take.get_attribute("aria-label"), f"Take back #{notes['number']}")
         expect(take).to_be_hidden()
         row.locator(".agents-row__btn").tap()
-        expect(phone.get_by_role("complementary", name="Notes, details").get_by_role("button", name=f"Take back #{notes['number']}")).to_be_visible()
+        expect(phone.get_by_role("region", name="Notes, details").get_by_role("button", name=f"Take back #{notes['number']}")).to_be_visible()
         # Negative control: the old row showed the Take back pill, visible on the phone, so the hidden check fails.
 
     def test_16_the_row_and_panel_say_stopped_by_you(self) -> None:
@@ -550,7 +553,7 @@ class AgentsTabStates(unittest.TestCase):
         expect(self.row(page, "lab")).to_be_visible()
         page.wait_for_load_state("networkidle")
         page.goto(f"/projects/{self.ids['project']}/agents?agent=connection:{self.ids['conn_lab']}")
-        expect(page.get_by_role("complementary", name="Lab helper, details").get_by_role("region", name="Recent")).to_contain_text("Stopped by you · #5")
+        expect(page.get_by_role("region", name="Lab helper, details").get_by_role("region", name="Recent")).to_contain_text("Stopped by you · #5")
         # Negative control: the old panel read "Stopped by Ada Kowalska · #5".
 
     def test_17_the_sidebar_card_is_asleep_when_its_agent_is_offline(self) -> None:

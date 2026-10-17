@@ -270,11 +270,13 @@ and its real discussion under [P5](../design/final/README.md#5-behaviour):
   forward until it meets them. Reading never creates an announcement, task or root.
 - **The task's root.** `GET /api/v1/projects/:id/conversation-roots` adds `task: { workId, title, number }` (the current
   title and the immutable task number, #367) to a root that opened a task's discussion. The stream and the thread header show it as the task's chip;
-  replies from the thread drawer use the task contribution operation and the shared task draft described below.
+  replies from the thread in the one panel use the task contribution operation and the shared task draft described below.
 
-- **Details of a task.** A Discussion section reads `GET /api/v1/work/:id/discussion?limit=1`: the root with its
-  true author and time and the reply count, linking to the thread in Conversation. Before anyone has written, a
-  person who can write starts it there with `POST /api/v1/work/:id/discussion` (`kind: 'text'`). Its draft and
+- **Details of a task (#488).** The panel's Activity is one newest-first timeline: the task's creation, its recorded
+  changes (`GET /api/v1/work/:id/activity`: state, owner, due day and title, each with its author and time) and the
+  messages of its discussion (`GET /api/v1/work/:id/discussion`), with "Open in Conversation" into the thread. The
+  composer is at the bottom of the panel. Before anyone has written, a person who can write starts the discussion
+  there with `POST /api/v1/work/:id/discussion` (`kind: 'text'`); the message then shows in the timeline. Its draft and
   retry id are the task's own, `task:<id>` and `task:<id>:pending` in the browser's draft store: the identity the
   Agents task composer (#183) uses, so a lost answer retried from either stores the message once.
 

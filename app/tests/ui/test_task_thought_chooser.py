@@ -120,7 +120,7 @@ class TaskThoughtChooser(unittest.TestCase):
         page.goto(f"/projects/{self.ids['project']}/tasks?open=work:{self.ids['task']}")
         card = page.locator(f".wd[data-detail-kind='work'][data-detail-id='{self.ids['task']}']")
         expect(card).to_be_visible()
-        control = card.get_by_role("region", name="Linked thoughts").get_by_role("button", name="Link to a thought")
+        control = card.get_by_role("button", name="Link thought")  # one of the task's small actions (#488)
         control.tap() if phone else control.click()
         picker = card.get_by_role("group", name=re.compile("^Thoughts to link to "))
         expect(picker).to_be_visible()

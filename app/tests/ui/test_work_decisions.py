@@ -140,7 +140,7 @@ class WorkDecisionsJourney(unittest.TestCase):
         panel = self.details(page)
         expect(panel.get_by_role("heading", name=IDEA)).to_be_visible()
         expect(panel.get_by_role("button", name="Status", exact=True)).to_contain_text("Open")
-        expect(panel).to_contain_text("Everyone with access to Gesture lamp")
+        expect(panel).to_contain_text("Everyone in Gesture lamp")
         expect(panel.get_by_role("link", name=re.compile("^Message: Test the camera"))).to_be_visible()
         # The source stays in place, and the work shows up under it.
         expect(message.locator(":scope > .message-bubble > p").first).to_have_text(IDEA)
@@ -152,12 +152,12 @@ class WorkDecisionsJourney(unittest.TestCase):
         # One change, one toast, and Undo puts the state back at once (S9).
         expect(page.get_by_role("status").get_by_role("button", name="Undo")).to_be_visible()
         # Details names the task by its number in the project (#276), in the head beside the Task chip.
-        expect(panel.locator(".wd-where")).to_have_text(re.compile(r"^#[1-9]\d* · Gesture lamp"))
-        expect(panel.locator(".wd-where .ui-task-number")).to_have_text("#1")
+        expect(panel.locator(".wd__foot")).to_contain_text("Everyone in Gesture lamp")
         expect(page.locator(".ui-panel__meta")).to_have_text("#1")
         expect(message.locator(".ws-chip .ui-task-number")).to_have_text("#1")
         self.assertTrue(message.locator(".ws-chip").evaluate("node => node.querySelector('.ui-task-number').compareDocumentPosition(node.querySelector('.ws-chip__t')) & Node.DOCUMENT_POSITION_FOLLOWING"), "the number leads the title in a task reference")
-        panel.get_by_label("Owner").select_option(f"human:{PARTNER['id']}")
+        panel.get_by_role("button", name="Owner", exact=True).click()
+        page.get_by_role("menuitemradio", name=re.compile(PARTNER["name"])).click()
         expect(message.get_by_role("button", name=f"Work: {IDEA}")).to_contain_text("Kai Berg")
         stored = self.work(page)["work"]
         self.assertEqual(len(stored), 1, "one action creates exactly one work item")
@@ -216,6 +216,8 @@ class WorkDecisionsJourney(unittest.TestCase):
         panel.get_by_role("button", name="Attach result").click()
         expect(panel.locator(".wd-eyebrow")).to_contain_text("Negative result")
         expect(panel.get_by_role("button", name=re.compile(IDEA))).to_be_visible()
+        # The result took the form's place, which took the thread's: the way back leads to the reply it was made from.
+        panel.get_by_role("button", name="Thread", exact=True).click()
         expect(message.get_by_role("button", name="Result: The camera cannot track gestures below 10 lux")).to_be_visible()
         stored = self.work(page)
         self.assertEqual(stored["results"][0]["finding"], "negative")
@@ -297,9 +299,10 @@ class WorkDecisionsJourney(unittest.TestCase):
         submit_button(page).tap()
         sheet = page.get_by_role("dialog", name="Details")
         expect(sheet.get_by_role("heading", name=FINDING)).to_be_visible()
-        expect(sheet).to_contain_text("Everyone with access to Gesture lamp")
+        expect(sheet).to_contain_text("Everyone in Gesture lamp")
         shot(page, "work-phone-390-details")
-        sheet.get_by_role("button", name="Close details").tap()
+        # The task took the thread's place in the one sheet; the way back leads to the reply it was made from.
+        sheet.get_by_role("button", name="Thread", exact=True).tap()
         expect(message.get_by_role("button", name=f"Work: {FINDING}")).to_be_visible()
         view_tab(page, "Tasks", tap=True)
         expect(page.get_by_role("region", name=re.compile("^Open"))).to_contain_text(FINDING)
@@ -494,10 +497,12 @@ class WorkDecisionsJourney(unittest.TestCase):
                 apart = acts["x"] + acts["width"] <= box["x"] or box["x"] + box["width"] <= acts["x"] or acts["y"] + acts["height"] <= box["y"] or box["y"] + box["height"] <= acts["y"]
                 self.assertTrue(apart, f"{key}: actions clear of the meta line")
         shot(page, "conversation-author-column-1440")
-        # Narrowed beside an open panel.
+        # Details take the thread's place in the one panel, with the way back to the thread (#488).
         page.locator(f"#message-{self.messages['finding']}").get_by_role("button", name=re.compile("^Work: ")).first.click()
-        expect(page.locator("#details")).to_be_visible()
-        self.assert_columns(page, "beside details")
+        expect(page.locator("#details").locator(".wd[data-detail-kind='work']")).to_be_visible()
+        page.locator("#details").get_by_role("button", name="Thread", exact=True).click()
+        expect(page.locator("#details .thread__in")).to_be_visible()
+        self.assert_columns(page, "after the way back from details")
         shot(page, "conversation-author-column-1440-details")
         phone = self.open_conversation("partner", phone=True)
         self.assert_columns(phone, "phone")

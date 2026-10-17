@@ -1,7 +1,7 @@
 import {
-  decisionAcceptPath, decisionPath, projectDecisionsPath, projectLinksPath, projectResultsPath, projectWorkPath, resultPath, workItemPath, workspaceAssignedWorkPath, taskCreationUndoPath,
+  decisionAcceptPath, decisionPath, taskActivityPath, projectDecisionsPath, projectLinksPath, projectResultsPath, projectWorkPath, resultPath, workItemPath, workspaceAssignedWorkPath, taskCreationUndoPath,
   type AcceptDecisionCommand, type CreateObjectLinkCommand, type CreateResultCommand, type CreateWorkCommand, type Decision, type ObjectLink, type Page,
-  type ProposeDecisionCommand, type UndoTaskCreationResult, type UpdateWorkCommand, type WorkItem, type WorkResult, type Agent,
+  type ProposeDecisionCommand, type TaskActivityPage, type TaskActivityQuery, type UndoTaskCreationResult, type UpdateWorkCommand, type WorkItem, type WorkResult, type Agent,
 } from '@flux/contracts';
 import { request } from '../api/client';
 import { readAssignedAcross } from './assigned';
@@ -42,3 +42,11 @@ export const listAgents = (workspaceId: string, signal?: AbortSignal) => request
 
 export const undoTaskCreation = (item: Pick<WorkItem, 'id' | 'version'>, clientCommandId: string, signal?: AbortSignal) =>
   request<UndoTaskCreationResult>(taskCreationUndoPath(item.id), { method: 'POST', body: { clientCommandId, expectedVersion: item.version }, signal });
+
+/** What changed on a task and who changed it, newest first (#488); a page at a time. */
+export const getTaskActivity = (workId: string, options: TaskActivityQuery & { signal?: AbortSignal } = {}) => {
+  const query = new URLSearchParams();
+  if (options.limit) query.set('limit', String(options.limit));
+  if (options.before) query.set('before', options.before);
+  return request<TaskActivityPage>(`${taskActivityPath(workId)}${query.size ? `?${query}` : ''}`, { signal: options.signal });
+};
