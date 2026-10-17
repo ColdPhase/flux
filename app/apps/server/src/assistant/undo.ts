@@ -1,6 +1,8 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { assistantChangeRows, type AssistantChangeRow, type DbExecutor } from '@flux/db';
+import type { UpdateWorkCommand } from '@flux/contracts';
 import { DomainError, restorableFields, type Database, type Principal, type UndoRecord } from '@flux/core';
+import { cancelOwnerAssistantUnitInTransaction } from '../co-work/assistant-units.js';
 import { nativeMapRoomExists, prepareNativeMap } from '../editing/native-map-journal.js';
 import { nativeCapacityRefusal, nativeSketchInEventSession } from '../sketches/adapters.js';
 import { nativeDocsInEventSession } from '../docs/adapters.js';
@@ -19,8 +21,12 @@ class Since extends Error { constructor(readonly message: string = CHANGED_SINCE
 
 const sha = (value: string) => createHash('sha256').update(value).digest('hex');
 
-/** Restores one change inside one transaction; a refusal rolls the whole transaction back and writes nothing. */
-export async function undoChange(db: Database, row: AssistantChangeRow, owner: Principal, ownerName: string): Promise<UndoResult> {
+/**
+ * Restores one change inside one transaction; a refusal rolls the whole transaction back and writes nothing. `by` is whoever
+ * undoes it, the owner or anyone who may edit the object, and every write is theirs, under their own rights (AST-6 "Undo").
+ */
+export async function undoChange(db: Database, row: AssistantChangeRow, by: Principal, byName: string, ownerName: string): Promise<UndoResult> {
+  const owner = by;
   const record = (row.receipt as { undo?: UndoRecord } | null)?.undo;
   if (!record || (row.state !== 'applied' && row.state !== 'applied_after_wait')) return { done: false, message: NOT_UNDOABLE };
   const releases = new Set<() => void>();
@@ -28,6 +34,7 @@ export async function undoChange(db: Database, row: AssistantChangeRow, owner: P
     // A map with a live room takes the live preparation first, as the assistant's own map change did.
     const sketchId = await db.transaction(async (tx) => {
       const rows = assistantChangeRows(tx as DbExecutor);
+      if (row.operation === 'map.rename' && row.objectId) return row.objectId;
       if (row.operation.startsWith('map.thought') && row.objectId) return (await rows.thoughts([row.objectId]))[0]?.sketchId ?? null;
       if (row.operation === 'map.link.create' && row.objectId) return (await rows.link(row.objectId))?.sketchId ?? null;
       if (row.operation === 'map.positions.update' && record.plan.kind === 'positions') return (await rows.thoughts([record.plan.moves[0]!.id]))[0]?.sketchId ?? null;
@@ -46,7 +53,8 @@ export async function undoChange(db: Database, row: AssistantChangeRow, owner: P
         fingerprint: sha(`undo:${row.id}`), retainUntil: (release) => releases.add(release) });
       const { plan } = record;
       const id = row.objectId;
-      const reason = `Undo: ${ownerName} undid their assistant's change`;
+      // "Ada undid their assistant's change", or "Jonas undid Ada's assistant's change" when someone else takes it back.
+      const reason = `Undo: ${byName} undid ${by.id === row.ownerUserId ? 'their' : `${ownerName}'s`} assistant's change`;
       const gone = (value: unknown) => { if (!value) throw new Since('Already gone'); return value as NonNullable<typeof value>; };
       if (!id && plan.kind !== 'positions') throw new Since(NOT_UNDOABLE);
       switch (row.operation) {
@@ -57,10 +65,22 @@ export async function undoChange(db: Database, row: AssistantChangeRow, owner: P
         }
         case 'work.update': {
           if (plan.kind !== 'fields') throw new Since(NOT_UNDOABLE);
-          const current = gone(await rows.work(id!)) as Record<string, unknown> & { version: number };
+          const task = gone(await rows.work(id!)) as NonNullable<Awaited<ReturnType<typeof rows.work>>>;
+          const current = { ...task, waitingFor: task.waitingForUserId } as unknown as Record<string, unknown> & { version: number };
           const { restore, changedSince } = restorableFields(plan.fields, current);
           if (changedSince.length) throw new Since();
-          await work.updateWork(owner, id!, restore, current.version);
+          // `restore` puts back what was there: it posts no blocker again and tells nobody they are waited for again (#550).
+          const { waitingFor, ...rest } = restore;
+          await work.updateWork(owner, id!, { ...rest, ...(waitingFor === undefined ? {} : { waitingFor: waitingFor ? { kind: 'human' as const, id: String(waitingFor) } : null }),
+            restore: true } as UpdateWorkCommand, current.version);
+          break;
+        }
+        case 'map.rename': {
+          if (plan.kind !== 'fields') throw new Since(NOT_UNDOABLE);
+          const map = gone(await rows.map(id!)) as Record<string, unknown> & { version: number };
+          const { restore, changedSince } = restorableFields(plan.fields, map);
+          if (changedSince.length) throw new Since();
+          await maps.rename(owner, id!, { title: String(restore.title), expectedVersion: map.version });
           break;
         }
         case 'doc.create': {
@@ -109,6 +129,15 @@ export async function undoChange(db: Database, row: AssistantChangeRow, owner: P
             return { id: move.id, x: move.before.x, y: move.before.y, expectedVersion: current.version };
           });
           await maps.moveThoughts(owner, thoughts[0]!.sketchId, { moves });
+          break;
+        }
+        case 'cowork.unit.create': {
+          if (plan.kind !== 'handoff') throw new Since(NOT_UNDOABLE);
+          const cancelled = await cancelOwnerAssistantUnitInTransaction(tx, { workspaceId: row.workspaceId, projectId: row.projectId,
+            assistantConnectionId: String((row.receipt as { assistantConnectionId?: string } | null)?.assistantConnectionId ?? ''), taskId: plan.taskId,
+            unitId: plan.unitId, creationVersion: plan.creationVersion });
+          if (cancelled.result === 'started') throw new Since(`Your ${cancelled.recipient} already started. Open the task`);
+          if (cancelled.result !== 'cancelled') throw new Since();
           break;
         }
         default: throw new Since(NOT_UNDOABLE);

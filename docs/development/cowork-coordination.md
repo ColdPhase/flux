@@ -609,6 +609,13 @@ interrupted or unconfirmed preparation supplies no new approval authority.
   not execute again; changed post-state/recipient/role/payload is stale/conflicting.
   Owner Apply never enters the public bootstrap schema or widens its root/child rule.
 
+**Implemented (A3/A4, #403/#404, 2026-10-17).** `ownerAssistantUnitCreationInTransaction` and the Undo cancellation are in
+`apps/server/src/co-work/assistant-units.ts`; the pure rules are `requireOwnerAssistantHandoff` and `assistantHandoffRunId`
+in `packages/core/src/co-work/units.ts`, the storage is `coworkUnitCreationRows` (`lock` now also reads every unit of the task
+for review separation; `lockUnit` and `cancelPending` serve Undo in the claim's lock order). The change is recorded as an
+`assistant_changes` row with `object_type = 'work'`, operation `cowork.unit.create` and the unit in its receipt and Undo plan, so
+no schema change was needed. Tests: `app/tests/app/assistant-handoff.test.ts`, `agent-runtime-runs.test.ts`.
+
 **Delivery gates, A3/A4 (not runtime evidence).** Both fake engines must create an
 own eligible agent's pending handoff with no assistant claim/bootstrap, then prove
 the recipient cannot start without its own grant/claim. Preserve positive ordinary

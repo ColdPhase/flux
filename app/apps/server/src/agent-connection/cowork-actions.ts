@@ -1,15 +1,16 @@
 import { z } from 'zod';
 import { AGENT_OPERATION_CLASSES, AGENT_PEER_REQUEST_CLASSES, type AgentExecutionCommand, type AgentJsonValue,
   type AgentOperation, type AgentPeerRequestClass } from '@flux/contracts';
-import { COWORK_CHECKPOINT_LIMITS, COWORK_DECLINE_REASONS, COWORK_DEFER_BOUNDARIES, COWORK_DEFER_REASONS, type Database } from '@flux/core';
+import { COWORK_CHECKPOINT_LIMITS, COWORK_DECLINE_REASONS, COWORK_DEFER_BOUNDARIES, COWORK_DEFER_REASONS, InvalidInputError, type Database } from '@flux/core';
+import { ownerAssistantUnitCreationInTransaction } from '../co-work/assistant-units.js';
 import { coWorkClaimCheckpoint, coWorkClaimInTransaction } from '../co-work/claims.js';
 import { COWORK_CLAIM_POLICY, COWORK_REQUEST_POLICY, COWORK_RESPONSE_POLICY, COWORK_UNIT_POLICY } from '../co-work/policy.js';
 import { coWorkRecovery } from '../co-work/recovery.js';
 import { coWorkRequestInTransaction } from '../co-work/requests.js';
 import { coWorkRequestResponseInTransaction } from '../co-work/responses.js';
 import { coWorkUnitTransitionInTransaction } from '../co-work/transitions.js';
-import { coWorkUnitCreateInTransaction } from '../co-work/units.js';
-import { actionAnnotations as annotations, actionId as id, actionVersion as version } from './action-execution.js';
+import { coWorkUnitCreateInTransaction, coWorkUnitOutcome } from '../co-work/units.js';
+import { actionAnnotations as annotations, actionId as id, actionVersion as version, nativeActionExecutor, type ActionInput } from './action-execution.js';
 import type { FluxMcpClaims } from './context.js';
 import type { AgentToolRegistry } from './tool-registry.js';
 import { toolError, toolResult } from './tool-results.js';
@@ -64,6 +65,7 @@ function command({ projectId, runtimeSessionId, grantId, clientCommandId, peerRe
  * the inbox and resolving with evidence (and a review verdict) since 2026-10-17 (docs/development/cowork-coordination.md).
  */
 export function registerAgentCoworkActions(tools: AgentToolRegistry, db: Database, claims: FluxMcpClaims, cursorSecret: string) {
+  const execute = nativeActionExecutor(db, claims);
   const register = (operation: AgentOperation) => tools.forScope('flux.action.execute', { operation, classes: AGENT_OPERATION_CLASSES[operation] });
   const run = (handler: () => Promise<unknown>) => handler().then(toolResult, toolError);
 
@@ -84,9 +86,22 @@ export function registerAgentCoworkActions(tools: AgentToolRegistry, db: Databas
       parent: z.strictObject({ unitId: id, generation: version, leaseId: id }).nullable()
         .describe('null for a root unit; otherwise your live claim on a unit of the same task.') }),
     annotations,
-  }, ({ taskId, unitKey, expectedTaskVersion, assignmentConnectionId, parent, ...input }) => run(() =>
-    db.transaction((tx) => coWorkUnitCreateInTransaction(tx, claims, command(input, 'cowork.unit.create', taskId,
-      { unitKey, expectedTaskVersion, assignmentConnectionId, parent }), COWORK_UNIT_POLICY))));
+  }, ({ taskId, unitKey, expectedTaskVersion, assignmentConnectionId, parent, ...input }) => run(() => {
+    // An assistant run, or the owner's Apply of its saved hand-off, is the only caller of the owner-assistant adapter: the server
+    // chose it from the verified run context (claims), never from this input. Every other caller keeps the unchanged ordinary path.
+    if (claims.run || claims.approval) {
+      if (parent !== null) throw new InvalidInputError('A hand-off from your assistant has no parent unit');
+      return execute(input as unknown as ActionInput, 'cowork.unit.create', taskId,
+        { unitKey, expectedTaskVersion, assignmentConnectionId, parent: null, peerRequestClass: input.peerRequestClass },
+        async ({ transaction, runtime }) => {
+          const creation = await ownerAssistantUnitCreationInTransaction(transaction, runtime, input.projectId,
+            { taskId, role: input.peerRequestClass, unitKey, expectedTaskVersion, assignmentConnectionId, parent: null }, COWORK_UNIT_POLICY);
+          return coWorkUnitOutcome(creation, { workspaceId: runtime.workspaceId, projectId: input.projectId });
+        });
+    }
+    return db.transaction((tx) => coWorkUnitCreateInTransaction(tx, claims, command(input, 'cowork.unit.create', taskId,
+      { unitKey, expectedTaskVersion, assignmentConnectionId, parent }), COWORK_UNIT_POLICY));
+  }));
 
   register('cowork.claim').registerTool('flux_claim_unit', {
     title: 'Claim your co-work unit under a standing grant',

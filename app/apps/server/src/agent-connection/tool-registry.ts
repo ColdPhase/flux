@@ -1,6 +1,6 @@
 import type { McpServer, ToolAnnotations, ToolCallback } from '@modelcontextprotocol/server';
 import { z } from 'zod';
-import { ASSISTANT_RUN_EFFECT_TOOLS, AGENT_MCP_ENTRIES, agentScopeRefusal, type AgentMcpPolicy, type AgentOperation, type AgentPeerRequestClass, type AgentScope, type AgentToolCapability } from '@flux/contracts';
+import { ASSISTANT_RUN_EFFECT_TOOLS, ASSISTANT_UNIT_CREATE_VIEW, AGENT_MCP_ENTRIES, AGENT_PEER_REQUEST_CLASSES, agentScopeRefusal, type AgentMcpPolicy, type AgentOperation, type AgentPeerRequestClass, type AgentScope, type AgentToolCapability } from '@flux/contracts';
 import type { McpDispatch } from './mcp-dispatch.js';
 import { isAssistantText, redactCall } from './assistant-changes.js';
 
@@ -26,6 +26,27 @@ const RUN_EFFECT_DESCRIPTIONS: Record<string, string> = {
   flux_unlink_thoughts: 'Remove one link (this always waits for your owner\'s OK).',
   flux_start_conversation: 'Start a conversation in this project.',
   flux_reply_in_conversation: 'Reply in one conversation of this project.',
+  flux_create_unit: 'Hand one task to one of your owner\'s own agents (execute, review or plan) at the task version you last read. The authority is this run: '
+    + 'there is no bootstrap and no standing grant. The agent still has to claim it with its own grant. It may need your owner\'s OK first; the result then says so.',
+};
+/**
+ * The strict run-private input of `flux_create_unit` (`assistant-unit-create/v1`, R2): exactly the existing intent fields. There is no
+ * runtime session or grant, `parent` is the literal null, and supplying anything else (a purpose, a run, an actor, a budget) is an error.
+ * The ordinary external schema is unchanged. A waiting hand-off is stored with this view's name and decoded by it on Apply.
+ */
+export const ASSISTANT_UNIT_CREATE_INPUT = z.strictObject({
+  projectId: z.uuid().optional(),
+  clientCommandId: z.uuid().describe('New for each change; reuse only to retry it.'),
+  peerRequestClass: z.enum(AGENT_PEER_REQUEST_CLASSES).describe('The unit\'s role: execute, review or plan.'),
+  taskId: z.uuid().describe('The native task to hand off.'),
+  // No pattern here: the definitions travel with every request, so the rule (letters, digits and _ : . -, up to 200) is checked by the adapter.
+  unitKey: z.string().min(1).max(200).describe('A stable key for this hand-off, for example "codex-1": letters, digits and _ : . - only.'),
+  expectedTaskVersion: z.int().min(1).max(2_147_483_647).describe('The task version you last read.'),
+  assignmentConnectionId: z.uuid().describe('One of your owner\'s own agent connections that works in this project.'),
+  parent: z.null().describe('Always null: a hand-off from the assistant has no parent unit.'),
+});
+const RUN_PRIVATE: Record<string, { input: z.ZodType; view: string }> = {
+  flux_create_unit: { input: ASSISTANT_UNIT_CREATE_INPUT, view: ASSISTANT_UNIT_CREATE_VIEW },
 };
 const RUN_EFFECTS = new Set<string>(ASSISTANT_RUN_EFFECT_TOOLS);
 type ToolOutput = { content?: { type: string; text?: string }[]; isError?: boolean };
@@ -71,13 +92,14 @@ export function agentToolRegistry(server: McpServer, dispatch: McpDispatch, boun
         if (run && effect && RUN_EFFECTS.has(name)) {
           const original = callback as (...args: unknown[]) => unknown;
           const shape = config.inputSchema as unknown as z.ZodObject<Record<string, z.ZodType>>;
+          const private_ = RUN_PRIVATE[name];
           config = { ...config, description: RUN_EFFECT_DESCRIPTIONS[name] ?? config.title,
-            inputSchema: shape.omit({ runtimeSessionId: true, grantId: true, peerRequestClass: true, sources: true })
-              .extend({ projectId: z.uuid().optional(), clientCommandId: z.uuid().describe('New for each change; reuse only to retry it.') }) as unknown as I };
+            inputSchema: (private_?.input ?? shape.omit({ runtimeSessionId: true, grantId: true, peerRequestClass: true, sources: true })
+              .extend({ projectId: z.uuid().optional(), clientCommandId: z.uuid().describe('New for each change; reuse only to retry it.') })) as unknown as I };
           callback = (async (args: Record<string, unknown>, extra: unknown) => {
             // AIM-3 redaction before anything is prepared, stored or written (AST-9.2).
-            const redacted = redactCall({ ...args, projectId: args.projectId ?? run.projectId, sources: [] });
-            return plainWords(await original({ ...redacted, assistantCall: { tool: name, args: redacted } }, extra) as ToolOutput);
+            const redacted = redactCall({ ...args, projectId: args.projectId ?? run.projectId, ...(private_ ? {} : { sources: [] }) });
+            return plainWords(await original({ ...redacted, assistantCall: { tool: name, args: redacted, ...(private_ ? { view: private_.view } : {}) } }, extra) as ToolOutput);
           }) as unknown as ToolCallback<I>;
         }
         // Proxy preserves the SDK's schema-dependent callback type and forwards

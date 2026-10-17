@@ -57,7 +57,9 @@ function WorkingWords({ run }: { run: AssistantRun }) {
 }
 
 /** The owner's line where the answer will appear: what the assistant is doing, with Stop. */
-export function WorkingLine({ run, onStop, onRetry, onDismiss }: { run: AssistantRun; onStop: () => Promise<void>; onRetry: () => Promise<void>; onDismiss: () => void }) {
+export function WorkingLine({ run, onStop, onRetry, onDismiss, changed = 0 }: { run: AssistantRun; onStop: () => Promise<void>; onRetry: () => Promise<void>; onDismiss: () => void;
+  /** Changes the run committed before it ended: the line says so instead of "Nothing was posted" and the message below lists them. */
+  changed?: number }) {
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState('');
   const act = async (action: () => Promise<void>) => {
@@ -66,7 +68,7 @@ export function WorkingLine({ run, onStop, onRetry, onDismiss }: { run: Assistan
     finally { setBusy(false); }
   };
   const working = isWorking(run);
-  const ended = endedText(run);
+  const ended = endedText(run, changed);
   // Motion follows actual execution only (#155 AC-3): a queued or stopping run is static; its text says why.
   const executing = working && run.status !== 'queued' && !run.stopRequested;
   const loop = useLoopPause<HTMLLIElement>();

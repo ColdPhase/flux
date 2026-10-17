@@ -1,6 +1,6 @@
 import { prepareReferencedTaskUse } from './task-targets.js';
 import { fileRows } from './files.js';
-import { and, asc, desc, eq, inArray, isNotNull, notInArray, sql, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNotNull, notInArray, or, sql, type SQL } from 'drizzle-orm';
 import { assistantAreasFromPolicy, type AssistantAreas } from '@flux/contracts';
 import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
@@ -120,20 +120,36 @@ export function personalRunRows(db: DbExecutor) {
 
     findRun,
 
+    /** Working runs (any kind) and the owner's own queued requests: at most one of each (AST-6 queue). Queued background runs have their own limit. */
     async inFlightCount(ownerUserId: string) {
-      const rows = await db.select({ id: r.id }).from(r).where(and(eq(r.ownerUserId, ownerUserId), inArray(r.status, IN_FLIGHT))).limit(3);
+      const rows = await db.select({ id: r.id }).from(r).where(and(eq(r.ownerUserId, ownerUserId),
+        or(inArray(r.status, ['reading', 'dispatching']), and(eq(r.status, 'queued'), eq(r.authority, 'owner_request'))))).limit(3);
       return rows.length;
     },
 
+    /**
+     * Another run of this owner holds the lane (reading or dispatching), or this queued background run would jump an owner's
+     * own queued request: the owner's requests go before background runs (AST-6 queue).
+     */
     async laneBusy(ownerUserId: string, exceptRunId: string) {
-      const rows = await db.select({ id: r.id }).from(r).where(and(eq(r.ownerUserId, ownerUserId), inArray(r.status, ['reading', 'dispatching']), sql`${r.id} <> ${exceptRunId}`)).limit(1);
-      return rows.length > 0;
+      const busy = await db.select({ id: r.id }).from(r).where(and(eq(r.ownerUserId, ownerUserId), inArray(r.status, ['reading', 'dispatching']), sql`${r.id} <> ${exceptRunId}`)).limit(1);
+      if (busy.length) return true;
+      const [self] = await db.select({ authority: r.authority }).from(r).where(eq(r.id, exceptRunId));
+      if (!self || self.authority === 'owner_request') return false;
+      return (await db.select({ id: r.id }).from(r).where(and(eq(r.ownerUserId, ownerUserId), eq(r.status, 'queued'), eq(r.authority, 'owner_request'))).limit(1)).length > 0;
     },
 
+    /** The run holding this owner's lane, if any: what a queued request is waiting behind. */
+    async workingOf(ownerUserId: string) {
+      const [row] = await db.select().from(r).where(and(eq(r.ownerUserId, ownerUserId), inArray(r.status, ['reading', 'dispatching']))).orderBy(asc(r.createdAt)).limit(1);
+      return row ? toRun(row) : null;
+    },
+
+    /** Queued runs whose owner's lane is free, owner requests first and then oldest first: the next starts when the one before it ends. */
     async startableQueued(limit: number) {
       const rows = await db.execute(sql`SELECT DISTINCT ON (q.owner_user_id) q.id FROM personal_runs q WHERE q.status = 'queued'
         AND NOT EXISTS (SELECT 1 FROM personal_runs a WHERE a.owner_user_id = q.owner_user_id AND a.status IN ('reading', 'dispatching'))
-        ORDER BY q.owner_user_id, q.created_at, q.id LIMIT ${limit}`);
+        ORDER BY q.owner_user_id, (q.authority <> 'owner_request'), q.created_at, q.id LIMIT ${limit}`);
       return (rows.rows as { id: string }[]).map((row) => row.id);
     },
 

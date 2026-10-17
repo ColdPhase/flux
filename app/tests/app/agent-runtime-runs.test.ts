@@ -5,7 +5,8 @@ import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
 import { after, before, beforeEach, describe, test } from 'node:test';
 import {
-  assistantSettingsPath, PERSONAL_RUNTIME_CONSENT_VERSION, type AssistantSettings, type Conversation, type Project, type Workspace,
+  assistantChangeActionPath, assistantSettingsPath, ASSISTANT_UNIT_CREATE_VIEW, PERSONAL_RUNTIME_CONSENT_VERSION, type AssistantSettings, type Conversation, type Project,
+  type Workspace,
 } from '@flux/contracts';
 import { createPersonalRunProcessor, noPersonalConnections, REDACTED_SECRET, type AgentRuntimeConfig, type Principal } from '@flux/core';
 import { callSupervisor, type SupervisorRequest } from '@flux/runtime-protocol';
@@ -17,6 +18,7 @@ import { personalRunWorkerUnitOfWork } from '../../apps/worker/src/personal-runs
 import { runTokenIssuer } from '../../apps/worker/src/personal-runs/run-tokens.js';
 import { managerPersonalRuntime } from '../../apps/worker/src/personal-runs/runtime-engine.js';
 import { db, pool } from './support/db.js';
+import { agentConnection } from './support/mcp-actions.js';
 import { apiUrl } from './support/http.js';
 import { addMember, expectStatus, person, project as createProject, workspace as createWorkspace, type Person } from './support/people.js';
 import { FakeCompute, FakeQueue } from './support/personal-runs.js';
@@ -308,6 +310,69 @@ describe('a run on the owner\'s own Claude Code in the agent runtime (F-022 T5, 
     // Turning the assistant on again revives its connection and switches (A1).
     await runs.remove(human(owner));
     await runs.enable(human(owner), { consentVersion: PERSONAL_RUNTIME_CONSENT_VERSION, agentId, engine: 'runtime' });
+  });
+
+  async function setMode(approvalMode: 'act' | 'ask') {
+    const current = await settings();
+    if (current.approvalMode !== approvalMode)
+      expectStatus(await owner.browser.request('PATCH', assistantSettingsPath(ws.id, owner.id), { body: { approvalMode }, headers: { 'if-match': `"${current.version}"` } }), 200);
+  }
+  const changeRows = async (runId: string) => (await pool.query(`SELECT id, state, wait_reason, authority, receipt, prepared_command, version, decided_by FROM assistant_changes WHERE run_id = $1 ORDER BY created_at, id`, [runId])).rows as
+    { id: string; state: string; wait_reason: string | null; authority: string | null; receipt: Record<string, unknown> | null; prepared_command: { tool: string; view?: string; args: Record<string, unknown> } | null; version: number; decided_by: string | null }[];
+
+  test('F-027 A3 on the runtime engine: the fake CLI\'s change tool applies, "Ask me first" makes the same call wait, and an Apply long after commits once without starting the CLI again', async () => {
+    const appliedCommand = randomUUID(); const waitingCommand = randomUUID();
+    await script({ calls: [{ name: 'flux_create_task', args: { clientCommandId: appliedCommand, task: { title: 'Runtime task' } } }], answer: 'Done: added a task.' });
+    const first = await ask('Add a task');
+    assert.equal(await processor.process(first.run.id), 'completed');
+    const [applied] = await changeRows(first.run.id);
+    assert.deepEqual([applied!.state, applied!.authority], ['applied', 'owner_request']);
+    assert.deepEqual([applied!.receipt!.engine, applied!.receipt!.payer, applied!.receipt!.runId, applied!.receipt!.ownerUserId], ['runtime', 'Your Claude plan', first.run.id, owner.id], 'owner, engine, payer label and run id');
+    assert.equal((await pool.query(`SELECT count(*)::int AS n FROM project_work_items WHERE title = 'Runtime task'`)).rows[0].n, 1);
+    await setMode('ask');
+    try {
+      await resetFake();
+      await script({ calls: [{ name: 'flux_create_task', args: { clientCommandId: waitingCommand, task: { title: 'Waits for the owner' } } }], answer: 'Asked first.' });
+      const second = await ask('Add another task');
+      assert.equal(await processor.process(second.run.id), 'completed');
+      const result = (await calls()).find((entry) => entry.event === 'tool_result' && entry.name === 'flux_create_task') as { isError: boolean; text: string };
+      assert.ok(!result.isError && /^Waiting for rt-run-owner's OK: add task Waits for the owner\.$/.test(result.text), result.text);
+      const [waiting] = await changeRows(second.run.id);
+      assert.deepEqual([waiting!.state, waiting!.wait_reason], ['waiting', 'ask']);
+      assert.equal((await pool.query(`SELECT count(*)::int AS n FROM project_work_items WHERE title = 'Waits for the owner'`)).rows[0].n, 0);
+      const cliCalls = (await calls()).length;
+      const dispatched = compute.dispatched.length;
+      expectStatus(await owner.browser.request('POST', assistantChangeActionPath(waiting!.id, 'apply'), { body: { expectedVersion: waiting!.version } }), 200);
+      const [after] = await changeRows(second.run.id);
+      assert.deepEqual([after!.state, after!.authority, after!.decided_by, after!.receipt!.engine], ['applied_after_wait', 'owner_approval', owner.id, 'runtime']);
+      assert.equal((await pool.query(`SELECT count(*)::int AS n FROM project_work_items WHERE title = 'Waits for the owner'`)).rows[0].n, 1);
+      assert.equal((await calls()).length, cliCalls, 'Apply started no CLI');
+      assert.equal(compute.dispatched.length, dispatched, 'and no provider');
+      assert.equal((await row(second.run.id)).status, 'completed', 'the source run is not revived');
+    } finally { await setMode('act'); }
+  });
+
+  test('F-027 A3 on the runtime engine: a hand-off to the owner\'s own agent is prepared as the same private intent as on the server engine, and Apply opens one pending unit', async () => {
+    const codexAgent = (expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`, { body: { name: 'Ada Codex', owner: 'self' } }), 201) as { id: string }).id;
+    expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/grants`, { body: { principal: { kind: 'agent', id: codexAgent }, role: 'contributor' } }), 201);
+    const codex = await agentConnection(pool, owner.browser, codexAgent, [place.id]);
+    const task = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/work`, { body: { title: 'Runtime hand-off' } }), 201) as { id: string; version: number };
+    await setMode('ask');
+    try {
+      const input = { clientCommandId: randomUUID(), peerRequestClass: 'review', taskId: task.id, unitKey: 'runtime', expectedTaskVersion: task.version, assignmentConnectionId: codex.connectionId, parent: null };
+      await script({ calls: [{ name: 'flux_create_unit', args: input }], answer: 'Asked first.' });
+      const started = await ask('Ask my Codex to review it');
+      assert.equal(await processor.process(started.run.id), 'completed');
+      const [prepared] = await changeRows(started.run.id);
+      assert.deepEqual([prepared!.state, prepared!.prepared_command!.tool, prepared!.prepared_command!.view], ['waiting', 'flux_create_unit', ASSISTANT_UNIT_CREATE_VIEW]);
+      assert.deepEqual({ ...prepared!.prepared_command!.args }, { ...input, projectId: place.id }, 'the same intent the server engine stores');
+      assert.equal((await pool.query(`SELECT count(*)::int AS n FROM cowork_units WHERE work_id = $1`, [task.id])).rows[0].n, 0, 'proposed, not created');
+      const cliCalls = (await calls()).length;
+      expectStatus(await owner.browser.request('POST', assistantChangeActionPath(prepared!.id, 'apply'), { body: {} }), 200);
+      const unit = (await pool.query(`SELECT state, generation, role, assignment_connection_id FROM cowork_units WHERE work_id = $1`, [task.id])).rows;
+      assert.deepEqual(unit, [{ state: 'pending', generation: 0, role: 'review', assignment_connection_id: codex.connectionId }]);
+      assert.equal((await calls()).length, cliCalls, 'Apply started no CLI');
+    } finally { await setMode('act'); }
   });
 
   test('AST-4.2 (read part) and AST-4.4 on the runtime: an Off Wiki lists no Wiki tool and gets the S6 refusal, also mid-run', async () => {

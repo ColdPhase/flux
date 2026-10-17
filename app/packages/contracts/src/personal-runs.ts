@@ -332,10 +332,22 @@ export interface AssistantRun {
   };
   /** Set once the answer was committed to the conversation. */
   answer: AssistantAnswer | null;
+  /**
+   * What started it: the owner's own request, or the owner's stored schedule or reaction (F-027 AST-6). A background
+   * run carries the short name the owner gave it. Optional for older servers.
+   */
+  authority?: AssistantRunAuthority;
+  backgroundLabel?: string | null;
+  /** While queued: the run it waits behind, so the line can say "Next: …" or "Finishing your Morning summary first". Optional for older servers. */
+  behind?: AssistantRunBehind | null;
   createdAt: string;
   dispatchedAt: string | null;
   completedAt: string | null;
 }
+
+export type AssistantRunAuthority = 'owner_request' | 'owner_schedule' | 'owner_reaction';
+/** The working run a queued request waits behind (AST-6 "Queue"): another request, or a background run by name. */
+export interface AssistantRunBehind { runId: string; authority: AssistantRunAuthority; label: string | null }
 
 export type AssistantSourceRef =
   | { type: 'message'; id: string; revision: number }

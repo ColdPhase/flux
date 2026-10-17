@@ -43,7 +43,7 @@ export function coworkUnitCreationRows(tx: DbExecutor) {
      */
     async lock(scope: CoWorkUnitCreationScope, prepareTasks: (units: readonly CoWorkTaskLockInput[]) => Promise<readonly string[]>) {
       const [assignee] = await tx.select({ id: connections.id, ownerUserId: connections.ownerUserId, revokedAt: connections.revokedAt,
-        scopes: connections.scopes }).from(connections)
+        scopes: connections.scopes, agentId: connections.agentId, computeSource: connections.computeSource }).from(connections)
         .where(and(eq(connections.workspaceId, scope.workspaceId), eq(connections.id, scope.assigneeConnectionId))).for('share');
       const slotted = [...new Set([scope.creatorConnectionId, ...(assignee ? [assignee.id] : [])])].sort();
       await tx.execute(sql`INSERT INTO cowork_connection_slots(connection_id, workspace_id)
@@ -65,7 +65,8 @@ export function coworkUnitCreationRows(tx: DbExecutor) {
       const [lockedParent] = parent ? await tx.select().from(units).where(and(inProject(scope), eq(units.id, parent.id),
         eq(units.assignmentConnectionId, scope.creatorConnectionId))).for('update') : [];
       const [task] = await tx.select({ id: schema.projectWorkItems.id, version: schema.projectWorkItems.version,
-        status: schema.projectWorkItems.status }).from(schema.projectWorkItems).where(and(
+        status: schema.projectWorkItems.status, createdByKind: schema.projectWorkItems.createdByKind,
+        createdById: schema.projectWorkItems.createdById }).from(schema.projectWorkItems).where(and(
         eq(schema.projectWorkItems.workspaceId, scope.workspaceId), eq(schema.projectWorkItems.projectId, scope.projectId),
         eq(schema.projectWorkItems.id, scope.taskId)));
       // Every unit of a run and every open unit of a task change only under their task row lock, held above.
@@ -77,6 +78,11 @@ export function coworkUnitCreationRows(tx: DbExecutor) {
       const openTaskUnits = await tx.select({ id: units.id, role: units.role }).from(units)
         .where(and(inProject(scope), eq(units.taskId, scope.taskId), inArray(units.state, ['pending', 'claimed', 'paused'])))
         .orderBy(asc(units.id));
+      // Every unit the task has had, whatever its run: the owner-assistant adapter separates review from execution across them.
+      const taskUnits = await tx.select({ id: units.id, role: units.role, state: units.state, assignmentConnectionId: units.assignmentConnectionId,
+        ownerUserId: connections.ownerUserId }).from(units)
+        .leftJoin(connections, and(eq(connections.workspaceId, units.workspaceId), eq(connections.id, units.assignmentConnectionId)))
+        .where(and(inProject(scope), eq(units.taskId, scope.taskId))).orderBy(asc(units.id));
       const [existing] = await tx.select().from(units).where(and(inProject(scope), eq(units.taskId, scope.taskId),
         eq(units.runId, runId), eq(units.unitKey, scope.unitKey)));
       const [selected] = assignee ? await tx.select({ projectId: schema.agentConnectionProjects.projectId })
@@ -88,9 +94,9 @@ export function coworkUnitCreationRows(tx: DbExecutor) {
         task: task ?? null,
         parent: lockedParent ? unit(lockedParent) : null,
         assignee: assignee && !assignee.revokedAt && assignee.scopes.includes('flux.action.execute') && selected
-          ? { id: assignee.id, ownerUserId: assignee.ownerUserId } : null,
+          ? { id: assignee.id, ownerUserId: assignee.ownerUserId, agentId: assignee.agentId, computeSource: assignee.computeSource } : null,
         existing: existing ? unit(existing) : null,
-        runUnits, openTaskUnits, now: time!.now, taskFence,
+        runUnits, openTaskUnits, taskUnits, now: time!.now, taskFence,
       };
     },
     /** Insert under the retained locks; null only if the exact intent appeared without them (caller refuses). */
@@ -101,6 +107,46 @@ export function coworkUnitCreationRows(tx: DbExecutor) {
         assignmentConnectionId: input.assignmentConnectionId })
         .onConflictDoNothing({ target: [units.workspaceId, units.projectId, units.taskId, units.runId, units.unitKey] }).returning();
       return row ? unit(row) : null;
+    },
+    /**
+     * Undo of an owner-assistant hand-off (A4): the same lock order as creation and claim. The recipient's and the assistant's slots (sorted),
+     * the project graph and the complete task set, then the unit row, so a claim and an Undo serialize on the unit and one of them wins whole.
+     * Returns the unit as it is under the lock, or null when it is gone.
+     */
+    async lockUnit(scope: { workspaceId: string; projectId: string; creatorConnectionId: string; taskId: string; unitId: string },
+      prepareTasks: (units: readonly CoWorkTaskLockInput[]) => Promise<readonly string[]>) {
+      const [located] = await tx.select().from(units).where(and(inProject(scope), eq(units.id, scope.unitId), eq(units.taskId, scope.taskId)));
+      if (!located) return null;
+      const slotted = [...new Set([scope.creatorConnectionId, located.assignmentConnectionId])].sort();
+      await tx.execute(sql`INSERT INTO cowork_connection_slots(connection_id, workspace_id)
+        SELECT id, workspace_id FROM agent_connections WHERE workspace_id = ${scope.workspaceId}
+          AND id IN (${sql.join(slotted.map((id) => sql`${id}::uuid`), sql`, `)}) ORDER BY id
+        ON CONFLICT DO NOTHING`);
+      await tx.select().from(slots).where(and(eq(slots.workspaceId, scope.workspaceId), inArray(slots.connectionId, slotted)))
+        .orderBy(asc(slots.connectionId)).for('update');
+      const inputs: CoWorkTaskLockInput[] = [{ id: located.id, taskId: located.taskId, projectId: located.projectId, lineageTaskId: located.lineageTaskId }];
+      const additional = await prepareTasks(inputs);
+      const taskIds = [...new Set([...inputs.flatMap((input) => [input.taskId, input.lineageTaskId]), ...additional])].sort();
+      const taskFence = await taskUseRows(tx).lockPrepared(taskIds);
+      const [row] = await tx.select().from(units).where(and(inProject(scope), eq(units.id, scope.unitId))).for('update');
+      return row ? { unit: unit(row), taskFence, checkpointId: row.checkpointId } : null;
+    },
+    /**
+     * Ends a pending, never-claimed unit at exactly its creation version under the locks above. Its generation and version advance, as when
+     * the owner stops an agent: the row, its audit and the run's unit count remain, and the same intent can only meet this unit again.
+     */
+    async cancelPending(scope: { workspaceId: string; projectId: string }, id: string, creationVersion: number) {
+      const [row] = await tx.update(units).set({ state: 'stopped', generation: sql`${units.generation} + 1`, version: sql`${units.version} + 1`,
+        leaseId: null, leaseSessionId: null, leaseExpiresAt: null, updatedAt: sql`clock_timestamp()` })
+        .where(and(inProject(scope), eq(units.id, id), eq(units.state, 'pending'), eq(units.generation, 0), eq(units.version, creationVersion),
+          sql`${units.leaseId} IS NULL`, sql`${units.checkpointId} IS NULL`)).returning();
+      return row ? unit(row) : null;
+    },
+    /** The connection a unit was handed to, for the owner's words ("Your Codex already started"). */
+    async recipient(workspaceId: string, connectionId: string) {
+      const [row] = await tx.select({ name: connections.name, clientDesignation: connections.clientDesignation }).from(connections)
+        .where(and(eq(connections.workspaceId, workspaceId), eq(connections.id, connectionId)));
+      return row ?? null;
     },
     /** Canonical current unit for the post-state hook and replay; content-free. */
     async unit(workspaceId: string, projectId: string, id: string) {

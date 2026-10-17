@@ -15,6 +15,8 @@ export type NewAssistantChangeRow = typeof c.$inferInsert;
 export interface AssistantRunRow {
   id: string; workspaceId: string; projectId: string; conversationId: string; ownerUserId: string; agentId: string;
   status: string; stopRequestedAt: Date | null; engine: 'server' | 'runtime'; completedAt: Date | null;
+  /** What started the run: the owner's request or one of their stored schedules or reactions (limits differ: 20 and 10). */
+  authority: 'owner_request' | 'owner_schedule' | 'owner_reaction';
 }
 /** Who made an object: a person or an agent; both null when unknown. */
 export interface ObjectMaker { userId: string | null; agentId: string | null }
@@ -28,7 +30,7 @@ export function assistantChangeRows(db: DbExecutor) {
       const r = schema.personalRuns;
       const [row] = await db.select({ id: r.id, workspaceId: r.workspaceId, projectId: r.projectId, conversationId: r.conversationId,
         ownerUserId: r.ownerUserId, agentId: r.agentId, status: r.status, stopRequestedAt: r.stopRequestedAt, engine: r.engine,
-        completedAt: r.completedAt }).from(r).where(eq(r.id, runId)).for('update');
+        completedAt: r.completedAt, authority: r.authority }).from(r).where(eq(r.id, runId)).for('update');
       return row ?? null;
     },
     async settings(ownerUserId: string, workspaceId: string) {
@@ -39,7 +41,7 @@ export function assistantChangeRows(db: DbExecutor) {
     },
     async enablement(ownerUserId: string) {
       const e = schema.personalRunEnablements;
-      const [row] = await db.select({ status: e.status, createdAt: e.createdAt }).from(e).where(eq(e.ownerUserId, ownerUserId)).for('share');
+      const [row] = await db.select({ status: e.status, createdAt: e.createdAt, payer: e.consentPayerOrganization }).from(e).where(eq(e.ownerUserId, ownerUserId)).for('share');
       return row ?? null;
     },
     async byCommand(runId: string, clientCommandId: string): Promise<AssistantChangeRow | null> {
@@ -90,6 +92,35 @@ export function assistantChangeRows(db: DbExecutor) {
         .where(eq(c.ownerUserId, ownerUserId)).orderBy(desc(c.createdAt), desc(c.id)).limit(limit);
       return rows.map((row) => ({ ...row.change, conversationId: row.conversationId }));
     },
+    /** Every change of one conversation's runs, whoever owns them: the use case shows each viewer only what is theirs to see. */
+    async forConversationAll(conversationId: string): Promise<(AssistantChangeRow & { conversationId: string })[]> {
+      const r = schema.personalRuns;
+      const rows = await db.select({ change: c, conversationId: r.conversationId }).from(c).innerJoin(r, eq(r.id, c.runId))
+        .where(eq(r.conversationId, conversationId)).orderBy(asc(c.createdAt), asc(c.id)).limit(500);
+      return rows.map((row) => ({ ...row.change, conversationId: row.conversationId }));
+    },
+    /** The project a conversation belongs to, for the read check before its message is shown. */
+    async conversationPlace(conversationId: string): Promise<{ projectId: string; workspaceId: string } | null> {
+      const [row] = await db.select({ projectId: schema.projectConversations.projectId, workspaceId: schema.projectConversations.workspaceId })
+        .from(schema.projectConversations).where(eq(schema.projectConversations.id, conversationId));
+      return row ?? null;
+    },
+    /** The people whose assistant is working in a conversation right now (reading or dispatching), by name: nothing else about the run. */
+    async workingOwners(conversationId: string): Promise<{ ownerId: string; ownerName: string }[]> {
+      const r = schema.personalRuns;
+      const rows = await db.selectDistinct({ ownerId: r.ownerUserId, ownerName: schema.authUsers.name }).from(r)
+        .innerJoin(schema.authUsers, eq(schema.authUsers.id, r.ownerUserId))
+        .where(and(eq(r.conversationId, conversationId), inArray(r.status, ['reading', 'dispatching']), sql`${r.stopRequestedAt} IS NULL`))
+        .orderBy(asc(schema.authUsers.name));
+      return rows;
+    },
+    /** What started each run: the owner's request, or a schedule or reaction of the owner (their limits differ). */
+    async runAuthorities(runIds: string[]): Promise<Map<string, string>> {
+      if (!runIds.length) return new Map();
+      const r = schema.personalRuns;
+      const rows = await db.select({ id: r.id, authority: r.authority }).from(r).where(inArray(r.id, runIds));
+      return new Map(rows.map((row) => [row.id, row.authority]));
+    },
     async conversationOf(runId: string): Promise<string | null> {
       const [row] = await db.select({ id: schema.personalRuns.conversationId }).from(schema.personalRuns).where(eq(schema.personalRuns.id, runId));
       return row?.id ?? null;
@@ -123,12 +154,16 @@ export function assistantChangeRows(db: DbExecutor) {
       return first<{ id: string; name: string }>(db, sql`SELECT u.id, u.name FROM doc_live_presence p JOIN auth_users u ON u.id = p.actor_id
         WHERE p.doc_id = ${docId} AND p.actor_id <> ${exceptUserId} AND p.expires_at > now() ORDER BY p.expires_at DESC LIMIT 1`);
     },
+    /** A task with what Undo compares: done-when, who it waits for and its prerequisites (ascending). */
     async work(id: string) {
       const w = schema.projectWorkItems;
       const [row] = await db.select({ id: w.id, projectId: w.projectId, number: w.number, title: w.title, outcome: w.outcome, status: w.status,
-        blocker: w.blocker, version: w.version, ownerUserId: w.ownerUserId,
+        blocker: w.blocker, version: w.version, ownerUserId: w.ownerUserId, criteria: w.criteria, waitingForUserId: w.waitingForUserId,
         ownerAgentId: w.ownerAgentId, createdByKind: w.createdByKind, createdById: w.createdById }).from(w).where(eq(w.id, id));
-      return row ?? null;
+      if (!row) return null;
+      const d = schema.projectTaskDependencies;
+      const dependencies = await db.select({ id: d.prerequisiteId }).from(d).where(and(eq(d.projectId, row.projectId), eq(d.taskId, id))).orderBy(asc(d.prerequisiteId));
+      return { ...row, dependencyIds: dependencies.map((item) => item.id) };
     },
     async doc(id: string) {
       return first<{ id: string; projectId: string; title: string; body: string; state: 'draft' | 'published' | null; version: number; userId: string | null; agentId: string | null }>(db, sql`
@@ -188,6 +223,24 @@ export function assistantChangeRows(db: DbExecutor) {
       if (affected.length) await db.update(c).set({ state: 'refused', waitReason: null, refusal: 'Your assistant\'s switches changed since. Ask again',
         version: sql`${c.version} + 1`, updatedAt: new Date() }).where(inArray(c.id, affected));
       return affected.length;
+    },
+    /** Where each hand-off unit stands (state and how often it was claimed), for the row of the run's message. */
+    async unitStates(ids: string[]): Promise<Map<string, { state: string; generation: number }>> {
+      if (!ids.length) return new Map();
+      const u = schema.coworkUnits;
+      const rows = await db.select({ id: u.id, state: u.state, generation: u.generation }).from(u).where(inArray(u.id, ids));
+      return new Map(rows.map((row) => [row.id, { state: row.state, generation: row.generation }]));
+    },
+    /** An agent connection, as a hand-off recipient: whose it is, what it is called to its owner and whether it works in the project. */
+    async connection(id: string, projectId: string | null) {
+      const k = schema.agentConnections;
+      const [row] = await db.select({ id: k.id, ownerUserId: k.ownerUserId, computeSource: k.computeSource, revokedAt: k.revokedAt, name: k.name,
+        clientDesignation: k.clientDesignation, scopes: k.scopes }).from(k).where(eq(k.id, id));
+      if (!row) return null;
+      const [selected] = projectId ? await db.select({ projectId: schema.agentConnectionProjects.projectId }).from(schema.agentConnectionProjects)
+        .where(and(eq(schema.agentConnectionProjects.connectionId, id), eq(schema.agentConnectionProjects.projectId, projectId))) : [];
+      const label = row.clientDesignation === 'codex' ? 'Codex' : row.clientDesignation === 'claude_code' ? 'Claude Code' : row.name;
+      return { ...row, label, selected: !!selected && row.scopes.includes('flux.action.execute') };
     },
     async names(ids: string[]): Promise<Map<string, string>> {
       const unique = [...new Set(ids.filter(Boolean))];

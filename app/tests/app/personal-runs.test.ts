@@ -540,7 +540,7 @@ describe('personal assistant runs (#68, fake compute: no provider pass is claime
     assert.match(compute.dispatched.at(-1)!.input, /Your earlier answer, to continue/);
   });
 
-  test('progress: every state change of a run reaches only its owner; others learn of it only from the committed answer', async () => {
+  test('progress: every state change of a run reaches only its owner; others learn only that an assistant is working (names, no run) and then of the committed answer', async () => {
     const [own, peer, admin] = await Promise.all([hubert, kai, ada].map((someone) => StreamClient.connect(someone.browser)));
     const run = await ask(hubert, 'Where are we on the sensor?');
     const progressOf = (client: StreamClient) => client.events.filter((event) => event.objectType === 'assistant_run');
@@ -548,6 +548,7 @@ describe('personal assistant runs (#68, fake compute: no provider pass is claime
     assert.equal(await processor.process(run.run.id), 'completed');
     await own.until(() => progressOf(own).filter((event) => event.objectId === run.run.id).length >= 4, 8000, 'queued, reading, dispatching and completed');
     for (const other of [peer, admin]) await other.until(() => other.events.find((event) => event.kind === 'project.assistant_answer_committed.v1' && event.createdAt >= run.run.createdAt), 8000, 'the committed answer');
+    for (const other of [peer, admin]) assert.ok(other.events.some((event) => event.kind === 'project.assistant_working.v1' && event.objectType === 'project'), 'they hear that an assistant is working, nothing more');
     assert.deepEqual(progressOf(peer), [], 'a project member hears nothing about the run');
     assert.deepEqual(progressOf(admin), [], 'a workspace owner hears nothing about the run');
     for (const client of [own, peer, admin]) await client.close();

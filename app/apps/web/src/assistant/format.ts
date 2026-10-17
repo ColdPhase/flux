@@ -87,8 +87,18 @@ function runtimeEndedText(run: AssistantRun): string | null {
   }
 }
 
-/** Why a run ended without an answer. Always says that nothing was posted. */
-export function endedText(run: AssistantRun): string | null {
+/**
+ * Why a run ended without an answer. It says that nothing was posted, unless the run changed things before it ended: then the same line
+ * says how many changes were made, and the run's message below lists them with Undo (AST-6 "No silent edits").
+ */
+export function endedText(run: AssistantRun, changed = 0): string | null {
+  const words = endedWords(run);
+  if (!words || changed <= 0) return words;
+  const made = `${changed === 1 ? '1 change was' : `${changed} changes were`} made before it ended.`;
+  return /Nothing was (?:posted|changed|sent)\.?$/.test(words) ? words.replace(/\s*Nothing was (?:posted|changed|sent)\.?$/, ` ${made}`) : `${words} ${made}`;
+}
+
+function endedWords(run: AssistantRun): string | null {
   if (run.endReason === 'mcp_results_too_large') return 'Limit reached: this needed more reading than one request allows. Nothing was posted.';
   if (onRuntime(run)) {
     const words = runtimeEndedText(run);

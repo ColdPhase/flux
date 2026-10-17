@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { assistantBatchVerb, assistantChangeSummary, assistantMessageHeader, type AssistantChange } from '@flux/contracts';
 import { ApiError, NetworkError } from '../api/client';
+import { Link } from 'react-router';
 import { Button } from '../ui';
+import { useShellActions } from '../app/shellContext';
 import { applyChange, applyRunChanges, listConversationChanges, moveRunChangesToInbox, notNowRunChanges, sendChange, undoChange, undoRunChanges } from './api';
 
 // What the owner's assistant prepared in this conversation and waits for them on (F-027 AST-5, A3). Only the
@@ -51,7 +53,18 @@ const OBJECT_WORD: Record<string, string> = { work: 'Task', doc: 'Page', map: 'M
  * The run's one message (F-027 AST-10.13): a header naming what changed with Undo for all of it, at most three object
  * rows and "+N more", before and after and a per-item Undo when expanded. Shown once the run is no longer working.
  */
-function RunMessage({ changes, onChanged }: { changes: AssistantChange[]; onChanged: () => Promise<void> }) {
+/** "Changed since. Open it" and "Your Codex already started. Open the task": the closing words open the object, when it has a place to open. */
+function Said({ text, change }: { text: string; change: AssistantChange }) {
+  const { openDetails } = useShellActions();
+  const open = /\. (Open (?:it|the task))$/.exec(text);
+  if (!open || !change.objectId) return <>{text}</>;
+  const head = text.slice(0, open.index + 1);
+  const target = change.objectType === 'work' ? <button type="button" className="ui-link" onClick={() => openDetails({ kind: 'work', id: change.objectId! })}>{open[1]}</button>
+    : change.objectType === 'doc' ? <Link className="ui-link" to={`/projects/${change.projectId}/docs/${change.objectId}`}>{open[1]}</Link> : null;
+  return target ? <>{head} {target}</> : <>{text}</>;
+}
+
+function RunMessage({ changes, onChanged, meId, standalone = false }: { changes: AssistantChange[]; onChanged: () => Promise<void>; meId?: string; standalone?: boolean }) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState('');
   const [note, setNote] = useState('');
@@ -63,6 +76,9 @@ function RunMessage({ changes, onChanged }: { changes: AssistantChange[]; onChan
   const allUndone = done.length > 0 && !live.length;
   const undoable = live.some((change) => change.undoable);
   const runId = changes[0]!.runId;
+  // Everyone who can read the conversation sees what was done; it reads "Ada's assistant" unless the viewer is Ada.
+  const owner = changes[0]!.owner;
+  const whose = !owner || !meId || owner.id === meId ? 'your' : `${owner.name.trim().split(/\s+/)[0] || owner.name}’s`;
   const header = allUndone ? `Undone by ${done.find((change) => change.decidedBy)?.decidedBy?.name ?? 'you'}` : live.length && live.length < done.length ? `Undid ${done.length - live.length} of ${done.length} changes` : live.length ? assistantMessageHeader(live) : 'Nothing was changed';
   const shown = open ? done : done.slice(0, 3);
   const act = async (key: string, action: () => Promise<void>) => {
@@ -76,7 +92,8 @@ function RunMessage({ changes, onChanged }: { changes: AssistantChange[]; onChan
     setItemNotes((current) => ({ ...current, [change.id]: result.message ?? '' }));
   });
   return (
-    <section className="assistant-message" aria-label="What your assistant changed" data-run={runId}>
+    <section className="assistant-message" aria-label={`What ${whose} assistant changed`} data-run={runId}>
+      {standalone && whose !== 'your' ? <p className="assistant-message__who">{whose[0]!.toUpperCase()}{whose.slice(1)} assistant</p> : null}
       <p className="assistant-message__head" role="status" aria-live="polite"><span>{header}</span>
         {undoable ? <Button variant="link" busy={busy === 'all'} disabled={!!busy && busy !== 'all'} onClick={() => void undoAll()}>Undo</Button> : null}</p>
       {note ? <p className="assistant-message__note" role="status">{note}</p> : null}
@@ -88,8 +105,9 @@ function RunMessage({ changes, onChanged }: { changes: AssistantChange[]; onChan
             {open && change.state !== 'undone' && change.before !== null ? <span className="assistant-message__diff"><s>{change.before}</s> → {change.after}</span>
               : open && change.state !== 'undone' && change.after && change.after !== change.objectTitle ? <span className="assistant-message__diff">{change.after}</span> : null}
             {change.state === 'undone' || change.state === 'applied_after_wait' ? <span className="assistant-message__diff">{change.line}</span> : null}
+            {change.state === 'applied' && change.line ? <span className="assistant-message__diff">{change.line}</span> : null}
             {open && change.undoable ? <span className="assistant-message__item">
-              {itemNotes[change.id] ? <span>{itemNotes[change.id]}</span> : null}
+              {itemNotes[change.id] ? <span><Said text={itemNotes[change.id]!} change={change} /></span> : null}
               <Button variant="link" busy={busy === change.id} disabled={!!busy && busy !== change.id} onClick={() => void undoOne(change)}>Undo</Button></span> : null}
           </li>
         ))}
@@ -103,7 +121,9 @@ function RunMessage({ changes, onChanged }: { changes: AssistantChange[]; onChan
 }
 
 /** One run's "Waiting for you: add 2 tasks, edit 1 page" with the object's own verb, Review and Not now. */
-export function WaitingChanges({ changes, onChanged }: { changes: AssistantChange[]; onChanged: () => Promise<void> }) {
+export function WaitingChanges({ changes, onChanged, meId, standalone = false }: { changes: AssistantChange[]; onChanged: () => Promise<void>; meId?: string;
+  /** Not under the assistant's own answer: the message names whose assistant it is itself. */
+  standalone?: boolean }) {
   const waiting = changes.filter(pending);
   const [reviewing, setReviewing] = useState(false);
   // Review starts with every change ticked; the owner unticks what they do not want.
@@ -130,7 +150,7 @@ export function WaitingChanges({ changes, onChanged }: { changes: AssistantChang
   const verb = assistantBatchVerb(reviewing ? selected : waiting);
   const hasWaitingParts = waiting.length > 0 || changes.some((change) => deferred(change) || suggestion(change) || settled(change) && !made(change));
   return (<>
-    <RunMessage changes={changes} onChanged={onChanged} />
+    <RunMessage changes={changes} onChanged={onChanged} meId={meId} standalone={standalone} />
     {hasWaitingParts || messages.length ? <section className="assistant-waiting" aria-label="Your assistant's changes" data-run={runId}>
       {waiting.length ? <>
         <p className="assistant-waiting__head"><span className="assistant-proposal__ring" aria-hidden="true" />Waiting for you: {assistantChangeSummary(waiting)}</p>

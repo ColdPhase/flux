@@ -1803,6 +1803,9 @@ export const personalRuns = pgTable('personal_runs', {
   runTools: text('run_tools').array().notNull().default(sql`'{}'::text[]`),
   mcpResultBytes: integer('mcp_result_bytes').notNull().default(0),
   mcpLimit: text('mcp_limit', { enum: ['call', 'run'] }),
+  // 0108 (F-027 A4): what started the run; a background run carries its short name for the lane's lines.
+  authority: text('authority', { enum: ['owner_request', 'owner_schedule', 'owner_reaction'] }).notNull().default('owner_request'),
+  backgroundLabel: text('background_label'),
 }, (table) => [
   unique().on(table.ownerUserId, table.clientRunId),
   unique().on(table.workspaceId, table.projectId, table.id),

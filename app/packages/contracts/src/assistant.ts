@@ -41,12 +41,12 @@ const NOT_FOR_RUNS = new Set<AgentMcpCapabilityId>(['cowork.playbook.read', 'con
 /**
  * The change tools an assistant run may be listed (F-027 AST-4, A3 #403): the switch-mapped operations of
  * AST-4's table with their own run-private input (no runtime or standing grant; the run is the authority).
- * Not listed: undo of a created task (A4), the question card, and every co-work unit tool, including the
- * own-agent hand-off (`flux_create_unit`), which needs its own bounded adapter. Never listed (AST-5 6-8):
- * access, decisions' acceptance and anything outside the run's place have no tool at all.
+ * Not listed: undo of a created task (A4), the question card, and every other co-work unit tool (claim, renew, release, complete,
+ * transfer, requests). The own-agent hand-off `flux_create_unit` is listed with its own run-private input (`assistant-unit-create/v1`) and
+ * its own bounded adapter. Never listed (AST-5 6-8): access, decisions' acceptance and anything outside the run's place have no tool at all.
  */
 export const ASSISTANT_RUN_EFFECT_TOOLS = [
-  'flux_create_task', 'flux_update_task', 'flux_record_result', 'flux_propose_decision',
+  'flux_create_task', 'flux_update_task', 'flux_record_result', 'flux_propose_decision', 'flux_create_unit',
   'flux_create_doc', 'flux_update_doc',
   'flux_create_map', 'flux_rename_map', 'flux_add_thought', 'flux_update_thought', 'flux_remove_thought',
   'flux_move_thoughts', 'flux_link_thoughts', 'flux_unlink_thoughts',
@@ -158,6 +158,8 @@ export const ASSISTANT_CHANGE_LIMITS = {
   inboxAfterMinutes: 10,
   /** The prepared tool call a waiting change keeps (the CHECK on `prepared_command`). */
   preparedBytes: 65_536,
+  /** A background run (a stored schedule or reaction) may change at most this much; an interactive request up to the owner's limit of 20 (AST-6 "Limits"). */
+  backgroundChangesPerRun: 10,
 } as const;
 export type AssistantChangeState = 'applied' | 'waiting' | 'applied_after_wait' | 'not_now' | 'expired' | 'undone' | 'refused';
 /** Why a change waits: Ask me first, a removal, another person's thing, a live Wiki typist, the run's limit,
@@ -181,13 +183,15 @@ export interface AssistantChange {
   /** The phrase and the object's own verb: "close task" and "Close". */
   phrase: string;
   verb: string;
-  /** Plain words for a waiting, deferred, suggested, refused or expired change; null for an applied one. */
+  /** Plain words for a waiting, deferred, suggested, refused or expired change, and where a hand-off stands; null for any other applied one. */
   line: string | null;
   /** A suggestion's recipient, by name, and whether it was sent. */
   suggestTo: { id: string; name: string } | null;
   sent: boolean;
-  /** Who approved it ("approved by Ada"), for a change applied after a wait. */
+  /** Who approved it ("approved by Ada"), for a change applied after a wait; who took it back, for an undone one. */
   decidedBy: { id: string; name: string } | null;
+  /** Whose assistant made it: the message reads "Ada's assistant" for everyone who can read the conversation. Optional for older servers. */
+  owner?: { id: string; name: string };
   /** Where the run is: its message (header, Undo) shows once it is no longer working. */
   runState: 'working' | 'done' | 'stopped' | 'failed';
   /** Before and after of what the change did, in words ("Probes", "Calibrate the probes"); null when there is nothing to show. */
@@ -210,6 +214,14 @@ export interface AssistantRunUndone { changes: AssistantChangeDecision[]; undone
 
 export const ASSISTANT_CHANGES_PATH = '/api/v1/assistant-changes';
 export const conversationAssistantChangesPath = (conversationId: string) => `/api/v1/conversations/${conversationId}/assistant-changes`;
+/**
+ * Who has an assistant working in a conversation right now (F-027 AST-6 "Visible to everyone"): names and nothing else, so everyone who can
+ * read the conversation sees "Ada's assistant is working…" with no detail and no Stop. The detail stays with the run's owner.
+ */
+export const conversationAssistantActivityPath = (conversationId: string) => `/api/v1/conversations/${conversationId}/assistant-activity`;
+export interface AssistantActivity { working: { ownerId: string; ownerName: string }[] }
+/** Project-audience event, identifiers only: an assistant started or stopped working in a conversation. Readers refetch the activity. */
+export const ASSISTANT_WORKING_EVENT = 'project.assistant_working.v1';
 export const assistantRunChangesPath = (runId: string) => `/api/v1/assistant-runs/${runId}/changes`;
 /** `apply` (Apply all), `not-now`, or `inbox` (the owner left the conversation) for a run's waiting changes. */
 export const assistantRunChangesActionPath = (runId: string, action: 'apply' | 'not-now' | 'inbox' | 'undo') => `/api/v1/assistant-runs/${runId}/changes/${action}`;
@@ -233,12 +245,33 @@ const PHRASES: Record<string, { phrase: string; verb: string; noun: string }> = 
   'map.link.delete': { phrase: 'remove', verb: 'Remove', noun: 'link' },
   'conversation.create': { phrase: 'post', verb: 'Post', noun: 'message' },
   'conversation.reply': { phrase: 'post', verb: 'Post', noun: 'message' },
+  'cowork.unit.create': { phrase: 'hand off', verb: 'Hand off', noun: 'task' },
+};
+
+/** The run-private view of `flux_create_unit` (AST-3 R2): its strict input has no bootstrap runtime or grant. Stored with a waiting hand-off. */
+export const ASSISTANT_UNIT_CREATE_VIEW = 'assistant-unit-create/v1';
+
+/** What a task change touches, for its own words: the new status, and the one field when it changed only one. */
+export function assistantWorkChangeArgs(changes: Record<string, unknown> | null | undefined): { status?: string; titleOnly: boolean; only?: string } {
+  const keys = Object.keys(changes ?? {});
+  const status = typeof changes?.status === 'string' ? changes.status : undefined;
+  return { ...(status ? { status } : {}), titleOnly: keys.length === 1 && keys[0] === 'title', ...(keys.length === 1 ? { only: keys[0]! } : {}) };
+}
+
+const WORK_FIELD_PHRASES: Record<string, { phrase: string; verb: string }> = {
+  criteria: { phrase: 'add done-when to', verb: 'Add done-when' },
+  dependencyIds: { phrase: 'set prerequisites of', verb: 'Set prerequisites' },
+  waitingFor: { phrase: 'set waiting-for of', verb: 'Set waiting-for' },
+  /** The tool's own name for it: a saved call keeps the tool's arguments. */
+  waitingForUserId: { phrase: 'set waiting-for of', verb: 'Set waiting-for' },
 };
 
 /** The object's own verb (UX review P2-5): a finished task is "close", a renamed one "rename". */
-export function assistantChangeWords(operation: string, args: { status?: string; titleOnly?: boolean } = {}): { phrase: string; verb: string; noun: string } {
+export function assistantChangeWords(operation: string, args: { status?: string; titleOnly?: boolean; only?: string } = {}): { phrase: string; verb: string; noun: string } {
   if (operation === 'work.update' && (args.status === 'done')) return { phrase: 'close', verb: 'Close', noun: 'task' };
   if (operation === 'work.update' && args.titleOnly) return { phrase: 'rename', verb: 'Rename', noun: 'task' };
+  const field = operation === 'work.update' && args.only ? WORK_FIELD_PHRASES[args.only] : undefined;
+  if (field) return { phrase: field.phrase, verb: field.verb, noun: 'task' };
   return PHRASES[operation] ?? { phrase: 'change', verb: 'Apply', noun: 'item' };
 }
 
@@ -265,7 +298,7 @@ export function assistantMessageHeader(changes: readonly Pick<AssistantChange, '
   return `Done: ${assistantChangeSummary(changes.map((change) => ({ phrase: assistantPastPhrase(change.phrase) })))}`;
 }
 const PAST: Record<string, string> = { add: 'added', change: 'changed', close: 'closed', rename: 'renamed', record: 'recorded', propose: 'proposed',
-  edit: 'edited', remove: 'removed', move: 'moved', post: 'posted' };
+  edit: 'edited', remove: 'removed', move: 'moved', post: 'posted', set: 'set', hand: 'handed' };
 /** "add task" becomes "added task" for a message about what already happened. */
 export function assistantPastPhrase(phrase: string): string {
   const space = phrase.indexOf(' ');

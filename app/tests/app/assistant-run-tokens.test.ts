@@ -159,7 +159,8 @@ describe('the run token and the worker as an MCP client of /mcp (F-027 A2, A6; #
     assert.equal(listed.status, 200);
     const names = ((listed.message?.result as { tools: { name: string }[] }).tools).map((tool) => tool.name).sort();
     assert.deepEqual(names, grant.tools, 'exactly the minted list');
-    for (const absent of ['flux_bootstrap', 'flux_create_unit', 'flux_claim_unit', 'flux_create_proposal', 'flux_acknowledge_playbook']) assert.ok(!names.includes(absent), absent);
+    for (const absent of ['flux_bootstrap', 'flux_claim_unit', 'flux_transfer_unit', 'flux_create_proposal', 'flux_acknowledge_playbook']) assert.ok(!names.includes(absent), absent);
+    assert.ok(names.includes('flux_create_unit'), 'the one hand-off tool, with its own private input (assistant-handoff.test.ts)');
     const templates = await mcp(grant.token, 2, 'resources/templates/list');
     assert.ok(templates.message?.error || !((templates.message?.result as { resourceTemplates?: unknown[] } | undefined)?.resourceTemplates?.length), 'no resource is offered to a run');
     const contexts = await mcp(grant.token, 3, 'tools/call', { name: 'flux_list_contexts', arguments: {} });

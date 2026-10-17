@@ -47,7 +47,7 @@ interface ChangeRow { id: string; state: string; wait_reason: string | null; aut
 const changesOf = async (runId: string) => (await pool.query(`SELECT * FROM assistant_changes WHERE run_id = $1 ORDER BY created_at, id`, [runId])).rows as ChangeRow[];
 
 describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A3, #403)', () => {
-  let owner: Person; let peer: Person; let outsider: Person; let ws: Workspace; let place: Project;
+  let owner: Person; let peer: Person; let outsider: Person; let stranger: Person; let ws: Workspace; let place: Project;
   let thread: Conversation; let agentId: string;
   /** Jonas's workspace, where Ada is a member: a project she may only read, and one she contributes to. */
   let jonasWs: Workspace; let shared: Project; let sharedThread: Conversation;
@@ -98,6 +98,7 @@ describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A
     owner = await person('ac-ada');
     peer = await person('ac-jonas');
     outsider = await person('ac-other');
+    stranger = await person('ac-stranger');
     ws = await createWorkspace(owner, 'Changes');
     await addMember(owner, ws.id, peer, 'member');
     await addMember(owner, ws.id, outsider, 'member');
@@ -244,10 +245,11 @@ describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A
     assert.equal(text((await run.call('flux_update_doc', { docId: page.id, expectedVersion: page.version, changes: { body: 'Use Acme' } })).message),
       'I\'ll edit Suppliers when ac-jonas finishes typing.');
     await stopTyping();
-    // 3 handing work to another person: no run tool can set another person responsible or hand off to their agent.
-    for (const absent of ['flux_create_unit', 'flux_transfer_unit']) assert.ok(!run.tools.includes(absent), absent);
+    // 3 handing work to another person: no run tool transfers or completes a unit or claims one; the one hand-off tool reaches the owner's own
+    // agents only (a foreign agent is refused even after Apply: assistant-handoff.test.ts).
+    for (const absent of ['flux_transfer_unit', 'flux_claim_unit', 'flux_complete_unit', 'flux_send_request']) assert.ok(!run.tools.includes(absent), absent);
     // 5 past the run's limit: tested in AST-6.5. Never cases 6-8: no tool exists, a forced call is refused.
-    for (const never of ['flux_create_unit', 'flux_bootstrap', 'flux_create_proposal']) {
+    for (const never of ['flux_transfer_unit', 'flux_claim_unit', 'flux_bootstrap', 'flux_create_proposal']) {
       assert.ok(!run.tools.includes(never), `${never} is not listed`);
       assert.equal(refusalCode((await run.call(never, {})).message), 'MCP_ENTRY_UNAVAILABLE', `${never} is refused`);
     }
@@ -550,8 +552,8 @@ describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A
     await patchWork(peer, renamed.id, current, { status: 'in_progress' });
     const other = (await pool.query(`SELECT version FROM project_work_items WHERE id = $1`, [retitled.id])).rows[0].version as number;
     await patchWork(peer, retitled.id, other, { title: 'Lamp driver v3' });
-    // Another member cannot undo it.
-    expectStatus(await peer.browser.request('POST', assistantRunChangesActionPath(run.runId, 'undo'), { body: {} }), 404);
+    // Anyone who may edit may undo it (assistant-authority.test.ts); someone who cannot even read the project cannot.
+    expectStatus(await stranger.browser.request('POST', assistantRunChangesActionPath(run.runId, 'undo'), { body: {} }), 404);
     const undone = await undoRun(run.runId);
     assert.equal(undone.undone, 3);
     assert.deepEqual(undone.changedSince, [`#${retitled.number}`]);
@@ -571,7 +573,9 @@ describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A
     assert.equal(again.undone, 0);
     const single = expectStatus(await owner.browser.request('POST', assistantChangeActionPath(log[3]!.id, 'undo'), { body: {} }), 200) as { message: string | null };
     assert.equal(single.message, 'Changed since. Open it');
-    expectStatus(await peer.browser.request('POST', assistantChangeActionPath(log[3]!.id, 'undo'), { body: {} }), 404);
+    const byPeer = expectStatus(await peer.browser.request('POST', assistantChangeActionPath(log[3]!.id, 'undo'), { body: {} }), 200) as { message: string | null };
+    assert.equal(byPeer.message, 'Changed since. Open it', 'someone who may edit gets the same truthful answer');
+    expectStatus(await stranger.browser.request('POST', assistantChangeActionPath(log[3]!.id, 'undo'), { body: {} }), 404);
   });
 
   test('AST-6.2: a created thought and link are removed; a created page moves to drafts; a map thought text is restored only when untouched', async () => {
@@ -624,6 +628,7 @@ describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A
     await complete(run.runId);
     const [row] = await changesOf(run.runId);
     assert.deepEqual([row!.receipt!.ownerUserId, row!.receipt!.agentId, row!.receipt!.runId, typeof row!.receipt!.engine], [owner.id, agentId, run.runId, 'string']);
+    assert.equal(row!.receipt!.payer, `Payer org of ${owner.id}`, 'the payer label of the owner\'s consent');
     const everything = JSON.stringify((await pool.query(`SELECT * FROM assistant_changes WHERE run_id = $1`, [run.runId])).rows);
     assert.ok(!everything.includes('sk-ant-'), 'no seeded secret in the change log');
     assert.ok(!everything.includes(run.token), 'no run token in the change log');
