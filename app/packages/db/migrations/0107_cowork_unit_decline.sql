@@ -2,7 +2,7 @@
 -- paused to the connection that handed it over. Two additive changes:
 --  * `cowork.unit.decline` joins the closed standing-grant operation list (rewritten last by 0060; PR #586 owns 0106,
 --    which does not touch it). Every existing grant row is unchanged.
---  * `cowork_units.transferred_from_connection_id` remembers the prior assignee for exactly one transfer; a claim or a
+--  * `cowork_units.transferred_from_connection_id` remembers the prior assignee for exactly one transfer; a claim, renewal, release or a
 --    decline clears it (a stopped unit keeps it harmlessly: decline only acts on a pending unit), so authorship after the first claim (and any artifact) is never rewritten.
 ALTER TABLE agent_standing_grants DROP CONSTRAINT IF EXISTS agent_standing_grants_operation_check;
 ALTER TABLE agent_standing_grants ADD CONSTRAINT agent_standing_grants_operation_check

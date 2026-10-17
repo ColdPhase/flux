@@ -1907,7 +1907,7 @@ export const coworkUnits = pgTable('cowork_units', {
   checkpointId: uuid('checkpoint_id'),
   /** 0054: the exact native outcome reference of a completed unit; null otherwise. */
   outcomeRef: jsonb('outcome_ref').$type<CoWorkSourceRef>(),
-  /** 0107: the connection that handed this still-pending unit over; a claim or a decline clears it. */
+  /** 0107: the connection that handed this still-pending unit over; a claim, renewal, release or decline clears it. */
   transferredFromConnectionId: uuid('transferred_from_connection_id'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),

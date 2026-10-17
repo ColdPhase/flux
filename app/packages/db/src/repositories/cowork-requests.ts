@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { and, asc, desc, eq, gt, inArray, isNull, or, sql } from 'drizzle-orm';
-import { coWorkRequestStatus, type CoWorkEnqueueCommand, CoWorkRequestLimits, CoWorkRequestRecord, CoWorkInboxRecord, CoWorkSourceRef } from '@flux/contracts';
+import { coWorkRequestStatus, type CoWorkEnqueueCommand, type CoWorkRequestLimits, type CoWorkRequestRecord, type CoWorkInboxRecord, type CoWorkSourceRef } from '@flux/contracts';
 import { prepareReferencedTaskUse, referencedTaskIds } from './task-targets.js';
 import type { TaskUseFence } from './task-use.js';
 import * as schema from '../schema.js';
