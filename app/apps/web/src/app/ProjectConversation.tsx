@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { Link, useLoaderData, useLocation, useNavigate, useRevalidator, type LoaderFunctionArgs, type ShouldRevalidateFunctionArgs } from 'react-router';
 import type { AssistantAnswer, ConversationMessage, Conversation, ConversationRootWindow, Draft, Material, Page, Project, ProjectGoal, ProjectPerson, TaskCreationNotice, WorkspaceMember } from '@flux/contracts';
-import { ApiError } from '../api/client';
+import { ApiError, NetworkError } from '../api/client';
 import { outboxView, useComposerDraft, useComposerScope, type PendingSend } from '../composer/draft';
 import { takeHandedFiles } from '../composer/handoff';
 import { ComposerFiles, MessageContent, useFileDrop } from '../composer/Files';
@@ -22,12 +22,13 @@ import { useReferenceWork } from '../work/useReferenceWork';
 import { MessageWorkPages } from '../work/MessageWorkPages';
 import { audienceLine, useProjectShell } from '../project/data';
 import { useShellActions } from './shellContext';
-import { meetAssistantDismissed } from '../assistant/MeetAssistant';
+import { assistantUses, AssistantSuggestions, meetAssistantDismissed, noteAssistantUse } from '../assistant/MeetAssistant';
 import { useConversationAssistant } from '../assistant/useConversationAssistant';
 import { useAssistantChanges, WaitingChanges } from '../assistant/WaitingChanges';
 import { AnswerItem, AskBar, ProposalCard, WorkingLine } from '../assistant/ConversationParts';
 import { askError as askErrorText, askState } from '../assistant/format';
 import { grantAgentProject } from '../agent-connection/api';
+import { requestAssistantJoin } from '../agents/api';
 import { agentAuthorLabel } from '../docs/format';
 import { ownRuns, useObservation, useReceiptTick, useReceipts } from './receipts';
 import { AgentAuthor, AuthorFace, ContributionMark, OPENING_REVEAL_MS, SourceCitation, MessageDay, MessageTime, sameMessageAuthor, clock, day, pendingMessageRow, when } from './messageParts';
@@ -385,6 +386,21 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
     setAskFailure(''); composer.setBody(input);
   }
   function exitAsk() { setAsking(false); setAskFailure(''); document.getElementById(composerId)?.focus(); }
+  const [waitingAsk, setWaitingAsk] = useState<{ conversationId: string; prompt: string; clientRunId: string } | null>(null);
+  const waitingId = waitingAsk?.clientRunId;
+  useEffect(() => {
+    if (!waitingAsk || waitingAsk.conversationId !== conversation?.id) return undefined;
+    let sending = false;
+    const flush = () => {
+      if (sending || !navigator.onLine) return;
+      sending = true;
+      assistant.ask(waitingAsk.prompt, { clientRunId: waitingAsk.clientRunId }).then(() => setWaitingAsk(null), (cause) => { sending = false; if (!(cause instanceof NetworkError)) { setWaitingAsk(null); setAskFailure(askErrorText(cause)); } });
+    };
+    window.addEventListener('online', flush);
+    const timer = window.setInterval(flush, 4000);
+    return () => { window.removeEventListener('online', flush); window.clearInterval(timer); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [waitingId, conversation?.id]);
   async function sendToAssistant() {
     if (!conversation || !writable || askBusy || askState(assistant.status, audience).kind !== 'ready') return;
     const command = helperComposer.begin();
@@ -392,12 +408,20 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
     const active = captureHelperScope();
     setAskFailure('');
     try {
+      noteAssistantUse(me.user.id);
       await assistant.ask(command.body, { clientRunId: command.clientMessageId });
       helperComposer.finish(command.clientMessageId);
       // The run's working line joins the end of the thread; follow it as a sent message does, or it starts off screen.
       if (active()) requestAnimationFrame(() => { const feed = scrollRef.current; if (feed && active()) feed.scrollTop = feed.scrollHeight; });
       if (active()) setAsking(false);
     } catch (cause) {
+      // Offline: the request waits as "Sends when you're back" and goes out once, under the same id, on reconnect (AST-10.15).
+      if (cause instanceof NetworkError && conversation) {
+        helperComposer.finish(command.clientMessageId);
+        setWaitingAsk({ conversationId: conversation.id, prompt: command.body, clientRunId: command.clientMessageId });
+        if (active()) setAsking(false);
+        return;
+      }
       helperComposer.finish(command.clientMessageId, cause);
       if (!active()) return;
       setAskFailure(askErrorText(cause));
@@ -553,8 +577,12 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
   const lookups = { projectId: project.id, messages, work: referenceWork.rows, author };
   // A manager can let their own assistant read this project in one step; anyone else asks a manager.
   const ownAgent = assistant.status?.enablement?.agents.find((item) => item.workspaceId === project.workspaceId)?.agentId ?? null;
-  const grantAction = askFailureCode === 'PERSONAL_RUN_NO_PROJECT_ACCESS' && project.access === 'manager' && ownAgent ? {
-    label: 'Let your assistant read this project',
+  const notIn = askFailureCode === 'PERSONAL_RUN_NO_PROJECT_ACCESS';
+  const grantAction = notIn && project.access !== 'manager' ? {
+    label: 'Ask a manager to add me',
+    run: () => { void requestAssistantJoin(project.id).then(() => { setAskFailure('Asked a manager to add me. I\'ll do this when they do.'); setAskFailureCode(null); }).catch(() => setAskFailure('Couldn\'t ask. Try again.')); },
+  } : notIn && ownAgent ? {
+    label: 'Add my assistant here',
     run: () => { void grantAgentProject(project.id, ownAgent, 'viewer').then(() => { setAskFailure(''); setAskFailureCode(null); }).catch(() => setAskFailure('Couldn’t give it access. Try again.')); },
   } : null;
   const proposalAuthority = (finishes: { workId: string } | null) => {
@@ -629,6 +657,7 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
               <li key={`changes-${runId}`} className="project-convo__message assistant-waiting-item"><WaitingChanges changes={runChanges} onChanged={assistantChanges.refresh} /></li>
             ))}
             {assistant.run ? <WorkingLine key={assistant.run.id} run={assistant.run} onStop={assistant.stop} onRetry={() => assistant.retry(assistant.run!.id)} onDismiss={assistant.dismissRun} /> : null}
+            {waitingAsk && waitingAsk.conversationId === conversation?.id ? <li className="assistant-queued" aria-live="polite">Sends when you&apos;re back</li> : null}
             {assistant.queued ? <li className="assistant-queued" aria-live="polite">Next: “{assistant.queued.prompt.length > 60 ? `${assistant.queued.prompt.slice(0, 60)}…` : assistant.queued.prompt}”. It starts when this one ends ·
               <Button variant="link" onClick={() => void assistant.cancelQueued().catch(() => undefined)}>Cancel</Button></li> : null}
             </ol>
@@ -652,7 +681,13 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
       </section> : null}
       {writable ? <ConnectionLine /> : null}
       {/* On the phone "Replying to" and the audience share one line, keeping the composer compact. */}
-      {asking && writable ? <AskBar id="project-ask" state={ask} error={askFailure} errorAction={grantAction} onExit={exitAsk} onAction={(action) => {
+      {conversation && writable && !asking && assistantEntry?.mode === 'ask' && assistantUses(me.user.id) < 3 ? <AssistantSuggestions onPick={(text) => {
+        noteAssistantUse(me.user.id);
+        const clientRunId = crypto.randomUUID();
+        void assistant.ask(text, { clientRunId }).then(() => requestAnimationFrame(() => { const feed = scrollRef.current; if (feed) feed.scrollTop = feed.scrollHeight; }))
+          .catch((cause) => { if (cause instanceof NetworkError && conversation) setWaitingAsk({ conversationId: conversation.id, prompt: text, clientRunId }); else { setAskFailure(askErrorText(cause)); setAskFailureCode(cause instanceof ApiError ? cause.code : null); setAsking(true); } });
+      }} /> : null}
+      {asking && writable ? <AskBar id="project-ask" state={ask} error={notIn ? (project.access === 'manager' ? 'I\'m not in this project yet.' : 'I\'m not in this project yet. A manager can add me.') : askFailure} errorAction={grantAction} onExit={exitAsk} onAction={(action) => {
         if (action === 'connect') openDetails('connect-ai');
         else if (action === 'resume') void assistant.resume().catch(() => setAskFailure('Couldn’t resume. Try again.'));
         else navigate('/settings/assistant');

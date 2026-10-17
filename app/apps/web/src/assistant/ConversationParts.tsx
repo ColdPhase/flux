@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import { Link } from 'react-router';
 import { aiConnectionLabel, type AssistantAnswer, type AssistantProposal, type AssistantRun, type AssistantSourceRef, type ConversationMessage, type NativeWorkRow } from '@flux/contracts';
-import { ApiError } from '../api/client';
+import { ApiError, NetworkError } from '../api/client';
 import { AgentTag, Button, Icon, IconButton, Kreska, useLoopPause, type KreskaExpression } from '../ui';
 import { useSmallMoments } from '../app/smallMoments';
 import { AssistantPanel, companyName } from './AssistantPanel';
@@ -62,7 +62,7 @@ export function WorkingLine({ run, onStop, onRetry, onDismiss }: { run: Assistan
   const [failed, setFailed] = useState('');
   const act = async (action: () => Promise<void>) => {
     setBusy(true); setFailed('');
-    try { await action(); } catch (error) { setFailed(error instanceof ApiError && error.status === 404 ? 'This run is no longer available.' : 'Couldn’t reach Flux. Try again.'); }
+    try { await action(); } catch (error) { setFailed(error instanceof NetworkError ? 'Offline' : error instanceof ApiError && error.status === 404 ? 'This run is no longer available.' : 'Couldn’t reach Flux. Try again.'); }
     finally { setBusy(false); }
   };
   const working = isWorking(run);
@@ -84,6 +84,8 @@ export function WorkingLine({ run, onStop, onRetry, onDismiss }: { run: Assistan
       </div>
       <div className="assistant-working__actions">
         {working && !run.stopRequested ? <Button variant="secondary" icon="stop" busy={busy} onClick={() => void act(onStop)}>Stop</Button> : null}
+        {!working && run.endReason === 'sign_in_again' ? <Link className="ui-btn ui-btn--secondary" to="/settings/agents">Sign in</Link> : null}
+        {!working && run.endReason === 'plan_limit' && !run.planLimitResetsAt ? <Button variant="secondary" onClick={onDismiss}>Try again later</Button> : null}
         {!working && canRetry(run) ? <Button variant="quiet" busy={busy} onClick={() => void act(onRetry)}>Retry</Button> : null}
         {!working ? <IconButton icon="x" label="Dismiss" onClick={onDismiss} /> : null}
       </div>
@@ -158,7 +160,7 @@ export function AnswerItem({ answer, mine, lookups, when, clock, proposal, propo
   const [failed, setFailed] = useState('');
   const act = async (kind: 'retry' | 'continue', action: () => Promise<void>) => {
     setBusy(kind); setFailed('');
-    try { await action(); } catch (error) { setFailed(error instanceof ApiError ? error.message : 'Couldn’t reach Flux. Try again.'); }
+    try { await action(); } catch (error) { setFailed(error instanceof NetworkError ? 'Offline' : error instanceof ApiError ? error.message : 'Couldn’t reach Flux. Try again.'); }
     finally { setBusy(''); }
   };
   return (

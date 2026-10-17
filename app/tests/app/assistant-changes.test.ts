@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { before, beforeEach, describe, test } from 'node:test';
 import {
-  ASSISTANT_RUN_EFFECT_TOOLS, assistantChangeActionPath, assistantMessageHeader, assistantRunChangesPath, assistantRunChangesActionPath, assistantSettingsPath, conversationAssistantChangesPath,
+  ASSISTANT_CHANGES_PATH, ASSISTANT_RUN_EFFECT_TOOLS, assistantChangeActionPath, assistantMessageHeader, assistantRunChangesPath, assistantRunChangesActionPath, assistantSettingsPath, conversationAssistantChangesPath,
   NEEDS_YOU_PATH, PERSONAL_RUN_CONSENT_VERSION, PERSONAL_RUN_LIMITS, personalRunTokenPath,
   type AssistantChange, type AssistantRunUndone, type AssistantSettings, type Conversation, type NeedsYouResponse, type Project, type Workspace,
 } from '@flux/contracts';
@@ -515,6 +515,24 @@ describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A
     assert.ok(items.every((change) => change.undoable && change.runState === 'done'));
     assert.equal(items.find((change) => change.operation === 'doc.update')!.after, '1 paragraph changed');
     assert.equal(items.find((change) => change.operation === 'work.create')!.after, 'Calibrate the probes');
+  });
+
+  test('AST-10.7 (API): Recent lists the owner\'s own changes across conversations, newest first, with their Undo; nobody else sees them', async () => {
+    const run = await liveRun();
+    await run.call('flux_create_task', { task: { title: 'Recent one' } });
+    await run.call('flux_create_task', { task: { title: 'Recent two' } });
+    await complete(run.runId);
+    const listed = expectStatus(await owner.browser.request('GET', `${ASSISTANT_CHANGES_PATH}?limit=2`), 200) as { items: AssistantChange[] };
+    assert.equal(listed.items.length, 2, 'the limit holds');
+    assert.deepEqual(listed.items.map((change) => change.objectTitle), ['Recent two', 'Recent one']);
+    assert.ok(listed.items.every((change) => change.undoable && change.runId === run.runId && change.conversationId === thread.id));
+    for (const other of [peer, outsider]) {
+      const theirs = expectStatus(await other.browser.request('GET', ASSISTANT_CHANGES_PATH), 200) as { items: AssistantChange[] };
+      assert.ok(!theirs.items.some((change) => change.runId === run.runId), 'never another person\'s changes');
+    }
+    // Undo from Recent is the same service as the message\'s Undo.
+    const undone = expectStatus(await owner.browser.request('POST', assistantChangeActionPath(listed.items[0]!.id, 'undo'), { body: {} }), 200) as { change: AssistantChange };
+    assert.equal(undone.change.state, 'undone');
   });
 
   test('AST-6.2: Undo restores the page as a new version and removes both tasks; field-level: a state change does not block a rename, an edit of the same title does', async () => {
