@@ -1,7 +1,44 @@
 import type { McpServer, ToolAnnotations, ToolCallback } from '@modelcontextprotocol/server';
-import type { z } from 'zod';
-import { AGENT_MCP_ENTRIES, agentScopeRefusal, type AgentMcpPolicy, type AgentOperation, type AgentPeerRequestClass, type AgentScope, type AgentToolCapability } from '@flux/contracts';
+import { z } from 'zod';
+import { ASSISTANT_RUN_EFFECT_TOOLS, AGENT_MCP_ENTRIES, agentScopeRefusal, type AgentMcpPolicy, type AgentOperation, type AgentPeerRequestClass, type AgentScope, type AgentToolCapability } from '@flux/contracts';
 import type { McpDispatch } from './mcp-dispatch.js';
+import { isAssistantText, redactCall } from './assistant-changes.js';
+
+/**
+ * The run-private view of a change tool (F-027 A3, R2): an assistant run names no runtime, standing grant
+ * or request class (the run is its authority), its project defaults to the run's place, and the description
+ * says what the change does and that some changes wait for the owner. The public schema is unchanged.
+ */
+const RUN_EFFECT_DESCRIPTIONS: Record<string, string> = {
+  flux_create_task: 'Add one task to this project.',
+  flux_update_task: 'Change one task at the version you last read (title, outcome, status, blocker, done-when, prerequisites).',
+  flux_record_result: 'Record one observed result, optionally finishing one of its tasks at the version you last read.',
+  flux_propose_decision: 'Propose one decision. It stays proposed; people decide.',
+  flux_create_doc: 'Start one Wiki page in this project.',
+  flux_update_doc: 'Save the next version of one Wiki page at the version you last read (the complete new text).',
+  flux_create_map: 'Create one shared map in this project.',
+  flux_rename_map: 'Rename one map at the version you last read.',
+  flux_add_thought: 'Add one thought to a map, optionally linked from another thought.',
+  flux_update_thought: 'Change one thought at the version you last read.',
+  flux_remove_thought: 'Remove one thought (this always waits for your owner\'s OK).',
+  flux_move_thoughts: 'Move thoughts on a map, each at the version you last read.',
+  flux_link_thoughts: 'Link two thoughts of one map.',
+  flux_unlink_thoughts: 'Remove one link (this always waits for your owner\'s OK).',
+  flux_start_conversation: 'Start a conversation in this project.',
+  flux_reply_in_conversation: 'Reply in one conversation of this project.',
+};
+const RUN_EFFECTS = new Set<string>(ASSISTANT_RUN_EFFECT_TOOLS);
+type ToolOutput = { content?: { type: string; text?: string }[]; isError?: boolean };
+/** A waiting or deferred change answers the run in plain words, not as an object. */
+function plainWords(output: ToolOutput): ToolOutput {
+  const text = output?.content?.[0]?.text;
+  if (output?.isError || typeof text !== 'string') return output;
+  try {
+    const value: unknown = JSON.parse(text);
+    if (isAssistantText(value)) return { content: [{ type: 'text', text: value.assistantText }] };
+  } catch { /* an ordinary result */ }
+  return output;
+}
 
 interface ToolConfiguration<I extends z.ZodType> {
   title: string;
@@ -20,7 +57,7 @@ export interface AgentToolRegistrar {
  * returns a structured refusal naming the missing permission before anything runs or is written.
  */
 export function agentToolRegistry(server: McpServer, dispatch: McpDispatch, bound?: (result: unknown) => Promise<unknown>,
-  granted?: readonly string[]) {
+  granted?: readonly string[], run?: { projectId: string }) {
   const entries = new Map<string, Omit<AgentToolCapability, 'available'>>();
   const handles = new Map<string, { disable(): void }>();
   return {
@@ -31,6 +68,18 @@ export function agentToolRegistry(server: McpServer, dispatch: McpDispatch, boun
         if (!entry || entry.requiredScope !== requiredScope || entry.operation !== (effect?.operation ?? null))
           throw new Error('A Flux tool must match its exact registered permission');
         dispatch.declare('tool', name);
+        if (run && effect && RUN_EFFECTS.has(name)) {
+          const original = callback as (...args: unknown[]) => unknown;
+          const shape = config.inputSchema as unknown as z.ZodObject<Record<string, z.ZodType>>;
+          config = { ...config, description: RUN_EFFECT_DESCRIPTIONS[name] ?? config.title,
+            inputSchema: shape.omit({ runtimeSessionId: true, grantId: true, peerRequestClass: true, sources: true })
+              .extend({ projectId: z.uuid().optional(), clientCommandId: z.uuid().describe('New for each change; reuse only to retry it.') }) as unknown as I };
+          callback = (async (args: Record<string, unknown>, extra: unknown) => {
+            // AIM-3 redaction before anything is prepared, stored or written (AST-9.2).
+            const redacted = redactCall({ ...args, projectId: args.projectId ?? run.projectId, sources: [] });
+            return plainWords(await original({ ...redacted, assistantCall: { tool: name, args: redacted } }, extra) as ToolOutput);
+          }) as unknown as ToolCallback<I>;
+        }
         // Proxy preserves the SDK's schema-dependent callback type and forwards
         // its original receiver/arguments without reconstructing a conditional signature.
         const guarded = new Proxy(callback, { apply(target, receiver, args) {

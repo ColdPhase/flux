@@ -5,6 +5,7 @@ import { ApiError } from '../api/client';
 import { useShellActions } from '../app/shellContext';
 import { useToast } from '../ui';
 import { updateWork } from '../work/api';
+import { applyRunChanges } from '../assistant/api';
 import { announceAcceptedInboxItem, announceInboxChange } from './api';
 import type { CardHandlers, SnoozeChoice } from './NeedsYouCard';
 import { nextWeek, tomorrowMorning } from './format';
@@ -90,6 +91,24 @@ export function useNeedsYouActions(queue: Queue): CardHandlers {
       if (item.kind === 'decision' && item.decision && item.project) openDetails({ kind: 'decision', id: item.decision.id, projectId: item.project.id });
       else if (item.kind === 'blocked' && item.blocked && item.project) openDetails({ kind: 'work', id: item.blocked.workId, projectId: item.project.id });
       else void navigate(item.assistantRequestIdentity && item.project ? `/inbox/${encodeURIComponent(item.key.replace(/^note:/, ""))}` : item.url);
+    },
+
+    applyChanges(item: NeedsYouItem) {
+      const current = latest.current;
+      const changes = item.assistantChanges;
+      if (!changes) return;
+      // Each change is applied with every check again; one that changed since says so and applies nothing.
+      const applied = applyRunChanges(changes.runId);
+      const intent = current.hide(item.key, applied);
+      applied.then((result) => {
+        announceInboxChange();
+        const problems = [...new Set(result.changes.map((entry) => entry.message).filter((message): message is string => !!message))];
+        toast(problems.length ? { message: problems.join(' · '), tone: 'danger' } : { message: `Done: ${changes.summary}`, tone: 'success' });
+      }, (error: unknown) => {
+        if (!intent.isCurrent()) return;
+        current.show(item);
+        toast({ message: apiMessage(error, 'That did not work. Try again.'), tone: 'danger' });
+      });
     },
 
     discuss(item: NeedsYouItem) {

@@ -134,8 +134,10 @@ function sourceSummary(count: number) {
   return `${count} ${count === 1 ? 'source' : 'sources'} from this project`;
 }
 
-export function AnswerItem({ answer, mine, lookups, when, clock, proposal, proposalControls, onRetry, onContinue, onAskAbout }: {
+export function AnswerItem({ answer, mine, lookups, when, clock, proposal, proposalControls, changes = null, onRetry, onContinue, onAskAbout }: {
   answer: AssistantAnswer;
+  /** The owner's waiting changes of this run (F-027 A3); only ever the owner's own. */
+  changes?: ReactNode;
   mine: boolean;
   lookups: SourceLookups;
   when: (iso: string) => string;
@@ -166,6 +168,7 @@ export function AnswerItem({ answer, mine, lookups, when, clock, proposal, propo
       <AnswerBody answer={answer} lookups={lookups} />
       {answer.truncated ? <p className="assistant-answer__truncated"><Icon name="alert" size={13} />Stopped at the length limit, so this answer is incomplete.</p> : null}
       {proposal ? proposalControls : null}
+      {changes}
       <div className="assistant-answer__foot">
         <span>{sourceSummary(answer.sources.length)} · {aiConnectionLabel(answer.provenance.provider, answer.provenance.model === 'claude-code' ? 'Claude Code' : answer.provenance.model)}</span>
         {mine ? <>

@@ -1836,6 +1836,50 @@ export const assistantProposals = pgTable('assistant_proposals', {
 ]);
 
 
+/** The assistant's change log (migration 0104, F-027 A3 #403): one row per effect call of a run. */
+export const ASSISTANT_CHANGE_STATES = ['applied', 'waiting', 'applied_after_wait', 'not_now', 'expired', 'undone', 'refused'] as const;
+export const ASSISTANT_WAIT_REASONS = ['ask', 'removal', 'others', 'live_wiki', 'limit', 'outside_rights', 'conflict'] as const;
+export const assistantChanges = pgTable('assistant_changes', {
+  id: uuid('id').primaryKey(),
+  workspaceId: uuid('workspace_id').notNull(),
+  projectId: uuid('project_id').notNull(),
+  runId: uuid('run_id').notNull(),
+  ownerUserId: text('owner_user_id').notNull().references(() => authUsers.id, { onDelete: 'cascade' }),
+  agentId: uuid('agent_id').notNull(),
+  clientCommandId: uuid('client_command_id').notNull(),
+  fingerprint: text('fingerprint').notNull(),
+  tool: text('tool').notNull(),
+  operation: text('operation').notNull(),
+  objectType: text('object_type', { enum: ['work', 'doc', 'map', 'thought', 'link', 'message', 'result', 'decision'] }).notNull(),
+  objectId: uuid('object_id'),
+  objectTitle: text('object_title').notNull().default(''),
+  state: text('state', { enum: ASSISTANT_CHANGE_STATES }).notNull(),
+  waitReason: text('wait_reason', { enum: ASSISTANT_WAIT_REASONS }),
+  authority: text('authority', { enum: ['owner_request', 'owner_approval', 'owner_deferred_change'] }),
+  preparedCommand: jsonb('prepared_command').$type<{ tool: string; args: Record<string, unknown> }>(),
+  policyVersion: integer('policy_version').notNull(),
+  beforeVersion: integer('before_version'),
+  afterVersion: integer('after_version'),
+  receipt: jsonb('receipt').$type<Record<string, unknown>>(),
+  refusal: text('refusal'),
+  otherUserId: text('other_user_id').references(() => authUsers.id, { onDelete: 'set null' }),
+  suggestToUserId: text('suggest_to_user_id').references(() => authUsers.id, { onDelete: 'set null' }),
+  sentAt: timestamp('sent_at', { withTimezone: true }),
+  inboxAt: timestamp('inbox_at', { withTimezone: true }),
+  decidedBy: text('decided_by').references(() => authUsers.id, { onDelete: 'set null' }),
+  decidedAt: timestamp('decided_at', { withTimezone: true }),
+  version: integer('version').notNull().default(1),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  unique().on(table.runId, table.clientCommandId),
+  index('assistant_changes_run_idx').on(table.runId, table.createdAt),
+  foreignKey({ columns: [table.workspaceId, table.projectId], foreignColumns: [projects.workspaceId, projects.id] }).onDelete('cascade'),
+  foreignKey({ columns: [table.workspaceId, table.projectId, table.runId], foreignColumns: [personalRuns.workspaceId, personalRuns.projectId, personalRuns.id] }).onDelete('cascade'),
+  foreignKey({ columns: [table.workspaceId, table.agentId], foreignColumns: [agents.workspaceId, agents.id] }).onDelete('cascade'),
+]);
+
 // Durable co-work control metadata (#153, migration0035). Domain content stays native.
 export const coworkConnectionSlots = pgTable('cowork_connection_slots', {
   connectionId: uuid('connection_id').primaryKey(),
