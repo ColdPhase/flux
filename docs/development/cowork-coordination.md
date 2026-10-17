@@ -909,8 +909,8 @@ previous section's tools.
 - **Completion and transfer** map one to one to "Unit completion and
   transfer", with `reviewSeparation` from `COWORK_UNIT_POLICY`. The complete
   tool's `outcome` admits only the native reference types.
-- **Still not exposed:** request admission, recovery and the inbox, and
-  resolution with a response.
+- **Still not exposed (until 2026-10-17, see the next section):** request
+  admission, recovery and the inbox, and resolution with a response.
   - `flux_bootstrap` therefore still reports `coordination_unavailable`.
     Playbook 1.3.0 says that this gap covers only those parts.
   - A connection learns the ID of a unit that another connection created for it
@@ -920,6 +920,37 @@ previous section's tools.
   - Should a parked task refuse new claims?
   - Should the claim policy's capacity of 1 become a grant-backed capacity
     before #160's clients hold an execute unit and a review unit at once?
+
+### Requests, inbox and review verdicts over MCP (2026-10-17)
+
+Agent decision under the delegated authority (#153 AC-2/AC-4; consumers #400 AC-4/AC-5 and #160). It closes the
+"Still not exposed" list above.
+
+- **`flux_send_request`** wraps `coWorkRequestInTransaction` (operation `cowork.request`, class = the sender unit's
+  role). The server policy `COWORK_REQUEST_POLICY` bounds a lineage to 32 requests, depth 4 and 4 review rounds, with
+  `COWORK_UNIT_POLICY`'s review separation. The same intent key returns the existing request; a retried command
+  replays; a newer request of the same kind to the same unit supersedes an unclaimed older one.
+- **`flux_coordination_inbox`** wraps `coWorkRecovery` with the server's cursor secret (`flux.context.read`, entry
+  capabilities `project.identity.read` + `connection.runtime.read`, so never offered to assistant runs). Reading is
+  never an acknowledgement.
+- **`flux_resolve_request`** wraps `coWorkRequestResponseInTransaction` with the production provider
+  `COWORK_RESPONSE_POLICY`. It publishes nothing: the recipient first records its answer as an ordinary native
+  record under that record's own grant, then names it as `evidence`. This settles the open question of which grant
+  authorizes publication (the record's own), keeps one content store, and persists the response before the
+  resolution. The composition still requires the request's target and sources to be current and the evidence to
+  exist now.
+- **Review verdicts (migration 0105, `cowork_review_verdicts`).** A review request is resolved with `passed` or
+  `changes_requested`; other kinds refuse a verdict (`COWORK_VERDICT_REQUIRED`, `COWORK_VERDICT_NOT_REVIEW`). The row
+  copies the request's target and criteria and the evidence reference only, never content, and the reviewer differs
+  from the author by constraint. A verdict is `current` while its target still is (the same readable-reference rule
+  as admission); a newer task/material/doc/thought version makes it stale without rewriting it. A new review is a
+  new request under the same standing grant: no other owner prompt. Execution-class grants cannot claim review
+  units because the grant class must equal the unit's role. GitHub PR targets wait for #74 (refused as today).
+- **People's read.** `GET /api/v1/work/:workId/coordination` returns the task's request cards (kind, sender ->
+  recipient agent names, exact target, state with expiry applied) and verdicts with `current`, for whoever can read
+  the task. No claims, leases, heartbeats or prompts appear in it.
+- **Still open.** Transfer decline back to the prior assignee, CW-3 checkpoint deferral by the recipient, the #74
+  GitHub head provider, real two-owner client traces (#160) and the final design UI (#347/#400).
 
 ### Parent request participation
 
