@@ -3,7 +3,7 @@ import { Link, useLocation, useNavigate, type LinkProps, type NavigateOptions, t
 import { ApiError } from '../api/client';
 import { getProject } from '../app/conversation-api';
 import { useShellData } from '../app/data';
-import { Icon } from '../ui';
+import { Icon, useSidePanelMode } from '../ui';
 import { currentEntry, flushPlace, type ReturnState } from './memory';
 
 /**
@@ -92,6 +92,8 @@ export function RefLink({ to, replace, state, onClick, ...rest }: LinkProps) {
   return <Link {...rest} to={to} replace={replace} state={state} onClick={click} />;
 }
 
+/** Whether the project an entry's origin belongs to is gone for this person, read once per entry. */
+const checks = new Map<string, Promise<boolean>>();
 const projectOf = (path: string) => /^\/projects\/([0-9a-f-]{36})(\/|$|\?|#)/i.exec(path)?.[1];
 const dmOf = (path: string) => /^\/dm\/([0-9a-f-]{36})(\/|$|\?|#)/i.exec(path)?.[1];
 
@@ -108,11 +110,17 @@ export function useRouteOrigin(): Origin | null {
   const [lost, setLost] = useState<string | null>(null);
   useEffect(() => {
     if (!project) return;
-    const controller = new AbortController();
-    getProject(project, controller.signal).catch((cause: unknown) => {
-      if (!controller.signal.aborted && cause instanceof ApiError && [401, 403, 404].includes(cause.status)) setLost(project);
-    });
-    return () => controller.abort();
+    let current = true;
+    // One read per entry and project, however many places ask (the header and a panel's back).
+    const key = `${location.key}:${project}`;
+    let read = checks.get(key);
+    if (!read) {
+      read = getProject(project).then(() => false, (cause: unknown) => cause instanceof ApiError && [401, 403, 404].includes(cause.status));
+      checks.set(key, read);
+      for (const old of [...checks.keys()].slice(0, Math.max(0, checks.size - 20))) checks.delete(old);
+    }
+    void read.then((gone) => { if (current && gone) setLost(project); });
+    return () => { current = false; };
   }, [project, location.key]);
   if (!origin || withoutHash(origin.path) === `${location.pathname}${location.search}`) return null;
   if (project && (lost === project || !projects.some((item) => item.id === project))) return null;
@@ -129,6 +137,19 @@ export function useGoToOrigin(origin: Origin) {
     if (typeof index === 'number' && index > 0) { void navigate(-1); return; }
     void navigate(origin.path, { state: { restore: { key: origin.key, path: withoutHash(origin.path) } } satisfies ReturnState });
   }, [navigate, origin]);
+}
+
+const NO_ORIGIN: Origin = { key: '', path: '/', label: '' };
+
+/**
+ * The panel's own "‹ back" to where the page was followed from, for a page whose panel is a sheet or an overlay: that panel
+ * covers the header, where the control sits, so the panel's one back pattern carries it. A docked panel leaves the header free.
+ */
+export function useOriginPanelBack(): { label: string; run: () => void } | undefined {
+  const origin = useRouteOrigin();
+  const mode = useSidePanelMode();
+  const go = useGoToOrigin(origin ?? NO_ORIGIN);
+  return origin && mode !== 'docked' ? { label: origin.label, run: go } : undefined;
 }
 
 /** The one quiet "‹ <origin name>" control, wherever an opened reference shows its head: the header row, the panel's head, the phone's sheet. */

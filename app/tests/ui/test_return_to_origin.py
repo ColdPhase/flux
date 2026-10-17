@@ -460,7 +460,13 @@ class ReturnToOrigin(unittest.TestCase):
         self.activate(pick, tap)
         expect(page).to_have_url(re.compile(r"/projects/[0-9a-f-]{36}/conversations/[0-9a-f-]{36}#message-"))
         self.assertEqual(page.evaluate("history.length"), history + 1)
-        back = self.origin_back(page, "Search")
+        if size == "desktop":
+            back = self.origin_back(page, "Search")
+        else:
+            # The thread a result leads to is the one panel, a modal sheet or overlay here that covers the header: the panel's own
+            # back carries the way to the search.
+            back = page.locator("#details .ui-panel__back")
+            expect(back).to_have_text("Search")
         expect(back).to_have_count(1)
         shot(page, f"592-search-result-{engine}-{size}")
         self.activate(back, tap)

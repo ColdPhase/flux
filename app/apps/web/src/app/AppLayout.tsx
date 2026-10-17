@@ -520,7 +520,6 @@ function AppLayoutContent() {
     toggleDetails(false);
   };
   useLayoutEffect(() => { closeRef.current = closePanel; });
-  // The panel opens at the height it was left at when its entry is returned to (#592).
   // "What matters" (#133): a quiet count of what needs you; refreshed when the panel closes.
   const needsYou = useNeedsYou(activeProject ? projectId ?? null : null, recapOpen);
   const toggleRecap = () => {

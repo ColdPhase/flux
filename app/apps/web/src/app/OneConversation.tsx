@@ -16,7 +16,7 @@ import { SourceOfContext } from './messageParts';
 import { OwnedPanelContent, useOwnedPanel } from './ownedPanel';
 import { useShellActions } from './shellContext';
 import { recall, useArrival } from '../place/memory';
-import { useOriginLabel } from '../place/origin';
+import { useOriginLabel, useOriginPanelBack } from '../place/origin';
 import type { ProjectData } from './ProjectConversation';
 import './one-conversation.css';
 import { useCreateWorkFromMessage } from '../work/inline';
@@ -139,7 +139,9 @@ export function OneConversation({ data, Pane }: { data: ProjectData; Pane: Compo
   // Until the stream has the root (a link to an old one), the thread's newest sequence gives its size.
   const replies = root?.replyCount ?? Math.max(0, (thread?.messages.at(-1)?.sequence ?? 1) - 1);
   const rootMessage = root?.message ?? thread?.messages.find((message) => message.sequence === 1) ?? null;
-  const slot = useOwnedPanel(thread ? { key: `thread:${thread.id}`, chip: 'Thread', label: 'Replies', startFull: true, onClose: close } : null);
+  // A thread a reference led to, in a sheet or an overlay over the header, carries the way back to where it was followed from (#592).
+  const originBack = useOriginPanelBack();
+  const slot = useOwnedPanel(thread ? { key: `thread:${thread.id}`, chip: 'Thread', label: 'Replies', startFull: true, ...(originBack ? { back: originBack } : {}), onClose: close } : null);
   // A link to a reply, or one that asks to keep the panel, shows the thread even when another object (What matters, a task) covers it.
   const toReply = !!arrived && arrived !== rootMessage?.id;
   useEffect(() => {

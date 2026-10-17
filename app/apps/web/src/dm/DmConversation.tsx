@@ -25,6 +25,7 @@ import { DmThreadPanel } from './DmThreadPanel';
 import { groupRows } from './rows';
 import { ownRuns, useObservation, useReceipts } from '../app/receipts';
 import './dm.css';
+import { useOriginPanelBack } from '../place/origin';
 
 /**
  * One direct message (#107): a private conversation with its audience always in view. Messages
@@ -359,7 +360,8 @@ function DmContent({ initial }: { initial: Dm }) {
     : '';
   const typing = useTyping(me.user.id, !gone && !selecting ? { kind: 'dm', id: dm.id } : null, !recipientGone);
   const threadOpen = !!threadId && !!messages.length && !gone;
-  const slot = useOwnedPanel(threadOpen ? { key: `dm-thread:${threadId}`, chip: 'Thread', label: 'Replies', startFull: true, onClose: closeThread } : null);
+  const originBack = useOriginPanelBack();
+  const slot = useOwnedPanel(threadOpen ? { key: `dm-thread:${threadId}`, chip: 'Thread', label: 'Replies', startFull: true, ...(originBack ? { back: originBack } : {}), onClose: closeThread } : null);
   if (gone) return <DmUnavailable />;
   const canSend = composer.canSend && !recipientGone;
   // On the phone the header keeps only Back, the title, Together and Search (Spokój #507): choosing starts by the composer.

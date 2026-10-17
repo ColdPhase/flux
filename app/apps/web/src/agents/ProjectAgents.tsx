@@ -35,7 +35,7 @@ import { useTyping } from '../typing/useTyping';
 import { TypingNotice } from '../typing/TypingNotice';
 import './agents.css';
 import { useCreateWorkFromMessage } from '../work/inline';
-import { RefLink } from '../place/origin';
+import { RefLink, useOriginPanelBack } from '../place/origin';
 
 /** The drag data type of a task dragged onto an agent (computer only; the button does the same by keyboard and touch). */
 const TASK_DRAG = 'application/x-flux-task';
@@ -803,10 +803,12 @@ export function ProjectAgents() {
   const latestDetail = selected;
   const requests = asked[0] ?? null;
   // A task's thread or an agent's details open in the one panel, as a task does (F-026 S4); this view keeps their state.
+  // A page a reference led to, with its panel in a sheet or an overlay over the header, carries the way back (#592).
+  const originBack = useOriginPanelBack();
   const slot = useOwnedPanel(task ? {
     key: `thread:${threadKind}:${task.id}`, chip: threadKind === 'agents' ? 'Agents’ thread' : 'Thread', label: `#${task.number} · ${task.title}`, closeLabel: 'Close thread', startFull: true,
-    ...(latestDetail ? { back: { label: latestDetail.name, run: closeThread } } : {}), onClose: closePanel,
-  } : latestDetail ? { key: `agent:${latestDetail.key}`, chip: 'Agent', label: latestDetail.name, onClose: closePanel } : null);
+    ...(latestDetail ? { back: { label: latestDetail.name, run: closeThread } } : originBack ? { back: originBack } : {}), onClose: closePanel,
+  } : latestDetail ? { key: `agent:${latestDetail.key}`, chip: 'Agent', label: latestDetail.name, ...(originBack ? { back: originBack } : {}), onClose: closePanel } : null);
 
   // The view scrolls in its own pane like every other view, so a long thread stays reachable
   // above the sticky composer on any screen.
