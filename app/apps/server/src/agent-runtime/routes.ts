@@ -1,15 +1,15 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import {
-  AGENT_RUNTIME_BINDING_PATH, AGENT_RUNTIME_CHECK_PATH, AGENT_RUNTIME_CLIENTS, AGENT_RUNTIME_CONSOLE_PATH, AGENT_RUNTIME_ERRORS, AGENT_RUNTIME_NOTICE_PATH,
+  AGENT_RUNTIME_BINDING_PATH, AGENT_RUNTIME_CHECK_PATH, AGENT_RUNTIME_CLIENTS, AGENT_RUNTIME_CONSOLE_PATH, AGENT_RUNTIME_CONSOLE_RESUME_PATH, AGENT_RUNTIME_ERRORS, AGENT_RUNTIME_NOTICE_PATH,
   AGENT_RUNTIME_PATH, AGENT_RUNTIME_SIGN_OUT_PATH, CLAUDE_CODE_SIGN_IN_METHODS, CODEX_SIGN_IN_METHODS,
-  type AgentRuntimeClient, type AgentRuntimeConsoleTicket,
+  type AgentRuntimeClient, type AgentRuntimeConsoleResume, type AgentRuntimeConsoleTicket,
 } from '@flux/contracts';
 import { agentRuntimeUseCases, InvalidInputError, type AgentRuntimeConfig, type Database } from '@flux/core';
 import { agentRuntimeStore } from '@flux/db';
 import { createRuntimeManagerClient, runtimeManagerPort } from '@flux/runtime-protocol';
 import type { SessionResolver } from '../identity/index.js';
 import { forbidden, UNAUTHENTICATED, useDomainErrors } from '../http/errors.js';
-import { accountFingerprinter, CONSOLE_METHODS, ConsoleTickets, serveBrowserConsole } from './console.js';
+import { accountFingerprinter, CONSOLE_METHODS, ConsoleTickets, serveBrowserConsole, type LiveConsole } from './console.js';
 
 /**
  * The owner's agent runtime (F-022 AIM-3). T3 #278: `GET /api/v1/agent-runtime`, `POST` and `DELETE
@@ -31,6 +31,7 @@ export async function agentRuntimeRoutes(app: FastifyInstance, { db, sessions, c
   const runtime = agentRuntimeUseCases(config, store, manager, { accountFingerprint: accountFingerprinter(secret) });
   const tickets = new ConsoleTickets(secret);
   const consoles = new Map<string, () => void>();
+  const liveConsoles = new Map<string, LiveConsole>();
   app.addHook('onClose', async () => { for (const end of [...consoles.values()]) end(); });
   // F-022 "Commercial Terms": Flux records the operator's statement and its date; it does not verify it.
   if (config.commercialTermsAgreedOn) await store.recordCommercialTerms(config.commercialTermsAgreedOn);
@@ -74,6 +75,17 @@ export async function agentRuntimeRoutes(app: FastifyInstance, { db, sessions, c
     const ticket: AgentRuntimeConsoleTicket = tickets.issue({ ownerUserId: session.user.id, client: client as AgentRuntimeClient, method }, session.sessionId);
     return reply.headers(noStore).send(ticket);
   });
+  // After a reload: a fresh single-use ticket for this session's own pending sign-in, or 404. Another
+  // session or owner learns nothing (F-027 AST-1.5/1.6).
+  app.post(AGENT_RUNTIME_CONSOLE_RESUME_PATH, async (request, reply) => {
+    const session = await sessions.requirePrincipal(request);
+    const { client } = fields(request, { client: AGENT_RUNTIME_CLIENTS });
+    const live = liveConsoles.get(session.user.id);
+    if (!live || live.sessionId !== session.sessionId || live.client !== client) return reply.code(404).headers(noStore).send({ error: 'No sign-in is waiting in this session', code: 'AGENT_RUNTIME_NO_PENDING_SIGN_IN' });
+    const ticket = tickets.issue({ ownerUserId: session.user.id, client: live.client, method: live.method, reattach: true }, session.sessionId);
+    const body: AgentRuntimeConsoleResume = { ...ticket, client: live.client, method: live.method };
+    return reply.headers(noStore).send(body);
+  });
   const attached = new WeakMap<FastifyRequest, { userId: string; sessionId: string }>();
   app.get(AGENT_RUNTIME_CONSOLE_PATH, {
     websocket: true,
@@ -93,7 +105,7 @@ export async function agentRuntimeRoutes(app: FastifyInstance, { db, sessions, c
     if (!owner || !config.manager) { socket.close(4401, 'Session ended'); return; }
     const headers = { cookie: request.headers.cookie };
     serveBrowserConsole(socket, owner, {
-      runtime, tickets, manager: config.manager, open: consoles,
+      runtime, tickets, manager: config.manager, open: consoles, live: liveConsoles,
       sessionAlive: async () => (await sessions.resolveSession(headers))?.sessionId === owner.sessionId,
     });
   });

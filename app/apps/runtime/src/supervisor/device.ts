@@ -1,6 +1,6 @@
-import { DEVICE_CODE, DEVICE_URL, type SignInFrame, type SignInProblem } from '@flux/runtime-protocol';
+import { CLAUDE_SIGN_IN_URL, DEVICE_CODE, DEVICE_URL, type SignInFrame, type SignInProblem } from '@flux/runtime-protocol';
 
-// `codex login --device-auth` in the sign-in console (F-027 AST-1 "the one exception to 'Flux never parses
+// `codex login --device-auth` (and, for Claude Code, only the sign-in URL) in the sign-in console (F-027 AST-1 "the one exception to 'Flux never parses
 // console frames'", A12; F-022 T6 #281). The slot reads the CLI's PTY output IN MEMORY ONLY, for exactly
 // three things: the verification URL, the one-time code, and the two failures Journey 6 names (device code
 // sign-in turned off in ChatGPT, and an expired code). Each goes to the owner's card as one closed frame;
@@ -20,7 +20,27 @@ const PROBLEMS: [RegExp, SignInProblem][] = [
   [/device code (?:login|sign-?in|authorization) is not enabled|enable device code/i, 'device_auth_disabled'],
   [/device auth timed out|code (?:has )?expired|expired_token/i, 'code_expired'],
 ];
+/** Claude Code prints "If the browser didn't open, visit: <url>"; the URL ends at the line's end (OSC 8 stripped above). */
+// eslint-disable-next-line no-control-regex
+const CLAUDE_URL_IN_TEXT = /visit: (https:\/\/[^\s\u0007]{1,1700})[ \t]*\n/;
 const WINDOW = 8 * 1024;
+
+/** A reader of `claude auth login`'s output: only the sign-in URL, once, in memory (F-027 A12). */
+export function claudeSignInReader() {
+  let window = '';
+  let found = false;
+  return {
+    feed(chunk: string): SignInFrame[] {
+      if (found) return [];
+      window = `${window}${chunk.replace(ANSI, '').replace(/\r/g, '')}`.slice(-WINDOW);
+      const url = CLAUDE_URL_IN_TEXT.exec(window)?.[1];
+      if (!url || !CLAUDE_SIGN_IN_URL.test(url)) return [];
+      found = true;
+      window = '';
+      return [{ t: 'signin', e: 'url', url }];
+    },
+  };
+}
 
 /** A reader of one console's output; `feed` returns the frames to send for this chunk (each at most once). */
 export function deviceSignInReader() {

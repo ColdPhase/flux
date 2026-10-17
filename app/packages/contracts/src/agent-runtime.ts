@@ -96,6 +96,8 @@ export interface AgentRuntimeStatus {
 // key, a session or a credential file anywhere in these messages.
 
 export const AGENT_RUNTIME_CONSOLE_PATH = '/api/v1/agent-runtime/console';
+/** POST: a fresh ticket to reattach this session's pending sign-in after a reload (F-027 AST-1.5/1.6). */
+export const AGENT_RUNTIME_CONSOLE_RESUME_PATH = '/api/v1/agent-runtime/console/resume';
 /** `POST {client}`: the CLI's own logout, then its files are deleted. */
 export const AGENT_RUNTIME_SIGN_OUT_PATH = '/api/v1/agent-runtime/sign-out';
 /** `POST {client}`: asks the CLI's own status again (after a closed console or a vendor-side change). */
@@ -111,6 +113,8 @@ export const AGENT_RUNTIME_CONSOLE_INPUT_CHARS = 256;
 
 export interface AgentRuntimeConsoleRequest { client: 'claude_code'; method: ClaudeCodeSignInMethod }
 export interface AgentRuntimeConsoleTicket { ticket: string; expiresAt: string }
+/** A pending sign-in this session may reattach to after a reload (F-027 AST-1.5): the ticket and what is running. */
+export interface AgentRuntimeConsoleResume extends AgentRuntimeConsoleTicket { client: AgentRuntimeClient; method: AgentRuntimeSignInMethod }
 export interface AgentRuntimeClientRequest { client: AgentRuntimeClient }
 
 export type AgentRuntimeConsoleClientMessage =
@@ -126,6 +130,8 @@ export type AgentRuntimeConsoleServerMessage =
   | { t: 'state'; state: 'starting' | 'running' | 'checking' }
   /** ChatGPT device sign-in (F-027 A12, #281): the URL and one-time code Codex printed, for the card only; never stored. */
   | { t: 'device'; url: string; code: string }
+  /** Claude sign-in (F-027 A12): the sign-in page `claude auth login` printed, for the card only; never stored. */
+  | { t: 'link'; url: string }
   /** A failure Journey 6 names: device code sign-in is off in ChatGPT, or the code expired. */
   | { t: 'problem'; problem: 'device_auth_disabled' | 'code_expired' }
   | { t: 'done'; ended: 'exited' | 'timed_out'; disposition: 'accepted' | 'superseded'; signedIn: boolean; status: AgentRuntimeStatus }

@@ -54,8 +54,8 @@ const safeLink = (value: string) => {
   try { const url = new URL(value); return url.protocol === 'https:' ? url : null; } catch { return null; }
 };
 
-export default function SignInConsole({ ticket, methodTitle, onEnd, cliName = 'Claude Code', input = 'code' }: {
-  ticket: string; methodTitle: string; onEnd: (outcome: ConsoleOutcome) => void; cliName?: string; input?: ConsoleInput;
+export default function SignInConsole({ ticket, methodTitle, onEnd, cliName = 'Claude Code', input = 'code', openLabel = 'Open claude.ai' }: {
+  ticket: string; methodTitle: string; onEnd: (outcome: ConsoleOutcome) => void; cliName?: string; input?: ConsoleInput; openLabel?: string;
 }) {
   const host = useRef<HTMLDivElement>(null);
   const socketRef = useRef<WebSocket | null>(null);
@@ -65,6 +65,8 @@ export default function SignInConsole({ ticket, methodTitle, onEnd, cliName = 'C
   const problemRef = useRef<ConsoleOutcome['problem']>(null);
   const [link, setLink] = useState<URL | null>(null);
   const [code, setCode] = useState('');
+  const [details, setDetails] = useState(false);
+  const [pasted, setPasted] = useState<'sent' | 'unreadable' | 'empty' | null>(null);
   const endRef = useRef(onEnd);
   const cancelled = useRef(false);
   useEffect(() => { endRef.current = onEnd; }, [onEnd]);
@@ -115,6 +117,7 @@ export default function SignInConsole({ ticket, methodTitle, onEnd, cliName = 'C
       try { message = JSON.parse(String(event.data)) as AgentRuntimeConsoleServerMessage; } catch { return; }
       if (message.t === 'state') setPhase(message.state);
       else if (message.t === 'device') { const url = safeLink(message.url); if (url) setDevice({ url, code: message.code }); }
+      else if (message.t === 'link') { const url = safeLink(message.url); if (url) setLink(url); }
       else if (message.t === 'problem') problemRef.current ??= message.problem;
       else if (message.t === 'done') finish({ signedIn: message.disposition === 'accepted' && message.signedIn, ended: message.ended,
         error: message.disposition === 'superseded' ? 'superseded' : null, status: message.status, problem: problemRef.current });
@@ -151,6 +154,16 @@ export default function SignInConsole({ ticket, methodTitle, onEnd, cliName = 'C
     setCode('');
   }
 
+  /** [ Paste ]: the clipboard's text goes to the CLI's own prompt, never stored. */
+  async function pasteFromClipboard() {
+    const socket = socketRef.current;
+    if (!socket || socket.readyState !== WebSocket.OPEN) return;
+    let value = '';
+    try { value = (await navigator.clipboard.readText()).trim(); } catch { setPasted('unreadable'); setDetails(true); return; }
+    if (!value) { setPasted('empty'); return; }
+    for (const part of chunks(`${value}\r`)) socket.send(JSON.stringify({ t: 'in', d: part } satisfies AgentRuntimeConsoleClientMessage));
+    setPasted('sent');
+  }
   const cancel = () => { cancelled.current = true; socketRef.current?.close(1000, 'cancel'); };
   /** Ctrl-D (twice: the first ends a line without Enter) tells the CLI its input is complete. */
   const endInput = () => { const socket = socketRef.current; if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ t: 'in', d: '\u0004\u0004' } satisfies AgentRuntimeConsoleClientMessage)); };
@@ -162,6 +175,7 @@ export default function SignInConsole({ ticket, methodTitle, onEnd, cliName = 'C
   }
   const terminal = <div className="rt-term" ref={host} aria-label={`${cliName} sign-in terminal`} />;
   const deviceSignIn = input === 'none';
+  const claudeCard = input === 'code';
 
   return (
     <section className="nset__sec rt-console" aria-labelledby="rt-console-h">
@@ -178,27 +192,40 @@ export default function SignInConsole({ ticket, methodTitle, onEnd, cliName = 'C
           ) : <p className="rt-phase" role="status"><Spinner />{phase === 'running' ? 'Getting a code from ChatGPT…' : phaseText(phase, cliName)}</p>}
           <details className="rt-more"><summary>Show details</summary>{terminal}</details>
         </div>
+      ) : claudeCard ? (
+        <div className="rt-device" aria-live="polite">
+          <p className="rt-device__lead">Sign in to Claude:</p>
+          <ol className="rt-steps"><li>Open claude.ai and approve.</li><li>Paste the code here.</li></ol>
+          {link ? (
+            <div className="aset__actions">
+              <a className="ui-btn ui-btn--primary rt-open" href={link.href} target="_blank" rel="noopener noreferrer"><Icon name="link" size={14} />{openLabel}</a>
+              <Button variant="secondary" disabled={phase !== 'running'} onClick={() => void pasteFromClipboard()}>Paste</Button>
+            </div>
+          ) : <p className="rt-phase" role="status"><Spinner />{phase === 'running' ? 'Getting the sign-in page from Claude…' : phaseText(phase, cliName)}</p>}
+          <p className="nset__note" role="status">
+            {pasted === 'sent' ? 'Code sent. Flux notices when Claude Code accepts it. ' : pasted === 'unreadable' ? 'Flux can’t read your clipboard here. Paste the code in the box under Show details. '
+              : pasted === 'empty' ? 'Your clipboard is empty. Copy the code on the sign-in page first. ' : ''}
+            It goes to {cliName}’s prompt and is not kept.
+          </p>
+          <details className="rt-more" open={details} onToggle={(event) => setDetails(event.currentTarget.open)}><summary>Show details</summary>
+            {terminal}
+            <form className="rt-code" onSubmit={paste}>
+              <label htmlFor="rt-code">Paste the code from the sign-in page</label>
+              <div className="rt-code__row">
+                <input id="rt-code" className="ui-input" value={code} onChange={(event) => setCode(event.target.value)} autoComplete="off" autoCapitalize="off" autoCorrect="off" spellCheck={false} enterKeyHint="send" maxLength={2048} />
+                <Button type="submit" variant="secondary" disabled={!code.trim() || phase !== 'running'}>Send</Button>
+              </div>
+            </form>
+          </details>
+        </div>
       ) : <p className="rt-phase" role="status">{phase === 'running' ? null : <Spinner />}{phaseText(phase, cliName)}</p>}
-      {!deviceSignIn && link ? (
-        <a className="ui-btn ui-btn--primary rt-open" href={link.href} target="_blank" rel="noopener noreferrer">
-          <Icon name="link" size={14} />Open the sign-in page ({link.host})
-        </a>
-      ) : null}
-      {deviceSignIn ? null : terminal}
+      {!deviceSignIn && !claudeCard ? terminal : null}
       {input === 'terminal' ? (
         <div className="rt-code">
           <p className="nset__note">Paste or type it in the terminal above; it goes straight to {cliName}, which keeps it in your own space on this server. Flux doesn’t keep it.</p>
           <div className="aset__actions"><Button variant="secondary" disabled={phase !== 'running'} onClick={endInput}>Done, finish sign-in</Button></div>
         </div>
       ) : null}
-      {input !== 'code' ? null : <form className="rt-code" onSubmit={paste}>
-        <label htmlFor="rt-code">Paste the code from the sign-in page</label>
-        <div className="rt-code__row">
-          <input id="rt-code" className="ui-input" value={code} onChange={(event) => setCode(event.target.value)} autoComplete="off" autoCapitalize="off" autoCorrect="off" spellCheck={false} enterKeyHint="send" maxLength={2048} />
-          <Button type="submit" variant="secondary" disabled={!code.trim() || phase !== 'running'}>Send</Button>
-        </div>
-        <p className="nset__note">On a phone: copy the code on the sign-in page, then come straight back to this page. It goes to {cliName}’s prompt and is not kept.</p>
-      </form>}
       <div className="aset__actions"><Button variant="quiet" onClick={cancel}>Cancel sign-in</Button></div>
     </section>
   );

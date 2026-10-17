@@ -3,7 +3,7 @@ import { Link } from 'react-router';
 import type { AgentRuntimeStatus, ClaudeCodeSignInMethod } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { Button, ErrorState, Icon, Spinner } from '../ui';
-import { consoleTicket, getRuntime } from './api';
+import { consoleTicket, getRuntime, resumeConsole } from './api';
 import { METHODS, PAYER } from './copy';
 import { BeforeSignIn } from './RuntimeSection';
 import type { ConsoleOutcome } from './SignInConsole';
@@ -23,24 +23,30 @@ type Step = { kind: 'choose' } | { kind: 'console'; method: ClaudeCodeSignInMeth
 export function ClaudeCodeSignIn() {
   const [status, setStatus] = useState<AgentRuntimeStatus | null>(null);
   const [failed, setFailed] = useState(false);
-  const [method, setMethod] = useState<ClaudeCodeSignInMethod>('claude_account');
   const [step, setStep] = useState<Step>({ kind: 'choose' });
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState<ClaudeCodeSignInMethod | null>(null);
   const [error, setError] = useState('');
   useEffect(() => {
     const controller = new AbortController();
-    getRuntime(controller.signal).then(setStatus).catch(() => { if (!controller.signal.aborted) setFailed(true); });
+    getRuntime(controller.signal).then(async (current) => {
+      setStatus(current);
+      // A reload while a sign-in is pending: this session takes the same sign-in back (F-027 AST-1.5).
+      if (current.auth?.claude_code) {
+        const pending = await resumeConsole('claude_code').catch(() => null);
+        if (pending && !controller.signal.aborted && pending.method !== 'device_code') setStep({ kind: 'console', method: pending.method as ClaudeCodeSignInMethod, ticket: pending.ticket });
+      }
+    }).catch(() => { if (!controller.signal.aborted) setFailed(true); });
     return () => controller.abort();
   }, []);
 
-  async function start() {
-    setBusy(true); setError('');
+  async function start(method: ClaudeCodeSignInMethod) {
+    setBusy(method); setError('');
     try {
       const { ticket } = await consoleTicket(method);
       setStep({ kind: 'console', method, ticket });
     } catch (cause) {
       setError(cause instanceof ApiError && cause.status < 500 ? cause.message : 'The runtime could not confirm the operation. Check its current state before trying again.');
-    } finally { setBusy(false); }
+    } finally { setBusy(null); }
   }
 
   const back = <Link className="ui-link" to="/settings/agents">Back to Agents and AI</Link>;
@@ -50,6 +56,7 @@ export function ClaudeCodeSignIn() {
     return <div className="pane-scroll"><div className="pane-in nset rt-page"><p className="nset__problem" role="note"><Icon name="alert" size={14} /><span><b>Claude Code in Flux isn’t offered on this Flux server.</b> The person who runs this server decides that. {back}</span></p></div></div>;
   }
 
+  const pending = status.binding?.state === 'releasing' || Boolean(status.auth?.claude_code);
   return (
     <div className="pane-scroll">
       <div className="pane-in nset aset rt-page">
@@ -61,43 +68,34 @@ export function ClaudeCodeSignIn() {
         </div>
 
         {step.kind === 'choose' ? (
-          <>
-            <fieldset className="nset__sec rt-methods">
-              <legend className="rt-legend">How do you want to sign in?</legend>
-              {METHODS.map((option) => (
-                <label key={option.id} className={`rt-method${method === option.id ? ' is-on' : ''}`}>
-                  <input type="radio" name="rt-method" value={option.id} checked={method === option.id} onChange={() => setMethod(option.id)} />
-                  <span className="rt-method__b">
-                    <span className="rt-method__t">{option.title}</span>
-                    <span className="rt-method__s">{option.detail}</span>
-                    <span className="rt-method__p">Who pays: {PAYER[option.payer]}</span>
-                  </span>
-                </label>
-              ))}
-            </fieldset>
-            <section className="nset__sec" aria-labelledby="rt-before">
-              <h3 id="rt-before">Before you sign in</h3>
-              <BeforeSignIn status={status} />
-              <h3 className="rt-sub">What happens next</h3>
-              <ol className="rt-steps">
-                <li>Flux starts Claude Code’s own sign-in in your runtime and shows its terminal below.</li>
-                <li>Open the sign-in link it shows, sign in with Anthropic and copy the code you get.</li>
-                <li>Come back here and paste the code. Flux then asks Claude Code whether you are signed in.</li>
-              </ol>
-              <p className="nset__note">The terminal closes when the sign-in ends, when you leave this page, or after 15 minutes. It runs only this sign-in. A lost or cancelled operation requires safe runtime cleanup before another sign-in and may sign both clients out.</p>
-              {status.binding?.recovery ? <p className="nset__problem" role="status">Runtime recovery is pending. Both clients may need to sign in again after cleanup is confirmed.</p> : status.auth?.claude_code ? <p className="nset__note" role="status">Another sign-in, check or sign-out is still in progress.</p> : null}
-              {error ? <p className="nset__error" role="alert"><Icon name="alert" size={14} />{error}</p> : null}
-              <div className="aset__actions">
-                <Button variant="primary" busy={busy} disabled={status.binding?.state === 'releasing' || Boolean(status.auth?.claude_code)} onClick={() => void start()}>Start sign-in</Button>
-                {back}
-              </div>
-            </section>
-          </>
+          <section className="nset__sec" aria-labelledby="rt-before">
+            <h3 id="rt-before">Before you sign in</h3>
+            <BeforeSignIn status={status} />
+            <p className="nset__note">Sign-in ends when it is done, when you cancel, or after 15 minutes. A lost or cancelled operation requires safe runtime cleanup before another sign-in and may sign both clients out.</p>
+            {status.binding?.recovery ? <p className="nset__problem" role="status">Runtime recovery is pending. Both clients may need to sign in again after cleanup is confirmed.</p> : status.auth?.claude_code ? <p className="nset__note" role="status">Another sign-in, check or sign-out is still in progress.</p> : null}
+            {error ? <p className="nset__error" role="alert"><Icon name="alert" size={14} />{error}</p> : null}
+            <div className="aset__actions">
+              <Button variant="primary" busy={busy === 'claude_account'} disabled={pending} onClick={() => void start('claude_account')}>Sign in with Claude</Button>
+              {back}
+            </div>
+            <details className="rt-more">
+              <summary>Other ways to sign in</summary>
+              <ul className="sset-card rt-choices">
+                {METHODS.filter((option) => option.id !== 'claude_account').map((option) => (
+                  <li key={option.id}>
+                    <button type="button" className="sset-row sset-row--link" disabled={pending || busy !== null} onClick={() => void start(option.id)}>
+                      <span className="sset-row__b"><span className="sset-row__t">{option.title}</span><span className="sset-row__s">{option.detail} Who pays: {PAYER[option.payer]}</span></span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </details>
+          </section>
         ) : null}
 
         {step.kind === 'console' ? (
           <Suspense fallback={<p className="inbox__loading"><Spinner label="Opening the terminal" /></p>}>
-            <SignInConsole ticket={step.ticket} methodTitle={METHODS.find((option) => option.id === step.method)!.title}
+            <SignInConsole ticket={step.ticket} openLabel={step.method === 'console' ? 'Open the Anthropic Console' : 'Open claude.ai'} methodTitle={METHODS.find((option) => option.id === step.method)!.title}
               onEnd={(outcome) => { if (outcome.status) setStatus(outcome.status); setStep({ kind: 'outcome', outcome, method: step.method }); }} />
           </Suspense>
         ) : null}
@@ -122,7 +120,7 @@ function Outcome({ outcome, onAgain, back }: { outcome: ConsoleOutcome; onAgain:
   if (outcome.signedIn && connection) {
     return (
       <section className="nset__sec rt-outcome" aria-labelledby="rt-done" role="status">
-        <h3 id="rt-done" className="aset__state"><span className="aset__dot is-ready" aria-hidden="true" />Signed in</h3>
+        <h3 id="rt-done" className="aset__state"><span className="aset__dot is-ready" aria-hidden="true" />{['Signed in', connection.plan, connection.accountLabel].filter(Boolean).join(' · ')}</h3>
         <p className="nset__lead">Claude Code reports a login{connection.accountLabel ? ` as ${connection.accountLabel}` : ''}{connection.plan ? ` (${connection.plan})` : ''}.</p>
         <p className="nset__note">Who pays: {PAYER[connection.payer ?? 'unknown']}</p>
         {connection.accountChange ? <p className="nset__problem" role="alert"><Icon name="alert" size={14} /><span><b>This is a different account than before{connection.accountChange.previousLabel ? ` (${connection.accountChange.previousLabel})` : ''}.</b> If you didn’t mean to change it, sign out on the previous page.</span></p> : null}

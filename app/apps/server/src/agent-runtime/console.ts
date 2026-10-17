@@ -21,17 +21,23 @@ import {
 // 3. The API names the owner's own slot from the database and opens the console through runtime-manager.
 //    It relays the CLI's output as binary messages and the owner's input as frames, in memory only. It
 //    never logs a message. Durable admission refuses overlapping auth; uncertain work needs full recovery.
+//    F-027 AST-1.5/1.6: when the browser's socket drops without "Cancel" (a reload, a lost network), the
+//    console stays attached to the CLI in memory, with its original deadline, so the same Flux session can
+//    reattach with a fresh `reattach` ticket (`POST .../console/resume`) and see the same card and terminal.
+//    Another owner or another session of the same owner cannot reattach, see or type; a newer socket
+//    replaces an older one, whose input is dropped. "Cancel", leaving the page, the deadline, logout,
+//    revocation and process loss end it; nothing of the card is kept after that.
 // 4. When the CLI ends, the supervisor reads its status; that alone is recorded (display facts) and
 //    sent to the browser as the final message.
 
 const TICKET_TTL_MS = 60_000;
 const ATTACH_WITHIN_MS = 10_000;
 
-export interface ConsoleTicket { ownerUserId: string; client: AgentRuntimeClient; method: AgentRuntimeSignInMethod }
+export interface ConsoleTicket { ownerUserId: string; client: AgentRuntimeClient; method: AgentRuntimeSignInMethod; reattach?: boolean }
 
 /** The methods of each CLI's own login command the console runs (F-022; Codex since T6 #281). */
 export const CONSOLE_METHODS: Record<AgentRuntimeClient, readonly AgentRuntimeSignInMethod[]> = { claude_code: CLAUDE_CODE_SIGN_IN_METHODS, codex: CODEX_SIGN_IN_METHODS };
-export interface VerifiedConsoleTicket extends ConsoleTicket { nonce: { digest: string; expiresAt: Date } }
+export interface VerifiedConsoleTicket extends ConsoleTicket { reattach: boolean; nonce: { digest: string; expiresAt: Date } }
 
 export class ConsoleTickets {
   private readonly key: Buffer;
@@ -45,7 +51,7 @@ export class ConsoleTickets {
 
   issue(ticket: ConsoleTicket, sessionId: string): { ticket: string; expiresAt: string } {
     const expires = this.now() + TICKET_TTL_MS;
-    const body = Buffer.from(JSON.stringify({ o: ticket.ownerUserId, s: ConsoleTickets.sessionTag(sessionId), c: ticket.client, m: ticket.method, e: expires,
+    const body = Buffer.from(JSON.stringify({ o: ticket.ownerUserId, s: ConsoleTickets.sessionTag(sessionId), c: ticket.client, m: ticket.method, e: expires, ...(ticket.reattach ? { r: 1 } : {}),
       n: randomBytes(12).toString('base64url') })).toString('base64url');
     return { ticket: `${body}.${this.sign(body)}`, expiresAt: new Date(expires).toISOString() };
   }
@@ -58,7 +64,7 @@ export class ConsoleTickets {
     const expected = Buffer.from(this.sign(body));
     const given = Buffer.from(mac);
     if (expected.length !== given.length || !timingSafeEqual(expected, given)) return null;
-    let fields: { o?: unknown; s?: unknown; c?: unknown; m?: unknown; e?: unknown; n?: unknown };
+    let fields: { r?: unknown; o?: unknown; s?: unknown; c?: unknown; m?: unknown; e?: unknown; n?: unknown };
     try { fields = JSON.parse(Buffer.from(body, 'base64url').toString('utf8')) as typeof fields; } catch { return null; }
     const now = this.now();
     if (typeof fields.e !== 'number' || !Number.isFinite(fields.e) || fields.e <= now
@@ -67,7 +73,7 @@ export class ConsoleTickets {
     const client: AgentRuntimeClient = fields.c;
     if (!CONSOLE_METHODS[client].includes(fields.m as AgentRuntimeSignInMethod)) return null;
     // Pure verification. Only the shared PostgreSQL claim consumes the digest.
-    return { ownerUserId, client, method: fields.m as AgentRuntimeSignInMethod,
+    return { ownerUserId, client, method: fields.m as AgentRuntimeSignInMethod, reattach: fields.r === 1,
       nonce: { digest: createHash('sha256').update(fields.n).digest('hex'), expiresAt: new Date(fields.e) } };
   }
 }
@@ -104,27 +110,61 @@ export function parseClientMessage(text: string): AgentRuntimeConsoleClientMessa
 /** WebSocket close codes of the console (4000–4999 are the application's). */
 export const CONSOLE_CLOSE = { done: 1000, invalid: 4400, refused: 4403, replaced: 4409, ended: 4410, unavailable: 4503 } as const;
 
+/** The most terminal output replayed to a reattaching socket (memory only). */
+const REPLAY_BYTES = 64 * 1024;
+
+/** One owner's pending console that a new socket of the same session may take over. */
+export interface LiveConsole {
+  sessionId: string;
+  client: AgentRuntimeClient;
+  method: AgentRuntimeSignInMethod;
+  used: Set<string>;
+  rebind(socket: WebSocket, cols: number, rows: number): boolean;
+}
+
 export interface ConsoleSessionDeps {
   runtime: AgentRuntimeUseCases;
   tickets: ConsoleTickets;
   manager: { url: string; secret: string };
   /** The owner's consoles on this API instance: a newer one replaces an older one. */
   open: Map<string, () => void>;
+  /** The owner's console that may be reattached after a reload. */
+  live?: Map<string, LiveConsole>;
   /** Re-reads the session; the console ends when it is no longer live. */
   sessionAlive: () => Promise<boolean>;
   lifetimeMs?: number;
 }
 
-export function serveBrowserConsole(socket: WebSocket, owner: { userId: string; sessionId: string }, deps: ConsoleSessionDeps): void {
+export function serveBrowserConsole(first: WebSocket, owner: { userId: string; sessionId: string }, deps: ConsoleSessionDeps): void {
+  let socket: WebSocket | null = first;
   let phase: 'attach' | 'connecting' | 'relay' | 'done' = 'attach';
   let finishing = false;
   let link: ConsoleLink<'from_supervisor'> | null = null;
   let attachment: { ticket: VerifiedConsoleTicket; operation: RuntimeAuthOperation; actualBoot: string | null } | null = null;
   let operation: RuntimeAuthOperation | null = null;
   let settled = false;
+  let delegated = false;
+  const memory: { chunks: Buffer[]; bytes: number; state: AgentRuntimeConsoleServerMessage | null; card: AgentRuntimeConsoleServerMessage[]; done: AgentRuntimeConsoleServerMessage | null } = { chunks: [], bytes: 0, state: null, card: [], done: null };
   const isEnded = () => phase === 'done';
   const timers: ReturnType<typeof setTimeout>[] = [];
-  const send = (message: AgentRuntimeConsoleServerMessage) => { if (socket.readyState === socket.OPEN) socket.send(JSON.stringify(message)); };
+  const send = (message: AgentRuntimeConsoleServerMessage) => { if (socket && socket.readyState === socket.OPEN) socket.send(JSON.stringify(message)); };
+  const liveEntry: LiveConsole = {
+    sessionId: owner.sessionId, client: 'claude_code', method: 'claude_account', used: new Set(),
+    rebind: (next, cols, rows) => {
+      if (phase !== 'relay' || (finishing && !memory.done) || !link) return false;
+      const previous = socket;
+      socket = next;
+      if (previous) { previous.removeAllListeners(); previous.on('error', () => undefined); if (previous.readyState === previous.OPEN) previous.close(CONSOLE_CLOSE.replaced, 'replaced'); }
+      wire(next);
+      // The CLI finished while no page was attached: the reattaching page is told the result, once.
+      if (memory.done) { send(memory.done); close(CONSOLE_CLOSE.done, 'done'); return true; }
+      if (memory.state) send(memory.state);
+      for (const message of memory.card) send(message);
+      if (memory.bytes && next.readyState === next.OPEN) next.send(Buffer.concat(memory.chunks), { binary: true });
+      link.send(encodeResize(cols, rows));
+      return true;
+    },
+  };
   const close = (code: number, reason: string) => {
     if (isEnded()) return;
     phase = 'done';
@@ -132,16 +172,19 @@ export function serveBrowserConsole(socket: WebSocket, owner: { userId: string; 
     link?.destroy();
     if (operation && !settled) void deps.runtime.cancelAuth(operation).catch(() => undefined);
     if (deps.open.get(owner.userId) === end) deps.open.delete(owner.userId);
-    if (socket.readyState === socket.OPEN || socket.readyState === socket.CONNECTING) socket.close(code, reason);
+    if (deps.live?.get(owner.userId) === liveEntry) deps.live.delete(owner.userId);
+    memory.chunks = []; memory.bytes = 0; memory.card = []; memory.state = null; memory.done = null;
+    if (!delegated && socket && (socket.readyState === socket.OPEN || socket.readyState === socket.CONNECTING)) socket.close(code, reason);
   };
   const fail = (code: AgentRuntimeConsoleError, closeCode: number) => { send({ t: 'error', code }); close(closeCode, code); };
   const end = () => fail('ended', CONSOLE_CLOSE.replaced);
 
   timers.push(setTimeout(() => { if (phase === 'attach') close(CONSOLE_CLOSE.invalid, 'attach'); }, ATTACH_WITHIN_MS));
+  // The original deadline: reattaching never extends it.
   timers.push(setTimeout(() => fail('ended', CONSOLE_CLOSE.ended), (deps.lifetimeMs ?? AGENT_RUNTIME_CONSOLE_LIFETIME_MS) + 30_000));
   const revalidate = setInterval(() => {
     void deps.sessionAlive().then(async alive => {
-      if (!alive || (operation && !await deps.runtime.renewAuth(operation))) fail('ended', CONSOLE_CLOSE.refused);
+      if (!alive || (operation && !memory.done && !await deps.runtime.renewAuth(operation))) fail('ended', CONSOLE_CLOSE.refused);
     }).catch(() => fail('unavailable', CONSOLE_CLOSE.unavailable));
   }, 20_000);
   timers.push(revalidate as unknown as ReturnType<typeof setTimeout>);
@@ -163,15 +206,28 @@ export function serveBrowserConsole(socket: WebSocket, owner: { userId: string; 
     const current = new ConsoleLink(upgrade.socket, new ConsoleFrameReader('from_supervisor'));
     link = current;
     current.onFrame((frame) => {
-      if (frame.type === 'output') { if (socket.readyState === socket.OPEN) socket.send(frame.data, { binary: true }); return; }
+      if (frame.type === 'output') {
+        // Kept in memory only so a reload of this session can redraw the terminal; dropped when the console ends.
+        memory.chunks.push(Buffer.from(frame.data)); memory.bytes += frame.data.length;
+        while (memory.bytes > REPLAY_BYTES && memory.chunks.length > 1) memory.bytes -= memory.chunks.shift()!.length;
+        if (socket && socket.readyState === socket.OPEN) socket.send(frame.data, { binary: true });
+        return;
+      }
       void control(frame.frame);
     });
     current.onEnd(() => { if (phase !== 'done' && !finishing) fail('ended', CONSOLE_CLOSE.ended); });
     current.start(upgrade.head);
     current.send(encodeOpen({ bindingId: target.operation.bindingId, bootId: target.operation.bootId, client: ticket.client, method: ticket.method, cols, rows }));
     phase = 'relay';
+    liveEntry.client = ticket.client; liveEntry.method = ticket.method;
+    deps.live?.set(owner.userId, liveEntry);
     send({ t: 'state', state: 'starting' });
   }
+
+  const remember = (message: AgentRuntimeConsoleServerMessage) => {
+    if (message.t === 'state') memory.state = message; else memory.card.push(message);
+    send(message);
+  };
 
   async function control(frame: ConsoleControl) {
     if (phase === 'done') return;
@@ -181,13 +237,15 @@ export function serveBrowserConsole(socket: WebSocket, owner: { userId: string; 
       return;
     }
     if (frame.t === 'step') return;
-    // The device code and URL go to this owner's card only, in memory (F-027 AST-1.7): never logged or stored.
+    // The sign-in URL (Claude) and the device code and URL (ChatGPT) go to this owner's card only, in
+    // memory (F-027 AST-1.7): never logged or stored.
     if (frame.t === 'signin') {
-      if (attachment?.ticket.client !== 'codex') { fail('unavailable', CONSOLE_CLOSE.unavailable); return; }
-      send(frame.e === 'device' ? { t: 'device', url: frame.url, code: frame.code } : { t: 'problem', problem: frame.problem });
+      const client = attachment?.ticket.client;
+      if (frame.e === 'url' ? client !== 'claude_code' : client !== 'codex') { fail('unavailable', CONSOLE_CLOSE.unavailable); return; }
+      remember(frame.e === 'device' ? { t: 'device', url: frame.url, code: frame.code } : frame.e === 'url' ? { t: 'link', url: frame.url } : { t: 'problem', problem: frame.problem });
       return;
     }
-    if (frame.t === 'console') { send({ t: 'state', state: frame.state === 'started' ? 'running' : 'checking' }); return; }
+    if (frame.t === 'console') { remember({ t: 'state', state: frame.state === 'started' ? 'running' : 'checking' }); return; }
     if (frame.t === 'relay_error') { fail(frame.code === 'busy' ? 'busy' : 'unavailable', CONSOLE_CLOSE.unavailable); return; }
     if (frame.t === 'error') { fail(frame.code === 'busy' ? 'busy' : frame.code === 'internal' || frame.code === 'not_installed' ? 'unavailable' : 'refused', CONSOLE_CLOSE.unavailable); return; }
     const result = frame.result;
@@ -198,29 +256,58 @@ export function serveBrowserConsole(socket: WebSocket, owner: { userId: string; 
         { signedIn: result.status.signedIn, facts: result.status.facts, bootId: attachment.actualBoot ?? '' });
       settled = completed.disposition === 'accepted';
       if (isEnded()) return;
-      send({ t: 'done', ended: result.ended, disposition: completed.disposition, signedIn: completed.signedIn, status: completed.status });
+      const message: AgentRuntimeConsoleServerMessage = { t: 'done', ended: result.ended, disposition: completed.disposition, signedIn: completed.signedIn, status: completed.status };
+      if (!socket && deps.live?.get(owner.userId) === liveEntry) {
+        // Detached (a reload): keep the result in memory for the same session's reattach, for a few minutes.
+        memory.done = message;
+        timers.push(setTimeout(() => close(CONSOLE_CLOSE.done, 'done'), 5 * 60_000));
+        return;
+      }
+      send(message);
       close(CONSOLE_CLOSE.done, 'done');
     } catch {
       fail('unavailable', CONSOLE_CLOSE.unavailable);
     }
   }
 
-  socket.on('message', (data, isBinary) => {
-    if (phase === 'done') return;
-    if (isBinary) { close(CONSOLE_CLOSE.invalid, 'text only'); return; }
-    const message = parseClientMessage(data.toString());
-    if (!message) { close(CONSOLE_CLOSE.invalid, 'invalid'); return; }
-    if (phase === 'attach') {
-      if (message.t !== 'attach') { close(CONSOLE_CLOSE.invalid, 'attach first'); return; }
-      const ticket = deps.tickets.redeem(message.ticket, owner.userId, owner.sessionId);
-      if (!ticket) { fail('refused', CONSOLE_CLOSE.refused); return; }
-      void connect(ticket, message.cols, message.rows).catch(() => fail('unavailable', CONSOLE_CLOSE.unavailable));
-      return;
-    }
-    if (message.t === 'attach') { close(CONSOLE_CLOSE.invalid, 'attached'); return; }
-    if (phase !== 'relay' || !link) return;
-    link.send(message.t === 'in' ? encodeInput(Buffer.from(message.d, 'utf8')) : encodeResize(message.cols, message.rows));
-  });
-  socket.on('close', () => close(CONSOLE_CLOSE.ended, 'closed'));
-  socket.on('error', () => close(CONSOLE_CLOSE.ended, 'error'));
+  /** A reload or a lost network keeps the sign-in; "Cancel" and leaving the page (reasons below) end it. */
+  function gone(from: WebSocket, reason: string) {
+    if (from !== socket) return;
+    socket = null;
+    if (phase === 'relay' && !finishing && reason !== 'cancel' && reason !== 'left' && deps.live?.get(owner.userId) === liveEntry) return;
+    close(CONSOLE_CLOSE.ended, 'closed');
+  }
+
+  function wire(sock: WebSocket) {
+    sock.on('message', (data, isBinary) => {
+      if (sock !== socket || phase === 'done') return;
+      if (isBinary) { close(CONSOLE_CLOSE.invalid, 'text only'); return; }
+      const message = parseClientMessage(data.toString());
+      if (!message) { close(CONSOLE_CLOSE.invalid, 'invalid'); return; }
+      if (phase === 'attach') {
+        if (message.t !== 'attach') { close(CONSOLE_CLOSE.invalid, 'attach first'); return; }
+        const ticket = deps.tickets.redeem(message.ticket, owner.userId, owner.sessionId);
+        if (!ticket) { fail('refused', CONSOLE_CLOSE.refused); return; }
+        if (ticket.reattach) {
+          // Another socket of this same session takes over the pending console, once per ticket.
+          const target = deps.live?.get(owner.userId);
+          if (!target || target.sessionId !== owner.sessionId || target.client !== ticket.client || target.method !== ticket.method || target.used.has(ticket.nonce.digest)) { fail('refused', CONSOLE_CLOSE.refused); return; }
+          target.used.add(ticket.nonce.digest);
+          delegated = true; phase = 'done';
+          for (const timer of timers) clearTimeout(timer);
+          sock.removeAllListeners();
+          if (!target.rebind(sock, message.cols, message.rows)) { sock.send(JSON.stringify({ t: 'error', code: 'refused' } satisfies AgentRuntimeConsoleServerMessage)); sock.close(CONSOLE_CLOSE.refused, 'refused'); }
+          return;
+        }
+        void connect(ticket, message.cols, message.rows).catch(() => fail('unavailable', CONSOLE_CLOSE.unavailable));
+        return;
+      }
+      if (message.t === 'attach') { close(CONSOLE_CLOSE.invalid, 'attached'); return; }
+      if (phase !== 'relay' || !link) return;
+      link.send(message.t === 'in' ? encodeInput(Buffer.from(message.d, 'utf8')) : encodeResize(message.cols, message.rows));
+    });
+    sock.on('close', (_code, reason) => gone(sock, reason.toString()));
+    sock.on('error', () => gone(sock, ''));
+  }
+  wire(first);
 }

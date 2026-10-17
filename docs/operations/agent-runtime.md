@@ -216,8 +216,17 @@ their runtime's storage, what Anthropic says about this kind of use, and who pay
   to their session (API → `runtime-manager` → the slot's supervisor, each hop authenticated as every
   other runtime request). The CLI prints Anthropic's sign-in link; the owner signs in there and pastes
   the code back at the CLI's own prompt. Another member's session cannot attach to it.
-- **When it ends.** When the command exits, when the owner's page closes or loses its connection, and
-  after 15 minutes at the latest. The slot's serial lane is held meanwhile, so a sign-in never overlaps
+- **The card (F-027 A12).** Claude Code's page shows *Open claude.ai* and *Paste*; the supervisor
+  recognises only the sign-in URL in the CLI's output (and, for ChatGPT's device sign-in, the code and
+  the two failures of Journey 6), in memory, and the API relays it to that owner's card only. *Paste*
+  sends the clipboard text to the CLI's own prompt. The terminal is under *Show details*.
+- **Reload.** If the page reloads or loses its connection while a sign-in is pending, the API keeps the
+  console attached to the CLI in memory (with the last 64 KiB of output for redraw) and the same Flux
+  session reattaches with a fresh single-use ticket from `POST /api/v1/agent-runtime/console/resume`;
+  another owner or another session of the same owner gets 404 and cannot attach. The original 15-minute
+  deadline is kept. *Cancel* and leaving the page end it.
+- **When it ends.** When the command exits, when the owner presses *Cancel* or leaves the page, when the
+  session ends, and after 15 minutes at the latest. A dropped connection alone keeps it until then. The slot's serial lane is held meanwhile, so a sign-in never overlaps
   a status check, a run or a sign-out.
 - **What Flux keeps.** Only what `claude auth status` reports afterwards, reduced in the slot to display
   facts: the method, the plan if reported, a masked account (`a***@example.org`), the time, and a keyed
