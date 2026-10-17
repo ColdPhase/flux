@@ -14,6 +14,8 @@ export interface CardHandlers {
   open(item: NeedsYouItem): void;
   discuss(item: NeedsYouItem): void;
   unblock(item: NeedsYouItem): void;
+  /** Applies your assistant's waiting changes of one request (F-027 AST-5.6), with the object's own verb. */
+  applyChanges(item: NeedsYouItem): void;
 }
 
 export const KIND_WORD = { decision: 'Decision', question: 'Question', blocked: 'Blocked', mention: 'Mention' } as const;
@@ -80,7 +82,7 @@ function NotNowButton({ buttonRef, open, onToggle, className = '' }: { buttonRef
 
 function Face({ item }: { item: NeedsYouItem }) {
   if (item.kind === 'blocked') return <span className="nyc__face nyc__face--glyph"><StatusGlyph status="blocked" size={16} /></span>;
-  if (item.from?.kind === 'agent') return <span className="nyc__face"><Kreska size={32} /></span>;
+  if (item.from?.kind === 'agent' || item.assistantChanges) return <span className="nyc__face"><Kreska size={32} /></span>;
   if (item.from) return <span className="nyc__face"><Avatar name={item.from.name} size="lg" /></span>;
   return <span className="nyc__face nyc__face--icon"><Icon name={NOTE_ICON[item.kind === 'question' ? 'question' : 'mention']} size={16} /></span>;
 }
@@ -137,6 +139,11 @@ export function NeedsYouCard({ item, variant = 'card', selected = false, handler
           <Button variant="secondary" onClick={() => handlers.open(item)}>Open task</Button>
           {item.blocked?.waitedBy ? null : <Button variant="quiet" onClick={() => handlers.unblock(item)}>Unblock</Button>}
         </>
+      ) : item.assistantChanges ? (
+        <>
+          <Button variant="primary" onClick={() => handlers.applyChanges(item)}>{item.assistantChanges.verb}</Button>
+          <Button variant="secondary" onClick={() => handlers.open(item)}>Review</Button>
+        </>
       ) : (
         <Button variant="secondary" onClick={() => handlers.open(item)}>{item.assistantRequestIdentity ? 'Review' : item.reason === 'invitation' ? 'Open' : 'Reply'}</Button>
       )}
@@ -179,7 +186,9 @@ export function NeedsYouCard({ item, variant = 'card', selected = false, handler
           </div>
           {variant === 'row' ? <div className="nyc__rowactions">{decision ? <>
             <Button variant="primary" onClick={() => handlers.accept(item)}>Accept</Button>
-            <NotNowButton buttonRef={notNow} open={menuOpen} onToggle={() => onMenuOpen(!menuOpen)} /></> : <Button variant="secondary" onClick={() => handlers.open(item)}>{item.assistantRequestIdentity ? 'Review' : item.kind === 'blocked' ? 'Open task' : item.reason === 'invitation' ? 'Open' : 'Reply'}</Button>}</div> : null}
+            <NotNowButton buttonRef={notNow} open={menuOpen} onToggle={() => onMenuOpen(!menuOpen)} /></> : item.assistantChanges
+              ? <Button variant="primary" onClick={() => handlers.applyChanges(item)}>{item.assistantChanges.verb}</Button>
+              : <Button variant="secondary" onClick={() => handlers.open(item)}>{item.assistantRequestIdentity ? 'Review' : item.kind === 'blocked' ? 'Open task' : item.reason === 'invitation' ? 'Open' : 'Reply'}</Button>}</div> : null}
           {children}
         </div>
         {/* A swipe left on a phone: the card slides over this tray. Reachable by keyboard and touch alike. */}

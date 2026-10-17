@@ -23,6 +23,7 @@ import { MessageWorkPages } from '../work/MessageWorkPages';
 import { audienceLine, replyTo, useProjectShell } from '../project/data';
 import { useShellActions } from './shellContext';
 import { useConversationAssistant } from '../assistant/useConversationAssistant';
+import { useAssistantChanges, WaitingChanges } from '../assistant/WaitingChanges';
 import { AnswerItem, AskBar, ProposalCard, WorkingLine } from '../assistant/ConversationParts';
 import { askError as askErrorText, askState } from '../assistant/format';
 import { grantAgentProject } from '../agent-connection/api';
@@ -209,6 +210,8 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
   const replyHint = messages.some((message) => message.authorId === null) ? 'Reply in this conversation…' : replyTo(people, me.user.id);
   // The signed-in person's own assistant (#68): ask mode, their working line, shared answers.
   const assistant = useConversationAssistant({ meId: me.user.id, projectId: project.id, conversationId: conversation?.id ?? null });
+  // The owner's waiting changes (F-027 A3): refreshed when their run moves or an answer arrives.
+  const assistantChanges = useAssistantChanges(conversation?.id ?? null, `${assistant.run?.id ?? ''}:${assistant.run?.status ?? ''}:${assistant.answers.length}`);
   // Bounded native reads (#155): the visible replies' chips, and the tasks that answers, proposals and the
   // discussed task refer to. Neither is the project's work collection.
   const discussedTask = conversation?.task?.workId ?? null;
@@ -574,8 +577,9 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
                 const answer = entry.answer;
                 const proposal = answer.proposalId ? assistant.proposals.get(answer.proposalId) ?? null : null;
                 const workTitle = proposal?.change.finishes ? referenceWork.rows.get(`work:${proposal.change.finishes.workId}`)?.title ?? 'a work item' : null;
+                const runChanges = assistantChanges.byRun.get(answer.runId);
                 return [divider, <AnswerItem key={entry.key} answer={answer} mine={answer.assistant.ownerUserId === me.user.id} lookups={lookups} when={when} clock={clock}
-                  proposal={proposal}
+                  proposal={proposal} changes={runChanges ? <WaitingChanges changes={runChanges} onChanged={assistantChanges.refresh} /> : null}
                   proposalControls={proposal ? <ProposalCard proposal={proposal} workTitle={workTitle} {...proposalAuthority(proposal.change.finishes)} onRefreshTarget={referenceWork.refresh} meId={me.user.id}
                     onDecide={async (decision) => {
                       try { await assistant.decide(proposal, decision); } finally { revalidator.revalidate(); }
@@ -602,6 +606,9 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
               const continued = sameMessageAuthor(previous, { authorId: me.user.id, createdAt: item.at });
               return [divider, <ThreadReply key={`pending-${item.id}`} continued={continued} pending={item} name={me.user.name} onRetry={() => publicComposer.retry(item.id)} onRemove={() => publicComposer.remove(item.id)} />];
             })]}
+            {[...assistantChanges.byRun].filter(([runId]) => !assistant.answers.some((answer) => answer.runId === runId)).map(([runId, runChanges]) => (
+              <li key={`changes-${runId}`} className="project-convo__message assistant-waiting-item"><WaitingChanges changes={runChanges} onChanged={assistantChanges.refresh} /></li>
+            ))}
             {assistant.run ? <WorkingLine key={assistant.run.id} run={assistant.run} onStop={assistant.stop} onRetry={() => assistant.retry(assistant.run!.id)} onDismiss={assistant.dismissRun} /> : null}
             </ol>
           </> : null}

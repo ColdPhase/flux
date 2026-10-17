@@ -387,6 +387,7 @@ describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A
     assert.deepEqual([thirdRow.state, thirdRow.wait_reason], ['waiting', 'ask']);
     assert.equal((await docBody(third.id)).body, 'First text');
     // Stop invalidates a deferral: the sweep refuses it.
+    await complete(second.runId);
     await save({ approvalMode: 'act' });
     const fourth = await doc(owner, 'Wiring');
     stop = await typing(peer, fourth.id);
@@ -397,7 +398,6 @@ describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A
     await sweeper.sweep();
     assert.equal((await changesOf(stopped.runId))[0]!.state, 'refused');
     assert.equal((await docBody(fourth.id)).body, 'First text');
-    await complete(second.runId);
   });
 
   test('AST-5.8: a change outside the owner\'s rights reaches the other person only after "Send to Jonas"', async () => {

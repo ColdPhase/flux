@@ -42,6 +42,8 @@ export interface AssistantChangeLineInput {
   phrase: string;
   noun: string;
   objectTitle: string;
+  /** The change targets an existing object (not a create). */
+  existing: boolean;
   ownerName: string;
   /** The other person: the object's maker, the live typist or the suggestion's recipient. */
   otherName: string | null;
@@ -72,7 +74,7 @@ export function assistantChangeLine(input: AssistantChangeLineInput): string | n
     case 'live_wiki': return `I'll edit${title} when ${other} finishes typing.`;
     case 'conflict': return `${other} changed${title} while typing. Check it before applying`;
     case 'outside_rights': return input.sent ? `Sent to ${other}`
-      : `${input.objectTitle ? `${other} owns ${input.objectTitle}` : `${other} can decide this`}. Suggest this change to them? · Send to ${other}`;
+      : `${input.existing && input.objectTitle ? `${other} owns ${input.objectTitle}` : `${other} can decide this`}. Suggest this change to them? · Send to ${other}`;
     default: return null;
   }
 }

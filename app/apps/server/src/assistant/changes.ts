@@ -77,7 +77,7 @@ export function assistantChangeUseCases(db: Database, boss?: Pick<PgBoss, 'send'
       const otherId = row.waitReason === 'outside_rights' ? row.suggestToUserId : row.otherUserId;
       out.push({ id: row.id, runId: row.runId, projectId: row.projectId, conversationId: conversations.get(row.runId) ?? '', operation: row.operation,
         objectType: row.objectType, objectId: row.objectId, objectTitle: row.objectTitle, state: row.state, waitReason: row.waitReason, phrase, verb: words.verb,
-        line: assistantChangeLine({ state: row.state, waitReason: row.waitReason, phrase, noun: words.noun, objectTitle: row.objectTitle,
+        line: assistantChangeLine({ state: row.state, waitReason: row.waitReason, phrase, noun: words.noun, objectTitle: row.objectTitle, existing: row.objectId !== null,
           ownerName: names.get(row.ownerUserId) ?? '', otherName: otherId ? names.get(otherId) ?? null : null, limit: settings.get(key)!,
           sent: !!row.sentAt, refusal: row.refusal, decidedByName: row.state === 'applied_after_wait' && row.decidedBy ? names.get(row.decidedBy) ?? null : null }),
         suggestTo: row.suggestToUserId ? { id: row.suggestToUserId, name: names.get(row.suggestToUserId) ?? '' } : null, sent: !!row.sentAt,
