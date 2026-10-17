@@ -11,6 +11,7 @@ import { request } from '../api/client';
 import { useStreamEvents } from '../api/stream';
 import { INBOX_CHANGED, NEEDS_YOU_ACCEPTED, announceInboxChange, type AcceptedInboxItem } from './api';
 import { acceptingIds } from './pendingAccept';
+import { onPlacesForgotten } from '../place/memory';
 
 /** The Inbox "Needs you" queue (#342): what asks something of you, computed for you alone. */
 export const getNeedsYou = (signal?: AbortSignal) => request<NeedsYouResponse>(NEEDS_YOU_PATH, { signal });
@@ -53,6 +54,7 @@ const sorted = (items: NeedsYouItem[]) => {
  */
 /** The last answer this tab read, for the one person who read it: shown at once when they return to the Inbox (#592). Never stored. */
 let lastRead: { userId: string; response: NeedsYouResponse } | null = null;
+onPlacesForgotten(() => { lastRead = null; });
 
 export function useNeedsYou(userId: string, fromMemory = false): Queue {
   const [state, setState] = useState<{ userId: string; response: NeedsYouResponse | null; failed: boolean }>(() => ({ userId, response: fromMemory && lastRead?.userId === userId ? lastRead.response : null, failed: false }));

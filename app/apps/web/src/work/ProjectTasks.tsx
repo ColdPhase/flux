@@ -344,7 +344,7 @@ export function ProjectTasks() {
     if (search.get('new') !== 'task' || !writable) return;
     const next = new URLSearchParams(search);
     next.delete('new');
-    setSearch(next, { replace: true });
+    setSearch(next, { replace: true, state: location.state });
     openCreate({ kind: 'task', projectId: project.id });
   }, [search, writable, setSearch, openCreate, project.id]);
 
@@ -393,7 +393,7 @@ export function ProjectTasks() {
   );
 
   // The Decisions view is gone (F-026 S1): its old links open the Inbox's Decisions filter.
-  if (retired) return <Navigate to="/inbox?show=decisions" replace />;
+  if (retired) return <Navigate to="/inbox?show=decisions" replace state={location.state} />;
   return (
     <div className="tb-root">
       <Toolbar mode={mode} onMode={chooseMode} query={boardSearch} onQuery={setBoardSearch} mine={mine} onMine={(next) => setView({ mine: next })} writable={writable} onNew={startNew} />

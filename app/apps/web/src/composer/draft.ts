@@ -6,6 +6,7 @@ import { sendDmMessage, sendDmReply } from '../api/direct-messages';
 import { contributeToTask, postTaskAgentThread, stageFile } from './api';
 import { assumeReachable, connectionState, onConnectionChange, reportReachable, reportUnreachable } from './connection';
 import { forgetReloadRetention, setReloadRetention } from '../app/reload-retention';
+import { forgetPlaces } from '../place/memory';
 
 export interface DraftReference { materialId: string; version: number; title: string }
 export interface DraftFile {
@@ -98,6 +99,8 @@ function retireDrafts() {
   }
   snapshots.clear();
   selected.clear();
+  // The places the person kept (where they read, which panel was open) go with their drafts (#592).
+  forgetPlaces();
   forgetReloadRetention('composer');
   running.clear();
   waiters.clear();

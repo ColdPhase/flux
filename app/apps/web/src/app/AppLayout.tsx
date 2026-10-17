@@ -13,7 +13,7 @@ import { placeOf } from './place';
 import { placeOfPath, rememberPlace } from '../search/recent';
 import { ShellContext, isOwned, type CreateRequest, type DetailsView, type OwnedPanel } from './shellContext';
 import { arrivalEntry, entryOf, onFlush, recall, remember as keepPlace, setCurrentEntry } from '../place/memory';
-import { RouteOriginBack, useRouteOrigin } from '../place/origin';
+import { RouteOriginBack, useGoToOrigin, useRouteOrigin } from '../place/origin';
 import { restoreTop, usePaneMemory } from '../place/scroll';
 import { Sidebar } from './Sidebar';
 import { startCapture, viewIndex } from './views';
@@ -69,14 +69,27 @@ const REPLACING = new Set(['owned', 'thought-tasks', 'work', 'decision', 'result
 const replaces = (view: DetailsView) => typeof view === 'object' && REPLACING.has(view.kind);
 const KIND_LABEL: Record<string, string> = { work: 'Task', decision: 'Decision', result: 'Result', 'thought-tasks': 'Tasks' };
 
+const NO_ORIGIN = { key: '', path: '/', label: '' };
 /** What a history entry keeps of its panel (#592): an object the panel shows over the page and the way back it left. A thread or an agent a view owns is kept by its own route. */
 interface DetailsPlace { open: boolean; view: DetailsView; trail: { label: string; view: DetailsView }[]; scroll: number; owned: boolean }
 const panelScrollNow = () => document.querySelector<HTMLElement>('#details .ui-panel__body')?.scrollTop ?? 0;
-/** A message that was only loaded to show here is not kept in storage; the view reads it again. */
-const persistable = (view: DetailsView): DetailsView => typeof view === 'object' && view.kind === 'overview' && view.selection ? { ...view, selection: undefined }
-  : typeof view === 'object' && view.kind === 'thought-tasks' ? 'place' : view;
-const placeOfDetails = (open: boolean, view: DetailsView, trail: { label: string; view: DetailsView }[]): DetailsPlace =>
-  ({ open, view: persistable(view), trail: trail.map((entry) => ({ ...entry, view: persistable(entry.view) })), scroll: panelScrollNow(), owned: isOwned(view) || trail.some((entry) => isOwned(entry.view)) });
+/**
+ * What is kept of a panel view (#592): ids only. A message's text, a thought's text or the fields of a form (Propose a decision,
+ * Attach a result, Add to docs, Make it a project) are never written to storage; a view that is not kept shows as a closed panel.
+ */
+const KEPT_VIEWS = new Set(['work', 'decision', 'result', 'overview', 'recap', 'people', 'owned']);
+const persistable = (view: DetailsView): DetailsView | null => {
+  if (view === 'place' || view === 'connect-ai') return view;
+  if (typeof view !== 'object' || !KEPT_VIEWS.has(view.kind)) return null;
+  return view.kind === 'overview' ? { kind: 'overview', ...(view.messageId ? { messageId: view.messageId } : {}), ...(view.focus ? { focus: view.focus } : {}) } : view;
+};
+const placeOfDetails = (open: boolean, view: DetailsView, trail: { label: string; view: DetailsView }[]): DetailsPlace => {
+  const shown = persistable(view);
+  const owned = isOwned(view) || trail.some((entry) => isOwned(entry.view));
+  if (!shown) return { open: false, view: 'place', trail: [], scroll: 0, owned };
+  return { open, view: shown, scroll: panelScrollNow(), owned,
+    trail: trail.flatMap((entry) => { const kept = persistable(entry.view); return kept ? [{ label: entry.label, view: kept }] : []; }) };
+};
 const isPanelView = (value: unknown): value is DetailsView => value === 'place' || value === 'connect-ai' || (!!value && typeof value === 'object' && typeof (value as { kind?: unknown }).kind === 'string');
 function isDetailsPlace(value: unknown): value is DetailsPlace {
   if (!value || typeof value !== 'object') return false;
@@ -504,8 +517,13 @@ function AppLayoutContent() {
   const objectChip = ownedShown ? ownedShown.chip : typeof detailsView === 'object' ? KIND_LABEL[detailsView.kind] : undefined;
   // "‹ back": the owner's own way back (an agent's thread to its agent), else the step this content replaced.
   const trailTop = trail.at(-1);
+  const goToOrigin = useGoToOrigin(routeOrigin ?? NO_ORIGIN);
   const stepBack = () => {
     if (!trailTop) return;
+    // A panel kept over the page that a link inside it led to (a task's source message) steps back to the page it was followed
+    // from, where that panel returns as it was, not to the conversation that link opened: a sheet or an overlay covers the
+    // header's control, and this is the one visible back (#592).
+    if (ownedShown && routeOrigin && (location.state as { keepPanel?: boolean } | null)?.keepPanel === true) { goToOrigin(); return; }
     setTrail((list) => list.slice(0, -1));
     // A thread a view owns leaves its address first; the panel stays for what it gives way to.
     if (ownedShown) ownedShown.onClose({ keepPanel: true });

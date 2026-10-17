@@ -319,13 +319,14 @@ function DmContent({ initial }: { initial: Dm }) {
     const next = new URLSearchParams(params);
     next.set('thread', rootId);
     // Opening another thread replaces the open one, so closing is still one step back to the conversation.
-    setParams(next, { replace: !!threadId, state: { dmThread: true } });
+    // The entry's state, with the origin the page was followed from, stays when a thread replaces a thread (#592).
+    setParams(next, { replace: !!threadId, state: threadId ? { ...(location.state as object | null), dmThread: true } : { dmThread: true } });
   }
   function closeThread() {
     const target = opener.current ?? threadId;
     opener.current = null;
     if ((location.state as { dmThread?: boolean } | null)?.dmThread) navigate(-1);
-    else { const next = new URLSearchParams(params); next.delete('thread'); setParams(next, { replace: true }); }
+    else { const next = new URLSearchParams(params); next.delete('thread'); setParams(next, { replace: true, state: location.state }); }
     setReplyFocus(false);
     // The message that opened it takes focus back, with the reading position where it was.
     requestAnimationFrame(() => requestAnimationFrame(() => document.getElementById(`message-${target}`)?.focus({ preventScroll: true })));

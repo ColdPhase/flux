@@ -66,6 +66,8 @@ export function InboxView() {
   const handlers = useNeedsYouActions(queue);
   // `?show=decisions` is where the retired Decisions view's links lead.
   const [asked, setAsked] = useSearchParams();
+  // A replace on this page keeps the entry's state, so the origin it was followed from stays (#592).
+  const location = useLocation();
   // The filter and the selected item come back as they were left.
   const [filter, setFilter] = usePlaceState<Filter>('inbox.filter', () => FILTERS.find((entry) => `${entry.id}s` === asked.get('show') || entry.id === asked.get('show'))?.id ?? 'all', arrival,
     (value): value is Filter => FILTERS.some((entry) => entry.id === value));
@@ -143,7 +145,7 @@ export function InboxView() {
       )}
       {reviewing ? <AssistantJoinReview key={`${reviewing.key}:${reviewing.assistantRequestIdentity!.openingVersion}`} item={reviewing} onClose={() => {
         const next = new URLSearchParams(asked); next.delete('assistantProject'); next.delete('assistantRequest'); next.delete('openingVersion');
-        setAsked(next, { replace: true }); announceInboxChange();
+        setAsked(next, { replace: true, state: location.state }); announceInboxChange();
       }} /> : null}
     </div></div>
   );
@@ -177,7 +179,7 @@ export function InboxOpen() {
       {notification?.id === id && notification.assistantRequestIdentity && notification.source.type === 'project' ?
         <AssistantJoinReview key={id} item={{ assistantRequestIdentity: notification.assistantRequestIdentity,
           project: { id: notification.source.id, name: notification.body.replace(/ · Requested contributor access\.$/, '') } }}
-          onClose={() => { announceInboxChange(); void navigate('/inbox', { replace: true }); }} />
+          onClose={() => { announceInboxChange(); void navigate('/inbox', { replace: true, state: stateRef.current }); }} />
         : gone ? (
         <div className="inbox-gone">
           <Icon name="lock" size={16} />

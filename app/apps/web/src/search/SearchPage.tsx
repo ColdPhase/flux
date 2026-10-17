@@ -1,5 +1,5 @@
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from 'react';
-import { useSearchParams } from 'react-router';
+import { useLocation, useSearchParams } from 'react-router';
 import { SEARCH_FILTER_TYPES, type SearchFilterType, type SearchKind, type SearchResponse, type SearchResult } from '@flux/contracts';
 import { Button, EmptyState, Icon, Spinner } from '../ui';
 import { useShellData } from '../app/data';
@@ -9,10 +9,11 @@ import { ResultBody } from './ResultRow';
 import { useSearch } from './useSearch';
 import './search.css';
 import { RefLink } from '../place/origin';
-import { currentEntry, useArrival, usePlaceState } from '../place/memory';
+import { currentEntry, onPlacesForgotten, useArrival, usePlaceState } from '../place/memory';
 
 /** The answer each search page showed, by person and history entry, for a return to it. Never stored. */
 const answers = new Map<string, { q: string; type: SearchFilterType | null; place: string | null; answer: SearchResponse; items: SearchResult[] }>();
+onPlacesForgotten(() => answers.clear());
 const FILTER_LABELS: Record<SearchFilterType, string> = {
   project: 'Projects', message: 'Messages', doc: 'Wiki', material: 'Files', work: 'Tasks', decision: 'Decisions', result: 'Results',
   sketch: 'Map', draft: 'Drafts', person: 'People',
@@ -41,6 +42,8 @@ function isFilter(value: string | null): value is SearchFilterType {
  */
 export function SearchPage() {
   const [params, setParams] = useSearchParams();
+  // A replace on this page keeps the entry's state, so the origin it was followed from stays (#592).
+  const location = useLocation();
   const { me, projects, directMessages } = useShellData();
   const recent = useRecentSearches(me.user.id);
   const inputId = useId();
@@ -68,7 +71,7 @@ export function SearchPage() {
     answers.delete(`${me.user.id}:${currentEntry().key}`);
     answers.set(`${me.user.id}:${currentEntry().key}`, { q: draft.trim(), type, place, answer: state.answer, items: state.items });
     for (const key of [...answers.keys()].slice(0, Math.max(0, answers.size - 12))) answers.delete(key);
-  }, [state, me.user.id, draft, type, place]);
+  }, [state, me.user.id, draft, type, place, location.key]);
 
   // Keep the address in step with what is typed, without adding history for every key.
   useEffect(() => {
@@ -78,10 +81,10 @@ export function SearchPage() {
         const next = new URLSearchParams(current);
         if (draft.trim()) next.set('q', draft.trim()); else next.delete('q');
         return next;
-      }, { replace: true });
+      }, { replace: true, state: location.state });
     }, 300);
     return () => window.clearTimeout(timer);
-  }, [draft, q, setParams]);
+  }, [draft, q, setParams, location.state]);
 
   const set = (key: 'type' | 'place', value: string | null) => {
     setParams((current) => {
@@ -89,7 +92,7 @@ export function SearchPage() {
       if (draft.trim()) next.set('q', draft.trim());
       if (value) next.set(key, value); else next.delete(key);
       return next;
-    }, { replace: true });
+    }, { replace: true, state: location.state });
   };
 
   const answer = state.status === 'ready' ? state.answer : state.status === 'loading' ? state.previous : null;
@@ -203,7 +206,7 @@ export function SearchPage() {
         ) : state.status === 'ready' ? (
           <div className="view-empty"><EmptyState icon="search" mascot="looking" title={`Nothing matches “${draft.trim()}”`} level={2}>
             <p>{!/[\p{L}\p{N}]{2,}/u.test(draft) ? 'Type at least two letters of a word.' : type || place ? 'Try all kinds and all places, or fewer words.' : 'Try fewer or different words. Only what you can open is searched.'}</p>
-            {type || place ? <p><button type="button" className="ui-link" onClick={() => { const next = new URLSearchParams({ q: draft.trim() }); setParams(next, { replace: true }); }}>Search everywhere</button></p> : null}
+            {type || place ? <p><button type="button" className="ui-link" onClick={() => { const next = new URLSearchParams({ q: draft.trim() }); setParams(next, { replace: true, state: location.state }); }}>Search everywhere</button></p> : null}
           </EmptyState></div>
         ) : null}
       </div>

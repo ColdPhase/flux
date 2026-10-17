@@ -98,6 +98,26 @@ export function remember(slot: string, value: unknown, at: Entry = entry) {
   if (!writeTimer) writeTimer = window.setTimeout(writeNow, WRITE_AFTER_MS);
 }
 
+const forgetters = new Set<() => void>();
+/** A cache that lives beside the places (the last search answer, the last Inbox list) registers how it is emptied with them. */
+export function onPlacesForgotten(forget: () => void) { forgetters.add(forget); }
+
+/**
+ * Forgets every place, in memory and in session storage, and the caches registered above: a confirmed sign-out here or in
+ * another tab retires them with the drafts, so the next account in this tab finds nothing of the last one's (#592).
+ */
+export function forgetPlaces() {
+  window.clearTimeout(writeTimer);
+  writeTimer = 0;
+  memory.clear();
+  unwritten.clear();
+  recent = [];
+  try {
+    for (const key of Object.keys(sessionStorage)) if (key.startsWith(PREFIX)) sessionStorage.removeItem(key);
+  } catch { /* Memory is already empty. */ }
+  for (const forget of forgetters) forget();
+}
+
 /** What was kept for a slot of an entry, when the entry is the same page it was kept for. */
 export function recall<T>(slot: string, at: Entry = entry): T | undefined {
   const record = load(at.key);
@@ -135,7 +155,9 @@ export function usePlaceState<T>(slot: string, initial: () => T, arrival: Entry 
     const kept = arrival ? recall<unknown>(slot, arrival) : undefined;
     return valid(kept) ? kept : initial();
   });
-  useEffect(() => { remember(slot, value); }, [slot, value]);
+  // Kept again when a replace gives the entry a new key, so the place stays with the entry the person is on.
+  const key = useLocation().key;
+  useEffect(() => { remember(slot, value); }, [slot, value, key]);
   return [value, setValue];
 }
 

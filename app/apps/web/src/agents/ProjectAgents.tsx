@@ -750,15 +750,15 @@ export function ProjectAgents() {
   // the thread) is left, and Back returns to it.
   // A thread opened by the person takes the panel's focus (#347 N8); it keeps the agent it was opened from, so "‹ back" returns to that agent.
   const openThread = (id: string) => {
-    setSearch((current) => { const next = new URLSearchParams(current); next.set('thread', id); next.delete('task'); return next; }, { replace: beside, flushSync: true });
+    setSearch((current) => { const next = new URLSearchParams(current); next.set('thread', id); next.delete('task'); return next; }, { replace: beside, flushSync: true, state: location.state });
   };
   // Back from a thread returns to the agent it was opened from; closing the panel leaves both.
   const closeThread = () => {
-    setSearch((current) => { const next = new URLSearchParams(current); next.delete('task'); next.delete('thread'); return next; }, { replace: true });
+    setSearch((current) => { const next = new URLSearchParams(current); next.delete('task'); next.delete('thread'); return next; }, { replace: true, state: location.state });
   };
   const closePanel = () => {
     setDeclined(true);
-    setSearch((current) => { const next = new URLSearchParams(current); next.delete('task'); next.delete('thread'); next.delete('agent'); return next; }, { replace: true });
+    setSearch((current) => { const next = new URLSearchParams(current); next.delete('task'); next.delete('thread'); next.delete('agent'); return next; }, { replace: true, state: location.state });
   };
   // After Stop or Take back the panel stays on that agent, with focus on its heading (#347 N4).
   const [refocusKey, setRefocusKey] = useState<string | null>(null);
@@ -789,7 +789,7 @@ export function ProjectAgents() {
   const selected = entries.find((entry) => entry.key === picked) ?? (beside && !declined ? entries.find((entry) => views.get(entry.key)?.working) ?? entries[0] ?? null : null);
   const open = (key: string | null) => {
     setDeclined(key === null);
-    setSearch((current) => { const next = new URLSearchParams(current); if (key) next.set('agent', key); else next.delete('agent'); return next; }, { replace: true });
+    setSearch((current) => { const next = new URLSearchParams(current); if (key) next.set('agent', key); else next.delete('agent'); return next; }, { replace: true, state: location.state });
   };
 
   const [handOff, setHandOff] = useState<{ agentId: string | null; task: HandOffTask | null } | null>(null);

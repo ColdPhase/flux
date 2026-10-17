@@ -420,9 +420,13 @@ class ReturnToOrigin(unittest.TestCase):
             expect(back).to_have_count(1)
             self.activate(back, tap)
         else:
-            # Here the panel stays over the page as a modal overlay or sheet and covers its header (and leaving the thread it
-            # shows leaves the page's address, #601): the browser's Back and the phone's gesture are the way to the task list.
-            page.go_back()
+            # The panel stays over the page as a modal overlay or sheet and covers its header: its visible back leads to the task it
+            # came from, on the task list it was opened on (not to the conversation the source message belongs to).
+            back = panel.locator(".ui-panel__back")
+            expect(back).to_have_text(re.compile(r"^Task #\d+$"))
+            box = back.bounding_box()
+            self.assertTrue(page.evaluate("([x, y]) => !!document.elementFromPoint(x, y)?.closest('.ui-panel__back')", [box["x"] + box["width"] / 2, box["y"] + box["height"] / 2]), "the back is not covered by anything")
+            self.activate(back, tap)
         expect(page).to_have_url(listing)
         self.assertIn("show=mine", listing)
         expect(page.locator("#details").get_by_role("heading", name=f"Check the lamp sensor {DECIDED:02}")).to_be_visible()
@@ -587,6 +591,94 @@ class ReturnToOrigin(unittest.TestCase):
                 expect(page.get_by_text("That project is no longer available to you.")).to_be_visible()
                 expect(page.get_by_role("heading", name="This place isn’t available")).to_have_count(0)
                 expect(page.get_by_role("heading", name="Something went wrong")).to_have_count(0)
+
+    # ---- a replace on the destination keeps the way back ----
+
+    def test_14_a_replace_on_the_destination_keeps_the_way_back(self):
+        for engine in self.browsers:
+            with self.subTest(engine=engine):
+                page = self.page(engine)
+                page.goto(f"/projects/{self.project}")
+                self.wait_stream(page)
+                # ⌘K → "See all results" opens the Search page as a reference; typing and filtering there replace its entry.
+                page.keyboard.press("Control+k")
+                palette = page.get_by_role("dialog", name="Jump to")
+                palette.locator("input").fill("shade")
+                palette.locator(".jump__all").click()
+                expect(page).to_have_url(f"{ORIGIN}/search?q=shade")
+                back = self.origin_back(page, "Conversation")
+                expect(back).to_have_count(1)
+                before = self.box(back)
+                page.get_by_role("searchbox").fill("shade lamp")
+                page.wait_for_function("() => new URLSearchParams(location.search).get('q') === 'shade lamp'")
+                page.get_by_role("group", name="Kind of result").get_by_role("button", name=re.compile(r"^Messages")).click()
+                page.wait_for_function("() => new URLSearchParams(location.search).get('type') === 'message'")
+                page.wait_for_timeout(500)
+                expect(self.origin_back(page, "Conversation")).to_have_count(1)
+                self.assertEqual(self.box(self.origin_back(page, "Conversation")), before, "the control stays in its place")
+                self.assertIsNotNone(page.evaluate("(history.state && history.state.usr && history.state.usr.origin) || null"), "the entry still names where it was followed from")
+                # A reload keeps it, and it leads back to the conversation.
+                page.reload()
+                back = self.origin_back(page, "Conversation")
+                expect(back).to_have_count(1)
+                back.click()
+                expect(page).to_have_url(f"{ORIGIN}/projects/{self.project}")
+
+    def test_15_closing_an_agents_thread_keeps_the_way_back_to_tasks(self):
+        for engine in self.browsers:
+            with self.subTest(engine=engine):
+                page = self.page(engine)
+                page.goto(f"/projects/{self.project}/tasks?show=mine&view=list")
+                row = page.locator(".ws-task").filter(has_text="Check the lamp sensor 05")
+                row.locator(".ws-item").click()
+                panel = page.locator("#details")
+                expect(panel.get_by_role("heading", name="Check the lamp sensor 05")).to_be_visible()
+                panel.locator("a[data-agent-thread-link]").click()
+                expect(page).to_have_url(re.compile(r"/projects/[0-9a-f-]{36}/agents\?thread="))
+                expect(self.origin_back(page, "Tasks")).to_have_count(1)
+                # The thread leaves its panel and its address is replaced: the page is still the one the task led to.
+                panel.get_by_role("button", name=re.compile(r"^Close")).click()
+                expect(page).to_have_url(re.compile(r"/projects/[0-9a-f-]{36}/agents$"))
+                expect(self.origin_back(page, "Tasks")).to_have_count(1)
+                self.assertIsNotNone(page.evaluate("(history.state && history.state.usr && history.state.usr.origin) || null"))
+                self.origin_back(page, "Tasks").click()
+                expect(page).to_have_url(re.compile(r"/projects/[0-9a-f-]{36}/tasks"))
+
+    # ---- nothing private is kept, and sign-out forgets the places ----
+
+    def test_16_no_message_text_is_kept_and_sign_out_forgets_the_places(self):
+        secret = f"SECRET-{uuid.uuid4().hex[:10]}"
+        for engine in self.browsers:
+            with self.subTest(engine=engine):
+                context = self.browsers[engine].new_context(service_workers="block", base_url=ORIGIN, viewport=DESKTOP)
+                self.addCleanup(context.close)
+                email = f"sol.{engine}.{STAMP}@example.test"
+                api(context, "POST", "/api/auth/sign-up/email", {"name": "Sol Nowak", "email": email, "password": PASSWORD})
+                workspace = api(context, "POST", "/api/v1/workspaces", {"name": "Private makers"}, 201)["id"]
+                project = api(context, "POST", f"/api/v1/workspaces/{workspace}/projects", {"name": "Quiet plans", "visibility": "restricted"}, 201)["id"]
+                api(context, "POST", f"/api/v1/projects/{project}/conversations", {"body": f"{secret} the budget is not for the team yet.", "clientMessageId": str(uuid.uuid4())}, 201)
+                page = context.new_page()
+                errors: list[str] = []
+                page.on("pageerror", lambda error: errors.append(str(error)))
+                page.goto(f"/projects/{project}")
+                self.wait_stream(page)
+                message = page.locator("li.project-convo__message", has_text=secret)
+                message.hover()
+                message.get_by_role("button", name="More actions").click()
+                page.get_by_role("menuitem", name="Propose a decision").click()
+                expect(page.get_by_role("heading", name="Propose a decision")).to_be_visible()
+                page.wait_for_timeout(800)
+                kept = page.evaluate("() => Object.keys(sessionStorage).filter((key) => key.startsWith('flux:place:') && key !== 'flux:place:index')")
+                self.assertTrue(kept, "the places are kept while someone reads")
+                self.assertNotIn(secret, page.evaluate("() => JSON.stringify({ ...sessionStorage, ...localStorage })"), "no message text is written to storage")
+                # A confirmed sign-out forgets the places with the drafts.
+                page.get_by_role("button", name=re.compile("Sol Nowak")).click()
+                with page.expect_request(lambda request: request.method == "POST" and request.url.endswith("/api/auth/sign-out")):
+                    page.get_by_role("dialog", name="Account").get_by_role("button", name="Sign out").click(no_wait_after=True)
+                expect(page).to_have_url(re.compile(r"/sign-in"))
+                self.assertEqual(page.evaluate("() => Object.keys(sessionStorage).filter((key) => key.startsWith('flux:place:'))"), [], "no place outlives the sign-out")
+                self.assertNotIn(secret, page.evaluate("() => JSON.stringify({ ...sessionStorage, ...localStorage })"))
+                self.assertEqual(errors, [])
 
     # ---- the tablet and the phone, in the installed display mode ----
 

@@ -19,15 +19,24 @@ the [thread reading-position owner](thread-reading-position-2026-10-16.md), whic
 2. **Push for a reference, replace for a panel.** A reference to another page is one history entry; Back returns one
    step and Forward leads to the object again. Opening and closing panels and threads keeps today's replace semantics,
    so Back does not walk through panel toggles. A panel's state is part of the *place* of the entry (below), not an
-   entry of its own. Every `replace` that only cleans the address (`?open=`, `?compose=`, `?ask=`, the Inbox redirect,
-   Cancel on a slow route) carries the entry's state, and a loader redirect that would drop state is a `<Navigate>`
-   instead (a material that is a doc).
+   entry of its own. Every `replace` on a page a reference leads to carries the entry's state, because a replace with no
+   state sets `history.state.usr` to null and the control would vanish while the person is still there: the address
+   cleaners (`?open=`, `?compose=`, `?ask=`, the Inbox redirect, Cancel on a slow route), the Search page's typing and
+   filters, the Agents view's thread and agent panel, a direct-message thread replacing a thread, the Inbox's review
+   close, the Tasks `?new=` cleaner, a saved doc and a live session's redirect. A loader redirect that would drop state
+   is a `<Navigate>` instead (a material that is a doc). A new `replace` on such a page must carry `location.state`.
 3. **The place of an entry is kept under the entry's router key.** `place/memory.ts` holds small JSON records in
    session storage (and memory), written as the person reads (scroll, panel, filter) and flushed as a reference is
    followed. A record is used only for the same path it was kept for. Nothing is kept for more than the latest 60
    entries of a tab. Records are held in memory at once and written to storage 250 ms later (and when the page is hidden
    or a reference is followed), so scrolling never waits on storage; a message loaded only to show in Details is not
-   written. The last search answer and the last Inbox list are kept in memory only, per person, and are shown at once on
+   written. **Nothing private is kept:** a panel view is kept as ids only (a task, decision, result, overview, recap or
+   people view; an overview names its message by id and reads it again). A message's text, a thought's text and the fields
+   of a form (Propose a decision, Attach a result, Add to docs, Make it a project) are never written, and a form view is
+   not restored (the panel returns closed). A confirmed sign-out here, or in another tab (the draft retirement), forgets
+   every `flux:place:*` record, the in-memory records and the caches below (`forgetPlaces`). The first entry of every
+   document has the router key `default`, so a record is also checked against its page and only a return after the
+   first screen restores. The last search answer and the last Inbox list are kept in memory only, per person, and are shown at once on
    a return while they are read again (no empty list or spinner first); they are never stored.
 4. **Only a return restores.** Back, Forward, Alt+←, the phone's back gesture and the control are all a router POP (the
    control steps back one entry; with no earlier entry it navigates to the origin's address carrying the key to restore).
@@ -49,7 +58,10 @@ the [thread reading-position owner](thread-reading-position-2026-10-16.md), whic
    that an object covered and the panel then shows again is mounted again, so it reads its kept place and its draft
    (a remount within one history entry restores; a reload does not). The panel's object, its trail, its scroll and the
    sheet's height belong to the entry's place: Back to a page restores them. A thread or an agent a view owns is kept by
-   its own route, and an object that was opened over such a thread is not reopened over it: the thread shows.
+   its own route, and an object that was opened over such a thread is not reopened over it: the thread shows. **A panel
+   kept over the page that a link inside it led to** (a task's source message opens the thread in the panel on a
+   tablet or phone, a sheet or an overlay) steps back to the page it was followed from, where its panel returns as it
+   was: its "‹ Task #31" is that visible step (history back), not a navigation to the conversation.
 
 ## Where the control sits (rule 7)
 
