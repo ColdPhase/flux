@@ -155,6 +155,8 @@ class AssistantRuntime(unittest.TestCase):
                 self.no_horizontal_scroll(page)
                 shot(page, f"runtime-{'390' if phone else '1440'}-{'dark' if dark else 'light'}-settings-consent")
                 turn_on.click()
+                expect(page.get_by_role("switch", name="Your assistant is on")).to_be_visible()
+                page.locator("details.aset__more > summary").click()
                 expect(page.get_by_role("heading", name="Account")).to_be_visible()
                 expect(page.get_by_text("Agent in Flux · Claude Code · your Claude plan").first).to_be_visible()
                 self.assertEqual(len(sent), 1)

@@ -17,6 +17,8 @@ export interface ComposerOption {
   /** What replaces the typed trigger when it is chosen. */
   insert: string;
   slash?: SlashId;
+  /** "My assistant": asks it (set up and ready), or opens its set-up (F-027 AST-10 Journey 2). */
+  assistant?: 'ask' | 'setup';
 }
 
 export interface ComposerTrigger { char: '@' | '/'; query: string; start: number }
@@ -41,17 +43,20 @@ const ACTIONS: { id: SlashId; hint: string; here: 'any' | 'thread' }[] = [
 ];
 
 /** The options for a trigger: actions by command name, or the people and agents of the project by name. */
-export function composerOptions(trigger: ComposerTrigger, { people, meId, inThread }: { people: ProjectPerson[] | null; meId: string; inThread: boolean }): ComposerOption[] {
+export function composerOptions(trigger: ComposerTrigger, { people, meId, inThread, assistant }: { people: ProjectPerson[] | null; meId: string; inThread: boolean; assistant?: { mode: 'ask' | 'setup'; last: boolean } | null }): ComposerOption[] {
   const query = trigger.query.toLowerCase();
   if (trigger.char === '/') {
     return ACTIONS.filter((action) => (action.here === 'any' || inThread) && action.id.startsWith(query))
       .map((action) => ({ id: `slash-${action.id}`, kind: 'action' as const, label: `/${action.id}`, hint: action.hint, insert: `/${action.id} `, slash: action.id }));
   }
-  return (people ?? []).filter((person) => person.id !== meId && person.name.toLowerCase().includes(query))
+  const mine: ComposerOption[] = assistant && inThread && 'my assistant'.includes(query) || assistant && inThread && 'assistant'.startsWith(query)
+    ? [{ id: 'mention-my-assistant', kind: 'agent', label: 'My assistant', hint: assistant!.mode === 'ask' ? 'Agent · for you' : 'Set up', insert: '', assistant: assistant!.mode }] : [];
+  const others = (people ?? []).filter((person) => person.id !== meId && person.name.toLowerCase().includes(query))
     .sort((a, b) => Number(b.name.toLowerCase().startsWith(query)) - Number(a.name.toLowerCase().startsWith(query)) || a.name.localeCompare(b.name))
     .slice(0, 8)
     .map((person) => ({ id: `mention-${person.kind}-${person.id}`, kind: person.kind === 'agent' ? 'agent' as const : 'person' as const,
       label: person.name, hint: person.kind === 'agent' ? 'Agent' : 'Person', insert: `@${person.name} ` }));
+  return assistant?.last ? [...others, ...mine] : [...mine, ...others];
 }
 
 /** The menu above the composer's box. `active` is the option the keys act on. */

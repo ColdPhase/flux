@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router';
 import type { ReturnNextStep, WorkItem } from '@flux/contracts';
 import { Icon, Kreska, MEDIA, StatusGlyph, useMediaQuery } from '../ui';
+import { MeetAssistantCard } from '../assistant/MeetAssistant';
 import { NeedsYouCard } from '../notifications/NeedsYouCard';
 import { useNeedsYou } from '../notifications/needsYou';
 import { useNeedsYouActions } from '../notifications/useNeedsYouActions';
@@ -142,6 +143,8 @@ export function Home() {
           ) : <p className="home__empty">No projects yet. <Link to="/projects/new">Create one</Link> with the New button.</p>}
         </section>
       </div>
+
+      <MeetAssistantCard userId={me.user.id} />
 
       <p className="home__more"><Link to="/tasks">All my tasks</Link><Link to="/map">Sketchbook</Link><Link to="/docs">Wiki</Link><button type="button" onClick={() => openDetails()}>Details</button></p>
 

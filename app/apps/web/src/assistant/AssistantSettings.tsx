@@ -13,6 +13,7 @@ import { enableAssistant, getAssistantStatus, pauseAssistant, removeAssistant, r
 import { dollars, micros, perMillion, runtimeNames, runtimePayerDetail, runtimePayerText, stateLine, unavailableText, type RuntimeClientName } from './format';
 import '../notifications/notifications.css';
 import './assistant.css';
+import { AssistantControls, AssistantHeader } from './AssistantScreen';
 import { AssistantProjectAccess } from './AssistantProjectAccess';
 
 // Your assistant (#68 AC-8, O-008 §1/§3/§6): only the signed-in person's own enablement,
@@ -33,6 +34,7 @@ export function AssistantSettings() {
   const [agents, setAgents] = useState<Agent[] | null>(null);
   const [failed, setFailed] = useState(false);
   const [saved, setSaved] = useState('');
+  const [pausing, setPausing] = useState(false);
   const fetchAll = useCallback(() => {
     getAssistantStatus().then(setStatus).catch(() => setFailed(true));
     Promise.all(workspaces.map((space) => listAgents(space.id).catch(() => [] as Agent[])))
@@ -48,15 +50,20 @@ export function AssistantSettings() {
 
   return (
     <div className="pane-scroll"><div className="pane-in nset aset">
-      <div className="inbox__head">
+      {status.enablement ? <>
+        <AssistantHeader name={me.user.name} userId={me.user.id} status={status} busy={!!pausing}
+          onToggle={(on) => { setPausing(true); (on ? resumeAssistant() : pauseAssistant()).then((next) => done(next, on ? 'Resumed' : 'Paused'), () => undefined).finally(() => setPausing(false)); }} />
+        <span className="nset__saved" role="status" aria-live="polite">{saved ? <><Icon name="check" size={14} />{saved}</> : null}</span>
+        <AssistantControls status={status} userId={me.user.id} />
+      </> : <div className="inbox__head">
         <div>
           <h2>Your assistant</h2>
           <p>An optional helper that answers in a project conversation when you ask it. Only you can use it; the people in that conversation see its answers. Flux works fully without it.</p>
         </div>
         <span className="nset__saved" role="status" aria-live="polite">{saved ? <><Icon name="check" size={14} />{saved}</> : null}</span>
-      </div>
+      </div>}
       {status.enablement
-        ? <Enabled status={status} agents={agents} workspaces={workspaces} onChange={done} onRemoved={() => { setStatus(null); load(); }} onAgent={(agent) => setAgents((current) => [...(current ?? []), agent])} name={me.user.name} />
+        ? <details className="aset__more"><summary>More<span className="aset__more-hint"> · Limits, projects and what you agreed to</span></summary><Enabled status={status} agents={agents} workspaces={workspaces} onChange={done} onRemoved={() => { setStatus(null); load(); }} onAgent={(agent) => setAgents((current) => [...(current ?? []), agent])} name={me.user.name} /></details>
         : <SetupChoice status={status} agents={agents} workspaces={workspaces} name={me.user.name} onEnabled={(next) => done(next, 'Assistant turned on')} onAgent={(agent) => setAgents((current) => [...(current ?? []), agent])} />}
     </div></div>
   );

@@ -22,6 +22,7 @@ import { useReferenceWork } from '../work/useReferenceWork';
 import { MessageWorkPages } from '../work/MessageWorkPages';
 import { audienceLine, useProjectShell } from '../project/data';
 import { useShellActions } from './shellContext';
+import { meetAssistantDismissed } from '../assistant/MeetAssistant';
 import { useConversationAssistant } from '../assistant/useConversationAssistant';
 import { useAssistantChanges, WaitingChanges } from '../assistant/WaitingChanges';
 import { AnswerItem, AskBar, ProposalCard, WorkingLine } from '../assistant/ConversationParts';
@@ -141,9 +142,14 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
   const [menuIndex, setMenuIndex] = useState(0);
   const [menuClosedAt, setMenuClosedAt] = useState<string | null>(null);
   const [commandHint, setCommandHint] = useState('');
+  // The signed-in person's own assistant (#68): ask mode, their working line, shared answers.
+  const assistant = useConversationAssistant({ meId: me.user.id, projectId: project.id, conversationId: conversation?.id ?? null });
   const canWrite = project.access !== 'viewer';
   const trigger = canWrite && !asking ? composerTrigger(draft, caret) : null;
-  const options = trigger ? composerOptions(trigger, { people, meId: me.user.id, inThread: !!conversation }) : [];
+  // "My assistant" in the @ list: first once it is ready; while it is not set up, first until the Home card is dismissed, then last.
+  const assistantEntry = assistant.status ? (assistant.status.state === 'ready' ? { mode: 'ask' as const, last: false }
+    : assistant.status.state === 'not_enabled' ? { mode: 'setup' as const, last: meetAssistantDismissed(me.user.id) } : null) : null;
+  const options = trigger ? composerOptions(trigger, { people, meId: me.user.id, inThread: !!conversation, assistant: assistantEntry }) : [];
   const menuOpen = !!trigger && options.length > 0 && menuClosedAt !== draft;
   const activeIndex = Math.min(menuIndex, Math.max(0, options.length - 1));
   const captureScope = useComposerScope(publicComposer.key);
@@ -198,6 +204,18 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
     if (files?.length) addDraftFiles(files);
     requestAnimationFrame(() => document.getElementById(composerId)?.focus());
   }, [conversation, location.search, location.pathname, location.hash, navigate, me.user.id, project.id, writable, addDraftFiles, composerId]);
+  // ⌘K "Ask my assistant…" and the assistant panel's Message arrive as ?ask=1 in a thread: ask mode opens once.
+  const askParam = !!conversation && writable && new URLSearchParams(location.search).get('ask') === '1';
+  const [askHandled, setAskHandled] = useState(false);
+  if (askParam !== askHandled) { setAskHandled(askParam); if (askParam) setAsking(true); }
+  useEffect(() => {
+    if (!askParam) return;
+    const params = new URLSearchParams(location.search);
+    params.delete('ask');
+    const search = params.toString();
+    navigate({ pathname: location.pathname, search: search ? `?${search}` : '', hash: location.hash }, { replace: true, defaultShouldRevalidate: false });
+    requestAnimationFrame(() => document.getElementById(composerId)?.focus());
+  }, [askParam, location.search, location.pathname, location.hash, navigate, composerId]);
   // Files dropped anywhere on the conversation join its draft (#348).
   const drop = useFileDrop(publicComposer, writable && !asking);
   const makeWork = useCreateWorkFromMessage(project);
@@ -205,8 +223,6 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
   const author = (id: string) => id === me.user.id ? me.user.name : members.find((member) => member.userId === id)?.name ?? 'Member';
   const messageAuthor = (item: ConversationMessage) => item.authorId !== null ? author(item.authorId) : agentAuthorLabel(item.author);
   const owners = useAgentOwners(project);
-  // The signed-in person's own assistant (#68): ask mode, their working line, shared answers.
-  const assistant = useConversationAssistant({ meId: me.user.id, projectId: project.id, conversationId: conversation?.id ?? null });
   // The owner's waiting changes (F-027 A3): refreshed when their run moves or an answer arrives.
   const assistantChanges = useAssistantChanges(conversation?.id ?? null, `${assistant.run?.id ?? ''}:${assistant.run?.status ?? ''}:${assistant.answers.length}`);
   // Bounded native reads (#155): the visible replies' chips, and the tasks that answers, proposals and the
@@ -412,6 +428,12 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
     if (!trigger) return;
     const before = draft.slice(0, trigger.start);
     const after = draft.slice(caret);
+    if (option.assistant) {
+      changeDraft(before + after, before.length);
+      if (option.assistant === 'setup') navigate('/settings/assistant');
+      else { setAsking(true); setAskFailure(''); requestAnimationFrame(() => document.getElementById(composerId)?.focus()); }
+      return;
+    }
     // /file and /source open what the old buttons opened, and leave the draft as it was.
     if (option.slash === 'file') {
       changeDraft(before + after, before.length);

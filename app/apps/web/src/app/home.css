@@ -54,3 +54,12 @@
 .home__more a, .home__more button { display: inline-flex; align-items: center; min-height: 28px; color: var(--t2); text-decoration: underline; text-decoration-color: var(--line2); text-underline-offset: 3px; font: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
 .home__more a:hover, .home__more button:hover { color: var(--t1); }
 @media (pointer: coarse) { .home__more a, .home__more button { min-height: 44px; } }
+
+/* The assistant's set-up card (A7): one quiet row, buttons below the words on a phone. */
+.home__meet { display: flex; align-items: center; gap: 8px 14px; flex-wrap: wrap; margin-top: 16px; padding: 16px 18px; }
+.home__meet > svg, .home__meet > .kreska { flex: none; }
+.home__meet-b { flex: 1 1 220px; min-width: 0; }
+.home__meet-b .home__t, .home__meet-b .home__sub { display: block; margin: 0; }
+.home__meet-a { display: flex; align-items: center; gap: 8px; margin-left: -6px; }
+@media (max-width: 430px) { .home__meet-a { flex-basis: 100%; margin-left: 0; } }
+.home__meet-a .ui-btn { min-height: 44px; }

@@ -234,6 +234,8 @@ class PersonalAssistantJourney(unittest.TestCase):
         expect(turn_on).to_be_disabled()
         page.get_by_role("checkbox", name=re.compile("excerpts from the project conversations I ask in are sent to Anthropic")).check()
         turn_on.click()
+        expect(page.get_by_role("switch", name="Your assistant is on")).to_have_attribute("aria-checked", "true")
+        page.locator("details.aset__more > summary").click()
         expect(page.get_by_role("heading", name="Ready · only you can use it")).to_be_visible()
         expect(page.get_by_text("of your $1.00 daily cap", exact=False)).to_be_visible()
         status = self.status(page)
@@ -326,7 +328,7 @@ class PersonalAssistantJourney(unittest.TestCase):
         expect(working).to_have_count(0)
         expect(answer).to_contain_text(f"{JO['name']}'s assistant")
         expect(answer.locator(".agent-tag")).to_have_text("Agent")
-        expect(answer).to_contain_text("asked by you")
+        expect(answer).to_contain_text("for you · Claude")
         expect(answer).to_contain_text("“Summarize where we are”")
         expect(answer).to_contain_text("Anthropic · claude-sonnet-5")
         expect(answer.get_by_role("button", name="Retry")).to_be_visible()
@@ -334,7 +336,7 @@ class PersonalAssistantJourney(unittest.TestCase):
         for peer in (kai, lee):
             peer_answer = peer.locator(".assistant-answer").last
             expect(peer_answer).to_contain_text(f"{JO['name']}'s assistant", timeout=15000)
-            expect(peer_answer).to_contain_text(f"asked by {JO['name']}")
+            expect(peer_answer).to_contain_text(f"for {JO['name'].split()[0]} · Claude")
             expect(peer_answer.get_by_role("button", name="Retry")).to_have_count(0)
             expect(peer_answer.get_by_role("button", name="Continue")).to_have_count(0)
             text = peer_answer.inner_text()
@@ -560,7 +562,9 @@ class PersonalAssistantJourney(unittest.TestCase):
     def test_09_paused_and_capped_are_explicit(self) -> None:
         settings = self.page("jo")
         settings.goto("/settings/assistant")
-        settings.get_by_role("button", name="Pause").click()
+        settings.get_by_role("switch", name="Your assistant is on").click()
+        expect(settings.get_by_role("switch", name="Your assistant is on")).to_have_attribute("aria-checked", "false")
+        settings.locator("details.aset__more > summary").click()
         expect(settings.get_by_role("heading", name="Paused · nothing runs")).to_be_visible()
         jo = self.conversation("jo")
         self.composer(jo).fill("/ai ")
@@ -575,6 +579,7 @@ class PersonalAssistantJourney(unittest.TestCase):
         runs = {run["status"]: run["cost"]["state"] for run in self.own_runs(jo)}
         self.assertEqual((runs["stopped"], runs["provider_failed"]), ("unknown", "unknown"))
         settings.reload()
+        settings.locator("details.aset__more > summary").click()
         settings.get_by_label("Daily cap", exact=True).select_option(label="$0.10")
         settings.get_by_role("button", name="Save limits").click()
         expect(settings.get_by_text("of your $0.10 daily cap", exact=False)).to_be_visible()
@@ -587,6 +592,7 @@ class PersonalAssistantJourney(unittest.TestCase):
         shot(jo, "assistant-1440-capped")
         bar.get_by_role("button", name="Raise cap").click()
         expect(jo).to_have_url(re.compile(r"/settings/assistant$"))
+        jo.locator("details.aset__more > summary").click()
         expect(jo.get_by_role("heading", name="Stopped at today’s cap")).to_be_visible()
         # Human work is never blocked by the cap.
         kai = self.conversation("kai")

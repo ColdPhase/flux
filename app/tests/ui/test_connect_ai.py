@@ -346,6 +346,7 @@ class ConnectAiJourney(unittest.TestCase):
                     if who == "ines":
                         page.goto("/settings/assistant")
                         expect(page.get_by_role("heading", name="Your assistant", exact=True)).to_be_visible()
+                        page.locator("details.aset__more > summary").click()
                         expect(page.get_by_role("region", name="Your assistant’s project access")).to_contain_text("Your assistant has access to this project.")
                         page.get_by_role("region", name="Your assistant’s project access").scroll_into_view_if_needed()
                         shot(page, f"assistant-own-settings-{'phone-390' if phone else 'desktop-1440'}-{UI_BROWSER}")
