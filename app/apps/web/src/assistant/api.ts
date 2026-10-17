@@ -2,8 +2,8 @@ import {
   ASSISTANT_RUNS_PATH, PERSONAL_ASSISTANT_AGENTS_PATH, PERSONAL_ASSISTANT_PATH, PERSONAL_ASSISTANT_PAUSE_PATH, PERSONAL_ASSISTANT_RESUME_PATH,
   assistantProposalAcceptPath, assistantProposalDismissPath, assistantRunPath, assistantRunRetryPath, assistantRunStopPath,
   conversationAssistantAnswersPath, conversationAssistantRunsPath, projectAssistantProposalsPath,
-  ASSISTANT_CHANGES_PATH, assistantChangeActionPath, assistantRunChangesActionPath, conversationAssistantChangesPath,
-  type AssistantChange, type AssistantChangeDecision, type AssistantChangesDecided, type AssistantRunUndone,
+  ASSISTANT_CHANGES_PATH, assistantChangeActionPath, assistantRunChangesActionPath, conversationAssistantActivityPath, conversationAssistantChangesPath,
+  type AssistantActivity, type AssistantChange, type AssistantChangeDecision, type AssistantChangesDecided, type AssistantRunUndone,
   type AssistantAnswer, type AssistantProposal, type AssistantRun, type EnablePersonalRunsCommand, type InvokeAssistantRunCommand,
   type Page, type PersonalAssistantStatus, type UpdatePersonalRunsCommand,
 } from '@flux/contracts';
@@ -53,3 +53,6 @@ export const moveRunChangesToInbox = (runId: string) => request<{ moved: number 
 export const undoChange = (change: Pick<AssistantChange, 'id'>) =>
   request<AssistantChangeDecision>(assistantChangeActionPath(change.id, 'undo'), { method: 'POST', body: {} });
 export const undoRunChanges = (runId: string) => request<AssistantRunUndone>(assistantRunChangesActionPath(runId, 'undo'), { method: 'POST', body: {} });
+// Who has an assistant working in a conversation, for everyone who can read it: names only (AST-6 "Visible to everyone").
+export const getAssistantActivity = (conversationId: string, signal?: AbortSignal) =>
+  request<AssistantActivity>(conversationAssistantActivityPath(conversationId), { signal });

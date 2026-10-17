@@ -10,11 +10,14 @@ export type UndoPlan =
   /** Page fields (title, text, state): the earlier version is read from the page's own history. */
   | { kind: 'doc'; fields: ('title' | 'body' | 'state')[] }
   /** The assistant made this object; Undo removes it (a page moves to the owner's drafts). */
-  | { kind: 'created' };
+  | { kind: 'created' }
+  /** A hand-off to the owner's agent: Undo cancels exactly this unit while it is untouched and was never claimed. */
+  | { kind: 'handoff'; unitId: string; taskId: string; creationVersion: number };
 
 export interface UndoRecord { plan: UndoPlan; before: string | null; after: string | null }
 
-const same = (a: unknown, b: unknown) => (a ?? null) === (b ?? null);
+/** Equal as stored: a missing value is null, and lists (done-when, prerequisites) are equal item by item. */
+const same = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 
 /**
  * Field-level rule: restore the fields the assistant changed if each still holds what the assistant wrote. One edited
@@ -30,15 +33,25 @@ export function restorableFields(fields: Record<string, { before: unknown; after
 }
 
 const clip = (value: string, length = 60) => value.length > length ? `${value.slice(0, length - 1)}…` : value;
-/** "Probes" -> "Calibrate the probes" for one changed field; several fields read as their names. */
-export function fieldWords(fields: Record<string, { before: unknown; after: unknown }>): { before: string | null; after: string | null } {
-  const names = Object.keys(fields);
-  if (names.length === 1) {
-    const only = fields[names[0]!]!;
-    const show = (value: unknown) => typeof value === 'string' ? (value ? clip(value) : 'empty') : value === null || value === undefined ? 'empty' : clip(String(value));
+/** What a field is called in the message when several changed ("done-when, prerequisites"). */
+const FIELD_NAMES: Record<string, string> = { criteria: 'done-when', dependencyIds: 'prerequisites', waitingFor: 'waiting-for', blocker: 'blocker' };
+const COUNTED: Record<string, string> = { criteria: 'done-when', dependencyIds: 'prerequisites' };
+/**
+ * "Probes" -> "Calibrate the probes" for one changed field; several fields read as their names. A list reads as how many
+ * items it holds, and a person to wait for as `names` resolves them (an id is never shown).
+ */
+export function fieldWords(fields: Record<string, { before: unknown; after: unknown }>, names: ReadonlyMap<string, string> = new Map()): { before: string | null; after: string | null } {
+  const keys = Object.keys(fields);
+  if (keys.length === 1) {
+    const key = keys[0]!; const only = fields[key]!;
+    const show = (value: unknown) => {
+      if (Array.isArray(value)) return `${value.length ? value.length : 'no'} ${key === 'dependencyIds' && value.length === 1 ? 'prerequisite' : COUNTED[key] ?? 'items'}`;
+      if (key === 'waitingFor') return typeof value === 'string' && value ? names.get(value) ?? 'someone' : 'no one';
+      return typeof value === 'string' ? (value ? clip(value) : 'empty') : value === null || value === undefined ? 'empty' : clip(String(value));
+    };
     return { before: show(only.before), after: show(only.after) };
   }
-  return { before: null, after: names.join(', ') || null };
+  return { before: null, after: keys.map((key) => FIELD_NAMES[key] ?? key).join(', ') || null };
 }
 
 /** How many blank-line separated paragraphs differ between two page texts ("2 paragraphs changed"). */

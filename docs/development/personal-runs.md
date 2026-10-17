@@ -281,9 +281,64 @@ truncated, stopped, denied, paused, revoked, cap_reached, unavailable, input_too
 provider_failed), and a stop request during dispatch — records `assistant_run.changed.v1`
 with `objectType` `assistant_run` and the run id as object. The access policy gives that
 object one reader, the run's owner while active in its workspace, so the event's audience
-rows and its stream delivery are the owner's alone. Nobody else learns that a run exists
-until `project.assistant_answer_committed.v1` reaches the conversation's audience. The event
-carries identifiers and the status only; the owner's client refetches `GET /api/v1/assistant-runs/:id`.
+rows and its stream delivery are the owner's alone. The run, its prompt, its status and its
+progress never leave the owner. The event carries identifiers and the status only; the owner's
+client refetches `GET /api/v1/assistant-runs/:id`.
+
+F-027 AST-6 ("Visible to everyone, controlled by the owner", 2026-10-17, #404) adds one thing for the
+others: `project.assistant_working.v1` (project audience, `{ conversationId }` and nothing else) when a
+run starts working (`reading`) and when it stops (any end). Readers of the conversation refetch
+`GET /api/v1/conversations/:id/assistant-activity`, which answers the names of the people whose
+assistant is working there, and show "Ada's assistant is working…" with no detail and no Stop. Someone
+who cannot read the project gets the same 404 as for a conversation that does not exist.
+
+## Changes, Undo and the owner's lane (F-027 A3 and A4, #403, #404)
+
+The run's change tools go through `assistantChangeExecutor`
+(`apps/server/src/agent-connection/assistant-changes.ts`): each call is applied, waiting, a suggestion or
+refused, and recorded in `assistant_changes` in the same transaction (migration 0104).
+
+- **Who decides.** A waiting change is the owner's alone: Apply, Apply all, Not now, Send and the move to Inbox
+  answer everyone else with the same 404 as for a change that does not exist (another member, a workspace admin,
+  a viewer, a guest, a stranger, an agent's bearer or a run token). Apply re-executes the saved call with every
+  check under the server-owned `owner_approval` purpose: the source run must be live or normally completed (a
+  stopped, failed or cancelled one supplies nothing); Pause blocks it and a resume does not apply anything by
+  itself; Off, narrowing, a revoked grant or binding, Not now and expiry close the saved change for good. The seven
+  days are never extended. **Apply all is one write-only allowance**: at most the owner's current per-request limit,
+  never above the run's original one (20; 10 for a background run); the surplus stays waiting for the next Apply.
+  The continuation purpose `owner_deferred_change` belongs to one exact edit, a Wiki page someone else was typing in;
+  the executor refuses any other waiting change that tries to select it.
+- **Hand-off to the owner's own agent.** `flux_create_unit` is listed to a run under the Tasks switch with its own
+  strict input (`assistant-unit-create/v1`: exactly `projectId`, `clientCommandId`, `peerRequestClass`, `taskId`,
+  `unitKey`, `expectedTaskVersion`, `assignmentConnectionId` and the literal `parent: null`; no runtime session, no
+  grant). The server chooses the view from the verified run token, never from the input; the ordinary external
+  schema is unchanged. The adapter is `ownerAssistantUnitCreationInTransaction`
+  (`apps/server/src/co-work/assistant-units.ts`): the recipient must be a different, live, unrevoked, external
+  connection of the same owner that works in the project; another person's agent, the assistant itself or an
+  unknown id is refused before anything can wait; the root run id lives in its own namespace
+  (`assistantHandoffRunId`); review is separated from execution across every unit the task has had, not only the
+  run's. It opens a *pending* unit and grants nobody a claim. In "Ask me first" the saved call carries the view's
+  name and the stored arguments are decoded by exactly that view on Apply (an unknown version needs Ask again).
+  Undo cancels exactly the unit this change opened, at the version it was created at, never claimed, under the same
+  lock order a claim takes (the assistant's and the recipient's connection slots, the project graph, the task set,
+  then the unit row); after the recipient started it changes nothing and says "Your Codex already started. Open the
+  task". The cancelled unit, its audit and its run count remain, so a replay meets the stopped unit.
+- **Undo** is a set of compensating, versioned writes through the domains' own commands (`work.updateWork` with
+  `restore`, `docs.updateDoc`, `maps.updateThought`/`moveThoughts`/`rename`/`removeThought`/`removeLink`,
+  `work.undoTaskCreation`), run as the person who undoes: the owner, or anyone who may edit in the project (a
+  viewer gets 403, a stranger 404). What was done is the run's message for everyone who can read the conversation
+  (`GET /api/v1/conversations/:id/assistant-changes`: the owner sees all of their own rows, others only what was
+  done); a waiting change, a suggestion or a refused Apply never leaves its owner. The restore is recorded as "Jonas
+  undid Ada's assistant's change". Task fields come back where untouched since: title, outcome, status (with the
+  blocker and who it waited for, when leaving Blocked), done-when, prerequisites and who a task waits for; a map's
+  name; a page's text; a thought's text and position; created thoughts, links and tasks are removed, a created page
+  moves to drafts. **Not undoable, because no domain can remove them today**: a created map, a recorded result, a
+  proposed decision and a posted message. Their rows say what happened and offer no Undo.
+- **The lane.** One working run and one waiting request per owner. `personal_runs.authority`
+  (`owner_request|owner_schedule|owner_reaction`, migration 0108) and `background_label` ("Morning summary") say what
+  started a run; A8 and A9 set the last two. The owner's own requests start before queued background runs, and a
+  queued request carries `behind` (the working run's authority and label) so its line reads "Next: '…'" or
+  "Finishing your Morning summary first. Yours starts next. · Stop the summary".
 
 ## WebSocket commands
 
@@ -394,6 +449,10 @@ from the request.
 | `GET /api/v1/assistant-runs`, `GET /api/v1/assistant-runs/:id` | the run's owner | Own runs with status and cost. Anyone else gets 404. |
 | `POST /api/v1/assistant-runs/:id/stop` | the run's owner | Before dispatch: `stopped` and free. During dispatch: best-effort abort, the charge is kept and nothing is committed. |
 | `POST /api/v1/assistant-runs/:id/retry` | the run's owner | `{ clientRunId }`: a new, separately capped run with the same request (202). |
+| `GET /api/v1/conversations/:id/assistant-changes` | project readers | The run messages of the conversation: the owner's own rows in every state, everyone else's what was done (applied, approved, undone, skipped) with `undoable` true only for someone who may edit (F-027 A4). Non-readers get 404. |
+| `GET /api/v1/conversations/:id/assistant-activity` | project readers | `{ working: [{ ownerId, ownerName }] }`: whose assistant is working there now, nothing more (F-027 AST-6). |
+| `POST /api/v1/assistant-changes/:id/apply`, `…/not-now`, `…/send`; `POST /api/v1/assistant-runs/:id/changes/apply`, `…/not-now`, `…/inbox` | the owner only | Decide waiting changes (F-027 A3). Everyone else gets 404. Apply all is one allowance of at most the owner's limit (surplus stays waiting). |
+| `POST /api/v1/assistant-changes/:id/undo`, `POST /api/v1/assistant-runs/:id/changes/undo` | the owner, or anyone who may edit | Take back one change or the whole message (F-027 A4). A reader who may not edit gets 403, a non-reader 404; only the owner takes back a created task. |
 
 **Working-card document lifetime, 2026-10-11.** The bounded #380 repair was peer
 accepted after actual WebKit observations at `216f0018`: an irrelevant stream
@@ -486,7 +545,7 @@ behaviour or accessibility.
   persisted owner mark and the account row's note for a model without tool calling, a "Limit reached"
   status and copy, the Responses API for the OpenAI models that need it, and the Gemini
   thought-signature field name (unverified against Google's pages).
-- Effect tools for runs (A3/A4): this step lists read tools only.
+- A8 and A9 start background runs; the lane, its ordering and its lines are in place and tested with seeded rows.
 - #124's key custody, the real connection lookup and key resolver, the foreign key
   from `connection_id`, and the operator switch (see [Switching production on](#switching-production-on)).
 - A provider pass against the real API (with a real key, by its owner), including billing on

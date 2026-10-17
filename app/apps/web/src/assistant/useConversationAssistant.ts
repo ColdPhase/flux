@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ASSISTANT_RUN_CHANGED_EVENT, type AssistantAnswer, type AssistantProposal, type AssistantRun, type AssistantRunKind, type PersonalAssistantStatus } from '@flux/contracts';
+import { ASSISTANT_RUN_CHANGED_EVENT, type AssistantActivity, type AssistantAnswer, type AssistantProposal, type AssistantRun, type AssistantRunKind, type PersonalAssistantStatus } from '@flux/contracts';
 import { useStreamEvents } from '../api/stream';
 import {
-  acceptProposal, askAssistant, dismissProposal, getAssistantStatus, getRun, listAnswers, listOwnRuns, listProposals, resumeAssistant, retryRun, stopRun,
+  acceptProposal, askAssistant, dismissProposal, getAssistantActivity, getAssistantStatus, getRun, listAnswers, listOwnRuns, listProposals, resumeAssistant, retryRun, stopRun,
 } from './api';
 import { isWorking } from './format';
 
@@ -26,6 +26,12 @@ export interface ConversationAssistant {
   /** The next request, waiting for the working one to end (AST-6 queue): "Next: '…'. It starts when this one ends · Cancel". */
   queued: AssistantRun | null;
   cancelQueued(): Promise<void>;
+  /** The queued request waits behind a background run of the owner: "Finishing your Morning summary first… [ Stop the summary ]". */
+  stopBehind(): Promise<void>;
+  /** Other people's assistants working here right now, by name only: "Ada's assistant is working…" (AST-6). */
+  others: AssistantActivity['working'];
+  /** Changes whenever the shared part of the conversation was refreshed: an assistant started or stopped working, an answer arrived. */
+  tick: number;
   ask(prompt: string, options?: { kind?: AssistantRunKind; continuesRunId?: string; clientRunId?: string }): Promise<AssistantRun>;
   stop(): Promise<void>;
   retry(runId: string): Promise<void>;
@@ -42,26 +48,35 @@ export function useConversationAssistant({ meId, projectId, conversationId }: { 
   const [run, setRun] = useState<AssistantRun | null>(null);
   const runRef = useRef(run);
   useEffect(() => { runRef.current = run; }, [run]);
+  const [others, setOthers] = useState<AssistantActivity['working']>([]);
+  const [tick, setTick] = useState(0);
   const [queued, setQueued] = useState<AssistantRun | null>(null);
   const queuedRef = useRef(queued);
   useEffect(() => { queuedRef.current = queued; }, [queued]);
 
   const refreshStatus = useCallback(() => { getAssistantStatus().then(setStatus).catch(() => { /* the ask bar keeps saying it is checking */ }); }, []);
+  const refreshActivity = useCallback(async () => {
+    if (!conversationId) return;
+    try { setOthers((await getAssistantActivity(conversationId)).working.filter((item) => item.ownerId !== meId)); } catch { /* the line is a courtesy; a missing one is not an error */ }
+  }, [conversationId, meId]);
   const refreshShared = useCallback(async () => {
     if (!conversationId) return;
+    void refreshActivity();
+    setTick((value) => value + 1);
     try {
       const [items, drafted] = await Promise.all([allAnswers(conversationId), listProposals(projectId)]);
       setAnswers(items);
       setProposals(new Map(drafted.items.map((item) => [item.id, item])));
     } catch { /* the conversation itself reports lost access */ }
-  }, [conversationId, projectId]);
+  }, [conversationId, projectId, refreshActivity]);
 
   /** A run changed: keep it while it works or when it ended without an answer; an answer shows in the feed. */
   const track = useCallback((next: AssistantRun) => {
     if (next.conversationId !== conversationId) return;
     const current = runRef.current;
-    // A request behind the working one waits in its own line; it takes over the working line when it starts.
-    if (next.status === 'queued' && current && current.id !== next.id && isWorking(current)) { setQueued(next); return; }
+    // A request behind the working one waits in its own line; it takes over the working line when it starts. It also waits when the
+    // lane is held by a background run of the owner, which may belong to no conversation here.
+    if (next.status === 'queued' && (next.behind || current && current.id !== next.id && isWorking(current))) { setQueued(next); return; }
     if (queuedRef.current?.id === next.id) {
       setQueued(null);
       if (!isWorking(next)) { refreshStatus(); return; }
@@ -79,16 +94,18 @@ export function useConversationAssistant({ meId, projectId, conversationId }: { 
         setAnswers(items);
         setProposals(new Map(drafted.items.map((item) => [item.id, item])));
       }).catch(() => undefined);
+      getAssistantActivity(conversationId).then((activity) => setOthers(activity.working.filter((item) => item.ownerId !== meId))).catch(() => undefined);
     }
     // After a reload the working line comes back: the person's own newest run in this conversation.
     listOwnRuns().then((page) => {
       const here = page.items.filter((item) => item.conversationId === conversationId && isWorking(item));
-      const active = here.find((item) => item.status !== 'queued') ?? here[here.length - 1];
+      const working = here.find((item) => item.status !== 'queued');
+      const waiting = here.find((item) => item.status === 'queued' && (item.behind || working && item.id !== working.id));
+      const active = working ?? here.find((item) => item !== waiting);
       if (active) setRun(active);
-      const waiting = here.find((item) => item.status === 'queued' && item.id !== active?.id);
       if (waiting) setQueued(waiting);
     }).catch(() => undefined);
-  }, [conversationId, projectId, refreshStatus]);
+  }, [conversationId, projectId, meId, refreshStatus]);
 
   useStreamEvents(meId, (event) => {
     if (event.kind === ASSISTANT_RUN_CHANGED_EVENT) {
@@ -114,10 +131,16 @@ export function useConversationAssistant({ meId, projectId, conversationId }: { 
   }, [queued, track]);
 
   return {
-    status, answers, proposals, run, queued, refreshStatus,
+    status, answers, proposals, run, queued, others, tick, refreshStatus,
     async cancelQueued() {
       if (!queued) return;
       track(await stopRun(queued.id));
+    },
+    async stopBehind() {
+      if (!queued?.behind) return;
+      await stopRun(queued.behind.runId);
+      const next = await getRun(queued.id);
+      track(next);
     },
     async ask(prompt, options = {}) {
       if (!conversationId) throw new Error('No conversation');

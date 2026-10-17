@@ -33,6 +33,15 @@ function restored(value: AgentJsonValue): CoWorkUnitCreation {
   return v;
 }
 
+/** The receipt value and canonical post-state of a unit creation: shared by the ordinary composition and the owner-assistant adapter. */
+export function coWorkUnitOutcome(creation: CoWorkUnitCreation, context: { workspaceId: string; projectId: string }):
+  { value: { [key: string]: AgentJsonValue }; postconditions: AgentPostcondition[] } {
+  const postcondition: UnitPostcondition = { kind: 'cowork.unit_state', workspaceId: context.workspaceId,
+    projectId: context.projectId, unitId: creation.unitId, taskId: creation.taskId, lineageTaskId: creation.lineageTaskId, runId: creation.runId,
+    role: creation.role, assignmentConnectionId: creation.assignmentConnectionId, version: creation.version, state: creation.state };
+  return { value: wire(creation) as { [key: string]: AgentJsonValue }, postconditions: [postcondition] };
+}
+
 /**
  * Internal caller-owned composition of #152's `cowork.unit.create`. The owner's standing grant to this connection
  * (class = the created unit's role, optional exact task) is the authority; nothing here grants the creator or the

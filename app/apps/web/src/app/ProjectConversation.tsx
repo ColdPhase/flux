@@ -25,7 +25,7 @@ import { useShellActions } from './shellContext';
 import { assistantUses, AssistantSuggestions, meetAssistantDismissed, noteAssistantUse } from '../assistant/MeetAssistant';
 import { useConversationAssistant } from '../assistant/useConversationAssistant';
 import { useAssistantChanges, WaitingChanges } from '../assistant/WaitingChanges';
-import { AnswerItem, AskBar, ProposalCard, WorkingLine } from '../assistant/ConversationParts';
+import { AnswerItem, AskBar, BehindLine, OthersWorkingLine, ProposalCard, WorkingLine } from '../assistant/ConversationParts';
 import { askError as askErrorText, askState } from '../assistant/format';
 import { grantAgentProject } from '../agent-connection/api';
 import { requestAssistantJoin } from '../agents/api';
@@ -227,7 +227,7 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
   const messageAuthor = (item: ConversationMessage) => item.authorId !== null ? author(item.authorId) : agentAuthorLabel(item.author);
   const owners = useAgentOwners(project);
   // The owner's waiting changes (F-027 A3): refreshed when their run moves or an answer arrives.
-  const assistantChanges = useAssistantChanges(conversation?.id ?? null, `${assistant.run?.id ?? ''}:${assistant.run?.status ?? ''}:${assistant.answers.length}`);
+  const assistantChanges = useAssistantChanges(conversation?.id ?? null, `${assistant.run?.id ?? ''}:${assistant.run?.status ?? ''}:${assistant.answers.length}:${assistant.tick}`);
   // Bounded native reads (#155): the visible replies' chips, and the tasks that answers, proposals and the
   // discussed task refer to. Neither is the project's work collection.
   const discussedTask = conversation?.task?.workId ?? null;
@@ -660,7 +660,7 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
                 const workTitle = proposal?.change.finishes ? referenceWork.rows.get(`work:${proposal.change.finishes.workId}`)?.title ?? 'a work item' : null;
                 const runChanges = assistantChanges.byRun.get(answer.runId);
                 return [divider, <AnswerItem key={entry.key} answer={answer} mine={answer.assistant.ownerUserId === me.user.id} lookups={lookups} when={when} clock={clock}
-                  proposal={proposal} resultInMessage={!!runChanges?.some((change) => change.state === 'applied' || change.state === 'applied_after_wait')} changes={runChanges ? <WaitingChanges changes={runChanges} onChanged={assistantChanges.refresh} /> : null}
+                  proposal={proposal} resultInMessage={!!runChanges?.some((change) => change.state === 'applied' || change.state === 'applied_after_wait')} changes={runChanges ? <WaitingChanges changes={runChanges} onChanged={assistantChanges.refresh} meId={me.user.id} /> : null}
                   proposalControls={proposal ? <ProposalCard proposal={proposal} workTitle={workTitle} {...proposalAuthority(proposal.change.finishes)} onRefreshTarget={referenceWork.refresh} meId={me.user.id}
                     onDecide={async (decision) => {
                       try { await assistant.decide(proposal, decision); } finally { revalidator.revalidate(); }
@@ -688,11 +688,14 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
               return [divider, <ThreadReply key={`pending-${item.id}`} continued={continued} pending={item} name={me.user.name} onRetry={() => publicComposer.retry(item.id)} onRemove={() => publicComposer.remove(item.id)} />];
             })]}
             {[...assistantChanges.byRun].filter(([runId]) => !assistant.answers.some((answer) => answer.runId === runId)).map(([runId, runChanges]) => (
-              <li key={`changes-${runId}`} className="project-convo__message assistant-waiting-item"><WaitingChanges changes={runChanges} onChanged={assistantChanges.refresh} /></li>
+              <li key={`changes-${runId}`} className="project-convo__message assistant-waiting-item"><WaitingChanges changes={runChanges} onChanged={assistantChanges.refresh} meId={me.user.id} standalone /></li>
             ))}
-            {assistant.run ? <WorkingLine key={assistant.run.id} run={assistant.run} onStop={assistant.stop} onRetry={() => assistant.retry(assistant.run!.id)} onDismiss={assistant.dismissRun} /> : null}
+            {assistant.run ? <WorkingLine key={assistant.run.id} run={assistant.run} onStop={assistant.stop} onRetry={() => assistant.retry(assistant.run!.id)} onDismiss={assistant.dismissRun}
+              changed={(assistantChanges.byRun.get(assistant.run.id) ?? []).filter((change) => change.state === 'applied' || change.state === 'applied_after_wait' || change.state === 'undone').length} /> : null}
+            {assistant.others.map((other) => <OthersWorkingLine key={`working-${other.ownerId}`} name={other.ownerName} />)}
             {waitingHere.map((item) => <li key={item.clientRunId} className="assistant-queued" aria-live="polite">Sends when you&apos;re back</li>)}
-            {assistant.queued ? <li className="assistant-queued" aria-live="polite">Next: “{assistant.queued.prompt.length > 60 ? `${assistant.queued.prompt.slice(0, 60)}…` : assistant.queued.prompt}”. It starts when this one ends ·
+            {assistant.queued?.behind && assistant.queued.behind.authority !== 'owner_request' ? <BehindLine label={assistant.queued.behind.label} onStop={assistant.stopBehind} />
+              : assistant.queued ? <li className="assistant-queued" aria-live="polite">Next: “{assistant.queued.prompt.length > 60 ? `${assistant.queued.prompt.slice(0, 60)}…` : assistant.queued.prompt}”. It starts when this one ends ·
               <Button variant="link" onClick={() => void assistant.cancelQueued().catch(() => undefined)}>Cancel</Button></li> : null}
             </ol>
           </> : null}

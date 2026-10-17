@@ -84,6 +84,9 @@ export interface RunRecord {
   mcpResultBytes: number;
   /** A tool result passed the MCP route's bound for one call or for the run (F-022 "Caps"). */
   mcpLimit: 'call' | 'run' | null;
+  /** 0108 (F-027 A4): what started the run, and a background run's short name for the lane's lines. */
+  authority: 'owner_request' | 'owner_schedule' | 'owner_reaction';
+  backgroundLabel: string | null;
 }
 
 export type NewRun = Pick<RunRecord, 'id' | 'workspaceId' | 'projectId' | 'conversationId' | 'ownerUserId' | 'agentId' | 'connectionId'
@@ -143,11 +146,13 @@ export interface PersonalRunRepository {
   locateConversation(conversationId: string): Promise<{ workspaceId: string; projectId: string } | null>;
   runByClientId(ownerUserId: string, clientRunId: string): Promise<RunRecord | null>;
   findRun(id: string, options?: { lock?: boolean }): Promise<RunRecord | null>;
-  /** The owner's runs that are queued, reading or dispatching: one working and one waiting behind it at most (AST-6 queue). */
+  /** The owner's working runs and queued requests: one working and one request waiting behind it at most (AST-6 queue). */
   inFlightCount(ownerUserId: string): Promise<number>;
-  /** Another run of this owner holds the lane (reading or dispatching), so this queued one waits for it. */
+  /** Another run of this owner holds the lane (reading or dispatching), or this background run would pass a queued owner request: it waits. */
   laneBusy(ownerUserId: string, exceptRunId: string): Promise<boolean>;
-  /** Queued runs whose owner's lane is free, oldest first: the next request starts when the one before it ends. */
+  /** The run holding the owner's lane (reading or dispatching), if any: what a queued request waits behind. */
+  workingOf(ownerUserId: string): Promise<RunRecord | null>;
+  /** Queued runs whose owner's lane is free, the owner's requests first and then oldest first: the next starts when the one before it ends. */
   startableQueued(limit: number): Promise<string[]>;
   insertRun(run: NewRun): Promise<RunRecord>;
   updateRun(id: string, changes: RunChanges): Promise<RunRecord>;
@@ -220,6 +225,8 @@ export type PersonalRunEventKind =
   /** Owner-only progress of one run; the object is the run (`assistant_run`). */
   | 'assistant_run.changed.v1'
   | 'project.assistant_answer_committed.v1'
+  /** An assistant started or stopped working in a conversation: the project's audience, identifiers only (F-027 AST-6). */
+  | 'project.assistant_working.v1'
   | 'project.assistant_proposal_created.v1'
   | 'project.assistant_proposal_decided.v1';
 

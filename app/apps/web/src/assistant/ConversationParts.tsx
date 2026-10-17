@@ -7,6 +7,7 @@ import { useSmallMoments } from '../app/smallMoments';
 import { AssistantPanel, companyName } from './AssistantPanel';
 import { useShellActions } from '../app/shellContext';
 import { canRetry, endedText, isWorking, onRuntime, workingText, type AskState } from './format';
+import { failure } from './WaitingChanges';
 import { agentAuthorLabel } from '../docs/format';
 import './assistant.css';
 
@@ -57,7 +58,9 @@ function WorkingWords({ run }: { run: AssistantRun }) {
 }
 
 /** The owner's line where the answer will appear: what the assistant is doing, with Stop. */
-export function WorkingLine({ run, onStop, onRetry, onDismiss }: { run: AssistantRun; onStop: () => Promise<void>; onRetry: () => Promise<void>; onDismiss: () => void }) {
+export function WorkingLine({ run, onStop, onRetry, onDismiss, changed = 0 }: { run: AssistantRun; onStop: () => Promise<void>; onRetry: () => Promise<void>; onDismiss: () => void;
+  /** Changes the run committed before it ended: the line says so instead of "Nothing was posted" and the message below lists them. */
+  changed?: number }) {
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState('');
   const act = async (action: () => Promise<void>) => {
@@ -66,7 +69,7 @@ export function WorkingLine({ run, onStop, onRetry, onDismiss }: { run: Assistan
     finally { setBusy(false); }
   };
   const working = isWorking(run);
-  const ended = endedText(run);
+  const ended = endedText(run, changed);
   // Motion follows actual execution only (#155 AC-3): a queued or stopping run is static; its text says why.
   const executing = working && run.status !== 'queued' && !run.stopRequested;
   const loop = useLoopPause<HTMLLIElement>();
@@ -89,6 +92,36 @@ export function WorkingLine({ run, onStop, onRetry, onDismiss }: { run: Assistan
         {!working && canRetry(run) ? <Button variant="quiet" busy={busy} onClick={() => void act(onRetry)}>Retry</Button> : null}
         {!working ? <IconButton icon="x" label="Dismiss" onClick={onDismiss} /> : null}
       </div>
+    </li>
+  );
+}
+
+/** "Ada's assistant is working…": what everyone else sees, by name only: no detail, no Stop. Kreska shows only with small moments on. */
+export function OthersWorkingLine({ name }: { name: string }) {
+  const loop = useLoopPause<HTMLLIElement>();
+  const moments = useSmallMoments();
+  return (
+    <li ref={loop} className="assistant-working assistant-working--others" aria-live="polite">
+      {moments ? <AssistantAvatar expression="thinking" /> : null}
+      <div className="assistant-working__body"><p className="assistant-working__text">{name.trim().split(/\s+/)[0] || name}’s assistant is working…</p></div>
+    </li>
+  );
+}
+
+/** "Finishing your Morning summary first. Yours starts next. · Stop the morning summary": the request waits behind a background run of the owner. */
+export function BehindLine({ label, onStop }: { label: string | null; onStop: () => Promise<void> }) {
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState('');
+  const name = label ?? 'background work';
+  const stop = async () => {
+    setBusy(true); setFailed('');
+    try { await onStop(); } catch (error) { setFailed(failure(error)); } finally { setBusy(false); }
+  };
+  return (
+    <li className="assistant-queued" aria-live="polite">
+      <span>Finishing your <b>{name}</b> first. Yours starts next.</span>
+      <Button variant="link" busy={busy} onClick={() => void stop()}>Stop the {name.charAt(0).toLowerCase() + name.slice(1)}</Button>
+      {failed ? <span className="assistant-working__error" role="alert">{failed}</span> : null}
     </li>
   );
 }

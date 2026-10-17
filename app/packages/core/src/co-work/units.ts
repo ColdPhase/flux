@@ -34,17 +34,19 @@ export interface CoWorkCreationUnit {
 }
 /** Facts read under the complete retained connection/slot/task/parent locks; `now` is fresh DB wall time after them. */
 export interface CoWorkUnitCreationFacts {
-  task: { id: string; version: number; status: string } | null;
+  task: { id: string; version: number; status: string; createdByKind?: 'human' | 'agent'; createdById?: string } | null;
   /** The parent unit when it is the creator's own unit in this project; null otherwise or for a root. */
   parent: CoWorkCreationUnit | null;
   /** The assignee when it is a live connection of this workspace with this project selected and the execute scope. */
-  assignee: { id: string; ownerUserId: string } | null;
+  assignee: { id: string; ownerUserId: string; agentId?: string; computeSource?: string } | null;
   /** The unit already holding this exact intent (task, run, unit key), if any. */
   existing: CoWorkCreationUnit | null;
   /** Every unit of the target run, with its assignee's owner (null when that connection no longer exists). */
   runUnits: readonly { id: string; role: CoWorkRole; assignmentConnectionId: string; ownerUserId: string | null }[];
   /** Open (pending/claimed/paused) units on the task, in any run. */
   openTaskUnits: readonly { id: string; role: CoWorkRole }[];
+  /** Every unit on the task in any run and state, with its assignee's owner: what the owner-assistant adapter separates review from. */
+  taskUnits?: readonly { id: string; role: CoWorkRole; state: string; assignmentConnectionId: string; ownerUserId: string | null }[];
   now: Date;
 }
 export type CoWorkUnitDecision =
@@ -149,4 +151,61 @@ export function requireCoWorkUnitCreation(context: CoWorkContext, facts: CoWorkU
   if (!separated(target.role, assignee, facts, policy.reviewSeparation))
     throw new ConflictError('An author cannot be its own reviewer in this run', 'COWORK_REVIEW_SEPARATION');
   return { kind: 'create', lineageTaskId, runId };
+}
+
+/**
+ * The run an owner-assistant hand-off opens (F-027 AST-3, the bounded co-work amendment of 2026-10-10): its own namespace, derived from
+ * the verified assistant connection, the task and the immutable intent key. A client can name neither the namespace nor an unrelated
+ * lineage, and the same intent always meets its earlier unit instead of opening a second root.
+ */
+export function assistantHandoffRunId(assistantConnectionId: string, taskId: string, unitKey: string): string {
+  const digits = createHash('sha256').update(JSON.stringify(['flux.cowork.assistant-handoff-run.v1', uuid(assistantConnectionId),
+    uuid(taskId), unitKey])).digest('hex').slice(0, 32).split('');
+  digits[12] = '8';
+  digits[16] = ((parseInt(digits[16]!, 16) & 0x3) | 0x8).toString(16);
+  const hex = digits.join('');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
+/**
+ * Pure rules of the owner-assistant hand-off adapter. Only a root: a claimed parent is refused, never ignored. The recipient is a different,
+ * external connection of the same owner (the caller reads that from the locked rows); another assistant or another person's agent is not
+ * eligible, so an owner's Apply can never authorize it. The task-wide checks are the ordinary ones plus review separation against every
+ * unit the task has ever had, so a fresh root cannot erase who executed it. Creating the unit grants nobody a claim.
+ */
+export function requireOwnerAssistantHandoff(context: CoWorkContext, facts: CoWorkUnitCreationFacts, input: CoWorkUnitCreateInput,
+  target: { taskId: string; role: CoWorkRole; rootRunId: string }, policy: CoWorkUnitPolicy): CoWorkUnitDecision {
+  const { task, assignee, existing, now } = facts;
+  if (!Number.isFinite(now.getTime())) throw new Error('Missing database wall time');
+  if (input.parent) throw new InvalidInputError('A hand-off from your assistant opens a new unit of its own; it has no parent');
+  if (!task || task.id !== target.taskId) throw new NotFoundError('Project object', 'OBJECT_NOT_FOUND');
+  if (task.version !== input.expectedTaskVersion)
+    throw new ConflictError('The task changed; recover its current version', 'COWORK_VERSION_CONFLICT');
+  if (task.status === 'done' || task.status === 'not_pursued')
+    throw new ConflictError('The task is closed', 'COWORK_TASK_CLOSED');
+  if (!assignee || assignee.id !== input.assignmentConnectionId || assignee.id === context.connectionId
+    || assignee.ownerUserId !== context.ownerId || assignee.computeSource === 'owner_assistant')
+    throw new NotFoundError('Unit assignee', 'COWORK_ASSIGNEE_UNAVAILABLE');
+  if (existing) {
+    if (existing.taskId !== target.taskId || existing.lineageTaskId !== target.taskId || existing.runId !== target.rootRunId
+      || existing.unitKey !== input.unitKey || existing.role !== target.role || existing.assignmentConnectionId !== assignee.id)
+      throw new ConflictError('This unit key was used for another unit', 'COWORK_UNIT_CONFLICT');
+    return { kind: 'existing', unit: existing };
+  }
+  if (facts.openTaskUnits.some((unit) => unit.role === target.role))
+    throw new ConflictError('An open unit with this role already exists on the task', 'COWORK_UNIT_TAKEN');
+  if (facts.runUnits.length >= policy.maximumRunUnits)
+    throw new ConflictError('The run unit budget is exhausted', 'COWORK_BUDGET_EXHAUSTED');
+  const opposite = target.role === 'review' ? 'execute' : target.role === 'execute' ? 'review' : null;
+  if (opposite) {
+    const same = (unit: { assignmentConnectionId: string; ownerUserId: string | null }) => unit.assignmentConnectionId === assignee.id
+      // A deleted connection's owner is unknown: fail closed under the stricter policy.
+      || (policy.reviewSeparation === 'distinct_owner' && (unit.ownerUserId === null || unit.ownerUserId === assignee.ownerUserId));
+    const authored = task.createdByKind === 'agent' && !!assignee.agentId && task.createdById === assignee.agentId;
+    // A stopped unit never ran to a result, so it separates nothing; every other unit, finished or not, does.
+    if (facts.taskUnits === undefined || authored && target.role === 'review'
+      || facts.taskUnits.some((unit) => unit.role === opposite && unit.state !== 'stopped' && same(unit)))
+      throw new ConflictError('An author cannot be its own reviewer on this task', 'COWORK_REVIEW_SEPARATION');
+  }
+  return { kind: 'create', lineageTaskId: target.taskId, runId: target.rootRunId };
 }

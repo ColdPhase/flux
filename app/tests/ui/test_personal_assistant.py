@@ -362,11 +362,12 @@ class PersonalAssistantJourney(unittest.TestCase):
         self.assertEqual((body["model"], body["max_tokens"], body["output_config"]), ("claude-sonnet-5", 1500, {"effort": "low"}))
         # F-027 A6 (#484) and A3 (#403): the run offers its exact switch-derived tools (reads, and the change tools of
         # areas switched to edit), listed by /mcp to its run token; the mock answers without calling one, so the run
-        # stays one request. Co-work, bootstrap and proposal tools are never offered to a run.
+        # stays one request. The co-work claim, transfer and request tools, bootstrap and proposal tools are never offered to a run.
         tools = sorted(tool["name"] for tool in body.get("tools", []))
         self.assertIn("flux_get_conversation", tools)
         self.assertIn("flux_create_task", tools)
-        for absent in ("flux_create_unit", "flux_bootstrap", "flux_claim_unit", "flux_create_proposal", "flux_undo_task_creation", "flux_ask_question"):
+        self.assertIn("flux_create_unit", tools)  # the owner-assistant hand-off, with its own private input
+        for absent in ("flux_bootstrap", "flux_claim_unit", "flux_transfer_unit", "flux_create_proposal", "flux_undo_task_creation", "flux_ask_question"):
             self.assertNotIn(absent, tools)
         self.assertIn(KAI_REPLY, json.dumps(body))
         self.assertNotIn(DM_TOKEN, json.dumps(body))

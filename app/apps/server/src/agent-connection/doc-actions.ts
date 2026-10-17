@@ -1,7 +1,8 @@
 import { z } from 'zod';
 import { AGENT_OPERATION_CLASSES, DOC_LIMITS, type AgentJsonValue, type AgentOperation, type CreateDocCommand, type DocState,
   type UpdateDocCommand } from '@flux/contracts';
-import { RuleViolationError, type Database } from '@flux/core';
+import { assistantChangeRows, type DbExecutor } from '@flux/db';
+import { RuleViolationError, type Database, type Transaction } from '@flux/core';
 import { actionAnnotations as annotations, actionId as id, actionInput, actionVersion as version, nativeActionExecutor } from './action-execution.js';
 import type { FluxMcpClaims } from './context.js';
 import type { AgentToolRegistry } from './tool-registry.js';
@@ -21,6 +22,12 @@ const reason = z.string().max(DOC_LIMITS.reason).describe('Why this version was 
  */
 export function registerAgentDocActions(tools: AgentToolRegistry, db: Database, claims: FluxMcpClaims) {
   const execute = nativeActionExecutor(db, claims);
+  /** An assistant's version says whose request it was: "Asked by Ada: …" (F-027 AST-6 "Versioned"). Any other caller's reason is its own. */
+  const reasoned = async (tx: Transaction, ownerUserId: string, given: string | undefined, fallback: string) => {
+    if (!claims.run && !claims.approval) return given;
+    const name = (await assistantChangeRows(tx as DbExecutor).names([ownerUserId])).get(ownerUserId) ?? 'their owner';
+    return `Asked by ${name}: ${given?.trim() || fallback}`.slice(0, DOC_LIMITS.reason);
+  };
   const register = (operation: AgentOperation) => tools.forScope('flux.action.execute', { operation, classes: AGENT_OPERATION_CLASSES[operation] });
   const run = (handler: () => Promise<unknown>) => handler().then(toolResult, toolError);
   const grantNote = 'Needs a live standing grant for this operation and the runtime from flux_bootstrap.';
@@ -31,8 +38,9 @@ export function registerAgentDocActions(tools: AgentToolRegistry, db: Database, 
       + `Everyone with current project access can read it. Cited source revisions must still be current. ${grantNote}`,
     inputSchema: z.strictObject({ ...execution, doc: z.strictObject({ title, body: body.optional(), state: state.optional(), reason: reason.optional() }) }),
     annotations,
-  }, ({ doc, ...input }) => run(() => execute(input, 'doc.create', null, doc as unknown as AgentJsonValue, async ({ docs, agent }) => {
-    const command: CreateDocCommand = doc;
+  }, ({ doc, ...input }) => run(() => execute(input, 'doc.create', null, doc as unknown as AgentJsonValue, async ({ docs, agent, transaction, runtime }) => {
+    const reason = await reasoned(transaction, runtime.ownerUserId, doc.reason, 'started by their assistant');
+    const command: CreateDocCommand = { ...doc, ...(reason === undefined ? {} : { reason }) };
     const created = await docs.createDoc(agent, input.projectId, command);
     return { value: { docId: created.id, version: created.version, state: created.state },
       postconditions: [{ kind: 'doc', id: created.id, version: created.version }] };
@@ -48,8 +56,9 @@ export function registerAgentDocActions(tools: AgentToolRegistry, db: Database, 
       changes: z.strictObject({ title: title.optional(), body: body.optional(), state: state.optional(), reason: reason.optional() }) }),
     annotations,
   }, ({ docId, expectedVersion, changes, ...input }) => run(() => execute(input, 'doc.update', docId, { expectedVersion, changes } as unknown as AgentJsonValue,
-    async ({ docs, agent }) => {
-      const command: UpdateDocCommand = changes;
+    async ({ docs, agent, transaction, runtime }) => {
+      const reason = await reasoned(transaction, runtime.ownerUserId, changes.reason, 'edited by their assistant');
+      const command: UpdateDocCommand = { ...changes, ...(reason === undefined ? {} : { reason }) };
       const updated = await docs.updateDoc(agent, docId, command, expectedVersion);
       // The canonical command saves no version for a change that alters nothing; such a call uses no grant.
       if (updated.version === expectedVersion) throw new RuleViolationError('The change alters nothing; no version was saved', 'DOC_UNCHANGED');

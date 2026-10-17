@@ -7,6 +7,7 @@ import {
   RUNTIME_RUN_LIMITS,
   type AssistantAnswer,
   type AssistantRun,
+  type AssistantRunBehind,
   type EnablePersonalRunsCommand,
   type InvokeAssistantRunCommand,
   type Page,
@@ -107,9 +108,17 @@ export async function runView(ports: PersonalRunPorts, record: RunRecord): Promi
     engine: record.engine, runtimeClient: record.engine === 'runtime' ? runtimeClientOf(record.provider) : null, endReason: record.endReason, planLimitResetsAt: record.planLimitResetsAt ? iso(record.planLimitResetsAt) : null,
     cost: { state: record.costState, reservedMicros: record.reservedMicros, chargedMicros: record.chargedMicros, inputTokens: record.inputTokens, outputTokens: record.outputTokens },
     answer: await answerView(ports, record),
+    authority: record.authority, backgroundLabel: record.backgroundLabel,
+    behind: record.status === 'queued' ? await behindView(ports, record) : null,
     createdAt: iso(record.createdAt), dispatchedAt: record.dispatchedAt ? iso(record.dispatchedAt) : null,
     completedAt: record.completedAt ? iso(record.completedAt) : null,
   };
+}
+
+/** The run holding the owner's lane, for the line of a request waiting behind it (AST-6 "Queue"). */
+async function behindView(ports: PersonalRunPorts, record: RunRecord): Promise<AssistantRunBehind | null> {
+  const working = await ports.runs.workingOf(record.ownerUserId);
+  return working && working.id !== record.id ? { runId: working.id, authority: working.authority, label: working.backgroundLabel } : null;
 }
 
 /**
