@@ -408,6 +408,7 @@ export function useLiveSketchDoc(sketchId: string, me: Me) {
     beginGesture, previewGesture: (positions: LiveMapPosition[]) => live.current?.preview(positions), cancelGesture: () => live.current?.cancel(true),
     finishGesture: () => live.current?.status === 'unavailable' ? undefined : live.current?.finish(),
     presence: (ids: string[]) => live.current?.selection(ids),
+    pointer: (point: { x: number; y: number } | null) => live.current?.pointer(point),
   };
 }
 

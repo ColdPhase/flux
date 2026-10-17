@@ -60,13 +60,13 @@ export const materialSources = (input: ActionInput): { sources?: ObjectRef[] } =
  * final event batch flushed. A retry with the same command ID returns the stored outcome without a
  * second effect, debit or event.
  */
-export function nativeActionExecutor(db: Database, claims: FluxMcpClaims) {
+export function nativeActionExecutor(db: Database, claims: FluxMcpClaims, privateTarget?: 'task-agent-thread/v1') {
   // An assistant run (or the owner's Apply of its saved change) uses the run's authority and the change log (F-027 A3).
   if (claims.run || claims.approval) return assistantChangeExecutor(db, claims) as unknown as ReturnType<typeof standingExecutor>;
-  return standingExecutor(db, claims);
+  return standingExecutor(db, claims, privateTarget);
 }
 
-function standingExecutor(db: Database, claims: FluxMcpClaims) {
+function standingExecutor(db: Database, claims: FluxMcpClaims, privateTarget?: 'task-agent-thread/v1') {
   return async function execute<T extends { [key: string]: AgentJsonValue }>(input: ActionInput, operation: AgentOperation,
     objectId: string | null, payload: AgentJsonValue, effect: (native: NativeActions) => Promise<Produced<T>>) {
     const command: AgentExecutionCommand = { runtimeSessionId: input.runtimeSessionId, grantId: input.grantId,
@@ -78,7 +78,7 @@ function standingExecutor(db: Database, claims: FluxMcpClaims) {
     try {return await db.transaction(async (tx) => {
       const session = transactionEventSession(tx);
       let replayed = false;
-      const value = await agentExecutionUseCases(agentExecutionInTransaction(tx, claims)).run(command, async (scope) => {
+      const value = await agentExecutionUseCases(agentExecutionInTransaction(tx, claims, {}, privateTarget)).run(command, async (scope) => {
         if (scope.replay) {
           replayed = true;
           return { value: scope.replay.value, postconditions: scope.replay.postconditions };

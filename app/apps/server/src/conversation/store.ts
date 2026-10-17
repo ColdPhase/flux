@@ -238,9 +238,8 @@ export function conversationStore(db: Database, options: ConversationStoreOption
         const canWrite = principal.kind === 'human' && write.allowed && task.creationRevertedAt === null;
         return { task: { id: task.id, projectId: task.projectId, number: task.number, title: task.title },
           conversation: thread ? await conversationStore(tx, options).getConversation(principal, thread.id, window) : null,
-          // No people-facing thread surface exists yet (#400: AC-3 agent reads and the UI are not built), so the
-          // UI does not offer a composer; the API still accepts an authorized post.
-          messageCount: count?.total ?? 0, canWrite, postingAvailable: false };
+          // The Agents tab offers the composer to people with project write access; agent writers stay closed (#400).
+          messageCount: count?.total ?? 0, canWrite, postingAvailable: true };
       }, { isolationLevel: 'repeatable read', accessMode: 'read only' });
     },
     async postAgentThread(principal: Principal, taskId: string, input: AgentThreadPost): Promise<ConversationMessage> {

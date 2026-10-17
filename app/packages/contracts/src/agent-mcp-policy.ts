@@ -36,6 +36,7 @@ export const AGENT_MCP_ENTRIES: readonly AgentMcpEntry[] = [
   read('flux_list_decisions', 'project.decisions.read'), read('flux_get_decision', 'project.decisions.read'),
   read('flux_list_results', 'project.results.read'), read('flux_get_result', 'project.results.read'),
   read('flux_list_conversations', 'project.conversations.read'), read('flux_get_conversation', 'project.conversations.read'),
+  read('flux_get_agent_thread', 'project.conversations.read'),
   read('flux_list_maps', 'project.maps.read'), read('flux_get_map', 'project.maps.read'),
   // Actual source-kind dependencies are added before any query/count/projection.
   read('flux_search_project', 'project.identity.read'), read('flux_project_orientation', 'project.identity.read'),
@@ -51,7 +52,7 @@ export const AGENT_MCP_ENTRIES: readonly AgentMcpEntry[] = [
   effect('flux_remove_thought', 'map.thought.delete'), effect('flux_move_thoughts', 'map.positions.update'),
   effect('flux_link_thoughts', 'map.link.create'), effect('flux_unlink_thoughts', 'map.link.delete'),
   effect('flux_create_doc', 'doc.create'), effect('flux_update_doc', 'doc.update'),
-  effect('flux_start_conversation', 'conversation.create'), effect('flux_reply_in_conversation', 'conversation.reply'), effect('flux_ask_question', 'conversation.reply'),
+  effect('flux_start_conversation', 'conversation.create'), effect('flux_reply_in_conversation', 'conversation.reply'), effect('flux_post_agent_thread', 'conversation.reply'), effect('flux_ask_question', 'conversation.reply'),
   effect('flux_create_unit', 'cowork.unit.create'), effect('flux_claim_unit', 'cowork.claim'),
   effect('flux_renew_unit', 'cowork.renew'), effect('flux_release_unit', 'cowork.release'),
   effect('flux_complete_unit', 'cowork.unit.complete'), effect('flux_transfer_unit', 'cowork.unit.transfer'),

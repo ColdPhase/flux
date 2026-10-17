@@ -19,6 +19,7 @@ import { useWorkRead } from './useWorkRead';
 import { useNativeOwn, useWorkChoices, useDetailRelations, type DetailRelations, type DetailChoices } from './useDetailReads';
 import { WorkPagination } from './WorkPagination';
 import { TaskDiscussionSection } from './TaskDiscussion';
+import { AgentThreadLink } from '../agents/AgentThreadLink';
 import { TaskThoughtLinks } from './TaskThoughtLinks';
 import { ReadyToClose, TaskPullRequests } from '../github/TaskPullRequests';
 import { PanelMeta, StatusControl, TitleField, useStateKeys } from './TaskParts';
@@ -442,6 +443,7 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
         empty={emptyLinks(relations, 'Not linked to a thought yet.')} />
 
       <TaskDiscussionSection key={`${me.user.id}:${context.project.id}:${item.id}`} readOnly={!!reverted} revision={detail.observedAt} workId={item.id} project={context.project} number={item.number} members={context.members} me={{ id: me.user.id, name: me.user.name }} />
+      <AgentThreadLink workId={item.id} projectId={context.project.id} revision={detail.observedAt} />
 
       <section className="details__sec" aria-labelledby="wd-decisions">
         <h4 id="wd-decisions">Decisions</h4>
