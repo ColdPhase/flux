@@ -425,7 +425,7 @@ test('native agent owners retry failed reads, fence stale permission answers and
         const hit = document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2);
         // The board's transparent stretched task button owns hits over its metadata.
         // Accept that same card/row hit surface, but reject a different overlay or panel.
-        const surface = label.closest('.tb-card, .ws-item, .wd-discussion, .details, .agents-msg');
+        const surface = label.closest('.tb-card, .ws-item, .wd-activity, .details, .agents-msg');
         return { text: label.innerText, rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
           inViewport: rect.x >= 0 && rect.y >= 0 && rect.right <= innerWidth && rect.bottom <= innerHeight,
           uncovered: !!hit && (hit === label || label.contains(hit) || !!surface?.contains(hit)),
@@ -478,10 +478,10 @@ test('native agent owners retry failed reads, fence stale permission answers and
     // Decisions have no row in Tasks (#342); the proposing agent's owner shows in the decision's own details below.
     // The row's open button is `.ws-item`; the status glyph is a second button in the same row (#346).
     await row.locator('button.ws-item').click();
-    await page.locator('.wd-discussion .agent-for').waitFor();
-    assert.equal(await page.locator('.wd-discussion .agent-tag').innerText(), 'Agent');
-    assert.equal(await page.locator('.wd-discussion .agent-for').innerText(), 'for Scoped Casey');
-    await capture('scoped-owner-task-details', '.wd-discussion .agent-for');
+    await page.locator('.wd-activity .agent-for').waitFor();
+    assert.equal(await page.locator('.wd-activity .agent-tag').innerText(), 'Agent');
+    assert.equal(await page.locator('.wd-activity .agent-for').innerText(), 'for Scoped Casey');
+    await capture('scoped-owner-task-details', '.wd-activity .agent-for');
     await page.keyboard.press('Escape');
     await page.locator('#details').waitFor({ state: 'detached' });
     await page.goto(`/projects/${place.id}/tasks?open=decision:${proposal.id}`);
@@ -495,7 +495,6 @@ test('native agent owners retry failed reads, fence stale permission answers and
     await page.getByRole('heading', { level: 1, name: 'Agents' }).waitFor();
     await page.evaluate((url) => { history.pushState({}, '', url); window.dispatchEvent(new PopStateEvent('popstate')); }, `/projects/${place.id}/agents?task=${task.id}`);
     await page.waitForURL((url) => url.pathname === `/projects/${place.id}/agents` && url.searchParams.get('task') === task.id);
-    await page.locator('#details').waitFor({ state: 'detached' });
     await page.locator('.agents-msg__meta .agent-for').waitFor();
     assert.equal(await page.locator('.agents-msg__meta .agent-for').innerText(), 'for Scoped Casey');
     await assertAuthorColumn(page.locator('.agents-msg').first(), 1440);

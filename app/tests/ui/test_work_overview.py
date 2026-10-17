@@ -78,9 +78,19 @@ class OverviewWorkJourney(unittest.TestCase):
         return overview
 
     def open(self, page):
+        # An open thread is the one panel; on a phone it is a modal sheet that covers the header, so the conversation's
+        # Details are opened at a computer's width and the window is then narrowed to the phone's (#488).
+        phone = page.viewport_size["width"] <= 640
+        size = page.viewport_size
+        if phone: page.set_viewport_size({"width": 1500, "height": 900})
         page.goto(f"/projects/{self.project}/conversations/{self.conversation}")
-        expect(page.get_by_label("Reply", exact=True)).to_be_visible()
+        expect(page.get_by_label("Write a message", exact=True)).to_be_visible()
+        # Details take the thread's place in the one panel.
         open_details(page)
+        if phone:
+            self.ready(page)
+            page.set_viewport_size(size)
+            expect(page.get_by_role("dialog", name="Details")).to_be_visible()
         return self.ready(page)
 
     def identities(self, page):
@@ -150,7 +160,7 @@ class OverviewWorkJourney(unittest.TestCase):
 
     def test_02_required_relation_failure_is_unavailable_then_retries_without_touching_private_reply(self):
         page = self.page(); ov = self.open(page)
-        field = page.get_by_label("Reply", exact=True); field.fill("Keep this reply while checking the sources")
+        field = page.get_by_label("Write a message", exact=True); field.fill("Keep this reply while checking the sources")
         links = ov.get_by_role("navigation", name="Overview relation pages")
         page.route("**/work-relations?**", lambda route: route.fulfill(status=503, json={"code": "WORK_READ_UNAVAILABLE", "error": "Fixture unavailable read"}))
         links.get_by_role("button", name="Refresh", exact=True).click()
@@ -173,7 +183,7 @@ class OverviewWorkJourney(unittest.TestCase):
         ov.get_by_role("navigation", name="Overview relation pages").get_by_role("button", name="Next", exact=True).click()
         page.wait_for_function("window.__overviewHeld===true")
         ov.get_by_role("navigation", name="Overview object pages").get_by_role("button", name="Next", exact=True).click(); self.ready(page)
-        field = page.get_by_label("Reply", exact=True); field.fill("Keep the newest private selection")
+        field = page.get_by_label("Write a message", exact=True); field.fill("Keep the newest private selection")
         field.evaluate("el=>{el.focus();el.setSelectionRange(5,17);}")
         route,response=held.pop(); route.fulfill(response=response)
         expect(ov.get_by_role("navigation", name="Overview relation pages")).to_contain_text("1–50 of")
@@ -206,7 +216,7 @@ class OverviewWorkJourney(unittest.TestCase):
 
     def test_05_refresh_preserves_native_row_reading_focus_and_private_selection_then_failure_clears_rows(self):
         page = self.page(); ov = self.open(page); held = []
-        field = page.get_by_label("Reply", exact=True); field.fill("Keep my reply and its unfinished sentence")
+        field = page.get_by_label("Write a message", exact=True); field.fill("Keep my reply and its unfinished sentence")
         rows = ov.get_by_role("region", name="Linked in this conversation").locator(".ov-rows")
         rows.hover(); page.mouse.wheel(0,450)
         page.wait_for_function("el=>el.scrollTop>=440",arg=rows.element_handle())

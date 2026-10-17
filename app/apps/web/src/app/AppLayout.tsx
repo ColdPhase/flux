@@ -11,7 +11,7 @@ import { RouteProgress } from './RouteProgress';
 import { useInboxDot } from '../notifications/dot';
 import { placeOf } from './place';
 import { placeOfPath, rememberPlace } from '../search/recent';
-import { ShellContext, type CreateRequest, type DetailsView } from './shellContext';
+import { ShellContext, isOwned, type CreateRequest, type DetailsView, type OwnedPanel } from './shellContext';
 import { Sidebar } from './Sidebar';
 import { startCapture, viewIndex } from './views';
 import { PROJECT_VIEWS, type ProjectViewId } from '@flux/contracts';
@@ -61,6 +61,11 @@ function viewOrder(pathname: string) {
 
 const SIDEBAR_KEY = 'flux.sidebar';
 
+/** A view that takes the panel's whole content: opening another one over it leaves "‹ back" (Spokój rule 2). */
+const REPLACING = new Set(['owned', 'thought-tasks', 'work', 'decision', 'result', 'attach-result', 'propose-decision']);
+const replaces = (view: DetailsView) => typeof view === 'object' && REPLACING.has(view.kind);
+const KIND_LABEL: Record<string, string> = { work: 'Task', decision: 'Decision', result: 'Result', 'thought-tasks': 'Tasks' };
+
 function isTyping(target: EventTarget | null) {
   const el = target as HTMLElement | null;
   return !!el && (el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName));
@@ -104,16 +109,65 @@ function AppLayoutContent() {
   const previousView = useRef(viewOrder(location.pathname));
   const drawerTitleId = useId();
 
+  // One panel for a task, a decision, an agent and a thread (F-026 S4, Spokój rule 2): opening another object from it
+  // replaces its content and leaves "‹ back", one step at a time; a thread or an agent a view owns takes the same place.
+  const [owned, setOwned] = useState<OwnedPanel | null>(null);
+  const [panelSlot, setPanelSlot] = useState<HTMLElement | null>(null);
+  const [trail, setTrail] = useState<{ label: string; view: DetailsView }[]>([]);
+
   const toggleDetails = useCallback((next?: boolean) => {
     const open = next ?? !detailsOpen;
     if (open === detailsOpen) return;
     if (open) setNavOpen(false);
+    if (!open) setTrail([]);
     if (panelMode !== 'docked') { setDetailsOpen(open); return; }
     // Docked: the work area shifts over smoothly instead of jumping (FLIP).
     const finish = flip([...document.querySelectorAll('[data-shift]')]);
     flushSync(() => setDetailsOpen(open));
     finish();
   }, [detailsOpen, panelMode]);
+
+  const ownedRef = useRef<OwnedPanel | null>(null);
+  const closeRef = useRef<() => void>(() => undefined);
+  const now = useRef({ detailsOpen, detailsView, toggleDetails });
+  useLayoutEffect(() => { now.current = { detailsOpen, detailsView, toggleDetails }; });
+  // The open object names itself for the way back ("Task #2"); without a name its kind does.
+  const panelLabel = useRef<string | null>(null);
+  const labelOf = useCallback((view: DetailsView) => panelLabel.current ?? (typeof view === 'object' ? (view.kind === 'owned' ? ownedRef.current?.chip : KIND_LABEL[view.kind]) : undefined) ?? 'Back', []);
+  const showPanel = useCallback((panel: OwnedPanel) => {
+    const current = now.current;
+    // A thread that replaces a task keeps the way back to it; another registration of the same view does not.
+    if (current.detailsOpen && replaces(current.detailsView) && (current.detailsView as { kind: string }).kind !== 'owned') {
+      setTrail((list) => [...list, { label: labelOf(current.detailsView), view: current.detailsView }]);
+    }
+    ownedRef.current = panel;
+    setOwned(panel);
+    setDetailsView({ kind: 'owned' });
+    now.current = { ...current, detailsView: { kind: 'owned' } };
+    if (!current.detailsOpen) current.toggleDetails(true);
+  }, [labelOf]);
+  const reopenPanel = useCallback((key: string) => {
+    if (ownedRef.current?.key !== key) return;
+    const current = now.current;
+    if (current.detailsOpen && isOwned(current.detailsView)) return;
+    // It takes the place of a task or decision that covers it, which keeps the way back.
+    if (current.detailsOpen && replaces(current.detailsView)) setTrail((list) => [...list, { label: labelOf(current.detailsView), view: current.detailsView }]);
+    setDetailsView({ kind: 'owned' });
+    now.current = { ...current, detailsView: { kind: 'owned' } };
+    if (!current.detailsOpen) current.toggleDetails(true);
+  }, [labelOf]);
+  const hidePanel = useCallback((key: string) => {
+    if (ownedRef.current?.key !== key) return;
+    ownedRef.current = null;
+    // A view that swaps one owned panel for another unregisters and registers in one step: only a panel still unowned closes.
+    queueMicrotask(() => {
+      if (ownedRef.current) return;
+      setOwned(null);
+      const view = now.current.detailsView;
+      if (typeof view === 'object' && view.kind === 'owned') { setDetailsOpen(false); setTrail([]); }
+      setTrail((list) => list.filter((entry) => !(typeof entry.view === 'object' && entry.view.kind === 'owned')));
+    });
+  }, []);
 
   // Refresh this browser's push subscription for the signed-in account; it never prompts (#41).
   useEffect(() => {
@@ -170,11 +224,24 @@ function AppLayoutContent() {
   const [metadataSlot, setMetadataSlot] = useState<HTMLElement | null>(null);
   const [viewMenuMetadataSlot, setViewMenuMetadataSlot] = useState<HTMLElement | null>(null);
   const shell = useMemo(() => ({
-    openDetails(view: DetailsView = 'place') {
+    openDetails(view: DetailsView = 'place', options?: { back?: 'push' | 'keep' }) {
       if (detailsScope.current !== detailsOwner) return;
-      setDetailsView(typeof view === 'object' && 'id' in view ? { ...view, projectId: view.projectId ?? projectId } : view);
+      const next = typeof view === 'object' && 'id' in view ? { ...view, projectId: view.projectId ?? projectId } : view;
+      const current = now.current;
+      // Opened from the panel, an object replaces the one shown and keeps the way back; so does anything that takes the place of a
+      // thread or an agent a view owns, which has no other way back. Any other opening starts afresh.
+      const covers = current.detailsOpen && isOwned(current.detailsView) && ownedRef.current && !isOwned(next);
+      if (options?.back !== 'keep' && ((options?.back === 'push' && current.detailsOpen && replaces(current.detailsView) && replaces(next)) || covers)) {
+        setTrail((list) => [...list, { label: labelOf(current.detailsView), view: current.detailsView }]);
+      } else if (options?.back !== 'keep') setTrail([]);
+      panelLabel.current = null;
+      setDetailsView(next);
+      now.current = { ...current, detailsView: next };
       toggleDetails(true);
     },
+    /** The open object's name for "‹ back" from the next one ("Task #2"). */
+    labelPanel(label: string | null) { panelLabel.current = label; },
+    showPanel, hidePanel, reopenPanel, closePanel: () => closeRef.current(), panelSlot, panelKey: detailsOpen && isOwned(detailsView) ? owned?.key ?? null : null,
     /** On the phone a request that does not yet say what to create opens the "+" sheet first (#341). */
     openCreate(request: CreateRequest = {}) { setNavOpen(false); setJumpOpen(false); if (phone && !request.kind) setCreateOpen(true); else setCreate(request); },
     openSearch() { setNavOpen(false); setJumpOpen(true); },
@@ -184,13 +251,15 @@ function AppLayoutContent() {
     toggleFocus() { void toggleFocus(); },
     toggleSidebar,
     sidebarHidden: railed || focusing,
-  }), [toggleDetails, actionSlot, metadataSlot, viewMenuMetadataSlot, projectId, detailsOwner, toggleSidebar, railed, toggleFocus, focusing]);
+  }), [toggleDetails, actionSlot, metadataSlot, viewMenuMetadataSlot, projectId, detailsOwner, toggleSidebar, railed, toggleFocus, focusing, showPanel, hidePanel, reopenPanel, panelSlot, detailsOpen, detailsView, owned, labelOf]);
 
   // A link inside an overlaid panel or sheet (#117 overview) leads to its destination.
   const [shownPath, setShownPath] = useState(location.pathname);
   if (shownPath !== location.pathname) {
     setShownPath(location.pathname);
-    if ((panelMode !== 'docked' || backgroundSettings || aiConnections) && detailsOpen) setDetailsOpen(false);
+    // A link in the panel that leads to a thread or back to a task keeps the panel (its state says so).
+    const keep = (location.state as { keepPanel?: boolean } | null)?.keepPanel === true;
+    if (((panelMode !== 'docked' && !keep) || backgroundSettings || aiConnections) && detailsOpen) setDetailsOpen(false);
   }
   // `?open=work:<id>` (a notification's link, #116, a search result, #114, or a doc reference, #112)
   // opens that object in Details on its project; `?open=people` (a new project, #188) opens its
@@ -313,7 +382,14 @@ function AppLayoutContent() {
     const distance = from && to && from !== to ? 28 : 12;
     previousView.current = index;
     if (!direction) return;
-    void play(paneRef.current, [{ opacity: 0, transform: `translateX(${direction * distance}px)` }, { opacity: 1, transform: 'none' }], duration('--dur-2'), '--ease-out', { fill: 'backwards' });
+    const pane = paneRef.current;
+    const refreshInert = () => {
+      const root = document.getElementById('root');
+      if (root && !root.inert) root.style.setProperty('--app-inert', `0-${Date.now()}`);
+    };
+    pane?.getAnimations().forEach((animation) => animation.cancel());
+    refreshInert();
+    void play(pane, [{ opacity: 0, transform: `translateX(${direction * distance}px)` }, { opacity: 1, transform: 'none' }], duration('--dur-2'), '--ease-out', { fill: 'backwards' }).then((animation) => { animation?.cancel(); refreshInert(); });
   }, [location.pathname]);
 
   // In focus the rail shows no counts.
@@ -352,15 +428,34 @@ function AppLayoutContent() {
   const audienceOpen = project?.project.visibility === 'workspace';
   const audience = project ? audienceLine(project.people, me.user.id, audienceOpen) : 'People with project access';
   // The audience line leads to "Who can see this", where managers change it (#188).
-  const openAudience = () => { setDetailsView({ kind: 'overview', focus: 'people' }); toggleDetails(true); };
+  const openAudience = () => shell.openDetails({ kind: 'overview', focus: 'people' });
   const recapOpen = detailsOpen && typeof detailsView === 'object' && detailsView.kind === 'recap';
   // A task, decision or result opens in the one detail panel with its kind as a chip (F-026 S4).
-  const objectChip = typeof detailsView === 'object' ? ({ work: 'Task', decision: 'Decision', result: 'Result' } as Record<string, string | undefined>)[detailsView.kind] : undefined;
+  const ownedShown = isOwned(detailsView) && owned ? owned : null;
+  const objectChip = ownedShown ? ownedShown.chip : typeof detailsView === 'object' ? KIND_LABEL[detailsView.kind] : undefined;
+  // "‹ back": the owner's own way back (an agent's thread to its agent), else the step this content replaced.
+  const trailTop = trail.at(-1);
+  const stepBack = () => {
+    if (!trailTop) return;
+    setTrail((list) => list.slice(0, -1));
+    // A thread a view owns leaves its address first; the panel stays for what it gives way to.
+    if (ownedShown) ownedShown.onClose({ keepPanel: true });
+    const view = trailTop.view;
+    if (typeof view === 'object' && view.kind === 'owned' && !ownedRef.current) return;
+    shell.openDetails(view, { back: 'keep' });
+  };
+  const back = ownedShown?.back ? { label: ownedShown.back.label, onClick: ownedShown.back.run } : trailTop ? { label: trailTop.label, onClick: stepBack } : undefined;
+  // Esc and × close the whole panel; a thread or an agent a view owns also leaves its address.
+  const closePanel = () => {
+    ownedShown?.onClose();
+    toggleDetails(false);
+  };
+  useLayoutEffect(() => { closeRef.current = closePanel; });
   // "What matters" (#133): a quiet count of what needs you; refreshed when the panel closes.
   const needsYou = useNeedsYou(activeProject ? projectId ?? null : null, recapOpen);
   const toggleRecap = () => {
     if (!projectId) return;
-    if (recapOpen) toggleDetails(false); else { setDetailsView({ kind: 'recap', projectId }); toggleDetails(true); }
+    if (recapOpen) toggleDetails(false); else shell.openDetails({ kind: 'recap', projectId });
   };
   const dmId = location.pathname.match(/^\/dm\/([^/]+)/)?.[1];
   const activeDm = directMessages.find((dm) => dm.id === dmId);
@@ -432,8 +527,8 @@ function AppLayoutContent() {
     // A header with no room for them (Spokój rule 3) moves the people and Together here; the views stay in the row.
     ...(project?.people ? [{ label: 'Who can see this', run: openAudience, narrow: true }] : []),
     ...(activeProject ? [{ label: 'Together', node: <LiveEntry variant="more" /> }] : []),
-    ...('noDetails' in place ? [] : [{ label: activeProject ? 'Project details' : activeDm ? 'Message info' : 'Details', run: () => { setDetailsView('place'); toggleDetails(true); } }]),
-    ...(activeProject && projectId ? [{ label: 'What matters', run: () => { setDetailsView({ kind: 'recap', projectId }); toggleDetails(true); } }] : []),
+    ...('noDetails' in place ? [] : [{ label: activeProject ? 'Project details' : activeDm ? 'Message info' : 'Details', run: () => shell.openDetails('place') }]),
+    ...(activeProject && projectId ? [{ label: 'What matters', run: () => shell.openDetails({ kind: 'recap', projectId }) }] : []),
     ...addViewItems,
     { label: focus.uncertain ? 'Check notification pause' : 'Focus', keys: 'F', checked: focusing, run: () => void focus.toggle() },
     tablet ? { label: 'Show the sidebar', keys: '[', run: () => setNavOpen(true) } : { label: railed || focusing ? 'Show the sidebar' : 'Hide the sidebar', keys: '[', run: toggleSidebar },
@@ -444,7 +539,7 @@ function AppLayoutContent() {
   // it is present; a conversation keeps header Search because it hides the dock.
   const goBack = (fallback: string) => { if (location.key !== 'default') void navigate(-1); else void navigate(fallback); };
   const searchButton = <IconButton icon="search" label="Search" size={20} className="phead__round" onClick={shell.openSearch} />;
-  const detailsEntry = () => { setDetailsView('place'); toggleDetails(true); };
+  const detailsEntry = () => shell.openDetails('place');
   const peopleLine = (people: ProjectPerson[] | null, includeAgents = true) => {
     if (!people) return '';
     const humans = people.filter((person) => person.kind === 'human').length;
@@ -491,7 +586,7 @@ function AppLayoutContent() {
       )}
       <div className="phead__right">
         <span className="top__actions" ref={setActionSlot} />
-        {activeProject && /^\/projects\/[^/]+\/conversations\//.test(location.pathname) ? <ProjectAgentStop projectId={activeProject.id} /> : null}
+        {activeProject && /^\/projects\/[^/]+(\/conversations\/|\/?$)/.test(location.pathname) ? <ProjectAgentStop projectId={activeProject.id} /> : null}
         {/* The same two controls in every project view and direct message (Spokój #507); Together is dimmed where it is unavailable. */}
         {activeProject || activeDm ? <><LiveEntry />{searchButton}</> : null}
         {!backOnly && !activeProject && !activeDm && location.pathname !== '/settings' ? <PhoneAvatar name={me.user.name} /> : null}
@@ -560,9 +655,9 @@ function AppLayoutContent() {
             <Outlet />
             <DeferredLiveStage />
           </div>
-          <SidePanel open={detailsOpen} onClose={() => toggleDetails(false)} title={recapOpen ? 'What matters' : 'Details'} chip={objectChip} id="details"
+          <SidePanel open={detailsOpen} onClose={closePanel} title={recapOpen ? 'What matters' : ownedShown ? ownedShown.label : 'Details'} closeLabel={ownedShown?.closeLabel} chip={objectChip} id="details" back={back} startFull={ownedShown?.startFull}
             context={phone && (detailsView === 'place' || typeof detailsView === 'object' && detailsView.kind === 'overview') ? <OverviewContext message={typeof detailsView === 'object' && detailsView.kind === 'overview' && !!detailsView.messageId} /> : undefined}>
-            <DeferredDetails view={detailsView} workspace={workspace} placeTitle={place.title} dm={activeDm ? { id: activeDm.id, kind: activeDm.kind, title: activeDm.title, me: me.user.name, people: activeDm.people, audience: activeDm.audience } : null} onBack={() => setDetailsView('place')} onClose={() => toggleDetails(false)} />
+            {isOwned(detailsView) ? <div className="ui-panel__slot" ref={setPanelSlot} /> : <DeferredDetails view={detailsView} workspace={workspace} placeTitle={place.title} dm={activeDm ? { id: activeDm.id, kind: activeDm.kind, title: activeDm.title, me: me.user.name, people: activeDm.people, audience: activeDm.audience } : null} onBack={() => setDetailsView('place')} onClose={() => toggleDetails(false)} />}
           </SidePanel>
         </div>
         {phone && !detailsOpen && (!phoneHidesDock(location.pathname) || phoneOffersCreate(location.pathname)) ? (

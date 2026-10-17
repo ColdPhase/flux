@@ -14,8 +14,8 @@ import { ConnectionLine, OutboxStatus, PendingFiles, PendingSource } from '../co
 import { getTaskDiscussion } from '../composer/api';
 import { readAgentThread, type AgentThreadView } from './agentThread';
 import { useProjectShell } from '../project/data';
-import { AgentIdentity, AuthorFace, Button, Icon, Kreska, StatusGlyph, agentHue, useMediaQuery, type KreskaExpression } from '../ui';
-import { ThreadDrawer } from '../app/ThreadDrawer';
+import { AgentIdentity, AuthorFace, Button, Icon, Kreska, PanelMeta, StatusGlyph, agentHue, useMediaQuery, type KreskaExpression } from '../ui';
+import { OwnedPanelContent, useOwnedPanel } from '../app/ownedPanel';
 import { STATUS_LABEL } from '../work/format';
 import { useNativeOwn, useWorkChoices } from '../work/useDetailReads';
 import { agentDisplayName } from '../docs/format';
@@ -605,10 +605,10 @@ function taskNote(task: WorkRowProjection, asking: AgentQuestion | null, connect
  * thread), what Flux has recorded and what its grant here lets it do. Stop ends the agent's hold on its task; Flux cannot kill
  * the agent's own program, so the panel says what was stopped, and by whom.
  */
-function AgentDetail({ entry, held, meId, projectId, now, asking, canHandOff, stops, stop, refocus, onRefocused, onHandOff, onClose, onThread }: {
+function AgentDetail({ entry, held, meId, projectId, now, asking, canHandOff, stops, stop, refocus, onRefocused, onHandOff, onThread }: {
   entry: AgentEntry; held: WorkRowProjection[]; meId: string; projectId: string; now: number; asking: AgentQuestion | null; canHandOff: boolean; stops: AgentStop[];
   /** Present when this person may stop the agent's task now. */
-  stop: RowStop | null; refocus: boolean; onRefocused: () => void; onHandOff: () => void; onClose: () => void; onThread: (taskId: string) => void;
+  stop: RowStop | null; refocus: boolean; onRefocused: () => void; onHandOff: () => void; onThread: (taskId: string) => void;
 }) {
   const task = held[0];
   const currentWork = entry.connection?.currentWork;
@@ -626,10 +626,7 @@ function AgentDetail({ entry, held, meId, projectId, now, asking, canHandOff, st
   useEffect(() => { if (refocus) { heading.current?.focus({ preventScroll: true }); onRefocused(); } }, [refocus, onRefocused]);
   const question = asking ? `Asks: “${asking.question}”` : null;
   return (
-    <aside className="agents-detail" aria-label={`${entry.name}, details`}>
-      <div className="agents-detail__bar">
-        <button type="button" className="agents-detail__back" onClick={onClose}><Icon name="chevron-left" size={14} />Agents</button>
-      </div>
+    <section className="agents-detail" aria-label={`${entry.name}, details`}>
       <header className="agents-detail__head">
         <Kreska size={40} expression={agentExpression(entry, now)} hue={agentHue(entry.agentId)} />
         <div>
@@ -679,7 +676,7 @@ function AgentDetail({ entry, held, meId, projectId, now, asking, canHandOff, st
       {stop && task ? <p className="agents-detail__note">{task.status === 'in_progress'
         ? `Stop ends ${entry.name}’s hold on #${task.number}.${entry.connection ? ` Its app on ${entry.connection.name} may keep running.` : ''}`
         : `Taking #${task.number} back ends ${entry.name}’s hold on it.${entry.connection ? ` Its app on ${entry.connection.name} may keep running.` : ''}`}</p> : null}
-    </aside>
+    </section>
   );
 }
 
@@ -750,15 +747,17 @@ export function ProjectAgents() {
   const beside = useMediaQuery('(min-width: 1001px)');
   // From an agent's panel a thread opens as a step forward: on a narrow pane the panel (which hides the list and
   // the thread) is left, and Back returns to it.
-  // A thread opened by the person takes focus (#347 N8); it keeps the agent it was opened from, so "‹" and Close return to that agent.
-  const [focusThread, setFocusThread] = useState(false);
+  // A thread opened by the person takes the panel's focus (#347 N8); it keeps the agent it was opened from, so "‹ back" returns to that agent.
   const openThread = (id: string) => {
-    setFocusThread(true);
     setSearch((current) => { const next = new URLSearchParams(current); next.set('thread', id); next.delete('task'); return next; }, { replace: beside, flushSync: true });
   };
+  // Back from a thread returns to the agent it was opened from; closing the panel leaves both.
   const closeThread = () => {
-    setFocusThread(false);
     setSearch((current) => { const next = new URLSearchParams(current); next.delete('task'); next.delete('thread'); return next; }, { replace: true });
+  };
+  const closePanel = () => {
+    setDeclined(true);
+    setSearch((current) => { const next = new URLSearchParams(current); next.delete('task'); next.delete('thread'); next.delete('agent'); return next; }, { replace: true });
   };
   // After Stop or Take back the panel stays on that agent, with focus on its heading (#347 N4).
   const [refocusKey, setRefocusKey] = useState<string | null>(null);
@@ -784,9 +783,13 @@ export function ProjectAgents() {
   const working = [...views.values()].filter((view) => view.working).length;
   const waiting = [...views.values()].filter((view) => view.rank === 1).length;
   const picked = search.get('agent');
-  // Where the panel fits beside the list it is open from the start, on the working agent as drawn; narrow panes open it by choice.
-  const selected = entries.find((entry) => entry.key === picked) ?? (beside ? entries.find((entry) => views.get(entry.key)?.working) ?? entries[0] ?? null : null);
-  const open = (key: string | null) => setSearch((current) => { const next = new URLSearchParams(current); if (key) next.set('agent', key); else next.delete('agent'); return next; }, { replace: true });
+  // Where the panel fits beside the list it is open from the start, on the working agent as drawn, until the person closes it; narrow panes open it by choice.
+  const [declined, setDeclined] = useState(false);
+  const selected = entries.find((entry) => entry.key === picked) ?? (beside && !declined ? entries.find((entry) => views.get(entry.key)?.working) ?? entries[0] ?? null : null);
+  const open = (key: string | null) => {
+    setDeclined(key === null);
+    setSearch((current) => { const next = new URLSearchParams(current); if (key) next.set('agent', key); else next.delete('agent'); return next; }, { replace: true });
+  };
 
   const [handOff, setHandOff] = useState<{ agentId: string | null; task: HandOffTask | null } | null>(null);
   const [dropping, setDropping] = useState<string | null>(null);
@@ -796,17 +799,13 @@ export function ProjectAgents() {
     const row = rows.find((item) => item.id === taskId);
     if (row) setHandOff({ agentId, task: { id: row.id, version: row.version, number: row.number, title: row.title } });
   };
-  const canOpenThread = !!task;
-  const threadPane = (mode: 'docked' | 'sheet') => task ? (
-    <ThreadDrawer mode={mode} focusOnOpen={focusThread} title={`#${task.number} · ${task.title}`} closeLabel="Close thread" onClose={closeThread}>
-      {/* The thread's own scroller: its head stays on screen while the messages scroll (#347 N3). */}
-      <div className="agents-thread-scroll">
-        <TaskThread key={`${threadKind}:${me.user.id}:${projectId}:${task.id}`} kind={threadKind} task={task} projectId={projectId} meId={me.user.id} names={names} canWrite={canWrite} changingScope={changingScope} />
-      </div>
-    </ThreadDrawer>
-  ) : null;
   const latestDetail = selected;
   const requests = asked[0] ?? null;
+  // A task's thread or an agent's details open in the one panel, as a task does (F-026 S4); this view keeps their state.
+  const slot = useOwnedPanel(task ? {
+    key: `thread:${threadKind}:${task.id}`, chip: threadKind === 'agents' ? 'Agents’ thread' : 'Thread', label: `#${task.number} · ${task.title}`, closeLabel: 'Close thread', startFull: true,
+    ...(latestDetail ? { back: { label: latestDetail.name, run: closeThread } } : {}), onClose: closePanel,
+  } : latestDetail ? { key: `agent:${latestDetail.key}`, chip: 'Agent', label: latestDetail.name, onClose: closePanel } : null);
 
   // The view scrolls in its own pane like every other view, so a long thread stays reachable
   // above the sticky composer on any screen.
@@ -814,8 +813,7 @@ export function ProjectAgents() {
     <div className="pane-scroll agents-scroll">
     {metadataSlot ? createPortal(<span className="agents-header-meta">{listed.length} MCP {listed.length === 1 ? 'client' : 'clients'}</span>, metadataSlot) : null}
     {viewMenuMetadataSlot ? createPortal(<span>{listed.length} MCP {listed.length === 1 ? 'client' : 'clients'}</span>, viewMenuMetadataSlot) : null}
-    <div className="agents" data-detail={beside ? (latestDetail || canOpenThread ? 'open' : undefined) : (latestDetail && !canOpenThread ? 'open' : undefined)}
-      data-thread-open={canOpenThread ? 'true' : undefined}>
+    <div className="agents">
       <div className="agents__main">
         <header className="agents__head">
           <h1 className="agents__title">Agents</h1>
@@ -868,17 +866,23 @@ export function ProjectAgents() {
         ) : null}
         <Link className="agents-link agents-link--connect" to="/connect-agent"><span className="agents-link__icon"><Icon name="plus" size={16} /></span><span className="agents-link__text">Connect your own agent</span><span className="agents-link__go">Local MCP<Icon name="chevron-right" size={14} /></span></Link>
       </div>
-      {task && beside ? (
-        <section className="agents-thread-pane" aria-label={`#${task.number} · ${task.title}`}>{threadPane('docked')}</section>
-      ) : latestDetail && !canOpenThread ? (
-        <AgentDetail key={latestDetail.key} entry={latestDetail} held={heldBy(latestDetail.agentId)} meId={me.user.id} projectId={projectId} now={connections.now}
-          stops={agentStops.stops.filter((item) => item.agent.id === latestDetail.agentId)} stop={leads.has(latestDetail.key) ? stopOf(latestDetail) : null}
-          asking={asked.find((question) => question.agent.id === latestDetail.agentId) ?? null} refocus={refocusKey === latestDetail.key} onRefocused={() => setRefocusKey(null)}
-          canHandOff={canWrite && !!shell && latestDetail.ownerId === me.user.id} onHandOff={() => setHandOff({ agentId: latestDetail.agentId, task: null })} onClose={() => open(null)} onThread={openThread} />
-      ) : null}
-      {task && !beside ? (
-        <section className="agents-thread-sheet" aria-label={`#${task.number} · ${task.title}`}>{threadPane('sheet')}</section>
-      ) : null}
+      {slot ? (task ? (
+        <OwnedPanelContent slot={slot} className="agents-thread-panel">
+          <PanelMeta>{`#${task.number}`}</PanelMeta>
+          <h3 className="agents-thread__task">{task.title}</h3>
+          {/* The thread's own scroller: its head stays on screen while the messages scroll (#347 N3). */}
+          <div className="agents-thread-scroll">
+            <TaskThread key={`${threadKind}:${me.user.id}:${projectId}:${task.id}`} kind={threadKind} task={task} projectId={projectId} meId={me.user.id} names={names} canWrite={canWrite} changingScope={changingScope} />
+          </div>
+        </OwnedPanelContent>
+      ) : latestDetail ? (
+        <OwnedPanelContent slot={slot} className="agents-detail-panel">
+          <AgentDetail key={latestDetail.key} entry={latestDetail} held={heldBy(latestDetail.agentId)} meId={me.user.id} projectId={projectId} now={connections.now}
+            stops={agentStops.stops.filter((item) => item.agent.id === latestDetail.agentId)} stop={leads.has(latestDetail.key) ? stopOf(latestDetail) : null}
+            asking={asked.find((question) => question.agent.id === latestDetail.agentId) ?? null} refocus={refocusKey === latestDetail.key} onRefocused={() => setRefocusKey(null)}
+            canHandOff={canWrite && !!shell && latestDetail.ownerId === me.user.id} onHandOff={() => setHandOff({ agentId: latestDetail.agentId, task: null })} onThread={openThread} />
+        </OwnedPanelContent>
+      ) : null) : null}
       {!task && wanted && choices.read.phase === 'unavailable' ? (
         <p className="agents__no-tasks" role="alert">Open tasks could not be loaded. <button type="button" className="ui-link" onClick={choices.onRefresh}>Refresh tasks</button></p>
       ) : null}

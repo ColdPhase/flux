@@ -262,7 +262,7 @@ class ProjectStateJourney(unittest.TestCase):
         expect(reader.locator(".material-view__body")).to_have_text(material["body"])
         reader.goto(f"/projects/{project['id']}")
         reader.goto(f"/projects/{project['id']}/conversations/{thread['id']}")
-        thread_view = reader.get_by_role("complementary", name="Replies")
+        thread_view = reader.get_by_role("complementary", name="Replies").or_(reader.get_by_role("dialog", name="Replies"))
         expect(thread_view.locator(".thread__root")).to_contain_text("Sensor calibration plan for the library")
         expect(reader.locator(".project-convo__message > .message-bubble > p")).to_have_text("Sensor calibration plan for the library")
         expect(thread_view.locator(".project-convo__read-only")).to_be_visible()

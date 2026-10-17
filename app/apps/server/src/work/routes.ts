@@ -10,6 +10,7 @@ import {
   projectResultsPath,
   projectWorkPath,
   projectTaskNoticesPath,
+  taskActivityPath,
   taskDiscussionPath,
   resultPath,
   WORK_LIMITS,
@@ -24,6 +25,7 @@ import {
   type ProposeDecisionCommand,
   type UpdateWorkCommand,
   type ConversationWindowQuery,
+  type TaskActivityQuery,
   type TaskContributionCommand,
 } from '@flux/contracts';
 import { assertAuthorized, ConflictError, InvalidInputError, type Database, type ResourceRef, type FileStorage } from '@flux/core';
@@ -44,6 +46,8 @@ const refs = { type: 'array', maxItems: WORK_LIMITS.links, items: objectRef } as
 const ids = { type: 'array', maxItems: WORK_LIMITS.links, items: { type: 'string' } } as const;
 const status = { type: 'string', enum: [...WORK_STATUSES] } as const;
 const version = { type: 'integer', minimum: 1 } as const;
+// A calendar date (#488). Core checks that the day exists and the year is 1970-9999; the schema fixes the type and size.
+const dueOn = { type: ['string', 'null'], maxLength: 10 } as const;
 // Plan fields (#152). Core trims and bounds them exactly; the schema only fixes their shape and size.
 const criteria = { type: 'array', maxItems: WORK_LIMITS.criteria, items: { type: 'string' } } as const;
 const dependencyIds = { type: 'array', maxItems: WORK_LIMITS.dependencies, items: { type: 'string' } } as const;
@@ -51,12 +55,12 @@ const planIntent = { type: ['object', 'null'], required: ['materialId', 'version
   properties: { materialId: { type: 'string' }, version: { type: 'integer' }, intentKey: { type: 'string' } } } as const;
 
 const createWork = { type: 'object', required: ['title'], additionalProperties: false, properties: {
-  title, outcome: { type: 'string', maxLength: WORK_LIMITS.outcome }, owner: principalRef, status, waitingFor: principalRef,
+  title, outcome: { type: 'string', maxLength: WORK_LIMITS.outcome }, owner: principalRef, status, waitingFor: principalRef, dueOn,
   blocker: { type: 'string', maxLength: WORK_LIMITS.blocker }, sources: refs, related: refs, clientCommandId: { type: 'string', format: 'uuid' },
   criteria, dependencyIds, planIntent,
 } } as const;
 const updateWork = { type: 'object', additionalProperties: false, minProperties: 1, properties: {
-  title, outcome: { type: 'string', maxLength: WORK_LIMITS.outcome }, owner: principalRef, status, waitingFor: principalRef, restore: { type: 'boolean', enum: [true] },
+  title, outcome: { type: 'string', maxLength: WORK_LIMITS.outcome }, owner: principalRef, status, waitingFor: principalRef, dueOn, restore: { type: 'boolean', enum: [true] },
   blocker: { type: ['string', 'null'], maxLength: WORK_LIMITS.blocker }, parked: { type: 'boolean', enum: [false] }, expectedVersion: version,
   expectedGithubRuleRevision: { type: 'integer', minimum: 0 },
   clientCommandId: { type: 'string', format: 'uuid' },
@@ -107,6 +111,11 @@ export async function workRoutes(app: FastifyInstance, { db, sessions, storage }
         source: { type: 'object', required: ['materialId', 'version'], additionalProperties: false,
           properties: { materialId: { type: 'string' }, version: { type: 'integer' } } } } } } },
     async (request, reply) => reply.code(201).send(await discussion.contribute(await principal(request), request.params.workId, request.body)));
+
+  // The same readers as the task itself: a task the caller cannot read is the same 404 as GET /work/:workId (#488).
+  app.get<{ Params: { workId: string }; Querystring: TaskActivityQuery }>(taskActivityPath(':workId'),
+    { schema: { querystring: { type: 'object', additionalProperties: false, properties: { limit: { type: 'integer' }, before: { type: 'string', maxLength: 200 } } } } },
+    async (request) => work.getTaskActivity(await principal(request), request.params.workId, request.query));
 
   app.get<{ Params: { projectId: string }; Querystring: PageQuery }>(projectTaskNoticesPath(':projectId'), { schema: { querystring: page } },
     async (request) => work.listTaskNotices(await principal(request), request.params.projectId, request.query));

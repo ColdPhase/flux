@@ -61,22 +61,28 @@ class WaitingFor(unittest.TestCase):
             with self.subTest(phone=phone):
                 task = self.block(self.task(f"Order the light sensors {'phone' if phone else 'computer'}"), blocker="Waiting for the price list")
                 page = self.page("ada", phone); panel = self.panel(page, task)
-                picker = panel.get_by_role("combobox", name="Waiting for")
-                expect(picker).to_have_value("")
+                card = panel.get_by_role("region", name="Blocker")
+                expect(card).not_to_contain_text("Waiting for Kai")
+                card.get_by_role("button", name="Edit").click()
+                picker = card.get_by_role("button", name="Waiting for", exact=True)
+                expect(picker).to_contain_text("No one in particular")
                 with page.expect_response(lambda r: r.request.method == "PATCH" and r.url.endswith(f"/api/v1/work/{task['id']}")) as saved:
-                    picker.select_option(label="Kai Nowak")
+                    picker.click()
+                    page.get_by_role("menuitemradio", name="Kai Nowak").click()
                 self.assertEqual(saved.value.status, 200)
                 stored = api(self.ada_ctx, "GET", f"/api/v1/work/{task['id']}")
                 self.assertEqual(stored["waitingFor"]["id"], self.kai)
                 self.assertEqual(stored["blocker"], "Waiting for the price list")
-                expect(picker).to_have_value(self.kai)
+                expect(picker).to_contain_text("Kai Nowak")
+                card.get_by_role("button", name="Cancel").click()
+                expect(card).to_contain_text("Waiting for Kai Nowak")
                 shot(page, f"waiting-for-details-{'phone' if phone else 'computer'}")
                 # Resolving ends the wait; the toast's Undo puts the reason and the person back without a second blocker message.
                 panel.get_by_role("button", name="Resolve").click()
-                expect(panel.get_by_role("combobox", name="Waiting for")).to_have_count(0)
+                expect(card).to_have_count(0)
                 self.assertIsNone(api(self.ada_ctx, "GET", f"/api/v1/work/{task['id']}")["waitingFor"])
                 page.get_by_role("button", name="Undo").click()
-                expect(panel.get_by_role("combobox", name="Waiting for")).to_have_value(self.kai)
+                expect(card).to_contain_text("Waiting for Kai Nowak")
                 back = api(self.ada_ctx, "GET", f"/api/v1/work/{task['id']}")
                 self.assertEqual((back["status"], back["blocker"], back["waitingFor"]["id"]), ("blocked", "Waiting for the price list", self.kai))
 
@@ -108,7 +114,7 @@ class WaitingFor(unittest.TestCase):
                 shot(page, f"waiting-for-inbox-{'phone' if phone else 'computer'}")
                 item.first.get_by_role("button", name="Open task").click()
                 expect(page.locator(f".wd[data-detail-id='{task['id']}']")).to_be_visible()
-                expect(page.get_by_role("combobox", name="Waiting for")).to_have_value(self.kai)
+                expect(page.get_by_role("region", name="Blocker")).to_contain_text("Waiting for Kai Nowak")
 
     def test_04_the_conversation_shows_one_line_for_blocked_and_one_for_unblocked(self):
         for phone in (False, True):

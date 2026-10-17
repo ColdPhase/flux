@@ -148,7 +148,7 @@ class ReturnViewJourney(unittest.TestCase):
         self.wait_saved(page, "home")
         page.goto(f"/projects/{self.project_id}/conversations/{self.conversation_id}")
         # One project conversation (UI116-1): the conversation's root opens with its thread beside the stream.
-        expect(page.get_by_role("complementary", name="Replies").locator(".thread__root")).to_contain_text(OPENING)
+        expect(page.get_by_role("complementary", name="Replies").or_(page.get_by_role("dialog", name="Replies")).locator(".thread__root")).to_contain_text(OPENING)
         # Opening a project no longer moves its point (#133); nothing competes with the conversation.
         expect(page.get_by_role("region", name="Since you left")).to_have_count(0)
         page.wait_for_timeout(500)
@@ -237,8 +237,8 @@ class ReturnViewJourney(unittest.TestCase):
         expect(changes.filter(has_text="Ari started “Camera misses 62% of gestures at 5 lux”")).to_have_count(1)
         expect(panel.get_by_role("link", name=re.compile("Ari recorded a result: Camera misses 62% of gestures"))).to_contain_text("It did not work out, about “Mount the PIR sensor in the lamp base”")
         expect(panel.get_by_role("link", name=re.compile("New material: Low-light test plan"))).to_have_attribute("href", re.compile(r"^/materials/.+/versions/1$"))
-        # The conversation stays readable beside the panel.
-        expect(page.locator(f"#message-{self.ids['question']}")).to_be_visible()
+        # The conversation stays readable beside the panel: What matters takes the thread's one panel, the stream stays.
+        expect(page.locator(".project-convo__message").filter(has_text="Camera or sensor for the bedside lamp?")).to_be_visible()
         # Summarize is sized to its label; the completion action keeps its full width.
         summarize = panel.get_by_role("button", name="Summarize")
         s_box = summarize.bounding_box()
@@ -287,16 +287,16 @@ class ReturnViewJourney(unittest.TestCase):
         self.open_recap(page)
         expect(panel.locator("section[aria-labelledby=wm-digest]")).to_contain_text("I ordered a PIR sensor too")
 
-        # The question opens on the whole message; the docked panel stays.
+        # The question is a reply: it opens on the whole message in the thread, which takes the one panel.
         panel.locator(".since__next").get_by_role("link", name="Answer Ari's question").click()
         expect(page).to_have_url(re.compile(f"#message-{self.ids['question']}$"))
-        message = page.locator(f"#message-{self.ids['question']}")
+        message = panel.locator(f"#message-{self.ids['question']}")
         expect(message).to_have_class(re.compile("is-arrived"))
         expect(message).to_be_in_viewport()
         # Reading, choosing a scope and opening sources never moved the point.
         before = self.summary(page, "project")
         self.assertEqual(len([item for item in before["items"] if item["needsYou"]]), 3)
-        self.have_context(page, panel)
+        self.have_context(page, self.open_recap(page))
         self.assertEqual(self.summary(page, "project")["items"], [], "the point moved to what was shown")
         # Nothing needs Nia any more, so the chip that counted it is gone.
         expect(entry).to_have_count(0)
@@ -508,7 +508,7 @@ class ReturnViewJourney(unittest.TestCase):
         # "What matters" counts the same changes (the project point is older than Home's view).
         expect(page.locator("header.top").get_by_role("button", name=re.compile("needs you$"))).to_contain_text(re.compile(r"\d"))
         # Audience preview before writing: the thread's composer names who will read the reply.
-        expect(page.get_by_role("complementary", name="Replies").locator(".composer__audience")).to_have_text(re.compile("Ari and you · only you two · saved to Gesture lamp"))
+        expect(page.get_by_role("complementary", name="Replies").or_(page.get_by_role("dialog", name="Replies")).locator(".composer__audience")).to_have_text(re.compile("Ari and you · only you two · saved to Gesture lamp"))
         # Following the card was continuing: back on Home it has moved on, now and after a reload.
         page.get_by_role("link", name="Home").first.click()
         expect(page.get_by_role("heading", level=2, name=re.compile("^Good (morning|afternoon|evening), Nia$"))).to_be_visible()
@@ -525,7 +525,7 @@ class ReturnViewJourney(unittest.TestCase):
         composer.tap()
         composer.fill("Thanks, I will print the clip tonight.")
         expect(composer).to_be_in_viewport()
-        expect(phone.get_by_role("complementary", name="Replies").locator(".composer__audience")).to_be_in_viewport()
+        expect(phone.get_by_role("complementary", name="Replies").or_(phone.get_by_role("dialog", name="Replies")).locator(".composer__audience")).to_be_in_viewport()
         self.no_horizontal_scroll(phone)
         shot(phone, "matched-project-phone-390-composer")
         phone.get_by_role("button", name="Send reply").tap()

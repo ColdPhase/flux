@@ -240,7 +240,7 @@ class InstantSendJourney(unittest.TestCase):
             with self.subTest(width=width):
                 page = self.page("jonas", width)
                 page.goto(f"/projects/{self.ids['project']}/conversations/{self.ids['conversation']}")
-                thread = page.get_by_role("complementary", name="Replies")
+                thread = page.get_by_role("complementary", name="Replies").or_(page.get_by_role("dialog", name="Replies"))
                 expect(thread.get_by_text("Yes, after nine.")).to_be_visible()
                 held = self.hold(page, "**/api/v1/conversations/*/messages")
                 body = f"Reply sent at {width}: I will bring the light meter."
@@ -283,7 +283,7 @@ class InstantSendJourney(unittest.TestCase):
             with self.subTest(width=width):
                 page = self.page("jonas", width)
                 page.goto(f"/projects/{self.ids['project']}/conversations/{self.ids['conversation']}")
-                thread = page.get_by_role("complementary", name="Replies")
+                thread = page.get_by_role("complementary", name="Replies").or_(page.get_by_role("dialog", name="Replies"))
                 expect(thread.get_by_text("Yes, after nine.")).to_be_visible()
                 sent = self.posts(page, f"/conversations/{self.ids['conversation']}/messages")
                 lost: list[dict] = []
@@ -418,7 +418,7 @@ class InstantSendJourney(unittest.TestCase):
     def test_07_a_refused_send_returns_to_the_field_and_remove_returns_an_unsent_one(self) -> None:
         page = self.page("ada", 1440)
         page.goto(f"/projects/{self.ids['project']}/conversations/{self.ids['conversation']}")
-        thread = page.get_by_role("complementary", name="Replies")
+        thread = page.get_by_role("complementary", name="Replies").or_(page.get_by_role("dialog", name="Replies"))
         expect(thread.get_by_text("Yes, after nine.")).to_be_visible()
         refuse = {"status": 404}
         def answer(route: Route) -> None:
@@ -509,7 +509,7 @@ class InstantSendJourney(unittest.TestCase):
             with self.subTest(width=width):
                 page = self.page("jonas", width)
                 page.goto(f"/projects/{self.ids['project']}/conversations/{self.ids['conversation']}")
-                thread = page.get_by_role("complementary", name="Replies")
+                thread = page.get_by_role("complementary", name="Replies").or_(page.get_by_role("dialog", name="Replies"))
                 expect(thread.get_by_text("Yes, after nine.")).to_be_visible()
                 uploads = self.hold(page, "**/api/v1/projects/*/files?*")
                 name = f"night-readings-{width}.bin"
@@ -540,7 +540,7 @@ class InstantSendJourney(unittest.TestCase):
     def test_13_remove_with_text_in_the_field_keeps_the_message(self) -> None:
         page = self.page("ada", 1440)
         page.goto(f"/projects/{self.ids['project']}/conversations/{self.ids['conversation']}")
-        thread = page.get_by_role("complementary", name="Replies")
+        thread = page.get_by_role("complementary", name="Replies").or_(page.get_by_role("dialog", name="Replies"))
         expect(thread.get_by_text("Yes, after nine.")).to_be_visible()
         held = self.hold(page, "**/api/v1/conversations/*/messages")
         field = thread.get_by_label("Reply", exact=True)
@@ -573,7 +573,7 @@ class InstantSendJourney(unittest.TestCase):
             with self.subTest(width=width):
                 page = self.page("jonas", width)
                 page.goto(f"/projects/{self.ids['project']}/conversations/{self.ids['conversation']}")
-                thread = page.get_by_role("complementary", name="Replies")
+                thread = page.get_by_role("complementary", name="Replies").or_(page.get_by_role("dialog", name="Replies"))
                 expect(thread.get_by_text("Yes, after nine.")).to_be_visible()
                 uploads = self.hold(page, "**/api/v1/projects/*/files?*")
                 name = f"offline-readings-{width}.bin"

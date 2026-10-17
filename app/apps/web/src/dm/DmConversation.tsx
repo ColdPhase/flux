@@ -18,7 +18,7 @@ import { Avatar, Button, Icon, MEDIA, sendsOnEnter, useMediaQuery, useToast } fr
 import { audienceLine, dmTitle, othersIn } from './names';
 import { pageBackTo } from '../app/seekMessage';
 import { taskHref } from '../sketch/ThoughtTasks';
-import type { ThreadMode } from '../app/ThreadDrawer';
+import { OwnedPanelContent, useOwnedPanel } from '../app/ownedPanel';
 import { DmBubble } from './DmBubble';
 import { DmTaskCopy } from './DmTaskCopy';
 import { DmThreadPanel } from './DmThreadPanel';
@@ -106,10 +106,6 @@ function DmContent({ initial }: { initial: Dm }) {
   const threadId = params.get('thread');
   const [refreshTick, setRefreshTick] = useState(0);
   const [receiptTick, setReceiptTick] = useState(0);
-  const splitRef = useRef<HTMLDivElement>(null);
-  const drawer = useMediaQuery(MEDIA.navDrawer);
-  const [wide, setWide] = useState(true);
-  const mode: ThreadMode = drawer || !wide ? 'sheet' : 'docked';
   const opener = useRef<string | null>(null);
   const [replyFocus, setReplyFocus] = useState(false);
   // #537: the task copy being previewed. Nothing is written until it is confirmed there.
@@ -165,15 +161,6 @@ function DmContent({ initial }: { initial: Dm }) {
     if (event.kind === 'dm.observed.v1') { setReceiptTick((tick) => tick + 1); return; }
     void refresh(); setRefreshTick((tick) => tick + 1);
   }, () => { void refresh(); setRefreshTick((tick) => tick + 1); });
-  useLayoutEffect(() => {
-    const split = splitRef.current;
-    if (!split) return;
-    const measure = () => setWide(split.clientWidth >= 760);
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(split);
-    return () => observer.disconnect();
-  }, []);
   useEffect(() => {
     const onVisible = () => { if (document.visibilityState === 'visible') void refresh(); };
     document.addEventListener('visibilitychange', onVisible);
@@ -349,6 +336,8 @@ function DmContent({ initial }: { initial: Dm }) {
     ? leftNotice || `${counterpart!.name.split(/\s+/)[0]} left this conversation. They can reopen it by messaging you.`
     : '';
   const typing = useTyping(me.user.id, !gone && !selecting ? { kind: 'dm', id: dm.id } : null, !recipientGone);
+  const threadOpen = !!threadId && !!messages.length && !gone;
+  const slot = useOwnedPanel(threadOpen ? { key: `dm-thread:${threadId}`, chip: 'Thread', label: 'Replies', startFull: true, onClose: closeThread } : null);
   if (gone) return <DmUnavailable />;
   const canSend = composer.canSend && !recipientGone;
   // On the phone the header keeps only Back, the title, Together and Search (Spokój #507): choosing starts by the composer.
@@ -357,10 +346,9 @@ function DmContent({ initial }: { initial: Dm }) {
     <Button ref={selectButtonRef} variant="quiet" icon="check" aria-pressed={selecting} className="dm-select-btn" onClick={() => toggleSelecting(!selecting)}>Choose messages</Button>,
     actionSlot,
   ) : null;
-  const threadOpen = !!threadId && !!messages.length;
   return (
-    <div className={`convo-split dm-split${threadOpen ? ` has-thread is-${mode}` : ''}`} ref={splitRef}>
-    <div className="convo-split__stream" inert={threadOpen && mode === 'sheet'}>
+    <div className="convo-split dm-split">
+    <div className="convo-split__stream">
     <div className={`dm${selecting ? ' dm--selecting' : ''}`} data-dm-id={dm.id}
       onKeyDown={(event) => { if (selecting && event.key === 'Escape') { event.preventDefault(); toggleSelecting(false); } }}>
       {selectButton}
@@ -429,11 +417,12 @@ function DmContent({ initial }: { initial: Dm }) {
       </div>
     </div>
     </div>
-    {threadOpen ? (
-      <DmThreadPanel key={threadId} dmId={dm.id} rootId={threadId!} mode={mode} meId={me.user.id} meName={me.user.name} nameOf={nameOf}
-        audience={audience} writable={!recipientGone} refreshTick={refreshTick} receiptTick={receiptTick} focusComposer={replyFocus} focusOnOpen={!replyFocus} canObserve
-        onClose={closeThread} onDenied={threadDenied} onCreateTask={startCopy} onCount={threadCount} />
-    ) : null}
+    {threadOpen && slot ? (
+      <OwnedPanelContent slot={slot} className="thread" id="thread">
+      <DmThreadPanel key={threadId} dmId={dm.id} rootId={threadId!} meId={me.user.id} meName={me.user.name} nameOf={nameOf}
+        audience={audience} writable={!recipientGone} refreshTick={refreshTick} receiptTick={receiptTick} focusComposer={replyFocus} canObserve
+        onDenied={threadDenied} onCreateTask={startCopy} onCount={threadCount} />
+      </OwnedPanelContent>) : null}
     {copy ? <DmTaskCopy dmId={dm.id} message={copy.message} excerpt={copy.excerpt} participants={dm.participants} onClose={() => stopCopy()}
       onCreated={copied} onUnavailable={(cause) => { setLeftNotice(cause instanceof ApiError && cause.code?.startsWith('DM_RECIPIENT') ? cause.message : leftNotice); void refresh(); denied(cause); }} /> : null}
     </div>

@@ -11,6 +11,9 @@ from test_work_pagination import api
 from native_touch import drag_touch, native_touch_driver
 
 
+# Every finite animation (a sheet arriving) has finished; endless indicators are ignored.
+SETTLED = "() => document.getAnimations().every((a) => a.playState !== 'running' || a.effect?.getComputedTiming().endTime === Infinity)"
+
 class DetailPanelFinal(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -82,17 +85,20 @@ class DetailPanelFinal(unittest.TestCase):
                 expect(page.get_by_role("complementary", name="Details")).to_be_visible()
                 expect(panel.locator(".ui-panel__kind")).to_have_text("Task")
                 expect(panel.locator(".ui-panel__meta")).to_have_text("#2")
-                # Rows of label and value; the blocker is a card; Results, Activity and a composer follow.
+                # Rows of label and value; the blocker is a card; Activity and a composer follow. Empty Results are not shown.
                 rows = panel.locator(".wd-rows .wd-row")
-                expect(rows).to_have_count(3)
-                for label in ("Status", "Owner", "Came from"):
+                expect(rows).to_have_count(4)
+                for label in ("Status", "Owner", "Came from", "Due"):
                     expect(panel.locator(".wd-row dt", has_text=label)).to_be_visible()
                 card = panel.get_by_role("region", name="Blocker")
                 expect(card).to_be_visible()
+                expect(card).to_contain_text("Waiting for the probe dimensions")
+                card.get_by_role("button", name="Edit").click()
                 expect(card.get_by_label("What is it waiting for?")).to_have_value("Waiting for the probe dimensions")
-                expect(panel.get_by_role("heading", name="Results")).to_be_visible()
+                card.get_by_role("button", name="Cancel").click()
+                expect(panel.get_by_role("heading", name="Results")).to_have_count(0)
                 expect(panel.get_by_role("heading", name="Activity")).to_be_visible()
-                expect(panel.get_by_placeholder("Write about #2…")).to_be_visible()
+                expect(panel.get_by_placeholder("Write about #2 · @ · /")).to_be_visible()
                 # The conversation stays visible beside it.
                 expect(page.locator("#content")).to_be_visible()
                 box = panel.bounding_box()
@@ -133,7 +139,7 @@ class DetailPanelFinal(unittest.TestCase):
         expect(status).to_contain_text("Done")
         self.assertEqual(self.stored(task)["status"], "done")
         # Typing a digit in a field never changes the state.
-        panel.locator(".wd-activity textarea").fill("5")
+        panel.get_by_placeholder(re.compile(r"^Write about #")).fill("5")
         self.assertEqual(self.stored(task)["status"], "done")
 
     def test_03_title_is_edited_in_place(self):
@@ -158,14 +164,15 @@ class DetailPanelFinal(unittest.TestCase):
     def test_04_thread_opens_in_the_same_panel_look(self):
         page = self.page()
         page.goto(f"/projects/{self.project}/conversations/{self.thread['id']}")
-        thread = page.get_by_role("complementary", name="Replies")
+        thread = page.get_by_role("complementary", name="Replies").or_(page.get_by_role("dialog", name="Replies"))
         expect(thread).to_be_visible()
+        expect(page.locator("aside.ui-panel")).to_have_count(1)
         expect(thread.locator(".ui-panel__kind")).to_have_text("Thread")
-        expect(thread.locator(".thread__n")).to_have_text("1 reply")
+        expect(thread.locator(".ui-panel__meta")).to_have_text("1 reply")
         expect(thread.locator(".thread__root")).to_contain_text("The probes arrive Thursday")
         expect(page.locator(".convo-split__stream")).to_be_visible()
         shot(page, "detail-panel-final-thread-desktop")
-        thread.focus()
+        thread.locator(".ui-panel__body").focus()
         page.keyboard.press("Escape")
         expect(thread).to_have_count(0)
 
@@ -179,7 +186,7 @@ class DetailPanelFinal(unittest.TestCase):
         self.assertEqual((stored["status"], stored["blocker"]), ("in_progress", None))
         page.get_by_role("status").get_by_role("button", name="Undo").click()
         expect(panel.get_by_role("button", name="Status", exact=True)).to_contain_text("Blocked")
-        expect(panel.get_by_label("What is it waiting for?")).to_have_value("Waiting for the bracket from the supplier")
+        expect(panel.get_by_role("region", name="Blocker")).to_contain_text("Waiting for the bracket from the supplier")
         stored = self.stored(task)
         self.assertEqual((stored["status"], stored["blocker"]), ("blocked", "Waiting for the bracket from the supplier"))
 
@@ -193,7 +200,7 @@ class DetailPanelFinal(unittest.TestCase):
         self.assertIsNotNone(self.stored(task)["parked"])
         page = self.page()
         panel = self.open_task(page, task)
-        expect(panel.locator(".wd-where")).to_contain_text("parked, not done")
+        expect(panel.locator(".wd-where")).to_have_text("Parked, not done")
         panel.locator(".ui-panel__body").focus()
         page.keyboard.press("4")
         toasts = page.locator(".ui-toasts")
@@ -245,7 +252,7 @@ class DetailPanelFinal(unittest.TestCase):
         # Someone else renames the task while this title is being edited, and the live update reaches the open panel.
         # The field still shows this person's draft, so saving it must not silently replace a title they never saw.
         api(self.ctx, "PATCH", f"/api/v1/work/{task['id']}", {"title": "Choose the mast height", "expectedVersion": task["version"]})
-        expect(panel.locator(".wd-ids")).to_contain_text("version 2")
+        expect(panel.locator(".wd__foot")).to_have_attribute("data-version", "2")
         expect(field).to_have_value("Choose the mast and the mount")
         page.keyboard.press("Enter")
         expect(panel.get_by_role("alert")).to_contain_text("Someone changed this")
@@ -277,18 +284,15 @@ class DetailPanelFinal(unittest.TestCase):
                 sheet = page.get_by_role("dialog", name="Details")
                 expect(sheet.locator(".wd")).to_be_visible()
                 expect(sheet).to_have_attribute("data-height", "half")
-                page.wait_for_timeout(900)  # the sheet has finished sliding in
+                page.wait_for_function(SETTLED)  # the sheet has finished sliding in
                 grabber = sheet.locator(".ui-grabber")
                 expect(grabber).to_be_visible()
                 half = sheet.bounding_box()
                 self.assertGreater(half["y"], 844 * 0.3, "half height leaves the conversation in view")
-                # Five state pills, one checked; touch targets are at least 44px.
-                pills = sheet.get_by_role("radiogroup", name="Status").get_by_role("radio")
-                expect(pills).to_have_count(5)
-                for index in range(5):
-                    box = pills.nth(index).bounding_box()
-                    self.assertGreaterEqual(box["height"], 44, "a real 44px target, no rounding allowance")
-                    self.assertGreaterEqual(box["width"], 44)
+                # The state is one row that opens a menu of five (no grid of pills); touch targets are at least 44px.
+                expect(sheet.get_by_role("radiogroup", name="Status")).to_have_count(0)
+                box = sheet.get_by_role("button", name="Status", exact=True).bounding_box()
+                self.assertGreaterEqual(box["height"], 44, "a real 44px target, no rounding allowance")
                 box = grabber.bounding_box()
                 self.assertGreaterEqual(box["height"], 44, "the grabber is a real 44px target")
                 self.assertGreaterEqual(box["width"], 44)
@@ -312,7 +316,7 @@ class DetailPanelFinal(unittest.TestCase):
                 self.drag(page, start_y, 800)
                 expect(sheet).to_have_count(0)
 
-    def test_06_phone_grabber_button_and_state_pill(self):
+    def test_06_phone_grabber_button_and_state_menu(self):
         task = self.new_task("Pick a gateway spot", owner=True)
         page = self.page(phone=True)
         page.goto(f"/projects/{self.project}/tasks?open=work:{task['id']}")
@@ -329,11 +333,13 @@ class DetailPanelFinal(unittest.TestCase):
         expect(sheet.get_by_role("button", name="Show half height")).to_have_attribute("aria-expanded", "true")
         page.keyboard.press("Space")
         expect(sheet).to_have_attribute("data-height", "half")
-        sheet.get_by_role("radio", name="In progress").tap()
-        expect(sheet.get_by_role("radio", name="In progress")).to_have_attribute("aria-checked", "true")
+        status = sheet.get_by_role("button", name="Status", exact=True)
+        status.tap()
+        page.get_by_role("menu", name="Status").get_by_role("menuitemradio", name="In progress").tap()
+        expect(status).to_contain_text("In progress")
         self.assertEqual(self.stored(task)["status"], "in_progress")
         page.get_by_role("status").get_by_role("button", name="Undo").tap()
-        expect(sheet.get_by_role("radio", name="Open")).to_have_attribute("aria-checked", "true")
+        expect(status).to_contain_text("Open")
         self.assertEqual(self.stored(task)["status"], "open")
         sheet.get_by_role("button", name="Close details").tap()
         expect(sheet).to_have_count(0)
@@ -343,7 +349,7 @@ class DetailPanelFinal(unittest.TestCase):
         task = self.new_task("Share one sheet", owner=True)
         cases = {
             "details": (f"/projects/{self.project}/tasks?open=work:{task['id']}", "#details", "half"),
-            "thread": (f"/projects/{self.project}/conversations/{self.thread['id']}", "#thread", "full"),
+            "thread": (f"/projects/{self.project}/conversations/{self.thread['id']}", "#details", "full"),
         }
         for name, (url, selector, opens) in cases.items():
             with self.subTest(sheet=name):
@@ -397,9 +403,10 @@ class DetailPanelFinal(unittest.TestCase):
     def test_07_phone_thread_is_a_sheet_with_a_grabber(self):
         page = self.page(phone=True)
         page.goto(f"/projects/{self.project}/conversations/{self.thread['id']}")
-        thread = page.get_by_role("complementary", name="Replies")
+        thread = page.get_by_role("dialog", name="Replies")
         expect(thread).to_be_visible()
         expect(thread).to_have_attribute("data-height", "full")
+        page.wait_for_function(SETTLED)  # the sheet has finished sliding in
         handle = thread.locator(".ui-grabber").bounding_box()
         self.assertGreaterEqual(handle["height"], 44, "the thread grabber is a real 44px target")
         self.assertGreaterEqual(handle["width"], 44)
@@ -421,7 +428,7 @@ class DetailPanelFinal(unittest.TestCase):
             with self.subTest(sheet=name):
                 page = self.page(phone=True)
                 page.goto(url)
-                sheet = page.locator("#" + name)
+                sheet = page.locator("#details")
                 expect(sheet).to_be_visible()
                 page.wait_for_timeout(1000)
                 sheet.focus()
@@ -432,19 +439,16 @@ class DetailPanelFinal(unittest.TestCase):
                 self.assertGreaterEqual(ring["width"], 2)
                 self.assertNotIn(ring["color"], ("rgba(0, 0, 0, 0)", "transparent"))
 
-    def test_10_thread_sheet_keeps_its_enter_motion_unless_reduced(self):
-        """N2: the Thread sheet slides in as before. Negative control: removing the .ui-detent-sheet.thread animation rule fails the first assertion."""
-        page = self.page(phone=True)
-        page.goto(f"/projects/{self.project}/conversations/{self.thread['id']}")
-        expect(page.locator("#thread")).to_be_visible()
-        self.assertIn("thread-in", page.locator("#thread").evaluate("el => getComputedStyle(el).animationName"))
+    def test_10_the_one_sheet_does_not_animate_under_reduced_motion(self):
+        """Reduced motion: the thread sheet opens without a running animation, as every sheet does (the shared Overlay)."""
         ctx = self.browser.new_context(base_url=ORIGIN, storage_state=self.state, viewport={"width": 390, "height": 844},
             is_mobile=True, has_touch=True, locale="en-GB", reduced_motion="reduce", service_workers="block")
         self.addCleanup(ctx.close)
         still = ctx.new_page()
         still.goto(f"/projects/{self.project}/conversations/{self.thread['id']}")
-        expect(still.locator("#thread")).to_be_visible()
-        self.assertEqual(still.locator("#thread").evaluate("el => getComputedStyle(el).animationName"), "none")
+        expect(still.locator("#details")).to_be_visible()
+        self.assertEqual(still.evaluate("document.getAnimations().filter((a) => a.effect && a.effect.target && a.effect.target.closest('.ui-overlay')).length"), 0)
+        self.assertIn(still.evaluate("getComputedStyle(document.documentElement).getPropertyValue('--dur-3').trim()"), ("0ms", "0s"))
 
 
 if __name__ == "__main__":

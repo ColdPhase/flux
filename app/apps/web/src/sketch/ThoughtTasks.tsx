@@ -2,7 +2,8 @@ import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useSta
 import { createPortal } from 'react-dom';
 import { Link, useRevalidator } from 'react-router';
 import type { ThoughtTaskRow, WorkThoughtTasks } from '@flux/contracts';
-import { AgentTag, Icon, IconButton, MEDIA, Sheet, StatusGlyph, duration, play, trapTab, useMediaQuery } from '../ui';
+import { AgentTag, Icon, IconButton, MEDIA, StatusGlyph, duration, play, trapTab, useMediaQuery } from '../ui';
+import { useShellActions, type ThoughtTasksView } from '../app/shellContext';
 import { STATUS_LABEL, taskNumber } from '../work/format';
 import { getWorkThoughtTasks, thoughtChunks } from '../work/read-api';
 import { useWorkRead } from '../work/useWorkRead';
@@ -59,14 +60,8 @@ export interface ThoughtTasksProps {
   onOpenTask(id: string): void;
 }
 
-/**
- * A thought's task count and the chooser it opens (UI116-4): every linked task with its exact ID,
- * status and people, each a link to the task in its project. A popover beside the count on larger
- * screens, a sheet on a phone. It only reads: opening and closing never select, move or scroll
- * the map, and closing returns focus to the count.
- */
-export function ThoughtTasks({ thought, tasks: entry, projectId, variant, onOpenTask }: ThoughtTasksProps) {
-  const [open, setOpen] = useState(false);
+/** The tasks of one thought's list: the window it came with, or its own bounded read when that was not all of them. */
+function useThoughtTaskList(open: boolean, thought: { id: string }, entry: ThoughtTasksEntry, projectId: string) {
   // A thought whose tasks were not all in its sketch-wide window reads its own (at most 100).
   const idle = useRevalidator().state === 'idle';
   const own = open && !entry.complete;
@@ -78,9 +73,69 @@ export function ThoughtTasks({ thought, tasks: entry, projectId, variant, onOpen
     const row = ownPage.items.find((item) => item.id === link.workId);
     return link.thoughtId === thought.id && row ? [row] : [];
   }) : entry.tasks;
-  const total = entry.count;
+  return { tasks, total: entry.count, ownRead, ownPage };
+}
+
+/** Every task linked to a thought, each a link to the task in its project, as the chooser and the panel show them. */
+function ThoughtTaskList({ thought, projectId, list, titleId, onClose, onChoose }: {
+  thought: { id: string; text: string }; projectId: string; list: ReturnType<typeof useThoughtTaskList>; titleId?: string; onClose?: () => void;
+  onChoose(event: MouseEvent<HTMLAnchorElement>, id: string): void;
+}) {
+  const { tasks, total, ownRead, ownPage } = list;
+  return (
+    <div className="sk-tasks">
+      <div className="sk-tasks__head">
+        <p className="sk-tasks__k"><Icon name="tasks" size={12} />{count(total)} linked to this thought</p>
+        <h2 className="sk-tasks__t" id={titleId}>{thought.text}</h2>
+        {onClose ? <IconButton icon="x" label="Close" className="sk-tasks__close" onClick={onClose} /> : null}
+      </div>
+      <ul className="sk-tasks__list" aria-label={`Tasks linked to ${quote(thought.text)}`}>
+        {tasks.map((item) => (
+          <li key={item.id}>
+            <Link className="sk-task" to={taskHref(projectId, item.id)} title={`Task ${item.id}`} data-work-id={item.id} onClick={(event) => onChoose(event, item.id)}>
+              <StatusGlyph status={item.status} className={item.parked ? 'ui-glyph--parked' : undefined} />
+              <span className="sk-task__b">
+                <span className="sk-task__t">{item.title}</span>
+                <span className="sk-task__m"><span className="sk-task__id"><span className="ui-task-number">{taskNumber(item)}</span></span> · {STATUS_LABEL[item.status]}{item.parked ? ' · parked' : ''}</span>
+                <span className="sk-task__m sk-task__people">{item.owner ? <>Owner {item.owner.name}{item.owner.kind === 'agent' ? <> <AgentTag /></> : null}</> : 'No owner yet'} · added by {item.createdBy.name}{item.createdBy.kind === 'agent' ? <> <AgentTag /></> : null}</span>
+              </span>
+              <Icon name="chevron-right" size={14} />
+            </Link>
+          </li>
+        ))}
+      </ul>
+      {tasks.length < total ? <p className="sk-tasks__note" role="status">{ownRead.phase === 'unavailable' ? 'The other linked tasks could not be loaded.' : ownPage ? `${total - tasks.length} more linked ${total - tasks.length === 1 ? 'task is' : 'tasks are'} not listed here.` : 'Loading the other linked tasks…'}</p> : null}
+      <p className="sk-tasks__note">The same tasks as on Tasks. Opening one changes nothing on the map.</p>
+    </div>
+  );
+}
+
+/** A thought's linked tasks in the one panel (the phone's chooser, #488): a task opened from here replaces it, with "‹ back". */
+export function ThoughtTasksPanel({ view }: { view: ThoughtTasksView }) {
+  const { openDetails } = useShellActions();
+  const list = useThoughtTaskList(true, view.thought, view.entry, view.projectId);
+  const choose = (event: MouseEvent<HTMLAnchorElement>, id: string) => {
+    // A new tab or window keeps the browser's own handling of the link.
+    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
+    openDetails({ kind: 'work', id, projectId: view.projectId }, { back: 'push' });
+  };
+  return <div className="details"><ThoughtTaskList thought={view.thought} projectId={view.projectId} list={list} onChoose={choose} /></div>;
+}
+
+/**
+ * A thought's task count and the chooser it opens (UI116-4): every linked task with its exact ID,
+ * status and people, each a link to the task in its project. A popover beside the count on larger
+ * screens, the one panel's sheet on a phone. It only reads: opening and closing never select, move or scroll
+ * the map, and closing returns focus to the count.
+ */
+export function ThoughtTasks({ thought, tasks: entry, projectId, variant, onOpenTask }: ThoughtTasksProps) {
+  const [open, setOpen] = useState(false);
+  const list = useThoughtTaskList(open, thought, entry, projectId);
+  const { total } = list;
   const anchor = useRef<HTMLButtonElement>(null);
   const phone = useMediaQuery(MEDIA.phone);
+  const { openDetails } = useShellActions();
   const titleId = useId();
   // Escape and Close return focus to the count; opening a task leaves it with the task's details.
   const refocus = useRef(false);
@@ -101,33 +156,6 @@ export function ThoughtTasks({ thought, tasks: entry, projectId, variant, onOpen
     onOpenTask(id);
   };
 
-  const body = (
-    <div className="sk-tasks">
-      <div className="sk-tasks__head">
-        <p className="sk-tasks__k"><Icon name="tasks" size={12} />{count(total)} linked to this thought</p>
-        <h2 className="sk-tasks__t" id={titleId}>{thought.text}</h2>
-        <IconButton icon="x" label="Close" className="sk-tasks__close" onClick={() => close(true)} />
-      </div>
-      <ul className="sk-tasks__list" aria-label={`Tasks linked to ${quote(thought.text)}`}>
-        {tasks.map((item) => (
-          <li key={item.id}>
-            <Link className="sk-task" to={taskHref(projectId, item.id)} title={`Task ${item.id}`} data-work-id={item.id} onClick={(event) => choose(event, item.id)}>
-              <StatusGlyph status={item.status} className={item.parked ? 'ui-glyph--parked' : undefined} />
-              <span className="sk-task__b">
-                <span className="sk-task__t">{item.title}</span>
-                <span className="sk-task__m"><span className="sk-task__id"><span className="ui-task-number">{taskNumber(item)}</span></span> · {STATUS_LABEL[item.status]}{item.parked ? ' · parked' : ''}</span>
-                <span className="sk-task__m sk-task__people">{item.owner ? <>Owner {item.owner.name}{item.owner.kind === 'agent' ? <> <AgentTag /></> : null}</> : 'No owner yet'} · added by {item.createdBy.name}{item.createdBy.kind === 'agent' ? <> <AgentTag /></> : null}</span>
-              </span>
-              <Icon name="chevron-right" size={14} />
-            </Link>
-          </li>
-        ))}
-      </ul>
-      {tasks.length < total ? <p className="sk-tasks__note" role="status">{ownRead.phase === 'unavailable' ? 'The other linked tasks could not be loaded.' : ownPage ? `${total - tasks.length} more linked ${total - tasks.length === 1 ? 'task is' : 'tasks are'} not listed here.` : 'Loading the other linked tasks…'}</p> : null}
-      <p className="sk-tasks__note">The same tasks as on Tasks. Opening one changes nothing on the map.</p>
-    </div>
-  );
-
   return (
     <>
       <button ref={anchor} type="button" className={`sk-work sk-work--${variant}`} aria-haspopup="dialog" aria-expanded={open}
@@ -135,6 +163,7 @@ export function ThoughtTasks({ thought, tasks: entry, projectId, variant, onOpen
         onClick={(event) => {
           // Some touch browsers never focus a tapped button; the chooser returns here when it closes.
           event.currentTarget.focus({ preventScroll: true });
+          if (phone) { openDetails({ kind: 'thought-tasks', projectId, thought, entry }); return; }
           if (open) close(true); else setOpen(true);
         }}>
         {/* #510 AC-3: in the List, a chip with the first task's state and number; the chooser lists them all. */}
@@ -147,9 +176,7 @@ export function ThoughtTasks({ thought, tasks: entry, projectId, variant, onOpen
           <Icon name="chevron-right" size={11} />
         </>}
       </button>
-      {phone
-        ? <Sheet open={open} onClose={() => close(true)} labelledBy={titleId} className="sk-tasks-sheet">{body}</Sheet>
-        : open ? <Chooser anchor={anchor} labelledBy={titleId} onClose={close}>{body}</Chooser> : null}
+      {!phone && open ? <Chooser anchor={anchor} labelledBy={titleId} onClose={close}><ThoughtTaskList thought={thought} projectId={projectId} list={list} titleId={titleId} onClose={() => close(true)} onChoose={choose} /></Chooser> : null}
     </>
   );
 }

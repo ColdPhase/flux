@@ -105,7 +105,7 @@ class PersonalAssistantJourney(unittest.TestCase):
         return page
 
     def opening(self, page: Page):
-        return page.get_by_role("complementary", name="Replies").locator(".thread__root")
+        return page.get_by_role("complementary", name="Replies").or_(page.get_by_role("dialog", name="Replies")).locator(".thread__root")
 
     def composer(self, page: Page):
         return page.locator("#thread-composer")
@@ -172,8 +172,12 @@ class PersonalAssistantJourney(unittest.TestCase):
         bar.get_by_role("button", name="Connect your AI").click()
         panel = page.get_by_role("complementary", name="Details")
         expect(panel.get_by_role("link", name="Set up your assistant in Flux")).to_have_attribute("href", "/settings/assistant")
-        page.get_by_role("button", name="Close details").click()
+        # Details take the thread's one panel; "back" returns to the reply being written.
+        panel.get_by_role("button", name="Thread").click()
+        expect(page.get_by_role("complementary", name="Replies")).to_be_visible()
         # Esc returns to a plain reply; the person's own message is sent as usual.
+        self.composer(page).fill("/ai ")
+        expect(page.locator("#project-ask")).to_be_visible()
         self.composer(page).focus()
         page.keyboard.press("Escape")
         expect(page.locator("#project-ask")).to_have_count(0)

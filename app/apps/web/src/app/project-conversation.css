@@ -1,7 +1,6 @@
 /* The project page: the return line (#106) above the conversation. */
 .project-page { display: flex; flex: 1; min-height: 0; flex-direction: column; }
 .project-convo__message:focus { outline: none; }
-.project-convo__message.is-arrived { box-shadow: inset 3px 0 0 var(--t1); }
 .project-convo { display: flex; flex: 1; min-height: 0; flex-direction: column; }
 .project-convo__feed { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; }
 /* Laid out (positions settle) but not shown until its first bounded reads arrive (#155). */
@@ -122,7 +121,6 @@ button.project-convo__contribution { cursor: pointer; }
 .project-convo__message.is-mine { margin-left: auto; align-items: flex-end; padding-left: 0; padding-right: 44px; }
 .project-convo__message.is-mine > :is(.ui-avatar, .author-face) { left: auto; right: 0; }
 .project-convo__message.is-mine > .project-convo__message-meta { justify-content: flex-end; }
-.project-convo__message.is-mine.is-arrived { box-shadow: inset -3px 0 0 var(--t1); }
 
 /* Composer: a two-row card in the same column, text above and its tools below, with the
    audience and keyboard hint under the card. */
@@ -194,6 +192,12 @@ button.project-convo__contribution { cursor: pointer; }
 .project-convo__message.is-continued > .project-convo__message-meta { display: none; }
 .project-convo__message.is-open, .project-convo__message.is-arrived, .project-convo__message.is-mine.is-arrived { box-shadow: none; background: none; }
 .project-convo__message.is-arrived > .message-bubble { background: var(--sub); }
+/* Spokój rule 6: an arrived message is marked by a soft fill that fades after 2 s, never by a ring or a bar; while its thread
+   is open it keeps the fill as the open root. "Source of #1" is the same two seconds. */
+.project-convo__message.is-arrived:not(.is-open) > .message-bubble { animation: convo-arrived var(--dur-3) var(--ease-out) 2s forwards; }
+@keyframes convo-arrived { to { background: transparent; } }
+.convo-source-tag { align-self: flex-start; margin-bottom: 4px; padding: 2px 9px; border-radius: var(--r-pill); background: var(--sub); color: var(--t2); font-size: var(--fs-xs); font-weight: 500; line-height: 1.4; }
+.project-convo__message.is-mine > .convo-source-tag { align-self: flex-end; }
 .message-time { margin-top: 5px; color: var(--t3); font-family: var(--mono); font-size: var(--fs-xs); line-height: 1.5; }
 @media (max-width: 680px) { .project-convo__message.is-mine { padding-right: 0; } }
 

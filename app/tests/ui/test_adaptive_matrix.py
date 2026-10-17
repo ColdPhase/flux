@@ -428,7 +428,7 @@ class AdaptiveMatrix(AdaptiveBase):
         replies.scroll_into_view_if_needed()
         self.primary(page, replies, "a message's existing thread")
         replies.click()
-        thread = page.get_by_role("complementary", name="Replies")
+        thread = page.get_by_role("complementary", name="Replies").or_(page.get_by_role("dialog", name="Replies"))
         expect(thread).to_be_visible()
         self.primary(page, thread.get_by_label("Reply", exact=True), "the reply field")
         self.primary(page, thread.get_by_role("button", name="Send reply"), "Send reply")
@@ -439,7 +439,7 @@ class AdaptiveMatrix(AdaptiveBase):
         drawer = thread.bounding_box()
         if width >= 1440:
             # ADAPT-2: the reply source stays beside the stream instead of replacing it.
-            self.assertIn("thread--docked", thread.get_attribute("class"), f"the thread docks beside the stream at {size}")
+            self.assertIn("ui-panel--docked", thread.get_attribute("class"), f"the thread docks beside the stream at {size}")
             self.assertLessEqual(stream["x"] + stream["width"], drawer["x"] + 1, "stream and thread do not overlap")
             self.assertGreaterEqual(stream["width"], 480, "the stream stays readable beside its thread")
         self.shot(page, f"adapt-{size}{tag}-thread")
@@ -600,28 +600,35 @@ class AdaptiveMatrix(AdaptiveBase):
         self.assertEqual(rows[1440], 3, rows)
         self.assertEqual(rows[3840], 1, rows)
 
-    def test_04_on_wide_screens_stream_thread_and_details_sit_side_by_side(self) -> None:
-        """ADAPT-2: a reply's source, its thread and Details are readable together from 1920 px."""
+    def test_04_on_wide_screens_stream_and_the_one_panel_sit_side_by_side(self) -> None:
+        """ADAPT-2 and #488: from 1920 px a reply's source stays beside its thread, and Details take the same
+        panel (one panel, no second column) with a way back to the thread; the stream keeps a full measure."""
         for width, height in [(1920, 1080), (2560, 1080), (3440, 1440), (3840, 2160), (5120, 1440)]:
             with self.subTest(width=width, height=height):
                 page = self.page(width, height)
                 page.goto(f"/projects/{self.ids['project']}")
                 question = page.locator(".project-convo__message").filter(has_text="Question for the next session")
                 question.locator(".convo-replies__open").click()
-                thread = page.get_by_role("complementary", name="Replies")
+                thread = page.get_by_role("complementary", name="Replies").or_(page.get_by_role("dialog", name="Replies"))
                 expect(thread).to_be_visible()
-                open_details(page)
-                expect(page.locator("#details.ui-panel--docked")).to_be_visible()
-                page.wait_for_timeout(300)
-                self.assertIn("thread--docked", thread.get_attribute("class"))
+                self.assertIn("ui-panel--docked", thread.get_attribute("class"))
                 stream = page.locator(".project-convo__feed").bounding_box()
                 drawer = thread.bounding_box()
-                details = page.locator("#details").bounding_box()
                 self.assertLessEqual(stream["x"] + stream["width"], drawer["x"] + 1)
-                self.assertLessEqual(drawer["x"] + drawer["width"], details["x"] + 1)
                 self.assertGreaterEqual(stream["width"], 600, "the stream keeps a full message measure")
-                self.primary(page, page.get_by_label("Write a message", exact=True), "the message field beside thread and Details")
-                self.primary(page, thread.get_by_label("Reply", exact=True), "the reply field beside Details")
+                self.primary(page, page.get_by_label("Write a message", exact=True), "the message field beside the thread")
+                self.primary(page, thread.get_by_label("Reply", exact=True), "the reply field beside the stream")
+                self.shot(page, f"adapt-{width}x{height}-thread")
+                open_details(page)
+                details = page.locator("#details.ui-panel--docked")
+                expect(details).to_be_visible()
+                expect(details.get_by_role("button", name="Thread")).to_be_visible()
+                expect(page.locator("#thread")).to_have_count(0)
+                panel = details.bounding_box()
+                stream = page.locator(".project-convo__feed").bounding_box()
+                self.assertLessEqual(stream["x"] + stream["width"], panel["x"] + 1)
+                self.assertGreaterEqual(stream["width"], 600, "the stream keeps a full message measure beside Details")
+                self.primary(page, page.get_by_label("Write a message", exact=True), "the message field beside Details")
                 self.shot(page, f"adapt-{width}x{height}-thread-and-details")
                 self.no_problems()
 
@@ -834,14 +841,14 @@ class AdaptiveTransitions(AdaptiveBase):
         self.resize(page, 1440, 900)
         question = page.locator(".project-convo__message").filter(has_text="Question for the next session")
         question.locator(".convo-replies__open").click()
-        thread = page.get_by_role("complementary", name="Replies")
+        thread = page.get_by_role("complementary", name="Replies").or_(page.get_by_role("dialog", name="Replies"))
         reply = thread.get_by_label("Reply", exact=True)
         reply.fill("Unsent reply: both sensors, separate buses")
         for width, height in ((390, 844), (844, 390), (1440, 900)):
             self.resize(page, width, height)
             expect(thread, f"the thread stays open at {width}×{height}").to_be_visible()
             expect(reply).to_have_value("Unsent reply: both sensors, separate buses")
-        self.assertIn("thread--docked", thread.get_attribute("class"), "the thread docks again when the room returns")
+        self.assertIn("ui-panel--docked", thread.get_attribute("class"), "the thread docks again when the room returns")
         after = self.api(page, "GET", f"/api/v1/projects/{self.ids['project']}/conversations?limit=50")
         self.assertEqual(len(after["items"]), len(before["items"]), "no transition sends a message")
         root = self.ids["roots"][2]["conversation"]

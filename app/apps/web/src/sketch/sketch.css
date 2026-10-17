@@ -119,12 +119,13 @@
 .sk-work-slot--circle .sk-work--map { left: 50%; bottom: 16px; translate: -50% 0; }
 
 /* The chooser: every linked task with its exact ID, status and people. A popover beside the count;
-   a sheet on a phone. */
+   the one panel's sheet on a phone (#488). */
 .sk-tasks-pop { position: fixed; left: 0; top: 0; z-index: var(--z-menu); width: min(360px, calc(100vw - 16px)); overflow-y: auto; overscroll-behavior: contain;
   border-radius: var(--r-lg); background: var(--el); box-shadow: var(--sh-pop), inset 0 0 0 1px var(--line); outline: none; text-align: left; }
-.ui-overlay--bottom .ui-overlay__surface.sk-tasks-sheet { top: auto; max-height: 85dvh; overflow-y: auto; overscroll-behavior: contain;
-  border-radius: var(--r-lg) var(--r-lg) 0 0; background: var(--el); box-shadow: var(--sh-pop); padding-bottom: env(safe-area-inset-bottom); }
 .sk-tasks__head { position: relative; padding: 14px 52px 10px 16px; border-bottom: 1px solid var(--line); }
+.details > .sk-tasks > .sk-tasks__head { padding: 0 0 10px; }
+.details > .sk-tasks .sk-tasks__list { padding-inline: 0; }
+.details > .sk-tasks .sk-tasks__note { padding-inline: 0; }
 .sk-tasks__k { display: flex; align-items: center; gap: 6px; font-size: var(--fs-xs); font-weight: 500; color: var(--t3); }
 .sk-tasks__k svg { flex: none; }
 .sk-tasks__t { margin-top: 4px; font-size: var(--fs-md); font-weight: 600; line-height: 1.4; color: var(--t1); overflow-wrap: anywhere; white-space: pre-line; }

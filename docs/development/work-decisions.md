@@ -17,7 +17,7 @@ principals with current read access to the project; there is no second audience.
 
 | Object | Fields | Rules |
 | --- | --- | --- |
-| Work item | title, outcome (may be empty), owner (person or #29 agent, or nobody), status `open` · `in_progress` · `blocked` · `done` · `not_pursued`, optional blocker (only while blocked), `parked`, version | The owner must currently be able to read the project (`OWNER_WITHOUT_ACCESS`). Leaving `blocked` clears the blocker. Small tasks need only a title; no report is required. Explicitly saving a nonempty blocker also contributes it to the task conversation ([below](#contributions-to-the-task-conversation-154)). |
+| Work item | title, outcome (may be empty), owner (person or #29 agent, or nobody), status `open` · `in_progress` · `blocked` · `done` · `not_pursued`, optional blocker (only while blocked), optional `dueOn` ([below](#due-date-and-activity-488)), `parked`, version | The owner must currently be able to read the project (`OWNER_WITHOUT_ACCESS`). Leaving `blocked` clears the blocker. Small tasks need only a title; no report is required. Explicitly saving a nonempty blocker also contributes it to the task conversation ([below](#contributions-to-the-task-conversation-154)). |
 | Decision | title, rationale, status `proposed` · `accepted` · `superseded`, proposed by, decided by (a person), `supersedes` / `supersededBy`, version | People and agents with write access propose. Only a person with write access accepts (`DECISION_NEEDS_PERSON`); see [acceptance authority](#acceptance-authority-o-009-250). Only an accepted decision can be superseded (`SUPERSEDES_NOT_CURRENT`); accepting the replacement marks the earlier one `superseded` and keeps its title and rationale. |
 | Result | title, finding `positive` · `negative`, evidence | Immutable once recorded, so later thinking never rewrites it. `finishes: { id, expectedVersion }` names one of its linked work items, which becomes `done`: a negative result can finish an experiment. A stale version is `409 VERSION_CONFLICT` with the current work; parked or `not_pursued` work is `409 WORK_NOT_FINISHABLE` (bring parked work back first). Nothing is stored when finishing is refused. A result linked to work (`work`) also contributes to each task's conversation ([below](#contributions-to-the-task-conversation-154)). |
 | Link | role, from (work/decision/result, or a [doc](docs-wiki.md)), to (message, thought, material version, work, decision, result, doc, project sketch), titles of both ends | Roles: `source` (created from / based on), `affects`, `still_applies`, `about`, `related`, and `mentions` (the current text of a doc refers to it, #112). Every target must exist in the same project (`LINK_TARGET_NOT_FOUND`). Identical links are stored once. |
@@ -54,6 +54,7 @@ In Details, a person without write access sees **Who decides** in place of the A
 | --- | --- |
 | `GET/POST /api/v1/projects/:projectId/work` | List (page `limit`/`offset`) or create. |
 | `GET/PATCH /api/v1/work/:workId` | `PATCH` needs `If-Match: "<version>"` (or `expectedVersion`): 428 without, 409 `VERSION_CONFLICT` with the current object when stale. Optional `clientCommandId` (UUID, #154): see below. |
+| `GET /api/v1/work/:workId/activity` | The task's history of status, owner, due date and title changes, newest first: `?limit=` 1-50 (30 when omitted) and `?before=` (the `nextBefore` of the page before). Read by exactly those who can read the task ([below](#due-date-and-activity-488)). |
 | `GET/POST /api/v1/projects/:projectId/decisions`, `GET /api/v1/decisions/:id` | Propose with `sources`, `affects`, `supersedes`. |
 | `POST /api/v1/decisions/:id/accept` | Needs `If-Match`; body `{ stillApplies?, park? }`. |
 | `GET/POST /api/v1/projects/:projectId/results`, `GET /api/v1/results/:id` | `POST` takes an optional `clientCommandId` (UUID, #154): see below. |
@@ -85,6 +86,30 @@ operation and UUID. An exact retry rechecks current project write access, the pr
 returns the original outcome; a changed intent is `409 IDEMPOTENCY_CONFLICT`. Without it nothing deduplicates a
 repeated result, and the `If-Match` version fences a stale identical blocker save. Browsers always send one.
 The receipt is separate from the 24-hour `Idempotency-Key` response cache and from the #152 connection-command ledger.
+
+## Due date and activity (#488)
+
+**Due date.** `dueOn` is a calendar day, `YYYY-MM-DD`, with no time zone and no time, so it is the same day for everyone.
+It must be a real date from 1970 to 9999 (`2026-02-31` is `400 INVALID_INPUT`); `null` clears it. Create takes it and
+`PATCH` changes it like any other field: a versioned change that honours `If-Match` (409 `VERSION_CONFLICT`) and
+`clientCommandId`, needs write access (a viewer gets 403) and leaves the task's other fields alone. The list rows, the
+work detail and the task carry it. MCP does not take or show it yet. It is stored in `project_work_items.due_on`
+(migration 0112).
+
+**Activity.** Every successful change of **status, owner, due date or title** keeps one row of
+`project_task_activity` per field that really changed, made by the principal that acted (a person or an agent, whichever
+path: the API, MCP, the assistant, a result that finishes a task, or a task rule of a linked pull request, which acts for
+the rule's author and is marked `automation: 'github_rule'`), at the time of the change. The row is written by
+`WorkRepository.updateWork`, the one function every change of a task ends in, in the transaction of the change, so a replay
+of the same `clientCommandId` or `Idempotency-Key`, a refused change and a change that leaves the fields as they were
+(its version still moves) keep nothing. Creation is not an entry (readers derive it from `createdBy`/`createdAt`), and
+neither are an outcome, criteria, prerequisites, a blocker edit alone or parking; tasks from before 0112 have no entries.
+`GET /api/v1/work/:workId/activity` returns `TaskActivityPage` (`{ workId, items, nextBefore }`), newest first with a
+stable keyset on (time, id). `status` entries say the reason and the person waited for when the task became blocked (an
+Undo that restores them is a status change too); `owner` entries name both owners, agents with the owner they show to
+this project's readers, as the task detail names them. Names resolve as for the task detail; a person who left shows as a
+former member. The rows go with their task and so with the project. They are separate from the project conversation's
+blocked/unblocked lines (`project_task_updates`, #550), which are unchanged.
 
 ## Events
 

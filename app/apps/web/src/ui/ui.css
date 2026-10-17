@@ -81,6 +81,9 @@ svg { flex: none; }
 .ui-btn--danger { color: var(--t1); }
 .ui-btn--danger:hover { background: var(--hov); color: var(--t1); }
 .ui-btn--lg { min-height: var(--ctl-lg); padding: 0 18px; font-size: .9375rem; }
+/* Small actions in a row (Spokój rule 1): 30px, 44px on a touch screen. */
+.ui-btn--sm { min-height: 30px; padding: 0 12px; font-size: var(--fs-sm); }
+@media (pointer: coarse) { .ui-btn--sm { min-height: 44px; } }
 .ui-btn--block { width: 100%; }
 .ui-btn .ui-spin { width: 13px; height: 13px; }
 
@@ -220,7 +223,7 @@ svg { flex: none; }
 .ui-detent-sheet[data-height="full"] { height: calc(100% - 12px); }
 .ui-grabber { position: relative; flex: none; display: grid; place-items: center; align-self: center; width: 120px; max-width: 100%; height: 44px; margin: 0 auto -16px; z-index: 1; padding: 0; touch-action: none; }
 .ui-grabber span { width: 36px; height: 5px; border-radius: var(--r-pill); background: var(--line2); transition: width var(--dur-2) ease; }
-.ui-grabber, .ui-grabber *, .ui-detent-sheet .ui-panel__head, .ui-detent-sheet .ui-panel__head *, .ui-detent-sheet .thread__head, .ui-detent-sheet .thread__head * { touch-action: none; }
+.ui-grabber, .ui-grabber *, .ui-detent-sheet .ui-panel__head, .ui-detent-sheet .ui-panel__head * { touch-action: none; }
 .ui-grabber:hover span { width: 44px; }
 /* The keyboard button is visually hidden; its focus ring is drawn on the visible handle. */
 .ui-detent-sheet:has(> .ui-vh:focus-visible) > .ui-grabber { outline: 2px solid var(--t1); outline-offset: -4px; border-radius: 12px; }
@@ -239,9 +242,11 @@ svg { flex: none; }
 .ui-panel__title { flex: 1; min-width: 0; font-size: var(--fs-md); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ui-panel__chip { display: inline-flex; margin: 0; font-size: var(--fs-sm); font-weight: 600; }
 .ui-panel__kind { display: inline-flex; align-items: center; height: 26px; padding: 0 10px; border-radius: var(--r-pill); background: var(--sub); color: var(--t2); }
+.ui-panel__glyph { display: inline-flex; align-items: center; }
+.ui-panel__glyph:not(:empty) { margin-right: 6px; }
+.ui-panel__actions { display: inline-flex; align-items: center; flex: none; }
 .ui-panel__meta { margin-left: 8px; color: var(--t3); font-size: var(--fs-sm); font-variant-numeric: tabular-nums; }
 .ui-panel__fill { flex: 1; }
-.ui-panel__hint { flex: 1; margin-right: 8px; text-align: right; color: var(--t3); font-size: var(--fs-sm); }
 .ui-panel--docked, .ui-panel--overlay { background: var(--el); }
 /* One shell for a task, a thread and the project's details (#512, AC-1): a card with the same head height and close place. */
 .ui-panel--docked { margin: 10px 10px 10px 0; border: 0; border-radius: var(--r-panel); box-shadow: var(--sh-pop); }
@@ -250,11 +255,21 @@ svg { flex: none; }
   padding: 20px 22px 28px; padding-bottom: max(28px, env(safe-area-inset-bottom));
 }
 .ui-panel__body:focus-visible { outline: none; }
+/* A thread or an agent a view owns fills the body and scrolls inside (its composer stays at the bottom). */
+.ui-panel__body:has(> .ui-panel__slot) { display: flex; padding: 0; overflow: hidden; }
+.ui-panel__slot { display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; }
+/* "‹ Task #1": where Back goes (Spokój rule 2); the kind chip after it reads as the next crumb. */
+.ui-panel__back { display: inline-flex; align-items: center; gap: 2px; flex: none; max-width: 40%; min-height: 32px; margin: 0 4px 0 -8px; padding: 0 8px; border-radius: var(--r-pill); color: var(--t2); font: inherit; font-size: var(--fs-sm); font-weight: 500; transition: var(--tr); }
+.ui-panel__back span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ui-panel__back:hover { background: var(--hov); color: var(--t1); }
+.ui-panel__back:focus-visible { outline: 2px solid var(--t1); outline-offset: 1px; }
+.ui-panel__sep { flex: none; margin: 0 6px 0 2px; color: var(--t3); }
+.ui-panel__sep + .ui-panel__chip .ui-panel__kind { padding: 0; background: none; color: var(--t1); }
+@media (pointer: coarse) { .ui-panel__back { min-height: 44px; } }
 .ui-sheet .ui-panel__head { height: calc(56px + env(safe-area-inset-top)); padding-top: env(safe-area-inset-top); padding-left: 16px; padding-right: 4px; }
 .ui-detent-sheet .ui-panel__head { height: 52px; padding: 0 12px 0 20px; border-bottom: 0; }
 .ui-detent-sheet .ui-panel__close { margin-left: auto; }
 .ui-detent-sheet[data-height="full"] .ui-panel__head { padding-top: env(safe-area-inset-top); height: calc(52px + env(safe-area-inset-top)); }
-.ui-detent-sheet[data-height="full"] .ui-panel__hint { display: none; }
 .ui-sheet .ui-panel__body { padding: 18px 16px 28px; }
 
 /* ---------- Toast: an inverted pill ---------- */

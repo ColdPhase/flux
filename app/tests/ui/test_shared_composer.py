@@ -118,7 +118,7 @@ class SharedComposerJourney(unittest.TestCase):
 
     def cite(self, page, project, conversation):
         page.goto(f"/projects/{project['id']}/conversations/{conversation}")
-        pane = page.get_by_role("complementary", name="Replies")
+        pane = page.get_by_role("complementary", name="Replies").or_(page.get_by_role("dialog", name="Replies"))
         # "/source" opens the saved sources, as the old Sources button did (F-026 S5).
         field = pane.get_by_label("Reply", exact=True)
         field.fill("/source")
@@ -164,7 +164,7 @@ class SharedComposerJourney(unittest.TestCase):
             self.assertEqual(download.status, 200)
             self.assertEqual(download.body(), fixture["buffer"])
         writer.goto(f"/projects/{project['id']}/conversations/{root['conversationId']}")
-        pane = writer.get_by_role("complementary", name="Replies")
+        pane = writer.get_by_role("complementary", name="Replies").or_(writer.get_by_role("dialog", name="Replies"))
         expect(pane.get_by_role("list", name="Attached files").first.get_by_role("link")).to_have_count(2)
         expect(pane.get_by_role("link", name=re.compile("reply.bin"))).to_be_visible()
         with writer.expect_download() as downloaded:
@@ -206,7 +206,7 @@ class SharedComposerJourney(unittest.TestCase):
         expect(queued.get_by_text("Source: Verified measurements · v1")).to_be_visible()
         expect(page.get_by_label("Write to this task")).to_have_value("")
         page.get_by_role("link", name="Open in Conversation", exact=True).click()
-        pane = page.get_by_role("complementary", name="Replies")
+        pane = page.get_by_role("complementary", name="Replies").or_(page.get_by_role("dialog", name="Replies"))
         expect(pane.get_by_label("Reply", exact=True)).to_have_value("")
         retries = []
         page.on("request", lambda request: retries.append(request.post_data_json) if request.method == "POST" and request.url.endswith(f"/work/{a['id']}/discussion") else None)
@@ -219,11 +219,12 @@ class SharedComposerJourney(unittest.TestCase):
         self.assertEqual(len(matching), 1)
         self.assertEqual(matching[0]["source"], {"materialId": material["materialId"], "version": 1})
         page.goto(f"/projects/{project['id']}/tasks?open=work:{a['id']}")
-        details = page.get_by_role("region", name="Discussion")
+        details = page.locator("#details")
         expect(details.get_by_label("Write to this task")).to_have_value("")
         details.get_by_label("Write to this task").fill("A reply from the Tasks details")
         details.get_by_role("button", name="Send to task").click()
-        expect(page.get_by_role("complementary", name="Replies").get_by_text("A reply from the Tasks details", exact=True)).to_be_visible()
+        # The message stays in the task's Activity (#488); the panel does not navigate away from the task.
+        expect(details.get_by_role("list", name="Task activity").get_by_text("A reply from the Tasks details", exact=True)).to_be_visible()
         self.assertEqual(self.discussion(page, a)["messages"][-1]["body"], "A reply from the Tasks details")
 
     def test_03_failed_upload_size_count_and_total_keep_text_existing_files_and_reference(self):
@@ -254,7 +255,7 @@ class SharedComposerJourney(unittest.TestCase):
         self.assertEqual(len(record["files"]), 1)
         self.assertEqual(len(record["references"]), 1)
         page.reload()
-        expect(page.get_by_role("complementary", name="Replies").get_by_label("Reply", exact=True)).to_have_value(record["body"])
+        expect(page.get_by_role("complementary", name="Replies").or_(page.get_by_role("dialog", name="Replies")).get_by_label("Reply", exact=True)).to_have_value(record["body"])
 
     def test_04_held_upload_and_send_a_b_a_never_clear_or_navigate_b(self):
         page = self.page()
@@ -408,8 +409,8 @@ class SharedComposerJourney(unittest.TestCase):
                 box = page.get_by_label("Write to this task")
                 box.fill("The phone keeps this careful night measurement")
                 if width < 681:
-                    # The thread's own heading stands where the task picker was (#347 P1-2: no picker; the thread opens from the Now card).
-                    picker, field = page.locator('.thread__head').bounding_box(), box.bounding_box()
+                    # The thread's own heading (its task, #488) stands where the task picker was (#347 P1-2: no picker; the thread opens from the Now card).
+                    picker, field = page.locator('.agents-thread__task').bounding_box(), box.bounding_box()
                     assert picker and field
                     self.assertLessEqual(field['y'] - picker['y'] - picker['height'], 180,
                                          'the empty human thread starts near its task, without onboarding or a blank spacer')
@@ -431,7 +432,7 @@ class SharedComposerJourney(unittest.TestCase):
                 self.stored(page)
                 discussion = self.discussion(page, a)
                 page.goto(f"/projects/{project['id']}/conversations/{discussion['conversationId']}")
-                pane = page.get_by_role("complementary", name="Replies")
+                pane = page.get_by_role("complementary", name="Replies").or_(page.get_by_role("dialog", name="Replies"))
                 expect(pane.get_by_role("link", name=re.compile("a-very-long"))).to_be_visible()
                 pane.get_by_role("button", name="Close replies").focus()
                 pane.get_by_role("button", name="Close replies").press("Enter")
@@ -520,7 +521,7 @@ class SharedComposerJourney(unittest.TestCase):
         with page.expect_response(lambda response: response.request.method == "POST" and response.url.endswith(f"/projects/{project['id']}/work")) as created:
             submit_button(page).click()
         task = created.value.json()
-        details = page.get_by_role("region", name="Discussion")
+        details = page.locator("#details")
         box = details.get_by_label("First message about this task")
         expect(box).to_be_enabled()
         box.fill("The Map-created task keeps this measurement file")
@@ -557,7 +558,7 @@ class SharedComposerJourney(unittest.TestCase):
                 route.fulfill(response=response)
         page.route("**/api/v1/projects/*/conversation-roots*", bounded)
         page.goto(f"/projects/{project['id']}/conversations/{discussion['conversationId']}")
-        pane = page.get_by_role("complementary", name="Replies")
+        pane = page.get_by_role("complementary", name="Replies").or_(page.get_by_role("dialog", name="Replies"))
         expect(pane.get_by_label("Reply", exact=True)).to_have_value("")
         queued = pane.locator("[data-client-message-id]")
         expect(queued.get_by_role("alert")).to_contain_text("Not sent")
@@ -588,7 +589,7 @@ class SharedComposerJourney(unittest.TestCase):
         key = f"flux:composer:{self.people['owner']}:{project['id']}:task:{a['id']}"
         page.evaluate("key => { const value = JSON.parse(localStorage.getItem(key)); value.files[0].staged.expiresAt = '1970-01-01T00:00:00.000Z'; localStorage.setItem(key, JSON.stringify(value)); }", key)
         page.reload()
-        pane = page.get_by_role("complementary", name="Replies")
+        pane = page.get_by_role("complementary", name="Replies").or_(page.get_by_role("dialog", name="Replies"))
         expect(pane.get_by_text("Staging expired; select this file again", exact=False)).to_be_visible()
         def expire(route):
             if route.request.method == "POST":

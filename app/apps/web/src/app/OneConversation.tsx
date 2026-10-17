@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ComponentType, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type ComponentType, type ReactNode } from 'react';
 import { useLocation, useNavigate, useRevalidator } from 'react-router';
 import type { Conversation, ConversationMessage, ConversationRoot, NativeWorkRow } from '@flux/contracts';
 import type { MessageWorkPreview } from '../work/message-associations';
 import { ApiError } from '../api/client';
-import { MEDIA, useMediaQuery } from '../ui';
+import { PanelMeta } from '../ui';
 import { agentAuthorOwner, useAgentOwners } from '../agents/owners';
 import { useRegisterLiveHere } from '../live/LiveProvider';
 import { excerpt } from '../live/anchors';
@@ -11,7 +11,10 @@ import { audienceLine, useProjectShell } from '../project/data';
 import { useShellData } from './data';
 import { agentAuthorLabel } from '../docs/format';
 import { ConversationStream, useConversationRoots, useTaskNotices } from './ConversationStream';
-import { ThreadDrawer, ThreadRoot, type ThreadMode } from './ThreadDrawer';
+import { ThreadRoot } from './ThreadRoot';
+import { SourceOfContext } from './messageParts';
+import { OwnedPanelContent, useOwnedPanel } from './ownedPanel';
+import { useShellActions } from './shellContext';
 import type { ProjectData } from './ProjectConversation';
 import './one-conversation.css';
 import { useCreateWorkFromMessage } from '../work/inline';
@@ -41,7 +44,7 @@ export interface PaneProps {
   focusComposer?: boolean;
 }
 
-interface NavState { fromStream?: boolean; backToStream?: boolean; focusComposer?: boolean }
+interface NavState { fromStream?: boolean; backToStream?: boolean; focusComposer?: boolean; keepPanel?: boolean; sourceOf?: string }
 
 /**
  * One project conversation (UI116-1, 2026-10-02): the stream of roots with its composer, and the open
@@ -67,6 +70,7 @@ export function OneConversation({ data, Pane }: { data: ProjectData; Pane: Compo
   const writable = project.access !== 'viewer';
   const makeWork = useCreateWorkFromMessage(project);
   const owners = useAgentOwners(project);
+  const { reopenPanel } = useShellActions();
 
   const onDenied = useCallback((cause: unknown) => {
     // A lost project or session reloads the route, which shows why instead of stale content.
@@ -91,39 +95,26 @@ export function OneConversation({ data, Pane }: { data: ProjectData; Pane: Compo
   const live = thread ? { id: thread.id, label: thread.firstMessageBody } : latest ? { id: latest.conversationId, label: latest.message.body } : null;
   useRegisterLiveHere(live ? { projectId: project.id, context: { type: 'conversation', id: live.id }, label: excerpt(live.label) } : null, null);
 
-  // Docked beside the stream while both stay readable; otherwise a full sheet over it.
-  const splitRef = useRef<HTMLDivElement>(null);
-  const phone = useMediaQuery(MEDIA.navDrawer);
-  const [wide, setWide] = useState(true);
-  useLayoutEffect(() => {
-    const split = splitRef.current;
-    if (!split) return;
-    const measure = () => setWide(split.clientWidth >= 760);
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(split);
-    return () => observer.disconnect();
-  }, []);
-  const mode: ThreadMode = phone || !wide ? 'sheet' : 'docked';
-
   const opener = useRef<string | null>(null);
   const open = useCallback((item: ConversationRoot, reply: boolean) => {
     opener.current = item.message.id;
     if (thread && item.conversationId === thread.id) {
-      document.getElementById(reply && writable ? 'thread-composer' : 'thread')?.focus();
+      // The thread is already this one: bring its panel back if something closed or covered it, then go to it.
+      reopenPanel(`thread:${thread.id}`);
+      document.getElementById(reply && writable ? 'thread-composer' : 'details')?.focus();
       return;
     }
     // Switching threads replaces the open one, so closing still returns to the stream in one step.
     const backToStream = thread ? state?.backToStream === true : true;
     navigate(`/projects/${project.id}/conversations/${item.conversationId}`,
       { state: { fromStream: true, backToStream, focusComposer: reply } satisfies NavState, replace: !!thread && backToStream });
-  }, [navigate, project.id, state?.backToStream, thread, writable]);
-  const close = useCallback(() => {
+  }, [navigate, project.id, reopenPanel, state?.backToStream, thread, writable]);
+  const close = useCallback((options?: { keepPanel?: boolean }) => {
     if (!thread) return;
     if (!opener.current) opener.current = root?.message.id ?? null;
     setClosing(thread.id);
-    if (state?.backToStream) navigate(-1);
-    else navigate(`/projects/${project.id}`, { state: { fromStream: true } satisfies NavState });
+    if (state?.backToStream && !options?.keepPanel) navigate(-1);
+    else navigate(`/projects/${project.id}`, { state: { fromStream: true, ...(options?.keepPanel ? { keepPanel: true } : {}) } satisfies NavState });
   }, [navigate, project.id, root?.message.id, state?.backToStream, thread]);
   // Closing gives focus back to the root's replies, where the person opened the thread.
   useEffect(() => {
@@ -138,24 +129,36 @@ export function OneConversation({ data, Pane }: { data: ProjectData; Pane: Compo
     <ConversationStream project={project} meId={me.user.id} meName={me.user.name} roots={roots} notices={notices} goals={data.goals} author={author}
       audience={audience} openId={thread?.id ?? null} reveal={reveal} arrived={arrived} endToken={endToken} onOpen={open} onDenied={onDenied} />
   );
-  const rootMessage = root?.message ?? thread?.messages.find((message) => message.sequence === 1) ?? null;
   // Until the stream has the root (a link to an old one), the thread's newest sequence gives its size.
   const replies = root?.replyCount ?? Math.max(0, (thread?.messages.at(-1)?.sequence ?? 1) - 1);
+  const rootMessage = root?.message ?? thread?.messages.find((message) => message.sequence === 1) ?? null;
+  const slot = useOwnedPanel(thread ? { key: `thread:${thread.id}`, chip: 'Thread', label: 'Replies', startFull: true, onClose: close } : null);
+  // A link to a reply, or one that asks to keep the panel, shows the thread even when another object (What matters, a task) covers it.
+  const toReply = !!arrived && arrived !== rootMessage?.id;
+  useEffect(() => {
+    if (thread && (toReply || state?.keepPanel)) reopenPanel(`thread:${thread.id}`);
+    // Only a new arrival (a navigation) asks for it, never a re-render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.key]);
+  // A link from a task's "Came from" names the task: the message it arrived at is tagged "Source of #1" for two seconds.
+  const sourceOf = arrived && state?.sourceOf ? { messageId: arrived, label: `Source of ${state.sourceOf}` } : null;
   return (
-    <div className={`convo-split${thread ? ` has-thread is-${mode}` : ''}`} ref={splitRef}>
-      <div className="convo-split__stream" inert={!!thread && mode === 'sheet'}>
+    <SourceOfContext.Provider value={sourceOf}>
+    <div className="convo-split">
+      <div className="convo-split__stream">
         <Pane key="stream" data={data} variant="stream" feed={stream}
           onPosted={(started) => { roots.posted(started); setEndToken((value) => value + 1); }} onSending={() => setEndToken((value) => value + 1)} newestRootAt={roots.roots.at(-1)?.message.createdAt ?? ''} />
       </div>
-      {thread ? (
-        <ThreadDrawer key={thread.id} mode={mode} count={replies} focusOnOpen={!!state?.fromStream && !state.focusComposer} onClose={close}>
+      {thread && slot ? (
+        <OwnedPanelContent slot={slot} className="thread" id="thread">
+          <PanelMeta>{replies} {replies === 1 ? 'reply' : 'replies'}</PanelMeta>
           <Pane key={thread.id} data={data} variant="thread" rootMessageId={rootMessage?.id ?? null}
             focusComposer={!!state?.focusComposer} onThreadSize={roots.threadSize}
             rootHeader={({ preview, taskRow }) => <ThreadRoot message={rootMessage} projectId={project.id} body={rootMessage?.body ?? thread.firstMessageBody} author={rootMessage ? author(rootMessage) : null}
               agentOwner={rootMessage?.authorId === null ? agentAuthorOwner(rootMessage.author, owners) ?? null : null} meId={me.user.id} writable={writable} replies={replies} task={root?.task ?? null} taskRow={taskRow} preview={preview} onDenied={onDenied}
               photo={{ place: project.name, onReply: writable ? () => document.getElementById('thread-composer')?.focus() : undefined, onCreateTask: writable && rootMessage ? () => void makeWork.create(rootMessage) : undefined }} />} />
-        </ThreadDrawer>
-      ) : null}
+        </OwnedPanelContent>) : null}
     </div>
+    </SourceOfContext.Provider>
   );
 }

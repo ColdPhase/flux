@@ -20,7 +20,7 @@ import urllib.request
 import uuid
 from pathlib import Path
 
-from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
+from playwright.sync_api import Browser, BrowserContext, Page, TimeoutError as PlaywrightTimeoutError, expect, sync_playwright
 
 from create_window import create_other
 
@@ -117,8 +117,8 @@ def open_sources(page: Page, scope=None) -> None:
 
 
 def thread_of(page: Page):
-    """The open root's thread beside the stream (UI116-1)."""
-    return page.get_by_role("complementary", name="Replies")
+    """The open root's thread in the one panel: beside the stream on a computer, a sheet or overlay on a phone or tablet (UI116-1, #488)."""
+    return page.get_by_role("complementary", name="Replies").or_(page.get_by_role("dialog", name="Replies"))
 
 
 def new_from_sidebar(page: Page, item: str) -> None:
@@ -127,8 +127,22 @@ def new_from_sidebar(page: Page, item: str) -> None:
     create_other(page, item)
 
 
+def close_modal_thread(page: Page, tap: bool = False) -> None:
+    """Below 1000 px an open thread is the one panel as a modal sheet or overlay and covers the header (#488):
+    a person closes it before using the header. Docked beside the stream (above 1000 px) it covers nothing."""
+    thread = page.get_by_role("dialog", name="Replies")
+    close = thread.get_by_role("button", name="Close replies")
+    if close.count():
+        try:
+            close.tap(timeout=3000) if tap else close.click(timeout=3000)
+        except PlaywrightTimeoutError:
+            pass  # it closed by itself while the click waited
+    expect(thread).to_have_count(0)
+
+
 def phone_menu(page: Page, tap: bool = False):
     """The phone's view menu: the title opens it (#341)."""
+    close_modal_thread(page, tap)
     opener = page.get_by_role("heading", level=1).get_by_role("button")
     opener.tap() if tap else opener.click()
     return page.get_by_role("dialog").filter(has=page.locator(".phone-menu__list"))
@@ -155,6 +169,7 @@ def open_details(page: Page, tap: bool = False) -> None:
         row = phone_menu(page, tap).locator(".phone-menu__details")
         row.tap() if tap else row.click()
         return
+    close_modal_thread(page, tap)
     header = page.locator("header.top")
     # Home has no header row (#342): its Details are one quiet button under what needs you.
     page.locator("#content .home button:text-is('Details'), header.top:not(.top--bare) button[aria-label='More']").first.wait_for()
@@ -176,6 +191,7 @@ def open_what_matters(page: Page, tap: bool = False) -> None:
         expect(row).to_be_visible()
         row.tap() if tap else row.click()
         return
+    close_modal_thread(page, tap)
     header = page.locator("header.top")
     header.locator("button[aria-label='More']").wait_for()
     more = header.get_by_role("button", name="More", exact=True)
@@ -1311,6 +1327,9 @@ class AppShellJourney(unittest.TestCase):
         expect(phone.locator(".project-convo__current-thread")).to_contain_text("Try a PIR sensor before considering a camera")
         phone.set_viewport_size({"width": 390, "height": 500})
         phone.get_by_label("Reply", exact=True).focus()
+        phone.wait_for_function(
+            "() => { const el = document.querySelector('[role=\"dialog\"] .project-convo__composer, .thread .project-convo__composer'); if (!el) return false; const r = el.getBoundingClientRect(); return r.height > 0 && r.bottom <= 500; }"
+        )
         composer = thread_of(phone).locator(".project-convo__composer").bounding_box()
         self.assertIsNotNone(composer)
         self.assertLessEqual(composer["y"] + composer["height"], 500, "focused composer remains inside a reduced phone viewport")

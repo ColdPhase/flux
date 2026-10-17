@@ -81,6 +81,8 @@ export interface WorkRowProjection extends NativeRowBase {
   blocker: string | null;
   /** The one person a blocked task waits for (#550). */
   waitingFor: NamedPrincipal | null;
+  /** The calendar day it is due (#488), `YYYY-MM-DD`; null for none. */
+  dueOn: string | null;
   parked: WorkItem['parked'];
   parkedBy: WorkReadRef | null;
   rule: WorkReadRef | null;

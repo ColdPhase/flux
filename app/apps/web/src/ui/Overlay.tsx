@@ -10,15 +10,17 @@ export function focusableIn(root: HTMLElement): HTMLElement[] {
 
 // The app root is made inert while any modal surface is open; a count supports nesting.
 let inertCount = 0;
+let inertSeq = 0;
 function setAppInert(on: boolean) {
   const root = document.getElementById('root');
   inertCount = Math.max(0, inertCount + (on ? 1 : -1));
   if (!root) return;
+  document.getElementById('content')?.getAnimations().forEach((animation) => animation.cancel());
   root.inert = inertCount > 0;
   // Chromium can keep an animated element's inert style after the root leaves inert: on a phone the
   // work pane stayed untappable after Details closed, from its next view slide on (#151). A changed
   // inherited custom property makes every element below the root compute its style again.
-  root.style.setProperty('--app-inert', inertCount > 0 ? '1' : '0');
+  root.style.setProperty('--app-inert', inertCount > 0 ? '1' : `0-${++inertSeq}`);
 }
 
 /** Keeps a component mounted while its exit animation runs. */

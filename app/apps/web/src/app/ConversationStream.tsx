@@ -13,7 +13,7 @@ import { useShellActions } from './shellContext';
 import { listConversationRoots, listTaskNotices, observeProjectMessages, projectReceipts } from './conversation-api';
 import { QuestionCard, WhenNoQuestion } from '../agents/QuestionCard';
 import { ownRuns, useObservation, useReceiptTick, useReceipts } from './receipts';
-import { AgentAuthor, AuthorFace, ContributionMark, OPENING_REVEAL_MS, SourceCitation, MessageDay, MessageTime, sameMessageAuthor, clock, day, openOnWholeMessages, pendingMessageRow, when } from './messageParts';
+import { AgentAuthor, AuthorFace, ContributionMark, OPENING_REVEAL_MS, SourceCitation, SourceTag, MessageDay, MessageTime, sameMessageAuthor, clock, day, openOnWholeMessages, pendingMessageRow, when } from './messageParts';
 import { agentAuthorOwner, useAgentOwners, type AgentOwners } from '../agents/owners';
 import { MessageContent } from '../composer/Files';
 import { LinkPreviews, MessageText } from './MessageText';
@@ -466,14 +466,22 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
     const key = (event: KeyboardEvent) => {
       if (scrollKeys.has(event.key) && !(event.target as Element | null)?.closest?.('button, a, input, textarea, select, [contenteditable]')) person();
     };
+    const column = columnRef.current;
+    let height = column?.offsetHeight ?? 0;
+    let settleUntil = 0;
+    let settleFrame = 0;
+    let heldReading: { id: string; offset: number } | null = null;
     const record = () => {
       frame = 0;
+      const userMoved = performance.now() - personAt < 500;
+      if (!userMoved && (feed.clientWidth !== width || (!!column && column.offsetHeight !== height) || performance.now() <= settleUntil)) return;
       const { top, bottom } = feed.getBoundingClientRect();
       stickRef.current = feed.scrollHeight - feed.scrollTop - feed.clientHeight < 48;
       if (stickRef.current) setNewBelow((current) => current.messages || current.tasks ? { messages: 0, tasks: 0 } : current);
-      if (performance.now() - personAt < 500) {
+      if (userMoved) {
         const pinned = pinRef.current ? document.getElementById(pinRef.current.id)?.getBoundingClientRect() : null;
         pinRef.current = pinned && pinned.bottom > top && pinned.top < bottom ? { id: pinRef.current!.id, offset: pinned.top - top } : null;
+        heldReading = null;
       }
       anchorRef.current = null;
       for (const item of feed.querySelectorAll<HTMLElement>('.project-convo__message, .convo-notice, .convo-fold, .convo-goal')) {
@@ -484,8 +492,6 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
     const onScroll = () => { if (!frame) frame = requestAnimationFrame(record); };
     // The stream's own content also changes height: after a width change (the thread docking or becoming
     // a sheet re-renders a frame later), and when roots above or below the reader change.
-    const column = columnRef.current;
-    let height = column?.offsetHeight ?? 0;
     const observer = new ResizeObserver(() => {
       const widened = feed.clientWidth !== width;
       const grown = !!column && column.offsetHeight !== height;
@@ -495,22 +501,27 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
       // A row growing above the reader (a reply count appearing, a task chip after a refresh) must not
       // move what they read (foundation 10.5): the first root in view keeps its place, or the end stays in
       // view when they were reading the end. While a thread is open, its root keeps its place instead.
-      const reading = stickRef.current ? null : anchorRef.current;
+      const reading = stickRef.current ? null : (heldReading ?? anchorRef.current);
       const keep = widened ? pinRef.current ?? reading : openRef.current ? pinRef.current ?? reading : reading;
       if (!widened && !keep && !stickRef.current) return;
       const element = keep ? document.getElementById(keep.id) : null;
       if (element && keep) feed.scrollTop += element.getBoundingClientRect().top - feed.getBoundingClientRect().top - keep.offset;
       else if (stickRef.current) feed.scrollTop = feed.scrollHeight;
-      // The layout can still shift for a moment after a width change (a panel docking or leaving re-renders
-      // a frame later), so the opened root is held in place until it settles, unless the person scrolls.
-      if (widened && pinRef.current) { settleUntil = performance.now() + 1000; if (!settleFrame) settleFrame = requestAnimationFrame(holdPin); }
+      // The layout can still shift for a moment after a width change (a panel docking or leaving, or a
+      // breakpoint header/sidebar swap, re-renders a frame later), so the reading place is held until it settles.
+      if (widened && keep) {
+        heldReading = keep;
+        settleUntil = performance.now() + (pinRef.current ? 1000 : 120);
+        if (!settleFrame) settleFrame = requestAnimationFrame(holdPin);
+      }
     });
-    let settleUntil = 0;
-    let settleFrame = 0;
     const holdPin = () => {
       settleFrame = 0;
-      const keep = pinRef.current;
-      if (!keep || performance.now() > settleUntil || performance.now() - personAt < 500) return;
+      const keep = pinRef.current ?? heldReading;
+      if (!keep || performance.now() > settleUntil || performance.now() - personAt < 500) {
+        heldReading = null;
+        return;
+      }
       const element = document.getElementById(keep.id);
       if (element) {
         const drift = element.getBoundingClientRect().top - feed.getBoundingClientRect().top - keep.offset;
@@ -753,6 +764,7 @@ function RootItem(props: RootItemProps | QueuedRootProps) {
   return (
     <li {...touch.props} id={`message-${message.id}`} data-message-id={message.id} {...(stored.observed ? { 'data-observe-id': message.id } : {})} aria-label={mine ? 'Your message' : `${name}’s message`} tabIndex={-1} data-conversation-id={root.conversationId}
       className={`project-convo__message${mine ? ' is-mine' : ''}${arrived ? ' is-arrived' : ''}${open ? ' is-open' : ''}${stored.continued ? ' is-continued' : ''} ${touch.props.className}`}>
+      <SourceTag messageId={message.id} />
       {!mine && !stored.continued ? <AuthorFace kind={message.authorId === null ? 'agent' : 'human'} name={name} mine={mine} /> : null}
       {!mine && !stored.continued ? <div className="project-convo__message-meta">
         <strong>{mine ? `${name} · you` : message.authorId === null ? <AgentAuthor message={message} owner={agentAuthorOwner(message.author, owners)} /> : <Link className="project-convo__person" to={`/dm/new?workspace=${project.workspaceId}&with=${message.authorId}`} title={`Message ${name} directly`}>{name}</Link>}</strong>

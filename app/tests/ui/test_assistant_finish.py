@@ -350,6 +350,7 @@ class AssistantFinish(unittest.TestCase):
         """Checks the assistant's own surface: the whole page for a screen, `scope` for a part of the conversation (the rest of that page is not this slice's)."""
         source = AXE.read_bytes()
         self.assertEqual(hashlib.sha256(source).hexdigest(), AXE_SHA256, "the vendored axe is the one that was verified")
+        page.wait_for_function("() => document.getAnimations().every((a) => a.playState !== 'running' || a.effect?.getComputedTiming().endTime === Infinity)")
         page.add_script_tag(content=source.decode())
         result = page.evaluate("""async (scope) => (await axe.run(scope ? document.querySelector(scope) : document, { runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'] } }))
             .violations.map((v) => ({ id: v.id, impact: v.impact, help: v.help, nodes: v.nodes.slice(0, 3).map((n) => n.target.join(' ') + ' :: ' + n.failureSummary.split('\\n').slice(1, 3).join(' ')) }))""", scope)

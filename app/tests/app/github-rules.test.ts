@@ -3,7 +3,7 @@ import { createHmac, randomUUID } from 'node:crypto';
 import { after, before, describe, test } from 'node:test';
 import Fastify from 'fastify';
 import { createDatabase } from '@flux/db';
-import type { GithubBinding, GithubCapabilities, GithubCheck, GithubPullFacts, GithubTaskLink, GithubTaskRuleView, ReturnSummary, WorkItem } from '@flux/contracts';
+import { taskActivityPath, type GithubBinding, type GithubCapabilities, type GithubCheck, type GithubPullFacts, type GithubTaskLink, type GithubTaskRuleView, type ReturnSummary, type TaskActivityPage, type WorkItem } from '@flux/contracts';
 import { NotFoundError, type GithubProvider, type Principal } from '@flux/core';
 import { createGithubUseCases } from '../../apps/server/src/github/adapters.js';
 import { githubRoutes } from '../../apps/server/src/github/routes.js';
@@ -180,6 +180,16 @@ describe('linked PRs move the same Flux task (#74 G-1a)', () => {
     assert.equal(automated.length, 4, 'every rule-caused change is marked as automation');
     assert.ok(automated.every((row) => row.actor_id === `human:${owner.id}`), 'on behalf of the person who set it up');
     assert.equal(events.rows[0].data.automation, undefined, 'turning the rule on is the person\'s own action');
+    // The task's activity (#488) keeps the same four moves as the rule's doing on its author's behalf, never as their own action.
+    const feed = expectStatus(await viewer.browser.request('GET', taskActivityPath(task.id)), 200) as TaskActivityPage;
+    assert.deepEqual(feed.items.map((entry) => [entry.kind, entry.status?.from, entry.status?.to, entry.automation, entry.actor.id]), [
+      ['status', 'in_progress', 'done', 'github_rule', owner.id], ['status', 'blocked', 'in_progress', 'github_rule', owner.id],
+      ['status', 'in_progress', 'blocked', 'github_rule', owner.id], ['status', 'open', 'in_progress', 'github_rule', owner.id]]);
+    assert.equal(feed.items[2]!.status?.blocker, 'Check “firmware / test” failed on PR #42');
+    // A person's own change afterwards is theirs, with no automation mark.
+    await patch(owner, await work(owner, task), { status: 'in_progress' });
+    const own = expectStatus(await viewer.browser.request('GET', taskActivityPath(task.id)), 200) as TaskActivityPage;
+    assert.deepEqual([own.items.length, own.items[0]!.actor.id, own.items[0]!.automation, own.items[0]!.status?.to], [5, owner.id, undefined, 'in_progress']);
   });
 
   test('Ready to close, two required PRs across repositories, closed unmerged and related-only links', async () => {

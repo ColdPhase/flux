@@ -197,7 +197,7 @@ class AgentThreadJourney(unittest.TestCase):
         thread = phone.get_by_role("region", name=THREAD)
         expect(thread).to_be_visible()
         expect(phone.get_by_label("Write to the agents")).to_be_visible()
-        expect(phone.get_by_role("list", name="Agents in this project")).to_be_hidden()
+        expect(phone.locator("[data-detent-sheet]")).to_be_visible()
         self.assertLessEqual(phone.evaluate("() => document.documentElement.scrollWidth - document.documentElement.clientWidth"), 0, "no horizontal scroll at 390px")
         shot(phone, "agent-thread-phone-390")
         dark = self.page("hubert", dark=True)
@@ -210,6 +210,7 @@ class AgentThreadJourney(unittest.TestCase):
         shot(dark_phone, "agent-thread-phone-dark-390")
         # Closing the sheet returns to the agents list.
         phone.get_by_role("button", name="Close thread").tap()
+        expect(phone.locator("[data-detent-sheet]")).to_have_count(0)
         expect(phone.get_by_role("list", name="Agents in this project")).to_be_visible()
 
     def test_08_an_agents_reply_appears_in_the_thread_and_on_its_now_card(self) -> None:

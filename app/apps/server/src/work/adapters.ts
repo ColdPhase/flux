@@ -14,6 +14,8 @@ import {
 import { taskDiscussionInEventSession, taskDiscussionPorts } from './task-discussions.js';
 import { transactionEventSession, type TransactionEventSession } from './transaction-events.js';
 import { policyWorkAccess } from './access.js';
+import { projectAuthorOwners } from '../conversation/author-owners.js';
+import type { AgentProjectOwner } from '@flux/contracts';
 export { policyWorkAccess } from './access.js';
 
 // Adapters that connect the core work use cases (#101) to the access policy, the Drizzle rows
@@ -34,6 +36,13 @@ export function workRepository(tx: DbExecutor): WorkRepository {
     },
     async listAssignedVisible(principal, workspaceId, owner, page) {
       return rows.listAssigned(workspaceId, owner, await visibleFilter(principal, workspaceId, 'project', tx), page);
+    },
+    /** The task detail's rule for an agent's owner (#339 AC-2), in the bounded groups the helper accepts (#488 activity). */
+    async agentOwners(projectId, workspaceId, agentIds) {
+      const owners = new Map<string, AgentProjectOwner>();
+      for (let from = 0; from < agentIds.length; from += 100)
+        for (const [id, owner] of await projectAuthorOwners(tx, projectId, workspaceId, agentIds.slice(from, from + 100))) owners.set(id, owner);
+      return owners;
     },
   };
 }

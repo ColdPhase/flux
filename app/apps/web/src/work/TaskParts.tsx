@@ -1,20 +1,12 @@
-import { useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent, type ReactNode } from 'react';
-import { createPortal } from 'react-dom';
+import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import type { WorkStatus } from '@flux/contracts';
 import { WORK_STATUSES } from '@flux/contracts';
-import { Icon, MEDIA, StatusGlyph, useMediaQuery } from '../ui';
-import { PANEL_META_ID } from '../ui/SidePanel';
+import { StatusGlyph } from '../ui';
 import { STATUS_LABEL } from './format';
+import { PropertyMenu } from './PropertyMenu';
 
 // The parts of the task panel that are edited where they are read (F-026 S9, S10): the state with
 // keys 1-5, and the title. Neither has a Save button; both save when the person is done.
-
-/** Puts a short piece of text, the task's number, in the detail panel's head beside its kind chip. */
-const noSubscription = () => () => {};
-export function PanelMeta({ children }: { children: ReactNode }) {
-  const target = useSyncExternalStore(noSubscription, () => document.getElementById(PANEL_META_ID), () => null);
-  return target ? createPortal(children, target) : null;
-}
 
 /** The digits `1`-`5` pick a state while the panel is open and nothing is being typed. */
 export function useStateKeys(enabled: boolean, choose: (status: WorkStatus) => void) {
@@ -39,75 +31,54 @@ export function useStateKeys(enabled: boolean, choose: (status: WorkStatus) => v
 }
 
 /**
- * The task's state: on a phone five pills, on a computer one button that opens the five states with
- * their keys. Choosing changes it at once; the panel offers Undo.
+ * The task's state: one row whose value opens the five states with their keys, on a computer and on a phone alike.
+ * Choosing changes it at once; the panel offers Undo.
  */
 export function StatusControl({ status, disabled, onChoose }: { status: WorkStatus; disabled?: boolean; onChoose: (status: WorkStatus) => void }) {
-  const phone = useMediaQuery(MEDIA.phone);
-  return phone ? <StatusPills status={status} disabled={disabled} onChoose={onChoose} /> : <StatusMenu status={status} disabled={disabled} onChoose={onChoose} />;
-}
-
-function StatusPills({ status, disabled, onChoose }: { status: WorkStatus; disabled?: boolean; onChoose: (status: WorkStatus) => void }) {
+  const options = WORK_STATUSES.map((value, index) => ({ value, label: STATUS_LABEL[value], key: String(index + 1), icon: <StatusGlyph status={value} size={16} /> }));
   return (
-    <div className="wd-pills" role="radiogroup" aria-label="Status">
-      {WORK_STATUSES.map((value) => (
-        <button key={value} type="button" role="radio" aria-checked={value === status} disabled={disabled} className="wd-pill" onClick={() => { if (value !== status) onChoose(value); }}>
-          <StatusGlyph status={value} size={18} /><span>{STATUS_LABEL[value]}</span>
-        </button>
-      ))}
-    </div>
+    <PropertyMenu label="Status" value={status} options={options} disabled={disabled} onChoose={(value) => onChoose(value as WorkStatus)}>
+      <StatusGlyph status={status} size={16} /><span>{STATUS_LABEL[status]}</span>
+    </PropertyMenu>
   );
 }
 
-function StatusMenu({ status, disabled, onChoose }: { status: WorkStatus; disabled?: boolean; onChoose: (status: WorkStatus) => void }) {
-  const [open, setOpen] = useState(false);
-  const [active, setActive] = useState(0);
-  const root = useRef<HTMLDivElement>(null);
-  const button = useRef<HTMLButtonElement>(null);
-  const items = useRef<(HTMLButtonElement | null)[]>([]);
-  const menuId = useId();
+const dueFormat = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+/** A calendar day (`YYYY-MM-DD`) as people read it, with no time zone shift. */
+export const dueLabel = (day: string) => dueFormat.format(new Date(Number(day.slice(0, 4)), Number(day.slice(5, 7)) - 1, Number(day.slice(8, 10))));
+const todayKey = () => { const now = new Date(); return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`; };
 
-  useEffect(() => {
-    if (!open) return;
-    const away = (event: PointerEvent) => { if (!root.current?.contains(event.target as Node)) setOpen(false); };
-    document.addEventListener('pointerdown', away);
-    return () => document.removeEventListener('pointerdown', away);
-  }, [open]);
-  useEffect(() => { if (open) items.current[active]?.focus({ preventScroll: true }); }, [open, active]);
-
-  const choose = (value: WorkStatus) => {
-    setOpen(false);
-    button.current?.focus({ preventScroll: true });
-    if (value !== status) onChoose(value);
-  };
-  const openMenu = () => { setActive(Math.max(0, WORK_STATUSES.indexOf(status))); setOpen(true); };
-  const onMenuKey = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (event.key === 'Escape') { event.stopPropagation(); event.preventDefault(); setOpen(false); button.current?.focus({ preventScroll: true }); return; }
-    if (event.key === 'ArrowDown') { event.preventDefault(); setActive((value) => (value + 1) % WORK_STATUSES.length); return; }
-    if (event.key === 'ArrowUp') { event.preventDefault(); setActive((value) => (value + WORK_STATUSES.length - 1) % WORK_STATUSES.length); return; }
-    if (event.key === 'Tab') { setOpen(false); return; }
-    const digit = Number(event.key);
-    if (digit >= 1 && digit <= WORK_STATUSES.length) { event.preventDefault(); event.stopPropagation(); choose(WORK_STATUSES[digit - 1]!); }
-  };
-
-  return (
-    <div className="wd-menu" ref={root}>
-      <button ref={button} type="button" className="wd-state" aria-label="Status" aria-haspopup="menu" aria-expanded={open} aria-controls={open ? menuId : undefined} disabled={disabled}
-        onClick={() => (open ? setOpen(false) : openMenu())}
-        onKeyDown={(event) => { if (event.key === 'ArrowDown') { event.preventDefault(); openMenu(); } }}>
-        <StatusGlyph status={status} size={16} /><span>{STATUS_LABEL[status]}</span><Icon name="chevron-down" size={14} className="wd-state__go" />
+/**
+ * The due day, edited where it is read: "Add a date" or the day, a click opens the browser's own date field, choosing
+ * saves at once and Clear takes it away. Past its day and not finished, the word says so.
+ */
+export function DueField({ value, editable, finished, disabled, onSave }: { value: string | null; editable: boolean; finished: boolean; disabled?: boolean; onSave: (day: string | null) => Promise<boolean> }) {
+  const [editing, setEditing] = useState(false);
+  const field = useRef<HTMLInputElement>(null);
+  const opener = useRef<HTMLButtonElement>(null);
+  useLayoutEffect(() => {
+    if (!editing) return;
+    field.current?.focus({ preventScroll: true });
+    try { field.current?.showPicker?.(); } catch { /* The field is still there to type in. */ }
+  }, [editing]);
+  const leave = () => { setEditing(false); requestAnimationFrame(() => opener.current?.focus({ preventScroll: true })); };
+  const late = !!value && !finished && value < todayKey();
+  const text = value ? dueLabel(value) : 'Add a date';
+  if (!editable) return <span className="wd-value">{value ? <>{text}{late ? <span className="wd-muted"> · overdue</span> : null}</> : <span className="wd-muted">No date</span>}</span>;
+  if (!editing) {
+    return (
+      <button ref={opener} type="button" className="wd-state wd-due" aria-label={value ? `Due ${text}` : 'Due, add a date'} disabled={disabled} onClick={() => setEditing(true)}>
+        <span className={value ? undefined : 'wd-muted'}>{text}</span>{late ? <span className="wd-muted"> · overdue</span> : null}
       </button>
-      {open ? (
-        <div className="wd-menu__list" role="menu" id={menuId} aria-label="Status" onKeyDown={onMenuKey}>
-          {WORK_STATUSES.map((value, index) => (
-            <button key={value} ref={(node) => { items.current[index] = node; }} type="button" role="menuitemradio" aria-checked={value === status} tabIndex={index === active ? 0 : -1}
-              className="wd-menu__item" onClick={() => choose(value)} onMouseMove={() => setActive(index)}>
-              <StatusGlyph status={value} size={16} /><span>{STATUS_LABEL[value]}</span><kbd>{index + 1}</kbd>
-            </button>
-          ))}
-        </div>
-      ) : null}
-    </div>
+    );
+  }
+  return (
+    <span className="wd-due-edit" onKeyDown={(event) => { if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); leave(); } }}>
+      <input ref={field} type="date" className="wd-due-edit__field" aria-label="Due date" value={value ?? ''} min="1970-01-01" max="9999-12-31"
+        onChange={(event) => { const next = event.target.value; if (next && next !== value) void onSave(next).then((ok) => { if (ok) leave(); }); }} />
+      {value ? <button type="button" className="wd-due-edit__clear" onClick={() => void onSave(null).then((ok) => { if (ok) leave(); })}>Clear</button> : null}
+      <button type="button" className="wd-due-edit__clear" onClick={leave}>Cancel</button>
+    </span>
   );
 }
 
