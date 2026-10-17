@@ -105,7 +105,7 @@ function ToastItem({ toast, onDone, registerAction }: { toast: ToastEntry; onDon
       {toast.action && !leaving && !toast.leaving ? (
         <>
           <span className="ui-toast__sep" aria-hidden="true" />
-          <button type="button" className="ui-toast__action" onClick={act} aria-keyshortcuts={toast.action.key}>
+          <button type="button" className="ui-toast__action" onClick={act} aria-keyshortcuts={toast.action.key} title={toast.action.key ? `${toast.action.label} (${toast.action.key})` : undefined}>
             {toast.action.label}{toast.action.key ? <kbd aria-hidden="true">{toast.action.key}</kbd> : null}
           </button>
         </>
@@ -155,7 +155,7 @@ export function ToastProvider({ children, scopeKey }: { children: ReactNode; sco
     const onKey = (event: globalThis.KeyboardEvent) => {
       if (event.key.toLowerCase() !== 'z' || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey || event.defaultPrevented || event.repeat) return;
       const target = event.target as HTMLElement | null;
-      if (target?.closest('input, textarea, select, [contenteditable="true"], [role="textbox"]')) return;
+      if (target?.closest('input, textarea, select, [contenteditable="true"], [role="textbox"], [role="menu"]')) return;
       const newest = [...actions.current.keys()].sort((a, b) => b - a)[0];
       if (newest === undefined) return;
       event.preventDefault();

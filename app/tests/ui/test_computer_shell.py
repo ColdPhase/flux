@@ -198,6 +198,30 @@ class ComputerShell(unittest.TestCase):
         expect(field).to_have_value("rt")
         expect(page.get_by_role("dialog", name="New task")).to_have_count(0)
 
+    def test_05c_z_undoes_the_newest_visible_undo_toast_and_does_nothing_without_one(self) -> None:
+        self.ensure_account()
+        page = self.page()
+        page.goto(f"/projects/{self.ids['projects'][0]}/tasks")
+        expect(self.sidebar(page).get_by_role("button", name=re.compile("^New"))).to_be_visible()
+        page.locator("body").press("c")
+        window = page.get_by_role("dialog", name="New task")
+        expect(window.get_by_label("Title", exact=True)).to_be_focused()
+        window.get_by_label("Title", exact=True).fill("Order the soil probes")
+        window.get_by_role("button", name=re.compile("^Create task")).click()
+        expect(window).to_have_count(0)
+        page.locator("body").press("z")
+        expect(page.locator(".ui-toast").filter(has_text="back to")).to_have_count(0)
+        row = page.get_by_role("button", name=re.compile("Order the soil probes")).first
+        row.focus()
+        page.keyboard.press("4")
+        toast = page.locator(".ui-toast").filter(has_text="done")
+        expect(toast).to_be_visible()
+        undo = toast.get_by_role("button", name=re.compile("^Undo"))
+        expect(undo).to_have_attribute("aria-keyshortcuts", re.compile("^[zZ]$"))
+        expect(undo).to_have_attribute("title", "Undo (Z)")
+        page.keyboard.press("z")
+        expect(page.locator(".ui-toast").filter(has_text="back to open")).to_be_visible()
+
 
 if __name__ == "__main__":
     unittest.main()
