@@ -39,7 +39,11 @@ the [thread reading-position owner](thread-reading-position-2026-10-16.md), whic
    restoring puts the message back at the same offset even when new messages arrived), `useWorkReadingPosition` for
    the Tasks board and list, and one generic `.pane-scroll` tracker in the shell for Search, the Inbox, a wiki page and
    the pages that read. Panels keep their own body scroll. An anchor that is gone (a deleted message) falls back to
-   the screen's usual opening, never an error.
+   the screen's usual opening, never an error. When the thread's width changes (docking beside the stream, becoming a
+   sheet, a window resize) the same owner puts the settled anchor back, never the scroll offset, and keeps it for 1.5 s
+   or until the reader's own input (wheel, touch, scroll keys, the scroll bar, focus moving into the feed): the scroll
+   such a change causes, a pointer-aimed message, and what the layout does while the next screen loads after a
+   reference was followed are layout, not the reader, and are never recorded as the place.
 6. **A panel object's way back is the same control.** An object opened in Details from a page leads back to that page
    ("‹ Conversation", "‹ Thread", "‹ #12 Order sensors"); an object opened from another object leads back to it and
    restores its scroll. The panel's head carries it (`SidePanel.headerStart`), including on the phone's sheet. The
