@@ -33,7 +33,7 @@ export interface CoworkPlaybook {
 
 const playbook: CoworkPlaybook = {
   bundleId: 'flux.cowork',
-  version: '1.5.0',
+  version: '1.6.0',
   toolContractVersion: 1,
   startPayload: `Start my authorized Flux work in the bound project. Load this playbook and the authenticated bootstrap first. \
 Understand the project's current plan, wiki, relevant conversations, decisions and existing tasks before planning or creating more \
