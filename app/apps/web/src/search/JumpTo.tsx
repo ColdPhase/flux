@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
 import { useLocation, useNavigate } from 'react-router';
 import type { Agent, SearchResult } from '@flux/contracts';
+import { getAssistantStatus } from '../assistant/api';
 import { useShellData } from '../app/data';
 import { useShellActions } from '../app/shellContext';
 import { Button, Icon, Kreska, MEDIA, Overlay, Spinner, useMediaQuery, type IconName } from '../ui';
@@ -128,9 +129,21 @@ function JumpBody({ onClose, userId, phone }: { onClose: () => void; userId: str
   useEffect(() => { inputRef.current?.focus(); }, []);
 
   const shown = state.status === 'ready' ? state.items : state.status === 'loading' ? state.previous?.items ?? [] : [];
+  // "Ask my assistant…" (F-027 AST-10.10): where an ask can be answered (a thread of a project conversation) and the assistant is ready.
+  const inThread = /^\/projects\/[^/]+\/conversations\/[^/]+/.test(location.pathname);
+  const [assistantReady, setAssistantReady] = useState(false);
+  useEffect(() => {
+    if (!inThread) return undefined;
+    const controller = new AbortController();
+    getAssistantStatus(controller.signal).then((status) => setAssistantReady(status.state === 'ready'), () => undefined);
+    return () => controller.abort();
+  }, [inThread]);
+  const askMine: Option[] = inThread && assistantReady ? [{ kind: 'command', section: 'Actions', id: 'action-ask-assistant', label: 'Ask my assistant…', icon: 'spark',
+    run: () => navigate({ pathname: location.pathname, search: '?ask=1' }) }] : [];
   const mapHref = here ? `/projects/${here}/map` : '/map';
   const create = (rest ? `New task “${rest.length > 40 ? `${rest.slice(0, 39)}…` : rest}”` : 'New task');
   const actions: Option[] = scope !== 'all' ? [] : [
+    ...(rest && 'ask my assistant'.includes(rest.toLowerCase()) ? askMine : []),
     { kind: 'command', section: 'Create', id: 'create-task', label: create, icon: 'plus', keys: ['C'], run: () => openCreate({ kind: 'task', ...(here ? { projectId: here } : {}), ...(rest ? { title: rest } : {}) }) },
     { kind: 'command', section: 'Create', id: 'create-thought', label: 'New thought on the Map', icon: 'edit', run: () => navigate(mapHref) },
     ...(here ? [{ kind: 'command' as const, section: 'Create', id: 'create-decision', label: 'Propose a decision', icon: 'rule' as const, run: () => openDetails({ kind: 'propose-decision', projectId: here }) }] : []),
@@ -154,6 +167,7 @@ function JumpBody({ onClose, userId, phone }: { onClose: () => void; userId: str
   const emptyOptions: Option[] = [
     ...places.map(({ place, label, side, icon }): Option => ({ kind: 'place', id: `place-${place.key}`, place, label, side, icon })),
     { kind: 'command', section: 'Actions', id: 'action-new-task', label: 'New task', icon: 'plus', keys: ['C'], run: () => openCreate({ kind: 'task', ...(here ? { projectId: here } : {}) }) },
+    ...askMine,
     { kind: 'command', section: 'Actions', id: 'action-inbox', label: 'Go to Inbox', icon: 'inbox', keys: ['G', 'I'], run: () => navigate('/inbox') },
     ...(phone ? [] : [
       { kind: 'command' as const, section: 'Actions', id: 'action-focus', label: 'Focus mode', icon: 'focus' as const, keys: ['F'], run: toggleFocus },

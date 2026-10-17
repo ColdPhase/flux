@@ -103,6 +103,31 @@ export function patchAssistantAreas(policy: AgentMcpPolicy, changes: Partial<Ass
   return { enabledCapabilityIds: [...capabilities].sort(), enabledEntryIds: [...entries].sort() };
 }
 
+/**
+ * The one "Can" sentence (F-027 AST-10 Journey 3): the assistant screen, its panel, the hand-off picker and the
+ * agent page all print this text, generated from the same switches, so it can never disagree with them.
+ */
+export function assistantCanSentence(areas: Readonly<AssistantAreas>, approvalMode: 'act' | 'ask' = 'act'): string {
+  const named = (ids: AssistantAreaId[], mode: AssistantAreaMode) => ids.filter((id) => areas[id] === mode);
+  const words = { tasks: 'tasks', wiki: 'the Wiki', maps: 'maps' } as const;
+  const join = (items: string[]) => items.length < 2 ? items.join('') : `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`;
+  const parts: string[] = [];
+  const edits = named(['tasks', 'wiki', 'maps'], 'edit').map((id) => words[id as keyof typeof words]);
+  const reads = named(['tasks', 'wiki', 'maps'], 'read').map((id) => words[id as keyof typeof words]);
+  if (edits.length) parts.push(`read and edit ${join(edits)}`);
+  if (reads.length) parts.push(`read ${join(reads)}`);
+  if (areas.conversations === 'edit') parts.push('reply in conversations');
+  else if (areas.conversations === 'read') parts.push('read conversations');
+  if (areas.decisions === 'edit') parts.push('suggest decisions');
+  else if (areas.decisions === 'read') parts.push('read decisions');
+  if (!parts.length) return "Can't do anything yet. Every switch is off.";
+  const head = parts.join(', ');
+  const ask = approvalMode === 'ask'
+    ? 'Asks before changing anything.'
+    : 'Asks before removing anything or changing things other people made or are responsible for.';
+  return `${head[0]!.toUpperCase()}${head.slice(1)}. ${ask} Can't accept decisions or invite people.`;
+}
+
 export interface AssistantSettings {
   workspaceId: string; ownerUserId: string; agentId: string; connectionId: string;
   approvalMode: 'act' | 'ask'; changesPerRun: number; backgroundRunsPerDay: number;

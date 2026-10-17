@@ -4,6 +4,7 @@ import { aiConnectionLabel, type AssistantAnswer, type AssistantProposal, type A
 import { ApiError } from '../api/client';
 import { AgentTag, Button, Icon, IconButton, Kreska, useLoopPause, type KreskaExpression } from '../ui';
 import { useSmallMoments } from '../app/smallMoments';
+import { AssistantPanel, companyName } from './AssistantPanel';
 import { useShellActions } from '../app/shellContext';
 import { canRetry, endedText, isWorking, onRuntime, workingText, type AskState } from './format';
 import { agentAuthorLabel } from '../docs/format';
@@ -151,6 +152,7 @@ export function AnswerItem({ answer, mine, lookups, when, clock, proposal, propo
   onAskAbout: (() => void) | null;
 }) {
   const [busy, setBusy] = useState<'' | 'retry' | 'continue'>('');
+  const [panel, setPanel] = useState(false);
   const [failed, setFailed] = useState('');
   const act = async (kind: 'retry' | 'continue', action: () => Promise<void>) => {
     setBusy(kind); setFailed('');
@@ -161,9 +163,9 @@ export function AnswerItem({ answer, mine, lookups, when, clock, proposal, propo
     <li id={`answer-${answer.runId}`} tabIndex={-1} className="project-convo__message assistant-answer" data-answer-run={answer.runId}>
       <AssistantAvatar />
       <div className="project-convo__message-meta">
-        <strong>{answer.assistant.label}</strong>
+        <button type="button" className="assistant-answer__who" aria-haspopup="dialog" onClick={() => setPanel(true)}><strong>{answer.assistant.label}</strong></button>
         <AgentTag />
-        <span className="assistant-answer__asked">asked by {mine ? 'you' : answer.askedBy.name}</span>
+        <span className="assistant-answer__asked">for {mine ? 'you' : answer.askedBy.name} · {companyName(answer.provenance.provider)} · asked by {mine ? 'you' : answer.askedBy.name}</span>
         <time dateTime={answer.committedAt} title={when(answer.committedAt)}>{clock(answer.committedAt)}</time>
       </div>
       <p className="assistant-answer__request">“{answer.request.prompt}”</p>
@@ -179,6 +181,8 @@ export function AnswerItem({ answer, mine, lookups, when, clock, proposal, propo
         </> : onAskAbout ? <Button variant="link" onClick={onAskAbout}>Ask my assistant about this</Button> : null}
       </div>
       {failed ? <p className="assistant-answer__error" role="alert">{failed}</p> : null}
+      <AssistantPanel open={panel} onClose={() => setPanel(false)} name={answer.assistant.label} mine={mine} ownerName={answer.askedBy.name} provider={answer.provenance.provider}
+        userId={answer.assistant.ownerUserId} onMessage={onAskAbout} />
     </li>
   );
 }

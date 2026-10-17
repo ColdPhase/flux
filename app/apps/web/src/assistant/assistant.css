@@ -110,3 +110,28 @@
 @media (pointer: coarse) { .aset__field select, .aset__agent select { min-height: 44px; } .aset__consent input { width: 20px; height: 20px; } }
 /* Phones show no avatars; the name row already says it is an assistant, so its mark gives way too
    instead of covering the quoted request. */
+
+/* The assistant screen (A7): the Settings card pattern, nothing new. */
+.aset-screen__head { margin-bottom: 18px; }
+.aset-screen__head h2 { font-size: var(--fs-md); margin: 0; }
+.aset-screen__change { display: inline-flex; align-items: center; gap: 2px; min-height: 44px; padding: 0 4px; }
+.aset-screen__h { margin: 18px 0 8px; font-size: var(--fs-sm); font-weight: 600; color: var(--t2); }
+.aset-screen__seg { margin: 8px 0; align-self: flex-start; width: fit-content; max-width: 100%; }
+.aset-screen__seg .seg__b { min-height: 44px; }
+.aset-screen__can { margin: 10px 2px 18px; }
+.aset__more { margin-top: 18px; }
+.aset__more > summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; font-size: var(--fs-sm); font-weight: 600; color: var(--t2); }
+
+/* The assistant's panel: a dialog on the computer, a sheet on the phone; Settings tokens only. */
+.aset-panel__in { display: grid; gap: 14px; padding: 18px; width: min(440px, 100%); }
+.aset-panel__head { display: flex; align-items: center; gap: 10px; }
+.aset-panel__head > div { flex: 1; min-width: 0; }
+.aset-panel__sub { display: block; font-size: var(--fs-xs); color: var(--t3); }
+.aset-panel__in h3 { margin: 0 0 4px; font-size: var(--fs-xs); font-weight: 600; color: var(--t3); }
+.aset-panel__in p, .aset-panel__recent { margin: 0; font-size: var(--fs-sm); color: var(--t1); line-height: 1.5; overflow-wrap: anywhere; }
+.aset-panel__recent { padding: 0; list-style: none; display: grid; gap: 4px; }
+.aset-panel__foot { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.aset-panel__foot .ui-btn, .aset-panel__foot .ui-link { min-height: 44px; display: inline-flex; align-items: center; }
+.assistant-answer__who { all: unset; cursor: pointer; font-weight: 600; min-height: 24px; }
+.assistant-answer__who:hover { text-decoration: underline; }
+.assistant-answer__who:focus-visible { outline: 2px solid var(--focus, currentColor); outline-offset: 2px; }
