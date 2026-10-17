@@ -126,7 +126,7 @@ export function coworkUnitRows(tx: DbExecutor) {
               AND checkpoint.generation = ${target.generation} AND checkpoint.runtime_session_id = ${command.runtimeSessionId}
           )` : sql`true`;
           const [saved] = await tx.update(units).set({ state: next.state, generation: next.generation, version: next.version,
-            checkpointId: next.checkpointId, leaseId: next.lease?.id ?? null,
+            checkpointId: next.checkpointId, transferredFromConnectionId: null, leaseId: next.lease?.id ?? null,
             leaseSessionId: next.lease?.runtimeSessionId ?? null,
             leaseExpiresAt: operation === 'release' ? null : sql`clock_timestamp() + (${command.leaseSeconds} * interval '1 second')`,
             updatedAt: sql`clock_timestamp()` }).where(and(base, fence, checkpointFence)).returning();

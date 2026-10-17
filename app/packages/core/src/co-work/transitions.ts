@@ -13,7 +13,9 @@ export interface CoWorkHolderFence { expectedVersion: number; generation: number
  */
 export type CoWorkUnitTransitionInput =
   | (CoWorkHolderFence & { operation: 'complete'; outcome: CoWorkSourceRef })
-  | (CoWorkHolderFence & { operation: 'transfer'; assignmentConnectionId: string });
+  | (CoWorkHolderFence & { operation: 'transfer'; assignmentConnectionId: string })
+  /** The receiving assignee's refusal of a still-pending transferred unit; it needs no claim, only the unit version. */
+  | { operation: 'decline'; expectedVersion: number };
 /** Server-owned policy; never read from a payload, peer message or client metadata. */
 export interface CoWorkUnitTransitionPolicy { reviewSeparation: CoWorkReviewSeparation }
 export interface CoWorkTransitionUnit {
@@ -25,6 +27,8 @@ export interface CoWorkTransitionUnit {
   role: CoWorkRole;
   assignmentConnectionId: string;
   state: 'pending' | 'claimed' | 'paused' | 'completed' | 'stopped';
+  /** The connection that handed this still-pending unit over, if any. */
+  transferredFromConnectionId?: string | null;
   version: number;
   generation: number;
   lease: CoWorkLease | null;
@@ -65,7 +69,8 @@ function fence(value: Record<string, unknown>): CoWorkHolderFence {
  * Strict payloads: copied prompts, lineage/run/state fields, budgets or authority fields are refused before any write.
  * An outcome is one exact native reference; a GitHub reference stays unavailable until #74's verified recipient adapter.
  */
-export function normalizeCoWorkUnitTransition(operation: 'complete' | 'transfer', payload: unknown): CoWorkUnitTransitionInput {
+export function normalizeCoWorkUnitTransition(operation: 'complete' | 'transfer' | 'decline', payload: unknown): CoWorkUnitTransitionInput {
+  if (operation === 'decline') return { operation, expectedVersion: positive(exactly(payload, ['expectedVersion']).expectedVersion) };
   if (operation === 'complete') {
     const value = exactly(payload, ['expectedVersion', 'generation', 'leaseId', 'outcome']);
     const outcome = ((): CoWorkSourceRef => {
@@ -106,6 +111,19 @@ export function requireCoWorkUnitTransition(context: CoWorkContext, facts: CoWor
   if (unit.version !== input.expectedVersion)
     throw new ConflictError('The unit changed; recover current state', 'COWORK_VERSION_CONFLICT');
   if (unit.state === 'stopped') throw stoppedError();
+  if (input.operation === 'decline') {
+    // Only a unit that was handed over and not yet claimed can be declined; after a claim the receiver owns it.
+    if (unit.state !== 'pending' || !unit.transferredFromConnectionId)
+      throw new ConflictError('Only a transferred unit you have not claimed can be declined', 'COWORK_DECLINE_REFUSED');
+    if (facts.openRequests > 0)
+      throw new ConflictError('Resolve or decline the requests addressed to this unit first', 'COWORK_UNIT_REQUESTS_OPEN');
+    if (!facts.assignee || facts.assignee.id !== unit.transferredFromConnectionId)
+      throw new NotFoundError('Unit assignee', 'COWORK_ASSIGNEE_UNAVAILABLE');
+    // The prior assignee may have become the run's author while the unit was away: the same rule as a transfer applies.
+    if (!separated(unit, facts.assignee, facts, policy.reviewSeparation))
+      throw new ConflictError('An author cannot be its own reviewer in this run', 'COWORK_REVIEW_SEPARATION');
+    return unit;
+  }
   if (unit.state !== 'claimed' || unit.generation !== input.generation || !unit.lease || unit.lease.id !== input.leaseId
     || unit.lease.runtimeSessionId !== context.runtimeSessionId || !(unit.lease.expiresAt.getTime() > now.getTime()))
     throw new ConflictError('The claim is no longer live; recover before continuing', 'COWORK_CLAIM_LOST');

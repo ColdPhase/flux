@@ -13,6 +13,6 @@ export const coWorkGrantTargetInTransaction: NonNullable<AgentGrantDomainChecks[
       return !!await agentProjectObjectRows(tx).scopeOf('work', command.objectId,
         { workspaceId: within.workspaceId, projectId: within.projectId });
     return ['cowork.claim', 'cowork.renew', 'cowork.release', 'cowork.request', 'cowork.request.claim', 'cowork.request.respond',
-      'cowork.unit.complete', 'cowork.unit.transfer'].includes(command.operation)
+      'cowork.unit.complete', 'cowork.unit.transfer', 'cowork.unit.decline'].includes(command.operation)
       && await coworkUnitRows(tx).grantTarget({ ...within, unitId: command.objectId }, command.peerRequestClass);
   };

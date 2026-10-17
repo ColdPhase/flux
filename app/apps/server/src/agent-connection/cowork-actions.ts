@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { AGENT_OPERATION_CLASSES, AGENT_PEER_REQUEST_CLASSES, type AgentExecutionCommand, type AgentJsonValue,
   type AgentOperation, type AgentPeerRequestClass } from '@flux/contracts';
-import { COWORK_CHECKPOINT_LIMITS, COWORK_DECLINE_REASONS, type Database } from '@flux/core';
+import { COWORK_CHECKPOINT_LIMITS, COWORK_DECLINE_REASONS, COWORK_DEFER_BOUNDARIES, COWORK_DEFER_REASONS, type Database } from '@flux/core';
 import { coWorkClaimCheckpoint, coWorkClaimInTransaction } from '../co-work/claims.js';
 import { COWORK_CLAIM_POLICY, COWORK_REQUEST_POLICY, COWORK_RESPONSE_POLICY, COWORK_UNIT_POLICY } from '../co-work/policy.js';
 import { coWorkRecovery } from '../co-work/recovery.js';
@@ -154,6 +154,34 @@ export function registerAgentCoworkActions(tools: AgentToolRegistry, db: Databas
   }, ({ unitId, expectedVersion, generation, leaseId, assignmentConnectionId, ...input }) => run(() => db.transaction((tx) =>
     coWorkUnitTransitionInTransaction(tx, claims, command(input, 'cowork.unit.transfer', unitId,
       { expectedVersion, generation, leaseId, assignmentConnectionId }), COWORK_UNIT_POLICY))));
+
+  register('cowork.unit.decline').registerTool('flux_decline_unit', {
+    title: 'Hand a unit transferred to you back to the connection that sent it, under a standing grant',
+    description: 'Refuse a unit another connection transferred to you, before you claimed it and so before any artifact of yours '
+      + 'exists. It returns paused to the connection that handed it over, with its last checkpoint and instruction untouched, '
+      + 'and it can claim it again. Only the latest transfer can be declined, and only while you have not claimed the unit '
+      + '(COWORK_DECLINE_REFUSED); open requests on the unit refuse it (COWORK_UNIT_REQUESTS_OPEN). Authorship of anything '
+      + 'already completed never changes. Needs a live cowork.unit.decline grant whose class is the unit\'s role.',
+    inputSchema: z.strictObject({ ...execution, unitId: unitFence.unitId, expectedVersion: unitFence.expectedVersion }), annotations,
+  }, ({ unitId, expectedVersion, ...input }) => run(() => db.transaction((tx) =>
+    coWorkUnitTransitionInTransaction(tx, claims, command(input, 'cowork.unit.decline', unitId, { expectedVersion }), COWORK_UNIT_POLICY))));
+
+  register('cowork.request.respond').registerTool('flux_defer_request', {
+    title: 'Put a queued request off to a safe checkpoint, with a reason, under a standing grant',
+    description: 'Say honestly why you cannot take a queued request now and when you will: a reason (busy, dependency, offline, '
+      + 'capability, policy) and the safe boundary it returns at (after_step, after_tests, after_release, on_dependency, '
+      + 'on_resume, on_capability). A dependency reason or boundary names the exact record you wait for. It needs no claim on '
+      + 'your unit, so a busy connection never has to take a request to defer it, and nothing interrupts current work. The '
+      + 'sender and the task\'s people see it as deferred with that reason; it stays in your inbox and can be claimed later or '
+      + 'deferred again. Claimed requests are answered, declined or released instead. Needs a live cowork.request.respond grant '
+      + 'whose class is your unit\'s role.',
+    inputSchema: z.strictObject({ ...execution, unitId: id.describe('Your own unit the request is addressed to.'),
+      requestId: id, expectedRequestVersion: version.describe('The request version you last read.'),
+      reason: z.enum(COWORK_DEFER_REASONS), nextBoundary: z.enum(COWORK_DEFER_BOUNDARIES),
+      dependencyRef: outcomeRef.nullable().default(null).describe('The exact record you wait for; required for dependency.') }), annotations,
+  }, ({ unitId, requestId, expectedRequestVersion, reason, nextBoundary, dependencyRef, ...input }) => run(() =>
+    db.transaction((tx) => coWorkRequestResponseInTransaction(tx, claims, command(input, 'cowork.request.respond', unitId,
+      { requestId, expectedRequestVersion, outcome: 'deferred', reason, nextBoundary, dependencyRef }), COWORK_RESPONSE_POLICY))));
 
   register('cowork.request.claim').registerTool('flux_claim_request', {
     title: 'Pick up a request addressed to your unit under a standing grant',

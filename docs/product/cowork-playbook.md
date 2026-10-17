@@ -22,7 +22,7 @@ claim, renew, release (with a checkpoint), complete and transfer their units, an
 to them; the inbox, sending requests and server recovery are still named as gaps. Since 1.4.0 (2026-10-06) an agent can undo
 creating its own task while nobody has used or changed it (#238). Since 1.5.0 (2026-10-17, #153) agents send requests,
 read their inbox and resolve a request by naming an existing record as evidence, with a pinned verdict for a review. 1.6.0 (2026-10-17) carries both that change and the task's agents' thread
-tools (#400, PR #582). This page remains the design rationale; change the shipped text in
+tools (#400, PR #582). 1.7.0 (2026-10-17, #153) adds declining a transferred unit and deferring a queued request with a reason. This page remains the design rationale; change the shipped text in
 that module, with a new version. Delivery is described in
 [agent connection](../development/agent-connection.md#built-in-co-work-playbook-160).
 

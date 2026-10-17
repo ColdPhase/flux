@@ -949,8 +949,34 @@ Agent decision under the delegated authority (#153 AC-2/AC-4; consumers #400 AC-
 - **People's read.** `GET /api/v1/work/:workId/coordination` returns the task's request cards (kind, sender ->
   recipient agent names, exact target, state with expiry applied) and verdicts with `current`, for whoever can read
   the task. No claims, leases, heartbeats or prompts appear in it.
-- **Still open.** Transfer decline back to the prior assignee, CW-3 checkpoint deferral by the recipient, the #74
-  GitHub head provider, real two-owner client traces (#160) and the final design UI (#347/#400).
+- **Still open.** The #74 GitHub head provider, real two-owner client traces (#160) and the final design UI (#347/#400).
+
+### Declining a transfer, deferring a request, honest status (2026-10-17, #153 AC-1/AC-3)
+
+Agent decision under the delegated authority; contract changes are additive (MCP tool contract v1, playbook 1.7.0).
+
+- **`flux_decline_unit`** (operation `cowork.unit.decline`, classes execute/review/plan, migration 0107; PR #586 holds
+  0106). A transfer remembers the handing-over connection in `cowork_units.transferred_from_connection_id`. The receiving
+  assignee, while the unit is still `pending` (never claimed, so before any artifact of its own), declines with only the
+  unit version: the unit returns `paused` to the prior assignee, generation and version advance, the checkpoint and task
+  are untouched, and the prior assignee claims it again with its own grant. A claim clears the marker, so nothing after
+  the first claim can be declined; a completed unit is final and authorship never changes. Open requests addressed to the
+  unit refuse it (`COWORK_UNIT_REQUESTS_OPEN`), a claimed or never-transferred unit is `COWORK_DECLINE_REFUSED`, a prior
+  assignee that was revoked is `COWORK_ASSIGNEE_UNAVAILABLE`. A return that would leave the prior assignee
+  holding both an execute and a review unit of the run is `COWORK_REVIEW_SEPARATION`, as a transfer would be. A retried command replays; the receipt goes stale when the
+  unit changes again.
+- **`flux_defer_request`** (operation `cowork.request.respond`, so no new grant). A small separate tool rather than a
+  mode of `flux_resolve_request`, because deferral needs no unit claim (a busy connection defers without taking the
+  request) and carries no evidence. It takes a bounded reason (busy, dependency, offline, capability, policy) and safe
+  boundary (after_step, after_tests, after_release, on_dependency, on_resume, on_capability); a dependency names an exact
+  current record. Only queued or deferred requests can be deferred; the recipient's unit must be open. The request stays
+  in the inbox and can be claimed later.
+- **Status.** `status` is derived from stored facts, never a heartbeat: `working` (claimed under a live lease of the
+  recipient's unit), `offline` (a pending request whose recipient connection is revoked or has no live runtime session),
+  `deferred` (with `reason` and `nextBoundary`), `queued`, `cancelled`, and the closing outcomes. It is returned by the
+  inbox (`flux_coordination_inbox`, `status` next to `effectiveState`) and by `GET /api/v1/work/:workId/coordination`
+  (`status`, `nextBoundary`). Cancellation requested versus acknowledged waits for a cancel operation; today only the stored
+  `cancelled` state exists.
 
 ### Parent request participation
 
@@ -1157,6 +1183,9 @@ compose with #152's real identity/grant storage, #154's actual contribution
 schema and both migration arrival orders; a guessed foreign table is not a
 working dependency. Test exact image ledger, upgrade/backup/recovery and current
 schema declarations with the accepted composed candidate.
+Documented exception (2026-10-17, #153 migration 0107): 0060 and its reversal were edited in place to extend the live
+grant-operation CHECK instead of rewriting a fixed list, because the #238 tests apply 0060 after later files and a fixed list
+would drop `cowork.unit.decline`; the ledger keeps versions only (no checksums), so databases that applied the old 0060 are unchanged.
 
 Required focused checks include:
 

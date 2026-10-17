@@ -140,7 +140,8 @@ export async function assertTaskCreationUndoMigrationCompatibility(db: Reader, a
   }
   const grant = constraints.find((constraint) => constraint.relation === 'agent_standing_grants' && constraint.name === 'agent_standing_grants_operation_check');
   if (applied.includes(60) || applied.includes(54)) {
-    const operations = AGENT_OPERATIONS.filter((operation) => applied.includes(60) || operation !== 'work.creation.revert');
+    const operations = AGENT_OPERATIONS.filter((operation) => (applied.includes(60) || operation !== 'work.creation.revert')
+      && (applied.includes(107) || operation !== 'cowork.unit.decline'));
     const expected = `CHECK ((operation = ANY (ARRAY[${operations.map((operation) => `'${operation}'::text`).join(', ')}])))`;
     // SQL's order is stable but differs from the contract's order; compare the entire CHECK with sorted literals.
     const sorted = (definition: string) => compact(definition.replace(/ARRAY\[([^\]]*)\]/, (_, values: string) =>

@@ -196,8 +196,95 @@ test('a fresh database in file order ends with the contract operation list only 
   try {
     assert.deepEqual(await listAfter(manifest), [...AGENT_OPERATIONS].sort(), 'the live list equals the contract list');
     // Negative control: without 0060 the list is the one 0054 wrote, so 0048 alone could never carry the operation.
-    const without = await listAfter(manifest.filter((file) => file.version !== 60));
+    // 0107 (decline) is dropped too, so the list is exactly the one 0054 wrote.
+    const without = await listAfter(manifest.filter((file) => file.version !== 60 && file.version !== 107));
     assert.ok(!without.includes('work.creation.revert'));
-    assert.deepEqual(without, [...AGENT_OPERATIONS].filter((operation) => operation !== 'work.creation.revert').sort());
+    assert.deepEqual(without, [...AGENT_OPERATIONS].filter((operation) => operation !== 'work.creation.revert' && operation !== 'cowork.unit.decline').sort());
+    // 0060 and 0107 each extend the live list in place, so dropping either one removes only its own operation.
+    assert.deepEqual(await listAfter(manifest.filter((file) => file.version !== 60)),
+      [...AGENT_OPERATIONS].filter((operation) => operation !== 'work.creation.revert').sort());
+    assert.deepEqual(await listAfter(manifest.filter((file) => file.version !== 107)),
+      [...AGENT_OPERATIONS].filter((operation) => operation !== 'cowork.unit.decline').sort());
   } finally { client.release(); }
+});
+
+test('schema 106 upgrades to 107 adding only the decline operation and a nullable marker; 0107 and 0060 are idempotent and its reversal is guarded', async () => {
+  const manifest = await readMigrationManifest(directory, FLUX_SCHEMA_VERSION);
+  const sql = async (version: number) => readFile(join(directory, manifest.find((file) => file.version === version)!.name), 'utf8');
+  const client = await pool.connect();
+  const schema = `flux153_decline_${randomUUID().replaceAll('-', '')}`;
+  const [owner, workspace, project, agent, connection, task, unit] = Array.from({ length: 7 }, () => randomUUID());
+  try {
+    await client.query('BEGIN');
+    await client.query(`CREATE SCHEMA ${schema}`);
+    await client.query(`SET LOCAL search_path TO ${schema}, public, pg_catalog`);
+    for (const file of manifest.filter((file) => file.version < 107)) await client.query(await sql(file.version));
+    await client.query("INSERT INTO auth_users (id,name,email) VALUES ($1,'Decline owner',$2)", [owner, `${owner}@example.test`]);
+    await client.query("INSERT INTO workspaces (id,name,created_by) VALUES ($1,'Decline space',$2)", [workspace, owner]);
+    await client.query("INSERT INTO projects (id,workspace_id,name,created_by) VALUES ($1,$2,'Decline project',$3)", [project, workspace, owner]);
+    await client.query("INSERT INTO agents (id,workspace_id,name,owner_user_id,created_by) VALUES ($1,$2,'Decline agent',$3,$3)", [agent, workspace, owner]);
+    await client.query('INSERT INTO agent_connections (id,workspace_id,owner_user_id,agent_id,scopes) VALUES ($1,$2,$3,$4,$5)',
+      [connection, workspace, owner, agent, ['flux.context.read', 'flux.action.execute']]);
+    await client.query('INSERT INTO agent_connection_projects (workspace_id,connection_id,project_id) VALUES ($1,$2,$3)', [workspace, connection, project]);
+    await client.query("INSERT INTO project_work_items (id,workspace_id,project_id,title,created_by_kind,created_by_id) VALUES ($1,$2,$3,'Decline task','human',$4)",
+      [task, workspace, project, owner]);
+    await client.query(`INSERT INTO cowork_units (id,workspace_id,project_id,work_id,lineage_work_id,run_id,unit_key,role,assignment_connection_id,state)
+      VALUES ($1,$2,$3,$4,$4,$5,'pending-unit','execute',$6,'pending')`, [unit, workspace, project, task, randomUUID(), connection]);
+    const grant = (operation: string) => client.query(`INSERT INTO agent_standing_grants (id,workspace_id,project_id,connection_id,owner_user_id,
+      client_command_id,request_fingerprint,operation,peer_request_class,maximum_uses,expires_at)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'execute',3,now()+interval '1 hour')`, [randomUUID(), workspace, project, connection, owner, randomUUID(), 'a'.repeat(64), operation]);
+    const refused = async (statement: () => Promise<unknown>) => {
+      await client.query('SAVEPOINT refused');
+      try { await statement(); } catch (error) { await client.query('ROLLBACK TO SAVEPOINT refused'); return error as { code?: string }; }
+      throw new Error('The statement was accepted');
+    };
+    const definition = async () => (await client.query(`SELECT pg_get_constraintdef(oid) AS definition FROM pg_constraint
+      WHERE conrelid=$1::regclass AND conname='agent_standing_grants_operation_check'`, [`${schema}.agent_standing_grants`])).rows[0].definition as string;
+    const grants = async () => (await client.query('SELECT * FROM agent_standing_grants ORDER BY id')).rows;
+    const marker = async () => (await client.query(`SELECT data_type, is_nullable FROM information_schema.columns
+      WHERE table_schema=$1 AND table_name='cowork_units' AND column_name='transferred_from_connection_id'`, [schema])).rows;
+    const without = AGENT_OPERATIONS.filter((operation) => operation !== 'cowork.unit.decline');
+    for (const operation of without) await grant(operation);
+
+    // Schema 106: the list lacks decline, which is refused; there is no marker column.
+    assert.deepEqual(listed(await definition()), [...without].sort());
+    assert.equal((await refused(() => grant('cowork.unit.decline'))).code, '23514');
+    assert.deepEqual(await marker(), []);
+    const before = await grants();
+    const unitBefore = (await client.query('SELECT * FROM cowork_units WHERE id=$1', [unit])).rows[0];
+
+    // 0107: every grant row and the unit are unchanged, the list is the contract list and the marker starts empty.
+    await client.query(await sql(107));
+    assert.deepEqual(await grants(), before);
+    assert.deepEqual((await client.query('SELECT * FROM cowork_units WHERE id=$1', [unit])).rows[0], { ...unitBefore, transferred_from_connection_id: null });
+    assert.deepEqual(await marker(), [{ data_type: 'uuid', is_nullable: 'YES' }]);
+    const head = await definition();
+    assert.deepEqual(listed(head), [...AGENT_OPERATIONS].sort());
+    // Idempotent, and 0060 run after 0107 (a reserved lower number filled late) keeps decline.
+    await client.query(await sql(107));
+    await client.query(await sql(60));
+    assert.equal(await definition(), head);
+    await grant('cowork.unit.decline');
+
+    // The reversal refuses once a decline receipt exists (deleting its grant would cascade to it) and changes nothing.
+    const down = await readFile(join(directory, 'reverse/0107_cowork_unit_decline.down.sql'), 'utf8');
+    const receipt = randomUUID();
+    await client.query('SET LOCAL session_replication_role = replica');
+    await client.query(`INSERT INTO agent_command_receipts (connection_id,client_command_id,runtime_session_id,grant_id,grant_generation,binding_id,
+      binding_generation,fingerprint,operation,project_id,value,postconditions)
+      VALUES ($1,$2,$3,$4,1,$5,1,$6,'cowork.unit.decline',$7,'{}','[]')`, [connection, receipt, randomUUID(), randomUUID(), randomUUID(), 'c'.repeat(64), project]);
+    await client.query('SET LOCAL session_replication_role = origin');
+    const rows = await grants();
+    assert.equal((await refused(() => client.query(down))).code, '23001', 'restrict_violation');
+    assert.equal(await definition(), head); assert.deepEqual(await grants(), rows); assert.equal((await marker()).length, 1);
+    await client.query('DELETE FROM agent_command_receipts WHERE client_command_id=$1', [receipt]);
+
+    // Without a receipt it restores exactly schema 106 (the unused decline grant goes), and 0107 applies again.
+    await client.query(down);
+    assert.deepEqual(listed(await definition()), [...without].sort());
+    assert.deepEqual(await marker(), []);
+    assert.deepEqual(await grants(), before);
+    await client.query(await sql(107));
+    assert.equal(await definition(), head);
+  } finally { await client.query('ROLLBACK'); client.release(); }
 });

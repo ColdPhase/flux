@@ -57,7 +57,21 @@ export interface CoWorkRequestRecord {
   responseRef: CoWorkSourceRef | null;
   createdAt: Date;
 }
+/**
+ * What a person or sender may honestly say about a request (#153 AC-3): waiting in the recipient's inbox (`queued`), put
+ * off by the recipient for a stated reason (`deferred`), being worked under a live claim (`working`), the recipient has
+ * no live session or was revoked (`offline`), cancelled, or finished (resolved, declined, superseded, expired).
+ * Derived from stored facts, never from a heartbeat or an acknowledgement.
+ */
+export type CoWorkRequestStatus = 'queued' | 'deferred' | 'working' | 'offline' | 'cancelled' | 'resolved' | 'declined' | 'superseded' | 'expired';
+/** Status of a request already reduced to its effective state; `offline` needs a live-session fact only the server has. */
+export function coWorkRequestStatus(effectiveState: CoWorkRequestState, recipientOffline = false): CoWorkRequestStatus {
+  if (effectiveState === 'claimed') return 'working';
+  if (['queued', 'deferred'].includes(effectiveState)) return recipientOffline ? 'offline' : effectiveState as 'queued' | 'deferred';
+  return effectiveState as CoWorkRequestStatus;
+}
 export interface CoWorkInboxRecord extends CoWorkRequestRecord {
+  status: CoWorkRequestStatus;
   effectiveState: CoWorkRequestState;
   readinessReason: 'claim_lost' | 'request_expired' | 'unit_closed' | 'assignment_changed' | null;
 }
@@ -70,7 +84,11 @@ export interface TaskCoordinationRequest {
   id: string;
   kind: CoWorkRequestKind;
   state: CoWorkRequestState;
+  /** Honest status: queued, deferred, working, offline, cancelled or the closing outcome. */
+  status: CoWorkRequestStatus;
   reason: string | null;
+  /** For a deferred request, the safe checkpoint at which the recipient will take it up. */
+  nextBoundary: string | null;
   target: CoWorkSourceRef;
   responseRef: CoWorkSourceRef | null;
   sender: { connectionId: string; name: string };

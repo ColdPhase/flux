@@ -5,7 +5,7 @@ export const AGENT_OPERATIONS = ['work.create', 'work.update', 'work.creation.re
   'map.create', 'map.rename', 'map.thought.create', 'map.thought.update', 'map.thought.delete',
   'map.positions.update', 'map.link.create', 'map.link.delete', 'doc.create', 'doc.update', 'conversation.create', 'conversation.reply',
   'cowork.claim', 'cowork.renew', 'cowork.release', 'cowork.request', 'cowork.request.claim', 'cowork.request.respond',
-  'cowork.unit.create', 'cowork.unit.complete', 'cowork.unit.transfer'] as const;
+  'cowork.unit.create', 'cowork.unit.complete', 'cowork.unit.transfer', 'cowork.unit.decline'] as const;
 export type AgentOperation = typeof AGENT_OPERATIONS[number];
 export const AGENT_PEER_REQUEST_CLASSES = ['execute', 'review', 'plan'] as const;
 export type AgentPeerRequestClass = typeof AGENT_PEER_REQUEST_CLASSES[number];
@@ -17,7 +17,9 @@ export type AgentPeerRequestClass = typeof AGENT_PEER_REQUEST_CLASSES[number];
  * `cowork.unit.create` targets the native TASK; its class is the role of the unit it CREATES. It gives the creator no
  * claim on that unit and the assignee no authority: the assignee still needs its own `cowork.claim` grant.
  * `cowork.unit.complete` / `cowork.unit.transfer` are the current HOLDER's: their target and class are its own unit and
- * that unit's actual role, under the unit's live claim. A transfer gives the new assignee no authority either. */
+ * that unit's actual role, under the unit's live claim. A transfer gives the new assignee no authority either.
+ * `cowork.unit.decline` is the RECEIVING assignee's: its target and class are its own still-unclaimed transferred unit and
+ * that unit's role; it returns the unit paused to the connection that handed it over. */
 export const AGENT_OPERATION_CLASSES: Record<AgentOperation, readonly AgentPeerRequestClass[]> = {
   'work.create': ['execute', 'plan'], 'work.update': ['execute', 'plan'], 'work.creation.revert': ['execute', 'plan'],
   'result.record': ['execute'], 'decision.propose': ['execute', 'plan'],
@@ -32,6 +34,7 @@ export const AGENT_OPERATION_CLASSES: Record<AgentOperation, readonly AgentPeerR
   'cowork.request.claim': ['execute', 'review', 'plan'], 'cowork.request.respond': ['execute', 'review', 'plan'],
   'cowork.unit.create': ['execute', 'review', 'plan'],
   'cowork.unit.complete': ['execute', 'review', 'plan'], 'cowork.unit.transfer': ['execute', 'review', 'plan'],
+  'cowork.unit.decline': ['execute', 'review', 'plan'],
 };
 export type AgentJsonValue = null | boolean | number | string | AgentJsonValue[] | { [key: string]: AgentJsonValue };
 

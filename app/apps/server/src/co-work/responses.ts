@@ -2,8 +2,8 @@ import type { AgentExecutionCommand, AgentJsonValue, AgentPostcondition, Authent
   CoWorkSourceRef } from '@flux/contracts';
 import { coworkAdmissionRows, coworkResponseRows, coworkUnitRows } from '@flux/db';
 import { agentOutcomeFingerprint, ConflictError, InvalidInputError, NotFoundError, normalizeAgentExecution,
-  normalizeCoWorkRequestClaim, normalizeCoWorkResponse, normalizeCoWorkResponseRef, requireCoWorkRequestClaim,
-  requireCoWorkResponse, type CoWorkContext, type CoWorkRequestClaimInput, type CoWorkResponseInput, type Transaction } from '@flux/core';
+  normalizeCoWorkRequestClaim, normalizeCoWorkResponse, normalizeCoWorkResponseRef, requireCoWorkDefer,
+  requireCoWorkRequestClaim, requireCoWorkResponse, type CoWorkContext, type CoWorkRequestClaimInput, type CoWorkResponseInput, type CoWorkDeferInput, type Transaction } from '@flux/core';
 import { agentExecutionInTransaction } from '../agent-connection/execution.js';
 import type { FluxMcpClaims } from '../agent-connection/context.js';
 import { coWorkTaskGraphLocks } from './graph.js';
@@ -101,29 +101,39 @@ export async function coWorkRequestResponseInTransaction(tx: Transaction, claims
   }
 
   const facts = { unit: locked.unit, request, now: request?.now ?? locked.now };
-  const fence = { requestId: input.requestId, expectedVersion: input.expectedRequestVersion, generation: input.generation,
-    leaseId: input.leaseId, runtimeSessionId: runtime.id };
   const scope = { ...context, unitId };
   let result: { id: string; version: number; state: string } | null;
   let responseRef: CoWorkSourceRef | null = null;
-  if (command.operation === 'cowork.request.claim') {
-    requireCoWorkRequestClaim(context, facts, input);
+  if ('outcome' in input && input.outcome === 'deferred') {
+    const deferral: CoWorkDeferInput = input;
+    requireCoWorkDefer(context, facts, deferral);
     const row = await current();
-    if (!await readable([row.target, ...row.sourceRefs, ...row.criteriaRefs])) throw sourceUnavailable();
-    result = await rows.claim(scope, fence);
+    if (!await readable([row.target, ...row.sourceRefs, ...row.criteriaRefs, ...(deferral.dependencyRef ? [deferral.dependencyRef] : [])]))
+      throw sourceUnavailable();
+    result = await rows.defer(scope, { requestId: deferral.requestId, expectedVersion: deferral.expectedRequestVersion }, deferral);
   } else {
-    const response = input as CoWorkResponseInput;
-    requireCoWorkResponse(context, facts, response);
-    if (response.outcome === 'resolved') {
+    const claimInput = input as CoWorkRequestClaimInput;
+    const fence = { requestId: claimInput.requestId, expectedVersion: claimInput.expectedRequestVersion, generation: claimInput.generation,
+      leaseId: claimInput.leaseId, runtimeSessionId: runtime.id };
+    if (command.operation === 'cowork.request.claim') {
+      requireCoWorkRequestClaim(context, facts, claimInput);
       const row = await current();
       if (!await readable([row.target, ...row.sourceRefs, ...row.criteriaRefs])) throw sourceUnavailable();
-      // The native response and its resolution commit together, or neither does.
-      responseRef = normalizeCoWorkResponseRef(await policy.publishResponse(tx, runtime,
-        { id: row.id, projectId: context.projectId, taskId: locked.unit.taskId, unitId }, response.response));
-      if (!await readable([responseRef])) throw responseUnavailable();
-      result = await rows.respond(scope, fence, { state: 'resolved', responseRef });
+      result = await rows.claim(scope, fence);
     } else {
-      result = await rows.respond(scope, fence, { state: 'declined', reason: response.reason });
+      const response = input as Exclude<CoWorkResponseInput, CoWorkDeferInput>;
+      requireCoWorkResponse(context, facts, response);
+      if (response.outcome === 'resolved') {
+        const row = await current();
+        if (!await readable([row.target, ...row.sourceRefs, ...row.criteriaRefs])) throw sourceUnavailable();
+        // The native response and its resolution commit together, or neither does.
+        responseRef = normalizeCoWorkResponseRef(await policy.publishResponse(tx, runtime,
+          { id: row.id, projectId: context.projectId, taskId: locked.unit.taskId, unitId }, response.response));
+        if (!await readable([responseRef])) throw responseUnavailable();
+        result = await rows.respond(scope, fence, { state: 'resolved', responseRef });
+      } else {
+        result = await rows.respond(scope, fence, { state: 'declined', reason: response.reason });
+      }
     }
   }
   if (!result) throw changed();

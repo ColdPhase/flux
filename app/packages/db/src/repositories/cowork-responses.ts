@@ -61,6 +61,23 @@ export function coworkResponseRows(tx: DbExecutor) {
         RETURNING request.id, request.version, request.state`);
       return result.rows[0] ?? null;
     },
+    /** Queued/deferred -> deferred with a bounded reason and safe boundary. Needs the recipient's unit, not a live claim. */
+    async defer(scope: Scope, fence: Pick<Fence, 'requestId' | 'expectedVersion'>, outcome: {
+      reason: string; nextBoundary: string; dependencyRef: CoWorkSourceRef | null }) {
+      const result = await tx.execute<Changed>(sql`
+        UPDATE cowork_requests request SET state = 'deferred', reason = ${outcome.reason}, next_boundary = ${outcome.nextBoundary},
+          dependency_ref = ${outcome.dependencyRef ? JSON.stringify(outcome.dependencyRef) : null}::jsonb,
+          version = request.version + 1, updated_at = clock_timestamp()
+        FROM cowork_units unit
+        WHERE request.id = ${fence.requestId}::uuid AND request.workspace_id = ${scope.workspaceId}::uuid
+          AND request.project_id = ${scope.projectId}::uuid AND request.recipient_connection_id = ${scope.connectionId}::uuid
+          AND request.unit_id = ${scope.unitId}::uuid AND request.version = ${fence.expectedVersion}
+          AND request.expires_at > clock_timestamp() AND request.state IN ('queued', 'deferred')
+          AND unit.id = request.unit_id AND unit.assignment_connection_id = ${scope.connectionId}::uuid
+          AND unit.state NOT IN ('completed', 'stopped')
+        RETURNING request.id, request.version, request.state`);
+      return result.rows[0] ?? null;
+    },
     /**
      * A newly created request replaces every earlier UNCLAIMED request with the same lineage, sender connection,
      * recipient unit and kind. Claimed requests keep their history; budget is never refunded.

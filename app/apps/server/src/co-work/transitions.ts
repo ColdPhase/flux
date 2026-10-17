@@ -8,7 +8,7 @@ import type { FluxMcpClaims } from '../agent-connection/context.js';
 import { coWorkNamedTaskGraphLocks, coWorkTaskReference } from './graph.js';
 
 export type { CoWorkUnitTransitionPolicy } from '@flux/core';
-/** Content-free result of a completion or transfer; the outcome itself lives in its native record. */
+/** Content-free result of a completion, transfer or decline; the outcome itself lives in its native record. */
 export interface CoWorkUnitTransition {
   unitId: string;
   taskId: string;
@@ -16,18 +16,18 @@ export interface CoWorkUnitTransition {
   /** After a transfer, the new assignee; after a completion, the holder. */
   assignmentConnectionId: string;
   version: number;
-  state: 'pending' | 'completed';
+  state: 'pending' | 'completed' | 'paused';
   outcomeRef: CoWorkSourceRef | null;
 }
 type UnitPostcondition = Extract<AgentPostcondition, { kind: 'cowork.unit_state' }>;
-const OPERATIONS = { 'cowork.unit.complete': 'complete', 'cowork.unit.transfer': 'transfer' } as const;
+const OPERATIONS = { 'cowork.unit.complete': 'complete', 'cowork.unit.transfer': 'transfer', 'cowork.unit.decline': 'decline' } as const;
 const FIELDS = ['unitId', 'taskId', 'role', 'assignmentConnectionId', 'version', 'state', 'outcomeRef'];
 function wire(value: CoWorkUnitTransition): AgentJsonValue {
   return Object.fromEntries(FIELDS.map((key) => [key, value[key as keyof CoWorkUnitTransition]])) as AgentJsonValue;
 }
 function restored(value: AgentJsonValue): CoWorkUnitTransition {
   const v = value as unknown as CoWorkUnitTransition;
-  if (!v || typeof v !== 'object' || Array.isArray(v) || !['pending', 'completed'].includes(v.state) || typeof v.unitId !== 'string'
+  if (!v || typeof v !== 'object' || Array.isArray(v) || !['pending', 'completed', 'paused'].includes(v.state) || typeof v.unitId !== 'string'
     || agentOutcomeFingerprint({ value: wire(v), postconditions: [] }) !== agentOutcomeFingerprint({ value, postconditions: [] }))
     throw new Error('Invalid persisted unit transition');
   return v;
@@ -35,7 +35,7 @@ function restored(value: AgentJsonValue): CoWorkUnitTransition {
 function outcomeUnavailable() { return new NotFoundError('Unit outcome', 'COWORK_OUTCOME_UNAVAILABLE'); }
 
 /**
- * Internal caller-owned composition of the holder's `cowork.unit.complete` / `cowork.unit.transfer`. The owner's
+ * Internal caller-owned composition of the holder's `cowork.unit.complete` / `cowork.unit.transfer`, and of the receiving assignee's `cowork.unit.decline`. The owner's
  * standing grant to this connection (class = the unit's actual role, optional exact unit) is the authority; only the
  * unit's current holder, under its live claim, may finish or hand it over. A transfer grants the assignee nothing: it
  * still needs its own `cowork.claim` grant. No HTTP cache, new transaction, model wake or event flush. Errors must
@@ -69,8 +69,11 @@ export async function coWorkUnitTransitionInTransaction(tx: Transaction, claims:
   const runtime = prepared.context;
   const context: CoWorkContext = { workspaceId: runtime.workspaceId, projectId: command.projectId,
     connectionId: runtime.connectionId, agentId: runtime.agentId, ownerId: runtime.ownerUserId, runtimeSessionId: runtime.id };
+  // A decline returns the unit to whoever handed it over: its slot is taken in order with ours, then re-checked under lock.
+  const priorAssignee = input.operation === 'decline'
+    ? await rows.handedOverBy({ workspaceId: context.workspaceId, projectId: context.projectId, unitId }) : null;
   const scope = { workspaceId: context.workspaceId, projectId: context.projectId, holderConnectionId: context.connectionId, unitId,
-    assigneeConnectionId: input.operation === 'transfer' ? input.assignmentConnectionId : null };
+    assigneeConnectionId: input.operation === 'transfer' ? input.assignmentConnectionId : priorAssignee };
   // #238: a completion outcome that names a task joins the one sorted task pass, after the project graph locks.
   const outcome = input.operation === 'complete' ? [input.outcome] : [];
   const outcomeTasks = () => outcome.length ? referencedTaskIds(tx, outcome.map(coWorkTaskReference)) : Promise.resolve([] as string[]);
@@ -91,14 +94,21 @@ export async function coWorkUnitTransitionInTransaction(tx: Transaction, claims:
   }
 
   requireCoWorkUnitTransition(context, facts, input, policy);
-  const fence = { expectedVersion: input.expectedVersion, generation: input.generation, leaseId: input.leaseId, runtimeSessionId: runtime.id };
   if (input.operation === 'complete' && !await readable(input.outcome)) throw outcomeUnavailable();
-  // #238: completion and transfer are persisted unit uses, under the task pass the lock above retains.
-  const saved = input.operation === 'complete' ? await rows.complete(scope, fence, input.outcome)
-    : await rows.transfer(scope, fence, input.assignmentConnectionId);
-  if (!saved) throw new ConflictError('The claim is no longer live; recover before continuing', 'COWORK_CLAIM_LOST');
+  // #238: completion, transfer and decline are persisted unit uses, under the task pass the lock above retains.
+  let saved;
+  if (input.operation === 'decline') {
+    saved = await rows.decline(scope, input.expectedVersion);
+    if (!saved) throw new ConflictError('The unit changed or cannot be returned; recover current state', 'COWORK_VERSION_CONFLICT');
+  } else {
+    const fence = { expectedVersion: input.expectedVersion, generation: input.generation, leaseId: input.leaseId, runtimeSessionId: runtime.id };
+    saved = input.operation === 'complete' ? await rows.complete(scope, fence, input.outcome)
+      : await rows.transfer(scope, fence, input.assignmentConnectionId);
+    if (!saved) throw new ConflictError('The claim is no longer live; recover before continuing', 'COWORK_CLAIM_LOST');
+  }
   await facts.taskFence!.mark([saved.taskId, saved.lineageTaskId, ...await outcomeTasks()]);
-  if (saved.state !== (input.operation === 'complete' ? 'completed' : 'pending')) throw new Error('Persistence returned another transition');
+  if (saved.state !== (input.operation === 'complete' ? 'completed' : input.operation === 'decline' ? 'paused' : 'pending'))
+    throw new Error('Persistence returned another transition');
   const transition: CoWorkUnitTransition = { unitId: saved.id, taskId: saved.taskId, role: saved.role,
     assignmentConnectionId: saved.assignmentConnectionId, version: saved.version, state: saved.state as CoWorkUnitTransition['state'],
     outcomeRef: saved.outcomeRef };
