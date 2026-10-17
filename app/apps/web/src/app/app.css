@@ -389,6 +389,8 @@ a.me__btn[aria-current="page"] { background: var(--sub); }
 .composer__line { display: flex; align-items: center; gap: 6px; }
 .composer__line > :first-child { flex: 1; min-width: 0; }
 .composer__line .composer__ask { margin: 0; }
+.composer__line > .composer__audience { display: block; line-height: 1.45; overflow-wrap: anywhere; }
+.composer__line > .composer__audience svg { display: inline; margin-right: 4px; vertical-align: -2px; }
 .dm__composer .composer__audience > span > svg { margin-right: 6px; vertical-align: -2px; }
 .composer__where { color: var(--t3); font-weight: 400; }
 

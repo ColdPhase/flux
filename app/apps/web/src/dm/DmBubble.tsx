@@ -40,7 +40,7 @@ export function DmBubble({ message, pending, mine, name, continued, groupLast, d
   onRetry?: () => void; onRemove?: () => void;
 }) {
   const actions: DmActionOptions | null = selecting || !message ? null : {
-    kind: 'dm', messageId: message.id, body: message.body, writable,
+    kind: 'dm', body: message.body, writable,
     onCreateWork: () => onCreateTask(message, selectedIn(message.id, message.body)),
     onReply,
   };

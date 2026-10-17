@@ -28,7 +28,6 @@ PEOPLE = {
     "ada": ("Ada Kowalska", f"ada.final+{STAMP}@example.test"),
     "jonas": ("Jonas Berg", f"jonas.final+{STAMP}@example.test"),
 }
-MENTION = "@Ada Kowalska the gateway log shows a reboot at night, can you look?"
 FAR_BED = "Far east bed: -112 dBm through the hedge."
 PROBES = "The probes arrive Thursday. Someone should calibrate them at two depths."
 THANKS = "Thanks, I will check the depths tonight."
@@ -80,7 +79,6 @@ class ConversationFinal(unittest.TestCase):
 
         start("jonas", FAR_BED)
         probes = start("jonas", PROBES)
-        mention = start("jonas", MENTION)
         from_message = task("ada", {"title": FROM_MESSAGE, "sources": [{"type": "message", "id": probes["messages"][0]["id"]}]})
         thanks = start("jonas", THANKS)
         in_tasks = task("ada", {"title": IN_TASKS})
@@ -108,7 +106,7 @@ class ConversationFinal(unittest.TestCase):
         call("ada", f"/api/v1/work/{old_task['id']}", {"status": "in_progress", "expectedVersion": old_task["version"]}, method="PATCH")
         for context in contexts.values():
             context.close()
-        cls.ids.update(old_project=old_pid, old_task=old_task["id"], project=pid, workspace=ws["id"], probes=probes["messages"][0]["id"], mention=mention["messages"][0]["id"], thanks=thanks["messages"][0]["id"], marker=marker["messages"][0]["id"],
+        cls.ids.update(old_project=old_pid, old_task=old_task["id"], project=pid, workspace=ws["id"], probes=probes["messages"][0]["id"], thanks=thanks["messages"][0]["id"], marker=marker["messages"][0]["id"],
                        from_message=from_message["id"], from_message_number=from_message["number"], in_tasks=in_tasks["id"], on_map=on_map["id"],
                        first_unread=first_unread["messages"][0]["id"], order=order["messages"][0]["id"], folded=json.dumps([item["id"] for item in folded]))
 
@@ -411,7 +409,7 @@ class ConversationFinal(unittest.TestCase):
         expect(menu).to_be_visible()
         names = menu.get_by_role("menuitem").all_inner_texts()
         self.assertEqual(names[:5], ["Reply in thread", "Create task", "Hand off to an agent", "Cite", "Copy text"])
-        self.assertNotIn("Done", names, "a message that waits for nobody has no Done")
+        self.assertNotIn("Done", names, "a message has no done state")
         for box in menu.get_by_role("menuitem").evaluate_all("items => items.map(el => el.getBoundingClientRect().height)"):
             self.assertGreaterEqual(box, 44)
         shot(page, "conversation-final-messagemenu-phone")
@@ -433,39 +431,6 @@ class ConversationFinal(unittest.TestCase):
         swipe_down = bubble.bounding_box()
         page.mouse.move(swipe_down["x"] + 20, swipe_down["y"] + 10)
         expect(page.get_by_role("menu", name="Message actions")).to_have_count(0)
-
-    def waiting(self, page: Page, message_id: str) -> bool:
-        items = self.api(page, "GET", "/api/v1/needs-you")["items"]
-        return any(item["url"].endswith(f"#message-{message_id}") for item in items)
-
-    def test_07b_a_message_waiting_in_the_inbox_has_done_and_not_now_in_its_menu(self) -> None:
-        # Founder direction 2026-10-16: the long-press menu of a message that waits in the Inbox also offers Done and Not now,
-        # acting on that Inbox item exactly as Inbox does. Inbox stays the one queue.
-        page = self.open("ada", phone=True)
-        for _ in range(100):
-            if self.waiting(page, self.ids["mention"]):
-                break
-            page.wait_for_timeout(100)
-        self.assertTrue(self.waiting(page, self.ids["mention"]), "the mention is in Ada's Inbox")
-        message = self.message(page, self.ids["mention"])
-        message.scroll_into_view_if_needed()
-        long_press(message.locator(".message-bubble > p"))
-        menu = page.get_by_role("menu", name="Message actions")
-        expect(menu.get_by_role("menuitem", name="Done")).to_be_visible()
-        names = menu.get_by_role("menuitem").all_inner_texts()
-        self.assertEqual(names[:5], ["Reply in thread", "Create task", "Hand off to an agent", "Cite", "Copy text"])
-        self.assertIn("Not now", names)
-        shot(page, "conversation-final-messagemenu-inbox-phone")
-        menu.get_by_role("menuitem", name="Done").click()
-        expect(page.get_by_text("Marked done")).to_be_visible()
-        for _ in range(100):
-            if not self.waiting(page, self.ids["mention"]):
-                break
-            page.wait_for_timeout(100)
-        self.assertFalse(self.waiting(page, self.ids["mention"]), "Done resolved the Inbox item")
-        long_press(message.locator(".message-bubble > p"))
-        expect(page.get_by_role("menu", name="Message actions")).to_be_visible()
-        expect(page.get_by_role("menuitem", name="Done")).to_have_count(0)
 
     def test_08_the_phone_composer_says_at_and_slash_and_opens_the_menu_by_touch(self) -> None:
         page = self.open("ada", phone=True)
