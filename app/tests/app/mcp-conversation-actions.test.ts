@@ -26,6 +26,7 @@ test('standing conversation grants start a project conversation and reply in a t
   assert.deepEqual(capabilities.filter((item) => item.operation?.startsWith('conversation.')).map(({ name, operation, classes, available }) => ({ name, operation, classes, available })),
     [{ name: 'flux_start_conversation', operation: 'conversation.create', classes: ['execute', 'plan'], available: true },
       { name: 'flux_reply_in_conversation', operation: 'conversation.reply', classes: ['execute', 'plan'], available: true },
+      { name: 'flux_post_agent_thread', operation: 'conversation.reply', classes: ['execute', 'plan'], available: true },
       { name: 'flux_ask_question', operation: 'conversation.reply', classes: ['execute', 'plan'], available: true }]);
   const start = await f.grant('conversation.create', 'plan');
   const reply = await f.grant('conversation.reply', 'execute', 10);

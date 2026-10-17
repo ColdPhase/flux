@@ -215,7 +215,7 @@ class HandOffJourney(unittest.TestCase):
         page.locator(f'.agents-row[data-agent="{self.ids["agent_claude"]}"] .agents-row__btn').click()
         # The agent's task opens its thread under the list.
         page.get_by_role("complementary", name="Claude Code agent, details").get_by_role("button", name=re.compile("^Open the thread of #")).click()
-        expect(page.get_by_role("region", name="Thread of Calibrate the probes at two soil depths")).to_be_visible()
+        expect(page.get_by_role("region", name="Agents’ thread of Calibrate the probes at two soil depths")).to_be_visible()
         expect(page.locator("select#agents-task")).to_have_count(0)
 
     def test_05_two_steps_choose_the_agent_then_see_what_it_may_do(self) -> None:
@@ -352,11 +352,11 @@ class HandOffJourney(unittest.TestCase):
             link = detail.get_by_role("region", name="Now").get_by_role("button", name=re.compile("^Open the thread of #"))
             (link.tap if touch else link.click)()
             # The panel is left: the exact thread with its composer is on screen, not hidden behind the panel.
-            thread = page.get_by_role("region", name=f"Thread of {title}")
+            thread = page.get_by_role("region", name=f"Agents’ thread of {title}")
             expect(thread).to_be_visible()
-            expect(page.get_by_label("Write to this task")).to_be_visible()
+            expect(page.get_by_label("Write to the agents")).to_be_visible()
             expect(detail).to_have_count(0)
-            expect(page).to_have_url(re.compile(f"task={self.ids['busy']}"))
+            expect(page).to_have_url(re.compile(f"thread={self.ids['busy']}"))
             shot(page, f"handoff-thread-from-panel-{label}")
             # Back returns to the agent's panel; forward to the thread.
             page.go_back()
@@ -368,11 +368,11 @@ class HandOffJourney(unittest.TestCase):
             recent_title = "Print a label for each of the six beds"
             recent = detail.get_by_role("region", name="Recent").get_by_role("button", name=re.compile(f"Also holds #2 · {recent_title}"))
             (recent.tap if touch else recent.click)()
-            recent_thread = page.get_by_role("region", name=f"Thread of {recent_title}")
+            recent_thread = page.get_by_role("region", name=f"Agents’ thread of {recent_title}")
             expect(recent_thread).to_be_visible()
-            expect(page.get_by_label("Write to this task")).to_be_visible()
+            expect(page.get_by_label("Write to the agents")).to_be_visible()
             # There is no task picker (#347 P1-2): the opened task is the one in the address.
-            expect(page).to_have_url(re.compile(f"task={self.ids['label']}"))
+            expect(page).to_have_url(re.compile(f"thread={self.ids['label']}"))
             page.go_back()
             expect(detail).to_be_visible()
             page.go_forward()
@@ -380,7 +380,7 @@ class HandOffJourney(unittest.TestCase):
         # Where the panel sits beside the list both stay on screen.
         wide = self.open_agents()
         wide.get_by_role("complementary", name="Claude Code agent, details").get_by_role("button", name=re.compile("^Open the thread of #")).click()
-        expect(wide.get_by_role("region", name=f"Thread of {title}")).to_be_visible()
+        expect(wide.get_by_role("region", name=f"Agents’ thread of {title}")).to_be_visible()
         # The thread takes the right column in place of the panel; closing it returns to the panel (#347 P1-2).
         expect(wide.get_by_role("complementary", name="Claude Code agent, details")).to_have_count(0)
         wide.get_by_role("button", name="Close thread").click()
@@ -599,10 +599,10 @@ class HandOffJourney(unittest.TestCase):
                     shot(page, f"handoff-projection-{state}-{connection_state}-{'phone' if phone else 'desktop'}-{scheme}")
                     # The selected task is outside the loaded page. Its native read and actual discussion open.
                     (now.get_by_role("button", name=target["title"]).tap if phone else now.get_by_role("button", name=target["title"]).click)()
-                    thread = page.get_by_role("region", name=f'Thread of {target["title"]}')
+                    thread = page.get_by_role("region", name=f'Agents’ thread of {target["title"]}')
                     expect(thread).to_be_visible()
-                    expect(page.get_by_label("Write to this task")).to_be_visible()
-                    expect(page).to_have_url(re.compile(f"task={target['id']}"))
+                    expect(page.get_by_label("Write to the agents")).to_be_visible()
+                    expect(page).to_have_url(re.compile(f"thread={target['id']}"))
                     self.assertTrue(native_reads, "the current target used the actual project-scoped native read beyond page one")
                     if phone:
                         expect(detail).to_have_count(0)

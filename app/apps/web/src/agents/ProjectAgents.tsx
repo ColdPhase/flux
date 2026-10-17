@@ -12,6 +12,7 @@ import { AttachButton, ComposerFiles, MessageContent } from '../composer/Files';
 import { LinkPreviews, MessageText } from '../app/MessageText';
 import { ConnectionLine, OutboxStatus, PendingFiles, PendingSource } from '../composer/Outbox';
 import { getTaskDiscussion } from '../composer/api';
+import { readAgentThread, type AgentThreadView } from './agentThread';
 import { useProjectShell } from '../project/data';
 import { AgentIdentity, AuthorFace, Button, Icon, Kreska, StatusGlyph, agentHue, useMediaQuery, type KreskaExpression } from '../ui';
 import { ThreadDrawer } from '../app/ThreadDrawer';
@@ -132,14 +133,19 @@ function mergeMessages(current: ConversationMessage[], incoming: ConversationMes
  * The thread's latest window with everything since `shown` (paged back, so a burst of replies
  * leaves no gap), merged into what is shown. Earlier messages already on the page stay.
  */
-async function latestThread(workId: string, shown: TaskDiscussion, signal: AbortSignal): Promise<TaskDiscussion> {
-  const latest = await getTaskDiscussion(workId, { signal });
+type ThreadKind = 'task' | 'agents';
+type ThreadView = TaskDiscussion & Partial<Pick<AgentThreadView, 'canWrite' | 'postingAvailable' | 'messageCount'>>;
+const readThread = (kind: ThreadKind, workId: string, options: { signal?: AbortSignal; beforeSequence?: number } = {}): Promise<ThreadView> =>
+  kind === 'agents' ? readAgentThread(workId, options) : getTaskDiscussion(workId, options);
+
+async function latestThread(kind: ThreadKind, workId: string, shown: ThreadView, signal: AbortSignal): Promise<ThreadView> {
+  const latest = await readThread(kind, workId, { signal });
   const newestSeen = Math.max(shown.root?.sequence ?? 0, ...shown.messages.map((message) => message.sequence));
   let incoming = latest.messages;
   let page = latest;
   while (newestSeen > 0 && page.messagePage.hasMoreBefore && (page.messages[0]?.sequence ?? 0) > newestSeen + 1) {
     const before = page.messages[0]!.sequence;
-    page = await getTaskDiscussion(workId, { signal, beforeSequence: before });
+    page = await readThread(kind, workId, { signal, beforeSequence: before });
     if (!page.messages.length || page.messages[0]!.sequence >= before) throw new Error('Could not load the replies in between');
     incoming = mergeMessages(page.messages, incoming);
   }
@@ -156,27 +162,27 @@ function paneAtEnd(marker: HTMLElement | null) {
 /** The task a thread belongs to: its identity and title, from a bounded native read. */
 interface ThreadTask { id: string; number: number; title: string; status: WorkStatus }
 
-function TaskThread({ task, projectId, meId, names, canWrite, changingScope }: { task: ThreadTask; projectId: string; meId: string; names: Map<string, string>; canWrite: boolean; changingScope: boolean }) {
+function TaskThread({ kind, task, projectId, meId, names, canWrite, changingScope }: { kind: ThreadKind; task: ThreadTask; projectId: string; meId: string; names: Map<string, string>; canWrite: boolean; changingScope: boolean }) {
   const owners = useAgentOwners(useProjectShell()?.project);
-  const [discussion, setDiscussion] = useState<TaskDiscussion | null>(null);
+  const [discussion, setDiscussion] = useState<ThreadView | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [accessLost, setAccessLost] = useState(false);
   // What is on the page, for merging a refetch; every change goes through `show`.
-  const shown = useRef<TaskDiscussion | null>(null);
-  const show = useCallback((update: (current: TaskDiscussion | null) => TaskDiscussion | null) => {
+  const shown = useRef<ThreadView | null>(null);
+  const show = useCallback((update: (current: ThreadView | null) => ThreadView | null) => {
     shown.current = update(shown.current);
     setDiscussion(shown.current);
   }, []);
   const reload = useRef(() => { /* set while mounted */ });
   // Per account and task, kept across views and reloads like every other composer (#40).
-  const composer = useComposerDraft(meId, projectId, `task:${task.id}`);
+  const composer = useComposerDraft(meId, projectId, `${kind === 'agents' ? 'agent-thread' : 'task'}:${task.id}`);
   const makeWork = useCreateWorkFromMessage({ id: projectId });
   const captureScope = useComposerScope(composer.key);
-  const blocked = changingScope || !discussion || !canWrite || accessLost;
+  const blocked = changingScope || !discussion || !canWrite || accessLost || (kind === 'agents' && !(discussion?.canWrite && discussion.postingAvailable));
   // Typing (#155 AC-2) is the task thread's: the same canonical conversation as the task's thread in
   // Conversation, so a person writing in both views is one person typing. A task without a genuine first
   // contribution has no thread yet, so it has no typing scope (nothing is created to show it).
-  const typing = useTyping(meId, discussion?.conversationId && !accessLost && !changingScope ? { kind: 'conversation', id: discussion.conversationId } : null, canWrite && !blocked);
+  const typing = useTyping(meId, kind === 'task' && discussion?.conversationId && !accessLost && !changingScope ? { kind: 'conversation', id: discussion.conversationId } : null, canWrite && !blocked);
   const box = useRef<HTMLTextAreaElement>(null);
   const end = useRef<HTMLDivElement>(null);
 
@@ -195,7 +201,7 @@ function TaskThread({ task, projectId, meId, names, canWrite, changingScope }: {
           again = false;
           const before = shown.current;
           try {
-            const next = before ? await latestThread(task.id, before, controller.signal) : await getTaskDiscussion(task.id, { signal: controller.signal });
+            const next = before ? await latestThread(kind, task.id, before, controller.signal) : await readThread(kind, task.id, { signal: controller.signal });
             if (controller.signal.aborted) return;
             // New messages follow a reader who is at the end; anyone reading earlier stays in place.
             const follow = !!before && paneAtEnd(end.current);
@@ -221,7 +227,7 @@ function TaskThread({ task, projectId, meId, names, canWrite, changingScope }: {
     reload.current = () => { void load(); };
     void load();
     return () => { controller.abort(); reload.current = () => { /* unmounted */ }; };
-  }, [task.id, show]);
+  }, [kind, task.id, show]);
 
   // Another person's or agent's contribution appears without a reload (#183 B1). Events carry only
   // ids and kinds, and any change in this project may touch this thread (a message, a result posted
@@ -257,7 +263,20 @@ function TaskThread({ task, projectId, meId, names, canWrite, changingScope }: {
     if (messages.length) scrollPaneToEnd(end.current);
   }, [discussion, messages.length]);
   // The same thread in the project conversation, once it has a root.
-  const inConversation = discussion?.conversationId && !accessLost ? `/projects/${discussion.projectId}/conversations/${discussion.conversationId}` : null;
+  const inConversation = kind === 'task' && discussion?.conversationId && !accessLost ? `/projects/${discussion.projectId}/conversations/${discussion.conversationId}` : null;
+  // The people's side of the same task is its conversation in the task's details.
+  const taskLink = kind === 'agents' && !accessLost ? `/projects/${projectId}/tasks?open=work:${task.id}` : null;
+
+  // The agents' thread pages back by sequence; the task thread's earlier messages are in Conversation.
+  const earlier = async () => {
+    const oldest = messages[0]?.sequence;
+    if (!oldest) return;
+    const active = captureScope();
+    try {
+      const page = await readThread(kind, task.id, { beforeSequence: oldest });
+      if (active()) show((current) => current ? { ...current, messages: mergeMessages(page.messages, current.messages), messagePage: page.messagePage } : current);
+    } catch { if (active()) setLoadError('Earlier messages could not be loaded.'); }
+  };
 
   const send = async (event?: FormEvent) => {
     event?.preventDefault();
@@ -274,7 +293,9 @@ function TaskThread({ task, projectId, meId, names, canWrite, changingScope }: {
     if (!active() || result.status !== 'delivered') return;
     const message = result.message;
     // The stored message takes its queued item's exact place, so the pane does not move again.
-    flushSync(() => show((current) => current && !current.messages.some((item) => item.id === message.id) && current.root?.id !== message.id
+    flushSync(() => show((current) => current && kind === 'agents' && !current.messages.some((item) => item.id === message.id)
+      ? { ...current, conversationId: current.conversationId ?? message.conversationId, messageCount: (current.messageCount ?? 0) + 1, messages: [...current.messages, message] }
+      : current && !current.messages.some((item) => item.id === message.id) && current.root?.id !== message.id
       ? { ...current, conversationId: current.conversationId ?? message.conversationId, rootMessageId: current.rootMessageId ?? message.id,
         root: current.root ?? message, messages: [...current.messages, message] }
       : current));
@@ -285,12 +306,14 @@ function TaskThread({ task, projectId, meId, names, canWrite, changingScope }: {
   };
 
   return (
-    <section className="agents-thread" data-empty={discussion && !messages.length && !outbox.pending.length && !accessLost ? 'true' : undefined} aria-label={`Thread of ${task.title}`}>
-      <p className="agents-thread__top">Thread of this task · the same one shown in Conversation{inConversation ? <> · <Link className="ui-link" to={inConversation}>Open in Conversation</Link></> : null}</p>
+    <section className="agents-thread" data-empty={discussion && !messages.length && !outbox.pending.length && !accessLost ? 'true' : undefined} aria-label={`${kind === 'agents' ? 'Agents’ thread' : 'Thread'} of ${task.title}`}>
+      {kind === 'agents'
+        ? <p className="agents-thread__top">Agents’ thread · visible to everyone with access to this project{taskLink ? <> · <Link className="ui-link" to={taskLink}>Open task</Link></> : null}</p>
+        : <p className="agents-thread__top">Thread of this task · the same one shown in Conversation{inConversation ? <> · <Link className="ui-link" to={inConversation}>Open in Conversation</Link></> : null}</p>}
       {loadError ? <p className="agents-thread__error" role="alert">{loadError} <button type="button" className="ui-link" onClick={() => reload.current()}>Try again</button></p> : null}
       {accessLost ? <p className="agents-thread__error" role="alert">You can no longer read this task. Your unsent text is kept on this device.</p> : null}
       {!discussion && !loadError ? <p className="agents-thread__empty">Loading…</p> : null}
-      {discussion && !accessLost && !messages.length && !outbox.pending.length ? <p className="agents-thread__empty">No one has written about this task yet. The first message starts its thread.</p> : null}
+      {discussion && !accessLost && !messages.length && !outbox.pending.length ? <p className="agents-thread__empty">{kind === 'agents' ? 'No one has written to the agents about this task yet. The first message starts its thread.' : 'No one has written about this task yet. The first message starts its thread.'}</p> : null}
       {accessLost ? null : <ol className="agents-thread__list" aria-live="polite">
         {[...messages.map((message) => {
           const own = message.authorId === meId;
@@ -305,7 +328,7 @@ function TaskThread({ task, projectId, meId, names, canWrite, changingScope }: {
                 <time dateTime={message.createdAt}>{when(message.createdAt)}</time>
                 {message.contribution ? <span className="agents-msg__kind"> · {message.contribution.kind}</span> : null}
               </span>
-              <MessageContent body={message.body ? <WhenNoQuestion projectId={projectId} messageId={message.id}><p className="agents-msg__body"><MessageText body={message.body} /></p></WhenNoQuestion> : null} files={message.files} context={{ author: name, at: message.createdAt, caption: message.body, onReply: blocked ? undefined : () => box.current?.focus(), onCreateTask: canWrite && !accessLost ? () => void makeWork.create(message) : undefined }}>
+              <MessageContent body={message.body ? <WhenNoQuestion projectId={projectId} messageId={message.id}><p className="agents-msg__body"><MessageText body={message.body} /></p></WhenNoQuestion> : null} files={message.files} context={{ author: name, at: message.createdAt, caption: message.body, onReply: blocked ? undefined : () => box.current?.focus(), onCreateTask: kind === 'task' && canWrite && !accessLost ? () => void makeWork.create(message) : undefined }}>
                 <LinkPreviews body={message.body} />
               </MessageContent>
               <QuestionCard projectId={projectId} messageId={message.id} meId={meId} writable={canWrite} />
@@ -323,21 +346,21 @@ function TaskThread({ task, projectId, meId, names, canWrite, changingScope }: {
           </li>
         ))]}
       </ol>}
-      {discussion?.messagePage.hasMoreBefore && !accessLost ? <p className="agents-thread__empty">Earlier messages are in the task's thread in {inConversation ? <Link className="ui-link" to={inConversation}>Conversation</Link> : 'Conversation'}.</p> : null}
+      {discussion?.messagePage.hasMoreBefore && !accessLost ? <p className="agents-thread__empty">{kind === 'agents' ? <button type="button" className="ui-link" onClick={() => void earlier()}>Show earlier messages</button> : <>Earlier messages are in the task's thread in {inConversation ? <Link className="ui-link" to={inConversation}>Conversation</Link> : 'Conversation'}.</>}</p> : null}
       <div ref={end} />
       <form className="agents-composer" onSubmit={(event) => { void send(event); }}>
         {canWrite ? <ConnectionLine /> : null}
-        <label className="ui-vh" htmlFor="agents-draft">Write to this task</label>
+        <label className="ui-vh" htmlFor="agents-draft">{kind === 'agents' ? 'Write to the agents' : 'Write to this task'}</label>
         <textarea id="agents-draft" ref={box} value={composer.draft.body} rows={2} readOnly={changingScope} aria-busy={changingScope}
-          placeholder={canWrite ? 'Add to this work…' : 'You can read this task but not write to it.'} disabled={blocked}
+          placeholder={kind === 'agents' ? canWrite ? 'Write to the agents…' : 'You can read this thread but not write to it.' : canWrite ? 'Add to this work…' : 'You can read this task but not write to it.'} disabled={blocked}
           onChange={(event) => { if (!blocked) { composer.setBody(event.target.value); typing.input(Boolean(event.target.value.trim())); } }} onBlur={typing.stop} onKeyDown={onKeyDown} />
         <ComposerFiles state={composer} disabled={blocked} attach="none" />
-        {discussion?.conversationId && !accessLost ? <TypingNotice {...typing} /> : null}
+        {kind === 'task' && discussion?.conversationId && !accessLost ? <TypingNotice {...typing} /> : null}
         {changingScope ? <p className="agents-composer__hint" role="status">Opening your selection… Your current draft is kept.</p> : null}
         <div className="agents-composer__row">
           <AttachButton state={composer} disabled={blocked} />
-          <span className="agents-composer__hint">Goes to the task thread<span className="composer__keys"> · Enter sends, Shift+Enter new line</span></span>
-          <Button type="submit" variant="primary" icon="send" disabled={!composer.canSend || blocked} aria-label="Send to task">Send</Button>
+          <span className="agents-composer__hint">{kind === 'agents' ? 'Goes to the agents’ thread' : 'Goes to the task thread'}<span className="composer__keys"> · Enter sends, Shift+Enter new line</span></span>
+          <Button type="submit" variant="primary" icon="send" disabled={!composer.canSend || blocked} aria-label={kind === 'agents' ? 'Send to the agents' : 'Send to task'}>Send</Button>
         </div>
       </form>
     </section>
@@ -653,7 +676,10 @@ export function ProjectAgents() {
   const tasks = useMemo<ThreadTask[]>(() => rows.map((row) => ({ id: row.id, number: row.number, title: row.title, status: row.status })), [rows]);
   // A `?task=` outside this page is read by itself; one that is not this project's task (or
   // cannot be read) falls back to the first open one.
-  const wanted = search.get('task');
+  // `?thread=` is the task's agents' thread and `?task=` its people's thread; both open the same detail panel or sheet.
+  const wantedThread = search.get('thread');
+  const wanted = wantedThread ?? search.get('task');
+  const threadKind: ThreadKind = wantedThread ? 'agents' : 'task';
   const onPage = tasks.find((item) => item.id === wanted) ?? null;
   const own = useNativeOwn(me.user.id, projectId, 'work', wanted && !onPage ? wanted : undefined, true, taskRevision);
   // A task whose creation was undone (#238) is history: it opens in Details, never as a thread to work on here.
@@ -695,11 +721,11 @@ export function ProjectAgents() {
   const [focusThread, setFocusThread] = useState(false);
   const openThread = (id: string) => {
     setFocusThread(true);
-    setSearch((current) => { const next = new URLSearchParams(current); next.set('task', id); return next; }, { replace: beside, flushSync: true });
+    setSearch((current) => { const next = new URLSearchParams(current); next.set('thread', id); next.delete('task'); return next; }, { replace: beside, flushSync: true });
   };
   const closeThread = () => {
     setFocusThread(false);
-    setSearch((current) => { const next = new URLSearchParams(current); next.delete('task'); return next; }, { replace: true });
+    setSearch((current) => { const next = new URLSearchParams(current); next.delete('task'); next.delete('thread'); return next; }, { replace: true });
   };
   // After Stop or Take back the panel stays on that agent, with focus on its heading (#347 N4).
   const [refocusKey, setRefocusKey] = useState<string | null>(null);
@@ -742,7 +768,7 @@ export function ProjectAgents() {
     <ThreadDrawer mode={mode} focusOnOpen={focusThread} title={`#${task.number} · ${task.title}`} closeLabel="Close thread" onClose={closeThread}>
       {/* The thread's own scroller: its head stays on screen while the messages scroll (#347 N3). */}
       <div className="agents-thread-scroll">
-        <TaskThread key={`${me.user.id}:${projectId}:${task.id}`} task={task} projectId={projectId} meId={me.user.id} names={names} canWrite={canWrite} changingScope={changingScope} />
+        <TaskThread key={`${threadKind}:${me.user.id}:${projectId}:${task.id}`} kind={threadKind} task={task} projectId={projectId} meId={me.user.id} names={names} canWrite={canWrite} changingScope={changingScope} />
       </div>
     </ThreadDrawer>
   ) : null;

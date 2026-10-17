@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { AGENT_OPERATION_CLASSES, type AgentJsonValue, type AgentOperation, type SendMessageCommand } from '@flux/contracts';
-import { derivedUuid, type Database } from '@flux/core';
+import { derivedUuid, DomainError, normalizeMessage, type Database } from '@flux/core';
+import { guardedAgentThreadInEventSession } from '../conversation/store.js';
 import { actionAnnotations as annotations, actionId as id, actionInput, actionVersion as version, nativeActionExecutor } from './action-execution.js';
 import type { FluxMcpClaims } from './context.js';
 import type { AgentToolRegistry } from './tool-registry.js';
@@ -60,4 +61,35 @@ export function registerAgentConversationActions(tools: AgentToolRegistry, db: D
       return { value: { conversationId: sent.conversationId, messageId: sent.id, sequence: sent.sequence },
         postconditions: [{ kind: 'message', id: sent.id }] };
     })));
+
+  // The task's agents' thread (#400): the grant and the strict command are the reply operation's; the server selects
+  // the private task mode, so a client cannot choose it. The five-turn guard debits inside the same transaction.
+  const executeThread = nativeActionExecutor(db, claims, 'task-agent-thread/v1');
+  register('conversation.reply').registerTool('flux_post_agent_thread', {
+    title: 'Write to a task\'s agents\' thread under a standing grant',
+    description: 'Write one work message (a plan, progress, a hand-off note) in the agents\' thread of a task, visible to everyone who can read '
+      + 'the task and quiet for people unless they open it. At most five agent messages in a row without a person\'s message or a new '
+      + `artifact version or request change (AGENT_THREAD_TURN_LIMIT). ${grantNote} A grant can name the whole project.`,
+    inputSchema: z.strictObject({ ...execution, taskId: id.describe('The task of this project the message is about.'),
+      body: message.shape.body, replyToMessageId: id.optional().describe('Accepted for compatibility; the thread is flat.') }), annotations,
+  }, ({ taskId, body, replyToMessageId: _reply, ...input }) => run(async () => {
+    void _reply;
+    try {
+      return await executeThread(input, 'conversation.reply', taskId, { body, taskId } as unknown as AgentJsonValue,
+        async ({ transaction, events, runtime }) => {
+          const normalized = normalizeMessage({ body,
+            clientMessageId: derivedUuid('flux.agent-thread-message.v1', runtime.connectionId.toLowerCase(), input.clientCommandId.toLowerCase()) });
+          const sent = await guardedAgentThreadInEventSession(transaction, events, runtime,
+            { clientCommandId: input.clientCommandId, grantId: input.grantId }, taskId, { ...normalized, projectId: input.projectId });
+          return { value: { taskId, conversationId: sent.conversationId, messageId: sent.id, sequence: sent.sequence },
+            postconditions: [{ kind: 'message', id: sent.id }] };
+        });
+    } catch (error) {
+      for (let cause: unknown = error; cause && typeof cause === 'object'; cause = 'cause' in cause ? cause.cause : null) {
+        if ('constraint' in cause && cause.constraint === 'agent_thread_turn_limit')
+          throw new DomainError(409, 'AGENT_THREAD_TURN_LIMIT', 'Five agent messages in a row need a person\'s message, a new artifact version or a request change first');
+      }
+      throw error;
+    }
+  }));
 }

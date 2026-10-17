@@ -85,7 +85,7 @@ they do not exist on this server, so rely on the task records, the units you kno
       id: 'orient_plan', title: 'Orient and plan',
       tools: ['flux_project_orientation', 'flux_list_materials', 'flux_read_material', 'flux_list_docs', 'flux_get_doc',
         'flux_list_decisions', 'flux_get_decision', 'flux_list_work', 'flux_get_work', 'flux_list_results', 'flux_get_result',
-        'flux_list_conversations', 'flux_get_conversation', 'flux_list_maps', 'flux_get_map', 'flux_search_project',
+        'flux_list_conversations', 'flux_get_conversation', 'flux_get_agent_thread', 'flux_list_maps', 'flux_get_map', 'flux_search_project',
         'flux_create_proposal', 'flux_create_task', 'flux_undo_task_creation', 'flux_propose_decision'],
       providers: ['approved_policy'],
       text: `On first entry, list the project's sources with flux_project_orientation for each kind (doc, material, work, decision, \
@@ -120,7 +120,7 @@ approved_policy_unavailable, no policy is published: follow your owner's directi
     {
       id: 'execute_checkpoint', title: 'Execute and checkpoint',
       tools: ['flux_get_work', 'flux_create_unit', 'flux_claim_unit', 'flux_renew_unit', 'flux_release_unit', 'flux_complete_unit',
-        'flux_update_task', 'flux_record_result', 'flux_reply_in_conversation', 'flux_ask_question', 'flux_start_conversation', 'flux_create_doc',
+        'flux_update_task', 'flux_record_result', 'flux_post_agent_thread', 'flux_get_agent_thread', 'flux_reply_in_conversation', 'flux_ask_question', 'flux_start_conversation', 'flux_create_doc',
         'flux_update_doc', 'flux_create_map', 'flux_rename_map', 'flux_add_thought', 'flux_update_thought', 'flux_move_thoughts',
         'flux_remove_thought', 'flux_link_thoughts', 'flux_unlink_thoughts'],
       providers: [],
@@ -150,8 +150,11 @@ native record (for example the result you recorded), complete the unit with flux
 grant), naming that exact record. Completion is final; it does not change the task, approve anything or resolve a request, \
 and COWORK_UNIT_REQUESTS_OPEN means requests addressed to the unit must be answered or declined first.
 Useful work is not only code. Publish what you found on the project's existing records, each effect under a live standing \
-grant for its own operation. Post progress, questions and findings to the task's discussion thread, or to another project \
-conversation that fits, with flux_reply_in_conversation (conversation.reply); when you truly need a person's decision, ask with flux_ask_question (two to four ready answers; the same grant) and carry on with other authorized work; start a new topic with flux_start_conversation \
+grant for its own operation. Write work talk about a task (plans, progress, hand-off notes), one message per meaningful step, in the task's agents' \
+thread with flux_post_agent_thread (conversation.reply); on resume read it from the last sequence you recorded with \
+flux_get_agent_thread (afterSequence). At most five agent messages in a row are accepted until a person writes, an artifact \
+has a new version or a request changes (AGENT_THREAD_TURN_LIMIT). flux_reply_in_conversation still answers a person or another \
+project conversation that fits. When you truly need a person's decision, ask with flux_ask_question (two to four ready answers; the same grant) and carry on with other authorized work; start a new topic with flux_start_conversation \
 (conversation.create) only when none fits. Write the wiki with flux_create_doc (doc.create) and flux_update_doc (doc.update), \
 editing at the version you last read. Shape a shared project map with flux_create_map (map.create), flux_rename_map \
 (map.rename), flux_add_thought (map.thought.create), flux_update_thought (map.thought.update), flux_move_thoughts \
