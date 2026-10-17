@@ -46,6 +46,7 @@ export function redactCall<T>(value: T): T {
   return value;
 }
 
+const enforceRead = (allowed: boolean) => { if (!allowed) throw new DomainError(404, 'PROJECT_NOT_FOUND', 'Project not found'); };
 const invalidated = (message: string) => new DomainError(403, 'ASSISTANT_CHANGE_INVALIDATED', message);
 export const SKIPPED = 'ASSISTANT_CHANGE_SKIPPED';
 const isVersionConflict = (error: unknown) => error instanceof DomainError && error.status === 409
@@ -170,9 +171,15 @@ async function currentAuthority(tx: Transaction, claims: FluxMcpClaims, projectI
   approval: AssistantApproval | undefined, prepared: AssistantChangeRow | null): Promise<Authority> {
   const rows = assistantChangeRows(tx as DbExecutor);
   let agentId: string; let workspaceId: string;
+  // The owner's own rights now: a change outside them can only be prepared as a suggestion (AST-5).
+  const ownerCanWrite = (await evaluateProject({ kind: 'human', id: claims.ownerUserId }, 'project.write', projectId, tx, { lock: true })).allowed;
   if (!approval) {
-    // The run's own token: in flight, its place, the S6 entry admitted by the route's dispatch, the agent's write grant.
-    const context = await agentConnectionInTransaction(tx, claims, 'flux.action.execute', projectId);
+    // The run's own token: in flight, its place, the S6 entry admitted by the route's dispatch. The assistant's grant
+    // must allow the write itself; a suggestion (owner without write, so the assistant is capped too) needs only read.
+    const context = await agentConnectionInTransaction(tx, claims, 'flux.action.execute', null);
+    if (!context.connection.selectedProjectIds.includes(projectId)) throw new DomainError(403, 'OUTSIDE_RUN_PLACE', 'An assistant run changes only the project it was asked in');
+    if (!ownerCanWrite) enforceRead((await evaluateProject({ kind: 'human', id: claims.ownerUserId }, 'project.read', projectId, tx, { lock: true })).allowed);
+    await context.requireProject(projectId, ownerCanWrite ? 'project.write' : 'project.read');
     agentId = context.principal.id; workspaceId = context.workspaceId;
   } else {
     const grant = await createAgentConnectionStore(tx).grantForRun(claims.ownerUserId, claims.connectionId);
@@ -202,7 +209,6 @@ async function currentAuthority(tx: Transaction, claims: FluxMcpClaims, projectI
   if (!enablement) throw invalidated('Your assistant is off');
   if (approval && enablement.status !== 'active') throw new DomainError(409, 'ASSISTANT_PAUSED', 'Your assistant is paused. Resume it, then apply again');
   if (prepared && enablement.createdAt > prepared.createdAt) throw invalidated('Your assistant was turned off since. Ask again');
-  const ownerCanWrite = (await evaluateProject({ kind: 'human', id: claims.ownerUserId }, 'project.write', projectId, tx, { lock: true })).allowed;
   const now = new Date();
   const runtime: AuthenticatedAgentRuntime = Object.freeze({ id: run.id, workspaceId, connectionId: claims.connectionId, ownerUserId: claims.ownerUserId,
     agentId, clientId: 'flux-assistant', grantReferenceId: `flux-run:${run.id}`, bindingGeneration: 0, scopes: ['flux.context.read', 'flux.action.execute'] as AgentScope[],

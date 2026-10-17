@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { before, beforeEach, describe, test } from 'node:test';
 import {
-  assistantRunTools, assistantSettingsPath, compileAssistantAreas, DEFAULT_ASSISTANT_AREAS, PERSONAL_RUN_CONSENT_VERSION, PERSONAL_RUN_LIMITS,
+  ASSISTANT_RUN_EFFECT_TOOLS, assistantRunTools, assistantSettingsPath, compileAssistantAreas, DEFAULT_ASSISTANT_AREAS, PERSONAL_RUN_CONSENT_VERSION, PERSONAL_RUN_LIMITS,
   personalRunTokenPath, RUN_TOKEN_LIMITS, type AssistantSettings, type Conversation, type Project, type Workspace,
 } from '@flux/contracts';
 import { createPersonalRunProcessor, type PersonalComputeResult, type PersonalToolCall, type Principal } from '@flux/core';
@@ -132,9 +132,9 @@ describe('the run token and the worker as an MCP client of /mcp (F-027 A2, A6; #
     assert.equal(signed.flux_run_id, runId);
     assert.deepEqual(signed.flux_place, { project: place.id, conversation: thread.id });
     assert.equal(signed.aud, `${publicOrigin}/mcp`);
-    assert.equal(signed.scope, 'flux.context.read', 'read tools only in #280\'s first delivery step');
+    assert.equal(signed.scope, 'flux.context.read flux.action.execute', 'reads, and changes of the areas switched to edit (A3)');
     assert.ok((signed.exp as number) - (signed.iat as number) <= RUN_TOKEN_LIMITS.lifetimeSeconds, 'no longer than the run\'s clock');
-    assert.deepEqual(grant.tools, assistantRunTools(compileAssistantAreas(DEFAULT_ASSISTANT_AREAS), ['flux.context.read']));
+    assert.deepEqual(grant.tools, assistantRunTools(compileAssistantAreas(DEFAULT_ASSISTANT_AREAS), ['flux.context.read', 'flux.action.execute']));
     const stored = await pool.query(`SELECT row_to_json(r)::text AS text FROM personal_runs r WHERE id = $1`, [runId]);
     assert.ok(!stored.rows[0].text.includes(grant.token) && !stored.rows[0].text.includes(grant.token.split('.')[2]!), 'the token is never stored');
     assert.ok(!stored.rows[0].text.includes(nonce), 'nor is the nonce');
@@ -155,7 +155,7 @@ describe('the run token and the worker as an MCP client of /mcp (F-027 A2, A6; #
     assert.equal(listed.status, 200);
     const names = ((listed.message?.result as { tools: { name: string }[] }).tools).map((tool) => tool.name).sort();
     assert.deepEqual(names, grant.tools, 'exactly the minted list');
-    for (const absent of ['flux_bootstrap', 'flux_create_task', 'flux_claim_unit', 'flux_create_proposal', 'flux_acknowledge_playbook']) assert.ok(!names.includes(absent), absent);
+    for (const absent of ['flux_bootstrap', 'flux_create_unit', 'flux_claim_unit', 'flux_create_proposal', 'flux_acknowledge_playbook']) assert.ok(!names.includes(absent), absent);
     const templates = await mcp(grant.token, 2, 'resources/templates/list');
     assert.ok(templates.message?.error || !((templates.message?.result as { resourceTemplates?: unknown[] } | undefined)?.resourceTemplates?.length), 'no resource is offered to a run');
     const contexts = await mcp(grant.token, 3, 'tools/call', { name: 'flux_list_contexts', arguments: {} });
@@ -166,7 +166,7 @@ describe('the run token and the worker as an MCP client of /mcp (F-027 A2, A6; #
     assert.ok(!toolText(elsewhere.message).includes(OTHER_CANARY));
     const here = await mcp(grant.token, 5, 'tools/call', { name: 'flux_get_doc', arguments: { projectId: place.id, id: docId } });
     assert.ok(toolText(here.message).includes(WIKI_CANARY), 'the place\'s wiki is readable while Wiki is on');
-    const effect = await mcp(grant.token, 6, 'tools/call', { name: 'flux_create_task', arguments: { projectId: place.id, title: 'Sneaky', clientCommandId: randomUUID() } });
+    const effect = await mcp(grant.token, 6, 'tools/call', { name: 'flux_claim_unit', arguments: { projectId: place.id, clientCommandId: randomUUID() } });
     assert.equal(refusal(effect.message)?.code, 'MCP_ENTRY_UNAVAILABLE', 'a tool outside the run\'s list is refused before anything runs');
     await end(runId);
     assert.equal((await mcp(grant.token, 7, 'tools/call', { name: 'flux_list_contexts', arguments: {} })).status, 403, 'the token fails after the run ended');
@@ -323,7 +323,7 @@ describe('the run token and the worker as an MCP client of /mcp (F-027 A2, A6; #
     const fullTools = compute.dispatched[0]?.tools ?? [];
     const fullBytes = JSON.stringify(fullTools).length;
     t.diagnostic(`all switches on: ${fullOutcome} after ${compute.dispatched.length} requests; ${fullBytes} bytes of tool definitions, ${fullTools.length} tools`);
-    assert.equal(fullTools.length, 18);
+    assert.equal(fullTools.length, 18 + ASSISTANT_RUN_EFFECT_TOOLS.length, '18 read tools and every change tool (A3)');
     assert.ok(fullBytes <= TOOL_DEFINITION_BYTES, `the run's tool definitions take ${fullBytes} bytes; keep them under ${TOOL_DEFINITION_BYTES} (they are input of every request)`);
     assert.ok(!JSON.stringify(fullTools).includes('"$schema"') && !JSON.stringify(fullTools).includes('"pattern"'), 'no draft URL or uuid regular expression on the wire');
     assert.ok(fullTools.every((tool) => tool.name !== 'flux_get_conversation' || JSON.stringify(tool.inputSchema).includes('"beforeSequence"')), 'the parameters themselves are kept');
