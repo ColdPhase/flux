@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { after, before, describe, test } from 'node:test';
 import { callSupervisor, NdjsonReader, parseSupervisorFrame, type ClientStatus, type SupervisorCallOutcome, type SupervisorRequest } from '@flux/runtime-protocol';
 import { Lane } from '../../apps/runtime/src/supervisor/server.js';
-import { CODEX_FEATURE_REVIEW, codexRunOverrides, LOGOUT_TEMPLATES, STATUS_TEMPLATES } from '../../apps/runtime/src/supervisor/templates.js';
+import { CODEX_FEATURE_REVIEW, codexRunOverrides, LOGOUT_TEMPLATES, RUN_TEMPLATES, STATUS_TEMPLATES } from '../../apps/runtime/src/supervisor/templates.js';
 import { classifyCodexError, classifyError, effectiveConfigHolds } from '../../apps/runtime/src/supervisor/run.js';
 import { APP_SERVER_METHODS, openAppServer, readRateLimits } from '../../apps/runtime/src/supervisor/app-server.js';
 import { claudeSignInReader, deviceSignInReader } from '../../apps/runtime/src/supervisor/device.js';
@@ -307,6 +307,27 @@ describe('a run\'s error results (F-022 T5; the wording is first verified agains
       assert.equal(classifyError(text).outcome, 'sign_in_again', text);
     assert.equal(classifyError('Claude refused this request under the usage policy').outcome, 'refused');
     assert.equal(classifyError('Something else went wrong').outcome, 'crashed');
+  });
+
+  test('AST-11: a model the account cannot use is its own outcome, for both CLIs', () => {
+    assert.equal(classifyError('There\'s an issue with the selected model (opus). It may not exist or you may not have access to it. Run /model to pick a different model.').outcome, 'model_unavailable');
+    assert.equal(classifyCodexError('The model `gpt-6-astra` does not exist or you do not have access to it.'), 'model_unavailable');
+    assert.equal(classifyCodexError('{"error":{"code":"model_not_found"}}'), 'model_unavailable');
+    // A plan limit or an expired login that mentions a model is still its own outcome, and ordinary words are not a model error.
+    assert.equal(classifyError('Claude AI usage limit reached|1791374400').outcome, 'plan_limit');
+    assert.equal(classifyCodexError('You’ve hit your usage limit for this model.'), 'plan_limit');
+    assert.equal(classifyError('The model is thinking about it').outcome, 'crashed');
+  });
+
+  test('AST-11: the run templates add the model flag only when a model is named, and only as its value', () => {
+    const input = { tools: ['flux_get_doc'], caps: { maxTurns: 10, wallClockSeconds: 300, idleSeconds: 60, maxAnswerBytes: 16384 }, mcpConfigPath: '/tmp/mcp.json', mcpUrl: 'http://x:8080/mcp', brief: 'brief' };
+    const withModel = RUN_TEMPLATES.claude_code({ ...input, model: 'opus' });
+    assert.deepEqual(withModel.slice(withModel.indexOf('--model') - 2), ['--max-turns', '10', '--model', 'opus', '--append-system-prompt', 'brief']);
+    assert.ok(!RUN_TEMPLATES.claude_code(input).includes('--model'));
+    const codex = RUN_TEMPLATES.codex({ ...input, model: 'gpt-6-luna' });
+    assert.deepEqual(codex.slice(codex.indexOf('-m'), codex.indexOf('-m') + 2), ['-m', 'gpt-6-luna']);
+    assert.ok(codex.indexOf('-m') < codex.length - 1 && codex.at(-1) === '-', 'the prompt marker stays last');
+    assert.ok(!RUN_TEMPLATES.codex(input).includes('-m'));
   });
 });
 

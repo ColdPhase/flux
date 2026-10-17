@@ -376,3 +376,24 @@ test('removal and concurrent enablement take the owner lock before the enablemen
     await Promise.allSettled(pending);
   }
 });
+
+test('F-027 Journey 6: "Tell whoever runs Flux" sends one Needs-you item to the workspace\'s owners, once, and never to the asker', async () => {
+  const owner = await person('operator-owner'); const member = await person('operator-member'); const outsider = await person('operator-outsider');
+  const ws = await workspace(owner, 'Operated Flux');
+  await addMember(owner, ws.id, member, 'member');
+  const path = `/api/v1/workspaces/${ws.id}/assistant-operator-requests`;
+  const sent = expectStatus(await member.browser.request('POST', path, { body: {} }), 201) as { sent: number };
+  assert.equal(sent.sent, 1);
+  const inbox = expectStatus(await owner.browser.request('GET', '/api/v1/inbox'), 200) as { items: { title: string; body: string; reason: string }[] };
+  const item = inbox.items.find((entry) => entry.title.endsWith('would like to use their Claude plan here'));
+  assert.ok(item, JSON.stringify(inbox.items.map((entry) => entry.title)));
+  assert.deepEqual([item.reason, item.body], ['question', 'Whoever runs this Flux turns it on with ./flux ai on.']);
+  assert.equal((expectStatus(await member.browser.request('POST', path, { body: {} }), 201) as { sent: number }).sent, 0, 'the same ask is not sent twice');
+  const codex = expectStatus(await member.browser.request('POST', path, { body: { client: 'codex' } }), 201) as { sent: number };
+  assert.equal(codex.sent, 1, 'another plan is another ask');
+  assert.equal((expectStatus(await owner.browser.request('POST', path, { body: {} }), 201) as { sent: number }).sent, 0, 'the owner has no one else to tell');
+  assert.equal((await outsider.browser.request('POST', path, { body: {} })).status, 404, 'someone outside the workspace learns nothing');
+  const mine = expectStatus(await member.browser.request('GET', '/api/v1/inbox'), 200) as { items: { title: string }[] };
+  assert.ok(!mine.items.some((entry) => entry.title.includes('would like to use')), 'the asker gets no item of their own');
+});
+

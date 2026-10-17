@@ -2,7 +2,7 @@ import {
   ASSISTANT_RUNS_PATH, PERSONAL_ASSISTANT_AGENTS_PATH, PERSONAL_ASSISTANT_PATH, PERSONAL_ASSISTANT_PAUSE_PATH, PERSONAL_ASSISTANT_RESUME_PATH,
   assistantProposalAcceptPath, assistantProposalDismissPath, assistantRunPath, assistantRunRetryPath, assistantRunStopPath,
   conversationAssistantAnswersPath, conversationAssistantRunsPath, projectAssistantProposalsPath,
-  ASSISTANT_CHANGES_PATH, assistantChangeActionPath, assistantRunChangesActionPath, conversationAssistantActivityPath, conversationAssistantChangesPath,
+  ASSISTANT_CHANGES_PATH, assistantChangeActionPath, assistantOperatorRequestPath, assistantRunChangesActionPath, conversationAssistantActivityPath, conversationAssistantChangesPath,
   type AssistantActivity, type AssistantChange, type AssistantChangeDecision, type AssistantChangesDecided, type AssistantRunUndone,
   type AssistantAnswer, type AssistantProposal, type AssistantRun, type EnablePersonalRunsCommand, type InvokeAssistantRunCommand,
   type Page, type PersonalAssistantStatus, type UpdatePersonalRunsCommand,
@@ -19,6 +19,10 @@ export const selectAssistantAgent = (agentId: string) => request<PersonalAssista
 export const pauseAssistant = () => request<PersonalAssistantStatus>(PERSONAL_ASSISTANT_PAUSE_PATH, { method: 'POST' });
 export const resumeAssistant = () => request<PersonalAssistantStatus>(PERSONAL_ASSISTANT_RESUME_PATH, { method: 'POST' });
 export const removeAssistant = () => request<null>(PERSONAL_ASSISTANT_PATH, { method: 'DELETE' });
+
+/** "Tell whoever runs Flux": one Needs-you item to the workspace's owners (F-027 Journey 6). */
+export const tellOperator = (workspaceId: string, client: 'claude_code' | 'codex' | null | undefined) =>
+  request<{ sent: number }>(assistantOperatorRequestPath(workspaceId), { method: 'POST', body: client === 'codex' ? { client } : {} });
 
 export const askAssistant = (conversationId: string, command: InvokeAssistantRunCommand) =>
   request<AssistantRun>(conversationAssistantRunsPath(conversationId), { method: 'POST', body: command });

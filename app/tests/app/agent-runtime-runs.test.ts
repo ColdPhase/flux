@@ -218,6 +218,7 @@ describe('a run on the owner\'s own Claude Code in the agent runtime (F-022 T5, 
       ['run_big_answer', 'cap_reached', 'answer_too_large'],
       ['run_broken_stream', 'provider_failed', 'unknown'],
       ['run_max_turns', 'cap_reached', 'max_turns'],
+      ['run_model_unavailable', 'unavailable', 'model_unavailable'],
     ];
     for (const [name, status, reason] of expected) {
       await resetFake();
@@ -424,5 +425,55 @@ describe('a run on the owner\'s own Claude Code in the agent runtime (F-022 T5, 
     assert.equal(await processor.process(started.run.id), 'completed');
     const everything = JSON.stringify(await calls()) + String((await row(started.run.id)).answer_body);
     for (const canary of [DM_CANARY, PRIVATE_CANARY, OTHER_CANARY]) assert.ok(!everything.includes(canary), canary);
+  });
+
+  test('AST-11: the chosen model reaches the CLI as --model; a change applies to the next request only; a legacy assistant starts with no flag; a model outside the list is refused', async () => {
+    const argvOf = async () => ((await calls()).find((entry) => entry.event === 'run') as { argv: string[] }).argv;
+    const flag = (argv: string[]) => (argv.includes('--model') ? argv[argv.indexOf('--model') + 1] : null);
+    await script({ calls: [], answer: 'Done.' });
+    // Turned on with no model named: the account's own default, no flag, recorded as before (AST-11).
+    let choice = await runs.model(human(owner));
+    assert.deepEqual([choice.engine, choice.account, choice.company, choice.current, choice.saved], ['runtime', 'claude_plan', 'Claude', 'default', true]);
+    assert.deepEqual(choice.options.map((option) => option.id), ['default', 'sonnet', 'opus', 'haiku']);
+    const legacy = await ask();
+    assert.equal(await processor.process(legacy.run.id), 'completed');
+    assert.equal(flag(await argvOf()), null, 'no model flag for a legacy assistant');
+    assert.equal((await row(legacy.run.id)).model, 'claude-code');
+
+    // Choosing Opus changes the next request.
+    choice = await runs.chooseModel(human(owner), { model: 'opus' });
+    assert.deepEqual([choice.current, choice.options.map((option) => option.id)], ['opus', ['sonnet', 'opus', 'haiku']], 'the default row is gone after a pick');
+    const early = await ask();
+    // A change made after it was sent never reaches it; the next request is sent with the new model.
+    await runs.chooseModel(human(owner), { model: 'haiku' });
+    const late = await ask();
+    await resetFake(); await script({ calls: [], answer: 'Done.' });
+    assert.equal(await processor.process(early.run.id), 'completed');
+    assert.equal(flag(await argvOf()), 'opus', 'the request sent under Opus keeps Opus');
+    await resetFake(); await script({ calls: [], answer: 'Done.' });
+    assert.equal(await processor.process(late.run.id), 'completed');
+    assert.equal(flag(await argvOf()), 'haiku');
+    assert.deepEqual([(await row(early.run.id)).model, (await row(late.run.id)).model], ['opus', 'haiku'], 'each run records its model');
+    assert.equal(((await runs.get(human(owner), early.run.id)).model), 'opus');
+
+    // Anything outside the account's list is a plain error and the previous model stays; nothing is passed to a command.
+    for (const bad of ['fable', 'gpt-6.1-sol', 'default', '--dangerously-skip-permissions', 'opus;id', '', 42]) {
+      await assert.rejects(runs.chooseModel(human(owner), { model: bad as string }), (error: unknown) => (error as { code?: string }).code === 'ASSISTANT_MODEL_UNAVAILABLE'
+        && (error as Error).message === 'Your Claude plan doesn\'t offer that model. It is still Haiku.', String(bad));
+    }
+    assert.equal((await runs.model(human(owner))).current, 'haiku');
+  });
+
+  test('AST-11: a model the vendor does not accept ends the run as its own state; the setting stays and nothing falls back', async () => {
+    await runs.chooseModel(human(owner), { model: 'opus' });
+    await scenario('run_model_unavailable');
+    const started = await ask();
+    assert.equal(await processor.process(started.run.id), 'unavailable');
+    const stored = await row(started.run.id);
+    assert.deepEqual([stored.end_reason, stored.answer_body, stored.model], ['model_unavailable', null, 'opus']);
+    assert.equal((await runs.get(human(owner), started.run.id)).endReason, 'model_unavailable');
+    assert.equal((await runs.model(human(owner))).current, 'opus', 'the setting stays');
+    assert.equal((await calls()).filter((entry) => entry.event === 'run').length, 1, 'no other model was tried');
+    assert.equal(compute.dispatched.length, 0);
   });
 });

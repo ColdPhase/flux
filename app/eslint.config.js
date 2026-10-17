@@ -8,6 +8,8 @@ export default tseslint.config(
     // Immutable copies of independently run probes are historical evidence;
     // maintained application regressions remain under tests/app and are linted.
     'docs/development/evidence/**',
+    // A vendored, minified test tool (axe-core, tests/ui/vendor/README.md); never application code.
+    'tests/ui/vendor/**',
   ] },
   js.configs.recommended,
   ...tseslint.configs.recommended,

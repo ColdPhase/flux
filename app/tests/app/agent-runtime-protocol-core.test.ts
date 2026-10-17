@@ -51,6 +51,15 @@ describe('the supervisor\'s closed request set', () => {
     }
   });
 
+  test('a run may name a model id (AST-11), and only an id', () => {
+    for (const model of ['sonnet', 'opus', 'haiku', 'gpt-6.1-sol', 'gpt-6-luna', 'a'.repeat(64)]) {
+      const parsed = parseSupervisorRequest('run', { ...valid.run, model });
+      assert.equal(parsed.ok && (parsed.request as { model?: string }).model, model);
+    }
+    assert.equal(parseSupervisorRequest('run', valid.run).ok, true, 'a run without a model is the account\'s default');
+    assert.equal(parseSupervisorRequest('stop', { ...valid.stop, model: 'opus' }).ok, false, 'no other request takes a model');
+  });
+
   test('refuses a command line, flag, path or environment value in any field', () => {
     const smuggled = { argv: ['--dangerously-skip-permissions'], args: ['-c', 'x'], command: 'sh -c id', cmd: 'id', flags: ['--tools', 'Bash'],
       path: '/data', cwd: '/', env: { PATH: '/tmp' }, environment: {}, cli: '/bin/sh', shell: true, executable: '/bin/sh', config: {} };
@@ -78,6 +87,9 @@ describe('the supervisor\'s closed request set', () => {
       ['run', { ...valid.run, runToken: 'not a token' }], ['run', { ...valid.run, runToken: `${token} --verbose` }],
       ['run', { ...valid.run, caps: { ...caps, maxTurns: 0 } }], ['run', { ...valid.run, caps: { ...caps, wallClockSeconds: 10_000 } }],
       ['run', { ...valid.run, caps: { ...caps, extra: 1 } }], ['run', { ...valid.run, caps: { ...caps, maxTurns: 2.5 } }],
+      // F-027 AST-11: the model is an id, never a flag, a path, a space or an option of the command.
+      ...['--dangerously-skip-permissions', '-m', 'opus --tools Bash', 'opus\n--tools', '../opus', '/opus', 'Opus', 'sonnet;id', '', ' ', 'a'.repeat(65), 7, null]
+        .map((model): [string, unknown] => ['run', { ...valid.run, model }]),
       ['status', { client: 'claude_code' }], ['status', { bindingId: id, client: 'gemini' }],
       ['stop', { bindingId: id, runId: 'run-1' }], ['release', {}], ['bind', []], ['bind', 'x'],
     ];

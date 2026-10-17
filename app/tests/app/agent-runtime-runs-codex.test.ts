@@ -230,4 +230,34 @@ describe('a run on the owner\'s own Codex in the agent runtime (F-022 T6, #281)'
       assert.equal(stopped.answer_body, null, name);
     }
   });
+
+  test('AST-11: the chosen model reaches Codex as -m; a legacy assistant starts with no flag; an unaccepted model ends the run as its own state', async () => {
+    const argvOf = async () => ((await calls()).find((entry) => entry.event === 'run') as { argv: string[] }).argv;
+    const flag = (argv: string[]) => (argv.includes('-m') ? argv[argv.indexOf('-m') + 1] : null);
+    await script({ calls: [], answer: 'Done.' });
+    let choice = await runs.model(human(owner));
+    assert.deepEqual([choice.account, choice.company, choice.current, choice.default], ['chatgpt_plan', 'ChatGPT', 'default', 'gpt-6.1-sol']);
+    assert.deepEqual(choice.options.map((option) => option.id), ['default', 'gpt-6.1-sol', 'gpt-6-astra', 'gpt-6-luna']);
+    const legacy = await ask();
+    assert.equal(await processor.process(legacy.run.id), 'completed');
+    assert.equal(flag(await argvOf()), null);
+    assert.equal((await row(legacy.run.id)).model, 'codex');
+
+    choice = await runs.chooseModel(human(owner), { model: 'gpt-6-luna' });
+    assert.equal(choice.current, 'gpt-6-luna');
+    await resetFake(); await script({ calls: [], answer: 'Done.' });
+    const chosen = await ask();
+    assert.equal(await processor.process(chosen.run.id), 'completed');
+    const argv = await argvOf();
+    assert.equal(flag(argv), 'gpt-6-luna');
+    assert.ok(argv.indexOf('-m') < argv.indexOf('-'), 'before the prompt marker');
+    assert.equal((await row(chosen.run.id)).model, 'gpt-6-luna');
+    await assert.rejects(runs.chooseModel(human(owner), { model: 'sonnet' }), (error: unknown) => (error as Error).message === 'Your ChatGPT plan doesn\'t offer that model. It is still GPT-6 Luna.');
+
+    await resetFake(); await scenario('run_model_unavailable');
+    const refused = await ask();
+    assert.equal(await processor.process(refused.run.id), 'unavailable');
+    assert.deepEqual([(await row(refused.run.id)).end_reason, (await row(refused.run.id)).answer_body], ['model_unavailable', null]);
+    assert.equal((await runs.model(human(owner))).current, 'gpt-6-luna');
+  });
 });

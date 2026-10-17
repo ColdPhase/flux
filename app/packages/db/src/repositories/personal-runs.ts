@@ -20,8 +20,8 @@ type SourceRef =
   | { type: 'message'; id: string; revision: number }
   | { type: 'work'; id: string; revision: number }
   | { type: 'thought'; id: string; sketchId: string; revision: number };
-type NewEnablement = Omit<EnablementRow, 'status' | 'version' | 'consentedAt' | 'createdAt' | 'updatedAt' | 'engine'> & { engine?: EnablementRow['engine'] };
-type EnablementChanges = Partial<Pick<EnablementRow, 'perRunCents' | 'dailyCapCents' | 'timeZone' | 'status'>>;
+type NewEnablement = Omit<EnablementRow, 'status' | 'version' | 'consentedAt' | 'createdAt' | 'updatedAt' | 'engine' | 'assistantModel'> & { engine?: EnablementRow['engine']; assistantModel?: string | null };
+type EnablementChanges = Partial<Pick<EnablementRow, 'perRunCents' | 'dailyCapCents' | 'timeZone' | 'status' | 'assistantModel'>>;
 type NewRun = Pick<RunRow, 'id' | 'workspaceId' | 'projectId' | 'conversationId' | 'ownerUserId' | 'agentId' | 'connectionId'
   | 'clientRunId' | 'requestFingerprint' | 'kind' | 'prompt' | 'targetSketchId' | 'targetThoughtId' | 'continuesRunId' | 'retryOfRunId'
   | 'reservedMicros' | 'provider' | 'model'> & { engine?: RunRow['engine']; silent?: boolean; authority?: RunRow['authority']; backgroundLabel?: string | null };

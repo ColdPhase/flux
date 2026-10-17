@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
 import { useLocation, useNavigate } from 'react-router';
 import type { Agent, SearchResult } from '@flux/contracts';
 import { getAssistantStatus } from '../assistant/api';
+import { AskWhere } from '../assistant/AskWhere';
 import { useShellData } from '../app/data';
 import { useShellActions } from '../app/shellContext';
 import { Button, Icon, Kreska, MEDIA, Overlay, Spinner, useMediaQuery, type IconName } from '../ui';
@@ -16,7 +17,7 @@ type Option =
   | { kind: 'result'; id: string; result: SearchResult }
   | { kind: 'place'; id: string; place: RecentPlace; label: string; side?: string; icon: IconName }
   | { kind: 'all'; id: string }
-  | { kind: 'command'; id: string; section: string; label: string; icon: IconName; keys?: string[]; run: () => void }
+  | { kind: 'command'; id: string; section: string; label: string; icon: IconName; keys?: string[]; stays?: boolean; run: () => void }
   | { kind: 'agent'; id: string; agent: Agent };
 
 /**
@@ -132,14 +133,15 @@ function JumpBody({ onClose, userId, phone }: { onClose: () => void; userId: str
   // "Ask my assistant…" (F-027 AST-10.10): where an ask can be answered (a thread of a project conversation) and the assistant is ready.
   const inThread = /^\/projects\/[^/]+\/conversations\/[^/]+/.test(location.pathname);
   const [assistantReady, setAssistantReady] = useState(false);
+  // Outside a conversation the ask first asks "In which conversation?" (never a dead end), then opens it the same way.
+  const [pickingWhere, setPickingWhere] = useState(false);
   useEffect(() => {
-    if (!inThread) return undefined;
     const controller = new AbortController();
     getAssistantStatus(controller.signal).then((status) => setAssistantReady(status.state === 'ready'), () => undefined);
     return () => controller.abort();
-  }, [inThread]);
-  const askMine: Option[] = inThread && assistantReady ? [{ kind: 'command', section: 'Actions', id: 'action-ask-assistant', label: 'Ask my assistant…', icon: 'spark',
-    run: () => navigate({ pathname: location.pathname, search: '?ask=1' }) }] : [];
+  }, []);
+  const askMine: Option[] = assistantReady ? [{ kind: 'command', section: 'Actions', id: 'action-ask-assistant', label: 'Ask my assistant…', icon: 'spark', stays: !inThread,
+    run: () => { if (inThread) navigate({ pathname: location.pathname, search: '?ask=1' }); else setPickingWhere(true); } }] : [];
   const mapHref = here ? `/projects/${here}/map` : '/map';
   const create = (rest ? `New task “${rest.length > 40 ? `${rest.slice(0, 39)}…` : rest}”` : 'New task');
   const actions: Option[] = scope !== 'all' ? [] : [
@@ -189,7 +191,7 @@ function JumpBody({ onClose, userId, phone }: { onClose: () => void; userId: str
   const choose = (option: Option | undefined) => {
     if (!option) return;
     if (option.kind === 'place') { onClose(); navigate(option.place.path); return; }
-    if (option.kind === 'command') { onClose(); option.run(); return; }
+    if (option.kind === 'command') { if (!option.stays) onClose(); option.run(); return; }
     if (option.kind === 'agent') { onClose(); navigate(`/projects/${agentProject(option.agent)}/agents`); return; }
     recent.remember(text);
     onClose();
@@ -215,6 +217,14 @@ function JumpBody({ onClose, userId, phone }: { onClose: () => void; userId: str
     : state.status === 'ready' ? (shown.length || extra ? `${total + extra}${state.answer.countsCapped ? '+' : ''} ${total + extra === 1 ? 'result' : 'results'}` : 'No results')
       : scope !== 'all' && !rest ? (scope === 'tasks' ? 'Type a task number or title' : 'Type a name to find a person or an agent') : '';
 
+  if (pickingWhere) {
+    return (
+      <div className="jump__in">
+        {phone ? <h2 className="jump__title">Ask my assistant</h2> : null}
+        <div className="jump__body"><AskWhere userId={userId} projectId={here} projects={projects} onOpen={onClose} onBack={() => setPickingWhere(false)} /></div>
+      </div>
+    );
+  }
   return (
     <div className="jump__in">
       {phone ? <h2 className="jump__title">Search</h2> : null}

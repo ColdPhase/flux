@@ -20,6 +20,11 @@ export const BINDING_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{
 export const BOOT_ID = BINDING_ID;
 /** Any canonical UUID (runs use the personal-run id). */
 export const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+/**
+ * A model id a run may name (F-027 AST-11): the CLI's own alias or id (`sonnet`, `gpt-6.1-sol`). It starts with a
+ * letter or digit, so it can never be read as a flag, and holds no space, quote or path character.
+ */
+export const MODEL_ID = /^[a-z0-9][a-z0-9.-]{0,63}$/;
 /** A Flux MCP tool name, as the MCP route registers them (`flux_get_doc`). */
 export const FLUX_TOOL_NAME = /^flux_[a-z][a-z0-9_]{0,62}$/;
 /** A compact JWS (the per-run MCP token). Its content is never read by the runtime. */

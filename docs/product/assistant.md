@@ -1164,7 +1164,11 @@ Ada has just installed Flux and manages her project. She pays for Claude Max.
    >
    > Uses your Claude plan. Flux can't see its limits. What it reads goes to
    > Anthropic under your account's settings.
+   > Model: Sonnet ⌄
    > [ Turn on ]   Change what it can do
+
+   The model control is AST-11's: a default is preselected and the person may pick
+   another before *Turn on*.
 
    **Taps** *Turn on*. The button is the consent; there is no extra check box. The
    assistant joins the projects Ada manages.
@@ -1329,9 +1333,10 @@ in the same line. Nothing ever falls back to another account on its own.
 | Daily limit | "That's 20 requests today, your daily limit." | [ Change the limit ] |
 | Signed out or expired | "Sign in to Claude again to keep using your assistant." | [ Sign in ] |
 | Vendor refused | "Claude refused this request. Nothing was changed." | [ Edit request ] |
+| Vendor doesn't accept the chosen model | "Your Claude plan didn't accept Opus. Nothing was changed." | [ Choose another model ] (AST-11) |
 | A switch is off | "I can't edit the Wiki: that's switched off for me." | [ Allow Wiki edits and try again ] |
 | Not in the project, Ada manages it | "I'm not in this project yet." | [ Add my assistant here ] |
-| Not in the project, Ada doesn't manage it | "I'm not in this project yet. A manager can add me." | [ Ask Jonas to add me ] → "Asked Jonas to add me. I'll do this when he does." |
+| Not in the project, Ada doesn't manage it | "I'm not in this project yet. A manager can add me." | [ Ask Jonas to add me ] → "Asked Jonas to add me. I'll do this when they do." (the name is the project's manager when there is one, otherwise "a manager"; "they" because the text cannot know a person's pronoun; revised 2026-10-17, #407) |
 | Outside her rights | "Jonas owns #8. Suggest this change to him?" | [ Send to Jonas ] |
 | Someone changed it meanwhile | "Skipped #4: Jonas changed it while I worked." | [ Open ] |
 | Subscription sign-in off on this Flux | "This Flux doesn't allow signing in with a subscription yet." | [ Tell whoever runs Flux ] [ Use an API key instead ] |
@@ -1375,8 +1380,8 @@ may use.
 ┌ Settings ──────────────────────────────────────────────────────────────────────┐
 │ Account            │ [Kreska] Ada's assistant  Agent  for you · in Flux     [●] │
 │ Appearance         │ Claude · your subscription                       Change › │
-│ Notifications      │ Flux can't see your plan's limits.                        │
-│ Agents and AI    ◂ │                                                           │
+│ Notifications      │ Model: Sonnet ⌄                                           │
+│ Agents and AI    ◂ │ Flux can't see your plan's limits.                        │
 │ Keyboard shortcuts │ What it can do                                            │
 │                    │ ┌───────────────────────────────────────────────────────┐ │
 │                    │ │ When it changes something                             │ │
@@ -1418,6 +1423,7 @@ may use.
 ```text
 ‹  Ada's assistant                       [●]
    Claude · your subscription        Change ›
+   Model: Sonnet ⌄
    Flux can't see your plan's limits.
 
 What it can do
@@ -1507,6 +1513,7 @@ Can
   suggest decisions. Asks before removing anything or changing things
   other people made or are responsible for. Can't accept decisions or
   invite people.
+Model: Sonnet ⌄
 [ Message ]
 ⋯  Pause my assistant · Manage ›
 ```
@@ -1644,8 +1651,145 @@ decision, result.
   reconnect once; Stop, Undo and Close show "Offline" instead of failing (Playwright
   offline emulation).
 
+## AST-11 — The assistant's model
+
+*Added 2026-10-17 by founder direction (Hubert, @PelikanFix16, via the coordinator chat,
+[#596](https://github.com/ColdPhase/flux/issues/596)): when you add the assistant you also choose
+its model, and switching the model must be quick (different requests need different models),
+including from the conversation. Hubert chose **one model, changed everywhere**: no
+per-conversation or per-request model and no hidden state.*
+
+Until now a Claude or ChatGPT plan answered with the CLI's own default and an API key with
+its connection's model; there was no choice at *Turn on* and no quick switch. AST-11 adds one
+setting, the **assistant's model**, owned by its owner.
+
+### What the person sees
+
+- **One value.** The assistant has one model, the same in every project and conversation.
+  The ready card, Settings and the conversation read and write that one value, so they
+  never disagree. A change made in one place shows in the others the next time they are
+  shown (an open one refreshes when the person comes back to it).
+- **Three places, one control** (the same list, the same words):
+  1. **Ready card** (Journey 1 step 4): "Model: Sonnet ⌄" above *Turn on*, with the default
+     preselected. Choosing another before *Turn on* is part of *Turn on*; nothing is saved
+     before it.
+  2. **Settings → Your assistant:** the same control on the account row, under the account
+     name ("Claude · your subscription" / "Model: Sonnet ⌄").
+  3. **Conversation:** the model's short name ("Sonnet ⌄") sits on the ask bar next to the ask
+     field, and on the assistant's panel above *Message*. One tap opens the list; choosing
+     saves at once and the control shows the new name. **At most two taps** from the open
+     ask bar (⌘K "Ask my assistant…" or `@`) or the open panel: the control, then the model.
+- **Owner-only.** Only the owner sees the setting, the list and the control, and only the
+  owner changes it. A colleague sees no control and no model setting anywhere. (The message's
+  footer already names what answered, "Claude · Sonnet", as the provenance of any answer.)
+- **The list** holds the models the connected account offers, each as a name and a short
+  phrase. No ids, flags or aliases are shown (AST-10.2 holds).
+
+| Account | List (name · phrase) | Default | Passed to the engine as |
+| --- | --- | --- | --- |
+| Claude plan (Claude Code) | Sonnet · Everyday work<br>Opus · Harder requests<br>Haiku · Quick, simple requests | Sonnet | `claude --model sonnet` / `opus` / `haiku` |
+| ChatGPT plan (Codex) | GPT-6.1 Sol · Everyday work<br>GPT-6 Astra · The hardest requests<br>GPT-6 Luna · Quick, simple requests | GPT-6.1 Sol | `codex exec -m gpt-6.1-sol` / `gpt-6-astra` / `gpt-6-luna` |
+| API key (any provider) | The connection's own model, and the provider's models that have a price in Flux's table ([PROV-3](model-providers.md#prov-3--cost-caps-and-token-bounds)), each with its price ("Input $2, output $10 per 1M tokens"). A model of another provider needs its own connection and consent | The connection's own model | The provider adapter's model field (`server` engine) |
+
+- **A legacy assistant** (turned on before AST-11, with no model chosen) shows one extra row,
+  "Your plan's default · Whatever your plan uses", ticked, until the owner picks another.
+  Until then it runs exactly as before, with no model flag, and nothing changes silently.
+  After a pick the row is gone.
+- **A model that can't call tools** keeps AST-8.3 and the list says so beside it: "Can answer
+  but can't make changes". Choosing it is allowed; the account row then says "This model can
+  answer but can't make changes" (AST-8). This applies to `server` models only: Codex and
+  Claude Code call tools themselves.
+- **Not listed on purpose:** Claude's Fable. Claude Code's page says it can bill to usage
+  credits instead of the plan's included limits, which Flux cannot see (AST-9 "Payer"). The
+  list changes only by a dated amendment here, after a primary source states the model for the
+  plan.
+- **Dated sources (read 2026-10-17).** Claude Code, model configuration
+  (code.claude.com/docs/en/model-config): `--model` takes the aliases `sonnet`, `opus`,
+  `haiku` (and `fable`); the flag applies only to the session started with it; a model the
+  account cannot use is not checked up front and fails on the first request ("There's an
+  issue with the selected model"). Codex, models (learn.chatgpt.com/docs/models): `codex exec
+  -m <id>`; `gpt-6.1-sol` rolled out to Plus, Pro, Business, Enterprise and Edu (Enterprise
+  and Edu keep it off until an administrator enables it); `gpt-6-astra` and `gpt-6-luna` are
+  described on the page, without a plan-by-plan list, and "availability depends on rollout,
+  sign-in method, and client". Flux therefore lists the models a vendor page names and lets the
+  vendor decide per account (below).
+
+### Behaviour
+
+- **A change applies from the next request.** The model is fixed when a request is sent: a
+  request already working keeps its model, and so does a request waiting behind it (AST-6
+  "Queue"). The next request uses the new model. The control confirms in a polite live region:
+  "Model: Opus. It applies from your next request." While a request is working: "Model: Opus
+  from your next request. The one running keeps Sonnet."
+- **Each run records its model** (the run row's model, already part of an answer's provenance).
+  Runs on a plan record the model name Flux passed ("sonnet"); a run with no flag records the
+  engine's own label, as before. The message footer prints it as "Claude · Sonnet".
+- **No consent again unless the AI company changes.** A model is always of the connected account's
+  own AI company, so choosing one never changes who receives what the assistant reads. A new
+  consent is needed only when the account changes (AST-1, for example Claude to ChatGPT), as today.
+- **Plain errors; nothing changes silently.** The server accepts only a model in the account's
+  current list. Anything else gets a plain error and the previous model stays:
+
+  | Situation | Exact copy (the control keeps showing the previous model) |
+  | --- | --- |
+  | A model the account's list doesn't hold | "Your Claude plan doesn't offer that model. It is still Sonnet." ("Your ChatGPT plan …", "Your API key's provider …") |
+  | An API-key model with no known price | "Flux doesn't know the price of that model yet. It is still GPT-6 Luna." |
+  | An API-key model whose largest request exceeds the per-request limit | "One request to Opus can cost more than your per-request limit. It is still Sonnet." |
+  | Signed out | "Sign in to Claude again to change the model. It is still Sonnet." |
+  | Offline | "Offline. It is still Sonnet." |
+  | The vendor refuses the model on a run | "Your Claude plan didn't accept Opus. Nothing was changed." [ Choose another model ] (opens the same list). The setting stays; no other model is tried |
+
+- **Never a fallback.** A run never falls back to another model, account or payer.
+- **Stop, pause and the other rules** (AST-5 to AST-9) do not depend on the model.
+
+### Contract surface
+
+- `GET /api/v1/personal-assistant/model` returns the caller's own `{ engine, account, company, current,
+  default, saved, options[{ id, name, note, callsTools }] }`; with no account connected, `options` is empty.
+  `?connectionId=` names the API key connection being set up, for the turn-on form of an owner with several.
+  `PUT` with `{ model }` changes it (409 `ASSISTANT_MODEL_UNAVAILABLE` for the cases above;
+  409 `PERSONAL_RUN_NOT_ENABLED` without an assistant). `POST /api/v1/personal-assistant`
+  (*Turn on*) takes an optional `model`; naming none stores none (the legacy default above), and the screens
+  always name the list's default. Both address the caller's own assistant only, so no
+  other person, role or guest can read or change another's (there is no owner id to name).
+- Storage: `personal_run_enablements.assistant_model` (migration 0110, NULL = none chosen).
+  The runtime request carries an optional `model` the supervisor checks against a closed pattern
+  and puts into its fixed command template (`--model <id>` for Claude Code, `-m <id>` for Codex);
+  it is never a free flag.
+
+### Acceptance (AST-11)
+
+- **AST-11.1** The list per account is as the table says; a model not in it is refused with
+  `ASSISTANT_MODEL_UNAVAILABLE` and the stored model is unchanged; an API-key model without a
+  table price, or one whose largest request exceeds the per-request limit, is refused the same way
+  (app test).
+- **AST-11.2** Only the owner reads or changes the model: another member, a viewer, a guest and
+  a signed-out caller get their own (empty) answer or an error, and the owner's model never
+  changes or appears for them (app test with several roles).
+- **AST-11.3** A change applies to the next run only: a run that was sent before the change keeps
+  and records its model, the next run records the new one, and a queued run behind a working one
+  keeps the model it was sent with (app test with a fake runtime).
+- **AST-11.4** A runtime run's command carries the chosen model: `--model sonnet` for Claude
+  Code and `-m gpt-6.1-sol` for Codex, nothing for a legacy assistant; the supervisor refuses a
+  model that is not a closed-pattern id. The real pinned Claude Code, started with the runtime's
+  exact argv against the scripted model of PR #396, sends the chosen model in its request
+  (opt-in `mcp-clients` check); the fake CLIs record the argv in the default checks.
+- **AST-11.5** An API-key run is reserved at the chosen model's table price and sends the chosen
+  model to the provider; the connection's own model and price are unchanged (app test with a fake
+  provider).
+- **AST-11.6** The control is on the ready card, in Settings and next to the ask field and on the
+  panel; the three show the same value after any change; switching from the open ask bar or panel
+  takes two taps; the choice persists across a reload (Playwright, 1440 × 900 and 390 × 844,
+  Chromium and WebKit, light and dark).
+- **AST-11.7** The previous model stays and the exact error shows for each error row above; the
+  vendor-refusal row shows its button (Playwright, app test).
+- **AST-11.8** The control is a menu button with `aria-haspopup` and `aria-expanded`, the list is a
+  radio menu reachable by keyboard (arrow keys, Enter, Escape), every target is at least 44 px
+  and the confirmation is announced politely (axe plus keyboard test). No screen shows a model
+  id, alias or flag (the AST-10.2 scan, light and dark, both widths).
+
 <a id="delivery-slices-a1a11"></a>
-## Delivery: slices A1–A12
+## Delivery: slices A1–A13
 
 Every slice is issue-sized, has one owner, runs its tests in Docker, and uses fakes,
 mocks and recorded fixtures only. No slice uses a real vendor account, key or spend
@@ -1950,6 +2094,23 @@ are unchanged.
   held completion/cleanup and seeded absence across all durable stores/other streams.
 - **Depends on.** PR #398 (#279) for Claude; #281 for ChatGPT.
 
+#### A13 — The assistant's model
+
+- **Scope.** AST-11 (#596): the per-account list, the owner-only read and change, the model
+  recorded on every run, `--model` / `-m` in the runtime's fixed command templates, the API-key
+  provider model at its table price, and the control on the ready card, in Settings, next to the
+  ask field and on the panel.
+- **Files.** `app/packages/contracts/src/assistant-model.ts`, `app/packages/core/src/personal-runs/`
+  (service, processor, runtime run), `app/packages/runtime-protocol/src/requests.ts`,
+  `app/apps/runtime/src/supervisor/` (templates, run), `app/apps/server/src/personal-runs/`
+  (route), `app/apps/web/src/assistant/` (the control, ready card, screen, panel, ask bar).
+- **Migration.** 0110: `personal_run_enablements.assistant_model` (and the run end reason for a
+  model the vendor refuses).
+- **Tests.** AST-11.1–AST-11.3 and AST-11.5 app tests; AST-11.4 template and protocol tests, the
+  fake CLIs' recorded argv and the opt-in real-Claude check against PR #396's scripted model;
+  AST-11.6–AST-11.8 in Playwright.
+- **Depends on.** A7's ready card and screen (#407, parts 1–2).
+
 ### Acceptance criteria by slice
 
 | Criteria | Slice |
@@ -1973,6 +2134,7 @@ are unchanged.
 | AST-10.1, AST-10.2, AST-10.4–AST-10.6, AST-10.8–AST-10.12, AST-10.14, AST-10.15 | A7 |
 | AST-10.3 | A8 (schedule) and A9 (when something happens) |
 | AST-10.7 | A4 and A7 |
+| AST-11.1–AST-11.8 | A13 |
 
 ## What stays unverified
 
@@ -1980,6 +2142,9 @@ are unchanged.
   messages, enforcement. Tests use fakes and the PR #396 mock model only.
 - Whether the vendors would treat scheduled jobs on a hosted Flux as ordinary
   individual use. F-027 records the risk; it does not claim permission.
+- Which of the listed models a given Claude or ChatGPT account may use. Vendors decide per
+  account and by rollout; Flux lists what a vendor page names and shows the vendor's refusal
+  plainly (AST-11). The wording of that refusal on a real account is unverified (T10).
 - Model quality of edits. Acceptance trials (AST revisit condition) measure undone
   changes; they are product trials, not release gates.
 

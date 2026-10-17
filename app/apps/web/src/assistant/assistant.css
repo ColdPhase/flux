@@ -166,3 +166,49 @@
 .aset-recent__n { width: 100%; color: var(--t3); font-size: var(--fs-xs); }
 .aset-recent__list .ui-btn--link { min-height: 44px; }
 .assistant-working__actions .ui-btn { min-height: 44px; }
+
+/* The ask bar's text buttons (Add my assistant here, Tell whoever runs Flux …) get a 44 px target on a touch screen. */
+@media (pointer: coarse) { .assistant-ask .ask__connect { min-height: 44px; display: inline-flex; align-items: center; } }
+
+/* The assistant's model control (F-027 AST-11): one button that names the model, one short list. Tokens only. */
+.aset-model { position: relative; display: inline-flex; align-items: center; max-width: 100%; }
+.aset-model__btn { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; min-width: 44px; padding: 0 10px; border: 0; border-radius: var(--r-pill); background: var(--sub); box-shadow: inset 0 0 0 1px var(--line); color: var(--t1); font: inherit; font-size: var(--fs-sm); cursor: pointer; }
+.aset-model__btn:hover:not(:disabled) { background: var(--hov); }
+.aset-model__btn:disabled { cursor: default; opacity: .7; }
+.aset-model__lab { color: var(--t3); }
+.aset-model__name { font-weight: 500; }
+/* Beside the ask field the button is a small pill with a 44 px hit area, taken from the empty space around it. */
+.aset-model--chip { margin-block: -10px; }
+.aset-model--chip .aset-model__btn { background: transparent; box-shadow: none; padding: 0 6px; color: var(--t1); font-size: var(--fs-xs); }
+.aset-model--chip .aset-model__name { padding: 3px 8px; border-radius: var(--r-pill); background: var(--sub); box-shadow: inset 0 0 0 1px var(--line); }
+.aset-model--static { min-height: 24px; color: var(--t2); font-size: var(--fs-sm); }
+.aset-model__menu { position: absolute; z-index: 30; left: 0; display: grid; min-width: 260px; max-width: min(340px, calc(100vw - 32px)); padding: 4px; border-radius: var(--r-lg); background: var(--el); box-shadow: var(--sh-card); }
+.aset-model__menu--down { top: 100%; margin-top: 4px; }
+.aset-model__menu--up { bottom: 100%; margin-bottom: 4px; }
+/* The chip's list hangs from the ask bar, not from the chip, so it stays inside a phone's width. */
+.assistant-ask { position: relative; }
+.aset-model--chip { position: static; }
+.aset-model--chip .aset-model__menu { left: 0; }
+.aset-model__item { display: flex; align-items: flex-start; gap: 8px; width: 100%; min-height: 44px; padding: 8px 10px; border: 0; border-radius: var(--r-sm); background: none; color: var(--t1); font: inherit; font-size: var(--fs-md); text-align: left; cursor: pointer; }
+.aset-model__item:hover, .aset-model__item:focus-visible { background: var(--hov); }
+.aset-model__tick { flex: none; width: 14px; padding-top: 4px; }
+.aset-model__text { display: grid; gap: 1px; min-width: 0; }
+.aset-model__note { color: var(--t3); font-size: var(--fs-xs); line-height: 1.4; }
+.aset-model__said { flex-basis: 100%; min-height: 0; color: var(--t2); font-size: var(--fs-xs); }
+.aset-model__said:empty { display: none; }
+.aset-model__error { flex-basis: 100%; color: var(--t1); font-size: var(--fs-xs); }
+.aset-model-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0 8px; margin: 2px 0; }
+.aset-ready__model { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; margin: 0 0 12px; }
+.aset-ready__model .aset-model__note { font-size: var(--fs-sm); }
+.aset-model--action .aset-model__btn { background: var(--sub); }
+
+/* "In which conversation?" in ⌘K (AST-10.10): quiet rows, a 44 px target each. */
+.aset-where { display: grid; gap: 6px; padding: 12px; }
+.aset-where__h { margin: 0 0 2px; font-size: var(--fs-xs); font-weight: 600; color: var(--t3); }
+.aset-where__list { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }
+.aset-where__item { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 44px; padding: 0 10px; border: 0; border-radius: var(--r); background: none; color: var(--t1); font: inherit; font-size: var(--fs-md); text-align: left; cursor: pointer; }
+.aset-where__item:hover, .aset-where__item:focus-visible { background: var(--hov); }
+.aset-where__t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.aset-where__s { flex: none; color: var(--t3); font-size: var(--fs-xs); }
+.aset-where__none { margin: 0; color: var(--t2); font-size: var(--fs-sm); line-height: 1.5; }
+.aset-where .ui-btn { justify-self: start; min-height: 44px; }

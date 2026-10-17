@@ -9,6 +9,7 @@ import type {
   PersonalCompute, PersonalComputeRequest, PersonalComputeResult, PersonalConnection, PersonalConnectionLookup,
   PersonalRunPorts, PersonalRunTokenIssuer, PersonalRunUnitOfWork, PersonalRuntime, PersonalToolHost, PersonalToolSession, RunChanges, RunRecord,
 } from './ports.js';
+import { connectionOnModel } from './model.js';
 import { redactSecrets } from './redaction.js';
 import { answerWithSchedule } from './schedule-request.js';
 import { createRuntimeRunProcessor, type RuntimeCaps } from './runtime-run.js';
@@ -451,7 +452,9 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
       // Preflight counting is a provider call that sends the input: it runs outside any
       // transaction, on the owner's own connection, and only after the same recheck as a dispatch
       // (stop, enablement, agent, owner and agent access, cap, connection) before every request.
-      const connection = run.connectionId ? await connections.resolve(run.ownerUserId, run.connectionId) : null;
+      // On the model the run was sent with (F-027 AST-11), at that model's price; a change made since never reaches it.
+      const named = run.connectionId ? await connections.resolve(run.ownerUserId, run.connectionId) : null;
+      const connection = named ? connectionOnModel(named, run.model) : null;
       const beforeSend = (): Promise<PersonalRunOutcome | null> => uow.run(async (ports) => {
         const current = await ports.runs.findRun(run.id, { lock: true });
         if (!current || current.status !== 'reading') return current?.status ?? 'skipped';

@@ -103,4 +103,5 @@ export * from './agent-mcp-policy.js';
 
 export * from './assistant.js';
 export * from './assistant-jobs.js';
+export * from './assistant-model.js';
 export * from './agent-connection-setup.js';

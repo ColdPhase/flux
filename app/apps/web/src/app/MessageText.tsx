@@ -15,7 +15,7 @@ const escapeRe = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 /** The inline references in a body, longest known names first; a web address is always group `url`. */
 function tokens(names: string[]): RegExp {
   const known = names.length ? String.raw`|(?<klead>^|[\s(])(?<known>@(?:${names.map(escapeRe).join('|')}))(?![\p{L}\p{N}])` : '';
-  return new RegExp(String.raw`(?<url>${URL_TOKEN})${known}|(?<mlead>^|[\s(])(?<mention>@[\p{L}][\p{L}\p{M}'-]*)|(?<tlead>^|[\s(])#(?<task>\d{1,6})\b|\[\[(?<wiki>[^\]\n]{1,120})\]\]`, 'gu');
+  return new RegExp(String.raw`(?<url>${URL_TOKEN})${known}|(?<mlead>^|[\s(])(?<mention>@[\p{L}][\p{L}\p{M}'-]*(?:(?<=['’]s) assistant\b)?)|(?<tlead>^|[\s(])#(?<task>\d{1,6})\b|\[\[(?<wiki>[^\]\n]{1,120})\]\]`, 'gu');
 }
 
 const initials = (name: string) => name.slice(0, 2).toUpperCase();
@@ -37,7 +37,8 @@ export function MessageText({ body, linked = true, people = null }: { body: stri
     if (groups.url) parts.push(linked ? <a key={key++} className="msg-link" href={groups.url} target="_blank" rel="noopener noreferrer nofollow">{groups.url}</a> : <span key={key++}>{groups.url}</span>);
     else if (groups.known || groups.mention) {
       const name = (groups.known ?? groups.mention!).slice(1);
-      const agent = names.find((person) => person.name === name)?.kind === 'agent';
+      // "@Ada's assistant" is one chip for everyone (F-027 Journey 2): a person's assistant is not in the roster others see.
+      const agent = names.find((person) => person.name === name)?.kind === 'agent' || /['’]s assistant$/.test(name);
       parts.push(<span key={key++} className={`ref-chip ref-chip--person${agent ? ' ref-chip--agent' : ''}`} data-ref="person">
         {agent ? <Kreska size={12} className="ref-chip__k" /> : <span className="ref-chip__face" aria-hidden="true" data-initials={initials(name)} />}
         <span className="ui-vh">@</span>{name}</span>);

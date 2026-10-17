@@ -8,6 +8,7 @@ import {
   assistantRunPath,
   assistantRunRetryPath,
   assistantRunStopPath,
+  ASSISTANT_MODEL_PATH,
   conversationAssistantAnswersPath,
   conversationAssistantRunsPath,
   PERSONAL_ASSISTANT_AGENTS_PATH,
@@ -16,6 +17,7 @@ import {
   PERSONAL_ASSISTANT_RESUME_PATH,
   PERSONAL_RUN_LIMITS,
   projectAssistantProposalsPath,
+  type ChangeAssistantModelCommand,
   type DecideAssistantProposalCommand,
   type EnablePersonalRunsCommand,
   type InvokeAssistantRunCommand,
@@ -49,11 +51,13 @@ const version = { type: 'integer', minimum: 1 } as const;
 const enable = { type: 'object', required: ['consentVersion', 'agentId'], additionalProperties: false, properties: {
   consentVersion: { type: 'string', maxLength: 64 }, agentId: { type: 'string' }, connectionId: { type: 'string' }, engine: { type: 'string', enum: ['server', 'runtime'] },
   perRunCents: cents(PERSONAL_RUN_LIMITS.perRunCents), dailyCapCents: cents(PERSONAL_RUN_LIMITS.dailyCapCents), timeZone: { type: 'string', maxLength: 64 },
+  model: { type: 'string', minLength: 1, maxLength: 200 },
 } } as const;
 const update = { type: 'object', additionalProperties: false, properties: {
   perRunCents: cents(PERSONAL_RUN_LIMITS.perRunCents), dailyCapCents: cents(PERSONAL_RUN_LIMITS.dailyCapCents),
   timeZone: { type: 'string', maxLength: 64 }, expectedVersion: version,
 } } as const;
+const chooseModel = { type: 'object', required: ['model'], additionalProperties: false, properties: { model: { type: 'string', minLength: 1, maxLength: 200 } } } as const;
 const selectAgent = { type: 'object', required: ['agentId'], additionalProperties: false, properties: { agentId: { type: 'string' } } } as const;
 const invoke = { type: 'object', required: ['clientRunId', 'kind', 'prompt'], additionalProperties: false, properties: {
   clientRunId: { type: 'string' }, kind: { type: 'string', enum: ['ask', 'summarize', 'map_thought'] },
@@ -95,6 +99,17 @@ export async function personalRunRoutes(app: FastifyInstance, { db, sessions, bo
     async (request, reply) => command(request, reply, {
       operation: `PATCH ${PERSONAL_ASSISTANT_PATH}`, scope: null,
       run: (actor, conn) => personalRunUseCases(conn, composition).update(actor, request.body ?? {}, expectedVersion(request)), replay: ownState,
+    }));
+  // The assistant's model (F-027 AST-11): the caller's own choice and list, never another person's.
+  app.get<{ Querystring: { connectionId?: string } }>(ASSISTANT_MODEL_PATH, { schema: { querystring: { type: 'object', additionalProperties: false, properties: { connectionId: { type: 'string', maxLength: 64 } } } } },
+    async (request, reply) => {
+      reply.header('cache-control', 'no-store');
+      return runs.model(await principal(request), request.query.connectionId);
+    });
+  app.put<{ Body: ChangeAssistantModelCommand }>(ASSISTANT_MODEL_PATH, { schema: { body: chooseModel } },
+    async (request, reply) => command(request, reply, {
+      operation: `PUT ${ASSISTANT_MODEL_PATH}`, scope: null,
+      run: (actor, conn) => personalRunUseCases(conn, composition).chooseModel(actor, request.body), replay: ownState,
     }));
   app.put<{ Body: SelectPersonalAgentCommand }>(PERSONAL_ASSISTANT_AGENTS_PATH, { schema: { body: selectAgent } },
     async (request, reply) => command(request, reply, {

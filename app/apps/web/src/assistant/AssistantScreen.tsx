@@ -6,6 +6,7 @@ import { SwitchRow } from '../app/SettingsHome';
 import { AgentTag, Button, Icon, Kreska, agentHue } from '../ui';
 import { runtimeNames } from './format';
 import { failure } from './WaitingChanges';
+import { AssistantModelControl } from './ModelPicker';
 import { listRecentChanges, undoChange } from './api';
 
 // The assistant screen (F-027 AST-10, A7): a header with the one switch that stops everything, the account row
@@ -38,6 +39,7 @@ export function AssistantHeader({ name, userId, status, busy, onToggle }: {
       <div className="sset-row aset-screen__account">
         <div className="sset-row__b">
           <span className="sset-row__t">{runtime ? `${names.plan} · your subscription` : consent ? `${aiConnectionLabel(consent.provider, consent.model)} · your API key` : 'Your AI account'}</span>
+          <span className="aset-model-row"><AssistantModelControl variant="field" /></span>
           {runtime ? <span className="sset-row__s">Flux can&apos;t see your plan&apos;s limits.</span> : null}
         </div>
         <Link className="ui-link aset-screen__change" to="/settings/agents">Change <Icon name="chevron-right" size={12} /></Link>

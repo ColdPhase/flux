@@ -30,6 +30,7 @@ import { ScheduleFold } from '../assistant/ScheduleFold';
 import { askError as askErrorText, askState } from '../assistant/format';
 import { grantAgentProject } from '../agent-connection/api';
 import { requestAssistantJoin } from '../agents/api';
+import { tellOperator } from '../assistant/api';
 import { agentAuthorLabel } from '../docs/format';
 import { ownRuns, useObservation, useReceiptTick, useReceipts } from './receipts';
 import { AgentAuthor, AuthorFace, ContributionMark, OPENING_REVEAL_MS, SourceCitation, MessageDay, MessageTime, sameMessageAuthor, clock, day, pendingMessageRow, when } from './messageParts';
@@ -147,7 +148,8 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
   const [menuClosedAt, setMenuClosedAt] = useState<string | null>(null);
   const [commandHint, setCommandHint] = useState('');
   // The signed-in person's own assistant (#68): ask mode, their working line, shared answers.
-  const assistant = useConversationAssistant({ meId: me.user.id, projectId: project.id, conversationId: conversation?.id ?? null });
+  const assistant = useConversationAssistant({ meId: me.user.id, meName: me.user.name, projectId: project.id, conversationId: conversation?.id ?? null,
+    onPosted: (message) => setMessages((current) => mergeMessages(current, [message])) });
   const canWrite = project.access !== 'viewer';
   const trigger = canWrite && !asking ? composerTrigger(draft, caret) : null;
   // "My assistant" in the @ list: first once it is ready; while it is not set up, first until the Home card is dismissed, then last.
@@ -436,6 +438,12 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
     return () => { stopped = true; window.removeEventListener('online', flush); window.clearInterval(timer); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [heldHere, conversation?.id]);
+  const scrollToEnd = () => {
+    const feed = scrollRef.current;
+    if (!feed) return;
+    feed.scrollTop = feed.scrollHeight;
+    feed.dispatchEvent(new Event('scroll'));
+  };
   async function sendToAssistant() {
     if (!conversation || !writable || askBusy || askState(assistant.status, audience).kind !== 'ready') return;
     const command = helperComposer.begin();
@@ -444,10 +452,11 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
     setAskFailure('');
     try {
       noteAssistantUse(me.user.id);
+      scrollToEnd();
       await assistant.ask(command.body, { clientRunId: command.clientMessageId });
       helperComposer.finish(command.clientMessageId);
       // The run's working line joins the end of the thread; follow it as a sent message does, or it starts off screen.
-      if (active()) requestAnimationFrame(() => { const feed = scrollRef.current; if (feed && active()) feed.scrollTop = feed.scrollHeight; });
+      if (active()) { scrollToEnd(); requestAnimationFrame(() => { if (active()) scrollToEnd(); }); }
       if (active()) setAsking(false);
     } catch (cause) {
       // Offline: the request waits as "Sends when you're back" and goes out once, under the same id, on reconnect (AST-10.15).
@@ -529,7 +538,7 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
     if (!outcome) return;
     const active = captureScope();
     if (!conversation) onSending?.();
-    else requestAnimationFrame(() => { const feed = scrollRef.current; if (feed && active()) feed.scrollTop = feed.scrollHeight; });
+    else requestAnimationFrame(() => { if (active()) scrollToEnd(); });
     const result = await outcome;
     if (!active()) return;
     if (result.status === 'delivered') {
@@ -612,14 +621,19 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
   const lookups = { projectId: project.id, messages, work: referenceWork.rows, author };
   // A manager can let their own assistant read this project in one step; anyone else asks a manager.
   const ownAgent = assistant.status?.enablement?.agents.find((item) => item.workspaceId === project.workspaceId)?.agentId ?? null;
-  const notIn = askFailureCode === 'PERSONAL_RUN_NO_PROJECT_ACCESS';
-  const grantAction = notIn && project.access !== 'manager' ? {
-    label: 'Ask a manager to add me',
-    run: () => { void requestAssistantJoin(project.id).then(() => { setAskFailure('Asked a manager to add me. I\'ll do this when they do.'); setAskFailureCode(null); }).catch(() => setAskFailure('Couldn\'t ask. Try again.')); },
-  } : notIn && ownAgent ? {
+  // Not in the project (Journey 6): known up front from the project's Agents view, or learned from a refused ask.
+  const notIn = askFailureCode === 'PERSONAL_RUN_NO_PROJECT_ACCESS' || assistant.member === false;
+  const managers = people?.filter((person) => person.kind === 'human' && person.access === 'manager' && person.id !== me.user.id) ?? [];
+  const managerName = managers.length === 1 ? managers[0]!.name.trim().split(/\s+/)[0]! : 'a manager';
+  const grantAction = notIn && project.access !== 'manager' && !assistant.requested ? {
+    label: `Ask ${managerName} to add me`,
+    run: () => { void requestAssistantJoin(project.id).then(() => { assistant.refreshMembership(); setAskFailure(''); setAskFailureCode(null); }).catch(() => setAskFailure('Couldn\'t ask. Try again.')); },
+  } : notIn && project.access === 'manager' && ownAgent ? {
     label: 'Add my assistant here',
-    run: () => { void grantAgentProject(project.id, ownAgent, 'viewer').then(() => { setAskFailure(''); setAskFailureCode(null); }).catch(() => setAskFailure('Couldn’t give it access. Try again.')); },
+    run: () => { void grantAgentProject(project.id, ownAgent, 'viewer').then(() => { assistant.refreshMembership(); setAskFailure(''); setAskFailureCode(null); }).catch(() => setAskFailure('Couldn’t give it access. Try again.')); },
   } : null;
+  const notInText = assistant.requested ? `Asked ${managerName} to add me. I'll do this when they do.`
+    : project.access === 'manager' ? 'I\'m not in this project yet.' : 'I\'m not in this project yet. A manager can add me.';
   const proposalAuthority = (finishes: { workId: string } | null) => {
     if (!finishes) return { canAccept: writable && referenceWork.identityReady, canDismiss: writable && referenceWork.identityReady, targetState: 'ready' as const };
     const key = `work:${finishes.workId}`;
@@ -733,15 +747,17 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
       </section> : null}
       {writable ? <ConnectionLine /> : null}
       {/* On the phone "Replying to" and the audience share one line, keeping the composer compact. */}
-      {conversation && writable && !asking && assistantEntry?.mode === 'ask' && assistantUses(me.user.id) < 3 ? <AssistantSuggestions onPick={(text) => {
+      {conversation && writable && !asking && assistantEntry?.mode === 'ask' && assistant.member === true && assistantUses(me.user.id) < 3 ? <AssistantSuggestions onPick={(text) => {
         noteAssistantUse(me.user.id);
         const clientRunId = crypto.randomUUID();
         void assistant.ask(text, { clientRunId }).then(() => requestAnimationFrame(() => { const feed = scrollRef.current; if (feed) feed.scrollTop = feed.scrollHeight; }))
           .catch((cause) => { if (cause instanceof NetworkError && conversation) holdAsk({ conversationId: conversation.id, prompt: text, clientRunId }); else { setAskFailure(askErrorText(cause)); setAskFailureCode(cause instanceof ApiError ? cause.code : null); setAsking(true); } });
       }} /> : null}
-      {asking && writable ? <AskBar id="project-ask" state={ask} error={notIn ? (project.access === 'manager' ? 'I\'m not in this project yet.' : 'I\'m not in this project yet. A manager can add me.') : askFailure} errorAction={grantAction} onExit={exitAsk} onAction={(action) => {
+      {asking && writable ? <AskBar id="project-ask" state={ask} error={notIn ? notInText : askFailure} errorAction={grantAction} onExit={exitAsk} onAction={(action) => {
         if (action === 'connect') openDetails('connect-ai');
         else if (action === 'resume') void assistant.resume().catch(() => setAskFailure('Couldn’t resume. Try again.'));
+        else if (action === 'tell') void tellOperator(project.workspaceId, assistant.status?.setup.runtime.client).then(() => setAskFailure('Told whoever runs Flux.'), () => setAskFailure('Couldn’t tell them. Try again.'));
+        else if (action === 'key') navigate('/settings/ai-connections');
         else navigate('/settings/assistant');
       }} /> : <div className="project-convo__to">
         {conversation ? <p className="project-convo__current-thread" title={title}>{writable ? 'Replying to' : 'Conversation'} · {title}</p> : null}

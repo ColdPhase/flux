@@ -1,14 +1,15 @@
 import { useState, type ReactNode } from 'react';
 import { Link } from 'react-router';
-import { aiConnectionLabel, type AssistantAnswer, type AssistantProposal, type AssistantRun, type AssistantSourceRef, type ConversationMessage, type NativeWorkRow } from '@flux/contracts';
+import { type AssistantAnswer, type AssistantProposal, type AssistantRun, type AssistantSourceRef, type ConversationMessage, type NativeWorkRow } from '@flux/contracts';
 import { ApiError, NetworkError } from '../api/client';
 import { AgentTag, Button, Icon, IconButton, Kreska, useLoopPause, type KreskaExpression } from '../ui';
 import { useSmallMoments } from '../app/smallMoments';
 import { AssistantPanel, companyName } from './AssistantPanel';
 import { DoItAt } from './DoItAt';
+import { AssistantModelControl } from './ModelPicker';
 import { ReadySchedule } from './ReadySchedule';
 import { useShellActions } from '../app/shellContext';
-import { canRetry, endedText, isWorking, onRuntime, workingText, type AskState } from './format';
+import { answeredBy, canRetry, endedText, isWorking, onRuntime, workingText, type AskState } from './format';
 import { failure } from './WaitingChanges';
 import { agentAuthorLabel } from '../docs/format';
 import './assistant.css';
@@ -37,7 +38,7 @@ function runExpression(run: AssistantRun): KreskaExpression {
 
 /** "Your assistant ×" above the box, and what will happen: who sees it and who pays, or why not. */
 export function AskBar({ id, state, onExit, onAction, error, errorAction = null }: {
-  id: string; state: AskState; onExit: () => void; onAction: (action: 'connect' | 'resume' | 'settings') => void; error: string;
+  id: string; state: AskState; onExit: () => void; onAction: (action: 'connect' | 'resume' | 'settings' | 'tell' | 'key') => void; error: string;
   /** A way out of the error the person can take themselves, e.g. a manager granting their assistant access. */
   errorAction?: { label: string; run: () => void } | null;
 }) {
@@ -46,8 +47,10 @@ export function AskBar({ id, state, onExit, onAction, error, errorAction = null 
       <span className="ask__who"><Kreska size={14} />Your assistant
         <IconButton icon="x" size={12} label="Stop asking your assistant" className="ask__off" onClick={onExit} />
       </span>
+      {state.kind === 'ready' ? <AssistantModelControl variant="chip" placement="up" /> : null}
       <span className={`ask__note${state.kind === 'blocked' ? ' assistant-ask__blocked' : ''}`}>{state.note}</span>
       {state.kind === 'blocked' && state.action ? <button type="button" className="ui-link ask__connect" onClick={() => onAction(state.action!)}>{state.actionLabel}</button> : null}
+      {state.kind === 'blocked' && state.also ? <button type="button" className="ui-link ask__connect" onClick={() => onAction(state.also!.action)}>{state.also.label}</button> : null}
       {error ? <span className="assistant-ask__error" role="alert">{error}{errorAction ? <> <button type="button" className="ui-link ask__connect" onClick={errorAction.run}>{errorAction.label}</button></> : null}</span> : null}
     </div>
   );
@@ -90,6 +93,7 @@ export function WorkingLine({ run, onStop, onRetry, onDismiss, changed = 0 }: { 
       <div className="assistant-working__actions">
         {working && !run.stopRequested ? <Button variant="secondary" icon="stop" busy={busy} onClick={() => void act(onStop)}>Stop</Button> : null}
         {!working && run.endReason === 'sign_in_again' ? <Link className="ui-btn ui-btn--secondary" to="/settings/agents">Sign in</Link> : null}
+        {!working && run.endReason === 'model_unavailable' ? <AssistantModelControl variant="action" placement="up" /> : null}
         {!working && run.endReason === 'plan_limit' && !run.planLimitResetsAt ? <Button variant="secondary" onClick={onDismiss}>Try again later</Button> : null}
         {!working && run.endReason === 'plan_limit' && run.planLimitResetsAt && run.kind === 'ask' ? <DoItAt run={run} onDone={onDismiss} /> : null}
         {!working && canRetry(run) ? <Button variant="quiet" busy={busy} onClick={() => void act(onRetry)}>Retry</Button> : null}
@@ -215,7 +219,7 @@ export function AnswerItem({ answer, mine, lookups, when, clock, proposal, propo
       {changes}
       {mine ? <ReadySchedule runId={answer.runId} projectId={answer.projectId} body={answer.body} /> : null}
       <div className="assistant-answer__foot">
-        <span>{sourceSummary(answer.sources.length)} · {aiConnectionLabel(answer.provenance.provider, answer.provenance.model === 'claude-code' ? 'Claude Code' : answer.provenance.model)}</span>
+        <span>{sourceSummary(answer.sources.length)} · {answeredBy(answer.provenance)}</span>
         {mine ? <>
           {answer.truncated ? <Button variant="link" busy={busy === 'continue'} onClick={() => void act('continue', onContinue)}>Continue</Button> : null}
           <Button variant="link" busy={busy === 'retry'} onClick={() => void act('retry', onRetry)}>Retry</Button>
