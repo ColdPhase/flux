@@ -93,7 +93,15 @@ test('two actual API processes share one-use tickets and operation ownership acr
     const competitor=await b.request('POST',AGENT_RUNTIME_CONSOLE_PATH,{body:{client:'claude_code',method:'console'}});assert.equal(competitor.status,200);
     const busy=await socket(b);sockets.push(busy.ws);busy.ws.send(JSON.stringify({t:'attach',ticket:(competitor.json as {ticket:string}).ticket,cols:60,rows:20}));
     assert.equal(await busy.closed,4403);assert.deepEqual(busy.messages,[{t:'error',code:'busy'}]);
-    held.ws.close(1000);
+    // F-027 AST-1.5: a dropped socket (a reload) keeps the sign-in and its ownership; the same session on
+    // this API process takes it back, once. Only an explicit leave (reason 'left') ends the real PTY.
+    held.ws.terminate();await held.closed;
+    assert.doesNotThrow(()=>process.kill(pid,0),'the CLI survives a dropped socket');
+    assert.equal(((await b.request('GET',AGENT_RUNTIME_PATH)).json as AgentRuntimeStatus).auth?.claude_code,'signing_in','ownership is held while detached');
+    const resumed=await c.request('POST',`${AGENT_RUNTIME_CONSOLE_PATH}/resume`,{body:{client:'claude_code'}});assert.equal(resumed.status,200);
+    const back=await socket(c);sockets.push(back.ws);back.ws.send(JSON.stringify({t:'attach',ticket:(resumed.json as {ticket:string}).ticket,cols:60,rows:20}));
+    await until(()=>back.output.includes('Paste code'));
+    back.ws.close(1000,'left');
     await until(()=>{try{process.kill(pid,0);return false;}catch{return true;}},5000);
     await until(async()=>((await b.request('GET',AGENT_RUNTIME_PATH)).json as AgentRuntimeStatus).binding?.recovery===true);
     const view=(await b.request('GET',AGENT_RUNTIME_PATH)).json as AgentRuntimeStatus;

@@ -144,18 +144,20 @@ export function serveBrowserConsole(first: WebSocket, owner: { userId: string; s
   let operation: RuntimeAuthOperation | null = null;
   let settled = false;
   let delegated = false;
-  const memory: { chunks: Buffer[]; bytes: number; state: AgentRuntimeConsoleServerMessage | null; card: AgentRuntimeConsoleServerMessage[] } = { chunks: [], bytes: 0, state: null, card: [] };
+  const memory: { chunks: Buffer[]; bytes: number; state: AgentRuntimeConsoleServerMessage | null; card: AgentRuntimeConsoleServerMessage[]; done: AgentRuntimeConsoleServerMessage | null } = { chunks: [], bytes: 0, state: null, card: [], done: null };
   const isEnded = () => phase === 'done';
   const timers: ReturnType<typeof setTimeout>[] = [];
   const send = (message: AgentRuntimeConsoleServerMessage) => { if (socket && socket.readyState === socket.OPEN) socket.send(JSON.stringify(message)); };
   const liveEntry: LiveConsole = {
     sessionId: owner.sessionId, client: 'claude_code', method: 'claude_account', used: new Set(),
     rebind: (next, cols, rows) => {
-      if (phase !== 'relay' || finishing || !link) return false;
+      if (phase !== 'relay' || (finishing && !memory.done) || !link) return false;
       const previous = socket;
       socket = next;
       if (previous) { previous.removeAllListeners(); previous.on('error', () => undefined); if (previous.readyState === previous.OPEN) previous.close(CONSOLE_CLOSE.replaced, 'replaced'); }
       wire(next);
+      // The CLI finished while no page was attached: the reattaching page is told the result, once.
+      if (memory.done) { send(memory.done); close(CONSOLE_CLOSE.done, 'done'); return true; }
       if (memory.state) send(memory.state);
       for (const message of memory.card) send(message);
       if (memory.bytes && next.readyState === next.OPEN) next.send(Buffer.concat(memory.chunks), { binary: true });
@@ -171,7 +173,7 @@ export function serveBrowserConsole(first: WebSocket, owner: { userId: string; s
     if (operation && !settled) void deps.runtime.cancelAuth(operation).catch(() => undefined);
     if (deps.open.get(owner.userId) === end) deps.open.delete(owner.userId);
     if (deps.live?.get(owner.userId) === liveEntry) deps.live.delete(owner.userId);
-    memory.chunks = []; memory.bytes = 0; memory.card = []; memory.state = null;
+    memory.chunks = []; memory.bytes = 0; memory.card = []; memory.state = null; memory.done = null;
     if (!delegated && socket && (socket.readyState === socket.OPEN || socket.readyState === socket.CONNECTING)) socket.close(code, reason);
   };
   const fail = (code: AgentRuntimeConsoleError, closeCode: number) => { send({ t: 'error', code }); close(closeCode, code); };
@@ -182,7 +184,7 @@ export function serveBrowserConsole(first: WebSocket, owner: { userId: string; s
   timers.push(setTimeout(() => fail('ended', CONSOLE_CLOSE.ended), (deps.lifetimeMs ?? AGENT_RUNTIME_CONSOLE_LIFETIME_MS) + 30_000));
   const revalidate = setInterval(() => {
     void deps.sessionAlive().then(async alive => {
-      if (!alive || (operation && !await deps.runtime.renewAuth(operation))) fail('ended', CONSOLE_CLOSE.refused);
+      if (!alive || (operation && !memory.done && !await deps.runtime.renewAuth(operation))) fail('ended', CONSOLE_CLOSE.refused);
     }).catch(() => fail('unavailable', CONSOLE_CLOSE.unavailable));
   }, 20_000);
   timers.push(revalidate as unknown as ReturnType<typeof setTimeout>);
@@ -254,7 +256,14 @@ export function serveBrowserConsole(first: WebSocket, owner: { userId: string; s
         { signedIn: result.status.signedIn, facts: result.status.facts, bootId: attachment.actualBoot ?? '' });
       settled = completed.disposition === 'accepted';
       if (isEnded()) return;
-      send({ t: 'done', ended: result.ended, disposition: completed.disposition, signedIn: completed.signedIn, status: completed.status });
+      const message: AgentRuntimeConsoleServerMessage = { t: 'done', ended: result.ended, disposition: completed.disposition, signedIn: completed.signedIn, status: completed.status };
+      if (!socket && deps.live?.get(owner.userId) === liveEntry) {
+        // Detached (a reload): keep the result in memory for the same session's reattach, for a few minutes.
+        memory.done = message;
+        timers.push(setTimeout(() => close(CONSOLE_CLOSE.done, 'done'), 5 * 60_000));
+        return;
+      }
+      send(message);
       close(CONSOLE_CLOSE.done, 'done');
     } catch {
       fail('unavailable', CONSOLE_CLOSE.unavailable);
