@@ -1,9 +1,10 @@
 import { useEffect, useId, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { Link, useNavigate } from 'react-router';
 import type { ConversationMessage, Project, TaskDiscussion as Discussion, WorkspaceMember } from '@flux/contracts';
-import { AgentIdentity, Button, Icon } from '../ui';
+import { AgentIdentity, Icon } from '../ui';
 import { useComposerDraft, useComposerScope } from '../composer/draft';
 import { ComposerFiles, MessageContent, hasPhotos } from '../composer/Files';
+import { ComposerAudience, ComposerBox } from '../composer/ComposerBox';
 import { LinkPreviews, MessageText } from '../app/MessageText';
 import { ConnectionLine, OutboxStatus, PendingFiles, PendingSource, SendAnnouncer } from '../composer/Outbox';
 import { clock, day, when } from '../app/messageParts';
@@ -103,13 +104,13 @@ export function TaskDiscussionSection({ workId, number, project, members, me, re
             ))}</ol> : null}
             {writable ? <form className="wd-discussion-form" onSubmit={(event) => void send(event)}>
               <ConnectionLine />
-              <p id={`${fieldId}-hint`} className="wd-discussion-form__hint">{root ? 'Goes to this task’s one discussion, also shown in Conversation and Agents.' : 'Nobody has written about this task yet. The first message starts its discussion in the project conversation.'}</p>
-              <label className="ui-vh" htmlFor={fieldId}>{root ? 'Write to this task' : 'First message about this task'}</label>
-              <textarea id={fieldId} aria-describedby={`${fieldId}-hint`} value={composer.draft.body} rows={3} maxLength={20000}
-                placeholder={number ? `Write about #${number}…` : 'Write about this task…'} onChange={(event) => composer.setBody(event.target.value)} onKeyDown={onKeyDown} />
-              <ComposerFiles state={composer} />
+              <ComposerFiles state={composer} attach="none" />
+              <ComposerBox id={fieldId} label={root ? 'Write to this task' : 'First message about this task'} value={composer.draft.body} maxLength={20000}
+                placeholder={number ? `Write about #${number}…` : 'Write about this task…'} onChange={(value) => composer.setBody(value)} onKeyDown={onKeyDown}
+                fieldProps={{ 'aria-describedby': `${fieldId}-hint` }} attach={composer} sendLabel={root ? 'Send to task' : 'Start the discussion'}
+                sendDisabled={!composer.canSend} onSend={() => void send()} />
+              <ComposerAudience id={`${fieldId}-hint`}>{root ? 'Goes to this task’s one discussion, also shown in Conversation and Agents.' : 'Nobody has written about this task yet. The first message starts its discussion in the project conversation.'}</ComposerAudience>
               <SendAnnouncer pending={composer.pending} />
-              <div className="wd-actions"><Button type="submit" variant="secondary" icon="send" disabled={!composer.canSend}>{root ? 'Send to task' : 'Start the discussion'}</Button></div>
             </form> : !root ? <p className="wd-muted">{readOnly ? 'Creation was undone. This history is read-only; your unsent draft is kept.' : 'Nobody has written about this task yet.'}</p> : null}
           </>}
     </section>

@@ -257,7 +257,7 @@ class PhoneShellJourney(unittest.TestCase):
         self.assertGreaterEqual(self.box(field)["height"], 44, "a 44px field")
         # A tap on the card's empty space focuses the field.
         card = self.box(box)
-        page.mouse.click(card["x"] + card["width"] - 6, card["y"] + 4)
+        page.mouse.click(card["x"] + card["width"] / 2, card["y"] + 2)
         expect(field).to_be_focused()
         # The field grows with the text: a three-line draft shows all three lines.
         field.fill("Moisture first\nFrost warnings in spring\nThen the volunteer guide")

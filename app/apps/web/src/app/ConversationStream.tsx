@@ -631,7 +631,7 @@ function NoticeItem({ notice, meId, owners, row, authorOf, hasMessage, onOpenTas
         <AuthorFace kind={creator.kind} name={name} mine={mine} />
         <div className="convo-notice__body">
           <p className="convo-notice__meta">
-            {creator.kind === 'agent' ? <strong><AgentIdentity name={name} owner={owners.get(creator.id)} icon={false} /></strong> : <strong>{name}{mine ? ' · you' : ''}</strong>}
+            {creator.kind === 'agent' ? <strong><AgentIdentity name={name} owner={agentAuthorOwner(creator, owners)} icon={false} /></strong> : <strong>{name}{mine ? ' · you' : ''}</strong>}
             <button type="button" className="convo-notice__src" data-native-ref={`work:${notice.workId}`} onClick={() => onOpenTask(notice.workId)} aria-label={`Open task #${notice.workNumber} ${title}`}>{words}</button>
             <time dateTime={notice.createdAt} title={when(notice.createdAt)}>{clock(notice.createdAt)}</time>
           </p>
@@ -654,7 +654,7 @@ function NoticeItem({ notice, meId, owners, row, authorOf, hasMessage, onOpenTas
       <AuthorFace kind={creator.kind} name={name} mine={mine} />
       <div className="convo-notice__body">
         <p className="convo-notice__meta">
-          {creator.kind === 'agent' ? <strong><AgentIdentity name={name} owner={owners.get(creator.id)} icon={false} /></strong> : <strong>{name}{mine ? ' · you' : ''}</strong>}
+          {creator.kind === 'agent' ? <strong><AgentIdentity name={name} owner={agentAuthorOwner(creator, owners)} icon={false} /></strong> : <strong>{name}{mine ? ' · you' : ''}</strong>}
           <span className="convo-notice__what" data-source={source.kind}>{phrase.lead}{phrase.link ? <> {source.kind === 'message' && hasMessage(source.messageId)
             ? <button type="button" className="convo-notice__src" onClick={toMessage}>{phrase.link}</button> : <span className="convo-notice__src">{phrase.link}</span>}</> : null}</span>
           {notice.kind === 'task.creation_reverted' || notice.lifecycle?.state === 'creation_reverted'
