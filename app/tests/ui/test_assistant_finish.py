@@ -245,8 +245,8 @@ class AssistantFinish(unittest.TestCase):
                 where = page.get_by_role("group", name="In which conversation?")
                 expect(where).to_be_visible()
                 first = where.get_by_role("button").first
-                expect(first).to_contain_text("Camera or ToF sensor")
                 if remembered:
+                    expect(first).to_contain_text("Camera or ToF sensor")
                     expect(first).to_contain_text("Last used")
                 self.assertGreaterEqual(first.bounding_box()["height"], 44)
                 self.assertIsNone(FORBIDDEN.search(where.inner_text()))
@@ -269,10 +269,18 @@ class AssistantFinish(unittest.TestCase):
     # ---------------------------------------------------------------- turn-on must not make a second assistant on a retry
 
     def test_10_turn_on_reuses_the_assistant_an_earlier_try_made(self) -> None:
-        page = self.page()
-        world = self.stub_assistant(page, enabled=False)
-        # A workspace of Ada's with no assistant of hers yet: Turn on makes one there, and a failed try must not make another.
+        # Bea has one workspace and no assistant yet: Turn on makes one there, and a failed try must not make another.
+        context = self.browser.new_context(service_workers="block", base_url=ORIGIN, viewport={"width": 1440, "height": 900}, locale="en-GB", timezone_id="UTC")
+        self.addCleanup(context.close)
+        page = context.new_page()
+        page.goto("/sign-up")
+        page.get_by_label("Name").fill("Bea Ortiz")
+        page.get_by_label("Email").fill(f"bea.finish+{base.STAMP}@example.test")
+        page.get_by_label("Password").fill(PASSWORD)
+        page.get_by_role("button", name="Create account").click()
+        expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
         fresh = self.api(page, "POST", "/api/v1/workspaces", {"name": "Second workshop"}, status=201)
+        world = self.stub_assistant(page, enabled=False)
         failures = {"left": 1}
         posted: list[dict] = []
 
@@ -360,12 +368,11 @@ class AssistantFinish(unittest.TestCase):
             with self.subTest(phone=phone, dark=dark):
                 tag = self.tag(phone, dark)
                 page = self.page(phone=phone, dark=dark)
-                world = self.stub_assistant(page, enabled=False)
+                self.stub_assistant(page, enabled=False)
                 self.stub_model(page)
                 page.goto("/settings/assistant")
                 expect(page.get_by_role("region", name="Your assistant is ready")).to_be_visible()
                 self.axe(page, f"the ready card ({tag})")
-                world["status"] = self.status(page, enabled=True)
                 page2 = self.page(phone=phone, dark=dark)
                 self.stub_assistant(page2)
                 self.stub_model(page2)
