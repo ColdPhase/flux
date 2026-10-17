@@ -41,9 +41,9 @@ export function registerAgentBootstrap(tools: AgentToolRegistry, db: Database, c
         const result: AgentBootstrap = { contractVersion: 1, observedAt: observedAt.toISOString(), runtime,
           project: { id: project.id, workspaceId: project.workspaceId, name: project.name }, grants,
           capabilities: tools.capabilities(runtime.scopes, mcpPolicy),
-          trusted: { playbook, approvedPolicy: policy ? agentPolicyReference(policy) : null, coordination: null, repositoryReferences: null },
+          trusted: { playbook, approvedPolicy: policy ? agentPolicyReference(policy) : null, coordination: { activeClaimReference: null, checkpointReference: null, inboxContinuation: null }, repositoryReferences: null },
           playbookAcknowledgment: acknowledged ? { ...acknowledged, current } : null,
-          gaps: [...(policy ? [] : ['approved_policy_unavailable' as const]), 'coordination_unavailable',
+          gaps: [...(policy ? [] : ['approved_policy_unavailable' as const]),
             'verified_repository_context_unavailable', 'goal_plan_classification_unavailable', 'dependency_index_unavailable'],
           readiness: { state: 'pending', meaning: 'server_context_available_only' },
           coverage: { projectIndex: 'bounded_canonical_metadata', changesSince: 'supplied_references_only', instructionLoading: current ? 'client_acknowledged' : 'unverified', modelObedience: 'unverified' } };

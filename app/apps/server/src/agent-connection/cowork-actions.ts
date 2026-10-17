@@ -3,7 +3,9 @@ import { AGENT_OPERATION_CLASSES, AGENT_PEER_REQUEST_CLASSES, type AgentExecutio
   type AgentOperation, type AgentPeerRequestClass } from '@flux/contracts';
 import { COWORK_CHECKPOINT_LIMITS, COWORK_DECLINE_REASONS, type Database } from '@flux/core';
 import { coWorkClaimCheckpoint, coWorkClaimInTransaction } from '../co-work/claims.js';
-import { COWORK_CLAIM_POLICY, COWORK_RESPONSES_WITHOUT_PUBLICATION, COWORK_UNIT_POLICY } from '../co-work/policy.js';
+import { COWORK_CLAIM_POLICY, COWORK_REQUEST_POLICY, COWORK_RESPONSE_POLICY, COWORK_UNIT_POLICY } from '../co-work/policy.js';
+import { coWorkRecovery } from '../co-work/recovery.js';
+import { coWorkRequestInTransaction } from '../co-work/requests.js';
 import { coWorkRequestResponseInTransaction } from '../co-work/responses.js';
 import { coWorkUnitTransitionInTransaction } from '../co-work/transitions.js';
 import { coWorkUnitCreateInTransaction } from '../co-work/units.js';
@@ -45,6 +47,9 @@ const outcomeRef = z.discriminatedUnion('type', [
   z.strictObject({ type: z.enum(['material', 'doc', 'work', 'thought']), id, version }),
 ]);
 type Source = { materialId: string; version: number };
+/** An exact current reference a request names: a native record, or a verified GitHub PR head (#74). */
+const sourceRef = z.union([outcomeRef, z.strictObject({ type: z.literal('github_pr'), bindingId: id, linkId: id,
+  headSha: z.string().regex(/^[0-9a-f]{40}$/i) })]);
 
 function command({ projectId, runtimeSessionId, grantId, clientCommandId, peerRequestClass }: Execution, operation: AgentOperation,
   objectId: string, payload: AgentJsonValue, sources: Source[] = []): AgentExecutionCommand {
@@ -55,10 +60,10 @@ function command({ projectId, runtimeSessionId, grantId, clientCommandId, peerRe
 /**
  * Co-work tools (#153) over the existing internal compositions, one transaction per call. Each composition runs #152's
  * prepare/complete itself (current runtime, grant, command ledger, receipt) and writes no stream event. Unit claims,
- * renewal, release, completion and transfer are tools since 2026-10-06 ("Unit claims over MCP"); resolving a request
- * with a response, request admission and the inbox are not exposed yet (docs/development/cowork-coordination.md).
+ * renewal, release, completion and transfer are tools since 2026-10-06 ("Unit claims over MCP"); sending a request,
+ * the inbox and resolving with evidence (and a review verdict) since 2026-10-17 (docs/development/cowork-coordination.md).
  */
-export function registerAgentCoworkActions(tools: AgentToolRegistry, db: Database, claims: FluxMcpClaims) {
+export function registerAgentCoworkActions(tools: AgentToolRegistry, db: Database, claims: FluxMcpClaims, cursorSecret: string) {
   const register = (operation: AgentOperation) => tools.forScope('flux.action.execute', { operation, classes: AGENT_OPERATION_CLASSES[operation] });
   const run = (handler: () => Promise<unknown>) => handler().then(toolResult, toolError);
 
@@ -159,16 +164,78 @@ export function registerAgentCoworkActions(tools: AgentToolRegistry, db: Databas
     inputSchema: z.strictObject({ ...execution, ...requestFence }), annotations,
   }, ({ unitId, generation, leaseId, requestId, expectedRequestVersion, ...input }) => run(() =>
     db.transaction((tx) => coWorkRequestResponseInTransaction(tx, claims, command(input, 'cowork.request.claim', unitId,
-      { generation, leaseId, requestId, expectedRequestVersion }), COWORK_RESPONSES_WITHOUT_PUBLICATION))));
+      { generation, leaseId, requestId, expectedRequestVersion }), COWORK_RESPONSE_POLICY))));
 
   register('cowork.request.respond').registerTool('flux_decline_request', {
     title: 'Decline a request you picked up under a standing grant',
     description: 'Decline one request you claimed under your live unit claim, with a bounded reason: capability, policy, scope '
       + 'or source_changed. The sender sees the outcome; it is never a silent drop. Needs a live cowork.request.respond grant '
-      + 'whose class is your unit\'s role, and the runtime from flux_bootstrap. Resolving a request with a response is not '
-      + 'available on this server yet.',
+      + 'whose class is your unit\'s role, and the runtime from flux_bootstrap. To answer instead, use flux_resolve_request.',
     inputSchema: z.strictObject({ ...execution, ...requestFence, reason: z.enum(COWORK_DECLINE_REASONS) }), annotations,
   }, ({ unitId, generation, leaseId, requestId, expectedRequestVersion, reason, ...input }) => run(() =>
     db.transaction((tx) => coWorkRequestResponseInTransaction(tx, claims, command(input, 'cowork.request.respond', unitId,
-      { generation, leaseId, requestId, expectedRequestVersion, outcome: 'declined', reason }), COWORK_RESPONSES_WITHOUT_PUBLICATION))));
+      { generation, leaseId, requestId, expectedRequestVersion, outcome: 'declined', reason }), COWORK_RESPONSE_POLICY))));
+
+  register('cowork.request.respond').registerTool('flux_resolve_request', {
+    title: 'Answer a request you picked up, naming your evidence, under a standing grant',
+    description: 'Resolve one request you claimed under your live unit claim. First record your answer as an ordinary Flux '
+      + 'record (flux_record_result, a reply in the task\'s agents\' thread, a doc version), then name it here as evidence: '
+      + 'the resolution never carries content of its own. A review request also takes a verdict, passed or changes_requested, '
+      + 'pinned to the exact version the request named; a newer version makes that verdict stale, and a new review needs a new '
+      + 'request. Other kinds refuse a verdict. The request\'s target and sources must still be current '
+      + '(COWORK_SOURCE_UNAVAILABLE): if they moved on, decline with source_changed. Needs a live cowork.request.respond grant '
+      + 'whose class is your unit\'s role.',
+    inputSchema: z.strictObject({ ...execution, ...requestFence, evidence: outcomeRef,
+      verdict: z.enum(['passed', 'changes_requested']).optional().describe('Only for a review request.') }), annotations,
+  }, ({ unitId, generation, leaseId, requestId, expectedRequestVersion, evidence, verdict, ...input }) => run(() =>
+    db.transaction((tx) => coWorkRequestResponseInTransaction(tx, claims, command(input, 'cowork.request.respond', unitId,
+      { generation, leaseId, requestId, expectedRequestVersion, outcome: 'resolved',
+        response: verdict === undefined ? { evidence } : { evidence, verdict } }), COWORK_RESPONSE_POLICY))));
+
+  register('cowork.request').registerTool('flux_send_request', {
+    title: 'Ask another connection\'s unit for help, a review, a fix or a hand-off under a standing grant',
+    description: 'Address one durable request from your own claimed unit to another unit of the same run (create it with '
+      + 'flux_create_unit first). It names the exact current target (a task, material, doc or thought at its version, a result '
+      + 'or message, or a verified PR head), the sources and criteria the recipient needs, and nothing else: no prompt or copied '
+      + 'content. One recipient; it is queued until that connection picks it up at a safe point, so it never interrupts its '
+      + 'current work. The same intentKey returns the existing request; a newer request of the same kind to the same unit '
+      + 'replaces an unclaimed older one. Review needs a recipient other than the author (COWORK_REVIEW_SEPARATION). A run '
+      + 'holds at most 32 requests, 4 levels and 4 review rounds (COWORK_BUDGET_EXHAUSTED). Needs a live cowork.request '
+      + 'grant whose class is your unit\'s role.',
+    inputSchema: z.strictObject({ ...execution,
+      unitId: id.describe('Your own claimed unit the request comes from.'),
+      generation: version.describe('The generation of your live claim on that unit.'),
+      leaseId: id.describe('The lease ID of your live claim on that unit.'),
+      recipientUnitId: id.describe('The unit the request is for.'),
+      expectedRecipientUnitVersion: version.describe('The recipient unit version you last read.'),
+      recipientConnectionId: id.describe('The connection assigned to that unit.'),
+      intentKey: z.string().regex(/^[a-zA-Z0-9_:.-]{1,200}$/).describe('A stable key for this intent, for example "review-pr-12-abc1234".'),
+      parentRequestId: id.nullable().describe('The request this one delegates from, or null.'),
+      kind: z.enum(['help', 'review', 'fix', 'handoff']),
+      target: sourceRef,
+      sourceRefs: z.array(sourceRef).min(1).max(16),
+      criteriaRefs: z.array(sourceRef).min(1).max(8),
+      priority: z.int().min(0).max(3).default(1),
+      peerUnblocking: z.boolean().describe('true when you are blocked until it is answered.'),
+      lifetimeSeconds: z.int().min(60).max(604800).default(86400) }), annotations,
+  }, ({ unitId, generation, leaseId, recipientUnitId, expectedRecipientUnitVersion, recipientConnectionId, intentKey, parentRequestId,
+    kind, target, sourceRefs, criteriaRefs, priority, peerUnblocking, lifetimeSeconds, ...input }) => run(() =>
+    db.transaction((tx) => coWorkRequestInTransaction(tx, claims, command(input, 'cowork.request', unitId, { generation, leaseId,
+      request: { unitId: recipientUnitId, expectedUnitVersion: expectedRecipientUnitVersion, recipientConnectionId, intentKey,
+        parentRequestId, kind, target, sourceRefs, criteriaRefs, priority, peerUnblocking, lifetimeSeconds } } as unknown as AgentJsonValue),
+    COWORK_REQUEST_POLICY))));
+
+  const recover = coWorkRecovery(db, cursorSecret);
+  tools.forScope('flux.context.read').registerTool('flux_coordination_inbox', {
+    title: 'Read the requests addressed to you',
+    description: 'The durable requests addressed to this connection in one project, oldest first, with their exact targets, '
+      + 'sources, criteria and state (queued, deferred, claimed, resolved, declined, superseded, expired). Use it after a '
+      + 'restart or lost context instead of re-reading conversations; reading is never an acknowledgement or completion. Pass '
+      + 'the returned continuation to read further; recovery "resync_required" means start again without one. Call it at a '
+      + 'safe point between steps, never in a loop.',
+    inputSchema: z.strictObject({ projectId: id, limit: z.int().min(1).max(50).default(20),
+      continuation: z.string().max(804).optional() }),
+    annotations: { readOnlyHint: true },
+  }, ({ projectId, limit, continuation }) => run(() => recover(claims, projectId,
+    continuation === undefined ? { limit } : { limit, cursor: continuation })));
 }

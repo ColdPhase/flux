@@ -18,6 +18,7 @@ import { setStaticHeaders } from './pwa/static-headers.js';
 import { streamRoutes } from './stream/index.js';
 import { conversationRoutes } from './conversation/routes.js';
 import { agentThreadRoutes } from './conversation/agent-thread-routes.js';
+import { coWorkRoutes } from './co-work/routes.js';
 import { diskFileStorage } from './files/storage.js';
 import { fileRoutes } from './files/routes.js';
 import { workRoutes } from './work/routes.js';
@@ -120,6 +121,7 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
   await app.register(fileRoutes, { db, sessions: identity, storage: fileStorage });
   await app.register(conversationRoutes, { db, sessions: identity, storage: fileStorage });
   await app.register(agentThreadRoutes, { db, sessions: identity, storage: fileStorage });
+  await app.register(coWorkRoutes, { db, sessions: identity });
   await app.register(workRoutes, { db, sessions: identity, storage: fileStorage });
   await app.register(workReadRoutes, { db, sessions: identity });
   await app.register(githubRoutes, { db, sessions: identity, config: loadGithubConfig(env, identityConfig.publicOrigin) });

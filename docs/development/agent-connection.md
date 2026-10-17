@@ -463,12 +463,14 @@ the composition does its own #152 `prepare`/`complete`, so these tools do not us
 | `flux_complete_unit` | `cowork.unit.complete` | execute, review, plan | Finish the unit with one exact native outcome reference |
 | `flux_transfer_unit` | `cowork.unit.transfer` | execute, review, plan | Hand the unit to another eligible connection, which claims it with its own grant |
 | `flux_claim_request` | `cowork.request.claim` | execute, review, plan | Pick up a request addressed to the caller's unit, under its live unit claim |
-| `flux_decline_request` | `cowork.request.respond` | execute, review, plan | Decline a picked-up request with a bounded reason; resolving with a response is not exposed |
+| `flux_decline_request` | `cowork.request.respond` | execute, review, plan | Decline a picked-up request with a bounded reason |
+| `flux_resolve_request` | `cowork.request.respond` | execute, review, plan | Resolve a picked-up request naming an existing native record as evidence; a review also takes a verdict pinned to the request's target |
+| `flux_send_request` | `cowork.request` | execute, review, plan | Address one durable help, review, fix or hand-off request from the caller's claimed unit to another unit of the same run |
+| `flux_coordination_inbox` | read (`flux.context.read`) | none | The requests addressed to this connection in a project, with a sealed continuation |
 
-Request admission, recovery and the inbox are not tools yet, and resolving a
-request with a response is not exposed. Bootstrap therefore keeps reporting
-`coordination_unavailable`. The contract and the reasons are in
-[co-work coordination](cowork-coordination.md#unit-claims-over-mcp-2026-10-06-proposed-amendment-peer-review-required).
+Since 2026-10-17 request admission, the inbox and resolution with evidence are
+tools, and bootstrap no longer reports `coordination_unavailable`. The contract
+is in [co-work coordination](cowork-coordination.md#requests-inbox-and-review-verdicts-over-mcp-2026-10-17).
 Real Codex/Claude model-driven activation is still required before agent
 decomposition counts as delivered.
 
@@ -491,8 +493,9 @@ map writes with the standing-grant operation each needs. Since 1.3.0 (2026-10-06
 #153) the execute/checkpoint module takes a task with `flux_create_unit`, then
 claims, renews, releases and completes the unit; the block/transfer module
 transfers it; and the request/review/fix module names `flux_claim_request` and
-`flux_decline_request`. The text says that the inbox, sending requests and
-resolving with a response are not available yet.
+`flux_decline_request`. Since 1.5.0 (2026-10-17) start/resume reads
+`flux_coordination_inbox`, and request/review/fix sends requests with
+`flux_send_request` and resolves them with `flux_resolve_request`.
 
 Every authenticated MCP connection delivers it in three ways:
 
