@@ -14,7 +14,7 @@ import uuid
 from playwright.sync_api import expect, sync_playwright
 
 from author_columns import assert_author_column
-from message_layout import assert_no_sideways_scroll, covered_parts, rect, showing, start_counting, stop_counting, toolbars
+from message_layout import assert_no_sideways_scroll, covered_parts, covered_text, rect, showing, start_counting, stop_counting, toolbars
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UI_BROWSER, UPSTREAM, shot, start_forwarder
 
 PASSWORD = "messages belong to their authors"
@@ -194,6 +194,10 @@ class MessageAlignment(unittest.TestCase):
                 root = page.locator(f"#message-{self.roots['ada']['messages'][0]['id']}")
                 root.get_by_role("button", name=re.compile(r"^2 replies")).click()
                 thread = page.get_by_role("complementary", name="Replies").or_(page.get_by_role("dialog", name="Replies"))
+                if phone:
+                    # "Replying to · …" has its own line: it does not squeeze the audience next to it.
+                    line, audience = rect(thread.locator(".project-convo__current-thread")), rect(thread.locator(".project-convo__to .composer__audience"))
+                    self.assertLessEqual(line["bottom"], audience["top"] + 1, f"the phone thread footer stacks its two lines ({line} {audience})")
                 self.assert_side(page, thread.locator(".thread__root"), who == "ada")
                 for key, reply in self.replies.items():
                     row = thread.locator(f"#message-{reply['id']}")
@@ -404,27 +408,37 @@ class MessageAlignment(unittest.TestCase):
                                     self.assertLessEqual(box["right"], client + 0.5, f"{name} {index}: {part} end inside the pane")
                         page.context.close()
 
-    def test_07_a_narrow_docked_thread_still_fits_its_toolbar(self):
-        # A small laptop docks a 380px thread: the pill shrinks to its menu button instead of leaving the pane.
+    def test_07_a_narrow_thread_has_the_full_pill_in_the_bubbles_top_corner(self):
+        # A small laptop docks a 380px thread. There is no room beside a bubble, so the same three actions sit in the
+        # bubble's top corner, over no text: not over its own lines, not over the lines of the message above or its name.
         for name in ("project thread", "private thread"):
-            with self.subTest(surface=name):
-                page, pane, messages = self.open_surface("ada", name, 1100, 800)
-                assert_no_sideways_scroll(self, page, pane, name)
-                width = page.locator(pane).first.evaluate("el => el.clientWidth")
-                last = messages.nth(messages.count() - 2)
-                last.scroll_into_view_if_needed()
-                last.hover()
-                page.wait_for_timeout(250)
-                bars = showing(page, pane)
-                self.assertEqual([bar["id"] for bar in bars], [last.get_attribute("data-message-id") or last.get_attribute("id")], name)
-                if width < 400:
-                    self.assertLessEqual(last.locator(".msg-acts__b:visible").count(), 1, f"{name}: one button in a pane of {width}px")
-                    self.assertLessEqual(bars[0]["right"] - bars[0]["left"], 44, f"{name}: the pill is the menu button alone")
-                    # The room kept for it is that button's too: the widest bubble is not squeezed as by the full pill.
+            for who in ("ada", "jonas"):
+                with self.subTest(surface=name, who=who):
+                    page, pane, messages = self.open_surface(who, name, 1100, 800)
+                    assert_no_sideways_scroll(self, page, pane, name)
+                    width = page.locator(pane).first.evaluate("el => el.clientWidth")
+                    self.assertLess(width, 400, f"{name}: a narrow pane")
+                    edge = page.locator(pane).first.evaluate("el => ({left: el.getBoundingClientRect().left, right: el.getBoundingClientRect().left + el.clientWidth})")
+                    self.assertGreaterEqual(messages.count(), 4)
+                    for index in range(messages.count()):
+                        message = messages.nth(index)
+                        message.scroll_into_view_if_needed()
+                        message.locator(".message-bubble").first.hover()
+                        page.wait_for_timeout(200)
+                        bars = showing(page, pane)
+                        self.assertEqual(len(bars), 1, f"{name} {index}: one toolbar")
+                        bar = bars[0]
+                        self.assertEqual([b.get_attribute("aria-label") for b in message.locator(".msg-acts__b:visible").all()],
+                                         ["Reply in thread", "Create task", "More actions"], f"{name} {index}: reply and task stay on the pill")
+                        self.assertEqual(covered_text(page, pane, bar), [], f"{name} {index}: the pill covers no text")
+                        self.assertTrue(edge["left"] - 0.5 <= bar["left"] and bar["right"] <= edge["right"] + 0.5, f"{name} {index}: inside the pane")
+                        bubble = rect(message.locator(".message-bubble"))
+                        # In the corner: straddling the bubble's top edge, or in the author row above it.
+                        self.assertTrue(bubble["top"] - 30 <= bar["top"] and bar["bottom"] <= bubble["top"] + 14, f"{name} {index}: in the top corner of the bubble ({bar} {bubble})")
+                    # Bubbles keep their width: nothing is reserved beside them.
                     widest = max(messages.locator(".message-bubble").evaluate_all("els => els.map(el => el.getBoundingClientRect().width)"))
-                    self.assertGreaterEqual(widest, 200, f"{name}: bubbles keep their width beside the small pill")
-                self.assertEqual(covered_parts(page, pane, bars[0]), [], f"{name}: the toolbar covers nothing")
-                page.context.close()
+                    self.assertGreaterEqual(widest, width - 44 - 40 - 2, f"{name}: bubbles are not squeezed")
+                    page.context.close()
 
     def test_08_one_toolbar_at_a_time_and_a_click_leaves_none_behind(self):
         for name in self.surfaces():
@@ -476,10 +490,14 @@ class MessageAlignment(unittest.TestCase):
                 page.context.close()
 
     def test_09_a_toolbar_never_covers_a_bubble_a_name_a_time_or_another_toolbar(self):
-        for width, height in self.SIZES[::2]:
+        # Beside the bubble at 1440 and 2560 (nothing of the bubble, its name or time is touched); in a narrow thread
+        # (1100 px wide window, 380px panel) in the bubble's corner, where no line of text is.
+        for width, height in self.SIZES[::2] + ((1100, 800),):
             for name in self.surfaces():
                 with self.subTest(width=width, surface=name):
                     page, pane, messages = self.open_surface("ada", name, width, height)
+                    narrow = page.locator(pane).first.evaluate("el => el.clientWidth") < 400
+                    self.assertEqual(narrow, width == 1100 and name.endswith("thread"), f"{name} at {width}")
                     for index in range(messages.count()):
                         message = messages.nth(index)
                         message.scroll_into_view_if_needed()
@@ -487,9 +505,13 @@ class MessageAlignment(unittest.TestCase):
                         page.wait_for_timeout(200)
                         bars = showing(page, pane)
                         self.assertEqual(len(bars), 1, f"{name} {index}: exactly one toolbar")
-                        self.assertEqual(covered_parts(page, pane, bars[0]), [], f"{name} {index}: the toolbar covers nothing")
+                        self.assertEqual(covered_text(page, pane, bars[0]), [], f"{name} {index}: the toolbar covers no text")
                         bubble = rect(message.locator(".message-bubble"))
-                        self.assertTrue(bars[0]["right"] <= bubble["left"] + 0.5 or bars[0]["left"] >= bubble["right"] - 0.5, f"{name} {index}: beside its bubble")
+                        if narrow:
+                            self.assertTrue(bubble["top"] - 30 <= bars[0]["top"] and bars[0]["bottom"] <= bubble["top"] + 14, f"{name} {index}: in the bubble's top corner")
+                        else:
+                            self.assertEqual(covered_parts(page, pane, bars[0]), [], f"{name} {index}: the toolbar covers nothing")
+                            self.assertTrue(bars[0]["right"] <= bubble["left"] + 0.5 or bars[0]["left"] >= bubble["right"] - 0.5, f"{name} {index}: beside its bubble")
                     page.context.close()
 
 

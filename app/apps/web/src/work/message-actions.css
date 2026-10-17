@@ -75,10 +75,17 @@
   .project-convo__message:has(> .msg-acts), .thread .project-convo__message:has(> .msg-acts) { max-width: min(600px, calc(100% - var(--acts-room))); }
   .project-convo__message:has(> .msg-acts):has(.message-bubble :is(.ws-chip, .wiki-card, .message-files, .link-preview), > .photo-grid) { min-width: min(344px, calc(100% - var(--acts-room))); }
   .project-convo__message.is-mine:has(> .msg-acts):has(.message-bubble :is(.ws-chip, .wiki-card, .message-files, .link-preview), > .photo-grid) { min-width: min(300px, calc(100% - var(--acts-room))); }
-  .thread .project-convo__message:has(> .msg-acts) > .project-convo__message-meta { padding: 0; }
 }
-/* A narrow thread (a docked panel on a small laptop): the pill is the ••• button alone and the menu has the rest. */
+/* A narrow thread (a docked panel on a small laptop, under 400px) has no room beside a bubble: the same pill, with 24px
+   buttons, sits in the bubble's top corner instead, in the strip that is free of text: its lower edge is above the
+   first line of the bubble (its padding) and its upper edge below the last line of the message above. A message that
+   has an author row keeps the pill in that row, whose right end is left free for it. */
 @container thread-feed (max-width: 399px) {
-  .thread__in { --acts-w: 40px; --acts-room: calc(var(--acts-w) + var(--acts-gap)); }
-  .thread .msg-acts__b:not([aria-haspopup]) { display: none; }
+  .thread__in { --acts-room: 0px; }
+  .thread .project-convo__message > .msg-acts, .thread .project-convo__message.is-mine > .msg-acts,
+  .thread .dm-msg__main > .msg-acts, .thread .dm-msg.is-mine .dm-msg__main > .msg-acts { top: -14px; left: auto; right: 8px; padding: 0; border-radius: 9px; }
+  .thread .project-convo__message:has(> .project-convo__message-meta) > .msg-acts, .thread .dm-msg__main:has(> .dm-msg__meta) > .msg-acts { top: -4px; }
+  .thread .msg-acts::before, .thread .project-convo__message.is-mine > .msg-acts::before, .thread .dm-msg.is-mine .dm-msg__main > .msg-acts::before { display: none; }
+  .thread .msg-acts__b { width: 24px; height: 24px; border-radius: 8px; }
+  .thread .project-convo__message > .project-convo__message-meta, .thread .dm-msg__meta { padding-right: 90px; }
 }

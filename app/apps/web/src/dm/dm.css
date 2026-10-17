@@ -33,7 +33,7 @@
 /* Selecting messages to start a sketch in this DM (#96, #594). Nothing moves: every message keeps its place, the other
    people's on the left and mine on the right edge of the same column. The check sits in the column the face has (an own
    message has none, so it gets the same column), vertically centred on the bubble's first line. A picked row takes the one
-   soft fill: its box grown by --dm-pick on every side, painted behind the text so that a neighbour's fill never covers a
+   soft fill (--pick, apart from every bubble, own ones too): its box grown by --dm-pick on every side, painted behind the text so that a neighbour's fill never covers a
    bubble. Only transform, opacity and colours animate. */
 .dm { --dm-w: 1000px; --dm-pick: 8px; --dm-check: 32px; --dm-pad: 9px; --dm-meta: calc(var(--fs-sm) * 1.4 + 7px); }
 /* --dm-pad is the bubble's padding (composer/attachments.css) and --dm-meta the author row above it: the check's offsets. */
@@ -43,7 +43,7 @@
 .dm--selecting .dm-msg__row { position: relative; cursor: pointer; }
 .dm--selecting .dm-msg__row::before { content: ""; position: absolute; z-index: -1; inset: calc(-1 * var(--dm-pick)); border-radius: var(--r-lg); transition: background-color var(--dur-1) var(--ease-out); }
 .dm--selecting .dm-msg__row:hover::before { background: var(--hov); }
-.dm--selecting .dm-msg.is-picked .dm-msg__row::before { background: var(--sub); }
+.dm--selecting .dm-msg.is-picked .dm-msg__row::before { background: var(--pick); }
 .dm--selecting .dm-msg__face { visibility: hidden; }
 .dm-msg:not(.is-mine):not(.dm-msg--cont) { --dm-top: var(--dm-meta); }
 .dm-msel { position: absolute; left: 0; top: calc(var(--dm-top, 0px) + var(--dm-pad) + .5 * var(--lh) * var(--fs-base) - var(--dm-check) / 2); display: grid; place-items: center start;
@@ -106,6 +106,11 @@
   .dm-new__space select, .dm-new__search, .dm-new__title input { min-height: 44px; }
 }
 @media (max-width: 640px) {
+  /* The caption under the phone composer shares its line with "Choose messages": it never wraps; "direct message" is
+     kept for screen readers and the names truncate. */
+  .dm__composer .composer__audience:has(> .dm-select-btn--phone) > span:first-of-type { flex: 1 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .dm__composer .composer__audience:has(> .dm-select-btn--phone) .composer__where, .dm__composer .composer__audience:has(> .dm-select-btn--phone) > span > span[aria-hidden="true"] {
+    position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
   .dm__in { padding: 8px 16px 8px; }
   .dm-selbar { padding: 8px 16px 12px; padding-bottom: max(12px, env(safe-area-inset-bottom)); }
   .dm-selbar__in .ui-btn--primary { flex: 1 1 100%; justify-content: center; order: 3; }
@@ -146,7 +151,7 @@
 .dm-msg__meta { margin-bottom: 7px; }
 .dm-msg.is-arrived, .dm-msg.is-picked { box-shadow: none; border-radius: var(--r); }
 .dm-msg.is-arrived .message-bubble { background: var(--sub); }
-.dm-msg.is-picked .message-time { color: var(--t2); }
+.dm-msg.is-picked .message-time, .dm-msg.is-picked .message-seen { color: var(--t2); }
 .dm__day { margin: 20px 0; }
 
 .dm-msg { margin-top: 24px; }

@@ -79,7 +79,7 @@ button.project-convo__contribution { cursor: pointer; }
   .project-convo__composer { padding-top: 6px; padding-bottom: max(8px, env(safe-area-inset-bottom)); }
   .project-convo__composer .composer__where { display: none; }
   .project-convo__to { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; margin-bottom: 4px; }
-  .project-convo__current-thread { display: block; flex: 1; min-width: 0; color: var(--t2); font-size: var(--fs-xs); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin: 0; }
+  .project-convo__current-thread { display: block; flex: 1 1 100%; min-width: 0; color: var(--t2); font-size: var(--fs-xs); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin: 0; }
   .project-convo__to .composer__audience { flex: 0 1 auto; max-width: 100%; margin: 0; }
 }
 .composer__space { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-size: var(--fs-xs); color: var(--t2); }

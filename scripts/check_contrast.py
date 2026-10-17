@@ -50,6 +50,13 @@ PAIRS = [
     ("--t3", "--bg", 3.0, "open and not-pursued glyphs"),
     ("--t3", "--el", 3.0, "open and not-pursued glyphs in cards"),
     ("--t2", "--sub", 3.0, "icons on quiet fills"),
+    # The fill of a chosen message row (#594): readable text on it, a visible check box, and a chosen own bubble
+    # (and the screen around the row) apart from it.
+    ("--t1", "--pick", 4.5, "text on the fill of a chosen message row"),
+    ("--t2", "--pick", 4.5, "time and receipts in a chosen message row"),
+    ("--t3", "--pick", 3.0, "the check box of a chosen message row"),
+    ("--own", "--pick", 1.08, "a chosen own bubble stays apart from the row's fill"),
+    ("--bg", "--pick", 1.15, "the fill of a chosen row stands out from the screen"),
 ]
 
 # APCA lower bounds (absolute Lc) for text tokens on the surfaces where text sits, in both themes.

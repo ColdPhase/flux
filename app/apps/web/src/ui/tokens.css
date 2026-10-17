@@ -24,6 +24,8 @@
   --own: #e7e7ea;
   --sub: #ebebec;
   --hov: #e3e3e5;
+  /* The fill of a chosen message row: clearly apart from the page, from other people's bubbles and from --own */
+  --pick: #dcdce0;
   --line: rgba(0, 0, 0, .07);
   --line2: rgba(0, 0, 0, .14);
   /* Text; --t3 keeps at least 4.5:1 on --bg and --el */
@@ -109,7 +111,7 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     color-scheme: dark;
-    --side: #0b0b0b; --bg: #111111; --el: #1c1c1c; --own: #313134; --sub: #242424; --hov: #2c2c2c;
+    --side: #0b0b0b; --bg: #111111; --el: #1c1c1c; --own: #313134; --sub: #242424; --hov: #2c2c2c; --pick: #3d3d42;
     --line: rgba(255, 255, 255, .08); --line2: rgba(255, 255, 255, .16);
     --t1: #f0f0f0; --t2: #bdbdbd; --t3: #a1a1a1; --inv: #f0f0f0; --oninv: #111111;
     --scrim: rgba(0, 0, 0, .6); --dot: #2e2e2e;
@@ -129,7 +131,7 @@
 }
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --side: #0b0b0b; --bg: #111111; --el: #1c1c1c; --own: #313134; --sub: #242424; --hov: #2c2c2c;
+  --side: #0b0b0b; --bg: #111111; --el: #1c1c1c; --own: #313134; --sub: #242424; --hov: #2c2c2c; --pick: #3d3d42;
   --line: rgba(255, 255, 255, .08); --line2: rgba(255, 255, 255, .16);
   --t1: #f0f0f0; --t2: #bdbdbd; --t3: #a1a1a1; --inv: #f0f0f0; --oninv: #111111;
   --scrim: rgba(0, 0, 0, .6); --dot: #2e2e2e;

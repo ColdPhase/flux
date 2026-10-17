@@ -19,7 +19,7 @@ import unittest
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
 from message_gestures import centre, long_press, swipe, touch
-from message_layout import assert_no_sideways_scroll, covered_parts, showing, start_counting, stop_counting
+from message_layout import assert_no_sideways_scroll, covered_parts, covered_text, showing, start_counting, stop_counting
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UI_BROWSER, UPSTREAM, shot, start_forwarder
 
 PASSWORD = "messages between friends"
@@ -386,6 +386,21 @@ class DmThreadsReceipts(unittest.TestCase):
         swipe(other.locator(".dm-msg__body"), 40)
         expect(other).not_to_have_class(re.compile(r"is-swiped"))
         expect(page.locator("[data-dm-thread]")).to_have_count(0)
+        # The swipe frame above (the row slid right, its clock cut by the pane) is transient: at rest the row is back where
+        # it was, nothing is cut off at the right edge and the feed does not scroll sideways.
+        page.wait_for_timeout(500)
+        self.assertRegex(other.evaluate("el => getComputedStyle(el).transform"), r"^(none|matrix\(1, 0, 0, 1, 0, 0\))$")
+        resting = page.evaluate("""(id) => { const feed = document.querySelector('.dm__feed'), li = document.getElementById(id), edge = feed.getBoundingClientRect().left + feed.clientWidth;
+          const rights = [...li.querySelectorAll('.message-bubble, .message-time')].map((el) => el.getBoundingClientRect().right);
+          return {scroll: feed.scrollWidth, client: feed.clientWidth, over: Math.max(...rights) - edge}; }""", f"message-{self.run_y}")
+        self.assertLessEqual(resting["scroll"], resting["client"], "no sideways scrolling after the swipe")
+        self.assertLessEqual(resting["over"], 0.5, "the bubble and its clock end inside the pane")
+        shot(page, "dm-threads-phone-rest-light")
+        # The caption under the composer shares its line with "Choose messages" and does not wrap.
+        caption = page.locator(".dm__composer .composer__audience > span").first.evaluate("el => ({height: el.getBoundingClientRect().height, line: parseFloat(getComputedStyle(el).lineHeight) || parseFloat(getComputedStyle(el).fontSize) * 1.45})")
+        self.assertLessEqual(caption["height"], caption["line"] * 1.3, f"the caption stays on one line ({caption})")
+        for icon in (page.locator(".dm__composer .composer__audience > svg"), page.locator(".dm__composer .dm-select-btn--phone svg")):
+            self.assertGreaterEqual(icon.first.bounding_box()["width"], 10, "the lock and the check icons stay visible")
 
     def test_08_project_conversation_roots_and_thread_replies_show_real_receipts(self) -> None:
         import uuid
@@ -471,6 +486,20 @@ class DmThreadsReceipts(unittest.TestCase):
             page.wait_for_timeout(500)
             self.assertLessEqual(stop_counting(page)["max"], 1, f"{who}: two toolbars never show together")
             shot(page, f"dm-threads-desktop-thread-replies-{who}")
+            # A narrow window (380px panel): the pill is in the bubble's corner and covers no text.
+            page.set_viewport_size({"width": 1100, "height": 800})
+            page.wait_for_timeout(300)
+            assert_no_sideways_scroll(self, page, "[data-dm-thread] .thread__feed", f"{who}'s narrow thread")
+            for index in range(5):
+                replies.nth(index).scroll_into_view_if_needed()
+                replies.nth(index).locator(".message-bubble").hover()
+                page.wait_for_timeout(200)
+                bars = showing(page, "[data-dm-thread]")
+                self.assertEqual(len(bars), 1, f"{who}: narrow reply {index} has the only toolbar")
+                self.assertEqual(covered_text(page, "[data-dm-thread]", bars[0]), [], f"{who}: narrow reply {index}: the pill covers no text")
+                self.assertEqual(replies.nth(index).locator(".msg-acts__b:visible").count(), 3, f"{who}: reply, task and more stay on the pill")
+            page.set_viewport_size({"width": 1440, "height": 900})
+            page.wait_for_timeout(300)
             # Keyboard focus on the thread's root (its own list) and the pointer on a reply or on the conversation behind:
             # still one toolbar, the one under the pointer.
             page.mouse.move(2, 2)

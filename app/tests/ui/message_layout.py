@@ -79,3 +79,20 @@ def covered_parts(page: Page, scope: str, bar: dict) -> list[str]:
       return found;
     }""", [scope, bar])
     return parts
+
+
+TEXT = ".message-bubble > p, .dm-msg__body, .dm-msg__meta b, .project-convo__message-meta strong, .message-time, .dm-replies, .convo-replies button, .ws-chip, .wiki-card"
+
+
+def covered_text(page: Page, scope: str, bar: dict) -> list[str]:
+    """What text in the pane the toolbar overlaps, measured on the text's own line boxes (not on the bubbles' padding)."""
+    return page.evaluate("""([scope, bar, selector]) => {
+      const hit = (r) => r.left < bar.right - .5 && bar.left < r.right - .5 && r.top < bar.bottom - .5 && bar.top < r.bottom - .5;
+      const found = [];
+      for (const el of document.querySelector(scope).querySelectorAll(selector)) {
+        const range = document.createRange();
+        range.selectNodeContents(el);
+        for (const r of range.getClientRects()) if (r.width && r.height && hit(r)) { found.push((el.closest('[data-message-id]') || el).id + ' ' + el.className + ' ' + (el.textContent || '').slice(0, 24)); break; }
+      }
+      return found;
+    }""", [scope, bar, TEXT])

@@ -142,14 +142,21 @@ class DmSelectionMode(unittest.TestCase):
       return [li.dataset.messageId, {left: bubble.left, right: bubble.right, top: bubble.top, own: li.classList.contains('is-mine')}];
     }))"""
 
+    COLUMN = """() => { const list = document.querySelector('.dm__list').getBoundingClientRect(), row = document.querySelector('.dm-msg__row').getBoundingClientRect();
+      return {list: list.width, gutter: list.width + 2 * 8}; }"""
+
     def test_01_every_message_keeps_its_place_in_the_selection_mode(self) -> None:
         for width, height in ((1440, 900), (1920, 1080), (2560, 1440), (390, 844)):
             for who in ("jo", "kai"):
                 with self.subTest(width=width, who=who):
                     page = self.open(who, width, height)
                     before = page.evaluate(self.PLACES)
+                    column = page.evaluate(self.COLUMN)
                     self.choose(page)
                     after = page.evaluate(self.PLACES)
+                    chosen = page.evaluate(self.COLUMN)
+                    print(f"COLUMN {width}px {who}: messages {column['list']:.0f}px, with the gutter {column['gutter']:.0f}px; in selection {chosen['list']:.0f}px / {chosen['gutter']:.0f}px", flush=True)
+                    self.assertAlmostEqual(chosen["list"], column["list"], delta=0.5, msg="selection does not widen the message column")
                     self.assertEqual(before.keys(), after.keys())
                     check = 44 if width <= 480 else 32
                     for key, was in before.items():
@@ -177,9 +184,10 @@ class DmSelectionMode(unittest.TestCase):
       const bubble = rect(li.querySelector('.message-bubble')), meta = li.querySelector('.dm-msg__meta'), check = li.querySelector('.dm-msel'), box = check.querySelector('i');
       const body = li.querySelector('.dm-msg__body'), range = document.createRange(); range.selectNodeContents(body);
       const line = range.getClientRects()[0], tail = [...li.querySelectorAll('.message-bubble, .message-time, .dm-replies')].map((el) => el.getBoundingClientRect().bottom);
-      const probe = document.createElement('i'); probe.style.background = 'var(--sub)'; document.body.append(probe);
+      const probe = document.createElement('i'); probe.style.background = 'var(--pick)'; document.body.append(probe);
       const soft = getComputedStyle(probe).backgroundColor; probe.remove();
-      return {id, own: li.classList.contains('is-mine'), cont: li.classList.contains('dm-msg--cont'), fill, bubble, soft, list: {left: list.left, right: list.right},
+      const bubbleBg = getComputedStyle(li.querySelector('.message-bubble')).backgroundColor;
+      return {id, bubbleBg, own: li.classList.contains('is-mine'), cont: li.classList.contains('dm-msg--cont'), fill, bubble, soft, list: {left: list.left, right: list.right},
         topmost: meta ? meta.getBoundingClientRect().top : bubble.top, bottommost: Math.max(...tail), check: rect(check), box: rect(box),
         line: {top: line.top, bottom: line.bottom}, replies: !!li.querySelector('.dm-replies'), author: !!meta};
     })"""
@@ -214,6 +222,9 @@ class DmSelectionMode(unittest.TestCase):
                         label = f"{row['id']} own={row['own']} grouped={row['cont']} author={row['author']}"
                         fill, inset = row["fill"], 8
                         self.assertEqual(fill["color"], row["soft"], f"{label}: the one soft fill")
+                        # A chosen bubble, an own one too, does not melt into the fill: they differ by a visible step.
+                        step = max(abs(int(a) - int(b)) for a, b in zip(re.findall(r"\d+", fill["color"])[:3], re.findall(r"\d+", row["bubbleBg"])[:3]))
+                        self.assertGreaterEqual(step, 8, f"{label}: the fill {fill['color']} apart from the bubble {row['bubbleBg']}")
                         self.assertAlmostEqual(row["topmost"] - fill["top"], inset, delta=1, msg=f"{label}: the fill has an inset above the bubble")
                         self.assertAlmostEqual(fill["bottom"] - row["bottommost"], inset, delta=1, msg=f"{label}: and below its time")
                         self.assertAlmostEqual(row["box"]["left"] - fill["left"], inset, delta=1, msg=f"{label}: and to the left of the check")
