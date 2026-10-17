@@ -14,7 +14,7 @@ import './requests.css';
  * from the durable record, in plain words. The thread is their face, never their store. Open requests come first, then the
  * latest closed ones. Everyone who can read the task reads the cards and downloads a request's reference packet; only a
  * project manager or the owner of either agent (the server says: `canCancel`) can cancel an open one. A card never acts for
- * the agents: it claims, answers and acknowledges nothing.
+ * the agents: it claims, answers and acknowledges nothing. The parent keys it by task, so a different task starts fresh.
  */
 
 const time = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' });
@@ -41,7 +41,6 @@ function useTaskCoordination(workId: string, projectId: string, meId: string) {
   const reload = useRef<() => void>(() => { /* set while mounted */ });
   useEffect(() => {
     let controller: AbortController | null = null;
-    setData(null);
     reload.current = () => {
       controller?.abort();
       const current = new AbortController();
@@ -133,7 +132,6 @@ export function RequestCards({ workId, projectId, meId, onOpenMessage }: {
 }) {
   const { data, replace, reload } = useTaskCoordination(workId, projectId, meId);
   const [all, setAll] = useState(false);
-  useEffect(() => { setAll(false); }, [workId]);
   if (!data || !data.requests.length) return null;
   const { open, closed, earlier } = splitCards(data.requests);
   const visible = new Set([...open, ...closed, ...(all ? earlier : [])].map((card) => card.id));

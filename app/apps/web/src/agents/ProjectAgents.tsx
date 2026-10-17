@@ -24,6 +24,7 @@ import { HandOffDialog, type HandOffTask } from './HandOff';
 import { useAgentStops, useStopAgent } from './stop';
 import { QuestionCard, WhenNoQuestion } from './QuestionCard';
 import { RequestCards } from './RequestCards';
+import { ReviewRule } from './ReviewRule';
 import { useProjectQuestions, useQuestionList } from './questions';
 import { useLatestAgentLine } from './latest';
 import { agentAuthorOwner, useAgentOwners } from './owners';
@@ -341,7 +342,7 @@ function TaskThread({ kind, task, projectId, meId, names, canWrite, changingScop
       {kind === 'agents'
         ? <p className="agents-thread__top">Agents’ thread · visible to everyone with access to this project{taskLink ? <> · <Link className="ui-link" to={taskLink}>Open task</Link></> : null}</p>
         : <p className="agents-thread__top">Thread of this task · the same one shown in Conversation{inConversation ? <> · <Link className="ui-link" to={inConversation}>Open in Conversation</Link></> : null}</p>}
-      {kind === 'agents' && !accessLost ? <RequestCards workId={task.id} projectId={projectId} meId={meId} onOpenMessage={(messageId) => void openMessage(messageId)} /> : null}
+      {kind === 'agents' && !accessLost ? <RequestCards key={task.id} workId={task.id} projectId={projectId} meId={meId} onOpenMessage={(messageId) => void openMessage(messageId)} /> : null}
       {loadError ? <p className="agents-thread__error" role="alert">{loadError} <button type="button" className="ui-link" onClick={() => reload.current()}>Try again</button></p> : null}
       {accessLost ? <p className="agents-thread__error" role="alert">You can no longer read this task. Your unsent text is kept on this device.</p> : null}
       {!discussion && !loadError ? <p className="agents-thread__empty">Loading…</p> : null}
@@ -849,6 +850,7 @@ export function ProjectAgents() {
           <div id="agents-policy">
             <ProjectPolicy key={projectId} projectId={projectId} meId={me.user.id} canEdit={shell?.project.access === 'manager'}
               managers={(shell?.people ?? []).filter((person) => person.kind === 'human' && person.access === 'manager').map((person) => person.name)} />
+            <ReviewRule key={projectId} projectId={projectId} meId={me.user.id} canEdit={shell?.project.access === 'manager'} />
           </div>
         ) : null}
         {canWrite && entries.length && rows.length ? (

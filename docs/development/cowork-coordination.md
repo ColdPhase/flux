@@ -985,6 +985,59 @@ Agent decision under the delegated authority; contract changes are additive (MCP
   (`status`, `nextBoundary`). Cancellation requested versus acknowledged waits for a cancel operation; today only the stored
   `cancelled` state exists.
 
+### Request cards, handoff packet, cancel and the review rule (2026-10-17, #153 AC-2/AC-4, #400 AC-4)
+
+Agent decision under the delegated authority; additive HTTP for people (no MCP tool, no contract-1 change). Migration
+`0111_cowork_cards` (0107 is the last on main; 0108-0110 belong to other branches): `cowork_requests.cancelled_by` and
+`cowork_review_policies(project_id, review_separation, updated_by, updated_at)`. Its reverse refuses while a project requires
+`distinct_owner`, because dropping the table would silently loosen that rule.
+
+- **Cards (`GET /api/v1/work/:workId/coordination`).** Whoever can read the task reads the latest 50 requests: kind, sender and
+  recipient agent with their owners' names, the target (its title only while it exists at the exact version the request
+  named), the state in plain words (`status`, with the deferral reason and safe boundary), the first message the request
+  names that the reader can open (`originalMessage`: conversation, space `people` or `agents`, task), the expiry, who
+  cancelled it, and `canCancel`. Review verdicts come with `current`. No owner ID, fingerprint, lease, grant or runtime is
+  returned. The agents' thread shows these as cards above its messages (`RequestCards.tsx`); the thread is their face, never
+  their store.
+- **Packet (`GET .../requests/:requestId/packet`).** `flux.cowork.packet/1`, served as an attachment, `no-store`. It
+  holds the request, the task, the target, sources and criteria as references with titles that exist now at the named
+  versions (an unavailable reference has no title and no other metadata; GitHub references are never described), the original
+  message, the recipient unit's last typed checkpoint (summary, next action, blocker and the material versions it covered),
+  the response reference and the verdict. At most 1 + 16 + 8 references. It never holds a credential, grant, lease,
+  fingerprint, owner or connection ID, prompt or source content. Everyone who can read the task may download it; a
+  removed reader gets 404 at once. This is CO-2's "download of a bounded currently authorized reference packet".
+- **Cancel (`POST .../requests/:requestId/cancel`, `{ expectedVersion }`).** One action for a person, not an agent tool. A
+  project manager, or the owner of the sender's or the recipient's agent, who can still write in the project, closes an
+  open request (`queued`, `deferred` or `claimed`, not expired) at the version they saw. Authorization precedes the state: a
+  viewer or a contributor who owns neither agent gets 403 `COWORK_CANCEL_NOT_ALLOWED` and learns nothing; a stranger or a
+  removed reader gets 404. A wrong version is 409 `COWORK_VERSION_CONFLICT`; a closed one 409 `COWORK_REQUEST_CLOSED`; an
+  expired one 409 `COWORK_REQUEST_EXPIRED`. A repeated cancel of an already cancelled request succeeds without a change.
+  The request becomes `cancelled` (reason `cancelled_by_person`, `cancelled_by` the person), the version advances and one
+  `project.cowork_request_cancelled.v1` event refreshes open views. Only the request row is locked (`FOR UPDATE`): a claim,
+  deferral, response or supersession holds the same row for its own conditional update, so a cancel and any of them
+  serialize there and the loser reads the committed state. A recipient that claimed the request is told
+  `COWORK_REQUEST_CLOSED` when it next answers; no verdict is recorded and no grant use is debited. The agent's inbox drops it.
+  This is not CW-3's "cancellation requested versus acknowledged": there is no acknowledgement round-trip, and stopping
+  an agent's hold on a task stays the separate Stop control.
+- **Review rule (`GET`/`PUT /api/v1/projects/:projectId/review-policy`).** Readers read, a project manager sets
+  `distinct_connection` (the default when nothing is stored: another connection of any owner, including the author's own
+  owner, may review) or `distinct_owner` (the reviewer's owner must differ from the author's). The server applies it in every
+  place that already enforced separation: creating a review unit, handing a unit over, declining one, and admitting a review
+  request (`COWORK_REVIEW_SEPARATION`). It is read inside each command's own transaction before its locks, so a command applies
+  the rule that was committed when it began. An agent never reads or sets it; it only meets it as a refusal. A review unit
+  created under the old rule is refused a new request after the rule tightens, and nothing is debited.
+- **Verdicts and "a separate non-author".** Unchanged from the section above: the reviewer's unit is a different connection
+  from every execute unit of the run (and, under `distinct_owner`, another owner); an execution-class grant cannot claim a
+  review unit; a verdict is pinned to the request's target and becomes non-current when the target has a newer version; a
+  changed reviewer is a new unit with its own grants and the earlier verdict stays in the history. A result or message
+  target is immutable: its verdict stays current for that exact record, and a revised result needs a new review.
+- **Role swap.** Swapping executor and reviewer is an assignment: the finished unit keeps its assignee and `outcome_ref`, the
+  result keeps its author, the task's human assignee and version are untouched, and the new roles are new units in a new
+  run claimed with each connection's own grants.
+
+Not done here: PR targets and the verified GitHub head (#74), real Codex and Claude Code client traces (#160), the
+acknowledged-cancellation round trip, and outcome notices in people's views (#400 AC-5).
+
 ### Parent request participation
 
 ### Parent request participation

@@ -105,12 +105,14 @@ export async function coworkScene() {
     const reviewUnit = await openUnit(author, held, t, 'review', reviewer, key);
     const reviewClaim = await reviewer.claimUnit(reviewUnit, 'review');
     const ask = await author.standing('cowork.request', held.unitId, 'execute', 50);
-    const send = (intentKey: string, target: Record<string, unknown>, options: { clientCommandId?: string; kind?: string; sourceRefs?: unknown[] } = {}) =>
-      author.call('flux_send_request', { ...author.base(ask.id, 'execute', options.clientCommandId), unitId: held.unitId, generation: held.claim.generation,
+    const sendArgs = (intentKey: string, target: Record<string, unknown>, options: { clientCommandId?: string; kind?: string; sourceRefs?: unknown[] } = {}) =>
+      ({ ...author.base(ask.id, 'execute', options.clientCommandId), unitId: held.unitId, generation: held.claim.generation,
         leaseId: held.claim.lease.id, recipientUnitId: reviewUnit, expectedRecipientUnitVersion: reviewClaim.version, recipientConnectionId: reviewer.connectionId,
         intentKey, parentRequestId: null, kind: options.kind ?? 'review', target,
         sourceRefs: options.sourceRefs ?? [{ type: 'material', id: material.materialId, version: 1 }], criteriaRefs: [target], peerUnblocking: true });
-    return { held, reviewUnit, reviewClaim, ask, send };
+    const send = (intentKey: string, target: Record<string, unknown>, options: { clientCommandId?: string; kind?: string; sourceRefs?: unknown[] } = {}) =>
+      author.call('flux_send_request', sendArgs(intentKey, target, options));
+    return { held, reviewUnit, reviewClaim, ask, send, sendArgs };
   }
 
   return { hubert, marek, ada, vera, olga, ws, p, removeAccess, demote, connect, task, material, used, unit, request, take, openUnit, startReview };
