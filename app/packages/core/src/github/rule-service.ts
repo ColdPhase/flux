@@ -280,7 +280,8 @@ export async function applyGithubRules(ports: GithubPorts, context: { delivery: 
     const rule = await ports.rows.rule(taskId, true);
     // A rule changed or re-authored since the authority check waits for the next delivery.
     if (!task || !rule || rule.state !== 'active' || rule.authorUserId !== granted.authorUserId || granted.verdict === 'skip') continue;
-    const actor: Principal = { kind: 'human', id: rule.authorUserId ?? binding.authorUserId! };
+    const authorId = rule.authorUserId ?? binding.authorUserId!;
+    const actor: Principal = { kind: 'human', id: authorId };
     const record = async (next: GithubRuleRecord, change: { code: Parameters<GithubPorts['rows']['recordRuleChange']>[0]['code']; to: GithubTaskState;
       blocker: string | null; pull: GithubRulePull | null; checkName: string | null }) => {
       await ports.rows.saveRule({ ...next, revision: rule.revision + 1 });
@@ -303,7 +304,7 @@ export async function applyGithubRules(ports: GithubPorts, context: { delivery: 
       if (outcome.repin) await ports.rows.saveRule(expecting(rule, task));
     } else {
       const { effect } = outcome;
-      const moved = outcome.task ? await ports.tasks.move(taskId, { status: effect.status, blocker: effect.blocker }) : task;
+      const moved = outcome.task ? await ports.tasks.move(taskId, { status: effect.status, blocker: effect.blocker }, { kind: 'human', id: authorId }) : task;
       await record({ ...expecting(rule, moved), blockedBy: effect.blockedBy, readyToClose: effect.readyToClose },
         { code: effect.code, to: moved, blocker: effect.status === 'blocked' ? effect.blocker : null, pull: effect.pull, checkName: effect.checkName });
     }
