@@ -919,7 +919,7 @@ export function SketchMap(props: SketchMapProps) {
   const here = [...new Map([...props.peers.values()].map((peer) => [peer.actor.id, peer.actor])).values()];
   return (
     <div ref={wrapRef} className={`sk-canvas-wrap sk-canvas-wrap--controls${hasComposition ? ' has-composition' : ''}`} style={(compact ? { '--sk-phone-tools-height': `${hasComposition ? compositionHeight : phoneToolsHeight}px` } : { '--sk-dock-h': `${dockHeight}px` }) as unknown as CSSProperties}>
-    {here.length ? <p className="sk-here" aria-label="People on this map">{here.map((person) => <span key={person.id}><i style={{ background: personColor(person.id) }} aria-hidden="true" />{person.name}</span>)}</p> : null}
+    {here.length ? <p className="sk-here" role="group" aria-label="People on this map">{here.map((person) => <span key={person.id}><i style={{ background: personColor(person.id) }} aria-hidden="true" />{person.name}</span>)}</p> : null}
     <div className={`sk-canvas${panning ? ' is-panning' : ''}${panMode ? ' is-hand' : ''}${connectFrom ? ' is-connecting' : ''}${wire ? ' is-wiring' : ''}`} ref={canvasRef} role="group" tabIndex={0}
       data-live-own-gesture={props.ownGesture?.id} data-live-own-sequence={props.ownGesture?.sequence} data-live-generation={props.ownGesture?.generation}
       aria-label={`Sketch: ${sketch.title}`} aria-describedby={helpId} onKeyDown={onCanvasKeyDown}>

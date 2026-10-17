@@ -49,6 +49,7 @@ class LiveCursors(LiveFixture):
             await kai.wait_for_function('() => new Promise((done) => requestAnimationFrame(done))')
         await kai.mouse.move(first['x'] + 20, first['y'] + 300, steps=3)
         await expect(ada.locator('.sk-peer[data-live-peer="Kai South"]')).to_have_count(1)
+        print('PEER_COLOURS', await kai.locator('.sk-peer span').evaluate('e => getComputedStyle(e).backgroundColor'), await ada.locator('.sk-peer span').evaluate('e => getComputedStyle(e).backgroundColor'), flush=True)
         await self.shoot(kai, 'map-peer-cursor')
         await self.shoot(ada, 'map-peer-cursor-ada')
         # Leaving the map takes the cursor away.
