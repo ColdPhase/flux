@@ -311,9 +311,11 @@ class SpokojLayout(unittest.TestCase):
             page.goto(path)
             expect(page.locator("header.top h1")).to_be_visible()
             self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), TABLET["width"], path)
-            for button in page.locator("header.top button:visible").all():
-                box = self.box(button)
-                self.assertLessEqual(box["x"] + box["width"], TABLET["width"] + 0.5, f"{path}: every header control is inside the viewport")
+            # One snapshot of every visible control's right edge: no per-button waits that race a closing menu.
+            rights = page.locator("header.top button:visible").evaluate_all("els => els.map((el) => el.getBoundingClientRect().right)")
+            self.assertTrue(rights, f"{path}: the header has controls")
+            for right in rights:
+                self.assertLessEqual(right, TABLET["width"] + 0.5, f"{path}: every header control is inside the viewport")
 
     # ------------------------------------------------------------------ 506 AC-1, AC-6
 

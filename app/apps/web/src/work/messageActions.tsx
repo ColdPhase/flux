@@ -164,12 +164,27 @@ export function MessageActions(options: MessageActionOptions | DmActionOptions) 
   const items = useMenuItems(options);
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
   const more = useRef<HTMLButtonElement>(null);
-  if (touch) return null;
+  const group = useRef<HTMLDivElement>(null);
   const { writable, onCreateWork, onReply } = options;
+  // Guide §4: R replies in the thread and T makes a task while focus is inside this message (not in a field).
+  useEffect(() => {
+    const row = group.current?.parentElement;
+    if (!row) return;
+    const onKey = (event: globalThis.KeyboardEvent) => {
+      if (event.metaKey || event.ctrlKey || event.altKey || event.defaultPrevented) return;
+      if ((event.target as Element | null)?.closest?.('input, textarea, select, [contenteditable], [role="menu"]')) return;
+      const key = event.key.toLowerCase();
+      if (key === 'r' && writable && onReply) { event.preventDefault(); onReply(); }
+      else if (key === 't' && writable) { event.preventDefault(); onCreateWork(); }
+    };
+    row.addEventListener('keydown', onKey);
+    return () => row.removeEventListener('keydown', onKey);
+  }, [touch, writable, onReply, onCreateWork]);
+  if (touch) return null;
   return (
-    <div className="msg-acts" role="group" aria-label={options.kind === 'dm' ? 'Actions on this message' : 'Message actions'}>
-      {writable && onReply ? <button type="button" className="msg-acts__b" aria-label="Reply in thread" data-tip="Reply in thread" onClick={onReply}><Icon name="reply" size={16} /></button> : null}
-      {writable ? <button type="button" className="msg-acts__b" aria-label="Create task" data-tip="Create task" onClick={onCreateWork}><Icon name="plus-circle" size={16} /></button> : null}
+    <div ref={group} className="msg-acts" role="group" aria-label={options.kind === 'dm' ? 'Actions on this message' : 'Message actions'}>
+      {writable && onReply ? <button type="button" className="msg-acts__b" aria-label="Reply in thread" data-tip="Reply in thread (R)" aria-keyshortcuts="R" onClick={onReply}><Icon name="reply" size={16} /></button> : null}
+      {writable ? <button type="button" className="msg-acts__b" aria-label="Create task" data-tip="Create task (T)" aria-keyshortcuts="T" onClick={onCreateWork}><Icon name="plus-circle" size={16} /></button> : null}
       <button ref={more} type="button" className="msg-acts__b" aria-label="More actions" data-tip="More actions" aria-haspopup="menu" aria-expanded={!!anchor} onClick={(event) => setAnchor(anchor ? null : event.currentTarget)}><Icon name="more" size={16} /></button>
       {anchor ? <MessageMenu items={items} anchor={anchor} press={false} label="Message actions" messageId={messageOf(options)}
         onClose={(restore) => { setAnchor(null); if (restore) more.current?.focus(); }} /> : null}

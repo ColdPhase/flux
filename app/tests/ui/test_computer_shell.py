@@ -168,6 +168,36 @@ class ComputerShell(unittest.TestCase):
         expect(page).to_have_url(re.compile(r"/inbox$"))
         expect(self.sidebar(page).get_by_role("navigation", name="Places").get_by_role("link", name=re.compile("^Inbox"))).to_have_attribute("aria-current", "page")
 
+    def test_05b_r_and_t_act_on_the_focused_message_and_are_shown_next_to_its_actions(self) -> None:
+        self.ensure_account()
+        page = self.page()
+        page.goto(f"/projects/{self.ids['projects'][1]}")
+        composer = page.get_by_label("Write a message", exact=True)
+        composer.fill("Can someone order the brake cables?")
+        composer.press("Enter")
+        message = page.get_by_text("Can someone order the brake cables?").first
+        expect(message).to_be_visible()
+        message.hover()
+        reply = page.get_by_role("button", name="Reply in thread", exact=True).first
+        task = page.get_by_role("button", name="Create task", exact=True).first
+        expect(reply).to_have_attribute("aria-keyshortcuts", "R")
+        expect(task).to_have_attribute("aria-keyshortcuts", "T")
+        reply.focus()
+        page.keyboard.press("r")
+        expect(page.locator("#thread-composer")).to_be_focused()
+        page.keyboard.press("Escape")
+        message.hover()
+        task.focus()
+        page.keyboard.press("t")
+        expect(page.get_by_role("dialog", name="New task").get_by_label("Title", exact=True)).to_have_value(re.compile("^Can someone order"))
+        # Typing r or t in a field never triggers them.
+        page.keyboard.press("Escape")
+        field = page.get_by_label("Write a message", exact=True)
+        field.click()
+        page.keyboard.type("rt")
+        expect(field).to_have_value("rt")
+        expect(page.get_by_role("dialog", name="New task")).to_have_count(0)
+
 
 if __name__ == "__main__":
     unittest.main()
