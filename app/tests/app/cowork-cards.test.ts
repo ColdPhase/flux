@@ -159,7 +159,7 @@ test('cancelling: a manager and the owners of the sender and recipient may, othe
   assert.equal((await cancel(f.hubert, a.id, requestId, 1)).status, 200);
   assert.equal((await f.request(requestId)).version, 2);
   assert.equal((await cancel(f.ada, a.id, requestId, 2)).status, 403);
-  assert.equal((await pool.query("SELECT count(*)::int AS n FROM events WHERE kind = 'project.cowork_request_cancelled.v1'")).rows[0].n, 1, 'one change, one event');
+  assert.equal((await pool.query("SELECT count(*)::int AS n FROM events WHERE kind = 'project.cowork_request_cancelled.v1' AND object_id = $1", [f.p.id])).rows[0].n, 1, 'one change, one event');
 
   // The recipient agent no longer sees it, and claiming it is refused; its grant is not debited.
   const inbox = toolValue(await marekClaude.call('flux_coordination_inbox', { projectId: f.p.id })).requests as unknown[];
@@ -301,7 +301,7 @@ test('a project\'s review rule: readers see it, only a manager changes it, and i
     leaseId: held.claim.lease.id, recipientUnitId: sameOwner, expectedRecipientUnitVersion: reviewClaim.version, recipientConnectionId: hubertClaude.connectionId,
     intentKey: 'review-1', parentRequestId: null, kind: 'review', target: { type: 'work', id: a.id, version: a.version },
     sourceRefs: [{ type: 'work', id: a.id, version: a.version }], criteriaRefs: [{ type: 'work', id: a.id, version: a.version }], peerUnblocking: false })).status, 'created');
-  assert.equal((await pool.query("SELECT count(*)::int AS n FROM events WHERE kind = 'project.cowork_review_policy_changed.v1'")).rows[0].n, 2);
+  assert.equal((await pool.query("SELECT count(*)::int AS n FROM events WHERE kind = 'project.cowork_review_policy_changed.v1' AND object_id = $1", [f.p.id])).rows[0].n, 2);
   // Agents never meet the rule as data: it is not in the inbox or bootstrap, only in a refusal.
   assert.ok(!JSON.stringify(toolValue(await hubertClaude.call('flux_coordination_inbox', { projectId: f.p.id }))).includes('distinct_'));
 });
