@@ -63,7 +63,7 @@ export function AssistantSettings() {
         <span className="nset__saved" role="status" aria-live="polite">{saved ? <><Icon name="check" size={14} />{saved}</> : null}</span>
       </div>}
       {status.enablement
-        ? <details className="aset__more"><summary>More</summary><Enabled status={status} agents={agents} workspaces={workspaces} onChange={done} onRemoved={() => { setStatus(null); load(); }} onAgent={(agent) => setAgents((current) => [...(current ?? []), agent])} name={me.user.name} /></details>
+        ? <details className="aset__more"><summary>More<span className="aset__more-hint"> · Limits, projects and what you agreed to</span></summary><Enabled status={status} agents={agents} workspaces={workspaces} onChange={done} onRemoved={() => { setStatus(null); load(); }} onAgent={(agent) => setAgents((current) => [...(current ?? []), agent])} name={me.user.name} /></details>
         : <SetupChoice status={status} agents={agents} workspaces={workspaces} name={me.user.name} onEnabled={(next) => done(next, 'Assistant turned on')} onAgent={(agent) => setAgents((current) => [...(current ?? []), agent])} />}
     </div></div>
   );

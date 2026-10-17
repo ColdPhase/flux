@@ -35,7 +35,8 @@ function Body({ onClose, name, mine, ownerName, provider, userId, onMessage }: {
 }) {
   const [runs, setRuns] = useState<AssistantRun[] | null>(null);
   const [can, setCan] = useState('');
-  const [paused, setPaused] = useState(false);
+  const [paused, setPaused] = useState<boolean | null>(null);
+  const [menu, setMenu] = useState(false);
   const [error, setError] = useState('');
   const first = useRef<HTMLButtonElement>(null);
   useEffect(() => {
@@ -48,7 +49,7 @@ function Body({ onClose, name, mine, ownerName, provider, userId, onMessage }: {
       if (!workspaceId) return;
       const settings = await request<AssistantSettings>(assistantSettingsPath(workspaceId, userId), { signal: controller.signal });
       setCan(assistantCanSentence(settings.areas, settings.approvalMode));
-    }).catch(() => undefined);
+    }).catch(() => setPaused((current) => current ?? false));
     return () => controller.abort();
   }, [mine, userId]);
   useEffect(() => { first.current?.focus(); }, []);
@@ -64,9 +65,16 @@ function Body({ onClose, name, mine, ownerName, provider, userId, onMessage }: {
       <header className="aset-panel__head">
         <Kreska size={28} hue={agentHue(`assistant:${userId}`)} />
         <div><strong>{name}</strong> <AgentTag /><span className="aset-panel__sub">for {mine ? 'you' : ownerName} · in Flux · {companyName(provider)}</span></div>
+        {mine ? <div className="aset-panel__menu">
+          <Button variant="quiet" aria-label="More" aria-haspopup="menu" aria-expanded={menu} disabled={paused === null} onClick={() => setMenu(!menu)}><Icon name="more" size={16} /></Button>
+          {menu ? <div className="aset-panel__pop" role="menu">
+            <Button variant="quiet" role="menuitem" onClick={() => { setMenu(false); void toggle(); }}>{paused ? 'Resume my assistant' : 'Pause my assistant'}</Button>
+            <Link className="ui-link" role="menuitem" to="/settings/assistant" onClick={onClose}>Manage <Icon name="chevron-right" size={12} /></Link>
+          </div> : null}
+        </div> : null}
         <Button ref={first} variant="quiet" aria-label="Close" onClick={onClose}><Icon name="x" size={16} /></Button>
       </header>
-      {mine ? <>
+      {mine && paused === null ? <p aria-busy="true">Loading…</p> : mine ? <>
         <section aria-labelledby="aset-panel-now"><h3 id="aset-panel-now">Now</h3>
           {working ? <p>Working… <Button variant="secondary" onClick={() => void stopRun(working.id).catch(() => setError('Offline'))}>Stop</Button></p>
             : <p>{paused ? 'Paused. Nothing runs until you resume.' : 'Idle.'}</p>}
@@ -79,9 +87,7 @@ function Body({ onClose, name, mine, ownerName, provider, userId, onMessage }: {
       </> : <p data-testid="assistant-others">Uses {companyName(provider)} through {ownerName}&apos;s account. What it reads here goes to {dataTo(provider)}.</p>}
       {error ? <p role="alert" className="nset__error">{error}</p> : null}
       <footer className="aset-panel__foot">
-        {mine && onMessage ? <Button variant="primary" onClick={() => { onClose(); onMessage(); }}>Message</Button> : null}
-        {mine ? <Button variant="quiet" onClick={() => void toggle()}>{paused ? 'Resume my assistant' : 'Pause my assistant'}</Button> : null}
-        {mine ? <Link className="ui-link" to="/settings/assistant" onClick={onClose}>Manage <Icon name="chevron-right" size={12} /></Link> : null}
+        {mine && onMessage && paused !== null ? <Button variant="primary" onClick={() => { onClose(); onMessage(); }}>Message</Button> : null}
       </footer>
     </div>
   );

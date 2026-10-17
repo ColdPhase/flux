@@ -62,11 +62,12 @@ export function AssistantControls({ status, userId }: { status: PersonalAssistan
 
   const save = async (patch: UpdateAssistantSettings) => {
     setSaving(true); setError('');
-    try { setSettings(await request<AssistantSettings>(path, { method: 'PATCH', body: { ...patch, expectedVersion: settings.version } })); }
+    try { setSettings(await request<AssistantSettings>(path, { method: 'PATCH', body: { ...patch, expectedVersion: settings.version } })); return true; }
     catch (cause) {
       setError('Couldn\'t save. The latest settings are shown.');
       try { setSettings(await request<AssistantSettings>(path)); } catch { /* keep what is shown */ }
       void cause;
+      return false;
     } finally { setSaving(false); }
   };
   const move = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -74,7 +75,8 @@ export function AssistantControls({ status, userId }: { status: PersonalAssistan
     if (!delta) return;
     event.preventDefault();
     const next = APPROVAL[(APPROVAL.findIndex((item) => item.id === settings.approvalMode) + delta + APPROVAL.length) % APPROVAL.length]!;
-    void save({ approvalMode: next.id }).then(() => group.current?.querySelector<HTMLElement>(`[data-approval="${next.id}"]`)?.focus());
+    // The selection is only ever what the server kept, so a failed save leaves it (and focus) where it was.
+    void save({ approvalMode: next.id }).then((ok) => requestAnimationFrame(() => group.current?.querySelector<HTMLElement>(ok ? `[data-approval="${next.id}"]` : `[data-approval="${settings.approvalMode}"]`)?.focus()));
   };
   return (
     <>
@@ -92,11 +94,13 @@ export function AssistantControls({ status, userId }: { status: PersonalAssistan
             <span className="sset-row__s">It asks before removing anything or changing things other people made or are responsible for.</span>
           </div>
         </div>
+        <div className="aset-screen__sw">
         {ASSISTANT_AREAS.map((area) => (
           <SwitchRow key={area.id} label={area.label} checked={settings.areas[area.id as AssistantAreaId] === 'edit'} disabled={saving}
             detail={settings.areas[area.id as AssistantAreaId] === 'read' ? 'Only reads for now' : undefined}
             onChange={(on) => void save({ areas: { [area.id]: on ? 'edit' : 'off' } })} />
         ))}
+        </div>
       </section>
       <p className="nset__note aset-screen__can" data-testid="assistant-can">{assistantCanSentence(settings.areas, settings.approvalMode)}</p>
       {error ? <p className="nset__error" role="alert"><Icon name="alert" size={14} />{error}</p> : null}

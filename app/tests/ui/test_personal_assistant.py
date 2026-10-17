@@ -328,7 +328,7 @@ class PersonalAssistantJourney(unittest.TestCase):
         expect(working).to_have_count(0)
         expect(answer).to_contain_text(f"{JO['name']}'s assistant")
         expect(answer.locator(".agent-tag")).to_have_text("Agent")
-        expect(answer).to_contain_text("asked by you")
+        expect(answer).to_contain_text("for you · Claude")
         expect(answer).to_contain_text("“Summarize where we are”")
         expect(answer).to_contain_text("Anthropic · claude-sonnet-5")
         expect(answer.get_by_role("button", name="Retry")).to_be_visible()
@@ -336,7 +336,7 @@ class PersonalAssistantJourney(unittest.TestCase):
         for peer in (kai, lee):
             peer_answer = peer.locator(".assistant-answer").last
             expect(peer_answer).to_contain_text(f"{JO['name']}'s assistant", timeout=15000)
-            expect(peer_answer).to_contain_text(f"asked by {JO['name']}")
+            expect(peer_answer).to_contain_text(f"for {JO['name'].split()[0]} · Claude")
             expect(peer_answer.get_by_role("button", name="Retry")).to_have_count(0)
             expect(peer_answer.get_by_role("button", name="Continue")).to_have_count(0)
             text = peer_answer.inner_text()

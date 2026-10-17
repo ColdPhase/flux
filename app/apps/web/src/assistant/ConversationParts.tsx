@@ -135,6 +135,8 @@ function sourceSummary(count: number) {
   return `${count} ${count === 1 ? 'source' : 'sources'} from this project`;
 }
 
+const firstName = (name: string) => name.trim().split(/\s+/)[0] || name;
+
 export function AnswerItem({ answer, mine, lookups, when, clock, proposal, proposalControls, changes = null, resultInMessage = false, onRetry, onContinue, onAskAbout }: {
   answer: AssistantAnswer;
   /** The owner's waiting changes of this run (F-027 A3); only ever the owner's own. */
@@ -165,7 +167,7 @@ export function AnswerItem({ answer, mine, lookups, when, clock, proposal, propo
       <div className="project-convo__message-meta">
         <button type="button" className="assistant-answer__who" aria-haspopup="dialog" onClick={() => setPanel(true)}><strong>{answer.assistant.label}</strong></button>
         <AgentTag />
-        <span className="assistant-answer__asked">for {mine ? 'you' : answer.askedBy.name} · {companyName(answer.provenance.provider)} · asked by {mine ? 'you' : answer.askedBy.name}</span>
+        <span className="assistant-answer__asked">for {mine ? 'you' : firstName(answer.askedBy.name)} · {companyName(answer.provenance.provider)}</span>
         <time dateTime={answer.committedAt} title={when(answer.committedAt)}>{clock(answer.committedAt)}</time>
       </div>
       <p className="assistant-answer__request">“{answer.request.prompt}”</p>
@@ -181,7 +183,7 @@ export function AnswerItem({ answer, mine, lookups, when, clock, proposal, propo
         </> : onAskAbout ? <Button variant="link" onClick={onAskAbout}>Ask my assistant about this</Button> : null}
       </div>
       {failed ? <p className="assistant-answer__error" role="alert">{failed}</p> : null}
-      <AssistantPanel open={panel} onClose={() => setPanel(false)} name={answer.assistant.label} mine={mine} ownerName={answer.askedBy.name} provider={answer.provenance.provider}
+      <AssistantPanel open={panel} onClose={() => setPanel(false)} name={answer.assistant.label} mine={mine} ownerName={firstName(answer.askedBy.name)} provider={answer.provenance.provider}
         userId={answer.assistant.ownerUserId} onMessage={onAskAbout} />
     </li>
   );
