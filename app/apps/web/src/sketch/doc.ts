@@ -516,6 +516,7 @@ const ORDINARY = {
   cancelGesture: (): void => {},
   finishGesture: (): Promise<{ leaseId: string; versions: Map<string, number> }> | undefined => undefined,
   presence: (): void => {},
+  pointer: (): void => {},
 };
 
 export type SketchDoc = ReturnType<typeof useSketchDoc>;

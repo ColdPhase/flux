@@ -33,7 +33,7 @@ export interface CoworkPlaybook {
 
 const playbook: CoworkPlaybook = {
   bundleId: 'flux.cowork',
-  version: '1.4.0',
+  version: '1.6.0',
   toolContractVersion: 1,
   startPayload: `Start my authorized Flux work in the bound project. Load this playbook and the authenticated bootstrap first. \
 Understand the project's current plan, wiki, relevant conversations, decisions and existing tasks before planning or creating more \
@@ -68,7 +68,8 @@ calls repeatedly listing the project to see whether something changed.`,
   modules: [
     {
       id: 'start_resume', title: 'Start or resume',
-      tools: ['flux_bootstrap', 'flux_acknowledge_playbook', 'flux_list_contexts', 'flux_changes_since', 'flux_claim_unit'],
+      tools: ['flux_bootstrap', 'flux_acknowledge_playbook', 'flux_list_contexts', 'flux_changes_since', 'flux_claim_unit',
+        'flux_coordination_inbox'],
       providers: ['coordination'],
       text: `Call flux_bootstrap with the bound projectId and a clientSessionId: a UUID you create once for this client session \
 and reuse for every bootstrap call in it. Check that trusted.playbook names this bundle and version; if it differs, load the \
@@ -77,15 +78,15 @@ clientSessionId and the bundle, version and digest shown at the top of this play
 which version you work by. On resume, pass the source checkpoints you recorded last time (kind, id and version \
 or sequence) to flux_changes_since and read only what changed. If you were working on a unit, claim it again with \
 flux_claim_unit at its current version: the result carries the unit's last checkpoint (summary, next action, blocker and the \
-source versions it covered), so continue from there and compare those versions with flux_changes_since. The addressed inbox \
-and server recovery of pending requests come from the coordination provider; while bootstrap lists coordination_unavailable, \
-they do not exist on this server, so rely on the task records, the units you know and your own recorded checkpoints.`,
+source versions it covered), so continue from there and compare those versions with flux_changes_since. Then read the \
+requests addressed to you with flux_coordination_inbox: it is the server's record of what is still pending for you, so you \
+never need to re-read conversations to find it. Reading it is not an acknowledgement and never completes anything.`,
     },
     {
       id: 'orient_plan', title: 'Orient and plan',
       tools: ['flux_project_orientation', 'flux_list_materials', 'flux_read_material', 'flux_list_docs', 'flux_get_doc',
         'flux_list_decisions', 'flux_get_decision', 'flux_list_work', 'flux_get_work', 'flux_list_results', 'flux_get_result',
-        'flux_list_conversations', 'flux_get_conversation', 'flux_list_maps', 'flux_get_map', 'flux_search_project',
+        'flux_list_conversations', 'flux_get_conversation', 'flux_get_agent_thread', 'flux_list_maps', 'flux_get_map', 'flux_search_project',
         'flux_create_proposal', 'flux_create_task', 'flux_undo_task_creation', 'flux_propose_decision'],
       providers: ['approved_policy'],
       text: `On first entry, list the project's sources with flux_project_orientation for each kind (doc, material, work, decision, \
@@ -120,7 +121,7 @@ approved_policy_unavailable, no policy is published: follow your owner's directi
     {
       id: 'execute_checkpoint', title: 'Execute and checkpoint',
       tools: ['flux_get_work', 'flux_create_unit', 'flux_claim_unit', 'flux_renew_unit', 'flux_release_unit', 'flux_complete_unit',
-        'flux_update_task', 'flux_record_result', 'flux_reply_in_conversation', 'flux_ask_question', 'flux_start_conversation', 'flux_create_doc',
+        'flux_update_task', 'flux_record_result', 'flux_post_agent_thread', 'flux_get_agent_thread', 'flux_reply_in_conversation', 'flux_ask_question', 'flux_start_conversation', 'flux_create_doc',
         'flux_update_doc', 'flux_create_map', 'flux_rename_map', 'flux_add_thought', 'flux_update_thought', 'flux_move_thoughts',
         'flux_remove_thought', 'flux_link_thoughts', 'flux_unlink_thoughts'],
       providers: [],
@@ -150,8 +151,11 @@ native record (for example the result you recorded), complete the unit with flux
 grant), naming that exact record. Completion is final; it does not change the task, approve anything or resolve a request, \
 and COWORK_UNIT_REQUESTS_OPEN means requests addressed to the unit must be answered or declined first.
 Useful work is not only code. Publish what you found on the project's existing records, each effect under a live standing \
-grant for its own operation. Post progress, questions and findings to the task's discussion thread, or to another project \
-conversation that fits, with flux_reply_in_conversation (conversation.reply); when you truly need a person's decision, ask with flux_ask_question (two to four ready answers; the same grant) and carry on with other authorized work; start a new topic with flux_start_conversation \
+grant for its own operation. Write work talk about a task (plans, progress, hand-off notes), one message per meaningful step, in the task's agents' \
+thread with flux_post_agent_thread (conversation.reply); on resume read it from the last sequence you recorded with \
+flux_get_agent_thread (afterSequence). At most five agent messages in a row are accepted until a person writes, an artifact \
+has a new version or a request changes (AGENT_THREAD_TURN_LIMIT). flux_reply_in_conversation still answers a person or another \
+project conversation that fits. When you truly need a person's decision, ask with flux_ask_question (two to four ready answers; the same grant) and carry on with other authorized work; start a new topic with flux_start_conversation \
 (conversation.create) only when none fits. Write the wiki with flux_create_doc (doc.create) and flux_update_doc (doc.update), \
 editing at the version you last read. Shape a shared project map with flux_create_map (map.create), flux_rename_map \
 (map.rename), flux_add_thought (map.thought.create), flux_update_thought (map.thought.update), flux_move_thoughts \
@@ -163,18 +167,23 @@ reasoning, transcripts or secrets.`,
     },
     {
       id: 'request_review_fix', title: 'Request help, review and fixes',
-      tools: ['flux_claim_unit', 'flux_claim_request', 'flux_decline_request'], providers: ['coordination', 'repository_references'],
-      text: `Sending addressed requests to another connection (help, review, fix, handoff), the inbox of requests addressed to \
-you and verified links from tasks to pull requests need the coordination and repository providers. While bootstrap lists \
-coordination_unavailable or verified_repository_context_unavailable, those parts do not exist on this server: ask your owner \
-instead, and do not broadcast requests or repeat coordination comments across Flux and GitHub. flux_claim_request picks up a \
-request addressed to your own unit and flux_decline_request declines one you picked up, with the reason that applies \
-(capability, policy, scope or source_changed); a decline is a visible outcome for the sender, not a silent drop. Both need \
-your live claim on that unit (its generation and lease ID) from flux_claim_unit; COWORK_CLAIM_LOST means you do not hold it, \
-so claim the unit first instead of retrying. Resolving a request with your response is not available on this server yet. \
-When available, a request names the same task, the exact artifact version (commit SHA or result version), the criteria and \
-the expected response; a review is of that exact version only, and a fix asks for one fresh review of the new version. A Flux \
-review never replaces a required GitHub approval or check.`,
+      tools: ['flux_claim_unit', 'flux_create_unit', 'flux_send_request', 'flux_coordination_inbox', 'flux_claim_request',
+        'flux_resolve_request', 'flux_decline_request'], providers: ['coordination', 'repository_references'],
+      text: `To ask another connection for help, a review, a fix or a hand-off, open a unit for it on the same task with \
+flux_create_unit (a review unit for a review) and address one request to that unit with flux_send_request. The request names \
+the exact target (the task, material or doc at its version, the result or message, or a verified PR head), the sources and \
+criteria the recipient needs, and nothing else: no prompt, no copied content. It waits in the recipient's inbox until that \
+connection reaches a safe point; it never interrupts current work. A retry with the same intentKey returns the same request. \
+Do not broadcast requests or repeat coordination comments across Flux and GitHub. Read what is addressed to you with \
+flux_coordination_inbox between steps, never in a loop. flux_claim_request picks up a request addressed to your own unit; \
+answer it by first recording the answer as an ordinary record (a result, a reply in the task's agents' thread, a doc \
+version) and then naming that record with flux_resolve_request, or decline with flux_decline_request and the reason that \
+applies (capability, policy, scope or source_changed). A decline is a visible outcome for the sender, not a silent drop. \
+These need your live claim on that unit (its generation and lease ID) from flux_claim_unit; COWORK_CLAIM_LOST means you do \
+not hold it, so claim the unit first instead of retrying. A review is of the exact version the request named only: resolve \
+it with a verdict, passed or changes_requested. A new version makes the verdict stale; a fix asks for one fresh review of \
+the new version with a new request. Never review your own work. A Flux review never replaces a required GitHub approval or \
+check.`,
     },
     {
       id: 'block_transfer_stop', title: 'Block, transfer or stop',

@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
+import { personColor } from './color';
 import { Link } from 'react-router';
 import * as Y from 'yjs';
 import { EditorSelection, EditorState, Prec, StateEffect, StateField, type Range } from '@codemirror/state';
@@ -29,10 +30,7 @@ export function useSharedWiki(id: string | null, userId: string, writer = true) 
   return client?.id === id && client.userId === userId && client.writer === writer ? client : null;
 }
 
-function color(id: string) {
-  let hash = 0; for (const character of id) hash = (hash * 31 + character.charCodeAt(0)) | 0;
-  return ['#365fba', '#93613c', '#a54b87', '#287c6a'][Math.abs(hash) % 4]!;
-}
+const color = personColor;
 /**
  * A collaborator's named caret is drawn in its own layer, like the local selection, never as an
  * inline widget: a widget at the same position as the local cursor became a cursor stop, so

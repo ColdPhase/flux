@@ -23,6 +23,8 @@ const COWORK_TOOLS = [
   { name: 'flux_transfer_unit', operation: 'cowork.unit.transfer' },
   { name: 'flux_claim_request', operation: 'cowork.request.claim' },
   { name: 'flux_decline_request', operation: 'cowork.request.respond' },
+  { name: 'flux_resolve_request', operation: 'cowork.request.respond' },
+  { name: 'flux_send_request', operation: 'cowork.request' },
 ];
 type Role = 'execute' | 'review' | 'plan';
 
@@ -82,13 +84,13 @@ test('the co-work tools are registered for the action scope, listed with their o
     available: boolean }[];
   assert.deepEqual(capabilities.filter((item) => item.operation?.startsWith('cowork.')).map(({ name, operation, classes, requiredScope, available }) =>
     ({ name, operation, classes, requiredScope, available })), COWORK_TOOLS.map((tool) => ({ ...tool, classes: ['execute', 'review', 'plan'],
-    requiredScope: 'flux.action.execute', available: true })), 'exactly these co-work tools are registered; no resolve or admission tool');
+    requiredScope: 'flux.action.execute', available: true })), 'exactly these co-work action tools are registered');
   // The playbook names every co-work tool in a module and names no tool the server does not register.
   for (const { name } of COWORK_TOOLS) assert.ok(COWORK_PLAYBOOK.modules.some((module) => module.tools.includes(name)), `${name} is declared`);
   const catalog = capabilities.map((item) => item.name);
   assert.deepEqual(coworkPlaybookTools().filter((name) => !catalog.includes(name)), []);
-  assert.equal(COWORK_PLAYBOOK.version, '1.4.0');
-  assert.ok((codex.bootstrap.gaps as string[]).includes('coordination_unavailable'), 'the inbox, admission and recovery are still a gap');
+  assert.equal(COWORK_PLAYBOOK.version, '1.6.0');
+  assert.ok(!(codex.bootstrap.gaps as string[]).includes('coordination_unavailable'), 'admission, the inbox and resolution exist');
 
   // A connection without the action scope is not shown them (#548) and is refused before any effect.
   const reader = await f.connect(f.hubert, 'Hubert reader', ['flux.context.read']);

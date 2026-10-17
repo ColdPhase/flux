@@ -37,7 +37,7 @@ async function setup(label: string) {
 test('five areas map through S6; only read removes effects and reserved co-work tools are absent', () => {
   const enabled = compileAssistantAreas(DEFAULT_ASSISTANT_AREAS);
   for (const operation of ['doc.create','doc.update','conversation.reply','cowork.unit.create']) assert.ok(enabled.enabledCapabilityIds.includes(operation as never));
-  for (const name of ['flux_bootstrap','flux_claim_unit','flux_renew_unit','flux_release_unit','flux_complete_unit','flux_transfer_unit','flux_claim_request','flux_decline_request'])
+  for (const name of ['flux_bootstrap','flux_claim_unit','flux_renew_unit','flux_release_unit','flux_complete_unit','flux_transfer_unit','flux_claim_request','flux_decline_request','flux_resolve_request','flux_send_request','flux_coordination_inbox'])
     assert.ok(!enabled.enabledEntryIds.includes(`tool:${name}`), name);
   const read = compileAssistantAreas({ ...DEFAULT_ASSISTANT_AREAS, maps: 'read', wiki: 'off' });
   assert.ok(read.enabledCapabilityIds.includes('project.maps.read'));

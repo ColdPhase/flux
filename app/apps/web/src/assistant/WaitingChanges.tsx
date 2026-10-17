@@ -62,7 +62,7 @@ function RunMessage({ changes, onChanged }: { changes: AssistantChange[]; onChan
   const allUndone = done.length > 0 && !live.length;
   const undoable = live.some((change) => change.undoable);
   const runId = changes[0]!.runId;
-  const header = allUndone ? `Undone by ${done.find((change) => change.decidedBy)?.decidedBy?.name ?? 'you'}` : live.length ? assistantMessageHeader(live) : 'Nothing was changed';
+  const header = allUndone ? `Undone by ${done.find((change) => change.decidedBy)?.decidedBy?.name ?? 'you'}` : live.length && live.length < done.length ? `Undid ${done.length - live.length} of ${done.length} changes` : live.length ? assistantMessageHeader(live) : 'Nothing was changed';
   const shown = open ? done : done.slice(0, 3);
   const act = async (key: string, action: () => Promise<void>) => {
     setBusy(key);

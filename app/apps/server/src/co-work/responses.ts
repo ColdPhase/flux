@@ -17,7 +17,7 @@ import { coWorkTaskGraphLocks } from './graph.js';
  */
 export interface CoWorkResponsePolicy {
   publishResponse(tx: Transaction, runtime: AuthenticatedAgentRuntime,
-    request: { id: string; taskId: string; unitId: string }, response: { [key: string]: AgentJsonValue }): Promise<CoWorkSourceRef>;
+    request: { id: string; projectId: string; taskId: string; unitId: string }, response: { [key: string]: AgentJsonValue }): Promise<CoWorkSourceRef>;
 }
 /** Content-free transition outcome; the response itself lives in its native record. */
 export interface CoWorkRequestTransition {
@@ -119,7 +119,7 @@ export async function coWorkRequestResponseInTransaction(tx: Transaction, claims
       if (!await readable([row.target, ...row.sourceRefs, ...row.criteriaRefs])) throw sourceUnavailable();
       // The native response and its resolution commit together, or neither does.
       responseRef = normalizeCoWorkResponseRef(await policy.publishResponse(tx, runtime,
-        { id: row.id, taskId: locked.unit.taskId, unitId }, response.response));
+        { id: row.id, projectId: context.projectId, taskId: locked.unit.taskId, unitId }, response.response));
       if (!await readable([responseRef])) throw responseUnavailable();
       result = await rows.respond(scope, fence, { state: 'resolved', responseRef });
     } else {

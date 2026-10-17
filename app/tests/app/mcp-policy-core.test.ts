@@ -17,7 +17,10 @@ test('initial captured entry membership follows original consent and does not ad
   assert.ok(policy.enabledEntryIds.includes('tool:flux_get_doc'));
   assert.ok(policy.enabledEntryIds.includes('resource:flux_project_policy'));
   assert.ok(!policy.enabledEntryIds.includes('tool:flux_create_task'));
-  assert.ok(!AGENT_MCP_ENTRIES.some((entry) => entry.operation === 'cowork.request'));
+  // cowork.request is a supported action tool since #153 (2026-10-17); a read-only consent never captures it.
+  assert.deepEqual(AGENT_MCP_ENTRIES.filter((entry) => entry.operation === 'cowork.request').map((entry) => [entry.name, entry.requiredScope]),
+    [['flux_send_request', 'flux.action.execute']]);
+  assert.ok(!policy.enabledEntryIds.includes('tool:flux_send_request'));
   assert.equal(new Set(policy.enabledEntryIds).size, policy.enabledEntryIds.length);
 });
 

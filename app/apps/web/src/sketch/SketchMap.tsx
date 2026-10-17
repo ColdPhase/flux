@@ -1,4 +1,5 @@
 import { Fragment, memo, type CSSProperties, type ReactNode, type RefObject, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react';
+import { personColor } from '../editing/color';
 import { DEFAULT_THOUGHT_SIZE, SKETCH_LIMITS, type LiveMapPosition, type SketchDetail, type Thought } from '@flux/contracts';
 import { Icon, IconButton, Sheet, StatusGlyph } from '../ui';
 import { STATUS_LABEL, taskNumber } from '../work/format';
@@ -74,6 +75,9 @@ export interface SketchMapProps {
   onGesturePreview(positions: LiveMapPosition[]): void;
   onGestureCancel(): void;
   movers: Map<string, string>;
+  /** Other people on this map: a named, coloured cursor each, and the "who is here" chip. */
+  peers: Map<string, { actor: { id: string; name: string }; cursor: { x: number; y: number } | null }>;
+  onPointer(point: { x: number; y: number } | null): void;
   livePreviews: Map<string, { generation: string; gestureId: string; leaseId: string; sequence: number }>;
   ownGesture: { id: string; sequence: number; generation: string } | null | undefined;
   liveEnabled: boolean;
@@ -690,6 +694,10 @@ export function SketchMap(props: SketchMapProps) {
   };
 
   const onPointerMove = (event: ReactPointerEvent) => {
+    if (event.pointerType === 'mouse' && !compact) {
+      const at = zoomedRef.current!.getBoundingClientRect();
+      props.onPointer({ x: bounded(Math.round((event.clientX - at.left) / zoom + origin.x)), y: bounded(Math.round((event.clientY - at.top) / zoom + origin.y)) });
+    }
     const d = drag.current;
     if (!d || d.pointerId !== event.pointerId) return;
     const dx = (event.clientX - d.sx) / zoom;
@@ -908,13 +916,15 @@ export function SketchMap(props: SketchMapProps) {
     }
   }
 
+  const here = [...new Map([...props.peers.values()].map((peer) => [peer.actor.id, peer.actor])).values()];
   return (
     <div ref={wrapRef} className={`sk-canvas-wrap sk-canvas-wrap--controls${hasComposition ? ' has-composition' : ''}`} style={(compact ? { '--sk-phone-tools-height': `${hasComposition ? compositionHeight : phoneToolsHeight}px` } : { '--sk-dock-h': `${dockHeight}px` }) as unknown as CSSProperties}>
+    {here.length ? <p className="sk-here" role="group" aria-label="People on this map">{here.map((person) => <span key={person.id}><i style={{ background: personColor(person.id) }} aria-hidden="true" />{person.name}</span>)}</p> : null}
     <div className={`sk-canvas${panning ? ' is-panning' : ''}${panMode ? ' is-hand' : ''}${connectFrom ? ' is-connecting' : ''}${wire ? ' is-wiring' : ''}`} ref={canvasRef} role="group" tabIndex={0}
       data-live-own-gesture={props.ownGesture?.id} data-live-own-sequence={props.ownGesture?.sequence} data-live-generation={props.ownGesture?.generation}
       aria-label={`Sketch: ${sketch.title}`} aria-describedby={helpId} onKeyDown={onCanvasKeyDown}>
       <div className="sk-zoomed" ref={zoomedRef} data-origin-x={origin.x} data-origin-y={origin.y} style={{ width: width * zoom, height: height * zoom }}
-        onPointerDown={onPlanePointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerCancel}>
+        onPointerDown={onPlanePointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerCancel} onPointerLeave={() => props.onPointer(null)}>
         <div className={`sk-plane${reframing ? ' is-reframing' : ''}`} style={{ width, height, transform: zoom === 1 ? undefined : `scale(${zoom})` }}>
           <svg className="sk-edges" width={width} height={height} aria-hidden="true">
             {sketch.links.map((link) => {
@@ -967,6 +977,9 @@ export function SketchMap(props: SketchMapProps) {
             })}
           </div>
           {thoughtNodes}
+          {[...props.peers.entries()].flatMap(([key, peer]) => peer.cursor ? [<div key={key} className="sk-peer" data-live-peer={peer.actor.name} aria-hidden="true"
+            style={{ transform: `translate(${peer.cursor.x - origin.x}px, ${peer.cursor.y - origin.y}px) scale(${1 / zoom})`, color: personColor(peer.actor.id) }}>
+            <svg width="14" height="16" viewBox="0 0 14 16"><path d="M1 1l11 6.5-5 1.4-2.4 5z" fill="currentColor" /></svg><span style={{ background: personColor(peer.actor.id) }}>{peer.actor.name}</span></div>] : [])}
           {plus && last && lastThought ? (!compact ? (hasComposition ? null : (() => {
             // Controls keep their on-screen size at every zoom (touch targets stay 44px).
             const x = plus.x + last.w / 2;

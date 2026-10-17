@@ -252,3 +252,37 @@ The author's prior separate-decision note is
 [here](https://github.com/ColdPhase/flux/pull/389#issuecomment-6093931519). The local
 analysis report and full manifest, including instrumentation hashes, remain in
 `/home/hubert/Develop/flux-evidence-archive/flux389-profile-diagnostic-manifest/`.
+
+## Cursors, presence and a current-head run (2026-10-17, #228)
+
+**Peer-visible cursors and presence.** The map now draws each other writer's pointer as a small
+colour-coded name label (`.sk-peer`, the colour is the wiki's per-person colour) and lists who is on
+the map (`.sk-here`). The pointer travels as the existing `map-presence` frame (`cursor` in stored
+plane units, at most every 50 ms, re-sent each second, expires with the presence lease); readers
+publish nothing. `app/tests/ui/test_live_map_cursors.py` proves, with two real accounts and sockets,
+the map cursor and who-is-here and the wiki's named caret and writer line. Chromium and WebKit
+2/2 each (`FLUX_LIVE_EDITING_SHOTS=/dir ./scripts/check_live_editing.sh test_live_map_cursors`
+keeps the screenshots).
+
+**Gate 3 cross-process.** `./scripts/check_live_editing.sh --two-api` at `dd43b8d7`: 1/1 pass.
+
+**Gate 4 latency at `dd43b8d7ffd5d7939a1624395533a91ca0ed0ff0`** (`--latency`, nine cohorts,
+clean checkout, collector sealed, collector exit 0, driver exit 1 "retained case failures").
+Zero errors and zero timeouts in every cohort. Nearest-rank p95 (ms) against the 200 ms limit:
+
+| Cohort | p95 | |
+| --- | ---: | --- |
+| map-50-drag-1 | 147.6 | pass |
+| map-50-drag-50 | 166.9 | pass |
+| map-500-drag-1 | 148.5 | pass |
+| map-500-drag-50 | 167.0 | pass |
+| map-500-drag-200 | 230.1 | **fail** |
+| wiki-10000-editor | 182.3 | pass |
+| wiki-10000-reader | 160.1 | pass |
+| wiki-100000-editor | 211.1 | **fail** |
+| wiki-100000-reader | 191.2 | pass |
+
+The run is **not** a pass for the 200-drag and 100k-editor cohorts. It was taken on a shared
+24-core host with about 15 other containers and a load average near 7, not the isolated healthy
+host the target names; it is a measurement, not an acceptance claim, and the earlier
+`79e3a14b` PASS is neither replaced nor repeated by it. Raw rows: `/home/hubert/flux-evidence/228-live-cursors/latency/`.

@@ -154,9 +154,10 @@ test('issued OAuth bearer reads and proposes through MCP, then connection revoca
   const repeatedBootstrap = toolValue((await mcp(bearer, 47, 'tools/call', { name: 'flux_bootstrap', arguments: { projectId, clientSessionId } })).message);
   assert.deepEqual(repeatedBootstrap.runtime, bootstrap.runtime, 'runtime retry preserves original identity and expiry');
   assert.equal((bootstrap.readiness as { state: string }).state, 'pending');
-  assert.deepEqual(bootstrap.trusted, { playbook: coworkPlaybookReference(), approvedPolicy: null, coordination: null, repositoryReferences: null });
+  assert.deepEqual(bootstrap.trusted, { playbook: coworkPlaybookReference(), approvedPolicy: null,
+    coordination: { activeClaimReference: null, checkpointReference: null, inboxContinuation: null }, repositoryReferences: null });
   assert.ok(!(bootstrap.gaps as string[]).includes('trusted_playbook_unavailable'));
-  assert.ok((bootstrap.gaps as string[]).includes('coordination_unavailable'));
+  assert.ok(!(bootstrap.gaps as string[]).includes('coordination_unavailable'), 'admission, the inbox and resolution exist (#153)');
   assert.equal((bootstrap.runtime as { clientId: string }).clientId, clientId);
   const discovery = await mcp(bearer, 48, 'tools/list');
   const tools = (discovery.message?.result as { tools: { name: string }[] }).tools;

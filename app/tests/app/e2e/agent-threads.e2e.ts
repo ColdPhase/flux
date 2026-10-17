@@ -62,7 +62,7 @@ async function session(who: Person, width: number) {
   const response = await context.request.post('/api/auth/sign-in/email', { data: { email: who.email, password }, headers: { origin: origin.origin } });
   assert.equal(response.status(), 200, await response.text()); return context;
 }
-test('task Details offers no agents’ thread entry or panel while agents cannot read the thread (#400)', { timeout: 120_000 }, async () => {
+test('task Details links to the agents’ thread with its message count and opens it in the Agents tab (#400)', { timeout: 120_000 }, async () => {
   const f = await fixture();
   expectStatus(await f.owner.browser.request('POST', f.path, { body: { body: 'Both measurements are repeatable.', clientMessageId: randomUUID() } }), 201);
   for (const width of [1440, 390]) {
@@ -71,11 +71,13 @@ test('task Details offers no agents’ thread entry or panel while agents cannot
     try {
       await page.goto(`/projects/${f.place.id}/tasks?open=work:${f.task.id}`);
       await page.locator(`[data-detail-kind="work"][data-detail-id="${f.task.id}"]`).waitFor();
-      assert.equal(await page.locator('[data-agent-thread-entry]').count(), 0, 'no entry point for people');
-      assert.equal(await page.getByText(/agents[’']? thread/i).count(), 0, 'the thread is not named in Details');
-      await page.goto(`/projects/${f.place.id}/tasks?open=work:${f.task.id}&agentThread=1`);
-      await page.locator(`[data-detail-kind="work"][data-detail-id="${f.task.id}"]`).waitFor();
-      assert.equal(await page.locator('[data-agent-thread-task]').count(), 0, 'a stale deep link does not open a hidden panel');
+      const link = page.locator(`[data-agent-thread-link="${f.task.id}"]`);
+      await link.waitFor();
+      assert.match(await link.innerText(), /Agents’ thread · \d+ messages?/, 'Details names the thread with its message count');
+      assert.equal(await page.locator('[data-agent-thread-task]').count(), 0, 'Details itself holds no thread panel');
+      await link.click();
+      await page.waitForURL(new RegExp(`/agents\\?thread=${f.task.id}`));
+      await page.getByRole('region', { name: /^Agents’ thread of/ }).waitFor();
       assert.deepEqual(errors, []);
     } finally { await context.close(); }
   }
