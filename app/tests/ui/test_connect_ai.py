@@ -43,9 +43,26 @@ OFF_SENTENCE = "Signing in with your Claude or ChatGPT subscription isn’t turn
 # payer labels "API billing" that the #277 change list names.
 JARGON = re.compile(r"\b(scopes?|grants?|MCP|tokens?|capabilit(?:y|ies)|execut(?:e|ion)|runtimes?|transports?|OAuth|"
                     r"policy|policies|proposals?|payloads?|slots?|jobs?|reactions?|cron)\b|\bAPI\b(?!\s+(?:keys?|credits|billing)\b)", re.I)
-RUNTIME_ON = {"enabled": True, "clients": {"claude_code": "available", "codex": "pending"}, "commercialTerms": None,
+RUNTIME_ON = {"enabled": True, "clients": {"claude_code": "available", "codex": "available"}, "commercialTerms": None,
               "idleReleaseDays": None, "pool": "available", "binding": None, "lastRelease": None,
               "connections": {"claude_code": None, "codex": None}}
+# F-027 AST-1 "Which account should I use?", as the spec words it (docs/product/assistant.md). The page uses the typographic
+# apostrophe, so the comparison reads both as one.
+WHICH_ACCOUNT = (
+    "Claude Max and Team plans include monthly API credits. Anthropic recommends an API key for work that runs on its own, and a key from "
+    "your Claude Console organization uses those credits (about 5 minutes in the Claude Console).",
+    "Using Flux for work? In the EU and Switzerland, Claude's personal plans (Pro, Max) are for non-business use. A Team plan or an API key covers work.",
+)
+
+
+def signed_in(method: str, payer: str, auth: str) -> dict:
+    return {"state": "signed_in", "signInMethod": method, "authMethod": auth, "plan": None, "accountLabel": None,
+            "signedInAt": "2026-10-16T10:05:00.000Z", "payer": payer, "accountChange": None, "signOut": None}
+
+
+def runtime_signed_in(claude: tuple[str, str, str], codex: tuple[str, str, str]) -> dict:
+    return {**RUNTIME_ON, "binding": {"state": "active", "boundAt": "2026-10-16T10:00:00.000Z", "lastUsedAt": None, "idleReleaseAt": None},
+            "connections": {"claude_code": signed_in(*claude), "codex": signed_in(*codex)}, "auth": {}}
 
 
 class ConnectAiJourney(unittest.TestCase):
@@ -351,22 +368,30 @@ class ConnectAiJourney(unittest.TestCase):
                         page.get_by_role("region", name="Your assistant’s project access").scroll_into_view_if_needed()
                         shot(page, f"assistant-own-settings-{'phone-390' if phone else 'desktop-1440'}-{UI_BROWSER}")
 
-    def stub_runtime_on(self, page: Page) -> None:
+    def stub_runtime_on(self, page: Page, status: dict | None = None) -> None:
         """A stubbed status with the runtime on (the check suite runs with it off); the sign-in pages are not read here."""
-        page.route(re.compile(r".*/api/v1/agent-runtime$"), lambda route: route.fulfill(status=200, content_type="application/json", body=json.dumps(RUNTIME_ON)))
+        page.route(re.compile(r".*/api/v1/agent-runtime$"), lambda route: route.fulfill(status=200, content_type="application/json", body=json.dumps(status or RUNTIME_ON)))
 
     def test_08_runtime_on_puts_the_sign_in_choices_first_at_both_widths(self) -> None:
         """AST-1.1: Sign in with Claude and Sign in with ChatGPT come first; API keys only under a folded "Other ways to connect"."""
         for phone in (False, True):
+            width = "phone-390" if phone else "desktop-1440"
             page = self.page("ines", phone=phone)
             self.stub_runtime_on(page)
             page.goto("/settings/agents")
             flux = page.get_by_role("region", name=MODE_A, exact=True)
             claude = flux.get_by_role("link", name=re.compile("^Sign in with Claude"))
-            chatgpt = flux.get_by_text("Sign in with ChatGPT", exact=True)
+            chatgpt = flux.get_by_role("link", name=re.compile("^Sign in with ChatGPT"))
             assistant = flux.get_by_role("region", name=re.compile("^Your assistant"))
             expect(claude).to_be_visible()
             expect(chatgpt).to_be_visible()
+            # They open the guided sign-in; they are the first two choices of the list, and the only sign-in ones.
+            expect(claude).to_have_attribute("href", "/settings/agents/claude-code")
+            expect(chatgpt).to_have_attribute("href", "/settings/agents/codex")
+            choices = flux.locator("ul.rt-choices > li")
+            expect(choices).to_have_count(2)
+            expect(choices.nth(0)).to_contain_text("Sign in with Claude")
+            expect(choices.nth(1)).to_contain_text("Sign in with ChatGPT")
             expect(flux).not_to_contain_text(OFF_SENTENCE)
             self.assertTrue(self.above(claude, chatgpt), "Sign in with Claude is above Sign in with ChatGPT")
             # Spokój E04 (#513 M4): AI setup starts with the assistant card; the sign-in choices follow it, still
@@ -380,21 +405,84 @@ class ConnectAiJourney(unittest.TestCase):
             self.assertFalse(other.evaluate("d => d.open"), "Other ways to connect starts folded")
             api = flux.get_by_role("link", name=re.compile("^Use an API key"))
             expect(api).to_be_hidden()
+            which = flux.locator("details").filter(has_text="Which account should I use?")
+            self.assertFalse(which.evaluate("d => d.open"), "Which account should I use? starts folded")
+            self.no_horizontal_scroll(page)
+            shot(page, f"connect-ai-runtime-on-{width}")
             other.locator("summary").click()
             expect(api).to_be_visible()
             self.assertTrue(self.above(claude, api), "API key choices come after the sign-in choices")
-            # Which account should I use? is one folded line in plain words (AST-1 "Which account").
-            which = flux.locator("details").filter(has_text="Which account should I use?")
-            self.assertFalse(which.evaluate("d => d.open"))
+            self.assertTrue(self.above(chatgpt, api), "and after the ChatGPT one")
+            # Which account should I use? is one folded line in plain words, exactly the spec's copy (AST-1).
             which.locator("summary").click()
-            expect(flux).to_contain_text("Max and Team plans include monthly API credits")
-            expect(flux).to_contain_text("non-business use")
+            notes = which.locator("p")
+            expect(notes).to_have_count(len(WHICH_ACCOUNT))
+            for index, text in enumerate(WHICH_ACCOUNT):
+                self.assertEqual(notes.nth(index).inner_text().replace("’", "'"), text)
             self.no_horizontal_scroll(page)
-            if phone:
-                shot(page, "connect-ai-runtime-on-phone-390")
-            else:
-                shot(page, "connect-ai-runtime-on-desktop-1440")
+            shot(page, f"connect-ai-runtime-on-{width}-open")
             page.context.close()
+
+    def test_08b_runtime_off_says_so_once_and_shows_the_api_key_choices_at_both_widths(self) -> None:
+        """AST-1.2: with the runtime off (the check stack's own setting, no stub) the page shows one plain sentence and the API key
+        choices, in the open; no sign-in button is shown. Nothing on Home or in the assistant's set-up promises the plan."""
+        for phone in (False, True):
+            page = self.page("ines", phone=phone)
+            page.goto("/settings/agents")
+            flux = page.get_by_role("region", name=MODE_A, exact=True)
+            sentence = flux.get_by_text(OFF_SENTENCE, exact=True)
+            expect(sentence).to_have_count(1)
+            self.assertEqual(sentence.evaluate("el => el.tagName"), "P", "the sentence is one plain paragraph")
+            self.assertEqual(flux.locator("p", has_text="Signing in with").count(), 1, "and the page says it once")
+            self.assertIsNone(re.search(r"Sign in\b", flux.inner_text()), "no sign-in wording at all while the runtime is off")
+            expect(flux.get_by_role("button", name=re.compile("^Sign in", re.I))).to_have_count(0)
+            expect(flux.get_by_role("link", name=re.compile("^Sign in", re.I))).to_have_count(0)
+            expect(flux.locator("ul.rt-choices")).to_have_count(0)
+            api = flux.get_by_role("link", name=re.compile("^Use an API key"))
+            expect(api).to_be_visible()  # shown plainly: not inside a folded "Other ways to connect"
+            expect(api).to_have_attribute("href", "/settings/ai-connections")
+            self.assertEqual(api.evaluate("el => !!el.closest('details')"), False, "the API key choice is not folded away")
+            expect(flux.get_by_text("Other ways to connect")).to_have_count(0)
+            self.assertTrue(self.above(sentence, api), "the sentence comes before the API key choices")
+            self.no_horizontal_scroll(page)
+            for path, heading in (("/", page.get_by_role("heading", level=1, name="Home")), ("/settings/assistant", page.get_by_role("heading", name="Your assistant", exact=True))):
+                page.goto(path)
+                expect(heading).to_be_visible()
+                text = page.locator("main, .pane-in").first.inner_text()
+                self.assertIsNone(re.search(r"plan you already (have|pay for)", text), f"{path} does not promise the plan you already have")
+            page.context.close()
+
+    def test_08c_plain_account_labels_with_the_payer_text_as_the_longer_line(self) -> None:
+        """AST-1 plain account labels: Claude / ChatGPT subscription, Anthropic Console API billing, OpenAI API key. The F-022 payer
+        text stays as the longer line of the account row."""
+        cases = (
+            (runtime_signed_in(("claude_account", "claude_plan", "claude.ai"), ("device_code", "chatgpt_plan", "chatgpt")),
+             "Claude · your subscription", "ChatGPT · your subscription",
+             "Your Claude plan (plan limits or paid extra usage, not visible to Flux).", "Your ChatGPT plan (plan limits or credits, not visible to Flux)."),
+            (runtime_signed_in(("console", "anthropic_console", "api_key"), ("api_key", "openai_api", "api_key")),
+             "Anthropic Console · API billing", "OpenAI · API key",
+             "Your Anthropic Console organization (API billing, cost not reported to Flux).", "Your OpenAI API organization (API billing, cost not reported to Flux)."),
+        )
+        for phone in (False, True):
+            for index, (status, claude_label, codex_label, claude_payer, codex_payer) in enumerate(cases):
+                page = self.page("ines", phone=phone)
+                self.stub_runtime_on(page, status)
+                page.goto("/settings/agents")
+                flux = page.get_by_role("region", name=MODE_A, exact=True)
+                mine = flux.get_by_role("list", name="Your sign-in")
+                codex = flux.get_by_label("Codex in Flux").get_by_role("list", name="Your Codex sign-in")
+                expect(mine).to_contain_text(claude_label)
+                expect(mine).to_contain_text(claude_payer)
+                expect(codex).to_contain_text(codex_label)
+                expect(codex).to_contain_text(codex_payer)
+                self.assertEqual(mine.locator("li").first.locator("b").inner_text(), claude_label, "the label leads its row")
+                self.assertEqual(codex.locator("li").first.locator("b").inner_text(), codex_label)
+                self.assertGreater(len(claude_payer), len(claude_label), "the payer text is the longer line")
+                self.assertIsNone(JARGON.search(claude_label + " " + codex_label), "and the labels use no jargon")
+                self.no_horizontal_scroll(page)
+                if index == 1:
+                    shot(page, f"connect-ai-labels-{'phone-390' if phone else 'desktop-1440'}")
+                page.context.close()
 
     def test_09_the_page_uses_no_jargon_words_with_runtime_on_or_off(self) -> None:
         """AST-10.2 (#277): no visible text on the page uses the listed words; scanner negative control first."""

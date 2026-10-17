@@ -31,7 +31,7 @@ export const METHOD_NAME: Record<AgentRuntimeSignInMethod, string> = {
 /** F-027 AST-1: plain account labels for a signed-in Claude Code or Codex account. */
 export const accountLabel = (method: AgentRuntimeSignInMethod | null) => (
   method === 'console' ? 'Anthropic Console · API billing' : method === 'sso' ? 'Claude · your organization'
-    : method === 'device_code' ? 'ChatGPT · your subscription' : method === 'api_key' ? 'OpenAI API · API billing'
+    : method === 'device_code' ? 'ChatGPT · your subscription' : method === 'api_key' ? 'OpenAI · API key'
       : method === 'access_token' ? 'ChatGPT · your organization' : 'Claude · your subscription'
 );
 

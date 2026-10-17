@@ -1,0 +1,1 @@
+- On the phone, the thoughts you can link a task to read at the phone body size (15 px) and still wrap, keep their 44 px targets and follow the system text size ([#289](https://github.com/ColdPhase/flux/issues/289)).
