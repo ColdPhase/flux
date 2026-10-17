@@ -532,7 +532,7 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
    lower band, so the whole header stays one 56 px row (Spokój #507) and the focus ring frames the title and its
    view line instead of crossing it. */
 .phead__title h1:has(> .phead__menu) { position: relative; z-index: 1; margin-block: -1px -20px; }
-.phead__title h1 > .phead__menu { display: flex; padding-bottom: 19px; }
+.phead__title h1 > .phead__menu { display: flex; width: 100%; padding-bottom: 19px; }
 /* A Wiki page's own menu holds Together (and the page actions), so the header keeps one control in that place. */
 .phead:has(.wiki-header-actions) .phead__right > .lv-entry { display: none; }
 /* The narrowest phones keep the view's name whole; the people are in Details. */

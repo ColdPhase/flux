@@ -656,7 +656,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
                 page = self.open_project("ada", phone=phone)
                 self.tasks(page)
                 mutations = []
-                page.on("request", lambda request: mutations.append(request.url) if request.method in ("POST", "PATCH", "DELETE") else None)
+                page.on("request", lambda request: mutations.append(request.url) if request.method in ("POST", "PATCH", "DELETE") and not request.url.endswith("/receipts") else None)  # read receipts (#574) are not work
                 field = open_from_tasks(page)
                 draft = "Order another ToF board after checking the shelf"
                 field.fill(draft)
@@ -931,6 +931,8 @@ class ProjectSurfaceJourney(unittest.TestCase):
                 page.wait_for_function("window.observedDraftWrites >= 2")
                 if unmounted:
                     self.tasks(page)
+                while not held:  # the held create answers on the route handler's own turn
+                    page.wait_for_timeout(25)
                 self.assertEqual(len(held), 1)
                 route, response = held[0]
                 with page.expect_request_finished(lambda request: request.method == "POST" and request.url.endswith("/work")):
