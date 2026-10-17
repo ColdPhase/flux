@@ -1,4 +1,7 @@
 import {
+  assistantBatchVerb,
+  assistantChangeSummary,
+  type AssistantChange,
   MAX_SNOOZE_DAYS,
   type NeedsYouItem,
   type NeedsYouKind,
@@ -14,7 +17,7 @@ import type { WorkRecord } from '../work/ports.js';
 import type { NeedsYouPorts, StoredNeedsYou } from './ports.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const KEY = /^(decision|blocked|note):[0-9a-f-]{36}$/i;
+const KEY = /^(decision|blocked|note|assistant):[0-9a-f-]{36}$/i;
 /** Mentions older than this no longer ask for an answer; they stay in the notification history. */
 const MENTION_DAYS = 14;
 /** Most items of the queue; a project with more proposals than this still has them in Details. */
@@ -148,6 +151,22 @@ export function createNeedsYou(ports: NeedsYouPorts, now: () => Date = () => new
         from: assistantRequestIdentity ? { kind: 'agent', id: assistantRequestIdentity.assistantId, name: assistantRequestIdentity.assistantName } : null,
         at: iso(note.createdAt), url: note.url ?? `/inbox/${note.id}`, decision: null, blocked: null, reason: note.reason, snoozeTask: null,
         ...(assistantRequestIdentity ? { assistantRequestIdentity } : {}),
+      });
+    }
+    // Your assistant's undecided waiting changes, one question per request (F-027 AST-5.6).
+    const runs = new Map<string, AssistantChange[]>();
+    for (const change of ports.assistant ? await ports.assistant.waiting(userId) : []) runs.set(change.runId, [...(runs.get(change.runId) ?? []), change]);
+    if (runs.size) for (const [id, name] of await ports.access.projectNames([...new Set([...runs.values()].map((group) => group[0]!.projectId))])) projectNames.set(id, name);
+    for (const [runId, group] of runs) {
+      const head = group[0]!;
+      const summary = assistantChangeSummary(group);
+      items.push({
+        key: `assistant:${runId}`, kind: 'question', title: `Your assistant wants to ${summary}`,
+        detail: excerpt(group.map((change) => change.line).find(Boolean) ?? ''),
+        project: { id: head.projectId, name: projectNames.get(head.projectId) ?? 'Project' }, from: null, at: head.createdAt,
+        url: `/projects/${head.projectId}/conversations/${head.conversationId}`, decision: null, blocked: null, reason: 'question', snoozeTask: null,
+        assistantChanges: { runId, verb: assistantBatchVerb(group), summary,
+          changes: group.map((change) => ({ id: change.id, version: change.version, phrase: change.phrase, objectTitle: change.objectTitle, line: change.line })) },
       });
     }
     return items.sort((a, b) => ORDER[a.kind] - ORDER[b.kind] || b.at.localeCompare(a.at));

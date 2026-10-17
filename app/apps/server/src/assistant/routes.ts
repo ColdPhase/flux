@@ -7,6 +7,7 @@ import type { SessionResolver } from '../identity/index.js';
 import { expectedVersion, useDomainErrors, versionEtag } from '../http/commands.js';
 import { transactionEventSession } from '../work/transaction-events.js';
 import { assistantRows } from './adapters.js';
+import { registerAssistantChangeRoutes } from './changes.js';
 
 interface Options { db: Database; sessions: SessionResolver; boss: Pick<PgBoss, 'send'> }
 const modes = { type: 'string', enum: ['off', 'read', 'edit'] } as const;
@@ -54,5 +55,7 @@ export async function assistantRoutes(app: FastifyInstance, { db, sessions, boss
     app.post<{ Params: { projectId: string; requestId: string } }>(`${assistantJoinRequestPath(':projectId')}/:requestId/${action}`, async (request) =>
       joins.respond((await sessions.requirePrincipal(request)).principal, request.params.projectId, request.params.requestId, action === 'allow', expectedVersion(request)));
   }
+  // Waiting changes, Apply and suggestions (F-027 A3).
+  registerAssistantChangeRoutes(app, db, sessions, boss);
 
 }
