@@ -20,3 +20,6 @@ export { COWORK_CHECKPOINT_LIMITS, COWORK_CHECKPOINT_SCHEMA, coWorkCheckpointPro
   parseCoWorkCheckpointProgress, requireCoWorkCheckpointSources, requireCoWorkClaimEligibility } from './checkpoints.js';
 export type { CoWorkCheckpointDraft, CoWorkCheckpointSource, CoWorkCheckpointProgress, CoWorkClaimEligibilityReader,
   CoWorkCheckpointSourceReader } from './checkpoints.js';
+export { COWORK_OPEN_REQUEST_STATES, canCancelCoWorkRequest, mayCancelCoWorkRequest, normalizeCoWorkCancel, normalizeCoWorkReviewRule,
+  requireCoWorkCancel } from './cards.js';
+export type { CoWorkCancelActor, CoWorkCancelFacts } from './cards.js';

@@ -68,8 +68,8 @@ export function coworkRecoveryRows(tx: DbExecutor) {
         .orderBy(asc(r.createdAt), asc(r.id)).limit(limit + 1);
       const visible = rows.slice(0, limit);
       const records: CoWorkInboxRecord[] = visible.map((row) => {
-        const { fingerprint: _fingerprint, updatedAt: _updatedAt, ...request } = row.request;
-        void _fingerprint; void _updatedAt;
+        const { fingerprint: _fingerprint, updatedAt: _updatedAt, cancelledBy: _cancelledBy, ...request } = row.request;
+        void _fingerprint; void _updatedAt; void _cancelledBy;
         const lost = request.state === 'claimed' && (row.state !== 'claimed' || row.leaseExpired
           || row.generation !== request.claimedGeneration || row.assignment !== scope.connectionId);
         const effectiveState = row.expired ? 'expired' : lost ? 'queued' : request.state;

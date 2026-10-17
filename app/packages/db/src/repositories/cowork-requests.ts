@@ -15,8 +15,8 @@ type Row = typeof requests.$inferSelect;
 /** Internal only; public continuation must be encrypted or server-held and context-bound. */
 interface CandidateCursor extends Address { at: Date; agingSeconds: number; score: number; createdAt: string; id: string }
 function record(row: Row): CoWorkRequestRecord {
-  const { fingerprint: _fingerprint, updatedAt: _updated, ...result } = row;
-  void _fingerprint; void _updated;
+  const { fingerprint: _fingerprint, updatedAt: _updated, cancelledBy: _cancelledBy, ...result } = row;
+  void _fingerprint; void _updated; void _cancelledBy;
   return result;
 }
 function addressed(address: Address) {

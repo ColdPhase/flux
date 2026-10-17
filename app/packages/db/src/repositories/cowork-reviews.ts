@@ -8,10 +8,6 @@ import type { DbExecutor } from './push.js';
 export type CoWorkReviewVerdict = 'passed' | 'changes_requested';
 export interface CoWorkVerdictInput { requestId: string; verdict: CoWorkReviewVerdict; evidenceRef: CoWorkSourceRef;
   reviewerConnectionId: string; reviewerOwnerId: string }
-/** One request as people may see it: who asked whom for what, on which exact target, and where it stands. */
-export interface CoWorkTaskRequestRow { id: string; kind: string; state: string; status: string; nextBoundary: string | null; reason: string | null; target: CoWorkSourceRef;
-  senderConnectionId: string; senderName: string; recipientConnectionId: string; recipientName: string; createdAt: string;
-  updatedAt: string; responseRef: CoWorkSourceRef | null }
 export interface CoWorkTaskVerdictRow { requestId: string; verdict: CoWorkReviewVerdict; target: CoWorkSourceRef;
   criteriaRefs: CoWorkSourceRef[]; evidenceRef: CoWorkSourceRef; reviewerConnectionId: string; reviewerName: string;
   authorConnectionId: string; authorName: string; current: boolean; createdAt: string }
@@ -41,48 +37,22 @@ export function coworkReviewRows(tx: DbExecutor) {
         FROM cowork_requests r WHERE r.id = ${input.requestId}::uuid AND r.workspace_id = ${workspaceId}::uuid
           AND r.project_id = ${projectId}::uuid AND r.kind = 'review'`);
     },
-    /** Every request and verdict on one task, newest first, bounded. A verdict is current while its target still is. */
-    async task(workspaceId: string, projectId: string, taskId: string, limit = 50) {
-      const requests = await tx.execute<Record<string, unknown>>(sql`
-        SELECT r.id, r.kind, CASE WHEN r.state IN ('queued', 'deferred', 'claimed') AND r.expires_at <= clock_timestamp()
-            THEN 'expired' ELSE r.state END AS state,
-          CASE WHEN r.state IN ('queued', 'deferred', 'claimed') AND r.expires_at <= clock_timestamp() THEN 'expired'
-            WHEN r.state = 'claimed' AND EXISTS (SELECT 1 FROM cowork_units live WHERE live.id = r.unit_id AND live.state = 'claimed'
-              AND live.generation = r.claimed_generation AND live.assignment_connection_id = r.recipient_connection_id
-              AND live.lease_expires_at > clock_timestamp()) THEN 'working'
-            WHEN r.state IN ('queued', 'deferred', 'claimed') AND NOT EXISTS (SELECT 1 FROM agent_connections c
-              WHERE c.id = r.recipient_connection_id AND c.revoked_at IS NULL
-                AND EXISTS (SELECT 1 FROM agent_runtime_sessions s WHERE s.connection_id = c.id AND s.revoked_at IS NULL
-                  AND s.expires_at > clock_timestamp())) THEN 'offline'
-            WHEN r.state = 'claimed' THEN 'queued'
-            ELSE r.state END AS status, r.next_boundary, r.reason, r.target, r.response_ref,
-          r.sender_connection_id, ${name('r.sender_connection_id')} AS sender_name,
-          r.recipient_connection_id, ${name('r.recipient_connection_id')} AS recipient_name,
-          r.created_at::text AS created_at, r.updated_at::text AS updated_at
-        FROM cowork_requests r WHERE r.workspace_id = ${workspaceId}::uuid AND r.project_id = ${projectId}::uuid
-          AND r.work_id = ${taskId}::uuid ORDER BY r.created_at DESC, r.id DESC LIMIT ${limit}`);
+    /** Every verdict on one task, newest first, bounded. A verdict is current while its target still is. */
+    async verdicts(workspaceId: string, projectId: string, taskId: string, options: { limit?: number; requestId?: string } = {}) {
       const verdicts = await tx.execute<Record<string, unknown>>(sql`
         SELECT v.request_id, v.verdict, v.target, v.criteria_refs, v.evidence_ref, v.reviewer_connection_id,
           ${name('v.reviewer_connection_id')} AS reviewer_name, v.author_connection_id, ${name('v.author_connection_id')} AS author_name,
           ${readableReferenceSet(sql`jsonb_build_array(v.target)`, sql`v.workspace_id`, sql`v.project_id`)} AS current,
           v.created_at::text AS created_at
         FROM cowork_review_verdicts v WHERE v.workspace_id = ${workspaceId}::uuid AND v.project_id = ${projectId}::uuid
-          AND v.work_id = ${taskId}::uuid ORDER BY v.created_at DESC, v.request_id DESC LIMIT ${limit}`);
-      return {
-        requests: requests.rows.map((row): CoWorkTaskRequestRow => ({ id: String(row.id), kind: String(row.kind), state: String(row.state), status: String(row.status),
-          nextBoundary: (row.next_boundary as string | null) ?? null,
-          reason: (row.reason as string | null) ?? null, target: row.target as CoWorkSourceRef,
-          responseRef: (row.response_ref as CoWorkSourceRef | null) ?? null,
-          senderConnectionId: String(row.sender_connection_id), senderName: String(row.sender_name),
-          recipientConnectionId: String(row.recipient_connection_id), recipientName: String(row.recipient_name),
-          createdAt: String(row.created_at), updatedAt: String(row.updated_at) })),
-        verdicts: verdicts.rows.map((row): CoWorkTaskVerdictRow => ({ requestId: String(row.request_id),
-          verdict: row.verdict as CoWorkReviewVerdict, target: row.target as CoWorkSourceRef,
-          criteriaRefs: row.criteria_refs as CoWorkSourceRef[], evidenceRef: row.evidence_ref as CoWorkSourceRef,
-          reviewerConnectionId: String(row.reviewer_connection_id), reviewerName: String(row.reviewer_name),
-          authorConnectionId: String(row.author_connection_id), authorName: String(row.author_name),
-          current: row.current === true, createdAt: String(row.created_at) })),
-      };
+          AND v.work_id = ${taskId}::uuid ${options.requestId ? sql`AND v.request_id = ${options.requestId}::uuid` : sql``}
+        ORDER BY v.created_at DESC, v.request_id DESC LIMIT ${Math.min(options.limit ?? 50, 50)}`);
+      return verdicts.rows.map((row): CoWorkTaskVerdictRow => ({ requestId: String(row.request_id),
+        verdict: row.verdict as CoWorkReviewVerdict, target: row.target as CoWorkSourceRef,
+        criteriaRefs: row.criteria_refs as CoWorkSourceRef[], evidenceRef: row.evidence_ref as CoWorkSourceRef,
+        reviewerConnectionId: String(row.reviewer_connection_id), reviewerName: String(row.reviewer_name),
+        authorConnectionId: String(row.author_connection_id), authorName: String(row.author_name),
+        current: row.current === true, createdAt: String(row.created_at) }));
     },
   };
 }

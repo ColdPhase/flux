@@ -1,6 +1,6 @@
 import type { AgentJsonValue } from '@flux/contracts';
-import { coworkReviewRows, coworkUnitRows, type CoWorkReviewVerdict } from '@flux/db';
-import { InvalidInputError, normalizeCoWorkSource, NotFoundError, requireCoWorkCheckpointSources, requireCoWorkClaimEligibility, type CoWorkUnitPolicy } from '@flux/core';
+import { coworkReviewPolicyRows, coworkReviewRows, coworkUnitRows, type CoWorkReviewVerdict } from '@flux/db';
+import { InvalidInputError, normalizeCoWorkSource, NotFoundError, requireCoWorkCheckpointSources, requireCoWorkClaimEligibility, type CoWorkUnitPolicy, type Transaction } from '@flux/core';
 import { requireTaskPrerequisitesMet } from '../work/task-graph.js';
 import type { CoWorkClaimPolicy } from './claims.js';
 import { coWorkTaskGraphLocks } from './graph.js';
@@ -10,10 +10,21 @@ import type { CoWorkResponsePolicy } from './responses.js';
 /**
  * Server-owned co-work policy for the MCP path (#153, docs/development/cowork-coordination.md "MCP exposure").
  * Tool input, client metadata and project content never set these values. `distinct_connection` is the contract
- * default (explicit same-owner review by another connection); a project-level `distinct_owner` choice needs its own
- * project-policy amendment.
+ * default (explicit same-owner review by another connection); a project manager can require `distinct_owner` for
+ * their project (migration 0111, `coworkPolicies` below). Nothing an agent sends changes either.
  */
 export const COWORK_UNIT_POLICY: CoWorkUnitPolicy = Object.freeze({ maximumRunUnits: 16, reviewSeparation: 'distinct_connection' });
+
+/**
+ * The unit and request policies of one project: the server defaults with that project's explicit review rule. It is
+ * read inside the command's own transaction before the command's locks, so a command applies the rule that was
+ * committed when it began; a manager's change takes effect for the commands that start after it commits.
+ */
+export async function coworkPolicies(tx: Transaction, projectId: string) {
+  const reviewSeparation = await coworkReviewPolicyRows(tx).current(projectId);
+  return { unit: Object.freeze({ ...COWORK_UNIT_POLICY, reviewSeparation }) as CoWorkUnitPolicy,
+    request: Object.freeze({ limits: COWORK_REQUEST_POLICY.limits, reviewSeparation }) as CoWorkRequestPolicy };
+}
 
 /**
  * Responses without publication: the MCP path can decline a claimed request but not resolve it, because there is no

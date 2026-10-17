@@ -4,7 +4,7 @@ import { AGENT_OPERATION_CLASSES, AGENT_PEER_REQUEST_CLASSES, type AgentExecutio
 import { COWORK_CHECKPOINT_LIMITS, COWORK_DECLINE_REASONS, COWORK_DEFER_BOUNDARIES, COWORK_DEFER_REASONS, InvalidInputError, type Database } from '@flux/core';
 import { ownerAssistantUnitCreationInTransaction } from '../co-work/assistant-units.js';
 import { coWorkClaimCheckpoint, coWorkClaimInTransaction } from '../co-work/claims.js';
-import { COWORK_CLAIM_POLICY, COWORK_REQUEST_POLICY, COWORK_RESPONSE_POLICY, COWORK_UNIT_POLICY } from '../co-work/policy.js';
+import { COWORK_CLAIM_POLICY, COWORK_RESPONSE_POLICY, coworkPolicies } from '../co-work/policy.js';
 import { coWorkRecovery } from '../co-work/recovery.js';
 import { coWorkRequestInTransaction } from '../co-work/requests.js';
 import { coWorkRequestResponseInTransaction } from '../co-work/responses.js';
@@ -95,12 +95,13 @@ export function registerAgentCoworkActions(tools: AgentToolRegistry, db: Databas
         { unitKey, expectedTaskVersion, assignmentConnectionId, parent: null, peerRequestClass: input.peerRequestClass },
         async ({ transaction, runtime }) => {
           const creation = await ownerAssistantUnitCreationInTransaction(transaction, runtime, input.projectId,
-            { taskId, role: input.peerRequestClass, unitKey, expectedTaskVersion, assignmentConnectionId, parent: null }, COWORK_UNIT_POLICY);
+            { taskId, role: input.peerRequestClass, unitKey, expectedTaskVersion, assignmentConnectionId, parent: null },
+            (await coworkPolicies(transaction, input.projectId)).unit);
           return coWorkUnitOutcome(creation, { workspaceId: runtime.workspaceId, projectId: input.projectId });
         });
     }
-    return db.transaction((tx) => coWorkUnitCreateInTransaction(tx, claims, command(input, 'cowork.unit.create', taskId,
-      { unitKey, expectedTaskVersion, assignmentConnectionId, parent }), COWORK_UNIT_POLICY));
+    return db.transaction(async (tx) => coWorkUnitCreateInTransaction(tx, claims, command(input, 'cowork.unit.create', taskId,
+      { unitKey, expectedTaskVersion, assignmentConnectionId, parent }), (await coworkPolicies(tx, input.projectId)).unit));
   }));
 
   register('cowork.claim').registerTool('flux_claim_unit', {
@@ -153,9 +154,9 @@ export function registerAgentCoworkActions(tools: AgentToolRegistry, db: Databas
       + '(COWORK_UNIT_REQUESTS_OPEN): answer or decline them first. Needs a live cowork.unit.complete grant whose class is the '
       + 'unit\'s role.',
     inputSchema: z.strictObject({ ...execution, ...unitFence, outcome: outcomeRef }), annotations,
-  }, ({ unitId, expectedVersion, generation, leaseId, outcome, ...input }) => run(() => db.transaction((tx) =>
+  }, ({ unitId, expectedVersion, generation, leaseId, outcome, ...input }) => run(() => db.transaction(async (tx) =>
     coWorkUnitTransitionInTransaction(tx, claims, command(input, 'cowork.unit.complete', unitId,
-      { expectedVersion, generation, leaseId, outcome }), COWORK_UNIT_POLICY))));
+      { expectedVersion, generation, leaseId, outcome }), (await coworkPolicies(tx, input.projectId)).unit))));
 
   register('cowork.unit.transfer').registerTool('flux_transfer_unit', {
     title: 'Hand your co-work unit to another connection under a standing grant',
@@ -166,9 +167,9 @@ export function registerAgentCoworkActions(tools: AgentToolRegistry, db: Databas
       + 'cowork.unit.transfer grant whose class is the unit\'s role.',
     inputSchema: z.strictObject({ ...execution, ...unitFence,
       assignmentConnectionId: id.describe('The connection that should continue the unit.') }), annotations,
-  }, ({ unitId, expectedVersion, generation, leaseId, assignmentConnectionId, ...input }) => run(() => db.transaction((tx) =>
+  }, ({ unitId, expectedVersion, generation, leaseId, assignmentConnectionId, ...input }) => run(() => db.transaction(async (tx) =>
     coWorkUnitTransitionInTransaction(tx, claims, command(input, 'cowork.unit.transfer', unitId,
-      { expectedVersion, generation, leaseId, assignmentConnectionId }), COWORK_UNIT_POLICY))));
+      { expectedVersion, generation, leaseId, assignmentConnectionId }), (await coworkPolicies(tx, input.projectId)).unit))));
 
   register('cowork.unit.decline').registerTool('flux_decline_unit', {
     title: 'Hand a unit transferred to you back to the connection that sent it, under a standing grant',
@@ -178,8 +179,9 @@ export function registerAgentCoworkActions(tools: AgentToolRegistry, db: Databas
       + '(COWORK_DECLINE_REFUSED); open requests on the unit refuse it (COWORK_UNIT_REQUESTS_OPEN). Authorship of anything '
       + 'already completed never changes. Needs a live cowork.unit.decline grant whose class is the unit\'s role.',
     inputSchema: z.strictObject({ ...execution, unitId: unitFence.unitId, expectedVersion: unitFence.expectedVersion }), annotations,
-  }, ({ unitId, expectedVersion, ...input }) => run(() => db.transaction((tx) =>
-    coWorkUnitTransitionInTransaction(tx, claims, command(input, 'cowork.unit.decline', unitId, { expectedVersion }), COWORK_UNIT_POLICY))));
+  }, ({ unitId, expectedVersion, ...input }) => run(() => db.transaction(async (tx) =>
+    coWorkUnitTransitionInTransaction(tx, claims, command(input, 'cowork.unit.decline', unitId, { expectedVersion }),
+      (await coworkPolicies(tx, input.projectId)).unit))));
 
   register('cowork.request.respond').registerTool('flux_defer_request', {
     title: 'Put a queued request off to a safe checkpoint, with a reason, under a standing grant',
@@ -263,10 +265,10 @@ export function registerAgentCoworkActions(tools: AgentToolRegistry, db: Databas
       lifetimeSeconds: z.int().min(60).max(604800).default(86400) }), annotations,
   }, ({ unitId, generation, leaseId, recipientUnitId, expectedRecipientUnitVersion, recipientConnectionId, intentKey, parentRequestId,
     kind, target, sourceRefs, criteriaRefs, priority, peerUnblocking, lifetimeSeconds, ...input }) => run(() =>
-    db.transaction((tx) => coWorkRequestInTransaction(tx, claims, command(input, 'cowork.request', unitId, { generation, leaseId,
+    db.transaction(async (tx) => coWorkRequestInTransaction(tx, claims, command(input, 'cowork.request', unitId, { generation, leaseId,
       request: { unitId: recipientUnitId, expectedUnitVersion: expectedRecipientUnitVersion, recipientConnectionId, intentKey,
         parentRequestId, kind, target, sourceRefs, criteriaRefs, priority, peerUnblocking, lifetimeSeconds } } as unknown as AgentJsonValue),
-    COWORK_REQUEST_POLICY))));
+    (await coworkPolicies(tx, input.projectId)).request))));
 
   const recover = coWorkRecovery(db, cursorSecret);
   tools.forScope('flux.context.read').registerTool('flux_coordination_inbox', {
