@@ -11,7 +11,7 @@ export class SharedMap {
   status: 'connecting' | 'live' | 'unavailable' | 'private' = 'connecting';
   problem: string | null = null;
   previews = new Map<string, MapPreview>();
-  peers = new Map<string, { actor: NamedPrincipal; selected: string[]; expiresAt: string }>();
+  peers = new Map<string, { actor: NamedPrincipal; selected: string[]; cursor: { x: number; y: number } | null; expiresAt: string }>();
   privateMovement: PrivateMovement | null = null;
   private connection: EditingConnection | null = null;
   private gesture: Gesture | null = null;
@@ -23,6 +23,8 @@ export class SharedMap {
   private lastPreviewSentAt = -Infinity;
   private reconnectTimer: number | null = null;
   private selected: string[] = [];
+  private cursor: { x: number; y: number } | null = null;
+  private cursorTimer: number | null = null;
   private leaving = () => this.cancel(true);
   get ownGesture() { return this.gesture?.active && this.head ? { id: this.gesture.id, sequence: this.gesture.sequence, generation: this.head.generation } : null; }
   constructor(readonly id: string, readonly userId: string,
@@ -42,7 +44,7 @@ export class SharedMap {
       const gesture = this.gesture;
       if (gesture?.active && gesture.serverLease && Date.parse(gesture.serverLease.expiresAt) <= Date.now() && gesture.lastPreviewAt + 5000 <= Date.now()) { this.cancel(true, false); this.problem = 'The movement lease expired. Its unfinished positions are kept privately for comparison.'; expired = true; }
       if (expired) this.changed();
-      if (this.head && this.status === 'live' && this.head.canWrite) this.connection?.send({ type: 'map-presence', generation: this.head.generation, selected: this.selected.slice(0, 16), cursor: null });
+      if (this.head && this.status === 'live' && this.head.canWrite) this.connection?.send({ type: 'map-presence', generation: this.head.generation, selected: this.selected.slice(0, 16), cursor: this.cursor });
     }, 1000);
     void this.start();
   }
@@ -120,6 +122,15 @@ export class SharedMap {
     this.changed();
   };
   selection(ids: string[]) { this.selected = ids.slice(0, 16); }
+  /** Where this person's pointer is, in stored plane units; null once it leaves the map. Sent at most every 50 ms. */
+  pointer(point: { x: number; y: number } | null) {
+    this.cursor = point;
+    if (this.cursorTimer !== null) return;
+    this.cursorTimer = window.setTimeout(() => {
+      this.cursorTimer = null;
+      if (this.head && this.status === 'live' && this.head.canWrite) this.connection?.send({ type: 'map-presence', generation: this.head.generation, selected: this.selected.slice(0, 16), cursor: this.cursor });
+    }, 50);
+  }
   resync() { this.disconnected(); }
   begin(thoughts: Thought[]) {
     this.cancel();
@@ -179,6 +190,7 @@ export class SharedMap {
   }
   destroy() {
     this.cancel(true); this.stopped = true; this.abort.abort(); this.connection?.close(); window.clearInterval(this.timer);
+    if (this.cursorTimer !== null) window.clearTimeout(this.cursorTimer);
     window.removeEventListener('pagehide', this.leaving); window.removeEventListener('beforeunload', this.leaving);
     if (this.previewTimer !== null) window.clearTimeout(this.previewTimer);
     if (this.reconnectTimer !== null) window.clearTimeout(this.reconnectTimer);
