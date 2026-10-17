@@ -34,7 +34,7 @@ function githubTasks(tx: Transaction, events: TransactionEventSession, retained:
       }
       return tasks;
     },
-    async move(taskId, change) { return state(await work.updateWork(taskId, change)); },
+    async move(taskId, change, by) { return state(await work.updateWork(taskId, change, by, 'github_rule')); },
     async updated(principal, task, automated = false) {
       if(!retained.fence||!retained.fence.ids.includes(task.id))throw new TaskUseRefusal('TASK_TARGET_SET_CHANGED');
       await retained.fence.mark([task.id]);

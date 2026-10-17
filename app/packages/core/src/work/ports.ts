@@ -1,4 +1,4 @@
-import type { DecisionStatus, LinkOwnerType, LinkRole, ObjectRef, ResultFinding, TaskPlanIntent, WorkStatus } from '@flux/contracts';
+import type { AgentProjectOwner, DecisionStatus, LinkOwnerType, LinkRole, ObjectRef, ResultFinding, TaskPlanIntent, WorkStatus } from '@flux/contracts';
 import type { Principal } from '../principal.js';
 import type { PlanIntentRecord, TaskGraphReader } from './task-graph.js';
 import type { GithubRuleReading } from '../github/rules.js';
@@ -28,6 +28,8 @@ export interface WorkRecord {
   blocker: string | null;
   /** The person a blocked task waits for (#550); null unless blocked. */
   waitingFor: ActorRef | null;
+  /** The calendar day it is due (#488), `YYYY-MM-DD`; null for none. */
+  dueOn: string | null;
   owner: ActorRef | null;
   parked: { decisionId: string; at: Date } | null;
   /** Distinct trimmed statements; `[]` for tasks that never had any (#152). */
@@ -117,7 +119,28 @@ export interface NativeCommandReceipt {
   /** Contribution messages this command made on canonical task threads. */
   messageIds: string[];
 }
-export type WorkChanges = Partial<Pick<WorkRecord, 'title' | 'outcome' | 'status' | 'blocker' | 'waitingFor' | 'owner' | 'parked' | 'criteria'>>;
+export type WorkChanges = Partial<Pick<WorkRecord, 'title' | 'outcome' | 'status' | 'blocker' | 'waitingFor' | 'dueOn' | 'owner' | 'parked' | 'criteria'>>;
+
+/** What one change of a task's status, owner, due date or title kept (#488); the repository records it with the change. */
+export type TaskActivityDetail =
+  | { kind: 'status'; from: WorkStatus; to: WorkStatus; blocker: string | null; waitingForUserId: string | null }
+  | { kind: 'owner'; from: ActorRef | null; to: ActorRef | null }
+  | { kind: 'due'; from: string | null; to: string | null }
+  | { kind: 'title'; from: string; to: string };
+export type TaskActivityRecord = TaskActivityDetail & {
+  id: string;
+  workId: string;
+  at: Date;
+  /** The microsecond-exact instant the entry sorts by, UTC ISO 8601: what a paging cursor is made of. */
+  position: string;
+  by: ActorRef;
+  /** The change was made by a linked pull request's task rule on its author's behalf. */
+  automation: 'github_rule' | null;
+};
+/** Where an older page of activity starts: strictly before this entry in (time, id) order. */
+export interface TaskActivityPosition { position: string; id: string }
+/** Who a change is made by when it is a task rule acting for its author. */
+export type TaskChangeVia = 'github_rule';
 export type NewDecision = Pick<DecisionRecord, 'id' | 'workspaceId' | 'projectId' | 'title' | 'rationale' | 'proposedBy' | 'supersedesId'>;
 export type DecisionChanges = Partial<Pick<DecisionRecord, 'status' | 'decidedBy' | 'decidedAt' | 'supersededById' | 'supersededAt'>>;
 export type NewResult = Omit<ResultRecord, 'createdAt'>;
@@ -198,8 +221,19 @@ export interface WorkRepository extends TaskGraphReader {
   revertCreation(work: WorkRecord, by: ActorRef, commandId: string, fingerprint: string): Promise<{ work: WorkRecord; noticeId: string }>;
   creationBaselineMatches(workId: string): Promise<boolean>;
   recordCreationBaseline(work: WorkRecord, proposalId?: string): Promise<void>;
-  /** Applies the changes and increments the version; the caller has checked the version. */
-  updateWork(id: string, changes: WorkChanges): Promise<WorkRecord>;
+  /**
+   * Applies the changes and increments the version; the caller has checked the version. In the same transaction it
+   * keeps one activity entry (#488) per field of status, owner, due date and title that really changed, made by `by`
+   * (`via`: on behalf of that person by a task rule). A change that leaves them as they were keeps none.
+   */
+  updateWork(id: string, changes: WorkChanges, by: ActorRef, via?: TaskChangeVia): Promise<WorkRecord>;
+  /** The activity of a task, newest first, `limit` entries from after `before`, plus whether older ones exist. */
+  listTaskActivity(workId: string, window: { limit: number; before: TaskActivityPosition | null }): Promise<{ items: TaskActivityRecord[]; hasMore: boolean }>;
+  /**
+   * Optional for pure domain compositions; the production adapter supplies it. The owner an agent shows to this
+   * project's readers (#339 AC-2), for these agent ids, as the task detail's authors carry it.
+   */
+  agentOwners?(projectId: string, workspaceId: string, agentIds: readonly string[]): Promise<ReadonlyMap<string, AgentProjectOwner>>;
   /**
    * Locks the task rows of the workspace in ascending id order and returns those that exist with their
    * project. Callers hold the project graph locks first; this is the complete sorted task pass.

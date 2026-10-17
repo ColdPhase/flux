@@ -148,9 +148,10 @@ const refKey = (ref: ObjectRef) => valid.refKey(ref);
  * produce the same fingerprint.
  */
 export function creationFingerprint(creation: { title: string; outcome: string; status: WorkStatus; blocker: string | null;
-  owner: PrincipalRef | null; sources: ObjectRef[]; related: ObjectRef[]; criteria: string[]; dependencyIds: string[] }): string {
+  owner: PrincipalRef | null; dueOn?: string | null; sources: ObjectRef[]; related: ObjectRef[]; criteria: string[]; dependencyIds: string[] }): string {
   const by = (a: ObjectRef, b: ObjectRef) => refKey(a) < refKey(b) ? -1 : refKey(a) > refKey(b) ? 1 : 0;
+  // A due date (#488) joins the canonical creation only when set, so every earlier stored fingerprint stays valid.
   return createHash('sha256').update(JSON.stringify({ title: creation.title, outcome: creation.outcome, status: creation.status,
-    blocker: creation.blocker, owner: creation.owner, sources: [...creation.sources].sort(by), related: [...creation.related].sort(by),
+    blocker: creation.blocker, owner: creation.owner, ...(creation.dueOn ? { dueOn: creation.dueOn } : {}), sources: [...creation.sources].sort(by), related: [...creation.related].sort(by),
     criteria: creation.criteria, dependencyIds: [...creation.dependencyIds].sort() })).digest('hex');
 }
