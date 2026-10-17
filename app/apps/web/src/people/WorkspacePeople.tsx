@@ -53,11 +53,13 @@ export function WorkspacePeople({ workspaceId, onBack }: { workspaceId: string; 
   }, [workspaceId, reload]);
   const load = () => setReload((n) => n + 1);
 
-  const changed = (message: string) => {
+  const changed = (message: string, editorClosed: boolean) => {
     setDone(message); setEditing(null);
     load();
-    // The editor that had focus is gone: focus the roster, whose status line says what changed.
-    requestAnimationFrame(() => rosterRef.current?.focus({ preventScroll: true }));
+    // A member's editor that had focus is gone: focus the roster, whose status line says what changed.
+    // Adding someone leaves focus where it is, in the form the person may fill again at once: a focus
+    // move one frame later took the keystrokes of the next address (#491).
+    if (editorClosed) requestAnimationFrame(() => rosterRef.current?.focus({ preventScroll: true }));
     // Roles change what the sidebar may list for the caller.
     revalidator.revalidate();
   };
@@ -88,7 +90,7 @@ export function WorkspacePeople({ workspaceId, onBack }: { workspaceId: string; 
       <h3 className="details__title">People</h3>
       <p className="details__lead">Being in {workspace.name} doesn’t open every project. Restricted projects show only to the people given access in the project itself.</p>
 
-      {manager && members ? <AddPerson workspace={workspace} members={members} myRole={myRole} onAdded={(member) => changed(`${member.name} joined ${workspace.name} as ${ROLE_LABEL[member.role].toLowerCase()}.`)} /> : null}
+      {manager && members ? <AddPerson workspace={workspace} members={members} myRole={myRole} onAdded={(member) => changed(`${member.name} joined ${workspace.name} as ${ROLE_LABEL[member.role].toLowerCase()}.`, false)} /> : null}
 
       <section className="details__sec" aria-labelledby="people-here">
         <h4 id="people-here" ref={rosterRef} tabIndex={-1}>{ordered ? `In ${workspace.name} · ${ordered.length}` : `You in ${workspace.name}`}</h4>
@@ -98,7 +100,7 @@ export function WorkspacePeople({ workspaceId, onBack }: { workspaceId: string; 
               <MemberRow key={member.userId} member={member} self={member.userId === me.user.id} workspace={workspace} myRole={myRole}
                 editable={manager && (member.role !== 'owner' || myRole === 'owner')}
                 editing={editing === member.userId} onEdit={(open) => { setDone(''); setEditing(open ? member.userId : null); }}
-                onChanged={changed} />
+                onChanged={(message) => changed(message, true)} />
             ))}
           </ul>
         ) : (
