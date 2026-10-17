@@ -962,7 +962,8 @@ Agent decision under the delegated authority; contract changes are additive (MCP
   are untouched, and the prior assignee claims it again with its own grant. A claim clears the marker, so nothing after
   the first claim can be declined; a completed unit is final and authorship never changes. Open requests addressed to the
   unit refuse it (`COWORK_UNIT_REQUESTS_OPEN`), a claimed or never-transferred unit is `COWORK_DECLINE_REFUSED`, a prior
-  assignee that was revoked is `COWORK_ASSIGNEE_UNAVAILABLE`. A retried command replays; the receipt goes stale when the
+  assignee that was revoked is `COWORK_ASSIGNEE_UNAVAILABLE`. A return that would leave the prior assignee
+  holding both an execute and a review unit of the run is `COWORK_REVIEW_SEPARATION`, as a transfer would be. A retried command replays; the receipt goes stale when the
   unit changes again.
 - **`flux_defer_request`** (operation `cowork.request.respond`, so no new grant). A small separate tool rather than a
   mode of `flux_resolve_request`, because deferral needs no unit claim (a busy connection defers without taking the
@@ -1182,6 +1183,9 @@ compose with #152's real identity/grant storage, #154's actual contribution
 schema and both migration arrival orders; a guessed foreign table is not a
 working dependency. Test exact image ledger, upgrade/backup/recovery and current
 schema declarations with the accepted composed candidate.
+Documented exception (2026-10-17, #153 migration 0107): 0060 and its reversal were edited in place to extend the live
+grant-operation CHECK instead of rewriting a fixed list, because the #238 tests apply 0060 after later files and a fixed list
+would drop `cowork.unit.decline`; the ledger keeps versions only (no checksums), so databases that applied the old 0060 are unchanged.
 
 Required focused checks include:
 

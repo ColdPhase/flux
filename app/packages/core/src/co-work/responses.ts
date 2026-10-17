@@ -155,5 +155,10 @@ export function requireCoWorkDefer(context: CoWorkContext, facts: CoWorkResponse
   if (unit.state === 'stopped') throw stoppedError();
   if (unit.state === 'completed') throw new ConflictError('This unit is finished', 'COWORK_REQUEST_CLOSED');
   const request = addressed(context, facts, input);
-  if (request.state === 'claimed') throw new ConflictError('This request is claimed; answer, decline or release it', 'COWORK_REQUEST_CLAIMED');
+  if (request.state !== 'claimed') return;
+  // A claim the unit no longer backs (released, expired, another generation) reads as queued in the inbox: say so, not "claimed".
+  const lost = unit.state !== 'claimed' || !unit.lease || unit.lease.expiresAt.getTime() <= facts.now.getTime()
+    || request.claimedGeneration !== unit.generation;
+  if (lost) throw new ConflictError('The earlier claim on this request was lost; claim the unit and the request again', 'COWORK_CLAIM_LOST');
+  throw new ConflictError('This request is claimed; answer, decline or release it', 'COWORK_REQUEST_CLAIMED');
 }

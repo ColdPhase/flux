@@ -119,6 +119,9 @@ export function requireCoWorkUnitTransition(context: CoWorkContext, facts: CoWor
       throw new ConflictError('Resolve or decline the requests addressed to this unit first', 'COWORK_UNIT_REQUESTS_OPEN');
     if (!facts.assignee || facts.assignee.id !== unit.transferredFromConnectionId)
       throw new NotFoundError('Unit assignee', 'COWORK_ASSIGNEE_UNAVAILABLE');
+    // The prior assignee may have become the run's author while the unit was away: the same rule as a transfer applies.
+    if (!separated(unit, facts.assignee, facts, policy.reviewSeparation))
+      throw new ConflictError('An author cannot be its own reviewer in this run', 'COWORK_REVIEW_SEPARATION');
     return unit;
   }
   if (unit.state !== 'claimed' || unit.generation !== input.generation || !unit.lease || unit.lease.id !== input.leaseId

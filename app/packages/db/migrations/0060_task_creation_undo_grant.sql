@@ -10,6 +10,9 @@ BEGIN
   SELECT array_agg(m[1]) INTO ops FROM pg_constraint c,
     regexp_matches(pg_get_constraintdef(c.oid), '''([^'']+)''::text', 'g') m
   WHERE c.conrelid = 'agent_standing_grants'::regclass AND c.conname = 'agent_standing_grants_operation_check';
+  IF ops IS NULL THEN
+    RAISE EXCEPTION '0060 refused: agent_standing_grants_operation_check is missing or lists no operations' USING ERRCODE = 'restrict_violation';
+  END IF;
   IF NOT ('work.creation.revert' = ANY(ops)) THEN
     ops := array_append(ops, 'work.creation.revert');
     ALTER TABLE agent_standing_grants DROP CONSTRAINT agent_standing_grants_operation_check;

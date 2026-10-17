@@ -413,6 +413,24 @@ test('the receiving assignee declines a transferred unit before claiming: it ret
   await refusedWithoutEffects(w, [f.codex, f.marekClaude], () => run(decline({ expectedVersion: marekClaim.version })), 'COWORK_DECLINE_REFUSED');
 });
 
+test('a decline cannot return a review unit to a connection that became the run\'s author while the unit was away', async () => {
+  const f = await reviewScene();
+  const { w } = f;
+  const third = await w.connect(w.hubert, 'Hubert Claude');
+  // The run's reviewer hands the review unit to a third connection; the author then opens an execute unit for the reviewer.
+  const moved = await f.reviewer.run(f.reviewer.handOver({ ...f.reviewFence, assignmentConnectionId: third.connection.id }));
+  const parent = { unitId: f.root.unitId, generation: f.claim.generation, leaseId: f.claim.lease!.id };
+  await createUnit(w, f.codex, f.a, 'execute', 'exec-for-reviewer', { assignee: f.marekClaude.connection.id, parent });
+  const declineGrant = await grantOf(w, third, 'cowork.unit.decline', f.review.unitId, 'review');
+  const decline = () => db.transaction((tx) => coWorkUnitTransitionInTransaction(tx, third.claims, command(w, third, 'cowork.unit.decline',
+    f.review.unitId, 'review', declineGrant.id, { expectedVersion: moved.version }), TRANSITIONS));
+  // The same rule as a transfer: returning it would make the reviewer its own run's author. Nothing changes.
+  await refusedWithoutEffects(w, [f.codex, f.marekClaude, third], decline, 'COWORK_REVIEW_SEPARATION');
+  const row = await unitRow(f.review.unitId);
+  assert.deepEqual([row.state, row.assignment_connection_id, row.transferred_from_connection_id],
+    ['pending', third.connection.id, f.marekClaude.connection.id], 'the receiver keeps the unit and can still claim it');
+});
+
 test('a transfer receipt stays stale after the unit returns to the same assignee and state through a full cycle', async () => {
   const f = await setup();
   const { w } = f;

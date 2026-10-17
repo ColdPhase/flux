@@ -255,6 +255,9 @@ test('the recipient defers a queued request with a reason and boundary without c
   assert.equal(claimed.state, 'claimed');
   assert.deepEqual([(await card()).state, (await card()).status], ['claimed', 'working']);
   assert.equal(toolFailure(await defer({ expectedRequestVersion: Number(claimed.version) })).code, 'COWORK_REQUEST_CLAIMED');
+  // A claim its unit no longer backs (the lease ran out) is reported as lost, not as still claimed.
+  await pool.query("UPDATE cowork_units SET lease_expires_at = clock_timestamp() - interval '1 second' WHERE id = $1", [helpUnit]);
+  assert.equal(toolFailure(await defer({ expectedRequestVersion: Number(claimed.version) })).code, 'COWORK_CLAIM_LOST');
 
   // A cancelled request is shown as cancelled, not as lost or still waiting.
   await pool.query(`UPDATE cowork_requests SET state='cancelled', reason='sender_cancelled', version=version+1 WHERE id=$1`, [second.requestId]);
