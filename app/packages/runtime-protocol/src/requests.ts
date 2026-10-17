@@ -16,8 +16,8 @@ export const REQUEST_LIMITS = {
   bodyBytes: 64 * 1024,
   /** A run's prompt, sent to the CLI on stdin. */
   promptCharacters: 32 * 1024,
-  /** Exact Flux MCP tool names per run. */
-  tools: 32,
+  /** Exact Flux MCP tool names per run: the reads and, since F-027 A3, the change tools (34 with every switch on). */
+  tools: 64,
 } as const;
 
 /** Caps a run request carries (F-022 "Caps"); the owner may lower the defaults. */

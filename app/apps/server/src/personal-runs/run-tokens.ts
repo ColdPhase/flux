@@ -1,6 +1,6 @@
 import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
-import { assistantRunTools, personalRunTokenPath, RUN_TOKEN_LIMITS, type PersonalRunTokenGrant } from '@flux/contracts';
+import { assistantRunScopes, assistantRunTools, personalRunTokenPath, RUN_TOKEN_LIMITS, type PersonalRunTokenGrant } from '@flux/contracts';
 import type { Database } from '@flux/core';
 import { lockAgentMcpPolicy, personalRunTokenRows } from '@flux/db';
 import type { FluxAuth } from '../identity/auth.js';
@@ -14,7 +14,7 @@ import { createAgentConnectionStore } from '../agent-connection/store.js';
 // the run keeps its id (`jti`), its expiry and the exact tools it was minted for.
 //
 // Claims: `sub` and `flux_owner_user_id` = the owner, `flux_connection_id` = the assistant connection,
-// `scope` = the scopes the run's tools need (read only in #280's first delivery step), `flux_run_id`,
+// `scope` = the scopes the run's tools need (reads, and `flux.action.execute` with change tools, A3), `flux_run_id`,
 // `flux_place` = the run's project and conversation, audience the Flux MCP resource, lifetime no longer
 // than the run's clock.
 
@@ -43,7 +43,7 @@ export function registerPersonalRunTokenRoute(app: FastifyInstance, db: Database
       if (!grant || grant.connection.id !== connectionId || grant.connection.agentId !== run.agentId || grant.connection.computeSource !== 'owner_assistant') return null;
       const policy = await lockAgentMcpPolicy(tx, connectionId);
       if (!policy) return null;
-      // The run's exact tools from the owner's switches (F-027 AST-4); #280's first step lists read tools only.
+      // The run's exact tools from the owner's switches (F-027 AST-4): reads, and changes of areas switched to edit (A3).
       const tools = assistantRunTools(policy, grant.connection.scopes);
       const jti = randomUUID();
       const expiresAt = new Date(Date.now() + RUN_TOKEN_LIMITS.lifetimeSeconds * 1000);
@@ -54,7 +54,7 @@ export function registerPersonalRunTokenRoute(app: FastifyInstance, db: Database
     const { baseURL } = await auth.$context;
     const { token } = await auth.api.signJWT({ body: { payload: {
       sub: minted.run.ownerUserId, flux_owner_user_id: minted.run.ownerUserId, flux_connection_id: minted.connectionId,
-      scope: 'flux.context.read', flux_run_id: minted.run.id, flux_place: { project: minted.run.projectId, conversation: minted.run.conversationId },
+      scope: assistantRunScopes(minted.tools).join(' '), flux_run_id: minted.run.id, flux_place: { project: minted.run.projectId, conversation: minted.run.conversationId },
       jti: minted.jti, iat: Math.floor(Date.now() / 1000), exp: Math.floor(minted.expiresAt.getTime() / 1000),
       iss: baseURL ?? `${publicOrigin}/api/auth`, aud: `${publicOrigin}/mcp`,
     } } });

@@ -1,3 +1,4 @@
+import type { AssistantChange } from '@flux/contracts';
 import type { Principal } from '../principal.js';
 import type { DecisionRecord, WorkRepository } from '../work/ports.js';
 import type { NotificationRecord } from '../push/ports.js';
@@ -48,8 +49,14 @@ export interface NeedsYouInbox {
   listReadable(userId: string, limit: number): Promise<{ items: NotificationRecord[] }>;
 }
 
+/** The owner's undecided waiting assistant changes that belong in Inbox now (F-027 AST-5.6). */
+export interface NeedsYouAssistant {
+  waiting(userId: string): Promise<AssistantChange[]>;
+}
+
 export interface NeedsYouPorts {
   access: NeedsYouAccess;
+  assistant?: NeedsYouAssistant;
   repository: NeedsYouRepository;
   inbox: NeedsYouInbox;
   work: Pick<WorkRepository, 'listAssignedVisible' | 'listBlockedFor' | 'links' | 'titles' | 'names' | 'findWork' | 'findDecision' | 'taskPlans'>;

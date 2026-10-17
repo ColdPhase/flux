@@ -512,7 +512,9 @@ class MapOutlineJourney(unittest.TestCase):
                 shot(page, f"map-outline-{scheme}-{name}")
                 self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), viewport["width"], "no horizontal document overflow")
                 title = self.row(page, 3).locator(".sk-outline-title").bounding_box()
-                self.assertGreater(title["width"], 190 if viewport["width"] == 390 else 300, "deep indentation leaves readable content")
+                # From 900 px down the sidebar is a 64 px rail that stays beside the pane (#505, #562), so the tablet keeps less of the row.
+                floor = 190 if viewport["width"] == 390 else 260 if viewport["width"] == 820 else 300
+                self.assertGreater(title["width"], floor, f"deep indentation leaves readable content ({scheme} {name})")
             page.set_viewport_size(PHONE)
             page.add_style_tag(content=":root { --fs-xs: 24px !important; --fs-sm: 26px !important; --fs-md: 28px !important; --fs-base: 30px !important; --fs-lg: 34px !important; --fs-xl: 40px !important; --fs-2xl: 48px !important; }")
             self.assertEqual(self.row(page, 3).locator(".sk-outline-title").evaluate("node => getComputedStyle(node).fontSize"), "28px", "actual row text is enlarged")

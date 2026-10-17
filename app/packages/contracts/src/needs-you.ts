@@ -63,7 +63,7 @@ export interface NeedsYouBlocked {
 }
 
 export interface NeedsYouItem {
-  /** `decision:<id>`, `blocked:<id>` or `note:<notification id>`. Stable while the need lasts. */
+  /** `decision:<id>`, `blocked:<id>`, `note:<notification id>` or `assistant:<run id>`. Stable while the need lasts. */
   key: string;
   kind: NeedsYouKind;
   title: string;
@@ -83,6 +83,18 @@ export interface NeedsYouItem {
   assistantRequestIdentity?: AssistantRequestIdentity | null;
   /** The task "Not now: when #N is done" waits for; null when the item has none. */
   snoozeTask: NeedsYouTaskRef | null;
+  /**
+   * Your assistant's undecided waiting changes of one request (F-027 AST-5.6), only for their owner: its
+   * button is the object's own verb (*Close*, *Remove*), *Apply* only for a mix.
+   */
+  assistantChanges?: NeedsYouAssistantChanges | null;
+}
+
+export interface NeedsYouAssistantChanges {
+  runId: string;
+  verb: string;
+  summary: string;
+  changes: { id: string; version: number; phrase: string; objectTitle: string; line: string | null }[];
 }
 
 export interface NeedsYouResponse {

@@ -42,12 +42,24 @@
 .assistant-proposal__done .ui-link { margin-left: 8px; }
 .assistant-proposal__done .ui-link { font-size: var(--fs-sm); min-height: 24px; }
 
+.assistant-waiting { margin-top: 10px; padding: 12px 14px; border-radius: var(--r-lg); background: var(--el); box-shadow: inset 0 0 0 1px var(--line2); }
+.assistant-waiting-item { list-style: none; }
+.assistant-waiting__head { display: flex; align-items: center; gap: 7px; font-size: var(--fs-md); font-weight: 600; color: var(--t1); overflow-wrap: anywhere; }
+.assistant-waiting__why, .assistant-waiting__line, .assistant-waiting__done { margin-top: 6px; font-size: var(--fs-sm); line-height: 1.5; color: var(--t2); overflow-wrap: anywhere; }
+.assistant-waiting__done { color: var(--t3); }
+.assistant-waiting__line .ui-link { margin-left: 8px; font-size: var(--fs-sm); min-height: 24px; }
+.assistant-waiting__list { display: grid; gap: 6px; margin: 8px 0 0; padding: 0; list-style: none; font-size: var(--fs-sm); }
+.assistant-waiting__list label { display: flex; align-items: flex-start; gap: 8px; min-height: 24px; cursor: pointer; }
+.assistant-waiting__list input { margin-top: 3px; }
+.assistant-waiting__list small { display: block; color: var(--t3); font-size: var(--fs-xs); }
+
 .assistant-ask__blocked { color: var(--t2); }
 .assistant-ask__error { flex-basis: 100%; color: var(--t1); }
 
 @media (max-width: 640px) {
   .assistant-answer .project-convo__message-meta { flex-wrap: wrap; row-gap: 0; }
   .assistant-proposal__claims > div { grid-template-columns: 1fr; gap: 0; }
+  .assistant-waiting .assistant-proposal__actions { flex-wrap: wrap; }
   .assistant-proposal__actions .ui-btn { flex: 1; }
   .assistant-working { padding-left: 42px; flex-wrap: wrap; }
 }

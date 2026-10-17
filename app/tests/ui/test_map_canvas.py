@@ -351,10 +351,8 @@ class MapCanvasJourney(unittest.TestCase):
                     self.assertLessEqual(max(centres) - min(centres), 2, f'{width}: every tool is on one row: {centres}')
                 one_row()
                 if touch:
-                    # Beside the sidebar a tablet's pane is narrow: "Select several" is its icon alone, so Undo stays on the one row.
-                    several = tools.get_by_role('button', name='Select several', exact=True)
-                    expect(several).to_be_visible()
-                    expect(several.locator('.sk-bl')).to_be_hidden()
+                    # From 900 px down the sidebar is the 64 px rail (#505, #562), so a tablet's pane keeps the label and still one row.
+                    expect(tools.get_by_role('button', name='Select several', exact=True)).to_be_visible()
                 show_map_as(page, 'List')
                 one_row()
                 expect(page.get_by_role('tree', name='Thoughts in Plane directions')).to_be_visible()
