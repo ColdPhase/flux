@@ -691,7 +691,9 @@ class InboxFinal(unittest.TestCase):
         if home:
             accepted.pop().continue_()
         else:
-            page.evaluate("() => window.dispatchEvent(new Event('pagehide'))")
+            # The page is shown again at once (a restore from the back-forward cache): while it is left the web client
+            # starts no request (api/pageLeaving, #471), so the fresh queue read that follows Accept waits for this.
+            page.evaluate("() => { window.dispatchEvent(new Event('pagehide')); window.dispatchEvent(new Event('pageshow')); }")
         seen(page, "heldRead")
         page.clock.run_for(1)
         self.assertEqual(self.contexts["ada"].request.get(f"/api/v1/decisions/{proposed['id']}").json()["status"], "accepted")
