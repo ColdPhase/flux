@@ -15,6 +15,7 @@ import '../notifications/notifications.css';
 import './assistant.css';
 import { AssistantControls, AssistantHeader } from './AssistantScreen';
 import { AssistantProjectAccess } from './AssistantProjectAccess';
+import { AssistantSchedules } from './AssistantSchedules';
 
 // Your assistant (#68 AC-8, O-008 §1/§3/§6): only the signed-in person's own enablement,
 // consent, caps and pause. Nothing here can see or use anyone else's assistant or payer. The
@@ -55,6 +56,7 @@ export function AssistantSettings() {
           onToggle={(on) => { setPausing(true); (on ? resumeAssistant() : pauseAssistant()).then((next) => done(next, on ? 'Resumed' : 'Paused'), () => undefined).finally(() => setPausing(false)); }} />
         <span className="nset__saved" role="status" aria-live="polite">{saved ? <><Icon name="check" size={14} />{saved}</> : null}</span>
         <AssistantControls status={status} userId={me.user.id} />
+        <AssistantSchedules status={status} userId={me.user.id} />
       </> : <div className="inbox__head">
         <div>
           <h2>Your assistant</h2>

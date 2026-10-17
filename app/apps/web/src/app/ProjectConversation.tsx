@@ -26,6 +26,7 @@ import { assistantUses, AssistantSuggestions, meetAssistantDismissed, noteAssist
 import { useConversationAssistant } from '../assistant/useConversationAssistant';
 import { useAssistantChanges, WaitingChanges } from '../assistant/WaitingChanges';
 import { AnswerItem, AskBar, BehindLine, OthersWorkingLine, ProposalCard, WorkingLine } from '../assistant/ConversationParts';
+import { ScheduleFold } from '../assistant/ScheduleFold';
 import { askError as askErrorText, askState } from '../assistant/format';
 import { grantAgentProject } from '../agent-connection/api';
 import { requestAssistantJoin } from '../agents/api';
@@ -655,11 +656,19 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
               const divider = label !== lastDay ? <MessageDay key={`day-${entry.type === 'message' ? outbox.keyOf(entry.message.id) : entry.key}`} label={label} /> : null;
               lastDay = label;
               if (entry.type === 'answer') {
-                const answer = entry.answer;
+                // Runs of one schedule in a row, with no person's message between them, fold into one line (AST-7, S8).
+                const scheduleOf = (candidate: FeedEntry | undefined) => candidate?.type === 'answer' ? candidate.answer.schedule?.id ?? null : null;
+                const folded = scheduleOf(entry);
+                if (folded && scheduleOf(entries[index - 1]) === folded) return [];
+                let last = index;
+                while (folded && scheduleOf(entries[last + 1]) === folded) last++;
+                const group = last > index ? entries.slice(index, last + 1).filter((item): item is typeof entry => item.type === 'answer') : [];
+                const answerItem = (item: typeof entry) => {
+                const answer = item.answer;
                 const proposal = answer.proposalId ? assistant.proposals.get(answer.proposalId) ?? null : null;
                 const workTitle = proposal?.change.finishes ? referenceWork.rows.get(`work:${proposal.change.finishes.workId}`)?.title ?? 'a work item' : null;
                 const runChanges = assistantChanges.byRun.get(answer.runId);
-                return [divider, <AnswerItem key={entry.key} answer={answer} mine={answer.assistant.ownerUserId === me.user.id} lookups={lookups} when={when} clock={clock}
+                return <AnswerItem key={item.key} answer={answer} mine={answer.assistant.ownerUserId === me.user.id} lookups={lookups} when={when} clock={clock}
                   proposal={proposal} resultInMessage={!!runChanges?.some((change) => change.state === 'applied' || change.state === 'applied_after_wait')} changes={runChanges ? <WaitingChanges changes={runChanges} onChanged={assistantChanges.refresh} meId={me.user.id} /> : null}
                   proposalControls={proposal ? <ProposalCard proposal={proposal} workTitle={workTitle} {...proposalAuthority(proposal.change.finishes)} onRefreshTarget={referenceWork.refresh} meId={me.user.id}
                     onDecide={async (decision) => {
@@ -667,7 +676,13 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
                     }} /> : null}
                   onRetry={() => assistant.retry(answer.runId)}
                   onContinue={async () => { await assistant.ask('Continue', { continuesRunId: answer.runId }); }}
-                  onAskAbout={writable ? () => { setAsking(true); document.getElementById(composerId)?.focus(); } : null} />];
+                  onAskAbout={writable ? () => { setAsking(true); document.getElementById(composerId)?.focus(); } : null} />;
+                };
+                if (!group.length) return [divider, answerItem(entry)];
+                const applied = group.reduce((total, item) => total + (assistantChanges.byRun.get(item.answer.runId)?.filter((change) => change.state === 'applied' || change.state === 'applied_after_wait').length ?? 0), 0);
+                const todayKey = new Date().toDateString();
+                return [divider, <ScheduleFold key={`fold-${entry.key}`} id={`fold-${entry.key}`} assistant={entry.answer.assistant.label} title={entry.answer.schedule!.title} changes={applied} runs={group.length}
+                  today={group.every((item) => new Date(item.answer.committedAt).toDateString() === todayKey)}>{group.map(answerItem)}</ScheduleFold>];
               }
               const message = entry.message;
               const previous = entries[index - 1], next = entries[index + 1];

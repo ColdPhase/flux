@@ -5,6 +5,7 @@ import { ApiError, NetworkError } from '../api/client';
 import { AgentTag, Button, Icon, IconButton, Kreska, useLoopPause, type KreskaExpression } from '../ui';
 import { useSmallMoments } from '../app/smallMoments';
 import { AssistantPanel, companyName } from './AssistantPanel';
+import { ReadySchedule } from './ReadySchedule';
 import { useShellActions } from '../app/shellContext';
 import { canRetry, endedText, isWorking, onRuntime, workingText, type AskState } from './format';
 import { failure } from './WaitingChanges';
@@ -210,6 +211,7 @@ export function AnswerItem({ answer, mine, lookups, when, clock, proposal, propo
       {answer.truncated ? <p className="assistant-answer__truncated"><Icon name="alert" size={13} />Stopped at the length limit, so this answer is incomplete.</p> : null}
       {proposal ? proposalControls : null}
       {changes}
+      {mine ? <ReadySchedule runId={answer.runId} projectId={answer.projectId} body={answer.body} /> : null}
       <div className="assistant-answer__foot">
         <span>{sourceSummary(answer.sources.length)} · {aiConnectionLabel(answer.provenance.provider, answer.provenance.model === 'claude-code' ? 'Claude Code' : answer.provenance.model)}</span>
         {mine ? <>

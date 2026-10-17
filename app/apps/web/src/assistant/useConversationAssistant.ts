@@ -72,7 +72,8 @@ export function useConversationAssistant({ meId, projectId, conversationId }: { 
 
   /** A run changed: keep it while it works or when it ended without an answer; an answer shows in the feed. */
   const track = useCallback((next: AssistantRun) => {
-    if (next.conversationId !== conversationId) return;
+    // A schedule's or the morning summary's silent run only borrows a conversation: it is not this conversation's working line.
+    if (next.conversationId !== conversationId || next.silent) return;
     const current = runRef.current;
     // A request behind the working one waits in its own line; it takes over the working line when it starts. It also waits when the
     // lane is held by a background run of the owner, which may belong to no conversation here.
@@ -98,7 +99,7 @@ export function useConversationAssistant({ meId, projectId, conversationId }: { 
     }
     // After a reload the working line comes back: the person's own newest run in this conversation.
     listOwnRuns().then((page) => {
-      const here = page.items.filter((item) => item.conversationId === conversationId && isWorking(item));
+      const here = page.items.filter((item) => item.conversationId === conversationId && !item.silent && isWorking(item));
       const working = here.find((item) => item.status !== 'queued');
       const waiting = here.find((item) => item.status === 'queued' && (item.behind || working && item.id !== working.id));
       const active = working ?? here.find((item) => item !== waiting);
