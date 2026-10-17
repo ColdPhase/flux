@@ -10,11 +10,13 @@ import { excerpt } from '../live/anchors';
 import { audienceLine, useProjectShell } from '../project/data';
 import { useShellData } from './data';
 import { agentAuthorLabel } from '../docs/format';
-import { ConversationStream, useConversationRoots, useTaskNotices } from './ConversationStream';
+import { ConversationStream, streamPlace, useConversationRoots, useTaskNotices } from './ConversationStream';
 import { ThreadRoot } from './ThreadRoot';
 import { SourceOfContext } from './messageParts';
 import { OwnedPanelContent, useOwnedPanel } from './ownedPanel';
 import { useShellActions } from './shellContext';
+import { recall, useArrival } from '../place/memory';
+import { useOriginLabel } from '../place/origin';
 import type { ProjectData } from './ProjectConversation';
 import './one-conversation.css';
 import { useCreateWorkFromMessage } from '../work/inline';
@@ -76,12 +78,17 @@ export function OneConversation({ data, Pane }: { data: ProjectData; Pane: Compo
     // A lost project or session reloads the route, which shows why instead of stale content.
     if (cause instanceof ApiError && [401, 403, 404].includes(cause.status)) revalidator.revalidate();
   }, [revalidator]);
-  // A link names a root (or a reply in it): the stream reads back to it and shows it.
-  const reveal = conversation && !state?.fromStream ? { conversationId: conversation.id, key: `${conversation.id}:${location.key}` } : null;
-  const roots = useConversationRoots(project.id, data.roots, reveal?.conversationId ?? null, onDenied);
+  // Coming back to this entry (Back, Forward, the way back from a reference): the stream returns to where it was left (#592).
+  const arrival = useArrival();
+  const [restore] = useState(() => arrival ? streamPlace(recall('stream', arrival)) : null);
+  // A link names a root (or a reply in it): the stream reads back to it and shows it. A return to an entry keeps its own place instead.
+  const reveal = conversation && !state?.fromStream && !restore ? { conversationId: conversation.id, key: `${conversation.id}:${location.key}` } : null;
+  const roots = useConversationRoots(project.id, data.roots, reveal?.conversationId ?? restore?.conv ?? null, onDenied);
   const notices = useTaskNotices(project.id, data.notices, roots.roots, roots.hasOlder, onDenied);
   const root = thread ? roots.roots.find((item) => item.conversationId === thread.id) ?? null : null;
   const [endToken, setEndToken] = useState(0);
+  // The control on a page opened from here names this place: a task's thread is "#12 Order sensors" (#592).
+  useOriginLabel(thread ? root?.task ? `#${root.task.number} ${root.task.title}` : 'Thread' : 'Conversation');
 
   const author = useCallback((message: ConversationMessage) => {
     if (message.authorId === null) return agentAuthorLabel(message.author);
@@ -127,7 +134,7 @@ export function OneConversation({ data, Pane }: { data: ProjectData; Pane: Compo
   const audience = audienceLine(people, me.user.id, project.visibility === 'workspace');
   const stream = (
     <ConversationStream project={project} meId={me.user.id} meName={me.user.name} roots={roots} notices={notices} goals={data.goals} author={author}
-      audience={audience} openId={thread?.id ?? null} reveal={reveal} arrived={arrived} endToken={endToken} onOpen={open} onDenied={onDenied} />
+      audience={audience} openId={thread?.id ?? null} reveal={reveal} arrived={arrived} endToken={endToken} restore={restore} onOpen={open} onDenied={onDenied} />
   );
   // Until the stream has the root (a link to an old one), the thread's newest sequence gives its size.
   const replies = root?.replyCount ?? Math.max(0, (thread?.messages.at(-1)?.sequence ?? 1) - 1);

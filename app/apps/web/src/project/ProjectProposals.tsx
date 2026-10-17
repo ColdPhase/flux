@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import { Link } from 'react-router';
+
 import { WORK_LIMITS, type InsufficientComparisonOutcome, type ProactiveComparisonOutcome, type ProactiveComparisonProposal, type ProjectPerson, type WorkItem } from '@flux/contracts';
 import { Button } from '../ui';
 import { applyComparisonProposal, comparisonSourceHref, editComparisonProposal } from './proposals';
 import { ComparisonEvidence } from './ComparisonEvidence';
 import { InsufficientComparison } from './InsufficientComparison';
+import { RefLink } from '../place/origin';
 
 export function ProjectProposals({ outcomes, people, projectName, resultTitles, workJumpId, workCount, jumpToSection, writable, refresh, openResult, openWork }: {
   outcomes: ProactiveComparisonOutcome[]; people: ProjectPerson[] | null; projectName: string; writable: boolean;
@@ -79,17 +80,17 @@ export function ProjectProposals({ outcomes, people, projectName, resultTitles, 
           <div className="ws-proposal__sources"><strong>Sources cited</strong>
             <ul>{proposal.sources.map((source) => <li key={`${source.type}:${source.id}:${source.version}`}>
               {source.type === 'material'
-                ? <Link title={`Material ${source.id}, version ${source.version}`} to={comparisonSourceHref(proposal.projectId, source)!}>{source.title ?? `Material ${source.id.slice(0, 8)}`} <small>· version {source.version}</small></Link>
+                ? <RefLink title={`Material ${source.id}, version ${source.version}`} to={comparisonSourceHref(proposal.projectId, source)!}>{source.title ?? `Material ${source.id.slice(0, 8)}`} <small>· version {source.version}</small></RefLink>
                 : source.type === 'result'
                   ? <button type="button" title={`Result ${source.id}, version ${source.version}`} onClick={() => openResult(source.id)}>{source.title ?? resultTitles.get(source.id) ?? `Result ${source.id.slice(0, 8)}`} <small>· cited version {source.version}</small></button>
                   : source.type === 'work'
-                    ? <Link title={`Cited work version ${source.version}; opens current work`} to={comparisonSourceHref(proposal.projectId, source)!}>{source.title ?? `Work ${source.id.slice(0, 8)}`} <small>· cited version {source.version}</small></Link>
+                    ? <RefLink title={`Cited work version ${source.version}; opens current work`} to={comparisonSourceHref(proposal.projectId, source)!}>{source.title ?? `Work ${source.id.slice(0, 8)}`} <small>· cited version {source.version}</small></RefLink>
                   : source.type === 'thought'
                     ? comparisonSourceHref(proposal.projectId, source)
-                      ? <Link title={`Cited thought version ${source.version}; opens current thought`} to={comparisonSourceHref(proposal.projectId, source)!}>{source.title ?? `Thought ${source.id.slice(0, 8)}`} <small>· cited version {source.version}</small></Link>
+                      ? <RefLink title={`Cited thought version ${source.version}; opens current thought`} to={comparisonSourceHref(proposal.projectId, source)!}>{source.title ?? `Thought ${source.id.slice(0, 8)}`} <small>· cited version {source.version}</small></RefLink>
                       : <span>Thought · cited version {source.version} (source unavailable)</span>
                   : source.conversationId
-                    ? <Link title={`Message ${source.id}, version ${source.version}`} to={comparisonSourceHref(proposal.projectId, source)!}>{source.title ?? `Project message ${source.id.slice(0, 8)}`}</Link>
+                    ? <RefLink title={`Message ${source.id}, version ${source.version}`} to={comparisonSourceHref(proposal.projectId, source)!}>{source.title ?? `Project message ${source.id.slice(0, 8)}`}</RefLink>
                     : <span title={`Message ${source.id}, version ${source.version}`}>Project message · {source.id.slice(0, 8)} (source unavailable)</span>}
             </li>)}</ul>
           </div>

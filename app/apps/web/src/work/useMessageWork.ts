@@ -5,6 +5,7 @@ import { getWorkAssociations, workAssociationReadUrl } from './read-api';
 import { messageWorkPreviews, visibleMessageBatch } from './message-associations';
 import { useWorkRead } from './useWorkRead';
 import { lastReaderInput, readerActive, watchReaderInput } from './readerIntent';
+import { onFlush, remember } from '../place/memory';
 
 interface Position { cursor: string | null; edgeCursor: string | null }
 const positions = new Map<string, Position>();
@@ -53,11 +54,24 @@ function useMessageBatch(ref: RefObject<HTMLElement | null>, ids: string[], node
   return available;
 }
 
+/** How long after a change of the feed's width the scroll it causes is taken for layout (#592). */
+const LAYOUT_SETTLE_MS = 1500;
+const THAW_KEYS = new Set(['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' ']);
 /** A pointer that moved this recently is aiming at the message under it; a parked one is not. */
 const POINTER_AIM_MS = 2000;
 
-function useMessageReadingPosition(ref: RefObject<HTMLElement | null>, node: HTMLElement | null, ready: boolean, observedAt?: string) {
-  const anchor = useRef<{ id: string; offset: number; top: number; atEnd: boolean } | null>(null);
+/** Where a thread was left (#592): the message in view, its offset, the scroll position, and whether the reader followed the end. */
+export interface ThreadPlace { id: string; offset: number; top: number; atEnd: boolean }
+export function threadPlace(value: unknown): ThreadPlace | null {
+  if (!value || typeof value !== 'object') return null;
+  const kept = value as Partial<ThreadPlace>;
+  return typeof kept.id === 'string' && kept.id && typeof kept.offset === 'number' && Number.isFinite(kept.offset) && typeof kept.top === 'number' && Number.isFinite(kept.top) && typeof kept.atEnd === 'boolean'
+    ? { id: kept.id, offset: kept.offset, top: kept.top, atEnd: kept.atEnd } : null;
+}
+
+function useMessageReadingPosition(ref: RefObject<HTMLElement | null>, node: HTMLElement | null, ready: boolean, observedAt?: string, restore: ThreadPlace | null = null) {
+  // A return starts from the place the thread was left: this hook's own restoring then puts the message back at its offset.
+  const anchor = useRef<ThreadPlace | null>(restore);
   const readerMoved = useRef(false);
   // The scrollTop this hook last wrote. A scroll event it did not write records the position
   // (wheel, keys, scrollIntoView, focus, find-in-page). A change found before its event arrived
@@ -66,7 +80,7 @@ function useMessageReadingPosition(ref: RefObject<HTMLElement | null>, node: HTM
   const ownScroll = useRef<number | null>(null);
   // A reader at the end follows what arrives there; reaching the end starts following and only
   // scrolling up leaves it. Layout shifts (scroll anchoring, a resized composer) keep the intent.
-  const following = useRef(false);
+  const following = useRef(!!restore?.atEnd);
   // The scrollTop last seen in a scroll event or written here, for the feed element it belongs to.
   const lastTop = useRef(0);
   // When that scrollTop was recorded (performance.now()).
@@ -77,13 +91,22 @@ function useMessageReadingPosition(ref: RefObject<HTMLElement | null>, node: HTM
   // move it out from under a pointer that is aiming at it (moved within POINTER_AIM_MS), even
   // at the end.
   const pointed = useRef<{ row: HTMLElement; top: number; at: number; x: number; y: number } | null>(null);
+  // Until this time the scroll that follows a change of the feed's width is layout, not the reader: it keeps the anchor (#592).
+  const frozenUntil = useRef(0);
   const save = useCallback((intent = false) => {
     const pane = ref.current;
     if (!pane || !ready && !readerMoved.current && !intent) return;
+    if (performance.now() < frozenUntil.current) return;
     const top = pane.getBoundingClientRect().top;
     const message = [...pane.querySelectorAll<HTMLElement>('[data-message-id],[data-answer-run]')].find((row) => row.getBoundingClientRect().bottom > top);
-    if (message) anchor.current = { id: message.id, offset: message.getBoundingClientRect().top - top, top: pane.scrollTop, atEnd: following.current };
+    if (message) {
+      anchor.current = { id: message.id, offset: message.getBoundingClientRect().top - top, top: pane.scrollTop, atEnd: following.current };
+      remember('thread', anchor.current);
+    }
   }, [ref, ready]);
+  // The place is written as a reference is followed; what the layout does while the next screen loads (a progress line
+  // pushing the feed down, a pointer-aimed message kept under the pointer) is not where the reader was, until they scroll.
+  useEffect(() => onFlush(() => { save(); frozenUntil.current = performance.now() + 3000; }), [save]);
   useLayoutEffect(() => {
     const pane = ref.current;
     if (!pane || pane !== node) return;
@@ -115,6 +138,23 @@ function useMessageReadingPosition(ref: RefObject<HTMLElement | null>, node: HTM
       const delta = held.row.getBoundingClientRect().top - held.top;
       if (Math.abs(delta) > 0.5) { pane.scrollTop += delta; ownScroll.current = pane.scrollTop; lastTop.current = pane.scrollTop; }
       return true;
+    };
+    // The feed's width changes when the thread docks beside the stream or becomes a sheet (a panel opening or closing, #592) and
+    // when the window is resized: lines wrap differently, so the same scroll offset is another message. The settled anchor
+    // is put back, never the offset, and stays the anchor for a moment after the last change or until the reader's own input
+    // (scrolling, a key, focus moving into the feed): the scroll such a change causes and a pointer-aimed message are layout,
+    // not the reader, and are not recorded.
+    let width = pane.clientWidth;
+    const widthChanged = () => { if (pane.clientWidth === width) return false; width = pane.clientWidth; return true; };
+    const reanchor = () => {
+      frozenUntil.current = performance.now() + LAYOUT_SETTLE_MS;
+      pointed.current = null;
+      if (following.current) { if (!atEnd()) toEnd(); return; }
+      const kept = anchor.current;
+      const row = kept ? [...pane.querySelectorAll<HTMLElement>('[data-message-id],[data-answer-run]')].find((item) => item.id === kept.id) : null;
+      if (!kept || !row) return;
+      const delta = row.getBoundingClientRect().top - pane.getBoundingClientRect().top - kept.offset;
+      if (Math.abs(delta) > 0.5) { pane.scrollTop += delta; ownScroll.current = pane.scrollTop; lastTop.current = pane.scrollTop; }
     };
     const aim = (target: Element | null, x: number, y: number, at: number) => {
       const row = target?.closest<HTMLElement>('[data-message-id],[data-answer-run]') ?? null;
@@ -153,6 +193,7 @@ function useMessageReadingPosition(ref: RefObject<HTMLElement | null>, node: HTM
     // transitions to this owner rather than competing browser scroll anchoring.
     if (ready) save();
     const scrolled = () => {
+      if (widthChanged()) { reanchor(); return; }
       const own = ownScroll.current;
       ownScroll.current = null;
       // A scroll this hook did not write moved the view (the reader, or the app bringing a
@@ -163,16 +204,33 @@ function useMessageReadingPosition(ref: RefObject<HTMLElement | null>, node: HTM
       observe(reader);
     };
     const settled = () => { readerMoved.current = false; save(true); };
-    const grew = () => { if (keepPointed()) return; if (following.current && !atEnd()) toEnd(); };
+    const grew = () => {
+      if (widthChanged()) { reanchor(); return; }
+      if (keepPointed()) return;
+      if (following.current && !atEnd()) toEnd();
+    };
     const resize = new ResizeObserver(grew);
     resize.observe(pane);
     if (pane.firstElementChild) resize.observe(pane.firstElementChild);
+    // The reader's own input (wheel, touch, scroll keys, a press on the scroll bar, focus moving to something in the feed) makes
+    // the position theirs again at once.
+    const thaw = () => { frozenUntil.current = 0; };
+    const thawKey = (event: KeyboardEvent) => { if (THAW_KEYS.has(event.key) && !(event.target instanceof HTMLElement && event.target.closest('input,textarea,select,[contenteditable="true"]'))) thaw(); };
+    const thawPress = (event: PointerEvent) => { if (event.target === pane) thaw(); };
+    const thawFocus = (event: FocusEvent) => { if (event.target !== pane) thaw(); };
+    pane.addEventListener('wheel', thaw, { passive: true });
+    pane.addEventListener('touchmove', thaw, { passive: true });
+    pane.addEventListener('keydown', thawKey);
+    pane.addEventListener('pointerdown', thawPress, { passive: true });
+    pane.addEventListener('focusin', thawFocus);
     pane.addEventListener('scroll', scrolled, { passive: true });
     pane.addEventListener('scrollend', settled);
     pane.addEventListener('pointermove', point, { passive: true });
     pane.addEventListener('pointerleave', left, { passive: true });
     return () => {
       resize.disconnect();
+      pane.removeEventListener('wheel', thaw); pane.removeEventListener('touchmove', thaw);
+      pane.removeEventListener('keydown', thawKey); pane.removeEventListener('pointerdown', thawPress); pane.removeEventListener('focusin', thawFocus);
       pane.removeEventListener('scroll', scrolled);
       pane.removeEventListener('scrollend', settled);
       pane.removeEventListener('pointermove', point); pane.removeEventListener('pointerleave', left);
@@ -224,9 +282,9 @@ export type MessageWorkRead = ReturnType<typeof useMessageWorkRead>;
  * The read above for one conversation's feed, which this hook also positions: it is that feed's one
  * reading-position owner. A feed with its own owner (the project's stream, #195) uses the read alone.
  */
-export function useMessageWork(accountId: string, projectId: string, conversationId: string | null, messageIds: string[], ref: RefObject<HTMLElement | null>, node: HTMLElement | null, referenceRevision = ''): MessageWorkRead {
+export function useMessageWork(accountId: string, projectId: string, conversationId: string | null, messageIds: string[], ref: RefObject<HTMLElement | null>, node: HTMLElement | null, referenceRevision = '', restore: ThreadPlace | null = null): MessageWorkRead {
   const read = useMessageWorkRead(accountId, projectId, conversationId, messageIds, ref, node);
-  const saveReading = useMessageReadingPosition(ref, node, read.page !== null, `${read.page?.observedAt ?? ''}:${referenceRevision}`);
+  const saveReading = useMessageReadingPosition(ref, node, read.page !== null, `${read.page?.observedAt ?? ''}:${referenceRevision}`, restore);
   return {
     ...read,
     moveObjects: (cursor: string) => { saveReading(); read.moveObjects(cursor); },

@@ -51,8 +51,11 @@ const sorted = (items: NeedsYouItem[]) => {
  * The queue for Inbox and Home: read on mount, when the tab becomes visible, on stream events and when
  * something else changed the Inbox, so both places agree. Nothing is kept between accounts.
  */
-export function useNeedsYou(userId: string): Queue {
-  const [state, setState] = useState<{ userId: string; response: NeedsYouResponse | null; failed: boolean }>({ userId, response: null, failed: false });
+/** The last answer this tab read, for the one person who read it: shown at once when they return to the Inbox (#592). Never stored. */
+let lastRead: { userId: string; response: NeedsYouResponse } | null = null;
+
+export function useNeedsYou(userId: string, fromMemory = false): Queue {
+  const [state, setState] = useState<{ userId: string; response: NeedsYouResponse | null; failed: boolean }>(() => ({ userId, response: fromMemory && lastRead?.userId === userId ? lastRead.response : null, failed: false }));
   const [version, setVersion] = useState(0);
   // Showing an item again re-renders even when the answer already holds it (it was only filtered out).
   const [, redraw] = useState(0);
@@ -105,7 +108,8 @@ export function useNeedsYou(userId: string): Queue {
         }
       }
       const reconciled = sorted([...items.values()]);
-      setState({ userId, response: { ...response, items: reconciled, count: reconciled.length }, failed: false });
+      lastRead = { userId, response: { ...response, items: reconciled, count: reconciled.length } };
+      setState({ userId, response: lastRead.response, failed: false });
     }, (error: unknown) => {
       if (controller.signal.aborted || (error instanceof DOMException && error.name === 'AbortError')) return;
       setState((previous) => ({ userId, response: previous.userId === userId ? previous.response : null, failed: true }));

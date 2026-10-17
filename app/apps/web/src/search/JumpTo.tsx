@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
 import { useLocation, useNavigate } from 'react-router';
+import { useFollow } from '../place/origin';
 import type { Agent, SearchResult } from '@flux/contracts';
 import { getAssistantStatus } from '../assistant/api';
 import { AskWhere } from '../assistant/AskWhere';
@@ -76,8 +77,8 @@ function useAgents(workspaceIds: string[], enabled: boolean) {
 
 /** Opens a result at its exact place (work, decisions and results in Details on Tasks). */
 export function useOpenResult() {
-  const navigate = useNavigate();
-  return (result: SearchResult) => navigate(targetHref(result.target));
+  const follow = useFollow();
+  return (result: SearchResult) => follow(targetHref(result.target));
 }
 
 /**
@@ -102,6 +103,7 @@ function JumpBody({ onClose, userId, phone }: { onClose: () => void; userId: str
   const listId = useId();
   const statusId = useId();
   const navigate = useNavigate();
+  const follow = useFollow();
   const openResult = useOpenResult();
   // Searches are remembered for the Search page; ⌘K's empty state lists the places the person opened (F-026 E02).
   const recent = useRecentSearches(userId);
@@ -192,11 +194,11 @@ function JumpBody({ onClose, userId, phone }: { onClose: () => void; userId: str
     if (!option) return;
     if (option.kind === 'place') { onClose(); navigate(option.place.path); return; }
     if (option.kind === 'command') { if (!option.stays) onClose(); option.run(); return; }
-    if (option.kind === 'agent') { onClose(); navigate(`/projects/${agentProject(option.agent)}/agents`); return; }
+    if (option.kind === 'agent') { onClose(); void follow(`/projects/${agentProject(option.agent)}/agents`); return; }
     recent.remember(text);
     onClose();
-    if (option.kind === 'all') navigate(`/search?q=${encodeURIComponent(text)}`);
-    else openResult(option.result);
+    if (option.kind === 'all') void follow(`/search?q=${encodeURIComponent(text)}`);
+    else void openResult(option.result);
   };
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key === 'ArrowDown') { event.preventDefault(); setActive((current + 1) % Math.max(options.length, 1)); }
@@ -204,7 +206,7 @@ function JumpBody({ onClose, userId, phone }: { onClose: () => void; userId: str
     else if (event.key === 'Enter' && !event.nativeEvent.isComposing) {
       event.preventDefault();
       if (options.length) choose(options[current]);
-      else if (rest && scope === 'all') { recent.remember(text); onClose(); navigate(`/search?q=${encodeURIComponent(text)}`); }
+      else if (rest && scope === 'all') { recent.remember(text); onClose(); void follow(`/search?q=${encodeURIComponent(text)}`); }
     }
   };
 

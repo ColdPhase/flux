@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router';
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router';
 import { DM_LIMITS, type WorkspaceMember } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { openDm } from '../api/direct-messages';
@@ -59,6 +59,7 @@ export function DmIndex() {
 export function NewDm() {
   const { me, workspaces } = useShellData();
   const navigate = useNavigate();
+  const arrivalState = useLocation().state as unknown;
   const [params] = useSearchParams();
   const direct = params.get('with');
   const [workspaceId, setWorkspaceId] = useState(params.get('workspace') ?? (workspaces.length === 1 ? workspaces[0]!.id : ''));
@@ -98,7 +99,8 @@ export function NewDm() {
     setBusy(true); setError(''); setNotice('');
     try {
       const dm = await openDm(workspaceId, ids, attempt.current.key, name || undefined);
-      navigate(`/dm/${dm.id}`, { replace: Boolean(direct) });
+      // A person's name opens their conversation in place of this page, which keeps the origin it was followed from (#592).
+      navigate(`/dm/${dm.id}`, { replace: Boolean(direct), ...(direct ? { state: arrivalState } : {}) });
     } catch (cause) {
       if (cause instanceof ApiError && (cause.code === 'DM_RECIPIENT_LEFT' || cause.code === 'DM_RECIPIENT_UNAVAILABLE')) {
         setNotice(cause.message); setBusy(false); return;

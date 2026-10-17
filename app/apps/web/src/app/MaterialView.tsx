@@ -1,18 +1,24 @@
-import { Link, redirect, useLoaderData, type LoaderFunctionArgs } from 'react-router';
+import { Link, Navigate, useLoaderData, useLocation, type LoaderFunctionArgs } from 'react-router';
 import type { MaterialOrDoc, MaterialVersion } from '@flux/contracts';
 import { getMaterial, getMaterialVersion } from './conversation-api';
 import { useShellData } from './data';
 import { agentAuthorLabel } from '../docs/format';
 
-export async function materialLoader({ params, request }: LoaderFunctionArgs) {
+export async function materialLoader({ params, request }: LoaderFunctionArgs): Promise<{ redirectTo: string } | { material: MaterialOrDoc; version: MaterialVersion }> {
   const material = await getMaterial(params.materialId!, request.signal);
-  // A cited doc version (#112) opens in the doc reader, rendered.
-  if (material.kind === 'doc') throw redirect(`/projects/${material.projectId}/docs/${material.materialId}${params.version ? `/versions/${params.version}` : ''}`);
+  // A cited doc version (#112) opens in the doc reader, rendered. The view redirects (a loader's redirect would drop the
+  // history entry's state, and with it the origin the reference was followed from, #592).
+  if (material.kind === 'doc') return { redirectTo: `/projects/${material.projectId}/docs/${material.materialId}${params.version ? `/versions/${params.version}` : ''}` };
   const version = params.version ? await getMaterialVersion(material.materialId, Number(params.version), request.signal) : material;
   return { material, version };
 }
 export function MaterialView() {
-  const { material, version } = useLoaderData() as { material: MaterialOrDoc; version: MaterialVersion };
+  const data = useLoaderData() as Awaited<ReturnType<typeof materialLoader>>;
+  const location = useLocation();
+  if ('redirectTo' in data) return <Navigate to={data.redirectTo} replace state={location.state} />;
+  return <MaterialPage material={data.material} version={data.version} />;
+}
+function MaterialPage({ material, version }: { material: MaterialOrDoc; version: MaterialVersion }) {
   const { me } = useShellData();
   // Plain materials are person-written; an agent author (only possible on docs, #152) is named as an agent.
   const author = version.authorId === null ? agentAuthorLabel(version.author) : version.authorId === me.user.id ? 'You' : `Member ${version.authorId.slice(0, 8)}`;

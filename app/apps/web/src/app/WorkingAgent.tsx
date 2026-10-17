@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Link, useLocation } from 'react-router';
+import { useLocation } from 'react-router';
 import { ASSISTANT_RUN_CHANGED_EVENT, type AssistantRun, type OwnWorkingAgent } from '@flux/contracts';
 import { onPageLive, pageLeaving } from '../api/pageLeaving';
 import { useStreamEvents } from '../api/stream';
@@ -11,6 +11,7 @@ import { useSmallMoments } from './smallMoments';
 import { getOwnWorkingAgents } from '../agents/api';
 import { stopFailure, stopAgentWork } from '../agents/stop';
 import { useShellData } from './data';
+import { RefLink } from '../place/origin';
 
 const POLL_WHILE_WORKING_MS = 3000;
 interface WorkingSnapshot { identity: string; run: AssistantRun | null; stopping: boolean; failed: boolean }
@@ -184,14 +185,14 @@ function OwnAgentCard({ item, compact, onChanged }: { item: OwnWorkingAgent; com
   return (
     <div className={`agentlive agentlive--agent${compact ? ' agentlive--compact' : ''}`} role="status" aria-label={label} data-agent={item.agent.id}>
       {compact ? (
-        <Link className="agentlive__link" to={destination} title={label} aria-label={label}><Kreska size={24} expression={expression} hue={hue} /></Link>
+        <RefLink className="agentlive__link" to={destination} title={label} aria-label={label}><Kreska size={24} expression={expression} hue={hue} /></RefLink>
       ) : (
         <>
           <Kreska size={24} expression={expression} hue={hue} />
-          <Link className="agentlive__text" to={destination}>
+          <RefLink className="agentlive__text" to={destination}>
             <b>{item.agent.name}</b>
             <span>{stopping ? 'Stopping…' : taskLabel}</span>
-          </Link>
+          </RefLink>
         </>
       )}
       <button type="button" className="agentlive__stop" aria-label={`Stop ${item.agent.name}`} title={stopping ? 'Stopping…' : `Stop ${item.agent.name}`}
@@ -238,16 +239,16 @@ function WorkingAssistant({ compact = false }: { compact?: boolean }) {
     <>
     <div className={`agentlive${compact ? ' agentlive--compact' : ''}`} role="status" aria-label={label}>
       {compact ? (
-        <Link className="agentlive__link" to={destination} title={label} aria-label={label}>
+        <RefLink className="agentlive__link" to={destination} title={label} aria-label={label}>
           {moments ? <Kreska size={24} expression={face(run)} /> : <span className="agentlive__mark" aria-hidden="true"><Icon name="spark" size={20} /></span>}
-        </Link>
+        </RefLink>
       ) : (
         <>
           {moments ? <Kreska size={24} expression={face(run)} /> : <span className="agentlive__mark" aria-hidden="true"><Icon name="spark" size={20} /></span>}
-          <Link className="agentlive__text" to={destination}>
+          <RefLink className="agentlive__text" to={destination}>
             <b>Your assistant</b>
             <span>{stopping ? 'requesting Stop…' : doing(run)}</span>
-          </Link>
+          </RefLink>
         </>
       )}
       <button ref={stopButton} type="button" className="agentlive__stop" aria-label="Stop your assistant" title={stopping || run.stopRequested ? 'Stopping…' : 'Stop your assistant'}

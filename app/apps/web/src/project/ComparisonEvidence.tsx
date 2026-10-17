@@ -1,6 +1,7 @@
-import { Link } from 'react-router';
+
 import type { InspectedComparisonSource } from '@flux/contracts';
 import { comparisonSourceHref } from './proposals';
+import { RefLink } from '../place/origin';
 
 /** Actual inspected references are separate from the model's selected citations. */
 export function ComparisonEvidence({ projectId, sources, unavailable, openResult }: {
@@ -16,7 +17,7 @@ export function ComparisonEvidence({ projectId, sources, unavailable, openResult
       return <li key={`${source.type}:${source.id}:${source.version}`}>
         {source.type === 'result'
           ? <button type="button" onClick={() => openResult(source.id)}>{label} <small>· checked version {source.version}</small></button>
-          : href ? <Link to={href}>{label} <small>· checked version {source.version}</small></Link> : null}
+          : href ? <RefLink to={href}>{label} <small>· checked version {source.version}</small></RefLink> : null}
         {source.excerpted ? <p className="ws-proposal__origin">Excerpt inspected{source.originalCharacters ? ` · full source ${source.originalCharacters.toLocaleString('en-US')} characters` : ''}.</p> : null}
       </li>;
     })}</ul>

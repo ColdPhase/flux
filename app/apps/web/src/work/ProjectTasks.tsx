@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
-import { Link, Navigate, useLoaderData, useLocation, useRevalidator, useSearchParams, type LoaderFunctionArgs } from 'react-router';
+import { Navigate, useLoaderData, useLocation, useRevalidator, useSearchParams, type LoaderFunctionArgs } from 'react-router';
 import type { Project, ProactiveComparisonOutcome, ProjectWorkViewQuery, WorkCounts, WorkItem, WorkObjectType, WorkRowProjection } from '@flux/contracts';
 import { Button, EmptyState, ErrorState, Icon, MEDIA, useMediaQuery } from '../ui';
 import { getProject } from '../app/conversation-api';
@@ -22,6 +22,7 @@ import { ProjectProposals } from '../project/ProjectProposals';
 import { listComparisonOutcomes } from '../project/proposals';
 import { useAgentOwners } from '../agents/owners';
 import './work.css';
+import { RefLink } from '../place/origin';
 
 interface TasksData { project: Project; outcomes: ProactiveComparisonOutcome[] }
 
@@ -369,9 +370,9 @@ export function ProjectTasks() {
   const waiting = summaryCounts?.needs ?? 0;
   // Only people who can accept find a decision in their Inbox; others are told one waits.
   const inboxLink = !waiting ? null : writable ? (
-    <Link className="tb-also__b tb-also__b--need" to="/inbox?show=decisions">
+    <RefLink className="tb-also__b tb-also__b--need" to="/inbox?show=decisions">
       {`${waiting} ${waiting === 1 ? 'decision needs' : 'decisions need'} you in the Inbox`}
-    </Link>
+    </RefLink>
   ) : <span className="tb-also__b">{`${waiting} waiting for a decision`}</span>;
   const nothing = data !== null && cursor === null && !Object.values(data.summary.all).some(Boolean)
     && !outcomes.some((outcome) => outcome.kind === 'comparison' ? outcome.proposal.status === 'proposed' : outcome.status === 'open');
@@ -396,7 +397,7 @@ export function ProjectTasks() {
   return (
     <div className="tb-root">
       <Toolbar mode={mode} onMode={chooseMode} query={boardSearch} onQuery={setBoardSearch} mine={mine} onMine={(next) => setView({ mine: next })} writable={writable} onNew={startNew} />
-      <div className="pane-scroll" ref={scroller}>
+      <div className="pane-scroll" ref={scroller} data-own-place="">
       {!listing ? (
         <div className="tb" data-work-observed-at={data?.summary.observedAt}>
           {parkedCount || waiting ? <nav className="tb-also" aria-label="Also elsewhere">{inboxLink}{parkedCount ? <button type="button" className="tb-also__b" onClick={() => setView({ mode: 'list', status: 'parked' })}>{parkedCount} parked by a pivot</button> : null}</nav> : null}

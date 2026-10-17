@@ -60,6 +60,11 @@ message actions and to choosing messages in a private conversation.
   conversation's column edges, and swapping it with the composer keeps the message being read where
   it is. Reduced motion is static.
 
+Return to origin ([#592](https://github.com/ColdPhase/flux/issues/592), founder direction 2026-10-17): an opened
+reference shows one quiet "‹ origin" control first in its header row (in the panel's head for an object, in place of
+the phone's back), the same on every destination. Going back restores the page, thread or panel, reading position and
+draft. The [contract](../../development/return-to-origin.md) records where it sits and how the place is kept.
+
 ### Token
 
 | Token | Light | Dark | Use |

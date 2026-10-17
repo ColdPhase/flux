@@ -13,6 +13,7 @@ import { answeredBy, canRetry, endedText, isWorking, onRuntime, workingText, typ
 import { failure } from './WaitingChanges';
 import { agentAuthorLabel } from '../docs/format';
 import './assistant.css';
+import { RefLink } from '../place/origin';
 
 // The personal assistant in a project conversation (#57 design, #68 AC-8), in the calm
 // hierarchy: an answer is an ordinary message whose author is "<Owner>'s assistant", marked as
@@ -153,7 +154,7 @@ function SourceLink({ source, index, lookups }: { source: AssistantSourceRef; in
     return <button type="button" className="assistant-cite" data-native-ref={`work:${source.id}`} aria-label={label} title={label} onClick={() => openDetails({ kind: 'work', id: source.id })}>{index}</button>;
   }
   const label = `Source ${index}: a thought on the project map`;
-  return <Link className="assistant-cite" to={`/projects/${lookups.projectId}/map/${source.sketchId}#thought-${source.id}`} aria-label={label} title={label}>{index}</Link>;
+  return <RefLink className="assistant-cite" to={`/projects/${lookups.projectId}/map/${source.sketchId}#thought-${source.id}`} aria-label={label} title={label}>{index}</RefLink>;
 }
 
 /** The body with `[n]` citations as links that open exactly the cited object. */
