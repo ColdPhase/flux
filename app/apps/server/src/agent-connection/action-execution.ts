@@ -11,6 +11,7 @@ import { nativeWorkInEventSession } from '../work/adapters.js';
 import { transactionEventSession } from '../work/transaction-events.js';
 import type { FluxMcpClaims } from './context.js';
 import { agentExecutionInTransaction } from './execution.js';
+import { assistantChangeExecutor, type AssistantCall } from './assistant-changes.js';
 
 export const actionId = z.uuid();
 export const actionVersion = z.int().min(1).max(2_147_483_647);
@@ -27,7 +28,9 @@ export const actionInput = <C extends readonly ['execute', ...('execute' | 'plan
 export const actionAnnotations = { readOnlyHint: false, destructiveHint: false, idempotentHint: true };
 
 export type ActionInput = { projectId: string; runtimeSessionId: string; grantId: string; clientCommandId: string;
-  peerRequestClass: 'execute' | 'plan'; sources: { materialId: string; version: number }[] };
+  peerRequestClass: 'execute' | 'plan'; sources: { materialId: string; version: number }[];
+  /** Set only by the run-private tool mapping (F-027 A3): the exact call an assistant run made. */
+  assistantCall?: AssistantCall };
 export interface NativeActions {
   work: ReturnType<typeof nativeWorkInEventSession>;
   maps: ReturnType<typeof nativeSketchInEventSession>;
@@ -58,6 +61,12 @@ export const materialSources = (input: ActionInput): { sources?: ObjectRef[] } =
  * second effect, debit or event.
  */
 export function nativeActionExecutor(db: Database, claims: FluxMcpClaims) {
+  // An assistant run (or the owner's Apply of its saved change) uses the run's authority and the change log (F-027 A3).
+  if (claims.run || claims.approval) return assistantChangeExecutor(db, claims) as unknown as ReturnType<typeof standingExecutor>;
+  return standingExecutor(db, claims);
+}
+
+function standingExecutor(db: Database, claims: FluxMcpClaims) {
   return async function execute<T extends { [key: string]: AgentJsonValue }>(input: ActionInput, operation: AgentOperation,
     objectId: string | null, payload: AgentJsonValue, effect: (native: NativeActions) => Promise<Produced<T>>) {
     const command: AgentExecutionCommand = { runtimeSessionId: input.runtimeSessionId, grantId: input.grantId,

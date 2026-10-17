@@ -40,8 +40,8 @@ const textOf = (content: unknown) => (Array.isArray(content) ? content : [])
 /**
  * The tool schema as the model sees it, without what costs tokens and tells it nothing (#484): the draft
  * `$schema` URL, the regular expression that zod writes beside every `format: "uuid"` or `"date-time"` (the
- * format already says it; `/mcp` still validates the value), and the safe-integer range of an unbounded
- * integer. Every other keyword (types, ranges, defaults, enums, required, descriptions) is kept.
+ * format already says it; `/mcp` still validates the value), the safe-integer or 32-bit range of an unbounded
+ * integer and `additionalProperties: false` (A3: change tools travel with every request too). Every other keyword (types, ranges, defaults, enums, required, descriptions) is kept.
  */
 export function compactToolSchema(schema: unknown): unknown {
   if (Array.isArray(schema)) return schema.map(compactToolSchema);
@@ -51,7 +51,9 @@ export function compactToolSchema(schema: unknown): unknown {
   const out: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(node)) {
     if (key === '$schema' || (key === 'pattern' && redundantPattern)) continue;
-    if ((key === 'minimum' && value === -Number.MAX_SAFE_INTEGER) || (key === 'maximum' && value === Number.MAX_SAFE_INTEGER)) continue;
+    if ((key === 'minimum' && value === -Number.MAX_SAFE_INTEGER) || (key === 'maximum' && (value === Number.MAX_SAFE_INTEGER || value === 2_147_483_647))) continue;
+    // A closed object is still validated at /mcp; the model gains nothing from the keyword on every nested object.
+    if (key === 'additionalProperties' && value === false) continue;
     out[key] = compactToolSchema(value);
   }
   return out;

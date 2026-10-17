@@ -1,5 +1,4 @@
--- 0105 (#153 AC-4): a review verdict is the resolution of one review request. Numbered 0105 to stay clear of
--- pending 0104 (#580); the coordinator renumbers at merge.
+-- 0105 (#153 AC-4): a review verdict is the resolution of one review request.
 --
 -- The verdict is pinned to the exact target the request named (a task/material/doc/thought version, a result
 -- or message ID, or a verified GitHub PR head). It is never rewritten: a newer version of the target makes it

@@ -4,6 +4,7 @@ import type { Database } from '@flux/core';
 import type { SessionResolver } from '../identity/index.js';
 import { useDomainErrors } from '../http/commands.js';
 import { needsYouUseCases } from './adapters.js';
+import { assistantChangeUseCases } from '../assistant/changes.js';
 
 interface Options { db: Database; sessions: SessionResolver }
 
@@ -20,7 +21,9 @@ const command = { type: 'object', required: ['action'], additionalProperties: fa
  */
 export async function needsYouRoutes(app: FastifyInstance, { db, sessions }: Options) {
   useDomainErrors(app);
-  const use = needsYouUseCases(db);
+  // The owner's undecided waiting assistant changes join the queue as questions (F-027 AST-5.6).
+  const assistant = assistantChangeUseCases(db);
+  const use = needsYouUseCases(db, { waiting: (userId) => assistant.inbox(userId) });
   const principal = async (request: Parameters<SessionResolver['requirePrincipal']>[0]) => (await sessions.requirePrincipal(request)).principal;
 
   app.get(NEEDS_YOU_PATH, async (request, reply) => reply.header('cache-control', 'no-store').send(await use.list(await principal(request))));

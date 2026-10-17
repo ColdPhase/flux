@@ -156,6 +156,7 @@ export * from './repositories/needs-you.js';
 export * from './repositories/search.js';
 export * from './repositories/personal-runs.js';
 export * from './repositories/personal-run-tokens.js';
+export * from './repositories/assistant-changes.js';
 export * from './repositories/project-export.js';
 export * from './repositories/operations.js';
 
