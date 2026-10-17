@@ -15,6 +15,7 @@ Every step is checked against the API. Screenshots (people-*.png) go to FLUX_UI_
 from __future__ import annotations
 
 import json
+import os
 import re
 import time
 import unittest
@@ -536,6 +537,110 @@ class PeopleJourney(unittest.TestCase):
             expect(region.get_by_role("group", name="Change access for Kai Tanaka")).to_be_visible()
             self.no_horizontal_scroll(page, PHONE["width"])
             shot(page, f"people-phone-390-{theme}-project-access")
+
+
+UI_BROWSER = os.environ.get("FLUX_UI_BROWSER", "chromium")
+if UI_BROWSER not in ("chromium", "webkit"):
+    raise ValueError(f"FLUX_UI_BROWSER must be chromium or webkit, got {UI_BROWSER!r}")
+
+
+class PeopleFocus(unittest.TestCase):
+    """Where focus is after the people list changes (#491), in the engine FLUX_UI_BROWSER names.
+
+    The roster heading used to take focus one frame after every change, adding someone included. In
+    WebKit that frame fell between a fill's focus and its keystrokes, so the next Add went out with an
+    empty address and the status kept the previous name. Own accounts and workspace, so the shared
+    journey above is untouched."""
+
+    pw = None
+    browser: Browser
+    workspace = ""
+    owner = ""
+    emails: dict[str, str] = {}
+    names = {"owner": "Fern Owner", "kai": "Kai Tanaka", "lee": "Lee Moreno", "mia": "Mia Novak", "noa": "Noa Berg"}
+    state: dict = {}
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        if UPSTREAM:
+            start_forwarder(ORIGIN, UPSTREAM)
+        cls.pw = sync_playwright().start()
+        cls.browser = getattr(cls.pw, UI_BROWSER).launch()
+        expect.set_options(timeout=10000)
+        stamp = int(time.time() * 1000)
+        cls.emails = {key: f"{key}.focus+{stamp}@example.test" for key in cls.names}
+        for key, name in cls.names.items():
+            context = cls.browser.new_context(base_url=ORIGIN)
+            response = context.request.post("/api/auth/sign-up/email", data={"email": cls.emails[key], "password": PASSWORD, "name": name}, headers={"origin": ORIGIN})
+            assert response.status == 200, response.text()
+            if key == "owner":
+                cls.state = context.storage_state()
+                created = context.request.post("/api/v1/workspaces", data={"name": "Fern Hollow"}, headers={"origin": ORIGIN})
+                assert created.status == 201, created.text()
+                cls.workspace = created.json()["id"]
+            context.close()
+        context = cls.browser.new_context(base_url=ORIGIN, storage_state=cls.state)
+        added = context.request.post(f"/api/v1/workspaces/{cls.workspace}/members", data={"email": cls.emails["noa"], "role": "member"},
+                                     headers={"origin": ORIGIN, "idempotency-key": str(uuid.uuid4())})
+        assert added.status in (200, 201), added.text()
+        context.close()
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        cls.browser.close()
+        cls.pw.stop()
+
+    def people_page(self) -> Page:
+        context = self.browser.new_context(base_url=ORIGIN, viewport=DESKTOP, color_scheme="light", locale="en-GB", storage_state=self.state)
+        self.addCleanup(context.close)
+        page = context.new_page()
+        errors: list[str] = []
+        page.on("pageerror", lambda error: errors.append(str(error)))
+        self.addCleanup(lambda: self.assertEqual(errors, [], "no uncaught page errors"))
+        page.goto("/")
+        expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
+        open_details(page)
+        page.get_by_role("region", name="People").get_by_role("button", name=re.compile("^Fern Hollow")).click()
+        expect(page.get_by_role("heading", name="People", exact=True)).to_be_visible()
+        return page
+
+    @staticmethod
+    def after_next_frames(page: Page) -> None:
+        """Past the frame that follows the status: a focus move the change scheduled has run by now."""
+        page.evaluate("new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))")
+
+    def test_1_focus_stays_in_the_form_so_the_next_address_is_typed_at_once(self) -> None:
+        page = self.people_page()
+        email = page.get_by_role("region", name="Add someone").get_by_label("Email")
+        done = page.locator(".people__done")
+        email.fill(self.emails["kai"])
+        email.press("Enter")
+        expect(done).to_have_text("Kai Tanaka joined Fern Hollow as member.")
+        self.after_next_frames(page)
+        expect(email).to_be_focused()
+        # No fill: the keys go where focus is, as a person's do, and all of them arrive.
+        page.keyboard.type(self.emails["lee"])
+        expect(email).to_have_value(self.emails["lee"])
+        page.keyboard.press("Enter")
+        expect(done).to_have_text("Lee Moreno joined Fern Hollow as member.")
+        self.after_next_frames(page)
+        expect(email).to_be_focused()
+        page.keyboard.type(self.emails["mia"])
+        page.keyboard.press("Enter")
+        expect(done).to_have_text("Mia Novak joined Fern Hollow as member.")
+        roster = page.get_by_role("list", name="People in Fern Hollow")
+        expect(roster.get_by_role("listitem")).to_have_count(5)
+
+    def test_2_changing_a_role_still_moves_focus_to_the_roster(self) -> None:
+        """The member's editor that had focus is gone, so the roster heading takes it (its status line says what changed)."""
+        page = self.people_page()
+        page.get_by_role("button", name="Change Noa Berg").click()
+        editor = page.get_by_role("group", name="Change Noa Berg")
+        editor.get_by_label("Role").select_option(label="Guest")
+        editor.get_by_role("button", name="Save role").click()
+        expect(page.locator(".people__done")).to_have_text("Noa Berg is now a guest.")
+        self.after_next_frames(page)
+        expect(page.locator("#people-here")).to_be_focused()
 
 
 if __name__ == "__main__":

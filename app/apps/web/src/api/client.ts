@@ -1,3 +1,5 @@
+import { pageIsLive, pageLeaving } from './pageLeaving.js';
+
 /** Same-origin JSON requests. Session cookies are HttpOnly; the browser sends them itself. */
 export class ApiError extends Error {
   /** `body` is the parsed error body, e.g. the latest version in a 409 VERSION_CONFLICT. */
@@ -26,6 +28,10 @@ export interface ApiRequestInit {
 }
 
 export async function request<T>(path: string, init: ApiRequestInit = {}): Promise<T> {
+  // A page being left starts no request (#471): the browser has stopped its loads, and WebKit reports a
+  // fetch that starts now as an uncaught page error. It starts when the page is live again, never sooner
+  // than a click or key press proves the person is still here; an unloaded page never starts it.
+  if (pageLeaving() && !init.keepalive) await pageIsLive(init.signal);
   let response: Response;
   try {
     response = await fetch(path, {
