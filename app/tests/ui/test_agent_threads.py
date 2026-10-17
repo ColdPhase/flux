@@ -212,6 +212,34 @@ class AgentThreadJourney(unittest.TestCase):
         phone.get_by_role("button", name="Close thread").tap()
         expect(phone.get_by_role("list", name="Agents in this project")).to_be_visible()
 
+    def test_08_an_agents_reply_appears_in_the_thread_and_on_its_now_card(self) -> None:
+        # The agent's own write (flux_post_agent_thread, guarded and receipted) is proved by the API tests; here the stored
+        # first message is shown as the agent's, as the server returns it, to check how the Agents tab reads an agent's line.
+        agent = self.ids["agent"]
+
+        def as_agent(route) -> None:
+            if route.request.method != "GET":
+                route.continue_()
+                return
+            response = route.fetch()
+            body = response.json()
+            messages = (body.get("conversation") or {}).get("messages", [])
+            if messages:
+                messages[-1].update({"authorId": None, "author": {"kind": "agent", "id": agent, "name": "Codex"}, "body": "PR 42 is ready at a1b2c3d."})
+            route.fulfill(response=response, json=body)
+
+        page = self.page("hubert")
+        page.route(re.compile(rf".*/api/v1/work/{self.ids['task']}/agent-thread(\?.*)?$"), as_agent)
+        page.goto(self.thread_url())
+        thread = page.get_by_role("region", name=THREAD)
+        expect(thread.get_by_text("PR 42 is ready at a1b2c3d.")).to_be_visible()
+        expect(thread.locator(".agents-msg--agent")).to_have_count(1)
+        # The Now card of the agent shows that latest line.
+        page.goto(f"/projects/{self.ids['project']}/agents")
+        page.get_by_role("list", name="Agents in this project").get_by_role("listitem").first.get_by_role("button").first.click()
+        expect(page.get_by_role("button", name="Open the thread of #1")).to_contain_text("PR 42 is ready at a1b2c3d.")
+        shot(page, "agent-thread-agent-reply-now-card-1440")
+
 
 if __name__ == "__main__":
     unittest.main()

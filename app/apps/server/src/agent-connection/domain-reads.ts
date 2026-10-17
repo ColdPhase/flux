@@ -1,6 +1,8 @@
 import type { AgentToolRegistrar } from './tool-registry.js';
 import { z } from 'zod';
-import { conversationUseCases, createSearchUseCases, DomainError, getProject, type Database } from '@flux/core';
+import { conversationUseCases, createSearchUseCases, DomainError, getProject, NotFoundError, type Database } from '@flux/core';
+import { schema } from '@flux/db';
+import { eq } from 'drizzle-orm';
 import { conversationStore } from '../conversation/store.js';
 import { docUseCases } from '../docs/adapters.js';
 import { workUseCases } from '../work/adapters.js';
@@ -126,6 +128,31 @@ export function registerAgentDomainReads(server: AgentToolRegistrar, db: Databas
     await requireObject(projectId, 'conversation', id);
     return conversationUseCases(conversationStore(tx)).getConversation(principal, id, { ...query, limit: pageLimit(query.limit) });
   }));
+
+  // The task's agents' thread (#400): the same audience as the task. The task names its project, which must be a selected one.
+  server.registerTool('flux_get_agent_thread', { title: 'Read a task\'s agents\' thread',
+    description: 'Up to 50 messages; resume with afterSequence.',
+    inputSchema: z.strictObject({ taskId: z.uuid(), beforeSequence: z.int().min(1).optional(), afterSequence: z.int().min(0).optional() }), annotations },
+  async ({ taskId, beforeSequence, afterSequence }) => {
+    const [task] = await db.select({ projectId: schema.projectWorkItems.projectId }).from(schema.projectWorkItems).where(eq(schema.projectWorkItems.id, taskId));
+    if (!task) return result(null, () => { throw new NotFoundError('Project', 'PROJECT_NOT_FOUND'); });
+    return result(task.projectId, async ({ tx, principal }) => {
+      const store = conversationStore(tx);
+      const limit = pageLimit(50);
+      const first = await store.getAgentThread(principal, taskId, { limit, beforeSequence: beforeSequence ?? null } as never);
+      if (afterSequence === undefined) return { ...first, messages: first.conversation?.messages ?? [], conversation: undefined };
+      // Resume: walk back until the recorded sequence is covered, then return what follows it, oldest first.
+      let messages = first.conversation?.messages ?? [];
+      let before = first.conversation?.messagePage.nextBeforeSequence ?? null;
+      for (let pages = 0; before !== null && (messages[0]?.sequence ?? 0) > afterSequence + 1 && pages < 20; pages += 1) {
+        const older = await store.getAgentThread(principal, taskId, { limit, beforeSequence: before } as never);
+        messages = [...(older.conversation?.messages ?? []), ...messages];
+        before = older.conversation?.messagePage.nextBeforeSequence ?? null;
+      }
+      const after = messages.filter((message) => message.sequence > afterSequence);
+      return { ...first, conversation: undefined, messages: after.slice(0, limit), nextAfterSequence: after.length > limit ? after[limit - 1]!.sequence : null };
+    });
+  });
 
   server.registerTool('flux_list_maps', { title: 'List project maps', description: 'A page of project maps. Private and direct-message maps are excluded.',
     inputSchema: projectPage, annotations }, ({ projectId, ...query }) => result(projectId, ({ tx, principal, workspaceId }) => sketchUseCases(tx).list(principal, workspaceId, { projectId, ...capped(query) })));

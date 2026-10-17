@@ -97,17 +97,17 @@ test('private task-target receipt stays stable, rejects changed/old-mode intent 
     SELECT workspace_id,project_id,$1,conversation_id,id,'human_message',0,txid_current() FROM project_messages WHERE client_message_id=$2`, [item.id, human.clientMessageId]), /human reset/);
 });
 
-test('production generic writers and raw SQL remain closed; no client mode or new public tool is admitted', async () => {
+test('generic writers and raw SQL remain closed; the public post tool admits no client mode', async () => {
   const f = await actionScene(pool), item = await task(f), grant = await f.grant('conversation.reply', 'execute', 20);
   const first = await post(f, envelope(f, item.id, grant.id));
-  assert.ok(!(await f.toolNames()).includes('flux_post_agent_thread'));
+  assert.ok((await f.toolNames()).includes('flux_post_agent_thread'));
   assert.equal(toolFailure(await f.tool('flux_reply_in_conversation', { ...envelope(f, item.id, grant.id), taskId: undefined,
     conversationId: first.conversationId })).code, 'AGENT_EXECUTION_UNAVAILABLE');
   await assert.rejects(pool.query(`INSERT INTO project_messages(id,workspace_id,project_id,conversation_id,author_agent_id,client_message_id,request_fingerprint,sequence,body)
     VALUES($1,$2,$3,$4,$5,$6,'unguarded',99,'Bypass')`, [randomUUID(),f.workspaceId,f.projectId,first.conversationId,f.agentId,randomUUID()]),
     (e: unknown) => !!e && typeof e === 'object' && 'constraint' in e && e.constraint === 'agent_thread_agent_writes_closed');
   await assert.rejects(post(f, { ...envelope(f, item.id, grant.id), targetMode: 'task-agent-thread/v1' }));
-  const people = expect(await f.owner.request('POST', `/api/v1/projects/${f.projectId}/conversations`, { body: { body: 'People still use v1', clientMessageId: randomUUID() } }), 201);
+  const people = expect(await f.owner.request('POST', `/api/v1/projects/${f.projectId}/conversations`, { body: { body: 'People still use v1 @Planning agent', clientMessageId: randomUUID() } }), 201);
   assert.equal(toolValue(await f.tool('flux_reply_in_conversation', { ...envelope(f,item.id,grant.id), taskId: undefined,
     conversationId: people.id })).sequence, 2);
   assert.equal((await state(item.id)).turns, 1); assert.equal(await f.used(grant.id), 2);

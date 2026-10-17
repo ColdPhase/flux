@@ -57,7 +57,7 @@ export const materialSources = (input: ActionInput): { sources?: ObjectRef[] } =
  * final event batch flushed. A retry with the same command ID returns the stored outcome without a
  * second effect, debit or event.
  */
-export function nativeActionExecutor(db: Database, claims: FluxMcpClaims) {
+export function nativeActionExecutor(db: Database, claims: FluxMcpClaims, privateTarget?: 'task-agent-thread/v1') {
   return async function execute<T extends { [key: string]: AgentJsonValue }>(input: ActionInput, operation: AgentOperation,
     objectId: string | null, payload: AgentJsonValue, effect: (native: NativeActions) => Promise<Produced<T>>) {
     const command: AgentExecutionCommand = { runtimeSessionId: input.runtimeSessionId, grantId: input.grantId,
@@ -69,7 +69,7 @@ export function nativeActionExecutor(db: Database, claims: FluxMcpClaims) {
     try {return await db.transaction(async (tx) => {
       const session = transactionEventSession(tx);
       let replayed = false;
-      const value = await agentExecutionUseCases(agentExecutionInTransaction(tx, claims)).run(command, async (scope) => {
+      const value = await agentExecutionUseCases(agentExecutionInTransaction(tx, claims, {}, privateTarget)).run(command, async (scope) => {
         if (scope.replay) {
           replayed = true;
           return { value: scope.replay.value, postconditions: scope.replay.postconditions };

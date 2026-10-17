@@ -26,6 +26,7 @@ test('standing conversation grants start a project conversation and reply in a t
   assert.deepEqual(capabilities.filter((item) => item.operation?.startsWith('conversation.')).map(({ name, operation, classes, available }) => ({ name, operation, classes, available })),
     [{ name: 'flux_start_conversation', operation: 'conversation.create', classes: ['execute', 'plan'], available: true },
       { name: 'flux_reply_in_conversation', operation: 'conversation.reply', classes: ['execute', 'plan'], available: true },
+      { name: 'flux_post_agent_thread', operation: 'conversation.reply', classes: ['execute', 'plan'], available: true },
       { name: 'flux_ask_question', operation: 'conversation.reply', classes: ['execute', 'plan'], available: true }]);
   const start = await f.grant('conversation.create', 'plan');
   const reply = await f.grant('conversation.reply', 'execute', 10);
@@ -64,7 +65,7 @@ test('standing conversation grants start a project conversation and reply in a t
 
   // A task's discussion is a project conversation too: the reply joins its canonical thread.
   const task = expect(await f.owner.request('POST', `/api/v1/projects/${f.projectId}/work`, { body: { title: 'Repeat the measurement' } }), 201);
-  const root = expect(await f.owner.request('POST', `/api/v1/work/${task.id}/discussion`, { body: { body: 'Who repeats it?', clientMessageId: randomUUID() } }), 201) as unknown as ConversationMessage;
+  const root = expect(await f.owner.request('POST', `/api/v1/work/${task.id}/discussion`, { body: { body: 'Who repeats it? @Planning agent', clientMessageId: randomUUID() } }), 201) as unknown as ConversationMessage;
   const inThread = toolValue(await f.tool('flux_reply_in_conversation', { ...command(f.projectId, f, reply.id, 'execute'),
     conversationId: root.conversationId, message: { body: 'I will, after the baseline.' } }));
   const discussion = expect(await f.owner.request('GET', `/api/v1/work/${task.id}/discussion`), 200) as unknown as TaskDiscussion;
@@ -92,8 +93,8 @@ test('conversation actions never post into a direct message, a private draft, an
     { body: { name: 'Unselected project', visibility: 'restricted' } }), 201);
   const hidden = expect(await f.owner.request('POST', `/api/v1/projects/${elsewhere.id}/conversations`,
     { body: { body: 'Unselected discussion', clientMessageId: randomUUID() } }), 201) as unknown as Conversation;
-  const a = expect(await f.owner.request('POST', `/api/v1/projects/${f.projectId}/conversations`, { body: { body: 'Thread A', clientMessageId: randomUUID() } }), 201) as unknown as Conversation;
-  const b = expect(await f.owner.request('POST', `/api/v1/projects/${f.projectId}/conversations`, { body: { body: 'Thread B', clientMessageId: randomUUID() } }), 201) as unknown as Conversation;
+  const a = expect(await f.owner.request('POST', `/api/v1/projects/${f.projectId}/conversations`, { body: { body: 'Thread A @Planning agent', clientMessageId: randomUUID() } }), 201) as unknown as Conversation;
+  const b = expect(await f.owner.request('POST', `/api/v1/projects/${f.projectId}/conversations`, { body: { body: 'Thread B @Planning agent', clientMessageId: randomUUID() } }), 201) as unknown as Conversation;
   const post = (grantId: string, conversationId: unknown, message: Record<string, unknown> = { body: 'Agent note' }, peerRequestClass: 'execute' | 'plan' = 'plan') =>
     f.tool('flux_reply_in_conversation', { ...command(f.projectId, f, grantId, peerRequestClass), conversationId, message });
   const dmMessages = async () => (await pool.query('SELECT count(*)::int AS n FROM dm_messages WHERE dm_id=$1', [dm.id])).rows[0].n as number;
@@ -182,13 +183,14 @@ test('two owners and three connections stay isolated: grants, receipts, targets 
   expect(await hubert.owner.request('DELETE', `/api/v1/agent-connections/${hubert.connectionId}`), 204);
   assert.equal((await hubert.raw('flux_start_conversation', { ...command(hubert.projectId, hubert, planning.id), message: { body: 'After revocation' } })).status, 403);
   const reply = await review.grant('conversation.reply', 'execute');
+  expect(await hubert.owner.request('POST', `/api/v1/conversations/${String(one.conversationId)}/messages`, { body: { body: 'Still there, @Review agent?', clientMessageId: randomUUID() } }), 201);
   assert.equal(toolValue(await review.tool('flux_reply_in_conversation', { ...command(hubert.projectId, review, reply.id, 'execute'),
-    conversationId: one.conversationId, message: { body: 'Still connected' } })).sequence, 2);
+    conversationId: one.conversationId, message: { body: 'Still connected' } })).sequence, 3);
 
   assert.deepEqual([await hubert.used(planning.id), await hubert.used(reviewing.id), await hubert.used(doc.id), await hubert.used(marekReply.id), await hubert.used(marekDoc.id)],
     [1, 1, 0, 0, 0]);
   // Three starts (planning, review and the twin connection) and one reply; nothing in Marek's project.
-  assert.deepEqual([await projectMessages(hubert.projectId), await projectMessages(String(own.id))], [4, 0]);
+  assert.deepEqual([await projectMessages(hubert.projectId), await projectMessages(String(own.id))], [5, 0]);
   assert.equal((await pool.query('SELECT count(*)::int AS n FROM project_material_versions WHERE material_id=$1', [hubertDoc.id])).rows[0].n, 1);
 });
 

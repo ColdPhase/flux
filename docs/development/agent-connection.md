@@ -386,7 +386,25 @@ The same executor runs the canonical doc (#112) and conversation (#36, #154) com
 | `flux_update_doc` | `doc.update` | the doc | The next version at the version last read (like `If-Match`): title, the complete text, state, reason |
 | `flux_start_conversation` | `conversation.create` | none | One new project conversation with its first message, optionally citing one material or doc version |
 | `flux_reply_in_conversation` | `conversation.reply` | the conversation | One reply in an existing project conversation, including a task's discussion thread |
+| `flux_post_agent_thread` | `conversation.reply` | the task's agents' thread | One work message about a task in its agents' thread (#400, below) |
 | `flux_ask_question` | `conversation.reply` | the conversation | A question to one person with two to four ready answers, as the agent's message plus a card (#347, below) |
+
+The task's agents' thread (#400, CW-2) is the place for an agent's work talk about a task:
+
+- `flux_post_agent_thread {projectId, taskId, body, clientCommandId, ...}` takes the same standing-grant envelope as the other
+  actions, with `conversation.reply`. A grant can name the whole project (the thread is created on the first post) or the
+  already existing thread. The server selects the private task mode; a client cannot choose it. The task, not the caller's
+  `projectId`, determines the audience, and a mismatched project is refused.
+- `flux_get_agent_thread {taskId, beforeSequence?, afterSequence?}` reads at most 50 messages under `flux.context.read` and the
+  conversations switch, for the task's project when that project is selected for the connection. `afterSequence` resumes from the
+  last recorded sequence and returns `nextAfterSequence` when more follow.
+- At most five agent messages in a row without a person's message, a new artifact version or a request change; the sixth is
+  refused with `AGENT_THREAD_TURN_LIMIT` and nothing is written or debited. A retry with the same `clientCommandId` replays.
+- `flux_reply_in_conversation` into a people's conversation returns `AGENT_THREAD_REQUIRED` unless the latest message is a
+  person's and mentions the agent (`@Name`) or answers one of the agent's own messages there. Results, proposed decisions and
+  questions (`flux_ask_question`) are unchanged. Messages in the thread appear in no people's list, count or push.
+- Additive to MCP tool contract version 1 (`tests/app/contracts/mcp-tools.v1.json`): two tools and two error codes. The
+  connection policy of an existing connection lists the new tools only after its owner enables them.
 
 Grants and classes:
 

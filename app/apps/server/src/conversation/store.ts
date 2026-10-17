@@ -7,7 +7,7 @@ import type {
   AgentProjectOwner, AuthenticatedAgentRuntime, MaterialVersion, Page, PageQuery, TaskAgentThread,
 } from '@flux/contracts';
 import {
-  ConflictError, conversationUseCases, enforce, evaluateDraft, evaluateProject, InvalidInputError, NotFoundError,
+  ConflictError, conversationUseCases, DomainError, enforce, evaluateDraft, evaluateProject, InvalidInputError, NotFoundError,
   lockAttachments, messageContribution, positiveVersion, uuid, type FileStorage,
   parsePage, recordEvent, ServiceUnavailableError, type Database, type Principal, type Transaction,
 } from '@flux/core';
@@ -613,4 +613,25 @@ export function nativeConversationsInEventSession(tx: Transaction, session: Tran
     createConversation: (...args: Parameters<typeof commands.createConversation>) => session.run(() => commands.createConversation(...args)),
     sendMessage: (...args: Parameters<typeof commands.sendMessage>) => session.run(() => commands.sendMessage(...args)),
   };
+}
+
+/**
+ * An agent's work talk about a task belongs in the task's agents' thread (#400 AC-3). A reply into a people's
+ * conversation is allowed only to a person who addressed this agent: the latest message is a person's and either
+ * mentions the agent (`@Name`) or answers one of the agent's own messages in that conversation.
+ */
+export async function requireAddressedReply(tx: Transaction, agentId: string, conversationId: string) {
+  const [conversation] = await tx.select().from(schema.projectConversations).where(eq(schema.projectConversations.id, conversationId));
+  if (!conversation || conversation.space !== 'people') return;
+  const [last] = await tx.select().from(schema.projectMessages).where(eq(schema.projectMessages.conversationId, conversationId))
+    .orderBy(desc(schema.projectMessages.sequence)).limit(1);
+  let addressed = false;
+  if (last && last.authorId !== null) {
+    const [agent] = await tx.select({ name: schema.agents.name }).from(schema.agents).where(eq(schema.agents.id, agentId));
+    const [own] = await tx.select({ id: schema.projectMessages.id }).from(schema.projectMessages)
+      .where(and(eq(schema.projectMessages.conversationId, conversationId), eq(schema.projectMessages.authorAgentId, agentId))).limit(1);
+    addressed = !!own || (!!agent && last.body.toLowerCase().includes(`@${agent.name.toLowerCase()}`));
+  }
+  if (!addressed) throw new DomainError(409, 'AGENT_THREAD_REQUIRED',
+    'Write work talk about a task with flux_post_agent_thread. Reply here only to a person who addressed this agent.');
 }
