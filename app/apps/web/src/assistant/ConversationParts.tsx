@@ -38,7 +38,7 @@ function runExpression(run: AssistantRun): KreskaExpression {
 
 /** "Your assistant ×" above the box, and what will happen: who sees it and who pays, or why not. */
 export function AskBar({ id, state, onExit, onAction, error, errorAction = null }: {
-  id: string; state: AskState; onExit: () => void; onAction: (action: 'connect' | 'resume' | 'settings') => void; error: string;
+  id: string; state: AskState; onExit: () => void; onAction: (action: 'connect' | 'resume' | 'settings' | 'tell' | 'key') => void; error: string;
   /** A way out of the error the person can take themselves, e.g. a manager granting their assistant access. */
   errorAction?: { label: string; run: () => void } | null;
 }) {
@@ -50,6 +50,7 @@ export function AskBar({ id, state, onExit, onAction, error, errorAction = null 
       {state.kind === 'ready' ? <AssistantModelControl variant="chip" placement="up" /> : null}
       <span className={`ask__note${state.kind === 'blocked' ? ' assistant-ask__blocked' : ''}`}>{state.note}</span>
       {state.kind === 'blocked' && state.action ? <button type="button" className="ui-link ask__connect" onClick={() => onAction(state.action!)}>{state.actionLabel}</button> : null}
+      {state.kind === 'blocked' && state.also ? <button type="button" className="ui-link ask__connect" onClick={() => onAction(state.also!.action)}>{state.also.label}</button> : null}
       {error ? <span className="assistant-ask__error" role="alert">{error}{errorAction ? <> <button type="button" className="ui-link ask__connect" onClick={errorAction.run}>{errorAction.label}</button></> : null}</span> : null}
     </div>
   );

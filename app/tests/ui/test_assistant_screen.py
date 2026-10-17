@@ -89,9 +89,11 @@ class AssistantScreen(unittest.TestCase):
             stub.update(state="not_enabled", unavailableReason=None, enablement=None, today=None)
         return stub
 
-    def stub_assistant(self, page: Page, *, enabled: bool = True, runtime: str = "signed_in") -> dict:
-        """Status, settings (GET and PATCH keep their own version) and pause/resume, all in memory."""
-        world = {"status": self.status(page, enabled=enabled, runtime=runtime), "patches": [], "pauses": [],
+    def stub_assistant(self, page: Page, *, enabled: bool = True, runtime: str = "signed_in", member: bool | None = True) -> dict:
+        """Status, settings (GET and PATCH keep their own version), pause/resume and the project's view of the assistant's membership, all in memory."""
+        world = {"status": self.status(page, enabled=enabled, runtime=runtime), "patches": [], "pauses": [], "joins": [],
+                 "agents": {"projectId": self.ids["project"], "connections": [], "joinRequests": [],
+                            **({"assistantJoin": {"agentId": self.ids["agent"], "canRequest": not member}} if member is not None else {})},
                  "settings": {"workspaceId": self.ids["workspace"], "ownerUserId": ADA["id"], "agentId": self.ids["agent"], "connectionId": "c", "approvalMode": "act",
                               "changesPerRun": 20, "backgroundRunsPerDay": 24, "projectMode": "all", "version": 1, "createdAt": NOW, "updatedAt": NOW,
                               "areas": {"tasks": "edit", "wiki": "edit", "maps": "edit", "conversations": "edit", "decisions": "edit"}, "policy": {}}}
@@ -115,6 +117,10 @@ class AssistantScreen(unittest.TestCase):
             world["status"]["state"] = "paused" if route.request.url.endswith("/pause") else "ready"
             self.json(route, world["status"])
 
+        def agents(route: Route) -> None:
+            self.json(route, world["agents"])
+
+        page.route(re.compile(r".*/api/v1/projects/[0-9a-f-]{36}/agents$"), agents)
         page.route("**/api/v1/personal-assistant", status)
         page.route("**/api/v1/personal-assistant/pause", pause)
         page.route("**/api/v1/personal-assistant/resume", pause)

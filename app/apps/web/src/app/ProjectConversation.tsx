@@ -30,6 +30,7 @@ import { ScheduleFold } from '../assistant/ScheduleFold';
 import { askError as askErrorText, askState } from '../assistant/format';
 import { grantAgentProject } from '../agent-connection/api';
 import { requestAssistantJoin } from '../agents/api';
+import { tellOperator } from '../assistant/api';
 import { agentAuthorLabel } from '../docs/format';
 import { ownRuns, useObservation, useReceiptTick, useReceipts } from './receipts';
 import { AgentAuthor, AuthorFace, ContributionMark, OPENING_REVEAL_MS, SourceCitation, MessageDay, MessageTime, sameMessageAuthor, clock, day, pendingMessageRow, when } from './messageParts';
@@ -747,6 +748,8 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
       {asking && writable ? <AskBar id="project-ask" state={ask} error={notIn ? notInText : askFailure} errorAction={grantAction} onExit={exitAsk} onAction={(action) => {
         if (action === 'connect') openDetails('connect-ai');
         else if (action === 'resume') void assistant.resume().catch(() => setAskFailure('Couldn’t resume. Try again.'));
+        else if (action === 'tell') void tellOperator(project.workspaceId, assistant.status?.setup.runtime.client).then(() => setAskFailure('Told whoever runs Flux.'), () => setAskFailure('Couldn’t tell them. Try again.'));
+        else if (action === 'key') navigate('/settings/ai-connections');
         else navigate('/settings/assistant');
       }} /> : <div className="project-convo__to">
         {conversation ? <p className="project-convo__current-thread" title={title}>{writable ? 'Replying to' : 'Conversation'} · {title}</p> : null}

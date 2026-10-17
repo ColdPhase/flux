@@ -136,7 +136,9 @@ export const canRetry = (run: AssistantRun) => run.status === 'provider_failed' 
 
 export type AskState =
   | { kind: 'ready'; note: string }
-  | { kind: 'blocked'; note: string; action: 'connect' | 'resume' | 'settings' | null; actionLabel?: string };
+  | { kind: 'blocked'; note: string; action: 'connect' | 'resume' | 'settings' | 'tell' | null; actionLabel?: string;
+      /** A second way out (Journey 6: "Use an API key instead"). */
+      also?: { action: 'key'; label: string } };
 
 /** What ask mode says under "Your assistant", from the caller's own status. */
 export function askState(status: PersonalAssistantStatus | null, audience: string): AskState {
@@ -149,7 +151,10 @@ export function askState(status: PersonalAssistantStatus | null, audience: strin
     case 'paused': return { kind: 'blocked', note: 'Your assistant is paused.', action: 'resume', actionLabel: 'Resume' };
     case 'capped': return runtime ? { kind: 'blocked', note: 'That’s 20 requests today, your daily limit. It won’t use another account.', action: 'settings', actionLabel: 'Assistant settings' }
       : { kind: 'blocked', note: `Stopped at today’s ${dollars(status.today?.capCents ?? 0)} cap. It won’t use another payer.`, action: 'settings', actionLabel: 'Raise cap' };
-    default: return { kind: 'blocked', note: unavailableText(status), action: 'settings', actionLabel: 'Assistant settings' };
+    default:
+      // Journey 6: this Flux does not allow subscription sign-in. Tell whoever runs it, or use a key of your own.
+      if (status.unavailableReason === 'runtime_off') return { kind: 'blocked', note: unavailableText(status), action: 'tell', actionLabel: 'Tell whoever runs Flux', also: { action: 'key', label: 'Use an API key instead' } };
+      return { kind: 'blocked', note: unavailableText(status), action: 'settings', actionLabel: 'Assistant settings' };
   }
 }
 

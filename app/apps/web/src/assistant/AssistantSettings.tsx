@@ -9,7 +9,7 @@ import { listAgents } from '../work/api';
 import { Button, ErrorState, Icon, Kreska, Spinner } from '../ui';
 import { whenPageLive } from '../api/pageLeaving';
 import { listBackgroundConnections } from '../proactive-comparison/api';
-import { enableAssistant, getAssistantStatus, pauseAssistant, removeAssistant, resumeAssistant, selectAssistantAgent, updateAssistant } from './api';
+import { enableAssistant, getAssistantStatus, pauseAssistant, removeAssistant, resumeAssistant, selectAssistantAgent, tellOperator, updateAssistant } from './api';
 import { ModelPicker } from './ModelPicker';
 import { fetchAssistantModel, refreshAssistantModel, useAssistantModel } from './model';
 import { dollars, micros, perMillion, runtimeNames, runtimePayerDetail, runtimePayerText, stateLine, unavailableText, type RuntimeClientName } from './format';
@@ -414,6 +414,7 @@ function Enabled({ status, agents, workspaces, name, onChange, onRemoved, onAgen
       <section className="nset__sec" aria-labelledby="aset-state">
         <h3 id="aset-state" className="aset__state"><span className={`aset__dot is-${status.state}`} aria-hidden="true" />{stateLine(status)}</h3>
         {status.state === 'unavailable' ? <p className="nset__problem" role="note"><Icon name="alert" size={14} /><span>{unavailableText(status)} Earlier answers stay. Human work goes on as usual.</span></p> : null}
+        {status.unavailableReason === 'runtime_off' ? <OperatorRow workspaceId={enablement.agents[0]?.workspaceId ?? null} client={status.setup.runtime?.client} /> : null}
         <p className="nset__lead">Pausing stops work before its next read or save. Everyone keeps working as usual.</p>
         <div className="aset__actions">
           {paused
@@ -456,6 +457,18 @@ function Enabled({ status, agents, workspaces, name, onChange, onRemoved, onAgen
       </section>
       {error ? <p className="nset__error" role="alert"><Icon name="alert" size={14} />{error}</p> : null}
     </>
+  );
+}
+
+/** Journey 6, "Subscription sign-in off on this Flux": tell whoever runs it, or use a key of your own. */
+function OperatorRow({ workspaceId, client }: { workspaceId: string | null; client?: 'claude_code' | 'codex' | null }) {
+  const [told, setTold] = useState<'idle' | 'busy' | 'told' | 'failed'>('idle');
+  return (
+    <div className="aset__actions">
+      {workspaceId ? <Button variant="secondary" busy={told === 'busy'} onClick={() => { setTold('busy'); tellOperator(workspaceId, client).then(() => setTold('told'), () => setTold('failed')); }}>Tell whoever runs Flux</Button> : null}
+      <Link className="ui-btn ui-btn--secondary" to="/settings/ai-connections">Use an API key instead</Link>
+      <span role="status" aria-live="polite" className="nset__note">{told === 'told' ? 'Told whoever runs Flux.' : told === 'failed' ? 'Couldn’t tell them. Try again.' : ''}</span>
+    </div>
   );
 }
 

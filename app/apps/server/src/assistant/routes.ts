@@ -1,13 +1,14 @@
 import type { PgBoss } from 'pg-boss';
 import { assistantJoinUseCases } from './joins.js';
 import type { FastifyInstance } from 'fastify';
-import { ASSISTANT_AREAS, ASSISTANT_LIMITS, assistantSettingsPath, assistantJoinRequestPath, type UpdateAssistantSettings } from '@flux/contracts';
+import { ASSISTANT_AREAS, ASSISTANT_LIMITS, assistantSettingsPath, assistantJoinRequestPath, assistantOperatorRequestPath, type UpdateAssistantSettings } from '@flux/contracts';
 import { assistantSettingsUseCases, type Database } from '@flux/core';
 import type { SessionResolver } from '../identity/index.js';
 import { expectedVersion, useDomainErrors, versionEtag } from '../http/commands.js';
 import { transactionEventSession } from '../work/transaction-events.js';
 import { assistantRows } from './adapters.js';
 import { registerAssistantChangeRoutes } from './changes.js';
+import { assistantOperatorUseCases } from './operator.js';
 
 interface Options { db: Database; sessions: SessionResolver; boss: Pick<PgBoss, 'send'> }
 const modes = { type: 'string', enum: ['off', 'read', 'edit'] } as const;
@@ -55,6 +56,10 @@ export async function assistantRoutes(app: FastifyInstance, { db, sessions, boss
     app.post<{ Params: { projectId: string; requestId: string } }>(`${assistantJoinRequestPath(':projectId')}/:requestId/${action}`, async (request) =>
       joins.respond((await sessions.requirePrincipal(request)).principal, request.params.projectId, request.params.requestId, action === 'allow', expectedVersion(request)));
   }
+  const operator = assistantOperatorUseCases(db, boss);
+  app.post<{ Params: { workspaceId: string }; Body: { client?: 'claude_code' | 'codex' } | undefined }>(assistantOperatorRequestPath(':workspaceId'),
+    { schema: { body: { type: 'object', additionalProperties: false, properties: { client: { type: 'string', enum: ['claude_code', 'codex'] } } } } }, async (request, reply) =>
+      reply.code(201).send(await operator.request((await sessions.requirePrincipal(request)).principal, request.params.workspaceId, request.body?.client === 'codex' ? 'ChatGPT' : 'Claude')));
   // Waiting changes, Apply and suggestions (F-027 A3).
   registerAssistantChangeRoutes(app, db, sessions, boss);
 
