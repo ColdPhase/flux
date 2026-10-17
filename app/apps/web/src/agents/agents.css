@@ -220,5 +220,5 @@
 }
 
 /* Keep the Agents title's keyboard focus inside its existing 44px control, above its metadata. */
-.phead__title:has(.agents-header-meta) .phead__menu { padding-inline: 4px; margin-inline: -4px; }
+.phead__title:has(.agents-header-meta) .phead__menu { width: calc(100% + 8px); max-width: calc(100% + 8px); padding-inline: 4px; margin-inline: -4px; }
 .phead__title:has(.agents-header-meta) .phead__menu:focus-visible { outline-offset: -3px; }
