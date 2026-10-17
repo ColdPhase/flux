@@ -86,6 +86,12 @@ An owner may keep one or more AI connections. Each connection records:
   key, base URL or price in Flux. Its MCP access goes through an owner-consented
   agent connection ([F-022](ai-modes.md#agent-connection-and-permissions)).
 
+*Added 2026-10-17 (F-027 AST-11, #596):* the assistant's model is the owner's choice among the
+connection's own model and the models of the same provider that have a price in Flux's table
+(PROV-3); a run is reserved and charged at the chosen model's price, and a model with no table
+price, or whose largest request exceeds the per-request limit, cannot be chosen. A model of
+another provider needs its own connection and consent.
+
 The owner chooses which connection each use runs on (assistant in Flux,
 background rule). Configuring a connection enables neither use; each use keeps
 its own consent, cap and pause (O-008). Replacing or deleting a connection stops
