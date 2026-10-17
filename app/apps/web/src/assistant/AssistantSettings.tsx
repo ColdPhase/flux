@@ -6,7 +6,7 @@ import { ApiError } from '../api/client';
 import { useShellData } from '../app/data';
 import { createPersonalAgent } from '../agent-connection/api';
 import { listAgents } from '../work/api';
-import { Button, ErrorState, Icon, Spinner } from '../ui';
+import { Button, ErrorState, Icon, Kreska, Spinner } from '../ui';
 import { whenPageLive } from '../api/pageLeaving';
 import { listBackgroundConnections } from '../proactive-comparison/api';
 import { enableAssistant, getAssistantStatus, pauseAssistant, removeAssistant, resumeAssistant, selectAssistantAgent, updateAssistant } from './api';
@@ -190,55 +190,57 @@ function RuntimeDisclosure({ payer, client }: { payer: AgentRuntimePayer | null 
 
 function RuntimeSetup({ status, agents, workspaces, name, onEnabled, onAgent, onKeyWay }: SetupProps & { onKeyWay: () => void }) {
   const [chosen, setChosen] = useState<Record<string, string>>(() => Object.fromEntries(workspaces.map((space) => [space.id, agents.find((agent) => agent.workspaceId === space.id)?.id ?? ''])));
-  const [consent, setConsent] = useState(false);
+  const [more, setMore] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const picked = Object.entries(chosen).filter(([, agentId]) => agentId);
   const payer = status.setup.runtime?.payer ?? null;
-  async function submit(event: FormEvent) {
-    event.preventDefault();
-    if (!consent || !picked.length || busy) return;
+  const names = runtimeNames(status.setup.runtime?.client);
+  const company = status.setup.runtime?.client === 'codex' ? 'OpenAI' : 'Anthropic';
+  const first = name.trim().split(/\s+/)[0] || name;
+  // "Turn on" is the consent (F-027 Journey 1 step 4): no check box. A workspace without an assistant of yours gets one.
+  async function turnOn() {
+    if (busy) return;
     setBusy(true); setError('');
     try {
-      let next = await enableAssistant({ consentVersion: PERSONAL_RUNTIME_CONSENT_VERSION, agentId: picked[0]![1], engine: 'runtime', timeZone: browserTimeZone() });
-      for (const [, agentId] of picked.slice(1)) next = await selectAssistantAgent(agentId);
+      const picked: string[] = [];
+      for (const space of workspaces) {
+        let agentId = chosen[space.id] ?? '';
+        if (!agentId && !more) { const agent = await createPersonalAgent(space.id, `${first}’s assistant`); onAgent(agent); agentId = agent.id; }
+        if (agentId) picked.push(agentId);
+      }
+      if (!picked.length) { setError('Choose where your assistant works.'); return; }
+      let next = await enableAssistant({ consentVersion: PERSONAL_RUNTIME_CONSENT_VERSION, agentId: picked[0]!, engine: 'runtime', timeZone: browserTimeZone() });
+      for (const agentId of picked.slice(1)) next = await selectAssistantAgent(agentId);
       onEnabled(next);
     } catch (cause) {
-      setError(cause instanceof ApiError && cause.code === 'PERSONAL_RUN_RUNTIME_SIGN_IN' ? `Sign in to ${runtimeNames(status.setup.runtime?.client).plan} again to keep using your assistant. Nothing was turned on.`
+      setError(cause instanceof ApiError && cause.code === 'PERSONAL_RUN_RUNTIME_SIGN_IN' ? `Sign in to ${names.plan} again to keep using your assistant. Nothing was turned on.`
         : cause instanceof ApiError && cause.code === 'PERSONAL_RUN_RUNTIME_OFF' ? 'This Flux doesn’t allow signing in with a subscription yet. Nothing was turned on.'
           : failure(cause, 'Couldn’t turn it on. Try again.'));
     } finally { setBusy(false); }
   }
   return (
-    <>
-      <section className="nset__sec" aria-labelledby="aset-state">
-        <h3 id="aset-state">Not set up</h3>
-        <p className="nset__lead">You’re signed in to Claude here{status.setup.runtime?.accountLabel ? ` as ${status.setup.runtime.accountLabel}` : ''}. Your assistant can use that plan. Nothing runs until you turn it on.</p>
-      </section>
-      <form className="nset__sec" aria-labelledby="aset-consent" onSubmit={(event) => void submit(event)}>
-        <h3 id="aset-consent">Before you turn it on</h3>
+    <section className="nset__sec aset-ready" aria-labelledby="aset-ready">
+      <h3 id="aset-ready" className="aset-ready__h"><Kreska size={36} />Your assistant is ready</h3>
+      <ul className="aset-ready__list">
+        <li>It can read and edit tasks, the Wiki and maps, reply in conversations and suggest decisions.</li>
+        <li>It does things and tells you what it did, with Undo. It asks before removing anything or changing things other people made or are responsible for.</li>
+        <li>It joins the projects you manage. In others, a manager adds it.</li>
+        <li>Others in the conversation see what you ask it and what it does.</li>
+      </ul>
+      <p className="nset__note">Uses your {names.plan} plan. Flux can&apos;t see its limits. What it reads goes to {company} under your account&apos;s settings.</p>
+      {more ? <div className="aset__agents">
         <RuntimeDisclosure payer={payer} client={status.setup.runtime?.client} />
-        <fieldset className="aset__fields" disabled={busy}>
-          <legend className="ui-vh">Assistant</legend>
-          <div className="aset__agents">
-            <p className="nset__label">Your assistant</p>
-            {workspaces.map((space) => <AgentPicker key={space.id} workspace={space} agents={agents} name={name} value={chosen[space.id] ?? ''} disabled={busy}
-              onAgent={onAgent} onChange={(agentId) => setChosen((current) => ({ ...current, [space.id]: agentId }))} />)}
-            <p className="nset__note">It reads a project only where it has been given access, and never more than you can.</p>
-          </div>
-          <label className="aset__consent">
-            <input type="checkbox" checked={consent} onChange={(event) => setConsent(event.target.checked)} />
-            <span>{status.setup.runtime?.client === 'codex' ? 'I agree that what my requests need from the project I ask in is sent to OpenAI through my own Codex, under my ChatGPT or OpenAI account’s settings.'
-              : 'I agree that what my requests need from the project I ask in is sent to Anthropic through my own Claude Code, under my Claude account’s settings.'}</span>
-          </label>
-        </fieldset>
-        {error ? <p className="nset__error" role="alert"><Icon name="alert" size={14} />{error}</p> : null}
-        <div className="aset__actions">
-          <Button type="submit" variant="primary" busy={busy} disabled={!consent || !picked.length}>Turn on my assistant</Button>
-          <Button variant="quiet" onClick={onKeyWay}>Use an API key instead</Button>
-        </div>
-      </form>
-    </>
+        {workspaces.map((space) => <AgentPicker key={space.id} workspace={space} agents={agents} name={name} value={chosen[space.id] ?? ''} disabled={busy}
+          onAgent={onAgent} onChange={(agentId) => setChosen((current) => ({ ...current, [space.id]: agentId }))} />)}
+        <p className="nset__note">Every switch can be changed after it is on.</p>
+      </div> : null}
+      {error ? <p className="nset__error" role="alert"><Icon name="alert" size={14} />{error}</p> : null}
+      <div className="aset__actions">
+        <Button variant="primary" busy={busy} onClick={() => void turnOn()}>Turn on</Button>
+        <Button variant="quiet" aria-expanded={more} onClick={() => setMore(!more)}>Change what it can do</Button>
+        <Button variant="quiet" onClick={onKeyWay}>Use an API key instead</Button>
+      </div>
+    </section>
   );
 }
 

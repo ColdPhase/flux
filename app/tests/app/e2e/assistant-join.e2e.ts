@@ -71,6 +71,9 @@ for (const [engine, mobile] of [['chromium', false], ['webkit', true]] as const)
       const viewerContext = await browser.newContext(options); contexts.push(viewerContext);
       const path = `/projects/${place.id}/agents`;
       const ownerPage = await signedIn(ownerContext, owner, '/settings/assistant');
+      // Project access sits under the folded More (#588).
+      const openMore = () => ownerPage.locator('details.aset__more > summary').click();
+      await openMore();
       const ownRequests = ownerPage.getByRole('region', { name: 'Assistant join requests' });
       const ask = ownRequests.getByRole('button', { name: 'Ask a manager to add my assistant', exact: true });
       await expect(ask).toBeVisible(); await theme(ownerPage, 'light'); await capture(ownerPage, `join-${engine}-owner-request-light`);
@@ -140,7 +143,8 @@ for (const [engine, mobile] of [['chromium', false], ['webkit', true]] as const)
       await expect(requests.getByRole('status')).toHaveText('Request allowed.');
       assert.equal((await pool.query('SELECT role FROM project_grants WHERE project_id=$1 AND agent_id=$2', [place.id,agent.id])).rows[0].role, 'contributor');
       assert.equal((await pool.query('SELECT state FROM assistant_join_requests WHERE id=$1', [pending[0]!.id])).rows[0].state, 'accepted');
-      await ownerPage.reload(); await expect(ownerPage.getByRole('button', { name: 'Ask a manager to add my assistant', exact: true })).toHaveCount(0);
+      await ownerPage.reload(); await openMore();
+      await expect(ownerPage.getByRole('region', { name: 'Assistant join requests' }).getByRole('button', { name: 'Ask a manager to add my assistant', exact: true })).toHaveCount(0);
       await expect(ownerPage.getByRole('region', { name: 'Your assistant’s project access' })).toContainText('Your assistant has access to this project.');
       await ownerPage.goto(`${origin}${path}`);
       await expect(ownerPage.locator('.agents-list')).toHaveCount(0);

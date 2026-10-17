@@ -37,3 +37,17 @@ export function MeetAssistantCard({ userId }: { userId: string }) {
     </section>
   );
 }
+
+// Three suggestions for this place, shown only where the assistant is a member, until it has been used three times (Journey 1 step 5).
+const usesKey = (userId: string) => `flux.assistant-uses.${userId}`;
+export const assistantUses = (userId: string) => { try { return Number(localStorage.getItem(usesKey(userId))) || 0; } catch { return 0; } };
+export const noteAssistantUse = (userId: string) => { try { localStorage.setItem(usesKey(userId), String(assistantUses(userId) + 1)); } catch { /* shown again */ } };
+const SUGGESTIONS = ['Catch me up', 'Turn this thread into tasks', 'Tidy this project\'s tasks'];
+
+export function AssistantSuggestions({ onPick }: { onPick: (text: string) => void }) {
+  return (
+    <div className="assistant-suggestions" role="group" aria-label="Suggestions for your assistant">
+      {SUGGESTIONS.map((text) => <button key={text} type="button" className="assistant-suggestions__chip" onClick={() => onPick(text)}>{text}</button>)}
+    </div>
+  );
+}

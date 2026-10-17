@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
 
@@ -81,6 +81,13 @@ export function assistantChangeRows(db: DbExecutor) {
       const r = schema.personalRuns;
       const rows = await db.select({ change: c, conversationId: r.conversationId }).from(c).innerJoin(r, eq(r.id, c.runId))
         .where(and(eq(c.ownerUserId, ownerUserId), eq(r.conversationId, conversationId))).orderBy(asc(c.createdAt), asc(c.id)).limit(500);
+      return rows.map((row) => ({ ...row.change, conversationId: row.conversationId }));
+    },
+    /** The owner's latest changes across conversations, newest first (the assistant screen's Recent). */
+    async recent(ownerUserId: string, limit: number): Promise<(AssistantChangeRow & { conversationId: string })[]> {
+      const r = schema.personalRuns;
+      const rows = await db.select({ change: c, conversationId: r.conversationId }).from(c).innerJoin(r, eq(r.id, c.runId))
+        .where(eq(c.ownerUserId, ownerUserId)).orderBy(desc(c.createdAt), desc(c.id)).limit(limit);
       return rows.map((row) => ({ ...row.change, conversationId: row.conversationId }));
     },
     async conversationOf(runId: string): Promise<string | null> {

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { assistantBatchVerb, assistantChangeSummary, assistantMessageHeader, type AssistantChange } from '@flux/contracts';
-import { ApiError } from '../api/client';
+import { ApiError, NetworkError } from '../api/client';
 import { Button } from '../ui';
 import { applyChange, applyRunChanges, listConversationChanges, moveRunChangesToInbox, notNowRunChanges, sendChange, undoChange, undoRunChanges } from './api';
 
@@ -42,7 +42,8 @@ export function useAssistantChanges(conversationId: string | null, refreshKey: u
   return { byRun, refresh };
 }
 
-const failure = (error: unknown) => error instanceof ApiError && error.message ? error.message : 'Couldn’t reach Flux. Try again.';
+// Stop, Undo and Close never fail silently offline: they say "Offline" (AST-10.15).
+export const failure = (error: unknown) => error instanceof NetworkError ? 'Offline' : error instanceof ApiError && error.message ? error.message : 'Couldn’t reach Flux. Try again.';
 
 const OBJECT_WORD: Record<string, string> = { work: 'Task', doc: 'Page', map: 'Map', thought: 'Thought', link: 'Link', message: 'Message', result: 'Result', decision: 'Decision' };
 

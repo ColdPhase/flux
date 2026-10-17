@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import type { PgBoss } from 'pg-boss';
 import {
   ASSISTANT_CHANGE_LIMITS, ASSISTANT_LIMITS, assistantChangeActionPath, assistantChangeWords, assistantRunChangesActionPath, assistantRunChangesPath,
-  conversationAssistantChangesPath, type AssistantChange, type AssistantChangeDecision, type AssistantRunUndone,
+  ASSISTANT_CHANGES_PATH, conversationAssistantChangesPath, type AssistantChange, type AssistantChangeDecision, type AssistantRunUndone,
 } from '@flux/contracts';
 import { assistantChangeRows, type AssistantChangeRow, type DbExecutor } from '@flux/db';
 import { assistantChangeLine, ConflictError, undoSentence, type UndoRecord, createNotification, DomainError, evaluateProject, isUuid, NotFoundError, type Database,
@@ -168,6 +168,13 @@ export function assistantChangeUseCases(db: Database, boss?: Pick<PgBoss, 'send'
       const list = await rows().forConversation(userId, conversationId);
       return { items: await view(list, new Map(list.map((row) => [row.runId, row.conversationId]))) };
     },
+    /** The signed-in owner's own latest changes across conversations; nobody can ask for another person's. */
+    async recent(principal: Principal, limit: number): Promise<{ items: AssistantChange[] }> {
+      const userId = owner(principal);
+      await rows().expire(clock(), userId);
+      const list = await rows().recent(userId, Math.min(Math.max(limit, 1), 50));
+      return { items: await view(list, new Map(list.map((row) => [row.runId, row.conversationId]))) };
+    },
     async forRun(principal: Principal, runId: string): Promise<{ items: AssistantChange[] }> {
       await rows().expire(clock(), owner(principal));
       const list = await ownRun(principal, runId);
@@ -286,6 +293,8 @@ export function registerAssistantChangeRoutes(app: FastifyInstance, db: Database
   const noStore = { 'cache-control': 'no-store' };
   app.get<{ Params: { conversationId: string } }>(conversationAssistantChangesPath(':conversationId'), async (request, reply) =>
     reply.headers(noStore).send(await changes.forConversation(await who(request), request.params.conversationId)));
+  app.get<{ Querystring: { limit?: string } }>(ASSISTANT_CHANGES_PATH, async (request, reply) =>
+    reply.headers(noStore).send(await changes.recent(await who(request), Number.parseInt(request.query.limit ?? '10', 10) || 10)));
   app.get<{ Params: { runId: string } }>(assistantRunChangesPath(':runId'), async (request, reply) =>
     reply.headers(noStore).send(await changes.forRun(await who(request), request.params.runId)));
   app.post<{ Params: { runId: string } }>(assistantRunChangesActionPath(':runId', 'apply'), async (request) => changes.applyAll(await who(request), request.params.runId));

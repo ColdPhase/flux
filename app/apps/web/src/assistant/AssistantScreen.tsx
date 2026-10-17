@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { Link } from 'react-router';
-import { ASSISTANT_AREAS, aiConnectionLabel, assistantCanSentence, assistantSettingsPath, type AssistantAreaId, type AssistantSettings, type PersonalAssistantStatus, type UpdateAssistantSettings } from '@flux/contracts';
+import { ASSISTANT_AREAS, type AssistantChange, aiConnectionLabel, assistantCanSentence, assistantSettingsPath, type AssistantAreaId, type AssistantSettings, type PersonalAssistantStatus, type UpdateAssistantSettings } from '@flux/contracts';
 import { ApiError, request } from '../api/client';
 import { SwitchRow } from '../app/SettingsHome';
-import { AgentTag, Icon, Kreska, agentHue } from '../ui';
+import { AgentTag, Button, Icon, Kreska, agentHue } from '../ui';
 import { runtimeNames } from './format';
+import { failure } from './WaitingChanges';
+import { listRecentChanges, undoChange } from './api';
 
 // The assistant screen (F-027 AST-10, A7): a header with the one switch that stops everything, the account row
 // (who pays), "When it changes something", and the five switches. Every control saves as it is touched and
@@ -104,6 +106,38 @@ export function AssistantControls({ status, userId }: { status: PersonalAssistan
       </section>
       <p className="nset__note aset-screen__can" data-testid="assistant-can">{assistantCanSentence(settings.areas, settings.approvalMode)}</p>
       {error ? <p className="nset__error" role="alert"><Icon name="alert" size={14} />{error}</p> : null}
+      <RecentChanges />
     </>
+  );
+}
+
+const MADE = new Set<AssistantChange['state']>(['applied', 'applied_after_wait', 'undone']);
+const sameDay = (iso: string) => new Date(iso).toDateString() === new Date().toDateString();
+
+/** Recent (AST-10.7): everything the assistant changed, newest first, each with its own Undo. */
+function RecentChanges() {
+  const [items, setItems] = useState<AssistantChange[] | null>(null);
+  const [notes, setNotes] = useState<Record<string, string>>({});
+  const [busy, setBusy] = useState('');
+  const load = () => listRecentChanges().then((page) => setItems(page.items.filter((change) => MADE.has(change.state))), () => setItems([]));
+  useEffect(() => { void load(); }, []);
+  if (!items) return null;
+  const today = items.filter((change) => sameDay(change.createdAt)).length;
+  const undo = async (change: AssistantChange) => {
+    setBusy(change.id);
+    try { const result = await undoChange(change); setNotes((current) => ({ ...current, [change.id]: result.message ?? '' })); await load(); }
+    catch (cause) { setNotes((current) => ({ ...current, [change.id]: failure(cause) })); }
+    finally { setBusy(''); }
+  };
+  return (
+    <details className="aset-recent">
+      <summary>Recent · today: {today} {today === 1 ? 'change' : 'changes'}</summary>
+      {items.length ? <ul className="aset-recent__list">{items.map((change) => (
+        <li key={change.id}>
+          <span className="aset-recent__t">{change.state === 'undone' ? 'Undone' : 'Done'}: {change.phrase}{change.objectTitle ? ` ${change.objectTitle}` : ''}</span>
+          {notes[change.id] ? <span className="aset-recent__n" role="status">{notes[change.id]}</span> : null}
+          {change.undoable ? <Button variant="link" busy={busy === change.id} onClick={() => void undo(change)}>Undo</Button> : null}
+        </li>))}</ul> : <p className="nset__note">Nothing yet.</p>}
+    </details>
   );
 }

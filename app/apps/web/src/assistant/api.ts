@@ -2,7 +2,7 @@ import {
   ASSISTANT_RUNS_PATH, PERSONAL_ASSISTANT_AGENTS_PATH, PERSONAL_ASSISTANT_PATH, PERSONAL_ASSISTANT_PAUSE_PATH, PERSONAL_ASSISTANT_RESUME_PATH,
   assistantProposalAcceptPath, assistantProposalDismissPath, assistantRunPath, assistantRunRetryPath, assistantRunStopPath,
   conversationAssistantAnswersPath, conversationAssistantRunsPath, projectAssistantProposalsPath,
-  assistantChangeActionPath, assistantRunChangesActionPath, conversationAssistantChangesPath,
+  ASSISTANT_CHANGES_PATH, assistantChangeActionPath, assistantRunChangesActionPath, conversationAssistantChangesPath,
   type AssistantChange, type AssistantChangeDecision, type AssistantChangesDecided, type AssistantRunUndone,
   type AssistantAnswer, type AssistantProposal, type AssistantRun, type EnablePersonalRunsCommand, type InvokeAssistantRunCommand,
   type Page, type PersonalAssistantStatus, type UpdatePersonalRunsCommand,
@@ -39,6 +39,7 @@ export const dismissProposal = (proposal: AssistantProposal) =>
 // Waiting changes (F-027 A3): only their owner sees or decides them.
 export const listConversationChanges = (conversationId: string, signal?: AbortSignal) =>
   request<{ items: AssistantChange[] }>(conversationAssistantChangesPath(conversationId), { signal });
+export const listRecentChanges = (signal?: AbortSignal) => request<{ items: AssistantChange[] }>(`${ASSISTANT_CHANGES_PATH}?limit=20`, { signal });
 export const applyChange = (change: Pick<AssistantChange, 'id' | 'version'>) =>
   request<AssistantChangeDecision>(assistantChangeActionPath(change.id, 'apply'), { method: 'POST', body: { expectedVersion: change.version } });
 export const notNowChange = (change: Pick<AssistantChange, 'id' | 'version'>) =>
