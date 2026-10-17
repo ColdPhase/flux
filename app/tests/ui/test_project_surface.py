@@ -931,8 +931,10 @@ class ProjectSurfaceJourney(unittest.TestCase):
                 page.wait_for_function("window.observedDraftWrites >= 2")
                 if unmounted:
                     self.tasks(page)
-                while not held:  # the held create answers on the route handler's own turn
+                deadline = time.monotonic() + 10  # the held create answers on the route handler's own turn
+                while not held and time.monotonic() < deadline:
                     page.wait_for_timeout(25)
+                self.assertTrue(held, "held create request never reached the route")
                 self.assertEqual(len(held), 1)
                 route, response = held[0]
                 with page.expect_request_finished(lambda request: request.method == "POST" and request.url.endswith("/work")):
