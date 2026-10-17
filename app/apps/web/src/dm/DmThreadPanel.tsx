@@ -5,8 +5,7 @@ import { dmReceipts, getDmThread, observeDmMessages, olderDmReplies } from '../a
 import { ComposerBox } from '../composer/ComposerBox';
 import { outboxView, useComposerDraft, useComposerScope } from '../composer/draft';
 import { SendAnnouncer } from '../composer/Outbox';
-import { Button, Icon, MEDIA, sendsOnEnter, useMediaQuery } from '../ui';
-import { ThreadDrawer, type ThreadMode } from '../app/ThreadDrawer';
+import { Button, Icon, MEDIA, PanelMeta, sendsOnEnter, useMediaQuery } from '../ui';
 import '../app/one-conversation.css';
 import { DmBubble } from './DmBubble';
 import { groupRows } from './rows';
@@ -19,15 +18,15 @@ function merge(current: DmMessage[], incoming: DmMessage[]) {
 }
 
 /**
- * The private replies to one message (#536): docked beside the conversation on a wide screen, a sheet over it on a
- * phone. Its audience is the conversation's current participants and nothing else; every read, send and refresh
+ * The private replies to one message (#536), in the one panel (F-026 S4) beside the conversation or as the phone's sheet.
+ * Its audience is the conversation's current participants and nothing else; every read, send and refresh
  * asks the server again. Esc and the close control give focus back to the message that opened it.
  */
-export function DmThreadPanel({ dmId, rootId, mode, meId, meName, nameOf, audience, writable, refreshTick, receiptTick, focusComposer, focusOnOpen, canObserve,
-  onClose, onDenied, onCreateTask, onCount }: {
-  dmId: string; rootId: string; mode: ThreadMode; meId: string; meName: string; nameOf: (id: string) => string; audience: string; writable: boolean;
-  refreshTick: number; receiptTick: number; focusComposer: boolean; focusOnOpen: boolean; canObserve: boolean;
-  onClose: () => void; onDenied: (cause: unknown) => void; onCreateTask: (message: DmMessage, excerpt: string | undefined) => void;
+export function DmThreadPanel({ dmId, rootId, meId, meName, nameOf, audience, writable, refreshTick, receiptTick, focusComposer, canObserve,
+  onDenied, onCreateTask, onCount }: {
+  dmId: string; rootId: string; meId: string; meName: string; nameOf: (id: string) => string; audience: string; writable: boolean;
+  refreshTick: number; receiptTick: number; focusComposer: boolean; canObserve: boolean;
+  onDenied: (cause: unknown) => void; onCreateTask: (message: DmMessage, excerpt: string | undefined) => void;
   onCount: (rootId: string, replies: number) => void;
 }) {
   const touch = useMediaQuery(MEDIA.touch);
@@ -110,7 +109,8 @@ export function DmThreadPanel({ dmId, rootId, mode, meId, meName, nameOf, audien
   const count = root?.replyCount ?? shown.length;
 
   return (
-    <ThreadDrawer mode={mode} count={count} focusOnOpen={focusOnOpen} onClose={onClose} title={undefined}>
+    <div className="thread" id="thread">
+      <PanelMeta>{count} {count === 1 ? 'reply' : 'replies'}</PanelMeta>
       <div className="thread__pane dm-thread" data-dm-thread={rootId}>
         <div className="thread__feed" ref={feed}>
           <div className="thread__in dm__in">
@@ -152,7 +152,7 @@ export function DmThreadPanel({ dmId, rootId, mode, meId, meName, nameOf, audien
           </div>
         </div>
       </div>
-    </ThreadDrawer>
+    </div>
   );
 }
 

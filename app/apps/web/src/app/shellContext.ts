@@ -45,8 +45,42 @@ export interface PromoteSketchView { kind: 'promote-sketch'; sketchId: string; t
 /** "What matters" (#133): the private recap of one project. */
 export interface RecapView { kind: 'recap'; projectId: string }
 
+/**
+ * A thought's linked tasks (#170) in the one panel, in place of the phone's own sheet: each task replaces this content
+ * with its own details, and "back" returns here.
+ */
+export interface ThoughtTasksView {
+  kind: 'thought-tasks';
+  projectId: string;
+  thought: { id: string; text: string };
+  entry: import('../sketch/ThoughtTasks').ThoughtTasksEntry;
+}
+
+/** The content of the panel when the current view owns it (a thread, an agent): the view renders it into the panel's slot. */
+export interface OwnedView { kind: 'owned' }
+export const isOwned = (view: DetailsView): view is OwnedView => typeof view === 'object' && view.kind === 'owned';
+
 /** What the Details panel shows: the current place, a project object or form, or how to connect a personal AI (#57). */
-export type DetailsView = 'place' | 'connect-ai' | ObjectView | WorkFormView | AddToDocView | OverviewView | PromoteSketchView | RecapView | PeopleView;
+export type DetailsView = 'place' | 'connect-ai' | ObjectView | WorkFormView | AddToDocView | OverviewView | PromoteSketchView | RecapView | PeopleView | ThoughtTasksView | OwnedView;
+
+/**
+ * A panel a route's own view owns (F-026 S4, #488): a conversation thread, a direct-message thread, an agent or a task's
+ * thread. It is the same one panel as a task's: the view registers it, the shell shows its head and close, and the view
+ * renders the content into the panel's slot (`useOwnedPanel`), so its state and drafts stay where they were.
+ */
+export interface OwnedPanel {
+  /** Identity: another key replaces the content, the same key keeps it. */
+  key: string;
+  /** The kind in the head ("Thread", "Agent") and the surface's name ("Replies", "Agent"). */
+  chip: string;
+  label: string;
+  /** "‹ Task #1": a way back to where the person came from; the label is its name. */
+  back?: { label: string; run: () => void };
+  /** Esc and the close control: the view updates its address and stops registering the panel. `keepPanel`: the panel stays for what replaces it. */
+  onClose: (options?: { keepPanel?: boolean }) => void;
+  /** On a phone it opens at full height (a thread); the height then stays while the content changes. */
+  startFull?: boolean;
+}
 
 /** What the one Create window opens with (F-026 S3): everything is optional; the person completes the rest. */
 export interface CreateRequest {
@@ -62,7 +96,13 @@ export interface CreateRequest {
 }
 
 export interface ShellActions {
-  openDetails(view?: DetailsView): void;
+  /**
+   * Opens an object or place in the one panel. `back: 'push'`, from content inside the panel, replaces the object shown
+   * and leaves "‹ back" to it; `'keep'` is the way back itself; otherwise it starts afresh.
+   */
+  openDetails(view?: DetailsView, options?: { back?: 'push' | 'keep' }): void;
+  /** The open object names itself for the way back from the next one ("Task #2"). */
+  labelPanel(label: string | null): void;
   /** Opens the Create window on the computer, or the Create sheet on the phone (#345): the one way to create. */
   openCreate(request?: CreateRequest): void;
   /** Opens Jump to… (⌘K), the search across everything the person may open (#114). */
@@ -81,9 +121,17 @@ export interface ShellActions {
   toggleSidebar(): void;
   /** True while the computer sidebar is on its rail, by choice or by focus mode. */
   sidebarHidden: boolean;
+  /** Shows a view-owned panel (a thread, an agent) in the one panel; see `OwnedPanel` and `useOwnedPanel`. */
+  showPanel(panel: OwnedPanel): void;
+  /** The view stopped owning that panel: it closes unless the panel already shows something else. */
+  hidePanel(key: string): void;
+  /** The element inside the panel the owner renders into, while the panel shows the owned view. */
+  panelSlot: HTMLElement | null;
+  /** The key of the view-owned panel the panel shows now, or null. */
+  panelKey: string | null;
 }
 
-export const ShellContext = createContext<ShellActions>({ openDetails: () => undefined, openCreate: () => undefined, openSearch: () => undefined, openNavigation: () => undefined, actionSlot: null, metadataSlot: null, toggleFocus: () => undefined, toggleSidebar: () => undefined, sidebarHidden: false });
+export const ShellContext = createContext<ShellActions>({ openDetails: () => undefined, labelPanel: () => undefined, openCreate: () => undefined, openSearch: () => undefined, openNavigation: () => undefined, actionSlot: null, metadataSlot: null, toggleFocus: () => undefined, toggleSidebar: () => undefined, sidebarHidden: false, showPanel: () => undefined, hidePanel: () => undefined, panelSlot: null, panelKey: null });
 
 export function useShellActions(): ShellActions {
   return useContext(ShellContext);

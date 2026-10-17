@@ -10,7 +10,8 @@ import { WhatMatters } from '../returns/WhatMatters';
 import { useProjectShell } from '../project/data';
 import { WorkspacePeople } from '../people/WorkspacePeople';
 import { useShellData, type WorkspaceSummary } from './data';
-import { useShellActions, type DetailsView } from './shellContext';
+import { useShellActions, type DetailsView, type OwnedView } from './shellContext';
+import { ThoughtTasksPanel } from '../sketch/ThoughtTasks';
 
 /**
  * Details for the current place. With nothing selected it says so briefly; the context of a
@@ -18,7 +19,7 @@ import { useShellActions, type DetailsView } from './shellContext';
  * session details live in the account menu.
  */
 export function Details({ view, workspace, placeTitle, dm = null, onBack, onClose }: {
-  view: DetailsView;
+  view: Exclude<DetailsView, OwnedView>;
   workspace: WorkspaceSummary | null;
   placeTitle: string;
   /** The open direct message (#107): its other people and audience line. */
@@ -33,6 +34,7 @@ export function Details({ view, workspace, placeTitle, dm = null, onBack, onClos
   if (typeof view === 'object' && view.kind === 'promote-sketch') return <PromoteSketch key={view.sketchId} view={view} dmTitle={dm?.title ?? null} onBack={onBack} />;
   if (typeof view === 'object' && view.kind === 'overview') return <ProjectOverview key={view.messageId ?? 'all'} messageId={view.messageId} selection={view.selection} focusPeople={view.focus === 'people' ? view : null} onBack={onBack} />;
   if (typeof view === 'object' && view.kind === 'people') return <WorkspacePeople key={view.workspaceId} workspaceId={view.workspaceId} onBack={onBack} />;
+  if (typeof view === 'object' && view.kind === 'thought-tasks') return <ThoughtTasksPanel key={view.thought.id} view={view} />;
   if (typeof view === 'object') return <WorkDetails view={view} />;
   // A project's Details start with its overview (#117).
   if (inProject) return <ProjectOverview onBack={onBack} />;
