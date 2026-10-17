@@ -1,6 +1,6 @@
 import { Navigate, Outlet, createBrowserRouter, useMatches, useRouteLoaderData, type RouteObject } from 'react-router';
-import { useState } from 'react';
-import { ToastProvider } from './ui';
+import { useEffect, useState } from 'react';
+import { ToastProvider, markMotionReady } from './ui';
 import { UpdatePrompt } from './pwa';
 import { AppLayout } from './app/AppLayout';
 import { appLoader, type ShellData } from './app/data';
@@ -62,6 +62,11 @@ function Root() {
   const shell = useRouteLoaderData('app') as ShellData | undefined;
   const inApp = useMatches().some((match) => match.id === 'app');
   const [session, setSession] = useState<string | null>(null);
+  // Nothing moves while the first screen is put up (#593 AC-6): motion starts after it has committed and painted.
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => markMotionReady());
+    return () => cancelAnimationFrame(frame);
+  }, []);
   const observed = shell ? JSON.stringify([shell.me.user.id, shell.me.session.id]) : null;
   if (observed && observed !== session) setSession(observed);
   // A failed/offline loader is not proof of sign-out. Keep its last known scope

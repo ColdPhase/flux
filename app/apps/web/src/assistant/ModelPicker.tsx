@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
 import { ASSISTANT_PLAN_DEFAULT, assistantModelName, type AssistantModelOption } from '@flux/contracts';
-import { Icon } from '../ui';
+import { Icon, usePop } from '../ui';
 import { chooseAssistantModel, useAssistantModel } from './model';
 
 // The assistant's model control (F-027 AST-11): one button that names the model and opens the same short list on the
@@ -23,6 +23,7 @@ export function ModelPicker({ options, value, onSelect, variant, placement = 'do
   const root = useRef<HTMLSpanElement>(null);
   const button = useRef<HTMLButtonElement>(null);
   const menuId = useId();
+  const pop = usePop(open, { from: placement === 'up' ? 'above' : 'below' });
   const current = options.find((option) => option.id === value) ?? null;
   const name = current?.name ?? value;
 
@@ -57,8 +58,8 @@ export function ModelPicker({ options, value, onSelect, variant, placement = 'do
         <span className="aset-model__name" aria-hidden="true">{variant === 'action' ? 'Choose another model' : name}</span>
         <Icon name="chevron-down" size={12} />
       </button>
-      {open ? (
-        <div id={menuId} role="menu" aria-label="Model" className={`aset-model__menu aset-model__menu--${placement}`} onKeyDown={move}>
+      {pop.mounted ? (
+        <div {...pop.props} id={menuId} role="menu" aria-label="Model" className={`aset-model__menu aset-model__menu--${placement}`} onKeyDown={move}>
           {options.map((option) => (
             <button key={option.id} type="button" role="menuitemradio" aria-checked={option.id === value} className="aset-model__item" data-model={option.id}
               tabIndex={option.id === value ? 0 : -1} onClick={() => { close(true); if (option.id !== value) onSelect(option.id); }}>

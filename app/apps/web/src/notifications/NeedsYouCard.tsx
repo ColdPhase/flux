@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, type KeyboardEvent, type ReactNode, type RefObject } from 'react';
 import type { NeedsYouItem } from '@flux/contracts';
-import { AgentTag, Avatar, Button, Icon, Kreska, MEDIA, StatusGlyph, useMediaQuery, type IconName } from '../ui';
+import { AgentTag, Avatar, Button, Icon, Kreska, MEDIA, StatusGlyph, useMediaQuery, usePop, type IconName } from '../ui';
 import { ago, when } from './format';
 
 /** How an item can be put off: tomorrow morning, next week, until its task is done, or for good. */
@@ -22,8 +22,10 @@ export const KIND_WORD = { decision: 'Decision', question: 'Question', blocked: 
 const NOTE_ICON: Record<'question' | 'mention', IconName> = { question: 'chat', mention: 'people' };
 
 /** "Not now" asks when it should return (F-026 S11): the menu, `1` `2` `3` and Esc. */
-export function NotNowMenu({ item, onChoose, onClose, anchors }: {
+export function NotNowMenu({ item, onChoose, onClose, anchors, popProps }: {
   item: NeedsYouItem; onChoose: (choice: SnoozeChoice) => void; onClose: () => void; anchors: RefObject<HTMLElement | null>[];
+  /** The menu's enter and exit (usePop), when its owner keeps it mounted for the exit. */
+  popProps?: ReturnType<typeof usePop>['props'];
 }) {
   const menu = useRef<HTMLDivElement>(null);
   const task = item.snoozeTask;
@@ -57,7 +59,7 @@ export function NotNowMenu({ item, onChoose, onClose, anchors }: {
     else if (/^[1-3]$/.test(event.key) && choices[Number(event.key) - 1]) { event.preventDefault(); event.stopPropagation(); onChoose(choices[Number(event.key) - 1]!.id); }
   };
   return (
-    <div ref={menu} className="nym" role="menu" aria-label="Ask me again" onKeyDown={onKeyDown}>
+    <div {...popProps} ref={menu} className="nym" role="menu" aria-label="Ask me again" onKeyDown={onKeyDown}>
       <span className="nym__h">Ask me again</span>
       {choices.map((choice, index) => (
         <button key={choice.id} type="button" role="menuitem" className="nym__item" onClick={() => onChoose(choice.id)}>
@@ -118,6 +120,7 @@ export function NeedsYouCard({ item, variant = 'card', selected = false, handler
   const notNow = useRef<HTMLButtonElement>(null);
   const trayNotNow = useRef<HTMLButtonElement>(null);
   const anchors = useMemo(() => [notNow, trayNotNow], []);
+  const pop = usePop(menuOpen);
   const decision = item.kind === 'decision';
   const project = item.project?.name ?? null;
   const identity = item.assistantRequestIdentity;
@@ -199,7 +202,7 @@ export function NeedsYouCard({ item, variant = 'card', selected = false, handler
           </div>
         ) : null}
       </div>
-      {menuOpen ? <NotNowMenu item={item} anchors={anchors} onChoose={(choice) => { onMenuOpen(false); handlers.snooze(item, choice); }} onClose={() => onMenuOpen(false)} /> : null}
+      {pop.mounted ? <NotNowMenu item={item} anchors={anchors} popProps={pop.props} onChoose={(choice) => { onMenuOpen(false); handlers.snooze(item, choice); }} onClose={() => onMenuOpen(false)} /> : null}
     </li>
   );
 }

@@ -49,3 +49,22 @@ export function cssTimeToMs(value: string): number {
   const amount = Number(match[1]) * (match[2]!.toLowerCase() === 's' ? 1000 : 1);
   return Number.isFinite(amount) && amount > 0 ? amount : 0;
 }
+
+/**
+ * What the content area is showing, for deciding whether a navigation switched it (#593 AC-3). A project view, a
+ * top-level place and a Settings section are each one view; opening a thread beside the conversation, a page inside
+ * the Wiki, a sketch inside the Map or a message's link inside the Inbox stays in the view it is in. Search and hash
+ * never matter. Another project's view is a different view.
+ */
+export function routeView(pathname: string): string {
+  const path = pathname.replace(/\/+$/, '') || '/';
+  const project = /^\/projects\/([^/]+)(?:\/(tasks|map|docs|agents|github|live))?(?:\/|$)/.exec(path);
+  if (project && path !== '/projects/new') return `/projects/${project[1]}/${project[2] ?? 'conversation'}`;
+  const dm = /^\/dm\/(?!new$)([^/]+)(\/sketches)?(?:\/|$)/.exec(path);
+  if (dm) return `/dm/${dm[1]}${dm[2] ?? ''}`;
+  const material = /^\/materials\/([^/]+)/.exec(path);
+  if (material) return `/materials/${material[1]}`;
+  const place = /^\/(tasks|map|docs|search|inbox|dm|projects)(?:\/|$)/.exec(path);
+  if (place && !path.startsWith('/dm/new') && !path.startsWith('/projects/new')) return `/${place[1]}`;
+  return path;
+}

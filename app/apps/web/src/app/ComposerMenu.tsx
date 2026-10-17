@@ -62,7 +62,7 @@ export function composerOptions(trigger: ComposerTrigger, { people, meId, inThre
 /** The menu above the composer's box. `active` is the option the keys act on. */
 export function ComposerMenu({ id, options, active, onPick, onHover, trigger }: { id: string; options: ComposerOption[]; active: number; onPick: (option: ComposerOption) => void; onHover: (index: number) => void; trigger: ComposerTrigger['char'] }) {
   return (
-    <div className="cmenu" id={id} role="listbox" aria-label={trigger === '@' ? 'Mention' : 'Actions'}
+    <div className="cmenu" data-pop="open" data-pop-from="above" id={id} role="listbox" aria-label={trigger === '@' ? 'Mention' : 'Actions'}
       // The field keeps focus: choosing never moves it, so the press must not blur the field.
       onMouseDown={(event) => event.preventDefault()}>
       <div className="cmenu__h" aria-hidden="true">{trigger === '@' ? 'Mention' : 'Actions'}</div>

@@ -4,7 +4,7 @@ import type { Workspace, WorkspaceMember, WorkspaceRole } from '@flux/contracts'
 import { ApiError } from '../api/client';
 import { whenPageLive } from '../api/pageLeaving';
 import { useShellData } from '../app/data';
-import { Avatar, Button, Icon, Input, Spinner, useToast } from '../ui';
+import { Avatar, Button, Icon, Input, Spinner, useRowMotion, useToast } from '../ui';
 import { ROLE_HINT, ROLE_LABEL, addMember, attemptKeys, changeRole, firstName, getWorkspace, isManagerRole, listMembers, problemText, removeMember } from './api';
 import './people.css';
 
@@ -64,6 +64,9 @@ export function WorkspacePeople({ workspaceId, onBack }: { workspaceId: string; 
     revalidator.revalidate();
   };
 
+  // People who join or leave grow in and collapse where they stood (#593 AC-4).
+  const listRef = useRef<HTMLUListElement>(null);
+  useRowMotion(listRef, '.people__item[data-row-key]', (el) => el.dataset.rowKey, `${workspaceId}|${roster ? 'ready' : 'loading'}`);
   const back = <button type="button" className="details__back" aria-label="Back to Details" onClick={onBack}><Icon name="chevron-left" size={14} />Details</button>;
   if (!roster) {
     return (
@@ -95,7 +98,7 @@ export function WorkspacePeople({ workspaceId, onBack }: { workspaceId: string; 
       <section className="details__sec" aria-labelledby="people-here">
         <h4 id="people-here" ref={rosterRef} tabIndex={-1}>{ordered ? `In ${workspace.name} · ${ordered.length}` : `You in ${workspace.name}`}</h4>
         {ordered ? (
-          <ul className="people__list" aria-label={`People in ${workspace.name}`}>
+          <ul className="people__list" ref={listRef} aria-label={`People in ${workspace.name}`}>
             {ordered.map((member) => (
               <MemberRow key={member.userId} member={member} self={member.userId === me.user.id} workspace={workspace} myRole={myRole}
                 editable={manager && (member.role !== 'owner' || myRole === 'owner')}
@@ -179,7 +182,7 @@ function MemberRow({ member, self, workspace, myRole, editable, editing, onEdit,
   const changeRef = useRef<HTMLButtonElement>(null);
   const close = () => { onEdit(false); changeRef.current?.focus(); };
   return (
-    <li className={`people__item${editing ? ' is-editing' : ''}`}>
+    <li className={`people__item${editing ? ' is-editing' : ''}`} data-row-key={member.userId}>
       <div className="people__row">
         <Avatar name={member.name} size="md" tone={self ? 'me' : 'neutral'} />
         <span className="people__who"><b>{member.name}{self ? ' (you)' : ''}</b><span>{member.email}</span></span>

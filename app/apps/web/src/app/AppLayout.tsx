@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import type { ProjectPerson } from '@flux/contracts';
-import { Outlet, useLocation, useMatches, useNavigate, useParams, useRevalidator } from 'react-router';
+import { Outlet, useLocation, useMatches, useNavigate, useNavigationType, useParams, useRevalidator } from 'react-router';
 import { useStreamEvents } from '../api/stream';
-import { Drawer, IconButton, MEDIA, SidePanel, Tabs, duration, flip, play, useMediaQuery, useToast, useSidePanelMode } from '../ui';
+import { Drawer, IconButton, MEDIA, SidePanel, Tabs, duration, flip, play, setTravelDirection, useMediaQuery, useToast, useSidePanelMode } from '../ui';
+import { routeView } from '../ui/motion-rules';
 import { useShellData } from './data';
 import { registerServiceWorker, syncPushSubscription } from '../pwa';
 import { DeferredDetails, DeferredJumpTo, DeferredLiveStage } from './DeferredSurfaces';
@@ -106,7 +107,6 @@ function AppLayoutContent() {
   const [createOpen, setCreateOpen] = useState(false);
   const [create, setCreate] = useState<CreateRequest | null>(null);
   const paneRef = useRef<HTMLDivElement>(null);
-  const previousView = useRef(viewOrder(location.pathname));
   const drawerTitleId = useId();
 
   // One panel for a task, a decision, an agent and a thread (F-026 S4, Spokój rule 2): opening another object from it
@@ -369,19 +369,18 @@ function AppLayoutContent() {
     return () => { viewport.removeEventListener('resize', update); viewport.removeEventListener('scroll', update); app.style.removeProperty('--app-h'); app.style.removeProperty('--app-top'); };
   }, [touch]);
 
-  // A new view slides in from the side its tab sits on; a Settings page slides in from the right
-  // and back from the left, like a pushed page (#266 PF-4).
-  const previousPath = useRef(location.pathname);
+  // Switching a project view, a place or a Settings section crossfades the content area only (#593 AC-3): the
+  // header, the sidebar and the tab bar are not inside it and never move, and the fade is opacity alone, so nothing
+  // inside the new content (its composer, its toolbar) travels either (Spokój rule 7). Opening a thread beside the
+  // conversation or a page inside the Wiki is not a switch. The reading position is restored by its own owner and is
+  // never animated. Back and the browser's history set the direction of travel the detail panel's content follows.
+  const navigationType = useNavigationType();
+  const previousViewKey = useRef(routeView(location.pathname));
   useLayoutEffect(() => {
-    const index = viewOrder(location.pathname);
-    const settingsDepth = (path: string) => (path === '/settings' ? 1 : /^\/settings\/./.test(path) ? 2 : 0);
-    const from = settingsDepth(previousPath.current);
-    const to = settingsDepth(location.pathname);
-    previousPath.current = location.pathname;
-    const direction = from && to && from !== to ? Math.sign(to - from) : Math.sign(index - previousView.current);
-    const distance = from && to && from !== to ? 28 : 12;
-    previousView.current = index;
-    if (!direction) return;
+    const view = routeView(location.pathname);
+    if (view === previousViewKey.current) return;
+    previousViewKey.current = view;
+    setTravelDirection(navigationType === 'POP' ? 'back' : 'forward');
     const pane = paneRef.current;
     const refreshInert = () => {
       const root = document.getElementById('root');
@@ -389,7 +388,9 @@ function AppLayoutContent() {
     };
     pane?.getAnimations().forEach((animation) => animation.cancel());
     refreshInert();
-    void play(pane, [{ opacity: 0, transform: `translateX(${direction * distance}px)` }, { opacity: 1, transform: 'none' }], duration('--dur-2'), '--ease-out', { fill: 'backwards' }).then((animation) => { animation?.cancel(); refreshInert(); });
+    void play(pane, [{ opacity: 0 }, { opacity: 1 }], duration('--dur-view'), '--ease-out', { fill: 'backwards' }).then((animation) => { animation?.cancel(); refreshInert(); });
+    // The view is the pathname's; the navigation type only says how it was reached.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.pathname]);
 
   // In focus the rail shows no counts.
@@ -656,6 +657,7 @@ function AppLayoutContent() {
             <DeferredLiveStage />
           </div>
           <SidePanel open={detailsOpen} onClose={closePanel} title={recapOpen ? 'What matters' : ownedShown ? ownedShown.label : 'Details'} closeLabel={ownedShown?.closeLabel} chip={objectChip} id="details" back={back} startFull={ownedShown?.startFull}
+            contentKey={ownedShown ? `owned:${ownedShown.key}` : typeof detailsView === 'object' ? JSON.stringify(detailsView) : detailsView} depth={trail.length + (ownedShown?.back ? 1 : 0)}
             context={phone && (detailsView === 'place' || typeof detailsView === 'object' && detailsView.kind === 'overview') ? <OverviewContext message={typeof detailsView === 'object' && detailsView.kind === 'overview' && !!detailsView.messageId} /> : undefined}>
             {isOwned(detailsView) ? <div className="ui-panel__slot" ref={setPanelSlot} /> : <DeferredDetails view={detailsView} workspace={workspace} placeTitle={place.title} dm={activeDm ? { id: activeDm.id, kind: activeDm.kind, title: activeDm.title, me: me.user.name, people: activeDm.people, audience: activeDm.audience } : null} onBack={() => setDetailsView('place')} onClose={() => toggleDetails(false)} />}
           </SidePanel>

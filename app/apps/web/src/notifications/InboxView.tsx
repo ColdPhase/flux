@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
 import type { InboxItem, NeedsYouItem, NeedsYouKind } from '@flux/contracts';
 import { createPortal } from 'react-dom';
-import { Button, ErrorState, Icon, Kreska, MEDIA, Spinner, Tabs, useMediaQuery, type TabItem } from '../ui';
+import { Button, ErrorState, Icon, Kreska, MEDIA, Spinner, Tabs, useMediaQuery, useRowMotion, type TabItem } from '../ui';
 import { useShellActions } from '../app/shellContext';
 import { useSmallMoments } from '../app/smallMoments';
 import { useShellData } from '../app/data';
@@ -66,6 +66,9 @@ export function InboxView() {
   const [filter, setFilter] = useState<Filter>(() => FILTERS.find((entry) => `${entry.id}s` === asked.get('show') || entry.id === asked.get('show'))?.id ?? 'all');
   const [selected, setSelected] = useState<string | null>(null);
   const [menu, setMenu] = useState<string | null>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  // A decision accepted, a question answered or a task marked done collapses where it stood; the next one comes up (#593 AC-4).
+  useRowMotion(listRef, '.nyc[data-key]', (el) => el.dataset.key, `${filter}|${queue.items === null ? 'loading' : 'ready'}`);
 
   const all = useMemo(() => queue.items ?? [], [queue.items]);
   const reviewing = all.find((item) => item.assistantRequestIdentity && item.project?.id === asked.get('assistantProject')
@@ -93,7 +96,7 @@ export function InboxView() {
   const summary = queue.items === null ? '' : counts.all ? `${counts.all} need${counts.all === 1 ? 's' : ''} you · all projects` : 'all clear · all projects';
 
   return (
-    <div className="pane-scroll"><div className="pane-in nyq">
+    <div className="pane-scroll"><div className="pane-in nyq" ref={listRef}>
       {/* On the computer the summary and the filters sit in the header row, as drawn; on a phone they head the list. */}
       {(() => {
         // An empty Inbox is only Kreska, one sentence and the settings link (E06): nothing to filter yet. Snoozed items keep the summary, which says how many are for later.

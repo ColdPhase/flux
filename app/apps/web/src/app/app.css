@@ -11,7 +11,7 @@
 .auth { min-height: 100%; display: flex; flex-direction: column; background: var(--side); }
 .auth__top { display: flex; align-items: center; height: 60px; padding: 0 24px; padding-top: env(safe-area-inset-top); flex: none; }
 .auth__main { flex: 1; display: flex; justify-content: center; align-items: center; padding: 40px 16px 48px; outline: none; }
-.auth__col { width: 100%; max-width: 380px; display: flex; flex-direction: column; gap: 22px; animation: rise var(--dur-3) var(--ease-out) both; }
+.auth__col { width: 100%; max-width: 380px; display: flex; flex-direction: column; gap: 22px; }
 .auth__col--connection { max-width: 560px; }
 .auth .brand { align-self: flex-start; gap: 8px; margin: 0 0 0 -6px; }
 .auth .brand__name { font-size: 30px; }
@@ -80,7 +80,6 @@ body:has(.app) { background: var(--side); }
   font-size: var(--fs-base); font-weight: 500; white-space: nowrap; transition: var(--tr);
 }
 .side__new { flex: 1; justify-content: flex-start; }
-.side__new:active, .side__search:active { transform: scale(var(--press)); }
 .side__new kbd {
   margin-left: auto; display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 4px;
   border-radius: 5px; background: var(--sub); box-shadow: inset 0 -1px 0 var(--line2); font: 500 .6875rem/1 var(--mono); color: var(--t2);
@@ -368,7 +367,6 @@ a.me__btn[aria-current="page"] { background: var(--sub); }
 .composer__send[aria-disabled="true"] svg { transform: scale(.9); }
 .composer__send:not([aria-disabled="true"]):hover::before { filter: brightness(.95); }
 .composer__send:not([aria-disabled="true"]):active::before { filter: brightness(.9); }
-.composer__send:not([aria-disabled="true"]):active::before { transform: scale(.9); transition-duration: calc(var(--dur-1) / 2); }
 /* Attach (#266 PF-3): a quiet paperclip among the composer's tools; staged files list above the box. */
 .composer__attach { display: grid; place-items: center; width: 32px; height: 32px; flex: none; border-radius: var(--r); color: var(--t3); transition: var(--tr); }
 .composer__attach:hover:not(:disabled) { background: var(--hov); color: var(--t1); }
@@ -602,8 +600,6 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
   .phone-dock__bar .ui-bottomnav__item { min-height: 44px; }
   .phone-dock__search { width: 54px; height: 54px; }
 }
-.phone-fab:active, .phone-dock__search:active { transform: scale(.96); }
-@media (prefers-reduced-motion: no-preference) { .phone-fab, .phone-dock__search { transition: transform var(--dur-1) ease; } }
 @media (max-width: 640px) {
   .app__main { position: relative; }
   /* Room under the work for the "+" that floats above the capsule. */

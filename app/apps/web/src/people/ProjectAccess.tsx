@@ -5,7 +5,7 @@ import { useRevalidator } from 'react-router';
 import type { Project, ProjectAccess as Access, ProjectGrant, ProjectGrantRole, ProjectPerson, WorkspaceMember } from '@flux/contracts';
 import { useShellData } from '../app/data';
 import { useShellActions } from '../app/shellContext';
-import { AgentTag, Avatar, Button, Icon, Kreska, prefersReducedMotion } from '../ui';
+import { AgentTag, Avatar, Button, Icon, Kreska, prefersReducedMotion, useRowMotion } from '../ui';
 import { ROLE_LABEL, attemptKeys, firstName, grantPerson, isManagerRole, levelFor, listGrants, listMembers, problemText, revokeGrant } from './api';
 import './people.css';
 
@@ -80,6 +80,9 @@ export function ProjectAccess({ project, people, focusToken }: { project: Projec
   const memberOf = (id: string) => roster?.members.find((member) => member.userId === id) ?? null;
   const grantOf = (id: string) => roster?.grants.find((grant) => grant.principal.kind === 'human' && grant.principal.id === id) ?? null;
   const others = (people ?? []).filter((person) => !(person.kind === 'human' && person.id === me.user.id));
+  const listRef = useRef<HTMLUListElement>(null);
+  // Access given or taken back grows or collapses the row where it stands (#593 AC-4).
+  useRowMotion(listRef, '.people__item[data-row-key]', (el) => el.dataset.rowKey, `${project.id}|${people ? 'ready' : 'loading'}`);
   const keptOut = roster ? roster.grants.filter((grant) => grant.role === 'denied' && grant.principal.kind === 'human').map((grant) => ({ grant, member: memberOf(grant.principal.id) })).filter((row): row is { grant: ProjectGrant; member: WorkspaceMember } => !!row.member) : [];
   const candidates = roster ? roster.members.filter((member) => member.userId !== me.user.id && grantOf(member.userId)?.role !== 'denied'
     && levelFor(member.role, project.visibility, grantOf(member.userId)?.role ?? null) === null) : [];
@@ -151,13 +154,13 @@ export function ProjectAccess({ project, people, focusToken }: { project: Projec
         {manager ? <Button ref={inviteRef} variant="quiet" icon="plus" className="access__invite" disabled={!roster} aria-expanded={giving} onClick={invite}>Invite</Button> : null}
       </div>
       {people ? (
-        <ul className="people__list" aria-label={`People who can see ${project.name}`}>
+        <ul className="people__list" ref={listRef} aria-label={`People who can see ${project.name}`}>
           {meRow}
           {others.map((person) => {
             const member = person.kind === 'human' ? memberOf(person.id) : null;
             const options = member && manager && managing ? optionsFor(member) : [];
             return (
-              <AccessRow key={`${person.kind}:${person.id}`} name={person.name} agent={person.kind === 'agent'}
+              <AccessRow key={`${person.kind}:${person.id}`} rowKey={`${person.kind}:${person.id}`} name={person.name} agent={person.kind === 'agent'}
                 label={ROLE_SHORT[person.access]} access={person.access}
                 options={options} editing={editing === person.id} onEdit={(open) => { setDone(''); setEditing(open ? person.id : null); }}
                 onApply={member ? (option, key) => apply(member, option, key) : undefined} workspaceName={workspaceName} />
@@ -201,15 +204,15 @@ export function ProjectAccess({ project, people, focusToken }: { project: Projec
   );
 }
 
-function AccessRow({ name, agent = false, label, note, access, options, editing, onEdit, onApply, workspaceName }: {
-  name: string; agent?: boolean; label: string; note?: string; access: Access | null; options: Option[]; editing: boolean;
+function AccessRow({ rowKey, name, agent = false, label, note, access, options, editing, onEdit, onApply, workspaceName }: {
+  rowKey?: string; name: string; agent?: boolean; label: string; note?: string; access: Access | null; options: Option[]; editing: boolean;
   onEdit: (open: boolean) => void; onApply?: (option: Option, key: string) => Promise<void>; workspaceName: string;
 }) {
   const editId = useId();
   const changeRef = useRef<HTMLButtonElement>(null);
   const close = () => { onEdit(false); changeRef.current?.focus(); };
   return (
-    <li className={`people__item${editing ? ' is-editing' : ''}`}>
+    <li className={`people__item${editing ? ' is-editing' : ''}`} data-row-key={rowKey}>
       <div className="people__row">
         {agent ? <Kreska size={26} /> : <Avatar name={name} size="md" />}
         <span className="people__who"><b>{name}{agent ? <> <AgentTag /></> : null}</b>{note ? <span>{note}</span> : null}</span>
