@@ -33,7 +33,6 @@
   "endpoint": "/mcp",
   "errorCodes": [
     "AGENT_EXECUTION_UNAVAILABLE",
-    "AGENT_THREAD_REQUIRED",
     "AGENT_THREAD_TURN_LIMIT",
     "COWORK_CLAIM_LOST",
     "COWORK_CONNECTION_BUSY",

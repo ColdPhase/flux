@@ -107,7 +107,7 @@ test('generic writers and raw SQL remain closed; the public post tool admits no 
     VALUES($1,$2,$3,$4,$5,$6,'unguarded',99,'Bypass')`, [randomUUID(),f.workspaceId,f.projectId,first.conversationId,f.agentId,randomUUID()]),
     (e: unknown) => !!e && typeof e === 'object' && 'constraint' in e && e.constraint === 'agent_thread_agent_writes_closed');
   await assert.rejects(post(f, { ...envelope(f, item.id, grant.id), targetMode: 'task-agent-thread/v1' }));
-  const people = expect(await f.owner.request('POST', `/api/v1/projects/${f.projectId}/conversations`, { body: { body: 'People still use v1 @Planning agent', clientMessageId: randomUUID() } }), 201);
+  const people = expect(await f.owner.request('POST', `/api/v1/projects/${f.projectId}/conversations`, { body: { body: 'People still use v1', clientMessageId: randomUUID() } }), 201);
   assert.equal(toolValue(await f.tool('flux_reply_in_conversation', { ...envelope(f,item.id,grant.id), taskId: undefined,
     conversationId: people.id })).sequence, 2);
   assert.equal((await state(item.id)).turns, 1); assert.equal(await f.used(grant.id), 2);

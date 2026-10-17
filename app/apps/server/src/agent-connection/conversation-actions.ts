@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { AGENT_OPERATION_CLASSES, type AgentJsonValue, type AgentOperation, type SendMessageCommand } from '@flux/contracts';
 import { derivedUuid, DomainError, normalizeMessage, type Database } from '@flux/core';
-import { guardedAgentThreadInEventSession, requireAddressedReply } from '../conversation/store.js';
+import { guardedAgentThreadInEventSession } from '../conversation/store.js';
 import { actionAnnotations as annotations, actionId as id, actionInput, actionVersion as version, nativeActionExecutor } from './action-execution.js';
 import type { FluxMcpClaims } from './context.js';
 import type { AgentToolRegistry } from './tool-registry.js';
@@ -56,9 +56,7 @@ export function registerAgentConversationActions(tools: AgentToolRegistry, db: D
     inputSchema: z.strictObject({ ...execution,
       conversationId: id.describe('A conversation of this project, from flux_list_conversations or a task.'), message }), annotations,
   }, ({ conversationId, message: posted, ...input }) => run(() => execute(input, 'conversation.reply', conversationId,
-    posted as unknown as AgentJsonValue, async ({ conversations, transaction, agent, runtime }) => {
-      // Work talk about a task goes to the agents' thread; a people's conversation takes only an answer to a person who addressed this agent.
-      await requireAddressedReply(transaction, agent.id, conversationId);
+    posted as unknown as AgentJsonValue, async ({ conversations, agent, runtime }) => {
       const sent = await conversations.sendMessage(agent, conversationId, send(runtime.connectionId, input.clientCommandId, posted));
       return { value: { conversationId: sent.conversationId, messageId: sent.id, sequence: sent.sequence },
         postconditions: [{ kind: 'message', id: sent.id }] };

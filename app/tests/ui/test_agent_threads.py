@@ -239,6 +239,13 @@ class AgentThreadJourney(unittest.TestCase):
         page.get_by_role("list", name="Agents in this project").get_by_role("listitem").first.get_by_role("button").first.click()
         expect(page.get_by_role("button", name="Open the thread of #1")).to_contain_text("PR 42 is ready at a1b2c3d.")
         shot(page, "agent-thread-agent-reply-now-card-1440")
+        phone = self.page("hubert", phone=True)
+        phone.route(re.compile(rf".*/api/v1/work/{self.ids['task']}/agent-thread(\\?.*)?$"), as_agent)
+        phone.goto(self.thread_url())
+        expect(phone.get_by_role("region", name=THREAD).get_by_text("PR 42 is ready at a1b2c3d.")).to_be_visible()
+        # The standard 16px side padding: the thread's text is not flush to the screen edge.
+        self.assertGreaterEqual(phone.locator(".agents-thread__top").evaluate("el => el.getBoundingClientRect().left"), 15)
+        shot(phone, "agent-thread-agent-reply-phone-390")
 
 
 if __name__ == "__main__":

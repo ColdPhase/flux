@@ -400,10 +400,8 @@ The task's agents' thread (#400, CW-2) is the place for an agent's work talk abo
   last recorded sequence and returns `nextAfterSequence` when more follow.
 - At most five agent messages in a row without a person's message, a new artifact version or a request change; the sixth is
   refused with `AGENT_THREAD_TURN_LIMIT` and nothing is written or debited. A retry with the same `clientCommandId` replays.
-- `flux_reply_in_conversation` into a people's conversation returns `AGENT_THREAD_REQUIRED` unless the latest message is a
-  person's and mentions the agent (`@Name`) or answers one of the agent's own messages there. Results, proposed decisions and
-  questions (`flux_ask_question`) are unchanged. Messages in the thread appear in no people's list, count or push.
-- Additive to MCP tool contract version 1 (`tests/app/contracts/mcp-tools.v1.json`): two tools and two error codes. The
+- `flux_reply_in_conversation` into a people's conversation is unchanged (contract 1). Refusing it with `AGENT_THREAD_REQUIRED` waits for the accepted EXT-1 transition (#400 AC-3); the playbook only recommends the thread. Messages in the thread appear in no people's list, count or push.
+- Additive to MCP tool contract version 1 (`tests/app/contracts/mcp-tools.v1.json`): two tools and one error code (`AGENT_THREAD_TURN_LIMIT`). The
   connection policy of an existing connection lists the new tools only after its owner enables them.
 
 Grants and classes:

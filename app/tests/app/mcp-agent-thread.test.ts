@@ -67,13 +67,10 @@ test('the sixth agent message in a row is refused until a person writes; then it
   assert.equal(toolValue(await post(f, item.id, grant.id, 'Step 6')).sequence, 7);
 });
 
-test('flux_reply_in_conversation answers a person who addressed the agent and otherwise points to the thread', async () => {
+test('flux_reply_in_conversation into a people\'s conversation keeps its contract-1 behaviour', async () => {
   const f = await actionScene(pool), grant = await f.grant('conversation.reply', 'execute', 10);
-  const reply = (conversationId: string, body: string) => f.tool('flux_reply_in_conversation', { projectId: f.projectId, runtimeSessionId: f.runtimeSessionId,
-    grantId: grant.id, clientCommandId: randomUUID(), peerRequestClass: 'execute', sources: [], conversationId, message: { body } });
   const plain = expect(await f.owner.request('POST', `/api/v1/projects/${f.projectId}/conversations`, { body: { body: 'Status?', clientMessageId: randomUUID() } }), 201);
-  assert.equal(toolFailure(await reply(String(plain.id), 'Work talk')).code, 'AGENT_THREAD_REQUIRED');
-  assert.equal(await f.used(grant.id), 0);
-  const asked = expect(await f.owner.request('POST', `/api/v1/projects/${f.projectId}/conversations`, { body: { body: 'Status, @Planning agent?', clientMessageId: randomUUID() } }), 201);
-  assert.equal(toolValue(await reply(String(asked.id), 'Fine.')).sequence, 2);
+  const sent = toolValue(await f.tool('flux_reply_in_conversation', { projectId: f.projectId, runtimeSessionId: f.runtimeSessionId, grantId: grant.id,
+    clientCommandId: randomUUID(), peerRequestClass: 'execute', sources: [], conversationId: String(plain.id), message: { body: 'Fine.' } }));
+  assert.equal(sent.sequence, 2);
 });
