@@ -99,7 +99,11 @@ $compose up -d --wait api
 
 if [ -z "$latency" ]; then
   [ "$#" -gt 0 ] || set -- test_live_editing test_live_map_projection test_live_map_selection
-  $compose run --rm --no-deps -e FLUX_LIVE_EDITING_TEST=1 -e FLUX_UI_BROWSER="${FLUX_UI_BROWSER:-chromium}" -w /work/tests/ui ui-test python3 -m unittest -v "$@"
+  # FLUX_LIVE_EDITING_SHOTS=/absolute/dir keeps the modules' screenshots (the cursor module writes them).
+  shots=""
+  if [ -n "${FLUX_LIVE_EDITING_SHOTS:-}" ]; then mkdir -p "$FLUX_LIVE_EDITING_SHOTS"; shots="-v $FLUX_LIVE_EDITING_SHOTS:/screenshots:z -e FLUX_UI_SCREENSHOTS=/screenshots"; fi
+  # shellcheck disable=SC2086
+  $compose run --rm --no-deps $shots -e FLUX_LIVE_EDITING_TEST=1 -e FLUX_UI_BROWSER="${FLUX_UI_BROWSER:-chromium}" -w /work/tests/ui ui-test python3 -m unittest -v "$@"
   exit 0
 fi
 
