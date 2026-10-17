@@ -1,2 +1,2 @@
 export * from './ports.js';
-export { createDmUseCases, type DmUseCases } from './service.js';
+export { createDmUseCases, TaskCopyChangedError, type DmUseCases } from './service.js';

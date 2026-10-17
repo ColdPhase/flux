@@ -1,5 +1,5 @@
 import type { AssistantJoinRequest } from './assistant.js';
-import type { ExternalClientDesignation } from './agent-proposals.js';
+import type { AgentScope, ExternalClientDesignation } from './agent-proposals.js';
 import type { AgentOperation } from './agent-execution.js';
 import type { CoWorkRequestKind, CoWorkRequestState } from './cowork.js';
 
@@ -28,6 +28,8 @@ export interface ProjectAgentConnection {
   name: string;
   /** Owner-reported client label; never proof of the client or model. */
   clientDesignation: ExternalClientDesignation;
+  /** What the owner let this connection do: the exact scopes its tokens carry (#548). */
+  scopes: AgentScope[];
   owner: { id: string; name: string };
   agent: { id: string; name: string };
   /** True when the caller owns the connection. */

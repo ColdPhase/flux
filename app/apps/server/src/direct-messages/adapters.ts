@@ -1,4 +1,5 @@
-import { dmRows, type DbExecutor } from '@flux/db';
+import { dmRows, schema, type DbExecutor } from '@flux/db';
+import { eq, and } from 'drizzle-orm';
 import {
   createDmUseCases,
   policyDmAccess,
@@ -7,9 +8,13 @@ import {
   type Database,
   type DmPorts,
   type DmRepository,
+  type DmTaskCopy,
   type DmUnitOfWork,
+  type Transaction,
 } from '@flux/core';
 import { eventPorts } from '../events.js';
+import { sketchPromotion } from '../sketches/adapters.js';
+import { nativeWorkInTransaction } from '../work/adapters.js';
 
 // Adapters that connect the core direct-message use cases to Drizzle, the access policy and the
 // event log (issue #107; #46: core defines the ports, the server assembles them).
@@ -25,9 +30,37 @@ export function dmRepository(db: DbExecutor): DmRepository {
   };
 }
 
-function dmPorts(tx: DbExecutor): DmPorts {
+/**
+ * The project side of an excerpt copy (#537), over the sketch promotion's target and audience reads and the
+ * work use cases, so `project.write`, the project's people and task creation are the existing ones.
+ */
+function dmTaskCopy(tx: Transaction): DmTaskCopy {
+  const promotion = sketchPromotion(tx);
+  return {
+    async targets(principal, workspaceId) { return (await promotion.targets(principal, workspaceId)).projects; },
+    async audience(principal, workspaceId, projectId) {
+      const { people, projectName } = await promotion.audience(principal, workspaceId, [], { kind: 'existing', projectId });
+      return { people, projectName: projectName ?? '' };
+    },
+    async lockDestination(workspaceId, projectId) {
+      // The rows a change of the audience locks first, FOR SHARE: the workspace (member changes), then the project (grants).
+      await tx.select({ id: schema.workspaces.id }).from(schema.workspaces).where(eq(schema.workspaces.id, workspaceId)).for('share');
+      await tx.select({ id: schema.projects.id }).from(schema.projects)
+        .where(and(eq(schema.projects.id, projectId), eq(schema.projects.workspaceId, workspaceId))).for('share');
+    },
+    async createTask(principal, projectId, command) {
+      const work = nativeWorkInTransaction(tx);
+      const task = await work.createWork(principal, projectId, { title: command.title, outcome: command.outcome, clientCommandId: command.clientCommandId });
+      await work.flushEvents();
+      return task;
+    },
+  };
+}
+
+function dmPorts(tx: Transaction): DmPorts {
   return {
     access: policyDmAccess(tx),
+    taskCopy: dmTaskCopy(tx),
     dms: dmRepository(tx),
     events: { record: async (principal, workspaceId, kind, dmId, data) => { await recordEvent(eventPorts(tx), principal, workspaceId, kind, dmId, data); } },
   };

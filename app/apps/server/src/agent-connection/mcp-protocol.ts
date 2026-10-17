@@ -29,7 +29,16 @@ function refusedTool(body: unknown) {
   } });
 }
 
-export function createFluxMcpHandler(factory: () => McpServer, options: { refuseTool?: (name: string) => boolean } = {}) {
+/** A call to a tool whose permission was not granted: the same structured error the tool itself would give (#548). */
+function refusedScope(body: unknown, refusal: object) {
+  const id = object(body)?.id;
+  return Response.json({ jsonrpc: '2.0', id: typeof id === 'string' || typeof id === 'number' ? id : null, result: {
+    content: [{ type: 'text', text: JSON.stringify(refusal) }], isError: true,
+  } });
+}
+
+export function createFluxMcpHandler(factory: () => McpServer,
+  options: { refuseTool?: (name: string) => boolean; refuseScope?: (name: string) => object | null } = {}) {
   const handler = createMcpHandler(factory, { legacy: 'stateless' });
   return { async fetch(request: Request): Promise<Response> {
     if (request.method !== 'POST' || !isJsonContentType(request.headers.get('content-type'))) return handler.fetch(request);
@@ -44,6 +53,11 @@ export function createFluxMcpHandler(factory: () => McpServer, options: { refuse
     if (options.refuseTool && call?.method === 'tools/call' && call.id !== undefined) {
       const name = object(call.params)?.name;
       if (typeof name !== 'string' || options.refuseTool(name)) return refusedTool(body);
+    }
+    if (options.refuseScope && call?.method === 'tools/call' && call.id !== undefined) {
+      const name = object(call.params)?.name;
+      const refusal = typeof name === 'string' ? options.refuseScope(name) : null;
+      if (refusal) return refusedScope(body, refusal);
     }
     if (!await isLegacyRequest(request, body)) return handler.fetch(request, { parsedBody: body });
     const rpc = object(body);

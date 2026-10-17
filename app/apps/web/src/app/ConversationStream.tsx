@@ -10,8 +10,9 @@ import { useReferenceWork } from '../work/useReferenceWork';
 import { useProjectWorkSummary } from '../work/WorkReadContext';
 import { MessageWorkPages } from '../work/MessageWorkPages';
 import { useShellActions } from './shellContext';
-import { listConversationRoots, listTaskNotices } from './conversation-api';
+import { listConversationRoots, listTaskNotices, observeProjectMessages, projectReceipts } from './conversation-api';
 import { QuestionCard, WhenNoQuestion } from '../agents/QuestionCard';
+import { ownRuns, useObservation, useReceiptTick, useReceipts } from './receipts';
 import { AgentAuthor, AuthorFace, ContributionMark, OPENING_REVEAL_MS, SourceCitation, MessageDay, MessageTime, sameMessageAuthor, clock, day, openOnWholeMessages, pendingMessageRow, when } from './messageParts';
 import { agentAuthorOwner, useAgentOwners, type AgentOwners } from '../agents/owners';
 import { MessageContent } from '../composer/Files';
@@ -313,6 +314,17 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
   const [openingTimedOut, setOpeningTimedOut] = useState(false);
   useEffect(() => { const timer = window.setTimeout(() => setOpeningTimedOut(true), OPENING_REVEAL_MS); return () => window.clearTimeout(timer); }, []);
   const [revealed, setRevealed] = useState(false);
+  // #534: what this person observes in the stream, and who observed every root of their own whole runs. A task
+  // announcement, goal or fold between two roots separates runs; roots still being sent are not yet claimed.
+  const receiptLines = [...display.map((entry) => entry.kind === 'root'
+    ? { id: entry.root.message.id as string | null, authorId: entry.root.message.authorId === null ? entry.root.message.author.id : entry.root.message.authorId, createdAt: entry.root.message.createdAt }
+    : { id: null, authorId: `~${entry.key}`, createdAt: entry.at }),
+    ...outbox.pending.map((item) => ({ id: null, authorId: meId, createdAt: item.at }))];
+  const receiptRuns = ownRuns(receiptLines, meId, stream.hasOlder);
+  const receiptTick = useReceiptTick(receiptRuns.length > 0);
+  const seen = useReceipts({ scope: project.id, fetchReceipts: (list, signal) => projectReceipts(project.id, list, signal), runs: receiptRuns, tick: receiptTick });
+  useObservation({ scope: project.id, observe: (ids) => observeProjectMessages(project.id, ids), enabled: revealed, feed: feedRef,
+    ids: display.flatMap((entry) => entry.kind === 'root' && entry.root.message.authorId !== meId ? [entry.root.message.id] : []), depend: entries.length });
   if (!revealed && (openingSettled || openingTimedOut)) setRevealed(true);
   const columnRef = useRef<HTMLDivElement>(null);
   const pinRef = useRef<{ id: string; offset: number } | null>(null);
@@ -567,6 +579,7 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
                 return [divider, <RootItem key={key} continued={continued} groupLast={groupLast} owners={owners} root={root} project={project} meId={meId} author={author} messageWork={messageWork}
                   taskRow={root.task ? referenceWork.rows.get(`work:${root.task.workId}`) ?? null : null}
                   open={root.conversationId === openId} arrived={arrived === root.message.id} makeWork={makeWork} onOpen={openRoot}
+                  observed={root.message.authorId !== meId} seenBy={(seen.get(root.message.id) ?? []).map((person) => person.name)}
                   onOpenResult={(resultId) => openDetails({ kind: 'result', id: resultId })} onDenied={onDenied} />];
               }), ...outbox.pending.flatMap((item, index) => {
                 const label = day(item.at);
@@ -708,6 +721,8 @@ type RootItemProps = {
   root: ConversationRoot; project: Project; owners: AgentOwners; meId: string; author: (message: ConversationMessage) => string;
   messageWork: MessageWorkRead; taskRow: NativeWorkRow | null;
   open: boolean; arrived: boolean; makeWork: ReturnType<typeof useCreateWorkFromMessage>;
+  /** Another person's root is watched for viewing receipts; `seenBy` names who observed every root of this author run. */
+  observed?: boolean; seenBy?: readonly string[];
   onOpen: (root: ConversationRoot, reply: boolean) => void; onOpenResult: (resultId: string) => void; onDenied: (cause: unknown) => void;
 };
 /** A root the person sent that is not stored yet (#264). */
@@ -736,7 +751,7 @@ function RootItem(props: RootItemProps | QueuedRootProps) {
   const { root, project, owners, meId, messageWork, taskRow, open, arrived, makeWork, onOpen, onOpenResult, onDenied } = stored;
   const mine = message.authorId === meId;
   return (
-    <li {...touch.props} id={`message-${message.id}`} data-message-id={message.id} aria-label={mine ? 'Your message' : `${name}’s message`} tabIndex={-1} data-conversation-id={root.conversationId}
+    <li {...touch.props} id={`message-${message.id}`} data-message-id={message.id} {...(stored.observed ? { 'data-observe-id': message.id } : {})} aria-label={mine ? 'Your message' : `${name}’s message`} tabIndex={-1} data-conversation-id={root.conversationId}
       className={`project-convo__message${mine ? ' is-mine' : ''}${arrived ? ' is-arrived' : ''}${open ? ' is-open' : ''}${stored.continued ? ' is-continued' : ''} ${touch.props.className}`}>
       {!mine && !stored.continued ? <AuthorFace kind={message.authorId === null ? 'agent' : 'human'} name={name} mine={mine} /> : null}
       {!mine && !stored.continued ? <div className="project-convo__message-meta">
@@ -750,7 +765,7 @@ function RootItem(props: RootItemProps | QueuedRootProps) {
       <QuestionCard projectId={project.id} messageId={message.id} meId={meId} writable={writable} />
       {message.contribution ? <ContributionMark contribution={message.contribution} onOpenResult={onOpenResult} /> : null}
       <Replies root={root} open={open} onOpen={(reply) => onOpen(root, reply)} />
-      {stored.groupLast !== false ? <MessageTime at={message.createdAt} /> : null}
+      {stored.groupLast !== false ? <MessageTime at={message.createdAt} seenBy={stored.seenBy} /> : null}
       <MessageActions {...actions} />
       {touch.node}
     </li>

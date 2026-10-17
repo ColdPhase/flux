@@ -1,4 +1,4 @@
-import { and, asc, count, desc, eq, inArray, lt, sql, type SQL } from 'drizzle-orm';
+import { and, asc, count, desc, eq, gte, inArray, isNull, lt, lte, sql, type SQL } from 'drizzle-orm';
 import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
 
@@ -12,6 +12,7 @@ import type { DbExecutor } from './push.js';
 const d = schema.dms;
 const p = schema.dmParticipants;
 const m = schema.dmMessages;
+const obs = schema.dmMessageObservations;
 const users = schema.authUsers;
 
 type DmRow = typeof d.$inferSelect;
@@ -26,10 +27,12 @@ export interface NewDmRow {
 }
 export interface NewDmMessageRow {
   id: string; workspaceId: string; dmId: string; authorId: string; clientMessageId: string; requestFingerprint: string; body: string;
+  /** Set for a private reply: a root of the same DM. */
+  threadRootId?: string | null;
 }
 
-function toMessage(row: MessageRow) {
-  return { id: row.id, dmId: row.dmId, authorId: row.authorId, body: row.body, sequence: row.sequence, requestFingerprint: row.requestFingerprint, createdAt: row.createdAt };
+function toMessage(row: MessageRow, replyCount = 0) {
+  return { id: row.id, dmId: row.dmId, authorId: row.authorId, body: row.body, sequence: row.sequence, requestFingerprint: row.requestFingerprint, createdAt: row.createdAt, threadRootId: row.threadRootId, replyCount };
 }
 
 export function dmRows(db: DbExecutor) {
@@ -52,6 +55,13 @@ export function dmRows(db: DbExecutor) {
       id: row.id, workspaceId: row.workspaceId, kind: row.kind, title: row.title, createdBy: row.createdBy, version: row.version,
       createdAt: row.createdAt, lastMessageAt: row.lastMessageAt, lastMessageBody, participants: people.get(row.id) ?? [],
     }));
+  }
+  async function replyCounts(rootIds: string[]) {
+    const counts = new Map<string, number>();
+    if (!rootIds.length) return counts;
+    const rows = await db.select({ rootId: m.threadRootId, n: count() }).from(m).where(inArray(m.threadRootId, rootIds)).groupBy(m.threadRootId);
+    for (const row of rows) if (row.rootId) counts.set(row.rootId, row.n);
+    return counts;
   }
   const select = () => db.select({ row: d, lastMessageBody: lastBody }).from(d);
   const find = async (id: string) => (await records(await select().where(eq(d.id, id))))[0] ?? null;
@@ -88,11 +98,26 @@ export function dmRows(db: DbExecutor) {
     async bumpVersion(dmId: string) {
       await db.update(d).set({ version: sql`${d.version} + 1` }).where(eq(d.id, dmId));
     },
+    /** The newest `limit` ROOT messages below `beforeSequence` (all when null), ascending, with their reply counts. */
     async window(dmId: string, window: { limit: number; beforeSequence: number | null }) {
       const rows = await db.select().from(m)
-        .where(and(eq(m.dmId, dmId), window.beforeSequence === null ? undefined : lt(m.sequence, window.beforeSequence)))
+        .where(and(eq(m.dmId, dmId), isNull(m.threadRootId), window.beforeSequence === null ? undefined : lt(m.sequence, window.beforeSequence)))
         .orderBy(desc(m.sequence)).limit(window.limit + 1);
-      return { messages: rows.slice(0, window.limit).reverse().map(toMessage), hasMoreBefore: rows.length > window.limit };
+      const page = rows.slice(0, window.limit).reverse();
+      const counts = await replyCounts(page.map((row) => row.id));
+      return { messages: page.map((row) => toMessage(row, counts.get(row.id) ?? 0)), hasMoreBefore: rows.length > window.limit };
+    },
+    /** One message of this DM, root or reply, whose reply count is included. Null for any other id. */
+    async message(dmId: string, messageId: string) {
+      const [row] = await db.select().from(m).where(and(eq(m.dmId, dmId), eq(m.id, messageId)));
+      return row ? toMessage(row, row.threadRootId ? 0 : (await replyCounts([row.id])).get(row.id) ?? 0) : null;
+    },
+    /** The newest `limit` replies of one root below `beforeSequence`, ascending. */
+    async threadWindow(dmId: string, rootId: string, window: { limit: number; beforeSequence: number | null }) {
+      const rows = await db.select().from(m)
+        .where(and(eq(m.dmId, dmId), eq(m.threadRootId, rootId), window.beforeSequence === null ? undefined : lt(m.sequence, window.beforeSequence)))
+        .orderBy(desc(m.sequence)).limit(window.limit + 1);
+      return { messages: rows.slice(0, window.limit).reverse().map((row) => toMessage(row)), hasMoreBefore: rows.length > window.limit };
     },
     async lockClientMessage(dmId: string, authorId: string, clientMessageId: string) {
       // Hash collisions only serialize unrelated sends; the unique constraint stays the final guard.
@@ -105,8 +130,39 @@ export function dmRows(db: DbExecutor) {
     async appendMessage(message: NewDmMessageRow) {
       const [updated] = await db.update(d).set({ nextSequence: sql`${d.nextSequence} + 1`, lastMessageAt: sql`now()` })
         .where(eq(d.id, message.dmId)).returning({ nextSequence: d.nextSequence });
-      const [row] = await db.insert(m).values({ ...message, sequence: updated!.nextSequence - 1 }).returning();
+      const [row] = await db.insert(m).values({ ...message, threadRootId: message.threadRootId ?? null, sequence: updated!.nextSequence - 1 }).returning();
       return toMessage(row!);
+    },
+    /** Messages of this DM among `ids`, with the facts a receipt run is checked against. Foreign ids are absent. */
+    async messageFacts(dmId: string, ids: string[]) {
+      if (!ids.length) return [];
+      return db.select({ id: m.id, authorId: m.authorId, sequence: m.sequence, threadRootId: m.threadRootId }).from(m).where(and(eq(m.dmId, dmId), inArray(m.id, ids)));
+    },
+    /** Message ids of one level (the roots, or one root's replies) with sequence in [from, to], and their authors. */
+    async levelRange(dmId: string, rootId: string | null, from: number, to: number) {
+      return db.select({ id: m.id, authorId: m.authorId }).from(m)
+        .where(and(eq(m.dmId, dmId), rootId ? eq(m.threadRootId, rootId) : isNull(m.threadRootId), gte(m.sequence, from), lte(m.sequence, to)));
+    },
+    /** Idempotent: one row per message and viewer. Returns how many rows were written now. */
+    async observe(workspaceId: string, dmId: string, viewerId: string, ids: string[]) {
+      if (!ids.length) return 0;
+      const written = await db.insert(obs).values(ids.map((messageId) => ({ workspaceId, dmId, messageId, viewerId }))).onConflictDoNothing().returning({ id: obs.messageId });
+      return written.length;
+    },
+    /**
+     * Current participants (never `excludeId`) who observed EVERY message in `ids`. The join to dm_participants is
+     * what keeps a person who left, or was removed, out of every answer, whatever they once observed.
+     */
+    async viewersOfAll(dmId: string, ids: string[], excludeId: string) {
+      if (!ids.length) return [];
+      const distinct = [...new Set(ids)];
+      return db.select({ id: users.id, name: users.name }).from(obs)
+        .innerJoin(p, and(eq(p.dmId, obs.dmId), eq(p.userId, obs.viewerId)))
+        .innerJoin(users, eq(users.id, obs.viewerId))
+        .where(and(eq(obs.dmId, dmId), inArray(obs.messageId, distinct), sql`${obs.viewerId} <> ${excludeId}`))
+        .groupBy(users.id, users.name, p.joinedAt)
+        .having(sql`count(distinct ${obs.messageId}) = ${distinct.length}`)
+        .orderBy(asc(p.joinedAt), asc(users.name), asc(users.id));
     },
     async names(userIds: string[]) {
       if (!userIds.length) return [];

@@ -4,6 +4,7 @@ import { conversationUseCases, DomainError, InvalidInputError, type Database, ty
 import type { SessionResolver } from '../identity/index.js';
 import { taskUseDomainError } from '../work/task-use-errors.js';
 import { conversationStore } from './store.js';
+import { projectReceipts } from './receipts.js';
 
 interface Options { db: Database; sessions: SessionResolver; storage: FileStorage }
 
@@ -35,6 +36,7 @@ const updateMaterialBody = { type: 'object', required: ['clientMutationId', 'exp
 
 export async function conversationRoutes(app: FastifyInstance, { db, sessions, storage }: Options) {
   const store = conversationUseCases(conversationStore(db, { storage }));
+  const receipts = projectReceipts(db);
   const principal = async (request: Parameters<SessionResolver['requirePrincipal']>[0]) => (await sessions.requirePrincipal(request)).principal;
   app.setErrorHandler((error: FastifyError | DomainError, _request, reply) => {
     error = taskUseDomainError(error) as typeof error;
@@ -58,6 +60,15 @@ export async function conversationRoutes(app: FastifyInstance, { db, sessions, s
   app.post<{ Params: { conversationId: string }; Body: SendMessageCommand }>('/api/v1/conversations/:conversationId/messages',
     { preValidation: plainText, schema: { body: send } }, async (request, reply) => reply.code(201).send(
       await store.sendMessage(await principal(request), request.params.conversationId, request.body)));
+
+  // Viewing receipts (#534). The viewer is the session's person; the body never names one.
+  const messageId = { type: 'string', minLength: 1, maxLength: 64 } as const;
+  app.post<{ Params: { projectId: string }; Body: { messageIds: string[] } }>('/api/v1/projects/:projectId/observations',
+    { schema: { body: { type: 'object', required: ['messageIds'], additionalProperties: false, properties: { messageIds: { type: 'array', minItems: 1, maxItems: 50, items: messageId } } } } },
+    async (request) => receipts.observe(await principal(request), request.params.projectId, request.body));
+  app.post<{ Params: { projectId: string }; Body: { runs: string[][] } }>('/api/v1/projects/:projectId/receipts',
+    { schema: { body: { type: 'object', required: ['runs'], additionalProperties: false, properties: { runs: { type: 'array', minItems: 1, maxItems: 20, items: { type: 'array', minItems: 1, maxItems: 50, items: messageId } } } } } },
+    async (request) => receipts.receipts(await principal(request), request.params.projectId, request.body));
 
   app.get<{ Params: { projectId: string }; Querystring: PageQuery }>('/api/v1/projects/:projectId/materials',
     { schema: { querystring: page } }, async (request) => store.listMaterials(await principal(request), request.params.projectId, request.query));

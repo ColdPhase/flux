@@ -1,6 +1,6 @@
 import type { McpServer, ToolAnnotations, ToolCallback } from '@modelcontextprotocol/server';
 import type { z } from 'zod';
-import { AGENT_MCP_ENTRIES, type AgentMcpPolicy, type AgentOperation, type AgentPeerRequestClass, type AgentScope, type AgentToolCapability } from '@flux/contracts';
+import { AGENT_MCP_ENTRIES, agentScopeRefusal, type AgentMcpPolicy, type AgentOperation, type AgentPeerRequestClass, type AgentScope, type AgentToolCapability } from '@flux/contracts';
 import type { McpDispatch } from './mcp-dispatch.js';
 
 interface ToolConfiguration<I extends z.ZodType> {
@@ -15,8 +15,12 @@ export interface AgentToolRegistrar {
 /**
  * Capability entries are written only when the corresponding real MCP tool is registered. `bound`, set for
  * a personal run's token only, sees every tool result before it is returned (F-022 "Caps").
+ * `granted` is the permissions the person granted (token scopes within the connection's): this is the one
+ * place that scopes tools to them (#548). A tool outside the grant is never listed, and a call to it
+ * returns a structured refusal naming the missing permission before anything runs or is written.
  */
-export function agentToolRegistry(server: McpServer, dispatch: McpDispatch, bound?: (result: unknown) => Promise<unknown>) {
+export function agentToolRegistry(server: McpServer, dispatch: McpDispatch, bound?: (result: unknown) => Promise<unknown>,
+  granted?: readonly string[]) {
   const entries = new Map<string, Omit<AgentToolCapability, 'available'>>();
   const handles = new Map<string, { disable(): void }>();
   return {
@@ -30,15 +34,20 @@ export function agentToolRegistry(server: McpServer, dispatch: McpDispatch, boun
         // Proxy preserves the SDK's schema-dependent callback type and forwards
         // its original receiver/arguments without reconstructing a conditional signature.
         const guarded = new Proxy(callback, { apply(target, receiver, args) {
+          const refusal = granted ? agentScopeRefusal(name, granted) : null;
+          if (refusal) return Promise.resolve({ content: [{ type: 'text' as const, text: JSON.stringify(refusal) }], isError: true });
           const output = dispatch.run('tool', name, () => Reflect.apply(target, receiver, args));
           return bound ? Promise.resolve(output).then(bound) : output;
         } });
-        handles.set(name, server.registerTool(name, config, guarded));
+        const handle = server.registerTool(name, config, guarded);
+        if (granted && !granted.includes(requiredScope)) handle.disable();
+        handles.set(name, handle);
         entries.set(name, { name, title: config.title, requiredScope, operation: effect?.operation ?? null, classes: effect?.classes ?? [] });
       } };
     },
     capabilities(scopes: readonly AgentScope[], policy: AgentMcpPolicy): AgentToolCapability[] {
-      return [...entries.values()].map((item) => {
+      // The listing and bootstrap agree (#548): a tool outside the grant is neither listed nor named here.
+      return [...entries.values()].filter((item) => !granted || granted.includes(item.requiredScope)).map((item) => {
         const entry = AGENT_MCP_ENTRIES.find((candidate) => candidate.kind === 'tool' && candidate.name === item.name)!;
         return { ...item, classes: [...item.classes], available: scopes.includes(item.requiredScope)
           && policy.enabledEntryIds.includes(entry.id)
