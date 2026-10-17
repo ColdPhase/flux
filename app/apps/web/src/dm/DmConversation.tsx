@@ -361,7 +361,7 @@ function DmContent({ initial }: { initial: Dm }) {
   const typing = useTyping(me.user.id, !gone && !selecting ? { kind: 'dm', id: dm.id } : null, !recipientGone);
   const threadOpen = !!threadId && !!messages.length && !gone;
   const originBack = useOriginPanelBack();
-  const slot = useOwnedPanel(threadOpen ? { key: `dm-thread:${threadId}`, chip: 'Thread', label: 'Replies', startFull: true, ...(originBack ? { back: originBack } : {}), onClose: closeThread } : null);
+  const slot = useOwnedPanel(threadOpen ? { key: `dm-thread:${threadId}`, chip: 'Thread', label: 'Replies', startFull: true, ...(originBack ? { origin: originBack } : {}), onClose: closeThread } : null);
   if (gone) return <DmUnavailable />;
   const canSend = composer.canSend && !recipientGone;
   // On the phone the header keeps only Back, the title, Together and Search (Spokój #507): choosing starts by the composer.

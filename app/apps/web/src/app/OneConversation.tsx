@@ -141,7 +141,7 @@ export function OneConversation({ data, Pane }: { data: ProjectData; Pane: Compo
   const rootMessage = root?.message ?? thread?.messages.find((message) => message.sequence === 1) ?? null;
   // A thread a reference led to, in a sheet or an overlay over the header, carries the way back to where it was followed from (#592).
   const originBack = useOriginPanelBack();
-  const slot = useOwnedPanel(thread ? { key: `thread:${thread.id}`, chip: 'Thread', label: 'Replies', startFull: true, ...(originBack ? { back: originBack } : {}), onClose: close } : null);
+  const slot = useOwnedPanel(thread ? { key: `thread:${thread.id}`, chip: 'Thread', label: 'Replies', startFull: true, ...(originBack ? { origin: originBack } : {}), onClose: close } : null);
   // A link to a reply, or one that asks to keep the panel, shows the thread even when another object (What matters, a task) covers it.
   const toReply = !!arrived && arrived !== rootMessage?.id;
   useEffect(() => {

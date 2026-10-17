@@ -57,7 +57,10 @@ the [thread reading-position owner](thread-reading-position-2026-10-16.md), whic
   every destination. It is absent, not hidden, when there is no origin, so a page reached from the sidebar looks as it
   does today. The title and the view tabs that follow it keep their order.
 - **Phone:** it takes the place of the round Back (or heads the title row on a screen that has none): one control in
-  one place. The panel's own "‹ back" (above) is a different thing: a step inside the panel, not a way to another page.
+  one place. The panel's own "‹ back" (above) is a different thing: a step inside the panel. One case joins them: a page whose
+  panel is a sheet or an overlay (a thread, an agent or a direct-message thread a reference led to, below 980 px) has the
+  header covered, so that panel's back (`OwnedPanel.back`, the one back pattern) names the origin and goes to it; a docked
+  panel leaves the header free and shows only the header control.
 - The label is the origin's name, truncated at 16 rem; the accessible name is "Back to <name>". It is a 32 px target
   (44 px on touch).
 

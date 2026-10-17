@@ -807,8 +807,8 @@ export function ProjectAgents() {
   const originBack = useOriginPanelBack();
   const slot = useOwnedPanel(task ? {
     key: `thread:${threadKind}:${task.id}`, chip: threadKind === 'agents' ? 'Agents’ thread' : 'Thread', label: `#${task.number} · ${task.title}`, closeLabel: 'Close thread', startFull: true,
-    ...(latestDetail ? { back: { label: latestDetail.name, run: closeThread } } : originBack ? { back: originBack } : {}), onClose: closePanel,
-  } : latestDetail ? { key: `agent:${latestDetail.key}`, chip: 'Agent', label: latestDetail.name, ...(originBack ? { back: originBack } : {}), onClose: closePanel } : null);
+    ...(latestDetail ? { back: { label: latestDetail.name, run: closeThread } } : {}), ...(originBack ? { origin: originBack } : {}), onClose: closePanel,
+  } : latestDetail ? { key: `agent:${latestDetail.key}`, chip: 'Agent', label: latestDetail.name, ...(originBack ? { origin: originBack } : {}), onClose: closePanel } : null);
 
   // The view scrolls in its own pane like every other view, so a long thread stays reachable
   // above the sticky composer on any screen.

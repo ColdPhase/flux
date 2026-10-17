@@ -513,7 +513,8 @@ function AppLayoutContent() {
     if (typeof view === 'object' && view.kind === 'owned' && !ownedRef.current) return;
     shell.openDetails(view, { back: 'keep' });
   };
-  const back = ownedShown?.back ? { label: ownedShown.back.label, onClick: ownedShown.back.run } : trailTop ? { label: trailTop.label, onClick: stepBack } : undefined;
+  const back = ownedShown?.back ? { label: ownedShown.back.label, onClick: ownedShown.back.run } : trailTop ? { label: trailTop.label, onClick: stepBack }
+    : ownedShown?.origin ? { label: ownedShown.origin.label, onClick: ownedShown.origin.run } : undefined;
   // Esc and × close the whole panel; a thread or an agent a view owns also leaves its address.
   const closePanel = () => {
     ownedShown?.onClose();
