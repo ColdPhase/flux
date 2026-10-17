@@ -173,7 +173,7 @@ class PersonalAssistantJourney(unittest.TestCase):
         panel = page.get_by_role("complementary", name="Details")
         expect(panel.get_by_role("link", name="Set up your assistant in Flux")).to_have_attribute("href", "/settings/assistant")
         # Details take the thread's one panel; "back" returns to the reply being written.
-        panel.get_by_role("button", name="Replies").click()
+        panel.get_by_role("button", name="Thread").click()
         expect(page.get_by_role("complementary", name="Replies")).to_be_visible()
         # Esc returns to a plain reply; the person's own message is sent as usual.
         self.composer(page).fill("/ai ")

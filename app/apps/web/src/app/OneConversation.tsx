@@ -129,10 +129,17 @@ export function OneConversation({ data, Pane }: { data: ProjectData; Pane: Compo
     <ConversationStream project={project} meId={me.user.id} meName={me.user.name} roots={roots} notices={notices} goals={data.goals} author={author}
       audience={audience} openId={thread?.id ?? null} reveal={reveal} arrived={arrived} endToken={endToken} onOpen={open} onDenied={onDenied} />
   );
-  const rootMessage = root?.message ?? thread?.messages.find((message) => message.sequence === 1) ?? null;
   // Until the stream has the root (a link to an old one), the thread's newest sequence gives its size.
   const replies = root?.replyCount ?? Math.max(0, (thread?.messages.at(-1)?.sequence ?? 1) - 1);
+  const rootMessage = root?.message ?? thread?.messages.find((message) => message.sequence === 1) ?? null;
   const slot = useOwnedPanel(thread ? { key: `thread:${thread.id}`, chip: 'Thread', label: 'Replies', startFull: true, onClose: close } : null);
+  // A link to a reply, or one that asks to keep the panel, shows the thread even when another object (What matters, a task) covers it.
+  const toReply = !!arrived && arrived !== rootMessage?.id;
+  useEffect(() => {
+    if (thread && (toReply || state?.keepPanel)) reopenPanel(`thread:${thread.id}`);
+    // Only a new arrival (a navigation) asks for it, never a re-render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.key]);
   // A link from a task's "Came from" names the task: the message it arrived at is tagged "Source of #1" for two seconds.
   const sourceOf = arrived && state?.sourceOf ? { messageId: arrived, label: `Source of ${state.sourceOf}` } : null;
   return (

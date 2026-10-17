@@ -287,16 +287,16 @@ class ReturnViewJourney(unittest.TestCase):
         self.open_recap(page)
         expect(panel.locator("section[aria-labelledby=wm-digest]")).to_contain_text("I ordered a PIR sensor too")
 
-        # The question opens on the whole message; the docked panel stays.
+        # The question is a reply: it opens on the whole message in the thread, which takes the one panel.
         panel.locator(".since__next").get_by_role("link", name="Answer Ari's question").click()
         expect(page).to_have_url(re.compile(f"#message-{self.ids['question']}$"))
-        message = page.locator(f"#message-{self.ids['question']}")
+        message = panel.locator(f"#message-{self.ids['question']}")
         expect(message).to_have_class(re.compile("is-arrived"))
         expect(message).to_be_in_viewport()
         # Reading, choosing a scope and opening sources never moved the point.
         before = self.summary(page, "project")
         self.assertEqual(len([item for item in before["items"] if item["needsYou"]]), 3)
-        self.have_context(page, panel)
+        self.have_context(page, self.open_recap(page))
         self.assertEqual(self.summary(page, "project")["items"], [], "the point moved to what was shown")
         # Nothing needs Nia any more, so the chip that counted it is gone.
         expect(entry).to_have_count(0)

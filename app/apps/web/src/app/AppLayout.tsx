@@ -150,10 +150,12 @@ function AppLayoutContent() {
     if (ownedRef.current?.key !== key) return;
     const current = now.current;
     if (current.detailsOpen && isOwned(current.detailsView)) return;
+    // It takes the place of a task or decision that covers it, which keeps the way back.
+    if (current.detailsOpen && replaces(current.detailsView)) setTrail((list) => [...list, { label: labelOf(current.detailsView), view: current.detailsView }]);
     setDetailsView({ kind: 'owned' });
     now.current = { ...current, detailsView: { kind: 'owned' } };
     if (!current.detailsOpen) current.toggleDetails(true);
-  }, []);
+  }, [labelOf]);
   const hidePanel = useCallback((key: string) => {
     if (ownedRef.current?.key !== key) return;
     ownedRef.current = null;
@@ -419,7 +421,7 @@ function AppLayoutContent() {
   const audienceOpen = project?.project.visibility === 'workspace';
   const audience = project ? audienceLine(project.people, me.user.id, audienceOpen) : 'People with project access';
   // The audience line leads to "Who can see this", where managers change it (#188).
-  const openAudience = () => { setDetailsView({ kind: 'overview', focus: 'people' }); toggleDetails(true); };
+  const openAudience = () => shell.openDetails({ kind: 'overview', focus: 'people' });
   const recapOpen = detailsOpen && typeof detailsView === 'object' && detailsView.kind === 'recap';
   // A task, decision or result opens in the one detail panel with its kind as a chip (F-026 S4).
   const ownedShown = isOwned(detailsView) && owned ? owned : null;
@@ -446,7 +448,7 @@ function AppLayoutContent() {
   const needsYou = useNeedsYou(activeProject ? projectId ?? null : null, recapOpen);
   const toggleRecap = () => {
     if (!projectId) return;
-    if (recapOpen) toggleDetails(false); else { setDetailsView({ kind: 'recap', projectId }); toggleDetails(true); }
+    if (recapOpen) toggleDetails(false); else shell.openDetails({ kind: 'recap', projectId });
   };
   const dmId = location.pathname.match(/^\/dm\/([^/]+)/)?.[1];
   const activeDm = directMessages.find((dm) => dm.id === dmId);
@@ -518,8 +520,8 @@ function AppLayoutContent() {
     // A header with no room for them (Spokój rule 3) moves the people and Together here; the views stay in the row.
     ...(project?.people ? [{ label: 'Who can see this', run: openAudience, narrow: true }] : []),
     ...(activeProject ? [{ label: 'Together', node: <LiveEntry variant="more" /> }] : []),
-    ...('noDetails' in place ? [] : [{ label: activeProject ? 'Project details' : activeDm ? 'Message info' : 'Details', run: () => { setDetailsView('place'); toggleDetails(true); } }]),
-    ...(activeProject && projectId ? [{ label: 'What matters', run: () => { setDetailsView({ kind: 'recap', projectId }); toggleDetails(true); } }] : []),
+    ...('noDetails' in place ? [] : [{ label: activeProject ? 'Project details' : activeDm ? 'Message info' : 'Details', run: () => shell.openDetails('place') }]),
+    ...(activeProject && projectId ? [{ label: 'What matters', run: () => shell.openDetails({ kind: 'recap', projectId }) }] : []),
     ...addViewItems,
     { label: focus.uncertain ? 'Check notification pause' : 'Focus', keys: 'F', checked: focusing, run: () => void focus.toggle() },
     tablet ? { label: 'Show the sidebar', keys: '[', run: () => setNavOpen(true) } : { label: railed || focusing ? 'Show the sidebar' : 'Hide the sidebar', keys: '[', run: toggleSidebar },
@@ -530,7 +532,7 @@ function AppLayoutContent() {
   // it is present; a conversation keeps header Search because it hides the dock.
   const goBack = (fallback: string) => { if (location.key !== 'default') void navigate(-1); else void navigate(fallback); };
   const searchButton = <IconButton icon="search" label="Search" size={20} className="phead__round" onClick={shell.openSearch} />;
-  const detailsEntry = () => { setDetailsView('place'); toggleDetails(true); };
+  const detailsEntry = () => shell.openDetails('place');
   const peopleLine = (people: ProjectPerson[] | null, includeAgents = true) => {
     if (!people) return '';
     const humans = people.filter((person) => person.kind === 'human').length;
