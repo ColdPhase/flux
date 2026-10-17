@@ -14,9 +14,12 @@ import uuid
 from playwright.sync_api import expect, sync_playwright
 
 from author_columns import assert_author_column
+from message_layout import assert_no_sideways_scroll, covered_parts, rect, showing, start_counting, stop_counting, toolbars
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UI_BROWSER, UPSTREAM, shot, start_forwarder
 
 PASSWORD = "messages belong to their authors"
+LONG = ("Averyveryverylongwordwithoutanyspacesthatkeepsgoingandgoingandgoingandgoingandgoing and "
+        "https://example.test/a/really/long/path/that/never/ends/and/ends/in/a/query?x=1&y=2&z=3 end.")
 NAMES = {"ada": "Ada Kowalska", "jonas": "Jonas Berg"}
 
 
@@ -103,6 +106,26 @@ class MessageAlignment(unittest.TestCase):
             cls.group_replies.append(cls.post(owner, f"/api/v1/conversations/{cls.group_thread['id']}/messages", {
                 "body": body, "clientMessageId": str(uuid.uuid4()),
             }))
+        # #591: long words and addresses, cards and runs from both people, in a project thread, in the private
+        # conversation and in its thread, so the layout is judged on content that stretches it.
+        cls.wide = cls.post(contexts["jonas"], f"/api/v1/projects/{cls.project}/conversations", {
+            "body": "A long word and an address: " + LONG, "clientMessageId": str(uuid.uuid4()),
+        })
+        cls.wide_replies = []
+        for key, body in (("jonas", LONG), ("jonas", "Second right after."), ("ada", LONG), ("ada", "Short from me."), ("jonas", "Thanks!")):
+            cls.wide_replies.append(cls.post(contexts[key], f"/api/v1/conversations/{cls.wide['id']}/messages", {
+                "body": body, "clientMessageId": str(uuid.uuid4()),
+            }))
+        for reply in (cls.wide_replies[1], cls.wide_replies[3]):
+            cls.post(owner, f"/api/v1/projects/{cls.project}/work", {
+                "title": "Raised beds by the fence: the volunteers need a readable blocked task card",
+                "sources": [{"type": "message", "id": reply["id"]}], "clientCommandId": str(uuid.uuid4()),
+            })
+        cls.dm_root = cls.dm_messages[0]["id"]
+        for key, body in (("jonas", LONG), ("jonas", "A second one straight after."), ("ada", LONG), ("ada", "Short from me."), ("jonas", "Thanks!")):
+            cls.post(contexts[key], f"/api/v1/dms/{cls.dm['id']}/threads/{cls.dm_root}/replies", {"body": body, "clientMessageId": str(uuid.uuid4())})
+        for key, body in (("jonas", LONG), ("ada", LONG), ("jonas", "Thanks!"), ("ada", "Hello there, this is a longer message so that wrapping happens beside the toolbar for sure.")):
+            cls.post(contexts[key], f"/api/v1/dms/{cls.dm['id']}/messages", {"body": body, "clientMessageId": str(uuid.uuid4())})
         for context in contexts.values():
             context.close()
 
@@ -333,6 +356,141 @@ class MessageAlignment(unittest.TestCase):
         self.assertGreaterEqual(measured["left"], 0)
         self.assertLessEqual(measured["right"], page.viewport_size["width"])
         self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), page.viewport_size["width"])
+
+    # ------------------------------------------------------------------ #591: message toolbars, on a computer
+
+    SIZES = ((1440, 900), (1920, 1080), (2560, 1440))
+
+    def surfaces(self):
+        """The four places a message has its toolbar: path, the scrolling pane and the messages in it."""
+        return {
+            "project conversation": (f"/projects/{self.project}", ".project-convo__feed", ".project-convo__message[id^='message-']"),
+            "project thread": (f"/projects/{self.project}/conversations/{self.wide['id']}", ".thread__feed", ".thread__list .project-convo__message"),
+            "private conversation": (f"/dm/{self.dm['id']}", ".dm__feed", ".dm__list .dm-msg[data-message-id]"),
+            "private thread": (f"/dm/{self.dm['id']}?thread={self.dm_root}", ".thread__feed", ".thread__list .dm-msg[data-message-id]"),
+        }
+
+    def open_surface(self, who, name, width, height):
+        path, pane, message = self.surfaces()[name]
+        page = self.page(who)
+        page.set_viewport_size({"width": width, "height": height})
+        page.goto(path)
+        messages = page.locator(message)
+        expect(messages.first).to_be_visible()
+        expect(page.locator(".thread__feed.is-opening")).to_have_count(0)
+        page.wait_for_timeout(300)
+        return page, pane, messages
+
+    def test_06_nothing_in_a_pane_sticks_out_of_it_visible_or_hidden(self):
+        # Every bubble, card and toolbar (shown or not) lies inside its pane's own width, so there is nothing to scroll
+        # sideways: the layout leaves the room, it does not hide the overflow.
+        for width, height in self.SIZES:
+            for who in ("ada", "jonas"):
+                for name in self.surfaces():
+                    with self.subTest(width=width, who=who, surface=name):
+                        page, pane, messages = self.open_surface(who, name, width, height)
+                        assert_no_sideways_scroll(self, page, pane, name)
+                        edge = rect(page.locator(pane))
+                        # The pane's scroll box, less the scroll bar: what a person can see of a row.
+                        client = page.locator(pane).first.evaluate("el => el.getBoundingClientRect().left + el.clientWidth")
+                        self.assertGreaterEqual(messages.count(), 4, f"{name}: messages from both people")
+                        for index in range(messages.count()):
+                            message = messages.nth(index)
+                            for part in ("toolbars", "bubbles"):
+                                boxes = (message.locator(".msg-acts") if part == "toolbars" else message.locator(".message-bubble, .ws-chip, .wiki-card, .message-files, .link-preview")).evaluate_all(
+                                    "els => els.map(el => { const r = el.getBoundingClientRect(); return {left: r.left, right: r.right, width: r.width}; })")
+                                for box in boxes:
+                                    self.assertGreaterEqual(box["left"], edge["left"] - 0.5, f"{name} {index}: {part} start inside the pane")
+                                    self.assertLessEqual(box["right"], client + 0.5, f"{name} {index}: {part} end inside the pane")
+                        page.context.close()
+
+    def test_07_a_narrow_docked_thread_still_fits_its_toolbar(self):
+        # A small laptop docks a 380px thread: the pill shrinks to its menu button instead of leaving the pane.
+        for name in ("project thread", "private thread"):
+            with self.subTest(surface=name):
+                page, pane, messages = self.open_surface("ada", name, 1100, 800)
+                assert_no_sideways_scroll(self, page, pane, name)
+                width = page.locator(pane).first.evaluate("el => el.clientWidth")
+                last = messages.nth(messages.count() - 2)
+                last.scroll_into_view_if_needed()
+                last.hover()
+                page.wait_for_timeout(250)
+                bars = showing(page, pane)
+                self.assertEqual([bar["id"] for bar in bars], [last.get_attribute("data-message-id") or last.get_attribute("id")], name)
+                if width < 400:
+                    self.assertLessEqual(last.locator(".msg-acts__b:visible").count(), 1, f"{name}: one button in a pane of {width}px")
+                    self.assertLessEqual(bars[0]["right"] - bars[0]["left"], 44, f"{name}: the pill is the menu button alone")
+                    # The room kept for it is that button's too: the widest bubble is not squeezed as by the full pill.
+                    widest = max(messages.locator(".message-bubble").evaluate_all("els => els.map(el => el.getBoundingClientRect().width)"))
+                    self.assertGreaterEqual(widest, 200, f"{name}: bubbles keep their width beside the small pill")
+                self.assertEqual(covered_parts(page, pane, bars[0]), [], f"{name}: the toolbar covers nothing")
+                page.context.close()
+
+    def test_08_one_toolbar_at_a_time_and_a_click_leaves_none_behind(self):
+        for name in self.surfaces():
+            with self.subTest(surface=name):
+                page, pane, messages = self.open_surface("ada", name, 1440, 900)
+                count = messages.count()
+                first, second = messages.nth(count - 3), messages.nth(count - 2)
+                ids = [first.get_attribute("data-message-id") or first.get_attribute("id"), second.get_attribute("data-message-id") or second.get_attribute("id")]
+                first.scroll_into_view_if_needed()
+                # A click on a message focuses it, but only a keyboard makes that a reason to show its toolbar.
+                first.locator(".message-bubble").first.click(position={"x": 20, "y": 6})
+                page.mouse.move(2, 2)
+                page.wait_for_timeout(250)
+                self.assertEqual(showing(page), [], f"{name}: a mouse click leaves no toolbar behind")
+                # Hand-over: the pointer moves to the next message and no frame shows two toolbars.
+                first.hover()
+                expect(first.locator(".msg-acts")).to_have_css("opacity", "1")
+                start_counting(page)
+                second.locator(".message-bubble").first.hover()
+                page.wait_for_timeout(500)
+                counted = stop_counting(page)
+                self.assertLessEqual(counted["max"], 1, f"{name}: two toolbars showed at once ({counted})")
+                self.assertEqual([bar["id"] for bar in showing(page)], [ids[1]], f"{name}: only the hovered message has one")
+                # Keyboard: Tab from the clicked message reaches its own toolbar, which then shows alone.
+                first.locator(".message-bubble").first.click(position={"x": 20, "y": 6})
+                page.mouse.move(2, 2)
+                page.keyboard.press("Tab")
+                self.assertEqual([bar["id"] for bar in showing(page)], [ids[0]], f"{name}: focus shows the focused message's toolbar")
+                # An open menu keeps its own toolbar and no other shows meanwhile, even under the pointer.
+                for _ in range(12):
+                    if page.evaluate("document.activeElement?.getAttribute('aria-label')") == "More actions":
+                        break
+                    page.keyboard.press("Tab")
+                self.assertEqual(page.evaluate("document.activeElement?.getAttribute('aria-label')"), "More actions", f"{name}: Tab reaches the menu button")
+                page.keyboard.press("Enter")
+                expect(page.get_by_role("menu", name="Message actions")).to_be_visible()
+                box = second.locator(".message-bubble").first.bounding_box()
+                page.mouse.move(box["x"] + 20, box["y"] + 10)
+                page.wait_for_timeout(300)
+                self.assertEqual([bar["id"] for bar in showing(page)], [ids[0]], f"{name}: the open menu keeps its toolbar alone")
+                page.mouse.move(2, 2)
+                page.keyboard.press("Escape")
+                expect(page.get_by_role("menu", name="Message actions")).to_have_count(0)
+                # Back from the menu the keyboard still owns its message; the pointer then takes over for the one under it.
+                self.assertEqual([bar["id"] for bar in showing(page)], [ids[0]], f"{name}: Escape returns focus to the toolbar")
+                second.locator(".message-bubble").first.hover()
+                page.wait_for_timeout(300)
+                self.assertEqual([bar["id"] for bar in showing(page)], [ids[1]], f"{name}: the pointer wins over a focused message")
+                page.context.close()
+
+    def test_09_a_toolbar_never_covers_a_bubble_a_name_a_time_or_another_toolbar(self):
+        for width, height in self.SIZES[::2]:
+            for name in self.surfaces():
+                with self.subTest(width=width, surface=name):
+                    page, pane, messages = self.open_surface("ada", name, width, height)
+                    for index in range(messages.count()):
+                        message = messages.nth(index)
+                        message.scroll_into_view_if_needed()
+                        message.locator(".message-bubble").first.hover()
+                        page.wait_for_timeout(200)
+                        bars = showing(page, pane)
+                        self.assertEqual(len(bars), 1, f"{name} {index}: exactly one toolbar")
+                        self.assertEqual(covered_parts(page, pane, bars[0]), [], f"{name} {index}: the toolbar covers nothing")
+                        bubble = rect(message.locator(".message-bubble"))
+                        self.assertTrue(bars[0]["right"] <= bubble["left"] + 0.5 or bars[0]["left"] >= bubble["right"] - 0.5, f"{name} {index}: beside its bubble")
+                    page.context.close()
 
 
 if __name__ == "__main__":

@@ -106,10 +106,6 @@ button.project-convo__contribution { cursor: pointer; }
 .project-convo__message-meta strong { min-width: 0; max-width: 100%; overflow-wrap: anywhere; font-size: var(--fs-sm); font-weight: 550; }
 .project-convo__message-meta .agent-id__name { white-space: normal; overflow: visible; overflow-wrap: anywhere; }
 .project-convo__message-meta > span:not(.agent-tag) { visibility: visible; color: var(--t3); }
-/* With a mouse the actions (about 375px) appear over the top edge, at the far side from the name.
-   The box takes the full 600px measure, so they stay clear of the name, time and number; the
-   bubble inside stays as wide as its text. */
-@media (hover: hover) and (min-width: 641px) { .project-convo__message { min-width: min(600px, 100%); } }
 .project-convo__message > p:not(.photo-meta) { max-width: 100%; margin: 0; padding: 9px 13px; border-radius: 6px var(--r-lg) var(--r-lg) var(--r-lg); background: var(--el); box-shadow: var(--sh-1); font-size: var(--fs-base); line-height: var(--lh); }
 /* Everything under a message (sources, linked work, decisions, results, actions) stays inside its
    column; a long linked title shortens with an ellipsis instead of running off the side. */

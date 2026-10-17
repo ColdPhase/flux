@@ -22,7 +22,7 @@ decision, a project sketch and a doc), 100% zoom, light theme.
   instead: one stream of roots, each root's replies beside it, and no sidebar thread list), sources
   moved into the composer (the document button opens saved material to cite or add), and
   messages use avatars, day lines and calm chips for the objects made from them. On a pointer,
-  message actions float over the message and take no room.
+  message actions sit beside the bubble for the message under the pointer or with keyboard focus (the layout reserves their room, so nothing leaves the pane; [Spokój](../spokoj/README.md#message-toolbar-and-selection)).
 - **Details overview** (Details, the phone state row, or a message's **Details** action): linked
   work, decisions and results of the conversation or the selected message, sources, sketches and
   thoughts, docs that include what is linked, the rest of the project's current state, and who

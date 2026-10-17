@@ -1,6 +1,6 @@
 /* Direct messages (#107): a Messages-like reading column with its audience always in view. */
 .dm { display: flex; flex: 1; min-height: 0; flex-direction: column; }
-.dm__feed { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; }
+.dm__feed { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
 .dm__in { max-width: calc(var(--col) + 48px); margin: 0 auto; padding: 20px 24px 12px; }
 .dm__head { display: flex; align-items: center; gap: 12px; padding: 20px 0 18px; }
 .dm__faces { display: flex; flex: none; }
@@ -30,21 +30,31 @@
 .dm-gone h2 { font-size: var(--fs-lg); color: var(--t1); }
 .dm-gone p { margin: 4px 0 14px; font-size: var(--fs-md); }
 
-/* Selecting messages to start a sketch in this DM (#96). The check replaces the face; picked rows
-   take the one soft tint. Only transform, opacity and colours animate. */
+/* Selecting messages to start a sketch in this DM (#96, #594). Nothing moves: every message keeps its place, the other
+   people's on the left and mine on the right edge of the same column. The check sits in the column the face has (an own
+   message has none, so it gets the same column), vertically centred on the bubble's first line. A picked row takes the one
+   soft fill: its box grown by --dm-pick on every side, painted behind the text so that a neighbour's fill never covers a
+   bubble. Only transform, opacity and colours animate. */
+.dm { --dm-w: 1000px; --dm-pick: 8px; --dm-check: 32px; --dm-pad: 9px; --dm-meta: calc(var(--fs-sm) * 1.4 + 7px); }
+/* --dm-pad is the bubble's padding (composer/attachments.css) and --dm-meta the author row above it: the check's offsets. */
+@media (max-width: 760px) { .dm { --dm-pad: 11px; } }
 .dm--selecting .dm__composer { display: none; }
-.dm--selecting .dm-msg__row { grid-template-columns: 32px minmax(0, 1fr); margin: 0 -10px; padding-left: 10px; padding-right: 10px; border-radius: var(--r-lg); cursor: pointer; transition: background-color var(--dur-1) var(--ease-out); }
-.dm--selecting .dm-msg__row:hover { background: var(--hov); }
-.dm--selecting .dm-msg.is-picked .dm-msg__row { background: var(--sub); }
-.dm--selecting .dm-msg__face { display: none; }
-.dm-msel { display: grid; place-items: center; width: 32px; height: 32px; margin: -4px 0 0 -4px; border-radius: var(--r); color: var(--t3); animation: dm-in var(--dur-2) var(--ease-out) backwards; }
+.dm--selecting .dm__list { isolation: isolate; }
+.dm--selecting .dm-msg__row { position: relative; cursor: pointer; }
+.dm--selecting .dm-msg__row::before { content: ""; position: absolute; z-index: -1; inset: calc(-1 * var(--dm-pick)); border-radius: var(--r-lg); transition: background-color var(--dur-1) var(--ease-out); }
+.dm--selecting .dm-msg__row:hover::before { background: var(--hov); }
+.dm--selecting .dm-msg.is-picked .dm-msg__row::before { background: var(--sub); }
+.dm--selecting .dm-msg__face { visibility: hidden; }
+.dm-msg:not(.is-mine):not(.dm-msg--cont) { --dm-top: var(--dm-meta); }
+.dm-msel { position: absolute; left: 0; top: calc(var(--dm-top, 0px) + var(--dm-pad) + .5 * var(--lh) * var(--fs-base) - var(--dm-check) / 2); display: grid; place-items: center start;
+  width: var(--dm-check); height: var(--dm-check); border-radius: var(--r); color: var(--t3); animation: dm-in var(--dur-2) var(--ease-out) backwards; }
 .dm-msel i { display: grid; place-items: center; width: 18px; height: 18px; border-radius: 5px; box-shadow: inset 0 0 0 1.5px var(--t3); transition: var(--tr); }
 .dm-msel svg { opacity: 0; transform: scale(.6); color: var(--oninv); transition: opacity var(--dur-1) var(--ease-out), transform var(--dur-1) var(--ease-out); }
 .dm-msel[aria-pressed="true"] i { background: var(--inv); box-shadow: none; }
 .dm-msel[aria-pressed="true"] svg { opacity: 1; transform: none; }
 .dm-msel:active i { transform: scale(.9); }
-.dm-selbar { flex: none; border-top: 1px solid var(--line); background: var(--bg); padding: 10px 24px 16px; padding-bottom: max(16px, env(safe-area-inset-bottom)); animation: dm-rise var(--dur-2) var(--ease-out) backwards; }
-.dm-selbar__in { max-width: var(--col); margin: 0 auto; display: flex; align-items: center; flex-wrap: wrap; gap: 8px 10px; }
+.dm-selbar { flex: none; display: flex; flex-direction: column; justify-content: center; min-height: min(var(--dm-swap, 0px), 140px); border-top: 1px solid var(--line); background: var(--bg); padding: 10px 24px 16px; padding-bottom: max(16px, env(safe-area-inset-bottom)); animation: dm-rise var(--dur-2) var(--ease-out) backwards; }
+.dm-selbar__in { max-width: calc(var(--dm-w) - 48px); margin: 0 auto; display: flex; align-items: center; flex-wrap: wrap; gap: 8px 10px; }
 .dm-selbar__count { margin-right: auto; font-size: var(--fs-md); font-weight: 500; color: var(--t1); }
 .dm-selbar__note { flex-basis: 100%; display: flex; align-items: center; gap: 6px; font-size: var(--fs-sm); color: var(--t3); }
 .dm-selbar__note svg { flex: none; }
@@ -91,8 +101,7 @@
 
 @media (pointer: coarse) {
   .dm__error button { min-height: 44px; }
-  .dm--selecting .dm-msg__row { grid-template-columns: 44px minmax(0, 1fr); }
-  .dm-msel { width: 44px; height: 44px; margin: -10px 0 0 -10px; }
+  .dm { --dm-check: 44px; }
   .dm-new__person { min-height: 56px; }
   .dm-new__space select, .dm-new__search, .dm-new__title input { min-height: 44px; }
 }
@@ -113,8 +122,8 @@
 .dm-msg:focus-visible { outline: 2px solid var(--t1); outline-offset: 2px; }
 
 /* Own messages on the right, the other people's on the left (#132/#136), in the pane's width. */
-.dm__in { max-width: 1000px; }
-.dm__composer .composer__in { max-width: calc(1000px - 48px); }
+.dm__in { max-width: var(--dm-w); }
+.dm__composer .composer__in { max-width: calc(var(--dm-w) - 48px); }
 .dm-msg__main { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; }
 .dm-msg__body { max-width: min(640px, 82%); padding: 7px 12px; border-radius: 4px 14px 14px 14px; background: var(--sub); }
 .dm-msg--cont .dm-msg__body { border-radius: 14px; }
@@ -125,8 +134,6 @@
 .dm-msg.is-mine .dm-msg__body { border-radius: 14px 4px 14px 14px; background: var(--sub); }
 .dm-msg.is-mine.dm-msg--cont .dm-msg__body { border-radius: 14px; }
 @media (max-width: 640px) { .dm-msg__body { max-width: 92%; } }
-/* While selecting messages (#96) every row starts with its check, own messages included. */
-.dm--selecting .dm-msg.is-mine .dm-msg__row { grid-template-columns: 32px minmax(0, 1fr); }
 
 /* Shared bubble and clock, with the same author columns as project messages. */
 .dm-msg__row { grid-template-columns: 32px minmax(0, 1fr); gap: 12px; }
@@ -140,25 +147,24 @@
 .dm-msg.is-arrived, .dm-msg.is-picked { box-shadow: none; border-radius: var(--r); }
 .dm-msg.is-arrived .message-bubble { background: var(--sub); }
 .dm-msg.is-picked .message-time { color: var(--t2); }
-.dm--selecting .dm-msg.is-mine .dm-msg__row { display: grid; }
 .dm__day { margin: 20px 0; }
 
 .dm-msg { margin-top: 24px; }
 .dm-msg.dm-msg--cont { margin-top: 4px; }
 .dm-msg .dm-msg__row { padding-top: 0; padding-bottom: 0; }
 
-/* One bubble with its actions (#536, #537). On a computer reply in thread, create task and more sit beside the
-   bubble on hover and focus and take no room; on a phone swipe left and long press (work/message-actions.css). */
+/* One bubble with its actions (#536, #537, #591). On a computer reply in thread, create task and more sit beside the
+   bubble for the message under the pointer or holding keyboard focus; the room for them is reserved below, so they are
+   always inside the pane. On a phone: swipe right and long press (work/message-actions.css). */
 .dm-split { min-width: 0; }
 .dm-split > .convo-split__stream > .dm { flex: 1; }
 .dm-msg { position: relative; }
 .dm-msg__main { position: relative; }
-.dm-msg:not(.is-mine) .dm-msg__main { justify-self: start; max-width: 100%; }
-.dm-msg__main > .msg-acts { top: 4px; left: 100%; right: auto; margin-left: 6px; }
-.dm-msg.is-mine .dm-msg__main > .msg-acts { left: auto; right: 100%; margin: 0 6px 0 0; }
-.dm-msg:hover .dm-msg__main > .msg-acts, .dm-msg:focus-within .dm-msg__main > .msg-acts, .dm-msg__main > .msg-acts:has([aria-expanded="true"]) { opacity: 1; pointer-events: auto; }
+.dm-msg:not(.is-mine) .dm-msg__main { justify-self: start; }
+.dm-msg__main > .msg-acts { left: calc(100% + var(--acts-gap, 6px)); }
+.dm-msg.is-mine .dm-msg__main > .msg-acts { left: auto; right: calc(100% + var(--acts-gap, 6px)); }
+.dm-msg.is-mine .dm-msg__main > .msg-acts::before { left: auto; right: calc(-1 * var(--acts-gap, 6px)); }
 .dm--selecting .msg-acts { display: none; }
-@media (hover: none) { .dm__feed, .thread__feed { overflow-x: hidden; } }
 /* Revealing a message's swipe actions must not move the reading position (that would close them at once); loading earlier messages keeps its own position. */
 .dm__feed { overflow-anchor: none; }
 /* The count stays visible under a root that has replies. */
@@ -176,7 +182,6 @@
 .dm-thread .thread__hint { margin: 14px 0 12px; }
 .dm-thread .dm__list { padding-top: 0; }
 .dm-thread__composer .composer__in { max-width: none; }
-.dm-thread .dm-msg__main { max-width: 100%; }
 .dm-thread .dm-msg { margin-top: 18px; }
 .dm-thread .dm-msg.dm-msg--cont { margin-top: 4px; }
 .dm-thread .dm-thread__root > .dm-msg { margin-top: 0; }
@@ -200,4 +205,7 @@
 .dm-copy__error { display: flex; align-items: center; gap: 6px; font-size: var(--fs-sm); color: var(--t1); }
 .dm-copy__actions { display: flex; justify-content: flex-end; gap: 8px; }
 @media (max-width: 680px) { .dm-copy__row { grid-template-columns: minmax(0, 1fr); } }
-@media (hover: hover) { .dm-msg__main { max-width: min(600px, calc(100% - 112px)); } }
+/* The bubble column of every message, in a conversation and in its thread, leaves --acts-room beside it for the pill. */
+@media (hover: hover) { .dm-msg .dm-msg__main { max-width: min(600px, calc(100% - var(--acts-room, 114px))); } }
+/* Selecting on a phone gives an own message the check's column too, so its bubble never runs under it. */
+@media (hover: none) { .dm--selecting .dm-msg.is-mine .dm-msg__main { max-width: min(600px, calc(100% - var(--dm-check) - 12px)); } }

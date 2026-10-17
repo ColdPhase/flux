@@ -19,6 +19,7 @@ import unittest
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
 from message_gestures import centre, long_press, swipe, touch
+from message_layout import assert_no_sideways_scroll, covered_parts, showing, start_counting, stop_counting
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UI_BROWSER, UPSTREAM, shot, start_forwarder
 
 PASSWORD = "messages between friends"
@@ -433,6 +434,44 @@ class DmThreadsReceipts(unittest.TestCase):
         phone.goto(f"/dm/{self.dm_id}")
         expect(self.run_footer(phone, self.run_y).locator(".message-seen")).to_have_text(re.compile(r"Seen by Kai$"), timeout=20000)
         shot(phone, "dm-threads-phone-seen-dark")
+
+    def test_10_thread_replies_from_both_people_stay_in_the_pane_with_one_toolbar(self) -> None:
+        """#591: the thread beside the conversation has no sideways scroll, shows one toolbar at a time and covers nothing."""
+        long = ("Averyveryverylongwordwithoutanyspacesthatkeepsgoingandgoingandgoingandgoingandgoing and "
+                "https://example.test/a/really/long/path/that/never/ends/and/ends/in/a/query?x=1&y=2&z=3 end.")
+        root = self.run_x[1]
+        for index, (who, body) in enumerate((("kai", long), ("kai", "Straight after."), ("ada", long), ("ada", "Short from me."), ("kai", "Thanks!"))):
+            self.post(who, f"/api/v1/dms/{self.dm_id}/threads/{root}/replies", {"body": body, "clientMessageId": f"00000000-0000-4000-8000-{900 + index:012d}"}, 201)
+        for who in ("ada", "kai"):
+            page = self.page(who)
+            page.goto(f"/dm/{self.dm_id}?thread={root}")
+            replies = page.locator("[data-dm-thread] .thread__list .dm-msg[data-message-id]")
+            expect(replies).to_have_count(5)
+            page.wait_for_timeout(300)
+            assert_no_sideways_scroll(self, page, "[data-dm-thread] .thread__feed", f"{who}'s thread")
+            for index in range(5):
+                reply = replies.nth(index)
+                reply.scroll_into_view_if_needed()
+                reply.locator(".message-bubble").hover()
+                page.wait_for_timeout(200)
+                bars = showing(page, "[data-dm-thread]")
+                self.assertEqual(len(bars), 1, f"{who}: reply {index} has the only toolbar")
+                self.assertEqual(covered_parts(page, "[data-dm-thread]", bars[0]), [], f"{who}: reply {index}: the toolbar covers nothing")
+                feed = page.locator("[data-dm-thread] .thread__feed").evaluate("el => ({left: el.getBoundingClientRect().left, right: el.getBoundingClientRect().left + el.clientWidth})")
+                self.assertTrue(feed["left"] - 0.5 <= bars[0]["left"] and bars[0]["right"] <= feed["right"] + 0.5, f"{who}: reply {index}: the toolbar is inside the pane")
+            # A click leaves nothing behind and the hand-over from one reply to the next never shows two.
+            replies.nth(1).locator(".message-bubble").click(position={"x": 20, "y": 6})
+            page.mouse.move(2, 2)
+            page.wait_for_timeout(200)
+            self.assertEqual(showing(page), [], f"{who}: a click leaves no toolbar")
+            replies.nth(1).locator(".message-bubble").hover()
+            expect(replies.nth(1).locator(".msg-acts")).to_have_css("opacity", "1")
+            start_counting(page)
+            replies.nth(2).locator(".message-bubble").hover()
+            page.wait_for_timeout(500)
+            self.assertLessEqual(stop_counting(page)["max"], 1, f"{who}: two toolbars never show together")
+            shot(page, f"dm-threads-desktop-thread-replies-{who}")
+            page.context.close()
 
 
 if __name__ == "__main__":
