@@ -309,6 +309,32 @@ describe('hand-offs from the owner\'s assistant to the owner\'s own agents (F-02
     assert.deepEqual(all.changedSince, [`#${late.number}`]);
   });
 
+  test('AST-6.2: Undo of a hand-off needs write access to the project now, the owner included: removed from it since, the Undo is refused and the unit stays pending', async () => {
+    const task = await scene.task(scene.owner, 'Rights change before Undo');
+    const live = await scene.liveRun();
+    const made = JSON.parse(text((await handoff(live, task, 'k')).message)) as { unitId: string };
+    await scene.complete(live.runId);
+    const [row] = await changesOf(live.runId);
+    // An explicit deny wins over every role: Ada no longer has this project, though she still owns the workspace.
+    await pool.query(`INSERT INTO project_grants (id, workspace_id, project_id, user_id, role, created_by) VALUES ($1, $2, $3, $4, 'denied', $4)`,
+      [randomUUID(), scene.ws.id, scene.place.id, scene.owner.id]);
+    try {
+      const single = expectStatus(await scene.owner.browser.request('POST', assistantChangeActionPath(row!.id, 'undo'), { body: {} }), 200) as { change: AssistantChange; message: string | null };
+      assert.equal(single.message, 'Changed since. Open it');
+      assert.equal(single.change.state, 'applied');
+      const whole = expectStatus(await scene.owner.browser.request('POST', assistantRunChangesActionPath(live.runId, 'undo'), { body: {} }), 200) as AssistantRunUndone;
+      assert.deepEqual([whole.undone, whole.changedSince], [0, [`#${task.number}`]]);
+      assert.deepEqual((await units(task.id)).map((item) => [item.id, item.state, item.generation, item.version]), [[made.unitId, 'pending', 0, 1]], 'nothing was cancelled');
+      assert.equal((await changesOf(live.runId))[0]!.state, 'applied');
+    } finally {
+      await pool.query(`DELETE FROM project_grants WHERE project_id = $1 AND user_id = $2 AND role = 'denied'`, [scene.place.id, scene.owner.id]);
+    }
+    // With her rights back, the same Undo cancels it.
+    const back = expectStatus(await scene.owner.browser.request('POST', assistantChangeActionPath(row!.id, 'undo'), { body: {} }), 200) as { change: AssistantChange; message: string | null };
+    assert.deepEqual([back.change.state, back.message], ['undone', null]);
+    assert.equal((await units(task.id))[0]!.state, 'stopped');
+  });
+
   test('AST-6.2 held: a claim and an Undo serialize on the unit; whichever wins, the other sees its result whole and the recipient\'s authority is never reset', async () => {
     const wins = await scene.task(scene.owner, 'Claim wins');
     const loses = await scene.task(scene.owner, 'Undo wins');

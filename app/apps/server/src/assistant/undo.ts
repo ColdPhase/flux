@@ -133,7 +133,7 @@ export async function undoChange(db: Database, row: AssistantChangeRow, by: Prin
         }
         case 'cowork.unit.create': {
           if (plan.kind !== 'handoff') throw new Since(NOT_UNDOABLE);
-          const cancelled = await cancelOwnerAssistantUnitInTransaction(tx, { workspaceId: row.workspaceId, projectId: row.projectId,
+          const cancelled = await cancelOwnerAssistantUnitInTransaction(tx, by, { workspaceId: row.workspaceId, projectId: row.projectId,
             assistantConnectionId: String((row.receipt as { assistantConnectionId?: string } | null)?.assistantConnectionId ?? ''), taskId: plan.taskId,
             unitId: plan.unitId, creationVersion: plan.creationVersion });
           if (cancelled.result === 'started') throw new Since(`Your ${cancelled.recipient} already started. Open the task`);

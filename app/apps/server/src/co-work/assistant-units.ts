@@ -1,7 +1,7 @@
 import type { AgentPeerRequestClass, AuthenticatedAgentRuntime } from '@flux/contracts';
 import { coworkUnitCreationRows } from '@flux/db';
-import { assistantHandoffRunId, ConflictError, normalizeCoWorkUnitCreate, requireOwnerAssistantHandoff, validateCoWorkUnitPolicy,
-  type CoWorkContext, type CoWorkUnitPolicy, type Transaction } from '@flux/core';
+import { assistantHandoffRunId, ConflictError, evaluateProject, normalizeCoWorkUnitCreate, requireOwnerAssistantHandoff, validateCoWorkUnitPolicy,
+  type CoWorkContext, type CoWorkUnitPolicy, type Principal, type Transaction } from '@flux/core';
 import { coWorkTaskGraphLocks } from './graph.js';
 import type { CoWorkUnitCreation } from './units.js';
 
@@ -49,7 +49,7 @@ export type HandoffUndo =
   | { result: 'cancelled' }
   /** The recipient has claimed or worked on it: nothing changes, and the owner is told so. */
   | { result: 'started'; recipient: string }
-  /** Gone, stopped by someone, or touched since it was created. */
+  /** Gone, stopped by someone, touched since it was created, or the one undoing it no longer may write in the project. */
   | { result: 'changed' };
 
 /**
@@ -57,8 +57,11 @@ export type HandoffUndo =
  * under the same lock order a claim takes, so a concurrent claim and Undo serialize on the unit and one of them wins whole. After the
  * recipient started it changes nothing: it never releases a claim, stops a CLI or touches a grant. The row and its run count remain.
  */
-export async function cancelOwnerAssistantUnitInTransaction(tx: Transaction, scope: { workspaceId: string; projectId: string;
+export async function cancelOwnerAssistantUnitInTransaction(tx: Transaction, by: Principal, scope: { workspaceId: string; projectId: string;
   assistantConnectionId: string; taskId: string; unitId: string; creationVersion: number }): Promise<HandoffUndo> {
+  // Whoever undoes it, the owner included, needs write access to the project now: a person removed or downgraded since cannot cancel a unit
+  // there. The rights come first (locked, as everywhere), then the connection slots, the graph, the tasks and the unit row.
+  if (!(await evaluateProject(by, 'project.write', scope.projectId, tx, { lock: true })).allowed) return { result: 'changed' };
   const rows = coworkUnitCreationRows(tx);
   const locked = await rows.lockUnit({ workspaceId: scope.workspaceId, projectId: scope.projectId, creatorConnectionId: scope.assistantConnectionId,
     taskId: scope.taskId, unitId: scope.unitId }, (units) => coWorkTaskGraphLocks(tx, scope.workspaceId, units));

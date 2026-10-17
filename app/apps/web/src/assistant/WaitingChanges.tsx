@@ -86,7 +86,13 @@ function RunMessage({ changes, onChanged, meId, standalone = false }: { changes:
     try { await action(); } catch (error) { setNote(failure(error)); }
     finally { setBusy(''); await onChanged(); }
   };
-  const undoAll = () => act('all', async () => { const result = await undoRunChanges(runId); setNote(result.changedSince.length || result.message !== `Undid ${result.undone} change${result.undone === 1 ? '' : 's'}` ? result.message : ''); });
+  const undoAll = () => act('all', async () => {
+    const result = await undoRunChanges(runId);
+    setNote(result.changedSince.length || result.message !== `Undid ${result.undone} change${result.undone === 1 ? '' : 's'}` ? result.message : '');
+    // Each item that could not be taken back says why in its own row ("Your Codex already started. Open the task"), opened for the person.
+    const said = Object.fromEntries(result.changes.filter((entry) => entry.message && entry.change.state !== 'undone').map((entry) => [entry.change.id, entry.message!]));
+    if (Object.keys(said).length) { setItemNotes((current) => ({ ...current, ...said })); setOpen(true); }
+  });
   const undoOne = (change: AssistantChange) => act(change.id, async () => {
     const result = await undoChange(change);
     setItemNotes((current) => ({ ...current, [change.id]: result.message ?? '' }));

@@ -25,7 +25,7 @@ import { useShellActions } from './shellContext';
 import { assistantUses, AssistantSuggestions, meetAssistantDismissed, noteAssistantUse } from '../assistant/MeetAssistant';
 import { useConversationAssistant } from '../assistant/useConversationAssistant';
 import { useAssistantChanges, WaitingChanges } from '../assistant/WaitingChanges';
-import { AnswerItem, AskBar, AssistantAvatar, ProposalCard, WorkingLine } from '../assistant/ConversationParts';
+import { AnswerItem, AskBar, BehindLine, OthersWorkingLine, ProposalCard, WorkingLine } from '../assistant/ConversationParts';
 import { askError as askErrorText, askState } from '../assistant/format';
 import { grantAgentProject } from '../agent-connection/api';
 import { requestAssistantJoin } from '../agents/api';
@@ -692,16 +692,9 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
             ))}
             {assistant.run ? <WorkingLine key={assistant.run.id} run={assistant.run} onStop={assistant.stop} onRetry={() => assistant.retry(assistant.run!.id)} onDismiss={assistant.dismissRun}
               changed={(assistantChanges.byRun.get(assistant.run.id) ?? []).filter((change) => change.state === 'applied' || change.state === 'applied_after_wait' || change.state === 'undone').length} /> : null}
-            {assistant.others.map((other) => (
-              <li key={`working-${other.ownerId}`} className="assistant-working assistant-working--others" aria-live="polite">
-                <AssistantAvatar expression="thinking" />
-                <div className="assistant-working__body"><p className="assistant-working__text">{other.ownerName.trim().split(/\s+/)[0] || other.ownerName}’s assistant is working…</p></div>
-              </li>
-            ))}
+            {assistant.others.map((other) => <OthersWorkingLine key={`working-${other.ownerId}`} name={other.ownerName} />)}
             {waitingHere.map((item) => <li key={item.clientRunId} className="assistant-queued" aria-live="polite">Sends when you&apos;re back</li>)}
-            {assistant.queued?.behind && assistant.queued.behind.authority !== 'owner_request' ? <li className="assistant-queued" aria-live="polite">
-              <span>Finishing your <b>{assistant.queued.behind.label ?? 'background work'}</b> first. Yours starts next.</span>
-              <Button variant="link" onClick={() => void assistant.stopBehind().catch(() => undefined)}>Stop the {(assistant.queued.behind.label ?? 'work').split(' ').at(-1)!.toLowerCase()}</Button></li>
+            {assistant.queued?.behind && assistant.queued.behind.authority !== 'owner_request' ? <BehindLine label={assistant.queued.behind.label} onStop={assistant.stopBehind} />
               : assistant.queued ? <li className="assistant-queued" aria-live="polite">Next: “{assistant.queued.prompt.length > 60 ? `${assistant.queued.prompt.slice(0, 60)}…` : assistant.queued.prompt}”. It starts when this one ends ·
               <Button variant="link" onClick={() => void assistant.cancelQueued().catch(() => undefined)}>Cancel</Button></li> : null}
             </ol>

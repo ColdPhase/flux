@@ -7,6 +7,7 @@ import { useSmallMoments } from '../app/smallMoments';
 import { AssistantPanel, companyName } from './AssistantPanel';
 import { useShellActions } from '../app/shellContext';
 import { canRetry, endedText, isWorking, onRuntime, workingText, type AskState } from './format';
+import { failure } from './WaitingChanges';
 import { agentAuthorLabel } from '../docs/format';
 import './assistant.css';
 
@@ -91,6 +92,36 @@ export function WorkingLine({ run, onStop, onRetry, onDismiss, changed = 0 }: { 
         {!working && canRetry(run) ? <Button variant="quiet" busy={busy} onClick={() => void act(onRetry)}>Retry</Button> : null}
         {!working ? <IconButton icon="x" label="Dismiss" onClick={onDismiss} /> : null}
       </div>
+    </li>
+  );
+}
+
+/** "Ada's assistant is working…": what everyone else sees, by name only: no detail, no Stop. Kreska shows only with small moments on. */
+export function OthersWorkingLine({ name }: { name: string }) {
+  const loop = useLoopPause<HTMLLIElement>();
+  const moments = useSmallMoments();
+  return (
+    <li ref={loop} className="assistant-working assistant-working--others" aria-live="polite">
+      {moments ? <AssistantAvatar expression="thinking" /> : null}
+      <div className="assistant-working__body"><p className="assistant-working__text">{name.trim().split(/\s+/)[0] || name}’s assistant is working…</p></div>
+    </li>
+  );
+}
+
+/** "Finishing your Morning summary first. Yours starts next. · Stop the morning summary": the request waits behind a background run of the owner. */
+export function BehindLine({ label, onStop }: { label: string | null; onStop: () => Promise<void> }) {
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState('');
+  const name = label ?? 'background work';
+  const stop = async () => {
+    setBusy(true); setFailed('');
+    try { await onStop(); } catch (error) { setFailed(failure(error)); } finally { setBusy(false); }
+  };
+  return (
+    <li className="assistant-queued" aria-live="polite">
+      <span>Finishing your <b>{name}</b> first. Yours starts next.</span>
+      <Button variant="link" busy={busy} onClick={() => void stop()}>Stop the {name.charAt(0).toLowerCase() + name.slice(1)}</Button>
+      {failed ? <span className="assistant-working__error" role="alert">{failed}</span> : null}
     </li>
   );
 }

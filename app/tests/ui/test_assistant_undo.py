@@ -251,9 +251,10 @@ class AssistantUndo(unittest.TestCase):
         message.locator(".assistant-message__head").get_by_role("button", name="Undo").click()
         expect(message.locator(".assistant-message__note")).to_have_text("Undid 3 changes. 1 changed since: #4")
         self.assertIn(("run", "undo"), calls)
-        # The refused one stays undoable and says why when tried alone.
-        message.get_by_role("button", name="+1 more").click()
+        # The item that could not be taken back says why in its own row, opened for the person, from the header's Undo too.
         row = message.locator(".assistant-message__rows li", has_text="#4 Probes")
+        expect(row).to_contain_text("Changed since. Open it")
+        # It stays undoable and says the same when tried alone.
         row.get_by_role("button", name="Undo").click()
         expect(row).to_contain_text("Changed since. Open it")
         shot(page, "assistant-undo-1440-light-partial")
@@ -391,8 +392,21 @@ class AssistantUndo(unittest.TestCase):
                 # No detail and no Stop for anyone else (AST-10.6).
                 expect(page.get_by_role("button", name="Stop")).to_have_count(0)
                 expect(page.locator(".assistant-working__who")).to_have_count(0)
+                expect(line.locator(".kreska")).to_have_count(1)
                 if who == "jonas":
                     shot(page, "assistant-undo-1440-light-others-working")
+                    # With Settings → Appearance off, the face is gone and the words stay, like the owner's own working line.
+                    settings = page.context.new_page()
+                    settings.goto("/settings")
+                    settings.get_by_role("switch", name="Kreska in loading and empty screens").click()
+                    expect(settings.get_by_role("switch", name="Kreska in loading and empty screens")).to_have_attribute("aria-checked", "false")
+                    try:
+                        page.reload()
+                        expect(line).to_have_text("Ada’s assistant is working…")
+                        expect(line.locator(".kreska")).to_have_count(0)
+                    finally:
+                        settings.get_by_role("switch", name="Kreska in loading and empty screens").click()
+                        settings.close()
             else:
                 # Ada's own page never shows the line about herself: her working line is the owner's, with Stop.
                 expect(page.locator(".project-convo__message").first).to_be_visible()
@@ -437,6 +451,25 @@ class AssistantUndo(unittest.TestCase):
         expect(page.get_by_role("complementary", name="Details")).to_contain_text("Review the lamp plan")
         shot(page, "assistant-undo-1440-light-handoff")
 
+    def test_14b_the_header_undo_reports_a_started_hand_off_in_its_row(self) -> None:
+        page = self.page()
+        work = self.api(page, "POST", f"/api/v1/projects/{self.ids['project']}/work", {"title": "Review the sensor plan"}, status=201)
+        started = self.applied(operation="cowork.unit.create", objectType="work", objectId=work["id"], objectTitle=f"#{work['number']} Review the sensor plan",
+                               phrase="hand off task", verb="Hand off", after="Handed to Codex", line="Codex started", runState="done")
+        calls: list[tuple[str, str]] = []
+        self.stub_undo(page, [started], calls)
+        page.route(re.compile(r".*/api/v1/assistant-runs/[0-9a-f-]{36}/changes/undo$"), lambda route: route.fulfill(
+            status=200, content_type="application/json", body=json.dumps({
+                "changes": [{"change": started, "message": "Your Codex already started. Open the task"}], "undone": 0, "changedSince": [f"#{work['number']}"],
+                "message": f"Undid 0 changes. 1 changed since: #{work['number']}"})))
+        self.open_conversation(page)
+        message = page.locator(".assistant-message")
+        message.locator(".assistant-message__head").get_by_role("button", name="Undo").click()
+        row = message.locator(".assistant-message__rows li")
+        expect(row).to_contain_text("Your Codex already started.")
+        row.get_by_role("button", name="Open the task").click()
+        expect(page.get_by_role("complementary", name="Details")).to_contain_text("Review the sensor plan")
+
     def test_15_a_request_behind_a_background_run_says_what_it_waits_for_and_can_stop_it(self) -> None:
         page = self.page()
         summary_id = str(uuid.uuid4())
@@ -456,13 +489,41 @@ class AssistantUndo(unittest.TestCase):
         self.open_conversation(page)
         line = page.locator(".assistant-queued")
         expect(line).to_contain_text("Finishing your Morning summary first. Yours starts next.")
-        expect(line.get_by_role("button", name="Stop the summary")).to_be_visible()
+        expect(line.get_by_role("button", name="Stop the morning summary")).to_be_visible()
         self.no_horizontal_scroll(page)
         shot(page, "assistant-undo-1440-light-background")
-        line.get_by_role("button", name="Stop the summary").click()
+        line.get_by_role("button", name="Stop the morning summary").click()
         expect(line).to_have_count(0)
         self.assertEqual(state["stopped"], [summary_id], "it stopped the background run, not the request")
         expect(page.locator(".assistant-working")).to_have_count(1)
+
+    def test_15b_stopping_the_background_run_fails_in_words(self) -> None:
+        page = self.page()
+        behind = {"runId": str(uuid.uuid4()), "authority": "owner_reaction", "label": "Blocked-task watch"}
+        waiting = {**self._run(str(uuid.uuid4()), "queued", "turn this into tasks"), "behind": behind}
+        page.route(re.compile(r".*/api/v1/assistant-runs\?limit=10$"), lambda route: route.fulfill(
+            status=200, content_type="application/json", body=json.dumps({"items": [waiting], "total": 1, "limit": 10, "offset": 0})))
+        page.route(re.compile(r".*/api/v1/assistant-runs/[0-9a-f-]{36}$"), lambda route: route.fulfill(
+            status=200, content_type="application/json", body=json.dumps(waiting)))
+
+        def refuse(route: Route) -> None:
+            if page.evaluate("!navigator.onLine"):  # routed requests bypass the emulated network, so offline is aborted here
+                route.abort("internetdisconnected")
+            else:
+                route.fulfill(status=500, content_type="application/json", body=json.dumps({"error": "Stop did not go through", "code": "SERVER_ERROR"}))
+        page.route(re.compile(r".*/api/v1/assistant-runs/[0-9a-f-]{36}/stop$"), refuse)
+        self.open_conversation(page)
+        line = page.locator(".assistant-queued")
+        expect(line).to_contain_text("Finishing your Blocked-task watch first. Yours starts next.")
+        stop = line.get_by_role("button", name="Stop the blocked-task watch")
+        stop.click()
+        expect(line.get_by_role("alert")).to_be_visible()
+        expect(line).to_contain_text("Finishing your Blocked-task watch first.")
+        # Offline it says so instead of failing silently.
+        page.context.set_offline(True)
+        stop.click()
+        expect(line.get_by_role("alert")).to_have_text("Offline")
+        page.context.set_offline(False)
 
     def test_16_a_run_that_died_after_two_changes_says_so_and_lists_them_with_undo(self) -> None:
         page = self.page()
