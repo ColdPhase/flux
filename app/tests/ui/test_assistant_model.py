@@ -289,6 +289,7 @@ class AssistantModel(unittest.TestCase):
         self.stub_model(page2)
         page2.goto("/settings/assistant")
         row2 = page2.locator(".aset-screen__account")
+        expect(row2.get_by_role("button", name="Model: Sonnet. Change")).to_be_visible()
         page2.context.set_offline(True)
         self.open_list(page2, row2)
         page2.get_by_role("menuitemradio", name=re.compile("Haiku")).click()
@@ -315,8 +316,8 @@ class AssistantModel(unittest.TestCase):
         line.get_by_role("button", name="Choose another model").click()
         menu = page.get_by_role("menu", name="Model")
         menu.get_by_role("menuitemradio", name=re.compile("Haiku")).click()
-        self.assertEqual(model["puts"], [{"model": "haiku"}])
         expect(line.get_by_role("status")).to_contain_text("Model: Haiku")
+        self.assertEqual(model["puts"], [{"model": "haiku"}])
 
     # ---------------------------------------------------------------- the list's own states
 

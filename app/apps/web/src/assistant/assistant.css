@@ -167,6 +167,9 @@
 .aset-recent__list .ui-btn--link { min-height: 44px; }
 .assistant-working__actions .ui-btn { min-height: 44px; }
 
+/* The ask bar's text buttons (Add my assistant here, Tell whoever runs Flux …) get a 44 px target on a touch screen. */
+@media (pointer: coarse) { .assistant-ask .ask__connect { min-height: 44px; display: inline-flex; align-items: center; } }
+
 /* The assistant's model control (F-027 AST-11): one button that names the model, one short list. Tokens only. */
 .aset-model { position: relative; display: inline-flex; align-items: center; max-width: 100%; }
 .aset-model__btn { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; min-width: 44px; padding: 0 10px; border: 0; border-radius: var(--r-pill); background: var(--sub); box-shadow: inset 0 0 0 1px var(--line); color: var(--t1); font: inherit; font-size: var(--fs-sm); cursor: pointer; }

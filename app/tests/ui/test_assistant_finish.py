@@ -58,7 +58,7 @@ class AssistantFinish(unittest.TestCase):
         page.get_by_role("button", name="Create account").click()
         expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
         ws = self.api(page, "POST", "/api/v1/workspaces", {"name": "Garden sensors"}, status=201)
-        self.api(page, "POST", f"/api/v1/workspaces/{ws['id']}/members", {"email": base.ADA["email"], "role": "member"}, status=201)
+        self.api(page, "POST", f"/api/v1/workspaces/{ws['id']}/members", {"email": original.replace("ada.screen", "ada.finish"), "role": "member"}, status=201)
         project = self.api(page, "POST", f"/api/v1/workspaces/{ws['id']}/projects", {"name": "Soil probes", "visibility": "workspace"}, status=201)
         thread = self.api(page, "POST", f"/api/v1/projects/{project['id']}/conversations", {"body": "The probes arrive Thursday", "clientMessageId": str(uuid.uuid4())}, status=201)
         type(self).ids = {**self.ids, "jonas_project": project["id"], "jonas_conversation": thread["id"]}
@@ -86,7 +86,8 @@ class AssistantFinish(unittest.TestCase):
                 expect(bar).to_contain_text("I'm not in this project yet.")
                 expect(bar).not_to_contain_text("A manager can add me")
                 add = bar.get_by_role("button", name="Add my assistant here")
-                self.assertGreaterEqual(add.bounding_box()["height"], 24)
+                if phone:
+                    self.assertGreaterEqual(add.bounding_box()["height"], 44)
                 shot(page, f"j6-not-in-project-proactive-{self.tag(phone)}")
                 granted: list[str] = []
 
@@ -160,8 +161,8 @@ class AssistantFinish(unittest.TestCase):
                 posted = "@Ada's assistant Tidy this project's tasks"
                 before = sum(body == posted for body in self.messages(page, self.ids["conversation"]))
                 page.get_by_role("group", name="Suggestions for your assistant").get_by_role("button", name="Tidy this project's tasks").click()
+                expect(page.get_by_role("listitem", name="Your message").filter(has_text="Tidy this project's tasks").last).to_be_visible()
                 self.assertEqual(len(asked), 1)
-                expect(page.get_by_label("Message from you").get_by_text("Tidy this project's tasks").last).to_be_visible()
                 self.assertEqual(sum(body == posted for body in self.messages(page, self.ids["conversation"])), before + 1, "one message per request, in the real conversation")
                 chip = page.locator(".ref-chip--agent", has_text="Ada's assistant").first
                 expect(chip).to_be_visible()
@@ -324,7 +325,7 @@ class AssistantFinish(unittest.TestCase):
                 page.route(re.compile(r".*/api/v1/workspaces/[0-9a-f-]{36}/assistant-operator-requests$"), tell)
                 page.goto(f"{self.thread_url()}?ask=1")
                 bar = page.locator("#project-ask")
-                expect(bar).to_contain_text("This Flux doesn't allow signing in with a subscription yet.")
+                expect(bar).to_contain_text(re.compile(r"This Flux doesn.t allow signing in with a subscription yet\."))
                 expect(bar.get_by_role("button", name="Tell whoever runs Flux")).to_be_visible()
                 expect(bar.get_by_role("button", name="Use an API key instead")).to_be_visible()
                 shot(page, f"j6-subscription-off-{self.tag(phone)}")

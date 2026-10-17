@@ -53,7 +53,7 @@ export function ModelPicker({ options, value, onSelect, variant, placement = 'do
     <span ref={root} className={`aset-model aset-model--${variant}`}>
       <button ref={button} type="button" className="aset-model__btn" aria-haspopup="menu" aria-expanded={open} aria-controls={open ? menuId : undefined}
         aria-label={variant === 'action' ? 'Choose another model' : `Model: ${name}. Change`} disabled={disabled} aria-busy={busy || undefined} onClick={() => setOpen(!open)} data-testid="model-control">
-        {variant === 'field' ? <span className="aset-model__lab" aria-hidden="true">Model:</span> : null}
+        {variant === 'field' ? <><span className="aset-model__lab" aria-hidden="true">Model:</span>{' '}</> : null}
         <span className="aset-model__name" aria-hidden="true">{variant === 'action' ? 'Choose another model' : name}</span>
         <Icon name="chevron-down" size={12} />
       </button>
@@ -98,7 +98,7 @@ export function AssistantModelControl({ variant, placement }: { variant: 'field'
   return (
     <>
       {choice.options.length
-        ? <ModelPicker options={choice.options} value={choice.current} onSelect={(id) => void choose(id)} variant={variant} placement={placement ?? 'down'} busy={busy} disabled={busy} />
+        ? <ModelPicker options={choice.options} value={choice.current} onSelect={(id) => void choose(id)} variant={variant} placement={placement ?? 'down'} busy={busy} />
         : <span className={`aset-model aset-model--${variant} aset-model--static`}>{variant === 'field' ? 'Model: ' : ''}{named?.name ?? (choice.current === ASSISTANT_PLAN_DEFAULT ? "Your plan's default" : assistantModelName(choice.current))}</span>}
       <span className="aset-model__said" role="status" aria-live="polite">{said}</span>
       {error ? <span className="aset-model__error" role="alert">{error}</span> : null}
