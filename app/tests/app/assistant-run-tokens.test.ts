@@ -32,8 +32,12 @@ const tokens = runTokenIssuer(db, apiUrl);
 const processor = createPersonalRunProcessor({ uow: personalRunWorkerUnitOfWork(db), connections, compute, stopPollMs: 20,
   tools: mcpToolHost(tokens, `${apiUrl}/mcp`), tokens });
 const human = (someone: Person): Principal => ({ kind: 'human', id: someone.id });
-/** The bytes of the 18 read tool definitions with every switch on (one token per byte, PROV-3): 14,464 before #484, 7,729 after (2026-10-16). */
-const TOOL_DEFINITION_BYTES = 8_000;
+/**
+ * The bytes of the tool definitions with every switch on (one token per byte, PROV-3): 18 read tools took 14,464
+ * before #484 and 7,729 after (2026-10-16). A3 (#403) adds the 16 change tools in their run-private view (no
+ * runtime, grant, class or sources; compacted like the reads), measured about 20,000 together (2026-10-17).
+ */
+const TOOL_DEFINITION_BYTES = 22_000;
 const sha256 = (value: string) => createHash('sha256').update(value).digest('hex');
 const claims = (token: string) => JSON.parse(Buffer.from(token.split('.')[1]!, 'base64url').toString()) as Record<string, unknown>;
 const toolText = (message: Record<string, unknown> | null) => JSON.stringify(message);

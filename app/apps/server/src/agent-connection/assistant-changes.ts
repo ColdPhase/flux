@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { AGENT_MCP_ENTRIES, ASSISTANT_CHANGE_LIMITS, assistantChangeWords, type AgentJsonValue, type AgentOperation, type AgentPostcondition,
   type AgentScope, type AssistantObjectType, type AuthenticatedAgentRuntime } from '@flux/contracts';
-import { assistantChangeRows, lockAgentMcpPolicy, sketchRows, type AssistantChangeRow, type DbExecutor } from '@flux/db';
+import { assistantChangeRows, lockAgentMcpPolicy, needsYouRows, sketchRows, type AssistantChangeRow, type DbExecutor } from '@flux/db';
 import { classifyAssistantChange, DomainError, evaluateProject, loadActor, redactSecrets, type Database,
   type Transaction } from '@flux/core';
 import { nativeConversationsInEventSession } from '../conversation/store.js';
@@ -101,7 +101,8 @@ async function describe(tx: Transaction, operation: string, objectId: string | n
     case 'doc.update': {
       const doc = objectId ? await rows.doc(objectId) : null;
       if (!doc) return { ...base, mine: false };
-      return { ...base, title: doc.title, mine: ours(doc), maker: otherPerson(doc), typist: await rows.liveTypist(doc.id, owner),
+      const mine = ours(doc) && !await rows.docEditedByOthers(doc.id, owner, agentId);
+      return { ...base, title: doc.title, mine, maker: otherPerson(doc), typist: await rows.liveTypist(doc.id, owner),
         beforeVersion: typeof payload.expectedVersion === 'number' ? payload.expectedVersion : doc.version };
     }
     case 'map.rename': {
@@ -196,8 +197,6 @@ async function currentAuthority(tx: Transaction, claims: FluxMcpClaims, projectI
   const entry = AGENT_MCP_ENTRIES.find((item) => item.kind === 'tool' && item.name === tool);
   if (!policy || !entry || !policy.selectedProjectIds.includes(projectId) || !policy.enabledEntryIds.includes(entry.id)
     || !entry.requiredCapabilities.every((id) => policy.enabledCapabilityIds.includes(id))) throw invalidated('This switch is off now');
-  // Turning a switch off, narrowing projects or re-enabling after a revoke invalidates saved intent: it is never resurrected.
-  if (prepared && policy.version !== prepared.policyVersion) throw invalidated('Your assistant\'s switches changed since. Ask again');
   if (!run || run.ownerUserId !== claims.ownerUserId || run.projectId !== projectId || run.agentId !== agentId) throw invalidated('This request is unavailable');
   if (approval) {
     // A normally completed or still live source supplies provenance; a stopped, cancelled or failed one supplies nothing.
@@ -240,6 +239,8 @@ export function assistantChangeExecutor(db: Database, claims: FluxMcpClaims) {
         const session = transactionEventSession(tx);
         // The run row first: concurrent calls of one run serialize here, so its change count is exact.
         const runRow = await rows.lockRun(runId);
+        // The S6 policy before the saved change, in the order a settings save takes them (policy, then changes).
+        if (approval) await lockAgentMcpPolicy(tx, claims.connectionId);
         const prepared = approval ? await rows.lock(approval.changeId) : null;
         if (approval && (!prepared || prepared.state !== 'waiting' || prepared.fingerprint !== fingerprint || prepared.runId !== runId
           || prepared.ownerUserId !== claims.ownerUserId))
@@ -262,13 +263,18 @@ export function assistantChangeExecutor(db: Database, claims: FluxMcpClaims) {
             mine: target.mine, liveTypist: !!target.typist && operation === 'doc.update', reserved: await rows.reserved(runId), limit: authority.settings.changesPerRun });
           if (outcome.state === 'waiting') {
             const createdAt = new Date();
+            // A suggestion names who can decide it: the person whose thing it is, otherwise someone who can write here.
+            let decider = outcome.reason === 'outside_rights' ? target.maker : null;
+            if (outcome.reason === 'outside_rights' && !decider)
+              for (const member of await needsYouRows(tx).workspaceMembersOfProject(input.projectId, 50))
+                if (member.id !== claims.ownerUserId && (await evaluateProject({ kind: 'human', id: member.id }, 'project.write', input.projectId, tx)).allowed) { decider = member.id; break; }
             if (Buffer.byteLength(JSON.stringify(call), 'utf8') > ASSISTANT_CHANGE_LIMITS.preparedBytes)
               throw new DomainError(413, 'ASSISTANT_CHANGE_TOO_LARGE', 'This change is too large to keep for your OK');
             await rows.insert({ id: randomUUID(), workspaceId: authority.workspaceId, projectId: input.projectId, runId, ownerUserId: claims.ownerUserId,
               agentId: authority.agentId, clientCommandId: input.clientCommandId, fingerprint, tool: call.tool, operation, objectType: target.objectType,
               objectId: target.objectId, objectTitle: target.title, state: 'waiting', waitReason: outcome.reason, preparedCommand: call,
-              policyVersion: authority.policyVersion, beforeVersion: target.beforeVersion, otherUserId: outcome.reason === 'live_wiki' ? target.typist!.id : target.maker,
-              suggestToUserId: outcome.reason === 'outside_rights' ? target.maker : null,
+              policyVersion: authority.policyVersion, beforeVersion: target.beforeVersion, otherUserId: outcome.reason === 'live_wiki' ? target.typist!.id : outcome.reason === 'outside_rights' ? decider : target.maker,
+              suggestToUserId: decider,
               createdAt, expiresAt: new Date(createdAt.getTime() + ASSISTANT_CHANGE_LIMITS.expiryDays * 86_400_000) });
             await session.flushEvents();
             const text = outcome.reason === 'live_wiki' ? `I'll edit ${target.title} when ${target.typist!.name} finishes typing.`

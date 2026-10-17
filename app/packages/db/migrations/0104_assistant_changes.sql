@@ -52,7 +52,7 @@ CREATE TABLE assistant_changes (
   CONSTRAINT assistant_changes_prepared_check CHECK (state <> 'waiting' OR prepared_command IS NOT NULL),
   CONSTRAINT assistant_changes_applied_check CHECK (state NOT IN ('applied', 'applied_after_wait', 'undone')
     OR (authority IS NOT NULL AND receipt IS NOT NULL)),
-  CONSTRAINT assistant_changes_authority_check CHECK (state <> 'applied' OR authority = 'owner_request'),
+  CONSTRAINT assistant_changes_applied_authority_check CHECK (state <> 'applied' OR authority = 'owner_request'),
   CONSTRAINT assistant_changes_after_wait_check CHECK (state <> 'applied_after_wait' OR authority IN ('owner_approval', 'owner_deferred_change')),
   CONSTRAINT assistant_changes_decided_check CHECK ((decided_at IS NULL) = (decided_by IS NULL)),
   CONSTRAINT assistant_changes_suggestion_check CHECK (sent_at IS NULL OR suggest_to_user_id IS NOT NULL),

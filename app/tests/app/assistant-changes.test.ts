@@ -50,7 +50,7 @@ describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A
   let owner: Person; let peer: Person; let outsider: Person; let ws: Workspace; let place: Project;
   let thread: Conversation; let agentId: string;
   /** Jonas's workspace, where Ada is a member: a project she may only read, and one she contributes to. */
-  let jonasWs: Workspace; let theirs: Project; let shared: Project; let theirThread: Conversation; let sharedThread: Conversation;
+  let jonasWs: Workspace; let shared: Project; let sharedThread: Conversation;
 
   const settings = async (workspaceId = ws.id) => expectStatus(await owner.browser.request('GET', assistantSettingsPath(workspaceId, owner.id)), 200) as unknown as AssistantSettings;
   async function save(body: Record<string, unknown>, workspaceId = ws.id) {
@@ -110,24 +110,19 @@ describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A
     const connectionId = randomUUID();
     connections.connect(owner.id, connectionId);
     await runs.enable(human(owner), { consentVersion: PERSONAL_RUN_CONSENT_VERSION, agentId, connectionId, perRunCents: 50, dailyCapCents: 1_000 });
-    // Jonas's workspace: Ada is a member. In "Jonas bench" she may only read (outside her rights); in "Shared rig" she contributes.
+    // Jonas's workspace: Ada is a member and contributes to "Shared rig"; Jonas manages it.
     jonasWs = await createWorkspace(peer, 'Jonas lab');
     await addMember(peer, jonasWs.id, owner, 'member');
-    theirs = await createProject(peer, jonasWs.id, 'Jonas bench', 'restricted');
     shared = await createProject(peer, jonasWs.id, 'Shared rig', 'restricted');
-    await grant(peer, theirs.id, owner, 'viewer');
     await grant(peer, shared.id, owner, 'contributor');
     const jonasAgent = (expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${jonasWs.id}/agents`, { body: { name: 'Ada assistant', owner: 'self' } }), 201) as { id: string }).id;
     await runs.selectAgent(human(owner), { agentId: jonasAgent });
-    for (const projectId of [theirs.id, shared.id])
-      expectStatus(await peer.browser.request('POST', `/api/v1/projects/${projectId}/grants`, { body: { principal: { kind: 'agent', id: jonasAgent }, role: 'contributor' } }), 201);
-    theirThread = expectStatus(await peer.browser.request('POST', `/api/v1/projects/${theirs.id}/conversations`,
-      { body: { body: 'Bench notes', clientMessageId: randomUUID() } }), 201) as Conversation;
+    expectStatus(await peer.browser.request('POST', `/api/v1/projects/${shared.id}/grants`, { body: { principal: { kind: 'agent', id: jonasAgent }, role: 'contributor' } }), 201);
     sharedThread = expectStatus(await peer.browser.request('POST', `/api/v1/projects/${shared.id}/conversations`,
       { body: { body: 'Rig notes', clientMessageId: randomUUID() } }), 201) as Conversation;
     const jonasSettings = await settings(jonasWs.id);
-    if (!jonasSettings.policy.selectedProjectIds.includes(theirs.id) || !jonasSettings.policy.selectedProjectIds.includes(shared.id))
-      await save({ projectMode: 'chosen', selectedProjectIds: [theirs.id, shared.id] }, jonasWs.id);
+    if (!jonasSettings.policy.selectedProjectIds.includes(shared.id))
+      await save({ projectMode: 'chosen', selectedProjectIds: [shared.id] }, jonasWs.id);
   });
   beforeEach(async () => {
     compute.dispatched = []; compute.counted = [];
@@ -240,7 +235,7 @@ describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A
     const mapId = (await map(owner)).id;
     const mineThought = await thought(owner, mapId, 'Lux threshold');
     const theirsTask = await task(peer, 'Jonas solders the board');
-    const page = await doc(peer, 'Suppliers');
+    const page = await doc(owner, 'Suppliers');
     const stopTyping = await typing(peer, page.id);
     const run = await liveRun();
     // 1 removal, 2 other people's things, 4 a page someone is typing in.
@@ -294,15 +289,15 @@ describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A
     expectStatus(await owner.browser.request('POST', assistantChangeActionPath(lost!.id, 'apply'), { body: {} }), 409);
     assert.equal((await pool.query(`SELECT title FROM project_work_items WHERE id = $1`, [clean.id])).rows[0].title, 'Jonas cleans the lens');
     assert.deepEqual((await changesOf(rig.runId)).map((row) => row.state), ['refused', 'refused', 'not_now']);
-    // A switch turned to Only read invalidates intent; switching it on again cannot resurrect it.
-    const theirsTask = await task(peer, 'Jonas aligns the rig', shared.id);
-    const next = await liveRun(sharedThread);
+    // A switch turned to Only read invalidates intent at once; switching it on again cannot resurrect it.
+    const theirsTask = await task(peer, 'Jonas aligns the rig');
+    const next = await liveRun();
     await next.call('flux_update_task', { workId: theirsTask.id, expectedVersion: theirsTask.version, changes: { title: 'Align it today' } });
     await complete(next.runId);
     const [switched] = await changesOf(next.runId);
-    await save({ areas: { tasks: 'read' } }, jonasWs.id);
-    assert.equal((await owner.browser.request('POST', assistantChangeActionPath(switched!.id, 'apply'), { body: {} })).status, 403);
-    await save({ areas: { tasks: 'edit' } }, jonasWs.id);
+    await save({ areas: { tasks: 'read' } });
+    assert.deepEqual((await changesOf(next.runId)).map((row) => [row.state, row.refusal]), [['refused', 'Your assistant\'s switches changed since. Ask again']]);
+    await save({ areas: { tasks: 'edit' } });
     expectStatus(await owner.browser.request('POST', assistantChangeActionPath(switched!.id, 'apply'), { body: {} }), 409);
     assert.equal((await pool.query(`SELECT title FROM project_work_items WHERE id = $1`, [theirsTask.id])).rows[0].title, 'Jonas aligns the rig');
   });
@@ -406,26 +401,34 @@ describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A
   });
 
   test('AST-5.8: a change outside the owner\'s rights reaches the other person only after "Send to Jonas"', async () => {
-    const run = await liveRun(theirThread);
-    const prepared = await run.call('flux_create_task', { task: { title: 'Recalibrate the bench' } });
-    assert.match(text(prepared.message), /^Prepared as a suggestion: add task\. ac-ada decides whether to send it\.$/);
-    const [row] = await changesOf(run.runId);
-    assert.deepEqual([row!.state, row!.wait_reason], ['waiting', 'outside_rights']);
-    const notes = async () => (await pool.query(`SELECT count(*)::int AS n FROM notifications WHERE user_id = $1 AND title LIKE '%assistant suggests%'`, [peer.id])).rows[0].n as number;
-    assert.equal(await notes(), 0, 'no Needs-you item for Jonas before the tap');
-    const jonasBefore = expectStatus(await peer.browser.request('GET', NEEDS_YOU_PATH), 200) as NeedsYouResponse;
-    assert.ok(!jonasBefore.items.some((item) => item.title.includes('suggests')));
-    // Apply is not how a suggestion moves: only Send.
-    expectStatus(await owner.browser.request('POST', assistantChangeActionPath(row!.id, 'apply'), { body: {} }), 409);
-    const sent = expectStatus(await owner.browser.request('POST', assistantChangeActionPath(row!.id, 'send'), { body: { expectedVersion: row!.version } }), 200) as { change: AssistantChange };
-    assert.equal(sent.change.line, 'Sent to ac-jonas');
-    assert.equal(await notes(), 1);
-    const jonas = expectStatus(await peer.browser.request('GET', NEEDS_YOU_PATH), 200) as NeedsYouResponse;
-    const item = jonas.items.find((entry) => entry.title.includes('suggests'))!;
-    assert.equal(item.kind, 'question');
-    assert.equal(item.title, 'ac-ada\'s assistant suggests: add task Recalibrate the bench');
-    assert.equal((await pool.query(`SELECT count(*)::int AS n FROM project_work_items WHERE title = 'Recalibrate the bench'`)).rows[0].n, 0, 'nothing applied on Ada\'s side');
-    await complete(run.runId);
+    const run = await liveRun(sharedThread);
+    // Jonas makes Ada a viewer during the run: her change is now outside her rights (her assistant is capped too).
+    await pool.query(`UPDATE project_grants SET role = 'viewer' WHERE project_id = $1 AND user_id = $2`, [shared.id, owner.id]);
+    try {
+      const prepared = await run.call('flux_create_task', { task: { title: 'Recalibrate the bench' } });
+      assert.equal(text(prepared.message), 'Prepared as a suggestion: add task. ac-ada decides whether to send it.');
+      const [row] = await changesOf(run.runId);
+      assert.deepEqual([row!.state, row!.wait_reason], ['waiting', 'outside_rights']);
+      const notes = async () => (await pool.query(`SELECT count(*)::int AS n FROM notifications WHERE user_id = $1 AND title LIKE '%assistant suggests%'`, [peer.id])).rows[0].n as number;
+      assert.equal(await notes(), 0, 'no Needs-you item for Jonas before the tap');
+      const jonasBefore = expectStatus(await peer.browser.request('GET', NEEDS_YOU_PATH), 200) as NeedsYouResponse;
+      assert.ok(!jonasBefore.items.some((item) => item.title.includes('suggests')));
+      const listed = (expectStatus(await owner.browser.request('GET', conversationAssistantChangesPath(sharedThread.id)), 200) as { items: AssistantChange[] }).items;
+      assert.equal(listed.find((change) => change.id === row!.id)!.line, 'ac-jonas can decide this. Suggest this change to them? · Send to ac-jonas');
+      // Apply is not how a suggestion moves: only Send.
+      expectStatus(await owner.browser.request('POST', assistantChangeActionPath(row!.id, 'apply'), { body: {} }), 409);
+      const sent = expectStatus(await owner.browser.request('POST', assistantChangeActionPath(row!.id, 'send'), { body: { expectedVersion: row!.version } }), 200) as { change: AssistantChange };
+      assert.equal(sent.change.line, 'Sent to ac-jonas');
+      assert.equal(await notes(), 1);
+      const jonas = expectStatus(await peer.browser.request('GET', NEEDS_YOU_PATH), 200) as NeedsYouResponse;
+      const item = jonas.items.find((entry) => entry.title.includes('suggests'))!;
+      assert.equal(item.kind, 'question');
+      assert.equal(item.title, 'ac-ada\'s assistant suggests: add task Recalibrate the bench');
+      assert.equal((await pool.query(`SELECT count(*)::int AS n FROM project_work_items WHERE title = 'Recalibrate the bench'`)).rows[0].n, 0, 'nothing applied on Ada\'s side');
+    } finally {
+      await pool.query(`UPDATE project_grants SET role = 'contributor' WHERE project_id = $1 AND user_id = $2`, [shared.id, owner.id]);
+      await complete(run.runId);
+    }
   });
 
   test('AST-6.5: the 21st change in one run waits instead of applying', async () => {

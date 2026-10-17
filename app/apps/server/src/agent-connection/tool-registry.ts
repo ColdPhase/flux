@@ -27,7 +27,6 @@ const RUN_EFFECT_DESCRIPTIONS: Record<string, string> = {
   flux_start_conversation: 'Start a conversation in this project.',
   flux_reply_in_conversation: 'Reply in one conversation of this project.',
 };
-const RUN_NOTE = ' Some changes wait for your owner instead of applying; the result then says so in plain words. Do not retry them.';
 const RUN_EFFECTS = new Set<string>(ASSISTANT_RUN_EFFECT_TOOLS);
 type ToolOutput = { content?: { type: string; text?: string }[]; isError?: boolean };
 /** A waiting or deferred change answers the run in plain words, not as an object. */
@@ -72,12 +71,12 @@ export function agentToolRegistry(server: McpServer, dispatch: McpDispatch, boun
         if (run && effect && RUN_EFFECTS.has(name)) {
           const original = callback as (...args: unknown[]) => unknown;
           const shape = config.inputSchema as unknown as z.ZodObject<Record<string, z.ZodType>>;
-          config = { ...config, description: (RUN_EFFECT_DESCRIPTIONS[name] ?? config.title) + RUN_NOTE,
-            inputSchema: shape.omit({ runtimeSessionId: true, grantId: true, peerRequestClass: true })
-              .extend({ projectId: z.uuid().optional().describe('This run\'s project; leave it out.') }) as unknown as I };
+          config = { ...config, description: RUN_EFFECT_DESCRIPTIONS[name] ?? config.title,
+            inputSchema: shape.omit({ runtimeSessionId: true, grantId: true, peerRequestClass: true, sources: true })
+              .extend({ projectId: z.uuid().optional(), clientCommandId: z.uuid().describe('New for each change; reuse only to retry it.') }) as unknown as I };
           callback = (async (args: Record<string, unknown>, extra: unknown) => {
             // AIM-3 redaction before anything is prepared, stored or written (AST-9.2).
-            const redacted = redactCall({ ...args, projectId: args.projectId ?? run.projectId });
+            const redacted = redactCall({ ...args, projectId: args.projectId ?? run.projectId, sources: [] });
             return plainWords(await original({ ...redacted, assistantCall: { tool: name, args: redacted } }, extra) as ToolOutput);
           }) as unknown as ToolCallback<I>;
         }

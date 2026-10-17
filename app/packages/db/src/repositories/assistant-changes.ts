@@ -135,11 +135,34 @@ export function assistantChangeRows(db: DbExecutor) {
     async link(id: string): Promise<ObjectMaker | null> {
       return first<ObjectMaker>(db, sql`SELECT created_by_user_id AS "userId", created_by_agent_id AS "agentId" FROM sketch_links WHERE id = ${id}`);
     },
-    /** Who last changed an object, from the event log: a person's or an agent's name. */
+    /** Who last changed an object: a page's current version author, otherwise the latest event about it (a day back at most). */
     async lastActor(objectId: string): Promise<{ id: string; name: string } | null> {
-      return first<{ id: string; name: string }>(db, sql`SELECT e.actor_id AS id, COALESCE(u.name, a.name) AS name FROM events e
-        LEFT JOIN auth_users u ON u.id = e.actor_id LEFT JOIN agents a ON a.id::text = e.actor_id
-        WHERE e.object_id = ${objectId} AND COALESCE(u.name, a.name) IS NOT NULL ORDER BY e.seq DESC LIMIT 1`);
+      const author = await first<{ id: string; name: string }>(db, sql`SELECT COALESCE(u.id, a.id::text) AS id, COALESCE(u.name, a.name) AS name
+        FROM project_materials m JOIN project_material_versions v ON v.material_id = m.id AND v.version = m.current_version
+        LEFT JOIN auth_users u ON u.id = v.author_id LEFT JOIN agents a ON a.id = v.author_agent_id WHERE m.id = ${objectId}`);
+      if (author?.name) return author;
+      return first<{ id: string; name: string }>(db, sql`SELECT split_part(e.actor_id, ':', 2) AS id, COALESCE(u.name, a.name) AS name FROM events e
+        LEFT JOIN auth_users u ON e.actor_id = 'human:' || u.id LEFT JOIN agents a ON e.actor_id = 'agent:' || a.id::text
+        WHERE e.created_at > now() - interval '1 day' AND (e.object_id = ${objectId} OR e.data->>'workId' = ${objectId}::text OR e.data->>'docId' = ${objectId}::text
+          OR e.data->>'thoughtId' = ${objectId}::text) AND COALESCE(u.name, a.name) IS NOT NULL ORDER BY e.seq DESC LIMIT 1`);
+    },
+    /** A page is yours only while every version of it is by you or your assistant ("Yours", F-027 Terms). */
+    async docEditedByOthers(docId: string, ownerUserId: string, agentId: string): Promise<boolean> {
+      const row = await first<{ others: boolean }>(db, sql`SELECT EXISTS (SELECT 1 FROM project_material_versions WHERE material_id = ${docId}
+        AND NOT (author_id IS NOT DISTINCT FROM ${ownerUserId} AND author_agent_id IS NULL) AND NOT (author_agent_id IS NOT DISTINCT FROM ${agentId}::uuid)) AS others`);
+      return !!row?.others;
+    },
+    /**
+     * Turning a switch off or narrowing the projects invalidates the affected waiting changes in the same transaction
+     * (F-027 R1): turning it on again never resurrects them.
+     */
+    async invalidateOutside(ownerUserId: string, workspaceId: string, stillAllowed: (tool: string, projectId: string) => boolean): Promise<number> {
+      const waiting = await db.select({ id: c.id, tool: c.tool, projectId: c.projectId }).from(c)
+        .where(and(eq(c.ownerUserId, ownerUserId), eq(c.workspaceId, workspaceId), eq(c.state, 'waiting'))).for('update');
+      const affected = waiting.filter((row) => !stillAllowed(row.tool, row.projectId)).map((row) => row.id);
+      if (affected.length) await db.update(c).set({ state: 'refused', waitReason: null, refusal: 'Your assistant\'s switches changed since. Ask again',
+        version: sql`${c.version} + 1`, updatedAt: new Date() }).where(inArray(c.id, affected));
+      return affected.length;
     },
     async names(ids: string[]): Promise<Map<string, string>> {
       const unique = [...new Set(ids.filter(Boolean))];

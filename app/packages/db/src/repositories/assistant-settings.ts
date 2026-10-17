@@ -1,10 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import { and, eq, sql } from 'drizzle-orm';
-import { assistantAreasFromPolicy, patchAssistantAreas, type AgentConnection, type AgentMcpPolicy,
+import { AGENT_MCP_ENTRIES, assistantAreasFromPolicy, patchAssistantAreas, type AgentConnection, type AgentMcpPolicy,
   type AssistantSettings, type UpdateAssistantSettings } from '@flux/contracts';
 import * as schema from '../schema.js';
 import type { createDatabase } from '../index.js';
 import { lockAssistantOwner } from './assistant-lock.js';
+import { assistantChangeRows } from './assistant-changes.js';
 import { initializeAgentMcpPolicy, lockAgentMcpPolicy } from './agent-mcp-policy.js';
 
 type Database = Pick<ReturnType<typeof createDatabase>['db'], 'transaction'>;
@@ -147,6 +148,12 @@ export function assistantSettingsRows(tx: Transaction, authority: AssistantAutho
       await tx.delete(schema.agentConnectionMcpProjects).where(eq(schema.agentConnectionMcpProjects.connectionId, row.connectionId));
       if (selectedProjectIds.length) await tx.insert(schema.agentConnectionMcpProjects)
         .values(selectedProjectIds.map((projectId) => ({ connectionId: row.connectionId, workspaceId, projectId })));
+      // Off or narrowing invalidates the assistant's affected waiting changes (F-027 A3, R1).
+      await assistantChangeRows(tx).invalidateOutside(ownerUserId, workspaceId, (tool, projectId) => {
+        const entry = AGENT_MCP_ENTRIES.find((item) => item.kind === 'tool' && item.name === tool);
+        return !!entry && selectedProjectIds.includes(projectId) && desired.enabledEntryIds.includes(entry.id)
+          && entry.requiredCapabilities.every((id) => desired.enabledCapabilityIds.includes(id));
+      });
       await tx.update(schema.assistantSettings).set({ version, updatedAt: now,
         ...(input.approvalMode === undefined ? {} : { approvalMode: input.approvalMode }),
         ...(input.changesPerRun === undefined ? {} : { changesPerRun: input.changesPerRun }),
