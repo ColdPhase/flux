@@ -382,7 +382,14 @@ function AppLayoutContent() {
     const distance = from && to && from !== to ? 28 : 12;
     previousView.current = index;
     if (!direction) return;
-    void play(paneRef.current, [{ opacity: 0, transform: `translateX(${direction * distance}px)` }, { opacity: 1, transform: 'none' }], duration('--dur-2'), '--ease-out', { fill: 'backwards' });
+    const pane = paneRef.current;
+    const refreshInert = () => {
+      const root = document.getElementById('root');
+      if (root && !root.inert) root.style.setProperty('--app-inert', `0-${Date.now()}`);
+    };
+    pane?.getAnimations().forEach((animation) => animation.cancel());
+    refreshInert();
+    void play(pane, [{ opacity: 0, transform: `translateX(${direction * distance}px)` }, { opacity: 1, transform: 'none' }], duration('--dur-2'), '--ease-out', { fill: 'backwards' }).then((animation) => { animation?.cancel(); refreshInert(); });
   }, [location.pathname]);
 
   // In focus the rail shows no counts.

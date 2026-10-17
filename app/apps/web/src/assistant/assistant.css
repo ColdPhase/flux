@@ -200,7 +200,6 @@
 .aset-model-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0 8px; margin: 2px 0; }
 .aset-ready__model { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; margin: 0 0 12px; }
 .aset-ready__model .aset-model__note { font-size: var(--fs-sm); }
-.aset-model--action .aset-model__btn { background: var(--sub); }
 
 /* "In which conversation?" in ⌘K (AST-10.10): quiet rows, a 44 px target each. */
 .aset-where { display: grid; gap: 6px; padding: 12px; }
