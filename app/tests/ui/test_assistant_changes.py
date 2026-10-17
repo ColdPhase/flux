@@ -147,7 +147,7 @@ class AssistantChanges(unittest.TestCase):
         type(self).ids = {"workspace": ws["id"], "project": project["id"], "conversation": thread["id"], "run": str(uuid.uuid4())}
         # With nothing waiting, the conversation shows no card at all (the real, empty change log).
         page.goto(f"/projects/{project['id']}/conversations/{thread['id']}")
-        expect(page.get_by_text("Can you tidy the sensor tasks")).to_be_visible()
+        expect(page.get_by_label("Message from you").get_by_text("Can you tidy the sensor tasks")).to_be_visible()
         expect(page.locator(".assistant-waiting")).to_have_count(0)
 
     def test_02_the_card_says_what_waits_with_the_verb_review_and_not_now(self) -> None:
@@ -190,8 +190,9 @@ class AssistantChanges(unittest.TestCase):
         self.stub_changes(page, self.waiting_set()[:2], calls)
         page.goto(f"/projects/{self.ids['project']}/conversations/{self.ids['conversation']}")
         expect(page.locator(".assistant-waiting")).to_contain_text("Waiting for you")
-        with page.expect_request(lambda request: request.method == "POST" and request.url.endswith(f"/assistant-runs/{self.ids['run']}/changes/inbox")):
-            page.goto("/inbox")
+        with page.expect_response(lambda response: response.request.method == "POST" and response.url.endswith(f"/assistant-runs/{self.ids['run']}/changes/inbox")):
+            # Leaving within the app (the sidebar's Inbox), as a person does.
+            page.get_by_role("navigation", name="Places").get_by_role("link", name=re.compile(r"^Inbox")).click()
         self.assertIn(("run", "inbox"), calls)
 
     def test_04_inbox_shows_one_question_with_the_objects_verb(self) -> None:
