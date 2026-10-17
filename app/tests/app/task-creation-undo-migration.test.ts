@@ -196,8 +196,9 @@ test('a fresh database in file order ends with the contract operation list only 
   try {
     assert.deepEqual(await listAfter(manifest), [...AGENT_OPERATIONS].sort(), 'the live list equals the contract list');
     // Negative control: without 0060 the list is the one 0054 wrote, so 0048 alone could never carry the operation.
-    const without = await listAfter(manifest.filter((file) => file.version !== 60));
+    // 0107 (decline) is dropped too: it rewrites the list including the revert operation it follows.
+    const without = await listAfter(manifest.filter((file) => file.version !== 60 && file.version !== 107));
     assert.ok(!without.includes('work.creation.revert'));
-    assert.deepEqual(without, [...AGENT_OPERATIONS].filter((operation) => operation !== 'work.creation.revert').sort());
+    assert.deepEqual(without, [...AGENT_OPERATIONS].filter((operation) => operation !== 'work.creation.revert' && operation !== 'cowork.unit.decline').sort());
   } finally { client.release(); }
 });
