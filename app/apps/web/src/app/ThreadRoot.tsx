@@ -1,7 +1,4 @@
-import { useId, type ReactNode } from 'react';
 import type { ConversationMessage, NativeWorkRow } from '@flux/contracts';
-import { IconButton } from '../ui';
-import { DetentSheet } from '../ui/DetentSheet';
 import { DiscussedTask, MessageObjects } from '../work/inline';
 import type { MessageWorkPreview } from '../work/message-associations';
 import { AgentAuthor, AuthorFace, SourceCitation, MessageTime } from './messageParts';
@@ -9,38 +6,6 @@ import { MessageContent, type PhotoActions } from '../composer/Files';
 import { LinkPreviews, MessageText } from './MessageText';
 import { useProjectShell } from '../project/data';
 import { QuestionCard, WhenNoQuestion } from '../agents/QuestionCard';
-
-export type ThreadMode = 'docked' | 'sheet';
-
-/**
- * One root's replies (UI116-1): docked beside the stream on a wide sheet, and a full sheet over the
- * stream on a phone or a narrow tablet. It is not modal: the header, tabs, a live session's bar and,
- * when docked, the stream stay usable. Esc inside it closes it; the opener takes focus back.
- */
-export function ThreadDrawer({ mode, count, focusOnOpen, onClose, title, closeLabel = 'Close replies', children }: {
-  mode: ThreadMode; count?: number; focusOnOpen: boolean; onClose: () => void;
-  /** The heading (default "Thread", read as "Replies: Thread"); the Agents view names the task here. */
-  title?: string;
-  /** The close control's name (default "Close replies"). */
-  closeLabel?: string; children: ReactNode;
-}) {
-  const titleId = useId();
-  const head = (
-    <div className="thread__head">
-      <h2 className="thread__title" id={titleId}>{title ?? <><span className="ui-vh">Replies: </span><span className="ui-panel__kind">Thread</span></>}</h2>
-      {count === undefined ? null : <span className="thread__n">{count} {count === 1 ? 'reply' : 'replies'}</span>}
-      <IconButton icon={mode === 'sheet' ? 'chevron-left' : 'x'} label={closeLabel} className="thread__close" onClick={onClose} />
-    </div>
-  );
-  // Over the stream on a phone or a narrow tablet it is the one two-height sheet, opening at full height;
-  // docked beside the stream it is the same element without the sheet, so a reply draft survives the change.
-  return (
-    <DetentSheet as="aside" id="thread" className={`thread thread--${mode}`} aria-labelledby={titleId} detent={mode === 'sheet'} startFull focusOnOpen={focusOnOpen} onClose={onClose}>
-      {head}
-      {children}
-    </DetentSheet>
-  );
-}
 
 /** The message the thread answers, at its top: who said it, when, and what, with its cited source. */
 export function ThreadRoot({ message, projectId, body, author, agentOwner = null, meId, writable, replies, task = null, taskRow = null, preview = null, onDenied, photo }: {

@@ -1,5 +1,5 @@
-/* One project conversation (UI116-1, 2026-10-02): the stream of roots with its composer, and one root's
-   thread beside it on a wide sheet or over it as a full sheet on a phone or narrow tablet. */
+/* One project conversation (UI116-1, 2026-10-02): the stream of roots with its composer. A root's thread opens in the
+   one panel (F-026 S4), not beside the stream. */
 .convo-split { position: relative; display: flex; flex: 1; min-height: 0; }
 .convo-split__stream { display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; }
 /* The stream keeps its own reading anchor when earlier roots load or the thread docks beside it. */
@@ -31,24 +31,8 @@
 .project-convo__message.is-open > .message-bubble { background: var(--sub); outline: none; }
 
 /* ---------- The thread ---------- */
-.thread { display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--bg); outline: none; }
-.thread--docked { flex: none; width: clamp(320px, 40%, var(--panel-w)); border-left: 1px solid var(--line); }
-/* One panel look (F-026 S4): beside the stream a raised card like the detail panel; over it a sheet with a grabber and two heights. */
-.thread--docked { margin: 10px 10px 10px 0; background: var(--el); border: 0; border-radius: var(--r-panel); box-shadow: var(--sh-pop); overflow: hidden; }
-.ui-detent-sheet.thread { background: var(--el); }
-/* A tablet's thread sheet keeps its reading measure inside the wider pane (adaptive-layout-rules, Spokój rail). */
-@media (min-width: 681px) and (max-width: 900px) { .thread--sheet { padding-inline: 56px; } }
-.ui-detent-sheet.thread .thread__head { border-bottom: 0; }
-@media (prefers-reduced-motion: no-preference) {
-  .ui-detent-sheet.thread { animation: thread-in var(--dur-3) var(--ease-sheet) both; }
-}
-.thread__head { display: flex; align-items: center; gap: 8px; height: 48px; flex: none; padding: 0 8px 0 20px; border-bottom: 1px solid var(--line); }
-.thread__title { margin: 0; font-size: var(--fs-sm); font-weight: 600; }
-.thread__n { color: var(--t3); font-size: var(--fs-sm); font-variant-numeric: tabular-nums; }
-.thread__close { margin-left: auto; }
-/* As a sheet the way back sits first, where a phone's back control is expected. */
-.thread--sheet .thread__head { padding-left: 6px; }
-.thread--sheet .thread__close { order: -1; margin-left: 0; }
+/* The thread's content sits in the one panel's slot (F-026 S4): the panel brings the card, the head and the close. */
+.thread { display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; outline: none; }
 .thread__pane { display: flex; flex: 1; flex-direction: column; min-height: 0; }
 /* useMessageReadingPosition owns anchors; native anchoring cancels WebKit gestures
    when a retired association batch changes the content above the viewport (#540). */
@@ -82,10 +66,5 @@
   .thread__root { padding-left: 42px; }
   .thread__root.is-mine { padding-left: 0; padding-right: 0; }
 }
-@media (prefers-reduced-motion: no-preference) {
-  .thread--docked { animation: thread-dock var(--dur-2) var(--ease-out) both; }
-}
-@keyframes thread-in { from { transform: translateX(24px); opacity: 0; } to { transform: none; opacity: 1; } }
-@keyframes thread-dock { from { opacity: 0; } to { opacity: 1; } }
 
 .thread .project-convo__message.is-continued { margin-top: 4px; }

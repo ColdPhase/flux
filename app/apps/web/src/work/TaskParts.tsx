@@ -1,20 +1,11 @@
-import { useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent, type ReactNode } from 'react';
-import { createPortal } from 'react-dom';
+import { useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
 import type { WorkStatus } from '@flux/contracts';
 import { WORK_STATUSES } from '@flux/contracts';
 import { Icon, MEDIA, StatusGlyph, useMediaQuery } from '../ui';
-import { PANEL_META_ID } from '../ui/SidePanel';
 import { STATUS_LABEL } from './format';
 
 // The parts of the task panel that are edited where they are read (F-026 S9, S10): the state with
 // keys 1-5, and the title. Neither has a Save button; both save when the person is done.
-
-/** Puts a short piece of text, the task's number, in the detail panel's head beside its kind chip. */
-const noSubscription = () => () => {};
-export function PanelMeta({ children }: { children: ReactNode }) {
-  const target = useSyncExternalStore(noSubscription, () => document.getElementById(PANEL_META_ID), () => null);
-  return target ? createPortal(children, target) : null;
-}
 
 /** The digits `1`-`5` pick a state while the panel is open and nothing is being typed. */
 export function useStateKeys(enabled: boolean, choose: (status: WorkStatus) => void) {

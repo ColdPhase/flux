@@ -3,7 +3,7 @@ import { Link, useRevalidator } from 'react-router';
 import type { Agent, ObjectLink, Project, WorkspaceMember, WorkStatus, WorkDetailObject, WorkDetailProjection } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { useStreamEvents } from '../api/stream';
-import { AgentIdentity, Avatar, Button, Icon, Input, StatusGlyph, useToast } from '../ui';
+import { AgentIdentity, Avatar, Button, Icon, Input, PanelMeta, StatusGlyph, useToast } from '../ui';
 import { getProject, listWorkspaceMembers } from '../app/conversation-api';
 import { useShellData } from '../app/data';
 import { useRegisterLiveHere } from '../live/LiveProvider';
@@ -22,7 +22,7 @@ import { TaskDiscussionSection } from './TaskDiscussion';
 import { AgentThreadLink } from '../agents/AgentThreadLink';
 import { TaskThoughtLinks } from './TaskThoughtLinks';
 import { ReadyToClose, TaskPullRequests } from '../github/TaskPullRequests';
-import { PanelMeta, StatusControl, TitleField, useStateKeys } from './TaskParts';
+import { StatusControl, TitleField, useStateKeys } from './TaskParts';
 
 // The Details panel for work items, decisions and results, and the two forms that start from a
 // message (#101). Everything shown here is visible to the people with access to the project;
@@ -220,7 +220,10 @@ function IdsLine({ children }: { children: ReactNode }) {
 }
 
 function WorkPanel({ item, context, detail, relations, reload, commands }: { item: OwnWork; context: Context; detail: WorkDetailProjection; relations: DetailRelations; reload: () => void; commands: PanelCommands }) {
-  const { openDetails } = useShellActions();
+  const { openDetails, labelPanel } = useShellActions();
+  // A thread opened from here offers "‹ Task #1" back to this task.
+  const label = `Task ${taskNumber(item)}`;
+  useEffect(() => { labelPanel(label); return () => labelPanel(null); }, [labelPanel, label]);
   const { me } = useShellData();
   // A task whose creation was undone (#238) stays as read-only history: no change, live or new-target control.
   const reverted = item.lifecycle?.state === 'creation_reverted' ? item.lifecycle : null;
