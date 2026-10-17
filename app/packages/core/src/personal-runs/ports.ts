@@ -50,6 +50,8 @@ export interface RunRecord {
   requestFingerprint: string;
   kind: AssistantRunKind;
   prompt: string;
+  /** F-027 A8: a background run whose answer stays out of its conversation (kept in Recent). */
+  silent: boolean;
   targetSketchId: string | null;
   targetThoughtId: string | null;
   continuesRunId: string | null;
@@ -91,10 +93,10 @@ export interface RunRecord {
 
 export type NewRun = Pick<RunRecord, 'id' | 'workspaceId' | 'projectId' | 'conversationId' | 'ownerUserId' | 'agentId' | 'connectionId'
   | 'clientRunId' | 'requestFingerprint' | 'kind' | 'prompt' | 'targetSketchId' | 'targetThoughtId' | 'continuesRunId' | 'retryOfRunId'
-  | 'reservedMicros' | 'provider' | 'model'> & { engine?: AssistantEngine };
+  | 'reservedMicros' | 'provider' | 'model'> & { engine?: AssistantEngine; silent?: boolean; authority?: RunRecord['authority']; backgroundLabel?: string | null };
 export type RunChanges = Partial<Pick<RunRecord, 'status' | 'stoppedAtStage' | 'stopRequestedAt' | 'costState' | 'chargedMicros'
   | 'inputTokens' | 'outputTokens' | 'answerBody' | 'answerTruncated' | 'answerSources' | 'committedAt' | 'dispatchedAt' | 'completedAt'
-  | 'endReason' | 'planLimitResetsAt' | 'stopAcknowledgedAt' | 'answerRedacted'>>;
+  | 'endReason' | 'planLimitResetsAt' | 'stopAcknowledgedAt' | 'answerRedacted' | 'silent'>>;
 
 export interface ProposalRecord {
   id: string;
@@ -192,6 +194,8 @@ export interface PersonalRunRepository {
    * token end `revoked` once it is revoked; older isolated fake repositories may omit it.
    */
   assistantConnectionLive?(ownerUserId: string, workspaceId: string): Promise<boolean>;
+  /** The schedule a run belongs to, for the answer a schedule posts in its conversation (F-027 A8). */
+  jobOfRun?(runId: string): Promise<{ id: string; title: string } | null>;
   /**
    * The owner's switches in the workspace, from the assistant connection's S6 policy (F-027 AST-4). Null
    * without an assistant connection. A `server` request never assembles an Off area as ambient context.
@@ -239,7 +243,15 @@ export interface PersonalRunEventLog {
   record(principal: Principal, workspaceId: string, kind: PersonalRunEventKind, objectId: string, data: Record<string, unknown>): Promise<void>;
 }
 
+/** Prepares the schedule an owner's request asked for (F-027 AST-7 "Set up by asking"); off, never turned on by a run. */
+export interface PersonalRunSchedules {
+  prepare(ownerUserId: string, projectId: string, runId: string, request: { title?: string; text: string; schedule: unknown }):
+    Promise<{ ok: true; title: string; words: string } | { ok: false; message: string }>;
+}
+
 export interface PersonalRunPorts {
+  /** Where an owner's request can prepare a schedule; the API does not run the processor, so only the worker supplies it. */
+  schedules?: PersonalRunSchedules;
   /** Production always supplies the assistant identity adapter; older isolated fake ports may omit it. */
   assistants?: AssistantIdentityPort;
   access: PersonalRunAccess;

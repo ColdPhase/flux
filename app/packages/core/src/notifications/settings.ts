@@ -94,7 +94,7 @@ export function createNotificationSettings(ports: SettingsPorts) {
       },
       quietHours: { enabled: stored.quietEnabled, start: formatClock(stored.quietStart), end: formatClock(stored.quietEnd), timeZone: stored.timeZone },
       pause: { until: pausedUntil(stored, now())?.toISOString() ?? null },
-      morningSummary: { enabled: stored.summaryEnabled, at: formatClock(stored.summaryAt) },
+      morningSummary: { enabled: stored.summaryEnabled, at: formatClock(stored.summaryAt), byAssistant: stored.summaryByAssistant },
       level: levelOf(channels),
       muted,
     };

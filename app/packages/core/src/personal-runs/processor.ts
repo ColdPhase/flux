@@ -10,11 +10,12 @@ import type {
   PersonalRunPorts, PersonalRunTokenIssuer, PersonalRunUnitOfWork, PersonalRuntime, PersonalToolHost, PersonalToolSession, RunChanges, RunRecord,
 } from './ports.js';
 import { redactSecrets } from './redaction.js';
+import { answerWithSchedule } from './schedule-request.js';
 import { createRuntimeRunProcessor, type RuntimeCaps } from './runtime-run.js';
 import { updateAndAnnounce } from './progress.js';
 import { requestParts, runToolLoop, type LoopResult, type RunAccount } from './tool-loop.js';
 import {
-  centsToMicros, connectionCallsTools, parseOutput, requestInput, runChargeMicros, runTokensWithinLimits, SYSTEM_PROMPT, TOOL_SYSTEM_PROMPT, type SuppliedSource,
+  centsToMicros, connectionCallsTools, MORNING_SUMMARY_SYSTEM_PROMPT, parseOutput, requestInput, runChargeMicros, runTokensWithinLimits, SYSTEM_PROMPT, TOOL_SYSTEM_PROMPT, type SuppliedSource,
 } from './validation.js';
 
 // The worker side of a personal run (`personal-run.dispatch.v1`, O-008 §3–§5). The job payload
@@ -132,6 +133,8 @@ async function readSources(ports: PersonalRunPorts, run: RunRecord): Promise<{ s
   // request itself is input, not permission to read its conversation (AST-4, #401 C2).
   const areas = ports.runs.assistantAreas ? await ports.runs.assistantAreas(run.ownerUserId, run.workspaceId) : null;
   const on = (area: 'tasks' | 'maps' | 'conversations') => !areas || areas[area] !== 'off';
+  // The morning summary (F-027 AST-7) reads nothing of its own: Flux gives it the facts in its request.
+  if (run.kind === 'morning_summary') return { sources, earlier: null };
   if (run.targetSketchId && run.targetThoughtId && on('maps')) {
     // Agents never see private sketches; the thought must be on a project sketch of this project.
     if (!(await ports.access.canReadSketch(agent, run.targetSketchId))) return null;
@@ -139,7 +142,8 @@ async function readSources(ports: PersonalRunPorts, run: RunRecord): Promise<{ s
     if (!thought || thought.sketchScope !== 'project' || thought.sketchProjectId !== run.projectId) return null;
     sources.push({ label: next(), ref: { type: 'thought', id: thought.id, sketchId: thought.sketchId, revision: thought.version }, text: `Selected map thought: ${thought.text}` });
   }
-  for (const message of on('conversations') ? await ports.runs.messages(run.conversationId, MESSAGE_WINDOW) : [])
+  // A silent background run's conversation is only where it is anchored: its messages are not its context (AST-9).
+  for (const message of on('conversations') && !run.silent ? await ports.runs.messages(run.conversationId, MESSAGE_WINDOW) : [])
     sources.push({ label: next(), ref: { type: 'message', id: message.id, revision: 1 }, text: `Message ${message.sequence}${message.contribution ? ` (${message.contribution.kind}${message.contribution.kind === 'result' ? `; result ${message.contribution.resultId}` : ''})` : ''} by ${message.authorName}${message.author.kind === 'agent' ? ' (agent)' : ''}: ${message.body}${message.files?.length ? `\nAttached files (contents not included): ${message.files.map((file) => `${file.name} (${file.size} bytes; file ${file.id})`).join(', ')}` : ''}` });
   for (const work of on('tasks') ? await ports.runs.openWork(run.projectId, WORK_WINDOW) : [])
     sources.push({ label: next(), ref: { type: 'work', id: work.id, revision: work.version }, text: `Open work item "${work.title}" (${work.status})${work.outcome ? `: ${work.outcome}` : ''}` });
@@ -279,6 +283,7 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
       // The same redaction as a runtime answer's (F-022 AIM-3, F-027 AST-9, #484): token-shaped strings never reach the conversation.
       const redacted = redactSecrets(result.text);
       const parsed = parseOutput(redacted.text, sources, !truncated);
+      parsed.body = await answerWithSchedule(ports, run, parsed.body);
       const agent: Principal = { kind: 'agent', id: run.agentId };
       const committedAt = new Date();
       const updated = await updateAndAnnounce(ports, run.id, ended(truncated ? 'truncated' : 'completed', null, {
@@ -293,7 +298,8 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
         });
         await ports.events.record(agent, run.workspaceId, 'project.assistant_proposal_created.v1', run.projectId, { runId: run.id, proposalId: proposal.id });
       }
-      await ports.events.record(agent, run.workspaceId, 'project.assistant_answer_committed.v1', run.projectId, { conversationId: run.conversationId, runId: run.id });
+      // A silent background run is not announced to the project: its result is the owner's (Recent, the Inbox).
+      if (!run.silent) await ports.events.record(agent, run.workspaceId, 'project.assistant_answer_committed.v1', run.projectId, { conversationId: run.conversationId, runId: run.id });
       await taskFence?.mark();
       return updated.status;
     });
@@ -321,7 +327,7 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
       fitted = await fit(compute, {
         connection: { id: connection.id, keyRef: connection.keyRef, provider: connection.provider, baseUrl: connection.baseUrl }, model: run.model,
         maxTokens: PERSONAL_RUN_LIMITS.maxOutputTokens, effort: PERSONAL_RUN_LIMITS.effort,
-        system: session ? TOOL_SYSTEM_PROMPT : SYSTEM_PROMPT, ...(session ? { tools: session.tools } : {}),
+        system: run.kind === 'morning_summary' ? MORNING_SUMMARY_SYSTEM_PROMPT : session ? TOOL_SYSTEM_PROMPT : SYSTEM_PROMPT, ...(session ? { tools: session.tools } : {}),
       }, run, read, beforeSend, personalRunMaxInputTokens(!!session));
     } catch {
       // The preflight count failed (provider down, key refused). Counting is free and nothing
@@ -467,7 +473,7 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
       // to reserve and reconcile against. No host, no tools, or a model marked without tool calling:
       // one request with no tools, as before.
       let session: PersonalToolSession | null = null;
-      if (tools && connection.price && connectionCallsTools(connection)) {
+      if (tools && connection.price && connectionCallsTools(connection) && run.kind !== 'morning_summary') {
         try {
           session = await tools(run, connection);
         } catch {

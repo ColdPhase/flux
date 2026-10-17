@@ -362,7 +362,7 @@ describe('email and push delivery', () => {
     const futureClock = `${String(Math.floor(futureMinute / 60)).padStart(2, '0')}:${String(futureMinute % 60).padStart(2, '0')}`;
     const combined = await prefs(focused, { pause: { until: until.toISOString() }, morningSummary: { enabled: true, at: futureClock }, quietHours: { enabled: false, timeZone: 'UTC' } });
     assert.equal(combined.pause.until, until.toISOString());
-    assert.deepEqual(combined.morningSummary, { enabled: true, at: futureClock });
+    assert.deepEqual(combined.morningSummary, { enabled: true, at: futureClock, byAssistant: false });
     const thread = await conversation(owner, projectId, '@Pia Dolan the field measurements are ready');
     const item = await waitForItem(focused, entry => entry.url?.endsWith(thread.messages[0]!.id) === true, 'the Inbox during composed focus');
     await generatorCaughtUp();
@@ -1063,7 +1063,7 @@ describe('levels and the morning summary (#350, S22)', () => {
     const start = expectStatus(await teo.browser.request('GET', '/api/v1/notification-preferences'), 200) as NotificationPreferences;
     assert.equal(start.level, 'needsYou');
     assert.equal(start.channels.reply.push, false);
-    assert.deepEqual(start.morningSummary, { enabled: false, at: '09:00' });
+    assert.deepEqual(start.morningSummary, { enabled: false, at: '09:00', byAssistant: false });
     const nothing = await prefs(teo, { level: 'nothing' });
     assert.equal(nothing.level, 'nothing');
     assert.ok(Object.values(nothing.channels).every((choice) => choice.inApp && !choice.push && !choice.email));
@@ -1082,7 +1082,7 @@ describe('levels and the morning summary (#350, S22)', () => {
     const at = Math.max(0, localMinutes(now, 'UTC') - 5);
     const clock = `${String(Math.floor(at / 60)).padStart(2, '0')}:${String(at % 60).padStart(2, '0')}`;
     const on = await prefs(teo, { morningSummary: { enabled: true, at: clock }, quietHours: { timeZone: 'UTC' } });
-    assert.deepEqual(on.morningSummary, { enabled: true, at: clock });
+    assert.deepEqual(on.morningSummary, { enabled: true, at: clock, byAssistant: false });
 
     const uow = summaryUnitOfWork(db, queue);
     await sendMorningSummaries(uow, now);

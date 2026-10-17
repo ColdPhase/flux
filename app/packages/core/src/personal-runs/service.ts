@@ -47,6 +47,32 @@ export class PersonalRunCappedError extends DomainError {
 }
 
 const IN_FLIGHT = new Set(['queued', 'reading', 'dispatching']);
+
+/** What Flux's own tick asks for when a schedule or the morning summary is due (F-027 A8). */
+export interface BackgroundRunSpec {
+  ownerUserId: string;
+  projectId: string;
+  /** Where the run is anchored: the conversation a schedule posts in, or any conversation of the project for a silent run. */
+  conversationId: string;
+  kind: 'scheduled' | 'morning_summary';
+  prompt: string;
+  /** Deterministic per firing, so a repeated start returns the same run. */
+  clientRunId: string;
+  /** The answer stays out of the conversation (Recent keeps it). */
+  silent: boolean;
+  /** The short name the owner knows it by, for the lane's lines: "Finishing your Morning summary first" (F-027 AST-6 "Queue"). */
+  label: string;
+}
+/** A background run that could not start says why in plain words; a sign-out fails the firing, anything else skips it. */
+export type BackgroundStart =
+  | { started: true; run: RunRecord; created: boolean }
+  | { started: false; outcome: 'skipped' | 'failed'; line: string };
+
+const SERVER_PROBLEM_LINE: Record<PersonalAssistantUnavailableReason, string> = {
+  provider_off: 'Skipped: AI is switched off on this Flux', no_connection: 'Skipped: no AI account is connected', connection_changed: 'Skipped: your AI account changed',
+  price_unknown: 'Skipped: your AI account has no known price', run_cost_over_limit: 'Skipped: one request can cost more than your limit',
+  runtime_off: 'Skipped: subscription sign-in is off on this Flux', runtime_sign_in: 'Skipped: sign in again',
+} as Record<PersonalAssistantUnavailableReason, string>;
 /** The provenance model of a runtime answer: Claude Code chooses the model under the owner's account. */
 export const RUNTIME_MODEL = 'claude-code';
 /** The model label of a run on the owner's own Codex (F-022 T6, #281); the CLI's own model is not reported. */
@@ -87,6 +113,7 @@ export async function answerView(ports: PersonalRunPorts, record: RunRecord): Pr
   const names = await ports.runs.names([record.ownerUserId]);
   const name = names.get(record.ownerUserId) ?? 'Former member';
   const proposal = await ports.runs.proposalOfRun(record.id);
+  const schedule = record.kind === 'scheduled' ? await ports.runs.jobOfRun?.(record.id) ?? null : null;
   return {
     runId: record.id, conversationId: record.conversationId, projectId: record.projectId,
     audience: { kind: 'project', projectId: record.projectId },
@@ -94,14 +121,14 @@ export async function answerView(ports: PersonalRunPorts, record: RunRecord): Pr
     askedBy: { id: record.ownerUserId, name },
     request: { kind: record.kind, prompt: record.prompt }, body: record.answerBody, truncated: record.answerTruncated,
     provenance: { provider: record.provider, model: record.model }, sources: record.answerSources.map((source) => ({ ...source })),
-    proposalId: proposal?.id ?? null, committedAt: iso(record.committedAt),
+    proposalId: proposal?.id ?? null, committedAt: iso(record.committedAt), ...(schedule ? { schedule } : {}),
   };
 }
 
 export async function runView(ports: PersonalRunPorts, record: RunRecord): Promise<AssistantRun> {
   return {
     id: record.id, clientRunId: record.clientRunId, workspaceId: record.workspaceId, projectId: record.projectId,
-    conversationId: record.conversationId, kind: record.kind, prompt: record.prompt,
+    conversationId: record.conversationId, kind: record.kind, prompt: record.kind === 'morning_summary' ? 'Your morning summary' : record.prompt, silent: record.silent,
     target: record.targetSketchId && record.targetThoughtId ? { type: 'thought', sketchId: record.targetSketchId, thoughtId: record.targetThoughtId } : null,
     continuesRunId: record.continuesRunId, retryOfRunId: record.retryOfRunId, status: record.status,
     stoppedAtStage: record.stoppedAtStage, stopRequested: record.stopRequestedAt !== null, stopAcknowledged: record.stopAcknowledgedAt !== null,
@@ -343,7 +370,64 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, t
     return run;
   }
 
+  /**
+   * F-027 A8: starts the owner's scheduled or morning-summary run on the same path as a request: the owner's enablement
+   * (pause, removal), the connection or the signed-in CLI, the assistant's and the owner's current access to the project and
+   * the daily caps are all checked, and the run, its reservation and its dispatch job commit with the caller's transaction.
+   * Nothing falls back to another account; a run that cannot start says why and writes nothing.
+   */
+  async function startBackground(ports: PersonalRunPorts, spec: BackgroundRunSpec): Promise<BackgroundStart> {
+    const skipped = (line: string): BackgroundStart => ({ started: false, outcome: 'skipped', line });
+    const owner = spec.ownerUserId;
+    const principal: Principal = { kind: 'human', id: owner };
+    const place = await ports.runs.locateConversation(spec.conversationId);
+    if (!place || place.projectId !== spec.projectId) return skipped('Skipped: this project has no conversation yet');
+    // The assistant changes things as the owner's: the owner must still be able to write here.
+    if (!(await ports.access.canUseProject(principal, 'write', spec.projectId, { lock: true }))) return skipped('Skipped: you no longer have access to this project');
+    const existing = await ports.runs.runByClientId(owner, spec.clientRunId);
+    if (existing) return { started: true, run: existing, created: false };
+    const enablement = await ports.runs.enablement(owner, { lock: true });
+    if (!enablement) return skipped('Skipped: your assistant is off');
+    if (enablement.status === 'paused') return skipped('Skipped: your assistant is paused');
+    const onRuntime = enablement.engine === 'runtime';
+    const runtimeClient = onRuntime ? runtimeClientOf(enablement.consentProvider) : null;
+    if (onRuntime) {
+      const problem = runtimeProblem(await runtimeStanding(owner, runtimeClient ?? undefined));
+      if (problem === 'runtime_sign_in') return { started: false, outcome: 'failed', line: `Sign in to ${runtimeClient === 'codex' ? 'ChatGPT' : 'Claude'} again` };
+      if (problem) return skipped(SERVER_PROBLEM_LINE[problem]);
+    }
+    const usableNow = onRuntime ? null : await usableConnection(connections, providerEnabled, enablement, toolTurns);
+    if (usableNow?.problem) return skipped(SERVER_PROBLEM_LINE[usableNow.problem]);
+    const agentId = enablement.agents.find((agent) => agent.workspaceId === place.workspaceId)?.agentId;
+    if (!agentId || !(await ports.access.canInvoke(principal, agentId, { lock: true }))) return skipped('Skipped: your assistant is not available');
+    if (!(await ports.access.canUseProject({ kind: 'agent', id: agentId }, 'read', place.projectId, { lock: true }))) return skipped('Skipped: I\'m not in this project');
+    const taskFence = await ports.runs.prepareTaskUse(place.projectId, spec.conversationId);
+    for (const ended of await ports.runs.endStale(owner, STALE_AFTER_SECONDS)) await announce(ports, ended);
+    let reservation: { reservedMicros: number; provider: PersonalConnection['provider']; model: string };
+    if (!usableNow) {
+      if (ports.runs.runtimeRunsToday && await ports.runs.runtimeRunsToday(owner, enablement.timeZone) >= RUNTIME_RUN_LIMITS.runsPerDay) return skipped('Skipped: daily limit');
+      const vendor = runtimeVendor(runtimeClient);
+      reservation = { reservedMicros: 0, provider: vendor.provider, model: vendor.model };
+    } else {
+      const spend = await ports.runs.spendToday(owner, enablement.timeZone);
+      if (spend.chargedMicros + spend.reservedMicros + usableNow.reservedMicros > centsToMicros(enablement.dailyCapCents)) return skipped('Skipped: daily limit');
+      reservation = { reservedMicros: usableNow.reservedMicros, provider: usableNow.connection.provider, model: usableNow.connection.model };
+    }
+    const run = await ports.runs.insertRun({
+      id: randomUUID(), workspaceId: place.workspaceId, projectId: place.projectId, conversationId: spec.conversationId, ownerUserId: owner, agentId,
+      connectionId: enablement.connectionId, clientRunId: spec.clientRunId, requestFingerprint: `background:${spec.kind}:${spec.clientRunId}`, kind: spec.kind,
+      prompt: spec.prompt, targetSketchId: null, targetThoughtId: null, continuesRunId: null, retryOfRunId: null, ...reservation, engine: enablement.engine, silent: spec.silent,
+      // A schedule is the owner's own stored request: it waits behind their own requests and says what it is (AST-6 "Queue").
+      authority: 'owner_schedule', backgroundLabel: spec.label.trim().slice(0, 80) || 'Schedule',
+    });
+    await ports.queue.enqueue(run.id);
+    await taskFence.mark();
+    await announce(ports, run);
+    return { started: true, run, created: true };
+  }
+
   return {
+    startBackground,
     status: (principal: Principal) => uow.run((ports) => status(ports, ownerOf(principal))),
 
     /** Needs the owner's usable key connection; the consent snapshots its payer. */

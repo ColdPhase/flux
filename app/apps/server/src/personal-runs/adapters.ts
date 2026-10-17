@@ -37,7 +37,7 @@ export function pgBossPersonalRunQueue(boss: Pick<PgBoss, 'send'>): PersonalRunQ
   });
 }
 
-function personalRunPorts(tx: DbExecutor, queue: PersonalRunQueueFactory,
+export function personalRunPorts(tx: DbExecutor, queue: PersonalRunQueueFactory,
   events?: PersonalRunPorts['events'], session?: ReturnType<typeof transactionEventSession>): PersonalRunPorts {
   return {
     ...(session ? { assistants: assistantRows(tx, session) } : {}),

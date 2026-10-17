@@ -33,13 +33,14 @@ export interface StoredPreferenceRow {
   pausedUntil: Date | null;
   summaryEnabled: boolean;
   summaryAt: number;
+  summaryByAssistant: boolean;
 }
 
 type PreferenceRecord = typeof schema.notificationPreferences.$inferSelect;
 const storedRow = (row: PreferenceRecord): StoredPreferenceRow => ({
   channels: row.channels ?? {}, emailDestination: row.emailDestination, quietEnabled: row.quietEnabled, quietStart: row.quietStart,
   quietEnd: row.quietEnd, timeZone: row.timeZone, summaryEnabled: row.summaryEnabled, summaryAt: row.summaryAt,
-  pausedUntil: row.pausedUntil,
+  summaryByAssistant: row.summaryByAssistant, pausedUntil: row.pausedUntil,
 });
 
 /** What the generator reads and writes inside its transaction. */
@@ -421,7 +422,7 @@ export async function markAllNotificationsRead(db: DbExecutor, userId: string) {
 export function morningSummaryRows(db: DbExecutor) {
   return {
     async candidates() {
-      const rows = await db.select({ userId: p.userId, summaryEnabled: p.summaryEnabled, summaryAt: p.summaryAt, timeZone: p.timeZone, channels: p.channels, lastOn: p.summaryLastOn })
+      const rows = await db.select({ userId: p.userId, summaryEnabled: p.summaryEnabled, summaryAt: p.summaryAt, summaryByAssistant: p.summaryByAssistant, timeZone: p.timeZone, channels: p.channels, lastOn: p.summaryLastOn })
         .from(p).where(eq(p.summaryEnabled, true));
       return rows.map(({ userId, lastOn, ...preferences }) => ({ userId, lastOn, preferences }));
     },
