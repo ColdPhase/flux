@@ -438,7 +438,6 @@ class SharedComposerJourney(unittest.TestCase):
                 expect(pane).to_have_count(0)
                 self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), width)
                 shot(page, f"shared-published-{width}")
-                expect(page.locator('.composer__hint').last).to_be_visible() if width > 640 else None
                 expect(page.get_by_role('button', name=re.compile('^Sources'))).to_have_count(0)
                 pane = self.cite(page, project, discussion['conversationId'])
                 pane.get_by_label('Reply', exact=True).fill('Compare these two files with the saved measurements')

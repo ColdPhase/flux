@@ -6,6 +6,7 @@ import { Link, useLoaderData, useLocation, useNavigate, useRevalidator, useSearc
 import type { Dm, DmMessage, DmPerson, DmTaskCopyResult } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { dmReceipts, getDm, observeDmMessages, olderDmMessages } from '../api/direct-messages';
+import { ComposerBox } from '../composer/ComposerBox';
 import { outboxView, useComposerDraft, useComposerScope } from '../composer/draft';
 import { ConnectionLine, SendAnnouncer } from '../composer/Outbox';
 import { createDmSketch } from '../api/sketches';
@@ -413,16 +414,13 @@ function DmContent({ initial }: { initial: Dm }) {
       ) : null}
       <div className="composer dm__composer" hidden={selecting}>
         <div className="composer__in">
-          <p className="composer__audience"><span id={audienceId}><Icon name="lock" size={13} />{audience}<span aria-hidden="true"> · </span><span className="composer__where">direct message</span></span>
-            {phone && canChoose ? <Button ref={selectButtonRef} variant="quiet" icon="check" className="dm-select-btn dm-select-btn--phone" onClick={() => toggleSelecting(true)}>Choose messages</Button> : null}</p>
           {goneNotice ? <p className="dm__notice" role="status"><Icon name="lock" size={13} />{goneNotice}</p> : null}
           <ConnectionLine />
-          <div className="composer__box" aria-disabled={recipientGone || undefined}>
-            <label className="ui-vh" htmlFor="dm-composer">Message {title}</label>
-            <textarea id="dm-composer" ref={textareaRef} rows={1} value={draft} onChange={(event) => change(event.target.value)} onBlur={typing.stop} onKeyDown={onKey}
-              disabled={recipientGone} placeholder={recipientGone ? 'Nobody else is in this conversation' : `Message ${others.length === 1 ? others[0]!.name.split(/\s+/)[0] : title}…`} aria-describedby={audienceId} />
-            <button type="button" className="composer__send" aria-label="Send message" aria-disabled={!canSend} onClick={() => void send()}><Icon name="send" /></button>
-          </div>
+          <ComposerBox id="dm-composer" label={`Message ${title}`} fieldRef={textareaRef} value={draft} onChange={(value) => change(value)} onBlur={typing.stop} onKeyDown={onKey}
+            disabled={recipientGone} boxDisabled={recipientGone} placeholder={recipientGone ? 'Nobody else is in this conversation' : `Message ${others.length === 1 ? others[0]!.name.split(/\s+/)[0] : title}…`}
+            fieldProps={{ 'aria-describedby': audienceId }} sendLabel="Send message" sendDisabled={!canSend} onSend={() => void send()} />
+          <p className="composer__audience"><Icon name="lock" size={13} /><span id={audienceId}>{audience}<span aria-hidden="true"> · </span><span className="composer__where">direct message</span></span>
+            {phone && canChoose ? <Button ref={selectButtonRef} variant="quiet" icon="check" className="dm-select-btn dm-select-btn--phone" onClick={() => toggleSelecting(true)}>Choose messages</Button> : null}</p>
           <TypingNotice {...typing} />
           <SendAnnouncer pending={composer.pending} />
           {composer.error && composer.error !== goneNotice ? <p className="dm__error" role="alert"><Icon name="alert" size={13} />{composer.error}</p> : null}

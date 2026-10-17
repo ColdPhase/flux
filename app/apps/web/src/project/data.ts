@@ -82,13 +82,6 @@ export function audienceLine(people: ProjectPerson[] | null, meId: string, open 
   return agents ? `${humans} · ${agents} ${agents === 1 ? 'agent' : 'agents'}` : humans;
 }
 
-/** "Reply to Kai…", "Reply to Ari and Nia…" for the composer placeholder. */
-export function replyTo(people: ProjectPerson[] | null, meId: string): string {
-  const others = (people ?? []).filter((person) => person.kind === 'human' && person.id !== meId).map((person) => firstName(person.name));
-  if (!others.length || others.length > 3) return 'Reply…';
-  return `Reply to ${join(others)}…`;
-}
-
 export const ACCESS_LABEL: Record<ProjectPerson['access'], string> = {
   manager: 'Manages the space',
   contributor: 'Can write',

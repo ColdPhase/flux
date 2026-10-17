@@ -9,6 +9,7 @@ import { useIntentKeys } from '../api/intent-keys';
 import { useShellData } from './data';
 import { useDraft } from './drafts';
 import { useShellActions } from './shellContext';
+import { ComposerBox } from '../composer/ComposerBox';
 import { getAssistantStatus } from '../assistant/api';
 import './your-notes.css';
 
@@ -302,6 +303,10 @@ function NotesSection() {
       </div>
       <div className="composer">
         <div className="composer__in" data-shift>
+          <ComposerBox id="composer" label="Private note" fieldRef={textareaRef} value={draft.text} disabled={saving} placeholder={asking ? 'Ask your assistant…' : 'Write a note…'}
+            fieldProps={{ 'aria-describedby': `${asking ? askId : audienceId} ${hintId}` }} onChange={(value) => { draft.setText(value); autosize(); }} onKeyDown={onKeyDown}
+            sendLabel={asking ? 'Send to your assistant' : 'Save note'} sendDisabled={!canSend} onSend={() => void send()} />
+          <div className="composer__line">
           {asking ? (
             <div className="ask" id={askId}>
               <span className="ask__who"><Icon name="spark" size={13} />Your assistant
@@ -313,18 +318,14 @@ function NotesSection() {
           ) : (
             <p className="composer__audience" id={audienceId}><Icon name="lock" size={13} />Only you<span aria-hidden="true"> · </span><span className="composer__where">private draft in {selectedWorkspace ? `${workspaces.find((space) => space.id === selectedWorkspace)?.name ?? 'your space'}, which only you can open` : workspaces.length ? 'a space you choose' : 'your personal space'}</span></p>
           )}
-          {workspaces.length > 1 ? <label className="composer__space">Save in <select value={selectedWorkspace} onChange={(event) => { setSelectedWorkspace(event.target.value); setServerDrafts([]); setSaveState(''); }}><option value="">Choose a space</option>{workspaces.map((space) => <option key={space.id} value={space.id}>{space.name}</option>)}</select></label> : null}
-          <div className="composer__box">
-            <label className="ui-vh" htmlFor="composer">Private note</label>
             <button type="button" className="composer__ask" aria-pressed={noAssistant ? undefined : asking} aria-label={noAssistant ? 'Connect your AI' : 'Ask my assistant'}
               data-tip={noAssistant ? 'Connect your AI' : 'Ask my assistant'} data-tip-align="start"
               onClick={() => { if (noAssistant) { openDetails('connect-ai'); return; } setAsking(!asking); textareaRef.current?.focus(); }}>
               <Icon name="spark" />
             </button>
-            <textarea id="composer" ref={textareaRef} rows={1} value={draft.text} disabled={saving} placeholder={asking ? 'Ask your assistant…' : 'Write a note…'}
-              aria-describedby={`${asking ? askId : audienceId} ${hintId}`} onChange={(event) => { draft.setText(event.target.value); autosize(); }} onKeyDown={onKeyDown} />
-            <button type="button" className="composer__send" aria-label={asking ? 'Send to your assistant' : 'Save note'} aria-disabled={!canSend} onClick={() => void send()}><Icon name="send" /></button>
+
           </div>
+          {workspaces.length > 1 ? <label className="composer__space">Save in <select value={selectedWorkspace} onChange={(event) => { setSelectedWorkspace(event.target.value); setServerDrafts([]); setSaveState(''); }}><option value="">Choose a space</option>{workspaces.map((space) => <option key={space.id} value={space.id}>{space.name}</option>)}</select></label> : null}
           <p className="composer__hint" id={hintId}>
             <span className="composer__keys">Enter saves · Shift+Enter for a new line · </span>
             <span className={`composer__state${hasDraft ? '' : ' composer__state--idle'}`} aria-live="polite">

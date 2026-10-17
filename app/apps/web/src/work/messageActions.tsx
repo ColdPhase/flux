@@ -1,15 +1,18 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import type { ConversationMessage } from '@flux/contracts';
 import { Icon, Kreska, useMediaQuery, useToast, type IconName } from '../ui';
 import { useShellActions } from '../app/shellContext';
 import { useShellData } from '../app/data';
+import { useNeedsYou } from '../notifications/needsYou';
+import { useNeedsYouActions } from '../notifications/useNeedsYouActions';
 import './message-actions.css';
 
 // Actions on one message (F-026 S6). On a computer they appear on hover and focus: reply in a thread,
-// create a task, and a menu with the rest. On a phone they are two gestures, swipe left (reply, task,
-// hand off) and long press (the message menu), plus the same menu for keyboards and screen readers.
-// Nothing swipes right. Decisions and results stay reachable from the menu, so no object is lost.
+// create a task, and a menu with the rest. On a phone they are two gestures, a long press (the message menu)
+// and a swipe right (Reply in thread), plus the same menu for keyboards and screen readers (founder direction
+// 2026-10-16 on #343). A message has no done or snooze state, so nothing swipes left; Done and Not now are in
+// the menu only for a message that is waiting in the person's Inbox. Decisions and results stay in the menu.
 
 /**
  * A private direct-message bubble (#536, #537): reply in its thread and create a task from an excerpt. Nothing
@@ -17,6 +20,8 @@ import './message-actions.css';
  */
 export interface DmActionOptions {
   kind: 'dm';
+  /** The message, to find the Inbox item it raised (a question or an @mention), if any. */
+  messageId?: string;
   /** The message text, for Copy text. */
   body: string;
   /** False when the conversation takes no new messages (a 1:1 whose other person left). */
@@ -40,6 +45,8 @@ export interface MessageActionOptions {
   /** Quotes the message into the composer. */
   onCite?: () => void;
 }
+
+const messageOf = (options: MessageActionOptions | DmActionOptions) => options.kind === 'dm' ? options.messageId ?? null : options.message.id;
 
 interface MenuItem { id: string; label: string; icon: IconName | 'kreska'; run: () => void; disabled?: boolean; secondary?: boolean }
 
@@ -83,8 +90,26 @@ function useMenuItems(options: MessageActionOptions | DmActionOptions | null): M
   ];
 }
 
+/**
+ * Done and Not now for a message that is waiting in the person's Inbox (a question to them or an @mention),
+ * acting on that item exactly as the Inbox does (#343, founder direction 2026-10-16). Other messages get
+ * nothing: Inbox stays the one queue and a message has no state of its own. Read when the menu opens.
+ */
+function useWaiting(messageId: string | null): MenuItem[] {
+  const { me } = useShellData();
+  const queue = useNeedsYou(me.user.id);
+  const handlers = useNeedsYouActions(queue);
+  const item = messageId ? queue.items?.find((entry) => entry.url.endsWith(`#message-${messageId}`)) : undefined;
+  if (!item) return [];
+  return [
+    { id: 'inbox-done', label: 'Done', icon: 'check', secondary: true, run: () => handlers.done(item) },
+    { id: 'inbox-later', label: 'Not now', icon: 'clock', secondary: true, run: () => handlers.snooze(item, 'tomorrow') },
+  ];
+}
+
 /** A menu under its anchor: arrow keys, Escape and a click outside close or move; focus returns to the opener. */
-function MessageMenu({ items, anchor, press, onClose, label }: { items: MenuItem[]; anchor: HTMLElement; press: boolean; onClose: (restoreFocus: boolean) => void; label: string }) {
+function MessageMenu({ items: own, anchor, press, onClose, label, messageId }: { items: MenuItem[]; anchor: HTMLElement; press: boolean; onClose: (restoreFocus: boolean) => void; label: string; messageId: string | null }) {
+  const items = [...own, ...useWaiting(messageId)];
   const menu = useRef<HTMLDivElement>(null);
   const [place, setPlace] = useState<CSSProperties>({ top: 0, left: 0, opacity: 0 });
   useLayoutEffect(() => {
@@ -146,13 +171,15 @@ export function MessageActions(options: MessageActionOptions | DmActionOptions) 
       {writable && onReply ? <button type="button" className="msg-acts__b" aria-label="Reply in thread" data-tip="Reply in thread" onClick={onReply}><Icon name="reply" size={16} /></button> : null}
       {writable ? <button type="button" className="msg-acts__b" aria-label="Create task" data-tip="Create task" onClick={onCreateWork}><Icon name="plus-circle" size={16} /></button> : null}
       <button ref={more} type="button" className="msg-acts__b" aria-label="More actions" data-tip="More actions" aria-haspopup="menu" aria-expanded={!!anchor} onClick={(event) => setAnchor(anchor ? null : event.currentTarget)}><Icon name="more" size={16} /></button>
-      {anchor ? <MessageMenu items={items} anchor={anchor} press={false} label="Message actions"
+      {anchor ? <MessageMenu items={items} anchor={anchor} press={false} label="Message actions" messageId={messageOf(options)}
         onClose={(restore) => { setAnchor(null); if (restore) more.current?.focus(); }} /> : null}
     </div>
   );
 }
 
-const REVEAL = 168;
+/** A swipe right this far replies in the thread; the row follows the finger up to REPLY_MAX and springs back. */
+const REPLY_AT = 64;
+const REPLY_MAX = 88;
 const HOLD_MS = 450;
 const MOVE_SLOP = 10;
 
@@ -169,10 +196,11 @@ interface TouchProps<E extends HTMLElement> {
 }
 
 /**
- * The phone's gestures on one message (S6): swipe left reveals Reply in thread, Create task and Hand off;
- * a long press opens the message menu. Both belong to the touch pointer only; nothing swipes right. The
- * returned props go on the message's list item and `node` inside it. A visually hidden button opens the same
- * menu for keyboards and screen readers, who cannot long press.
+ * The phone's gestures on one message (S6, founder direction 2026-10-16): a swipe right opens Reply in thread
+ * (the WhatsApp, Telegram and iMessage habit) and a long press opens the message menu. Both belong to the touch
+ * pointer only; nothing swipes left. The returned props go on the message's list item and `node` inside it.
+ * A visually hidden button opens the same menu for keyboards and screen readers, who cannot long press, and a
+ * computer's Reply button does the same as the swipe, so a gesture is never the only way to an action.
  */
 export function useTouchActions<E extends HTMLElement = HTMLLIElement>(options: MessageActionOptions | DmActionOptions | null): { props: TouchProps<E>; node: ReactNode } {
   const touch = useMediaQuery('(hover: none)');
@@ -181,25 +209,14 @@ export function useTouchActions<E extends HTMLElement = HTMLLIElement>(options: 
   const [menu, setMenu] = useState<{ kind: 'press' | 'button'; anchor: HTMLElement } | null>(null);
   const [offset, setOffset] = useState(0);
   const [dragging, setDragging] = useState(false);
-  const [revealed, setRevealed] = useState(false);
   const gesture = useRef<{ x: number; y: number; mode: 'idle' | 'swipe' | 'dead'; timer: number; interactive: boolean } | null>(null);
   const swallow = useRef(false);
   const opener = useRef<HTMLElement | null>(null);
-  const { onCreateWork, onReply, writable } = options ?? { onCreateWork: undefined, onReply: undefined, writable: false };
+  const { onReply, writable } = options ?? { onReply: undefined, writable: false };
+  const replies = !!(writable && onReply);
 
   // A gesture's own timer is cancelled before the gesture is dropped, and a timer only acts for the gesture that set it.
   const clearTimer = (g = gesture.current) => { if (g) window.clearTimeout(g.timer); };
-  const close = useCallback(() => { setRevealed(false); setOffset(0); }, []);
-  // A revealed row closes when the person touches elsewhere or scrolls.
-  useEffect(() => {
-    if (!revealed) return;
-    const away = (event: Event) => { if (!ref.current?.contains(event.target as Node)) close(); };
-    const key = (event: globalThis.KeyboardEvent) => { if (event.key === 'Escape') close(); };
-    document.addEventListener('pointerdown', away, true);
-    document.addEventListener('scroll', close, true);
-    document.addEventListener('keydown', key);
-    return () => { document.removeEventListener('pointerdown', away, true); document.removeEventListener('scroll', close, true); document.removeEventListener('keydown', key); };
-  }, [revealed, close]);
   useEffect(() => () => clearTimer(), []);
 
   if (!touch || !options) return { props: { ref, className: '' }, node: null };
@@ -211,7 +228,7 @@ export function useTouchActions<E extends HTMLElement = HTMLLIElement>(options: 
   };
   const props = {
     ref,
-    className: `msg-touch${dragging ? ' is-dragging' : ''}${revealed || offset ? ' is-swiped' : ''}`,
+    className: `msg-touch${dragging ? ' is-dragging' : ''}${offset ? ' is-swiped' : ''}`,
     style: offset ? { transform: `translateX(${offset}px)` } : undefined,
     onPointerDown: (event: ReactPointerEvent<E>) => {
       swallow.current = false;
@@ -232,11 +249,11 @@ export function useTouchActions<E extends HTMLElement = HTMLLIElement>(options: 
       const dy = event.clientY - g.y;
       if (g.mode === 'idle') {
         if (Math.abs(dy) > MOVE_SLOP && Math.abs(dy) > Math.abs(dx)) { clearTimer(); g.mode = 'dead'; return; }
-        if (dx < -MOVE_SLOP && Math.abs(dx) > Math.abs(dy) * 1.5) { clearTimer(); g.mode = 'swipe'; setDragging(true); }
+        if (replies && dx > MOVE_SLOP && Math.abs(dx) > Math.abs(dy) * 1.5) { clearTimer(); g.mode = 'swipe'; setDragging(true); }
         else { if (Math.abs(dx) > MOVE_SLOP) clearTimer(); return; }
       }
-      // Only leftwards: a rightward drag only closes a revealed row.
-      setOffset(Math.max(-REVEAL, Math.min(0, (revealed ? -REVEAL : 0) + dx)));
+      // Only rightwards, and only as far as the hint needs.
+      setOffset(Math.max(0, Math.min(REPLY_MAX, dx)));
     },
     onPointerUp: (event: ReactPointerEvent<E>) => {
       const g = gesture.current;
@@ -246,25 +263,19 @@ export function useTouchActions<E extends HTMLElement = HTMLLIElement>(options: 
       if (g.mode !== 'swipe') return;
       setDragging(false);
       swallow.current = true;
-      const dx = event.clientX - g.x;
-      const final = Math.max(-REVEAL, Math.min(0, (revealed ? -REVEAL : 0) + dx));
-      if (final <= -REVEAL / 2) { setRevealed(true); setOffset(-REVEAL); } else close();
+      setOffset(0);
+      if (event.clientX - g.x >= REPLY_AT) onReply?.();
     },
-    onPointerCancel: () => { clearTimer(); gesture.current = null; if (dragging) { setDragging(false); if (!revealed) setOffset(0); else setOffset(-REVEAL); } },
+    onPointerCancel: () => { clearTimer(); gesture.current = null; if (dragging) { setDragging(false); setOffset(0); } },
     // Android raises a context menu after a long press: the message menu is the answer, not the browser's.
     onContextMenu: (event: MouseEvent<E>) => { event.preventDefault(); if (!menu) openPress(event.currentTarget); },
     onClickCapture: (event: MouseEvent<E>) => { if (swallow.current) { swallow.current = false; event.preventDefault(); event.stopPropagation(); } },
   };
-  const swipeAction = (run: (() => void) | undefined) => () => { close(); run?.(); };
   const node = (
     <>
-      <div className="msg-swipe" role="group" aria-label="Swipe actions" hidden={!revealed && !offset} inert={!revealed}>
-        {writable && onReply ? <button type="button" className="msg-swipe__b" onClick={swipeAction(onReply)}><Icon name="reply" size={20} />Reply in thread</button> : null}
-        {writable ? <button type="button" className="msg-swipe__b" onClick={swipeAction(onCreateWork)}><Icon name="plus-circle" size={20} />Create task</button> : null}
-        {writable && options.kind !== 'dm' ? <button type="button" className="msg-swipe__b" onClick={swipeAction(onCreateWork)}><Kreska size={20} />Hand off</button> : null}
-      </div>
+      <span className={`msg-swipe${offset >= REPLY_AT ? ' is-ready' : ''}`} aria-hidden="true" hidden={!offset}><Icon name="reply" size={20} /></span>
       <button type="button" className="msg-touch__sr" aria-haspopup="menu" aria-expanded={menu?.kind === 'button'} onClick={(event) => { opener.current = event.currentTarget; setMenu({ kind: 'button', anchor: event.currentTarget.parentElement?.querySelector<HTMLElement>('.message-bubble > p') ?? event.currentTarget }); }}>Message actions</button>
-      {menu ? <MessageMenu items={items} anchor={menu.anchor} press={menu.kind === 'press'} label="Message actions"
+      {menu ? <MessageMenu items={items} anchor={menu.anchor} press={menu.kind === 'press'} label="Message actions" messageId={messageOf(options)}
         onClose={(restore) => { setMenu(null); if (restore) opener.current?.focus({ preventScroll: true }); }} /> : null}
     </>
   );
