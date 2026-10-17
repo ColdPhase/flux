@@ -1,16 +1,14 @@
 import { useEffect, useState } from 'react';
-import { getTaskDiscussion } from '../composer/api';
+import { readAgentThread } from './agentThread';
 
 /** An agent's message on a task: its text and when it was written. */
 export interface AgentLine { body: string; at: string }
 
 /**
- * The newest message the agent wrote on one task, from the task's own thread (the canonical discussion, read as one bounded
- * page). Null when the agent has written nothing there yet.
+ * The newest message the agent wrote on one task, from the task's agents' thread (read as one bounded page). Null when the agent has written nothing there yet.
  */
 export async function latestAgentLine(taskId: string, agentId: string, signal?: AbortSignal): Promise<AgentLine | null> {
-  const discussion = await getTaskDiscussion(taskId, { limit: 50, signal });
-  const all = discussion.root ? [discussion.root, ...discussion.messages] : discussion.messages;
+  const all = (await readAgentThread(taskId, { limit: 50, signal })).messages;
   const mine = all
     .filter((message) => message.authorId === null && message.author.kind === 'agent' && message.author.id === agentId)
     .sort((a, b) => a.sequence - b.sequence)

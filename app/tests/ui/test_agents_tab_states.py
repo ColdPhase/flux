@@ -150,6 +150,21 @@ class AgentsTabStates(unittest.TestCase):
                     message.update(changes[message["id"]])
             route.fulfill(response=response, json=body)
         page.route(re.compile(rf".*/api/v1/work/{self.ids[task]}/discussion(\?.*)?$"), handle)
+        # The same fields on the task's agents' thread (the Now card and its panel read it), by the twin message ids.
+        twin = {self.ids[key]: self.ids["a" + key[1:]] for key in ("m1", "m2", "m3") if "a" + key[1:] in self.ids}
+
+        def handle_agents(route: Route) -> None:
+            if route.request.method != "GET":
+                route.continue_()
+                return
+            response = route.fetch()
+            body = response.json()
+            for message in (body.get("conversation") or {}).get("messages", []):
+                for source, target in twin.items():
+                    if message["id"] == target and source in changes:
+                        message.update(changes[source])
+            route.fulfill(response=response, json=body)
+        page.route(re.compile(rf".*/api/v1/work/{self.ids[task]}/agent-thread(\?.*)?$"), handle_agents)
 
     def as_agent(self, agent: str) -> dict:
         return {"authorId": None, "author": {"kind": "agent", "id": self.ids[agent], "name": {"codex": "Codex", "claude": "Claude Code", "lab": "Lab helper"}[agent]}}
@@ -198,6 +213,10 @@ class AgentsTabStates(unittest.TestCase):
         discussion = self.api(ada, "GET", f"/api/v1/work/{self.ids['task1']}/discussion", status=200)
         type(self).ids = {**self.ids, "conversation": discussion["conversationId"], "m1": first["id"], "m2": second["id"], "m3": third["id"]}
         self.assertEqual(discussion["root"]["id"], first["id"])
+        # The same three lines in the task's agents' thread, for the panels that read it.
+        twins = [self.api(ada, "POST", f"/api/v1/work/{self.ids['task1']}/agent-thread", {"body": body, "clientMessageId": str(uuid.uuid4())}, status=201)
+                 for body in ("Starting on the reconnect loop.", "Reading the modem log now.", "Thanks, keep going.")]
+        type(self).ids = {**self.ids, "a1": twins[0]["id"], "a2": twins[1]["id"], "a3": twins[2]["id"]}
 
     def new_task(self, title: str, key: str, *, owner: dict | None = None, status: str = "open", blocker: str | None = None) -> None:
         ada = self.page("ada")
