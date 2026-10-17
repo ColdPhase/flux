@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
 import { COWORK_PLAYBOOK, coworkPlaybookReference, coworkPlaybookTools, coworkPlaybookUri, renderCoworkPlaybook, type CoworkPlaybook } from '@flux/core';
 import { pool } from './support/db.js';
-import { publicOrigin, register, uniqueEmail } from './support/http.js';
+import { apiUrl, publicOrigin, register, uniqueEmail } from './support/http.js';
 import { beginOauth, expect, mcp, oauthToken, toolValue } from './support/mcp.js';
 
 test('the shipped playbook has one stable version/digest that changes with its content and covers every role module', () => {
@@ -124,6 +124,49 @@ test('the authenticated MCP connection serves the playbook as a resource and bin
   expect(await f.owner.request('DELETE', `/api/v1/agent-connections/${f.connectionId}`), 204);
   assert.equal((await mcp(f.token, 301, 'resources/read', { uri: coworkPlaybookUri() })).status, 403);
   assert.equal((await mcp(f.token, 302, 'prompts/get', { name: 'start_work', arguments: {} })).status, 403);
+});
+
+test('a Codex-style client with no prompt use starts from the playbook resource alone (#160 AC-2, #460)', async () => {
+  const f = await connected(1, ['flux.context.read', 'flux.proposal.write', 'flux.action.execute']);
+  // Pinned Codex 0.160.1 speaks 2025-06-18, advertises no client capabilities and has no MCP prompts: it only lists/reads resources.
+  const init = await fetch(new URL('/mcp', apiUrl), { method: 'POST', headers: { authorization: `Bearer ${f.token}`,
+    'content-type': 'application/json', accept: 'application/json, text/event-stream', 'mcp-protocol-version': '2025-06-18' },
+  body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18', capabilities: {},
+    clientInfo: { name: 'codex-mcp-client', version: '0.160.1' } } }) });
+  assert.equal(init.status, 200);
+  const initText = await init.text();
+  const initResult = (JSON.parse(initText.includes('data: ') ? initText.split('\n').find((line) => line.startsWith('data: '))!.slice(6) : initText) as
+    { result: { protocolVersion: string; capabilities: Record<string, unknown> } }).result;
+  assert.equal(initResult.protocolVersion, '2025-06-18');
+  assert.ok('resources' in initResult.capabilities, 'resources are advertised to a client that never asks for prompts');
+
+  const resources = (await f.call('resources/list') as { resources: { uri: string }[] }).resources;
+  assert.deepEqual(resources.map((resource) => resource.uri), [coworkPlaybookUri()]);
+  const playbook = (await f.call('resources/read', { uri: coworkPlaybookUri() }) as { contents: { text: string }[] }).contents[0]!.text;
+  assert.equal(playbook, renderCoworkPlaybook());
+  const reference = coworkPlaybookReference();
+  assert.ok(playbook.includes(reference.digest), 'the resource carries the version and digest the client acknowledges');
+
+  // The model follows the playbook it read: bootstrap, acknowledge the exact bundle, then orient. No prompts/get was made.
+  const clientSessionId = randomUUID();
+  const bootstrap = toolValue((await mcp(f.token, 400, 'tools/call', { name: 'flux_bootstrap', arguments: { projectId: f.ids[0], clientSessionId } })).message);
+  assert.deepEqual((bootstrap.trusted as { playbook: unknown }).playbook, reference);
+  const acknowledged = toolValue((await mcp(f.token, 401, 'tools/call', { name: 'flux_acknowledge_playbook', arguments: { clientSessionId,
+    bundleId: reference.bundleId, version: reference.version, digest: reference.digest } })).message);
+  assert.equal(acknowledged.digest, reference.digest);
+  const started = toolValue((await mcp(f.token, 402, 'tools/call', { name: 'flux_bootstrap', arguments: { projectId: f.ids[0], clientSessionId } })).message);
+  assert.equal((started.playbookAcknowledgment as { current: boolean }).current, true);
+  assert.equal((started.coverage as { instructionLoading: string }).instructionLoading, 'client_acknowledged');
+  assert.equal((started.coverage as { modelObedience: string }).modelObedience, 'unverified');
+  assert.equal((await mcp(f.token, 403, 'tools/call', { name: 'flux_project_orientation', arguments: { projectId: f.ids[0], kind: 'doc', limit: 1 } })).status, 200);
+
+  // A different protocol version is refused plainly, naming what Flux accepts.
+  const refused = await fetch(new URL('/mcp', apiUrl), { method: 'POST', headers: { authorization: `Bearer ${f.token}`,
+    'content-type': 'application/json', accept: 'application/json, text/event-stream' },
+  body: JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'initialize', params: { protocolVersion: '2024-11-05', capabilities: {},
+    clientInfo: { name: 'codex-mcp-client', version: '0.100.0' } } }) });
+  assert.equal(refused.status, 400);
+  assert.match(await refused.text(), /Unsupported protocol version/);
 });
 
 /** Registered tools that no playbook module declares. */

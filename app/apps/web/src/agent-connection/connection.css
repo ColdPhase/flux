@@ -47,6 +47,7 @@
 .connection__guide code { display: block; padding: 9px 11px; border-radius: var(--r-sm); background: var(--el); font: var(--fs-xs)/1.5 var(--mono); overflow-wrap: anywhere; user-select: all; }
 .connection__client { display: flex; flex-direction: column; gap: 6px; padding-top: 9px; border-top: 1px solid var(--line); }
 .connection__client h3 { font-size: var(--fs-md); }
+.connection__client h4 { font-size: var(--fs-sm); margin: 4px 0 -2px; }
 .connection__checks strong, .connection__checks small { display: block; }
 .connection__checks strong { font-weight: 500; }
 .connection__checks small { color: var(--t3); font-size: var(--fs-xs); }

@@ -615,7 +615,7 @@ work input runs.
   model then calls `flux_bootstrap`, `flux_acknowledge_playbook`, `flux_project_orientation` (the current plan
   appears with its material id) and `flux_create_task` under the standing grant. The server-side acknowledgment
   is current and the task is attributed to the connection's agent.
-- **Codex rust-v0.160.1 (native resource delivery observed; complete onboarding pending):**
+- **Codex rust-v0.160.1 (Start work by playbook resource, founder direction 2026-10-17):**
   Codex does not automatically insert server instructions into the initial model request. The #460 candidate
   now exercises its existing `list_mcp_resources`/`read_mcp_resource` tools instead of inferring that no Flux
   content can reach it. From plain `Start work`, the local scripted model receives the complete authenticated
@@ -727,8 +727,11 @@ unit suite (150 tests) also passes.
 The Connect page shows the owner-private setup view (`ConnectionSetup.tsx`) for the
 saved permissions. It states one of: Off, project access unavailable, authorization
 needed, client session open (with its expiry), or authorization recorded. Each state
-says that built-in Start and Resume are pending and that no displayed fact proves the
-client is online or can start work. Revoked connections stay in a "Revoked connections"
+says how each client starts (Claude Code: Flux's Start work prompt; Codex: ask it to start
+work on Flux, which reads Flux's playbook resource, 2026-10-17) and that no displayed fact
+proves the client is online. The Connect guide also names the tested Codex (0.160.1) and
+says that a client offering an MCP version Flux does not admit is refused with
+"Unsupported protocol version" (API test `mcp-playbook`, wire tests `mcp-protocol`). Revoked connections stay in a "Revoked connections"
 history on the page when no OAuth flow is in progress. Limits: the facts are
 owner-private and derived from current records (an unexpired, unrevoked token and the
 current binding generation); no native activation adapter is shipped

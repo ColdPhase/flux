@@ -219,6 +219,12 @@ class AiConnectionSettings(unittest.TestCase):
         expect(guide).to_contain_text(f"claude mcp add --transport http flux {ORIGIN}/mcp")
         expect(guide).to_contain_text(f"codex mcp add flux --url {ORIGIN}/mcp")
         expect(guide).to_contain_text("codex mcp login flux")
+        # #160 AC-2 / #460: Codex starts from Flux's playbook; the guide says how, and which Codex versions are tested.
+        expect(guide).not_to_contain_text("Start and Resume are pending")
+        expect(guide.get_by_text("In Codex, ask it to start work on Flux. It reads Flux's playbook.")).to_be_visible()
+        expect(guide).to_contain_text("Codex 0.160.1")
+        expect(guide).to_contain_text("Unsupported protocol version")
+        expect(guide).to_contain_text("use Flux's Start work prompt in Claude Code")
         # #320: the quick start's loopback http:// address is the one to use; HTTPS is needed only
         # for a client on another computer, so the guide must not ask for it here.
         self.assertRegex(ORIGIN, r"^http://(127\.\d+\.\d+\.\d+|localhost)(:\d+)?$", "this suite runs on a loopback http origin")
@@ -227,6 +233,13 @@ class AiConnectionSettings(unittest.TestCase):
         expect(guide).not_to_contain_text("Use your self-hosted Flux HTTPS address")
         expect(guide).to_contain_text("run only the actions you grant")
         shot(page, "ai-connection-1440-connect-guide")
+        guide.get_by_role("heading", name="Start work").scroll_into_view_if_needed()
+        shot(page, "ai-connection-1440-connect-guide-codex")
+        page.set_viewport_size({"width": 390, "height": 844})
+        guide.get_by_role("heading", name="Codex", exact=True).scroll_into_view_if_needed()
+        shot(page, "ai-connection-390-connect-guide-codex")
+        self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), page.evaluate("window.innerWidth"))
+        page.set_viewport_size({"width": 1440, "height": 900})
         page.goto("/settings/assistant")
         expect(page.get_by_role("heading", level=1, name="Your assistant")).to_be_visible()
         self.assertNotIn("Anthropic API key", page.locator("body").inner_text())
