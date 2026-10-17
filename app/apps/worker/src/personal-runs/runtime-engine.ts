@@ -52,7 +52,7 @@ export function managerPersonalRuntime(config: AgentRuntimeConfig, db: Database)
         maxAnswerBytes: Math.min(Math.max(request.caps.maxAnswerBytes, RUN_CAP_BOUNDS.maxAnswerBytes.min), RUN_CAP_BOUNDS.maxAnswerBytes.max),
       };
       const outcome = await streamManagerRun(manager, target.slot, { kind: 'run', bindingId: target.bindingId, client: target.client ?? 'claude_code', runId: request.runId,
-        prompt: request.prompt, runToken: request.runToken, tools: request.tools, caps }, (frame) => onEvent(eventOf(frame)));
+        prompt: request.prompt, runToken: request.runToken, tools: request.tools, caps, ...(request.model ? { model: request.model } : {}) }, (frame) => onEvent(eventOf(frame)));
       return endOf(outcome);
     },
     async stop(target, runId) {

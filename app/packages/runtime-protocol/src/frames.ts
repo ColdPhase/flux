@@ -69,9 +69,11 @@ export interface ClientStatus {
  * How a run ended in the slot (F-022 T5: each end has its own state). `completed`: the CLI's result is the
  * answer. `local_tool`: its start-up tool list named anything but the run's exact Flux tools or a connected
  * Flux server, and it was stopped. `unknown`: its stream broke; nothing is known about what it did.
+ * `model_unavailable`: the CLI said the chosen model is not available to the account (F-027 AST-11).
  */
 export const RUN_OUTCOMES = [
   'completed', 'stopped', 'local_tool', 'sign_in_again', 'plan_limit', 'max_turns', 'wall_clock', 'no_event', 'crashed', 'answer_too_large', 'unknown', 'refused',
+  'model_unavailable',
 ] as const;
 export type RunOutcome = (typeof RUN_OUTCOMES)[number];
 

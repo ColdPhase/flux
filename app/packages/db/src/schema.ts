@@ -1740,6 +1740,8 @@ export const personalRunEnablements = pgTable('personal_run_enablements', {
   status: text('status', { enum: ['active', 'paused'] }).notNull().default('active'),
   /** 0100 (F-022 T5): the owner's API key connection (`server`) or their own Claude Code (`runtime`). */
   engine: text('engine', { enum: ['server', 'runtime'] }).notNull().default('server'),
+  /** 0110 (F-027 AST-11): the assistant's one model; null when none was chosen (the account's own default). */
+  assistantModel: text('assistant_model'),
   version: integer('version').notNull().default(1),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),

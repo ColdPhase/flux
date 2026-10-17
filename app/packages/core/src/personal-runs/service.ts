@@ -1,13 +1,17 @@
 import { randomUUID } from 'node:crypto';
 import {
+  ASSISTANT_PLAN_DEFAULT,
+  assistantModelName,
   PERSONAL_RUN_CONSENT_VERSION,
   PERSONAL_RUN_LIMITS,
   PERSONAL_RUNTIME_CONSENT_VERSION,
   personalRunMaxInputTokens,
   RUNTIME_RUN_LIMITS,
   type AssistantAnswer,
+  type AssistantModelChoice,
   type AssistantRun,
   type AssistantRunBehind,
+  type ChangeAssistantModelCommand,
   type EnablePersonalRunsCommand,
   type InvokeAssistantRunCommand,
   type Page,
@@ -27,6 +31,9 @@ import { expectedVersion, id, isId, page } from '../work/validation.js';
 import type {
   EnablementRecord, PersonalConnection, PersonalConnectionLookup, PersonalRunPorts, PersonalRunUnitOfWork, PersonalRuntimeAvailability, PersonalRuntimeClient, PersonalRuntimeStanding, RunRecord,
 } from './ports.js';
+import {
+  apiModelAccount, CODEX_RUNTIME_MODEL, connectionOnModel, isModelId, modelChoice, modelNameOf, NO_MODEL_ACCOUNT, RUNTIME_MODEL, runtimeModelAccount, type ModelAccount,
+} from './model.js';
 import { announce, updateAndAnnounce } from './progress.js';
 import {
   centsToMicros, connectionCallsTools, normalizeEnable, normalizeInvoke, normalizeUpdate, retryRequest, runReservationMicros, toolRunReservationMicros, type NormalizedInvoke,
@@ -47,7 +54,6 @@ export class PersonalRunCappedError extends DomainError {
 }
 
 const IN_FLIGHT = new Set(['queued', 'reading', 'dispatching']);
-
 /** What Flux's own tick asks for when a schedule or the morning summary is due (F-027 A8). */
 export interface BackgroundRunSpec {
   ownerUserId: string;
@@ -73,10 +79,11 @@ const SERVER_PROBLEM_LINE: Record<PersonalAssistantUnavailableReason, string> = 
   price_unknown: 'Skipped: your AI account has no known price', run_cost_over_limit: 'Skipped: one request can cost more than your limit',
   runtime_off: 'Skipped: subscription sign-in is off on this Flux', runtime_sign_in: 'Skipped: sign in again',
 } as Record<PersonalAssistantUnavailableReason, string>;
-/** The provenance model of a runtime answer: Claude Code chooses the model under the owner's account. */
-export const RUNTIME_MODEL = 'claude-code';
-/** The model label of a run on the owner's own Codex (F-022 T6, #281); the CLI's own model is not reported. */
-export const CODEX_RUNTIME_MODEL = 'codex';
+/**
+ * The provenance model of a runtime answer when the owner chose no model (a legacy assistant): Claude Code chooses it
+ * under the owner's account. With a choice (F-027 AST-11) the run records the chosen model's id instead.
+ */
+export { RUNTIME_MODEL, CODEX_RUNTIME_MODEL };
 /** Where a runtime run's content goes and how it is labelled: the vendor of the owner's CLI. */
 export const runtimeVendor = (client: PersonalRuntimeClient | null | undefined) => (client === 'codex'
   ? { provider: 'openai' as const, model: CODEX_RUNTIME_MODEL, name: 'Codex' } : { provider: 'anthropic' as const, model: RUNTIME_MODEL, name: 'Claude Code' });
@@ -102,7 +109,7 @@ function enablementView(record: EnablementRecord): PersonalRunEnablement {
       payer: { organization: record.consentPayerOrganization, workspace: record.consentPayerWorkspace },
     },
     perRunCents: record.perRunCents, dailyCapCents: record.dailyCapCents, timeZone: record.timeZone, status: record.status, engine: record.engine,
-    agents: record.agents.map((agent) => ({ ...agent })), version: record.version,
+    model: record.assistantModel, agents: record.agents.map((agent) => ({ ...agent })), version: record.version,
     createdAt: iso(record.createdAt), updatedAt: iso(record.updatedAt),
   };
 }
@@ -132,7 +139,7 @@ export async function runView(ports: PersonalRunPorts, record: RunRecord): Promi
     target: record.targetSketchId && record.targetThoughtId ? { type: 'thought', sketchId: record.targetSketchId, thoughtId: record.targetThoughtId } : null,
     continuesRunId: record.continuesRunId, retryOfRunId: record.retryOfRunId, status: record.status,
     stoppedAtStage: record.stoppedAtStage, stopRequested: record.stopRequestedAt !== null, stopAcknowledged: record.stopAcknowledgedAt !== null,
-    engine: record.engine, runtimeClient: record.engine === 'runtime' ? runtimeClientOf(record.provider) : null, endReason: record.endReason, planLimitResetsAt: record.planLimitResetsAt ? iso(record.planLimitResetsAt) : null,
+    engine: record.engine, model: record.model, runtimeClient: record.engine === 'runtime' ? runtimeClientOf(record.provider) : null, endReason: record.endReason, planLimitResetsAt: record.planLimitResetsAt ? iso(record.planLimitResetsAt) : null,
     cost: { state: record.costState, reservedMicros: record.reservedMicros, chargedMicros: record.chargedMicros, inputTokens: record.inputTokens, outputTokens: record.outputTokens },
     answer: await answerView(ports, record),
     authority: record.authority, backgroundLabel: record.backgroundLabel,
@@ -159,7 +166,10 @@ export async function usableConnection(connections: PersonalConnectionLookup, pr
   Promise<{ problem: PersonalAssistantUnavailableReason } | { problem: null; connection: PersonalConnection; reservedMicros: number }> {
   if (!providerEnabled) return { problem: 'provider_off' };
   // The connection the consent names, and no other (PROV-1): removing it stops the assistant.
-  const connection = enablement.connectionId ? await connections.resolve(enablement.ownerUserId, enablement.connectionId) : null;
+  const named = enablement.connectionId ? await connections.resolve(enablement.ownerUserId, enablement.connectionId) : null;
+  // On the model the owner chose (F-027 AST-11): the connection's own, or another of its provider with a table price.
+  const connection = named && connectionOnModel(named, enablement.assistantModel);
+  if (named && !connection) return { problem: 'price_unknown' };
   if (!connection || connection.status !== 'active' || connection.ownerUserId !== enablement.ownerUserId || connection.id !== enablement.connectionId) {
     // The consent was given for one connection. When it is gone but the owner has another, say so:
     // that one needs its own consent, so the assistant is enabled again on it.
@@ -221,6 +231,20 @@ export interface PersonalRunDeps {
 
 const RUNTIME_OFF: PersonalRuntimeStanding = { state: 'off', payer: null, accountLabel: null };
 
+/** The plain error of a model the account cannot use (F-027 AST-11): `ASSISTANT_MODEL_UNAVAILABLE`, nothing changes. */
+const modelUnavailable = (message: string) => new ConflictError(message, 'ASSISTANT_MODEL_UNAVAILABLE');
+
+/**
+ * The model a turn-on stores: the owner's pick when it is in the account's list; none (null, as before AST-11) when the
+ * request names no model. The screens always name one: the preselected default of the list.
+ */
+function chosenAtTurnOn(account: ModelAccount, wanted: string | undefined): string | null {
+  if (wanted === undefined) return null;
+  if (!isModelId(wanted, account.engine ?? 'runtime') || !account.options.some((option) => option.id === wanted))
+    throw modelUnavailable(`Your ${account.plan} doesn't offer that model. Nothing was turned on.`);
+  return wanted;
+}
+
 /** The consent's payer line for a runtime assistant, from the CLI's reported method only (F-022 "Payer and data"). */
 function runtimePayerLabel(standing: PersonalRuntimeStanding) {
   switch (standing.payer) {
@@ -240,7 +264,8 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, t
   async function status(ports: PersonalRunPorts, owner: string): Promise<PersonalAssistantStatus> {
     const named = await ports.runs.enablement(owner);
     const connection = providerEnabled ? await connections.resolve(owner, named?.connectionId ?? undefined) : null;
-    const usable = connection && connection.status === 'active' && connection.ownerUserId === owner ? connection : null;
+    const onChosen = connection && connectionOnModel(connection, named?.engine === 'server' ? named.assistantModel : null);
+    const usable = onChosen && onChosen.status === 'active' && onChosen.ownerUserId === owner ? onChosen : null;
     // The disclosure names the caller's own connection: its provider, model and price (F-020).
     const withTools = toolTurns > 1 && !!usable && connectionCallsTools(usable);
     const disclosure = {
@@ -277,6 +302,30 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, t
     if (usableNow.problem) return { state: 'unavailable', unavailableReason: usableNow.problem, enablement: view, setup, today, disclosure };
     const capped = spend.chargedMicros + spend.reservedMicros + usableNow.reservedMicros > centsToMicros(enablement.dailyCapCents);
     return { state: capped ? 'capped' : 'ready', unavailableReason: null, enablement: view, setup, today, disclosure };
+  }
+
+  /**
+   * What the owner may choose on their account now (F-027 AST-11). With an assistant: the engine it was turned on with, and
+   * an empty list when that account is signed out or its connection is gone. Before: the plan they are signed in to, else
+   * their newest API key connection, else nothing. Never another person's.
+   */
+  async function modelAccount(owner: string, enablement: EnablementRecord | null, connectionId?: string): Promise<{ account: ModelAccount; connection: PersonalConnection | null }> {
+    if (enablement?.engine === 'runtime') {
+      const client = runtimeClientOf(enablement.consentProvider);
+      const account = runtimeModelAccount(client);
+      return { account: (await runtimeStanding(owner, client)).state === 'signed_in' ? account : { ...account, options: [] }, connection: null };
+    }
+    if (enablement) {
+      const connection = providerEnabled && enablement.connectionId ? await connections.resolve(owner, enablement.connectionId) : null;
+      const usable = connection && connection.status === 'active' && connection.ownerUserId === owner ? connection : null;
+      return { account: usable ? apiModelAccount(usable) : { ...NO_MODEL_ACCOUNT, engine: 'server', account: 'api_key', plan: "API key's provider" }, connection: usable };
+    }
+    // The API key way names its connection (the owner may have several); the plan way is the one signed in.
+    const standing = connectionId ? null : await runtimeStanding(owner);
+    if (standing?.state === 'signed_in') return { account: runtimeModelAccount(standing.client ?? 'claude_code'), connection: null };
+    const connection = providerEnabled ? await connections.resolve(owner, connectionId) : null;
+    if (connection && connection.status === 'active' && connection.ownerUserId === owner) return { account: apiModelAccount(connection), connection };
+    return { account: NO_MODEL_ACCOUNT, connection: null };
   }
 
   async function lockedEnablement(ports: PersonalRunPorts, owner: string) {
@@ -340,7 +389,10 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, t
       // F-022 "Caps": a runtime run reserves no money; it counts against the owner's runs per day.
       if (ports.runs.runtimeRunsToday && await ports.runs.runtimeRunsToday(owner, enablement.timeZone) >= RUNTIME_RUN_LIMITS.runsPerDay) throw new PersonalRunCappedError();
       const vendor = runtimeVendor(runtimeClient);
-      reservation = { reservedMicros: 0, provider: vendor.provider, model: vendor.model };
+      // The model is fixed when the request is sent (F-027 AST-11): a later change never reaches this run. With none chosen
+      // the run is recorded under the engine's label and starts the CLI with no model flag, as before.
+      const chosen = enablement.assistantModel;
+      reservation = { reservedMicros: 0, provider: vendor.provider, model: chosen && chosen !== ASSISTANT_PLAN_DEFAULT ? chosen : vendor.model };
     } else {
       const spend = await ports.runs.spendToday(owner, enablement.timeZone);
       // PROV-3: the run reserves its largest possible cost at the connection's price.
@@ -407,7 +459,8 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, t
     if (!usableNow) {
       if (ports.runs.runtimeRunsToday && await ports.runs.runtimeRunsToday(owner, enablement.timeZone) >= RUNTIME_RUN_LIMITS.runsPerDay) return skipped('Skipped: daily limit');
       const vendor = runtimeVendor(runtimeClient);
-      reservation = { reservedMicros: 0, provider: vendor.provider, model: vendor.model };
+      const chosen = enablement.assistantModel;
+      reservation = { reservedMicros: 0, provider: vendor.provider, model: chosen && chosen !== ASSISTANT_PLAN_DEFAULT ? chosen : vendor.model };
     } else {
       const spend = await ports.runs.spendToday(owner, enablement.timeZone);
       if (spend.chargedMicros + spend.reservedMicros + usableNow.reservedMicros > centsToMicros(enablement.dailyCapCents)) return skipped('Skipped: daily limit');
@@ -430,6 +483,47 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, t
     startBackground,
     status: (principal: Principal) => uow.run((ports) => status(ports, ownerOf(principal))),
 
+    /** The caller's own assistant model and what they may choose (F-027 AST-11). */
+    model: (principal: Principal, connectionId?: string): Promise<AssistantModelChoice> => {
+      const owner = ownerOf(principal);
+      return uow.run(async (ports) => {
+        const enablement = await ports.runs.enablement(owner);
+        return modelChoice((await modelAccount(owner, enablement, connectionId)).account, enablement?.assistantModel ?? null, !!enablement);
+      });
+    },
+
+    /**
+     * Changes the assistant's one model (AST-11). Only a model in the account's list is accepted; anything else is a plain
+     * error and the previous model stays. The change reaches the next request: a request already sent keeps the model it
+     * recorded.
+     */
+    async chooseModel(principal: Principal, command: ChangeAssistantModelCommand): Promise<AssistantModelChoice> {
+      const owner = ownerOf(principal);
+      const wanted: unknown = command?.model;
+      return uow.run(async (ports) => {
+        const enablement = await lockedEnablement(ports, owner);
+        const { account, connection } = await modelAccount(owner, enablement);
+        const before = modelChoice(account, enablement.assistantModel, true);
+        const still = ` It is still ${modelNameOf(before)}.`;
+        if (!account.options.length) {
+          throw modelUnavailable(account.engine === 'runtime' ? `Sign in to ${account.company ?? 'your account'} again to change the model.${still}`
+            : `Connect your API key again to change the model.${still}`);
+        }
+        const option = typeof wanted === 'string' && isModelId(wanted, account.engine ?? 'runtime') ? account.options.find((item) => item.id === wanted) : undefined;
+        if (!option) throw modelUnavailable(`Your ${account.plan} doesn't offer that model.${still}`);
+        if (account.engine === 'server' && connection) {
+          const priced = connectionOnModel(connection, option.id);
+          if (!priced?.price) throw modelUnavailable(`Flux doesn't know the price of that model yet.${still}`);
+          const largest = runReservationMicros(priced.price, toolTurns > 1 && connectionCallsTools(priced));
+          if (largest === null || largest > centsToMicros(enablement.perRunCents))
+            throw modelUnavailable(`One request to ${assistantModelName(option.id)} can cost more than your per-request limit.${still}`);
+        }
+        if (option.id === before.current) return before;
+        await ports.runs.updateEnablement(owner, { assistantModel: option.id });
+        return modelChoice(account, option.id, true);
+      });
+    },
+
     /** Needs the owner's usable key connection; the consent snapshots its payer. */
     async enable(principal: Principal, command: EnablePersonalRunsCommand): Promise<PersonalAssistantStatus> {
       const owner = ownerOf(principal);
@@ -446,8 +540,11 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, t
           if (standing.state === 'off') throw new ConflictError('Subscription sign-in is off on this Flux server', 'PERSONAL_RUN_RUNTIME_OFF');
           if (standing.state !== 'signed_in') throw new ConflictError('Sign in to Claude or ChatGPT in Settings first', 'PERSONAL_RUN_RUNTIME_SIGN_IN');
           const vendor = runtimeVendor(standing.client);
+          const account = runtimeModelAccount(standing.client ?? 'claude_code');
+          const model = chosenAtTurnOn(account, input.model);
           const created = await ports.runs.insertEnablement({
             ownerUserId: owner, connectionId: null, consentVersion: PERSONAL_RUNTIME_CONSENT_VERSION, consentProvider: vendor.provider, consentModel: vendor.model,
+            assistantModel: model,
             consentPayerOrganization: runtimePayerLabel(standing), consentPayerWorkspace: standing.accountLabel ?? vendor.name,
             perRunCents: input.perRunCents, dailyCapCents: input.dailyCapCents, timeZone: input.timeZone, engine: 'runtime',
           });
@@ -462,13 +559,17 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, t
           throw new ConflictError('Connect your own AI key before enabling your assistant', 'PERSONAL_RUN_CONNECTION_REQUIRED');
         // PROV-3: a connection without a known price cannot be enabled; a model whose largest
         // request exceeds the chosen per-run ceiling would never run.
-        const reservation = runReservationMicros(connection.price, toolTurns > 1 && connectionCallsTools(connection));
+        // The model the owner chose, at its price (F-027 AST-11): the connection's own, or another of its provider in Flux's table.
+        const model = chosenAtTurnOn(apiModelAccount(connection), input.model);
+        const priced = connectionOnModel(connection, model);
+        if (!priced) throw modelUnavailable(`Flux doesn't know the price of that model yet. Nothing was turned on.`);
+        const reservation = runReservationMicros(priced.price, toolTurns > 1 && connectionCallsTools(priced));
         if (reservation === null) throw new ConflictError('Your AI connection has no known price', 'PERSONAL_RUN_PRICE_UNKNOWN');
         if (reservation > centsToMicros(input.perRunCents))
           throw new ConflictError('One request to this model can cost more than your per-request limit', 'PERSONAL_RUN_COST_OVER_LIMIT');
         const created = await ports.runs.insertEnablement({
           ownerUserId: owner, connectionId: connection.id, consentVersion: PERSONAL_RUN_CONSENT_VERSION,
-          consentProvider: connection.provider, consentModel: connection.model,
+          consentProvider: connection.provider, consentModel: connection.model, assistantModel: model,
           consentPayerOrganization: connection.payer.organization, consentPayerWorkspace: connection.payer.workspace,
           perRunCents: input.perRunCents, dailyCapCents: input.dailyCapCents, timeZone: input.timeZone,
         });

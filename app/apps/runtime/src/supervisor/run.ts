@@ -60,9 +60,18 @@ export function stopRun(config: SupervisorConfig, runId: string): 'stopping' | '
 export function classifyCodexError(text: string): RunOutcome {
   if (/hit your usage limit|usage limit reached|quota exceeded|upgrade to plus/i.test(text)) return 'plan_limit';
   if (/sign in again|refresh token|not logged in|unexpected status 401|\b401 unauthorized|token could not be refreshed/i.test(text)) return 'sign_in_again';
+  if (MODEL_NOT_ACCEPTED.test(text)) return 'model_unavailable';
   if (/usage policy|refus|content policy|safety/i.test(text)) return 'refused';
   return 'crashed';
 }
+
+/**
+ * The vendor did not accept the model the owner chose (F-027 AST-11). Claude Code does not check `--model` up front: a model the
+ * account cannot use fails on the first request with "There's an issue with the selected model (…). It may not exist or you
+ * may not have access to it" (code.claude.com/docs/en/model-config, read 2026-10-17). Codex and the APIs say the model "does not
+ * exist or you do not have access to it" (`model_not_found`). The real wording on an account is unverified (T10).
+ */
+export const MODEL_NOT_ACCEPTED = /issue with the selected model|may not have access to (it|this model)|model_not_found|\bmodel\b[^.\n]{0,80}\b(does not exist|do not have access|is not supported|is not available)\b/i;
 
 /** The CLI's error result in plain categories (wording first verified against a real account in T10). */
 export function classifyError(text: string): { outcome: RunOutcome; resetsAt: string | null } {
@@ -73,6 +82,7 @@ export function classifyError(text: string): { outcome: RunOutcome; resetsAt: st
   if (/please run \/login|not logged in|oauth token (has )?expired|token has expired|invalid api key|authentication_error|authentication[_ ]failed|401\b/i.test(text)) {
     return { outcome: 'sign_in_again', resetsAt: null };
   }
+  if (MODEL_NOT_ACCEPTED.test(text)) return { outcome: 'model_unavailable', resetsAt: null };
   if (/usage policy|refus/i.test(text)) return { outcome: 'refused', resetsAt: null };
   return { outcome: 'crashed', resetsAt: null };
 }
@@ -137,7 +147,7 @@ export async function runCli(config: SupervisorConfig, request: RunRequest, dir:
   const mcpConfigPath = join(runDir, 'mcp.json');
   // The Authorization header names the variable; the token itself is never written to a file or an argument.
   await writeFile(mcpConfigPath, JSON.stringify({ mcpServers: { flux: { type: 'http', url: mcpUrl, headers: { Authorization: 'Bearer ${FLUX_RUN_TOKEN}' } } } }), { mode: 0o600 });
-  const argv = RUN_TEMPLATES[request.client]({ tools: request.tools, caps: request.caps, mcpConfigPath, mcpUrl, brief: RUN_BRIEF });
+  const argv = RUN_TEMPLATES[request.client]({ tools: request.tools, caps: request.caps, mcpConfigPath, mcpUrl, brief: RUN_BRIEF, model: request.model });
   const codex = request.client === 'codex';
   if (codex) {
     // Held as the slot's run while the preflight runs, so a second run is refused as busy.

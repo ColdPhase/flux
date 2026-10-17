@@ -29,14 +29,17 @@ export interface EnablementRecord {
   status: PersonalRunEnablementStatus;
   /** `runtime`: the owner's own Claude Code (F-022 AIM-3); `connectionId` is then null. */
   engine: AssistantEngine;
+  /** The assistant's one model (F-027 AST-11, 0110); null: none chosen, the account's own default (a legacy assistant). */
+  assistantModel: string | null;
   agents: { workspaceId: string; agentId: string }[];
   version: number;
   createdAt: Date;
   updatedAt: Date;
 }
 
-export type NewEnablement = Omit<EnablementRecord, 'agents' | 'version' | 'status' | 'consentedAt' | 'createdAt' | 'updatedAt' | 'engine'> & { engine?: AssistantEngine };
-export type EnablementChanges = Partial<Pick<EnablementRecord, 'perRunCents' | 'dailyCapCents' | 'timeZone' | 'status'>>;
+export type NewEnablement = Omit<EnablementRecord, 'agents' | 'version' | 'status' | 'consentedAt' | 'createdAt' | 'updatedAt' | 'engine' | 'assistantModel'>
+  & { engine?: AssistantEngine; assistantModel?: string | null };
+export type EnablementChanges = Partial<Pick<EnablementRecord, 'perRunCents' | 'dailyCapCents' | 'timeZone' | 'status' | 'assistantModel'>>;
 
 export interface RunRecord {
   id: string;
@@ -471,6 +474,8 @@ export interface PersonalRuntimeRunRequest {
   runToken: string;
   tools: string[];
   caps: { maxTurns: number; wallClockSeconds: number; idleSeconds: number; maxAnswerBytes: number };
+  /** The model the run was sent with (F-027 AST-11), for the CLI's own model option; absent: the CLI's default. */
+  model?: string;
 }
 
 /**

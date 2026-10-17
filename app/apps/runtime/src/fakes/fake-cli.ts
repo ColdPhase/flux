@@ -229,7 +229,7 @@ interface RunScript {
  * answer (`{{results}}` is replaced by what the calls returned) and silent `probes` (calls made without a
  * tool-use event, as a CLI ignoring its permissions would). Every MCP answer is recorded in
  * `fake-calls.jsonl` (the token never is). Scenarios: run_extra_tool, run_extra_server, run_expired_login,
- * run_plan_limit, run_hang (no event after init), run_slow (events forever, never a result), run_crash,
+ * run_plan_limit, run_model_unavailable, run_hang (no event after init), run_slow (events forever, never a result), run_crash,
  * run_big_answer, run_secret_answer, run_broken_stream, run_ignore_sigint, run_max_turns. Without
  * `--no-session-persistence` it writes a transcript under `projects/`, as the real CLI would.
  */
@@ -282,6 +282,10 @@ async function claudeRun(argv: string[]): Promise<number> {
   if (mode === 'run_ignore_sigint') { for (;;) { emit({ type: 'stream_event', event: { type: 'ping' }, session_id: session }); await new Promise((wait) => setTimeout(wait, 500)); } }
   if (mode === 'run_expired_login') { emit({ type: 'result', subtype: 'success', is_error: true, result: 'Invalid API key · Please run /login', num_turns: 1, session_id: session }); return 1; }
   if (mode === 'run_plan_limit') { emit({ type: 'result', subtype: 'success', is_error: true, result: 'Claude AI usage limit reached|1791374400', num_turns: 1, session_id: session }); return 1; }
+  if (mode === 'run_model_unavailable') {
+    emit({ type: 'result', subtype: 'success', is_error: true, result: "There's an issue with the selected model (opus). It may not exist or you may not have access to it. Run /model to pick a different model.", num_turns: 1, session_id: session });
+    return 1;
+  }
   if (mode === 'run_max_turns') { emit({ type: 'result', subtype: 'error_max_turns', is_error: true, num_turns: 10, session_id: session }); return 1; }
   let script: RunScript = {};
   try { script = JSON.parse(readHome('claude_code', 'fake-run.json') || '{}') as RunScript; } catch { /* no script */ }
@@ -357,7 +361,7 @@ function mcpClient(url: string, headers: Record<string, string>, clientName: str
  * Like the real CLI, a tool its overrides did not switch off is used: without `features.shell_tool=false`
  * it runs a command (a `command_execution` item). Run script (`fake-run.json`) as for the fake `claude`.
  * Scenarios: run_command_execution, run_file_change, run_web_search, run_other_mcp, run_resource_tool,
- * run_todo_list, run_plan_limit, run_expired_login, run_hang, run_slow, run_crash, run_broken_stream,
+ * run_todo_list, run_plan_limit, run_expired_login, run_model_unavailable, run_hang, run_slow, run_crash, run_broken_stream,
  * run_ignore_sigint, run_big_answer, run_secret_answer, run_error_item. Without `--ephemeral` it writes a
  * session under `sessions/`, as the real CLI would.
  */
@@ -409,6 +413,12 @@ async function codexRun(argv: string[]): Promise<number> {
   }
   if (mode === 'run_expired_login') {
     const message = 'Your access token could not be refreshed because your refresh token has expired. Please log out and sign in again.';
+    emit({ type: 'error', message });
+    emit({ type: 'turn.failed', error: { message } });
+    return 1;
+  }
+  if (mode === 'run_model_unavailable') {
+    const message = 'The model `gpt-6-astra` does not exist or you do not have access to it.';
     emit({ type: 'error', message });
     emit({ type: 'turn.failed', error: { message } });
     return 1;

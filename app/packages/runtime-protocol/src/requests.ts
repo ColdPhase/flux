@@ -1,4 +1,4 @@
-import { BINDING_ID, FLUX_TOOL_NAME, RUN_TOKEN, RUNTIME_CLIENTS, RUNTIME_LOGIN_METHODS, UUID, type RuntimeClient, type RuntimeLoginMethod } from './names.js';
+import { BINDING_ID, FLUX_TOOL_NAME, MODEL_ID, RUN_TOKEN, RUNTIME_CLIENTS, RUNTIME_LOGIN_METHODS, UUID, type RuntimeClient, type RuntimeLoginMethod } from './names.js';
 import { arrayOf, firstBadKey, int, object, oneOf, str, text, type Check } from './shape.js';
 
 /** The terminal size a sign-in console may ask for (F-022 T4): a phone held upright to a wide screen. */
@@ -35,7 +35,8 @@ export type SupervisorRequest =
   | { kind: 'status'; bindingId?: string; client?: RuntimeClient; bootId?: string }
   /** Only through the sign-in console (console.ts): the supervisor runs the method's fixed command in a PTY. */
   | { kind: 'login'; bindingId: string; bootId: string; client: RuntimeClient; method: RuntimeLoginMethod; cols: number; rows: number }
-  | { kind: 'run'; bindingId: string; client: RuntimeClient; runId: string; prompt: string; runToken: string; tools: string[]; caps: RunCaps }
+  /** `model`: the assistant's chosen model (F-027 AST-11), passed to the CLI's own model option; absent: the account's default. */
+  | { kind: 'run'; bindingId: string; client: RuntimeClient; runId: string; prompt: string; runToken: string; tools: string[]; caps: RunCaps; model?: string }
   | { kind: 'stop'; bindingId: string; runId: string }
   | { kind: 'logout'; bindingId: string; bootId: string; client: RuntimeClient }
   | { kind: 'release'; bindingId: string };
@@ -57,7 +58,8 @@ const SHAPES: Record<SupervisorRequestKind, Fields> = {
   status: { required: {}, optional: { bindingId, client, bootId: str(UUID, 36) } },
   login: { required: { bindingId, bootId: str(UUID, 36), client, method: oneOf([...RUNTIME_LOGIN_METHODS.claude_code, ...RUNTIME_LOGIN_METHODS.codex]),
     cols: int(CONSOLE_SIZE.cols.min, CONSOLE_SIZE.cols.max), rows: int(CONSOLE_SIZE.rows.min, CONSOLE_SIZE.rows.max) } },
-  run: { required: { bindingId, client, runId: str(UUID, 36), prompt: text(REQUEST_LIMITS.promptCharacters, 1), runToken: str(RUN_TOKEN, 12_300), tools: uniqueTools, caps } },
+  run: { required: { bindingId, client, runId: str(UUID, 36), prompt: text(REQUEST_LIMITS.promptCharacters, 1), runToken: str(RUN_TOKEN, 12_300), tools: uniqueTools, caps },
+    optional: { model: str(MODEL_ID, 64) } },
   stop: { required: { bindingId, runId: str(UUID, 36) } },
   logout: { required: { bindingId, bootId: str(UUID, 36), client } },
   release: { required: { bindingId } },

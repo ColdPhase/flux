@@ -73,24 +73,29 @@ export function loginArgv(client: RuntimeClient, method: RuntimeLoginMethod): re
 }
 
 /** Inputs of a run command; every value was checked by the protocol before it reaches a template. */
-export interface RunTemplateInput { tools: readonly string[]; caps: RunCaps; mcpConfigPath: string; mcpUrl: string; brief: string }
+/**
+ * `model` is the assistant's chosen model (F-027 AST-11): an id the protocol checked against `MODEL_ID` (it starts with a
+ * letter or digit, so it is never a flag). Claude Code takes it as `--model <alias>`, Codex as `-m <id>`; absent, the CLI
+ * uses its account's default, as it did before the assistant had a choice.
+ */
+export interface RunTemplateInput { tools: readonly string[]; caps: RunCaps; mcpConfigPath: string; mcpUrl: string; brief: string; model?: string | undefined }
 
 export const RUN_TEMPLATES: { [C in RuntimeClient]: (input: RunTemplateInput) => string[] } = {
-  claude_code: ({ tools, caps, mcpConfigPath, brief }) => [
+  claude_code: ({ tools, caps, mcpConfigPath, brief, model }) => [
     '-p', '--output-format', 'stream-json', '--verbose', '--include-partial-messages',
     '--restricted', '--tools', '', '--disable-slash-commands',
     '--strict-mcp-config', '--mcp-config', mcpConfigPath,
     '--allowedTools', ...tools.map((tool) => `mcp__flux__${tool}`),
     '--permission-mode', 'dontAsk', '--permission-prompts', 'none',
-    '--no-session-persistence', '--max-turns', String(caps.maxTurns), '--append-system-prompt', brief,
+    '--no-session-persistence', '--max-turns', String(caps.maxTurns), ...(model ? ['--model', model] : []), '--append-system-prompt', brief,
   ],
   // Codex (T6 #281): every default-on feature of the pinned version that is not reviewed as harmless is off
   // (CODEX_FEATURE_REVIEW), web search is disabled, analytics is off (so no telemetry host is needed), and
   // Flux is the only MCP server, required, with the exact non-empty tool list. The prompt is read from stdin
   // (`-`); Flux's brief is a developer message, so Codex keeps its own instructions.
-  codex: ({ tools, mcpUrl, brief }) => [
+  codex: ({ tools, mcpUrl, brief, model }) => [
     'exec', '--json', '--ephemeral', '--ignore-user-config', '--sandbox', 'read-only', '--skip-git-repo-check',
-    ...CODEX_FILE_STORE, ...codexRunOverrides(tools, mcpUrl, brief), '-',
+    ...(model ? ['-m', model] : []), ...CODEX_FILE_STORE, ...codexRunOverrides(tools, mcpUrl, brief), '-',
   ],
 };
 
@@ -143,10 +148,10 @@ export function codexRunOverrides(tools: readonly string[], mcpUrl: string, brie
 export const TEMPLATE_FLAGS: { client: RuntimeClient; help: readonly string[]; flags: readonly string[]; optional?: readonly string[] }[] = [
   { client: 'claude_code', help: ['--help'], flags: ['--print', '--output-format', '--verbose', '--include-partial-messages', '--restricted', '--tools',
     '--disable-slash-commands', '--strict-mcp-config', '--mcp-config', '--allowedTools', '--permission-mode', '--permission-prompts',
-    '--no-session-persistence', '--max-turns', '--append-system-prompt'] },
+    '--no-session-persistence', '--max-turns', '--append-system-prompt', '--model'] },
   { client: 'claude_code', help: ['auth', 'login', '--help'], flags: ['--console', '--sso'] },
   { client: 'claude_code', help: ['auth', '--help'], flags: ['login', 'logout', 'status'] },
-  { client: 'codex', help: ['exec', '--help'], flags: ['--json', '--ephemeral', '--ignore-user-config', '--sandbox', '--skip-git-repo-check', '--config'] },
+  { client: 'codex', help: ['exec', '--help'], flags: ['--json', '--ephemeral', '--ignore-user-config', '--sandbox', '--skip-git-repo-check', '--config', '--model'] },
   { client: 'codex', help: ['login', '--help'], flags: ['--device-auth', '--with-api-key', 'status'], optional: ['--with-access-token'] },
   { client: 'codex', help: ['--help'], flags: ['login', 'logout', 'exec', 'app-server', 'features', '--config'] },
 ];

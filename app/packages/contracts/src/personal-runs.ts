@@ -93,11 +93,12 @@ export const RUN_TOKEN_LIMITS = {
  * CLI showed a tool or MCP server other than the run's exact Flux tools. `slot_busy`: the slot's serial
  * lane was taken (a sign-in, a status check or another run). `unknown`: the CLI's stream broke; whether it
  * changed anything is not known and it is never rerun. `max_turns`: the turn cap. `refused`: the model
- * refused the request.
+ * refused the request. `model_unavailable`: the vendor did not accept the model the owner chose (F-027 AST-11);
+ * nothing was changed and no other model was tried.
  */
 export const ASSISTANT_RUN_END_REASONS = [
   'sign_in_again', 'plan_limit', 'wall_clock', 'no_event', 'crashed', 'answer_too_large', 'mcp_results_too_large',
-  'local_tool', 'slot_busy', 'unknown', 'max_turns', 'refused',
+  'local_tool', 'slot_busy', 'unknown', 'max_turns', 'refused', 'model_unavailable',
 ] as const;
 export type AssistantRunEndReason = (typeof ASSISTANT_RUN_END_REASONS)[number];
 
@@ -166,6 +167,8 @@ export interface PersonalRunEnablement {
   status: PersonalRunEnablementStatus;
   /** Where runs go: the owner's API key connection or their own Claude Code in the runtime. */
   engine: AssistantEngine;
+  /** The assistant's model (F-027 AST-11, 0110); null: none chosen, so the account's own default (a legacy assistant). */
+  model: string | null;
   /** The owner's assistant agent per workspace; its project grants bound what a run may read. */
   agents: { workspaceId: string; agentId: string }[];
   version: number;
@@ -237,6 +240,8 @@ export interface EnablePersonalRunsCommand {
    * key connection is used. Default `server`.
    */
   engine?: AssistantEngine;
+  /** The assistant's model, an id from the account's list (F-027 AST-11); default: the list's default. */
+  model?: string;
   perRunCents?: number;
   dailyCapCents?: number;
   timeZone?: string;
@@ -323,6 +328,8 @@ export interface AssistantRun {
   /** The runtime confirmed the stop (F-022 "Stop": requested and acknowledged are separate). */
   stopAcknowledged: boolean;
   engine: AssistantEngine;
+  /** The model this run was sent with, fixed when it was sent (F-027 AST-11); the engine's own label when none was chosen. */
+  model: string;
   /** A `runtime` run's CLI (F-022 T6 #281), for its own words ("ChatGPT" or "Claude"); null otherwise. Optional for older servers. */
   runtimeClient?: 'claude_code' | 'codex' | null;
   /** Why it ended without an answer, when the status alone does not say; null otherwise. */

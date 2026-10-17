@@ -7,6 +7,7 @@ import type {
 } from './ports.js';
 import { updateAndAnnounce } from './progress.js';
 import { redactSecrets } from './redaction.js';
+import { runtimeModelFlag } from './model.js';
 import { answerWithSchedule } from './schedule-request.js';
 
 // A personal run on the owner's own Claude Code in the agent runtime (F-022 AIM-3 "Run", #280; F-027 A2).
@@ -99,7 +100,7 @@ function endChanges(reason: AssistantRunEndReason | 'stopped' | 'unavailable', p
   switch (reason) {
     case 'stopped': return ended('stopped', 'before_commit', used);
     case 'unavailable': return ended('unavailable', 'before_dispatch', used);
-    case 'sign_in_again': case 'local_tool': case 'slot_busy':
+    case 'sign_in_again': case 'local_tool': case 'slot_busy': case 'model_unavailable':
       return ended('unavailable', null, { ...used, endReason: reason });
     case 'plan_limit': return ended('unavailable', null, { ...used, endReason: reason, planLimitResetsAt: planResetsAt ?? null });
     case 'wall_clock': case 'max_turns': case 'answer_too_large': case 'mcp_results_too_large':
@@ -240,8 +241,10 @@ export function createRuntimeRunProcessor({ uow, runtime, tokens, stopPollMs, ho
       const stopWatching = watch(run, { stop });
       let end: PersonalRuntimeEnd;
       try {
+        // The model is the one recorded when the request was sent (F-027 AST-11), never the owner's current choice.
+        const model = runtimeModelFlag(run.model);
         end = await runtime!.run(target, {
-          runId: run.id, prompt: runtimePrompt(run), runToken: grant.token, tools: grant.tools, caps,
+          runId: run.id, prompt: runtimePrompt(run), runToken: grant.token, tools: grant.tools, caps, ...(model ? { model } : {}),
         }, onEvent);
       } catch {
         // The stream to the slot broke: whether the CLI changed anything is unknown, and it is never rerun.

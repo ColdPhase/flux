@@ -173,3 +173,117 @@ describe('a personal run is never charged above its reservation (#179 PROV-3, #1
     assert.deepEqual([today.chargedMicros, today.reservedMicros], [chargedToday, unknownRuns * RESERVED]);
   });
 });
+
+// F-027 AST-11 (#596): the assistant's model on an API key. The list is the connection's own model and the provider's models that
+// have a table price; the run is reserved, sent and recorded at the chosen model, and a change reaches the next request only.
+describe('the assistant\'s model on an API key (F-027 AST-11, #596)', () => {
+  let owner: Person; let viewer: Person; let guest: Person;
+  let thread: Conversation;
+  let agentId: string;
+  const sonnet5 = randomUUID();
+
+  before(async () => {
+    owner = await person('pr-model-owner');
+    viewer = await person('pr-model-viewer');
+    guest = await person('pr-model-guest');
+    const ws = await createWorkspace(owner, 'Assistant model');
+    const place = await createProject(owner, ws.id, 'Lamp sensor model', 'workspace');
+    expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/members`, { body: { email: viewer.email, role: 'member' } }), 201);
+    expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/grants`, { body: { principal: { kind: 'human', id: viewer.id }, role: 'viewer' } }), 201);
+    agentId = (expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`, { body: { name: 'My assistant', owner: 'self' } }), 201) as { id: string }).id;
+    expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/grants`, { body: { principal: { kind: 'agent', id: agentId }, role: 'contributor' } }), 201);
+    thread = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/conversations`,
+      { body: { body: 'Camera fails below 5 lux in the low-light test', clientMessageId: randomUUID() } }), 201) as Conversation;
+    connections.connect(owner.id, sonnet5, { provider: 'anthropic', model: 'claude-sonnet-5', baseUrl: null });
+  });
+
+  test('AST-11.1/AST-11.5: the list, a choice at turn-on, the reservation and the request at the chosen model; a change reaches the next request only', async () => {
+    let choice = await runs.model(human(owner));
+    assert.deepEqual([choice.engine, choice.account, choice.company, choice.current, choice.default, choice.saved], ['server', 'api_key', 'Anthropic', 'claude-sonnet-5', 'claude-sonnet-5', false]);
+    assert.deepEqual(choice.options.map((option) => [option.id, option.name, option.note, option.callsTools]), [
+      ['claude-sonnet-5', 'Sonnet 5', 'Your connection\'s model', true],
+      ['claude-sonnet-5-5', 'Sonnet 5.5', 'Input $2, output $10 per 1M tokens', true],
+      ['claude-haiku-4-5', 'Haiku 4.5', 'Input $1, output $5 per 1M tokens', true],
+      ['claude-fable-5-1', 'Fable 5.1', 'Input $10, output $50 per 1M tokens', true],
+    ]);
+    // A model outside the list, or from another provider, is refused at turn-on and nothing is turned on.
+    for (const bad of ['gpt-6-sol', 'sonnet', '--model']) {
+      await assert.rejects(runs.enable(human(owner), { consentVersion: PERSONAL_RUN_CONSENT_VERSION, agentId, model: bad }),
+        { code: 'ASSISTANT_MODEL_UNAVAILABLE', message: 'Your API key\'s provider doesn\'t offer that model. Nothing was turned on.' }, bad);
+    }
+    assert.equal((await runs.status(human(owner))).state, 'not_enabled');
+
+    await mock('/__reset', {});
+    const status = await runs.enable(human(owner), { consentVersion: PERSONAL_RUN_CONSENT_VERSION, agentId, model: 'claude-haiku-4-5', perRunCents: 6, dailyCapCents: 100 });
+    assert.deepEqual([status.enablement!.model, status.disclosure.model, status.disclosure.maxRunMicros], ['claude-haiku-4-5', 'claude-haiku-4-5', 16_000 + 7_500],
+      'the disclosure names the chosen model and its table price');
+    assert.deepEqual([status.enablement!.consent.model], ['claude-sonnet-5'], 'the consent still names the connection');
+    choice = await runs.model(human(owner));
+    assert.deepEqual([choice.current, choice.saved], ['claude-haiku-4-5', true]);
+
+    await mock('/__script', { wire: 'anthropic', text: 'Fact: the camera fails below 5 lux [S1].', usage: { input: 1_000, output: 100 } });
+    const first = await runs.invoke(human(owner), thread.id, { clientRunId: randomUUID(), kind: 'ask', prompt: 'Where are we?' });
+    // The next request is sent with the new model; this one keeps Haiku even though the choice changes before it runs.
+    choice = await runs.chooseModel(human(owner), { model: 'claude-sonnet-5' });
+    assert.equal(choice.current, 'claude-sonnet-5');
+    assert.deepEqual(await row(first.run.id), { status: 'queued', provider: 'anthropic', model: 'claude-haiku-4-5', reserved_micros: 23_500, charged_micros: 0, cost_state: 'reserved' });
+    assert.equal(await processor.process(first.run.id), 'completed');
+    const sent = (await mock('/__requests')).requests.filter((item) => item.path === '/anthropic/v1/messages');
+    assert.equal((sent[0]!.body as { model: string }).model, 'claude-haiku-4-5', 'the request sent before the change used Haiku');
+    assert.equal((await row(first.run.id)).charged_micros, 1_000 + 500, 'charged at the Haiku table price');
+    const second = await runs.invoke(human(owner), thread.id, { clientRunId: randomUUID(), kind: 'ask', prompt: 'And now?' });
+    assert.deepEqual(await row(second.run.id), { status: 'queued', provider: 'anthropic', model: 'claude-sonnet-5', reserved_micros: 47_000, charged_micros: 0, cost_state: 'reserved' });
+    assert.equal(await processor.process(second.run.id), 'completed');
+    assert.equal(((await mock('/__requests')).requests.filter((item) => item.path === '/anthropic/v1/messages').at(-1)!.body as { model: string }).model, 'claude-sonnet-5');
+  });
+
+  test('AST-11.1: a model that costs more than the per-request limit, another provider\'s model or a bad id is refused with the exact copy and the previous model stays', async () => {
+    const refusals: [string, string][] = [
+      ['claude-fable-5-1', 'One request to Fable 5.1 can cost more than your per-request limit. It is still Sonnet 5.'],
+      ['gpt-6-sol', 'Your API key\'s provider doesn\'t offer that model. It is still Sonnet 5.'],
+      ['not a model id', 'Your API key\'s provider doesn\'t offer that model. It is still Sonnet 5.'],
+    ];
+    for (const [model, message] of refusals) {
+      await assert.rejects(runs.chooseModel(human(owner), { model }), { code: 'ASSISTANT_MODEL_UNAVAILABLE', message }, model);
+    }
+    assert.equal((await runs.model(human(owner))).current, 'claude-sonnet-5');
+    // Choosing the same model again changes nothing.
+    const version = (await runs.status(human(owner))).enablement!.version;
+    await runs.chooseModel(human(owner), { model: 'claude-sonnet-5' });
+    assert.equal((await runs.status(human(owner))).enablement!.version, version);
+  });
+
+  test('AST-11.1: a connection on its own endpoint offers only its own model (no other has a table price) and a model without tool calling says so', async () => {
+    const other = await person('pr-model-endpoint-owner');
+    connections.connect(other.id, randomUUID(), { provider: 'openai_compatible', model: 'llama3.1:8b', baseUrl: `${MOCK}/openai/v1`,
+      price: { inputMicrosPerMTok: 1_000_000, outputMicrosPerMTok: 2_000_000, source: 'owner', checkedOn: null } });
+    const own = await runs.model(human(other));
+    assert.deepEqual(own.options.map((option) => [option.id, option.name]), [['llama3.1:8b', 'llama3.1:8b']]);
+    connections.connect(other.id, randomUUID(), { provider: 'openai', model: 'gpt-6-luna' });
+    const openai = await runs.model(human(other));
+    assert.deepEqual(openai.options.map((option) => [option.id, option.callsTools]), [['gpt-6-luna', true], ['gpt-6-sol', true], ['gpt-6.1-sol', false], ['gpt-6-astra', false]],
+      'GPT-6.1 Sol and GPT-6 Astra can answer but can\'t make changes on Chat Completions (AST-8.3)');
+  });
+
+  test('AST-11.2: only the owner reads or changes the model; anyone else gets their own empty answer or a refusal', async () => {
+    for (const someone of [viewer, guest]) {
+      const theirs = await runs.model(human(someone));
+      assert.deepEqual([theirs.engine, theirs.company, theirs.options, theirs.saved], [null, null, [], false]);
+      await assert.rejects(runs.chooseModel(human(someone), { model: 'claude-haiku-4-5' }), { code: 'PERSONAL_RUN_NOT_ENABLED' });
+    }
+    assert.equal((await runs.model(human(owner))).current, 'claude-sonnet-5', 'nobody else changed it');
+    // Over HTTP (the API container composes no connections): a viewer or guest sees nothing of the owner's, and cannot change anything.
+    for (const [someone, current] of [[viewer, ''], [guest, ''], [owner, 'claude-sonnet-5']] as const) {
+      const read = expectStatus(await someone.browser.request('GET', '/api/v1/personal-assistant/model'), 200) as { options: unknown[]; current: string };
+      assert.deepEqual([read.options, read.current], [[], current], 'the API container offers this account no list; only the owner sees their own stored model');
+    }
+    for (const someone of [viewer, guest]) {
+      const refused = await someone.browser.request('PUT', '/api/v1/personal-assistant/model', { body: { model: 'claude-haiku-4-5' } });
+      assert.equal(refused.status, 409, refused.text);
+      assert.equal((refused.json as { code: string }).code, 'PERSONAL_RUN_NOT_ENABLED');
+    }
+    const anonymous = await fetch(`${process.env.FLUX_API_URL ?? 'http://api:8080'}/api/v1/personal-assistant/model`);
+    assert.equal(anonymous.status, 401);
+  });
+});
+

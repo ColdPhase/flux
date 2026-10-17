@@ -56,7 +56,9 @@ test('the pinned real claude, run with the runtime\'s exact argv, shows only the
   for (const dir of ['claude', 'home', 'tmp']) mkdirSync(join(binding, dir), { recursive: true, mode: 0o700 });
   const mcpConfigPath = join(root, 'tmp-mcp.json');
   writeFileSync(mcpConfigPath, JSON.stringify({ mcpServers: { flux: { type: 'http', url: `${apiUrl}/mcp`, headers: { Authorization: 'Bearer ${FLUX_RUN_TOKEN}' } } } }), { mode: 0o600 });
-  const argv = RUN_TEMPLATES.claude_code({ tools: grant.tools, caps: { ...RUNTIME_RUN_LIMITS, maxTurns: 4 }, mcpConfigPath, mcpUrl: `${apiUrl}/mcp`, brief: RUN_BRIEF });
+  // F-027 AST-11: the assistant's chosen model reaches the real CLI as `--model`; Haiku is not what the CLI would pick by itself.
+  const argv = RUN_TEMPLATES.claude_code({ tools: grant.tools, caps: { ...RUNTIME_RUN_LIMITS, maxTurns: 4 }, mcpConfigPath, mcpUrl: `${apiUrl}/mcp`, brief: RUN_BRIEF, model: 'haiku' });
+  assert.deepEqual(argv.slice(argv.indexOf('--model'), argv.indexOf('--model') + 2), ['--model', 'haiku']);
   // The slot's own environment, with the egress proxy left out (this container has no runtime-egress) and the model mock.
   const env: Record<string, string> = { ...cliEnvironment('claude_code', binding, 'runtime-egress', { FLUX_RUN_TOKEN: grant.token }),
     ANTHROPIC_BASE_URL: `http://127.0.0.1:${model.port}`, ANTHROPIC_API_KEY: 'sk-ant-not-a-vendor-key' };
@@ -84,6 +86,9 @@ test('the pinned real claude, run with the runtime\'s exact argv, shows only the
   // 2.1.285 adds `source` ("dynamic" for --mcp-config); the read-back uses only `name` and `status`.
   assert.deepEqual((init.mcp_servers as { name: string; status: string }[]).map(({ name, status }) => ({ name, status })), [{ name: 'flux', status: 'connected' }],
     'Flux is the only MCP server, connected with the run token');
+  const toolRequests = model.requests.filter((request) => request.tools.some((name) => name.startsWith('mcp__flux__')));
+  assert.ok(toolRequests.length > 0 && toolRequests.every((request) => /haiku/i.test(request.model)),
+    `every model request that carried the Flux tools named Haiku: ${JSON.stringify(toolRequests.map((request) => request.model))}`);
   const offered = model.requests.find((request) => request.tools.some((name) => name.startsWith('mcp__flux__')))?.tools ?? [];
   assert.deepEqual(offered.filter((name) => name !== 'EndConversation').sort(), tools, 'the model is offered the same list');
   const result = events.find((event) => event.type === 'result');
