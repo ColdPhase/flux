@@ -120,6 +120,7 @@ test('two transfers of one unit at once: exactly one wins, the generation advanc
   const held = await f.take(codex, t);
   const toMarek = await codex.standing('cowork.unit.transfer', held.unitId, 'execute');
   const toHubert = await codex.standing('cowork.unit.transfer', held.unitId, 'execute');
+  const renew = await codex.standing('cowork.renew', held.unitId, 'execute');
   const fence = { unitId: held.unitId, expectedVersion: held.claim.version, generation: held.claim.generation, leaseId: held.claim.lease.id };
   const before = await f.unit(held.unitId);
   const replies = await Promise.all([
@@ -132,7 +133,6 @@ test('two transfers of one unit at once: exactly one wins, the generation advanc
   assert.deepEqual([after.assignee, after.state, after.generation, after.version, after.from], [winner.connectionId, 'pending', before.generation + 1, before.version + 1, codex.connectionId]);
   assert.deepEqual([await f.used(toMarek.id), await f.used(toHubert.id)], !failed(replies[0]!) ? [1, 0] : [0, 1], 'only the winner spent a use');
   // The former holder can neither renew nor transfer again: its claim, and then its assignment, are gone.
-  const renew = await codex.standing('cowork.renew', held.unitId, 'execute');
   assert.ok(failed(await codex.call('flux_renew_unit', { ...codex.base(renew.id, 'execute'), ...fence })));
   assert.equal(await f.used(renew.id), 0);
   assert.ok(failed(await codex.call('flux_transfer_unit', { ...codex.base(toHubert.id, 'execute'), ...fence, assignmentConnectionId: hubertClaude.connectionId })));

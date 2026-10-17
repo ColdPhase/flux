@@ -108,15 +108,16 @@ test('the packet is a bounded reference packet: titles only while they exist at 
   assert.deepEqual(moved.sources.find((source) => source.type === 'material'), { type: 'material', id: f.material.materialId, version: 1, title: null, available: false });
 
   // Anyone who can read the task downloads it; nobody else does, and it is bound to its own task.
-  for (const reader of [f.ada, f.vera, f.marek]) assert.equal((await reader.browser.request('GET', packetPath(a.id, requestId))).status, 200);
+  for (const reader of [f.vera, f.marek]) assert.equal((await reader.browser.request('GET', packetPath(a.id, requestId))).status, 200);
   assert.equal((await f.olga.browser.request('GET', packetPath(a.id, requestId))).status, 404);
   assert.equal((await f.hubert.browser.request('GET', packetPath(b.id, requestId))).status, 404, 'another task\'s path does not reach it');
   assert.equal((await f.hubert.browser.request('GET', packetPath(a.id, randomUUID()))).status, 404);
   assert.equal((await f.hubert.browser.request('GET', packetPath(a.id, 'not-an-id'))).status, 404);
   // A reader whose access is removed loses it at once.
-  await f.removeAccess(f.marek);
-  assert.equal((await f.marek.browser.request('GET', packetPath(a.id, requestId))).status, 404);
-  assert.equal((await f.marek.browser.request('GET', coordination(a.id))).status, 404);
+  assert.equal((await f.ada.browser.request('GET', packetPath(a.id, requestId))).status, 200);
+  await f.removeAccess(f.ada);
+  assert.equal((await f.ada.browser.request('GET', packetPath(a.id, requestId))).status, 404);
+  assert.equal((await f.ada.browser.request('GET', coordination(a.id))).status, 404);
 });
 
 test('cancelling: a manager and the owners of the sender and recipient may, others are refused, and the recipient is told the request is closed', async () => {
@@ -362,7 +363,8 @@ test('review is by a separate non-author: the author, an execution grant, anothe
   const mClaim = await marekClaude.standing('cowork.request.claim', second, 'review');
   const mRespond = await marekClaude.standing('cowork.request.respond', second, 'review');
   const mFence = { unitId: second, generation: secondClaim.generation, leaseId: secondClaim.lease.id, requestId: requestTwo };
-  assert.equal(failureCode(await hubertClaude.call('flux_claim_request', { ...hubertClaude.base(review.claimGrant.id, 'review'), ...mFence, expectedRequestVersion: 1 })), 'COWORK_UNIT_NOT_FOUND');
+  assert.equal(failureCode(await hubertClaude.call('flux_claim_request', { ...hubertClaude.base(review.claimGrant.id, 'review'), ...mFence, expectedRequestVersion: 1 })),
+    'AGENT_EXECUTION_UNAVAILABLE', 'a grant for the first reviewer\'s unit does not cover another unit');
   const mClaimed = toolValue(await marekClaude.call('flux_claim_request', { ...marekClaude.base(mClaim.id, 'review'), ...mFence, expectedRequestVersion: 1 })) as { version: number };
   // Findings on a version that has since moved on are refused; the reviewer declines instead of passing a stale target.
   expectStatus(await f.hubert.browser.request('PATCH', `/api/v1/work/${a.id}`, { body: { title: 'Native outcome A, fixed again' },
