@@ -28,9 +28,10 @@ async function requireOpen(db: Executor, dmId: string, selfId: string) {
 export function policySketchAccess(db: Executor): SketchAccess {
   return {
     async requireSketch(principal, action, sketchId, options) {
-      enforce(await evaluateSketch(principal, action, sketchId, db, { lock: options?.lock }), 'sketch');
-      if (action === 'sketch.write') return 'write';
-      return (await evaluateSketch(principal, 'sketch.write', sketchId, db)).allowed ? 'write' : 'read';
+      const write = await evaluateSketch(principal, 'sketch.write', sketchId, db, { lock: options?.lock });
+      // Visible sketches remain readable even when writing is denied (viewer or closed DM).
+      enforce(action === 'sketch.read' ? { ...write, allowed: write.visible } : write, 'sketch');
+      return write.allowed ? 'write' : 'read';
     },
 
     async accessOf(principal, sketchId) {
