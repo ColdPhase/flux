@@ -45,29 +45,11 @@ globalThis.minimapReference = async function () {
   const overlayError = Math.max(Math.abs(parseFloat(overlay.style.left)-shown.x), Math.abs(parseFloat(overlay.style.top)-shown.y),
     Math.abs(parseFloat(overlay.style.width)-vw*k), Math.abs(parseFloat(overlay.style.height)-vh*k));
   return {count:boxes.length,geometryError,overlayError,frame,color,dpr:devicePixelRatio,
+    background:getComputedStyle(document.querySelector('.sk-minimap')).backgroundColor,
     clamped:expected.filter(b=>b.w===3).length,
     fills:[...new Set(marks.map(el=>getComputedStyle(el).fill))],alphas:[...new Set(marks.map(el=>getComputedStyle(el).opacity))],
     markup:{actual:drawing.outerHTML,reference:reference(),square:reference({radius:0}),minimum:reference({minimum:false})}};
 };
 
-// Decode actual browser screenshots through the public image API. This compares the native
-// rendered SVGs, avoiding SVG-image raster backend differences and host imaging dependencies.
-globalThis.minimapComparePNGs = async function ({actual, reference}) {
-  const { Image, document } = globalThis;
-  async function pixels(src) {
-    const image = new Image(); image.src = src; await image.decode();
-    const canvas = document.createElement('canvas');canvas.width=image.width;canvas.height=image.height;
-    const ctx=canvas.getContext('2d');ctx.drawImage(image,0,0);
-    return {data:ctx.getImageData(0,0,canvas.width,canvas.height).data,width:canvas.width,height:canvas.height};
-  }
-  const [a,b] = await Promise.all([pixels(actual),pixels(reference)]);
-  let error=0,ink=0,colorError=0;
-  for (let i=0;i<a.data.length;i+=4) {
-    error+=Math.abs(a.data[i+3]-b.data[i+3]);ink+=b.data[i+3];
-    if(a.data[i+3]>100&&b.data[i+3]>100)
-      for(let c=0;c<3;c++)colorError=Math.max(colorError,Math.abs(a.data[i+c]-b.data[i+c]));
-  }
-  return {relativeAlphaError:error/Math.max(1,ink),colorError,ink,pixels:[a.width,a.height]};
-};
-// Playwright evaluates a returned function as a callable; installation must return no function.
+// Installation must not return a callable (Playwright would invoke it without arguments).
 void 0;
