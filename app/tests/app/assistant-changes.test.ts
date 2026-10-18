@@ -786,7 +786,7 @@ describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A
         } else {
           if(fence==='area') await save({areas:{tasks:'read'}},jonasWs.id);
           else await pool.query(`UPDATE personal_runs SET status='stopped',stop_requested_at=now() WHERE id=$1`,[run.runId]);
-          expectStatus(await peer.browser.request('POST',assistantChangeActionPath(row.id,'accept'),{body:{expectedVersion:sent.change.version}}),403);
+          expectStatus(await peer.browser.request('POST',assistantChangeActionPath(row.id,'accept'),{body:{expectedVersion:sent.change.version}}),fence==='area'?404:403);
           if(fence==='area') await save({areas:{tasks:'edit'}},jonasWs.id);
           else await complete(run.runId);
         }

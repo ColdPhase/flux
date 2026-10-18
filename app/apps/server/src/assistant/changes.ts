@@ -269,13 +269,13 @@ export function assistantChangeUseCases(db: Database, boss?: Pick<PgBoss, 'send'
       const userId = owner(principal);
       await rows().expire(clock(), userId);
       const list = await rows().recent(userId, Math.min(Math.max(limit, 1), 50));
-      return { items: await view(list, new Map(list.map((row) => [row.runId, row.conversationId]))) };
+      return { items: await view(list, new Map(list.map((row) => [row.runId, row.conversationId])), await undoers(principal, list)) };
     },
     async forRun(principal: Principal, runId: string): Promise<{ items: AssistantChange[] }> {
       await rows().expire(clock(), owner(principal));
       const list = await ownRun(principal, runId);
       const conversationId = await rows().conversationOf(runId);
-      return { items: await view(list, new Map(conversationId ? [[runId, conversationId]] : [])) };
+      return { items: await view(list, new Map(conversationId ? [[runId, conversationId]] : []), await undoers(principal, list)) };
     },
     /** Apply one waiting change. A target changed since applies nothing (AST-5.4). */
     async apply(principal: Principal, changeId: string, expected?: number): Promise<AssistantChangeDecision> {
