@@ -130,7 +130,7 @@ export function assistantChangeUseCases(db: Database, boss?: Pick<PgBoss, 'send'
         || (await evaluateProject(principal, 'project.write', row.projectId, db)).allowed));
     }
     // Taking back a task's creation is the creating assistant's owner's alone (#238, the work domain's own rule), so it is no one else's Undo.
-    return (row) => principal?.kind === 'human' && (principal.id === row.ownerUserId || projects.get(row.projectId) === true && (row.operation !== 'work.create' || creationOwner(row) === principal.id));
+    return (row) => principal?.kind === 'human' && (row.operation !== 'work.create' || creationOwner(row) === principal.id) && (principal.id === row.ownerUserId || projects.get(row.projectId) === true);
   }
   async function view(list: AssistantChangeRow[], conversations: Map<string, string>, mayUndo: (row: AssistantChangeRow) => boolean = () => true): Promise<AssistantChange[]> {
     const names = await rows().names(list.flatMap((row) => [row.ownerUserId, row.otherUserId, row.suggestToUserId, row.decidedBy].filter((id): id is string => !!id)));
@@ -323,7 +323,7 @@ export function assistantChangeUseCases(db: Database, boss?: Pick<PgBoss, 'send'
       // remove (a result, a decision, a message) is not "changed since"; it is simply not part of an Undo.
       const who = owner(principal);
       const list = (await editableRun(principal, runId)).filter((row) => (row.state === 'applied' || row.state === 'applied_after_wait') && !!undoOf(row)
-        && (row.operation !== 'work.create' || row.ownerUserId === who)).reverse();
+        && (row.operation !== 'work.create' || creationOwner(row) === who)).reverse();
       const changes: AssistantChangeDecision[] = []; const changedSince: string[] = []; let undone = 0;
       for (const row of list) {
         const message = await undoOne(principal, row);
@@ -350,7 +350,12 @@ export function assistantChangeUseCases(db: Database, boss?: Pick<PgBoss, 'send'
       if (expected !== row.version) throw new ConflictError('This change was decided meanwhile', 'ASSISTANT_CHANGE_VERSION_CONFLICT');
       if (row.state !== 'waiting' || row.expiresAt <= clock()) throw new ConflictError('Expired or already decided. Ask again', 'ASSISTANT_CHANGE_EXPIRED');
       const result = await reexecuteChange(db, row, 'owner_approval', userId, true);
-      if (!result.ok) throw new DomainError(403, result.code, stale(result.code) ? STALE : result.error);
+      if (!result.ok) {
+        if (result.code === 'ASSISTANT_PAUSED') throw new DomainError(409, result.code, result.error);
+        const message = stale(result.code) ? STALE : result.error;
+        await refuse(row, message);
+        throw new DomainError(403, result.code, message);
+      }
       return { change: await viewOne((await rows().find(row.id))!, principal), message: null };
     },
     async dismissSuggestion(principal: Principal, changeId: string, expected?: number): Promise<AssistantChangeDecision> {
@@ -369,14 +374,15 @@ export function assistantChangeUseCases(db: Database, boss?: Pick<PgBoss, 'send'
     /** A suggestion reaches the other person only after the owner's tap (AST-5.8): one Needs-you question for them. */
     async send(principal: Principal, changeId: string, expected?: number): Promise<AssistantChangeDecision> {
       const userId = owner(principal);
-      await own(principal, changeId);
+      const located = await own(principal, changeId);
+      if (located.expiresAt <= clock()) { await rows().expire(clock(), userId); throw new ConflictError('Expired · Ask again', 'ASSISTANT_CHANGE_EXPIRED'); }
       return db.transaction(async (tx) => {
       const r = assistantChangeRows(tx);
       const row = await r.lock(changeId);
       if (!row || row.ownerUserId !== userId) throw missing();
       if (row.state !== 'waiting' || row.waitReason !== 'outside_rights' || row.sentAt) throw new ConflictError('This suggestion is no longer waiting', 'ASSISTANT_CHANGE_DECIDED');
       if (expected !== undefined && expected !== row.version) throw new ConflictError('This change was decided meanwhile', 'ASSISTANT_CHANGE_VERSION_CONFLICT');
-      if (row.expiresAt <= clock()) { await rows().expire(clock(), userId); throw new ConflictError('Expired · Ask again', 'ASSISTANT_CHANGE_EXPIRED'); }
+      if (row.expiresAt <= clock()) throw new ConflictError('Expired · Ask again', 'ASSISTANT_CHANGE_EXPIRED');
       // The person who owns the thing, when they can decide it; otherwise someone who can write in the project.
       let recipient: string | null = null;
       for (const candidate of [row.suggestToUserId, ...(await needsYouRows(tx).workspaceMembersOfProject(row.projectId, 50)).map((member) => member.id)]) {

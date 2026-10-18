@@ -720,9 +720,13 @@ describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A
         const sent = expectStatus(await owner.browser.request('POST', assistantChangeActionPath(row.id, 'send'), { body: { expectedVersion: row.version } }), 200) as { change: AssistantChange };
         expectStatus(await owner.browser.request('POST', assistantChangeActionPath(row.id, 'accept'), { body: { expectedVersion: sent.change.version } }), 404);
         expectStatus(await outsider.browser.request('POST', assistantChangeActionPath(row.id, 'accept'), { body: { expectedVersion: sent.change.version } }), 404);
-        await pool.query(`UPDATE assistant_changes SET suggest_to_user_id=$2 WHERE id=$1`,[row.id,recipientViewer.id]);
-        expectStatus(await recipientViewer.browser.request('POST',assistantChangeActionPath(row.id,'accept'),{body:{expectedVersion:sent.change.version}}),403,entry.operation+' viewer');
-        await pool.query(`UPDATE assistant_changes SET suggest_to_user_id=$2 WHERE id=$1`,[row.id,peer.id]);
+        // A distinct saved intent exercises each kind's live viewer refusal without reviving it for acceptance.
+        await run.call(entry.tool,entry.args);
+        const viewerRow=(await changesOf(run.runId)).find((candidate)=>candidate.id!==row.id)!;
+        const viewerSent=expectStatus(await owner.browser.request('POST',assistantChangeActionPath(viewerRow.id,'send'),{body:{expectedVersion:viewerRow.version}}),200) as {change:AssistantChange};
+        await pool.query(`UPDATE assistant_changes SET suggest_to_user_id=$2 WHERE id=$1`,[viewerRow.id,recipientViewer.id]);
+        expectStatus(await recipientViewer.browser.request('POST',assistantChangeActionPath(viewerRow.id,'accept'),{body:{expectedVersion:viewerSent.change.version}}),403,entry.operation+' viewer');
+        assert.equal((await changesOf(run.runId)).find((candidate)=>candidate.id===viewerRow.id)!.state,'refused');
         await complete(run.runId); // No live token and no compute are needed for the human decision.
         const before = compute.dispatched.length;
         const accepted = expectStatus(await peer.browser.request('POST', assistantChangeActionPath(row.id, 'accept'), { body: { expectedVersion: sent.change.version } }), 200) as { change: AssistantChange };
@@ -738,7 +742,7 @@ describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A
     }
   });
 
-  test('A5 refuses stale target, changed switches, viewer recipient and never operations without any effect', async () => {
+  test('A5 refuses stale target and never operations without any effect', async () => {
     const item = await task(peer, 'Versioned suggestion', shared.id);
     const run = await liveRun(sharedThread);
     await pool.query(`UPDATE project_grants SET role='viewer' WHERE project_id=$1 AND user_id=$2`, [shared.id, owner.id]);
@@ -749,12 +753,43 @@ describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A
       await pool.query(`UPDATE project_work_items SET title='Person edited it',version=version+1 WHERE id=$1`,[item.id]);
       expectStatus(await peer.browser.request('POST', assistantChangeActionPath(row.id,'accept'), { body:{ expectedVersion:sent.change.version } }),403);
       assert.equal((await pool.query(`SELECT title FROM project_work_items WHERE id=$1`,[item.id])).rows[0].title,'Person edited it');
-      // A current viewer who was once the addressee still cannot accept. Native authority is checked live.
-      await addMember(peer,jonasWs.id,outsider,'member'); await grant(peer,shared.id,outsider,'viewer');
-      await pool.query(`UPDATE assistant_changes SET suggest_to_user_id=$2 WHERE id=$1`,[row.id,outsider.id]);
-      expectStatus(await outsider.browser.request('POST',assistantChangeActionPath(row.id,'accept'),{body:{expectedVersion:sent.change.version}}),403);
+      assert.equal((await changesOf(run.runId))[0]!.state,'refused');
       assert.ok(!run.tools.some((tool)=>/invite|grant|accept_decision/.test(tool)));
     } finally { await pool.query(`UPDATE project_grants SET role='contributor' WHERE project_id=$1 AND user_id=$2`,[shared.id,owner.id]); await complete(run.runId); }
+  });
+
+  test('A5 source and switch revocation cannot revive sent intent; recipient Dismiss and expired Send make no effect',async()=>{
+    for(const fence of ['area','source','dismiss','expiry']) {
+      const run=await liveRun(sharedThread);
+      await pool.query(`UPDATE project_grants SET role='viewer' WHERE project_id=$1 AND user_id=$2`,[shared.id,owner.id]);
+      const title=`Unchanged ${fence} suggestion`;
+      try {
+        await run.call('flux_create_task',{task:{title}});
+        const row=(await changesOf(run.runId))[0]!;
+        if(fence==='expiry') {
+          const later=assistantChangeUseCases(db,undefined,()=>new Date(Date.now()+8*DAY));
+          await assert.rejects(later.send(human(owner),row.id,row.version),/Expired/);
+          assert.equal((await changesOf(run.runId))[0]!.state,'expired');
+          continue;
+        }
+        const sent=expectStatus(await owner.browser.request('POST',assistantChangeActionPath(row.id,'send'),{body:{expectedVersion:row.version}}),200) as {change:AssistantChange};
+        if(fence==='dismiss') {
+          expectStatus(await owner.browser.request('POST',assistantChangeActionPath(row.id,'dismiss'),{body:{expectedVersion:sent.change.version}}),404);
+          expectStatus(await peer.browser.request('POST',assistantChangeActionPath(row.id,'dismiss'),{body:{expectedVersion:sent.change.version}}),200);
+        } else {
+          if(fence==='area') await save({areas:{tasks:'read'}},jonasWs.id);
+          else await pool.query(`UPDATE personal_runs SET status='stopped',stop_requested_at=now() WHERE id=$1`,[run.runId]);
+          expectStatus(await peer.browser.request('POST',assistantChangeActionPath(row.id,'accept'),{body:{expectedVersion:sent.change.version}}),403);
+          if(fence==='area') await save({areas:{tasks:'edit'}},jonasWs.id);
+          else await complete(run.runId);
+        }
+        expectStatus(await peer.browser.request('POST',assistantChangeActionPath(row.id,'accept'),{body:{expectedVersion:sent.change.version}}),404);
+        assert.equal(Number((await pool.query(`SELECT count(*) AS n FROM project_work_items WHERE project_id=$1 AND title=$2`,[shared.id,title])).rows[0].n),0);
+      } finally {
+        await pool.query(`UPDATE project_grants SET role='contributor' WHERE project_id=$1 AND user_id=$2`,[shared.id,owner.id]);
+        await complete(run.runId);
+      }
+    }
   });
 
   test('A9 chosen actions: tell/check/draft have read-only tokens; suggest-plan always waits even in act mode', async () => {
