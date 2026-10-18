@@ -1,0 +1,59 @@
+{
+  "time": "2026-10-18T14:07:26.938350+00:00",
+  "source": "aade67efde45b8156fe933c2124ab5a2a96d580a",
+  "project": "flux-live-editing-1792332422-1651799",
+  "services": {
+    "api": {
+      "containerId": "0febf4688209d3d1c988049f07fa5dc239dde8113b1b52c0aaea6359a06d9508",
+      "imageId": "sha256:2a4f89d2b3dc73fa73ca9bdad7c1e8c9559b15681e3e9da3d69468375e1f767d",
+      "image": "flux-foundation:flux-live-editing-1792332422-1651799",
+      "state": {
+        "Status": "running",
+        "Running": true,
+        "OOMKilled": false,
+        "ExitCode": 0
+      },
+      "configuration": {
+        "FLUX_LIVE_EDITING": "on",
+        "FLUX_DEVELOPMENT_LIVE_EDITING": "true",
+        "FLUX_DEVELOPMENT_LIVE_EDITING_API_INSTANCE": "",
+        "FLUX_DEVELOPMENT_LIVE_EDITING_TELEMETRY": "",
+        "NODE_ENV": "production"
+      },
+      "version": "v24.21.0",
+      "version_exit": 0
+    },
+    "api-two": {
+      "containerId": "cc00f49e422adb42779223ee0fa86e5f746fe692255b30d306298444a5163b91",
+      "imageId": "sha256:2a4f89d2b3dc73fa73ca9bdad7c1e8c9559b15681e3e9da3d69468375e1f767d",
+      "image": "flux-foundation:flux-live-editing-1792332422-1651799",
+      "state": {
+        "Status": "running",
+        "Running": true,
+        "OOMKilled": false,
+        "ExitCode": 0
+      },
+      "configuration": {
+        "FLUX_DEVELOPMENT_LIVE_EDITING": "true",
+        "FLUX_LIVE_EDITING": "on",
+        "NODE_ENV": "production"
+      },
+      "version": "v24.21.0",
+      "version_exit": 0
+    },
+    "db": {
+      "containerId": "348685902a5b7de8519ba40a79a0ab136bde91d1abd9d2dd55cb3a847ec8e713",
+      "imageId": "sha256:c293117fcecda7344b5480222e813b9f673d7abd69b1dd95eff239b768b04f59",
+      "image": "postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873",
+      "state": {
+        "Status": "running",
+        "Running": true,
+        "OOMKilled": false,
+        "ExitCode": 0
+      },
+      "configuration": {},
+      "version": "postgres (PostgreSQL) 18.6",
+      "version_exit": 0
+    }
+  }
+}
