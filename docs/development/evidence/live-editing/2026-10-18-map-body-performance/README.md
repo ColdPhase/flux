@@ -86,8 +86,64 @@ The baseline checkout with its test-only overlay is preserved at
 remain for the three owned projects, and both ports are free. Each runner
 removed its two per-run images; shared build cache was retained.
 
-No full latency driver or full application suite was run for this continuation.
-The parent will run the unchanged nine-cohort driver once after the focused
-checks. #228's original criteria, 200ms threshold, cadence, policy and independent
+## Subsequent canonical G4 run: FAIL
+
+After the focused checks, the unchanged full nine-cohort driver ran once against
+the same frozen `8ba5f87ae065d52b4b69158648f8e863b3d3f9cb` application and test
+source. It wrote all **2160 scheduled rows**, with 30 warmups and 240 measured
+rows per cohort, no input/socket errors, missing rows or timeouts. Eight cohorts
+meet the unchanged 200ms p95 gate; moving 200 of 500 Thoughts still fails it.
+
+| Cohort | p95, ms | Gate |
+| --- | ---: | --- |
+| Map 50, move 1 | 130.021 | PASS |
+| Map 50, move 50 | 153.405 | PASS |
+| Map 500, move 1 | 128.896 | PASS |
+| Map 500, move 50 | 160.791 | PASS |
+| Map 500, move 200 | **230.479** | **FAIL** |
+| Wiki 10k, editor | 169.387 | PASS |
+| Wiki 10k, reader | 140.589 | PASS |
+| Wiki 100k, editor | 175.454 | PASS |
+| Wiki 100k, reader | 166.408 | PASS |
+
+The [nine case results](latency/case-results.json) come from every planned
+per-case summary. The canonical overall summary's successful-cohort list omits
+the failed cohort; its [full structured summary](latency/map-500-drag-200-summary.json.gz)
+is retained explicitly. The [original overall summary](latency/summary.json.gz)
+and [runner log](latency/runner.log.gz) preserve driver exit 1 and collector exit
+0. Runtime identity is in [runtime.json](latency/runtime.json); the unchanged
+driver SHA is
+`11b71d4f9d34a471367de974ec93bde207b4b6f0a6b813babaa2d68c1a79e3c3`.
+
+The actual queue was sealed **COMPLETE, 3233 records**, with no dropped records
+or backpressure. The inventoried producer stopped normally (exit 0, no OOM),
+with final resource gauges at zero and no resource-budget violations. Retained
+[seal](latency/queue-seal.json), [collector result](latency/collector-result.json),
+[finished marker](latency/measurement-finished.json) and
+[producer shutdown](latency/producer-shutdown.json) establish completion;
+the runtime/per-case `complete: false` metadata was provisional before sealing.
+The [manifest](latency/manifest.json) binds original rows, queue, traces and all
+retained files to their byte hashes. Original artifacts remain at
+`/home/hubert/flux-evidence/228-map-body-8ba5f87a-latency`.
+[Cleanup](latency/cleanup.json) confirms no project containers, volumes or
+networks remain.
+
+This was a shared host. [Preflight](latency/preflight.json) observed Qwen at 0%
+CPU and load 0.576; the [single snapshot after the map cohorts](latency/midrun-host.json)
+observed Qwen at 194.54%, the browser runner at 304% and load 5.846. These are
+two snapshots, not continuous measurements or a causal attribution. The user's
+services were preserved. There was no controlled latency A/B, so neither a
+code-only timing improvement nor a regression is established by comparison with
+the earlier 215.553ms run at a different source SHA.
+
+For the failed cohort, input-to-covering-publication p95 was 131.201ms,
+publication-to-peer-receipt 85.446ms, covering-receipt-to-paint 68.343ms and
+two-RAF/recheck 87.157ms. Segment quantiles and superseding publications overlap;
+these values must not be added. The proven reduction in unchanged body renders
+does not establish the end-to-end latency gate. One private, non-acceptance CPU
+profile will locate the next bounded change before another canonical run.
+
+No full application suite was run. #228 stays open and the feature stays off by
+default. Its original criteria, 200ms threshold, cadence, policy and independent
 acceptance remain required. Later evidence-only commits do not change the tested
 application or test source; these results retain their original source SHA.

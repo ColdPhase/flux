@@ -1,0 +1,11 @@
+{
+  "at": "2026-10-18T09:05:48.591302+00:00",
+  "loadavg": [
+    5.845703125,
+    4.8056640625,
+    4.005859375
+  ],
+  "docker_stats": "flux-live-editing-1792313775-797901-ui-test-run-45526ae10ef3\t303.96%\t1.468GiB / 61.89GiB\t163\nflux-live-editing-1792313775-797901-api-1\t3.82%\t504.5MiB / 61.89GiB\t12\nflux-live-editing-1792313775-797901-db-1\t5.39%\t115.3MiB / 61.89GiB\t16\nqwen38-llama-router\t194.54%\t6.992GiB / 61.89GiB\t64\nflux-201d1a6e-api-1\t0.03%\t111.2MiB / 61.89GiB\t11\nflux-201d1a6e-worker-1\t0.27%\t59.5MiB / 61.89GiB\t11\nflux-201d1a6e-runtime-egress-1\t0.00%\t18.24MiB / 256MiB\t12\nflux-201d1a6e-runtime-manager-1\t0.00%\t28.53MiB / 256MiB\t12\nflux-201d1a6e-runtime-3-1\t0.00%\t21.91MiB / 2GiB\t11\nflux-201d1a6e-runtime-2-1\t0.00%\t21.71MiB / 2GiB\t11\nflux-201d1a6e-runtime-1-1\t0.00%\t21.79MiB / 2GiB\t11\nflux-201d1a6e-runtime-4-1\t0.00%\t21.91MiB / 2GiB\t11\nflux-201d1a6e-db-1\t3.18%\t74.46MiB / 61.89GiB\t22",
+  "docker_stats_exit": 0,
+  "observation": "single observation after five map cohorts, not a continuous time series"
+}
