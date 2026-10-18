@@ -1,0 +1,11 @@
+✔ two actual API processes deliver commit NOTIFY, pre-drop preview, character edits, protected presence and ordered missed-update catch-up (1899.896653ms)
+ℹ actual process inventory source=aade67efde45b8156fe933c2124ab5a2a96d580a instances=api-one,api-two distinctContainers=true sameImage=true
+ℹ cross-process functional receipts map=2 wiki=2; real NOTIFY rooms=2; missed-delivery ordered catchup=2; savedVersion=2; old-client dirty409; named presence/current revocation; real catchup map revoked/close1008; post-commit delta/move/presence withheld; opaque native/bootstrap/gesture/label refusals; independent owner continuation on both APIs. Browser DOM latency and API restart remain separate required gates.
+ℹ tests 1
+ℹ suites 0
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2715.012533

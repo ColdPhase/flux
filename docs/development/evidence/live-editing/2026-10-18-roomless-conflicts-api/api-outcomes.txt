@@ -1,0 +1,66 @@
+✔ a doc an agent last changed names its owner in the project list while that person has access, and drops it when access ends (930.998151ms)
+✔ a project sketch an agent created names its creator with the scoped owner, and drops it when access ends (838.316683ms)
+▶ DM sketches
+  ✔ starting a sketch from selected messages binds it to the DM with provenance; outsiders get 404 (1137.092912ms)
+  ✔ leaving or removal ends access on the next request and in the stream (1934.573536ms)
+  ✔ a 1:1 whose other person left is read-only: nothing is started or copied until they reopen it (247.841333ms)
+  ✔ promotion previews the exact audience, copies only the sketch, and never syncs the DM (464.418303ms)
+  ✔ search finds DM sketches and thoughts under the DM, opens them in the DM, and only for participants (278.821106ms)
+  ✔ promotion locks its audience: a leave waits for the copy, and a leave before it makes the preview stale (1104.207924ms)
+  ✔ promotion into an existing project locks its grants: a grant change waits, or makes the preview stale (1104.673066ms)
+  ✔ a member copies into a project they can change; the preview names who is left out (336.857921ms)
+✔ DM sketches (7129.531593ms)
+▶ live editing uses current configured provider confirmation
+  ✔ a fresh provider session passes input and both final recipient fences (134.65906ms)
+  ✔ expired, never-confirmed and missing provider accounts refuse without deleting the session (148.827549ms)
+  ✔ the newest account or standing confirmation counts, including a NULL account timestamp (71.223211ms)
+  ✔ one fresh provider account cannot conceal another lapsed row for the same user/provider (48.979701ms)
+  ✔ password sessions and no configured provider retain ordinary lifetimes (87.408714ms)
+  ✔ current and final fences recheck the SQL clock inside the same held transaction (93.45751ms)
+✔ live editing uses current configured provider confirmation (586.345198ms)
+✔ atomic500-thought bootstrap/200-position live preview is visible before native drop and binds one real connection (1381.157585ms)
+✔ server-journal grouped undo is atomic, immutable on exact retry, and refuses a peer conflict without rebasing (760.699545ms)
+✔ native deletion/link restore keep monotonic thought versions and link epochs; old HTTP/core replay never creates new graph state (793.454083ms)
+✔ real live/native HTTP shares one budget, uses ordered receipts and current reader/write policy (724.921699ms)
+✔ private/DM rooms stay opaque, expired preview cannot revive, and final SQL-clock expiry precedes protected map handoff (838.140272ms)
+✔ project delivery checks each producer session once, preserves first policy locks and forgets successes before a later grant downgrade (761.965718ms)
+✔ withheld map handoff filters expired producer sessions, transient leases and lapsed confirmation after positive checks (3779.815692ms)
+✔ deleted retained link UUID cannot migrate into an ordinary unjoined map through the native/MCP adapter (535.563513ms)
+✔ dense map refuses an oversized edit but permits one unlink and atomic own-undo with exact epochs (752.903155ms)
+✔ legal200-command own history remains one atomic undo without arbitrary count reduction (6075.587393ms)
+✔ aggregate dense own history is counted before JSON decode and refuses atomically within the shared preparation (2015.704372ms)
+✔ prepared MCP-composition native port keeps exact common metadata until its real outer SQL transaction settles (890.194121ms)
+✔ a stale final drop never moves the thought: cleared, expired, foreign or already consumed leases are refused (628.588832ms)
+✔ the transient read charge covers the actual result charge of the largest preview and presence rows (21.915999ms)
+✔ one ordinary preview read fits the small transient charge; many large previews take the worst case (0.281471ms)
+✔ presence snapshots stay referentially stable until an actual notification; old snapshots stay immutable (1.126843ms)
+✔ real expiry boundary and clear invalidate only that account/room snapshot (0.759392ms)
+✔ standing map grants create and change a shared project map as the agent, one effect and one event per command (1696.021217ms)
+✔ map actions never reach private maps, maps of other projects or another map than a targeted grant names (868.514744ms)
+▶ connection labels
+  ✔ add, edit and clear persist without replacing the connection or changing thoughts (270.061673ms)
+  ✔ write access is checked before current labels are returned, including private and DM scopes (461.186883ms)
+  ✔ concurrent edits compare under the sketch lock and stale retries leave data and events unchanged (171.524558ms)
+  ✔ idempotent retries replay once, remain scoped to the link, and recheck access (308.234484ms)
+  ✔ label validation applies in HTTP and core, and event failure rolls back the label (167.844099ms)
+✔ connection labels (1693.169099ms)
+▶ sketch access
+  ✔ a project sketch follows project access: members change it, viewers read it, outsiders get 404 (145.307189ms)
+  ✔ a private sketch is visible only to its author: never through the project, to admins or to agents (427.494044ms)
+  ✔ sketch reads retain the current agent grant and owner ceiling with and without policy locks (584.810184ms)
+  ✔ cross-workspace references are rejected (236.525062ms)
+  ✔ placements show only what the reader may open, and removing one never deletes the object (246.257228ms)
+  ✔ links are many-to-many, undirected and unique per pair (258.757112ms)
+  ✔ versioned changes: If-Match, concurrent moves conflict or merge (295.31307ms)
+  ✔ an idempotent retry replays the stored answer without a second change (175.7936ms)
+  ✔ hideEmpty leaves out sketches with no thought and the default title, and a list gives each thought count (#508) (186.295019ms)
+  ✔ input is validated (48.060978ms)
+✔ sketch access (2956.097478ms)
+ℹ tests 50
+ℹ suites 4
+ℹ pass 50
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 46978.664399
