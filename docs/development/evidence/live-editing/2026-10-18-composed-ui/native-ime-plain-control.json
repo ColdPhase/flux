@@ -1,0 +1,49 @@
+{
+  "kind": "native GTK input-method plain-textarea diagnostic; not Flux application acceptance",
+  "source_sha": "a9354cbe70b9aec97d9bb1b2a3e27f51d1d967a6",
+  "actual_engine": "webkit",
+  "actual_engine_version": "26.5",
+  "actual_composition_start_count": 2,
+  "composition_ends": [
+    {
+      "data": "",
+      "trusted": true
+    },
+    {
+      "data": "\u65e5",
+      "trusted": true
+    },
+    {
+      "data": "",
+      "trusted": true
+    },
+    {
+      "data": "\u672c",
+      "trusted": true
+    }
+  ],
+  "trusted_committed_input": [
+    "\u65e5",
+    "\u672c"
+  ],
+  "value": "\u65e5\u672c",
+  "all_composition_events_trusted": true,
+  "raw_log": "/home/hubert/flux-evidence/228-native-ime-probe-a9354cbe.log",
+  "raw_log_sha256": "957f6b104cdf16c65388f6bd153731f8b34f9a35c9c4a61f2aeda9a14fa1b26a",
+  "probe_script_sha256": "ba5dc247a82a2676c61e230a8797493a1b448955899f0ce897338a177e738b51",
+  "images_before_cleanup": [
+    {
+      "id": "sha256:e8c15235632a19fe568bbede969e3303e680f640a30e20e93c8cc163ab29468f",
+      "tags": [
+        "flux-ui-ime:a9354cbe"
+      ]
+    },
+    {
+      "id": "sha256:5d93948b77ecc0606b21fbd65264e90631a7b8ccd849a520e3102d18baa7b800",
+      "tags": [
+        "flux-build-ime:078690b2"
+      ]
+    }
+  ],
+  "captured_utc": "2026-10-18T10:56:02.948209+00:00"
+}
