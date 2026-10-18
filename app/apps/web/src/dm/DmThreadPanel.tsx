@@ -10,6 +10,9 @@ import '../app/one-conversation.css';
 import { DmBubble } from './DmBubble';
 import { groupRows } from './rows';
 import { ownRuns, useObservation, useReceipts } from '../app/receipts';
+import { pageBackTo } from '../app/seekMessage';
+import { useMessageReadingPosition } from '../work/readingPosition';
+import { useLeftPlace, useReturnPlace } from './returnPlace';
 
 function merge(current: DmMessage[], incoming: DmMessage[]) {
   const byId = new Map(current.map((message) => [message.id, message]));
@@ -33,9 +36,13 @@ export function DmThreadPanel({ dmId, rootId, meId, meName, nameOf, audience, wr
   const [thread, setThread] = useState<DmThread | null>(null);
   const [replies, setReplies] = useState<DmMessage[]>([]);
   const [people, setPeople] = useState<Map<string, DmPerson>>(new Map());
-  const [older, setOlder] = useState<number | null>(null);
+  // The cursor to earlier replies: undefined until the thread is first read, null once every earlier reply is loaded.
+  const [older, setOlder] = useState<number | null | undefined>(undefined);
   const [olderBusy, setOlderBusy] = useState(false);
-  const feed = useRef<HTMLDivElement>(null);
+  const feed = useRef<HTMLDivElement | null>(null);
+  // The feed element as state too, so the reading-position owner starts once it is on screen.
+  const [feedNode, setFeedNode] = useState<HTMLDivElement | null>(null);
+  const attachFeed = useCallback((element: HTMLDivElement | null) => { feed.current = element; setFeedNode(element); }, []);
   const field = useRef<HTMLTextAreaElement>(null);
   const loading = useRef(false);
   const composer = useComposerDraft(meId, 'dm', `dm:${dmId}/${rootId}`);
@@ -53,7 +60,7 @@ export function DmThreadPanel({ dmId, rootId, meId, meName, nameOf, audience, wr
       const next = await getDmThread(dmId, rootId);
       setThread(next); learn(next.people);
       setReplies((current) => merge(current, next.replies));
-      setOlder((current) => (current === null ? next.messagePage.nextBeforeSequence : current));
+      setOlder((current) => (current === undefined ? next.messagePage.nextBeforeSequence : current));
       onCount(rootId, next.root.replyCount);
     } catch (cause) { onDenied(cause); }
     finally { loading.current = false; }
@@ -63,7 +70,39 @@ export function DmThreadPanel({ dmId, rootId, meId, meName, nameOf, audience, wr
   useEffect(() => { void load(); }, [load, refreshTick]);
 
   const opening = thread === null;
-  useLayoutEffect(() => { const el = feed.current; if (el) el.scrollTop = el.scrollHeight; }, [opening, shown.length]);
+  // Coming back (#592): the reply that was in view returns to where it was, read back to when it is older than the newest
+  // replies. Reopening a thread, or uncovering it, finds the place it had under this entry; a reload opens it at the latest.
+  const slot = `dm-thread:${rootId}`;
+  const wanted = useLeftPlace(slot, { here: true });
+  const seekPlace = useCallback(async (elementId: string) => {
+    const target = /^thread-message-(.+)$/.exec(elementId)?.[1];
+    if (!target || !older) return false;
+    const { pages, cursor, found } = await pageBackTo(target, older, async (before) => {
+      const page = await olderDmReplies(dmId, rootId, before);
+      return { messages: page.replies, messagePage: page.messagePage, people: page.people };
+    });
+    for (const page of pages) learn(page.people);
+    setReplies((current) => pages.reduce((all, page) => merge(all, page.messages), current));
+    setOlder(cursor);
+    return found;
+  }, [dmId, rootId, older, learn]);
+  const rootElementId = thread ? `thread-message-${thread.root.id}` : null;
+  const returned = useReturnPlace({ wanted, loaded: !opening, have: (id) => id === rootElementId || shown.some((message) => `thread-message-${message.id}` === id), hasOlder: !!older, seek: seekPlace });
+  useMessageReadingPosition(feed, returned.pending ? null : feedNode, !returned.pending && !opening, '', returned.restore, slot);
+  // A reader at the end follows the replies that arrive there; one who has scrolled up to read is never pulled down.
+  const stick = useRef(true);
+  useEffect(() => {
+    if (!feedNode) return;
+    const note = () => { stick.current = feedNode.scrollHeight - feedNode.scrollTop - feedNode.clientHeight < 48; };
+    feedNode.addEventListener('scroll', note, { passive: true });
+    return () => feedNode.removeEventListener('scroll', note);
+  }, [feedNode]);
+  useLayoutEffect(() => {
+    // A return positions itself, once its reply is loaded.
+    if (returned.pending || returned.restore) return;
+    const el = feed.current;
+    if (el && (opening || stick.current)) el.scrollTop = el.scrollHeight;
+  }, [opening, shown.length, returned.pending, returned.restore]);
   useEffect(() => { if (!opening && focusComposer) field.current?.focus({ preventScroll: true }); }, [opening, focusComposer]);
   useLayoutEffect(() => {
     const el = field.current;
@@ -75,11 +114,15 @@ export function DmThreadPanel({ dmId, rootId, meId, meName, nameOf, audience, wr
   async function loadOlder() {
     if (!older || olderBusy) return;
     setOlderBusy(true);
+    // Earlier replies join above what is being read, which stays where it is.
+    const el = feed.current;
+    const before = el ? el.scrollHeight - el.scrollTop : 0;
     try {
       const page = await olderDmReplies(dmId, rootId, older);
       learn(page.people);
       setReplies((current) => merge(current, page.replies));
       setOlder(page.messagePage.nextBeforeSequence);
+      requestAnimationFrame(() => { if (el) el.scrollTop = el.scrollHeight - before; });
     } catch (cause) { onDenied(cause); }
     finally { setOlderBusy(false); }
   }
@@ -102,9 +145,9 @@ export function DmThreadPanel({ dmId, rootId, meId, meName, nameOf, audience, wr
   const lines = [...shown.map((message) => ({ message, authorId: message.authorId, at: message.createdAt })),
     ...outbox.pending.map((item) => ({ message: null, item, authorId: meId, at: item.at }))];
   const rows = groupRows(lines);
-  const runs = ownRuns(shown.map((m) => ({ id: m.id, authorId: m.authorId, createdAt: m.createdAt })).concat(outbox.pending.map((item) => ({ id: null as unknown as string, authorId: meId, createdAt: item.at }))), meId, older !== null);
+  const runs = ownRuns(shown.map((m) => ({ id: m.id, authorId: m.authorId, createdAt: m.createdAt })).concat(outbox.pending.map((item) => ({ id: null as unknown as string, authorId: meId, createdAt: item.at }))), meId, !!older);
   const seen = useReceipts({ scope: `${dmId}/${rootId}`, fetchReceipts: (list, signal) => dmReceipts(dmId, list, signal), runs, tick: receiptTick });
-  useObservation({ scope: dmId, observe: (list) => observeDmMessages(dmId, list), enabled: canObserve && !!root, feed,
+  useObservation({ scope: dmId, observe: (list) => observeDmMessages(dmId, list), enabled: canObserve && !!root && !returned.pending, feed,
     ids: (root ? [root, ...shown] : shown).filter((m) => m.authorId !== meId).map((m) => m.id), depend: shown.length });
   const count = root?.replyCount ?? shown.length;
 
@@ -112,7 +155,7 @@ export function DmThreadPanel({ dmId, rootId, meId, meName, nameOf, audience, wr
     <>
       <PanelMeta>{count} {count === 1 ? 'reply' : 'replies'}</PanelMeta>
       <div className="thread__pane dm-thread" data-dm-thread={rootId}>
-        <div className="thread__feed" ref={feed}>
+        <div className={`thread__feed${returned.pending ? ' is-returning' : ''}`} ref={attachFeed}>
           <div className="thread__in dm__in">
             {root ? (
               <ol className="dm__list dm-thread__root" aria-label="Message">

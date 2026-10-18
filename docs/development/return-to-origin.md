@@ -47,7 +47,11 @@ the [thread reading-position owner](thread-reading-position-2026-10-16.md), whic
    older than the newest window), the thread's `useMessageReadingPosition` (seeded with the kept anchor, so its own
    restoring puts the message back at the same offset even when new messages arrived), `useWorkReadingPosition` for
    the Tasks board and list, and one generic `.pane-scroll` tracker in the shell for Search, the Inbox, a wiki page and
-   the pages that read. An anchor that is gone (a deleted message) falls back to the screen's usual opening, never an
+   the pages that read. A direct message's feed and its private thread use the same `useMessageReadingPosition` (kept
+   under their own slots, `dm-stream` and `dm-thread:<root>`): the first message in view and its offset come back when
+   that message is loaded, read back through the older pages when it is older than the newest window (`useReturnPlace`;
+   the feed waits, unseen, meanwhile), also when messages arrived while the person was away; a reader who was at the
+   end opens at the latest as always, and a message that never loads is given up after 6 s for that opening. An anchor that is gone (a deleted message) falls back to the screen's usual opening, never an
    error. What the layout does after a reference was followed (a progress line pushing the feed down, a pointer-aimed
    message) is not where the reader was: the owner keeps the anchor it wrote as the reference was followed, until the
    reader's own input or 3 s.
@@ -79,10 +83,14 @@ the [thread reading-position owner](thread-reading-position-2026-10-16.md), whic
 ## Access (AC-3)
 
 The control is hidden when its origin is no longer accessible: a project that left the shell's list or answers 401,
-403 or 404 to one read, or a direct message that left the person's list. Back to such a place (the router answers 403 or
-404 inside a project) lands on its nearest parent the person can open (the project's conversation, else the project
-list) with one line in a toast, never an error page. This applies only to a return inside the running app; opening such
-an address directly or reloading it keeps the ordinary "isn’t available" page.
+403 or 404 to one read, a material that answers 401, 403 or 404 to one read (a material's address has no project, so
+the read is of the material), or a direct message that left the person's list. Back to such a place lands on its
+nearest parent the person can open, with one line in a toast, never an error page: inside a project the router
+answers 403 or 404 and the person lands on the project's conversation, else the project list; a material (its project
+can no longer be read) lands on the project list; a direct message (`/dm/<id>`, which answers 404 inside its page)
+lands on the list of conversations, `/dm`. This applies only to a return inside the running app (a pop after the first
+screen, or the control with no earlier entry); opening such an address directly or reloading it keeps the ordinary
+"isn’t available" page.
 
 ## Verification
 
@@ -91,7 +99,9 @@ mode reported as standalone): the five journeys of the issue (a conversation scr
 task chip → the panel's back; Tasks with a filter and an open panel → linked decision → the panel's back and a source
 page; search → result; Inbox → item), each asserting the route, the open panel or thread, the visible anchor message
 and the draft (or the filter, selection and query where a page has no composer), plus the control's place, history
-(one entry, Back one step, Forward again, reload keeps the target), and a revoked origin. Browser Back is driven
+(one entry, Back one step, Forward again, reload keeps the target), and a revoked origin (a project, a material whose
+grant was revoked, a direct message that was left), and a direct message's feed and thread that come back to an
+older message (read back through the older pages) with newer ones below. Browser Back is driven
 with `go_back`; Alt+← and the phone gesture are the same router POP and are not separately scripted.
 
 Not decided here and left as it was: restoring scroll inside every nested scroller (the Map canvas, the live editor),

@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useState, type MouseEvent } from 'react';
 import { Link, useLocation, useNavigate, type LinkProps, type NavigateOptions, type To } from 'react-router';
 import { ApiError } from '../api/client';
-import { getProject } from '../app/conversation-api';
+import { getMaterial, getProject } from '../app/conversation-api';
 import { useShellData } from '../app/data';
 import { Icon, useSidePanelMode } from '../ui';
 import { currentEntry, flushPlace, type ReturnState } from './memory';
@@ -92,38 +92,45 @@ export function RefLink({ to, replace, state, onClick, ...rest }: LinkProps) {
   return <Link {...rest} to={to} replace={replace} state={state} onClick={click} />;
 }
 
-/** Whether the project an entry's origin belongs to is gone for this person, read once per entry. */
+/** Whether the place an entry's origin belongs to (its project, or its material) is gone for this person, read once per entry. */
 const checks = new Map<string, Promise<boolean>>();
 const projectOf = (path: string) => /^\/projects\/([0-9a-f-]{36})(\/|$|\?|#)/i.exec(path)?.[1];
+const materialOf = (path: string) => /^\/materials\/([0-9a-f-]{36})(\/|$|\?|#)/i.exec(path)?.[1];
 const dmOf = (path: string) => /^\/dm\/([0-9a-f-]{36})(\/|$|\?|#)/i.exec(path)?.[1];
 
 /**
  * The origin of the screen on show, when it still leads somewhere the person can open: not this same page, not a
- * project they lost access to (shell list, then one read), not a direct message that left their list.
+ * project they lost access to (shell list, then one read), not a material they can no longer read (one read), not a
+ * direct message that left their list.
  */
 export function useRouteOrigin(): Origin | null {
   const location = useLocation();
   const { projects, directMessages } = useShellData();
   const origin = originOf(location.state);
   const project = origin ? projectOf(origin.path) : undefined;
+  const material = origin ? materialOf(origin.path) : undefined;
   const dm = origin ? dmOf(origin.path) : undefined;
+  // The one read that tells whether the place is still open to this person: a project, or a material (which has no project in its address).
+  const subject = project ? `project:${project}` : material ? `material:${material}` : null;
   const [lost, setLost] = useState<string | null>(null);
   useEffect(() => {
-    if (!project) return;
+    if (!subject) return;
     let current = true;
-    // One read per entry and project, however many places ask (the header and a panel's back).
-    const key = `${location.key}:${project}`;
+    // One read per entry and place, however many places ask (the header and a panel's back).
+    const key = `${location.key}:${subject}`;
     let read = checks.get(key);
     if (!read) {
-      read = getProject(project).then(() => false, (cause: unknown) => cause instanceof ApiError && [401, 403, 404].includes(cause.status));
+      const open = project ? getProject(project) : getMaterial(material!);
+      read = open.then(() => false, (cause: unknown) => cause instanceof ApiError && [401, 403, 404].includes(cause.status));
       checks.set(key, read);
       for (const old of [...checks.keys()].slice(0, Math.max(0, checks.size - 20))) checks.delete(old);
     }
-    void read.then((gone) => { if (current && gone) setLost(project); });
+    void read.then((gone) => { if (current && gone) setLost(subject); });
     return () => { current = false; };
-  }, [project, location.key]);
+  }, [subject, project, material, location.key]);
   if (!origin || withoutHash(origin.path) === `${location.pathname}${location.search}`) return null;
-  if (project && (lost === project || !projects.some((item) => item.id === project))) return null;
+  if (subject && lost === subject) return null;
+  if (project && !projects.some((item) => item.id === project)) return null;
   if (dm && !directMessages.some((item) => item.id === dm)) return null;
   return origin;
 }

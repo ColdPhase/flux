@@ -9,6 +9,7 @@ The origin is only in the browser's history entry, never on the server, so there
 """
 from __future__ import annotations
 
+import json
 import re
 import time
 import unittest
@@ -138,6 +139,37 @@ class ReturnToOrigin(unittest.TestCase):
         for index in range(1, 8):
             cls.start("ada", f"{name} note {index:02}: probes, wires and rain.\n" + lines(3, "Detail"), project=project)
         return {"id": project, "grant": grant}
+
+    @classmethod
+    def make_dm(cls, tag, count, replies=0):
+        """A direct message between Ada and a new colleague (`tag`) with `count` roots and `replies` replies under the first; returns its id and the ids."""
+        ada = cls.contexts["ada"]
+        context = cls.browsers["chromium"].new_context(service_workers="block", base_url=ORIGIN)
+        email = f"{tag}.origin+{STAMP}@example.test"
+        api(context, "POST", "/api/auth/sign-up/email", {"name": f"Kai {tag}", "email": email, "password": PASSWORD})
+        cls.users[tag] = {"id": api(context, "GET", "/api/v1/me")["user"]["id"], "email": email, "name": f"Kai {tag}"}
+        cls.contexts[tag], cls.states[tag] = context, context.storage_state()
+        api(ada, "POST", f"/api/v1/workspaces/{cls.workspace}/members", {"email": email, "role": "member"}, 201)
+        response = ada.request.fetch(f"{ORIGIN}/api/v1/workspaces/{cls.workspace}/dms", method="POST", headers={"origin": ORIGIN, "content-type": "application/json"},
+                                     data=json.dumps({"participantIds": [cls.users[tag]["id"]]}))
+        assert response.status in (200, 201), response.text()
+        dm = response.json()["id"]
+        ids = []
+        for index in range(1, count + 1):
+            who = ada if index % 2 else context
+            ids.append(api(who, "POST", f"/api/v1/dms/{dm}/messages", {"body": f"Note {index:02}: the shade, the base and the sensor.\n" + lines(2, "Detail"), "clientMessageId": str(uuid.uuid4())}, 201)["id"])
+        answers = [api(ada if index % 2 else context, "POST", f"/api/v1/dms/{dm}/threads/{ids[0]}/replies",
+                       {"body": f"Reply {index:02}: the range, the angle and the dark.\n" + lines(2, "Thought"), "clientMessageId": str(uuid.uuid4())}, 201)["id"] for index in range(1, replies + 1)]
+        return {"id": dm, "roots": ids, "replies": answers, "partner": tag}
+
+    def jump_to_search(self, page, query="shade"):
+        """⌘K, a query, "See all results": the Search page, opened as a reference from wherever the person was reading."""
+        page.evaluate("() => document.activeElement && document.activeElement.blur()")
+        page.keyboard.press("Control+k")
+        palette = page.get_by_role("dialog", name="Jump to")
+        palette.locator("input").fill(query)
+        palette.locator(".jump__all").click()
+        expect(page).to_have_url(f"{ORIGIN}/search?q={query}")
 
     # ---- harness ----
 
@@ -679,6 +711,115 @@ class ReturnToOrigin(unittest.TestCase):
                 self.assertEqual(page.evaluate("() => Object.keys(sessionStorage).filter((key) => key.startsWith('flux:place:'))"), [], "no place outlives the sign-out")
                 self.assertNotIn(secret, page.evaluate("() => JSON.stringify({ ...sessionStorage, ...localStorage })"))
                 self.assertEqual(errors, [])
+
+    # ---- the origin is a material or a direct message that closed meanwhile ----
+
+    def test_17_a_material_that_closed_has_no_control_and_back_lands_on_a_parent_with_a_note(self):
+        for engine in self.browsers:
+            with self.subTest(engine=engine):
+                room = self.make_project(f"Material room {engine}")
+                material = api(self.contexts["ada"], "POST", f"/api/v1/projects/{room['id']}/materials",
+                               {"title": f"Wiring notes {engine}", "body": "Which wire goes to which pin.", "clientMutationId": str(uuid.uuid4())}, 201)["materialId"]
+                page = self.page(engine, who="jonas")
+                page.goto(f"/materials/{material}")
+                expect(page.get_by_role("heading", name=f"Wiring notes {engine}")).to_be_visible()
+                self.jump_to_search(page)
+                expect(self.origin_back(page, "Wiki")).to_have_count(1)
+                # Ada takes Jonas's access away; he reloads the search and goes back.
+                response = self.contexts["ada"].request.delete(f"{ORIGIN}/api/v1/projects/{room['id']}/grants/{room['grant']}", headers={"origin": ORIGIN})
+                self.assertIn(response.status, (200, 204), response.text())
+                page.reload()
+                expect(page.get_by_role("searchbox")).to_be_visible()
+                expect(self.origin_back(page)).to_have_count(0)
+                page.go_back()
+                expect(page).to_have_url(f"{ORIGIN}/projects")
+                expect(page.get_by_text("That page is no longer available to you.")).to_be_visible()
+                expect(page.get_by_role("heading", name="This place isn’t available")).to_have_count(0)
+                expect(page.get_by_role("heading", name="Something went wrong")).to_have_count(0)
+
+    def test_18_a_direct_message_that_was_left_has_no_control_and_back_lands_on_the_list_with_a_note(self):
+        for engine in self.browsers:
+            with self.subTest(engine=engine):
+                dm = self.make_dm(f"leaver{engine}", 3)
+                page = self.page(engine, who=dm["partner"])
+                page.goto(f"/dm/{dm['id']}")
+                expect(page.locator(".dm__feed")).to_be_visible()
+                self.jump_to_search(page)
+                expect(self.origin_back(page, "Messages")).to_have_count(1)
+                # Jonas leaves the conversation (from another window); the search is reloaded, then Back.
+                left = self.contexts[dm["partner"]].request.post(f"{ORIGIN}/api/v1/dms/{dm['id']}/leave", headers={"origin": ORIGIN, "content-type": "application/json"}, data="{}")
+                self.assertEqual(left.status, 204, left.text())
+                page.reload()
+                expect(page.get_by_role("searchbox")).to_be_visible()
+                expect(self.origin_back(page)).to_have_count(0)
+                page.go_back()
+                expect(page).to_have_url(f"{ORIGIN}/dm")
+                expect(page.get_by_text("That conversation is no longer available to you.")).to_be_visible()
+                expect(page.get_by_role("heading", name="This conversation isn’t available")).to_have_count(0)
+
+    # ---- a direct message's feed and its thread keep the reader's place ----
+
+    def test_19_a_direct_message_comes_back_to_the_message_that_was_in_view(self):
+        for engine in self.browsers:
+            with self.subTest(engine=engine):
+                dm = self.make_dm(f"roots{engine}", 60)
+                page = self.page(engine)
+                page.goto(f"/dm/{dm['id']}")
+                feed, target = ".dm__feed", f"#message-{dm['roots'][7]}"
+                expect(page.locator(feed)).to_be_visible()
+                page.wait_for_timeout(1500)
+                # Message 8 is older than the newest 50: the reader reads back to it, and puts it 48 px below the top.
+                page.get_by_role("button", name="Show earlier messages").click()
+                expect(page.locator(target)).to_have_count(1)
+                self.read_at(page, feed, target, 48)
+                page.locator("#dm-composer").fill("Draft: ask Jonas about the shade")
+                before = self.offset(page, feed, target)
+                self.assertGreater(page.evaluate(AWAY, feed), 1000, "the reader is far from the end")
+                # Something arrives while the person is away.
+                api(self.contexts[dm["partner"]], "POST", f"/api/v1/dms/{dm['id']}/messages", {"body": f"While you were away ({engine}).", "clientMessageId": str(uuid.uuid4())}, 201)
+                self.jump_to_search(page)
+                self.origin_back(page, "Messages").click()
+                expect(page).to_have_url(f"{ORIGIN}/dm/{dm['id']}")
+                expect(page.locator(target)).to_have_count(1)
+                page.wait_for_timeout(1500)
+                expect(page.locator("#dm-composer")).to_have_value("Draft: ask Jonas about the shade")
+                self.assert_same(before, self.offset(page, feed, target), "the message stays where it was, with the newer ones below", tolerance=2)
+                self.assertGreater(page.evaluate(AWAY, feed), 1000, "no jump to the bottom")
+                # The browser's Back finds the same place.
+                page.go_forward()
+                expect(page).to_have_url(re.compile(r"/search"))
+                page.go_back()
+                expect(page).to_have_url(f"{ORIGIN}/dm/{dm['id']}")
+                expect(page.locator(target)).to_have_count(1)
+                page.wait_for_timeout(1500)
+                self.assert_same(before, self.offset(page, feed, target), "and by the browser's Back", tolerance=2)
+
+    def test_20_a_direct_message_thread_comes_back_to_the_reply_that_was_in_view(self):
+        for engine in self.browsers:
+            with self.subTest(engine=engine):
+                dm = self.make_dm(f"thread{engine}", 3, replies=60)
+                page = self.page(engine)
+                page.goto(f"/dm/{dm['id']}?thread={dm['roots'][0]}")
+                feed, target = ".thread__feed", f"#thread-message-{dm['replies'][7]}"
+                expect(page.locator("[data-dm-thread]")).to_be_visible()
+                expect(page.locator(feed)).to_be_visible()
+                page.wait_for_timeout(1500)
+                page.get_by_role("button", name="Show earlier replies").click()
+                expect(page.locator(target)).to_have_count(1)
+                self.read_at(page, feed, target, 48)
+                page.locator("#dm-thread-composer").fill("Draft reply: the range first")
+                before = self.offset(page, feed, target)
+                self.assertGreater(page.evaluate(AWAY, feed), 1000, "the reader is far from the end")
+                api(self.contexts[dm["partner"]], "POST", f"/api/v1/dms/{dm['id']}/threads/{dm['roots'][0]}/replies", {"body": f"While you were away ({engine}).", "clientMessageId": str(uuid.uuid4())}, 201)
+                self.jump_to_search(page)
+                self.origin_back(page, "Messages").click()
+                expect(page).to_have_url(f"{ORIGIN}/dm/{dm['id']}?thread={dm['roots'][0]}")
+                expect(page.locator("[data-dm-thread]")).to_be_visible()
+                expect(page.locator(target)).to_have_count(1)
+                page.wait_for_timeout(1500)
+                expect(page.locator("#dm-thread-composer")).to_have_value("Draft reply: the range first")
+                self.assert_same(before, self.offset(page, feed, target), "the reply stays where it was, with the newer ones below", tolerance=2)
+                self.assertGreater(page.evaluate(AWAY, feed), 1000, "no jump to the bottom")
 
     # ---- the tablet and the phone, in the installed display mode ----
 

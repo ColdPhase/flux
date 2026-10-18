@@ -146,6 +146,13 @@ export function useArrival(): Entry | null {
   return arrival;
 }
 
+/** Whether this screen opened by returning to an entry (a pop after the first screen, or the origin control with no earlier entry). */
+export function useReturning(): boolean {
+  const location = useLocation();
+  const type = useNavigationType();
+  return arrivalEntry(location, type) !== null;
+}
+
 /**
  * `useState` for a small piece of a screen's state that a return should find as it was left: the filter an
  * Inbox shows, the groups a search opened. It is kept under the entry's key as it changes.
