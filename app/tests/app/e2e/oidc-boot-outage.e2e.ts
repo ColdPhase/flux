@@ -11,6 +11,7 @@ test('real Keycloak boot outage recovers on the same signed authorization page',
   const { pool } = createDatabase(process.env.DATABASE_URL!);
   const proxy = startFluxProxy(); await proxy.listen();
   const browser = await chromium.launch({ headless: true, args: ['--no-sandbox'] });
+  let createdUserId: string | undefined;
   try {
     const clientId = `outage-${randomUUID()}`; const redirect = 'http://127.0.0.1:19847/callback';
     await pool.query(`INSERT INTO oauth_client (id, client_id, name, redirect_uris, token_endpoint_auth_method, grant_types, response_types, scopes, require_pkce)
@@ -43,6 +44,15 @@ test('real Keycloak boot outage recovers on the same signed authorization page',
     await page.locator('#kc-login').click();
     await page.waitForURL(`${origin}/connect-agent?**`, { timeout: 30_000 });
     assert.ok(new URL(page.url()).searchParams.get('sig'), 'the recovered provider round trip preserves continuation');
-    assert.equal((await page.request.get(`${origin}/api/v1/me`)).status(), 200, 'the genuine provider callback signed the person in');
-  } finally { await browser.close(); await proxy.close(); await pool.end(); }
+    const me = await page.request.get(`${origin}/api/v1/me`);
+    assert.equal(me.status(), 200, 'the genuine provider callback signed the person in');
+    createdUserId = (await me.json() as { user: { id: string } }).user.id;
+  } finally {
+    await browser.close(); await proxy.close();
+    // This is the first browser on the fresh disposable database. Keep the following migration
+    // suite's original empty-provider-account precondition: remove only the account this verified
+    // callback created, after all outage/recovery assertions, never manufacture a sign-in state.
+    if (createdUserId) await pool.query('DELETE FROM auth_users WHERE id = $1', [createdUserId]);
+    await pool.end();
+  }
 });
