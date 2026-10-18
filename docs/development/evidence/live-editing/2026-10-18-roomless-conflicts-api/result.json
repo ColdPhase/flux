@@ -1,0 +1,43 @@
+{
+  "source_sha": "aade67efde45b8156fe933c2124ab5a2a96d580a",
+  "contract_root_sha": "03703152c1f2ecd785fc3d798e4aceee89de54fd",
+  "build": "PASS",
+  "typecheck": "PASS",
+  "lint": "PASS (0 errors,9 existing warnings)",
+  "api": {
+    "files": 9,
+    "tests": 50,
+    "pass": 50,
+    "fail": 0,
+    "cancelled": 0,
+    "skipped": 0,
+    "todo": 0,
+    "duration_ms": 46978.664399,
+    "exit_code": 0
+  },
+  "two_api": {
+    "tests": 1,
+    "pass": 1,
+    "fail": 0,
+    "cancelled": 0,
+    "skipped": 0,
+    "todo": 0,
+    "duration_ms": 2715.012533,
+    "exit_code": 0
+  },
+  "raw_artifacts": {
+    "/home/hubert/flux-evidence/228-roomless-conflicts-aade67ef-api/check_application.log": {
+      "bytes": 45063,
+      "sha256": "5e5972bfd64659cabfdfb7497d72be247a0f7587a3121a8e7fded539bd1923fc"
+    },
+    "/home/hubert/flux-evidence/228-roomless-conflicts-aade67ef-api/owned-runtime-containers.json": {
+      "bytes": 4440,
+      "sha256": "c6c71711a85ff9960619300771e7091d68f3791eaa3dfda9a9bb59fce7a4cec1"
+    },
+    "/home/hubert/flux-evidence/228-roomless-conflicts-aade67ef-two-api/two-api.log": {
+      "bytes": 11259,
+      "sha256": "138ffe014425a45c76238cf577828f624d211a16ce401f713a05980b251f1a2f"
+    }
+  },
+  "remaining": "Current integrated UI/latency and all original whole-issue gates plus independent final acceptance remain with root; no speedup or wiki timing gain claimed."
+}
