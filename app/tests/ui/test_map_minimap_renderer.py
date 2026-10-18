@@ -7,6 +7,7 @@ import uuid
 
 from playwright.async_api import expect
 from test_live_editing import LiveFixture
+from minimap_png import compare_pngs
 
 REFERENCE = Path(__file__).with_name('minimap_reference.js').read_text()
 
@@ -44,6 +45,7 @@ class MinimapRenderer(LiveFixture):
         # Original reference and actual geometry are then screenshot through the same render path.
         raster_page = await page.context.new_page()
         images = {}
+        raw_images = {}
         try:
             wrappers = ''.join(f'<div id="{kind}" style="position:absolute;left:{i*200}px;top:0">{svg}</div>'
                                for i,(kind,svg) in enumerate(markup.items()))
@@ -51,12 +53,11 @@ class MinimapRenderer(LiveFixture):
                 f'.sk-minimap__drawing rect{{fill:{color};opacity:.6}}</style>{wrappers}')
             for kind in markup:
                 raw = await raster_page.locator(f'#{kind} svg').screenshot(omit_background=True)
+                raw_images[kind] = raw
                 images[kind] = 'data:image/png;base64,' + base64.b64encode(raw).decode()
-            await raster_page.evaluate(REFERENCE)
             results = {}
             for key, reference in (('raster','reference'),('squareControl','square'),('minimumControl','minimum')):
-                results[key] = await raster_page.evaluate('args => window.minimapComparePNGs(args)',
-                    {'actual':images['actual'],'reference':images[reference]})
+                results[key] = compare_pngs(raw_images['actual'], raw_images[reference])
             self.raster_images = images
             return results
         finally:
