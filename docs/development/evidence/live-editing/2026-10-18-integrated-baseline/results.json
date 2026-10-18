@@ -1,0 +1,37 @@
+{
+  "source": "1b49737901f475a9b810a1660ba0e4bc6dac3ecc",
+  "kind": "author integrated baseline; historical, before production promotion",
+  "complete_issue_acceptance": false,
+  "runtime_inventory": "not captured before cleanup; no actual-runtime binding claimed",
+  "engines": {
+    "chromium": {
+      "command": "FLUX_UI_BROWSER=chromium FLUX_LIVE_EDITING_PORT=18685 FLUX_LIVE_EDITING_MAILPIT_PORT=18686 FLUX_LIVE_EDITING_SHOTS=/home/hubert/flux-evidence/228-integrated-1b497379-chromium-shots ./scripts/check_live_editing.sh test_live_editing test_live_map_projection test_live_map_selection test_live_map_cursors test_live_map_lease_expiry",
+      "exit_code": 0,
+      "methods": 31,
+      "passed": 31,
+      "errors": [],
+      "failures": [],
+      "skips": 0,
+      "seconds": 130.088,
+      "actual_engine_markers": 30,
+      "raw_log_path": "/home/hubert/flux-evidence/228-integrated-1b497379-chromium.log",
+      "raw_log_sha256": "2113cc56daca237667c509d012fcf6fcbc1a43371bd5aa7cdbbf1e806408f8b6"
+    },
+    "webkit": {
+      "command": "FLUX_UI_BROWSER=webkit FLUX_LIVE_EDITING_PORT=18685 FLUX_LIVE_EDITING_MAILPIT_PORT=18686 FLUX_LIVE_EDITING_SHOTS=/home/hubert/flux-evidence/228-integrated-1b497379-webkit-shots ./scripts/check_live_editing.sh test_live_editing test_live_map_projection test_live_map_selection test_live_map_cursors test_live_map_lease_expiry",
+      "exit_code": 1,
+      "methods": 31,
+      "passed": 29,
+      "errors": [
+        "test_11_quota_and_concurrent_own_undo_keep_100k_body (test_live_editing.LiveEditingJourney.test_11_quota_and_concurrent_own_undo_keep_100k_body)",
+        "test_14_ime_composition_shares_the_committed_text_once (test_live_editing.LiveEditingJourney.test_14_ime_composition_shares_the_committed_text_once)"
+      ],
+      "failures": [],
+      "skips": 0,
+      "seconds": 156.761,
+      "actual_engine_markers": 30,
+      "raw_log_path": "/home/hubert/flux-evidence/228-integrated-1b497379-webkit.log",
+      "raw_log_sha256": "aaf8ae0882ab8c0d9486c0584d1992cbfb75d38bde8fa07991e51fe9c8e40135"
+    }
+  }
+}
