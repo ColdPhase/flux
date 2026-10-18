@@ -50,6 +50,18 @@ The [previous full run](../2026-10-18-composed-latency/README.md) remains FAIL
 7/9. This later 8/9 result is not a controlled code-only speedup comparison and
 does not establish a causal Wiki gain or fix the remaining map criterion.
 
+[First-coverage analysis](first-coverage-analysis.json) uses the existing ledger,
+without another run. Across all 240 map200 rows, input→first covering publication
+p50/p95 is 35.466/56.914 ms and input→first covering peer receipt is
+74.183/106.586 ms. First covering receipt→first render condition is
+34.260/48.530 ms. The later publication observed after the final recheck is often
+a replacement: first→final covering publication is 43.057/92.431 ms. Therefore
+the original 136.664 ms input→final-publication p95 is not all input-handling
+delay. These are driver-observed wire callbacks, not pure network times or
+physical presentation. Nothing is subtracted: the original all-row p95 remains
+213.167416 ms, FAIL. The compact report states the 234/240 denominator of its
+separate exact-publication receipt statistic and pins the full external analysis.
+
 [The actual collection](collector-result.json) is COMPLETE: 3,222 records /
 4,515,567 bytes. [The seal](queue-seal.json) binds the full unmodified
 [compressed raw stream](actual-queue.jsonl.gz), original finish marker and its
