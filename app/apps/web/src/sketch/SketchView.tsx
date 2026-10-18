@@ -341,7 +341,11 @@ function SketchEditor({ sketchId, projectId, dmId, back = '/map', doc }: ViewPro
     handledSource.current = location.key;
     if (sketch.scope !== 'project' || sketch.projectId !== source.projectId || source.projectId !== projectId
       || !/^[0-9a-f-]{36}$/i.test(source.messageId) || typeof source.body !== 'string') return;
-    if (capture.draft) { say('Finish or cancel your current thought draft before adding another source.'); return; }
+    if (capture.draft) {
+      rootRef.current?.querySelector<HTMLElement>('.sk-draft textarea, .sk-draft input')?.focus();
+      navigate(location.pathname, { replace: true, state: null });
+      return;
+    }
     const spot = spots(null, 1, { w: DEFAULT_THOUGHT_SIZE.width, h: DEFAULT_THOUGHT_SIZE.height })[0]!;
     capture.set({ id: doc.newId(), linkId: doc.newId(), key: doc.newId(), parentId: null,
       text: source.body.slice(0, SKETCH_LIMITS.text).trim(), x: spot.x, y: spot.y, tracked: true, sourceProjectMessageId: source.messageId });
