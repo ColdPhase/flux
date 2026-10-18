@@ -40,3 +40,22 @@ No new CPU profile or unchanged full-nine rerun. This is author diagnosis, not
 an independent review round. Do not ship the instrumentation or claim a speedup
 from its perturbed result. The outcome must be one supported next change or an
 explicitly unresolved cause, preserving every acceptance criterion.
+
+## Failed diagnostic setup and bounded correction
+
+The first actual attempt at private `fb8764caaab7c23d3875064f1eb826438fd5ce7d`
+completed all 240 timing rows (p95 217.435 ms, no sample/input/socket errors), but
+collected **no transaction-stage records**. Its Compose flag was placed on the
+test service rather than the API; actual inspected API environment confirms the
+missing flag. Build/type/lint success and clean shutdown do not replace this
+missing observation. The selected collector remains correctly INCOMPLETE. Raw
+evidence is retained at
+`/home/hubert/flux-evidence/228-mapstage-fb8764ca-latency`; no product diagnosis or
+speedup follows, and the canonical 7/9 failure is unchanged.
+
+One corrected attempt may move only that private flag to the API and assert its
+actual inspected environment equals `1` **before starting measured work**,
+aborting otherwise. Keep the existing instrumentation, exact selected driver,
+application/SQL semantics and all limits. Do not repeat build/type/lint for this
+Compose-only correction; preserve the original preflight result and its source.
+Retain both attempts separately. No further runtime retry follows automatically.
