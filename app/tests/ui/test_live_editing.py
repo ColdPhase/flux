@@ -1021,6 +1021,52 @@ class LiveEditingJourney(LiveFixture):
         finally:
             await ada.mouse.up()
 
+        # Stable input callbacks must use the new native dimensions/version, not their
+        # pre-preview thought. Check persisted real keyboard and pointer resize paths.
+        await peer.click()
+        await peer.press('Alt+ArrowDown')
+        await expect(peer).to_have_attribute('data-thought-version', str(changed['version'] + 1))
+        await self.map_saved(kai)
+        graph = await self.api(kai, 'GET', f'/api/v1/sketches/{self.map_id}')
+        keyboard = next(item for item in graph['thoughts'] if item['id'] == first['id'])
+        self.assertEqual((keyboard['width'], keyboard['height']), (changed['width'], changed['height'] + 12))
+        self.assertEqual((keyboard['text'], keyboard['x'], keyboard['y']),
+                         (changed['text'], changed['x'], changed['y']))
+
+        bounds = await peer.bounding_box()
+        zoom = bounds['width'] / keyboard['width']
+        handle = await peer.locator('.sk-resize').bounding_box()
+        self.assertIsNotNone(handle)
+        try:
+            await kai.mouse.move(handle['x'] + handle['width'] / 2, handle['y'] + handle['height'] / 2)
+            await kai.mouse.down()
+            await kai.mouse.move(handle['x'] + handle['width'] / 2 + 48 * zoom,
+                                 handle['y'] + handle['height'] / 2 + 24 * zoom, steps=4)
+        finally:
+            await kai.mouse.up()
+        await expect(peer).to_have_attribute('data-thought-version', str(keyboard['version'] + 1))
+        await self.map_saved(kai)
+        graph = await self.api(kai, 'GET', f'/api/v1/sketches/{self.map_id}')
+        pointer = next(item for item in graph['thoughts'] if item['id'] == first['id'])
+        self.assertEqual((pointer['width'], pointer['height']), (keyboard['width'] + 48, keyboard['height'] + 24))
+        self.assertEqual((pointer['text'], pointer['x'], pointer['y']),
+                         (changed['text'], changed['x'], changed['y']))
+        await expect(node).to_have_attribute('data-thought-version', str(pointer['version']))
+
+        await peer.press('Enter')
+        editor = kai.get_by_label('Thought text', exact=True)
+        await expect(editor).to_be_focused()
+        await expect(editor).to_have_value(pointer['text'])
+        await editor.fill('Unsaved text after fresh native resize')
+        await editor.press('Escape')
+        await expect(editor).to_have_count(0)
+        await expect(peer.locator('.sk-t')).to_have_text(pointer['text'])
+        graph = await self.api(kai, 'GET', f'/api/v1/sketches/{self.map_id}')
+        cancelled = next(item for item in graph['thoughts'] if item['id'] == first['id'])
+        self.assertEqual(cancelled, pointer, 'Escape after Enter keeps the exact current native thought/version')
+        print('CURRENT_NODE_INPUT_CONTROL', {'native': changed, 'keyboard': keyboard,
+              'pointer': pointer, 'cancelled_version': cancelled['version']}, flush=True)
+
     async def test_20_map_input_identity_matches_locator_and_refuses_invalid_canvas(self):
         ada, kai = self.pages['ada'], self.pages['kai']
         legacy = "el => ({gestureId:el.dataset.liveOwnGesture,generation:el.dataset.liveGeneration,sequence:Number(el.dataset.liveOwnSequence),visibility:document.visibilityState})"
