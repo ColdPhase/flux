@@ -29,3 +29,26 @@ these affected journeys and required build/type/lint checks in Docker; no new
 profile or unchanged full-nine-cohort run. Root owns the next focused timing
 measurement and eventual integrated acceptance. This is author work, not an
 independent review round, partial delivery or production promotion.
+
+## Observed resize correction agreed before code
+
+The real four-step pointer control at author `81e351fe` FAILS: native keyboard
+width 224 / height 244 and actual pre-pointer height 244 pass, but total pointer
+dy 24 persists height 280 rather than 268 (width 272 is correct). The renderer
+reads its changing ResizeObserver height on every move and adds the total gesture
+delta again. That expression also exists before the callback change at `7cbdd7fd`.
+The earlier `d3a581d2` failure cannot be classified solely as an intrinsic-height
+fixture error; both actual failures must be retained without that attribution.
+
+Within this same #228 PR, capture the measured/native minimum resize height once
+at pointer-down and use that fixed baseline plus total dy for every preview.
+Preserve width calculation, native versions, bounds, permissions, cancellation,
+commit/Undo, both live and explicit-off paths, and every other gesture. Keep the
+exact fresh-dimension test19 assertion; do not loosen it. Reuse test19 plus the
+existing 50/200 selection and private-cancel/own-Undo controls in WebKit; rerun
+test19 alone in Chromium. Extend the existing explicit-off map/Undo journey with
+the same real multistep persisted resize and run only its three-method fixture
+in both engines, preserving the already passing ordinary Docs results. All
+application tooling stays in isolated serial Docker stacks. The coordinator
+accepts this bounded product correction before its implementation; it does not
+waive the 200 ms timing gate or count as independent evaluation.
