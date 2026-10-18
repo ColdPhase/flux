@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { liveMapUndoPath, type LiveMapDelta, type LiveMapPosition, type SketchDetail, type Thought, type UndoLiveMap, type UndoneLiveMap } from '@flux/contracts';
 import { ApiError, NetworkError, request } from '../api/client';
 import { SharedMap } from '../editing/map';
+import { MapPresenceStore, type MapPresenceSource } from '../editing/map-presence';
 import * as api from '../api/sketches';
 import { useStreamEvents } from '../api/stream';
 import { applyLocal, createLivePreviewProjection, type Me, type NewThought, type Op } from './projection.js';
@@ -50,7 +51,7 @@ export function useLiveSketchDoc(sketchId: string, me: Me) {
   const [saving, setSaving] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const [undoLabel, setUndoLabel] = useState<string | null>(null);
-  const [liveState, setLiveState] = useState<{ status: SharedMap['status']; canWrite: boolean; problem: string | null; ownGesture: SharedMap['ownGesture']; previews: SharedMap['previews']; peers: SharedMap['peers']; privateMovement: SharedMap['privateMovement'] }>({ status: 'connecting', canWrite: false, problem: null, ownGesture: null, previews: new Map(), peers: new Map(), privateMovement: null });
+  const [liveState, setLiveState] = useState<{ status: SharedMap['status']; canWrite: boolean; problem: string | null; ownGesture: SharedMap['ownGesture']; previews: SharedMap['previews']; privateMovement: SharedMap['privateMovement'] }>({ status: 'connecting', canWrite: false, problem: null, ownGesture: null, previews: new Map(), privateMovement: null });
   const confirmed = useRef<SketchDetail | null>(null);
   const ref = useRef<SketchDetail | null>(null);
   const pending = useRef(new Map<string, Intent>());
@@ -60,6 +61,8 @@ export function useLiveSketchDoc(sketchId: string, me: Me) {
   const inFlight = useRef(0);
   const meRef = useRef(me);
   const live = useRef<SharedMap | null>(null);
+  // SketchRoute keys this editor by account and map; presence never outlives that instance.
+  const [presenceStore] = useState(() => new MapPresenceStore());
   const ownCommands = useRef(new Set<string>());
   const receipts = useRef(new Map<string, LiveMapDelta>());
   const tombstones = useRef(new Map<string, number>());
@@ -69,7 +72,7 @@ export function useLiveSketchDoc(sketchId: string, me: Me) {
   useEffect(() => { meRef.current = me; });
   const publish = useCallback(() => {
     const client = live.current;
-    if (client) setLiveState({ status: client.status, canWrite: client.status === 'unavailable' || client.status === 'live' && !!client.head?.canWrite, problem: client.problem, ownGesture: client.ownGesture, previews: new Map(client.previews), peers: new Map(client.peers), privateMovement: client.privateMovement });
+    if (client) setLiveState({ status: client.status, canWrite: client.status === 'unavailable' || client.status === 'live' && !!client.head?.canWrite, problem: client.problem, ownGesture: client.ownGesture, previews: new Map(client.previews), privateMovement: client.privateMovement });
     let next = confirmed.current;
     if (!next) { if (live.current?.status === 'private') setLoad('not-found'); else if (live.current?.problem) setLoad('failed'); return; }
     // Native geometry stays separate from replaceable live positions.
@@ -123,7 +126,7 @@ export function useLiveSketchDoc(sketchId: string, me: Me) {
   useEffect(() => {
     scope.current = { active: true, number: scope.current.number + 1 };
     const controller = new AbortController();
-    const client = new SharedMap(sketchId, me.id, adopt, delta, publish);
+    const client = new SharedMap(sketchId, me.id, adopt, delta, publish, presenceStore);
     live.current = client;
     // Capability-off preserves the ordinary native API; capability-on bootstrap is atomic.
     const fallback = window.setInterval(() => {
@@ -135,7 +138,7 @@ export function useLiveSketchDoc(sketchId: string, me: Me) {
       try { if (pending.current.size) sessionStorage.setItem(`flux:map-pending:${me.id}:${sketchId}`, JSON.stringify([...pending.current.values()].map((intent) => ({ op: intent.op, commandId: intent.id, scope: sketchId })))); } catch { /* Original private drafts also retain their text. */ }
       controller.abort(); window.clearInterval(fallback); client.destroy(); live.current = null;
     };
-  }, [sketchId, me.id, adopt, delta, publish, reload]);
+  }, [sketchId, me.id, adopt, delta, publish, reload, presenceStore]);
   useStreamEvents(me.id, (event) => {
     if (live.current?.status === 'unavailable' && event.objectType === 'sketch' && event.objectId === sketchId) void reload();
   }, () => { if (live.current?.status === 'unavailable') void reload(); });
@@ -404,7 +407,7 @@ export function useLiveSketchDoc(sketchId: string, me: Me) {
     return live.current?.begin(ids.flatMap((id) => { const thought = current.thoughts.find((thought) => thought.id === id); return thought ? [thought] : []; })) ?? false;
   };
   return { sketch, confirmedThoughts, load, saving, problem: problem ?? liveState.problem, clearProblem: () => setProblem(null), canUndo: undoLabel !== null && !saving, perform, saveThoughts, saveText, saveLinkLabel, undo, reload, newId: uuid,
-    liveStatus: liveState.status, liveCanWrite: liveState.canWrite, ownGesture: liveState.ownGesture, previews: liveState.previews, peers: liveState.peers, privateMovement: liveState.privateMovement, discardPrivateMovement: () => live.current?.discardPrivateMovement(),
+    liveStatus: liveState.status, liveCanWrite: liveState.canWrite, ownGesture: liveState.ownGesture, previews: liveState.previews, presenceStore: presenceStore as MapPresenceSource | null, privateMovement: liveState.privateMovement, discardPrivateMovement: () => live.current?.discardPrivateMovement(),
     beginGesture, previewGesture: (positions: LiveMapPosition[]) => live.current?.preview(positions), cancelGesture: () => live.current?.cancel(true),
     finishGesture: () => live.current?.status === 'unavailable' ? undefined : live.current?.finish(),
     presence: (ids: string[]) => live.current?.selection(ids),

@@ -822,7 +822,7 @@ function SketchEditor({ sketchId, projectId, dmId, back = '/map', doc }: ViewPro
               ? { x: shownDraft.x, y: shownDraft.y, parentId: shownDraft.parentId, label: shownDraft.attempt ? 'Save not confirmed' : shownDraft.unknown ? 'Saved state unknown' : 'Draft · not saved' }
               : null} onMove={move} onResize={resize} onClear={() => { if (connectFrom) return; setSelection([]); say(''); }}
             onGestureStart={doc.beginGesture} onGesturePreview={doc.previewGesture} onGestureCancel={doc.cancelGesture} ownGesture={doc.ownGesture} liveEnabled={doc.liveStatus !== 'unavailable'}
-            peers={doc.peers} onPointer={doc.pointer}
+            presenceStore={doc.presenceStore} onPointer={doc.pointer}
             movers={new Map([...doc.previews?.values() ?? []].flatMap((preview) => preview.positions.map((position) => [position.id, preview.actor.name] as [string, string])))}
             livePreviews={new Map([...doc.previews?.values() ?? []].flatMap((preview) => preview.positions.map((position) => [position.id, preview] as [string, typeof preview])))} />
           {!sketch.thoughts.length ? <p className="sk-first">{phone
