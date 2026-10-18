@@ -385,3 +385,47 @@ Only fixed state/issuer/redirect/client/config markers on native error lines are
 added, never raw native messages. Ordinary authorization URLs are excluded from
 that classifier. These are observed markers, not diagnoses. No production helper
 configuration is changed. The control awaits its explicit granted execution.
+
+### Granted single default-callback control result, 2026-10-18
+
+The single credential-free/model-free inline control ran at clean/pushed fixture
+source `87493f7a920559ea302c2d8abcd0c283b05a23f5`. It omitted explicit inline
+`oauth.callback_url` and retained equivalent freshly seeded client registration,
+bound URL, global callback port and file credential mode. The original d401
+fixture database/homes had been removed, so its random client identifier was
+not reused or recovered from global configuration. No production helper changed.
+
+Focused diagnostic/privacy/mode/regex/native-marker regression passed **4/4**.
+Pinned/checksummed Codex0.160.1 then reported configuration
+`inline_bound_default_callback`: protected-resource and authorization-server
+discovery HTTP200 (twice each), authorization302, phases only
+`native_login_started`, `authorization_received`, `native_login_finished`.
+There was no `sign_in_ready`, callback-target/response or token-request
+observation; `callbackCompleted=false`, `nativeExitCode=1`,
+`observedCodes=[]`, `observedNativeErrorMarkers=[]`. The fixture lasted30.6s,
+whole run terminal1. No raw browser error, URL/query or native message was
+printed to infer an unobserved error code.
+
+Dropping explicit callback URL alone did not produce a successful login and
+changed the observed stopping point. This is not proof that callback URL,
+inline configuration generally or storage is the production cause. The d401
+mixed contrast remains intact: persisted-bound succeeds, inline with explicit
+callback URL reaches consent and fails later. No additional whole lane/retry,
+Claude, provider credential mount/symlink or model invocation occurred.
+
+App/helper production stayed at frozen `26ef05d9`; the compiled helper digest
+and harness digest remain the d401 receipts above. Updated mounted source
+receipts were:
+
+- Workflow fixture: `65d0b2a4f001a6898c0cdafe0531a843f7491fab362541dc7bac5ff2986633d9`.
+- Diagnostic helper: `205e612f3a9b8c5162eb6c4c1be8326f1dac6ef66a5af21366d7404fb9832950`.
+
+Owned project `flux160-oauth-default-1792347951-2562544` was removed, and exact
+container/network/volume/image-tag metadata checks returned empty; shared slot
+explicitly released. Safe local receipt: `/tmp/flux160-oauth-default.log`.
+Smallest next action is pinned-source or fixture-only configuration-shape
+inspection of what native `mcp add` actually stores for callback routing, before
+any further granted affected login. Stored field values were not retained in
+these cleaned fixtures, and current vendor docs alone do not establish pinned
+behavior. No production configuration is guessed. #616 stays Draft and all
+whole #152/#160 criteria remain required.
