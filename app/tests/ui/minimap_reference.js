@@ -1,6 +1,7 @@
 // TEST ONLY: preserve the previous SVG marks as an independent browser raster reference.
 // Geometry comes from the rendered plane/camera, not the new canvas drawing's arguments.
-window.minimapReference = async function () {
+globalThis.minimapReference = async function () {
+  const { window, document, requestAnimationFrame, DOMMatrix, getComputedStyle, Image, btoa, devicePixelRatio } = globalThis;
   await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
   const canvas = document.querySelector('.sk-minimap__drawing');
   const view = document.querySelector('.sk-canvas');
