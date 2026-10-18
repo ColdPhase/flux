@@ -346,7 +346,7 @@ export function ProjectTasks() {
     next.delete('new');
     setSearch(next, { replace: true, state: location.state });
     openCreate({ kind: 'task', projectId: project.id });
-  }, [search, writable, setSearch, openCreate, project.id]);
+  }, [search, writable, setSearch, openCreate, project.id, location.state]);
 
   useEffect(() => {
     const refresh = () => { if (document.visibilityState === 'visible') revalidator.revalidate(); };
