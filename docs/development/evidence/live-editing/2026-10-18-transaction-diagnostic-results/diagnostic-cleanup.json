@@ -1,0 +1,24 @@
+{
+  "time": "2026-10-18T13:44:53.137646+00:00",
+  "project": "flux-live-editing-1792330917-1588374",
+  "containers": [],
+  "networks": [],
+  "volumes": [],
+  "images": [],
+  "running": [
+    "qwen38-llama-router",
+    "flux-201d1a6e-api-1",
+    "flux-201d1a6e-worker-1",
+    "flux-201d1a6e-runtime-egress-1",
+    "flux-201d1a6e-runtime-manager-1",
+    "flux-201d1a6e-runtime-3-1",
+    "flux-201d1a6e-runtime-2-1",
+    "flux-201d1a6e-runtime-1-1",
+    "flux-201d1a6e-runtime-4-1",
+    "flux-201d1a6e-db-1"
+  ],
+  "ports": {
+    "18685": "free",
+    "18686": "free"
+  }
+}
