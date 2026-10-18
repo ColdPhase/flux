@@ -49,6 +49,10 @@ def main() -> int:
     assert subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip() == candidate
     assert not subprocess.check_output(["git", "diff", "HEAD", "--", "app", "docker", "flux", "scripts/identity-closeout"], cwd=ROOT)
     out = args.evidence.resolve(); out.mkdir(parents=True, mode=0o700, exist_ok=False)
+    paths = subprocess.check_output(["git", "ls-files", "-z", "app", "docker", "flux", "scripts/backup-fixture.mjs", "scripts/identity-closeout"], cwd=ROOT).decode().split("\0")
+    (out / "source.json").write_text(json.dumps({"candidate": candidate, "base": BASE,
+        "command": ["python3", "scripts/identity-closeout/bridge.py", "--candidate", candidate, "--evidence", str(out), "--port", str(args.port)],
+        "files": {path: digest(ROOT / path) for path in paths if path and (ROOT / path).is_file()}}, indent=2) + "\n")
     private = out / "private"; private.mkdir(mode=0o700)
     state = private / "state"; state.mkdir(mode=0o700)
     checkout = private / "checkout"
