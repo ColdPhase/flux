@@ -429,3 +429,40 @@ any further granted affected login. Stored field values were not retained in
 these cleaned fixtures, and current vendor docs alone do not establish pinned
 behavior. No production configuration is guessed. #616 stays Draft and all
 whole #152/#160 criteria remain required.
+
+### Granted pinned local config-writer micro-observation
+
+One bounded Codex0.160.1 config-writer invocation ran without a stack/build,
+browser, provider credentials or model. A fresh empty HOME existed only in a
+container tmpfs; the child environment contained no API keys. Docker networking
+was disabled and loopback port9 was confirmed closed before the synthetic
+command. The command used synthetic URL `http://127.0.0.1:9/mcp`, client
+`fixed-fixture-client` and global callback port19831. Native writer exit0,
+no timeout, configuration file created; whole actual container invocation was
+under1s (8s child timeout). No OAuth login/consent flow was executed.
+
+Allowlisted generated fields:
+
+| Config key | Permitted synthetic value / observation |
+| --- | --- |
+| `mcp_servers.flux.url` | `http://127.0.0.1:9/mcp` |
+| `mcp_servers.flux.oauth.client_id` | `fixed-fixture-client` |
+| `mcp_servers.flux.oauth.callback_url` | Key name only; generated value not emitted or retained |
+
+No other fields were written; in particular, no callback-port field was
+persisted. This confirms pinned0.160.1 uses the nested `oauth.client_id` schema
+already used by the inline fixture and that native add generates callback URL
+configuration itself. It rules out the proposed older/flat client-ID field
+hypothesis. It does **not** establish equivalence of generated callback URL value
+to the inline value, listener semantics or a production fix.
+
+Actual version: `codex-cli 0.160.1`; actual binary SHA-256:
+`f34a4d2301892ae96c90097786bfe5dc269f187b6f69faf42a7b357b8c081e35`.
+Pre-existing native test image:
+`sha256:c4761d89c1f4d026eb5114bcd0f0e3e6700ba934e9d54a9fe39a11fb4c0053ae`.
+No host0.163 CLI or user configuration/history was used. The named container
+`flux160-config-writer-micro` was removed; exact metadata check returned empty,
+and its unmounted tmpfs HOME disappeared with it. The pre-existing image was
+preserved. Safe local receipt: `/tmp/flux160-native-config-writer.log`.
+All full OAuth attempts remain stopped after the granted874 control. Further
+work is static; no additional provider/model or login retry was performed.
