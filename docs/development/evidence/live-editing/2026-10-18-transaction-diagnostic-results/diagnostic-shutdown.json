@@ -1,0 +1,12 @@
+{
+  "containerId": "b3e9b5537aaecea261a54532b095dfa89782c866f1dfbec2d013712b5f738f9b",
+  "imageId": "sha256:8104dfb86841b6030304d7bbd487058828c59b576532f104b7bf96048a43c213",
+  "state": {
+    "Status": "exited",
+    "Running": false,
+    "ExitCode": 0,
+    "OOMKilled": false,
+    "Error": "",
+    "FinishedAt": "2026-10-18T13:44:36.994863379Z"
+  }
+}
