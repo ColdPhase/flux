@@ -135,6 +135,12 @@ class OperatorComposeTest(unittest.TestCase):
             if kind == ":-" and default:
                 self.assertEqual(self.env[name], default, f"{name} default differs")
 
+    def test_documented_sso_migration_mode_reaches_both_api_deployments(self) -> None:
+        for path in (COMPOSE, ROOT / "docker" / "compose.source.yaml"):
+            api = "\n".join(services(path.read_text(encoding="utf-8"))["api"])
+            self.assertIn("      FLUX_SSO_MODE: ${FLUX_SSO_MODE:-sso}", api, str(path))
+        self.assertEqual(self.env["FLUX_SSO_MODE"], "sso")
+
     def test_required_values_are_marked_and_empty_secrets_fail_closed(self) -> None:
         lines = ENV_EXAMPLE.read_text(encoding="utf-8").splitlines()
         required = {m.group(1) for m in REFERENCE.finditer(self.body) if m.group(2) == ":?"}
