@@ -70,7 +70,7 @@ function Body({ scope, projects, linked, item, onClose, onSaved }: { scope: Sche
   return <form className="asched" onSubmit={(submit) => { submit.preventDefault(); setBusy(true); setError('');
     void save(scope, item?.id ?? null, { projectId: project, event, action, dailyLimit: limit, enabled: true, ...(item ? { expectedVersion: item.version } : {}), ...(note ? { noteVersion: note.version } : {}) })
       .then(onSaved, (cause) => setError(failure(cause))).finally(() => setBusy(false)); }}>
-    <header className="asched__head ui-panel__head"><h2 className="asched__title">When something happens</h2><IconButton icon="close" label="Close" onClick={onClose} /></header>
+    <header className="asched__head ui-panel__head"><h2 className="asched__title">When something happens</h2><IconButton icon="x" label="Close" onClick={onClose} /></header>
     <div className="asched__body">
     <label className="asched__field">In<select className="asched__select" aria-label="Project" value={project} onChange={(change) => { setProject(change.target.value); if (event === 'pr_ready' && !linked.includes(change.target.value)) { setEvent('blocked'); setAction('tell'); } }}>{projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select></label>
     <label className="asched__field">When<select className="asched__select" aria-label="When" value={event} onChange={(change) => { setEvent(change.target.value as AssistantReactionEvent); setAction('tell'); }}>{ASSISTANT_REACTION_EVENTS.filter((entry) => entry.id !== 'pr_ready' || linked.includes(project)).map((entry) => <option key={entry.id} value={entry.id}>{entry.label}</option>)}</select></label>
