@@ -4,6 +4,7 @@ import { chmod, lstat, readFile, rename, unlink, writeFile } from 'node:fs/promi
 import { createReadStream } from 'node:fs';
 import { createInterface } from 'node:readline';
 import { pathToFileURL } from 'node:url';
+import { join } from 'node:path';
 import { COWORK_PLAYBOOK, isUuid } from '@flux/core';
 
 export interface CoworkHostBinding {
@@ -35,7 +36,9 @@ export function coworkHostInstructions(binding: CoworkHostBinding, action: 'star
       client: binding.client, ...(binding.threadId ? { nativeThreadId: binding.threadId } : {}) })].join('\n\n');
 }
 
-const state = '/cowork-state/binding.json';
+// The override exists for isolated shell verification; the launcher mounts only /cowork-state.
+const stateDir = process.env.FLUX_COWORK_STATE_DIR ?? '/cowork-state';
+const state = join(stateDir, 'binding.json');
 async function readBinding(): Promise<CoworkHostBinding | null> {
   const info = await lstat(state).catch(() => null);
   if (!info) return null;
@@ -93,12 +96,12 @@ async function main() {
   }
   if (command === 'record') {
     try {
-      const result = await coworkNativeOutcome('/cowork-state/events.jsonl', binding, Number(args[0]));
+      const result = await coworkNativeOutcome(join(stateDir, 'events.jsonl'), binding, Number(args[0]));
       await saveBinding(result.binding);
       if (result.final) console.log(result.final.replace(/[\x00-\x08\x0b-\x1f\x7f]/g, ''));
       console.log(`Flux host action ${result.binding.outcome}; ${result.tools} native MCP calls. Resume uses this action's exact saved thread.`);
       if (result.binding.outcome === 'failed') process.exitCode = 1;
-    } finally { await unlink('/cowork-state/events.jsonl').catch(() => undefined); }
+    } finally { await unlink(join(stateDir, 'events.jsonl')).catch(() => undefined); }
     return;
   }
   throw Error('Unknown Flux host helper action.');

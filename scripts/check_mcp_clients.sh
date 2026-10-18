@@ -75,7 +75,7 @@ $compose up -d db migrate
 $compose --profile setup run --rm files-init
 if [ "${FLUX_TEST_MCP_LIVE_WORKFLOW:-0}" = 1 ]; then
   $compose run --rm -e FLUX_TEST_MCP_LIVE_WORKFLOW=1 -e FLUX_TEST_MCP_LIVE_CLIENT="${FLUX_TEST_MCP_LIVE_CLIENT:-}" mcp-clients sh -c \
-    'node apps/runtime/dist/install/main.js && codex --version && claude --version && sha256sum tests/app/e2e/mcp-live-workflow.e2e.ts && exec node_modules/.bin/tsx --test tests/app/e2e/mcp-live-workflow.e2e.ts'
+    'if [ "$FLUX_TEST_MCP_LIVE_CLIENT" != codex ]; then node apps/runtime/dist/install/main.js && claude --version || exit; fi; codex --version && sha256sum tests/app/e2e/mcp-live-workflow.e2e.ts && exec node_modules/.bin/tsx --test tests/app/e2e/mcp-live-workflow.e2e.ts'
   exit 0
 fi
 # The changed authenticated boundary is exercised through every maintained MCP domain/authority contract in both eras.
