@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
 import Fastify from 'fastify';
 import { and,eq } from 'drizzle-orm';
-import { liveMapRows,schema } from '@flux/db';
+import { createDatabase,liveMapRows,schema } from '@flux/db';
 import { requestHash } from '@flux/core';
 import type { LiveMapBootstrap,LiveMapDelta,Sketch,Thought } from '@flux/contracts';
 import { mapBackend } from '../../apps/server/src/editing/map-backend.js';
@@ -17,8 +17,8 @@ import { decodeMapChange } from '../../apps/server/src/editing/map-state.js';
 import { apiEditingOutputBudget } from '../../apps/server/src/editing/output.js';
 import { diskFileStorage } from '../../apps/server/src/files/storage.js';
 import type { SessionContext,SessionResolver } from '../../apps/server/src/identity/session.js';
-import { db,pool } from './support/db.js';
-import { addMember,expectStatus,grant,person,project,workspace } from './support/people.js';
+import { connectionString,db,pool } from './support/db.js';
+import { addMember,expectStatus,grant,person,project,secondSession,workspace } from './support/people.js';
 import { actionScene } from './support/mcp-actions.js';
 import { toolValue } from './support/mcp.js';
 const filesDir=process.env.FLUX_TEST_FILES_DIR??'/data/files';
@@ -200,28 +200,98 @@ test('private/DM rooms stay opaque, expired preview cannot revive, and final SQL
   } finally {await authority.close();assert.equal(apiEditingOutputBudget.bytes,0);}
 });
 
-test('withheld map handoff filters naturally expired producer sessions AND transient leases at the final SQL clock', {timeout:20000},async()=>{
-  for(const expiry of ['producer-session','transient-lease']) {
-    const f=await scene();const backend=mapBackend({pool});const authority=mapAuthority(backend,apiEditingOutputBudget);
+test('project delivery checks each producer session once, preserves first policy locks and forgets successes before a later grant downgrade', {timeout:20000},async()=>{
+  const f=await scene();const second=await secondSession(f.peer);
+  const producers=[f.peerSession,{...f.peerSession,sessionId:second.sessionId}];
+  assert.notEqual(producers[0]!.sessionId,producers[1]!.sessionId,'independent real sign-ins of the same person');
+  const database=createDatabase(connectionString);const sessionLocks=new Map<string,number>();let sketchLocks=0;
+  // Observe real PG queries without substituting results, policy decisions or transaction boundaries.
+  database.pool.on('connect',client=>{
+    const query=client.query;
+    client.query=function(...args:unknown[]) {
+      const statement=args[0];
+      const text=typeof statement==='string'?statement:statement&&typeof statement==='object'&&'text' in statement?statement.text:null;
+      const values=Array.isArray(args[1])?args[1]:statement&&typeof statement==='object'&&'values' in statement?statement.values:undefined;
+      if(typeof text==='string') {
+        if(text.includes('from "auth_sessions"')&&text.includes('for share')&&Array.isArray(values)) {
+          for(const producer of producers)if(values.includes(producer.sessionId))sessionLocks.set(producer.sessionId,(sessionLocks.get(producer.sessionId)??0)+1);
+        }
+        if(text.includes('from "sketches"')&&text.includes('for no key update'))sketchLocks++;
+      }
+      return Reflect.apply(query,client,args);
+    } as typeof client.query;
+  });
+  const backend=mapBackend(database);const authority=mapAuthority(backend,apiEditingOutputBudget);
+  try {
+    const head=await bootstrap(backend,f.ownerSession,f.sketch.id);const connections:string[]=[];
+    for(const [index,producer] of producers.entries()) {
+      const thought=f.ids[index]!;const connection=randomUUID();connections.push(connection);
+      const lease=await authority.acquire(producer,f.sketch.id,{gestureId:randomUUID(),thoughts:[{id:thought,expectedVersion:1}]});
+      await authority.move(producer,f.sketch.id,connection,{generation:head.generation,gestureId:lease.gestureId,leaseId:lease.leaseId,sequence:1,positions:[{id:thought,x:index+10,y:index+20}]});
+      await authority.presence(producer,f.sketch.id,connection,{generation:head.generation,selected:[thought],cursor:{x:10,y:20}});
+    }
+    sessionLocks.clear();sketchLocks=0;
+    const visible:string[]=[];
+    await backend.deliver(who(f.ownerSession),f.sketch.id,head.generation,0,value=>{
+      visible.push(...value.transient.map(item=>`${item.type}:${item.connectionId}`));
+    });
+    assert.deepEqual(visible.sort(),connections.flatMap(connection=>[`map-move:${connection}`,`map-presence:${connection}`]).sort());
+    for(const producer of producers)assert.equal(sessionLocks.get(producer.sessionId),1,'each distinct session keeps its own first FOR SHARE fence');
+    assert.equal(sketchLocks,3,'recipient read plus one full locked write decision for each producer session');
+    await grant(f.owner,f.place.id,f.peer,'viewer');
+    sessionLocks.clear();sketchLocks=0;
+    const denied:unknown[][]=[];
+    await backend.deliver(who(f.ownerSession),f.sketch.id,head.generation,0,value=>denied.push(value.transient));
+    assert.deepEqual(denied,[[]],'a later transaction cannot reuse an earlier contributor decision');
+    for(const producer of producers)assert.equal(sessionLocks.get(producer.sessionId),2,'refusals are not memoized between gesture and presence');
+    assert.equal(sketchLocks,5,'recipient read and all four denied write decisions still acquire their first policy locks');
+    const stillAlive=await pool.query(`SELECT
+      (SELECT count(*)::int FROM map_live_gestures WHERE sketch_id=$1 AND expires_at>clock_timestamp())+
+      (SELECT count(*)::int FROM map_live_presence WHERE sketch_id=$1 AND expires_at>clock_timestamp()) AS n`,[f.sketch.id]);
+    assert.equal(stillAlive.rows[0].n,4,'the negative control is a real grant downgrade, not coincidental TTL expiry');
+  } finally {await authority.close();await database.pool.end();assert.equal(apiEditingOutputBudget.bytes,0);}
+});
+
+test('withheld map handoff filters expired producer sessions, transient leases and lapsed confirmation after positive checks', {timeout:20000},async()=>{
+  for(const expiry of ['producer-session','transient-lease','provider-confirmation'] as const) {
+    const f=await scene();
+    const confirmation=expiry==='provider-confirmation'?{providerId:'oidc-map-positive-check-fixture',confirmationMaxAgeMs:12*3_600_000}:undefined;
+    const producer=confirmation?{...f.ownerSession,sessionId:randomUUID()}:f.ownerSession;
+    if(confirmation) {
+      // Disposable SQL provider provenance, not a real OIDC sign-in: exercise the populated final producer fence.
+      await pool.query("INSERT INTO auth_sessions(id,user_id,token,expires_at) VALUES($1,$2,$3,clock_timestamp()+interval'1 day')",[producer.sessionId,f.owner.id,randomUUID()]);
+      await pool.query('INSERT INTO auth_session_identities(session_id,method) VALUES($1,$2)',[producer.sessionId,confirmation.providerId]);
+      await pool.query('INSERT INTO auth_accounts(id,user_id,account_id,provider_id,confirmed_at) VALUES($1,$2,$3,$4,clock_timestamp())',[randomUUID(),f.owner.id,randomUUID(),confirmation.providerId]);
+    }
+    const backend=mapBackend({pool},{confirmation});const authority=mapAuthority(backend,apiEditingOutputBudget);
     let release=()=>{};const barrier=new Promise<void>(resolve=>{release=resolve;});let entered=()=>{};const reached=new Promise<void>(resolve=>{entered=resolve;});
-    const delayed=mapBackend({pool},{beforeHandoff:async()=>{entered();await barrier;}});
+    const delayed=mapBackend({pool},{confirmation,beforeHandoff:async()=>{entered();await barrier;}});
     try {
       const head=await bootstrap(backend,f.ownerSession,f.sketch.id);const connection=randomUUID();
-      const lease=await authority.acquire(f.ownerSession,f.sketch.id,{gestureId:randomUUID(),thoughts:[{id:f.ids[0]!,expectedVersion:1}]});
-      await authority.move(f.ownerSession,f.sketch.id,connection,{generation:head.generation,gestureId:lease.gestureId,leaseId:lease.leaseId,sequence:1,positions:[{id:f.ids[0]!,x:123,y:456}]});
-      await authority.presence(f.ownerSession,f.sketch.id,connection,{generation:head.generation,selected:[f.ids[0]!],cursor:{x:10,y:20}});
+      const lease=await authority.acquire(producer,f.sketch.id,{gestureId:randomUUID(),thoughts:[{id:f.ids[0]!,expectedVersion:1}]});
+      await authority.move(producer,f.sketch.id,connection,{generation:head.generation,gestureId:lease.gestureId,leaseId:lease.leaseId,sequence:1,positions:[{id:f.ids[0]!,x:123,y:456}]});
+      await authority.presence(producer,f.sketch.id,connection,{generation:head.generation,selected:[f.ids[0]!],cursor:{x:10,y:20}});
       const positive:unknown[]=[];await backend.deliver(who(f.peerSession),f.sketch.id,head.generation,0,value=>positive.push(...value.transient));assert.equal(positive.length,2);
-      if(expiry==='producer-session')await pool.query("UPDATE auth_sessions SET expires_at=clock_timestamp()+interval'1 second' WHERE id=$1",[f.ownerSession.sessionId]);
-      else {
+      if(expiry==='producer-session')await pool.query("UPDATE auth_sessions SET expires_at=clock_timestamp()+interval'1 second' WHERE id=$1",[producer.sessionId]);
+      else if(expiry==='transient-lease') {
         await pool.query("UPDATE map_live_gestures SET expires_at=clock_timestamp()+interval'1 second' WHERE lease_id=$1",[lease.leaseId]);
         await pool.query("UPDATE map_live_presence SET expires_at=clock_timestamp()+interval'1 second' WHERE connection_id=$1",[connection]);
       }
       const delivered:unknown[][]=[];const pending=delayed.deliver(who(f.peerSession),f.sketch.id,head.generation,0,value=>delivered.push(value.transient));
       await Promise.race([reached,new Promise<never>((_,reject)=>setTimeout(()=>reject(new Error('Protected map fixture did not reach withheld handoff')),3000))]);
-      await pool.query('SELECT pg_sleep(1.1)');release();await pending;
+      if(confirmation)await pool.query("UPDATE auth_accounts SET confirmed_at=clock_timestamp()-interval'13 hours' WHERE user_id=$1 AND provider_id=$2",[f.owner.id,confirmation.providerId]);
+      else await pool.query('SELECT pg_sleep(1.1)');
+      release();await pending;
       assert.deepEqual(delivered,[[]],`${expiry} must not hand off an old producer actor/name/position after its final clock fence`);
       assert.equal((await bootstrap(backend,f.peerSession,f.sketch.id)).sequence,0);
-    } finally {release();await delayed.close();await authority.close();assert.equal(apiEditingOutputBudget.bytes,0);}
+    } finally {
+      release();await delayed.close();await authority.close();
+      if(confirmation) {
+        await pool.query('DELETE FROM auth_sessions WHERE id=$1',[producer.sessionId]);
+        await pool.query('DELETE FROM auth_accounts WHERE user_id=$1 AND provider_id=$2',[f.owner.id,confirmation.providerId]);
+      }
+      assert.equal(apiEditingOutputBudget.bytes,0);
+    }
   }
 });
 
