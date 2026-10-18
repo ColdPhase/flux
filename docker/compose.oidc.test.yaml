@@ -64,6 +64,7 @@ services:
       FLUX_OIDC_CLIENT_ID: flux
       FLUX_OIDC_ALLOW_HTTP_ISSUER: "true"
       FLUX_OIDC_LABEL: Keycloak
+      FLUX_OIDC_STANDING: ${FLUX_OIDC_TEST_STANDING:-refresh}
       # The confirmation-age check (F-024 S2, #312) is exercised against this value, not the 7d default.
       FLUX_OIDC_CONFIRMATION_MAX_AGE: 12h
       # A short interval, so the standing tests (S4, #311) see a check within seconds.

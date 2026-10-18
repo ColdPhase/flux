@@ -543,6 +543,10 @@ test('confirmation age (S2): within the age everything works, past it the browse
   let tokens = await redeem(callback, verifier, loopback, clientId);
   const confirmed = (await pool.query('SELECT confirmed_at > now() - interval \'5 minutes\' AS recent FROM auth_accounts WHERE user_id = $1 AND provider_id = $2', [state.userId, providerId])).rows;
   assert.deepEqual(confirmed, [{ recent: true }], 'the provider sign-in confirmed the identity');
+  if (process.env.FLUX_OIDC_EXPECT_STANDING_OFF === '1') {
+    assert.equal((await pool.query('SELECT 1 FROM auth_idp_standing WHERE user_id = $1', [state.userId])).rowCount, 0,
+      'standing is off: confirmation comes only from the real provider sign-in');
+  }
 
   // Within the configured 12h (not the 7d default): all three still work.
   await confirmedHoursAgo(11);

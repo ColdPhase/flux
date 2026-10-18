@@ -5,6 +5,7 @@ import { PERSONAL_RUN_CONSENT_VERSION, PERSONAL_RUNTIME_CONSENT_VERSION } from '
 import { idpStandingRepository, schema } from '@flux/db';
 import type { OidcConfig } from '../../apps/server/src/identity/config.js';
 import { createIdpStanding, openToken, sealKey, sealToken, signInAgainMessage } from '../../apps/server/src/identity/standing.js';
+import { createConfirmation } from '../../apps/server/src/identity/confirmation.js';
 import { db, insertedHuman, pool } from './support/db.js';
 
 // The standing check of a person's account at the identity provider (F-024 S4, #311), against the Compose
@@ -274,6 +275,50 @@ describe('the check', () => {
       assert.equal(unknown.confirmed_at.getTime(), before, 'the confirmation is unchanged');
       assert.ok(unknown.next_check_at.getTime() < Date.now() + 120_000, 'retried within minutes');
       assert.equal(await sessions(userId), 1);
+    }
+  });
+
+  test('a lost rotation response is unknown and the previous token succeeds on the next check', async () => {
+    const id = provider(); const userId = await person(id); const submitted: string[] = [];
+    const script = scriptedProvider([]); let first = true;
+    const service = createIdpStanding({ db, oidc: config(id), authSecret, log: { info() {}, warn() {}, error() {} },
+      fetcher: async (url, init) => {
+        if (!url.endsWith('/token')) return script.fetcher(url, init);
+        submitted.push(new URLSearchParams(init.body).get('refresh_token')!);
+        if (first) {
+          first = false;
+          // The mock issued a rotation, but its successful response body was lost on the wire.
+          return { ok: true, status: 200, json: async () => { throw new Error('lost response'); } };
+        }
+        return { ok: true, status: 200, json: async () => ({ access_token: 'at', refresh_token: 'received-rotation' }) };
+      } });
+    await service.recordSignIn(userId, 'previous-token'); await due(userId);
+    const before = (await row(userId)).confirmed_at.getTime();
+    assert.equal(await service.runOnce(), 1);
+    assert.equal((await row(userId)).last_outcome, 'unknown');
+    assert.equal((await row(userId)).confirmed_at.getTime(), before);
+    assert.equal(openToken(key, userId, id, (await row(userId)).refresh_token_enc), 'previous-token');
+    await due(userId); assert.equal(await service.runOnce(), 1);
+    assert.deepEqual(submitted, ['previous-token', 'previous-token']);
+    assert.equal((await row(userId)).last_outcome, 'success');
+    assert.equal(openToken(key, userId, id, (await row(userId)).refresh_token_enc), 'received-rotation');
+  });
+
+  test('503, timeout and invalid_client keep standing unknown while confirmation age still expires', async () => {
+    for (const failure of [{ status: 503 }, 'throw', { status: 401, body: { error: 'invalid_client' } }] satisfies Reply[]) {
+      const id = provider(); const userId = await person(id); const initial = new Date(); let clock = initial;
+      const oidc = { ...config(id), confirmationMaxAgeMs: 3_600_000 };
+      const script = scriptedProvider([failure]);
+      const service = createIdpStanding({ db, oidc, authSecret, now: () => clock, log: { info() {}, warn() {}, error() {} }, fetcher: script.fetcher as never });
+      const confirmation = createConfirmation(db, oidc, () => clock);
+      await service.recordSignIn(userId, 'kept-token'); await due(userId);
+      assert.equal(await service.runOnce(), 1);
+      assert.equal((await row(userId)).last_outcome, 'unknown');
+      assert.equal(await service.stands(userId), true);
+      assert.equal(await confirmation.lapsed(userId), false);
+      clock = new Date(initial.getTime() + oidc.confirmationMaxAgeMs + 1);
+      assert.equal(await confirmation.lapsed(userId), true, 'unknown never renews confirmation');
+      assert.equal((await row(userId)).state, 'ok', 'an outage is not a person suspension');
     }
   });
 

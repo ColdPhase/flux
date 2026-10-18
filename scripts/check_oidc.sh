@@ -80,10 +80,14 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 
 $compose build migrate e2e
-if [ "${FLUX_OIDC_CLOSEOUT:-0}" = "1" ]; then $compose --profile mcp-clients build mcp-clients; fi
+if [ "${FLUX_OIDC_CLOSEOUT:-0}" = "1" ]; then $compose --profile mcp-clients build test mcp-clients; fi
 $compose up -d db migrate
 $compose --profile setup run --rm files-init
 if [ "${FLUX_OIDC_CLOSEOUT:-0}" = "1" ]; then
+  $compose wait migrate
+  # Direct checker/SQL regressions need only this fresh database; finish them before the sole-provider
+  # API starts, so test-provider reconciliation cannot touch a real Keycloak session.
+  $compose run --rm --no-deps test node_modules/.bin/tsx --test tests/app/idp-standing.test.ts
   # Deliberately omit the IdP, including Compose's dependency startup, for the real boot-outage row.
   export FLUX_OIDC_TEST_SSO_MODE=sso
   $compose up -d --no-deps --wait api mailpit
@@ -167,6 +171,10 @@ if [ "${FLUX_OIDC_CLOSEOUT:-0}" = "1" ]; then
   $compose --profile mcp-clients run --rm -e FLUX_OIDC_PROVIDER_ID="$provider_id" \
     -e FLUX_OIDC_TEST_PASSWORD="$FLUX_OIDC_TEST_PASSWORD" mcp-clients sh -c \
     'node apps/runtime/dist/install/main.js && exec node_modules/.bin/tsx --test --test-concurrency=1 tests/app/e2e/oidc-clients.e2e.ts'
+  export FLUX_OIDC_TEST_STANDING=off
+  $compose up -d --wait api
+  $compose run --rm -e FLUX_OIDC_PROVIDER_ID="$provider_id" -e FLUX_OIDC_EXPECT_STANDING_OFF=1 e2e \
+    node_modules/.bin/tsx --test --test-concurrency=1 --test-name-pattern '^(setup:|confirmation age)' tests/app/e2e/oidc-mcp.e2e.ts
 fi
 
 echo 'Single sign-on check passed.'
