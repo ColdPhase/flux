@@ -251,7 +251,7 @@ export function useLiveSketchDoc(sketchId: string, me: Me) {
     }
     publish();
   }, [enqueue, publish]);
-  const undo = useCallback((): string | null => {
+  const undo = useCallback((onConfirmed?: (label: string) => void): string | null => {
     const entry = undoStack.current.at(-1); if (!entry || inFlight.current) { setProblem('Wait until your change is confirmed before undoing it.'); return null; }
     if (live.current?.status === 'live') {
       inFlight.current++; setSaving(true);
@@ -260,7 +260,13 @@ export function useLiveSketchDoc(sketchId: string, me: Me) {
       entry.undoAttempt = command;
       ownCommands.current.add(command.clientCommandId);
       while (ownCommands.current.size > 12_000) ownCommands.current.delete(ownCommands.current.values().next().value!);
-      const completed = () => { undoStack.current = undoStack.current.filter((item) => item !== entry); setUndoLabel(undoStack.current.at(-1)?.label ?? null); };
+      const completed = () => {
+        undoStack.current = undoStack.current.filter((item) => item !== entry);
+        setUndoLabel(undoStack.current.at(-1)?.label ?? null);
+        // This runs only after ordered delivery/current reconciliation, including
+        // a known applied receipt when the HTTP response was lost.
+        onConfirmed?.(entry.label);
+      };
       queue.current = queue.current.then(async () => {
         const result = await withRetry(() => {
           if (!scope.current.active || instance !== scope.current.number) throw new DOMException('The original map editor closed', 'AbortError');

@@ -357,6 +357,7 @@ class LiveEditingJourney(LiveFixture):
         self.assertEqual(refusal.status, 409)
         self.assertEqual((await refusal.json())['code'], 'EDITING_UNDO_CONFLICT')
         await expect(ada.locator(".sk-status .sk-warn")).to_be_visible()
+        await expect(ada.locator(".sk-status")).not_to_contain_text("Undid:")
         await expect(kai.locator(f'.sk-node[data-id="{id}"]')).to_have_attribute("data-thought-x", "64")
         self.assertEqual((await self.api(ada, "GET", f"/api/v1/sketches/{self.map_id}"))["thoughts"][0]["x"], 64)
 
