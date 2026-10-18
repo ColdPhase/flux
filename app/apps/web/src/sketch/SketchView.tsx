@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
-import { Link, Navigate, useLocation, useParams } from 'react-router';
+import { Link, Navigate, useLocation, useNavigate, useParams } from 'react-router';
 import { DEFAULT_THOUGHT_SIZE, imageTypeOf, SKETCH_LIMITS, THOUGHT_SHAPES, WORK_LIMITS, type SketchDetail } from '@flux/contracts';
 import { Button, EmptyState, Icon, MEDIA, Spinner, useMediaQuery } from '../ui';
 import { getProject } from '../api/sketches';
@@ -111,7 +111,10 @@ function LiveSketchView(props: ViewProps) {
  */
 function SketchEditor({ sketchId, projectId, dmId, back = '/map', doc }: ViewProps & { doc: LiveSketchDoc }) {
   const { me, directMessages } = useShellData();
-  const started = (useLocation().state as { started?: number } | null)?.started;
+  const location = useLocation();
+  const navigate = useNavigate();
+  const routeState = location.state as { started?: number; addThoughtFromMessage?: { messageId: string; projectId: string; body: string } } | null;
+  const started = routeState?.started;
   const { sketch } = doc;
   const personalOutline = useOutline(me.user.id, sketch);
   const capture = useThoughtDraft(me.user.id, sketchId, sketch);
@@ -123,10 +126,25 @@ function SketchEditor({ sketchId, projectId, dmId, back = '/map', doc }: ViewPro
   const coarse = useMediaQuery('(pointer: coarse)');
   const phone = useMediaQuery(MEDIA.phone);
   const [mode, setModeState] = useState<Mode>(storedMode);
+  const handledSource = useRef<string | null>(null);
+  useEffect(() => {
+    const source = routeState?.addThoughtFromMessage;
+    if (!source || !sketch || handledSource.current === location.key) return;
+    handledSource.current = location.key;
+    if (sketch.scope !== 'project' || sketch.projectId !== source.projectId || source.projectId !== projectId
+      || !/^[0-9a-f-]{36}$/i.test(source.messageId) || typeof source.body !== 'string') return;
+    if (capture.draft) { say('Finish or cancel your current thought draft before adding another source.'); return; }
+    const spot = spots(null, 1, { w: DEFAULT_THOUGHT_SIZE.width, h: DEFAULT_THOUGHT_SIZE.height })[0]!;
+    capture.set({ id: doc.newId(), linkId: doc.newId(), key: doc.newId(), parentId: null,
+      text: source.body.slice(0, SKETCH_LIMITS.text).trim(), x: spot.x, y: spot.y, tracked: true, sourceProjectMessageId: source.messageId });
+    say('Private thought draft from this message · Enter saves, Escape cancels');
+    navigate(location.pathname, { replace: true, state: null });
+  // This consumes one route-state command after the destination sketch loads.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.key, location.pathname, routeState?.addThoughtFromMessage, sketch, projectId]);
   const [connectionTarget, setConnectionTarget] = useState<ConnectionTarget | null>(null);
   const [connectionDraft, setConnectionDraft] = useState<string | null>(null);
   const closeConnections = () => { setConnectionTarget(null); setConnectionDraft(null); };
-  const location = useLocation();
   // A fragment shown in a live session (#62) opens with the presenter's thoughts selected.
   const liveSelect = (location.state as { liveSelect?: string[] | null } | null)?.liveSelect ?? null;
   const [selectionState, setSelection] = useState<string[]>(() => liveSelect ?? []);
@@ -475,7 +493,8 @@ function SketchEditor({ sketchId, projectId, dmId, back = '/map', doc }: ViewPro
     const items = draft.lines
       ? draft.lines.map((line) => ({ thought: line.attempt?.thought ?? { id: line.id, text: line.text.trim(), x: line.x, y: line.y }, parent: parent(line), key: line.attempt?.key ?? line.key }))
       : [{ thought: draft.attempt?.thought ?? { id: draft.id, text: draft.text.trim(), x: draft.x, y: draft.y,
-        ...(draft.file ? { file: draft.file, width: draft.width, height: draft.height } : {}) }, parent: parent(draft), key: draft.attempt?.key ?? draft.key }];
+        ...(draft.file ? { file: draft.file, width: draft.width, height: draft.height } : {}),
+        ...(draft.sourceProjectMessageId ? { sourceProjectMessageId: draft.sourceProjectMessageId } : {}) }, parent: parent(draft), key: draft.attempt?.key ?? draft.key }];
     const existingOnly = new Set((draft.lines ?? [draft]).filter((row) => row.unknown || (phone && row.attempt?.parentId)).map((row) => row.id));
     const expectedText = new Map((draft.lines ?? [draft]).flatMap((row) => row.attempt ? [[row.id, row.attempt.thought.text] as const] : []));
     const desiredText = new Map((draft.lines ?? [draft]).map((row) => [row.id, row.text.trim()]));

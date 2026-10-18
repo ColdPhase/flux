@@ -186,7 +186,8 @@ export function useSketchDoc(sketchId: string, me: Me) {
           id: op.thought.id, text: op.thought.text, x: op.thought.x, y: op.thought.y, width: op.thought.width, height: op.thought.height,
           shape: op.thought.shape, placement: op.thought.placement ? { type: op.thought.placement.type, id: op.thought.placement.id } : undefined,
           linkFrom: op.link ? { thoughtId: op.link.fromId, label: op.link.label, linkId: op.link.id } : undefined,
-          sourceMessageId: op.thought.source?.dmMessageId ?? undefined, fileId: op.thought.file?.id,
+          sourceMessageId: op.thought.source?.dmMessageId ?? undefined,
+          sourceProjectMessageId: op.thought.sourceProjectMessageId ?? op.thought.source?.projectMessageId ?? undefined, fileId: op.thought.file?.id,
         }, k));
         patchThought(created.thought);
         return;

@@ -105,7 +105,8 @@ export async function presentThoughts(ports: Pick<SketchPorts, 'access' | 'files
   return records.map((record) => ({
     id: record.id, sketchId: record.sketchId, text: record.text, x: record.x, y: record.y, width: record.width, height: record.height,
     shape: record.shape, placement: record.placement ? placements.get(record.placement.id)! : null,
-    source: record.source ? { author: { id: record.source.authorId, name: record.source.authorName }, sentAt: iso(record.source.sentAt), dmMessageId: record.source.messageId } : null,
+    source: record.source ? { author: { kind: record.source.authorKind, id: record.source.authorId, name: record.source.authorName },
+      sentAt: iso(record.source.sentAt), dmMessageId: record.source.messageId, projectMessageId: record.source.projectMessageId } : null,
     ...(files.has(record.id) ? { file: files.get(record.id)! } : {}),
     createdBy: record.createdBy,
     version: record.version, createdAt: iso(record.createdAt), updatedAt: iso(record.updatedAt),
@@ -245,7 +246,8 @@ export function createSketchUseCases(uow: SketchUnitOfWork) {
           const thought = await ports.sketches.insertThought({
             id: randomUUID(), workspaceId, sketchId: record.id, text: thoughtText(message.body), ...messageSpot(index),
             ...DEFAULT_THOUGHT_SIZE, shape: 'card', placement: null, createdBy: principal,
-            source: { authorId: message.authorId, authorName: message.authorName, sentAt: message.createdAt, dmId: message.dmId, messageId: message.id },
+            source: { authorId: message.authorId, authorKind: 'human', authorName: message.authorName, sentAt: message.createdAt,
+              dmId: message.dmId, messageId: message.id, projectMessageId: null },
           });
           thoughtIds.push(thought.id);
         }
@@ -328,6 +330,8 @@ export function createSketchUseCases(uow: SketchUnitOfWork) {
         linkId: valid.optionalId(command.linkFrom.linkId, 'linkFrom.linkId') ?? randomUUID(),
       };
       const sourceMessageId = valid.optionalId(command.sourceMessageId, 'sourceMessageId');
+      const sourceProjectMessageId = valid.optionalId(command.sourceProjectMessageId, 'sourceProjectMessageId');
+      if (sourceMessageId && sourceProjectMessageId) throw new InvalidInputError('Choose one message source');
       const fileId = valid.optionalId(command.fileId, 'fileId');
       return uow.run(async (ports) => {
         const { sketch } = await authorized(ports, principal, 'sketch.write', sketchId);
@@ -336,7 +340,13 @@ export function createSketchUseCases(uow: SketchUnitOfWork) {
           if (sketch.scope !== 'dm') throw new RuleViolationError('Only a thought in a DM sketch can quote a message of that DM', 'NOT_A_DM_SKETCH');
           const [message] = await ports.sketches.dmMessages(sketch.dmId!, [sourceMessageId]);
           if (!message) throw new NotFoundError('Message', 'MESSAGE_NOT_FOUND');
-          source = { authorId: message.authorId, authorName: message.authorName, sentAt: message.createdAt, dmId: message.dmId, messageId: message.id };
+          source = { authorId: message.authorId, authorKind: 'human', authorName: message.authorName, sentAt: message.createdAt, dmId: message.dmId, messageId: message.id, projectMessageId: null };
+        } else if (sourceProjectMessageId) {
+          if (sketch.scope !== 'project' || !sketch.projectId) throw new RuleViolationError('Only a thought on a project map can quote a project message', 'NOT_A_PROJECT_SKETCH');
+          const [message] = await ports.sketches.projectMessages(sketch.projectId, [sourceProjectMessageId]);
+          if (!message) throw new NotFoundError('Message', 'MESSAGE_NOT_FOUND');
+          source = { authorId: message.authorId, authorKind: message.authorKind, authorName: message.authorName, sentAt: message.createdAt,
+            dmId: null, messageId: null, projectMessageId: message.id };
         }
         if (placement) {
           const view = await ports.access.placement(principal, placement);

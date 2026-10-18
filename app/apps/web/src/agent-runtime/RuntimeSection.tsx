@@ -159,6 +159,14 @@ export function RuntimeSection({ otherWays }: { otherWays: ReactNode }) {
   const again = binding?.state === 'sign_in_again' || connection?.state === 'sign_in_again';
   const release = status.lastRelease;
   const lastReported = Boolean(busy || errorContext?.uncertain);
+  const clientState = (available: boolean, current: AgentRuntimeConnection | null | undefined, pending: string | undefined) =>
+    !available ? 'not offered' : pending ? pending === 'signing_in' ? 'signing in' : pending === 'signing_out' ? 'signing out' : 'checking sign-in'
+      : current?.state === 'signed_in' ? 'signed in' : current?.state === 'sign_in_again' ? 'sign in again' : 'not signed in';
+  const claudeState = clientState(claudeOn, status.connections.claude_code, status.auth?.claude_code);
+  const codexState = clientState(codexOn, codex, status.auth?.codex);
+  const heading = claudeOn && codexOn
+    ? `Claude Code and Codex in Flux · ${lastReported ? 'last reported: ' : ''}Claude Code ${claudeState} · Codex ${codexState}`
+    : `${cli} in Flux · ${lastReported ? 'last reported: ' : ''}${removing ? 'removing' : signedIn ? 'signed in' : again ? 'sign in again' : 'not signed in'}`;
   // Only current saved facts confirm sign-out; an action ACK or an older receipt cannot do so.
   const confirmedSignOut = binding?.state === 'active' && !binding.recovery && !busy && !error && !authPending
     && status.authCompletion?.disposition !== 'superseded' && connection?.state === 'signed_out'
@@ -167,7 +175,7 @@ export function RuntimeSection({ otherWays }: { otherWays: ReactNode }) {
 
   return (
     <section className="nset__sec rt" aria-labelledby="rt-h">
-      <h3 id="rt-h" className="aset__state"><span className={`aset__dot${signedIn ? ' is-ready' : ''}`} aria-hidden="true" />{cli} in Flux · {lastReported ? 'last reported: ' : ''}{removing ? 'removing' : signedIn ? 'signed in' : again ? 'sign in again' : 'not signed in'}</h3>
+      <h3 id="rt-h" className="aset__state"><span className={`aset__dot${signedIn || codexSignedIn ? ' is-ready' : ''}`} aria-hidden="true" />{heading}</h3>
       {confirmedSignOut ? <p className="nset__note" role="status"><b>Signed out of Claude Code in Flux.</b> <time dateTime={confirmedSignOut.at}>{dateTime(confirmedSignOut.at)}</time>.</p> : null}
       {connection?.signOut?.failed && !signedIn ? (
         <p className="nset__problem" role="note"><Icon name="alert" size={14} /><span><b>Anthropic didn’t confirm the sign-out.</b> Flux deleted the login from your Claude Code space anyway. To be sure it can’t be used, end the session in your Claude account or Anthropic Console settings.</span></p>

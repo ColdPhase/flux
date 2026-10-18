@@ -654,6 +654,38 @@ class AppShellJourney(unittest.TestCase):
         rail.get_by_role("link", name="Home").click()
         expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
 
+    def test_04aa_header_more_is_a_floating_bounded_menu(self) -> None:
+        for phone in (False, True):
+            with self.subTest(phone=phone):
+                page = self.page(phone=phone)
+                page.goto("/")
+                header = page.locator("header.top")
+                more = header.get_by_role("button", name="More", exact=True)
+                expect(more).to_be_visible()
+                before = header.bounding_box()
+                more.click()
+                menu = page.get_by_role("menu", name="More")
+                expect(menu).to_be_visible()
+                page.evaluate("document.fonts.ready.then(() => true)")
+                geometry = page.evaluate("""() => {
+                  const header = document.querySelector('header.top').getBoundingClientRect();
+                  const menu = document.querySelector('.top__more-menu').getBoundingClientRect();
+                  const rows = [...document.querySelectorAll('.top__more-menu [role^=menuitem]')].map(el => el.getBoundingClientRect());
+                  return {header: {top: header.top, bottom: header.bottom, height: header.height},
+                    menu: {left: menu.left, right: menu.right, top: menu.top, bottom: menu.bottom},
+                    rowHeights: rows.map(row => row.height), viewport: document.documentElement.clientWidth};
+                }""")
+                after = header.bounding_box()
+                self.assertAlmostEqual(before["height"], after["height"], delta=1, msg=f"header does not grow when More opens: {geometry}")
+                self.assertGreaterEqual(geometry["menu"]["left"], 0, geometry)
+                self.assertLessEqual(geometry["menu"]["right"], geometry["viewport"], geometry)
+                self.assertGreaterEqual(geometry["menu"]["top"], geometry["header"]["bottom"] - 1, geometry)
+                if phone:
+                    self.assertTrue(all(height >= 44 for height in geometry["rowHeights"]), geometry)
+                page.keyboard.press("Escape")
+                expect(menu).to_have_count(0)
+                expect(more).to_be_focused()
+
     def test_04b_unknown_route_page(self) -> None:
         """A fresh signed-in document renders the unknown-route state without coupling it to prior reads."""
         page = self.page()

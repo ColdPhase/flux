@@ -4,6 +4,7 @@ import { MessageContent } from '../composer/Files';
 import { OutboxStatus } from '../composer/Outbox';
 import type { PendingSend } from '../composer/draft';
 import { MessageDay, MessageTime, clock } from '../app/messageParts';
+import { MessageText } from '../app/MessageText';
 import { MessageActions, useTouchActions, type DmActionOptions } from '../work/messageActions';
 
 /** The part of this message the person selected with the pointer, if any: the starting excerpt of a task copy. */
@@ -55,7 +56,7 @@ export function DmBubble({ message, pending, mine, name, continued, groupLast, d
         {day ? <MessageDay as="p" label={day} /> : null}
         <div className="dm-msg__row">
           <div className="dm-msg__main is-mine">
-            <MessageContent body={<p className="dm-msg__body">{item.body}</p>} />
+            <MessageContent body={<div className="dm-msg__body"><MessageText body={item.body} /></div>} />
             <OutboxStatus item={item} onRetry={onRetry ?? (() => undefined)} onRemove={onRemove ?? (() => undefined)} />
           </div>
         </div>
@@ -78,7 +79,7 @@ export function DmBubble({ message, pending, mine, name, continued, groupLast, d
         <span className="dm-msg__face">{continued || mine ? null : <Avatar name={name} size="lg" tone="neutral" />}</span>
         <div className={`dm-msg__main${mine ? ' is-mine' : ''}`}>
           {continued || mine ? null : <p className="dm-msg__meta"><b>{name}</b></p>}
-          <MessageContent body={<p className="dm-msg__body">{message.body}</p>} />
+          <MessageContent body={<div className="dm-msg__body"><MessageText body={message.body} /></div>} />
           {nav === 'stream' && message.replyCount > 0 ? (
             <button type="button" className="dm-replies" data-replies={message.replyCount} aria-label={`${message.replyCount} ${message.replyCount === 1 ? 'reply' : 'replies'}, open thread`}
               onClick={(event) => onOpenThread?.(message, event.currentTarget)}>
