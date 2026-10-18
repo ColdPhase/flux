@@ -1,0 +1,13 @@
+Actual runner exit: 0
+#25 21.65 $ tsc --noEmit -p tsconfig.json && tsc --noEmit -p apps/web/tsconfig.json
+#25 42.85 $ eslint .
+#25 68.44 ✖ 9 problems (0 errors, 9 warnings)
+test_19_successive_peer_previews_keep_content_but_native_edits_refresh_it (test_live_editing.LiveEditingJourney.test_19_successive_peer_previews_keep_content_but_native_edits_refresh_it) ... ACTUAL_UI_ENGINE=chromium
+CURRENT_NODE_INPUT_CONTROL {'native': {'id': 'd9f278a9-5cf2-41dc-9cd4-0c460129f934', 'sketchId': '8ca2b846-c651-435f-8914-e419ce054db1', 'text': 'Native edit replaces the moving thought body', 'x': 40, 'y': 40, 'width': 224, 'height': 232, 'shape': 'card', 'placement': None, 'source': None, 'createdBy': {'kind': 'human', 'id': '77538f1f-06cc-4b36-9a58-294f6fbee3f1', 'name': 'Ada North'}, 'version': 2, 'createdAt': '2026-10-18T12:39:54.366Z', 'updatedAt': '2026-10-18T12:39:55.683Z'}, 'keyboard': {'id': 'd9f278a9-5cf2-41dc-9cd4-0c460129f934', 'sketchId': '8ca2b846-c651-435f-8914-e419ce054db1', 'text': 'Native edit replaces the moving thought body', 'x': 40, 'y': 40, 'width': 224, 'height': 244, 'shape': 'card', 'placement': None, 'source': None, 'createdBy': {'kind': 'human', 'id': '77538f1f-06cc-4b36-9a58-294f6fbee3f1', 'name': 'Ada North'}, 'version': 3, 'createdAt': '2026-10-18T12:39:54.366Z', 'updatedAt': '2026-10-18T12:39:55.827Z'}, 'pointer': {'id': 'd9f278a9-5cf2-41dc-9cd4-0c460129f934', 'sketchId': '8ca2b846-c651-435f-8914-e419ce054db1', 'text': 'Native edit replaces the moving thought body', 'x': 40, 'y': 40, 'width': 272, 'height': 268, 'shape': 'card', 'placement': None, 'source': None, 'createdBy': {'kind': 'human', 'id': '77538f1f-06cc-4b36-9a58-294f6fbee3f1', 'name': 'Ada North'}, 'version': 4, 'createdAt': '2026-10-18T12:39:54.366Z', 'updatedAt': '2026-10-18T12:39:56.023Z'}, 'cancelled_version': 4}
+ok
+
+----------------------------------------------------------------------
+Ran 1 test in 3.413s
+
+OK
+Removed 2 per-run image(s) tagged :flux-live-editing-1792327056-1397758
