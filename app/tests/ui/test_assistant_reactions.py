@@ -76,7 +76,7 @@ class AssistantReactions(unittest.TestCase):
                     expect(toggle).to_be_checked()
                     with page.expect_response(lambda response: response.request.method == 'PUT' and response.url.endswith(rule['id'])) as toggled:
                         toggle.click()
-                    toggled.value.finished()
+                    self.assertEqual(toggled.value.status,200)
                     rows[0]=next(item for item in self.api(page,'GET',self.path,status=200)['items'] if item['id']==rule['id'])
                     page.reload()
                     expect(card.get_by_role('switch')).not_to_be_checked()
@@ -110,7 +110,7 @@ class AssistantReactions(unittest.TestCase):
         for phone in (False,True):
             page=self.page(phone=phone)
             notification=str(uuid.uuid4())
-            messages=self.api(page,'GET',f"/api/v1/conversations/{self.ids['conversation']}/messages?limit=100",status=200)
+            messages=self.api(page,'GET',f"/api/v1/conversations/{self.ids['conversation']}?limit=100",status=200)
             # An owner-bound draft comes from the dedicated owner-only endpoint. Native Reply and Send remain real.
             url=f"/projects/{self.ids['project']}/conversations/{self.ids['conversation']}"
             body='I checked the sensor connector. Let us repeat the low-light test.'
@@ -120,14 +120,14 @@ class AssistantReactions(unittest.TestCase):
             reply=page.get_by_role('textbox',name='Reply',exact=True)
             expect(reply).to_have_value(body)
             expect(page.get_by_text('Drafted by your assistant',exact=True)).to_be_visible()
-            current=self.api(page,'GET',f"/api/v1/conversations/{self.ids['conversation']}/messages?limit=100",status=200)
-            self.assertEqual(len(current['items']),len(messages['items']))
+            current=self.api(page,'GET',f"/api/v1/conversations/{self.ids['conversation']}?limit=100",status=200)
+            self.assertEqual(len(current['messages']),len(messages['messages']))
             shot(page,f"assistant-reply-{self.tag(phone)}")
             page.get_by_role('button',name='Send reply',exact=True).click()
             expect(reply).to_have_value('')
-            posted=self.api(page,'GET',f"/api/v1/conversations/{self.ids['conversation']}/messages?limit=100",status=200)
-            self.assertEqual(len(posted['items']),len(messages['items'])+1)
-            self.assertEqual(posted['items'][-1]['body'],body)
+            posted=self.api(page,'GET',f"/api/v1/conversations/{self.ids['conversation']}?limit=100",status=200)
+            self.assertEqual(len(posted['messages']),len(messages['messages'])+1)
+            self.assertEqual(posted['messages'][-1]['body'],body)
             page.close()
 
     def test_05_typed_suggestion_review_accept_dismiss_and_authority_error(self):
