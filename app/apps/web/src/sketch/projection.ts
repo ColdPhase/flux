@@ -79,3 +79,22 @@ export function applyLivePreviews(sketch: SketchDetail, previews: ReadonlyMap<st
   });
   return changed ? { ...sketch, thoughts } : sketch;
 }
+
+/** One live editor retains only its current projection. Presence updates do not
+ * change immutable preview objects, so they must not rebuild moved Thought bodies.
+ * A native change, new preview or expiry always recomputes from confirmed state. */
+export function createLivePreviewProjection() {
+  type Preview = { positions: readonly LiveMapPosition[] };
+  let confirmed: SketchDetail | null = null;
+  let previous: Preview[] = [];
+  let projected: SketchDetail | null = null;
+  return (sketch: SketchDetail, previews: Iterable<Preview>): SketchDetail => {
+    const current = [...previews];
+    if (confirmed === sketch && current.length === previous.length
+      && current.every((preview, index) => preview === previous[index])) return projected!;
+    const positions = new Map<string, LiveMapPosition>();
+    for (const preview of current) for (const position of preview.positions) positions.set(position.id, position);
+    confirmed = sketch; previous = current; projected = applyLivePreviews(sketch, positions);
+    return projected;
+  };
+}

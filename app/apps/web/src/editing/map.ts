@@ -110,7 +110,8 @@ export class SharedMap {
         if (this.gesture?.serverLease?.leaseId === message.leaseId) { this.cancel(true, false); this.problem = 'The movement lease ended. Its unfinished positions are kept privately; compare them before starting again.'; }
         break;
       case 'map-presence':
-        if (message.actor.id !== this.userId) this.peers.set(message.connectionId, message); break;
+        if (message.actor.id === this.userId) return;
+        this.peers.set(message.connectionId, message); break;
       case 'revoked': this.retire('Access ended. Your unfinished movement is kept locally.'); return;
       case 'resync': this.disconnected(); return;
       case 'error':
