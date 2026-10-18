@@ -91,9 +91,9 @@ const runStateOf = (run: { status: string; stopRequestedAt: Date | null } | unde
 };
 
 /** Exact saved words a person reviews before accepting; transport and authority fields never enter the UI. */
-function suggestionPreview(row: AssistantChangeRow): string {
+async function suggestionPreview(row: AssistantChangeRow, rows: ReturnType<typeof assistantChangeRows>): Promise<string> {
   const args = row.preparedCommand?.args ?? {};
-  const labels: Record<string, string> = { title: 'Title', outcome: 'Outcome', status: 'State', blocker: 'Blocked because', criteria: 'Done when', text: 'Text', body: 'Page', label: 'Label' };
+  const labels: Record<string, string> = { title: 'Title', outcome: 'Outcome', status: 'State', blocker: 'Blocked because', criteria: 'Done when', text: 'Text', body: 'Page', label: 'Label', x: 'Across', y: 'Down', width: 'Width', height: 'Height', shape: 'Shape' };
   const out: string[] = [];
   const collect = (value: unknown) => {
     if (!value || typeof value !== 'object' || Array.isArray(value)) return;
@@ -103,6 +103,15 @@ function suggestionPreview(row: AssistantChangeRow): string {
     }
   };
   collect(args);
+  const changes = args.changes as Record<string, unknown> | undefined;
+  if (Array.isArray(changes?.dependencyIds)) {
+    const tasks = await Promise.all(changes.dependencyIds.map((id) => rows.work(String(id))));
+    out.push(`Prerequisites: ${tasks.map((task) => task ? `#${task.number} ${task.title}` : 'No longer available').join(', ') || '(none)'}`);
+  }
+  if (changes && 'waitingForUserId' in changes) {
+    const id = changes.waitingForUserId;
+    out.push(`Waiting for: ${typeof id === 'string' ? (await rows.names([id])).get(id) ?? 'No longer available' : '(nobody)'}`);
+  }
   return out.join('\n\n');
 }
 
@@ -146,7 +155,7 @@ export function assistantChangeUseCases(db: Database, boss?: Pick<PgBoss, 'send'
         runState: runStateOf(states.get(row.runId)), before: undoOf(row)?.before ?? null, after: undoOf(row)?.after ?? null,
         owner: { id: row.ownerUserId, name: names.get(row.ownerUserId) ?? '' },
         undoable: (row.state === 'applied' || row.state === 'applied_after_wait') && !!undoOf(row) && mayUndo(row),
-        suggestTo: row.suggestToUserId ? { id: row.suggestToUserId, name: names.get(row.suggestToUserId) ?? '' } : null, sent: !!row.sentAt, preview: suggestionPreview(row),
+        suggestTo: row.suggestToUserId ? { id: row.suggestToUserId, name: names.get(row.suggestToUserId) ?? '' } : null, sent: !!row.sentAt, preview: await suggestionPreview(row, rows()),
         decidedBy: row.decidedBy ? { id: row.decidedBy, name: names.get(row.decidedBy) ?? '' } : null,
         version: row.version, createdAt: row.createdAt.toISOString(), expiresAt: row.expiresAt.toISOString() });
     }
@@ -223,7 +232,7 @@ export function assistantChangeUseCases(db: Database, boss?: Pick<PgBoss, 'send'
   async function undoOne(principal: Principal, row: AssistantChangeRow): Promise<string | null> {
     const names = await rows().names([row.ownerUserId, creationOwner(row), owner(principal)]);
     if (row.operation === 'work.create' && creationOwner(row) !== owner(principal))
-      return `Only ${names.get(creationOwner(row)) ?? 'its creator'} can undo this task's creation`;
+      return row.receipt?.acceptedBy ? `Only ${names.get(creationOwner(row)) ?? 'its creator'} can undo this task's creation` : `Only ${names.get(row.ownerUserId) ?? 'their owner'} can undo a task their assistant added`;
     const result = await undoChange(db, row, { kind: 'human', id: owner(principal) }, names.get(owner(principal)) ?? 'Someone', names.get(row.ownerUserId) ?? 'Someone');
     return result.done ? result.message : result.message ?? CHANGED_SINCE;
   }
@@ -344,6 +353,19 @@ export function assistantChangeUseCases(db: Database, boss?: Pick<PgBoss, 'send'
       if (!result.ok) throw new DomainError(403, result.code, stale(result.code) ? STALE : result.error);
       return { change: await viewOne((await rows().find(row.id))!, principal), message: null };
     },
+    async dismissSuggestion(principal: Principal, changeId: string, expected?: number): Promise<AssistantChangeDecision> {
+      const userId = owner(principal);
+      return db.transaction(async (tx) => {
+        const r = assistantChangeRows(tx);
+        const located = isUuid(changeId) ? await r.find(changeId) : null;
+        if (!located || located.suggestToUserId !== userId || !located.sentAt) throw missing();
+        if (!(await evaluateProject(principal, 'project.write', located.projectId, tx, { lock: true })).allowed) throw new ForbiddenError('Only someone who can decide this can dismiss it', 'ASSISTANT_SUGGESTION_AUTHORITY');
+        const row = await r.lock(changeId);
+        if (!row || !row.sentAt || row.suggestToUserId !== userId || row.state !== 'waiting' || row.waitReason !== 'outside_rights') throw missing();
+        if (row.version !== expected) throw new ConflictError('This change was decided meanwhile', 'ASSISTANT_CHANGE_VERSION_CONFLICT');
+        return { change: await viewOne(await r.update(row.id, { state: 'not_now', waitReason: null, decidedBy: userId, decidedAt: clock() })), message: null };
+      });
+    },
     /** A suggestion reaches the other person only after the owner's tap (AST-5.8): one Needs-you question for them. */
     async send(principal: Principal, changeId: string, expected?: number): Promise<AssistantChangeDecision> {
       const userId = owner(principal);
@@ -440,6 +462,8 @@ export function registerAssistantChangeRoutes(app: FastifyInstance, db: Database
   app.post<{ Params: { changeId: string } }>(assistantChangeActionPath(':changeId', 'not-now'), { schema: { body: { ...body, nullable: true } } }, async (request) =>
     changes.notNow(await who(request), request.params.changeId, expectedVersion(request)));
   app.post<{ Params: { changeId: string } }>(assistantChangeActionPath(':changeId', 'undo'), async (request) => changes.undo(await who(request), request.params.changeId));
+  app.post<{ Params: { changeId: string } }>(assistantChangeActionPath(':changeId', 'dismiss'), { schema: { body } }, async (request) =>
+    changes.dismissSuggestion(await who(request), request.params.changeId, expectedVersion(request)));
   app.post<{ Params: { changeId: string } }>(assistantChangeActionPath(':changeId', 'accept'), { schema: { body } }, async (request) =>
     changes.acceptSuggestion(await who(request), request.params.changeId, expectedVersion(request)));
   app.post<{ Params: { changeId: string } }>(assistantChangeActionPath(':changeId', 'send'), { schema: { body: { ...body, nullable: true } } }, async (request) =>

@@ -5,7 +5,7 @@ import { ApiError } from '../api/client';
 import { useShellActions } from '../app/shellContext';
 import { useToast } from '../ui';
 import { updateWork } from '../work/api';
-import { acceptSuggestion, applyRunChanges } from '../assistant/api';
+import { acceptSuggestion, dismissSuggestion, applyRunChanges } from '../assistant/api';
 import { announceAcceptedInboxItem, announceInboxChange } from './api';
 import type { CardHandlers, SnoozeChoice } from './NeedsYouCard';
 import { nextWeek, tomorrowMorning } from './format';
@@ -110,6 +110,15 @@ export function useNeedsYouActions(queue: Queue): CardHandlers {
         current.show(item);
         toast({ message: apiMessage(error, 'That did not work. Try again.'), tone: 'danger' });
       });
+    },
+
+    dismissChanges(item: NeedsYouItem) {
+      const change = item.assistantChanges?.changes[0];
+      if (!change || !item.assistantChanges?.suggestion) return;
+      const current = latest.current;
+      const promise = dismissSuggestion(change);
+      const intent = current.hide(item.key, promise);
+      promise.then(announceInboxChange, (error: unknown) => { if (intent.isCurrent()) { current.show(item); toast({ message: apiMessage(error, 'Couldn’t dismiss. Try again.'), tone: 'danger' }); } });
     },
 
     discuss(item: NeedsYouItem) {

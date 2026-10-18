@@ -16,6 +16,7 @@ export interface CardHandlers {
   unblock(item: NeedsYouItem): void;
   /** Applies your assistant's waiting changes of one request (F-027 AST-5.6), with the object's own verb. */
   applyChanges(item: NeedsYouItem): void;
+  dismissChanges?(item: NeedsYouItem): void;
 }
 
 export const KIND_WORD = { decision: 'Decision', question: 'Question', blocked: 'Blocked', mention: 'Mention' } as const;
@@ -143,6 +144,7 @@ export function NeedsYouCard({ item, variant = 'card', selected = false, handler
       ) : item.assistantChanges ? (
         <>
           <Button variant="primary" onClick={() => handlers.applyChanges(item)}>{item.assistantChanges.verb}</Button>
+          {item.assistantChanges.suggestion && handlers.dismissChanges ? <Button variant="quiet" onClick={() => handlers.dismissChanges?.(item)}>Dismiss</Button> : null}
           <Button variant="secondary" aria-expanded={review} onClick={() => item.assistantChanges?.suggestion ? setReview(!review) : handlers.open(item)}>Review</Button>
         </>
       ) : (
@@ -175,7 +177,7 @@ export function NeedsYouCard({ item, variant = 'card', selected = false, handler
               </p>
             )}
             <h3 className="nyc__title">
-              <button type="button" className="nyc__open" onClick={() => handlers.open(item)} aria-haspopup={item.kind === 'decision' || item.kind === 'blocked' ? 'dialog' : undefined}>{item.title}</button>
+              <button type="button" className="nyc__open" onClick={() => item.assistantChanges?.suggestion ? setReview(!review) : handlers.open(item)} aria-haspopup={item.kind === 'decision' || item.kind === 'blocked' ? 'dialog' : undefined}>{item.title}</button>
             </h3>
             {review && item.assistantChanges?.suggestion ? <div className="nyc__reason" style={{ whiteSpace: 'pre-wrap' }}>{item.assistantChanges.changes.map((change) => <p key={change.id}>{change.phrase} {change.objectTitle}{'\n'}{change.preview}</p>)}</div> : null}
             {item.assistantNote ? <p className="nyc__reason">Your assistant: {item.assistantNote}</p> : null}

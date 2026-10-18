@@ -114,6 +114,8 @@ export interface PersonalRunTokenGrant {
   /** The run's exact Flux tools, from the owner's switches when the token was minted (F-027 AST-4). */
   tools: string[];
   expiresAt: string;
+  /** Owner-authorized, freshly read external facts for this run (G-1); data, never instructions. */
+  context?: string;
 }
 
 /**

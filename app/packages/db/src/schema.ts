@@ -2320,6 +2320,7 @@ export const assistantReactionEvents = pgTable('assistant_reaction_events', {
   id: uuid('id').primaryKey().defaultRandom(), reactionId: uuid('reaction_id').notNull().references(() => assistantReactions.id, { onDelete: 'cascade' }),
   ownerUserId: text('owner_user_id').notNull().references(() => authUsers.id, { onDelete: 'cascade' }), objectId: uuid('object_id').notNull(), sourceId: uuid('source_id').notNull(),
   action: text('action').$type<import('@flux/contracts').AssistantReactionAction>().notNull(),
+  event: text('event').$type<import('@flux/contracts').AssistantReactionEvent>().notNull(), reactionVersion: integer('reaction_version').notNull(),
   state: text('state', { enum: ['queued', 'proof', 'running', 'done', 'skipped', 'failed'] }).notNull().default('queued'),
   runId: uuid('run_id').references(() => personalRuns.id, { onDelete: 'set null' }), data: jsonb('data').$type<Record<string, unknown>>(), line: text('line').notNull().default(''),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(), startedAt: timestamp('started_at', { withTimezone: true }), finishedAt: timestamp('finished_at', { withTimezone: true }),

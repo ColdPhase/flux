@@ -62,3 +62,5 @@ export const getAssistantActivity = (conversationId: string, signal?: AbortSigna
   request<AssistantActivity>(conversationAssistantActivityPath(conversationId), { signal });
 
 export const acceptSuggestion = (change: Pick<AssistantChange, 'id' | 'version'>) => request<AssistantChangeDecision>(assistantChangeActionPath(change.id, 'accept'), { method: 'POST', body: { expectedVersion: change.version } });
+
+export const dismissSuggestion = (change: Pick<AssistantChange, 'id' | 'version'>) => request<AssistantChangeDecision>(assistantChangeActionPath(change.id, 'dismiss'), { method: 'POST', body: { expectedVersion: change.version } });

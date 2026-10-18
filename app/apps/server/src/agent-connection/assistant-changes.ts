@@ -153,7 +153,7 @@ async function describe(tx: Transaction, operation: string, objectId: string | n
     }
     case 'map.thought.create': case 'map.link.create': {
       const map = objectId ? await rows.map(objectId) : null;
-      return { ...base, objectId: null, title: operation === 'map.thought.create' ? text(payload.text) : map?.title ?? '', undo: created(operation === 'map.thought.create' ? text(payload.text) : '') };
+      return { ...base, objectId: null, title: operation === 'map.thought.create' ? text(payload.text) : (await rows.thoughts([String(payload.fromId), String(payload.toId)])).map((thought) => thought.text.slice(0, 70)).join(' → ') || map?.title || '', undo: created(operation === 'map.thought.create' ? text(payload.text) : '') };
     }
     case 'map.thought.update': case 'map.thought.delete': {
       const [thought] = await rows.thoughts([String(payload.thoughtId)]);

@@ -230,7 +230,7 @@ export const assistantRunChangesPath = (runId: string) => `/api/v1/assistant-run
 /** `apply` (Apply all), `not-now`, or `inbox` (the owner left the conversation) for a run's waiting changes. */
 export const assistantRunChangesActionPath = (runId: string, action: 'apply' | 'not-now' | 'inbox' | 'undo') => `/api/v1/assistant-runs/${runId}/changes/${action}`;
 /** `apply`, `not-now`, `send` (a suggestion) or `undo` for one change; the body names its `expectedVersion`. */
-export const assistantChangeActionPath = (changeId: string, action: 'apply' | 'not-now' | 'send' | 'undo' | 'accept') => `/api/v1/assistant-changes/${changeId}/${action}`;
+export const assistantChangeActionPath = (changeId: string, action: 'apply' | 'not-now' | 'send' | 'undo' | 'accept' | 'dismiss') => `/api/v1/assistant-changes/${changeId}/${action}`;
 
 const PHRASES: Record<string, { phrase: string; verb: string; noun: string }> = {
   'work.create': { phrase: 'add', verb: 'Add', noun: 'task' },

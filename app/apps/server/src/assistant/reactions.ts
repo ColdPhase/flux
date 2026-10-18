@@ -28,7 +28,7 @@ export async function authorizeGithubReactionEvents(db: Database, github: Return
   for (const event of await rows.proofEvents()) {
     try {
       const links = await github.links({ kind: 'human', id: event.ownerUserId }, event.objectId);
-      const ready = links.filter((link) => link.projectId === event.projectId && link.state === 'current' && link.facts.execution === 'ready_for_review');
+      const ready = links.filter((link) => link.id === event.data?.linkId && link.projectId === event.projectId && link.state === 'current' && link.facts.execution === 'ready_for_review');
       const credential = await rows.credential(event.ownerUserId);
       if (!credential || !ready.length) continue;
       const bindings = [];
@@ -37,9 +37,20 @@ export async function authorizeGithubReactionEvents(db: Database, github: Return
         if (!binding || binding.state !== 'active') continue;
         bindings.push({ id, generation: binding.authorizationGeneration });
       }
-      await rows.saveProof(event.id, { proof: { owner: event.ownerUserId, generation: credential.generation, bindings },
+      await rows.saveProof(event.id, { linkId: event.data?.linkId, proof: { owner: event.ownerUserId, generation: credential.generation, bindings },
         pullRequests: ready.map((link) => ({ state: link.facts.state, number: link.facts.number, headSha: link.facts.headSha,
           execution: link.facts.execution, checks: link.facts.checks.map(({ name, state }) => ({ name, state })) })) });
     } catch { await rows.updateEvent(event.id, { state: 'skipped', line: 'Skipped: GitHub access is no longer available', finishedAt: new Date() }); }
   }
+}
+
+/** Current G-1 data for a nonce-authenticated run immediately before the worker sends its request. */
+export function currentGithubReactionFacts(db: Database, github: ReturnType<typeof createGithubUseCases>) {
+  return async (ownerUserId: string, taskId: string, linkId?: string) => {
+    const links = await github.links({ kind: 'human', id: ownerUserId }, taskId);
+    const ready = links.filter((link) => (!linkId || link.id === linkId) && link.state === 'current' && link.facts.execution === 'ready_for_review');
+    if (!ready.length) throw new Error('No current ready pull request');
+    return ready.map((link) => ({ number: link.facts.number, state: link.facts.state, headSha: link.facts.headSha, execution: link.facts.execution,
+      checks: link.facts.checks.map(({ name, state }) => ({ name, state })) }));
+  };
 }

@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
-import { randomUUID } from 'node:crypto';
+import Fastify from 'fastify';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { before, beforeEach, describe, test } from 'node:test';
-import { ASSISTANT_REACTION_EVENTS, assistantReactionDraftPath, assistantReactionPath, assistantReactionsPath, assistantSettingsPath, NEEDS_YOU_PATH, PERSONAL_RUN_CONSENT_VERSION,
+import { ASSISTANT_REACTION_EVENTS, assistantReactionDraftPath, assistantReactionPath, assistantReactionsPath, assistantSettingsPath, personalRunTokenPath, NEEDS_YOU_PATH, PERSONAL_RUN_CONSENT_VERSION,
   type AssistantReaction, type AssistantReactionAction, type AssistantReactionEvent, type AssistantSettings, type GithubPullFacts, type Conversation, type NeedsYouResponse, type Project, type Workspace } from '@flux/contracts';
 import { assistantReactionTick, createPersonalRunProcessor, type PersonalComputeResult, type Principal } from '@flux/core';
 import type { PgBoss } from 'pg-boss';
@@ -9,7 +10,10 @@ import { assistantUnitOfWork, startBackgroundOf } from '../../apps/worker/src/as
 import { personalRunWorkerUnitOfWork } from '../../apps/worker/src/personal-runs/adapters.js';
 import { personalRunUseCases } from '../../apps/server/src/personal-runs/adapters.js';
 import { createGithubUseCases } from '../../apps/server/src/github/adapters.js';
-import { authorizeGithubReactionEvents } from '../../apps/server/src/assistant/reactions.js';
+import { currentGithubReactionFacts, authorizeGithubReactionEvents } from '../../apps/server/src/assistant/reactions.js';
+import { personalRunTokenRows } from '@flux/db';
+import { registerPersonalRunTokenRoute } from '../../apps/server/src/personal-runs/run-tokens.js';
+import type { FluxAuth } from '../../apps/server/src/identity/auth.js';
 import { db, pool } from './support/db.js';
 import { addMember, expectStatus, grant, person, project as makeProject, workspace as makeWorkspace, type Person } from './support/people.js';
 import { FakeCompute, FakeConnections, FakeQueue } from './support/personal-runs.js';
@@ -129,8 +133,8 @@ describe('owner-only When sentences (F-027 A9, #409)', () => {
     }
     assert.equal((await events()).length,1,'only my failed result');
     const binding=randomUUID(); const generation=randomUUID();
-    await pool.query(`INSERT INTO github_credentials(user_id,host,generation,github_user_id,app_id,state) VALUES($1,'github.com',$2,'314','test-app','active') ON CONFLICT(user_id,host) DO UPDATE SET generation=EXCLUDED.generation,state='active'`,[owner.id,generation]);
-    await pool.query(`INSERT INTO github_bindings(id,workspace_id,project_id,installation_id,repository_id,owner,name,private,url,author_user_id,author_github_user_id,app_id,authorization_generation,state) VALUES($1,$2,$3,'11','22','Ada','sensor',true,'https://github.com/Ada/sensor',$4,'314','test-app',$5,'active')`,[binding,ws.id,place.id,owner.id,generation]);
+    await pool.query(`INSERT INTO github_credentials(user_id,host,generation,github_user_id,app_id,state) VALUES($1,'github.com',$2,'314','999','active') ON CONFLICT(user_id,host) DO UPDATE SET generation=EXCLUDED.generation,state='active'`,[owner.id,generation]);
+    await pool.query(`INSERT INTO github_bindings(id,workspace_id,project_id,installation_id,repository_id,owner,name,private,url,author_user_id,author_github_user_id,app_id,authorization_generation,state) VALUES($1,$2,$3,'11','22','Ada','sensor',true,'https://github.com/Ada/sensor',$4,'314','999',$5,'active')`,[binding,ws.id,place.id,owner.id,generation]);
     await make('pr_ready','check_task');
     const facts: GithubPullFacts={repositoryId:'22',pullId:'33',number:7,title:'PRIVATE_PR_TITLE',url:'https://github.com/Ada/sensor/pull/7',author:{id:'314',login:'Ada'},headSha:'a'.repeat(40),state:'open',draft:false,merged:false,sourceCreatedAt:new Date().toISOString(),sourceUpdatedAt:new Date().toISOString(),sourceMergedAt:null,checks:[{id:'1',name:'unit tests',appId:null,state:'success',sourceUpdatedAt:new Date().toISOString()}],reviews:[],truncated:false,execution:'ready_for_review'};
     for(const target of [theirs,mine]) await pool.query(`INSERT INTO github_task_links(id,workspace_id,project_id,task_id,binding_id,pull_id,role,facts) VALUES($1,$2,$3,$4,$5,'33','related',$6)`,[randomUUID(),ws.id,place.id,target,binding,JSON.stringify(facts)]);
@@ -138,12 +142,40 @@ describe('owner-only When sentences (F-027 A9, #409)', () => {
     const before=(await events()).filter((event)=>event.run_id).length;
     await tick(future); assert.equal((await events()).filter((event)=>event.run_id).length,before+1,'only failed-result starts without PR proof');
     const calls:string[]=[];
-    const github=createGithubUseCases(db,{repository:async(principal)=>{calls.push(principal.id);return {host:'github.com',installationId:'11',repositoryId:'22',owner:'Ada',name:'sensor',private:true,url:'https://github.com/Ada/sensor',githubUserId:'314',appId:'test-app',authorizationGeneration:generation};},pull:async()=>facts});
+    const github=createGithubUseCases(db,{repository:async(principal)=>{calls.push(principal.id);return {host:'github.com',installationId:'11',repositoryId:'22',owner:'Ada',name:'sensor',private:true,url:'https://github.com/Ada/sensor',githubUserId:'314',appId:'999',authorizationGeneration:generation};},pull:async()=>facts});
     await authorizeGithubReactionEvents(db,github);
     assert.deepEqual(calls,[owner.id]);
     await pool.query(`UPDATE github_credentials SET state='revoked' WHERE user_id=$1`,[owner.id]);
     await tick(new Date(future.getTime()+31*60_000));
     assert.ok((await events()).some((event)=>event.line==='Skipped: this is no longer your item'));
+    // New owner task: a successful PR check gets fresh retained G-1 facts at nonce-authenticated mint,
+    // not the earlier queue snapshot. The provider is a fake, the authorizer/native rows are real.
+    await pool.query(`UPDATE github_credentials SET state='active' WHERE user_id=$1`,[owner.id]);
+    const nextTask=await task(owner);
+    await pool.query(`INSERT INTO github_task_links(id,workspace_id,project_id,task_id,binding_id,pull_id,role,facts) VALUES($1,$2,$3,$4,$5,'33','related',$6)`,[randomUUID(),ws.id,place.id,nextTask,binding,JSON.stringify(facts)]);
+    await authorizeGithubReactionEvents(db,github);
+    await tick(new Date(future.getTime()+32*60_000));
+    const pending=(await events()).find((event)=>event.object_id===nextTask && event.run_id)!;
+    assert.ok(pending,'the owner’s ready PR starts');
+    await pool.query(`UPDATE github_task_links SET facts=jsonb_set(facts,'{checks,0,name}','"fresh current check"'::jsonb) WHERE task_id=$1`,[nextTask]);
+    const app=Fastify();
+    const auth={$context:Promise.resolve({baseURL:'http://api.test/api/auth'}),api:{signJWT:async()=>({token:'fake-run-token-no-account'})}} as unknown as FluxAuth;
+    registerPersonalRunTokenRoute(app,db,auth,'http://api.test',currentGithubReactionFacts(db,github));
+    const freshProcessor=createPersonalRunProcessor({uow:personalRunWorkerUnitOfWork(db),connections,compute,tokens:{
+      async issue(runId) {
+        const nonce=randomBytes(32).toString('hex');
+        await personalRunTokenRows(db).arm(runId,createHash('sha256').update(nonce).digest('hex'));
+        const response=await app.inject({method:'POST',url:personalRunTokenPath(runId),payload:{nonce}});
+        assert.equal(response.statusCode,200,response.body);
+        return response.json();
+      },close:async(runId)=>personalRunTokenRows(db).close(runId),
+    }});
+    try {
+      assert.equal(await freshProcessor.process(pending.run_id),'completed');
+      const input=compute.dispatched.at(-1)!.input;
+      assert.match(input,/<github-facts-data>/); assert.match(input,/fresh current check/);
+      assert.doesNotMatch(input,/PRIVATE_PR_TITLE/);
+    } finally { await app.close(); }
     await pool.query(`DELETE FROM github_bindings WHERE id=$1`,[binding]);
   });
 

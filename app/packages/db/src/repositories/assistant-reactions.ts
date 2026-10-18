@@ -4,9 +4,9 @@ import type { AssistantReaction, AssistantReactionAction, AssistantReplyDraft, A
 import type { DbExecutor } from './push.js';
 
 type Rule = Omit<AssistantReaction, 'last'> & { ownerUserId: string };
-type Event = { id: string; reactionId: string; ownerUserId: string; objectId: string; sourceId: string; action: AssistantReactionAction; state: 'queued' | 'proof' | 'running' | 'done' | 'skipped' | 'failed'; runId: string | null; createdAt: Date; data: Record<string, unknown> | null };
+type Event = { id: string; reactionId: string; ownerUserId: string; objectId: string; sourceId: string; action: AssistantReactionAction; event: import('@flux/contracts').AssistantReactionEvent; reactionVersion: number; state: 'queued' | 'proof' | 'running' | 'done' | 'skipped' | 'failed'; runId: string | null; createdAt: Date; data: Record<string, unknown> | null };
 const ruleColumns = sql`r.id,r.workspace_id AS "workspaceId",r.project_id AS "projectId",p.name AS "projectName",r.owner_user_id AS "ownerUserId",r.event,r.action,r.enabled,r.daily_limit AS "dailyLimit",r.version`;
-const eventColumns = sql`e.id,e.reaction_id AS "reactionId",e.owner_user_id AS "ownerUserId",e.object_id AS "objectId",e.source_id AS "sourceId",e.action,e.state,e.run_id AS "runId",e.created_at AS "createdAt",e.data`;
+const eventColumns = sql`e.id,e.reaction_id AS "reactionId",e.owner_user_id AS "ownerUserId",e.object_id AS "objectId",e.source_id AS "sourceId",e.action,e.event,e.reaction_version AS "reactionVersion",e.state,e.run_id AS "runId",e.created_at AS "createdAt",e.data`;
 
 /** Persistence only: core authorizes the owner, project and switched-on area before reading event data. */
 export function assistantReactionRows(db: DbExecutor) {

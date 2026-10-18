@@ -1,7 +1,7 @@
 import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import { assistantRunScopes, assistantRunTools, personalRunTokenPath, RUN_TOKEN_LIMITS, type PersonalRunTokenGrant } from '@flux/contracts';
-import type { Database } from '@flux/core';
+import { redactSecrets, type Database } from '@flux/core';
 import { lockAgentMcpPolicy, personalRunTokenRows } from '@flux/db';
 import type { FluxAuth } from '../identity/auth.js';
 import { createAgentConnectionStore } from '../agent-connection/store.js';
@@ -22,7 +22,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-
 const sha256 = (value: string) => createHash('sha256').update(value).digest('hex');
 const sameHash = (a: string, b: string) => a.length === b.length && timingSafeEqual(Buffer.from(a), Buffer.from(b));
 
-export function registerPersonalRunTokenRoute(app: FastifyInstance, db: Database, auth: FluxAuth, publicOrigin: string) {
+export function registerPersonalRunTokenRoute(app: FastifyInstance, db: Database, auth: FluxAuth, publicOrigin: string, githubFacts?: (ownerUserId: string, taskId: string, linkId?: string) => Promise<unknown>) {
   app.post<{ Params: { runId: string }; Body: { nonce: string } }>(personalRunTokenPath(':runId'), {
     schema: { body: { type: 'object', required: ['nonce'], additionalProperties: false, properties: { nonce: { type: 'string', pattern: '^[0-9a-f]{64}$' } } } },
   }, async (request, reply) => {
@@ -33,7 +33,7 @@ export function registerPersonalRunTokenRoute(app: FastifyInstance, db: Database
     const minted = await db.transaction(async (tx) => {
       const rows = personalRunTokenRows(tx);
       const run = await rows.find(runId, { lock: 'update' });
-      if (!run || (run.status !== 'reading' && run.status !== 'dispatching') || run.stopRequestedAt || run.runTokenJti || !run.runTokenNonceHash
+      if (!run || run.reactionActive === false || (run.status !== 'reading' && run.status !== 'dispatching') || run.stopRequestedAt || run.runTokenJti || !run.runTokenNonceHash
         || !sameHash(sha256(request.body.nonce), run.runTokenNonceHash)) return null;
       const connectionId = await rows.assistantConnectionId(run.ownerUserId, run.workspaceId);
       if (!connectionId) return null;
@@ -46,10 +46,15 @@ export function registerPersonalRunTokenRoute(app: FastifyInstance, db: Database
       // The run's exact tools from the owner's switches (F-027 AST-4): reads, and changes of areas switched to edit (A3).
       const readOnly = run.reactionAction && ['tell', 'draft_reply', 'check_task'].includes(run.reactionAction);
       const tools = assistantRunTools(policy, readOnly ? ['flux.context.read'] : grant.connection.scopes);
+      let context: string | undefined;
+      if (run.reactionTaskId) {
+        if (!githubFacts) return null;
+        try { context = `<github-facts-data>\n${redactSecrets(JSON.stringify(await githubFacts(run.ownerUserId, run.reactionTaskId, run.reactionLinkId ?? undefined))).text.slice(0, 16000)}\n</github-facts-data>`; } catch { return null; }
+      }
       const jti = randomUUID();
       const expiresAt = new Date(Date.now() + RUN_TOKEN_LIMITS.lifetimeSeconds * 1000);
       await rows.recordMint(runId, { jti, expiresAt, tools });
-      return { run, connectionId, tools, jti, expiresAt };
+      return { run, connectionId, tools, jti, expiresAt, context };
     });
     if (!minted) return refuse();
     const { baseURL } = await auth.$context;
@@ -59,7 +64,7 @@ export function registerPersonalRunTokenRoute(app: FastifyInstance, db: Database
       jti: minted.jti, iat: Math.floor(Date.now() / 1000), exp: Math.floor(minted.expiresAt.getTime() / 1000),
       iss: baseURL ?? `${publicOrigin}/api/auth`, aud: `${publicOrigin}/mcp`,
     } } });
-    const grant: PersonalRunTokenGrant = { token, tools: minted.tools, expiresAt: minted.expiresAt.toISOString() };
+    const grant: PersonalRunTokenGrant = { token, tools: minted.tools, expiresAt: minted.expiresAt.toISOString(), ...(minted.context ? { context: minted.context } : {}) };
     return reply.header('cache-control', 'no-store').send(grant);
   });
 }

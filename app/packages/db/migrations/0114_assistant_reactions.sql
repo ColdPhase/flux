@@ -15,6 +15,8 @@ CREATE TABLE assistant_reaction_events (
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(), reaction_id uuid NOT NULL REFERENCES assistant_reactions(id) ON DELETE CASCADE,
  owner_user_id text NOT NULL REFERENCES auth_users(id) ON DELETE CASCADE,
  object_id uuid NOT NULL, source_id uuid NOT NULL, action text NOT NULL,
+ event text NOT NULL CHECK(event IN ('assigned','blocked','failed_result','mentioned','pr_ready')),
+ reaction_version integer NOT NULL CHECK(reaction_version>0),
  state text NOT NULL DEFAULT 'queued' CHECK(state IN ('queued','proof','running','done','skipped','failed')),
  run_id uuid REFERENCES personal_runs(id) ON DELETE SET NULL,
  data jsonb CHECK (data IS NULL OR jsonb_typeof(data)='object' AND octet_length(data::text)<=24000),
@@ -35,8 +37,8 @@ CREATE TABLE assistant_reaction_notes (
 
 -- Transactional taps of canonical writes: no text is copied, and only the event's actual owner is selected.
 CREATE FUNCTION assistant_capture_reaction(p_project uuid,p_owner text,p_event text,p_object uuid,p_source uuid) RETURNS void LANGUAGE sql AS $$
- INSERT INTO assistant_reaction_events(reaction_id,owner_user_id,object_id,source_id,action,state)
- SELECT id,p_owner,p_object,p_source,action,CASE WHEN p_event='pr_ready' THEN 'proof' ELSE 'queued' END
+ INSERT INTO assistant_reaction_events(reaction_id,owner_user_id,object_id,source_id,action,event,reaction_version,state)
+ SELECT id,p_owner,p_object,p_source,action,event,version,CASE WHEN p_event='pr_ready' THEN 'proof' ELSE 'queued' END
  FROM assistant_reactions WHERE enabled AND project_id=p_project AND owner_user_id=p_owner AND event=p_event
  ON CONFLICT DO NOTHING
 $$;
@@ -72,13 +74,14 @@ BEGIN
 END $$;
 CREATE TRIGGER assistant_mention_reaction AFTER INSERT ON notifications FOR EACH ROW EXECUTE FUNCTION assistant_mention_reaction_tap();
 CREATE FUNCTION assistant_pr_reaction_tap() RETURNS trigger LANGUAGE plpgsql AS $$
-DECLARE person text;
+DECLARE person text; source uuid := gen_random_uuid();
 BEGIN
  IF NEW.state='current' AND NEW.facts->>'execution'='ready_for_review'
  AND (TG_OP='INSERT' OR OLD.facts->>'execution' IS DISTINCT FROM 'ready_for_review' OR OLD.facts->>'headSha' IS DISTINCT FROM NEW.facts->>'headSha')
  AND EXISTS(SELECT 1 FROM github_bindings WHERE id=NEW.binding_id AND state='active') THEN
   SELECT owner_user_id INTO person FROM project_work_items WHERE id=NEW.task_id AND project_id=NEW.project_id;
-  IF person IS NOT NULL THEN PERFORM assistant_capture_reaction(NEW.project_id,person,'pr_ready',NEW.task_id,gen_random_uuid()); END IF;
+  IF person IS NOT NULL THEN PERFORM assistant_capture_reaction(NEW.project_id,person,'pr_ready',NEW.task_id,source);
+  UPDATE assistant_reaction_events SET data=jsonb_build_object('linkId',NEW.id) WHERE source_id=source; END IF;
  END IF;
  RETURN NEW;
 END $$;

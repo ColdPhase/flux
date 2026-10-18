@@ -2067,7 +2067,10 @@ suggestions keep their current path. Never operations remain unavailable.
   in their transaction. The shared background tick starts ordinary personal runs;
   the ledger enforces a rolling 30-minute owner/object debounce and per-sentence cap.
   PR events first require the existing G-1 per-human current repository proof; its
-  credential/binding generations are fenced again at dispatch and delivery. Tell,
+  credential/binding generations are fenced again before the run and at delivery.
+  The existing nonce-authenticated run-token mint repeats G-1 proof and supplies
+  freshly authorized, bounded state/check facts immediately before either engine
+  dispatches; queued PR fact snapshots never enter model input. Tell,
   check and reply-draft runs have read-only tools; suggest actions always wait for a
   person. Notes fold into Inbox without another push. A reply draft stays durable
   and private until the owner opens Reply and presses Send.

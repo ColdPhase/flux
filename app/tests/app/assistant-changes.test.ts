@@ -58,9 +58,17 @@ describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A
     expectStatus(await owner.browser.request('PATCH', assistantSettingsPath(workspaceId, owner.id), { body, headers: { 'if-match': `"${current.version}"` } }), 200);
   }
   /** A run moved to `reading` (as the worker's claim does), with its token minted. */
-  async function liveRun(conversation = thread) {
+  async function liveRun(conversation = thread, reactionAction?: string) {
     const started = await runs.invoke(human(owner), conversation.id, { clientRunId: randomUUID(), kind: 'ask', prompt: 'Tidy the project' });
     await pool.query(`UPDATE personal_runs SET status = 'reading' WHERE id = $1`, [started.run.id]);
+    if (reactionAction) {
+      const rule=randomUUID();
+      const event=reactionAction==='draft_reply'?'mentioned':reactionAction==='check_task'?'pr_ready':'assigned';
+      await pool.query(`INSERT INTO assistant_reactions(id,workspace_id,project_id,owner_user_id,event,action,enabled) VALUES($1,$2,$3,$4,$5,$6,true)`,[rule,ws.id,place.id,owner.id,event,reactionAction]);
+      // The PR token freshness itself is exercised by A9's nonce-mint test with a real G-1 reader.
+      await pool.query(`INSERT INTO assistant_reaction_events(reaction_id,owner_user_id,object_id,source_id,action,event,reaction_version,state,run_id) VALUES($1,$2,$3,$4,$5,'assigned',1,'running',$6)`,[rule,owner.id,randomUUID(),randomUUID(),reactionAction,started.run.id]);
+      await pool.query(`UPDATE personal_runs SET kind='reaction',authority='owner_reaction' WHERE id=$1`,[started.run.id]);
+    }
     const nonce = randomBytes(32).toString('hex');
     assert.equal(await db.transaction((tx) => personalRunTokenRows(tx).arm(started.run.id, sha256(nonce))), true);
     const response = await fetch(`${apiUrl}${personalRunTokenPath(started.run.id)}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ nonce }) });
@@ -677,6 +685,8 @@ describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A
     await complete(run.runId);
   });
   test('A5 all typed kinds: explicit Send, recipient-only Accept as human, exact replay, and drafted-by provenance', async () => {
+    const recipientViewer=await person('a5-viewer');
+    await addMember(peer,jonasWs.id,recipientViewer,'member'); await grant(peer,shared.id,recipientViewer,'viewer');
     const sharedTask = await task(peer, 'Original task', shared.id);
     const sharedDoc = expectStatus(await peer.browser.request('POST', `/api/v1/projects/${shared.id}/docs`, { body: { title: 'Bench guide', body: 'Original guide' } }), 201) as { id: string; version: number };
     const sharedMap = expectStatus(await peer.browser.request('POST', `/api/v1/workspaces/${jonasWs.id}/sketches`, { body: { title: 'Bench map', scope: 'project', projectId: shared.id } }), 201) as { id: string };
@@ -685,6 +695,8 @@ describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A
       return value.thought;
     };
     const one = await createThought('Power supply'); const two = await createThought('Sensor');
+    const removable = await createThought('Temporary note');
+    const removableLink=expectStatus(await peer.browser.request('POST', `/api/v1/sketches/${sharedMap.id}/links`, { body: { fromId:two.id,toId:removable.id,label:'temporary' } }),201) as {id:string};
     const cases: { tool: string; args: Record<string, unknown>; operation: string }[] = [
       { tool: 'flux_create_task', args: { task: { title: 'Accepted sensor task' } }, operation: 'work.create' },
       { tool: 'flux_update_task', args: { workId: sharedTask.id, expectedVersion: sharedTask.version, changes: { title: 'Accepted revised task' } }, operation: 'work.update' },
@@ -693,6 +705,8 @@ describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A
       { tool: 'flux_add_thought', args: { mapId: sharedMap.id, thought: { text: 'Accepted calibration idea', x: 20, y: 20 } }, operation: 'map.thought.create' },
       { tool: 'flux_update_thought', args: { mapId: sharedMap.id, thoughtId: one.id, expectedVersion: one.version, changes: { text: 'Check the power supply' } }, operation: 'map.thought.update' },
       { tool: 'flux_link_thoughts', args: { mapId: sharedMap.id, fromId: one.id, toId: two.id, label: 'powers' }, operation: 'map.link.create' },
+      { tool: 'flux_unlink_thoughts', args:{mapId:sharedMap.id,linkId:removableLink.id}, operation:'map.link.delete' },
+      { tool: 'flux_remove_thought', args:{mapId:sharedMap.id,thoughtId:removable.id,expectedVersion:removable.version}, operation:'map.thought.delete' },
     ];
     for (const entry of cases) {
       const run = await liveRun(sharedThread);
@@ -706,6 +720,9 @@ describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A
         const sent = expectStatus(await owner.browser.request('POST', assistantChangeActionPath(row.id, 'send'), { body: { expectedVersion: row.version } }), 200) as { change: AssistantChange };
         expectStatus(await owner.browser.request('POST', assistantChangeActionPath(row.id, 'accept'), { body: { expectedVersion: sent.change.version } }), 404);
         expectStatus(await outsider.browser.request('POST', assistantChangeActionPath(row.id, 'accept'), { body: { expectedVersion: sent.change.version } }), 404);
+        await pool.query(`UPDATE assistant_changes SET suggest_to_user_id=$2 WHERE id=$1`,[row.id,recipientViewer.id]);
+        expectStatus(await recipientViewer.browser.request('POST',assistantChangeActionPath(row.id,'accept'),{body:{expectedVersion:sent.change.version}}),403,entry.operation+' viewer');
+        await pool.query(`UPDATE assistant_changes SET suggest_to_user_id=$2 WHERE id=$1`,[row.id,peer.id]);
         await complete(run.runId); // No live token and no compute are needed for the human decision.
         const before = compute.dispatched.length;
         const accepted = expectStatus(await peer.browser.request('POST', assistantChangeActionPath(row.id, 'accept'), { body: { expectedVersion: sent.change.version } }), 200) as { change: AssistantChange };
@@ -738,6 +755,25 @@ describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A
       expectStatus(await outsider.browser.request('POST',assistantChangeActionPath(row.id,'accept'),{body:{expectedVersion:sent.change.version}}),403);
       assert.ok(!run.tools.some((tool)=>/invite|grant|accept_decision/.test(tool)));
     } finally { await pool.query(`UPDATE project_grants SET role='contributor' WHERE project_id=$1 AND user_id=$2`,[shared.id,owner.id]); await complete(run.runId); }
+  });
+
+  test('A9 chosen actions: tell/check/draft have read-only tokens; suggest-plan always waits even in act mode', async () => {
+    for (const action of ['tell','draft_reply','check_task','suggest_plan']) {
+      const run=await liveRun(thread,action);
+      try {
+        if(action==='suggest_plan') {
+          assert.ok(run.tools.includes('flux_create_task'));
+          const response=await run.call('flux_create_task',{task:{title:'Only after the owner applies'}});
+          assert.match(text(response.message),/Waiting for ac-ada/);
+          assert.equal((await changesOf(run.runId))[0]!.wait_reason,'ask');
+        } else {
+          assert.ok(run.tools.length>0);
+          assert.ok(!run.tools.some((tool)=> (ASSISTANT_RUN_EFFECT_TOOLS as readonly string[]).includes(tool)),action);
+          assert.ok(result((await run.call('flux_reply_in_conversation',{body:'Must not send'})).message)?.isError);
+          assert.equal((await changesOf(run.runId)).length,0);
+        }
+      } finally { await complete(run.runId); await pool.query(`DELETE FROM assistant_reactions WHERE owner_user_id=$1 AND action=$2`,[owner.id,action]); }
+    }
   });
 
 });
