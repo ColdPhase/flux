@@ -377,11 +377,11 @@ body:has(.phone-fab) .ui-toasts {
 .ui-avatar--me { background: var(--el); color: var(--t1); }
 
 /* ---------- Press, hover and selection (#593 AC-5) ----------
-   Every pressable control answers with the same short fill transition (--tr): hover, selection and focus fills ease
-   in and out instead of jumping. This is the zero-specificity floor: a control that declares its own transition keeps
-   it. The press itself (scale to --press, spring back over --dur-press) is script (press.ts), because it has to cover
+   Every pressable control answers with the same short fill transition (--tr-fill, the fill half of --tr): hover and
+   selection fills ease in and out instead of jumping. The focus ring is not part of it. This is the zero-specificity
+   floor: a control that declares its own transition (most use --tr) keeps it. The press itself (scale to --press, spring back over --dur-press) is script (press.ts), because it has to cover
    every pressable control without restyling each one. */
-:where(button, a[href], [role="button"], [role="tab"], [role="menuitem"], [role="menuitemradio"], [role="menuitemcheckbox"], [role="option"], summary):where(:not(.sk-plane *, [data-no-press])) { transition: var(--tr); }
+:where(button, a[href], [role="button"], [role="tab"], [role="menuitem"], [role="menuitemradio"], [role="menuitemcheckbox"], [role="option"], summary):where(:not(.sk-plane *, [data-no-press])) { transition: var(--tr-fill); }
 
 /* A control that appears on hover or focus (the message toolbar, #591) fades and slides a few pixels in from its side.
    `.ui-reveal` is its hidden pose, `.is-shown` its shown one; `data-side="start"` comes from the left. The owner decides

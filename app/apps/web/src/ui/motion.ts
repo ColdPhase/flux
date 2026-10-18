@@ -21,13 +21,17 @@ export function duration(name: DurationToken): number {
 
 export type Easing = '--ease-out' | '--ease-in' | '--ease-sheet' | '--ease-spring';
 
-// Nothing moves while the first screen is put up (#593 AC-6): the shell marks motion ready once it has
-// committed and painted. A page that is hidden does not move either; what it was showing is its end state.
+// Nothing moves on its own while the first screen is put up (#593 AC-6): the shell marks motion ready once it has
+// committed and painted. Motion that answers the person's own input is never held back: a press or a panel opened by a
+// click in the first moments still moves. A page that is hidden does not move either; what it was showing is its end state.
 let ready = false;
+let lastInput = -Infinity;
+const ANSWERS_INPUT = 1000;
 export function markMotionReady() { ready = true; }
-/** Whether script-driven motion may run now: after first paint, with the page visible. */
+/** Whether script-driven motion may run now: after first paint or answering input, with the page visible. */
 export function motionAllowed(): boolean {
-  return ready && (typeof document === 'undefined' || document.visibilityState !== 'hidden');
+  if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return false;
+  return ready || performance.now() - lastInput < ANSWERS_INPUT;
 }
 
 /** Every animation the helpers below start carries this id, so they can be told from the page's own CSS. */
@@ -246,6 +250,7 @@ let guarded = false;
 export function installMotionGuards() {
   if (guarded || typeof document === 'undefined') return;
   guarded = true;
+  for (const type of ['pointerdown', 'keydown', 'touchstart']) window.addEventListener(type, (event) => { if (event.isTrusted) lastInput = performance.now(); }, { capture: true, passive: true });
   const paused = new Set<Animation>();
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') {

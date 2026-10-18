@@ -20,6 +20,7 @@ from playwright.sync_api import Page, expect, sync_playwright
 from create_window import add_task
 from light_motion_fixture import RECORDER, ROW_BOX, TRANSFORM_ONLY, LightMotion, clear, moved, numbers, ready, recorded, relative, sample_while, settled
 from test_app_shell import ORIGIN, UI_BROWSER, UPSTREAM, start_forwarder
+from test_work_pagination import api
 
 EASE_OUT = [0.22, 1, 0.36, 1]
 EASE_IN = [0.4, 0, 1, 1]
@@ -429,6 +430,31 @@ class LightMotionJourney(unittest.TestCase):
         self.assertEqual(page.locator(".nyc[data-row-ghost]").count(), 0, "the outgoing copy is gone once it has collapsed")
         expect(other.get_by_role("button", name=re.compile("^Accept"))).to_be_enabled()
 
+    def test_15b_rows_that_leave_in_quick_succession_collapse_cleanly(self):
+        """Two decisions accepted within a tenth of a second and two states changed back to back: React and the collapsing copies coexist."""
+        for title in ("Order spare batteries in bulk", "Keep the gateway indoors"):
+            api(self.fx.contexts["jonas"], "POST", self.fx.root + "/decisions", {"title": title, "rationale": "Fewer site visits."}, 201)
+        page = self.page()
+        self.open(page, "/inbox")
+        pair = re.compile("Order spare batteries|Keep the gateway")
+        expect(page.locator(".nyc", has_text=pair)).to_have_count(2)
+        page.evaluate("""async () => { for (const card of [...document.querySelectorAll('.nyc')].filter((c) => /Order spare batteries|Keep the gateway/.test(c.textContent))) {
+          card.querySelector('.nyc__accept').click(); await new Promise((resolve) => setTimeout(resolve, 60)); } }""")
+        expect(page.locator(".nyc", has_text=pair)).to_have_count(0)
+        settled(page)
+        self.assertEqual(page.locator("[data-row-ghost]").count(), 0, "every collapsing copy is gone")
+        extra = [self.fx.new_task(f"Stress the list {index}") for index in range(2)]
+        tasks = self.page()
+        self.open(tasks, self.fx.tasks_url())
+        settled(tasks)
+        tasks.evaluate("""async (ids) => { for (const id of ids) { document.querySelector(`.ws-task[data-work-id="${id}"] button.ws-task__glyph`).click(); await new Promise((resolve) => setTimeout(resolve, 40)); } }""", [task["id"] for task in extra])
+        for task in extra:
+            expect(tasks.locator(f".ws-task[data-work-id='{task['id']}']")).to_have_attribute("data-status", "in_progress")
+        settled(tasks)
+        ids = tasks.evaluate("[...document.querySelectorAll('.ws-task[data-work-id]')].map((el) => el.dataset.workId)")
+        self.assertEqual(len(ids), len(set(ids)), "no row is drawn twice")
+        self.assertEqual(tasks.locator("[data-row-ghost]").count(), 0)
+
     # ------------------------------------------------------------------ AC-5: press and hover
     def test_16_every_kind_of_pressable_control_takes_the_same_press(self):
         page = self.page()
@@ -495,8 +521,16 @@ class LightMotionJourney(unittest.TestCase):
         page = self.page()
         page.goto(self.fx.task_url(self.fx.tasks[0]))
         expect(page.get_by_role("complementary", name="Details").locator(".wd")).to_be_visible()
-        first = [entry for entry in recorded(page) if entry["at"] < 400 and not KRESKA.search(entry["target"] + entry.get("name", ""))]
-        self.assertEqual([(entry["target"], entry["props"]) for entry in first], [], "no motion at first paint")
+        # The deep link's panel and its content are up: nothing was animated to put them there (the mark is when they were).
+        shown = page.evaluate("performance.now()")
+        before = [entry for entry in recorded(page) if entry["at"] <= shown and not KRESKA.search(entry["target"] + entry.get("name", ""))]
+        self.assertEqual([(entry["target"], entry["props"]) for entry in before], [], "no motion while the first screen is put up")
+        # Once the first screen has settled, the same panel closes and opens with motion again.
+        page.wait_for_timeout(600)
+        clear(page)
+        page.locator("aside.ui-panel .ui-panel__body").focus()
+        page.keyboard.press("Escape")
+        self.assertTrue(self.by(page, r"ui-panel--docked", "script"), "motion is on after the first screen")
         anonymous = self.browser.new_context(base_url=ORIGIN, service_workers="block")
         self.addCleanup(anonymous.close)
         anonymous.add_init_script(RECORDER)

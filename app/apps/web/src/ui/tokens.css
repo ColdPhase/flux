@@ -104,8 +104,9 @@
   --ease-spring: cubic-bezier(.34, 1.4, .64, 1);
   /* Indicators glide into place with a barely perceptible settle (≤2% past the target, no bounce). */
   --ease-glide: cubic-bezier(.3, 1.25, .5, 1);
-  --tr: background-color var(--dur-1) ease, color var(--dur-1) ease, border-color var(--dur-1) ease,
-        box-shadow var(--dur-1) ease, opacity var(--dur-1) ease, outline-color var(--dur-1) ease,
+  --tr-fill: background-color var(--dur-1) ease, color var(--dur-1) ease, border-color var(--dur-1) ease,
+        box-shadow var(--dur-1) ease, opacity var(--dur-1) ease;
+  --tr: var(--tr-fill), outline-color var(--dur-1) ease,
         outline-offset var(--dur-1) ease, transform var(--dur-press) var(--ease-spring);
 
   /* Layers */

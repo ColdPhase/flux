@@ -62,13 +62,17 @@ function Root() {
   const shell = useRouteLoaderData('app') as ShellData | undefined;
   const inApp = useMatches().some((match) => match.id === 'app');
   const [session, setSession] = useState<string | null>(null);
-  // Nothing moves while the first screen is put up (#593 AC-6): motion starts after it has committed and painted.
-  useEffect(() => {
-    const frame = requestAnimationFrame(() => markMotionReady());
-    return () => cancelAnimationFrame(frame);
-  }, []);
   const observed = shell ? JSON.stringify([shell.me.user.id, shell.me.session.id]) : null;
   if (observed && observed !== session) setSession(observed);
+  // Nothing moves while the first screen is put up (#593 AC-6). The shell's own first commit, not the boot screen's, is
+  // the first screen (a deep link opens its panel a moment after it): motion starts a quarter of a second after it painted.
+  const shown = !inApp || shell !== undefined;
+  useEffect(() => {
+    if (!shown) return undefined;
+    let timer = 0;
+    const frame = requestAnimationFrame(() => { timer = window.setTimeout(markMotionReady, 250); });
+    return () => { cancelAnimationFrame(frame); window.clearTimeout(timer); };
+  }, [shown]);
   // A failed/offline loader is not proof of sign-out. Keep its last known scope
   // while the app route remains matched; auth routes or a confirmed new session retire it.
   const scopeKey = inApp ? observed ?? session : null;

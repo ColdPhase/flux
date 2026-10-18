@@ -24,11 +24,15 @@ Under `prefers-reduced-motion: reduce` and Settings → Appearance → Reduce mo
 - Only `opacity` and `transform` animate. A row's height animates only to grow it in or collapse it (`rowMotion.ts`).
 - A control never changes place (Spokój rule 7): a view switch fades the content area (opacity only), a panel's content
   change moves the body's content, never the shell, its head or its controls.
-- Nothing animates on first load (`markMotionReady`, called once the shell has committed and painted), while the page is
-  hidden (`installMotionGuards` ends transient motion and pauses loops) or under reduced motion.
+- Nothing moves on its own on first load (`markMotionReady`, a quarter of a second after the shell has committed and
+  painted; motion that answers the person's own input still runs), while the page is hidden (`installMotionGuards` ends
+  transient motion and pauses loops) or under reduced motion.
 - Exit never delays focus or the next action: focus returns in the same task as the close, the leaving surface is `inert`.
 - Closing while opening, or opening while closing, continues from where the surface is (`settle`), so it settles on the
   latest state and never snaps.
+- Menus and popovers leave through `usePop`. The project header's More menu comes in with the same motion but leaves at
+  once until [#606](https://github.com/ColdPhase/flux/issues/606) gives it popover styles: it is an in-flow row of the
+  header today, and a menu that lingered would move the controls beside it.
 - Nothing loops or pulses for attention here. Kreska's moments (#352) and the traveling highlight (#155) have their own rules.
 
 ## Where it lives

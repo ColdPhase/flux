@@ -1,5 +1,5 @@
-import { useLayoutEffect, useRef, type RefObject } from 'react';
-import { MOTION_ID, cancelMotion, duration, motionAllowed, token } from './motion';
+import { useEffect, useLayoutEffect, useRef, type RefObject } from 'react';
+import { MOTION_ID, duration, motionAllowed, token } from './motion';
 
 /**
  * Rows that come, go and move keep the reader's place (#593 AC-4). An added row grows in (height and opacity), a removed
@@ -10,9 +10,13 @@ import { MOTION_ID, cancelMotion, duration, motionAllowed, token } from './motio
  *
  * Call it with the list's container; `rows` selects the rows, `key` names a row (its id), and `scope` names the view
  * the rows belong to: when it changes (another filter, List to Board) the rows are simply replaced, never animated.
- * It reads layout after every commit of its component, so keep it on screens whose rows change a few at a time.
+ *
+ * It does nothing at all in a commit that left the rows as they were (no layout is read and no running animation is
+ * touched), and in a commit that changed them it reads every position once, writes, reads the rows that stayed once
+ * more and writes again: never a read between two writes per row.
  */
 interface Seen { el: HTMLElement; left: number; top: number; height: number; parent: HTMLElement; next: Element | null; prev: Element | null }
+interface Last { scope: string; signature: string; seen: Map<string, Seen> }
 
 const GHOST = 'data-row-ghost';
 /** The most rows that may arrive or leave in one change and still be animated one by one. */
@@ -20,47 +24,71 @@ const MOST = 4;
 // Properties a row's own box adds to its height; they shrink with it so a padded row collapses to nothing.
 const BOX = ['paddingTop', 'paddingBottom', 'marginTop', 'marginBottom', 'borderTopWidth', 'borderBottomWidth'] as const;
 
-function collect(root: HTMLElement, scroller: HTMLElement, rows: string, key: (el: HTMLElement) => string | undefined): Map<string, Seen> {
-  const found = new Map<string, Seen>();
-  const base = scroller.getBoundingClientRect();
-  for (const el of root.querySelectorAll<HTMLElement>(rows)) {
-    if (el.hasAttribute(GHOST)) continue;
-    const id = key(el);
-    const parent = el.parentElement;
-    if (!id || !parent) continue;
-    const box = el.getBoundingClientRect();
-    found.set(id, { el, left: box.left - base.left + scroller.scrollLeft, top: box.top - base.top + scroller.scrollTop, height: box.height, parent, next: el.nextElementSibling, prev: el.previousElementSibling });
-  }
-  return found;
+/** Where a row is in the layout, not where an animation currently draws it. */
+function place(el: HTMLElement): { left: number; top: number } {
+  let left = 0;
+  let top = 0;
+  for (let node: HTMLElement | null = el; node; node = node.offsetParent as HTMLElement | null) { left += node.offsetLeft; top += node.offsetTop; }
+  return { left, top };
 }
 
+const parents = new WeakMap<Element, number>();
+let parentCount = 0;
+const parentId = (el: Element | null) => { if (!el) return -1; let id = parents.get(el); if (id === undefined) { id = parentCount += 1; parents.set(el, id); } return id; };
+
 export function useRowMotion(container: RefObject<HTMLElement | null>, rows: string, key: (el: HTMLElement) => string | undefined, scope = '') {
-  const last = useRef<{ scope: string; seen: Map<string, Seen> } | null>(null);
+  const last = useRef<Last | null>(null);
+  const resized = useRef(false);
+  // After the window has been resized the rows are somewhere else than the last reading says.
+  useEffect(() => {
+    const stale = () => { resized.current = true; };
+    window.addEventListener('resize', stale);
+    return () => window.removeEventListener('resize', stale);
+  }, []);
   useLayoutEffect(() => {
     const root = container.current;
-    if (!root) { last.current = null; return; }
-    const scroller = root.closest<HTMLElement>('.pane-scroll') ?? root;
-    // Whatever ours was still running ends on its layout position first, so every measurement below is layout.
-    for (const el of root.querySelectorAll<HTMLElement>(rows)) cancelMotion(el);
-    const seen = collect(root, scroller, rows, key);
-    const before = last.current;
-    last.current = { scope, seen };
     const out = duration('--dur-out');
     const inn = duration('--dur-in');
-    if (!before || before.scope !== scope || !motionAllowed() || !out || !inn) return;
+    // Under reduced motion nothing is read at all; the next change with motion on starts afresh.
+    if (!root || !out || !inn) { last.current = null; return; }
+    const elements = [...root.querySelectorAll<HTMLElement>(rows)].filter((el) => !el.hasAttribute(GHOST) && key(el) && el.parentElement);
+    const signature = elements.map((el) => `${key(el)}@${parentId(el.parentElement)}`).join('|');
+    const before = last.current;
+    if (before && before.scope === scope && before.signature === signature && !resized.current) return;
+    // A row that comes back while its outgoing copy is still collapsing (an undone removal) replaces it at once.
+    const present = new Set(elements.map((el) => key(el)));
+    for (const ghost of root.querySelectorAll(`[${GHOST}]`)) if (present.has(ghost.getAttribute(GHOST) ?? '')) ghost.remove();
+
+    // The rows were changed: where every one of them is now, in one pass of reads.
+    const seen = new Map<string, Seen>();
+    for (const el of elements) {
+      const at = place(el);
+      seen.set(key(el)!, { el, left: at.left, top: at.top, height: el.offsetHeight, parent: el.parentElement!, next: el.nextElementSibling, prev: el.previousElementSibling });
+    }
+    last.current = { scope, signature, seen };
+    const fresh = resized.current;
+    resized.current = false;
+    // What the first screen shows, a hidden page, another view or a resized window is only read: it is where the next change starts from.
+    if (!before || before.scope !== scope || fresh || !motionAllowed()) return;
+
     // Rows that come and go a few at a time are changes the reader should follow; a screenful at once is a load, a
     // page or a new filter, which only replaces them.
-    const arrived = [...seen.keys()].filter((id) => !before.seen.has(id)).length;
-    const left = [...before.seen.keys()].filter((id) => !seen.has(id)).length;
-    const bulk = arrived > MOST || left > MOST || before.seen.size === 0;
+    const arrived = [...seen.keys()].filter((id) => !before.seen.has(id));
+    const left = [...before.seen.keys()].filter((id) => !seen.has(id));
+    const bulk = arrived.length > MOST || left.length > MOST || before.seen.size === 0;
     const easeOut = token('--ease-out') || 'ease-out';
     const easeIn = token('--ease-in') || 'ease-in';
+    const writes: (() => void)[] = [];
 
-    // Rows that left collapse where they stood: their old element goes back in, inert, and shrinks away.
-    for (const [id, gone] of before.seen) {
-      if (bulk || seen.has(id) || !gone.parent.isConnected || gone.height <= 0 || gone.el.isConnected) continue;
-      const ghost = gone.el;
-      ghost.setAttribute(GHOST, '');
+    // Rows that left collapse where they stood: an inert copy of each goes back in and shrinks away.
+    if (!bulk) for (const id of left) {
+      const gone = before.seen.get(id)!;
+      if (!gone.parent.isConnected || gone.height <= 0 || gone.el.isConnected) continue;
+      // A copy, never the node React took out: React stays free to build and remove its own rows around it.
+      const ghost = gone.el.cloneNode(true) as HTMLElement;
+      ghost.removeAttribute('id');
+      for (const inner of ghost.querySelectorAll('[id]')) inner.removeAttribute('id');
+      ghost.setAttribute(GHOST, id);
       ghost.setAttribute('inert', '');
       ghost.setAttribute('aria-hidden', 'true');
       const reference = gone.next && gone.next.parentNode === gone.parent ? gone.next : null;
@@ -68,19 +96,18 @@ export function useRowMotion(container: RefObject<HTMLElement | null>, rows: str
       else if (gone.prev && gone.prev.parentNode === gone.parent) gone.prev.after(ghost);
       else gone.parent.appendChild(ghost);
       const style = getComputedStyle(ghost);
-      const start: Keyframe = { height: `${ghost.getBoundingClientRect().height}px`, opacity: 1 };
+      const start: Keyframe = { height: `${gone.height}px`, opacity: 1 };
       const end: Keyframe = { height: '0px', opacity: 0 };
       for (const prop of BOX) { start[prop] = style[prop]; end[prop] = '0px'; }
-      const previousOverflow = ghost.style.overflow;
       ghost.style.overflow = 'hidden';
       const collapse = ghost.animate([start, end], { duration: out, easing: easeIn, fill: 'forwards' });
       collapse.id = MOTION_ID;
-      void collapse.finished.then(() => ghost.remove(), () => { ghost.style.overflow = previousOverflow; ghost.remove(); });
+      void collapse.finished.then(() => ghost.remove(), () => ghost.remove());
     }
 
     // Rows that arrived grow to their height.
-    for (const [id, row] of seen) {
-      if (bulk || before.seen.has(id)) continue;
+    if (!bulk) for (const id of arrived) {
+      const row = seen.get(id)!;
       const style = getComputedStyle(row.el);
       const start: Keyframe = { height: '0px', opacity: 0 };
       const end: Keyframe = { height: `${row.height}px`, opacity: 1 };
@@ -93,21 +120,32 @@ export function useRowMotion(container: RefObject<HTMLElement | null>, rows: str
       void grow.finished.then(done, done);
     }
 
-    // Rows that stayed, or moved to another group, slide from where they were to where they are.
-    const view = scroller.getBoundingClientRect();
+    // Rows that stayed, or moved to another group, slide from where they were to where they are: read where each one is
+    // now (the copies and the growing rows are in place), then write every slide.
+    const view = root.closest<HTMLElement>('.pane-scroll')?.getBoundingClientRect() ?? root.getBoundingClientRect();
     const reach = view.height + 200;
-    const base = view;
+    const slides: { el: HTMLElement; dx: number; dy: number }[] = [];
     for (const [id, now] of seen) {
       const was = before.seen.get(id);
       if (!was) continue;
-      const box = now.el.getBoundingClientRect();
-      const dx = was.left - (box.left - base.left + scroller.scrollLeft);
-      const dy = was.top - (box.top - base.top + scroller.scrollTop);
+      const at = place(now.el);
+      const dx = was.left - at.left;
+      const dy = was.top - at.top;
       if (Math.abs(dx) < 1 && Math.abs(dy) < 1) continue;
       // Only rows a reader can see or is about to see are worth moving.
+      const box = now.el.getBoundingClientRect();
       if (box.bottom < view.top - reach || box.top > view.bottom + reach) continue;
-      const slide = now.el.animate([{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'none' }], { duration: duration('--dur-3'), easing: token('--ease-sheet') || 'ease-out' });
-      slide.id = MOTION_ID;
+      slides.push({ el: now.el, dx, dy });
     }
+    writes.push(() => {
+      const ms = duration('--dur-3');
+      const easing = token('--ease-sheet') || 'ease-out';
+      for (const { el, dx, dy } of slides) {
+        for (const running of el.getAnimations()) if (running.id === MOTION_ID && !(running.effect as KeyframeEffect | null)?.getKeyframes().some((frame) => 'height' in frame)) running.cancel();
+        const slide = el.animate([{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'none' }], { duration: ms, easing });
+        slide.id = MOTION_ID;
+      }
+    });
+    for (const write of writes) write();
   });
 }
