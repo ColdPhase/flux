@@ -1,0 +1,52 @@
+{
+  "owner_timed_wait_for_selector": {
+    "count": 1279,
+    "sum_ms": 14218.618000000242,
+    "p50_ms": 10.525999999998021,
+    "p95_ms": 17.653999999994994,
+    "max_ms": 39.25,
+    "trace_to_driver_seconds": 684981.6255910397
+  },
+  "owner": {
+    "timed_frames": 3571,
+    "interval_p95_ms": 16.70000000001164,
+    "interval_max_ms": 33.40000000000873,
+    "long_tasks": 0,
+    "long_frames": 0,
+    "custom_functions": {
+      "SketchMap": {
+        "self_ms": 192.35000002663583,
+        "inclusive_ms": 318.855999968946
+      },
+      "SketchView": {
+        "self_ms": 111.31299962289631,
+        "inclusive_ms": 602.298999670893
+      },
+      "buildOutline": {
+        "self_ms": 217.58699999190867,
+        "inclusive_ms": 217.58699999190867
+      }
+    }
+  },
+  "peer": {
+    "timed_frames": 3510,
+    "interval_p95_ms": 16.80000000000291,
+    "interval_max_ms": 33.5,
+    "long_tasks": 0,
+    "long_frames": 2,
+    "custom_functions": {
+      "SketchView": {
+        "self_ms": 177.61900019831955,
+        "inclusive_ms": 828.2690007472411
+      },
+      "buildOutline": {
+        "self_ms": 240.61500013340265,
+        "inclusive_ms": 265.9260000800714
+      },
+      "SketchMap": {
+        "self_ms": 329.43800021894276,
+        "inclusive_ms": 460.9850002452731
+      }
+    }
+  }
+}
