@@ -74,7 +74,9 @@ class AssistantReactions(unittest.TestCase):
                     card=page.get_by_role('region',name='When something happens')
                     toggle=card.get_by_role('switch',name='When one of my tasks is blocked')
                     expect(toggle).to_be_checked()
-                    toggle.click()
+                    with page.expect_response(lambda response: response.request.method == 'PUT' and response.url.endswith(rule['id'])) as toggled:
+                        toggle.click()
+                    toggled.value.finished()
                     rows[0]=next(item for item in self.api(page,'GET',self.path,status=200)['items'] if item['id']==rule['id'])
                     page.reload()
                     expect(card.get_by_role('switch')).not_to_be_checked()
@@ -120,6 +122,6 @@ class AssistantReactions(unittest.TestCase):
             expect(page.get_by_text('Drafted by your assistant',exact=True)).to_be_visible()
             current=self.api(page,'GET',f"/api/v1/conversations/{self.ids['conversation']}/messages?limit=100",status=200)
             self.assertEqual(len(current['items']),len(messages['items']))
-            page.get_by_role('button',name='Send',exact=True).click()
+            page.get_by_role('button',name='Send reply',exact=True).click()
             expect(reply).to_have_value('')
             page.close()
