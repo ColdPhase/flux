@@ -1,0 +1,8 @@
+{
+  "source_sha": "251d9d5e6b2772ef719a63c75e40da60337127d3",
+  "cases": [
+    "map-500-drag-200"
+  ],
+  "samples_per_case": 240,
+  "warmups_per_case": 30
+}

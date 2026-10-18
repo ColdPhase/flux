@@ -1,0 +1,66 @@
+{
+  "README.md": {
+    "bytes": 4695,
+    "sha256": "e7b34a024f73f3bb99d1b20fe4894a19c08d25aef7145e3155fd1019925c6603"
+  },
+  "case-summary.json.gz": {
+    "bytes": 9097,
+    "sha256": "20288a3fbe66395efbd9bb70f36be2dbca5e1223f40d6dd8827f49127df09828"
+  },
+  "cleanup.json": {
+    "bytes": 192,
+    "sha256": "cee23ff952e4362ca63ee5a5466e3adc12c0ee7c0f18f46193c0c6532dd5a3cd"
+  },
+  "collector-result.json": {
+    "bytes": 179,
+    "sha256": "4253e934f24ffbab61fda6d67bbc4e9a38bc172a4a64cc97c320cb9ede2d7aab"
+  },
+  "diagnostic-selection.patch": {
+    "bytes": 2049,
+    "sha256": "534f9dd67ec7b5b11464ad7d9675536e2eb4935585e72c5748ffdef73cfdfd7b"
+  },
+  "measurement-finished.json": {
+    "bytes": 383,
+    "sha256": "f000f03fe75a32a374b56f2f8f18ca0ad2cf459e38d9d27b0f6aedb63436c71d"
+  },
+  "method.json": {
+    "bytes": 1080,
+    "sha256": "712fa1d04e80aafe9f7e33a63ac0c386c8a13241d5108dbb881d0abdf9486154"
+  },
+  "midrun-host.json": {
+    "bytes": 504,
+    "sha256": "47d7dc141fc9aceb5ab760b101585769de2a8afe5ccdd908fdb00fb31456a101"
+  },
+  "overall-summary.json.gz": {
+    "bytes": 9426,
+    "sha256": "cec9f77b86b414353eaf16fb600cf2a3265e38d5c8ef5241039a46d76c0ad261"
+  },
+  "planned.json": {
+    "bytes": 156,
+    "sha256": "d7cf4614330f9de4eecccb87f284364f26f6a7c7a9ccea22bfc646f4189a0285"
+  },
+  "preflight.json": {
+    "bytes": 1258,
+    "sha256": "86f407fb8e4a3f604f362305338536db0f913137c3265ed77765516495d08b76"
+  },
+  "queue-inventory.json": {
+    "bytes": 299,
+    "sha256": "49c3d6f9e6d86c221719f6d9d94cfa4d44681fe62559bc9d214ddb16e0822356"
+  },
+  "raw-manifest.json": {
+    "bytes": 2582,
+    "sha256": "3391d3001669fe1e310b93c49108c182885958a41ca2ec9aacbc75cdd4ca4316"
+  },
+  "result.json": {
+    "bytes": 4132,
+    "sha256": "be7db64cb1ea5542f0afbcdf3a2e548a535dc749f0b2c715e5254d0bddc46d71"
+  },
+  "runner.log.gz": {
+    "bytes": 6922,
+    "sha256": "6e54864f3812fd544d6e68f102ec03eb1032f8424fc1dd486a7e9cf055518520"
+  },
+  "runtime.json": {
+    "bytes": 2014,
+    "sha256": "132e87e1cbc41d18a49ede9906765fb954390a4d9a114b23a2fdac32d15a5cfc"
+  }
+}
