@@ -91,4 +91,4 @@ launch-error log hash is retained; no failed assertion is hidden.
 independent delta re-review and required CI before any protected merge. Remaining
 F3/design/full-task outcomes described above remain open.
 
-The neutral reviewer also inspected four [integration captures](integration-inputs/136-state-long-title-122-1280.png) at8f0c09de, including actual mixed-agent/human reader history. No new header/history readability finding; the same tall empty-conversation spacing remains a material open #136 finding. Their exact hashes and unchanged final owned header/conversation bytes are recorded.
+The neutral reviewer also inspected four [integration captures](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/agents/evidence/136-native-state/peer-fixes/integration-inputs/136-state-long-title-122-1280.png) at8f0c09de, including actual mixed-agent/human reader history. No new header/history readability finding; the same tall empty-conversation spacing remains a material open #136 finding. Their exact hashes and unchanged final owned header/conversation bytes are recorded.

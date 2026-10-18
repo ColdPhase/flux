@@ -21,15 +21,15 @@ The [fresh neutral visual review](independent-current-visual-review.md) finds fu
 
 | Unmodified current image | CSS viewport / engine / theme / text |
 | --- | --- |
-| [Desktop](task-announcements-desktop.png) | 1440×900 / Chromium / light / default |
-| [Phone320](task-announcements-phone-320.png) | 320×640 / Chromium / light / default |
-| [Phone320 WebKit](task-announcements-phone-320-webkit.png) | 320×640 / WebKit / light / default |
-| [Phone320 text200](task-announcements-phone-320-text200.png) | 320×640 / Chromium / light / root200% |
-| [Phone320 text200 WebKit](task-announcements-phone-320-text200-webkit.png) | 320×640 / WebKit / light / root200% |
-| [Phone390 dark](task-announcements-phone-390-dark.png) | 390×844 / Chromium / dark / default |
-| [Phone390 dark WebKit](task-announcements-phone-390-dark-webkit.png) | 390×844 / WebKit / dark / default |
-| [Phone390 dark text200](task-announcements-phone-390-dark-text200.png) | 390×844 / Chromium / dark / root200% |
-| [Phone390 dark text200 WebKit](task-announcements-phone-390-dark-text200-webkit.png) | 390×844 / WebKit / dark / root200% |
+| [Desktop](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/agents/evidence/276-task-numbers/2026-10-08-current/task-announcements-desktop.png) | 1440×900 / Chromium / light / default |
+| [Phone320](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/agents/evidence/276-task-numbers/2026-10-08-current/task-announcements-phone-320.png) | 320×640 / Chromium / light / default |
+| [Phone320 WebKit](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/agents/evidence/276-task-numbers/2026-10-08-current/task-announcements-phone-320-webkit.png) | 320×640 / WebKit / light / default |
+| [Phone320 text200](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/agents/evidence/276-task-numbers/2026-10-08-current/task-announcements-phone-320-text200.png) | 320×640 / Chromium / light / root200% |
+| [Phone320 text200 WebKit](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/agents/evidence/276-task-numbers/2026-10-08-current/task-announcements-phone-320-text200-webkit.png) | 320×640 / WebKit / light / root200% |
+| [Phone390 dark](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/agents/evidence/276-task-numbers/2026-10-08-current/task-announcements-phone-390-dark.png) | 390×844 / Chromium / dark / default |
+| [Phone390 dark WebKit](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/agents/evidence/276-task-numbers/2026-10-08-current/task-announcements-phone-390-dark-webkit.png) | 390×844 / WebKit / dark / default |
+| [Phone390 dark text200](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/agents/evidence/276-task-numbers/2026-10-08-current/task-announcements-phone-390-dark-text200.png) | 390×844 / Chromium / dark / root200% |
+| [Phone390 dark text200 WebKit](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/agents/evidence/276-task-numbers/2026-10-08-current/task-announcements-phone-390-dark-text200-webkit.png) | 390×844 / WebKit / dark / root200% |
 
 [Capture metadata](capture-metadata.json) and [manifest](manifest.json) provide exact pins, hashes, original bytes and raster dimensions. Each portable independent report links its byte-identical original `.txt`; only local link destinations and Compose-ID references are adapted for publication. Original SHA-256 hashes remain recorded. The portable images/measurements are linked above. Full logs and original controls are retained privately in `/home/hubert/.codex/review-evidence/flux/276/2026-10-08-1b7c3c03/`, preserving synthetic fixture credentials outside the repository. Current and both control cleanup files record zero owned containers, volumes, networks and image tags. Shared services and original dirty worktrees were preserved.
 

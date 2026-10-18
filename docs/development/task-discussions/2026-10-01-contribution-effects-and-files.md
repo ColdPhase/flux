@@ -233,7 +233,7 @@ file-durability corrections, stored bytes, attachment-only messages, quotas, sha
 drafts, migration 0041, unused-AI undo and the real #152/#153 tools are **not**
 implemented and remain required. Operational detail is in
 [the task-discussion record](../task-discussions.md#explicit-native-effects-on-the-canonical-thread);
-verification is in the [evidence note](../../agents/evidence/154-task-notices/contribution-effects/README.md).
+verification is in the [evidence note](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/agents/evidence/154-task-notices/contribution-effects/README.md).
 
 Final names. Contracts: `MessageContribution`, optional `ConversationMessage.contribution`,
 `TaskContributionCommand` (`kind?: 'text' | 'handoff'`), optional `clientCommandId` on

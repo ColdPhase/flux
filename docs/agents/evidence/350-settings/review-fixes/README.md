@@ -170,7 +170,7 @@ scenario; it does not prove the original interrupted-fetch behavior was repaired
 The [current independent visual follow-up](visual-review-current.md) inspected
 the 16 current Chromium/WebKit captures in this folder. The
 [initial review](visual-review-initial.md) and its eight Chromium images are
-retained under [initial-5ff97214](initial-5ff97214/) for source
+retained under [initial-5ff97214](https://github.com/ColdPhase/flux/tree/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/agents/evidence/350-settings/review-fixes/initial-5ff97214/) for source
 `5ff972146296a582a4ee868db1dd2cd165477b78`; they are not current-head evidence.
 
 Current captures use 1440×900 desktop and 390×844 phone CSS viewports at 100% zoom.

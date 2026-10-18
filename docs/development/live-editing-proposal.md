@@ -2,7 +2,7 @@
 
 Date: 2026-10-03. Owner: @PelikanFix16. Status: **accepted for bounded, isolated,
 disabled non-production calibration; all runtime gates pending**. The independent
-[reassessment](../agents/evidence/228-live-editing/contract-rereview.md) accepted
+[reassessment](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/agents/evidence/228-live-editing/contract-rereview.md) accepted
 the exact proposal at [8d71f582](https://github.com/ColdPhase/flux/blob/8d71f58217cf40f9c2575f3a8d226ea0bf76a9c7/docs/development/live-editing-proposal.md),
 SHA-256 `1366410fea8a2d020274ee75febad6ac86cef459dcb3ae3d3ad66e5063b9ce38`.
 This status recording changes no technical criterion. No implementation, runtime

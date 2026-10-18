@@ -77,10 +77,10 @@ tools, supported clients and device acceptance are **not** covered.
   (unsorted task locks, no task lock for a generic reply, no receipt write: 10 of 43
   checks fail; a hook that appends nothing: 30 of 43 fail). They pass unmutated.
 
-Frames from the Chromium journey: [reader 1280](task-effects-reader-1280.png),
-[reader 390](task-effects-reader-390.png),
-[result details 1280](task-effects-result-details-1280.png),
-[result details 390](task-effects-result-details-390.png). Screenshots do not prove
+Frames from the Chromium journey: [reader 1280](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/agents/evidence/154-task-notices/contribution-effects/task-effects-reader-1280.png),
+[reader 390](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/agents/evidence/154-task-notices/contribution-effects/task-effects-reader-390.png),
+[result details 1280](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/agents/evidence/154-task-notices/contribution-effects/task-effects-result-details-1280.png),
+[result details 390](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/agents/evidence/154-task-notices/contribution-effects/task-effects-result-details-390.png). Screenshots do not prove
 interaction or accessibility; a separate neutral visual review is still required.
 
 ## Not verified here

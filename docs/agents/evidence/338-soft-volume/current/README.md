@@ -64,18 +64,18 @@ messages and files are fixture content, not live user data.
 
 | Scene | Capture |
 | --- | --- |
-| Five normal states, Chromium, desktop/light | [1440×900](338-chromium-task-glyphs-1440-light.png) |
-| Parked Open task, WebKit, phone/dark | [390×844](338-webkit-task-parked-390-dark.png) |
-| Own DM initials/keys, Chromium, desktop/dark | [1440×900](338-chromium-dm-details-1440-dark.png) |
-| Own DM initials/keys, WebKit, phone/light | [390×844](338-webkit-dm-details-390-light.png) |
-| Actual saved file and private upload, Chromium, desktop/light | [1440×900](338-chromium-files-1440-light.png) |
-| Actual saved file and private upload, WebKit, phone/dark | [390×844](338-webkit-files-390-dark.png) |
-| Native radio selection/focus, Chromium, desktop/dark | [1440×900](338-chromium-pivot-radio-1440-dark.png) |
-| Native radio selection/focus, WebKit, phone/light | [390×844](338-webkit-pivot-radio-390-light.png) |
-| Enlarged title, Chromium, desktop/light | [1440×900, 200% text](338-chromium-title-200-1440.png) |
-| Enlarged title, WebKit, phone/light | [390×844, 200% text](338-webkit-title-200-390.png) |
-| Original bounded pivot state, Chromium, desktop/light | [1500×900](bounded-details-pivot-desktop.png) |
-| Original bounded pivot state, Chromium, phone/light | [412×915](bounded-details-pivot-phone.png) |
+| Five normal states, Chromium, desktop/light | [1440×900](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/agents/evidence/338-soft-volume/current/338-chromium-task-glyphs-1440-light.png) |
+| Parked Open task, WebKit, phone/dark | [390×844](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/agents/evidence/338-soft-volume/current/338-webkit-task-parked-390-dark.png) |
+| Own DM initials/keys, Chromium, desktop/dark | [1440×900](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/agents/evidence/338-soft-volume/current/338-chromium-dm-details-1440-dark.png) |
+| Own DM initials/keys, WebKit, phone/light | [390×844](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/agents/evidence/338-soft-volume/current/338-webkit-dm-details-390-light.png) |
+| Actual saved file and private upload, Chromium, desktop/light | [1440×900](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/agents/evidence/338-soft-volume/current/338-chromium-files-1440-light.png) |
+| Actual saved file and private upload, WebKit, phone/dark | [390×844](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/agents/evidence/338-soft-volume/current/338-webkit-files-390-dark.png) |
+| Native radio selection/focus, Chromium, desktop/dark | [1440×900](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/agents/evidence/338-soft-volume/current/338-chromium-pivot-radio-1440-dark.png) |
+| Native radio selection/focus, WebKit, phone/light | [390×844](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/agents/evidence/338-soft-volume/current/338-webkit-pivot-radio-390-light.png) |
+| Enlarged title, Chromium, desktop/light | [1440×900, 200% text](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/agents/evidence/338-soft-volume/current/338-chromium-title-200-1440.png) |
+| Enlarged title, WebKit, phone/light | [390×844, 200% text](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/agents/evidence/338-soft-volume/current/338-webkit-title-200-390.png) |
+| Original bounded pivot state, Chromium, desktop/light | [1500×900](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/agents/evidence/338-soft-volume/current/bounded-details-pivot-desktop.png) |
+| Original bounded pivot state, Chromium, phone/light | [412×915](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/agents/evidence/338-soft-volume/current/bounded-details-pivot-phone.png) |
 
 ## Independent evaluation and limits
 
