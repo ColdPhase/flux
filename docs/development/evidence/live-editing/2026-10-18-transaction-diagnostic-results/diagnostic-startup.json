@@ -1,0 +1,13 @@
+{
+  "containerId": "b3e9b5537aaecea261a54532b095dfa89782c866f1dfbec2d013712b5f738f9b",
+  "imageId": "sha256:8104dfb86841b6030304d7bbd487058828c59b576532f104b7bf96048a43c213",
+  "running": true,
+  "configuration": {
+    "FLUX_DEVELOPMENT_LIVE_EDITING_TELEMETRY": "1",
+    "FLUX_DEVELOPMENT_LIVE_EDITING_API_INSTANCE": "api-one",
+    "FLUX_DEVELOPMENT_LIVE_EDITING": "true",
+    "FLUX_MAP_TRANSACTION_DIAGNOSTIC": "1",
+    "FLUX_LIVE_EDITING": "on",
+    "NODE_ENV": "production"
+  }
+}
