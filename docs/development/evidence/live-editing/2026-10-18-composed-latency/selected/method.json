@@ -1,0 +1,27 @@
+{
+  "kind": "selected private diagnostic; unchanged canonical collector must refuse one-cohort marker",
+  "application_base_sha": "f30c9910a21911a4287833a1c19faa12bb5d2851",
+  "selected_source_sha": "f09b3b8bbe0098f0b6bc967925b93161afe69fc0",
+  "application_changes": [
+    "transaction-local project/private producer checks",
+    "isolated cursor/People presence subscription",
+    "stable thought host input callback identities with fresh committed thought resolution",
+    "fixed resize start-height baseline; ordinary/live regressions"
+  ],
+  "application_runtime_inputs_identical": true,
+  "canonical_driver_sha256": "f331c1af49c8df43df6b257bc7c16795fedb5c3b102cfc11249282ef858df3ee",
+  "diagnostic_driver_sha256": "854ebf24f86d91108e73255a3a6544cf930641f06aaf0febee95b5285166f2b4",
+  "changed_functions": [
+    "main"
+  ],
+  "selection_only": true,
+  "expected_scheduled_rows": 240,
+  "warmups": 30,
+  "p95_gate_ms": 200,
+  "status": "terminal: selected timing PASS 191.901796ms, 240 rows/0 errors; runner1 collector1 expected one-cohort incomplete; not Gate4 acceptance",
+  "superseded_prepared_source": {
+    "sha": "dd0bdaa5b58e7d0e0a1c3aaca12a92dd069967a0",
+    "status": "never run; replaced before execution after genuine resize correction"
+  },
+  "p95_ms": 191.9017960317433
+}

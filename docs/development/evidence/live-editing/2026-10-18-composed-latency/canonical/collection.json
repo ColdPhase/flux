@@ -1,0 +1,96 @@
+{
+  "collector-result.json": {
+    "bytes": 4510083,
+    "complete": true,
+    "error": null,
+    "marker_received": true,
+    "records": 3218,
+    "schema": 1,
+    "source_sha": "f30c9910a21911a4287833a1c19faa12bb5d2851"
+  },
+  "planned.json": {
+    "source_sha": "f30c9910a21911a4287833a1c19faa12bb5d2851",
+    "cases": [
+      "map-50-drag-1",
+      "map-50-drag-50",
+      "map-500-drag-1",
+      "map-500-drag-50",
+      "map-500-drag-200",
+      "wiki-10000-editor",
+      "wiki-10000-reader",
+      "wiki-100000-editor",
+      "wiki-100000-reader"
+    ],
+    "samples_per_case": 240,
+    "warmups_per_case": 30
+  },
+  "measurement-finished.json": {
+    "api_instances": [
+      "api-one"
+    ],
+    "completed_case_count": 9,
+    "driver_sha256": "f331c1af49c8df43df6b257bc7c16795fedb5c3b102cfc11249282ef858df3ee",
+    "finished_at": 699245.318224651,
+    "measurement_id": "3d2cfd88-4def-4c0b-99a2-6b2b9f20e293",
+    "planned_cases": [
+      "map-50-drag-1",
+      "map-50-drag-50",
+      "map-500-drag-1",
+      "map-500-drag-50",
+      "map-500-drag-200",
+      "wiki-10000-editor",
+      "wiki-10000-reader",
+      "wiki-100000-editor",
+      "wiki-100000-reader"
+    ],
+    "scheduled_rows_written": 2160,
+    "schema": 1,
+    "source_sha": "f30c9910a21911a4287833a1c19faa12bb5d2851",
+    "teardown_complete": true
+  },
+  "queue-inventory.json": {
+    "api_instances": [
+      "api-one"
+    ],
+    "containers": {
+      "api-one": "e5605078f7532297f4187719602a03e04a67b441937f5abc0159c8652d089263"
+    },
+    "driver_sha256": "f331c1af49c8df43df6b257bc7c16795fedb5c3b102cfc11249282ef858df3ee",
+    "schema": 1,
+    "source_sha": "f30c9910a21911a4287833a1c19faa12bb5d2851"
+  },
+  "queue-seal.json": {
+    "api_instances": [
+      "api-one"
+    ],
+    "backpressured": false,
+    "complete": true,
+    "dropped_records": 0,
+    "end_reason": "drained",
+    "final_drained": true,
+    "measurement_finished_sha256": "8f63e7e4fcd12f314bed5e8b05cf3664ea55dcb21d62e24eff27d02caf3d946f",
+    "measurement_id": "3d2cfd88-4def-4c0b-99a2-6b2b9f20e293",
+    "raw_bytes": 4510083,
+    "raw_path": "actual-queue.jsonl",
+    "raw_sha256": "9a738a59bca9d3f030c070487be89c4abe7bdb1d8a2bc0a00206995cbb55d679",
+    "record_count": 3218,
+    "schema": 1,
+    "source_sha": "f30c9910a21911a4287833a1c19faa12bb5d2851"
+  },
+  "producer-shutdown.json": {
+    "inventory_sha256": "6871a5e14d9a5d24eb8ee4be7834753938c3e2e778f20b85e73a6b6dcf22ec95",
+    "producers": {
+      "api-one": {
+        "container_id": "e5605078f7532297f4187719602a03e04a67b441937f5abc0159c8652d089263",
+        "dead": false,
+        "exit_code": 0,
+        "finished_at": "2026-10-18T13:13:47.709966226Z",
+        "oom_killed": false,
+        "running": false,
+        "started_at": "2026-10-18T13:00:39.391172534Z"
+      }
+    },
+    "schema": 1,
+    "source_sha": "f30c9910a21911a4287833a1c19faa12bb5d2851"
+  }
+}
