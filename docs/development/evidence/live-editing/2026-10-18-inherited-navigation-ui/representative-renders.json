@@ -1,0 +1,63 @@
+{
+  "applicationSource": "7af776c7dfd4403e3937c8ccd4b9723c7808d587",
+  "captureSource": "21bbb7469132f2240f16fc346be1639b05a85813",
+  "role": "Unmodified author renders; independent visual assessment pending",
+  "images": [
+    {
+      "engine": "chromium",
+      "file": "chromium-map-active-peer-movement-light-1440.png",
+      "source": "/home/hubert/flux-evidence/228-inherited-7af776c7/chromium-shots/map-active-peer-movement-light-1440.png",
+      "sha256": "b142891e693b73377932e5e1c9a61655d802e9044cfeb23feda3eddba34e8622",
+      "bytes": 105054
+    },
+    {
+      "engine": "chromium",
+      "file": "chromium-map-active-peer-movement-dark-390.png",
+      "source": "/home/hubert/flux-evidence/228-inherited-7af776c7/chromium-shots/map-active-peer-movement-dark-390.png",
+      "sha256": "dbe34079a2107a919ff2f588d3d6c2abc1ee95f6c013cc40bc7e45320e1692a2",
+      "bytes": 54641
+    },
+    {
+      "engine": "chromium",
+      "file": "chromium-wiki-shared-writing-before-version-save-dark-820.png",
+      "source": "/home/hubert/flux-evidence/228-inherited-7af776c7/chromium-shots/wiki-shared-writing-before-version-save-dark-820.png",
+      "sha256": "cef788d0f05a0f6ded481a9a98c406ab76d1193e6ab45aa90663d8c008d67253",
+      "bytes": 100674
+    },
+    {
+      "engine": "chromium",
+      "file": "chromium-wiki-shared-writing-before-version-save-light-2560.png",
+      "source": "/home/hubert/flux-evidence/228-inherited-7af776c7/chromium-shots/wiki-shared-writing-before-version-save-light-2560.png",
+      "sha256": "0e8e3415a3a0ca9b9571fe58a36f159be6d9602755519a6d1c444ee524c769c7",
+      "bytes": 130226
+    },
+    {
+      "engine": "webkit",
+      "file": "webkit-map-active-peer-movement-light-1440.png",
+      "source": "/home/hubert/flux-evidence/228-inherited-7af776c7/webkit-shots/map-active-peer-movement-light-1440.png",
+      "sha256": "85e62dec8815e908170beda0d5b5ecb97f4648521ee30a117ee33f7a880ea9e6",
+      "bytes": 130799
+    },
+    {
+      "engine": "webkit",
+      "file": "webkit-map-active-peer-movement-dark-390.png",
+      "source": "/home/hubert/flux-evidence/228-inherited-7af776c7/webkit-shots/map-active-peer-movement-dark-390.png",
+      "sha256": "6a83ccab17f4f66a2e826370ffcc4970b4454acfd84e24ebe7423a605f33df03",
+      "bytes": 73696
+    },
+    {
+      "engine": "webkit",
+      "file": "webkit-wiki-shared-writing-before-version-save-dark-820.png",
+      "source": "/home/hubert/flux-evidence/228-inherited-7af776c7/webkit-shots/wiki-shared-writing-before-version-save-dark-820.png",
+      "sha256": "1cbd87594d58914bc638307fe777e16b8bb4f4d06fe65d109a8142761e5394d0",
+      "bytes": 113521
+    },
+    {
+      "engine": "webkit",
+      "file": "webkit-wiki-shared-writing-before-version-save-light-2560.png",
+      "source": "/home/hubert/flux-evidence/228-inherited-7af776c7/webkit-shots/wiki-shared-writing-before-version-save-light-2560.png",
+      "sha256": "1a154716fa0ee269b85691b8556ef34f0090d088e97ff72b04d459f0df0e387b",
+      "bytes": 153556
+    }
+  ]
+}
