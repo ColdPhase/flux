@@ -21,6 +21,10 @@ if [ "${FLUX_TEST_MCP_OAUTH_CALLBACK_DEFAULT:-0}" = 1 ] && { [ "${FLUX_TEST_MCP_
   echo "Default-callback control requires explicit inline login-only mode." >&2; exit 2
 fi
 
+if [ "${FLUX_TEST_MCP_LIVE_WORKFLOW:-0}" = 1 ] && [ "${FLUX_TEST_MCP_LIVE_CLIENT:-}" != codex ]; then
+  echo "Configured-account acceptance requires the explicit Codex selector; Claude remains stopped." >&2; exit 2
+fi
+
 # Explicit local acceptance mode: no model mocks, no CI. Read-only mounts are passed only to the disposable
 # native-client container; never relabel, copy into the source/image, print, refresh or overwrite the host files.
 if [ "${FLUX_TEST_MCP_OAUTH_ONLY:-0}" = 1 ]; then
@@ -29,8 +33,11 @@ if [ "${FLUX_TEST_MCP_OAUTH_ONLY:-0}" = 1 ]; then
   }
 elif [ "${FLUX_TEST_MCP_LIVE_WORKFLOW:-0}" = 1 ]; then
   : "${FLUX_CODEX_AUTH_FILE:?Set an explicit Codex auth.json path for the authorized local account}"
-  : "${FLUX_CLAUDE_CREDENTIALS_FILE:?Set an explicit Claude credentials path for the authorized local account}"
-  test -f "$FLUX_CODEX_AUTH_FILE" && test -f "$FLUX_CLAUDE_CREDENTIALS_FILE"
+  test -f "$FLUX_CODEX_AUTH_FILE"
+  if [ "${FLUX_TEST_MCP_LIVE_CLIENT:-}" != codex ]; then
+    : "${FLUX_CLAUDE_CREDENTIALS_FILE:?Set an explicit Claude credentials path for the authorized local account}"
+    test -f "$FLUX_CLAUDE_CREDENTIALS_FILE"
+  fi
 fi
 
 cd "$(dirname "$0")/.."
@@ -58,6 +65,8 @@ export FLUX_VAPID_PUBLIC_KEY= FLUX_VAPID_PRIVATE_KEY= FLUX_VAPID_SUBJECT=
 export COMPOSE_FILE="docker/compose.source.yaml:docker/compose.test.yaml${FLUX_TEST_COMPOSE_OVERRIDE:+:$FLUX_TEST_COMPOSE_OVERRIDE}"
 if [ "${FLUX_TEST_MCP_OAUTH_ONLY:-0}" = 1 ]; then
   export COMPOSE_FILE="$COMPOSE_FILE:docker/compose.mcp-oauth.test.yaml"
+elif [ "${FLUX_TEST_MCP_LIVE_WORKFLOW:-0}" = 1 ] && [ "${FLUX_TEST_MCP_LIVE_CLIENT:-}" = codex ]; then
+  export COMPOSE_FILE="$COMPOSE_FILE:docker/compose.mcp-codex-live.test.yaml"
 elif [ "${FLUX_TEST_MCP_LIVE_WORKFLOW:-0}" = 1 ]; then
   export COMPOSE_FILE="$COMPOSE_FILE:docker/compose.mcp-live.test.yaml"
 fi
@@ -89,7 +98,7 @@ $compose up -d db migrate
 $compose --profile setup run --rm files-init
 if [ "${FLUX_TEST_MCP_LIVE_WORKFLOW:-0}" = 1 ]; then
   $compose run --rm -e FLUX_TEST_MCP_LIVE_WORKFLOW=1 -e FLUX_TEST_MCP_LIVE_CLIENT="${FLUX_TEST_MCP_LIVE_CLIENT:-}" -e FLUX_TEST_MCP_OAUTH_ONLY="${FLUX_TEST_MCP_OAUTH_ONLY:-0}" -e FLUX_TEST_MCP_OAUTH_COMPARE="${FLUX_TEST_MCP_OAUTH_COMPARE:-0}" -e FLUX_TEST_MCP_OAUTH_CALLBACK_DEFAULT="${FLUX_TEST_MCP_OAUTH_CALLBACK_DEFAULT:-0}" mcp-clients sh -c \
-    'if [ "$FLUX_TEST_MCP_LIVE_CLIENT" != codex ]; then node apps/runtime/dist/install/main.js && claude --version || exit; fi; codex --version && sha256sum tests/app/e2e/mcp-live-workflow.e2e.ts tests/app/support/mcp-client-harness.ts tests/app/support/oauth-diagnostics.ts && exec node_modules/.bin/tsx --test tests/app/e2e/mcp-live-workflow.e2e.ts'
+    'if [ "$FLUX_TEST_MCP_LIVE_CLIENT" != codex ]; then node apps/runtime/dist/install/main.js && claude --version || exit; fi; codex --version && sha256sum tests/app/e2e/mcp-live-workflow.e2e.ts tests/app/support/mcp-client-harness.ts tests/app/support/oauth-diagnostics.ts tests/app/support/cowork-production-invoke.ts && exec node_modules/.bin/tsx --test tests/app/e2e/mcp-live-workflow.e2e.ts'
   exit 0
 fi
 # The changed authenticated boundary is exercised through every maintained MCP domain/authority contract in both eras.

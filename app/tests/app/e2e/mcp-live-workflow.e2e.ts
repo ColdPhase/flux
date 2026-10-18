@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { symlinkSync } from 'node:fs';
 import { writeFile, unlink } from 'node:fs/promises';
-import { coworkHostInstructions, coworkHostScope, coworkHostUrl, coworkNativeOutcome, type CoworkHostBinding } from '../../../tooling/cowork.js';
+import { coworkHostScope, coworkHostUrl, coworkNativeOutcome, type CoworkHostBinding } from '../../../tooling/cowork.js';
 import { join } from 'node:path';
 import { after, test } from 'node:test';
 import { createDatabase } from '@flux/db';
@@ -10,6 +10,7 @@ import { chromium } from 'playwright';
 import { register, uniqueEmail } from '../support/http.js';
 import { password } from '../support/people.js';
 import { expect } from '../support/mcp.js';
+import { coworkProductionInvoke } from '../support/cowork-production-invoke.js';
 import { createOAuthDiagnostic, oauthComparisonOnly, oauthDefaultCallbackOnly, oauthLoginOnly } from '../support/oauth-diagnostics.js';
 import { authorizeInBrowser, claudeBin, cleanClientHome, clientEvents, connectClient, origin, run, scopes, seedOauthClient, sh, startFluxProxy, waitFor,
   type ClientSpec } from '../support/mcp-client-harness.js';
@@ -30,7 +31,7 @@ test('real configured accounts: supplied Start and Resume reach the model and pr
     const browser = await chromium.launch({ headless: true, args: ['--no-sandbox'] });
     try {
       const only = process.env.FLUX_TEST_MCP_LIVE_CLIENT;
-      assert.ok(!only || only === 'codex' || only === 'claude', 'Select only codex or claude, or omit the client selector');
+      assert.equal(only, 'codex', 'Configured-account acceptance is explicitly Codex-only; Claude remains stopped pending new account/auth evidence.');
       for (const client of ['codex', 'claude'] as const) {
         if (only && only !== client) continue;
         await t.test(client, async () => {
@@ -84,7 +85,8 @@ test('real configured accounts: supplied Start and Resume reach the model and pr
           '-c', `mcp_oauth_callback_port=${spec.port}`, ...(defaultCallback ? [] : ['-c', `mcp_servers.flux.oauth.callback_url=${JSON.stringify(`http://127.0.0.1:${spec.port}/callback`)}`]),
           '-c', 'mcp_oauth_credentials_store="file"'];
         if (client === 'codex') {
-          const variants = compare ? ['persisted_bound', 'inline_bound'] as const : ['inline_bound'] as const;
+          const variants = compare ? ['persisted_bound', 'inline_bound'] as const
+            : defaultCallback ? ['inline_bound'] as const : ['persisted_bound'] as const;
           const outcomes: boolean[] = [];
           for (const variant of variants) {
             diagnostic = createOAuthDiagnostic();
@@ -137,12 +139,7 @@ test('real configured accounts: supplied Start and Resume reach the model and pr
           const input = client === 'claude' ? `/mcp__flux__${action}_work ${projectId}` : `${action === 'start' ? 'Start' : 'Resume'} work on Flux`;
           if (client === 'codex' && action === 'resume') assert.ok(codexThreadId, 'Resume needs the exact thread issued by this fixture’s Start');
           const result = client === 'codex'
-            ? await sh('codex', ['exec', '--ignore-user-config', '--json', '--skip-git-repo-check', '--sandbox', 'workspace-write', ...fixtureConfig,
-              '-c', `developer_instructions=${JSON.stringify(coworkHostInstructions(binding, action))}`,
-              // The reviewed pinned runtime switches also keep this fixture out of account-connected app data.
-              // Keep native code-mode/resource tooling: the external MCP path actually needs it.
-              '-c', 'features.apps=false', '-c', 'features.plugins=false', '-c', 'features.remote_plugin=false',
-              ...(action === 'resume' ? ['resume', codexThreadId!] : []), 'Follow the current Flux server playbook for this bound host action.'], home.env, home.cwd)
+            ? await sh('codex', coworkProductionInvoke(binding, action), home.env, home.cwd)
             : await sh(claudeBin, ['-p', input, '--output-format', 'stream-json', '--verbose', '--allowedTools', 'mcp__flux', '--max-turns', '20'], home.env, home.cwd);
           const categories = ['usage_limit', 'rate_limit', 'rate limit', 'weekly limit', 'authentication_error', '401 Unauthorized', 'not logged in']
             .filter(marker => result.output.toLowerCase().includes(marker.toLowerCase()));

@@ -529,3 +529,50 @@ account, model, login, Docker or build was run for this static plan. The existin
 production helper remains unchanged; no speculative repair or further OAuth
 flow is authorized by this document. Root decides any later execution after the
 other author's heavy lane.
+
+### Prepared genuine Codex fixture parity (unrun)
+
+The normal Codex fixture now chooses the successful persisted-bound native
+add/login setup in its original isolated HOME, then invokes a test-side copy
+of the production argv with **only** bound URL/required, current-playbook entry
+guidance, sandbox/JSON/ignored-config and app/plugin switches. It no longer
+passes fixture OAuth client/callback/port/store overrides into exec. Resume
+uses the same HOME/cwd/binding and the native thread created by that Start.
+No backend/cache behavior is forced or claimed: `--ignore-user-config` and
+OAuth cache lookup remain unverified. A targeted regression guards absent
+OAuth/backend overrides and rejects unbound/`--last` Resume; it awaits CI/Docker.
+Production helper/app bytes are unchanged.
+
+The existing explicit Codex-only `FLUX_TEST_MCP_OAUTH_ONLY=1` selector now
+controls this persisted-bound setup without provider mounts or model execution;
+comparison/default-callback modes remain separately explicit diagnostics.
+Codex-only genuine mode has a Codex-only read-only credential overlay, so it
+neither requires nor mounts the stopped Claude account. No Claude retry is
+added. No Docker/client/account/model call was made for this preparation.
+Any future genuine run is limited to one Start and one Resume, with Resume
+only after successful Start; auth/quota stops the run without retry or payer
+fallback. Setup success alone is not first-login product parity or whole-issue
+acceptance.
+
+### Whole #152/#160 evidence and outstanding matrix
+
+Original pins are retained; historical checks are not rerun/reaccepted at this
+head. Scripted native model endpoints prove transport/domain composition, not
+genuine workflow obedience. Issue closure/supersession is not new runtime proof.
+
+| Criteria / journey | Existing evidence at original pin | Still required / unverified |
+| --- | --- | --- |
+| #152 AC1/3: owners, connections, consent/authority | Domain delivery #167 `919c1dbf`; native #612 `469ee898` passed22/22 per mode with two owners/five connections, including the requested three-connection composition; API6/6 per era at `d271ac44` | Current integrated genuine activation and same-session workflow; native fresh browser contexts alone do not prove same-browser/cross-tab isolation |
+| #152 AC2/5; #160 AC1: bounded domain/bootstrap/orientation | Public domain/grant/receipt machinery exists; #616 `26ef05d9` build/type/lint and focused35/35, compatibility; `64e66020` orientation/checkpoint9/9 corrected rerun; earlier actual Codex Start at that source created one sourced native task/checkpoint | Exact-production-flag fresh Start/Resume, full source/version/gap coverage and changed-plan reanalysis under actual supported models; complete bootstrap/policy/capability resumed-context acceptance |
+| #152 AC4/5; #160 AC2: supported onboarding/instructions | #612 native delivery/onboarding at `469ee898` scripted endpoints; earlier actual Start success then fresh generic Resume failure preserved above; current persisted-bound OAuth success at `d401a7ab`, inline controls failed | One genuine exact-production-flag Codex Start then explicit Resume; normal first-login parity; Claude remains pending after actual account/auth stop, no retry. No README/prompt/skill fallback counts |
+| #160 AC3: busy recipient, targeted review/fix | #612 `469ee898`: two owners, busy recipient retains unit through busy/after_step defer, checkpoint, targeted review, stale verdict and one fresh review; third-connection inbox isolation and debit/dedup assertions. API versions at `d271ac44` | An actually active model/client receives/dequeues at a safe checkpoint without interrupting unrelated work; full review→fix→fresh-review execution with loaded workflow |
+| #160 AC3/4: wake/quiet idle | Durable storage/recovery originally tested at `919038b5`, `664ce62e`; #612 fresh-process reconnect/quiet-renewal controls at `469ee898` | Active/idle adapter scheduling/wake, no idle model polling, measured tool/network/model-call behavior. Current OAuth-only zero-model runs are not idle-wake evidence |
+| #160 AC3/4; #152 AC3/5: resilience | Server/API/native scripted replay, exact lease/session/checkpoint recovery, request versions, targeted revocation at pins above; `26ef05d9` binding/replay modern plus legacy1/1 | Integrated genuine duplicate/offline/lost-ACK/artifact-change/revocation/lease-loss/missing-capability/policy-update workflow, durable visible pending/block state; no silent loss/double effects/payer fallback |
+| #160 AC3: useful non-code + native task decomposition | #612 `469ee898` stores non-code result/review and bounded intents with scripted selections; actual Start at `64e66020` made one task with criteria/plan intent and orientation checkpoint | Actual useful completion/review, multi-task criteria/dependencies/decomposition, concurrent dedup, changed-plan reanalysis and reuse on genuine Resume |
+| #160 AC3: GitHub links | Verified project PR-link domain delivered #168 `cbdf7e11`; same-task deterministic rules #270 `bfdc2d01` and later existing #74/#479 work. No linked-PR native case claimed by #612 | Native plan→task→resulting verified PR links and relevant checks/eligible external approval gates in the integrated workflow; no global scan or substitute Flux-only approval |
+| #160 AC5: same Agents/tasks, controls | Original setup/recovery API/browser at `365cd0f2`; #616 Connect Chromium/WebKit×390/1440 at `26ef05d9`; supplied action component also appears in own Agents detail | Agents entry path separately exercised; full same-task Start/Resume/Pause/Stop + busy/outcome state integration. Stop ends Flux hold, not unrelated CLI; no-AI path and quiet ACK/noise behavior remain required |
+
+All #152 AC1–AC5 and #160 AC1–AC5 remain whole contracts, not partially accepted
+from these rows. The entire integrated application/release pass and eligible
+independent approval remain separate. #616 stays Draft; no new full review was
+requested, preserving the agreed comprehensive-review/final-delta limit.
