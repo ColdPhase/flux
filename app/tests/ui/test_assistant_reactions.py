@@ -49,7 +49,7 @@ class AssistantReactions(unittest.TestCase):
                     for rule in rules:
                         self.api(page, 'PUT', f"{self.path}/{rule['id']}", {**{key: rule[key] for key in ('projectId','event','action','dailyLimit')}, 'enabled': False, 'expectedVersion':rule['version']}, status=200)
                     # A new project supplies an empty real collection without deleting another viewport's history.
-                    project = self.api(page,'POST',f"/api/v1/workspaces/{self.ids['workspace']}/projects",{'name':f"Low light {phone} {dark}",'visibility':'workspace'},status=201)
+                    project = self.api(page,'POST',f"/api/v1/workspaces/{self.ids['workspace']}/projects",{'name':{(False,False):'Low-light calibration',(False,True):'Connector bench test',(True,False):'Sensor verification',(True,True):'Assembly check'}[(phone,dark)],'visibility':'workspace'},status=201)
                     rows = []
                     def collection(route):
                         if route.request.method == 'GET':
@@ -123,7 +123,9 @@ class AssistantReactions(unittest.TestCase):
             current=self.api(page,'GET',f"/api/v1/conversations/{self.ids['conversation']}?limit=100",status=200)
             self.assertEqual(len(current['messages']),len(messages['messages']))
             shot(page,f"assistant-reply-{self.tag(phone)}")
-            page.get_by_role('button',name='Send reply',exact=True).click()
+            with page.expect_response(lambda response: response.request.method == 'POST' and response.url.endswith(f"/conversations/{self.ids['conversation']}/messages")) as delivered:
+                page.get_by_role('button',name='Send reply',exact=True).click()
+            self.assertEqual(delivered.value.status,201)
             expect(reply).to_have_value('')
             posted=self.api(page,'GET',f"/api/v1/conversations/{self.ids['conversation']}?limit=100",status=200)
             self.assertEqual(len(posted['messages']),len(messages['messages'])+1)
