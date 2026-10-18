@@ -1,0 +1,8 @@
+ Volume flux-live-editing-1792307958-495870_uishots Creating 
+ Volume flux-live-editing-1792307958-495870_uishots Created 
+ Container flux-live-editing-1792307958-495870-ui-test-run-6db2ae47aa53 Creating 
+time="2026-10-18T09:19:41+02:00" level=warning msg="mount of type `volume` should not define `bind` option"
+ Container flux-live-editing-1792307958-495870-ui-test-run-6db2ae47aa53 Created 
+ACTUAL_UI_ENGINE=chromium
+Gate 4 FAIL: retained case failures; inspect summary and raw scheduled rows
+

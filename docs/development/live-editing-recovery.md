@@ -2,6 +2,8 @@
 
 These are prepared Gate3 fixtures for #228/#239. They do not enable production or
 establish any of the four gates without candidate-pinned actual execution.
+The [2026-10-18 execution report](evidence/live-editing/2026-10-18-calibration/README.md)
+records the actual continuous restart pass and the still-failing parent latency gate.
 
 `tests/app/live-wiki-reconciliation.test.ts` uses real PostgreSQL and the production
 wiki authority/codec/storage. Its explicitly labelled public query interposition

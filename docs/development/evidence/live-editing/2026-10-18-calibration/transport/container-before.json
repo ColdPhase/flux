@@ -1,0 +1,21 @@
+{
+  "imageId": "sha256:c2bb9a418f6c00f71e7bd8593e602e15f5e606958a4b0697658eecec8c242718",
+  "containerId": "428ac33d3a2557928067d5ba3c34b3b5b7f4f7810470cc326828c8bfcbe4f274",
+  "limits": {
+    "Memory": 536870912,
+    "MemorySwap": 536870912,
+    "NanoCpus": 2000000000,
+    "PidsLimit": 64,
+    "ReadonlyRootfs": true,
+    "NetworkMode": "none",
+    "CapDrop": [
+      "ALL"
+    ],
+    "SecurityOpt": [
+      "no-new-privileges"
+    ],
+    "Tmpfs": {
+      "/tmp": "rw,nosuid,noexec,size=32m"
+    }
+  }
+}

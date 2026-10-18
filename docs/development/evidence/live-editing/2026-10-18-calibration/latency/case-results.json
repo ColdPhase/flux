@@ -1,0 +1,140 @@
+[
+  {
+    "case": "map-50-drag-1",
+    "source_sha": "a24843d7995e01e4ca62d15eb4364d3af3e12245",
+    "samples": 240,
+    "warmups": 30,
+    "interval_ms": 250,
+    "duration_s": 60,
+    "timeout_ms": 1000,
+    "p95_ms": 141.0623979754746,
+    "failures": 0,
+    "input_errors": [],
+    "socket_errors": [],
+    "result": "PASS"
+  },
+  {
+    "case": "map-50-drag-50",
+    "source_sha": "a24843d7995e01e4ca62d15eb4364d3af3e12245",
+    "samples": 240,
+    "warmups": 30,
+    "interval_ms": 250,
+    "duration_s": 60,
+    "timeout_ms": 1000,
+    "p95_ms": 153.88092899229378,
+    "failures": 0,
+    "input_errors": [],
+    "socket_errors": [],
+    "result": "PASS"
+  },
+  {
+    "case": "map-500-drag-1",
+    "source_sha": "a24843d7995e01e4ca62d15eb4364d3af3e12245",
+    "samples": 240,
+    "warmups": 30,
+    "interval_ms": 250,
+    "duration_s": 60,
+    "timeout_ms": 1000,
+    "p95_ms": 130.9083281084895,
+    "failures": 0,
+    "input_errors": [],
+    "socket_errors": [],
+    "result": "PASS"
+  },
+  {
+    "case": "map-500-drag-50",
+    "source_sha": "a24843d7995e01e4ca62d15eb4364d3af3e12245",
+    "samples": 240,
+    "warmups": 30,
+    "interval_ms": 250,
+    "duration_s": 60,
+    "timeout_ms": 1000,
+    "p95_ms": 154.26885895431042,
+    "failures": 0,
+    "input_errors": [],
+    "socket_errors": [],
+    "result": "PASS"
+  },
+  {
+    "case": "map-500-drag-200",
+    "source_sha": "a24843d7995e01e4ca62d15eb4364d3af3e12245",
+    "samples": 240,
+    "warmups": 30,
+    "interval_ms": 250,
+    "duration_s": 60,
+    "timeout_ms": 1000,
+    "p95_ms": 208.0626980168745,
+    "failures": 0,
+    "input_errors": [],
+    "socket_errors": [],
+    "result": "FAIL"
+  },
+  {
+    "case": "wiki-10000-editor",
+    "source_sha": "a24843d7995e01e4ca62d15eb4364d3af3e12245",
+    "samples": 240,
+    "warmups": 30,
+    "interval_ms": 250,
+    "duration_s": 60,
+    "timeout_ms": 1000,
+    "p95_ms": 148.58948101755232,
+    "failures": 0,
+    "input_errors": [],
+    "socket_errors": [
+      {
+        "at": 678468.199577821,
+        "direction": "received",
+        "binary": false,
+        "header": {
+          "type": "error",
+          "code": "EDITING_LEASE_CHANGED",
+          "outcome": "refused",
+          "retryable": false
+        }
+      }
+    ],
+    "result": "FAIL"
+  },
+  {
+    "case": "wiki-10000-reader",
+    "source_sha": "a24843d7995e01e4ca62d15eb4364d3af3e12245",
+    "samples": 240,
+    "warmups": 30,
+    "interval_ms": 250,
+    "duration_s": 60,
+    "timeout_ms": 1000,
+    "p95_ms": 133.61696701031178,
+    "failures": 0,
+    "input_errors": [],
+    "socket_errors": [],
+    "result": "PASS"
+  },
+  {
+    "case": "wiki-100000-editor",
+    "source_sha": "a24843d7995e01e4ca62d15eb4364d3af3e12245",
+    "samples": 240,
+    "warmups": 30,
+    "interval_ms": 250,
+    "duration_s": 60,
+    "timeout_ms": 1000,
+    "p95_ms": 171.94973200093955,
+    "failures": 0,
+    "input_errors": [],
+    "socket_errors": [],
+    "result": "PASS"
+  },
+  {
+    "case": "wiki-100000-reader",
+    "source_sha": "a24843d7995e01e4ca62d15eb4364d3af3e12245",
+    "samples": 240,
+    "warmups": 30,
+    "interval_ms": 250,
+    "duration_s": 60,
+    "timeout_ms": 1000,
+    "p95_ms": 159.7399968886748,
+    "failures": 0,
+    "input_errors": [],
+    "socket_errors": [],
+    "result": "PASS"
+  }
+]

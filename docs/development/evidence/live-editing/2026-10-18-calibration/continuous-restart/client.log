@@ -1,0 +1,3 @@
+live-restart prepare: real committed unobserved ACK and native move stored in private fixture state; root must force-recreate both API processes
+live-restart enrollment: same live Y.Doc; original collision and instance renewal persist; unseen UUID first-admitted at sequence 2
+live-restart verify: both actual API CIDs changed; session/confirmed text/immutable pending receipt/explicit Save history/native ownUndo/retries persist without duplication

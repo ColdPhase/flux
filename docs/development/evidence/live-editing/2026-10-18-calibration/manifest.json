@@ -1,0 +1,350 @@
+{
+  "schema": 1,
+  "historicalSource": "a24843d7995e01e4ca62d15eb4364d3af3e12245",
+  "files": [
+    {
+      "path": "canonical/codec.tap",
+      "sourcePath": "/home/hubert/flux-evidence/231-calibration-20261018-a24843d7/canonical/codec.tap",
+      "sourceSha256": "88bb384d3749976705e8f66f082bbf63ccef2f13ef722e276c8ecedc734a4ef1",
+      "retainedSha256": "88bb384d3749976705e8f66f082bbf63ccef2f13ef722e276c8ecedc734a4ef1",
+      "sourceBytes": 15332,
+      "retainedBytes": 15332
+    },
+    {
+      "path": "canonical/corpus-container.json",
+      "sourcePath": "/home/hubert/flux-evidence/231-calibration-20261018-a24843d7/canonical/corpus-container.json",
+      "sourceSha256": "89a45ecd8961a7c7c358af749f64f76869fbad2082cdff008bd84208a169594e",
+      "retainedSha256": "89a45ecd8961a7c7c358af749f64f76869fbad2082cdff008bd84208a169594e",
+      "sourceBytes": 727,
+      "retainedBytes": 727
+    },
+    {
+      "path": "canonical/inventory-container.json",
+      "sourcePath": "/home/hubert/flux-evidence/231-calibration-20261018-a24843d7/canonical/inventory-container.json",
+      "sourceSha256": "d30ae55b8e92821c0d30a21bd11373fdb16df1f85558329c19976b1887abac4b",
+      "retainedSha256": "d30ae55b8e92821c0d30a21bd11373fdb16df1f85558329c19976b1887abac4b",
+      "sourceBytes": 728,
+      "retainedBytes": 728
+    },
+    {
+      "path": "canonical/inventory.json",
+      "sourcePath": "/home/hubert/flux-evidence/231-calibration-20261018-a24843d7/canonical/inventory.json",
+      "sourceSha256": "459ac352e3a324ae8191d9434d0af571e0b622d983e3df6c3e294efdb410f79b",
+      "retainedSha256": "459ac352e3a324ae8191d9434d0af571e0b622d983e3df6c3e294efdb410f79b",
+      "sourceBytes": 14365,
+      "retainedBytes": 14365
+    },
+    {
+      "path": "canonical/runner-result.json",
+      "sourcePath": "/home/hubert/flux-evidence/231-calibration-20261018-a24843d7/canonical/runner-result.json",
+      "sourceSha256": "b2204faa72332656750fd920ee6a20eef5b70fdd35143534ebd15ebc78a7244d",
+      "retainedSha256": "b2204faa72332656750fd920ee6a20eef5b70fdd35143534ebd15ebc78a7244d",
+      "sourceBytes": 273,
+      "retainedBytes": 273
+    },
+    {
+      "path": "canonical/source-and-inputs.json",
+      "sourcePath": "/home/hubert/flux-evidence/231-calibration-20261018-a24843d7/canonical/source-and-inputs.json",
+      "sourceSha256": "2ab0cda04d25110d657790dc6724b0f66fcf32ae8058fd9771b50924b67a2d1c",
+      "retainedSha256": "2ab0cda04d25110d657790dc6724b0f66fcf32ae8058fd9771b50924b67a2d1c",
+      "sourceBytes": 4124,
+      "retainedBytes": 4124
+    },
+    {
+      "path": "transport/baked-source.json",
+      "sourcePath": "/home/hubert/flux-evidence/231-calibration-20261018-a24843d7/transport/baked-source.json",
+      "sourceSha256": "3529edd1b85b31dd13048fc8707400183e3e15d03aa82c2596bb15fc007b60a7",
+      "retainedSha256": "3529edd1b85b31dd13048fc8707400183e3e15d03aa82c2596bb15fc007b60a7",
+      "sourceBytes": 1752,
+      "retainedBytes": 1752
+    },
+    {
+      "path": "transport/container-after.json",
+      "sourcePath": "/home/hubert/flux-evidence/231-calibration-20261018-a24843d7/transport/container-after.json",
+      "sourceSha256": "5fd4d4561f6c4c870bfb932ab8a52adb8c136d0d008ea0af154e029bed8d11d1",
+      "retainedSha256": "5fd4d4561f6c4c870bfb932ab8a52adb8c136d0d008ea0af154e029bed8d11d1",
+      "sourceBytes": 521,
+      "retainedBytes": 521
+    },
+    {
+      "path": "transport/container-before.json",
+      "sourcePath": "/home/hubert/flux-evidence/231-calibration-20261018-a24843d7/transport/container-before.json",
+      "sourceSha256": "7ee505c5864ad8f50ec97db4a2acf76eab5a47c1e7693aea217c58dc5c0c5434",
+      "retainedSha256": "7ee505c5864ad8f50ec97db4a2acf76eab5a47c1e7693aea217c58dc5c0c5434",
+      "sourceBytes": 506,
+      "retainedBytes": 506
+    },
+    {
+      "path": "transport/invocation.json",
+      "sourcePath": "/home/hubert/flux-evidence/231-calibration-20261018-a24843d7/transport/invocation.json",
+      "sourceSha256": "e2b05be98d41956885ee289f72925cef4b378d3afc18f09e244e25c843b570fb",
+      "retainedSha256": "e2b05be98d41956885ee289f72925cef4b378d3afc18f09e244e25c843b570fb",
+      "sourceBytes": 673,
+      "retainedBytes": 673
+    },
+    {
+      "path": "transport/result.json",
+      "sourcePath": "/home/hubert/flux-evidence/231-calibration-20261018-a24843d7/transport/result.json",
+      "sourceSha256": "93bfad718afc5aadcbce5a35bd7de97daf935b0827409394911ebbb66824704e",
+      "retainedSha256": "93bfad718afc5aadcbce5a35bd7de97daf935b0827409394911ebbb66824704e",
+      "sourceBytes": 300,
+      "retainedBytes": 300
+    },
+    {
+      "path": "transport/source-and-command.json",
+      "sourcePath": "/home/hubert/flux-evidence/231-calibration-20261018-a24843d7/transport/source-and-command.json",
+      "sourceSha256": "d2ab3c30613856ebb19e1910857c92b09a5af121ae8f25465d8ca851e1b618ac",
+      "retainedSha256": "d2ab3c30613856ebb19e1910857c92b09a5af121ae8f25465d8ca851e1b618ac",
+      "sourceBytes": 2116,
+      "retainedBytes": 2116
+    },
+    {
+      "path": "transport/transport.tap",
+      "sourcePath": "/home/hubert/flux-evidence/231-calibration-20261018-a24843d7/transport/transport.tap",
+      "sourceSha256": "99dff0d4eb3656541475093c009c36a907324dfd0efd08fa42002cc0f5f7a83e",
+      "retainedSha256": "99dff0d4eb3656541475093c009c36a907324dfd0efd08fa42002cc0f5f7a83e",
+      "sourceBytes": 2701,
+      "retainedBytes": 2701
+    },
+    {
+      "path": "transport/capture_transport.py",
+      "sourcePath": "/home/hubert/flux-evidence/231-calibration-20261018-a24843d7/capture_transport.py",
+      "sourceSha256": "4a1f581798af4df23821d0f8397c5df1a338603393f3a2afc6c50a2ef076a89b",
+      "retainedSha256": "4a1f581798af4df23821d0f8397c5df1a338603393f3a2afc6c50a2ef076a89b",
+      "sourceBytes": 4561,
+      "retainedBytes": 4561
+    },
+    {
+      "path": "sql/sql-runtime-and-command.json",
+      "sourcePath": "/home/hubert/flux-evidence/231-calibration-20261018-a24843d7/sql-runtime-and-command.json",
+      "sourceSha256": "b1f2fd8e7a7ec5f02dd97eb46f6c0cca4aa65fc9fb3aac382088ed219ee29a81",
+      "retainedSha256": "b1f2fd8e7a7ec5f02dd97eb46f6c0cca4aa65fc9fb3aac382088ed219ee29a81",
+      "sourceBytes": 2361,
+      "retainedBytes": 2361
+    },
+    {
+      "path": "sql/sql-result.json",
+      "sourcePath": "/home/hubert/flux-evidence/231-calibration-20261018-a24843d7/sql-result.json",
+      "sourceSha256": "9cd4cfa9b359494216f8751e6dc33470ca2506efdb56dc97e811426fa82a7db7",
+      "retainedSha256": "9cd4cfa9b359494216f8751e6dc33470ca2506efdb56dc97e811426fa82a7db7",
+      "sourceBytes": 534,
+      "retainedBytes": 534
+    },
+    {
+      "path": "sql/sql-database-image.json",
+      "sourcePath": "/home/hubert/flux-evidence/231-calibration-20261018-a24843d7/sql-database-image.json",
+      "sourceSha256": "0a0dc24bdba046dfeadba23f6bea04ac96b14b8a643e31536c282662480453fe",
+      "retainedSha256": "0a0dc24bdba046dfeadba23f6bea04ac96b14b8a643e31536c282662480453fe",
+      "sourceBytes": 405,
+      "retainedBytes": 405
+    },
+    {
+      "path": "sql/sql-and-resources.log.gz",
+      "sourcePath": "/home/hubert/flux-evidence/231-calibration-20261018-a24843d7/sql-and-resources.log",
+      "sourceSha256": "bbbbda1b990f891aaae440f19685f0194ecb7dcda4f54c012d85bfea1481cd86",
+      "retainedSha256": "0792446841528c93b354c646d0988872c6d3e9962a8b61e588ae1a11d19e6009",
+      "sourceBytes": 25106,
+      "retainedBytes": 6241
+    },
+    {
+      "path": "sql/sql-container-inventory-initial.json.gz",
+      "sourcePath": "/home/hubert/flux-evidence/231-calibration-20261018-a24843d7/sql-container-inventory-initial.json",
+      "sourceSha256": "8642252388791e6772b17ca4d0bcadd5cf9fbaf7665c4f96c819f49a6ab7a821",
+      "retainedSha256": "e0147d20911442f10cbcd3341700d96a0de4722d21b3c9a1ada2cc9e4e2f7c9a",
+      "sourceBytes": 32662,
+      "retainedBytes": 4008
+    },
+    {
+      "path": "two-api.log.gz",
+      "sourcePath": "/home/hubert/flux-evidence/231-calibration-20261018-a24843d7/two-api.log",
+      "sourceSha256": "15447631357a20587a733cc635a15c09eafa79a30a65cd268dd965c343de800d",
+      "retainedSha256": "7c3566c38fbd5db151f2e72b79b58afe8babf4f85e060b0f5369c3a1be2dabfc",
+      "sourceBytes": 10665,
+      "retainedBytes": 2510
+    },
+    {
+      "path": "receipt-replay-restart/before.json",
+      "sourcePath": "/home/hubert/flux-evidence/231-calibration-20261018-a24843d7/restart/before.json",
+      "sourceSha256": "11c18cb2ac3895560ae998cb7894a89d161d8618d47809bf29b8b797eb83bf8e",
+      "retainedSha256": "11c18cb2ac3895560ae998cb7894a89d161d8618d47809bf29b8b797eb83bf8e",
+      "sourceBytes": 616,
+      "retainedBytes": 616
+    },
+    {
+      "path": "receipt-replay-restart/after.json",
+      "sourcePath": "/home/hubert/flux-evidence/231-calibration-20261018-a24843d7/restart/after.json",
+      "sourceSha256": "3c50d646f762eb52ef49f0ce754452c26bb7069df800fe9bbd9e0b6669c375b4",
+      "retainedSha256": "3c50d646f762eb52ef49f0ce754452c26bb7069df800fe9bbd9e0b6669c375b4",
+      "sourceBytes": 616,
+      "retainedBytes": 616
+    },
+    {
+      "path": "receipt-replay-restart/prepare.log",
+      "sourcePath": "/home/hubert/flux-evidence/231-calibration-20261018-a24843d7/restart/prepare.log",
+      "sourceSha256": "e53f865c45ad0c314ca233b0eec70b5581184ac9ba84f3ef920aaef006893b69",
+      "retainedSha256": "e53f865c45ad0c314ca233b0eec70b5581184ac9ba84f3ef920aaef006893b69",
+      "sourceBytes": 421,
+      "retainedBytes": 421
+    },
+    {
+      "path": "receipt-replay-restart/verify.log",
+      "sourcePath": "/home/hubert/flux-evidence/231-calibration-20261018-a24843d7/restart/verify.log",
+      "sourceSha256": "f64ceafa7d0a391beb2c697ddb20a01ffca17f39da2fe7ff6f8efc3f90cb9d40",
+      "retainedSha256": "f64ceafa7d0a391beb2c697ddb20a01ffca17f39da2fe7ff6f8efc3f90cb9d40",
+      "sourceBytes": 326,
+      "retainedBytes": 326
+    },
+    {
+      "path": "receipt-replay-restart/source-sha256.txt",
+      "sourcePath": "/home/hubert/flux-evidence/231-calibration-20261018-a24843d7/restart/source-sha256.txt",
+      "sourceSha256": "474c4e19336da58e9b10df4907b74e774f688caa0683acf349887012ae37465a",
+      "retainedSha256": "474c4e19336da58e9b10df4907b74e774f688caa0683acf349887012ae37465a",
+      "sourceBytes": 474,
+      "retainedBytes": 474
+    },
+    {
+      "path": "receipt-replay-restart/exit-code.txt",
+      "sourcePath": "/home/hubert/flux-evidence/231-calibration-20261018-a24843d7/restart/exit-code.txt",
+      "sourceSha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "retainedSha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "sourceBytes": 2,
+      "retainedBytes": 2
+    },
+    {
+      "path": "latency/runtime.json",
+      "sourcePath": "/home/hubert/flux-evidence/228-231-20261018-a24843d7-latency/runtime.json",
+      "sourceSha256": "81b3bfe7e5f8c1e23398bc91543985891119d3922a76738f1550557118fdeb61",
+      "retainedSha256": "81b3bfe7e5f8c1e23398bc91543985891119d3922a76738f1550557118fdeb61",
+      "sourceBytes": 2013,
+      "retainedBytes": 2013
+    },
+    {
+      "path": "latency/collector-result.json",
+      "sourcePath": "/home/hubert/flux-evidence/228-231-20261018-a24843d7-latency/collector-result.json",
+      "sourceSha256": "62c7ab3e9a6572d468db122f0c4851f1c51436b9cdaee37e6038d14112fcf8c9",
+      "retainedSha256": "62c7ab3e9a6572d468db122f0c4851f1c51436b9cdaee37e6038d14112fcf8c9",
+      "sourceBytes": 152,
+      "retainedBytes": 152
+    },
+    {
+      "path": "latency/queue-seal.json",
+      "sourcePath": "/home/hubert/flux-evidence/228-231-20261018-a24843d7-latency/queue-seal.json",
+      "sourceSha256": "98d36b7fff1d877d77b84f24648566fe295cc7bda61f963db60dcf8233323ffd",
+      "retainedSha256": "98d36b7fff1d877d77b84f24648566fe295cc7bda61f963db60dcf8233323ffd",
+      "sourceBytes": 504,
+      "retainedBytes": 504
+    },
+    {
+      "path": "latency/producer-shutdown.json",
+      "sourcePath": "/home/hubert/flux-evidence/228-231-20261018-a24843d7-latency/producer-shutdown.json",
+      "sourceSha256": "70f84abe3a244fceb7d970dee21ac025f372f9cec33b0c13f338003a079c2321",
+      "retainedSha256": "70f84abe3a244fceb7d970dee21ac025f372f9cec33b0c13f338003a079c2321",
+      "sourceBytes": 418,
+      "retainedBytes": 418
+    },
+    {
+      "path": "latency/measurement-finished.json",
+      "sourcePath": "/home/hubert/flux-evidence/228-231-20261018-a24843d7-latency/measurement-finished.json",
+      "sourceSha256": "5d4839fb79626939687670a266b31a8e85cd3b567a0aa73b60fef9791f769bb8",
+      "retainedSha256": "5d4839fb79626939687670a266b31a8e85cd3b567a0aa73b60fef9791f769bb8",
+      "sourceBytes": 534,
+      "retainedBytes": 534
+    },
+    {
+      "path": "latency/summary.json.gz",
+      "sourcePath": "/home/hubert/flux-evidence/228-231-20261018-a24843d7-latency/summary.json",
+      "sourceSha256": "137d2edc7f608648d47e516426a5aa8e2261bd01f2fe97282926786f087f2755",
+      "retainedSha256": "24beb8793717cf316b8053991e22da39c6beb75d810044e11b3505251dcdbd56",
+      "sourceBytes": 119914,
+      "retainedBytes": 19680
+    },
+    {
+      "path": "latency/driver.log",
+      "sourcePath": "/home/hubert/flux-evidence/228-231-20261018-a24843d7-latency/driver.log",
+      "sourceSha256": "3d96a8ef20a2e58374d3d07655dfaf33c9a2aa87c6baedf370ce3948548cf79a",
+      "retainedSha256": "3d96a8ef20a2e58374d3d07655dfaf33c9a2aa87c6baedf370ce3948548cf79a",
+      "sourceBytes": 497,
+      "retainedBytes": 497
+    },
+    {
+      "path": "continuous-restart/before.json",
+      "sourcePath": "/home/hubert/flux-evidence/228-231-restart-b9c0d956/before.json",
+      "sourceSha256": "4a752d70e294bc77032804e85928c23a786da144fa5cb4bb56ecb3845973b6e7",
+      "retainedSha256": "4a752d70e294bc77032804e85928c23a786da144fa5cb4bb56ecb3845973b6e7",
+      "sourceBytes": 616,
+      "retainedBytes": 616
+    },
+    {
+      "path": "continuous-restart/after.json",
+      "sourcePath": "/home/hubert/flux-evidence/228-231-restart-b9c0d956/after.json",
+      "sourceSha256": "2099af849e8b75f04965f82f193f7bccfab632b8aeccaf05767b269e39c44909",
+      "retainedSha256": "2099af849e8b75f04965f82f193f7bccfab632b8aeccaf05767b269e39c44909",
+      "sourceBytes": 616,
+      "retainedBytes": 616
+    },
+    {
+      "path": "continuous-restart/source-sha256.txt",
+      "sourcePath": "/home/hubert/flux-evidence/228-231-restart-b9c0d956/source-sha256.txt",
+      "sourceSha256": "f6b34e8b6307b3826c3aad4577de64f7a9288bfbd9c1a05cf04c6231cf160e55",
+      "retainedSha256": "f6b34e8b6307b3826c3aad4577de64f7a9288bfbd9c1a05cf04c6231cf160e55",
+      "sourceBytes": 482,
+      "retainedBytes": 482
+    },
+    {
+      "path": "continuous-restart/client.log",
+      "sourcePath": "/home/hubert/flux-evidence/228-231-restart-b9c0d956/client.log",
+      "sourceSha256": "eaaf1c86696d28b12533473a9043e7448023da6cdc0e42e22966e0079495bf6d",
+      "retainedSha256": "eaaf1c86696d28b12533473a9043e7448023da6cdc0e42e22966e0079495bf6d",
+      "sourceBytes": 450,
+      "retainedBytes": 450
+    },
+    {
+      "path": "continuous-restart/client-exit-code.txt",
+      "sourcePath": "/home/hubert/flux-evidence/228-231-restart-b9c0d956/client-exit-code.txt",
+      "sourceSha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "retainedSha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "sourceBytes": 2,
+      "retainedBytes": 2
+    },
+    {
+      "path": "continuous-restart/client-state.json",
+      "sourcePath": "/home/hubert/flux-evidence/228-231-restart-b9c0d956/client-state.json",
+      "sourceSha256": "7f4544e42ea9ffb2e66389485c73b28d3092f8063327fe4e255e3ebf4eeabd2a",
+      "retainedSha256": "7f4544e42ea9ffb2e66389485c73b28d3092f8063327fe4e255e3ebf4eeabd2a",
+      "sourceBytes": 224,
+      "retainedBytes": 224
+    },
+    {
+      "path": "continuous-restart/finished.txt",
+      "sourcePath": "/home/hubert/flux-evidence/228-231-restart-b9c0d956/finished.txt",
+      "sourceSha256": "21c38ac61b638c63195932138ef71d9739de21d8ba314856a4b0264374dc5374",
+      "retainedSha256": "21c38ac61b638c63195932138ef71d9739de21d8ba314856a4b0264374dc5374",
+      "sourceBytes": 21,
+      "retainedBytes": 21
+    },
+    {
+      "path": "continuous-restart/exit-code.txt",
+      "sourcePath": "/home/hubert/flux-evidence/228-231-restart-b9c0d956/exit-code.txt",
+      "sourceSha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "retainedSha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "sourceBytes": 2,
+      "retainedBytes": 2
+    },
+    {
+      "path": "continuous-restart/cleanup.log",
+      "sourcePath": "/home/hubert/flux-evidence/228-231-restart-b9c0d956/cleanup.log",
+      "sourceSha256": "c082250148ffa101e3aca7f606dac330466a1812303b05155ddcc484d46a075d",
+      "retainedSha256": "c082250148ffa101e3aca7f606dac330466a1812303b05155ddcc484d46a075d",
+      "sourceBytes": 1908,
+      "retainedBytes": 1908
+    },
+    {
+      "path": "continuous-restart/build.log.gz",
+      "sourcePath": "/home/hubert/flux-evidence/228-231-restart-b9c0d956/build.log",
+      "sourceSha256": "4185762d4b13f4a608e3825fdf933f363cf31794439c59913f28da04ab3da3e0",
+      "retainedSha256": "3510c38d6f86baf755e16d19a429380713c9aa4239f66299931aadbd11c567d9",
+      "sourceBytes": 26379,
+      "retainedBytes": 6198
+    }
+  ]
+}
