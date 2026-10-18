@@ -2,6 +2,44 @@
 
 ## Start/Resume recovery amendment (#152/#160, 2026-10-18)
 
+### Supplied external host action
+
+`./flux cowork start|resume --client codex --origin URL --connection UUID --project UUID`
+is the supplied host invocation. It operates the person's installed official
+Codex, distinct from the embedded runtime. The existing Docker application image
+renders entry guidance and processes private native JSON events; no host
+Node/dependencies, instruction files, copied workflow prompts or daemon are
+required. The browser shows the bound host action and explains that it cannot
+launch a closed native client. This adapter targets the pinned Codex
+ChatGPT account path; it refuses other clients/account modes truthfully. Claude
+activation remains pending after the recorded unavailable-account observation.
+
+The adapter keeps only origin, connection, project, client, working directory
+and its own exact native thread ID in a private local metadata directory
+(0700; metadata0600). Start never replaces an existing native thread; Resume
+uses that explicit ID, never global `--last`. Native credentials and native
+history remain under the person's official client. No global configuration or
+instruction file is rewritten. Raw native JSON is temporary, private and
+deleted after extracting the binding/outcome; hidden reasoning/transcripts are
+not stored by Flux. One local lock prevents concurrent launches of the binding.
+
+Inline native MCP settings target the existing `/mcp` endpoint with optional
+`flux_connection` and `flux_project` UUID query parameters. They must appear
+once each together: a verified bearer for another connection is refused before
+discovery, and every selection/read/effect is additionally restricted to that
+project. These parameters narrow existing authority; they issue no credential,
+grant or permission and do not create another MCP registry or audience. Ordinary
+`/mcp` remains unchanged. Required server playbook loading and the current
+bootstrap still precede effects. The image is never authoritative for the current
+playbook: the native client discovers and reads the current server resource in full. The supplied adapter appends product instructions
+per invocation and retains native repository/global instruction files.
+
+Start/Resume are finite model turns. The existing checkpoint and addressed inbox
+are the durable work record. With no ready work the turn ends; this adapter does
+not poll a model, advertise automatic idle wake or kill an unrelated native
+program. Pause/Stop and quiet active-client wake remain subject to the unchanged
+whole-issue acceptance criteria; adding this activation path does not accept them.
+
 Bootstrap may request `includeWorkRecovery: true`, with `workLimit` (1–50,
 default 20) and `workOffset` (0–10000). This is an additive MCP contract-1
 extension: omitted recovery keeps the existing envelope. Recovery additionally

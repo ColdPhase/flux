@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { symlinkSync } from 'node:fs';
+import { writeFile, unlink } from 'node:fs/promises';
+import { coworkHostInstructions, coworkHostScope, coworkHostUrl, coworkNativeOutcome, type CoworkHostBinding } from '../../../tooling/cowork.js';
 import { join } from 'node:path';
 import { after, test } from 'node:test';
 import { createDatabase } from '@flux/db';
@@ -8,7 +10,7 @@ import { chromium } from 'playwright';
 import { register, uniqueEmail } from '../support/http.js';
 import { password } from '../support/people.js';
 import { expect } from '../support/mcp.js';
-import { claudeBin, cleanClientHome, clientEvents, connectClient, scopes, seedOauthClient, sh, startFluxProxy,
+import { authorizeInBrowser, claudeBin, cleanClientHome, clientEvents, connectClient, origin, run, scopes, seedOauthClient, sh, startFluxProxy, waitFor,
   type ClientSpec } from '../support/mcp-client-harness.js';
 
 // OPT IN ONLY. Official pinned clients and their configured model accounts, never a scripted endpoint.
@@ -63,7 +65,19 @@ test('real configured accounts: supplied Start and Resume reach the model and pr
         delete home.env.MOCK_MODEL_KEY; delete home.env.ANTHROPIC_API_KEY; home.env.RUST_LOG = 'warn';
         if (client === 'codex') symlinkSync('/run/flux-live/codex-auth.json', join(home.env.CODEX_HOME!, 'auth.json'));
         else symlinkSync('/run/flux-live/claude-credentials.json', join(home.env.CLAUDE_CONFIG_DIR!, '.credentials.json'));
-        await connectClient(browser, email, home, await seedOauthClient(pool, spec));
+        let binding: CoworkHostBinding = { schema: 'flux.cowork.host/1', ...coworkHostScope(origin, String(connection.id), projectId, 'codex', home.cwd),
+          threadId: null, outcome: 'new', updatedAt: new Date().toISOString() };
+        const config = ['-c', `mcp_servers.flux.url=${JSON.stringify(coworkHostUrl(binding))}`,
+          '-c', `mcp_servers.flux.oauth_resource=${JSON.stringify(`${origin}/mcp`)}`, '-c', 'mcp_servers.flux.required=true'];
+        const clientId = await seedOauthClient(pool, spec);
+        const fixtureConfig = [...config, '-c', `mcp_servers.flux.oauth.client_id=${JSON.stringify(clientId)}`,
+          '-c', `mcp_oauth_callback_port=${spec.port}`, '-c', 'mcp_oauth_credentials_store="file"'];
+        if (client === 'codex') {
+          const login = run('codex', [...fixtureConfig, 'mcp', 'login', 'flux', '--no-browser'], home.env, home.cwd);
+          const match = await waitFor(login, /(https?:\/\/[^\s"']*\/api\/auth\/oauth2\/authorize\?[^\s"']+)/, 'bound adapter OAuth');
+          await authorizeInBrowser(browser, email, spec, match[1]!);
+          assert.equal(await login.done, 0, 'bound native OAuth completes without global configuration writes');
+        } else await connectClient(browser, email, home, clientId);
         // This native thread belongs only to this fresh fixture HOME and immutable connection/project.
         // Never consult the person's global history or use --last to select it.
         let codexThreadId: string | null = null;
@@ -71,11 +85,12 @@ test('real configured accounts: supplied Start and Resume reach the model and pr
           const input = client === 'claude' ? `/mcp__flux__${action}_work ${projectId}` : `${action === 'start' ? 'Start' : 'Resume'} work on Flux`;
           if (client === 'codex' && action === 'resume') assert.ok(codexThreadId, 'Resume needs the exact thread issued by this fixture’s Start');
           const result = client === 'codex'
-            ? await sh('codex', ['exec', '--json', '--skip-git-repo-check', '--dangerously-bypass-approvals-and-sandbox',
+            ? await sh('codex', ['exec', '--ignore-user-config', '--json', '--skip-git-repo-check', '--sandbox', 'workspace-write', ...fixtureConfig,
+              '-c', `developer_instructions=${JSON.stringify(coworkHostInstructions(binding, action))}`,
               // The reviewed pinned runtime switches also keep this fixture out of account-connected app data.
               // Keep native code-mode/resource tooling: the external MCP path actually needs it.
               '-c', 'features.apps=false', '-c', 'features.plugins=false', '-c', 'features.remote_plugin=false',
-              ...(action === 'resume' ? ['resume', codexThreadId!] : []), input], home.env, home.cwd)
+              ...(action === 'resume' ? ['resume', codexThreadId!] : []), 'Follow the current Flux server playbook for this bound host action.'], home.env, home.cwd)
             : await sh(claudeBin, ['-p', input, '--output-format', 'stream-json', '--verbose', '--allowedTools', 'mcp__flux', '--max-turns', '20'], home.env, home.cwd);
           const categories = ['usage_limit', 'rate_limit', 'rate limit', 'weekly limit', 'authentication_error', '401 Unauthorized', 'not logged in']
             .filter(marker => result.output.toLowerCase().includes(marker.toLowerCase()));
@@ -83,6 +98,15 @@ test('real configured accounts: supplied Start and Resume reach the model and pr
           if (failure) console.log('LIVE_NATIVE_ACCOUNT_STOP', JSON.stringify({ client, action, categories }));
           assert.ok(!failure, `${client}: configured-account authentication or usage limit; stop this provider, do not retry or substitute a payer`);
           assert.equal(result.code, 0, `${client}: native ${action} did not finish within the bounded invocation`);
+          if (client === 'codex') {
+            const eventsPath = join(home.cwd, 'private-native-events.jsonl');
+            try {
+              await writeFile(eventsPath, result.output, { mode: 0o600 });
+              const recorded = await coworkNativeOutcome(eventsPath, binding, result.code ?? 1);
+              assert.equal(recorded.binding.outcome, 'waiting', 'supplied adapter captures only its own resumable native thread');
+              binding = recorded.binding;
+            } finally { await unlink(eventsPath).catch(() => undefined); }
+          }
           const events = clientEvents(result.output);
           if (client === 'codex' && action === 'start') {
             const native = events.find(event => event.type === 'thread.started') as { thread_id?: string } | undefined;

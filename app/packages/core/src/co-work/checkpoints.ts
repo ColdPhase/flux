@@ -1,7 +1,7 @@
 import type { AgentSourceCheckpoint, WorkStatus } from '@flux/contracts';
 import { ConflictError, InvalidInputError, NotFoundError } from '../access/errors.js';
 import type { ClaimOperation, CoWorkUnit } from './claims.js';
-import { normalizeAgentCheckpoint } from '../agent-connection/orientation.js';
+import { normalizeAgentCheckpoint } from '../agent-connection/source-checkpoint.js';
 
 /**
  * Typed co-work checkpoint and the production claim rules (#153, docs/development/cowork-coordination.md
