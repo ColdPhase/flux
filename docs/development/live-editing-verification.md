@@ -59,6 +59,49 @@ A failed preflight has not begun a measurement and cannot publish a valid invent
 
 ## Fixed measurement and retained artifacts
 
+### Candidate identity-read method change (2026-10-18, #228 / #613)
+
+The failed canonical run at `8ba5f87ae065d52b4b69158648f8e863b3d3f9cb`
+remains [FAIL, 8/9 cohorts](evidence/live-editing/2026-10-18-map-body-performance/README.md#subsequent-canonical-g4-run-fail),
+including map-500-drag-200 p95 230.479ms. It used driver SHA-256
+`11b71d4f9d34a471367de974ec93bde207b4b6f0a6b813babaa2d68c1a79e3c3`.
+No later method change can relabel that evidence or establish a code-only speedup.
+
+One private, non-acceptance diagnostic at
+`28ad6b43e91cea907b1bf22c0de343265c91387f` preserved the application, screenshot
+flags, 30 warmups and 240 scheduled map-500-drag-200 rows. The unchanged collector
+rejected its one-case marker; it is not a G4 pass or a complete queue capture.
+In the exact scheduled 60 seconds, its owner trace records 1279 repeated attached
+canvas lookups with cumulative protocol duration 14.219s (p95 17.654ms), while the
+CPU profile samples 7.862s in Playwright's `computeBox`. These times overlap with
+application work and cannot be subtracted from latency.
+
+The post-pointer identity read uses `Locator.evaluate`. In pinned Playwright
+1.62.0, [that method](https://github.com/microsoft/playwright-python/blob/v1.62.0/playwright/_impl/_locator.py#L177)
+resolves an attached element through `wait_for_selector`. The
+[server lookup](https://github.com/microsoft/playwright/blob/v1.62.0/packages/playwright-core/src/server/frames.ts#L783)
+computes visibility even for the attached state; its
+[box computation](https://github.com/microsoft/playwright/blob/v1.62.0/packages/injected/src/domUtils.ts#L109)
+reads style and geometry. The driver needs the current canvas identity at this
+point; its separate peer observation still verifies the visible result.
+
+The bounded candidate changes **only this repeated identity read** to a fresh
+`page.evaluate` query. It must require exactly one connected current canvas and
+return the same gesture ID, generation, numeric sequence and document visibility.
+It must retain the existing refusal of missing/current-invalid identities.
+Trusted pointer input, continuous input cadence, all selected positions, versions,
+leases, server-named receipts, coverage, visible target bounds, two animation
+frames and recheck, screenshots, traces, row counts, deadlines, error denominator,
+queue/shutdown validation and the 200ms gate stay unchanged. No peer lookup or
+application optimization is admitted by this diagnostic alone.
+
+Before a new canonical run, verify old/new identity equivalence against a running
+application and rejection of missing/duplicate canvases, plus relevant driver and
+evidence checks. Pin the changed driver and candidate separately. Implementation
+and author verification are admitted in the isolated disabled fixture; independent
+source/method evaluation and the complete canonical result remain required before
+acceptance. This record is a candidate method decision, not a claim of either.
+
 The nine case names are fixed:
 
 ```text
