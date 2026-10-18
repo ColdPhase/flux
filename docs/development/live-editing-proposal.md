@@ -512,6 +512,49 @@ implementation, visual, performance or release acceptance.
    continuous movement-before-drop / writing-before-Save. The actual path includes
    database validation and safe Markdown preview; bypassing them is not calibration.
 
+## Whole-issue production promotion contract (2026-10-18)
+
+The founder's current-session clarification requires existing PR #613 to complete
+all of #228, including the original gates, integrated criteria and independent
+functional/visual acceptance. The earlier partial deliveries and measurements
+retain their exact source pins. Current map500/drag200 p95 220.806ms still fails
+the unchanged 200ms gate; this section does not accept or enable that candidate.
+
+The completed normal installation provides live map/wiki editing without a
+development-only setup step. Its production control is `FLUX_LIVE_EDITING`:
+missing, empty or `on` enables it, `off` disables it, and any other nonempty
+value is a startup configuration error. Both supported Compose templates and
+environment examples expose this same control. The production default is enabled
+only through the final protected merge after all original acceptance conditions
+pass; implementation and checks before that merge remain isolated candidates.
+
+`FLUX_DEVELOPMENT_LIVE_EDITING=true` remains an explicit diagnostic marker, not
+the production availability switch. Local stdout telemetry requires production
+editing plus that marker and the existing separate telemetry opt-in. A normal
+installation emits no calibration telemetry. Explicit production `off` wins over
+diagnostic variables and retains the unavailable capability/socket/route behavior.
+
+Preserve ordinary native HTTP/MCP capacities, retries, persistence and authority
+fences in the normal enabled installation. Do not charge unjoined native maps as
+if they had active live participants, fabricate journal activity, or admit a
+new room without the existing lifetime/authorization fence. Explicit-off tests
+also retain their ordinary no-live behavior; moving all capacity coverage into
+that lane cannot establish production compatibility.
+
+Disabling shared editing never erases acknowledged working text. Its existing
+dirty-working-copy fence still refuses native body/no-op/metadata/section writes.
+For planned disable, save shared working copies first. If disabled while dirty,
+re-enable, recover and save them before disabling again. Verify that complete
+on/dirty/off/refusal/on/recover/Save/off/ordinary-edit journey; do not advertise a
+writable ordinary fallback while shared text remains unsaved.
+
+Final acceptance covers the ordinary enabled installation, explicit-off fallback,
+new/restore private composition, live Save/history/provenance and immutable
+citations, all original map/wiki interactions and native writers, and every
+required device/network/authority/recovery case. The final candidate retains the
+fixed latency denominator and separate independent functional/visual assessment.
+No new child issue, intermediate partial merge or extra review loop is required.
+
 ## Bounded PR sequence and exact bases
 
 All changes use new owner worktrees; existing active peer branches #166/#170 remain
