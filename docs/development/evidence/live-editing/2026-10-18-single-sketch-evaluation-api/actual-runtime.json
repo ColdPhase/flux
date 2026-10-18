@@ -1,0 +1,38 @@
+{
+  "time": "2026-10-18T13:57:22.356706+00:00",
+  "source": "1f76588eec7ed68d16c15d9ae7663a72770ae47b",
+  "project": "flux-test-1792331699-1614119",
+  "services": {
+    "api": {
+      "containerId": "90517287d80d485afe8041275f0c35d3744f2a9ae34e43f951e0083e12bfe9df",
+      "imageId": "sha256:4ae9a3562fa5d20ab69224bb8bcbcaf7d5f502672bad8c00a8511d09f2b8246e",
+      "image": "flux-foundation:flux-test-1792331699-1614119",
+      "state": {
+        "Status": "running",
+        "Running": true,
+        "OOMKilled": false,
+        "ExitCode": 0
+      },
+      "configuration": {
+        "FLUX_LIVE_EDITING": "on",
+        "NODE_ENV": "production"
+      },
+      "version": "v24.21.0",
+      "version_exit": 0
+    },
+    "db": {
+      "containerId": "ad45c9aa2a385b5a834b05bf7a2ef1222daa66cd24b21574bc2f2a77a70188d9",
+      "imageId": "sha256:c293117fcecda7344b5480222e813b9f673d7abd69b1dd95eff239b768b04f59",
+      "image": "postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873",
+      "state": {
+        "Status": "running",
+        "Running": true,
+        "OOMKilled": false,
+        "ExitCode": 0
+      },
+      "configuration": {},
+      "version": "postgres (PostgreSQL) 18.6",
+      "version_exit": 0
+    }
+  }
+}

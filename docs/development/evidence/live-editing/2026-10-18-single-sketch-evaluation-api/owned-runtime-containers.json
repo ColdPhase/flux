@@ -1,0 +1,150 @@
+{
+  "source": "1f76588eec7ed68d16c15d9ae7663a72770ae47b",
+  "time": "2026-10-18T13:57:47.934806+00:00",
+  "containers": [
+    {
+      "service": "test",
+      "id": "1449e6d1199ac481b44a30cb0d4a705e685aa043192b20393d3cd9a14891c119",
+      "image": "sha256:57b929ad734eea77ee3c9a0830535754e2645253382d7eb6eb1a5487b63e3b0b",
+      "state": {
+        "Status": "running",
+        "Running": true,
+        "ExitCode": 0,
+        "OOMKilled": false
+      },
+      "configuration": {
+        "FLUX_LIVE_EDITING": "on"
+      }
+    },
+    {
+      "service": "worker",
+      "id": "77d7e5109d0597be94d23ca599a3533ff7492cebcf0b9dedc71b55bbc932147d",
+      "image": "sha256:4ae9a3562fa5d20ab69224bb8bcbcaf7d5f502672bad8c00a8511d09f2b8246e",
+      "state": {
+        "Status": "running",
+        "Running": true,
+        "ExitCode": 0,
+        "OOMKilled": false
+      },
+      "configuration": {
+        "NODE_ENV": "production"
+      }
+    },
+    {
+      "service": "mailpit-starttls",
+      "id": "2193637bd443b5f81a92cae90b1993d9a7ef1fe8fa1f591d74b6e0cdb925306e",
+      "image": "sha256:0a94362145f58e5cffb58605023c671774e4143037a952221ee6485b6cd999af",
+      "state": {
+        "Status": "running",
+        "Running": true,
+        "ExitCode": 0,
+        "OOMKilled": false
+      },
+      "configuration": {}
+    },
+    {
+      "service": "mailpit-smtps",
+      "id": "7d041c167f5aadfe8f025e821bf9080084a9aa71eca50f4da592e67409bc6ec7",
+      "image": "sha256:0a94362145f58e5cffb58605023c671774e4143037a952221ee6485b6cd999af",
+      "state": {
+        "Status": "running",
+        "Running": true,
+        "ExitCode": 0,
+        "OOMKilled": false
+      },
+      "configuration": {}
+    },
+    {
+      "service": "api",
+      "id": "90517287d80d485afe8041275f0c35d3744f2a9ae34e43f951e0083e12bfe9df",
+      "image": "sha256:4ae9a3562fa5d20ab69224bb8bcbcaf7d5f502672bad8c00a8511d09f2b8246e",
+      "state": {
+        "Status": "running",
+        "Running": true,
+        "ExitCode": 0,
+        "OOMKilled": false
+      },
+      "configuration": {
+        "FLUX_LIVE_EDITING": "on",
+        "NODE_ENV": "production"
+      }
+    },
+    {
+      "service": "api2",
+      "id": "7fce3989b7f2841a53b7eb37046f43dafad1383142d78a801cc124a22b2eed79",
+      "image": "sha256:4ae9a3562fa5d20ab69224bb8bcbcaf7d5f502672bad8c00a8511d09f2b8246e",
+      "state": {
+        "Status": "running",
+        "Running": true,
+        "ExitCode": 0,
+        "OOMKilled": false
+      },
+      "configuration": {
+        "FLUX_LIVE_EDITING": "on",
+        "NODE_ENV": "production"
+      }
+    },
+    {
+      "service": "providermock",
+      "id": "2a9027a20d7b06d04922689d16490e8d52099e5095c597c8ce35af5bfdf3bfe4",
+      "image": "sha256:57b929ad734eea77ee3c9a0830535754e2645253382d7eb6eb1a5487b63e3b0b",
+      "state": {
+        "Status": "running",
+        "Running": true,
+        "ExitCode": 0,
+        "OOMKilled": false
+      },
+      "configuration": {}
+    },
+    {
+      "service": "pushmock",
+      "id": "2dfa681f64e49413f701dd20c81d3ba2513bd44e6c85729061d0ef1b523f046f",
+      "image": "sha256:c3dff3f7b9e545ec24c72df0931b12cf7595bcccf6ffc8e7a3cabdb49d538ea4",
+      "state": {
+        "Status": "running",
+        "Running": true,
+        "ExitCode": 0,
+        "OOMKilled": false
+      },
+      "configuration": {}
+    },
+    {
+      "service": "mailpit",
+      "id": "95355f16d74186e79c51b5df457c18f57dbbffec6d173e9bc43ecc8e964afbfc",
+      "image": "sha256:0a94362145f58e5cffb58605023c671774e4143037a952221ee6485b6cd999af",
+      "state": {
+        "Status": "running",
+        "Running": true,
+        "ExitCode": 0,
+        "OOMKilled": false
+      },
+      "configuration": {}
+    },
+    {
+      "service": "migrate",
+      "id": "ac378b86ead89622d5b9995055c39b4cfd5c05d0f14faefff5bacc7d7a3f20d4",
+      "image": "sha256:4ae9a3562fa5d20ab69224bb8bcbcaf7d5f502672bad8c00a8511d09f2b8246e",
+      "state": {
+        "Status": "exited",
+        "Running": false,
+        "ExitCode": 0,
+        "OOMKilled": false
+      },
+      "configuration": {
+        "NODE_ENV": "production"
+      }
+    },
+    {
+      "service": "db",
+      "id": "ad45c9aa2a385b5a834b05bf7a2ef1222daa66cd24b21574bc2f2a77a70188d9",
+      "image": "sha256:c293117fcecda7344b5480222e813b9f673d7abd69b1dd95eff239b768b04f59",
+      "state": {
+        "Status": "running",
+        "Running": true,
+        "ExitCode": 0,
+        "OOMKilled": false
+      },
+      "configuration": {}
+    }
+  ]
+}
