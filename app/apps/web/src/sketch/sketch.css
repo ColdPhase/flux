@@ -460,8 +460,8 @@ span.sk-li-img { width: 160px; height: 96px; }
 .sk-zoom .sk-div { height: 18px; margin: 0 2px; }
 .sk-minimap { position: relative; width: 172px; height: 112px; overflow: hidden; border-radius: var(--r-lg); background: var(--el);
   box-shadow: var(--sh-card), inset 0 0 0 1px var(--line); cursor: pointer; touch-action: none; }
-.sk-minimap__drawing { display: block; width: 172px; height: 112px; }
-.sk-minimap__drawing rect { fill: var(--t3); opacity: .6; }
+.sk-minimap svg { display: block; }
+.sk-minimap rect { fill: var(--t3); opacity: .6; }
 .sk-minimap__view { position: absolute; box-sizing: border-box; border-radius: 4px; background: color-mix(in srgb, var(--t1) 5%, transparent); box-shadow: inset 0 0 0 1.5px var(--t2); pointer-events: none; }
 /* The toolbar's groups: pointer tools | adding | undo (Spokój board A03). */
 .sk-dock .sk-tools .sk-div { height: 20px; margin: 0 2px; background: var(--line2); }

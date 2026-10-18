@@ -10,7 +10,6 @@ import { ThoughtImage } from './ThoughtImage';
 import { ThoughtTasks, type ThoughtTasksEntry } from './ThoughtTasks';
 import { linkOf } from './paste';
 import type { Editing } from './SketchView';
-import { MINIMAP, MinimapDrawing, type MinimapFrame as Frame } from './MinimapDrawing';
 
 /** What the floating bar above a selected thought needs from the view (the rarer actions sit behind its "…"). */
 export interface SelectionTools {
@@ -1059,7 +1058,9 @@ export function SketchMap(props: SketchMapProps) {
   );
 }
 
+const MINIMAP = { w: 172, h: 112 };
 const MINIMAP_PAD = 24;
+type Frame = { x0: number; y0: number; k: number; dx: number; dy: number };
 
 /**
  * The whole map at a glance (#509 AC-4): every thought and the part of the plane on screen. A click
@@ -1082,7 +1083,7 @@ function Minimap({ canvas, zoom, origin, rects }: { canvas: RefObject<HTMLDivEle
     ro.observe(el);
     return () => { el.removeEventListener('scroll', read); ro.disconnect(); };
   }, [canvas, zoom]);
-  const boxes = [...rects].map(([id, r]) => ({ id, x: r.x - origin.x, y: r.y - origin.y, w: r.w, h: r.h }));
+  const boxes = [...rects.values()].map((r) => ({ x: r.x - origin.x, y: r.y - origin.y, w: r.w, h: r.h }));
   if (!boxes.length) return null;
   const fresh = (): Frame => {
     const x0 = Math.min(view.left, ...boxes.map((b) => b.x - MINIMAP_PAD));
@@ -1114,7 +1115,9 @@ function Minimap({ canvas, zoom, origin, rects }: { canvas: RefObject<HTMLDivEle
   const shown = at(view.left, view.top);
   return (
     <div ref={box} className="sk-minimap" aria-hidden="true" onPointerDown={press} onPointerMove={move} onPointerUp={release} onPointerCancel={release}>
-      <MinimapDrawing boxes={boxes} frame={frame} />
+      <svg width={MINIMAP.w} height={MINIMAP.h}>
+        {boxes.map((b, i) => { const p = at(b.x, b.y); return <rect key={i} x={p.x} y={p.y} width={Math.max(3, b.w * frame.k)} height={Math.max(2, b.h * frame.k)} rx={1.5} />; })}
+      </svg>
       <div className="sk-minimap__view" style={{ left: shown.x, top: shown.y, width: view.w * frame.k, height: view.h * frame.k }} />
     </div>
   );
