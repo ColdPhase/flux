@@ -152,7 +152,7 @@ class LiveCursors(LiveFixture):
         await expect(cursor).to_have_count(1)
 
         # A real network interruption retires this room's old cursor snapshot before reconnect.
-        connections[-1].close(code=1001,reason='Actual disconnect regression')
+        await connections[-1].close(code=1001,reason='Actual disconnect regression')
         await expect(kai.locator('[data-live-map-status="connecting"]')).to_be_visible()
         await expect(kai.locator('.sk-peer')).to_have_count(0)
         await expect(kai.locator('.sk-here')).to_have_count(0)
