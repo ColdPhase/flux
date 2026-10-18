@@ -1,0 +1,458 @@
+{
+  "schema": 1,
+  "sourceSha": "a24843d7995e01e4ca62d15eb4364d3af3e12245",
+  "recordedAt": "2026-10-18T06:53:49.528Z",
+  "versions": {
+    "node": "24.21.0",
+    "acorn": "8.18.0",
+    "ada": "4.0.0",
+    "amaro": "1.1.11",
+    "ares": "1.34.8",
+    "brotli": "1.2.0",
+    "cldr": "48.0",
+    "icu": "78.3",
+    "llhttp": "9.4.3",
+    "merve": "1.2.2",
+    "modules": "137",
+    "napi": "10",
+    "nbytes": "0.1.4",
+    "ncrypto": "0.0.1",
+    "nghttp2": "1.70.0",
+    "nghttp3": "",
+    "ngtcp2": "",
+    "openssl": "3.5.8",
+    "simdjson": "4.6.7",
+    "simdutf": "6.4.0",
+    "sqlite": "3.53.4",
+    "tz": "2026c",
+    "undici": "7.29.1",
+    "unicode": "17.0",
+    "uv": "1.52.1",
+    "uvwasi": "0.0.23",
+    "v8": "13.6.233.17-node.53",
+    "zlib": "1.3.2.1-motley-8002e91",
+    "zstd": "1.5.7"
+  },
+  "lockSha256": "d34264e9ac2a877f045b3c190d6be025dfc2a8b84cc67b42eeb5dd7200cb6e22",
+  "caps": {
+    "frameBytes": 65536,
+    "chunkBytes": 61440,
+    "assemblyBytes": 8388608,
+    "chunks": 144,
+    "assemblyTimeoutMs": 10000,
+    "outputWindowBytes": 1048576,
+    "assembliesPerConnection": 1,
+    "assembliesPerApi": 4,
+    "assembliesBytesPerApi": 33554432,
+    "workers": 2,
+    "workerHeapMiB": 64,
+    "workerTimeoutMs": 100,
+    "waitingTasks": 8,
+    "workerOldMiB": 48,
+    "workerYoungMiB": 16,
+    "workerCodeMiB": 16,
+    "workerStackMiB": 2,
+    "workerBootstrapMs": 2000,
+    "admissionWaitMs": 3000,
+    "caches": 16,
+    "cacheBytes": 134217728,
+    "roomCacheBytes": 8388608,
+    "sockets": 32,
+    "bodyUnits": 100000,
+    "intentRegistryBytes": 8388608,
+    "structs": 65536,
+    "deleteRanges": 65536
+  },
+  "canonicalModules": {
+    "caps.mjs": "0bf4059e81bbbef7fc5e453a450444a646e678bb425d6746870c19378a37b014",
+    "codec.mjs": "46e95057c449342f294512ce758ab380f8c494e01995685780ce5c9a6431052d",
+    "envelope.mjs": "b6ab8236e53619785845ae9770bcf31f58a15201c2ba8a2f29c7b41400ac276f",
+    "assembly.mjs": "d6bf996556227eade5dad239af0d4897048dead1873f3870d2c5d3a8d79079fe",
+    "admission-budget.mjs": "f61a289aad11e09bca8a87d9f195907af5b96a068029d5fb2fa8a8edde5c5f97",
+    "worker-pool.mjs": "bbacdf76316cd0d8f5347aec34aaba16d61cdb29869253684604f7e95570a789",
+    "codec-worker.mjs": "5d600705358cabb1d05b24621eec40c2f2f8f72ee4a782e6fc3806c5c628690e",
+    "room-cache.mjs": "16a8ef1b1edecde982b1ba04d53d49dd41f3589d5268ecd093e826b23fa0e6c3"
+  },
+  "candidateFiles": {
+    "codec.test.mjs": "e00291b09c92ce691c85f66a1506297aeaf41394e0327f80a925a07ed7ceb14f",
+    "exit-worker.mjs": "39324c6b118bbb3fbb81986ca0f95e53e104403fd396379e2a230f9731c813a1",
+    "independent-probe.proposed.test.mjs": "4b942a51612f73ec1d2a43c5e681a086efb5fed42c60fe5620c3e5c9295c6897",
+    "intent-registry.mjs": "5e45bb8e1401345be255434f5c4e8318f154db8be33871ddc8da085e99c2b6cb",
+    "inventory.mjs": "170f0c5b58798857b7b7c9e8ce9d514ef24a953218fcd11412a219c5ffbe9d76",
+    "retained-backing.test.mjs": "8d27f2dd31f3ab36cf7bdcb5763d1a214066a0636bc44b27a36f2b7260bc89e5",
+    "silent-worker.mjs": "5ed3135987ba629b76b6e236a6d3e72816fccbc2e3935fd002f9430047cbdc75",
+    "stall-worker.mjs": "654b914333c1768c23a4f8d9f03a445a27f74a19d8882bfcbd2534d4817fc5a5",
+    "wire-fixtures.mjs": "5f1d859e1c40298d08e4933ce6455fcc8b59be85a30dbfcb08accd14e147dcc5"
+  },
+  "dependencies": [
+    {
+      "name": "@codemirror/state",
+      "version": "6.7.6",
+      "license": "MIT",
+      "licenses": [
+        {
+          "name": "LICENSE",
+          "sha256": "05c6130cda97e7600ca91427a41e8a065efcf82365fc0293e7de80faec494c07"
+        }
+      ],
+      "path": "/app/node_modules/.pnpm/@codemirror+state@6.7.6/node_modules/@codemirror/state",
+      "packageSha256": "0d5d4cb502ac5ece9c5c76104fd72b30b4a5b16eeaf7a5d6f0a8abbf295c10c3",
+      "resolutions": [
+        {
+          "name": "@marijn/find-cluster-break",
+          "declarations": [
+            {
+              "kind": "dependency",
+              "range": "^1.0.0",
+              "required": true
+            }
+          ],
+          "status": "present",
+          "path": "/app/node_modules/.pnpm/@marijn+find-cluster-break@1.0.4/node_modules/@marijn/find-cluster-break",
+          "version": "1.0.4"
+        }
+      ]
+    },
+    {
+      "name": "@codemirror/view",
+      "version": "6.43.13",
+      "license": "MIT",
+      "licenses": [
+        {
+          "name": "LICENSE",
+          "sha256": "05c6130cda97e7600ca91427a41e8a065efcf82365fc0293e7de80faec494c07"
+        }
+      ],
+      "path": "/app/node_modules/.pnpm/@codemirror+view@6.43.13/node_modules/@codemirror/view",
+      "packageSha256": "ebb43f5bc37beb61bb9c0ae0705e8c9b6172bc212b47c1981a43c8cfe2d4782e",
+      "resolutions": [
+        {
+          "name": "@codemirror/state",
+          "declarations": [
+            {
+              "kind": "dependency",
+              "range": "^6.7.0",
+              "required": true
+            }
+          ],
+          "status": "present",
+          "path": "/app/node_modules/.pnpm/@codemirror+state@6.7.6/node_modules/@codemirror/state",
+          "version": "6.7.6"
+        },
+        {
+          "name": "crelt",
+          "declarations": [
+            {
+              "kind": "dependency",
+              "range": "^1.0.6",
+              "required": true
+            }
+          ],
+          "status": "present",
+          "path": "/app/node_modules/.pnpm/crelt@1.0.7/node_modules/crelt",
+          "version": "1.0.7"
+        },
+        {
+          "name": "style-mod",
+          "declarations": [
+            {
+              "kind": "dependency",
+              "range": "^4.1.0",
+              "required": true
+            }
+          ],
+          "status": "present",
+          "path": "/app/node_modules/.pnpm/style-mod@4.1.4/node_modules/style-mod",
+          "version": "4.1.4"
+        },
+        {
+          "name": "w3c-keyname",
+          "declarations": [
+            {
+              "kind": "dependency",
+              "range": "^2.2.4",
+              "required": true
+            }
+          ],
+          "status": "present",
+          "path": "/app/node_modules/.pnpm/w3c-keyname@2.2.8/node_modules/w3c-keyname",
+          "version": "2.2.8"
+        }
+      ]
+    },
+    {
+      "name": "@marijn/find-cluster-break",
+      "version": "1.0.4",
+      "license": "MIT",
+      "licenses": [
+        {
+          "name": "LICENSE",
+          "sha256": "9360b00fdd091f05c783b568bdd46c679c41b72415599252de98949462ea1acb"
+        }
+      ],
+      "path": "/app/node_modules/.pnpm/@marijn+find-cluster-break@1.0.4/node_modules/@marijn/find-cluster-break",
+      "packageSha256": "5ee922ec8f5586c2104e070ad9b60c1c18f32bfc3dad48634f93d3bbbdcd182b",
+      "resolutions": []
+    },
+    {
+      "name": "crelt",
+      "version": "1.0.7",
+      "license": "MIT",
+      "licenses": [
+        {
+          "name": "LICENSE",
+          "sha256": "23852ebf6aef7fadffc92514b3c5df163a8651f2c3ed0dbb494cb49d93bd5de5"
+        }
+      ],
+      "path": "/app/node_modules/.pnpm/crelt@1.0.7/node_modules/crelt",
+      "packageSha256": "9e85a4699c12ad932528bc2321986e8f991c1f9b074551a04e3814d72c1cc44a",
+      "resolutions": []
+    },
+    {
+      "name": "isomorphic.js",
+      "version": "0.2.5",
+      "license": "MIT",
+      "licenses": [
+        {
+          "name": "LICENSE",
+          "sha256": "dd6488c9c1a4ce2dc978ecee067e5b6a725b52e6057a450b24f1a23bc373b057"
+        }
+      ],
+      "path": "/app/node_modules/.pnpm/isomorphic.js@0.2.5/node_modules/isomorphic.js",
+      "packageSha256": "3cb960fcbe36e6f5f60402d437272c44de2fdd6334ef239f448c589158d9a698",
+      "resolutions": []
+    },
+    {
+      "name": "lib0",
+      "version": "0.2.119",
+      "license": "MIT",
+      "licenses": [
+        {
+          "name": "LICENSE",
+          "sha256": "5446db1e43fe52faf3faab7e9959fe3762ac11bdc61c0945934c498affd52d73"
+        }
+      ],
+      "path": "/app/node_modules/.pnpm/lib0@0.2.119/node_modules/lib0",
+      "packageSha256": "342e94588b6c52baa00c14b403c9be794cfcad4a9319f6be00a9c86f9829074e",
+      "resolutions": [
+        {
+          "name": "isomorphic.js",
+          "declarations": [
+            {
+              "kind": "dependency",
+              "range": "^0.2.4",
+              "required": true
+            }
+          ],
+          "status": "present",
+          "path": "/app/node_modules/.pnpm/isomorphic.js@0.2.5/node_modules/isomorphic.js",
+          "version": "0.2.5"
+        }
+      ]
+    },
+    {
+      "name": "style-mod",
+      "version": "4.1.4",
+      "license": "MIT",
+      "licenses": [
+        {
+          "name": "LICENSE",
+          "sha256": "cb4474e26547397169061d3586c00022cda5330a1b64fa13e872319f3b63aff1"
+        }
+      ],
+      "path": "/app/node_modules/.pnpm/style-mod@4.1.4/node_modules/style-mod",
+      "packageSha256": "0aa5f5995a953bc3f1d02164a5ec0e58d13bf9f7d362c44bf0526e667439f842",
+      "resolutions": []
+    },
+    {
+      "name": "w3c-keyname",
+      "version": "2.2.8",
+      "license": "MIT",
+      "licenses": [
+        {
+          "name": "LICENSE",
+          "sha256": "869c30f368eb08735e779027b9f4bc9fea2f39624351856aebe42741f0bc0884"
+        }
+      ],
+      "path": "/app/node_modules/.pnpm/w3c-keyname@2.2.8/node_modules/w3c-keyname",
+      "packageSha256": "0396c646f74d52c1b0851074ecdb5cabf540af595ceb5e5a5136df2bf3c2f83b",
+      "resolutions": []
+    },
+    {
+      "name": "ws",
+      "version": "8.22.0",
+      "license": "MIT",
+      "licenses": [
+        {
+          "name": "LICENSE",
+          "sha256": "2b29dcfe0d6471f7e8c92c5fb38c9f93edee10330937055440192f1832b1ecef"
+        }
+      ],
+      "path": "/app/node_modules/.pnpm/ws@8.22.0/node_modules/ws",
+      "packageSha256": "c1ef91ca04eb4754c011c5f0e7638b5078ff71104fada400c44ac761cf93e0b1",
+      "resolutions": [
+        {
+          "name": "bufferutil",
+          "declarations": [
+            {
+              "kind": "peer",
+              "range": "^4.0.1",
+              "required": false
+            }
+          ],
+          "status": "absent",
+          "reason": "MODULE_NOT_FOUND"
+        },
+        {
+          "name": "utf-8-validate",
+          "declarations": [
+            {
+              "kind": "peer",
+              "range": ">=5.0.2",
+              "required": false
+            }
+          ],
+          "status": "absent",
+          "reason": "MODULE_NOT_FOUND"
+        }
+      ]
+    },
+    {
+      "name": "y-codemirror.next",
+      "version": "0.3.6",
+      "license": "MIT",
+      "licenses": [
+        {
+          "name": "LICENSE",
+          "sha256": "005143d73a1ddc93bfa434bde58f538f49bced8f0cae42daf7d577ca0a504e1f"
+        }
+      ],
+      "path": "/app/node_modules/.pnpm/y-codemirror.next@0.3.6_@codemirror+state@6.7.6_@codemirror+view@6.43.13_yjs@13.6.33/node_modules/y-codemirror.next",
+      "packageSha256": "e3b4ee8340becceed7e44e83f0b324aa34dbdee3aa0bf2ca0a3dd8aa9f6cd670",
+      "resolutions": [
+        {
+          "name": "@codemirror/state",
+          "declarations": [
+            {
+              "kind": "peer",
+              "range": "^6.0.0",
+              "required": true
+            }
+          ],
+          "status": "present",
+          "path": "/app/node_modules/.pnpm/@codemirror+state@6.7.6/node_modules/@codemirror/state",
+          "version": "6.7.6"
+        },
+        {
+          "name": "@codemirror/view",
+          "declarations": [
+            {
+              "kind": "peer",
+              "range": "^6.0.0",
+              "required": true
+            }
+          ],
+          "status": "present",
+          "path": "/app/node_modules/.pnpm/@codemirror+view@6.43.13/node_modules/@codemirror/view",
+          "version": "6.43.13"
+        },
+        {
+          "name": "lib0",
+          "declarations": [
+            {
+              "kind": "dependency",
+              "range": "^0.2.42",
+              "required": true
+            }
+          ],
+          "status": "present",
+          "path": "/app/node_modules/.pnpm/lib0@0.2.119/node_modules/lib0",
+          "version": "0.2.119"
+        },
+        {
+          "name": "yjs",
+          "declarations": [
+            {
+              "kind": "peer",
+              "range": "^13.5.6",
+              "required": true
+            }
+          ],
+          "status": "present",
+          "path": "/app/node_modules/.pnpm/yjs@13.6.33/node_modules/yjs",
+          "version": "13.6.33"
+        }
+      ]
+    },
+    {
+      "name": "y-protocols",
+      "version": "1.0.7",
+      "license": "MIT",
+      "licenses": [
+        {
+          "name": "LICENSE",
+          "sha256": "5446db1e43fe52faf3faab7e9959fe3762ac11bdc61c0945934c498affd52d73"
+        }
+      ],
+      "path": "/app/node_modules/.pnpm/y-protocols@1.0.7_yjs@13.6.33/node_modules/y-protocols",
+      "packageSha256": "657427a2b9e32ca9a00d2fb2cf5a228a573dad5a6651e64e9182f88d6e8e4949",
+      "resolutions": [
+        {
+          "name": "lib0",
+          "declarations": [
+            {
+              "kind": "dependency",
+              "range": "^0.2.85",
+              "required": true
+            }
+          ],
+          "status": "present",
+          "path": "/app/node_modules/.pnpm/lib0@0.2.119/node_modules/lib0",
+          "version": "0.2.119"
+        },
+        {
+          "name": "yjs",
+          "declarations": [
+            {
+              "kind": "peer",
+              "range": "^13.0.0",
+              "required": true
+            }
+          ],
+          "status": "present",
+          "path": "/app/node_modules/.pnpm/yjs@13.6.33/node_modules/yjs",
+          "version": "13.6.33"
+        }
+      ]
+    },
+    {
+      "name": "yjs",
+      "version": "13.6.33",
+      "license": "MIT",
+      "licenses": [
+        {
+          "name": "LICENSE",
+          "sha256": "341baa53605ed85d6f95782322854cca56c655ebc7fd4712649b8e7afc6020ff"
+        }
+      ],
+      "path": "/app/node_modules/.pnpm/yjs@13.6.33/node_modules/yjs",
+      "packageSha256": "98fdd1ee9edadf72f4608f5bfd8aa4a9f23fca05d2c56b11f5d0520cf267f85d",
+      "resolutions": [
+        {
+          "name": "lib0",
+          "declarations": [
+            {
+              "kind": "dependency",
+              "range": "^0.2.99",
+              "required": true
+            }
+          ],
+          "status": "present",
+          "path": "/app/node_modules/.pnpm/lib0@0.2.119/node_modules/lib0",
+          "version": "0.2.119"
+        }
+      ]
+    }
+  ],
+  "meaning": "Actual pinned image/dependency/source inventory; no SQL, DOM, RSS or four-gate acceptance"
+}

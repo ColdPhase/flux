@@ -1,0 +1,380 @@
+TAP version 13
+# Subtest: single compatible stable instance resolves the public CM6 binding (no DOM claim)
+ok 1 - single compatible stable instance resolves the public CM6 binding (no DOM claim)
+  ---
+  duration_ms: 4.657617
+  type: 'test'
+  ...
+# Subtest: two concurrent authors converge in either admission order and own undo preserves peer text
+ok 2 - two concurrent authors converge in either admission order and own undo preserves peer text
+  ---
+  duration_ms: 61.691779
+  type: 'test'
+  ...
+# accepted bytes=18 bodyUnits=1 wallMs=52.87
+# accepted bytes=18 bodyUnits=2 wallMs=0.85
+# accepted bytes=18 bodyUnits=1 wallMs=0.59
+# accepted bytes=18 bodyUnits=2 wallMs=0.55
+# accepted bytes=10 bodyUnits=1 wallMs=0.99
+# accepted bytes=24 bodyUnits=2 wallMs=0.80
+# Subtest: durable enrollment, collisions and reconnect versus a fresh document
+ok 3 - durable enrollment, collisions and reconnect versus a fresh document
+  ---
+  duration_ms: 51.880254
+  type: 'test'
+  ...
+# accepted bytes=24 bodyUnits=7 wallMs=47.89
+# accepted bytes=24 bodyUnits=7 wallMs=0.09
+# accepted bytes=18 bodyUnits=8 wallMs=0.91
+# Subtest: immutable retry namespace, bytes and full command parameters
+ok 4 - immutable retry namespace, bytes and full command parameters
+  ---
+  duration_ms: 49.590345
+  type: 'test'
+  ...
+# accepted bytes=20 bodyUnits=3 wallMs=46.94
+# Subtest: known structs and ranges under new intents acknowledge without new journal or attribution
+ok 5 - known structs and ranges under new intents acknowledge without new journal or attribution
+  ---
+  duration_ms: 51.138555
+  type: 'test'
+  ...
+# accepted bytes=20 bodyUnits=3 wallMs=46.48
+# accepted bytes=20 bodyUnits=3 wallMs=0.36
+# accepted bytes=10 bodyUnits=2 wallMs=0.78
+# accepted bytes=10 bodyUnits=2 wallMs=0.32
+# accepted bytes=10 bodyUnits=1 wallMs=0.68
+# Subtest: a shared actor/UUID intent cannot migrate to another genuinely writable enrolled room
+ok 6 - a shared actor/UUID intent cannot migrate to another genuinely writable enrolled room
+  ---
+  duration_ms: 50.017425
+  type: 'test'
+  ...
+# accepted bytes=27 bodyUnits=10 wallMs=46.82
+# accepted bytes=27 bodyUnits=10 wallMs=0.04
+# Subtest: current rights, actor ownership and generation reject replay and unseen pending safely
+ok 7 - current rights, actor ownership and generation reject replay and unseen pending safely
+  ---
+  duration_ms: 47.485446
+  type: 'test'
+  ...
+# accepted bytes=24 bodyUnits=7 wallMs=2.88
+# Subtest: forbidden roots, maps, arrays, attributes, embeds and subdocuments never poison confirmed text
+ok 8 - forbidden roots, maps, arrays, attributes, embeds and subdocuments never poison confirmed text
+  ---
+  duration_ms: 304.700608
+  type: 'test'
+  ...
+# Subtest: unresolved hidden dependency stays refused when reordered or bundled
+ok 9 - unresolved hidden dependency stays refused when reordered or bundled
+  ---
+  duration_ms: 47.700706
+  type: 'test'
+  ...
+# Subtest: ordinary clock gaps require a complete bounded bundle; no pending-store shortcut
+ok 10 - ordinary clock gaps require a complete bounded bundle; no pending-store shortcut
+  ---
+  duration_ms: 46.488436
+  type: 'test'
+  ...
+# accepted bytes=27 bodyUnits=2 wallMs=2.99
+# Subtest: unknown GC snapshots refuse; exact captured first-admission insert/delete bundle remains valid
+ok 11 - unknown GC snapshots refuse; exact captured first-admission insert/delete bundle remains valid
+  ---
+  duration_ms: 47.452837
+  type: 'test'
+  ...
+# accepted bytes=40 bodyUnits=0 wallMs=3.50
+# accepted bytes=25 bodyUnits=0 wallMs=0.34
+# Subtest: confirmed surrogate splits retain original provenance and accept public checkpoints only at proved cuts
+ok 12 - confirmed surrogate splits retain original provenance and accept public checkpoints only at proved cuts
+  ---
+  duration_ms: 47.305196
+  type: 'test'
+  ...
+# accepted bytes=22 bodyUnits=3 wallMs=42.54
+# accepted bytes=10 bodyUnits=2 wallMs=0.95
+# accepted bytes=37 bodyUnits=2 wallMs=0.39
+# accepted bytes=22 bodyUnits=2 wallMs=0.22
+# Subtest: a peer insertion inside a surrogate establishes only that public split transformation
+ok 13 - a peer insertion inside a surrogate establishes only that public split transformation
+  ---
+  duration_ms: 46.954656
+  type: 'test'
+  ...
+# accepted bytes=21 bodyUnits=2 wallMs=43.66
+# accepted bytes=24 bodyUnits=3 wallMs=1.03
+# accepted bytes=53 bodyUnits=3 wallMs=0.49
+# Subtest: inconsistent duplicate intervals, parent origins and future references are refused
+ok 14 - inconsistent duplicate intervals, parent origins and future references are refused
+  ---
+  duration_ms: 45.026208
+  type: 'test'
+  ...
+# accepted bytes=19 bodyUnits=3 wallMs=41.33
+# Subtest: future and partial unknown deletion ranges fail before disposable integration
+ok 15 - future and partial unknown deletion ranges fail before disposable integration
+  ---
+  duration_ms: 50.023205
+  type: 'test'
+  ...
+# accepted bytes=20 bodyUnits=3 wallMs=46.90
+# accepted bytes=10 bodyUnits=2 wallMs=0.73
+# Subtest: malformed, truncated, trailing and oversized inputs are finite refusals
+ok 16 - malformed, truncated, trailing and oversized inputs are finite refusals
+  ---
+  duration_ms: 47.682846
+  type: 'test'
+  ...
+# Subtest: 100k JS code units are admitted and 100001 stays private; Unicode is byte bounded
+ok 17 - 100k JS code units are admitted and 100001 stays private; Unicode is byte bounded
+  ---
+  duration_ms: 190.849285
+  type: 'test'
+  ...
+# accepted bytes=100019 bodyUnits=100000 wallMs=49.18
+# accepted bytes=200019 bodyUnits=100000 wallMs=50.45
+# accepted bytes=300019 bodyUnits=100000 wallMs=48.35
+# Subtest: long deletion history, public checkpoints and reconstructed receipts retain meaning
+ok 18 - long deletion history, public checkpoints and reconstructed receipts retain meaning
+  ---
+  duration_ms: 97.223001
+  type: 'test'
+  ...
+# accepted bytes=21 bodyUnits=4 wallMs=45.06
+# accepted bytes=19 bodyUnits=6 wallMs=0.94
+# accepted bytes=10 bodyUnits=4 wallMs=0.78
+# accepted bytes=19 bodyUnits=6 wallMs=0.59
+# accepted bytes=10 bodyUnits=4 wallMs=0.58
+# accepted bytes=19 bodyUnits=6 wallMs=0.59
+# accepted bytes=10 bodyUnits=4 wallMs=0.45
+# accepted bytes=19 bodyUnits=6 wallMs=0.44
+# accepted bytes=10 bodyUnits=4 wallMs=0.46
+# accepted bytes=19 bodyUnits=6 wallMs=0.61
+# accepted bytes=10 bodyUnits=4 wallMs=0.44
+# accepted bytes=19 bodyUnits=6 wallMs=0.46
+# accepted bytes=10 bodyUnits=4 wallMs=0.61
+# accepted bytes=19 bodyUnits=6 wallMs=0.40
+# accepted bytes=10 bodyUnits=4 wallMs=0.39
+# accepted bytes=19 bodyUnits=6 wallMs=0.54
+# accepted bytes=10 bodyUnits=4 wallMs=0.48
+# accepted bytes=19 bodyUnits=6 wallMs=0.41
+# accepted bytes=10 bodyUnits=4 wallMs=0.39
+# accepted bytes=19 bodyUnits=6 wallMs=0.58
+# accepted bytes=10 bodyUnits=4 wallMs=0.51
+# accepted bytes=20 bodyUnits=7 wallMs=0.43
+# accepted bytes=10 bodyUnits=4 wallMs=0.45
+# accepted bytes=20 bodyUnits=7 wallMs=0.39
+# accepted bytes=10 bodyUnits=4 wallMs=0.44
+# accepted bytes=20 bodyUnits=7 wallMs=0.40
+# accepted bytes=10 bodyUnits=4 wallMs=0.42
+# accepted bytes=20 bodyUnits=7 wallMs=0.43
+# accepted bytes=10 bodyUnits=4 wallMs=0.47
+# accepted bytes=20 bodyUnits=7 wallMs=0.45
+# accepted bytes=10 bodyUnits=4 wallMs=0.58
+# accepted bytes=20 bodyUnits=7 wallMs=0.46
+# accepted bytes=10 bodyUnits=4 wallMs=0.46
+# accepted bytes=20 bodyUnits=7 wallMs=0.44
+# accepted bytes=10 bodyUnits=4 wallMs=0.46
+# accepted bytes=20 bodyUnits=7 wallMs=0.45
+# accepted bytes=10 bodyUnits=4 wallMs=0.50
+# accepted bytes=20 bodyUnits=7 wallMs=0.47
+# accepted bytes=10 bodyUnits=4 wallMs=0.54
+# accepted bytes=20 bodyUnits=7 wallMs=0.61
+# accepted bytes=10 bodyUnits=4 wallMs=0.51
+# accepted bytes=20 bodyUnits=7 wallMs=0.50
+# accepted bytes=10 bodyUnits=4 wallMs=0.55
+# accepted bytes=20 bodyUnits=7 wallMs=0.52
+# accepted bytes=10 bodyUnits=4 wallMs=0.60
+# accepted bytes=20 bodyUnits=7 wallMs=0.81
+# accepted bytes=10 bodyUnits=4 wallMs=0.53
+# accepted bytes=20 bodyUnits=7 wallMs=0.57
+# accepted bytes=10 bodyUnits=4 wallMs=0.50
+# accepted bytes=20 bodyUnits=7 wallMs=0.53
+# accepted bytes=10 bodyUnits=4 wallMs=0.50
+# accepted bytes=20 bodyUnits=7 wallMs=0.61
+# accepted bytes=10 bodyUnits=4 wallMs=0.53
+# accepted bytes=20 bodyUnits=7 wallMs=0.56
+# accepted bytes=10 bodyUnits=4 wallMs=0.62
+# accepted bytes=20 bodyUnits=7 wallMs=0.53
+# accepted bytes=10 bodyUnits=4 wallMs=0.58
+# accepted bytes=20 bodyUnits=7 wallMs=0.59
+# accepted bytes=10 bodyUnits=4 wallMs=0.57
+# accepted bytes=20 bodyUnits=7 wallMs=0.54
+# accepted bytes=10 bodyUnits=4 wallMs=0.64
+# accepted bytes=20 bodyUnits=7 wallMs=0.63
+# accepted bytes=10 bodyUnits=4 wallMs=0.55
+# accepted bytes=20 bodyUnits=7 wallMs=0.55
+# accepted bytes=10 bodyUnits=4 wallMs=0.58
+# accepted bytes=20 bodyUnits=7 wallMs=0.57
+# accepted bytes=10 bodyUnits=4 wallMs=0.63
+# accepted bytes=20 bodyUnits=7 wallMs=0.68
+# accepted bytes=10 bodyUnits=4 wallMs=0.62
+# accepted bytes=20 bodyUnits=7 wallMs=0.61
+# accepted bytes=10 bodyUnits=4 wallMs=0.59
+# accepted bytes=20 bodyUnits=7 wallMs=0.66
+# accepted bytes=10 bodyUnits=4 wallMs=0.61
+# accepted bytes=20 bodyUnits=7 wallMs=0.71
+# accepted bytes=10 bodyUnits=4 wallMs=0.60
+# accepted bytes=20 bodyUnits=7 wallMs=0.60
+# accepted bytes=10 bodyUnits=4 wallMs=0.59
+# accepted bytes=20 bodyUnits=7 wallMs=0.80
+# accepted bytes=10 bodyUnits=4 wallMs=0.75
+# accepted bytes=20 bodyUnits=7 wallMs=0.72
+# accepted bytes=10 bodyUnits=4 wallMs=0.69
+# accepted bytes=37 bodyUnits=4 wallMs=1.03
+# Subtest: 100ms hard termination, bounded queue and external reservations are recovered
+ok 19 - 100ms hard termination, bounded queue and external reservations are recovered
+  ---
+  duration_ms: 476.265052
+  type: 'test'
+  ...
+# Subtest: room charge includes retained original text, checkpoint, receipts and object overhead
+ok 20 - room charge includes retained original text, checkpoint, receipts and object overhead
+  ---
+  duration_ms: 63.699108
+  type: 'test'
+  ...
+# accepted bytes=100019 bodyUnits=100000 wallMs=46.84
+# accepted bytes=12 bodyUnits=0 wallMs=2.00
+# Subtest: close rejects reserved waiting tasks and releases every job allocation
+ok 21 - close rejects reserved waiting tasks and releases every job allocation
+  ---
+  duration_ms: 0.65215
+  type: 'test'
+  ...
+# Subtest: missing bootstrap readiness and early clean exit are finite non-poisoning refusals
+ok 22 - missing bootstrap readiness and early clean exit are finite non-poisoning refusals
+  ---
+  duration_ms: 2024.646718
+  type: 'test'
+  ...
+# Subtest: registry reserves before a blocked first admission and releases retained inputs after refusal
+ok 23 - registry reserves before a blocked first admission and releases retained inputs after refusal
+  ---
+  duration_ms: 8.409016
+  type: 'test'
+  ...
+# Subtest: admission accounts for full retained backing and refuses oversized views before hashing or queueing
+ok 24 - admission accounts for full retained backing and refuses oversized views before hashing or queueing
+  ---
+  duration_ms: 2.224559
+  type: 'test'
+  ...
+# Subtest: actual registry and pool share one reservation and cancel active plus waiting jobs on close
+ok 25 - actual registry and pool share one reservation and cancel active plus waiting jobs on close
+  ---
+  duration_ms: 11.741924
+  type: 'test'
+  ...
+# Subtest: registry waiting deadline releases reservations while a blocked boundary remains active
+ok 26 - registry waiting deadline releases reservations while a blocked boundary remains active
+  ---
+  duration_ms: 3001.172356
+  type: 'test'
+  ...
+# Subtest: room count and replacement accounting are finite without losing confirmed entries
+ok 27 - room count and replacement accounting are finite without losing confirmed entries
+  ---
+  duration_ms: 4.006338
+  type: 'test'
+  ...
+# Subtest: 100k UTF-8 update assembles reordered duplicate chunks and expires cross-scope work
+ok 28 - 100k UTF-8 update assembles reordered duplicate chunks and expires cross-scope work
+  ---
+  duration_ms: 56.808531
+  type: 'test'
+  ...
+# Subtest: assembly count, aggregate, altered duplicates and index ceilings have explicit refusal
+ok 29 - assembly count, aggregate, altered duplicates and index ceilings have explicit refusal
+  ---
+  duration_ms: 9.655345
+  type: 'test'
+  ...
+# Subtest: a complete assembly retries after copy capacity returns with its immutable intent
+ok 30 - a complete assembly retries after copy capacity returns with its immutable intent
+  ---
+  duration_ms: 96.056382
+  type: 'test'
+  ...
+# Subtest: assemblies refuse changed semantic intent, duplicate headers and unknown schema fields
+ok 31 - assemblies refuse changed semantic intent, duplicate headers and unknown schema fields
+  ---
+  duration_ms: 0.66805
+  type: 'test'
+  ...
+# Subtest: positive control: independent public updates admit, exact original receipt replays
+ok 32 - positive control: independent public updates admit, exact original receipt replays
+  ---
+  duration_ms: 67.567797
+  type: 'test'
+  ...
+# Subtest: exact known update under a fresh UUID receives no new admitted sequence/provenance
+ok 33 - exact known update under a fresh UUID receives no new admitted sequence/provenance
+  ---
+  duration_ms: 56.941522
+  type: 'test'
+  ...
+# Subtest: another authenticated writer cannot gain new provenance by forwarding known peer bytes
+ok 34 - another authenticated writer cannot gain new provenance by forwarding known peer bytes
+  ---
+  duration_ms: 51.953974
+  type: 'test'
+  ...
+# Subtest: duplicate deletion with a fresh UUID does not create another admitted change
+ok 35 - duplicate deletion with a fresh UUID does not create another admitted change
+  ---
+  duration_ms: 56.623462
+  type: 'test'
+  ...
+# Subtest: actor UUID intent remains immutable across two otherwise valid rooms
+ok 36 - actor UUID intent remains immutable across two otherwise valid rooms
+  ---
+  duration_ms: 57.810942
+  type: 'test'
+  ...
+# Subtest: public Unicode split/deletion checkpoint remains a compatible known candidate
+ok 37 - public Unicode split/deletion checkpoint remains a compatible known candidate
+  ---
+  duration_ms: 54.013323
+  type: 'test'
+  ...
+# Subtest: worker refusal under current-write revocation preserves confirmed state
+ok 38 - worker refusal under current-write revocation preserves confirmed state
+  ---
+  duration_ms: 51.411504
+  type: 'test'
+  ...
+# Subtest: complete assembly can progress after the temporary contiguous-copy budget pressure clears
+ok 39 - complete assembly can progress after the temporary contiguous-copy budget pressure clears
+  ---
+  duration_ms: 88.273306
+  type: 'test'
+  ...
+# Subtest: assembly persistent operation/replica/parameters cannot change between chunks unnoticed
+ok 40 - assembly persistent operation/replica/parameters cannot change between chunks unnoticed
+  ---
+  duration_ms: 0.700209
+  type: 'test'
+  ...
+# Subtest: intent registry bounds retained jobs before awaiting a blocked first admission
+ok 41 - intent registry bounds retained jobs before awaiting a blocked first admission
+  ---
+  duration_ms: 13.368913
+  type: 'test'
+  ...
+# Subtest: small views cannot pin uncharged oversized backing before registry admission awaits
+ok 42 - small views cannot pin uncharged oversized backing before registry admission awaits
+  ---
+  duration_ms: 3.729989
+  type: 'test'
+  ...
+1..42
+# tests 42
+# suites 0
+# pass 42
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 7805.125095
