@@ -1,0 +1,15 @@
+{
+  "runner_exit": 1,
+  "observed_projects": [
+    "flux-live-editing-1792328121-1497030"
+  ],
+  "projects": [
+    {
+      "project": "flux-live-editing-1792328121-1497030",
+      "containers": [],
+      "volumes": [],
+      "networks": [],
+      "image_tags": []
+    }
+  ]
+}

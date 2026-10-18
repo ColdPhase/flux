@@ -1,0 +1,16 @@
+{
+  "source_sha": "f30c9910a21911a4287833a1c19faa12bb5d2851",
+  "driver_sha256": "f331c1af49c8df43df6b257bc7c16795fedb5c3b102cfc11249282ef858df3ee",
+  "status": "terminal FAIL: 7/9 timing cohorts; all2160 samples; queueCOMPLETE3218/cleanproducerexit0; driver1/collector0",
+  "cohorts": 9,
+  "samples_per_cohort": 240,
+  "total_samples": 2160,
+  "warmups_per_cohort": 30,
+  "threshold_ms": 200,
+  "driver_changes": false,
+  "collector_changes": false,
+  "failed_cohorts": [
+    "map-500-drag-200",
+    "wiki-100000-editor"
+  ]
+}
