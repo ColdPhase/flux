@@ -1,4 +1,4 @@
-"""#228: real-map Canvas/SVG geometry and raster calibration; no acceptance-driver changes."""
+"""#228: real-map Grouped/native SVG geometry and raster calibration; no acceptance-driver changes."""
 from pathlib import Path
 import json
 import base64
@@ -9,31 +9,9 @@ from playwright.async_api import expect
 from test_live_editing import LiveFixture
 
 REFERENCE = Path(__file__).with_name('minimap_reference.js').read_text()
-OBSERVE = """(() => {
-  const clear = CanvasRenderingContext2D.prototype.clearRect;
-  CanvasRenderingContext2D.prototype.clearRect = function(...args) {
-    this.canvas.__marks = []; return clear.apply(this,args);
-  };
-  const round = CanvasRenderingContext2D.prototype.roundRect;
-  CanvasRenderingContext2D.prototype.roundRect = function(x,y,w,h,radii) {
-    (this.canvas.__marks ||= []).push({x,y,w,h,rx:radii[0].x,ry:radii[0].y,color:this.fillStyle,alpha:this.globalAlpha});
-    return round.call(this,x,y,w,h,radii);
-  };
-  const computed = window.getComputedStyle;
-  window.__minimapStyleReads = 0;
-  window.getComputedStyle = function(el,...args) {
-    if(el.matches?.('.sk-minimap__drawing')) window.__minimapStyleReads++;
-    return computed.call(this,el,...args);
-  };
-})()"""
 
 
 class MinimapRenderer(LiveFixture):
-    async def asyncSetUp(self):
-        await super().asyncSetUp()
-        for page in self.pages.values():
-            await page.add_init_script(OBSERVE)
-
     async def reference(self, page, label, *, controls=False):
         await page.evaluate(REFERENCE)
         result = await page.evaluate('window.minimapReference()')
@@ -41,11 +19,12 @@ class MinimapRenderer(LiveFixture):
         # its error below one thousandth of a CSS pixel; raster/negative controls stay separate.
         self.assertLess(result['geometryError'], .001, result)
         self.assertLess(result['overlayError'], .001, result)
-        self.assertEqual(result['drawColors'], [result['drawColor']])
-        self.assertEqual(result['alphas'], [.6])
-        self.assertEqual(result['backing'], [round(172*result['dpr']), round(112*result['dpr'])])
+        self.assertEqual(result['fills'], [result['color']])
+        self.assertEqual(result['alphas'], ['0.6'])
+        result.update(await self.raster(page, result.pop('markup'), result['color']))
+        self.assertEqual(result['raster']['pixels'], [round(172*result['dpr']), round(112*result['dpr'])])
         self.assertGreater(result['raster']['ink'], 0)
-        # Different native rasterizers can differ at antialiased boundaries; geometry is exact above.
+        # Same original limits, now against rendered native SVG rather than image conversion.
         self.assertLess(result['raster']['relativeAlphaError'], .03, result)
         self.assertLessEqual(result['raster']['colorError'], 2, result)
         if controls:
@@ -56,10 +35,32 @@ class MinimapRenderer(LiveFixture):
         if directory:
             Path(directory).mkdir(parents=True, exist_ok=True)
             await page.locator('.sk-minimap').screenshot(path=str(Path(directory)/f'{label}.png'))
-            for kind in ('Reference','Actual'):
-                png = await page.evaluate(f'window.__minimap{kind}PNG')
-                (Path(directory)/f'{label}-{kind.lower()}.png').write_bytes(base64.b64decode(png.split(',',1)[1]))
+            for kind,png in self.raster_images.items():
+                (Path(directory)/f'{label}-{kind}.png').write_bytes(base64.b64decode(png.split(',',1)[1]))
         return result
+
+    async def raster(self, page, markup, color):
+        # Clone observed native SVG markup into a blank page in the SAME engine and DPR.
+        # Original reference and actual geometry are then screenshot through the same render path.
+        raster_page = await page.context.new_page()
+        images = {}
+        try:
+            wrappers = ''.join(f'<div id="{kind}" style="position:absolute;left:{i*200}px;top:0">{svg}</div>'
+                               for i,(kind,svg) in enumerate(markup.items()))
+            await raster_page.set_content(f'<style>body{{margin:0;background:transparent}}svg{{display:block}}'
+                f'.sk-minimap__drawing rect{{fill:{color};opacity:.6}}</style>{wrappers}')
+            for kind in markup:
+                raw = await raster_page.locator(f'#{kind} svg').screenshot(omit_background=True)
+                images[kind] = 'data:image/png;base64,' + base64.b64encode(raw).decode()
+            await raster_page.evaluate(REFERENCE)
+            results = {}
+            for key, reference in (('raster','reference'),('squareControl','square'),('minimumControl','minimum')):
+                results[key] = await raster_page.evaluate('args => window.minimapComparePNGs(args)',
+                    {'actual':images['actual'],'reference':images[reference]})
+            self.raster_images = images
+            return results
+        finally:
+            await raster_page.close()
 
     async def palette_and_dpr(self, label, *, controls=False):
         peer = self.pages['kai']
@@ -70,11 +71,10 @@ class MinimapRenderer(LiveFixture):
                 context = await self.browser.new_context(storage_state=state, viewport={'width':1440,'height':900},
                     device_scale_factor=dpr, reduced_motion='reduce', service_workers='block')
                 contexts.append(context)
-                await context.add_init_script(OBSERVE)
                 page = await context.new_page()
                 page.on('pageerror', lambda error: self.errors.append(str(error)))
                 await page.goto(peer.url)
-                await expect(page.locator('.sk-minimap canvas')).to_be_visible()
+                await expect(page.locator('.sk-minimap svg')).to_be_visible()
                 for palette in ('light','dark'):
                     await page.emulate_media(color_scheme=palette)
                     await self.reference(page, f'{label}-{palette}-dpr{dpr}', controls=controls)
@@ -85,7 +85,7 @@ class MinimapRenderer(LiveFixture):
     async def frozen_interaction(self, page):
         initial = await self.reference(page, 'before-minimap-drag')
         drawing = page.locator('.sk-minimap__drawing')
-        marks = await drawing.evaluate('el => el.__marks')
+        marks = await drawing.evaluate('el => el.innerHTML')
         box = await page.locator('.sk-minimap').bounding_box()
         try:
             await page.mouse.move(box['x']+8,box['y']+104)
@@ -93,7 +93,7 @@ class MinimapRenderer(LiveFixture):
             for px, py in ((8,104),(164,8)):
                 await page.mouse.move(box['x']+px,box['y']+py,steps=3)
                 await page.evaluate('() => new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))')
-                self.assertEqual(await drawing.evaluate('el => el.__marks'),marks,
+                self.assertEqual(await drawing.evaluate('el => el.innerHTML'),marks,
                                  'The exact fitted drawing stays frozen throughout minimap pointer capture')
                 error = await page.evaluate("""({f,px,py}) => {
                   const c=document.querySelector('.sk-canvas'),p=document.querySelector('.sk-plane');
@@ -118,7 +118,7 @@ class MinimapRenderer(LiveFixture):
         await self.frozen_interaction(self.pages['kai'])
         self.assertEqual(self.errors, [])
 
-    async def test_500_clamped_marks_follow_200_real_peer_previews_without_svg_host_writes(self):
+    async def test_500_clamped_marks_follow_200_real_peer_previews_without_unchanged_leaf_host_writes(self):
         await self.create_map(500)
         await self.palette_and_dpr('500-clamped', controls=True)
         ada, kai = self.pages['ada'], self.pages['kai']
@@ -137,9 +137,11 @@ class MinimapRenderer(LiveFixture):
             }""")
         await self.reference(kai, '500-before-preview', controls=True)
         await kai.evaluate("""() => {
-          window.__minimapStyleReads=0;window.__minimapMutations=[];
-          new MutationObserver(items=>window.__minimapMutations.push(...items.map(i=>i.type)))
-            .observe(document.querySelector('.sk-minimap__drawing'),{attributes:true,childList:true,subtree:true});
+          window.__minimapMutations=[];
+          const drawing=document.querySelector('.sk-minimap__drawing');
+          const indices=new Map([...drawing.querySelectorAll('rect')].map((el,i)=>[el,i]));
+          new MutationObserver(items=>window.__minimapMutations.push(...items.map(i=>({type:i.type,index:indices.get(i.target)??null,name:i.attributeName}))))
+            .observe(drawing,{attributes:true,childList:true,subtree:true});
         }""")
         bounds = await node.bounding_box()
         initial = await peer.get_attribute('data-thought-x')
@@ -147,25 +149,22 @@ class MinimapRenderer(LiveFixture):
             await ada.mouse.move(bounds['x']+20,bounds['y']+20)
             await ada.mouse.down()
             frames = []
-            style_reads = await kai.evaluate('window.__minimapStyleReads')
             for step in range(1,4):
                 previous = await peer.get_attribute('data-live-preview-sequence')
                 await ada.mouse.move(bounds['x']+40+step*12,bounds['y']+30+step*8,steps=2)
                 await expect(peer).to_have_attribute('data-live-mover','Ada North')
                 await expect(peer).not_to_have_attribute('data-live-preview-sequence', previous or '')
-                self.assertEqual(await kai.evaluate('window.__minimapStyleReads'), style_reads,
-                                 'Production movement does not resolve the minimap palette again')
                 result = await self.reference(kai,f'500-preview-{step}',controls=True)
-                style_reads = await kai.evaluate('window.__minimapStyleReads')
                 self.assertEqual(result['count'],500)
                 self.assertEqual(result['clamped'],500)
                 frames.append(result['frame'])
             await expect(peer).not_to_have_attribute('data-thought-x',initial)
             self.assertGreater(len({f['k'] for f in frames}),1,'Live upper-bound movement still refits the complete minimap')
-            # Observe production between reference/screenshot calls: the screenshot harness
-            # also reads styles and must not be misattributed to the application.
-            self.assertEqual(await kai.evaluate('window.__minimapStyleReads'),style_reads)
-            self.assertEqual(await kai.evaluate('window.__minimapMutations'),[])
+            mutations = await kai.evaluate('window.__minimapMutations')
+            self.assertFalse([m for m in mutations if m['index'] is not None and m['index'] >= 200], mutations)
+            self.assertTrue([m for m in mutations if m['index'] is not None and m['name'] in ('x','y')], mutations)
+            self.assertFalse([m for m in mutations if m['index'] is not None and m['name'] == 'style'], mutations)
+            self.assertFalse([m for m in mutations if m['type'] == 'childList'], mutations)
         finally:
             await ada.mouse.up()
         await expect(peer).not_to_have_attribute('data-live-mover','Ada North')
