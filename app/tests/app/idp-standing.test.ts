@@ -154,6 +154,22 @@ describe('the check', () => {
     assert.equal(openToken(key, userId, id, (await row(userId)).refresh_token_enc), 'rotated');
   });
 
+  test('a refresh overtaken by a new sign-in cannot overwrite its token or profile', async () => {
+    const id = provider(); const userId = await person(id);
+    const account = (await pool.query('SELECT account_id FROM auth_accounts WHERE user_id = $1', [userId])).rows[0];
+    const script = scriptedProvider([{ status: 200, body: { access_token: 'at', refresh_token: 'obsolete-rotation', id_token: idToken(account.account_id) } }]);
+    const service: ReturnType<typeof createIdpStanding> = createIdpStanding({ db, oidc: config(id), authSecret, log: { info() {}, warn() {}, error() {} },
+      fetcher: async (url, init) => {
+        if (url.endsWith('/token')) await service.recordSignIn(userId, 'new-sign-in-token');
+        return script.fetcher(url, init);
+      } });
+    await service.recordSignIn(userId, 'old-token'); await due(userId);
+    const original = (await pool.query('SELECT name, email FROM auth_users WHERE id = $1', [userId])).rows[0];
+    assert.equal(await service.runOnce(), 1);
+    assert.deepEqual((await pool.query('SELECT name, email FROM auth_users WHERE id = $1', [userId])).rows[0], original);
+    assert.equal(openToken(key, userId, id, (await row(userId)).refresh_token_enc), 'new-sign-in-token');
+  });
+
   test('invalid, unverified, substituted and colliding refresh claims never transfer an account or lose rotation', async () => {
     const id = provider(); const userId = await person(id); const other = await insertedHuman('profile-holder');
     const account = (await pool.query('SELECT * FROM auth_accounts WHERE user_id = $1', [userId])).rows[0];

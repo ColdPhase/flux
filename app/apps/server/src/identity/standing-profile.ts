@@ -37,9 +37,9 @@ export function createStandingProfile(oidc: OidcConfig, jwks = createJwks(oidc),
       const seconds = now() / 1000;
       if (claims.iss !== oidc.issuer || !audience.includes(oidc.clientId)
         || (audience.length > 1 && claims.azp !== oidc.clientId) || (claims.azp !== undefined && claims.azp !== oidc.clientId)
-        || typeof claims.exp !== 'number' || claims.exp <= seconds
-        || typeof claims.iat !== 'number' || claims.iat > seconds + 60
-        || (claims.nbf !== undefined && (typeof claims.nbf !== 'number' || claims.nbf > seconds + 60))) return invalid;
+        || typeof claims.exp !== 'number' || !Number.isFinite(claims.exp) || claims.exp <= seconds
+        || typeof claims.iat !== 'number' || !Number.isFinite(claims.iat) || claims.iat > seconds + 60
+        || (claims.nbf !== undefined && (typeof claims.nbf !== 'number' || !Number.isFinite(claims.nbf) || claims.nbf > seconds + 60))) return invalid;
       return profileFromClaims(oidc.issuer, claims);
     } catch { return invalid; }
   };

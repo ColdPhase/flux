@@ -365,6 +365,29 @@ async function keycloakAdmin() {
     return client;
   };
   return {
+    async updateProfile(username: string, profile: { email: string; firstName: string; lastName: string }) {
+      const id = await userId(username);
+      const user = await (await call('GET', `/users/${id}`)).json() as Record<string, unknown>;
+      const updated = await call('PUT', `/users/${id}`, { ...user, ...profile, emailVerified: true });
+      assert.equal(updated.status, 204, await updated.text());
+    },
+    async deleteUser(username: string) {
+      const id = await userId(username);
+      const removed = await call('DELETE', `/users/${id}`);
+      assert.equal(removed.status, 204, await removed.text());
+      assert.equal((await call('GET', `/users/${id}`)).status, 404, 'the real provider identity was deleted');
+    },
+    async removeOfflineSessions(username: string) {
+      const id = await userId(username); const client = await flux();
+      const list = () => call('GET', `/users/${id}/offline-sessions/${client.id}`);
+      const sessions = await (await list()).json() as { id: string }[];
+      assert.ok(sessions.length > 0, 'an already-issued offline authorization exists at Keycloak');
+      for (const session of sessions) {
+        const removed = await call('DELETE', `/sessions/${session.id}?isOffline=true`);
+        assert.equal(removed.status, 204, await removed.text());
+      }
+      assert.deepEqual(await (await list()).json(), [], 'Keycloak no longer holds those offline sessions');
+    },
     async setEnabled(username: string, enabled: boolean) {
       const id = await userId(username);
       const user = await (await call('GET', `/users/${id}`)).json() as Record<string, unknown>;
@@ -713,4 +736,70 @@ test('back-channel logout: a sign-in on a second device does not stop the first 
   const tablet = await signInOnDevice('erin');
   await waitFor(async () => { const now = await admin.sessions('erin'); return !now.offline.includes(phone.sid) && now.offline.includes(tablet.sid); },
     'the signed-out device\'s provider token to be revoked');
+});
+
+test('standing: real returned Keycloak claims update the same profile without rewriting grant authentication', async () => {
+  const admin = await keycloakAdmin();
+  await signInWithTokens();
+  const facts = await grantAuthentication(state.userId!, clientId);
+  const profile = { email: `erin-refreshed-${randomUUID()}@acme.test`, firstName: 'Erin', lastName: 'Refreshed' };
+  try {
+    await admin.updateProfile('erin', profile); await dueNow(state.userId!);
+    await waitFor(async () => {
+      const row = (await pool.query('SELECT name, email, email_verified FROM auth_users WHERE id = $1', [state.userId])).rows[0];
+      return row?.email === profile.email && row;
+    }, 'a verified profile update from Keycloak refresh');
+    const row = (await pool.query('SELECT name, email, email_verified FROM auth_users WHERE id = $1', [state.userId])).rows[0];
+    assert.deepEqual(row, { name: 'Erin Refreshed', email: profile.email, email_verified: true });
+    assert.deepEqual(await grantAuthentication(state.userId!, clientId), facts);
+  } finally {
+    await admin.updateProfile('erin', { email: 'erin@acme.test', firstName: 'Erin', lastName: 'Agent' });
+    await dueNow(state.userId!);
+    await waitFor(async () => (await pool.query('SELECT email FROM auth_users WHERE id = $1', [state.userId])).rows[0]?.email === 'erin@acme.test', 'the restored provider profile');
+  }
+});
+
+test('standing: removing an already-held Keycloak offline session suspends and genuine sign-in restores retained grants', async () => {
+  const admin = await keycloakAdmin(); const signed = await signInWithTokens();
+  const revoked = async () => (await pool.query('SELECT id FROM oauth_refresh_token WHERE user_id = $1 AND revoked IS NOT NULL ORDER BY id', [state.userId])).rows;
+  const before = await revoked();
+  await admin.removeOfflineSessions('erin'); await dueNow(state.userId!);
+  const suspended = await waitFor(async () => { const row = await standingRow(state.userId!); return row?.state === 'sign_in_required' && row; }, 'offline-session removal suspension');
+  assert.equal(suspended.reason, 'invalid_grant');
+  assert.equal((await signed.context.request.get(`${origin}/api/v1/me`)).status(), 401);
+  assert.equal((await mcp(signed.tokens.access_token, 31, 'tools/list')).status, 401);
+  assert.equal(((await (await mcpRefresh(signed.tokens.refresh_token)).json()) as { error: string }).error, 'invalid_grant');
+  assert.deepEqual(await revoked(), before, 'suspension did not revoke MCP authority');
+  await signInWithTokens();
+  assert.equal((await mcp(signed.tokens.access_token, 32, 'tools/list')).status, 200, 'the retained bearer recovers');
+  assert.equal((await mcpRefresh(signed.tokens.refresh_token)).status, 200, 'the retained refresh family recovers');
+  assert.equal((await pool.query('SELECT revoked_at FROM agent_connections WHERE id = $1', [state.connectionId])).rows[0].revoked_at, null);
+});
+
+test('standing: a deleted Keycloak user loses browser, MCP and refresh access without revocation or identity transfer', async () => {
+  const admin = await keycloakAdmin(); const context = await fresh(); const page = await context.newPage();
+  await page.goto(`${origin}/sign-in`); await page.getByRole('button', { name: 'Sign in with Keycloak', exact: true }).click();
+  await page.waitForURL((target) => target.origin === keycloak); await providerLogin(page, 'frank');
+  await page.waitForURL((target) => target.origin === origin, { timeout: 20_000 });
+  const person = await api<{ user: { id: string } }>(context, 'GET', '/api/v1/me');
+  const workspace = await api<{ id: string }>(context, 'POST', '/api/v1/workspaces', { name: 'Deleted identity proof' }, 201);
+  const project = await api<{ id: string }>(context, 'POST', `/api/v1/workspaces/${workspace.id}/projects`, { name: 'Kept data', visibility: 'restricted' }, 201);
+  const agent = await api<{ id: string }>(context, 'POST', `/api/v1/workspaces/${workspace.id}/agents`, { name: 'Kept identity agent', owner: 'self' }, 201);
+  await api(context, 'POST', `/api/v1/projects/${project.id}/grants`, { principal: { kind: 'agent', id: agent.id }, role: 'contributor' }, 201);
+  const connection = await api<{ id: string }>(context, 'POST', '/api/v1/agent-connections',
+    { agentId: agent.id, selectedProjectIds: [project.id], scopes: ['flux.context.read', 'flux.proposal.write'] }, 201);
+  const client = await registerClient(loopback); const { verifier, challenge } = pkce();
+  await page.goto(authorizeUrl(client, loopback, challenge));
+  const tokens = await redeem(await chooseAndConsent(context, page, loopback, connection.id), verifier, loopback, client);
+  assert.equal((await mcp(tokens.access_token, 33, 'tools/list')).status, 200);
+  await admin.deleteUser('frank'); await dueNow(person.user.id);
+  await waitFor(async () => (await standingRow(person.user.id))?.state === 'sign_in_required', 'deleted-user suspension');
+  assert.equal((await context.request.get(`${origin}/api/v1/me`)).status(), 401);
+  const refused = await mcp(tokens.access_token, 34, 'tools/list');
+  assert.equal(refused.status, 401); assert.match(refused.headers.get('www-authenticate') ?? '', /Sign in again with Keycloak\./);
+  const refresh = await fetch(new URL('/api/auth/oauth2/token', upstream), { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ grant_type: 'refresh_token', refresh_token: tokens.refresh_token, client_id: client, resource }) });
+  assert.equal(refresh.status, 400); assert.equal((await refresh.json() as { error: string }).error, 'invalid_grant');
+  assert.equal((await pool.query('SELECT 1 FROM oauth_refresh_token WHERE user_id = $1 AND revoked IS NOT NULL', [person.user.id])).rowCount, 0);
+  assert.equal((await pool.query('SELECT 1 FROM agent_connections WHERE id = $1 AND owner_user_id = $2 AND revoked_at IS NULL', [connection.id, person.user.id])).rowCount, 1);
 });
