@@ -99,3 +99,93 @@ records. Stop currently ends the Flux task hold; it does not kill the person's
 native CLI program. #320's clean-clone timed walkthrough is also unverified.
 One consolidated independent review plus at most one final delta/open-findings
 check applies; no independent review has been requested for this incomplete draft.
+
+## Supplied host action verification, 2026-10-18
+
+The supplied `./flux cowork start|resume` action now binds the origin, connection,
+project, client and working directory to its own explicit native thread. Connect
+and the same project's Agents detail show its supplied command and prerequisites.
+The browser does not launch a closed native app. The launcher uses the installed
+Codex 0.160.1 ChatGPT account path; it does not write global configuration,
+select `--last`, copy provider credentials or store a second task backlog.
+The current server resource remains authoritative for the playbook. Query binding
+narrows existing authority before discovery and at response delivery; the OAuth
+resource/audience remains the existing advertised `/mcp`.
+
+**Pins and checks.** App/helper images were built from
+`26ef05d90714d90e8be7c9c7fce6fea2c7ce07b6`. Build, typecheck and lint passed.
+The focused Docker selection passed **35/35**, including the architecture rule
+that had failed CI, orientation/checkpoints, host binding, receipt replay,
+playbook, OAuth and public extension compatibility. The earlier checkpoint
+normalizer imported an adapter through orientation; it is now a pure module,
+and the architecture rule remains unchanged. The host binding regression also
+passed **1/1** under MCP `2025-06-18`, in addition to the modern selection.
+
+The changed Connect scenario passed on Chromium and WebKit at 390 and 1440px
+(**1 scenario / 4 combinations**, 55.0s), covering supplied exact commands,
+phone touch target, enlarged text, lost authorization and revoked history.
+Screenshots are local at `/tmp/flux160-adapter-browser-evidence`; this is behavior
+and render evidence, not independent visual approval. The existing Agents detail
+uses the same action component; that entry path was not separately exercised.
+
+The outer shell test first exposed a watchdog cleanup delay: the original test
+ignored the subprocess timeout despite a zero exit status. The launcher now
+reaps its timer and sleeper. The tightened Docker shell test passed **1/1** in
+5.7s with no subprocess error. It used stub native/Docker commands and the real
+compiled metadata helper: **it is not real-model evidence**. The tested launcher
+and mounted shell fixture are at `5464ed6f1b909e11efa3d63bde42c3e117ac0e5a`;
+app/helper production bytes are unchanged from `26ef05d9`.
+
+**Native activation remains blocked before the model.** Actual checksummed Codex
+0.160.1 used a fresh isolated Docker HOME, explicit read-only configured-account
+mount and real Flux browser consent. No person's unrelated native history or
+global configuration was inspected or resumed. Three bounded OAuth preflight
+observations preceded any model invocation:
+
+- The pre-registered fixture callback gained a server suffix and was refused
+  as `invalid_redirect`. The fixture now supplies its explicit registered
+  callback URL.
+- Explicit `oauth_resource` duplicated the canonical resource already supplied
+  by native discovery and broke login continuation. The launcher and fixture
+  now rely on the advertised resource once; the audience contract is unchanged.
+- The corrected flow completed browser consent, but official `mcp login` exited
+  **1**. The fixture did not retain its raw OAuth output; the exact safe error
+  subtype is therefore **unknown**. This is not evidence of a provider quota,
+  expired provider auth or successful native activation. No model Start or
+  explicit-thread Resume was reached in this verification. No Claude retry,
+  payer fallback or account/login-setting change occurred.
+
+The final native image's compiled helper SHA-256 was
+`77684670f747093b7ed1e9d79a89827de5eea3fe8268b0811ec4b639c29dd033`;
+its read-only mounted fixture at `5464ed6f` was
+`b7615e19cda0361350360387a5b8358caed8530fa242c8720edccd0bd6053966`.
+The app/helper source pin remains `26ef05d9`; fixture corrections were not
+misattributed to rebuilt production images. Logs are local:
+`/tmp/flux160-adapter-verify.log`, `/tmp/flux160-adapter-retry.log`,
+`/tmp/flux160-native-final.log` and `/tmp/flux160-adapter-shell-delta.log`.
+Do not publish OAuth diagnostic URLs or raw client output from those logs.
+Completed model turns in this adapter run: **0**; provider/network request counts
+were not instrumented. The earlier genuine Start success and fresh generic
+Resume failure above remain at their original pins.
+
+All owned verification containers, volumes, networks and retained image tags
+were removed; the heavy slot was explicitly released. These are Linux Docker
+observations; another host/platform is not accepted by this evidence.
+
+Official primary documentation, read 2026-10-18:
+[configuration reference](https://developers.openai.com/codex/config-reference)
+for inline developer instructions, required MCP initialization, callback and
+credential-store settings; [noninteractive execution](https://developers.openai.com/codex/noninteractive)
+for native JSON thread IDs and explicit `exec resume`. Vendor documentation is
+capability evidence, distinct from the failed activation observation.
+
+**Next action / unchanged whole criteria.** Diagnose the native OAuth exit using
+safe category/status-only instrumentation before another bounded adapter run.
+Complete supported-client activation (Claude still pending), live busy-recipient
+queue delivery/checkpoints, quiet idle wake with actual call/network evidence,
+restart/retry/revocation/lease/capability/policy and changed-plan resilience, and
+Start/Resume/Pause/Stop on the same task records. The adapter has no automatic
+idle wake. Stop ends the Flux hold, not the person's unrelated CLI program.
+Neither #152 nor #160 is accepted or closed; #320's timed clean-clone walkthrough
+is still unverified. PR #616 stays Draft. The single consolidated independent
+review and at most one final delta remain available; none was requested here.
