@@ -69,3 +69,5 @@ globalThis.minimapComparePNGs = async function ({actual, reference}) {
   }
   return {relativeAlphaError:error/Math.max(1,ink),colorError,ink,pixels:[a.width,a.height]};
 };
+// Playwright evaluates a returned function as a callable; installation must return no function.
+void 0;
