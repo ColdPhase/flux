@@ -252,7 +252,7 @@ class MessageAlignment(unittest.TestCase):
         page = self.page()
         sketch_response = page.request.post(f"/api/v1/workspaces/{self.workspace}/sketches", data={
             "title": "Map from a message", "scope": "project", "projectId": self.project,
-        })
+        }, headers={"origin": ORIGIN})
         self.assertEqual(sketch_response.status, 201, sketch_response.text())
         sketch = sketch_response.json()
         page.goto(f"/projects/{self.project}")
