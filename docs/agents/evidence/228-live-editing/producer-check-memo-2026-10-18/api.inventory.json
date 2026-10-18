@@ -1,0 +1,106 @@
+{
+  "source_sha": "450f2430c17e1b57bfe54df7be607dc723ba5d89",
+  "captured_at": "2026-10-18T11:51:51.559545+00:00",
+  "project": "flux-test-1792324168-1230299",
+  "containers": [
+    {
+      "id": "f2e496e69f86a5f5e4c3c0bdde946aca48deeebfee318a1364870c4a88660437",
+      "image_id": "sha256:8303ed15e6c1c2bb55f05211d9a821fffed4ca22e93d25c5c283f0bf3ebccb78",
+      "name": "/flux-test-1792324168-1230299-test-run-718fe8dff6bf",
+      "image": "flux-test-tools:flux-test-1792324168-1230299",
+      "running": true
+    },
+    {
+      "id": "6e728f2117c40fe3d35c1561b43c26f13a51d475d34b029f958915357eed3180",
+      "image_id": "sha256:040c9155ca0fef6f130ca24782f1ef483e57a95d7249b7e350af232946996811",
+      "name": "/flux-test-1792324168-1230299-worker-1",
+      "image": "flux-foundation:flux-test-1792324168-1230299",
+      "running": true
+    },
+    {
+      "id": "6ede6d7169d370428d30229f43f44b99077338d2642473d86803908f3e4695be",
+      "image_id": "sha256:0a94362145f58e5cffb58605023c671774e4143037a952221ee6485b6cd999af",
+      "name": "/flux-test-1792324168-1230299-mailpit-smtps-1",
+      "image": "axllent/mailpit:v1.31.2@sha256:74d609a42ec279aa63c6b4622a6fa9b5408d1ad5b1d76a1c4be40a265ce0863d",
+      "running": true
+    },
+    {
+      "id": "c60f87b565f1d86ff5cb60bcf489192310c40ca876662f5f1145cc6f3adfaa8b",
+      "image_id": "sha256:0a94362145f58e5cffb58605023c671774e4143037a952221ee6485b6cd999af",
+      "name": "/flux-test-1792324168-1230299-mailpit-starttls-1",
+      "image": "axllent/mailpit:v1.31.2@sha256:74d609a42ec279aa63c6b4622a6fa9b5408d1ad5b1d76a1c4be40a265ce0863d",
+      "running": true
+    },
+    {
+      "id": "b4389dfdce35fa4d63bdd36905596c280b2e9108fcdf6ffb73f52f5e35958173",
+      "image_id": "sha256:db64bf52b2ab707f1ecf135bf294447d1e1029db6ca7d96d5b538a1658040609",
+      "name": "/flux-test-1792324168-1230299-pushmock-1",
+      "image": "flux-e2e:flux-test-1792324168-1230299",
+      "running": true
+    },
+    {
+      "id": "1049689f91bf0add888dc742cb688937ea96b7ae7bc19061aa4414fc3bac119b",
+      "image_id": "sha256:040c9155ca0fef6f130ca24782f1ef483e57a95d7249b7e350af232946996811",
+      "name": "/flux-test-1792324168-1230299-api2-1",
+      "image": "flux-foundation:flux-test-1792324168-1230299",
+      "running": true
+    },
+    {
+      "id": "7ff756d42b3f8e8909b3df47e4d1818505bb065b3e5e5dc24482f5f2f29e1293",
+      "image_id": "sha256:040c9155ca0fef6f130ca24782f1ef483e57a95d7249b7e350af232946996811",
+      "name": "/flux-test-1792324168-1230299-api-1",
+      "image": "flux-foundation:flux-test-1792324168-1230299",
+      "running": true
+    },
+    {
+      "id": "72fb0b113592e683707843c634ea46f31b0d2f4b8cc664f955a9cad586f92e41",
+      "image_id": "sha256:0a94362145f58e5cffb58605023c671774e4143037a952221ee6485b6cd999af",
+      "name": "/flux-test-1792324168-1230299-mailpit-1",
+      "image": "axllent/mailpit:v1.31.2@sha256:74d609a42ec279aa63c6b4622a6fa9b5408d1ad5b1d76a1c4be40a265ce0863d",
+      "running": true
+    },
+    {
+      "id": "2fdda69a9cd185fd0edba92c9b187e7c4fe4d43bcbb068eff1188afc71ab54c9",
+      "image_id": "sha256:8303ed15e6c1c2bb55f05211d9a821fffed4ca22e93d25c5c283f0bf3ebccb78",
+      "name": "/flux-test-1792324168-1230299-providermock-1",
+      "image": "flux-test-tools:flux-test-1792324168-1230299",
+      "running": true
+    },
+    {
+      "id": "fa480ee2faaa0a32ffd6107078eaf56e5f015b8713fd99af780a41505f20de48",
+      "image_id": "sha256:c293117fcecda7344b5480222e813b9f673d7abd69b1dd95eff239b768b04f59",
+      "name": "/flux-test-1792324168-1230299-db-1",
+      "image": "postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873",
+      "running": true
+    }
+  ],
+  "apis": {
+    "flux-test-1792324168-1230299-api2-1": {
+      "node": "v24.21.0",
+      "mode": "on",
+      "diagnostic": null,
+      "telemetry": null,
+      "instance": null,
+      "nodeEnv": "production"
+    },
+    "flux-test-1792324168-1230299-api-1": {
+      "node": "v24.21.0",
+      "mode": "on",
+      "diagnostic": null,
+      "telemetry": null,
+      "instance": null,
+      "nodeEnv": "production"
+    }
+  },
+  "tools": {
+    "node": "v24.21.0",
+    "packageManager": "pnpm@12.6.0",
+    "typescript": "5.9.2",
+    "tsx": "4.20.5",
+    "playwright": "1.63.0",
+    "yjs": "13.6.33",
+    "fastify": "5.6.1",
+    "ws": "8.22.0"
+  },
+  "postgres": "postgres (PostgreSQL) 18.6"
+}

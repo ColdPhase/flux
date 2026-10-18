@@ -1,0 +1,47 @@
+▶ live editing uses current configured provider confirmation
+  ✔ a fresh provider session passes input and both final recipient fences (122.100955ms)
+  ✔ expired, never-confirmed and missing provider accounts refuse without deleting the session (193.794022ms)
+  ✔ the newest account or standing confirmation counts, including a NULL account timestamp (91.338903ms)
+  ✔ one fresh provider account cannot conceal another lapsed row for the same user/provider (70.047682ms)
+  ✔ password sessions and no configured provider retain ordinary lifetimes (121.664393ms)
+  ✔ current and final fences recheck the SQL clock inside the same held transaction (108.098238ms)
+✔ live editing uses current configured provider confirmation (708.253087ms)
+✔ live label conflict holds current write authority through the protected error handoff (851.684601ms)
+✔ ordinary roomless HTTP creation and exact retry stay independent of the fully reserved live budget (356.535632ms)
+✔ ordinary retained-room HTTP capacity refusal is retryable without effects and the same intent recovers (318.243794ms)
+✔ a first live room after ordinary preflight charges ownership even after HTTP closes, until actual SQL settlement (361.349857ms)
+✔ actual native HTTP abort before a PG-blocked command retains source through outer COMMIT then releases without another close (370.823768ms)
+✔ actual native response finish keeps source until the real protected COMMIT response and handler settle (342.029043ms)
+✔ actual closed native CAS refusal rolls back without a new contribution; parser400 never allocates protected preparation (346.072886ms)
+✔ actual map HTTP finish keeps source/wire charged through protected SQL settlement (302.279582ms)
+✔ actual wiki HTTP finish keeps source/wire charged through protected SQL settlement (370.872269ms)
+✔ actual map client close before its held protected SQL handoff releases after real route settlement (299.594062ms)
+✔ actual wiki client close before its held protected SQL handoff releases after real route settlement (385.983338ms)
+✔ actual protected COMMIT-response loss preserves unknown classification and retires only after HTTP plus SQL settlement (399.284603ms)
+✔ pinned actual ServerResponse close before owner construction is terminal evidence; late retainer joins need no new event (6.21916ms)
+✔ actual ordinary native abort before PG settlement skips protected success serialization and preserves exact durable replay (318.680386ms)
+✔ actual ordinary native closed CAS postimage skips error serialization while connected refusals preserve current authorized details (289.919481ms)
+✔ atomic500-thought bootstrap/200-position live preview is visible before native drop and binds one real connection (1268.590962ms)
+✔ server-journal grouped undo is atomic, immutable on exact retry, and refuses a peer conflict without rebasing (703.065269ms)
+✔ native deletion/link restore keep monotonic thought versions and link epochs; old HTTP/core replay never creates new graph state (665.601075ms)
+✔ real live/native HTTP shares one budget, uses ordered receipts and current reader/write policy (642.820779ms)
+✔ private/DM rooms stay opaque, expired preview cannot revive, and final SQL-clock expiry precedes protected map handoff (806.195212ms)
+✔ project delivery checks each producer session once, preserves first policy locks and forgets successes before a later grant downgrade (694.559441ms)
+✔ withheld map handoff filters expired producer sessions, transient leases and lapsed confirmation after positive checks (3999.230548ms)
+✔ deleted retained link UUID cannot migrate into an ordinary unjoined map through the native/MCP adapter (697.707002ms)
+✔ dense map refuses an oversized edit but permits one unlink and atomic own-undo with exact epochs (764.132651ms)
+✔ legal200-command own history remains one atomic undo without arbitrary count reduction (5788.415415ms)
+✔ aggregate dense own history is counted before JSON decode and refuses atomically within the shared preparation (1653.615218ms)
+✔ prepared MCP-composition native port keeps exact common metadata until its real outer SQL transaction settles (406.654427ms)
+✔ a stale final drop never moves the thought: cleared, expired, foreign or already consumed leases are refused (485.702629ms)
+✔ the transient read charge covers the actual result charge of the largest preview and presence rows (15.767132ms)
+✔ one ordinary preview read fits the small transient charge; many large previews take the worst case (0.148951ms)
+ℹ tests 36
+ℹ suites 1
+ℹ pass 36
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 31158.393243
+Removed 3 per-run image(s) tagged :flux-test-1792324168-1230299
