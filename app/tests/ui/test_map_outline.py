@@ -7,6 +7,7 @@ connection on the map, ⌥↑/⌥↓ change only this person's reading order, an
 from __future__ import annotations
 
 import json
+import os
 import re
 import time
 import unittest
@@ -48,7 +49,11 @@ class MapOutlineJourney(unittest.TestCase):
         if UPSTREAM:
             start_forwarder(ORIGIN, UPSTREAM)
         cls.pw = sync_playwright().start()
-        cls.browser = cls.pw.chromium.launch()
+        browser = os.environ.get("FLUX_UI_BROWSER", "chromium")
+        if browser not in ("chromium", "webkit"):
+            raise ValueError("FLUX_UI_BROWSER must be chromium or webkit")
+        cls.browser = getattr(cls.pw, browser).launch()
+        print(f"Map outline actual browser: {browser}", flush=True)
         expect.set_options(timeout=10000)
         contexts = {}
         for key, name in (("owner", "Ada Outline"), ("viewer", "Kai Reader")):

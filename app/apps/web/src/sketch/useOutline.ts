@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { SketchDetail } from '@flux/contracts';
-import { buildOutline, emptyOutline, OUTLINE_STORE_KEY, readStoredOutline, rememberThoughts, sibling, swapOrder, writeStoredOutline, type OutlineState } from './outline';
+import { buildOutline, emptyOutline, OUTLINE_STORE_KEY, readStoredOutline, rememberThoughts, sibling, swapOrder, writeStoredOutline, type Outline, type OutlineState } from './outline';
 
 export function outlineKey(personId: string, workspaceId: string, sketchId: string): string {
   return `${personId}:${workspaceId}:${sketchId}`;
@@ -24,7 +24,10 @@ export function useOutline(personId: string, sketch: SketchDetail | null) {
   }
   const state = sketch ? rememberThoughts(current.state, sketch.thoughts) : current.state;
   if (state !== current.state) setLoaded({ ...current, state });
-  const outline = buildOutline(sketch?.thoughts ?? [], sketch?.links ?? [], state);
+  // Map previews also render this hook, but only the List and explicit navigation
+  // actions need its tree. Keep this result local to the current graph/state render.
+  let outline: Outline | undefined;
+  const getOutline = () => outline ??= buildOutline(sketch?.thoughts ?? [], sketch?.links ?? [], state);
   useEffect(() => {
     if (!key) return;
     try { localStorage.setItem(OUTLINE_STORE_KEY, writeStoredOutline(localStorage.getItem(OUTLINE_STORE_KEY), key, state)); } catch { /* only this session can remember it */ }
@@ -35,13 +38,13 @@ export function useOutline(personId: string, sketch: SketchDetail | null) {
   };
   return {
     state,
-    outline,
+    get outline() { return getOutline(); },
     toggle: (id: string) => change((before) => ({ ...before, collapsed: before.collapsed.includes(id) ? before.collapsed.filter((item) => item !== id) : [...before.collapsed, id] })),
-    reveal: (id: string) => change((before) => ({ ...before, collapsed: before.collapsed.filter((item) => !outline.byId.get(id)?.ancestors.includes(item)) })),
+    reveal: (id: string) => change((before) => ({ ...before, collapsed: before.collapsed.filter((item) => !getOutline().byId.get(id)?.ancestors.includes(item)) })),
     restoreCollapsed: (collapsed: string[]) => change((before) => ({ ...before, collapsed })),
     /** ⌥↑/⌥↓ (#510 AC-6): this person's order among siblings; the map is unchanged. False at either end. */
     move: (id: string, step: -1 | 1) => {
-      const other = sibling(outline, id, step);
+      const other = sibling(getOutline(), id, step);
       if (!other) return false;
       change((before) => swapOrder(before, id, other));
       return true;
