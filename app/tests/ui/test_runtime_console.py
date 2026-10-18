@@ -455,6 +455,7 @@ class RuntimeConsole(unittest.TestCase):
         expect(section).not_to_contain_text("your Claude plan")
         section.locator("details.rt-more summary").filter(has_text="Which account should I use?").click()
         expect(section.locator("details.rt-more")).to_contain_text("A ChatGPT sign-in uses the account or organization you choose in Codex.")
+        shot(page, f"runtime-codex-only-signed-out-phone-390-{UI_BROWSER}")
         page.close()
 
         # Codex-only, signed in: the action names Codex and confirms the saved sign-out for Codex.
@@ -484,6 +485,7 @@ class RuntimeConsole(unittest.TestCase):
         expect(removal).to_contain_text("Flux tries to sign out of Claude Code and Codex")
         expect(removal).to_contain_text("deletes both clients’ files from your shared runtime space")
         expect(removal).not_to_contain_text("Claude Code signs out first")
+        shot(page, f"runtime-codex-confirmed-signout-removal-phone-390-{UI_BROWSER}")
         page.close()
 
         # Both clients offered: the mixed state is reported individually, while removal stays shared.
@@ -507,6 +509,7 @@ class RuntimeConsole(unittest.TestCase):
         section.get_by_role("button", name="Remove shared runtime space from Flux…").click()
         removal = page.get_by_role("group", name="Remove shared runtime space from Flux")
         expect(removal).to_contain_text("Claude Code and Codex")
+        shot(page, f"runtime-mixed-clients-shared-removal-phone-390-{UI_BROWSER}")
         page.close()
 
     def held_poll(self, *, remove: bool) -> None:
