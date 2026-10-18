@@ -315,3 +315,52 @@ even if the first leg fails, and the test fails if either native login fails.
 The configuration labels are fixed enums, not raw native arguments. This
 scenario is prepared only, not executed. The explicit mode guard has regression
 coverage awaiting Docker/CI; no app/helper production bytes changed.
+
+### Granted persisted-bound versus inline-bound comparison, 2026-10-18
+
+The prepared comparison ran once at clean/pushed diagnostic source
+`d401a7ab9d5150383580b33166bef728485b99b3`. Focused synthetic diagnostic,
+privacy, mode and regex regression passed **3/3**. The actual pinned/checksummed
+**Codex0.160.1** then ran both fixed-label OAuth-only legs with the same newly
+seeded fixture client, connection, project, bound URL and callback port, fresh
+isolated writable homes, and consent reset only for that fixture client. There
+were **zero provider credential mounts/symlinks and zero model invocations**.
+
+| Fixed configuration | Callback navigation observation | Callback HTTP | Token HTTP | Native exit |
+| --- | --- | --- | --- | --- |
+| `persisted_bound` | Request and response: loopback, expected port, base path; iss/code present, error absent | 200 | 200 | 0 |
+| `inline_bound` | Request: same safe target classes/presence booleans; no response observed | Not observed | Not observed | 1 |
+
+Both legs observed protected-resource/authorization-server discovery200,
+authorize302, continuation200 and consent200. Persisted reached
+`callback_response`, `callback_navigation` and `callbackCompleted=true`; inline
+reported `callback_wait_failed`, `callbackCompleted=false`. Neither report
+contained an allowlisted OAuth error marker. No fixed browser request-failure
+category was observed for inline before cleanup; absence of that event is not a
+transport-success claim. Only target classes/presence booleans were compared,
+not private URL/query values. The comparison finished terminal1 because inline
+login failed; both reports were preserved, not replaced by retries.
+
+**Inference:** the bound URL alone does not explain the failure, because it
+worked through native persisted `mcp add` configuration. The difference remains
+in supplied inline configuration/native callback machinery. The current evidence
+does not prove which setting is wrong or justify a production change. The
+smallest next action is a safe, fixture-owned configuration-shape/pinned-source
+comparison of the native add-generated OAuth callback settings against inline
+settings, before any further affected login attempt. Do not inspect global
+configuration, use host0.163 or repeat a whole/provider/model lane blindly.
+
+App/helper production bytes remained the frozen `26ef05d9` build context, with
+an empty production source diff against the diagnostic head. Exact receipts:
+
+- Compiled helper: `77684670f747093b7ed1e9d79a89827de5eea3fe8268b0811ec4b639c29dd033`.
+- Current workflow fixture: `0c5883ad8ad13ad17cc867e03e93ae8da30a38154e5498618860f4c0805d1b84`.
+- Current client harness: `54e7753969e9c3edb77db4aabba1529b1d1a062be3830b7dfb0e5ebf443246a7`.
+- Current diagnostic helper: `085fb1d2b6a6d6d44d4cc1702a117648880d73ccc14f59a82a97365be2feb5f4`.
+
+The owned project was `flux160-oauth-compare-1792347677-2551880`; the local safe
+receipt is `/tmp/flux160-oauth-compare.log`. Both native legs together lasted
+12.6s. Exact container/network/volume/image-tag metadata checks returned empty
+after cleanup, and the shared heavy slot was explicitly released. No production
+fix, Claude retry, account fallback or full issue acceptance occurred. #616
+remains Draft; all whole #152/#160 criteria and review limits are unchanged.
