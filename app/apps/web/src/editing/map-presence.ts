@@ -25,6 +25,8 @@ export class MapPresenceStore implements MapPresenceSource {
     for (const listener of this.listeners) listener();
   }
   set(connectionId: string, peer: MapPeer) {
+    const expiresAt = Date.parse(peer.expiresAt);
+    if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) return;
     this.publish(new Map(this.snapshot).set(connectionId, peer));
   }
   expire(now: number) {
