@@ -195,7 +195,7 @@ describe('sketch access', () => {
     const helper = await createAgent(agentOwner, ws.id, { name: 'Scoped reader', owner: 'self' }, db);
     const agent: Principal = { kind: 'agent', id: helper.id };
     const setAgentGrant = (role: 'viewer' | 'contributor' | 'denied') =>
-      grantProject(owner, lamp.id, { principal: agent, role }, db);
+      grantProject(owner, lamp.id, { principal: { kind: 'agent', id: agent.id }, role }, db);
     async function check(principal: Principal, sketchId: string, expected: 'read' | 'write' | 'hidden') {
       for (const lock of [false, true]) await db.transaction(async tx => {
         const access = policySketchAccess(tx);
@@ -225,7 +225,7 @@ describe('sketch access', () => {
     await check(agent, shared.id, 'hidden');
     const active = await createAgent(agentOwner, ws.id, { name: 'Owner leaves', owner: 'self' }, db);
     const activePrincipal: Principal = { kind: 'agent', id: active.id };
-    await grantProject(owner, lamp.id, { principal: activePrincipal, role: 'contributor' }, db);
+    await grantProject(owner, lamp.id, { principal: { kind: 'agent', id: activePrincipal.id }, role: 'contributor' }, db);
     await check(activePrincipal, shared.id, 'write');
     expectStatus(await alice.browser.request('DELETE', `/api/v1/workspaces/${ws.id}/members/${personOwner.id}`), 204);
     await check(activePrincipal, shared.id, 'hidden');
