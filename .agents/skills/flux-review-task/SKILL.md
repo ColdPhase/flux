@@ -25,8 +25,10 @@ contract, and all unresolved prior findings. Follow
 - Submit the result as a GitHub PR review (approve / request changes), shaped by
   [the evaluation report](../../../docs/agents/templates/evaluation.md) and kept short.
   Findings need expected/observed behavior and reproduction steps. Separate optional
-  improvements from blocking failures. On re-review, check only the delta and each
-  earlier open finding.
+  improvements from blocking failures. Use the shared maximum of two rounds per PR
+  in [Evaluation](../../../docs/agents/evaluation.md#verdicts): one complete review,
+  then only the delta and earlier open findings. Do not restart the budget with a
+  new agent or head; record a remaining blocker instead of an automatic third round.
 - Return fixes to the implementation owner. You may reproduce a bug and prepare
   a patch on your own branch. Editing the peer's branch requires an explicit
   handoff, verified current head and one writer. If you edit code, identify that

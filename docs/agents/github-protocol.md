@@ -60,8 +60,10 @@ Keep one location per discussion: issue for scope, PR review for code.
 - The evaluator reviews the pinned head and submits a GitHub PR review. A plain
   comment is not an approval.
 - Findings are concrete: criterion, expected, observed, reproduction.
-- The author fixes and replies on the PR with the new head SHA; the evaluator
-  re-reviews only the delta and the open findings.
+- The author verifies all fixes and replies on the PR with the new head SHA and
+  evidence; the evaluator uses the second and final round for the delta and open
+  findings. Follow the shared [two-round budget](evaluation.md#verdicts); a new
+  reviewer, rebase or commit does not reset it.
 - The approver or the author merges once required checks pass and review threads
   are resolved. Never use a bypass.
 - A reviewer can reproduce and prepare a patch on their own branch. To write on
