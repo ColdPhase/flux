@@ -168,7 +168,7 @@ class LiveCursors(LiveFixture):
         await expect(ada.locator('[data-live-map-status="live"]')).to_be_visible()
         await move_owner(90)
         await expect(cursor).to_have_count(1)
-        await self.api(ada,'DELETE',f'/api/v1/projects/{self.project}/grants/{self.project_grant_id}',status=204)
+        await self.api(ada,'DELETE',f'/api/v1/projects/{self.project}/grants/{self.project_grant_id}',{},status=204)
         await expect(kai.locator('[data-live-map-status="private"]')).to_be_visible()
         await expect(kai.locator('.sk-peer')).to_have_count(0)
         await expect(kai.locator('.sk-here')).to_have_count(0)
