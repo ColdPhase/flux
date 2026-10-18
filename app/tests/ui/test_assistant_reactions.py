@@ -122,8 +122,12 @@ class AssistantReactions(unittest.TestCase):
             expect(page.get_by_text('Drafted by your assistant',exact=True)).to_be_visible()
             current=self.api(page,'GET',f"/api/v1/conversations/{self.ids['conversation']}/messages?limit=100",status=200)
             self.assertEqual(len(current['items']),len(messages['items']))
+            shot(page,f"assistant-reply-{self.tag(phone)}")
             page.get_by_role('button',name='Send reply',exact=True).click()
             expect(reply).to_have_value('')
+            posted=self.api(page,'GET',f"/api/v1/conversations/{self.ids['conversation']}/messages?limit=100",status=200)
+            self.assertEqual(len(posted['items']),len(messages['items'])+1)
+            self.assertEqual(posted['items'][-1]['body'],body)
             page.close()
 
     def test_05_typed_suggestion_review_accept_dismiss_and_authority_error(self):
@@ -148,6 +152,7 @@ class AssistantReactions(unittest.TestCase):
             expect(card).to_be_visible()
             card.get_by_role('button',name='Review',exact=True).click()
             expect(card).to_contain_text('Use the manufacturer’s current connector pinout.')
+            shot(page,f"assistant-suggestion-{self.tag(phone)}")
             self.assertEqual(accepted,[],'review never accepts or starts compute')
             card.get_by_role('button',name='Accept',exact=True).click()
             expect(page.get_by_text('Only someone who can decide this can accept it.',exact=True)).to_be_visible()
