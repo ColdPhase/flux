@@ -1,0 +1,7 @@
+{
+  "sourceSha": "a24843d7995e01e4ca62d15eb4364d3af3e12245",
+  "imageId": "sha256:c2bb9a418f6c00f71e7bd8593e602e15f5e606958a4b0697658eecec8c242718",
+  "exitStatus": 0,
+  "containerRemoved": true,
+  "scope": "Transport and production codec only; no SQL, browser or complete live-editing acceptance"
+}
