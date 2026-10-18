@@ -21,15 +21,22 @@ from playwright.async_api import Error, async_playwright, expect
 from live_editing_identity import map_input_identity
 from test_app_shell import ORIGIN, UI_BROWSER, UPSTREAM, start_forwarder
 from native_touch import native_touch_driver, native_touch_sender
+from native_ime import NativeImeDisplay
 
 
 class LiveFixture(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         if UPSTREAM:
             start_forwarder(ORIGIN, UPSTREAM)
+        launch_options = {}
+        self.native_ime = None
+        if UI_BROWSER == 'webkit' and self._testMethodName == 'test_14_ime_composition_shares_the_committed_text_once':
+            self.native_ime = NativeImeDisplay()
+            self.addCleanup(self.native_ime.close)
+            launch_options = {'headless': False, 'env': self.native_ime.environment}
         with native_touch_driver(UI_BROWSER):
             self.pw = await async_playwright().start()
-        self.browser = await getattr(self.pw, UI_BROWSER).launch()
+        self.browser = await getattr(self.pw, UI_BROWSER).launch(**launch_options)
         self.assertEqual(self.browser.browser_type.name, UI_BROWSER)
         print(f"ACTUAL_UI_ENGINE={self.browser.browser_type.name}", flush=True)
         self.contexts = []
@@ -638,19 +645,65 @@ class LiveEditingJourney(LiveFixture):
         await expect(peer).to_have_attribute("data-thought-y", str(saved["y"]))
 
     async def test_14_ime_composition_shares_the_committed_text_once(self):
-        # A real IME composition through CDP (composition updates, then the committed text): the
-        # peer receives the committed characters exactly once and both copies converge.
+        # Chromium retains its supported native CDP composition. WebKit uses real GTK Unicode
+        # preedit/commit through X11, not synthetic DOM events or an inserted final string.
         await self.create_doc()
         ada, kai = self.pages["ada"], self.pages["kai"]
         ada_field, kai_field = await self.editor("ada"), await self.editor("kai")
-        await ada_field.click()
-        await ada.keyboard.press("Control+End")
-        cdp = await ada.context.new_cdp_session(ada)
-        for text in ("に", "にほ", "にほん"):
-            await cdp.send("Input.imeSetComposition", {"text": text, "selectionStart": len(text), "selectionEnd": len(text)})
-            await ada.wait_for_timeout(30)
-        await cdp.send("Input.insertText", {"text": "日本"})
-        await ada.keyboard.type(" notes")
+        cdp = await ada.context.new_cdp_session(ada) if UI_BROWSER == 'chromium' else None
+
+        async def compose(field):
+            await ada.bring_to_front()
+            previous_title = await ada.title()
+            if self.native_ime:
+                marker = 'Flux native IME ' + uuid.uuid4().hex
+                await ada.evaluate('title => { document.title = title; }', marker)
+                await ada.wait_for_timeout(50)
+                self.native_ime.focus_writer(marker)
+            try:
+                await field.click()
+                await ada.keyboard.press('Control+End')
+                await field.evaluate('''element => {
+                  window.__nativeImeWitness = [];
+                  for (const type of ['compositionstart','compositionupdate','compositionend','beforeinput','input'])
+                    element.addEventListener(type, event => window.__nativeImeWitness.push({type:event.type,
+                      data:event.data, trusted:event.isTrusted, composing:event.isComposing, inputType:event.inputType}));
+                }''')
+                if cdp:
+                    for text in ('に', 'にほ', 'にほん'):
+                        await cdp.send('Input.imeSetComposition', {'text': text, 'selectionStart': len(text), 'selectionEnd': len(text)})
+                        await ada.wait_for_timeout(30)
+                    await cdp.send('Input.insertText', {'text': '日本'})
+                else:
+                    self.assertIsNotNone(self.native_ime, 'WebKit must use its real native IM context')
+                    for digits, committed in (('65e5', '日'), ('672c', '本')):
+                        before = await ada.evaluate('window.__nativeImeWitness.length')
+                        self.native_ime.chord('Control_L', 'Shift_L', 'u')
+                        for digit in digits:
+                            self.native_ime.key(digit)
+                            await ada.wait_for_timeout(20)
+                        await ada.wait_for_function('''({before,digits}) => window.__nativeImeWitness.slice(before)
+                          .some(event => event.type === 'compositionupdate' && event.trusted && event.data.toLowerCase().includes(digits))''',
+                          arg={'before': before, 'digits': digits}, timeout=5000)
+                        self.native_ime.key('Return')
+                        await ada.wait_for_function('''({before,committed}) => window.__nativeImeWitness.slice(before)
+                          .some(event => event.type === 'input' && event.trusted && event.data === committed)''',
+                          arg={'before': before, 'committed': committed}, timeout=5000)
+                await ada.keyboard.type(' notes')
+                witness = await ada.evaluate('window.__nativeImeWitness')
+                composition = [event for event in witness if event['type'].startswith('composition')]
+                for kind in ('compositionstart', 'compositionupdate', 'compositionend'):
+                    self.assertTrue(any(event['type'] == kind for event in composition), f'Missing native {kind}: {witness}')
+                self.assertTrue(all(event['trusted'] for event in composition), witness)
+                if self.native_ime:
+                    self.assertEqual(sum(event['type'] == 'compositionstart' for event in composition), 2, witness)
+                    self.assertEqual(sum(event['type'] == 'compositionend' for event in composition), 2, witness)
+                    print('ACTUAL_NATIVE_IME=webkit-gtk-simple-x11; trusted preedit/commit cycles=2', flush=True)
+            finally:
+                if self.native_ime:
+                    await ada.evaluate('title => { document.title = title; }', previous_title)
+
+        await compose(ada_field)
         await expect(ada.get_by_role("status").filter(has_text="All changes shared")).to_be_visible()
         await expect(kai_field).to_contain_text("日本 notes")
         for page in (ada, kai):
@@ -663,6 +716,27 @@ class LiveEditingJourney(LiveFixture):
                 raw = raw.replace(label, "")
             return "".join(raw.split())
         self.assertEqual(shared_text(await ada_field.inner_text()), shared_text(await kai_field.inner_text()))
+
+        # At the unchanged hard limit, remove eight code units first so even a five-character
+        # native hexadecimal preedit stays below it. Two committed characters plus " notes"
+        # restore exactly100,000; the saved historical version remains byte-for-byte unchanged.
+        boundary = await self.create_doc('r' * 100_000)
+        ada_field, kai_field = await self.editor('ada'), await self.editor('kai')
+        await ada_field.click()
+        await ada.keyboard.press('Control+End')
+        for _ in range(8):
+            await ada.keyboard.press('Shift+ArrowLeft')
+        await ada.keyboard.press('Backspace')
+        await compose(ada_field)
+        await expect(ada.get_by_role('status').filter(has_text='All changes shared')).to_be_visible()
+        await expect(kai_field).to_contain_text('日本 notes')
+        expected = 'r' * 99_992 + '日本 notes'
+        for page in (ada, kai):
+            current = await self.api(page, 'GET', f'/api/v1/docs/{boundary["id"]}/live')
+            self.assertEqual(current['body'], expected)
+            self.assertEqual(len(current['body']), 100_000)
+            saved = await self.api(page, 'GET', f'/api/v1/docs/{boundary["id"]}/versions/1')
+            self.assertEqual(saved['body'], 'r' * 100_000)
 
     async def test_15_a_collaborators_caret_at_the_end_never_takes_the_last_character_selection(self):
         # #228 Gate 4: Shift+ArrowLeft at the end of the text must select the last character even
