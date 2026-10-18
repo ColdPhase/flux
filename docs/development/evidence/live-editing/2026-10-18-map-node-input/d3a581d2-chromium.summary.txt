@@ -1,0 +1,47 @@
+Actual runner exit: 1
+#25 18.81 $ tsc --noEmit -p tsconfig.json && tsc --noEmit -p apps/web/tsconfig.json
+#25 39.13 $ eslint .
+#25 64.38 ✖ 9 problems (0 errors, 9 warnings)
+test_19_successive_peer_previews_keep_content_but_native_edits_refresh_it (test_live_editing.LiveEditingJourney.test_19_successive_peer_previews_keep_content_but_native_edits_refresh_it) ... ACTUAL_UI_ENGINE=chromium
+FAIL
+test_selection_clicks_are_local_then_real_50_and_200_drags_share_and_commit (test_live_map_selection.LiveMapSelectionJourney.test_selection_clicks_are_local_then_real_50_and_200_drags_share_and_commit) ... ACTUAL_UI_ENGINE=chromium
+ok
+test_remote_changes_during_drag_private_cancel_and_independent_own_undo (test_live_map_projection.LiveMapProjectionJourney.test_remote_changes_during_drag_private_cancel_and_independent_own_undo) ... ACTUAL_UI_ENGINE=chromium
+ok
+
+======================================================================
+FAIL: test_19_successive_peer_previews_keep_content_but_native_edits_refresh_it (test_live_editing.LiveEditingJourney.test_19_successive_peer_previews_keep_content_but_native_edits_refresh_it)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/usr/lib/python3.12/unittest/async_case.py", line 90, in _callTestMethod
+    if self._callMaybeAsync(method) is not None:
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/async_case.py", line 112, in _callMaybeAsync
+    return self._asyncioRunner.run(
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/asyncio/runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/asyncio/base_events.py", line 687, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "/work/tests/ui/test_live_editing.py", line 1051, in test_19_successive_peer_previews_keep_content_but_native_edits_refresh_it
+    self.assertEqual((pointer['width'], pointer['height']), (keyboard['width'] + 48, keyboard['height'] + 24))
+AssertionError: Tuples differ: (232, 160) != (232, 148)
+
+First differing element 1:
+160
+148
+
+- (232, 160)
+?        ^^
+
++ (232, 148)
+?        ^^
+
+
+----------------------------------------------------------------------
+Ran 3 tests in 29.609s
+
+FAILED (failures=1)
+

@@ -1,0 +1,52 @@
+Actual runner exit: 0
+
+test_01_setup (test_live_editing_off.LiveEditingOffJourney.test_01_setup) ... ok
+test_02_wiki_reader_and_editor_are_ordinary_from_the_first_render (test_live_editing_off.LiveEditingOffJourney.test_02_wiki_reader_and_editor_are_ordinary_from_the_first_render) ... ok
+test_03_map_is_ordinary_with_immediate_undo (test_live_editing_off.LiveEditingOffJourney.test_03_map_is_ordinary_with_immediate_undo) ... ORDINARY_RESIZE_CONTROL {'native': {'id': 'e9976cb5-9cfa-4cdf-9142-bb83b43d5161', 'sketchId': '0b29c9e4-2ce5-461b-867c-d34df94ce2bc', 'text': 'Distance sensor', 'x': 80, 'y': 80, 'width': 184, 'height': 72, 'shape': 'card', 'placement': None, 'source': None, 'createdBy': {'kind': 'human', 'id': '3d60b32a-e377-487c-9bce-9b294f3e4a82', 'name': 'Olga Ordinary'}, 'version': 1, 'createdAt': '2026-10-18T12:53:13.575Z', 'updatedAt': '2026-10-18T12:53:13.575Z'}, 'start_height': 72, 'resized': {'id': 'e9976cb5-9cfa-4cdf-9142-bb83b43d5161', 'sketchId': '0b29c9e4-2ce5-461b-867c-d34df94ce2bc', 'text': 'Distance sensor', 'x': 80, 'y': 80, 'width': 232, 'height': 96, 'shape': 'card', 'placement': None, 'source': None, 'createdBy': {'kind': 'human', 'id': '3d60b32a-e377-487c-9bce-9b294f3e4a82', 'name': 'Olga Ordinary'}, 'version': 2, 'createdAt': '2026-10-18T12:53:13.575Z', 'updatedAt': '2026-10-18T12:53:14.229Z'}, 'undo': {'id': 'e9976cb5-9cfa-4cdf-9142-bb83b43d5161', 'sketchId': '0b29c9e4-2ce5-461b-867c-d34df94ce2bc', 'text': 'Distance sensor', 'x': 80, 'y': 80, 'width': 184, 'height': 72, 'shape': 'card', 'placement': None, 'source': None, 'createdBy': {'kind': 'human', 'id': '3d60b32a-e377-487c-9bce-9b294f3e4a82', 'name': 'Olga Ordinary'}, 'version': 3, 'createdAt': '2026-10-18T12:53:13.575Z', 'updatedAt': '2026-10-18T12:53:14.346Z'}}
+ok
+
+----------------------------------------------------------------------
+Ran 3 tests in 3.372s
+
+OK
+ Container flux-ui-1792327969-1481277-api-1 Stopping 
+ Container flux-ui-1792327969-1481277-worker-1 Stopping 
+ Container flux-ui-1792327969-1481277-openai-mock-1 Stopping 
+ Container flux-ui-1792327969-1481277-anthropic-mock-1 Stopping 
+ Container flux-ui-1792327969-1481277-mailpit-1 Stopping 
+ Container flux-ui-1792327969-1481277-worker-1 Stopped 
+ Container flux-ui-1792327969-1481277-worker-1 Removing 
+ Container flux-ui-1792327969-1481277-worker-1 Removed 
+ Container flux-ui-1792327969-1481277-api-1 Stopped 
+ Container flux-ui-1792327969-1481277-api-1 Removing 
+ Container flux-ui-1792327969-1481277-api-1 Removed 
+ Container flux-ui-1792327969-1481277-migrate-1 Stopping 
+ Container flux-ui-1792327969-1481277-migrate-1 Stopped 
+ Container flux-ui-1792327969-1481277-migrate-1 Removing 
+ Container flux-ui-1792327969-1481277-migrate-1 Removed 
+ Container flux-ui-1792327969-1481277-db-1 Stopping 
+ Container flux-ui-1792327969-1481277-mailpit-1 Stopped 
+ Container flux-ui-1792327969-1481277-mailpit-1 Removing 
+ Container flux-ui-1792327969-1481277-mailpit-1 Removed 
+ Container flux-ui-1792327969-1481277-db-1 Stopped 
+ Container flux-ui-1792327969-1481277-db-1 Removing 
+ Container flux-ui-1792327969-1481277-db-1 Removed 
+ Container flux-ui-1792327969-1481277-anthropic-mock-1 Stopped 
+ Container flux-ui-1792327969-1481277-anthropic-mock-1 Removing 
+ Container flux-ui-1792327969-1481277-anthropic-mock-1 Removed 
+ Container flux-ui-1792327969-1481277-openai-mock-1 Stopped 
+ Container flux-ui-1792327969-1481277-openai-mock-1 Removing 
+ Container flux-ui-1792327969-1481277-openai-mock-1 Removed 
+ Volume flux-ui-1792327969-1481277_pgdata Removing 
+ Volume flux-ui-1792327969-1481277_uishots Removing 
+ Network flux-ui-1792327969-1481277_runtime-api Removing 
+ Network flux-ui-1792327969-1481277_runtime-control Removing 
+ Volume flux-ui-1792327969-1481277_files Removing 
+ Network flux-ui-1792327969-1481277_default Removing 
+ Volume flux-ui-1792327969-1481277_pgdata Removed 
+ Volume flux-ui-1792327969-1481277_uishots Removed 
+ Volume flux-ui-1792327969-1481277_files Removed 
+ Network flux-ui-1792327969-1481277_default Removed 
+ Network flux-ui-1792327969-1481277_runtime-control Removed 
+ Network flux-ui-1792327969-1481277_runtime-api Removed 
+Removed 2 per-run image(s) tagged :flux-ui-1792327969-1481277

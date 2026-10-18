@@ -1,0 +1,43 @@
+Actual runner exit: 1
+#25 19.30 $ tsc --noEmit -p tsconfig.json && tsc --noEmit -p apps/web/tsconfig.json
+#25 41.02 $ eslint .
+#25 67.00 ✖ 9 problems (0 errors, 9 warnings)
+test_19_successive_peer_previews_keep_content_but_native_edits_refresh_it (test_live_editing.LiveEditingJourney.test_19_successive_peer_previews_keep_content_but_native_edits_refresh_it) ... ACTUAL_UI_ENGINE=chromium
+FAIL
+
+======================================================================
+FAIL: test_19_successive_peer_previews_keep_content_but_native_edits_refresh_it (test_live_editing.LiveEditingJourney.test_19_successive_peer_previews_keep_content_but_native_edits_refresh_it)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/usr/lib/python3.12/unittest/async_case.py", line 90, in _callTestMethod
+    if self._callMaybeAsync(method) is not None:
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/async_case.py", line 112, in _callMaybeAsync
+    return self._asyncioRunner.run(
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/asyncio/runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/asyncio/base_events.py", line 687, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "/work/tests/ui/test_live_editing.py", line 1053, in test_19_successive_peer_previews_keep_content_but_native_edits_refresh_it
+    self.assertEqual((pointer['width'], pointer['height']), (keyboard['width'] + 48, keyboard['height'] + 24))
+AssertionError: Tuples differ: (272, 280) != (272, 268)
+
+First differing element 1:
+280
+268
+
+- (272, 280)
+?         -
+
++ (272, 268)
+?        +
+
+
+----------------------------------------------------------------------
+Ran 1 test in 3.078s
+
+FAILED (failures=1)
+
