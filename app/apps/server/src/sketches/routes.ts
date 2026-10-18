@@ -128,6 +128,8 @@ export async function sketchRoutes(app: FastifyInstance, { db, sessions, storage
       if(error instanceof LinkLabelConflictError) {
         const session=await sessions.requirePrincipal(request);const backend=liveBackend?.();
         const sketchId=(request.params as {sketchId?:string}).sketchId;
+        // A stale ordinary label is still an ordinary conflict, not a first live join.
+        if(sketchId&&!await nativeMapRoomExists(db,sketchId))throw error;
         if(!backend||!sketchId)throw new ServiceUnavailableError('The live map adapter is closing','EDITING_MAP_CAPACITY');
         // Conflict details came from a command whose transaction has rolled back. Reacquire
         // current write authority and hold it through the bounded handoff, so a committed
