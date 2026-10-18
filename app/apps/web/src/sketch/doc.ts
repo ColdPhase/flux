@@ -370,6 +370,7 @@ export function useSketchDoc(sketchId: string, me: Me) {
             created = await withRetry(() => api.addThought(sketchId, {
               id: thought.id, text: thought.text, x: thought.x, y: thought.y, width: thought.width, height: thought.height,
               ...(thought.file ? { fileId: thought.file.id } : {}),
+              ...(thought.sourceProjectMessageId ? { sourceProjectMessageId: thought.sourceProjectMessageId } : {}),
               ...(parent ? { linkFrom: { thoughtId: parent.id, linkId: parent.linkId } } : {}),
             }, key));
             // A cached creation receipt describes the earlier write, not a peer's later state.

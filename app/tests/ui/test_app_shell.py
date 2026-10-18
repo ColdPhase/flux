@@ -664,9 +664,16 @@ class AppShellJourney(unittest.TestCase):
             page.get_by_role("button", name="Create account").click()
             expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
             self.save_state(page)
-        for phone, dark in ((False, False), (True, False), (False, True), (True, True)):
-            with self.subTest(phone=phone, dark=dark):
-                page = self.page(phone=phone, dark=dark)
+        cases = (
+            ("desktop", {"phone": False}, False),
+            ("tablet", {"phone": False, "viewport": {"width": 820, "height": 900}, "has_touch": True}, False),
+            ("phone", {"phone": True}, False),
+            ("desktop", {"phone": False}, True),
+            ("phone", {"phone": True}, True),
+        )
+        for device, context_options, dark in cases:
+            with self.subTest(device=device, dark=dark):
+                page = self.page(**context_options, dark=dark)
                 workspaces = page.request.post(f"{ORIGIN}/api/v1/workspaces", data={"name": "Header menu studio"}, headers={"origin": ORIGIN})
                 self.assertEqual(workspaces.status, 201, workspaces.text())
                 workspace_id = workspaces.json()["id"]
@@ -677,18 +684,36 @@ class AppShellJourney(unittest.TestCase):
                 page.goto(f"/projects/{project.json()['id']}")
                 expect(page.locator(".project-convo")).to_be_visible()
                 header = page.locator("header.top")
+                before = header.bounding_box()
+                if device == "phone":
+                    expect(header.get_by_role("button", name="Back", exact=True)).to_be_visible()
+                    expect(header.get_by_role("button", name="Together", exact=True)).to_be_visible()
+                    expect(header.get_by_role("button", name="Search", exact=True)).to_be_visible()
+                    expect(header.get_by_role("heading", level=1, name="Project header actions")).to_be_visible()
+                    expect(header.get_by_role("button", name="More", exact=True)).to_have_count(0)
+                    geometry = page.evaluate("""() => ({header: document.querySelector('header.top').getBoundingClientRect().height,
+                      width: document.documentElement.clientWidth, scrollWidth: document.documentElement.scrollWidth})""")
+                    self.assertAlmostEqual(geometry["header"], 56, delta=1, msg=f"phone keeps its compact header: {geometry}")
+                    self.assertEqual(geometry["scrollWidth"], geometry["width"], f"phone header has no horizontal overflow: {geometry}")
+                    mode = "phone-390x844-dpr3"
+                    scheme = "dark" if dark else "light"
+                    shot(page, f"app-shell-project-header-{mode}-{scheme}-z100-chromium")
+                    continue
+
                 more = header.get_by_role("button", name="More", exact=True)
                 expect(more).to_be_visible()
-                before = header.bounding_box()
+                anchor = more.bounding_box()
                 more.click()
                 menu = page.get_by_role("menu", name="More")
                 expect(menu).to_be_visible()
                 page.evaluate("document.fonts.ready.then(() => true)")
                 geometry = page.evaluate("""() => {
                   const header = document.querySelector('header.top').getBoundingClientRect();
+                  const button = document.querySelector('header.top [aria-label="More"]').getBoundingClientRect();
                   const menu = document.querySelector('.top__more-menu').getBoundingClientRect();
                   const rows = [...document.querySelectorAll('.top__more-menu [role^=menuitem]')].map(el => el.getBoundingClientRect());
                   return {header: {top: header.top, bottom: header.bottom, height: header.height},
+                    button: {left: button.left, right: button.right, top: button.top, bottom: button.bottom},
                     menu: {left: menu.left, right: menu.right, top: menu.top, bottom: menu.bottom},
                     rowHeights: rows.map(row => row.height), viewport: document.documentElement.clientWidth};
                 }""")
@@ -696,10 +721,11 @@ class AppShellJourney(unittest.TestCase):
                 self.assertAlmostEqual(before["height"], after["height"], delta=1, msg=f"header does not grow when More opens: {geometry}")
                 self.assertGreaterEqual(geometry["menu"]["left"], 0, geometry)
                 self.assertLessEqual(geometry["menu"]["right"], geometry["viewport"], geometry)
-                self.assertGreaterEqual(geometry["menu"]["top"], geometry["header"]["bottom"] - 1, geometry)
-                if phone:
+                self.assertAlmostEqual(geometry["menu"]["right"], anchor["x"] + anchor["width"], delta=1, msg=f"menu is right aligned to More: {geometry}")
+                self.assertGreaterEqual(geometry["menu"]["top"], geometry["button"]["bottom"] - 1, geometry)
+                if device == "tablet":
                     self.assertTrue(all(height >= 44 for height in geometry["rowHeights"]), geometry)
-                mode = "phone-390x844-dpr3" if phone else "desktop-1440x900-dpr1"
+                mode = "tablet-820x900-dpr1" if device == "tablet" else "desktop-1440x900-dpr1"
                 scheme = "dark" if dark else "light"
                 shot(page, f"app-shell-project-header-more-{mode}-{scheme}-z100-chromium")
                 page.keyboard.press("Escape")

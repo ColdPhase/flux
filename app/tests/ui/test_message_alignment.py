@@ -90,11 +90,15 @@ class MessageAlignment(unittest.TestCase):
         cls.dm_messages = []
         for key, body in (("jonas", "The school can lend us two ESP32 kits from the robotics club."),
                           ("ada", "Great. Let us keep it between us until she confirms."),
-                          ("ada", "I will check with the volunteers tomorrow."),
-                          ("jonas", "A plan for the weekend.\n\n> Jonas Berg:\n> Meet by the greenhouse at nine.")):
+                          ("ada", "I will check with the volunteers tomorrow.")):
             cls.dm_messages.append(cls.post(contexts[key], f"/api/v1/dms/{cls.dm['id']}/messages", {
                 "body": body, "clientMessageId": str(uuid.uuid4()),
             }))
+        # Keep the established three-message own/grouping fixture indices stable.
+        cls.dm_quoted = cls.post(contexts["jonas"], f"/api/v1/dms/{cls.dm['id']}/messages", {
+            "body": "A plan for the weekend.\n\n> Jonas Berg:\n> Meet by the greenhouse at nine.",
+            "clientMessageId": str(uuid.uuid4()),
+        })
         group_project = cls.post(owner, f"/api/v1/workspaces/{workspace['id']}/projects", {"name": "Probe planning", "visibility": "workspace"})
         cls.group_project = group_project["id"]
         cls.groups = []
@@ -246,7 +250,7 @@ class MessageAlignment(unittest.TestCase):
             shot(page, f"message-alignment-project-quote-{mode}-{scheme}-z100-{UI_BROWSER}")
             dm = self.page(phone=phone, dark=dark)
             dm.goto(f"/dm/{self.dm['id']}")
-            dm_row = dm.locator(f"#message-{self.dm_messages[-1]['id']}")
+            dm_row = dm.locator(f"#message-{self.dm_quoted['id']}")
             dm_row.scroll_into_view_if_needed()
             dm_quote = dm_row.locator("blockquote.msg-quote")
             expect(dm_quote).to_be_visible()
@@ -276,13 +280,16 @@ class MessageAlignment(unittest.TestCase):
         expect(page).to_have_url(re.compile(f"/projects/{self.project}/map/{sketch['id']}$"))
         draft = page.get_by_role("form", name="New thought draft")
         expect(draft.get_by_role("textbox", name="Thought text")).to_have_value(self.quoted["messages"][0]["body"])
-        with page.expect_response(lambda response: response.request.method == "POST" and response.url.endswith(f"/api/v1/sketches/{sketch['id']}/thoughts")) as response_info:
-            draft.get_by_role("button", name="Save thought", exact=True).click()
+        with page.expect_request(lambda request: request.method == "POST" and request.url.endswith(f"/api/v1/sketches/{sketch['id']}/thoughts")) as request_info:
+            with page.expect_response(lambda response: response.request.method == "POST" and response.url.endswith(f"/api/v1/sketches/{sketch['id']}/thoughts")) as response_info:
+                draft.get_by_role("button", name="Save thought", exact=True).click()
+        self.assertEqual(request_info.value.post_data_json["sourceProjectMessageId"], self.quoted["messages"][0]["id"])
         self.assertEqual(response_info.value.status, 201, response_info.value.text())
         thought = page.request.get(f"/api/v1/sketches/{sketch['id']}").json()["thoughts"][0]
         self.assertEqual(thought["text"], self.quoted["messages"][0]["body"])
         self.assertEqual(thought["source"]["projectMessageId"], self.quoted["messages"][0]["id"])
         self.assertEqual(thought["source"]["author"], {"kind": "human", "id": self.ids["ada"], "name": NAMES["ada"]})
+        self.assertEqual(thought["source"]["sentAt"], self.quoted["messages"][0]["createdAt"])
 
     def test_02_queued_failed_and_retried_messages_stay_on_the_right(self):
         for phone in (False, True):
