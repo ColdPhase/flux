@@ -25,6 +25,10 @@ BASE = "b17ae9e357441e9a383eb275d1034e69ec50c98a"
 KEYCLOAK = "quay.io/keycloak/keycloak:26.8.0@sha256:27b3230fbabb8c9ff3c66c864cf09dcd8a41aca82e5100679d109ef0eeb05741"
 
 
+class NativeSeedComplete(Exception):
+    """Stop a bounded initialization diagnostic; never a complete operator proof."""
+
+
 def digest(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
@@ -44,6 +48,7 @@ def main() -> int:
     parser.add_argument("--candidate", required=True)
     parser.add_argument("--evidence", type=Path, required=True)
     parser.add_argument("--port", type=int, default=19866)
+    parser.add_argument("--native-seed-only", action="store_true", help="Diagnostic only: stop after ordinary baseline up/demo")
     args = parser.parse_args()
     candidate = subprocess.check_output(["git", "rev-parse", args.candidate], cwd=ROOT, text=True).strip()
     assert subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip() == candidate
@@ -101,6 +106,13 @@ def main() -> int:
         log = out / f"{len(phases):02d}-{label}.txt"
         if private_output:
             log.write_text(f"Private command output retained only in memory; sha256={hashlib.sha256(result.stdout.encode()).hexdigest()}\n")
+            if result.returncode:
+                # Do not retain private fixture payloads or successful printed demo passwords.
+                # Generated env secrets are registered before these commands; only named error
+                # lines survive, with known secrets and JWTs removed.
+                safe = [scrub(line) for line in result.stdout.splitlines() if re.match(r"^(flux:|demo:|Error:|AssertionError)", line)]
+                with log.open("a") as handle:
+                    handle.write("\n".join(safe) + "\n")
         else:
             log.write_text(scrub(result.stdout))
         phases.append({"phase": label, "command": argv, "exit": result.returncode, "seconds": round(time.time() - started, 3), "log": log.name, "sha256": digest(log)})
@@ -162,8 +174,11 @@ def main() -> int:
         override(True)
         run("provider", provider_cmd("up", "-d", "--wait"))
         run("baseline-up", [str(checkout / "flux"), "up"])
-        run("baseline-demo", [str(checkout / "flux"), "demo"], private_output=True)
         values = env_file(checkout / "docker/.env")
+        hidden.update(value for key, value in values.items() if re.search(r"PASSWORD|SECRET|PRIVATE_KEY|TOKEN", key) and value)
+        run("baseline-demo", [str(checkout / "flux"), "demo"], private_output=True)
+        if args.native_seed_only:
+            raise NativeSeedComplete()
         client = f"bridge-native-{suffix}"
         sql = f"""INSERT INTO oauth_client (id,client_id,name,redirect_uris,token_endpoint_auth_method,grant_types,response_types,scopes,require_pkce,created_at,updated_at)
             VALUES (gen_random_uuid()::text,'{client}','Native backup fixture',ARRAY['http://127.0.0.1:19737/callback'],'none',ARRAY['authorization_code','refresh_token'],ARRAY['code'],ARRAY['flux.context.read','flux.action.execute','offline_access'],true,now(),now());
@@ -216,6 +231,8 @@ def main() -> int:
         helper("restored", candidate)
         helper("recovered", candidate)
         terminal = 0
+    except NativeSeedComplete:
+        terminal = 0
     except Exception as error:
         (out / "failure.txt").write_text(scrub(f"{type(error).__name__}: {error}\n"))
         print(scrub(str(error)), flush=True)
@@ -237,6 +254,7 @@ def main() -> int:
         if any(items for groups in remaining.values() for items in groups.values()):
             terminal = 1
         (out / "result.json").write_text(json.dumps({"base": BASE, "candidate": candidate, "terminal": terminal,
+            "diagnosticOnly": args.native_seed_only,
             "helperSha256": digest(ROOT / "scripts/identity-closeout/bridge.mjs"), "driverSha256": digest(Path(__file__)),
             "historicalLimit": "Does not rerun the original main90/late70/71 experiment; composes its pinned receipts with current continuity.",
             "remaining": remaining}, indent=2) + "\n")
