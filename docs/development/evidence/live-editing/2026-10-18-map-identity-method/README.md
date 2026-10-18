@@ -76,16 +76,76 @@ outside Git at `/home/hubert/flux-evidence/228-map-body-profile-28ad6b43`;
 [raw hashes](diagnostic/raw-manifest.json) include both trace/profile pairs.
 No public artifact upload is claimed.
 
+## Subsequent full canonical run: FAIL
+
+The changed canonical driver ran once from clean frozen
+`dfe3d7f78514466a86ce164e98a15f293b7b0c1c`, the same source as the observer
+controls above. The driver SHA-256 is
+`f331c1af49c8df43df6b257bc7c16795fedb5c3b102cfc11249282ef858df3ee`;
+the identity helper is separately pinned in [case results](latency/case-results.json).
+The [preflight](latency/preflight.json) confirms unchanged application, Docker,
+runner and lockfile inputs since `8ba5f87a`, and identical `LiveFixture` AST.
+No private profiling instrumentation is in this canonical driver.
+
+All nine cohorts finished, retaining **2160 scheduled rows**, with the original
+30 warmups and 240 rows per cohort. There were no input/socket errors, missing
+rows, timeouts or unexecuted cohorts. Eight cohorts meet the unchanged 200ms
+nearest-rank p95 gate; moving 200 of 500 Thoughts still fails it.
+
+| Cohort | p95, ms | Gate |
+| --- | ---: | --- |
+| Map 50, move 1 | 132.091 | PASS |
+| Map 50, move 50 | 155.908 | PASS |
+| Map 500, move 1 | 131.097 | PASS |
+| Map 500, move 50 | 160.806 | PASS |
+| Map 500, move 200 | **220.806** | **FAIL** |
+| Wiki 10k, editor | 162.127 | PASS |
+| Wiki 10k, reader | 153.168 | PASS |
+| Wiki 100k, editor | 183.454 | PASS |
+| Wiki 100k, reader | 172.364 | PASS |
+
+The [case results](latency/case-results.json) include every planned cohort,
+including the [failed cohort's full summary](latency/map-500-drag-200-summary.json.gz).
+The [original overall summary](latency/summary.json.gz) and
+[runner log](latency/runner.log.gz) preserve driver exit 1 and collector exit 0.
+Every original per-case summary is also retained compressed in `latency/`.
+
+Actual queue capture is **COMPLETE, 3231 records**, with no drops, backpressure or
+resource-budget violations. All 26 terminal resource gauges are zero; the producer
+exited normally (exit 0, no OOM). Completion is established by the
+[seal](latency/queue-seal.json), [collector result](latency/collector-result.json),
+[finish marker](latency/measurement-finished.json) and
+[producer shutdown](latency/producer-shutdown.json). The runtime descriptor's
+provisional `complete: false` does not override that final seal.
+[Runtime identity](latency/runtime.json), [raw/retained hashes](latency/manifest.json)
+and [cleanup](latency/cleanup.json) retain the exact candidate and actual project.
+Original rows, traces and queue remain outside Git at
+`/home/hubert/flux-evidence/228-identity-dfe3d7f7-latency`.
+
+The actual map200 owner traces also show the intended observer change:
+[1706 attached-canvas waits in the original-method run, zero in this run, and
+2072 strict direct identity evaluations](latency/trace-identity-read-comparison.json).
+These are whole-cohort counts, including controls/warmups, not timed CPU samples
+or a latency improvement estimate. The original 230.479ms failure is unchanged.
+This run used a different method and a shared host: preflight observed load 1.824
+and Qwen at 0% CPU; a [single snapshot after eight cohorts](latency/midrun-host.json)
+observed load 5.600 and Qwen at 193.24%. These are not a continuous series or a
+causal attribution. No controlled application-only timing comparison is claimed.
+
 ## Remaining acceptance and cleanup
 
 The previous [body-render checks and canonical failure](../2026-10-18-map-body-performance/README.md)
 retain their original `8ba5f87a` pin: 10/10 browser checks in each engine, then
 the unchanged-method full canonical run failed map500/drag200 at 230.479ms.
-This continuation did not repeat those body checks or run another full latency
-measurement. The changed method still needs independent evaluation and its full
-nine-cohort run; the 200ms limit and every #228 criterion remain required.
+The observer controls did not repeat those body checks. The subsequent full run
+above still fails the original gate. The bounded content and observer changes
+need independent source/method evaluation; they do not complete #228. Its final
+integrated AC-1–AC-5/Gate-1–Gate-4 and neutral visual/functional acceptance remain
+required. The feature stays default-off. No further unchanged full rerun or
+speculative application change is justified by this report alone.
 
 [Cleanup](cleanup.json) confirms no containers, volumes or networks remain for
 either owned project, and ports 18685/18686 are free. Each runner removed its two
-images. User demo/Qwen services and shared build cache were preserved. Later
+images. The separate canonical project is also [cleaned](latency/cleanup.json).
+User demo/Qwen services and shared build cache were preserved. Later
 evidence-only commits do not change the tested application, helper or driver.
