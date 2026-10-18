@@ -1,7 +1,8 @@
 import type { BackgroundComputeCandidateUsage, BackgroundComputeUsage } from '@flux/contracts';
-import { Link } from 'react-router';
+
 import type { Ref } from 'react';
 import { Button } from '../ui';
+import { RefLink } from '../place/origin';
 
 const money = (cents: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(cents / 100);
 const date = (value: string) => new Date(value).toLocaleString('en-US', { timeZone: 'UTC', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false });
@@ -59,8 +60,8 @@ export function BackgroundUsage({ usage, busy, error, refresh, historyRef }: {
         <div className="background-usage__request"><strong>{statuses[candidate.status]}</strong><time dateTime={candidate.createdAt}>{date(candidate.createdAt)} UTC</time></div>
         <div className="background-usage__context">
           <span title={`Flux request ${candidate.id}`}>Request {candidate.id.slice(0, 8)}</span>
-          <Link to={`/projects/${candidate.projectId}/tasks?open=result:${candidate.resultId}`}
-            aria-label={`View triggering result for request ${candidate.id}`}>View result</Link>
+          <RefLink to={`/projects/${candidate.projectId}/tasks?open=result:${candidate.resultId}`}
+            aria-label={`View triggering result for request ${candidate.id}`}>View result</RefLink>
         </div>
         {candidate.reason ? <p>{reasons[candidate.reason] ?? 'The request’s outcome could not be confirmed.'}</p> : null}
         <p>{candidate.status === 'not_run' ? 'No paid request · $0.00 usage'

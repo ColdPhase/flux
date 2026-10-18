@@ -23,6 +23,8 @@ export interface SidePanelProps {
   chip?: string;
   /** On a phone the sheet opens at full height (a thread); the height then stays while the content changes. */
   startFull?: boolean;
+  /** Told the height whenever the phone's sheet changes it, so a return to the screen can open it as it was (#592). */
+  onHeight?: (full: boolean) => void;
   children: ReactNode;
 }
 
@@ -125,7 +127,7 @@ export function SidePanel(props: SidePanelProps) {
     if (props.chip) {
       return (
         <Overlay placement="bottom" bare open={props.open} onClose={props.onClose} initialFocus={bodyRef}>
-          <DetentSheet id={props.id} role="dialog" aria-modal aria-labelledby={titleId} startFull={props.startFull} onClose={props.onClose} className="ui-panel">{content}</DetentSheet>
+          <DetentSheet id={props.id} role="dialog" aria-modal aria-labelledby={titleId} startFull={props.startFull} onHeight={props.onHeight} onClose={props.onClose} className="ui-panel">{content}</DetentSheet>
         </Overlay>
       );
     }

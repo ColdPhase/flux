@@ -15,14 +15,15 @@ const DEBOUNCE_MS = 140;
  * Searches as the person types. Only the answer to the latest request is ever shown: an older
  * answer that arrives late is dropped, so results never mix queries, filters or accounts.
  */
-export function useSearch(query: string, options: { type?: SearchFilterType | null; place?: string | null; limit?: number } = {}) {
-  const { type = null, place = null, limit } = options;
+export function useSearch(query: string, options: { type?: SearchFilterType | null; place?: string | null; limit?: number; initial?: { answer: SearchResponse; items: SearchResult[] } | null } = {}) {
+  const { type = null, place = null, limit, initial = null } = options;
   const [attempt, setAttempt] = useState(0);
   const text = query.trim();
   const key = JSON.stringify([text, type, place, limit ?? null, attempt]);
   // What arrived last, and for which request; the visible state is derived from it.
-  const [loaded, setLoaded] = useState<{ key: string; answer: SearchResponse; items: SearchResult[] } | { key: string; failed: string } | null>(null);
-  const [lastAnswer, setLastAnswer] = useState<SearchResponse | null>(null);
+  // `initial` is what this same request showed when the person left (#592): it shows at once while the read is made again.
+  const [loaded, setLoaded] = useState<{ key: string; answer: SearchResponse; items: SearchResult[] } | { key: string; failed: string } | null>(() => initial && text ? { key, ...initial } : null);
+  const [lastAnswer, setLastAnswer] = useState<SearchResponse | null>(initial?.answer ?? null);
   const [moreBusy, setMoreBusy] = useState(false);
   const latest = useRef(key);
   useEffect(() => { latest.current = key; }, [key]);

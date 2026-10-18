@@ -8,6 +8,7 @@ import { STATUS_LABEL } from '../work/format';
 import { getProject } from './conversation-api';
 import { useShellData } from './data';
 import { useShellActions } from './shellContext';
+import { RefLink } from '../place/origin';
 
 /** At most this many tasks are shown; the rest stay in each project's Tasks. */
 const CAP = 500;
@@ -110,14 +111,14 @@ export function HomeTasks() {
           <ul className="home-tasks__list">
             {group.items.map((item) => (
               <li key={item.id}>
-                <Link className="home-tasks__item" to={`/projects/${item.projectId}/tasks?open=work:${item.id}`}>
+                <RefLink className="home-tasks__item" to={`/projects/${item.projectId}/tasks?open=work:${item.id}`}>
                   <span className={`home-tasks__status is-${item.status}`}>{STATUS_LABEL[item.status]}</span>
                   <span className="home-tasks__body">
                     <span className="home-tasks__title">{item.title}</span>
                     {item.status === 'blocked' ? <span className="home-tasks__why">{item.blocker || 'No reason was recorded.'}</span> : null}
                   </span>
                   <Icon name="chevron-right" size={14} className="home-tasks__go" />
-                </Link>
+                </RefLink>
               </li>
             ))}
           </ul>

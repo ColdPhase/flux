@@ -19,6 +19,7 @@ import { agentDisplayName, shortDate } from '../docs/format';
 import { agentAuthorOwner, useAgentOwners } from '../agents/owners';
 import { useProjectGoalDetails } from './ProjectGoal';
 import './overview.css';
+import { RefLink } from '../place/origin';
 
 /** Hooks run before the shell is known; this stands in for it and is never shown. */
 const EMPTY_PROJECT: Project = { id: '', workspaceId: '', name: '', visibility: 'restricted', access: 'viewer', views: [], goal: null, version: 0, createdAt: '' };
@@ -70,7 +71,7 @@ function RowItems({ rows }: { rows: Row[] }) {
           <Icon name="chevron-right" size={16} className="ov-row__go" />
         </>;
         return <li key={row.key}>{row.to
-          ? <Link className="ov-row" to={row.to}>{body}</Link>
+          ? <RefLink className="ov-row" to={row.to}>{body}</RefLink>
           : <button type="button" className="ov-row" data-work-kind={row.native?.kind} data-work-id={row.native?.id} onClick={() => openDetails(row.open)}>{body}</button>}</li>;
       })}
     </ul>
@@ -111,7 +112,7 @@ function Rows({ label, rows, empty, controls }: { label: string; rows: Row[]; em
               <Icon name="chevron-right" size={16} className="ov-row__go" />
             </>;
             return <li key={row.key}>{row.to
-              ? <Link className="ov-row" to={row.to}>{body}</Link>
+              ? <RefLink className="ov-row" to={row.to}>{body}</RefLink>
               : <button type="button" className="ov-row" data-work-kind={row.native?.kind} data-work-id={row.native?.id} onClick={() => openDetails(row.open)}>{body}</button>}</li>;
           })}
         </ul>

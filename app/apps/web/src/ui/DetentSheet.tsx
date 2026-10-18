@@ -1,4 +1,4 @@
-import { useRef, useState, type KeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 
 /**
  * The handle of a two-height sheet: a real 44px target with a small bar for touch and mouse, and a
@@ -21,10 +21,12 @@ export function SheetGrabber({ full, onToggle }: { full: boolean; onToggle: () =
  * a task, a decision, a thread, an agent or a thought's tasks, one after another in the same sheet, which keeps its
  * height while the content changes. It sits in a modal overlay.
  */
-export function DetentSheet({ onClose, startFull = false, className, children, ...rest }: {
+export function DetentSheet({ onClose, startFull = false, onHeight, className, children, ...rest }: {
   onClose: () => void;
   /** It opens at full height (a thread); the height then stays while the content changes. */
   startFull?: boolean;
+  /** Told the height whenever it is chosen, so a screen that is left can open at it again (#592). */
+  onHeight?: (full: boolean) => void;
   className?: string;
   id?: string;
   role?: string;
@@ -33,6 +35,9 @@ export function DetentSheet({ onClose, startFull = false, className, children, .
   children: ReactNode;
 }) {
   const [full, setFull] = useState(startFull);
+  const heard = useRef(onHeight);
+  useEffect(() => { heard.current = onHeight; });
+  useEffect(() => { heard.current?.(full); }, [full]);
   const start = useRef<{ id: number; x: number; y: number } | null>(null);
   const onKeyDown = (event: KeyboardEvent<HTMLElement>) => {
     // Escape that ends an input method's composition, or closes a menu or field inside, is not a request to close.

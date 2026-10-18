@@ -172,6 +172,8 @@
 .dm--selecting .msg-acts { display: none; }
 /* Revealing a message's swipe actions must not move the reading position (that would close them at once); loading earlier messages keeps its own position. */
 .dm__feed { overflow-anchor: none; }
+/* Coming back to an older message (#592): the feed waits, unseen, until that message is loaded and in its place. */
+.dm__feed.is-returning, .dm-thread .thread__feed.is-returning { visibility: hidden; }
 /* The count stays visible under a root that has replies. */
 .dm-replies { display: inline-flex; align-items: center; gap: 5px; min-height: 26px; margin: 4px 0 0 -7px; padding: 0 7px; border-radius: var(--r-sm);
   color: var(--t1); font-size: var(--fs-sm); font-weight: 500; transition: var(--tr); }
