@@ -1,0 +1,12 @@
+{
+  "source_sha": "2735c4f57efedd5933fcd39b56b08117a6e869e0",
+  "exit_code": 143,
+  "reason": "Superseded test fixture; author cancelled during image export before application runtime. No test executed.",
+  "captured_at": "2026-10-18T12:29:29.837613+00:00",
+  "project": "flux-live-editing-1792326442-1372839",
+  "containers": [],
+  "volumes": [],
+  "networks": [],
+  "tags": [],
+  "cleanup_note": "Cancelled exporter left its owned foundation tag; removed explicitly after export ended."
+}

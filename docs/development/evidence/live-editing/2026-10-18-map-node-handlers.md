@@ -52,3 +52,5 @@ in both engines, preserving the already passing ordinary Docs results. All
 application tooling stays in isolated serial Docker stacks. The coordinator
 accepts this bounded product correction before its implementation; it does not
 waive the 200 ms timing gate or count as independent evaluation.
+
+Actual source-pinned author checks, retained failures and cleanup: [verification receipt](2026-10-18-map-node-input/README.md).

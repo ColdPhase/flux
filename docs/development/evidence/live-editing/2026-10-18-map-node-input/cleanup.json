@@ -1,0 +1,62 @@
+{
+  "captured_at": "2026-10-18T12:55:00.468179+00:00",
+  "projects": [
+    {
+      "project": "flux-live-editing-1792326208-1352123",
+      "containers": [],
+      "volumes": [],
+      "networks": [],
+      "tags": []
+    },
+    {
+      "project": "flux-live-editing-1792326442-1372839",
+      "containers": [],
+      "volumes": [],
+      "networks": [],
+      "tags": []
+    },
+    {
+      "project": "flux-live-editing-1792326594-1380152",
+      "containers": [],
+      "volumes": [],
+      "networks": [],
+      "tags": []
+    },
+    {
+      "project": "flux-live-editing-1792327056-1397758",
+      "containers": [],
+      "volumes": [],
+      "networks": [],
+      "tags": []
+    },
+    {
+      "project": "flux-live-editing-1792327409-1412377",
+      "containers": [],
+      "volumes": [],
+      "networks": [],
+      "tags": []
+    },
+    {
+      "project": "flux-live-editing-1792327772-1455972",
+      "containers": [],
+      "volumes": [],
+      "networks": [],
+      "tags": []
+    },
+    {
+      "project": "flux-ui-1792327969-1481277",
+      "containers": [],
+      "volumes": [],
+      "networks": [],
+      "tags": []
+    },
+    {
+      "project": "flux-ui-1792328014-1487488",
+      "containers": [],
+      "volumes": [],
+      "networks": [],
+      "tags": []
+    }
+  ],
+  "all_owned_resources_removed": true
+}
