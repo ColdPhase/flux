@@ -65,7 +65,15 @@ def container_network() -> dict:
         if fields[1] == "00000000":
             default_route = fields[0]
             break
-    return {"interfaces": interfaces, "defaultRouteInterface": default_route, "mediaRemote": socket.gethostbyname("livekit")}
+    media_remote = socket.gethostbyname("livekit")
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
+        # UDP connect selects the kernel route without sending a packet. Attribute the SFU path
+        # to its local interface so a mismatched default route is visible in the row evidence.
+        probe.connect((media_remote, 7882))
+        media_local = probe.getsockname()[0]
+    media_route = next((name for name, address in interfaces.items() if address == media_local), None)
+    return {"interfaces": interfaces, "defaultRouteInterface": default_route, "mediaRemote": media_remote,
+            "mediaRouteInterface": media_route, "mediaRouteAddress": media_local}
 
 
 def bound_udp_addresses() -> dict[int, str]:
@@ -375,7 +383,12 @@ class PlatformRows(LiveBase):
             raise
         shot(page, f"live-platform-{row.name}-joined")
         self.observed[row.name]["icePath"] = record_ice(page)
-        self.observed[row.name]["container"] = container_network()
+        network = container_network()
+        self.observed[row.name]["container"] = network
+        self.assertIsNotNone(network["defaultRouteInterface"], "the browser container has a default route")
+        self.assertIsNotNone(network["mediaRouteInterface"], "the kernel has a route to LiveKit's media address")
+        self.assertEqual(network["defaultRouteInterface"], network["mediaRouteInterface"],
+                         "the browser's default route must use the interface that reaches LiveKit")
         # The emulated state must be in the page the app rendered, not only in the context.
         in_page = page.evaluate("""() => ({ installed: window.__noDisplayCapture === true,
           getDisplayMedia: typeof navigator.mediaDevices?.getDisplayMedia,
