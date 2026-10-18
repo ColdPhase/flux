@@ -1082,7 +1082,7 @@ function Minimap({ canvas, zoom, origin, rects }: { canvas: RefObject<HTMLDivEle
     ro.observe(el);
     return () => { el.removeEventListener('scroll', read); ro.disconnect(); };
   }, [canvas, zoom]);
-  const boxes = [...rects.values()].map((r) => ({ x: r.x - origin.x, y: r.y - origin.y, w: r.w, h: r.h }));
+  const boxes = [...rects].map(([id, r]) => ({ id, x: r.x - origin.x, y: r.y - origin.y, w: r.w, h: r.h }));
   if (!boxes.length) return null;
   const fresh = (): Frame => {
     const x0 = Math.min(view.left, ...boxes.map((b) => b.x - MINIMAP_PAD));
