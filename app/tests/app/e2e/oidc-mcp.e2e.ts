@@ -2,9 +2,12 @@ import assert from 'node:assert/strict';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import http from 'node:http';
 import { after, before, test } from 'node:test';
-import { createDatabase } from '@flux/db';
+import { PERSONAL_RUN_CONSENT_VERSION, personalRunTokenPath } from '@flux/contracts';
+import { createDatabase, personalRunTokenRows } from '@flux/db';
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright';
+import { personalRunUseCases } from '../../../apps/server/src/personal-runs/adapters.js';
 import { mcp, toolValue } from '../support/mcp.js';
+import { FakeConnections, FakeQueue } from '../support/personal-runs.js';
 
 /**
  * Provider sign-in on the MCP authorization path (F-024 S1, #310). A scripted client (test code, not a
@@ -30,7 +33,7 @@ const proxy = http.createServer((request, response) => {
   });
   forward.on('error', () => response.destroy()); request.pipe(forward);
 });
-const { pool } = createDatabase(process.env.DATABASE_URL!);
+const { db, pool } = createDatabase(process.env.DATABASE_URL!);
 let browser: Browser;
 const contexts: BrowserContext[] = [];
 
@@ -765,6 +768,32 @@ test('standing: real returned Keycloak claims update the same profile without re
 
 test('standing: removing an already-held Keycloak offline session suspends and genuine sign-in restores retained grants', async () => {
   const admin = await keycloakAdmin(); const signed = await signInWithTokens();
+  // Real managed run-token transport, with a fake model connection and queue only: no model
+  // account or compute is used. The use case records the owner's consent; the same real Keycloak
+  // suspension must stop both minting and an already issued short-lived run bearer.
+  const workspace = await api<{ id: string }>(signed.context, 'POST', '/api/v1/workspaces', { name: 'Managed assistant standing' }, 201);
+  const project = await api<{ id: string }>(signed.context, 'POST', `/api/v1/workspaces/${workspace.id}/projects`, { name: 'Assistant boundary', visibility: 'restricted' }, 201);
+  const agent = await api<{ id: string }>(signed.context, 'POST', `/api/v1/workspaces/${workspace.id}/agents`, { name: 'Managed assistant', owner: 'self' }, 201);
+  const thread = await api<{ id: string }>(signed.context, 'POST', `/api/v1/projects/${project.id}/conversations`, { body: 'Identity gate proof', clientMessageId: randomUUID() }, 201);
+  const connections = new FakeConnections(); const queue = new FakeQueue(); const modelConnection = randomUUID();
+  connections.connect(state.userId!, modelConnection);
+  const runs = personalRunUseCases(db, { connections, queue: queue.factory, providerEnabled: true });
+  const principal = { kind: 'human' as const, id: state.userId! };
+  await runs.enable(principal, { consentVersion: PERSONAL_RUN_CONSENT_VERSION, agentId: agent.id, connectionId: modelConnection, perRunCents: 50, dailyCapCents: 1_000 });
+  const pending = [];
+  for (let index = 0; index < 2; index += 1) {
+    const runId = (await runs.invoke(principal, thread.id, { clientRunId: randomUUID(), kind: 'ask', prompt: 'Read this thread' })).run.id;
+    // The worker's claim and nonce, without launching or simulating a provider answer.
+    await pool.query("UPDATE personal_runs SET status = 'reading' WHERE id = $1", [runId]);
+    const nonce = randomBytes(32).toString('hex');
+    assert.equal(await db.transaction((tx) => personalRunTokenRows(tx).arm(runId, createHash('sha256').update(nonce).digest('hex'))), true);
+    pending.push({ runId, nonce });
+  }
+  const mint = (index: number) => fetch(new URL(personalRunTokenPath(pending[index]!.runId), upstream), { method: 'POST',
+    headers: { 'content-type': 'application/json' }, body: JSON.stringify({ nonce: pending[index]!.nonce }) });
+  const issued = await mint(0); assert.equal(issued.status, 200);
+  const heldRunToken = (await issued.json() as { token: string }).token;
+  assert.equal((await mcp(heldRunToken, 35, 'tools/list')).status, 200);
   const revoked = async () => (await pool.query('SELECT id FROM oauth_refresh_token WHERE user_id = $1 AND revoked IS NOT NULL ORDER BY id', [state.userId])).rows;
   const before = await revoked();
   await admin.removeOfflineSessions('erin'); await dueNow(state.userId!);
@@ -773,11 +802,17 @@ test('standing: removing an already-held Keycloak offline session suspends and g
   assert.equal((await signed.context.request.get(`${origin}/api/v1/me`)).status(), 401);
   assert.equal((await mcp(signed.tokens.access_token, 31, 'tools/list')).status, 401);
   assert.equal(((await (await mcpRefresh(signed.tokens.refresh_token)).json()) as { error: string }).error, 'invalid_grant');
+  assert.equal((await mint(1)).status, 404, 'the real managed owner cannot mint while suspended');
+  const refusedRun = await mcp(heldRunToken, 36, 'tools/list');
+  assert.equal(refusedRun.status, 401); assert.match(refusedRun.headers.get('www-authenticate') ?? '', /Sign in again with Keycloak\./);
   assert.deepEqual(await revoked(), before, 'suspension did not revoke MCP authority');
   await signInWithTokens();
   assert.equal((await mcp(signed.tokens.access_token, 32, 'tools/list')).status, 200, 'the retained bearer recovers');
   assert.equal((await mcpRefresh(signed.tokens.refresh_token)).status, 200, 'the retained refresh family recovers');
+  assert.equal((await mcp(heldRunToken, 37, 'tools/list')).status, 200, 'the held run token recovers under the same consent');
+  assert.equal((await mint(1)).status, 200, 'the still-live nonce recovers under the same consent');
   assert.equal((await pool.query('SELECT revoked_at FROM agent_connections WHERE id = $1', [state.connectionId])).rows[0].revoked_at, null);
+  await pool.query("UPDATE personal_runs SET status = 'stopped', completed_at = now(), cost_state = 'released', charged_micros = 0 WHERE id = ANY($1)", [pending.map((run) => run.runId)]);
 });
 
 test('standing: a deleted Keycloak user loses browser, MCP and refresh access without revocation or identity transfer', async () => {
