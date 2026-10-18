@@ -15,7 +15,7 @@ import uuid
 
 from playwright.sync_api import Page, expect, sync_playwright
 
-from test_app_shell import DESKTOP, ORIGIN, UPSTREAM, start_forwarder
+from test_app_shell import DESKTOP, ORIGIN, UI_BROWSER, UPSTREAM, start_forwarder
 
 PASSWORD = "ordinary live-off password"
 # Records live-only text the moment any node shows it, so a flash before a fallback is caught.
@@ -40,7 +40,10 @@ class LiveEditingOffJourney(unittest.TestCase):
         if UPSTREAM:
             start_forwarder(ORIGIN, UPSTREAM)
         cls.pw = sync_playwright().start()
-        cls.browser = cls.pw.chromium.launch()
+        cls.browser = getattr(cls.pw, UI_BROWSER).launch()
+        if cls.browser.browser_type.name != UI_BROWSER:
+            raise AssertionError('The explicit-off journey must use the requested browser engine')
+        print(f'ACTUAL_UI_ENGINE={cls.browser.browser_type.name}; mode=off', flush=True)
         expect.set_options(timeout=8000)
 
     @classmethod

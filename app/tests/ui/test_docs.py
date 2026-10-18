@@ -67,6 +67,9 @@ class DocsJourney(unittest.TestCase):
             start_forwarder(ORIGIN, UPSTREAM)
         cls.pw = sync_playwright().start()
         cls.browser = getattr(cls.pw, UI_BROWSER).launch()
+        if cls.browser.browser_type.name != UI_BROWSER:
+            raise AssertionError('The Docs journey must use the requested browser engine')
+        print(f'ACTUAL_UI_ENGINE={cls.browser.browser_type.name}; mode={"on" if LIVE else "off"}', flush=True)
         expect.set_options(timeout=8000)
 
     @classmethod
