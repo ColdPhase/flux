@@ -92,3 +92,15 @@ adapter's scheduling and wake, zero idle model calls, and integrated parent
 acceptance remain unverified here. The separate activation-adapter work is not
 claimed by this batch. No permissions, product contracts or acceptance criteria
 were weakened; no new issue was created.
+
+## Current-main integration
+
+After protected merge #603, conflict-free integration `d3aaf860c0fbe8b094e6aa778abfc4a92528863c`
+includes main `b17ae9e357441e9a383eb275d1034e69ec50c98a`. Its actual tree equals
+the precomputed merge. The [source comparison](base-integration.json) confirms
+no change to the previously tested native/API/runtime inputs: server, packages,
+Docker, scripts, application tests and lockfile. The incoming change is web
+navigation and its own accepted evidence. Native 22/22 per mode and API 6/6 per
+era retain their original tested sources; they were not rerun or independently
+reaccepted at the integration head. Required current-head CI and eligible
+independent approval still apply. The normal auto-merge waits for those gates.
