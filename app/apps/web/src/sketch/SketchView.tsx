@@ -349,7 +349,6 @@ function SketchEditor({ sketchId, projectId, dmId, back = '/map', doc }: ViewPro
     const spot = spots(null, 1, { w: DEFAULT_THOUGHT_SIZE.width, h: DEFAULT_THOUGHT_SIZE.height })[0]!;
     capture.set({ id: doc.newId(), linkId: doc.newId(), key: doc.newId(), parentId: null,
       text: source.body.slice(0, SKETCH_LIMITS.text).trim(), x: spot.x, y: spot.y, tracked: true, sourceProjectMessageId: source.messageId });
-    say('Private thought draft from this message · Enter saves, Escape cancels');
     navigate(location.pathname, { replace: true, state: null });
   // This consumes one route-state command after the destination sketch loads.
   // eslint-disable-next-line react-hooks/exhaustive-deps
