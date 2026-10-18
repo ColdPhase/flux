@@ -1,0 +1,36 @@
+{
+  "source_sha": "8ba5f87ae065d52b4b69158648f8e863b3d3f9cb",
+  "engine": "chromium",
+  "at": "2026-10-18T08:49:56.909981+00:00",
+  "compose_project": "flux-live-editing-1792313212-769142",
+  "containers": [
+    {
+      "name": "/flux-live-editing-1792313212-769142-ui-test-run-3c091ca1324a",
+      "id": "f4e905d013cb3943158c2ba517ef28a9447e1578e1baa41a80f2548452cf9c21",
+      "image_id": "sha256:e9d3544d92b2518a1cf57eca69afccb61fa51192831d48fb50408c7c7eae4c8d",
+      "image_tag": "flux-ui-tests:flux-live-editing-1792313212-769142",
+      "status": "running"
+    },
+    {
+      "name": "/flux-live-editing-1792313212-769142-api-1",
+      "id": "d1c6eba842e1158898d27147575cff7e7ed28a192188da333c2160369fcebe3f",
+      "image_id": "sha256:e22f1e1e3e6b426d47a56a187f24ac98048662688c98c12fafad22ffbe10aacb",
+      "image_tag": "flux-foundation:flux-live-editing-1792313212-769142",
+      "status": "running"
+    },
+    {
+      "name": "/flux-live-editing-1792313212-769142-migrate-1",
+      "id": "cc5b2219490113437122f5a5b5131a62ef4abfedb4f1adb53db4a7530586b800",
+      "image_id": "sha256:e22f1e1e3e6b426d47a56a187f24ac98048662688c98c12fafad22ffbe10aacb",
+      "image_tag": "flux-foundation:flux-live-editing-1792313212-769142",
+      "status": "exited"
+    },
+    {
+      "name": "/flux-live-editing-1792313212-769142-db-1",
+      "id": "c9293b3217683d1cf01253ec4ec9d4ae69c30424c74be890364077dbb0b9b355",
+      "image_id": "sha256:c293117fcecda7344b5480222e813b9f673d7abd69b1dd95eff239b768b04f59",
+      "image_tag": "postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873",
+      "status": "running"
+    }
+  ]
+}
