@@ -14,6 +14,7 @@ const providerId = process.env.FLUX_OIDC_PROVIDER_ID;
 const phase = process.env.FLUX_IDENTITY_BRIDGE_PHASE;
 const { pool } = createDatabase(process.env.DATABASE_URL);
 const statePath = '/state/managed.json';
+const observedResponses = [];
 const proxy = http.createServer((request, response) => {
   const outgoing = http.request({ hostname: 'api', port: 8080, method: request.method, path: request.url, headers: request.headers }, (answer) => {
     response.writeHead(answer.statusCode, answer.headers); answer.pipe(response);
@@ -26,7 +27,8 @@ const browser = await chromium.launch({ headless: true, args: ['--no-sandbox'] }
 async function api(context, method, path, body, expected = [200, 201, 204]) {
   const response = await context.request.fetch(`${origin}${path}`, { method, headers: { origin }, data: body });
   assert.ok(expected.includes(response.status()), `${method} ${path}: HTTP ${response.status()}`);
-  return response.status() === 204 ? null : await response.json();
+  const text = await response.text(); observedResponses.push(text);
+  return response.status() === 204 ? null : JSON.parse(text);
 }
 async function provider(page) {
   await page.waitForURL((url) => url.origin === 'http://keycloak:8080');
@@ -49,6 +51,7 @@ async function mcp(token, name = 'flux_list_contexts', args = {}) {
     'MCP-Protocol-Version': '2025-06-18',
   }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } }) });
   const text = await response.text();
+  observedResponses.push(text);
   const data = response.headers.get('content-type')?.includes('text/event-stream')
     ? text.split('\n').find((line) => line.startsWith('data:'))?.slice(5) : text;
   const body = data ? JSON.parse(data) : null;
@@ -116,6 +119,8 @@ async function storedSecrets(state) {
   assert.equal(rows.length, 1); assert.ok(rows[0].refresh_token_enc?.startsWith('v1.'));
   const plaintext = openToken(sealKey(process.env.FLUX_AUTH_SECRET), state.userId, providerId, rows[0].refresh_token_enc);
   assert.ok(plaintext);
+  assert.ok([plaintext, rows[0].refresh_token_enc].every((value) => observedResponses.every((body) => !body.includes(value))),
+    'observed public API/MCP responses contain neither the actual IdP refresh token nor its sealed value');
   await writeFile('/state/secrets.json', JSON.stringify([plaintext, rows[0].refresh_token_enc]), { mode: 0o600 });
   const account = (await pool.query('SELECT access_token, id_token, refresh_token FROM auth_accounts WHERE user_id = $1 AND provider_id = $2', [state.userId, providerId])).rows;
   assert.ok(account.length === 1 && account.every((row) => Object.values(row).every((value) => value === null)));
