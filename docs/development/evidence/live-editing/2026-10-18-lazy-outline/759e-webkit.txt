@@ -1,0 +1,13 @@
+Map outline actual browser: webkit
+test_01_the_list_is_the_maps_tree_with_also_under_and_reloads_the_same (test_map_outline.MapOutlineJourney.test_01_the_list_is_the_maps_tree_with_also_under_and_reloads_the_same) ... ok
+test_04_tab_and_shift_tab_move_the_connection_alt_arrows_reorder_and_undo_restores (test_map_outline.MapOutlineJourney.test_04_tab_and_shift_tab_move_the_connection_alt_arrows_reorder_and_undo_restores) ... ok
+test_05_enter_space_rename_delete_graph_undo_and_search_reveal_preserve_exact_ids (test_map_outline.MapOutlineJourney.test_05_enter_space_rename_delete_graph_undo_and_search_reveal_preserve_exact_ids) ... ok
+test_06_map_own_undo_refuses_peer_change (test_live_editing.LiveEditingJourney.test_06_map_own_undo_refuses_peer_change) ... ACTUAL_UI_ENGINE=webkit
+ok
+test_remote_changes_during_drag_private_cancel_and_independent_own_undo (test_live_map_projection.LiveMapProjectionJourney.test_remote_changes_during_drag_private_cancel_and_independent_own_undo) ... ACTUAL_UI_ENGINE=webkit
+ok
+
+----------------------------------------------------------------------
+Ran 5 tests in 20.716s
+
+OK

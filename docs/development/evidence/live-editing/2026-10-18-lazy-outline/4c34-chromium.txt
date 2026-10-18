@@ -1,0 +1,37 @@
+Map outline actual browser: chromium
+test_01_the_list_is_the_maps_tree_with_also_under_and_reloads_the_same (test_map_outline.MapOutlineJourney.test_01_the_list_is_the_maps_tree_with_also_under_and_reloads_the_same) ... ok
+test_04_tab_and_shift_tab_move_the_connection_alt_arrows_reorder_and_undo_restores (test_map_outline.MapOutlineJourney.test_04_tab_and_shift_tab_move_the_connection_alt_arrows_reorder_and_undo_restores) ... ok
+test_05_enter_space_rename_delete_graph_undo_and_search_reveal_preserve_exact_ids (test_map_outline.MapOutlineJourney.test_05_enter_space_rename_delete_graph_undo_and_search_reveal_preserve_exact_ids) ... FAIL
+
+======================================================================
+FAIL: test_05_enter_space_rename_delete_graph_undo_and_search_reveal_preserve_exact_ids (test_map_outline.MapOutlineJourney.test_05_enter_space_rename_delete_graph_undo_and_search_reveal_preserve_exact_ids)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/work/tests/ui/test_map_outline.py", line 420, in test_05_enter_space_rename_delete_graph_undo_and_search_reveal_preserve_exact_ids
+    expect(page.locator(".sk-status")).to_contain_text("Undid: removed a thought")
+  File "/usr/local/lib/python3.12/dist-packages/playwright/sync_api/_generated.py", line 22016, in to_contain_text
+    self._sync(
+  File "/usr/local/lib/python3.12/dist-packages/playwright/_impl/_sync_base.py", line 115, in _sync
+    return task.result()
+           ^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/playwright/_impl/_assertions.py", line 303, in to_contain_text
+    await self._expect_impl(
+  File "/usr/local/lib/python3.12/dist-packages/playwright/_impl/_assertions.py", line 128, in _expect_impl
+    _record_soft_or_raise(
+  File "/usr/local/lib/python3.12/dist-packages/playwright/_impl/_assertions.py", line 60, in _record_soft_or_raise
+    raise error
+AssertionError: Locator expected to contain text 'Undid: removed a thought'
+Actual value: Undo requested: removed a thought. Waiting for confirmation. 
+Call log:
+  - Expect "to_contain_text" with timeout 10000ms
+  - waiting for locator(".sk-status")
+    24 × locator resolved to <p role="status" class="sk-status">Undo requested: removed a thought. Waiting for co…</p>
+       - unexpected value "Undo requested: removed a thought. Waiting for confirmation."
+
+Aria snapshot:
+- status: "Undo requested: removed a thought. Waiting for confirmation."
+
+----------------------------------------------------------------------
+Ran 3 tests in 17.011s
+
+FAILED (failures=1)
