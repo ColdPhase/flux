@@ -117,3 +117,31 @@ class LiveEditingOffJourney(unittest.TestCase):
         expect(page.locator(".sk-node", has_text="Distance sensor")).to_be_visible()
         time.sleep(0.5)
         self.assertEqual({"live requests": live, "live text": page.evaluate("window.__liveText")}, {"live requests": [], "live text": []})
+
+        # Pointer resizing uses one native/measured baseline in the ordinary path too.
+        map_id = self.map_url.rsplit('/', 1)[-1]
+        before = self.api(page, 'GET', f'/api/v1/sketches/{map_id}', status=200)['thoughts'][0]
+        thought.click()
+        bounds = thought.bounding_box()
+        zoom = bounds['width'] / before['width']
+        start_height = max(before['height'], thought.evaluate('el => el.offsetHeight'))
+        handle = thought.locator('.sk-resize').bounding_box()
+        self.assertIsNotNone(handle)
+        try:
+            page.mouse.move(handle['x'] + handle['width'] / 2, handle['y'] + handle['height'] / 2)
+            page.mouse.down()
+            page.mouse.move(handle['x'] + handle['width'] / 2 + 48 * zoom,
+                            handle['y'] + handle['height'] / 2 + 24 * zoom, steps=4)
+        finally:
+            page.mouse.up()
+        expect(thought).to_have_attribute('data-thought-version', str(before['version'] + 1))
+        resized = self.api(page, 'GET', f'/api/v1/sketches/{map_id}', status=200)['thoughts'][0]
+        self.assertEqual((resized['width'], resized['height']), (before['width'] + 48, start_height + 24))
+        self.assertEqual((resized['text'], resized['x'], resized['y']), (before['text'], before['x'], before['y']))
+        page.get_by_role('toolbar', name='Sketch tools').get_by_role('button', name='Undo', exact=True).click()
+        expect(thought).to_have_attribute('data-thought-version', str(resized['version'] + 1))
+        undone = self.api(page, 'GET', f'/api/v1/sketches/{map_id}', status=200)['thoughts'][0]
+        self.assertEqual((undone['width'], undone['height']), (before['width'], before['height']))
+        self.assertEqual({"live requests": live, "live text": page.evaluate("window.__liveText")}, {"live requests": [], "live text": []})
+        print('ORDINARY_RESIZE_CONTROL', {'native': before, 'start_height': start_height,
+              'resized': resized, 'undo': undone}, flush=True)
