@@ -1,8 +1,8 @@
 import { fromDrizzle, type PgBoss } from 'pg-boss';
-import { assistantJobRows, assistantSummaryRows, pushSubscriptionRepository, sql, type DbExecutor } from '@flux/db';
+import { assistantReactionRows, assistantJobRows, assistantSummaryRows, pushSubscriptionRepository, sql, type DbExecutor } from '@flux/db';
 import {
-  ASSISTANT_TICK_JOB, PERSONAL_RUN_JOB, PUSH_SEND_JOB, assistantTick, createPersonalRunUseCases, settleAssistantSummaries, startAssistantSummary,
-  type AssistantJobUnitOfWork, type AssistantSummaryUnitOfWork, type Database, type PersonalConnectionLookup, type PersonalRuntimeAvailability,
+  ASSISTANT_TICK_JOB, PERSONAL_RUN_JOB, assistantReactionTick, PUSH_SEND_JOB, assistantTick, createPersonalRunUseCases, settleAssistantSummaries, startAssistantSummary,
+  type AssistantReactionUnitOfWork, type AssistantSummaryUnitOfWork, type Database, type PersonalConnectionLookup, type PersonalRuntimeAvailability,
 } from '@flux/core';
 import { summaryPorts, type AssistantSummaryStart } from '../jobs/morning-summary.js';
 import { personalRunPorts } from '../personal-runs/adapters.js';
@@ -40,8 +40,8 @@ function inboxIn(tx: DbExecutor, boss: Pick<PgBoss, 'send'>) {
   };
 }
 
-export function assistantUnitOfWork(db: Database, boss: Pick<PgBoss, 'send'>): AssistantJobUnitOfWork {
-  return { run: (work) => db.transaction((tx) => work({ ...personalRunPorts(tx, queueIn(tx, boss)), jobs: assistantJobRows(tx), inbox: inboxIn(tx, boss) })) };
+export function assistantUnitOfWork(db: Database, boss: Pick<PgBoss, 'send'>): AssistantReactionUnitOfWork {
+  return { run: (work) => db.transaction((tx) => work({ ...personalRunPorts(tx, queueIn(tx, boss)), jobs: assistantJobRows(tx), reactions: assistantReactionRows(tx), inbox: inboxIn(tx, boss) })) };
 }
 
 export function startBackgroundOf(composition: AssistantTickComposition, db: Database, boss: Pick<PgBoss, 'send'>) {
@@ -76,6 +76,7 @@ export async function registerAssistantTick(boss: PgBoss, db: Database, composit
   const startBackground = startBackgroundOf(composition, db, boss);
   await boss.work(ASSISTANT_TICK_JOB, async () => {
     await assistantTick({ uow, startBackground, log });
+    await assistantReactionTick({ uow, startBackground });
     const settled = await settleSummaries(db, boss);
     if (settled.written || settled.plain) log({ job: ASSISTANT_TICK_JOB, summaries: settled });
   });

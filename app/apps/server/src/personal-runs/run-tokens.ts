@@ -44,7 +44,8 @@ export function registerPersonalRunTokenRoute(app: FastifyInstance, db: Database
       const policy = await lockAgentMcpPolicy(tx, connectionId);
       if (!policy) return null;
       // The run's exact tools from the owner's switches (F-027 AST-4): reads, and changes of areas switched to edit (A3).
-      const tools = assistantRunTools(policy, grant.connection.scopes);
+      const readOnly = run.reactionAction && ['tell', 'draft_reply', 'check_task'].includes(run.reactionAction);
+      const tools = assistantRunTools(policy, readOnly ? ['flux.context.read'] : grant.connection.scopes);
       const jti = randomUUID();
       const expiresAt = new Date(Date.now() + RUN_TOKEN_LIMITS.lifetimeSeconds * 1000);
       await rows.recordMint(runId, { jti, expiresAt, tools });

@@ -26,7 +26,7 @@ export function registerAgentDocActions(tools: AgentToolRegistry, db: Database, 
   const reasoned = async (tx: Transaction, ownerUserId: string, given: string | undefined, fallback: string) => {
     if (!claims.run && !claims.approval) return given;
     const name = (await assistantChangeRows(tx as DbExecutor).names([ownerUserId])).get(ownerUserId) ?? 'their owner';
-    return `Asked by ${name}: ${given?.trim() || fallback}`.slice(0, DOC_LIMITS.reason);
+    return (claims.approval?.suggestion ? `${given?.trim() || fallback} · drafted by ${name}'s assistant` : `Asked by ${name}: ${given?.trim() || fallback}`).slice(0, DOC_LIMITS.reason);
   };
   const register = (operation: AgentOperation) => tools.forScope('flux.action.execute', { operation, classes: AGENT_OPERATION_CLASSES[operation] });
   const run = (handler: () => Promise<unknown>) => handler().then(toolResult, toolError);

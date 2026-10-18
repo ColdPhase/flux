@@ -5,7 +5,7 @@ import { ApiError } from '../api/client';
 import { useShellActions } from '../app/shellContext';
 import { useToast } from '../ui';
 import { updateWork } from '../work/api';
-import { applyRunChanges } from '../assistant/api';
+import { acceptSuggestion, applyRunChanges } from '../assistant/api';
 import { announceAcceptedInboxItem, announceInboxChange } from './api';
 import type { CardHandlers, SnoozeChoice } from './NeedsYouCard';
 import { nextWeek, tomorrowMorning } from './format';
@@ -99,7 +99,7 @@ export function useNeedsYouActions(queue: Queue): CardHandlers {
       const changes = item.assistantChanges;
       if (!changes) return;
       // Each change is applied with every check again; one that changed since says so and applies nothing.
-      const applied = applyRunChanges(changes.runId);
+      const applied = changes.suggestion ? acceptSuggestion(changes.changes[0]!).then((result) => ({ changes: [result] })) : applyRunChanges(changes.runId);
       const intent = current.hide(item.key, applied);
       applied.then((result) => {
         announceInboxChange();

@@ -5,15 +5,16 @@ import {
   assistantJobRunNowPath, assistantJobsPath, type AssistantMorningSummary, type CreateAssistantJob, type SetMorningSummaryByAssistant, type UpdateAssistantJob,
 } from '@flux/contracts';
 import {
-  createAssistantJobs, createPersonalRunUseCases, setMorningSummaryByAssistant, todaysSummary, type AssistantJobUnitOfWork, type Database, type PersonalConnectionLookup,
+  createAssistantJobs, createPersonalRunUseCases, setMorningSummaryByAssistant, todaysSummary, type AssistantReactionUnitOfWork, type Database, type PersonalConnectionLookup,
   type PersonalRuntimeAvailability,
 } from '@flux/core';
-import { assistantJobRows, assistantSummaryRows, notificationPreferenceRows, personalRunRows, pushSubscriptionRepository } from '@flux/db';
+import { assistantReactionRows, assistantJobRows, assistantSummaryRows, notificationPreferenceRows, personalRunRows, pushSubscriptionRepository } from '@flux/db';
 import { expectedVersion } from '../http/commands.js';
 import type { SessionResolver } from '../identity/index.js';
 import { personalRunPorts, personalRunUnitOfWork, type PersonalRunQueueFactory } from '../personal-runs/adapters.js';
 import { pgBossQueue } from '../push/adapters.js';
 import { withTaskUseErrors } from '../work/task-use-errors.js';
+import { registerAssistantReactionRoutes } from './reactions.js';
 import { transactionEventSession } from '../work/transaction-events.js';
 
 // "On a schedule" for its owner (F-027 AST-7, A8 #408). Every route resolves the owner from the session and the owner in the
@@ -29,11 +30,11 @@ interface Composition {
 }
 
 /** The server's unit of work for schedules: the personal-run ports a firing needs, plus the schedule rows. */
-export function assistantJobUnitOfWork(db: Database, queue: PersonalRunQueueFactory, boss: Pick<PgBoss, 'send'>): AssistantJobUnitOfWork {
+export function assistantJobUnitOfWork(db: Database, queue: PersonalRunQueueFactory, boss: Pick<PgBoss, 'send'>): AssistantReactionUnitOfWork {
   return { run: (work) => db.transaction(async (tx) => {
     const session = transactionEventSession(tx);
     const result = await session.run(() => withTaskUseErrors(() => work({
-      ...personalRunPorts(tx, queue, session, session), jobs: assistantJobRows(tx),
+      ...personalRunPorts(tx, queue, session, session), jobs: assistantJobRows(tx), reactions: assistantReactionRows(tx),
       // The owner's own list settles an ended firing at once, like the worker's tick: a pause tells them once, with its push.
       inbox: { async tell(ownerUserId, projectId, title, body, url) {
         const id = await assistantJobRows(tx).notify(ownerUserId, projectId, title, body, url);
@@ -68,6 +69,7 @@ const summaryBody = { type: 'object', required: ['on'], additionalProperties: fa
 void ASSISTANT_JOB_LIMITS;
 
 export function registerAssistantJobRoutes(app: FastifyInstance, db: Database, sessions: SessionResolver, boss: Pick<PgBoss, 'send'>, composition: Composition) {
+  registerAssistantReactionRoutes(app, assistantJobUnitOfWork(db, composition.queue, boss), sessions);
   const jobs = assistantJobUseCases(db, boss, composition);
   const who = async (request: Parameters<SessionResolver['requirePrincipal']>[0]) => (await sessions.requirePrincipal(request)).principal;
   const noStore = { 'cache-control': 'no-store' };

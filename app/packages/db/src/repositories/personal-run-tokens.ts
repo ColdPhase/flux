@@ -30,6 +30,7 @@ export interface RunTokenRow {
   mcpResultBytes: number;
   mcpLimit: 'call' | 'run' | null;
   stopRequestedAt: Date | null;
+  reactionAction?: string | null;
 }
 
 const columns = {
@@ -37,6 +38,7 @@ const columns = {
   agentId: r.agentId, status: r.status, engine: r.engine, runTokenNonceHash: r.runTokenNonceHash, runTokenJti: r.runTokenJti,
   runTokenExpiresAt: r.runTokenExpiresAt, runTokenClosedAt: r.runTokenClosedAt, runTools: r.runTools, mcpResultBytes: r.mcpResultBytes,
   mcpLimit: r.mcpLimit, stopRequestedAt: r.stopRequestedAt,
+  reactionAction: sql<string | null>`(SELECT action FROM assistant_reaction_events WHERE run_id=${r.id} LIMIT 1)`,
 };
 
 export function personalRunTokenRows(db: DbExecutor) {

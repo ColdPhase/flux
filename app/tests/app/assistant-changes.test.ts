@@ -676,4 +676,68 @@ describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A
     assert.equal(listedEffects.length, ASSISTANT_RUN_EFFECT_TOOLS.length, 'every switch on lists every change tool');
     await complete(run.runId);
   });
+  test('A5 all typed kinds: explicit Send, recipient-only Accept as human, exact replay, and drafted-by provenance', async () => {
+    const sharedTask = await task(peer, 'Original task', shared.id);
+    const sharedDoc = expectStatus(await peer.browser.request('POST', `/api/v1/projects/${shared.id}/docs`, { body: { title: 'Bench guide', body: 'Original guide' } }), 201) as { id: string; version: number };
+    const sharedMap = expectStatus(await peer.browser.request('POST', `/api/v1/workspaces/${jonasWs.id}/sketches`, { body: { title: 'Bench map', scope: 'project', projectId: shared.id } }), 201) as { id: string };
+    const createThought = async (text: string) => {
+      const value = expectStatus(await peer.browser.request('POST', `/api/v1/sketches/${sharedMap.id}/thoughts`, { body: { text, x: 0, y: 0 } }), 201) as { thought: { id: string; version: number } };
+      return value.thought;
+    };
+    const one = await createThought('Power supply'); const two = await createThought('Sensor');
+    const cases: { tool: string; args: Record<string, unknown>; operation: string }[] = [
+      { tool: 'flux_create_task', args: { task: { title: 'Accepted sensor task' } }, operation: 'work.create' },
+      { tool: 'flux_update_task', args: { workId: sharedTask.id, expectedVersion: sharedTask.version, changes: { title: 'Accepted revised task' } }, operation: 'work.update' },
+      { tool: 'flux_create_doc', args: { doc: { title: 'Accepted guide', body: 'Turn the power off before rewiring.' } }, operation: 'doc.create' },
+      { tool: 'flux_update_doc', args: { docId: sharedDoc.id, expectedVersion: sharedDoc.version, changes: { body: 'Accepted connector guide' } }, operation: 'doc.update' },
+      { tool: 'flux_add_thought', args: { mapId: sharedMap.id, thought: { text: 'Accepted calibration idea', x: 20, y: 20 } }, operation: 'map.thought.create' },
+      { tool: 'flux_update_thought', args: { mapId: sharedMap.id, thoughtId: one.id, expectedVersion: one.version, changes: { text: 'Check the power supply' } }, operation: 'map.thought.update' },
+      { tool: 'flux_link_thoughts', args: { mapId: sharedMap.id, fromId: one.id, toId: two.id, label: 'powers' }, operation: 'map.link.create' },
+    ];
+    for (const entry of cases) {
+      const run = await liveRun(sharedThread);
+      await pool.query(`UPDATE project_grants SET role='viewer' WHERE project_id=$1 AND user_id=$2`, [shared.id, owner.id]);
+      try {
+        const response = await run.call(entry.tool, entry.args);
+        assert.equal(result(response.message)?.isError, undefined, `${entry.operation}: ${text(response.message)}`);
+        const row = (await changesOf(run.runId))[0]!;
+        assert.equal(row.wait_reason, 'outside_rights');
+        expectStatus(await peer.browser.request('POST', assistantChangeActionPath(row.id, 'accept'), { body: { expectedVersion: row.version } }), 404, 'even the future recipient has no unsent access');
+        const sent = expectStatus(await owner.browser.request('POST', assistantChangeActionPath(row.id, 'send'), { body: { expectedVersion: row.version } }), 200) as { change: AssistantChange };
+        expectStatus(await owner.browser.request('POST', assistantChangeActionPath(row.id, 'accept'), { body: { expectedVersion: sent.change.version } }), 404);
+        expectStatus(await outsider.browser.request('POST', assistantChangeActionPath(row.id, 'accept'), { body: { expectedVersion: sent.change.version } }), 404);
+        await complete(run.runId); // No live token and no compute are needed for the human decision.
+        const before = compute.dispatched.length;
+        const accepted = expectStatus(await peer.browser.request('POST', assistantChangeActionPath(row.id, 'accept'), { body: { expectedVersion: sent.change.version } }), 200) as { change: AssistantChange };
+        assert.equal(accepted.change.state, 'applied_after_wait', entry.operation);
+        assert.match(accepted.change.line!, /Accepted by ac-jonas.*drafted by ac-ada's assistant/);
+        const saved = (await changesOf(run.runId))[0]!;
+        assert.equal(saved.receipt?.acceptedBy, peer.id); assert.equal(saved.receipt?.preparedBy, saved.receipt?.agentId);
+        assert.equal(compute.dispatched.length, before);
+        expectStatus(await peer.browser.request('POST', assistantChangeActionPath(row.id, 'accept'), { body: { expectedVersion: sent.change.version } }), 404);
+        if (entry.operation === 'work.create') assert.deepEqual((await pool.query(`SELECT created_by_kind,created_by_id FROM project_work_items WHERE id=$1`, [accepted.change.objectId])).rows[0], { created_by_kind: 'human', created_by_id: peer.id });
+        if (entry.operation.startsWith('doc.')) assert.equal((await pool.query(`SELECT author_id FROM project_material_versions WHERE material_id=$1 ORDER BY version DESC LIMIT 1`, [accepted.change.objectId])).rows[0].author_id, peer.id);
+      } finally { await pool.query(`UPDATE project_grants SET role='contributor' WHERE project_id=$1 AND user_id=$2`, [shared.id, owner.id]); await complete(run.runId); }
+    }
+  });
+
+  test('A5 refuses stale target, changed switches, viewer recipient and never operations without any effect', async () => {
+    const item = await task(peer, 'Versioned suggestion', shared.id);
+    const run = await liveRun(sharedThread);
+    await pool.query(`UPDATE project_grants SET role='viewer' WHERE project_id=$1 AND user_id=$2`, [shared.id, owner.id]);
+    try {
+      await run.call('flux_update_task', { workId: item.id, expectedVersion: item.version, changes: { title: 'Do not overwrite' } });
+      const row = (await changesOf(run.runId))[0]!;
+      const sent = expectStatus(await owner.browser.request('POST', assistantChangeActionPath(row.id, 'send'), { body: { expectedVersion: row.version } }), 200) as { change: AssistantChange };
+      await pool.query(`UPDATE project_work_items SET title='Person edited it',version=version+1 WHERE id=$1`,[item.id]);
+      expectStatus(await peer.browser.request('POST', assistantChangeActionPath(row.id,'accept'), { body:{ expectedVersion:sent.change.version } }),403);
+      assert.equal((await pool.query(`SELECT title FROM project_work_items WHERE id=$1`,[item.id])).rows[0].title,'Person edited it');
+      // A current viewer who was once the addressee still cannot accept. Native authority is checked live.
+      await addMember(peer,jonasWs.id,outsider,'member'); await grant(peer,shared.id,outsider,'viewer');
+      await pool.query(`UPDATE assistant_changes SET suggest_to_user_id=$2 WHERE id=$1`,[row.id,outsider.id]);
+      expectStatus(await outsider.browser.request('POST',assistantChangeActionPath(row.id,'accept'),{body:{expectedVersion:sent.change.version}}),403);
+      assert.ok(!run.tools.some((tool)=>/invite|grant|accept_decision/.test(tool)));
+    } finally { await pool.query(`UPDATE project_grants SET role='contributor' WHERE project_id=$1 AND user_id=$2`,[shared.id,owner.id]); await complete(run.runId); }
+  });
+
 });
