@@ -1,0 +1,174 @@
+{
+  "schema": 1,
+  "candidateApplication": "7af776c7dfd4403e3937c8ccd4b9723c7808d587",
+  "role": "Source compatibility only, not fresh execution, independent review or acceptance",
+  "hashChecks": [
+    {
+      "group": "transport",
+      "path": "app/apps/server/src/http/upgrades.ts",
+      "expected": "89a0507ab5ea55db92e9d9db961dca120d231f9eb794519851153b15960be51c",
+      "actual": "89a0507ab5ea55db92e9d9db961dca120d231f9eb794519851153b15960be51c",
+      "same": true
+    },
+    {
+      "group": "transport",
+      "path": "app/apps/server/src/editing/gate.ts",
+      "expected": "6cda8ce77126174ab5b9081323fdefa92dc19db33b758670a2c32a85155b5e04",
+      "actual": "6cda8ce77126174ab5b9081323fdefa92dc19db33b758670a2c32a85155b5e04",
+      "same": true
+    },
+    {
+      "group": "transport",
+      "path": "app/pnpm-lock.yaml",
+      "expected": "d34264e9ac2a877f045b3c190d6be025dfc2a8b84cc67b42eeb5dd7200cb6e22",
+      "actual": "d34264e9ac2a877f045b3c190d6be025dfc2a8b84cc67b42eeb5dd7200cb6e22",
+      "same": true
+    },
+    {
+      "group": "transport",
+      "path": "app/tests/app/editing-transport.test.ts",
+      "expected": "30cb7d6ad9cf24b2f8be68c2fef6ddcdcf31a893a9cec7e1586a42374c174107",
+      "actual": "30cb7d6ad9cf24b2f8be68c2fef6ddcdcf31a893a9cec7e1586a42374c174107",
+      "same": true
+    },
+    {
+      "group": "transport",
+      "path": "app/tests/app/editing-codec-source.test.ts",
+      "expected": "522eaa901cb731f0bdc125ee5b46b91720264a70ac20902ca19746041945e155",
+      "actual": "522eaa901cb731f0bdc125ee5b46b91720264a70ac20902ca19746041945e155",
+      "same": true
+    },
+    {
+      "group": "transport",
+      "path": "app/tests/app/editing-codec-pool.test.ts",
+      "expected": "1001358f28529c598c3e7e3c116f755131a70084c32d736287c65dd3e7b1a2e2",
+      "actual": "1001358f28529c598c3e7e3c116f755131a70084c32d736287c65dd3e7b1a2e2",
+      "same": true
+    },
+    {
+      "group": "transport",
+      "path": "app/tests/app/editing-codec-charge.test.ts",
+      "expected": "04430e7a7b77b052c73d6ea3b379190add44e8bc8eb5d0dcbe5834debebf2789",
+      "actual": "04430e7a7b77b052c73d6ea3b379190add44e8bc8eb5d0dcbe5834debebf2789",
+      "same": true
+    },
+    {
+      "group": "transport",
+      "path": "app/apps/server/src/editing/codec/admission-budget.mjs",
+      "expected": "f61a289aad11e09bca8a87d9f195907af5b96a068029d5fb2fa8a8edde5c5f97",
+      "actual": "f61a289aad11e09bca8a87d9f195907af5b96a068029d5fb2fa8a8edde5c5f97",
+      "same": true
+    },
+    {
+      "group": "transport",
+      "path": "app/apps/server/src/editing/codec/assembly.mjs",
+      "expected": "d6bf996556227eade5dad239af0d4897048dead1873f3870d2c5d3a8d79079fe",
+      "actual": "d6bf996556227eade5dad239af0d4897048dead1873f3870d2c5d3a8d79079fe",
+      "same": true
+    },
+    {
+      "group": "transport",
+      "path": "app/apps/server/src/editing/codec/caps.mjs",
+      "expected": "0bf4059e81bbbef7fc5e453a450444a646e678bb425d6746870c19378a37b014",
+      "actual": "0bf4059e81bbbef7fc5e453a450444a646e678bb425d6746870c19378a37b014",
+      "same": true
+    },
+    {
+      "group": "transport",
+      "path": "app/apps/server/src/editing/codec/codec-worker.mjs",
+      "expected": "5d600705358cabb1d05b24621eec40c2f2f8f72ee4a782e6fc3806c5c628690e",
+      "actual": "5d600705358cabb1d05b24621eec40c2f2f8f72ee4a782e6fc3806c5c628690e",
+      "same": true
+    },
+    {
+      "group": "transport",
+      "path": "app/apps/server/src/editing/codec/codec.mjs",
+      "expected": "46e95057c449342f294512ce758ab380f8c494e01995685780ce5c9a6431052d",
+      "actual": "46e95057c449342f294512ce758ab380f8c494e01995685780ce5c9a6431052d",
+      "same": true
+    },
+    {
+      "group": "transport",
+      "path": "app/apps/server/src/editing/codec/envelope.mjs",
+      "expected": "b6ab8236e53619785845ae9770bcf31f58a15201c2ba8a2f29c7b41400ac276f",
+      "actual": "b6ab8236e53619785845ae9770bcf31f58a15201c2ba8a2f29c7b41400ac276f",
+      "same": true
+    },
+    {
+      "group": "transport",
+      "path": "app/apps/server/src/editing/codec/room-cache.mjs",
+      "expected": "16a8ef1b1edecde982b1ba04d53d49dd41f3589d5268ecd093e826b23fa0e6c3",
+      "actual": "16a8ef1b1edecde982b1ba04d53d49dd41f3589d5268ecd093e826b23fa0e6c3",
+      "same": true
+    },
+    {
+      "group": "transport",
+      "path": "app/apps/server/src/editing/codec/worker-pool.mjs",
+      "expected": "bbacdf76316cd0d8f5347aec34aaba16d61cdb29869253684604f7e95570a789",
+      "actual": "bbacdf76316cd0d8f5347aec34aaba16d61cdb29869253684604f7e95570a789",
+      "same": true
+    },
+    {
+      "group": "canonical",
+      "path": "app/apps/server/src/editing/codec/caps.mjs",
+      "expected": "0bf4059e81bbbef7fc5e453a450444a646e678bb425d6746870c19378a37b014",
+      "actual": "0bf4059e81bbbef7fc5e453a450444a646e678bb425d6746870c19378a37b014",
+      "same": true
+    },
+    {
+      "group": "canonical",
+      "path": "app/apps/server/src/editing/codec/codec.mjs",
+      "expected": "46e95057c449342f294512ce758ab380f8c494e01995685780ce5c9a6431052d",
+      "actual": "46e95057c449342f294512ce758ab380f8c494e01995685780ce5c9a6431052d",
+      "same": true
+    },
+    {
+      "group": "canonical",
+      "path": "app/apps/server/src/editing/codec/envelope.mjs",
+      "expected": "b6ab8236e53619785845ae9770bcf31f58a15201c2ba8a2f29c7b41400ac276f",
+      "actual": "b6ab8236e53619785845ae9770bcf31f58a15201c2ba8a2f29c7b41400ac276f",
+      "same": true
+    },
+    {
+      "group": "canonical",
+      "path": "app/apps/server/src/editing/codec/assembly.mjs",
+      "expected": "d6bf996556227eade5dad239af0d4897048dead1873f3870d2c5d3a8d79079fe",
+      "actual": "d6bf996556227eade5dad239af0d4897048dead1873f3870d2c5d3a8d79079fe",
+      "same": true
+    },
+    {
+      "group": "canonical",
+      "path": "app/apps/server/src/editing/codec/admission-budget.mjs",
+      "expected": "f61a289aad11e09bca8a87d9f195907af5b96a068029d5fb2fa8a8edde5c5f97",
+      "actual": "f61a289aad11e09bca8a87d9f195907af5b96a068029d5fb2fa8a8edde5c5f97",
+      "same": true
+    },
+    {
+      "group": "canonical",
+      "path": "app/apps/server/src/editing/codec/worker-pool.mjs",
+      "expected": "bbacdf76316cd0d8f5347aec34aaba16d61cdb29869253684604f7e95570a789",
+      "actual": "bbacdf76316cd0d8f5347aec34aaba16d61cdb29869253684604f7e95570a789",
+      "same": true
+    },
+    {
+      "group": "canonical",
+      "path": "app/apps/server/src/editing/codec/codec-worker.mjs",
+      "expected": "5d600705358cabb1d05b24621eec40c2f2f8f72ee4a782e6fc3806c5c628690e",
+      "actual": "5d600705358cabb1d05b24621eec40c2f2f8f72ee4a782e6fc3806c5c628690e",
+      "same": true
+    },
+    {
+      "group": "canonical",
+      "path": "app/apps/server/src/editing/codec/room-cache.mjs",
+      "expected": "16a8ef1b1edecde982b1ba04d53d49dd41f3589d5268ecd093e826b23fa0e6c3",
+      "actual": "16a8ef1b1edecde982b1ba04d53d49dd41f3589d5268ecd093e826b23fa0e6c3",
+      "same": true
+    }
+  ],
+  "apiAadeChangedInputs": [],
+  "ui21bbbPrivateOnlyAddition": [
+    "app/tests/ui/test_live_author_capture.py"
+  ],
+  "wikiPromotion03590a3aChangedCriticalInputs": [],
+  "runtimePending": "Canonical run finished FAIL8/9. Independent functional/visual evaluation and protected approval remain pending."
+}
