@@ -825,6 +825,86 @@ class LiveEditingJourney(LiveFixture):
         self.assertEqual(by_id[untouched["id"]]["version"], 1)
         self.assertEqual((by_id[untouched["id"]]["x"], by_id[untouched["id"]]["y"]), (untouched["x"], untouched["y"]))
 
+    async def test_19_successive_peer_previews_keep_content_but_native_edits_refresh_it(self):
+        ada, kai = self.pages['ada'], self.pages['kai']
+        # Observe production React commits without replacing transport or mutating the DOM.
+        # The moving button must render; its memoized text subtree must keep its fiber.
+        await kai.add_init_script("""(() => {
+          const seen = {shell: new Map(), content: new Map()};
+          window.__thoughtRenders = {shell: {}, content: {}};
+          window.__REACT_DEVTOOLS_GLOBAL_HOOK__ = {supportsFiber: true, isDisabled: false, renderers: new Map(), inject() {return 1;},
+            checkDCE() {}, onCommitFiberUnmount() {}, onPostCommitFiberRoot() {},
+            onCommitFiberRoot(_id, root) {
+              const stack = [{fiber: root.current, id: null}];
+              while (stack.length) {
+                const {fiber, id: parentId} = stack.pop(), props = fiber.memoizedProps;
+                const shell = fiber.type === 'button' && props?.['data-id'] && String(props.className).startsWith('sk-node');
+                const id = shell ? props['data-id'] : parentId;
+                const content = id && fiber.type === 'span' && String(props?.className).split(' ').includes('sk-t');
+                const kind = shell ? 'shell' : content ? 'content' : null;
+                if (kind) {
+                  if (seen[kind].has(id) && seen[kind].get(id) !== fiber)
+                    window.__thoughtRenders[kind][id] = (window.__thoughtRenders[kind][id] || 0) + 1;
+                  seen[kind].set(id, fiber);
+                }
+                if (fiber.sibling) stack.push({fiber: fiber.sibling, id: parentId});
+                if (fiber.child) stack.push({fiber: fiber.child, id});
+              }
+            }};
+        })()""")
+        await self.create_map(3)
+        first, second = self.thoughts[:2]
+        node = ada.locator(f'.sk-node[data-id="{first["id"]}"]')
+        peer = kai.locator(f'.sk-node[data-id="{first["id"]}"]')
+        bounds = await node.bounding_box()
+        try:
+            await ada.mouse.move(bounds['x'] + 20, bounds['y'] + 20)
+            await ada.mouse.down()
+            await ada.mouse.move(bounds['x'] + 60, bounds['y'] + 40, steps=3)
+            await expect(peer).to_have_attribute('data-live-mover', 'Ada North')
+            sequence = await ada.locator('.sk-canvas').get_attribute('data-live-own-sequence')
+            await expect(peer).to_have_attribute('data-live-preview-sequence', sequence)
+            before = await kai.evaluate('window.__thoughtRenders')
+            initial_x = await peer.get_attribute('data-thought-x')
+            for step in range(1, 9):
+                previous = await peer.get_attribute('data-live-preview-sequence')
+                await ada.mouse.move(bounds['x'] + 60 + step * 6, bounds['y'] + 40 + step * 3)
+                await expect(peer).not_to_have_attribute('data-live-preview-sequence', previous)
+            after = await kai.evaluate('window.__thoughtRenders')
+            self.assertGreaterEqual(after['shell'].get(first['id'], 0) - before['shell'].get(first['id'], 0), 8,
+                                    'The observer sees each real movement update render its current geometry/sequence')
+            self.assertEqual(after['content'].get(first['id'], 0), before['content'].get(first['id'], 0),
+                             'Successive actual movement previews do not render unchanged content')
+            await expect(peer).not_to_have_attribute('data-thought-x', initial_x)
+
+            # A real native edit to a neighbour remains visible while the original lease moves.
+            changed = await self.api(kai, 'PATCH', f'/api/v1/sketches/{self.map_id}/thoughts/{second["id"]}',
+                {'text': 'Native neighbour edit during movement'}, 200,
+                {'idempotency-key': str(uuid.uuid4()), 'if-match': f'"{second["version"]}"'})
+            for page in self.pages.values():
+                await expect(page.locator(f'.sk-node[data-id="{second["id"]}"] .sk-t')).to_have_text(changed['text'])
+            self.assertGreater((await kai.evaluate('window.__thoughtRenders'))['content'].get(second['id'], 0),
+                               before['content'].get(second['id'], 0), 'The content observer detects native edits')
+            previous = await peer.get_attribute('data-live-preview-sequence')
+            await ada.mouse.move(bounds['x'] + 130, bounds['y'] + 75)
+            await expect(peer).not_to_have_attribute('data-live-preview-sequence', previous)
+            await expect(peer).to_have_attribute('data-live-mover', 'Ada North')
+
+            # Editing the moving thought clears its old lease and refreshes its own content.
+            changed = await self.api(kai, 'PATCH', f'/api/v1/sketches/{self.map_id}/thoughts/{first["id"]}',
+                {'text': 'Native edit replaces the moving thought body', 'height': first['height'] + 40}, 200,
+                {'idempotency-key': str(uuid.uuid4()), 'if-match': f'"{first["version"]}"'})
+            for page in self.pages.values():
+                target = page.locator(f'.sk-node[data-id="{first["id"]}"]')
+                await expect(target.locator('.sk-t')).to_have_text(changed['text'])
+                await expect(target).to_have_attribute('data-thought-version', str(changed['version']))
+                await expect(target).not_to_have_attribute('data-live-mover', 'Ada North')
+                self.assertEqual(await target.evaluate('el => el.style.minHeight'), f'{changed["height"]}px')
+            self.assertGreater((await kai.evaluate('window.__thoughtRenders'))['content'].get(first['id'], 0),
+                               after['content'].get(first['id'], 0))
+        finally:
+            await ada.mouse.up()
+
     async def test_17_ctrl_end_then_shift_left_replaces_the_last_character_of_a_100k_line(self):
         # #228 Gate 4: CodeMirror draws a line longer than 20,000 characters only around the view
         # and the selection. Native Ctrl+End from the middle stopped at undrawn text, so Shift+

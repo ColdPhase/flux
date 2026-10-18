@@ -1191,10 +1191,6 @@ interface ThoughtNodeProps {
  * kept a peer's main thread busy and delayed the next preview's receipt (#228 Gate 4).
  */
 const ThoughtNode = memo(function ThoughtNode({ thought, x, y, w, h, selected, dragging, editing, resizable, meId, helpId, projectId, linked, mover, live, nodeRef, events }: ThoughtNodeProps) {
-  const link = linkOf(thought.text);
-  const meta = thought.placement
-    ? (thought.placement.title ? `Draft · ${thought.placement.title}` : 'Draft you can’t open')
-    : link ? `Link · ${link.host}` : null;
   return (
     <>
       <button type="button" data-id={thought.id} data-thought-x={thought.x} data-thought-y={thought.y} data-thought-version={thought.version}
@@ -1208,24 +1204,45 @@ const ThoughtNode = memo(function ThoughtNode({ thought, x, y, w, h, selected, d
         onClick={(event) => events.current.click(event, thought.id)}
         onDoubleClick={() => events.current.doubleClick(thought.id)}
         onKeyDown={(event) => events.current.keyDown(event, thought)}>
-        {meta ? <span className="sk-k"><Icon name={thought.placement ? 'doc' : 'link'} size={12} />{meta}</span> : null}
-        {thought.file ? <ThoughtImage className="sk-img" fileId={thought.file.id} name={thought.file.name}
-          style={{ maxHeight: Math.max(48, thought.height - 64) }} /> : null}
-        <span className={`sk-t${link ? ' sk-t--link' : ''}`}>{thought.text}</span>
-        <span className="sk-p">{provenance(thought, meId)}</span>
-        {linked?.tasks[0] ? <span className="sk-taskline"><StatusGlyph status={linked.tasks[0].status} size={14} /><span>{taskNumber(linked.tasks[0])} {STATUS_LABEL[linked.tasks[0].status]}{linked.tasks[0].owner ? ` · ${linked.tasks[0].owner.name}` : ''}</span></span> : null}
-        {mover ? <span className="sk-live-mover">{mover} is moving</span> : null}
-        {/* Room for the count, which is its own button beside this one. */}
-        {linked?.count ? <span className="sk-work-gap" aria-hidden="true" /> : null}
+        <ThoughtContent text={thought.text} placement={thought.placement} file={thought.file} source={thought.source}
+          createdBy={thought.createdBy} createdAt={thought.createdAt} version={thought.version} height={thought.height}
+          meId={meId} linked={linked} mover={mover} />
         {resizable ? <span className="sk-resize" aria-hidden="true" onPointerDown={(event) => events.current.resizePointerDown(event, thought)} /> : null}
       </button>
       {linked?.count && projectId ? (
         <div className={`sk-work-slot sk-work-slot--${thought.shape}${dragging ? ' is-dragging' : ''}`} data-for={thought.id} style={{ transform: `translate(${x}px, ${y}px)`, width: w, height: h }}>
-          <ThoughtTasks thought={thought} tasks={linked} projectId={projectId} variant="map" onOpenTask={(id) => events.current.openTask(id)} />
+          <ThoughtWork id={thought.id} text={thought.text} linked={linked} projectId={projectId} events={events} />
         </div>
       ) : null}
     </>
   );
+});
+
+/** Preview coordinates and lease sequences change every movement; the native content does not.
+ * Explicit content props let React's ordinary memo comparison keep the body while the button's
+ * geometry, live attributes and input handlers continue to use the current thought. */
+const ThoughtContent = memo(function ThoughtContent(props: Pick<Thought, 'text' | 'placement' | 'file' | 'source' | 'createdBy' | 'createdAt' | 'version' | 'height'> & {
+  meId: string; linked: ThoughtTasksEntry | undefined; mover: string | undefined;
+}) {
+  const { text, placement, file, height, meId, linked, mover } = props;
+  const link = linkOf(text);
+  const meta = placement ? (placement.title ? `Draft · ${placement.title}` : 'Draft you can’t open') : link ? `Link · ${link.host}` : null;
+  return <>
+    {meta ? <span className="sk-k"><Icon name={placement ? 'doc' : 'link'} size={12} />{meta}</span> : null}
+    {file ? <ThoughtImage className="sk-img" fileId={file.id} name={file.name} style={{ maxHeight: Math.max(48, height - 64) }} /> : null}
+    <span className={`sk-t${link ? ' sk-t--link' : ''}`}>{text}</span>
+    <span className="sk-p">{provenance(props, meId)}</span>
+    {linked?.tasks[0] ? <span className="sk-taskline"><StatusGlyph status={linked.tasks[0].status} size={14} /><span>{taskNumber(linked.tasks[0])} {STATUS_LABEL[linked.tasks[0].status]}{linked.tasks[0].owner ? ` · ${linked.tasks[0].owner.name}` : ''}</span></span> : null}
+    {mover ? <span className="sk-live-mover">{mover} is moving</span> : null}
+    {/* Room for the count, which is its own button beside this one. */}
+    {linked?.count ? <span className="sk-work-gap" aria-hidden="true" /> : null}
+  </>;
+});
+
+const ThoughtWork = memo(function ThoughtWork({ id, text, linked, projectId, events }: {
+  id: string; text: string; linked: ThoughtTasksEntry; projectId: string; events: { readonly current: NodeEvents };
+}) {
+  return <ThoughtTasks thought={{ id, text }} tasks={linked} projectId={projectId} variant="map" onOpenTask={(taskId) => events.current.openTask(taskId)} />;
 });
 
 /** Plane positions are signed: the map has no edge at 0 (#509), only the contract's limit. */
