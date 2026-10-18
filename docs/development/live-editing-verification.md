@@ -102,6 +102,71 @@ and author verification are admitted in the isolated disabled fixture; independe
 source/method evaluation and the complete canonical result remain required before
 acceptance. This record is a candidate method decision, not a claim of either.
 
+### Candidate combined peer-paint observation (2026-10-18, #228 / #613)
+
+The original full-nine run at `7af776c7` remains FAIL8/9, including map500/drag200
+213.167416 ms. After the later application corrections, selected source
+`e568243c3de2f40f7c8280edb9b8aa37295352eb` still failed at214.850179 ms. Its
+[source-pinned result](evidence/live-editing/2026-10-18-lazy-outline.md#coordinators-subsequent-selected-timing)
+and incomplete single-cohort collector are unchanged by this proposal.
+
+That existing peer trace records270 observations including30 warmups. The
+first `JSHandle.jsonValue` round trip has p50/p95 9.921/14.276 ms; the separate
+two-RAF evaluation27.305/49.071 ms; the separate full final geometry evaluation
+15.049/24.806 ms. These protocol intervals overlap other work. They are neither
+pure application cost nor values to subtract from the reported latency. No new
+CPU profile or runtime retry supports this candidate.
+
+At baseline `2017906dcd150f508edd2fc99e10fb3024ec66db`, change only the
+`painted()` helper's transfer of results. Keep the exact `wait_for_function`
+predicate, arguments, RAF polling and timeout. Once its truthy handle resolves,
+record Python monotonic `condition_at`. Using the public
+[JSHandle.evaluate API](https://playwright.dev/python/docs/api/class-jshandle#js-handle-evaluate)
+and [pinned1.62.0 implementation](https://github.com/microsoft/playwright-python/blob/v1.62.0/playwright/_impl/_js_handle.py),
+retain that first plain value in its existing browser context, await the same
+nested two `requestAnimationFrame` callbacks, then evaluate the exact complete
+predicate again against the current DOM and arguments. Await its value as the
+old `page.evaluate` does. Return both complete `first_render` and `render`
+objects in one serialized response. Set `painted_at` only after that response
+has arrived; reject a false final result with the existing error.
+
+The first result is a fresh plain snapshot, not a DOM node or a reusable current
+state. Keeping it must never substitute for the full post-RAF recheck. No DOM,
+element, geometry or identity cache is introduced. All200 positions, versions,
+generation/gesture/lease, current visible bounds, exact publication/server-named
+receipt coverage and named Wiki cursor checks remain. All other driver
+functions and constants, continuous trusted input, warmups,240-row/60s schedule,
+deadline/error denominator, original200 ms gate, local control without
+subtraction, trace screenshots and actual collection/shutdown/seal stay intact.
+
+`condition_at` now marks initial handle resolution before the first snapshot's
+JSON transfer; formerly it followed that transfer. Disclose this difference in
+`condition_at` and `two_raf_and_recheck_ms`; do not compare those subsegments as
+unchanged or subtract them. The total input→complete post-RAF response still
+uses the one driver monotonic clock and includes the actual protocol overhead.
+
+The independent `review_612` agent assessed this concrete plan in the supervising
+session before implementation: accept with required equivalence checks, no
+P1/P2 gap. Publisher/implementation owner isPelikanFix16; this assessment is
+neither a final review ofPR613 nor an eligible GitHub Code Owner approval.
+Before a new canonical run, verify old/new on the actual application in both
+Chromium and WebKit:
+
+- Complete first/final snapshot shape, exact identities and all200 positions for
+  held input, then real later same-gesture coverage with actual wire receipts.
+- Refusal of wrong generation/version and hidden/clipped target; invalidation
+  after initial success but before final recheck must fail rather than reuse the
+  first snapshot. Invalid-state controls may change test DOM, never transport.
+- Actual Wiki editor and ordinary reader predicates, including named cursor
+  evidence, current confirmed sequence and visible character geometry.
+
+Pin the implementation and prove all driver AST outside `painted()` unchanged.
+Only after those checks may a fresh original nine-case measurement collect its
+own2160 rows and complete actual queue/seal/producer evidence. Final independent
+source/method/functional and neutral visual evaluation remain required before
+acceptance. Preserve every previous failure; a new observer implementation
+cannot establish an application-only speedup or relabel an old result.
+
 The nine case names are fixed:
 
 ```text
