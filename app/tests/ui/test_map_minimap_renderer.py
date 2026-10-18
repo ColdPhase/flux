@@ -15,13 +15,20 @@ class MinimapRenderer(LiveFixture):
     async def reference(self, page, label, *, controls=False):
         await page.evaluate(REFERENCE)
         result = await page.evaluate('window.minimapReference()')
+        result.update(await self.raster(page, result.pop('markup'), result['color']))
+        print('MINIMAP_REFERENCE ' + json.dumps({'label':label, **result}), flush=True)
+        directory = os.environ.get('FLUX_UI_SCREENSHOTS')
+        if directory:
+            Path(directory).mkdir(parents=True, exist_ok=True)
+            await page.locator('.sk-minimap').screenshot(path=str(Path(directory)/f'{label}.png'))
+            for kind,png in self.raster_images.items():
+                (Path(directory)/f'{label}-{kind}.png').write_bytes(base64.b64decode(png.split(',',1)[1]))
         # CSS transform/style serialization rounds the independent DOM reconstruction. Keep
         # its error below one thousandth of a CSS pixel; raster/negative controls stay separate.
         self.assertLess(result['geometryError'], .001, result)
         self.assertLess(result['overlayError'], .001, result)
         self.assertEqual(result['fills'], [result['color']])
         self.assertEqual(result['alphas'], ['0.6'])
-        result.update(await self.raster(page, result.pop('markup'), result['color']))
         self.assertEqual(result['raster']['pixels'], [round(172*result['dpr']), round(112*result['dpr'])])
         self.assertGreater(result['raster']['ink'], 0)
         # Same original limits, now against rendered native SVG rather than image conversion.
@@ -30,13 +37,6 @@ class MinimapRenderer(LiveFixture):
         if controls:
             self.assertGreater(result['squareControl']['relativeAlphaError'], .03, result)
             self.assertGreater(result['minimumControl']['relativeAlphaError'], .03, result)
-        print('MINIMAP_REFERENCE ' + json.dumps({'label':label, **result}), flush=True)
-        directory = os.environ.get('FLUX_UI_SCREENSHOTS')
-        if directory:
-            Path(directory).mkdir(parents=True, exist_ok=True)
-            await page.locator('.sk-minimap').screenshot(path=str(Path(directory)/f'{label}.png'))
-            for kind,png in self.raster_images.items():
-                (Path(directory)/f'{label}-{kind}.png').write_bytes(base64.b64decode(png.split(',',1)[1]))
         return result
 
     async def raster(self, page, markup, color):
@@ -66,6 +66,7 @@ class MinimapRenderer(LiveFixture):
         peer = self.pages['kai']
         state = await peer.context.storage_state()
         contexts = []
+        failures = []
         try:
             for dpr in (1, 2):
                 context = await self.browser.new_context(storage_state=state, viewport={'width':1440,'height':900},
@@ -77,10 +78,14 @@ class MinimapRenderer(LiveFixture):
                 await expect(page.locator('.sk-minimap svg')).to_be_visible()
                 for palette in ('light','dark'):
                     await page.emulate_media(color_scheme=palette)
-                    await self.reference(page, f'{label}-{palette}-dpr{dpr}', controls=controls)
+                    try:
+                        await self.reference(page, f'{label}-{palette}-dpr{dpr}', controls=controls)
+                    except AssertionError as error:
+                        failures.append({'case':f'{label}-{palette}-dpr{dpr}','error':str(error)})
         finally:
             for context in contexts:
                 await context.close()
+        self.assertFalse(failures, json.dumps(failures))
 
     async def frozen_interaction(self, page):
         initial = await self.reference(page, 'before-minimap-drag')
