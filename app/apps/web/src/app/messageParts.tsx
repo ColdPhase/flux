@@ -1,11 +1,11 @@
 import { createContext, useContext, useEffect, useRef, useState } from 'react';
-import { Link } from 'react-router';
 import type { ConversationMessage } from '@flux/contracts';
 import { AgentIdentity, Icon } from '../ui';
 import type { PendingSend } from '../composer/draft';
 import { OutboxStatus, PendingFiles, PendingSource } from '../composer/Outbox';
 import { getMaterialVersion } from './conversation-api';
 import { readerActive, watchReaderInput } from '../work/readerIntent';
+import { RefLink } from '../place/origin';
 
 // Pieces of a project message shared by the stream of roots and the thread beside it (UI116-1).
 
@@ -95,10 +95,10 @@ export function SourceCitation({ materialId, version, onDenied }: { materialId: 
   const onDeniedRef = useRef(onDenied);
   useEffect(() => { onDeniedRef.current = onDenied; }, [onDenied]);
   useEffect(() => { const controller = new AbortController(); getMaterialVersion(materialId, version, controller.signal).then((item) => setTitle(item.title)).catch((cause: unknown) => { if (!controller.signal.aborted) { onDeniedRef.current(cause); setTitle('Material unavailable'); } }); return () => controller.abort(); }, [materialId, version]);
-  return <Link to={`/materials/${materialId}/versions/${version}`} className="wiki-card" data-ref="wiki">
+  return <RefLink to={`/materials/${materialId}/versions/${version}`} className="wiki-card" data-ref="wiki">
     <span className="wiki-card__glyph" aria-hidden="true"><Icon name="doc" size={14} /></span>
     <span className="wiki-card__text"><strong>{title}</strong><small>Wiki page · v{version}</small></span>
-  </Link>;
+  </RefLink>;
 }
 
 export { AuthorFace } from '../ui';

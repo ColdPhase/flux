@@ -16,6 +16,7 @@ import { resetStream } from '../api/stream';
 import { forgetThoughtDrafts } from '../sketch/createdDraft';
 import { forgetComposerDrafts } from '../composer/draft';
 import { forgetBrowserDrafts } from '../app/drafts';
+import { forgetPlaces } from '../place/memory';
 import { forgetDocumentDrafts } from '../docs/drafts';
 import { forgetThoughtImages } from '../sketch/ThoughtImage';
 
@@ -251,5 +252,6 @@ export async function signOutAction(): Promise<FormResult | Response> {
   forgetBrowserDrafts();
   forgetDocumentDrafts();
   forgetThoughtImages();
+  forgetPlaces();
   return redirect('/sign-in?notice=signed-out');
 }

@@ -1,6 +1,6 @@
-import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
-import { Link, useSearchParams } from 'react-router';
-import { SEARCH_FILTER_TYPES, type SearchFilterType, type SearchKind, type SearchResult } from '@flux/contracts';
+import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import { useLocation, useSearchParams } from 'react-router';
+import { SEARCH_FILTER_TYPES, type SearchFilterType, type SearchKind, type SearchResponse, type SearchResult } from '@flux/contracts';
 import { Button, EmptyState, Icon, Spinner } from '../ui';
 import { useShellData } from '../app/data';
 import { targetHref } from './api';
@@ -8,7 +8,12 @@ import { useRecentSearches } from './recent';
 import { ResultBody } from './ResultRow';
 import { useSearch } from './useSearch';
 import './search.css';
+import { RefLink } from '../place/origin';
+import { currentEntry, onPlacesForgotten, useArrival, usePlaceState } from '../place/memory';
 
+/** The answer each search page showed, by person and history entry, for a return to it. Never stored. */
+const answers = new Map<string, { q: string; type: SearchFilterType | null; place: string | null; answer: SearchResponse; items: SearchResult[] }>();
+onPlacesForgotten(() => answers.clear());
 const FILTER_LABELS: Record<SearchFilterType, string> = {
   project: 'Projects', message: 'Messages', doc: 'Wiki', material: 'Files', work: 'Tasks', decision: 'Decisions', result: 'Results',
   sketch: 'Map', draft: 'Drafts', person: 'People',
@@ -37,6 +42,8 @@ function isFilter(value: string | null): value is SearchFilterType {
  */
 export function SearchPage() {
   const [params, setParams] = useSearchParams();
+  // A replace on this page keeps the entry's state, so the origin it was followed from stays (#592).
+  const location = useLocation();
   const { me, projects, directMessages } = useShellData();
   const recent = useRecentSearches(me.user.id);
   const inputId = useId();
@@ -44,13 +51,27 @@ export function SearchPage() {
   const filtersRef = useRef<HTMLDivElement>(null);
   // On the phone the chip row scrolls sideways; a soft fade at its edge says it continues (#514, #438-6).
   const [continues, setContinues] = useState(false);
-  const [open, setOpen] = useState<Set<string>>(() => new Set());
+  // The groups opened with "Show more" are still open on return (#592).
+  const arrival = useArrival();
+  const [opened, setOpened] = usePlaceState<string[]>('search.open', () => [], arrival, (value): value is string[] => Array.isArray(value) && value.every((item) => typeof item === 'string'));
+  const open = useMemo(() => new Set(opened), [opened]);
   const q = params.get('q') ?? '';
   const [draft, setDraft] = useState(q);
   const typeParam = params.get('type');
   const type = isFilter(typeParam) ? typeParam : null;
   const place = params.get('place');
-  const { state, loadMore, moreBusy, retry } = useSearch(draft, { type, place, limit: 20 });
+  // Back to this page shows the answer it had, while the same request is read again (#592). Kept in memory only, per person.
+  const [seed] = useState(() => {
+    const kept = arrival ? answers.get(`${me.user.id}:${arrival.key}`) : undefined;
+    return kept && kept.q === q.trim() && kept.type === type && kept.place === place ? kept : null;
+  });
+  const { state, loadMore, moreBusy, retry } = useSearch(draft, { type, place, limit: 20, initial: seed });
+  useEffect(() => {
+    if (state.status !== 'ready') return;
+    answers.delete(`${me.user.id}:${currentEntry().key}`);
+    answers.set(`${me.user.id}:${currentEntry().key}`, { q: draft.trim(), type, place, answer: state.answer, items: state.items });
+    for (const key of [...answers.keys()].slice(0, Math.max(0, answers.size - 12))) answers.delete(key);
+  }, [state, me.user.id, draft, type, place, location.key]);
 
   // Keep the address in step with what is typed, without adding history for every key.
   useEffect(() => {
@@ -60,10 +81,10 @@ export function SearchPage() {
         const next = new URLSearchParams(current);
         if (draft.trim()) next.set('q', draft.trim()); else next.delete('q');
         return next;
-      }, { replace: true });
+      }, { replace: true, state: location.state });
     }, 300);
     return () => window.clearTimeout(timer);
-  }, [draft, q, setParams]);
+  }, [draft, q, setParams, location.state]);
 
   const set = (key: 'type' | 'place', value: string | null) => {
     setParams((current) => {
@@ -71,7 +92,7 @@ export function SearchPage() {
       if (draft.trim()) next.set('q', draft.trim());
       if (value) next.set(key, value); else next.delete(key);
       return next;
-    }, { replace: true });
+    }, { replace: true, state: location.state });
   };
 
   const answer = state.status === 'ready' ? state.answer : state.status === 'loading' ? state.previous : null;
@@ -169,12 +190,12 @@ export function SearchPage() {
                     <ol className="search__list">
                       {shown.map((result: SearchResult) => (
                         <li key={result.id}>
-                          <Link className="sr" to={targetHref(result.target)} onClick={onResultClick}><ResultBody result={result} /></Link>
+                          <RefLink className="sr" to={targetHref(result.target)} onClick={onResultClick}><ResultBody result={result} /></RefLink>
                         </li>
                       ))}
                     </ol>
                     {found.length > GROUP_ROWS && !expanded ? (
-                      <button type="button" className="ui-link search__group-more" onClick={() => setOpen((current) => new Set(current).add(group.id))}>Show {found.length - GROUP_ROWS} more</button>
+                      <button type="button" className="ui-link search__group-more" onClick={() => setOpened((current) => current.includes(group.id) ? current : [...current, group.id])}>Show {found.length - GROUP_ROWS} more</button>
                     ) : null}
                   </section>
                 );
@@ -185,7 +206,7 @@ export function SearchPage() {
         ) : state.status === 'ready' ? (
           <div className="view-empty"><EmptyState icon="search" mascot="looking" title={`Nothing matches “${draft.trim()}”`} level={2}>
             <p>{!/[\p{L}\p{N}]{2,}/u.test(draft) ? 'Type at least two letters of a word.' : type || place ? 'Try all kinds and all places, or fewer words.' : 'Try fewer or different words. Only what you can open is searched.'}</p>
-            {type || place ? <p><button type="button" className="ui-link" onClick={() => { const next = new URLSearchParams({ q: draft.trim() }); setParams(next, { replace: true }); }}>Search everywhere</button></p> : null}
+            {type || place ? <p><button type="button" className="ui-link" onClick={() => { const next = new URLSearchParams({ q: draft.trim() }); setParams(next, { replace: true, state: location.state }); }}>Search everywhere</button></p> : null}
           </EmptyState></div>
         ) : null}
       </div>

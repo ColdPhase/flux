@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react';
-import { Link, isRouteErrorResponse, useLocation, useRevalidator, useRouteError } from 'react-router';
+import { Link, Navigate, isRouteErrorResponse, useLocation, useRevalidator, useRouteError } from 'react-router';
 import { ApiError, NetworkError } from '../api/client';
 import { getMe } from '../api/auth';
 import { useThoughtDraft } from '../sketch/createdDraft';
 import { Button, ErrorState, Spinner } from '../ui';
 import { routeLabel } from './routeLabel';
 import { ReloadRecovery } from './ReloadRecovery';
+import { getProject } from './conversation-api';
+import { useReturning } from '../place/memory';
 
 /** Code download/evaluation failed; retry needs a fresh document/module cache, not API revalidation. */
 export class RouteCodeLoadError extends Error {
@@ -21,6 +23,10 @@ export function RouteErrorPage() {
   const destination = routeLabel(useLocation().pathname);
   const codeUnavailable = error instanceof RouteCodeLoadError;
   const unreachable = error instanceof NetworkError;
+  // Back, Forward or the way back to a project place that is gone or no longer allowed: not an error page (#592).
+  const revoked = (error instanceof ApiError || isRouteErrorResponse(error)) && (error.status === 403 || error.status === 404);
+  const pathname = useLocation().pathname;
+  const returning = useReturning() && revoked && /^\/(projects|materials|dm)\/[0-9a-f-]{36}/i.test(pathname);
   // "This page will work again once the server answers": when the device is back online, and every
   // 10 s while the page is visible, it tries again by itself.
   useEffect(() => {
@@ -48,6 +54,7 @@ export function RouteErrorPage() {
   } else if (error instanceof Error) {
     detail = error.message;
   }
+  if (returning) return <NearestAccessible pathname={pathname} />;
   return (
     <main className="page-center">
       <ErrorState level={1} title={title} detail={detail}
@@ -62,6 +69,38 @@ export function RouteErrorPage() {
       </ErrorState>
     </main>
   );
+}
+
+/**
+ * The place a return led to is gone or closed to this person: they land on the nearest parent they can open, with one short
+ * line saying so. Never an error page (#592). A place in a project goes to that project's conversation, or the project list
+ * when the project is closed too; a material (whose project can no longer be read) goes to the project list; a direct
+ * message goes to the list of conversations.
+ */
+function NearestAccessible({ pathname }: { pathname: string }) {
+  if (/^\/materials\//.test(pathname)) return <Navigate to="/projects" replace state={{ note: 'That page is no longer available to you.' }} />;
+  if (/^\/dm\//.test(pathname)) return <Navigate to="/dm" replace state={{ note: 'That conversation is no longer available to you.' }} />;
+  return <NearestProject pathname={pathname} />;
+}
+
+function NearestProject({ pathname }: { pathname: string }) {
+  const project = /^\/projects\/([0-9a-f-]{36})/i.exec(pathname)![1]!;
+  const inside = !new RegExp(`^/projects/${project}/?$`, 'i').test(pathname);
+  const lost = { to: '/projects', note: 'That project is no longer available to you.' };
+  const [checked, setChecked] = useState<{ to: string; note: string } | null>(null);
+  useEffect(() => {
+    if (!inside) return;
+    const controller = new AbortController();
+    getProject(project, controller.signal).then(
+      () => { if (!controller.signal.aborted) setChecked({ to: `/projects/${project}`, note: 'That place is no longer available to you. Here is the conversation.' }); },
+      () => { if (!controller.signal.aborted) setChecked(lost); });
+    return () => controller.abort();
+    // `lost` is a constant of this component.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [project, inside]);
+  const target = inside ? checked : lost;
+  return target ? <Navigate to={target.to} replace state={{ note: target.note }} />
+    : <main className="page-center booting" aria-busy="true"><p className="booting__msg" role="status"><Spinner /> Opening the nearest place you can open…</p></main>;
 }
 
 /** A parent route can fail before the sketch mounts. Authenticate before reading private text. */

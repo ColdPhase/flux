@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useId, useMemo, useState, type FormEvent, type KeyboardEvent, type ReactNode } from 'react';
-import { Link } from 'react-router';
 import type { ConversationMessage, NamedPrincipal, ObjectLink, Project, TaskActivityEntry, TaskDiscussion as Discussion, WorkItem, WorkspaceMember } from '@flux/contracts';
 import { AgentIdentity, Avatar, Kreska, MEDIA, sendsOnEnter, useMediaQuery } from '../ui';
 import { useComposerScope, type useComposerDraft } from '../composer/draft';
@@ -14,6 +13,7 @@ import { getTaskDiscussion } from '../composer/api';
 import { agentDisplayName } from '../docs/format';
 import { agentAuthorOwner, useAgentOwners } from '../agents/owners';
 import { AgentThreadLink } from '../agents/AgentThreadLink';
+import { RefLink } from '../place/origin';
 import { useCreateWorkFromMessage } from './inline';
 import { getTaskActivity } from './api';
 import { STATUS_LABEL } from './format';
@@ -173,7 +173,7 @@ export function ActivityTimeline({ state, composer, item, project, me, writable,
     <section className="details__sec wd-activity" aria-labelledby={headingId}>
       <div className="wd-sechead">
         <h4 id={headingId}>Activity</h4>
-        {thread ? <Link className="wd-inline wd-activity__open" to={thread} state={{ keepPanel: true }}>Open in Conversation</Link> : null}
+        {thread ? <RefLink className="wd-inline wd-activity__open" to={thread} state={{ keepPanel: true }}>Open in Conversation</RefLink> : null}
       </div>
       {state.failed === 'all' ? <p className="wd-error" role="alert">The activity could not be loaded. <button type="button" className="wd-inline" onClick={state.retry}>Retry</button></p>
         : state.loading ? <p className="wd-muted" aria-busy="true">Loading…</p> : null}

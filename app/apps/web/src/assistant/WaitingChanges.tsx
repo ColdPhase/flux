@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { assistantBatchVerb, assistantChangeSummary, assistantMessageHeader, type AssistantChange } from '@flux/contracts';
 import { ApiError, NetworkError } from '../api/client';
-import { Link } from 'react-router';
+
 import { Button } from '../ui';
 import { useShellActions } from '../app/shellContext';
 import { applyChange, applyRunChanges, listConversationChanges, moveRunChangesToInbox, notNowRunChanges, sendChange, undoChange, undoRunChanges } from './api';
+import { RefLink } from '../place/origin';
 
 // What the owner's assistant prepared in this conversation and waits for them on (F-027 AST-5, A3). Only the
 // owner's own changes ever reach this view: the server answers everyone else with nothing.
@@ -60,7 +61,7 @@ function Said({ text, change }: { text: string; change: AssistantChange }) {
   if (!open || !change.objectId) return <>{text}</>;
   const head = text.slice(0, open.index + 1);
   const target = change.objectType === 'work' ? <button type="button" className="ui-link" onClick={() => openDetails({ kind: 'work', id: change.objectId! })}>{open[1]}</button>
-    : change.objectType === 'doc' ? <Link className="ui-link" to={`/projects/${change.projectId}/docs/${change.objectId}`}>{open[1]}</Link> : null;
+    : change.objectType === 'doc' ? <RefLink className="ui-link" to={`/projects/${change.projectId}/docs/${change.objectId}`}>{open[1]}</RefLink> : null;
   return target ? <>{head} {target}</> : <>{text}</>;
 }
 

@@ -18,6 +18,7 @@ export function useOwnedPanel(panel: OwnedPanel | null): HTMLElement | null {
   const label = panel?.label;
   const closeLabel = panel?.closeLabel;
   const backLabel = panel?.back?.label;
+  const originLabel = panel?.origin?.label;
   const startFull = panel?.startFull;
   useEffect(() => {
     if (!key || !chip || !label) return;
@@ -25,9 +26,10 @@ export function useOwnedPanel(panel: OwnedPanel | null): HTMLElement | null {
     showPanel({
       key, chip, label, closeLabel, startFull,
       ...(backLabel ? { back: { label: backLabel, run: () => latest.current?.back?.run() } } : {}),
+      ...(originLabel ? { origin: { label: originLabel, run: () => latest.current?.origin?.run() } } : {}),
       onClose: (options) => latest.current?.onClose(options),
     });
-  }, [showPanel, key, chip, label, closeLabel, backLabel, startFull]);
+  }, [showPanel, key, chip, label, closeLabel, backLabel, originLabel, startFull]);
   useEffect(() => (key ? () => hidePanel(key) : undefined), [hidePanel, key]);
   return key && panelKey === key ? panelSlot : null;
 }

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
-import { Link, useLoaderData, useLocation, useNavigate, useRevalidator, type LoaderFunctionArgs, type ShouldRevalidateFunctionArgs } from 'react-router';
+import { useLoaderData, useLocation, useNavigate, useRevalidator, type LoaderFunctionArgs, type ShouldRevalidateFunctionArgs } from 'react-router';
 import type { AssistantAnswer, ConversationMessage, Conversation, ConversationRootWindow, Draft, Material, Page, Project, ProjectGoal, ProjectPerson, TaskCreationNotice, WorkspaceMember } from '@flux/contracts';
 import { ApiError, NetworkError } from '../api/client';
 import { outboxView, useComposerDraft, useComposerScope, type PendingSend } from '../composer/draft';
@@ -36,6 +36,8 @@ import { ownRuns, useObservation, useReceiptTick, useReceipts } from './receipts
 import { AgentAuthor, AuthorFace, ContributionMark, OPENING_REVEAL_MS, SourceCitation, SourceTag, MessageDay, MessageTime, sameMessageAuthor, clock, day, pendingMessageRow, when } from './messageParts';
 import { agentAuthorOwner, useAgentOwners, type AgentOwners } from '../agents/owners';
 import { OneConversation, type PaneProps } from './OneConversation';
+import { currentEntry, isBooted, recall, useArrival } from '../place/memory';
+import { threadPlace } from '../work/useMessageWork';
 import { ComposerBox } from '../composer/ComposerBox';
 import { ComposerMenu, composerOptions, composerTrigger, type ComposerOption } from './ComposerMenu';
 import { cite as citeMessage, onCite, quoteOf } from './citeBus';
@@ -45,6 +47,7 @@ import { useTyping } from '../typing/useTyping';
 import { TypingNotice } from '../typing/TypingNotice';
 import { listProjectGoals } from '../project/goal';
 import './project-conversation.css';
+import { RefLink } from '../place/origin';
 
 /** The project's one conversation (UI116-1): the newest roots and task announcements (UI116-3), and the thread a URL opens. */
 export interface ProjectData {
@@ -204,12 +207,12 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
     if (!params.has('compose')) return;
     params.delete('compose');
     const search = params.toString();
-    navigate({ pathname: location.pathname, search: search ? `?${search}` : '', hash: location.hash }, { replace: true, defaultShouldRevalidate: false });
+    navigate({ pathname: location.pathname, search: search ? `?${search}` : '', hash: location.hash }, { replace: true, defaultShouldRevalidate: false, state: location.state });
     const files = takeHandedFiles(me.user.id, project.id);
     if (!writable) return;
     if (files?.length) addDraftFiles(files);
     requestAnimationFrame(() => document.getElementById(composerId)?.focus());
-  }, [conversation, location.search, location.pathname, location.hash, navigate, me.user.id, project.id, writable, addDraftFiles, composerId]);
+  }, [conversation, location.search, location.pathname, location.hash, location.state, navigate, me.user.id, project.id, writable, addDraftFiles, composerId]);
   // ⌘K "Ask my assistant…" and the assistant panel's Message arrive as ?ask=1 in a thread: ask mode opens once.
   const askParam = !!conversation && writable && new URLSearchParams(location.search).get('ask') === '1';
   const [askHandled, setAskHandled] = useState(false);
@@ -219,9 +222,9 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
     const params = new URLSearchParams(location.search);
     params.delete('ask');
     const search = params.toString();
-    navigate({ pathname: location.pathname, search: search ? `?${search}` : '', hash: location.hash }, { replace: true, defaultShouldRevalidate: false });
+    navigate({ pathname: location.pathname, search: search ? `?${search}` : '', hash: location.hash }, { replace: true, defaultShouldRevalidate: false, state: location.state });
     requestAnimationFrame(() => document.getElementById(composerId)?.focus());
-  }, [askParam, location.search, location.pathname, location.hash, navigate, composerId]);
+  }, [askParam, location.search, location.pathname, location.hash, location.state, navigate, composerId]);
   // Files dropped anywhere on the conversation join its draft (#348).
   const drop = useFileDrop(publicComposer, writable && !asking);
   const makeWork = useCreateWorkFromMessage(project);
@@ -241,7 +244,14 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
     return refs;
   })])].sort(), [assistant.answers, assistant.proposals, discussedTask]);
   const referenceWork = useReferenceWork(me.user.id, project.id, referenceIds, feedNode, !accessLost);
-  const messageWork = useMessageWork(me.user.id, project.id, accessLost ? null : conversation?.id ?? null, sourceIds, scrollRef, feedNode, referenceWork.readingRevision);
+  // Coming back to an entry with this thread open, or back to the thread from an object that covered it in the panel (it was
+  // unmounted meanwhile): its replies return to where they were left (#592). A reload opens the thread as it always opens.
+  const arrival = useArrival();
+  const [threadRestore] = useState(() => {
+    const from = arrival ?? (isBooted() ? currentEntry() : null);
+    return conversation && from ? threadPlace(recall('thread', from)) : null;
+  });
+  const messageWork = useMessageWork(me.user.id, project.id, accessLost ? null : conversation?.id ?? null, sourceIds, scrollRef, feedNode, referenceWork.readingRevision, threadRestore);
   // Opening (#155): the replies, their task chips, referenced rows and the header's state line come from
   // separate bounded reads. The thread shows once the first of each has settled (at most OPENING_REVEAL_MS),
   // so nothing shifts under the reader's eyes or pointer as they arrive.
@@ -339,11 +349,13 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
   // The root is the stream's message; the thread arrives only at its replies.
   const arrived = conversation && hash.startsWith('#message-') && hash.slice('#message-'.length) !== rootMessageId ? hash.slice('#message-'.length) : null;
   const arrivedLoaded = !!arrived && messages.some((message) => message.id === arrived);
-  // A search result or source older than the loaded window (#114): page back until it is loaded.
+  // A search result or source older than the loaded window (#114), or the message a return brings back (#592): page back until it is loaded.
+  const seek = arrived ?? (threadRestore?.id.startsWith('message-') ? threadRestore.id.slice('message-'.length) : null);
+  const seekLoaded = !!seek && messages.some((message) => message.id === seek);
   useEffect(() => {
-    if (!conversation || !arrived || arrivedLoaded || !olderCursor) return;
+    if (!conversation || !seek || seekLoaded || !olderCursor) return;
     let cancelled = false;
-    void pageBackTo(arrived, olderCursor, (before, limit) => olderMessages(conversation.id, before, undefined, limit)).then(({ pages, cursor }) => {
+    void pageBackTo(seek, olderCursor, (before, limit) => olderMessages(conversation.id, before, undefined, limit)).then(({ pages, cursor }) => {
       if (cancelled) return;
       setMessages((current) => pages.reduce((all, page) => mergeMessages(all, page.messages), current));
       setOlderCursor(cursor);
@@ -351,17 +363,18 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
     return () => { cancelled = true; };
     // Seek once per conversation and target; later pages come from "Load earlier replies".
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [conversation?.id, arrived]);
+  }, [conversation?.id, seek]);
   useEffect(() => {
     // A source link from "Since you left" or search opens on that whole message. Otherwise an open thread starts at
     // its root, whole (#436): its feed (the only one this ref holds) is scrolled to the top, so a long thread shows
     // its oldest replies first and the reader scrolls down. It runs again when the thread is first shown: a hidden
-    // message cannot take focus.
+    // message cannot take focus. A return to this entry keeps the place the reader left (useMessageWork).
+    if (threadRestore) return;
     const feed = scrollRef.current;
     const anchor = arrived ? document.getElementById(`message-${arrived}`) : null;
     if (anchor && feed?.contains(anchor)) { anchor.scrollIntoView({ block: 'start' }); if (revealed) anchor.focus({ preventScroll: true }); return; }
     if (feed) feed.scrollTop = 0;
-  }, [conversation?.id, arrived, arrivedLoaded, feedNode, revealed]);
+  }, [conversation?.id, arrived, arrivedLoaded, feedNode, revealed, threadRestore]);
   // Genuine replies and answers arriving in an open thread rise in gently when the reader sees them (#155,
   // UI116-5); the history the thread opens with and earlier pages never move. The thread's position owner
   // (useMessageWork) decides whether the reader follows the end.
@@ -737,7 +750,7 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
       {trayOpen ? <section id={`${conversation ? 'thread' : 'project'}-sources`} aria-label="Project materials" className="project-convo__materials">
         <div className="project-convo__section-head"><h3>Sources · saved for {project.name}</h3><span>{materialTotal}</span><button type="button" className="project-convo__tray-close" aria-label="Close sources" onClick={() => { setSourcesOpen(false); setShowMaterialForm(false); }}><Icon name="x" size={14} /></button></div>
         <div className="project-convo__tray">
-          {materialItems.map((material) => <article className="project-convo__material" key={material.materialId}><div><strong>{writable ? material.title : <Link className="project-convo__material-read" to={`/materials/${material.materialId}/versions/${material.version}`}>{material.title}</Link>}</strong><small>v{material.version} · {author(material.authorId)} · {day(material.updatedAt)}{material.url ? <> · <a href={material.url} target="_blank" rel="noreferrer">Open link</a></> : null}</small></div>{writable ? <Button variant="link" onClick={() => void cite(material)}>Discuss this version</Button> : null}</article>)}
+          {materialItems.map((material) => <article className="project-convo__material" key={material.materialId}><div><strong>{writable ? material.title : <RefLink className="project-convo__material-read" to={`/materials/${material.materialId}/versions/${material.version}`}>{material.title}</RefLink>}</strong><small>v{material.version} · {author(material.authorId)} · {day(material.updatedAt)}{material.url ? <> · <a href={material.url} target="_blank" rel="noreferrer">Open link</a></> : null}</small></div>{writable ? <Button variant="link" onClick={() => void cite(material)}>Discuss this version</Button> : null}</article>)}
           {!materialItems.length ? <p className="project-convo__muted">{writable ? "Text and links you save here can be cited in any reply." : "No sources have been saved to this project yet."}</p> : null}
           {materialOffset < materialTotal ? <Button variant="quiet" busy={moreMaterialsBusy} onClick={() => void loadMoreMaterials()}>Load more materials</Button> : null}
           {writable && !showMaterialForm ? <Button variant="secondary" icon="plus" disabled={materialBusy} onClick={() => setShowMaterialForm(true)}>Add material</Button> : null}
@@ -818,7 +831,7 @@ function ThreadReply(props: ThreadReplyProps | QueuedReplyProps) {
     <li {...touch.props} id={`message-${message.id}`} data-message-id={message.id} {...(stored.observed ? { 'data-observe-id': message.id } : {})} aria-label={mine ? 'Your message' : `${name}’s message`} tabIndex={-1} className={`project-convo__message${mine ? ' is-mine' : ''}${arrived ? ' is-arrived' : ''}${stored.continued ? ' is-continued' : ''} ${touch.props.className}`}>
       <SourceTag messageId={message.id} />
       {!mine && !stored.continued ? <AuthorFace kind={message.authorId === null ? 'agent' : 'human'} name={name} mine={mine} /> : null}
-      {!mine && !stored.continued ? <div className="project-convo__message-meta"><strong>{mine ? `${name} · you` : message.authorId === null ? <AgentAuthor message={message} owner={agentAuthorOwner(message.author, owners)} /> : <Link className="project-convo__person" to={`/dm/new?workspace=${project.workspaceId}&with=${message.authorId}`} title={`Message ${name} directly`}>{name}</Link>}</strong></div> : null}
+      {!mine && !stored.continued ? <div className="project-convo__message-meta"><strong>{mine ? `${name} · you` : message.authorId === null ? <AgentAuthor message={message} owner={agentAuthorOwner(message.author, owners)} /> : <RefLink className="project-convo__person" to={`/dm/new?workspace=${project.workspaceId}&with=${message.authorId}`} title={`Message ${name} directly`}>{name}</RefLink>}</strong></div> : null}
       <MessageContent body={message.body ? <WhenNoQuestion projectId={project.id} messageId={message.id}><p><MessageText body={message.body} people={people} /></p></WhenNoQuestion> : null} files={message.files} context={{ author: name, at: message.createdAt, caption: message.body, place: project.name, onReply: writable ? actions.onReply : undefined, onCreateTask: writable ? actions.onCreateWork : undefined }}>
         <LinkPreviews body={message.body} />
         <MessageObjects message={message} projectId={project.id} preview={preview} />

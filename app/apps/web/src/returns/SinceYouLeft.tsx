@@ -1,10 +1,11 @@
 import type { MouseEvent, ReactNode } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router';
+import { useLocation, useNavigate } from 'react-router';
 import type { ReturnItem, ReturnNextStep, ReturnSource } from '@flux/contracts';
 import { Icon } from '../ui';
 import { useShellActions } from '../app/shellContext';
 import { sourceHref } from './api';
 import './since.css';
+import { RefLink } from '../place/origin';
 
 // The rows of "Since you left" (#106) and "What matters" (#133, WhatMatters.tsx): a short list in human
 // language, every item opening its source, with no guilt (nothing to clear, no streaks). Home's
@@ -30,7 +31,7 @@ export function SourceLink({ source, className, children, label, onFollow }: { s
     if (!pathname.startsWith(href)) navigate(href);
     openDetails({ kind: source.type, id: source.id });
   };
-  return <Link to={href} className={className} onClick={onClick} aria-label={label}>{children}</Link>;
+  return <RefLink to={href} className={className} onClick={onClick} aria-label={label}>{children}</RefLink>;
 }
 
 export function Item({ item, showProject }: { item: ReturnItem; showProject?: boolean }) {

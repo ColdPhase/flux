@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
-import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
+import { useEffect, useRef, useState } from 'react';
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router';
+import { originOf } from '../place/origin';
 import { EmptyState, Spinner } from '../ui';
 import { anchorPath } from './anchors';
 import { getSession } from './api';
@@ -13,6 +14,8 @@ export function LiveOpen() {
   const { projectId = '', sessionId = '' } = useParams();
   const [search] = useSearchParams();
   const navigate = useNavigate();
+  // The origin the invitation's link was followed from survives the redirect to the session's anchor (#592).
+  const origin = useRef(originOf(useLocation().state));
   const [failed, setFailed] = useState(false);
   const invitationId = search.get('invitation');
 
@@ -20,7 +23,7 @@ export function LiveOpen() {
     const controller = new AbortController();
     getSession(sessionId, controller.signal).then((session) => {
       if (session.projectId !== projectId || session.state === 'ended' || session.state === 'ending') { setFailed(true); return; }
-      navigate(anchorPath(session), { replace: true, state: invitationId ? { liveInvitation: { sessionId: session.id, invitationId } } : null });
+      navigate(anchorPath(session), { replace: true, state: invitationId || origin.current ? { ...(invitationId ? { liveInvitation: { sessionId: session.id, invitationId } } : {}), ...(origin.current ? { origin: origin.current } : {}) } : null });
     }, (error: unknown) => {
       if (!(error instanceof DOMException && error.name === 'AbortError')) setFailed(true);
     });
