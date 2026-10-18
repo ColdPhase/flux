@@ -483,31 +483,41 @@ class LiveEditingJourney(LiveFixture):
         field, peer = await self.editor('ada'), await self.editor('kai')
         async def copied_document(page, content):
             # The viewport DOM is virtualized and includes named cursor widgets.
-            # Observe the actual editor's ordinary Select All/Copy path instead.
-            # Read the actual full clipboard after trusted Copy on both engines. WebKit exposes
-            # clipboard-read only. Wait for the fresh sentinel before editor Copy and its real
-            # replacement afterwards; an asynchronous clipboard write cannot race a probe Paste.
+            # Observe the actual editor's handled trusted Copy payload after CodeMirror has
+            # populated it. This needs no OS clipboard permission and never changes the editor.
+            nonce = str(uuid.uuid4())
             sentinel = 'fresh-copy-' + str(uuid.uuid4())
-            permissions = ['clipboard-read', 'clipboard-write'] if UI_BROWSER == 'chromium' else ['clipboard-read']
-            await page.context.grant_permissions(permissions, origin=ORIGIN)
             await page.bring_to_front()
-            await page.evaluate('value => { const probe = document.createElement("textarea"); probe.id = "live-clipboard-probe"; probe.value = value; probe.style.cssText = "position:fixed;left:0;top:0;width:12px;height:12px;z-index:2147483647"; document.body.append(probe); }', sentinel)
-            probe = page.locator('#live-clipboard-probe')
+            await content.evaluate('''(element, {nonce,sentinel}) => {
+              window.__liveCopyObservation = {nonce,seen:false,text:sentinel};
+              window.__liveCopyListener = event => {
+                if (!element.contains(event.target)) return;
+                window.__liveCopyObservation = {nonce,seen:true,text:event.clipboardData?.getData('text/plain') ?? null,
+                  trusted:event.isTrusted,handled:event.defaultPrevented,types:[...(event.clipboardData?.types ?? [])]};
+              };
+              // Window bubbling observes the original handler's payload, without intercepting it.
+              window.addEventListener('copy',window.__liveCopyListener);
+            }''', {'nonce': nonce, 'sentinel': sentinel})
             try:
-                await probe.click()
-                await page.keyboard.press('Control+a')
-                await page.keyboard.press('Control+c')
-                await page.wait_for_function('async value => (await navigator.clipboard.readText()) === value', arg=sentinel, timeout=5000)
                 await content.click()
                 await page.keyboard.press('Control+a')
                 await page.keyboard.press('Control+c')
-                await page.wait_for_function('async value => (await navigator.clipboard.readText()) !== value', arg=sentinel, timeout=5000)
-                text = await page.evaluate('() => navigator.clipboard.readText()')
+                await page.wait_for_function('nonce => window.__liveCopyObservation?.nonce === nonce && window.__liveCopyObservation.seen',
+                                             arg=nonce, timeout=5000)
+                observed = await page.evaluate('window.__liveCopyObservation')
+                self.assertTrue(observed['trusted'], 'The full-text witness must come from native trusted Copy')
+                self.assertTrue(observed['handled'], 'The editor populated the Copy payload before the observer')
+                self.assertIn('text/plain', observed['types'])
+                text = observed['text']
                 self.assertIsInstance(text, str)
+                self.assertTrue(text and text != sentinel, 'A fresh complete Copy payload replaced the sentinel')
                 self.assertLessEqual(len(text), 100_000)
                 return text
             finally:
-                await probe.evaluate('(element) => element.remove()')
+                await page.evaluate('''() => {
+                  window.removeEventListener('copy',window.__liveCopyListener);
+                  delete window.__liveCopyListener; delete window.__liveCopyObservation;
+                }''')
                 await content.click()
                 await page.keyboard.press('Control+End')
         async def confirmed_body(key, exact_local=True):
