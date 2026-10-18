@@ -3,7 +3,7 @@
 #
 #   ./scripts/check_live_editing.sh [module ...]
 #       Live-mode browser modules (default: test_live_editing test_live_map_projection
-#       test_live_map_selection) against an API with the development switch on.
+#       test_live_map_selection) against an API with live editing and diagnostic instrumentation on.
 #   ./scripts/check_live_editing.sh --two-api
 #       The Gate 3 cross-process fixture (app/tests/app/live/two-api.test.ts) against two API
 #       processes of the same image, database and origin (docs/development/live-editing-two-api.md).
@@ -13,7 +13,8 @@
 #       docs/development/live-editing-verification.md. Needs a clean checkout: the source SHA
 #       pins the evidence.
 #
-# Live editing is off in every other stack. Ports: FLUX_LIVE_EDITING_PORT (default 18691) and
+# Normal installations default to live editing; FLUX_LIVE_EDITING=off opts out. This isolated
+# fixture additionally enables diagnostics. Ports: FLUX_LIVE_EDITING_PORT (default 18691) and
 # FLUX_LIVE_EDITING_MAILPIT_PORT (default 18692). Run it alone, like the other Docker checks.
 set -eu
 
