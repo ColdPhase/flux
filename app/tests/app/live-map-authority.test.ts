@@ -122,18 +122,21 @@ test('live native delete Undo retains human project provenance and edit Undo ret
       payload:{clientCommandId:humanUndo,originalCommandIds:[removeCommand]}});assert.equal(restoredHuman.statusCode,200,restoredHuman.body);
     let saved=(await bootstrap(backend,ownerSession,sketch.id)).sketch.thoughts.find(thought=>thought.id===human.thought.id)!;
     const conversationAfter=expectStatus(await f.owner.request('GET',`/api/v1/conversations/${conversation.id}`),200) as {messages:{id:string;createdAt:string;authorId:string|null;author?:{kind:string;id:string;name:string}}[]};
-    const humanSource=conversationAfter.messages.find(message=>message.id===conversation.messages[0]!.id)!;
+    const humanSource=conversationAfter.messages.find(message=>message.id===conversation.messages[0]!.id);assert.ok(humanSource);
     assert.equal(humanSource.authorId,me.user.id);
     assert.deepEqual(saved.source?.author,{kind:'human',id:me.user.id,name:me.user.name});
     assert.equal(saved.source?.sentAt,humanSource.createdAt);assert.equal(saved.source?.projectMessageId,humanSource.id);
+    assert.deepEqual((await pool.query('SELECT source_author_id,source_author_agent_id,source_project_message_id FROM sketch_thoughts WHERE id=$1',[human.thought.id])).rows[0],
+      {source_author_id:me.user.id,source_author_agent_id:null,source_project_message_id:humanSource.id});
     const editCommand=randomUUID();const edit=await app.inject({method:'PATCH',url:`/api/v1/sketches/${sketch.id}/thoughts/${agent.thought.id}`,
       headers:{'idempotency-key':editCommand,'if-match':'1'},payload:{text:'Edited agent thought'}});assert.equal(edit.statusCode,200,edit.body);
     const agentUndo=randomUUID();const restoredAgent=await app.inject({method:'POST',url:`/api/v1/sketches/${sketch.id}/live/undo`,headers:{'idempotency-key':agentUndo},
       payload:{clientCommandId:agentUndo,originalCommandIds:[editCommand]}});assert.equal(restoredAgent.statusCode,200,restoredAgent.body);
     saved=(await bootstrap(backend,ownerSession,sketch.id)).sketch.thoughts.find(thought=>thought.id===agent.thought.id)!;
-    const sourceMessage=conversationAfter.messages.find(message=>message.id===agentMessage.messageId)!;
+    const sourceMessage=conversationAfter.messages.find(message=>message.id===agentMessage.messageId);assert.ok(sourceMessage);
+    assert.equal(sourceMessage.authorId,null);assert.ok(sourceMessage.author);
     assert.deepEqual(saved.source?.author,{kind:sourceMessage.author.kind,id:sourceMessage.author.id,name:sourceMessage.author.name});
-    assert.equal(saved.source?.projectMessageId,agentMessage.messageId);assert.equal(saved.text,'Agent source thought');
+    assert.equal(saved.source?.projectMessageId,agentMessage.messageId);assert.equal(saved.source?.sentAt,sourceMessage.createdAt);assert.equal(saved.text,'Agent source thought');
     assert.deepEqual((await pool.query('SELECT source_author_id,source_author_agent_id,source_project_message_id FROM sketch_thoughts WHERE id=$1',[agent.thought.id])).rows[0],
       {source_author_id:null,source_author_agent_id:sourceMessage.author.id,source_project_message_id:agentMessage.messageId});
   } finally {await app.close();await authority.close();assert.equal(apiEditingOutputBudget.bytes,0);}

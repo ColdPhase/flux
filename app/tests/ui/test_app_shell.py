@@ -655,9 +655,9 @@ class AppShellJourney(unittest.TestCase):
         expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
 
     def test_04aa_header_more_is_a_floating_bounded_menu(self) -> None:
-        for phone in (False, True):
-            with self.subTest(phone=phone):
-                page = self.page(phone=phone)
+        for phone, dark in ((False, False), (True, False), (False, True), (True, True)):
+            with self.subTest(phone=phone, dark=dark):
+                page = self.page(phone=phone, dark=dark)
                 workspaces = page.request.post(f"{ORIGIN}/api/v1/workspaces", data={"name": "Header menu studio"}, headers={"origin": ORIGIN})
                 self.assertEqual(workspaces.status, 201, workspaces.text())
                 workspace_id = workspaces.json()["id"]
@@ -690,6 +690,9 @@ class AppShellJourney(unittest.TestCase):
                 self.assertGreaterEqual(geometry["menu"]["top"], geometry["header"]["bottom"] - 1, geometry)
                 if phone:
                     self.assertTrue(all(height >= 44 for height in geometry["rowHeights"]), geometry)
+                mode = "phone-390x844-dpr3" if phone else "desktop-1440x900-dpr1"
+                scheme = "dark" if dark else "light"
+                shot(page, f"app-shell-project-header-more-{mode}-{scheme}-z100-chromium")
                 page.keyboard.press("Escape")
                 expect(menu).to_have_count(0)
                 expect(more).to_be_focused()
