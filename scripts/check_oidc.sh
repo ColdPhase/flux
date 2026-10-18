@@ -63,6 +63,7 @@ chmod 0444 "$FLUX_OIDC_TEST_REALM"
 
 . scripts/test_images.sh
 compose="docker compose -p $project -f docker/compose.source.yaml -f docker/compose.test.yaml -f docker/compose.oidc.test.yaml --profile test --profile oidc"
+if [ "${FLUX_OIDC_CLOSEOUT:-0}" = "1" ]; then compose="$compose --profile mcp-clients"; fi
 
 cleanup() {
   status=$?
@@ -79,7 +80,10 @@ trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
-$compose build migrate e2e
+$compose build migrate
+# compose.test declares this service by image only; naming it in `compose build` does not build
+# the Dockerfile target or tag the stage used internally by mcp-clients.
+docker build --file docker/Dockerfile --target e2e --tag "flux-e2e:${FLUX_IMAGE_TAG:-$project}" app
 if [ "${FLUX_OIDC_CLOSEOUT:-0}" = "1" ]; then $compose --profile mcp-clients build test mcp-clients; fi
 $compose up -d db migrate
 $compose --profile setup run --rm files-init
