@@ -3,7 +3,8 @@
 #
 #   ./scripts/check_live_editing.sh [module ...]
 #       Live-mode browser modules (default: test_live_editing test_live_map_projection
-#       test_live_map_selection) against an API with live editing and diagnostic instrumentation on.
+#       test_live_map_selection test_live_map_delivery_order) against an API with live editing and
+#       diagnostic instrumentation on.
 #   ./scripts/check_live_editing.sh --two-api
 #       The Gate 3 cross-process fixture (app/tests/app/live/two-api.test.ts) against two API
 #       processes of the same image, database and origin (docs/development/live-editing-two-api.md).
@@ -99,7 +100,7 @@ $compose --profile setup run --rm files-init
 $compose up -d --wait api
 
 if [ -z "$latency" ]; then
-  [ "$#" -gt 0 ] || set -- test_live_editing test_live_map_projection test_live_map_selection
+  [ "$#" -gt 0 ] || set -- test_live_editing test_live_map_projection test_live_map_selection test_live_map_delivery_order
   # FLUX_LIVE_EDITING_SHOTS=/absolute/dir keeps the modules' screenshots (the cursor module writes them).
   shots=""
   if [ -n "${FLUX_LIVE_EDITING_SHOTS:-}" ]; then mkdir -p "$FLUX_LIVE_EDITING_SHOTS"; shots="-v $FLUX_LIVE_EDITING_SHOTS:/screenshots:z -e FLUX_UI_SCREENSHOTS=/screenshots"; fi
