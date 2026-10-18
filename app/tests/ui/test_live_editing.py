@@ -1008,7 +1008,7 @@ class LiveEditingJourney(LiveFixture):
 
             # Editing the moving thought clears its old lease and refreshes its own content.
             changed = await self.api(kai, 'PATCH', f'/api/v1/sketches/{self.map_id}/thoughts/{first["id"]}',
-                {'text': 'Native edit replaces the moving thought body', 'height': first['height'] + 40}, 200,
+                {'text': 'Native edit replaces the moving thought body', 'height': first['height'] + 160}, 200,
                 {'idempotency-key': str(uuid.uuid4()), 'if-match': f'"{first["version"]}"'})
             for page in self.pages.values():
                 target = page.locator(f'.sk-node[data-id="{first["id"]}"]')
@@ -1033,6 +1033,8 @@ class LiveEditingJourney(LiveFixture):
         self.assertEqual((keyboard['text'], keyboard['x'], keyboard['y']),
                          (changed['text'], changed['x'], changed['y']))
 
+        self.assertEqual(await peer.evaluate('el => el.offsetHeight'), keyboard['height'],
+                         'The fresh native height exceeds intrinsic content before exact pointer resizing')
         bounds = await peer.bounding_box()
         zoom = bounds['width'] / keyboard['width']
         handle = await peer.locator('.sk-resize').bounding_box()
