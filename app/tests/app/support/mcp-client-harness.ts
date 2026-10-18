@@ -80,12 +80,12 @@ export async function seedOauthClient(pool: Pool, spec: ClientSpec) {
   return clientId;
 }
 
-export function cleanClientHome(spec: ClientSpec): ClientHome {
+export function cleanClientHome(spec: ClientSpec, options: { oauthFileStore?: boolean } = {}): ClientHome {
   const home = join(root, spec.key); const cwd = join(home, 'work');
   mkdirSync(cwd, { recursive: true }); mkdirSync(join(home, 'codex'), { recursive: true }); mkdirSync(join(home, 'claude'), { recursive: true });
   // The headless test container has no OS keyring/DBus session. Use Codex's supported file store consistently
   // for native login and subsequent fresh processes; OAuth still supplies every credential (never seeded tokens).
-  if (spec.client === 'codex') writeFileSync(join(home, 'codex', 'config.toml'), 'mcp_oauth_credentials_store = "file"\n', { mode: 0o600 });
+  if (spec.client === 'codex' && options.oauthFileStore !== false) writeFileSync(join(home, 'codex', 'config.toml'), 'mcp_oauth_credentials_store = "file"\n', { mode: 0o600 });
   const base = { HOME: home, DISABLE_AUTOUPDATER: '1', DISABLE_TELEMETRY: '1', CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1' };
   return spec.client === 'codex'
     ? { spec, cwd, env: { ...base, CODEX_HOME: join(home, 'codex'), MOCK_MODEL_KEY: 'not-a-vendor-key', RUST_LOG: 'warn,codex_mcp=debug,codex_rmcp_client=debug,rmcp=debug' } }
@@ -93,7 +93,7 @@ export function cleanClientHome(spec: ClientSpec): ClientHome {
 }
 
 /** The real person signs in and consents in Chromium for exactly the connection the client is for. */
-export async function authorizeInBrowser(browser: Chromium, email: string, spec: ClientSpec, url: string, observe?: (observation: OAuthBrowserObservation) => void, observeCallback?: (observation: OAuthCallbackObservation) => void) {
+export async function authorizeInBrowser(browser: Chromium, email: string, spec: ClientSpec, url: string, observe?: (observation: OAuthBrowserObservation) => void, observeCallback?: (observation: OAuthCallbackObservation) => void, privateCallback?: URL) {
   const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
   let callbackWindow = false;
   try {
@@ -126,7 +126,9 @@ export async function authorizeInBrowser(browser: Chromium, email: string, spec:
     await page.getByRole('button', { name: 'Continue to consent' }).click(); await page.waitForURL(`${origin}/consent?**`);
     observe?.({ stage: 'consent_ready' });
     await page.locator('.connection__summary').filter({ hasText: spec.label }).waitFor({ state: 'visible' });
-    const callback = page.waitForURL(oauthCallbackPattern(spec.port), { waitUntil: 'commit' }).then(() => { observe?.({ stage: 'callback_navigation' }); }).catch(() => { observe?.({ stage: 'callback_wait_failed' }); });
+    const callback = page.waitForURL(privateCallback
+      ? candidate => candidate.origin === privateCallback.origin && candidate.pathname === privateCallback.pathname
+      : oauthCallbackPattern(spec.port), { waitUntil: 'commit' }).then(() => { observe?.({ stage: 'callback_navigation' }); }).catch(() => { observe?.({ stage: 'callback_wait_failed' }); });
     callbackWindow = true;
     await page.getByRole('button', { name: 'Allow access' }).click();
     observe?.({ stage: 'consent_submitted' });

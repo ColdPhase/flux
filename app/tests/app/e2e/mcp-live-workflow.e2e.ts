@@ -10,8 +10,8 @@ import { chromium } from 'playwright';
 import { register, uniqueEmail } from '../support/http.js';
 import { password } from '../support/people.js';
 import { expect } from '../support/mcp.js';
-import { coworkProductionInvoke } from '../support/cowork-production-invoke.js';
-import { createOAuthDiagnostic, oauthComparisonOnly, oauthDefaultCallbackOnly, oauthLoginOnly } from '../support/oauth-diagnostics.js';
+import { coworkProductionInvoke, coworkProductionLogin } from '../support/cowork-production-invoke.js';
+import { createOAuthDiagnostic, oauthComparisonOnly, oauthDefaultCallbackOnly, oauthLoginOnly, oauthPrivateCallback, oauthProductionFirstLoginOnly } from '../support/oauth-diagnostics.js';
 import { authorizeInBrowser, claudeBin, cleanClientHome, clientEvents, connectClient, origin, run, scopes, seedOauthClient, sh, startFluxProxy, waitFor,
   type ClientSpec } from '../support/mcp-client-harness.js';
 
@@ -25,6 +25,7 @@ test('real configured accounts: supplied Start and Resume reach the model and pr
     const loginOnly = oauthLoginOnly(process.env);
     const compare = oauthComparisonOnly(process.env);
     const defaultCallback = oauthDefaultCallbackOnly(process.env);
+    const productionFirst = oauthProductionFirstLoginOnly(process.env);
     let diagnostic = createOAuthDiagnostic();
     const { pool } = createDatabase(process.env.DATABASE_URL!);
     const proxy = startFluxProxy(observation => diagnostic.response(observation)); await proxy.listen();
@@ -67,7 +68,7 @@ test('real configured accounts: supplied Start and Resume reach the model and pr
             clientCommandId: randomUUID(), projectId, operation, peerRequestClass: 'execute', maximumUses: 5,
             expiresAt: new Date(Date.now() + 1_800_000).toISOString() } }), 201);
         }
-        const home = cleanClientHome(spec);
+        const home = cleanClientHome(spec, { oauthFileStore: !productionFirst });
         delete home.env.MOCK_MODEL_KEY; delete home.env.ANTHROPIC_API_KEY; home.env.RUST_LOG = 'warn';
         if (loginOnly) {
           for (const key of ['OPENAI_API_KEY', 'CODEX_API_KEY', 'ANTHROPIC_API_KEY', 'OPENAI_BASE_URL']) home.env[key] = '';
@@ -80,12 +81,13 @@ test('real configured accounts: supplied Start and Resume reach the model and pr
           threadId: null, outcome: 'new', updatedAt: new Date().toISOString() };
         const config = ['-c', `mcp_servers.flux.url=${JSON.stringify(coworkHostUrl(binding))}`,
           '-c', 'mcp_servers.flux.required=true'];
-        const clientId = await seedOauthClient(pool, spec);
+        // The actual production first-login path relies solely on native CIMD/discovery. No seeded client or add.
+        const clientId = productionFirst ? undefined : await seedOauthClient(pool, spec);
         const fixtureConfig = [...config, '-c', `mcp_servers.flux.oauth.client_id=${JSON.stringify(clientId)}`,
           '-c', `mcp_oauth_callback_port=${spec.port}`, ...(defaultCallback ? [] : ['-c', `mcp_servers.flux.oauth.callback_url=${JSON.stringify(`http://127.0.0.1:${spec.port}/callback`)}`]),
           '-c', 'mcp_oauth_credentials_store="file"'];
         if (client === 'codex') {
-          const variants = compare ? ['persisted_bound', 'inline_bound'] as const
+          const variants = productionFirst ? ['production_first_login'] as const : compare ? ['persisted_bound', 'inline_bound'] as const
             : defaultCallback ? ['inline_bound'] as const : ['persisted_bound'] as const;
           const outcomes: boolean[] = [];
           for (const variant of variants) {
@@ -99,8 +101,8 @@ test('real configured accounts: supplied Start and Resume reach the model and pr
               await pool.query('DELETE FROM oauth_consent WHERE client_id=$1', [clientId]);
             }
             diagnostic.browser({ stage: 'native_login_started' });
-            let login = run('codex', variant === 'persisted_bound'
-              ? ['mcp', 'add', 'flux', '--url', coworkHostUrl(binding), '--oauth-client-id', clientId, '-c', `mcp_oauth_callback_port=${spec.port}`]
+            let login = run('codex', variant === 'production_first_login' ? coworkProductionLogin(binding) : variant === 'persisted_bound'
+              ? ['mcp', 'add', 'flux', '--url', coworkHostUrl(binding), '--oauth-client-id', clientId!, '-c', `mcp_oauth_callback_port=${spec.port}`]
               : [...fixtureConfig, 'mcp', 'login', 'flux', '--no-browser'], target.env, target.cwd);
             let exitCode: number | null = null;
             try {
@@ -114,7 +116,9 @@ test('real configured accounts: supplied Start and Resume reach the model and pr
                 match = await waitFor(login, pattern, 'persisted bound OAuth');
               }
               diagnostic.browser({ stage: 'authorization_received' });
-              await authorizeInBrowser(browser, email, spec, match[1]!, diagnostic.browser, diagnostic.callback);
+              const callback = productionFirst ? oauthPrivateCallback(match[1]!) : undefined;
+              const callbackSpec = callback ? { ...spec, port: Number(callback.port || 80) } : spec;
+              await authorizeInBrowser(browser, email, callbackSpec, match[1]!, diagnostic.browser, diagnostic.callback, callback);
               exitCode = await login.done;
             } catch { login.kill(); exitCode = await login.done; }
             finally {

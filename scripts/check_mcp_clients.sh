@@ -13,6 +13,10 @@
 # (client versions and output) on the PR.
 set -eu
 
+if [ "${FLUX_TEST_MCP_OAUTH_PRODUCTION_FIRST:-0}" = 1 ] && { [ "${FLUX_TEST_MCP_OAUTH_ONLY:-0}" != 1 ] || [ "${FLUX_TEST_MCP_OAUTH_COMPARE:-0}" = 1 ] || [ "${FLUX_TEST_MCP_OAUTH_CALLBACK_DEFAULT:-0}" = 1 ]; }; then
+  echo "Production first-login requires its own explicit Codex login-only selection." >&2; exit 2
+fi
+
 if [ "${FLUX_TEST_MCP_OAUTH_COMPARE:-0}" = 1 ] && [ "${FLUX_TEST_MCP_OAUTH_ONLY:-0}" != 1 ]; then
   echo "OAuth comparison requires explicit login-only mode." >&2; exit 2
 fi
@@ -97,7 +101,7 @@ fi
 $compose up -d db migrate
 $compose --profile setup run --rm files-init
 if [ "${FLUX_TEST_MCP_LIVE_WORKFLOW:-0}" = 1 ]; then
-  $compose run --rm -e FLUX_TEST_MCP_LIVE_WORKFLOW=1 -e FLUX_TEST_MCP_LIVE_CLIENT="${FLUX_TEST_MCP_LIVE_CLIENT:-}" -e FLUX_TEST_MCP_OAUTH_ONLY="${FLUX_TEST_MCP_OAUTH_ONLY:-0}" -e FLUX_TEST_MCP_OAUTH_COMPARE="${FLUX_TEST_MCP_OAUTH_COMPARE:-0}" -e FLUX_TEST_MCP_OAUTH_CALLBACK_DEFAULT="${FLUX_TEST_MCP_OAUTH_CALLBACK_DEFAULT:-0}" mcp-clients sh -c \
+  $compose run --rm -e FLUX_TEST_MCP_LIVE_WORKFLOW=1 -e FLUX_TEST_MCP_LIVE_CLIENT="${FLUX_TEST_MCP_LIVE_CLIENT:-}" -e FLUX_TEST_MCP_OAUTH_ONLY="${FLUX_TEST_MCP_OAUTH_ONLY:-0}" -e FLUX_TEST_MCP_OAUTH_COMPARE="${FLUX_TEST_MCP_OAUTH_COMPARE:-0}" -e FLUX_TEST_MCP_OAUTH_CALLBACK_DEFAULT="${FLUX_TEST_MCP_OAUTH_CALLBACK_DEFAULT:-0}" -e FLUX_TEST_MCP_OAUTH_PRODUCTION_FIRST="${FLUX_TEST_MCP_OAUTH_PRODUCTION_FIRST:-0}" mcp-clients sh -c \
     'if [ "$FLUX_TEST_MCP_LIVE_CLIENT" != codex ]; then node apps/runtime/dist/install/main.js && claude --version || exit; fi; codex --version && sha256sum tests/app/e2e/mcp-live-workflow.e2e.ts tests/app/support/mcp-client-harness.ts tests/app/support/oauth-diagnostics.ts tests/app/support/cowork-production-invoke.ts && exec node_modules/.bin/tsx --test tests/app/e2e/mcp-live-workflow.e2e.ts'
   exit 0
 fi

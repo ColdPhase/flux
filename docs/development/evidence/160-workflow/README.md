@@ -576,3 +576,30 @@ All #152 AC1–AC5 and #160 AC1–AC5 remain whole contracts, not partially acce
 from these rows. The entire integrated application/release pass and eligible
 independent approval remain separate. #616 stays Draft; no new full review was
 requested, preserving the agreed comprehensive-review/final-delta limit.
+
+### Exact clean first-login selector and live adapter gap (static preparation)
+
+[Activation/adapter gap](activation-adapter-gap.md) now separates the additional
+persisted-bound cache control from a prepared **actual-production-first-login**
+model-free selector. The latter uses the exact inline launcher login command,
+no seeded registration/add/client/callback override and no configured native
+file-store. Its private dynamic loopback callback never enters diagnostics.
+It is unrun. New selector/privacy/argv regressions await Docker/CI; static shell,
+foundation/link and whitespace checks passed. No product source changed.
+
+A separately granted network-none metadata micro confirmed all requested
+app-server methods in pinned0.160.1; the [public extract](codex-0.160.1-app-server-extract.json)
+records actual binary/image, required parameter subsets, terminal0 and cleanup.
+Two preceding schema generations had extractor read EACCES (outer terminal1),
+preserved separately; the final no-bind extraction passed. No native server,
+auth, model, provider mount, build or application suite was run. Resource-read's
+parameter definition was omitted by the small filename filter and remains a
+narrow metadata gap. Presence in a schema does not prove runtime behavior.
+
+The gap note proposes a private owned app-server adapter using existing native
+OAuth and canonical Flux state; it does not implement/accept a managed control
+protocol. Clean setup, actual current-bundle loading, busy safe checkpoints,
+zero-model idle wake, Pause/Stop acknowledgement and every whole-issue matrix
+row remain required. Parent must settle the minimum contract amendment before
+product code. Heavy application slot remains with the other author; no further
+run is authorized by this note.

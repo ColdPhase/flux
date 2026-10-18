@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { createOAuthDiagnostic, oauthBrowserFailure, oauthComparisonOnly, oauthDefaultCallbackOnly, oauthNativeErrorMarkers, oauthCallbackPattern, oauthCallbackTarget, oauthHttpObservation, oauthLoginOnly } from './support/oauth-diagnostics.js';
+import { createOAuthDiagnostic, oauthBrowserFailure, oauthComparisonOnly, oauthDefaultCallbackOnly, oauthNativeErrorMarkers, oauthCallbackPattern, oauthCallbackTarget, oauthHttpObservation, oauthLoginOnly, oauthPrivateCallback, oauthProductionFirstLoginOnly } from './support/oauth-diagnostics.js';
 
 test('OAuth diagnostics expose only bounded fixed codes/stages/status and callback completion', () => {
   const secret = 'SENSITIVE_NEVER_EMIT';
@@ -38,6 +38,23 @@ test('login-only is an explicit Codex-only mode and refuses a missing workflow o
   assert.throws(() => oauthComparisonOnly({ ...env, FLUX_TEST_MCP_OAUTH_COMPARE: '1', FLUX_TEST_MCP_OAUTH_ONLY: '0' }));
   assert.throws(() => oauthLoginOnly({ ...env, FLUX_TEST_MCP_LIVE_CLIENT: 'claude' }));
   assert.throws(() => oauthLoginOnly({ ...env, FLUX_TEST_MCP_LIVE_WORKFLOW: '0' }));
+  assert.equal(oauthProductionFirstLoginOnly({}), false);
+  assert.equal(oauthProductionFirstLoginOnly({ ...env, FLUX_TEST_MCP_OAUTH_PRODUCTION_FIRST: '1' }), true);
+  for (const conflict of ['FLUX_TEST_MCP_OAUTH_COMPARE', 'FLUX_TEST_MCP_OAUTH_CALLBACK_DEFAULT'])
+    assert.throws(() => oauthProductionFirstLoginOnly({ ...env, FLUX_TEST_MCP_OAUTH_PRODUCTION_FIRST: '1', [conflict]: '1' }));
+  assert.throws(() => oauthProductionFirstLoginOnly({ ...env, FLUX_TEST_MCP_OAUTH_ONLY: '0', FLUX_TEST_MCP_OAUTH_PRODUCTION_FIRST: '1' }));
+});
+
+test('production first-login derives only its private native loopback callback without exposing inputs on refusal', () => {
+  const secret = 'PRIVATE_NATIVE_CALLBACK';
+  const authorization = (redirect: string) => `https://fixture.invalid/authorize?state=${secret}&redirect_uri=${encodeURIComponent(redirect)}`;
+  const callback = oauthPrivateCallback(authorization(`http://[::1]:41357/callback/${secret}`));
+  assert.equal(callback.port, '41357'); assert.equal(callback.pathname, `/callback/${secret}`);
+  assert.equal(oauthPrivateCallback(authorization('http://localhost:41358/callback')).port, '41358');
+  for (const redirect of ['https://outside.invalid/callback', 'http://127.0.0.1:41357/other',
+    `http://user:${secret}@127.0.0.1:41357/callback`, `http://127.0.0.1:41357/callback#${secret}`, 'invalid']) {
+    assert.throws(() => oauthPrivateCallback(authorization(redirect)), error => error instanceof Error && !error.message.includes(secret) && !error.message.includes(redirect));
+  }
 });
 
 

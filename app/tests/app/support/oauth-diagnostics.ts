@@ -115,6 +115,24 @@ export function oauthDefaultCallbackOnly(env: Record<string, string | undefined>
   if (!oauthLoginOnly(env) || oauthComparisonOnly(env)) throw new Error('Default-callback control requires inline login-only mode.');
   return true;
 }
+/** Exact supplied first-login command, without fixture registration or native-config overrides. */
+export function oauthProductionFirstLoginOnly(env: Record<string, string | undefined>) {
+  if (env.FLUX_TEST_MCP_OAUTH_PRODUCTION_FIRST !== '1') return false;
+  if (!oauthLoginOnly(env) || oauthComparisonOnly(env) || oauthDefaultCallbackOnly(env))
+    throw new Error('Production first-login requires its own explicit Codex login-only selection.');
+  return true;
+}
+/** Private callback routing only. Never log the returned URL, authorization URL or their query values. */
+export function oauthPrivateCallback(rawAuthorizationUrl: string): URL {
+  try {
+    const callback = new URL(new URL(rawAuthorizationUrl).searchParams.get('redirect_uri') ?? '');
+    const target = oauthCallbackTarget(callback.href, Number(callback.port || 80));
+    if (callback.protocol === 'http:' && !callback.username && !callback.password && !callback.hash
+      && target?.loopback && target.path !== 'other' && Number(callback.port || 80) > 0)
+      return callback;
+  } catch { /* Fixed failure below never includes input. */ }
+  throw new Error('Native authorization did not offer a supported private loopback callback.');
+}
 /** Observed fixed words on native error lines, not inferred causes; ordinary authorization URLs are ignored. */
 export function oauthNativeErrorMarkers(nativeOutput: string) {
   const errors = nativeOutput.split('\n').filter(line => /^\s*(?:error:|caused by:|\d+:)/i.test(line)).join('\n');

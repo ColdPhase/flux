@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
 import { coworkHostScope, type CoworkHostBinding } from '../../tooling/cowork.js';
-import { coworkProductionInvoke } from './support/cowork-production-invoke.js';
+import { coworkProductionInvoke, coworkProductionLogin } from './support/cowork-production-invoke.js';
 
 test('production-parity invoke keeps auth/backend overrides out and binds Resume to its own thread', () => {
   const binding: CoworkHostBinding = { schema: 'flux.cowork.host/1', ...coworkHostScope('https://fixture.invalid', randomUUID(), randomUUID(), 'codex', '/isolated'),
@@ -19,4 +19,6 @@ test('production-parity invoke keeps auth/backend overrides out and binds Resume
   const threadId = randomUUID(), resume = coworkProductionInvoke({ ...binding, threadId }, 'resume');
   assert.equal(resume[resume.indexOf('resume') + 1], threadId);
   assert.throws(() => coworkProductionInvoke({ ...binding, threadId: '--last' }, 'resume'));
+  assert.deepEqual(coworkProductionLogin(binding), ['-c', `mcp_servers.flux.url=${JSON.stringify(`https://fixture.invalid/mcp?flux_connection=${binding.connectionId}&flux_project=${binding.projectId}`)}`,
+    '-c', 'mcp_servers.flux.required=true', 'mcp', 'login', 'flux']);
 });
