@@ -92,8 +92,8 @@ a fallback if the separate-server integration fails calibration, not an implied
 ability to send large updates through the unchanged Fastify stream server.
 
 Each subscription is bound to a server-issued connection/room identity, current
-session, resource ID and generation. Actor ID, display name, cursor label and colour
-come from server identity; a client cannot set another participant's identity.
+session, resource ID and generation. Actor ID, display name and cursor label come
+from server identity; a client cannot set another participant's identity.
 Client update UUIDs are receipts, never capabilities. Resolve the existing policy at
 subscribe, every write and immediately before delivery; preserve native access-row
 locking/order for writes and serialize revocation with pending delivery. Drop queued
@@ -133,7 +133,18 @@ Expire after five seconds, sweep at least once per second, and send leave on
 blur/navigation/close when possible. Movement/cursor updates also renew activity.
 Do not replay expired presence after reconnect/restart. Protocol generations and
 terminal sequence watermarks prevent late packets from resurrecting ended activity.
-Participant names supplement colour; motion is restrained and respects reduced motion.
+Participant names identify people; collaboration indicators follow the final
+design's monochrome tokens. Motion is restrained and respects reduced motion.
+
+The independent visual assessment of2026-10-18 found that floating name pills
+obscured map thoughts and Wiki prose. Keep full names in the existing People
+strips (with the current Wiki line), the actual cursor/caret and their accessible
+identity. A map cursor may show its nearby name only when its bounded label box
+does not overlap any current thought; otherwise its name stays in the People
+strip. Wiki caret names stay in that strip rather than floating over editor
+text. No extra colour system, geometry polling, inline editor widget or new
+interaction is introduced. Verify the actual renders and existing selection/
+cursor journeys at the composed candidate.
 
 Proposed bounded budgets for calibration: 64 KiB inbound update/frame, chunked initial
 sync, 2 KiB presence, at most 200 native IDs in a selection/move (existing map limit),
@@ -385,8 +396,8 @@ by deduplicated receipt lookup. Save never reports success while local text is p
 
 ## Independent verification and latency gate
 
-**Later founder direction, 2026-10-18:** the200 ms target is retained, while
-the measured213.167416 ms map500/drag200 result is explicitly accepted as a
+**Later founder direction, 2026-10-18:** the 200 ms target is retained, while
+the measured 213.167416 ms map500/drag200 result is explicitly accepted as a
 small departure for this delivery. See the [acceptance record and limits](live-editing-verification.md#founder-acceptance-of-measured-latency-2026-10-18).
 The historical strict gate below and its raw failures are not rewritten. This
 exception does not weaken live interaction, privacy, authority, recovery,
@@ -524,9 +535,9 @@ implementation, visual, performance or release acceptance.
 The founder's current-session clarification requires existing PR #613 to complete
 all of #228, including the original gates, integrated criteria and independent
 functional/visual acceptance. The earlier partial deliveries and measurements
-retain their exact source pins. The earlier220.806 ms observation remains a
-failure against the strict200 ms gate. The later founder direction above accepts
-the complete213.167416 ms observation as a specific delivery exception; it does
+retain their exact source pins. The earlier 220.806 ms observation remains a
+failure against the strict 200 ms gate. The later founder direction above accepts
+the complete 213.167416 ms observation as a specific delivery exception; it does
 not by itself accept or enable the whole candidate.
 
 The completed normal installation provides live map/wiki editing without a
