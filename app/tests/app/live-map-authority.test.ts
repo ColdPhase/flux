@@ -13,14 +13,17 @@ import { prepareNativeMap } from '../../apps/server/src/editing/native-map-journ
 import { transactionEventSession } from '../../apps/server/src/work/transaction-events.js';
 import { sketchRoutes } from '../../apps/server/src/sketches/routes.js';
 import { editingRoutes } from '../../apps/server/src/editing/routes.js';
+import { decodeMapChange } from '../../apps/server/src/editing/map-state.js';
 import { apiEditingOutputBudget } from '../../apps/server/src/editing/output.js';
 import { diskFileStorage } from '../../apps/server/src/files/storage.js';
 import type { SessionContext,SessionResolver } from '../../apps/server/src/identity/session.js';
 import { db,pool } from './support/db.js';
 import { addMember,expectStatus,grant,person,project,workspace } from './support/people.js';
+import { actionScene } from './support/mcp-actions.js';
+import { toolValue } from './support/mcp.js';
 const filesDir=process.env.FLUX_TEST_FILES_DIR??'/data/files';
 const refused=(code:string)=>(error:unknown)=>error instanceof Error&&'code' in error&&error.code===code;
-async function context(user:Awaited<ReturnType<typeof person>>):Promise<SessionContext> {
+async function context(user:{id:string}):Promise<SessionContext> {
   const row=(await pool.query('SELECT s.id,s.expires_at,u.name,u.email FROM auth_sessions s JOIN auth_users u ON u.id=s.user_id WHERE s.user_id=$1 ORDER BY s.created_at DESC LIMIT 1',[user.id])).rows[0];
   return{sessionId:row.id,expiresAt:row.expires_at,principal:{kind:'human',id:user.id},user:{id:user.id,name:row.name,email:row.email}};
 }
@@ -40,6 +43,14 @@ function native(session:SessionContext,sketchId:string,commandId:string,paramete
 async function delta(backend:ReturnType<typeof mapBackend>,session:SessionContext,head:LiveMapBootstrap,after:number) {
   const deltas:LiveMapDelta[]=[];await backend.deliver(who(session),head.resourceId,head.generation,after,result=>{if(result.delta)deltas.push(result.delta);});return deltas[0]??null;
 }
+
+test('legacy retained DM-source journal entries normalize before native replay comparison',()=>{
+  const legacy={id:randomUUID(),sketchId:randomUUID(),text:'A retained DM source',x:1,y:2,width:184,height:72,shape:'card' as const,placement:null,
+    source:{authorId:randomUUID(),authorName:'A person',sentAt:'2026-01-01T00:00:00.000Z',dmId:randomUUID(),messageId:randomUUID()},
+    createdBy:{kind:'human' as const,id:randomUUID(),name:'A person'},version:1,createdAt:'2026-01-01T00:00:00.000Z',updatedAt:'2026-01-01T00:00:00.000Z'};
+  const change=decodeMapChange({sketchBefore:null,sketchAfter:null,thoughts:[{id:legacy.id,before:legacy,after:null}],links:[],dependencies:[],removedThoughts:[],clearedLeaseIds:[]});
+  assert.deepEqual(change.thoughts[0]!.before!.source,{...legacy.source,authorKind:'human',projectMessageId:null,sentAt:new Date(legacy.source.sentAt)});
+});
 
 test('atomic500-thought bootstrap/200-position live preview is visible before native drop and binds one real connection', {timeout:15000},async()=>{
   const f=await scene(500);const backend=mapBackend({pool});const authority=mapAuthority(backend,apiEditingOutputBudget);
@@ -83,6 +94,48 @@ test('server-journal grouped undo is atomic, immutable on exact retry, and refus
     await assert.rejects(authority.undo(f.peerSession,f.sketch.id,{clientCommandId:randomUUID(),originalCommandIds:[own]}),refused('EDITING_UNDO_CONFLICT'));
     assert.equal((await delta(backend,f.peerSession,head,0))?.sequence,1);
   } finally {await authority.close();assert.equal(apiEditingOutputBudget.bytes,0);}
+});
+
+test('live native delete Undo retains human project provenance and edit Undo retains agent provenance', {timeout:30000},async()=>{
+  const f=await actionScene(pool);const me=expectStatus(await f.owner.request('GET','/api/v1/me'),200) as {user:{id:string}};
+  const ownerSession=await context({id:me.user.id});const backend=mapBackend({pool});const authority=mapAuthority(backend,apiEditingOutputBudget);
+  const sessions:SessionResolver={async requirePrincipal(){return ownerSession;},async resolveSession(){return ownerSession;}};const app=Fastify();
+  await app.register(sketchRoutes,{db,sessions,storage:await diskFileStorage(filesDir),developmentEditing:true,liveBackend:()=>backend});
+  await app.register(editingRoutes,{sessions,authority:null,maps:authority,outputBudget:apiEditingOutputBudget});
+  try {
+    const conversation=expectStatus(await f.owner.request('POST',`/api/v1/projects/${f.projectId}/conversations`,{body:{body:'Human-authored source',clientMessageId:randomUUID()}}),201) as {id:string;messages:{id:string}[]};
+    const replyGrant=await f.grant('conversation.reply','execute');
+    const agentMessage=toolValue(await f.tool('flux_reply_in_conversation',{projectId:f.projectId,runtimeSessionId:f.runtimeSessionId,grantId:replyGrant.id,
+      peerRequestClass:'execute',clientCommandId:randomUUID(),conversationId:conversation.id,message:{body:'Agent-authored source'}})) as {messageId:string};
+    const sketch=expectStatus(await f.owner.request('POST',`/api/v1/workspaces/${f.workspaceId}/sketches`,{body:{title:'Source Undo',scope:'project',projectId:f.projectId}}),201) as Sketch;
+    const head=await bootstrap(backend,ownerSession,sketch.id);assert.equal(head.sequence,0);
+    const add=async(sourceProjectMessageId:string,text:string,x:number)=>{
+      const commandId=randomUUID();const response=await app.inject({method:'POST',url:`/api/v1/sketches/${sketch.id}/thoughts`,headers:{'idempotency-key':commandId},
+        payload:{id:randomUUID(),text,x,y:40,sourceProjectMessageId}});
+      assert.equal(response.statusCode,201,response.body);return{commandId,thought:(JSON.parse(response.body) as {thought:Thought}).thought};
+    };
+    const human=await add(conversation.messages[0]!.id,'Human source thought',40);
+    const agent=await add(agentMessage.messageId,'Agent source thought',280);
+    const removeCommand=randomUUID();const removed=await app.inject({method:'DELETE',url:`/api/v1/sketches/${sketch.id}/thoughts/${human.thought.id}`,
+      headers:{'idempotency-key':removeCommand,'if-match':'1'}});assert.equal(removed.statusCode,204,removed.body);
+    const humanUndo=randomUUID();const restoredHuman=await app.inject({method:'POST',url:`/api/v1/sketches/${sketch.id}/live/undo`,headers:{'idempotency-key':humanUndo},
+      payload:{clientCommandId:humanUndo,originalCommandIds:[removeCommand]}});assert.equal(restoredHuman.statusCode,200,restoredHuman.body);
+    let saved=(await bootstrap(backend,ownerSession,sketch.id)).sketch.thoughts.find(thought=>thought.id===human.thought.id)!;
+    const conversationAfter=expectStatus(await f.owner.request('GET',`/api/v1/conversations/${conversation.id}`),200) as {messages:{id:string;createdAt:string;author:{kind:string;id:string;name:string}}[]};
+    const humanSource=conversationAfter.messages.find(message=>message.id===conversation.messages[0]!.id)!;
+    assert.deepEqual(saved.source?.author,{kind:humanSource.author.kind,id:humanSource.author.id,name:humanSource.author.name});
+    assert.equal(saved.source?.sentAt,humanSource.createdAt);assert.equal(saved.source?.projectMessageId,humanSource.id);
+    const editCommand=randomUUID();const edit=await app.inject({method:'PATCH',url:`/api/v1/sketches/${sketch.id}/thoughts/${agent.thought.id}`,
+      headers:{'idempotency-key':editCommand,'if-match':'1'},payload:{text:'Edited agent thought'}});assert.equal(edit.statusCode,200,edit.body);
+    const agentUndo=randomUUID();const restoredAgent=await app.inject({method:'POST',url:`/api/v1/sketches/${sketch.id}/live/undo`,headers:{'idempotency-key':agentUndo},
+      payload:{clientCommandId:agentUndo,originalCommandIds:[editCommand]}});assert.equal(restoredAgent.statusCode,200,restoredAgent.body);
+    saved=(await bootstrap(backend,ownerSession,sketch.id)).sketch.thoughts.find(thought=>thought.id===agent.thought.id)!;
+    const sourceMessage=conversationAfter.messages.find(message=>message.id===agentMessage.messageId)!;
+    assert.deepEqual(saved.source?.author,{kind:sourceMessage.author.kind,id:sourceMessage.author.id,name:sourceMessage.author.name});
+    assert.equal(saved.source?.projectMessageId,agentMessage.messageId);assert.equal(saved.text,'Agent source thought');
+    assert.deepEqual((await pool.query('SELECT source_author_id,source_author_agent_id,source_project_message_id FROM sketch_thoughts WHERE id=$1',[agent.thought.id])).rows[0],
+      {source_author_id:null,source_author_agent_id:sourceMessage.author.id,source_project_message_id:agentMessage.messageId});
+  } finally {await app.close();await authority.close();assert.equal(apiEditingOutputBudget.bytes,0);}
 });
 
 test('native deletion/link restore keep monotonic thought versions and link epochs; old HTTP/core replay never creates new graph state', {timeout:15000},async()=>{
