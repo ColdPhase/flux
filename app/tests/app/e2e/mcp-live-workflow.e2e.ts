@@ -43,7 +43,7 @@ test('real configured accounts: supplied Start and Resume reach the model and pr
           reviewCriteria: 'A sourced, concise comparison; no unsupported external claims.',
           allowedWork: 'Within the granted actions, take and claim the task, then pause it with a checkpoint containing observed source coverage and missing context. '
             + 'Leave the task open for a later result. On Resume compare source versions, reread any changed plan, and record a native result explaining the current plan. '
-            + 'Stop after that bounded step. Never use another account, modify software or send external messages.' } }), 200);
+            + 'Stop after that bounded step. Never use another account, modify software or send external messages.' } }), 201);
         const agent = expect(await owner.request('POST', `/api/v1/workspaces/${ws.id}/agents`,
           { body: { name: spec.label, owner: 'self' } }), 201);
         expect(await owner.request('POST', `/api/v1/projects/${projectId}/grants`,

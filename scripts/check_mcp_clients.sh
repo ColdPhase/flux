@@ -65,12 +65,17 @@ trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
-$compose build migrate test mcp-clients pushmock
+if [ "${FLUX_TEST_MCP_LIVE_WORKFLOW:-0}" = 1 ] && [ "${FLUX_TEST_MCP_REUSE_IMAGES:-0}" = 1 ]; then
+  : "${FLUX_IMAGE_TAG:?Explicit unchanged built-image tag required for local fixture-only reuse}"
+  for image in $($compose config --images); do docker image inspect "$image" >/dev/null; done
+else
+  $compose build migrate test mcp-clients pushmock
+fi
 $compose up -d db migrate
 $compose --profile setup run --rm files-init
 if [ "${FLUX_TEST_MCP_LIVE_WORKFLOW:-0}" = 1 ]; then
   $compose run --rm -e FLUX_TEST_MCP_LIVE_WORKFLOW=1 mcp-clients sh -c \
-    'node apps/runtime/dist/install/main.js && codex --version && claude --version && exec node_modules/.bin/tsx --test tests/app/e2e/mcp-live-workflow.e2e.ts'
+    'node apps/runtime/dist/install/main.js && codex --version && claude --version && sha256sum tests/app/e2e/mcp-live-workflow.e2e.ts && exec node_modules/.bin/tsx --test tests/app/e2e/mcp-live-workflow.e2e.ts'
   exit 0
 fi
 # The changed authenticated boundary is exercised through every maintained MCP domain/authority contract in both eras.
