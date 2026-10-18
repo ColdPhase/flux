@@ -52,7 +52,7 @@ export function createOAuthDiagnostic() {
     },
     report(nativeOutput: string, exitCode: number | null) {
       return { schema: 'flux.oauth-diagnostic/1' as const, stages: [...stages], http: [...http], callbacks: [...callbacks], callbackCompleted,
-        observedCodes: oauthObservedCodes(nativeOutput), nativeExitCode: exitCode !== null && Number.isInteger(exitCode) && exitCode >= 0 && exitCode <= 255 ? exitCode : null };
+        observedCodes: oauthObservedCodes(nativeOutput), observedNativeErrorMarkers: oauthNativeErrorMarkers(nativeOutput), nativeExitCode: exitCode !== null && Number.isInteger(exitCode) && exitCode >= 0 && exitCode <= 255 ? exitCode : null };
     },
   };
 }
@@ -107,4 +107,16 @@ export function oauthComparisonOnly(env: Record<string, string | undefined>) {
   if (env.FLUX_TEST_MCP_OAUTH_COMPARE !== '1') return false;
   if (!oauthLoginOnly(env)) throw new Error('OAuth comparison requires explicit login-only mode.');
   return true;
+}
+
+
+export function oauthDefaultCallbackOnly(env: Record<string, string | undefined>) {
+  if (env.FLUX_TEST_MCP_OAUTH_CALLBACK_DEFAULT !== '1') return false;
+  if (!oauthLoginOnly(env) || oauthComparisonOnly(env)) throw new Error('Default-callback control requires inline login-only mode.');
+  return true;
+}
+/** Observed fixed words on native error lines, not inferred causes; ordinary authorization URLs are ignored. */
+export function oauthNativeErrorMarkers(nativeOutput: string) {
+  const errors = nativeOutput.split('\n').filter(line => /^\s*(?:error:|caused by:|\d+:)/i.test(line)).join('\n');
+  return (['state', 'issuer', 'redirect', 'client', 'config'] as const).filter(marker => new RegExp(`\\b${marker === 'config' ? 'config(?:uration)?' : marker}(?:[_ -](?:id|uri|url|configuration))?\\b`, 'i').test(errors));
 }

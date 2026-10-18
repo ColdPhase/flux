@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { createOAuthDiagnostic, oauthBrowserFailure, oauthComparisonOnly, oauthCallbackPattern, oauthCallbackTarget, oauthHttpObservation, oauthLoginOnly } from './support/oauth-diagnostics.js';
+import { createOAuthDiagnostic, oauthBrowserFailure, oauthComparisonOnly, oauthDefaultCallbackOnly, oauthNativeErrorMarkers, oauthCallbackPattern, oauthCallbackTarget, oauthHttpObservation, oauthLoginOnly } from './support/oauth-diagnostics.js';
 
 test('OAuth diagnostics expose only bounded fixed codes/stages/status and callback completion', () => {
   const secret = 'SENSITIVE_NEVER_EMIT';
@@ -32,6 +32,8 @@ test('login-only is an explicit Codex-only mode and refuses a missing workflow o
   assert.equal(oauthLoginOnly({}), false);
   const env = { FLUX_TEST_MCP_OAUTH_ONLY: '1', FLUX_TEST_MCP_LIVE_WORKFLOW: '1', FLUX_TEST_MCP_LIVE_CLIENT: 'codex' };
   assert.equal(oauthLoginOnly(env), true);
+  assert.equal(oauthDefaultCallbackOnly({ ...env, FLUX_TEST_MCP_OAUTH_CALLBACK_DEFAULT: '1' }), true);
+  assert.throws(() => oauthDefaultCallbackOnly({ ...env, FLUX_TEST_MCP_OAUTH_CALLBACK_DEFAULT: '1', FLUX_TEST_MCP_OAUTH_COMPARE: '1' }));
   assert.equal(oauthComparisonOnly({ ...env, FLUX_TEST_MCP_OAUTH_COMPARE: '1' }), true);
   assert.throws(() => oauthComparisonOnly({ ...env, FLUX_TEST_MCP_OAUTH_COMPARE: '1', FLUX_TEST_MCP_OAUTH_ONLY: '0' }));
   assert.throws(() => oauthLoginOnly({ ...env, FLUX_TEST_MCP_LIVE_CLIENT: 'claude' }));
@@ -66,4 +68,12 @@ test('frozen callback regex escaping and safe target classes separate matching f
   assert.equal(oauthBrowserFailure(`arbitrary private browser failure ${secret}`), 'unknown');
   for (let index = 0; index < 100; index++) diagnostic.callback({ phase: 'request', target });
   assert.equal(diagnostic.report('', 1).callbacks.length, 16);
+});
+
+
+test('native error markers exclude ordinary authorization URLs and never disclose native messages', () => {
+  const secret = 'SENSITIVE_NATIVE_ERROR';
+  assert.deepEqual(oauthNativeErrorMarkers(`https://fixture.invalid/authorize?state=${secret}&client_id=${secret}`), []);
+  assert.deepEqual(oauthNativeErrorMarkers(`Error: issuer mismatch ${secret}\n  0: redirect_uri refused ${secret}\nCaused by: client configuration ${secret}`), ['issuer', 'redirect', 'client', 'config']);
+  assert.ok(!JSON.stringify(createOAuthDiagnostic().report(`Error: state mismatch ${secret}`, 1)).includes(secret));
 });

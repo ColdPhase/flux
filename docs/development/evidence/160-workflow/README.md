@@ -364,3 +364,24 @@ receipt is `/tmp/flux160-oauth-compare.log`. Both native legs together lasted
 after cleanup, and the shared heavy slot was explicitly released. No production
 fix, Claude retry, account fallback or full issue acceptance occurred. #616
 remains Draft; all whole #152/#160 criteria and review limits are unchanged.
+
+### Prepared single default-callback control
+
+The d401 comparison remains mixed: inline explicitly sets `oauth.callback_url`,
+whereas the persisted add command does not. Neither storage nor inline
+configuration in general has been established as the cause. The fixture-owned
+persisted HOME was destroyed by required cleanup, so exact saved callback field
+values were not recovered; the available observation is expected-port/base-path
+classification and the exact checked-in native command composition. Global
+configuration/history is not a substitute for that missing fixture artifact.
+
+A separately guarded `FLUX_TEST_MCP_OAUTH_CALLBACK_DEFAULT=1` login-only control
+omits only the inline explicit callback URL, keeping the bound URL, client
+registration shape, global callback port and file credential mode. It cannot
+select the two-leg comparison or a model/provider path. The original d401 random
+client/owner data no longer exists after cleanup; the control necessarily uses
+an equivalent newly seeded isolated registration, not a retained global account.
+Only fixed state/issuer/redirect/client/config markers on native error lines are
+added, never raw native messages. Ordinary authorization URLs are excluded from
+that classifier. These are observed markers, not diagnoses. No production helper
+configuration is changed. The control awaits its explicit granted execution.

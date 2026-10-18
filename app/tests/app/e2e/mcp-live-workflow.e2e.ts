@@ -10,7 +10,7 @@ import { chromium } from 'playwright';
 import { register, uniqueEmail } from '../support/http.js';
 import { password } from '../support/people.js';
 import { expect } from '../support/mcp.js';
-import { createOAuthDiagnostic, oauthComparisonOnly, oauthLoginOnly } from '../support/oauth-diagnostics.js';
+import { createOAuthDiagnostic, oauthComparisonOnly, oauthDefaultCallbackOnly, oauthLoginOnly } from '../support/oauth-diagnostics.js';
 import { authorizeInBrowser, claudeBin, cleanClientHome, clientEvents, connectClient, origin, run, scopes, seedOauthClient, sh, startFluxProxy, waitFor,
   type ClientSpec } from '../support/mcp-client-harness.js';
 
@@ -23,6 +23,7 @@ test('real configured accounts: supplied Start and Resume reach the model and pr
   { skip: process.env.FLUX_TEST_MCP_LIVE_WORKFLOW !== '1' }, async (t) => {
     const loginOnly = oauthLoginOnly(process.env);
     const compare = oauthComparisonOnly(process.env);
+    const defaultCallback = oauthDefaultCallbackOnly(process.env);
     let diagnostic = createOAuthDiagnostic();
     const { pool } = createDatabase(process.env.DATABASE_URL!);
     const proxy = startFluxProxy(observation => diagnostic.response(observation)); await proxy.listen();
@@ -80,7 +81,7 @@ test('real configured accounts: supplied Start and Resume reach the model and pr
           '-c', 'mcp_servers.flux.required=true'];
         const clientId = await seedOauthClient(pool, spec);
         const fixtureConfig = [...config, '-c', `mcp_servers.flux.oauth.client_id=${JSON.stringify(clientId)}`,
-          '-c', `mcp_oauth_callback_port=${spec.port}`, '-c', `mcp_servers.flux.oauth.callback_url=${JSON.stringify(`http://127.0.0.1:${spec.port}/callback`)}`,
+          '-c', `mcp_oauth_callback_port=${spec.port}`, ...(defaultCallback ? [] : ['-c', `mcp_servers.flux.oauth.callback_url=${JSON.stringify(`http://127.0.0.1:${spec.port}/callback`)}`]),
           '-c', 'mcp_oauth_credentials_store="file"'];
         if (client === 'codex') {
           const variants = compare ? ['persisted_bound', 'inline_bound'] as const : ['inline_bound'] as const;
@@ -116,7 +117,7 @@ test('real configured accounts: supplied Start and Resume reach the model and pr
             } catch { login.kill(); exitCode = await login.done; }
             finally {
               diagnostic.browser({ stage: 'native_login_finished' });
-              console.log('LIVE_NATIVE_OAUTH_DIAGNOSTIC', JSON.stringify({ configuration: variant, ...diagnostic.report(login.output(), exitCode) }));
+              console.log('LIVE_NATIVE_OAUTH_DIAGNOSTIC', JSON.stringify({ configuration: defaultCallback ? 'inline_bound_default_callback' : variant, ...diagnostic.report(login.output(), exitCode) }));
             }
             outcomes.push(exitCode === 0);
           }
