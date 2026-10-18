@@ -44,13 +44,16 @@ function toSketchRecord({ row, userName, agentName, copierName }: { row: typeof 
 
 const thoughtCreator = alias(users, 'thought_creator');
 const thoughtAgent = alias(agents, 'thought_agent');
+const thoughtSourceAgent = alias(agents, 'thought_source_agent');
 
-function toThoughtRecord({ row, userName, agentName }: { row: typeof t.$inferSelect; userName: string | null; agentName: string | null }) {
+function toThoughtRecord({ row, userName, agentName, sourceAgentName }: { row: typeof t.$inferSelect; userName: string | null; agentName: string | null; sourceAgentName: string | null }) {
   return {
     id: row.id, sketchId: row.sketchId, text: row.text, x: row.x, y: row.y, width: row.width, height: row.height, shape: row.shape,
     placement: row.placementType && row.placementId ? { type: row.placementType, id: row.placementId } : null,
-    source: row.sourceAuthorId && row.sourceSentAt
-      ? { authorId: row.sourceAuthorId, authorName: row.sourceAuthorName ?? '', sentAt: row.sourceSentAt, dmId: row.sourceDmId, messageId: row.sourceMessageId }
+    source: (row.sourceAuthorId || row.sourceAuthorAgentId) && row.sourceSentAt
+      ? { authorId: row.sourceAuthorId ?? row.sourceAuthorAgentId!, authorKind: row.sourceAuthorId ? 'human' as const : 'agent' as const,
+        authorName: row.sourceAuthorName ?? sourceAgentName ?? '', sentAt: row.sourceSentAt, dmId: row.sourceDmId, messageId: row.sourceMessageId,
+        projectMessageId: row.sourceProjectMessageId }
       : null,
     createdBy: person(row.createdByUserId, row.createdByAgentId, userName, agentName),
     version: row.version, createdAt: row.createdAt, updatedAt: row.updatedAt,
@@ -65,7 +68,7 @@ export interface NewSketchRow {
   id: string; workspaceId: string; scope: 'project' | 'private' | 'dm'; projectId: string | null; dmId: string | null; title: string; createdBy: Author;
   copy?: { fromSketchId: string; byUserId: string };
 }
-export interface ThoughtSourceRow { authorId: string; authorName: string; sentAt: Date; dmId: string | null; messageId: string | null }
+export interface ThoughtSourceRow { authorId: string; authorKind: 'human' | 'agent'; authorName: string; sentAt: Date; dmId: string | null; messageId: string | null; projectMessageId: string | null }
 export interface NewThoughtRow {
   id: string; workspaceId: string; sketchId: string; text: string; x: number; y: number; width: number; height: number;
   shape: 'card' | 'pill' | 'circle'; placement: { type: 'draft'; id: string } | null; source?: ThoughtSourceRow | null; createdBy: Author;
@@ -84,9 +87,10 @@ export function sketchRows(db: DbExecutor) {
     .leftJoin(sketchCreator, eq(sketchCreator.id, s.createdByUserId))
     .leftJoin(sketchAgent, eq(sketchAgent.id, s.createdByAgentId))
     .leftJoin(sketchCopier, eq(sketchCopier.id, s.copiedByUserId));
-  const selectThoughts = () => db.select({ row: t, userName: thoughtCreator.name, agentName: thoughtAgent.name }).from(t)
+  const selectThoughts = () => db.select({ row: t, userName: thoughtCreator.name, agentName: thoughtAgent.name, sourceAgentName: thoughtSourceAgent.name }).from(t)
     .leftJoin(thoughtCreator, eq(thoughtCreator.id, t.createdByUserId))
-    .leftJoin(thoughtAgent, eq(thoughtAgent.id, t.createdByAgentId));
+    .leftJoin(thoughtAgent, eq(thoughtAgent.id, t.createdByAgentId))
+    .leftJoin(thoughtSourceAgent, eq(thoughtSourceAgent.id, t.sourceAuthorAgentId));
   const findSketch = async (id: string) => {
     const [row] = await selectSketches().where(eq(s.id, id));
     return row ? toSketchRecord(row) : null;
@@ -149,6 +153,22 @@ export function sketchRows(db: DbExecutor) {
         .where(and(eq(m.dmId, dmId), inArray(m.id, ids))).orderBy(asc(m.sequence));
       return rows.map(({ row, authorName }) => ({ id: row.id, dmId: row.dmId, sequence: row.sequence, authorId: row.authorId, authorName, body: row.body, createdAt: row.createdAt }));
     },
+    async projectMessages(projectId: string, ids: string[]) {
+      if (!ids.length) return [];
+      const pm = schema.projectMessages;
+      const messageUsers = alias(users, 'project_message_users');
+      const messageAgents = alias(agents, 'project_message_agents');
+      const rows = await db.select({ row: pm, userName: messageUsers.name, agentName: messageAgents.name }).from(pm)
+        .leftJoin(messageUsers, eq(messageUsers.id, pm.authorId))
+        .leftJoin(messageAgents, eq(messageAgents.id, pm.authorAgentId))
+        .where(and(eq(pm.projectId, projectId), inArray(pm.id, ids))).orderBy(asc(pm.sequence));
+      return rows.flatMap(({ row, userName, agentName }) => {
+        const authorId = row.authorId ?? row.authorAgentId;
+        const authorName = row.authorId ? userName : agentName;
+        return authorId && authorName ? [{ id: row.id, projectId: row.projectId, authorId, authorKind: row.authorId ? 'human' as const : 'agent' as const,
+          authorName, body: row.body, createdAt: row.createdAt }] : [];
+      });
+    },
     async dmMessageCount(dmId: string) {
       const [row] = await db.select({ total: count() }).from(m).where(eq(m.dmId, dmId));
       return row?.total ?? 0;
@@ -173,8 +193,9 @@ export function sketchRows(db: DbExecutor) {
         placementType: thought.placement?.type ?? null, placementId: thought.placement?.id ?? null, ...author(thought.createdBy),
         ...(thought.createdAt ? { createdAt: thought.createdAt, updatedAt: thought.updatedAt ?? thought.createdAt } : {}),
         ...(thought.source ? {
-          sourceAuthorId: thought.source.authorId, sourceAuthorName: thought.source.authorName, sourceSentAt: thought.source.sentAt,
-          sourceDmId: thought.source.dmId, sourceMessageId: thought.source.messageId,
+          ...(thought.source.authorKind === 'human' ? { sourceAuthorId: thought.source.authorId } : { sourceAuthorAgentId: thought.source.authorId }),
+          sourceAuthorName: thought.source.authorName, sourceSentAt: thought.source.sentAt,
+          sourceDmId: thought.source.dmId, sourceMessageId: thought.source.messageId, sourceProjectMessageId: thought.source.projectMessageId,
         } : {}),
       });
       return findThought(thought.sketchId, thought.id);

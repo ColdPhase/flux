@@ -30,10 +30,12 @@ export interface SketchRecord {
 /** The message a thought was started from; `dmId`/`messageId` only inside the DM itself. */
 export interface ThoughtSourceRecord {
   authorId: string;
+  authorKind: 'human' | 'agent';
   authorName: string;
   sentAt: Date;
   dmId: string | null;
   messageId: string | null;
+  projectMessageId: string | null;
 }
 
 export interface ThoughtRecord {
@@ -59,6 +61,17 @@ export interface DmMessageView {
   dmId: string;
   sequence: number;
   authorId: string;
+  authorName: string;
+  body: string;
+  createdAt: Date;
+}
+
+/** A project message whose source can be retained on a thought in that same project. */
+export interface ProjectMessageView {
+  id: string;
+  projectId: string;
+  authorId: string;
+  authorKind: 'human' | 'agent';
   authorName: string;
   body: string;
   createdAt: Date;
@@ -179,6 +192,8 @@ export interface SketchRepository {
   mapCounts(sketchId: string): Promise<{ thoughts: number; links: number }>;
   /** These messages of the DM that exist, in conversation order. */
   dmMessages(dmId: string, ids: string[]): Promise<DmMessageView[]>;
+  /** Project messages with these ids, constrained to the project's own conversation history. */
+  projectMessages(projectId: string, ids: string[]): Promise<ProjectMessageView[]>;
   /** How many messages the DM has. */
   dmMessageCount(dmId: string): Promise<number>;
   /** The DM's current participants. */

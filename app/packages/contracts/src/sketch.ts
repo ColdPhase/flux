@@ -102,9 +102,12 @@ export interface Placement {
  * author and time (null id), because the DM is not part of the project.
  */
 export interface ThoughtSource {
-  author: { id: string; name: string };
+  author: PrincipalRef & { name: string };
   sentAt: string;
+  /** Present only for a thought started inside that same direct message. */
   dmMessageId: string | null;
+  /** Present only while the thought and its source message remain in the same project. */
+  projectMessageId?: string | null;
 }
 
 export interface Thought {
@@ -206,10 +209,12 @@ export interface CreateThoughtCommand {
   /** Create the thought already linked to another one (the "+" beside a thought). */
   linkFrom?: { thoughtId: string; label?: string | null; linkId?: string };
   /**
-   * DM sketches (#96): the message of this sketch's DM the thought quotes, e.g. when undo restores
-   * a removed thought. The server takes its author and time from the message itself.
+   * A message source for this sketch: a DM's own message or a message in this project. The server
+   * derives its author and time from the message; the project source stays within the project.
    */
   sourceMessageId?: string;
+  /** Project sketches only: the project message this thought quotes (e.g. when Undo restores it). */
+  sourceProjectMessageId?: string;
   /**
    * Project sketches only (#252): the caller's own staged image of the sketch's project (PNG, JPEG, GIF or
    * WebP) becomes this thought's image and readable by the project, in the same transaction. Re-creating

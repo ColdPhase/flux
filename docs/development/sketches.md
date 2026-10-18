@@ -34,7 +34,7 @@ the draft lifecycle.
 
 Migrations `0007_sketches.sql` and `0025_dm_sketches.sql` (#96). `app/tooling/migrate.ts` applies
 every unapplied file in order and checks that the highest version equals `FLUX_SCHEMA_VERSION`
-(25). The ledger is contiguous from 1 to 25; `0025_dm_sketches.sql` took the next free number by merge order.
+(113). Migration `0113_project_message_thought_sources.sql` adds same-project message provenance.
 
 ## Access
 
@@ -71,7 +71,7 @@ concurrent revocation is either seen or waits.
 | `POST /api/v1/workspaces/:id/sketches` | Takes `{ title, scope: 'project' \| 'private', projectId? }`. |
 | `GET /api/v1/sketches/:id` | Returns the sketch with its thoughts and links. The ETag is the sketch version. |
 | `PATCH /api/v1/sketches/:id` | Renames the sketch. Needs `If-Match`. |
-| `POST /api/v1/sketches/:id/thoughts` | Accepts an optional client `id` (used when undo restores a thought), an optional `placement`, and an optional `linkFrom` (the "+" beside a thought: the thought and its link are created atomically). |
+| `POST /api/v1/sketches/:id/thoughts` | Accepts an optional client `id` (used when undo restores a thought), an optional `placement`, and an optional `linkFrom` (the "+" beside a thought: the thought and its link are created atomically). A project sketch can also accept `sourceProjectMessageId` for a message in that same project; the server resolves its persisted author and time, and the source id remains inside that project's audience. |
 | `PATCH /api/v1/sketches/:id/thoughts/:thoughtId` | Changes text, position, size or shape. Needs `If-Match`: `428` when missing, `409 VERSION_CONFLICT` with the current thought when stale. |
 | `DELETE /api/v1/sketches/:id/thoughts/:thoughtId` | Removes the thought and its links. Needs `If-Match`. |
 | `PATCH /api/v1/sketches/:id/positions` | Moves several thoughts all or nothing. `{ moves: [{ id, x, y, expectedVersion }] }`. Any stale move answers `409` with `conflicts`, and nothing moves. |
@@ -148,6 +148,11 @@ Issue [#96](https://github.com/ColdPhase/flux/issues/96), the "DMs and growing a
   composite keys make the message belong to the sketch's own DM:
   `(source_dm_id, source_message_id) → dm_messages(dm_id, id)` and
   `(sketch_id, source_dm_id) → sketches(id, dm_id)`.
+- A thought on a project map can also come from a message in that same project. Migration
+  `0113_project_message_thought_sources.sql` stores its `source_project_message_id` with a
+  project-scoped foreign key and keeps the original author (person or agent) and time. The
+  message id never crosses the project boundary; the server resolves it from the authorized
+  project and Undo uses the stored source id when it restores the thought.
 - A project copy records `copied_from_sketch_id` (`ON DELETE SET NULL`), `copied_by_user_id`
   and `copied_at`. The wire type exposes only `origin: { kind: 'dm_copy', copiedBy, copiedAt }`.
   The copy never names the DM.

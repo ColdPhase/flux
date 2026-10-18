@@ -21,7 +21,7 @@ export interface DraftAttempt {
   key: string;
   parentId: string | null;
   linkId: string;
-  thought: { id: string; text: string; x: number; y: number; file?: ThoughtFile; width?: number; height?: number };
+  thought: { id: string; text: string; x: number; y: number; file?: ThoughtFile; width?: number; height?: number; sourceProjectMessageId?: string };
 }
 
 export interface ThoughtDraft {
@@ -37,6 +37,8 @@ export interface ThoughtDraft {
   lines?: DraftLine[];
   /** #252: the person's own privately staged image; `text` is its caption. */
   file?: ThoughtFile;
+  /** Project message source; the server derives author and time from that message. */
+  sourceProjectMessageId?: string;
   width?: number;
   height?: number;
   attempt?: DraftAttempt;
@@ -63,6 +65,7 @@ function validAttempt(value: unknown, id: unknown): boolean {
   return !!a && typeof a === 'object' && isUuid(a.key) && isUuid(a.linkId)
     && (a.parentId === null || isUuid(a.parentId)) && !!t && t.id === id && isUuid(t.id)
     && typeof t.text === 'string' && t.text.length <= SKETCH_LIMITS.text && isSpot(t.x) && isSpot(t.y)
+    && (t.sourceProjectMessageId === undefined || isUuid(t.sourceProjectMessageId))
     && (t.file === undefined || validFile(t.file)) && (t.width === undefined || isSpot(t.width)) && (t.height === undefined || isSpot(t.height));
 }
 
@@ -89,7 +92,8 @@ const hasUnusedProof = (key: string, row: DraftLine | ThoughtDraft) => {
 const rows = (draft: ThoughtDraft) => draft.lines ?? [draft];
 const canonical = (attempt: DraftAttempt) => JSON.stringify({ key: attempt.key, parentId: attempt.parentId, linkId: attempt.linkId,
   id: attempt.thought.id, text: attempt.thought.text, x: attempt.thought.x, y: attempt.thought.y,
-  width: attempt.thought.width, height: attempt.thought.height, fileId: attempt.thought.file?.id });
+  width: attempt.thought.width, height: attempt.thought.height, fileId: attempt.thought.file?.id,
+  sourceProjectMessageId: attempt.thought.sourceProjectMessageId });
 // This visit's newest copy of each draft. Session storage can refuse a write (quota) and keep an
 // older copy, so it only supplies a draft this visit has not touched, such as after a reload.
 const memory = new Map<string, ThoughtDraft | null>();
@@ -106,6 +110,7 @@ function persisted(key: string): ThoughtDraft | null {
         && (draft.parentId === null || typeof draft.parentId === 'string')
         && typeof draft.text === 'string' && draft.text.length <= SKETCH_LIMITS.text
         && (draft.editKey === undefined || isUuid(draft.editKey))
+        && (draft.sourceProjectMessageId === undefined || isUuid(draft.sourceProjectMessageId))
         && isSpot(draft.x) && isSpot(draft.y)
         && (draft.lines === undefined || validLines(draft.lines))
         && (draft.file === undefined || validFile(draft.file))
