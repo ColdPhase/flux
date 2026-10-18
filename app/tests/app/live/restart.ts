@@ -6,13 +6,15 @@ import { dirname,join } from 'node:path';
 import WebSocket,{type RawData} from 'ws';
 import * as Y from 'yjs';
 import { createDatabase } from '@flux/db';
-import { EDITING_LIMITS,type Doc,type LiveDocBootstrap,type LiveMapBootstrap,type LiveReceipt,type SaveSharedDoc,type Thought,type UndoneLiveMap,type WikiTextEnvelope } from '@flux/contracts';
+import { EDITING_LIMITS,type Doc,type EnrolledLiveDoc,type LiveDocBootstrap,type LiveMapBootstrap,type LiveReceipt,type SaveSharedDoc,type Thought,type UndoneLiveMap,type WikiTextEnvelope } from '@flux/contracts';
 import { Browser,type ClientResponse } from '../support/http.js';
 
 /** Public-client prepare→root actual force-recreate→verify. No auth/policy/SQL write/transport port is injected.
  * The only interposition is pausing the real client's receive side before its new immutable update.
  * A real committed receipt is observed through read-only SQL while that client has observed no ACK.
  * Root must recreate BOTH actual API containers before verify, then make fresh measurement inventory.
+ * Exercise keeps the original public Y.Doc alive across both API restarts, renews its original
+ * enrollment and first-admits a new update. Prepare/verify alone proves receipt replay only.
  * This is restart/replay evidence; it does not claim an unclean crash or full browser latency. */
 interface Inventory {schema:1;sourceSha:string;apis:{apiInstance:string;apiUrl:string;containerId:string;imageId:string}[]}
 interface State {schema:1;sourceSha:string;preparedAt:number;before:Inventory;actorId:string;cookies:[string,string][];workspaceId:string;
@@ -24,23 +26,23 @@ const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const source=process.env.FLUX_LIVE_SOURCE_SHA;
 assert.equal(process.env.FLUX_LIVE_RESTART_TEST,'1','Root must explicitly select its isolated restart fixture');assert.ok(source&&/^[0-9a-f]{40}$/.test(source));
 const origin=process.env.FLUX_PUBLIC_ORIGIN;assert.ok(origin);assert.equal(new URL(origin).origin,origin);
-const phase=process.argv[2];assert.ok(phase==='prepare'||phase==='verify','Usage: live/restart.ts prepare|verify');
+const phase=process.argv[2];assert.ok(phase==='prepare'||phase==='verify'||phase==='exercise','Usage: live/restart.ts prepare|verify|exercise');
 const directory=process.env.FLUX_LIVE_RESTART_STATE_DIR??'/state';const stateFile=join(directory,'live-editing-restart.private.json');
 const databaseUrl=process.env.DATABASE_URL;assert.ok(databaseUrl);const database=createDatabase(databaseUrl);
 const clients:Client[]=[];const documents:Y.Doc[]=[];
-const deadline=setTimeout(()=>{process.stderr.write('Live restart fixture exceeded its finite30s phase\n');process.exit(1);},30_000);
+const deadline=setTimeout(()=>{process.stderr.write('Live restart fixture exceeded its finite phase deadline\n');process.exit(1);},phase==='exercise'?90_000:30_000);
 function status(response:ClientResponse,expected:number){assert.equal(response.status,expected,response.text);return response.json;}
 function browser(base:string,cookies:[string,string][]=[]){const b=new Browser(base,origin);for(const [name,value] of cookies)b.cookies.set(name,value);const request=b.request.bind(b);
   b.request=(method,path,options={})=>request(method,path,{...options,headers:{host:new URL(origin!).host,...options.headers}});return b;}
 async function regular(path:string,limit:number){const file=await open(path,constants.O_RDONLY|constants.O_NOFOLLOW|constants.O_NONBLOCK);try{const before=await file.stat();assert.ok(before.isFile()&&before.size<=limit);const buffer=Buffer.alloc(limit+1);let length=0;while(length<buffer.length){const next=await file.read(buffer,length,buffer.length-length,null);if(!next.bytesRead)break;length+=next.bytesRead;}assert.ok(length<=limit);const after=await file.stat();assert.equal(after.size,before.size);assert.equal(after.mtimeMs,before.mtimeMs);assert.equal(length,after.size);return buffer.subarray(0,length);}finally{await file.close();}}
-async function inventory(){const path=process.env.FLUX_LIVE_RESTART_INVENTORY;assert.ok(path,'Actual before/after restart process inventory required');const value=JSON.parse((await regular(path,16384)).toString()) as Inventory;
+async function inventory(path=process.env.FLUX_LIVE_RESTART_INVENTORY){assert.ok(path,'Actual before/after restart process inventory required');const value=JSON.parse((await regular(path,16384)).toString()) as Inventory;
   assert.equal(value.schema,1);assert.equal(value.sourceSha,source);assert.equal(value.apis.length,2);
   for(const api of value.apis){assert.match(api.apiInstance,/^[A-Za-z0-9_.-]{1,64}$/);assert.match(api.containerId,/^[0-9a-f]{64}$/);assert.match(api.imageId,/^sha256:[0-9a-f]{64}$/);assert.match(api.apiUrl,/^http:\/\//);}
   assert.notEqual(value.apis[0]!.containerId,value.apis[1]!.containerId);assert.equal(value.apis[0]!.imageId,value.apis[1]!.imageId);return value;}
 async function writeState(value:State){await mkdir(directory,{recursive:true});const raw=Buffer.from(JSON.stringify(value));assert.ok(raw.length<=privateLimit);const temporary=join(dirname(stateFile),`.live-restart-${randomUUID()}.tmp`);
   const file=await open(temporary,constants.O_WRONLY|constants.O_CREAT|constants.O_EXCL|constants.O_NOFOLLOW,0o600);
   try{await file.writeFile(raw);await file.sync();}finally{await file.close();}try{await rename(temporary,stateFile);}finally{await unlink(temporary).catch(()=>{});}}
-async function poll<T>(read:()=>Promise<T|undefined>){const until=Date.now()+finite;while(Date.now()<until){const result=await read();if(result!==undefined)return result;await new Promise(resolve=>setTimeout(resolve,20));}throw new Error('Actual durable condition exceeded finite fixture deadline');}
+async function poll<T>(read:()=>Promise<T|undefined>,timeout=finite){const until=Date.now()+timeout;while(Date.now()<until){const result=await read();if(result!==undefined)return result;await new Promise(resolve=>setTimeout(resolve,20));}throw new Error('Actual durable condition exceeded finite fixture deadline');}
 class Client {
   readonly packets:{header:Record<string,unknown>;bytes?:Buffer}[]=[];
   private pending=new Map<string,{header:Record<string,unknown>;parts:Buffer[];bytes:number}>();private error:Error|null=null;
@@ -66,15 +68,17 @@ class Client {
     await new Promise<void>((resolve,reject)=>{const timer=setTimeout(()=>reject(new Error('Restart fixture real socket did not open')),finite);socket.once('open',()=>{clearTimeout(timer);resolve();});socket.once('error',error=>{clearTimeout(timer);reject(error);});});return c;}
 }
 try {
-  const current=await inventory();const base=current.apis[0]!.apiUrl;
-  if(phase==='prepare'){
+  let current=await inventory();const base=current.apis[0]!.apiUrl;
+  let surviving:{document:Y.Doc;enrollment:EnrolledLiveDoc}|undefined;
+  if(phase!=='verify'){
     const b=browser(base);status(await b.request('POST','/api/auth/sign-up/email',{body:{email:`live-restart-${randomUUID()}@example.test`,name:'Restart receipt owner',password:'original sealed bytes survive restart'}}),200);
     const actorId=(status(await b.request('GET','/api/v1/me'),200) as {user:{id:string}}).user.id;
     const ws=status(await b.request('POST','/api/v1/workspaces',{body:{name:'Actual live restart'}}),201) as {id:string};
     const project=status(await b.request('POST',`/api/v1/workspaces/${ws.id}/projects`,{body:{name:'Persistent live rooms',visibility:'restricted'}}),201) as {id:string};
     const saved=status(await b.request('POST',`/api/v1/projects/${project.id}/docs`,{body:{title:'Original pending text',body:'Saved before restart. ',state:'published'}}),201) as Doc;
     const head=status(await b.request('GET',`/api/v1/docs/${saved.id}/live`),200) as LiveDocBootstrap;
-    const local=new Y.Doc();documents.push(local);status(await b.request('POST',`/api/v1/docs/${saved.id}/live/enroll`,{body:{generation:head.generation,replicaId:local.clientID}}),200);
+    const local=new Y.Doc();documents.push(local);const enrollment=status(await b.request('POST',`/api/v1/docs/${saved.id}/live/enroll`,{body:{generation:head.generation,replicaId:local.clientID}}),200) as EnrolledLiveDoc;
+    surviving={document:local,enrollment};
     Y.applyUpdate(local,Buffer.from(head.checkpoint,'base64'));const before=Y.encodeStateVector(local);local.getText('body').insert(head.body.length,'Still pending locally 🚀. ');const bytes=Y.encodeStateAsUpdate(local,before);
     const envelope:WikiTextEnvelope={workspace:head.workspaceId,kind:'wiki',room:saved.id,generation:head.generation,actor:actorId,operation:'text',uuid:randomUUID(),replica:local.clientID,parameters:null};
     const wiki=await Client.open(base,b,'wiki',saved.id);wiki.send({type:'subscribe',generation:head.generation,afterSequence:head.sequence});await wiki.wait(h=>h.type==='head');
@@ -90,12 +94,20 @@ try {
       wiki:{id:saved.id,generation:head.generation,body:local.getText('body').toString(),savedBody:saved.body,envelope,bytes:Buffer.from(bytes).toString('base64'),bytesHash:createHash('sha256').update(bytes).digest('hex'),receipt},
       map:{id:sketch.id,generation:moved.generation,sequence:moved.sequence,thoughtId:thought.id,version:thought.version+1,commandId,command,original:{x:thought.x,y:thought.y}},
       events:Number((await database.pool.query('SELECT count(*)::int n FROM events WHERE workspace_id=$1',[ws.id])).rows[0].n),ackObserved:false});
+    if(phase==='exercise')wiki.close(); // Reconnect after restart, retaining the actual Y.Doc rather than the paused socket.
     console.log('live-restart prepare: real committed unobserved ACK and native move stored in private fixture state; root must force-recreate both API processes');
-  }else {
+  }
+  if(phase!=='prepare'){
+    if(phase==='exercise'){
+      const after=process.env.FLUX_LIVE_RESTART_AFTER_INVENTORY;assert.ok(after,'Root must provide an atomic actual after-restart inventory');
+      const ready=await open(join(directory,'ready'),constants.O_WRONLY|constants.O_CREAT|constants.O_EXCL|constants.O_NOFOLLOW,0o600);
+      try{await ready.writeFile(source!);await ready.sync();}finally{await ready.close();}
+      current=await poll(async()=>{try{return await inventory(after);}catch(error){if((error as NodeJS.ErrnoException).code==='ENOENT')return undefined;throw error;}},60_000);
+    }
     const state=JSON.parse((await regular(stateFile,privateLimit)).toString()) as State;assert.equal(state.schema,1);assert.equal(state.sourceSha,source);assert.equal(state.ackObserved,false);assert.ok(Date.now()-state.preparedAt>=0&&Date.now()-state.preparedAt<=120_000);
     assert.equal(state.before.apis.length,2);for(const old of state.before.apis){const fresh=current.apis.find(api=>api.apiInstance===old.apiInstance);assert.ok(fresh);assert.notEqual(fresh.containerId,old.containerId,'Root must recreate both actual processes');assert.equal(fresh.imageId,old.imageId,'Restart reuses the exact candidate image');assert.equal(fresh.apiUrl,old.apiUrl);}
     const b=browser(base,state.cookies);assert.equal((status(await b.request('GET','/api/v1/me'),200) as {user:{id:string}}).user.id,state.actorId);
-    const head=status(await b.request('GET',`/api/v1/docs/${state.wiki.id}/live`),200) as LiveDocBootstrap;assert.equal(head.generation,state.wiki.generation);assert.equal(head.sequence,1);assert.equal(head.body,state.wiki.body);
+    let head=status(await b.request('GET',`/api/v1/docs/${state.wiki.id}/live`),200) as LiveDocBootstrap;assert.equal(head.generation,state.wiki.generation);assert.equal(head.sequence,1);assert.equal(head.body,state.wiki.body);
     assert.deepEqual(status(await b.request('GET',`/api/v1/docs/${state.wiki.id}/live/receipts/${state.wiki.envelope.uuid}`),200),state.wiki.receipt);
     const bytes=Buffer.from(state.wiki.bytes,'base64');assert.equal(createHash('sha256').update(bytes).digest('hex'),state.wiki.bytesHash);
     const reloaded=new Y.Doc();documents.push(reloaded);status(await b.request('POST',`/api/v1/docs/${state.wiki.id}/live/enroll`,{body:{generation:head.generation,replicaId:reloaded.clientID}}),200);Y.applyUpdate(reloaded,Buffer.from(head.checkpoint,'base64'));
@@ -104,8 +116,25 @@ try {
     assert.equal(Number((await database.pool.query('SELECT count(*)::int n FROM doc_live_updates WHERE doc_id=$1',[state.wiki.id])).rows[0].n),1);
     assert.equal(Number((await database.pool.query('SELECT count(*)::int n FROM events WHERE workspace_id=$1',[state.workspaceId])).rows[0].n),state.events);
     assert.equal((status(await b.request('GET',`/api/v1/docs/${state.wiki.id}`),200) as Doc).body,state.wiki.savedBody);
+    if(phase==='exercise'){
+      assert.ok(surviving);const original=surviving.document,enrollment=surviving.enrollment;
+      assert.equal(original.clientID,state.wiki.envelope.replica,'The same surviving public Y.Doc retains its generated replica ID');
+      const collision=status(await b.request('POST',`/api/v1/docs/${state.wiki.id}/live/enroll`,{body:{generation:head.generation,replicaId:original.clientID}}),409) as {code:string};
+      assert.equal(collision.code,'EDITING_REPLICA_COLLISION','Restart must not forget the original enrollment');
+      const renewed=status(await b.request('POST',`/api/v1/docs/${state.wiki.id}/live/enroll`,{body:{generation:head.generation,replicaId:original.clientID,instanceId:enrollment.instanceId}}),200) as EnrolledLiveDoc;
+      for(const key of ['generation','replicaId','instanceId'] as const)assert.equal(renewed[key],enrollment[key]);
+      const before=Y.encodeStateVector(original);original.getText('body').insert(original.getText('body').length,'New admission after API restart. ');
+      const unseen:WikiTextEnvelope={...state.wiki.envelope,uuid:randomUUID()};assert.notEqual(unseen.uuid,state.wiki.envelope.uuid);
+      assert.equal((await database.pool.query('SELECT 1 FROM live_editing_intents WHERE actor_id=$1 AND command_id=$2',[state.actorId,unseen.uuid])).rowCount,0,'New bytes cannot use the stored-receipt shortcut');
+      wiki.update(unseen,Y.encodeStateAsUpdate(original,before));const admitted=await wiki.wait(h=>h.type==='ack'&&h.commandId===unseen.uuid);
+      assert.equal(admitted.header.changed,true);assert.equal(admitted.header.sequence,2);
+      head=status(await b.request('GET',`/api/v1/docs/${state.wiki.id}/live`),200) as LiveDocBootstrap;
+      assert.equal(head.generation,state.wiki.generation);assert.equal(head.sequence,2);assert.equal(head.body,original.getText('body').toString());
+      assert.equal(Number((await database.pool.query('SELECT count(*)::int n FROM doc_live_updates WHERE doc_id=$1',[state.wiki.id])).rows[0].n),2);
+      console.log('live-restart enrollment: same live Y.Doc; original collision and instance renewal persist; unseen UUID first-admitted at sequence 2');
+    }
     const save:SaveSharedDoc={clientCommandId:randomUUID(),expectedVersion:1,generation:head.generation,headSequence:head.sequence,headHash:head.hash,reason:'Explicit Save after real API recreation'};
-    const saved=status(await b.request('POST',`/api/v1/docs/${state.wiki.id}/live/save`,{body:save}),200) as LiveReceipt;assert.equal(saved.savedDoc?.body,state.wiki.body);assert.equal(saved.savedDoc?.version,2);
+    const saved=status(await b.request('POST',`/api/v1/docs/${state.wiki.id}/live/save`,{body:save}),200) as LiveReceipt;assert.equal(saved.savedDoc?.body,head.body);assert.equal(saved.savedDoc?.version,2);
     assert.equal((status(await b.request('GET',`/api/v1/docs/${state.wiki.id}/versions/1`),200) as Doc).body,state.wiki.savedBody);assert.deepEqual(status(await b.request('POST',`/api/v1/docs/${state.wiki.id}/live/save`,{body:save}),200),saved);
     const map=status(await b.request('GET',`/api/v1/sketches/${state.map.id}/live`),200) as LiveMapBootstrap;assert.equal(map.generation,state.map.generation);assert.equal(map.sequence,state.map.sequence);assert.equal(map.sketch.thoughts[0]?.version,state.map.version);
     const undo={clientCommandId:randomUUID(),originalCommandIds:[state.map.commandId]};const undone=status(await b.request('POST',`/api/v1/sketches/${state.map.id}/live/undo`,{body:undo}),200) as UndoneLiveMap;
