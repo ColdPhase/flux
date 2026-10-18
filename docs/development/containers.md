@@ -431,6 +431,9 @@ internet access and is not part of CI.
 `./scripts/check_mcp_clients.sh` (#152 AC-4) is the opt-in check that the real pinned Codex (`rust-v0.160.1`,
 checksummed in the `mcp-clients` image) and Claude Code (the `pins.ts` version, fetched at run time from the signed
 release manifest) register Flux's MCP server with their own `mcp add`, complete Flux's OAuth as the person in Chromium,
-and list and call the shared domain tools from three personal connections until the owner revokes one. It uses no
+and list and call the shared domain tools from five personal connections of two owners until an owner revokes one.
+It also exercises a busy peer's addressed inbox/deferral, two bounded versioned reviews with persisted result evidence,
+retry deduplication and fresh-process checkpoint recovery. The model endpoint scripts tool selection; sequential
+native processes do not prove active-client interruption, idle scheduling or integrated Start/Resume. It uses no
 vendor account: the clients' model traffic goes to a scripted local endpoint. It needs internet access and is not
 part of CI or `check_application.sh`.
