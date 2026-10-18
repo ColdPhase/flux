@@ -227,3 +227,42 @@ it would not prove a specific cause. This preparation makes no authentication
 or workflow success claim and performs no Docker, provider/account or model
 call. Existing successful checks remain pinned above; no full issue criteria or
 review requirements changed.
+
+### Granted login-only observation, 2026-10-18
+
+The prepared privacy/mode-guard regression ran in Docker and passed **2/2**.
+The actual checksummed Codex0.160.1 login-only fixture then failed before model
+execution. It mounted **no provider credentials or user HOME**, created no
+provider-auth symlink and selected no Claude path. No model invocation occurred.
+
+App/helper images reused the identical `26ef05d9` frozen build context; their
+production source diff against diagnostic source
+`268c874ba2b61df612dea6eb74513fe0ecb56831` is empty. The runtime helper digest
+remained `77684670f747093b7ed1e9d79a89827de5eea3fe8268b0811ec4b639c29dd033`.
+Read-only current diagnostic fixture receipts:
+
+- `mcp-live-workflow.e2e.ts`: `a8d0f34853bc69de24e3e8f24ec017c513b19ee1586584e3878e92d5c21da09e`.
+- `mcp-client-harness.ts`: `b71767a5fcb5834c479c2cd31cf419125d87ab7ea8d6d61feeb8449aaa614f90`.
+- `oauth-diagnostics.ts`: `395d9945a97138223cd78514723388affdca01e3628b11206d6ac040ac727a76`.
+
+The safe phase report observed protected-resource and authorization-server
+discovery HTTP200 (twice each), authorization302, continuation200 and consent200.
+Phases reached `consent_submitted`, then `callback_wait_failed` and
+`native_login_finished`; `callbackCompleted=false`, `observedCodes=[]`,
+`nativeExitCode=1`. **No token-endpoint HTTP request was observed.** This narrows
+the failure to consent-to-native-callback handling before token exchange; the
+previous post-callback storage hypothesis is not supported by this observation.
+No specific production bug or safe small fix is yet established. The successful
+bare-URL/persisted-configuration #612 path remains the comparison; the identity
+lane independently reported the same maintained path passing at `847b7408`.
+Neither is evidence that the supplied inline/bound-URL action works.
+
+The owned project was `flux160-oauth-only-1792346731-2498313`; its containers,
+networks, volumes and image tags were removed and exact metadata queries returned
+no matches. The shared slot was explicitly released. The local receipt is
+`/tmp/flux160-oauth-only.log`; the native fixture duration was 10.8s, whole run
+terminal1. The failure is preserved rather than replaced by an unproven retry
+or speculative source change. Next work is static comparison of callback
+configuration/registration and the supplied inline binding, followed only by an
+explicitly granted affected login check when evidence supports it. All whole
+#152/#160 criteria remain required and PR #616 stays Draft.
