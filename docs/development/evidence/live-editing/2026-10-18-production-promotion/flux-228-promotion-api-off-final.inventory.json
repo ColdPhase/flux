@@ -1,0 +1,93 @@
+{
+  "source_sha": "03590a3afdd3ac08d92a4959a09fe356d3979181",
+  "project": "flux-test-1792319641-1044074",
+  "containers": [
+    {
+      "id": "dc31013fc49482c197ac3cd1a5e621f1f4033ec509b15588cf9fb2d97a56b344",
+      "image_id": "sha256:fc02745919d1eaddeef84faeed9cc51f5047d206f70a77f65b7b5ffe6b5de5a3",
+      "name": "/flux-test-1792319641-1044074-test-run-e29c9ea4e49a",
+      "image": "flux-test-tools:flux-test-1792319641-1044074",
+      "running": true
+    },
+    {
+      "id": "86d60091c4ae6decf1dadd2c6999f94a90e58521cdf3a37baafa9bf1016de289",
+      "image_id": "sha256:d3be8d8b9c22c38349ef9caa897f80761ad92df4a49a5099e7d83b0bae078750",
+      "name": "/flux-test-1792319641-1044074-worker-1",
+      "image": "flux-foundation:flux-test-1792319641-1044074",
+      "running": true
+    },
+    {
+      "id": "a64955407aeca650e2da76a6866c660a4a66394c87a0e0c56850144d3702f5f6",
+      "image_id": "sha256:0a94362145f58e5cffb58605023c671774e4143037a952221ee6485b6cd999af",
+      "name": "/flux-test-1792319641-1044074-mailpit-smtps-1",
+      "image": "axllent/mailpit:v1.31.2@sha256:74d609a42ec279aa63c6b4622a6fa9b5408d1ad5b1d76a1c4be40a265ce0863d",
+      "running": true
+    },
+    {
+      "id": "27b0f38defc58623d6fa703075bd46920e714bcf8ff9747f97dc3250f610cbed",
+      "image_id": "sha256:0a94362145f58e5cffb58605023c671774e4143037a952221ee6485b6cd999af",
+      "name": "/flux-test-1792319641-1044074-mailpit-starttls-1",
+      "image": "axllent/mailpit:v1.31.2@sha256:74d609a42ec279aa63c6b4622a6fa9b5408d1ad5b1d76a1c4be40a265ce0863d",
+      "running": true
+    },
+    {
+      "id": "14ad369e9b07e7208746ed81d40790fb235f7184b2b01fad7f11823dad6b04fc",
+      "image_id": "sha256:d3be8d8b9c22c38349ef9caa897f80761ad92df4a49a5099e7d83b0bae078750",
+      "name": "/flux-test-1792319641-1044074-api-1",
+      "image": "flux-foundation:flux-test-1792319641-1044074",
+      "running": true
+    },
+    {
+      "id": "ad932e36ee322d8f5241d315b8472fcfc1fd4e5ed6a663952db101e3569f3bea",
+      "image_id": "sha256:d3be8d8b9c22c38349ef9caa897f80761ad92df4a49a5099e7d83b0bae078750",
+      "name": "/flux-test-1792319641-1044074-api2-1",
+      "image": "flux-foundation:flux-test-1792319641-1044074",
+      "running": true
+    },
+    {
+      "id": "e4dbeb936e673159c17b99444495e7585a19f65dd51f35e1fe0dc884e1bc95dd",
+      "image_id": "sha256:fc02745919d1eaddeef84faeed9cc51f5047d206f70a77f65b7b5ffe6b5de5a3",
+      "name": "/flux-test-1792319641-1044074-providermock-1",
+      "image": "flux-test-tools:flux-test-1792319641-1044074",
+      "running": true
+    },
+    {
+      "id": "47ff5370a76aecaf858e1babd391f98f889715a5b945d5c5bcb83e4ff61dff60",
+      "image_id": "sha256:cd6540d8a903171a2b21805030ca75b5d46c8127bf0780545d6fc992b4abd752",
+      "name": "/flux-test-1792319641-1044074-pushmock-1",
+      "image": "flux-e2e:flux-test-1792319641-1044074",
+      "running": true
+    },
+    {
+      "id": "527f0cddc93157b1e9bb0343f965aa9fcae883c6e314f21d949d7149938fca5c",
+      "image_id": "sha256:0a94362145f58e5cffb58605023c671774e4143037a952221ee6485b6cd999af",
+      "name": "/flux-test-1792319641-1044074-mailpit-1",
+      "image": "axllent/mailpit:v1.31.2@sha256:74d609a42ec279aa63c6b4622a6fa9b5408d1ad5b1d76a1c4be40a265ce0863d",
+      "running": true
+    },
+    {
+      "id": "04e704938e68269e1e2929b0a29a1bc6578b0b35bda47b363ed7fcdcf5d50585",
+      "image_id": "sha256:c293117fcecda7344b5480222e813b9f673d7abd69b1dd95eff239b768b04f59",
+      "name": "/flux-test-1792319641-1044074-db-1",
+      "image": "postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873",
+      "running": true
+    }
+  ],
+  "tools": {
+    "node": "v24.21.0",
+    "packageManager": "pnpm@12.6.0",
+    "typescript": "5.9.2",
+    "tsx": "4.20.5",
+    "playwright": "1.63.0",
+    "yjs": "13.6.33",
+    "fastify": "5.6.1",
+    "ws": "8.22.0"
+  },
+  "api": {
+    "node": "v24.21.0",
+    "mode": "off",
+    "diagnostic": null,
+    "nodeEnv": "production"
+  },
+  "postgres": "postgres (PostgreSQL) 18.6"
+}

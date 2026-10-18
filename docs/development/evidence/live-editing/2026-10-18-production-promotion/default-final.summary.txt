@@ -1,0 +1,36 @@
+✔ live label conflict holds current write authority through the protected error handoff (848.466502ms)
+✔ ordinary roomless HTTP creation and exact retry stay independent of the fully reserved live budget (392.397333ms)
+✔ ordinary retained-room HTTP capacity refusal is retryable without effects and the same intent recovers (352.687436ms)
+✔ a first live room after ordinary preflight charges ownership even after HTTP closes, until actual SQL settlement (365.113442ms)
+✔ actual native HTTP abort before a PG-blocked command retains source through outer COMMIT then releases without another close (375.144752ms)
+✔ actual native response finish keeps source until the real protected COMMIT response and handler settle (344.425751ms)
+✔ actual closed native CAS refusal rolls back without a new contribution; parser400 never allocates protected preparation (344.826723ms)
+✔ actual map HTTP finish keeps source/wire charged through protected SQL settlement (303.066641ms)
+✔ actual wiki HTTP finish keeps source/wire charged through protected SQL settlement (401.188158ms)
+✔ actual map client close before its held protected SQL handoff releases after real route settlement (323.949492ms)
+✔ actual wiki client close before its held protected SQL handoff releases after real route settlement (400.019785ms)
+✔ actual protected COMMIT-response loss preserves unknown classification and retires only after HTTP plus SQL settlement (383.800988ms)
+✔ pinned actual ServerResponse close before owner construction is terminal evidence; late retainer joins need no new event (5.768427ms)
+✔ actual ordinary native abort before PG settlement skips protected success serialization and preserves exact durable replay (323.143149ms)
+✔ actual ordinary native closed CAS postimage skips error serialization while connected refusals preserve current authorized details (315.878248ms)
+✔ standing map grants create and change a shared project map as the agent, one effect and one event per command (1663.948237ms)
+✔ map actions never reach private maps, maps of other projects or another map than a targeted grant names (782.799319ms)
+✔ an ordinary map without a live room accepts a concurrent burst like main (922.189799ms)
+✔ a map with a live room refuses excess native commands as a retryable 503, never a 500 (632.345258ms)
+✔ the live editing capability and routes match the selected production mode (206.375466ms)
+▶ connection labels
+  ✔ add, edit and clear persist without replacing the connection or changing thoughts (236.634265ms)
+  ✔ write access is checked before current labels are returned, including private and DM scopes (397.342347ms)
+  ✔ concurrent edits compare under the sketch lock and stale retries leave data and events unchanged (137.864605ms)
+  ✔ idempotent retries replay once, remain scoped to the link, and recheck access (265.310099ms)
+  ✔ label validation applies in HTTP and core, and event failure rolls back the label (157.782103ms)
+✔ connection labels (1465.610725ms)
+ℹ tests 25
+ℹ suites 1
+ℹ pass 25
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 15374.892439
+Removed 3 per-run image(s) tagged :flux-test-1792319459-1026726
