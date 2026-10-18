@@ -7,11 +7,10 @@ import { checkRuntime, dismissNotice, getRuntime, removeRuntime, signOutRuntime 
 import { accountLabel, dateTime, PAYER } from './copy';
 import './runtime.css';
 
-// Claude Code in Flux (F-022 AIM-3, T4 #279): the owner's own Claude Code, signed in to their own
-// account in their own space. This section offers the two subscriptions first (F-027 AST-1.1), says
-// plainly when the server does not offer them (AST-1.2), who can see the login and who pays, before any
-// sign-in; afterwards it shows display facts only. API keys and the other providers sit under "Other
-// ways to connect".
+// The owner's own client sign-ins in Flux (F-022 AIM-3, T4 #279, T6 #281): each client uses its own
+// account in the owner's shared runtime space. This section offers the subscriptions first (F-027 AST-1.1),
+// says plainly when this server does not offer them (AST-1.2), who can see each login and who pays, before
+// sign-in; afterwards it shows display facts only. API keys and other providers sit under "Other ways to connect".
 
 const failure = (error: unknown, fallback: string) => (error instanceof ApiError && error.status < 500 ? error.message : fallback);
 
@@ -48,12 +47,17 @@ function SignedIn({ connection, cli = 'Claude Code' }: { connection: AgentRuntim
 }
 
 /** One folded line on Connect AI (F-027 AST-1): plain words about which account fits which work. */
-export function WhichAccount() {
+export function WhichAccount({ client = 'claude_code' }: { client?: AgentRuntimeClient }) {
   return (
     <details className="rt-more">
       <summary>Which account should I use?</summary>
-      <p className="nset__note">Claude Max and Team plans include monthly API credits. Anthropic recommends an API key for work that runs on its own, and a key from your Claude Console organization uses those credits (about 5 minutes in the Claude Console).</p>
-      <p className="nset__note">Using Flux for work? In the EU and Switzerland, Claude’s personal plans (Pro, Max) are for non-business use. A Team plan or an API key covers work.</p>
+      {client === 'codex' ? <>
+        <p className="nset__note">A ChatGPT sign-in uses the account or organization you choose in Codex. For automated work, OpenAI recommends an API key; use the API organization that should pay.</p>
+        <p className="nset__note">Flux cannot see plan limits or costs. It does not pay for Codex or switch to another payer.</p>
+      </> : <>
+        <p className="nset__note">Claude Max and Team plans include monthly API credits. Anthropic recommends an API key for work that runs on its own, and a key from your Claude Console organization uses those credits (about 5 minutes in the Claude Console).</p>
+        <p className="nset__note">Using Flux for work? In the EU and Switzerland, Claude’s personal plans (Pro, Max) are for non-business use. A Team plan or an API key covers work.</p>
+      </>}
     </details>
   );
 }
@@ -113,7 +117,7 @@ export function RuntimeSection({ otherWays }: { otherWays: ReactNode }) {
         const offRemoval = key === 'remove' && cause instanceof ApiError && cause.status === 409 && cause.code === AGENT_RUNTIME_ERRORS.off;
         // AUTH_BUSY belongs to auth admission, not removal: an unexpected payload cannot prove no deletion.
         const unknownRemovalBusy = key === 'remove' && cause instanceof ApiError && cause.status === 409 && cause.code === AGENT_RUNTIME_ERRORS.authBusy;
-        setError(offRemoval ? 'Claude Code was not removed. Sign-in is turned off on this server. Ask the person who runs this server to turn it on, then try again.'
+        setError(offRemoval ? 'The shared runtime space was not removed. Sign-in is turned off on this server. Ask the person who runs this server to turn it on, then try again.'
           : unknownRemovalBusy ? fallback : failure(cause, fallback));
         setErrorContext({ action: key, uncertain: unknownRemovalBusy || !(cause instanceof ApiError) || cause.status >= 500 });
         refresh = true;
@@ -126,8 +130,8 @@ export function RuntimeSection({ otherWays }: { otherWays: ReactNode }) {
     }
   };
 
-  if (failed) return <section className="nset__sec rt" aria-labelledby="rt-h"><h3 id="rt-h">Claude Code in Flux</h3><p className="nset__note">This part couldn’t load. <button type="button" className="ui-link" onClick={() => { setFailed(false); load(); }}>Try again</button></p>{otherWays}</section>;
-  if (!status) return <section className="nset__sec rt" aria-labelledby="rt-h"><h3 id="rt-h">Claude Code in Flux</h3><p className="inbox__loading"><Spinner label="Loading Claude Code in Flux" /></p></section>;
+  if (failed) return <section className="nset__sec rt" aria-labelledby="rt-h"><h3 id="rt-h">Agent sign-in in Flux</h3><p className="nset__note">This part couldn’t load. <button type="button" className="ui-link" onClick={() => { setFailed(false); load(); }}>Try again</button></p>{otherWays}</section>;
+  if (!status) return <section className="nset__sec rt" aria-labelledby="rt-h"><h3 id="rt-h">Agent sign-in in Flux</h3><p className="inbox__loading"><Spinner label="Loading agent sign-in" /></p></section>;
 
   // AST-1.2: when the server does not offer sign-in, one plain sentence and the API key choices; no sign-in button.
   const claudeOn = status.clients.claude_code === 'available';
@@ -147,6 +151,11 @@ export function RuntimeSection({ otherWays }: { otherWays: ReactNode }) {
   // offered beside it, has its own short block below.
   const primary: AgentRuntimeClient = claudeOn ? 'claude_code' : 'codex';
   const cli = primary === 'codex' ? 'Codex' : 'Claude Code';
+  const vendor = primary === 'codex' ? 'OpenAI' : 'Anthropic';
+  const accountSettings = primary === 'codex' ? 'your ChatGPT or OpenAI account settings' : 'your Claude account or Anthropic Console settings';
+  const removeLabel = 'Remove shared runtime space from Flux…';
+  const removeGroupLabel = 'Remove shared runtime space from Flux';
+  const removeDisclosure = 'Flux tries to sign out of Claude Code and Codex, then deletes both clients’ files from your shared runtime space on this server and frees the space for someone else. If you use either client again, you can set it up later.';
   const connection = status.connections[primary];
   const binding = status.binding;
   const signedIn = connection?.state === 'signed_in';
@@ -176,18 +185,18 @@ export function RuntimeSection({ otherWays }: { otherWays: ReactNode }) {
   return (
     <section className="nset__sec rt" aria-labelledby="rt-h">
       <h3 id="rt-h" className="aset__state"><span className={`aset__dot${signedIn || codexSignedIn ? ' is-ready' : ''}`} aria-hidden="true" />{heading}</h3>
-      {confirmedSignOut ? <p className="nset__note" role="status"><b>Signed out of Claude Code in Flux.</b> <time dateTime={confirmedSignOut.at}>{dateTime(confirmedSignOut.at)}</time>.</p> : null}
+      {confirmedSignOut ? <p className="nset__note" role="status"><b>Signed out of {cli} in Flux.</b> <time dateTime={confirmedSignOut.at}>{dateTime(confirmedSignOut.at)}</time>.</p> : null}
       {connection?.signOut?.failed && !signedIn ? (
-        <p className="nset__problem" role="note"><Icon name="alert" size={14} /><span><b>Anthropic didn’t confirm the sign-out.</b> Flux deleted the login from your Claude Code space anyway. To be sure it can’t be used, end the session in your Claude account or Anthropic Console settings.</span></p>
+        <p className="nset__problem" role="note"><Icon name="alert" size={14} /><span><b>{vendor} didn’t confirm the sign-out.</b> Flux deleted the login files from your shared runtime space anyway. To be sure the session can’t be used, end it in {accountSettings}.</span></p>
       ) : null}
       {!binding && release?.signOutFailed ? (
-        <p className="nset__problem" role="note"><Icon name="alert" size={14} /><span><b>Your Claude Code space was removed, but Anthropic didn’t confirm the sign-out.</b> Flux deleted the login anyway. End the session in your Claude account or Anthropic Console settings to be sure.</span></p>
+        <p className="nset__problem" role="note"><Icon name="alert" size={14} /><span><b>Your shared runtime space was removed, but sign-out of at least one client wasn’t confirmed.</b> Flux deleted the local login files anyway. End the session in the corresponding vendor account settings to be sure.</span></p>
       ) : null}
       {!binding && release && release.reason !== 'owner' ? (
-        <p className="nset__note">Your Claude Code space was removed on {dateTime(release.at)} {release.reason === 'idle' ? 'because it wasn’t used for a while' : release.reason === 'auth_recovery' ? 'to recover safely after an unconfirmed operation; both clients need to sign in again' : 'by the person who runs this server'}. {release.signOutFailed ? 'Vendor sign-out was not confirmed; end the session in your vendor account settings.' : 'It signed out first.'}</p>
+        <p className="nset__note">Your shared runtime space was removed on {dateTime(release.at)} {release.reason === 'idle' ? 'because it wasn’t used for a while' : release.reason === 'auth_recovery' ? 'to recover safely after an unconfirmed operation; both Claude Code and Codex may need to sign in again' : 'by the person who runs this server'}. {release.signOutFailed ? 'Sign-out was not confirmed for at least one client; end that session in its vendor account settings.' : 'Flux tried to sign out of both clients first.'}</p>
       ) : null}
-      {removing ? <p className="nset__note" role="status"><Spinner /> {binding?.recovery ? 'Recovering your Claude Code space after an unconfirmed operation. Access is disabled; both clients may need to sign in again after cleanup.' : 'Signing out and removing your Claude Code space…'}</p> : null}
-      {authPending ? <p className="nset__note" role="status"><Spinner /> {authPending === 'signing_out' ? 'Sign-out requested. Access is disabled while Claude Code signs out and its files are removed.' : authPending === 'signing_in' ? 'A sign-in is still in progress.' : 'Checking the current sign-in…'}</p> : null}
+      {removing ? <p className="nset__note" role="status"><Spinner /> {binding?.recovery ? 'Recovering your shared runtime space after an unconfirmed operation. Access is disabled; both Claude Code and Codex may need to sign in again after cleanup.' : 'Signing out of both clients and removing your shared runtime space…'}</p> : null}
+      {authPending ? <p className="nset__note" role="status"><Spinner /> {authPending === 'signing_out' ? `Sign-out requested. Access is disabled while ${cli} signs out and its login files are removed.` : authPending === 'signing_in' ? 'A sign-in is still in progress.' : 'Checking the current sign-in…'}</p> : null}
       {status.authCompletion?.disposition === 'superseded' ? <p className="nset__problem" role="status">This operation’s result was no longer current and was not accepted. The current state is shown here.</p> : null}
       {error ? <p id="rt-error" className="nset__error" role="alert"><Icon name="alert" size={14} />{error}</p> : null}
       {!removing && !authPending && !codexPending && ((claudeOn && !signedIn) || !codexSignedIn) ? (
@@ -226,25 +235,25 @@ export function RuntimeSection({ otherWays }: { otherWays: ReactNode }) {
           <SignedIn connection={codex} cli="Codex" />
           <div className="aset__actions rt-actions">
             {!codexPending ? <Button variant="secondary" busy={busy === 'check-codex'} onClick={() => void act('check-codex', () => checkRuntime('codex'), 'Couldn’t check. Try again.')}>Check ChatGPT sign-in</Button> : null}
-            <Button variant="secondary" busy={busy === 'signout-codex'} onClick={() => void act('signout-codex', () => signOutRuntime('codex'), 'Sign-out could not be confirmed. Access remains disabled while the space recovers; both clients may need to sign in again.')}>Sign out of ChatGPT</Button>
+            <Button variant="secondary" busy={busy === 'signout-codex'} onClick={() => void act('signout-codex', () => signOutRuntime('codex'), 'Sign-out could not be confirmed. Access remains disabled while the shared runtime space recovers; both clients may need to sign in again.')}>Sign out of ChatGPT</Button>
           </div>
         </div>
       ) : null}
       {!signedIn && !removing ? (
         status.pool === 'full' && !binding
-          ? <p className="nset__problem" role="note"><Icon name="alert" size={14} /><span><b>Every Claude Code space on this server is in use.</b> You can still use an API key here, or Claude Code on your own computer through <Link className="ui-link" to="/connect-agent">Local co-work</Link>.</span></p>
-          : <><h4 className="rt-sub">Before you sign in</h4><BeforeSignIn status={status} /></>
+          ? <p className="nset__problem" role="note"><Icon name="alert" size={14} /><span><b>Every shared runtime space on this server is in use.</b> You can still use an API key here, or your own MCP client through <Link className="ui-link" to="/connect-agent">Local co-work</Link>.</span></p>
+          : <><h4 className="rt-sub">Before you sign in</h4><BeforeSignIn status={status} client={primary} /></>
       ) : null}
       {removing ? null : (
         <div className="aset__actions rt-actions">
-          {signedIn && !authPending ? <Button variant="secondary" busy={busy === 'check'} onClick={() => void act('check', () => checkRuntime(primary), 'Couldn’t check. Try again.')}>Check sign-in</Button> : null}
-          {signedIn ? <Button variant="secondary" busy={busy === 'signout'} onClick={() => void act('signout', () => signOutRuntime(primary), 'Sign-out could not be confirmed. Access remains disabled while the Claude Code space recovers; both clients may need to sign in again.')}>Sign out</Button> : null}
-          {binding && !confirmRemove ? <Button variant="quiet" onClick={() => setConfirmRemove(true)}>Remove Claude Code from Flux…</Button> : null}
+          {signedIn && !authPending ? <Button variant="secondary" busy={busy === 'check'} onClick={() => void act('check', () => checkRuntime(primary), 'Couldn’t check. Try again.')}>{primary === 'codex' ? 'Check Codex sign-in' : 'Check sign-in'}</Button> : null}
+          {signedIn ? <Button variant="secondary" busy={busy === 'signout'} onClick={() => void act('signout', () => signOutRuntime(primary), 'Sign-out could not be confirmed. Access remains disabled while the shared runtime space recovers; both clients may need to sign in again.')}>{primary === 'codex' ? 'Sign out of Codex' : 'Sign out'}</Button> : null}
+          {binding && !confirmRemove ? <Button variant="quiet" onClick={() => setConfirmRemove(true)}>{removeLabel}</Button> : null}
         </div>
       )}
       {binding && confirmRemove && !removing ? (
-        <div className="details__confirm" role="group" aria-label="Remove Claude Code from Flux">
-          <p>Flux signs Claude Code out first, then deletes its files from your space on this server and frees the space for someone else. You can set it up again later.</p>
+        <div className="details__confirm" role="group" aria-label={removeGroupLabel}>
+          <p>{removeDisclosure}</p>
           {error && errorContext?.action === 'remove' ? <p className="nset__error" aria-hidden="true"><Icon name="alert" size={14} />{error}</p> : null}
           <div className="aset__actions">
             <Button variant="danger" aria-describedby={error && errorContext?.action === 'remove' ? 'rt-error' : undefined} busy={busy === 'remove'} onClick={() => void act('remove', removeRuntime, 'Removal could not be confirmed. Check the current state before trying again.')}>Sign out and remove</Button>
@@ -253,7 +262,7 @@ export function RuntimeSection({ otherWays }: { otherWays: ReactNode }) {
         </div>
       ) : null}
       <details className="rt-more"><summary>Other ways to connect</summary>{otherWays}</details>
-      <WhichAccount />
+      <WhichAccount client={primary} />
     </section>
   );
 }
