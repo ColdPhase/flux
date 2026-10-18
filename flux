@@ -1303,7 +1303,13 @@ cmd_cowork() (
   # A finite owned child invocation, with no idle model polling or unrelated process termination.
   codex "$@" 'Follow the current Flux server playbook for this bound host action.' >"$COWORK_STATE/events.jsonl" &
   native_pid=$!
-  (sleep 300; kill -TERM "$native_pid" 2>/dev/null || true) &
+  (
+    sleeper=''
+    trap '[ -z "$sleeper" ] || kill -TERM "$sleeper" 2>/dev/null || true; [ -z "$sleeper" ] || wait "$sleeper" 2>/dev/null || true; exit 0' TERM INT
+    sleep 300 & sleeper=$!
+    wait "$sleeper" || exit 0
+    kill -TERM "$native_pid" 2>/dev/null || true
+  ) >/dev/null 2>&1 &
   timer_pid=$!
   native_status=0
   wait "$native_pid" || native_status=$?

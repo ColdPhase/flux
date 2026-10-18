@@ -38,9 +38,9 @@ console.log(JSON.stringify({type:'turn.completed'}));
   const common = ['--client', 'codex', '--origin', 'https://flux.example', '--connection', randomUUID(), '--project', randomUUID()];
   const invoke = (action: string) => spawnSync('sh', [join(checkout, 'flux'), 'cowork', action, ...common], { cwd: root, env, encoding: 'utf8', timeout: 20_000 });
   try {
-    const start = invoke('start'); assert.equal(start.status, 0, start.stderr + start.stdout);
+    const start = invoke('start'); assert.equal(start.error, undefined); assert.equal(start.status, 0, start.stderr + start.stdout);
     const second = invoke('start'); assert.notEqual(second.status, 0, 'Start never replaces its existing native thread');
-    const resume = invoke('resume'); assert.equal(resume.status, 0, resume.stderr + resume.stdout);
+    const resume = invoke('resume'); assert.equal(resume.error, undefined); assert.equal(resume.status, 0, resume.stderr + resume.stdout);
     const args = (await readFile(env.COWORK_ARGS, 'utf8')).trim().split('\n').map(line => JSON.parse(line) as string[]);
     assert.equal(args.filter(row => row.includes('login')).length, 1, 'Resume reuses its existing native OAuth credential');
     assert.ok(args.some(row => row.includes('resume') && row.includes(native)));
