@@ -1,0 +1,97 @@
+[
+  {
+    "path": "/home/hubert/flux-evidence/228-subscription-map200-1c121270-latency/actual-queue.jsonl",
+    "bytes": 509263,
+    "sha256": "bdc6b9956d667f0b74e7fe23a86a715f32e1bee5328d6ff96f3957cdeb8e5806"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-subscription-map200-1c121270-latency/api.log",
+    "bytes": 1989286,
+    "sha256": "24ad01aabdefce02bb0acab9c2e98f4b60021c053ffe381b5b71d26b2a624933"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-subscription-map200-1c121270-latency/collector-ready.json",
+    "bytes": 183,
+    "sha256": "325da2858a7d521cddbc0d0ac6c1cad8b417a959f9cd791f69c165a928bd95d3"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-subscription-map200-1c121270-latency/collector-result.json",
+    "bytes": 179,
+    "sha256": "9d09116eca8282dc1b4ff75c7e2ba316f2464a1b604d5995c5c3c6cc04feb975"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-subscription-map200-1c121270-latency/collector.log",
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-subscription-map200-1c121270-latency/driver.log",
+    "bytes": 501,
+    "sha256": "bf7d2ba1cdda1460f9edc0d13236dab13559a59f55d10b8f1f22575bed38f616"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-subscription-map200-1c121270-latency/map-500-drag-200-coverage.json",
+    "bytes": 204844,
+    "sha256": "3cc241c910a4d94a196927dee5da25d4ef59762f2e3c0bb9ae2dd282f806d56c"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-subscription-map200-1c121270-latency/map-500-drag-200-local-control.json",
+    "bytes": 25076,
+    "sha256": "8e945021c2897901526cd60ef3da2567250f67c20ff1cc11f46afdd4588bcadb"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-subscription-map200-1c121270-latency/map-500-drag-200-owner-trace.zip",
+    "bytes": 149227623,
+    "sha256": "b055c558ff544dc30d3ed03c12f4ea015c223e5adf237b7778d74de85a247fa2"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-subscription-map200-1c121270-latency/map-500-drag-200-peer-trace.zip",
+    "bytes": 129637480,
+    "sha256": "e6db02a61f3bd6f1a5b0e090dac745ce8d4d5d7df2d001e04c9e5281bef2d947"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-subscription-map200-1c121270-latency/map-500-drag-200-peer.png",
+    "bytes": 126588,
+    "sha256": "0663ddc4975958244a9eea39498ad4554a170e97a8a7ced10d6f6cb8b9fd056c"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-subscription-map200-1c121270-latency/map-500-drag-200-publications.json",
+    "bytes": 5265653,
+    "sha256": "2dfcf1ae497e1c8a7a5266e38f8d3557a77e02ef39e08bd21b8e146c5fcb0088"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-subscription-map200-1c121270-latency/map-500-drag-200-rows.json",
+    "bytes": 14237101,
+    "sha256": "0e205d40c5971c8ae5392bb0efc3a382c38ef4842d2c1144c25edccbd061bc0d"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-subscription-map200-1c121270-latency/map-500-drag-200-summary.json",
+    "bytes": 34735,
+    "sha256": "8c4a01e8f4e5721ac59aadfd6ef8beabcc31e5af725e4abe04a59972b1c77c47"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-subscription-map200-1c121270-latency/measurement-finished.json",
+    "bytes": 383,
+    "sha256": "51a961a16b5dc72821fcbaff311c00da83e602747d377cabdbf75ce9760dcfe1"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-subscription-map200-1c121270-latency/planned.json",
+    "bytes": 156,
+    "sha256": "1016c3704c0d0f706adc6c917e521f2829bd8c2ffa68e051a6d40ff6ee035cd7"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-subscription-map200-1c121270-latency/queue-inventory.json",
+    "bytes": 299,
+    "sha256": "3d9d06b4c97d62244b45a3ba4a6ce9de87eb05d8ffd705d8419abbb2c7fcb073"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-subscription-map200-1c121270-latency/runtime.json",
+    "bytes": 2014,
+    "sha256": "c337c968c803004bddc6af7b14ea93a99bef3e5139a10515d2b4f6d82dbe85fe"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-subscription-map200-1c121270-latency/summary.json",
+    "bytes": 27438,
+    "sha256": "96adce88f6b0eecd7aeb95013295cb54f33cd8419a9ad966eddaada96d31882d"
+  }
+]
