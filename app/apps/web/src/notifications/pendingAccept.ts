@@ -1,5 +1,6 @@
-import { ApiError } from '../api/client';
-import { acceptDecision } from '../work/api';
+import { ApiError } from '../api/client.js';
+import { whenPageLive, pageLeaving } from '../api/pageLeaving.js';
+import { acceptDecision } from '../work/api.js';
 
 /**
  * Accept with Undo (#342, F-026 S9/S11). A decision cannot be un-accepted (O-009 DA-3: a change of
@@ -19,6 +20,8 @@ interface Waiting {
   /** One idempotency key per intent, so a resend after a lost answer never accepts twice. */
   key: string;
   timer: ReturnType<typeof setTimeout>;
+  /** Set while the Undo window has ended on a page being left: stops waiting for the page to be live. */
+  held?: () => void;
   settle: (outcome: AcceptOutcome) => void;
 }
 
@@ -26,6 +29,18 @@ const waiting = new Map<string, Waiting>();
 /** Decisions being accepted by this person, from the click until the server answered. */
 const accepting = new Set<string>();
 export const acceptingIds = (): ReadonlySet<string> => accepting;
+
+/**
+ * The Undo window ended. On a page being left the request would wait for the page to be live (#471), and
+ * if the page is then unloaded it would be lost, so the accept stays listed: the leaving flush sends it
+ * with `keepalive`, and a page that stays sends it once it is live again.
+ */
+function dispatch(entry: Waiting) {
+  if (waiting.get(entry.decision.id) !== entry) return;
+  if (pageLeaving()) { entry.held = whenPageLive(() => dispatch(entry)); return; }
+  waiting.delete(entry.decision.id);
+  void send(entry, false);
+}
 
 async function send(entry: Waiting, keepalive: boolean) {
   try {
@@ -42,10 +57,10 @@ async function send(entry: Waiting, keepalive: boolean) {
 /** Starts the delayed accept of one decision; `undo()` cancels it while it still waits. */
 export function startAccept(decision: { id: string; version: number }, settle: (outcome: AcceptOutcome) => void, delay = ACCEPT_UNDO_MS) {
   const existing = waiting.get(decision.id);
-  if (existing) { clearTimeout(existing.timer); waiting.delete(decision.id); accepting.delete(decision.id); }
+  if (existing) { clearTimeout(existing.timer); existing.held?.(); waiting.delete(decision.id); accepting.delete(decision.id); }
   const entry: Waiting = {
     decision, key: crypto.randomUUID(), settle,
-    timer: setTimeout(() => { waiting.delete(decision.id); void send(entry, false); }, delay),
+    timer: setTimeout(() => dispatch(entry), delay),
   };
   waiting.set(decision.id, entry);
   accepting.add(decision.id);
@@ -54,6 +69,7 @@ export function startAccept(decision: { id: string; version: number }, settle: (
     undo(): boolean {
       if (waiting.get(decision.id) !== entry) return false;
       clearTimeout(entry.timer);
+      entry.held?.();
       waiting.delete(decision.id);
       accepting.delete(decision.id);
       return true;
@@ -65,6 +81,7 @@ export function startAccept(decision: { id: string; version: number }, settle: (
 export function flushAccepts(keepalive = false) {
   for (const [id, entry] of [...waiting]) {
     clearTimeout(entry.timer);
+    entry.held?.();
     waiting.delete(id);
     void send(entry, keepalive);
   }

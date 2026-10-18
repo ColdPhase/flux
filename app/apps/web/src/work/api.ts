@@ -3,8 +3,8 @@ import {
   type AcceptDecisionCommand, type CreateObjectLinkCommand, type CreateResultCommand, type CreateWorkCommand, type Decision, type ObjectLink, type Page,
   type ProposeDecisionCommand, type TaskActivityPage, type TaskActivityQuery, type UndoTaskCreationResult, type UpdateWorkCommand, type WorkItem, type WorkResult, type Agent,
 } from '@flux/contracts';
-import { request } from '../api/client';
-import { readAssignedAcross } from './assigned';
+import { request } from '../api/client.js';
+import { readAssignedAcross } from './assigned.js';
 
 /** Work, decisions and results of one project (#101); the project's audience is theirs. */
 export interface ProjectWork { work: WorkItem[]; decisions: Decision[]; results: WorkResult[] }
