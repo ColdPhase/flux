@@ -691,7 +691,7 @@ class AppShellJourney(unittest.TestCase):
                     expect(header.get_by_role("button", name="Search", exact=True)).to_be_visible()
                     expect(header.get_by_role("heading", level=1, name="Project header actions")).to_be_visible()
                     expect(header.get_by_role("button", name="More", exact=True)).to_have_count(0)
-                    geometry = page.evaluate("""() => ({header: document.querySelector('header.top').getBoundingClientRect().height,
+                    geometry = page.evaluate("""() => ({header: document.querySelector('header.phead').getBoundingClientRect().height,
                       width: document.documentElement.clientWidth, scrollWidth: document.documentElement.scrollWidth})""")
                     self.assertAlmostEqual(geometry["header"], 56, delta=1, msg=f"phone keeps its compact header: {geometry}")
                     self.assertEqual(geometry["scrollWidth"], geometry["width"], f"phone header has no horizontal overflow: {geometry}")
