@@ -7,3 +7,7 @@ Application baseline: `7af776c7dfd4403e3937c8ccd4b9723c7808d587`. The Map does n
 Defer only `buildOutline` until this render's outline is read (including reveal/move actions), sharing one local result. Keep eager ID-only `rememberThoughts`, preference persistence, current immutable graph/state captures, and all DOM, styling, authority, transport and measurement behavior. No cross-render content cache. Correct the existing outline fixture to launch the requested actual browser.
 
 Verification: the maintained `sketch-outline.test.ts` file, then existing outline methods 04 (reparent/reorder/Undo) and 05 (native edits/deletion/Undo/reveal and Map/List switching) in Chromium and WebKit, serially in Docker. No new implementation-shaped test, profiler or latency run. Author evidence does not replace independent evaluation.
+
+## Confirmed live Undo announcement
+
+The selected production-on journey exposed an existing success message left at “Waiting for confirmation” after a committed inverse. Extend only the live hook's existing confirmed-current completion callback to notify its caller; the editor announces “Undid” there. Exact receipt/ordered-head or current resynchronization, retry identity, scope lifetime and refusal guards stay unchanged. Ordinary Undo still announces immediately. Preserve method 05's success assertion and add success/refusal assertions to the existing private-cancel/own-Undo and peer-conflict journeys. Retain both prior failed invocations.
