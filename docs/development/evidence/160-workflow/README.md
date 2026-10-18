@@ -486,3 +486,46 @@ safe observation, not evidence of a successful inline login or an accepted
 production fix. No further OAuth flow or source change was performed; all full
 issue criteria remain open. The micro-slot was immediately released for the
 next author; subsequent conclusions/work are static until separately authorized.
+
+### Static production/fixture parity plan (not execution authorization)
+
+The offline generated callback shape is **not** asserted equal to the callback
+configuration after a successful online native add: the offline writer did not
+observe issuer capabilities. Preserve both874 failure and the two local
+micro-observations without promoting either to a production cause.
+
+Static command comparison:
+
+| Concern | Production supplied action | Current acceptance fixture |
+| --- | --- | --- |
+| MCP setup | Bound URL + required; native login | Adds pre-registered client, callback URL/port and file-store overrides |
+| Invoke | `exec --ignore-user-config --json --skip-git-repo-check --sandbox workspace-write`, bound URL/required, generated entry guidance and app/plugin disabling | Same main flags, but also injects its extra OAuth overrides via `fixtureConfig` |
+| Resume | Explicit adapter-created thread ID, same private binding/cwd | Explicit own thread, but not yet reached by current adapter run |
+
+The current fixture therefore cannot simply be rerun as proof of exact
+production configuration. The smallest faithful future test, only if granted:
+
+1. Use the known-working persisted-bound native add/login setup in one fresh
+   isolated HOME. Preserve its exact server name, bound URL, OAuth cache and
+   native storage backend; do not hand-author guessed callback metadata.
+2. In that **same** HOME/cwd, invoke the production command flags and internally
+   supplied current-server-playbook guidance exactly. Remove fixture-only OAuth
+   client/callback/port/store flags from the invoke. Do not drop
+   `--ignore-user-config` to make it pass.
+3. Record required MCP initialization/authentication separately from any model
+   result. The fixture's clean HOME writes file-mode OAuth storage in config,
+   while production's ignored-config exec does not force that setting. Whether
+   pinned0.160.1 still finds cached authorization under the default backend and
+   absent client/callback overrides is unproved; observe this boundary instead
+   of reading credential contents or assuming lookup semantics.
+4. Only after a successful bounded Start, capture that process's own native
+   thread ID and durable source coverage. Use the same HOME/binding/cwd and
+   exact ID for the changed-plan Resume. Stop on auth/init/provider limitation;
+   do not retry with extra OAuth flags, switch payer or select global history.
+
+This checks compatibility with normal saved native setup; it does not by itself
+prove the production first-login path or accept whole #152/#160. No provider
+account, model, login, Docker or build was run for this static plan. The existing
+production helper remains unchanged; no speculative repair or further OAuth
+flow is authorized by this document. Root decides any later execution after the
+other author's heavy lane.
