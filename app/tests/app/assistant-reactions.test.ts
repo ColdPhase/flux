@@ -150,7 +150,7 @@ describe('owner-only When sentences (F-027 A9, #409)', () => {
     const binding=randomUUID(); const generation=randomUUID();
     await pool.query(`INSERT INTO github_credentials(user_id,host,generation,github_user_id,app_id,state) VALUES($1,'github.com',$2,'314','999','active') ON CONFLICT(user_id,host) DO UPDATE SET generation=EXCLUDED.generation,state='active'`,[owner.id,generation]);
     await pool.query(`INSERT INTO github_bindings(id,workspace_id,project_id,installation_id,repository_id,owner,name,private,url,author_user_id,author_github_user_id,app_id,authorization_generation,state) VALUES($1,$2,$3,'11','22','Ada','sensor',true,'https://github.com/Ada/sensor',$4,'314','999',$5,'active')`,[binding,ws.id,place.id,owner.id,generation]);
-    await make('pr_ready','check_task');
+    const readyRule=await make('pr_ready','check_task');
     const facts: GithubPullFacts={repositoryId:'22',pullId:'33',number:7,title:'PRIVATE_PR_TITLE',url:'https://github.com/Ada/sensor/pull/7',author:{id:'314',login:'Ada'},headSha:'a'.repeat(40),state:'open',draft:false,merged:false,sourceCreatedAt:new Date().toISOString(),sourceUpdatedAt:new Date().toISOString(),sourceMergedAt:null,checks:[{id:'1',name:'unit tests',appId:null,state:'success',sourceUpdatedAt:new Date().toISOString()}],reviews:[],truncated:false,execution:'ready_for_review'};
     for(const target of [theirs,mine]) await pool.query(`INSERT INTO github_task_links(id,workspace_id,project_id,task_id,binding_id,pull_id,role,facts) VALUES($1,$2,$3,$4,$5,'33','related',$6)`,[randomUUID(),ws.id,place.id,target,binding,JSON.stringify(facts)]);
     assert.equal((await events()).filter((event)=>event.state==='proof').length,1);
@@ -192,6 +192,7 @@ describe('owner-only When sentences (F-027 A9, #409)', () => {
       assert.doesNotMatch(input,/PRIVATE_PR_TITLE/);
     } finally { await app.close(); }
     await pool.query(`DELETE FROM github_bindings WHERE id=$1`,[binding]);
+    expectStatus(await owner.browser.request('PUT',assistantReactionPath(ws.id,owner.id,readyRule.id),{body:{projectId:place.id,event:'pr_ready',action:'check_task',enabled:false,expectedVersion:readyRule.version}}),200,'unlinking GitHub must never prevent turning a sentence off');
   });
 
   test('AST-9.1: other-project, DM and private-sketch canaries stay out of reaction compute; switch off stops input',async()=>{

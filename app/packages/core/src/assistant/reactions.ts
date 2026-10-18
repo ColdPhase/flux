@@ -51,7 +51,7 @@ export function createAssistantReactions(uow: AssistantReactionUnitOfWork) {
         if (!enablement) throw new ConflictError('Turn on your assistant first', 'ASSISTANT_NOT_ENABLED');
         const agent = enablement.agents.find((item) => item.workspaceId === workspace);
         if (!agent || !(await ports.access.canUseProject({ kind: 'agent', id: agent.agentId }, 'read', command.projectId, { lock: true }))) throw new ConflictError("I'm not in this project yet", 'ASSISTANT_NOT_IN_PROJECT');
-        if (command.event === 'pr_ready' && !await ports.reactions.linked(command.projectId)) throw new InvalidInputError('Link this project to GitHub first');
+        if (command.event === 'pr_ready' && command.enabled && !await ports.reactions.linked(command.projectId)) throw new InvalidInputError('Link this project to GitHub first');
         if (!id && (await ports.reactions.list(owner, workspace)).some((row) => row.projectId === command.projectId && row.event === command.event)) throw new ConflictError('Already set up. Open that sentence to change it.', 'ASSISTANT_WHEN_EXISTS');
         if (id) {
           const stored = await ports.reactions.find(id, true);
