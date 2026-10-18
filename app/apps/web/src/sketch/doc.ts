@@ -508,7 +508,7 @@ const ORDINARY = {
   liveCanWrite: true,
   ownGesture: null as SharedMap['ownGesture'],
   previews: new Map() as SharedMap['previews'],
-  peers: new Map() as SharedMap['peers'],
+  presenceStore: null,
   privateMovement: null as SharedMap['privateMovement'],
   discardPrivateMovement: (): void => {},
   beginGesture: (): boolean => true,

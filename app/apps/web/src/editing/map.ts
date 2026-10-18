@@ -1,6 +1,7 @@
 import { liveMapPath, liveMapGesturePath, type LiveMapBootstrap, type LiveMapDelta, type LiveMapLease, type LiveMapPosition, type NamedPrincipal, type SketchDetail, type Thought } from '@flux/contracts';
 import { ApiError, request } from '../api/client';
 import { EditingConnection, type ReceivedEditing } from './wire';
+import { MapPresenceStore } from './map-presence';
 
 export interface MapPreview { generation: string; actor: NamedPrincipal; gestureId: string; leaseId: string; positions: LiveMapPosition[]; expiresAt: string; sequence: number }
 interface Gesture { id: string; base: Map<string, number>; lease: Promise<LiveMapLease>; active: boolean; sequence: number; latest: LiveMapPosition[] | null; lastPositions: LiveMapPosition[] | null; serverLease: LiveMapLease | null; lastPreviewAt: number }
@@ -11,7 +12,7 @@ export class SharedMap {
   status: 'connecting' | 'live' | 'unavailable' | 'private' = 'connecting';
   problem: string | null = null;
   previews = new Map<string, MapPreview>();
-  peers = new Map<string, { actor: NamedPrincipal; selected: string[]; cursor: { x: number; y: number } | null; expiresAt: string }>();
+  get peers() { return this.presenceStore.getSnapshot(); }
   privateMovement: PrivateMovement | null = null;
   private connection: EditingConnection | null = null;
   private gesture: Gesture | null = null;
@@ -30,7 +31,8 @@ export class SharedMap {
   constructor(readonly id: string, readonly userId: string,
     private snapshot: (sketch: SketchDetail) => void,
     private delta: (delta: LiveMapDelta) => void,
-    private changed: () => void) {
+    private changed: () => void,
+    readonly presenceStore = new MapPresenceStore()) {
     window.addEventListener('pagehide', this.leaving); window.addEventListener('beforeunload', this.leaving);
     try {
       const raw = sessionStorage.getItem(this.privateKey);
@@ -40,7 +42,7 @@ export class SharedMap {
     this.timer = window.setInterval(() => {
       let expired = false;
       for (const [id, preview] of this.previews) if (Date.parse(preview.expiresAt) <= Date.now()) { this.previews.delete(id); expired = true; }
-      for (const [id, peer] of this.peers) if (Date.parse(peer.expiresAt) <= Date.now()) { this.peers.delete(id); expired = true; }
+      this.presenceStore.expire(Date.now());
       const gesture = this.gesture;
       if (gesture?.active && gesture.serverLease && Date.parse(gesture.serverLease.expiresAt) <= Date.now() && gesture.lastPreviewAt + 5000 <= Date.now()) { this.cancel(true, false); this.problem = 'The movement lease expired. Its unfinished positions are kept privately for comparison.'; expired = true; }
       if (expired) this.changed();
@@ -75,12 +77,12 @@ export class SharedMap {
   }
   private disconnected = () => {
     if (this.stopped || this.status === 'private' || this.status === 'unavailable') return;
-    this.status = 'connecting'; this.previews.clear(); this.peers.clear(); this.cancel(true); this.changed();
+    this.status = 'connecting'; this.previews.clear(); this.presenceStore.clear(); this.cancel(true); this.changed();
     this.connection?.close();
     if (this.reconnectTimer === null) this.reconnectTimer = window.setTimeout(() => { this.reconnectTimer = null; void this.start(); }, 600);
   };
   private retire(problem: string) {
-    this.status = 'private'; this.problem = problem; this.cancel(true); this.connection?.close(); this.previews.clear(); this.peers.clear(); this.changed();
+    this.status = 'private'; this.problem = problem; this.cancel(true); this.connection?.close(); this.previews.clear(); this.presenceStore.clear(); this.changed();
   }
   private receive = (message: ReceivedEditing) => {
     if (!this.head || this.stopped) return;
@@ -111,7 +113,7 @@ export class SharedMap {
         break;
       case 'map-presence':
         if (message.actor.id === this.userId) return;
-        this.peers.set(message.connectionId, message); break;
+        this.presenceStore.set(message.connectionId, message); return;
       case 'revoked': this.retire('Access ended. Your unfinished movement is kept locally.'); return;
       case 'resync': this.disconnected(); return;
       case 'error':
@@ -190,7 +192,7 @@ export class SharedMap {
     if (notify && gesture.serverLease) this.connection?.send({ type: 'map-cancel', generation: gesture.serverLease.generation, gestureId: gesture.id, leaseId: gesture.serverLease.leaseId });
   }
   destroy() {
-    this.cancel(true); this.stopped = true; this.abort.abort(); this.connection?.close(); window.clearInterval(this.timer);
+    this.cancel(true); this.stopped = true; this.presenceStore.clear(); this.abort.abort(); this.connection?.close(); window.clearInterval(this.timer);
     if (this.cursorTimer !== null) window.clearTimeout(this.cursorTimer);
     window.removeEventListener('pagehide', this.leaving); window.removeEventListener('beforeunload', this.leaving);
     if (this.previewTimer !== null) window.clearTimeout(this.previewTimer);
