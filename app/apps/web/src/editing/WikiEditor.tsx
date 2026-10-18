@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
-import { personColor } from './color';
+import { COLLABORATION_INK } from './color';
 import { Link } from 'react-router';
 import * as Y from 'yjs';
 import { EditorSelection, EditorState, Prec, StateEffect, StateField, type Range } from '@codemirror/state';
@@ -30,7 +30,6 @@ export function useSharedWiki(id: string | null, userId: string, writer = true) 
   return client?.id === id && client.userId === userId && client.writer === writer ? client : null;
 }
 
-const color = personColor;
 /**
  * A collaborator's named caret is drawn in its own layer, like the local selection, never as an
  * inline widget: a widget at the same position as the local cursor became a cursor stop, so
@@ -133,13 +132,13 @@ function marks(client: SharedWiki) {
   for (const writer of client.writers) {
     const anchor = relativeIndex(client, writer.anchor), head = relativeIndex(client, writer.head);
     if (anchor === null || head === null || anchor === head) continue;
-    ranges.push(Decoration.mark({ attributes: { style: `text-decoration:underline;text-decoration-color:${color(writer.actor.id)};text-underline-offset:3px`, title: `Written by ${writer.actor.name}` } }).range(Math.min(anchor, head), Math.max(anchor, head)));
+    ranges.push(Decoration.mark({ attributes: { style: `text-decoration:underline;text-decoration-color:${COLLABORATION_INK};text-underline-offset:3px`, title: `Written by ${writer.actor.name}` } }).range(Math.min(anchor, head), Math.max(anchor, head)));
   }
   for (const peer of client.peers.values()) {
     if (!peer.cursor) continue;
     const anchor = relativeIndex(client, peer.cursor.anchor), head = relativeIndex(client, peer.cursor.head);
     if (anchor === null || head === null) continue;
-    if (anchor !== head) ranges.push(Decoration.mark({ attributes: { style: `background:${color(peer.actor.id)}25` } }).range(Math.min(anchor, head), Math.max(anchor, head)));
+    if (anchor !== head) ranges.push(Decoration.mark({ attributes: { style: 'background:var(--pick)' } }).range(Math.min(anchor, head), Math.max(anchor, head)));
   }
   return Decoration.set(ranges, true);
 }
@@ -147,7 +146,7 @@ function carets(client: SharedWiki): RemoteCaret[] {
   const result: RemoteCaret[] = [];
   for (const peer of client.peers.values()) {
     const head = peer.cursor ? relativeIndex(client, peer.cursor.head) : null;
-    if (head !== null) result.push({ head, name: peer.actor.name, ink: color(peer.actor.id) });
+    if (head !== null) result.push({ head, name: peer.actor.name, ink: COLLABORATION_INK });
   }
   return result;
 }
@@ -222,7 +221,7 @@ export function WikiPresence({ client }: { client: SharedWiki }) {
   return <span className="editing-people" aria-label="People editing">{peers.map((peer) => {
     const index = relativeIndex(client, peer.cursor!.head);
     const line = index === null ? null : lineAt(client.text.toString(), index);
-    return <span key={peer.connectionId} style={{ color: color(peer.actor.id) }}>{peer.actor.name}{line === null ? ' is editing' : ` · line ${line}`}</span>;
+    return <span key={peer.connectionId}>{peer.actor.name}{line === null ? ' is editing' : ` · line ${line}`}</span>;
   })}</span>;
 }
 
