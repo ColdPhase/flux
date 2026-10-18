@@ -329,3 +329,43 @@ The run is **not** a pass for the 200-drag and 100k-editor cohorts. It was taken
 24-core host with about 15 other containers and a load average near 7, not the isolated healthy
 host the target names; it is a measurement, not an acceptance claim, and the earlier
 `79e3a14b` PASS is neither replaced nor repeated by it. Raw rows: `/home/hubert/flux-evidence/228-live-cursors/latency/`.
+
+
+### Candidate native WebKit composition check (2026-10-18, #228 / #613)
+
+The [integrated baseline](evidence/live-editing/2026-10-18-integrated-baseline/README.md)
+retains two WebKit harness errors without passing the required paths. CDP composition
+remains the actual Chromium path. WebKit needs native preedit and commit rather than
+a synthetic DOM composition or an inserted final Japanese string alone.
+
+The candidate runs **only the WebKit IME journey** headed in its own Xvfb display,
+using GTK's built-in Simple IM context and real XTEST keyboard input. GTK documents
+[Ctrl+Shift+U hexadecimal Unicode composition](https://gnome.pages.gitlab.gnome.org/gtk/gtk4/class.IMContextSimple.html).
+The pinned Playwright [native dependencies](https://github.com/microsoft/playwright/blob/v1.62.0/packages/playwright-core/src/server/registry/dependencies.ts)
+include the X11/GTK runtime; its existing digest-pinned UI image is the dependency
+boundary. Use installed Xvfb, libX11 and libXtst with explicit availability failures;
+do not silently fall back to JavaScript events or Playwright protocol key dispatch.
+[The latter bypasses GTK's input-method filtering](https://github.com/microsoft/playwright/blob/v1.62.0/browser_patches/webkit/patches/bootstrap.diff).
+[XTEST key input](https://www.x.org/releases/current/doc/libXtst/xtestlib.html) goes
+through the native GTK/WebKit input path.
+
+Send separate hexadecimal preedits for U+65E5 and U+672C, observing preedit before
+committing each. Require native trusted composition start/update/end events and
+native trusted input, then exactly one `日本` in both actual authorized replicas,
+no leftover preedit, an honest shared ACK and unchanged saved history. Keep the
+original Chromium kana preedit/commit assertion. Also exercise completion at the
+100,000-code-unit limit through trusted deletion of enough characters to keep
+intermediate composition within the existing limit, then restore exactly 100,000
+with the native commit and ordinary suffix. Inspect the real public live head;
+never replace the application's editor content or collaboration transport.
+
+A temporary unique browser-window title may identify the writer's native X11
+window; it changes no editor or product state and is restored. Isolate and clean
+up the display/browser even on failure, refuse ambiguous/missing windows, and
+record the actual input witness. Other UI/latency journeys keep their original
+headless configuration. This proves native GTK Unicode composition in the
+required WebKit engine, not a physical Japanese keyboard, kana candidate UI,
+iOS keyboard or all platform IMEs. Physical devices remain optional under #266;
+this method and its actual runtime result still need the single consolidated
+independent functional assessment. Until runtime proof succeeds, WebKit IME
+acceptance remains pending; no criterion is waived by this candidate record.
