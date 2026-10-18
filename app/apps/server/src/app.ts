@@ -221,7 +221,7 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
   // A personal run's MCP token (F-027 A2): signed here, the authorization server, for the worker only.
   const githubReadTransport = githubTransport();
   const githubRead = githubConfig ? createGithubUseCases(db, githubProvider(githubCredentials(db, githubConfig, githubReadTransport), githubConfig, githubReadTransport)) : null;
-  registerPersonalRunTokenRoute(app, db, identity.auth, identityConfig.publicOrigin, githubRead ? currentGithubReactionFacts(db, githubRead) : undefined);
+  registerPersonalRunTokenRoute(app, db, identity.auth, identityConfig.publicOrigin, githubRead ? currentGithubReactionFacts(githubRead) : undefined);
   await app.register(returnRoutes, { db, sessions: identity });
   await app.register(projectGoalRoutes, { db, sessions: identity });
   await app.register(needsYouRoutes, { db, sessions: identity });

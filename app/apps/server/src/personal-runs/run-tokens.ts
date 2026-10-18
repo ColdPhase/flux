@@ -49,7 +49,11 @@ export function registerPersonalRunTokenRoute(app: FastifyInstance, db: Database
       let context: string | undefined;
       if (run.reactionTaskId) {
         if (!githubFacts) return null;
-        try { context = `<github-facts-data>\n${redactSecrets(JSON.stringify(await githubFacts(run.ownerUserId, run.reactionTaskId, run.reactionLinkId ?? undefined))).text.slice(0, 16000)}\n</github-facts-data>`; } catch { return null; }
+        try {
+          const text = redactSecrets(JSON.stringify(await githubFacts(run.ownerUserId, run.reactionTaskId, run.reactionLinkId ?? undefined))).text;
+          if (Buffer.byteLength(text, 'utf8') > 16000) return null;
+          context = `<github-facts-data>\n${text}\n</github-facts-data>`;
+        } catch { return null; }
       }
       const jti = randomUUID();
       const expiresAt = new Date(Date.now() + RUN_TOKEN_LIMITS.lifetimeSeconds * 1000);

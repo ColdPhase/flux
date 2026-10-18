@@ -45,12 +45,12 @@ export async function authorizeGithubReactionEvents(db: Database, github: Return
 }
 
 /** Current G-1 data for a nonce-authenticated run immediately before the worker sends its request. */
-export function currentGithubReactionFacts(db: Database, github: ReturnType<typeof createGithubUseCases>) {
+export function currentGithubReactionFacts(github: ReturnType<typeof createGithubUseCases>) {
   return async (ownerUserId: string, taskId: string, linkId?: string) => {
     const links = await github.links({ kind: 'human', id: ownerUserId }, taskId);
     const ready = links.filter((link) => (!linkId || link.id === linkId) && link.state === 'current' && link.facts.execution === 'ready_for_review');
     if (!ready.length) throw new Error('No current ready pull request');
-    return ready.map((link) => ({ number: link.facts.number, state: link.facts.state, headSha: link.facts.headSha, execution: link.facts.execution,
+    return ready.map((link) => ({ number: link.facts.number, state: link.facts.state, headSha: link.facts.headSha, execution: link.facts.execution, truncated: link.facts.truncated,
       checks: link.facts.checks.map(({ name, state }) => ({ name, state })) }));
   };
 }

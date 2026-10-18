@@ -160,7 +160,7 @@ describe('owner-only When sentences (F-027 A9, #409)', () => {
     await pool.query(`UPDATE github_task_links SET facts=jsonb_set(facts,'{checks,0,name}','"fresh current check"'::jsonb) WHERE task_id=$1`,[nextTask]);
     const app=Fastify();
     const auth={$context:Promise.resolve({baseURL:'http://api.test/api/auth'}),api:{signJWT:async()=>({token:'fake-run-token-no-account'})}} as unknown as FluxAuth;
-    registerPersonalRunTokenRoute(app,db,auth,'http://api.test',currentGithubReactionFacts(db,github));
+    registerPersonalRunTokenRoute(app,db,auth,'http://api.test',currentGithubReactionFacts(github));
     const freshProcessor=createPersonalRunProcessor({uow:personalRunWorkerUnitOfWork(db),connections,compute,tokens:{
       async issue(runId) {
         const nonce=randomBytes(32).toString('hex');
