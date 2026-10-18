@@ -61,7 +61,7 @@ def main() -> int:
     hidden = {secrets.token_hex(32) for _ in range(3)}
     client_secret, user_password, admin_password = sorted(hidden)
     host_env = {key: value for key, value in os.environ.items() if not key.startswith(("FLUX_", "POSTGRES_", "COMPOSE_"))}
-    host_env.update({"FLUX_PROJECT": project, "FLUX_PORT": str(args.port), "FLUX_PUBLIC_ORIGIN": f"http://127.0.0.1:{args.port}",
+    host_env.update({"FLUX_PROJECT": project, "FLUX_IMAGE_TAG": project, "FLUX_PORT": str(args.port), "FLUX_PUBLIC_ORIGIN": f"http://127.0.0.1:{args.port}",
         "FLUX_MAILPIT_PORT": str(args.port + 1), "FLUX_AUTH_RATE_LIMIT": "false", "FLUX_SSO_MODE": "prepare",
         "FLUX_OIDC_ISSUER": "http://keycloak:8080/realms/flux", "FLUX_OIDC_CLIENT_ID": "flux", "FLUX_OIDC_LABEL": "Keycloak",
         "FLUX_OIDC_STANDING_INTERVAL_SECONDS": "900", "FLUX_OIDC_TEST_PASSWORD": user_password,
@@ -180,7 +180,7 @@ def main() -> int:
         runtime("baseline")
         run("candidate-checkout", ["git", "-C", str(checkout), "checkout", "--detach", candidate])
         override(False)
-        run("ordinary-upgrade", [str(checkout / "flux"), "upgrade"])
+        run("ordinary-upgrade", [str(checkout / "flux"), "upgrade", "-y"])
         helper("upgraded", candidate)
         runtime("upgraded")
         run("project-export", [str(checkout / "flux"), "export", "Community garden sensors", "--output", str(private / "export.tar.gz")])

@@ -49,7 +49,8 @@ async function mcp(token, name = 'flux_list_contexts', args = {}) {
     'MCP-Protocol-Version': '2025-06-18',
   }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } }) });
   const text = await response.text();
-  const data = text.startsWith('data:') ? text.split('\n').find((line) => line.startsWith('data:'))?.slice(5) : text;
+  const data = response.headers.get('content-type')?.includes('text/event-stream')
+    ? text.split('\n').find((line) => line.startsWith('data:'))?.slice(5) : text;
   const body = data ? JSON.parse(data) : null;
   return { status: response.status, headers: response.headers, body, text };
 }
