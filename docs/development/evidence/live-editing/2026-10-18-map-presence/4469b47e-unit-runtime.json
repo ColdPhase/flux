@@ -1,0 +1,354 @@
+{
+  "source_sha": "4469b47ef87a36e73c4bad237b2e4c1b84426d2b",
+  "captured_at": "2026-10-18T11:58:57.818386+00:00",
+  "containers": [
+    {
+      "id": "0ce3ff10353e2a2230a55412063ee8effc8f972e036938133f63f0bd305dfd5c",
+      "name": "/flux-test-1792324598-1249831-test-run-d730ef60a744",
+      "image": "sha256:132e4417a0d91d97eb464bf4b315cc07bf06ba1574ed9b5fdac9289fc15c2228",
+      "configured_image": "flux-test-tools:flux-test-1792324598-1249831",
+      "project": "flux-test-1792324598-1249831",
+      "service": "test",
+      "state": {
+        "Status": "running",
+        "Running": true,
+        "Paused": false,
+        "Restarting": false,
+        "OOMKilled": false,
+        "Dead": false,
+        "Pid": 1259773,
+        "ExitCode": 0,
+        "Error": "",
+        "StartedAt": "2026-10-18T11:58:57.394992878Z",
+        "FinishedAt": "0001-01-01T00:00:00Z"
+      }
+    },
+    {
+      "id": "adf457f618d684228f8eb36122f99c59c34d9faa2c285359bcaec6eb98e818c9",
+      "name": "/flux-test-1792324598-1249831-worker-1",
+      "image": "sha256:02688a5ec1c82d54ec014242b1341540c59a4f84050f1fef0090032e931b71ac",
+      "configured_image": "flux-foundation:flux-test-1792324598-1249831",
+      "project": "flux-test-1792324598-1249831",
+      "service": "worker",
+      "state": {
+        "Status": "running",
+        "Running": true,
+        "Paused": false,
+        "Restarting": false,
+        "OOMKilled": false,
+        "Dead": false,
+        "Pid": 1259042,
+        "ExitCode": 0,
+        "Error": "",
+        "StartedAt": "2026-10-18T11:58:55.595267032Z",
+        "FinishedAt": "0001-01-01T00:00:00Z"
+      }
+    },
+    {
+      "id": "b6d5c354ccf517e3081333460611e1552e080cbf8a7ba761ce17b7c32b43babe",
+      "name": "/flux-test-1792324598-1249831-mailpit-starttls-1",
+      "image": "sha256:0a94362145f58e5cffb58605023c671774e4143037a952221ee6485b6cd999af",
+      "configured_image": "axllent/mailpit:v1.31.2@sha256:74d609a42ec279aa63c6b4622a6fa9b5408d1ad5b1d76a1c4be40a265ce0863d",
+      "project": "flux-test-1792324598-1249831",
+      "service": "mailpit-starttls",
+      "state": {
+        "Status": "running",
+        "Running": true,
+        "Paused": false,
+        "Restarting": false,
+        "OOMKilled": false,
+        "Dead": false,
+        "Pid": 1259099,
+        "ExitCode": 0,
+        "Error": "",
+        "StartedAt": "2026-10-18T11:58:55.629395485Z",
+        "FinishedAt": "0001-01-01T00:00:00Z",
+        "Health": {
+          "Status": "healthy",
+          "FailingStreak": 0,
+          "Log": [
+            {
+              "Start": "2026-10-18T13:58:57.013869843+02:00",
+              "End": "2026-10-18T13:58:57.038948712+02:00",
+              "ExitCode": 0,
+              "Output": ""
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "f822ac40500804756a9f1567f2e382bb434371acdc4bd9fc8ab8aa22b9c90ccd",
+      "name": "/flux-test-1792324598-1249831-mailpit-smtps-1",
+      "image": "sha256:0a94362145f58e5cffb58605023c671774e4143037a952221ee6485b6cd999af",
+      "configured_image": "axllent/mailpit:v1.31.2@sha256:74d609a42ec279aa63c6b4622a6fa9b5408d1ad5b1d76a1c4be40a265ce0863d",
+      "project": "flux-test-1792324598-1249831",
+      "service": "mailpit-smtps",
+      "state": {
+        "Status": "running",
+        "Running": true,
+        "Paused": false,
+        "Restarting": false,
+        "OOMKilled": false,
+        "Dead": false,
+        "Pid": 1259118,
+        "ExitCode": 0,
+        "Error": "",
+        "StartedAt": "2026-10-18T11:58:55.646335821Z",
+        "FinishedAt": "0001-01-01T00:00:00Z",
+        "Health": {
+          "Status": "healthy",
+          "FailingStreak": 0,
+          "Log": [
+            {
+              "Start": "2026-10-18T13:58:57.119836231+02:00",
+              "End": "2026-10-18T13:58:57.14537876+02:00",
+              "ExitCode": 0,
+              "Output": ""
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "01627b7e8096dff1a30eed90c322ba0d0bc9845feced913a390a6f43309609be",
+      "name": "/flux-test-1792324598-1249831-api2-1",
+      "image": "sha256:02688a5ec1c82d54ec014242b1341540c59a4f84050f1fef0090032e931b71ac",
+      "configured_image": "flux-foundation:flux-test-1792324598-1249831",
+      "project": "flux-test-1792324598-1249831",
+      "service": "api2",
+      "state": {
+        "Status": "running",
+        "Running": true,
+        "Paused": false,
+        "Restarting": false,
+        "OOMKilled": false,
+        "Dead": false,
+        "Pid": 1258457,
+        "ExitCode": 0,
+        "Error": "",
+        "StartedAt": "2026-10-18T11:58:53.359339783Z",
+        "FinishedAt": "0001-01-01T00:00:00Z",
+        "Health": {
+          "Status": "healthy",
+          "FailingStreak": 0,
+          "Log": [
+            {
+              "Start": "2026-10-18T13:58:57.07540129+02:00",
+              "End": "2026-10-18T13:58:57.154638486+02:00",
+              "ExitCode": 0,
+              "Output": ""
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "8c119e44b4104fca92e885727bec3e9482779d049184a24dc98e0f13d08bd9e1",
+      "name": "/flux-test-1792324598-1249831-providermock-1",
+      "image": "sha256:132e4417a0d91d97eb464bf4b315cc07bf06ba1574ed9b5fdac9289fc15c2228",
+      "configured_image": "flux-test-tools:flux-test-1792324598-1249831",
+      "project": "flux-test-1792324598-1249831",
+      "service": "providermock",
+      "state": {
+        "Status": "running",
+        "Running": true,
+        "Paused": false,
+        "Restarting": false,
+        "OOMKilled": false,
+        "Dead": false,
+        "Pid": 1258081,
+        "ExitCode": 0,
+        "Error": "",
+        "StartedAt": "2026-10-18T11:58:52.467700312Z",
+        "FinishedAt": "0001-01-01T00:00:00Z",
+        "Health": {
+          "Status": "healthy",
+          "FailingStreak": 0,
+          "Log": [
+            {
+              "Start": "2026-10-18T13:58:54.778057654+02:00",
+              "End": "2026-10-18T13:58:54.854650162+02:00",
+              "ExitCode": 0,
+              "Output": ""
+            },
+            {
+              "Start": "2026-10-18T13:58:56.855229953+02:00",
+              "End": "2026-10-18T13:58:56.930695478+02:00",
+              "ExitCode": 0,
+              "Output": ""
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "d2ec388b3e2454fc89f31828917a5bf29c4990dcf4083dbf337afff7976b09a3",
+      "name": "/flux-test-1792324598-1249831-api-1",
+      "image": "sha256:02688a5ec1c82d54ec014242b1341540c59a4f84050f1fef0090032e931b71ac",
+      "configured_image": "flux-foundation:flux-test-1792324598-1249831",
+      "project": "flux-test-1792324598-1249831",
+      "service": "api",
+      "state": {
+        "Status": "running",
+        "Running": true,
+        "Paused": false,
+        "Restarting": false,
+        "OOMKilled": false,
+        "Dead": false,
+        "Pid": 1258464,
+        "ExitCode": 0,
+        "Error": "",
+        "StartedAt": "2026-10-18T11:58:53.376341579Z",
+        "FinishedAt": "0001-01-01T00:00:00Z",
+        "Health": {
+          "Status": "healthy",
+          "FailingStreak": 0,
+          "Log": [
+            {
+              "Start": "2026-10-18T13:58:57.036196094+02:00",
+              "End": "2026-10-18T13:58:57.115033878+02:00",
+              "ExitCode": 0,
+              "Output": ""
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "55284cb07d511ec4e80fe6f499cd4b573ce725e3f4ed8425bcc1099ff2cfb81a",
+      "name": "/flux-test-1792324598-1249831-mailpit-1",
+      "image": "sha256:0a94362145f58e5cffb58605023c671774e4143037a952221ee6485b6cd999af",
+      "configured_image": "axllent/mailpit:v1.31.2@sha256:74d609a42ec279aa63c6b4622a6fa9b5408d1ad5b1d76a1c4be40a265ce0863d",
+      "project": "flux-test-1792324598-1249831",
+      "service": "mailpit",
+      "state": {
+        "Status": "running",
+        "Running": true,
+        "Paused": false,
+        "Restarting": false,
+        "OOMKilled": false,
+        "Dead": false,
+        "Pid": 1258160,
+        "ExitCode": 0,
+        "Error": "",
+        "StartedAt": "2026-10-18T11:58:52.565667548Z",
+        "FinishedAt": "0001-01-01T00:00:00Z",
+        "Health": {
+          "Status": "healthy",
+          "FailingStreak": 0,
+          "Log": [
+            {
+              "Start": "2026-10-18T13:58:53.997862996+02:00",
+              "End": "2026-10-18T13:58:54.024291488+02:00",
+              "ExitCode": 0,
+              "Output": ""
+            },
+            {
+              "Start": "2026-10-18T13:58:56.02531408+02:00",
+              "End": "2026-10-18T13:58:56.050830419+02:00",
+              "ExitCode": 0,
+              "Output": ""
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "66ce95cf78fcd672a42ed291a87d2eba3abf108372d3ed9290ddefdc761e1d38",
+      "name": "/flux-test-1792324598-1249831-pushmock-1",
+      "image": "sha256:35dada61d536896b19b39eaceeff8b4c008b6ac16ae1a025144c29de03434a65",
+      "configured_image": "flux-e2e:flux-test-1792324598-1249831",
+      "project": "flux-test-1792324598-1249831",
+      "service": "pushmock",
+      "state": {
+        "Status": "running",
+        "Running": true,
+        "Paused": false,
+        "Restarting": false,
+        "OOMKilled": false,
+        "Dead": false,
+        "Pid": 1258122,
+        "ExitCode": 0,
+        "Error": "",
+        "StartedAt": "2026-10-18T11:58:52.529732491Z",
+        "FinishedAt": "0001-01-01T00:00:00Z",
+        "Health": {
+          "Status": "healthy",
+          "FailingStreak": 0,
+          "Log": [
+            {
+              "Start": "2026-10-18T13:58:54.918771086+02:00",
+              "End": "2026-10-18T13:58:54.984268284+02:00",
+              "ExitCode": 0,
+              "Output": ""
+            },
+            {
+              "Start": "2026-10-18T13:58:56.985625007+02:00",
+              "End": "2026-10-18T13:58:57.043132133+02:00",
+              "ExitCode": 0,
+              "Output": ""
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "d9242875681b5a116d298b1c46debcf4297b31ea5625b3c3fa80d4b7e4bc5d77",
+      "name": "/flux-test-1792324598-1249831-db-1",
+      "image": "sha256:c293117fcecda7344b5480222e813b9f673d7abd69b1dd95eff239b768b04f59",
+      "configured_image": "postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873",
+      "project": "flux-test-1792324598-1249831",
+      "service": "db",
+      "state": {
+        "Status": "running",
+        "Running": true,
+        "Paused": false,
+        "Restarting": false,
+        "OOMKilled": false,
+        "Dead": false,
+        "Pid": 1255740,
+        "ExitCode": 0,
+        "Error": "",
+        "StartedAt": "2026-10-18T11:58:31.849472989Z",
+        "FinishedAt": "0001-01-01T00:00:00Z",
+        "Health": {
+          "Status": "healthy",
+          "FailingStreak": 0,
+          "Log": [
+            {
+              "Start": "2026-10-18T13:58:48.296352828+02:00",
+              "End": "2026-10-18T13:58:48.327463032+02:00",
+              "ExitCode": 0,
+              "Output": "127.0.0.1:5432 - accepting connections\n"
+            },
+            {
+              "Start": "2026-10-18T13:58:50.328312795+02:00",
+              "End": "2026-10-18T13:58:50.352678721+02:00",
+              "ExitCode": 0,
+              "Output": "127.0.0.1:5432 - accepting connections\n"
+            },
+            {
+              "Start": "2026-10-18T13:58:52.353858603+02:00",
+              "End": "2026-10-18T13:58:52.378879701+02:00",
+              "ExitCode": 0,
+              "Output": "127.0.0.1:5432 - accepting connections\n"
+            },
+            {
+              "Start": "2026-10-18T13:58:54.379529972+02:00",
+              "End": "2026-10-18T13:58:54.406403745+02:00",
+              "ExitCode": 0,
+              "Output": "127.0.0.1:5432 - accepting connections\n"
+            },
+            {
+              "Start": "2026-10-18T13:58:56.408022999+02:00",
+              "End": "2026-10-18T13:58:56.434703511+02:00",
+              "ExitCode": 0,
+              "Output": "127.0.0.1:5432 - accepting connections\n"
+            }
+          ]
+        }
+      }
+    }
+  ]
+}
