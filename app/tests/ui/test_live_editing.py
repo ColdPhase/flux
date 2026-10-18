@@ -484,24 +484,25 @@ class LiveEditingJourney(LiveFixture):
         async def copied_document(page, content):
             # The viewport DOM is virtualized and includes named cursor widgets.
             # Observe the actual editor's ordinary Select All/Copy path instead.
-            # Read the actual full clipboard through trusted native Copy/Paste on both engines.
-            # WebKit does not expose Chromium's clipboard-write permission. A fresh sentinel is
-            # copied first so a failed editor Copy cannot pass with an older document value.
+            # Read the actual full clipboard after trusted Copy on both engines. WebKit exposes
+            # clipboard-read only. Wait for the fresh sentinel before editor Copy and its real
+            # replacement afterwards; an asynchronous clipboard write cannot race a probe Paste.
             sentinel = 'fresh-copy-' + str(uuid.uuid4())
+            permissions = ['clipboard-read', 'clipboard-write'] if UI_BROWSER == 'chromium' else ['clipboard-read']
+            await page.context.grant_permissions(permissions, origin=ORIGIN)
+            await page.bring_to_front()
             await page.evaluate('value => { const probe = document.createElement("textarea"); probe.id = "live-clipboard-probe"; probe.value = value; probe.style.cssText = "position:fixed;left:0;top:0;width:12px;height:12px;z-index:2147483647"; document.body.append(probe); }', sentinel)
             probe = page.locator('#live-clipboard-probe')
             try:
                 await probe.click()
                 await page.keyboard.press('Control+a')
                 await page.keyboard.press('Control+c')
+                await page.wait_for_function('async value => (await navigator.clipboard.readText()) === value', arg=sentinel, timeout=5000)
                 await content.click()
                 await page.keyboard.press('Control+a')
                 await page.keyboard.press('Control+c')
-                await probe.click()
-                await page.keyboard.press('Control+a')
-                await page.keyboard.press('Control+v')
-                await expect(probe).not_to_have_value(sentinel)
-                text = await probe.input_value()
+                await page.wait_for_function('async value => (await navigator.clipboard.readText()) !== value', arg=sentinel, timeout=5000)
+                text = await page.evaluate('() => navigator.clipboard.readText()')
                 self.assertIsInstance(text, str)
                 self.assertLessEqual(len(text), 100_000)
                 return text
@@ -694,8 +695,12 @@ class LiveEditingJourney(LiveFixture):
                 composition = [event for event in witness if event['type'].startswith('composition')]
                 for kind in ('compositionstart', 'compositionupdate', 'compositionend'):
                     self.assertTrue(any(event['type'] == kind for event in composition), f'Missing native {kind}: {witness}')
-                self.assertTrue(all(event['trusted'] for event in composition), witness)
+                for kind in ('compositionstart', 'compositionupdate'):
+                    self.assertTrue(any(event['type'] == kind and event['trusted'] for event in composition), witness)
+                self.assertTrue(any(event['type'] == 'input' and event['trusted']
+                                    and event['data'] in ('日本', '日', '本') for event in witness), witness)
                 if self.native_ime:
+                    self.assertTrue(all(event['trusted'] for event in composition), witness)
                     self.assertEqual(sum(event['type'] == 'compositionstart' for event in composition), 2, witness)
                     # GTK ends the hexadecimal preedit with empty data before each real commit.
                     # Both nonempty composition ends and committed inputs must identify each
@@ -706,6 +711,11 @@ class LiveEditingJourney(LiveFixture):
                                       and event['inputType'] == 'insertFromComposition'], ['日', '本'], witness)
                     self.assertTrue(all(event['trusted'] for event in witness if event['type'] == 'input'), witness)
                     print('ACTUAL_NATIVE_IME=webkit-gtk-simple-x11; trusted preedit/commit cycles=2', flush=True)
+                else:
+                    # CDP's observed compositionend has isTrusted=false. It is not a native-end
+                    # witness; the original kana preedit, real input and convergence remain required.
+                    print('ACTUAL_NATIVE_IME=chromium-cdp; trusted preedit/input; endTrusted=' +
+                          str([event['trusted'] for event in composition if event['type'] == 'compositionend']), flush=True)
             finally:
                 if self.native_ime:
                     await ada.evaluate('title => { document.title = title; }', previous_title)
