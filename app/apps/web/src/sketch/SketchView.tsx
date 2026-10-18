@@ -630,7 +630,7 @@ function SketchEditor({ sketchId, projectId, dmId, back = '/map', doc }: ViewPro
     if (editingState) { say('Finish or cancel your current edit first'); return; }
     setEditing(null);
     setConnectFrom(null);
-    const label = doc.undo();
+    const label = doc.undo((confirmedLabel) => say(`Undid: ${confirmedLabel}`));
     // Only the live map's undo waits for a server receipt; the ordinary one is applied at once.
     if (doc.liveStatus === 'unavailable') say(label ? `Undid: ${label}` : 'Nothing to undo');
     else say(label ? `Undo requested: ${label}. Waiting for confirmation.` : 'No undo started');
