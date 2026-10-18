@@ -16,6 +16,12 @@ case "$FLUX_UI_BROWSER" in
   chromium|webkit) ;;
   *) printf '%s\n' 'FLUX_UI_BROWSER must be chromium or webkit' >&2; exit 2 ;;
 esac
+export FLUX_LIVE_EDITING="${FLUX_LIVE_EDITING:-on}"
+case "$FLUX_LIVE_EDITING" in
+  on) export FLUX_LIVE_EDITING_TEST=1 ;;
+  off) export FLUX_LIVE_EDITING_TEST=0 ;;
+  *) printf '%s\n' 'FLUX_LIVE_EDITING must be on or off' >&2; exit 2 ;;
+esac
 for target in "$@"; do
   module=${target%%.*}
   case "$module" in

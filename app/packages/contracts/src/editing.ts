@@ -2,7 +2,7 @@ import type { Doc, DocMention, SaveLiveDocCommand } from './docs.js';
 import type { NamedPrincipal } from './work.js';
 import type { Sketch, SketchDetail, Thought, ThoughtLink } from './sketch.js';
 
-/** #228 integration seam. Routes remain disabled until the four accepted gates pass. */
+/** #228 integration seam. The production operator control is FLUX_LIVE_EDITING. */
 export const EDITING_SOCKET_PATH = '/api/v1/editing';
 /** The process's live map/wiki capability. Clients mount live editors only when it is `configured`;
  * otherwise maps and the wiki behave exactly as without #228 (#239 review). */

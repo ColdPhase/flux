@@ -25,6 +25,7 @@ import { apiEditingOutputBudget } from '../editing/output.js';
 import { editingMapContextCharge } from '../editing/context-charge.js';
 import { editingJSONSize } from '../editing/json-size.js';
 import { editingHTTPLifetime, type EditingHTTPLifetime } from '../editing/http-lifetime.js';
+import { nativeMapRoomExists } from '../editing/native-map-journal.js';
 import type { CommandSpec } from '../http/commands.js';
 import { projectAuthorOwners, scopedPrincipal } from '../conversation/author-owners.js';
 
@@ -81,6 +82,7 @@ export async function sketchRoutes(app: FastifyInstance, { db, sessions, storage
   const runner=commandRunner(db,sessions);const {principal}=runner;
   const preparation=new EditingHTTPAdmission(apiEditingOutputBudget);app.addHook('onClose',async()=>preparation.close());
   const lifetimes=new WeakMap<FastifyReply,EditingHTTPLifetime>();
+  const preparedReplies=new WeakSet<FastifyReply>();
   async function command(request:FastifyRequest,reply:FastifyReply,spec:CommandSpec) {
     let owner:EditingHTTPLifetime|undefined;
     const sendNative=(status:number,current:unknown,etag?:string|null,replayed=false)=>{
@@ -94,20 +96,28 @@ export async function sketchRoutes(app: FastifyInstance, { db, sessions, storage
       reply.hijack();reply.raw.writeHead(status,headers);reply.raw.end(owned);
     };
     try {
-      const lifetime=editingHTTPLifetime(reply.raw,apiEditingOutputBudget,{deferCharge:!developmentEditing});owner=lifetime;lifetimes.set(reply,lifetime);
+      const lifetime=editingHTTPLifetime(reply.raw,apiEditingOutputBudget,{deferCharge:true});owner=lifetime;lifetimes.set(reply,lifetime);
       if(!developmentEditing) {
         const response=await runner.runCommand(request,spec);
         if(!lifetime.canSend)return reply.hijack();
         return runner.sendCommand(reply,response);
       }
-      lifetime.retain(apiEditingOutputBudget.reserve(editingMapContextCharge({params:request.params,headers:request.headers,body:request.body,query:request.query})));
-      lifetime.retain(await preparation.admit(0));
+      const resourceId=(request.params as {sketchId?:string}).sketchId;
+      if(resourceId&&await nativeMapRoomExists(db,resourceId)) {
+        lifetime.protect();
+        lifetime.retain(apiEditingOutputBudget.reserve(editingMapContextCharge({params:request.params,headers:request.headers,body:request.body,query:request.query})));
+        lifetime.retain(await preparation.admit(0));preparedReplies.add(reply);
+      }
       const response=await runner.runCommand(request,spec);
       const session=await sessions.requirePrincipal(request);const backend=liveBackend?.();
       if(!backend)throw new ServiceUnavailableError('The live map adapter is closing','EDITING_MAP_CAPACITY');
       const params=request.params as {sketchId?:string};const body=response.body as {id?:string;sketch?:{id?:string}}|null;
       const target=routeUrl(request).endsWith('/promotion')?body?.sketch?.id:params.sketchId??body?.id;
       if(!target)throw new ServiceUnavailableError('The native map receipt has no target','EDITING_MAP_CAPACITY');
+      // Never create a live room merely to return an ordinary native receipt. A room appearing
+      // during the command is handled by the journal; its response still uses the current fence.
+      if(!await nativeMapRoomExists(db,target))return lifetime.canSend?runner.sendCommand(reply,response):reply.hijack();
+      lifetime.protect();
       await backend.deliverNative({sessionId:session.sessionId,actorId:session.principal.id},target,response.body,
         current=>sendNative(response.status,current,response.etag,response.replayed));
     } catch(error) {
@@ -128,7 +138,7 @@ export async function sketchRoutes(app: FastifyInstance, { db, sessions, storage
       }
       if(error instanceof DomainError)error.details={};throw error;
     }
-    finally {owner?.settled();lifetimes.delete(reply);}
+    finally {owner?.settled();lifetimes.delete(reply);preparedReplies.delete(reply);}
   }
   const sketches = sketchUseCases(db);
   function native(conn:Database,actor:Principal,request:FastifyRequest,session:SessionContext,reply:import('fastify').FastifyReply) {
@@ -136,7 +146,7 @@ export async function sketchRoutes(app: FastifyInstance, { db, sessions, storage
     const url=routeUrl(request);
     const uuid=original&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(original)?original.toLowerCase():original?derivedUuid('flux.map.legacy-key.v1',actor.kind,actor.id,request.method,url,original):undefined;
     const lifetime=lifetimes.get(reply);if(!lifetime)throw new Error('Native HTTP work has no response owner');
-    return sketchUseCases(conn,storage,{confirmation,context:{params:request.params,body:request.body,query:request.query,headers:request.headers,session},prepared:developmentEditing,resourceId:(request.params as {sketchId?:string}).sketchId,principal:actor,sessionId:session.sessionId,commandId:uuid,protectLifetime:()=>lifetime.protect(),retainUntil:(release)=>lifetime.retain(release),
+    return sketchUseCases(conn,storage,{confirmation,context:{params:request.params,body:request.body,query:request.query,headers:request.headers,session},prepared:preparedReplies.has(reply),resourceId:(request.params as {sketchId?:string}).sketchId,principal:actor,sessionId:session.sessionId,commandId:uuid,protectLifetime:()=>lifetime.protect(),retainUntil:(release)=>lifetime.retain(release),
       operation:`native:${request.method} ${url}`,fingerprint:requestHash({params:request.params,body:request.body??null,query:request.query,ifMatch:request.headers['if-match']??null})});
   }
   const sketchScope = (sketchId: string): ResourceRef => ({ type: 'sketch', id: sketchId });

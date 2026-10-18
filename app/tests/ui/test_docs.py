@@ -11,6 +11,7 @@ the API, so the test proves persisted behaviour rather than local state.
 from __future__ import annotations
 
 import json
+import os
 import re
 import time
 import unittest
@@ -18,7 +19,7 @@ import uuid
 
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
-from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
+from test_app_shell import DESKTOP, ORIGIN, PHONE, UI_BROWSER, UPSTREAM, shot, start_forwarder
 
 PASSWORD = "docs keep their history"
 STAMP = int(time.time() * 1000)
@@ -46,6 +47,7 @@ The lamp reads hand gestures with a **ToF distance sensor** above the shade. It 
 > The camera test ran for two evenings in Kai's bedroom.
 
 """
+LIVE = os.environ.get('FLUX_LIVE_EDITING', 'on') != 'off'
 
 
 class DocsJourney(unittest.TestCase):
@@ -64,7 +66,7 @@ class DocsJourney(unittest.TestCase):
         if UPSTREAM:
             start_forwarder(ORIGIN, UPSTREAM)
         cls.pw = sync_playwright().start()
-        cls.browser = cls.pw.chromium.launch()
+        cls.browser = getattr(cls.pw, UI_BROWSER).launch()
         expect.set_options(timeout=8000)
 
     @classmethod
@@ -125,6 +127,8 @@ class DocsJourney(unittest.TestCase):
             type(self).states[key] = page.context.storage_state()
             person["id"] = self.api(page, "GET", "/api/v1/me", status=200)["user"]["id"]
         owner = self.page("owner")
+        self.assertEqual(self.api(owner, "GET", "/api/v1/live-editing/capabilities", status=200),
+                         {"status": "configured" if LIVE else "unavailable"})
         ws = self.api(owner, "POST", "/api/v1/workspaces", {"name": "Lamp studio"}, status=201)
         self.api(owner, "POST", f"/api/v1/workspaces/{ws['id']}/members", {"email": PARTNER["email"], "role": "member"}, status=201)
         project = self.api(owner, "POST", f"/api/v1/workspaces/{ws['id']}/projects", {"name": "Gesture lamp", "visibility": "restricted"}, status=201)
@@ -187,6 +191,9 @@ class DocsJourney(unittest.TestCase):
     # ---------------------------------------------------------------- concurrent edit
 
     def test_03_a_concurrent_edit_is_never_overwritten(self) -> None:
+        if LIVE:
+            self.shared_concurrent_edit()
+            return
         page = self.page("partner")
         page.goto(f"/projects/{self.project_id}/docs/{self.doc_id}")
         page.get_by_role("link", name="Edit").click()
@@ -221,6 +228,50 @@ class DocsJourney(unittest.TestCase):
         current = self.doc(page)["body"]
         self.assertIn("5% brightness", current)
         self.assertIn("frosted shade", current)
+
+    def shared_concurrent_edit(self) -> None:
+        """Normal installation: both contributions arrive before Save; each saved version stays immutable."""
+        partner, owner = self.page("partner"), self.page("owner")
+        url = f"/projects/{self.project_id}/docs/{self.doc_id}"
+        for page in (partner, owner):
+            page.goto(url + "/edit")
+            expect(page.locator('[data-live-status="live"]')).to_be_visible()
+        theirs = owner.locator('.cm-content[aria-label="Shared Markdown"]')
+        mine = partner.locator('.cm-content[aria-label="Shared Markdown"]')
+        mine.click()
+        partner.keyboard.press("Control+End")
+        partner.keyboard.insert_text("\nKai checked the power readings.\n")
+        theirs.click()
+        owner.keyboard.press("Control+End")
+        owner.keyboard.insert_text("\n## Open questions\n\n- Does the sensor see through a frosted shade?\n")
+        for field in (mine, theirs):
+            expect(field).to_contain_text("Kai checked the power readings.")
+            expect(field).to_contain_text("frosted shade")
+        expect(owner.get_by_role("status").filter(has_text="All changes shared")).to_be_visible()
+        self.assertEqual(self.doc(owner)["version"], 1, "typing does not rewrite the saved citation")
+        owner.get_by_label("Reason for this version").fill("Added open questions")
+        owner.get_by_role("button", name="Save version", exact=True).click()
+        expect(owner.get_by_role("status").filter(has_text="Version 2 saved")).to_be_visible()
+        v2 = self.api(owner, "GET", f"/api/v1/docs/{self.doc_id}/versions/2", status=200)
+        self.assertIn("Kai checked the power readings.", v2["body"])
+        self.assertIn("frosted shade", v2["body"])
+        self.assertEqual({actor["name"] for actor in v2["contributors"]}, {OWNER["name"], PARTNER["name"]})
+        # Kai changes the agreed text after Ada's explicit snapshot, retaining both earlier contributions.
+        mine.click()
+        partner.keyboard.press("Control+a")
+        partner.keyboard.insert_text(v2["body"].replace("Two quick waves start the night light", "Two quick waves start the night light at 5% brightness"))
+        expect(partner.get_by_role("status").filter(has_text="All changes shared")).to_be_visible()
+        expect(theirs).to_contain_text("at 5% brightness")
+        partner.get_by_label("Reason for this version").fill("Night light brightness")
+        partner.get_by_role("button", name="Save version", exact=True).click()
+        expect(partner.get_by_role("status").filter(has_text="Version 3 saved")).to_be_visible()
+        current = self.doc(partner)
+        self.assertEqual(current["version"], 3)
+        self.assertIn("5% brightness", current["body"])
+        self.assertIn("frosted shade", current["body"])
+        self.assertEqual(self.api(owner, "GET", f"/api/v1/docs/{self.doc_id}/versions/2", status=200)["body"], v2["body"])
+        self.assertNotIn("5% brightness", v2["body"])
+        self.assertEqual([row["reason"] for row in self.versions(partner)], ["Night light brightness", "Added open questions", "First notes from the bench test"])
 
     # ---------------------------------------------------------------- history and diff
 
@@ -291,12 +342,23 @@ class DocsJourney(unittest.TestCase):
         edit = page.get_by_role("link", name="Edit")
         self.assertGreaterEqual(edit.bounding_box()["height"], 44)
         edit.tap()
-        text = page.get_by_label("Text (Markdown)")
-        text.fill(text.input_value() + "\n## Next\n\n- Order two ToF sensors for the second lamp\n")
+        if LIVE:
+            text = page.locator('.cm-content[aria-label="Shared Markdown"]')
+            expect(page.locator('[data-live-status="live"]')).to_be_visible()
+            text.click()
+            page.keyboard.press("Control+End")
+            page.keyboard.insert_text("\n## Next\n\n- Order two ToF sensors for the second lamp\n")
+            expect(page.get_by_role("status").filter(has_text="All changes shared")).to_be_visible()
+        else:
+            text = page.get_by_label("Text (Markdown)")
+            text.fill(text.input_value() + "\n## Next\n\n- Order two ToF sensors for the second lamp\n")
         page.get_by_role("button", name="Preview").tap()
-        expect(page.get_by_label("Preview").get_by_role("heading", name="Next")).to_be_visible()
+        expect(page.get_by_label("Shared preview" if LIVE else "Preview").get_by_role("heading", name="Next")).to_be_visible()
         shot(page, "docs-editor-preview-phone-390")
         page.get_by_role("button", name="Save version").tap()
+        if LIVE:
+            expect(page.get_by_role("status").filter(has_text="Version 5 saved")).to_be_visible()
+            page.get_by_role("link", name="Back to doc", exact=True).tap()
         expect(page.get_by_role("heading", level=2, name=TITLE)).to_be_visible()
         expect(page.locator(".wiki-bar__title")).to_contain_text("Wiki ·")
         self.assertEqual(self.doc(page)["version"], 5)

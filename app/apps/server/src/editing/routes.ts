@@ -37,7 +37,7 @@ function send(reply: FastifyReply, body: unknown, lifetime: EditingHTTPLifetime)
   reply.raw.writeHead(200, { 'content-type': 'application/json; charset=utf-8', 'content-length': bytes, 'cache-control': 'no-store' });
   reply.raw.end(owned);
 }
-/** Ordinary routes return one truthful disabled capability until development composition is explicitly selected. */
+/** Live routes share the operator's production capability and current domain authority. */
 export async function editingRoutes(app: FastifyInstance, { sessions, authority, outputBudget,maps=null }: Options) {
   app.setErrorHandler((error, _request, reply) => {
     if (error instanceof EditingTransactionError) return reply.code(503).send({ code: 'EDITING_OUTCOME_UNKNOWN', error: error.message, outcome: 'unknown', retryable: true });
@@ -46,7 +46,7 @@ export async function editingRoutes(app: FastifyInstance, { sessions, authority,
     if (error instanceof EditingOutputError || 'code' in error && ['EXTERNAL_BUFFER_LIMIT','WORK_QUEUE_LIMIT','ROOM_CACHE_LIMIT','ADMISSION_TIMEOUT','ADMISSION_METADATA_LIMIT','EDITING_PRESENCE_CAPACITY','EDITING_MAP_CAPACITY'].includes(String(error.code))) return reply.code(503).send({ code: error.code, error: 'The finite live capacity is busy', outcome: 'refused', retryable: true });
     throw error;
   });
-  app.addHook('preValidation', async () => { if (!authority&&!maps) throw new ServiceUnavailableError('Live editing is disabled until all four accepted gates pass', 'LIVE_EDITING_DISABLED'); });
+  app.addHook('preValidation', async () => { if (!authority&&!maps) throw new ServiceUnavailableError('Live editing is disabled on this installation', 'LIVE_EDITING_DISABLED'); });
   const wiki=()=>{if(!authority)throw new ServiceUnavailableError('Live wiki is disabled','LIVE_EDITING_DISABLED');return authority;};
   const admission = new EditingHTTPAdmission(outputBudget);
   app.addHook('onClose', async () => admission.close());
@@ -84,7 +84,7 @@ export async function editingRoutes(app: FastifyInstance, { sessions, authority,
       reply.raw.writeHead(200,{'content-type':'application/json; charset=utf-8','cache-control':'no-store','content-length':bytes});reply.raw.end(wire);
     } catch(error){if(!transferred)release();throw error;}
   }
-  const map=()=>{if(!maps)throw new ServiceUnavailableError('Live maps are disabled until all four gates pass','LIVE_EDITING_DISABLED');return maps;};
+  const map=()=>{if(!maps)throw new ServiceUnavailableError('Live maps are disabled on this installation','LIVE_EDITING_DISABLED');return maps;};
   app.get<{Params:{sketchId:string}}>(liveMapPath(':sketchId'),async(request,reply)=>{
     const lifetime=editingHTTPLifetime(reply.raw,outputBudget);try {
       const session=await sessions.requirePrincipal(request);
