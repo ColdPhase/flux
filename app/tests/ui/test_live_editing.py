@@ -667,7 +667,7 @@ class LiveEditingJourney(LiveFixture):
                   window.__nativeImeWitness = [];
                   for (const type of ['compositionstart','compositionupdate','compositionend','beforeinput','input'])
                     element.addEventListener(type, event => window.__nativeImeWitness.push({type:event.type,
-                      data:event.data, trusted:event.isTrusted, composing:event.isComposing, inputType:event.inputType}));
+                      data:event.data, trusted:event.isTrusted, composing:event.isComposing, inputType:event.inputType}), true);
                 }''')
                 if cdp:
                     for text in ('に', 'にほ', 'にほん'):
@@ -697,7 +697,14 @@ class LiveEditingJourney(LiveFixture):
                 self.assertTrue(all(event['trusted'] for event in composition), witness)
                 if self.native_ime:
                     self.assertEqual(sum(event['type'] == 'compositionstart' for event in composition), 2, witness)
-                    self.assertEqual(sum(event['type'] == 'compositionend' for event in composition), 2, witness)
+                    # GTK ends the hexadecimal preedit with empty data before each real commit.
+                    # Both nonempty composition ends and committed inputs must identify each
+                    # expected character exactly once; native cleanup ends are not extra text.
+                    self.assertEqual([event['data'] for event in composition
+                                      if event['type'] == 'compositionend' and event['data']], ['日', '本'], witness)
+                    self.assertEqual([event['data'] for event in witness if event['type'] == 'input'
+                                      and event['inputType'] == 'insertFromComposition'], ['日', '本'], witness)
+                    self.assertTrue(all(event['trusted'] for event in witness if event['type'] == 'input'), witness)
                     print('ACTUAL_NATIVE_IME=webkit-gtk-simple-x11; trusted preedit/commit cycles=2', flush=True)
             finally:
                 if self.native_ime:
