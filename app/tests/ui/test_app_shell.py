@@ -683,7 +683,7 @@ class AppShellJourney(unittest.TestCase):
                 self.assertEqual(project.status, 201, project.text())
                 page.goto(f"/projects/{project.json()['id']}")
                 expect(page.locator(".project-convo")).to_be_visible()
-                header = page.locator("header.top")
+                header = page.locator("header.phead" if device == "phone" else "header.top")
                 before = header.bounding_box()
                 if device == "phone":
                     expect(header.get_by_role("button", name="Back", exact=True)).to_be_visible()
