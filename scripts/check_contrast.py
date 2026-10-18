@@ -16,8 +16,6 @@ from pathlib import Path
 
 TOKENS = Path(__file__).resolve().parent.parent / "app/apps/web/src/ui/tokens.css"
 
-COLOURS = Path(__file__).resolve().parent.parent / "app/apps/web/src/editing/color.ts"
-
 # (foreground, background, minimum ratio, purpose). A name ending in @0 or @1 is the first or last
 # stop of a gradient token. --t3 is muted text and also holds 4.5:1 on the quiet fills (--side, --sub,
 # --hov), so meta text in the sidebar, in chips and on hovered rows passes (#433).
@@ -57,6 +55,8 @@ PAIRS = [
     ("--t3", "--pick", 3.0, "the check box of a chosen message row"),
     ("--own", "--pick", 1.08, "a chosen own bubble stays apart from the row's fill"),
     ("--bg", "--pick", 1.15, "the fill of a chosen row stands out from the screen"),
+    ("--oninv", "--inv", 4.5, "human collaboration name label"),
+    ("--t1", "--el", 3.0, "human collaboration cursor and caret"),
 ]
 
 # APCA lower bounds (absolute Lc) for text tokens on the surfaces where text sits, in both themes.
@@ -142,15 +142,6 @@ def main(argv: list[str] | None = None) -> int:
                 checked += 1
                 if not (quiet and ok):
                     print(f"{'ok  ' if ok else 'FAIL'} {theme:5} APCA Lc {value:5.1f} (min {minimum}) {fg} on {bg}: text readability")
-    # Live co-editing name labels: white text on each person colour, the same in both themes.
-    colours = re.search(r"PERSON_COLOURS = \[([^\]]*)\]", COLOURS.read_text())
-    for hexa in re.findall(HEX, colours.group(1) if colours else ""):
-        value = ratio("#ffffff", hexa)
-        ok = value >= 4.5
-        failures += not ok
-        checked += 1
-        if not (quiet and ok):
-            print(f"{'ok  ' if ok else 'FAIL'} both  {value:5.2f}:1 (min 4.5) white on {hexa}: live name label")
     # The dark tokens are duplicated for prefers-color-scheme; they must match the toggle block.
     media = block_after(css, ':root:not([data-theme="light"]) {')
     normalise = lambda block: re.sub(r"\s+", "", re.sub(r"color-scheme:\s*dark;", "", block.split("{", 1)[1]))
