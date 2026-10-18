@@ -3,6 +3,9 @@ import { ApiError, request } from '../api/client';
 import { EditingConnection, type ReceivedEditing } from './wire';
 import { MapPresenceStore } from './map-presence';
 
+const RETIRED_PREVIEW_MS = 6000; // Five-second server transient expiry plus one client timer interval.
+const MAX_RETIRED_PREVIEWS = 256;
+
 export interface MapPreview { generation: string; actor: NamedPrincipal; gestureId: string; leaseId: string; positions: LiveMapPosition[]; expiresAt: string; sequence: number }
 interface Gesture { id: string; base: Map<string, number>; lease: Promise<LiveMapLease>; active: boolean; sequence: number; latest: LiveMapPosition[] | null; lastPositions: LiveMapPosition[] | null; serverLease: LiveMapLease | null; lastPreviewAt: number }
 interface PrivateMovement { generation: string; gestureId: string; positions: LiveMapPosition[]; versions: [string, number][] }
@@ -12,6 +15,7 @@ export class SharedMap {
   status: 'connecting' | 'live' | 'unavailable' | 'private' = 'connecting';
   problem: string | null = null;
   previews = new Map<string, MapPreview>();
+  private retiredPreviews = new Map<string, number>();
   get peers() { return this.presenceStore.getSnapshot(); }
   privateMovement: PrivateMovement | null = null;
   private connection: EditingConnection | null = null;
@@ -42,6 +46,7 @@ export class SharedMap {
     this.timer = window.setInterval(() => {
       let expired = false;
       for (const [id, preview] of this.previews) if (Date.parse(preview.expiresAt) <= Date.now()) { this.previews.delete(id); expired = true; }
+      for (const [id, until] of this.retiredPreviews) if (until <= Date.now()) this.retiredPreviews.delete(id);
       this.presenceStore.expire(Date.now());
       const gesture = this.gesture;
       if (gesture?.active && gesture.serverLease && Date.parse(gesture.serverLease.expiresAt) <= Date.now() && gesture.lastPreviewAt + 5000 <= Date.now()) { this.cancel(true, false); this.problem = 'The movement lease expired. Its unfinished positions are kept privately for comparison.'; expired = true; }
@@ -77,12 +82,21 @@ export class SharedMap {
   }
   private disconnected = () => {
     if (this.stopped || this.status === 'private' || this.status === 'unavailable') return;
-    this.status = 'connecting'; this.previews.clear(); this.presenceStore.clear(); this.cancel(true); this.changed();
+    this.status = 'connecting'; this.previews.clear(); this.retiredPreviews.clear(); this.presenceStore.clear(); this.cancel(true); this.changed();
     this.connection?.close();
     if (this.reconnectTimer === null) this.reconnectTimer = window.setTimeout(() => { this.reconnectTimer = null; void this.start(); }, 600);
   };
   private retire(problem: string) {
-    this.status = 'private'; this.problem = problem; this.cancel(true); this.connection?.close(); this.previews.clear(); this.presenceStore.clear(); this.changed();
+    this.status = 'private'; this.problem = problem; this.cancel(true); this.connection?.close(); this.previews.clear(); this.retiredPreviews.clear(); this.presenceStore.clear(); this.changed();
+  }
+  private retirePreviewLease(leaseId: string) {
+    if (!this.retiredPreviews.has(leaseId) && this.retiredPreviews.size >= MAX_RETIRED_PREVIEWS) {
+      // Never evict a still-live tombstone: a delayed frame could then revive that cleared lease.
+      this.disconnected();
+      return false;
+    }
+    this.retiredPreviews.set(leaseId, Date.now() + RETIRED_PREVIEW_MS);
+    return true;
   }
   private receive = (message: ReceivedEditing) => {
     if (!this.head || this.stopped) return;
@@ -96,9 +110,16 @@ export class SharedMap {
         if (message.sequence <= this.head.sequence) break;
         if (message.sequence !== this.head.sequence + 1) { this.disconnected(); return; }
         this.head.sequence = message.sequence;
-        for (const id of message.clearedLeaseIds) { this.previews.delete(id); if (this.gesture?.serverLease?.leaseId === id) { this.keepMovement(this.gesture); this.gesture.active = false; } if (this.completedGesture?.serverLease?.leaseId === id) this.completedGesture = null; }
+        for (const id of message.clearedLeaseIds) {
+          if (!this.retirePreviewLease(id)) return;
+          this.previews.delete(id);
+          if (this.gesture?.serverLease?.leaseId === id) { this.keepMovement(this.gesture); this.gesture.active = false; }
+          if (this.completedGesture?.serverLease?.leaseId === id) this.completedGesture = null;
+        }
         this.delta(message); break;
       case 'map-move': {
+        const expiresAt = Date.parse(message.expiresAt);
+        if (!Number.isFinite(expiresAt) || expiresAt <= Date.now() || this.retiredPreviews.has(message.leaseId)) return;
         // An own echo only renews the current lease. Native pointer input already
         // published its local geometry/sequence; this must not repaint the graph.
         if (this.gesture?.serverLease?.leaseId === message.leaseId) { this.gesture.serverLease.expiresAt = message.expiresAt; return; }
@@ -108,6 +129,7 @@ export class SharedMap {
         break;
       }
       case 'map-clear':
+        if (!this.retirePreviewLease(message.leaseId)) return;
         this.previews.delete(message.leaseId);
         if (this.gesture?.serverLease?.leaseId === message.leaseId) { this.cancel(true, false); this.problem = 'The movement lease ended. Its unfinished positions are kept privately; compare them before starting again.'; }
         break;
