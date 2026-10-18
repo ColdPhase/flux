@@ -38,3 +38,5 @@ against the original application must detect the old parent rendering.
 Relevant Chromium and WebKit checks will run in isolated Docker stacks after
 source commit and slot handoff. No broad suite or new CPU profile is planned.
 The parent owns any subsequent single-cohort or final nine-cohort acceptance run.
+
+Author verification and retained failures: [source-pinned receipt](2026-10-18-map-presence/README.md).

@@ -1,0 +1,120 @@
+{
+  "schema": 1,
+  "author_verification_only": true,
+  "attempts": [
+    {
+      "name": "4469b47e-unit",
+      "source_sha": "4469b47ef87a36e73c4bad237b2e4c1b84426d2b",
+      "exit_code": 0,
+      "result": "7/7 PASS; selected store/projection units",
+      "log": {
+        "path": "/home/hubert/flux-evidence/228-presence-4469b47e-unit.log",
+        "sha256": "71cc607f7706648f97bda2c1ed63101fe60f4c86d455560adc5265c52277f92d",
+        "bytes": 39062
+      },
+      "runtime": "4469b47e-unit-runtime.json",
+      "project": [
+        "flux-test-1792324598-1249831"
+      ]
+    },
+    {
+      "name": "4469b47e-chromium",
+      "source_sha": "4469b47ef87a36e73c4bad237b2e4c1b84426d2b",
+      "exit_code": 1,
+      "result": "3/4 PASS; lifecycle FAIL: missing await prevented actual disconnect",
+      "log": {
+        "path": "/home/hubert/flux-evidence/228-presence-4469b47e-chromium.log",
+        "sha256": "b68de7284cd1ad0db585d9a5ef4bb6d575c179f5ebdde7d97c227afed39a6559",
+        "bytes": 105455
+      },
+      "runtime": "4469b47e-chromium-runtime.json",
+      "project": [
+        "flux-live-editing-1792324753-1261352"
+      ]
+    },
+    {
+      "name": "f25706c9-chromium-lifetime",
+      "source_sha": "f25706c96d70591da7e0e114bb418d6da2744847",
+      "exit_code": 1,
+      "result": "0/1 PASS; room/disconnect/expiry passed; empty JSON DELETE rejected400 before revocation",
+      "log": {
+        "path": "/home/hubert/flux-evidence/228-presence-f25706c9-chromium-lifetime.log",
+        "sha256": "85279be2e5fa3e5b22d113f6283b27ec763be3572f6648230396ae0c459b9b80",
+        "bytes": 102600
+      },
+      "runtime": "f25706c9-chromium-lifetime-runtime.json",
+      "project": [
+        "flux-live-editing-1792324830-1270114"
+      ]
+    },
+    {
+      "name": "6ef4c37b-webkit",
+      "source_sha": "6ef4c37bd86d09a020864a48c63ea3142213c141",
+      "exit_code": 0,
+      "result": "4/4 PASS; actual WebKit",
+      "log": {
+        "path": "/home/hubert/flux-evidence/228-presence-6ef4c37b-webkit.log",
+        "sha256": "0df729a0be405dec74361a36dc2979c7aec1167952e30dc093efa46b3d5b0588",
+        "bytes": 31881
+      },
+      "runtime": "6ef4c37b-webkit-runtime.json",
+      "project": [
+        "flux-live-editing-1792325058-1283876"
+      ]
+    },
+    {
+      "name": "6ef4c37b-chromium-lifetime",
+      "source_sha": "6ef4c37bd86d09a020864a48c63ea3142213c141",
+      "exit_code": 0,
+      "result": "1/1 PASS; corrected Chromium lifecycle",
+      "log": {
+        "path": "/home/hubert/flux-evidence/228-presence-6ef4c37b-chromium-lifetime.log",
+        "sha256": "b764d9f45f0df7b640fc24e90180beba3f0cb497ad630f04990d9c0b670bd0f5",
+        "bytes": 10534
+      },
+      "runtime": "6ef4c37b-chromium-lifetime-runtime.json",
+      "project": [
+        "flux-live-editing-1792325243-1302197"
+      ]
+    },
+    {
+      "name": "50e0520a-baseline-chromium",
+      "source_sha": "50e0520aa8e94bc5b1bb765975bb35cbb5c1d9a1",
+      "exit_code": 1,
+      "result": "expected FAIL: view7\u219212 after fresh-wire/cursor assertions passed",
+      "log": {
+        "path": "/home/hubert/flux-evidence/228-presence-50e0520a-baseline-chromium.log",
+        "sha256": "4011bce237257ea2c13d639e40ba49a7a2fd7addc57ca4dd517d8cd1aa7f6698",
+        "bytes": 98794
+      },
+      "runtime": "50e0520a-baseline-chromium-runtime.json",
+      "project": [
+        "flux-live-editing-1792325333-1308679"
+      ]
+    }
+  ],
+  "external_screenshots": [
+    "/home/hubert/flux-evidence/228-presence-4469b47e-chromium/map-peer-cursor-chromium.png",
+    "/home/hubert/flux-evidence/228-presence-4469b47e-chromium/map-peer-cursor-ada-chromium.png",
+    "/home/hubert/flux-evidence/228-presence-6ef4c37b-webkit/map-peer-cursor-webkit.png",
+    "/home/hubert/flux-evidence/228-presence-6ef4c37b-webkit/map-peer-cursor-ada-webkit.png"
+  ],
+  "screenshot_hashes": [
+    {
+      "path": "/home/hubert/flux-evidence/228-presence-4469b47e-chromium/map-peer-cursor-chromium.png",
+      "sha256": "66e4a59dd3dabc9cd47654fa484e8bc38872e346d51ee7658607133cfcee1771"
+    },
+    {
+      "path": "/home/hubert/flux-evidence/228-presence-4469b47e-chromium/map-peer-cursor-ada-chromium.png",
+      "sha256": "d5e80583a0af99ea80b97a8e013da6d8742fe59da603f06ced0dfef3c59a108e"
+    },
+    {
+      "path": "/home/hubert/flux-evidence/228-presence-6ef4c37b-webkit/map-peer-cursor-webkit.png",
+      "sha256": "19809f22ded4ae532efb335030ced454ff1fb56565c009c3295646e0fe57fa8c"
+    },
+    {
+      "path": "/home/hubert/flux-evidence/228-presence-6ef4c37b-webkit/map-peer-cursor-ada-webkit.png",
+      "sha256": "6cb44bdd7b13c434caf70d7f79ab87557679fe368097b121e51b0a942044d5be"
+    }
+  ]
+}
