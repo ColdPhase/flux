@@ -1008,7 +1008,7 @@ class LiveEditingJourney(LiveFixture):
 
             # Editing the moving thought clears its old lease and refreshes its own content.
             changed = await self.api(kai, 'PATCH', f'/api/v1/sketches/{self.map_id}/thoughts/{first["id"]}',
-                {'text': 'Native edit replaces the moving thought body', 'height': first['height'] + 160}, 200,
+                {'text': 'Native edit replaces the moving thought body', 'height': first['height'] + 160, 'width': first['width'] + 40}, 200,
                 {'idempotency-key': str(uuid.uuid4()), 'if-match': f'"{first["version"]}"'})
             for page in self.pages.values():
                 target = page.locator(f'.sk-node[data-id="{first["id"]}"]')
