@@ -276,7 +276,9 @@ class MessageAlignment(unittest.TestCase):
         expect(page).to_have_url(re.compile(f"/projects/{self.project}/map/{sketch['id']}$"))
         draft = page.get_by_role("form", name="New thought draft")
         expect(draft.get_by_role("textbox", name="Thought text")).to_have_value(self.quoted["messages"][0]["body"])
-        draft.get_by_role("button", name="Save thought", exact=True).click()
+        with page.expect_response(lambda response: response.request.method == "POST" and response.url.endswith(f"/api/v1/sketches/{sketch['id']}/thoughts")) as response_info:
+            draft.get_by_role("button", name="Save thought", exact=True).click()
+        self.assertEqual(response_info.value.status, 201, response_info.value.text())
         thought = page.request.get(f"/api/v1/sketches/{sketch['id']}").json()["thoughts"][0]
         self.assertEqual(thought["text"], self.quoted["messages"][0]["body"])
         self.assertEqual(thought["source"]["projectMessageId"], self.quoted["messages"][0]["id"])

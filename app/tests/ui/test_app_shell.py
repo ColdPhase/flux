@@ -655,6 +655,15 @@ class AppShellJourney(unittest.TestCase):
         expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
 
     def test_04aa_header_more_is_a_floating_bounded_menu(self) -> None:
+        if not self.state:
+            page = self.page(signed_in=False)
+            page.goto("/sign-up")
+            page.get_by_label("Name").fill(NAME)
+            page.get_by_label("Email").fill(EMAIL)
+            page.get_by_label("Password").fill(PASSWORD)
+            page.get_by_role("button", name="Create account").click()
+            expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
+            self.save_state(page)
         for phone, dark in ((False, False), (True, False), (False, True), (True, True)):
             with self.subTest(phone=phone, dark=dark):
                 page = self.page(phone=phone, dark=dark)
