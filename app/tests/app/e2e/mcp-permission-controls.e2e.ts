@@ -351,6 +351,9 @@ test('actual owner setup stays pending, refreshes lost authorization, and keeps 
           assert.equal(await setup.getByText("Flux cannot see whether your native client is online. Use its supplied host action to start or resume work on a selected project.", { exact: true }).count(), 1);
           assert.equal(await page.getByRole('button', { name: /^(Start work|Resume work)$/ }).count(), 0, 'OAuth/bootstrap records do not manufacture a working launch control');
           const hostAction = setup.locator('.cowork-host-actions');
+          if (width === 390) {
+            const target = await hostAction.locator('summary').boundingBox(); assert.ok(target && target.height >= 44, 'host action has a phone touch target');
+          }
           await hostAction.locator('summary').click();
           const commands = await hostAction.locator('code').allTextContents();
           assert.equal(commands.length, 2);
