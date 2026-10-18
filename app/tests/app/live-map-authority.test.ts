@@ -97,7 +97,7 @@ test('server-journal grouped undo is atomic, immutable on exact retry, and refus
 });
 
 test('live native delete Undo retains human project provenance and edit Undo retains agent provenance', {timeout:30000},async()=>{
-  const f=await actionScene(pool);const me=expectStatus(await f.owner.request('GET','/api/v1/me'),200) as {user:{id:string}};
+  const f=await actionScene(pool);const me=expectStatus(await f.owner.request('GET','/api/v1/me'),200) as {user:{id:string;name:string}};
   const ownerSession=await context({id:me.user.id});const backend=mapBackend({pool});const authority=mapAuthority(backend,apiEditingOutputBudget);
   const sessions:SessionResolver={async requirePrincipal(){return ownerSession;},async resolveSession(){return ownerSession;}};const app=Fastify();
   await app.register(sketchRoutes,{db,sessions,storage:await diskFileStorage(filesDir),developmentEditing:true,liveBackend:()=>backend});
@@ -121,9 +121,10 @@ test('live native delete Undo retains human project provenance and edit Undo ret
     const humanUndo=randomUUID();const restoredHuman=await app.inject({method:'POST',url:`/api/v1/sketches/${sketch.id}/live/undo`,headers:{'idempotency-key':humanUndo},
       payload:{clientCommandId:humanUndo,originalCommandIds:[removeCommand]}});assert.equal(restoredHuman.statusCode,200,restoredHuman.body);
     let saved=(await bootstrap(backend,ownerSession,sketch.id)).sketch.thoughts.find(thought=>thought.id===human.thought.id)!;
-    const conversationAfter=expectStatus(await f.owner.request('GET',`/api/v1/conversations/${conversation.id}`),200) as {messages:{id:string;createdAt:string;author:{kind:string;id:string;name:string}}[]};
+    const conversationAfter=expectStatus(await f.owner.request('GET',`/api/v1/conversations/${conversation.id}`),200) as {messages:{id:string;createdAt:string;authorId:string|null;author?:{kind:string;id:string;name:string}}[]};
     const humanSource=conversationAfter.messages.find(message=>message.id===conversation.messages[0]!.id)!;
-    assert.deepEqual(saved.source?.author,{kind:humanSource.author.kind,id:humanSource.author.id,name:humanSource.author.name});
+    assert.equal(humanSource.authorId,me.user.id);
+    assert.deepEqual(saved.source?.author,{kind:'human',id:me.user.id,name:me.user.name});
     assert.equal(saved.source?.sentAt,humanSource.createdAt);assert.equal(saved.source?.projectMessageId,humanSource.id);
     const editCommand=randomUUID();const edit=await app.inject({method:'PATCH',url:`/api/v1/sketches/${sketch.id}/thoughts/${agent.thought.id}`,
       headers:{'idempotency-key':editCommand,'if-match':'1'},payload:{text:'Edited agent thought'}});assert.equal(edit.statusCode,200,edit.body);
