@@ -18,7 +18,8 @@ from test_live_editing import LiveFixture
 class LiveMapDeliveryOrder(LiveFixture):
     async def test_01_reordered_duplicates_and_cleared_or_expired_previews_never_regress(self):
         state = {"socket": None, "first": None, "newer": None, "cleared": None, "expired": None,
-                 "duplicated": [], "retained_bytes": 0, "retained_count": 0, "max_retained_count": 0}
+                 "duplicated": [], "retained_bytes": 0, "retained_count": 0, "max_retained_count": 0,
+                 "capture_presence": False, "presence": None}
 
         def relay(socket):
             state["socket"] = socket
@@ -64,6 +65,14 @@ class LiveMapDeliveryOrder(LiveFixture):
                             state["retained_count"] += 1
                             state["max_retained_count"] = max(state["max_retained_count"], state["retained_count"])
                             return
+                    if (isinstance(value, dict) and value.get("type") == "map-presence"
+                            and state["capture_presence"] and state["presence"] is None
+                            and value.get("actor", {}).get("id") == self.ada_id and value.get("cursor") is not None):
+                        size = len(payload.encode("utf-8"))
+                        if size > 65_536:
+                            raise AssertionError("One held actual presence frame exceeded the existing wire frame bound")
+                        state["presence"] = {"payload": payload, "expiresAt": value.get("expiresAt"), "cursor": value["cursor"]}
+                        return
                 socket.send(payload)
 
             server.on_message(received)
@@ -98,7 +107,8 @@ class LiveMapDeliveryOrder(LiveFixture):
                 await ada.mouse.move(x + 12 + step * 2, y + 8 + step, steps=1)
                 await ada.wait_for_timeout(45)
                 if loop.time() >= deadline:
-                    self.fail(f"The real authorized socket never delivered its {name} frame")
+                    self.fail(f"The real authorized socket never delivered its {name} frame; "
+                              f"route={state['socket'] is not None}")
 
         try:
             await move_until("newer")
@@ -162,6 +172,30 @@ class LiveMapDeliveryOrder(LiveFixture):
             self.assertNotEqual((saved["x"], saved["y"]), (thought["x"], thought["y"]))
             await expect(peer_node).to_have_attribute("data-thought-x", str(saved["x"]))
             await expect(peer_node).to_have_attribute("data-thought-y", str(saved["y"]))
+
+            # A genuine cursor frame held by the route must not restore presence after its own TTL.
+            state["capture_presence"] = True
+            moved = await owner_node.bounding_box()
+            deadline = asyncio.get_running_loop().time() + 5
+            step = 0
+            while state["presence"] is None:
+                step += 1
+                await ada.mouse.move(moved["x"] + moved["width"] + 30 + step, moved["y"] + 45 + step)
+                await ada.wait_for_timeout(50)
+                if asyncio.get_running_loop().time() >= deadline:
+                    self.fail("The real authorized socket never delivered a cursor presence frame")
+            presence = state["presence"]
+            self.assertIsNotNone(presence["cursor"])
+            await ada.mouse.move(2, 2)
+            peer_cursor = kai.locator('.sk-peer[data-live-peer="Ada North"]')
+            await expect(peer_cursor).to_have_count(0)
+            presence_expiry_ms = datetime.fromisoformat(presence["expiresAt"].replace("Z", "+00:00")).timestamp() * 1000
+            self.assertGreater(presence_expiry_ms, time.time() * 1000,
+                               "The held presence frame has a genuine future server expiry")
+            await ada.wait_for_timeout(max(0, presence_expiry_ms - time.time() * 1000 + 1100))
+            state["socket"].send(presence["payload"])
+            await ada.wait_for_timeout(100)
+            await expect(peer_cursor).to_have_count(0)
             self.assertFalse([row for rows in self.frames.values() for row in rows
                               if row["direction"] == "received"
                               and row["header"].get("type") in ("error", "resync", "revoked")])
