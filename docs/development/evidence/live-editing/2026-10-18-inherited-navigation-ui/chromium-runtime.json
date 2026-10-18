@@ -1,0 +1,398 @@
+{
+  "private_source": "21bbb7469132f2240f16fc346be1639b05a85813",
+  "application_source": "7af776c7dfd4403e3937c8ccd4b9723c7808d587",
+  "requested_engine": "chromium",
+  "captured_at": "2026-10-18T14:13:02.404246+00:00",
+  "containers": [
+    {
+      "id": "b3b12a128d7d87119eadaba0bc7da0e311dea2007a7c3ee4a1f4ed16bb92d64a",
+      "name": "/flux-ui-1792332557-1658229-ui-test-run-6765d08da4ad",
+      "image": "sha256:b49ccee1825c05fd768b27a0bca42ab86e6092838c3eef99e5a8f5d641b8e4a4",
+      "configured_image": "flux-ui-tests:flux-ui-1792332557-1658229",
+      "project": "flux-ui-1792332557-1658229",
+      "service": "ui-test",
+      "configuration": {
+        "NODE_ENV": null,
+        "FLUX_LIVE_EDITING": "on",
+        "FLUX_DEVELOPMENT_LIVE_EDITING": null,
+        "FLUX_DEVELOPMENT_LIVE_EDITING_TELEMETRY": null,
+        "FLUX_DEVELOPMENT_LIVE_EDITING_API_INSTANCE": null,
+        "FLUX_UI_BROWSER": "chromium",
+        "FLUX_LIVE_EDITING_TEST": "1"
+      },
+      "state": {
+        "Status": "running",
+        "Running": true,
+        "Paused": false,
+        "Restarting": false,
+        "OOMKilled": false,
+        "Dead": false,
+        "Pid": 1670344,
+        "ExitCode": 0,
+        "Error": "",
+        "StartedAt": "2026-10-18T14:11:49.737253878Z",
+        "FinishedAt": "0001-01-01T00:00:00Z"
+      }
+    },
+    {
+      "id": "6318b35c124f9369aeeac0c93be1b7ae8ac92ab84ad837df33d8852a2eec0b36",
+      "name": "/flux-ui-1792332557-1658229-api-1",
+      "image": "sha256:b2ade6cfa415d660b054db4141ec272dcdcb0a90c9baea87c21a65ee7da1c6af",
+      "configured_image": "flux-foundation:flux-ui-1792332557-1658229",
+      "project": "flux-ui-1792332557-1658229",
+      "service": "api",
+      "configuration": {
+        "NODE_ENV": "production",
+        "FLUX_LIVE_EDITING": "on",
+        "FLUX_DEVELOPMENT_LIVE_EDITING": null,
+        "FLUX_DEVELOPMENT_LIVE_EDITING_TELEMETRY": null,
+        "FLUX_DEVELOPMENT_LIVE_EDITING_API_INSTANCE": null,
+        "FLUX_UI_BROWSER": null,
+        "FLUX_LIVE_EDITING_TEST": null
+      },
+      "state": {
+        "Status": "running",
+        "Running": true,
+        "Paused": false,
+        "Restarting": false,
+        "OOMKilled": false,
+        "Dead": false,
+        "Pid": 1669218,
+        "ExitCode": 0,
+        "Error": "",
+        "StartedAt": "2026-10-18T14:11:45.392043334Z",
+        "FinishedAt": "0001-01-01T00:00:00Z",
+        "Health": {
+          "Status": "healthy",
+          "FailingStreak": 0,
+          "Log": [
+            {
+              "Start": "2026-10-18T16:12:47.709356037+02:00",
+              "End": "2026-10-18T16:12:47.809778376+02:00",
+              "ExitCode": 0,
+              "Output": ""
+            },
+            {
+              "Start": "2026-10-18T16:12:50.810972085+02:00",
+              "End": "2026-10-18T16:12:50.907538273+02:00",
+              "ExitCode": 0,
+              "Output": ""
+            },
+            {
+              "Start": "2026-10-18T16:12:53.909693044+02:00",
+              "End": "2026-10-18T16:12:53.994661632+02:00",
+              "ExitCode": 0,
+              "Output": ""
+            },
+            {
+              "Start": "2026-10-18T16:12:56.99562622+02:00",
+              "End": "2026-10-18T16:12:57.0891993+02:00",
+              "ExitCode": 0,
+              "Output": ""
+            },
+            {
+              "Start": "2026-10-18T16:13:00.089973848+02:00",
+              "End": "2026-10-18T16:13:00.187520699+02:00",
+              "ExitCode": 0,
+              "Output": ""
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "b20385465aca8652c45e8dcbf187a7251efc7dc248ee59f406088530304b94aa",
+      "name": "/flux-ui-1792332557-1658229-anthropic-mock-1",
+      "image": "sha256:b49ccee1825c05fd768b27a0bca42ab86e6092838c3eef99e5a8f5d641b8e4a4",
+      "configured_image": "flux-ui-tests:flux-ui-1792332557-1658229",
+      "project": "flux-ui-1792332557-1658229",
+      "service": "anthropic-mock",
+      "configuration": {
+        "NODE_ENV": null,
+        "FLUX_LIVE_EDITING": null,
+        "FLUX_DEVELOPMENT_LIVE_EDITING": null,
+        "FLUX_DEVELOPMENT_LIVE_EDITING_TELEMETRY": null,
+        "FLUX_DEVELOPMENT_LIVE_EDITING_API_INSTANCE": null,
+        "FLUX_UI_BROWSER": null,
+        "FLUX_LIVE_EDITING_TEST": null
+      },
+      "state": {
+        "Status": "running",
+        "Running": true,
+        "Paused": false,
+        "Restarting": false,
+        "OOMKilled": false,
+        "Dead": false,
+        "Pid": 1668585,
+        "ExitCode": 0,
+        "Error": "",
+        "StartedAt": "2026-10-18T14:11:43.437561255Z",
+        "FinishedAt": "0001-01-01T00:00:00Z",
+        "Health": {
+          "Status": "healthy",
+          "FailingStreak": 0,
+          "Log": [
+            {
+              "Start": "2026-10-18T16:12:52.038276898+02:00",
+              "End": "2026-10-18T16:12:52.114769903+02:00",
+              "ExitCode": 0,
+              "Output": ""
+            },
+            {
+              "Start": "2026-10-18T16:12:54.116153357+02:00",
+              "End": "2026-10-18T16:12:54.179417886+02:00",
+              "ExitCode": 0,
+              "Output": ""
+            },
+            {
+              "Start": "2026-10-18T16:12:56.179846848+02:00",
+              "End": "2026-10-18T16:12:56.249485684+02:00",
+              "ExitCode": 0,
+              "Output": ""
+            },
+            {
+              "Start": "2026-10-18T16:12:58.250638998+02:00",
+              "End": "2026-10-18T16:12:58.366192107+02:00",
+              "ExitCode": 0,
+              "Output": ""
+            },
+            {
+              "Start": "2026-10-18T16:13:00.367096119+02:00",
+              "End": "2026-10-18T16:13:00.440111965+02:00",
+              "ExitCode": 0,
+              "Output": ""
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "88ed08212033b4c883c451fd33da3c906c425aa821563c62243edb34ea578da1",
+      "name": "/flux-ui-1792332557-1658229-mailpit-1",
+      "image": "sha256:0a94362145f58e5cffb58605023c671774e4143037a952221ee6485b6cd999af",
+      "configured_image": "axllent/mailpit:v1.31.2@sha256:74d609a42ec279aa63c6b4622a6fa9b5408d1ad5b1d76a1c4be40a265ce0863d",
+      "project": "flux-ui-1792332557-1658229",
+      "service": "mailpit",
+      "configuration": {
+        "NODE_ENV": null,
+        "FLUX_LIVE_EDITING": null,
+        "FLUX_DEVELOPMENT_LIVE_EDITING": null,
+        "FLUX_DEVELOPMENT_LIVE_EDITING_TELEMETRY": null,
+        "FLUX_DEVELOPMENT_LIVE_EDITING_API_INSTANCE": null,
+        "FLUX_UI_BROWSER": null,
+        "FLUX_LIVE_EDITING_TEST": null
+      },
+      "state": {
+        "Status": "running",
+        "Running": true,
+        "Paused": false,
+        "Restarting": false,
+        "OOMKilled": false,
+        "Dead": false,
+        "Pid": 1668572,
+        "ExitCode": 0,
+        "Error": "",
+        "StartedAt": "2026-10-18T14:11:43.402956562Z",
+        "FinishedAt": "0001-01-01T00:00:00Z",
+        "Health": {
+          "Status": "healthy",
+          "FailingStreak": 0,
+          "Log": [
+            {
+              "Start": "2026-10-18T16:12:53.780716219+02:00",
+              "End": "2026-10-18T16:12:53.806530209+02:00",
+              "ExitCode": 0,
+              "Output": ""
+            },
+            {
+              "Start": "2026-10-18T16:12:55.807428991+02:00",
+              "End": "2026-10-18T16:12:55.834195683+02:00",
+              "ExitCode": 0,
+              "Output": ""
+            },
+            {
+              "Start": "2026-10-18T16:12:57.834851245+02:00",
+              "End": "2026-10-18T16:12:57.864338984+02:00",
+              "ExitCode": 0,
+              "Output": ""
+            },
+            {
+              "Start": "2026-10-18T16:12:59.865683608+02:00",
+              "End": "2026-10-18T16:12:59.893639293+02:00",
+              "ExitCode": 0,
+              "Output": ""
+            },
+            {
+              "Start": "2026-10-18T16:13:01.895028507+02:00",
+              "End": "2026-10-18T16:13:01.923413663+02:00",
+              "ExitCode": 0,
+              "Output": ""
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "50a008b5dc4fba6e8640afe981dc5b54c375066b6545c7f95986e7efc3e3349a",
+      "name": "/flux-ui-1792332557-1658229-worker-1",
+      "image": "sha256:b2ade6cfa415d660b054db4141ec272dcdcb0a90c9baea87c21a65ee7da1c6af",
+      "configured_image": "flux-foundation:flux-ui-1792332557-1658229",
+      "project": "flux-ui-1792332557-1658229",
+      "service": "worker",
+      "configuration": {
+        "NODE_ENV": "production",
+        "FLUX_LIVE_EDITING": null,
+        "FLUX_DEVELOPMENT_LIVE_EDITING": null,
+        "FLUX_DEVELOPMENT_LIVE_EDITING_TELEMETRY": null,
+        "FLUX_DEVELOPMENT_LIVE_EDITING_API_INSTANCE": null,
+        "FLUX_UI_BROWSER": null,
+        "FLUX_LIVE_EDITING_TEST": null
+      },
+      "state": {
+        "Status": "running",
+        "Running": true,
+        "Paused": false,
+        "Restarting": false,
+        "OOMKilled": false,
+        "Dead": false,
+        "Pid": 1669226,
+        "ExitCode": 0,
+        "Error": "",
+        "StartedAt": "2026-10-18T14:11:45.40941817Z",
+        "FinishedAt": "0001-01-01T00:00:00Z"
+      }
+    },
+    {
+      "id": "7fb1bca0ce9afdffaedf251bbb2963ea6cd5acf67b5b3ccd5b535011a11da993",
+      "name": "/flux-ui-1792332557-1658229-openai-mock-1",
+      "image": "sha256:b49ccee1825c05fd768b27a0bca42ab86e6092838c3eef99e5a8f5d641b8e4a4",
+      "configured_image": "flux-ui-tests:flux-ui-1792332557-1658229",
+      "project": "flux-ui-1792332557-1658229",
+      "service": "openai-mock",
+      "configuration": {
+        "NODE_ENV": null,
+        "FLUX_LIVE_EDITING": null,
+        "FLUX_DEVELOPMENT_LIVE_EDITING": null,
+        "FLUX_DEVELOPMENT_LIVE_EDITING_TELEMETRY": null,
+        "FLUX_DEVELOPMENT_LIVE_EDITING_API_INSTANCE": null,
+        "FLUX_UI_BROWSER": null,
+        "FLUX_LIVE_EDITING_TEST": null
+      },
+      "state": {
+        "Status": "running",
+        "Running": true,
+        "Paused": false,
+        "Restarting": false,
+        "OOMKilled": false,
+        "Dead": false,
+        "Pid": 1668624,
+        "ExitCode": 0,
+        "Error": "",
+        "StartedAt": "2026-10-18T14:11:43.454961552Z",
+        "FinishedAt": "0001-01-01T00:00:00Z",
+        "Health": {
+          "Status": "healthy",
+          "FailingStreak": 0,
+          "Log": [
+            {
+              "Start": "2026-10-18T16:12:52.187058566+02:00",
+              "End": "2026-10-18T16:12:52.27087357+02:00",
+              "ExitCode": 0,
+              "Output": ""
+            },
+            {
+              "Start": "2026-10-18T16:12:54.272367715+02:00",
+              "End": "2026-10-18T16:12:54.342561452+02:00",
+              "ExitCode": 0,
+              "Output": ""
+            },
+            {
+              "Start": "2026-10-18T16:12:56.344044567+02:00",
+              "End": "2026-10-18T16:12:56.417120963+02:00",
+              "ExitCode": 0,
+              "Output": ""
+            },
+            {
+              "Start": "2026-10-18T16:12:58.417981465+02:00",
+              "End": "2026-10-18T16:12:58.64775599+02:00",
+              "ExitCode": 0,
+              "Output": ""
+            },
+            {
+              "Start": "2026-10-18T16:13:00.650939239+02:00",
+              "End": "2026-10-18T16:13:00.718030308+02:00",
+              "ExitCode": 0,
+              "Output": ""
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "a472d4f381911340a3d4c55100b5a0fabd353fff9f5e62daea5800593cb85a54",
+      "name": "/flux-ui-1792332557-1658229-db-1",
+      "image": "sha256:c293117fcecda7344b5480222e813b9f673d7abd69b1dd95eff239b768b04f59",
+      "configured_image": "postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873",
+      "project": "flux-ui-1792332557-1658229",
+      "service": "db",
+      "configuration": {
+        "NODE_ENV": null,
+        "FLUX_LIVE_EDITING": null,
+        "FLUX_DEVELOPMENT_LIVE_EDITING": null,
+        "FLUX_DEVELOPMENT_LIVE_EDITING_TELEMETRY": null,
+        "FLUX_DEVELOPMENT_LIVE_EDITING_API_INSTANCE": null,
+        "FLUX_UI_BROWSER": null,
+        "FLUX_LIVE_EDITING_TEST": null
+      },
+      "state": {
+        "Status": "running",
+        "Running": true,
+        "Paused": false,
+        "Restarting": false,
+        "OOMKilled": false,
+        "Dead": false,
+        "Pid": 1665877,
+        "ExitCode": 0,
+        "Error": "",
+        "StartedAt": "2026-10-18T14:11:18.444360652Z",
+        "FinishedAt": "0001-01-01T00:00:00Z",
+        "Health": {
+          "Status": "healthy",
+          "FailingStreak": 0,
+          "Log": [
+            {
+              "Start": "2026-10-18T16:12:54.122376344+02:00",
+              "End": "2026-10-18T16:12:54.14713826+02:00",
+              "ExitCode": 0,
+              "Output": "127.0.0.1:5432 - accepting connections\n"
+            },
+            {
+              "Start": "2026-10-18T16:12:56.148384003+02:00",
+              "End": "2026-10-18T16:12:56.179743188+02:00",
+              "ExitCode": 0,
+              "Output": "127.0.0.1:5432 - accepting connections\n"
+            },
+            {
+              "Start": "2026-10-18T16:12:58.18056187+02:00",
+              "End": "2026-10-18T16:12:58.234943015+02:00",
+              "ExitCode": 0,
+              "Output": "127.0.0.1:5432 - accepting connections\n"
+            },
+            {
+              "Start": "2026-10-18T16:13:00.236756711+02:00",
+              "End": "2026-10-18T16:13:00.27017912+02:00",
+              "ExitCode": 0,
+              "Output": "127.0.0.1:5432 - accepting connections\n"
+            },
+            {
+              "Start": "2026-10-18T16:13:02.271821805+02:00",
+              "End": "2026-10-18T16:13:02.303140129+02:00",
+              "ExitCode": 0,
+              "Output": "127.0.0.1:5432 - accepting connections\n"
+            }
+          ]
+        }
+      }
+    }
+  ]
+}
