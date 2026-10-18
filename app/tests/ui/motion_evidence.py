@@ -232,6 +232,11 @@ class MotionEvidence(unittest.TestCase):
                 with self.subTest(scheme=scheme, criterion=criterion):
                     self.film(criterion, journey, scheme=scheme)
 
+    def test_videos_of_state_and_rows_only(self):
+        """Just the AC-4 journey (a state change, a row growing, a decision collapsing), for a re-recording after a change to row motion."""
+        for scheme in ("light", "dark"):
+            self.film("ac4-state-and-rows", self.ac4, scheme=scheme)
+
     def test_videos_of_the_reduced_motion_run_and_the_phone(self):
         self.film("static-frames", self.reduced, reduced=True)
         self.film("sheet", self.phone, phone=True)
