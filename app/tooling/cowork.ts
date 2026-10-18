@@ -98,6 +98,8 @@ async function main() {
     try {
       const result = await coworkNativeOutcome(join(stateDir, 'events.jsonl'), binding, Number(args[0]));
       await saveBinding(result.binding);
+      // Native terminal output must not replay escape/control sequences.
+      // eslint-disable-next-line no-control-regex
       if (result.final) console.log(result.final.replace(/[\x00-\x08\x0b-\x1f\x7f]/g, ''));
       console.log(`Flux host action ${result.binding.outcome}; ${result.tools} native MCP calls. Resume uses this action's exact saved thread.`);
       if (result.binding.outcome === 'failed') process.exitCode = 1;

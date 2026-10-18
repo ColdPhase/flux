@@ -1,6 +1,6 @@
 #!/bin/sh
 # Flux launcher (issue #72): one command from a fresh clone to a running Flux, all in Docker.
-# Needs only POSIX sh and Docker with Compose; no host Node.js or PostgreSQL.
+# Flux needs POSIX sh and Docker Compose; cowork also uses the installed native Codex.
 # Run `./flux help` for the commands.
 set -eu
 
