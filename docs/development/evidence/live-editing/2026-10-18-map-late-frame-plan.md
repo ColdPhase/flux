@@ -35,3 +35,15 @@ Existing authorized Wiki offline/reconnect, recovered confirmed text, and
 immutable Save/history checks remain the evidence for Wiki AC-3 behavior; the
 new regression adds only the missing late map-frame case. Browser execution
 remains pending the explicitly assigned Docker slot.
+
+## Presence ingress finding before the follow-up correction
+
+Before the presence follow-up code, a focused source audit found that
+`MapPresenceStore.expire` removes entries on the one-second timer, but
+`MapPresenceStore.set` accepts an already-expired frame until that timer runs.
+The new live browser case will also hold one genuine presence frame and replay
+it only after its server expiry, asserting no peer overlay revival. The store
+will refuse invalid or expired `expiresAt` values before publishing. Presence
+frames carry no sequence, and their millisecond timestamp does not provide a
+sound strict ordering contract for otherwise-live updates, so this follow-up
+does not claim to prevent all stale-but-unexpired reordering.
