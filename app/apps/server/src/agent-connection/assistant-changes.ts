@@ -373,7 +373,9 @@ export function assistantChangeExecutor(db: Database, claims: FluxMcpClaims) {
         }
         const produced = await effect(natives(tx, session, authority.runtime, live, input.clientCommandId, operation, fingerprint, releases, approval?.suggestion ? approval.decidedBy ?? undefined : undefined));
         // What the change really wrote (a redacted text differs from the call), so Undo compares with the truth.
-        let undo = target.undo;
+        // The accepted effect is a native human creation. Its existing creation-Undo contract excludes
+        // human-origin tasks; do not invent an AI origin or advertise an Undo that native commands refuse.
+        let undo = approval?.suggestion && operation === 'work.create' ? null : target.undo;
         if (undo?.plan.kind === 'fields' && objectId) {
           const fields = undo.plan.fields;
           const read: ((key: string) => unknown) | null = operation === 'work.update' ? await rows.work(objectId).then((work) => work && ((key: string) => workField(work, key)))

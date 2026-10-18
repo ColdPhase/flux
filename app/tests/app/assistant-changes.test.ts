@@ -739,11 +739,11 @@ describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A
         if (entry.operation === 'work.create') assert.deepEqual((await pool.query(`SELECT created_by_kind,created_by_id FROM project_work_items WHERE id=$1`, [accepted.change.objectId])).rows[0], { created_by_kind: 'human', created_by_id: peer.id });
         if (entry.operation.startsWith('doc.')) assert.equal((await pool.query(`SELECT author_id FROM project_material_versions WHERE material_id=$1 ORDER BY version DESC LIMIT 1`, [accepted.change.objectId])).rows[0].author_id, peer.id);
         if(entry.operation==='work.create') {
-          assert.equal(accepted.change.undoable,true,'the accepting human owns creation Undo');
+          assert.equal(accepted.change.undoable,false,'native human-origin task creation has no assistant Undo');
           const ownerView=expectStatus(await owner.browser.request('GET',assistantRunChangesPath(run.runId)),200) as {items:AssistantChange[]};
           assert.equal(ownerView.items.find((change)=>change.id===row.id)!.undoable,false,'drafting does not own the human-created task');
-          const undone=expectStatus(await peer.browser.request('POST',assistantRunChangesActionPath(run.runId,'undo'),{body:{}}),200) as AssistantRunUndone;
-          assert.equal(undone.undone,1);
+          const native=(await pool.query(`SELECT creation_origin FROM project_work_items WHERE id=$1`,[accepted.change.objectId])).rows[0];
+          assert.equal(native.creation_origin,'human','acceptance does not forge a native-agent or legacy AI-proposal origin');
         }
       } finally { await pool.query(`UPDATE project_grants SET role='contributor' WHERE project_id=$1 AND user_id=$2`, [shared.id, owner.id]); await complete(run.runId); }
     }
@@ -787,7 +787,10 @@ describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A
           if(fence==='area') await save({areas:{tasks:'read'}},jonasWs.id);
           else await pool.query(`UPDATE personal_runs SET status='stopped',stop_requested_at=now() WHERE id=$1`,[run.runId]);
           expectStatus(await peer.browser.request('POST',assistantChangeActionPath(row.id,'accept'),{body:{expectedVersion:sent.change.version}}),fence==='area'?404:403);
-          if(fence==='area') await save({areas:{tasks:'edit'}},jonasWs.id);
+          if(fence==='area') {
+            await pool.query(`UPDATE project_grants SET role='contributor' WHERE project_id=$1 AND user_id=$2`,[shared.id,owner.id]);
+            await save({areas:{tasks:'edit'}},jonasWs.id);
+          }
           else await complete(run.runId);
         }
         expectStatus(await peer.browser.request('POST',assistantChangeActionPath(row.id,'accept'),{body:{expectedVersion:sent.change.version}}),404);
@@ -809,7 +812,7 @@ describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A
           assert.match(text(response.message),/Waiting for ac-ada/);
           assert.equal((await changesOf(run.runId))[0]!.wait_reason,'ask');
           await pool.query(`UPDATE assistant_reactions SET enabled=false WHERE owner_user_id=$1 AND action=$2`,[owner.id,action]);
-          assert.ok(result((await run.call('flux_create_task',{task:{title:'Turned off must not prepare'}})).message)?.isError);
+          assert.equal((await run.call('flux_create_task',{task:{title:'Turned off must not prepare'}})).status,403);
           assert.equal((await changesOf(run.runId)).length,1,'turning off a sentence revokes its already-minted token');
         } else {
           assert.ok(run.tools.length>0);
