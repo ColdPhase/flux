@@ -59,6 +59,29 @@ A failed preflight has not begun a measurement and cannot publish a valid invent
 
 ## Fixed measurement and retained artifacts
 
+### Founder acceptance of measured latency (2026-10-18)
+
+Hubert (@PelikanFix16) explicitly accepted the small overrun in the supervising
+session: “jak wyjdziem ytroche za limit nic sie nie stanie 213 jest niezlym
+wynikiem”. The [recorded direction](https://github.com/ColdPhase/flux/issues/228#issuecomment-6251802241)
+accepts the **213.167416 ms** map500/drag200 result in the retained
+[complete nine-cohort run](evidence/live-editing/2026-10-18-access-latency/README.md)
+at `7af776c7dfd4403e3937c8ccd4b9723c7808d587`. The other eight cohorts meet
+the200 ms target; all2160 scheduled rows have zero input/sample/socket errors,
+the actual collector is COMPLETE, all26 final gauges are zero, and the original
+producer has a verified clean exit. The later selected214.850179 ms result
+retains its [original source and incomplete collector](evidence/live-editing/2026-10-18-lazy-outline.md#coordinators-subsequent-selected-timing);
+it cannot replace the complete run or establish resource acceptance.
+
+The200 ms target, original driver, raw verdicts and source pins remain unchanged.
+The delivery may accept this specific measured departure with the founder's
+authorization; it is not a blanket future latency bound. No new profile or
+measurement is required solely to turn this small overrun into a strict200 ms
+pass. Final independent evaluation still assesses the retained evidence's
+compatibility with the composed application. Functional recovery, current
+authority/privacy, complete resource evidence and protected independent approval
+remain required. No new run or application-only speedup is claimed.
+
 ### Candidate identity-read method change (2026-10-18, #228 / #613)
 
 The failed canonical run at `8ba5f87ae065d52b4b69158648f8e863b3d3f9cb`
@@ -103,6 +126,13 @@ source/method evaluation and the complete canonical result remain required befor
 acceptance. This record is a candidate method decision, not a claim of either.
 
 ### Candidate combined peer-paint observation (2026-10-18, #228 / #613)
+
+**Status after the later founder direction above:** retained private experiment,
+not part ofPR613. The implementation and partial author calibration remain on
+the private branch; WebKit equivalence was not run and no new timing acceptance
+is claimed. PR613 keeps the original canonical `painted()` helper. The proposal
+below records what was considered before the founder accepted the measured
+overrun; it creates no remaining implementation or review gate for this delivery.
 
 The original full-nine run at `7af776c7` remains FAIL8/9, including map500/drag200
 213.167416 ms. After the later application corrections, selected source
@@ -181,7 +211,7 @@ wiki-100000-editor
 wiki-100000-reader
 ```
 
-Each retains 30 peer warmups, 240 scheduled rows at 250 ms over 60 seconds, continuous trusted input between samples, and the separate 30-sample local render control. The existing 1000 ms deadline, exact receipt/generation/coverage checks, all selected map positions and two animation-frame opportunities remain. Every error/timeout stays in the denominator as infinity. A pass needs nearest-rank p95 ≤200 ms and zero errors/timeouts/overload; the finite successful distribution is reported separately. No driver, local-render, collector or telemetry overhead is subtracted. ACK or publication coverage alone is not rendered visibility. A superseded-covered row retains its actual later same-interaction rendered observation and measured latency.
+Each retains 30 peer warmups, 240 scheduled rows at 250 ms over 60 seconds, continuous trusted input between samples, and the separate 30-sample local render control. The existing 1000 ms deadline, exact receipt/generation/coverage checks, all selected map positions and two animation-frame opportunities remain. Every error/timeout stays in the denominator as infinity. A strict driver pass needs nearest-rank p95 ≤200 ms and zero errors/timeouts/overload; the finite successful distribution is reported separately. Delivery acceptance of the specific213.167416 ms result follows the founder exception above without changing that raw verdict. No driver, local-render, collector or telemetry overhead is subtracted. ACK or publication coverage alone is not rendered visibility. A superseded-covered row retains its actual later same-interaction rendered observation and measured latency.
 
 Keep each case's original rows, coverage, publications, local control, summary, traces and screenshot. Queue correlation sidecars (`<case>-queue-correlations.json`) contain only actual matched server observations by row index; they do not rewrite original measurement rows. Unmatched per-row server depth stays null. Actual aggregate queue/resource peaks remain mandatory.
 

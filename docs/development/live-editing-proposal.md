@@ -385,6 +385,13 @@ by deduplicated receipt lookup. Save never reports success while local text is p
 
 ## Independent verification and latency gate
 
+**Later founder direction, 2026-10-18:** the200 ms target is retained, while
+the measured213.167416 ms map500/drag200 result is explicitly accepted as a
+small departure for this delivery. See the [acceptance record and limits](live-editing-verification.md#founder-acceptance-of-measured-latency-2026-10-18).
+The historical strict gate below and its raw failures are not rewritten. This
+exception does not weaken live interaction, privacy, authority, recovery,
+resource integrity or independent protected approval.
+
 The proposed healthy local threshold is **p95 input → peer rendered state ≤200 ms**
 for map movement, committed map changes, wiki editor text and wiki current-page preview.
 It is an unmeasured acceptance proposal, not a vendor promise or a claim about the WAN.
@@ -517,16 +524,19 @@ implementation, visual, performance or release acceptance.
 The founder's current-session clarification requires existing PR #613 to complete
 all of #228, including the original gates, integrated criteria and independent
 functional/visual acceptance. The earlier partial deliveries and measurements
-retain their exact source pins. Current map500/drag200 p95 220.806ms still fails
-the unchanged 200ms gate; this section does not accept or enable that candidate.
+retain their exact source pins. The earlier220.806 ms observation remains a
+failure against the strict200 ms gate. The later founder direction above accepts
+the complete213.167416 ms observation as a specific delivery exception; it does
+not by itself accept or enable the whole candidate.
 
 The completed normal installation provides live map/wiki editing without a
 development-only setup step. Its production control is `FLUX_LIVE_EDITING`:
 missing, empty or `on` enables it, `off` disables it, and any other nonempty
 value is a startup configuration error. Both supported Compose templates and
 environment examples expose this same control. The production default is enabled
-only through the final protected merge after all original acceptance conditions
-pass; implementation and checks before that merge remain isolated candidates.
+only through the final protected merge after the acceptance conditions, including
+that explicit founder latency exception, are satisfied; implementation and checks
+before that merge remain isolated candidates.
 
 `FLUX_DEVELOPMENT_LIVE_EDITING=true` remains an explicit diagnostic marker, not
 the production availability switch. Local stdout telemetry requires production
