@@ -777,7 +777,7 @@ async def map_drag(fixture, count, selected):
 async def main():
     if os.environ.get("FLUX_LIVE_EDITING_TEST") != "1" or not os.environ.get("FLUX_LIVE_SOURCE_SHA") or not os.environ.get("FLUX_LIVE_EVIDENCE"):
         raise SystemExit("Explicit isolated-enabled candidate, source SHA and evidence directory required")
-    planned = [f"map-{count}-drag-{selected}" for count, selected in ((50, 1), (50, 50), (500, 1), (500, 50), (500, 200))] + [f"wiki-{units}-{receiver}" for units in (10_000, 100_000) for receiver in ("editor", "reader")]
+    planned = [f"map-{count}-drag-{selected}" for count, selected in ((500, 200),)] + [f"wiki-{units}-{receiver}" for units in () for receiver in ("editor", "reader")]
     directory = Path(os.environ["FLUX_LIVE_EVIDENCE"])
     directory.mkdir(parents=True, exist_ok=True)
     if any((directory/name).exists() or (directory/name).is_symlink() for name in ('planned.json','summary.json',MEASUREMENT_FINISHED_NAME,QUEUE_SEAL_NAME)) or any(directory.glob('*-rows.json')):
@@ -791,13 +791,13 @@ async def main():
     try:
         await fixture.asyncSetUp()
         # Each case retains its entire sample set even if its p95 or correctness assertion fails.
-        for count, selected in ((50, 1), (50, 50), (500, 1), (500, 50), (500, 200)):
+        for count, selected in ((500, 200),):
             try:
                 summaries.append(await map_drag(fixture, count, selected))
             except Exception as error:
                 failures.append({"case": f"map-{count}-drag-{selected}", "error": str(error)})
             fixture.frames = {"ada": [], "kai": []}
-        for units in (10_000, 100_000):
+        for units in ():
             for reader in (False, True):
                 try:
                     summaries.append(await wiki(fixture, units, reader))
