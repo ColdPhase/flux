@@ -59,3 +59,33 @@ aborting otherwise. Keep the existing instrumentation, exact selected driver,
 application/SQL semantics and all limits. Do not repeat build/type/lint for this
 Compose-only correction; preserve the original preflight result and its source.
 Retain both attempts separately. No further runtime retry follows automatically.
+
+## Supported implementation scope: one current sketch access evaluation
+
+The corrected private attempt at `941a1ff5162dc30619d5cf41882520aa6add368d`
+retains 7,433/7,433 stage records, cap 12,000, zero drops. In the measured move
+sequence range, policy-stage p50/p95 is 20.599/24.856 ms, compared with whole
+operation 28.090/32.985 ms. Peer delivery policy is 19.181/23.595 ms compared
+with 27.469/32.509 ms overall. Lease loading is much smaller. Await durations
+include serialization and scheduling; these observations do not isolate lock
+wait or explain the previous selected/full difference. Its instrumented p95
+229.916 ms is diagnostic only, not a clean product comparison or Gate 4 pass.
+
+Before product code, the bounded follow-on is to remove the duplicate full
+evaluation inside `policySketchAccess.requireSketch(read)`. Today it evaluates
+read with the requested locks, then evaluates write again to classify access.
+For every existing scope, `read.allowed` equals `write.visible` at the same
+state. Evaluate write once with the same requested locks; permit read only when
+that evaluation is visible and return read/write from its actual write allowance.
+Writes still require allowance. Preserve 404/403 behavior, private ownership,
+project grants, agent authority and readable-but-closed DM history. No new cache,
+cross-transaction reuse, public API, lock mode/order, clock/final fence or reduced
+permission check. `dmClosedFor` already runs in the original second evaluation.
+
+Verify existing observable HTTP/core/live-map permission regressions, including
+viewer/outsider, private/DM/project, closed DM and current revocation, in Docker.
+Add coverage only for a meaningful uncovered behavioral boundary. This is one
+measured-cost optimization, not a promise of a particular gain. Wiki uses a
+different path: its failed 100k timing remains unresolved. The original full
+nine-cohort gate and independent final acceptance still apply; do not ship the
+private instrumentation or weaken any threshold or criterion.
