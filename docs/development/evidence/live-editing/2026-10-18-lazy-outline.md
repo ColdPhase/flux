@@ -35,3 +35,38 @@ No new timing run or profile was taken. The original 7af full-nine result remain
 In the older retained 28ad timed profile (60 s), the largest source-mapped product functions were peer SketchMap 329.438 ms self / 460.985 inclusive, buildOutline 240.615 / 265.926, and SketchView 177.619 / 828.269; owner buildOutline 217.587 / 217.587, SketchMap 192.350 / 318.856, and SketchView 111.313 / 602.299. React host-update `ap` self was 475.929 ms owner / 465.896 peer, with owner native `setAttribute` 1040.503 ms. Inclusive values overlap. Old owner `computeBox` 7862 ms belongs to the Playwright observer, whose identity-read path has since changed; it is not a current product hotspot. Several other application changes also postdate that profile.
 
 The patch removes the source-proven unused outline construction only. Its modest sampled cost does not predict the remaining p95 gap or establish a timing pass. Current graph freshness, exact Undo state and refusal behavior passed the affected real-browser checks; full #228 completion, timing and independent acceptance remain with the parent work package.
+
+## Coordinator's subsequent selected timing
+
+After that author handoff, the coordinator integrated application-identical source
+`c3a2514646c0558ef03d43955e208820d2a70372`. One private selected source,
+`e568243c3de2f40f7c8280edb9b8aa37295352eb`, changes only the original driver's
+three cohort-selection lines. All non-main AST nodes match; selected driver
+SHA-256 remains `854ebf24f86d91108e73255a3a6544cf930641f06aaf0febee95b5285166f2b4`.
+The private selection is not part of the product PR. No new profile was taken.
+
+**Selected timing FAIL: map500/drag200 p95 214.850179 ms > 200 ms**, all 240
+scheduled rows, zero sample/input/socket errors. Thirty warmups, continuous
+trusted input, 60 s/250 ms schedule, all 200 positions, identity/geometry,
+screenshot traces, two RAF/recheck and error denominator remain unchanged.
+The local control is not subtracted. [Result and segments](2026-10-18-lazy-outline/timing/result.json)
+retain the actual outcome; no measured improvement follows from this later run.
+
+Runner/driver/collector exit 1. The unchanged collector correctly rejects the
+one-case finish as INCOMPLETE (`closed marker binding invalid`): 367 records /
+510,610 bytes. This selected observation is not a complete resource/queue gate.
+No producer-shutdown inspection was produced; do not infer an exit/OOM result
+from cleanup. [Cleanup](2026-10-18-lazy-outline/timing/cleanup.json) separately
+verifies zero owned containers, volumes, networks and image tags. User demo and
+Qwen remain untouched. Runtime, preflight, exact selection patch, raw queue and
+full summary are retained with [external hashes](2026-10-18-lazy-outline/timing/external-artifact-sha256.json).
+Bulk rows/publications/traces/PNG remain at
+`/home/hubert/flux-evidence/228-outline-map200-e568243c-latency`.
+
+No unchanged retry or full-nine rerun follows this selected failure. The latest
+canonical full-nine result remains [7af FAIL8/9](2026-10-18-access-latency/README.md);
+it is not relabeled as a run of this new source. All original criteria and the
+200 ms limit remain required. Next action: obtain a concrete supported correction
+for the remaining cost before another runtime attempt; independent visual and
+whole-issue functional/source/method evaluation remain pending. No partial merge
+or production promotion is claimed.
