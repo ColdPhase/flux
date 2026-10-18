@@ -1,0 +1,30 @@
+{
+  "observed_utc": "2026-10-18T11:12:34.797551+00:00",
+  "kind": "read-only cleanup observation; no resource mutations",
+  "projects": {
+    "flux-live-editing-1792319926-1055459": {
+      "containers": [],
+      "volumes": [],
+      "networks": [],
+      "project_tagged_images": []
+    },
+    "flux-live-editing-1792320075-1060232": {
+      "containers": [],
+      "volumes": [],
+      "networks": [],
+      "project_tagged_images": []
+    },
+    "flux-live-editing-1792320571-1076451": {
+      "containers": [],
+      "volumes": [],
+      "networks": [],
+      "project_tagged_images": []
+    },
+    "flux-live-editing-1792320846-1087695": {
+      "containers": [],
+      "volumes": [],
+      "networks": [],
+      "project_tagged_images": []
+    }
+  }
+}
