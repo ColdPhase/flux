@@ -136,15 +136,35 @@ export function mapBackend(database:{pool:Pick<ReturnType<typeof createDatabase>
       const record=options.includeDelta===false?null:await rows.after(sketchId,generation,after);
       if(options.includeDelta!==false&&after<c.room.sequence&&record?.sequence!==after+1)throw new ConflictError('The confirmed map sequence has a gap','EDITING_SEQUENCE_GAP');
       const transient:MapTransient[]=[];const access=policySketchAccess(c.db);
+      const sessions=editingSessionRows(c.db,boundary.confirmation);
+      // Only this transaction owns these positive decisions and their first policy/session locks.
+      // A read recipient's c.access is not a seeded write check. DM pair closure has another
+      // participant dependency, so DM keeps every existing check. At most 32+32 row identities
+      // are referenced here; no names, payloads or identity strings are copied into the memo.
+      const memoize=c.sketch.scope==='project'||c.sketch.scope==='private';
+      const authorized=new Map<string,Set<string>>();
+      async function producerAllowed(producer:MapIdentity) {
+        if(memoize&&authorized.get(producer.actorId)?.has(producer.sessionId))return true;
+        try {
+          if(!await sessions.lock(producer))return false;
+          await access.requireSketch({kind:'human',id:producer.actorId},'sketch.write',sketchId,{lock:true});
+        } catch(error) {if(error instanceof ForbiddenError||error instanceof NotFoundError)return false;throw error;}
+        if(memoize) {
+          let known=authorized.get(producer.actorId);if(!known){known=new Set();authorized.set(producer.actorId,known);}
+          known.add(producer.sessionId);
+        }
+        return true;
+      }
       for(const {lease:current,name} of await rows.gestures(sketchId,generation)) {
         if(!current.connectionId||!current.positions.length)continue;
-        try{if(!await editingSessionRows(c.db,boundary.confirmation).lock({sessionId:current.sessionId,actorId:current.actorId}))continue;await access.requireSketch({kind:'human',id:current.actorId},'sketch.write',sketchId,{lock:true});}catch(error){if(error instanceof ForbiddenError||error instanceof NotFoundError)continue;throw error;}
+        if(!await producerAllowed(current))continue;
         transient.push({type:'map-move',generation,connectionId:current.connectionId,actor:{kind:'human',id:current.actorId,name},gestureId:current.gestureId,leaseId:current.leaseId,sequence:current.sequence,positions:current.positions,expiresAt:current.expiresAt.toISOString()});
       }
       for(const {presence:current,name} of await rows.presence(sketchId,generation)) {
-        try{if(!await editingSessionRows(c.db,boundary.confirmation).lock({sessionId:current.sessionId,actorId:current.actorId}))continue;await access.requireSketch({kind:'human',id:current.actorId},'sketch.write',sketchId,{lock:true});}catch(error){if(error instanceof ForbiddenError||error instanceof NotFoundError)continue;throw error;}
+        if(!await producerAllowed(current))continue;
         transient.push({type:'map-presence',generation,connectionId:current.connectionId,actor:{kind:'human',id:current.actorId,name},selected:current.selected,cursor:current.cursor,expiresAt:current.expiresAt.toISOString()});
       }
+      authorized.clear();
       const next=record?await delta(c.db,c.principal,c.room,c.sketch,record,c.access):null;await boundary.beforeHandoff?.();
       const clock=await rows.currentTransientFence(who,sketchId,generation);if(!clock.recipientAlive)throw new UnauthenticatedError();
       const gestures=new Set(clock.gestureIds),people=new Set(clock.presenceIds);
