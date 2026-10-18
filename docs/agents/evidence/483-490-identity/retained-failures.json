@@ -1,0 +1,166 @@
+{
+  "apiRecorder": {
+    "source": "7cb85924bdd9abb3fa33783bc2202016a4e15a53",
+    "buildTypeLint": "PASS (9 existing ESLint warnings; zero errors)",
+    "api": {
+      "tests": 100,
+      "pass": 100,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "durationMs": 80063.099946
+    },
+    "runnerSuccessMarker": "Named API test files only: browser, restart, unavailable-configuration and background checks skipped.",
+    "wrapperTerminal": 1,
+    "wrapperFailure": "zsh: read-only variable: status, after successful test script and cleanup; terminal recorder did not execute",
+    "scope": "No rerun or relabel: script success is established by its guarded exit0 marker; outer wrapper failed separately.",
+    "cleanup": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "rawLogSha256": "c0896e19b62907298392e0d0ec8d7b284b32c2791d5164b81a5bc2b39ffd4429"
+  },
+  "oidcRunnerMissingImage": {
+    "source": "f0836be8d8bf8a82329a2d1123d22d38683bd08e",
+    "terminal": 1,
+    "buildTypeLint": "PASS; 9 existing warnings, zero errors",
+    "standingUnit": {
+      "pass": 20,
+      "fail": 0,
+      "skipped": 0
+    },
+    "providerBrowserClients": "UNVERIFIED: never reached",
+    "failure": "Maintained OIDC runner named e2e in compose build, but e2e service has image only and no build target; later run attempted to pull missing local flux-e2e tag. Fix the runner to build and tag Dockerfile e2e explicitly.",
+    "rawLogSha256": "8300ef30c7ff9f022655ef2735831d2962041c7fe782c0e4dc06914206f78344",
+    "extraOwnedImageCleanup": [
+      {
+        "imageTag": "flux-mcp-clients:flux-oidc-1792342310-2192025",
+        "imageId": "sha256:2d284d614ebbee364d4cde046fbb06eb5f37608711fb64ffaa2edfa0cda421a2",
+        "removeExit": 0
+      }
+    ],
+    "remaining": {
+      "containers": [],
+      "volumes": [],
+      "networks": [],
+      "tags": []
+    }
+  },
+  "outageAccountFixtureContamination": {
+    "source": "2ce35f294e8d80ae7b427bdc3625a36ceddb8c8d",
+    "terminal": 1,
+    "standing": {
+      "tests": 20,
+      "pass": 20,
+      "fail": 0,
+      "skip": 0,
+      "durationMs": 2461.260613
+    },
+    "bootOutage": {
+      "tests": 1,
+      "pass": 1,
+      "fail": 0,
+      "skip": 0,
+      "durationMs": 72197.442523
+    },
+    "linkPrepareFirst": {
+      "tests": 1,
+      "pass": 1
+    },
+    "linkPrepareRemaining": {
+      "tests": 4,
+      "pass": 3,
+      "fail": 1,
+      "failure": "inherited global provider-account absence assertion sees the real account created by the new boot-outage phase; diagnosis pending source fix"
+    },
+    "officialClientAndOperator": "NOT RUN",
+    "remaining": {
+      "containers": [],
+      "volumes": [],
+      "networks": [],
+      "images": []
+    },
+    "logSha256": "31930fcf8f6d6b5e200c3c2ec23e800e933e1e17d5c7768a9f2f127217092dbd"
+  },
+  "metadataObserver": {
+    "terminal": 1,
+    "role": "read-only runtime metadata observer, separate from application lane",
+    "cause": "Docker cleanup removed containers between docker ps and docker inspect; subprocess CalledProcessError from missing container objects",
+    "sourceSha256": "9eb56b5d53b8ec9a856d6d550919b9a4e694620934c8704bfd233412cef76bc0",
+    "preservedSnapshotsSha256": "626a7ca557b79bd0c38895224f9be8bbcfe8af59539c1af3e2373a9d22de579a",
+    "applicationCommandTerminal": 0,
+    "cleanupProof": "oidc-result.json remaining inventories independently inspected empty after terminal"
+  },
+  "operatorFirstUnknownDemoFailure": {
+    "base": "b17ae9e357441e9a383eb275d1034e69ec50c98a",
+    "candidate": "f2165dca8db0bf56485e4b81c6fe80d637b6d3bb",
+    "terminal": 1,
+    "helperSha256": "66e1ff74fce0c45210826208060dddbf357e6d1db3f62fc6409df5ca139abc49",
+    "driverSha256": "89254090608e1c89202e0e9ddaa1018fccf53b4d71f9d50a649dd426dd14ebaa",
+    "historicalLimit": "Does not rerun the original main90/late70/71 experiment; composes its pinned receipts with current continuity.",
+    "remaining": {
+      "fluxidentity-1792346880-2503970": {
+        "containers": [],
+        "volumes": [],
+        "networks": [],
+        "images": []
+      },
+      "fluxidp-1792346880-2503970": {
+        "containers": [],
+        "volumes": [],
+        "networks": [],
+        "images": []
+      }
+    }
+  },
+  "operatorBoundedDemoDiagnostic": {
+    "base": "b17ae9e357441e9a383eb275d1034e69ec50c98a",
+    "candidate": "20b5b1a73e2b47e14fe468256f72be5b9f99be5e",
+    "terminal": 1,
+    "diagnosticOnly": true,
+    "helperSha256": "66e1ff74fce0c45210826208060dddbf357e6d1db3f62fc6409df5ca139abc49",
+    "driverSha256": "456bbd2e6764a22d3817e50096df328ba3f15c9b0e2f345d7ed1cbce016eb552",
+    "historicalLimit": "Does not rerun the original main90/late70/71 experiment; composes its pinned receipts with current continuity.",
+    "remaining": {
+      "fluxidentity-1792347183-2517303": {
+        "containers": [],
+        "volumes": [],
+        "networks": [],
+        "images": []
+      },
+      "fluxidp-1792347183-2517303": {
+        "containers": [],
+        "volumes": [],
+        "networks": [],
+        "images": []
+      }
+    }
+  },
+  "correctedBoundedDemoDiagnostic": {
+    "base": "b17ae9e357441e9a383eb275d1034e69ec50c98a",
+    "candidate": "525f61c8907e9369c7b84f97a9b98d32e4d702ab",
+    "terminal": 0,
+    "diagnosticOnly": true,
+    "helperSha256": "66e1ff74fce0c45210826208060dddbf357e6d1db3f62fc6409df5ca139abc49",
+    "driverSha256": "334abcf652d31379da7f3a92f7d9e7c0f1f3477171fc88734597efda299f722b",
+    "historicalLimit": "Does not rerun the original main90/late70/71 experiment; composes its pinned receipts with current continuity.",
+    "remaining": {
+      "fluxidentity-1792347350-2525084": {
+        "containers": [],
+        "volumes": [],
+        "networks": [],
+        "images": []
+      },
+      "fluxidp-1792347350-2525084": {
+        "containers": [],
+        "volumes": [],
+        "networks": [],
+        "images": []
+      }
+    }
+  },
+  "demoSafeSubtype": "POST workspace members by unverified password account email ->404 ACCOUNT_NOT_FOUND while provider configured; correct anti-squatting rule. Fix the fixture ordering, not verification flags.",
+  "diagnosticCleanupLimit": "The native-seed-only/early-stop attempts record browser-image-cleanup exit1 because that image had not been built; all owned inventories were empty. Full operator525 records all23 phase exits0.",
+  "observerStartupLimit": "An initial bridge observer used docker ps --quiet with --format, observed no rows, and was stopped130; corrected read-only observer completed0. Driver runtime snapshots are independently retained."
+}

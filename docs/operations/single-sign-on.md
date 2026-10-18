@@ -216,12 +216,14 @@ own policies (MFA, conditional access), which stay the provider's responsibility
   ever receives Flux's own code and tokens, and an access or ID token issued by the provider is refused at
   `/mcp`. If the provider step is cancelled or fails, the page returns to `/login` with the same request
   and a message. If the provider's discovery document cannot be read, the button is disabled and says
-  `<label> is not reachable right now`. A Flux that starts while the provider is down waits with backoff
-  for about 12 seconds; if the provider is still down then, restart Flux once it is back.
+  `<label> is not reachable right now`. Flux keeps retrying a provider that was unavailable at startup.
+  The same signed login page enables sign-in when it recovers; no API restart or page reload is needed.
   Pre-registered Codex clients: register the callback that Codex displays. It is the stable
   `http://127.0.0.1/callback` when the server advertises the issuer response parameter, as Flux does.
-  Tested in `scripts/check_oidc.sh` against Keycloak with a scripted client; runs of the real Claude Code
-  and Codex clients are not part of this change.
+  `FLUX_OIDC_CLOSEOUT=1 ./scripts/check_oidc.sh` also verifies real official Codex0.160.1 and Claude
+  Code2.1.285 against Keycloak (2026-10-18): pre-registered clients and Claude default CIMD, genuine
+  OAuth/consent/PKCE and native authorized tools. Only their model endpoints are mocked; vendor-account
+  usability and the separate Start/Resume workflow are not certified. See the [pinned evidence](../agents/evidence/483-490-identity/README.md).
 
 ## Moving existing accounts
 

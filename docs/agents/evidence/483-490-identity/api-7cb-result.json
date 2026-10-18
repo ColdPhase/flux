@@ -1,0 +1,22 @@
+{
+  "source": "7cb85924bdd9abb3fa33783bc2202016a4e15a53",
+  "buildTypeLint": "PASS (9 existing ESLint warnings; zero errors)",
+  "api": {
+    "tests": 100,
+    "pass": 100,
+    "fail": 0,
+    "cancelled": 0,
+    "skipped": 0,
+    "durationMs": 80063.099946
+  },
+  "runnerSuccessMarker": "Named API test files only: browser, restart, unavailable-configuration and background checks skipped.",
+  "wrapperTerminal": 1,
+  "wrapperFailure": "zsh: read-only variable: status, after successful test script and cleanup; terminal recorder did not execute",
+  "scope": "No rerun or relabel: script success is established by its guarded exit0 marker; outer wrapper failed separately.",
+  "cleanup": {
+    "containers": [],
+    "volumes": [],
+    "networks": []
+  },
+  "rawLogSha256": "c0896e19b62907298392e0d0ec8d7b284b32c2791d5164b81a5bc2b39ffd4429"
+}

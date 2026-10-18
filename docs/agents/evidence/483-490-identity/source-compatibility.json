@@ -1,0 +1,102 @@
+{
+  "candidate": "525f61c8907e9369c7b84f97a9b98d32e4d702ab",
+  "apiProductionAndSelectedTestsUnchangedFrom7cb": {
+    "app/apps/server/src/identity/standing-profile.ts": {
+      "7cb85924bdd9abb3fa33783bc2202016a4e15a53": "9fabe9640f72c0ba6d3a39ae61b04d97a5a261b8a693b81e1e3216a03a91340b",
+      "525f61c8907e9369c7b84f97a9b98d32e4d702ab": "9fabe9640f72c0ba6d3a39ae61b04d97a5a261b8a693b81e1e3216a03a91340b"
+    },
+    "app/apps/server/src/identity/standing.ts": {
+      "7cb85924bdd9abb3fa33783bc2202016a4e15a53": "907849b00d3ececdfc5a951a6b2bc86da7df3175b0812313d3bbb0e164132c0c",
+      "525f61c8907e9369c7b84f97a9b98d32e4d702ab": "907849b00d3ececdfc5a951a6b2bc86da7df3175b0812313d3bbb0e164132c0c"
+    },
+    "app/apps/worker/src/proactive-comparison/authorization.ts": {
+      "7cb85924bdd9abb3fa33783bc2202016a4e15a53": "3a18df9c2d6d393e44749940f0c09f5ce5df3321d4efbd084eba5d4cc76c20eb",
+      "525f61c8907e9369c7b84f97a9b98d32e4d702ab": "3a18df9c2d6d393e44749940f0c09f5ce5df3321d4efbd084eba5d4cc76c20eb"
+    },
+    "app/packages/db/src/repositories/agent-connections.ts": {
+      "7cb85924bdd9abb3fa33783bc2202016a4e15a53": "6c64da110febcaf18095c876e76bfe3f4b69d4ff31435f6f167e5c2f18d8b3ee",
+      "525f61c8907e9369c7b84f97a9b98d32e4d702ab": "6c64da110febcaf18095c876e76bfe3f4b69d4ff31435f6f167e5c2f18d8b3ee"
+    },
+    "app/packages/db/src/repositories/idp-standing.ts": {
+      "7cb85924bdd9abb3fa33783bc2202016a4e15a53": "81c711b98b0d3b556496fa610a6f7ba85c98a5008111413d70c17c02c2d83ba2",
+      "525f61c8907e9369c7b84f97a9b98d32e4d702ab": "81c711b98b0d3b556496fa610a6f7ba85c98a5008111413d70c17c02c2d83ba2"
+    },
+    "app/tests/app/identity-sso-path.test.ts": {
+      "7cb85924bdd9abb3fa33783bc2202016a4e15a53": "06501af22f9c3833edea90a257477a5cff96c6466ebb222fad594e7d9e27af20",
+      "525f61c8907e9369c7b84f97a9b98d32e4d702ab": "06501af22f9c3833edea90a257477a5cff96c6466ebb222fad594e7d9e27af20"
+    },
+    "app/tests/app/identity-claim-profile.test.ts": {
+      "7cb85924bdd9abb3fa33783bc2202016a4e15a53": "1dda60ee875dde2ca9aec6d43e7ceca4f49a55af4d5e04a903f6cf64da0d13f6",
+      "525f61c8907e9369c7b84f97a9b98d32e4d702ab": "1dda60ee875dde2ca9aec6d43e7ceca4f49a55af4d5e04a903f6cf64da0d13f6"
+    },
+    "app/tests/app/personal-runs.test.ts": {
+      "7cb85924bdd9abb3fa33783bc2202016a4e15a53": "addbee33ceb47c3c80484681e6fbcc5a271f0c027657e99db9246fc7b295c3ae",
+      "525f61c8907e9369c7b84f97a9b98d32e4d702ab": "addbee33ceb47c3c80484681e6fbcc5a271f0c027657e99db9246fc7b295c3ae"
+    },
+    "app/tests/app/assistant-run-tokens.test.ts": {
+      "7cb85924bdd9abb3fa33783bc2202016a4e15a53": "baf9693816f602b3178035c1698ba12fce9aab47dead4d73b5a095add7cf382d",
+      "525f61c8907e9369c7b84f97a9b98d32e4d702ab": "baf9693816f602b3178035c1698ba12fce9aab47dead4d73b5a095add7cf382d"
+    },
+    "app/tests/app/agent-runtime-runs.test.ts": {
+      "7cb85924bdd9abb3fa33783bc2202016a4e15a53": "6f3d344ed2220cd8b0b61564bd872db57115f07587193ee8d95a854cc3969bc1",
+      "525f61c8907e9369c7b84f97a9b98d32e4d702ab": "6f3d344ed2220cd8b0b61564bd872db57115f07587193ee8d95a854cc3969bc1"
+    },
+    "app/tests/app/proactive-comparison-cancellation.test.ts": {
+      "7cb85924bdd9abb3fa33783bc2202016a4e15a53": "a7fb47a09f9f9cc42abc16c12cce093de3d9c4e98703e01354ae2d00ccb1f5fd",
+      "525f61c8907e9369c7b84f97a9b98d32e4d702ab": "a7fb47a09f9f9cc42abc16c12cce093de3d9c4e98703e01354ae2d00ccb1f5fd"
+    },
+    "app/tests/app/oauth-mcp.test.ts": {
+      "7cb85924bdd9abb3fa33783bc2202016a4e15a53": "4b9bed812a4575b6e646c265eab124f364af887312867850422a0f583afaf908",
+      "525f61c8907e9369c7b84f97a9b98d32e4d702ab": "4b9bed812a4575b6e646c265eab124f364af887312867850422a0f583afaf908"
+    }
+  },
+  "idpStandingTests": "The two later fault/age tests are independently included in standing20 atf083 and again in current847 OIDC79; API100 is not relabelled.",
+  "oidc847InputsUnchanged": {
+    "paths": [
+      "app",
+      "docker",
+      "scripts/check_oidc.sh",
+      "scripts/test_images.sh"
+    ],
+    "diffExit": 0,
+    "trees": {
+      "847b7408e279b2dc2d405635f300167c60397274": {
+        "app": "8afb05ae5152ebf500a83a5c0afc98d8fa4eb809",
+        "docker": "ee861b63d75f92c18b7e0b91522fa1e9a8a742f8"
+      },
+      "525f61c8907e9369c7b84f97a9b98d32e4d702ab": {
+        "app": "8afb05ae5152ebf500a83a5c0afc98d8fa4eb809",
+        "docker": "ee861b63d75f92c18b7e0b91522fa1e9a8a742f8"
+      }
+    }
+  },
+  "historicalImmutableSql": {
+    "app/packages/db/migrations/0066_session_identities.sql": {
+      "6d6c1a5015f7ba2a507755e5b8d6a4016dd32c5e": "3386a83313f4d71d6861336c94116762b81b8825978fb782947b93db862492fa",
+      "b17ae9e357441e9a383eb275d1034e69ec50c98a": "3386a83313f4d71d6861336c94116762b81b8825978fb782947b93db862492fa",
+      "525f61c8907e9369c7b84f97a9b98d32e4d702ab": "3386a83313f4d71d6861336c94116762b81b8825978fb782947b93db862492fa"
+    },
+    "app/packages/db/migrations/0070_idp_standing.sql": {
+      "6d6c1a5015f7ba2a507755e5b8d6a4016dd32c5e": "5efa30080861dfa9ef9a619ee1c62085839e62aecc0ddfdbfb1012ff1b27e9e5",
+      "b17ae9e357441e9a383eb275d1034e69ec50c98a": "5efa30080861dfa9ef9a619ee1c62085839e62aecc0ddfdbfb1012ff1b27e9e5",
+      "525f61c8907e9369c7b84f97a9b98d32e4d702ab": "5efa30080861dfa9ef9a619ee1c62085839e62aecc0ddfdbfb1012ff1b27e9e5"
+    },
+    "app/packages/db/migrations/0071_identity_confirmation.sql": {
+      "6d6c1a5015f7ba2a507755e5b8d6a4016dd32c5e": "af12eab8b8c63dad7afcead1c934664fd19c01d32073ad8753d6d5226a02e130",
+      "b17ae9e357441e9a383eb275d1034e69ec50c98a": "af12eab8b8c63dad7afcead1c934664fd19c01d32073ad8753d6d5226a02e130",
+      "525f61c8907e9369c7b84f97a9b98d32e4d702ab": "af12eab8b8c63dad7afcead1c934664fd19c01d32073ad8753d6d5226a02e130"
+    },
+    "app/packages/db/migrations/0083_grant_authentication.sql": {
+      "6d6c1a5015f7ba2a507755e5b8d6a4016dd32c5e": "133f853ca47d6a7c2ef1d82e35a49a9557fc95cbafb2295d2cd1237359015faa",
+      "b17ae9e357441e9a383eb275d1034e69ec50c98a": "133f853ca47d6a7c2ef1d82e35a49a9557fc95cbafb2295d2cd1237359015faa",
+      "525f61c8907e9369c7b84f97a9b98d32e4d702ab": "133f853ca47d6a7c2ef1d82e35a49a9557fc95cbafb2295d2cd1237359015faa"
+    },
+    "app/packages/db/migrations/0086_oauth_grant_authentication.sql": {
+      "6d6c1a5015f7ba2a507755e5b8d6a4016dd32c5e": "8b0ce5e3bfca313c6776afacbfb034691db24a6bc7d85f47e6cd4ac552664901",
+      "b17ae9e357441e9a383eb275d1034e69ec50c98a": "8b0ce5e3bfca313c6776afacbfb034691db24a6bc7d85f47e6cd4ac552664901",
+      "525f61c8907e9369c7b84f97a9b98d32e4d702ab": "8b0ce5e3bfca313c6776afacbfb034691db24a6bc7d85f47e6cd4ac552664901"
+    }
+  },
+  "historicalLimit": "Launcher, migrator, auth and toolchain changed since392; no blanket old runtime/current compatibility claimed. Retained main90 facts remain at6d6; current ordinary operator bridge independently passes525.",
+  "inherited389": "Accepted already-open confirmation-age repair stays at7277b99286a7f662c87219605f7a3e2fcb346bf7. This PR changes none of its editing fence paths vs protected baseb17; it does not rerun or relabel its6SQL+1genuine-provider case."
+}
