@@ -808,6 +808,9 @@ describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A
           const response=await run.call('flux_create_task',{task:{title:'Only after the owner applies'}});
           assert.match(text(response.message),/Waiting for ac-ada/);
           assert.equal((await changesOf(run.runId))[0]!.wait_reason,'ask');
+          await pool.query(`UPDATE assistant_reactions SET enabled=false WHERE owner_user_id=$1 AND action=$2`,[owner.id,action]);
+          assert.ok(result((await run.call('flux_create_task',{task:{title:'Turned off must not prepare'}})).message)?.isError);
+          assert.equal((await changesOf(run.runId)).length,1,'turning off a sentence revokes its already-minted token');
         } else {
           assert.ok(run.tools.length>0);
           assert.ok(!run.tools.some((tool)=> (ASSISTANT_RUN_EFFECT_TOOLS as readonly string[]).includes(tool)),action);

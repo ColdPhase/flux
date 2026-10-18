@@ -104,7 +104,20 @@ describe('owner-only When sentences (F-027 A9, #409)', () => {
     await owner.browser.request('PUT',assistantReactionPath(ws.id,owner.id,rule.id),{body:{projectId:place.id,event:'blocked',action:'tell',enabled:false,dailyLimit:1,expectedVersion:rule.version}});
     const before=(await events()).length; await task(owner,'blocked','Paused'); assert.equal((await events()).length,before);
   });
-  test('AST-7.8: a durable mention reply is private and never posts; tell me folds without a second notification',async()=>{
+  test('tell me folds into the existing blocked Inbox item without another notification or push',async()=>{
+    await make('blocked','tell');
+    const id=await task(owner,'blocked','No power');
+    const before=expectStatus(await owner.browser.request('GET',NEEDS_YOU_PATH),200) as NeedsYouResponse;
+    assert.equal(before.items.filter((item)=>item.key===`blocked:${id}`).length,1);
+    const count=Number((await pool.query(`SELECT count(*) AS n FROM notifications WHERE user_id=$1`,[owner.id])).rows[0].n);
+    await tick(future); await process(); await tick(future);
+    const after=expectStatus(await owner.browser.request('GET',NEEDS_YOU_PATH),200) as NeedsYouResponse;
+    const folded=after.items.filter((item)=>item.key===`blocked:${id}`);
+    assert.equal(folded.length,1); assert.match(folded[0]!.assistantNote!,/power connector/);
+    assert.equal(Number((await pool.query(`SELECT count(*) AS n FROM notifications WHERE user_id=$1`,[owner.id])).rows[0].n),count);
+    assert.equal(sent.filter((job)=>job.name.includes('push')).length,0);
+  });
+  test('AST-7.8: a durable mention reply is private and never posts',async()=>{
     await make('mentioned','draft_reply');
     const id=randomUUID();
     await pool.query(`INSERT INTO notifications(id,user_id,workspace_id,source_type,source_id,title,body,url,reason,created_at) VALUES($1,$2,$3,'project',$4,'Jonas mentioned you','@when-ada please check', $5,'mention',$6)`,[id,owner.id,ws.id,place.id,`/projects/${place.id}/conversations/${thread.id}#message-${randomUUID()}`,future]);
