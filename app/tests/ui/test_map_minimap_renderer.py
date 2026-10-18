@@ -50,7 +50,7 @@ class MinimapRenderer(LiveFixture):
             self.assertGreater(result['squareControl']['relativeAlphaError'], .03, result)
             self.assertGreater(result['minimumControl']['relativeAlphaError'], .03, result)
         print('MINIMAP_REFERENCE ' + json.dumps({'label':label, **result}), flush=True)
-        directory = os.environ.get('FLUX_UI_SCREENSHOT_DIR')
+        directory = os.environ.get('FLUX_UI_SCREENSHOTS')
         if directory:
             Path(directory).mkdir(parents=True, exist_ok=True)
             await page.locator('.sk-minimap').screenshot(path=str(Path(directory)/f'{label}.png'))
