@@ -82,6 +82,8 @@ compatibility with the composed application. Functional recovery, current
 authority/privacy, complete resource evidence and protected independent approval
 remain required. No new run or application-only speedup is claimed.
 
+**Whole-issue technical acceptance, 2026-10-18:** [final independent evidence](evidence/live-editing/2026-10-18-final-review/README.md) accepts candidate `c66eefc7` using compatible retained measurements and final composed Chromium/WebKit interaction/renders, including all three resolved P2 findings. The founder exception above applies; eligible protected approval is still required.
+
 ### Candidate identity-read method change (2026-10-18, #228 / #613)
 
 The failed canonical run at `8ba5f87ae065d52b4b69158648f8e863b3d3f9cb`

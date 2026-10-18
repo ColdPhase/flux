@@ -40,9 +40,9 @@ message; a post-cleanup inventory showed no containers or volumes for that
 interrupted Compose project. After correcting the indentation, the focused
 Chromium delivery test passed.
 
-Compose project names visible in runner output were `flux-ui-1792338494-1973124`
-(Chromium), `flux-ui-1792338721-1984064` (WebKit), and
-`flux-test-1792338808-1992658` (targeted app test). The run scripts completed
+Compose project names visible in runner output were "flux-ui-1792338494-1973124"
+(Chromium), "flux-ui-1792338721-1984064" (WebKit), and
+"flux-test-1792338808-1992658" (targeted app test). The run scripts completed
 cleanup, and post-cleanup container inventories for those projects were empty.
 Container IDs, pre-teardown image inventories, network inventories, and raw
 log file paths/hashes were not captured; they remain unverified. The runner

@@ -1,0 +1,80 @@
+{
+  "observed_at": 1792339466.2678194,
+  "candidate": "c66eefc73e004aca2f10c0e0445ec7a7d0b84163",
+  "capture_source": "0eaed8d0",
+  "note": "Actual Compose working_dir is checkout/docker; initial orchestration filter was too narrow and recorded no containers. Corrected capture taken while actual tests run.",
+  "containers": [
+    {
+      "id": "09265f3bd7ef3f740973ea117be12e2b1eba93a6946c72c1b50bbe745c330bf7",
+      "image": "sha256:aa1dc6ead4ccefeb362290686ee9fba80c7c6d22a0ef7013e514c749ee97ddac",
+      "name": "/flux-ui-1792339293-2014052-ui-test-run-35240d74c48c",
+      "project": "flux-ui-1792339293-2014052",
+      "service": "ui-test",
+      "status": "running",
+      "env": {
+        "FLUX_LIVE_EDITING": "on",
+        "FLUX_LIVE_EDITING_TEST": "1",
+        "FLUX_UI_BROWSER": "chromium"
+      }
+    },
+    {
+      "id": "b1abca91bb0fbc5f5031553debc4d6e5e01a6f3b1295de7c8fa0942b8893387d",
+      "image": "sha256:b609cd38c9bee632ebb2598455204ff3cca21162c7264654542b6c9315cca6c4",
+      "name": "/flux-ui-1792339293-2014052-worker-1",
+      "project": "flux-ui-1792339293-2014052",
+      "service": "worker",
+      "status": "running",
+      "env": {
+        "NODE_ENV": "production"
+      }
+    },
+    {
+      "id": "c831f379f55f2238443fcaa8a849871b8c0558f71cf69c3cc5aa04df90b1f062",
+      "image": "sha256:b609cd38c9bee632ebb2598455204ff3cca21162c7264654542b6c9315cca6c4",
+      "name": "/flux-ui-1792339293-2014052-api-1",
+      "project": "flux-ui-1792339293-2014052",
+      "service": "api",
+      "status": "running",
+      "env": {
+        "NODE_ENV": "production",
+        "FLUX_LIVE_EDITING": "on"
+      }
+    },
+    {
+      "id": "5564222286e898be85da0682b1b38da0fa9322d573956ebcbd9c31af060e1420",
+      "image": "sha256:aa1dc6ead4ccefeb362290686ee9fba80c7c6d22a0ef7013e514c749ee97ddac",
+      "name": "/flux-ui-1792339293-2014052-openai-mock-1",
+      "project": "flux-ui-1792339293-2014052",
+      "service": "openai-mock",
+      "status": "running",
+      "env": {}
+    },
+    {
+      "id": "300eedb5fc5132948e0cf44d9a89194b82df9dbb1c607c82e22ccdefc9521d5b",
+      "image": "sha256:0a94362145f58e5cffb58605023c671774e4143037a952221ee6485b6cd999af",
+      "name": "/flux-ui-1792339293-2014052-mailpit-1",
+      "project": "flux-ui-1792339293-2014052",
+      "service": "mailpit",
+      "status": "running",
+      "env": {}
+    },
+    {
+      "id": "73f5417ae82922b7453be01625efc3540dc424ebe858c9592dcf9298b3d95056",
+      "image": "sha256:aa1dc6ead4ccefeb362290686ee9fba80c7c6d22a0ef7013e514c749ee97ddac",
+      "name": "/flux-ui-1792339293-2014052-anthropic-mock-1",
+      "project": "flux-ui-1792339293-2014052",
+      "service": "anthropic-mock",
+      "status": "running",
+      "env": {}
+    },
+    {
+      "id": "3eb985497e598a894bb5297b2bba48eb8d1d1e921c08c3fab9976ab7aa0bd657",
+      "image": "sha256:c293117fcecda7344b5480222e813b9f673d7abd69b1dd95eff239b768b04f59",
+      "name": "/flux-ui-1792339293-2014052-db-1",
+      "project": "flux-ui-1792339293-2014052",
+      "service": "db",
+      "status": "running",
+      "env": {}
+    }
+  ]
+}

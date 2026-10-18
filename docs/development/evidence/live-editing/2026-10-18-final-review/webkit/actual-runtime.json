@@ -1,0 +1,89 @@
+{
+  "observed_at": 1792339642.531351,
+  "capture_source": "0eaed8d0d75f36ab5e8cff84cda0d2f458ea8220",
+  "containers": [
+    {
+      "id": "1136b2ad83274fa9101a9b79c20558c7a944de68d56697ca2308de7855e91f0a",
+      "image": "sha256:c293117fcecda7344b5480222e813b9f673d7abd69b1dd95eff239b768b04f59",
+      "name": "/flux-ui-1792339523-2029874-db-1",
+      "project": "flux-ui-1792339523-2029874",
+      "service": "db",
+      "status": "running",
+      "env": {}
+    },
+    {
+      "id": "bc91d7d131142870f329456cce887aeaad497503087d12b01da8a0be8cdbfeb1",
+      "image": "sha256:12e04d79aeb6bb63d15edaaf64dcd5865f98f505e16c1c741e6aca9a316bb62a",
+      "name": "/flux-ui-1792339523-2029874-migrate-1",
+      "project": "flux-ui-1792339523-2029874",
+      "service": "migrate",
+      "status": "running",
+      "env": {
+        "NODE_ENV": "production"
+      }
+    },
+    {
+      "id": "3c90fb2328483dd3e65db4403446d2802ca04eb95c92e60304571bf39d832742",
+      "image": "sha256:12e04d79aeb6bb63d15edaaf64dcd5865f98f505e16c1c741e6aca9a316bb62a",
+      "name": "/flux-ui-1792339523-2029874-api-1",
+      "project": "flux-ui-1792339523-2029874",
+      "service": "api",
+      "status": "running",
+      "env": {
+        "NODE_ENV": "production",
+        "FLUX_LIVE_EDITING": "on"
+      }
+    },
+    {
+      "id": "315e6e5a365e5c59280363c947b8b9fb59e81c3076108c203c74e08e873e88b3",
+      "image": "sha256:12e04d79aeb6bb63d15edaaf64dcd5865f98f505e16c1c741e6aca9a316bb62a",
+      "name": "/flux-ui-1792339523-2029874-worker-1",
+      "project": "flux-ui-1792339523-2029874",
+      "service": "worker",
+      "status": "running",
+      "env": {
+        "NODE_ENV": "production"
+      }
+    },
+    {
+      "id": "931a666715a0f093a39c14cfad0f74775b23427b5378abec16a3a4f33e6ce17b",
+      "image": "sha256:d5103a8a776b06d50c04ba7474de8020f94bb0f1f97858e09e195c8ce7adf827",
+      "name": "/flux-ui-1792339523-2029874-anthropic-mock-1",
+      "project": "flux-ui-1792339523-2029874",
+      "service": "anthropic-mock",
+      "status": "running",
+      "env": {}
+    },
+    {
+      "id": "fdecddd65968078e310dd1ee092b1294399980ceebfe121ce61f1157da80121a",
+      "image": "sha256:0a94362145f58e5cffb58605023c671774e4143037a952221ee6485b6cd999af",
+      "name": "/flux-ui-1792339523-2029874-mailpit-1",
+      "project": "flux-ui-1792339523-2029874",
+      "service": "mailpit",
+      "status": "running",
+      "env": {}
+    },
+    {
+      "id": "309022dc04737644c7a680fbde7e0dbce84bf1dbadbe7a1a1f45d32743aa3454",
+      "image": "sha256:d5103a8a776b06d50c04ba7474de8020f94bb0f1f97858e09e195c8ce7adf827",
+      "name": "/flux-ui-1792339523-2029874-openai-mock-1",
+      "project": "flux-ui-1792339523-2029874",
+      "service": "openai-mock",
+      "status": "running",
+      "env": {}
+    },
+    {
+      "id": "1daf4bb7f2911c55f377db039c872e275b259d1fcfdda621d3747e39eb87ae56",
+      "image": "sha256:d5103a8a776b06d50c04ba7474de8020f94bb0f1f97858e09e195c8ce7adf827",
+      "name": "/flux-ui-1792339523-2029874-ui-test-run-1a962196af71",
+      "project": "flux-ui-1792339523-2029874",
+      "service": "ui-test",
+      "status": "running",
+      "env": {
+        "FLUX_LIVE_EDITING": "on",
+        "FLUX_LIVE_EDITING_TEST": "1",
+        "FLUX_UI_BROWSER": "webkit"
+      }
+    }
+  ]
+}

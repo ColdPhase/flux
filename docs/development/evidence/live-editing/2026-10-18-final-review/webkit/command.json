@@ -1,0 +1,22 @@
+{
+  "source": "c66eefc73e004aca2f10c0e0445ec7a7d0b84163",
+  "capture_source": "0eaed8d0d75f36ab5e8cff84cda0d2f458ea8220",
+  "command": [
+    "./scripts/check_ui.sh",
+    "test_live_map_delivery_order",
+    "test_live_editing.LiveEditingJourney.test_05_map_preview_before_pointerup_unrelated_delta_during_drag",
+    "test_live_map_cursors",
+    "test_live_editing.LiveEditingJourney.test_01_live_characters_named_cursors_own_undo_and_immutable_save",
+    "test_live_editing.LiveEditingJourney.test_15_a_collaborators_caret_at_the_end_never_takes_the_last_character_selection",
+    "test_live_map_lease_expiry",
+    "test_live_map_projection.LiveMapProjectionJourney.test_remote_changes_during_drag_private_cancel_and_independent_own_undo",
+    "test_live_review_capture"
+  ],
+  "env": {
+    "FLUX_UI_BROWSER": "webkit",
+    "FLUX_LIVE_EDITING": "on",
+    "FLUX_UI_PORT": "18685",
+    "FLUX_UI_MAILPIT_PORT": "18686",
+    "FLUX_UI_SCREENSHOT_DIR": "/home/hubert/flux-evidence/613-final-c66eefc7/webkit/shots"
+  }
+}

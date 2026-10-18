@@ -1,0 +1,366 @@
+{
+  "schema": 1,
+  "candidate": "c66eefc73e004aca2f10c0e0445ec7a7d0b84163",
+  "files": [
+    {
+      "path": "/home/hubert/flux-evidence/613-final-c66eefc7/all-cleanup.json",
+      "bytes": 354,
+      "sha256": "c3657dedd3fad5793de869513add2bf798027452a66def939f1caf51e060118b"
+    },
+    {
+      "path": "/home/hubert/flux-evidence/613-final-c66eefc7/capture_running.py",
+      "bytes": 1406,
+      "sha256": "26b9c9176bd34ae5b0e5ceffe6fd72ca3637b9c9c5ff4e196e2a42662f7323d8"
+    },
+    {
+      "path": "/home/hubert/flux-evidence/613-final-c66eefc7/chromium/actual-runtime-corrected.json",
+      "bytes": 3076,
+      "sha256": "066b63ee68db72d09ae393fc6981a00f12219c06b596953907469e8b3adc5d8e"
+    },
+    {
+      "path": "/home/hubert/flux-evidence/613-final-c66eefc7/chromium/actual-runtime.json",
+      "bytes": 123,
+      "sha256": "8cc2ae72bdaecd73fdb1b68275eaaa7dd0bce04cc0b28eb9f76e3f253edd329e"
+    },
+    {
+      "path": "/home/hubert/flux-evidence/613-final-c66eefc7/chromium/baked-inputs.json",
+      "bytes": 119,
+      "sha256": "61da9ec3d9ba737cd43aafb1ed05cf016565aeee4dda2c6327c24b7cad01718d"
+    },
+    {
+      "path": "/home/hubert/flux-evidence/613-final-c66eefc7/chromium/cleanup.json",
+      "bytes": 3,
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "path": "/home/hubert/flux-evidence/613-final-c66eefc7/chromium/command.json",
+      "bytes": 1017,
+      "sha256": "9db20a477bfe0ace46d6930e8c95d3dd9e814a8af0c2e8b7706322dcb81479f6"
+    },
+    {
+      "path": "/home/hubert/flux-evidence/613-final-c66eefc7/chromium/runner.log",
+      "bytes": 36199,
+      "sha256": "3f0fa47dd9ac57739abc6d3c7a1ae04b3cfde1e2ec82284a3bdef7c146849e09"
+    },
+    {
+      "path": "/home/hubert/flux-evidence/613-final-c66eefc7/chromium/shots/capture-metadata.json",
+      "bytes": 7285,
+      "sha256": "36c978fd0eca7128c6190912984f4a81076b1831134ae2d93c977bb2bb3258ba"
+    },
+    {
+      "path": "/home/hubert/flux-evidence/613-final-c66eefc7/chromium/shots/collaboration-observations.json",
+      "bytes": 10065,
+      "sha256": "169d5f6b7bc21ac83f60ea35549325e2fc611f0d278117abc3802ada330df984"
+    },
+    {
+      "path": "/home/hubert/flux-evidence/613-final-c66eefc7/chromium/shots/dynamic-collision-observations.json",
+      "bytes": 2632,
+      "sha256": "e9290ad325573ff205c1997204da84b29f191bceaeaa74b1ad053b3f5f9fb44a"
+    },
+    {
+      "path": "/home/hubert/flux-evidence/613-final-c66eefc7/chromium/shots/map-active-peer-movement-dark-1440.png",
+      "bytes": 101865,
+      "sha256": "8764f15de677d1979a8701d2169bd5e672a574f9734f0c7df05497f74f0c42e3"
+    },
+    {
+      "path": "/home/hubert/flux-evidence/613-final-c66eefc7/chromium/shots/map-active-peer-movement-dark-2560.png",
+      "bytes": 113969,
+      "sha256": "59382d4e0d6173d9784d0c7e62739a941b967d2c6394ad1640847b04fc90148d"
+    },
+    {
+      "path": "/home/hubert/flux-evidence/613-final-c66eefc7/chromium/shots/map-active-peer-movement-dark-390.png",
+      "bytes": 53128,
+      "sha256": "b8408651348949edd8214f8a48ddeef21e4798692ceebc5ccf19f1dbd169a03f"
+    },
+    {
+      "path": "/home/hubert/flux-evidence/613-final-c66eefc7/chromium/shots/map-active-peer-movement-dark-820.png",
+      "bytes": 76962,
+      "sha256": "73695f790a19b2fffada94fe01d5ba7adbfb6d51be1a887135e195cee134944c"
+    },
+    {
+      "path": "/home/hubert/flux-evidence/613-final-c66eefc7/chromium/shots/map-active-peer-movement-light-1440.png",
+      "bytes": 104199,
+      "sha256": "59ff40e9e79f9ddd154e70802dad9071b8353d62ba4429bdd85fb877605e1df1"
+    },
+    {
+      "path": "/home/hubert/flux-evidence/613-final-c66eefc7/chromium/shots/map-active-peer-movement-light-2560.png",
+      "bytes": 117483,
+      "sha256": "c5ecfe908c260f8692ceaaf7336fbdc535178d41ed3e95b1a10b33a0a4faaa31"
+    },
+    {
+      "path": "/home/hubert/flux-evidence/613-final-c66eefc7/chromium/shots/map-active-peer-movement-light-390.png",
+      "bytes": 54523,
+      "sha256": "0435a70661a2e1d670f9dcf4da7fbafbd35fc1fef7d6e61fc207ddef3865a967"
+    },
+    {
+      "path": "/home/hubert/flux-evidence/613-final-c66eefc7/chromium/shots/map-active-peer-movement-light-820.png",
+      "bytes": 83383,
+      "sha256": "41bffea61b0a91b86243499a8807b9d0df14ad377c17729f3ce691f2b7c6e2c1"
+    },
+    {
+      "path": "/home/hubert/flux-evidence/613-final-c66eefc7/chromium/shots/map-peer-cursor-ada-chromium.png",
+      "bytes": 76352,
+      "sha256": "909d87059e97d6c7a00292377036a003f7dbe66ede0730aab218ab1792ca2e5f"
+    },
+    {
+      "path": "/home/hubert/flux-evidence/613-final-c66eefc7/chromium/shots/map-peer-cursor-chromium.png",
+      "bytes": 76502,
+      "sha256": "1032d0d9f726984ef33c4d64667ed10d78e2e000e576ea0f0bc1c0892072364e"
+    },
+    {
+      "path": "/home/hubert/flux-evidence/613-final-c66eefc7/chromium/shots/wiki-peer-cursor-chromium.png",
+      "bytes": 79043,
+      "sha256": "c4daf5766cc7fb1a5d0d5e7882c4fefaffebd1c5124e1cd25ddab46e8d7990af"
+    },
+    {
+      "path": "/home/hubert/flux-evidence/613-final-c66eefc7/chromium/shots/wiki-shared-writing-before-version-save-dark-1440.png",
+      "bytes": 108021,
+      "sha256": "93e563f11d5dece12580545e53dc1ab9ae63755d39252eb9f442eb68e35656b5"
+    },
+    {
+      "path": "/home/hubert/flux-evidence/613-final-c66eefc7/chromium/shots/wiki-shared-writing-before-version-save-dark-2560.png",
+      "bytes": 129387,
+      "sha256": "60d991265de31100a66a3a75d1df36ece0c73077d8c14be0d55357f63e952483"
+    },
+    {
+      "path": "/home/hubert/flux-evidence/613-final-c66eefc7/chromium/shots/wiki-shared-writing-before-version-save-dark-390.png",
+      "bytes": 56564,
+      "sha256": "eeadd4eeb4453d72b413e04ba73aa3b795696b06136dd9840a01d120af20e56c"
+    },
+    {
+      "path": "/home/hubert/flux-evidence/613-final-c66eefc7/chromium/shots/wiki-shared-writing-before-version-save-dark-820.png",
+      "bytes": 99702,
+      "sha256": "bded88d1e80d0bdbb3e2038cfb30ee5a19478b3c2d17e61e60c98175072d8d56"
+    },
+    {
+      "path": "/home/hubert/flux-evidence/613-final-c66eefc7/chromium/shots/wiki-shared-writing-before-version-save-light-1440.png",
+      "bytes": 106733,
+      "sha256": "651a7cf853a9dfc219f00938a542a551458ef09986828263cb69c254999a42a9"
+    },
+    {
+      "path": "/home/hubert/flux-evidence/613-final-c66eefc7/chromium/shots/wiki-shared-writing-before-version-save-light-2560.png",
+      "bytes": 129182,
+      "sha256": "5dc163f7ee031b804d6ccb34d46910874449474b9ee2816d9e83b5f1ff5c74e5"
+    },
+    {
+      "path": "/home/hubert/flux-evidence/613-final-c66eefc7/chromium/shots/wiki-shared-writing-before-version-save-light-390.png",
+      "bytes": 58300,
+      "sha256": "5a84886a773efe61e9b62ed3778b792aa697306275efd4ae04b6fd2155821d7f"
+    },
+    {
+      "path": "/home/hubert/flux-evidence/613-final-c66eefc7/chromium/shots/wiki-shared-writing-before-version-save-light-820.png",
+      "bytes": 99480,
+      "sha256": "96c8bd6cf029243ca4409e0667111c48ea265f2911e9c1e1c1b58080885df509"
+    },
+    {
+      "path": "/home/hubert/flux-evidence/613-final-c66eefc7/chromium/terminal.json",
+      "bytes": 66,
+      "sha256": "f8d4d2edc260099bfd4932969a6e95c4333e2c1a037e7518ed0a0dc03d46a44e"
+    },
+    {
+      "path": "/home/hubert/flux-evidence/613-final-c66eefc7/chromium-interrupted-before-runtime/actual-runtime.json",
+      "bytes": 124,
+      "sha256": "1bfe48b42a0eb54964e2703a924ea50197739bb73c6782d7f564428663299d1d"
+    },
+    {
+      "path": "/home/hubert/flux-evidence/613-final-c66eefc7/chromium-interrupted-before-runtime/cleanup.json",
+      "bytes": 3,
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "path": "/home/hubert/flux-evidence/613-final-c66eefc7/chromium-interrupted-before-runtime/command.json",
+      "bytes": 1017,
+      "sha256": "9cd2e18d6fb6ea37c2ff7e686f3fb61d6cf1e35453667151d76686af9b3b860f"
+    },
+    {
+      "path": "/home/hubert/flux-evidence/613-final-c66eefc7/chromium-interrupted-before-runtime/runner.log",
+      "bytes": 44174,
+      "sha256": "344b70526a5c6592d159092af460a23e536405bb77d9cb4537c6eb95e1f2bb29"
+    },
+    {
+      "path": "/home/hubert/flux-evidence/613-final-c66eefc7/chromium-interrupted-before-runtime/terminal.json",
+      "bytes": 67,
+      "sha256": "a8aae46f8a6aad0b38cff9d001d82a8c45b712ada5a469970094c88d2b51ae3e"
+    },
+    {
+      "path": "/home/hubert/flux-evidence/613-final-c66eefc7/completed-project-cleanup.json",
+      "bytes": 237,
+      "sha256": "e66f809b8623de964fb2ddbbed1bd444689e02ae60f0dfa32e271592a77b54b6"
+    },
+    {
+      "path": "/home/hubert/flux-evidence/613-final-c66eefc7/diff-check.txt",
+      "bytes": 14885,
+      "sha256": "6ae7012737764faca47e39c07e9e1a5ebb358c63d06da1685b3c7cca95d6f8eb"
+    },
+    {
+      "path": "/home/hubert/flux-evidence/613-final-c66eefc7/final-delta-report.md",
+      "bytes": 8437,
+      "sha256": "478932cb2e6df3b5337a1f0189df3cbf6656dc430adbfeb438c8068388b505f5"
+    },
+    {
+      "path": "/home/hubert/flux-evidence/613-final-c66eefc7/preserved-services.txt",
+      "bytes": 339,
+      "sha256": "5ba4b8302b26a130273889c746f09ffcb91a91181dc3886814f5f461f3a5a689"
+    },
+    {
+      "path": "/home/hubert/flux-evidence/613-final-c66eefc7/results.json",
+      "bytes": 967,
+      "sha256": "35d5c215d3977f5f6e221e64102325e4e1738086a5c2492a8fad49358bc1a99e"
+    },
+    {
+      "path": "/home/hubert/flux-evidence/613-final-c66eefc7/run_review.py",
+      "bytes": 3774,
+      "sha256": "5a2e5b6c405e89ced04bf317b145d5117fa09169d775a54e342e81705e16168e"
+    },
+    {
+      "path": "/home/hubert/flux-evidence/613-final-c66eefc7/screenshots.json",
+      "bytes": 20753,
+      "sha256": "7c8c55c3d569e340945702fc31382da41d2b5fa013628f12312a3bdf66290f2f"
+    },
+    {
+      "path": "/home/hubert/flux-evidence/613-final-c66eefc7/source-binding.json",
+      "bytes": 284,
+      "sha256": "b479a9e9f0587f6f480a3b2cab28819ad2b79e2980fdf2c6e2b2ab12d139e6f6"
+    },
+    {
+      "path": "/home/hubert/flux-evidence/613-final-c66eefc7/webkit/actual-runtime.json",
+      "bytes": 3262,
+      "sha256": "3fe7d084fd8ea244431e7f26f126fc0a3be604ca536800e8d4764769868717c6"
+    },
+    {
+      "path": "/home/hubert/flux-evidence/613-final-c66eefc7/webkit/baked-inputs.json",
+      "bytes": 119,
+      "sha256": "61da9ec3d9ba737cd43aafb1ed05cf016565aeee4dda2c6327c24b7cad01718d"
+    },
+    {
+      "path": "/home/hubert/flux-evidence/613-final-c66eefc7/webkit/cleanup.json",
+      "bytes": 120,
+      "sha256": "cfeef304c1fa4609270c3377ce4d87be858f7799a4c11b71116b0cdbb09d4be1"
+    },
+    {
+      "path": "/home/hubert/flux-evidence/613-final-c66eefc7/webkit/command.json",
+      "bytes": 1013,
+      "sha256": "568ed8e2050f59d45865129b322d6f373382136f638939f1763eace080e35daf"
+    },
+    {
+      "path": "/home/hubert/flux-evidence/613-final-c66eefc7/webkit/runner.log",
+      "bytes": 15596,
+      "sha256": "9a898c011bca99b0f8f20b87bf26534048029ff511635c82767bfd388671ec59"
+    },
+    {
+      "path": "/home/hubert/flux-evidence/613-final-c66eefc7/webkit/shots/capture-metadata.json",
+      "bytes": 7109,
+      "sha256": "fed038d5ef17b2d69d2ff4d966c538ebe92b934bf7367626c496acf6f4103340"
+    },
+    {
+      "path": "/home/hubert/flux-evidence/613-final-c66eefc7/webkit/shots/collaboration-observations.json",
+      "bytes": 10038,
+      "sha256": "d6144c79d1013fde963bcf892760fea20a2d09e18b2807c0c43eadbe0b48b7e7"
+    },
+    {
+      "path": "/home/hubert/flux-evidence/613-final-c66eefc7/webkit/shots/dynamic-collision-observations.json",
+      "bytes": 2660,
+      "sha256": "67cb6437ab6a112f35e8c1b4b8b28913d33886ec999b8817098a1f7c7cf0a9b6"
+    },
+    {
+      "path": "/home/hubert/flux-evidence/613-final-c66eefc7/webkit/shots/map-active-peer-movement-dark-1440.png",
+      "bytes": 123220,
+      "sha256": "bdc7d260468381b0520377961f489fd5efe1b0072db1421807710c1c8c9e7032"
+    },
+    {
+      "path": "/home/hubert/flux-evidence/613-final-c66eefc7/webkit/shots/map-active-peer-movement-dark-2560.png",
+      "bytes": 142973,
+      "sha256": "f429607a130fce54e12b0acf694f8247ac09de058af6984b11a27d72c4f5fc78"
+    },
+    {
+      "path": "/home/hubert/flux-evidence/613-final-c66eefc7/webkit/shots/map-active-peer-movement-dark-390.png",
+      "bytes": 72785,
+      "sha256": "0689dc15199c05b872a83c7ddbbc1699c8ff69058d8fc65b6966ff0f1db36d4d"
+    },
+    {
+      "path": "/home/hubert/flux-evidence/613-final-c66eefc7/webkit/shots/map-active-peer-movement-dark-820.png",
+      "bytes": 94688,
+      "sha256": "20203d95c3bb16cda84072d7d55f3d21686237a1c9fe70dcb0dc3bb9e537ac92"
+    },
+    {
+      "path": "/home/hubert/flux-evidence/613-final-c66eefc7/webkit/shots/map-active-peer-movement-light-1440.png",
+      "bytes": 130441,
+      "sha256": "42c2db2f1b9246f2896b34de653c2165dd34434cfca0edb99e230f2415265a87"
+    },
+    {
+      "path": "/home/hubert/flux-evidence/613-final-c66eefc7/webkit/shots/map-active-peer-movement-light-2560.png",
+      "bytes": 150264,
+      "sha256": "b4f1a057b956cd9944c17970e900d1d88478bda698c9d3c028141026506bb6c0"
+    },
+    {
+      "path": "/home/hubert/flux-evidence/613-final-c66eefc7/webkit/shots/map-active-peer-movement-light-390.png",
+      "bytes": 75530,
+      "sha256": "22d764d6584aa03820b4977a534d77c95058d45c4e4e00c6b1a4004b6a272390"
+    },
+    {
+      "path": "/home/hubert/flux-evidence/613-final-c66eefc7/webkit/shots/map-active-peer-movement-light-820.png",
+      "bytes": 100021,
+      "sha256": "b0cdfccfb14a4adb1cfcade7bb2e871396de0d17517c01eeadbf1869a7450e29"
+    },
+    {
+      "path": "/home/hubert/flux-evidence/613-final-c66eefc7/webkit/shots/map-peer-cursor-ada-webkit.png",
+      "bytes": 91995,
+      "sha256": "bdb3db5cefd723460c1a46ed8303cbeccdf98662f3c87bcfb81f09890bfdd206"
+    },
+    {
+      "path": "/home/hubert/flux-evidence/613-final-c66eefc7/webkit/shots/map-peer-cursor-webkit.png",
+      "bytes": 92133,
+      "sha256": "d9684519481fb04c274fef789863db658072d2cfca59875cb218a5530d370b39"
+    },
+    {
+      "path": "/home/hubert/flux-evidence/613-final-c66eefc7/webkit/shots/wiki-peer-cursor-webkit.png",
+      "bytes": 92507,
+      "sha256": "e23c09aa59eb79215bfd90533621e98e8563335771d3fc28c8b47fe6df77b00a"
+    },
+    {
+      "path": "/home/hubert/flux-evidence/613-final-c66eefc7/webkit/shots/wiki-shared-writing-before-version-save-dark-1440.png",
+      "bytes": 121751,
+      "sha256": "134e1e38e52d340808b8a05a1136db79c6ef7e0a78162df242c26193cbaa91ba"
+    },
+    {
+      "path": "/home/hubert/flux-evidence/613-final-c66eefc7/webkit/shots/wiki-shared-writing-before-version-save-dark-2560.png",
+      "bytes": 148546,
+      "sha256": "5995a6f3eda542b70ad8e1fa9e774fcc4d5e710f6183923dfe7fbde5c4f4bc6b"
+    },
+    {
+      "path": "/home/hubert/flux-evidence/613-final-c66eefc7/webkit/shots/wiki-shared-writing-before-version-save-dark-390.png",
+      "bytes": 73296,
+      "sha256": "7319de1c9d93004df39582fecf29ff3f79c47899296e13fa0c61974854099a02"
+    },
+    {
+      "path": "/home/hubert/flux-evidence/613-final-c66eefc7/webkit/shots/wiki-shared-writing-before-version-save-dark-820.png",
+      "bytes": 112539,
+      "sha256": "1724362cde12a07d5b3f517699b5ee916efd2f7a4174ec440662a8c58b0dc6b0"
+    },
+    {
+      "path": "/home/hubert/flux-evidence/613-final-c66eefc7/webkit/shots/wiki-shared-writing-before-version-save-light-1440.png",
+      "bytes": 124552,
+      "sha256": "d6aabc689c4658aeebbb941c2029249aa1ef7e9246c2196f30469489d527c1b8"
+    },
+    {
+      "path": "/home/hubert/flux-evidence/613-final-c66eefc7/webkit/shots/wiki-shared-writing-before-version-save-light-2560.png",
+      "bytes": 152445,
+      "sha256": "34b5eb5b7ccb527cae047e7190236c1af2c1d06a898a5d9db2d8338afad0f4e2"
+    },
+    {
+      "path": "/home/hubert/flux-evidence/613-final-c66eefc7/webkit/shots/wiki-shared-writing-before-version-save-light-390.png",
+      "bytes": 76559,
+      "sha256": "97fb646fcc93a906b94de74bde394862659a12ac6980aed5036bf01590fc9424"
+    },
+    {
+      "path": "/home/hubert/flux-evidence/613-final-c66eefc7/webkit/shots/wiki-shared-writing-before-version-save-light-820.png",
+      "bytes": 115495,
+      "sha256": "14667159822cc03cf25157369c5706990e8dae0894dde28437ba305843cb81d7"
+    },
+    {
+      "path": "/home/hubert/flux-evidence/613-final-c66eefc7/webkit/terminal.json",
+      "bytes": 103,
+      "sha256": "c02ce54ce605cf6b13e21ef8c598e113e0444d02a0d9cd75dac7b7112e66692e"
+    }
+  ]
+}

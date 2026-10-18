@@ -1,0 +1,35 @@
+{
+  "candidate": "c66eefc73e004aca2f10c0e0445ec7a7d0b84163",
+  "capture_source": "0eaed8d0d75f36ab5e8cff84cda0d2f458ea8220",
+  "engines": [
+    {
+      "engine": "chromium",
+      "browser_version": "151.0.7922.34",
+      "terminal": {
+        "exit": 0,
+        "seconds": 207.7904233932495,
+        "projects": []
+      },
+      "test_count": 11,
+      "maintained_functional": 9,
+      "review_helpers": 2
+    },
+    {
+      "engine": "webkit",
+      "browser_version": "26.5",
+      "terminal": {
+        "exit": 0,
+        "seconds": 122.34058475494385,
+        "projects": [
+          "flux-ui-1792339523-2029874"
+        ]
+      },
+      "test_count": 11,
+      "maintained_functional": 9,
+      "review_helpers": 2
+    }
+  ],
+  "no_remaining_P1_P2": true,
+  "all_cleanup_zero": true,
+  "interrupted_build": "chromium-interrupted-before-runtime: intentionally terminated before application runtime or tests; zero method executions, original exit1 preserved"
+}
