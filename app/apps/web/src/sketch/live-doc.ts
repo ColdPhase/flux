@@ -65,7 +65,7 @@ export function useLiveSketchDoc(sketchId: string, me: Me) {
   const tombstones = useRef(new Map<string, number>());
   const scope = useRef({ active: false, number: 0 });
   const snapshots = useRef(0);
-  const projectPreviews = useMemo(createLivePreviewProjection, []);
+  const projectPreviews = useMemo(() => createLivePreviewProjection(), []);
   useEffect(() => { meRef.current = me; });
   const publish = useCallback(() => {
     const client = live.current;
