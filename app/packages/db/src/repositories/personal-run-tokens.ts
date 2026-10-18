@@ -41,10 +41,10 @@ const columns = {
   agentId: r.agentId, status: r.status, engine: r.engine, runTokenNonceHash: r.runTokenNonceHash, runTokenJti: r.runTokenJti,
   runTokenExpiresAt: r.runTokenExpiresAt, runTokenClosedAt: r.runTokenClosedAt, runTools: r.runTools, mcpResultBytes: r.mcpResultBytes,
   mcpLimit: r.mcpLimit, stopRequestedAt: r.stopRequestedAt,
-  reactionActive: sql<boolean | null>`(SELECT (a.enabled AND a.version=e.reaction_version) FROM assistant_reaction_events e JOIN assistant_reactions a ON a.id=e.reaction_id WHERE e.run_id=${r.id} LIMIT 1)`,
-  reactionLinkId: sql<string | null>`(SELECT e.data->>'linkId' FROM assistant_reaction_events e WHERE e.run_id=${r.id} LIMIT 1)`,
-  reactionTaskId: sql<string | null>`(SELECT e.object_id FROM assistant_reaction_events e JOIN assistant_reactions a ON a.id=e.reaction_id WHERE e.run_id=${r.id} AND e.event='pr_ready' LIMIT 1)`,
-  reactionAction: sql<string | null>`(SELECT action FROM assistant_reaction_events WHERE run_id=${r.id} LIMIT 1)`,
+  reactionActive: sql<boolean | null>`(SELECT (a.enabled AND a.version=e.reaction_version) FROM assistant_reaction_events e JOIN assistant_reactions a ON a.id=e.reaction_id WHERE e.run_id=personal_runs.id LIMIT 1)`,
+  reactionLinkId: sql<string | null>`(SELECT e.data->>'linkId' FROM assistant_reaction_events e WHERE e.run_id=personal_runs.id LIMIT 1)`,
+  reactionTaskId: sql<string | null>`(SELECT e.object_id FROM assistant_reaction_events e JOIN assistant_reactions a ON a.id=e.reaction_id WHERE e.run_id=personal_runs.id AND e.event='pr_ready' LIMIT 1)`,
+  reactionAction: sql<string | null>`(SELECT action FROM assistant_reaction_events WHERE run_id=personal_runs.id LIMIT 1)`,
 };
 
 export function personalRunTokenRows(db: DbExecutor) {

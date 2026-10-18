@@ -125,3 +125,35 @@ class AssistantReactions(unittest.TestCase):
             page.get_by_role('button',name='Send reply',exact=True).click()
             expect(reply).to_have_value('')
             page.close()
+
+    def test_05_typed_suggestion_review_accept_dismiss_and_authority_error(self):
+        for phone in (False,True):
+            page=self.page(phone=phone)
+            change=str(uuid.uuid4())
+            run=str(uuid.uuid4())
+            waiting={'on':True}
+            accepted=[]
+            item={'key':f'assistant:suggestion:{change}','kind':'question','title':"Jonas's assistant suggests: edit page Suppliers",'detail':"Drafted by Jonas's assistant",'project':{'id':self.ids['project'],'name':'Gesture lamp'},'from':None,'at':'2026-10-18T15:00:00Z','url':f"/projects/{self.ids['project']}/conversations/{self.ids['conversation']}",'decision':None,'blocked':None,'reason':'question','snoozeTask':None,'assistantChanges':{'runId':run,'suggestion':True,'verb':'Accept','summary':'edit page','changes':[{'id':change,'version':2,'phrase':'edit page','objectTitle':'Suppliers','line':'Sent to Ada','preview':'Page: Use the manufacturer’s current connector pinout.'}]}}
+            page.route('**/api/v1/needs-you',lambda route:self.json(route,{'items':[item] if waiting['on'] else [],'count':1 if waiting['on'] else 0,'later':0,'doneToday':0}))
+            def decide(route):
+                accepted.append(route.request.post_data_json)
+                if route.request.url.endswith('/accept'):
+                    self.json(route,{'code':'FORBIDDEN','error':'Only someone who can decide this can accept it.'},403)
+                else:
+                    waiting['on']=False
+                    self.json(route,{'change':{'id':change,'state':'not_now'},'message':None})
+            page.route(f'**/api/v1/assistant-changes/{change}/*',decide)
+            page.goto('/inbox')
+            card=page.locator('li.nyc').filter(has_text="Jonas's assistant suggests")
+            expect(card).to_be_visible()
+            card.get_by_role('button',name='Review',exact=True).click()
+            expect(card).to_contain_text('Use the manufacturer’s current connector pinout.')
+            self.assertEqual(accepted,[],'review never accepts or starts compute')
+            card.get_by_role('button',name='Accept',exact=True).click()
+            expect(page.get_by_text('Only someone who can decide this can accept it.',exact=True)).to_be_visible()
+            expect(card).to_be_visible()
+            self.assertEqual(accepted,[{'expectedVersion':2}])
+            card.get_by_role('button',name='Dismiss',exact=True).click()
+            expect(card).not_to_be_visible()
+            self.no_horizontal_scroll(page)
+            page.close()

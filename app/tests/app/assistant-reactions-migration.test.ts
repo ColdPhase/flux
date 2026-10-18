@@ -18,7 +18,7 @@ test('0114 up/reverse/reapply preserves native tasks and ordinary runs; fixed ev
     await client.query(`INSERT INTO projects(id,workspace_id,name,visibility,created_by) VALUES($1,$2,'Sensor','workspace',$3)`,[project,ws,owner]);
     await client.query(`INSERT INTO agents(id,workspace_id,name,owner_user_id,created_by) VALUES($1,$2,'Assistant',$3,$3)`,[agent,ws,owner]);
     await client.query(`INSERT INTO project_conversations(id,workspace_id,project_id,created_by) VALUES($1,$2,$3,$4)`,[conversation,ws,project,owner]);
-    const run=(id:string,kind:string)=>client.query(`INSERT INTO personal_runs(id,workspace_id,project_id,conversation_id,owner_user_id,agent_id,client_run_id,request_fingerprint,kind,prompt,reserved_micros,provider,model) VALUES($1,$2,$3,$4,$5,$6,$7,'f',$8,'Check the connector',0,'anthropic','claude-sonnet-5')`,[id,ws,project,conversation,owner,agent,randomUUID(),kind]);
+    const run=(id:string,kind:string)=>client.query(`INSERT INTO personal_runs(id,workspace_id,project_id,conversation_id,owner_user_id,agent_id,client_run_id,request_fingerprint,kind,prompt,reserved_micros,provider,model) VALUES($1,$2,$3,$4,$5,$6,$7,'f',$8,'Check the connector',500000,'anthropic','claude-sonnet-5')`,[id,ws,project,conversation,owner,agent,randomUUID(),kind]);
     await run(ask,'ask');
     const up=await readFile(join(directory,'0114_assistant_reactions.sql'),'utf8');
     await client.query(up); await run(reaction,'reaction');

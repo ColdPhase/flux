@@ -31,7 +31,7 @@ export function assistantChangeRows(db: DbExecutor) {
       const r = schema.personalRuns;
       const [row] = await db.select({ id: r.id, workspaceId: r.workspaceId, projectId: r.projectId, conversationId: r.conversationId,
         ownerUserId: r.ownerUserId, agentId: r.agentId, status: r.status, stopRequestedAt: r.stopRequestedAt, engine: r.engine,
-        completedAt: r.completedAt, authority: r.authority, reactionAction: sql<string | null>`(SELECT action FROM assistant_reaction_events WHERE run_id=${r.id} LIMIT 1)` }).from(r).where(eq(r.id, runId)).for('update');
+        completedAt: r.completedAt, authority: r.authority, reactionAction: sql<string | null>`(SELECT action FROM assistant_reaction_events WHERE run_id=personal_runs.id LIMIT 1)` }).from(r).where(eq(r.id, runId)).for('update');
       return row ?? null;
     },
     async settings(ownerUserId: string, workspaceId: string) {

@@ -67,7 +67,7 @@ describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A
       await pool.query(`INSERT INTO assistant_reactions(id,workspace_id,project_id,owner_user_id,event,action,enabled) VALUES($1,$2,$3,$4,$5,$6,true)`,[rule,ws.id,place.id,owner.id,event,reactionAction]);
       // The PR token freshness itself is exercised by A9's nonce-mint test with a real G-1 reader.
       await pool.query(`INSERT INTO assistant_reaction_events(reaction_id,owner_user_id,object_id,source_id,action,event,reaction_version,state,run_id) VALUES($1,$2,$3,$4,$5,'assigned',1,'running',$6)`,[rule,owner.id,randomUUID(),randomUUID(),reactionAction,started.run.id]);
-      await pool.query(`UPDATE personal_runs SET kind='reaction',authority='owner_reaction' WHERE id=$1`,[started.run.id]);
+      await pool.query(`UPDATE personal_runs SET kind='reaction',authority='owner_reaction',background_label='When assigned' WHERE id=$1`,[started.run.id]);
     }
     const nonce = randomBytes(32).toString('hex');
     assert.equal(await db.transaction((tx) => personalRunTokenRows(tx).arm(started.run.id, sha256(nonce))), true);
