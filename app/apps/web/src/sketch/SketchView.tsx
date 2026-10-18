@@ -127,21 +127,6 @@ function SketchEditor({ sketchId, projectId, dmId, back = '/map', doc }: ViewPro
   const phone = useMediaQuery(MEDIA.phone);
   const [mode, setModeState] = useState<Mode>(storedMode);
   const handledSource = useRef<string | null>(null);
-  useEffect(() => {
-    const source = routeState?.addThoughtFromMessage;
-    if (!source || !sketch || handledSource.current === location.key) return;
-    handledSource.current = location.key;
-    if (sketch.scope !== 'project' || sketch.projectId !== source.projectId || source.projectId !== projectId
-      || !/^[0-9a-f-]{36}$/i.test(source.messageId) || typeof source.body !== 'string') return;
-    if (capture.draft) { say('Finish or cancel your current thought draft before adding another source.'); return; }
-    const spot = spots(null, 1, { w: DEFAULT_THOUGHT_SIZE.width, h: DEFAULT_THOUGHT_SIZE.height })[0]!;
-    capture.set({ id: doc.newId(), linkId: doc.newId(), key: doc.newId(), parentId: null,
-      text: source.body.slice(0, SKETCH_LIMITS.text).trim(), x: spot.x, y: spot.y, tracked: true, sourceProjectMessageId: source.messageId });
-    say('Private thought draft from this message · Enter saves, Escape cancels');
-    navigate(location.pathname, { replace: true, state: null });
-  // This consumes one route-state command after the destination sketch loads.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [location.key, location.pathname, routeState?.addThoughtFromMessage, sketch, projectId]);
   const [connectionTarget, setConnectionTarget] = useState<ConnectionTarget | null>(null);
   const [connectionDraft, setConnectionDraft] = useState<string | null>(null);
   const closeConnections = () => { setConnectionTarget(null); setConnectionDraft(null); };
@@ -349,6 +334,22 @@ function SketchEditor({ sketchId, projectId, dmId, back = '/map', doc }: ViewPro
       return spot;
     });
   };
+
+  useEffect(() => {
+    const source = routeState?.addThoughtFromMessage;
+    if (!source || !sketch || handledSource.current === location.key) return;
+    handledSource.current = location.key;
+    if (sketch.scope !== 'project' || sketch.projectId !== source.projectId || source.projectId !== projectId
+      || !/^[0-9a-f-]{36}$/i.test(source.messageId) || typeof source.body !== 'string') return;
+    if (capture.draft) { say('Finish or cancel your current thought draft before adding another source.'); return; }
+    const spot = spots(null, 1, { w: DEFAULT_THOUGHT_SIZE.width, h: DEFAULT_THOUGHT_SIZE.height })[0]!;
+    capture.set({ id: doc.newId(), linkId: doc.newId(), key: doc.newId(), parentId: null,
+      text: source.body.slice(0, SKETCH_LIMITS.text).trim(), x: spot.x, y: spot.y, tracked: true, sourceProjectMessageId: source.messageId });
+    say('Private thought draft from this message · Enter saves, Escape cancels');
+    navigate(location.pathname, { replace: true, state: null });
+  // This consumes one route-state command after the destination sketch loads.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.key, location.pathname, routeState?.addThoughtFromMessage, sketch, projectId]);
 
   /** `at` is where a dragged dot was released (P12); the draft stays local until it is saved. */
   const add = (parentId: string | null, text = '', replace = false, at?: { x: number; y: number }) => {
