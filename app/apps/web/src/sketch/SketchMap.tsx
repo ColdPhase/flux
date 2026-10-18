@@ -112,6 +112,8 @@ interface Drag {
   scrollLeft?: number;
   scrollTop?: number;
   base: Thought[];
+  /** Intrinsic/native minimum at pointer-down, before our own previews can change measured height. */
+  resizeHeight?: number;
 }
 
 /**
@@ -658,8 +660,10 @@ export function SketchMap(props: SketchMapProps) {
     event.currentTarget.scrollTop += dy;
   };
 
-  const begin = (event: ReactPointerEvent, next: Omit<Drag, 'pointerId' | 'sx' | 'sy' | 'moved' | 'started' | 'base'>) => {
-    drag.current = { ...next, base: sketch.thoughts.filter((thought) => next.ids.includes(thought.id)).map((thought) => ({ ...thought })), pointerId: event.pointerId, sx: event.clientX, sy: event.clientY, moved: false, started: false };
+  const begin = (event: ReactPointerEvent, next: Omit<Drag, 'pointerId' | 'sx' | 'sy' | 'moved' | 'started' | 'base' | 'resizeHeight'>) => {
+    const resizing = next.kind === 'resize' ? byId.get(next.id!) : undefined;
+    const resizeHeight = resizing ? Math.max(resizing.height, heights.get(resizing.id) ?? 0) : undefined;
+    drag.current = { ...next, resizeHeight, base: sketch.thoughts.filter((thought) => next.ids.includes(thought.id)).map((thought) => ({ ...thought })), pointerId: event.pointerId, sx: event.clientX, sy: event.clientY, moved: false, started: false };
     (event.currentTarget as Element).setPointerCapture?.(event.pointerId);
   };
 
@@ -734,7 +738,7 @@ export function SketchMap(props: SketchMapProps) {
       const t = byId.get(d.id!) ?? sketch.thoughts.find((x) => x.id === d.id);
       const base = (props.liveEnabled ? d.base.find((x) => x.id === d.id) : sketch.thoughts.find((x) => x.id === d.id)) ?? t!;
       const width = clamp(Math.round(base.width + dx), SKETCH_LIMITS.minWidth, SKETCH_LIMITS.maxWidth);
-      const height = clamp(Math.round(Math.max(base.height, heights.get(base.id) ?? 0) + dy), SKETCH_LIMITS.minHeight, SKETCH_LIMITS.maxHeight);
+      const height = clamp(Math.round((d.resizeHeight ?? base.height) + dy), SKETCH_LIMITS.minHeight, SKETCH_LIMITS.maxHeight);
       setSize({ id: d.id!, w: width, h: height });
       props.onGesturePreview([{ id: base.id, x: base.x, y: base.y, width, height }]);
     }
