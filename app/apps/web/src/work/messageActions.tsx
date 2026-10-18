@@ -182,7 +182,7 @@ export function MessageActions(options: MessageActionOptions | DmActionOptions) 
   }, [touch, writable, onReply, onCreateWork]);
   if (touch) return null;
   return (
-    <div ref={group} className="msg-acts" role="group" aria-label={options.kind === 'dm' ? 'Actions on this message' : 'Message actions'}>
+    <div ref={group} className="msg-acts ui-reveal" role="group" aria-label={options.kind === 'dm' ? 'Actions on this message' : 'Message actions'}>
       {writable && onReply ? <button type="button" className="msg-acts__b" aria-label="Reply in thread" data-tip="Reply in thread (R)" aria-keyshortcuts="R" onClick={onReply}><Icon name="reply" size={16} /></button> : null}
       {writable ? <button type="button" className="msg-acts__b" aria-label="Create task" data-tip="Create task (T)" aria-keyshortcuts="T" onClick={onCreateWork}><Icon name="plus-circle" size={16} /></button> : null}
       <button ref={more} type="button" className="msg-acts__b" aria-label="More actions" data-tip="More actions" aria-haspopup="menu" aria-expanded={!!anchor} onClick={(event) => setAnchor(anchor ? null : event.currentTarget)}><Icon name="more" size={16} /></button>

@@ -497,6 +497,25 @@ class LightMotionJourney(unittest.TestCase):
         self.assertEqual(pose["shown"]["opacity"], "1")
         self.assertEqual(pose["shown"]["transform"], "none")
 
+    def test_17b_the_message_toolbar_fades_and_slides_in_from_its_side(self):
+        page = self.page()
+        self.open(page, self.fx.project_url())
+        settled(page)
+        message = page.locator(".project-convo__message.is-mine").first
+        expect(message).to_be_visible()
+        toolbar = message.locator("> .msg-acts")
+        self.assertIn("ui-reveal", toolbar.get_attribute("class"))
+        rest = toolbar.evaluate("el => { const s = getComputedStyle(el); return { opacity: s.opacity, transform: s.transform, duration: s.transitionDuration }; }")
+        self.assertEqual(rest["opacity"], "0")
+        self.assertEqual(numbers(rest["transform"])[4], -6, "an own message's pill comes in from the left, six pixels")
+        message.hover()
+        page.wait_for_timeout(400)
+        shown = toolbar.evaluate("el => { const s = getComputedStyle(el); return { opacity: s.opacity, transform: s.transform }; }")
+        self.assertEqual((shown["opacity"], shown["transform"]), ("1", "none"))
+        page.mouse.move(2, 2)
+        page.wait_for_timeout(400)
+        self.assertEqual(toolbar.evaluate("el => getComputedStyle(el).opacity"), "0")
+
     # ------------------------------------------------------------------ AC-6: discipline
     def test_18_only_opacity_and_transform_animate_across_the_journeys(self):
         page = self.page()

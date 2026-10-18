@@ -384,10 +384,11 @@ body:has(.phone-fab) .ui-toasts {
 :where(button, a[href], [role="button"], [role="tab"], [role="menuitem"], [role="menuitemradio"], [role="menuitemcheckbox"], [role="option"], summary):where(:not(.sk-plane *, [data-no-press])) { transition: var(--tr-fill); }
 
 /* A control that appears on hover or focus (the message toolbar, #591) fades and slides a few pixels in from its side.
-   `.ui-reveal` is its hidden pose, `.is-shown` its shown one; `data-side="start"` comes from the left. The owner decides
-   when it is shown and brings it in with these two classes. */
-.ui-reveal { opacity: 0; transform: translateX(var(--shift-toolbar)); pointer-events: none; transition: opacity var(--dur-1) var(--ease-out), transform var(--dur-1) var(--ease-out); }
-.ui-reveal[data-side="start"] { transform: translateX(calc(-1 * var(--shift-toolbar))); }
+   `.ui-reveal` is its hidden pose, `.is-shown` its shown one; `data-side="start"` (or `--reveal-x`) comes from the left. The
+   owner decides when it is shown: with the `.is-shown` class, or, as the message toolbar does, with its own state selectors
+   that set `transform: none`. */
+.ui-reveal { opacity: 0; transform: translateX(var(--reveal-x, var(--shift-toolbar))); pointer-events: none; transition: opacity var(--dur-1) var(--ease-out), transform var(--dur-1) var(--ease-out); }
+.ui-reveal[data-side="start"] { --reveal-x: calc(-1 * var(--shift-toolbar)); }
 .ui-reveal.is-shown { opacity: 1; transform: none; pointer-events: auto; }
 
 /* ---------- Menus and popovers (#593 AC-1) ----------
