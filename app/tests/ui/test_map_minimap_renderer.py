@@ -37,8 +37,10 @@ class MinimapRenderer(LiveFixture):
     async def reference(self, page, label, *, controls=False):
         await page.evaluate(REFERENCE)
         result = await page.evaluate('window.minimapReference()')
-        self.assertLess(result['geometryError'], 1e-7, result)
-        self.assertLess(result['overlayError'], 1e-7, result)
+        # CSS transform/style serialization rounds the independent DOM reconstruction. Keep
+        # its error below one thousandth of a CSS pixel; raster/negative controls stay separate.
+        self.assertLess(result['geometryError'], .001, result)
+        self.assertLess(result['overlayError'], .001, result)
         self.assertEqual(result['drawColors'], [result['drawColor']])
         self.assertEqual(result['alphas'], [.6])
         self.assertEqual(result['backing'], [round(172*result['dpr']), round(112*result['dpr'])])
