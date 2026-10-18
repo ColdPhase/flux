@@ -35,6 +35,7 @@ import { useTyping } from '../typing/useTyping';
 import { TypingNotice } from '../typing/TypingNotice';
 import './agents.css';
 import { useCreateWorkFromMessage } from '../work/inline';
+import { RefLink, useOriginPanelBack } from '../place/origin';
 
 /** The drag data type of a task dragged onto an agent (computer only; the button does the same by keyboard and touch). */
 const TASK_DRAG = 'application/x-flux-task';
@@ -340,8 +341,8 @@ function TaskThread({ kind, task, projectId, meId, names, canWrite, changingScop
   return (
     <section className="agents-thread" data-empty={discussion && !messages.length && !outbox.pending.length && !accessLost ? 'true' : undefined} aria-label={`${kind === 'agents' ? 'Agents’ thread' : 'Thread'} of ${task.title}`}>
       {kind === 'agents'
-        ? <p className="agents-thread__top">Agents’ thread · visible to everyone with access to this project{taskLink ? <> · <Link className="ui-link" to={taskLink}>Open task</Link></> : null}</p>
-        : <p className="agents-thread__top">Thread of this task · the same one shown in Conversation{inConversation ? <> · <Link className="ui-link" to={inConversation}>Open in Conversation</Link></> : null}</p>}
+        ? <p className="agents-thread__top">Agents’ thread · visible to everyone with access to this project{taskLink ? <> · <RefLink className="ui-link" to={taskLink}>Open task</RefLink></> : null}</p>
+        : <p className="agents-thread__top">Thread of this task · the same one shown in Conversation{inConversation ? <> · <RefLink className="ui-link" to={inConversation}>Open in Conversation</RefLink></> : null}</p>}
       {loadError ? <p className="agents-thread__error" role="alert">{loadError} <button type="button" className="ui-link" onClick={() => reload.current()}>Try again</button></p> : null}
       {accessLost ? <p className="agents-thread__error" role="alert">You can no longer read this task. Your unsent text is kept on this device.</p> : null}
       {!discussion && !loadError ? <p className="agents-thread__empty">Loading…</p> : null}
@@ -378,7 +379,7 @@ function TaskThread({ kind, task, projectId, meId, names, canWrite, changingScop
           </li>
         ))]}
       </ol>}
-      {discussion?.messagePage.hasMoreBefore && !accessLost ? <p className="agents-thread__empty">{kind === 'agents' ? <button type="button" className="ui-link" onClick={() => void earlier()}>Show earlier messages</button> : <>Earlier messages are in the task's thread in {inConversation ? <Link className="ui-link" to={inConversation}>Conversation</Link> : 'Conversation'}.</>}</p> : null}
+      {discussion?.messagePage.hasMoreBefore && !accessLost ? <p className="agents-thread__empty">{kind === 'agents' ? <button type="button" className="ui-link" onClick={() => void earlier()}>Show earlier messages</button> : <>Earlier messages are in the task's thread in {inConversation ? <RefLink className="ui-link" to={inConversation}>Conversation</RefLink> : 'Conversation'}.</>}</p> : null}
       {kind === 'agents' && !accessLost ? <RequestCards key={task.id} workId={task.id} projectId={projectId} taskNumber={task.number} meId={meId} onOpenMessage={(messageId) => void openMessage(messageId)} /> : null}
       <div ref={end} />
       <form className="agents-composer" onSubmit={(event) => { void send(event); }}>
@@ -649,7 +650,7 @@ function AgentDetail({ entry, held, meId, projectId, now, asking, canHandOff, st
         {currentWork ? (
           <p className="agents-detail__note">{asking ? 'Waiting for your answer · ' : ''}{WORK_ROLE[currentWork.role]} · {currentWork.state === 'claimed' ? isAgentWorking(entry, now) ? 'Working · claim recorded' : 'Work held · claim recorded' : currentWork.state === 'paused' ? 'Paused' : 'Assigned, not started'}{otherHeld.length ? ` · ${otherHeld.length} more handed` : ''} · <Link className="ui-link" to={`/projects/${projectId}/tasks?open=work:${currentWork.taskId}`}>Open task</Link></p>
         ) : task ? (
-          <p className="agents-detail__note">{taskNote(task, asking, entry.connection, now)}{held.length > 1 ? ` · ${held.length - 1} more handed` : ''} · <Link className="ui-link" to={`/projects/${projectId}/tasks?open=work:${task.id}`}>Open task</Link></p>
+          <p className="agents-detail__note">{taskNote(task, asking, entry.connection, now)}{held.length > 1 ? ` · ${held.length - 1} more handed` : ''} · <RefLink className="ui-link" to={`/projects/${projectId}/tasks?open=work:${task.id}`}>Open task</RefLink></p>
         ) : <p className="agents-detail__note">{entry.connection ? stateLine(entry.connection, now) : 'Nothing is handed to it.'}</p>}
         {entry.connection && currentWork ? <p className="agents-detail__note">{availabilityLine(entry.connection, now)}</p> : null}
         {entry.connection?.requests.map((request) => <p key={request.id} className="agents-detail__note">{requestLine(request)}</p>)}
@@ -749,15 +750,15 @@ export function ProjectAgents() {
   // the thread) is left, and Back returns to it.
   // A thread opened by the person takes the panel's focus (#347 N8); it keeps the agent it was opened from, so "‹ back" returns to that agent.
   const openThread = (id: string) => {
-    setSearch((current) => { const next = new URLSearchParams(current); next.set('thread', id); next.delete('task'); return next; }, { replace: beside, flushSync: true });
+    setSearch((current) => { const next = new URLSearchParams(current); next.set('thread', id); next.delete('task'); return next; }, { replace: beside, flushSync: true, state: location.state });
   };
   // Back from a thread returns to the agent it was opened from; closing the panel leaves both.
   const closeThread = () => {
-    setSearch((current) => { const next = new URLSearchParams(current); next.delete('task'); next.delete('thread'); return next; }, { replace: true });
+    setSearch((current) => { const next = new URLSearchParams(current); next.delete('task'); next.delete('thread'); return next; }, { replace: true, state: location.state });
   };
   const closePanel = () => {
     setDeclined(true);
-    setSearch((current) => { const next = new URLSearchParams(current); next.delete('task'); next.delete('thread'); next.delete('agent'); return next; }, { replace: true });
+    setSearch((current) => { const next = new URLSearchParams(current); next.delete('task'); next.delete('thread'); next.delete('agent'); return next; }, { replace: true, state: location.state });
   };
   // After Stop or Take back the panel stays on that agent, with focus on its heading (#347 N4).
   const [refocusKey, setRefocusKey] = useState<string | null>(null);
@@ -788,7 +789,7 @@ export function ProjectAgents() {
   const selected = entries.find((entry) => entry.key === picked) ?? (beside && !declined ? entries.find((entry) => views.get(entry.key)?.working) ?? entries[0] ?? null : null);
   const open = (key: string | null) => {
     setDeclined(key === null);
-    setSearch((current) => { const next = new URLSearchParams(current); if (key) next.set('agent', key); else next.delete('agent'); return next; }, { replace: true });
+    setSearch((current) => { const next = new URLSearchParams(current); if (key) next.set('agent', key); else next.delete('agent'); return next; }, { replace: true, state: location.state });
   };
 
   const [handOff, setHandOff] = useState<{ agentId: string | null; task: HandOffTask | null } | null>(null);
@@ -802,10 +803,12 @@ export function ProjectAgents() {
   const latestDetail = selected;
   const requests = asked[0] ?? null;
   // A task's thread or an agent's details open in the one panel, as a task does (F-026 S4); this view keeps their state.
+  // A page a reference led to, with its panel in a sheet or an overlay over the header, carries the way back (#592).
+  const originBack = useOriginPanelBack();
   const slot = useOwnedPanel(task ? {
     key: `thread:${threadKind}:${task.id}`, chip: threadKind === 'agents' ? 'Agents’ thread' : 'Thread', label: `#${task.number} · ${task.title}`, closeLabel: 'Close thread', startFull: true,
-    ...(latestDetail ? { back: { label: latestDetail.name, run: closeThread } } : {}), onClose: closePanel,
-  } : latestDetail ? { key: `agent:${latestDetail.key}`, chip: 'Agent', label: latestDetail.name, onClose: closePanel } : null);
+    ...(latestDetail ? { back: { label: latestDetail.name, run: closeThread } } : {}), ...(originBack ? { origin: originBack } : {}), onClose: closePanel,
+  } : latestDetail ? { key: `agent:${latestDetail.key}`, chip: 'Agent', label: latestDetail.name, ...(originBack ? { origin: originBack } : {}), onClose: closePanel } : null);
 
   // The view scrolls in its own pane like every other view, so a long thread stays reachable
   // above the sticky composer on any screen.
@@ -833,14 +836,14 @@ export function ProjectAgents() {
           <p className="agents__no-connections">No agents here yet. Connect one below; people can still discuss tasks in Conversation.</p>
         )}
         <ul className="agents-links">
-          <li><Link className="agents-link" to={requests ? questionLink(projectId, requests) : '/inbox'}>
+          <li><RefLink className="agents-link" to={requests ? questionLink(projectId, requests) : '/inbox'}>
             <span className="agents-link__icon"><Icon name="inbox" size={16} /></span>
             <span className="agents-link__text">
               {requests ? <><b>Agent questions</b> · {requests.agent.name} asks: “{briefly(requests.question)}”</> : <><b>Agent questions</b> · No open questions for you</>}
             </span>
             {asked.length ? <span className="agents-link__count">{asked.length}</span> : null}
             <Icon name="chevron-right" size={14} />
-          </Link></li>
+          </RefLink></li>
           <li><button type="button" className="agents-link" aria-expanded={policyOpen} aria-controls="agents-policy" onClick={() => setPolicyOpen((value) => !value)}>
             <span className="agents-link__icon"><Icon name="rule" size={16} /></span><span className="agents-link__text"><b>Project policy</b> · Agents read and propose; people accept. Assistants also edit for their owner, with Undo.</span><span className="agents-link__go">{policyOpen ? 'Hide' : shell?.project.access === 'manager' ? 'Edit' : 'Read'}<Icon name="chevron-right" size={14} /></span></button></li>
         </ul>

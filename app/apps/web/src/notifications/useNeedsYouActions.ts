@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react';
-import { useNavigate } from 'react-router';
+import { useFollow } from '../place/origin';
 import type { NeedsYouItem, ResolveNeedsYouCommand } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { useShellActions } from '../app/shellContext';
@@ -22,7 +22,8 @@ const apiMessage = (error: unknown, fallback: string) => (error instanceof ApiEr
  */
 export function useNeedsYouActions(queue: Queue): CardHandlers {
   const toast = useToast();
-  const navigate = useNavigate();
+  // An item opens its source as a reference: the Inbox is where Back returns to (#592).
+  const navigate = useFollow();
   const { openDetails } = useShellActions();
   // The latest queue without re-creating the handlers (and the keys that use them) on every answer.
   const latest = useRef(queue);

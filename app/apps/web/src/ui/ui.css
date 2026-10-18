@@ -403,3 +403,17 @@ body:has(.phone-fab) .ui-toasts {
   :is(input:not([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"]), textarea, select, [contenteditable="true"]) { font-size: max(16px, 1em) !important; }
 }
 :is(a, button, [role="button"], [role="tab"], [role="radio"], [role="menuitem"], [role="option"], label, summary, input, select, textarea) { touch-action: manipulation; }
+
+/* ---------- "‹ origin" (#592): one quiet way back to where a reference was followed from ----------
+   First in the header row of an opened page, first in the head of an opened object's panel, and in place of the
+   phone's round back. A text button, never an icon alone, so it says where it leads. */
+.origin-back {
+  display: inline-flex; align-items: center; gap: 2px; flex: none; max-width: min(16rem, 42%); min-height: 32px; padding: 0 10px 0 6px;
+  border: 0; border-radius: var(--r-pill); background: none; color: var(--t2); font: inherit; font-size: var(--fs-md); line-height: 1; cursor: pointer;
+}
+.origin-back svg { flex: none; }
+.origin-back__label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.origin-back:hover { background: var(--hov); color: var(--t1); }
+.ui-panel__head > .origin-back { margin: 0 4px 0 -8px; max-width: 46%; }
+.phead > .origin-back { max-width: 44%; min-height: 44px; padding: 0 14px 0 8px; background: var(--el); color: var(--t1); box-shadow: var(--sh-card); }
+@media (pointer: coarse) { .origin-back { min-height: 44px; } }

@@ -1,11 +1,12 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router';
 import type { InboxItem, NeedsYouItem, NeedsYouKind } from '@flux/contracts';
 import { createPortal } from 'react-dom';
 import { Button, ErrorState, Icon, Kreska, MEDIA, Spinner, Tabs, useMediaQuery, type TabItem } from '../ui';
 import { useShellActions } from '../app/shellContext';
 import { useSmallMoments } from '../app/smallMoments';
 import { useShellData } from '../app/data';
+import { usePlaceState, useArrival } from '../place/memory';
 import { announceInboxChange, getInboxItem, markInboxRead } from './api';
 import { AssistantJoinReview } from './AssistantJoinReview';
 import { NeedsYouCard, type CardHandlers } from './NeedsYouCard';
@@ -59,12 +60,18 @@ export function InboxView() {
   const moments = useSmallMoments();
   const { actionSlot } = useShellActions();
   const phone = useMediaQuery(MEDIA.navDrawer);
-  const queue = useNeedsYou(me.user.id);
+  // A return to the Inbox shows the list it had at once, while it is read again (#592).
+  const arrival = useArrival();
+  const queue = useNeedsYou(me.user.id, !!arrival);
   const handlers = useNeedsYouActions(queue);
   // `?show=decisions` is where the retired Decisions view's links lead.
   const [asked, setAsked] = useSearchParams();
-  const [filter, setFilter] = useState<Filter>(() => FILTERS.find((entry) => `${entry.id}s` === asked.get('show') || entry.id === asked.get('show'))?.id ?? 'all');
-  const [selected, setSelected] = useState<string | null>(null);
+  // A replace on this page keeps the entry's state, so the origin it was followed from stays (#592).
+  const location = useLocation();
+  // The filter and the selected item come back as they were left.
+  const [filter, setFilter] = usePlaceState<Filter>('inbox.filter', () => FILTERS.find((entry) => `${entry.id}s` === asked.get('show') || entry.id === asked.get('show'))?.id ?? 'all', arrival,
+    (value): value is Filter => FILTERS.some((entry) => entry.id === value));
+  const [selected, setSelected] = usePlaceState<string | null>('inbox.selected', () => null, arrival, (value): value is string | null => value === null || typeof value === 'string');
   const [menu, setMenu] = useState<string | null>(null);
 
   const all = useMemo(() => queue.items ?? [], [queue.items]);
@@ -85,8 +92,8 @@ export function InboxView() {
   const select = useCallback((key: string) => {
     setSelected(key);
     document.querySelector<HTMLElement>(`.nyc[data-key="${CSS.escape(key)}"]`)?.scrollIntoView({ block: 'nearest' });
-  }, []);
-  const openMenu = useCallback((key: string) => { setSelected(key); setMenu((open) => (open === key ? null : key)); }, []);
+  }, [setSelected]);
+  const openMenu = useCallback((key: string) => { setSelected(key); setMenu((open) => (open === key ? null : key)); }, [setSelected]);
   useQueueKeys(shown, current?.key ?? null, select, handlers, openMenu);
 
   const tabs: TabItem[] = FILTERS.map((entry) => ({ id: entry.id, label: entry.label, count: counts[entry.id], countLabel: `, ${counts[entry.id]}` }));
@@ -138,7 +145,7 @@ export function InboxView() {
       )}
       {reviewing ? <AssistantJoinReview key={`${reviewing.key}:${reviewing.assistantRequestIdentity!.openingVersion}`} item={reviewing} onClose={() => {
         const next = new URLSearchParams(asked); next.delete('assistantProject'); next.delete('assistantRequest'); next.delete('openingVersion');
-        setAsked(next, { replace: true }); announceInboxChange();
+        setAsked(next, { replace: true, state: location.state }); announceInboxChange();
       }} /> : null}
     </div></div>
   );
@@ -152,6 +159,9 @@ export function InboxView() {
 export function InboxOpen() {
   const { id = '' } = useParams();
   const navigate = useNavigate();
+  // The reference was followed from somewhere: the page it redirects to keeps that origin (#592).
+  const arrivalState = useLocation().state as unknown;
+  const stateRef = useRef(arrivalState);
   const [gone, setGone] = useState(false);
   const [notification, setNotification] = useState<InboxItem | null>(null);
   useEffect(() => {
@@ -160,7 +170,7 @@ export function InboxOpen() {
       if (controller.signal.aborted) return;
       if (item.assistantRequestIdentity && item.source.type === 'project') { setNotification(item); return; }
       if (!item.assistantRequestIdentity) void markInboxRead(item.id).then(announceInboxChange, () => undefined);
-      navigate(item.url ?? '/inbox', { replace: true });
+      navigate(item.url ?? '/inbox', { replace: true, state: stateRef.current });
     }, () => { if (!controller.signal.aborted) setGone(true); });
     return () => controller.abort();
   }, [id, navigate]);
@@ -169,7 +179,7 @@ export function InboxOpen() {
       {notification?.id === id && notification.assistantRequestIdentity && notification.source.type === 'project' ?
         <AssistantJoinReview key={id} item={{ assistantRequestIdentity: notification.assistantRequestIdentity,
           project: { id: notification.source.id, name: notification.body.replace(/ · Requested contributor access\.$/, '') } }}
-          onClose={() => { announceInboxChange(); void navigate('/inbox', { replace: true }); }} />
+          onClose={() => { announceInboxChange(); void navigate('/inbox', { replace: true, state: stateRef.current }); }} />
         : gone ? (
         <div className="inbox-gone">
           <Icon name="lock" size={16} />

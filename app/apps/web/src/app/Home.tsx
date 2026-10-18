@@ -17,6 +17,7 @@ import { useSmallMoments } from './smallMoments';
 import { HomeWorkingAgents, WorkingAgent } from './WorkingAgent';
 import '../notifications/needs-you.css';
 import './home.css';
+import { RefLink } from '../place/origin';
 
 const dateFormat = new Intl.DateTimeFormat(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
 
@@ -66,12 +67,12 @@ function ContinueCard({ userId, workspaceIds }: { userId: string; workspaceIds: 
     const { item } = value;
     const project = projects.find((entry) => entry.id === item.projectId)?.name;
     return (
-      <Link className="home__card home__continue" to={`/projects/${item.projectId}/tasks?open=work:${item.id}`}>
+      <RefLink className="home__card home__continue" to={`/projects/${item.projectId}/tasks?open=work:${item.id}`}>
         <span className="home__k">Continue where you left off</span>
         <span className="home__t">{item.title}</span>
         <span className="home__sub"><StatusGlyph status={item.status} size={14} /><span>{STATUS_LABEL[item.status]} · #{item.number}{project ? ` · ${project}` : ''}</span></span>
         {arrow}
-      </Link>
+      </RefLink>
     );
   }
   const { step, mark } = value;

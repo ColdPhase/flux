@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router';
+
 import { Icon } from '../ui';
 import { getTaskAgentThread } from '../composer/api';
+import { RefLink } from '../place/origin';
 
 /**
  * The way from a task's Details into its agents' thread, which opens in the Agents tab. Reading the count never
@@ -17,8 +18,8 @@ export function AgentThreadLink({ workId, projectId, revision }: { workId: strin
     return () => controller.abort();
   }, [workId, revision]);
   return <section className="details__sec">
-    <Link className="wd-link" data-agent-thread-link={workId} to={`/projects/${projectId}/agents?thread=${workId}`}>
+    <RefLink className="wd-link" data-agent-thread-link={workId} to={`/projects/${projectId}/agents?thread=${workId}`}>
       <span>Agents’ thread{count === null ? '' : ` · ${count} ${count === 1 ? 'message' : 'messages'}`}</span><Icon name="chevron-right" size={14} />
-    </Link>
+    </RefLink>
   </section>;
 }

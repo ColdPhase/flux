@@ -27,6 +27,7 @@ import { useThoughtTasks } from './ThoughtTasks';
 import { useRegisterLiveHere } from '../live/LiveProvider';
 import './sketch.css';
 import '../editing/editing.css';
+import { RefLink } from '../place/origin';
 
 export interface Editing {
   id: string;
@@ -706,7 +707,7 @@ function SketchEditor({ sketchId, projectId, dmId, back = '/map', doc }: ViewPro
         {sketch.copies.length ? (
           <ul className="sk-copies" aria-label="Project copies">
             {sketch.copies.map((copy) => (
-              <li key={copy.sketchId}><Icon name="check" size={12} />Copied to <Link to={`/projects/${copy.projectId}/map/${copy.sketchId}`}>{copy.projectName}</Link> · {when(copy.copiedAt)}<span className="sk-origin__long"> · later changes here stay in this conversation</span><span className="sk-origin__short"> · not synced</span></li>
+              <li key={copy.sketchId}><Icon name="check" size={12} />Copied to <RefLink to={`/projects/${copy.projectId}/map/${copy.sketchId}`}>{copy.projectName}</RefLink> · {when(copy.copiedAt)}<span className="sk-origin__long"> · later changes here stay in this conversation</span><span className="sk-origin__short"> · not synced</span></li>
             ))}
           </ul>
         ) : null}
@@ -853,7 +854,7 @@ function SketchEditor({ sketchId, projectId, dmId, back = '/map', doc }: ViewPro
         {sketch.copies.length ? (
           <ul className="sk-copies" aria-label="Project copies">
             {sketch.copies.map((copy) => (
-              <li key={copy.sketchId}><Icon name="check" size={12} />Copied to <Link to={`/projects/${copy.projectId}/map/${copy.sketchId}`}>{copy.projectName}</Link> · {when(copy.copiedAt)}<span className="sk-origin__long"> · later changes here stay in this conversation</span><span className="sk-origin__short"> · not synced</span></li>
+              <li key={copy.sketchId}><Icon name="check" size={12} />Copied to <RefLink to={`/projects/${copy.projectId}/map/${copy.sketchId}`}>{copy.projectName}</RefLink> · {when(copy.copiedAt)}<span className="sk-origin__long"> · later changes here stay in this conversation</span><span className="sk-origin__short"> · not synced</span></li>
             ))}
           </ul>
         ) : null}

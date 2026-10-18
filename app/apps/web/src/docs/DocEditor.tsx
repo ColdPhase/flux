@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from 'react';
-import { Link, useLoaderData, useNavigate, useNavigation, useRevalidator, type LoaderFunctionArgs } from 'react-router';
+import { Link, useLoaderData, useLocation, useNavigate, useNavigation, useRevalidator, type LoaderFunctionArgs } from 'react-router';
 import { DOC_LIMITS, docRef, type Doc, type DocVersion, type Project } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { Button, Icon, useMediaQuery } from '../ui';
@@ -74,6 +74,7 @@ export function DocEditor() {
 function ScopedDocEditor({ project, doc, restore, accountId }: EditData & { project: Project; accountId: string }) {
   const { compact } = useWiki();
   const navigate = useNavigate();
+  const arrivalState = useLocation().state as unknown;
   const revalidator = useRevalidator();
   const navigation = useNavigation();
   const reconciling = revalidator.state !== 'idle' || navigation.state !== 'idle';
@@ -181,7 +182,7 @@ function ScopedDocEditor({ project, doc, restore, accountId }: EditData & { proj
       const saved = doc ? await updateDoc(doc.id, base, command, attempt) : await createDoc(project.id, command, attempt);
       if (!await currentAfterReconciliation()) return;
       keep(storageKey, null, draftLifetime);
-      navigate(docUrl(project.id, saved.id), { replace: true });
+      navigate(docUrl(project.id, saved.id), { replace: true, state: arrivalState });
     } catch (cause) {
       if (!await currentAfterReconciliation()) return;
       if (cause instanceof ApiError && cause.code === 'VERSION_CONFLICT') {

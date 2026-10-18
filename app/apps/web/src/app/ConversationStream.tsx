@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Link, useNavigate } from 'react-router';
+import { useNavigate } from 'react-router';
 import type { Conversation, ConversationMessage, ConversationRoot, ConversationRootWindow, NativeWorkRow, Page, Project, ProjectGoal, ReturnSummary, TaskCreationNotice } from '@flux/contracts';
 import { AgentIdentity, Avatar, Button, EmptyState, Icon, IconButton, Kreska, Opening, StatusGlyph, useArrivals } from '../ui';
 import { newBelowText } from '../ui/motion-rules';
@@ -24,6 +24,8 @@ import { cite as citeMessage, quoteOf } from './citeBus';
 import { foldEntries, foldSummary, firstUnread, noticeSource, rootAuthor, sinceLine, sourcePhrase } from './conversationEvents';
 import { GoalStreamEntry } from '../project/ProjectGoal';
 import './conversation-final.css';
+import { RefLink } from '../place/origin';
+import { onFlush, remember } from '../place/memory';
 
 // One project conversation (UI116-1, 2026-10-02): a chronological stream of roots. Each root is the
 // opening message of a stored conversation; its replies open beside it in a one-level thread.
@@ -246,6 +248,16 @@ export function useConversationRoots(projectId: string, window: ConversationRoot
   return { roots, hasOlder: !!olderCursor, olderBusy, loadOlder, posted, threadSize };
 }
 
+/** Where the stream was left (#592): the first entry in view and how far below the top it was, and the root it names, to read back to. */
+export interface StreamPlace { id: string; offset: number; conv: string | null }
+export function streamPlace(value: unknown): StreamPlace | null {
+  if (!value || typeof value !== 'object') return null;
+  const kept = value as { id?: unknown; offset?: unknown; conv?: unknown; atEnd?: unknown };
+  // A reader at the end is following it: a return opens the stream as it always opens, at its latest.
+  if (kept.atEnd === true || typeof kept.id !== 'string' || !kept.id || typeof kept.offset !== 'number' || !Number.isFinite(kept.offset)) return null;
+  return { id: kept.id, offset: kept.offset, conv: typeof kept.conv === 'string' ? kept.conv : null };
+}
+
 export interface StreamProps {
   project: Project;
   meId: string;
@@ -266,12 +278,14 @@ export interface StreamProps {
   arrived: string | null;
   /** Increments when the person starts a root: the stream shows its newest message. */
   endToken: number;
+  /** A return to this entry: the stream comes back to where it was left, not to a link's root or to its latest. */
+  restore?: StreamPlace | null;
   onOpen: (root: ConversationRoot, reply: boolean) => void;
   onDenied: (cause: unknown) => void;
 }
 
 /** The project's stream of roots, oldest first, with day dividers, each root's thread size and reply action. */
-export function ConversationStream({ project, meId, meName, roots: stream, notices, goals = [], author, audience, openId, reveal, arrived, endToken, onOpen, onDenied }: StreamProps) {
+export function ConversationStream({ project, meId, meName, roots: stream, notices, goals = [], author, audience, openId, reveal, arrived, endToken, restore = null, onOpen, onDenied }: StreamProps) {
   const owners = useAgentOwners(project);
   // Roots the person sent from the stream's composer (#264): queued ones at the end, and confirmed ones
   // shown at once in their place until the stream's own read includes them.
@@ -339,20 +353,49 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
     if (feed && element) pinRef.current = { id: element.id, offset: element.getBoundingClientRect().top - feed.getBoundingClientRect().top };
     onOpen(root, reply);
   };
-  const stickRef = useRef(!reveal);
+  const stickRef = useRef(!reveal && !restore);
+  // A place to come back to waits here until its message is on screen; nothing is written over it meanwhile.
+  const pendingRestore = useRef<StreamPlace | null>(restore);
   const [failure, setFailure] = useState('');
   const makeWork = useCreateWorkFromMessage(project);
   const { openDetails } = useShellActions();
 
-  // Open on whole messages at the latest, unless a link names a root.
+  // Open on whole messages at the latest, unless a link names a root or the person is coming back to a place.
   useEffect(() => {
     const feed = feedRef.current;
     const column = columnRef.current;
-    if (reveal || !feed || !column) return;
+    if (reveal || restore || !feed || !column) return;
     return openOnWholeMessages(feed, column, '.project-convo__message, .convo-notice, .convo-fold, .convo-goal');
     // Once, when the stream opens; later arrivals are handled below.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Coming back (#592): the first entry that was in view returns to where it was, as soon as it is loaded: read back to it
+  // when it is older than the newest window. If it is gone (or never loads), the stream opens at its latest as usual.
+  // A place that never loads is given up after a few seconds, without waiting for something else to render.
+  const [gaveUp, giveUp] = useState(false);
+  useEffect(() => {
+    if (!restore) return;
+    const timer = window.setTimeout(() => giveUp(true), 5000);
+    return () => window.clearTimeout(timer);
+  }, [restore]);
+  useLayoutEffect(() => {
+    const place = pendingRestore.current;
+    const feed = feedRef.current;
+    if (!place || !feed) return;
+    const element = document.getElementById(place.id);
+    if (!element) {
+      if (stream.hasOlder && !gaveUp) return;
+      pendingRestore.current = null;
+      stickRef.current = true;
+      feed.scrollTop = feed.scrollHeight;
+      return;
+    }
+    pendingRestore.current = null;
+    stickRef.current = false;
+    feed.scrollTop += element.getBoundingClientRect().top - feed.getBoundingClientRect().top - place.offset;
+    anchorRef.current = { id: place.id, offset: place.offset };
+  });
 
   // A linked root comes into view once it is loaded, and takes focus when the link named it exactly.
   const revealRoot = reveal ? roots.find((root) => root.conversationId === reveal.conversationId) ?? null : null;
@@ -459,6 +502,7 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
     // docking) makes the browser clamp the scroll position and this view adjust it; those scroll events
     // must not be taken for the reader moving, or the root would not come back to where it was.
     let personAt = -Infinity;
+    let leavingUntil = -Infinity;
     const person = () => { personAt = performance.now(); };
     // A press on the scroll bar targets the feed itself; a press on a message or button does not scroll.
     const press = (event: PointerEvent) => { if (event.target === feed) person(); };
@@ -484,10 +528,14 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
         heldReading = null;
       }
       anchorRef.current = null;
+      let anchorElement: HTMLElement | null = null;
       for (const item of feed.querySelectorAll<HTMLElement>('.project-convo__message, .convo-notice, .convo-fold, .convo-goal')) {
         const box = item.getBoundingClientRect();
-        if (box.bottom > top + 1) { anchorRef.current = { id: item.id, offset: box.top - top }; break; }
+        if (box.bottom > top + 1) { anchorRef.current = { id: item.id, offset: box.top - top }; anchorElement = item; break; }
       }
+      // The place is kept under this history entry as it changes (#592), but not by what the layout does while the next
+      // screen loads after a reference was followed: that is not where the reader was, until they scroll.
+      if (!pendingRestore.current && (performance.now() > leavingUntil || personAt > leavingUntil - 3000)) remember('stream', stickRef.current || !anchorRef.current ? { atEnd: true } : { ...anchorRef.current, conv: anchorElement?.dataset.conversationId ?? null });
     };
     const onScroll = () => { if (!frame) frame = requestAnimationFrame(record); };
     // The stream's own content also changes height: after a width change (the thread docking or becoming
@@ -530,6 +578,7 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
       settleFrame = requestAnimationFrame(holdPin);
     };
     record();
+    const unflush = onFlush(() => { record(); leavingUntil = performance.now() + 3000; });
     feed.addEventListener('scroll', onScroll, { passive: true });
     for (const name of ['wheel', 'touchmove'] as const) feed.addEventListener(name, person, { passive: true });
     feed.addEventListener('pointerdown', press, { passive: true });
@@ -537,6 +586,7 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
     observer.observe(feed);
     if (column) observer.observe(column);
     return () => {
+      unflush();
       feed.removeEventListener('scroll', onScroll);
       for (const name of ['wheel', 'touchmove'] as const) feed.removeEventListener(name, person);
       feed.removeEventListener('pointerdown', press);
@@ -767,7 +817,7 @@ function RootItem(props: RootItemProps | QueuedRootProps) {
       <SourceTag messageId={message.id} />
       {!mine && !stored.continued ? <AuthorFace kind={message.authorId === null ? 'agent' : 'human'} name={name} mine={mine} /> : null}
       {!mine && !stored.continued ? <div className="project-convo__message-meta">
-        <strong>{mine ? `${name} · you` : message.authorId === null ? <AgentAuthor message={message} owner={agentAuthorOwner(message.author, owners)} /> : <Link className="project-convo__person" to={`/dm/new?workspace=${project.workspaceId}&with=${message.authorId}`} title={`Message ${name} directly`}>{name}</Link>}</strong>
+        <strong>{mine ? `${name} · you` : message.authorId === null ? <AgentAuthor message={message} owner={agentAuthorOwner(message.author, owners)} /> : <RefLink className="project-convo__person" to={`/dm/new?workspace=${project.workspaceId}&with=${message.authorId}`} title={`Message ${name} directly`}>{name}</RefLink>}</strong>
       </div> : null}
       <MessageContent body={message.body ? <WhenNoQuestion projectId={project.id} messageId={message.id}><p><MessageText body={message.body} people={people} /></p></WhenNoQuestion> : null} files={message.files} context={{ author: name, at: message.createdAt, caption: message.body, place: project.name, onReply: writable ? () => onOpen(root, true) : undefined, onCreateTask: writable ? () => void makeWork.create(message) : undefined }}>
         <LinkPreviews body={message.body} />

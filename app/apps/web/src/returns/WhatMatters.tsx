@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type MouseEvent } from 'react';
-import { Link } from 'react-router';
+
 import type { ReturnDigest, ReturnPeriod, ReturnScope, ReturnSummary } from '@flux/contracts';
 import { Button, Icon, Spinner, useSidePanelMode } from '../ui';
 import { useShellData } from '../app/data';
 import { getRecap, saveReturnPoint, sourceHref } from './api';
 import { Item, NextStep } from './SinceYouLeft';
 import './what-matters.css';
+import { RefLink } from '../place/origin';
 
 // "What matters" (#133): the private recap of one project in the Details panel. It extends the
 // #106 return view: whole project or only what concerns you, a chosen period, and a stable
@@ -49,11 +50,11 @@ function Digest({ digest }: { digest: ReturnDigest }) {
         <section aria-labelledby="wm-results">
           <h4 id="wm-results" className="wm-h4">Results</h4>
           <ul className="wm-quotes">{digest.results.map((result) => (
-            <li key={result.id}><Link className="wm-quote" to={sourceHref({ type: 'result', id: result.id, projectId: result.projectId })}>
+            <li key={result.id}><RefLink className="wm-quote" to={sourceHref({ type: 'result', id: result.id, projectId: result.projectId })}>
               <span className="wm-quote__who">{result.author} · {result.finding === 'negative' ? 'did not work out' : 'worked'}</span>
               <span className="wm-quote__text">{result.title}</span>
               <Icon name="chevron-right" size={14} className="wm-quote__go" />
-            </Link></li>
+            </RefLink></li>
           ))}</ul>
         </section>
       ) : null}
@@ -61,11 +62,11 @@ function Digest({ digest }: { digest: ReturnDigest }) {
         <section key={talk.conversationId} aria-label={`In “${talk.opening}”`}>
           <h4 className="wm-h4">In “{talk.opening}”</h4>
           <ul className="wm-quotes">{talk.quotes.map((quote) => (
-            <li key={quote.messageId}><Link className="wm-quote" to={sourceHref({ type: 'message', projectId: talk.projectId, conversationId: talk.conversationId, messageId: quote.messageId })}>
+            <li key={quote.messageId}><RefLink className="wm-quote" to={sourceHref({ type: 'message', projectId: talk.projectId, conversationId: talk.conversationId, messageId: quote.messageId })}>
               <span className="wm-quote__who">{quote.author} <time dateTime={quote.at}>{time.format(new Date(quote.at))}</time></span>
               <span className="wm-quote__text">{quote.excerpt}</span>
               <Icon name="chevron-right" size={14} className="wm-quote__go" />
-            </Link></li>
+            </RefLink></li>
           ))}</ul>
           {talk.more ? <p className="wm-note">{talk.more} earlier {talk.more === 1 ? 'message' : 'messages'} in this period. Open the conversation for all of them.</p> : null}
         </section>

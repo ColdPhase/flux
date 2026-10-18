@@ -1,5 +1,6 @@
 import { Navigate, Outlet, createBrowserRouter, useMatches, useRouteLoaderData, type RouteObject } from 'react-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { markBooted } from './place/memory';
 import { ToastProvider } from './ui';
 import { UpdatePrompt } from './pwa';
 import { AppLayout } from './app/AppLayout';
@@ -59,6 +60,8 @@ const material = secondary(async () => {
 });
 
 function Root() {
+  // The first screen of this document is on show: from now on, Back and Forward are returns that find their place (#592).
+  useEffect(() => { markBooted(); }, []);
   const shell = useRouteLoaderData('app') as ShellData | undefined;
   const inApp = useMatches().some((match) => match.id === 'app');
   const [session, setSession] = useState<string | null>(null);
