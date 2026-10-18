@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import type { ProjectPerson } from '@flux/contracts';
-import { Avatar, Icon, IconButton, Kreska } from '../ui';
+import { Avatar, Icon, IconButton, Kreska, usePop } from '../ui';
 import { clock } from './focus';
 
 /**
@@ -62,6 +62,7 @@ export function MoreMenu({ items, label = 'More', icon = 'more' }: { items: More
   const button = useRef<HTMLButtonElement>(null);
   const menu = useRef<HTMLDivElement>(null);
   const id = useId();
+  const pop = usePop(open);
   useEffect(() => {
     if (!open) return undefined;
     shownRows(menu.current)[0]?.focus();
@@ -84,9 +85,8 @@ export function MoreMenu({ items, label = 'More', icon = 'more' }: { items: More
     <span className="top__more">
       <IconButton ref={button} icon={icon} label={label} aria-haspopup="menu" aria-expanded={open} aria-controls={open ? id : undefined}
         onClick={() => setOpen((value) => !value)} />
-      {/* It comes in with the shared menu motion. It leaves at once: until #606 gives it popover styles it is an in-flow row of the header, and a menu that lingered would move the controls beside it. */}
-      {open ? (
-        <div data-pop="open" ref={menu} id={id} className="newmenu__menu top__more-menu" role="menu" aria-label={label} onKeyDown={onKeyDown}
+      {pop.mounted ? (
+        <div {...pop.props} ref={menu} id={id} className="newmenu__menu top__more-menu" role="menu" aria-label={label} onKeyDown={onKeyDown}
           onClick={(event) => { if ((event.target as Element).closest('[data-more-row]:not([aria-disabled="true"])')) close(); }}>
           {items.map((item) => 'node' in item ? <Fragment key={item.label}>{item.node}</Fragment> : (
             <button key={item.label} type="button" role={item.checked === undefined ? 'menuitem' : 'menuitemcheckbox'} aria-checked={item.checked}

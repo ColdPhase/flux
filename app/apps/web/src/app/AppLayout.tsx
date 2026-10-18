@@ -4,6 +4,7 @@ import type { ProjectPerson } from '@flux/contracts';
 import { Outlet, useLocation, useMatches, useNavigate, useNavigationType, useParams, useRevalidator } from 'react-router';
 import { useStreamEvents } from '../api/stream';
 import { Drawer, IconButton, MEDIA, SidePanel, Tabs, duration, flip, play, setTravelDirection, useMediaQuery, useToast, useSidePanelMode } from '../ui';
+import { viewTransitionsSupported } from '../ui/viewTransition';
 import { routeView } from '../ui/motion-rules';
 import { useShellData } from './data';
 import { registerServiceWorker, syncPushSubscription } from '../pwa';
@@ -369,26 +370,23 @@ function AppLayoutContent() {
     return () => { viewport.removeEventListener('resize', update); viewport.removeEventListener('scroll', update); app.style.removeProperty('--app-h'); app.style.removeProperty('--app-top'); };
   }, [touch]);
 
-  // Switching a project view, a place or a Settings section crossfades the content area only (#593 AC-3): the
-  // header, the sidebar and the tab bar are not inside it and never move, and the fade is opacity alone, so nothing
-  // inside the new content (its composer, its toolbar) travels either (Spokój rule 7). Opening a thread beside the
-  // conversation or a page inside the Wiki is not a switch. The reading position is restored by its own owner and is
-  // never animated. Back and the browser's history set the direction of travel the detail panel's content follows.
+  // Switching a project view, a place or a Settings section dissolves the old content into the new in the content area only (#593
+  // AC-3, through the View Transitions API: router.tsx asks for it, ui/viewTransition.ts and ui.css do it): the header, the
+  // sidebar and the tab bar are not inside it and never move, and the new content (its composer, its toolbar) is in place from the
+  // first frame (Spokój rule 7). Opening a thread beside the conversation or a page inside the Wiki is not a switch. The reading
+  // position is restored by its own owner and never animated. Where the API is missing the new content fades in instead.
+  // The history sets the direction of travel the detail panel's content follows when it is not told by its depth.
   const navigationType = useNavigationType();
   const previousViewKey = useRef(routeView(location.pathname));
   useLayoutEffect(() => {
+    setTravelDirection(navigationType === 'POP' ? 'back' : 'forward');
     const view = routeView(location.pathname);
     if (view === previousViewKey.current) return;
     previousViewKey.current = view;
-    setTravelDirection(navigationType === 'POP' ? 'back' : 'forward');
+    if (viewTransitionsSupported()) return;
     const pane = paneRef.current;
-    const refreshInert = () => {
-      const root = document.getElementById('root');
-      if (root && !root.inert) root.style.setProperty('--app-inert', `0-${Date.now()}`);
-    };
     pane?.getAnimations().forEach((animation) => animation.cancel());
-    refreshInert();
-    void play(pane, [{ opacity: 0 }, { opacity: 1 }], duration('--dur-view'), '--ease-out', { fill: 'backwards' }).then((animation) => { animation?.cancel(); refreshInert(); });
+    void play(pane, [{ opacity: 0 }, { opacity: 1 }], duration('--dur-view'), '--ease-out', { fill: 'backwards' });
     // The view is the pathname's; the navigation type only says how it was reached.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.pathname]);

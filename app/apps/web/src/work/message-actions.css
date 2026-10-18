@@ -48,12 +48,8 @@
 .msg-menu__item svg { flex: none; color: var(--t2); }
 .msg-menu__sep { height: 1px; margin: 4px 8px; background: var(--line); }
 @media (pointer: coarse) { .msg-menu__item { min-height: 48px; font-size: 16px; } }
-@media (prefers-reduced-motion: no-preference) {
-  .msg-menu { animation: msg-menu-in var(--dur-2) var(--ease-out) both; transform-origin: top left; }
-  .msg-menu__scrim.is-press { animation: msg-fade-in var(--dur-2) ease both; }
-}
-@keyframes msg-menu-in { from { opacity: 0; transform: scale(.96); } to { opacity: 1; transform: none; } }
-@keyframes msg-fade-in { from { opacity: 0; } to { opacity: 1; } }
+/* The menu and its scrim come in and leave through the shared [data-pop] motion (ui.css; usePop in messageActions.tsx):
+   a fade and four pixels of travel, never a scale. */
 
 /* The phone: the row slides left to show its actions. A vertical drag still scrolls; text is not selected by
    a long press, because that press opens the menu (Copy text is in it). */

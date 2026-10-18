@@ -73,12 +73,14 @@ const offstage = (placement: OverlayPlacement): Pose => ({
   bottom: { transform: 'translateY(100%)' },
   center: { opacity: 0, transform: 'translateY(-8px) scale(.98)' },
 })[placement];
-/** Enter and exit: dialogs and the detail panel take --dur-in and --dur-out; the edge surfaces keep their longer travel (#266 PF-4). */
-const timing = (placement: OverlayPlacement) => placement === 'center' || placement === 'right'
-  ? { enter: duration('--dur-in'), exit: duration('--dur-out'), easeIn: '--ease-out' as Easing }
-  : placement === 'bottom'
-    ? { enter: duration('--dur-4'), exit: duration('--dur-3') * 0.85, easeIn: '--ease-sheet' as Easing }
-    : { enter: duration('--dur-3'), exit: duration('--dur-2'), easeIn: '--ease-sheet' as Easing };
+/**
+ * Enter and exit: every surface takes --dur-in (180 ms) and --dur-out (120 ms), the drawer and the phone sheet included
+ * (#593 AC-1); they travel from their edge on --ease-sheet, the dialog and the panel on --ease-out.
+ */
+const timing = (placement: OverlayPlacement) => ({
+  enter: duration('--dur-in'), exit: duration('--dur-out'),
+  easeIn: (placement === 'center' || placement === 'right' ? '--ease-out' : '--ease-sheet') as Easing,
+});
 
 /**
  * Touch dismissal (#266 PF-4): the drawer follows a finger dragging it back to the left and the

@@ -50,6 +50,13 @@ export function cssTimeToMs(value: string): number {
   return Number.isFinite(amount) && amount > 0 ? amount : 0;
 }
 
+const PROJECT_VIEWS = ['conversation', 'map', 'tasks', 'docs', 'agents'];
+/** Where a path stands in its row of views: a project's Conversation, Map, Tasks, Wiki and Agents in the tabs' order; anything else 0. */
+export function viewRank(pathname: string): number {
+  const project = /^\/projects\/([^/]+)(?:\/(tasks|map|docs|agents))?(?:\/|$)/.exec(pathname.replace(/\/+$/, '') || '/');
+  return project && project[1] !== 'new' ? PROJECT_VIEWS.indexOf(project[2] ?? 'conversation') : 0;
+}
+
 /**
  * What the content area is showing, for deciding whether a navigation switched it (#593 AC-3). A project view, a
  * top-level place and a Settings section are each one view; opening a thread beside the conversation, a page inside

@@ -1,4 +1,4 @@
-import { duration, motionAllowed, token } from './motion';
+import { PRESS_ID, duration, motionAllowed, token } from './motion';
 
 /**
  * The one press (#593 AC-5, final design guide §2): a pressable control scales to --press (.97) as it is pressed and
@@ -12,7 +12,6 @@ import { duration, motionAllowed, token } from './motion';
  */
 const PRESSABLE = 'button, a[href], [role="button"], [role="tab"], [role="menuitem"], [role="menuitemradio"], [role="menuitemcheckbox"], [role="option"], summary';
 const SKIP = ':disabled, [aria-disabled="true"], [data-no-press], [data-no-press] *, .ui-vh, .sk-plane *';
-const PRESS_ID = 'flux-press';
 
 function pressTarget(node: EventTarget | null): HTMLElement | null {
   if (!(node instanceof Element)) return null;

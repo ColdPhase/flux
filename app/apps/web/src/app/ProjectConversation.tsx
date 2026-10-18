@@ -773,7 +773,7 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
         attach={asking ? null : publicComposer}
         sendLabel={asking ? 'Send to your assistant' : conversation ? 'Send reply' : 'Send message'}
         sendDisabled={!composer.canSend || busy || askBusy || assistantInStream || (asking && ask.kind !== 'ready')} onSend={() => void send()}
-        menu={menuOpen ? <ComposerMenu id={`${composerId}-menu`} options={options} active={activeIndex} trigger={trigger!.char} onPick={pick} onHover={setMenuIndex} /> : null} />
+        menu={<ComposerMenu open={menuOpen} id={`${composerId}-menu`} options={options} active={activeIndex} trigger={trigger?.char ?? '@'} onPick={pick} onHover={setMenuIndex} />} />
         : <div className="composer__box"><button type="button" className="composer__ask project-convo__sources-btn" aria-expanded={trayOpen} aria-controls={trayOpen ? `${conversation ? 'thread' : 'project'}-sources` : undefined} aria-label={`Sources${materialTotal ? `, ${materialTotal} saved` : ''}`} data-tip="Saved sources to read" data-tip-align="start" onClick={() => { if (trayOpen) setSourcesOpen(false); else setSourcesOpen(true); }}><Icon name="doc" /><span className="project-convo__sources-t" aria-hidden="true">Sources</span>{materialTotal ? <span className="project-convo__sources-n" aria-hidden="true">{materialTotal > 99 ? '99+' : materialTotal}</span> : null}</button><p className="project-convo__read-only">Read-only · <span>You have read access to this project.</span></p></div>}
       {conversation && !accessLost ? <TypingNotice {...typing} /> : null}
       {writable ? <SendAnnouncer pending={publicComposer.pending} /> : null}

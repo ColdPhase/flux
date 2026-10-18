@@ -1,6 +1,6 @@
 import { Navigate, Outlet, createBrowserRouter, useMatches, useRouteLoaderData, type RouteObject } from 'react-router';
 import { useEffect, useState } from 'react';
-import { ToastProvider, markMotionReady } from './ui';
+import { ToastProvider, markDissolving, markMotionReady, shouldDissolve, viewDirection } from './ui';
 import { UpdatePrompt } from './pwa';
 import { AppLayout } from './app/AppLayout';
 import { appLoader, type ShellData } from './app/data';
@@ -188,3 +188,23 @@ export const router = createBrowserRouter([
     ],
   },
 ]);
+
+// A switch of view or place dissolves the old content into the new through the View Transitions API (#593 AC-3, ui/viewTransition.ts).
+// A navigation the application starts asks for the transition when it switches the view; the browser's Back and Forward are
+// transitioned by the router itself once it has seen the pair. Every committed switch names what the transition takes pictures of
+// and which way the person is going, a moment before the router starts it.
+const navigate = router.navigate.bind(router);
+router.navigate = ((to: Parameters<typeof navigate>[0], options?: Parameters<typeof navigate>[1]) => {
+  if (typeof to !== 'number' && to !== null) {
+    const target = typeof to === 'string' ? new URL(to, window.location.href).pathname : to.pathname ?? window.location.pathname;
+    if (shouldDissolve(router.state.location.pathname, target)) return navigate(to, { viewTransition: true, ...options });
+  }
+  return navigate(to as never, options);
+}) as typeof navigate;
+let shown = router.state.location.pathname;
+router.subscribe((state) => {
+  if (state.navigation.state !== 'idle' || state.location.pathname === shown) return;
+  const from = shown;
+  shown = state.location.pathname;
+  if (shouldDissolve(from, shown)) markDissolving(viewDirection(from, shown, state.historyAction === 'POP'));
+});

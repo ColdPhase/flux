@@ -46,8 +46,9 @@ RECORDER = r"""
     return [...props];
   };
   document.addEventListener('animationstart', (event) => {
-    const style = getComputedStyle(event.target);
-    log.push({ kind: 'css', target: name(event.target), role: event.target.getAttribute && event.target.getAttribute('role') || '', name: event.animationName, props: keyframeProps(event.animationName),
+    const style = getComputedStyle(event.target, event.pseudoElement || null);
+    log.push({ kind: 'css', target: name(event.target), pseudo: event.pseudoElement || '', direction: document.documentElement.dataset.vt || '', role: event.target.getAttribute && event.target.getAttribute('role') || '',
+      name: event.animationName, props: keyframeProps(event.animationName),
       duration: parseFloat(style.animationDuration) * (/ms$/.test(style.animationDuration) ? 1 : 1000), easing: style.animationTimingFunction, at: performance.now() });
   }, true);
 })();

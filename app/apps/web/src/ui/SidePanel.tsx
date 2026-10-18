@@ -1,10 +1,11 @@
-import { useEffect, useId, useLayoutEffect, useRef, useSyncExternalStore, type KeyboardEvent, type ReactNode, type Ref, type RefObject } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useSyncExternalStore, type KeyboardEvent, type ReactNode, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import { IconButton } from './Button';
 import { Icon } from './Icon';
 import { MEDIA, duration, motionAllowed, settle, token, travelDirection, useMediaQuery } from './motion';
 import { DetentSheet } from './DetentSheet';
 import { Overlay, Sheet, usePresence } from './Overlay';
+import { Dissolve } from './Dissolve';
 
 export type SidePanelMode = 'docked' | 'overlay' | 'sheet';
 
@@ -52,8 +53,9 @@ function usePanelSwap(body: RefObject<HTMLElement | null>, enabled: boolean, ope
     const direction = depth > before.depth ? 'forward' : depth < before.depth ? 'back' : travelDirection();
     const shift = parseFloat(token('--shift-panel')) || 16;
     const enter = (child: Element) => void settle(child, { opacity: 1, transform: 'none' }, ms, '--ease-out', { from: { opacity: 0, transform: `translateX(${direction === 'back' ? -shift : shift}px)` } });
-    for (const child of node.children) enter(child);
-    const late = new MutationObserver((records) => { for (const record of records) for (const added of record.addedNodes) if (added instanceof Element) enter(added); });
+    // What is dissolving out (Dissolve's pictures of the old content) is not new content.
+    for (const child of node.children) if (!child.hasAttribute('data-dissolve')) enter(child);
+    const late = new MutationObserver((records) => { for (const record of records) for (const added of record.addedNodes) if (added instanceof Element && !added.hasAttribute('data-dissolve')) enter(added); });
     late.observe(node, { childList: true });
     const stop = window.setTimeout(() => late.disconnect(), 400);
     return () => { window.clearTimeout(stop); late.disconnect(); };
@@ -85,7 +87,7 @@ export function useSidePanelMode(): SidePanelMode {
   return phone ? 'sheet' : overlay ? 'overlay' : 'docked';
 }
 
-function PanelContent({ title, titleId, closeLabel, back, chip, context, onClose, bodyRef, children }: { title: string; titleId: string; closeLabel?: string; back?: SidePanelProps['back']; chip?: string; context?: ReactNode; onClose: () => void; bodyRef?: Ref<HTMLDivElement>; children: ReactNode }) {
+function PanelContent({ title, titleId, closeLabel, back, chip, context, onClose, bodyRef, contentKey, depth, children }: { title: string; titleId: string; closeLabel?: string; back?: SidePanelProps['back']; chip?: string; context?: ReactNode; onClose: () => void; bodyRef: RefObject<HTMLDivElement | null>; contentKey: string; depth: number; children: ReactNode }) {
   return (
     <>
       <div className="ui-panel__head">
@@ -100,7 +102,7 @@ function PanelContent({ title, titleId, closeLabel, back, chip, context, onClose
         <IconButton icon="x" label={closeLabel ?? `Close ${title.toLowerCase()}`} data-tip="Close · Esc" onClick={onClose} className="ui-panel__close" />
       </div>
       {context}
-      <div className="ui-panel__body" ref={bodyRef} tabIndex={-1}>{children}</div>
+      <div className="ui-panel__body" ref={bodyRef} tabIndex={-1}><Dissolve id={contentKey} depth={depth} host={bodyRef}>{children}</Dissolve></div>
     </>
   );
 }
@@ -145,7 +147,7 @@ function DockedPanel({ open, onClose, title, closeLabel, back, chip, context, id
   };
   return (
     <aside ref={ref} id={id} className="ui-panel ui-panel--docked" aria-labelledby={titleId} onKeyDown={onKeyDown} inert={!open}>
-      <PanelContent title={title} titleId={titleId} closeLabel={closeLabel} back={back} chip={chip} context={context} onClose={onClose} bodyRef={bodyRef}>{children}</PanelContent>
+      <PanelContent title={title} titleId={titleId} closeLabel={closeLabel} back={back} chip={chip} context={context} onClose={onClose} bodyRef={bodyRef} contentKey={contentKey ?? `${chip ?? ''}|${title}`} depth={depth ?? (back ? 1 : 0)}>{children}</PanelContent>
     </aside>
   );
 }
@@ -156,7 +158,8 @@ export function SidePanel(props: SidePanelProps) {
   const bodyRef = useRef<HTMLDivElement>(null);
   usePanelSwap(bodyRef, mode !== 'docked', props.open, props.contentKey ?? `${props.chip ?? ''}|${props.title}`, props.depth ?? (props.back ? 1 : 0));
   if (mode === 'docked') return <DockedPanel {...props} />;
-  const content = <PanelContent title={props.title} titleId={titleId} closeLabel={props.closeLabel} back={props.back} chip={props.chip} context={props.context} onClose={props.onClose} bodyRef={bodyRef}>{props.children}</PanelContent>;
+  const content = <PanelContent title={props.title} titleId={titleId} closeLabel={props.closeLabel} back={props.back} chip={props.chip} context={props.context} onClose={props.onClose} bodyRef={bodyRef}
+    contentKey={props.contentKey ?? `${props.chip ?? ''}|${props.title}`} depth={props.depth ?? (props.back ? 1 : 0)}>{props.children}</PanelContent>;
   if (mode === 'sheet') {
     // A task, decision or result opens in the one two-height sheet; other Details stay a full sheet.
     if (props.chip) {

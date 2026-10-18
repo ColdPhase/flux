@@ -1,5 +1,8 @@
-.route-progress { display: flex; flex: 0 0 auto; align-items: center; justify-content: space-between; gap: 12px; padding: 6px 16px; border-bottom: 1px solid var(--line); color: var(--t2); }
-.route-progress > span { display: flex; align-items: center; gap: 8px; font-size: inherit; }
+.route-progress { position: relative; z-index: 4; flex: 0 0 0; height: 0; }
+.route-progress__bar { position: absolute; top: 0; left: 0; right: 0; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 6px 16px; border-bottom: 1px solid var(--line); background: var(--bg); color: var(--t2); }
+/* Beside a docked panel the line stays over the work only. */
+.app__main:has(.ui-panel--docked) .route-progress__bar { right: calc(var(--panel-w) + 10px); }
+.route-progress__bar > span { display: flex; align-items: center; gap: 8px; font-size: inherit; }
 .deferred-surface { padding: 16px; }
 .deferred-surface > p { display: flex; align-items: center; gap: 8px; color: var(--t2); }
 .deferred-surface--stage { position: absolute; inset: 0; z-index: 3; background: var(--bg); }

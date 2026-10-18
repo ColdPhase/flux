@@ -36,6 +36,8 @@ export function motionAllowed(): boolean {
 
 /** Every animation the helpers below start carries this id, so they can be told from the page's own CSS. */
 export const MOTION_ID = 'flux-motion';
+/** The press's own (press.ts). */
+export const PRESS_ID = 'flux-press';
 const ours = (animation: Animation) => animation.id === MOTION_ID;
 /** Ends the helpers' own animations on an element and its descendants (an exit never lingers into a new state). */
 export function cancelMotion(el: Element | null, subtree = false) {
@@ -242,9 +244,9 @@ function placeHighlight(box: HTMLElement | null, mark: HTMLElement | null, order
 }
 
 /**
- * Motion pauses while the page is hidden (#593 AC-6). A looping animation is paused and resumed when the page
- * is shown again; a transient one of ours lands on its end state at once, so nothing is half-finished on return.
- * Installed once, before the first render.
+ * Motion pauses while the page is hidden (#593 AC-6). A looping animation is paused and resumed when the page is shown again;
+ * a transient one of ours, and a menu's or popover's CSS entry or exit (`ui-pop-*`), lands on its end state at once, so nothing
+ * is half-finished on return; a press in flight is let go. Installed once, before the first render.
  */
 let guarded = false;
 export function installMotionGuards() {
@@ -255,9 +257,12 @@ export function installMotionGuards() {
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') {
       for (const animation of document.getAnimations()) {
+        // However far along, and whether running or held at a frame.
+        if (animation.playState === 'finished' || animation.playState === 'idle') continue;
+        if (animation.id === PRESS_ID) { animation.cancel(); continue; }
+        if (ours(animation) || (typeof CSSAnimation !== 'undefined' && animation instanceof CSSAnimation && animation.animationName.startsWith('ui-pop'))) { animation.finish(); continue; }
         if (animation.playState !== 'running') continue;
         if (animation.effect?.getComputedTiming().iterations === Infinity) { animation.pause(); paused.add(animation); }
-        else if (ours(animation)) animation.finish();
       }
     } else {
       for (const animation of paused) if (animation.playState === 'paused') animation.play();

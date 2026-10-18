@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import type { ConversationMessage } from '@flux/contracts';
-import { Icon, Kreska, useMediaQuery, useToast, type IconName } from '../ui';
+import { Icon, Kreska, useMediaQuery, usePop, useToast, type IconName } from '../ui';
 import { useShellActions } from '../app/shellContext';
 import { useShellData } from '../app/data';
 import { useNeedsYou } from '../notifications/needsYou';
@@ -108,7 +108,7 @@ function useWaiting(messageId: string | null): MenuItem[] {
 }
 
 /** A menu under its anchor: arrow keys, Escape and a click outside close or move; focus returns to the opener. */
-function MessageMenu({ items: own, anchor, press, onClose, label, messageId }: { items: MenuItem[]; anchor: HTMLElement; press: boolean; onClose: (restoreFocus: boolean) => void; label: string; messageId: string | null }) {
+function MessageMenu({ items: own, anchor, press, onClose, label, messageId, popProps }: { items: MenuItem[]; anchor: HTMLElement; press: boolean; onClose: (restoreFocus: boolean) => void; label: string; messageId: string | null; popProps: ReturnType<typeof usePop>['props'] }) {
   const items = [...own, ...useWaiting(messageId)];
   const menu = useRef<HTMLDivElement>(null);
   const [place, setPlace] = useState<CSSProperties>({ top: 0, left: 0, opacity: 0 });
@@ -144,8 +144,8 @@ function MessageMenu({ items: own, anchor, press, onClose, label, messageId }: {
   );
   return createPortal(
     <>
-      <div className={`msg-menu__scrim${press ? ' is-press' : ''}`} onPointerDown={() => onClose(false)} />
-      <div ref={menu} className={`msg-menu${press ? ' is-press' : ''}`} role="menu" aria-label={label} style={place} onKeyDown={onKeyDown}>
+      <div {...popProps} data-pop-fade="" className={`msg-menu__scrim${press ? ' is-press' : ''}`} onPointerDown={() => onClose(false)} />
+      <div {...popProps} ref={menu} className={`msg-menu${press ? ' is-press' : ''}`} role="menu" aria-label={label} style={place} onKeyDown={onKeyDown}>
         {primary.map(render)}
         {secondary.length && primary.length ? <div className="msg-menu__sep" role="separator" /> : null}
         {secondary.map(render)}
@@ -156,6 +156,15 @@ function MessageMenu({ items: own, anchor, press, onClose, label, messageId }: {
 }
 
 /**
+ * The menu and its scrim leave as they came (#593 AC-1): the opener keeps the last anchor and says whether the menu is `open`; a
+ * closed menu stays mounted for --dur-out, inert, while focus is already back on its opener.
+ */
+function MessageMenuHost({ open, ...props }: { open: boolean; items: MenuItem[]; anchor: HTMLElement; press: boolean; onClose: (restoreFocus: boolean) => void; label: string; messageId: string | null }) {
+  const pop = usePop(open);
+  return pop.mounted ? <MessageMenu {...props} popProps={pop.props} /> : null;
+}
+
+/**
  * The computer's actions on one message: reply in thread, create a task and a menu. They appear over the
  * message's corner on hover and focus and take no room in the stream; a phone has gestures instead.
  */
@@ -163,6 +172,7 @@ export function MessageActions(options: MessageActionOptions | DmActionOptions) 
   const touch = useMediaQuery('(hover: none)');
   const items = useMenuItems(options);
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
+  const [open, setOpen] = useState(false);
   const more = useRef<HTMLButtonElement>(null);
   const group = useRef<HTMLDivElement>(null);
   const { writable, onCreateWork, onReply } = options;
@@ -185,9 +195,9 @@ export function MessageActions(options: MessageActionOptions | DmActionOptions) 
     <div ref={group} className="msg-acts ui-reveal" role="group" aria-label={options.kind === 'dm' ? 'Actions on this message' : 'Message actions'}>
       {writable && onReply ? <button type="button" className="msg-acts__b" aria-label="Reply in thread" data-tip="Reply in thread (R)" aria-keyshortcuts="R" onClick={onReply}><Icon name="reply" size={16} /></button> : null}
       {writable ? <button type="button" className="msg-acts__b" aria-label="Create task" data-tip="Create task (T)" aria-keyshortcuts="T" onClick={onCreateWork}><Icon name="plus-circle" size={16} /></button> : null}
-      <button ref={more} type="button" className="msg-acts__b" aria-label="More actions" data-tip="More actions" aria-haspopup="menu" aria-expanded={!!anchor} onClick={(event) => setAnchor(anchor ? null : event.currentTarget)}><Icon name="more" size={16} /></button>
-      {anchor ? <MessageMenu items={items} anchor={anchor} press={false} label="Message actions" messageId={messageOf(options)}
-        onClose={(restore) => { setAnchor(null); if (restore) more.current?.focus(); }} /> : null}
+      <button ref={more} type="button" className="msg-acts__b" aria-label="More actions" data-tip="More actions" aria-haspopup="menu" aria-expanded={open} onClick={(event) => { if (open) setOpen(false); else { setAnchor(event.currentTarget); setOpen(true); } }}><Icon name="more" size={16} /></button>
+      {anchor ? <MessageMenuHost open={open} items={items} anchor={anchor} press={false} label="Message actions" messageId={messageOf(options)}
+        onClose={(restore) => { setOpen(false); if (restore) more.current?.focus(); }} /> : null}
     </div>
   );
 }
@@ -221,7 +231,11 @@ export function useTouchActions<E extends HTMLElement = HTMLLIElement>(options: 
   const touch = useMediaQuery('(hover: none)');
   const items = useMenuItems(options);
   const ref = useRef<E>(null);
-  const [menu, setMenu] = useState<{ kind: 'press' | 'button'; anchor: HTMLElement } | null>(null);
+  // The last menu stays (inert) while it leaves; `menu` is the open one, if any.
+  const [last, setLast] = useState<{ kind: 'press' | 'button'; anchor: HTMLElement } | null>(null);
+  const [shown, setShown] = useState(false);
+  const menu = shown ? last : null;
+  const setMenu = (next: { kind: 'press' | 'button'; anchor: HTMLElement } | null) => { if (next) { setLast(next); setShown(true); } else setShown(false); };
   const [offset, setOffset] = useState(0);
   const [dragging, setDragging] = useState(false);
   const gesture = useRef<{ x: number; y: number; mode: 'idle' | 'swipe' | 'dead'; timer: number; interactive: boolean } | null>(null);
@@ -290,7 +304,7 @@ export function useTouchActions<E extends HTMLElement = HTMLLIElement>(options: 
     <>
       <span className={`msg-swipe${offset >= REPLY_AT ? ' is-ready' : ''}`} aria-hidden="true" hidden={!offset}><Icon name="reply" size={20} /></span>
       <button type="button" className="msg-touch__sr" aria-haspopup="menu" aria-expanded={menu?.kind === 'button'} onClick={(event) => { opener.current = event.currentTarget; setMenu({ kind: 'button', anchor: event.currentTarget.parentElement?.querySelector<HTMLElement>('.message-bubble > p') ?? event.currentTarget }); }}>Message actions</button>
-      {menu ? <MessageMenu items={items} anchor={menu.anchor} press={menu.kind === 'press'} label="Message actions" messageId={messageOf(options)}
+      {last ? <MessageMenuHost open={shown} items={items} anchor={last.anchor} press={last.kind === 'press'} label="Message actions" messageId={messageOf(options)}
         onClose={(restore) => { setMenu(null); if (restore) opener.current?.focus({ preventScroll: true }); }} /> : null}
     </>
   );
