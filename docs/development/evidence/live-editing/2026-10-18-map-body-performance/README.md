@@ -140,8 +140,11 @@ For the failed cohort, input-to-covering-publication p95 was 131.201ms,
 publication-to-peer-receipt 85.446ms, covering-receipt-to-paint 68.343ms and
 two-RAF/recheck 87.157ms. Segment quantiles and superseding publications overlap;
 these values must not be added. The proven reduction in unchanged body renders
-does not establish the end-to-end latency gate. One private, non-acceptance CPU
-profile will locate the next bounded change before another canonical run.
+does not establish the end-to-end latency gate. The subsequent private CPU profile
+identified extra owner-identity visibility work. Its bounded, calibrated observer
+change and separate canonical result are retained in the
+[identity-method report](../2026-10-18-map-identity-method/README.md). That later
+run also fails map500/drag200; neither result accepts the parent gate.
 
 No full application suite was run. #228 stays open and the feature stays off by
 default. Its original criteria, 200ms threshold, cadence, policy and independent
