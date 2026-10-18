@@ -1,0 +1,18 @@
+{
+  "flux-228-promotion-api-default.log": {
+    "sha256": "53a209829f8dee85e38115d95dbf9c7221d3a9687b4c42fa601f75effdb8b208",
+    "bytes": 52667
+  },
+  "flux-228-promotion-api-default-final.log": {
+    "sha256": "364d401a494fe3693277e762fa1948abcb56739bd1021bee2d476d08dbd281ea",
+    "bytes": 44896
+  },
+  "flux-228-promotion-api-off-final.log": {
+    "sha256": "7100490a28dac5ad3b3e06a0039c3fa09512acc9a10a506396ad37ae83d116f6",
+    "bytes": 17993
+  },
+  "flux-228-promotion-api-default-final-build-interrupted.log": {
+    "sha256": "6d289e1cfc187b63701944f4c513c535be8f754cbf1b3914dd3e705d47321c6a",
+    "bytes": 18547
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "initial_tested_head": "72538ab1d58ca4d314cba191fcf5aca91f909965",
+  "final_tested_head": "03590a3afdd3ac08d92a4959a09fe356d3979181",
+  "application_delta": "dfad765bd1379f5779b2b83eef910c4c470fd4df",
+  "contract_head": "7aada55094f7103ebbb89edd42ef998a961394e4",
+  "branch": "codex-hubert/228-map-body-performance",
+  "verification_worktree": "/home/hubert/Develop/flux/.worktrees/228-promotion-verification"
+}
