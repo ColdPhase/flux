@@ -187,6 +187,34 @@ describe('a run on the owner\'s own Claude Code in the agent runtime (F-022 T5, 
     for (const file of await filesUnder(join(slot.config.dataDir, bindingId))) assert.doesNotMatch(await readFile(file, 'utf8').catch(() => ''), /eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\./, file);
   });
 
+  test('F-024: provider suspension stops runtime before launch, during tools and before commit; retained consent recovers', async () => {
+    const suspend = () => pool.query(`INSERT INTO auth_idp_standing (user_id, provider_id, state, reason)
+      VALUES ($1, 'oidc-standing-fixture', 'sign_in_required', 'invalid_grant')
+      ON CONFLICT (user_id, provider_id) DO UPDATE SET state = 'sign_in_required'`, [owner.id]);
+    const recover = () => pool.query(`DELETE FROM auth_idp_standing WHERE user_id = $1 AND provider_id = 'oidc-standing-fixture'`, [owner.id]);
+    try {
+      const before = await ask(); await suspend();
+      assert.equal(await processor.process(before.run.id), 'revoked');
+      assert.equal((await calls()).filter((call) => call.event === 'run').length, 0, 'no CLI compute started');
+      await recover();
+      await script({ calls: [{ name: 'flux_list_contexts' }, { name: 'flux_list_contexts' }], delayMs: 3_000, answer: 'withhold' });
+      const active = await ask(); const processing = processor.process(active.run.id);
+      await waitFor(async () => (await calls()).some((call) => call.event === 'tool_result'), 'the runtime read');
+      await suspend();
+      assert.equal(await processing, 'revoked');
+      assert.equal((await row(active.run.id)).answer_body, null);
+      await recover(); await resetFake();
+      const finalGuard = createPersonalRunProcessor({ uow: personalRunWorkerUnitOfWork(db), connections: noPersonalConnections, compute,
+        runtime: managerPersonalRuntime(config, db), tokens: runTokenIssuer(db, apiUrl), stopPollMs: 50,
+        runtimeCaps: { idleSeconds: 5, wallClockSeconds: 10 }, hooks: { afterDispatch: async () => { await suspend(); } } });
+      const final = await ask();
+      assert.equal(await finalGuard.process(final.run.id), 'revoked');
+      assert.equal((await row(final.run.id)).answer_body, null);
+    } finally { await recover(); await resetFake(); }
+    const resumed = await ask();
+    assert.equal(await processor.process(resumed.run.id), 'completed', 'no replacement consent, grant or payer');
+  });
+
   test('the answer is withheld when access changed after the run started (the commit recheck)', async () => {
     const recheck = createPersonalRunProcessor({ uow: personalRunWorkerUnitOfWork(db), connections: noPersonalConnections, compute,
       runtime: managerPersonalRuntime(config, db), tokens: runTokenIssuer(db, apiUrl), stopPollMs: 50, runtimeCaps: { idleSeconds: 5, wallClockSeconds: 10 },

@@ -43,7 +43,7 @@ export function agentConnectionRepository(db: Database, policy: AgentConnectionP
       isNull(schema.agentConnections.revokedAt))).for('share');
     if (!row) return null;
     // The owner's account must still stand at the identity provider (F-024 S4, #311). Nothing is revoked.
-    if (await idpStandingRepository(tx).refuses(ownerUserId)) return null;
+    if (await idpStandingRepository(tx).refuses(ownerUserId, { lock: true })) return null;
     const selectedProjectIds = await projects(tx, row.id);
     const connection = serialize(row, selectedProjectIds);
     if (mcp) {

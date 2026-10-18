@@ -119,6 +119,28 @@ describe('the run token and the worker as an MCP client of /mcp (F-027 A2, A6; #
     await setWiki('edit');
   });
 
+  test('F-024: provider suspension refuses run-token minting and held run tokens without revoking the assistant', async () => {
+    const runId = await inFlight();
+    const suspend = () => pool.query(`INSERT INTO auth_idp_standing (user_id, provider_id, state, reason)
+      VALUES ($1, 'oidc-standing-fixture', 'sign_in_required', 'invalid_grant')
+      ON CONFLICT (user_id, provider_id) DO UPDATE SET state = 'sign_in_required'`, [owner.id]);
+    const recover = () => pool.query(`DELETE FROM auth_idp_standing WHERE user_id = $1 AND provider_id = 'oidc-standing-fixture'`, [owner.id]);
+    try {
+      await suspend();
+      assert.equal((await mint(runId)).status, 404, 'a real nonce cannot mint for a suspended owner');
+      assert.equal((await row(runId)).run_token_jti, null);
+      await recover();
+      const grant = await token(runId);
+      assert.equal((await mcp(grant.token, 1, 'tools/list')).status, 200);
+      await suspend();
+      // This stack is unmanaged: the universal connection gate refuses with 403. The managed
+      // Keycloak lane separately proves the provider-labelled 401 for every bearer.
+      assert.equal((await mcp(grant.token, 2, 'tools/list')).status, 403);
+      await recover();
+      assert.equal((await mcp(grant.token, 3, 'tools/list')).status, 200, 'the held token and connection recover');
+    } finally { await recover(); await end(runId); }
+  });
+
   test('the API mints one token per in-flight run, only for the nonce the worker armed; it is never stored', async () => {
     const runId = await inFlight();
     const nonce = randomBytes(32).toString('hex');

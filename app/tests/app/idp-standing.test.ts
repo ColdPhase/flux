@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
-import { randomUUID } from 'node:crypto';
+import { generateKeyPairSync, randomUUID, sign } from 'node:crypto';
 import { describe, test } from 'node:test';
+import { PERSONAL_RUN_CONSENT_VERSION, PERSONAL_RUNTIME_CONSENT_VERSION } from '@flux/contracts';
 import { idpStandingRepository, schema } from '@flux/db';
 import type { OidcConfig } from '../../apps/server/src/identity/config.js';
 import { createIdpStanding, openToken, sealKey, sealToken, signInAgainMessage } from '../../apps/server/src/identity/standing.js';
@@ -13,14 +14,24 @@ const config = (providerId: string, standing: 'refresh' | 'off' = 'refresh'): Oi
   providerId, issuer: 'http://idp.test/realms/flux', clientId: 'flux', clientSecret: 'client-secret-xyz', label: 'Acme "login"', standing, standingIntervalMs: 900_000, confirmationMaxAgeMs: 7 * 24 * 3_600_000,
 });
 const authSecret = 'a'.repeat(40);
+const signing = generateKeyPairSync('rsa', { modulusLength: 2048 });
+const jwk = { ...signing.publicKey.export({ format: 'jwk' }), kid: 'standing-test', alg: 'RS256', use: 'sig' };
+function idToken(subject: string, claims: Record<string, unknown> = {}) {
+  const header = Buffer.from(JSON.stringify({ alg: 'RS256', kid: jwk.kid })).toString('base64url');
+  const body = Buffer.from(JSON.stringify({ iss: config('test').issuer, aud: 'flux', sub: subject,
+    iat: Math.floor(Date.now() / 1000), exp: Math.floor(Date.now() / 1000) + 300,
+    email: `changed-${randomUUID()}@example.test`, email_verified: true, name: 'Updated name', ...claims })).toString('base64url');
+  return `${header}.${body}.${sign('sha256', Buffer.from(`${header}.${body}`), signing.privateKey).toString('base64url')}`;
+}
 
 type Reply = { status: number; body?: unknown } | 'throw';
 function scriptedProvider(replies: Reply[]) {
   const calls: { url: string; body: string; authorization?: string }[] = [];
   const fetcher = async (url: string, init: { body?: string; headers?: Record<string, string> }) => {
     if (url.endsWith('/.well-known/openid-configuration')) {
-      return { ok: true, status: 200, json: async () => ({ token_endpoint: 'http://idp.test/token', revocation_endpoint: 'http://idp.test/revoke' }) };
+      return { ok: true, status: 200, json: async () => ({ token_endpoint: 'http://idp.test/token', revocation_endpoint: 'http://idp.test/revoke', jwks_uri: 'http://idp.test/jwks' }) };
     }
+    if (url.endsWith('/jwks')) return { ok: true, status: 200, json: async () => ({ keys: [jwk] }) };
     calls.push({ url, body: init.body ?? '', authorization: init.headers?.authorization });
     if (url.endsWith('/revoke')) return { ok: true, status: 200, json: async () => ({}) };
     const reply = replies.shift() ?? 'throw';
@@ -130,6 +141,42 @@ describe('a provider sign-in', () => {
 });
 
 describe('the check', () => {
+  test('a verified refresh ID token updates only the same subject profile and preserves account provenance', async () => {
+    const id = provider(); const userId = await person(id);
+    const account = (await pool.query('SELECT * FROM auth_accounts WHERE user_id = $1', [userId])).rows[0];
+    const email = `refreshed-${randomUUID()}@example.test`;
+    const { service } = standingFor(id, [{ status: 200, body: { access_token: 'at', refresh_token: 'rotated', id_token: idToken(account.account_id, { email }) } }]);
+    await service.recordSignIn(userId, 'old-token'); await due(userId);
+    assert.equal(await service.runOnce(), 1);
+    const user = (await pool.query('SELECT name, email, email_verified FROM auth_users WHERE id = $1', [userId])).rows[0];
+    assert.deepEqual(user, { name: 'Updated name', email, email_verified: true });
+    assert.deepEqual((await pool.query('SELECT * FROM auth_accounts WHERE user_id = $1', [userId])).rows[0], account, 'issuer/subject and sign-in facts do not change');
+    assert.equal(openToken(key, userId, id, (await row(userId)).refresh_token_enc), 'rotated');
+  });
+
+  test('invalid, unverified, substituted and colliding refresh claims never transfer an account or lose rotation', async () => {
+    const id = provider(); const userId = await person(id); const other = await insertedHuman('profile-holder');
+    const account = (await pool.query('SELECT * FROM auth_accounts WHERE user_id = $1', [userId])).rows[0];
+    const original = (await pool.query('SELECT name, email, email_verified FROM auth_users WHERE id = $1', [userId])).rows[0];
+    const held = (await pool.query('SELECT email FROM auth_users WHERE id = $1', [other.id])).rows[0].email;
+    const valid = idToken(account.account_id);
+    const badSignature = `${valid.slice(0, valid.lastIndexOf('.') + 1)}${Buffer.alloc(256).toString('base64url')}`;
+    const cases = [badSignature, idToken(account.account_id, { iss: 'https://other.test' }),
+      idToken(account.account_id, { aud: 'another-client' }), idToken(account.account_id, { exp: 1 }),
+      idToken(account.account_id, { email_verified: false }), idToken('another-subject'), idToken(account.account_id, { email: held })];
+    const { service, logs } = standingFor(id, cases.map((token, index) => ({ status: 200, body: { access_token: 'at', refresh_token: `rotated-${index}`, id_token: token } })));
+    await service.recordSignIn(userId, 'old-token');
+    for (let index = 0; index < cases.length; index += 1) {
+      await due(userId); assert.equal(await service.runOnce(), 1);
+      assert.deepEqual((await pool.query('SELECT name, email, email_verified FROM auth_users WHERE id = $1', [userId])).rows[0], original);
+      assert.equal(openToken(key, userId, id, (await row(userId)).refresh_token_enc), `rotated-${index}`);
+      assert.equal(await service.stands(userId), true, 'profile refusal is not an invalid_grant');
+    }
+    assert.equal(logs.filter((line) => line.includes('Skipped the identity provider profile update')).length, cases.length);
+    assert.ok(cases.every((token) => !logs.join('').includes(token)), 'ID tokens stay out of logs');
+    assert.deepEqual((await pool.query('SELECT * FROM auth_accounts WHERE user_id = $1', [userId])).rows[0], account);
+  });
+
   test('success renews the confirmation and stores a rotated token in the same write', async () => {
     const id = provider();
     const { service, script, logs } = standingFor(id, [{ status: 200, body: { access_token: 'at', refresh_token: 'rotated-token' } }, { status: 200, body: { access_token: 'at' } }]);
@@ -262,7 +309,28 @@ describe('the check', () => {
     assert.equal((await row(userId)).state, 'sign_in_required');
   });
 
-  test('only identities with a live session or MCP grant are checked', async () => {
+  test('a protected commit retains healthy standing until its transaction finishes', async () => {
+    const id = provider(); const userId = await person(id);
+    const rows = idpStandingRepository(db);
+    await standingFor(id, []).service.recordSignIn(userId, 'kept-token'); await due(userId);
+    const [claim] = await rows.claim(new Date(), 30_000, 20, randomUUID());
+    assert.equal(claim?.userId, userId);
+    const writer = await pool.connect();
+    try {
+      await db.transaction(async (tx) => {
+        assert.equal(await idpStandingRepository(tx).refuses(userId, { lock: true }), false);
+        await writer.query('BEGIN'); await writer.query("SET LOCAL lock_timeout = '150ms'");
+        await assert.rejects(writer.query(`UPDATE auth_idp_standing SET state = 'sign_in_required' WHERE user_id = $1`, [userId]),
+          (error: unknown) => !!error && typeof error === 'object' && 'code' in error && error.code === '55P03');
+        await writer.query('ROLLBACK');
+      });
+      const now = new Date();
+      assert.equal(await rows.finish(claim!, { outcome: 'sign_in_required', reason: 'invalid_grant' }, now, now), true);
+      assert.equal(await rows.refuses(userId), true, 'the next operation sees the committed suspension');
+    } finally { await writer.query('ROLLBACK'); writer.release(); }
+  });
+
+  test('an idle identity without browser, MCP or automation authority is not checked', async () => {
     const id = provider();
     const { service, script } = standingFor(id, [{ status: 200, body: { access_token: 'at' } }]);
     const idle = await person(id, { session: false });
@@ -270,6 +338,33 @@ describe('the check', () => {
     await due(idle);
     assert.equal(await service.runOnce(), 0);
     assert.equal(script.tokenCalls().length, 0);
+  });
+
+  for (const engine of ['server', 'runtime'] as const) test(`automation-only ${engine} owner stays checked through suspension and recovery`, async () => {
+    const id = provider();
+    const { service, script } = standingFor(id, [
+      { status: 400, body: { error: 'invalid_grant' } },
+      { status: 200, body: { access_token: 'at' } },
+    ]);
+    const userId = await person(id, { session: false });
+    await db.insert(schema.personalRunEnablements).values({
+      ownerUserId: userId, consentVersion: engine === 'runtime' ? PERSONAL_RUNTIME_CONSENT_VERSION : PERSONAL_RUN_CONSENT_VERSION,
+      consentProvider: 'anthropic', consentModel: 'fixture',
+      consentPayerOrganization: 'owner', consentPayerWorkspace: 'owner', engine,
+    });
+    await service.recordSignIn(userId, 'kept-offline-token');
+    await due(userId);
+    assert.equal(await service.runOnce(), 1, 'enabled automation needs no browser or MCP refresh token');
+    assert.equal(await service.stands(userId), false);
+    assert.equal(await sessions(userId), 0);
+    await due(userId);
+    assert.equal(await service.runOnce(), 1, 'suspension does not remove eligibility (N5)');
+    assert.equal(await service.stands(userId), true);
+    assert.equal(script.tokenCalls().length, 2);
+    assert.equal(openToken(key, userId, id, (await row(userId)).refresh_token_enc), 'kept-offline-token');
+    await pool.query(`UPDATE personal_run_enablements SET status = 'paused' WHERE owner_user_id = $1`, [userId]);
+    await due(userId);
+    assert.equal(await service.runOnce(), 0, 'paused automation alone is idle');
   });
 });
 

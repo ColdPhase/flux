@@ -67,6 +67,9 @@ async function fixture() {
 
 type Fixture = Awaited<ReturnType<typeof fixture>>;
 const changes: Array<{ name: string; phase: 'count' | 'message'; reason: string; change(f: Fixture): Promise<unknown> }> = [
+  ...(['count', 'message'] as const).map((phase) => ({ name: `provider suspension during ${phase}`, phase, reason: 'ACCESS_CHANGED',
+    async change(f: Fixture) { await pool.query(`INSERT INTO auth_idp_standing (user_id, provider_id, state, reason)
+      VALUES ($1, 'oidc-standing-fixture', 'sign_in_required', 'invalid_grant')`, [f.owner.id]); } })),
   { name: 'pause during token counting', phase: 'count', reason: 'AUTHORIZATION_CHANGED',
     async change(f) { expectStatus(await f.owner.browser.request('PATCH', `/api/v1/proactive-comparison-rules/${f.rule.id}`,
       { body: { expectedVersion: f.rule.version, status: 'paused' } }), 200); } },
