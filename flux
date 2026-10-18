@@ -1289,15 +1289,14 @@ cmd_cowork() (
   fi
   rm -f "$COWORK_STATE/login-status"
   url_config=$(cowork_helper url-config)
-  resource_config=$(cowork_helper resource-config)
   instructions=$(cowork_helper instructions "$action")
   # Inline configuration does not write the person's global config or instruction files.
   if [ ! -f "$COWORK_STATE/oauth-authorized" ]; then
-    codex -c "$url_config" -c "$resource_config" -c 'mcp_servers.flux.required=true' mcp login flux || die "Flux authorization did not complete."
+    codex -c "$url_config" -c 'mcp_servers.flux.required=true' mcp login flux || die "Flux authorization did not complete."
     : >"$COWORK_STATE/oauth-authorized"
   fi
   set -- exec --ignore-user-config --json --skip-git-repo-check --sandbox workspace-write \
-    -c "$url_config" -c "$resource_config" -c 'mcp_servers.flux.required=true' -c "$instructions" \
+    -c "$url_config" -c 'mcp_servers.flux.required=true' -c "$instructions" \
     -c 'features.apps=false' -c 'features.plugins=false' -c 'features.remote_plugin=false'
   if [ "$action" = resume ]; then set -- "$@" resume "$(cowork_helper thread)"; fi
   # A finite owned child invocation, with no idle model polling or unrelated process termination.

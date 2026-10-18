@@ -68,7 +68,7 @@ test('real configured accounts: supplied Start and Resume reach the model and pr
         let binding: CoworkHostBinding = { schema: 'flux.cowork.host/1', ...coworkHostScope(origin, String(connection.id), projectId, 'codex', home.cwd),
           threadId: null, outcome: 'new', updatedAt: new Date().toISOString() };
         const config = ['-c', `mcp_servers.flux.url=${JSON.stringify(coworkHostUrl(binding))}`,
-          '-c', `mcp_servers.flux.oauth_resource=${JSON.stringify(`${origin}/mcp`)}`, '-c', 'mcp_servers.flux.required=true'];
+          '-c', 'mcp_servers.flux.required=true'];
         const clientId = await seedOauthClient(pool, spec);
         const fixtureConfig = [...config, '-c', `mcp_servers.flux.oauth.client_id=${JSON.stringify(clientId)}`,
           '-c', `mcp_oauth_callback_port=${spec.port}`, '-c', `mcp_servers.flux.oauth.callback_url=${JSON.stringify(`http://127.0.0.1:${spec.port}/callback`)}`,

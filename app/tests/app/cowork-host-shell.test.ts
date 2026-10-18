@@ -44,7 +44,7 @@ console.log(JSON.stringify({type:'turn.completed'}));
     const args = (await readFile(env.COWORK_ARGS, 'utf8')).trim().split('\n').map(line => JSON.parse(line) as string[]);
     assert.equal(args.filter(row => row.includes('login')).length, 1, 'Resume reuses its existing native OAuth credential');
     assert.ok(args.some(row => row.includes('resume') && row.includes(native)));
-    assert.ok(args.filter(row => row[0] === 'exec').every(row => row.some(arg => arg.includes('oauth_resource="https://flux.example/mcp"'))));
+    assert.ok(args.filter(row => row[0] === 'exec').every(row => row.some(arg => arg.startsWith('mcp_servers.flux.url="https://flux.example/mcp?flux_connection=')) && !row.some(arg => arg.includes('oauth_resource='))));
     assert.equal(await readFile(sentinel, 'utf8'), 'user configuration is preserved\n');
     const directories = await readdir(join(root, 'state', 'flux', 'cowork'));
     const files = await readdir(join(root, 'state', 'flux', 'cowork', directories[0]!));
