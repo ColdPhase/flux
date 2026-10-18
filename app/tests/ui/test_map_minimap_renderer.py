@@ -147,19 +147,24 @@ class MinimapRenderer(LiveFixture):
             await ada.mouse.move(bounds['x']+20,bounds['y']+20)
             await ada.mouse.down()
             frames = []
+            style_reads = await kai.evaluate('window.__minimapStyleReads')
             for step in range(1,4):
                 previous = await peer.get_attribute('data-live-preview-sequence')
                 await ada.mouse.move(bounds['x']+40+step*12,bounds['y']+30+step*8,steps=2)
                 await expect(peer).to_have_attribute('data-live-mover','Ada North')
                 await expect(peer).not_to_have_attribute('data-live-preview-sequence', previous or '')
+                self.assertEqual(await kai.evaluate('window.__minimapStyleReads'), style_reads,
+                                 'Production movement does not resolve the minimap palette again')
                 result = await self.reference(kai,f'500-preview-{step}',controls=True)
+                style_reads = await kai.evaluate('window.__minimapStyleReads')
                 self.assertEqual(result['count'],500)
                 self.assertEqual(result['clamped'],500)
                 frames.append(result['frame'])
             await expect(peer).not_to_have_attribute('data-thought-x',initial)
             self.assertGreater(len({f['k'] for f in frames}),1,'Live upper-bound movement still refits the complete minimap')
-            # reference() reads style once per observation; production must not read it per preview.
-            self.assertEqual(await kai.evaluate('window.__minimapStyleReads'),3)
+            # Observe production between reference/screenshot calls: the screenshot harness
+            # also reads styles and must not be misattributed to the application.
+            self.assertEqual(await kai.evaluate('window.__minimapStyleReads'),style_reads)
             self.assertEqual(await kai.evaluate('window.__minimapMutations'),[])
         finally:
             await ada.mouse.up()

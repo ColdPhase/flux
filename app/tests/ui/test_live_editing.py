@@ -746,6 +746,10 @@ class LiveEditingJourney(LiveFixture):
         await ada.keyboard.press('Backspace')
         await compose(ada_field)
         await expect(ada.get_by_role('status').filter(has_text='All changes shared')).to_be_visible()
+        # The peer's100k editor virtualizes the beginning while its caret stays there.
+        # Reach the committed end through its real keyboard before inspecting that text.
+        await kai_field.click()
+        await kai.keyboard.press('Control+End')
         await expect(kai_field).to_contain_text('日本 notes')
         expected = 'r' * 99_992 + '日本 notes'
         for page in (ada, kai):
