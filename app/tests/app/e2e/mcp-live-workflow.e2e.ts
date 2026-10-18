@@ -22,7 +22,11 @@ test('real configured accounts: supplied Start and Resume reach the model and pr
     const proxy = startFluxProxy(); await proxy.listen();
     const browser = await chromium.launch({ headless: true, args: ['--no-sandbox'] });
     try {
-      for (const client of ['codex', 'claude'] as const) await t.test(client, async () => {
+      const only = process.env.FLUX_TEST_MCP_LIVE_CLIENT;
+      assert.ok(!only || only === 'codex' || only === 'claude', 'Select only codex or claude, or omit the client selector');
+      for (const client of ['codex', 'claude'] as const) {
+        if (only && only !== client) continue;
+        await t.test(client, async () => {
         const startedAt = Date.now();
         const spec: ClientSpec = { key: `live-${client}`, client, label: `Live ${client}`, designation: client === 'codex' ? 'codex' : 'claude_code',
           port: client === 'codex' ? 19831 : 19832 };
@@ -60,21 +64,37 @@ test('real configured accounts: supplied Start and Resume reach the model and pr
         if (client === 'codex') symlinkSync('/run/flux-live/codex-auth.json', join(home.env.CODEX_HOME!, 'auth.json'));
         else symlinkSync('/run/flux-live/claude-credentials.json', join(home.env.CLAUDE_CONFIG_DIR!, '.credentials.json'));
         await connectClient(browser, email, home, await seedOauthClient(pool, spec));
+        // This native thread belongs only to this fresh fixture HOME and immutable connection/project.
+        // Never consult the person's global history or use --last to select it.
+        let codexThreadId: string | null = null;
         async function invoke(action: 'start' | 'resume') {
           const input = client === 'claude' ? `/mcp__flux__${action}_work ${projectId}` : `${action === 'start' ? 'Start' : 'Resume'} work on Flux`;
+          if (client === 'codex' && action === 'resume') assert.ok(codexThreadId, 'Resume needs the exact thread issued by this fixture’s Start');
           const result = client === 'codex'
-            ? await sh('codex', ['exec', '--json', '--skip-git-repo-check', '--dangerously-bypass-approvals-and-sandbox', input], home.env, home.cwd)
+            ? await sh('codex', ['exec', '--json', '--skip-git-repo-check', '--dangerously-bypass-approvals-and-sandbox',
+              // The reviewed pinned runtime switches also keep this fixture out of account-connected app data.
+              // Keep native code-mode/resource tooling: the external MCP path actually needs it.
+              '-c', 'features.apps=false', '-c', 'features.plugins=false', '-c', 'features.remote_plugin=false',
+              ...(action === 'resume' ? ['resume', codexThreadId!] : []), input], home.env, home.cwd)
             : await sh(claudeBin, ['-p', input, '--output-format', 'stream-json', '--verbose', '--allowedTools', 'mcp__flux', '--max-turns', '20'], home.env, home.cwd);
-          const failure = /usage_limit|rate_limit|rate limit|weekly limit|authentication_error|401 Unauthorized|not logged in/i.test(result.output);
+          const categories = ['usage_limit', 'rate_limit', 'rate limit', 'weekly limit', 'authentication_error', '401 Unauthorized', 'not logged in']
+            .filter(marker => result.output.toLowerCase().includes(marker.toLowerCase()));
+          const failure = categories.length > 0;
+          if (failure) console.log('LIVE_NATIVE_ACCOUNT_STOP', JSON.stringify({ client, action, categories }));
           assert.ok(!failure, `${client}: configured-account authentication or usage limit; stop this provider, do not retry or substitute a payer`);
           assert.equal(result.code, 0, `${client}: native ${action} did not finish within the bounded invocation`);
           const events = clientEvents(result.output);
-          const names = new Set<string>();
-          for (const event of events) {
-            if (event.type === 'item.completed' && event.item?.type === 'mcp_tool_call') names.add(String(event.item.tool));
-            for (const block of event.message?.content ?? []) if (block.type === 'tool_use') names.add(String(block.name));
+          if (client === 'codex' && action === 'start') {
+            const native = events.find(event => event.type === 'thread.started') as { thread_id?: string } | undefined;
+            assert.ok(native?.thread_id && /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$/.test(native.thread_id), 'Start must report its own native thread ID');
+            codexThreadId = native.thread_id;
           }
-          console.log('LIVE_NATIVE_WORKFLOW_TURN', JSON.stringify({ client, action, tools: [...names].sort() }));
+          const calls: string[] = [];
+          for (const event of events) {
+            if (event.type === 'item.completed' && event.item?.type === 'mcp_tool_call') calls.push(String(event.item.tool));
+            for (const block of event.message?.content ?? []) if (block.type === 'tool_use') calls.push(String(block.name));
+          }
+          console.log('LIVE_NATIVE_WORKFLOW_TURN', JSON.stringify({ client, action, toolCalls: calls.length, tools: [...new Set(calls)].sort() }));
         }
         await invoke('start');
         const tasks = (await pool.query(`SELECT w.id,w.criteria,i.intent_key FROM project_work_items w
@@ -98,6 +118,7 @@ test('real configured accounts: supplied Start and Resume reach the model and pr
         assert.ok(acks.length >= 1, `${client}: real model acknowledged the supplied bundle`);
         console.log('LIVE_NATIVE_WORKFLOW_RESULT', JSON.stringify({ client, elapsedMs: Date.now() - startedAt,
           tasks: 1, durableOrientation: true, changedPlanResult: true, projectId, connectionId: connection.id }));
-      });
+        });
+      }
     } finally { await browser.close(); await proxy.close(); await pool.end(); }
   });

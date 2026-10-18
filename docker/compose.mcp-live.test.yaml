@@ -7,21 +7,6 @@ services:
       - label=disable
     volumes:
       # The small live fixture can be rerun against unchanged built production images; print its SHA in the run.
-      - type: bind
-        source: ../app/tests/app/e2e/mcp-live-workflow.e2e.ts
-        target: /app/tests/app/e2e/mcp-live-workflow.e2e.ts
-        read_only: true
-        bind:
-          create_host_path: false
-      - type: bind
-        source: ${FLUX_CODEX_AUTH_FILE:?Set the explicit authorized Codex auth.json path}
-        target: /run/flux-live/codex-auth.json
-        read_only: true
-        bind:
-          create_host_path: false
-      - type: bind
-        source: ${FLUX_CLAUDE_CREDENTIALS_FILE:?Set the explicit authorized Claude credentials path}
-        target: /run/flux-live/claude-credentials.json
-        read_only: true
-        bind:
-          create_host_path: false
+      - ../app/tests/app/e2e/mcp-live-workflow.e2e.ts:/app/tests/app/e2e/mcp-live-workflow.e2e.ts:ro
+      - ${FLUX_CODEX_AUTH_FILE:?Set the explicit authorized Codex auth.json path}:/run/flux-live/codex-auth.json:ro
+      - ${FLUX_CLAUDE_CREDENTIALS_FILE:?Set the explicit authorized Claude credentials path}:/run/flux-live/claude-credentials.json:ro
