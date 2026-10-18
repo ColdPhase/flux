@@ -477,20 +477,30 @@ class LiveEditingJourney(LiveFixture):
         async def copied_document(page, content):
             # The viewport DOM is virtualized and includes named cursor widgets.
             # Observe the actual editor's ordinary Select All/Copy path instead.
-            # A fresh sentinel prevents an old clipboard value from passing.
-            await page.context.grant_permissions(['clipboard-read', 'clipboard-write'], origin=ORIGIN)
+            # Read the actual full clipboard through trusted native Copy/Paste on both engines.
+            # WebKit does not expose Chromium's clipboard-write permission. A fresh sentinel is
+            # copied first so a failed editor Copy cannot pass with an older document value.
             sentinel = 'fresh-copy-' + str(uuid.uuid4())
-            await page.evaluate('value => navigator.clipboard.writeText(value)', sentinel)
-            await content.click()
-            await page.keyboard.press('Control+a')
-            await page.keyboard.press('Control+c')
+            await page.evaluate('value => { const probe = document.createElement("textarea"); probe.id = "live-clipboard-probe"; probe.value = value; probe.style.cssText = "position:fixed;left:0;top:0;width:12px;height:12px;z-index:2147483647"; document.body.append(probe); }', sentinel)
+            probe = page.locator('#live-clipboard-probe')
             try:
-                await page.wait_for_function('async value => (await navigator.clipboard.readText()) !== value', arg=sentinel, timeout=5000)
-                text = await page.evaluate('() => navigator.clipboard.readText()')
+                await probe.click()
+                await page.keyboard.press('Control+a')
+                await page.keyboard.press('Control+c')
+                await content.click()
+                await page.keyboard.press('Control+a')
+                await page.keyboard.press('Control+c')
+                await probe.click()
+                await page.keyboard.press('Control+a')
+                await page.keyboard.press('Control+v')
+                await expect(probe).not_to_have_value(sentinel)
+                text = await probe.input_value()
                 self.assertIsInstance(text, str)
                 self.assertLessEqual(len(text), 100_000)
                 return text
             finally:
+                await probe.evaluate('(element) => element.remove()')
+                await content.click()
                 await page.keyboard.press('Control+End')
         async def confirmed_body(key, exact_local=True):
             page = self.pages[key]

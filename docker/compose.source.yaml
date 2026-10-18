@@ -118,6 +118,7 @@ services:
       # Web Push (issue #41). The API only needs the public key; empty reports push unavailable.
       FLUX_VAPID_PUBLIC_KEY: ${FLUX_VAPID_PUBLIC_KEY:-}
       FLUX_STREAM_HEARTBEAT_MS: ${FLUX_STREAM_HEARTBEAT_MS:-25000}
+      FLUX_LIVE_EDITING: ${FLUX_LIVE_EDITING:-on}
       # Owner AI connections (#179, F-020): private targets an OpenAI-compatible endpoint may reach.
       # Empty allows public HTTPS endpoints only. See docs/development/containers.md.
       FLUX_AI_PRIVATE_TARGETS: ${FLUX_AI_PRIVATE_TARGETS:-}
@@ -336,6 +337,7 @@ services:
       # API container and must decrypt the same Better Auth JWKS.
       FLUX_AUTH_SECRET: ${FLUX_AUTH_SECRET:?Set FLUX_AUTH_SECRET}
       FLUX_TEST_STATE_DIR: /state
+      FLUX_LIVE_EDITING: ${FLUX_LIVE_EDITING:-on}
       FLUX_STREAM_HEARTBEAT_MS: ${FLUX_STREAM_HEARTBEAT_MS:-25000}
     volumes:
       - teststate:/state
@@ -363,6 +365,8 @@ services:
       FLUX_UI_UPSTREAM: api:8080
       FLUX_MAILPIT_URL: http://mailpit:8025
       FLUX_UI_SCREENSHOTS: /screenshots
+      FLUX_LIVE_EDITING: ${FLUX_LIVE_EDITING:-on}
+      FLUX_LIVE_EDITING_TEST: ${FLUX_LIVE_EDITING_TEST:-0}
       # TEST ONLY (#68): the browser tests script the mock provider's next answers.
       FLUX_ANTHROPIC_MOCK_URL: http://anthropic-mock:8090
       # TEST ONLY (#179): an OpenAI-compatible endpoint for the connection settings form.

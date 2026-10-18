@@ -7,6 +7,7 @@ first (the earlier "Write together" flash) and keeps the ordinary map's immediat
 from __future__ import annotations
 
 import json
+import os
 import re
 import time
 import unittest
@@ -28,6 +29,7 @@ WATCH = r"""
 """
 
 
+@unittest.skipUnless(os.environ.get('FLUX_LIVE_EDITING') == 'off', 'Explicit operator opt-out lane; normal installs use live editing')
 class LiveEditingOffJourney(unittest.TestCase):
     state: dict | None = None
     doc_url = ""

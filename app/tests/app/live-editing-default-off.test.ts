@@ -7,30 +7,35 @@ import { buildApp } from '../../apps/server/src/app.js';
 import { loadServerConfig } from '../../apps/server/src/config.js';
 import { developmentQueueTelemetry } from '../../apps/server/src/editing/telemetry.js';
 
-// #228/#239: live map/wiki is required in v0.1 and stays behind the default-off development switch
-// until all four F-021 gates pass. Only FLUX_DEVELOPMENT_LIVE_EDITING=true selects it; without it
-// the built API reports the capability unavailable, refuses the live routes, accepts no editing
-// socket and emits no live telemetry, even when the telemetry variables are set.
+// #228 production configuration and explicit opt-out. Promotion is accepted only with the original
+// whole-issue gates; a diagnostic marker never overrides the production opt-out.
 const base: NodeJS.ProcessEnv = {
   ...process.env,
   FLUX_AUTH_SECRET: process.env.FLUX_AUTH_SECRET ?? `live-default-off-${'x'.repeat(40)}`,
   FLUX_PUBLIC_ORIGIN: process.env.FLUX_PUBLIC_ORIGIN ?? 'http://127.0.0.1:8080',
 };
 delete base.FLUX_DEVELOPMENT_LIVE_EDITING;
+delete base.FLUX_LIVE_EDITING;
 const load = (env: NodeJS.ProcessEnv) => loadServerConfig(env, '/nonexistent/flux_background_key');
 
-test('only FLUX_DEVELOPMENT_LIVE_EDITING=true selects live editing; it is off by default', () => {
-  assert.equal(load(base).developmentLiveEditing, false);
-  for (const value of ['', '1', 'TRUE', 'True', 'yes', 'on', ' true', 'true ']) {
-    assert.equal(load({ ...base, FLUX_DEVELOPMENT_LIVE_EDITING: value }).developmentLiveEditing, false, JSON.stringify(value));
+test('normal production live editing defaults on, explicit off wins and diagnostics are separate', () => {
+  for (const nodeEnv of ['production', 'development', 'test']) {
+    assert.equal(load({ ...base, NODE_ENV: nodeEnv }).liveEditing, true);
+    for (const value of ['', 'on']) assert.equal(load({ ...base, NODE_ENV: nodeEnv, FLUX_LIVE_EDITING: value }).liveEditing, true);
   }
+  assert.equal(load(base).developmentLiveEditing, false);
+  assert.equal(load({ ...base, FLUX_LIVE_EDITING: 'off', FLUX_DEVELOPMENT_LIVE_EDITING: 'true' }).liveEditing, false);
+  for (const value of ['1', 'TRUE', 'true', 'false', 'yes', ' on', 'off '])
+    assert.throws(() => load({ ...base, FLUX_LIVE_EDITING: value }), /FLUX_LIVE_EDITING must be on or off/, JSON.stringify(value));
   assert.equal(load({ ...base, FLUX_DEVELOPMENT_LIVE_EDITING: 'true' }).developmentLiveEditing, true);
   // Telemetry needs the switch too: the variables alone produce no recorder.
   const telemetryEnv = { FLUX_DEVELOPMENT_LIVE_EDITING_TELEMETRY: '1', FLUX_DEVELOPMENT_LIVE_EDITING_API_INSTANCE: 'api-one' };
-  assert.equal(developmentQueueTelemetry(telemetryEnv, false, () => { throw new Error('not read when off'); }), null);
+  const ordinary = load({ ...base, ...telemetryEnv });
+  assert.equal(developmentQueueTelemetry(telemetryEnv, ordinary.liveEditing && ordinary.developmentLiveEditing,
+    () => { throw new Error('not read without the isolated diagnostic marker'); }), null);
 });
 
-test('the default API reports live editing unavailable, refuses its routes and opens no editing socket', { timeout: 30_000 }, async () => {
+test('an explicitly opted-out API reports unavailable, refuses routes/socket and emits no telemetry even with diagnostic opt-ins', { timeout: 30_000 }, async () => {
   const writes: string[] = [];
   const write = process.stdout.write.bind(process.stdout);
   // Records stdout while this API runs, to prove no live telemetry is emitted when off.
@@ -40,8 +45,9 @@ test('the default API reports live editing unavailable, refuses its routes and o
   }) as typeof process.stdout.write;
   let app: Awaited<ReturnType<typeof buildApp>> | undefined;
   try {
-    const config = load({ ...base, FLUX_DEVELOPMENT_LIVE_EDITING_TELEMETRY: '1', FLUX_DEVELOPMENT_LIVE_EDITING_API_INSTANCE: 'api-one' });
-    assert.equal(config.developmentLiveEditing, false);
+    const config = load({ ...base, FLUX_LIVE_EDITING: 'off', FLUX_DEVELOPMENT_LIVE_EDITING: 'true',
+      FLUX_DEVELOPMENT_LIVE_EDITING_TELEMETRY: '1', FLUX_DEVELOPMENT_LIVE_EDITING_API_INSTANCE: 'api-one' });
+    assert.equal(config.liveEditing, false);
     const server = await buildApp(config);
     app = server;
     const address = await server.listen({ host: '127.0.0.1', port: 0 });
