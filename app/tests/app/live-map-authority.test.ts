@@ -176,7 +176,10 @@ test('project delivery checks each producer session once, preserves first policy
     sessionLocks.clear();sketchLocks=0;
     const visible:string[]=[];
     await backend.deliver(who(f.ownerSession),f.sketch.id,head.generation,0,value=>{
-      visible.push(...value.transient.map(item=>`${item.type}:${item.connectionId}`));
+      visible.push(...value.transient.map(item=>{
+        if(item.type==='map-clear')assert.fail('The populated live producers have no clear receipt');
+        return `${item.type}:${item.connectionId}`;
+      }));
     });
     assert.deepEqual(visible.sort(),connections.flatMap(connection=>[`map-move:${connection}`,`map-presence:${connection}`]).sort());
     for(const producer of producers)assert.equal(sessionLocks.get(producer.sessionId),1,'each distinct session keeps its own first FOR SHARE fence');
