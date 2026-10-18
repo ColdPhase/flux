@@ -214,7 +214,7 @@ export class SharedMap {
     if (notify && gesture.serverLease) this.connection?.send({ type: 'map-cancel', generation: gesture.serverLease.generation, gestureId: gesture.id, leaseId: gesture.serverLease.leaseId });
   }
   destroy() {
-    this.cancel(true); this.stopped = true; this.presenceStore.clear(); this.abort.abort(); this.connection?.close(); window.clearInterval(this.timer);
+    this.cancel(true); this.stopped = true; this.previews.clear(); this.retiredPreviews.clear(); this.presenceStore.clear(); this.abort.abort(); this.connection?.close(); window.clearInterval(this.timer);
     if (this.cursorTimer !== null) window.clearTimeout(this.cursorTimer);
     window.removeEventListener('pagehide', this.leaving); window.removeEventListener('beforeunload', this.leaving);
     if (this.previewTimer !== null) window.clearTimeout(this.previewTimer);
