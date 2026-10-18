@@ -56,7 +56,8 @@ def main() -> int:
     out = args.evidence.resolve(); out.mkdir(parents=True, mode=0o700, exist_ok=False)
     paths = subprocess.check_output(["git", "ls-files", "-z", "app", "docker", "flux", "scripts/backup-fixture.mjs", "scripts/identity-closeout"], cwd=ROOT).decode().split("\0")
     (out / "source.json").write_text(json.dumps({"candidate": candidate, "base": BASE,
-        "command": ["python3", "scripts/identity-closeout/bridge.py", "--candidate", candidate, "--evidence", str(out), "--port", str(args.port)],
+        "command": ["python3", "scripts/identity-closeout/bridge.py", "--candidate", candidate, "--evidence", str(out), "--port", str(args.port),
+            *(["--native-seed-only"] if args.native_seed_only else [])],
         "files": {path: digest(ROOT / path) for path in paths if path and (ROOT / path).is_file()}}, indent=2) + "\n")
     private = out / "private"; private.mkdir(mode=0o700)
     state = private / "state"; state.mkdir(mode=0o700)
@@ -173,7 +174,13 @@ def main() -> int:
         run("worktree", ["git", "worktree", "add", "--detach", str(checkout), BASE])
         override(True)
         run("provider", provider_cmd("up", "-d", "--wait"))
+        # Seed the actual pre-SSO instance before configuring its provider. With a provider,
+        # membership lookup by an unverified address is correctly refused even in prepare mode;
+        # the maintained demo/backup fixture intentionally creates ordinary password accounts.
+        provider_settings = {key: host_env[key] for key in ["FLUX_OIDC_ISSUER", "FLUX_OIDC_CLIENT_ID", "FLUX_SSO_MODE"]}
+        host_env.update({"FLUX_OIDC_ISSUER": "", "FLUX_OIDC_CLIENT_ID": "", "FLUX_SSO_MODE": "sso"})
         run("baseline-up", [str(checkout / "flux"), "up"])
+        runtime("native-started")
         values = env_file(checkout / "docker/.env")
         hidden.update(value for key, value in values.items() if re.search(r"PASSWORD|SECRET|PRIVATE_KEY|TOKEN", key) and value)
         run("baseline-demo", [str(checkout / "flux"), "demo"], private_output=True)
@@ -190,6 +197,8 @@ def main() -> int:
         seeded = run("native-data", fixture_cmd, env=fixture_env, stdin=(ROOT / "scripts/backup-fixture.mjs").read_text(), private_output=True)
         native = json.loads(next(line.removeprefix("FLUX_FIXTURE ") for line in seeded.stdout.splitlines() if line.startswith("FLUX_FIXTURE ")))
         (state / "native-fixture.json").write_text(json.dumps(native)); (state / "native-fixture.json").chmod(0o600)
+        host_env.update(provider_settings)
+        run("baseline-enable-provider", compose("up", "-d", "--wait", "api"))
         # The helper is a separately pinned test artifact; its image runs candidate toolchain, not the baseline API.
         run("browser-image", ["docker", "build", "--file", str(ROOT / "docker/Dockerfile"), "--target", "e2e", "--tag", e2e_image, str(ROOT / "app")])
         helper("link", BASE)
