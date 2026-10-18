@@ -1,0 +1,54 @@
+{
+ "collected_at": "2026-10-18T11:29:01+00:00",
+ "db": {
+  "image": "postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873 sha256:c293117fcecda7344b5480222e813b9f673d7abd69b1dd95eff239b768b04f59",
+  "version": "PostgreSQL 18.6"
+ },
+ "dependencies": {
+  "@codemirror/state": "6.7.6",
+  "@codemirror/view": "6.43.13",
+  "pnpm_lock_sha256": "d34264e9ac2a877f045b3c190d6be025dfc2a8b84cc67b42eeb5dd7200cb6e22",
+  "ws": "8.22.0",
+  "y-codemirror.next": "0.3.6",
+  "yjs": "13.6.33"
+ },
+ "docker_limits": {
+  "api-one": {
+   "cpus": "unset",
+   "image": "flux-foundation:flux-live-editing-1792322692-1155254 sha256:0fc39e46eabbe13ff0fa9c0df7f72751c93508d6c5d0e37386e508d5ccaf4f94",
+   "memory_bytes": "unset",
+   "pids_limit": "unset"
+  },
+  "db": {
+   "cpus": "unset",
+   "image": "postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873 sha256:c293117fcecda7344b5480222e813b9f673d7abd69b1dd95eff239b768b04f59",
+   "memory_bytes": "unset",
+   "pids_limit": "unset"
+  }
+ },
+ "driver_sha256": "854ebf24f86d91108e73255a3a6544cf930641f06aaf0febee95b5285166f2b4",
+ "hardware": {
+  "cpu": "AMD Ryzen 9 7900X 12-Core Processor",
+  "logical_cores": 24,
+  "memory_bytes": 66457145344
+ },
+ "network": {
+  "condition": "healthy-local",
+  "setup": "One Docker Compose bridge network on one host: the Playwright container opens a loopback origin whose forwarder reaches api:8080; no induced loss, delay or WAN."
+ },
+ "os": {
+  "container": "Alpine Linux v3.24",
+  "host": "Fedora Linux 42 (KDE Plasma Desktop Edition) 6.19.14-108.fc42.x86_64"
+ },
+ "server_queue_evidence": {
+  "api_instances": [
+   "api-one"
+  ],
+  "complete": false,
+  "format": "jsonl",
+  "meaning": "Bounded FLUX_LIVE_QUEUE records from the inventoried API stdout: initial, sampled wiki/map receipts and the terminal final with resource gauges and peaks.",
+  "path": "actual-queue.jsonl",
+  "source_sha": "251d9d5e6b2772ef719a63c75e40da60337127d3"
+ },
+ "source_sha": "251d9d5e6b2772ef719a63c75e40da60337127d3"
+}
