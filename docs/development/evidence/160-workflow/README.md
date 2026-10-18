@@ -249,9 +249,11 @@ The safe phase report observed protected-resource and authorization-server
 discovery HTTP200 (twice each), authorization302, continuation200 and consent200.
 Phases reached `consent_submitted`, then `callback_wait_failed` and
 `native_login_finished`; `callbackCompleted=false`, `observedCodes=[]`,
-`nativeExitCode=1`. **No token-endpoint HTTP request was observed.** This narrows
-the failure to consent-to-native-callback handling before token exchange; the
-previous post-callback storage hypothesis is not supported by this observation.
+`nativeExitCode=1`. **No token-endpoint HTTP request was observed.** The flow did not complete after consent; the prior instrumentation did not
+observe an expected callback response or a token request. It did not classify
+a different target or browser transport failure, so missing regex match alone
+does not prove that the native callback failed. The previous post-callback
+storage hypothesis is not supported by this observation.
 No specific production bug or safe small fix is yet established. The successful
 bare-URL/persisted-configuration #612 path remains the comparison; the identity
 lane independently reported the same maintained path passing at `847b7408`.
@@ -266,3 +268,37 @@ or speculative source change. Next work is static comparison of callback
 configuration/registration and the supplied inline binding, followed only by an
 explicitly granted affected login check when evidence supports it. All whole
 #152/#160 criteria remain required and PR #616 stays Draft.
+
+
+### Static callback classification preparation
+
+Compared the raw callback regex source against frozen #612: both use the same
+JavaScript template escaping for literal dots in `127.0.0.1`. No extra-escape
+regression was established. The unchanged matcher is extracted into a pure
+helper with synthetic loopback/suffixed/wrong-port/look-alike-host regression
+cases. The tests also show that IPv6 can be classified as loopback while the
+historical IPv4/localhost regex misses it: a matcher miss is distinct from
+transport/native success or failure. These new cases await Docker/CI.
+
+Prepared bounded observations of post-consent top-frame navigation requests,
+responses and request failures. They disclose only loopback/expected-port
+booleans, base/suffixed/other callback-path classification, iss/code/error
+presence booleans, HTTP status and fixed browser transport-failure categories.
+They never emit target URLs, path suffixes, query values or browser error text.
+Cleanup-triggered request cancellation is excluded. Regression cases cover
+secret-bearing input, unknown fields/categories and the 16-observation bound.
+Existing native exit and endpoint observations remain separate for correlation;
+no new native observation, production fix, Docker build or account/model call
+occurred during this preparation.
+
+The next granted model-free comparison is the known successful native `mcp add`
+composition with a **bound** URL versus the supplied inline/bound-URL composition,
+using the same fixture client registration and callback port, isolated writable
+homes and no provider credentials. Current official configuration/auth guidance
+([configuration](https://learn.chatgpt.com/docs/config-file/config-reference),
+[issuer/callback guidance](https://developers.openai.com/plugins/build/auth))
+supplied for this investigation distinguishes per-server callback listener port,
+callback target URL and issuer validation. It is a hypothesis guide, not proof
+of the pinned Codex0.160.1 behavior. No host0.163 client is used. The comparison
+must correlate target, network status/failure and native exit; it must not
+convert missing regex match alone into a callback-failure conclusion.

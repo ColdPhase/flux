@@ -88,7 +88,7 @@ test('real configured accounts: supplied Start and Resume reach the model and pr
           try {
             const match = await waitFor(login, /(https?:\/\/[^\s"']*\/api\/auth\/oauth2\/authorize\?[^\s"']+)/, 'bound adapter OAuth');
             diagnostic.browser({ stage: 'authorization_received' });
-            await authorizeInBrowser(browser, email, spec, match[1]!, diagnostic.browser);
+            await authorizeInBrowser(browser, email, spec, match[1]!, diagnostic.browser, diagnostic.callback);
             exitCode = await login.done;
             assert.equal(exitCode, 0, 'bound native OAuth completes without global configuration writes');
           } catch {

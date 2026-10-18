@@ -25,6 +25,7 @@ export function oauthObservedCodes(nativeOutput: string) {
 }
 export function createOAuthDiagnostic() {
   const stages: OAuthDiagnosticStage[] = [], http: (OAuthHttpObservation | { stage: 'callback_response'; status: number })[] = [];
+  const callbacks: OAuthCallbackObservation[] = [];
   let callbackCompleted = false;
   return {
     browser(observation: OAuthBrowserObservation) {
@@ -35,12 +36,22 @@ export function createOAuthDiagnostic() {
         if (observation.status >= 200 && observation.status < 300) callbackCompleted = true;
       }
     },
+    callback(observation: OAuthCallbackObservation) {
+      const target = observation.target;
+      if (!['request', 'response', 'failure'].includes(observation.phase) || !['base', 'suffixed', 'other'].includes(target.path)
+        || ![target.loopback, target.expectedPort, target.issuerPresent, target.codePresent, target.errorPresent].every(value => typeof value === 'boolean')) return;
+      const checkedStatus = observation.status === undefined ? null : status(observation.status);
+      const failure = observation.failure && OAUTH_BROWSER_FAILURES.includes(observation.failure) ? observation.failure : undefined;
+      if (callbacks.length < 16) callbacks.push({ phase: observation.phase,
+        target: { loopback: target.loopback, expectedPort: target.expectedPort, path: target.path, issuerPresent: target.issuerPresent,
+          codePresent: target.codePresent, errorPresent: target.errorPresent }, ...(checkedStatus !== null ? { status: checkedStatus } : {}), ...(failure ? { failure } : {}) });
+    },
     response(observation: OAuthHttpObservation) {
       if (Object.values(endpoints).includes(observation.stage) && status(observation.status) !== null && http.length < 64)
         http.push({ stage: observation.stage, status: observation.status });
     },
     report(nativeOutput: string, exitCode: number | null) {
-      return { schema: 'flux.oauth-diagnostic/1' as const, stages: [...stages], http: [...http], callbackCompleted,
+      return { schema: 'flux.oauth-diagnostic/1' as const, stages: [...stages], http: [...http], callbacks: [...callbacks], callbackCompleted,
         observedCodes: oauthObservedCodes(nativeOutput), nativeExitCode: exitCode !== null && Number.isInteger(exitCode) && exitCode >= 0 && exitCode <= 255 ? exitCode : null };
     },
   };
@@ -52,4 +63,41 @@ export function oauthLoginOnly(env: Record<string, string | undefined>) {
   if (env.FLUX_TEST_MCP_LIVE_WORKFLOW !== '1' || env.FLUX_TEST_MCP_LIVE_CLIENT !== 'codex')
     throw new Error('Login-only diagnosis requires the explicit Codex fixture selector and workflow opt-in.');
   return true;
+}
+
+export interface OAuthCallbackTarget {
+  loopback: boolean; expectedPort: boolean; path: 'base' | 'suffixed' | 'other';
+  issuerPresent: boolean; codePresent: boolean; errorPresent: boolean;
+}
+export const OAUTH_BROWSER_FAILURES = ['connection_refused', 'connection_closed', 'connection_reset', 'name_not_resolved',
+  'timed_out', 'aborted', 'blocked', 'tls', 'unknown'] as const;
+export type OAuthBrowserFailure = typeof OAUTH_BROWSER_FAILURES[number];
+export interface OAuthCallbackObservation {
+  phase: 'request' | 'response' | 'failure'; target: OAuthCallbackTarget; status?: number; failure?: OAuthBrowserFailure;
+}
+/** Identical escaping to the successful frozen #612 harness. Match evidence is separate from network/native completion. */
+export function oauthCallbackPattern(port: number) {
+  if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('A valid fixture callback port is required.');
+  return new RegExp(`^http://(127\\.0\\.0\\.1|localhost):${port}/callback`);
+}
+export function oauthCallbackTarget(rawUrl: string, expectedPort: number): OAuthCallbackTarget | null {
+  let url: URL;
+  try { url = new URL(rawUrl); } catch { return null; }
+  const loopback = url.hostname === 'localhost' || url.hostname === '[::1]' || /^127(?:\.\d{1,3}){3}$/.test(url.hostname);
+  return { loopback, expectedPort: Number(url.port || (url.protocol === 'http:' ? 80 : url.protocol === 'https:' ? 443 : 0)) === expectedPort,
+    path: url.pathname === '/callback' ? 'base' : /^\/callback\/[^/]+\/?$/.test(url.pathname) ? 'suffixed' : 'other',
+    issuerPresent: url.searchParams.has('iss'), codePresent: url.searchParams.has('code'), errorPresent: url.searchParams.has('error') };
+}
+/** Only fixed browser transport categories leave the classifier, never the browser's original message. */
+export function oauthBrowserFailure(rawFailure: string): OAuthBrowserFailure {
+  const code = rawFailure.toUpperCase();
+  if (code.includes('CONNECTION_REFUSED') || code.includes('COULD NOT CONNECT') || code.includes('CONNECTION REFUSED')) return 'connection_refused';
+  if (code.includes('CONNECTION_CLOSED')) return 'connection_closed';
+  if (code.includes('CONNECTION_RESET')) return 'connection_reset';
+  if (code.includes('NAME_NOT_RESOLVED') || code.includes('HOSTNAME') && code.includes('RESOLVE')) return 'name_not_resolved';
+  if (code.includes('TIMED_OUT') || code.includes('TIMEOUT')) return 'timed_out';
+  if (code.includes('ABORTED') || code.includes('CANCELLED')) return 'aborted';
+  if (code.includes('BLOCKED')) return 'blocked';
+  if (code.includes('CERT_') || code.includes('SSL_') || code.includes('TLS')) return 'tls';
+  return 'unknown';
 }
