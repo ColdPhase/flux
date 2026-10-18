@@ -25,9 +25,11 @@ export interface ServerConfig {
   backgroundMasterKey: Buffer | null;
   /** `FLUX_BACKGROUND_COMPARISONS=on` (#58): owners may enable comparison rules; the worker runs them. */
   backgroundComparisons: boolean;
+  /** Normal map/wiki collaboration; missing/empty/on enables it, off is the operator opt-out. */
+  liveEditing: boolean;
   /**
-   * `FLUX_DEVELOPMENT_LIVE_EDITING=true` (#228): selects the isolated development live map/wiki
-   * editing path. Off by default; selecting it certifies none of the four F-021 gates.
+   * `FLUX_DEVELOPMENT_LIVE_EDITING=true` (#228): isolated calibration marker only.
+   * It never overrides the production opt-out or certifies any acceptance gate.
    */
   developmentLiveEditing: boolean;
   /** `FLUX_AGENT_RUNTIME` and its settings (F-022 AIM-3); empty, the default, is off. */
@@ -39,6 +41,8 @@ export function loadServerConfig(env: NodeJS.ProcessEnv = process.env, backgroun
   if (!connectionString) throw new Error('DATABASE_URL is required');
   const heartbeatMs = Number(env.FLUX_STREAM_HEARTBEAT_MS ?? 25_000);
   if (!Number.isInteger(heartbeatMs) || heartbeatMs < 100) throw new Error('FLUX_STREAM_HEARTBEAT_MS must be an integer of at least 100');
+  const liveEditing = env.FLUX_LIVE_EDITING || 'on';
+  if (!['on', 'off'].includes(liveEditing)) throw new Error('FLUX_LIVE_EDITING must be on or off');
   return {
     env,
     connectionString,
@@ -50,6 +54,7 @@ export function loadServerConfig(env: NodeJS.ProcessEnv = process.env, backgroun
     port: Number(env.PORT ?? 8080),
     backgroundMasterKey: backgroundKeyPath === undefined ? loadBackgroundMasterKey() : loadBackgroundMasterKey(backgroundKeyPath),
     backgroundComparisons: backgroundComparisonsEnabled(env),
+    liveEditing: liveEditing === 'on',
     developmentLiveEditing: env.FLUX_DEVELOPMENT_LIVE_EDITING === 'true',
     agentRuntime: loadAgentRuntimeConfig(env),
   };

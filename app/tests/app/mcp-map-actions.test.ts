@@ -62,6 +62,9 @@ test('standing map grants create and change a shared project map as the agent, o
   map = await detail(mapId);
   assert.deepEqual([map.title, map.version, map.links.length, map.thoughts.map((item) => item.id)], ['Measured map', renamed.version, 0, [a.thoughtId]]);
   assert.equal(await events(mapId), 8, 'create, two adds, update, move, unlink, remove and rename');
+  assert.equal((await pool.query('SELECT count(*)::int n FROM map_live_heads WHERE sketch_id=$1', [mapId])).rows[0].n, 0,
+    'ordinary MCP writes do not create a live room in the normal enabled installation or the opt-out lane');
+  assert.equal((await pool.query('SELECT count(*)::int n FROM map_live_journal WHERE sketch_id=$1', [mapId])).rows[0].n, 0);
 });
 
 test('map actions never reach private maps, maps of other projects or another map than a targeted grant names', async () => {

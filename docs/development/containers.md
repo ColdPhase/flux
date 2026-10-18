@@ -332,6 +332,20 @@ outside tests.
 
 ## Web app and browser tests
 
+Map/wiki collaboration uses `FLUX_LIVE_EDITING` on the API: missing, empty or `on` enables it;
+`off` is an operator opt-out and other values fail startup. Both source and release Compose pass
+the same setting. `FLUX_DEVELOPMENT_LIVE_EDITING=true` is only an isolated diagnostic marker;
+queue telemetry needs live editing, that marker and its separate telemetry opt-in. Ordinary
+installs emit no calibration telemetry. The #228 candidate may reach protected `main` only after
+the [whole-issue production gates](live-editing-proposal.md#whole-issue-production-promotion-contract-2026-10-18).
+
+`check_ui.sh` runs live journeys in its normal lane. `FLUX_LIVE_EDITING=off ./scripts/check_ui.sh`
+checks ordinary saved behavior instead, including the explicit-off first-render regression.
+Existing-doc Wiki editing is shared in the normal lane; creating a new page and restoring a
+historical version keep their private editor. Saving shared text creates an immutable version.
+For opt-out recovery, save working copies before planned disable; if disabled while dirty,
+re-enable and save before ordinary writes can proceed (see [installation](../operations/install-release.md#upgrade-backup-and-restore)).
+
 The configured test command runs one application test file at a time
 (`--test-concurrency=1`), never more than four. The controlled comparison scheduling
 fixtures (#58) deliberately own the one global comparison cursor of the shared test
