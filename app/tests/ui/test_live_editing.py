@@ -17,7 +17,8 @@ import time
 import unittest
 import uuid
 
-from playwright.async_api import async_playwright, expect
+from playwright.async_api import Error, async_playwright, expect
+from live_editing_identity import map_input_identity
 from test_app_shell import ORIGIN, UI_BROWSER, UPSTREAM, start_forwarder
 from native_touch import native_touch_driver, native_touch_sender
 
@@ -904,6 +905,58 @@ class LiveEditingJourney(LiveFixture):
                                after['content'].get(first['id'], 0))
         finally:
             await ada.mouse.up()
+
+    async def test_20_map_input_identity_matches_locator_and_refuses_invalid_canvas(self):
+        ada, kai = self.pages['ada'], self.pages['kai']
+        legacy = "el => ({gestureId:el.dataset.liveOwnGesture,generation:el.dataset.liveGeneration,sequence:Number(el.dataset.liveOwnSequence),visibility:document.visibilityState})"
+        previous = None
+        # Real navigation replaces the whole map/canvas. Each new gesture and each
+        # successive trusted input must be read from the current authorized editor.
+        for _ in range(2):
+            await self.create_map(2)
+            thought = self.thoughts[0]
+            node = ada.locator(f'.sk-node[data-id="{thought["id"]}"]')
+            peer = kai.locator(f'.sk-node[data-id="{thought["id"]}"]')
+            bounds = await node.bounding_box()
+            try:
+                await ada.mouse.move(bounds['x'] + 20, bounds['y'] + 20)
+                await ada.mouse.down()
+                await ada.mouse.move(bounds['x'] + 65, bounds['y'] + 45, steps=3)
+                await expect(peer).to_have_attribute('data-live-mover', 'Ada North')
+                first = await map_input_identity(ada)
+                self.assertEqual(first, await ada.locator('.sk-canvas').evaluate(legacy))
+                self.assertEqual(first['visibility'], 'visible')
+                self.assertGreater(first['sequence'], 0)
+                self.assertEqual(str(uuid.UUID(first['gestureId'])), first['gestureId'])
+                self.assertEqual(str(uuid.UUID(first['generation'])), first['generation'])
+                if previous:
+                    self.assertNotEqual(first['generation'], previous['generation'], 'A replacement map has its current generation')
+                    self.assertNotEqual(first['gestureId'], previous['gestureId'], 'No gesture from the previous canvas is reused')
+                await ada.mouse.move(bounds['x'] + 85, bounds['y'] + 55)
+                current = await map_input_identity(ada)
+                self.assertGreater(current['sequence'], first['sequence'], 'A fresh read sees the next actual pointer input')
+                self.assertEqual(current, await ada.locator('.sk-canvas').evaluate(legacy))
+                await expect(peer).to_have_attribute('data-live-preview-sequence', str(current['sequence']))
+                previous = current
+            finally:
+                await ada.mouse.up()
+            await self.map_saved(ada)
+
+        # Invalid-DOM calibration only: duplicate the real canvas shell, without
+        # creating an editor or replacing transport. Both strict reads must refuse it.
+        duplicate = await ada.locator('.sk-canvas').evaluate_handle("el => {const copy=el.cloneNode(false);el.parentElement.append(copy);return copy;}")
+        try:
+            with self.assertRaisesRegex(Error, 'exactly one connected current map canvas'):
+                await map_input_identity(ada)
+            with self.assertRaisesRegex(Error, 'strict mode violation'):
+                await ada.locator('.sk-canvas').evaluate(legacy)
+        finally:
+            await duplicate.evaluate('el => el.remove()')
+            await duplicate.dispose()
+        # Actual navigation removes the map, rather than supplying a stale cached canvas.
+        await ada.goto('/')
+        with self.assertRaisesRegex(Error, 'exactly one connected current map canvas'):
+            await map_input_identity(ada)
 
     async def test_17_ctrl_end_then_shift_left_replaces_the_last_character_of_a_100k_line(self):
         # #228 Gate 4: CodeMirror draws a line longer than 20,000 characters only around the view
