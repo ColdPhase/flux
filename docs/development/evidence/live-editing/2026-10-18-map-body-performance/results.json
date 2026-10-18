@@ -1,0 +1,33 @@
+{
+  "tested_source": "8ba5f87ae065d52b4b69158648f8e863b3d3f9cb",
+  "candidate": {
+    "chromium": {
+      "exit_code": 0,
+      "tests": 10,
+      "failures": 0,
+      "skips": 0,
+      "duration_s": 53.106
+    },
+    "webkit": {
+      "exit_code": 0,
+      "tests": 10,
+      "failures": 0,
+      "skips": 0,
+      "duration_s": 64.095
+    }
+  },
+  "baseline_negative": {
+    "source_sha": "608532da0ff6d7c6824e9bb0b15335517344d641",
+    "test_overlay": "Exact candidate test_live_editing.py; only80addedtestlines, no product edits",
+    "engine": "chromium",
+    "exit_code": 1,
+    "tests": 1,
+    "failures": 1,
+    "errors": 0,
+    "skips": 0,
+    "duration_s": 2.574,
+    "expected_failure": "AssertionError:12!=4:Successive actual movement previews do not render unchanged content",
+    "observed_extra_content_renders": 8
+  },
+  "latency": "Not run; parent unchanged Gate4 remains required"
+}
