@@ -150,9 +150,9 @@ Issue [#96](https://github.com/ColdPhase/flux/issues/96), the "DMs and growing a
   `(sketch_id, source_dm_id) → sketches(id, dm_id)`.
 - A thought on a project map can also come from a message in that same project. Migration
   `0113_project_message_thought_sources.sql` stores its `source_project_message_id` with a
-  project-scoped foreign key and keeps the original author (person or agent) and time. The
-  message id never crosses the project boundary; the server resolves it from the authorized
-  project and Undo uses the stored source id when it restores the thought.
+  foreign key to the project-message row and keeps the original author (person or agent) and
+  time. The use case resolves that message within the sketch's own project; Undo retains its id
+  when it restores the thought.
 - A project copy records `copied_from_sketch_id` (`ON DELETE SET NULL`), `copied_by_user_id`
   and `copied_at`. The wire type exposes only `origin: { kind: 'dm_copy', copiedBy, copiedAt }`.
   The copy never names the DM.

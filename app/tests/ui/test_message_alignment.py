@@ -257,7 +257,10 @@ class MessageAlignment(unittest.TestCase):
         sketch = sketch_response.json()
         page.goto(f"/projects/{self.project}")
         row = page.locator(f"#message-{self.quoted['messages'][0]['id']}")
-        row.get_by_role("button", name="More actions", exact=True).click()
+        row.hover()
+        more = row.get_by_role("button", name="More actions", exact=True)
+        expect(more).to_be_visible()
+        more.click()
         menu = page.get_by_role("menu", name="Message actions")
         expect(menu.get_by_role("menuitem", name="Add to map", exact=True)).to_be_visible()
         self.assertEqual(menu.get_by_role("menuitem", name="Create task", exact=True).count(), 0,

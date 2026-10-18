@@ -658,7 +658,15 @@ class AppShellJourney(unittest.TestCase):
         for phone in (False, True):
             with self.subTest(phone=phone):
                 page = self.page(phone=phone)
-                page.goto("/")
+                workspaces = page.request.post(f"{ORIGIN}/api/v1/workspaces", data={"name": "Header menu studio"}, headers={"origin": ORIGIN})
+                self.assertEqual(workspaces.status, 201, workspaces.text())
+                workspace_id = workspaces.json()["id"]
+                project = page.request.post(f"{ORIGIN}/api/v1/workspaces/{workspace_id}/projects", data={
+                    "name": "Project header actions", "visibility": "workspace",
+                }, headers={"origin": ORIGIN})
+                self.assertEqual(project.status, 201, project.text())
+                page.goto(f"/projects/{project.json()['id']}")
+                expect(page.locator(".project-convo")).to_be_visible()
                 header = page.locator("header.top")
                 more = header.get_by_role("button", name="More", exact=True)
                 expect(more).to_be_visible()
@@ -1199,7 +1207,7 @@ class AppShellJourney(unittest.TestCase):
         owner.get_by_role("navigation", name="Projects").get_by_role("link", name="Gesture lamp").click()
         owner.get_by_label("Write a message").fill("Try a PIR sensor before considering a camera")
         owner.get_by_role("button", name="Send message").click()
-        expect(owner.locator(".project-convo__message > .message-bubble > p").filter(has_text="Try a PIR sensor before considering a camera")).to_be_visible()
+        expect(owner.locator(".project-convo__message > .message-bubble > .message-body").filter(has_text="Try a PIR sensor before considering a camera")).to_be_visible()
         # Sending is instant (#264): the root shows at once and gets its conversation when it is stored.
         expect(owner.locator("[data-client-message-id]")).to_have_count(0)
         # One project conversation (UI116-1): the root joins the stream; its replies open beside it.

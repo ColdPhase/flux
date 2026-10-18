@@ -82,7 +82,7 @@ class FileOnlyMessage(unittest.TestCase):
         expect(link).to_have_attribute("href", f"/api/v1/files/{file['id']}")
         expect(link).to_have_attribute("download", "readings.csv")
         expect(files).to_contain_text(f"{len(BYTES)} B")
-        expect(message.locator("> .message-bubble > p")).to_have_count(0)
+        expect(message.locator("> .message-bubble > .message-body")).to_have_count(0)
         downloaded = page.request.get(f"/api/v1/files/{file['id']}")
         self.assertEqual(downloaded.body(), BYTES)
 
@@ -266,7 +266,7 @@ class FilesReferencesPhotos(unittest.TestCase):
     def message(self, page: Page, key: str):
         return page.locator(f"#message-{self.ids[key]}")
 
-    def assert_caption_below(self, scope, caption_selector: str = ":scope > .message-bubble > p") -> None:
+    def assert_caption_below(self, scope, caption_selector: str = ":scope > .message-bubble > .message-body") -> None:
         grid = scope.locator(":scope > .photo-grid")
         caption = scope.locator(caption_selector)
         expect(grid).to_have_count(1)
@@ -328,9 +328,9 @@ class FilesReferencesPhotos(unittest.TestCase):
         expect(voice.get_by_role("link")).to_have_count(0)
         # Text and files are children of one padded surface, rather than adjacent lookalike cards.
         self.assert_inside_bubble(files, rows)
-        expect(files.locator(":scope > .message-bubble > p")).to_have_count(1)
+        expect(files.locator(":scope > .message-bubble > .message-body")).to_have_count(1)
         # Inline chips on the text baseline, and the link's preview.
-        body = files.locator("> .message-bubble > p")
+        body = files.locator("> .message-bubble > .message-body")
         expect(body.locator(".ref-chip[data-ref=task]")).to_have_text("#8")
         expect(body.locator(".ref-chip[data-ref=person]")).to_have_text("@Ada")
         expect(body).to_contain_text("see #8 and ask @Ada:")
@@ -604,7 +604,7 @@ class FilesReferencesPhotos(unittest.TestCase):
                     root.scroll_into_view_if_needed()
                     self.assert_inside_bubble(root, reference)
                     expect(reference).to_have_count(1)
-                    expect(root.locator(":scope > .message-bubble > p")).to_contain_text("Drawing and range readings")
+                    expect(root.locator(":scope > .message-bubble > .message-body")).to_contain_text("Drawing and range readings")
                     if not phone and not dark:
                         # Negative controls reproduce the exact prior defects without mocking the API.
                         reference.evaluate("e => { const card = e.parentElement; card.before(Object.assign(document.createElement('span'), {id: 'reference-slot'})); card.closest('[data-message-id]').append(card); }")

@@ -25,7 +25,7 @@ a.file-row:hover .file-row__act { color: var(--t1); }
 /* One real bubble contains the caption/text, file rows, previews and native object cards. */
 .message-bubble { display: flex; flex-direction: column; gap: 6px; min-width: 0; max-width: 100%; padding: 9px 13px; border-radius: 6px var(--r-lg) var(--r-lg) var(--r-lg); background: var(--el); box-shadow: var(--sh-1); box-sizing: border-box; }
 .message-bubble:empty { display: none; }
-.message-bubble > p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font-size: var(--fs-base); line-height: var(--lh); }
+.message-bubble > :is(p, .message-body) { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font-size: var(--fs-base); line-height: var(--lh); }
 .message-bubble > .message-body { min-width: 0; white-space: pre-wrap; overflow-wrap: anywhere; font-size: var(--fs-base); line-height: var(--lh); }
 .message-bubble .msg-quote { display: grid; gap: 2px; margin: 2px 0; padding: 7px 10px; border-left: 2px solid var(--line2); border-radius: 0 var(--r-sm) var(--r-sm) 0; background: var(--sub); color: var(--t2); font-size: var(--fs-sm); line-height: var(--lh); white-space: pre-wrap; overflow-wrap: anywhere; }
 .message-bubble .msg-quote__author { color: var(--t1); font-size: var(--fs-xs); font-style: normal; font-weight: 600; }
