@@ -678,9 +678,10 @@ export function SketchMap(props: SketchMapProps) {
     begin(event, { kind: 'link', id, ids: [id] });
   };
 
-  const onResizePointerDown = (event: ReactPointerEvent<HTMLSpanElement>, thought: Thought) => {
+  const onResizePointerDown = (event: ReactPointerEvent<HTMLSpanElement>, id: string) => {
     event.stopPropagation();
-    if (event.button !== 0) return;
+    const thought = byId.get(id);
+    if (event.button !== 0 || !thought) return;
     begin(event, { kind: 'resize', id: thought.id, ids: [thought.id] });
   };
 
@@ -789,7 +790,9 @@ export function SketchMap(props: SketchMapProps) {
     setSize(null);
   };
 
-  const onNodeKeyDown = (event: KeyboardEvent<HTMLButtonElement>, thought: Thought) => {
+  const onNodeKeyDown = (event: KeyboardEvent<HTMLButtonElement>, id: string) => {
+    const thought = byId.get(id);
+    if (!thought) return;
     const { key } = event;
     if (key === 'Enter' || key === 'F2') { event.preventDefault(); if (connectFrom) props.onPick(thought.id, false); else if (canWrite) props.onEdit(thought.id); return; }
     if (key === ' ') { event.preventDefault(); if (connectFrom) props.onPick(thought.id, false); else props.onToggle(thought.id); return; }
@@ -1123,8 +1126,8 @@ function Minimap({ canvas, zoom, origin, rects }: { canvas: RefObject<HTMLDivEle
 
 interface NodeEvents {
   pointerDown(event: ReactPointerEvent<HTMLButtonElement>, id: string): void;
-  resizePointerDown(event: ReactPointerEvent<HTMLSpanElement>, thought: Thought): void;
-  keyDown(event: KeyboardEvent<HTMLButtonElement>, thought: Thought): void;
+  resizePointerDown(event: ReactPointerEvent<HTMLSpanElement>, id: string): void;
+  keyDown(event: KeyboardEvent<HTMLButtonElement>, id: string): void;
   click(event: ReactMouseEvent<HTMLButtonElement>, id: string): void;
   doubleClick(id: string): void;
   openTask(id: string): void;
@@ -1189,6 +1192,18 @@ interface ThoughtNodeProps {
  * kept a peer's main thread busy and delayed the next preview's receipt (#228 Gate 4).
  */
 const ThoughtNode = memo(function ThoughtNode({ thought, x, y, w, h, selected, dragging, editing, resizable, meId, helpId, projectId, linked, mover, live, nodeRef, events }: ThoughtNodeProps) {
+  const id = thought.id;
+  // Geometry and sequence still render each preview. Host callbacks keep their identity,
+  // while the committed root events resolve this ID against its latest shown thought.
+  const handlers = useMemo(() => ({
+    pointerDown: (event: ReactPointerEvent<HTMLButtonElement>) => events.current.pointerDown(event, id),
+    pointerEnter: (event: ReactPointerEvent<HTMLButtonElement>) => events.current.pointerEnter(event, id),
+    pointerLeave: (event: ReactPointerEvent<HTMLButtonElement>) => events.current.pointerLeave(event, id),
+    click: (event: ReactMouseEvent<HTMLButtonElement>) => events.current.click(event, id),
+    doubleClick: () => events.current.doubleClick(id),
+    keyDown: (event: KeyboardEvent<HTMLButtonElement>) => events.current.keyDown(event, id),
+    resizePointerDown: (event: ReactPointerEvent<HTMLSpanElement>) => events.current.resizePointerDown(event, id),
+  }), [id, events]);
   return (
     <>
       <button type="button" data-id={thought.id} data-thought-x={thought.x} data-thought-y={thought.y} data-thought-version={thought.version}
@@ -1197,15 +1212,15 @@ const ThoughtNode = memo(function ThoughtNode({ thought, x, y, w, h, selected, d
         className={`sk-node sk-node--${thought.shape}${dragging ? ' is-dragging' : ''}${editing ? ' is-editing' : ''}${thought.version === 0 ? ' is-new' : ''}${linked?.count ? ' has-work' : ''}`}
         style={{ transform: `translate(${x}px, ${y}px)`, width: w, minHeight: thought.shape === 'circle' ? w : thought.height, height: thought.shape === 'circle' ? w : undefined }}
         aria-pressed={selected} aria-describedby={helpId}
-        onPointerDown={(event) => events.current.pointerDown(event, thought.id)}
-        onPointerEnter={(event) => events.current.pointerEnter(event, thought.id)} onPointerLeave={(event) => events.current.pointerLeave(event, thought.id)}
-        onClick={(event) => events.current.click(event, thought.id)}
-        onDoubleClick={() => events.current.doubleClick(thought.id)}
-        onKeyDown={(event) => events.current.keyDown(event, thought)}>
+        onPointerDown={handlers.pointerDown}
+        onPointerEnter={handlers.pointerEnter} onPointerLeave={handlers.pointerLeave}
+        onClick={handlers.click}
+        onDoubleClick={handlers.doubleClick}
+        onKeyDown={handlers.keyDown}>
         <ThoughtContent text={thought.text} placement={thought.placement} file={thought.file} source={thought.source}
           createdBy={thought.createdBy} createdAt={thought.createdAt} version={thought.version} height={thought.height}
           meId={meId} linked={linked} mover={mover} />
-        {resizable ? <span className="sk-resize" aria-hidden="true" onPointerDown={(event) => events.current.resizePointerDown(event, thought)} /> : null}
+        {resizable ? <span className="sk-resize" aria-hidden="true" onPointerDown={handlers.resizePointerDown} /> : null}
       </button>
       {linked?.count && projectId ? (
         <div className={`sk-work-slot sk-work-slot--${thought.shape}${dragging ? ' is-dragging' : ''}`} data-for={thought.id} style={{ transform: `translate(${x}px, ${y}px)`, width: w, height: h }}>
