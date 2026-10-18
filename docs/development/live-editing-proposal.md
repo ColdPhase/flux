@@ -991,3 +991,39 @@ publication to receipt fell from p50 34 to 21 ms. Two runs of the case on each v
 shared host gave p95 206 and 209 ms before, 193 and 188 ms after. A p95 of 170 ms at 200
 moved thoughts needs less measurement work per changed thought, which is the driver's
 decision, not the application's.
+
+## Transaction-local map producer checks: bounded cost hypothesis (2026-10-18)
+
+For existing #228 / Draft PR #613, test whether repeated producer session/write
+checks in one `mapBackend.deliver` transaction contribute avoidable SQL work.
+This is an implementation hypothesis, not independent acceptance or a measured
+latency improvement. The latest single map500/drag200 observation supplied by
+the coordinator remains p95 215.768 ms, above the unchanged 200 ms gate; the
+latency driver, sample denominator, publication frequency and all original gates
+remain unchanged.
+
+A positive producer check may be reused only inside that single delivery
+callback, for the exact `(actorId, sessionId)` pair and the same already-locked
+project/private sketch. The first occurrence must still acquire the existing
+session `FOR SHARE` and full `requireSketch(write, {lock:true})` policy locks.
+Do not seed results from the recipient's `c.access`, cache refusals, or retain
+results across transactions, connections, backend instances or deliveries.
+Both bounded row lists together admit at most 64 pairs; retained keys reference
+existing identity strings, with no copied names or payloads. Existing finite
+preparation/queue/output bounds remain in force.
+
+DM delivery keeps its existing repeated checks: pair closure also depends on the
+other participant, whose row is not locked by the producer's write evaluation.
+No new lock or DM contract is introduced by this optimization. The final
+`currentTransientFence`, provider confirmation, recipient validation, generation
+and SQL-clock TTL checks stay unchanged immediately before the synchronous
+handoff. An earlier positive decision never substitutes for those observations.
+
+Verify actual PostgreSQL delivery with two independent sessions of one producer,
+each contributing gesture and presence: both first session/policy checks remain,
+duplicates reuse only their own pair, and a later delivery after a committed
+grant downgrade discloses no producer transients. Also withhold a populated
+handoff after its positive checks and prove that session expiry, transient expiry
+and provider-confirmation lapse still remove the old producer output. Runtime
+and performance evidence must be recorded against the tested candidate; final
+whole-issue acceptance remains independent and pending.
