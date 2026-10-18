@@ -185,7 +185,9 @@ test('real pinned Codex and Claude Code clients: two owners, both native client 
       const result = await session(spec, spec.client === 'codex'
         ? () => codexScript(`text(JSON.stringify(await tools[${JSON.stringify(`mcp__flux__${name}`)}](${JSON.stringify(args)})));`)
         : outputs => outputs.length === 0 ? [name, JSON.stringify(args)] : []);
-      return json(result.calls.find(call => call.tool === name));
+      const value = json(result.calls.find(call => call.tool === name));
+      assert.ok(!('error' in value), `${spec.label}: ${name}: ${JSON.stringify(value)}`);
+      return value;
     }
     for (const spec of specs) await t.test(`${spec.label}: native task/unit progress, quiet renewal, persisted checkpoint replay and a fresh-process reconnect`, async () => {
       const human = people[spec.agent]; const connectionId = connections[spec.key]!;
@@ -337,7 +339,8 @@ test('real pinned Codex and Claude Code clients: two owners, both native client 
         assert.deepEqual(await reviewer.call('flux_resolve_request', resolve), resolved, 'resolution retry links one persisted evidence record');
         return responseRef;
       };
-      const firstEvidence = await finishReview(sent, 'changes_requested', 'The comparison outcome does not state the unit of measurement.');
+      const firstEvidence = await finishReview({ ...sent, version: deferred.version }, 'changes_requested',
+        'The comparison outcome does not state the unit of measurement.');
       const firstVerdict = (await read()).verdicts[0]!;
       assert.deepEqual([firstVerdict.verdict, firstVerdict.current, firstVerdict.target, firstVerdict.evidenceRef],
         ['changes_requested', true, target(task.version), firstEvidence]);
