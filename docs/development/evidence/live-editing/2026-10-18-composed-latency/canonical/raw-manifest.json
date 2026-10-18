@@ -1,0 +1,472 @@
+[
+  {
+    "path": "/home/hubert/flux-evidence/228-final-f30c9910-latency/actual-queue.jsonl",
+    "bytes": 4510083,
+    "sha256": "9a738a59bca9d3f030c070487be89c4abe7bdb1d8a2bc0a00206995cbb55d679"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-final-f30c9910-latency/api.log",
+    "bytes": 8022822,
+    "sha256": "e4e62f31875af8536d9c0604e1a7c614e41ef5002207af866a591d9a0725ea4d"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-final-f30c9910-latency/collector-ready.json",
+    "bytes": 183,
+    "sha256": "f4bd8e1064278a3110b805428bb88f906feacd277c444a0ed6c6bc33c75ed992"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-final-f30c9910-latency/collector-result.json",
+    "bytes": 152,
+    "sha256": "5a25617981f28d6309c16e8b14bcb9e5f1d522acf70926157ddb34b387a6b082"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-final-f30c9910-latency/collector.log",
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-final-f30c9910-latency/driver.log",
+    "bytes": 501,
+    "sha256": "c50a09d0be7796ec463309fae1a93dd2d563b3ccd1c2c979ada1af0565e7a282"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-final-f30c9910-latency/map-50-drag-1-coverage.json",
+    "bytes": 203477,
+    "sha256": "aa4342d8440de28cd57acdd56dfb8533645ef9dba554a83e4f344f64eb448fe9"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-final-f30c9910-latency/map-50-drag-1-local-control.json",
+    "bytes": 25083,
+    "sha256": "ad05e9b31ae1061da52b423060ac6db56cd09dc4f0d3e0e13d5e34295f80069a"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-final-f30c9910-latency/map-50-drag-1-owner-trace.zip",
+    "bytes": 173027714,
+    "sha256": "aba53bb31edbed1d1627f919917aaf1806cba0a47c21d2ad1b19ddbcc45c828d"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-final-f30c9910-latency/map-50-drag-1-peer-trace.zip",
+    "bytes": 195682359,
+    "sha256": "7364647cf51d3e431ae650eee406fb0d01abaee57df80c0d8398077d9f4f97bd"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-final-f30c9910-latency/map-50-drag-1-peer.png",
+    "bytes": 116994,
+    "sha256": "056bbadcd65d9ac5e781f0bbc39a240581e9e2c77109d4cee921fb8b48a4743f"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-final-f30c9910-latency/map-50-drag-1-publications.json",
+    "bytes": 3487723,
+    "sha256": "e1ad974f708ebf841fd79f1b9fe8e75f2bd8078fffe61c0c976ccaac87dcda89"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-final-f30c9910-latency/map-50-drag-1-queue-correlations.json",
+    "bytes": 135923,
+    "sha256": "838a29d309382ebce1bcc36db11e246b982d55a3d2cfbab05b09cd0b6779a9cc"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-final-f30c9910-latency/map-50-drag-1-rows.json",
+    "bytes": 760956,
+    "sha256": "b3b9e4542a640555e41b6ab33b09bad208c7b99a606861974a873c358aa530c4"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-final-f30c9910-latency/map-50-drag-1-summary.json",
+    "bytes": 8208,
+    "sha256": "809021c2c2e8fd2085103b43aa2cef4c3ad831b0fb6df403cca40a484678f95f"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-final-f30c9910-latency/map-50-drag-50-coverage.json",
+    "bytes": 203920,
+    "sha256": "99c50f154f0d695226b09a0d65266ecbad3f1d2eb5af885e732df583bfb5319c"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-final-f30c9910-latency/map-50-drag-50-local-control.json",
+    "bytes": 25070,
+    "sha256": "62cfd786f6235273652b36e8cba2d97f977effd21be3301033720d5c4494f4d3"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-final-f30c9910-latency/map-50-drag-50-owner-trace.zip",
+    "bytes": 193310259,
+    "sha256": "3e086eaa404c6aa57a95f38ce2df3ee5c4f2ced523c58858bf0397219d313829"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-final-f30c9910-latency/map-50-drag-50-peer-trace.zip",
+    "bytes": 236496319,
+    "sha256": "51797f58033b77915710c51da352a7637e3aed4f0802d6073a591f0b375e93cc"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-final-f30c9910-latency/map-50-drag-50-peer.png",
+    "bytes": 117083,
+    "sha256": "8ed239b9da6febb7e31a485ac917a73799f39f2083c218f64803af092ec1903e"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-final-f30c9910-latency/map-50-drag-50-publications.json",
+    "bytes": 5590755,
+    "sha256": "efb812ddfd05b37056b5fe740dbb42c740f2f5e8090c93109f36392da692f6de"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-final-f30c9910-latency/map-50-drag-50-queue-correlations.json",
+    "bytes": 67981,
+    "sha256": "f86c7a25632b92dcb99aa52288b0a6f4d6c5f162909014a3cbb6b0995a65c73e"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-final-f30c9910-latency/map-50-drag-50-rows.json",
+    "bytes": 4057192,
+    "sha256": "57ffd6f0b53ca1f056e7cc003e33e24e06eaadfdb038a209cf01ceecbfcaa959"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-final-f30c9910-latency/map-50-drag-50-summary.json",
+    "bytes": 14494,
+    "sha256": "8f5e626b15d277854f26fe466fde182786cdb9a7c2fc9c02a6cad26eb7a26d87"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-final-f30c9910-latency/map-500-drag-1-coverage.json",
+    "bytes": 203261,
+    "sha256": "102337f513c56813c1d8e74077cdb72c7a8e0413162765e985c639873e8b7b48"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-final-f30c9910-latency/map-500-drag-1-local-control.json",
+    "bytes": 25090,
+    "sha256": "c60dcfe3a1cbe1c488b9c66fa798589cdb22e4097bfe8ae39c3d5b3d23d0e843"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-final-f30c9910-latency/map-500-drag-1-owner-trace.zip",
+    "bytes": 194496322,
+    "sha256": "056e8bf639504fa030d24c08b6416978deb9664fdd2a138431826a408ce7bfc2"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-final-f30c9910-latency/map-500-drag-1-peer-trace.zip",
+    "bytes": 229819921,
+    "sha256": "85b3c981fcbc3fc28f5ca77d1f3bddfbff9d38cc3ebae3f9d9e219dd3a665347"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-final-f30c9910-latency/map-500-drag-1-peer.png",
+    "bytes": 135682,
+    "sha256": "2f02f38962049ad7c303e89564eb2fc9849c609af90b3dda9873411cbaa8481c"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-final-f30c9910-latency/map-500-drag-1-publications.json",
+    "bytes": 3500520,
+    "sha256": "8a7ca385d485e53d1abd7884505df0968894749cb943505c3265faa21d902e24"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-final-f30c9910-latency/map-500-drag-1-queue-correlations.json",
+    "bytes": 104856,
+    "sha256": "b6c47f66364ca2b5b570986818f9cc52e06a7bb7e230033ee8f1fb47564749c9"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-final-f30c9910-latency/map-500-drag-1-rows.json",
+    "bytes": 760990,
+    "sha256": "8290d01c7ead6363560558eab97617baae01dad1cd5c0b51e16ff1ae5be147e2"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-final-f30c9910-latency/map-500-drag-1-summary.json",
+    "bytes": 8208,
+    "sha256": "aa13087a0b4b429cf92d02aade900de63ace5c981b57f18274a1939a5f9efd01"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-final-f30c9910-latency/map-500-drag-200-coverage.json",
+    "bytes": 204694,
+    "sha256": "752769d9d2aa1cb812c3054b34a89bd813560be784147bb2c94564df6cf9f2b3"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-final-f30c9910-latency/map-500-drag-200-local-control.json",
+    "bytes": 25066,
+    "sha256": "8fc52cea141bf34ab0b106127bfb18619d3f27b9a94cec47173a217ff394e277"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-final-f30c9910-latency/map-500-drag-200-owner-trace.zip",
+    "bytes": 148386192,
+    "sha256": "ec8887f12a38a287307a1722999c0cdb0a01429b83c897cf01126a4f399cf89a"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-final-f30c9910-latency/map-500-drag-200-peer-trace.zip",
+    "bytes": 129978619,
+    "sha256": "29a610fbcc84b7b4e74ee2a6802b0e820c587baf8b5f60627f059d626d505e16"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-final-f30c9910-latency/map-500-drag-200-peer.png",
+    "bytes": 126573,
+    "sha256": "50782e0ec363a23d8ae0de2c5a1efedb26fdf97a74603e51a8eac8a9c1b4528c"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-final-f30c9910-latency/map-500-drag-200-publications.json",
+    "bytes": 5264169,
+    "sha256": "b830b232b98fd7634aac7b4ce85a0be64d846e3f9ab8f112be746cd8e36cf16b"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-final-f30c9910-latency/map-500-drag-200-queue-correlations.json",
+    "bytes": 122471,
+    "sha256": "e8dc76ca2ed82f9e47b1cfab0f946dfdb9bd599f499ecab9dcf0d10420382917"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-final-f30c9910-latency/map-500-drag-200-rows.json",
+    "bytes": 14236968,
+    "sha256": "04b58158f16b994b8170f4bc1af9dde685dce5e405514128fa365376e87e8e26"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-final-f30c9910-latency/map-500-drag-200-summary.json",
+    "bytes": 34743,
+    "sha256": "84998906875a66310c151d8874846949ac7370d3749e8d46845c0bfa7dfad933"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-final-f30c9910-latency/map-500-drag-50-coverage.json",
+    "bytes": 204069,
+    "sha256": "6fb159bd12445941824eb3efbefb2b0b96c3c905dd160ca459ba60570dfeb1df"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-final-f30c9910-latency/map-500-drag-50-local-control.json",
+    "bytes": 25090,
+    "sha256": "033a6fbcb84ef682f985ba592860d07b6f284ecf1022f6ed6236640164237dad"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-final-f30c9910-latency/map-500-drag-50-owner-trace.zip",
+    "bytes": 194851709,
+    "sha256": "e6c2006447d36ec1aa4561b917d777d9f8e7b2684e6bc83d63a3d50b7e054406"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-final-f30c9910-latency/map-500-drag-50-peer-trace.zip",
+    "bytes": 170575838,
+    "sha256": "e713df2111a3585edd9b19eb9e3bd5eb02100f112245f9cd97ef7c56d1fc8f38"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-final-f30c9910-latency/map-500-drag-50-peer.png",
+    "bytes": 135613,
+    "sha256": "55f99820be400f31ca3271a9c3131347d6f11f41eafc4203b2d7619be366e957"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-final-f30c9910-latency/map-500-drag-50-publications.json",
+    "bytes": 5504347,
+    "sha256": "13ec5d212c3da5344b7222ca69933a93210121b2913cf129ed36d1e02e3f3c7d"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-final-f30c9910-latency/map-500-drag-50-queue-correlations.json",
+    "bytes": 68047,
+    "sha256": "5acf38877cd34a074737fa648883768044ed826bb122995b628c02f646b05d2d"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-final-f30c9910-latency/map-500-drag-50-rows.json",
+    "bytes": 4057284,
+    "sha256": "35664190017270e2d97ebebbf86f53f7658a2a1388a77f116dea8868c49472d8"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-final-f30c9910-latency/map-500-drag-50-summary.json",
+    "bytes": 14494,
+    "sha256": "21a4cc280ffa50bc511c5997944626d950fef3526b59b52fd7a4b3bbff27f4bd"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-final-f30c9910-latency/measurement-finished.json",
+    "bytes": 534,
+    "sha256": "8f63e7e4fcd12f314bed5e8b05cf3664ea55dcb21d62e24eff27d02caf3d946f"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-final-f30c9910-latency/planned.json",
+    "bytes": 346,
+    "sha256": "3b361028b2c22d7e47bf948132c735037543393e694ae714f2ac3963efc64f09"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-final-f30c9910-latency/producer-shutdown.json",
+    "bytes": 418,
+    "sha256": "d87eccd37b5916bfe50be3bee83d4c8e8e539c02fd91281c3974be11a6091316"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-final-f30c9910-latency/queue-inventory.json",
+    "bytes": 299,
+    "sha256": "6871a5e14d9a5d24eb8ee4be7834753938c3e2e778f20b85e73a6b6dcf22ec95"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-final-f30c9910-latency/queue-seal.json",
+    "bytes": 504,
+    "sha256": "c7afa2d84adf19cc62a3eb133e49085fa33039806028b80bfffc4629b971d365"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-final-f30c9910-latency/runtime.json",
+    "bytes": 2014,
+    "sha256": "537f818455e0dc7c6dbf72dc883ac35e7ee7c4b3f7c5c5aa749832441e2ab0d4"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-final-f30c9910-latency/summary.json",
+    "bytes": 119233,
+    "sha256": "576496b8b383529de3c88dad5f3124820f7d1b35208a74cafcb9948370aab754"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-final-f30c9910-latency/wiki-10000-editor-coverage.json",
+    "bytes": 222851,
+    "sha256": "84f41d6ea38c9bf87c4ff6502d8d2d678ece244e95cb97355c2726be63bcc4f9"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-final-f30c9910-latency/wiki-10000-editor-local-control.json",
+    "bytes": 27403,
+    "sha256": "f6b60729861b49e319072817081bd62b7ad5032ce8581e4e427102d3019cd181"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-final-f30c9910-latency/wiki-10000-editor-owner-trace.zip",
+    "bytes": 301045209,
+    "sha256": "3b80d74d60cf01b652dd199a01192c369c69bd536003e2f8ea57bc8b18a51c55"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-final-f30c9910-latency/wiki-10000-editor-peer-trace.zip",
+    "bytes": 170044211,
+    "sha256": "d5fc19cffa35a81fdcba08d9b8af01dab95c6392c3c1bc09074d283464e126af"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-final-f30c9910-latency/wiki-10000-editor-peer.png",
+    "bytes": 69574,
+    "sha256": "eea7d69e01efd9146a177938cb03abf35fd1e179efe5566df7a84f523fb755fb"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-final-f30c9910-latency/wiki-10000-editor-publications.json",
+    "bytes": 6401879,
+    "sha256": "e131faa41e6a23e01826242af86e2bb0f5c824b677e2fb84c9af5465ee12a78c"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-final-f30c9910-latency/wiki-10000-editor-queue-correlations.json",
+    "bytes": 121652,
+    "sha256": "20dc087adbabde5b3c2fda3d83059111e45bc9654caf29f2008b05db52b41b49"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-final-f30c9910-latency/wiki-10000-editor-rows.json",
+    "bytes": 826691,
+    "sha256": "0490f199727a0f4e84396eb3a5a43cee5b7714e11d6a54a2784b2f6529936643"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-final-f30c9910-latency/wiki-10000-editor-summary.json",
+    "bytes": 8028,
+    "sha256": "ff1361a4e64f3947470113a1d3a1586f6b401c0fa97a8fc5ba017df4a6cb687e"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-final-f30c9910-latency/wiki-10000-reader-coverage.json",
+    "bytes": 222717,
+    "sha256": "803663cabc6281eef811049a92308410ec8488c1ab8ea04008bd74561fbb0071"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-final-f30c9910-latency/wiki-10000-reader-local-control.json",
+    "bytes": 27392,
+    "sha256": "0fd6e7c228b8a360bb127b4f70c3b72a6263f5a4fcc3c1d1e6de389802532158"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-final-f30c9910-latency/wiki-10000-reader-owner-trace.zip",
+    "bytes": 294959647,
+    "sha256": "565d0a2fa302047adb0e1af135acac8f9143037ebee434f1ac92f63dfeea71c9"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-final-f30c9910-latency/wiki-10000-reader-peer-trace.zip",
+    "bytes": 167636916,
+    "sha256": "e10cca944dd512a5b585f857826315a8df8e45ffa17dcbca8c621864816df23d"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-final-f30c9910-latency/wiki-10000-reader-peer.png",
+    "bytes": 61460,
+    "sha256": "eec10f86c5a8bd1a70c9899f5cae55d7d946bb1ba832f241086fef86b86f2d7f"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-final-f30c9910-latency/wiki-10000-reader-publications.json",
+    "bytes": 6400564,
+    "sha256": "f6b390b2ab695c81e3d32c1c3fc0dfb5590b17375861b0c76fadaf8baaa73ba7"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-final-f30c9910-latency/wiki-10000-reader-queue-correlations.json",
+    "bytes": 92230,
+    "sha256": "d675dd219b4c2ee0d76771654de74d9d2b4790b696a122a8183026c74b1fe9f4"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-final-f30c9910-latency/wiki-10000-reader-rows.json",
+    "bytes": 836095,
+    "sha256": "2e9ba9c2195611a3ca4bf6077487672ec002d8cec3eed5ca6e17067effa52c2b"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-final-f30c9910-latency/wiki-10000-reader-summary.json",
+    "bytes": 8039,
+    "sha256": "2d25c13ade1e46bb1afccdf9fc174bac7b120d1daccd957b43f2d52f77be576c"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-final-f30c9910-latency/wiki-100000-editor-coverage.json",
+    "bytes": 222677,
+    "sha256": "3461e9c0d6f8694849b945e558e1e7d56c8d9e756c62409c57ad67215fb6e547"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-final-f30c9910-latency/wiki-100000-editor-local-control.json",
+    "bytes": 27277,
+    "sha256": "ab2c0b2b6408c93a84306945617c7ea9642eb56d383d295500a2c037598fa7aa"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-final-f30c9910-latency/wiki-100000-editor-owner-trace.zip",
+    "bytes": 290894448,
+    "sha256": "943177dd6acdccfb0e84b3c30b1e57b2a461d14dac0c28506c332c4a51afd534"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-final-f30c9910-latency/wiki-100000-editor-peer-trace.zip",
+    "bytes": 132418593,
+    "sha256": "427e4187927d52669b2f1ebcc3c7d30240f19a9fa32dc7c5965e2aae7bbb2608"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-final-f30c9910-latency/wiki-100000-editor-peer.png",
+    "bytes": 72668,
+    "sha256": "950951aea75051e7e340deef3de7bacded1f54823202eeaab7be4024bdcfe4d5"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-final-f30c9910-latency/wiki-100000-editor-publications.json",
+    "bytes": 6217808,
+    "sha256": "f639d2ae05635ee72b6672a6afddb1968e3a3980464753604fb8c7c3a806f3c2"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-final-f30c9910-latency/wiki-100000-editor-queue-correlations.json",
+    "bytes": 139296,
+    "sha256": "30c932e3b69a2173774fd8e40500f1be5ff2e4092757aee2ba7af0ac9a2a2a78"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-final-f30c9910-latency/wiki-100000-editor-rows.json",
+    "bytes": 825638,
+    "sha256": "2292bc89d81fb1b7721dd10d774d4473118962ed8dac71f9162608ad18ea358c"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-final-f30c9910-latency/wiki-100000-editor-summary.json",
+    "bytes": 8027,
+    "sha256": "6e30411239acec09d45be1369feb4e955ce8a91057e3c9be810c8b82e7ce74a0"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-final-f30c9910-latency/wiki-100000-reader-coverage.json",
+    "bytes": 222109,
+    "sha256": "afdbf671869126f5b86f671a6c42a94683e374cfb737de53eb236204a81acbb9"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-final-f30c9910-latency/wiki-100000-reader-local-control.json",
+    "bytes": 27279,
+    "sha256": "744ef1e2b1ce5d6c690fe9e1845840241b641f14c0d51179e53c44b8a2098907"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-final-f30c9910-latency/wiki-100000-reader-owner-trace.zip",
+    "bytes": 285927169,
+    "sha256": "f4e92f38945ce11e28136f497d84c81c7adb1caf28b215f363d759d4419a7141"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-final-f30c9910-latency/wiki-100000-reader-peer-trace.zip",
+    "bytes": 136628311,
+    "sha256": "c69d899314e09778a162ddc26487b1523a92207ad64275cdec23286b13245f2b"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-final-f30c9910-latency/wiki-100000-reader-peer.png",
+    "bytes": 64650,
+    "sha256": "75ef1ff296a22bec3d2d6a64f2c636be4ba4d67a7a5af674fe17ab2f1ce68105"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-final-f30c9910-latency/wiki-100000-reader-publications.json",
+    "bytes": 6806389,
+    "sha256": "415bc3c655472d75c2ece54c973607673cb0a83bd5e8da4a8dfdc27819df9ba7"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-final-f30c9910-latency/wiki-100000-reader-queue-correlations.json",
+    "bytes": 100078,
+    "sha256": "c781b93a4bbf8cb4513bda6a7eb3179cf668f88f1ad20206f25a631a1dcce5a8"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-final-f30c9910-latency/wiki-100000-reader-rows.json",
+    "bytes": 835407,
+    "sha256": "dcb6eccd145f07c8d52655b9af1cdedccf513d46318da49d56c9e253aa4776d1"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-final-f30c9910-latency/wiki-100000-reader-summary.json",
+    "bytes": 8037,
+    "sha256": "d7e6ac72cf1f2c9d3c51035d2389f9229ea2199b20705982e69b2ba4f8415ca4"
+  }
+]

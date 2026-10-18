@@ -1,0 +1,46 @@
+{
+  "collector-result.json": {
+    "bytes": 509264,
+    "complete": false,
+    "error": "closed marker binding invalid",
+    "marker_received": false,
+    "records": 366,
+    "schema": 1,
+    "source_sha": "f09b3b8bbe0098f0b6bc967925b93161afe69fc0"
+  },
+  "planned.json": {
+    "source_sha": "f09b3b8bbe0098f0b6bc967925b93161afe69fc0",
+    "cases": [
+      "map-500-drag-200"
+    ],
+    "samples_per_case": 240,
+    "warmups_per_case": 30
+  },
+  "measurement-finished.json": {
+    "api_instances": [
+      "api-one"
+    ],
+    "completed_case_count": 1,
+    "driver_sha256": "854ebf24f86d91108e73255a3a6544cf930641f06aaf0febee95b5285166f2b4",
+    "finished_at": 698371.796713114,
+    "measurement_id": "c0a2bbf0-266d-4f1f-b929-4966bb89d492",
+    "planned_cases": [
+      "map-500-drag-200"
+    ],
+    "scheduled_rows_written": 240,
+    "schema": 1,
+    "source_sha": "f09b3b8bbe0098f0b6bc967925b93161afe69fc0",
+    "teardown_complete": true
+  },
+  "queue-inventory.json": {
+    "api_instances": [
+      "api-one"
+    ],
+    "containers": {
+      "api-one": "1efc98ce2c8bb5bff3d58c39283d1aa885979798455f8834c1adc3a526622936"
+    },
+    "driver_sha256": "854ebf24f86d91108e73255a3a6544cf930641f06aaf0febee95b5285166f2b4",
+    "schema": 1,
+    "source_sha": "f09b3b8bbe0098f0b6bc967925b93161afe69fc0"
+  }
+}

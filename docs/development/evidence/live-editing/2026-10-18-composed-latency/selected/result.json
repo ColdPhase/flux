@@ -1,0 +1,144 @@
+{
+  "source_sha": "f09b3b8bbe0098f0b6bc967925b93161afe69fc0",
+  "scope": "selected",
+  "runner_exit": 1,
+  "driver_exit": 1,
+  "collector_exit": 1,
+  "total_samples": 240,
+  "cases": [
+    {
+      "case": "map-500-drag-200",
+      "source_sha": "f09b3b8bbe0098f0b6bc967925b93161afe69fc0",
+      "samples": 240,
+      "warmups": 30,
+      "interval_ms": 250,
+      "duration_s": 60,
+      "p95_ms": 191.9017960317433,
+      "failures": 0,
+      "input_errors": [],
+      "socket_errors": [],
+      "superseded_count": 224,
+      "scheduled_distribution": {
+        "count": 240,
+        "p50_ms": 151.00585797335953,
+        "p95_ms": 191.9017960317433,
+        "max_ms": 251.13069405779243,
+        "infinite_count": 0
+      },
+      "segment_distributions": {
+        "covering_peer_receipt_to_painted_ms": {
+          "count": 240,
+          "p50_ms": 33.9937451062724,
+          "p95_ms": 59.91245899349451,
+          "max_ms": 111.4123429870233,
+          "infinite_count": 0,
+          "unavailable_rows": 0
+        },
+        "first_peer_receipt_to_render_condition_ms": {
+          "count": 240,
+          "p50_ms": 29.69323901925236,
+          "p95_ms": 46.4934769552201,
+          "max_ms": 73.27839999925345,
+          "infinite_count": 0,
+          "unavailable_rows": 0
+        },
+        "input_to_covering_publication_ms": {
+          "count": 240,
+          "p50_ms": 79.88247193861753,
+          "p95_ms": 127.42809997871518,
+          "max_ms": 143.58493697363883,
+          "infinite_count": 0,
+          "unavailable_rows": 0
+        },
+        "publication_to_peer_receipt_ms": {
+          "count": 240,
+          "p50_ms": 36.59321099985391,
+          "p95_ms": 54.27103897091001,
+          "max_ms": 75.15612395945936,
+          "infinite_count": 0,
+          "unavailable_rows": 0
+        },
+        "two_raf_and_recheck_ms": {
+          "count": 240,
+          "p50_ms": 46.949638053774834,
+          "p95_ms": 73.49278102628887,
+          "max_ms": 110.97618308849633,
+          "infinite_count": 0,
+          "unavailable_rows": 0
+        }
+      },
+      "continuous_input": {
+        "count": 1714,
+        "requested_sleep_ms": 16,
+        "interval_distribution": {
+          "count": 1713,
+          "p50_ms": 33.782835002057254,
+          "p95_ms": 51.56706506386399,
+          "max_ms": 95.01935704611242,
+          "infinite_count": 0
+        }
+      },
+      "publications": {
+        "count": 1428,
+        "interval_distribution": {
+          "count": 1427,
+          "p50_ms": 40.37046595476568,
+          "p95_ms": 51.00529396440834,
+          "max_ms": 94.53525592107326,
+          "infinite_count": 0
+        },
+        "by_type": {
+          "map-move": 1428,
+          "cursor": 0,
+          "text": 0
+        },
+        "cadence_by_type": {
+          "map-move": {
+            "count": 1427,
+            "p50_ms": 40.37046595476568,
+            "p95_ms": 51.00529396440834,
+            "max_ms": 94.53525592107326,
+            "infinite_count": 0
+          },
+          "cursor": {
+            "count": 0,
+            "p50_ms": null,
+            "p95_ms": null,
+            "max_ms": null,
+            "infinite_count": 0
+          },
+          "text": {
+            "count": 0,
+            "p50_ms": null,
+            "p95_ms": null,
+            "max_ms": null,
+            "infinite_count": 0
+          }
+        }
+      },
+      "local_render_control": {
+        "samples": 30,
+        "distribution": {
+          "count": 30,
+          "p50_ms": 66.9472609879449,
+          "p95_ms": 78.87934998143464,
+          "max_ms": 83.18454690743238,
+          "infinite_count": 0
+        },
+        "subtracted": false
+      }
+    }
+  ],
+  "failure_case_names": [
+    "actual-server-queue-evidence"
+  ],
+  "queue_evidence": {
+    "status": "INCOMPLETE",
+    "reason": "Actual collector seal did not arrive within fifteen seconds"
+  },
+  "row_artifact_validation": {
+    "completed_case_count": 1,
+    "scheduled_rows_written": 240,
+    "errors": []
+  }
+}
