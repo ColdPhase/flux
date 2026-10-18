@@ -369,3 +369,29 @@ iOS keyboard or all platform IMEs. Physical devices remain optional under #266;
 this method and its actual runtime result still need the single consolidated
 independent functional assessment. Until runtime proof succeeds, WebKit IME
 acceptance remains pending; no criterion is waived by this candidate record.
+
+
+### Full editor text through a trusted Copy payload (2026-10-18, #228 / #613)
+
+The WebKit native IME journey now completes its small and100k cases at
+`4618e319b992137c83475fdfb943cf4c355ec114`; this does not change the other failed
+checks in that run. WebKit's clipboard-read selection still produces a real
+`NotAllowedError` in the current headless fixture. Do not turn that into passing
+quota/undo coverage or claim system-clipboard/paste compatibility.
+
+The full-text observer candidate reads the `text/plain` payload of the actual
+trusted Copy event, after the existing CodeMirror handler has populated its
+ClipboardEvent data and prevented default copying. The observer adds no editor
+state, text, synthetic event, transport or clipboard content. A fresh nonce and
+sentinel require a new event from the current focused editor; require
+`isTrusted`, the current source element, handled default action and a complete
+plain-text payload. An old witness, absent event, untrusted event, empty payload
+or viewport-only text must fail. Remove the temporary listener and observation
+when done. This verifies the actual user Copy output of the complete editor,
+not permission to read or paste the operating system clipboard.
+
+Keep both accounts' exact99,999/100,000-character comparisons, real server
+ACK/generation/sequence/hash quorum, concurrent own-undo refusal and over-limit
+input refusal unchanged. The observer replaces only an unsupported observation
+mechanism. Its browser results and source remain required in the consolidated
+independent review; the original failed clipboard attempts retain their pins.
