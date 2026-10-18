@@ -1,0 +1,10 @@
+{
+  "captured_at_utc": "2026-10-18T12:15:51.713132+00:00",
+  "host_load_average": [
+    2.78515625,
+    2.45556640625,
+    2.3671875
+  ],
+  "qwen_stats": "{\"BlockIO\":\"322MB / 65.5kB\",\"CPUPerc\":\"0.00%\",\"Container\":\"qwen38-llama-router\",\"ID\":\"f5bd4b315dc8\",\"MemPerc\":\"1.46%\",\"MemUsage\":\"922.9MiB / 61.89GiB\",\"Name\":\"qwen38-llama-router\",\"NetIO\":\"10.6kB / 27kB\",\"PIDs\":\"63\"}",
+  "observational_only": "One midrun snapshot, not a controlled or causal comparison."
+}
