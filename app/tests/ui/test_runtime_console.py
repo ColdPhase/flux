@@ -454,7 +454,7 @@ class RuntimeConsole(unittest.TestCase):
         expect(section).not_to_contain_text("Anthropic")
         expect(section).not_to_contain_text("your Claude plan")
         section.locator("details.rt-more summary").filter(has_text="Which account should I use?").click()
-        expect(section.locator("details.rt-more")).to_contain_text("A ChatGPT sign-in uses the account or organization you choose in Codex.")
+        expect(section.locator("details.rt-more").filter(has_text="Which account should I use?")).to_contain_text("A ChatGPT sign-in uses the account or organization you choose in Codex.")
         shot(page, f"runtime-codex-only-signed-out-phone-390-{UI_BROWSER}")
         page.close()
 
