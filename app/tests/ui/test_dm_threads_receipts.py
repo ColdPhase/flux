@@ -19,6 +19,7 @@ import unittest
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
 from message_gestures import centre, long_press, swipe, touch
+from message_layout import assert_no_sideways_scroll, covered_parts, covered_text, showing, start_counting, stop_counting
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UI_BROWSER, UPSTREAM, shot, start_forwarder
 
 PASSWORD = "messages between friends"
@@ -385,6 +386,21 @@ class DmThreadsReceipts(unittest.TestCase):
         swipe(other.locator(".dm-msg__body"), 40)
         expect(other).not_to_have_class(re.compile(r"is-swiped"))
         expect(page.locator("[data-dm-thread]")).to_have_count(0)
+        # The swipe frame above (the row slid right, its clock cut by the pane) is transient: at rest the row is back where
+        # it was, nothing is cut off at the right edge and the feed does not scroll sideways.
+        page.wait_for_timeout(500)
+        self.assertRegex(other.evaluate("el => getComputedStyle(el).transform"), r"^(none|matrix\(1, 0, 0, 1, 0, 0\))$")
+        resting = page.evaluate("""(id) => { const feed = document.querySelector('.dm__feed'), li = document.getElementById(id), edge = feed.getBoundingClientRect().left + feed.clientWidth;
+          const rights = [...li.querySelectorAll('.message-bubble, .message-time')].map((el) => el.getBoundingClientRect().right);
+          return {scroll: feed.scrollWidth, client: feed.clientWidth, over: Math.max(...rights) - edge}; }""", f"message-{self.run_y}")
+        self.assertLessEqual(resting["scroll"], resting["client"], "no sideways scrolling after the swipe")
+        self.assertLessEqual(resting["over"], 0.5, "the bubble and its clock end inside the pane")
+        shot(page, "dm-threads-phone-rest-light")
+        # The caption under the composer shares its line with "Choose messages" and does not wrap.
+        caption = page.locator(".dm__composer .composer__audience > span").first.evaluate("el => ({height: el.getBoundingClientRect().height, line: parseFloat(getComputedStyle(el).lineHeight) || parseFloat(getComputedStyle(el).fontSize) * 1.45})")
+        self.assertLessEqual(caption["height"], caption["line"] * 1.3, f"the caption stays on one line ({caption})")
+        for icon in (page.locator(".dm__composer .composer__audience > svg"), page.locator(".dm__composer .dm-select-btn--phone svg")):
+            self.assertGreaterEqual(icon.first.bounding_box()["width"], 10, "the lock and the check icons stay visible")
 
     def test_08_project_conversation_roots_and_thread_replies_show_real_receipts(self) -> None:
         import uuid
@@ -433,6 +449,73 @@ class DmThreadsReceipts(unittest.TestCase):
         phone.goto(f"/dm/{self.dm_id}")
         expect(self.run_footer(phone, self.run_y).locator(".message-seen")).to_have_text(re.compile(r"Seen by Kai$"), timeout=20000)
         shot(phone, "dm-threads-phone-seen-dark")
+
+    def test_10_thread_replies_from_both_people_stay_in_the_pane_with_one_toolbar(self) -> None:
+        """#591: the thread beside the conversation has no sideways scroll, shows one toolbar at a time and covers nothing."""
+        long = ("Averyveryverylongwordwithoutanyspacesthatkeepsgoingandgoingandgoingandgoingandgoing and "
+                "https://example.test/a/really/long/path/that/never/ends/and/ends/in/a/query?x=1&y=2&z=3 end.")
+        root = self.run_x[1]
+        for index, (who, body) in enumerate((("kai", long), ("kai", "Straight after."), ("ada", long), ("ada", "Short from me."), ("kai", "Thanks!"))):
+            self.post(who, f"/api/v1/dms/{self.dm_id}/threads/{root}/replies", {"body": body, "clientMessageId": f"00000000-0000-4000-8000-{900 + index:012d}"}, 201)
+        for who in ("ada", "kai"):
+            page = self.page(who)
+            page.goto(f"/dm/{self.dm_id}?thread={root}")
+            replies = page.locator("[data-dm-thread] .thread__list .dm-msg[data-message-id]")
+            expect(replies).to_have_count(5)
+            page.wait_for_timeout(300)
+            assert_no_sideways_scroll(self, page, "[data-dm-thread] .thread__feed", f"{who}'s thread")
+            for index in range(5):
+                reply = replies.nth(index)
+                reply.scroll_into_view_if_needed()
+                reply.locator(".message-bubble").hover()
+                page.wait_for_timeout(200)
+                bars = showing(page, "[data-dm-thread]")
+                self.assertEqual(len(bars), 1, f"{who}: reply {index} has the only toolbar")
+                self.assertEqual(covered_parts(page, "[data-dm-thread]", bars[0]), [], f"{who}: reply {index}: the toolbar covers nothing")
+                feed = page.locator("[data-dm-thread] .thread__feed").evaluate("el => ({left: el.getBoundingClientRect().left, right: el.getBoundingClientRect().left + el.clientWidth})")
+                self.assertTrue(feed["left"] - 0.5 <= bars[0]["left"] and bars[0]["right"] <= feed["right"] + 0.5, f"{who}: reply {index}: the toolbar is inside the pane")
+            # A click leaves nothing behind and the hand-over from one reply to the next never shows two.
+            replies.nth(1).locator(".message-bubble").click(position={"x": 20, "y": 6})
+            page.mouse.move(2, 2)
+            page.wait_for_timeout(200)
+            self.assertEqual(showing(page), [], f"{who}: a click leaves no toolbar")
+            replies.nth(1).locator(".message-bubble").hover()
+            expect(replies.nth(1).locator(".msg-acts")).to_have_css("opacity", "1")
+            start_counting(page)
+            replies.nth(2).locator(".message-bubble").hover()
+            page.wait_for_timeout(500)
+            self.assertLessEqual(stop_counting(page)["max"], 1, f"{who}: two toolbars never show together")
+            shot(page, f"dm-threads-desktop-thread-replies-{who}")
+            # A narrow window (380px panel): the pill is in the bubble's corner and covers no text.
+            page.set_viewport_size({"width": 1100, "height": 800})
+            page.wait_for_timeout(300)
+            assert_no_sideways_scroll(self, page, "[data-dm-thread] .thread__feed", f"{who}'s narrow thread")
+            for index in range(5):
+                replies.nth(index).scroll_into_view_if_needed()
+                replies.nth(index).locator(".message-bubble").hover()
+                page.wait_for_timeout(200)
+                bars = showing(page, "[data-dm-thread]")
+                self.assertEqual(len(bars), 1, f"{who}: narrow reply {index} has the only toolbar")
+                self.assertEqual(covered_text(page, "[data-dm-thread]", bars[0]), [], f"{who}: narrow reply {index}: the pill covers no text")
+                self.assertEqual(replies.nth(index).locator(".msg-acts__b:visible").count(), 3, f"{who}: reply, task and more stay on the pill")
+            page.set_viewport_size({"width": 1440, "height": 900})
+            page.wait_for_timeout(300)
+            # Keyboard focus on the thread's root (its own list) and the pointer on a reply or on the conversation behind:
+            # still one toolbar, the one under the pointer.
+            page.mouse.move(2, 2)
+            page.locator("[data-dm-thread] .dm-thread__root .message-bubble").click(position={"x": 20, "y": 6})
+            page.keyboard.press("Tab")
+            page.wait_for_timeout(250)
+            self.assertEqual(len(showing(page)), 1, f"{who}: Tab shows the root's toolbar")
+            focused = showing(page)[0]["id"]
+            replies.nth(2).locator(".message-bubble").hover()
+            page.wait_for_timeout(300)
+            self.assertEqual([bar["id"] for bar in showing(page)], [(replies.nth(2).get_attribute("data-message-id"))], f"{who}: the pointer wins over the root's focus")
+            stream = page.locator(".dm__feed .dm-msg[data-message-id]").last
+            stream.locator(".message-bubble").hover()
+            page.wait_for_timeout(300)
+            self.assertEqual([bar["id"] for bar in showing(page)], [stream.get_attribute("data-message-id")], f"{who}: nor does a focused thread toolbar stay with the pointer on the conversation ({focused})")
+            page.context.close()
 
 
 if __name__ == "__main__":

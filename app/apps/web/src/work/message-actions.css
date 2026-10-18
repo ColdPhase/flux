@@ -1,17 +1,31 @@
-/* Actions on one message (F-026 S6): hover toolbar on a computer, swipe left and long press on a phone. */
+/* Actions on one message (F-026 S6): hover toolbar on a computer, swipe right and long press on a phone. */
 
-/* The computer: a small pill over the message's top corner, only on hover or focus, taking no room. */
-.msg-acts { position: absolute; top: -18px; right: 0; z-index: 2; display: flex; gap: 2px; padding: 4px; border-radius: 12px; background: var(--el);
-  box-shadow: var(--sh-pop), inset 0 0 0 1px var(--line); opacity: 0; pointer-events: none; transition: opacity var(--dur-1) var(--ease-out); }
-.project-convo__message:hover > .msg-acts, .project-convo__message:focus-within > .msg-acts, .msg-acts:has([aria-expanded="true"]) { opacity: 1; pointer-events: auto; }
-/* An own message sits on the right with its name (#481): its pill takes the far, left corner, clear of the name and time. */
-.project-convo__message.is-mine > .msg-acts { left: 0; right: auto; }
-/* A thread reply is only as wide as its text, so the pill could reach the name: its corner of the author line
-   stays free for it, and a long name wraps beside it instead of under it. */
-@media (hover: hover) {
-  .thread .project-convo__message:has(> .msg-acts) > .project-convo__message-meta { padding-right: 112px; }
-  .thread .project-convo__message.is-mine:has(> .msg-acts) > .project-convo__message-meta { padding-right: 0; padding-left: 112px; }
-}
+/* The computer: one small pill beside the message's bubble, at its top corner, for the message under the pointer or
+   (for a keyboard) the one holding :focus-visible. The room beside the bubble is reserved by the layout (every bubble
+   column is narrower than its pane by --acts-room), so the pill is always inside the pane and never over text (#591).
+   A thread's pane is narrow: below 400px (see .thread__feed) the pill is one ••• button, the rest is in its menu. */
+:root { --acts-w: 108px; --acts-gap: 6px; --acts-room: calc(var(--acts-w) + var(--acts-gap)); }
+.msg-acts { position: absolute; top: 0; right: auto; z-index: 2; display: flex; gap: 2px; padding: 4px; border-radius: 12px; background: var(--el);
+  box-shadow: var(--sh-pop), inset 0 0 0 1px var(--line); opacity: 0; pointer-events: none; }
+/* The pill takes the far side of the bubble and a quiet bridge over the gap keeps the pointer inside the message on its way to it. */
+.msg-acts::before { content: ""; position: absolute; top: 0; bottom: 0; left: calc(-1 * var(--acts-gap)); width: var(--acts-gap); }
+/* One toolbar at a time: it shows for the message under the pointer, for keyboard focus (:focus-visible, so a click leaves
+   none behind) and for its own open menu. It appears with a fade but goes at once, so a hand-over never shows two. */
+.project-convo__message:is(:hover, :focus-visible, :has(:focus-visible)) > .msg-acts,
+.dm-msg:is(:hover, :focus-visible, :has(:focus-visible)) .dm-msg__main > .msg-acts,
+.msg-acts:has([aria-expanded="true"]) { opacity: 1; pointer-events: auto; transition: opacity var(--dur-1) var(--ease-out); }
+/* The pointer wins over a focused message, wherever it is in the conversation (the stream, the thread, a thread's root):
+   while one message is hovered no other toolbar shows, unless its own menu is open. The sibling forms cover one list
+   (and are what WebKit honours for it); the last covers messages in different lists of the conversation and its panel. */
+.project-convo__message:hover ~ .project-convo__message > .msg-acts:not(:has([aria-expanded="true"])),
+.project-convo__message:has(~ .project-convo__message:hover) > .msg-acts:not(:has([aria-expanded="true"])),
+.dm-msg:hover ~ .dm-msg .dm-msg__main > .msg-acts:not(:has([aria-expanded="true"])),
+.dm-msg:has(~ .dm-msg:hover) .dm-msg__main > .msg-acts:not(:has([aria-expanded="true"])),
+.app__body:has(:is(.dm-msg, .project-convo__message):hover) :is(.dm-msg, .project-convo__message):not(:hover) .msg-acts:not(:has([aria-expanded="true"])) { opacity: 0; pointer-events: none; transition: none; }
+/* An own message sits on the right: its pill takes the left side of the bubble, the others' the right. */
+.project-convo__message > .msg-acts { left: calc(100% + var(--acts-gap)); }
+.project-convo__message.is-mine > .msg-acts { left: auto; right: calc(100% + var(--acts-gap)); }
+.project-convo__message.is-mine > .msg-acts::before { left: auto; right: calc(-1 * var(--acts-gap)); }
 .msg-acts__b { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 8px; color: var(--t2); transition: var(--tr); }
 .msg-acts__b:hover:not(:disabled) { background: var(--hov); color: var(--t1); }
 .msg-acts__b:disabled { opacity: .5; cursor: progress; }
@@ -51,18 +65,27 @@
 .msg-touch__sr { position: absolute; top: 0; right: 0; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .msg-touch__sr:focus-visible { top: 0; right: 0; width: auto; height: 44px; padding: 0 14px; overflow: visible; clip-path: none; border-radius: 12px; background: var(--el);
   box-shadow: var(--sh-pop), inset 0 0 0 1px var(--line); font-size: var(--fs-md); color: var(--t1); z-index: 2; }
-@media (hover: none) { .project-convo__feed, .thread__feed { overflow-x: hidden; } }
+/* A swipe moves its row up to 88px right while the finger is down: that drag, and only that, may not scroll the feed sideways.
+   At rest nothing is laid out beyond its pane, so no feed needs overflow-x: hidden (#591). */
+:is(.project-convo__feed, .thread__feed, .dm__feed):has(.msg-touch.is-swiped) { overflow-x: hidden; }
 
-/* The toolbar sits beside a bubble without covering its text. */
+/* The room for the pill beside a bubble (computer only: a phone has no pill). A bubble column is the pane's width less
+   --acts-room, on the side the bubble is not on, and a message with a card keeps as much width as that leaves. */
 @media (hover: hover) {
-  .project-convo__message:has(> .msg-acts) { max-width: min(600px, calc(100% - 112px)); }
-  .project-convo__message > .msg-acts { top: 24px; left: 100%; right: auto; margin-left: 6px; }
-  .project-convo__message.is-mine > .msg-acts { left: auto; right: 100%; margin: 0 6px 0 0; }
-  .thread .project-convo__message:has(> .msg-acts) > .project-convo__message-meta { padding: 0; }
+  .project-convo__message:has(> .msg-acts), .thread .project-convo__message:has(> .msg-acts) { max-width: min(600px, calc(100% - var(--acts-room))); }
+  .project-convo__message:has(> .msg-acts):has(.message-bubble :is(.ws-chip, .wiki-card, .message-files, .link-preview), > .photo-grid) { min-width: min(344px, calc(100% - var(--acts-room))); }
+  .project-convo__message.is-mine:has(> .msg-acts):has(.message-bubble :is(.ws-chip, .wiki-card, .message-files, .link-preview), > .photo-grid) { min-width: min(300px, calc(100% - var(--acts-room))); }
 }
-@media (hover: hover) {
-  .thread .project-convo__message:has(> .msg-acts) { max-width: calc(100% - 44px); }
-  .thread .project-convo__message:has(.message-bubble :is(.ws-chip, .wiki-card, .message-files, .link-preview, .photo-grid)) { min-width: min(344px, calc(100% - 44px)); }
-  .thread .project-convo__message.is-mine:has(.message-bubble :is(.ws-chip, .wiki-card, .message-files, .link-preview, .photo-grid)) { min-width: min(300px, calc(100% - 44px)); }
-  .thread .msg-acts { flex-direction: column; padding: 2px; }
+/* A narrow thread (a docked panel on a small laptop, under 400px) has no room beside a bubble: the same pill, with 24px
+   buttons, sits in the bubble's top corner instead, in the strip that is free of text: its lower edge is above the
+   first line of the bubble (its padding) and its upper edge below the last line of the message above. A message that
+   has an author row keeps the pill in that row, whose right end is left free for it. */
+@container thread-feed (max-width: 399px) {
+  .thread__in { --acts-room: 0px; }
+  .thread .project-convo__message > .msg-acts, .thread .project-convo__message.is-mine > .msg-acts,
+  .thread .dm-msg__main > .msg-acts, .thread .dm-msg.is-mine .dm-msg__main > .msg-acts { top: -14px; left: auto; right: 8px; padding: 0; border-radius: 9px; }
+  .thread .project-convo__message:has(> .project-convo__message-meta) > .msg-acts, .thread .dm-msg__main:has(> .dm-msg__meta) > .msg-acts { top: -4px; }
+  .thread .msg-acts::before, .thread .project-convo__message.is-mine > .msg-acts::before, .thread .dm-msg.is-mine .dm-msg__main > .msg-acts::before { display: none; }
+  .thread .msg-acts__b { width: 24px; height: 24px; border-radius: 8px; }
+  .thread .project-convo__message > .project-convo__message-meta, .thread .dm-msg__meta { padding-right: 90px; }
 }

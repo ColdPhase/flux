@@ -34,11 +34,38 @@ older Prostota drawing differ, this page wins.
    always on the right, the sidebar toggle always in the top row. Unavailable actions are
    dimmed instead of removed so nothing else shifts.
 
+### Message toolbar and selection
+
+Founder direction by Hubert on 2026-10-17 ([#591](https://github.com/ColdPhase/flux/issues/591),
+[#594](https://github.com/ColdPhase/flux/issues/594)). They apply rules 5 to 7 to the shared
+message actions and to choosing messages in a private conversation.
+
+- **One toolbar at a time.** On a computer the toolbar (reply in thread, create task, "⋯") belongs to
+  the message under the pointer or, for a keyboard, to the one with `:focus-visible`. A click leaves
+  none behind; a hand-over from one message to the next never shows two (it fades in and goes at
+  once); an open menu keeps its own toolbar and no other shows. The pointer wins over a focused
+  message.
+- **Nothing sticks out.** The pill sits beside the bubble at its top corner, on the side away from
+  the author. The layout reserves its room (108 px and a 6 px gap) in every bubble column, in
+  streams and threads, so no pane scrolls sideways and the pill never covers a bubble, a name, a time
+  or another toolbar. No feed hides its horizontal overflow; a swipe on a phone clips only while the
+  finger drags. In a thread narrower than 400 px (a docked panel on a small laptop) there is no room
+  beside a bubble: the same three actions, with 24 px buttons, sit in the bubble's top corner, over no
+  text (in the author row for a message that has one), and bubbles keep their width.
+- **Choosing messages is a mode, not a re-layout.** Every message keeps its place (other people's on
+  the left, mine on the right edge of the same column). The check takes the column of the face, on
+  the bubble's first line, with its 44 px touch target on a phone. A picked row's soft fill is its
+  box grown by 8 px on every side, painted behind the text, in `--pick`, a tint apart from the page, other
+  people's bubbles and `--own`, so a chosen own bubble keeps its edge in both themes. The bar's content shares the
+  conversation's column edges, and swapping it with the composer keeps the message being read where
+  it is. Reduced motion is static.
+
 ### Token
 
 | Token | Light | Dark | Use |
 | --- | --- | --- | --- |
 | `--own` | `#E7E7EA` | `#313134` | The signed-in person's message bubble (replaces `--inv` for own bubbles) |
+| `--pick` | `#DCDCE0` | `#3D3D42` | The fill of a chosen message row (#594), apart from `--own` |
 
 Other people's and agents' bubbles stay `--el` with a `--line` outline. Own bubbles have no
 avatar and no name; time and "Seen by" sit under the last bubble of a run.

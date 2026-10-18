@@ -99,6 +99,9 @@ function DmContent({ initial }: { initial: Dm }) {
   const [starting, setStarting] = useState(false);
   const startAttempt = useRef<{ ids: string; key: string } | null>(null);
   const selectButtonRef = useRef<HTMLButtonElement>(null);
+  const root = useRef<HTMLDivElement>(null);
+  const composerBox = useRef<HTMLDivElement>(null);
+  const held = useRef<{ anchor: HTMLElement; offset: number } | null>(null);
   const { actionSlot } = useShellActions();
   // #536: the open thread lives in the address (?thread=<root>), so reload and Back reflect the same state.
   const [params, setParams] = useSearchParams();
@@ -249,6 +252,15 @@ function DmContent({ initial }: { initial: Dm }) {
   }
 
   function toggleSelecting(on: boolean) {
+    // The swap of the composer and the selection bar must not move what the person is reading (#594): remember the first
+    // message in view and give the bar the composer's height, then put the message back where it was once both have changed.
+    const feed = feedRef.current;
+    if (feed) {
+      const top = feed.getBoundingClientRect().top;
+      const anchor = [...feed.querySelectorAll<HTMLElement>('.dm-msg[data-message-id]')].find((item) => item.getBoundingClientRect().bottom > top);
+      held.current = anchor ? { anchor, offset: anchor.getBoundingClientRect().top - top } : null;
+    }
+    if (on) root.current?.style.setProperty('--dm-swap', `${composerBox.current?.offsetHeight ?? 0}px`);
     setSelecting(on);
     setPicked([]);
     requestAnimationFrame(() => {
@@ -256,6 +268,16 @@ function DmContent({ initial }: { initial: Dm }) {
       else selectButtonRef.current?.focus({ preventScroll: true });
     });
   }
+  // Entering or leaving the selection changes the height of what sits under the messages, and a long own message on a
+  // phone wraps once more beside the check: the message the person was on goes back to its place before anything paints.
+  useLayoutEffect(() => {
+    const feed = feedRef.current;
+    const was = held.current;
+    held.current = null;
+    if (!feed || !was || !was.anchor.isConnected) return;
+    const shift = was.anchor.getBoundingClientRect().top - feed.getBoundingClientRect().top - was.offset;
+    if (Math.abs(shift) >= 0.5) feed.scrollTop += shift;
+  }, [selecting]);
   const pick = (id: string) => setPicked((current) => (current.includes(id) ? current.filter((x) => x !== id) : [...current, id]));
 
   async function startSketch() {
@@ -349,7 +371,7 @@ function DmContent({ initial }: { initial: Dm }) {
   return (
     <div className="convo-split dm-split">
     <div className="convo-split__stream">
-    <div className={`dm${selecting ? ' dm--selecting' : ''}`} data-dm-id={dm.id}
+    <div ref={root} className={`dm${selecting ? ' dm--selecting' : ''}`} data-dm-id={dm.id}
       onKeyDown={(event) => { if (selecting && event.key === 'Escape') { event.preventDefault(); toggleSelecting(false); } }}>
       {selectButton}
       <div className="dm__feed" ref={feedRef}>
@@ -400,7 +422,7 @@ function DmContent({ initial }: { initial: Dm }) {
           </div>
         </div>
       ) : null}
-      <div className="composer dm__composer" hidden={selecting}>
+      <div ref={composerBox} className="composer dm__composer" hidden={selecting}>
         <div className="composer__in">
           {goneNotice ? <p className="dm__notice" role="status"><Icon name="lock" size={13} />{goneNotice}</p> : null}
           <ConnectionLine />
