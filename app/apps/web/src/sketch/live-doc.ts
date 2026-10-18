@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { liveMapUndoPath, type LiveMapDelta, type LiveMapPosition, type SketchDetail, type Thought, type UndoLiveMap, type UndoneLiveMap } from '@flux/contracts';
 import { ApiError, NetworkError, request } from '../api/client';
 import { SharedMap } from '../editing/map';
 import * as api from '../api/sketches';
 import { useStreamEvents } from '../api/stream';
-import { applyLocal, applyLivePreviews, type Me, type NewThought, type Op } from './projection.js';
+import { applyLocal, createLivePreviewProjection, type Me, type NewThought, type Op } from './projection.js';
 import { DraftSaveNotSentError, inverse, type DraftSaveOptions, type LoadState } from './doc';
 
 /**
@@ -65,6 +65,7 @@ export function useLiveSketchDoc(sketchId: string, me: Me) {
   const tombstones = useRef(new Map<string, number>());
   const scope = useRef({ active: false, number: 0 });
   const snapshots = useRef(0);
+  const projectPreviews = useMemo(createLivePreviewProjection, []);
   useEffect(() => { meRef.current = me; });
   const publish = useCallback(() => {
     const client = live.current;
@@ -73,12 +74,10 @@ export function useLiveSketchDoc(sketchId: string, me: Me) {
     if (!next) { if (live.current?.status === 'private') setLoad('not-found'); else if (live.current?.problem) setLoad('failed'); return; }
     // Native geometry stays separate from replaceable live positions.
     setConfirmedThoughts(next.thoughts);
-    const previews = new Map<string, LiveMapPosition>();
-    for (const preview of live.current?.previews.values() ?? []) for (const position of preview.positions) previews.set(position.id, position);
-    next = applyLivePreviews(next, previews);
+    next = projectPreviews(next, live.current?.previews.values() ?? []);
     for (const intent of pending.current.values()) next = applyLocal(next, intent.op, meRef.current);
     ref.current = next; setSketch(next);
-  }, []);
+  }, [projectPreviews]);
   const adopt = useCallback((fresh: SketchDetail) => {
     const before = confirmed.current;
     if (before) for (const thought of before.thoughts) {
