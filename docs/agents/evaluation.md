@@ -119,14 +119,22 @@ Give every finding a severity, so that review rounds converge:
 | P2 | A required criterion fails or is unverified, or an agreed constraint is broken | Blocks |
 | P3 | Wording, naming, style, optional evidence, a pre-existing defect the PR does not touch, or a later improvement | Never blocks |
 
-When only P3 findings remain, approve and list them in the review. The author fixes them
-in the same PR when cheap, or opens a follow-up issue in the milestone and links it.
+When only P3 findings remain, approve and list them in the review. Do not require
+a new head or another review for P3. Keep optional follow-ups in the existing task.
 
-Report every finding you can see at a head in one review. A later round re-checks the
-earlier findings and the code changed since. A required criterion or agreed constraint
-that newly turns out to fail still blocks, whatever the round: say why an earlier round
-missed it and consolidate it into that review. A later round does not add new preferences
-or P3 findings on code it already reviewed.
+**At most two review rounds per PR**, shared across agents and head updates
+(founder direction, 2026-10-18). The first round reports all observed P1/P2 findings
+together. Before handing back a fix, the author verifies every finding and supplies
+the resulting evidence. The second round checks only that delta and the open findings;
+approve when no P1/P2 remains. Do not restart a full review after a rebase, switch of
+reviewer or new commit, or add preferences/P3 findings on already reviewed code.
+
+If a P1/P2 remains or is newly demonstrated in the second round, record the concrete
+blocker and return ownership to the author. Stop the review loop and continue other
+ready work; do not start a third round automatically or approve a known failure to
+meet the round limit. Required independent approval, checks and resolved threads
+still govern merge. A reviewer's code change makes them an implementer; it does not
+reset this budget.
 
 A PR may deliver part of an issue. It then declares its scope against the issue's
 criteria, and links a child issue that preserves every remaining criterion (see

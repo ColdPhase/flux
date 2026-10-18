@@ -126,9 +126,12 @@ A claim the evaluator finds overstated costs a whole review round.
 The evaluator reviews the pinned head in an isolated checkout using
 [Evaluation](evaluation.md) and submits a **GitHub PR review**: approve, or
 request changes with concrete findings (criterion, expected, observed,
-reproduction, severity). The author fixes on the same branch and asks for re-review; the
-evaluator re-reviews only the delta and any open findings. Only P1 and P2 findings
-block; see [Verdicts](evaluation.md#verdicts).
+reproduction, severity). The author fixes on the same branch and verifies every
+finding before asking for the second and final review round. The evaluator checks
+only the delta and open findings, then approves if no P1/P2 remains. A persisting
+blocker is recorded and parked instead of starting another automatic round. The
+two-round budget is shared across agents, rebases and heads; see
+[Verdicts](evaluation.md#verdicts).
 
 Once the current head is approved, required checks pass and threads are resolved,
 the approver or the author merges. Never bypass branch protection. New code
