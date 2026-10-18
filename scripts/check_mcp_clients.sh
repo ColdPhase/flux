@@ -15,7 +15,11 @@ set -eu
 
 # Explicit local acceptance mode: no model mocks, no CI. Read-only mounts are passed only to the disposable
 # native-client container; never relabel, copy into the source/image, print, refresh or overwrite the host files.
-if [ "${FLUX_TEST_MCP_LIVE_WORKFLOW:-0}" = 1 ]; then
+if [ "${FLUX_TEST_MCP_OAUTH_ONLY:-0}" = 1 ]; then
+  [ "${FLUX_TEST_MCP_LIVE_WORKFLOW:-0}" = 1 ] && [ "${FLUX_TEST_MCP_LIVE_CLIENT:-}" = codex ] || {
+    echo "Login-only diagnosis requires FLUX_TEST_MCP_LIVE_WORKFLOW=1 and FLUX_TEST_MCP_LIVE_CLIENT=codex." >&2; exit 2;
+  }
+elif [ "${FLUX_TEST_MCP_LIVE_WORKFLOW:-0}" = 1 ]; then
   : "${FLUX_CODEX_AUTH_FILE:?Set an explicit Codex auth.json path for the authorized local account}"
   : "${FLUX_CLAUDE_CREDENTIALS_FILE:?Set an explicit Claude credentials path for the authorized local account}"
   test -f "$FLUX_CODEX_AUTH_FILE" && test -f "$FLUX_CLAUDE_CREDENTIALS_FILE"
@@ -44,14 +48,16 @@ export FLUX_VAPID_PUBLIC_KEY= FLUX_VAPID_PRIVATE_KEY= FLUX_VAPID_SUBJECT=
 . scripts/test_images.sh
 # Optional isolation override (for example vetted IPAM) for concurrent local checks.
 export COMPOSE_FILE="docker/compose.source.yaml:docker/compose.test.yaml${FLUX_TEST_COMPOSE_OVERRIDE:+:$FLUX_TEST_COMPOSE_OVERRIDE}"
-if [ "${FLUX_TEST_MCP_LIVE_WORKFLOW:-0}" = 1 ]; then
+if [ "${FLUX_TEST_MCP_OAUTH_ONLY:-0}" = 1 ]; then
+  export COMPOSE_FILE="$COMPOSE_FILE:docker/compose.mcp-oauth.test.yaml"
+elif [ "${FLUX_TEST_MCP_LIVE_WORKFLOW:-0}" = 1 ]; then
   export COMPOSE_FILE="$COMPOSE_FILE:docker/compose.mcp-live.test.yaml"
 fi
 compose="docker compose -p $project --profile test --profile mcp-clients"
 
 cleanup() {
   status=$?
-  if [ "$status" -ne 0 ]; then
+  if [ "$status" -ne 0 ] && [ "${FLUX_TEST_MCP_OAUTH_ONLY:-0}" != 1 ]; then
     $compose logs --no-color --tail 80 db migrate api worker || true
   fi
   $compose down -v || true
@@ -74,8 +80,8 @@ fi
 $compose up -d db migrate
 $compose --profile setup run --rm files-init
 if [ "${FLUX_TEST_MCP_LIVE_WORKFLOW:-0}" = 1 ]; then
-  $compose run --rm -e FLUX_TEST_MCP_LIVE_WORKFLOW=1 -e FLUX_TEST_MCP_LIVE_CLIENT="${FLUX_TEST_MCP_LIVE_CLIENT:-}" mcp-clients sh -c \
-    'if [ "$FLUX_TEST_MCP_LIVE_CLIENT" != codex ]; then node apps/runtime/dist/install/main.js && claude --version || exit; fi; codex --version && sha256sum tests/app/e2e/mcp-live-workflow.e2e.ts && exec node_modules/.bin/tsx --test tests/app/e2e/mcp-live-workflow.e2e.ts'
+  $compose run --rm -e FLUX_TEST_MCP_LIVE_WORKFLOW=1 -e FLUX_TEST_MCP_LIVE_CLIENT="${FLUX_TEST_MCP_LIVE_CLIENT:-}" -e FLUX_TEST_MCP_OAUTH_ONLY="${FLUX_TEST_MCP_OAUTH_ONLY:-0}" mcp-clients sh -c \
+    'if [ "$FLUX_TEST_MCP_LIVE_CLIENT" != codex ]; then node apps/runtime/dist/install/main.js && claude --version || exit; fi; codex --version && sha256sum tests/app/e2e/mcp-live-workflow.e2e.ts tests/app/support/mcp-client-harness.ts tests/app/support/oauth-diagnostics.ts && exec node_modules/.bin/tsx --test tests/app/e2e/mcp-live-workflow.e2e.ts'
   exit 0
 fi
 # The changed authenticated boundary is exercised through every maintained MCP domain/authority contract in both eras.

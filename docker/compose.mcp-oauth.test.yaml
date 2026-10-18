@@ -1,0 +1,7 @@
+# Login-only Codex diagnosis: current fixture sources, no provider credentials or user HOME mount.
+services:
+  mcp-clients:
+    volumes:
+      - ../app/tests/app/e2e/mcp-live-workflow.e2e.ts:/app/tests/app/e2e/mcp-live-workflow.e2e.ts:ro
+      - ../app/tests/app/support/mcp-client-harness.ts:/app/tests/app/support/mcp-client-harness.ts:ro
+      - ../app/tests/app/support/oauth-diagnostics.ts:/app/tests/app/support/oauth-diagnostics.ts:ro

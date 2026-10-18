@@ -189,3 +189,41 @@ idle wake. Stop ends the Flux hold, not the person's unrelated CLI program.
 Neither #152 nor #160 is accepted or closed; #320's timed clean-clone walkthrough
 is still unverified. PR #616 stays Draft. The single consolidated independent
 review and at most one final delta remain available; none was requested here.
+
+### Safe login-only preparation after the blocked run
+
+The `04f0959f` observations above are unchanged. Static comparison with the
+successful frozen #612 harness found these differences: #612 uses native
+`mcp add` and its saved configuration against bare `/mcp`; the supplied action
+uses inline native settings and a connection/project query binding. Both use
+file-mode native MCP OAuth storage and a fresh writable isolated HOME. The
+read-only single provider `auth.json` was an additional difference in the live
+workflow fixture; no evidence identifies it as the cause of OAuth exit1.
+
+A prepared, **unrun** `FLUX_TEST_MCP_OAUTH_ONLY=1` mode requires both the explicit
+live-fixture opt-in and `FLUX_TEST_MCP_LIVE_CLIENT=codex`. Its test composition
+mounts only current fixture/harness/diagnostic source files, **no provider
+credential or user HOME**. The fixture does not create provider-auth symlinks,
+clears inherited provider key/base overrides and returns after native MCP login;
+it also guards the model invocation against this mode. No Claude path is chosen.
+The script suppresses raw server-log dumps on a login-only failure.
+
+The bounded report contains only a fixed phase vocabulary, fixed observed OAuth
+error-code markers, allowlisted endpoint HTTP statuses, callback HTTP completion
+and a bounded process exit code. HTTP observation never reads response bodies.
+Raw native output remains only in the process harness's transient memory for
+fixed-marker classification; it is neither printed nor attached to exceptions.
+Browser/URL errors in this observed path become one fixed error message. Unknown
+codes, arbitrary fields, URLs, query parameters, authorization codes, state,
+tokens, credentials and transcripts are excluded from the report. A portable
+regression exercises secret-bearing fault input, unknown stages/status, report
+bounds and the explicit Codex-only mode guard; it awaits Docker/CI execution.
+
+The next explicitly granted **login-only** diagnosis should distinguish:
+callback navigation/HTTP failure, token-endpoint refusal, or token/callback
+success followed by native completion failure. A token200/callback2xx plus
+exit1 would narrow the hypothesis to native post-callback validation/storage;
+it would not prove a specific cause. This preparation makes no authentication
+or workflow success claim and performs no Docker, provider/account or model
+call. Existing successful checks remain pinned above; no full issue criteria or
+review requirements changed.

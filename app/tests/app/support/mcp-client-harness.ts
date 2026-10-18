@@ -8,6 +8,7 @@ import { join } from 'node:path';
 import type { Pool } from 'pg';
 import type { Browser as Chromium } from 'playwright';
 import { password } from './people.js';
+import { oauthHttpObservation, type OAuthBrowserObservation, type OAuthHttpObservation } from './oauth-diagnostics.js';
 
 /**
  * Shared harness for the opt-in checks that drive the REAL pinned `codex` and `claude` clients against the Compose Flux
@@ -22,9 +23,10 @@ const upstream = new URL(process.env.FLUX_API_URL ?? 'http://api:8080');
 const root = mkdtempSync(join(tmpdir(), 'mcp-clients-'));
 
 /** The clients reach Flux at its public origin (127.0.0.1), which inside this container is this proxy. */
-export function startFluxProxy() {
+export function startFluxProxy(observe?: (observation: OAuthHttpObservation) => void) {
   const proxy = http.createServer((request, response) => {
     const forward = http.request({ host: upstream.hostname, port: upstream.port || 80, method: request.method, path: request.url, headers: request.headers }, (answer) => {
+      if (observe) { const observation = oauthHttpObservation(request.url ?? '/', answer.statusCode ?? 502); if (observation) observe(observation); }
       response.writeHead(answer.statusCode ?? 502, answer.headers); answer.pipe(response);
     });
     forward.on('error', () => response.destroy()); request.pipe(forward);
@@ -91,22 +93,32 @@ export function cleanClientHome(spec: ClientSpec): ClientHome {
 }
 
 /** The real person signs in and consents in Chromium for exactly the connection the client is for. */
-export async function authorizeInBrowser(browser: Chromium, email: string, spec: ClientSpec, url: string) {
+export async function authorizeInBrowser(browser: Chromium, email: string, spec: ClientSpec, url: string, observe?: (observation: OAuthBrowserObservation) => void) {
   const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
   try {
     const page = await context.newPage();
+    if (observe) page.on('response', response => {
+      const callback = new URL(response.url());
+      if (callback.protocol === 'http:' && ['127.0.0.1', 'localhost'].includes(callback.hostname) && Number(callback.port) === spec.port
+        && /^\/callback(?:\/|$)/.test(callback.pathname)) observe({ stage: 'callback_response', status: response.status() });
+    });
     await page.goto(url); await page.waitForURL(`${origin}/login?**`);
+    observe?.({ stage: 'sign_in_ready' });
     await page.getByLabel('Email', { exact: true }).fill(email);
     await page.getByLabel('Password', { exact: true }).fill(password);
     await page.getByRole('button', { name: 'Sign in', exact: true }).click();
     await page.waitForURL(`${origin}/connect-agent?**`);
     await page.locator('.connection__saved').filter({ hasText: spec.label }).getByRole('radio').check();
+    observe?.({ stage: 'connection_selected' });
     await page.getByRole('button', { name: 'Continue to consent' }).click(); await page.waitForURL(`${origin}/consent?**`);
+    observe?.({ stage: 'consent_ready' });
     await page.locator('.connection__summary').filter({ hasText: spec.label }).waitFor({ state: 'visible' });
-    const callback = page.waitForURL(new RegExp(`^http://(127\\.0\\.0\\.1|localhost):${spec.port}/callback`), { waitUntil: 'commit' }).catch(() => undefined);
+    const callback = page.waitForURL(new RegExp(`^http://(127\\.0\\.0\\.1|localhost):${spec.port}/callback`), { waitUntil: 'commit' }).then(() => { observe?.({ stage: 'callback_navigation' }); }).catch(() => { observe?.({ stage: 'callback_wait_failed' }); });
     await page.getByRole('button', { name: 'Allow access' }).click();
+    observe?.({ stage: 'consent_submitted' });
     await callback;
   } catch (error) {
+    if (observe) throw new Error('Flux browser authorization did not complete; inspect the safe phase report.');
     throw new Error(`${(error as Error).message}\nauthorization URL: ${url}`);
   } finally { await context.close(); }
 }

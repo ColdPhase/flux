@@ -10,6 +10,7 @@ import { chromium } from 'playwright';
 import { register, uniqueEmail } from '../support/http.js';
 import { password } from '../support/people.js';
 import { expect } from '../support/mcp.js';
+import { createOAuthDiagnostic, oauthLoginOnly } from '../support/oauth-diagnostics.js';
 import { authorizeInBrowser, claudeBin, cleanClientHome, clientEvents, connectClient, origin, run, scopes, seedOauthClient, sh, startFluxProxy, waitFor,
   type ClientSpec } from '../support/mcp-client-harness.js';
 
@@ -20,8 +21,10 @@ import { authorizeInBrowser, claudeBin, cleanClientHome, clientEvents, connectCl
 after(() => { setTimeout(() => process.exit(process.exitCode ?? 0), 3000); });
 test('real configured accounts: supplied Start and Resume reach the model and produce authorized native work',
   { skip: process.env.FLUX_TEST_MCP_LIVE_WORKFLOW !== '1' }, async (t) => {
+    const loginOnly = oauthLoginOnly(process.env);
+    const diagnostic = createOAuthDiagnostic();
     const { pool } = createDatabase(process.env.DATABASE_URL!);
-    const proxy = startFluxProxy(); await proxy.listen();
+    const proxy = startFluxProxy(diagnostic.response); await proxy.listen();
     const browser = await chromium.launch({ headless: true, args: ['--no-sandbox'] });
     try {
       const only = process.env.FLUX_TEST_MCP_LIVE_CLIENT;
@@ -63,8 +66,13 @@ test('real configured accounts: supplied Start and Resume reach the model and pr
         }
         const home = cleanClientHome(spec);
         delete home.env.MOCK_MODEL_KEY; delete home.env.ANTHROPIC_API_KEY; home.env.RUST_LOG = 'warn';
-        if (client === 'codex') symlinkSync('/run/flux-live/codex-auth.json', join(home.env.CODEX_HOME!, 'auth.json'));
-        else symlinkSync('/run/flux-live/claude-credentials.json', join(home.env.CLAUDE_CONFIG_DIR!, '.credentials.json'));
+        if (loginOnly) {
+          for (const key of ['OPENAI_API_KEY', 'CODEX_API_KEY', 'ANTHROPIC_API_KEY', 'OPENAI_BASE_URL']) home.env[key] = '';
+        }
+        if (!loginOnly) {
+          if (client === 'codex') symlinkSync('/run/flux-live/codex-auth.json', join(home.env.CODEX_HOME!, 'auth.json'));
+          else symlinkSync('/run/flux-live/claude-credentials.json', join(home.env.CLAUDE_CONFIG_DIR!, '.credentials.json'));
+        }
         let binding: CoworkHostBinding = { schema: 'flux.cowork.host/1', ...coworkHostScope(origin, String(connection.id), projectId, 'codex', home.cwd),
           threadId: null, outcome: 'new', updatedAt: new Date().toISOString() };
         const config = ['-c', `mcp_servers.flux.url=${JSON.stringify(coworkHostUrl(binding))}`,
@@ -74,15 +82,34 @@ test('real configured accounts: supplied Start and Resume reach the model and pr
           '-c', `mcp_oauth_callback_port=${spec.port}`, '-c', `mcp_servers.flux.oauth.callback_url=${JSON.stringify(`http://127.0.0.1:${spec.port}/callback`)}`,
           '-c', 'mcp_oauth_credentials_store="file"'];
         if (client === 'codex') {
+          diagnostic.browser({ stage: 'native_login_started' });
           const login = run('codex', [...fixtureConfig, 'mcp', 'login', 'flux', '--no-browser'], home.env, home.cwd);
-          const match = await waitFor(login, /(https?:\/\/[^\s"']*\/api\/auth\/oauth2\/authorize\?[^\s"']+)/, 'bound adapter OAuth');
-          await authorizeInBrowser(browser, email, spec, match[1]!);
-          assert.equal(await login.done, 0, 'bound native OAuth completes without global configuration writes');
+          let exitCode: number | null = null;
+          try {
+            const match = await waitFor(login, /(https?:\/\/[^\s"']*\/api\/auth\/oauth2\/authorize\?[^\s"']+)/, 'bound adapter OAuth');
+            diagnostic.browser({ stage: 'authorization_received' });
+            await authorizeInBrowser(browser, email, spec, match[1]!, diagnostic.browser);
+            exitCode = await login.done;
+            assert.equal(exitCode, 0, 'bound native OAuth completes without global configuration writes');
+          } catch {
+            login.kill(); exitCode = await login.done;
+            throw new Error('Bound Codex OAuth did not complete; inspect LIVE_NATIVE_OAUTH_DIAGNOSTIC only.');
+          } finally {
+            diagnostic.browser({ stage: 'native_login_finished' });
+            console.log('LIVE_NATIVE_OAUTH_DIAGNOSTIC', JSON.stringify(diagnostic.report(login.output(), exitCode)));
+          }
+          if (loginOnly) {
+            const tasks = await pool.query('SELECT count(*)::int AS n FROM project_work_items WHERE project_id=$1', [projectId]);
+            assert.equal(tasks.rows[0].n, 0, 'login-only ends before native workflow execution or model-created tasks');
+            console.log('LIVE_NATIVE_OAUTH_LOGIN_ONLY_COMPLETE');
+            return;
+          }
         } else await connectClient(browser, email, home, clientId);
         // This native thread belongs only to this fresh fixture HOME and immutable connection/project.
         // Never consult the person's global history or use --last to select it.
         let codexThreadId: string | null = null;
         async function invoke(action: 'start' | 'resume') {
+          assert.equal(loginOnly, false, 'login-only diagnosis must never invoke a model');
           const input = client === 'claude' ? `/mcp__flux__${action}_work ${projectId}` : `${action === 'start' ? 'Start' : 'Resume'} work on Flux`;
           if (client === 'codex' && action === 'resume') assert.ok(codexThreadId, 'Resume needs the exact thread issued by this fixture’s Start');
           const result = client === 'codex'
