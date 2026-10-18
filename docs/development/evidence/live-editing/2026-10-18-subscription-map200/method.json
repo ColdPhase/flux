@@ -1,0 +1,35 @@
+{
+  "kind": "diagnostic only; unchanged canonical collector requires nine cohorts and must reject this one-case marker",
+  "application_base_sha": "1a8c7281c3b64a39163e4db2ab1c11267055b668",
+  "application_changes": [
+    "presence-only cursor/People subscription; original minimap retained",
+    "project/private producer checks memoized within each SQL transaction only"
+  ],
+  "canonical_driver_sha256": "f331c1af49c8df43df6b257bc7c16795fedb5c3b102cfc11249282ef858df3ee",
+  "diagnostic_driver_sha256": "854ebf24f86d91108e73255a3a6544cf930641f06aaf0febee95b5285166f2b4",
+  "changed_functions": [
+    "main"
+  ],
+  "selection_only": true,
+  "expected_scheduled_rows": 240,
+  "warmups": 30,
+  "p95_gate_ms": 200,
+  "status": "terminal: timing FAIL p95 208.803063ms; canonical collector correctly rejects incomplete selected cohort",
+  "current_composed_head": "7cbdd7fd9d1007db65ea76144b4fcb1f71693481",
+  "differences_to_current_composed_head": [
+    "app/tests/ui/live_editing_latency.py",
+    "app/tests/ui/test_live_map_cursors.py",
+    "docs/development/evidence/live-editing/2026-10-18-map-presence-isolation.md",
+    "docs/development/evidence/live-editing/2026-10-18-map-presence/4469b47e-chromium-runtime.json",
+    "docs/development/evidence/live-editing/2026-10-18-map-presence/4469b47e-unit-runtime.json",
+    "docs/development/evidence/live-editing/2026-10-18-map-presence/50e0520a-baseline-chromium-runtime.json",
+    "docs/development/evidence/live-editing/2026-10-18-map-presence/6ef4c37b-chromium-lifetime-runtime.json",
+    "docs/development/evidence/live-editing/2026-10-18-map-presence/6ef4c37b-webkit-runtime.json",
+    "docs/development/evidence/live-editing/2026-10-18-map-presence/README.md",
+    "docs/development/evidence/live-editing/2026-10-18-map-presence/attempts.json",
+    "docs/development/evidence/live-editing/2026-10-18-map-presence/baseline-control.json",
+    "docs/development/evidence/live-editing/2026-10-18-map-presence/cleanup.json",
+    "docs/development/evidence/live-editing/2026-10-18-map-presence/f25706c9-chromium-lifetime-runtime.json"
+  ],
+  "application_runtime_inputs_identical": true
+}
