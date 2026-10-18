@@ -13,6 +13,10 @@
 # (client versions and output) on the PR.
 set -eu
 
+if [ "${FLUX_TEST_MCP_OAUTH_COMPARE:-0}" = 1 ] && [ "${FLUX_TEST_MCP_OAUTH_ONLY:-0}" != 1 ]; then
+  echo "OAuth comparison requires explicit login-only mode." >&2; exit 2
+fi
+
 # Explicit local acceptance mode: no model mocks, no CI. Read-only mounts are passed only to the disposable
 # native-client container; never relabel, copy into the source/image, print, refresh or overwrite the host files.
 if [ "${FLUX_TEST_MCP_OAUTH_ONLY:-0}" = 1 ]; then
@@ -80,7 +84,7 @@ fi
 $compose up -d db migrate
 $compose --profile setup run --rm files-init
 if [ "${FLUX_TEST_MCP_LIVE_WORKFLOW:-0}" = 1 ]; then
-  $compose run --rm -e FLUX_TEST_MCP_LIVE_WORKFLOW=1 -e FLUX_TEST_MCP_LIVE_CLIENT="${FLUX_TEST_MCP_LIVE_CLIENT:-}" -e FLUX_TEST_MCP_OAUTH_ONLY="${FLUX_TEST_MCP_OAUTH_ONLY:-0}" mcp-clients sh -c \
+  $compose run --rm -e FLUX_TEST_MCP_LIVE_WORKFLOW=1 -e FLUX_TEST_MCP_LIVE_CLIENT="${FLUX_TEST_MCP_LIVE_CLIENT:-}" -e FLUX_TEST_MCP_OAUTH_ONLY="${FLUX_TEST_MCP_OAUTH_ONLY:-0}" -e FLUX_TEST_MCP_OAUTH_COMPARE="${FLUX_TEST_MCP_OAUTH_COMPARE:-0}" mcp-clients sh -c \
     'if [ "$FLUX_TEST_MCP_LIVE_CLIENT" != codex ]; then node apps/runtime/dist/install/main.js && claude --version || exit; fi; codex --version && sha256sum tests/app/e2e/mcp-live-workflow.e2e.ts tests/app/support/mcp-client-harness.ts tests/app/support/oauth-diagnostics.ts && exec node_modules/.bin/tsx --test tests/app/e2e/mcp-live-workflow.e2e.ts'
   exit 0
 fi

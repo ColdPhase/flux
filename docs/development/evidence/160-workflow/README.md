@@ -302,3 +302,16 @@ callback target URL and issuer validation. It is a hypothesis guide, not proof
 of the pinned Codex0.160.1 behavior. No host0.163 client is used. The comparison
 must correlate target, network status/failure and native exit; it must not
 convert missing regex match alone into a callback-failure conclusion.
+
+The comparison scenario is prepared as `FLUX_TEST_MCP_OAUTH_COMPARE=1`, requiring
+the explicit Codex-only login-only mode. It sequentially runs `persisted_bound`
+then `inline_bound` with the same newly seeded fixture client, connection,
+project, URL binding and callback port. Both receive fresh writable isolated
+homes without provider credentials; only the newly seeded fixture client's
+consent is reset between legs so cached consent cannot skip the controlled
+step. The persisted leg uses #612's native add/login composition; inline uses
+the supplied action's current settings. Both bounded phase reports are retained
+even if the first leg fails, and the test fails if either native login fails.
+The configuration labels are fixed enums, not raw native arguments. This
+scenario is prepared only, not executed. The explicit mode guard has regression
+coverage awaiting Docker/CI; no app/helper production bytes changed.

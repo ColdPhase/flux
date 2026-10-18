@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { createOAuthDiagnostic, oauthBrowserFailure, oauthCallbackPattern, oauthCallbackTarget, oauthHttpObservation, oauthLoginOnly } from './support/oauth-diagnostics.js';
+import { createOAuthDiagnostic, oauthBrowserFailure, oauthComparisonOnly, oauthCallbackPattern, oauthCallbackTarget, oauthHttpObservation, oauthLoginOnly } from './support/oauth-diagnostics.js';
 
 test('OAuth diagnostics expose only bounded fixed codes/stages/status and callback completion', () => {
   const secret = 'SENSITIVE_NEVER_EMIT';
@@ -32,6 +32,8 @@ test('login-only is an explicit Codex-only mode and refuses a missing workflow o
   assert.equal(oauthLoginOnly({}), false);
   const env = { FLUX_TEST_MCP_OAUTH_ONLY: '1', FLUX_TEST_MCP_LIVE_WORKFLOW: '1', FLUX_TEST_MCP_LIVE_CLIENT: 'codex' };
   assert.equal(oauthLoginOnly(env), true);
+  assert.equal(oauthComparisonOnly({ ...env, FLUX_TEST_MCP_OAUTH_COMPARE: '1' }), true);
+  assert.throws(() => oauthComparisonOnly({ ...env, FLUX_TEST_MCP_OAUTH_COMPARE: '1', FLUX_TEST_MCP_OAUTH_ONLY: '0' }));
   assert.throws(() => oauthLoginOnly({ ...env, FLUX_TEST_MCP_LIVE_CLIENT: 'claude' }));
   assert.throws(() => oauthLoginOnly({ ...env, FLUX_TEST_MCP_LIVE_WORKFLOW: '0' }));
 });

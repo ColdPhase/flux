@@ -10,7 +10,7 @@ import { chromium } from 'playwright';
 import { register, uniqueEmail } from '../support/http.js';
 import { password } from '../support/people.js';
 import { expect } from '../support/mcp.js';
-import { createOAuthDiagnostic, oauthLoginOnly } from '../support/oauth-diagnostics.js';
+import { createOAuthDiagnostic, oauthComparisonOnly, oauthLoginOnly } from '../support/oauth-diagnostics.js';
 import { authorizeInBrowser, claudeBin, cleanClientHome, clientEvents, connectClient, origin, run, scopes, seedOauthClient, sh, startFluxProxy, waitFor,
   type ClientSpec } from '../support/mcp-client-harness.js';
 
@@ -22,9 +22,10 @@ after(() => { setTimeout(() => process.exit(process.exitCode ?? 0), 3000); });
 test('real configured accounts: supplied Start and Resume reach the model and produce authorized native work',
   { skip: process.env.FLUX_TEST_MCP_LIVE_WORKFLOW !== '1' }, async (t) => {
     const loginOnly = oauthLoginOnly(process.env);
-    const diagnostic = createOAuthDiagnostic();
+    const compare = oauthComparisonOnly(process.env);
+    let diagnostic = createOAuthDiagnostic();
     const { pool } = createDatabase(process.env.DATABASE_URL!);
-    const proxy = startFluxProxy(diagnostic.response); await proxy.listen();
+    const proxy = startFluxProxy(observation => diagnostic.response(observation)); await proxy.listen();
     const browser = await chromium.launch({ headless: true, args: ['--no-sandbox'] });
     try {
       const only = process.env.FLUX_TEST_MCP_LIVE_CLIENT;
@@ -82,22 +83,44 @@ test('real configured accounts: supplied Start and Resume reach the model and pr
           '-c', `mcp_oauth_callback_port=${spec.port}`, '-c', `mcp_servers.flux.oauth.callback_url=${JSON.stringify(`http://127.0.0.1:${spec.port}/callback`)}`,
           '-c', 'mcp_oauth_credentials_store="file"'];
         if (client === 'codex') {
-          diagnostic.browser({ stage: 'native_login_started' });
-          const login = run('codex', [...fixtureConfig, 'mcp', 'login', 'flux', '--no-browser'], home.env, home.cwd);
-          let exitCode: number | null = null;
-          try {
-            const match = await waitFor(login, /(https?:\/\/[^\s"']*\/api\/auth\/oauth2\/authorize\?[^\s"']+)/, 'bound adapter OAuth');
-            diagnostic.browser({ stage: 'authorization_received' });
-            await authorizeInBrowser(browser, email, spec, match[1]!, diagnostic.browser, diagnostic.callback);
-            exitCode = await login.done;
-            assert.equal(exitCode, 0, 'bound native OAuth completes without global configuration writes');
-          } catch {
-            login.kill(); exitCode = await login.done;
-            throw new Error('Bound Codex OAuth did not complete; inspect LIVE_NATIVE_OAUTH_DIAGNOSTIC only.');
-          } finally {
-            diagnostic.browser({ stage: 'native_login_finished' });
-            console.log('LIVE_NATIVE_OAUTH_DIAGNOSTIC', JSON.stringify(diagnostic.report(login.output(), exitCode)));
+          const variants = compare ? ['persisted_bound', 'inline_bound'] as const : ['inline_bound'] as const;
+          const outcomes: boolean[] = [];
+          for (const variant of variants) {
+            diagnostic = createOAuthDiagnostic();
+            // Same fixture registration/connection/callback port; each configuration gets a fresh writable native HOME.
+            const target = compare ? cleanClientHome({ ...spec, key: `${spec.key}-${variant}` }) : home;
+            if (compare) {
+              for (const key of ['OPENAI_API_KEY', 'CODEX_API_KEY', 'ANTHROPIC_API_KEY', 'OPENAI_BASE_URL', 'MOCK_MODEL_KEY']) target.env[key] = '';
+              target.env.RUST_LOG = 'warn';
+              // Reset only this newly seeded fixture client's consent, so both legs exercise consent instead of a cached approval.
+              await pool.query('DELETE FROM oauth_consent WHERE client_id=$1', [clientId]);
+            }
+            diagnostic.browser({ stage: 'native_login_started' });
+            let login = run('codex', variant === 'persisted_bound'
+              ? ['mcp', 'add', 'flux', '--url', coworkHostUrl(binding), '--oauth-client-id', clientId, '-c', `mcp_oauth_callback_port=${spec.port}`]
+              : [...fixtureConfig, 'mcp', 'login', 'flux', '--no-browser'], target.env, target.cwd);
+            let exitCode: number | null = null;
+            try {
+              const pattern = /(https?:\/\/[^\s"']*\/api\/auth\/oauth2\/authorize\?[^\s"']+)/;
+              let match: RegExpMatchArray;
+              try { match = await waitFor(login, pattern, 'bound adapter OAuth'); }
+              catch {
+                if (variant !== 'persisted_bound' || await login.done !== 0) throw new Error('Native authorization was not offered.');
+                // Exact successful #612 add/login fallback composition, still only within this isolated fixture HOME.
+                login = run('codex', ['mcp', 'login', 'flux', '--no-browser', '-c', `mcp_oauth_callback_port=${spec.port}`], target.env, target.cwd);
+                match = await waitFor(login, pattern, 'persisted bound OAuth');
+              }
+              diagnostic.browser({ stage: 'authorization_received' });
+              await authorizeInBrowser(browser, email, spec, match[1]!, diagnostic.browser, diagnostic.callback);
+              exitCode = await login.done;
+            } catch { login.kill(); exitCode = await login.done; }
+            finally {
+              diagnostic.browser({ stage: 'native_login_finished' });
+              console.log('LIVE_NATIVE_OAUTH_DIAGNOSTIC', JSON.stringify({ configuration: variant, ...diagnostic.report(login.output(), exitCode) }));
+            }
+            outcomes.push(exitCode === 0);
           }
+          assert.ok(outcomes.every(Boolean), 'Bound Codex OAuth did not complete; inspect LIVE_NATIVE_OAUTH_DIAGNOSTIC only.');
           if (loginOnly) {
             const tasks = await pool.query('SELECT count(*)::int AS n FROM project_work_items WHERE project_id=$1', [projectId]);
             assert.equal(tasks.rows[0].n, 0, 'login-only ends before native workflow execution or model-created tasks');

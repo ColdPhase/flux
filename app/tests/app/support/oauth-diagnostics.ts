@@ -101,3 +101,10 @@ export function oauthBrowserFailure(rawFailure: string): OAuthBrowserFailure {
   if (code.includes('CERT_') || code.includes('SSL_') || code.includes('TLS')) return 'tls';
   return 'unknown';
 }
+
+
+export function oauthComparisonOnly(env: Record<string, string | undefined>) {
+  if (env.FLUX_TEST_MCP_OAUTH_COMPARE !== '1') return false;
+  if (!oauthLoginOnly(env)) throw new Error('OAuth comparison requires explicit login-only mode.');
+  return true;
+}
