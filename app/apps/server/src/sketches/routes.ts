@@ -138,7 +138,14 @@ export async function sketchRoutes(app: FastifyInstance, { db, sessions, storage
           {...error.details,error:error.message,code:error.code},current=>sendNative(error.status,current),'write');
         return;
       }
-      if(error instanceof DomainError)error.details={};throw error;
+      if(error instanceof DomainError) {
+        const sketchId=(request.params as {sketchId?:string}).sketchId;
+        // An ordinary roomless conflict retains its original current/preview contract.
+        // Recheck after rollback: a room that appeared still requires live sanitization.
+        if(sketchId&&!await nativeMapRoomExists(db,sketchId))throw error;
+        error.details={};
+      }
+      throw error;
     }
     finally {owner?.settled();lifetimes.delete(reply);preparedReplies.delete(reply);}
   }

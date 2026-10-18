@@ -170,6 +170,10 @@ test('real live/native HTTP shares one budget, uses ordered receipts and current
     const bootstrapResponse=await app.inject({method:'GET',url:`/api/v1/sketches/${f.sketch.id}/live`});assert.equal(bootstrapResponse.statusCode,200,bootstrapResponse.body);const head=JSON.parse(bootstrapResponse.body) as LiveMapBootstrap;
     const commandId=randomUUID();const path=`/api/v1/sketches/${f.sketch.id}/thoughts/${f.ids[0]}`;
     const response=await app.inject({method:'PATCH',url:path,headers:{'idempotency-key':commandId},payload:{text:'Native HTTP',expectedVersion:1}});assert.equal(response.statusCode,200,response.body);
+    const stale=await app.inject({method:'PATCH',url:path,payload:{text:'Lost stale write',expectedVersion:1}});
+    assert.equal(stale.statusCode,409,stale.body);const conflict=JSON.parse(stale.body);
+    assert.equal(conflict.code,'VERSION_CONFLICT');assert.equal(conflict.current,undefined);assert.equal(conflict.currentVersion,undefined);
+    assert.equal(stale.body.includes('Native HTTP'),false,'a joined room never exposes rolled-back conflict details through the ordinary error path');
     current=f.peerSession;const changed=await delta(backend,f.peerSession,head,0);assert.equal(changed?.commandId,commandId);assert.equal(changed?.thoughts[0]?.text,'Native HTTP');
     current=f.viewerSession;const denied=await app.inject({method:'PATCH',url:path,payload:{text:'Viewer cannot write',expectedVersion:2}});assert.equal(denied.statusCode,403);assert.equal(JSON.parse(denied.body).current,undefined);
     current=f.ownerSession;await native(f.peerSession,f.sketch.id,randomUUID(),{expectedVersion:2}).removeThought(f.peerSession.principal,f.sketch.id,f.ids[0]!,2);

@@ -313,6 +313,10 @@ describe('sketch access', () => {
     const stale = expectStatus(await bob.browser.request('PATCH', `/api/v1/sketches/${sketch.id}/thoughts/${one.id}`, { body: { text: 'lost' }, headers: ifMatch(1) }), 409) as VersionConflict<Thought>;
     assert.equal(stale.currentVersion, 2);
     assert.equal(stale.current.text, 'One, edited');
+    const liveState = (await pool.query(`SELECT
+      (SELECT count(*)::int FROM map_live_heads WHERE sketch_id=$1) AS rooms,
+      (SELECT count(*)::int FROM map_live_journal WHERE sketch_id=$1) AS journal`, [sketch.id])).rows[0];
+    assert.deepEqual(liveState, { rooms: 0, journal: 0 }, 'ordinary conflict details never enroll the sketch in live editing');
 
     // The same thought moved by both at once: exactly one wins, the other gets 409 and nothing of it lands.
     const [first, second] = await Promise.all([alice, bob].map((who, index) => who.browser.request('PATCH', `/api/v1/sketches/${sketch.id}/positions`, {
