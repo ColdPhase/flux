@@ -466,3 +466,23 @@ and its unmounted tmpfs HOME disappeared with it. The pre-existing image was
 preserved. Safe local receipt: `/tmp/flux160-native-config-writer.log`.
 All full OAuth attempts remain stopped after the granted874 control. Further
 work is static; no additional provider/model or login retry was performed.
+
+### Final granted callback-shape micro-observation
+
+One final separately granted bounded local config-write used the same pinned
+Codex0.160.1 image/binary, empty tmpfs HOME, `--network none`, closed loopback9
+and synthetic inputs, without stack/build/login/browser/provider/model. Writer
+exit0; container removed and exact metadata check empty. Only structural callback
+properties were emitted; raw callback URL, suffix ID and query values were not
+emitted or retained. Safe receipt: `/tmp/flux160-native-callback-shape.log`.
+
+Generated callback properties: **scheme=http, loopback=true, port=80** (empty
+URL port interpreted as HTTP default), **path=suffixed, queryKeys=[]**. Compared
+with the explicit synthetic inline `http://127.0.0.1:19831/callback`: scheme and
+host equality true; port and path equality false; query equality true; exact
+URL equality false. Thus native add's generated callback configuration is
+structurally different from the inline value. This is the previously missing
+safe observation, not evidence of a successful inline login or an accepted
+production fix. No further OAuth flow or source change was performed; all full
+issue criteria remain open. The micro-slot was immediately released for the
+next author; subsequent conclusions/work are static until separately authorized.
