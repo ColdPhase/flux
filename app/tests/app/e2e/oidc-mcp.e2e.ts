@@ -770,7 +770,8 @@ test('standing: removing an already-held Keycloak offline session suspends and g
   const admin = await keycloakAdmin(); const signed = await signInWithTokens();
   // Real managed run-token transport, with a fake model connection and queue only: no model
   // account or compute is used. The use case records the owner's consent; the same real Keycloak
-  // suspension must stop both minting and an already issued short-lived run bearer.
+  // suspension must stop an already issued short-lived run bearer. Mint refusal is covered
+  // by the focused API lane with a real nonce; this row proves the managed bearer response.
   const workspace = await api<{ id: string }>(signed.context, 'POST', '/api/v1/workspaces', { name: 'Managed assistant standing' }, 201);
   const project = await api<{ id: string }>(signed.context, 'POST', `/api/v1/workspaces/${workspace.id}/projects`, { name: 'Assistant boundary', visibility: 'restricted' }, 201);
   const agent = await api<{ id: string }>(signed.context, 'POST', `/api/v1/workspaces/${workspace.id}/agents`, { name: 'Managed assistant', owner: 'self' }, 201);
@@ -780,18 +781,13 @@ test('standing: removing an already-held Keycloak offline session suspends and g
   const runs = personalRunUseCases(db, { connections, queue: queue.factory, providerEnabled: true });
   const principal = { kind: 'human' as const, id: state.userId! };
   await runs.enable(principal, { consentVersion: PERSONAL_RUN_CONSENT_VERSION, agentId: agent.id, connectionId: modelConnection, perRunCents: 50, dailyCapCents: 1_000 });
-  const pending = [];
-  for (let index = 0; index < 2; index += 1) {
-    const runId = (await runs.invoke(principal, thread.id, { clientRunId: randomUUID(), kind: 'ask', prompt: 'Read this thread' })).run.id;
-    // The worker's claim and nonce, without launching or simulating a provider answer.
-    await pool.query("UPDATE personal_runs SET status = 'reading' WHERE id = $1", [runId]);
-    const nonce = randomBytes(32).toString('hex');
-    assert.equal(await db.transaction((tx) => personalRunTokenRows(tx).arm(runId, createHash('sha256').update(nonce).digest('hex'))), true);
-    pending.push({ runId, nonce });
-  }
-  const mint = (index: number) => fetch(new URL(personalRunTokenPath(pending[index]!.runId), upstream), { method: 'POST',
-    headers: { 'content-type': 'application/json' }, body: JSON.stringify({ nonce: pending[index]!.nonce }) });
-  const issued = await mint(0); assert.equal(issued.status, 200);
+  const runId = (await runs.invoke(principal, thread.id, { clientRunId: randomUUID(), kind: 'ask', prompt: 'Read this thread' })).run.id;
+  // The worker's claim and nonce, without launching or simulating a provider answer.
+  await pool.query("UPDATE personal_runs SET status = 'reading' WHERE id = $1", [runId]);
+  const nonce = randomBytes(32).toString('hex');
+  assert.equal(await db.transaction((tx) => personalRunTokenRows(tx).arm(runId, createHash('sha256').update(nonce).digest('hex'))), true);
+  const issued = await fetch(new URL(personalRunTokenPath(runId), upstream), { method: 'POST',
+    headers: { 'content-type': 'application/json' }, body: JSON.stringify({ nonce }) }); assert.equal(issued.status, 200);
   const heldRunToken = (await issued.json() as { token: string }).token;
   assert.equal((await mcp(heldRunToken, 35, 'tools/list')).status, 200);
   const revoked = async () => (await pool.query('SELECT id FROM oauth_refresh_token WHERE user_id = $1 AND revoked IS NOT NULL ORDER BY id', [state.userId])).rows;
@@ -802,7 +798,6 @@ test('standing: removing an already-held Keycloak offline session suspends and g
   assert.equal((await signed.context.request.get(`${origin}/api/v1/me`)).status(), 401);
   assert.equal((await mcp(signed.tokens.access_token, 31, 'tools/list')).status, 401);
   assert.equal(((await (await mcpRefresh(signed.tokens.refresh_token)).json()) as { error: string }).error, 'invalid_grant');
-  assert.equal((await mint(1)).status, 404, 'the real managed owner cannot mint while suspended');
   const refusedRun = await mcp(heldRunToken, 36, 'tools/list');
   assert.equal(refusedRun.status, 401); assert.match(refusedRun.headers.get('www-authenticate') ?? '', /Sign in again with Keycloak\./);
   assert.deepEqual(await revoked(), before, 'suspension did not revoke MCP authority');
@@ -810,9 +805,8 @@ test('standing: removing an already-held Keycloak offline session suspends and g
   assert.equal((await mcp(signed.tokens.access_token, 32, 'tools/list')).status, 200, 'the retained bearer recovers');
   assert.equal((await mcpRefresh(signed.tokens.refresh_token)).status, 200, 'the retained refresh family recovers');
   assert.equal((await mcp(heldRunToken, 37, 'tools/list')).status, 200, 'the held run token recovers under the same consent');
-  assert.equal((await mint(1)).status, 200, 'the still-live nonce recovers under the same consent');
   assert.equal((await pool.query('SELECT revoked_at FROM agent_connections WHERE id = $1', [state.connectionId])).rows[0].revoked_at, null);
-  await pool.query("UPDATE personal_runs SET status = 'stopped', completed_at = now(), cost_state = 'released', charged_micros = 0 WHERE id = ANY($1)", [pending.map((run) => run.runId)]);
+  await pool.query("UPDATE personal_runs SET status = 'stopped', completed_at = now(), cost_state = 'released', charged_micros = 0 WHERE id = $1", [runId]);
 });
 
 test('standing: a deleted Keycloak user loses browser, MCP and refresh access without revocation or identity transfer', async () => {
