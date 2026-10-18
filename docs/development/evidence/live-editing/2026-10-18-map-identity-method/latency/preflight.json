@@ -1,0 +1,49 @@
+{
+  "at": "2026-10-18T09:35:22.863415+00:00",
+  "source_sha": "dfe3d7f78514466a86ce164e98a15f293b7b0c1c",
+  "source_clean": true,
+  "files": {
+    "app/apps/web/src/sketch/SketchMap.tsx": "a011d421be1d4fa5331102508f697939cd4a009719e53be993e85ec596df9f8f",
+    "app/apps/web/src/sketch/format.ts": "9f97f790dd421905248e068180ab6a740ca2a5f5ac8e0356744943f65eee596a",
+    "app/tests/ui/test_live_editing.py": "c2d45d9695ca63e5cb512ebd47362ebca408d4ec29503d4d1fde23c930f7bc6a",
+    "app/tests/ui/live_editing_latency.py": "f331c1af49c8df43df6b257bc7c16795fedb5c3b102cfc11249282ef858df3ee",
+    "app/tests/ui/live_editing_identity.py": "ff725c4062a5664b346c909edc2a8e67fd3f2f56442537172144710d21ac30b1",
+    "scripts/check_live_editing.sh": "6e0ea122459547e40b303ac5044067f83af167d09afe215d56b79f1d27f8944c",
+    "app/pnpm-lock.yaml": "d34264e9ac2a877f045b3c190d6be025dfc2a8b84cc67b42eeb5dd7200cb6e22",
+    "docker/Dockerfile": "49e13f6d00cb54b2a0fd46854cdfa135cf6186c51950cafb94ad9eb0570a1e20",
+    "docker/compose.live-editing.test.yaml": "479dee7414bfb60c34a6461a59b8ff803bc0a2725e86c0bd0cc4bb70688f091e"
+  },
+  "application_docker_runner_lock_changes_since_8ba": [],
+  "live_fixture_ast_unchanged_since_8ba": true,
+  "host": {
+    "platform": "Linux-6.19.14-108.fc42.x86_64-x86_64-with-glibc2.41",
+    "cpus": 24,
+    "loadavg": [
+      1.82421875,
+      3.33984375,
+      3.73193359375
+    ]
+  },
+  "docker": {
+    "version": {
+      "exit_code": 0,
+      "stdout": "{\"Platform\":{\"Name\":\"\"},\"Version\":\"29.4.2\",\"ApiVersion\":\"1.54\",\"MinAPIVersion\":\"1.40\",\"Os\":\"linux\",\"Arch\":\"amd64\",\"Components\":[{\"Name\":\"Engine\",\"Version\":\"29.4.2\",\"Details\":{\"ApiVersion\":\"1.54\",\"Arch\":\"amd64\",\"BuildTime\":\"Fri May  1 00:00:00 2026\",\"Experimental\":\"false\",\"GitCommit\":\"1.fc42\",\"GoVersion\":\"go1.25.9 X:nodwarf5\",\"KernelVersion\":\"6.19.14-108.fc42.x86_64\",\"MinAPIVersion\":\"1.40\",\"Module\":\"github.com/moby/moby/v2\",\"ModuleVersion\":\"v2.0.0+unknown\",\"Os\":\"linux\"}},{\"Name\":\"containerd\",\"Version\":\"2.0.8\",\"Details\":{\"GitCommit\":\"3.fc42\"}},{\"Name\":\"runc\",\"Version\":\"1.4.2\",\"Details\":{\"GitCommit\":\"\"}},{\"Name\":\"tini-static\",\"Version\":\"0.19.0\",\"Details\":{\"GitCommit\":\"\"}}],\"GitCommit\":\"1.fc42\",\"GoVersion\":\"go1.25.9 X:nodwarf5\",\"KernelVersion\":\"6.19.14-108.fc42.x86_64\",\"BuildTime\":\"2026-05-01T00:00:00.000000000+00:00\"}",
+      "stderr": ""
+    },
+    "containers": {
+      "exit_code": 0,
+      "stdout": "qwen38-llama-router\tqwen38-llama:fastmtp-rocm-gfx1100\tUp 2 hours (healthy)\t127.0.0.1:8080->8080/tcp\nflux-201d1a6e-api-1\tflux-foundation:flux-201d1a6e\tUp 2 hours (healthy)\t127.0.0.1:8081->8080/tcp\nflux-201d1a6e-worker-1\tflux-foundation:flux-201d1a6e\tUp 2 hours\t8080/tcp\nflux-201d1a6e-runtime-egress-1\tflux-foundation:flux-201d1a6e\tUp 2 hours\t8080/tcp\nflux-201d1a6e-runtime-manager-1\tflux-foundation:flux-201d1a6e\tUp 2 hours\t8080/tcp\nflux-201d1a6e-runtime-3-1\tflux-agent-runtime:flux-201d1a6e\tUp 14 hours\t\nflux-201d1a6e-runtime-2-1\tflux-agent-runtime:flux-201d1a6e\tUp 14 hours\t\nflux-201d1a6e-runtime-1-1\tflux-agent-runtime:flux-201d1a6e\tUp 14 hours\t\nflux-201d1a6e-runtime-4-1\tflux-agent-runtime:flux-201d1a6e\tUp 14 hours\t\nflux-201d1a6e-db-1\tpostgres\tUp 14 hours (healthy)\t5432/tcp",
+      "stderr": ""
+    },
+    "stats": {
+      "exit_code": 0,
+      "stdout": "qwen38-llama-router\t0.00%\t7.811GiB / 61.89GiB\t63\nflux-201d1a6e-api-1\t0.03%\t115MiB / 61.89GiB\t11\nflux-201d1a6e-worker-1\t0.23%\t62.1MiB / 61.89GiB\t11\nflux-201d1a6e-runtime-egress-1\t0.01%\t18.52MiB / 256MiB\t12\nflux-201d1a6e-runtime-manager-1\t0.01%\t28.93MiB / 256MiB\t12\nflux-201d1a6e-runtime-3-1\t0.00%\t22.25MiB / 2GiB\t11\nflux-201d1a6e-runtime-2-1\t0.00%\t22.3MiB / 2GiB\t11\nflux-201d1a6e-runtime-1-1\t0.00%\t22.38MiB / 2GiB\t11\nflux-201d1a6e-runtime-4-1\t0.00%\t22.25MiB / 2GiB\t11\nflux-201d1a6e-db-1\t0.43%\t69.38MiB / 61.89GiB\t20",
+      "stderr": ""
+    }
+  },
+  "ports": {
+    "exit_code": 0,
+    "stdout": "State Recv-Q Send-Q Local Address:Port Peer Address:Port",
+    "stderr": ""
+  }
+}
