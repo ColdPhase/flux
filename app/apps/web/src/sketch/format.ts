@@ -23,7 +23,7 @@ export function who(person: PersonRef, meId: string) {
 }
 
 /** "From Kai · 21:14" — quiet provenance under a thought: the message it came from, or who added it. */
-export function provenance(thought: Thought, meId: string) {
+export function provenance(thought: Pick<Thought, 'source' | 'version' | 'createdBy' | 'createdAt'>, meId: string) {
   if (thought.source) {
     const author = thought.source.author.id === meId ? 'you' : firstName(thought.source.author.name);
     return `${thought.source.dmMessageId ? 'Message from' : 'From a message by'} ${author} · ${when(thought.source.sentAt)}`;
