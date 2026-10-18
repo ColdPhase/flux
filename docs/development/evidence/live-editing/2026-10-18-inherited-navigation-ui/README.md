@@ -88,3 +88,20 @@ heavy slot was released immediately afterwards; this receipt was completed
 without Docker. User demo and Qwen services were preserved. Timing and eligible
 independent functional/visual acceptance remain separate required work; this
 receipt grants no approval or merge.
+
+## Unmodified representative renders
+
+Eight PNGs below are copied byte-for-byte from the two actual capture matrices.
+[Hashes and original paths](representative-renders.json) bind these examples;
+the metadata above lists all 32 renders. They provide no independent visual verdict.
+
+| Engine | Actual state / CSS width | PNG |
+| --- | --- | --- |
+| chromium | Map, desktop/light, 1440 | [view](chromium-map-active-peer-movement-light-1440.png) |
+| chromium | Map, phone/dark, 390 | [view](chromium-map-active-peer-movement-dark-390.png) |
+| chromium | Wiki shared writing, tablet/dark, 820 | [view](chromium-wiki-shared-writing-before-version-save-dark-820.png) |
+| chromium | Wiki shared writing, wide/light, 2560 | [view](chromium-wiki-shared-writing-before-version-save-light-2560.png) |
+| webkit | Map, desktop/light, 1440 | [view](webkit-map-active-peer-movement-light-1440.png) |
+| webkit | Map, phone/dark, 390 | [view](webkit-map-active-peer-movement-dark-390.png) |
+| webkit | Wiki shared writing, tablet/dark, 820 | [view](webkit-wiki-shared-writing-before-version-save-dark-820.png) |
+| webkit | Wiki shared writing, wide/light, 2560 | [view](webkit-wiki-shared-writing-before-version-save-light-2560.png) |
