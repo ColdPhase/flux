@@ -184,7 +184,7 @@ class MapCanvasJourney(unittest.TestCase):
         self.scene(page)
         minimap = page.locator('.sk-minimap')
         expect(minimap).to_be_visible()
-        expect(minimap.locator('canvas')).to_have_count(1)
+        expect(minimap.locator('svg rect')).to_have_count(2)
         expect(minimap.locator('.sk-minimap__view')).to_be_visible()
         frame = minimap.bounding_box()
         before = self.scroll(page)
