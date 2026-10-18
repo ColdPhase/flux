@@ -1,0 +1,38 @@
+{
+  "sourceSha": "00e383ed64346ff8bcd711459547f5f7ceb7d99f",
+  "startedAt": "2026-10-18T07:55:22.294488+00:00",
+  "worktreeClean": true,
+  "loadAverage": [
+    4.5615234375,
+    3.55322265625,
+    3.1103515625
+  ],
+  "runningContainers": [
+    "qwen38-llama-router\tqwen38-llama:fastmtp-rocm-gfx1100\tUp 5 seconds (healthy)",
+    "flux-201d1a6e-api-1\tflux-foundation:flux-201d1a6e\tUp 44 minutes (healthy)",
+    "flux-201d1a6e-worker-1\tflux-foundation:flux-201d1a6e\tUp 44 minutes",
+    "flux-201d1a6e-runtime-egress-1\tflux-foundation:flux-201d1a6e\tUp 44 minutes",
+    "flux-201d1a6e-runtime-manager-1\tflux-foundation:flux-201d1a6e\tUp 44 minutes",
+    "flux-201d1a6e-runtime-3-1\tflux-agent-runtime:flux-201d1a6e\tUp 12 hours",
+    "flux-201d1a6e-runtime-2-1\tflux-agent-runtime:flux-201d1a6e\tUp 12 hours",
+    "flux-201d1a6e-runtime-1-1\tflux-agent-runtime:flux-201d1a6e\tUp 12 hours",
+    "flux-201d1a6e-runtime-4-1\tflux-agent-runtime:flux-201d1a6e\tUp 12 hours",
+    "flux-201d1a6e-db-1\tpostgres\tUp 12 hours (healthy)"
+  ],
+  "sourceSha256": {
+    "app/apps/web/src/editing/map.ts": "998cfa081937e5b2ac09fd234de22f01c0a5c42137b4b1c29872d8bee21f8ed3",
+    "app/apps/web/src/sketch/projection.ts": "f89faeee274e2c472b87eee35f85fc6329e01fa2c8ce51e91ea45e2a7cda3d84",
+    "app/apps/web/src/sketch/live-doc.ts": "d1b2c5e7ab264e032e4fcaa261bb7ab023f23b06bedddba45b3312191205c44e",
+    "app/tests/app/live-map-projection.test.ts": "7956d00e660ce1f6a09433e94c90604a6717407487c18c753886a857b2eca9ba",
+    "app/tests/ui/test_live_editing.py": "24853e8e4edc23fddb0e3b9d091b197bd3904ac433a3cd5570f63b3fdd80d967",
+    "app/tests/ui/live_editing_latency.py": "11b71d4f9d34a471367de974ec93bde207b4b6f0a6b813babaa2d68c1a79e3c3",
+    "scripts/check_live_editing.sh": "6e0ea122459547e40b303ac5044067f83af167d09afe215d56b79f1d27f8944c",
+    "scripts/collect_live_editing_queue.py": "ef66cdaf42e81b142ed1a700e873f38f7a94d58e3f5d8799e7504b1cf0d0c001",
+    "scripts/prepare_live_editing_latency.py": "4a4b6797eaba0f704b37fb3108bc1ef460260a1c8858fd273b0105c6f3d225d5",
+    "app/pnpm-lock.yaml": "d34264e9ac2a877f045b3c190d6be025dfc2a8b84cc67b42eeb5dd7200cb6e22",
+    "docker/Dockerfile": "49e13f6d00cb54b2a0fd46854cdfa135cf6186c51950cafb94ad9eb0570a1e20",
+    "docker/compose.source.yaml": "045c5da77a2cf1edc0c21cd6e5964a57106e03e4620691045aab6d988db96c6d",
+    "docker/compose.live-editing.test.yaml": "18c846365f2c7288e432567b86fea55dff2c9c57651127acde6817c83e550282"
+  },
+  "command": "FLUX_LIVE_EDITING_PORT=18685 FLUX_LIVE_EDITING_MAILPIT_PORT=18686 ./scripts/check_live_editing.sh --latency /home/hubert/flux-evidence/228-map-performance-00e383ed-latency"
+}
