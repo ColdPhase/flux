@@ -1,0 +1,36 @@
+{
+  "prepared_at": "2026-10-18T08:48:50.871445+00:00",
+  "candidate_sha": "8ba5f87ae065d52b4b69158648f8e863b3d3f9cb",
+  "baseline_sha": "608532da0ff6d7c6824e9bb0b15335517344d641",
+  "candidate_worktree": "/home/hubert/Develop/flux/.worktrees/228-live-map-performance",
+  "baseline_worktree": "/home/hubert/Develop/flux/.worktrees/228-map-body-control-608532da",
+  "baseline_status": " M app/tests/ui/test_live_editing.py\n",
+  "files": {
+    "app/apps/web/src/sketch/SketchMap.tsx": {
+      "candidate_sha256": "a011d421be1d4fa5331102508f697939cd4a009719e53be993e85ec596df9f8f",
+      "baseline_sha256": "d564ce1eba27fea3fd58fd8a201eed99c448212e1d9712e2ff220640dca07474"
+    },
+    "app/apps/web/src/sketch/format.ts": {
+      "candidate_sha256": "9f97f790dd421905248e068180ab6a740ca2a5f5ac8e0356744943f65eee596a",
+      "baseline_sha256": "3191b44e3b052878adf2c10e3a2954759b29865ec506fddb39030ca26bc87f1d"
+    },
+    "app/tests/ui/test_live_editing.py": {
+      "candidate_sha256": "17c07caa979beaceece2756c51b5496e434b55ba19bc5a750f81add0d875d870",
+      "baseline_sha256": "17c07caa979beaceece2756c51b5496e434b55ba19bc5a750f81add0d875d870"
+    },
+    "app/pnpm-lock.yaml": {
+      "candidate_sha256": "d34264e9ac2a877f045b3c190d6be025dfc2a8b84cc67b42eeb5dd7200cb6e22",
+      "baseline_sha256": "d34264e9ac2a877f045b3c190d6be025dfc2a8b84cc67b42eeb5dd7200cb6e22"
+    },
+    "docker/Dockerfile": {
+      "candidate_sha256": "49e13f6d00cb54b2a0fd46854cdfa135cf6186c51950cafb94ad9eb0570a1e20",
+      "baseline_sha256": "49e13f6d00cb54b2a0fd46854cdfa135cf6186c51950cafb94ad9eb0570a1e20"
+    },
+    "scripts/check_live_editing.sh": {
+      "candidate_sha256": "6e0ea122459547e40b303ac5044067f83af167d09afe215d56b79f1d27f8944c",
+      "baseline_sha256": "6e0ea122459547e40b303ac5044067f83af167d09afe215d56b79f1d27f8944c"
+    }
+  },
+  "baseline_original_test_sha256": "24853e8e4edc23fddb0e3b9d091b197bd3904ac433a3cd5570f63b3fdd80d967",
+  "baseline_overlay_numstat": "80\t0\tapp/tests/ui/test_live_editing.py"
+}
