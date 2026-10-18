@@ -13,6 +13,14 @@
 # (client versions and output) on the PR.
 set -eu
 
+# Explicit local acceptance mode: no model mocks, no CI. Read-only mounts are passed only to the disposable
+# native-client container; never relabel, copy into the source/image, print, refresh or overwrite the host files.
+if [ "${FLUX_TEST_MCP_LIVE_WORKFLOW:-0}" = 1 ]; then
+  : "${FLUX_CODEX_AUTH_FILE:?Set an explicit Codex auth.json path for the authorized local account}"
+  : "${FLUX_CLAUDE_CREDENTIALS_FILE:?Set an explicit Claude credentials path for the authorized local account}"
+  test -f "$FLUX_CODEX_AUTH_FILE" && test -f "$FLUX_CLAUDE_CREDENTIALS_FILE"
+fi
+
 cd "$(dirname "$0")/.."
 project="flux-mcpclients-$(date +%s)-$$"
 export POSTGRES_USER=flux
@@ -36,6 +44,9 @@ export FLUX_VAPID_PUBLIC_KEY= FLUX_VAPID_PRIVATE_KEY= FLUX_VAPID_SUBJECT=
 . scripts/test_images.sh
 # Optional isolation override (for example vetted IPAM) for concurrent local checks.
 export COMPOSE_FILE="docker/compose.source.yaml:docker/compose.test.yaml${FLUX_TEST_COMPOSE_OVERRIDE:+:$FLUX_TEST_COMPOSE_OVERRIDE}"
+if [ "${FLUX_TEST_MCP_LIVE_WORKFLOW:-0}" = 1 ]; then
+  export COMPOSE_FILE="$COMPOSE_FILE:docker/compose.mcp-live.test.yaml"
+fi
 compose="docker compose -p $project --profile test --profile mcp-clients"
 
 cleanup() {
@@ -57,6 +68,11 @@ trap 'exit 143' TERM
 $compose build migrate test mcp-clients pushmock
 $compose up -d db migrate
 $compose --profile setup run --rm files-init
+if [ "${FLUX_TEST_MCP_LIVE_WORKFLOW:-0}" = 1 ]; then
+  $compose run --rm -e FLUX_TEST_MCP_LIVE_WORKFLOW=1 mcp-clients sh -c \
+    'node apps/runtime/dist/install/main.js && codex --version && claude --version && exec node_modules/.bin/tsx --test tests/app/e2e/mcp-live-workflow.e2e.ts'
+  exit 0
+fi
 # The changed authenticated boundary is exercised through every maintained MCP domain/authority contract in both eras.
 for protocol in 2026-07-28 2025-06-18; do
   $compose run --rm -e FLUX_TEST_MCP_PROTOCOL="$protocol" test sh -c 'exec node_modules/.bin/tsx --test --test-concurrency=1 tests/app/mcp*.test.ts tests/app/oauth-mcp.test.ts tests/app/agent-execution.test.ts tests/app/extension-contracts.test.ts'

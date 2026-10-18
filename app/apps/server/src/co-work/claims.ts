@@ -1,12 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import type { AgentExecutionCommand, AgentJsonValue, AuthenticatedAgentRuntime } from '@flux/contracts';
-import { coworkUnitRows, type CoWorkTaskLockInput } from '@flux/db';
+import { agentOrientationRows, coworkUnitRows, lockAgentMcpPolicy, type CoWorkTaskLockInput } from '@flux/db';
 import { agentOutcomeFingerprint, coWorkCheckpointProgress, coWorkClaimPostcondition, coWorkClaimUseCases, ConflictError, DomainError,
-  InvalidInputError, normalizeAgentExecution, normalizeCoWorkCheckpointDraft, NotFoundError, parseCoWorkCheckpointProgress,
+  InvalidInputError, normalizeAgentExecution, normalizeCoWorkCheckpointDraft, NotFoundError, parseCoWorkCheckpointProgress, requireAgentMcpEntry,
   type ClaimInput, type ClaimOperation, type ClaimOutcome, type CoWorkCheckpointDraft, type CoWorkContext,
   type CoWorkUnit, type CoWorkClaimUnitOfWork, type LockedClaimScope, type Transaction } from '@flux/core';
 import { agentExecutionInTransaction } from '../agent-connection/execution.js';
-import type { FluxMcpClaims } from '../agent-connection/context.js';
+import { requireMcpSourceKinds, type FluxMcpClaims } from '../agent-connection/context.js';
 
 type LockedUnit = NonNullable<Awaited<ReturnType<ReturnType<typeof coworkUnitRows>['lock']>>>;
 type Checkpoint = NonNullable<Awaited<ReturnType<LockedUnit['checkpoint']>>>;
@@ -72,6 +72,7 @@ export async function coWorkClaimInTransaction(tx: Transaction, claims: FluxMcpC
   raw: AgentExecutionCommand, policy: CoWorkClaimPolicy): Promise<ClaimOutcome> {
   const command = normalizeAgentExecution(raw);
   const { operation, input, draft } = inputOf(command);
+  if (draft?.orientation) requireMcpSourceKinds(claims, draft.orientation.known.map((source) => source.kind));
   policy = Object.freeze({ ...policy });
   if (!Number.isSafeInteger(policy.maximumConnectionUnits) || policy.maximumConnectionUnits < 1
     || !Number.isSafeInteger(policy.leaseSeconds) || policy.leaseSeconds < 1 || policy.leaseSeconds > 300
@@ -82,6 +83,16 @@ export async function coWorkClaimInTransaction(tx: Transaction, claims: FluxMcpC
     const checkpoint = await locked!.checkpoint(id);
     if (!checkpoint)
       throw new DomainError(404, 'COWORK_CHECKPOINT_NOT_FOUND', 'Checkpoint not found');
+    const orientation = parseCoWorkCheckpointProgress(checkpoint.progress)?.orientation;
+    if (orientation && claims.dispatch) {
+      requireMcpSourceKinds(claims, orientation.known.map((source) => source.kind));
+      // The execution preparation already holds this policy row. Recheck added coverage dependencies before
+      // exposing checkpoint text or committing a claim; a refused read rolls back the whole command.
+      const policy = await lockAgentMcpPolicy(tx, context.connectionId);
+      if (!policy) throw new DomainError(403, 'MCP_ENTRY_UNAVAILABLE', 'This capability is unavailable');
+      requireAgentMcpEntry(policy, claims.dispatch.dependencies.capturedVersion, claims.dispatch.current(),
+        claims.dispatch.dependencies.capabilities);
+    }
     await policy.requireCheckpointSources(tx, context, checkpoint, command);
     return checkpoint;
   };
@@ -118,6 +129,10 @@ export async function coWorkClaimInTransaction(tx: Transaction, claims: FluxMcpC
         // The core holder fence (unit, version, live claim) has passed: write the drafted checkpoint under that same
         // live fence. A refused release later in this transaction rolls it back with everything else.
         if (draft && id === (input as { checkpointId?: string }).checkpointId) {
+          for (const source of draft.orientation?.known ?? []) {
+            const found = await agentOrientationRows(tx).find({ workspaceId: runtime.workspaceId, projectId: command.projectId }, source.kind, source.id);
+            if (!found) throw new NotFoundError('Orientation source', 'SOURCE_NOT_FOUND');
+          }
           const inserted = await locked!.insertCheckpoint({ id, generation: fence.generation, leaseId: fence.leaseId,
             runtimeSessionId: runtime.id, progress: coWorkCheckpointProgress(draft, command.sources) as unknown as Record<string, unknown> });
           if (inserted !== id) throw new ConflictError('The claim is no longer live; recover before continuing', 'COWORK_CLAIM_LOST');
@@ -161,5 +176,5 @@ export async function coWorkClaimCheckpoint(tx: Transaction, scope: { projectId:
   const progress = row ? parseCoWorkCheckpointProgress(row.progress) : null;
   if (!row || !progress) throw new NotFoundError('Checkpoint', 'COWORK_CHECKPOINT_NOT_FOUND');
   return { id: row.id, summary: progress.summary, nextAction: progress.nextAction, blocker: progress.blocker,
-    sources: progress.sources, createdAt: row.createdAt.toISOString() };
+    sources: progress.sources, ...(progress.orientation ? { orientation: progress.orientation } : {}), createdAt: row.createdAt.toISOString() };
 }

@@ -1,6 +1,7 @@
-import type { WorkStatus } from '@flux/contracts';
+import type { AgentSourceCheckpoint, WorkStatus } from '@flux/contracts';
 import { ConflictError, InvalidInputError, NotFoundError } from '../access/errors.js';
 import type { ClaimOperation, CoWorkUnit } from './claims.js';
+import { normalizeAgentCheckpoint } from '../agent-connection/orientation.js';
 
 /**
  * Typed co-work checkpoint and the production claim rules (#153, docs/development/cowork-coordination.md
@@ -15,6 +16,8 @@ export interface CoWorkCheckpointDraft {
   summary: string;
   nextAction: string;
   blocker: string | null;
+  /** Client-reported source coverage and missing context, never execution authority. */
+  orientation?: { known: AgentSourceCheckpoint[]; gaps: string[] };
 }
 export interface CoWorkCheckpointSource { materialId: string; version: number }
 export interface CoWorkCheckpointProgress extends CoWorkCheckpointDraft {
@@ -23,21 +26,33 @@ export interface CoWorkCheckpointProgress extends CoWorkCheckpointDraft {
   sources: CoWorkCheckpointSource[];
 }
 
-const DRAFT_KEYS = ['summary', 'nextAction', 'blocker'];
+const DRAFT_KEYS = ['summary', 'nextAction', 'blocker', 'orientation'];
 function text(value: unknown, maximum: number): string {
   if (typeof value !== 'string' || value.trim().length < 1 || value.length > maximum)
     throw new InvalidInputError('Checkpoint text fields are bounded and required');
   return value.trim();
 }
-/** Exactly `{ summary, nextAction, blocker }`; anything else (a prompt, a transcript, authority) is refused. */
+/** Observable progress plus optional bounded orientation; prompts/transcripts/authority are refused. */
 export function normalizeCoWorkCheckpointDraft(value: unknown): CoWorkCheckpointDraft {
-  if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).length !== DRAFT_KEYS.length
+  if (!value || typeof value !== 'object' || Array.isArray(value) || ![3, 4].includes(Object.keys(value).length)
     || Object.keys(value).some((key) => !DRAFT_KEYS.includes(key)))
-    throw new InvalidInputError('A checkpoint is exactly a summary, a next action and a blocker');
+    throw new InvalidInputError('A checkpoint needs a summary, next action, blocker and optional orientation');
   const draft = value as Record<string, unknown>;
+  let orientation: CoWorkCheckpointDraft['orientation'];
+  if ('orientation' in draft) {
+    const input = draft.orientation as Record<string, unknown>;
+    if (!input || typeof input !== 'object' || Array.isArray(input) || Object.keys(input).sort().join(',') !== 'gaps,known'
+      || !Array.isArray(input.known) || input.known.length > 50 || !Array.isArray(input.gaps) || input.gaps.length > 10)
+      throw new InvalidInputError('Orientation needs at most 50 known sources and 10 context gaps');
+    const known = input.known.map((item: AgentSourceCheckpoint) => normalizeAgentCheckpoint(item));
+    if (new Set(known.map((item) => `${item.kind}:${item.id}`)).size !== known.length)
+      throw new InvalidInputError('Orientation sources must be distinct');
+    orientation = { known, gaps: input.gaps.map((gap: unknown) => text(gap, 500)) };
+  }
   return { summary: text(draft.summary, COWORK_CHECKPOINT_LIMITS.summary),
     nextAction: text(draft.nextAction, COWORK_CHECKPOINT_LIMITS.nextAction),
-    blocker: draft.blocker === null ? null : text(draft.blocker, COWORK_CHECKPOINT_LIMITS.blocker) };
+    blocker: draft.blocker === null ? null : text(draft.blocker, COWORK_CHECKPOINT_LIMITS.blocker),
+    ...(orientation ? { orientation } : {}) };
 }
 /** The stored progress of a release's checkpoint: the draft plus the command's prepared sources, never client-asserted. */
 export function coWorkCheckpointProgress(draft: CoWorkCheckpointDraft, sources: readonly CoWorkCheckpointSource[]): CoWorkCheckpointProgress {

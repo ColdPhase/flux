@@ -1,0 +1,20 @@
+# Explicit opt-in native-account acceptance only. No source code, user home or provider credential is mounted
+# into the server/worker. Keep each host credential read-only and leave its SELinux label and contents unchanged.
+services:
+  mcp-clients:
+    user: "0:0"
+    security_opt:
+      - label=disable
+    volumes:
+      - type: bind
+        source: ${FLUX_CODEX_AUTH_FILE:?Set the explicit authorized Codex auth.json path}
+        target: /run/flux-live/codex-auth.json
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${FLUX_CLAUDE_CREDENTIALS_FILE:?Set the explicit authorized Claude credentials path}
+        target: /run/flux-live/claude-credentials.json
+        read_only: true
+        bind:
+          create_host_path: false

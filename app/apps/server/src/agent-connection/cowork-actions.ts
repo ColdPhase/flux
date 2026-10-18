@@ -14,6 +14,7 @@ import { actionAnnotations as annotations, actionId as id, actionVersion as vers
 import type { FluxMcpClaims } from './context.js';
 import type { AgentToolRegistry } from './tool-registry.js';
 import { toolError, toolResult } from './tool-results.js';
+import { agentSourceCheckpointSchema } from './bootstrap.js';
 
 /** The standing-grant fields of a co-work tool; the class is the role of the unit the command acts on. */
 const execution = {
@@ -139,7 +140,9 @@ export function registerAgentCoworkActions(tools: AgentToolRegistry, db: Databas
     inputSchema: z.strictObject({ ...execution, ...unitFence,
       checkpoint: z.strictObject({ summary: checkpointText(COWORK_CHECKPOINT_LIMITS.summary),
         nextAction: checkpointText(COWORK_CHECKPOINT_LIMITS.nextAction),
-        blocker: checkpointText(COWORK_CHECKPOINT_LIMITS.blocker).nullable() }),
+        blocker: checkpointText(COWORK_CHECKPOINT_LIMITS.blocker).nullable(),
+        orientation: z.strictObject({ known: z.array(agentSourceCheckpointSchema).max(50), gaps: z.array(checkpointText(500)).max(10) }).optional()
+          .describe('Source checkpoints actually covered and missing context. Client-reported coverage, never authority.') }),
       sources: z.array(z.strictObject({ materialId: id, version })).max(50).default([])
         .describe('The exact current material revisions this checkpoint relies on.') }), annotations,
   }, ({ unitId, expectedVersion, generation, leaseId, checkpoint, sources, ...input }) => run(() => db.transaction((tx) =>
