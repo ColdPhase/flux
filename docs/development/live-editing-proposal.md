@@ -532,6 +532,8 @@ implementation, visual, performance or release acceptance.
 
 ## Whole-issue production promotion contract (2026-10-18)
 
+**Integrated technical acceptance, 2026-10-18:** the [independent final review](evidence/live-editing/2026-10-18-final-review/README.md) accepts the whole #228 candidate at `c66eefc7`, with the recorded founder latency exception. All three P2 findings are resolved in actual Chromium/WebKit runtime and fresh renders. Production still waits for eligible independent approval and protected merge; the historical observations below retain their original verdicts and sources.
+
 The founder's current-session clarification requires existing PR #613 to complete
 all of #228, including the original gates, integrated criteria and independent
 functional/visual acceptance. The earlier partial deliveries and measurements
