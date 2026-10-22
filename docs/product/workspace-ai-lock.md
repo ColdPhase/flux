@@ -3,9 +3,10 @@
 **Status: proposed, 2026-10-22, pending one bounded independent peer assessment.**
 Owner @PelikanFix16 (`claude-hubert`); independent evaluator @Zamojski5. Issue
 [#614](https://github.com/ColdPhase/flux/issues/614) (founder direction, Hubert,
-2026-10-18). Decision row: [F-029](decisions.md). Items marked *recommended, pending
-founder confirmation* are product choices the founder may still change; the rest are
-engineering choices under the [delegation](autonomy.md).
+2026-10-18). Decision row: [F-029](decisions.md). The switch placement, re-enable
+resumption and new-workspace default are [founder direction of
+2026-10-22](#founder-answers-2026-10-22); the rest are engineering choices under the
+[delegation](autonomy.md).
 
 A workspace administrator can turn AI off for a whole workspace. While it is off, no
 agent or assistant reads or acts in that workspace, including each member's own
@@ -56,8 +57,8 @@ INSERT INTO workspace_ai_policies (workspace_id, state) SELECT id, 'allowed' FRO
   `allowed`. The reverse migration (`reverse/NNNN_….down.sql`) drops the table and the
   `ai_epoch` columns and restores the 0100 `end_reason` check and the 0114 capture
   function.
-- **New workspaces: AI allowed** (*recommended, pending founder confirmation*; see
-  [question 3](#founder-questions)). A trigger writes the row in the creating
+- **New workspaces: AI allowed** ([founder direction 2026-10-22](#founder-answers-2026-10-22)).
+  A trigger writes the row in the creating
   transaction, so every workspace always has one.
 - **A missing row means blocked.** The check fails closed, so a fixture or a bug that
   skips the row cannot open AI access.
@@ -255,8 +256,8 @@ presentation only (see [UI](#ui-contract)).
   with the flip, a queued pg-boss job that outlived the sweep, or a recovered run cannot run
   after re-enable. Agents receive no events of the blocked period (no audience rows exist).
   Scheduled jobs fire at their next time after re-enable, never for missed times.
-- **Standing configuration resumes as it was** (*recommended, pending founder
-  confirmation*; [question 2](#founder-questions)): connections, grants, MCP switches,
+- **Standing configuration resumes as it was** ([founder direction
+  2026-10-22](#founder-answers-2026-10-22)): connections, grants, MCP switches,
   assistant enablement, schedules, reactions and comparison rules are kept through the
   block and work again within each owner's current access. Results produced before the
   block (proposals, waiting changes, agent questions) reappear and still need their
@@ -306,28 +307,40 @@ allowed; the browser tests count these markers.
   `AssistantJoinReview.tsx`), request cards and agent-thread composers;
 - AI onboarding (`ProjectSetup.tsx` mentions of Agents, Connect agent prompts).
 
-**Settings → Agents and AI** (*placement recommended, pending founder confirmation*;
-[question 1](#founder-questions)). The page keeps its place in the Settings list on
-computer and phone. Its first card is one row per workspace the person is in:
+**The switch: the workspace's People panel** ([founder direction
+2026-10-22](#founder-answers-2026-10-22)). It is the panel Home → Details → People → a
+workspace opens (`apps/web/src/people/WorkspacePeople.tsx`): the Details panel on a
+computer and the Details sheet on a phone, with the same order on both. One row, shown
+only to owners and admins of that workspace; members and guests see no row. It is its own
+`details__sec` section, **AI in Garden club**, after the people list and before Leave. Its
+place never changes with the state (Spokój rule 7): turning AI off or on changes only the
+row's line and its button label.
 
-- On: **AI in Garden club** · "On · agents and assistants can work here". Owners and
-  admins see the quiet button **Turn off AI**; others see no button.
-- Off: **AI in Garden club** · "Off · turned off by Ada on 18 Oct. No agent or
-  assistant can read or change anything here." Owners and admins see **Turn on AI**;
-  others read "Your workspace admins can turn it back on."
-- While every workspace of the person is off, the rest of the page (assistant card,
-  Connect AI, background suggestions, agent apps) is replaced by that card alone. With
-  some workspaces on, the assistant card and agent apps say once "Not in Garden club:
-  AI is off there."
+- On: "On · agents and assistants can work here." Quiet button **Turn off AI**.
+- Off: "Off · turned off by Ada on 18 Oct. No agent or assistant can read or change
+  anything here." Quiet button **Turn on AI**.
 
-Turning off asks once, in the standard confirm sheet: **Turn off AI in Garden club?**
-"No agent or assistant, including each person's own, can read or change anything in
-this workspace. Work they are doing now stops and is not posted. Nothing is deleted."
-Buttons **Turn off AI** and **Cancel**. After it: "AI is off in Garden club. 2 runs
-stopped." Turning on: **Turn on AI in Garden club?** "People's assistants and connected
-agents can work here again, with the access they had. Nothing that was stopped starts
-again." Buttons **Turn on AI** and **Cancel**. A version conflict shows the current
-state and asks again.
+The confirmation uses the panel's existing inline confirm group (`details__confirm`,
+as for Remove and Leave), in place under the row, so nothing else moves:
+
+- Turning off: "No agent or assistant, including each person's own, can read or change
+  anything in Garden club. Work they are doing now stops and is not posted. Nothing is
+  deleted." Buttons **Turn off AI** (danger) and **Keep AI on**. Afterwards the panel's
+  status line says "AI is off in Garden club. 2 runs stopped."
+- Turning on: "People's assistants and connected agents can work here again, with the
+  access they had. Nothing that was stopped starts again." Buttons **Turn on AI** and
+  **Keep AI off**. Afterwards: "AI is on in Garden club."
+- A version conflict closes the confirm, shows the current state in the row and says
+  "Someone changed this just now." A `403` says "Only owners and admins can change this."
+
+Focus returns to the row's button after either answer. Members learn the state where
+AI would have appeared ([deep links](#ui-contract) below) and from the API's `ai` field.
+
+**Settings → Agents and AI** keeps its place and holds no switch. For a workspace that is
+off, its assistant card and agent apps say once "Not in Garden club: AI is off there."
+While every workspace of the person is off, the page shows only "AI is off in Garden
+club. Its owners and admins can turn it back on in People." (for an owner or admin, "People"
+opens that workspace's People panel).
 
 **Deep links.** An existing tab or URL that would open an AI surface in a blocked
 workspace (`/projects/:id/agents`, an agent's details or thread, `/settings/assistant`
@@ -335,7 +348,8 @@ for that workspace's settings, `/connect-agent` and `/consent` choosing that wor
 Inbox item of AI origin) shows one calm blocked state in the same panel or page, and
 starts no AI request: **AI is off in Garden club** · "Its admins turned off agents and
 assistants here. Everything else works as usual." with **Back to the conversation**
-(or **Back**); owners and admins also get **Settings**. Back and history are preserved;
+(or **Back**); owners and admins also get **People**, which opens the workspace's People
+panel. Back and history are preserved;
 the URL is not rewritten.
 
 ## Test matrix (AC-5)
@@ -364,7 +378,7 @@ does reach it.
 | AC-3 | Multi-process: two API containers and the worker (pattern of [two-API fixture](../development/live-editing-two-api.md)); disable on API-1 while an MCP stream is served by API-2 and a run is in the worker; nothing crosses. | `tests/app/live/workspace-ai-two-api.test.ts`, `docker/compose.ai-lock.test.yaml` |
 | AC-3 | Re-enable: queued items from before and from the flip race do not run; missed schedule times do not fire; agents get no blocked-period events; a demoted admin cannot re-enable; standing configuration works again. | `workspace-ai-cutover.test.ts` |
 | AC-3 | Real client: pinned Claude Code in the `mcp-clients` image gets the refusal on its next call after disable and works again after re-enable and reconnect. | `tests/app/e2e/mcp-clients.e2e.ts` case |
-| AC-4 | Chromium and WebKit, desktop and phone viewports: admin turns AI off and on in Settings; a member sees the state without a button; zero `[data-ai-surface]` in A's project, Home, Inbox, ⌘K, composer and message menus while blocked, and more than zero in B (control); every listed deep link shows the blocked state and makes no AI request (network log); reload keeps the state; an open second tab updates from the stream; conversation, task, map, Wiki, file and search still work for two people. | `tests/ui/test_workspace_ai_lock.py` (`./scripts/check_ui.sh`, run with `FLUX_UI_BROWSER=chromium` and `webkit`) |
+| AC-4 | Chromium and WebKit, desktop and phone viewports: owner and admin turn AI off and on in the workspace's People panel (Details panel on a computer, Details sheet on a phone), the row keeps its position across states, and the inline confirm works by keyboard; member and guest see no AI row; zero `[data-ai-surface]` in A's project, Home, Inbox, ⌘K, composer and message menus while blocked, and more than zero in B (control); every listed deep link shows the blocked state and makes no AI request (network log); reload keeps the state; an open second tab updates from the stream; conversation, task, map, Wiki, file and search still work for two people. | `tests/ui/test_workspace_ai_lock.py` (`./scripts/check_ui.sh`, run with `FLUX_UI_BROWSER=chromium` and `webkit`) |
 | AC-5 | Final candidate evaluated independently under the [bounded review policy](../agents/evaluation.md). | PR review |
 
 ## Delivery slices
@@ -378,27 +392,23 @@ One issue, #614, one owner; each slice is its own PR with its own review.
 - **S2 — cutover.** The two-step disable, the sweep job, `ai_epoch` on work items,
   re-enable semantics, and the AC-3 tests including the two-API fixture, late results and
   the real-client case.
-- **S3 — human-only interface.** `useWorkspaceAi`, `<AiSurface>`, the Settings card and
-  confirm sheets, every listed surface, deep-link blocked states, and the AC-4 browser
+- **S3 — human-only interface.** `useWorkspaceAi`, `<AiSurface>`, the People-panel row and
+  its inline confirm, every listed surface, deep-link blocked states, and the AC-4 browser
   tests. Visual review with a neutral brief per the design guide.
 
 S1 and S2 may merge together if S2 is small; S3 needs S1's wire field.
 
-## Founder questions
+## Founder answers (2026-10-22)
 
-Each has a recommended answer written into this draft. Work proceeds on it unless the
-founder answers otherwise on #614.
+Hubert answered the three open questions in the supervising session on 2026-10-22. They
+are founder direction, not proposals:
 
-1. **Where is the switch?** Prostota has no workspace settings page; the workspace is a
-   quiet data boundary and its only administrative surface is Home → Details → People.
-   *Recommended:* the first card of Settings → Agents and AI, one row per workspace, as
-   described above, because that is where people look for AI controls on computer and
-   phone. Alternative: a row in the workspace's People panel.
-2. **After re-enable, does standing configuration resume?** *Recommended:* yes.
-   Connections, grants, switches, schedules, reactions and rules are kept and work again;
-   no stopped or missed work runs. Alternative: every owner turns their AI on again.
-3. **Default for new workspaces?** *Recommended:* AI allowed, as today and as F-001
-   intends. Alternative: ask the creator when the workspace is created.
+1. **The switch** is one row in the workspace's People panel, for owners and admins only
+   (not in Settings → Agents and AI).
+2. **Re-enable**: connections, grants, switches, schedules, reactions and comparison rules
+   work again automatically. Stopped or missed work is never replayed, and suggestions
+   from before the block return only for their owner's explicit acceptance.
+3. **New workspaces** start with AI allowed.
 
 ## Not in scope
 
