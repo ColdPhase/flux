@@ -38,6 +38,14 @@ BLOCKER = "the probe dimensions from the supplier"
 CALIBRATE = "Calibrate the probes at two soil depths"
 LORA = "Measure LoRa range from the far east beds"
 WORD = {"open": "Open", "in_progress": "In progress", "blocked": "Blocked", "done": "Done", "not_pursued": "Not pursued"}
+# The phone's feedback keeps an 8 px gap above the real footer (the Create control on a project's views); the toast is
+# fixed to the viewport and the control hangs from the app's own 100dvh height. Observed on main with Playwright 1.62.0
+# WebKit (2026-10-23, #637): in the context opened at 390x844 a fixed 100dvh probe measured 843.984375 while
+# innerHeight and clientHeight were 844, so the control sat 0.015625 px higher and the gap measured 7.984375. After a
+# resize to 320x568 both agreed and the gap was exactly 8; Chromium measures 8 at both. Nothing overlapped and every
+# control was hit-tested and inside the viewport. Inference: one WebKit layout unit (1/64 px) of rounding in dvh,
+# below any device pixel. That one unit is the whole allowance, for WebKit only; Chromium keeps the exact 8 px.
+GAP_ALLOWANCE = 1 / 64 if os.environ.get("FLUX_UI_BROWSER", "chromium") == "webkit" else 0
 
 
 class TasksFinalJourney(unittest.TestCase):
@@ -758,13 +766,13 @@ class TasksFinalJourney(unittest.TestCase):
 
     def feedback_geometry(self, page: Page, state: str, dark: bool, width: int, factor: float) -> None:
         page.wait_for_function("() => document.getAnimations().every(a => a.playState !== 'running' || a.effect?.getComputedTiming().endTime === Infinity)")
-        page.wait_for_function("""() => {
+        page.wait_for_function("""allowance => {
             const toast = document.querySelector('.ui-toast');
             const nav = document.querySelector('.ui-bottomnav') ?? document.querySelector('.phone-fab');
             return toast && nav && getComputedStyle(toast).transform === 'none'
                 && toast.getAnimations().every(a => a.playState !== 'running')
-                && toast.getBoundingClientRect().bottom <= nav.getBoundingClientRect().top - 8;
-        }""")
+                && toast.getBoundingClientRect().bottom <= nav.getBoundingClientRect().top - 8 + allowance;
+        }""", arg=GAP_ALLOWANCE)
         observed = page.evaluate("""() => {
             const toast = document.querySelector('.ui-toast');
             const nav = document.querySelector('.ui-bottomnav') ?? document.querySelector('.phone-fab');
@@ -782,10 +790,10 @@ class TasksFinalJourney(unittest.TestCase):
                 nav: {top: n.top, height: n.height}, fab: f && {left: f.left, right: f.right, top: f.top, bottom: f.bottom},
                 toastFabGap: f ? f.top - t.bottom : null, toastOverlapsFab: f ? intersects(t, f) : false, controls};
         }""")
-        self.assertGreaterEqual(observed['gap'], 8)
+        self.assertGreaterEqual(observed['gap'], 8 - GAP_ALLOWANCE)
         self.assertFalse(observed['toastOverlapsFab'], 'the persistent Undo toast must not cover the floating Create control')
         if observed['fab']:
-            self.assertGreaterEqual(observed['toastFabGap'], 8, 'leave a clear gap between feedback and floating Create')
+            self.assertGreaterEqual(observed['toastFabGap'], 8 - GAP_ALLOWANCE, 'leave a clear gap between feedback and floating Create')
         self.assertGreaterEqual(observed['toast']['top'], 0)
         self.assertGreaterEqual(observed['toast']['left'], 0)
         self.assertLessEqual(observed['toast']['right'], width)
