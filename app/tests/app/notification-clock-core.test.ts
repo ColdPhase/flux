@@ -64,6 +64,24 @@ describe('parseClock', () => {
     );
   });
 
+  test('rejects single-digit minutes, out-of-range minutes and numbers', () => {
+    throwsCode(
+      () => parseClock('22:0', 'quietHours.start'),
+      'INVALID_QUIET_HOURS',
+      'single-digit minutes are refused',
+    );
+    throwsCode(
+      () => parseClock('12:60', 'quietHours.start'),
+      'INVALID_QUIET_HOURS',
+      'minutes out of range are refused',
+    );
+    throwsCode(
+      () => parseClock(2200, 'quietHours.start'),
+      'INVALID_QUIET_HOURS',
+      'numbers are refused',
+    );
+  });
+
   test('honours a custom code, e.g. the morning summary', () => {
     throwsCode(
       () => parseClock('bad', 'morningSummary.at', 'INVALID_MORNING_SUMMARY'),
@@ -77,11 +95,14 @@ describe('formatClock', () => {
   test('minutes after midnight become zero-padded HH:MM', () => {
     assert.equal(formatClock(0), '00:00');
     assert.equal(formatClock(75), '01:15');
+    assert.equal(formatClock(1320), '22:00');
     assert.equal(formatClock(1439), '23:59');
   });
 
-  test('round-trips parseClock', () => {
-    assert.equal(formatClock(parseClock('18:45', 'quietHours.end')), '18:45');
+  test('round-trips parseClock for every valid example', () => {
+    for (const time of ['00:00', '18:45', '22:00', '23:59']) {
+      assert.equal(formatClock(parseClock(time, 'quietHours.end')), time);
+    }
   });
 });
 
