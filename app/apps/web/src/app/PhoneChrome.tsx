@@ -1,6 +1,6 @@
-import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { Link } from 'react-router';
-import { Avatar, BottomNav, FluxLogo, Icon, IconButton, Overlay, type BottomNavItem, type IconName } from '../ui';
+import { Avatar, BottomNav, FluxLogo, Icon, IconButton, Overlay, publishTopEdge, type BottomNavItem, type IconName } from '../ui';
 import { handFilesToComposer } from '../composer/handoff';
 import { useDraft } from './drafts';
 import { useShellActions } from './shellContext';
@@ -43,10 +43,17 @@ export function phoneOffersCreate(pathname: string): boolean {
  * message's sketches (Spokój rule 7) the capsule steps aside: Search is in the header, and only the "+" floats.
  */
 export function PhoneDock({ places, onSearch, onCreate, create, capsule = true }: { places: BottomNavItem[]; onSearch: () => void; onCreate: () => void; create: boolean; capsule?: boolean }) {
+  const fab = useRef<HTMLButtonElement>(null);
+  // Feedback (the toast) stays 8 px clear of the "+" wherever it really is: above the capsule, or alone above the
+  // bottom safe area. Publish its top edge instead of assuming the dock's padding and the "+" size (#639).
+  useLayoutEffect(() => {
+    const node = fab.current;
+    return node ? publishTopEdge(node, '--ui-fab-inset', node.parentElement ? [node.parentElement] : []) : undefined;
+  }, [create]);
   return (
     <div className={`phone-dock app__viewbar${capsule ? '' : ' phone-dock--solo'}`}>
       {create ? (
-        <button type="button" className="phone-fab" aria-label="Create" aria-haspopup="dialog" onClick={onCreate}>
+        <button ref={fab} type="button" className="phone-fab" aria-label="Create" aria-haspopup="dialog" onClick={onCreate}>
           <Icon name="plus" size={24} />
         </button>
       ) : null}
