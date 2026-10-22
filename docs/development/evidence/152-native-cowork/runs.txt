@@ -1,0 +1,103 @@
+API era 2026-07-28, source d271ac448b7c1aecf90c6974ef84923ef100390c
+✔ the co-work tools are registered for the action scope, listed with their operation and classes, and declared by the playbook (1224.968847ms)
+✔ flux_create_unit takes a task atomically: a retry replays, a re-issued intent returns the unit, a second connection is refused (1581.746694ms)
+✔ flux_claim_request and flux_decline_request act only on a request addressed to the caller's unit, under its live claim (2225.775242ms)
+✔ a review request travels send -> inbox -> claim -> resolve with a pinned verdict; a new version stales it; the same grant asks again (2655.845388ms)
+✔ a non-review request is resolved with evidence only; a verdict on it is refused (1991.542622ms)
+✔ the recipient defers a queued request with a reason and boundary without claiming; status is honest: queued, deferred, offline, working, cancelled (2346.836933ms)
+ℹ tests 6
+ℹ suites 0
+ℹ pass 6
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 13545.36309
+
+API era 2025-06-18, source d271ac448b7c1aecf90c6974ef84923ef100390c
+✔ the co-work tools are registered for the action scope, listed with their operation and classes, and declared by the playbook (1119.744178ms)
+✔ flux_create_unit takes a task atomically: a retry replays, a re-issued intent returns the unit, a second connection is refused (1641.25488ms)
+✔ flux_claim_request and flux_decline_request act only on a request addressed to the caller's unit, under its live claim (2513.890508ms)
+✔ a review request travels send -> inbox -> claim -> resolve with a pinned verdict; a new version stales it; the same grant asks again (2806.576531ms)
+✔ a non-review request is resolved with evidence only; a verdict on it is refused (2008.552556ms)
+✔ the recipient defers a queued request with a reason and boundary without claiming; status is honest: queued, deferred, offline, working, cancelled (2388.776492ms)
+ℹ tests 6
+ℹ suites 0
+ℹ pass 6
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 13950.128479
+
+Native contract + onboarding default, source 469ee89882cb550e8d3fc4d559446600bf41b9e8
+▶ real pinned Codex and Claude Code clients: two owners, both native client types and five independent connections, one OAuth each, shared domain tools, revocation
+  ✔ Codex on laptop: codex adds Flux and completes OAuth as the person (10350.092356ms)
+  ✔ Codex on desktop: codex adds Flux and completes OAuth as the person (1651.248781ms)
+  ✔ Peer Claude Code: claude adds Flux and completes OAuth as the person (10862.62966ms)
+  ✔ Owner Claude Code: claude adds Flux and completes OAuth as the person (2264.541677ms)
+  ✔ Peer Codex: codex adds Flux and completes OAuth as the person (1662.539821ms)
+  ✔ every connection lists the same shared domain tools and only its own projects (2903.344443ms)
+  ✔ one connection writes a task under a standing grant; the others read it from the shared project (2184.881449ms)
+  ✔ Codex on laptop: native task/unit progress, quiet renewal, persisted checkpoint replay and a fresh-process reconnect (4475.094337ms)
+  ✔ Codex on desktop: native task/unit progress, quiet renewal, persisted checkpoint replay and a fresh-process reconnect (4769.73965ms)
+  ✔ Peer Claude Code: native task/unit progress, quiet renewal, persisted checkpoint replay and a fresh-process reconnect (5189.502916ms)
+  ✔ Owner Claude Code: native task/unit progress, quiet renewal, persisted checkpoint replay and a fresh-process reconnect (5078.25172ms)
+  ✔ Peer Codex: native task/unit progress, quiet renewal, persisted checkpoint replay and a fresh-process reconnect (4357.3874ms)
+  ✔ native addressed review: busy peer defers, retries preserve one effect, a changed version gets one fresh review (15573.193787ms)
+  ✔ revoking one connection stops that client and leaves the others working (1777.747961ms)
+✔ real pinned Codex and Claude Code clients: two owners, both native client types and five independent connections, one OAuth each, shared domain tools, revocation (74215.916901ms)
+▶ real Codex and Claude Code from clean configurations: supplied playbook reaches the active client before its first granted action
+  ✔ Claude Code (start): clean claude connects and the owner authorizes (10945.363285ms)
+  ✔ Codex (start): clean codex connects and the owner authorizes (1612.500768ms)
+  ✔ Claude Code (start): native prompt/resource tooling loads the supplied playbook before the first permitted action (817.512054ms)
+CODEX_NATIVE_RESOURCE_DELIVERY {"mode":"default","chars":16267,"reference":{"bundleId":"flux.cowork","version":"1.7.0","digest":"sha256:992d25a548ef691c021ba1b636af1a9cb6a44b490d81b8e56b6d1bba59824e16"},"nativeResourceList":true,"nativeResourceRead":true}
+  ✔ Codex (start): native prompt/resource tooling loads the supplied playbook before the first permitted action (1055.383702ms)
+  ✔ ordinary Codex add/login uses native registration with no seeded client or feature override (2397.948152ms)
+CLAUDE_NATIVE_RESUME_REFRESH {"version":"2.1.285","sameSession":true,"immediateSystemRefresh":true,"originalNativeInstructionsRetained":true,"suppliedFluxBundle":false}
+  ✔ pinned Claude resumes the same private session with immediate appended-instruction refresh (520.703397ms)
+✔ real Codex and Claude Code from clean configurations: supplied playbook reaches the active client before its first granted action (17834.752755ms)
+ℹ tests 22
+ℹ suites 0
+ℹ pass 22
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 99842.008458
+
+Native contract + onboarding FLUX_TEST_CODEX_MODERN=1, source 469ee89882cb550e8d3fc4d559446600bf41b9e8
+▶ real pinned Codex and Claude Code clients: two owners, both native client types and five independent connections, one OAuth each, shared domain tools, revocation
+  ✔ Codex on laptop: codex adds Flux and completes OAuth as the person (10182.634134ms)
+  ✔ Codex on desktop: codex adds Flux and completes OAuth as the person (1636.033245ms)
+  ✔ Peer Claude Code: claude adds Flux and completes OAuth as the person (12220.432402ms)
+  ✔ Owner Claude Code: claude adds Flux and completes OAuth as the person (2254.728241ms)
+  ✔ Peer Codex: codex adds Flux and completes OAuth as the person (1738.207334ms)
+  ✔ every connection lists the same shared domain tools and only its own projects (2870.810357ms)
+  ✔ one connection writes a task under a standing grant; the others read it from the shared project (2127.61842ms)
+  ✔ Codex on laptop: native task/unit progress, quiet renewal, persisted checkpoint replay and a fresh-process reconnect (5560.528527ms)
+  ✔ Codex on desktop: native task/unit progress, quiet renewal, persisted checkpoint replay and a fresh-process reconnect (5832.961581ms)
+  ✔ Peer Claude Code: native task/unit progress, quiet renewal, persisted checkpoint replay and a fresh-process reconnect (6685.114863ms)
+  ✔ Owner Claude Code: native task/unit progress, quiet renewal, persisted checkpoint replay and a fresh-process reconnect (6731.552361ms)
+  ✔ Peer Codex: native task/unit progress, quiet renewal, persisted checkpoint replay and a fresh-process reconnect (5747.519206ms)
+  ✔ native addressed review: busy peer defers, retries preserve one effect, a changed version gets one fresh review (15680.77198ms)
+  ✔ revoking one connection stops that client and leaves the others working (1831.426807ms)
+✔ real pinned Codex and Claude Code clients: two owners, both native client types and five independent connections, one OAuth each, shared domain tools, revocation (81971.6383ms)
+▶ real Codex and Claude Code from clean configurations: supplied playbook reaches the active client before its first granted action
+  ✔ Claude Code (start): clean claude connects and the owner authorizes (11208.532851ms)
+  ✔ Codex (start): clean codex connects and the owner authorizes (1722.697488ms)
+  ✔ Claude Code (start): native prompt/resource tooling loads the supplied playbook before the first permitted action (1132.816257ms)
+CODEX_NATIVE_RESOURCE_DELIVERY {"mode":"modern","chars":16267,"reference":{"bundleId":"flux.cowork","version":"1.7.0","digest":"sha256:992d25a548ef691c021ba1b636af1a9cb6a44b490d81b8e56b6d1bba59824e16"},"nativeResourceList":true,"nativeResourceRead":true}
+  ✔ Codex (start): native prompt/resource tooling loads the supplied playbook before the first permitted action (1837.603276ms)
+  ✔ ordinary Codex add/login uses native registration with no seeded client or feature override (1949.715408ms)
+CLAUDE_NATIVE_RESUME_REFRESH {"version":"2.1.285","sameSession":true,"immediateSystemRefresh":true,"originalNativeInstructionsRetained":true,"suppliedFluxBundle":false}
+  ✔ pinned Claude resumes the same private session with immediate appended-instruction refresh (532.108569ms)
+✔ real Codex and Claude Code from clean configurations: supplied playbook reaches the active client before its first granted action (19189.944124ms)
+ℹ tests 22
+ℹ suites 0
+ℹ pass 22
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 108908.242077
