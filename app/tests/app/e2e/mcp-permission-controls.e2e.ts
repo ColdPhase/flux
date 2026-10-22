@@ -64,7 +64,7 @@ async function fixture() {
       { body: { principal: { kind: 'agent', id: agent.id }, role: 'contributor' } }), 201);
     const doc = expect(await owner.request('POST', `/api/v1/projects/${projectId}/docs`,
       { body: { title: 'Calibration notes', body: 'Private calibration observation' } }), 201);
-    const connection = await agentConnection(pool, owner, String(agent.id), [projectId]);
+    const connection = await agentConnection(pool, owner, String(agent.id), [projectId], undefined, 'codex');
     const path = agentMcpPolicyPath(connection.connectionId);
     const settings = async () => expect(await owner.request('GET', path), 200) as unknown as { policy: AgentMcpPolicy; connection: unknown; setup: AgentConnectionSetupFacts };
     const initial = await settings();
@@ -348,8 +348,19 @@ test('actual owner setup stays pending, refreshes lost authorization, and keeps 
           const { page, panel } = await open(context, f.email);
           const setup = panel.getByRole('region', { name: 'Connection setup', exact: true });
           await setup.getByRole('heading', { name: 'Client session open · activation pending', exact: true }).waitFor();
-          assert.equal(await setup.getByText("Flux does not launch work and cannot see whether the client is online. Claude Code starts with Flux's Start work prompt; Codex starts when you ask it to start work on Flux and it reads Flux's playbook.", { exact: true }).count(), 1);
+          assert.equal(await setup.getByText("Flux cannot see whether your native client is online. Use its supplied host action to start or resume work on a selected project.", { exact: true }).count(), 1);
           assert.equal(await page.getByRole('button', { name: /^(Start work|Resume work)$/ }).count(), 0, 'OAuth/bootstrap records do not manufacture a working launch control');
+          const hostAction = setup.locator('.cowork-host-actions');
+          if (width === 390) {
+            const target = await hostAction.locator('summary').boundingBox(); assert.ok(target && target.height >= 44, 'host action has a phone touch target');
+          }
+          await hostAction.locator('summary').click();
+          const commands = await hostAction.locator('code').allTextContents();
+          assert.equal(commands.length, 2);
+          for (const [index, command] of commands.entries()) assert.equal(command,
+            `./flux cowork ${index === 0 ? 'start' : 'resume'} --client codex --origin ${origin} --connection ${f.connection.connectionId} --project ${f.projectId}`);
+          assert.equal(await hostAction.getByText('Resume from the same directory.', { exact: false }).count(), 1);
+
           for (const theme of ['light', 'dark'] as const) {
             await page.emulateMedia({ colorScheme: theme });
             await setup.evaluate(element => element.scrollIntoView({ block: 'start' }));
