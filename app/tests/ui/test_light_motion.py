@@ -638,6 +638,8 @@ class LightMotionJourney(unittest.TestCase):
         clear(page)
         page.get_by_role("navigation", name="Places").get_by_role("link", name="Inbox").click()
         expect(page.get_by_role("heading", level=1, name="Inbox")).to_be_visible()
+        # The old view's fade starts on the first frame drawn after the swap.
+        page.wait_for_function("() => (window.__motion || []).some((entry) => entry.kind === 'script' && entry.duration === 150 && entry.from && entry.from.opacity === 1 && entry.to && entry.to.opacity === 0)")
         left = self.leaving(page)
         self.assertTrue(left and set(left[0]["props"]) == {"opacity", "transform"} and left[0]["duration"] <= 160, recorded(page))
         self.assertEqual([entry for entry in recorded(page) if any("scroll" in prop.lower() for prop in entry["props"])], [], "no animation of the scroll position")

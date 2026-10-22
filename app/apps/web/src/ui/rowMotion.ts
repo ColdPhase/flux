@@ -7,8 +7,8 @@ import { MOTION_ID, duration, motionAllowed, token } from './motion';
  * where it was to where it is (transform). It is the only animation that touches height, and only to collapse or grow
  * a row. A row that moves across the list instead of a few rows (to another group) is not carried the whole way: it fades in at
  * its new place with a short slide (`--row-travel-max`, `--shift-row`). Nothing here moves focus or scroll: the browser's own scroll anchoring keeps the reading position while the
- * rows around it change size, a row slides only by how far it moved relative to the row the reader is anchored to (that row,
- * and the ones that moved with it, do not move at all), a row that comes or goes outside what the reader sees changes at once
+ * rows around it change size, a row slides only by how far it moved relative to the rows the reader is anchored to (those
+ * that moved with it do not move at all; a list at its top is not anchored and slides as a whole), a row that comes or goes outside what the reader sees changes at once
  * (nobody watches it, and the browser's scroll anchoring holds the rows the reader is on through a change that is not gradual),
  * and the outgoing row is an inert copy no one can reach.
  *
@@ -34,6 +34,15 @@ function place(el: HTMLElement): { left: number; top: number } {
   let top = 0;
   for (let node: HTMLElement | null = el; node; node = node.offsetParent as HTMLElement | null) { left += node.offsetLeft; top += node.offsetTop; }
   return { left, top };
+}
+
+/** The nearest ancestor that scrolls the rows (the pane's own scroller, or the page). */
+function scrollerOf(el: HTMLElement): Element {
+  for (let node: HTMLElement | null = el; node; node = node.parentElement) {
+    const overflow = getComputedStyle(node).overflowY;
+    if ((overflow === 'auto' || overflow === 'scroll') && node.scrollHeight > node.clientHeight) return node;
+  }
+  return document.scrollingElement ?? document.documentElement;
 }
 
 const parents = new WeakMap<Element, number>();
@@ -134,19 +143,19 @@ export function useRowMotion(container: RefObject<HTMLElement | null>, rows: str
     // now (the copies and the growing rows are in place), then write every slide.
     const reach = view.height + 200;
     const slides: { el: HTMLElement; dx: number; dy: number }[] = [];
-    // The row the reader is anchored to is one that stayed in its group and is on screen (the focused one when it is): the browser's own
-    // scroll anchoring keeps such a row where the reader sees it, whatever grew or shrank above it, so every row is judged by how far it moved
-    // relative to that row, not by how far the content shifted. The row the reader is on does not fly, and neither do the rows beside it.
-    const key_of = (node: Element | null) => { const row = node?.closest<HTMLElement>(rows); return row ? key(row) : undefined; };
-    const focused = key_of(document.activeElement);
+    // The reader's place. When the rows are scrolled (the browser anchors a scrolled list, never one at its top), the browser's own scroll
+    // anchoring keeps one of the rows that stayed where the reader sees it, whatever grew or shrank above it: every row is then judged by how
+    // far it moved relative to the rows that moved with that one (the most common displacement among the rows on screen), not by how far the
+    // content shifted. The rows the reader is on do not fly; the row that was sent somewhere else, which moved differently, does.
+    // Without anchoring (a list at its top, a browser without it) the content stays where the change put it and every row slides from where it was.
+    const scrolled = scrollerOf(root).scrollTop > 0;
+    const anchoring = scrolled && typeof CSS !== 'undefined' && CSS.supports('overflow-anchor', 'auto');
     const visible = (el: HTMLElement) => { const box = el.getBoundingClientRect(); return box.bottom > view.top && box.top < view.bottom; };
-    const stayed = [...seen].filter(([id, now]) => before.seen.get(id)?.parent === now.parent && visible(now.el)).map(([id]) => id);
-    const anchorId = focused && stayed.includes(focused) ? focused : stayed[0];
-    const anchorWas = anchorId ? before.seen.get(anchorId) : undefined;
-    const anchorNow = anchorId ? seen.get(anchorId) : undefined;
-    // A browser without scroll anchoring leaves the content where the change put it: every row then slides from where it was to where it is.
-    const anchoring = typeof CSS !== 'undefined' && CSS.supports('overflow-anchor', 'auto');
-    const anchorShift = anchoring && anchorWas && anchorNow ? place(anchorNow.el).top - anchorWas.top : 0;
+    const shifts = anchoring ? [...seen].filter(([id, now]) => before.seen.get(id)?.parent === now.parent && visible(now.el)).map(([id, now]) => Math.round(place(now.el).top - before.seen.get(id)!.top)) : [];
+    const counts = new Map<number, number>();
+    for (const shift of shifts) counts.set(Math.round(shift / 2), (counts.get(Math.round(shift / 2)) ?? 0) + 1);
+    const common = [...counts].sort((a, b) => b[1] - a[1] || 0)[0]?.[0];
+    const anchorShift = common === undefined ? 0 : shifts.find((shift) => Math.round(shift / 2) === common) ?? 0;
     for (const [id, now] of seen) {
       const was = before.seen.get(id);
       if (!was) continue;
