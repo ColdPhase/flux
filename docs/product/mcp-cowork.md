@@ -5,6 +5,8 @@ milestone-2 work. This is a production contract and handoff, **not implemented
 capability**. The [final design](../design/final/README.md) (F-026) draws its Agents view,
 hand-off and live agent states; this contract and the issue table below govern behaviour.
 
+**Workspace AI lock ([F-029](workspace-ai-lock.md), proposed 2026-10-22).** While a workspace's AI is off, no external connection, token, standing grant, co-work request or Agents view works in it; the workspace block takes precedence over everything here.
+
 ## One workspace experience, one task
 
 Flux keeps the authoritative task, discussion, result, map, wiki and acceptance

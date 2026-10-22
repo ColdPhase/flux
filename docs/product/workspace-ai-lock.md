@@ -1,0 +1,408 @@
+# F-029 — workspace AI lock
+
+**Status: proposed, 2026-10-22, pending one bounded independent peer assessment.**
+Owner @PelikanFix16 (`claude-hubert`); independent evaluator @Zamojski5. Issue
+[#614](https://github.com/ColdPhase/flux/issues/614) (founder direction, Hubert,
+2026-10-18). Decision row: [F-029](decisions.md). Items marked *recommended, pending
+founder confirmation* are product choices the founder may still change; the rest are
+engineering choices under the [delegation](autonomy.md).
+
+A workspace administrator can turn AI off for a whole workspace. While it is off, no
+agent or assistant reads or acts in that workspace, including each member's own
+assistant, and the interface there is human-only. The block is a server policy. It
+takes precedence over F-016 co-work, F-019 personal AI, F-020/F-022 provider and
+runtime modes, F-027 assistant switches, O-007 background comparisons and O-008
+personal runs. Membership role, an existing connection, an OAuth or run token, a
+standing grant or a switch never overrides it.
+
+The contract was written against `main` at `e408f0ea` (2026-10-22). File and function
+names below are from that revision, with paths relative to `app/`. An implementer who
+finds a new AI path adds it to the [enforcement table](#enforcement-points) in the same PR.
+
+## Terms
+
+- **AI principal.** A `Principal` of kind `agent`: external MCP agents (F-016), the
+  `owner_assistant` agent of each member (F-027), workspace-owned agents, and the agent
+  of a proactive comparison rule (O-007).
+- **AI work.** Any read or action by an AI principal; any model or provider request;
+  any official-CLI runtime run; and any content assembled for one (prompts, tool
+  results, run context, morning-summary facts).
+- **AI work item.** A row that waits for AI work: a personal run (`personal_runs`), a
+  comparison candidate (`proactive_comparison_outbox`), a reaction event
+  (`assistant_reaction_events`), a co-work request or unit addressed to an agent
+  (`cowork_requests`, `cowork_units`), an external runtime session
+  (`agent_runtime_sessions`) and a run token (columns on `personal_runs`).
+
+## Policy model
+
+Migration `NNNN_workspace_ai_policy.sql` (the next free number when the slice lands):
+
+```sql
+CREATE TABLE workspace_ai_policies (
+  workspace_id uuid PRIMARY KEY REFERENCES workspaces(id) ON DELETE CASCADE,
+  state text NOT NULL CHECK (state IN ('allowed', 'blocked')),
+  epoch bigint NOT NULL DEFAULT 1 CHECK (epoch >= 1),
+  version integer NOT NULL DEFAULT 1 CHECK (version >= 1),
+  changed_by text REFERENCES auth_users(id) ON DELETE SET NULL,
+  changed_at timestamptz NOT NULL DEFAULT now()
+);
+INSERT INTO workspace_ai_policies (workspace_id, state) SELECT id, 'allowed' FROM workspaces;
+-- AFTER INSERT ON workspaces: insert the new workspace's row with state 'allowed'.
+```
+
+- **Existing workspaces: AI allowed.** The migration writes an explicit `allowed` row for
+  every existing workspace, so nothing changes until an administrator acts. The
+  migration test asserts the row count equals the workspace count and every state is
+  `allowed`. The reverse migration (`reverse/NNNN_….down.sql`) drops the table and the
+  `ai_epoch` columns and restores the 0100 `end_reason` check and the 0114 capture
+  function.
+- **New workspaces: AI allowed** (*recommended, pending founder confirmation*; see
+  [question 3](#founder-questions)). A trigger writes the row in the creating
+  transaction, so every workspace always has one.
+- **A missing row means blocked.** The check fails closed, so a fixture or a bug that
+  skips the row cannot open AI access.
+- A separate table, not a `workspaces` column: AI checks take `FOR SHARE` on this row
+  often, and must not contend with workspace renames, version bumps or the foreign-key
+  locks of ordinary inserts.
+- **`epoch`** increases by one on every state change, both directions. AI work items
+  record the epoch they were admitted under (`ai_epoch bigint NOT NULL`, added by the same
+  migration to `personal_runs`, `proactive_comparison_outbox` and
+  `assistant_reaction_events`; existing rows get `1`). Work admitted under an older epoch
+  never continues ([re-enable](#re-enable)). The same migration adds `ai_off` to the
+  `personal_runs.end_reason` check (0100) and to `ASSISTANT_RUN_END_REASONS`.
+- **`version`** is the optimistic-concurrency version of the setting (`If-Match`).
+
+**Wire.** `Workspace` in `app/packages/contracts/src/access.ts` gains
+`ai: { state: 'allowed' | 'blocked'; version: number; changedAt: string; changedBy: { id: string; name: string } | null }`.
+`GET /api/v1/workspaces` and `GET /api/v1/workspaces/:id` return it to every member,
+guests included (`workspace.read`), so the current state is always explicit.
+
+**Change.** `PUT /api/v1/workspaces/:id/ai-policy` with
+`{ state: 'allowed' | 'blocked', expectedVersion }`, `If-Match`, `Idempotency-Key` and
+the origin check, like every access command. Answers `200` with the new `ai` and, on
+disable, `stopped: { runs, comparisons, requests, units, sessions }` (counts for the
+confirmation line). Errors: `403 WORKSPACE_AI_ADMIN_REQUIRED`, `409 VERSION_CONFLICT`
+with the current `ai`, `404 WORKSPACE_NOT_FOUND`. Setting the current state again is a
+no-op `200` that changes neither epoch nor version. The command records
+`workspace.ai_policy_changed.v1` (object: the workspace) in the same transaction. Its
+audience is the workspace's people; `authorizeEvent` never delivers this kind to an
+agent.
+
+## Who may change it
+
+New workspace action `workspace.manage_ai` in `WORKSPACE_ACTIONS`
+(`app/packages/core/src/access/policy.ts`, `evaluateWorkspace`): allowed for a human
+whose role is `owner` or `admin` (`isManager`), the same authority as
+`workspace.manage_members`. Members, guests and every agent get `403`. Turning AI back
+on needs the same current authority, checked under the lock in the change transaction;
+an admin demoted meanwhile is refused, and an idempotent replay re-checks
+`workspace.manage_ai` before returning the stored body (as for other access commands).
+
+## The single check
+
+One function in `app/packages/core/src/access/policy.ts`, used by every enforcement
+point. No second policy module and no cache:
+
+```ts
+export interface WorkspaceAi { state: 'allowed' | 'blocked'; epoch: number; version: number }
+export async function workspaceAi(db: Executor, workspaceId: string, options?: { lock?: boolean }): Promise<WorkspaceAi>;
+/** Throws WorkspaceAiBlockedError (403 WORKSPACE_AI_BLOCKED) unless allowed and, when given, at `epoch`. */
+export async function requireWorkspaceAi(db: Executor, workspaceId: string, options?: { lock?: boolean; epoch?: number }): Promise<WorkspaceAi>;
+```
+
+- `lock: true` reads the row `FOR SHARE`; the change command takes `FOR UPDATE`. Like the
+  grant locks under [Concurrency](../development/access-policy.md#concurrency), a check
+  inside a commit transaction is ordered strictly before or after a state change.
+- **Principal layer.** `loadActor` calls `workspaceAi` for every `agent` principal (with
+  the caller's `lock`) and returns an inactive actor with `blockedBy: 'workspace_ai'` when
+  the workspace is blocked. Every evaluator built on it (`evaluateWorkspace`,
+  `evaluateProject`, `evaluateDraft`, `evaluateSketch`, `evaluateDm`, `visibleFilter`,
+  `authorizeEvent`, `eventAudience`) then denies the agent, with no per-call-site change.
+  `evaluateAgent(…, 'agent.invoke')` also denies while the agent's workspace is blocked.
+  Human principals are not changed by this layer: people keep every human right.
+- **Entry layer.** Entry points that start AI work, or that run before any agent-principal
+  evaluation (bearer verification, token issuance, project-less tools, human commands that
+  start AI work, worker stages), call `requireWorkspaceAi` explicitly so the refusal is
+  the distinct `WORKSPACE_AI_BLOCKED` ("AI is turned off in this workspace") rather than a
+  generic `404`, and so a queued item's epoch is compared.
+- **Context layer.** Anything that assembles content under a *human's* authority for a
+  model must drop items of blocked workspaces (today only the morning summary; see the
+  table).
+
+## Enforcement points
+
+Every row is required. "Check" means `requireWorkspaceAi` with `lock: true` inside the
+named transaction, plus epoch comparison where an item has `ai_epoch`.
+
+### API: external agents and MCP
+
+| Point | File / function | Rule |
+| --- | --- | --- |
+| Bearer verification | `apps/server/src/agent-connection/mcp-route.ts`, `handleVerified` (the transaction that calls `grantForMcp`/`grantForRun` and `lockAgentMcpPolicy`) | Check on `grant.connection.workspaceId` before the tool server is created: no `tools/list`, resource or prompt is served. Answer `403` JSON-RPC error `WORKSPACE_AI_BLOCKED`. |
+| Delivery fence | same file, `fence.check` (called by `createMcpRelay` for every chunk) | Check **first and unconditionally**, before the existing `if (!d.protectedOutput …) return`, so even a tool list or a refusal body is not handed to the transport after cutover. |
+| Every tool, resource, prompt | `apps/server/src/agent-connection/context.ts`, `agentConnectionInTransaction` | Check on `row.workspaceId` for every call, with or without `claims.dispatch` (covers project-less tools such as `flux_list_contexts`, `flux_bootstrap`, `flux_coordination_inbox`, and internal native adapters: own-agent hand-off, assistant Apply). Covers every module registered in `mcp-tools.ts`. |
+| External runtime sessions | `apps/server/src/agent-connection/runtime.ts`, `agentRuntimeInTransaction` | Covered by the row above; disable also revokes the workspace's open `agent_runtime_sessions` ([cutover](#cutover-ac-3)). |
+| OAuth token issuance (code exchange and refresh) | `apps/server/src/identity/auth.ts`, `customAccessTokenClaims` | After `grantForOauth`, refuse `invalid_grant` "AI is turned off in this workspace" for a blocked connection workspace. Nothing is revoked. |
+| Consent and Connect | `apps/server/src/agent-connection/routes.ts`: `POST /api/v1/agent-connections`, `POST …/:connectionId/select-for-oauth`, `POST/PATCH …/action-grants` | `403 WORKSPACE_AI_BLOCKED` for a blocked workspace. `GET` lists, `DELETE` connection and `DELETE` grant stay available (they only reduce or show). |
+| Agent identities | `apps/server/src/access/agents.ts`, `createAgent` | Refused while blocked. `revokeAgent` and `listAgents` stay (management). |
+| Run token mint | `apps/server/src/personal-runs/run-tokens.ts`, internal `POST /api/internal/v1/personal-runs/:id/run-token` | Check with the run's `ai_epoch` before signing; refusal is the existing uniform `404`. |
+| Run token use | `apps/server/src/agent-connection/run-token.ts`, `requireLiveRun` | Covered by bearer, fence and context rows; disable also closes the tokens. |
+| MCP switches and project policy | `mcp-policy-routes.ts`, `project-policy.ts`, `project-agents.ts`, `agent-stops.ts`, `agent-questions.ts` routes | Human reads and changes of AI controls: `403 WORKSPACE_AI_BLOCKED`, except Stop (harmless, already fenced). |
+
+### API: the assistant and human-started AI work
+
+| Point | File / function | Rule |
+| --- | --- | --- |
+| Ask, retry | `packages/core/src/personal-runs/service.ts`, `invoke`, `retry` (routes in `apps/server/src/personal-runs/routes.ts`) | Check in the insert transaction; the new run stores the current `ai_epoch`. |
+| Background start (schedules, reactions, morning summary) | same file, `startBackground` | Check; skipped with no run when blocked. |
+| Enablement per workspace | same file, `enable`, `selectAgent`, `chooseModel` | `selectAgent` and enabling for a blocked workspace refused; pause and remove stay. |
+| Schedules | `packages/core/src/assistant/jobs.ts` (`createAssistantJobs`: create, update to enabled, restore, run now, preview), routes `apps/server/src/assistant/jobs.ts` | Refused while blocked; delete and turn off stay. |
+| Reactions | `packages/core/src/assistant/reactions.ts`, `save`, `draft`; routes `apps/server/src/assistant/reactions.ts` | Refused while blocked; turn off stays. |
+| Assistant settings, join requests, operator request | `apps/server/src/assistant/routes.ts` | Refused while blocked. |
+| Waiting changes, Apply, Undo, Accept, Send | `apps/server/src/assistant/changes.ts` (all `POST …/apply`, `not-now`, `undo`, `inbox`, `dismiss`, `accept`, `send`) and pending-list `GET`s | Refused while blocked; the items are kept. The owner can still edit the underlying task, page or map directly as a person. |
+| Assistant proposals | `apps/server/src/personal-runs/routes.ts`: proposal list and decide | Refused while blocked; kept. |
+| Hand-off and agent ownership | `packages/core/src/work/service.ts`, `requireOwner` (create and update with an agent owner), `HandOff` path | An agent owner or a co-work request to an agent in a blocked workspace answers `403 WORKSPACE_AI_BLOCKED` (not `OWNER_WITHOUT_ACCESS`). |
+| Co-work cards and coordination | `apps/server/src/co-work/routes.ts` (coordination view, packet, review policy) | Refused while blocked; cancel stays. |
+| Agent threads | `apps/server/src/conversation/agent-thread-routes.ts` | Posting refused while blocked; existing messages stay readable as history. |
+| Background comparisons | `apps/server/src/proactive-comparison/routes.ts`: create rule, `PATCH` to `enabled`, proposal edit/use, outcome list | Refused while blocked; pause, revoke and dismiss stay. Account-level key connections (`/background-compute-connections`) are not workspace content and stay. |
+| Needs you and Inbox | `apps/server/src/needs-you/routes.ts`, inbox list in `apps/server/src/notifications/routes.ts` | AI-originated actionable items of a blocked workspace (agent questions, assistant waiting changes and join requests, co-work requests and reviews from agents) are omitted from lists and counts; human items are unchanged. |
+| Runtime slot and sign-in | `apps/server/src/agent-runtime/routes.ts` | Exempt: account-level, carries no workspace content. Runs that would use it are gated above and in the worker. |
+
+### Worker and runtime
+
+| Point | File / function | Rule |
+| --- | --- | --- |
+| Personal run stages | `packages/core/src/personal-runs/processor.ts`, `recheck` (before read, every count, every dispatch and tool-loop turn, commit) | Check with the run's `ai_epoch`, inside the same unit of work that already locks the run; new refusal `ai_off`, ending the run `stopped` with `end_reason = 'ai_off'` and the reservation released (or `unknown` once dispatched). |
+| Runtime run stages | `packages/core/src/personal-runs/runtime-run.ts`, `recheck` and `watch` | Same check before the CLI starts, in the about-once-a-second standing poll, and in the commit; the poll also sees `stop_requested_at` set by the sweep within `stopPollMs`. |
+| Run recovery | `apps/worker/src/personal-runs/recovery.ts` | Recovered runs pass the same recheck; a stale epoch ends them. |
+| Assistant tick | `packages/core/src/assistant/job-tick.ts`, `fireDue` | A due job of a blocked workspace is not fired and records no history row; `nextRunAt` advances to the next time after now (AST-7 missed runs are skipped). |
+| Reaction capture | `assistant_capture_reaction` (migration 0114), replaced by the new migration | Insert only when the project's workspace policy is `allowed`, recording its `epoch`. |
+| Reaction tick | `packages/core/src/assistant/reactions.ts`, `assistantReactionTick` | Check with the event's `ai_epoch`; stale or blocked → `skipped`, "Skipped: AI was turned off". |
+| Morning summary | `packages/core/src/assistant/morning-summary.ts`, `startAssistantSummary` | **Cross-workspace context:** `summary.unread` returns notifications of every workspace. Drop rows whose `source.workspaceId` is blocked before titles are read, and anchor the run only in an allowed workspace; with none, the plain #350 summary goes out. `settleAssistantSummaries` commits a line only after a check on the run's workspace. |
+| Comparison scheduling and reservation | `apps/worker/src/proactive-comparison/scheduling-adapter.ts`, `reservation-adapter.ts` | Check; new candidates store `ai_epoch`. |
+| Comparison dispatch and publish | `apps/worker/src/proactive-comparison/authorization.ts`, `authorizedComparison` (also polled by `watchComparisonAuthorization` every 250 ms) | Check with the candidate's `ai_epoch`; a refusal aborts the provider request through the existing `AbortController` and the final locked check refuses publication (`ComparisonStopped('AI_OFF')`). |
+| Comparison recovery | `apps/worker/src/proactive-comparison/recovery.ts` | Same check. |
+| Event audience | `packages/core/src/events.ts`, `eventAudience` | Covered by the principal layer: no `event_audience` row is written for an agent of a blocked workspace, so no event of the blocked period is ever replayed to an agent. |
+| Runtime slot processes | `apps/runtime` supervisor and manager | No workspace knowledge needed. A run reaches Flux only through `/mcp` (gated) and is stopped by the worker (`runtime.stop`); its output is published only by the worker's commit (gated). |
+
+### Contract tests that keep the list complete
+
+- `AI_HTTP_ROUTES` in `app/packages/contracts` lists every route registered by the AI
+  modules (`agent-connection`, `assistant`, `personal-runs`, `co-work`,
+  `proactive-comparison`, `agent-runtime`, `conversation/agent-thread-routes`) as
+  `gated` or `exempt` with a one-line reason. An architecture test fails when a route in
+  those modules is missing from the list, like `verifyRegistrations` does for MCP entries.
+- An API test calls every `gated` route in a blocked workspace and expects
+  `403 WORKSPACE_AI_BLOCKED` with no row or event written; the same calls in an allowed
+  workspace are the positive control.
+
+## Cutover (AC-3)
+
+**Disable** is two steps.
+
+1. **The flip** (one transaction, the API's `PUT`): `SELECT … FOR UPDATE` the policy row,
+   check `workspace.manage_ai` under the membership lock, set `state = 'blocked'`,
+   `epoch = epoch + 1`, `version = version + 1`, send the `workspace-ai.sweep.v1` job in
+   the same transaction, and record the event last. It touches no AI work rows, so it
+   cannot deadlock with a checker that holds a run row and waits for the policy lock.
+2. **The sweep** (idempotent; run inline by the API right after the flip commits for
+   speed, and again by the worker job so a crash cannot skip it), per workspace:
+   - personal runs `queued` → `stopped` (`before_read`, released, `end_reason = 'ai_off'`);
+     `reading`/`dispatching` → `stop_requested_at = now()`, which the existing 250 ms
+     watchers turn into an aborted provider request or `runtime.stop`;
+     `run_token_closed_at = now()` for every open run token;
+   - comparison candidates `queued`/`reserved` → `not_run` (reservation released);
+     in-flight ones are aborted by their watcher;
+   - reaction events `queued`/`proof` → `skipped` ("Skipped: AI was turned off");
+   - co-work requests `queued`/`deferred`/`claimed` addressed to agents → `cancelled`;
+     units `pending`/`claimed`/`paused` → `stopped`, leases cleared, the task unchanged;
+   - `agent_runtime_sessions` → `revoked_at = now()`;
+   - morning summaries `writing` whose run is in this workspace → `plain`.
+   Each end records its usual owner-only event. Nothing is deleted.
+
+**The boundary.** An AI effect happens only if the transaction that performs it held
+`FOR SHARE` on the policy row, saw `allowed` at the item's epoch, and committed (or, for
+MCP bytes, handed the chunk to the transport) before the flip took `FOR UPDATE`.
+Effects are: a source read, a provider or count request decision, a tool-loop turn, an
+MCP response chunk, a tool write, a run answer, a proposal, a comparison publication, an
+event-audience row and a token issuance. Ordered after the flip, every one of them sees
+`blocked` and refuses. This holds across processes because the order is decided by
+PostgreSQL row locks, not by any process's memory: every API instance, the worker and the
+runtime path (which reaches data only through API `/mcp` and the worker) read the same
+row in their own transactions.
+
+**What can still be in flight, and what happens to it.** A provider request or CLI run
+whose last check committed before the flip may still be running. It is aborted by the
+sweep's stop signal within `stopPollMs` (250 ms) plus one poll, and whatever it returns is
+discarded: the commit recheck sees `blocked` (and a newer epoch) and stores no answer,
+proposal, change or event. Usage already incurred is charged as today (`observed` or
+`unknown`), so the cap stays honest. There is no grace window: no check reuses an earlier
+decision, and the only state a process keeps across transactions is the item's
+`ai_epoch`, which can only make it refuse.
+
+**No stale caches.** Nothing caches the policy: no module-level map, no per-connection
+memo, no token claim. `McpDispatch.capturedVersion` and the run token's tool list are
+per-request snapshots that are re-checked by the fence. API responses are never cached
+by the service worker (`apps/web/src/pwa/sw.js` skips `/api/`). The web client's copy is
+presentation only (see [UI](#ui-contract)).
+
+## Re-enable
+
+- Needs current `workspace.manage_ai`, checked under the lock in the change transaction.
+  It sets `allowed`, bumps `epoch` and `version` and records the event.
+- **Nothing that waited, stopped or was skipped resumes.** Every AI work item admitted
+  under an earlier epoch is refused by its next check, so a reaction captured concurrently
+  with the flip, a queued pg-boss job that outlived the sweep, or a recovered run cannot run
+  after re-enable. Agents receive no events of the blocked period (no audience rows exist).
+  Scheduled jobs fire at their next time after re-enable, never for missed times.
+- **Standing configuration resumes as it was** (*recommended, pending founder
+  confirmation*; [question 2](#founder-questions)): connections, grants, MCP switches,
+  assistant enablement, schedules, reactions and comparison rules are kept through the
+  block and work again within each owner's current access. Results produced before the
+  block (proposals, waiting changes, agent questions) reappear and still need their
+  owner's explicit Accept, Apply or answer, under their existing version checks.
+- An external client whose token refresh was refused while blocked reconnects through
+  the normal Connect flow; one still holding a valid refresh token refreshes normally.
+
+## What stays for people
+
+Everything human: conversations, threads, DMs, tasks, maps, Wiki, files, search, live
+sessions, notifications, People and access, export. Existing work and history are
+unchanged, including what agents and assistants wrote before the block: their messages,
+tasks, pages and history keep the author name and Agent tag. Other workspaces keep their
+own policy, and a member's assistant keeps working in their other workspaces where AI is
+allowed. Disabling deletes nothing.
+
+## UI contract
+
+The [final design](../design/final/README.md) and [Spokój](../design/spokoj/README.md)
+apply. The web app reads `workspace.ai` from the shell loader
+(`apps/web/src/app/data.ts`, `WorkspaceSummary`) and exposes one hook,
+`useWorkspaceAi(workspaceId)`. It refreshes on `workspace.ai_policy_changed.v1`, on
+reload, on focus and on any `403 WORKSPACE_AI_BLOCKED`, so an open page changes without a
+reload. Every AI surface is rendered only through `<AiSurface workspaceId id="…">`,
+which renders nothing while blocked and marks the element `data-ai-surface="<id>"` while
+allowed; the browser tests count these markers.
+
+**Disappears while blocked**, inside that workspace's places only:
+
+- the **Agents** view in the project header and the phone view menu, and "Add Agents"
+  (`HeaderParts.tsx`, `PhoneChrome.tsx`, `views.tsx`); this is the same rule as a
+  project without the Agents view (#351), so no other control moves (Spokój rule 7);
+- agents in the header's people and in `@`/⌘K "People and agents" and the Agents
+  scope (`search/JumpTo.tsx`), and in the composer mention list (`ComposerMenu.tsx`);
+- "Ask your assistant", "My assistant", "Hand off to an agent" in the composer menu,
+  the message menu and long press (`ComposerMenu.tsx`, `work/messageActions.tsx`),
+  and agent owners in task property menus and Create (`work/PropertyMenu.tsx`,
+  `create/CreateWindow.tsx`);
+- ⌘K "Ask my assistant…" and `AskWhere`'s projects of that workspace;
+- the working-agent card with Stop (`Sidebar.tsx`, `WorkingAgent.tsx`), Home's
+  working agents, the morning line, "Summary by your assistant" and Meet your
+  assistant (`Home.tsx`, `assistant/MorningLine.tsx`, `SummaryByAssistant.tsx`,
+  `MeetAssistant.tsx`) when the person has no allowed workspace;
+- suggestions and waiting changes (`assistant/WaitingChanges.tsx`,
+  `project/ProjectProposals.tsx`, `project/InsufficientComparison.tsx`), agent
+  questions and assistant join reviews in Inbox (`notifications/NeedsYouCard.tsx`,
+  `AssistantJoinReview.tsx`), request cards and agent-thread composers;
+- AI onboarding (`ProjectSetup.tsx` mentions of Agents, Connect agent prompts).
+
+**Settings → Agents and AI** (*placement recommended, pending founder confirmation*;
+[question 1](#founder-questions)). The page keeps its place in the Settings list on
+computer and phone. Its first card is one row per workspace the person is in:
+
+- On: **AI in Garden club** · "On · agents and assistants can work here". Owners and
+  admins see the quiet button **Turn off AI**; others see no button.
+- Off: **AI in Garden club** · "Off · turned off by Ada on 18 Oct. No agent or
+  assistant can read or change anything here." Owners and admins see **Turn on AI**;
+  others read "Your workspace admins can turn it back on."
+- While every workspace of the person is off, the rest of the page (assistant card,
+  Connect AI, background suggestions, agent apps) is replaced by that card alone. With
+  some workspaces on, the assistant card and agent apps say once "Not in Garden club:
+  AI is off there."
+
+Turning off asks once, in the standard confirm sheet: **Turn off AI in Garden club?**
+"No agent or assistant, including each person's own, can read or change anything in
+this workspace. Work they are doing now stops and is not posted. Nothing is deleted."
+Buttons **Turn off AI** and **Cancel**. After it: "AI is off in Garden club. 2 runs
+stopped." Turning on: **Turn on AI in Garden club?** "People's assistants and connected
+agents can work here again, with the access they had. Nothing that was stopped starts
+again." Buttons **Turn on AI** and **Cancel**. A version conflict shows the current
+state and asks again.
+
+**Deep links.** An existing tab or URL that would open an AI surface in a blocked
+workspace (`/projects/:id/agents`, an agent's details or thread, `/settings/assistant`
+for that workspace's settings, `/connect-agent` and `/consent` choosing that workspace, an
+Inbox item of AI origin) shows one calm blocked state in the same panel or page, and
+starts no AI request: **AI is off in Garden club** · "Its admins turned off agents and
+assistants here. Everything else works as usual." with **Back to the conversation**
+(or **Back**); owners and admins also get **Settings**. Back and history are preserved;
+the URL is not rewritten.
+
+## Test matrix (AC-5)
+
+Docker only; ports and Compose project per [containers](../development/containers.md).
+Fixture: two owners (Ada owns workspace A, Ben owns workspace B), an admin and a member
+in A, a guest in A, Ada also a member of B; in A an external MCP connection of Ada and of
+the member, Ada's and the member's assistants (one `server` on the mock provider, one
+`runtime` on the fake CLI), a workspace-owned agent, a comparison rule, a schedule and a
+reaction. "Provider negative control" means the mock provider
+(`tests/ui/anthropic_mock.py`, `openai_mock.py`, or the API-suite fakes) counts requests;
+every "zero requests" assertion is paired with the same step in an allowed workspace that
+does reach it.
+
+| AC | Test | Where |
+| --- | --- | --- |
+| AC-1 | Migration: one `allowed` row per existing workspace; new workspace gets a row; missing row is refused. | `tests/app/workspace-ai-migration.test.ts` |
+| AC-1 | `PUT ai-policy`: owner and admin succeed; member, guest and an agent principal get `403`; `If-Match` conflict; idempotent replay after demotion is refused; state survives API restart and a new session. | `tests/app/workspace-ai-policy.test.ts` |
+| AC-2 | Every `AI_HTTP_ROUTES` `gated` route answers `403 WORKSPACE_AI_BLOCKED` with nothing written; route inventory complete. | `tests/app/workspace-ai-routes.test.ts`, `architecture.test.ts` |
+| AC-2 | MCP with already-issued tokens: Ada's (owner) and the member's existing connections get `403` at bearer for `tools/list`, every tool, resource and prompt; a refresh is `invalid_grant`; a new consent cannot select A; a standing grant does not help; B's connection works throughout. | `tests/app/workspace-ai-mcp.test.ts` |
+| AC-2 | Run token minted before disable is refused at `/mcp`; mint after disable is `404`. | same, plus `assistant-run-tokens.test.ts` cases |
+| AC-2 | Personal runs (`server` and `runtime`), schedules, reactions, morning summary and comparisons in A start nothing, with zero provider requests and zero CLI starts; in B they run (positive control). | `tests/app/workspace-ai-worker.test.ts` |
+| AC-2 | Cross-workspace: Ada's morning summary in B contains no title from A; A's agents are absent from `listProjectPeople`, ⌘K data, event audience rows and `flux_list_contexts`; search for humans in A unchanged. | same file and `workspace-ai-mcp.test.ts` |
+| AC-3 | Two real connections: flip vs. MCP fence, run commit, comparison publish and reaction capture in both orders, detecting the wait with `pg_blocking_pids` (as `access-policy.test.ts` does); the chunk held by the relay's `testGate` is not delivered after the flip. | `tests/app/workspace-ai-cutover.test.ts` |
+| AC-3 | Late in-flight result: a mock provider that holds its response; disable; assert the provider connection is aborted within 1 s, the run ends `stopped`/`ai_off`, no answer, proposal or event is committed, and releasing the response later changes nothing. Same for a fake CLI run (`runtime.stop` observed) and a comparison. | same |
+| AC-3 | Multi-process: two API containers and the worker (pattern of [two-API fixture](../development/live-editing-two-api.md)); disable on API-1 while an MCP stream is served by API-2 and a run is in the worker; nothing crosses. | `tests/app/live/workspace-ai-two-api.test.ts`, `docker/compose.ai-lock.test.yaml` |
+| AC-3 | Re-enable: queued items from before and from the flip race do not run; missed schedule times do not fire; agents get no blocked-period events; a demoted admin cannot re-enable; standing configuration works again. | `workspace-ai-cutover.test.ts` |
+| AC-3 | Real client: pinned Claude Code in the `mcp-clients` image gets the refusal on its next call after disable and works again after re-enable and reconnect. | `tests/app/e2e/mcp-clients.e2e.ts` case |
+| AC-4 | Chromium and WebKit, desktop and phone viewports: admin turns AI off and on in Settings; a member sees the state without a button; zero `[data-ai-surface]` in A's project, Home, Inbox, ⌘K, composer and message menus while blocked, and more than zero in B (control); every listed deep link shows the blocked state and makes no AI request (network log); reload keeps the state; an open second tab updates from the stream; conversation, task, map, Wiki, file and search still work for two people. | `tests/ui/test_workspace_ai_lock.py` (`./scripts/check_ui.sh`, run with `FLUX_UI_BROWSER=chromium` and `webkit`) |
+| AC-5 | Final candidate evaluated independently under the [bounded review policy](../agents/evaluation.md). | PR review |
+
+## Delivery slices
+
+One issue, #614, one owner; each slice is its own PR with its own review.
+
+- **S1 — policy and server enforcement.** Migration, `workspaceAi`/`requireWorkspaceAi`,
+  `loadActor` and `evaluateAgent`, `workspace.manage_ai`, `PUT ai-policy`, the wire field,
+  every API, MCP, OAuth, worker and context row of the enforcement table, `AI_HTTP_ROUTES`
+  and the AC-1/AC-2 API tests. Ships with the policy only changeable through the API.
+- **S2 — cutover.** The two-step disable, the sweep job, `ai_epoch` on work items,
+  re-enable semantics, and the AC-3 tests including the two-API fixture, late results and
+  the real-client case.
+- **S3 — human-only interface.** `useWorkspaceAi`, `<AiSurface>`, the Settings card and
+  confirm sheets, every listed surface, deep-link blocked states, and the AC-4 browser
+  tests. Visual review with a neutral brief per the design guide.
+
+S1 and S2 may merge together if S2 is small; S3 needs S1's wire field.
+
+## Founder questions
+
+Each has a recommended answer written into this draft. Work proceeds on it unless the
+founder answers otherwise on #614.
+
+1. **Where is the switch?** Prostota has no workspace settings page; the workspace is a
+   quiet data boundary and its only administrative surface is Home → Details → People.
+   *Recommended:* the first card of Settings → Agents and AI, one row per workspace, as
+   described above, because that is where people look for AI controls on computer and
+   phone. Alternative: a row in the workspace's People panel.
+2. **After re-enable, does standing configuration resume?** *Recommended:* yes.
+   Connections, grants, switches, schedules, reactions and rules are kept and work again;
+   no stopped or missed work runs. Alternative: every owner turns their AI on again.
+3. **Default for new workspaces?** *Recommended:* AI allowed, as today and as F-001
+   intends. Alternative: ask the creator when the workspace is created.
+
+## Not in scope
+
+Per-project or per-person AI exclusion; hiding committed AI-authored history; changing
+the instance operator switches (`FLUX_PERSONAL_RUNS`, `FLUX_AGENT_RUNTIME`,
+`FLUX_BACKGROUND_COMPARISONS`), which stay an additional, instance-wide gate; GitHub
+bindings, which are not AI and keep working.

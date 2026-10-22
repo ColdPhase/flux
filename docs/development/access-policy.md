@@ -79,6 +79,8 @@ project.
 Every decision reads current rows. Nothing is cached, so removing a membership,
 revoking a grant or revoking an agent applies on the very next request or call.
 
+**Workspace AI lock** ([F-029](../product/workspace-ai-lock.md), proposed). `loadActor` treats every agent principal of a workspace whose AI is off as inactive, and AI entry points call `requireWorkspaceAi`; the lock is taken `FOR SHARE` like the grant locks below.
+
 **Project access level** (none < viewer < contributor < manager). The first
 matching rule applies:
 
