@@ -77,6 +77,8 @@ Under `prefers-reduced-motion: reduce` and Settings → Appearance → Reduce mo
 samples boxes frame by frame; `motion_evidence.py` films the journeys and `motion_light_performance.py` measures frame
 times (opt-in, like #155's `motion_performance.py`).
 
-Review recordings (Chromium and WebKit, light and dark, one per motion), per-frame samples and how they were made are in
-[`motion-evidence/593/`](motion-evidence/593/README.md): small cropped WebP, because committed evidence is downloaded by every
-clone ([#319](https://github.com/ColdPhase/flux/issues/319)).
+Review recordings (Chromium and WebKit, light and dark, one short animated WebP per motion), animation logs and Chromium frame times
+for PR #608 are kept in the immutable commit
+[`8905d4d15`](https://github.com/ColdPhase/flux/tree/8905d4d15290f314bd5ce034191eed94cb36fe8c/docs/design/motion-evidence/593), not in the
+current tree, because committed evidence is downloaded by every clone ([#319](https://github.com/ColdPhase/flux/issues/319)). Cut
+a new set with `motion_evidence.py` (`test_clips_for_the_review`) and `scripts/pack_motion_evidence.py`.
