@@ -1,0 +1,26 @@
+{
+  "algorithm": "Count type=before events across *.trace streams; waitForSelector params.selector=.sk-canvas and state=attached; direct evaluateExpression contains helper strict-canvas error marker.",
+  "runs": {
+    "candidate_method_dfe": {
+      "canvas_attached_waits": 0,
+      "canvas_wait_for_selector_total": 0,
+      "sha256": "8ee36f91b5bafc6ef121b1f37be2cd9eef39ad829151aac34e0dabd89a4d7f81",
+      "strict_direct_identity_evaluations": 2072,
+      "trace": "/home/hubert/flux-evidence/228-identity-dfe3d7f7-latency/map-500-drag-200-owner-trace.zip",
+      "trace_streams": [
+        "trace.trace"
+      ]
+    },
+    "original_method_8ba": {
+      "canvas_attached_waits": 1706,
+      "canvas_wait_for_selector_total": 1706,
+      "sha256": "a2ccaf963212d2c57ab72fdf1bfd73736f456efe168a53741e3079d94e1710c9",
+      "strict_direct_identity_evaluations": 0,
+      "trace": "/home/hubert/flux-evidence/228-map-body-8ba5f87a-latency/map-500-drag-200-owner-trace.zip",
+      "trace_streams": [
+        "trace.trace"
+      ]
+    }
+  },
+  "scope": "Whole map500/drag200 owner traces, including controls/warmups; counts are not timed CPU or latency measurements. Different methods and shared-host runs do not establish a controlled application speedup."
+}

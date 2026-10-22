@@ -615,6 +615,13 @@ Default `FLUX_OIDC_STANDING=refresh`, interval 15 minutes.
    - **Success.** Confirmation becomes now. A rotated refresh token is stored in the
      same transaction that records the check; only then does Flux forget the
      previous one. Name and verified email update from a returned ID token.
+     The refresh profile uses the selected-provider claim adapter and the existing
+     issuer/subject mapping; it never changes a grant's original authentication
+     facts. An absent ID token leaves the profile alone ([OIDC Core §12.2](https://openid.net/specs/openid-connect-core-1_0.html#RefreshTokenResponse),
+     checked 2026-10-18). Invalid signature, issuer, audience, time or profile
+     claims, a different subject, or an email collision skip the profile update
+     and log only a safe reason. They do not discard a successfully rotated
+     offline token or turn a successful refresh into `invalid_grant`.
    - **`invalid_grant`: sign-in required.** The IdP no longer honours Flux's
      offline token. Keycloak 26.8.0 answers this way for a disabled user ("User
      disabled") and a removed offline session ("Offline user session not found")

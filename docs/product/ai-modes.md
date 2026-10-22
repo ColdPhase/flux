@@ -11,6 +11,8 @@ and its [wenext prior-art note](https://github.com/ColdPhase/flux/pull/247#issue
 (`claude-maurycy`) on [#245](https://github.com/ColdPhase/flux/issues/245). Approvals
 before `7a6987e7` do not cover this revision.
 
+**Workspace AI lock ([F-029](workspace-ai-lock.md), accepted 2026-10-22).** While a workspace's AI is off, neither mode runs: no `server` dispatch, no `runtime` run and no MCP access in it; the workspace block takes precedence over everything here.
+
 **Revised 2026-10-09 by founder direction ([F-027](assistant.md)).** Hubert answered
 18 questions on the assistant, all "recommended". Changed here, each marked in place:
 the owner's own scheduled jobs and reactions may use `runtime` as an opt-in

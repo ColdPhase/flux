@@ -3,7 +3,7 @@ import { ForbiddenError, NotFoundError } from '../access/errors.js';
 import type { Principal } from '../principal.js';
 import type {
   PersonalRunPorts, PersonalRunTokenIssuer, PersonalRunUnitOfWork, PersonalRuntime, PersonalRuntimeEnd, PersonalRuntimeEvent, PersonalRuntimeRunRequest,
-  RunChanges, RunRecord,
+  RunChanges, RunEndStatus, RunRecord,
 } from './ports.js';
 import { updateAndAnnounce } from './progress.js';
 import { redactSecrets } from './redaction.js';
@@ -23,7 +23,7 @@ import { answerWithSchedule } from './schedule-request.js';
 
 export type RuntimeRunOutcome = RunRecord['status'] | 'skipped';
 type Stage = 'before_read' | 'before_dispatch' | 'before_commit';
-type Refusal = Extract<RunRecord['status'], 'denied' | 'paused' | 'revoked' | 'unavailable' | 'cap_reached'>;
+type Refusal = Extract<RunRecord['status'], 'denied' | 'paused' | 'revoked' | 'unavailable' | 'cap_reached'> | 'ai_off';
 
 export type RuntimeCaps = PersonalRuntimeRunRequest['caps'];
 
@@ -89,7 +89,9 @@ export function runtimePrompt(run: Pick<RunRecord, 'kind' | 'prompt' | 'projectI
   ].join('\n');
 }
 
-const ended = (status: RunRecord['status'], stage: Stage | null, extra: RunChanges = {}): RunChanges => ({ status, stoppedAtStage: stage, completedAt: new Date(), ...extra });
+const ended = (status: RunEndStatus, stage: Stage | null, extra: RunChanges = {}): RunChanges => status === 'ai_off'
+  ? { status: 'stopped', stoppedAtStage: stage, completedAt: new Date(), ...extra, endReason: 'ai_off' }
+  : { status, stoppedAtStage: stage, completedAt: new Date(), ...extra };
 /** Before the CLI ran nothing was used. */
 const free: RunChanges = { costState: 'released', chargedMicros: 0 };
 /** After it ran, the plan's usage is not visible to Flux (F-022 "Payer and data"): unknown, never zero. */
@@ -107,6 +109,8 @@ function endChanges(reason: AssistantRunEndReason | 'stopped' | 'unavailable', p
       return ended('cap_reached', null, { ...used, endReason: reason });
     case 'no_event': case 'crashed': case 'unknown': case 'refused':
       return ended('provider_failed', null, { ...used, endReason: reason });
+    // F-029: the CLI was stopped because AI was turned off in the run's workspace.
+    case 'ai_off': return ended('ai_off', 'before_commit', used);
   }
 }
 
@@ -123,6 +127,9 @@ export function createRuntimeRunProcessor({ uow, runtime, tokens, stopPollMs, ho
   };
   /** The owner's standing at one step, as for an API-key run, without a key connection. */
   async function recheck(ports: PersonalRunPorts, run: RunRecord, stage: Stage, lock: boolean): Promise<Refusal | null> {
+    // F-029, first: AI on in the run's workspace, at the epoch the run was admitted under.
+    const ai = await ports.access.workspaceAi(run.workspaceId, { lock });
+    if (ai.state !== 'allowed' || ai.epoch !== run.aiEpoch) return 'ai_off';
     const enablement = await ports.runs.enablement(run.ownerUserId, { lock });
     if (!enablement || enablement.engine !== 'runtime' || enablement.agents.find((agent) => agent.workspaceId === run.workspaceId)?.agentId !== run.agentId) return 'revoked';
     if (enablement.status === 'paused') return 'paused';

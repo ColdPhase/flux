@@ -1,0 +1,19 @@
+{
+  "source": "aade67efde45b8156fe933c2124ab5a2a96d580a",
+  "command": [
+    "./scripts/check_application.sh",
+    "tests/app/sketches.test.ts",
+    "tests/app/dm-sketches.test.ts",
+    "tests/app/sketch-link-labels.test.ts",
+    "tests/app/live-map-authority.test.ts",
+    "tests/app/live-map-presence.test.ts",
+    "tests/app/live-map-preparation.test.ts",
+    "tests/app/agent-owner-doc-sketch-reads.test.ts",
+    "tests/app/mcp-map-actions.test.ts",
+    "tests/app/editing-confirmation-fence.test.ts"
+  ],
+  "ports": [
+    18685,
+    18686
+  ]
+}

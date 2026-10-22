@@ -1,0 +1,1 @@
+{"api_instances":["api-one"],"completed_case_count":1,"driver_sha256":"854ebf24f86d91108e73255a3a6544cf930641f06aaf0febee95b5285166f2b4","finished_at":705920.91462468,"measurement_id":"5723daf5-67d6-4c14-999c-b188b40cd02d","planned_cases":["map-500-drag-200"],"scheduled_rows_written":240,"schema":1,"source_sha":"e568243c3de2f40f7c8280edb9b8aa37295352eb","teardown_complete":true}

@@ -1,0 +1,28 @@
+{
+  "source_sha": "450f2430c17e1b57bfe54df7be607dc723ba5d89",
+  "projects": {
+    "flux-test-1792324098-1227315": {
+      "containers": [],
+      "images": [],
+      "networks": [],
+      "volumes": []
+    },
+    "flux-test-1792324168-1230299": {
+      "containers": [],
+      "images": [],
+      "networks": [],
+      "volumes": []
+    },
+    "flux-live-editing-1792324344-1241717": {
+      "containers": [],
+      "images": [],
+      "networks": [],
+      "volumes": []
+    }
+  },
+  "ports": {
+    "18685": "free",
+    "18686": "free"
+  },
+  "status": ""
+}

@@ -1,0 +1,78 @@
+{
+  "actual-queue.jsonl": {
+    "bytes": 516222,
+    "sha256": "7c87bd8189d80275e4684920d016b3f90ce10cce75b97b747e177601b01b9ba3"
+  },
+  "api.log": {
+    "bytes": 1997361,
+    "sha256": "6de95f95c5f985e5a9d57a59f8192958b5b48caf2c6f941b47e26d8cb19eae91"
+  },
+  "collector-ready.json": {
+    "bytes": 183,
+    "sha256": "2f4a5a6ae496874ddf34a716ff33ac03a90bb8589fa5bbade89767582d2f3c34"
+  },
+  "collector-result.json": {
+    "bytes": 179,
+    "sha256": "4253e934f24ffbab61fda6d67bbc4e9a38bc172a4a64cc97c320cb9ede2d7aab"
+  },
+  "collector.log": {
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "driver.log": {
+    "bytes": 501,
+    "sha256": "33ca3419ff9aeebe460637f97194c3b9b0f0c5947977a0bda88052d031d0f440"
+  },
+  "map-500-drag-200-coverage.json": {
+    "bytes": 204758,
+    "sha256": "1661bc4108fedbc6da040ccafc5d87d5bd000c795bc9ead736ce79e19945fad9"
+  },
+  "map-500-drag-200-local-control.json": {
+    "bytes": 25086,
+    "sha256": "46de9ade4956b6a793f99e60dd18343b5372f6ce1198da1fbf66228a1f0ff4a3"
+  },
+  "map-500-drag-200-owner-trace.zip": {
+    "bytes": 146487003,
+    "sha256": "ad5cf79755ba444919792529e9576f1cf039ce03f542a96987b92d228212d5b6"
+  },
+  "map-500-drag-200-peer-trace.zip": {
+    "bytes": 130467894,
+    "sha256": "2181f2e7d744735260d440f014a698389abfb0af09c14a5906e8816703186e9d"
+  },
+  "map-500-drag-200-peer.png": {
+    "bytes": 126384,
+    "sha256": "c1e72098f685613628a5561d3ea8909bd4c830a1d375b7b025fd43b61724a750"
+  },
+  "map-500-drag-200-publications.json": {
+    "bytes": 4865866,
+    "sha256": "ad44a5679cc828c8ee3ff316475840682550d43f2c06b781c19e4928dda08760"
+  },
+  "map-500-drag-200-rows.json": {
+    "bytes": 14236696,
+    "sha256": "111705c8e2deac67f566ee7616751ee9e2c507dda01ea720c3ae731b0c33db77"
+  },
+  "map-500-drag-200-summary.json": {
+    "bytes": 34739,
+    "sha256": "25dd8e26dcfcb55ba275bbac55510dca2b6cf9da7a0a9cf9fec34de7d662509b"
+  },
+  "measurement-finished.json": {
+    "bytes": 383,
+    "sha256": "f000f03fe75a32a374b56f2f8f18ca0ad2cf459e38d9d27b0f6aedb63436c71d"
+  },
+  "planned.json": {
+    "bytes": 156,
+    "sha256": "d7cf4614330f9de4eecccb87f284364f26f6a7c7a9ccea22bfc646f4189a0285"
+  },
+  "queue-inventory.json": {
+    "bytes": 299,
+    "sha256": "49c3d6f9e6d86c221719f6d9d94cfa4d44681fe62559bc9d214ddb16e0822356"
+  },
+  "runtime.json": {
+    "bytes": 2014,
+    "sha256": "132e87e1cbc41d18a49ede9906765fb954390a4d9a114b23a2fdac32d15a5cfc"
+  },
+  "summary.json": {
+    "bytes": 27441,
+    "sha256": "e9f6a72ac0714a89c050b5394bfa0bbd9a0b426319eb3dd3a70a9db14d72ef8e"
+  }
+}

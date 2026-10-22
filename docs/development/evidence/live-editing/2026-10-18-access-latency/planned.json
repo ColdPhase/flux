@@ -1,0 +1,16 @@
+{
+  "source_sha": "7af776c7dfd4403e3937c8ccd4b9723c7808d587",
+  "cases": [
+    "map-50-drag-1",
+    "map-50-drag-50",
+    "map-500-drag-1",
+    "map-500-drag-50",
+    "map-500-drag-200",
+    "wiki-10000-editor",
+    "wiki-10000-reader",
+    "wiki-100000-editor",
+    "wiki-100000-reader"
+  ],
+  "samples_per_case": 240,
+  "warmups_per_case": 30
+}

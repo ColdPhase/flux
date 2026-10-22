@@ -1,0 +1,48 @@
+{
+  "captured_at": "2026-10-18T12:11:37.632450+00:00",
+  "projects": [
+    {
+      "project": "flux-live-editing-1792324753-1261352",
+      "containers": [],
+      "volumes": [],
+      "networks": [],
+      "image_tags": []
+    },
+    {
+      "project": "flux-live-editing-1792324830-1270114",
+      "containers": [],
+      "volumes": [],
+      "networks": [],
+      "image_tags": []
+    },
+    {
+      "project": "flux-live-editing-1792325058-1283876",
+      "containers": [],
+      "volumes": [],
+      "networks": [],
+      "image_tags": []
+    },
+    {
+      "project": "flux-live-editing-1792325243-1302197",
+      "containers": [],
+      "volumes": [],
+      "networks": [],
+      "image_tags": []
+    },
+    {
+      "project": "flux-live-editing-1792325333-1308679",
+      "containers": [],
+      "volumes": [],
+      "networks": [],
+      "image_tags": []
+    },
+    {
+      "project": "flux-test-1792324598-1249831",
+      "containers": [],
+      "volumes": [],
+      "networks": [],
+      "image_tags": []
+    }
+  ],
+  "all_owned_resources_removed": true
+}

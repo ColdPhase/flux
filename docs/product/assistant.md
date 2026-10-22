@@ -8,6 +8,8 @@ peer review covers whether this text states them correctly and testably, not whe
 to make them. Implementation slices start from this text; a review finding that
 changes it is recorded here with its date.
 
+**Workspace AI lock ([F-029](workspace-ai-lock.md), accepted 2026-10-22).** While a workspace's AI is off, no member's assistant reads, runs, schedules, reacts or suggests in it; the workspace block takes precedence over everything here.
+
 <a id="contract-text-acceptance-2026-10-10"></a>
 **Independent contract-text acceptance, 2026-10-10.** The independent delegated
 Codex evaluator accepted the full AST-1–AST-10 contract, all 71 named criteria,

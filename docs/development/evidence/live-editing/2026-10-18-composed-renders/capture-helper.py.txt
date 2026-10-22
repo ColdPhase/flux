@@ -1,0 +1,89 @@
+"""Author screenshot capture only; behavior acceptance uses the maintained #228 journeys."""
+import json
+import os
+import uuid
+from pathlib import Path
+from playwright.async_api import expect
+from test_live_editing import LiveFixture
+
+APPLICATION_SOURCE = 'f30c9910a21911a4287833a1c19faa12bb5d2851'
+
+class VisualCapture(LiveFixture):
+    async def shoot(self, page, label, palette):
+        await page.evaluate('() => new Promise(done=>requestAnimationFrame(()=>requestAnimationFrame(done)))')
+        path = self.output / f'{label}-{palette}-{page.viewport_size["width"]}.png'
+        await page.screenshot(path=str(path))
+        observed = await page.evaluate('''() => ({viewport:{width:innerWidth,height:innerHeight},
+          documentWidth:document.documentElement.scrollWidth,dpr:devicePixelRatio,
+          visualScale:visualViewport.scale,cssZoom:getComputedStyle(document.documentElement).zoom,
+          scheme:matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'})''')
+        self.records.append({'file':path.name,'application_source':APPLICATION_SOURCE,
+            'engine':self.browser.browser_type.name,'browser_version':self.browser.version,
+            'requested_palette':palette,**observed})
+
+    async def test_capture_real_shared_work(self):
+        assert len(APPLICATION_SOURCE)==40, 'Bind the frozen application source before capturing'
+        self.output=Path(os.environ['FLUX_UI_SCREENSHOTS'])
+        self.output.mkdir(parents=True,exist_ok=True)
+        self.records=[]
+        ada,kai=self.pages['ada'],self.pages['kai']
+        await self.create_map(6)
+        texts=[
+            'The camera misses most gestures below 10 lux. Keep the raw evening observations.',
+            'Use a ToF sensor above the shade. It sees a hand without lighting the room.',
+            'Two quick waves start the night light; a held palm switches the lamp off.',
+            'Check glare from the bed before the next prototype review.',
+            'Repeat the low-light test in two bedrooms and record missed gestures.',
+            'Share a one-page setup guide with the people testing the lamp.',
+        ]
+        for index,(thought,text) in enumerate(zip(self.thoughts,texts)):
+            await self.api(ada,'PATCH',f'/api/v1/sketches/{self.map_id}/thoughts/{thought["id"]}',
+                {'text':text,'x':80+(index%3)*300,'y':140+(index//3)*250,'width':230,'height':140},200,
+                {'idempotency-key':str(uuid.uuid4()),'if-match':f'"{thought["version"]}"'})
+        await expect(kai.locator('.sk-t').filter(has_text=texts[-1])).to_be_visible()
+        for page in (ada,kai):
+            await page.get_by_role('button',name='Fit the sketch to the view',exact=True).click()
+        thought=ada.locator(f'.sk-node[data-id="{self.thoughts[0]["id"]}"]')
+        await thought.scroll_into_view_if_needed()
+        box=await thought.bounding_box()
+        await ada.mouse.move(box['x']+24,box['y']+24)
+        await ada.mouse.down()
+        try:
+            step=0
+            for width,height in ((1440,900),(390,844),(820,1180),(2560,1440)):
+                await kai.set_viewport_size({'width':width,'height':height})
+                await expect(kai.locator('.sk-phone')).to_have_count(1 if width==390 else 0)
+                if width!=390:
+                    await kai.get_by_role('button',name='Fit the sketch to the view',exact=True).click()
+                for palette in ('light','dark'):
+                    await kai.emulate_media(color_scheme=palette)
+                    step+=1
+                    await ada.mouse.move(box['x']+45+step*2,box['y']+42+step,steps=2)
+                    await expect(kai.locator(f'.sk-node[data-id="{self.thoughts[0]["id"]}"]')).to_have_attribute('data-live-mover','Ada North')
+                    await self.shoot(kai,'map-active-peer-movement',palette)
+        finally:
+            await ada.mouse.up()
+        await self.map_saved(ada)
+
+        body='''## What the evening tests show\n\nThe lamp should respond without asking someone to look at a screen. A distance sensor works in the dark and keeps the camera out of the bedroom.\n\n### Gestures we will keep\n\n- Swipe up or down changes brightness.\n- A held palm switches the lamp off.\n- Two quick waves start the night light.\n\n### Next test\n\nRepeat the low-light trial in two rooms. Record missed gestures, accidental activation and glare from the bed. Keep the original observations beside the short setup guide.\n\nThe next prototype uses a ToF sensor above the shade.'''
+        await self.create_doc(body)
+        owner=await self.editor('ada')
+        peer=await self.editor('kai')
+        step=0
+        for width,height in ((1440,900),(390,844),(820,1180),(2560,1440)):
+            await kai.set_viewport_size({'width':width,'height':height})
+            for palette in ('light','dark'):
+                await kai.emulate_media(color_scheme=palette)
+                step+=1
+                await self.type_text(ada,owner,f' Test note {step} is shared before saving a version.')
+                await peer.click()
+                await kai.keyboard.press('Control+End')
+                await expect(kai.locator('.editing-people')).to_contain_text('Ada North')
+                await expect(kai.locator('.editing-caret[aria-label="Ada North\'s cursor"]')).to_have_count(1)
+                await self.shoot(kai,'wiki-shared-writing-before-version-save',palette)
+        saved=await self.api(ada,'GET',f'/api/v1/docs/{self.doc_id}')
+        self.assertEqual(saved['body'],body,'The captured live writing has not replaced immutable version 1')
+        (self.output/'capture-metadata.json').write_text(json.dumps({'application_source':APPLICATION_SOURCE,
+            'scope':'Author renders only; CSS viewport emulation, no physical device or accessibility/latency verdict',
+            'screens':self.records},indent=2)+'\n')
+        self.assertEqual(self.errors,[])

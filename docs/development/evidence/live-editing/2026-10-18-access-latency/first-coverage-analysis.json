@@ -1,0 +1,88 @@
+{
+  "schema": 1,
+  "source_sha": "7af776c7dfd4403e3937c8ccd4b9723c7808d587",
+  "role": "Existing-artifact analysis only; original failed gate unchanged; driver-observed wire times are not pure network or browser-engine timestamps. Different publication coverage intervals overlap and cannot be added/subtracted to claim a passing latency.",
+  "method": "For each of all240 original rows: first ada/sent map-move and kai/received map-move at or after input_at, same generation/gesture, sequence>=sampled input. Exact-first-publication receipt metric exists for234 rows; six exact publications have only later covering receipts and remain in the full240-row original latency denominator. No timings are subtracted.",
+  "metrics": {
+    "input_to_first_covering_publication_ms": {
+      "n": 240,
+      "p50": 35.46612698119134,
+      "p95": 56.91406596451998,
+      "max": 103.47071394789964
+    },
+    "input_to_first_covering_receipt_ms": {
+      "n": 240,
+      "p50": 74.1834529908374,
+      "p95": 106.58579191658646,
+      "max": 185.8408299740404
+    },
+    "first_covering_receipt_to_condition_ms": {
+      "n": 240,
+      "p50": 34.259613952599466,
+      "p95": 48.53036301210523,
+      "max": 103.73379499651492
+    },
+    "first_render_receipt_to_condition_ms": {
+      "n": 240,
+      "p50": 34.13553407881409,
+      "p95": 47.94606100767851,
+      "max": 103.73379499651492
+    },
+    "first_publication_to_its_receipt_ms": {
+      "n": 234,
+      "p50": 36.83659096714109,
+      "p95": 59.464724035933614,
+      "max": 113.8088220031932
+    },
+    "first_publication_to_final_covering_publication_ms": {
+      "n": 240,
+      "p50": 43.05660806130618,
+      "p95": 92.43068390060216,
+      "max": 168.33943198435009
+    },
+    "input_to_painted_ms": {
+      "n": 240,
+      "p50": 162.4328960897401,
+      "p95": 213.16741593182087,
+      "max": 355.64059601165354
+    }
+  },
+  "original_full_latency_rows": 240,
+  "external_analysis": {
+    "path": "/home/hubert/flux-evidence/228-access-7af776c7-first-coverage-analysis.json",
+    "bytes": 166122,
+    "sha256": "19242d72f1f8228f6b62cdabb5e17ae90fd9c729d42981694ea990f7ea15443f"
+  },
+  "witnesses": [
+    {
+      "index": 0,
+      "input_sequence": 336,
+      "first_covering_publication_sequence": 336,
+      "first_covering_receipt_sequence": 336,
+      "first_render_sequence": 336,
+      "final_render_sequence": 338,
+      "input_to_first_covering_publication_ms": 51.491281017661095,
+      "input_to_first_covering_receipt_ms": 84.1454709880054,
+      "first_covering_receipt_to_condition_ms": 28.599107987247407,
+      "first_render_receipt_to_condition_ms": 28.599107987247407,
+      "first_publication_to_its_receipt_ms": 32.654189970344305,
+      "first_publication_to_final_covering_publication_ms": 51.076489966362715,
+      "input_to_painted_ms": 172.30310302693397
+    },
+    {
+      "index": 225,
+      "input_sequence": 1808,
+      "first_covering_publication_sequence": 1808,
+      "first_covering_receipt_sequence": 1811,
+      "first_render_sequence": 1811,
+      "final_render_sequence": 1813,
+      "input_to_first_covering_publication_ms": 56.91406596451998,
+      "input_to_first_covering_receipt_ms": 185.8408299740404,
+      "first_covering_receipt_to_condition_ms": 38.40562596451491,
+      "first_render_receipt_to_condition_ms": 38.40562596451491,
+      "first_publication_to_its_receipt_ms": null,
+      "first_publication_to_final_covering_publication_ms": 168.33943198435009,
+      "input_to_painted_ms": 355.64059601165354
+    }
+  ]
+}

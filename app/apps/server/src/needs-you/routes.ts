@@ -3,6 +3,7 @@ import { evaluateProject } from '@flux/core';
 import type { FastifyInstance } from 'fastify';
 import { NEEDS_YOU_PATH, type ResolveNeedsYouCommand } from '@flux/contracts';
 import type { Database } from '@flux/core';
+import { aiAllowedInProject } from '../access/ai-gate.js';
 import type { SessionResolver } from '../identity/index.js';
 import { useDomainErrors } from '../http/commands.js';
 import { needsYouUseCases } from './adapters.js';
@@ -25,9 +26,15 @@ export async function needsYouRoutes(app: FastifyInstance, { db, sessions }: Opt
   useDomainErrors(app);
   // The owner's undecided waiting assistant changes join the queue as questions (F-027 AST-5.6).
   const assistant = assistantChangeUseCases(db);
-  const use = needsYouUseCases(db, { waiting: (userId) => assistant.inbox(userId), notes: async (userId) => {
+  // F-029: the assistant's waiting changes and notes of a workspace whose AI is off are left out (and so cannot be resolved).
+  const use = needsYouUseCases(db, { waiting: async (userId) => {
     const visible = [];
-    for (const note of await assistantReactionRows(db).notes(userId)) if ((await evaluateProject({ kind: 'human', id: userId }, 'project.read', note.projectId, db)).allowed) visible.push(note);
+    for (const change of await assistant.inbox(userId)) if (await aiAllowedInProject(db, change.projectId)) visible.push(change);
+    return visible;
+  }, notes: async (userId) => {
+    const visible = [];
+    for (const note of await assistantReactionRows(db).notes(userId)) if ((await evaluateProject({ kind: 'human', id: userId }, 'project.read', note.projectId, db)).allowed
+      && await aiAllowedInProject(db, note.projectId)) visible.push(note);
     return visible;
   } });
   const principal = async (request: Parameters<SessionResolver['requirePrincipal']>[0]) => (await sessions.requirePrincipal(request)).principal;

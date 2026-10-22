@@ -1,10 +1,11 @@
 import { Component, Suspense, lazy, useEffect, useLayoutEffect, useRef, useState, type ComponentProps, type ReactNode } from 'react';
-import { Button, ErrorState, MEDIA, Overlay, Spinner, useMediaQuery } from '../ui';
+import { Button, ErrorState, MEDIA, Overlay, Spinner, useMediaQuery, useSidePanelMode } from '../ui';
 import { pageLeaving, whenPageLive } from '../api/pageLeaving';
 import { useLive } from '../live/LiveProvider';
 import type { Details } from './Details';
 import type { JumpTo } from '../search/JumpTo';
 import { ReloadRecovery } from './ReloadRecovery';
+import { useShellActions } from './shellContext';
 
 const DetailsContent = lazy(async () => ({ default: (await import('./Details')).Details }));
 const SearchContent = lazy(async () => ({ default: (await import('../search/JumpTo')).JumpTo }));
@@ -62,6 +63,15 @@ export function DeferredLiveStage() {
   const [requested, setRequested] = useState(false);
   const open = live.stage.open && !!((live.media?.screens.length ?? 0) + (live.media?.cameras.length ?? 0)) && live.phase !== 'idle';
   if (open && !requested) setRequested(true);
+  // The strip stays usable above a thread or Details sheet (a modal that covers the pane), so its View can open
+  // the stage under that sheet. The stage takes the pane, as the sheet's scrim would hide Back to work: the sheet closes.
+  const { closePanel } = useShellActions();
+  const panelMode = useSidePanelMode();
+  useEffect(() => {
+    if (open && panelMode !== 'docked' && document.getElementById('details')) closePanel();
+    // Once per time the stage opens; closePanel is a fresh closure on every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
   if (!requested) return null;
   const wrap = (content: ReactNode) => open ? <StagePlaceholder onClose={live.closeStage}>{content}</StagePlaceholder> : null;
   return <SurfaceBoundary label="Live view" wrap={wrap}><Suspense fallback={wrap(<Opening label="Live view" />)}><StageContent /></Suspense></SurfaceBoundary>;

@@ -2,6 +2,9 @@ import { createCipheriv, createDecipheriv, hkdfSync, randomBytes, randomUUID } f
 import { idpLogoutRepository, idpStandingRepository, type IdpCheckResult, type IdpStandingClaim } from '@flux/db';
 import type { Database } from '@flux/core';
 import type { OidcConfig } from './config.js';
+import { createJwks } from './backchannel.js';
+import { createStandingProfile, updateStandingProfile } from './standing-profile.js';
+import type { ProfileResult } from './claim-profile.js';
 
 /**
  * The standing check of a person's account at the identity provider (F-024 S4, #311). Flux keeps the
@@ -111,6 +114,7 @@ export function createIdpStanding(options: IdpStandingOptions): IdpStanding {
   const rows = idpStandingRepository(options.db);
   const logout = idpLogoutRepository(options.db);
   const key = sealKey(options.authSecret);
+  const profileFromToken = createStandingProfile(oidc, createJwks(oidc, fetcher, () => now().getTime()), () => now().getTime());
   let endpoints: { at: number; value: Promise<ProviderEndpoints | null> } | null = null;
 
   const discover = () => {
@@ -137,7 +141,7 @@ export function createIdpStanding(options: IdpStandingOptions): IdpStanding {
   });
 
   /** A `refresh_token` grant at the provider's token endpoint, as Flux's client. Nothing from it is logged. */
-  async function ask(token: string): Promise<{ result: IdpCheckResult; rotated?: string }> {
+  async function ask(token: string): Promise<{ result: IdpCheckResult; rotated?: string; idToken?: string }> {
     const found = await discover();
     if (!found) return { result: { outcome: 'unknown' } };
     try {
@@ -145,7 +149,8 @@ export function createIdpStanding(options: IdpStandingOptions): IdpStanding {
       const body = await response.json().catch(() => null) as Record<string, unknown> | null;
       if (response.ok) {
         if (!body || typeof body.access_token !== 'string') return { result: { outcome: 'unknown' } };
-        return { result: { outcome: 'success' }, rotated: typeof body.refresh_token === 'string' && body.refresh_token ? body.refresh_token : undefined };
+        return { result: { outcome: 'success' }, rotated: typeof body.refresh_token === 'string' && body.refresh_token ? body.refresh_token : undefined,
+          idToken: typeof body.id_token === 'string' ? body.id_token : undefined };
       }
       // Only `invalid_grant` says the provider no longer honours the token. invalid_client, 5xx and anything
       // else is a problem with Flux's own credentials or with the provider, which is not a verdict on the person.
@@ -167,17 +172,28 @@ export function createIdpStanding(options: IdpStandingOptions): IdpStanding {
   async function check(claim: IdpStandingClaim) {
     const token = openToken(key, claim.userId, claim.providerId, claim.refreshTokenEnc);
     let result: IdpCheckResult = { outcome: 'sign_in_required', reason: 'unreadable_token' };
+    let profile: ProfileResult | undefined;
     if (token) {
       const answer = await ask(token);
       result = answer.result;
+      if (result.outcome === 'success' && answer.idToken) profile = await profileFromToken(answer.idToken);
       if (result.outcome === 'success' && answer.rotated && answer.rotated !== token) {
         result = { outcome: 'success', refreshTokenEnc: sealToken(key, claim.userId, claim.providerId, answer.rotated) };
       }
     }
     const done = now();
     const next = new Date(done.getTime() + (result.outcome === 'unknown' ? retryMs : oidc.standingIntervalMs));
-    const written = await rows.finish(claim, result, done, next);
+    const { written, profileOutcome } = await options.db.transaction(async (tx) => {
+      const retained = idpStandingRepository(tx);
+      if (profile?.ok) await retained.lockProfileOwner(claim.userId);
+      const written = await retained.finish(claim, result, done, next);
+      const profileOutcome = written && profile?.ok ? await updateStandingProfile(tx, claim.userId, claim.providerId, profile, done) : undefined;
+      return { written, profileOutcome };
+    });
     if (!written) return;
+    if (profile && !profile.ok || profileOutcome && profileOutcome !== 'updated') {
+      log.warn({ userId: claim.userId, reason: profileOutcome ?? 'invalid_claims' }, 'Skipped the identity provider profile update');
+    }
     if (result.outcome === 'sign_in_required') log.warn({ userId: claim.userId, reason: result.reason }, 'The identity provider no longer honours this person; sign-in required');
     else if (result.outcome === 'unknown') log.warn({ userId: claim.userId }, 'The identity provider could not be asked; confirmation is unchanged');
   }

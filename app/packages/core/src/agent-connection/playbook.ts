@@ -33,7 +33,7 @@ export interface CoworkPlaybook {
 
 const playbook: CoworkPlaybook = {
   bundleId: 'flux.cowork',
-  version: '1.7.0',
+  version: '1.8.0',
   toolContractVersion: 1,
   startPayload: `Start my authorized Flux work in the bound project. Load this playbook and the authenticated bootstrap first. \
 Understand the project's current plan, wiki, relevant conversations, decisions and existing tasks before planning or creating more \
@@ -75,7 +75,12 @@ calls repeatedly listing the project to see whether something changed.`,
 and reuse for every bootstrap call in it. Check that trusted.playbook names this bundle and version; if it differs, load the \
 current playbook resource before continuing. Then record what you loaded with flux_acknowledge_playbook, passing the same \
 clientSessionId and the bundle, version and digest shown at the top of this playbook; it grants nothing, and your owner sees \
-which version you work by. On resume, pass the source checkpoints you recorded last time (kind, id and version \
+which version you work by. When project.work.read is available, request includeWorkRecovery: true in bootstrap before selecting \
+new work. trusted.coordination.work lists your existing open units with their exact current versions; follow nextOffset with \
+workOffset until you locate the work you need. It does not claim anything. A live lease with currentSession false belongs \
+to another client session: wait for its release or expiry, never use that session's identity or replace its active work. \
+Prefer your paused/checkpointed work over creating a replacement unit. When work recovery is unavailable, show that gap \
+instead of assuming you have no unfinished work. On resume, pass the source checkpoints you recorded last time (kind, id and version \
 or sequence) to flux_changes_since and read only what changed. If you were working on a unit, claim it again with \
 flux_claim_unit at its current version: the result carries the unit's last checkpoint (summary, next action, blocker and the \
 source versions it covered), so continue from there and compare those versions with flux_changes_since. Then read the \
@@ -146,7 +151,12 @@ actually observed with flux_record_result (positive or negative, with its eviden
 at the version you read when the observation completes it. At a safe boundary where you stop working on the unit, \
 release it with flux_release_unit (with a cowork.release grant) and a checkpoint: a summary of what you observably did \
 (changed artifacts, checks you actually ran), the next action and any blocker, plus the exact current material revisions you \
-relied on. The unit stays paused, and whoever claims it next receives that checkpoint. When the unit's outcome exists as a \
+relied on. Include checkpoint.orientation with known (up to 50 distinct canonical source checkpoints you actually read) and \
+gaps (up to 10 missing-context descriptions). Record the plan/wiki, relevant conversations, accepted decisions and existing \
+tasks there, including skipped or unavailable critical context in gaps; this is coverage, never permission. The unit stays \
+paused, and whoever claims it next receives that checkpoint. On Resume compare its orientation.known with flux_changes_since, \
+read changed sources and reanalyze affected work before acting. Discover newly added relevant objects with bounded orientation \
+pages; an unchanged known-source set does not prove no new work exists. When the unit's outcome exists as a \
 native record (for example the result you recorded), complete the unit with flux_complete_unit (with a cowork.unit.complete \
 grant), naming that exact record. Completion is final; it does not change the task, approve anything or resolve a request, \
 and COWORK_UNIT_REQUESTS_OPEN means requests addressed to the unit must be answered or declined first.

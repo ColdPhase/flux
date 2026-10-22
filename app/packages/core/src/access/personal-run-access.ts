@@ -1,6 +1,7 @@
 import type { Executor } from '../types.js';
+import { WorkspaceAiBlockedError } from './errors.js';
 import type { PersonalRunAccess } from '../personal-runs/ports.js';
-import { accessName, enforce, evaluateAgent, evaluateProject, evaluateSketch } from './policy.js';
+import { accessName, enforce, evaluateAgent, evaluateProject, evaluateSketch, requireWorkspaceAi, workspaceAi } from './policy.js';
 
 /**
  * The access policy as the personal-run use cases' `PersonalRunAccess` port (issue #68). It uses
@@ -21,7 +22,10 @@ export function policyPersonalRunAccess(db: Executor): PersonalRunAccess {
     },
 
     async requireInvoke(principal, agentId, options) {
-      const { agent } = enforce(await evaluateAgent(principal, 'agent.invoke', agentId, db, { lock: options?.lock }), 'agent');
+      const evaluation = await evaluateAgent(principal, 'agent.invoke', agentId, db, { lock: options?.lock });
+      // F-029: the owner's own assistant, refused with its own reason while AI is off in its workspace.
+      if (evaluation.visible && evaluation.agent && (await workspaceAi(db, evaluation.agent.workspaceId)).state !== 'allowed') throw new WorkspaceAiBlockedError();
+      const { agent } = enforce(evaluation, 'agent');
       return { workspaceId: agent!.workspaceId };
     },
 
@@ -34,5 +38,8 @@ export function policyPersonalRunAccess(db: Executor): PersonalRunAccess {
       const evaluation = await evaluateSketch(principal, 'sketch.read', sketchId, db, { lock: options?.lock });
       return evaluation.visible && evaluation.allowed;
     },
+
+    workspaceAi: (workspaceId, options) => workspaceAi(db, workspaceId, options),
+    requireWorkspaceAi: (workspaceId, options) => requireWorkspaceAi(db, workspaceId, options),
   };
 }

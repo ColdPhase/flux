@@ -1,4 +1,5 @@
 import type { McpPermissionSettings } from './api';
+import { CoworkHostActions } from './CoworkHostActions';
 
 /** Live server facts are deliberately separate from native activation. A label or ACK cannot make work ready. */
 export function ConnectionSetup({ settings, known }: { settings: McpPermissionSettings; known: boolean }) {
@@ -20,6 +21,7 @@ export function ConnectionSetup({ settings, known }: { settings: McpPermissionSe
           : !settings.setup.authorizationRecorded ? <p>This saved selection has no current client authorization. Authorize it when your client opens Flux.</p>
             : settings.setup.session ? <p>The session is valid until <time dateTime={settings.setup.session.expiresAt}>{new Date(settings.setup.session.expiresAt).toLocaleString()}</time>. It does not show whether the client is online or working.</p>
               : <p>A current client authorization is recorded. This does not verify the client or its ability to start work.</p>}
-    <p>Flux does not launch work and cannot see whether the client is online. Claude Code starts with Flux's Start work prompt; Codex starts when you ask it to start work on Flux and it reads Flux's playbook.</p>
+    <p>Flux cannot see whether your native client is online. Use its supplied host action to start or resume work on a selected project.</p>
+    {projects.map((project) => <CoworkHostActions key={project.id} connectionId={settings.connection.id} projectId={project.id} client={settings.connection.clientDesignation} />)}
   </section>;
 }

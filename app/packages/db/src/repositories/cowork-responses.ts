@@ -1,6 +1,7 @@
 import { and, eq, sql } from 'drizzle-orm';
 import type { CoWorkSourceRef } from '@flux/contracts';
 import * as schema from '../schema.js';
+import { aiEpochIsCurrent, currentAiEpoch } from './workspace-ai.js';
 import type { DbExecutor } from './push.js';
 
 // Request claim, response and supersession (#153). Storage only: the server composition has already run #152
@@ -16,10 +17,12 @@ function liveUnit(scope: Scope, fence: Fence) {
   return sql`unit.id = request.unit_id AND unit.id = ${scope.unitId}::uuid AND unit.workspace_id = ${scope.workspaceId}::uuid
     AND unit.project_id = ${scope.projectId}::uuid AND unit.assignment_connection_id = ${scope.connectionId}::uuid
     AND unit.state = 'claimed' AND unit.generation = ${fence.generation} AND unit.lease_id = ${fence.leaseId}::uuid
-    AND unit.lease_session_id = ${fence.runtimeSessionId} AND unit.lease_expires_at > clock_timestamp()`;
+    AND unit.lease_session_id = ${fence.runtimeSessionId} AND unit.lease_expires_at > clock_timestamp()
+    AND unit.ai_epoch = ${currentAiEpoch(sql`unit.workspace_id`)}`;
 }
 function addressed(scope: Scope, fence: Fence) {
   return sql`request.id = ${fence.requestId}::uuid AND request.workspace_id = ${scope.workspaceId}::uuid
+    AND request.ai_epoch = ${currentAiEpoch(sql`request.workspace_id`)}
     AND request.project_id = ${scope.projectId}::uuid AND request.recipient_connection_id = ${scope.connectionId}::uuid
     AND request.unit_id = ${scope.unitId}::uuid AND request.version = ${fence.expectedVersion}
     AND request.expires_at > clock_timestamp()`;
@@ -34,7 +37,8 @@ export function coworkResponseRows(tx: DbExecutor) {
         expired: sql<boolean>`${requests.expiresAt} <= clock_timestamp()`,
         now: sql<Date>`clock_timestamp()`.mapWith((value: Date | string) => new Date(value instanceof Date ? value.getTime() : value)) })
         .from(requests)
-        .where(and(eq(requests.id, id), eq(requests.workspaceId, workspaceId), eq(requests.projectId, projectId))).for('update');
+        .where(and(eq(requests.id, id), eq(requests.workspaceId, workspaceId), eq(requests.projectId, projectId),
+          aiEpochIsCurrent(requests.aiEpoch, requests.workspaceId))).for('update');
       return row ?? null;
     },
     /** Queued/deferred, or claimed under an older generation -> claimed under the live one. Null if any fence changed. */

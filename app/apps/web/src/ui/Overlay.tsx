@@ -11,16 +11,41 @@ export function focusableIn(root: HTMLElement): HTMLElement[] {
 // The app root is made inert while any modal surface is open; a count supports nesting.
 let inertCount = 0;
 let inertSeq = 0;
-function setAppInert(on: boolean) {
+// Open surfaces that leave the live session strip usable (`keepLiveStrip`). While every open surface is one,
+// the root is not inert as a whole: everything beside the strip's path to the root is, so the strip is not.
+let stripKeepers = 0;
+const inertSiblings = new Set<HTMLElement>();
+const liveStrip = () => document.querySelector<HTMLElement>('#root .lv-bar');
+
+function applyInert() {
   const root = document.getElementById('root');
-  inertCount = Math.max(0, inertCount + (on ? 1 : -1));
   if (!root) return;
   document.getElementById('content')?.getAnimations().forEach((animation) => animation.cancel());
-  root.inert = inertCount > 0;
-  // Chromium can keep an animated element's inert style after the root leaves inert: on a phone the
-  // work pane stayed untappable after Details closed, from its next view slide on (#151). A changed
-  // inherited custom property makes every element below the root compute its style again.
-  root.style.setProperty('--app-inert', inertCount > 0 ? '1' : `0-${++inertSeq}`);
+  for (const el of inertSiblings) el.inert = false;
+  inertSiblings.clear();
+  const strip = inertCount > 0 && stripKeepers === inertCount ? liveStrip() : null;
+  if (strip) {
+    root.inert = false;
+    for (let node: HTMLElement = strip; node !== root && node.parentElement; node = node.parentElement) {
+      for (const sibling of node.parentElement.children) {
+        if (sibling !== node && sibling instanceof HTMLElement) { sibling.inert = true; inertSiblings.add(sibling); }
+      }
+    }
+  } else {
+    root.inert = inertCount > 0;
+  }
+  // Shortcuts and the pane's interactivity rule ask this, not `root.inert`: the root stays live around the strip.
+  root.toggleAttribute('data-modal', inertCount > 0);
+  // Chromium can keep an animated element's inert style after the root leaves inert: on a phone the work pane
+  // stayed untappable after Details closed, from its next view slide on (#151). A changed inherited custom
+  // property makes every element below the root compute its style again.
+  root.style.setProperty('--app-inert', `${inertCount > 0 ? 1 : 0}-${++inertSeq}`);
+}
+
+function setAppInert(on: boolean, keepsStrip = false) {
+  inertCount = Math.max(0, inertCount + (on ? 1 : -1));
+  if (keepsStrip) stripKeepers = Math.max(0, stripKeepers + (on ? 1 : -1));
+  applyInert();
 }
 
 /** Keeps a component mounted while its exit animation runs. */
@@ -62,6 +87,12 @@ export interface OverlayProps {
    * sheet that brings its own look, dialog role and name: the content is a `DetentSheet`.
    */
   bare?: boolean;
+  /**
+   * The live session strip stays where it is, visible and usable, above this surface and its scrim: the
+   * overlay starts below the strip, the rest of the app is inert, and Tab runs through the surface and the
+   * strip. Leave and the microphone must not be taken away by a thread (F-026, live-ux "never covers").
+   */
+  keepLiveStrip?: boolean;
   children: ReactNode;
 }
 
@@ -156,8 +187,9 @@ function useDismissDrag(placement: OverlayPlacement, surfaceRef: RefObject<HTMLD
  * Modal surface in a portal: scrim, focus moved in and trapped, Esc and scrim close,
  * the rest of the app inert, focus returned to the opener. Slides from its edge.
  */
-export function Overlay({ open, onClose, placement, label, labelledBy, initialFocus, className, id, bare, children }: OverlayProps) {
+export function Overlay({ open, onClose, placement, label, labelledBy, initialFocus, className, id, bare, keepLiveStrip, children }: OverlayProps) {
   const { mounted, unmount } = usePresence(open);
+  const frameRef = useRef<HTMLDivElement>(null);
   const surfaceRef = useRef<HTMLDivElement>(null);
   const scrimRef = useRef<HTMLDivElement>(null);
   const returnRef = useRef<HTMLElement | null>(null);
@@ -172,14 +204,14 @@ export function Overlay({ open, onClose, placement, label, labelledBy, initialFo
     returnRef.current = document.activeElement as HTMLElement | null;
     const surface = surfaceRef.current;
     const scrim = scrimRef.current;
-    setAppInert(true);
+    setAppInert(true, !!keepLiveStrip);
     // A reopen during the exit continues from where the exit had got to (settle), never from a start pose.
     const { enter, easeIn } = timing(placement);
     void settle(scrim, { opacity: 1 }, enter, '--ease-out', { from: { opacity: 0 } });
     void settle(surface, { opacity: 1, transform: 'none' }, enter, easeIn, { from: offstage(placement) });
     (initialFocus?.current ?? surface)?.focus({ preventScroll: true });
     return () => {
-      setAppInert(false);
+      setAppInert(false, !!keepLiveStrip);
       // Focus returns first and at once: the exit below never delays it, the next action or the next open.
       const target = returnRef.current;
       returnRef.current = null;
@@ -200,6 +232,44 @@ export function Overlay({ open, onClose, placement, label, labelledBy, initialFo
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, mounted, placement]);
 
+  // The overlay starts where the strip ends, so neither the scrim nor the sheet is painted over it.
+  useLayoutEffect(() => {
+    const frame = frameRef.current;
+    const strip = keepLiveStrip && open && mounted ? liveStrip() : null;
+    if (!frame || !strip) { frame?.style.removeProperty('top'); return; }
+    const place = () => frame.style.setProperty('top', `${Math.max(0, Math.round(strip.getBoundingClientRect().bottom))}px`);
+    place();
+    const observer = new ResizeObserver(place);
+    observer.observe(strip);
+    window.addEventListener('resize', place);
+    return () => { observer.disconnect(); window.removeEventListener('resize', place); };
+  }, [keepLiveStrip, open, mounted]);
+
+  // Tab leaves the surface into the strip and comes back; the surface's own wrap-around moves to the far ends.
+  useEffect(() => {
+    if (!keepLiveStrip || !open || !mounted) return;
+    const onKey = (event: globalThis.KeyboardEvent) => {
+      if ((event.key !== 'Tab' && event.key !== 'Escape') || event.defaultPrevented || event.isComposing) return;
+      const strip = liveStrip();
+      const surface = surfaceRef.current;
+      const target = event.target as HTMLElement | null;
+      if (!surface || !target) return;
+      // Esc closes the sheet from the strip, and from nowhere in particular (Leave took the focused button with it).
+      if (event.key === 'Escape') {
+        if ((target === document.body || strip?.contains(target)) && !target.closest('.lv-pop, [role="dialog"]') && !document.querySelector('.lv-pop')) onCloseRef.current();
+        return;
+      }
+      if (!strip || !strip.contains(target) || target.closest('.lv-pop, [role="dialog"]')) return;
+      const items = focusableIn(strip);
+      const inside = focusableIn(surface);
+      if (!items.length || !inside.length) return;
+      if (!event.shiftKey && target === items[items.length - 1]) { event.preventDefault(); inside[0]!.focus(); }
+      else if (event.shiftKey && target === items[0]) { event.preventDefault(); inside[inside.length - 1]!.focus(); }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [keepLiveStrip, open, mounted]);
+
   const drag = useDismissDrag(bare ? 'center' : placement, surfaceRef, scrimRef, () => onCloseRef.current());
 
   if (!mounted) return null;
@@ -208,9 +278,20 @@ export function Overlay({ open, onClose, placement, label, labelledBy, initialFo
     if (event.key === 'Escape') { event.stopPropagation(); onCloseRef.current(); return; }
     trapTab(event, surfaceRef.current);
   };
+  // Captured before anything inside traps Tab itself: the ends of the surface continue into the strip.
+  const onKeyDownCapture = keepLiveStrip ? (event: KeyboardEvent<HTMLDivElement>) => {
+    const strip = liveStrip();
+    if (event.key !== 'Tab' || !strip || !surfaceRef.current) return;
+    const items = focusableIn(strip);
+    const inside = focusableIn(surfaceRef.current);
+    if (!items.length || !inside.length) return;
+    const active = document.activeElement;
+    if (!event.shiftKey && active === inside[inside.length - 1]) { event.preventDefault(); event.stopPropagation(); items[0]!.focus(); }
+    else if (event.shiftKey && (active === inside[0] || active === surfaceRef.current)) { event.preventDefault(); event.stopPropagation(); items[items.length - 1]!.focus(); }
+  } : undefined;
 
   return createPortal(
-    <div className={`ui-overlay ui-overlay--${placement}`} data-state={open ? 'open' : 'closing'}>
+    <div ref={frameRef} className={`ui-overlay ui-overlay--${placement}`} data-state={open ? 'open' : 'closing'}>
       <div ref={scrimRef} className="ui-scrim" onClick={() => onCloseRef.current()} aria-hidden="true" />
       <div
         ref={surfaceRef}
@@ -222,6 +303,7 @@ export function Overlay({ open, onClose, placement, label, labelledBy, initialFo
         aria-labelledby={bare ? undefined : labelledBy}
         tabIndex={-1}
         onKeyDown={onKeyDown}
+        onKeyDownCapture={onKeyDownCapture}
         inert={!open}
         {...drag}
       >

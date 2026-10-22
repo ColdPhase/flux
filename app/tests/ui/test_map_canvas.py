@@ -184,7 +184,7 @@ class MapCanvasJourney(unittest.TestCase):
         self.scene(page)
         minimap = page.locator('.sk-minimap')
         expect(minimap).to_be_visible()
-        expect(minimap.locator('rect')).to_have_count(2)
+        expect(minimap.locator('svg rect')).to_have_count(2)
         expect(minimap.locator('.sk-minimap__view')).to_be_visible()
         frame = minimap.bounding_box()
         before = self.scroll(page)
@@ -293,10 +293,17 @@ class MapCanvasJourney(unittest.TestCase):
         page.keyboard.press('Shift+ArrowUp')
         expect(node).to_have_attribute('data-thought-x', '-12')
         expect(node).to_have_attribute('data-thought-y', '-48')
-        # Keyboard moves are sent once the keys rest; the server's new version says the move landed.
-        expect(node).not_to_have_attribute('data-thought-version', version)
-        moved = next(t for t in self.stored(page, sketch)['thoughts'] if t['text'] == FIRST)
+        # With live editing off the keys are sent once they rest, as one burst and one new version; with it on each
+        # move is its own ordered command and a version per move. The saved position, not the first new version,
+        # says that every move landed.
+        moved = None
+        for _ in range(50):
+            moved = next(t for t in self.stored(page, sketch)['thoughts'] if t['text'] == FIRST)
+            if (moved['x'], moved['y']) == (-12, -48):
+                break
+            page.wait_for_timeout(100)
         self.assertEqual((moved['x'], moved['y']), (-12, -48))
+        expect(node).not_to_have_attribute('data-thought-version', version)
 
     def test_10_one_toolbar_at_the_bottom_and_zoom_with_the_minimap_at_the_bottom_right(self):
         page = self.page()

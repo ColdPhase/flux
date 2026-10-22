@@ -1,0 +1,17 @@
+{
+  "kind": "diagnostic only; unchanged canonical collector requires all nine cohorts and will reject the one-case marker",
+  "application_base_sha": "3bedcfd399aab85076b7f006adde9480288222cd",
+  "application_change": "native SVG affine frame with memoized native leaf geometry; original minima, per-mark opacity and radius",
+  "canonical_driver_sha256": "f331c1af49c8df43df6b257bc7c16795fedb5c3b102cfc11249282ef858df3ee",
+  "diagnostic_driver_sha256": "854ebf24f86d91108e73255a3a6544cf930641f06aaf0febee95b5285166f2b4",
+  "changed_functions": [
+    "main"
+  ],
+  "changes": "only planned/executed cohort selection: map500 drag200; all timing, observer, input, frame, row, cadence, warmup, sample, threshold and trace functions AST-identical",
+  "expected_scheduled_rows": 240,
+  "warmups": 30,
+  "p95_gate_ms": 200,
+  "status": "Executed; timing FAIL. Canonical collector also correctly refused the one-case marker; not Gate 4 acceptance.",
+  "diagnostic_source_sha": "251d9d5e6b2772ef719a63c75e40da60337127d3",
+  "later_revert_sha": "6ac818c6082ca7b035f07373bafb749f993ca19e"
+}

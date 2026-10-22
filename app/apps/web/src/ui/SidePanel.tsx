@@ -165,12 +165,12 @@ export function SidePanel(props: SidePanelProps) {
     // A task, decision or result opens in the one two-height sheet; other Details stay a full sheet.
     if (props.chip) {
       return (
-        <Overlay placement="bottom" bare open={props.open} onClose={props.onClose} initialFocus={bodyRef}>
+        <Overlay placement="bottom" bare keepLiveStrip open={props.open} onClose={props.onClose} initialFocus={bodyRef}>
           <DetentSheet id={props.id} role="dialog" aria-modal aria-labelledby={titleId} startFull={props.startFull} onHeight={props.onHeight} onClose={props.onClose} className="ui-panel">{content}</DetentSheet>
         </Overlay>
       );
     }
-    return <Sheet open={props.open} onClose={props.onClose} labelledBy={titleId} id={props.id} initialFocus={bodyRef} className="ui-panel">{content}</Sheet>;
+    return <Sheet open={props.open} onClose={props.onClose} labelledBy={titleId} id={props.id} initialFocus={bodyRef} keepLiveStrip className="ui-panel">{content}</Sheet>;
   }
-  return <Overlay placement="right" open={props.open} onClose={props.onClose} labelledBy={titleId} id={props.id} initialFocus={bodyRef} className="ui-panel ui-panel--overlay">{content}</Overlay>;
+  return <Overlay placement="right" keepLiveStrip open={props.open} onClose={props.onClose} labelledBy={titleId} id={props.id} initialFocus={bodyRef} className="ui-panel ui-panel--overlay">{content}</Overlay>;
 }

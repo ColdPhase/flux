@@ -1,0 +1,64 @@
+{
+  "source_sha": "450f2430c17e1b57bfe54df7be607dc723ba5d89",
+  "captured_at": "2026-10-18T11:52:45.994496+00:00",
+  "project": "flux-live-editing-1792324344-1241717",
+  "containers": [
+    {
+      "id": "03a650d0870b6db23a311488dfc69f0f6ac42b119d6c36f527d536a6b91bcf58",
+      "image_id": "sha256:1af6c6f446798835d50bcd91734a91453ac9c4c0305548192104fa94e17e431d",
+      "name": "/flux-live-editing-1792324344-1241717-test-run-0c92026f9257",
+      "image": "flux-test-tools:flux-live-editing-1792324344-1241717",
+      "running": true
+    },
+    {
+      "id": "c2dde14df3d8f836937b270713d37ec42de09e76b13fbd6e225c5124e9839cc7",
+      "image_id": "sha256:e1038e27f891ec8c2072b33c74528a77a28db8a00375fcdcc00327dee348066f",
+      "name": "/flux-live-editing-1792324344-1241717-api-1",
+      "image": "flux-foundation:flux-live-editing-1792324344-1241717",
+      "running": true
+    },
+    {
+      "id": "810d6a31a40fbeda7d7e65329ee5d36e35d448aad26b09737c797c3adc92dfed",
+      "image_id": "sha256:e1038e27f891ec8c2072b33c74528a77a28db8a00375fcdcc00327dee348066f",
+      "name": "/flux-live-editing-1792324344-1241717-api-two-1",
+      "image": "flux-foundation:flux-live-editing-1792324344-1241717",
+      "running": true
+    },
+    {
+      "id": "1563878d53215718bc56559e946efd9f2c153c31e547e131293b9940c79bedd4",
+      "image_id": "sha256:c293117fcecda7344b5480222e813b9f673d7abd69b1dd95eff239b768b04f59",
+      "name": "/flux-live-editing-1792324344-1241717-db-1",
+      "image": "postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873",
+      "running": true
+    }
+  ],
+  "apis": {
+    "flux-live-editing-1792324344-1241717-api-1": {
+      "node": "v24.21.0",
+      "mode": "on",
+      "diagnostic": "true",
+      "telemetry": "",
+      "instance": "",
+      "nodeEnv": "production"
+    },
+    "flux-live-editing-1792324344-1241717-api-two-1": {
+      "node": "v24.21.0",
+      "mode": "on",
+      "diagnostic": "true",
+      "telemetry": null,
+      "instance": null,
+      "nodeEnv": "production"
+    }
+  },
+  "tools": {
+    "node": "v24.21.0",
+    "packageManager": "pnpm@12.6.0",
+    "typescript": "5.9.2",
+    "tsx": "4.20.5",
+    "playwright": "1.63.0",
+    "yjs": "13.6.33",
+    "fastify": "5.6.1",
+    "ws": "8.22.0"
+  },
+  "postgres": "postgres (PostgreSQL) 18.6"
+}

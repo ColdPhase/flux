@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
-import type { Agent, AgentExecutionCommand, AgentStandingGrant, WorkItem } from '@flux/contracts';
+import type { Agent, AgentBootstrap, AgentExecutionCommand, AgentMcpPolicy, AgentStandingGrant, WorkItem } from '@flux/contracts';
 import { coworkUnitRows } from '@flux/db';
 import { DomainError } from '@flux/core';
 import { coWorkClaimInTransaction } from '../../apps/server/src/co-work/claims.js';
@@ -88,6 +88,79 @@ function schemaRefused(message: Record<string, unknown> | null) {
 const claimTool = async (c: Connection, grantId: string, unitId: string, expectedVersion: number, options: { command?: string; session?: string } = {}) =>
   c.tool('flux_claim_unit', { ...c.base(grantId, 'execute', options.command, options.session), unitId, expectedVersion });
 const fenceOf = (claim: Claim) => ({ unitId: claim.unitId, expectedVersion: claim.version, generation: claim.generation, leaseId: claim.lease!.id });
+
+test('Start/Resume discovers its own open work with bounded pages, distinguishes another live session and honors current read switches', async () => {
+  const f = await scene();
+  const codex = await f.connect(f.hubert, 'Resume Codex'), peer = await f.connect(f.marek, 'Resume Claude');
+  const first = await codex.take(await f.task('Recover my active task'));
+  const later = await codex.take(await f.task('Recover my queued task'));
+  await peer.take(await f.task('Other owner work'));
+  const clientSessionId = randomUUID();
+  const recover = async (extra: Record<string, unknown> = {}) => toolValue(await codex.tool('flux_bootstrap', {
+    projectId: f.p.id, clientSessionId, includeWorkRecovery: true, ...extra })) as unknown as AgentBootstrap;
+  const boot = await recover();
+  assert.equal(boot.trusted.coordination!.work!.units.length, 2);
+  const grant = await codex.standing('cowork.claim', first.unitId, 'execute');
+  const claimed = toolValue(await claimTool(codex, grant.id, first.unitId, 1, { session: boot.runtime.id })) as Claim;
+  const current = await recover({ workLimit: 1 });
+  assert.equal(current.trusted.coordination!.activeClaimReference, first.unitId);
+  const work = current.trusted.coordination!.work!;
+  assert.deepEqual(work.units.map((unit) => [unit.id, unit.version, unit.lease?.currentSession]), [[first.unitId, claimed.version, true]]);
+  assert.equal(work.nextOffset, 1);
+  assert.deepEqual((await recover({ workLimit: 1, workOffset: 1 })).trusted.coordination!.work!.units.map((unit) => unit.id), [later.unitId]);
+  const cold = await recover({ clientSessionId: randomUUID() });
+  assert.equal(cold.trusted.coordination!.work!.units[0]!.lease!.currentSession, false);
+  assert.ok(!JSON.stringify(cold.trusted.coordination).includes(claimed.lease!.id), 'recovery never exposes a lease secret');
+  assert.equal(toolFailure(await claimTool(codex, grant.id, first.unitId, claimed.version, { session: cold.runtime.id })).code, 'COWORK_UNIT_BUSY');
+  await pool.query("UPDATE cowork_units SET lease_expires_at=clock_timestamp()-interval '1 second' WHERE id=$1", [first.unitId]);
+  assert.equal((await recover()).trusted.coordination!.activeClaimReference, null, 'expired claims are recoverable without being shown as live');
+  await pool.query("UPDATE cowork_units SET state='stopped',lease_id=NULL,lease_session_id=NULL,lease_expires_at=NULL WHERE id=$1", [first.unitId]);
+  assert.deepEqual((await recover()).trusted.coordination!.work!.units.map((unit) => unit.id), [later.unitId], 'Stop is not a Resume candidate');
+  const path = `/api/v1/agent-connections/${codex.connectionId}/permissions`;
+  const { policy } = expectStatus(await f.hubert.browser.request('GET', path), 200) as { policy: AgentMcpPolicy };
+  expectStatus(await f.hubert.browser.request('PATCH', path, { headers: { 'if-match': `"mcp-policy-${policy.version}"` }, body: {
+    enabledCapabilityIds: policy.enabledCapabilityIds.filter((id) => id !== 'project.work.read'),
+    enabledEntryIds: policy.enabledEntryIds, selectedProjectIds: policy.selectedProjectIds } }), 200);
+  assert.equal(toolFailure(await codex.tool('flux_bootstrap', { projectId: f.p.id, clientSessionId, includeWorkRecovery: true })).code,
+    'MCP_ENTRY_UNAVAILABLE');
+  assert.equal((toolValue(await codex.tool('flux_bootstrap', { projectId: f.p.id, clientSessionId })) as unknown as AgentBootstrap)
+    .trusted.coordination!.work, undefined, 'ordinary bootstrap remains usable and unchanged when work reads are Off');
+});
+
+test('a durable orientation checkpoint survives context loss and exposes a changed plan without rereading unchanged sources', async () => {
+  const f = await scene(); const codex = await f.connect(f.hubert, 'Oriented Codex');
+  const task = await f.task('Read the project before working'); const root = await codex.take(task);
+  const doc = expectStatus(await f.hubert.browser.request('POST', `/api/v1/projects/${f.p.id}/docs`,
+    { body: { title: 'Current project plan', body: 'First revision: measure the baseline.' } }), 201) as { id: string; version: number };
+  const claimGrant = await codex.standing('cowork.claim', root.unitId, 'execute');
+  const claimed = toolValue(await claimTool(codex, claimGrant.id, root.unitId, 1)) as Claim;
+  const releaseGrant = await codex.standing('cowork.release', root.unitId, 'execute');
+  const known = [{ kind: 'doc', id: doc.id, version: doc.version }, { kind: 'work', id: task.id, version: task.version }];
+  const orientation = { known, gaps: ['No repository is linked; this is a non-code study.'] };
+  const released = toolValue(await codex.tool('flux_release_unit', { ...codex.base(releaseGrant.id, 'execute'), ...fenceOf(claimed),
+    checkpoint: { summary: 'Read the complete current plan and existing task.', nextAction: 'Compare source versions before resuming.', blocker: null, orientation }, sources: [] })) as Claim;
+  expectStatus(await f.hubert.browser.request('PATCH', `/api/v1/docs/${doc.id}`, { headers: { 'if-match': `"${doc.version}"` },
+    body: { title: 'Current project plan', body: 'Changed plan: compare the alternatives before measurement.' } }), 200);
+  const resumed = toolValue(await claimTool(codex, claimGrant.id, root.unitId, released.version, { session: await codex.session() })) as Claim;
+  const stored = resumed.checkpoint as Checkpoint & { orientation: typeof orientation };
+  assert.deepEqual(stored.orientation, orientation, 'the next client context gets exact version coverage and missing context');
+  const changes = toolValue(await codex.tool('flux_changes_since', { projectId: f.p.id, known: stored.orientation.known }));
+  assert.deepEqual((changes.changed as { checkpoint: { kind: string; id: string; version: number } }[]).map((source) => source.checkpoint),
+    [{ kind: 'doc', id: doc.id, version: doc.version + 1 }]);
+  assert.deepEqual(changes.unchanged, [{ kind: 'work', id: task.id }]);
+  const policyPath = `/api/v1/agent-connections/${codex.connectionId}/permissions`;
+  const { policy } = expectStatus(await f.hubert.browser.request('GET', policyPath), 200) as { policy: AgentMcpPolicy };
+  expectStatus(await f.hubert.browser.request('PATCH', policyPath, { headers: { 'if-match': `"mcp-policy-${policy.version}"` }, body: {
+    enabledCapabilityIds: policy.enabledCapabilityIds.filter((id) => id !== 'project.knowledge.read'),
+    enabledEntryIds: policy.enabledEntryIds, selectedProjectIds: policy.selectedProjectIds } }), 200);
+  const held = await f.unit(root.unitId);
+  const renewed = await codex.standing('cowork.renew', root.unitId, 'execute');
+  const refused = await codex.raw('flux_renew_unit', { ...codex.base(renewed.id, 'execute', randomUUID(), resumed.lease!.runtimeSessionId),
+    ...fenceOf(resumed) });
+  assert.equal(refused.status, 403, 'an old checkpoint cannot bypass a newly disabled source kind at transport delivery');
+  assert.ok(!JSON.stringify(refused.message).includes(stored.summary), 'the refused response contains no checkpoint text');
+  assert.deepEqual(await f.unit(root.unitId), held, 'the unreadable checkpoint refuses before claim mutation commits');
+});
 
 test('one MCP bearer takes a task, claims, renews and completes its unit with an outcome; a second connection cannot claim it', async () => {
   const f = await scene();

@@ -394,6 +394,30 @@ describe('personal assistant runs (#68, fake compute: no provider pass is claime
     assert.ok((await runs.status(human(maurycy))).today!.chargedMicros > 0);
   });
 
+  test('F-024: provider suspension stops server compute before read, dispatch and commit; retained consent recovers', async () => {
+    const suspend = () => pool.query(`INSERT INTO auth_idp_standing (user_id, provider_id, state, reason)
+      VALUES ($1, 'oidc-standing-fixture', 'sign_in_required', 'invalid_grant')
+      ON CONFLICT (user_id, provider_id) DO UPDATE SET state = 'sign_in_required'`, [hubert.id]);
+    const recover = () => pool.query(`DELETE FROM auth_idp_standing WHERE user_id = $1 AND provider_id = 'oidc-standing-fixture'`, [hubert.id]);
+    try {
+      for (const stage of ['before_read', 'before_dispatch', 'before_commit'] as const) {
+        await recover();
+        const started = await ask(hubert);
+        const dispatched = compute.dispatched.length;
+        hooks.afterRead = stage === 'before_dispatch' ? async () => { await suspend(); } : undefined;
+        hooks.afterDispatch = stage === 'before_commit' ? async () => { await suspend(); } : undefined;
+        if (stage === 'before_read') await suspend();
+        assert.equal(await processor.process(started.run.id), 'revoked', stage);
+        const stored = await row(started.run.id);
+        assert.equal(stored.stopped_at_stage, stage);
+        assert.equal(stored.answer_body, null);
+        assert.equal(compute.dispatched.length - dispatched, stage === 'before_commit' ? 1 : 0);
+      }
+    } finally { hooks.afterRead = undefined; hooks.afterDispatch = undefined; await recover(); }
+    const resumed = await ask(hubert);
+    assert.equal(await processor.process(resumed.run.id), 'completed', 'same owner, consent, connection and grants');
+  });
+
   test('AC-6: revoking the grant or removing the member between read and commit commits nothing', async () => {
     hooks.afterRead = async () => { await revokeAgentGrant('hubert'); };
     const beforeDispatch = await ask(hubert);

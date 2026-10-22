@@ -1,0 +1,141 @@
+{
+  "source_sha": "d3a581d292292b4778272cd73e75c89e640fb4c3",
+  "captured_at": "2026-10-18T12:26:18.955438+00:00",
+  "containers": [
+    {
+      "id": "f8fce42b99db81cebb2c112328c4092ecbaea42ca84c2a0a9ccd1f684cc87f20",
+      "name": "/flux-live-editing-1792326208-1352123-ui-test-run-c0f2494f5b23",
+      "image": "sha256:b31ca69b48ca7990557c50abb2ca3a987ebea9519c7caed230663cd9b8712147",
+      "configured_image": "flux-ui-tests:flux-live-editing-1792326208-1352123",
+      "project": "flux-live-editing-1792326208-1352123",
+      "service": "ui-test",
+      "state": {
+        "Status": "running",
+        "Running": true,
+        "Paused": false,
+        "Restarting": false,
+        "OOMKilled": false,
+        "Dead": false,
+        "Pid": 1363817,
+        "ExitCode": 0,
+        "Error": "",
+        "StartedAt": "2026-10-18T12:25:48.919204699Z",
+        "FinishedAt": "0001-01-01T00:00:00Z"
+      }
+    },
+    {
+      "id": "5f1cbca0d24c7f01b80a1ffff7ec6cf36e9b9d455a591031f6f41a032b119fb7",
+      "name": "/flux-live-editing-1792326208-1352123-api-1",
+      "image": "sha256:d8d718be255da14d68149b11b635785f1d558cacebf5537aea541255a36fbd39",
+      "configured_image": "flux-foundation:flux-live-editing-1792326208-1352123",
+      "project": "flux-live-editing-1792326208-1352123",
+      "service": "api",
+      "state": {
+        "Status": "running",
+        "Running": true,
+        "Paused": false,
+        "Restarting": false,
+        "OOMKilled": false,
+        "Dead": false,
+        "Pid": 1362858,
+        "ExitCode": 0,
+        "Error": "",
+        "StartedAt": "2026-10-18T12:25:43.360684953Z",
+        "FinishedAt": "0001-01-01T00:00:00Z",
+        "Health": {
+          "Status": "healthy",
+          "FailingStreak": 0,
+          "Log": [
+            {
+              "Start": "2026-10-18T14:26:05.431323357+02:00",
+              "End": "2026-10-18T14:26:05.522391514+02:00",
+              "ExitCode": 0,
+              "Output": ""
+            },
+            {
+              "Start": "2026-10-18T14:26:08.523562309+02:00",
+              "End": "2026-10-18T14:26:08.603073245+02:00",
+              "ExitCode": 0,
+              "Output": ""
+            },
+            {
+              "Start": "2026-10-18T14:26:11.60424202+02:00",
+              "End": "2026-10-18T14:26:11.68633113+02:00",
+              "ExitCode": 0,
+              "Output": ""
+            },
+            {
+              "Start": "2026-10-18T14:26:14.687801616+02:00",
+              "End": "2026-10-18T14:26:14.767169301+02:00",
+              "ExitCode": 0,
+              "Output": ""
+            },
+            {
+              "Start": "2026-10-18T14:26:17.767731865+02:00",
+              "End": "2026-10-18T14:26:17.854329484+02:00",
+              "ExitCode": 0,
+              "Output": ""
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "54ea06801d53916a7c43d707b36c67c60b6eb9a1fe9b4258476629b2f2ec2000",
+      "name": "/flux-live-editing-1792326208-1352123-db-1",
+      "image": "sha256:c293117fcecda7344b5480222e813b9f673d7abd69b1dd95eff239b768b04f59",
+      "configured_image": "postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873",
+      "project": "flux-live-editing-1792326208-1352123",
+      "service": "db",
+      "state": {
+        "Status": "running",
+        "Running": true,
+        "Paused": false,
+        "Restarting": false,
+        "OOMKilled": false,
+        "Dead": false,
+        "Pid": 1360064,
+        "ExitCode": 0,
+        "Error": "",
+        "StartedAt": "2026-10-18T12:25:24.047217967Z",
+        "FinishedAt": "0001-01-01T00:00:00Z",
+        "Health": {
+          "Status": "healthy",
+          "FailingStreak": 0,
+          "Log": [
+            {
+              "Start": "2026-10-18T14:26:08.912628042+02:00",
+              "End": "2026-10-18T14:26:08.944358271+02:00",
+              "ExitCode": 0,
+              "Output": "127.0.0.1:5432 - accepting connections\n"
+            },
+            {
+              "Start": "2026-10-18T14:26:10.945631412+02:00",
+              "End": "2026-10-18T14:26:10.970788588+02:00",
+              "ExitCode": 0,
+              "Output": "127.0.0.1:5432 - accepting connections\n"
+            },
+            {
+              "Start": "2026-10-18T14:26:12.971207497+02:00",
+              "End": "2026-10-18T14:26:12.998472687+02:00",
+              "ExitCode": 0,
+              "Output": "127.0.0.1:5432 - accepting connections\n"
+            },
+            {
+              "Start": "2026-10-18T14:26:14.999104487+02:00",
+              "End": "2026-10-18T14:26:15.026712397+02:00",
+              "ExitCode": 0,
+              "Output": "127.0.0.1:5432 - accepting connections\n"
+            },
+            {
+              "Start": "2026-10-18T14:26:17.027972228+02:00",
+              "End": "2026-10-18T14:26:17.054308227+02:00",
+              "ExitCode": 0,
+              "Output": "127.0.0.1:5432 - accepting connections\n"
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,36 @@
+{
+  "source_sha": "03590a3afdd3ac08d92a4959a09fe356d3979181",
+  "projects": {
+    "flux-test-1792319091-1005836": {
+      "containers": [],
+      "images": [],
+      "networks": [],
+      "volumes": []
+    },
+    "flux-test-1792319394-1023950": {
+      "containers": [],
+      "images": [],
+      "networks": [],
+      "volumes": []
+    },
+    "flux-test-1792319459-1026726": {
+      "containers": [],
+      "images": [],
+      "networks": [],
+      "volumes": []
+    },
+    "flux-test-1792319641-1044074": {
+      "containers": [],
+      "images": [],
+      "networks": [],
+      "volumes": []
+    }
+  },
+  "ports": {
+    "18685": "free",
+    "18686": "free"
+  },
+  "verification_head": "03590a3afdd3ac08d92a4959a09fe356d3979181",
+  "verification_status": "",
+  "interrupted_build_disposable_background_key_removed": true
+}

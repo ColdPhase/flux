@@ -2,6 +2,7 @@ import { and, count, desc, eq, isNull, sql, type SQL } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { assignmentNotificationActive, assignmentNotificationReverted } from './notification-lifecycle.js';
 import * as schema from '../schema.js';
+import { hiddenWhileAiOff, notificationHiddenWhileAiOff } from './workspace-ai.js';
 
 /**
  * Drizzle persistence adapters for notifications and Web Push (issues #41, #46). They satisfy
@@ -110,7 +111,7 @@ export function notificationRows(db: DbExecutor) {
     async findForRecipient(userId: string, id: string) {
       const [row] = await db.select({ notification: n, identity: identitySnapshots }).from(n)
         .leftJoin(identitySnapshots, and(eq(n.assistantJoinRequestId, identitySnapshots.joinRequestId), eq(n.assistantJoinOpeningVersion, identitySnapshots.openingVersion)))
-        .where(and(eq(n.id, id), eq(n.userId, userId)));
+        .where(and(eq(n.id, id), eq(n.userId, userId), sql`NOT ${hiddenWhileAiOff(n)}`));
       return row ? withHistoryAndAssistantIdentity(row) : null;
     },
     async workspaceIdsForRecipient(userId: string) {
@@ -120,17 +121,18 @@ export function notificationRows(db: DbExecutor) {
       // Rows kept only for push or email (the person turned the inbox off for that reason) stay out.
       const rows = await db.select({ notification: n, identity: identitySnapshots }).from(n)
         .leftJoin(identitySnapshots, and(eq(n.assistantJoinRequestId, identitySnapshots.joinRequestId), eq(n.assistantJoinOpeningVersion, identitySnapshots.openingVersion)))
-        .where(and(eq(n.userId, userId), eq(n.inInbox, true), audience))
+        .where(and(eq(n.userId, userId), eq(n.inInbox, true), audience, sql`NOT ${hiddenWhileAiOff(n)}`))
         .orderBy(desc(n.createdAt), desc(n.id)).limit(limit);
       return Promise.all(rows.map(withHistoryAndAssistantIdentity));
     },
     async countUnread(userId: string, audience: SQL) {
-      const [row] = await db.select({ unread: count() }).from(n).where(and(eq(n.userId, userId), eq(n.inInbox, true), isNull(n.readAt), audience));
+      const [row] = await db.select({ unread: count() }).from(n).where(and(eq(n.userId, userId), eq(n.inInbox, true), isNull(n.readAt), audience,
+        sql`NOT ${hiddenWhileAiOff(n)}`));
       return row?.unread ?? 0;
     },
     async markRead(userId: string, id: string) {
       const [row] = await db.update(n).set({ readAt: sql`coalesce(${n.readAt}, now())` })
-        .where(and(eq(n.id, id), eq(n.userId, userId))).returning({ readAt: n.readAt });
+        .where(and(eq(n.id, id), eq(n.userId, userId), sql`NOT ${hiddenWhileAiOff(n)}`)).returning({ readAt: n.readAt });
       return row?.readAt ?? null;
     },
   };
@@ -150,6 +152,8 @@ export function pushDeliveryRepository(db: DbExecutor) {
         .leftJoin(schema.authSessions, and(eq(schema.authSessions.id, s.sessionId), eq(schema.authSessions.userId, s.userId)))
         .where(and(eq(s.id, job.subscriptionId), eq(s.userId, job.userId)));
       if (!row || !(await assignmentNotificationActive(db, row.notification))) return null;
+      // F-029: an AI-origin notification of a workspace whose AI is off is not pushed, even one created before.
+      if (await notificationHiddenWhileAiOff(db, row.notification.id)) return null;
       return { subscription: toSubscriptionRecord(row.subscription), notification: toNotificationRecord(row.notification), sessionActive: row.sessionActive };
     },
     async deleteSubscription(id: string) {

@@ -1,0 +1,89 @@
+[
+  {
+    "label": "chromium-build-a093e221",
+    "source_sha": "a093e2216613f75200eb58e0103c4d9bad3e1a94",
+    "stage": "build",
+    "runner_exit": 1,
+    "outcome": "FAIL",
+    "methods": 0,
+    "seconds": null,
+    "failures": [],
+    "errors": [],
+    "skips": 0,
+    "native_ime_markers": [],
+    "raw_log": "/home/hubert/flux-evidence/228-composed-focused-chromium-build-failed-a093e221.log",
+    "raw_log_sha256": "fbb7f4b253e63cb9c032f730cec8f86748f27adedb0a11c414f91b5430cb0c0e",
+    "passed_methods": 0,
+    "build_failure": "17 undefined browser globals in newly added test-only JS reference helper; no API/browser test executed"
+  },
+  {
+    "label": "chromium-078690b2",
+    "source_sha": "078690b2b5e26238d04c69b02f8b35f3b752f245",
+    "stage": "browser",
+    "runner_exit": 1,
+    "outcome": "FAIL",
+    "methods": 6,
+    "seconds": 35.106,
+    "failures": [
+      "test_500_clamped_marks_follow_200_real_peer_previews_without_svg_host_writes (test_map_minimap_renderer.MinimapRenderer.test_500_clamped_marks_follow_200_real_peer_previews_without_svg_host_writes)",
+      "test_small_and_large_native_sizes_match_original_svg_in_both_palettes_and_dpr (test_map_minimap_renderer.MinimapRenderer.test_small_and_large_native_sizes_match_original_svg_in_both_palettes_and_dpr)",
+      "test_11_quota_and_concurrent_own_undo_keep_100k_body (test_live_editing.LiveEditingJourney.test_11_quota_and_concurrent_own_undo_keep_100k_body)",
+      "test_14_ime_composition_shares_the_committed_text_once (test_live_editing.LiveEditingJourney.test_14_ime_composition_shares_the_committed_text_once)"
+    ],
+    "errors": [],
+    "skips": 0,
+    "native_ime_markers": [],
+    "raw_log": "/home/hubert/flux-evidence/228-composed-focused-chromium-078690b2.log",
+    "raw_log_sha256": "140e44a537c9efd5dadebda187be894bb23364eaf48e15b434320095d4ef9cf5",
+    "passed_methods": 2,
+    "inventory": "chromium-078690b2-runtime.json"
+  },
+  {
+    "label": "chromium-3cb39da1",
+    "source_sha": "3cb39da1f2eef8e16a9886adf681fff178993d84",
+    "stage": "browser",
+    "runner_exit": 1,
+    "outcome": "FAIL",
+    "methods": 4,
+    "seconds": 49.762,
+    "failures": [
+      "test_500_clamped_marks_follow_200_real_peer_previews_without_svg_host_writes (test_map_minimap_renderer.MinimapRenderer.test_500_clamped_marks_follow_200_real_peer_previews_without_svg_host_writes)",
+      "test_14_ime_composition_shares_the_committed_text_once (test_live_editing.LiveEditingJourney.test_14_ime_composition_shares_the_committed_text_once)"
+    ],
+    "errors": [],
+    "skips": 0,
+    "native_ime_markers": [
+      "chromium-cdp; trusted preedit/input; endTrusted=[False]",
+      "chromium-cdp; trusted preedit/input; endTrusted=[False]"
+    ],
+    "raw_log": "/home/hubert/flux-evidence/228-composed-focused-chromium.log",
+    "raw_log_sha256": "c2e7bf6bcf8af7fa4526edda7f887e2bf53022cb28ef9b670dc4f1bc6195d2ca",
+    "passed_methods": 2,
+    "inventory": "chromium-3cb39da1-runtime.json"
+  },
+  {
+    "label": "webkit-4618e319",
+    "source_sha": "4618e319b992137c83475fdfb943cf4c355ec114",
+    "stage": "browser",
+    "runner_exit": 1,
+    "outcome": "FAIL",
+    "methods": 6,
+    "seconds": 49.335,
+    "failures": [
+      "test_500_clamped_marks_follow_200_real_peer_previews_without_svg_host_writes (test_map_minimap_renderer.MinimapRenderer.test_500_clamped_marks_follow_200_real_peer_previews_without_svg_host_writes)",
+      "test_small_and_large_native_sizes_match_original_svg_in_both_palettes_and_dpr (test_map_minimap_renderer.MinimapRenderer.test_small_and_large_native_sizes_match_original_svg_in_both_palettes_and_dpr)"
+    ],
+    "errors": [
+      "test_11_quota_and_concurrent_own_undo_keep_100k_body (test_live_editing.LiveEditingJourney.test_11_quota_and_concurrent_own_undo_keep_100k_body)"
+    ],
+    "skips": 0,
+    "native_ime_markers": [
+      "webkit-gtk-simple-x11; trusted preedit/commit cycles=2",
+      "webkit-gtk-simple-x11; trusted preedit/commit cycles=2"
+    ],
+    "raw_log": "/home/hubert/flux-evidence/228-composed-focused-webkit.log",
+    "raw_log_sha256": "e1bdbc1bedfe363df3cbae1faa60c1c29997a267ad0cda44b2bfea99ce6791b9",
+    "passed_methods": 3,
+    "inventory": "webkit-4618e319-runtime.json"
+  }
+]

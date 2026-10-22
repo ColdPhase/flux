@@ -65,7 +65,15 @@ def container_network() -> dict:
         if fields[1] == "00000000":
             default_route = fields[0]
             break
-    return {"interfaces": interfaces, "defaultRouteInterface": default_route, "mediaRemote": socket.gethostbyname("livekit")}
+    media_remote = socket.gethostbyname("livekit")
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
+        # UDP connect selects the kernel route without sending a packet. Attribute the SFU path
+        # to its local interface so a mismatched default route is visible in the row evidence.
+        probe.connect((media_remote, 7882))
+        media_local = probe.getsockname()[0]
+    media_route = next((name for name, address in interfaces.items() if address == media_local), None)
+    return {"interfaces": interfaces, "defaultRouteInterface": default_route, "mediaRemote": media_remote,
+            "mediaRouteInterface": media_route, "mediaRouteAddress": media_local}
 
 
 def bound_udp_addresses() -> dict[int, str]:
@@ -187,7 +195,7 @@ JOIN_PROBE = """() => {
   const region = document.querySelector('[role="region"][aria-label="Live session"]');
   const live = window.__live || {};
   return { url: location.pathname, userAgent: navigator.userAgent,
-    header: document.querySelector('header.top')?.innerText.slice(0, 200) ?? null,
+    header: document.querySelector('header.top, header.phead')?.innerText.slice(0, 200) ?? null,
     regionPresent: !!region, regionText: region ? region.innerText.slice(0, 300) : null,
     gum: live.gum ?? null, gdm: live.gdm ?? null, sockets: live.sockets ?? null,
     rtcReadyStates: (live.rtc || []).map((socket) => socket.readyState) };
@@ -330,10 +338,10 @@ class PlatformRows(LiveBase):
         conversation = f"/projects/{self.ids['project']}/conversations/{self.ids['conversation']}"
 
         host = self.page("nia")
-        host.goto(conversation)
+        self.open_conversation(host, conversation)
         host_bar = self.bar(host)
-        together = host.locator("header.top").get_by_role("button", name="Together", exact=True)
-        join = host.locator("header.top").get_by_role("button", name="Join", exact=True)
+        together = host.locator("header.top, header.phead").get_by_role("button", name="Together", exact=True)
+        join = host.locator("header.top, header.phead").get_by_role("button", name="Join", exact=True)
         # The header shows Together, or Join when a session is already open (left by an earlier failure).
         expect(together.or_(join).or_(host_bar)).to_be_visible()
         if not host_bar.is_visible():
@@ -362,8 +370,8 @@ class PlatformRows(LiveBase):
                                    "engineBeforeCapabilityEmulation": engine_value,
                                    "capabilityEmulation": "getDisplayMedia removed (MDN BCD, 2026-10-10)"}
 
-        page.goto(conversation)
-        page.locator("header.top").get_by_role("button", name="Join").click()
+        self.open_conversation(page, conversation)
+        page.locator("header.top, header.phead").get_by_role("button", name="Join").click()
         bar = self.bar(page)
         try:
             expect(bar.get_by_role("status").first).to_contain_text("Live")
@@ -375,7 +383,12 @@ class PlatformRows(LiveBase):
             raise
         shot(page, f"live-platform-{row.name}-joined")
         self.observed[row.name]["icePath"] = record_ice(page)
-        self.observed[row.name]["container"] = container_network()
+        network = container_network()
+        self.observed[row.name]["container"] = network
+        self.assertIsNotNone(network["defaultRouteInterface"], "the browser container has a default route")
+        self.assertIsNotNone(network["mediaRouteInterface"], "the kernel has a route to LiveKit's media address")
+        self.assertEqual(network["defaultRouteInterface"], network["mediaRouteInterface"],
+                         "the browser's default route must use the interface that reaches LiveKit")
         # The emulated state must be in the page the app rendered, not only in the context.
         in_page = page.evaluate("""() => ({ installed: window.__noDisplayCapture === true,
           getDisplayMedia: typeof navigator.mediaDevices?.getDisplayMedia,

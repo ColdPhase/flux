@@ -1,0 +1,21 @@
+✔ #510: the list is the map's tree: a thought sits under the thought its connection was drawn from (7.881703ms)
+✔ several parents: the oldest is the branch, the others are "also under"; every link shows exactly once (0.403481ms)
+✔ pure cycles, missing endpoints and self links resolve deterministically without losing a thought (0.255541ms)
+✔ the tree depends only on the graph: removing a thought detaches its children, and restoring it restores them (0.255521ms)
+✔ siblings follow the personal reading order; moving swaps only the two remembered siblings (0.27061ms)
+✔ renaming/moving/reordered server arrays preserve local outline order and never mutate graph input (0.16362ms)
+✔ preference storage is ID-only, account-scoped and globally bounded with oldest sketch eviction (25.061493ms)
+✔ graphs exceeding the preference cap still render once and converge without a reconciliation loop (3.704061ms)
+✔ #510 AC-6: Tab with another parent is refused when the thought would read under that parent instead (0.518451ms)
+✔ Tab moves the connection to the new parent: the new connection first, the old one after, the label kept (0.304901ms)
+✔ Tab onto a parent that is already connected reuses that connection; the other direction is replaced first (0.221461ms)
+✔ Shift+Tab to the top level is refused while another parent would keep the thought under it (0.161491ms)
+ℹ tests 12
+ℹ suites 0
+ℹ pass 12
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 202.013786
+Named API test files only: browser, restart, unavailable-configuration and background checks skipped.

@@ -1,0 +1,12 @@
+✔ two actual API processes deliver commit NOTIFY, pre-drop preview, character edits, protected presence and ordered missed-update catch-up (1477.137773ms)
+ℹ actual process inventory source=450f2430c17e1b57bfe54df7be607dc723ba5d89 instances=api-one,api-two distinctContainers=true sameImage=true
+ℹ cross-process functional receipts map=2 wiki=2; real NOTIFY rooms=2; missed-delivery ordered catchup=2; savedVersion=2; old-client dirty409; named presence/current revocation; real catchup map revoked/close1008; post-commit delta/move/presence withheld; opaque native/bootstrap/gesture/label refusals; independent owner continuation on both APIs. Browser DOM latency and API restart remain separate required gates.
+ℹ tests 1
+ℹ suites 0
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2193.058495
+Removed 2 per-run image(s) tagged :flux-live-editing-1792324344-1241717

@@ -1,0 +1,235 @@
+{
+  "schema": 1,
+  "author_verification_only": true,
+  "sources": {
+    "d3a581d2": "d3a581d292292b4778272cd73e75c89e640fb4c3",
+    "2735c4f5": "2735c4f57efedd5933fcd39b56b08117a6e869e0",
+    "81e351fe": "81e351fee31d20d9284a39764ad8108fa0545e9a",
+    "d919fa56": "d919fa566e0639139c93aa3fffc8d71cabe37c92",
+    "bb80320e": "bb80320ee5e9d32efdd840b7d764679c357a88e0",
+    "f30c9910": "f30c9910a21911a4287833a1c19faa12bb5d2851",
+    "450f2430": "450f2430c17e1b57bfe54df7be607dc723ba5d89",
+    "7cbdd7fd": "7cbdd7fd9d1007db65ea76144b4fcb1f71693481"
+  },
+  "attempts": [
+    {
+      "name": "d3a581d2-chromium",
+      "source_sha": "d3a581d292292b4778272cd73e75c89e640fb4c3",
+      "exit_code": 1,
+      "invoked_methods": 3,
+      "passed": 2,
+      "failed": 1,
+      "skipped": 0,
+      "duration_seconds": 29.609,
+      "raw_log": {
+        "path": "/home/hubert/flux-evidence/228-node-handlers-d3a581d2-chromium.log",
+        "sha256": "f6e91c3ae0d4e80a1ab41ea3e6ce402f8ef51e2ab151d1229d30fda4a4f6cfc5",
+        "bytes": 120146
+      },
+      "excerpt": "d3a581d2-chromium.summary.txt",
+      "actual_runtime": "d3a581d2-chromium-runtime.json"
+    },
+    {
+      "name": "2735c4f5-webkit-cancelled",
+      "source_sha": "2735c4f57efedd5933fcd39b56b08117a6e869e0",
+      "exit_code": 143,
+      "invoked_methods": 0,
+      "passed": 0,
+      "failed": 0,
+      "skipped": 0,
+      "duration_seconds": null,
+      "raw_log": {
+        "path": "/home/hubert/flux-evidence/228-node-handlers-2735c4f5-webkit.log",
+        "sha256": "71b78bbb64099920c2f94fb085e98c3cc84258affc4dc19a20d3b3ab8270f2d7",
+        "bytes": 27315
+      },
+      "excerpt": "2735c4f5-webkit-cancelled.summary.txt",
+      "cancellation": "cancelled.json"
+    },
+    {
+      "name": "81e351fe-chromium19",
+      "source_sha": "81e351fee31d20d9284a39764ad8108fa0545e9a",
+      "exit_code": 1,
+      "invoked_methods": 1,
+      "passed": 0,
+      "failed": 1,
+      "skipped": 0,
+      "duration_seconds": 3.078,
+      "raw_log": {
+        "path": "/home/hubert/flux-evidence/228-node-handlers-81e351fe-chromium19.log",
+        "sha256": "835bef16da8bd799cb987418c153c07b28658c9c6dc15d143f25786f50aabe06",
+        "bytes": 99367
+      },
+      "excerpt": "81e351fe-chromium19.summary.txt",
+      "actual_runtime": "81e351fe-chromium19-runtime.json"
+    },
+    {
+      "name": "d919fa56-chromium19",
+      "source_sha": "d919fa566e0639139c93aa3fffc8d71cabe37c92",
+      "exit_code": 0,
+      "invoked_methods": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "duration_seconds": 3.413,
+      "raw_log": {
+        "path": "/home/hubert/flux-evidence/228-node-handlers-d919fa56-chromium19.log",
+        "sha256": "84671bbd6f409ac2abc90d1954b641bc1ab3a8c8c371c147e0a5cbd79d35a20f",
+        "bytes": 32471
+      },
+      "excerpt": "d919fa56-chromium19.summary.txt",
+      "actual_runtime": "d919fa56-chromium19-runtime.json"
+    },
+    {
+      "name": "bb80320e-webkit",
+      "source_sha": "bb80320ee5e9d32efdd840b7d764679c357a88e0",
+      "exit_code": 0,
+      "invoked_methods": 33,
+      "passed": 33,
+      "failed": 0,
+      "skipped": 0,
+      "duration_seconds": 177.577,
+      "raw_log": {
+        "path": "/home/hubert/flux-evidence/228-composed-bb80320e-webkit.log",
+        "sha256": "3f0cb8c2ebb7faf7d095eff1b403feaed6dd742f95c3560b9148ee6d321b4a0e",
+        "bytes": 39455
+      },
+      "excerpt": "bb80320e-webkit.summary.txt",
+      "actual_runtime": "bb80320e-webkit-runtime.json"
+    },
+    {
+      "name": "bb80320e-chromium",
+      "source_sha": "bb80320ee5e9d32efdd840b7d764679c357a88e0",
+      "exit_code": 0,
+      "invoked_methods": 32,
+      "passed": 32,
+      "failed": 0,
+      "skipped": 0,
+      "duration_seconds": 134.187,
+      "raw_log": {
+        "path": "/home/hubert/flux-evidence/228-composed-bb80320e-chromium.log",
+        "sha256": "9de3b8939e1942b7cff85ce9f2b771d9484708d902e1bed5ba6388fcca380a89",
+        "bytes": 17396
+      },
+      "excerpt": "bb80320e-chromium.summary.txt",
+      "actual_runtime": "bb80320e-chromium-runtime.json"
+    },
+    {
+      "name": "d919fa56-off-chromium",
+      "source_sha": "d919fa566e0639139c93aa3fffc8d71cabe37c92",
+      "exit_code": 0,
+      "invoked_methods": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0,
+      "duration_seconds": 3.372,
+      "raw_log": {
+        "path": "/home/hubert/flux-evidence/228-node-handlers-d919fa56-off-chromium.log",
+        "sha256": "316b04cd91d518b33eab0bd08132179481c514d297260739bf08fbfc71b02df8",
+        "bytes": 15243
+      },
+      "excerpt": "d919fa56-off-chromium.summary.txt",
+      "actual_runtime": "d919fa56-off-chromium-runtime.json"
+    },
+    {
+      "name": "d919fa56-off-webkit",
+      "source_sha": "d919fa566e0639139c93aa3fffc8d71cabe37c92",
+      "exit_code": 0,
+      "invoked_methods": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0,
+      "duration_seconds": 6.986,
+      "raw_log": {
+        "path": "/home/hubert/flux-evidence/228-node-handlers-d919fa56-off-webkit.log",
+        "sha256": "ef735055ed6d6fa8ecdad6d839682c2562868e91a94eea8769a3150d6c7c8e9f",
+        "bytes": 15202
+      },
+      "excerpt": "d919fa56-off-webkit.summary.txt",
+      "actual_runtime": "d919fa56-off-webkit-runtime.json"
+    }
+  ],
+  "compatibility": [
+    {
+      "base_sha": "450f2430c17e1b57bfe54df7be607dc723ba5d89",
+      "target_sha": "d919fa566e0639139c93aa3fffc8d71cabe37c92",
+      "paths": [
+        "app/apps/server",
+        "app/packages",
+        "docker",
+        "app/pnpm-lock.yaml"
+      ],
+      "diff_empty": true
+    },
+    {
+      "base_sha": "7cbdd7fd9d1007db65ea76144b4fcb1f71693481",
+      "target_sha": "d919fa566e0639139c93aa3fffc8d71cabe37c92",
+      "paths": [
+        "app/apps/web/src/docs",
+        "app/apps/server",
+        "app/packages",
+        "docker",
+        "app/pnpm-lock.yaml"
+      ],
+      "diff_empty": true
+    },
+    {
+      "base_sha": "d919fa566e0639139c93aa3fffc8d71cabe37c92",
+      "target_sha": "bb80320ee5e9d32efdd840b7d764679c357a88e0",
+      "paths": [
+        "app/apps",
+        "app/packages",
+        "app/tests/ui/test_live_editing.py",
+        "app/tests/ui/test_live_editing_off.py",
+        "docker",
+        "app/pnpm-lock.yaml"
+      ],
+      "diff_empty": true
+    }
+  ],
+  "reused_owner_api_receipt": [
+    {
+      "path": "/home/hubert/flux-evidence/228-map-producer-memo-450f2430/api.log",
+      "sha256": "3d2da8f0be71d67409fc5212df7776f6ec42c4b42f7fe78494dd7408e6073699",
+      "bytes": 48451,
+      "owner_executed_not_rerun_here": true
+    },
+    {
+      "path": "/home/hubert/flux-evidence/228-map-producer-memo-450f2430/api.inventory.json",
+      "sha256": "6780d6c2b4c9f276c61136672288ace2f3dd64d350991d03af25c5a528aac47c",
+      "bytes": 4350,
+      "owner_executed_not_rerun_here": true
+    },
+    {
+      "path": "/home/hubert/flux-evidence/228-map-producer-memo-450f2430/two-api.log",
+      "sha256": "206c20c8f6c405c13e545cb535ba0e42dd7b5270e2f1aa0b144c51e2ba7e6fb2",
+      "bytes": 11240,
+      "owner_executed_not_rerun_here": true
+    },
+    {
+      "path": "/home/hubert/flux-evidence/228-map-producer-memo-450f2430/two-api.inventory.json",
+      "sha256": "52f24e9926bfc61cf1c24b8f37fd56326c59ba2d01c324cbc615de990ed040f7",
+      "bytes": 2302,
+      "owner_executed_not_rerun_here": true
+    },
+    {
+      "path": "/home/hubert/flux-evidence/228-map-producer-memo-450f2430/cleanup.json",
+      "sha256": "74eb0adae02e55350a2c20bb0b2abdb8114b9bd00fa6fd3030928d844373e1c5",
+      "bytes": 559,
+      "owner_executed_not_rerun_here": true
+    }
+  ],
+  "screenshot_capture_separate_from_maintained_methods": true,
+  "helper_only_diff_from_f30": [
+    "app/tests/ui/test_live_author_capture.py"
+  ],
+  "helper_sha256": "b6a6793b4b0cd2cef0536cc4e51fb237b467a2bfb6b58779da68a439e72efa98",
+  "raw_screenshot_directories": [
+    "/home/hubert/flux-evidence/228-composed-bb80320e-webkit-shots",
+    "/home/hubert/flux-evidence/228-composed-bb80320e-chromium-shots"
+  ],
+  "screenshots_recorded_by_coordinator": "/home/hubert/flux-evidence/228-composed-renders-staging",
+  "frontend_change_paths_from_7cb": [
+    "app/apps/web/src/sketch/SketchMap.tsx"
+  ]
+}

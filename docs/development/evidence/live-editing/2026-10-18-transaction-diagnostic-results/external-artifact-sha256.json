@@ -1,0 +1,26 @@
+{
+  "map-stages.jsonl": {
+    "bytes": 7516121,
+    "sha256": "ee7ee07ad6f2e263b40ece4d5b6cf847c75df778d94626c09cbef7844f1774c6"
+  },
+  "api.log": {
+    "bytes": 9927974,
+    "sha256": "d28c93e60afc0499b3c05748c04f3531987f4de5ca95297939ddb007d5cd3192"
+  },
+  "map-500-drag-200-rows.json": {
+    "bytes": 14237097,
+    "sha256": "dd9e03d1864f84c08bebf60b2e7070e2a6587a82d25df78dd47887a193481ae0"
+  },
+  "runtime.json": {
+    "bytes": 2014,
+    "sha256": "92da614dd00e419331c35b9650e67a42e99f0d64414e9928bc05eea34d4d0766"
+  },
+  "map-500-drag-200-summary.json": {
+    "bytes": 34745,
+    "sha256": "2c99e45ce1a7bab475e7917421737268c9fef6951cf785429a061d186bafd15a"
+  },
+  "collector-result.json": {
+    "bytes": 179,
+    "sha256": "383bf762b18be1013fa5f7f7edffad98c5ab077530808281918f5b62237385fa"
+  }
+}

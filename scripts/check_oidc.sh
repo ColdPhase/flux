@@ -6,6 +6,8 @@
 # revocation, mail to each chosen mailbox, links that open only while authorized, and one
 # message per actual mailbox. A deterministic mock provider with a second API replica checks that
 # ID tokens with a bad nonce, signature, issuer or audience are refused on the real callback.
+# FLUX_OIDC_CLOSEOUT=1 also exercises genuine boot outage/recovery and the official pinned MCP
+# clients against Keycloak (only their model endpoint is mocked; no vendor account is used).
 # Own Compose project, loopback ports (FLUX_OIDC_TEST_PORT, default
 # 18095, and the next one for Mailpit), per-run secrets; it removes its containers, volumes and images.
 set -eu
@@ -27,6 +29,7 @@ export FLUX_AUTH_RATE_LIMIT=false
 export FLUX_STREAM_HEARTBEAT_MS=1000
 
 work=$(mktemp -d)
+outage_pid=
 background_secret_dir="$work/background"
 mkdir "$background_secret_dir"
 head -c 32 /dev/urandom > "$background_secret_dir/background_key"
@@ -60,9 +63,11 @@ chmod 0444 "$FLUX_OIDC_TEST_REALM"
 
 . scripts/test_images.sh
 compose="docker compose -p $project -f docker/compose.source.yaml -f docker/compose.test.yaml -f docker/compose.oidc.test.yaml --profile test --profile oidc"
+if [ "${FLUX_OIDC_CLOSEOUT:-0}" = "1" ]; then compose="$compose --profile mcp-clients"; fi
 
 cleanup() {
   status=$?
+  if [ -n "$outage_pid" ]; then kill "$outage_pid" 2>/dev/null || true; fi
   if [ "$status" -ne 0 ]; then
     $compose logs --no-color keycloak oidc-mock migrate api api-mock worker mailpit || true
   fi
@@ -75,9 +80,33 @@ trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
-$compose build migrate e2e
+$compose build migrate
+# compose.test declares this service by image only; naming it in `compose build` does not build
+# the Dockerfile target or tag the stage used internally by mcp-clients.
+docker build --file docker/Dockerfile --target e2e --tag "flux-e2e:${FLUX_IMAGE_TAG:-$project}" app
+if [ "${FLUX_OIDC_CLOSEOUT:-0}" = "1" ]; then $compose --profile mcp-clients build test mcp-clients; fi
 $compose up -d db migrate
 $compose --profile setup run --rm files-init
+if [ "${FLUX_OIDC_CLOSEOUT:-0}" = "1" ]; then
+  $compose wait migrate
+  # Direct checker/SQL regressions need only this fresh database; finish them before the sole-provider
+  # API starts, so test-provider reconciliation cannot touch a real Keycloak session.
+  $compose run --rm --no-deps test node_modules/.bin/tsx --test tests/app/idp-standing.test.ts
+  # Deliberately omit the IdP, including Compose's dependency startup, for the real boot-outage row.
+  export FLUX_OIDC_TEST_SSO_MODE=sso
+  $compose up -d --no-deps --wait api mailpit
+  $compose run --rm --no-deps -e FLUX_OIDC_PROVIDER_ID="$provider_id" e2e \
+    node_modules/.bin/tsx --test tests/app/e2e/oidc-boot-outage.e2e.ts > "$work/boot-outage.log" 2>&1 &
+  outage_pid=$!
+  attempts=0
+  until grep -q OIDC_BOOT_OUTAGE_OBSERVED "$work/boot-outage.log"; do
+    if ! kill -0 "$outage_pid" 2>/dev/null || [ "$attempts" -ge 90 ]; then cat "$work/boot-outage.log"; exit 1; fi
+    attempts=$((attempts + 1)); sleep 1
+  done
+  $compose up -d --wait keycloak
+  if wait "$outage_pid"; then cat "$work/boot-outage.log"; else cat "$work/boot-outage.log"; exit 1; fi
+  outage_pid=
+fi
 # Migration phase first (#315): the API runs in prepare mode, so password accounts may link Keycloak before cutover.
 export FLUX_OIDC_TEST_SSO_MODE=prepare
 $compose up -d --wait keycloak oidc-mock mailpit api api-mock worker
@@ -141,5 +170,15 @@ e2e --test-name-pattern prepare tests/app/e2e/oidc-restart.e2e.ts
 $compose restart api
 $compose up -d --wait api
 e2e --test-name-pattern verify tests/app/e2e/oidc-restart.e2e.ts
+
+if [ "${FLUX_OIDC_CLOSEOUT:-0}" = "1" ]; then
+  $compose --profile mcp-clients run --rm -e FLUX_OIDC_PROVIDER_ID="$provider_id" \
+    -e FLUX_OIDC_TEST_PASSWORD="$FLUX_OIDC_TEST_PASSWORD" mcp-clients sh -c \
+    'node apps/runtime/dist/install/main.js && exec node_modules/.bin/tsx --test --test-concurrency=1 tests/app/e2e/oidc-clients.e2e.ts'
+  export FLUX_OIDC_TEST_STANDING=off
+  $compose up -d --wait api
+  $compose run --rm -e FLUX_OIDC_PROVIDER_ID="$provider_id" -e FLUX_OIDC_EXPECT_STANDING_OFF=1 e2e \
+    node_modules/.bin/tsx --test --test-concurrency=1 --test-name-pattern '^(setup:|confirmation age)' tests/app/e2e/oidc-mcp.e2e.ts
+fi
 
 echo 'Single sign-on check passed.'

@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict';
-import { randomUUID } from 'node:crypto';
+import { generateKeyPairSync, randomUUID, sign } from 'node:crypto';
 import { describe, test } from 'node:test';
+import { BACKGROUND_CONSENT_VERSION, PERSONAL_RUN_CONSENT_VERSION, PERSONAL_RUNTIME_CONSENT_VERSION } from '@flux/contracts';
 import { idpStandingRepository, schema } from '@flux/db';
 import type { OidcConfig } from '../../apps/server/src/identity/config.js';
 import { createIdpStanding, openToken, sealKey, sealToken, signInAgainMessage } from '../../apps/server/src/identity/standing.js';
+import { createConfirmation } from '../../apps/server/src/identity/confirmation.js';
 import { db, insertedHuman, pool } from './support/db.js';
 
 // The standing check of a person's account at the identity provider (F-024 S4, #311), against the Compose
@@ -13,14 +15,24 @@ const config = (providerId: string, standing: 'refresh' | 'off' = 'refresh'): Oi
   providerId, issuer: 'http://idp.test/realms/flux', clientId: 'flux', clientSecret: 'client-secret-xyz', label: 'Acme "login"', standing, standingIntervalMs: 900_000, confirmationMaxAgeMs: 7 * 24 * 3_600_000,
 });
 const authSecret = 'a'.repeat(40);
+const signing = generateKeyPairSync('rsa', { modulusLength: 2048 });
+const jwk = { ...signing.publicKey.export({ format: 'jwk' }), kid: 'standing-test', alg: 'RS256', use: 'sig' };
+function idToken(subject: string, claims: Record<string, unknown> = {}) {
+  const header = Buffer.from(JSON.stringify({ alg: 'RS256', kid: jwk.kid })).toString('base64url');
+  const body = Buffer.from(JSON.stringify({ iss: config('test').issuer, aud: 'flux', sub: subject,
+    iat: Math.floor(Date.now() / 1000), exp: Math.floor(Date.now() / 1000) + 300,
+    email: `changed-${randomUUID()}@example.test`, email_verified: true, name: 'Updated name', ...claims })).toString('base64url');
+  return `${header}.${body}.${sign('sha256', Buffer.from(`${header}.${body}`), signing.privateKey).toString('base64url')}`;
+}
 
 type Reply = { status: number; body?: unknown } | 'throw';
 function scriptedProvider(replies: Reply[]) {
   const calls: { url: string; body: string; authorization?: string }[] = [];
   const fetcher = async (url: string, init: { body?: string; headers?: Record<string, string> }) => {
     if (url.endsWith('/.well-known/openid-configuration')) {
-      return { ok: true, status: 200, json: async () => ({ token_endpoint: 'http://idp.test/token', revocation_endpoint: 'http://idp.test/revoke' }) };
+      return { ok: true, status: 200, json: async () => ({ token_endpoint: 'http://idp.test/token', revocation_endpoint: 'http://idp.test/revoke', jwks_uri: 'http://idp.test/jwks' }) };
     }
+    if (url.endsWith('/jwks')) return { ok: true, status: 200, json: async () => ({ keys: [jwk] }) };
     calls.push({ url, body: init.body ?? '', authorization: init.headers?.authorization });
     if (url.endsWith('/revoke')) return { ok: true, status: 200, json: async () => ({}) };
     const reply = replies.shift() ?? 'throw';
@@ -50,6 +62,48 @@ const row = async (userId: string) => (await pool.query('SELECT * FROM auth_idp_
 const sessions = async (userId: string) => (await pool.query('SELECT 1 FROM auth_sessions WHERE user_id = $1', [userId])).rowCount;
 const due = (userId: string) => pool.query(`UPDATE auth_idp_standing SET next_check_at = now() - interval '1 second' WHERE user_id = $1`, [userId]);
 const key = sealKey(authSecret);
+
+async function mcpClient() {
+  const client = `client-${randomUUID()}`;
+  await pool.query(`INSERT INTO oauth_client (id, client_id, name, redirect_uris, token_endpoint_auth_method, grant_types, response_types, scopes, require_pkce, created_at, updated_at)
+    VALUES ($1, $2, 'c', $3, 'none', '{authorization_code}', '{code}', '{offline_access}', true, now(), now())`, [randomUUID(), client, ['http://127.0.0.1/cb']]);
+  return client;
+}
+async function accessToken(userId: string, options: { expires: number; revoked?: boolean }) {
+  await pool.query(`INSERT INTO oauth_access_token (id, token, client_id, user_id, expires_at, created_at, revoked, scopes)
+    VALUES ($1, $2, $3, $4, now() + ($5 || ' milliseconds')::interval, now(), ${options.revoked ? 'now()' : 'NULL'}, '{offline_access}')`,
+  [randomUUID(), randomUUID(), await mcpClient(), userId, String(options.expires)]);
+}
+/** A project and agent owned by the person, with one proactive comparison rule in the given status. */
+async function proactiveRule(userId: string, status: 'enabled' | 'paused' | 'revoked') {
+  const workspaceId = randomUUID();
+  const projectId = randomUUID();
+  const agentId = randomUUID();
+  const ruleId = randomUUID();
+  await db.insert(schema.workspaces).values({ id: workspaceId, name: 'Standing fixture', createdBy: userId });
+  await db.insert(schema.projects).values({ id: projectId, workspaceId, name: 'Standing fixture', createdBy: userId });
+  await db.insert(schema.agents).values({ id: agentId, workspaceId, name: 'Standing agent', ownerUserId: userId, createdBy: userId });
+  await db.insert(schema.proactiveComparisonRules).values({ id: ruleId, workspaceId, projectId, ownerUserId: userId, agentId, maxRunsPerDay: 3, periodBudgetCents: 15, perRunCents: 5, status });
+  return { workspaceId, projectId, ruleId };
+}
+/** A candidate in the given status under a paused rule, so only the candidate can make the person eligible. */
+async function proactiveCandidate(userId: string, status: 'queued' | 'reserved' | 'completed' | 'not_run' | 'unknown') {
+  const { workspaceId, projectId, ruleId } = await proactiveRule(userId, 'paused');
+  const resultId = randomUUID();
+  await db.insert(schema.projectResults).values({ id: resultId, workspaceId, projectId, title: 'Low-light trial failed', finding: 'negative', createdByKind: 'human', createdById: userId });
+  const reserved = status === 'reserved' || status === 'unknown' || status === 'completed';
+  let connectionId: string | null = null;
+  if (reserved) {
+    connectionId = randomUUID();
+    await db.insert(schema.backgroundComputeConnections).values({ id: connectionId, ownerUserId: userId, provider: 'anthropic', model: 'claude-sonnet-5', name: 'Standing fixture',
+      payerOrganization: 'owner', providerWorkspace: 'owner', encryptedKey: 'sealed-fixture', keyLastFour: '0000', keyFingerprint: randomUUID().replaceAll('-', '').slice(0, 16), maxRunsPerDay: 3, periodDays: 30, periodBudgetCents: 15, perRunCents: 5,
+      consentVersion: BACKGROUND_CONSENT_VERSION });
+  }
+  const notRun = status === 'not_run' ? { usageInputTokens: 0, usageOutputTokens: 0, usageEstimatedCents: 0, failureCode: 'NO_SOURCES', finishedAt: new Date() } : {};
+  await db.insert(schema.proactiveComparisonOutbox).values({ aiEpoch: 1, id: randomUUID(), ruleId, ownerUserId: userId, projectId, resultId, status, connectionId,
+    sourceFingerprint: randomUUID().replaceAll('-', '') + randomUUID().replaceAll('-', ''),
+    ...(reserved ? { reservedCents: 5, reservedAt: new Date() } : {}), ...notRun });
+}
 
 describe('the sealed provider token', () => {
   test('round-trips, is bound to its person and provider, and does not hold the token in the clear', () => {
@@ -130,6 +184,58 @@ describe('a provider sign-in', () => {
 });
 
 describe('the check', () => {
+  test('a verified refresh ID token updates only the same subject profile and preserves account provenance', async () => {
+    const id = provider(); const userId = await person(id);
+    const account = (await pool.query('SELECT * FROM auth_accounts WHERE user_id = $1', [userId])).rows[0];
+    const email = `refreshed-${randomUUID()}@example.test`;
+    const { service } = standingFor(id, [{ status: 200, body: { access_token: 'at', refresh_token: 'rotated', id_token: idToken(account.account_id, { email }) } }]);
+    await service.recordSignIn(userId, 'old-token'); await due(userId);
+    assert.equal(await service.runOnce(), 1);
+    const user = (await pool.query('SELECT name, email, email_verified FROM auth_users WHERE id = $1', [userId])).rows[0];
+    assert.deepEqual(user, { name: 'Updated name', email, email_verified: true });
+    assert.deepEqual((await pool.query('SELECT * FROM auth_accounts WHERE user_id = $1', [userId])).rows[0], account, 'issuer/subject and sign-in facts do not change');
+    assert.equal(openToken(key, userId, id, (await row(userId)).refresh_token_enc), 'rotated');
+  });
+
+  test('a refresh overtaken by a new sign-in cannot overwrite its token or profile', async () => {
+    const id = provider(); const userId = await person(id);
+    const account = (await pool.query('SELECT account_id FROM auth_accounts WHERE user_id = $1', [userId])).rows[0];
+    const script = scriptedProvider([{ status: 200, body: { access_token: 'at', refresh_token: 'obsolete-rotation', id_token: idToken(account.account_id) } }]);
+    const service: ReturnType<typeof createIdpStanding> = createIdpStanding({ db, oidc: config(id), authSecret, log: { info() {}, warn() {}, error() {} },
+      fetcher: async (url, init) => {
+        if (url.endsWith('/token')) await service.recordSignIn(userId, 'new-sign-in-token');
+        return script.fetcher(url, init);
+      } });
+    await service.recordSignIn(userId, 'old-token'); await due(userId);
+    const original = (await pool.query('SELECT name, email FROM auth_users WHERE id = $1', [userId])).rows[0];
+    assert.equal(await service.runOnce(), 1);
+    assert.deepEqual((await pool.query('SELECT name, email FROM auth_users WHERE id = $1', [userId])).rows[0], original);
+    assert.equal(openToken(key, userId, id, (await row(userId)).refresh_token_enc), 'new-sign-in-token');
+  });
+
+  test('invalid, unverified, substituted and colliding refresh claims never transfer an account or lose rotation', async () => {
+    const id = provider(); const userId = await person(id); const other = await insertedHuman('profile-holder');
+    const account = (await pool.query('SELECT * FROM auth_accounts WHERE user_id = $1', [userId])).rows[0];
+    const original = (await pool.query('SELECT name, email, email_verified FROM auth_users WHERE id = $1', [userId])).rows[0];
+    const held = (await pool.query('SELECT email FROM auth_users WHERE id = $1', [other.id])).rows[0].email;
+    const valid = idToken(account.account_id);
+    const badSignature = `${valid.slice(0, valid.lastIndexOf('.') + 1)}${Buffer.alloc(256).toString('base64url')}`;
+    const cases = [badSignature, idToken(account.account_id, { iss: 'https://other.test' }),
+      idToken(account.account_id, { aud: 'another-client' }), idToken(account.account_id, { exp: 1 }),
+      idToken(account.account_id, { email_verified: false }), idToken('another-subject'), idToken(account.account_id, { email: held })];
+    const { service, logs } = standingFor(id, cases.map((token, index) => ({ status: 200, body: { access_token: 'at', refresh_token: `rotated-${index}`, id_token: token } })));
+    await service.recordSignIn(userId, 'old-token');
+    for (let index = 0; index < cases.length; index += 1) {
+      await due(userId); assert.equal(await service.runOnce(), 1);
+      assert.deepEqual((await pool.query('SELECT name, email, email_verified FROM auth_users WHERE id = $1', [userId])).rows[0], original);
+      assert.equal(openToken(key, userId, id, (await row(userId)).refresh_token_enc), `rotated-${index}`);
+      assert.equal(await service.stands(userId), true, 'profile refusal is not an invalid_grant');
+    }
+    assert.equal(logs.filter((line) => line.includes('Skipped the identity provider profile update')).length, cases.length);
+    assert.ok(cases.every((token) => !logs.join('').includes(token)), 'ID tokens stay out of logs');
+    assert.deepEqual((await pool.query('SELECT * FROM auth_accounts WHERE user_id = $1', [userId])).rows[0], account);
+  });
+
   test('success renews the confirmation and stores a rotated token in the same write', async () => {
     const id = provider();
     const { service, script, logs } = standingFor(id, [{ status: 200, body: { access_token: 'at', refresh_token: 'rotated-token' } }, { status: 200, body: { access_token: 'at' } }]);
@@ -214,6 +320,50 @@ describe('the check', () => {
     }
   });
 
+  test('a lost rotation response is unknown and the previous token succeeds on the next check', async () => {
+    const id = provider(); const userId = await person(id); const submitted: string[] = [];
+    const script = scriptedProvider([]); let first = true;
+    const service = createIdpStanding({ db, oidc: config(id), authSecret, log: { info() {}, warn() {}, error() {} },
+      fetcher: async (url, init) => {
+        if (!url.endsWith('/token')) return script.fetcher(url, init);
+        submitted.push(new URLSearchParams(init.body).get('refresh_token')!);
+        if (first) {
+          first = false;
+          // The mock issued a rotation, but its successful response body was lost on the wire.
+          return { ok: true, status: 200, json: async () => { throw new Error('lost response'); } };
+        }
+        return { ok: true, status: 200, json: async () => ({ access_token: 'at', refresh_token: 'received-rotation' }) };
+      } });
+    await service.recordSignIn(userId, 'previous-token'); await due(userId);
+    const before = (await row(userId)).confirmed_at.getTime();
+    assert.equal(await service.runOnce(), 1);
+    assert.equal((await row(userId)).last_outcome, 'unknown');
+    assert.equal((await row(userId)).confirmed_at.getTime(), before);
+    assert.equal(openToken(key, userId, id, (await row(userId)).refresh_token_enc), 'previous-token');
+    await due(userId); assert.equal(await service.runOnce(), 1);
+    assert.deepEqual(submitted, ['previous-token', 'previous-token']);
+    assert.equal((await row(userId)).last_outcome, 'success');
+    assert.equal(openToken(key, userId, id, (await row(userId)).refresh_token_enc), 'received-rotation');
+  });
+
+  test('503, timeout and invalid_client keep standing unknown while confirmation age still expires', async () => {
+    for (const failure of [{ status: 503 }, 'throw', { status: 401, body: { error: 'invalid_client' } }] satisfies Reply[]) {
+      const id = provider(); const userId = await person(id); const initial = new Date(); let clock = initial;
+      const oidc = { ...config(id), confirmationMaxAgeMs: 3_600_000 };
+      const script = scriptedProvider([failure]);
+      const service = createIdpStanding({ db, oidc, authSecret, now: () => clock, log: { info() {}, warn() {}, error() {} }, fetcher: script.fetcher as never });
+      const confirmation = createConfirmation(db, oidc, () => clock);
+      await service.recordSignIn(userId, 'kept-token'); await due(userId);
+      assert.equal(await service.runOnce(), 1);
+      assert.equal((await row(userId)).last_outcome, 'unknown');
+      assert.equal(await service.stands(userId), true);
+      assert.equal(await confirmation.lapsed(userId), false);
+      clock = new Date(initial.getTime() + oidc.confirmationMaxAgeMs + 1);
+      assert.equal(await confirmation.lapsed(userId), true, 'unknown never renews confirmation');
+      assert.equal((await row(userId)).state, 'ok', 'an outage is not a person suspension');
+    }
+  });
+
   test('the provider is called with no row lock and no open transaction, and one identity is never checked twice at once', async () => {
     const id = provider();
     const userId = await person(id);
@@ -262,7 +412,28 @@ describe('the check', () => {
     assert.equal((await row(userId)).state, 'sign_in_required');
   });
 
-  test('only identities with a live session or MCP grant are checked', async () => {
+  test('a protected commit retains healthy standing until its transaction finishes', async () => {
+    const id = provider(); const userId = await person(id);
+    const rows = idpStandingRepository(db);
+    await standingFor(id, []).service.recordSignIn(userId, 'kept-token'); await due(userId);
+    const [claim] = await rows.claim(new Date(), 30_000, 20, randomUUID());
+    assert.equal(claim?.userId, userId);
+    const writer = await pool.connect();
+    try {
+      await db.transaction(async (tx) => {
+        assert.equal(await idpStandingRepository(tx).refuses(userId, { lock: true }), false);
+        await writer.query('BEGIN'); await writer.query("SET LOCAL lock_timeout = '150ms'");
+        await assert.rejects(writer.query(`UPDATE auth_idp_standing SET state = 'sign_in_required' WHERE user_id = $1`, [userId]),
+          (error: unknown) => !!error && typeof error === 'object' && 'code' in error && error.code === '55P03');
+        await writer.query('ROLLBACK');
+      });
+      const now = new Date();
+      assert.equal(await rows.finish(claim!, { outcome: 'sign_in_required', reason: 'invalid_grant' }, now, now), true);
+      assert.equal(await rows.refuses(userId), true, 'the next operation sees the committed suspension');
+    } finally { await writer.query('ROLLBACK'); writer.release(); }
+  });
+
+  test('an idle identity without browser, MCP or automation authority is not checked', async () => {
     const id = provider();
     const { service, script } = standingFor(id, [{ status: 200, body: { access_token: 'at' } }]);
     const idle = await person(id, { session: false });
@@ -271,6 +442,78 @@ describe('the check', () => {
     assert.equal(await service.runOnce(), 0);
     assert.equal(script.tokenCalls().length, 0);
   });
+
+  for (const engine of ['server', 'runtime'] as const) test(`automation-only ${engine} owner stays checked through suspension and recovery`, async () => {
+    const id = provider();
+    const { service, script } = standingFor(id, [
+      { status: 400, body: { error: 'invalid_grant' } },
+      { status: 200, body: { access_token: 'at' } },
+    ]);
+    const userId = await person(id, { session: false });
+    await db.insert(schema.personalRunEnablements).values({
+      ownerUserId: userId, consentVersion: engine === 'runtime' ? PERSONAL_RUNTIME_CONSENT_VERSION : PERSONAL_RUN_CONSENT_VERSION,
+      consentProvider: 'anthropic', consentModel: 'fixture',
+      consentPayerOrganization: 'owner', consentPayerWorkspace: 'owner', engine,
+    });
+    await service.recordSignIn(userId, 'kept-offline-token');
+    await due(userId);
+    assert.equal(await service.runOnce(), 1, 'enabled automation needs no browser or MCP refresh token');
+    assert.equal(await service.stands(userId), false);
+    assert.equal(await sessions(userId), 0);
+    await due(userId);
+    assert.equal(await service.runOnce(), 1, 'suspension does not remove eligibility (N5)');
+    assert.equal(await service.stands(userId), true);
+    assert.equal(script.tokenCalls().length, 2);
+    assert.equal(openToken(key, userId, id, (await row(userId)).refresh_token_enc), 'kept-offline-token');
+    await pool.query(`UPDATE personal_run_enablements SET status = 'paused' WHERE owner_user_id = $1`, [userId]);
+    await due(userId);
+    assert.equal(await service.runOnce(), 0, 'paused automation alone is idle');
+  });
+
+  // Each remaining authority in claim() (#490): a person with no browser session, no MCP refresh token and no
+  // personal-run automation stays checked only through the one authority under test. Every positive case runs the
+  // refusal and the recovery; every negative control shows the same person idle once the authority is not live.
+  const authorities: { name: string; positive: Record<string, (userId: string) => Promise<void>>; idle: Record<string, (userId: string) => Promise<void>> }[] = [
+    { name: 'a live MCP access token',
+      positive: { live: (userId) => accessToken(userId, { expires: 3_600_000 }) },
+      idle: { expired: (userId) => accessToken(userId, { expires: -1_000 }), revoked: (userId) => accessToken(userId, { expires: 3_600_000, revoked: true }) } },
+    { name: 'an enabled proactive comparison rule',
+      positive: { enabled: (userId) => proactiveRule(userId, 'enabled').then(() => undefined) },
+      idle: { paused: (userId) => proactiveRule(userId, 'paused').then(() => undefined), revoked: (userId) => proactiveRule(userId, 'revoked').then(() => undefined) } },
+    { name: 'a queued or reserved proactive comparison candidate',
+      positive: { queued: (userId) => proactiveCandidate(userId, 'queued'), reserved: (userId) => proactiveCandidate(userId, 'reserved') },
+      idle: { completed: (userId) => proactiveCandidate(userId, 'completed'), not_run: (userId) => proactiveCandidate(userId, 'not_run'), unknown: (userId) => proactiveCandidate(userId, 'unknown') } },
+  ];
+  for (const authority of authorities) {
+    for (const [kind, give] of Object.entries(authority.positive)) test(`${authority.name} (${kind}) alone keeps the owner checked through suspension and recovery`, async () => {
+      const id = provider();
+      const { service, script } = standingFor(id, [{ status: 400, body: { error: 'invalid_grant' } }, { status: 200, body: { access_token: 'at' } }]);
+      const userId = await person(id, { session: false });
+      await service.recordSignIn(userId, 'kept-offline-token');
+      await due(userId);
+      assert.equal(await service.runOnce(), 0, 'negative control: with no authority yet the identity is idle');
+      await give(userId);
+      await due(userId);
+      assert.equal(await service.runOnce(), 1, 'the authority alone selects the identity');
+      assert.equal(await service.stands(userId), false);
+      assert.equal((await row(userId)).reason, 'invalid_grant');
+      await due(userId);
+      assert.equal(await service.runOnce(), 1, 'suspension does not remove eligibility (N5)');
+      assert.equal(await service.stands(userId), true);
+      assert.equal(script.tokenCalls().length, 2);
+      assert.equal(openToken(key, userId, id, (await row(userId)).refresh_token_enc), 'kept-offline-token');
+    });
+    for (const [kind, give] of Object.entries(authority.idle)) test(`${authority.name} that is ${kind} does not keep an owner checked`, async () => {
+      const id = provider();
+      const { service, script } = standingFor(id, [{ status: 200, body: { access_token: 'at' } }]);
+      const userId = await person(id, { session: false });
+      await service.recordSignIn(userId, 'kept-offline-token');
+      await give(userId);
+      await due(userId);
+      assert.equal(await service.runOnce(), 0);
+      assert.equal(script.tokenCalls().length, 0);
+    });
+  }
 });
 
 describe('startup', () => {

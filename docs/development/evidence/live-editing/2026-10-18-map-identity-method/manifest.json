@@ -1,0 +1,76 @@
+{
+  "files": {
+    "chromium.log.gz": {
+      "original_path": "/home/hubert/flux-evidence/228-identity-dfe3d7f7-chromium.log",
+      "raw_sha256": "531578bf3a3f120cd762cad764346bd710af1dd14a3a70fd2d7d3380675b16ff",
+      "retained_sha256": "6ee6ba0aeb30894fd55c2d6294c492af31c415f668d71cfade7322da06af3926",
+      "raw_bytes": 31711,
+      "retained_bytes": 7118
+    },
+    "webkit.log.gz": {
+      "original_path": "/home/hubert/flux-evidence/228-identity-dfe3d7f7-webkit.log",
+      "raw_sha256": "ef4e5dba6b901e43876ad5604d2b111c49282bf3e3eb33608bc8bb0ffb215cc0",
+      "retained_sha256": "c2ad4f653e169a049221e8e023aa5bedbff512dfe882826f11c9e12c7ef834f7",
+      "raw_bytes": 11094,
+      "retained_bytes": 2531
+    },
+    "chromium-runtime.json": {
+      "sha256": "0331c6dfe83423ec0bf43d3ae357cf857fe08fd368d8da536bc801a88b9f81b5",
+      "bytes": 1637
+    },
+    "cleanup.json": {
+      "sha256": "2b3ace0cb3f3b769622bafc142ea57abda7eaa6af5214438b0c5f98f7b11da33",
+      "bytes": 376
+    },
+    "commands.json": {
+      "sha256": "35ffb0b8432faaa094639de4c014dbf8b5462b51109758cf3fcfbc262f0dcf88",
+      "bytes": 512
+    },
+    "diagnostic/cleanup.json": {
+      "sha256": "28c890ca3461a0ac0df1953a7550f87cf68b58f40db2b5c03f546c35c37349c6",
+      "bytes": 227
+    },
+    "diagnostic/diagnosis.json": {
+      "sha256": "219d402b4810159a8b8ce2f9be605c0de2bb4c75d9ccd8c6715ad2a8495b563d",
+      "bytes": 3820
+    },
+    "diagnostic/raw-manifest.json": {
+      "sha256": "9032103513f4a89d49f0dbfe67ef02446c026d949c05413b3b9eb33c8a7f475d",
+      "bytes": 11458
+    },
+    "diagnostic/source.json": {
+      "sha256": "1e089db1f8ec16cf32414b51e3c9908c3fbad344869bc5731c8cee8799eb0732",
+      "bytes": 2226
+    },
+    "diagnostic/timed-profile-analysis.json": {
+      "sha256": "0fe75bfd60c7f67354ac90359e5dcbc2cf18fc2d00374096a18323b782d8fba6",
+      "bytes": 28398
+    },
+    "diagnostic/timed-source-mapping.json": {
+      "sha256": "64b9cd062f7ca0095b93c616d06915c7ba5f69643b9bf6fc58b672e21cb6758e",
+      "bytes": 1299
+    },
+    "diagnostic/whole-window-metrics.json": {
+      "sha256": "019226d4c8c5117ff6811b11a2fd53a90144a34b002deccd56ecd34af87ecae3",
+      "bytes": 4027
+    },
+    "results.json": {
+      "sha256": "d5494c666f56bfaf4518de21540f14e6c248a1745c734d8487a09e789cbcc2a1",
+      "bytes": 611
+    },
+    "source-and-checks.json": {
+      "sha256": "131aaa64bc610f2bacae1edfc3262d70e58aa36902e842936c71b8d99119e677",
+      "bytes": 1387
+    },
+    "webkit-runtime.json": {
+      "sha256": "8aace9055f27410b37a0307d0cc50a04e4a3efd3c321cf7897e1e74058c26c06",
+      "bytes": 1635
+    },
+    "diagnostic/instrumentation.patch.gz": {
+      "sha256": "484369b238d8e9eb4f81507361b21becf96492e11ecb4fc98adff52e3692f685",
+      "raw_sha256": "1863f68f66dd0fe5e611e6569ccdf915f6f5aa450f1b2d997da4c5876574a569",
+      "bytes": 4155,
+      "raw_bytes": 12168
+    }
+  }
+}

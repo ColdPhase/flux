@@ -122,6 +122,8 @@ describe('connection labels', () => {
     assert.equal(stale.currentLabel, winner.label);
     assert.equal((await detail(owner, sketch.id)).updatedAt, stored.updatedAt);
     assert.equal((await changes(sketch.id)).length, 1);
+    assert.equal((await pool.query('SELECT count(*)::int n FROM map_live_heads WHERE sketch_id=$1', [sketch.id])).rows[0].n, 0,
+      'a native stale-label conflict never creates a live room');
     // A deliberate second save names the reviewed current label.
     expectStatus(await patch(editor, winner, 'reviewed replacement'), 200);
     assert.equal((await detail(owner, sketch.id)).links[0]!.label, 'reviewed replacement');

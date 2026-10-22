@@ -1,0 +1,4 @@
+Source cfa03a83bcb90547f17c930d33b459fc450aa369; canonical Docker build exit 1 before API startup or tests.
+TypeScript TS2339 at tests/app/live-map-authority.test.ts:179: Property 'connectionId' does not exist on type 'MapTransient'; map-clear has no connectionId.
+Corrected in 450f2430c17e1b57bfe54df7be607dc723ba5d89 with an explicit no-map-clear assertion and narrowed access. No production code changed in this correction.
+The conditional two-API lane was not invoked on the failed source.

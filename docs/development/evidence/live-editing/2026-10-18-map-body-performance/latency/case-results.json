@@ -1,0 +1,1207 @@
+{
+  "cases": [
+    {
+      "case": "map-50-drag-1",
+      "continuous_input": {
+        "count": 1812,
+        "interval_distribution": {
+          "count": 1811,
+          "infinite_count": 0,
+          "max_ms": 55.80868409015238,
+          "p50_ms": 33.27328199520707,
+          "p95_ms": 38.963077939115465
+        },
+        "requested_sleep_ms": 16
+      },
+      "duration_s": 60,
+      "failures": 0,
+      "finite_successful_distribution": {
+        "count": 240,
+        "infinite_count": 0,
+        "max_ms": 131.24689797405154,
+        "p50_ms": 97.83864498604089,
+        "p95_ms": 130.0206669839099
+      },
+      "gate_result": "PASS",
+      "input_errors": [],
+      "interval_ms": 250,
+      "local_render_control": {
+        "distribution": {
+          "count": 30,
+          "infinite_count": 0,
+          "max_ms": 64.70400292892009,
+          "p50_ms": 50.006119068711996,
+          "p95_ms": 55.620303959585726
+        },
+        "samples": 30,
+        "subtracted": false
+      },
+      "original_summary_sha256": "bdf1c3b898a8c5d06180bf6dab716399024288159dee90a7357eebd5c17bce78",
+      "p95_ms": 130.0206669839099,
+      "publications": {
+        "by_type": {
+          "cursor": 0,
+          "map-move": 1502,
+          "text": 0
+        },
+        "cadence_by_type": {
+          "cursor": {
+            "count": 0,
+            "infinite_count": 0,
+            "max_ms": null,
+            "p50_ms": null,
+            "p95_ms": null
+          },
+          "map-move": {
+            "count": 1501,
+            "infinite_count": 0,
+            "max_ms": 49.48978801257908,
+            "p50_ms": 39.6506090182811,
+            "p95_ms": 42.537771980278194
+          },
+          "text": {
+            "count": 0,
+            "infinite_count": 0,
+            "max_ms": null,
+            "p50_ms": null,
+            "p95_ms": null
+          }
+        },
+        "count": 1502,
+        "interval_distribution": {
+          "count": 1501,
+          "infinite_count": 0,
+          "max_ms": 49.48978801257908,
+          "p50_ms": 39.6506090182811,
+          "p95_ms": 42.537771980278194
+        }
+      },
+      "samples": 240,
+      "scheduled_distribution": {
+        "count": 240,
+        "infinite_count": 0,
+        "max_ms": 131.24689797405154,
+        "p50_ms": 97.83864498604089,
+        "p95_ms": 130.0206669839099
+      },
+      "segment_distributions": {
+        "covering_peer_receipt_to_painted_ms": {
+          "count": 240,
+          "infinite_count": 0,
+          "max_ms": 50.949870026670396,
+          "p50_ms": 18.482267973013222,
+          "p95_ms": 44.09777303226292,
+          "unavailable_rows": 0
+        },
+        "first_peer_receipt_to_render_condition_ms": {
+          "count": 240,
+          "infinite_count": 0,
+          "max_ms": 18.243827973492444,
+          "p50_ms": 9.630759013816714,
+          "p95_ms": 16.895056003704667,
+          "unavailable_rows": 0
+        },
+        "input_to_covering_publication_ms": {
+          "count": 240,
+          "infinite_count": 0,
+          "max_ms": 94.31125200353563,
+          "p50_ms": 60.88969006668776,
+          "p95_ms": 90.80720797646791,
+          "unavailable_rows": 0
+        },
+        "publication_to_peer_receipt_ms": {
+          "count": 240,
+          "infinite_count": 0,
+          "max_ms": 53.4947719424963,
+          "p50_ms": 23.177042952738702,
+          "p95_ms": 40.01870902720839,
+          "unavailable_rows": 0
+        },
+        "two_raf_and_recheck_ms": {
+          "count": 240,
+          "infinite_count": 0,
+          "max_ms": 38.17326691932976,
+          "p50_ms": 33.33134204149246,
+          "p95_ms": 35.248595057055354,
+          "unavailable_rows": 0
+        }
+      },
+      "socket_errors": [],
+      "source_sha": "8ba5f87ae065d52b4b69158648f8e863b3d3f9cb",
+      "superseded_count": 159,
+      "timeout_ms": 1000,
+      "warmups": 30
+    },
+    {
+      "case": "map-50-drag-50",
+      "continuous_input": {
+        "count": 1796,
+        "interval_distribution": {
+          "count": 1795,
+          "infinite_count": 0,
+          "max_ms": 65.76202402357012,
+          "p50_ms": 33.40491291601211,
+          "p95_ms": 43.03004208486527
+        },
+        "requested_sleep_ms": 16
+      },
+      "duration_s": 60,
+      "failures": 0,
+      "finite_successful_distribution": {
+        "count": 240,
+        "infinite_count": 0,
+        "max_ms": 181.61110708024353,
+        "p50_ms": 121.561169042252,
+        "p95_ms": 153.40475004632026
+      },
+      "gate_result": "PASS",
+      "input_errors": [],
+      "interval_ms": 250,
+      "local_render_control": {
+        "distribution": {
+          "count": 30,
+          "infinite_count": 0,
+          "max_ms": 65.96726400312036,
+          "p50_ms": 49.72456896211952,
+          "p95_ms": 61.521369963884354
+        },
+        "samples": 30,
+        "subtracted": false
+      },
+      "original_summary_sha256": "2c7b88dafbf34d6ca0675f768427ae3a9be4346e331bbf3ba5791b308eeeece5",
+      "p95_ms": 153.40475004632026,
+      "publications": {
+        "by_type": {
+          "cursor": 0,
+          "map-move": 1500,
+          "text": 0
+        },
+        "cadence_by_type": {
+          "cursor": {
+            "count": 0,
+            "infinite_count": 0,
+            "max_ms": null,
+            "p50_ms": null,
+            "p95_ms": null
+          },
+          "map-move": {
+            "count": 1499,
+            "infinite_count": 0,
+            "max_ms": 58.61852702219039,
+            "p50_ms": 39.8452989757061,
+            "p95_ms": 42.435272014699876
+          },
+          "text": {
+            "count": 0,
+            "infinite_count": 0,
+            "max_ms": null,
+            "p50_ms": null,
+            "p95_ms": null
+          }
+        },
+        "count": 1500,
+        "interval_distribution": {
+          "count": 1499,
+          "infinite_count": 0,
+          "max_ms": 58.61852702219039,
+          "p50_ms": 39.8452989757061,
+          "p95_ms": 42.435272014699876
+        }
+      },
+      "samples": 240,
+      "scheduled_distribution": {
+        "count": 240,
+        "infinite_count": 0,
+        "max_ms": 181.61110708024353,
+        "p50_ms": 121.561169042252,
+        "p95_ms": 153.40475004632026
+      },
+      "segment_distributions": {
+        "covering_peer_receipt_to_painted_ms": {
+          "count": 240,
+          "infinite_count": 0,
+          "max_ms": 59.54821908380836,
+          "p50_ms": 27.369867078959942,
+          "p95_ms": 48.865298042073846,
+          "unavailable_rows": 0
+        },
+        "first_peer_receipt_to_render_condition_ms": {
+          "count": 240,
+          "infinite_count": 0,
+          "max_ms": 33.17442291881889,
+          "p50_ms": 11.38136105146259,
+          "p95_ms": 19.709998974576592,
+          "unavailable_rows": 0
+        },
+        "input_to_covering_publication_ms": {
+          "count": 240,
+          "infinite_count": 0,
+          "max_ms": 117.86850506905466,
+          "p50_ms": 56.40672496519983,
+          "p95_ms": 89.06956703867763,
+          "unavailable_rows": 0
+        },
+        "publication_to_peer_receipt_ms": {
+          "count": 240,
+          "infinite_count": 0,
+          "max_ms": 72.0252909231931,
+          "p50_ms": 44.454692979343235,
+          "p95_ms": 59.930257964879274,
+          "unavailable_rows": 0
+        },
+        "two_raf_and_recheck_ms": {
+          "count": 240,
+          "infinite_count": 0,
+          "max_ms": 68.62868706230074,
+          "p50_ms": 35.052253981120884,
+          "p95_ms": 42.68916102591902,
+          "unavailable_rows": 0
+        }
+      },
+      "socket_errors": [],
+      "source_sha": "8ba5f87ae065d52b4b69158648f8e863b3d3f9cb",
+      "superseded_count": 160,
+      "timeout_ms": 1000,
+      "warmups": 30
+    },
+    {
+      "case": "map-500-drag-1",
+      "continuous_input": {
+        "count": 1804,
+        "interval_distribution": {
+          "count": 1803,
+          "infinite_count": 0,
+          "max_ms": 55.72748405393213,
+          "p50_ms": 33.446723013184965,
+          "p95_ms": 39.33828906156123
+        },
+        "requested_sleep_ms": 16
+      },
+      "duration_s": 60,
+      "failures": 0,
+      "finite_successful_distribution": {
+        "count": 240,
+        "infinite_count": 0,
+        "max_ms": 150.59733705129474,
+        "p50_ms": 109.70080702099949,
+        "p95_ms": 128.89638601336628
+      },
+      "gate_result": "PASS",
+      "input_errors": [],
+      "interval_ms": 250,
+      "local_render_control": {
+        "distribution": {
+          "count": 30,
+          "infinite_count": 0,
+          "max_ms": 57.474056025967,
+          "p50_ms": 49.64545799884945,
+          "p95_ms": 56.829215958714485
+        },
+        "samples": 30,
+        "subtracted": false
+      },
+      "original_summary_sha256": "e91a24f61b39cac92bc0896c596c390fd69f8ccd8c1e76ca9a8dc52c017a0b1e",
+      "p95_ms": 128.89638601336628,
+      "publications": {
+        "by_type": {
+          "cursor": 0,
+          "map-move": 1501,
+          "text": 0
+        },
+        "cadence_by_type": {
+          "cursor": {
+            "count": 0,
+            "infinite_count": 0,
+            "max_ms": null,
+            "p50_ms": null,
+            "p95_ms": null
+          },
+          "map-move": {
+            "count": 1500,
+            "infinite_count": 0,
+            "max_ms": 50.903579918667674,
+            "p50_ms": 39.82365899719298,
+            "p95_ms": 42.152551002800465
+          },
+          "text": {
+            "count": 0,
+            "infinite_count": 0,
+            "max_ms": null,
+            "p50_ms": null,
+            "p95_ms": null
+          }
+        },
+        "count": 1501,
+        "interval_distribution": {
+          "count": 1500,
+          "infinite_count": 0,
+          "max_ms": 50.903579918667674,
+          "p50_ms": 39.82365899719298,
+          "p95_ms": 42.152551002800465
+        }
+      },
+      "samples": 240,
+      "scheduled_distribution": {
+        "count": 240,
+        "infinite_count": 0,
+        "max_ms": 150.59733705129474,
+        "p50_ms": 109.70080702099949,
+        "p95_ms": 128.89638601336628
+      },
+      "segment_distributions": {
+        "covering_peer_receipt_to_painted_ms": {
+          "count": 240,
+          "infinite_count": 0,
+          "max_ms": 51.34780996013433,
+          "p50_ms": 34.74230400752276,
+          "p95_ms": 46.87153606209904,
+          "unavailable_rows": 0
+        },
+        "first_peer_receipt_to_render_condition_ms": {
+          "count": 240,
+          "infinite_count": 0,
+          "max_ms": 18.98159901611507,
+          "p50_ms": 9.256788995116949,
+          "p95_ms": 17.22611696459353,
+          "unavailable_rows": 0
+        },
+        "input_to_covering_publication_ms": {
+          "count": 240,
+          "infinite_count": 0,
+          "max_ms": 90.77798796351999,
+          "p50_ms": 45.59135402087122,
+          "p95_ms": 85.0787329254672,
+          "unavailable_rows": 0
+        },
+        "publication_to_peer_receipt_ms": {
+          "count": 240,
+          "infinite_count": 0,
+          "max_ms": 56.349744903855026,
+          "p50_ms": 29.499748023226857,
+          "p95_ms": 42.90811205282807,
+          "unavailable_rows": 0
+        },
+        "two_raf_and_recheck_ms": {
+          "count": 240,
+          "infinite_count": 0,
+          "max_ms": 39.43221899680793,
+          "p50_ms": 32.711341977119446,
+          "p95_ms": 36.157805006951094,
+          "unavailable_rows": 0
+        }
+      },
+      "socket_errors": [],
+      "source_sha": "8ba5f87ae065d52b4b69158648f8e863b3d3f9cb",
+      "superseded_count": 127,
+      "timeout_ms": 1000,
+      "warmups": 30
+    },
+    {
+      "case": "map-500-drag-50",
+      "continuous_input": {
+        "count": 1766,
+        "interval_distribution": {
+          "count": 1765,
+          "infinite_count": 0,
+          "max_ms": 77.34790502581745,
+          "p50_ms": 32.66713209450245,
+          "p95_ms": 45.72438495233655
+        },
+        "requested_sleep_ms": 16
+      },
+      "duration_s": 60,
+      "failures": 0,
+      "finite_successful_distribution": {
+        "count": 240,
+        "infinite_count": 0,
+        "max_ms": 174.1229200270027,
+        "p50_ms": 126.36170303449035,
+        "p95_ms": 160.79084703233093
+      },
+      "gate_result": "PASS",
+      "input_errors": [],
+      "interval_ms": 250,
+      "local_render_control": {
+        "distribution": {
+          "count": 30,
+          "infinite_count": 0,
+          "max_ms": 81.18414890486747,
+          "p50_ms": 61.96051090955734,
+          "p95_ms": 80.65259805880487
+        },
+        "samples": 30,
+        "subtracted": false
+      },
+      "original_summary_sha256": "1564cb2087ed5cc3e9e0558fdcd1b6f91e88465b12104b770b7ccc3cba52dd2e",
+      "p95_ms": 160.79084703233093,
+      "publications": {
+        "by_type": {
+          "cursor": 0,
+          "map-move": 1483,
+          "text": 0
+        },
+        "cadence_by_type": {
+          "cursor": {
+            "count": 0,
+            "infinite_count": 0,
+            "max_ms": null,
+            "p50_ms": null,
+            "p95_ms": null
+          },
+          "map-move": {
+            "count": 1482,
+            "infinite_count": 0,
+            "max_ms": 57.63353605289012,
+            "p50_ms": 39.89295905921608,
+            "p95_ms": 44.46896293666214
+          },
+          "text": {
+            "count": 0,
+            "infinite_count": 0,
+            "max_ms": null,
+            "p50_ms": null,
+            "p95_ms": null
+          }
+        },
+        "count": 1483,
+        "interval_distribution": {
+          "count": 1482,
+          "infinite_count": 0,
+          "max_ms": 57.63353605289012,
+          "p50_ms": 39.89295905921608,
+          "p95_ms": 44.46896293666214
+        }
+      },
+      "samples": 240,
+      "scheduled_distribution": {
+        "count": 240,
+        "infinite_count": 0,
+        "max_ms": 174.1229200270027,
+        "p50_ms": 126.36170303449035,
+        "p95_ms": 160.79084703233093
+      },
+      "segment_distributions": {
+        "covering_peer_receipt_to_painted_ms": {
+          "count": 240,
+          "infinite_count": 0,
+          "max_ms": 58.70567704550922,
+          "p50_ms": 33.64621300715953,
+          "p95_ms": 51.14019999746233,
+          "unavailable_rows": 0
+        },
+        "first_peer_receipt_to_render_condition_ms": {
+          "count": 240,
+          "infinite_count": 0,
+          "max_ms": 59.651007992215455,
+          "p50_ms": 17.219046014361084,
+          "p95_ms": 25.087143993005157,
+          "unavailable_rows": 0
+        },
+        "input_to_covering_publication_ms": {
+          "count": 240,
+          "infinite_count": 0,
+          "max_ms": 112.20796895213425,
+          "p50_ms": 54.58547291345894,
+          "p95_ms": 85.8320640400052,
+          "unavailable_rows": 0
+        },
+        "publication_to_peer_receipt_ms": {
+          "count": 240,
+          "infinite_count": 0,
+          "max_ms": 94.9224520009011,
+          "p50_ms": 46.531444997526705,
+          "p95_ms": 63.62118199467659,
+          "unavailable_rows": 0
+        },
+        "two_raf_and_recheck_ms": {
+          "count": 240,
+          "infinite_count": 0,
+          "max_ms": 76.95584499742836,
+          "p50_ms": 33.532132976688445,
+          "p95_ms": 44.42842397838831,
+          "unavailable_rows": 0
+        }
+      },
+      "socket_errors": [],
+      "source_sha": "8ba5f87ae065d52b4b69158648f8e863b3d3f9cb",
+      "superseded_count": 163,
+      "timeout_ms": 1000,
+      "warmups": 30
+    },
+    {
+      "case": "map-500-drag-200",
+      "continuous_input": {
+        "count": 1399,
+        "interval_distribution": {
+          "count": 1398,
+          "infinite_count": 0,
+          "max_ms": 214.26978101953864,
+          "p50_ms": 38.9562479685992,
+          "p95_ms": 64.5652620587498
+        },
+        "requested_sleep_ms": 16
+      },
+      "duration_s": 60,
+      "failures": 0,
+      "finite_successful_distribution": {
+        "count": 240,
+        "infinite_count": 0,
+        "max_ms": 330.9299990069121,
+        "p50_ms": 170.27284600771964,
+        "p95_ms": 230.47885298728943
+      },
+      "gate_result": "FAIL",
+      "input_errors": [],
+      "interval_ms": 250,
+      "local_render_control": {
+        "distribution": {
+          "count": 30,
+          "infinite_count": 0,
+          "max_ms": 97.63421502429992,
+          "p50_ms": 66.67812494561076,
+          "p95_ms": 84.7423430532217
+        },
+        "samples": 30,
+        "subtracted": false
+      },
+      "original_summary_sha256": "b9392ec89750eac90e52fc06070f4f2d29869f3e5aea7b3d2cf981af30b11c60",
+      "p95_ms": 230.47885298728943,
+      "publications": {
+        "by_type": {
+          "cursor": 0,
+          "map-move": 1371,
+          "text": 0
+        },
+        "cadence_by_type": {
+          "cursor": {
+            "count": 0,
+            "infinite_count": 0,
+            "max_ms": null,
+            "p50_ms": null,
+            "p95_ms": null
+          },
+          "map-move": {
+            "count": 1370,
+            "infinite_count": 0,
+            "max_ms": 174.99761609360576,
+            "p50_ms": 40.524943033233285,
+            "p95_ms": 60.14172895811498
+          },
+          "text": {
+            "count": 0,
+            "infinite_count": 0,
+            "max_ms": null,
+            "p50_ms": null,
+            "p95_ms": null
+          }
+        },
+        "count": 1371,
+        "interval_distribution": {
+          "count": 1370,
+          "infinite_count": 0,
+          "max_ms": 174.99761609360576,
+          "p50_ms": 40.524943033233285,
+          "p95_ms": 60.14172895811498
+        }
+      },
+      "samples": 240,
+      "scheduled_distribution": {
+        "count": 240,
+        "infinite_count": 0,
+        "max_ms": 330.9299990069121,
+        "p50_ms": 170.27284600771964,
+        "p95_ms": 230.47885298728943
+      },
+      "segment_distributions": {
+        "covering_peer_receipt_to_painted_ms": {
+          "count": 240,
+          "infinite_count": 0,
+          "max_ms": 113.99437801446766,
+          "p50_ms": 37.604430108331144,
+          "p95_ms": 68.34260805044323,
+          "unavailable_rows": 0
+        },
+        "first_peer_receipt_to_render_condition_ms": {
+          "count": 240,
+          "infinite_count": 0,
+          "max_ms": 101.95090796332806,
+          "p50_ms": 31.248320010490716,
+          "p95_ms": 57.97650397289544,
+          "unavailable_rows": 0
+        },
+        "input_to_covering_publication_ms": {
+          "count": 240,
+          "infinite_count": 0,
+          "max_ms": 221.93875501397997,
+          "p50_ms": 65.80956396646798,
+          "p95_ms": 131.2008680542931,
+          "unavailable_rows": 0
+        },
+        "publication_to_peer_receipt_ms": {
+          "count": 240,
+          "infinite_count": 0,
+          "max_ms": 119.77091408334672,
+          "p50_ms": 61.4372449927032,
+          "p95_ms": 85.44565201736987,
+          "unavailable_rows": 0
+        },
+        "two_raf_and_recheck_ms": {
+          "count": 240,
+          "infinite_count": 0,
+          "max_ms": 167.61735593900084,
+          "p50_ms": 48.40257705654949,
+          "p95_ms": 87.15684805065393,
+          "unavailable_rows": 0
+        }
+      },
+      "socket_errors": [],
+      "source_sha": "8ba5f87ae065d52b4b69158648f8e863b3d3f9cb",
+      "superseded_count": 215,
+      "timeout_ms": 1000,
+      "warmups": 30
+    },
+    {
+      "case": "wiki-10000-editor",
+      "continuous_input": {
+        "count": 2176,
+        "interval_distribution": {
+          "count": 2175,
+          "infinite_count": 0,
+          "max_ms": 71.19315001182258,
+          "p50_ms": 26.820459053851664,
+          "p95_ms": 34.72573694307357
+        },
+        "requested_sleep_ms": 16
+      },
+      "duration_s": 60,
+      "failures": 0,
+      "finite_successful_distribution": {
+        "count": 240,
+        "infinite_count": 0,
+        "max_ms": 271.9816609751433,
+        "p50_ms": 122.99558194354177,
+        "p95_ms": 169.38718303572387
+      },
+      "gate_result": "PASS",
+      "input_errors": [],
+      "interval_ms": 250,
+      "local_render_control": {
+        "distribution": {
+          "count": 30,
+          "infinite_count": 0,
+          "max_ms": 57.17301205731928,
+          "p50_ms": 40.79058801289648,
+          "p95_ms": 54.28923899307847
+        },
+        "samples": 30,
+        "subtracted": false
+      },
+      "original_summary_sha256": "c9c1c278d83b4df04bdbcf730a378d803749f1cbc6a607bc6e81cf4fd2cc4b30",
+      "p95_ms": 169.38718303572387,
+      "publications": {
+        "by_type": {
+          "cursor": 2147,
+          "map-move": 0,
+          "text": 1204
+        },
+        "cadence_by_type": {
+          "cursor": {
+            "count": 2146,
+            "infinite_count": 0,
+            "max_ms": 848.4511870192364,
+            "p50_ms": 28.03731698077172,
+            "p95_ms": 56.62385304458439
+          },
+          "map-move": {
+            "count": 0,
+            "infinite_count": 0,
+            "max_ms": null,
+            "p50_ms": null,
+            "p95_ms": null
+          },
+          "text": {
+            "count": 1203,
+            "infinite_count": 0,
+            "max_ms": 165.32217198982835,
+            "p50_ms": 48.670744989067316,
+            "p95_ms": 67.2418219037354
+          }
+        },
+        "count": 3351,
+        "interval_distribution": {
+          "count": 3350,
+          "infinite_count": 0,
+          "max_ms": 848.4511870192364,
+          "p50_ms": 15.254428028129041,
+          "p95_ms": 44.293998973444104
+        }
+      },
+      "samples": 240,
+      "scheduled_distribution": {
+        "count": 240,
+        "infinite_count": 0,
+        "max_ms": 271.9816609751433,
+        "p50_ms": 122.99558194354177,
+        "p95_ms": 169.38718303572387
+      },
+      "segment_distributions": {
+        "input_to_ack_ms": {
+          "count": 240,
+          "infinite_count": 0,
+          "max_ms": 218.7849790789187,
+          "p50_ms": 77.7096280362457,
+          "p95_ms": 121.97486602235585,
+          "unavailable_rows": 0
+        },
+        "input_to_publication_ms": {
+          "count": 240,
+          "infinite_count": 0,
+          "max_ms": 145.0900809140876,
+          "p50_ms": 29.76812398992479,
+          "p95_ms": 57.6326580485329,
+          "unavailable_rows": 0
+        },
+        "peer_receipt_to_render_condition_ms": {
+          "count": 240,
+          "infinite_count": 0,
+          "max_ms": 74.2932369466871,
+          "p50_ms": 9.671654086560011,
+          "p95_ms": 28.509474941529334,
+          "unavailable_rows": 0
+        },
+        "publication_to_ack_ms": {
+          "count": 240,
+          "infinite_count": 0,
+          "max_ms": 150.9505690773949,
+          "p50_ms": 49.00700005237013,
+          "p95_ms": 67.88828095886856,
+          "unavailable_rows": 0
+        },
+        "two_raf_and_recheck_ms": {
+          "count": 240,
+          "infinite_count": 0,
+          "max_ms": 85.58677497785538,
+          "p50_ms": 25.95454698894173,
+          "p95_ms": 37.9409349989146,
+          "unavailable_rows": 0
+        }
+      },
+      "socket_errors": [],
+      "source_sha": "8ba5f87ae065d52b4b69158648f8e863b3d3f9cb",
+      "superseded_count": 0,
+      "timeout_ms": 1000,
+      "warmups": 30
+    },
+    {
+      "case": "wiki-10000-reader",
+      "continuous_input": {
+        "count": 2205,
+        "interval_distribution": {
+          "count": 2204,
+          "infinite_count": 0,
+          "max_ms": 65.79704000614583,
+          "p50_ms": 26.6839669784531,
+          "p95_ms": 33.25160499662161
+        },
+        "requested_sleep_ms": 16
+      },
+      "duration_s": 60,
+      "failures": 0,
+      "finite_successful_distribution": {
+        "count": 240,
+        "infinite_count": 0,
+        "max_ms": 191.241909051314,
+        "p50_ms": 107.70880500786006,
+        "p95_ms": 140.58860403019935
+      },
+      "gate_result": "PASS",
+      "input_errors": [],
+      "interval_ms": 250,
+      "local_render_control": {
+        "distribution": {
+          "count": 30,
+          "infinite_count": 0,
+          "max_ms": 54.24916802439839,
+          "p50_ms": 33.66128192283213,
+          "p95_ms": 43.90821396373212
+        },
+        "samples": 30,
+        "subtracted": false
+      },
+      "original_summary_sha256": "6ffb406af94e2fcc87825677d1fc1197af489fdf013dc196d72950c8f1abee4a",
+      "p95_ms": 140.58860403019935,
+      "publications": {
+        "by_type": {
+          "cursor": 1175,
+          "map-move": 0,
+          "text": 1500
+        },
+        "cadence_by_type": {
+          "cursor": {
+            "count": 1174,
+            "infinite_count": 0,
+            "max_ms": 1002.8250570176169,
+            "p50_ms": 53.2696230802685,
+            "p95_ms": 66.41252897679806
+          },
+          "map-move": {
+            "count": 0,
+            "infinite_count": 0,
+            "max_ms": null,
+            "p50_ms": null,
+            "p95_ms": null
+          },
+          "text": {
+            "count": 1499,
+            "infinite_count": 0,
+            "max_ms": 120.5974470358342,
+            "p50_ms": 39.039341965690255,
+            "p95_ms": 52.92745807673782
+          }
+        },
+        "count": 2675,
+        "interval_distribution": {
+          "count": 2674,
+          "infinite_count": 0,
+          "max_ms": 1002.8250570176169,
+          "p50_ms": 23.59315089415759,
+          "p95_ms": 46.43439198844135
+        }
+      },
+      "samples": 240,
+      "scheduled_distribution": {
+        "count": 240,
+        "infinite_count": 0,
+        "max_ms": 191.241909051314,
+        "p50_ms": 107.70880500786006,
+        "p95_ms": 140.58860403019935
+      },
+      "segment_distributions": {
+        "input_to_ack_ms": {
+          "count": 240,
+          "infinite_count": 0,
+          "max_ms": 144.7167560691014,
+          "p50_ms": 66.8536260491237,
+          "p95_ms": 95.55011300835758,
+          "unavailable_rows": 0
+        },
+        "input_to_publication_ms": {
+          "count": 240,
+          "infinite_count": 0,
+          "max_ms": 101.47939203307033,
+          "p50_ms": 24.719038046896458,
+          "p95_ms": 46.82016698643565,
+          "unavailable_rows": 0
+        },
+        "peer_receipt_to_render_condition_ms": {
+          "count": 240,
+          "infinite_count": 0,
+          "max_ms": 46.48523195646703,
+          "p50_ms": 10.572487022727728,
+          "p95_ms": 29.02930206619203,
+          "unavailable_rows": 0
+        },
+        "publication_to_ack_ms": {
+          "count": 240,
+          "infinite_count": 0,
+          "max_ms": 101.12733603455126,
+          "p50_ms": 39.77023297920823,
+          "p95_ms": 53.87360299937427,
+          "unavailable_rows": 0
+        },
+        "two_raf_and_recheck_ms": {
+          "count": 240,
+          "infinite_count": 0,
+          "max_ms": 40.13145703356713,
+          "p50_ms": 24.769978947006166,
+          "p95_ms": 34.430103027261794,
+          "unavailable_rows": 0
+        }
+      },
+      "socket_errors": [],
+      "source_sha": "8ba5f87ae065d52b4b69158648f8e863b3d3f9cb",
+      "superseded_count": 101,
+      "timeout_ms": 1000,
+      "warmups": 30
+    },
+    {
+      "case": "wiki-100000-editor",
+      "continuous_input": {
+        "count": 2057,
+        "interval_distribution": {
+          "count": 2056,
+          "infinite_count": 0,
+          "max_ms": 69.52618598006666,
+          "p50_ms": 28.114828979596496,
+          "p95_ms": 36.99239098932594
+        },
+        "requested_sleep_ms": 16
+      },
+      "duration_s": 60,
+      "failures": 0,
+      "finite_successful_distribution": {
+        "count": 240,
+        "infinite_count": 0,
+        "max_ms": 267.42886402644217,
+        "p50_ms": 136.12190703861415,
+        "p95_ms": 175.45434390194714
+      },
+      "gate_result": "PASS",
+      "input_errors": [],
+      "interval_ms": 250,
+      "local_render_control": {
+        "distribution": {
+          "count": 30,
+          "infinite_count": 0,
+          "max_ms": 65.27097197249532,
+          "p50_ms": 41.021720971912146,
+          "p95_ms": 53.479306981898844
+        },
+        "samples": 30,
+        "subtracted": false
+      },
+      "original_summary_sha256": "90eca8b397837386f2cb5164b321bef3350959a163e4f937d0058f89b4d7deef",
+      "p95_ms": 175.45434390194714,
+      "publications": {
+        "by_type": {
+          "cursor": 2136,
+          "map-move": 0,
+          "text": 1064
+        },
+        "cadence_by_type": {
+          "cursor": {
+            "count": 2135,
+            "infinite_count": 0,
+            "max_ms": 767.955988063477,
+            "p50_ms": 27.924485970288515,
+            "p95_ms": 57.562067988328636
+          },
+          "map-move": {
+            "count": 0,
+            "infinite_count": 0,
+            "max_ms": null,
+            "p50_ms": null,
+            "p95_ms": null
+          },
+          "text": {
+            "count": 1063,
+            "infinite_count": 0,
+            "max_ms": 148.18874699994922,
+            "p50_ms": 53.84340207092464,
+            "p95_ms": 76.65291102603078
+          }
+        },
+        "count": 3200,
+        "interval_distribution": {
+          "count": 3199,
+          "infinite_count": 0,
+          "max_ms": 767.955988063477,
+          "p50_ms": 16.69390802271664,
+          "p95_ms": 46.65227502118796
+        }
+      },
+      "samples": 240,
+      "scheduled_distribution": {
+        "count": 240,
+        "infinite_count": 0,
+        "max_ms": 267.42886402644217,
+        "p50_ms": 136.12190703861415,
+        "p95_ms": 175.45434390194714
+      },
+      "segment_distributions": {
+        "input_to_ack_ms": {
+          "count": 240,
+          "infinite_count": 0,
+          "max_ms": 217.84176502842456,
+          "p50_ms": 86.7400619899854,
+          "p95_ms": 131.07439200393856,
+          "unavailable_rows": 0
+        },
+        "input_to_publication_ms": {
+          "count": 240,
+          "infinite_count": 0,
+          "max_ms": 144.9421290308237,
+          "p50_ms": 29.43311899434775,
+          "p95_ms": 69.68900898937136,
+          "unavailable_rows": 0
+        },
+        "peer_receipt_to_render_condition_ms": {
+          "count": 240,
+          "infinite_count": 0,
+          "max_ms": 52.529752952978015,
+          "p50_ms": 10.691229021176696,
+          "p95_ms": 26.85826097149402,
+          "unavailable_rows": 0
+        },
+        "publication_to_ack_ms": {
+          "count": 240,
+          "infinite_count": 0,
+          "max_ms": 116.84287001844496,
+          "p50_ms": 54.14464708883315,
+          "p95_ms": 77.00494700111449,
+          "unavailable_rows": 0
+        },
+        "two_raf_and_recheck_ms": {
+          "count": 240,
+          "infinite_count": 0,
+          "max_ms": 47.84746200311929,
+          "p50_ms": 24.90526100154966,
+          "p95_ms": 35.8361640246585,
+          "unavailable_rows": 0
+        }
+      },
+      "socket_errors": [],
+      "source_sha": "8ba5f87ae065d52b4b69158648f8e863b3d3f9cb",
+      "superseded_count": 0,
+      "timeout_ms": 1000,
+      "warmups": 30
+    },
+    {
+      "case": "wiki-100000-reader",
+      "continuous_input": {
+        "count": 2028,
+        "interval_distribution": {
+          "count": 2027,
+          "infinite_count": 0,
+          "max_ms": 102.3805569857359,
+          "p50_ms": 28.574894997291267,
+          "p95_ms": 37.8752340329811
+        },
+        "requested_sleep_ms": 16
+      },
+      "duration_s": 60,
+      "failures": 0,
+      "finite_successful_distribution": {
+        "count": 240,
+        "infinite_count": 0,
+        "max_ms": 231.33857501670718,
+        "p50_ms": 131.0891229659319,
+        "p95_ms": 166.4079889887944
+      },
+      "gate_result": "PASS",
+      "input_errors": [],
+      "interval_ms": 250,
+      "local_render_control": {
+        "distribution": {
+          "count": 30,
+          "infinite_count": 0,
+          "max_ms": 61.847141943871975,
+          "p50_ms": 36.613674950785935,
+          "p95_ms": 52.67200502566993
+        },
+        "samples": 30,
+        "subtracted": false
+      },
+      "original_summary_sha256": "44e8ef78fe7d9cb3e388258e4ad722a1a832cf153e8cd48fc63120761ae898c7",
+      "p95_ms": 166.4079889887944,
+      "publications": {
+        "by_type": {
+          "cursor": 1099,
+          "map-move": 0,
+          "text": 1190
+        },
+        "cadence_by_type": {
+          "cursor": {
+            "count": 1098,
+            "infinite_count": 0,
+            "max_ms": 1000.1892909640446,
+            "p50_ms": 57.59865406434983,
+            "p95_ms": 70.94836398027837
+          },
+          "map-move": {
+            "count": 0,
+            "infinite_count": 0,
+            "max_ms": null,
+            "p50_ms": null,
+            "p95_ms": null
+          },
+          "text": {
+            "count": 1189,
+            "infinite_count": 0,
+            "max_ms": 227.8876940254122,
+            "p50_ms": 49.41015504300594,
+            "p95_ms": 67.45569698978215
+          }
+        },
+        "count": 2289,
+        "interval_distribution": {
+          "count": 2288,
+          "infinite_count": 0,
+          "max_ms": 1000.1892909640446,
+          "p50_ms": 27.728524059057236,
+          "p95_ms": 53.13126207329333
+        }
+      },
+      "samples": 240,
+      "scheduled_distribution": {
+        "count": 240,
+        "infinite_count": 0,
+        "max_ms": 231.33857501670718,
+        "p50_ms": 131.0891229659319,
+        "p95_ms": 166.4079889887944
+      },
+      "segment_distributions": {
+        "input_to_ack_ms": {
+          "count": 240,
+          "infinite_count": 0,
+          "max_ms": 181.6636750008911,
+          "p50_ms": 81.00113598629832,
+          "p95_ms": 113.90776408370584,
+          "unavailable_rows": 0
+        },
+        "input_to_publication_ms": {
+          "count": 240,
+          "infinite_count": 0,
+          "max_ms": 135.0512810749933,
+          "p50_ms": 31.205713050439954,
+          "p95_ms": 52.764703053981066,
+          "unavailable_rows": 0
+        },
+        "peer_receipt_to_render_condition_ms": {
+          "count": 240,
+          "infinite_count": 0,
+          "max_ms": 49.16302394121885,
+          "p50_ms": 17.63819099869579,
+          "p95_ms": 35.32888204790652,
+          "unavailable_rows": 0
+        },
+        "publication_to_ack_ms": {
+          "count": 240,
+          "infinite_count": 0,
+          "max_ms": 80.45991603285074,
+          "p50_ms": 49.951897002756596,
+          "p95_ms": 67.09409598261118,
+          "unavailable_rows": 0
+        },
+        "two_raf_and_recheck_ms": {
+          "count": 240,
+          "infinite_count": 0,
+          "max_ms": 46.86306801158935,
+          "p50_ms": 24.355323053896427,
+          "p95_ms": 41.05549096129835,
+          "unavailable_rows": 0
+        }
+      },
+      "socket_errors": [],
+      "source_sha": "8ba5f87ae065d52b4b69158648f8e863b3d3f9cb",
+      "superseded_count": 47,
+      "timeout_ms": 1000,
+      "warmups": 30
+    }
+  ],
+  "collector_exit": 0,
+  "driver_exit": 1,
+  "gate_ms": 200,
+  "note": "Derived from all nine planned per-case files. The canonical overall summaries list omits the failed cohort; its original full structured summary is retained separately.",
+  "passed_cohorts": 8,
+  "planned_cohorts": 9,
+  "result": "FAIL",
+  "row_artifact_validation": {
+    "completed_case_count": 9,
+    "errors": [],
+    "scheduled_rows_written": 2160
+  },
+  "scheduled_rows": 2160,
+  "source_sha": "8ba5f87ae065d52b4b69158648f8e863b3d3f9cb",
+  "unexecuted": []
+}

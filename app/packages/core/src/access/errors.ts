@@ -11,6 +11,16 @@ export class DomainError extends Error {
   }
 }
 
+/**
+ * AI is turned off in the workspace (F-029, #614): no agent or assistant may read or act there, and no
+ * person may start AI work there. Also used when a queued item's admission epoch is no longer current.
+ */
+export class WorkspaceAiBlockedError extends DomainError {
+  constructor() {
+    super(403, 'WORKSPACE_AI_BLOCKED', 'AI is turned off in this workspace');
+  }
+}
+
 /** The object does not exist or the principal may not know that it exists. */
 export class NotFoundError extends DomainError {
   constructor(what = 'Object', code = 'NOT_FOUND') {

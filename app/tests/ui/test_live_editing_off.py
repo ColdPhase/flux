@@ -7,6 +7,7 @@ first (the earlier "Write together" flash) and keeps the ordinary map's immediat
 from __future__ import annotations
 
 import json
+import os
 import re
 import time
 import unittest
@@ -14,7 +15,7 @@ import uuid
 
 from playwright.sync_api import Page, expect, sync_playwright
 
-from test_app_shell import DESKTOP, ORIGIN, UPSTREAM, start_forwarder
+from test_app_shell import DESKTOP, ORIGIN, UI_BROWSER, UPSTREAM, start_forwarder
 
 PASSWORD = "ordinary live-off password"
 # Records live-only text the moment any node shows it, so a flash before a fallback is caught.
@@ -28,6 +29,7 @@ WATCH = r"""
 """
 
 
+@unittest.skipUnless(os.environ.get('FLUX_LIVE_EDITING') == 'off', 'Explicit operator opt-out lane; normal installs use live editing')
 class LiveEditingOffJourney(unittest.TestCase):
     state: dict | None = None
     doc_url = ""
@@ -38,7 +40,10 @@ class LiveEditingOffJourney(unittest.TestCase):
         if UPSTREAM:
             start_forwarder(ORIGIN, UPSTREAM)
         cls.pw = sync_playwright().start()
-        cls.browser = cls.pw.chromium.launch()
+        cls.browser = getattr(cls.pw, UI_BROWSER).launch()
+        if cls.browser.browser_type.name != UI_BROWSER:
+            raise AssertionError('The explicit-off journey must use the requested browser engine')
+        print(f'ACTUAL_UI_ENGINE={cls.browser.browser_type.name}; mode=off', flush=True)
         expect.set_options(timeout=8000)
 
     @classmethod
@@ -112,3 +117,31 @@ class LiveEditingOffJourney(unittest.TestCase):
         expect(page.locator(".sk-node", has_text="Distance sensor")).to_be_visible()
         time.sleep(0.5)
         self.assertEqual({"live requests": live, "live text": page.evaluate("window.__liveText")}, {"live requests": [], "live text": []})
+
+        # Pointer resizing uses one native/measured baseline in the ordinary path too.
+        map_id = self.map_url.rsplit('/', 1)[-1]
+        before = self.api(page, 'GET', f'/api/v1/sketches/{map_id}', status=200)['thoughts'][0]
+        thought.click()
+        bounds = thought.bounding_box()
+        zoom = bounds['width'] / before['width']
+        start_height = max(before['height'], thought.evaluate('el => el.offsetHeight'))
+        handle = thought.locator('.sk-resize').bounding_box()
+        self.assertIsNotNone(handle)
+        try:
+            page.mouse.move(handle['x'] + handle['width'] / 2, handle['y'] + handle['height'] / 2)
+            page.mouse.down()
+            page.mouse.move(handle['x'] + handle['width'] / 2 + 48 * zoom,
+                            handle['y'] + handle['height'] / 2 + 24 * zoom, steps=4)
+        finally:
+            page.mouse.up()
+        expect(thought).to_have_attribute('data-thought-version', str(before['version'] + 1))
+        resized = self.api(page, 'GET', f'/api/v1/sketches/{map_id}', status=200)['thoughts'][0]
+        self.assertEqual((resized['width'], resized['height']), (before['width'] + 48, start_height + 24))
+        self.assertEqual((resized['text'], resized['x'], resized['y']), (before['text'], before['x'], before['y']))
+        page.get_by_role('toolbar', name='Sketch tools').get_by_role('button', name='Undo', exact=True).click()
+        expect(thought).to_have_attribute('data-thought-version', str(resized['version'] + 1))
+        undone = self.api(page, 'GET', f'/api/v1/sketches/{map_id}', status=200)['thoughts'][0]
+        self.assertEqual((undone['width'], undone['height']), (before['width'], before['height']))
+        self.assertEqual({"live requests": live, "live text": page.evaluate("window.__liveText")}, {"live requests": [], "live text": []})
+        print('ORDINARY_RESIZE_CONTROL', {'native': before, 'start_height': start_height,
+              'resized': resized, 'undo': undone}, flush=True)

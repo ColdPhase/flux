@@ -6,7 +6,7 @@ The driver implementation lives in `app/tests/ui/live_editing_latency.py`. The p
 
 ## Candidate and environment preflight
 
-Use an isolated stack, fresh project name, database/files volumes and fixture credentials. Build both application and `ui-test` images from the exact frozen candidate; browser tests are baked into the image. Run application, dependency inspection and tests in Docker under [the container contract](containers.md). Preserve the app's ordinary origin, session, authorization and rate checks. `FLUX_DEVELOPMENT_LIVE_EDITING=true` is only for this explicitly isolated candidate. The source-candidate `FLUX_DEVELOPMENT_LIVE_EDITING_TELEMETRY=1` additionally requires the development capability; it supplies bounded local stdout observations, not a public API. Its existence and implementation need separate source/runtime verification.
+Use an isolated stack, fresh project name, database/files volumes and fixture credentials. Build both application and `ui-test` images from the exact frozen candidate; browser tests are baked into the image. Run application, dependency inspection and tests in Docker under [the container contract](containers.md). Preserve the app's ordinary origin, session, authorization and rate checks. The whole-issue candidate uses the production `FLUX_LIVE_EDITING` control (normal default on, explicit off); production merge still waits for all original gates and independent acceptance. `FLUX_DEVELOPMENT_LIVE_EDITING=true` is only the isolated diagnostic marker, not production authority. `FLUX_DEVELOPMENT_LIVE_EDITING_TELEMETRY=1` additionally requires both enabled editing and that marker; it supplies bounded local stdout observations, not a public API. Original evidence keeps its source pin.
 
 Before starting browser measurements, the runner must:
 
@@ -59,6 +59,146 @@ A failed preflight has not begun a measurement and cannot publish a valid invent
 
 ## Fixed measurement and retained artifacts
 
+### Founder acceptance of measured latency (2026-10-18)
+
+Hubert (@PelikanFix16) explicitly accepted the small overrun in the supervising
+session: “jak wyjdziem ytroche za limit nic sie nie stanie 213 jest niezlym
+wynikiem”. The [recorded direction](https://github.com/ColdPhase/flux/issues/228#issuecomment-6251802241)
+accepts the **213.167416 ms** map500/drag200 result in the retained
+[complete nine-cohort run](evidence/live-editing/2026-10-18-access-latency/README.md)
+at `7af776c7dfd4403e3937c8ccd4b9723c7808d587`. The other eight cohorts meet
+the 200 ms target; all 2160 scheduled rows have zero input/sample/socket errors,
+the actual collector is COMPLETE, all 26 final gauges are zero, and the original
+producer has a verified clean exit. The later selected 214.850179 ms result
+retains its [original source and incomplete collector](evidence/live-editing/2026-10-18-lazy-outline.md#coordinators-subsequent-selected-timing);
+it cannot replace the complete run or establish resource acceptance.
+
+The 200 ms target, original driver, raw verdicts and source pins remain unchanged.
+The delivery may accept this specific measured departure with the founder's
+authorization; it is not a blanket future latency bound. No new profile or
+measurement is required solely to turn this small overrun into a strict 200 ms
+pass. Final independent evaluation still assesses the retained evidence's
+compatibility with the composed application. Functional recovery, current
+authority/privacy, complete resource evidence and protected independent approval
+remain required. No new run or application-only speedup is claimed.
+
+**Whole-issue technical acceptance, 2026-10-18:** [final independent evidence](evidence/live-editing/2026-10-18-final-review/README.md) accepts candidate `c66eefc7` using compatible retained measurements and final composed Chromium/WebKit interaction/renders, including all three resolved P2 findings. The founder exception above applies; eligible protected approval is still required.
+
+### Candidate identity-read method change (2026-10-18, #228 / #613)
+
+The failed canonical run at `8ba5f87ae065d52b4b69158648f8e863b3d3f9cb`
+remains [FAIL, 8/9 cohorts](evidence/live-editing/2026-10-18-map-body-performance/README.md#subsequent-canonical-g4-run-fail),
+including map-500-drag-200 p95 230.479ms. It used driver SHA-256
+`11b71d4f9d34a471367de974ec93bde207b4b6f0a6b813babaa2d68c1a79e3c3`.
+No later method change can relabel that evidence or establish a code-only speedup.
+
+One private, non-acceptance diagnostic at
+`28ad6b43e91cea907b1bf22c0de343265c91387f` preserved the application, screenshot
+flags, 30 warmups and 240 scheduled map-500-drag-200 rows. The unchanged collector
+rejected its one-case marker; it is not a G4 pass or a complete queue capture.
+In the exact scheduled 60 seconds, its owner trace records 1279 repeated attached
+canvas lookups with cumulative protocol duration 14.219s (p95 17.654ms), while the
+CPU profile samples 7.862s in Playwright's `computeBox`. These times overlap with
+application work and cannot be subtracted from latency.
+
+The post-pointer identity read uses `Locator.evaluate`. In pinned Playwright
+1.62.0, [that method](https://github.com/microsoft/playwright-python/blob/v1.62.0/playwright/_impl/_locator.py#L177)
+resolves an attached element through `wait_for_selector`. The
+[server lookup](https://github.com/microsoft/playwright/blob/v1.62.0/packages/playwright-core/src/server/frames.ts#L783)
+computes visibility even for the attached state; its
+[box computation](https://github.com/microsoft/playwright/blob/v1.62.0/packages/injected/src/domUtils.ts#L109)
+reads style and geometry. The driver needs the current canvas identity at this
+point; its separate peer observation still verifies the visible result.
+
+The bounded candidate changes **only this repeated identity read** to a fresh
+`page.evaluate` query. It must require exactly one connected current canvas and
+return the same gesture ID, generation, numeric sequence and document visibility.
+It must retain the existing refusal of missing/current-invalid identities.
+Trusted pointer input, continuous input cadence, all selected positions, versions,
+leases, server-named receipts, coverage, visible target bounds, two animation
+frames and recheck, screenshots, traces, row counts, deadlines, error denominator,
+queue/shutdown validation and the 200ms gate stay unchanged. No peer lookup or
+application optimization is admitted by this diagnostic alone.
+
+Before a new canonical run, verify old/new identity equivalence against a running
+application and rejection of missing/duplicate canvases, plus relevant driver and
+evidence checks. Pin the changed driver and candidate separately. Implementation
+and author verification are admitted in the isolated disabled fixture; independent
+source/method evaluation and the complete canonical result remain required before
+acceptance. This record is a candidate method decision, not a claim of either.
+
+### Candidate combined peer-paint observation (2026-10-18, #228 / #613)
+
+**Status after the later founder direction above:** retained private experiment,
+not part of PR #613. The implementation and partial author calibration remain on
+the private branch; WebKit equivalence was not run and no new timing acceptance
+is claimed. PR613 keeps the original canonical `painted()` helper. The proposal
+below records what was considered before the founder accepted the measured
+overrun; it creates no remaining implementation or review gate for this delivery.
+
+The original full-nine run at `7af776c7` remains FAIL8/9, including map500/drag200
+213.167416 ms. After the later application corrections, selected source
+`e568243c3de2f40f7c8280edb9b8aa37295352eb` still failed at214.850179 ms. Its
+[source-pinned result](evidence/live-editing/2026-10-18-lazy-outline.md#coordinators-subsequent-selected-timing)
+and incomplete single-cohort collector are unchanged by this proposal.
+
+That existing peer trace records270 observations including30 warmups. The
+first `JSHandle.jsonValue` round trip has p50/p95 9.921/14.276 ms; the separate
+two-RAF evaluation27.305/49.071 ms; the separate full final geometry evaluation
+15.049/24.806 ms. These protocol intervals overlap other work. They are neither
+pure application cost nor values to subtract from the reported latency. No new
+CPU profile or runtime retry supports this candidate.
+
+At baseline `2017906dcd150f508edd2fc99e10fb3024ec66db`, change only the
+`painted()` helper's transfer of results. Keep the exact `wait_for_function`
+predicate, arguments, RAF polling and timeout. Once its truthy handle resolves,
+record Python monotonic `condition_at`. Using the public
+[JSHandle.evaluate API](https://playwright.dev/python/docs/api/class-jshandle#js-handle-evaluate)
+and [pinned1.62.0 implementation](https://github.com/microsoft/playwright-python/blob/v1.62.0/playwright/_impl/_js_handle.py),
+retain that first plain value in its existing browser context, await the same
+nested two `requestAnimationFrame` callbacks, then evaluate the exact complete
+predicate again against the current DOM and arguments. Await its value as the
+old `page.evaluate` does. Return both complete `first_render` and `render`
+objects in one serialized response. Set `painted_at` only after that response
+has arrived; reject a false final result with the existing error.
+
+The first result is a fresh plain snapshot, not a DOM node or a reusable current
+state. Keeping it must never substitute for the full post-RAF recheck. No DOM,
+element, geometry or identity cache is introduced. All200 positions, versions,
+generation/gesture/lease, current visible bounds, exact publication/server-named
+receipt coverage and named Wiki cursor checks remain. All other driver
+functions and constants, continuous trusted input, warmups,240-row/60s schedule,
+deadline/error denominator, original200 ms gate, local control without
+subtraction, trace screenshots and actual collection/shutdown/seal stay intact.
+
+`condition_at` now marks initial handle resolution before the first snapshot's
+JSON transfer; formerly it followed that transfer. Disclose this difference in
+`condition_at` and `two_raf_and_recheck_ms`; do not compare those subsegments as
+unchanged or subtract them. The total input→complete post-RAF response still
+uses the one driver monotonic clock and includes the actual protocol overhead.
+
+The independent `review_612` agent assessed this concrete plan in the supervising
+session before implementation: accept with required equivalence checks, no
+P1/P2 gap. Publisher/implementation owner isPelikanFix16; this assessment is
+neither a final review ofPR613 nor an eligible GitHub Code Owner approval.
+Before a new canonical run, verify old/new on the actual application in both
+Chromium and WebKit:
+
+- Complete first/final snapshot shape, exact identities and all200 positions for
+  held input, then real later same-gesture coverage with actual wire receipts.
+- Refusal of wrong generation/version and hidden/clipped target; invalidation
+  after initial success but before final recheck must fail rather than reuse the
+  first snapshot. Invalid-state controls may change test DOM, never transport.
+- Actual Wiki editor and ordinary reader predicates, including named cursor
+  evidence, current confirmed sequence and visible character geometry.
+
+Pin the implementation and prove all driver AST outside `painted()` unchanged.
+Only after those checks may a fresh original nine-case measurement collect its
+own2160 rows and complete actual queue/seal/producer evidence. Final independent
+source/method/functional and neutral visual evaluation remain required before
+acceptance. Preserve every previous failure; a new observer implementation
+cannot establish an application-only speedup or relabel an old result.
+
 The nine case names are fixed:
 
 ```text
@@ -73,7 +213,7 @@ wiki-100000-editor
 wiki-100000-reader
 ```
 
-Each retains 30 peer warmups, 240 scheduled rows at 250 ms over 60 seconds, continuous trusted input between samples, and the separate 30-sample local render control. The existing 1000 ms deadline, exact receipt/generation/coverage checks, all selected map positions and two animation-frame opportunities remain. Every error/timeout stays in the denominator as infinity. A pass needs nearest-rank p95 ≤200 ms and zero errors/timeouts/overload; the finite successful distribution is reported separately. No driver, local-render, collector or telemetry overhead is subtracted. ACK or publication coverage alone is not rendered visibility. A superseded-covered row retains its actual later same-interaction rendered observation and measured latency.
+Each retains 30 peer warmups, 240 scheduled rows at 250 ms over 60 seconds, continuous trusted input between samples, and the separate 30-sample local render control. The existing 1000 ms deadline, exact receipt/generation/coverage checks, all selected map positions and two animation-frame opportunities remain. Every error/timeout stays in the denominator as infinity. A strict driver pass needs nearest-rank p95 ≤200 ms and zero errors/timeouts/overload; the finite successful distribution is reported separately. Delivery acceptance of the specific 213.167416 ms result follows the founder exception above without changing that raw verdict. No driver, local-render, collector or telemetry overhead is subtracted. ACK or publication coverage alone is not rendered visibility. A superseded-covered row retains its actual later same-interaction rendered observation and measured latency.
 
 Keep each case's original rows, coverage, publications, local control, summary, traces and screenshot. Queue correlation sidecars (`<case>-queue-correlations.json`) contain only actual matched server observations by row index; they do not rewrite original measurement rows. Unmatched per-row server depth stays null. Actual aggregate queue/resource peaks remain mandatory.
 
@@ -286,3 +426,82 @@ The run is **not** a pass for the 200-drag and 100k-editor cohorts. It was taken
 24-core host with about 15 other containers and a load average near 7, not the isolated healthy
 host the target names; it is a measurement, not an acceptance claim, and the earlier
 `79e3a14b` PASS is neither replaced nor repeated by it. Raw rows: `/home/hubert/flux-evidence/228-live-cursors/latency/`.
+
+
+### Candidate native WebKit composition check (2026-10-18, #228 / #613)
+
+The [integrated baseline](evidence/live-editing/2026-10-18-integrated-baseline/README.md)
+retains two WebKit harness errors without passing the required paths. CDP composition
+remains the actual Chromium path. WebKit needs native preedit and commit rather than
+a synthetic DOM composition or an inserted final Japanese string alone.
+
+The candidate runs **only the WebKit IME journey** headed in its own Xvfb display,
+using GTK's built-in Simple IM context and real XTEST keyboard input. GTK documents
+[Ctrl+Shift+U hexadecimal Unicode composition](https://gnome.pages.gitlab.gnome.org/gtk/gtk4/class.IMContextSimple.html).
+The pinned Playwright [native dependencies](https://github.com/microsoft/playwright/blob/v1.62.0/packages/playwright-core/src/server/registry/dependencies.ts)
+include the X11/GTK runtime; its existing digest-pinned UI image is the dependency
+boundary. Use installed Xvfb, libX11 and libXtst with explicit availability failures;
+do not silently fall back to JavaScript events or Playwright protocol key dispatch.
+[The latter bypasses GTK's input-method filtering](https://github.com/microsoft/playwright/blob/v1.62.0/browser_patches/webkit/patches/bootstrap.diff).
+[XTEST key input](https://www.x.org/releases/current/doc/libXtst/xtestlib.html) goes
+through the native GTK/WebKit input path.
+
+Send separate hexadecimal preedits for U+65E5 and U+672C, observing preedit before
+committing each. Require native trusted composition start/update/end events and
+native trusted input, then exactly one `日本` in both actual authorized replicas,
+no leftover preedit, an honest shared ACK and unchanged saved history. Keep the
+original Chromium kana preedit/commit assertion. Also exercise completion at the
+100,000-code-unit limit through trusted deletion of enough characters to keep
+intermediate composition within the existing limit, then restore exactly 100,000
+with the native commit and ordinary suffix. Inspect the real public live head;
+never replace the application's editor content or collaboration transport.
+
+A temporary unique browser-window title may identify the writer's native X11
+window; it changes no editor or product state and is restored. Isolate and clean
+up the display/browser even on failure, refuse ambiguous/missing windows, and
+record the actual input witness. Other UI/latency journeys keep their original
+headless configuration. This proves native GTK Unicode composition in the
+required WebKit engine, not a physical Japanese keyboard, kana candidate UI,
+iOS keyboard or all platform IMEs. Physical devices remain optional under #266;
+this method and its actual runtime result still need the single consolidated
+independent functional assessment. Until runtime proof succeeds, WebKit IME
+acceptance remains pending; no criterion is waived by this candidate record.
+
+
+### Full editor text through a trusted Copy payload (2026-10-18, #228 / #613)
+
+The WebKit native IME journey now completes its small and100k cases at
+`4618e319b992137c83475fdfb943cf4c355ec114`; this does not change the other failed
+checks in that run. WebKit's clipboard-read selection still produces a real
+`NotAllowedError` in the current headless fixture. Do not turn that into passing
+quota/undo coverage or claim system-clipboard/paste compatibility.
+
+The full-text observer candidate reads the `text/plain` payload of the actual
+trusted Copy event, after the existing CodeMirror handler has populated its
+ClipboardEvent data and prevented default copying. The observer adds no editor
+state, text, synthetic event, transport or clipboard content. A fresh nonce and
+sentinel require a new event from the current focused editor; require
+`isTrusted`, the current source element, handled default action and a complete
+plain-text payload. An old witness, absent event, untrusted event, empty payload
+or viewport-only text must fail. Remove the temporary listener and observation
+when done. This verifies the actual user Copy output of the complete editor,
+not permission to read or paste the operating system clipboard.
+
+Keep both accounts' exact99,999/100,000-character comparisons, real server
+ACK/generation/sequence/hash quorum, concurrent own-undo refusal and over-limit
+input refusal unchanged. The observer replaces only an unsupported observation
+mechanism. Its browser results and source remain required in the consolidated
+independent review; the original failed clipboard attempts retain their pins.
+
+### Where the retained evidence pins resolve (2026-10-22, #613)
+
+The pins `aade67efde45b8156fe933c2124ab5a2a96d580a` (roomless conflicts, API
+50/50 and two-API), `759ecb40696f88cccb231dd33c49b739563d4e76` (lazy outline,
+confirmed Undo) and `e568243c3de2f40f7c8280edb9b8aa37295352eb` (unchanged
+map200 author diagnostic) were local-only worker commits and are not ancestors
+of this PR branch. They are published as the tags
+`archive/228-pin-aade67ef`, `archive/228-pin-759ecb40` and
+`archive/228-pin-e568243c`, so each pin resolves with
+`git fetch origin tag archive/228-pin-<short>`. Their trees are the sources the
+retained evidence describes; the PR head still differs from them as the
+dossier states.
