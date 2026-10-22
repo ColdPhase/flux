@@ -129,19 +129,24 @@ export async function requireWorkspaceAi(db: Executor, workspaceId: string, opti
 - `lock: true` reads the row `FOR SHARE`; the change command takes `FOR UPDATE`. Like the
   grant locks under [Concurrency](../development/access-policy.md#concurrency), a check
   inside a commit transaction is ordered strictly before or after a state change.
-- **Lock order.** Inside `loadActor` and every explicit check, the policy row is locked
-  before the agent, membership, project and grant rows. The flip locks the policy row
-  first and afterwards takes only the changing person's membership `FOR SHARE` and the
-  event `seq` lock; the sweep never locks the policy row. No transaction therefore waits
-  for the policy row while holding a lock the flip needs.
-- **Exception: checks inside a human's write.** The reaction-capture function, the
+- **Lock order (one rule for every transaction, corrected after the S2 review, 2026-10-23).**
+  The policy row comes before any membership row that is locked **exclusively**, and before
+  agent, project and grant rows inside `loadActor` and every explicit check.
+  - The flip takes the policy row `FOR UPDATE` first, then only the changing admin's membership
+    `FOR SHARE` and, last, the event `seq` lock.
+  - A membership change (`changeRole`, `removeMember`) takes the policy row `FOR SHARE` before its
+    membership row `FOR UPDATE`. Without that, a role change that records its event (whose agent
+    audience reads the policy row) held the admin's membership exclusively while waiting for the
+    policy row, and the flip held the policy row while waiting for that membership: a deadlock,
+    reproduced with the real `PATCH` and `PUT`.
+  - The sweep never locks the policy row; each of its steps is its own transaction.
+- **Exception: shares inside a person's own write.** The reaction-capture function, the
   `ai_work_admission` backstop, `prepareHumanNegative`/`enqueueHumanNegative` and
-  `eventAudience` run inside a person's own write and take the policy share after that
-  person's membership and project shares. This is still deadlock-free: the flip needs only
-  the flipping admin's membership share (which a share does not block) and the event `seq`
-  lock, and these sites run before the write's event insert takes that lock. The test "a
-  human task write with a reaction rule during the flip still commits" covers it. A two-connection test covers the
-  flip against a role change of the flipping admin, in both orders.
+  `eventAudience` take the policy share after that person's membership and project shares.
+  These are shares only: the flip's membership share is compatible with them, and they run
+  before the write's event insert takes the `seq` lock, so no cycle exists. Tests: a person's
+  task write during the flip commits; a real role change and removal of the flipping admin
+  against the real flip, in both orders, end in 200 and 403 without a deadlock.
 - **Principal layer.** `loadActor` calls `workspaceAi` for every `agent` principal (with
   the caller's `lock`) and returns an inactive actor with `blockedBy: 'workspace_ai'` when
   the workspace is blocked. Every evaluator built on it (`evaluateWorkspace`,

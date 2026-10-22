@@ -97,7 +97,9 @@ export function workspaceAiSweepRows(db: DbExecutor) {
     },
     /** Comparisons that have not started their provider request end `not_run`; one in flight is aborted by its watcher. */
     async endComparisons(workspaceId: string, epoch: number) {
+      // As every not_run end does (proactive_comparison_outbox_lifecycle_check): the reservation and its connection are released.
       return (await db.execute(sql`UPDATE proactive_comparison_outbox q SET status = 'not_run', failure_code = 'AI_OFF', reserved_cents = 0,
+        connection_id = NULL, reserved_at = NULL, dispatch_started_at = NULL,
         usage_input_tokens = 0, usage_output_tokens = 0, usage_estimated_cents = 0, finished_at = now(), updated_at = now()
         FROM projects p WHERE p.id = q.project_id AND p.workspace_id = ${workspaceId} AND q.ai_epoch < ${epoch}
           AND (q.status = 'queued' OR (q.status = 'reserved' AND q.dispatch_started_at IS NULL))`)).rowCount ?? 0;
@@ -111,11 +113,18 @@ export function workspaceAiSweepRows(db: DbExecutor) {
       return (await db.execute(sql`UPDATE cowork_requests SET state = 'cancelled', reason = 'ai_off', version = version + 1, updated_at = clock_timestamp()
         WHERE workspace_id = ${workspaceId} AND ai_epoch < ${epoch} AND state IN ('queued', 'deferred', 'claimed')`)).rowCount ?? 0;
     },
-    /** Units stop and release their lease; the task itself is unchanged. */
+    /**
+     * Units stop and release their lease, with a new generation, as a revoked connection's units do (cowork_stop_connection_units);
+     * the task itself is unchanged. The same lock order as a claim: connection slots, then tasks, then units, each sorted.
+     */
     async stopUnits(workspaceId: string, epoch: number) {
-      return (await db.execute(sql`UPDATE cowork_units SET state = 'stopped', lease_id = NULL, lease_session_id = NULL, lease_expires_at = NULL,
-        version = version + 1, updated_at = clock_timestamp()
-        WHERE workspace_id = ${workspaceId} AND ai_epoch < ${epoch} AND state IN ('pending', 'claimed', 'paused')`)).rowCount ?? 0;
+      const open = sql`workspace_id = ${workspaceId} AND ai_epoch < ${epoch} AND state IN ('pending', 'claimed', 'paused')`;
+      await db.execute(sql`SELECT connection_id FROM cowork_connection_slots WHERE workspace_id = ${workspaceId}
+        AND connection_id IN (SELECT assignment_connection_id FROM cowork_units WHERE ${open}) ORDER BY connection_id FOR UPDATE`);
+      await db.execute(sql`SELECT id FROM project_work_items WHERE id IN (SELECT work_id FROM cowork_units WHERE ${open}) ORDER BY id FOR UPDATE`);
+      await db.execute(sql`SELECT id FROM cowork_units WHERE ${open} ORDER BY id FOR UPDATE`);
+      return (await db.execute(sql`UPDATE cowork_units SET state = 'stopped', generation = generation + 1, lease_id = NULL, lease_session_id = NULL,
+        lease_expires_at = NULL, version = version + 1, updated_at = clock_timestamp() WHERE ${open}`)).rowCount ?? 0;
     },
     async revokeSessions(workspaceId: string, epoch: number) {
       return (await db.execute(sql`UPDATE agent_runtime_sessions SET revoked_at = now()

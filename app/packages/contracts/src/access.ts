@@ -115,7 +115,11 @@ export const WORKSPACE_AI_BLOCKED = 'WORKSPACE_AI_BLOCKED';
 export const workspaceAiPolicyPath = (workspaceId: string) => `/api/v1/workspaces/${workspaceId}/ai-policy`;
 export interface SetWorkspaceAiPolicyCommand { state: 'allowed' | 'blocked'; expectedVersion?: number }
 /** What turning AI off stopped at once (the worker repeats the same sweep, so a crash cannot skip it). */
-export interface WorkspaceAiSwept { runs: number; tokens: number; comparisons: number; reactions: number; requests: number; units: number; sessions: number }
+export interface WorkspaceAiSwept {
+  runs: number; tokens: number; comparisons: number; reactions: number; requests: number; units: number; sessions: number;
+  /** Steps whose transaction failed (each step is its own transaction, so one cannot stop the others); the job retries them. */
+  failed: string[];
+}
 export interface SetWorkspaceAiPolicyResult { ai: WorkspaceAiPolicy; changed: boolean; stopped: WorkspaceAiSwept | null }
 /** Recorded with every change, for the workspace's people (never delivered to an agent). */
 export const WORKSPACE_AI_POLICY_CHANGED_EVENT = 'workspace.ai_policy_changed.v1';

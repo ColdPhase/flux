@@ -210,7 +210,11 @@ export function createRuntimeRunProcessor({ uow, runtime, tokens, stopPollMs, ho
         const current = await ports.runs.findRun(run.id, { lock: true });
         if (!current || current.status !== 'reading') return { done: true as const, outcome: (current?.status ?? 'skipped') as RuntimeRunOutcome };
         const end = async (changes: RunChanges) => ({ done: true as const, outcome: (await updateAndAnnounce(ports, run.id, changes)).status as RuntimeRunOutcome });
-        if (current.stopRequestedAt) return end(ended('stopped', 'before_dispatch', free));
+        if (current.stopRequestedAt) {
+          // F-029: a stop request the turn-off sweep made says so.
+          const ai = await ports.access.workspaceAi(current.workspaceId);
+          return end(ended(ai.state !== 'allowed' || ai.epoch !== current.aiEpoch ? 'ai_off' : 'stopped', 'before_dispatch', free));
+        }
         const refusal = await checked(ports, current, 'before_dispatch', true);
         if (refusal) return end(ended(refusal, 'before_dispatch', free));
         await updateAndAnnounce(ports, run.id, { status: 'dispatching', dispatchedAt: new Date() });

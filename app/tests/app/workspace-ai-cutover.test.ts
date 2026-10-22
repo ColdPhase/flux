@@ -189,7 +189,7 @@ describe('workspace AI lock: switch and cutover', () => {
     const status = async (id: string) => (await pool.query('SELECT status, end_reason FROM personal_runs WHERE id = $1', [id])).rows[0];
     assert.deepEqual(await status(old.run.id), { status: 'stopped', end_reason: 'ai_off' }, 'the late sweep ends what was admitted before the flip');
     assert.deepEqual(await status(fresh.run.id), { status: 'queued', end_reason: null }, 'and never touches work admitted after AI was turned on again');
-    assert.deepEqual(Object.values(await sweepWorkspaceAi({ workspaceId: scene.ws.id, epoch: blockedEpoch }, db)), [0, 0, 0, 0, 0, 0, 0], 'a second sweep changes nothing');
+    assert.deepEqual(Object.values(await sweepWorkspaceAi({ workspaceId: scene.ws.id, epoch: blockedEpoch }, db)), [0, 0, 0, 0, 0, 0, 0, []], 'a second sweep changes nothing');
     const dispatched = scene.compute.dispatched.length;
     await scene.processor.process(fresh.run.id);
     assert.ok(scene.compute.dispatched.length > dispatched, 'control: the new run reaches the provider');
