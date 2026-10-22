@@ -67,7 +67,12 @@ palette, demo data and single-file script were not copied.
   one with a calm notice. An ended or revoked session ends the strip; saved work is never
   touched. Leaving as the last person says the session closes shortly.
 - **Phone and tablet.** The strip is one 52 px row: the anchor, microphone, **More** and
-  **Leave**. Every target is at least 44 × 44 px. Everything else is in the sheet. When a
+  **Leave**. Every target is at least 44 × 44 px. Everything else is in the sheet.
+  A thread or Details sheet (phone) or panel (tablet) opened during a session starts below the
+  strip, and so does its scrim: the strip does not move, and the microphone, **More** and
+  **Leave** stay on top and take taps. Tab runs through the sheet and the strip; Esc or a tap
+  on the scrim still closes the sheet. A screen opened from the strip closes the sheet first.
+  When a
   browser cannot publish its screen (Android and iOS browsers have no `getDisplayMedia`),
   Flux shows no screen button. It says so in the sheet and still lets the person view
   screens and **Show this**. Drafts persist while you navigate with the session open.

@@ -170,8 +170,7 @@ class ReachabilityRows(LiveBase):
         self.share_host_screen(host)
         guest = self.guest_join("chromium", phone=True)
         bar = self.bar(guest)
-        # The thread sheet is modal now (#344): while it is open its scrim covers the strip, so the stage is
-        # opened from the strip with the thread closed, as a person does.
+        # The thread is closed here; test_07 opens the stage from the strip while a thread is open.
         expect(guest.locator(".ui-overlay")).to_have_count(0)
         bar.get_by_role("button", name="View").click()
         stage = guest.get_by_role("region", name="Shared screens and cameras")
@@ -255,6 +254,129 @@ class ReachabilityRows(LiveBase):
         # Closed the way the phone sheet is closed elsewhere (its header control, tapped; see test_03 in test_live_sessions).
         sheet.get_by_role("button", name="Back to work").tap()
         expect(sheet).to_be_hidden()
+
+    # ---- the strip above a thread sheet (phone and tablet) ----
+
+    def open_thread(self, page: Page):
+        """Opens the seeded conversation's thread from its root's replies button, as a person does mid-session."""
+        page.get_by_role("button", name=re.compile(r"^\d+ repl")).first.click()
+        surface = page.locator(".ui-overlay[data-state='open'] .ui-overlay__surface")
+        expect(surface).to_be_visible()
+        expect(page.locator(".ui-panel__close").first).to_be_visible()
+        page.wait_for_timeout(600)  # the sheet has finished sliding in
+        expect(page.locator(".route-progress")).to_have_count(0)
+        return surface
+
+    def strip_box(self, page: Page) -> list[int]:
+        box = self.bar(page).bounding_box()
+        assert box
+        return [round(box["x"]), round(box["y"]), round(box["width"]), round(box["height"])]
+
+    def assert_app_interactive(self, page: Page) -> None:
+        left = page.evaluate("() => ({ root: document.getElementById('root').inert, inert: document.querySelectorAll('#root [inert]').length, modal: document.getElementById('root').hasAttribute('data-modal') })")
+        self.assertEqual(left, {"root": False, "inert": 0, "modal": False}, "closing the sheet leaves nothing inert")
+
+    def check_strip_over_thread(self, page: Page, label: str) -> None:
+        bar = self.bar(page)
+        expect(page.locator(".route-progress")).to_have_count(0)
+        shot(page, f"live-reachability-{label}-session")
+        before = self.strip_box(page)
+        surface = self.open_thread(page)
+        shot(page, f"live-reachability-{label}-thread")
+        # The strip does not move, and nothing paints over it: mute and Leave are the topmost elements.
+        self.assertEqual(self.strip_box(page), before, "the strip keeps its place when the thread opens")
+        scrim = page.locator(".ui-overlay[data-state='open'] .ui-scrim").bounding_box()
+        assert scrim
+        self.assertGreaterEqual(round(scrim["y"]) + 1, before[1] + before[3], "the scrim starts below the strip")
+        hits = {}
+        for name, button in (("mic", bar.get_by_role("button", name=re.compile("^Microphone"))),
+                             ("more", bar.get_by_role("button", name="Session details and more")),
+                             ("leave", bar.get_by_role("button", name="Leave", exact=True))):
+            hits[name] = button.evaluate(HIT_TEST)
+            self.assertTrue(hits[name]["ok"], f"{label}: {name} is covered by {hits[name]['top']} at {hits[name]['centre']}")
+        self.observed[f"{label}-thread-over-strip"] = {"strip": before, "hits": hits}
+        # Mute works with the thread open, by a real tap.
+        mic = bar.get_by_role("button", name=re.compile("^Microphone"))
+        mic.tap(timeout=5000)
+        expect(bar.get_by_role("button", name=re.compile("^Microphone on"))).to_have_attribute("aria-pressed", "true", timeout=30000)
+        bar.get_by_role("button", name=re.compile("^Microphone on")).tap(timeout=5000)
+        expect(bar.get_by_role("button", name=re.compile("^Microphone off"))).to_have_attribute("aria-pressed", "false", timeout=30000)
+        # Everything else stays modal: the thread's surface holds focus and the work behind it takes no pointer.
+        self.assertTrue(page.evaluate("() => document.getElementById('content').closest('[inert]') !== null"), "the work behind the sheet is inert")
+        # Keyboard: Tab leaves the sheet into the strip, reaches Leave, and comes back into the sheet.
+        page.locator(".ui-panel__close").first.focus()
+        seen_strip = seen_leave = False
+        came_back = False
+        for _ in range(60):
+            page.keyboard.press("Tab")
+            where = page.evaluate("() => { const a = document.activeElement; return { strip: !!a?.closest('.lv-bar'), label: a?.getAttribute('aria-label') || a?.textContent?.trim() || '', sheet: !!a?.closest('.ui-overlay__surface') }; }")
+            if where["strip"]:
+                seen_strip = True
+                seen_leave = seen_leave or where["label"] == "Leave"
+            elif seen_leave and where["sheet"]:
+                came_back = True
+                break
+        self.assertTrue(seen_strip and seen_leave, f"{label}: Tab reaches the strip's controls and Leave from the sheet")
+        self.assertTrue(came_back, f"{label}: Tab from the strip returns into the sheet")
+        # Shift+Tab from the sheet's top goes to the strip's last control.
+        page.evaluate("() => { const s = document.querySelector('.ui-overlay[data-state=\"open\"] .ui-overlay__surface'); s.focus(); }")
+        page.keyboard.press("Shift+Tab")
+        self.assertTrue(page.evaluate("() => !!document.activeElement?.closest('.lv-bar')"), f"{label}: Shift+Tab from the sheet reaches the strip")
+        # Esc closes the sheet from inside it, and the strip is where it was.
+        page.locator(".ui-panel__close").first.focus()
+        page.keyboard.press("Escape")
+        expect(page.locator(".ui-overlay[data-state='open']")).to_have_count(0)
+        expect(surface).to_have_count(0)
+        # Closing the thread is a navigation; the "Opening ..." row it may show above the strip is not the strip moving.
+        expect(page.locator(".route-progress")).to_have_count(0)
+        self.assertEqual(self.strip_box(page), before)
+        self.assert_app_interactive(page)
+        # The scrim closes it too: a tap on the dimmed work just below the strip.
+        self.open_thread(page)
+        page.mouse.click(before[0] + 8, before[1] + before[3] + 4)
+        expect(page.locator(".ui-overlay[data-state='open']")).to_have_count(0)
+        self.assert_app_interactive(page)
+        # Leave works with the sheet open; closing the sheet afterwards leaves the app usable.
+        self.open_thread(page)
+        bar.get_by_role("button", name="Leave", exact=True).tap(timeout=5000)
+        expect(bar).to_have_count(0, timeout=10000)
+        page.keyboard.press("Escape")
+        expect(page.locator(".ui-overlay[data-state='open']")).to_have_count(0)
+        self.assert_app_interactive(page)
+
+    def test_05_phone_thread_sheet_keeps_mute_and_leave_reachable(self) -> None:
+        # Phone (Chromium, 390 x 844, touch): a thread opened in a live session is a modal sheet, and the strip
+        # (live-ux: "never covers"; references: leave and mute stay reachable) stays above it and its scrim.
+        self.start_host()
+        guest = self.guest_join("chromium", phone=True)
+        self.check_strip_over_thread(guest, "phone-390-chromium")
+
+    def test_06_tablet_thread_panel_keeps_mute_and_leave_reachable(self) -> None:
+        # iPad (WebKit emulation): Details and threads are an overlay panel from the right edge; the strip stays whole.
+        self.start_host()
+        guest = self.guest_join("webkit", device="iPad (gen 7)")
+        self.check_strip_over_thread(guest, "ipad-webkit")
+
+    def test_07_phone_stage_opened_from_the_strip_over_a_thread(self) -> None:
+        # The strip's View is usable while a thread is open. The stage lives in the pane under the sheet's scrim,
+        # so the thread closes as the stage opens; Back to work is then on top and takes a tap.
+        host = self.start_host()
+        self.share_host_screen(host)
+        guest = self.guest_join("chromium", phone=True)
+        bar = self.bar(guest)
+        self.open_thread(guest)
+        bar.get_by_role("button", name="View").tap(timeout=5000)
+        stage = guest.get_by_role("region", name="Shared screens and cameras")
+        expect(stage).to_be_visible()
+        expect(guest.locator(".ui-overlay[data-state='open']")).to_have_count(0)
+        guest.wait_for_function(VIDEO_DECODED, timeout=60000)
+        back = stage.get_by_role("button", name="Back to work")
+        hit = back.evaluate(HIT_TEST)
+        self.observed["phone-390-chromium-stage-over-thread"] = {"hitTest": hit}
+        self.assertTrue(hit["ok"], f"Back to work is covered by {hit['top']} at {hit['centre']}")
+        back.tap(timeout=5000)
+        expect(stage).to_be_hidden()
+        self.assert_app_interactive(guest)
 
 
 if __name__ == "__main__":
