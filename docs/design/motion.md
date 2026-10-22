@@ -87,3 +87,5 @@ for PR #608 are kept in the immutable commit
 [`8905d4d15`](https://github.com/ColdPhase/flux/tree/8905d4d15290f314bd5ce034191eed94cb36fe8c/docs/design/motion-evidence/593), not in the
 current tree, because committed evidence is downloaded by every clone ([#319](https://github.com/ColdPhase/flux/issues/319)). Cut
 a new set with `motion_evidence.py` (`test_clips_for_the_review`) and `scripts/pack_motion_evidence.py`.
+The message ⋯ menu and the state change, recorded again at a rate that shows them (the visual review's two evidence gaps), are in
+[`9afb73c65`](https://github.com/ColdPhase/flux/tree/9afb73c65b17c69ef15beab41f8db11ee7f9ccee/docs/design/motion-evidence/593-visual-gaps).
