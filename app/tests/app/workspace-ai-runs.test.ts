@@ -49,8 +49,10 @@ describe('workspace AI lock: tokens, connections and runs', () => {
     await setWorkspaceAi(scene.ws.id, 'blocked');
     for (const [method, params] of [['tools/list', {}], ['tools/call', { name: 'flux_list_contexts', arguments: {} }], ['resources/list', {}]] as const) {
       const refused = await mcp(accessToken, 2, method, params);
-      assert.equal(refused.status, 403, method);
+      // A JSON-RPC error on HTTP 200: a 401/403 would make a real client drop its sign-in (see mcp-route.ts).
+      assert.equal(refused.status, 200, method);
       assert.equal(errorCode(refused.message), 'WORKSPACE_AI_BLOCKED', method);
+      assert.equal(refused.message?.id, 2, 'the refusal answers the request it refuses');
       assert.equal(JSON.stringify(refused.message).includes('tools'), false, 'nothing of the tool list is delivered');
     }
     const refreshed = await refresh();
@@ -69,10 +71,10 @@ describe('workspace AI lock: tokens, connections and runs', () => {
     assert.equal((await live.raw('tools/list')).status, 200, 'control: the run token lists its tools');
     await setWorkspaceAi(scene.ws.id, 'blocked');
     const refused = await live.raw('tools/list');
-    assert.deepEqual([refused.status, errorCode(refused.message)], [403, 'WORKSPACE_AI_BLOCKED']);
+    assert.deepEqual([refused.status, errorCode(refused.message)], [200, 'WORKSPACE_AI_BLOCKED']);
     await setWorkspaceAi(scene.ws.id, 'allowed');
     const stale = await live.raw('tools/list');
-    assert.equal(stale.status, 403, 'a run admitted before AI was turned off never works after it is turned on again');
+    assert.equal(errorCode(stale.message), 'WORKSPACE_AI_BLOCKED', 'a run admitted before AI was turned off never works after it is turned on again');
     await scene.complete(live.runId);
   });
 

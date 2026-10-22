@@ -14,10 +14,17 @@ import { createMcpRelay, fenceResponse } from './mcp-relay.js';
 import { createFluxMcpHandler } from './mcp-protocol.js';
 import { requireLiveRun, runTokenClaims, type RunTokenClaims } from './run-token.js';
 
-/** F-029: a connection of a workspace whose AI is off gets this refusal, before any tool, resource or prompt. */
-function aiBlockedResponse(): Response {
+/**
+ * F-029: a connection of a workspace whose AI is off gets this refusal, before any tool, resource or prompt. It is a
+ * JSON-RPC error on HTTP 200, not 401/403: real clients read 401/403 from /mcp as a lost sign-in and drop the connection's
+ * tokens (observed with Claude Code, 2026-10-23), so after AI is turned on again the person would have to connect again.
+ * The connection is not lost; it is only refused while AI is off.
+ */
+async function aiBlockedResponse(request: Request): Promise<Response> {
+  const id = await request.clone().json().then((body: { id?: unknown }) => (typeof body?.id === 'string' || typeof body?.id === 'number' ? body.id : null))
+    .catch(() => null);
   return new Response(JSON.stringify({ jsonrpc: '2.0', error: { code: -32000, message: 'AI is turned off in this workspace',
-    data: { code: 'WORKSPACE_AI_BLOCKED' } }, id: null }), { status: 403, headers: { 'content-type': 'application/json', 'cache-control': 'no-store' } });
+    data: { code: 'WORKSPACE_AI_BLOCKED' } }, id }), { status: 200, headers: { 'content-type': 'application/json', 'cache-control': 'no-store' } });
 }
 
 /** The only remote MCP entry point. A new tool server is bound to each verified bearer request. */
@@ -50,7 +57,7 @@ export function registerMcpRoute(app: FastifyInstance, db: Database, auth: FluxA
       const workspaceId = await agentConnectionWorkspaceId(tx, connectionId, ownerUserId);
       return workspaceId !== null && (await workspaceAi(tx, workspaceId, { lock: true })).state !== 'allowed';
     });
-    if (blocked) return aiBlockedResponse();
+    if (blocked) return aiBlockedResponse(request);
     // A signed JWT remains valid until expiry, so revocation must be checked
     // against the live connection before even listing tools.
     let dispatch: McpDispatch;
@@ -82,7 +89,7 @@ export function registerMcpRoute(app: FastifyInstance, db: Database, auth: FluxA
         return createMcpDispatch(policy.version);
       });
     } catch (error) {
-      if (error instanceof WorkspaceAiBlockedError) return aiBlockedResponse();
+      if (error instanceof WorkspaceAiBlockedError) return aiBlockedResponse(request);
       return new Response(JSON.stringify({ error: 'Agent connection is unavailable' }), {
         status: 403, headers: { 'content-type': 'application/json' },
       });
