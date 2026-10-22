@@ -14,6 +14,9 @@ from test_app_shell import show_map_as, DESKTOP, ORIGIN, PHONE, SHOTS, UPSTREAM,
 from contrast import MEASURE
 
 STAMP = int(time.time() * 1000)
+# With live editing on (the shipped default) a map's state arrives as sequence-ordered deltas over its socket and
+# the page does not read GET /api/v1/sketches/<id> after its own saves or a peer's change.
+LIVE = os.environ.get('FLUX_LIVE_EDITING_TEST') == '1'
 PASSWORD = "keep private captures recoverable"
 # Fill this tab's real sessionStorage until the browser itself refuses another write. One filler
 # entry grows to the largest size the quota accepts; nothing is stubbed or simulated.
@@ -168,6 +171,16 @@ class ThoughtDraftJourney(unittest.TestCase):
         expect(field).to_be_focused()
         return field
 
+    def live_frames(self, page):
+        """The text of every frame this page's live map socket receives from now on (empty list when live editing is off)."""
+        frames = []
+
+        def opened(socket):
+            if '/api/v1/editing' in socket.url:
+                socket.on('framereceived', lambda payload: frames.append(payload if isinstance(payload, str) else payload.decode('utf-8', 'replace')))
+        page.on('websocket', opened)
+        return frames
+
     def exhaust_session_storage(self, page):
         self.assertEqual(page.evaluate(EXHAUST_SESSION_STORAGE), "QuotaExceededError", "the browser itself refuses a further session storage write")
 
@@ -293,9 +306,18 @@ class ThoughtDraftJourney(unittest.TestCase):
         # Keep an old authorized read while the real backend checks current write permission.
         get_path = f"**/api/v1/sketches/{self.sketch}"
         page.route(get_path, lambda route: route.fulfill(json=self.before))
-        self.grant("writer", "viewer")
+        # The permission is lowered while the save is on its way, so the real backend refuses this very write. A live
+        # map would otherwise report the lost write first and disable Save before the click (timing, not behaviour).
+        save_path = f"**/api/v1/sketches/{self.sketch}/thoughts"
+
+        def lower_then_send(route):
+            self.grant("writer", "viewer")
+            route.continue_()
+
+        page.route(save_path, lower_then_send)
         page.get_by_role("button", name="Save thought", exact=True).click()
         expect(page.locator(".sk-status")).to_contain_text("draft is kept")
+        page.unroute(save_path, lower_then_send)
         expect(page.get_by_label("Thought text")).to_have_value("PRIVATE unsaved calibration idea")
         self.assertEqual(self.stored(self.owner), self.before)
         page.unroute(get_path)
@@ -313,6 +335,7 @@ class ThoughtDraftJourney(unittest.TestCase):
 
     def test_06_f2_cancel_multiline_and_real_concurrent_edit_are_recoverable(self):
         page = self.owner
+        frames = self.live_frames(page)
         self.open(page)
         row = page.locator(f'.sk-li-t[data-id="{self.parent}"]')
         row.focus()
@@ -328,10 +351,20 @@ class ThoughtDraftJourney(unittest.TestCase):
         self.assertEqual(self.stored(page), self.before)
         peer = self.page("writer")
         thought = next(t for t in self.before["thoughts"] if t["id"] == self.parent)
-        with page.expect_response(lambda response: response.request.method == 'GET' and response.url.endswith(f'/api/v1/sketches/{self.sketch}')) as streamed:
-            self.api(peer, "PATCH", f"/api/v1/sketches/{self.sketch}/thoughts/{self.parent}", {"text": "Jonas confirmed the newer sensor requirement"}, headers={"if-match": f'"{thought["version"]}"'})
-        # The stream is allowed to refetch before Ada saves: her opened version must stay fixed.
-        self.assertTrue(any(t['text'] == 'Jonas confirmed the newer sensor requirement' for t in streamed.value.json()['thoughts']))
+        newer = "Jonas confirmed the newer sensor requirement"
+        if LIVE:
+            # The newer version reaches the open page as an ordered live delta rather than as a read.
+            self.api(peer, "PATCH", f"/api/v1/sketches/{self.sketch}/thoughts/{self.parent}", {"text": newer}, headers={"if-match": f'"{thought["version"]}"'})
+            for _ in range(80):
+                if any(newer in frame for frame in frames):
+                    break
+                page.wait_for_timeout(100)
+            self.assertTrue(any(newer in frame for frame in frames), "the peer's newer version reached the page before Ada saves")
+        else:
+            with page.expect_response(lambda response: response.request.method == 'GET' and response.url.endswith(f'/api/v1/sketches/{self.sketch}')) as streamed:
+                self.api(peer, "PATCH", f"/api/v1/sketches/{self.sketch}/thoughts/{self.parent}", {"text": newer}, headers={"if-match": f'"{thought["version"]}"'})
+            self.assertTrue(any(t['text'] == newer for t in streamed.value.json()['thoughts']))
+        # The page may learn the newer version before Ada saves: her opened version must stay fixed.
         page.wait_for_timeout(150)
         field.press("Enter")
         expect(page.locator(".sk-status")).to_contain_text("Someone else changed")
@@ -764,6 +797,7 @@ class ThoughtDraftJourney(unittest.TestCase):
             page.wait_for_timeout(100)
         self.assertTrue(any(t["text"] == text for t in self.stored(page)["thoughts"]))
 
+    @unittest.skipIf(LIVE, 'Races a slow GET /api/v1/sketches/<id> answer against a save. A live map is not read after a save: its deltas carry a sequence and an older frame is ignored (test_live_map_delivery_order); the same journey runs with live editing off.')
     def test_19_a_slow_earlier_read_never_hides_a_thought_saved_after_it(self):
         page = self.owner
         page.add_init_script(SLOW_SKETCH_READS)
@@ -786,6 +820,7 @@ class ThoughtDraftJourney(unittest.TestCase):
         self.assert_stays_listed(page, "Second capture, saved during the slow read",
                                  "a read sent before a confirmed save never removes the saved thought")
 
+    @unittest.skipIf(LIVE, 'Races a slow GET /api/v1/sketches/<id> answer against a save. A live map is not read after a save: its deltas carry a sequence and an older frame is ignored (test_live_map_delivery_order); the same journey runs with live editing off.')
     def test_20_a_read_answered_while_a_save_is_out_never_hides_that_save(self):
         page = self.owner
         page.add_init_script(SLOW_SKETCH_READS)
