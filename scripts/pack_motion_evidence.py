@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Cuts the #593 review recordings down to small animated WebP (docs/agents/evaluation.md, "Evidence size").
 
-    python3 pack.py <recordings dir> <output dir>
+    python3 scripts/pack_motion_evidence.py <recordings dir> <output dir>
 
 `<recordings dir>` holds what `app/tests/ui/motion_evidence.py` (`test_clips_for_the_review`) wrote for each engine and
 scheme: `<engine>-<scheme>-<clip>.webm` and `.marks.json`. The marks say when the motion starts and which part of the page

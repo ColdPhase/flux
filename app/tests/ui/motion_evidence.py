@@ -9,7 +9,7 @@ interaction or accessibility; those are asserted in test_light_motion.py. Videos
 
 `test_clips_for_the_review` is the review set: one short recording per motion (menus, the dialog, the panel's content, a view
 switch, a state change, the press), each with a `.marks.json` naming when the motion starts and which part of the page it
-happens in, so `docs/design/motion-evidence/593/pack.py` can cut it down to a cropped, small WebP that is committed (#319).
+happens in, so `scripts/pack_motion_evidence.py` can cut it down to a cropped, small WebP that is committed (#319).
 """
 from __future__ import annotations
 

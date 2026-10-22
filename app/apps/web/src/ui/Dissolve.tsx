@@ -10,9 +10,12 @@ import { MOTION_ID, duration, motionAllowed, token, travelDirection, type Travel
  *
  * It renders its children and nothing else: it is a class only because React offers the moment before the swap (what the
  * outgoing content looks like) to class components alone, in `getSnapshotBeforeUpdate`. The picture is a deep copy without ids,
- * `inert` and `aria-hidden`, and it takes no pointer input. Scroll positions inside it are copied, so the old content does not
- * jump. (Views dissolve through the View Transitions API instead, see `viewTransition.ts`: a picture of a whole view in the
- * document would answer the same selectors as the view itself.)
+ * `inert` and `aria-hidden`, and it takes no pointer input. It does not live inside the panel: it lies over the panel's body in
+ * its own layer on the page, so a query scoped to the panel (`#details .wd-eyebrow`, the panel's role) finds the new content only,
+ * never two of it. It is dressed in empty copies of the panel's own ancestors (`display: contents`, so they have no box), which
+ * keeps every selector that reads the panel's classes (`.ui-panel__body > .x`, `:root[data-theme] .x`) styling it as it was.
+ * Scroll positions inside it are copied, so the old content does not jump. (Views dissolve through the View Transitions API
+ * instead, see `viewTransition.ts`.)
  */
 interface Props {
   /** What the content is: when it changes, the old content dissolves. */
@@ -25,7 +28,7 @@ interface Props {
 }
 
 interface Piece { copy: HTMLElement; top: number; left: number; width: number; height: number; scrolls: [number, number, number][] }
-interface Snapshot { pieces: Piece[]; direction: TravelDirection }
+interface Snapshot { pieces: Piece[]; direction: TravelDirection; from: string; scrollTop: number; scrollLeft: number }
 
 const MARK = 'data-dissolve';
 
@@ -43,6 +46,15 @@ function copyOf(el: HTMLElement): HTMLElement {
   return copy;
 }
 
+/** One above the nearest layer the panel sits in (the docked panel's, an overlay's), so the picture lies over it and under what opens above. */
+function above(node: HTMLElement): number {
+  for (let el: HTMLElement | null = node; el; el = el.parentElement) {
+    const layer = parseInt(getComputedStyle(el).zIndex, 10);
+    if (Number.isFinite(layer)) return layer + 1;
+  }
+  return 1;
+}
+
 export class Dissolve extends Component<Props, Record<string, never>, Snapshot | null> {
   getSnapshotBeforeUpdate(previous: Props): Snapshot | null {
     const { id, depth = 0, host } = this.props;
@@ -51,7 +63,7 @@ export class Dissolve extends Component<Props, Record<string, never>, Snapshot |
     const direction: TravelDirection = depth > (previous.depth ?? 0) ? 'forward' : depth < (previous.depth ?? 0) ? 'back' : travelDirection();
     const pieces = [...body.children].filter((child): child is HTMLElement => child instanceof HTMLElement && !child.hasAttribute(MARK) && child.offsetWidth > 0 && child.offsetHeight > 0)
       .map((source) => ({ copy: copyOf(source), top: source.offsetTop, left: source.offsetLeft, width: source.offsetWidth, height: source.offsetHeight, scrolls: scrolls(source) }));
-    return pieces.length ? { pieces, direction } : null;
+    return pieces.length ? { pieces, direction, from: previous.id, scrollTop: body.scrollTop, scrollLeft: body.scrollLeft } : null;
   }
 
   componentDidUpdate(_previous: Props, _state: Record<string, never>, snapshot: Snapshot | null) {
@@ -61,19 +73,40 @@ export class Dissolve extends Component<Props, Record<string, never>, Snapshot |
     const shift = parseFloat(token('--shift-panel')) || 16;
     // The copy leaves the way the person came from: forward, it goes towards where they were; back, the other way.
     const travel = (snapshot.direction === 'back' ? 1 : -1) * shift;
+    const box = body.getBoundingClientRect();
+    const layer = document.createElement('div');
+    layer.setAttribute(MARK, snapshot.from);
+    layer.setAttribute('inert', '');
+    layer.setAttribute('aria-hidden', 'true');
+    Object.assign(layer.style, { position: 'fixed', left: `${box.left + body.clientLeft}px`, top: `${box.top + body.clientTop}px`, width: `${body.clientWidth}px`, height: `${body.clientHeight}px`,
+      overflow: 'hidden', pointerEvents: 'none', zIndex: String(above(body)) });
+    // The panel's own ancestors, empty and without a box of their own, so the copy is styled by the same selectors as the original.
+    let parent: HTMLElement = layer;
+    const ancestors: HTMLElement[] = [];
+    for (let node: HTMLElement | null = body; node; node = node.parentElement) { ancestors.unshift(node); if (node.classList.contains('ui-panel')) break; }
+    for (const ancestor of ancestors) {
+      const dress = document.createElement(ancestor.tagName);
+      dress.className = ancestor.className;
+      for (const [key, value] of Object.entries(ancestor.dataset)) dress.dataset[key] = value;
+      dress.style.display = 'contents';
+      parent.appendChild(dress);
+      parent = dress;
+    }
+    const gone: Promise<unknown>[] = [];
     for (const piece of snapshot.pieces) {
       const copy = piece.copy;
-      copy.setAttribute(MARK, '');
       copy.setAttribute('inert', '');
       copy.setAttribute('aria-hidden', 'true');
-      Object.assign(copy.style, { position: 'absolute', top: `${piece.top}px`, left: `${piece.left}px`, width: `${piece.width}px`, height: `${piece.height}px`, margin: '0', zIndex: '2', pointerEvents: 'none' });
-      body.appendChild(copy);
+      Object.assign(copy.style, { position: 'absolute', top: `${piece.top - snapshot.scrollTop}px`, left: `${piece.left - snapshot.scrollLeft}px`, width: `${piece.width}px`, height: `${piece.height}px`, margin: '0', pointerEvents: 'none' });
+      parent.appendChild(copy);
       const nodes = copy.querySelectorAll<HTMLElement>('*');
       for (const [index, top, left] of piece.scrolls) { const target = index < 0 ? copy : nodes[index]; if (target) { target.scrollTop = top; target.scrollLeft = left; } }
       const leave = copy.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: `translateX(${travel}px)` }], { duration: ms, easing: token('--ease-in') || 'ease-in', fill: 'forwards' });
       leave.id = MOTION_ID;
-      void leave.finished.then(() => copy.remove(), () => copy.remove());
+      gone.push(leave.finished.catch(() => undefined));
     }
+    document.body.appendChild(layer);
+    void Promise.all(gone).then(() => layer.remove());
   }
 
   render() { return this.props.children; }

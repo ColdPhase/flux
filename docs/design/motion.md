@@ -31,14 +31,18 @@ Under `prefers-reduced-motion: reduce` and Settings → Appearance → Reduce mo
   so the new content works from the first frame.
   - **Views and places** use the View Transitions API (`ui/viewTransition.ts`, asked for in `router.tsx`, drawn by `:root[data-vt]`
     rules in `ui/ui.css`): the browser holds a picture of the old content area in its own layer, outside the document, so nothing
-    answers a selector twice. Where the API is missing (an engine the application does not support yet) the new content fades
+    answers a selector twice. The page outside the content area is not in the transition. The browser holds rendering and hit
+    testing for the frame or two in which it takes its picture of the old page; from then on the live page answers. Two
+    dissolves never overlap (a second switch swaps), and a skipped transition is quiet (`installViewTransitionGuard`). Where the API is missing (an engine the application does not support yet) the new content fades
     in instead; under reduced motion the view just swaps.
-  - **A panel's content** uses `ui/Dissolve.tsx`: a deep copy of the outgoing content, without ids, `inert` and `aria-hidden`, is
-    appended over the body for `--dur-out` while the new content slides in (`usePanelSwap`).
+  - **A panel's content** uses `ui/Dissolve.tsx`: a deep copy of the outgoing content, without ids, `inert` and `aria-hidden`, lies
+    over the panel's body for `--dur-out` while the new content slides in (`usePanelSwap`). The copy is a layer of its own on the page
+    (dressed in empty, box-less copies of the panel's ancestors so the same selectors style it), not a child of the panel: a
+    query scoped to the panel (`#details .wd-eyebrow`) finds the new content only, never two of it.
 - Nothing moves on its own on first load (`markMotionReady`, a quarter of a second after the shell has committed and
   painted; motion that answers the person's own input still runs), while the page is hidden or under reduced motion.
   `installMotionGuards` lands every transient animation on its end state when the page is hidden (the helpers' own, a menu's
-  `ui-pop-*` entry or exit, a view's `flux-vt-*` dissolve), lets go of a press in flight (`flux-press`) and pauses loops.
+  `ui-pop-*` entry or exit, a view's `flux-vt-*` dissolve), lets go of a press in flight (the press's own animation, `PRESS_ID`) and pauses loops.
 - Exit never delays focus or the next action: focus returns in the same task as the close, the leaving surface is `inert`.
 - Closing while opening, or opening while closing, continues from where the surface is (`settle`), so it settles on the
   latest state and never snaps.

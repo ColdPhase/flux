@@ -38,7 +38,7 @@ export function markDissolving(direction: TravelDirection) {
   root.dataset.vt = direction;
   running = true;
   window.clearTimeout(release);
-  release = window.setTimeout(unmark, 1500);
+  release = window.setTimeout(unmark, 900);
 }
 function unmark() {
   window.clearTimeout(release);

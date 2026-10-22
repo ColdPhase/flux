@@ -439,20 +439,22 @@ class LightMotionJourney(unittest.TestCase):
             const backBox = back ? back.getBoundingClientRect() : null;
             const backHit = backBox ? document.elementFromPoint(backBox.left + backBox.width / 2, backBox.top + backBox.height / 2) : null;
             return { hit: hit ? hit.tagName + '.' + hit.className : null, hitIsOld: !!hit && !!hit.closest('[data-dissolve]'),
-              backReachable: back ? (backHit === back || back.contains(backHit)) : null };
+              backReachable: back ? (backHit === back || back.contains(backHit)) : null,
+              scoped: document.querySelectorAll('#details .wd, #details .thread').length, inside: !!body.querySelector('[data-dissolve]') };
           };
+          const layers = () => [...document.body.children].filter((el) => el.hasAttribute('data-dissolve'));
           const capture = () => {
-            const copies = [...body.querySelectorAll(':scope > [data-dissolve]')];
-            const fresh = [...body.children].filter((child) => !child.hasAttribute('data-dissolve'));
+            const copies = layers();
+            const fresh = [...body.children];
             const copy = copies[0];
-            const leaving = copy ? copy.getAnimations().filter((animation) => animation.id === 'flux-motion' && animation.playState === 'running') : [];
+            const leaving = copy ? [...copy.querySelectorAll('*')].flatMap((el) => el.getAnimations()).filter((animation) => animation.id === 'flux-motion' && animation.playState === 'running') : [];
             return { copies: copies.length, fresh: fresh.map((child) => child.className),
-              copy: copy ? { task: !!copy.querySelector('.wd') || copy.classList.contains('wd'), thread: !!copy.querySelector('.thread') || copy.classList.contains('thread'), inert: copy.inert,
-                hidden: copy.getAttribute('aria-hidden'), ids: copy.querySelectorAll('[id]').length + (copy.id ? 1 : 0), events: getComputedStyle(copy).pointerEvents, running: leaving.length } : null };
+              copy: copy ? { task: !!copy.querySelector('.wd'), thread: !!copy.querySelector('.thread'), inert: copy.inert, hidden: copy.getAttribute('aria-hidden'), ids: copy.querySelectorAll('[id]').length + (copy.id ? 1 : 0),
+                events: getComputedStyle(copy).pointerEvents, running: leaving.length, of: copy.getAttribute('data-dissolve') } : null };
           };
           const seen = new Promise((resolve) => {
             const watch = new MutationObserver(() => {
-              if (!body.querySelector(':scope > [data-dissolve]')) return;
+              if (!layers().length) return;
               watch.disconnect();
               // In the task that committed the swap: the picture of the old content and the new content are in the page together.
               const committed = capture();
@@ -460,7 +462,7 @@ class LightMotionJourney(unittest.TestCase):
               // hit testing): the pointer reaches the new content and the panel's own controls, not the picture.
               requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(() => resolve({ ...committed, ...reach() }))));
             });
-            watch.observe(body, { childList: true });
+            watch.observe(document.body, { childList: true });
             setTimeout(() => { watch.disconnect(); resolve(null); }, 4000);
           });
           if (action === 'forward') [...document.querySelectorAll('#details a')].find((a) => a.textContent.includes('Should the first sensors'))?.click();
@@ -472,13 +474,14 @@ class LightMotionJourney(unittest.TestCase):
         self.assertGreaterEqual(forward["copies"], 1, f"the task's content is still there on the next frame: {forward}")
         self.assertTrue(forward["fresh"], f"and the thread's is beside it: {forward}")
         self.assertTrue(forward["copy"]["task"], f"the picture is of the task: {forward}")
+        self.assertEqual((forward["scoped"], forward["inside"]), (1, False), f"a query scoped to the panel finds one of the content, not two (the picture lies over the panel, not in it): {forward}")
         self.assertEqual((forward["copy"]["inert"], forward["copy"]["hidden"], forward["copy"]["ids"], forward["copy"]["events"]), (True, "true", 0, "none"),
                          f"the picture is inert, hidden from assistive technology, carries no ids and takes no pointer input: {forward}")
         self.assertGreaterEqual(forward["copy"]["running"], 1, "and it is fading out")
         self.assertFalse(forward["hitIsOld"], "the person's pointer reaches the new content, not the picture")
         self.assertTrue(forward["backReachable"], "the panel's own controls are reachable at once")
         expect(panel.locator(".thread")).to_be_visible()
-        expect(panel.locator("[data-dissolve]")).to_have_count(0)
+        expect(page.locator("body > [data-dissolve]")).to_have_count(0)
         settled(page)
         back = page.evaluate(probe, "back")
         self.assertIsNotNone(back, "the panel's content was replaced on Back")
@@ -486,9 +489,7 @@ class LightMotionJourney(unittest.TestCase):
         self.assertTrue(back["copy"]["thread"], f"the picture is of the thread: {back}")
         self.assertFalse(back["hitIsOld"])
         expect(panel.locator(".wd")).to_be_visible()
-        expect(panel.locator("[data-dissolve]")).to_have_count(0)
-        # The picture of what was shown is not a second copy of anything the page answers to.
-        self.assertEqual(page.locator("#details .wd").count(), 1)
+        expect(page.locator("body > [data-dissolve]")).to_have_count(0)
 
     # ------------------------------------------------------------------ AC-3: views and routes
     def pictures(self, page: Page, pseudo: str) -> list[dict]:
@@ -897,7 +898,7 @@ class LightMotionJourney(unittest.TestCase):
         # The panel's content is replaced at once: no picture of the old content is kept, nothing slides.
         page.locator("#details a", has_text="Should the first sensors").first.click()
         expect(page.locator("#details .thread")).to_be_visible()
-        self.assertEqual(page.locator("#details [data-dissolve]").count(), 0, "no picture of the old content")
+        self.assertEqual(page.locator("body > [data-dissolve]").count(), 0, "no picture of the old content")
         self.assertEqual(page.evaluate("document.getAnimations().filter((a) => a.effect?.getComputedTiming().iterations !== Infinity && a.playState === 'running').length"), 0)
         self.assertEqual([entry for entry in recorded(page) if entry["kind"] == "script"], [], "no script motion")
         self.assertEqual([entry for entry in recorded(page) if entry["kind"] == "css" and entry["duration"] > 0], [], "no CSS motion")
