@@ -16,6 +16,8 @@ import { ensureWorkspaceAiAllowed, setWorkspaceAi } from './support/workspace-ai
 // is turned on again (epoch). Every refusal has its control while AI is on.
 
 const sha256 = (value: string) => createHash('sha256').update(value).digest('hex');
+/** The tool list really came back (a refusal is also HTTP 200, as a JSON-RPC error). */
+const lists = (response: { message: Record<string, unknown> | null }) => (((response.message?.result as { tools?: unknown[] } | undefined)?.tools) ?? []).length > 0;
 const errorCode = (message: Record<string, unknown> | null) => ((message?.error as { data?: { code?: string } } | undefined)?.data?.code);
 
 describe('workspace AI lock: tokens, connections and runs', () => {
@@ -59,7 +61,7 @@ describe('workspace AI lock: tokens, connections and runs', () => {
     assert.equal(refreshed.status, 400, 'the refresh grant is refused');
     assert.match(JSON.stringify(await refreshed.json()), /invalid_grant.*AI is turned off in this workspace|AI is turned off in this workspace.*invalid_grant/);
     await setWorkspaceAi(scene.ws.id, 'allowed');
-    assert.equal((await mcp(accessToken, 3, 'tools/list')).status, 200, 'the connection works again once AI is on (standing configuration resumes)');
+    assert.ok(lists(await mcp(accessToken, 3, 'tools/list')), 'the connection works again once AI is on (standing configuration resumes)');
     const again = await refresh();
     assert.equal(again.status, 200, 'and its refresh token too');
     refreshToken = ((await again.json()) as { refresh_token: string }).refresh_token ?? refreshToken;
@@ -68,7 +70,7 @@ describe('workspace AI lock: tokens, connections and runs', () => {
   test('a run token minted before AI was turned off is refused, a new one is not minted, and neither works after re-enable', async () => {
     await scene.reset();
     const live = await scene.liveRun();
-    assert.equal((await live.raw('tools/list')).status, 200, 'control: the run token lists its tools');
+    assert.ok(lists(await live.raw('tools/list')), 'control: the run token lists its tools');
     await setWorkspaceAi(scene.ws.id, 'blocked');
     const refused = await live.raw('tools/list');
     assert.deepEqual([refused.status, errorCode(refused.message)], [200, 'WORKSPACE_AI_BLOCKED']);
