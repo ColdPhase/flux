@@ -11,6 +11,15 @@ application candidate, launched by an agent after independent verification.
 No human review or environment-approval gate is required by this workflow.
 Do not spend Actions runs rebuilding an unchanged successful candidate.
 
+[Evaluator checks](../../.github/workflows/evaluator-checks.yml) is a separate manual
+workflow for review evidence only. An explicit `workflow_dispatch` from `main` runs
+`scripts/check_ui.sh` or `scripts/check_application.sh` on a full commit SHA with 1 to 10
+named targets (never a whole suite), for an evaluator whose own Docker cannot build the
+images. It has a 60-minute timeout, a read-only token, no secrets and a 7-day artifact of
+the log tail and at most 60 small screenshots. It is not a PR check, is never required,
+and no push, PR or schedule starts it. It runs the candidate's own scripts, so dispatch
+only heads you have read; do not rerun an unchanged head and target set.
+
 
 
 Agents are responsible for the delivery pipeline as part of the accepted release
