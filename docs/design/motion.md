@@ -47,9 +47,8 @@ Under `prefers-reduced-motion: reduce` and Settings → Appearance → Reduce mo
 - Menus and popovers enter and leave through `usePop` and `[data-pop]`: the composer's `@` and `/` menu, a message's ⋯ menu and
   its scrim, the project header's More menu, the Status and other property menus, the board's Move menu, the model picker, the
   user menu and the assistant, wiki and live popovers. The menu stays mounted and `inert` for `--dur-out` while focus has
-  already returned (the field keeps it, or the button gets it back in the same task). Until
-  [#606](https://github.com/ColdPhase/flux/issues/606) gives the More menu popover styles it is an in-flow row beside its button;
-  while it leaves it lies over the header, so the controls beside it are in place at once. Disclosure rows that are part of the
+  already returned (the field keeps it, or the button gets it back in the same task). The More menu is a popover over the header
+  ([#606](https://github.com/ColdPhase/flux/issues/606)), so the controls beside it never move while it fades. Disclosure rows that are part of the
   page's flow (the sketch outline's "More actions" row, the "Together" note) are not menus: they take room, so they open and
   close without a fade rather than move what is beside them.
 - The drawer and the phone sheet take the same 180 ms in and 120 ms out as the dialog; they travel from their edge on `--ease-sheet`.

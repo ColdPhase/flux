@@ -44,6 +44,8 @@ export interface MessageActionOptions {
   onReply?: () => void;
   /** Quotes the message into the composer. */
   onCite?: () => void;
+  /** Opens the project map with this message ready to become a thought. */
+  onAddToMap?: () => void;
 }
 
 const messageOf = (options: MessageActionOptions | DmActionOptions) => options.kind === 'dm' ? options.messageId ?? null : options.message.id;
@@ -51,7 +53,7 @@ const messageOf = (options: MessageActionOptions | DmActionOptions) => options.k
 interface MenuItem { id: string; label: string; icon: IconName | 'kreska'; run: () => void; disabled?: boolean; secondary?: boolean }
 
 /** The menu's items, in the drawn order: reply, task, hand off, cite, copy; then what makes objects. */
-function useMenuItems(options: MessageActionOptions | DmActionOptions | null): MenuItem[] {
+function useMenuItems(options: MessageActionOptions | DmActionOptions | null, touch: boolean): MenuItem[] {
   const { openDetails } = useShellActions();
   const { me } = useShellData();
   const toast = useToast();
@@ -71,14 +73,15 @@ function useMenuItems(options: MessageActionOptions | DmActionOptions | null): M
       ...copyItem,
     ];
   }
-  const { projectId, message, writable, onCreateWork, onReply, onCite } = options;
+  const { projectId, message, writable, onCreateWork, onReply, onCite, onAddToMap } = options;
   const source = { messageId: message.id, text: message.body };
   const details: MenuItem = { id: 'details', label: 'Details', icon: 'panel', secondary: true,
     run: () => openDetails({ kind: 'overview', messageId: message.id, selection: { accountId: me.user.id, projectId, message } }) };
   if (!writable) return [...copyItem, details];
   return [
     ...(onReply ? [{ id: 'reply', label: 'Reply in thread', icon: 'reply' as const, run: onReply }] : []),
-    { id: 'task', label: 'Create task', icon: 'plus-circle', run: onCreateWork },
+    ...(touch ? [{ id: 'task', label: 'Create task', icon: 'plus-circle' as const, run: onCreateWork }] : []),
+    ...(onAddToMap ? [{ id: 'map', label: 'Add to map', icon: 'map' as const, run: onAddToMap }] : []),
     // There is no hand-off command yet (#347): a hand-off is a task, so it is made and opened in Details,
     // where its owner is chosen.
     { id: 'handoff', label: 'Hand off to an agent', icon: 'kreska', run: onCreateWork },
@@ -170,7 +173,7 @@ function MessageMenuHost({ open, ...props }: { open: boolean; items: MenuItem[];
  */
 export function MessageActions(options: MessageActionOptions | DmActionOptions) {
   const touch = useMediaQuery('(hover: none)');
-  const items = useMenuItems(options);
+  const items = useMenuItems(options, touch);
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
   const [open, setOpen] = useState(false);
   const more = useRef<HTMLButtonElement>(null);
@@ -229,7 +232,7 @@ interface TouchProps<E extends HTMLElement> {
  */
 export function useTouchActions<E extends HTMLElement = HTMLLIElement>(options: MessageActionOptions | DmActionOptions | null): { props: TouchProps<E>; node: ReactNode } {
   const touch = useMediaQuery('(hover: none)');
-  const items = useMenuItems(options);
+  const items = useMenuItems(options, touch);
   const ref = useRef<E>(null);
   // The last menu stays (inert) while it leaves; `menu` is the open one, if any.
   const [last, setLast] = useState<{ kind: 'press' | 'button'; anchor: HTMLElement } | null>(null);
@@ -252,7 +255,7 @@ export function useTouchActions<E extends HTMLElement = HTMLLIElement>(options: 
 
   const openPress = (row: HTMLElement) => {
     opener.current = row;
-    setMenu({ kind: 'press', anchor: row.querySelector<HTMLElement>('.message-bubble > p') ?? row });
+    setMenu({ kind: 'press', anchor: row.querySelector<HTMLElement>('.message-bubble > .message-body, .dm-msg__body') ?? row });
     try { navigator.vibrate?.(8); } catch { /* optional */ }
   };
   const props = {
@@ -303,7 +306,7 @@ export function useTouchActions<E extends HTMLElement = HTMLLIElement>(options: 
   const node = (
     <>
       <span className={`msg-swipe${offset >= REPLY_AT ? ' is-ready' : ''}`} aria-hidden="true" hidden={!offset}><Icon name="reply" size={20} /></span>
-      <button type="button" className="msg-touch__sr" aria-haspopup="menu" aria-expanded={menu?.kind === 'button'} onClick={(event) => { opener.current = event.currentTarget; setMenu({ kind: 'button', anchor: event.currentTarget.parentElement?.querySelector<HTMLElement>('.message-bubble > p') ?? event.currentTarget }); }}>Message actions</button>
+      <button type="button" className="msg-touch__sr" aria-haspopup="menu" aria-expanded={menu?.kind === 'button'} onClick={(event) => { opener.current = event.currentTarget; setMenu({ kind: 'button', anchor: event.currentTarget.parentElement?.querySelector<HTMLElement>('.message-bubble > .message-body, .dm-msg__body') ?? event.currentTarget }); }}>Message actions</button>
       {last ? <MessageMenuHost open={shown} items={items} anchor={last.anchor} press={last.kind === 'press'} label="Message actions" messageId={messageOf(options)}
         onClose={(restore) => { setMenu(null); if (restore) opener.current?.focus({ preventScroll: true }); }} /> : null}
     </>

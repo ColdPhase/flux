@@ -388,7 +388,7 @@ class LightMotionJourney(unittest.TestCase):
         expect(page.locator("header.top [role=menu]")).to_have_count(0)
 
     def test_09c_the_more_menu_over_the_header_moves_nothing_while_it_leaves(self):
-        """Until #606 styles it, the More menu is a row of the header: while it fades it lies over the header, so no control moves."""
+        """The More menu is a popover over the header (#606): while it fades, no control beside it moves."""
         page = self.page()
         self.open(page, self.fx.project_url())
         settled(page)

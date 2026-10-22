@@ -325,7 +325,7 @@ class ConversationFinal(unittest.TestCase):
         sent = page.locator(".project-convo__message.is-mine").filter(has_text="for the depths")
         chip = sent.locator(".ref-chip--person")
         expect(chip).to_have_text("@Jonas Berg")
-        text = sent.locator(".message-bubble > p")
+        text = sent.locator(".message-bubble > .message-body")
         self.assertLess(text.evaluate("el => el.getBoundingClientRect().height") - 38, 4, "the chip does not lift or stretch its line")
         expect(page.get_by_role("listbox")).to_have_count(0)
 
@@ -349,7 +349,7 @@ class ConversationFinal(unittest.TestCase):
         menu = page.get_by_role("menu", name="Message actions")
         expect(menu).to_be_visible()
         names = menu.get_by_role("menuitem").all_inner_texts()
-        self.assertEqual(names[:5], ["Reply in thread", "Create task", "Hand off to an agent", "Cite", "Copy text"])
+        self.assertEqual(names[:5], ["Reply in thread", "Add to map", "Hand off to an agent", "Cite", "Copy text"])
         page.keyboard.press("ArrowDown")
         page.keyboard.press("Escape")
         expect(menu).to_have_count(0)
@@ -381,7 +381,7 @@ class ConversationFinal(unittest.TestCase):
         page = self.open("ada", phone=True)
         message = self.message(page, self.ids["probes"])
         message.scroll_into_view_if_needed()
-        bubble = message.locator(".message-bubble > p")
+        bubble = message.locator(".message-bubble > .message-body")
         expect(message.get_by_role("button", name="Create task")).to_have_count(0)
         expect(message.locator(".msg-acts")).to_have_count(0)
         # Nothing swipes left: no strip, no movement, no thread.
@@ -410,7 +410,7 @@ class ConversationFinal(unittest.TestCase):
         menu = page.get_by_role("menu", name="Message actions")
         expect(menu).to_be_visible()
         names = menu.get_by_role("menuitem").all_inner_texts()
-        self.assertEqual(names[:5], ["Reply in thread", "Create task", "Hand off to an agent", "Cite", "Copy text"])
+        self.assertEqual(names[:5], ["Reply in thread", "Create task", "Add to map", "Hand off to an agent", "Cite"])
         self.assertNotIn("Done", names, "a message that waits for nobody has no Done")
         for box in menu.get_by_role("menuitem").evaluate_all("items => items.map(el => el.getBoundingClientRect().height)"):
             self.assertGreaterEqual(box, 44)
@@ -427,7 +427,7 @@ class ConversationFinal(unittest.TestCase):
         page.keyboard.press("Enter")
         expect(menu).to_be_visible()
         names = menu.get_by_role("menuitem").all_inner_texts()
-        self.assertEqual(names[:5], ["Reply in thread", "Create task", "Hand off to an agent", "Cite", "Copy text"])
+        self.assertEqual(names[:5], ["Reply in thread", "Create task", "Add to map", "Hand off to an agent", "Cite"])
         page.keyboard.press("Escape")
         # A scroll gesture is not a long press: nothing opens.
         swipe_down = bubble.bounding_box()
@@ -449,11 +449,11 @@ class ConversationFinal(unittest.TestCase):
         self.assertTrue(self.waiting(page, self.ids["mention"]), "the mention is in Ada's Inbox")
         message = self.message(page, self.ids["mention"])
         message.scroll_into_view_if_needed()
-        long_press(message.locator(".message-bubble > p"))
+        long_press(message.locator(".message-bubble > .message-body"))
         menu = page.get_by_role("menu", name="Message actions")
         expect(menu.get_by_role("menuitem", name="Done")).to_be_visible()
         names = menu.get_by_role("menuitem").all_inner_texts()
-        self.assertEqual(names[:5], ["Reply in thread", "Create task", "Hand off to an agent", "Cite", "Copy text"])
+        self.assertEqual(names[:5], ["Reply in thread", "Create task", "Add to map", "Hand off to an agent", "Cite"])
         self.assertIn("Not now", names)
         shot(page, "conversation-final-messagemenu-inbox-phone")
         menu.get_by_role("menuitem", name="Done").click()
@@ -463,7 +463,7 @@ class ConversationFinal(unittest.TestCase):
                 break
             page.wait_for_timeout(100)
         self.assertFalse(self.waiting(page, self.ids["mention"]), "Done resolved the Inbox item")
-        long_press(message.locator(".message-bubble > p"))
+        long_press(message.locator(".message-bubble > .message-body"))
         expect(page.get_by_role("menu", name="Message actions")).to_be_visible()
         expect(page.get_by_role("menuitem", name="Done")).to_have_count(0)
 
@@ -586,7 +586,7 @@ class ConversationFinal(unittest.TestCase):
 
     def test_13_short_taps_leave_no_timer_that_opens_the_next_press_early(self) -> None:
         page = self.open("ada", phone=True)
-        first = self.message(page, self.ids["probes"]).locator(".message-bubble > p")
+        first = self.message(page, self.ids["probes"]).locator(".message-bubble > .message-body")
         first.scroll_into_view_if_needed()
         menu = page.get_by_role("menu", name="Message actions")
         # The touches are fired from the page with its own clock, so the gaps are exact even on a loaded machine.
@@ -606,7 +606,7 @@ class ConversationFinal(unittest.TestCase):
           fire(B, 'pointerup');
           return { early, held };
         }"""
-        bubble = f"#message-{self.ids['probes']} > .message-bubble > p"
+        bubble = f"#message-{self.ids['probes']} > .message-bubble > .message-body"
         result = page.evaluate(script, [bubble, bubble, False])
         self.assertFalse(result["early"], "an earlier tap's timer does not open the next press early")
         self.assertTrue(result["held"], "a real long hold still opens the menu")

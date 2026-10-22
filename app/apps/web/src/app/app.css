@@ -267,14 +267,22 @@ a.me__btn[aria-current="page"] { background: var(--sub); }
 .top__face .ui-avatar { background: var(--el); }
 .top__more-faces { margin-left: 2px; font-size: var(--fs-xs); color: var(--t2); }
 .top__more { position: relative; display: inline-flex; }
-.top__more-menu { left: auto; right: 0; }
-/* Until the menu has popover styles (#606) it is an in-flow row beside its button; while it leaves it lies over the header instead,
-   so the controls beside it are back in their places at once and only the menu fades. */
-.top__more-menu[data-pop="closing"] { position: absolute; }
+.top__more-menu {
+  position: absolute; top: calc(100% + 8px); left: auto; right: 0; z-index: var(--z-menu); display: flex; flex-direction: column; gap: 2px;
+  width: max-content; min-width: 208px; max-width: min(320px, calc(100vw - 24px)); padding: 6px; border: 1px solid var(--line);
+  border-radius: 14px; background: var(--el); box-shadow: var(--sh-pop); white-space: nowrap;
+}
+.top__more-menu .newmenu__item {
+  display: flex; align-items: center; gap: 10px; width: 100%; min-height: 32px; padding: 0 10px; border-radius: var(--r-sm);
+  color: var(--t1); font: inherit; font-size: var(--fs-sm); line-height: 1.25; text-align: left; text-decoration: none; cursor: pointer; transition: background-color var(--dur-1) var(--ease-out);
+}
+.top__more-menu .newmenu__item:hover { background: var(--hov); }
+.top__more-menu .newmenu__item:focus-visible { outline: 2px solid var(--t1); outline-offset: -2px; }
 .top__more-menu .newmenu__item kbd, .top__focus kbd {
   margin-left: auto; display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 4px;
   border-radius: 5px; background: var(--sub); box-shadow: inset 0 -1px 0 var(--line2); font: 500 .6875rem/1 var(--mono); color: var(--t2);
 }
+@media (pointer: coarse) { .top__more-menu .newmenu__item { min-height: 44px; } }
 .top__focus { display: inline-flex; align-items: center; gap: 8px; }
 .top__focus-pill { height: 28px; padding: 0 12px; gap: 6px; font-weight: 600; cursor: pointer; }
 @media (pointer: coarse) { .top__needs, .top__focus-pill { min-height: 44px; } .top__audience.top__faces { min-height: 44px; } }

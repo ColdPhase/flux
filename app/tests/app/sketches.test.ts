@@ -78,6 +78,50 @@ describe('sketch access', () => {
     expectStatus(await bob.browser.request('GET', `/api/v1/sketches/${sketch.id}`), 200, 'access returns with the grant removed');
   });
 
+  test('a project thought keeps its source message through persisted Undo, within the project audience', async () => {
+    const sketch = await createSketch(alice, ws.id, { title: 'Quoted map', scope: 'project', projectId: lamp.id });
+    const conversation = expectStatus(await bob.browser.request('POST', `/api/v1/projects/${lamp.id}/conversations`, {
+      body: { body: 'A real project message by Bob', clientMessageId: randomUUID() },
+    }), 201, 'create project message') as { messages: { id: string; createdAt: string }[] };
+    const sourceId = conversation.messages[0]!.id;
+    const created = await addThought(alice, sketch.id, {
+      id: randomUUID(), text: 'A real project message by Bob', x: 40, y: 40, sourceProjectMessageId: sourceId,
+    });
+    assert.deepEqual(created.thought.source, {
+      author: { kind: 'human', id: bob.id, name: 'sketch-bob' },
+      sentAt: conversation.messages[0]!.createdAt,
+      dmMessageId: null,
+      projectMessageId: sourceId,
+    });
+    assert.ok(Number.isFinite(Date.parse(created.thought.source!.sentAt)));
+    const persisted = (await detail(alice, sketch.id)).thoughts[0]!;
+    assert.equal(persisted.source?.projectMessageId, sourceId);
+    assert.deepEqual(persisted.source?.author, { kind: 'human', id: bob.id, name: 'sketch-bob' });
+    assert.equal((await detail(bob, sketch.id)).thoughts[0]!.source?.projectMessageId, sourceId, 'project readers see the same source');
+
+    await expectStatus(await alice.browser.request('DELETE', `/api/v1/sketches/${sketch.id}/thoughts/${created.thought.id}`, { headers: ifMatch(created.thought.version) }), 204);
+    const restored = await addThought(alice, sketch.id, {
+      id: created.thought.id, text: created.thought.text, x: created.thought.x, y: created.thought.y,
+      sourceProjectMessageId: sourceId,
+    });
+    assert.equal(restored.thought.id, created.thought.id);
+    assert.equal(restored.thought.source?.projectMessageId, sourceId, 'Undo restores the message provenance');
+    assert.deepEqual((await detail(alice, sketch.id)).thoughts[0]!.source?.author,
+      { kind: 'human', id: bob.id, name: 'sketch-bob' });
+
+    const elsewhere = await project(alice, ws.id, 'A different project', 'workspace');
+    const otherConversation = expectStatus(await alice.browser.request('POST', `/api/v1/projects/${elsewhere.id}/conversations`, {
+      body: { body: 'Must not cross the project boundary', clientMessageId: randomUUID() },
+    }), 201, 'create other project message') as { messages: { id: string }[] };
+    const crossProject = await alice.browser.request('POST', `/api/v1/sketches/${sketch.id}/thoughts`, {
+      body: { text: 'No cross-project source', x: 0, y: 0, sourceProjectMessageId: otherConversation.messages[0]!.id },
+    });
+    assert.equal(crossProject.status, 404, 'a source must belong to this sketch project');
+    expectStatus(await erin.browser.request('POST', `/api/v1/sketches/${sketch.id}/thoughts`, {
+      body: { text: 'A viewer cannot cite into the map', x: 0, y: 0, sourceProjectMessageId: sourceId },
+    }), 403, 'viewer cannot create a sourced thought');
+  });
+
   test('a private sketch is visible only to its author: never through the project, to admins or to agents', async () => {
     const mine = await createSketch(alice, ws.id, { title: 'Just me', scope: 'private' });
     assert.equal(mine.scope, 'private');

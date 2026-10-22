@@ -185,7 +185,7 @@ export async function sketchRoutes(app: FastifyInstance, { db, sessions, storage
           id, text: { type: 'string', maxLength: 2000 }, x: number, y: number, width: number, height: number, shape,
           placement: { type: 'object', required: ['type', 'id'], additionalProperties: false, properties: { type: { type: 'string', enum: ['draft'] }, id } },
           linkFrom: { type: 'object', required: ['thoughtId'], additionalProperties: false, properties: { thoughtId: id, label, linkId: id } },
-          sourceMessageId: id, fileId: id,
+          sourceMessageId: id, sourceProjectMessageId: id, fileId: id,
         },
       },
     },

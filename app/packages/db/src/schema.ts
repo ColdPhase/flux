@@ -1043,10 +1043,12 @@ export const sketchThoughts = pgTable('sketch_thoughts', {
   placementId: uuid('placement_id'),
   // The message a thought was started from (migration 0025, #96).
   sourceAuthorId: text('source_author_id').references(() => authUsers.id),
+  sourceAuthorAgentId: uuid('source_author_agent_id').references(() => agents.id),
   sourceAuthorName: text('source_author_name'),
   sourceSentAt: timestamp('source_sent_at', { withTimezone: true }),
   sourceDmId: uuid('source_dm_id'),
   sourceMessageId: uuid('source_message_id'),
+  sourceProjectMessageId: uuid('source_project_message_id'),
   createdByUserId: text('created_by_user_id').references(() => authUsers.id),
   createdByAgentId: uuid('created_by_agent_id'),
   version: integer('version').notNull().default(1),
@@ -1055,6 +1057,7 @@ export const sketchThoughts = pgTable('sketch_thoughts', {
 }, (table) => [
   unique().on(table.sketchId, table.id),
   foreignKey({ columns: [table.workspaceId, table.sketchId], foreignColumns: [sketches.workspaceId, sketches.id] }).onDelete('cascade'),
+  foreignKey({ columns: [table.sourceProjectMessageId], foreignColumns: [projectMessages.id] }),
   index('sketch_thoughts_sketch_idx').on(table.sketchId, table.createdAt, table.id),
 ]);
 
