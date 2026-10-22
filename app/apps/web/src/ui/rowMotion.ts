@@ -6,7 +6,8 @@ import { MOTION_ID, duration, motionAllowed, token } from './motion';
  * row collapses (height and opacity) where it stood, and a row that moved, or that other rows moved under, slides from
  * where it was to where it is (transform). It is the only animation that touches height, and only to collapse or grow
  * a row. Nothing here moves focus or scroll: the browser's own scroll anchoring keeps the reading position while the
- * rows around it change size, and the outgoing row is an inert copy no one can reach.
+ * rows around it change size, a row slides only by how far it moved on the screen (a row the anchoring kept where the
+ * reader sees it does not move at all), and the outgoing row is an inert copy no one can reach.
  *
  * Call it with the list's container; `rows` selects the rows, `key` names a row (its id), and `scope` names the view
  * the rows belong to: when it changes (another filter, List to Board) the rows are simply replaced, never animated.
@@ -16,7 +17,7 @@ import { MOTION_ID, duration, motionAllowed, token } from './motion';
  * more and writes again: never a read between two writes per row.
  */
 interface Seen { el: HTMLElement; left: number; top: number; height: number; parent: HTMLElement; next: Element | null; prev: Element | null }
-interface Last { scope: string; signature: string; seen: Map<string, Seen> }
+interface Last { scope: string; signature: string; seen: Map<string, Seen>; scroll: number }
 
 const GHOST = 'data-row-ghost';
 /** The most rows that may arrive or leave in one change and still be animated one by one. */
@@ -32,6 +33,15 @@ function place(el: HTMLElement): { left: number; top: number } {
   return { left, top };
 }
 
+/** The nearest ancestor that scrolls the rows (the pane's own scroller, or the page). */
+function scrollerOf(el: HTMLElement): Element {
+  for (let node: HTMLElement | null = el; node; node = node.parentElement) {
+    const overflow = getComputedStyle(node).overflowY;
+    if ((overflow === 'auto' || overflow === 'scroll') && node.scrollHeight > node.clientHeight) return node;
+  }
+  return document.scrollingElement ?? document.documentElement;
+}
+
 const parents = new WeakMap<Element, number>();
 let parentCount = 0;
 const parentId = (el: Element | null) => { if (!el) return -1; let id = parents.get(el); if (id === undefined) { id = parentCount += 1; parents.set(el, id); } return id; };
@@ -39,11 +49,22 @@ const parentId = (el: Element | null) => { if (!el) return -1; let id = parents.
 export function useRowMotion(container: RefObject<HTMLElement | null>, rows: string, key: (el: HTMLElement) => string | undefined, scope = '') {
   const last = useRef<Last | null>(null);
   const resized = useRef(false);
+  // How far the reader had scrolled the rows before the commit that changes them (a scroll event lands after the frame it scrolled, so it
+  // still names the position before this commit's layout, and before any anchoring adjustment).
+  const reading = useRef(0);
   // After the window has been resized the rows are somewhere else than the last reading says.
   useEffect(() => {
     const stale = () => { resized.current = true; };
+    const follow = (event: Event) => {
+      const root = container.current;
+      const target = event.target === document ? document.scrollingElement : event.target;
+      if (root && target instanceof Element && target.contains(root)) reading.current = target.scrollTop;
+    };
     window.addEventListener('resize', stale);
-    return () => window.removeEventListener('resize', stale);
+    document.addEventListener('scroll', follow, { capture: true, passive: true });
+    return () => { window.removeEventListener('resize', stale); document.removeEventListener('scroll', follow, { capture: true }); };
+    // The container is a ref: read when the event comes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   useLayoutEffect(() => {
     const root = container.current;
@@ -65,7 +86,13 @@ export function useRowMotion(container: RefObject<HTMLElement | null>, rows: str
       const at = place(el);
       seen.set(key(el)!, { el, left: at.left, top: at.top, height: el.offsetHeight, parent: el.parentElement!, next: el.nextElementSibling, prev: el.previousElementSibling });
     }
-    last.current = { scope, signature, seen };
+    // Where the reader is looking: a row's place on the screen is its place in the content less how far the content is scrolled. The browser's
+    // own scroll anchoring has already kept the reading position through this change (the layout was read just above), so a row that stayed
+    // where the reader sees it is still, whatever moved above it.
+    const prior = reading.current || before?.scroll || 0;
+    const scroll = scrollerOf(root).scrollTop;
+    reading.current = scroll;
+    last.current = { scope, signature, seen, scroll };
     const fresh = resized.current;
     resized.current = false;
     // What the first screen shows, a hidden page, another view or a resized window is only read: it is where the next change starts from.
@@ -130,7 +157,7 @@ export function useRowMotion(container: RefObject<HTMLElement | null>, rows: str
       if (!was) continue;
       const at = place(now.el);
       const dx = was.left - at.left;
-      const dy = was.top - at.top;
+      const dy = (was.top - prior) - (at.top - scroll);
       if (Math.abs(dx) < 1 && Math.abs(dy) < 1) continue;
       // Only rows a reader can see or is about to see are worth moving.
       const box = now.el.getBoundingClientRect();

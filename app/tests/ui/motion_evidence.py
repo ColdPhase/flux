@@ -276,7 +276,7 @@ class MotionEvidence(unittest.TestCase):
         page.keyboard.press("Escape"); self.beat(page, 500)
         page.locator(TABS).get_by_role("link", name="Tasks").click(); self.beat(page, 800)
         page.locator(".ws-task .ws-item").first.click(); self.beat(page, 900)
-        page.locator("#details").get_by_role("link", name=re.compile("Message: Should the first sensors")).click(); self.beat(page, 900)
+        page.locator("#details a", has_text="Should the first sensors").first.click(); self.beat(page, 900)
 
     def test_clips_for_the_review(self):
         for scheme in ("light", "dark"):

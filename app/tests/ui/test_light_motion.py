@@ -79,6 +79,11 @@ class LightMotionJourney(unittest.TestCase):
         value = page.evaluate("(name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim()", name)
         return numbers(value)[0] * (1 if value.endswith("ms") else 1000)
 
+    def prime(self, page: Page) -> None:
+        """A real key press just before a test closes a surface with a key the page did not get as a real one: motion that answers input is
+        allowed for a second after any (the shell's own "ready" may not have come yet on a loaded machine)."""
+        page.keyboard.press("Shift")
+
     def open_jump(self, page: Page):
         page.keyboard.press("Control+k")
         dialog = page.get_by_role("dialog", name="Jump to")
@@ -163,6 +168,7 @@ class LightMotionJourney(unittest.TestCase):
         self.open(page, self.fx.project_url())
         page.locator(".side__search").focus()
         self.open_jump(page)
+        self.prime(page)
         verdict = page.evaluate("""async () => {
           const opener = document.querySelector('.side__search');
           const dialog = document.querySelector('[role="dialog"][aria-label="Jump to"]');
@@ -186,6 +192,7 @@ class LightMotionJourney(unittest.TestCase):
         self.open(page, self.fx.project_url())
         for final_open in (True, False):
             with self.subTest(final_open=final_open):
+                self.prime(page)
                 page.evaluate("""async (finalOpen) => {
                   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
                   const toggle = (open) => {
@@ -235,6 +242,7 @@ class LightMotionJourney(unittest.TestCase):
         title = self.fx.tasks[0]["title"]
         for final_open in (True, False):
             with self.subTest(final_open=final_open):
+                self.prime(page)
                 page.evaluate("""async ([title, finalOpen]) => {
                   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
                   const row = [...document.querySelectorAll('.ws-item')].find((el) => el.textContent.includes(title));
@@ -272,6 +280,7 @@ class LightMotionJourney(unittest.TestCase):
         self.assertLessEqual(css[0]["duration"], 180)
         self.assertTrue(set(css[0]["props"]) <= {"opacity", "transform"}, css[0]["props"])
         self.assertEqual(menu.get_attribute("data-pop"), "open")
+        self.prime(page)
         verdict = page.evaluate("""async () => {
           const menu = document.querySelector('.wd-menu__list'); const button = document.querySelector('button[aria-label="Status"]');
           menu.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
@@ -344,6 +353,7 @@ class LightMotionJourney(unittest.TestCase):
         field.click()
         field.fill("/")
         expect(page.locator(".cmenu")).to_be_visible()
+        self.prime(page)
         verdict = page.evaluate(leave, {"selector": ".cmenu", "key": "#project-composer"})
         gone_after(verdict, "the composer's menu")
         self.assertEqual(verdict["now"]["active"], "project-composer", "the field keeps focus through the exit")
@@ -352,6 +362,7 @@ class LightMotionJourney(unittest.TestCase):
         message.hover()
         message.get_by_role("button", name="More actions").click()
         expect(page.locator(".msg-menu")).to_be_visible()
+        self.prime(page)
         verdict = page.evaluate(leave, {"selector": ".msg-menu", "scrim": ".msg-menu__scrim"})
         gone_after(verdict, "the message menu")
         self.assertEqual(verdict["now"]["active"], "More actions", "focus is back on the ⋯ button in the same task as the close")
@@ -363,6 +374,7 @@ class LightMotionJourney(unittest.TestCase):
         more = page.locator("header.top").get_by_role("button", name="More", exact=True)
         more.click()
         expect(page.locator("header.top [role=menu][aria-label=More]")).to_be_visible()
+        self.prime(page)
         verdict = page.evaluate(leave, {"selector": "header.top [role=menu][aria-label=More]"})
         gone_after(verdict, "the header's More menu")
         self.assertEqual(verdict["now"]["active"], "More", "focus is back on the More button in the same task as the close")
@@ -377,6 +389,7 @@ class LightMotionJourney(unittest.TestCase):
         page.locator("header.top").get_by_role("button", name="More", exact=True).click()
         expect(page.locator("header.top [role=menu][aria-label=More]")).to_be_visible()
         settled(page)
+        self.prime(page)
         frames = sample_while(page, "() => { document.querySelector('header.top [role=menu][aria-label=More]').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); }", boxes, 300)
         expect(page.locator("header.top [role=menu]")).to_have_count(0)
         # The menu leaves the flow at once, so the controls beside the button are back where they stand without it: from the first
