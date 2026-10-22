@@ -152,7 +152,8 @@ def settled(page: Page, ms: int = 450) -> None:
 def ready(page: Page) -> None:
     """The shell is committed and motion is allowed (first paint has passed)."""
     expect(page.locator("#content")).to_be_visible()
-    page.wait_for_timeout(250)
+    # The shell marks motion ready a frame and a quarter of a second after it has committed; a loaded machine needs more than that.
+    page.wait_for_timeout(700)
 
 
 def recorded(page: Page) -> list[dict]:

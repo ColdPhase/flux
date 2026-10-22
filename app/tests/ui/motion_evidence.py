@@ -6,6 +6,10 @@ Not part of normal test_*.py discovery. Run it through the pinned UI stack, once
 It writes `<engine>-<scheme>-<criterion>.webm` and, beside each, `.motion.json`: every animation the page started (what it
 animates, how long, how it eases), which is the measurement a video cannot be. A video is evidence of what was drawn, not of
 interaction or accessibility; those are asserted in test_light_motion.py. Videos stay out of the repository (#319).
+
+`test_clips_for_the_review` is the review set: one short recording per motion (menus, the dialog, the panel's content, a view
+switch, a state change, the press), each with a `.marks.json` naming when the motion starts and which part of the page it
+happens in, so `docs/design/motion-evidence/593/pack.py` can cut it down to a cropped, small WebP that is committed (#319).
 """
 from __future__ import annotations
 
@@ -13,6 +17,7 @@ import json
 import os
 import re
 import shutil
+import time
 import unittest
 from pathlib import Path
 
@@ -159,6 +164,129 @@ class MotionEvidence(unittest.TestCase):
         page.get_by_role("dialog", name="Details").get_by_role("button", name="Close details").tap(); self.beat(page, 1000)
         page.get_by_role("button", name="Create", exact=True).tap(); self.beat(page, 1000)
         page.keyboard.press("Escape"); self.beat(page, 800)
+
+    # ------------------------------------------------------------------ clips for the review: one motion each, cropped by the packer
+    def mark(self, page: Page, selectors: tuple[str, ...] = (), *, box: tuple[float, float, float, float] | None = None, grow: tuple[float, float, float, float] = (0, 0, 0, 0),
+             before: float = 0.3, after: float = 1.6, scale: float = 1.0, pad: float = 12, width: float | None = None) -> None:
+        """Notes that a motion starts now: where on the page it happens (the union of `selectors`, grown by `grow` = left, top, right,
+        bottom, or a fixed `box`), and how much of the video to keep before and after (seconds)."""
+        if box is None:
+            found = page.evaluate("""(selectors) => { let l = 1e9, t = 1e9, r = -1e9, b = -1e9;
+              for (const selector of selectors) { const el = document.querySelector(selector); if (!el) continue; const q = el.getBoundingClientRect();
+                l = Math.min(l, q.left); t = Math.min(t, q.top); r = Math.max(r, q.right); b = Math.max(b, q.bottom); }
+              return r > l ? [l, t, r - l, b - t] : null; }""", list(selectors))
+            self.assertTrue(found, f"nothing to mark: {selectors}")
+            box = (found[0] - grow[0] - pad, found[1] - grow[1] - pad, found[2] + grow[0] + grow[2] + 2 * pad, found[3] + grow[1] + grow[3] + 2 * pad)
+        if width is not None:
+            box = (box[0], box[1], width, box[3])
+        self.marks.append({"at": round(time.monotonic() - self.began, 3), "box": [round(value, 1) for value in box], "before": before, "after": after, "scale": scale})
+
+    def clip(self, name: str, journey, *, scheme: str = "light", reduced: bool = False) -> None:
+        label = f"{self.engine}-{scheme}{'-reduced' if reduced else ''}-{name}"
+        scratch = OUT / f"_{label}"
+        shutil.rmtree(scratch, ignore_errors=True)
+        context = self.fx.context(scheme=scheme, reduced=reduced, video_dir=str(scratch))
+        self.log, self.marks = [], []
+        errors: list[str] = []
+        self.began = time.monotonic()
+        page = context.new_page()
+        page.on("pageerror", lambda error: errors.append(str(error)))
+        try:
+            journey(page)
+            page.wait_for_timeout(BEAT)
+            self.harvest(page)
+            (OUT / f"{label}.motion.json").write_text(json.dumps(self.log, indent=1) + "\n")
+            (OUT / f"{label}.marks.json").write_text(json.dumps({"engine": self.engine, "scheme": scheme, "clip": name, "reduced": reduced, "marks": self.marks, "viewport": page.viewport_size}, indent=1) + "\n")
+        finally:
+            video = page.video
+            context.close()
+            if video is not None:
+                video.save_as(str(OUT / f"{label}.webm"))
+            shutil.rmtree(scratch, ignore_errors=True)
+        self.assertEqual(errors, [], f"{label}: no uncaught browser errors")
+
+    def clip_composer_menu(self, page: Page) -> None:
+        """AC-1: the composer's `/` menu comes in and, on Escape, stays on screen fading out while the field keeps focus."""
+        self.go(page, self.fx.project_url()); self.beat(page, 700)
+        field = page.locator("#project-composer")
+        field.click()
+        self.mark(page, (".composer__box",), grow=(0, 300, 0, 0), after=2.4, width=560)
+        field.fill("/"); self.beat(page, 900)
+        page.keyboard.press("Escape"); self.beat(page, 700)
+
+    def clip_message_menu(self, page: Page) -> None:
+        """AC-1: a message's ⋯ menu and its scrim leave as they came."""
+        self.go(page, self.fx.project_url()); self.beat(page, 700)
+        message = page.locator(".project-convo__message").first
+        message.hover(); self.beat(page, 300)
+        self.mark(page, (".project-convo__message",), grow=(0, 0, 0, 260), after=2.4)
+        message.get_by_role("button", name="More actions").click(); self.beat(page, 900)
+        page.keyboard.press("Escape"); self.beat(page, 700)
+
+    def clip_more_menu(self, page: Page) -> None:
+        """AC-1: the project header's More menu (#606's surface) leaves over the header while the controls beside it stay put."""
+        self.go(page, self.fx.project_url()); self.beat(page, 700)
+        self.mark(page, ("header.top",), grow=(0, 0, 0, 260), after=2.4, scale=0.8)
+        page.locator("header.top").get_by_role("button", name="More", exact=True).click(); self.beat(page, 900)
+        page.keyboard.press("Escape"); self.beat(page, 700)
+
+    def clip_dialog(self, page: Page) -> None:
+        """AC-1: ⌘K and its scrim come in and leave."""
+        self.go(page, self.fx.project_url()); self.beat(page, 700)
+        self.mark(page, box=(320, 40, 800, 520), after=2.4, scale=0.8)
+        page.keyboard.press("Control+k"); self.beat(page, 900)
+        page.keyboard.press("Escape"); self.beat(page, 700)
+
+    def clip_panel(self, page: Page) -> None:
+        """AC-2: the old content fades out over the new, which slides in from the side of travel; Back reverses; the shell stays."""
+        self.go(page, self.fx.task_url(self.fx.tasks[0])); self.beat(page, 900)
+        panel = page.locator("#details")
+        self.mark(page, ("#details",), after=3.0, scale=0.9)
+        panel.get_by_role("link", name=re.compile("Message: Should the first sensors")).click(); self.beat(page, 1000)
+        panel.get_by_role("button", name=re.compile(r"^Task #\d+$")).click(); self.beat(page, 1000)
+
+    def clip_views(self, page: Page) -> None:
+        """AC-3: the old view fades out over the new one in the direction of travel; header, sidebar and tabs stay; Back reverses."""
+        self.go(page, self.fx.project_url()); self.beat(page, 900)
+        self.mark(page, box=(0, 0, 1440, 560), after=3.0, scale=0.55)
+        page.locator(TABS).get_by_role("link", name="Tasks").click(); self.beat(page, 1000)
+        page.locator(TABS).get_by_role("link", name="Conversation").click(); self.beat(page, 1000)
+
+    def clip_state(self, page: Page) -> None:
+        """AC-4: the state glyph morphs and the row slides to its group."""
+        self.go(page, self.fx.tasks_url()); self.beat(page, 900)
+        self.mark(page, (".ws-task",), grow=(0, 0, 0, 300), after=2.2, scale=0.6)
+        page.locator("button.ws-task__glyph").first.click(); self.beat(page, 1200)
+
+    def clip_press(self, page: Page) -> None:
+        """AC-5: a pressed control scales to .97 and springs back."""
+        self.go(page, self.fx.tasks_url()); self.beat(page, 900)
+        row = page.locator(".ws-task .ws-item").first
+        box = row.bounding_box()
+        self.mark(page, (".ws-task .ws-item",), grow=(0, 0, 0, 0), after=2.2, scale=0.6, pad=16)
+        page.mouse.move(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2); self.beat(page, 400)
+        page.mouse.down(); self.beat(page, 600)
+        page.mouse.move(2, 2); page.mouse.up(); self.beat(page, 700)
+
+    def clip_reduced(self, page: Page) -> None:
+        """AC-6: with reduced motion every surface is in its end state at once: a dialog, a view, the panel and its replaced content."""
+        self.go(page, self.fx.project_url()); self.beat(page, 700)
+        self.mark(page, box=(0, 0, 1440, 700), after=5.0, scale=0.45)
+        page.keyboard.press("Control+k"); self.beat(page, 800)
+        page.keyboard.press("Escape"); self.beat(page, 500)
+        page.locator(TABS).get_by_role("link", name="Tasks").click(); self.beat(page, 800)
+        page.locator(".ws-task .ws-item").first.click(); self.beat(page, 900)
+        page.locator("#details").get_by_role("link", name=re.compile("Message: Should the first sensors")).click(); self.beat(page, 900)
+
+    def test_clips_for_the_review(self):
+        for scheme in ("light", "dark"):
+            for name, journey in (("ac1-composer-menu", self.clip_composer_menu), ("ac1-message-menu", self.clip_message_menu), ("ac1-more-menu", self.clip_more_menu),
+                                  ("ac1-dialog", self.clip_dialog), ("ac2-panel", self.clip_panel), ("ac3-views", self.clip_views), ("ac4-state", self.clip_state),
+                                  ("ac5-press", self.clip_press)):
+                with self.subTest(scheme=scheme, clip=name):
+                    self.clip(name, journey, scheme=scheme)
+        with self.subTest(clip="ac6-reduced"):
+            self.clip("ac6-reduced", self.clip_reduced, reduced=True)
 
     # ------------------------------------------------------------------ frame samples: what the video cannot show
     SAMPLER = r"""

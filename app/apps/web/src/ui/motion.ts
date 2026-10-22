@@ -245,10 +245,12 @@ function placeHighlight(box: HTMLElement | null, mark: HTMLElement | null, order
 
 /**
  * Motion pauses while the page is hidden (#593 AC-6). A looping animation is paused and resumed when the page is shown again;
- * a transient one of ours, and a menu's or popover's CSS entry or exit (`ui-pop-*`), lands on its end state at once, so nothing
+ * a transient one of ours, a menu's or popover's CSS entry or exit (`ui-pop-*`) and a view's dissolve (`flux-vt-*` and the browser's own `-ua-view-transition-*`) land on their end state at once, so nothing
  * is half-finished on return; a press in flight is let go. Installed once, before the first render.
  */
 let guarded = false;
+/** The page's own transient CSS motion: a menu's entry or exit (`ui-pop-*`, ui.css) and a view's dissolve (`flux-vt-*`, ui.css). */
+const endsWhenHidden = (animation: Animation) => typeof CSSAnimation !== 'undefined' && animation instanceof CSSAnimation && /^(ui-pop|flux-vt|-ua-view-transition)/.test(animation.animationName);
 export function installMotionGuards() {
   if (guarded || typeof document === 'undefined') return;
   guarded = true;
@@ -260,7 +262,7 @@ export function installMotionGuards() {
         // However far along, and whether running or held at a frame.
         if (animation.playState === 'finished' || animation.playState === 'idle') continue;
         if (animation.id === PRESS_ID) { animation.cancel(); continue; }
-        if (ours(animation) || (typeof CSSAnimation !== 'undefined' && animation instanceof CSSAnimation && animation.animationName.startsWith('ui-pop'))) { animation.finish(); continue; }
+        if (ours(animation) || endsWhenHidden(animation)) { animation.finish(); continue; }
         if (animation.playState !== 'running') continue;
         if (animation.effect?.getComputedTiming().iterations === Infinity) { animation.pause(); paused.add(animation); }
       }

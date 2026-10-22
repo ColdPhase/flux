@@ -308,43 +308,82 @@ class LightMotionJourney(unittest.TestCase):
         expect(page.locator(".ui-toast")).to_have_count(0)
 
     def test_09b_every_menu_leaves_with_motion_and_focus_is_back_at_once(self):
-        """The composer's menu, a message's ⋯ menu and the header's More menu stay mounted and inert through their exit."""
+        """The composer's menu, a message's ⋯ menu and the header's More menu stay mounted and inert through their exit.
+
+        PR 608's review reproduced it by entering `/`, pressing Escape and inspecting the saved node on the next animation frame
+        (it was gone, with no exit animation). So the node is held across the close and inspected on the very next frame.
+        """
         page = self.page()
         self.open(page, self.fx.project_url())
         settled(page)
-        leave = """async (selector) => {
-          const menu = document.querySelector(selector);
-          menu.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+        leave = """async ({ selector, scrim, key }) => {
+          const kept = document.querySelector(selector); const veil = scrim ? document.querySelector(scrim) : null;
+          const label = () => document.activeElement ? (document.activeElement.getAttribute('aria-label') || document.activeElement.id || document.activeElement.tagName) : null;
+          const names = (node) => node ? node.getAnimations().map((animation) => animation.animationName) : [];
+          const look = () => ({ connected: kept.isConnected, inert: kept.inert, pop: kept.dataset.pop, names: names(kept), same: document.querySelector(selector) === kept, active: label(),
+            veil: veil ? { connected: veil.isConnected, pop: veil.dataset.pop, inert: veil.inert, names: names(veil) } : null });
+          const closed = performance.now();
+          (key ? document.querySelector(key) : kept).dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+          // The task that closed it, once React has committed the key: the surface leaves, it is not gone, and focus is already back.
           await Promise.resolve(); await Promise.resolve();
-          const left = document.querySelector(selector);
-          return { there: !!left, connected: !!left && left.isConnected, pop: left ? left.dataset.pop : null, inert: left ? left.inert : null,
-            running: left ? left.getAnimations().length : 0, active: document.activeElement ? (document.activeElement.getAttribute('aria-label') || document.activeElement.id || document.activeElement.tagName) : null };
+          const now = look();
+          await new Promise((frame) => requestAnimationFrame(frame));
+          // The next animation frame, when it comes within the exit (a loaded machine can take longer than the 120 ms exit to draw one).
+          return { now, frame: { ...look(), after: performance.now() - closed } };
         }"""
+
+        def gone_after(verdict: dict, label: str) -> None:
+            for when, seen in (("in the task that closes it", verdict["now"]), ("on the next frame", verdict["frame"] if verdict["frame"]["after"] < 100 else None)):
+                if seen is None:
+                    continue
+                self.assertTrue(seen["connected"] and seen["same"], f"{label} is still in the page {when}: {verdict}")
+                self.assertEqual((seen["pop"], seen["inert"]), ("closing", True), f"{label} is leaving and out of reach {when}: {verdict}")
+                self.assertIn("ui-pop-out", seen["names"], f"{label} runs its exit animation {when}: {verdict}")
+
         field = page.locator("#project-composer")
         field.click()
         field.fill("/")
         expect(page.locator(".cmenu")).to_be_visible()
-        verdict = page.evaluate(leave.replace("menu.dispatchEvent", "document.getElementById('project-composer').dispatchEvent"), ".cmenu")
-        self.assertEqual((verdict["there"], verdict["pop"], verdict["inert"]), (True, "closing", True), f"composer menu: {verdict}")
-        self.assertEqual(verdict["active"], "project-composer", "the field keeps focus")
+        verdict = page.evaluate(leave, {"selector": ".cmenu", "key": "#project-composer"})
+        gone_after(verdict, "the composer's menu")
+        self.assertEqual(verdict["now"]["active"], "project-composer", "the field keeps focus through the exit")
         expect(page.locator(".cmenu")).to_have_count(0)
         message = page.locator(".project-convo__message").first
         message.hover()
         message.get_by_role("button", name="More actions").click()
         expect(page.locator(".msg-menu")).to_be_visible()
-        verdict = page.evaluate(leave, ".msg-menu")
-        self.assertEqual((verdict["there"], verdict["pop"], verdict["inert"]), (True, "closing", True), f"message menu: {verdict}")
-        self.assertEqual(verdict["active"], "More actions", "focus is back on the ⋯ button in the same task")
-        self.assertEqual(page.locator(".msg-menu__scrim").first.get_attribute("data-pop"), "closing", "its scrim leaves with it")
+        verdict = page.evaluate(leave, {"selector": ".msg-menu", "scrim": ".msg-menu__scrim"})
+        gone_after(verdict, "the message menu")
+        self.assertEqual(verdict["now"]["active"], "More actions", "focus is back on the ⋯ button in the same task as the close")
+        veil = verdict["now"]["veil"]
+        self.assertEqual((veil["connected"], veil["pop"], veil["inert"]), (True, "closing", True), "its scrim leaves with it")
+        self.assertIn("ui-pop-fade-out", veil["names"])
         expect(page.locator(".msg-menu")).to_have_count(0)
         page.mouse.move(2, 2)
         more = page.locator("header.top").get_by_role("button", name="More", exact=True)
         more.click()
         expect(page.locator("header.top [role=menu][aria-label=More]")).to_be_visible()
-        verdict = page.evaluate(leave, "header.top [role=menu][aria-label=More]")
-        self.assertEqual((verdict["there"], verdict["pop"], verdict["inert"]), (True, "closing", True), f"More menu: {verdict}")
-        self.assertEqual(verdict["active"], "More")
+        verdict = page.evaluate(leave, {"selector": "header.top [role=menu][aria-label=More]"})
+        gone_after(verdict, "the header's More menu")
+        self.assertEqual(verdict["now"]["active"], "More", "focus is back on the More button in the same task as the close")
         expect(page.locator("header.top [role=menu]")).to_have_count(0)
+
+    def test_09c_the_more_menu_over_the_header_moves_nothing_while_it_leaves(self):
+        """Until #606 styles it, the More menu is a row of the header: while it fades it lies over the header, so no control moves."""
+        page = self.page()
+        self.open(page, self.fx.project_url())
+        settled(page)
+        boxes = {**CHROME, "more": "header.top button[aria-label=More]", "tabs": PROJECT_TABS}
+        page.locator("header.top").get_by_role("button", name="More", exact=True).click()
+        expect(page.locator("header.top [role=menu][aria-label=More]")).to_be_visible()
+        settled(page)
+        frames = sample_while(page, "() => { document.querySelector('header.top [role=menu][aria-label=More]').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); }", boxes, 300)
+        expect(page.locator("header.top [role=menu]")).to_have_count(0)
+        # The menu leaves the flow at once, so the controls beside the button are back where they stand without it: from the first
+        # frame on they are still, however long the fade takes.
+        for key in ("more", "tabs"):
+            at = [frame["boxes"][key] for frame in frames[1:] if frame["boxes"][key]]
+            self.assertTrue(at and all(close(box, at[0], 0.5) for box in at), f"{key} does not move while the menu leaves: {at[:3]}")
 
     # ------------------------------------------------------------------ AC-2: the panel's content
     def test_10_a_thread_replaces_a_task_in_the_direction_of_travel_and_back_reverses_it(self):
@@ -382,6 +421,74 @@ class LightMotionJourney(unittest.TestCase):
         left = [entry for entry in recorded(page) if entry["duration"] == 120 and (entry["from"] or {}).get("opacity") == 1 and (entry["to"] or {}).get("opacity") == 0]
         self.assertTrue(left)
         self.assertGreater(numbers(left[0]["to"]["transform"])[0], 0, "back: the old content goes right as the task comes from the left")
+
+    def test_10b_the_old_content_stays_as_an_inert_picture_while_the_new_content_comes_in(self):
+        """A real old-to-new crossfade (PR 608's review): the outgoing content is retained, not replaced by a fade-in from zero."""
+        page = self.page()
+        self.open(page, self.fx.task_url(self.fx.tasks[0]))
+        panel = page.locator("#details")
+        expect(panel.locator(".wd")).to_be_visible()
+        settled(page)
+        probe = """async (action) => {
+          const body = document.querySelector('#details .ui-panel__body');
+          const old = body.querySelector(':scope > :not([data-dissolve])'); const oldBox = old.getBoundingClientRect();
+          const point = { x: oldBox.left + oldBox.width / 2, y: oldBox.top + Math.min(60, oldBox.height / 2) };
+          const reach = () => {
+            const hit = document.elementFromPoint(point.x, point.y);
+            const back = document.querySelector('#details .ui-panel__back');
+            const backBox = back ? back.getBoundingClientRect() : null;
+            const backHit = backBox ? document.elementFromPoint(backBox.left + backBox.width / 2, backBox.top + backBox.height / 2) : null;
+            return { hit: hit ? hit.tagName + '.' + hit.className : null, hitIsOld: !!hit && !!hit.closest('[data-dissolve]'),
+              backReachable: back ? (backHit === back || back.contains(backHit)) : null };
+          };
+          const capture = () => {
+            const copies = [...body.querySelectorAll(':scope > [data-dissolve]')];
+            const fresh = [...body.children].filter((child) => !child.hasAttribute('data-dissolve'));
+            const copy = copies[0];
+            const leaving = copy ? copy.getAnimations().filter((animation) => animation.id === 'flux-motion' && animation.playState === 'running') : [];
+            return { copies: copies.length, fresh: fresh.map((child) => child.className),
+              copy: copy ? { task: !!copy.querySelector('.wd') || copy.classList.contains('wd'), thread: !!copy.querySelector('.thread') || copy.classList.contains('thread'), inert: copy.inert,
+                hidden: copy.getAttribute('aria-hidden'), ids: copy.querySelectorAll('[id]').length + (copy.id ? 1 : 0), events: getComputedStyle(copy).pointerEvents, running: leaving.length } : null };
+          };
+          const seen = new Promise((resolve) => {
+            const watch = new MutationObserver(() => {
+              if (!body.querySelector(':scope > [data-dissolve]')) return;
+              watch.disconnect();
+              // In the task that committed the swap: the picture of the old content and the new content are in the page together.
+              const committed = capture();
+              // A few frames later (the route change under the panel has the browser take its picture of the page for a frame, which holds
+              // hit testing): the pointer reaches the new content and the panel's own controls, not the picture.
+              requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(() => resolve({ ...committed, ...reach() }))));
+            });
+            watch.observe(body, { childList: true });
+            setTimeout(() => { watch.disconnect(); resolve(null); }, 4000);
+          });
+          if (action === 'forward') [...document.querySelectorAll('#details a')].find((a) => a.textContent.includes('Should the first sensors'))?.click();
+          else document.querySelector('#details .ui-panel__back')?.click();
+          return seen;
+        }"""
+        forward = page.evaluate(probe, "forward")
+        self.assertIsNotNone(forward, "the panel's content was replaced")
+        self.assertGreaterEqual(forward["copies"], 1, f"the task's content is still there on the next frame: {forward}")
+        self.assertTrue(forward["fresh"], f"and the thread's is beside it: {forward}")
+        self.assertTrue(forward["copy"]["task"], f"the picture is of the task: {forward}")
+        self.assertEqual((forward["copy"]["inert"], forward["copy"]["hidden"], forward["copy"]["ids"], forward["copy"]["events"]), (True, "true", 0, "none"),
+                         f"the picture is inert, hidden from assistive technology, carries no ids and takes no pointer input: {forward}")
+        self.assertGreaterEqual(forward["copy"]["running"], 1, "and it is fading out")
+        self.assertFalse(forward["hitIsOld"], "the person's pointer reaches the new content, not the picture")
+        self.assertTrue(forward["backReachable"], "the panel's own controls are reachable at once")
+        expect(panel.locator(".thread")).to_be_visible()
+        expect(panel.locator("[data-dissolve]")).to_have_count(0)
+        settled(page)
+        back = page.evaluate(probe, "back")
+        self.assertIsNotNone(back, "the panel's content was replaced on Back")
+        self.assertGreaterEqual(back["copies"], 1, f"going back keeps the thread's content as a picture too: {back}")
+        self.assertTrue(back["copy"]["thread"], f"the picture is of the thread: {back}")
+        self.assertFalse(back["hitIsOld"])
+        expect(panel.locator(".wd")).to_be_visible()
+        expect(panel.locator("[data-dissolve]")).to_have_count(0)
+        # The picture of what was shown is not a second copy of anything the page answers to.
+        self.assertEqual(page.locator("#details .wd").count(), 1)
 
     # ------------------------------------------------------------------ AC-3: views and routes
     def pictures(self, page: Page, pseudo: str) -> list[dict]:
@@ -430,23 +537,62 @@ class LightMotionJourney(unittest.TestCase):
         self.assertEqual(self.pictures(page, "::view-transition-old(flux-view)"), [])
 
     def test_11b_the_page_answers_clicks_while_a_view_dissolves(self):
-        """The pictures take no pointer input: a control in the new view works in the first moments of the dissolve."""
+        """The pictures take no pointer input: the live page, in and out of the content area, is what a pointer finds from the first frame."""
         page = self.page()
         self.open(page, self.fx.project_url())
         settled(page)
         if not page.evaluate("typeof document.startViewTransition === 'function'"):
             self.skipTest("this engine has no View Transitions API; the view swaps with a fade-in")
         verdict = page.evaluate("""async () => {
+          const describe = (el) => el ? el.tagName.toLowerCase() + (el.className && el.className.baseVal === undefined ? '.' + String(el.className).split(/\\s+/).join('.') : '') : null;
+          const reaches = (el) => { const at = el.getBoundingClientRect(); const hit = document.elementFromPoint(at.left + at.width / 2, at.top + at.height / 2);
+            return { ok: !!hit && (hit === el || el.contains(hit) || hit.contains(el)), hit: describe(hit) }; };
           document.querySelector("nav[aria-label='Project views'] a[href*='/tasks']").click();
-          // Wait for the switch itself, then press the new view's List control while the old content is still dissolving.
-          for (let i = 0; i < 120 && !document.querySelector('.tb-root'); i++) await new Promise((resolve) => setTimeout(resolve, 10));
-          const control = [...document.querySelectorAll('.tb-root input[type=radio]')].find((el) => el.getAttribute('aria-label') === 'List' || /List/.test(el.closest('label')?.textContent || ''));
-          const at = control ? control.getBoundingClientRect() : null;
-          const hit = at ? document.elementFromPoint(at.left + at.width / 2, at.top + at.height / 2) : null;
-          return { found: !!control, onControl: !!hit && (hit === control || control.contains(hit) || hit.contains(control)), running: document.getAnimations().length };
+          // The moment the new view is in the page, while the dissolve is still running: its own control, then the page's chrome.
+          for (let i = 0; i < 300 && !document.querySelector('.tb-mode__b'); i++) await new Promise((resolve) => setTimeout(resolve, 5));
+          const flies = () => document.getAnimations().filter((a) => a.effect && (a.effect.pseudoElement || '').includes('flux-view')).length;
+          for (let i = 0; i < 100 && !flies(); i++) await new Promise((resolve) => setTimeout(resolve, 3));
+          const control = document.querySelector('.tb-mode__b');
+          const flying = flies();
+          const result = { found: !!control, flying, active: (() => { try { return document.documentElement.matches(':active-view-transition'); } catch (error) { return null; } })(),
+            control: control ? reaches(control) : null, tab: reaches(document.querySelector("nav[aria-label='Project views'] a[href*='/map']")),
+            sidebar: reaches(document.querySelector('.app__side a, .app__side button')), header: reaches(document.querySelector('header.top button, header.top a')) };
+          return result;
         }""")
         self.assertTrue(verdict["found"], verdict)
-        self.assertTrue(verdict["onControl"], f"the pictures take no pointer input: {verdict}")
+        self.assertTrue(verdict["flying"], f"the dissolve was still running when the new view was there: {verdict}")
+        for key in ("control", "tab", "sidebar", "header"):
+            self.assertTrue(verdict[key]["ok"], f"{key} is reached by a pointer while the view dissolves (the pictures take no pointer input): {verdict}")
+
+    def test_11c_a_modal_panel_stays_reachable_while_the_page_beneath_dissolves(self):
+        """A tablet's panel is an overlay: when the page under it switches views, its own controls must work from the first frame."""
+        page = self.page(viewport={"width": 820, "height": 1180})
+        self.open(page, self.fx.task_url(self.fx.tasks[0]))
+        panel = page.locator("#details")
+        expect(panel.locator(".wd")).to_be_visible()
+        settled(page)
+        if not page.evaluate("typeof document.startViewTransition === 'function'"):
+            self.skipTest("this engine has no View Transitions API; the view swaps with a fade-in")
+        verdict = page.evaluate("""async () => {
+          const describe = (el) => el ? el.tagName.toLowerCase() + '.' + String(el.className).split(/\\s+/).join('.') : null;
+          const link = [...document.querySelectorAll('#details a')].find((a) => a.textContent.includes('Should the first sensors'));
+          link.click();
+          for (let i = 0; i < 400 && !document.documentElement.dataset.vt; i++) await new Promise((resolve) => setTimeout(resolve, 5));
+          const during = [];
+          for (let frame = 0; frame < 12; frame++) {
+            await new Promise((resolve) => requestAnimationFrame(resolve));
+            const close = document.querySelector('#details .ui-panel__close'); const at = close.getBoundingClientRect();
+            const hit = document.elementFromPoint(at.left + at.width / 2, at.top + at.height / 2);
+            during.push({ vt: document.documentElement.dataset.vt || '', active: (() => { try { return document.documentElement.matches(':active-view-transition'); } catch (error) { return null; } })(),
+              ok: !!hit && (hit === close || close.contains(hit)), hit: describe(hit) });
+          }
+          return { sawTransition: during.some((entry) => entry.active), during };
+        }""")
+        # One frame (two at most) is the browser taking its picture of the old page: it holds rendering and hit testing for that frame.
+        # From then on, while the pictures fade, the live page answers.
+        self.assertTrue(verdict["sawTransition"], verdict)
+        missed = [index for index, entry in enumerate(verdict["during"]) if not entry["ok"]]
+        self.assertTrue(len(missed) <= 2 and all(index < 4 for index in missed), f"the panel's close control is reachable on every frame of the dissolve but the one or two the browser holds for its picture: {verdict}")
 
     def test_12_a_place_switch_dissolves_too_and_the_reading_position_is_not_animated(self):
         page = self.page()
@@ -455,6 +601,7 @@ class LightMotionJourney(unittest.TestCase):
         clear(page)
         page.get_by_role("navigation", name="Places").get_by_role("link", name="Inbox").click()
         expect(page.get_by_role("heading", level=1, name="Inbox")).to_be_visible()
+        settled(page)
         if page.evaluate("typeof document.startViewTransition === 'function'"):
             old = self.pictures(page, "::view-transition-old(flux-view)")
             self.assertTrue(old and set(old[0]["props"]) == {"opacity", "transform"} and old[0]["duration"] <= 160, recorded(page))
@@ -656,30 +803,38 @@ class LightMotionJourney(unittest.TestCase):
         }""")
         self.assertEqual(stopped["running"], 0, "our transient motion ended with the page hidden")
         self.assertEqual(stopped["opacity"], "1", "on its end state")
-        # A menu's CSS entry and a press in flight, held mid-way, are settled and let go too.
+        # A menu's CSS entry and a press in flight, held mid-way, are settled and let go too (PR 608's review: `ui-pop-in` and `flux-press`
+        # stayed running, the menu at opacity .237). All in one task, so no entry has finished by the time it is pinned.
         mid = self.page()
         self.open(mid, self.fx.task_url(self.fx.tasks[1]))
-        mid.get_by_role("complementary", name="Details").get_by_role("button", name="Status", exact=True).click()
-        expect(mid.get_by_role("menu", name="Status")).to_be_visible()
-        box = mid.locator(".wd-menu__list .wd-menu__item").first.bounding_box()
-        mid.mouse.move(box["x"] + 20, box["y"] + 10)
-        mid.mouse.down()
-        held = mid.evaluate("""() => {
+        expect(mid.get_by_role("complementary", name="Details").get_by_role("button", name="Status", exact=True)).to_be_visible()
+        settled(mid)
+        verdict = mid.evaluate("""async () => {
+          document.querySelector('#details button[aria-label="Status"]').click();
+          for (let i = 0; i < 100 && !document.querySelector('.wd-menu__list .wd-menu__item'); i++) await new Promise((resolve) => setTimeout(resolve, 5));
           const menu = document.querySelector('.wd-menu__list'); const item = document.querySelector('.wd-menu__item');
+          // A pressed control: the pointer goes down on the item and is held.
+          item.dispatchEvent(new PointerEvent('pointerdown', { isPrimary: true, button: 0, pointerType: 'mouse', bubbles: true }));
           for (const animation of [...menu.getAnimations(), ...item.getAnimations()]) { animation.pause(); animation.currentTime = 10; }
-          return { pop: menu.getAnimations().map((a) => [a.animationName || a.id, a.playState]), press: item.getAnimations().map((a) => [a.id, a.playState]) };
-        }""")
-        self.assertTrue(held["pop"] and held["press"], f"a menu entry and a press are in flight: {held}")
-        mid.evaluate("""() => {
+          const state = () => ({ opacity: getComputedStyle(menu).opacity, pop: menu.getAnimations().map((a) => [a.animationName, a.playState]),
+            press: item.getAnimations().filter((a) => a.id === 'flux-press').map((a) => a.playState), scale: getComputedStyle(item).scale });
+          const held = state();
           Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' });
           document.dispatchEvent(new Event('visibilitychange'));
+          const after = state();
+          delete document.visibilityState;
+          document.dispatchEvent(new Event('visibilitychange'));
+          item.dispatchEvent(new PointerEvent('pointerup', { isPrimary: true, bubbles: true }));
+          return { held, after };
         }""")
-        after = mid.evaluate("""() => { const menu = document.querySelector('.wd-menu__list'); const item = document.querySelector('.wd-menu__item');
-          return { opacity: getComputedStyle(menu).opacity, pop: menu.getAnimations().map((a) => a.playState), press: item.getAnimations().filter((a) => a.id === 'flux-press').length, scale: getComputedStyle(item).scale }; }""")
+        held, after = verdict["held"], verdict["after"]
+        self.assertTrue(any(name == "ui-pop-in" for name, _ in held["pop"]), f"a menu entry is in flight: {held}")
+        self.assertTrue(held["press"], f"and a press is held: {held}")
+        self.assertLess(float(held["opacity"]), 1, f"the menu is part-way, not at its end state: {held}")
         self.assertEqual(after["opacity"], "1", f"the menu is on its end state: {after}")
-        self.assertTrue(all(state == "finished" for state in after["pop"]), after)
-        self.assertEqual((after["press"], after["scale"]), (0, "none"), "the press was let go")
-        mid.mouse.up()
+        # A finished entry (no fill after its end) is no longer listed: nothing may be left running or paused.
+        self.assertTrue(all(state == "finished" for _, state in after["pop"]), after)
+        self.assertEqual((after["press"], after["scale"]), ([], "none"), f"the press was let go: {after}")
         other = self.page()
         self.open(other, self.fx.project_url())
         clear(other)
@@ -687,6 +842,30 @@ class LightMotionJourney(unittest.TestCase):
         other.keyboard.press("Control+k")
         expect(other.get_by_role("dialog", name="Jump to")).to_be_visible()
         self.assertEqual([entry for entry in recorded(other) if entry["kind"] == "script"], [], "a hidden page starts no motion")
+
+    def test_20b_a_view_dissolve_in_flight_lands_on_its_end_state_when_the_page_is_hidden(self):
+        page = self.page()
+        self.open(page, self.fx.project_url())
+        settled(page)
+        if not page.evaluate("typeof document.startViewTransition === 'function'"):
+            self.skipTest("this engine has no View Transitions API; the view swaps with a fade-in")
+        verdict = page.evaluate("""async () => {
+          document.querySelector("nav[aria-label='Project views'] a[href*='/tasks']").click();
+          const mine = () => document.getAnimations().filter((a) => a.effect && /flux-view/.test(a.effect.pseudoElement || ''));
+          for (let i = 0; i < 200 && !mine().length; i++) await new Promise((resolve) => setTimeout(resolve, 5));
+          const flying = mine();
+          for (const animation of flying) { animation.pause(); animation.currentTime = 10; }
+          const held = flying.map((a) => [a.animationName, a.playState]);
+          Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' });
+          document.dispatchEvent(new Event('visibilitychange'));
+          const after = flying.map((a) => a.playState);
+          delete document.visibilityState;
+          document.dispatchEvent(new Event('visibilitychange'));
+          return { held, after };
+        }""")
+        self.assertTrue(verdict["held"], f"the view's dissolve is in flight: {verdict}")
+        self.assertTrue(all(state == "finished" for state in verdict["after"]), f"it landed on its end state: {verdict}")
+        expect(page.locator(self.tab("tasks"))).to_have_attribute("aria-current", "page")
 
     # ------------------------------------------------------------------ AC-6: reduced motion gives the static end state at once
     def test_21_reduced_motion_runs_no_animation_and_every_surface_is_in_its_end_state_at_once(self):
@@ -701,6 +880,7 @@ class LightMotionJourney(unittest.TestCase):
         # A view, a panel, a menu and a press.
         page.locator(self.tab("tasks")).click()
         expect(page.locator(self.tab("tasks"))).to_have_attribute("aria-current", "page")
+        self.assertEqual(page.evaluate("[document.documentElement.dataset.vt || '', document.getAnimations().filter((a) => a.effect && a.effect.pseudoElement).length]"), ["", 0], "no dissolve of the view")
         page.goto(self.fx.tasks_url())
         ready(page)
         page.locator(".ws-task .ws-item").first.click()
@@ -714,6 +894,10 @@ class LightMotionJourney(unittest.TestCase):
         expect(page.locator(".wd-menu__list")).to_have_count(0)
         pressed, _ = self.press_scale(page, page.get_by_role("button", name="Collapse sidebar").first, 120)
         self.assertEqual(pressed, "none", "a press does not scale under reduced motion")
+        # The panel's content is replaced at once: no picture of the old content is kept, nothing slides.
+        page.locator("#details a", has_text="Should the first sensors").first.click()
+        expect(page.locator("#details .thread")).to_be_visible()
+        self.assertEqual(page.locator("#details [data-dissolve]").count(), 0, "no picture of the old content")
         self.assertEqual(page.evaluate("document.getAnimations().filter((a) => a.effect?.getComputedTiming().iterations !== Infinity && a.playState === 'running').length"), 0)
         self.assertEqual([entry for entry in recorded(page) if entry["kind"] == "script"], [], "no script motion")
         self.assertEqual([entry for entry in recorded(page) if entry["kind"] == "css" and entry["duration"] > 0], [], "no CSS motion")

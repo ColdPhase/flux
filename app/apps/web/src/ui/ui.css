@@ -410,17 +410,17 @@ body:has(.phone-fab) .ui-toasts {
 
 /* ---------- Views dissolve (#593 AC-3; viewTransition.ts) ----------
    For the moment a switch of view happens the content area and the pane's composer have names the View Transitions API takes pictures
-   of. The old content fades out and travels a few pixels in the direction of travel while the new content fades in beneath; the rest
-   of the page (the header, the sidebar, the tab bar, the detail panel) is the new page from the first frame. The composer has a
-   picture of its own, so it fades in place and never travels. The pictures take no pointer input. Opacity and transform only. */
+   of, and the page itself has none: the header, the sidebar, the tab bar and the detail panel are not in the transition at all, they
+   are the live page from the first frame and stay reachable. The old content fades out and travels a few pixels in the direction of
+   travel while the new content fades in beneath. The composer has a picture of its own, so it fades in place and never travels. The
+   pictures take no pointer input. Opacity and transform only. */
+:root[data-vt] { view-transition-name: none; }
 :root[data-vt] .app__pane { view-transition-name: flux-view; }
 :root[data-vt] .app__pane .composer { view-transition-name: flux-composer; }
 :root[data-vt="forward"] { --vt-dx: calc(-1 * var(--shift-view)); }
 :root[data-vt="back"] { --vt-dx: var(--shift-view); }
 ::view-transition { pointer-events: none; }
 ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) { animation-duration: var(--dur-view); animation-timing-function: var(--ease-out); }
-::view-transition-old(root), ::view-transition-new(root) { animation: none; mix-blend-mode: normal; }
-::view-transition-old(root) { display: none; }
 @keyframes flux-vt-out { to { opacity: 0; transform: translateX(var(--vt-dx, 0px)); } }
 @keyframes flux-vt-in { from { opacity: 0; } }
 ::view-transition-old(flux-view) { animation-name: flux-vt-out; }
