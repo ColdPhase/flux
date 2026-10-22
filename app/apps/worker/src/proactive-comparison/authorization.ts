@@ -22,7 +22,7 @@ export async function authorizedComparison(db: Executor, candidateId: string, co
     || !connection || connection.id !== candidate.connectionId || !connection.keyAvailable
     || (expectedRuleVersion !== undefined && rule.version !== expectedRuleVersion))
     throw new ComparisonStopped('AUTHORIZATION_CHANGED');
-  if (await idpStandingRepository(db).refuses(candidate.ownerUserId)) throw new ComparisonStopped('ACCESS_CHANGED');
+  if (await idpStandingRepository(db).refuses(candidate.ownerUserId, { lock })) throw new ComparisonStopped('ACCESS_CHANGED');
   const owner = await evaluateProject({ kind: 'human', id: candidate.ownerUserId }, 'project.write', candidate.projectId, db, { lock });
   const agent = await evaluateProject({ kind: 'agent', id: rule.agentId }, 'project.write', candidate.projectId, db, { lock });
   if (!owner.allowed || !agent.allowed || agent.actor?.agent?.ownerUserId !== candidate.ownerUserId)

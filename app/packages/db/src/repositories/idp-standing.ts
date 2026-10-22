@@ -48,9 +48,20 @@ export function idpStandingRepository(db: DbExecutor) {
     },
 
     /** True when any of the person's provider identities is in sign-in required. Cheap enough for every request. */
-    async refuses(userId: string): Promise<boolean> {
-      const rows = await db.select({ userId: s.userId }).from(s).where(and(eq(s.userId, userId), eq(s.state, 'sign_in_required'))).limit(1);
-      return rows.length > 0;
+    async refuses(userId: string, options: { lock?: boolean } = {}): Promise<boolean> {
+      // Locked dispatch/commit guards retain even the OK rows, so suspension cannot commit between
+      // the guard and its protected write. Unlocked request checks remain a cheap stored-state read.
+      // Retain the owner first, consistently with profile refresh and proactive guards (including
+      // later writes whose foreign keys reference that owner).
+      if (options.lock) await db.select({ id: schema.authUsers.id }).from(schema.authUsers).where(eq(schema.authUsers.id, userId)).for('share');
+      const query = db.select({ state: s.state }).from(s).where(eq(s.userId, userId)).orderBy(s.providerId);
+      const rows = options.lock ? await query.for('share') : await query;
+      return rows.some((row) => row.state === 'sign_in_required');
+    },
+
+    /** Same owner-before-standing order as proactive commit guards; call only in a short write transaction. */
+    async lockProfileOwner(userId: string): Promise<void> {
+      await db.select({ id: schema.authUsers.id }).from(schema.authUsers).where(eq(schema.authUsers.id, userId)).for('update');
     },
 
     /** The state of one identity, or null when the person has no row for the provider. */
@@ -84,8 +95,9 @@ export function idpStandingRepository(db: DbExecutor) {
     },
 
     /**
-     * Leases up to `limit` due identities for `leaseMs`. Eligible: a stored token and a live browser session or
-     * a live MCP refresh token. SKIP LOCKED keeps two replicas off one identity, and the lease replaces any
+     * Leases up to `limit` due identities for `leaseMs`. Eligible: a stored token and live browser/MCP authority,
+     * enabled owner automation or an unfinished run. Suspended owners remain eligible for recovery (N5).
+     * SKIP LOCKED keeps two replicas off one identity, and the lease replaces any
      * lock held across the provider call (N3): this is one statement that commits at once.
      */
     async claim(now: Date, leaseMs: number, limit: number, leaseId: string): Promise<IdpStandingClaim[]> {
@@ -98,7 +110,12 @@ export function idpStandingRepository(db: DbExecutor) {
           WHERE c.refresh_token_enc IS NOT NULL AND c.next_check_at <= ${at}::timestamptz
             AND (c.lease_until IS NULL OR c.lease_until <= ${at}::timestamptz)
             AND (EXISTS (SELECT 1 FROM auth_sessions x WHERE x.user_id = c.user_id AND x.expires_at > ${at}::timestamptz)
-              OR EXISTS (SELECT 1 FROM oauth_refresh_token r WHERE r.user_id = c.user_id AND r.revoked IS NULL AND r.expires_at > ${at}::timestamptz))
+              OR EXISTS (SELECT 1 FROM oauth_refresh_token r WHERE r.user_id = c.user_id AND r.revoked IS NULL AND r.expires_at > ${at}::timestamptz)
+              OR EXISTS (SELECT 1 FROM oauth_access_token a WHERE a.user_id = c.user_id AND a.revoked IS NULL AND a.expires_at > ${at}::timestamptz)
+              OR EXISTS (SELECT 1 FROM personal_run_enablements e WHERE e.owner_user_id = c.user_id AND e.status = 'active')
+              OR EXISTS (SELECT 1 FROM personal_runs p WHERE p.owner_user_id = c.user_id AND p.status IN ('queued', 'reading', 'dispatching'))
+              OR EXISTS (SELECT 1 FROM proactive_comparison_rules r WHERE r.owner_user_id = c.user_id AND r.status = 'enabled')
+              OR EXISTS (SELECT 1 FROM proactive_comparison_outbox o WHERE o.owner_user_id = c.user_id AND o.status IN ('queued', 'reserved')))
           ORDER BY c.next_check_at LIMIT ${limit} FOR UPDATE SKIP LOCKED)
         RETURNING st.user_id AS "userId", st.provider_id AS "providerId", st.refresh_token_enc AS "refreshTokenEnc"`);
       return (result.rows as Omit<IdpStandingClaim, 'leaseId'>[]).map((row) => ({ ...row, leaseId }));
@@ -143,7 +160,7 @@ export function idpStandingRepository(db: DbExecutor) {
 export function withIdpStanding<A extends { canInvoke(principal: { kind: string; id: string }, agentId: string, options?: { lock?: boolean }): Promise<boolean> }>(access: A, db: DbExecutor): A {
   const standing = idpStandingRepository(db);
   return { ...access, async canInvoke(principal, agentId, options) {
-    if (principal.kind === 'human' && await standing.refuses(principal.id)) return false;
+    if (principal.kind === 'human' && await standing.refuses(principal.id, options)) return false;
     return access.canInvoke(principal, agentId, options);
   } };
 }

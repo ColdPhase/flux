@@ -1,0 +1,314 @@
+{
+  "native-started": {
+    "containers": [
+      {
+        "cid": "027074d78326a263af030fa6c5c7e91f56d1673d986edecedf3ebdd2e21730a2",
+        "name": "/fluxidentity-1792347428-2530839-api-1",
+        "imageId": "sha256:cdacb2d4026241869fd8564e908c6c342d1b3635508ac013c0ff21180c088b79",
+        "image": "flux-foundation:fluxidentity-1792347428-2530839",
+        "startedAt": "2026-10-18T18:17:44.11940822Z",
+        "service": "api",
+        "env": {
+          "FLUX_PUBLIC_ORIGIN": "http://127.0.0.1:19866",
+          "FLUX_OIDC_STANDING": "refresh",
+          "FLUX_SSO_MODE": "sso",
+          "FLUX_OIDC_CONFIRMATION_MAX_AGE": "7d",
+          "FLUX_OIDC_ISSUER": ""
+        }
+      },
+      {
+        "cid": "719a84a98999abb6896a63c751010ec93b171b0758579247ab4d9cfb8fd32dcd",
+        "name": "/fluxidentity-1792347428-2530839-worker-1",
+        "imageId": "sha256:cdacb2d4026241869fd8564e908c6c342d1b3635508ac013c0ff21180c088b79",
+        "image": "flux-foundation:fluxidentity-1792347428-2530839",
+        "startedAt": "2026-10-18T18:17:44.094493327Z",
+        "service": "worker",
+        "env": {
+          "FLUX_PUBLIC_ORIGIN": "http://127.0.0.1:19866"
+        }
+      },
+      {
+        "cid": "f941e558006d5286a9c9950cc3998dbc1f1c9141098b78e9326db6cb26f5ab99",
+        "name": "/fluxidentity-1792347428-2530839-migrate-1",
+        "imageId": "sha256:cdacb2d4026241869fd8564e908c6c342d1b3635508ac013c0ff21180c088b79",
+        "image": "flux-foundation:fluxidentity-1792347428-2530839",
+        "startedAt": "2026-10-18T18:17:41.132554656Z",
+        "service": "migrate",
+        "env": {}
+      },
+      {
+        "cid": "bed258fc40d22a202d9e387285d662b84ae2a081000ed5e2d133022a101f2db7",
+        "name": "/fluxidentity-1792347428-2530839-db-1",
+        "imageId": "sha256:c293117fcecda7344b5480222e813b9f673d7abd69b1dd95eff239b768b04f59",
+        "image": "postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873",
+        "startedAt": "2026-10-18T18:17:30.395658987Z",
+        "service": "db",
+        "env": {}
+      },
+      {
+        "cid": "0b22051234e9db9a308212c7a696da828d7df7abf29eb4a0b81ca87252061dd3",
+        "name": "/fluxidp-1792347428-2530839-keycloak-1",
+        "imageId": "sha256:e2508edb35d7b3b39468c3e4e77da4e3c8dca8968b055259d60ccfbd29d65e59",
+        "image": "quay.io/keycloak/keycloak:26.8.0@sha256:27b3230fbabb8c9ff3c66c864cf09dcd8a41aca82e5100679d109ef0eeb05741",
+        "startedAt": "2026-10-18T18:17:10.123604513Z",
+        "service": "keycloak",
+        "env": {}
+      }
+    ],
+    "images": [
+      {
+        "id": "sha256:c293117fcecda7344b5480222e813b9f673d7abd69b1dd95eff239b768b04f59",
+        "commitLabel": null,
+        "repoDigests": [
+          "postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873"
+        ]
+      },
+      {
+        "id": "sha256:cdacb2d4026241869fd8564e908c6c342d1b3635508ac013c0ff21180c088b79",
+        "commitLabel": "b17ae9e357441e9a383eb275d1034e69ec50c98a",
+        "repoDigests": []
+      },
+      {
+        "id": "sha256:e2508edb35d7b3b39468c3e4e77da4e3c8dca8968b055259d60ccfbd29d65e59",
+        "commitLabel": null,
+        "repoDigests": [
+          "quay.io/keycloak/keycloak@sha256:27b3230fbabb8c9ff3c66c864cf09dcd8a41aca82e5100679d109ef0eeb05741"
+        ]
+      }
+    ]
+  },
+  "baseline": {
+    "containers": [
+      {
+        "cid": "f18d30a17559c2ee9a6ad3cdfd61fde1d2303d7952e11c683049915be12efd50",
+        "name": "/fluxidentity-1792347428-2530839-api-1",
+        "imageId": "sha256:cdacb2d4026241869fd8564e908c6c342d1b3635508ac013c0ff21180c088b79",
+        "image": "flux-foundation:fluxidentity-1792347428-2530839",
+        "startedAt": "2026-10-18T18:18:04.700956991Z",
+        "service": "api",
+        "env": {
+          "FLUX_PUBLIC_ORIGIN": "http://127.0.0.1:19866",
+          "FLUX_OIDC_ISSUER": "http://keycloak:8080/realms/flux",
+          "FLUX_OIDC_STANDING": "refresh",
+          "FLUX_SSO_MODE": "sso",
+          "FLUX_OIDC_CONFIRMATION_MAX_AGE": "7d"
+        }
+      },
+      {
+        "cid": "719a84a98999abb6896a63c751010ec93b171b0758579247ab4d9cfb8fd32dcd",
+        "name": "/fluxidentity-1792347428-2530839-worker-1",
+        "imageId": "sha256:cdacb2d4026241869fd8564e908c6c342d1b3635508ac013c0ff21180c088b79",
+        "image": "flux-foundation:fluxidentity-1792347428-2530839",
+        "startedAt": "2026-10-18T18:17:44.094493327Z",
+        "service": "worker",
+        "env": {
+          "FLUX_PUBLIC_ORIGIN": "http://127.0.0.1:19866"
+        }
+      },
+      {
+        "cid": "f941e558006d5286a9c9950cc3998dbc1f1c9141098b78e9326db6cb26f5ab99",
+        "name": "/fluxidentity-1792347428-2530839-migrate-1",
+        "imageId": "sha256:cdacb2d4026241869fd8564e908c6c342d1b3635508ac013c0ff21180c088b79",
+        "image": "flux-foundation:fluxidentity-1792347428-2530839",
+        "startedAt": "2026-10-18T18:18:03.465732138Z",
+        "service": "migrate",
+        "env": {}
+      },
+      {
+        "cid": "bed258fc40d22a202d9e387285d662b84ae2a081000ed5e2d133022a101f2db7",
+        "name": "/fluxidentity-1792347428-2530839-db-1",
+        "imageId": "sha256:c293117fcecda7344b5480222e813b9f673d7abd69b1dd95eff239b768b04f59",
+        "image": "postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873",
+        "startedAt": "2026-10-18T18:17:30.395658987Z",
+        "service": "db",
+        "env": {}
+      },
+      {
+        "cid": "0b22051234e9db9a308212c7a696da828d7df7abf29eb4a0b81ca87252061dd3",
+        "name": "/fluxidp-1792347428-2530839-keycloak-1",
+        "imageId": "sha256:e2508edb35d7b3b39468c3e4e77da4e3c8dca8968b055259d60ccfbd29d65e59",
+        "image": "quay.io/keycloak/keycloak:26.8.0@sha256:27b3230fbabb8c9ff3c66c864cf09dcd8a41aca82e5100679d109ef0eeb05741",
+        "startedAt": "2026-10-18T18:17:10.123604513Z",
+        "service": "keycloak",
+        "env": {}
+      }
+    ],
+    "images": [
+      {
+        "id": "sha256:c293117fcecda7344b5480222e813b9f673d7abd69b1dd95eff239b768b04f59",
+        "commitLabel": null,
+        "repoDigests": [
+          "postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873"
+        ]
+      },
+      {
+        "id": "sha256:cdacb2d4026241869fd8564e908c6c342d1b3635508ac013c0ff21180c088b79",
+        "commitLabel": "b17ae9e357441e9a383eb275d1034e69ec50c98a",
+        "repoDigests": []
+      },
+      {
+        "id": "sha256:e2508edb35d7b3b39468c3e4e77da4e3c8dca8968b055259d60ccfbd29d65e59",
+        "commitLabel": null,
+        "repoDigests": [
+          "quay.io/keycloak/keycloak@sha256:27b3230fbabb8c9ff3c66c864cf09dcd8a41aca82e5100679d109ef0eeb05741"
+        ]
+      }
+    ]
+  },
+  "upgraded": {
+    "containers": [
+      {
+        "cid": "c6a41d50a8830e8ca75ed288aba59134f383cbb80e8b08bb8a17b617f4d89d1a",
+        "name": "/fluxidentity-1792347428-2530839-api-1",
+        "imageId": "sha256:3a1c850c74285d7db178c81c8e84153f7e2b1bb3ebfb9641f2010d2c73367ea9",
+        "image": "flux-foundation:fluxidentity-1792347428-2530839",
+        "startedAt": "2026-10-18T18:18:23.948383017Z",
+        "service": "api",
+        "env": {
+          "FLUX_PUBLIC_ORIGIN": "http://127.0.0.1:19866",
+          "FLUX_OIDC_STANDING": "refresh",
+          "FLUX_OIDC_ISSUER": "http://keycloak:8080/realms/flux",
+          "FLUX_SSO_MODE": "sso",
+          "FLUX_OIDC_CONFIRMATION_MAX_AGE": "7d"
+        }
+      },
+      {
+        "cid": "08e89a627be7f79949dcccc4089dbdfab1ee3899c0651d47140cf8366e3f4e86",
+        "name": "/fluxidentity-1792347428-2530839-worker-1",
+        "imageId": "sha256:3a1c850c74285d7db178c81c8e84153f7e2b1bb3ebfb9641f2010d2c73367ea9",
+        "image": "flux-foundation:fluxidentity-1792347428-2530839",
+        "startedAt": "2026-10-18T18:18:23.960563588Z",
+        "service": "worker",
+        "env": {
+          "FLUX_PUBLIC_ORIGIN": "http://127.0.0.1:19866"
+        }
+      },
+      {
+        "cid": "2efe7d6a15af43474863d337bb0f115e6c5421d70f42fb746981a82997e91124",
+        "name": "/fluxidentity-1792347428-2530839-migrate-1",
+        "imageId": "sha256:3a1c850c74285d7db178c81c8e84153f7e2b1bb3ebfb9641f2010d2c73367ea9",
+        "image": "flux-foundation:fluxidentity-1792347428-2530839",
+        "startedAt": "2026-10-18T18:18:22.645340631Z",
+        "service": "migrate",
+        "env": {}
+      },
+      {
+        "cid": "bed258fc40d22a202d9e387285d662b84ae2a081000ed5e2d133022a101f2db7",
+        "name": "/fluxidentity-1792347428-2530839-db-1",
+        "imageId": "sha256:c293117fcecda7344b5480222e813b9f673d7abd69b1dd95eff239b768b04f59",
+        "image": "postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873",
+        "startedAt": "2026-10-18T18:17:30.395658987Z",
+        "service": "db",
+        "env": {}
+      },
+      {
+        "cid": "0b22051234e9db9a308212c7a696da828d7df7abf29eb4a0b81ca87252061dd3",
+        "name": "/fluxidp-1792347428-2530839-keycloak-1",
+        "imageId": "sha256:e2508edb35d7b3b39468c3e4e77da4e3c8dca8968b055259d60ccfbd29d65e59",
+        "image": "quay.io/keycloak/keycloak:26.8.0@sha256:27b3230fbabb8c9ff3c66c864cf09dcd8a41aca82e5100679d109ef0eeb05741",
+        "startedAt": "2026-10-18T18:17:10.123604513Z",
+        "service": "keycloak",
+        "env": {}
+      }
+    ],
+    "images": [
+      {
+        "id": "sha256:3a1c850c74285d7db178c81c8e84153f7e2b1bb3ebfb9641f2010d2c73367ea9",
+        "commitLabel": "525f61c8907e9369c7b84f97a9b98d32e4d702ab",
+        "repoDigests": []
+      },
+      {
+        "id": "sha256:c293117fcecda7344b5480222e813b9f673d7abd69b1dd95eff239b768b04f59",
+        "commitLabel": null,
+        "repoDigests": [
+          "postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873"
+        ]
+      },
+      {
+        "id": "sha256:e2508edb35d7b3b39468c3e4e77da4e3c8dca8968b055259d60ccfbd29d65e59",
+        "commitLabel": null,
+        "repoDigests": [
+          "quay.io/keycloak/keycloak@sha256:27b3230fbabb8c9ff3c66c864cf09dcd8a41aca82e5100679d109ef0eeb05741"
+        ]
+      }
+    ]
+  },
+  "restored": {
+    "containers": [
+      {
+        "cid": "415f846854f9dcb5278a5ca7106b235459191deb42ebc4b692d03a44f176b4ca",
+        "name": "/fluxidentity-1792347428-2530839-api-1",
+        "imageId": "sha256:3a1c850c74285d7db178c81c8e84153f7e2b1bb3ebfb9641f2010d2c73367ea9",
+        "image": "flux-foundation:fluxidentity-1792347428-2530839",
+        "startedAt": "2026-10-18T18:19:13.007357996Z",
+        "service": "api",
+        "env": {
+          "FLUX_SSO_MODE": "sso",
+          "FLUX_OIDC_STANDING": "refresh",
+          "FLUX_OIDC_CONFIRMATION_MAX_AGE": "7d",
+          "FLUX_PUBLIC_ORIGIN": "http://127.0.0.1:19866",
+          "FLUX_OIDC_ISSUER": "http://keycloak:8080/realms/flux"
+        }
+      },
+      {
+        "cid": "0c0e4ca5f64503b5ea7c48457845f28e0602cbedbb479d86a8a1a0575d41516f",
+        "name": "/fluxidentity-1792347428-2530839-worker-1",
+        "imageId": "sha256:3a1c850c74285d7db178c81c8e84153f7e2b1bb3ebfb9641f2010d2c73367ea9",
+        "image": "flux-foundation:fluxidentity-1792347428-2530839",
+        "startedAt": "2026-10-18T18:19:12.969554672Z",
+        "service": "worker",
+        "env": {
+          "FLUX_PUBLIC_ORIGIN": "http://127.0.0.1:19866"
+        }
+      },
+      {
+        "cid": "f7ba6e02b4a3de6532f7382e64ec3235ad65d3ef114cda8380c83f35a80b0027",
+        "name": "/fluxidentity-1792347428-2530839-migrate-1",
+        "imageId": "sha256:3a1c850c74285d7db178c81c8e84153f7e2b1bb3ebfb9641f2010d2c73367ea9",
+        "image": "flux-foundation:fluxidentity-1792347428-2530839",
+        "startedAt": "2026-10-18T18:19:11.061721615Z",
+        "service": "migrate",
+        "env": {}
+      },
+      {
+        "cid": "702950aa34992a8c1d8851e98b3f78b6bad05290fc646a8a331cee93532b4ccf",
+        "name": "/fluxidentity-1792347428-2530839-db-1",
+        "imageId": "sha256:c293117fcecda7344b5480222e813b9f673d7abd69b1dd95eff239b768b04f59",
+        "image": "postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873",
+        "startedAt": "2026-10-18T18:18:51.006192672Z",
+        "service": "db",
+        "env": {}
+      },
+      {
+        "cid": "0b22051234e9db9a308212c7a696da828d7df7abf29eb4a0b81ca87252061dd3",
+        "name": "/fluxidp-1792347428-2530839-keycloak-1",
+        "imageId": "sha256:e2508edb35d7b3b39468c3e4e77da4e3c8dca8968b055259d60ccfbd29d65e59",
+        "image": "quay.io/keycloak/keycloak:26.8.0@sha256:27b3230fbabb8c9ff3c66c864cf09dcd8a41aca82e5100679d109ef0eeb05741",
+        "startedAt": "2026-10-18T18:17:10.123604513Z",
+        "service": "keycloak",
+        "env": {}
+      }
+    ],
+    "images": [
+      {
+        "id": "sha256:3a1c850c74285d7db178c81c8e84153f7e2b1bb3ebfb9641f2010d2c73367ea9",
+        "commitLabel": "525f61c8907e9369c7b84f97a9b98d32e4d702ab",
+        "repoDigests": []
+      },
+      {
+        "id": "sha256:c293117fcecda7344b5480222e813b9f673d7abd69b1dd95eff239b768b04f59",
+        "commitLabel": null,
+        "repoDigests": [
+          "postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873"
+        ]
+      },
+      {
+        "id": "sha256:e2508edb35d7b3b39468c3e4e77da4e3c8dca8968b055259d60ccfbd29d65e59",
+        "commitLabel": null,
+        "repoDigests": [
+          "quay.io/keycloak/keycloak@sha256:27b3230fbabb8c9ff3c66c864cf09dcd8a41aca82e5100679d109ef0eeb05741"
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,571 @@
+{
+  "base": "b17ae9e357441e9a383eb275d1034e69ec50c98a",
+  "candidate": "525f61c8907e9369c7b84f97a9b98d32e4d702ab",
+  "terminal": 0,
+  "diagnosticOnly": false,
+  "helperSha256": "66e1ff74fce0c45210826208060dddbf357e6d1db3f62fc6409df5ca139abc49",
+  "driverSha256": "334abcf652d31379da7f3a92f7d9e7c0f1f3477171fc88734597efda299f722b",
+  "historicalLimit": "Does not rerun the original main90/late70/71 experiment; composes its pinned receipts with current continuity.",
+  "remaining": {
+    "fluxidentity-1792347428-2530839": {
+      "containers": [],
+      "volumes": [],
+      "networks": [],
+      "images": []
+    },
+    "fluxidp-1792347428-2530839": {
+      "containers": [],
+      "volumes": [],
+      "networks": [],
+      "images": []
+    }
+  },
+  "phases": [
+    {
+      "phase": "worktree",
+      "command": [
+        "git",
+        "worktree",
+        "add",
+        "--detach",
+        "/home/hubert/flux-evidence/483-490-identity/operator-525f61c8/private/checkout",
+        "b17ae9e357441e9a383eb275d1034e69ec50c98a"
+      ],
+      "exit": 0,
+      "seconds": 0.642,
+      "log": "00-worktree.txt",
+      "sha256": "535f87d4cacf2ddff3c82cf9aebaeb4b2436728e8c304462024fa6c8a46cf02e"
+    },
+    {
+      "phase": "provider",
+      "command": [
+        "docker",
+        "compose",
+        "-p",
+        "fluxidp-1792347428-2530839",
+        "-f",
+        "/home/hubert/flux-evidence/483-490-identity/operator-525f61c8/private/provider.json",
+        "up",
+        "-d",
+        "--wait"
+      ],
+      "exit": 0,
+      "seconds": 16.52,
+      "log": "01-provider.txt",
+      "sha256": "4bbe932e5fa4b15d34043a1b82df0bba445ac72dee506f679c1166d1fa9e9d54"
+    },
+    {
+      "phase": "baseline-up",
+      "command": [
+        "/home/hubert/flux-evidence/483-490-identity/operator-525f61c8/private/checkout/flux",
+        "up"
+      ],
+      "exit": 0,
+      "seconds": 22.29,
+      "log": "02-baseline-up.txt",
+      "sha256": "c9b1f84315f39ed4c08cdd37edcabbab2f1f161e2c27a4482c766a8fadcda21e"
+    },
+    {
+      "phase": "baseline-demo",
+      "command": [
+        "/home/hubert/flux-evidence/483-490-identity/operator-525f61c8/private/checkout/flux",
+        "demo"
+      ],
+      "exit": 0,
+      "seconds": 1.222,
+      "log": "03-baseline-demo.txt",
+      "sha256": "fc564fd988d25281e7f8d01d10a451d2444038048c22298ff570d0f3723e2d7a"
+    },
+    {
+      "phase": "native-client",
+      "command": [
+        "docker",
+        "compose",
+        "--env-file",
+        "/home/hubert/flux-evidence/483-490-identity/operator-525f61c8/private/checkout/docker/.env",
+        "-p",
+        "fluxidentity-1792347428-2530839",
+        "-f",
+        "/home/hubert/flux-evidence/483-490-identity/operator-525f61c8/private/checkout/docker/compose.source.yaml",
+        "-f",
+        "/home/hubert/flux-evidence/483-490-identity/operator-525f61c8/private/checkout/docker/compose.override.yaml",
+        "exec",
+        "-T",
+        "db",
+        "psql",
+        "-X",
+        "-q",
+        "-v",
+        "ON_ERROR_STOP=1",
+        "-U",
+        "flux",
+        "-d",
+        "flux"
+      ],
+      "exit": 0,
+      "seconds": 0.096,
+      "log": "04-native-client.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "phase": "native-data",
+      "command": [
+        "docker",
+        "compose",
+        "--env-file",
+        "/home/hubert/flux-evidence/483-490-identity/operator-525f61c8/private/checkout/docker/.env",
+        "-p",
+        "fluxidentity-1792347428-2530839",
+        "-f",
+        "/home/hubert/flux-evidence/483-490-identity/operator-525f61c8/private/checkout/docker/compose.source.yaml",
+        "-f",
+        "/home/hubert/flux-evidence/483-490-identity/operator-525f61c8/private/checkout/docker/compose.override.yaml",
+        "exec",
+        "-T",
+        "-e",
+        "FLUX_FIXTURE_MODE",
+        "-e",
+        "FLUX_FIXTURE_OAUTH_CLIENT",
+        "-e",
+        "FLUX_PUBLIC_ORIGIN",
+        "-e",
+        "FLUX_DEMO_OWNER_PASSWORD",
+        "-e",
+        "FLUX_DEMO_PARTNER_PASSWORD",
+        "api",
+        "node",
+        "--input-type=module",
+        "-"
+      ],
+      "exit": 0,
+      "seconds": 2.251,
+      "log": "05-native-data.txt",
+      "sha256": "f2a44eeb213f0dcd823e983dd353e5252381f1ff9d07694c8a3c20acf48fa724"
+    },
+    {
+      "phase": "baseline-enable-provider",
+      "command": [
+        "docker",
+        "compose",
+        "--env-file",
+        "/home/hubert/flux-evidence/483-490-identity/operator-525f61c8/private/checkout/docker/.env",
+        "-p",
+        "fluxidentity-1792347428-2530839",
+        "-f",
+        "/home/hubert/flux-evidence/483-490-identity/operator-525f61c8/private/checkout/docker/compose.source.yaml",
+        "-f",
+        "/home/hubert/flux-evidence/483-490-identity/operator-525f61c8/private/checkout/docker/compose.override.yaml",
+        "up",
+        "-d",
+        "--wait",
+        "api"
+      ],
+      "exit": 0,
+      "seconds": 6.419,
+      "log": "06-baseline-enable-provider.txt",
+      "sha256": "254a12d7a51cfe1e9113fd482869a887f992e6f931b59b7e559ac3303ae8c840"
+    },
+    {
+      "phase": "browser-image",
+      "command": [
+        "docker",
+        "build",
+        "--file",
+        "/home/hubert/Develop/flux/.worktrees/483-490-identity-closeout/docker/Dockerfile",
+        "--target",
+        "e2e",
+        "--tag",
+        "flux-e2e:fluxidentity-1792347428-2530839",
+        "/home/hubert/Develop/flux/.worktrees/483-490-identity-closeout/app"
+      ],
+      "exit": 0,
+      "seconds": 1.242,
+      "log": "07-browser-image.txt",
+      "sha256": "b27ef710005ea54b2c779a8db5083506e2a6cb832077bd16611929d7ac4ec3f4"
+    },
+    {
+      "phase": "link",
+      "command": [
+        "docker",
+        "run",
+        "--rm",
+        "--user",
+        "1000:1000",
+        "--network",
+        "fluxidp-1792347428-2530839-net",
+        "-v",
+        "/home/hubert/flux-evidence/483-490-identity/operator-525f61c8/private/state:/state:z",
+        "-v",
+        "/home/hubert/Develop/flux/.worktrees/483-490-identity-closeout/scripts/identity-closeout/bridge.mjs:/proof/bridge.mjs:ro,z",
+        "-e",
+        "FLUX_PUBLIC_ORIGIN",
+        "-e",
+        "FLUX_OIDC_PROVIDER_ID",
+        "-e",
+        "FLUX_OIDC_TEST_PASSWORD",
+        "-e",
+        "DATABASE_URL",
+        "-e",
+        "FLUX_AUTH_SECRET",
+        "-e",
+        "FLUX_IDENTITY_BRIDGE_PHASE",
+        "-e",
+        "FLUX_PROOF_SOURCE",
+        "-e",
+        "FLUX_DEMO_OWNER_PASSWORD",
+        "flux-e2e:fluxidentity-1792347428-2530839",
+        "node",
+        "/proof/bridge.mjs"
+      ],
+      "exit": 0,
+      "seconds": 2.713,
+      "log": "08-link.txt",
+      "sha256": "ee91169f88826985a75bb3050ee277e099df24db51b84ac18a6c7f64aab258c8"
+    },
+    {
+      "phase": "baseline-cutover",
+      "command": [
+        "docker",
+        "compose",
+        "--env-file",
+        "/home/hubert/flux-evidence/483-490-identity/operator-525f61c8/private/checkout/docker/.env",
+        "-p",
+        "fluxidentity-1792347428-2530839",
+        "-f",
+        "/home/hubert/flux-evidence/483-490-identity/operator-525f61c8/private/checkout/docker/compose.source.yaml",
+        "-f",
+        "/home/hubert/flux-evidence/483-490-identity/operator-525f61c8/private/checkout/docker/compose.override.yaml",
+        "up",
+        "-d",
+        "--wait",
+        "api"
+      ],
+      "exit": 0,
+      "seconds": 6.427,
+      "log": "09-baseline-cutover.txt",
+      "sha256": "1f621b3e4f6124628c247bdff872bfa13ce58fc6f6e2322db96d9e4e54d3dece"
+    },
+    {
+      "phase": "seed",
+      "command": [
+        "docker",
+        "run",
+        "--rm",
+        "--user",
+        "1000:1000",
+        "--network",
+        "fluxidp-1792347428-2530839-net",
+        "-v",
+        "/home/hubert/flux-evidence/483-490-identity/operator-525f61c8/private/state:/state:z",
+        "-v",
+        "/home/hubert/Develop/flux/.worktrees/483-490-identity-closeout/scripts/identity-closeout/bridge.mjs:/proof/bridge.mjs:ro,z",
+        "-e",
+        "FLUX_PUBLIC_ORIGIN",
+        "-e",
+        "FLUX_OIDC_PROVIDER_ID",
+        "-e",
+        "FLUX_OIDC_TEST_PASSWORD",
+        "-e",
+        "DATABASE_URL",
+        "-e",
+        "FLUX_AUTH_SECRET",
+        "-e",
+        "FLUX_IDENTITY_BRIDGE_PHASE",
+        "-e",
+        "FLUX_PROOF_SOURCE",
+        "-e",
+        "FLUX_DEMO_OWNER_PASSWORD",
+        "flux-e2e:fluxidentity-1792347428-2530839",
+        "node",
+        "/proof/bridge.mjs"
+      ],
+      "exit": 0,
+      "seconds": 4.381,
+      "log": "10-seed.txt",
+      "sha256": "c9eb2ad257b488dd6121eddab0125de2eeb830220bccc8a2fd83206ebc20c1ee"
+    },
+    {
+      "phase": "candidate-checkout",
+      "command": [
+        "git",
+        "-C",
+        "/home/hubert/flux-evidence/483-490-identity/operator-525f61c8/private/checkout",
+        "checkout",
+        "--detach",
+        "525f61c8907e9369c7b84f97a9b98d32e4d702ab"
+      ],
+      "exit": 0,
+      "seconds": 0.186,
+      "log": "11-candidate-checkout.txt",
+      "sha256": "2c09e5f4b60203a0ae16de1df79bba7e9739328233df380712c5278602d7d348"
+    },
+    {
+      "phase": "ordinary-upgrade",
+      "command": [
+        "/home/hubert/flux-evidence/483-490-identity/operator-525f61c8/private/checkout/flux",
+        "upgrade",
+        "-y"
+      ],
+      "exit": 0,
+      "seconds": 18.366,
+      "log": "12-ordinary-upgrade.txt",
+      "sha256": "17d54b765bf50ae1e88c0993e651475b2070f835de2562a4982eeccb75543a18"
+    },
+    {
+      "phase": "upgraded",
+      "command": [
+        "docker",
+        "run",
+        "--rm",
+        "--user",
+        "1000:1000",
+        "--network",
+        "fluxidp-1792347428-2530839-net",
+        "-v",
+        "/home/hubert/flux-evidence/483-490-identity/operator-525f61c8/private/state:/state:z",
+        "-v",
+        "/home/hubert/Develop/flux/.worktrees/483-490-identity-closeout/scripts/identity-closeout/bridge.mjs:/proof/bridge.mjs:ro,z",
+        "-e",
+        "FLUX_PUBLIC_ORIGIN",
+        "-e",
+        "FLUX_OIDC_PROVIDER_ID",
+        "-e",
+        "FLUX_OIDC_TEST_PASSWORD",
+        "-e",
+        "DATABASE_URL",
+        "-e",
+        "FLUX_AUTH_SECRET",
+        "-e",
+        "FLUX_IDENTITY_BRIDGE_PHASE",
+        "-e",
+        "FLUX_PROOF_SOURCE",
+        "-e",
+        "FLUX_DEMO_OWNER_PASSWORD",
+        "flux-e2e:fluxidentity-1792347428-2530839",
+        "node",
+        "/proof/bridge.mjs"
+      ],
+      "exit": 0,
+      "seconds": 1.704,
+      "log": "13-upgraded.txt",
+      "sha256": "9293e3004c2da1a1018cb35ce274ebe344d258f01ef3128e2f23c4541846f4b8"
+    },
+    {
+      "phase": "project-export",
+      "command": [
+        "/home/hubert/flux-evidence/483-490-identity/operator-525f61c8/private/checkout/flux",
+        "export",
+        "Community garden sensors",
+        "--output",
+        "/home/hubert/flux-evidence/483-490-identity/operator-525f61c8/private/export.tar.gz"
+      ],
+      "exit": 0,
+      "seconds": 0.944,
+      "log": "14-project-export.txt",
+      "sha256": "c908e835da04057ea128e995a7b4be0c84b082ab87607656ebd8e8f0479975b4"
+    },
+    {
+      "phase": "nonempty-backup",
+      "command": [
+        "/home/hubert/flux-evidence/483-490-identity/operator-525f61c8/private/checkout/flux",
+        "backup"
+      ],
+      "exit": 0,
+      "seconds": 8.628,
+      "log": "15-nonempty-backup.txt",
+      "sha256": "b3d8ab17bcb7e7166b68d9bff344baef81ce1a65f94265e11d202ec7454a711e"
+    },
+    {
+      "phase": "actual-restore",
+      "command": [
+        "/home/hubert/flux-evidence/483-490-identity/operator-525f61c8/private/checkout/flux",
+        "restore",
+        "/home/hubert/flux-evidence/483-490-identity/operator-525f61c8/private/backups/flux-backup-fluxidentity-1792347428-2530839-20261018T181834Z-ccc9fac1.tar",
+        "-y"
+      ],
+      "exit": 0,
+      "seconds": 38.201,
+      "log": "16-actual-restore.txt",
+      "sha256": "f6b1a1c50978f445fb0c36674a0babb4e424527b6e34228675569e0e23366dae"
+    },
+    {
+      "phase": "restored",
+      "command": [
+        "docker",
+        "run",
+        "--rm",
+        "--user",
+        "1000:1000",
+        "--network",
+        "fluxidp-1792347428-2530839-net",
+        "-v",
+        "/home/hubert/flux-evidence/483-490-identity/operator-525f61c8/private/state:/state:z",
+        "-v",
+        "/home/hubert/Develop/flux/.worktrees/483-490-identity-closeout/scripts/identity-closeout/bridge.mjs:/proof/bridge.mjs:ro,z",
+        "-e",
+        "FLUX_PUBLIC_ORIGIN",
+        "-e",
+        "FLUX_OIDC_PROVIDER_ID",
+        "-e",
+        "FLUX_OIDC_TEST_PASSWORD",
+        "-e",
+        "DATABASE_URL",
+        "-e",
+        "FLUX_AUTH_SECRET",
+        "-e",
+        "FLUX_IDENTITY_BRIDGE_PHASE",
+        "-e",
+        "FLUX_PROOF_SOURCE",
+        "-e",
+        "FLUX_DEMO_OWNER_PASSWORD",
+        "flux-e2e:fluxidentity-1792347428-2530839",
+        "node",
+        "/proof/bridge.mjs"
+      ],
+      "exit": 0,
+      "seconds": 1.587,
+      "log": "17-restored.txt",
+      "sha256": "6b0bac5bb246912b2df0e1aafc8c8faa7ea6731f4e0e46d26be82e3fbbe22913"
+    },
+    {
+      "phase": "recovered",
+      "command": [
+        "docker",
+        "run",
+        "--rm",
+        "--user",
+        "1000:1000",
+        "--network",
+        "fluxidp-1792347428-2530839-net",
+        "-v",
+        "/home/hubert/flux-evidence/483-490-identity/operator-525f61c8/private/state:/state:z",
+        "-v",
+        "/home/hubert/Develop/flux/.worktrees/483-490-identity-closeout/scripts/identity-closeout/bridge.mjs:/proof/bridge.mjs:ro,z",
+        "-e",
+        "FLUX_PUBLIC_ORIGIN",
+        "-e",
+        "FLUX_OIDC_PROVIDER_ID",
+        "-e",
+        "FLUX_OIDC_TEST_PASSWORD",
+        "-e",
+        "DATABASE_URL",
+        "-e",
+        "FLUX_AUTH_SECRET",
+        "-e",
+        "FLUX_IDENTITY_BRIDGE_PHASE",
+        "-e",
+        "FLUX_PROOF_SOURCE",
+        "-e",
+        "FLUX_DEMO_OWNER_PASSWORD",
+        "flux-e2e:fluxidentity-1792347428-2530839",
+        "node",
+        "/proof/bridge.mjs"
+      ],
+      "exit": 0,
+      "seconds": 2.741,
+      "log": "18-recovered.txt",
+      "sha256": "58c7e1169a837d1ae69bbffa3f1396113f435bfacd30facfd2deeb53fa4fdbc3"
+    },
+    {
+      "phase": "app-cleanup",
+      "command": [
+        "/home/hubert/flux-evidence/483-490-identity/operator-525f61c8/private/checkout/flux",
+        "clean",
+        "-y"
+      ],
+      "exit": 0,
+      "seconds": 5.045,
+      "log": "19-app-cleanup.txt",
+      "sha256": "c6ec0f9a21bc11c90877228c2b97739d2af62c2c8559339ee12106d16b6f57b4"
+    },
+    {
+      "phase": "provider-cleanup",
+      "command": [
+        "docker",
+        "compose",
+        "-p",
+        "fluxidp-1792347428-2530839",
+        "-f",
+        "/home/hubert/flux-evidence/483-490-identity/operator-525f61c8/private/provider.json",
+        "down",
+        "-v",
+        "--remove-orphans"
+      ],
+      "exit": 0,
+      "seconds": 1.867,
+      "log": "20-provider-cleanup.txt",
+      "sha256": "eb77da21ed5e2bd5979776eddbc316c5910df99aa9e184a859d02c255a9c1aff"
+    },
+    {
+      "phase": "browser-image-cleanup",
+      "command": [
+        "docker",
+        "image",
+        "rm",
+        "flux-e2e:fluxidentity-1792347428-2530839"
+      ],
+      "exit": 0,
+      "seconds": 0.02,
+      "log": "21-browser-image-cleanup.txt",
+      "sha256": "67576a09e66fbfb510083604a9c502f45b29e0bbc2a494b4ee3c24263736eefe"
+    },
+    {
+      "phase": "worktree-cleanup",
+      "command": [
+        "git",
+        "worktree",
+        "remove",
+        "--force",
+        "/home/hubert/flux-evidence/483-490-identity/operator-525f61c8/private/checkout"
+      ],
+      "exit": 0,
+      "seconds": 0.145,
+      "log": "22-worktree-cleanup.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ],
+  "phaseAssertions": {
+    "link": {
+      "phase": "link",
+      "source": "b17ae9e357441e9a383eb275d1034e69ec50c98a",
+      "browser": "153.0.8010.12",
+      "sameOwnerLinked": true
+    },
+    "seed": {
+      "phase": "seed",
+      "source": "b17ae9e357441e9a383eb275d1034e69ec50c98a",
+      "browser": "153.0.8010.12",
+      "realProviderFamilies": 2,
+      "nonemptySealedCustody": true
+    },
+    "upgraded": {
+      "phase": "upgraded",
+      "source": "525f61c8907e9369c7b84f97a9b98d32e4d702ab",
+      "browser": "153.0.8010.12",
+      "populatedUpgradePreserved": true
+    },
+    "restored": {
+      "phase": "restored",
+      "source": "525f61c8907e9369c7b84f97a9b98d32e4d702ab",
+      "browser": "153.0.8010.12",
+      "tokenlessBrowserMcpRefreshRefused": true
+    },
+    "recovered": {
+      "phase": "recovered",
+      "source": "525f61c8907e9369c7b84f97a9b98d32e4d702ab",
+      "browser": "153.0.8010.12",
+      "genuineProviderRecovery": true,
+      "sameKeptGrantsAndOwner": true
+    },
+    "custody": {
+      "nonemptyBeforeBackup": true,
+      "tableDefinitionRetained": true,
+      "tableRowsOmitted": true,
+      "actualPrivateValuesScanned": 2,
+      "dumpExportLogsExcludeValues": true,
+      "archiveSha256": "e62bb40f22c6a648b9788ab265d569f84a84ee740f30c3733b57383589e070ff",
+      "exportSha256": "32cb88e8fbd91ccbdb7a7d22d400bce520921d08417b7e59ac8d65f32e14bb76"
+    }
+  },
+  "privateStateRemoved": true
+}

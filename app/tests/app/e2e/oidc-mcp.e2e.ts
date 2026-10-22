@@ -2,9 +2,12 @@ import assert from 'node:assert/strict';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import http from 'node:http';
 import { after, before, test } from 'node:test';
-import { createDatabase } from '@flux/db';
+import { PERSONAL_RUN_CONSENT_VERSION, personalRunTokenPath } from '@flux/contracts';
+import { createDatabase, personalRunTokenRows } from '@flux/db';
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright';
+import { personalRunUseCases } from '../../../apps/server/src/personal-runs/adapters.js';
 import { mcp, toolValue } from '../support/mcp.js';
+import { FakeConnections, FakeQueue } from '../support/personal-runs.js';
 
 /**
  * Provider sign-in on the MCP authorization path (F-024 S1, #310). A scripted client (test code, not a
@@ -30,7 +33,7 @@ const proxy = http.createServer((request, response) => {
   });
   forward.on('error', () => response.destroy()); request.pipe(forward);
 });
-const { pool } = createDatabase(process.env.DATABASE_URL!);
+const { db, pool } = createDatabase(process.env.DATABASE_URL!);
 let browser: Browser;
 const contexts: BrowserContext[] = [];
 
@@ -365,6 +368,29 @@ async function keycloakAdmin() {
     return client;
   };
   return {
+    async updateProfile(username: string, profile: { email: string; firstName: string; lastName: string }) {
+      const id = await userId(username);
+      const user = await (await call('GET', `/users/${id}`)).json() as Record<string, unknown>;
+      const updated = await call('PUT', `/users/${id}`, { ...user, ...profile, emailVerified: true });
+      assert.equal(updated.status, 204, await updated.text());
+    },
+    async deleteUser(username: string) {
+      const id = await userId(username);
+      const removed = await call('DELETE', `/users/${id}`);
+      assert.equal(removed.status, 204, await removed.text());
+      assert.equal((await call('GET', `/users/${id}`)).status, 404, 'the real provider identity was deleted');
+    },
+    async removeOfflineSessions(username: string) {
+      const id = await userId(username); const client = await flux();
+      const list = () => call('GET', `/users/${id}/offline-sessions/${client.id}`);
+      const sessions = await (await list()).json() as { id: string }[];
+      assert.ok(sessions.length > 0, 'an already-issued offline authorization exists at Keycloak');
+      for (const session of sessions) {
+        const removed = await call('DELETE', `/sessions/${session.id}?isOffline=true`);
+        assert.equal(removed.status, 204, await removed.text());
+      }
+      assert.deepEqual(await (await list()).json(), [], 'Keycloak no longer holds those offline sessions');
+    },
     async setEnabled(username: string, enabled: boolean) {
       const id = await userId(username);
       const user = await (await call('GET', `/users/${id}`)).json() as Record<string, unknown>;
@@ -520,6 +546,10 @@ test('confirmation age (S2): within the age everything works, past it the browse
   let tokens = await redeem(callback, verifier, loopback, clientId);
   const confirmed = (await pool.query('SELECT confirmed_at > now() - interval \'5 minutes\' AS recent FROM auth_accounts WHERE user_id = $1 AND provider_id = $2', [state.userId, providerId])).rows;
   assert.deepEqual(confirmed, [{ recent: true }], 'the provider sign-in confirmed the identity');
+  if (process.env.FLUX_OIDC_EXPECT_STANDING_OFF === '1') {
+    assert.equal((await pool.query('SELECT 1 FROM auth_idp_standing WHERE user_id = $1', [state.userId])).rowCount, 0,
+      'standing is off: confirmation comes only from the real provider sign-in');
+  }
 
   // Within the configured 12h (not the 7d default): all three still work.
   await confirmedHoursAgo(11);
@@ -713,4 +743,96 @@ test('back-channel logout: a sign-in on a second device does not stop the first 
   const tablet = await signInOnDevice('erin');
   await waitFor(async () => { const now = await admin.sessions('erin'); return !now.offline.includes(phone.sid) && now.offline.includes(tablet.sid); },
     'the signed-out device\'s provider token to be revoked');
+});
+
+test('standing: real returned Keycloak claims update the same profile without rewriting grant authentication', async () => {
+  const admin = await keycloakAdmin();
+  await signInWithTokens();
+  const facts = await grantAuthentication(state.userId!, clientId);
+  const profile = { email: `erin-refreshed-${randomUUID()}@acme.test`, firstName: 'Erin', lastName: 'Refreshed' };
+  try {
+    await admin.updateProfile('erin', profile); await dueNow(state.userId!);
+    await waitFor(async () => {
+      const row = (await pool.query('SELECT name, email, email_verified FROM auth_users WHERE id = $1', [state.userId])).rows[0];
+      return row?.email === profile.email && row;
+    }, 'a verified profile update from Keycloak refresh');
+    const row = (await pool.query('SELECT name, email, email_verified FROM auth_users WHERE id = $1', [state.userId])).rows[0];
+    assert.deepEqual(row, { name: 'Erin Refreshed', email: profile.email, email_verified: true });
+    assert.deepEqual(await grantAuthentication(state.userId!, clientId), facts);
+  } finally {
+    await admin.updateProfile('erin', { email: 'erin@acme.test', firstName: 'Erin', lastName: 'Agent' });
+    await dueNow(state.userId!);
+    await waitFor(async () => (await pool.query('SELECT email FROM auth_users WHERE id = $1', [state.userId])).rows[0]?.email === 'erin@acme.test', 'the restored provider profile');
+  }
+});
+
+test('standing: removing an already-held Keycloak offline session suspends and genuine sign-in restores retained grants', async () => {
+  const admin = await keycloakAdmin(); const signed = await signInWithTokens();
+  // Real managed run-token transport, with a fake model connection and queue only: no model
+  // account or compute is used. The use case records the owner's consent; the same real Keycloak
+  // suspension must stop an already issued short-lived run bearer. Mint refusal is covered
+  // by the focused API lane with a real nonce; this row proves the managed bearer response.
+  const workspace = await api<{ id: string }>(signed.context, 'POST', '/api/v1/workspaces', { name: 'Managed assistant standing' }, 201);
+  const project = await api<{ id: string }>(signed.context, 'POST', `/api/v1/workspaces/${workspace.id}/projects`, { name: 'Assistant boundary', visibility: 'restricted' }, 201);
+  const agent = await api<{ id: string }>(signed.context, 'POST', `/api/v1/workspaces/${workspace.id}/agents`, { name: 'Managed assistant', owner: 'self' }, 201);
+  const thread = await api<{ id: string }>(signed.context, 'POST', `/api/v1/projects/${project.id}/conversations`, { body: 'Identity gate proof', clientMessageId: randomUUID() }, 201);
+  const connections = new FakeConnections(); const queue = new FakeQueue(); const modelConnection = randomUUID();
+  connections.connect(state.userId!, modelConnection);
+  const runs = personalRunUseCases(db, { connections, queue: queue.factory, providerEnabled: true });
+  const principal = { kind: 'human' as const, id: state.userId! };
+  await runs.enable(principal, { consentVersion: PERSONAL_RUN_CONSENT_VERSION, agentId: agent.id, connectionId: modelConnection, perRunCents: 50, dailyCapCents: 1_000 });
+  const runId = (await runs.invoke(principal, thread.id, { clientRunId: randomUUID(), kind: 'ask', prompt: 'Read this thread' })).run.id;
+  // The worker's claim and nonce, without launching or simulating a provider answer.
+  await pool.query("UPDATE personal_runs SET status = 'reading' WHERE id = $1", [runId]);
+  const nonce = randomBytes(32).toString('hex');
+  assert.equal(await db.transaction((tx) => personalRunTokenRows(tx).arm(runId, createHash('sha256').update(nonce).digest('hex'))), true);
+  const issued = await fetch(new URL(personalRunTokenPath(runId), upstream), { method: 'POST',
+    headers: { 'content-type': 'application/json' }, body: JSON.stringify({ nonce }) }); assert.equal(issued.status, 200);
+  const heldRunToken = (await issued.json() as { token: string }).token;
+  assert.equal((await mcp(heldRunToken, 35, 'tools/list')).status, 200);
+  const revoked = async () => (await pool.query('SELECT id FROM oauth_refresh_token WHERE user_id = $1 AND revoked IS NOT NULL ORDER BY id', [state.userId])).rows;
+  const before = await revoked();
+  await admin.removeOfflineSessions('erin'); await dueNow(state.userId!);
+  const suspended = await waitFor(async () => { const row = await standingRow(state.userId!); return row?.state === 'sign_in_required' && row; }, 'offline-session removal suspension');
+  assert.equal(suspended.reason, 'invalid_grant');
+  assert.equal((await signed.context.request.get(`${origin}/api/v1/me`)).status(), 401);
+  assert.equal((await mcp(signed.tokens.access_token, 31, 'tools/list')).status, 401);
+  assert.equal(((await (await mcpRefresh(signed.tokens.refresh_token)).json()) as { error: string }).error, 'invalid_grant');
+  const refusedRun = await mcp(heldRunToken, 36, 'tools/list');
+  assert.equal(refusedRun.status, 401); assert.match(refusedRun.headers.get('www-authenticate') ?? '', /Sign in again with Keycloak\./);
+  assert.deepEqual(await revoked(), before, 'suspension did not revoke MCP authority');
+  await signInWithTokens();
+  assert.equal((await mcp(signed.tokens.access_token, 32, 'tools/list')).status, 200, 'the retained bearer recovers');
+  assert.equal((await mcpRefresh(signed.tokens.refresh_token)).status, 200, 'the retained refresh family recovers');
+  assert.equal((await mcp(heldRunToken, 37, 'tools/list')).status, 200, 'the held run token recovers under the same consent');
+  assert.equal((await pool.query('SELECT revoked_at FROM agent_connections WHERE id = $1', [state.connectionId])).rows[0].revoked_at, null);
+  await pool.query("UPDATE personal_runs SET status = 'stopped', completed_at = now(), cost_state = 'released', charged_micros = 0 WHERE id = $1", [runId]);
+});
+
+test('standing: a deleted Keycloak user loses browser, MCP and refresh access without revocation or identity transfer', async () => {
+  const admin = await keycloakAdmin(); const context = await fresh(); const page = await context.newPage();
+  await page.goto(`${origin}/sign-in`); await page.getByRole('button', { name: 'Sign in with Keycloak', exact: true }).click();
+  await page.waitForURL((target) => target.origin === keycloak); await providerLogin(page, 'frank');
+  await page.waitForURL((target) => target.origin === origin, { timeout: 20_000 });
+  const person = await api<{ user: { id: string } }>(context, 'GET', '/api/v1/me');
+  const workspace = await api<{ id: string }>(context, 'POST', '/api/v1/workspaces', { name: 'Deleted identity proof' }, 201);
+  const project = await api<{ id: string }>(context, 'POST', `/api/v1/workspaces/${workspace.id}/projects`, { name: 'Kept data', visibility: 'restricted' }, 201);
+  const agent = await api<{ id: string }>(context, 'POST', `/api/v1/workspaces/${workspace.id}/agents`, { name: 'Kept identity agent', owner: 'self' }, 201);
+  await api(context, 'POST', `/api/v1/projects/${project.id}/grants`, { principal: { kind: 'agent', id: agent.id }, role: 'contributor' }, 201);
+  const connection = await api<{ id: string }>(context, 'POST', '/api/v1/agent-connections',
+    { agentId: agent.id, selectedProjectIds: [project.id], scopes: ['flux.context.read', 'flux.proposal.write'] }, 201);
+  const client = await registerClient(loopback); const { verifier, challenge } = pkce();
+  await page.goto(authorizeUrl(client, loopback, challenge));
+  const tokens = await redeem(await chooseAndConsent(context, page, loopback, connection.id), verifier, loopback, client);
+  assert.equal((await mcp(tokens.access_token, 33, 'tools/list')).status, 200);
+  await admin.deleteUser('frank'); await dueNow(person.user.id);
+  await waitFor(async () => (await standingRow(person.user.id))?.state === 'sign_in_required', 'deleted-user suspension');
+  assert.equal((await context.request.get(`${origin}/api/v1/me`)).status(), 401);
+  const refused = await mcp(tokens.access_token, 34, 'tools/list');
+  assert.equal(refused.status, 401); assert.match(refused.headers.get('www-authenticate') ?? '', /Sign in again with Keycloak\./);
+  const refresh = await fetch(new URL('/api/auth/oauth2/token', upstream), { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ grant_type: 'refresh_token', refresh_token: tokens.refresh_token, client_id: client, resource }) });
+  assert.equal(refresh.status, 400); assert.equal((await refresh.json() as { error: string }).error, 'invalid_grant');
+  assert.equal((await pool.query('SELECT 1 FROM oauth_refresh_token WHERE user_id = $1 AND revoked IS NOT NULL', [person.user.id])).rowCount, 0);
+  assert.equal((await pool.query('SELECT 1 FROM agent_connections WHERE id = $1 AND owner_user_id = $2 AND revoked_at IS NULL', [connection.id, person.user.id])).rowCount, 1);
 });

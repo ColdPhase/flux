@@ -1,0 +1,338 @@
+{
+  "rawSnapshotsSha256": "626a7ca557b79bd0c38895224f9be8bbcfe8af59539c1af3e2373a9d22de579a",
+  "scope": "Deduplicated actual CID/image/allowlisted-environment observations; these are observations, not a lifecycle trace. Metadata observer cleanup race is retained separately.",
+  "containers": [
+    {
+      "cid": "956a0055c5819ed419f139b1cdb529ef4db502f59498c05d8f0fa0bcc36df531",
+      "imageId": "sha256:1c7d34f5224997eebe7a2933c37eb3c00a340ef6dfff4c619d6d797ba29e0f6c",
+      "image": "flux-foundation:flux-oidc-1792346081-2441668",
+      "project": "flux-oidc-1792346081-2441668",
+      "service": "migrate",
+      "state": "exited",
+      "env": {},
+      "firstObserved": "2026-10-18T17:57:00.419053+00:00",
+      "lastObserved": "2026-10-18T18:03:16.743572+00:00",
+      "statesObserved": [
+        "exited",
+        "running"
+      ]
+    },
+    {
+      "cid": "8e947628368221c46b969b16db6a4acf341200d5e65db0c9abee4a228e2d5d2f",
+      "imageId": "sha256:c293117fcecda7344b5480222e813b9f673d7abd69b1dd95eff239b768b04f59",
+      "image": "postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873",
+      "project": "flux-oidc-1792346081-2441668",
+      "service": "db",
+      "state": "running",
+      "env": {},
+      "firstObserved": "2026-10-18T17:57:00.419053+00:00",
+      "lastObserved": "2026-10-18T18:03:16.743572+00:00",
+      "statesObserved": [
+        "running"
+      ]
+    },
+    {
+      "cid": "5c99a8e3d797e7e36e977fa1441c87401e05109691c83d7ad4340a4b99ea48d6",
+      "imageId": "sha256:091868368ec0505c099cbadbeadfb10df28e24b4b4e5d2cf09af1b76d2dc1b3a",
+      "image": "flux-e2e:flux-oidc-1792346081-2441668",
+      "project": "flux-oidc-1792346081-2441668",
+      "service": "e2e",
+      "state": "running",
+      "env": {
+        "FLUX_PUBLIC_ORIGIN": "http://127.0.0.1:19862"
+      },
+      "firstObserved": "2026-10-18T17:57:15.460758+00:00",
+      "lastObserved": "2026-10-18T17:57:30.506309+00:00",
+      "statesObserved": [
+        "running"
+      ]
+    },
+    {
+      "cid": "917809fbd2981adf00019d848222f5f15e3cbf2a0c131388c3b06796770760d6",
+      "imageId": "sha256:1c7d34f5224997eebe7a2933c37eb3c00a340ef6dfff4c619d6d797ba29e0f6c",
+      "image": "flux-foundation:flux-oidc-1792346081-2441668",
+      "project": "flux-oidc-1792346081-2441668",
+      "service": "api",
+      "state": "running",
+      "env": {
+        "FLUX_OIDC_STANDING": "refresh",
+        "FLUX_PUBLIC_ORIGIN": "http://127.0.0.1:19862",
+        "FLUX_SSO_MODE": "sso",
+        "FLUX_OIDC_ISSUER": "http://keycloak:8080/realms/flux",
+        "FLUX_OIDC_CONFIRMATION_MAX_AGE": "12h"
+      },
+      "firstObserved": "2026-10-18T17:57:15.460758+00:00",
+      "lastObserved": "2026-10-18T17:57:30.506309+00:00",
+      "statesObserved": [
+        "running"
+      ]
+    },
+    {
+      "cid": "3ffde3858e56fde717d0a75a2a7d379f483cda9fd4d584538b3b6eafe1932871",
+      "imageId": "sha256:0a94362145f58e5cffb58605023c671774e4143037a952221ee6485b6cd999af",
+      "image": "axllent/mailpit:v1.31.2@sha256:74d609a42ec279aa63c6b4622a6fa9b5408d1ad5b1d76a1c4be40a265ce0863d",
+      "project": "flux-oidc-1792346081-2441668",
+      "service": "mailpit",
+      "state": "running",
+      "env": {},
+      "firstObserved": "2026-10-18T17:57:15.460758+00:00",
+      "lastObserved": "2026-10-18T18:03:16.743572+00:00",
+      "statesObserved": [
+        "running"
+      ]
+    },
+    {
+      "cid": "1fef79bb75ac39c2a69cd48177c3e0bbde3317c121f7433248f7adc79780d7ce",
+      "imageId": "sha256:e2508edb35d7b3b39468c3e4e77da4e3c8dca8968b055259d60ccfbd29d65e59",
+      "image": "quay.io/keycloak/keycloak:26.8.0@sha256:27b3230fbabb8c9ff3c66c864cf09dcd8a41aca82e5100679d109ef0eeb05741",
+      "project": "flux-oidc-1792346081-2441668",
+      "service": "keycloak",
+      "state": "running",
+      "env": {},
+      "firstObserved": "2026-10-18T17:57:30.506309+00:00",
+      "lastObserved": "2026-10-18T18:03:16.743572+00:00",
+      "statesObserved": [
+        "running"
+      ]
+    },
+    {
+      "cid": "e66e5bc92616874df84d815b6060b01ab9e790858646102baae1ffd9b856a170",
+      "imageId": "sha256:1c7d34f5224997eebe7a2933c37eb3c00a340ef6dfff4c619d6d797ba29e0f6c",
+      "image": "flux-foundation:flux-oidc-1792346081-2441668",
+      "project": "flux-oidc-1792346081-2441668",
+      "service": "api-mock",
+      "state": "running",
+      "env": {
+        "FLUX_SSO_MODE": "sso",
+        "FLUX_OIDC_ISSUER": "http://oidc-mock:9400",
+        "FLUX_PUBLIC_ORIGIN": "http://127.0.0.1:19862",
+        "FLUX_OIDC_CONFIRMATION_MAX_AGE": "",
+        "FLUX_OIDC_STANDING": "off"
+      },
+      "firstObserved": "2026-10-18T17:57:45.549168+00:00",
+      "lastObserved": "2026-10-18T18:03:16.743572+00:00",
+      "statesObserved": [
+        "running"
+      ]
+    },
+    {
+      "cid": "2317b44df979e7003ffde260dd1571a76e348067b0b1f10fc21215fc1fa88811",
+      "imageId": "sha256:1c7d34f5224997eebe7a2933c37eb3c00a340ef6dfff4c619d6d797ba29e0f6c",
+      "image": "flux-foundation:flux-oidc-1792346081-2441668",
+      "project": "flux-oidc-1792346081-2441668",
+      "service": "worker",
+      "state": "running",
+      "env": {
+        "FLUX_PUBLIC_ORIGIN": "http://127.0.0.1:19862"
+      },
+      "firstObserved": "2026-10-18T17:57:45.549168+00:00",
+      "lastObserved": "2026-10-18T18:03:16.743572+00:00",
+      "statesObserved": [
+        "running"
+      ]
+    },
+    {
+      "cid": "7bc1ebf37da053e11b06aeb840833e143eeb430c58b82e8d284f678f97ab656b",
+      "imageId": "sha256:1c7d34f5224997eebe7a2933c37eb3c00a340ef6dfff4c619d6d797ba29e0f6c",
+      "image": "flux-foundation:flux-oidc-1792346081-2441668",
+      "project": "flux-oidc-1792346081-2441668",
+      "service": "api",
+      "state": "running",
+      "env": {
+        "FLUX_OIDC_ISSUER": "http://keycloak:8080/realms/flux",
+        "FLUX_OIDC_CONFIRMATION_MAX_AGE": "12h",
+        "FLUX_PUBLIC_ORIGIN": "http://127.0.0.1:19862",
+        "FLUX_SSO_MODE": "prepare",
+        "FLUX_OIDC_STANDING": "refresh"
+      },
+      "firstObserved": "2026-10-18T17:57:45.549168+00:00",
+      "lastObserved": "2026-10-18T17:57:45.549168+00:00",
+      "statesObserved": [
+        "running"
+      ]
+    },
+    {
+      "cid": "2367a26345ae39d701c551a7f4726cd9484621d4f1750a3492f38e736a39793a",
+      "imageId": "sha256:091868368ec0505c099cbadbeadfb10df28e24b4b4e5d2cf09af1b76d2dc1b3a",
+      "image": "flux-e2e:flux-oidc-1792346081-2441668",
+      "project": "flux-oidc-1792346081-2441668",
+      "service": "oidc-mock",
+      "state": "running",
+      "env": {
+        "FLUX_PUBLIC_ORIGIN": "http://127.0.0.1:19862"
+      },
+      "firstObserved": "2026-10-18T17:57:45.549168+00:00",
+      "lastObserved": "2026-10-18T18:03:16.743572+00:00",
+      "statesObserved": [
+        "running"
+      ]
+    },
+    {
+      "cid": "3428085f3afec815c3701905b2bd2f5e5f8f449fd71954a5f628a6b6bccc1f33",
+      "imageId": "sha256:091868368ec0505c099cbadbeadfb10df28e24b4b4e5d2cf09af1b76d2dc1b3a",
+      "image": "flux-e2e:flux-oidc-1792346081-2441668",
+      "project": "flux-oidc-1792346081-2441668",
+      "service": "pushmock",
+      "state": "running",
+      "env": {},
+      "firstObserved": "2026-10-18T17:57:45.549168+00:00",
+      "lastObserved": "2026-10-18T18:03:16.743572+00:00",
+      "statesObserved": [
+        "running"
+      ]
+    },
+    {
+      "cid": "b3efa438de9c787bfebc910bd855ae1fe233b183ff34ea261eb6f0d694eeade7",
+      "imageId": "sha256:1c7d34f5224997eebe7a2933c37eb3c00a340ef6dfff4c619d6d797ba29e0f6c",
+      "image": "flux-foundation:flux-oidc-1792346081-2441668",
+      "project": "flux-oidc-1792346081-2441668",
+      "service": "api",
+      "state": "running",
+      "env": {
+        "FLUX_PUBLIC_ORIGIN": "http://127.0.0.1:19862",
+        "FLUX_SSO_MODE": "sso",
+        "FLUX_OIDC_CONFIRMATION_MAX_AGE": "12h",
+        "FLUX_OIDC_ISSUER": "http://keycloak:8080/realms/flux",
+        "FLUX_OIDC_STANDING": "refresh"
+      },
+      "firstObserved": "2026-10-18T17:58:00.734365+00:00",
+      "lastObserved": "2026-10-18T18:02:46.659072+00:00",
+      "statesObserved": [
+        "created",
+        "running"
+      ]
+    },
+    {
+      "cid": "72d967de35e55fd0d02902fbab37b75620e0ed28468baea723a78741ac8fc77e",
+      "imageId": "sha256:091868368ec0505c099cbadbeadfb10df28e24b4b4e5d2cf09af1b76d2dc1b3a",
+      "image": "flux-e2e:flux-oidc-1792346081-2441668",
+      "project": "flux-oidc-1792346081-2441668",
+      "service": "e2e",
+      "state": "running",
+      "env": {
+        "FLUX_PUBLIC_ORIGIN": "http://127.0.0.1:19862"
+      },
+      "firstObserved": "2026-10-18T17:58:30.849800+00:00",
+      "lastObserved": "2026-10-18T17:58:30.849800+00:00",
+      "statesObserved": [
+        "running"
+      ]
+    },
+    {
+      "cid": "06ac6db38a71c8a68cfb2f314044e7db9c15189e5dee6d742760992df8f84b4c",
+      "imageId": "sha256:091868368ec0505c099cbadbeadfb10df28e24b4b4e5d2cf09af1b76d2dc1b3a",
+      "image": "flux-e2e:flux-oidc-1792346081-2441668",
+      "project": "flux-oidc-1792346081-2441668",
+      "service": "e2e",
+      "state": "running",
+      "env": {
+        "FLUX_PUBLIC_ORIGIN": "http://127.0.0.1:19862"
+      },
+      "firstObserved": "2026-10-18T17:59:46.093410+00:00",
+      "lastObserved": "2026-10-18T17:59:46.093410+00:00",
+      "statesObserved": [
+        "running"
+      ]
+    },
+    {
+      "cid": "715f9f2c3d93ce9ed8be6c1bbd802b4a63e53ed7cfc818ae37b6e953e4a4834c",
+      "imageId": "sha256:091868368ec0505c099cbadbeadfb10df28e24b4b4e5d2cf09af1b76d2dc1b3a",
+      "image": "flux-e2e:flux-oidc-1792346081-2441668",
+      "project": "flux-oidc-1792346081-2441668",
+      "service": "e2e",
+      "state": "running",
+      "env": {
+        "FLUX_PUBLIC_ORIGIN": "http://127.0.0.1:19862"
+      },
+      "firstObserved": "2026-10-18T18:01:46.473711+00:00",
+      "lastObserved": "2026-10-18T18:01:46.473711+00:00",
+      "statesObserved": [
+        "running"
+      ]
+    },
+    {
+      "cid": "465a483b3c2ace5aa08035080b61560da018b8ee31ec9f3dfa93c80b51a7a3ee",
+      "imageId": "sha256:091868368ec0505c099cbadbeadfb10df28e24b4b4e5d2cf09af1b76d2dc1b3a",
+      "image": "flux-e2e:flux-oidc-1792346081-2441668",
+      "project": "flux-oidc-1792346081-2441668",
+      "service": "e2e",
+      "state": "running",
+      "env": {
+        "FLUX_PUBLIC_ORIGIN": "http://127.0.0.1:19862"
+      },
+      "firstObserved": "2026-10-18T18:02:16.560441+00:00",
+      "lastObserved": "2026-10-18T18:02:16.560441+00:00",
+      "statesObserved": [
+        "running"
+      ]
+    },
+    {
+      "cid": "d00fae3938301280fb91cef5025a1a1a0ff2939f21652ba63568fbd6feb9feca",
+      "imageId": "sha256:cac79c98c8602dba82d916554304bfe81db665fcd558434cb5d525f6b046c2f7",
+      "image": "flux-mcp-clients:flux-oidc-1792346081-2441668",
+      "project": "flux-oidc-1792346081-2441668",
+      "service": "mcp-clients",
+      "state": "running",
+      "env": {
+        "FLUX_PUBLIC_ORIGIN": "http://127.0.0.1:19862"
+      },
+      "firstObserved": "2026-10-18T18:02:46.659072+00:00",
+      "lastObserved": "2026-10-18T18:02:46.659072+00:00",
+      "statesObserved": [
+        "running"
+      ]
+    },
+    {
+      "cid": "6b37b6a2f0d205c8780a432cec511e8afaa6d5218d7c34a694c9660c2358e2b7",
+      "imageId": "sha256:1c7d34f5224997eebe7a2933c37eb3c00a340ef6dfff4c619d6d797ba29e0f6c",
+      "image": "flux-foundation:flux-oidc-1792346081-2441668",
+      "project": "flux-oidc-1792346081-2441668",
+      "service": "api",
+      "state": "created",
+      "env": {
+        "FLUX_SSO_MODE": "sso",
+        "FLUX_OIDC_STANDING": "off",
+        "FLUX_OIDC_ISSUER": "http://keycloak:8080/realms/flux",
+        "FLUX_OIDC_CONFIRMATION_MAX_AGE": "12h",
+        "FLUX_PUBLIC_ORIGIN": "http://127.0.0.1:19862"
+      },
+      "firstObserved": "2026-10-18T18:03:16.743572+00:00",
+      "lastObserved": "2026-10-18T18:03:16.743572+00:00",
+      "statesObserved": [
+        "created"
+      ]
+    }
+  ],
+  "images": [
+    {
+      "id": "sha256:1c7d34f5224997eebe7a2933c37eb3c00a340ef6dfff4c619d6d797ba29e0f6c",
+      "repoDigests": []
+    },
+    {
+      "id": "sha256:c293117fcecda7344b5480222e813b9f673d7abd69b1dd95eff239b768b04f59",
+      "repoDigests": [
+        "postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873"
+      ]
+    },
+    {
+      "id": "sha256:091868368ec0505c099cbadbeadfb10df28e24b4b4e5d2cf09af1b76d2dc1b3a",
+      "repoDigests": []
+    },
+    {
+      "id": "sha256:0a94362145f58e5cffb58605023c671774e4143037a952221ee6485b6cd999af",
+      "repoDigests": [
+        "axllent/mailpit@sha256:74d609a42ec279aa63c6b4622a6fa9b5408d1ad5b1d76a1c4be40a265ce0863d"
+      ]
+    },
+    {
+      "id": "sha256:e2508edb35d7b3b39468c3e4e77da4e3c8dca8968b055259d60ccfbd29d65e59",
+      "repoDigests": [
+        "quay.io/keycloak/keycloak@sha256:27b3230fbabb8c9ff3c66c864cf09dcd8a41aca82e5100679d109ef0eeb05741"
+      ]
+    },
+    {
+      "id": "sha256:cac79c98c8602dba82d916554304bfe81db665fcd558434cb5d525f6b046c2f7",
+      "repoDigests": []
+    }
+  ]
+}
