@@ -76,6 +76,9 @@ export function useLiveSketchDoc(sketchId: string, me: Me) {
   const receipts = useRef(new Map<string, LiveMapDelta>());
   const tombstones = useRef(new Map<string, number>());
   const scope = useRef({ active: false, number: 0 });
+  // The map is shown once its live room has joined (or is known unavailable), so a writer never meets a map that
+  // looks read-only for the few milliseconds between the first snapshot and the room's head.
+  const shown = useRef(false);
   const snapshots = useRef(0);
   const projectPreviews = useMemo(() => createLivePreviewProjection(), []);
   useEffect(() => { meRef.current = me; });
@@ -92,14 +95,16 @@ export function useLiveSketchDoc(sketchId: string, me: Me) {
     setConfirmedThoughts(next.thoughts);
     next = projectPreviews(next, live.current?.previews.values() ?? []);
     for (const intent of pending.current.values()) if (!intent.held) next = applyLocal(next, intent.op, meRef.current);
-    ref.current = next; setSketch(next);
+    ref.current = next;
+    if (!shown.current && client && client.status === 'connecting') return;
+    shown.current = true; setSketch(next); setLoad('ready');
   }, [projectPreviews]);
   const adopt = useCallback((fresh: SketchDetail) => {
     const before = confirmed.current;
     if (before) for (const thought of before.thoughts) {
       if (fresh.thoughts.find((item) => item.id === thought.id)?.version !== thought.version) epochs.current.set(thought.id, (epochs.current.get(thought.id) ?? 0) + 1);
     }
-    snapshots.current++; confirmed.current = fresh; setLoad('ready'); publish();
+    snapshots.current++; confirmed.current = fresh; publish();
   }, [publish]);
   const patch = useCallback((thoughts: Thought[], extra: Partial<SketchDetail> = {}) => {
     const current = confirmed.current; if (!current) return;
@@ -142,12 +147,16 @@ export function useLiveSketchDoc(sketchId: string, me: Me) {
     const controller = new AbortController();
     const client = new SharedMap(sketchId, me.id, adopt, delta, publish, presenceStore);
     live.current = client;
+    shown.current = false;
+    // A room that cannot join still shows the map, read-only and explained, rather than keeping it hidden.
+    const patience = window.setTimeout(() => { shown.current = true; publish(); }, 3000);
     // Capability-off preserves the ordinary native API; capability-on bootstrap is atomic.
     const fallback = window.setInterval(() => {
       if (client.status !== 'unavailable') return;
       window.clearInterval(fallback); void reload(controller.signal);
     }, 50);
     return () => {
+      window.clearTimeout(patience);
       scope.current.active = false; scope.current.number++;
       try { if (pending.current.size) sessionStorage.setItem(`flux:map-pending:${me.id}:${sketchId}`, JSON.stringify([...pending.current.values()].map((intent) => ({ op: intent.op, commandId: intent.id, scope: sketchId })))); } catch { /* Original private drafts also retain their text. */ }
       controller.abort(); window.clearInterval(fallback); client.destroy(); live.current = null;
