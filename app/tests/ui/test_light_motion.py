@@ -179,7 +179,9 @@ class LightMotionJourney(unittest.TestCase):
           const surface = document.querySelector('.ui-overlay__surface');
           return { inside, returned: document.activeElement === opener, there: !!surface, inert: surface ? surface.inert : null,
             running: surface ? surface.getAnimations().length : 0, appInert: document.getElementById('root').inert,
-            visibility: document.visibilityState, focused: document.hasFocus(), now: Math.round(performance.now()) };
+            visibility: document.visibilityState, focused: document.hasFocus(), now: Math.round(performance.now()),
+            durOut: getComputedStyle(document.documentElement).getPropertyValue('--dur-out'), reduce: matchMedia('(prefers-reduced-motion: reduce)').matches,
+            stored: (() => { try { return localStorage.getItem('flux.reduceMotion'); } catch (error) { return 'x'; } })(), root: document.documentElement.getAttribute('data-motion') };
         }""")
         self.assertTrue(verdict["inside"], "focus was inside the dialog")
         self.assertTrue(verdict["returned"], f"focus is back on its opener in the same task as the close: {verdict}")
