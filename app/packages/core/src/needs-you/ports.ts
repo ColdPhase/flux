@@ -52,6 +52,7 @@ export interface NeedsYouInbox {
 /** The owner's undecided waiting assistant changes that belong in Inbox now (F-027 AST-5.6). */
 export interface NeedsYouAssistant {
   waiting(userId: string): Promise<AssistantChange[]>;
+  notes?(userId: string): Promise<{ objectId: string; notificationId: string | null; note: string; draft: boolean }[]>;
 }
 
 export interface NeedsYouPorts {

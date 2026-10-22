@@ -56,6 +56,11 @@ import { exportRoutes } from './export/routes.js';
 import { agentRuntimeRoutes } from './agent-runtime/routes.js';
 import { typingRoutes } from './typing/routes.js';
 import { typingTaskDiscussion } from './typing/tasks.js';
+import { currentGithubReactionFacts } from './assistant/reactions.js';
+import { githubCredentials } from './github/credentials.js';
+import { githubProvider } from './github/provider.js';
+import { githubTransport } from './github/http.js';
+import { createGithubUseCases } from './github/adapters.js';
 import { githubRoutes } from './github/routes.js';
 import { loadGithubConfig } from './github/config.js';
 import type { ServerConfig } from './config.js';
@@ -124,7 +129,8 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
   await app.register(coWorkRoutes, { db, sessions: identity });
   await app.register(workRoutes, { db, sessions: identity, storage: fileStorage });
   await app.register(workReadRoutes, { db, sessions: identity });
-  await app.register(githubRoutes, { db, sessions: identity, config: loadGithubConfig(env, identityConfig.publicOrigin) });
+  const githubConfig = loadGithubConfig(env, identityConfig.publicOrigin);
+  await app.register(githubRoutes, { db, sessions: identity, config: githubConfig });
   // Configuration alone does not prove the SFU, DNS/TLS or receiver path is healthy.
   app.get('/api/v1/live-sessions/capabilities', async () => ({ status: liveMedia ? 'configured' : 'unavailable' }));
   // Outside the editing routes, whose disabled hook refuses every request (#239 review).
@@ -213,7 +219,9 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
     identity.standing && identityConfig.oidc ? { checker: identity.standing, label: identityConfig.oidc.label } : null,
     identity.confirmation, identityConfig.oidc?.label);
   // A personal run's MCP token (F-027 A2): signed here, the authorization server, for the worker only.
-  registerPersonalRunTokenRoute(app, db, identity.auth, identityConfig.publicOrigin);
+  const githubReadTransport = githubTransport();
+  const githubRead = githubConfig ? createGithubUseCases(db, githubProvider(githubCredentials(db, githubConfig, githubReadTransport), githubConfig, githubReadTransport)) : null;
+  registerPersonalRunTokenRoute(app, db, identity.auth, identityConfig.publicOrigin, githubRead ? currentGithubReactionFacts(githubRead) : undefined);
   await app.register(returnRoutes, { db, sessions: identity });
   await app.register(projectGoalRoutes, { db, sessions: identity });
   await app.register(needsYouRoutes, { db, sessions: identity });

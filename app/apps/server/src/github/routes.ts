@@ -10,6 +10,7 @@ import { githubProvider } from './provider.js';
 import { githubOauth } from './oauth.js';
 import { githubTransport, type GithubTransport } from './http.js';
 import { createGithubRuleUseCases, createGithubUseCases, unavailableGithubProvider } from './adapters.js';
+import { authorizeGithubReactionEvents } from '../assistant/reactions.js';
 import { githubRuleRoutes } from './rule-routes.js';
 import { githubWebhookRoutes } from './webhook.js';
 interface Options { db: Database; sessions: SessionResolver; config: GithubConfig | null; transport?: GithubTransport; provider?: GithubProvider; background?: boolean }
@@ -86,6 +87,7 @@ export async function githubRoutes(app: FastifyInstance, options: Options) {
   const sweep = async () => {
     if (running) return; running = true;
     try {
+      await authorizeGithubReactionEvents(db, useCases!);
       await useCases!.schedule(config.appId, String(Math.floor(Date.now() / 1_800_000)));
       for (const row of await githubRows(db).due(5)) {
         try { await useCases!.process(row.deliveryId, row.bindingId); }

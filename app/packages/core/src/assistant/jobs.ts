@@ -120,6 +120,7 @@ export async function fireJob(ports: AssistantJobPorts, startBackground: JobDeps
     return skipped;
   }
   if (options.late) return end(row, 'skipped', `Skipped: Flux was off at ${clockIn(firedAt, job.timeZone)}`);
+  await ports.runs.enablement(job.ownerUserId, { lock: true });
   const settings = await ports.jobs.backgroundLimit(job.ownerUserId, job.workspaceId);
   if (await ports.jobs.runsTodayForJob(job.id, job.timeZone) >= ASSISTANT_JOB_LIMITS.runsPerDay
     || settings !== null && await ports.jobs.backgroundRunsToday(job.ownerUserId, job.timeZone) >= settings) return end(row, 'skipped', limitLine);

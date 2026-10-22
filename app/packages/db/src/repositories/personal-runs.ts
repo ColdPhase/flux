@@ -72,6 +72,9 @@ export function personalRunRows(db: DbExecutor) {
 
   return {
     enablement,
+    async needsCurrentGithubFacts(runId: string) {
+      return (await db.execute(sql`SELECT e.id FROM assistant_reaction_events e JOIN assistant_reactions r ON r.id=e.reaction_id WHERE e.run_id=${runId} AND e.event='pr_ready' LIMIT 1`)).rows.length > 0;
+    },
 
     async insertEnablement(value: NewEnablement) {
       const [row] = await db.insert(e).values(value).onConflictDoNothing().returning();

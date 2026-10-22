@@ -101,7 +101,7 @@ The [limited visual review](caption-grouping-current/visual-review-limited.md) a
 [the current evidence folder](caption-grouping-current/). This reviewer had prior
 implementation context from preparing the wrapper, so this is explicitly **not a
 fresh-context visual acceptance gate**. It found a material visible failure:
-[offline WebKit](caption-grouping-current/offline-1440-full-1440x900-webkit.png)
+[offline WebKit](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/agents/evidence/348-message-files/caption-grouping-current/offline-1440-full-1440x900-webkit.png)
 shows the pending image as a grey/broken-image tile, while the caption starts far
 left of its photo. The equivalent Chromium offline capture also shows the alignment
 gap. Normal loaded photos have visible pixels; that does not discharge offline

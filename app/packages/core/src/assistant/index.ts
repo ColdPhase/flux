@@ -11,3 +11,4 @@ export { setMorningSummaryByAssistant, settleAssistantSummaries, startAssistantS
 export { clockIn, nothingToChange, resultOf } from './job-result.js';
 export { settleOne, settleOwnerRuns } from './job-settle.js';
 export { takeScheduleBlocks, type ScheduleRequest } from './schedule-block.js';
+export { createAssistantReactions, assistantReactionTick, reactionPrompt, type AssistantReactionRepository, type AssistantReactionUnitOfWork, type AssistantReactionPorts, type ReactionRecord, type ReactionEvent, type ReactionFacts } from './reactions.js';

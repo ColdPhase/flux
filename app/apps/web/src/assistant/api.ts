@@ -60,3 +60,7 @@ export const undoRunChanges = (runId: string) => request<AssistantRunUndone>(ass
 // Who has an assistant working in a conversation, for everyone who can read it: names only (AST-6 "Visible to everyone").
 export const getAssistantActivity = (conversationId: string, signal?: AbortSignal) =>
   request<AssistantActivity>(conversationAssistantActivityPath(conversationId), { signal });
+
+export const acceptSuggestion = (change: Pick<AssistantChange, 'id' | 'version'>) => request<AssistantChangeDecision>(assistantChangeActionPath(change.id, 'accept'), { method: 'POST', body: { expectedVersion: change.version } });
+
+export const dismissSuggestion = (change: Pick<AssistantChange, 'id' | 'version'>) => request<AssistantChangeDecision>(assistantChangeActionPath(change.id, 'dismiss'), { method: 'POST', body: { expectedVersion: change.version } });

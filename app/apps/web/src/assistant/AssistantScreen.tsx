@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { Link } from 'react-router';
-import { ASSISTANT_AREAS, type AssistantChange, aiConnectionLabel, assistantCanSentence, assistantSettingsPath, type AssistantAreaId, type AssistantSettings, type PersonalAssistantStatus, type UpdateAssistantSettings } from '@flux/contracts';
+import { ASSISTANT_AREAS, ASSISTANT_REACTION_EVENTS, assistantReactionsPath, type AssistantReactionRecent, type AssistantChange, aiConnectionLabel, assistantCanSentence, assistantSettingsPath, type AssistantAreaId, type AssistantSettings, type PersonalAssistantStatus, type UpdateAssistantSettings } from '@flux/contracts';
 import { ApiError, request } from '../api/client';
 import { SwitchRow } from '../app/SettingsHome';
 import { AgentTag, Button, Icon, Kreska, agentHue } from '../ui';
@@ -108,7 +108,7 @@ export function AssistantControls({ status, userId }: { status: PersonalAssistan
       </section>
       <p className="nset__note aset-screen__can" data-testid="assistant-can">{assistantCanSentence(settings.areas, settings.approvalMode)}</p>
       {error ? <p className="nset__error" role="alert"><Icon name="alert" size={14} />{error}</p> : null}
-      <RecentChanges />
+      <RecentChanges workspaceId={workspaceId} userId={userId} />
     </>
   );
 }
@@ -117,7 +117,14 @@ const MADE = new Set<AssistantChange['state']>(['applied', 'applied_after_wait',
 const sameDay = (iso: string) => new Date(iso).toDateString() === new Date().toDateString();
 
 /** Recent (AST-10.7): everything the assistant changed, newest first, each with its own Undo. */
-function RecentChanges() {
+function RecentChanges({ workspaceId, userId }: { workspaceId: string | null; userId: string }) {
+  const [background, setBackground] = useState<AssistantReactionRecent[]>([]);
+  useEffect(() => {
+    if (!workspaceId) return;
+    const controller = new AbortController();
+    request<{ items: AssistantReactionRecent[] }>(`${assistantReactionsPath(workspaceId, userId)}/history`, { signal: controller.signal }).then((result) => setBackground(result.items), () => undefined);
+    return () => controller.abort();
+  }, [workspaceId, userId]);
   const [items, setItems] = useState<AssistantChange[] | null>(null);
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState('');
@@ -134,12 +141,13 @@ function RecentChanges() {
   return (
     <details className="aset-recent">
       <summary>Recent · today: {today} {today === 1 ? 'change' : 'changes'}</summary>
+      {background.map((entry) => <p key={entry.id} className="sset-row__s">When {ASSISTANT_REACTION_EVENTS.find((event) => event.id === entry.name)?.label ?? 'your item changes'} · {entry.line || 'Working…'}</p>)}
       {items.length ? <ul className="aset-recent__list">{items.map((change) => (
         <li key={change.id}>
           <span className="aset-recent__t">{change.state === 'undone' ? 'Undone' : 'Done'}: {change.phrase}{change.objectTitle ? ` ${change.objectTitle}` : ''}</span>
           {notes[change.id] ? <span className="aset-recent__n" role="status">{notes[change.id]}</span> : null}
           {change.undoable ? <Button variant="link" busy={busy === change.id} onClick={() => void undo(change)}>Undo</Button> : null}
-        </li>))}</ul> : <p className="nset__note">Nothing yet.</p>}
+        </li>))}</ul> : background.length ? null : <p className="nset__note">Nothing yet.</p>}
     </details>
   );
 }

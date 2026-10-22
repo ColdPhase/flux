@@ -155,19 +155,24 @@ export function createNeedsYou(ports: NeedsYouPorts, now: () => Date = () => new
     }
     // Your assistant's undecided waiting changes, one question per request (F-027 AST-5.6).
     const runs = new Map<string, AssistantChange[]>();
-    for (const change of ports.assistant ? await ports.assistant.waiting(userId) : []) runs.set(change.runId, [...(runs.get(change.runId) ?? []), change]);
+    for (const change of ports.assistant ? await ports.assistant.waiting(userId) : []) { const key = change.owner?.id !== userId && change.sent ? `suggestion:${change.id}` : change.runId; runs.set(key, [...(runs.get(key) ?? []), change]); }
     if (runs.size) for (const [id, name] of await ports.access.projectNames([...new Set([...runs.values()].map((group) => group[0]!.projectId))])) projectNames.set(id, name);
     for (const [runId, group] of runs) {
       const head = group[0]!;
+      const suggestion = head.owner?.id !== userId && head.sent;
       const summary = assistantChangeSummary(group);
       items.push({
-        key: `assistant:${runId}`, kind: 'question', title: `Your assistant wants to ${summary}`,
-        detail: excerpt(group.map((change) => change.line).find(Boolean) ?? ''),
+        key: `assistant:${runId}`, kind: 'question', title: suggestion ? `${head.owner?.name ?? 'Someone'}'s assistant suggests: ${head.phrase}${head.objectTitle ? ` ${head.objectTitle}` : ''}` : `Your assistant wants to ${summary}`,
+        detail: suggestion ? `Drafted by ${head.owner?.name ?? 'Someone'}'s assistant` : excerpt(group.map((change) => change.line).find(Boolean) ?? ''),
         project: { id: head.projectId, name: projectNames.get(head.projectId) ?? 'Project' }, from: null, at: head.createdAt,
         url: `/projects/${head.projectId}/conversations/${head.conversationId}`, decision: null, blocked: null, reason: 'question', snoozeTask: null,
-        assistantChanges: { runId, verb: assistantBatchVerb(group), summary,
-          changes: group.map((change) => ({ id: change.id, version: change.version, phrase: change.phrase, objectTitle: change.objectTitle, line: change.line })) },
+        assistantChanges: { runId: head.runId, suggestion, verb: suggestion ? 'Accept' : assistantBatchVerb(group), summary,
+          changes: group.map((change) => ({ id: change.id, version: change.version, phrase: change.phrase, objectTitle: change.objectTitle, line: change.line, preview: change.preview })) },
       });
+    }
+    for (const note of await ports.assistant?.notes?.(userId) ?? []) {
+      const item = items.find((item) => item.key === `blocked:${note.objectId}` || note.notificationId && item.key === `note:${note.notificationId}`);
+      if (item) { item.assistantNote = note.note; item.assistantDraft = note.draft; if (note.draft && note.notificationId) item.url = `/inbox/${note.notificationId}`; }
     }
     return items.sort((a, b) => ORDER[a.kind] - ORDER[b.kind] || b.at.localeCompare(a.at));
   }

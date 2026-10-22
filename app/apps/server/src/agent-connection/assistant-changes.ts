@@ -35,7 +35,7 @@ export const isAssistantText = (value: unknown): value is AssistantText =>
   !!value && typeof value === 'object' && typeof (value as AssistantText).assistantText === 'string';
 
 /** A server-owned purpose that re-executes one saved change (never a client claim). */
-export interface AssistantApproval { changeId: string; runId: string; purpose: 'owner_approval' | 'owner_deferred_change'; decidedBy: string | null }
+export interface AssistantApproval { changeId: string; runId: string; purpose: 'owner_approval' | 'owner_deferred_change'; decidedBy: string | null; suggestion?: true }
 
 const stable = (value: unknown): unknown => Array.isArray(value) ? value.map(stable)
   : value && typeof value === 'object' ? Object.fromEntries(Object.entries(value as Record<string, unknown>).sort(([a], [b]) => a.localeCompare(b)).map(([k, v]) => [k, stable(v)]))
@@ -153,7 +153,7 @@ async function describe(tx: Transaction, operation: string, objectId: string | n
     }
     case 'map.thought.create': case 'map.link.create': {
       const map = objectId ? await rows.map(objectId) : null;
-      return { ...base, objectId: null, title: operation === 'map.thought.create' ? text(payload.text) : map?.title ?? '', undo: created(operation === 'map.thought.create' ? text(payload.text) : '') };
+      return { ...base, objectId: null, title: operation === 'map.thought.create' ? text(payload.text) : (await rows.thoughts([String(payload.fromId), String(payload.toId)])).map((thought) => thought.text.slice(0, 70)).join(' → ') || map?.title || '', undo: created(operation === 'map.thought.create' ? text(payload.text) : '') };
     }
     case 'map.thought.update': case 'map.thought.delete': {
       const [thought] = await rows.thoughts([String(payload.thoughtId)]);
@@ -202,11 +202,11 @@ async function describe(tx: Transaction, operation: string, objectId: string | n
 
 /** The run's change tools use the canonical native commands, as the assistant agent, in this one transaction. */
 function natives(tx: Transaction, session: ReturnType<typeof transactionEventSession>, runtime: AuthenticatedAgentRuntime, live: boolean,
-  commandId: string, operation: string, fingerprint: string, releases: Set<() => void>): NativeActions {
+  commandId: string, operation: string, fingerprint: string, releases: Set<() => void>, acceptedBy?: string): NativeActions {
   return { work: nativeWorkInEventSession(tx, session),
     maps: nativeSketchInEventSession(tx, session, { prepared: live, commandId, operation: `native-agent:${operation}`, fingerprint, retainUntil: (release) => releases.add(release) }),
     docs: nativeDocsInEventSession(tx, session), conversations: nativeConversationsInEventSession(tx, session),
-    transaction: tx, events: session, agent: { kind: 'agent', id: runtime.agentId }, runtime,
+    transaction: tx, events: session, agent: acceptedBy ? { kind: 'human', id: acceptedBy } : { kind: 'agent', id: runtime.agentId }, runtime,
     async mapCheckpoint(mapId) {
       const map = await sketchRows(tx).findSketch(mapId);
       if (!map) throw new Error('A changed map vanished inside its transaction');
@@ -256,7 +256,10 @@ async function currentAuthority(tx: Transaction, claims: FluxMcpClaims, projectI
     agentId = grant.connection.agentId; workspaceId = grant.connection.workspaceId;
     const actor = await loadActor({ kind: 'agent', id: agentId }, workspaceId, tx, { lock: true });
     if (!actor.active || actor.agent?.ownerUserId !== claims.ownerUserId) throw invalidated('Your assistant is no longer available');
-    const checked = await evaluateProject({ kind: 'agent', id: agentId }, 'project.write', projectId, tx, { lock: true });
+    const acting = approval.suggestion && approval.decidedBy ? { kind: 'human' as const, id: approval.decidedBy } : { kind: 'agent' as const, id: agentId };
+    if (approval.suggestion && (!prepared?.sentAt || prepared.waitReason !== 'outside_rights' || prepared.suggestToUserId !== approval.decidedBy))
+      throw invalidated('This suggestion is not addressed to you');
+    const checked = await evaluateProject(acting, 'project.write', projectId, tx, { lock: true });
     if (!checked.allowed || checked.project?.workspaceId !== workspaceId) throw invalidated('Your assistant can no longer change this project');
   }
   const policy = await lockAgentMcpPolicy(tx, claims.connectionId);
@@ -294,6 +297,8 @@ export function assistantChangeExecutor(db: Database, claims: FluxMcpClaims) {
     if (!call || !runId) throw new DomainError(403, 'AGENT_EXECUTION_UNAVAILABLE', 'This change needs its assistant run');
     // Anything outside the run's place has no tool to reach it (AST-5 case 8).
     if (claims.run && input.projectId !== claims.run.projectId) throw new DomainError(403, 'OUTSIDE_RUN_PLACE', 'An assistant run changes only the project it was asked in');
+    if (approval?.suggestion && !['work.create', 'work.update', 'doc.create', 'doc.update', 'map.thought.create', 'map.thought.update', 'map.thought.delete', 'map.link.create', 'map.link.delete'].includes(operation))
+      throw invalidated('This kind of change cannot be sent as a suggestion');
     const fingerprint = assistantCallFingerprint(call);
     const live = operation.startsWith('map.') && objectId !== null && await nativeMapRoomExists(db as DbExecutor, objectId);
     const releases = new Set<() => void>();
@@ -326,12 +331,17 @@ export function assistantChangeExecutor(db: Database, claims: FluxMcpClaims) {
         if (approval?.purpose === 'owner_deferred_change' && (prepared!.waitReason !== 'live_wiki' || operation !== 'doc.update'))
           throw new DomainError(409, 'ASSISTANT_CHANGE_UNAVAILABLE', 'Only a deferred page edit continues by itself');
         authority = await currentAuthority(tx, claims, input.projectId, call.tool, runRow, approval, prepared);
+        if (approval?.suggestion && operation.startsWith('map.')) {
+          const snapshot = await rows.lockedMapSnapshot(String(call.args.mapId));
+          if (!snapshot || snapshot !== prepared?.receipt?.suggestionSnapshot) throw new DomainError(409, 'ASSISTANT_CHANGE_STALE', 'Changed since you asked. Ask again');
+        }
         const ownerName = (await rows.names([claims.ownerUserId])).get(claims.ownerUserId) ?? 'your owner';
         described = await describe(tx, operation, objectId, (payload ?? {}) as Record<string, unknown>, claims.ownerUserId, authority.agentId);
         const target = described;
         const phrase = `${target.words.phrase} ${target.words.noun}`;
         if (!approval) {
-          const outcome = classifyAssistantChange({ mode: authority.settings.approvalMode, ownerCanWrite: authority.ownerCanWrite, removal: target.removal,
+          if (authority.run.reactionAction && ['tell', 'draft_reply', 'check_task'].includes(authority.run.reactionAction)) throw invalidated('This request can only read');
+          const outcome = classifyAssistantChange({ mode: authority.run.reactionAction?.startsWith('suggest_') ? 'ask' : authority.settings.approvalMode, ownerCanWrite: authority.ownerCanWrite, removal: target.removal,
             mine: target.mine, liveTypist: !!target.typist && operation === 'doc.update', reserved: await rows.reserved(runId), limit: authority.run.authority === 'owner_request' ? authority.settings.changesPerRun : Math.min(authority.settings.changesPerRun, ASSISTANT_CHANGE_LIMITS.backgroundChangesPerRun) });
           if (outcome.state === 'waiting') {
             const createdAt = new Date();
@@ -348,6 +358,7 @@ export function assistantChangeExecutor(db: Database, claims: FluxMcpClaims) {
               objectId: target.objectId, objectTitle: target.title, state: 'waiting', waitReason: outcome.reason, preparedCommand: call,
               policyVersion: authority.policyVersion, beforeVersion: target.beforeVersion, otherUserId: outcome.reason === 'live_wiki' ? target.typist!.id : outcome.reason === 'outside_rights' ? decider : target.maker,
               suggestToUserId: decider,
+              ...(outcome.reason === 'outside_rights' && operation.startsWith('map.') ? { receipt: { suggestionSnapshot: await rows.lockedMapSnapshot(String(call.args.mapId)) } } : {}),
               createdAt, expiresAt: new Date(createdAt.getTime() + ASSISTANT_CHANGE_LIMITS.expiryDays * 86_400_000) });
             await session.flushEvents();
             const text = outcome.reason === 'live_wiki' ? `I'll edit ${target.title} when ${target.typist!.name} finishes typing.`
@@ -357,12 +368,14 @@ export function assistantChangeExecutor(db: Database, claims: FluxMcpClaims) {
           }
         } else if (approval.purpose === 'owner_deferred_change' && authority.settings.approvalMode !== 'act') {
           throw new DomainError(409, 'ASSISTANT_NOW_ASKS', 'Your assistant now asks first');
-        } else if (approval.purpose === 'owner_approval' && !authority.ownerCanWrite) {
+        } else if (approval.purpose === 'owner_approval' && !approval.suggestion && !authority.ownerCanWrite) {
           throw invalidated('You can no longer change this. Ask again');
         }
-        const produced = await effect(natives(tx, session, authority.runtime, live, input.clientCommandId, operation, fingerprint, releases));
+        const produced = await effect(natives(tx, session, authority.runtime, live, input.clientCommandId, operation, fingerprint, releases, approval?.suggestion ? approval.decidedBy ?? undefined : undefined));
         // What the change really wrote (a redacted text differs from the call), so Undo compares with the truth.
-        let undo = target.undo;
+        // The accepted effect is a native human creation. Its existing creation-Undo contract excludes
+        // human-origin tasks; do not invent an AI origin or advertise an Undo that native commands refuse.
+        let undo = approval?.suggestion && operation === 'work.create' ? null : target.undo;
         if (undo?.plan.kind === 'fields' && objectId) {
           const fields = undo.plan.fields;
           const read: ((key: string) => unknown) | null = operation === 'work.update' ? await rows.work(objectId).then((work) => work && ((key: string) => workField(work, key)))
@@ -378,7 +391,7 @@ export function assistantChangeExecutor(db: Database, claims: FluxMcpClaims) {
         }
         const receipt = { value: produced.value, postconditions: produced.postconditions, ...(undo ? { undo } : {}), authority: approval?.purpose ?? 'owner_request', runId,
           engine: authority.run.engine, payer: authority.payer, ownerUserId: claims.ownerUserId, agentId: authority.agentId, assistantConnectionId: claims.connectionId, preparedBy: authority.agentId,
-          ...(approval?.decidedBy ? { approvedBy: approval.decidedBy } : {}) } as unknown as Record<string, unknown>;
+          ...(approval?.decidedBy ? { approvedBy: approval.decidedBy } : {}), ...(approval?.suggestion ? { draftedByAssistant: authority.agentId, acceptedBy: approval.decidedBy } : {}) } as unknown as Record<string, unknown>;
         const after = afterVersion(produced.postconditions);
         const createdId = producedId(produced.value as Record<string, unknown>);
         if (prepared) {

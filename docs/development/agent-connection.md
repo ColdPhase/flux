@@ -729,7 +729,7 @@ domain dispatch and delivery fences. Exact admission, version refusals (missing,
 conflicting and modern-format claims), notification and batch/mixed-array refusals
 are covered by real OAuth/HTTP tests in `app/tests/app/mcp-protocol.test.ts`.
 
-Evidence: [dated author-run results](evidence/460/results.json) are **recorded on an
+Evidence: [dated author-run results](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/development/evidence/460/results.json) are **recorded on an
 earlier head, `2175d249`** (69 checks per era, 13 native checks per mode, two owners
 and three independent connections). They are not regenerated for the current head.
 On the current head `a281b9ed`, `scripts/check_mcp_clients.sh` passed on 2026-10-15:

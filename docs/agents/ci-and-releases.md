@@ -50,7 +50,7 @@ then passed its explicit main dispatch. Ruleset `24053383` now requires both
 `Agent setup` and `Application validation` from observed GitHub Actions integration
 `15368`, with strict current-base validation. Every prior review/Code Owner,
 thread-resolution, history, deletion/push and no-bypass rule is preserved.
-[Source-pinned rollout evidence](evidence/143-required-application-validation/README.md)
+[Source-pinned rollout evidence](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/agents/evidence/143-required-application-validation/README.md)
 includes read-back/effective rules and a real failing portable test whose normal
 merge was explicitly rejected. The temporary fixture is removed in the corrected
 head; that head's passing run and eligible independent documentation review are

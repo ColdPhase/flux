@@ -70,7 +70,7 @@ canvas actually has. A narrowed desktop canvas, for example with Details docked,
   the card padding. Inline links in cards and messages are not primary targets. Neither are
   compact header state links or the map's task-count pill, which already has a pseudo-element
   extension. Those links are listed with their measured sizes in the
-  [slice evidence](../agents/evidence/151-adaptive-matrix/README.md#remaining-for-151) and left for
+  [slice evidence](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/agents/evidence/151-adaptive-matrix/README.md) and left for
   #136 design review.
 - **`hover: none`** (or ≤ 680 px): Enter adds a line and the send button sends (#189).
 - **`hover: hover`**: the Reply action under a message appears on hover or focus.
@@ -125,7 +125,7 @@ remain reachable. Own messages stay on the right and other people's on the left.
 
 [`app/tests/ui/test_adaptive_matrix.py`](../../app/tests/ui/test_adaptive_matrix.py) runs in
 `./scripts/check_ui.sh` on the shared fixture. Its record for the current head is
-[`docs/agents/evidence/151-adaptive-rest`](../agents/evidence/151-adaptive-rest/README.md). It covers:
+[`docs/agents/evidence/151-adaptive-rest`](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/agents/evidence/151-adaptive-rest/README.md). It covers:
 
 - the same journey (Conversation, its thread, Map, List, Tasks, a task in Details, Wiki, Agents,
   back) at all 23 starting fixtures of

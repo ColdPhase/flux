@@ -71,8 +71,8 @@ and transient feedback. They are reference observations, not product screenshots
 
 ### Desktop session
 
-![Local live-session reference at 1440 pixels wide: shared map, participant panel and session controls.](images/desktop-session.png)
+![Local live-session reference at 1440 pixels wide: shared map, participant panel and session controls.](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/design/references/live/images/desktop-session.png)
 
 ### Phone session
 
-![Local live-session reference at 390 pixels wide: map and fixed session controls, with the extended participant panel below.](images/phone-session.png)
+![Local live-session reference at 390 pixels wide: map and fixed session controls, with the extended participant panel below.](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/design/references/live/images/phone-session.png)

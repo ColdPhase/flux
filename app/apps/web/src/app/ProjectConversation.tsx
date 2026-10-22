@@ -145,6 +145,17 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
   const helperComposer = useComposerDraft(me.user.id, project.id, `helper:${conversation?.id ?? 'new'}`);
   const composer = asking ? helperComposer : publicComposer;
   const draft = composer.draft.body;
+  const replyLocation = useLocation();
+  const preparedReply = (replyLocation.state as { assistantReplyDraft?: { id: string; ownerId: string; body: string; conversationId: string } } | null)?.assistantReplyDraft;
+  const assistantDraftLabel = !!preparedReply && preparedReply.ownerId === me.user.id && preparedReply.conversationId === conversation?.id && publicComposer.draft.body === preparedReply.body;
+  const loadedReply = useRef<string | null>(null);
+  useEffect(() => {
+    if (!preparedReply || preparedReply.ownerId !== me.user.id || preparedReply.conversationId !== conversation?.id || loadedReply.current === preparedReply.id) return;
+    loadedReply.current = preparedReply.id;
+    // Keep an existing human draft. The assistant's words are offered alongside it, never silently overwrite it.
+    if (!publicComposer.draft.body.trim()) publicComposer.setBody(preparedReply.body);
+    document.getElementById(composerId)?.focus();
+  }, [preparedReply, conversation?.id, publicComposer, composerId, me.user.id]);
   // "@" and "/" in the composer (F-026 S5): the caret decides which menu shows, if any.
   const [caret, setCaret] = useState(0);
   const [menuIndex, setMenuIndex] = useState(0);
@@ -778,6 +789,8 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
       </div>}
       {writable && !asking ? <ComposerFiles state={publicComposer} attach="none" /> : null}
       {/* A tap on the card's empty space goes to the field, as in a messenger (#266 PF-3). */}
+      {writable && assistantDraftLabel ? <p className="assistant-answer__asked">Drafted by your assistant</p> : null}
+      {writable && preparedReply && preparedReply.ownerId === me.user.id && preparedReply.conversationId === conversation?.id && !assistantDraftLabel ? <details className="project-convo__hint"><summary>Review the reply drafted by your assistant</summary><p style={{ whiteSpace: 'pre-wrap' }}>{preparedReply.body}</p><Button variant="secondary" onClick={() => publicComposer.setBody(preparedReply.body)}>Use this draft</Button></details> : null}
       {writable ? <ComposerBox id={composerId} label={asking ? 'Ask your assistant' : conversation ? 'Reply' : 'Write a message'} value={draft}
         placeholder={asking ? 'Ask your assistant…' : conversation ? 'Reply in thread…' : 'Message · @ mention · / actions'}
         onChange={(value, position) => changeDraft(value, position)} onSelect={setCaret} onBlur={typing.stop} onKeyDown={onComposerKey} disabled={busy || askBusy}

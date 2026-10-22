@@ -117,12 +117,12 @@ flip pattern. Runs 8 and 10 pass after the fix, and run 9 failed on the same fli
 Captured by run 6 (same journey code as the tested head; the later changes are the font wait and
 text in the gap and cap lists). Light and dark captures named `-dark`:
 
-- [320×568 conversation](adapt-320x568-conversation.png)
-- [390×844 conversation](adapt-390x844-conversation.png)
-- [390×844 dark conversation](adapt-390x844-dark-conversation.png)
-- [3440×1440 tasks](adapt-3440x1440-tasks.png)
-- [3440×1440 dark tasks](adapt-3440x1440-dark-tasks.png)
-- [3840×2160 map](adapt-3840x2160-map.png)
+- [320×568 conversation](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/agents/evidence/151-adaptive-rest/adapt-320x568-conversation.png)
+- [390×844 conversation](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/agents/evidence/151-adaptive-rest/adapt-390x844-conversation.png)
+- [390×844 dark conversation](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/agents/evidence/151-adaptive-rest/adapt-390x844-dark-conversation.png)
+- [3440×1440 tasks](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/agents/evidence/151-adaptive-rest/adapt-3440x1440-tasks.png)
+- [3440×1440 dark tasks](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/agents/evidence/151-adaptive-rest/adapt-3440x1440-dark-tasks.png)
+- [3840×2160 map](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/agents/evidence/151-adaptive-rest/adapt-3840x2160-map.png)
 
 The other captures of the run are not committed (size guard for `docs/`).
 
