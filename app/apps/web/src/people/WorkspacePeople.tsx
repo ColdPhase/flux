@@ -111,7 +111,7 @@ export function WorkspacePeople({ workspaceId, onBack }: { workspaceId: string; 
             <li className="people__item"><div className="people__row"><Avatar name={me.user.name} size="md" tone="me" /><span className="people__who"><b>{me.user.name} (you)</b><span>{me.user.email}</span></span><span className="people__role">{ROLE_LABEL[myRole]}</span></div></li>
           </ul>
         )}
-        <p className="people__done" role="status">{done ? <><Icon name="check" size={13} />{done}</> : null}</p>
+        <p className="people__ai-status" role="status">{done ? <><Icon name="check" size={13} />{done}</> : null}</p>
         {!manager ? (
           <p className="ov-note">{members
             ? `Only owners and admins add people or change roles in ${workspace.name}.`
@@ -392,7 +392,7 @@ function AiRow({ workspace, manager, onChanged }: { workspace: Workspace; manage
           </div>
         </div>
       ) : null}
-      <p className="people__done" role="status">{status ? <><Icon name="check" size={13} />{status}</> : null}</p>
+      <p className="people__ai-status" role="status">{status ? <><Icon name="check" size={13} />{status}</> : null}</p>
       {problem ? <p className="people__notice" role="alert"><Icon name="alert" size={13} />{problem}</p> : null}
     </section>
   );

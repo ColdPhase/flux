@@ -77,3 +77,6 @@
 .people__ai-button.ui-btn { flex: none; min-width: 7.5rem; justify-content: center; color: var(--t1); }
 .people__ai .people__confirm { margin-top: 10px; }
 @media (pointer: coarse) { .people__ai-button.ui-btn { min-height: 44px; } }
+.people__ai-status { display: flex; align-items: flex-start; gap: 6px; margin: 8px 0 0; font-size: var(--fs-sm) !important; color: var(--t2) !important; }
+.people__ai-status:empty { display: none; }
+.people__ai-status svg { flex: none; margin-top: 2px; color: var(--t1); }
