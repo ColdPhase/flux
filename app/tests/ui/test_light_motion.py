@@ -606,12 +606,15 @@ class LightMotionJourney(unittest.TestCase):
           const describe = (el) => el ? el.tagName.toLowerCase() + '.' + String(el.className).split(/\\s+/).join('.') : null;
           const link = [...document.querySelectorAll('#details a')].find((a) => a.textContent.includes('Should the first sensors'));
           link.click();
-          const during = [];
-          for (let frame = 0; frame < 14; frame++) {
+          const during = []; let seen = false;
+          // Until the page beneath has switched (a view loads) and its picture has gone.
+          for (let frame = 0; frame < 300 && !(seen && !during[during.length - 1].picture); frame++) {
             await new Promise((resolve) => requestAnimationFrame(resolve));
             const close = document.querySelector('#details .ui-panel__close'); const at = close.getBoundingClientRect();
             const hit = document.elementFromPoint(at.left + at.width / 2, at.top + at.height / 2);
-            during.push({ picture: [...document.body.children].some((el) => el.hasAttribute('data-dissolve')), ok: !!hit && (hit === close || close.contains(hit)), hit: describe(hit) });
+            const picture = [...document.body.children].some((el) => el.hasAttribute('data-dissolve') && el.getAttribute('data-dissolve').startsWith('/'));
+            seen = seen || picture;
+            during.push({ picture, ok: !!hit && (hit === close || close.contains(hit)), hit: describe(hit) });
           }
           return during;
         }""")
