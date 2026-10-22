@@ -75,3 +75,14 @@ export function routeView(pathname: string): string {
   if (place && !path.startsWith('/dm/new') && !path.startsWith('/projects/new')) return `/${place[1]}`;
   return path;
 }
+
+/**
+ * Which way the person goes from one view to another (#593 AC-3): to a view further along the project's row (Conversation, Map,
+ * Tasks, Wiki, Agents) is forward, to one before it is back. Between places or Settings sections, which have no row, it is the
+ * history that says (Back and Forward are back), otherwise forward. The old content leaves the other way: forward, towards the
+ * left, so Back reverses it.
+ */
+export function viewDirection(from: string, to: string, history: boolean): 'forward' | 'back' {
+  const moved = viewRank(to) - viewRank(from);
+  return moved > 0 ? 'forward' : moved < 0 ? 'back' : history ? 'back' : 'forward';
+}

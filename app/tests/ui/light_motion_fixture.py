@@ -27,6 +27,7 @@ RECORDER = r"""
   const original = Element.prototype.animate;
   Element.prototype.animate = function (frames, options) {
     const animation = original.call(this, frames, options);
+    (window.__animations || (window.__animations = [])).push(animation);
     try {
       const list = Array.isArray(frames) ? frames : [];
       const props = new Set();

@@ -11,7 +11,7 @@ export { installPress } from './press';
 export { useRowMotion } from './rowMotion';
 export { DetentSheet, SheetGrabber } from './DetentSheet';
 export { Dissolve } from './Dissolve';
-export { installViewTransitionGuard, markDissolving, shouldDissolve, viewDirection } from './viewTransition';
+export { viewDirection } from './motion-rules';
 export { applyStoredReduceMotion, prefersReducedMotion, setReduceMotion, useReduceMotion } from './motion-preference';
 export { Drawer, Overlay, Sheet, focusableIn, trapTab } from './Overlay';
 export { AgentIdentity, AgentTag } from './AgentIdentity';

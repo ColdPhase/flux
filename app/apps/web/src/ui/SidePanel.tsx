@@ -55,9 +55,8 @@ function usePanelSwap(body: RefObject<HTMLElement | null>, enabled: boolean, ope
     const direction = depth > before.depth ? 'forward' : depth < before.depth ? 'back' : travelDirection();
     const shift = parseFloat(token('--shift-panel')) || 16;
     const enter = (child: Element) => void settle(child, { opacity: 1, transform: 'none' }, ms, '--ease-out', { from: { opacity: 0, transform: `translateX(${direction === 'back' ? -shift : shift}px)` } });
-    // What is dissolving out (Dissolve's pictures of the old content) is not new content.
-    for (const child of node.children) if (!child.hasAttribute('data-dissolve')) enter(child);
-    const late = new MutationObserver((records) => { for (const record of records) for (const added of record.addedNodes) if (added instanceof Element && !added.hasAttribute('data-dissolve')) enter(added); });
+    for (const child of node.children) enter(child);
+    const late = new MutationObserver((records) => { for (const record of records) for (const added of record.addedNodes) if (added instanceof Element) enter(added); });
     late.observe(node, { childList: true });
     const stop = window.setTimeout(() => late.disconnect(), 400);
     return () => { window.clearTimeout(stop); late.disconnect(); };
@@ -104,7 +103,7 @@ function PanelContent({ title, titleId, closeLabel, back, chip, context, onClose
         <IconButton icon="x" label={closeLabel ?? `Close ${title.toLowerCase()}`} data-tip="Close · Esc" onClick={onClose} className="ui-panel__close" />
       </div>
       {context}
-      <div className="ui-panel__body" ref={bodyRef} tabIndex={-1}><Dissolve id={contentKey} depth={depth} host={bodyRef}>{children}</Dissolve></div>
+      <div className="ui-panel__body" ref={bodyRef} tabIndex={-1}><Dissolve id={contentKey} depth={depth} host={bodyRef} dress=".ui-panel" shift="--shift-panel" time="--dur-out">{children}</Dissolve></div>
     </>
   );
 }

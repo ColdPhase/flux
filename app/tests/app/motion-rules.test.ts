@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { arrivalShouldAnimate, arrivals, cssTimeToMs, loopShouldRun, newBelowText, routeView } from '../../apps/web/src/ui/motion-rules.js';
+import { arrivalShouldAnimate, arrivals, cssTimeToMs, loopShouldRun, newBelowText, routeView, viewDirection } from '../../apps/web/src/ui/motion-rules.js';
 
 test('only entries after the newest one already shown are arrivals (#155 UI116-5)', () => {
   // The first render is restored history: nothing arrives.
@@ -74,4 +74,18 @@ test('a view switch is a different view; a thread, a page or a sketch opened ins
   assert.notEqual(routeView('/dm'), routeView('/dm/new'));
   assert.notEqual(routeView('/projects'), routeView('/projects/new'));
   assert.equal(routeView('/materials/m1'), routeView('/materials/m1/versions/2'));
+});
+
+test('the way a view switch travels follows the project row, and Back reverses it (#593 AC-3)', () => {
+  // Conversation, Map, Tasks, Wiki, Agents in the tabs' order: further along is forward, before is back.
+  assert.equal(viewDirection('/projects/p1', '/projects/p1/tasks', false), 'forward');
+  assert.equal(viewDirection('/projects/p1/tasks', '/projects/p1', false), 'back');
+  assert.equal(viewDirection('/projects/p1/map', '/projects/p1/docs', false), 'forward');
+  assert.equal(viewDirection('/projects/p1/agents', '/projects/p1/map', false), 'back');
+  // Places and Settings sections have no row: the history decides.
+  assert.equal(viewDirection('/inbox', '/search', false), 'forward');
+  assert.equal(viewDirection('/search', '/inbox', true), 'back');
+  assert.equal(viewDirection('/settings', '/settings/appearance', false), 'forward');
+  // The row beats the history: going to a view further along is forward even by the browser's Forward.
+  assert.equal(viewDirection('/projects/p1', '/projects/p1/tasks', true), 'forward');
 });

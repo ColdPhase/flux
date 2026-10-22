@@ -44,6 +44,15 @@ export function cancelMotion(el: Element | null, subtree = false) {
   el?.getAnimations({ subtree }).filter(ours).forEach((animation) => animation.cancel());
 }
 
+// Transient animations of ours that `document.getAnimations()` may not list: those on elements inside a shadow root (the pictures
+// of what was replaced, Dissolve.tsx) are not in every engine's list, and the hidden-page guard must still land them.
+const tracked = new Set<Animation>();
+export function track(animation: Animation) {
+  tracked.add(animation);
+  const done = () => { tracked.delete(animation); };
+  animation.finished.then(done, done);
+}
+
 /** Runs a Web Animation and resolves when it ends (or at once when motion is off). */
 export function play(el: Element | null, frames: Keyframe[], ms: number, easing: Easing, options: KeyframeAnimationOptions = {}): Promise<Animation | null> {
   if (!el || !ms || !motionAllowed() || typeof el.animate !== 'function') return Promise.resolve(null);
@@ -245,12 +254,12 @@ function placeHighlight(box: HTMLElement | null, mark: HTMLElement | null, order
 
 /**
  * Motion pauses while the page is hidden (#593 AC-6). A looping animation is paused and resumed when the page is shown again;
- * a transient one of ours, a menu's or popover's CSS entry or exit (`ui-pop-*`) and a view's dissolve (`flux-vt-*` and the browser's own `-ua-view-transition-*`) land on their end state at once, so nothing
+ * a transient one of ours and a menu's or popover's CSS entry or exit (`ui-pop-*`) land on their end state at once, so nothing
  * is half-finished on return; a press in flight is let go. Installed once, before the first render.
  */
 let guarded = false;
-/** The page's own transient CSS motion: a menu's entry or exit (`ui-pop-*`, ui.css) and a view's dissolve (`flux-vt-*`, ui.css). */
-const endsWhenHidden = (animation: Animation) => typeof CSSAnimation !== 'undefined' && animation instanceof CSSAnimation && /^(ui-pop|flux-vt|-ua-view-transition)/.test(animation.animationName);
+/** The page's own transient CSS motion: a menu's entry or exit (`ui-pop-*`, ui.css). */
+const endsWhenHidden = (animation: Animation) => typeof CSSAnimation !== 'undefined' && animation instanceof CSSAnimation && /^ui-pop/.test(animation.animationName);
 export function installMotionGuards() {
   if (guarded || typeof document === 'undefined') return;
   guarded = true;
@@ -258,7 +267,7 @@ export function installMotionGuards() {
   const paused = new Set<Animation>();
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') {
-      for (const animation of document.getAnimations()) {
+      for (const animation of new Set([...document.getAnimations(), ...tracked])) {
         // However far along, and whether running or held at a frame.
         if (animation.playState === 'finished' || animation.playState === 'idle') continue;
         if (animation.id === PRESS_ID) { animation.cancel(); continue; }

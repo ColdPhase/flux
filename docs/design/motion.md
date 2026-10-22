@@ -23,26 +23,24 @@ Under `prefers-reduced-motion: reduce` and Settings → Appearance → Reduce mo
 
 - Only `opacity` and `transform` animate. A row's height animates only to grow it in or collapse it (`rowMotion.ts`).
 - A control never changes place (Spokój rule 7). A switch of view or place and a change of a panel's content are old-to-new
-  crossfades: the outgoing content is kept, fades out over the new content and travels a few pixels in the direction of travel
-  (a view to the right of the last is forward, so Back out of it reverses; a panel's history depth says the same for "‹ back").
-  The new content is in place from the first frame and never moves, and the header, sidebar and tab bar (and a panel's shell,
-  head and controls) never move. The route-progress line lies over the work (it takes no room), so nothing is pushed down
-  while the next view loads. Nothing in the outgoing content can be reached, focused or heard, and it takes no pointer input,
-  so the new content works from the first frame.
-  - **Views and places** use the View Transitions API (`ui/viewTransition.ts`, asked for in `router.tsx`, drawn by `:root[data-vt]`
-    rules in `ui/ui.css`): the browser holds a picture of the old content area in its own layer, outside the document, so nothing
-    answers a selector twice. The page outside the content area is not in the transition. The browser holds rendering and hit
-    testing for the frame or two in which it takes its picture of the old page; from then on the live page answers. Two
-    dissolves never overlap (a second switch swaps), and a skipped transition is quiet (`installViewTransitionGuard`). Where the API is missing (an engine the application does not support yet) the new content fades
-    in instead; under reduced motion the view just swaps.
-  - **A panel's content** uses `ui/Dissolve.tsx`: a deep copy of the outgoing content, without ids, `inert` and `aria-hidden`, lies
-    over the panel's body for `--dur-out` while the new content slides in (`usePanelSwap`). The copy is a layer of its own on the page
-    (dressed in empty, box-less copies of the panel's ancestors so the same selectors style it), not a child of the panel: a
-    query scoped to the panel (`#details .wd-eyebrow`) finds the new content only, never two of it.
+  crossfades (`ui/Dissolve.tsx`): the new content is put in one commit, live and in place from the first frame; the outgoing content
+  is kept as an inert picture of itself over it for `--dur-out` (a panel) or `--dur-view` (a view), fades out and travels a few
+  pixels in the direction of travel (a view to the right of the last is forward, so Back out of it reverses; a panel's history
+  depth says the same for "‹ back"). The header, sidebar and tab bar (and a panel's shell, head and controls) are not in it and
+  never move; the route-progress line lies over the work (it takes no room), so nothing is pushed down while the next view loads.
+  The picture is a deep copy without ids, `inert` and `aria-hidden`, taking no pointer input, so the new content works from the
+  first frame. It is not part of the page's own tree: it is a layer of its own at the end of `body`, inside a closed shadow root
+  that wears the page's style sheets, dressed in empty, box-less copies of the host's ancestors so the same selectors style it.
+  No query of the page (a class, a text, a role, `#details .wd-eyebrow`) can find a second copy of what is on show. Its one
+  difference from the original: the page's `:root[...]` rules do not reach into it (a few shadows and fills for the length of a
+  fade). Scroll positions in it are copied, so the old content does not jump. This is the CSS path the issue allows
+  ("the View Transitions API where supported, otherwise CSS"); the browser's API was tried and not kept: it holds rendering and hit
+  testing while it takes its picture, defers the DOM update by a frame or two (so a navigation or click right after another lands on
+  the stale page), and its skipped-transition rejections surfaced as uncaught page errors in WebKit and Chromium alike.
 - Nothing moves on its own on first load (`markMotionReady`, a quarter of a second after the shell has committed and
   painted; motion that answers the person's own input still runs), while the page is hidden or under reduced motion.
-  `installMotionGuards` lands every transient animation on its end state when the page is hidden (the helpers' own, a menu's
-  `ui-pop-*` entry or exit, a view's `flux-vt-*` dissolve), lets go of a press in flight (the press's own animation, `PRESS_ID`) and pauses loops.
+  `installMotionGuards` lands every transient animation on its end state when the page is hidden (the helpers' own, which
+  include the pictures' fade, and a menu's `ui-pop-*` entry or exit), lets go of a press in flight (the press's own animation, `PRESS_ID`) and pauses loops.
 - Exit never delays focus or the next action: focus returns in the same task as the close, the leaving surface is `inert`.
 - Closing while opening, or opening while closing, continues from where the surface is (`settle`), so it settles on the
   latest state and never snaps.
@@ -64,11 +62,11 @@ Under `prefers-reduced-motion: reduce` and Settings → Appearance → Reduce mo
 | What | Where |
 | --- | --- |
 | Dialogs, ⌘K, the drawer, sheets and their scrim | `ui/Overlay.tsx` (`settle`) |
-| The outgoing content of a panel | `ui/Dissolve.tsx` (used by `ui/SidePanel.tsx`) |
+| The outgoing content of a panel or a view | `ui/Dissolve.tsx` (around the panel's body in `ui/SidePanel.tsx` and around the routes in `app/AppLayout.tsx`) |
 | The detail panel and what it shows; direction of travel from the history depth | `ui/SidePanel.tsx` (`usePanelSwap`, `contentKey`, `depth`) |
 | Menus and popovers | `ui/pop.ts` (`usePop`) and `[data-pop]` in `ui/ui.css`; the composer's menu (`app/ComposerMenu.tsx`) and a message's (`work/messageActions.tsx`) keep their last content while they leave |
 | Toasts | `ui/Toast.tsx` |
-| View and place switches | `router.tsx` (asks for the transition), `ui/viewTransition.ts`, `:root[data-vt]` in `ui/ui.css`, `routeView` and `viewRank` in `ui/motion-rules.ts` (the fade-in fallback is in `app/AppLayout.tsx`) |
+| View and place switches | `Dissolve` around the routes in `app/AppLayout.tsx`; `routeView`, `viewRank` and `viewDirection` in `ui/motion-rules.ts` |
 | State changes | `ui/StatusGlyph.tsx`, `ui/Morph.tsx` (`useMorph`) |
 | Rows that come, go and move | `ui/rowMotion.ts` (`useRowMotion`) |
 | The press | `ui/press.ts` (`installPress`) |
