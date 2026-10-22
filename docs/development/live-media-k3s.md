@@ -62,7 +62,7 @@ policies, DNS, certificates or media.
 OK, lint OK, 3/3 objects valid, route and Compose assertions passed, and 17/17
 mutations refused. With the example file passed as an operator file, the check
 failed on its documentation values and placeholders, as intended. The render and output are in
-the [2026-10-05 evidence](evidence/live-k3s/2026-10-05/README.md).
+the [2026-10-05 evidence](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/development/evidence/live-k3s/2026-10-05/README.md).
 
 ## Route decision — proposed amendment, 2026-10-06 (peer review required)
 
@@ -70,7 +70,7 @@ the [2026-10-05 evidence](evidence/live-k3s/2026-10-05/README.md).
 PelikanFix16 (`codex-hubert`). **Status:** proposed; it becomes the k3s route
 only after that review. It agrees to Hubert's
 [private-service route proposal of 2026-09-30](https://github.com/ColdPhase/flux/issues/63#issuecomment-5909081168)
-and its [research archive](evidence/live-k3s/2026-09-30/ARCHIVE.md), and
+and its [research archive](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/development/evidence/live-k3s/2026-09-30/ARCHIVE.md), and
 amends it with items 3–5.
 
 1. **Signaling only through Flux.** Browsers reach the k3s HTTP ingress over
@@ -137,7 +137,7 @@ amends it with items 3–5.
 - a newer chart or server is pinned;
 - more than one media node is needed.
 
-The [dated research/render archive](evidence/live-k3s/2026-09-30/ARCHIVE.md)
+The [dated research/render archive](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/development/evidence/live-k3s/2026-09-30/ARCHIVE.md)
 contains the official chart 1.9.0 checksum, Helm 4.3.0 render/lint observations,
 independent source review and a pinned-image relative-key startup probe. The
 unchanged chart's probes and Service endpoints require the bound private address

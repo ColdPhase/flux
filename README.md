@@ -44,11 +44,15 @@ reference for every UI change.
 Prerequisites: Git and Docker Engine (or Docker Desktop) with Compose. No host Node.js or PostgreSQL.
 
 ```sh
-git clone https://github.com/ColdPhase/flux.git
+git clone --depth 1 https://github.com/ColdPhase/flux.git
 cd flux
 ./flux up      # creates docker/.env with random secrets once, builds, migrates, starts, prints the URL
 ./flux demo    # optional: sample workspace, project, conversation and note; prints two logins
 ```
+
+This shallow clone skips older commits and their review captures, which remain
+available through the [evidence archive](docs/agents/evidence/README.md). Run
+`git fetch --unshallow` when you need the full project history.
 
 <p align="center"><img src="docs/assets/demo/flux-demo.gif" width="88%" alt="The core journey on the ./flux demo data: Home shows what changed since Ada left, with Jonas's question as her next step; it opens the project conversation; the Map tab shows the shared sketch; one action turns a message into a task; a decision is proposed from a message with its reason, accepted, and shown under that message."></p>
 

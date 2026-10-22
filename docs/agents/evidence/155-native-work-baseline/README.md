@@ -67,11 +67,11 @@ unreadable collection response is hidden in a passing count.
 
 Both profiles render1000 work rows/1013 total rows. Current DOM element counts
 are9346 desktop and9260 narrow.
-The [single3840×2160 observation](native-work-wide.png) also renders all1000 work
+The [single3840×2160 observation](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/agents/evidence/155-native-work-baseline/native-work-wide.png) also renders all1000 work
 rows, without horizontal document overflow. It is neither physical4K proof nor
 a200-sample wide performance distribution. Desktop and narrow screenshots use
 the same actual native fixture:
-[desktop](native-work-desktop.png), [narrow](native-work-phone-cpu4.png).
+[desktop](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/agents/evidence/155-native-work-baseline/native-work-desktop.png), [narrow](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/agents/evidence/155-native-work-baseline/native-work-phone-cpu4.png).
 
 The native Details of a deep blocked work object opens correctly, but independently
 reloads all1000 work through another12 collection calls/836,816 decoded bytes.

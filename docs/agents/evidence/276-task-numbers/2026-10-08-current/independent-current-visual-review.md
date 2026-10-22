@@ -8,15 +8,15 @@ Brief: współtwórca projektu ma szybko rozpoznać pełnego autora, numer i tyt
 
 | Obraz | Silnik | Viewport CSS / DPR | Motyw / tekst |
 | --- | --- | --- | --- |
-| [Desktop](task-announcements-desktop.png) | Chromium | 1440×900 / 1 | jasny / domyślny |
-| [320](task-announcements-phone-320.png) | Chromium | 320×640 / 3 | jasny / domyślny |
-| [320 WebKit](task-announcements-phone-320-webkit.png) | WebKit | 320×640 / 3 | jasny / domyślny |
-| [320 tekst 200%](task-announcements-phone-320-text200.png) | Chromium | 320×640 / 3 | jasny / root 200% |
-| [320 tekst 200% WebKit](task-announcements-phone-320-text200-webkit.png) | WebKit | 320×640 / 3 | jasny / root 200% |
-| [390 ciemny](task-announcements-phone-390-dark.png) | Chromium | 390×844 / 3 | ciemny / domyślny |
-| [390 ciemny WebKit](task-announcements-phone-390-dark-webkit.png) | WebKit | 390×844 / 3 | ciemny / domyślny |
-| [390 ciemny tekst 200%](task-announcements-phone-390-dark-text200.png) | Chromium | 390×844 / 3 | ciemny / root 200% |
-| [390 ciemny tekst 200% WebKit](task-announcements-phone-390-dark-text200-webkit.png) | WebKit | 390×844 / 3 | ciemny / root 200% |
+| [Desktop](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/agents/evidence/276-task-numbers/2026-10-08-current/task-announcements-desktop.png) | Chromium | 1440×900 / 1 | jasny / domyślny |
+| [320](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/agents/evidence/276-task-numbers/2026-10-08-current/task-announcements-phone-320.png) | Chromium | 320×640 / 3 | jasny / domyślny |
+| [320 WebKit](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/agents/evidence/276-task-numbers/2026-10-08-current/task-announcements-phone-320-webkit.png) | WebKit | 320×640 / 3 | jasny / domyślny |
+| [320 tekst 200%](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/agents/evidence/276-task-numbers/2026-10-08-current/task-announcements-phone-320-text200.png) | Chromium | 320×640 / 3 | jasny / root 200% |
+| [320 tekst 200% WebKit](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/agents/evidence/276-task-numbers/2026-10-08-current/task-announcements-phone-320-text200-webkit.png) | WebKit | 320×640 / 3 | jasny / root 200% |
+| [390 ciemny](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/agents/evidence/276-task-numbers/2026-10-08-current/task-announcements-phone-390-dark.png) | Chromium | 390×844 / 3 | ciemny / domyślny |
+| [390 ciemny WebKit](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/agents/evidence/276-task-numbers/2026-10-08-current/task-announcements-phone-390-dark-webkit.png) | WebKit | 390×844 / 3 | ciemny / domyślny |
+| [390 ciemny tekst 200%](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/agents/evidence/276-task-numbers/2026-10-08-current/task-announcements-phone-390-dark-text200.png) | Chromium | 390×844 / 3 | ciemny / root 200% |
+| [390 ciemny tekst 200% WebKit](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/agents/evidence/276-task-numbers/2026-10-08-current/task-announcements-phone-390-dark-text200-webkit.png) | WebKit | 390×844 / 3 | ciemny / root 200% |
 
 Zoom przeglądarki: domyślne 100%. Telefony: mobile/touch. „Root 200%” oznacza zmianę rozmiaru fontu korzenia dokumentu; nie oznacza zoomu przeglądarki, ustawienia tekstu systemu ani potwierdzenia spełnienia HIG-11.
 

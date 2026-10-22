@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, type KeyboardEvent, type ReactNode, type RefObject } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode, type RefObject } from 'react';
 import type { NeedsYouItem } from '@flux/contracts';
 import { AgentTag, Avatar, Button, Icon, Kreska, MEDIA, StatusGlyph, useMediaQuery, usePop, type IconName } from '../ui';
 import { ago, when } from './format';
@@ -16,6 +16,7 @@ export interface CardHandlers {
   unblock(item: NeedsYouItem): void;
   /** Applies your assistant's waiting changes of one request (F-027 AST-5.6), with the object's own verb. */
   applyChanges(item: NeedsYouItem): void;
+  dismissChanges?(item: NeedsYouItem): void;
 }
 
 export const KIND_WORD = { decision: 'Decision', question: 'Question', blocked: 'Blocked', mention: 'Mention' } as const;
@@ -117,6 +118,7 @@ export function NeedsYouCard({ item, variant = 'card', selected = false, handler
 }) {
   // On a phone Not now and Done wait behind the card (a swipe left); elsewhere they are quiet buttons.
   const touch = useMediaQuery(MEDIA.touch);
+  const [review, setReview] = useState(false);
   const notNow = useRef<HTMLButtonElement>(null);
   const trayNotNow = useRef<HTMLButtonElement>(null);
   const anchors = useMemo(() => [notNow, trayNotNow], []);
@@ -145,7 +147,8 @@ export function NeedsYouCard({ item, variant = 'card', selected = false, handler
       ) : item.assistantChanges ? (
         <>
           <Button variant="primary" onClick={() => handlers.applyChanges(item)}>{item.assistantChanges.verb}</Button>
-          <Button variant="secondary" onClick={() => handlers.open(item)}>Review</Button>
+          {item.assistantChanges.suggestion && handlers.dismissChanges ? <Button variant="quiet" onClick={() => handlers.dismissChanges?.(item)}>Dismiss</Button> : null}
+          <Button variant="secondary" aria-expanded={review} onClick={() => item.assistantChanges?.suggestion ? setReview(!review) : handlers.open(item)}>Review</Button>
         </>
       ) : (
         <Button variant="secondary" onClick={() => handlers.open(item)}>{item.assistantRequestIdentity ? 'Review' : item.reason === 'invitation' ? 'Open' : 'Reply'}</Button>
@@ -177,8 +180,11 @@ export function NeedsYouCard({ item, variant = 'card', selected = false, handler
               </p>
             )}
             <h3 className="nyc__title">
-              <button type="button" className="nyc__open" onClick={() => handlers.open(item)} aria-haspopup={item.kind === 'decision' || item.kind === 'blocked' ? 'dialog' : undefined}>{item.title}</button>
+              <button type="button" className="nyc__open" onClick={() => item.assistantChanges?.suggestion ? setReview(!review) : handlers.open(item)} aria-haspopup={item.kind === 'decision' || item.kind === 'blocked' ? 'dialog' : undefined}>{item.title}</button>
             </h3>
+            {review && item.assistantChanges?.suggestion ? <div className="nyc__reason" style={{ whiteSpace: 'pre-wrap' }}>{item.assistantChanges.changes.map((change) => <p key={change.id}>{change.phrase} {change.objectTitle}{'\n'}{change.preview}</p>)}</div> : null}
+            {item.assistantNote ? <p className="nyc__reason">Your assistant: {item.assistantNote}</p> : null}
+            {item.assistantDraft ? <p className="nyc__reason">Drafted by your assistant · ready to review in Reply</p> : null}
             {variant === 'card' && item.detail && item.kind !== 'blocked' ? <p className="nyc__reason">{item.detail}</p> : null}
             {variant === 'card' && item.blocked?.waitingFor ? <p className="nyc__reason">Waiting for #{item.blocked.waitingFor.number} {item.blocked.waitingFor.title}</p> : null}
             {variant === 'card' && decision && item.decision?.basedOn.length ? <p className="nyc__based"><span>Based on</span> {item.decision.basedOn.join(' · ')}</p> : null}

@@ -17,6 +17,7 @@ export interface AssistantRunRow {
   status: string; stopRequestedAt: Date | null; engine: 'server' | 'runtime'; completedAt: Date | null;
   /** What started the run: the owner's request or one of their stored schedules or reactions (limits differ: 20 and 10). */
   authority: 'owner_request' | 'owner_schedule' | 'owner_reaction';
+  reactionAction?: string | null;
 }
 /** Who made an object: a person or an agent; both null when unknown. */
 export interface ObjectMaker { userId: string | null; agentId: string | null }
@@ -30,7 +31,7 @@ export function assistantChangeRows(db: DbExecutor) {
       const r = schema.personalRuns;
       const [row] = await db.select({ id: r.id, workspaceId: r.workspaceId, projectId: r.projectId, conversationId: r.conversationId,
         ownerUserId: r.ownerUserId, agentId: r.agentId, status: r.status, stopRequestedAt: r.stopRequestedAt, engine: r.engine,
-        completedAt: r.completedAt, authority: r.authority }).from(r).where(eq(r.id, runId)).for('update');
+        completedAt: r.completedAt, authority: r.authority, reactionAction: sql<string | null>`(SELECT action FROM assistant_reaction_events WHERE run_id=personal_runs.id LIMIT 1)` }).from(r).where(eq(r.id, runId)).for('update');
       return row ?? null;
     },
     async settings(ownerUserId: string, workspaceId: string) {
@@ -83,6 +84,13 @@ export function assistantChangeRows(db: DbExecutor) {
       const r = schema.personalRuns;
       const rows = await db.select({ change: c, conversationId: r.conversationId }).from(c).innerJoin(r, eq(r.id, c.runId))
         .where(and(eq(c.ownerUserId, ownerUserId), eq(r.conversationId, conversationId))).orderBy(asc(c.createdAt), asc(c.id)).limit(500);
+      return rows.map((row) => ({ ...row.change, conversationId: row.conversationId }));
+    },
+    async suggestions(userId: string, now: Date): Promise<(AssistantChangeRow & { conversationId: string })[]> {
+      const r = schema.personalRuns;
+      const rows = await db.select({ change: c, conversationId: r.conversationId }).from(c).innerJoin(r, eq(r.id, c.runId))
+        .where(and(eq(c.suggestToUserId, userId), eq(c.state, 'waiting'), eq(c.waitReason, 'outside_rights'), sql`${c.sentAt} IS NOT NULL`, sql`${c.expiresAt} > ${now}`))
+        .orderBy(asc(c.createdAt), asc(c.id)).limit(100);
       return rows.map((row) => ({ ...row.change, conversationId: row.conversationId }));
     },
     /** The owner's latest changes across conversations, newest first (the assistant screen's Recent). */
@@ -182,6 +190,10 @@ export function assistantChangeRows(db: DbExecutor) {
       const r = schema.personalRuns;
       const rows = await db.select({ id: r.id, status: r.status, stopRequestedAt: r.stopRequestedAt }).from(r).where(inArray(r.id, runIds));
       return new Map(rows.map((row) => [row.id, { status: row.status, stopRequestedAt: row.stopRequestedAt }]));
+    },
+    async lockedMapSnapshot(id: string): Promise<string | null> {
+      const row = await first<{ snapshot: string }>(db, sql`SELECT (version::text || ':' || updated_at::text) AS snapshot FROM sketches WHERE id=${id} FOR UPDATE`);
+      return row?.snapshot ?? null;
     },
     async map(id: string) {
       return first<{ id: string; title: string; version: number; userId: string | null; agentId: string | null }>(db, sql`

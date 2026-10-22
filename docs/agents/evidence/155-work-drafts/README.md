@@ -54,8 +54,8 @@ versions, status/park/history and source links remain unchanged.
 
 ## Rendered evidence and independent appearance assessment
 
-[Desktop capture](work-draft-source-back-desktop.png), 1500×900 CSS/DPR1, and
-[phone-emulation capture](work-draft-source-back-phone.png), 412×900 CSS/DPR3,
+[Desktop capture](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/agents/evidence/155-work-drafts/work-draft-source-back-desktop.png), 1500×900 CSS/DPR1, and
+[phone-emulation capture](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/agents/evidence/155-work-drafts/work-draft-source-back-phone.png), 412×900 CSS/DPR3,
 come from the final source/back/reload case. They contain actual fixture records,
 not a substituted screenshot. The neutral non-author visual evaluator found no
 material visible problem with the composer/status group and neighboring rows.

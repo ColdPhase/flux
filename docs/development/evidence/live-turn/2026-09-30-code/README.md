@@ -75,16 +75,16 @@ Each of the five receiver/source pairs has an actual decoded natural-resolution
 PNG, a source reconstruction from that frozen image's binary marker, and two
 1000×220 text crops taken from the same frozen decoded canvas:
 
-- [Two-peer decoded image](code_2-viewer-2-code-1-decoded-natural.png) and
-  [source](code_2-viewer-2-code-1-source-natural.png).
-- Four-peer viewer2: [share1 decoded](code_4-viewer-2-code-1-decoded-natural.png)
-  and [source](code_4-viewer-2-code-1-source-natural.png);
-  [share2 decoded](code_4-viewer-2-code-2-decoded-natural.png)
-  and [source](code_4-viewer-2-code-2-source-natural.png).
-- Four-peer viewer4: [share1 decoded](code_4-viewer-4-code-1-decoded-natural.png)
-  and [source](code_4-viewer-4-code-1-source-natural.png);
-  [share2 decoded](code_4-viewer-4-code-2-decoded-natural.png)
-  and [source](code_4-viewer-4-code-2-source-natural.png).
+- [Two-peer decoded image](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/development/evidence/live-turn/2026-09-30-code/code_2-viewer-2-code-1-decoded-natural.png) and
+  [source](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/development/evidence/live-turn/2026-09-30-code/code_2-viewer-2-code-1-source-natural.png).
+- Four-peer viewer2: [share1 decoded](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/development/evidence/live-turn/2026-09-30-code/code_4-viewer-2-code-1-decoded-natural.png)
+  and [source](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/development/evidence/live-turn/2026-09-30-code/code_4-viewer-2-code-1-source-natural.png);
+  [share2 decoded](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/development/evidence/live-turn/2026-09-30-code/code_4-viewer-2-code-2-decoded-natural.png)
+  and [source](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/development/evidence/live-turn/2026-09-30-code/code_4-viewer-2-code-2-source-natural.png).
+- Four-peer viewer4: [share1 decoded](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/development/evidence/live-turn/2026-09-30-code/code_4-viewer-4-code-1-decoded-natural.png)
+  and [source](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/development/evidence/live-turn/2026-09-30-code/code_4-viewer-4-code-1-source-natural.png);
+  [share2 decoded](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/development/evidence/live-turn/2026-09-30-code/code_4-viewer-4-code-2-decoded-natural.png)
+  and [source](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/development/evidence/live-turn/2026-09-30-code/code_4-viewer-4-code-2-source-natural.png).
 
 The corresponding `text-14px.png`/`text-16px.png` files and harness Fit/1:1/2×
 screenshots are beside them. Crop PSNR observations range 24.1–39.1 dB; no
@@ -94,10 +94,10 @@ both sources and all five reconstructed references. The received/source color
 difference remains an observation; this does not identify its pipeline cause.
 
 The same receiver then rejoined through actual Flux, selected one of two
-screens, received 2560×1440, exercised [1:1](code-product-one-to-one.png)
+screens, received 2560×1440, exercised [1:1](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/development/evidence/live-turn/2026-09-30-code/code-product-one-to-one.png)
 (rendered width × devicePixelRatio equals natural width), and
-[200% zoom](code-product-zoom-two.png). After **Back to work**, ordinary pointer
-actions opened [actual diagnostics](code-product-diagnostics.png). Voice now
+[200% zoom](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/development/evidence/live-turn/2026-09-30-code/code-product-zoom-two.png). After **Back to work**, ordinary pointer
+actions opened [actual diagnostics](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/development/evidence/live-turn/2026-09-30-code/code-product-diagnostics.png). Voice now
 measured 99 kbit/s, 3 ms jitter, 0.0% interval loss and 0 gaps total through raw
 RTCRtpReceiver reports; the locked SDK's audio summary omits packet counters.
 One hidden-screen transition produced a measured 3 fps warning, while the other

@@ -51,8 +51,8 @@ unrelated build chatter and failure cleanup environment values. The baseline
 failure and excluded invalid-route attempt are explicit.
 
 - [Neutral brief](neutral-brief.md) and [separate independent reviews](independent-reviews.md).
-- [Baseline screenshot](baseline/136-state-single-open-desktop.png).
-- [Current 22-case check excerpt](current-checks.txt); [final reader desktop](current/136-state-reader-1280-light.png), [320px reader](current/136-state-reader-320-light.png), [320px Details](current/136-state-overview-320.png), [retained history](current/136-state-retained-history-desktop.png) and [matched writer conversation](current/project-conversation-desktop-1280.png).
+- [Baseline screenshot](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/agents/evidence/136-native-state/baseline/136-state-single-open-desktop.png).
+- [Current 22-case check excerpt](current-checks.txt); [final reader desktop](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/agents/evidence/136-native-state/current/136-state-reader-1280-light.png), [320px reader](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/agents/evidence/136-native-state/current/136-state-reader-320-light.png), [320px Details](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/agents/evidence/136-native-state/current/136-state-overview-320.png), [retained history](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/agents/evidence/136-native-state/current/136-state-retained-history-desktop.png) and [matched writer conversation](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/agents/evidence/136-native-state/current/project-conversation-desktop-1280.png).
 
 ## Scope still open
 

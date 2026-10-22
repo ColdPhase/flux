@@ -1,3 +1,5 @@
+import { assistantReactionRows } from '@flux/db';
+import { evaluateProject } from '@flux/core';
 import type { FastifyInstance } from 'fastify';
 import { NEEDS_YOU_PATH, type ResolveNeedsYouCommand } from '@flux/contracts';
 import type { Database } from '@flux/core';
@@ -23,7 +25,11 @@ export async function needsYouRoutes(app: FastifyInstance, { db, sessions }: Opt
   useDomainErrors(app);
   // The owner's undecided waiting assistant changes join the queue as questions (F-027 AST-5.6).
   const assistant = assistantChangeUseCases(db);
-  const use = needsYouUseCases(db, { waiting: (userId) => assistant.inbox(userId) });
+  const use = needsYouUseCases(db, { waiting: (userId) => assistant.inbox(userId), notes: async (userId) => {
+    const visible = [];
+    for (const note of await assistantReactionRows(db).notes(userId)) if ((await evaluateProject({ kind: 'human', id: userId }, 'project.read', note.projectId, db)).allowed) visible.push(note);
+    return visible;
+  } });
   const principal = async (request: Parameters<SessionResolver['requirePrincipal']>[0]) => (await sessions.requirePrincipal(request)).principal;
 
   app.get(NEEDS_YOU_PATH, async (request, reply) => reply.header('cache-control', 'no-store').send(await use.list(await principal(request))));

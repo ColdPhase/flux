@@ -88,13 +88,16 @@ export interface NeedsYouItem {
    * button is the object's own verb (*Close*, *Remove*), *Apply* only for a mix.
    */
   assistantChanges?: NeedsYouAssistantChanges | null;
+  assistantNote?: string;
+  assistantDraft?: boolean;
 }
 
 export interface NeedsYouAssistantChanges {
   runId: string;
+  suggestion?: boolean;
   verb: string;
   summary: string;
-  changes: { id: string; version: number; phrase: string; objectTitle: string; line: string | null }[];
+  changes: { id: string; version: number; phrase: string; objectTitle: string; line: string | null; preview?: string }[];
 }
 
 export interface NeedsYouResponse {

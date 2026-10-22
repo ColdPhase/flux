@@ -16,9 +16,9 @@ GitHub installation or physical-device/PWA acceptance claim.
 
 | Viewport | Manager settings | Linked PR | Authorized reader |
 | --- | --- | --- | --- |
-| Desktop, 1440 × 900 | [Settings](github-settings-desktop.png) | [Linked view](github-settings-desktop-linked.png) | [Read-only view](github-settings-desktop-reader.png) |
-| Tablet, 820 × 1180, touch | [Settings](github-settings-tablet.png) | [Linked view](github-settings-tablet-linked.png) | [Read-only view](github-settings-tablet-reader.png) |
-| Phone, 390 × 844, touch/mobile | [Settings](github-settings-phone.png) | [Linked view](github-settings-phone-linked.png) | [Read-only view](github-settings-phone-reader.png) |
+| Desktop, 1440 × 900 | [Settings](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/design/github-integration/github-settings-desktop.png) | [Linked view](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/design/github-integration/github-settings-desktop-linked.png) | [Read-only view](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/design/github-integration/github-settings-desktop-reader.png) |
+| Tablet, 820 × 1180, touch | [Settings](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/design/github-integration/github-settings-tablet.png) | [Linked view](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/design/github-integration/github-settings-tablet-linked.png) | [Read-only view](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/design/github-integration/github-settings-tablet-reader.png) |
+| Phone, 390 × 844, touch/mobile | [Settings](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/design/github-integration/github-settings-phone.png) | [Linked view](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/design/github-integration/github-settings-phone-linked.png) | [Read-only view](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/design/github-integration/github-settings-phone-reader.png) |
 
 The pane scrolls independently of the application header; pairs retain the
 settings context and the lower PR projection. Screenshots support a separate

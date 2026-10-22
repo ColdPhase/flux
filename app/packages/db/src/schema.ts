@@ -1785,7 +1785,7 @@ export const personalRuns = pgTable('personal_runs', {
   connectionId: uuid('connection_id'),
   clientRunId: uuid('client_run_id').notNull(),
   requestFingerprint: text('request_fingerprint').notNull(),
-  kind: text('kind', { enum: ['ask', 'summarize', 'map_thought', 'scheduled', 'morning_summary'] }).notNull(),
+  kind: text('kind', { enum: ['ask', 'summarize', 'map_thought', 'scheduled', 'morning_summary', 'reaction'] }).notNull(),
   prompt: text('prompt').notNull(),
   targetSketchId: uuid('target_sketch_id'),
   targetThoughtId: uuid('target_thought_id'),
@@ -2307,3 +2307,26 @@ export const mapLivePresence = pgTable('map_live_presence', {
   selected:jsonb('selected').$type<string[]>().notNull(),cursor:jsonb('cursor').$type<{x:number;y:number}>(),
   expiresAt:timestamp('expires_at',{withTimezone:true}).notNull(),
 },t=>[foreignKey({columns:[t.sketchId,t.generation],foreignColumns:[mapLiveHeads.sketchId,mapLiveHeads.generation]}).onDelete('cascade'),check('map_live_presence_selected',sql`jsonb_typeof(${t.selected})='array' AND jsonb_array_length(${t.selected})<=16`),check('map_live_presence_cursor',sql`${t.cursor} IS NULL OR jsonb_typeof(${t.cursor})='object' AND octet_length(${t.cursor}::text)<=256`)]);
+
+/** The owner's five curated sentences and identifier-only event queue (F-027 A9, 0114). */
+export const assistantReactions = pgTable('assistant_reactions', {
+  id: uuid('id').primaryKey().defaultRandom(), workspaceId: uuid('workspace_id').notNull(), projectId: uuid('project_id').notNull(),
+  ownerUserId: text('owner_user_id').notNull().references(() => authUsers.id, { onDelete: 'cascade' }),
+  event: text('event').$type<import('@flux/contracts').AssistantReactionEvent>().notNull(), action: text('action').$type<import('@flux/contracts').AssistantReactionAction>().notNull(),
+  enabled: boolean('enabled').notNull().default(false), dailyLimit: integer('daily_limit').notNull().default(10), version: integer('version').notNull().default(1),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(), updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [unique().on(t.ownerUserId, t.projectId, t.event), foreignKey({ columns: [t.workspaceId, t.projectId], foreignColumns: [projects.workspaceId, projects.id] }).onDelete('cascade')]);
+export const assistantReactionEvents = pgTable('assistant_reaction_events', {
+  id: uuid('id').primaryKey().defaultRandom(), reactionId: uuid('reaction_id').notNull().references(() => assistantReactions.id, { onDelete: 'cascade' }),
+  ownerUserId: text('owner_user_id').notNull().references(() => authUsers.id, { onDelete: 'cascade' }), objectId: uuid('object_id').notNull(), sourceId: uuid('source_id').notNull(),
+  action: text('action').$type<import('@flux/contracts').AssistantReactionAction>().notNull(),
+  event: text('event').$type<import('@flux/contracts').AssistantReactionEvent>().notNull(), reactionVersion: integer('reaction_version').notNull(),
+  state: text('state', { enum: ['queued', 'proof', 'running', 'done', 'skipped', 'failed'] }).notNull().default('queued'),
+  runId: uuid('run_id').references(() => personalRuns.id, { onDelete: 'set null' }), data: jsonb('data').$type<Record<string, unknown>>(), line: text('line').notNull().default(''),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(), startedAt: timestamp('started_at', { withTimezone: true }), finishedAt: timestamp('finished_at', { withTimezone: true }),
+}, (t) => [unique().on(t.reactionId, t.sourceId)]);
+export const assistantReactionNotes = pgTable('assistant_reaction_notes', {
+  ownerUserId: text('owner_user_id').notNull().references(() => authUsers.id, { onDelete: 'cascade' }), projectId: uuid('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+  objectId: uuid('object_id').notNull(), notificationId: uuid('notification_id').references(() => notifications.id, { onDelete: 'cascade' }),
+  eventId: uuid('event_id').notNull().references(() => assistantReactionEvents.id, { onDelete: 'cascade' }), note: text('note').notNull().default(''), draft: text('draft'),
+}, (t) => [primaryKey({ columns: [t.ownerUserId, t.objectId] })]);
