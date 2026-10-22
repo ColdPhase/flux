@@ -24,6 +24,8 @@ import { ensureWorkspaceAiAllowed, setWorkspaceAi, workspaceAiRow } from './supp
 // process) sees the change made through the first, with no cache.
 
 const code = (json: unknown) => (json as { code?: string } | null)?.code;
+/** The tool list really came back (a refusal is also HTTP 200, as a JSON-RPC error). */
+const lists = (response: { message: Record<string, unknown> | null }) => (((response.message?.result as { tools?: unknown[] } | undefined)?.tools) ?? []).length > 0;
 const errorCode = (message: Record<string, unknown> | null) => ((message?.error as { data?: { code?: string } } | undefined)?.data?.code);
 
 describe('workspace AI lock: switch and cutover', () => {
@@ -111,7 +113,7 @@ describe('workspace AI lock: switch and cutover', () => {
   });
 
   test('two connections: a check in progress makes the flip wait; a check after the flip sees it', async () => {
-    assert.equal((await mcp(accessToken, 1, 'tools/list')).status, 200, 'control');
+    assert.ok(lists(await mcp(accessToken, 1, 'tools/list')), 'control');
     // A check holds the policy row FOR SHARE (as a commit transaction does): the flip waits until it commits.
     const flipped = await behind((query) => query('SELECT 1 FROM workspace_ai_policies WHERE workspace_id = $1 FOR SHARE', [scene.ws.id]),
       async () => put(scene.owner, 'blocked', await version()));
@@ -121,7 +123,7 @@ describe('workspace AI lock: switch and cutover', () => {
     const listed = await behind(
       (query) => query(`UPDATE workspace_ai_policies SET state = 'blocked', epoch = epoch + 1, version = version + 1 WHERE workspace_id = $1`, [scene.ws.id]),
       () => mcp(accessToken, 2, 'tools/list'));
-    assert.deepEqual([listed.status, errorCode(listed.message)], [403, 'WORKSPACE_AI_BLOCKED']);
+    assert.deepEqual([listed.status, errorCode(listed.message)], [200, 'WORKSPACE_AI_BLOCKED']);
   });
 
   test('a person\'s own write during the flip commits and captures no AI work; a role change of the flipping admin cannot deadlock it', async () => {
@@ -201,7 +203,7 @@ describe('workspace AI lock: switch and cutover', () => {
     await scene.processor.process(queued.run.id);
     assert.equal((await pool.query('SELECT end_reason FROM personal_runs WHERE id = $1', [queued.run.id])).rows[0].end_reason, 'ai_off');
     assert.equal(scene.compute.dispatched.length, dispatched, 'the stopped run does not run');
-    assert.equal((await mcp(accessToken, 3, 'tools/list')).status, 200, 'the connection works again');
+    assert.ok(lists(await mcp(accessToken, 3, 'tools/list')), 'the connection works again');
   });
 
   test('the flip locks the policy row: two concurrent changes at the same version, one wins and the other gets a conflict', async () => {
@@ -255,12 +257,12 @@ describe('workspace AI lock: switch and cutover', () => {
     try {
       await second.listen({ host: '127.0.0.1', port: 0 });
       const base = `http://127.0.0.1:${(second.server.address() as AddressInfo).port}`;
-      assert.equal((await mcp(accessToken, 4, 'tools/list', {}, { base })).status, 200, 'control: the second process serves the connection');
+      assert.ok(lists(await mcp(accessToken, 4, 'tools/list', {}, { base })), 'control: the second process serves the connection');
       expectStatus(await put(scene.owner, 'blocked', await version()), 200); // through the first API process (the api container)
       const refused = await mcp(accessToken, 5, 'tools/list', {}, { base });
-      assert.deepEqual([refused.status, errorCode(refused.message)], [403, 'WORKSPACE_AI_BLOCKED'], 'no cache in the second process');
+      assert.deepEqual([refused.status, errorCode(refused.message)], [200, 'WORKSPACE_AI_BLOCKED'], 'no cache in the second process');
       expectStatus(await put(scene.owner, 'allowed', await version()), 200);
-      assert.equal((await mcp(accessToken, 6, 'tools/list', {}, { base })).status, 200);
+      assert.ok(lists(await mcp(accessToken, 6, 'tools/list', {}, { base })));
     } finally { await second.close(); }
   });
 });

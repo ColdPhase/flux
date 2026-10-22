@@ -24,6 +24,8 @@ const live = process.env.FLUX_TEST_PERSONAL_RUNS === 'anthropic-mock';
 const api2Url = process.env.FLUX_API2_URL ?? 'http://api2:8080';
 const providerUrl = process.env.FLUX_PROVIDER_MOCK_URL ?? 'http://providermock:8095';
 const code = (json: unknown) => (json as { code?: string } | null)?.code;
+/** The tool list really came back (a refusal is also HTTP 200, as a JSON-RPC error). */
+const lists = (response: { message: Record<string, unknown> | null }) => (((response.message?.result as { tools?: unknown[] } | undefined)?.tools) ?? []).length > 0;
 const errorCode = (message: Record<string, unknown> | null) => ((message?.error as { data?: { code?: string } } | undefined)?.data?.code);
 const providerCalls = async () => ((await (await fetch(`${providerUrl}/__requests`)).json()) as { requests: { wire: string; path: string }[] }).requests
   .filter((request) => request.wire === 'anthropic' && request.path.endsWith('/v1/messages')).length;
@@ -70,7 +72,7 @@ describe('workspace AI lock across the api, api2 and worker containers', { skip:
   after(async () => { await ensureWorkspaceAiAllowed(ws.id); await boss?.stop({ graceful: false }).catch(() => undefined); });
 
   test('control: while AI is on, api2 serves the connection and a run started there reaches the provider through the worker', async () => {
-    assert.equal((await mcp(accessToken, 1, 'tools/list', {}, { base: api2Url })).status, 200);
+    assert.ok(lists(await mcp(accessToken, 1, 'tools/list', {}, { base: api2Url })));
     const calls = await providerCalls();
     const started = expectStatus(await ask(second), 202) as { id: string };
     assert.match((await ended(started.id)).status, /completed|truncated/);
@@ -82,7 +84,7 @@ describe('workspace AI lock across the api, api2 and worker containers', { skip:
     await put('blocked');
     try {
       const listed = await mcp(accessToken, 2, 'tools/list', {}, { base: api2Url });
-      assert.deepEqual([listed.status, errorCode(listed.message)], [403, 'WORKSPACE_AI_BLOCKED'], 'api2 has no stale copy of the policy');
+      assert.deepEqual([listed.status, errorCode(listed.message)], [200, 'WORKSPACE_AI_BLOCKED'], 'api2 has no stale copy of the policy');
       const asked = await ask(second);
       assert.deepEqual([asked.status, code(asked.json)], [403, 'WORKSPACE_AI_BLOCKED']);
       assert.equal(await providerCalls(), calls, 'no provider request');
