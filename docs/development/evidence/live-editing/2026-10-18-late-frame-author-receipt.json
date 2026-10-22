@@ -1,0 +1,98 @@
+{
+  "source_commit": "cd333518320c4da53f0d8ea1877553ba25265c0b",
+  "source_tree": "3299a2b0f74ad4736e55baa8fe1f71f7038ebdd6",
+  "integrated_commit_reported_by_root": "c66eefc7",
+  "successful_runs": [
+    {
+      "command": "FLUX_LIVE_EDITING=on FLUX_UI_BROWSER=chromium ./scripts/check_ui.sh test_live_map_delivery_order",
+      "runner_head": "uncommitted worktree; source bytes later committed unchanged as source_commit",
+      "actual_browser": "chromium",
+      "result": "passed",
+      "tests": 1,
+      "duration_seconds": 15.287,
+      "compose_project": "flux-ui-1792338494-1973124",
+      "raw_log_path": null,
+      "raw_log_sha256": null,
+      "container_ids": null,
+      "pre_teardown_image_inventory": null
+    },
+    {
+      "command": "FLUX_LIVE_EDITING=on FLUX_UI_BROWSER=webkit ./scripts/check_ui.sh test_live_map_delivery_order test_live_map_projection test_live_map_lease_expiry",
+      "runner_head": "cd333518320c4da53f0d8ea1877553ba25265c0b",
+      "actual_browser": "webkit",
+      "result": "passed",
+      "tests": 6,
+      "duration_seconds": 41.821,
+      "compose_project": "flux-ui-1792338721-1984064",
+      "raw_log_path": null,
+      "raw_log_sha256": null,
+      "container_ids": null,
+      "pre_teardown_image_inventory": null
+    },
+    {
+      "command": "./scripts/check_application.sh tests/app/live-map-presence.test.ts",
+      "runner_head": "cd333518320c4da53f0d8ea1877553ba25265c0b",
+      "result": "passed",
+      "tests": 3,
+      "compose_project": "flux-test-1792338808-1992658",
+      "raw_log_path": null,
+      "raw_log_sha256": null,
+      "container_ids": null,
+      "pre_teardown_image_inventory": null
+    }
+  ],
+  "earlier_attempts": [
+    {
+      "command": "FLUX_LIVE_EDITING=on FLUX_UI_BROWSER=chromium ./scripts/check_ui.sh test_live_map_delivery_order test_live_map_projection test_live_map_lease_expiry",
+      "runner_head": "not captured; uncommitted worktree with pre-fix harness",
+      "browser": "chromium",
+      "result": "failed",
+      "cause": "author test harness unreachable map-frame branches caused by indentation after a return",
+      "other_cases": "four projection cases and one lease-expiry case passed",
+      "compose_project": "flux-ui-1792338038-1949056",
+      "raw_log_path": null,
+      "raw_log_sha256": null,
+      "container_ids": null,
+      "pre_teardown_image_inventory": null
+    },
+    {
+      "command": "FLUX_LIVE_EDITING=on FLUX_UI_BROWSER=chromium ./scripts/check_ui.sh test_live_map_delivery_order",
+      "runner_head": "not captured; uncommitted worktree with pre-fix harness",
+      "browser": "chromium",
+      "result": "failed",
+      "cause": "same harness indentation issue; diagnostics confirmed route saw actual map frames",
+      "compose_project": "flux-ui-1792338248-1960339",
+      "raw_log_path": null,
+      "raw_log_sha256": null,
+      "container_ids": null,
+      "pre_teardown_image_inventory": null
+    },
+    {
+      "command": "FLUX_LIVE_EDITING=on FLUX_UI_BROWSER=chromium ./scripts/check_ui.sh test_live_map_delivery_order",
+      "runner_head": "not captured; diagnostic-only build interrupted before tests",
+      "browser": null,
+      "result": "interrupted_before_tests",
+      "cause": "stopped diagnostic-only build after root identified the harness indentation issue",
+      "compose_project": "flux-ui-1792338432-1969619",
+      "post_cleanup_containers": "none",
+      "post_cleanup_volumes": "none"
+    }
+  ],
+  "build_typecheck_lint": {
+    "result": "passed",
+    "lint_errors": 0,
+    "existing_lint_warnings": 9
+  },
+  "post_cleanup_container_inventories": {
+    "flux-ui-1792338494-1973124": "empty",
+    "flux-ui-1792338721-1984064": "empty",
+    "flux-test-1792338808-1992658": "empty"
+  },
+  "unverified": [
+    "raw log paths and hashes",
+    "container IDs",
+    "pre-teardown image inventories",
+    "post-cleanup network inventories"
+  ],
+  "scope_note": "Author-side evidence only; not an independent review or full #228 AC-3 acceptance."
+}

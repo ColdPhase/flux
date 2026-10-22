@@ -1,0 +1,11 @@
+{
+  "source": "aade67efde45b8156fe933c2124ab5a2a96d580a",
+  "command": [
+    "./scripts/check_live_editing.sh",
+    "--two-api"
+  ],
+  "ports": [
+    18685,
+    18686
+  ]
+}

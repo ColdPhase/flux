@@ -1,0 +1,46 @@
+{
+  "README.md": {
+    "bytes": 5052,
+    "sha256": "8894a8f2f2701369b31d99034dc6ce6e2bc291fc95a3911fdc514bca9129c801"
+  },
+  "author-attempts.json": {
+    "bytes": 4224,
+    "sha256": "7c59252b1598bc220ef0c508b59066c5a8a06f523f228869e9d52b1e2ffd51e3"
+  },
+  "chromium-078690b2-runtime.json": {
+    "bytes": 3300,
+    "sha256": "bc352c29928646d36af8463fe98531e63b09e24bfe71e5b3820f9d600ac3db4c"
+  },
+  "chromium-078690b2.log.gz": {
+    "bytes": 14578,
+    "sha256": "43ec57fee4653a3d842eee5a5e49e25cc829cc891649392a4fc4dea26ddd14ae"
+  },
+  "chromium-3cb39da1-runtime.json": {
+    "bytes": 3301,
+    "sha256": "ec5fb1033c3c1c3cb055ac9363212761826b329bd223e8717f7bbf61444dc8e3"
+  },
+  "chromium-3cb39da1.log.gz": {
+    "bytes": 14988,
+    "sha256": "da8f18a1e4c8be34706dd8a860e57c6148d372198ea9c8d3d23d7603560abc79"
+  },
+  "chromium-build-a093e221.log.gz": {
+    "bytes": 5918,
+    "sha256": "71e27f6b1f155b27a7e944534377ca0e42594ff9f8d691b3978fda86c70b2043"
+  },
+  "cleanup.json": {
+    "bytes": 759,
+    "sha256": "c9def060829fc01cb34155bd88c7b45361c9c8aed9cab4df0fd146bbd70954d7"
+  },
+  "native-ime-plain-control.json": {
+    "bytes": 1304,
+    "sha256": "156b7dd540b08c2b09dbbcba4cdda90bdb1730ba1137a5d0ba78252af606a0d2"
+  },
+  "webkit-4618e319-runtime.json": {
+    "bytes": 3299,
+    "sha256": "d13f643d9505e1ef96c8450c68a9918f71143da16347243d56425f99322c76f6"
+  },
+  "webkit-4618e319.log.gz": {
+    "bytes": 14481,
+    "sha256": "43d30175a3945e239235d42853c0ef66b9857c3f364f054344a717dd085b29ac"
+  }
+}

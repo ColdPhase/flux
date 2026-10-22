@@ -1,5 +1,6 @@
 import { Fragment, memo, type CSSProperties, type ReactNode, type RefObject, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react';
-import { personColor } from '../editing/color';
+import type { MapPresenceSource } from '../editing/map-presence';
+import { MapCursors, MapPeople } from './MapPresence';
 import { DEFAULT_THOUGHT_SIZE, SKETCH_LIMITS, type LiveMapPosition, type SketchDetail, type Thought } from '@flux/contracts';
 import { Icon, IconButton, Sheet, StatusGlyph } from '../ui';
 import { STATUS_LABEL, taskNumber } from '../work/format';
@@ -76,7 +77,7 @@ export interface SketchMapProps {
   onGestureCancel(): void;
   movers: Map<string, string>;
   /** Other people on this map: a named, coloured cursor each, and the "who is here" chip. */
-  peers: Map<string, { actor: { id: string; name: string }; cursor: { x: number; y: number } | null }>;
+  presenceStore: MapPresenceSource | null;
   onPointer(point: { x: number; y: number } | null): void;
   livePreviews: Map<string, { generation: string; gestureId: string; leaseId: string; sequence: number }>;
   ownGesture: { id: string; sequence: number; generation: string } | null | undefined;
@@ -111,6 +112,8 @@ interface Drag {
   scrollLeft?: number;
   scrollTop?: number;
   base: Thought[];
+  /** Intrinsic/native minimum at pointer-down, before our own previews can change measured height. */
+  resizeHeight?: number;
 }
 
 /**
@@ -657,8 +660,10 @@ export function SketchMap(props: SketchMapProps) {
     event.currentTarget.scrollTop += dy;
   };
 
-  const begin = (event: ReactPointerEvent, next: Omit<Drag, 'pointerId' | 'sx' | 'sy' | 'moved' | 'started' | 'base'>) => {
-    drag.current = { ...next, base: sketch.thoughts.filter((thought) => next.ids.includes(thought.id)).map((thought) => ({ ...thought })), pointerId: event.pointerId, sx: event.clientX, sy: event.clientY, moved: false, started: false };
+  const begin = (event: ReactPointerEvent, next: Omit<Drag, 'pointerId' | 'sx' | 'sy' | 'moved' | 'started' | 'base' | 'resizeHeight'>) => {
+    const resizing = next.kind === 'resize' ? byId.get(next.id!) : undefined;
+    const resizeHeight = resizing ? Math.max(resizing.height, heights.get(resizing.id) ?? 0) : undefined;
+    drag.current = { ...next, resizeHeight, base: sketch.thoughts.filter((thought) => next.ids.includes(thought.id)).map((thought) => ({ ...thought })), pointerId: event.pointerId, sx: event.clientX, sy: event.clientY, moved: false, started: false };
     (event.currentTarget as Element).setPointerCapture?.(event.pointerId);
   };
 
@@ -677,9 +682,10 @@ export function SketchMap(props: SketchMapProps) {
     begin(event, { kind: 'link', id, ids: [id] });
   };
 
-  const onResizePointerDown = (event: ReactPointerEvent<HTMLSpanElement>, thought: Thought) => {
+  const onResizePointerDown = (event: ReactPointerEvent<HTMLSpanElement>, id: string) => {
     event.stopPropagation();
-    if (event.button !== 0) return;
+    const thought = byId.get(id);
+    if (event.button !== 0 || !thought) return;
     begin(event, { kind: 'resize', id: thought.id, ids: [thought.id] });
   };
 
@@ -732,7 +738,7 @@ export function SketchMap(props: SketchMapProps) {
       const t = byId.get(d.id!) ?? sketch.thoughts.find((x) => x.id === d.id);
       const base = (props.liveEnabled ? d.base.find((x) => x.id === d.id) : sketch.thoughts.find((x) => x.id === d.id)) ?? t!;
       const width = clamp(Math.round(base.width + dx), SKETCH_LIMITS.minWidth, SKETCH_LIMITS.maxWidth);
-      const height = clamp(Math.round(Math.max(base.height, heights.get(base.id) ?? 0) + dy), SKETCH_LIMITS.minHeight, SKETCH_LIMITS.maxHeight);
+      const height = clamp(Math.round((d.resizeHeight ?? base.height) + dy), SKETCH_LIMITS.minHeight, SKETCH_LIMITS.maxHeight);
       setSize({ id: d.id!, w: width, h: height });
       props.onGesturePreview([{ id: base.id, x: base.x, y: base.y, width, height }]);
     }
@@ -788,7 +794,9 @@ export function SketchMap(props: SketchMapProps) {
     setSize(null);
   };
 
-  const onNodeKeyDown = (event: KeyboardEvent<HTMLButtonElement>, thought: Thought) => {
+  const onNodeKeyDown = (event: KeyboardEvent<HTMLButtonElement>, id: string) => {
+    const thought = byId.get(id);
+    if (!thought) return;
     const { key } = event;
     if (key === 'Enter' || key === 'F2') { event.preventDefault(); if (connectFrom) props.onPick(thought.id, false); else if (canWrite) props.onEdit(thought.id); return; }
     if (key === ' ') { event.preventDefault(); if (connectFrom) props.onPick(thought.id, false); else props.onToggle(thought.id); return; }
@@ -916,10 +924,9 @@ export function SketchMap(props: SketchMapProps) {
     }
   }
 
-  const here = [...new Map([...props.peers.values()].map((peer) => [peer.actor.id, peer.actor])).values()];
   return (
     <div ref={wrapRef} className={`sk-canvas-wrap sk-canvas-wrap--controls${hasComposition ? ' has-composition' : ''}`} style={(compact ? { '--sk-phone-tools-height': `${hasComposition ? compositionHeight : phoneToolsHeight}px` } : { '--sk-dock-h': `${dockHeight}px` }) as unknown as CSSProperties}>
-    {here.length ? <p className="sk-here" role="group" aria-label="People on this map">{here.map((person) => <span key={person.id}><i style={{ background: personColor(person.id) }} aria-hidden="true" />{person.name}</span>)}</p> : null}
+    {props.presenceStore ? <MapPeople source={props.presenceStore} /> : null}
     <div className={`sk-canvas${panning ? ' is-panning' : ''}${panMode ? ' is-hand' : ''}${connectFrom ? ' is-connecting' : ''}${wire ? ' is-wiring' : ''}`} ref={canvasRef} role="group" tabIndex={0}
       data-live-own-gesture={props.ownGesture?.id} data-live-own-sequence={props.ownGesture?.sequence} data-live-generation={props.ownGesture?.generation}
       aria-label={`Sketch: ${sketch.title}`} aria-describedby={helpId} onKeyDown={onCanvasKeyDown}>
@@ -977,9 +984,7 @@ export function SketchMap(props: SketchMapProps) {
             })}
           </div>
           {thoughtNodes}
-          {[...props.peers.entries()].flatMap(([key, peer]) => peer.cursor ? [<div key={key} className="sk-peer" data-live-peer={peer.actor.name} aria-hidden="true"
-            style={{ transform: `translate(${peer.cursor.x - origin.x}px, ${peer.cursor.y - origin.y}px) scale(${1 / zoom})`, color: personColor(peer.actor.id) }}>
-            <svg width="14" height="16" viewBox="0 0 14 16"><path d="M1 1l11 6.5-5 1.4-2.4 5z" fill="currentColor" /></svg><span style={{ background: personColor(peer.actor.id) }}>{peer.actor.name}</span></div>] : [])}
+          {props.presenceStore ? <MapCursors source={props.presenceStore} origin={origin} zoom={zoom} rects={rects} /> : null}
           {plus && last && lastThought ? (!compact ? (hasComposition ? null : (() => {
             // Controls keep their on-screen size at every zoom (touch targets stay 44px).
             const x = plus.x + last.w / 2;
@@ -1125,8 +1130,8 @@ function Minimap({ canvas, zoom, origin, rects }: { canvas: RefObject<HTMLDivEle
 
 interface NodeEvents {
   pointerDown(event: ReactPointerEvent<HTMLButtonElement>, id: string): void;
-  resizePointerDown(event: ReactPointerEvent<HTMLSpanElement>, thought: Thought): void;
-  keyDown(event: KeyboardEvent<HTMLButtonElement>, thought: Thought): void;
+  resizePointerDown(event: ReactPointerEvent<HTMLSpanElement>, id: string): void;
+  keyDown(event: KeyboardEvent<HTMLButtonElement>, id: string): void;
   click(event: ReactMouseEvent<HTMLButtonElement>, id: string): void;
   doubleClick(id: string): void;
   openTask(id: string): void;
@@ -1191,10 +1196,18 @@ interface ThoughtNodeProps {
  * kept a peer's main thread busy and delayed the next preview's receipt (#228 Gate 4).
  */
 const ThoughtNode = memo(function ThoughtNode({ thought, x, y, w, h, selected, dragging, editing, resizable, meId, helpId, projectId, linked, mover, live, nodeRef, events }: ThoughtNodeProps) {
-  const link = linkOf(thought.text);
-  const meta = thought.placement
-    ? (thought.placement.title ? `Draft · ${thought.placement.title}` : 'Draft you can’t open')
-    : link ? `Link · ${link.host}` : null;
+  const id = thought.id;
+  // Geometry and sequence still render each preview. Host callbacks keep their identity,
+  // while the committed root events resolve this ID against its latest shown thought.
+  const handlers = useMemo(() => ({
+    pointerDown: (event: ReactPointerEvent<HTMLButtonElement>) => events.current.pointerDown(event, id),
+    pointerEnter: (event: ReactPointerEvent<HTMLButtonElement>) => events.current.pointerEnter(event, id),
+    pointerLeave: (event: ReactPointerEvent<HTMLButtonElement>) => events.current.pointerLeave(event, id),
+    click: (event: ReactMouseEvent<HTMLButtonElement>) => events.current.click(event, id),
+    doubleClick: () => events.current.doubleClick(id),
+    keyDown: (event: KeyboardEvent<HTMLButtonElement>) => events.current.keyDown(event, id),
+    resizePointerDown: (event: ReactPointerEvent<HTMLSpanElement>) => events.current.resizePointerDown(event, id),
+  }), [id, events]);
   return (
     <>
       <button type="button" data-id={thought.id} data-thought-x={thought.x} data-thought-y={thought.y} data-thought-version={thought.version}
@@ -1203,29 +1216,50 @@ const ThoughtNode = memo(function ThoughtNode({ thought, x, y, w, h, selected, d
         className={`sk-node sk-node--${thought.shape}${dragging ? ' is-dragging' : ''}${editing ? ' is-editing' : ''}${thought.version === 0 ? ' is-new' : ''}${linked?.count ? ' has-work' : ''}`}
         style={{ transform: `translate(${x}px, ${y}px)`, width: w, minHeight: thought.shape === 'circle' ? w : thought.height, height: thought.shape === 'circle' ? w : undefined }}
         aria-pressed={selected} aria-describedby={helpId}
-        onPointerDown={(event) => events.current.pointerDown(event, thought.id)}
-        onPointerEnter={(event) => events.current.pointerEnter(event, thought.id)} onPointerLeave={(event) => events.current.pointerLeave(event, thought.id)}
-        onClick={(event) => events.current.click(event, thought.id)}
-        onDoubleClick={() => events.current.doubleClick(thought.id)}
-        onKeyDown={(event) => events.current.keyDown(event, thought)}>
-        {meta ? <span className="sk-k"><Icon name={thought.placement ? 'doc' : 'link'} size={12} />{meta}</span> : null}
-        {thought.file ? <ThoughtImage className="sk-img" fileId={thought.file.id} name={thought.file.name}
-          style={{ maxHeight: Math.max(48, thought.height - 64) }} /> : null}
-        <span className={`sk-t${link ? ' sk-t--link' : ''}`}>{thought.text}</span>
-        <span className="sk-p">{provenance(thought, meId)}</span>
-        {linked?.tasks[0] ? <span className="sk-taskline"><StatusGlyph status={linked.tasks[0].status} size={14} /><span>{taskNumber(linked.tasks[0])} {STATUS_LABEL[linked.tasks[0].status]}{linked.tasks[0].owner ? ` · ${linked.tasks[0].owner.name}` : ''}</span></span> : null}
-        {mover ? <span className="sk-live-mover">{mover} is moving</span> : null}
-        {/* Room for the count, which is its own button beside this one. */}
-        {linked?.count ? <span className="sk-work-gap" aria-hidden="true" /> : null}
-        {resizable ? <span className="sk-resize" aria-hidden="true" onPointerDown={(event) => events.current.resizePointerDown(event, thought)} /> : null}
+        onPointerDown={handlers.pointerDown}
+        onPointerEnter={handlers.pointerEnter} onPointerLeave={handlers.pointerLeave}
+        onClick={handlers.click}
+        onDoubleClick={handlers.doubleClick}
+        onKeyDown={handlers.keyDown}>
+        <ThoughtContent text={thought.text} placement={thought.placement} file={thought.file} source={thought.source}
+          createdBy={thought.createdBy} createdAt={thought.createdAt} version={thought.version} height={thought.height}
+          meId={meId} linked={linked} mover={mover} />
+        {resizable ? <span className="sk-resize" aria-hidden="true" onPointerDown={handlers.resizePointerDown} /> : null}
       </button>
       {linked?.count && projectId ? (
         <div className={`sk-work-slot sk-work-slot--${thought.shape}${dragging ? ' is-dragging' : ''}`} data-for={thought.id} style={{ transform: `translate(${x}px, ${y}px)`, width: w, height: h }}>
-          <ThoughtTasks thought={thought} tasks={linked} projectId={projectId} variant="map" onOpenTask={(id) => events.current.openTask(id)} />
+          <ThoughtWork id={thought.id} text={thought.text} linked={linked} projectId={projectId} events={events} />
         </div>
       ) : null}
     </>
   );
+});
+
+/** Preview coordinates and lease sequences change every movement; the native content does not.
+ * Explicit content props let React's ordinary memo comparison keep the body while the button's
+ * geometry, live attributes and input handlers continue to use the current thought. */
+const ThoughtContent = memo(function ThoughtContent(props: Pick<Thought, 'text' | 'placement' | 'file' | 'source' | 'createdBy' | 'createdAt' | 'version' | 'height'> & {
+  meId: string; linked: ThoughtTasksEntry | undefined; mover: string | undefined;
+}) {
+  const { text, placement, file, height, meId, linked, mover } = props;
+  const link = linkOf(text);
+  const meta = placement ? (placement.title ? `Draft · ${placement.title}` : 'Draft you can’t open') : link ? `Link · ${link.host}` : null;
+  return <>
+    {meta ? <span className="sk-k"><Icon name={placement ? 'doc' : 'link'} size={12} />{meta}</span> : null}
+    {file ? <ThoughtImage className="sk-img" fileId={file.id} name={file.name} style={{ maxHeight: Math.max(48, height - 64) }} /> : null}
+    <span className={`sk-t${link ? ' sk-t--link' : ''}`}>{text}</span>
+    <span className="sk-p">{provenance(props, meId)}</span>
+    {linked?.tasks[0] ? <span className="sk-taskline"><StatusGlyph status={linked.tasks[0].status} size={14} /><span>{taskNumber(linked.tasks[0])} {STATUS_LABEL[linked.tasks[0].status]}{linked.tasks[0].owner ? ` · ${linked.tasks[0].owner.name}` : ''}</span></span> : null}
+    {mover ? <span className="sk-live-mover">{mover} is moving</span> : null}
+    {/* Room for the count, which is its own button beside this one. */}
+    {linked?.count ? <span className="sk-work-gap" aria-hidden="true" /> : null}
+  </>;
+});
+
+const ThoughtWork = memo(function ThoughtWork({ id, text, linked, projectId, events }: {
+  id: string; text: string; linked: ThoughtTasksEntry; projectId: string; events: { readonly current: NodeEvents };
+}) {
+  return <ThoughtTasks thought={{ id, text }} tasks={linked} projectId={projectId} variant="map" onOpenTask={(taskId) => events.current.openTask(taskId)} />;
 });
 
 /** Plane positions are signed: the map has no edge at 0 (#509), only the contract's limit. */

@@ -1,0 +1,262 @@
+{
+  "application_source": "7af776c7dfd4403e3937c8ccd4b9723c7808d587",
+  "scope": "Author renders only; CSS viewport emulation, no physical device or accessibility/latency verdict",
+  "screens": [
+    {
+      "file": "map-active-peer-movement-light-1440.png",
+      "application_source": "7af776c7dfd4403e3937c8ccd4b9723c7808d587",
+      "engine": "webkit",
+      "browser_version": "26.5",
+      "requested_palette": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "documentWidth": 1440,
+      "dpr": 1,
+      "visualScale": 1,
+      "cssZoom": "1",
+      "scheme": "light"
+    },
+    {
+      "file": "map-active-peer-movement-dark-1440.png",
+      "application_source": "7af776c7dfd4403e3937c8ccd4b9723c7808d587",
+      "engine": "webkit",
+      "browser_version": "26.5",
+      "requested_palette": "dark",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "documentWidth": 1440,
+      "dpr": 1,
+      "visualScale": 1,
+      "cssZoom": "1",
+      "scheme": "dark"
+    },
+    {
+      "file": "map-active-peer-movement-light-390.png",
+      "application_source": "7af776c7dfd4403e3937c8ccd4b9723c7808d587",
+      "engine": "webkit",
+      "browser_version": "26.5",
+      "requested_palette": "light",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "documentWidth": 390,
+      "dpr": 1,
+      "visualScale": 1,
+      "cssZoom": "1",
+      "scheme": "light"
+    },
+    {
+      "file": "map-active-peer-movement-dark-390.png",
+      "application_source": "7af776c7dfd4403e3937c8ccd4b9723c7808d587",
+      "engine": "webkit",
+      "browser_version": "26.5",
+      "requested_palette": "dark",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "documentWidth": 390,
+      "dpr": 1,
+      "visualScale": 1,
+      "cssZoom": "1",
+      "scheme": "dark"
+    },
+    {
+      "file": "map-active-peer-movement-light-820.png",
+      "application_source": "7af776c7dfd4403e3937c8ccd4b9723c7808d587",
+      "engine": "webkit",
+      "browser_version": "26.5",
+      "requested_palette": "light",
+      "viewport": {
+        "width": 820,
+        "height": 1180
+      },
+      "documentWidth": 820,
+      "dpr": 1,
+      "visualScale": 1,
+      "cssZoom": "1",
+      "scheme": "light"
+    },
+    {
+      "file": "map-active-peer-movement-dark-820.png",
+      "application_source": "7af776c7dfd4403e3937c8ccd4b9723c7808d587",
+      "engine": "webkit",
+      "browser_version": "26.5",
+      "requested_palette": "dark",
+      "viewport": {
+        "width": 820,
+        "height": 1180
+      },
+      "documentWidth": 820,
+      "dpr": 1,
+      "visualScale": 1,
+      "cssZoom": "1",
+      "scheme": "dark"
+    },
+    {
+      "file": "map-active-peer-movement-light-2560.png",
+      "application_source": "7af776c7dfd4403e3937c8ccd4b9723c7808d587",
+      "engine": "webkit",
+      "browser_version": "26.5",
+      "requested_palette": "light",
+      "viewport": {
+        "width": 2560,
+        "height": 1440
+      },
+      "documentWidth": 2560,
+      "dpr": 1,
+      "visualScale": 1,
+      "cssZoom": "1",
+      "scheme": "light"
+    },
+    {
+      "file": "map-active-peer-movement-dark-2560.png",
+      "application_source": "7af776c7dfd4403e3937c8ccd4b9723c7808d587",
+      "engine": "webkit",
+      "browser_version": "26.5",
+      "requested_palette": "dark",
+      "viewport": {
+        "width": 2560,
+        "height": 1440
+      },
+      "documentWidth": 2560,
+      "dpr": 1,
+      "visualScale": 1,
+      "cssZoom": "1",
+      "scheme": "dark"
+    },
+    {
+      "file": "wiki-shared-writing-before-version-save-light-1440.png",
+      "application_source": "7af776c7dfd4403e3937c8ccd4b9723c7808d587",
+      "engine": "webkit",
+      "browser_version": "26.5",
+      "requested_palette": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "documentWidth": 1440,
+      "dpr": 1,
+      "visualScale": 1,
+      "cssZoom": "1",
+      "scheme": "light"
+    },
+    {
+      "file": "wiki-shared-writing-before-version-save-dark-1440.png",
+      "application_source": "7af776c7dfd4403e3937c8ccd4b9723c7808d587",
+      "engine": "webkit",
+      "browser_version": "26.5",
+      "requested_palette": "dark",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "documentWidth": 1440,
+      "dpr": 1,
+      "visualScale": 1,
+      "cssZoom": "1",
+      "scheme": "dark"
+    },
+    {
+      "file": "wiki-shared-writing-before-version-save-light-390.png",
+      "application_source": "7af776c7dfd4403e3937c8ccd4b9723c7808d587",
+      "engine": "webkit",
+      "browser_version": "26.5",
+      "requested_palette": "light",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "documentWidth": 390,
+      "dpr": 1,
+      "visualScale": 1,
+      "cssZoom": "1",
+      "scheme": "light"
+    },
+    {
+      "file": "wiki-shared-writing-before-version-save-dark-390.png",
+      "application_source": "7af776c7dfd4403e3937c8ccd4b9723c7808d587",
+      "engine": "webkit",
+      "browser_version": "26.5",
+      "requested_palette": "dark",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "documentWidth": 390,
+      "dpr": 1,
+      "visualScale": 1,
+      "cssZoom": "1",
+      "scheme": "dark"
+    },
+    {
+      "file": "wiki-shared-writing-before-version-save-light-820.png",
+      "application_source": "7af776c7dfd4403e3937c8ccd4b9723c7808d587",
+      "engine": "webkit",
+      "browser_version": "26.5",
+      "requested_palette": "light",
+      "viewport": {
+        "width": 820,
+        "height": 1180
+      },
+      "documentWidth": 820,
+      "dpr": 1,
+      "visualScale": 1,
+      "cssZoom": "1",
+      "scheme": "light"
+    },
+    {
+      "file": "wiki-shared-writing-before-version-save-dark-820.png",
+      "application_source": "7af776c7dfd4403e3937c8ccd4b9723c7808d587",
+      "engine": "webkit",
+      "browser_version": "26.5",
+      "requested_palette": "dark",
+      "viewport": {
+        "width": 820,
+        "height": 1180
+      },
+      "documentWidth": 820,
+      "dpr": 1,
+      "visualScale": 1,
+      "cssZoom": "1",
+      "scheme": "dark"
+    },
+    {
+      "file": "wiki-shared-writing-before-version-save-light-2560.png",
+      "application_source": "7af776c7dfd4403e3937c8ccd4b9723c7808d587",
+      "engine": "webkit",
+      "browser_version": "26.5",
+      "requested_palette": "light",
+      "viewport": {
+        "width": 2560,
+        "height": 1440
+      },
+      "documentWidth": 2560,
+      "dpr": 1,
+      "visualScale": 1,
+      "cssZoom": "1",
+      "scheme": "light"
+    },
+    {
+      "file": "wiki-shared-writing-before-version-save-dark-2560.png",
+      "application_source": "7af776c7dfd4403e3937c8ccd4b9723c7808d587",
+      "engine": "webkit",
+      "browser_version": "26.5",
+      "requested_palette": "dark",
+      "viewport": {
+        "width": 2560,
+        "height": 1440
+      },
+      "documentWidth": 2560,
+      "dpr": 1,
+      "visualScale": 1,
+      "cssZoom": "1",
+      "scheme": "dark"
+    }
+  ]
+}

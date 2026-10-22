@@ -1,0 +1,64 @@
+{
+  "diagnostic_only": true,
+  "acceptance": false,
+  "instrumentation_sha": "28ad6b43e91cea907b1bf22c0de343265c91387f",
+  "application_sha": "8ba5f87ae065d52b4b69158648f8e863b3d3f9cb",
+  "terminal": {
+    "runner_exit": 1,
+    "driver_exit": 1,
+    "collector_exit": 1,
+    "reason": "Unchanged collector rejects diagnostic one-case marker: closed marker binding invalid; no acceptance seal.",
+    "rows": 240,
+    "profile_errors": false,
+    "observer_dropped_entries": 0
+  },
+  "timed_window_seconds": [
+    685030.140137999,
+    685090.140137999
+  ],
+  "local_controls_seconds": [
+    685016.78628744,
+    685019.026029409
+  ],
+  "selection_clicks": "All200 selection clicks/camera preparation/mousedown precede profiler start685016.646809.",
+  "trigger": {
+    "driver": "app/tests/ui/live_editing_latency.py map_drag.produce post-mouse.move owner.locator(.sk-canvas).evaluate",
+    "trace_timed_calls": 1279,
+    "call": "Frame.waitForSelector .sk-canvas strict=True state=attached",
+    "sampled_computeBox_self_ms": 7862.312,
+    "sampled_isElementVisible_inclusive_ms": 7907.905,
+    "protocol_wait_p50_ms": 10.526,
+    "protocol_wait_p95_ms": 17.654,
+    "protocol_wait_sum_ms": 14218.618,
+    "warning": "Protocol intervals overlap application work; sampled stack times are not CPU utilization and cannot be subtracted from latency."
+  },
+  "public_sources": [
+    "https://github.com/microsoft/playwright-python/blob/v1.62.0/playwright/_impl/_locator.py#L177",
+    "https://github.com/microsoft/playwright-python/blob/v1.62.0/playwright/_impl/_locator.py#L295",
+    "https://github.com/microsoft/playwright/blob/v1.62.0/packages/playwright-core/src/server/frames.ts#L783",
+    "https://github.com/microsoft/playwright/blob/v1.62.0/packages/playwright-core/src/server/frameSelectors.ts#L187",
+    "https://github.com/microsoft/playwright/blob/v1.62.0/packages/injected/src/domUtils.ts#L109"
+  ],
+  "proposal": {
+    "scope": "Only repeated owner post-pointer identity read: Locator.evaluate -> fresh page.evaluate; no peer lookup or application optimization.",
+    "requirements": [
+      "Exactly one attached current canvas; preserve existing gestureId,generation,Number(sequence),document.visibilityState return and identity refusal.",
+      "Trusted pointer input, input timestamp, cadence,30controls,30warmups,240rows,60seconds,1000msdeadline,200mslimit unchanged.",
+      "All200 current DOM geometry/version/generation/gesture/lease/sequence/viewport checks and twoRAF/recheck unchanged.",
+      "Keep screenshots=True,snapshots=False, source/runtime pins and complete collector unchanged.",
+      "Record accepted measurement-method change and exact driver hash. Keep canonical8ba230.479ms FAIL under original method.",
+      "Calibrate old/new identity equality on stationary real current canvas before and during valid drag, actual route/missing-canvas and native lease-clear refusal controls. Then relevant unchanged real-browser journeys; no timing claim from this diagnostic."
+    ]
+  },
+  "not_supported": [
+    "Peer querySelector optimization:0.172s sampled self during60seconds is too small alone.",
+    "Selection-bar effect optimization: zero sampled callback nodes in its retained source range; no demonstrated hotspot.",
+    "App topology caching: buildOutline0.218/0.266seconds timed inclusive is not sufficient evidence for the remaining latency gap."
+  ],
+  "limitations": [
+    "Single diagnostic run with profiling overhead and different one-case context.",
+    "Whole-profile Performance metric deltas include local controls/warmups; timed subset CPU/frame numbers are separately partitioned.",
+    "Substantial browser program/unattributed sampled time is not assigned to a specific application function.",
+    "No product, canonical driver, collector or GitHub mutations."
+  ]
+}

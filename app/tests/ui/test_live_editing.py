@@ -17,18 +17,26 @@ import time
 import unittest
 import uuid
 
-from playwright.async_api import async_playwright, expect
+from playwright.async_api import Error, async_playwright, expect
+from live_editing_identity import map_input_identity
 from test_app_shell import ORIGIN, UI_BROWSER, UPSTREAM, start_forwarder
 from native_touch import native_touch_driver, native_touch_sender
+from native_ime import NativeImeDisplay
 
 
 class LiveFixture(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         if UPSTREAM:
             start_forwarder(ORIGIN, UPSTREAM)
+        launch_options = {}
+        self.native_ime = None
+        if UI_BROWSER == 'webkit' and self._testMethodName == 'test_14_ime_composition_shares_the_committed_text_once':
+            self.native_ime = NativeImeDisplay()
+            self.addCleanup(self.native_ime.close)
+            launch_options = {'headless': False, 'env': self.native_ime.environment}
         with native_touch_driver(UI_BROWSER):
             self.pw = await async_playwright().start()
-        self.browser = await getattr(self.pw, UI_BROWSER).launch()
+        self.browser = await getattr(self.pw, UI_BROWSER).launch(**launch_options)
         self.assertEqual(self.browser.browser_type.name, UI_BROWSER)
         print(f"ACTUAL_UI_ENGINE={self.browser.browser_type.name}", flush=True)
         self.contexts = []
@@ -349,6 +357,7 @@ class LiveEditingJourney(LiveFixture):
         self.assertEqual(refusal.status, 409)
         self.assertEqual((await refusal.json())['code'], 'EDITING_UNDO_CONFLICT')
         await expect(ada.locator(".sk-status .sk-warn")).to_be_visible()
+        await expect(ada.locator(".sk-status")).not_to_contain_text("Undid:")
         await expect(kai.locator(f'.sk-node[data-id="{id}"]')).to_have_attribute("data-thought-x", "64")
         self.assertEqual((await self.api(ada, "GET", f"/api/v1/sketches/{self.map_id}"))["thoughts"][0]["x"], 64)
 
@@ -475,21 +484,42 @@ class LiveEditingJourney(LiveFixture):
         field, peer = await self.editor('ada'), await self.editor('kai')
         async def copied_document(page, content):
             # The viewport DOM is virtualized and includes named cursor widgets.
-            # Observe the actual editor's ordinary Select All/Copy path instead.
-            # A fresh sentinel prevents an old clipboard value from passing.
-            await page.context.grant_permissions(['clipboard-read', 'clipboard-write'], origin=ORIGIN)
+            # Observe the actual editor's handled trusted Copy payload after CodeMirror has
+            # populated it. This needs no OS clipboard permission and never changes the editor.
+            nonce = str(uuid.uuid4())
             sentinel = 'fresh-copy-' + str(uuid.uuid4())
-            await page.evaluate('value => navigator.clipboard.writeText(value)', sentinel)
-            await content.click()
-            await page.keyboard.press('Control+a')
-            await page.keyboard.press('Control+c')
+            await page.bring_to_front()
+            await content.evaluate('''(element, {nonce,sentinel}) => {
+              window.__liveCopyObservation = {nonce,seen:false,text:sentinel};
+              window.__liveCopyListener = event => {
+                if (!element.contains(event.target)) return;
+                window.__liveCopyObservation = {nonce,seen:true,text:event.clipboardData?.getData('text/plain') ?? null,
+                  trusted:event.isTrusted,handled:event.defaultPrevented,types:[...(event.clipboardData?.types ?? [])]};
+              };
+              // Window bubbling observes the original handler's payload, without intercepting it.
+              window.addEventListener('copy',window.__liveCopyListener);
+            }''', {'nonce': nonce, 'sentinel': sentinel})
             try:
-                await page.wait_for_function('async value => (await navigator.clipboard.readText()) !== value', arg=sentinel, timeout=5000)
-                text = await page.evaluate('() => navigator.clipboard.readText()')
+                await content.click()
+                await page.keyboard.press('Control+a')
+                await page.keyboard.press('Control+c')
+                await page.wait_for_function('nonce => window.__liveCopyObservation?.nonce === nonce && window.__liveCopyObservation.seen',
+                                             arg=nonce, timeout=5000)
+                observed = await page.evaluate('window.__liveCopyObservation')
+                self.assertTrue(observed['trusted'], 'The full-text witness must come from native trusted Copy')
+                self.assertTrue(observed['handled'], 'The editor populated the Copy payload before the observer')
+                self.assertIn('text/plain', observed['types'])
+                text = observed['text']
                 self.assertIsInstance(text, str)
+                self.assertTrue(text and text != sentinel, 'A fresh complete Copy payload replaced the sentinel')
                 self.assertLessEqual(len(text), 100_000)
                 return text
             finally:
+                await page.evaluate('''() => {
+                  window.removeEventListener('copy',window.__liveCopyListener);
+                  delete window.__liveCopyListener; delete window.__liveCopyObservation;
+                }''')
+                await content.click()
                 await page.keyboard.press('Control+End')
         async def confirmed_body(key, exact_local=True):
             page = self.pages[key]
@@ -627,19 +657,81 @@ class LiveEditingJourney(LiveFixture):
         await expect(peer).to_have_attribute("data-thought-y", str(saved["y"]))
 
     async def test_14_ime_composition_shares_the_committed_text_once(self):
-        # A real IME composition through CDP (composition updates, then the committed text): the
-        # peer receives the committed characters exactly once and both copies converge.
+        # Chromium retains its supported native CDP composition. WebKit uses real GTK Unicode
+        # preedit/commit through X11, not synthetic DOM events or an inserted final string.
         await self.create_doc()
         ada, kai = self.pages["ada"], self.pages["kai"]
         ada_field, kai_field = await self.editor("ada"), await self.editor("kai")
-        await ada_field.click()
-        await ada.keyboard.press("Control+End")
-        cdp = await ada.context.new_cdp_session(ada)
-        for text in ("に", "にほ", "にほん"):
-            await cdp.send("Input.imeSetComposition", {"text": text, "selectionStart": len(text), "selectionEnd": len(text)})
-            await ada.wait_for_timeout(30)
-        await cdp.send("Input.insertText", {"text": "日本"})
-        await ada.keyboard.type(" notes")
+        cdp = await ada.context.new_cdp_session(ada) if UI_BROWSER == 'chromium' else None
+
+        async def compose(field):
+            await ada.bring_to_front()
+            previous_title = await ada.title()
+            if self.native_ime:
+                marker = 'Flux native IME ' + uuid.uuid4().hex
+                await ada.evaluate('title => { document.title = title; }', marker)
+                await ada.wait_for_timeout(50)
+                self.native_ime.focus_writer(marker)
+            try:
+                await field.click()
+                await ada.keyboard.press('Control+End')
+                await field.evaluate('''element => {
+                  window.__nativeImeWitness = [];
+                  for (const type of ['compositionstart','compositionupdate','compositionend','beforeinput','input'])
+                    element.addEventListener(type, event => window.__nativeImeWitness.push({type:event.type,
+                      data:event.data, trusted:event.isTrusted, composing:event.isComposing, inputType:event.inputType}), true);
+                }''')
+                if cdp:
+                    for text in ('に', 'にほ', 'にほん'):
+                        await cdp.send('Input.imeSetComposition', {'text': text, 'selectionStart': len(text), 'selectionEnd': len(text)})
+                        await ada.wait_for_timeout(30)
+                    await cdp.send('Input.insertText', {'text': '日本'})
+                else:
+                    self.assertIsNotNone(self.native_ime, 'WebKit must use its real native IM context')
+                    for digits, committed in (('65e5', '日'), ('672c', '本')):
+                        before = await ada.evaluate('window.__nativeImeWitness.length')
+                        self.native_ime.chord('Control_L', 'Shift_L', 'u')
+                        for digit in digits:
+                            self.native_ime.key(digit)
+                            await ada.wait_for_timeout(20)
+                        await ada.wait_for_function('''({before,digits}) => window.__nativeImeWitness.slice(before)
+                          .some(event => event.type === 'compositionupdate' && event.trusted && event.data.toLowerCase().includes(digits))''',
+                          arg={'before': before, 'digits': digits}, timeout=5000)
+                        self.native_ime.key('Return')
+                        await ada.wait_for_function('''({before,committed}) => window.__nativeImeWitness.slice(before)
+                          .some(event => event.type === 'input' && event.trusted && event.data === committed)''',
+                          arg={'before': before, 'committed': committed}, timeout=5000)
+                await ada.keyboard.type(' notes')
+                witness = await ada.evaluate('window.__nativeImeWitness')
+                composition = [event for event in witness if event['type'].startswith('composition')]
+                for kind in ('compositionstart', 'compositionupdate', 'compositionend'):
+                    self.assertTrue(any(event['type'] == kind for event in composition), f'Missing native {kind}: {witness}')
+                for kind in ('compositionstart', 'compositionupdate'):
+                    self.assertTrue(any(event['type'] == kind and event['trusted'] for event in composition), witness)
+                self.assertTrue(any(event['type'] == 'input' and event['trusted']
+                                    and event['data'] in ('日本', '日', '本') for event in witness), witness)
+                if self.native_ime:
+                    self.assertTrue(all(event['trusted'] for event in composition), witness)
+                    self.assertEqual(sum(event['type'] == 'compositionstart' for event in composition), 2, witness)
+                    # GTK ends the hexadecimal preedit with empty data before each real commit.
+                    # Both nonempty composition ends and committed inputs must identify each
+                    # expected character exactly once; native cleanup ends are not extra text.
+                    self.assertEqual([event['data'] for event in composition
+                                      if event['type'] == 'compositionend' and event['data']], ['日', '本'], witness)
+                    self.assertEqual([event['data'] for event in witness if event['type'] == 'input'
+                                      and event['inputType'] == 'insertFromComposition'], ['日', '本'], witness)
+                    self.assertTrue(all(event['trusted'] for event in witness if event['type'] == 'input'), witness)
+                    print('ACTUAL_NATIVE_IME=webkit-gtk-simple-x11; trusted preedit/commit cycles=2', flush=True)
+                else:
+                    # CDP's observed compositionend has isTrusted=false. It is not a native-end
+                    # witness; the original kana preedit, real input and convergence remain required.
+                    print('ACTUAL_NATIVE_IME=chromium-cdp; trusted preedit/input; endTrusted=' +
+                          str([event['trusted'] for event in composition if event['type'] == 'compositionend']), flush=True)
+            finally:
+                if self.native_ime:
+                    await ada.evaluate('title => { document.title = title; }', previous_title)
+
+        await compose(ada_field)
         await expect(ada.get_by_role("status").filter(has_text="All changes shared")).to_be_visible()
         await expect(kai_field).to_contain_text("日本 notes")
         for page in (ada, kai):
@@ -652,6 +744,31 @@ class LiveEditingJourney(LiveFixture):
                 raw = raw.replace(label, "")
             return "".join(raw.split())
         self.assertEqual(shared_text(await ada_field.inner_text()), shared_text(await kai_field.inner_text()))
+
+        # At the unchanged hard limit, remove eight code units first so even a five-character
+        # native hexadecimal preedit stays below it. Two committed characters plus " notes"
+        # restore exactly100,000; the saved historical version remains byte-for-byte unchanged.
+        boundary = await self.create_doc('r' * 100_000)
+        ada_field, kai_field = await self.editor('ada'), await self.editor('kai')
+        await ada_field.click()
+        await ada.keyboard.press('Control+End')
+        for _ in range(8):
+            await ada.keyboard.press('Shift+ArrowLeft')
+        await ada.keyboard.press('Backspace')
+        await compose(ada_field)
+        await expect(ada.get_by_role('status').filter(has_text='All changes shared')).to_be_visible()
+        # The peer's100k editor virtualizes the beginning while its caret stays there.
+        # Reach the committed end through its real keyboard before inspecting that text.
+        await kai_field.click()
+        await kai.keyboard.press('Control+End')
+        await expect(kai_field).to_contain_text('日本 notes')
+        expected = 'r' * 99_992 + '日本 notes'
+        for page in (ada, kai):
+            current = await self.api(page, 'GET', f'/api/v1/docs/{boundary["id"]}/live')
+            self.assertEqual(current['body'], expected)
+            self.assertEqual(len(current['body']), 100_000)
+            saved = await self.api(page, 'GET', f'/api/v1/docs/{boundary["id"]}/versions/1')
+            self.assertEqual(saved['body'], 'r' * 100_000)
 
     async def test_15_a_collaborators_caret_at_the_end_never_takes_the_last_character_selection(self):
         # #228 Gate 4: Shift+ArrowLeft at the end of the text must select the last character even
@@ -824,6 +941,186 @@ class LiveEditingJourney(LiveFixture):
             self.assertEqual(by_id[thought["id"]]["version"], 2, "The real release commits every selected thought once")
         self.assertEqual(by_id[untouched["id"]]["version"], 1)
         self.assertEqual((by_id[untouched["id"]]["x"], by_id[untouched["id"]]["y"]), (untouched["x"], untouched["y"]))
+
+    async def test_19_successive_peer_previews_keep_content_but_native_edits_refresh_it(self):
+        ada, kai = self.pages['ada'], self.pages['kai']
+        # Observe production React commits without replacing transport or mutating the DOM.
+        # The moving button must render; its memoized text subtree must keep its fiber.
+        await kai.add_init_script("""(() => {
+          const seen = {shell: new Map(), content: new Map()};
+          window.__thoughtRenders = {shell: {}, content: {}};
+          window.__REACT_DEVTOOLS_GLOBAL_HOOK__ = {supportsFiber: true, isDisabled: false, renderers: new Map(), inject() {return 1;},
+            checkDCE() {}, onCommitFiberUnmount() {}, onPostCommitFiberRoot() {},
+            onCommitFiberRoot(_id, root) {
+              const stack = [{fiber: root.current, id: null}];
+              while (stack.length) {
+                const {fiber, id: parentId} = stack.pop(), props = fiber.memoizedProps;
+                const shell = fiber.type === 'button' && props?.['data-id'] && String(props.className).startsWith('sk-node');
+                const id = shell ? props['data-id'] : parentId;
+                const content = id && fiber.type === 'span' && String(props?.className).split(' ').includes('sk-t');
+                const kind = shell ? 'shell' : content ? 'content' : null;
+                if (kind) {
+                  if (seen[kind].has(id) && seen[kind].get(id) !== fiber)
+                    window.__thoughtRenders[kind][id] = (window.__thoughtRenders[kind][id] || 0) + 1;
+                  seen[kind].set(id, fiber);
+                }
+                if (fiber.sibling) stack.push({fiber: fiber.sibling, id: parentId});
+                if (fiber.child) stack.push({fiber: fiber.child, id});
+              }
+            }};
+        })()""")
+        await self.create_map(3)
+        first, second = self.thoughts[:2]
+        node = ada.locator(f'.sk-node[data-id="{first["id"]}"]')
+        peer = kai.locator(f'.sk-node[data-id="{first["id"]}"]')
+        bounds = await node.bounding_box()
+        try:
+            await ada.mouse.move(bounds['x'] + 20, bounds['y'] + 20)
+            await ada.mouse.down()
+            await ada.mouse.move(bounds['x'] + 60, bounds['y'] + 40, steps=3)
+            await expect(peer).to_have_attribute('data-live-mover', 'Ada North')
+            sequence = await ada.locator('.sk-canvas').get_attribute('data-live-own-sequence')
+            await expect(peer).to_have_attribute('data-live-preview-sequence', sequence)
+            before = await kai.evaluate('window.__thoughtRenders')
+            initial_x = await peer.get_attribute('data-thought-x')
+            for step in range(1, 9):
+                previous = await peer.get_attribute('data-live-preview-sequence')
+                await ada.mouse.move(bounds['x'] + 60 + step * 6, bounds['y'] + 40 + step * 3)
+                await expect(peer).not_to_have_attribute('data-live-preview-sequence', previous)
+            after = await kai.evaluate('window.__thoughtRenders')
+            self.assertGreaterEqual(after['shell'].get(first['id'], 0) - before['shell'].get(first['id'], 0), 8,
+                                    'The observer sees each real movement update render its current geometry/sequence')
+            self.assertEqual(after['content'].get(first['id'], 0), before['content'].get(first['id'], 0),
+                             'Successive actual movement previews do not render unchanged content')
+            await expect(peer).not_to_have_attribute('data-thought-x', initial_x)
+
+            # A real native edit to a neighbour remains visible while the original lease moves.
+            changed = await self.api(kai, 'PATCH', f'/api/v1/sketches/{self.map_id}/thoughts/{second["id"]}',
+                {'text': 'Native neighbour edit during movement'}, 200,
+                {'idempotency-key': str(uuid.uuid4()), 'if-match': f'"{second["version"]}"'})
+            for page in self.pages.values():
+                await expect(page.locator(f'.sk-node[data-id="{second["id"]}"] .sk-t')).to_have_text(changed['text'])
+            self.assertGreater((await kai.evaluate('window.__thoughtRenders'))['content'].get(second['id'], 0),
+                               before['content'].get(second['id'], 0), 'The content observer detects native edits')
+            previous = await peer.get_attribute('data-live-preview-sequence')
+            await ada.mouse.move(bounds['x'] + 130, bounds['y'] + 75)
+            await expect(peer).not_to_have_attribute('data-live-preview-sequence', previous)
+            await expect(peer).to_have_attribute('data-live-mover', 'Ada North')
+
+            # Editing the moving thought clears its old lease and refreshes its own content.
+            changed = await self.api(kai, 'PATCH', f'/api/v1/sketches/{self.map_id}/thoughts/{first["id"]}',
+                {'text': 'Native edit replaces the moving thought body', 'height': first['height'] + 160, 'width': first['width'] + 40}, 200,
+                {'idempotency-key': str(uuid.uuid4()), 'if-match': f'"{first["version"]}"'})
+            for page in self.pages.values():
+                target = page.locator(f'.sk-node[data-id="{first["id"]}"]')
+                await expect(target.locator('.sk-t')).to_have_text(changed['text'])
+                await expect(target).to_have_attribute('data-thought-version', str(changed['version']))
+                await expect(target).not_to_have_attribute('data-live-mover', 'Ada North')
+                self.assertEqual(await target.evaluate('el => el.style.minHeight'), f'{changed["height"]}px')
+            self.assertGreater((await kai.evaluate('window.__thoughtRenders'))['content'].get(first['id'], 0),
+                               after['content'].get(first['id'], 0))
+        finally:
+            await ada.mouse.up()
+
+        # Stable input callbacks must use the new native dimensions/version, not their
+        # pre-preview thought. Check persisted real keyboard and pointer resize paths.
+        await peer.click()
+        await peer.press('Alt+ArrowDown')
+        await expect(peer).to_have_attribute('data-thought-version', str(changed['version'] + 1))
+        await self.map_saved(kai)
+        graph = await self.api(kai, 'GET', f'/api/v1/sketches/{self.map_id}')
+        keyboard = next(item for item in graph['thoughts'] if item['id'] == first['id'])
+        self.assertEqual((keyboard['width'], keyboard['height']), (changed['width'], changed['height'] + 12))
+        self.assertEqual((keyboard['text'], keyboard['x'], keyboard['y']),
+                         (changed['text'], changed['x'], changed['y']))
+
+        self.assertEqual(await peer.evaluate('el => el.offsetHeight'), keyboard['height'],
+                         'The fresh native height exceeds intrinsic content before exact pointer resizing')
+        bounds = await peer.bounding_box()
+        zoom = bounds['width'] / keyboard['width']
+        handle = await peer.locator('.sk-resize').bounding_box()
+        self.assertIsNotNone(handle)
+        try:
+            await kai.mouse.move(handle['x'] + handle['width'] / 2, handle['y'] + handle['height'] / 2)
+            await kai.mouse.down()
+            await kai.mouse.move(handle['x'] + handle['width'] / 2 + 48 * zoom,
+                                 handle['y'] + handle['height'] / 2 + 24 * zoom, steps=4)
+        finally:
+            await kai.mouse.up()
+        await expect(peer).to_have_attribute('data-thought-version', str(keyboard['version'] + 1))
+        await self.map_saved(kai)
+        graph = await self.api(kai, 'GET', f'/api/v1/sketches/{self.map_id}')
+        pointer = next(item for item in graph['thoughts'] if item['id'] == first['id'])
+        self.assertEqual((pointer['width'], pointer['height']), (keyboard['width'] + 48, keyboard['height'] + 24))
+        self.assertEqual((pointer['text'], pointer['x'], pointer['y']),
+                         (changed['text'], changed['x'], changed['y']))
+        await expect(node).to_have_attribute('data-thought-version', str(pointer['version']))
+
+        await peer.press('Enter')
+        editor = kai.get_by_label('Thought text', exact=True)
+        await expect(editor).to_be_focused()
+        await expect(editor).to_have_value(pointer['text'])
+        await editor.fill('Unsaved text after fresh native resize')
+        await editor.press('Escape')
+        await expect(editor).to_have_count(0)
+        await expect(peer.locator('.sk-t')).to_have_text(pointer['text'])
+        graph = await self.api(kai, 'GET', f'/api/v1/sketches/{self.map_id}')
+        cancelled = next(item for item in graph['thoughts'] if item['id'] == first['id'])
+        self.assertEqual(cancelled, pointer, 'Escape after Enter keeps the exact current native thought/version')
+        print('CURRENT_NODE_INPUT_CONTROL', {'native': changed, 'keyboard': keyboard,
+              'pointer': pointer, 'cancelled_version': cancelled['version']}, flush=True)
+
+    async def test_20_map_input_identity_matches_locator_and_refuses_invalid_canvas(self):
+        ada, kai = self.pages['ada'], self.pages['kai']
+        legacy = "el => ({gestureId:el.dataset.liveOwnGesture,generation:el.dataset.liveGeneration,sequence:Number(el.dataset.liveOwnSequence),visibility:document.visibilityState})"
+        previous = None
+        # Real navigation replaces the whole map/canvas. Each new gesture and each
+        # successive trusted input must be read from the current authorized editor.
+        for _ in range(2):
+            await self.create_map(2)
+            thought = self.thoughts[0]
+            node = ada.locator(f'.sk-node[data-id="{thought["id"]}"]')
+            peer = kai.locator(f'.sk-node[data-id="{thought["id"]}"]')
+            bounds = await node.bounding_box()
+            try:
+                await ada.mouse.move(bounds['x'] + 20, bounds['y'] + 20)
+                await ada.mouse.down()
+                await ada.mouse.move(bounds['x'] + 65, bounds['y'] + 45, steps=3)
+                await expect(peer).to_have_attribute('data-live-mover', 'Ada North')
+                first = await map_input_identity(ada)
+                self.assertEqual(first, await ada.locator('.sk-canvas').evaluate(legacy))
+                self.assertEqual(first['visibility'], 'visible')
+                self.assertGreater(first['sequence'], 0)
+                self.assertEqual(str(uuid.UUID(first['gestureId'])), first['gestureId'])
+                self.assertEqual(str(uuid.UUID(first['generation'])), first['generation'])
+                if previous:
+                    self.assertNotEqual(first['generation'], previous['generation'], 'A replacement map has its current generation')
+                    self.assertNotEqual(first['gestureId'], previous['gestureId'], 'No gesture from the previous canvas is reused')
+                await ada.mouse.move(bounds['x'] + 85, bounds['y'] + 55)
+                current = await map_input_identity(ada)
+                self.assertGreater(current['sequence'], first['sequence'], 'A fresh read sees the next actual pointer input')
+                self.assertEqual(current, await ada.locator('.sk-canvas').evaluate(legacy))
+                await expect(peer).to_have_attribute('data-live-preview-sequence', str(current['sequence']))
+                previous = current
+            finally:
+                await ada.mouse.up()
+            await self.map_saved(ada)
+
+        # Invalid-DOM calibration only: duplicate the real canvas shell, without
+        # creating an editor or replacing transport. Both strict reads must refuse it.
+        duplicate = await ada.locator('.sk-canvas').evaluate_handle("el => {const copy=el.cloneNode(false);el.parentElement.append(copy);return copy;}")
+        try:
+            with self.assertRaisesRegex(Error, 'exactly one connected current map canvas'):
+                await map_input_identity(ada)
+            with self.assertRaisesRegex(Error, 'strict mode violation'):
+                await ada.locator('.sk-canvas').evaluate(legacy)
+        finally:
+            await duplicate.evaluate('el => el.remove()')
+            await duplicate.dispose()
+        # Actual navigation removes the map, rather than supplying a stale cached canvas.
+        await ada.goto('/')
+        with self.assertRaisesRegex(Error, 'exactly one connected current map canvas'):
+            await map_input_identity(ada)
 
     async def test_17_ctrl_end_then_shift_left_replaces_the_last_character_of_a_100k_line(self):
         # #228 Gate 4: CodeMirror draws a line longer than 20,000 characters only around the view

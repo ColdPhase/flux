@@ -1,0 +1,160 @@
+{
+  "owner": {
+    "samples": 14516,
+    "sampled_duration_ms": 73526.722,
+    "profile_span_ms": 73526.832,
+    "self_time_groups_ms": {
+      "(program)": 10882.523000000023,
+      "(idle)": 44175.55600000039,
+      "built application bundle (including framework/vendor)": 5319.476999999996,
+      "other/evaluated/unattributed": 12921.206000000015,
+      "(garbage collector)": 227.95999999999998
+    },
+    "performance_metric_deltas": {
+      "LayoutCount": 1553,
+      "RecalcStyleCount": 5723,
+      "LayoutDuration": 1.375935,
+      "RecalcStyleDuration": 9.57773,
+      "DevToolsCommandDuration": 2.829039,
+      "ScriptDuration": 6.916292,
+      "V8CompileDuration": 0,
+      "TaskDuration": 29.262427,
+      "TaskOtherDuration": 8.563431000000001
+    },
+    "frame_intervals_ms": {
+      "count": 4375,
+      "sum": 73580.5,
+      "p50": 16.69999999999709,
+      "p95": 16.79999999998836,
+      "max": 50.100000000000364
+    },
+    "long_tasks_duration_ms": {
+      "count": 0,
+      "sum": 0,
+      "p50": null,
+      "p95": null,
+      "max": null
+    },
+    "long_frames_duration_ms": {
+      "count": 1,
+      "sum": 67.59999990463257,
+      "p50": 67.59999990463257,
+      "p95": 67.59999990463257,
+      "max": 67.59999990463257
+    },
+    "supported": [
+      "element",
+      "event",
+      "first-input",
+      "interaction-contentful-paint",
+      "largest-contentful-paint",
+      "layout-shift",
+      "long-animation-frame",
+      "longtask",
+      "mark",
+      "measure",
+      "navigation",
+      "paint",
+      "resource",
+      "soft-navigation",
+      "visibility-state"
+    ],
+    "dropped": {
+      "frames": 0,
+      "long_tasks": 0,
+      "long_animation_frames": 0,
+      "scripts": 0
+    },
+    "sample_intervals_ms": {
+      "count": 14516,
+      "sum": 73526.722,
+      "p50": 5.061,
+      "p95": 5.073,
+      "max": 63.793
+    },
+    "long_frame_scripts_forced_layout": []
+  },
+  "peer": {
+    "samples": 14507,
+    "sampled_duration_ms": 73466.327,
+    "profile_span_ms": 73471.125,
+    "self_time_groups_ms": {
+      "(program)": 32074.90000000106,
+      "(idle)": 28462.531000000145,
+      "built application bundle (including framework/vendor)": 6784.558000000004,
+      "other/evaluated/unattributed": 5605.716000000003,
+      "(garbage collector)": 538.6220000000001
+    },
+    "performance_metric_deltas": {
+      "LayoutCount": 1543,
+      "RecalcStyleCount": 6355,
+      "LayoutDuration": 1.384942,
+      "RecalcStyleDuration": 11.80016,
+      "DevToolsCommandDuration": 3.272078,
+      "ScriptDuration": 8.72465,
+      "V8CompileDuration": 0,
+      "TaskDuration": 45.058911,
+      "TaskOtherDuration": 19.877081
+    },
+    "frame_intervals_ms": {
+      "count": 4295,
+      "sum": 73513.6,
+      "p50": 16.69999999999709,
+      "p95": 16.80000000000291,
+      "max": 50.100000000000364
+    },
+    "long_tasks_duration_ms": {
+      "count": 0,
+      "sum": 0,
+      "p50": null,
+      "p95": null,
+      "max": null
+    },
+    "long_frames_duration_ms": {
+      "count": 3,
+      "sum": 177.60000014305115,
+      "p50": 56.60000002384186,
+      "p95": 70.10000002384186,
+      "max": 70.10000002384186
+    },
+    "supported": [
+      "element",
+      "event",
+      "first-input",
+      "interaction-contentful-paint",
+      "largest-contentful-paint",
+      "layout-shift",
+      "long-animation-frame",
+      "longtask",
+      "mark",
+      "measure",
+      "navigation",
+      "paint",
+      "resource",
+      "soft-navigation",
+      "visibility-state"
+    ],
+    "dropped": {
+      "frames": 0,
+      "long_tasks": 0,
+      "long_animation_frames": 0,
+      "scripts": 0
+    },
+    "sample_intervals_ms": {
+      "count": 14507,
+      "sum": 73466.327,
+      "p50": 5.061,
+      "p95": 5.073,
+      "max": 67.273
+    },
+    "long_frame_scripts_forced_layout": [
+      {
+        "url": "http://127.0.0.1:18685/assets/index-BKrE8-Oz.js",
+        "function": "D",
+        "char": 5964,
+        "forced_layout_ms": 0,
+        "script_ms": 6.200000047683716
+      }
+    ]
+  }
+}

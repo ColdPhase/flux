@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "status": "finished-original-full-nine-FAIL-8-of-9",
+  "sourceSha": "7af776c7dfd4403e3937c8ccd4b9723c7808d587",
+  "worktree": "/home/hubert/Develop/flux/.worktrees/228-access-latency-7af776c7",
+  "application": "Production availability, producer memo, isolated presence, stable callbacks/resize; current-main #603; single current sketch access evaluation and ordinary roomless conflict restoration. No private diagnostic instrumentation.",
+  "driverSha256": "f331c1af49c8df43df6b257bc7c16795fedb5c3b102cfc11249282ef858df3ee",
+  "cohorts": 9,
+  "samplesPerCohort": 240,
+  "warmupsPerCohort": 30,
+  "thresholdMs": 200,
+  "measurement": "Original unchanged canonical Gate4 schedule, continuous trusted input, exact identity/publication/geometry, two RAF+recheck, screenshots/traces on, denominator/error/socket checks. No subtraction or threshold/method/cadence change.",
+  "purpose": "One original full-nine run after supported product fixes and author functional checks. Prior f30 FAIL7/9 retained. No new CPU profile or unchanged blind rerun.",
+  "authorFunctionalEvidence": {
+    "apiSource": "aade67efde45b8156fe933c2124ab5a2a96d580a",
+    "api": "50/50 PASS",
+    "actualTwoApi": "1/1 PASS",
+    "uiPrivateSource": "21bbb7469132f2240f16fc346be1639b05a85813",
+    "ui": "Chromium6 maintained+capture1 PASS; WebKit5 maintained+capture1 PASS; Origin12 internally both engines; no skips; both stacks cleanup0 at14:15:24UTC"
+  }
+}

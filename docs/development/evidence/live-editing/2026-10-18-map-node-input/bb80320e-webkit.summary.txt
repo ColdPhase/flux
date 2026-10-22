@@ -1,0 +1,81 @@
+Actual runner exit: 0
+#25 19.94 $ tsc --noEmit -p tsconfig.json && tsc --noEmit -p apps/web/tsconfig.json
+#25 41.98 $ eslint .
+#25 67.28 ✖ 9 problems (0 errors, 9 warnings)
+test_small_frames_cross_the_forwarder_without_a_delayed_ack_stall (test_live_editing.ForwarderTransport.test_small_frames_cross_the_forwarder_without_a_delayed_ack_stall) ... ok
+test_00_trusted_input_reload_before_batch_deadline_seals_exact_recovery (test_live_editing.LiveEditingJourney.test_00_trusted_input_reload_before_batch_deadline_seals_exact_recovery) ... ACTUAL_UI_ENGINE=webkit
+ok
+test_01_live_characters_named_cursors_own_undo_and_immutable_save (test_live_editing.LiveEditingJourney.test_01_live_characters_named_cursors_own_undo_and_immutable_save) ... ACTUAL_UI_ENGINE=webkit
+ok
+test_02_ordinary_reader_tracks_working_text_and_history_stays_saved (test_live_editing.LiveEditingJourney.test_02_ordinary_reader_tracks_working_text_and_history_stays_saved) ... ACTUAL_UI_ENGINE=webkit
+ok
+test_03_old_private_draft_never_initializes_shared_replica (test_live_editing.LiveEditingJourney.test_03_old_private_draft_never_initializes_shared_replica) ... ACTUAL_UI_ENGINE=webkit
+ok
+test_04_reconnect_same_replica_reload_fresh_replica (test_live_editing.LiveEditingJourney.test_04_reconnect_same_replica_reload_fresh_replica) ... ACTUAL_UI_ENGINE=webkit
+ok
+test_05_map_preview_before_pointerup_unrelated_delta_during_drag (test_live_editing.LiveEditingJourney.test_05_map_preview_before_pointerup_unrelated_delta_during_drag) ... ACTUAL_UI_ENGINE=webkit
+ok
+test_06_map_own_undo_refuses_peer_change (test_live_editing.LiveEditingJourney.test_06_map_own_undo_refuses_peer_change) ... ACTUAL_UI_ENGINE=webkit
+ok
+test_07_phone_tablet_and_private_capture_are_real_browser_journeys (test_live_editing.LiveEditingJourney.test_07_phone_tablet_and_private_capture_are_real_browser_journeys) ... ACTUAL_UI_ENGINE=webkit
+ok
+test_08_known_replay_after_reload_keeps_recovered_text_before_editable (test_live_editing.LiveEditingJourney.test_08_known_replay_after_reload_keeps_recovered_text_before_editable) ... ACTUAL_UI_ENGINE=webkit
+ok
+test_09_postcommit_save_response_loss_replays_exact_save (test_live_editing.LiveEditingJourney.test_09_postcommit_save_response_loss_replays_exact_save) ... ACTUAL_UI_ENGINE=webkit
+ok
+test_10_definite_save_conflict_releases_attempt_for_explicit_fresh_save (test_live_editing.LiveEditingJourney.test_10_definite_save_conflict_releases_attempt_for_explicit_fresh_save) ... ACTUAL_UI_ENGINE=webkit
+ok
+test_11_quota_and_concurrent_own_undo_keep_100k_body (test_live_editing.LiveEditingJourney.test_11_quota_and_concurrent_own_undo_keep_100k_body) ... ACTUAL_UI_ENGINE=webkit
+ok
+test_12_cancelled_preview_keeps_private_movement_without_native_commit (test_live_editing.LiveEditingJourney.test_12_cancelled_preview_keeps_private_movement_without_native_commit) ... ACTUAL_UI_ENGINE=webkit
+ok
+test_13_trusted_touch_drag_previews_before_release_on_a_tablet (test_live_editing.LiveEditingJourney.test_13_trusted_touch_drag_previews_before_release_on_a_tablet) ... ACTUAL_UI_ENGINE=webkit
+ok
+test_14_ime_composition_shares_the_committed_text_once (test_live_editing.LiveEditingJourney.test_14_ime_composition_shares_the_committed_text_once) ... ACTUAL_UI_ENGINE=webkit
+ACTUAL_NATIVE_IME=webkit-gtk-simple-x11; trusted preedit/commit cycles=2
+ACTUAL_NATIVE_IME=webkit-gtk-simple-x11; trusted preedit/commit cycles=2
+ok
+test_15_a_collaborators_caret_at_the_end_never_takes_the_last_character_selection (test_live_editing.LiveEditingJourney.test_15_a_collaborators_caret_at_the_end_never_takes_the_last_character_selection) ... ACTUAL_UI_ENGINE=webkit
+ok
+test_16_a_peers_live_preview_renders_and_measures_only_the_moved_thought (test_live_editing.LiveEditingJourney.test_16_a_peers_live_preview_renders_and_measures_only_the_moved_thought) ... ACTUAL_UI_ENGINE=webkit
+ok
+test_19_successive_peer_previews_keep_content_but_native_edits_refresh_it (test_live_editing.LiveEditingJourney.test_19_successive_peer_previews_keep_content_but_native_edits_refresh_it) ... ACTUAL_UI_ENGINE=webkit
+CURRENT_NODE_INPUT_CONTROL {'native': {'id': 'a172b33c-393a-4867-b92a-579ca3b71e47', 'sketchId': '57b412f0-aaad-4982-b746-f9cc92aa363e', 'text': 'Native edit replaces the moving thought body', 'x': 40, 'y': 40, 'width': 224, 'height': 232, 'shape': 'card', 'placement': None, 'source': None, 'createdBy': {'kind': 'human', 'id': '3524f5db-fb30-4f5d-b0dd-7e53e107bd9e', 'name': 'Ada North'}, 'version': 2, 'createdAt': '2026-10-18T12:47:09.122Z', 'updatedAt': '2026-10-18T12:47:10.393Z'}, 'keyboard': {'id': 'a172b33c-393a-4867-b92a-579ca3b71e47', 'sketchId': '57b412f0-aaad-4982-b746-f9cc92aa363e', 'text': 'Native edit replaces the moving thought body', 'x': 40, 'y': 40, 'width': 224, 'height': 244, 'shape': 'card', 'placement': None, 'source': None, 'createdBy': {'kind': 'human', 'id': '3524f5db-fb30-4f5d-b0dd-7e53e107bd9e', 'name': 'Ada North'}, 'version': 3, 'createdAt': '2026-10-18T12:47:09.122Z', 'updatedAt': '2026-10-18T12:47:10.552Z'}, 'pointer': {'id': 'a172b33c-393a-4867-b92a-579ca3b71e47', 'sketchId': '57b412f0-aaad-4982-b746-f9cc92aa363e', 'text': 'Native edit replaces the moving thought body', 'x': 40, 'y': 40, 'width': 272, 'height': 268, 'shape': 'card', 'placement': None, 'source': None, 'createdBy': {'kind': 'human', 'id': '3524f5db-fb30-4f5d-b0dd-7e53e107bd9e', 'name': 'Ada North'}, 'version': 4, 'createdAt': '2026-10-18T12:47:09.122Z', 'updatedAt': '2026-10-18T12:47:10.706Z'}, 'cancelled_version': 4}
+ok
+test_20_map_input_identity_matches_locator_and_refuses_invalid_canvas (test_live_editing.LiveEditingJourney.test_20_map_input_identity_matches_locator_and_refuses_invalid_canvas) ... ACTUAL_UI_ENGINE=webkit
+ok
+test_17_ctrl_end_then_shift_left_replaces_the_last_character_of_a_100k_line (test_live_editing.LiveEditingJourney.test_17_ctrl_end_then_shift_left_replaces_the_last_character_of_a_100k_line) ... ACTUAL_UI_ENGINE=webkit
+ok
+test_18_a_move_by_one_character_in_drawn_text_stays_with_the_browser (test_live_editing.LiveEditingJourney.test_18_a_move_by_one_character_in_drawn_text_stays_with_the_browser) ... ACTUAL_UI_ENGINE=webkit
+ok
+test_connection_label_conflict_reveals_current_label_only_to_authorized_writer (test_live_map_projection.LiveMapProjectionJourney.test_connection_label_conflict_reveals_current_label_only_to_authorized_writer) ... ACTUAL_UI_ENGINE=webkit
+ok
+test_connection_label_save_uses_live_fence_and_replays_same_private_attempt (test_live_map_projection.LiveMapProjectionJourney.test_connection_label_save_uses_live_fence_and_replays_same_private_attempt) ... ACTUAL_UI_ENGINE=webkit
+ok
+test_remote_changes_during_drag_private_cancel_and_independent_own_undo (test_live_map_projection.LiveMapProjectionJourney.test_remote_changes_during_drag_private_cancel_and_independent_own_undo) ... ACTUAL_UI_ENGINE=webkit
+ok
+test_signed_positions_preview_and_land_for_the_peer (test_live_map_projection.LiveMapProjectionJourney.test_signed_positions_preview_and_land_for_the_peer)
+#509 AC-2: on the live map a thought moves into negative space; the peer sees the preview and the landing. ... ACTUAL_UI_ENGINE=webkit
+ok
+test_selection_clicks_are_local_then_real_50_and_200_drags_share_and_commit (test_live_map_selection.LiveMapSelectionJourney.test_selection_clicks_are_local_then_real_50_and_200_drags_share_and_commit) ... ACTUAL_UI_ENGINE=webkit
+ok
+test_201_selected_does_not_share_or_commit_any_positions (test_live_map_selection.LiveMapSelectionJourney.test_201_selected_does_not_share_or_commit_any_positions) ... ACTUAL_UI_ENGINE=webkit
+ok
+test_map_shows_the_peers_named_cursor_and_who_is_here (test_live_map_cursors.LiveCursors.test_map_shows_the_peers_named_cursor_and_who_is_here) ... ACTUAL_UI_ENGINE=webkit
+PRESENCE_RENDER_CONTROL {'before': {'view': 4, 'geometry': 5, 'node': 3, 'cursor': 2, 'people': 2}, 'after': {'view': 4, 'geometry': 5, 'node': 3, 'cursor': 7, 'people': 7}, 'native': {'view': 5, 'geometry': 6, 'node': 4, 'cursor': 8, 'people': 8}, 'actual_peer_presence_packets': 5}
+PEER_COLOURS rgb(190, 24, 93) rgb(147, 97, 60)
+ok
+test_map_presence_clears_on_room_change_disconnect_expiry_and_revocation (test_live_map_cursors.LiveCursors.test_map_presence_clears_on_room_change_disconnect_expiry_and_revocation) ... ACTUAL_UI_ENGINE=webkit
+ok
+test_wiki_shows_the_peers_named_cursor_and_writer (test_live_map_cursors.LiveCursors.test_wiki_shows_the_peers_named_cursor_and_writer) ... ACTUAL_UI_ENGINE=webkit
+ok
+test_01_server_expiry_keeps_private_movement_without_echo_cancel (test_live_map_lease_expiry.LiveMapLeaseExpiry.test_01_server_expiry_keeps_private_movement_without_echo_cancel) ... ACTUAL_UI_ENGINE=webkit
+ok
+test_capture_real_shared_work (test_live_author_capture.VisualCapture.test_capture_real_shared_work) ... ACTUAL_UI_ENGINE=webkit
+ok
+
+----------------------------------------------------------------------
+Ran 33 tests in 177.577s
+
+OK
+Removed 2 per-run image(s) tagged :flux-live-editing-1792327409-1412377

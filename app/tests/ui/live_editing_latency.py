@@ -28,6 +28,7 @@ import uuid
 from pathlib import Path
 
 from test_live_editing import LiveFixture
+from live_editing_identity import map_input_identity
 
 INTERVAL = .250
 DEADLINE = 1.000
@@ -706,7 +707,7 @@ async def map_drag(fixture, count, selected):
         nonlocal counter
         counter += 1
         await owner.mouse.move(x + 25 + 18 * math.sin(counter / 10), y + 20 + 12 * math.cos(counter / 10))
-        identity = await owner.locator('.sk-canvas').evaluate("el => ({gestureId:el.dataset.liveOwnGesture,generation:el.dataset.liveGeneration,sequence:Number(el.dataset.liveOwnSequence),visibility:document.visibilityState})")
+        identity = await map_input_identity(owner)
         if not identity.get("gestureId") or identity["sequence"] < 1 or identity['visibility'] != 'visible':
             raise RuntimeError("Trusted drag has no current authorized gesture/input sequence")
         return identity

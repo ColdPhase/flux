@@ -1,0 +1,21 @@
+✔ standing map grants create and change a shared project map as the agent, one effect and one event per command (1876.132971ms)
+✔ map actions never reach private maps, maps of other projects or another map than a targeted grant names (704.79985ms)
+✔ an ordinary map without a live room accepts a concurrent burst like main (806.478588ms)
+✔ a map with a live room refuses excess native commands as a retryable 503, never a 500 (515.526864ms)
+✔ the live editing capability and routes match the selected production mode (129.46981ms)
+▶ connection labels
+  ✔ add, edit and clear persist without replacing the connection or changing thoughts (190.60451ms)
+  ✔ write access is checked before current labels are returned, including private and DM scopes (329.253847ms)
+  ✔ concurrent edits compare under the sketch lock and stale retries leave data and events unchanged (113.639474ms)
+  ✔ idempotent retries replay once, remain scoped to the link, and recheck access (218.385612ms)
+  ✔ label validation applies in HTTP and core, and event failure rolls back the label (142.286298ms)
+✔ connection labels (1221.719139ms)
+ℹ tests 10
+ℹ suites 1
+ℹ pass 10
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 7641.894746
+Removed 3 per-run image(s) tagged :flux-test-1792319641-1044074

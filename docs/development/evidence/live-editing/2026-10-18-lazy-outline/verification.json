@@ -1,0 +1,690 @@
+{
+  "invocations": [
+    {
+      "source": "4c34f93d089df04b94ebcba2dbc08e11232455e3",
+      "lane": "unit",
+      "command": [
+        "./scripts/check_application.sh",
+        "tests/app/sketch-outline.test.ts"
+      ],
+      "started": "2026-10-18T14:43:33.773716+00:00",
+      "ended": "2026-10-18T14:47:31.511988+00:00",
+      "exit": 0,
+      "raw_directory": "/home/hubert/flux-evidence/228-lazy-outline-4c34f93d",
+      "raw_log_sha256": "acadc9c1273a4fbb929be146e26de12de40963ccca89b57059948e13820908cd",
+      "runtime_sha256": "b6bf4c04716c503a9c6cd64ddc657d506d21caf5820395a8006328472859605f",
+      "captured_at": "2026-10-18T14:47:26.508331+00:00",
+      "actual_runtime": [
+        {
+          "id": "0ddd4a3a2034ec61438ef349f04d7cf617c271cb74f4c24e7f8fd9989bfce149",
+          "name": "/flux-test-1792334613-1769639-test-run-b576202926c4",
+          "image": "sha256:eab2ed2262dbc276b0c1659c679ae903c62707c2dcde4acac6fafeb258f5f859",
+          "configured_image": "flux-test-tools:flux-test-1792334613-1769639",
+          "project": "flux-test-1792334613-1769639",
+          "service": "test"
+        },
+        {
+          "id": "560d48bec71bee088b5dd1fc9a3cc195e1aee54a57d3652db49f159078fbf1c2",
+          "name": "/flux-test-1792334613-1769639-worker-1",
+          "image": "sha256:06d98ab51b0ca46bd10ccb1f56c507e2db67ec48a7a273c1d268902e039c1021",
+          "configured_image": "flux-foundation:flux-test-1792334613-1769639",
+          "project": "flux-test-1792334613-1769639",
+          "service": "worker"
+        },
+        {
+          "id": "81b0b4bd5166f225351672771bd5559e92a2be2254f8e5e29af285082fdb640d",
+          "name": "/flux-test-1792334613-1769639-mailpit-smtps-1",
+          "image": "sha256:0a94362145f58e5cffb58605023c671774e4143037a952221ee6485b6cd999af",
+          "configured_image": "axllent/mailpit:v1.31.2@sha256:74d609a42ec279aa63c6b4622a6fa9b5408d1ad5b1d76a1c4be40a265ce0863d",
+          "project": "flux-test-1792334613-1769639",
+          "service": "mailpit-smtps"
+        },
+        {
+          "id": "bf3f2e99f5d9c9ff98fe0d41273291b60fbe15866939cfd22d8f9760ef8e3654",
+          "name": "/flux-test-1792334613-1769639-mailpit-starttls-1",
+          "image": "sha256:0a94362145f58e5cffb58605023c671774e4143037a952221ee6485b6cd999af",
+          "configured_image": "axllent/mailpit:v1.31.2@sha256:74d609a42ec279aa63c6b4622a6fa9b5408d1ad5b1d76a1c4be40a265ce0863d",
+          "project": "flux-test-1792334613-1769639",
+          "service": "mailpit-starttls"
+        },
+        {
+          "id": "aba421892af0dd01038f8fa8b95ce74ef1a4c3e6eb07800ecb2f0d6082fe019c",
+          "name": "/flux-test-1792334613-1769639-api-1",
+          "image": "sha256:06d98ab51b0ca46bd10ccb1f56c507e2db67ec48a7a273c1d268902e039c1021",
+          "configured_image": "flux-foundation:flux-test-1792334613-1769639",
+          "project": "flux-test-1792334613-1769639",
+          "service": "api"
+        },
+        {
+          "id": "9b66c7471bf32ddec543994496d8595fd05867541173e3c2a3701edd239a2ef2",
+          "name": "/flux-test-1792334613-1769639-api2-1",
+          "image": "sha256:06d98ab51b0ca46bd10ccb1f56c507e2db67ec48a7a273c1d268902e039c1021",
+          "configured_image": "flux-foundation:flux-test-1792334613-1769639",
+          "project": "flux-test-1792334613-1769639",
+          "service": "api2"
+        },
+        {
+          "id": "4453623b849920a3dabd6cbe3aa0e370afe90a7c109d3e1f2bf7de94349acf65",
+          "name": "/flux-test-1792334613-1769639-pushmock-1",
+          "image": "sha256:8a1a3fa5a2298197c3a10e6f7cb4acb1d2fbd4abefa8218ae316a102cb513c48",
+          "configured_image": "flux-e2e:flux-test-1792334613-1769639",
+          "project": "flux-test-1792334613-1769639",
+          "service": "pushmock"
+        },
+        {
+          "id": "cf634f18d67546fd25805e36b1a14484b7ba77b996d95f14dfd8e016ab4bb8f3",
+          "name": "/flux-test-1792334613-1769639-providermock-1",
+          "image": "sha256:eab2ed2262dbc276b0c1659c679ae903c62707c2dcde4acac6fafeb258f5f859",
+          "configured_image": "flux-test-tools:flux-test-1792334613-1769639",
+          "project": "flux-test-1792334613-1769639",
+          "service": "providermock"
+        },
+        {
+          "id": "a1da05f58e49f281d4c8349b21bb08d3a23c32ed7d681153c8babc16956e9235",
+          "name": "/flux-test-1792334613-1769639-mailpit-1",
+          "image": "sha256:0a94362145f58e5cffb58605023c671774e4143037a952221ee6485b6cd999af",
+          "configured_image": "axllent/mailpit:v1.31.2@sha256:74d609a42ec279aa63c6b4622a6fa9b5408d1ad5b1d76a1c4be40a265ce0863d",
+          "project": "flux-test-1792334613-1769639",
+          "service": "mailpit"
+        },
+        {
+          "id": "418d38f0746bab9a040ccaaa02d42fb8ff608022411288b5e7439faabb538019",
+          "name": "/flux-test-1792334613-1769639-db-1",
+          "image": "sha256:c293117fcecda7344b5480222e813b9f673d7abd69b1dd95eff239b768b04f59",
+          "configured_image": "postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873",
+          "project": "flux-test-1792334613-1769639",
+          "service": "db"
+        }
+      ]
+    },
+    {
+      "source": "4c34f93d089df04b94ebcba2dbc08e11232455e3",
+      "lane": "chromium",
+      "command": [
+        "./scripts/check_ui.sh",
+        "test_map_outline.MapOutlineJourney.test_04_tab_and_shift_tab_move_the_connection_alt_arrows_reorder_and_undo_restores",
+        "test_map_outline.MapOutlineJourney.test_05_enter_space_rename_delete_graph_undo_and_search_reveal_preserve_exact_ids"
+      ],
+      "started": "2026-10-18T14:47:37.803341+00:00",
+      "ended": "2026-10-18T14:48:25.520716+00:00",
+      "exit": 1,
+      "raw_directory": "/home/hubert/flux-evidence/228-lazy-outline-4c34f93d",
+      "raw_log_sha256": "130c350bbf5ed7d4359ce0a95030f2da2aa3d72abc947f3c7d38cf9272ea7ac3",
+      "runtime_sha256": "39e7247aa7184a4ce6dc0355209c7684746813438c7106c094baf66f0b77ed46",
+      "captured_at": "2026-10-18T14:48:11.415004+00:00",
+      "actual_runtime": [
+        {
+          "id": "3b90263e29e8c5b5e73a750ddf0c72f05eb23b2ce1e746871a5ebc9e57cbd08c",
+          "name": "/flux-ui-1792334857-1786049-ui-test-run-f491cff5a639",
+          "image": "sha256:501b05f3687cea06b59c33d2c016590840a468a6cd7354efa91a942ce806b8ec",
+          "configured_image": "flux-ui-tests:flux-ui-1792334857-1786049",
+          "project": "flux-ui-1792334857-1786049",
+          "service": "ui-test",
+          "configuration": {
+            "NODE_ENV": null,
+            "FLUX_LIVE_EDITING": "on",
+            "FLUX_DEVELOPMENT_LIVE_EDITING": null,
+            "FLUX_DEVELOPMENT_LIVE_EDITING_TELEMETRY": null,
+            "FLUX_DEVELOPMENT_LIVE_EDITING_API_INSTANCE": null,
+            "FLUX_UI_BROWSER": "chromium",
+            "FLUX_LIVE_EDITING_TEST": "1"
+          }
+        },
+        {
+          "id": "d680a40ccacf87a116d186b6e3a20e74aa2ad058e67ac7af4170a013217c9d02",
+          "name": "/flux-ui-1792334857-1786049-worker-1",
+          "image": "sha256:093b7e1dc5c069f19b3609531f8e5f7c67ae4aab3743c6d8a57da682bd07f133",
+          "configured_image": "flux-foundation:flux-ui-1792334857-1786049",
+          "project": "flux-ui-1792334857-1786049",
+          "service": "worker",
+          "configuration": {
+            "NODE_ENV": "production",
+            "FLUX_LIVE_EDITING": null,
+            "FLUX_DEVELOPMENT_LIVE_EDITING": null,
+            "FLUX_DEVELOPMENT_LIVE_EDITING_TELEMETRY": null,
+            "FLUX_DEVELOPMENT_LIVE_EDITING_API_INSTANCE": null,
+            "FLUX_UI_BROWSER": null,
+            "FLUX_LIVE_EDITING_TEST": null
+          }
+        },
+        {
+          "id": "1363c670357eb9a6f32c0554b99f0364a38bd4e438b0ef4dc420cd7e2d5118b7",
+          "name": "/flux-ui-1792334857-1786049-api-1",
+          "image": "sha256:093b7e1dc5c069f19b3609531f8e5f7c67ae4aab3743c6d8a57da682bd07f133",
+          "configured_image": "flux-foundation:flux-ui-1792334857-1786049",
+          "project": "flux-ui-1792334857-1786049",
+          "service": "api",
+          "configuration": {
+            "NODE_ENV": "production",
+            "FLUX_LIVE_EDITING": "on",
+            "FLUX_DEVELOPMENT_LIVE_EDITING": null,
+            "FLUX_DEVELOPMENT_LIVE_EDITING_TELEMETRY": null,
+            "FLUX_DEVELOPMENT_LIVE_EDITING_API_INSTANCE": null,
+            "FLUX_UI_BROWSER": null,
+            "FLUX_LIVE_EDITING_TEST": null
+          }
+        },
+        {
+          "id": "71edad02c952bcca1192cd18a3469fc1357917dfa1577b26274e13c90613e529",
+          "name": "/flux-ui-1792334857-1786049-anthropic-mock-1",
+          "image": "sha256:501b05f3687cea06b59c33d2c016590840a468a6cd7354efa91a942ce806b8ec",
+          "configured_image": "flux-ui-tests:flux-ui-1792334857-1786049",
+          "project": "flux-ui-1792334857-1786049",
+          "service": "anthropic-mock",
+          "configuration": {
+            "NODE_ENV": null,
+            "FLUX_LIVE_EDITING": null,
+            "FLUX_DEVELOPMENT_LIVE_EDITING": null,
+            "FLUX_DEVELOPMENT_LIVE_EDITING_TELEMETRY": null,
+            "FLUX_DEVELOPMENT_LIVE_EDITING_API_INSTANCE": null,
+            "FLUX_UI_BROWSER": null,
+            "FLUX_LIVE_EDITING_TEST": null
+          }
+        },
+        {
+          "id": "418e1daf1352ed91527f4284c03c6297ae78a05de6f104ac5b371b389fc4bf66",
+          "name": "/flux-ui-1792334857-1786049-openai-mock-1",
+          "image": "sha256:501b05f3687cea06b59c33d2c016590840a468a6cd7354efa91a942ce806b8ec",
+          "configured_image": "flux-ui-tests:flux-ui-1792334857-1786049",
+          "project": "flux-ui-1792334857-1786049",
+          "service": "openai-mock",
+          "configuration": {
+            "NODE_ENV": null,
+            "FLUX_LIVE_EDITING": null,
+            "FLUX_DEVELOPMENT_LIVE_EDITING": null,
+            "FLUX_DEVELOPMENT_LIVE_EDITING_TELEMETRY": null,
+            "FLUX_DEVELOPMENT_LIVE_EDITING_API_INSTANCE": null,
+            "FLUX_UI_BROWSER": null,
+            "FLUX_LIVE_EDITING_TEST": null
+          }
+        },
+        {
+          "id": "25b9a13da1f48ecd73e3f4ceb5a8bc54ce2b43705236e76b5019611ed3bf8b8e",
+          "name": "/flux-ui-1792334857-1786049-mailpit-1",
+          "image": "sha256:0a94362145f58e5cffb58605023c671774e4143037a952221ee6485b6cd999af",
+          "configured_image": "axllent/mailpit:v1.31.2@sha256:74d609a42ec279aa63c6b4622a6fa9b5408d1ad5b1d76a1c4be40a265ce0863d",
+          "project": "flux-ui-1792334857-1786049",
+          "service": "mailpit",
+          "configuration": {
+            "NODE_ENV": null,
+            "FLUX_LIVE_EDITING": null,
+            "FLUX_DEVELOPMENT_LIVE_EDITING": null,
+            "FLUX_DEVELOPMENT_LIVE_EDITING_TELEMETRY": null,
+            "FLUX_DEVELOPMENT_LIVE_EDITING_API_INSTANCE": null,
+            "FLUX_UI_BROWSER": null,
+            "FLUX_LIVE_EDITING_TEST": null
+          }
+        },
+        {
+          "id": "a6404557c0cb0482b62126c235e84a906b513fdcb66c27cae14417951d07b2dd",
+          "name": "/flux-ui-1792334857-1786049-db-1",
+          "image": "sha256:c293117fcecda7344b5480222e813b9f673d7abd69b1dd95eff239b768b04f59",
+          "configured_image": "postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873",
+          "project": "flux-ui-1792334857-1786049",
+          "service": "db",
+          "configuration": {
+            "NODE_ENV": null,
+            "FLUX_LIVE_EDITING": null,
+            "FLUX_DEVELOPMENT_LIVE_EDITING": null,
+            "FLUX_DEVELOPMENT_LIVE_EDITING_TELEMETRY": null,
+            "FLUX_DEVELOPMENT_LIVE_EDITING_API_INSTANCE": null,
+            "FLUX_UI_BROWSER": null,
+            "FLUX_LIVE_EDITING_TEST": null
+          }
+        }
+      ]
+    },
+    {
+      "source": "4c34f93d089df04b94ebcba2dbc08e11232455e3",
+      "lane": "chromium",
+      "command": [
+        "./scripts/check_ui.sh",
+        "test_map_outline.MapOutlineJourney.test_01_the_list_is_the_maps_tree_with_also_under_and_reloads_the_same",
+        "test_map_outline.MapOutlineJourney.test_04_tab_and_shift_tab_move_the_connection_alt_arrows_reorder_and_undo_restores",
+        "test_map_outline.MapOutlineJourney.test_05_enter_space_rename_delete_graph_undo_and_search_reveal_preserve_exact_ids"
+      ],
+      "started": "2026-10-18T14:48:49.828413+00:00",
+      "ended": "2026-10-18T14:49:51.558845+00:00",
+      "exit": 1,
+      "raw_directory": "/home/hubert/flux-evidence/228-lazy-outline-4c34f93d",
+      "raw_log_sha256": "09f53484df5bf6612ec1415c4a9320f8c8c8c282883d946f63a752bc2b3a77a6",
+      "runtime_sha256": "3e2e5a230ca9f59a5aebbbcb790fb223bff6565345c940ef89ef1e516751a002",
+      "captured_at": "2026-10-18T14:49:37.583253+00:00",
+      "actual_runtime": [
+        {
+          "id": "217f14fab1cfda2d2e137efd23235e93c4170458d16f073176e883009379ea8c",
+          "name": "/flux-ui-1792334929-1793745-ui-test-run-9c3b3b737555",
+          "image": "sha256:f208aff591028a0891829a947f49a75650355d528bb306389038bdf5a5152a54",
+          "configured_image": "flux-ui-tests:flux-ui-1792334929-1793745",
+          "project": "flux-ui-1792334929-1793745",
+          "service": "ui-test",
+          "configuration": {
+            "NODE_ENV": null,
+            "FLUX_LIVE_EDITING": "on",
+            "FLUX_DEVELOPMENT_LIVE_EDITING": null,
+            "FLUX_DEVELOPMENT_LIVE_EDITING_TELEMETRY": null,
+            "FLUX_DEVELOPMENT_LIVE_EDITING_API_INSTANCE": null,
+            "FLUX_UI_BROWSER": "chromium",
+            "FLUX_LIVE_EDITING_TEST": "1"
+          }
+        },
+        {
+          "id": "8ad459e362346618711da6b53135d1ed446be8b481d448d7bd8264fb453ae10b",
+          "name": "/flux-ui-1792334929-1793745-worker-1",
+          "image": "sha256:637d54f38bff38697fc926cf2a2af6281a77c33131b183bf15f0bf7764be0e4a",
+          "configured_image": "flux-foundation:flux-ui-1792334929-1793745",
+          "project": "flux-ui-1792334929-1793745",
+          "service": "worker",
+          "configuration": {
+            "NODE_ENV": "production",
+            "FLUX_LIVE_EDITING": null,
+            "FLUX_DEVELOPMENT_LIVE_EDITING": null,
+            "FLUX_DEVELOPMENT_LIVE_EDITING_TELEMETRY": null,
+            "FLUX_DEVELOPMENT_LIVE_EDITING_API_INSTANCE": null,
+            "FLUX_UI_BROWSER": null,
+            "FLUX_LIVE_EDITING_TEST": null
+          }
+        },
+        {
+          "id": "5715af9b8560a50ec1257178b7196520f82908fe45345830f2bb9a499732ae6b",
+          "name": "/flux-ui-1792334929-1793745-anthropic-mock-1",
+          "image": "sha256:f208aff591028a0891829a947f49a75650355d528bb306389038bdf5a5152a54",
+          "configured_image": "flux-ui-tests:flux-ui-1792334929-1793745",
+          "project": "flux-ui-1792334929-1793745",
+          "service": "anthropic-mock",
+          "configuration": {
+            "NODE_ENV": null,
+            "FLUX_LIVE_EDITING": null,
+            "FLUX_DEVELOPMENT_LIVE_EDITING": null,
+            "FLUX_DEVELOPMENT_LIVE_EDITING_TELEMETRY": null,
+            "FLUX_DEVELOPMENT_LIVE_EDITING_API_INSTANCE": null,
+            "FLUX_UI_BROWSER": null,
+            "FLUX_LIVE_EDITING_TEST": null
+          }
+        },
+        {
+          "id": "fc369de8827f1f4e5b7d4493c8fd2f416689fd57cee2264200a271f20195a1f3",
+          "name": "/flux-ui-1792334929-1793745-api-1",
+          "image": "sha256:637d54f38bff38697fc926cf2a2af6281a77c33131b183bf15f0bf7764be0e4a",
+          "configured_image": "flux-foundation:flux-ui-1792334929-1793745",
+          "project": "flux-ui-1792334929-1793745",
+          "service": "api",
+          "configuration": {
+            "NODE_ENV": "production",
+            "FLUX_LIVE_EDITING": "on",
+            "FLUX_DEVELOPMENT_LIVE_EDITING": null,
+            "FLUX_DEVELOPMENT_LIVE_EDITING_TELEMETRY": null,
+            "FLUX_DEVELOPMENT_LIVE_EDITING_API_INSTANCE": null,
+            "FLUX_UI_BROWSER": null,
+            "FLUX_LIVE_EDITING_TEST": null
+          }
+        },
+        {
+          "id": "a511e550a833b552ed1609b6db59e1016a7b9387a305dcdcf8e6f3abc6667506",
+          "name": "/flux-ui-1792334929-1793745-mailpit-1",
+          "image": "sha256:0a94362145f58e5cffb58605023c671774e4143037a952221ee6485b6cd999af",
+          "configured_image": "axllent/mailpit:v1.31.2@sha256:74d609a42ec279aa63c6b4622a6fa9b5408d1ad5b1d76a1c4be40a265ce0863d",
+          "project": "flux-ui-1792334929-1793745",
+          "service": "mailpit",
+          "configuration": {
+            "NODE_ENV": null,
+            "FLUX_LIVE_EDITING": null,
+            "FLUX_DEVELOPMENT_LIVE_EDITING": null,
+            "FLUX_DEVELOPMENT_LIVE_EDITING_TELEMETRY": null,
+            "FLUX_DEVELOPMENT_LIVE_EDITING_API_INSTANCE": null,
+            "FLUX_UI_BROWSER": null,
+            "FLUX_LIVE_EDITING_TEST": null
+          }
+        },
+        {
+          "id": "707f921cb76732d8ab7479a005cca1715354d4acec80534785b6e50c58b52d23",
+          "name": "/flux-ui-1792334929-1793745-openai-mock-1",
+          "image": "sha256:f208aff591028a0891829a947f49a75650355d528bb306389038bdf5a5152a54",
+          "configured_image": "flux-ui-tests:flux-ui-1792334929-1793745",
+          "project": "flux-ui-1792334929-1793745",
+          "service": "openai-mock",
+          "configuration": {
+            "NODE_ENV": null,
+            "FLUX_LIVE_EDITING": null,
+            "FLUX_DEVELOPMENT_LIVE_EDITING": null,
+            "FLUX_DEVELOPMENT_LIVE_EDITING_TELEMETRY": null,
+            "FLUX_DEVELOPMENT_LIVE_EDITING_API_INSTANCE": null,
+            "FLUX_UI_BROWSER": null,
+            "FLUX_LIVE_EDITING_TEST": null
+          }
+        },
+        {
+          "id": "a8b60f9bfab26645a20da9f0f79d7a8731aa4736e2f90b9321e15dcbe42d4205",
+          "name": "/flux-ui-1792334929-1793745-db-1",
+          "image": "sha256:c293117fcecda7344b5480222e813b9f673d7abd69b1dd95eff239b768b04f59",
+          "configured_image": "postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873",
+          "project": "flux-ui-1792334929-1793745",
+          "service": "db",
+          "configuration": {
+            "NODE_ENV": null,
+            "FLUX_LIVE_EDITING": null,
+            "FLUX_DEVELOPMENT_LIVE_EDITING": null,
+            "FLUX_DEVELOPMENT_LIVE_EDITING_TELEMETRY": null,
+            "FLUX_DEVELOPMENT_LIVE_EDITING_API_INSTANCE": null,
+            "FLUX_UI_BROWSER": null,
+            "FLUX_LIVE_EDITING_TEST": null
+          }
+        }
+      ]
+    },
+    {
+      "source": "759ecb40696f88cccb231dd33c49b739563d4e76",
+      "lane": "chromium",
+      "command": [
+        "./scripts/check_ui.sh",
+        "test_map_outline.MapOutlineJourney.test_01_the_list_is_the_maps_tree_with_also_under_and_reloads_the_same",
+        "test_map_outline.MapOutlineJourney.test_04_tab_and_shift_tab_move_the_connection_alt_arrows_reorder_and_undo_restores",
+        "test_map_outline.MapOutlineJourney.test_05_enter_space_rename_delete_graph_undo_and_search_reveal_preserve_exact_ids",
+        "test_live_editing.LiveEditingJourney.test_06_map_own_undo_refuses_peer_change",
+        "test_live_map_projection.LiveMapProjectionJourney.test_remote_changes_during_drag_private_cancel_and_independent_own_undo"
+      ],
+      "started": "2026-10-18T14:53:02.076889+00:00",
+      "ended": "2026-10-18T14:56:46.861117+00:00",
+      "exit": 0,
+      "raw_directory": "/home/hubert/flux-evidence/228-lazy-outline-759ecb40",
+      "raw_log_sha256": "3398fbe306b1285d4e8a6689461a51d12179c50a02c0001c2895eded34852ab4",
+      "runtime_sha256": "ab0290292c6cfa31a7b00488f1a3f8f9d7a000eb48fc1972cf5436a649498def",
+      "captured_at": "2026-10-18T14:56:34.091761+00:00",
+      "actual_runtime": [
+        {
+          "id": "d88669cec395b3a3f5c452987f748a7f0c318c69c843c5454b950f6ebb3b033a",
+          "name": "/flux-ui-1792335182-1809377-ui-test-run-398a683725b2",
+          "image": "sha256:ee78a3fc839f4bf9564c464dab3d1032f5244350a5f07e38801c70206da69f9e",
+          "configured_image": "flux-ui-tests:flux-ui-1792335182-1809377",
+          "project": "flux-ui-1792335182-1809377",
+          "service": "ui-test",
+          "configuration": {
+            "NODE_ENV": null,
+            "FLUX_LIVE_EDITING": "on",
+            "FLUX_DEVELOPMENT_LIVE_EDITING": null,
+            "FLUX_DEVELOPMENT_LIVE_EDITING_TELEMETRY": null,
+            "FLUX_DEVELOPMENT_LIVE_EDITING_API_INSTANCE": null,
+            "FLUX_UI_BROWSER": "chromium",
+            "FLUX_LIVE_EDITING_TEST": "1"
+          }
+        },
+        {
+          "id": "0f3d8b1a19d62dba0f9c50e71b520dd352a235c9988f0ba990d6d4942b40599e",
+          "name": "/flux-ui-1792335182-1809377-api-1",
+          "image": "sha256:f816d302f0d6dd3a32dc3659f2a1f093fe2849f459557645a7026dc1b3828f51",
+          "configured_image": "flux-foundation:flux-ui-1792335182-1809377",
+          "project": "flux-ui-1792335182-1809377",
+          "service": "api",
+          "configuration": {
+            "NODE_ENV": "production",
+            "FLUX_LIVE_EDITING": "on",
+            "FLUX_DEVELOPMENT_LIVE_EDITING": null,
+            "FLUX_DEVELOPMENT_LIVE_EDITING_TELEMETRY": null,
+            "FLUX_DEVELOPMENT_LIVE_EDITING_API_INSTANCE": null,
+            "FLUX_UI_BROWSER": null,
+            "FLUX_LIVE_EDITING_TEST": null
+          }
+        },
+        {
+          "id": "8fc6a8e8a36bd1cda882109cf4d2857d8c8be015fdc515631925668614e3f14d",
+          "name": "/flux-ui-1792335182-1809377-worker-1",
+          "image": "sha256:f816d302f0d6dd3a32dc3659f2a1f093fe2849f459557645a7026dc1b3828f51",
+          "configured_image": "flux-foundation:flux-ui-1792335182-1809377",
+          "project": "flux-ui-1792335182-1809377",
+          "service": "worker",
+          "configuration": {
+            "NODE_ENV": "production",
+            "FLUX_LIVE_EDITING": null,
+            "FLUX_DEVELOPMENT_LIVE_EDITING": null,
+            "FLUX_DEVELOPMENT_LIVE_EDITING_TELEMETRY": null,
+            "FLUX_DEVELOPMENT_LIVE_EDITING_API_INSTANCE": null,
+            "FLUX_UI_BROWSER": null,
+            "FLUX_LIVE_EDITING_TEST": null
+          }
+        },
+        {
+          "id": "2a881e3e4250df8ea6b0d0737a7ba26f49680772ce38e9b6f441d3d1d7b3b24a",
+          "name": "/flux-ui-1792335182-1809377-anthropic-mock-1",
+          "image": "sha256:ee78a3fc839f4bf9564c464dab3d1032f5244350a5f07e38801c70206da69f9e",
+          "configured_image": "flux-ui-tests:flux-ui-1792335182-1809377",
+          "project": "flux-ui-1792335182-1809377",
+          "service": "anthropic-mock",
+          "configuration": {
+            "NODE_ENV": null,
+            "FLUX_LIVE_EDITING": null,
+            "FLUX_DEVELOPMENT_LIVE_EDITING": null,
+            "FLUX_DEVELOPMENT_LIVE_EDITING_TELEMETRY": null,
+            "FLUX_DEVELOPMENT_LIVE_EDITING_API_INSTANCE": null,
+            "FLUX_UI_BROWSER": null,
+            "FLUX_LIVE_EDITING_TEST": null
+          }
+        },
+        {
+          "id": "4e9471238b28e8e692d720b9184c87be043d71785edf6c07e4def9787d8020f6",
+          "name": "/flux-ui-1792335182-1809377-mailpit-1",
+          "image": "sha256:0a94362145f58e5cffb58605023c671774e4143037a952221ee6485b6cd999af",
+          "configured_image": "axllent/mailpit:v1.31.2@sha256:74d609a42ec279aa63c6b4622a6fa9b5408d1ad5b1d76a1c4be40a265ce0863d",
+          "project": "flux-ui-1792335182-1809377",
+          "service": "mailpit",
+          "configuration": {
+            "NODE_ENV": null,
+            "FLUX_LIVE_EDITING": null,
+            "FLUX_DEVELOPMENT_LIVE_EDITING": null,
+            "FLUX_DEVELOPMENT_LIVE_EDITING_TELEMETRY": null,
+            "FLUX_DEVELOPMENT_LIVE_EDITING_API_INSTANCE": null,
+            "FLUX_UI_BROWSER": null,
+            "FLUX_LIVE_EDITING_TEST": null
+          }
+        },
+        {
+          "id": "eaf3b53c36365e7e5b89d928bef06577c5e0b8a644ad703a9eaaec20ca065865",
+          "name": "/flux-ui-1792335182-1809377-openai-mock-1",
+          "image": "sha256:ee78a3fc839f4bf9564c464dab3d1032f5244350a5f07e38801c70206da69f9e",
+          "configured_image": "flux-ui-tests:flux-ui-1792335182-1809377",
+          "project": "flux-ui-1792335182-1809377",
+          "service": "openai-mock",
+          "configuration": {
+            "NODE_ENV": null,
+            "FLUX_LIVE_EDITING": null,
+            "FLUX_DEVELOPMENT_LIVE_EDITING": null,
+            "FLUX_DEVELOPMENT_LIVE_EDITING_TELEMETRY": null,
+            "FLUX_DEVELOPMENT_LIVE_EDITING_API_INSTANCE": null,
+            "FLUX_UI_BROWSER": null,
+            "FLUX_LIVE_EDITING_TEST": null
+          }
+        },
+        {
+          "id": "d5baefd1105dafae5ea8f034eb61e606c4795b04728241f71dd91b24b6f31998",
+          "name": "/flux-ui-1792335182-1809377-db-1",
+          "image": "sha256:c293117fcecda7344b5480222e813b9f673d7abd69b1dd95eff239b768b04f59",
+          "configured_image": "postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873",
+          "project": "flux-ui-1792335182-1809377",
+          "service": "db",
+          "configuration": {
+            "NODE_ENV": null,
+            "FLUX_LIVE_EDITING": null,
+            "FLUX_DEVELOPMENT_LIVE_EDITING": null,
+            "FLUX_DEVELOPMENT_LIVE_EDITING_TELEMETRY": null,
+            "FLUX_DEVELOPMENT_LIVE_EDITING_API_INSTANCE": null,
+            "FLUX_UI_BROWSER": null,
+            "FLUX_LIVE_EDITING_TEST": null
+          }
+        }
+      ]
+    },
+    {
+      "source": "759ecb40696f88cccb231dd33c49b739563d4e76",
+      "lane": "webkit",
+      "command": [
+        "./scripts/check_ui.sh",
+        "test_map_outline.MapOutlineJourney.test_01_the_list_is_the_maps_tree_with_also_under_and_reloads_the_same",
+        "test_map_outline.MapOutlineJourney.test_04_tab_and_shift_tab_move_the_connection_alt_arrows_reorder_and_undo_restores",
+        "test_map_outline.MapOutlineJourney.test_05_enter_space_rename_delete_graph_undo_and_search_reveal_preserve_exact_ids",
+        "test_live_editing.LiveEditingJourney.test_06_map_own_undo_refuses_peer_change",
+        "test_live_map_projection.LiveMapProjectionJourney.test_remote_changes_during_drag_private_cancel_and_independent_own_undo"
+      ],
+      "started": "2026-10-18T14:57:06.897887+00:00",
+      "ended": "2026-10-18T14:58:08.663330+00:00",
+      "exit": 0,
+      "raw_directory": "/home/hubert/flux-evidence/228-lazy-outline-759ecb40",
+      "raw_log_sha256": "edfcb90d0eb4c84f3433a8f844acc6a96a9497b54bbe2439c55749fe97d26009",
+      "runtime_sha256": "1fa2b6d9ad8894adc66f4b4e3dd8ab05d7d00d888a9bccec76cfcec6e1f30c2f",
+      "captured_at": "2026-10-18T14:57:55.444143+00:00",
+      "actual_runtime": [
+        {
+          "id": "9f5ad809e5a500801676ebc4f149033d8f5a1ff600b027f77f4056fd39b7483d",
+          "name": "/flux-ui-1792335426-1830036-ui-test-run-2c9297f74996",
+          "image": "sha256:f5794a57ea15868bf31792f7d8e5500e99d94182570d4aec9e7a3b926f87778c",
+          "configured_image": "flux-ui-tests:flux-ui-1792335426-1830036",
+          "project": "flux-ui-1792335426-1830036",
+          "service": "ui-test",
+          "configuration": {
+            "NODE_ENV": null,
+            "FLUX_LIVE_EDITING": "on",
+            "FLUX_DEVELOPMENT_LIVE_EDITING": null,
+            "FLUX_DEVELOPMENT_LIVE_EDITING_TELEMETRY": null,
+            "FLUX_DEVELOPMENT_LIVE_EDITING_API_INSTANCE": null,
+            "FLUX_UI_BROWSER": "webkit",
+            "FLUX_LIVE_EDITING_TEST": "1"
+          }
+        },
+        {
+          "id": "c29744b4b3046abe59d32953b78519ccaad3e6f2b8b9b1e4ea4adfab6daf7617",
+          "name": "/flux-ui-1792335426-1830036-anthropic-mock-1",
+          "image": "sha256:f5794a57ea15868bf31792f7d8e5500e99d94182570d4aec9e7a3b926f87778c",
+          "configured_image": "flux-ui-tests:flux-ui-1792335426-1830036",
+          "project": "flux-ui-1792335426-1830036",
+          "service": "anthropic-mock",
+          "configuration": {
+            "NODE_ENV": null,
+            "FLUX_LIVE_EDITING": null,
+            "FLUX_DEVELOPMENT_LIVE_EDITING": null,
+            "FLUX_DEVELOPMENT_LIVE_EDITING_TELEMETRY": null,
+            "FLUX_DEVELOPMENT_LIVE_EDITING_API_INSTANCE": null,
+            "FLUX_UI_BROWSER": null,
+            "FLUX_LIVE_EDITING_TEST": null
+          }
+        },
+        {
+          "id": "d7ca8442018aefd34b0b36e4a6b25c6727e096e4026c03f21bef54b644bfe431",
+          "name": "/flux-ui-1792335426-1830036-api-1",
+          "image": "sha256:032c9a92743f290aaf684edcdf701370f067cdbe3ac2afd6f59c462915cc31d2",
+          "configured_image": "flux-foundation:flux-ui-1792335426-1830036",
+          "project": "flux-ui-1792335426-1830036",
+          "service": "api",
+          "configuration": {
+            "NODE_ENV": "production",
+            "FLUX_LIVE_EDITING": "on",
+            "FLUX_DEVELOPMENT_LIVE_EDITING": null,
+            "FLUX_DEVELOPMENT_LIVE_EDITING_TELEMETRY": null,
+            "FLUX_DEVELOPMENT_LIVE_EDITING_API_INSTANCE": null,
+            "FLUX_UI_BROWSER": null,
+            "FLUX_LIVE_EDITING_TEST": null
+          }
+        },
+        {
+          "id": "32a51adb083c3bdfaef53700aa7f3f7b78d7d51189895d789dab75e3bac67f41",
+          "name": "/flux-ui-1792335426-1830036-mailpit-1",
+          "image": "sha256:0a94362145f58e5cffb58605023c671774e4143037a952221ee6485b6cd999af",
+          "configured_image": "axllent/mailpit:v1.31.2@sha256:74d609a42ec279aa63c6b4622a6fa9b5408d1ad5b1d76a1c4be40a265ce0863d",
+          "project": "flux-ui-1792335426-1830036",
+          "service": "mailpit",
+          "configuration": {
+            "NODE_ENV": null,
+            "FLUX_LIVE_EDITING": null,
+            "FLUX_DEVELOPMENT_LIVE_EDITING": null,
+            "FLUX_DEVELOPMENT_LIVE_EDITING_TELEMETRY": null,
+            "FLUX_DEVELOPMENT_LIVE_EDITING_API_INSTANCE": null,
+            "FLUX_UI_BROWSER": null,
+            "FLUX_LIVE_EDITING_TEST": null
+          }
+        },
+        {
+          "id": "1f8570c31adc6da902cea9228d2ef0790ef6fe7777bb8cd6e04325acc3c8b566",
+          "name": "/flux-ui-1792335426-1830036-worker-1",
+          "image": "sha256:032c9a92743f290aaf684edcdf701370f067cdbe3ac2afd6f59c462915cc31d2",
+          "configured_image": "flux-foundation:flux-ui-1792335426-1830036",
+          "project": "flux-ui-1792335426-1830036",
+          "service": "worker",
+          "configuration": {
+            "NODE_ENV": "production",
+            "FLUX_LIVE_EDITING": null,
+            "FLUX_DEVELOPMENT_LIVE_EDITING": null,
+            "FLUX_DEVELOPMENT_LIVE_EDITING_TELEMETRY": null,
+            "FLUX_DEVELOPMENT_LIVE_EDITING_API_INSTANCE": null,
+            "FLUX_UI_BROWSER": null,
+            "FLUX_LIVE_EDITING_TEST": null
+          }
+        },
+        {
+          "id": "cb25ea82403bb175d70f741833f82795056a2de6515f0fc093a202f2c184bbf7",
+          "name": "/flux-ui-1792335426-1830036-openai-mock-1",
+          "image": "sha256:f5794a57ea15868bf31792f7d8e5500e99d94182570d4aec9e7a3b926f87778c",
+          "configured_image": "flux-ui-tests:flux-ui-1792335426-1830036",
+          "project": "flux-ui-1792335426-1830036",
+          "service": "openai-mock",
+          "configuration": {
+            "NODE_ENV": null,
+            "FLUX_LIVE_EDITING": null,
+            "FLUX_DEVELOPMENT_LIVE_EDITING": null,
+            "FLUX_DEVELOPMENT_LIVE_EDITING_TELEMETRY": null,
+            "FLUX_DEVELOPMENT_LIVE_EDITING_API_INSTANCE": null,
+            "FLUX_UI_BROWSER": null,
+            "FLUX_LIVE_EDITING_TEST": null
+          }
+        },
+        {
+          "id": "2c23b8163da23301ade7b7c482d0483d241a529332d01b9192f5028368aed974",
+          "name": "/flux-ui-1792335426-1830036-db-1",
+          "image": "sha256:c293117fcecda7344b5480222e813b9f673d7abd69b1dd95eff239b768b04f59",
+          "configured_image": "postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873",
+          "project": "flux-ui-1792335426-1830036",
+          "service": "db",
+          "configuration": {
+            "NODE_ENV": null,
+            "FLUX_LIVE_EDITING": null,
+            "FLUX_DEVELOPMENT_LIVE_EDITING": null,
+            "FLUX_DEVELOPMENT_LIVE_EDITING_TELEMETRY": null,
+            "FLUX_DEVELOPMENT_LIVE_EDITING_API_INSTANCE": null,
+            "FLUX_UI_BROWSER": null,
+            "FLUX_LIVE_EDITING_TEST": null
+          }
+        }
+      ]
+    }
+  ],
+  "cleanup": {
+    "at": "2026-10-18T14:58:23.725866+00:00",
+    "projects": {
+      "flux-test-1792334613-1769639": {
+        "container": [],
+        "volume": [],
+        "network": []
+      },
+      "flux-ui-1792334857-1786049": {
+        "container": [],
+        "volume": [],
+        "network": []
+      },
+      "flux-ui-1792334929-1793745": {
+        "container": [],
+        "volume": [],
+        "network": []
+      },
+      "flux-ui-1792335182-1809377": {
+        "container": [],
+        "volume": [],
+        "network": []
+      },
+      "flux-ui-1792335426-1830036": {
+        "container": [],
+        "volume": [],
+        "network": []
+      }
+    }
+  },
+  "raw_cleanup_sha256": "1ffdd28e26ca442a150d353ba0782fd81925bf22c0271ebd924cca2eafd2b741",
+  "retained_profile_directory": "/home/hubert/flux-evidence/228-map-body-profile-28ad6b43",
+  "profile_sha256": "64b9cd062f7ca0095b93c616d06915c7ba5f69643b9bf6fc58b672e21cb6758e",
+  "first_coverage_analysis": "/home/hubert/flux-evidence/228-access-7af776c7-first-coverage-analysis.json"
+}

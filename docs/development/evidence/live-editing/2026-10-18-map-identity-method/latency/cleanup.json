@@ -1,0 +1,10 @@
+{
+  "checked_at": "2026-10-18T09:51:59.915238+00:00",
+  "project": "flux-live-editing-1792316125-881598",
+  "remaining": {
+    "containers": [],
+    "networks": [],
+    "volumes": []
+  },
+  "scope": "Canonical candidate only; shared user demo/Qwen preserved. Runner removed two per-run images."
+}

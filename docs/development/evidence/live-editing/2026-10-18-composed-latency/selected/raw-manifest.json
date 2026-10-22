@@ -1,0 +1,97 @@
+[
+  {
+    "path": "/home/hubert/flux-evidence/228-handlers-map200-f09b3b8b-latency/actual-queue.jsonl",
+    "bytes": 509264,
+    "sha256": "3c54c93bb2ff504817cb08b4a8dc67e711464acb1e69f553fa15e4e49b01f388"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-handlers-map200-f09b3b8b-latency/api.log",
+    "bytes": 1989268,
+    "sha256": "eeaf6f76469bf156391a00b82d12ba7a21072821ba35c4cdfcd848c87de988ac"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-handlers-map200-f09b3b8b-latency/collector-ready.json",
+    "bytes": 183,
+    "sha256": "af28c3580a8c38ddc5aaed13ef05afd5b485898c2c7d17e9dc94586d7b147007"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-handlers-map200-f09b3b8b-latency/collector-result.json",
+    "bytes": 179,
+    "sha256": "4c65c9834659da453edf1a81fa91dc22b98aac29fd8060746b4acf66c45616db"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-handlers-map200-f09b3b8b-latency/collector.log",
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-handlers-map200-f09b3b8b-latency/driver.log",
+    "bytes": 501,
+    "sha256": "5f8ede73095c64fee1bd914561f793ae0a44ebcde35063ad34645737376a3c56"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-handlers-map200-f09b3b8b-latency/map-500-drag-200-coverage.json",
+    "bytes": 204792,
+    "sha256": "4e32db57f5688698c63127fa201446be295e729d2c4fad2da7913cced7c8fdb7"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-handlers-map200-f09b3b8b-latency/map-500-drag-200-local-control.json",
+    "bytes": 25066,
+    "sha256": "f935be0f3acdbe7e2a99c19fcd024760ca211b3c02235e5113c4dd481976f060"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-handlers-map200-f09b3b8b-latency/map-500-drag-200-owner-trace.zip",
+    "bytes": 150466433,
+    "sha256": "0fcbae9a9ebfb3f9f78b811519e098a969e41abc65f25db031897f6940762e37"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-handlers-map200-f09b3b8b-latency/map-500-drag-200-peer-trace.zip",
+    "bytes": 129904326,
+    "sha256": "1ef7a70e1f1d110ec3f474646185f9791a674515f22379d46850d86c711c99f6"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-handlers-map200-f09b3b8b-latency/map-500-drag-200-peer.png",
+    "bytes": 126810,
+    "sha256": "255ee8f04aa25a788ea78e269c159f60fcaf9f2ebe8d6b0765311b620dcbc7cf"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-handlers-map200-f09b3b8b-latency/map-500-drag-200-publications.json",
+    "bytes": 5342525,
+    "sha256": "2c19c7dd3a6dc755d4591058ef5757ff924cfce33fdba81d3300ac4a6849cdf3"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-handlers-map200-f09b3b8b-latency/map-500-drag-200-rows.json",
+    "bytes": 14237281,
+    "sha256": "f2edeb35e4e87501fa651cc7ec92fa0e50f81378177901671208245f48c8dc89"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-handlers-map200-f09b3b8b-latency/map-500-drag-200-summary.json",
+    "bytes": 34735,
+    "sha256": "c5bda6448097fd5988aa5d822cb7d0d950b678eb1ad71fb2eae696d1a4a9c9d4"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-handlers-map200-f09b3b8b-latency/measurement-finished.json",
+    "bytes": 383,
+    "sha256": "e6d44b98b30e817c943419df314b374cf8aece7980473da7daa12bfc56c03cd4"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-handlers-map200-f09b3b8b-latency/planned.json",
+    "bytes": 156,
+    "sha256": "51c21a928fab247d5faa779123282844c0a082ec4bb3e19f7dafaab6fa2435bc"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-handlers-map200-f09b3b8b-latency/queue-inventory.json",
+    "bytes": 299,
+    "sha256": "04b5a87f124cfb82d69705a29d2c5ba2f3ba5445b49f05897570652bffe87666"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-handlers-map200-f09b3b8b-latency/runtime.json",
+    "bytes": 2014,
+    "sha256": "b0eda4e3758995f266487e1269f1db34a6be6498fddecfbd0e3b8c46648161cc"
+  },
+  {
+    "path": "/home/hubert/flux-evidence/228-handlers-map200-f09b3b8b-latency/summary.json",
+    "bytes": 44140,
+    "sha256": "c4bdf22be94253e1ea326c6c06a1a53523b2db9bfdfabd7d931aaf3a630425ae"
+  }
+]

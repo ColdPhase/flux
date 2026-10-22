@@ -1,0 +1,36 @@
+{
+  "candidate": {
+    "runner": "./scripts/check_live_editing.sh",
+    "selectors": [
+      "test_live_editing.LiveEditingJourney.test_19_successive_peer_previews_keep_content_but_native_edits_refresh_it",
+      "test_live_editing.LiveEditingJourney.test_05_map_preview_before_pointerup_unrelated_delta_during_drag",
+      "test_live_editing.LiveEditingJourney.test_06_map_own_undo_refuses_peer_change",
+      "test_live_editing.LiveEditingJourney.test_12_cancelled_preview_keeps_private_movement_without_native_commit",
+      "test_live_editing.LiveEditingJourney.test_16_a_peers_live_preview_renders_and_measures_only_the_moved_thought",
+      "test_live_map_projection.LiveMapProjectionJourney.test_remote_changes_during_drag_private_cancel_and_independent_own_undo",
+      "test_live_map_selection.LiveMapSelectionJourney.test_selection_clicks_are_local_then_real_50_and_200_drags_share_and_commit",
+      "test_map_task_count.MapTaskCountJourney.test_01_counts_match_the_linked_tasks_on_the_canvas_and_in_the_list",
+      "test_map_task_count.MapTaskCountJourney.test_02_the_chooser_lists_every_task_with_its_exact_id_status_and_people",
+      "test_map_task_count.MapTaskCountJourney.test_08_counts_follow_new_tasks_from_others_and_from_the_map"
+    ],
+    "environment": {
+      "FLUX_UI_BROWSER": [
+        "chromium",
+        "webkit"
+      ],
+      "FLUX_LIVE_EDITING_PORT": "18685",
+      "FLUX_LIVE_EDITING_MAILPIT_PORT": "18686"
+    }
+  },
+  "baseline_negative": {
+    "runner": "./scripts/check_live_editing.sh",
+    "selectors": [
+      "test_live_editing.LiveEditingJourney.test_19_successive_peer_previews_keep_content_but_native_edits_refresh_it"
+    ],
+    "environment": {
+      "FLUX_UI_BROWSER": "chromium",
+      "FLUX_LIVE_EDITING_PORT": "18685",
+      "FLUX_LIVE_EDITING_MAILPIT_PORT": "18686"
+    }
+  }
+}

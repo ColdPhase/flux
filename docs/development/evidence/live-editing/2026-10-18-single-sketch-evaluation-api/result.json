@@ -1,0 +1,57 @@
+{
+  "source_sha": "1f76588eec7ed68d16c15d9ae7663a72770ae47b",
+  "exit_code": 1,
+  "build": "PASS",
+  "typecheck": "PASS",
+  "lint": "PASS",
+  "tests": 50,
+  "pass": 46,
+  "fail": 4,
+  "cancelled": 0,
+  "skipped": 0,
+  "todo": 0,
+  "duration_ms": 42231.274178,
+  "failures": [
+    {
+      "file": "dm-sketches.test.ts",
+      "line": 273,
+      "case": "promotion previews the exact audience, copies only the sketch, and never syncs the DM",
+      "error": "preview undefined; reading content"
+    },
+    {
+      "file": "dm-sketches.test.ts",
+      "line": 383,
+      "case": "promotion locks its audience: a leave waits for the copy, and a leave before it makes the preview stale",
+      "error": "preview undefined; reading audience"
+    },
+    {
+      "file": "dm-sketches.test.ts",
+      "line": 414,
+      "case": "promotion into an existing project locks its grants: a grant change waits, or makes the preview stale",
+      "error": "preview undefined; reading audience"
+    },
+    {
+      "file": "sketches.test.ts",
+      "line": 270,
+      "case": "versioned changes: If-Match, concurrent moves conflict or merge",
+      "error": "currentVersion undefined !==2"
+    }
+  ],
+  "earlier_attempt": {
+    "source": "00f11151c469e9d0c8aea892244a0b4c45eda486",
+    "exit_code": 1,
+    "stage": "typecheck",
+    "runtime_started": false,
+    "errors": "TS2322 sketches.test.ts:154,184 Principal includes fixture, not assignable to PrincipalRef; corrected only two test grant references"
+  },
+  "raw_artifacts": {
+    "/home/hubert/flux-evidence/228-single-evaluation-00f11151-api/check_application.log": {
+      "bytes": 20901,
+      "sha256": "20a05fa42e233e00526edafbc4b9818fd564b65aea985e91c11e0fc3c542646e"
+    },
+    "/home/hubert/flux-evidence/228-single-evaluation-1f76588e-api/check_application.log": {
+      "bytes": 407740,
+      "sha256": "703a8dc4096910ba660acf1d248bd24c9a0acde7496b65a8607a09dcbed74e27"
+    }
+  }
+}

@@ -1,0 +1,57 @@
+{
+  "tested_source": "8ba5f87ae065d52b4b69158648f8e863b3d3f9cb",
+  "recorded_at": "2026-10-18T08:54:47.185772+00:00",
+  "files": {
+    "chromium.log.gz": {
+      "original_path": "/home/hubert/flux-evidence/228-map-body-8ba5f87a-chromium.log",
+      "raw_sha256": "5a38985c50a171c6dc3f5b732340426d2040aa1540f32b6cfd9e3cad960ff187",
+      "retained_sha256": "64508a8e3388765756e23d9df6e97cda54f801ec8a4c350a4d714ff59fa6e53c",
+      "raw_bytes": 32987,
+      "retained_bytes": 7394
+    },
+    "webkit.log.gz": {
+      "original_path": "/home/hubert/flux-evidence/228-map-body-8ba5f87a-webkit.log",
+      "raw_sha256": "abac00fcc25e587a286ecf84f0b049844d059dccf9a01d2e1978214a65b121c0",
+      "retained_sha256": "9149701ec5fca73eed72d2e73969a6191c3b4bd41ba2a5c195d1875c5a31f761",
+      "raw_bytes": 12222,
+      "retained_bytes": 2776
+    },
+    "baseline-negative.log.gz": {
+      "original_path": "/home/hubert/flux-evidence/228-map-body-baseline-608532da-negative.log",
+      "raw_sha256": "b30dc47b5dd5eeb3b26de0faea0c10b4d4d0e84ae4927fcbe50b19d0fee9f5ce",
+      "retained_sha256": "40be4a8c4d922396c41e497ea10bd78a80f17da49f042e147a211048562c1144",
+      "raw_bytes": 98894,
+      "retained_bytes": 12775
+    },
+    "source-inventory.json": {
+      "original_path": "/home/hubert/flux-evidence/228-map-body-performance-8ba5f87a/source-inventory.json",
+      "sha256": "d8805777343e9770ec3c3f193a7af60ae9de6d1bcbe8f3de95a4396ec7dec82f",
+      "bytes": 2005
+    },
+    "commands.json": {
+      "original_path": "/home/hubert/flux-evidence/228-map-body-performance-8ba5f87a/commands.json",
+      "sha256": "6c68a7443182ae87495114faa42934513b8fa948140b92a06aaf0e435631054a",
+      "bytes": 1832
+    },
+    "results.json": {
+      "original_path": "/home/hubert/flux-evidence/228-map-body-performance-8ba5f87a/results.json",
+      "sha256": "e714ecd62318cf8ad7e9a89e6169ee044a3fdb2aff4828040d38544ba30334a1",
+      "bytes": 901
+    },
+    "chromium-runtime.json": {
+      "original_path": "/home/hubert/flux-evidence/228-map-body-performance-8ba5f87a/chromium-runtime.json",
+      "sha256": "90cb3476fd5724a78335550dffa8d72663756f6cfe2690d991e144dce99eecdf",
+      "bytes": 1645
+    },
+    "webkit-runtime.json": {
+      "original_path": "/home/hubert/flux-evidence/228-map-body-performance-8ba5f87a/webkit-runtime.json",
+      "sha256": "689e32f3f5d27bfeeb1ad0d387a0e1a2c2ac5c15d7ef91c8b4d5c90ae64e22c2",
+      "bytes": 1643
+    },
+    "cleanup.json": {
+      "original_path": "/home/hubert/flux-evidence/228-map-body-performance-8ba5f87a/cleanup.json",
+      "sha256": "01018e02d38ea99cb5a51f6c636a43045fcdfd746cd1a07854299ca918027abc",
+      "bytes": 494
+    }
+  }
+}

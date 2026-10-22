@@ -114,7 +114,7 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
   let editing: Awaited<ReturnType<typeof registerEditing>> = null;
   const fileStorage = await diskFileStorage(filesDir);
   const editingConfirmation = identityConfig.oidc ? { providerId: identityConfig.oidc.providerId, confirmationMaxAgeMs: identityConfig.oidc.confirmationMaxAgeMs } : null;
-  await app.register(sketchRoutes, { db, sessions: identity, confirmation: editingConfirmation, storage: fileStorage, developmentEditing: config.developmentLiveEditing, liveBackend: () => editing?.mapsBackend ?? null });
+  await app.register(sketchRoutes, { db, sessions: identity, confirmation: editingConfirmation, storage: fileStorage, developmentEditing: config.liveEditing, liveBackend: () => editing?.mapsBackend ?? null });
   await app.register(dmRoutes, { db, sessions: identity });
   await app.register(pushRoutes, { db, sessions: identity, config: pushConfig });
   if (pushConfig.status === 'unavailable') app.log.warn(pushConfig.reason);
@@ -149,8 +149,8 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
   const liveSignaling = liveMedia ? registerLiveSignaling(app, { db, connectionString, publicOrigin: identityConfig.publicOrigin,
     sessions: identity, ports: livePorts!, media: liveMedia.media, config: liveMedia.config }) : null;
   editing = await registerEditing(app, { database: { db, pool }, sessions: identity, publicOrigin: identityConfig.publicOrigin,
-    connectionString, developmentEnabled: config.developmentLiveEditing, env, confirmation: editingConfirmation });
-  if (editing) app.log.warn('Development live editing selected; four-gate production acceptance remains pending');
+    connectionString, enabled: config.liveEditing, developmentEnabled: config.developmentLiveEditing, env, confirmation: editingConfirmation });
+  if (editing && config.developmentLiveEditing) app.log.info('Isolated live editing calibration selected');
   // One listener owns every upgrade: media, then editing, then the Fastify stream emitter (1 KiB bound).
   const removeUpgradeDispatcher = registerUpgradeDispatcher(app.server, streamUpgrades,
     [liveSignaling?.gate, editing?.gate ?? disabledEditingUpgrade()]);

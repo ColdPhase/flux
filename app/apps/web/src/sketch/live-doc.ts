@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { liveMapUndoPath, type LiveMapDelta, type LiveMapPosition, type SketchDetail, type Thought, type UndoLiveMap, type UndoneLiveMap } from '@flux/contracts';
 import { ApiError, NetworkError, request } from '../api/client';
 import { SharedMap } from '../editing/map';
+import { MapPresenceStore, type MapPresenceSource } from '../editing/map-presence';
 import * as api from '../api/sketches';
 import { useStreamEvents } from '../api/stream';
 import { applyLocal, createLivePreviewProjection, type Me, type NewThought, type Op } from './projection.js';
@@ -30,7 +31,16 @@ async function withRetry<T>(send: () => Promise<T>): Promise<T> {
 }
 
 type Lease = { leaseId: string; versions: Map<string, number> };
-interface Intent { id: string; scope: number; op: Op; epochs: Map<string, number>; entry?: Entry; lease?: Promise<Lease> }
+/**
+ * `held` marks an explicit draft save (#252): the thought is shared only once the save settles, as in the ordinary
+ * document. Until then it is neither shown from the pending overlay nor from its early confirmed delta, so the
+ * thought appears in the same commit that clears the draft and a following Add is never refused as "unfinished".
+ */
+interface Intent { id: string; scope: number; op: Op; epochs: Map<string, number>; entry?: Entry; lease?: Promise<Lease>; held?: true;
+  /** What the person is told when this intent is not confirmed (the ordinary document's own recovery wording). */
+  describe?: (error: unknown) => string;
+  /** Why it was not confirmed, for the caller that can recover from some failures. */
+  failure?: unknown }
 function touched(op: Op, sketch: SketchDetail): string[] {
   switch (op.kind) {
     case 'move': return op.moves.map((move) => move.id);
@@ -50,7 +60,7 @@ export function useLiveSketchDoc(sketchId: string, me: Me) {
   const [saving, setSaving] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const [undoLabel, setUndoLabel] = useState<string | null>(null);
-  const [liveState, setLiveState] = useState<{ status: SharedMap['status']; canWrite: boolean; problem: string | null; ownGesture: SharedMap['ownGesture']; previews: SharedMap['previews']; peers: SharedMap['peers']; privateMovement: SharedMap['privateMovement'] }>({ status: 'connecting', canWrite: false, problem: null, ownGesture: null, previews: new Map(), peers: new Map(), privateMovement: null });
+  const [liveState, setLiveState] = useState<{ status: SharedMap['status']; canWrite: boolean; problem: string | null; ownGesture: SharedMap['ownGesture']; previews: SharedMap['previews']; privateMovement: SharedMap['privateMovement'] }>({ status: 'connecting', canWrite: false, problem: null, ownGesture: null, previews: new Map(), privateMovement: null });
   const confirmed = useRef<SketchDetail | null>(null);
   const ref = useRef<SketchDetail | null>(null);
   const pending = useRef(new Map<string, Intent>());
@@ -60,30 +70,41 @@ export function useLiveSketchDoc(sketchId: string, me: Me) {
   const inFlight = useRef(0);
   const meRef = useRef(me);
   const live = useRef<SharedMap | null>(null);
+  // SketchRoute keys this editor by account and map; presence never outlives that instance.
+  const [presenceStore] = useState(() => new MapPresenceStore());
   const ownCommands = useRef(new Set<string>());
   const receipts = useRef(new Map<string, LiveMapDelta>());
   const tombstones = useRef(new Map<string, number>());
   const scope = useRef({ active: false, number: 0 });
+  // The map is shown once its live room has joined (or is known unavailable), so a writer never meets a map that
+  // looks read-only for the few milliseconds between the first snapshot and the room's head.
+  const shown = useRef(false);
   const snapshots = useRef(0);
   const projectPreviews = useMemo(() => createLivePreviewProjection(), []);
   useEffect(() => { meRef.current = me; });
   const publish = useCallback(() => {
     const client = live.current;
-    if (client) setLiveState({ status: client.status, canWrite: client.status === 'unavailable' || client.status === 'live' && !!client.head?.canWrite, problem: client.problem, ownGesture: client.ownGesture, previews: new Map(client.previews), peers: new Map(client.peers), privateMovement: client.privateMovement });
+    if (client) setLiveState({ status: client.status, canWrite: client.status === 'unavailable' || client.status === 'live' && !!client.head?.canWrite, problem: client.problem, ownGesture: client.ownGesture, previews: new Map(client.previews), privateMovement: client.privateMovement });
     let next = confirmed.current;
     if (!next) { if (live.current?.status === 'private') setLoad('not-found'); else if (live.current?.problem) setLoad('failed'); return; }
+    // A draft save in flight stays out of view, even once its delta has confirmed it, until it settles.
+    const held = new Set<string>();
+    for (const intent of pending.current.values()) if (intent.held && intent.op.kind === 'add') held.add(intent.op.thought.id);
+    if (held.size) next = { ...next, thoughts: next.thoughts.filter((thought) => !held.has(thought.id)), links: next.links.filter((link) => !held.has(link.fromId) && !held.has(link.toId)) };
     // Native geometry stays separate from replaceable live positions.
     setConfirmedThoughts(next.thoughts);
     next = projectPreviews(next, live.current?.previews.values() ?? []);
-    for (const intent of pending.current.values()) next = applyLocal(next, intent.op, meRef.current);
-    ref.current = next; setSketch(next);
+    for (const intent of pending.current.values()) if (!intent.held) next = applyLocal(next, intent.op, meRef.current);
+    ref.current = next;
+    if (!shown.current && client && client.status === 'connecting') return;
+    shown.current = true; setSketch(next); setLoad('ready');
   }, [projectPreviews]);
   const adopt = useCallback((fresh: SketchDetail) => {
     const before = confirmed.current;
     if (before) for (const thought of before.thoughts) {
       if (fresh.thoughts.find((item) => item.id === thought.id)?.version !== thought.version) epochs.current.set(thought.id, (epochs.current.get(thought.id) ?? 0) + 1);
     }
-    snapshots.current++; confirmed.current = fresh; setLoad('ready'); publish();
+    snapshots.current++; confirmed.current = fresh; publish();
   }, [publish]);
   const patch = useCallback((thoughts: Thought[], extra: Partial<SketchDetail> = {}) => {
     const current = confirmed.current; if (!current) return;
@@ -113,7 +134,8 @@ export function useLiveSketchDoc(sketchId: string, me: Me) {
     const links = new Map(current.links.filter((link) => !change.removedLinks.includes(link.id) && thoughts.has(link.fromId) && thoughts.has(link.toId)).map((link) => [link.id, link]));
     for (const link of change.links) if (thoughts.has(link.fromId) && thoughts.has(link.toId)) links.set(link.id, link);
     confirmed.current = { ...current, ...(change.sketch && change.sketch.version >= current.version ? change.sketch : {}), thoughts: [...thoughts.values()], links: [...links.values()] };
-    if (own) pending.current.delete(change.commandId);
+    // A held draft save settles in `send`, once the receipt and its delta are both in.
+    if (own && !pending.current.get(change.commandId)?.held) pending.current.delete(change.commandId);
     publish();
   }, [publish]);
   const reload = useCallback(async (signal?: AbortSignal) => {
@@ -123,19 +145,23 @@ export function useLiveSketchDoc(sketchId: string, me: Me) {
   useEffect(() => {
     scope.current = { active: true, number: scope.current.number + 1 };
     const controller = new AbortController();
-    const client = new SharedMap(sketchId, me.id, adopt, delta, publish);
+    const client = new SharedMap(sketchId, me.id, adopt, delta, publish, presenceStore);
     live.current = client;
+    shown.current = false;
+    // A room that cannot join still shows the map, read-only and explained, rather than keeping it hidden.
+    const patience = window.setTimeout(() => { shown.current = true; publish(); }, 3000);
     // Capability-off preserves the ordinary native API; capability-on bootstrap is atomic.
     const fallback = window.setInterval(() => {
       if (client.status !== 'unavailable') return;
       window.clearInterval(fallback); void reload(controller.signal);
     }, 50);
     return () => {
+      window.clearTimeout(patience);
       scope.current.active = false; scope.current.number++;
       try { if (pending.current.size) sessionStorage.setItem(`flux:map-pending:${me.id}:${sketchId}`, JSON.stringify([...pending.current.values()].map((intent) => ({ op: intent.op, commandId: intent.id, scope: sketchId })))); } catch { /* Original private drafts also retain their text. */ }
       controller.abort(); window.clearInterval(fallback); client.destroy(); live.current = null;
     };
-  }, [sketchId, me.id, adopt, delta, publish, reload]);
+  }, [sketchId, me.id, adopt, delta, publish, reload, presenceStore]);
   useStreamEvents(me.id, (event) => {
     if (live.current?.status === 'unavailable' && event.objectType === 'sketch' && event.objectId === sketchId) void reload();
   }, () => { if (live.current?.status === 'unavailable') void reload(); });
@@ -193,10 +219,11 @@ export function useLiveSketchDoc(sketchId: string, me: Me) {
       }
     }
     if (intent.entry && !intent.entry.commands.includes(id)) intent.entry.commands.push(id);
-    if (shared && pending.current.has(id)) {
+    const unsettled = () => intent.held ? !receipts.current.has(id) : pending.current.has(id);
+    if (shared && unsettled()) {
       const deadline = Date.now() + 1000;
-      while (pending.current.has(id) && Date.now() < deadline) { check(); await new Promise((resolve) => window.setTimeout(resolve, 20)); }
-      if (pending.current.has(id)) {
+      while (unsettled() && Date.now() < deadline) { check(); await new Promise((resolve) => window.setTimeout(resolve, 20)); }
+      if (unsettled()) {
         // A successful native HTTP receipt proves commit but its old response is never
         // a graph patch. Missing ordered delivery is a gap: reconcile a fresh atomic
         // snapshot, which also includes any later peer edit/delete/restore.
@@ -213,7 +240,10 @@ export function useLiveSketchDoc(sketchId: string, me: Me) {
     inFlight.current++; setSaving(true);
     const result = queue.current.then(() => send(intent)).then(() => true, (error: unknown) => {
       if (!scope.current.active || intent.scope !== scope.current.number) return false;
-      if (receipts.current.has(intent.id)) { pending.current.delete(intent.id); publish(); return true; }
+      intent.failure = error;
+      // A draft save whose response failed is not reported saved, even if its delta already arrived: the draft
+      // stays for an explicit retry, which replays the same request key and confirms the one thought (no duplicate).
+      if (!intent.held && receipts.current.has(intent.id)) { pending.current.delete(intent.id); publish(); return true; }
       pending.current.delete(intent.id);
       if (intent.lease) live.current?.cancel();
       if (intent.entry && !intent.entry.commands.length && ![...pending.current.values()].some((other) => other.entry === intent.entry)) {
@@ -221,7 +251,7 @@ export function useLiveSketchDoc(sketchId: string, me: Me) {
         setUndoLabel(undoStack.current.at(-1)?.label ?? null);
       }
       try { sessionStorage.setItem(`flux:map-pending:${me.id}:${sketchId}`, JSON.stringify({ op: intent.op, commandId: intent.id, scope: sketchId })); } catch { /* Still explained in this view. */ }
-      setProblem(error instanceof Error ? error.message : 'A change was not confirmed. Its intent is kept privately.');
+      setProblem(intent.describe?.(error) ?? (error instanceof Error ? error.message : 'A change was not confirmed. Its intent is kept privately.'));
       publish(); return false;
     }).finally(() => { inFlight.current--; setSaving(inFlight.current > 0); });
     queue.current = result.then(() => undefined); return result;
@@ -249,7 +279,7 @@ export function useLiveSketchDoc(sketchId: string, me: Me) {
     }
     publish();
   }, [enqueue, publish]);
-  const undo = useCallback((): string | null => {
+  const undo = useCallback((onConfirmed?: (label: string) => void): string | null => {
     const entry = undoStack.current.at(-1); if (!entry || inFlight.current) { setProblem('Wait until your change is confirmed before undoing it.'); return null; }
     if (live.current?.status === 'live') {
       inFlight.current++; setSaving(true);
@@ -258,7 +288,13 @@ export function useLiveSketchDoc(sketchId: string, me: Me) {
       entry.undoAttempt = command;
       ownCommands.current.add(command.clientCommandId);
       while (ownCommands.current.size > 12_000) ownCommands.current.delete(ownCommands.current.values().next().value!);
-      const completed = () => { undoStack.current = undoStack.current.filter((item) => item !== entry); setUndoLabel(undoStack.current.at(-1)?.label ?? null); };
+      const completed = () => {
+        undoStack.current = undoStack.current.filter((item) => item !== entry);
+        setUndoLabel(undoStack.current.at(-1)?.label ?? null);
+        // This runs only after ordered delivery/current reconciliation, including
+        // a known applied receipt when the HTTP response was lost.
+        onConfirmed?.(entry.label);
+      };
       queue.current = queue.current.then(async () => {
         const result = await withRetry(() => {
           if (!scope.current.active || instance !== scope.current.number) throw new DOMException('The original map editor closed', 'AbortError');
@@ -307,60 +343,90 @@ export function useLiveSketchDoc(sketchId: string, me: Me) {
     const saved: string[] = [];
     const label = items.length === 1 ? 'added a thought' : `added ${items.length} thoughts`;
     const entry: Entry = { label, ops: [], commands: [], at: Date.now() };
+    setProblem(null);
+    // The ordinary document's wording, so a failed live save tells the person the same: the draft is kept.
+    const failed = () => items.length === 1
+      ? 'The thought could not be saved. Your draft is kept; check access and its parent, then try again.'
+      : saved.length
+        ? `Saved ${saved.length} of ${items.length} thoughts. The other ${items.length - saved.length} are kept in your draft; check access and their parent, then try again.`
+        : 'The pasted thoughts could not be saved. Your draft is kept; check access and their parent, then try again.';
+    /**
+     * Confirms an earlier save from the actual current state and refines its text, never recreating it. Read under
+     * actual authority, then let ordered live delivery confirm the same native version.
+     */
+    const confirmEarlier = async (thought: NewThought): Promise<boolean> => {
+      let fresh: SketchDetail;
+      try { fresh = await api.getSketch(sketchId); } catch { setProblem(failed()); return false; }
+      const existing = fresh.thoughts.find((item) => item.id === thought.id);
+      if (!existing) { setProblem('The earlier draft’s save is not confirmed yet. Your text is kept; check the shared map before starting another thought.'); return false; }
+      const expected = options?.expectedText?.get(thought.id);
+      const wanted = options?.desiredText?.get(thought.id) ?? thought.text;
+      const untouchedOwnCreation = expected === undefined && existing.version === 1 && existing.createdBy.id === meRef.current.id;
+      if (existing.text !== wanted && existing.text !== expected && !untouchedOwnCreation) { setProblem('Someone changed the earlier saved thought. Your text is kept; cancel to inspect their version before editing again.'); return false; }
+      live.current?.resync();
+      const until = Date.now() + 5000;
+      while ((confirmed.current?.thoughts.find((item) => item.id === thought.id)?.version ?? -1) < existing.version && Date.now() < until) await new Promise((resolve) => window.setTimeout(resolve, 20));
+      const observed = confirmed.current?.thoughts.find((item) => item.id === thought.id);
+      if (!observed || observed.version !== existing.version || observed.text !== existing.text) { setProblem('The current saved thought is not confirmed yet. Your text is kept; compare the shared map first.'); return false; }
+      if (existing.text !== wanted) {
+        const op: Extract<Op, { kind: 'update' }> = { kind: 'update', id: thought.id, changes: { text: wanted } };
+        const updateKey = options?.editKeys?.get(thought.id);
+        if (!updateKey || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(updateKey)) { setProblem('The earlier edit has no retained save identity. Your text is kept; reopen the thought to compare it first.'); return false; }
+        if (pending.current.size >= 256 || [...pending.current.values()].reduce((total, intent) => total + JSON.stringify(intent.op).length * 2, JSON.stringify(op).length * 2) > 1024 * 1024) { setProblem('Wait for the pending changes before sharing this private edit.'); return false; }
+        const intent: Intent = { id: updateKey, scope: scope.current.number, op, epochs: new Map([[thought.id, epochs.current.get(thought.id) ?? 0]]), entry, describe: failed };
+        ownCommands.current.add(updateKey);
+        while (ownCommands.current.size > 12_000) ownCommands.current.delete(ownCommands.current.values().next().value!);
+        pending.current.set(updateKey, intent); publish();
+        if (!await enqueue(intent)) return false;
+      }
+      return true;
+    };
     for (const { thought, parent, key } of items) {
       const current = ref.current; if (!current) break;
-      if (options?.existingOnly?.has(thought.id) || options?.retry?.has(thought.id)) {
-        // Current-main private recovery never recreates an unknown/earlier connected save.
-        // Read under actual authority, then let ordered live delivery confirm the same native version.
-        const fresh = await api.getSketch(sketchId);
-        const existing = fresh.thoughts.find((item) => item.id === thought.id);
-        if (!existing) { setProblem('The earlier draft’s save is not confirmed yet. Your text is kept; check the shared map before starting another thought.'); break; }
-        const expected = options?.expectedText?.get(thought.id);
-        const wanted = options?.desiredText?.get(thought.id) ?? thought.text;
-        const untouchedOwnCreation = expected === undefined && existing.version === 1 && existing.createdBy.id === meRef.current.id;
-        if (existing.text !== wanted && existing.text !== expected && !untouchedOwnCreation) { setProblem('Someone changed the earlier saved thought. Your text is kept; cancel to inspect their version before editing again.'); break; }
-        live.current?.resync();
-        const until = Date.now() + 5000;
-        while ((confirmed.current?.thoughts.find((item) => item.id === thought.id)?.version ?? -1) < existing.version && Date.now() < until) await new Promise((resolve) => window.setTimeout(resolve, 20));
-        const observed = confirmed.current?.thoughts.find((item) => item.id === thought.id);
-        if (!observed || observed.version !== existing.version || observed.text !== existing.text) { setProblem('The current saved thought is not confirmed yet. Your text is kept; compare the shared map first.'); break; }
-        if (existing.text !== wanted) {
-          const op: Extract<Op, { kind: 'update' }> = { kind: 'update', id: thought.id, changes: { text: wanted } };
-          const updateKey = options?.editKeys?.get(thought.id);
-          if (!updateKey || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(updateKey)) { setProblem('The earlier edit has no retained save identity. Your text is kept; reopen the thought to compare it first.'); break; }
-          if (pending.current.size >= 256 || [...pending.current.values()].reduce((total, intent) => total + JSON.stringify(intent.op).length * 2, JSON.stringify(op).length * 2) > 1024 * 1024) { setProblem('Wait for the pending changes before sharing this private edit.'); break; }
-          const intent: Intent = { id: updateKey, scope: scope.current.number, op, epochs: new Map([[thought.id, epochs.current.get(thought.id) ?? 0]]), entry };
-          ownCommands.current.add(updateKey);
-          while (ownCommands.current.size > 12_000) ownCommands.current.delete(ownCommands.current.values().next().value!);
-          pending.current.set(updateKey, intent); publish();
-          if (!await enqueue(intent)) break;
-        }
+      // An unknown or phone-confirmed earlier save is never recreated, only confirmed from the current state.
+      if (options?.existingOnly?.has(thought.id)) {
+        if (!await confirmEarlier(thought)) break;
         saved.push(thought.id); continue;
       }
       const op: Extract<Op, { kind: 'add' }> = { kind: 'add', thought, ...(parent ? { link: { id: parent.linkId, fromId: parent.id, label: null } } : {}) };
       if (pending.current.size >= 256 || [...pending.current.values()].reduce((total, intent) => total + JSON.stringify(intent.op).length * 2, JSON.stringify(op).length * 2) > 1024 * 1024) { setProblem('Wait for the pending changes before sharing this private draft.'); break; }
       try { options?.onAttempt?.({ thought, parent, key }); }
       catch (error) { if (!(error instanceof DraftSaveNotSentError)) throw error; setProblem('No request was sent. This browser could not safely retain the save state; your text is kept. Try again when storage is available.'); break; }
-      const intent: Intent = { id: key, scope: scope.current.number, op, epochs: new Map(touched(op, current).map((id) => [id, epochs.current.get(id) ?? 0])), entry };
+      const intent: Intent = { id: key, scope: scope.current.number, op, epochs: new Map(touched(op, current).map((id) => [id, epochs.current.get(id) ?? 0])), entry, held: true, describe: failed };
       ownCommands.current.add(key);
       while (ownCommands.current.size > 12_000) ownCommands.current.delete(ownCommands.current.values().next().value!);
       // This draft is shared only by explicit Save; no pointer preview or live text uses it.
       pending.current.set(key, intent); publish();
-      if (!await enqueue(intent)) break;
+      let confirmedSave = await enqueue(intent);
+      const failure = intent.failure;
+      if (!confirmedSave && failure instanceof ApiError && failure.status === 409 && failure.code === 'THOUGHT_EXISTS') {
+        // A stable ID that already exists under another request key is the same thought: confirm it and refine its text.
+        confirmedSave = await confirmEarlier(thought);
+        if (confirmedSave) setProblem(null);
+      } else if (confirmedSave && options?.retry?.has(thought.id)) {
+        // A replayed attempt returns its first receipt, which may predate a peer's edit or the person's refinement.
+        confirmedSave = await confirmEarlier(thought);
+      }
+      if (!confirmedSave) break;
       saved.push(thought.id);
     }
     if (saved.length && entry.commands.length) {
       entry.label = saved.length === 1 ? 'added a thought' : `added ${saved.length} thoughts`;
-      entry.ops = [...saved].reverse().filter((id) => !options?.existingOnly?.has(id) && !options?.retry?.has(id)).map((id): Op => ({ kind: 'remove', id }));
+      entry.ops = [...saved].reverse().filter((id) => !options?.existingOnly?.has(id)).map((id): Op => ({ kind: 'remove', id }));
       undoStack.current.push(entry); if (undoStack.current.length > 50) undoStack.current.shift(); setUndoLabel(entry.label);
     }
     return saved;
   }, [enqueue, publish]);
   const saveText = useCallback((id: string, text: string, opened: { text: string; version: number }, key: string): Promise<boolean> => {
     const current = confirmed.current?.thoughts.find((thought) => thought.id === id);
+    setProblem(null);
     if (!current || (current.version !== opened.version && current.text !== opened.text)) { setProblem('Someone else changed this thought. Your edit is kept; compare their text first.'); return Promise.resolve(false); }
     const entry: Entry = { label: 'edited a thought', ops: [{ kind: 'update', id, changes: { text: opened.text } }], commands: [], at: Date.now() };
-    const intent: Intent = { id: key, scope: scope.current.number, op: { kind: 'update', id, changes: { text } }, epochs: new Map([[id, epochs.current.get(id) ?? 0]]), entry };
+    // The ordinary document's wording: a peer's newer version or a refusal both keep the person's text.
+    const describe = (error: unknown) => (error instanceof ApiError && error.status === 409) || (error instanceof Error && /^Someone else changed/.test(error.message))
+      ? 'Someone else changed this thought. Your edit is kept; cancel to inspect their version before editing again.'
+      : 'The edit could not be saved. Your text is kept; check access, then try again.';
+    const intent: Intent = { id: key, scope: scope.current.number, op: { kind: 'update', id, changes: { text } }, epochs: new Map([[id, epochs.current.get(id) ?? 0]]), entry, describe };
     if (pending.current.size >= 256 || [...pending.current.values()].reduce((total, item) => total + JSON.stringify(item.op).length * 2, JSON.stringify(intent.op).length * 2) > 1024 * 1024) { setProblem('Wait for the pending changes before sharing this private edit.'); return Promise.resolve(false); }
     ownCommands.current.add(key);
     while (ownCommands.current.size > 12_000) ownCommands.current.delete(ownCommands.current.values().next().value!);
@@ -404,7 +470,7 @@ export function useLiveSketchDoc(sketchId: string, me: Me) {
     return live.current?.begin(ids.flatMap((id) => { const thought = current.thoughts.find((thought) => thought.id === id); return thought ? [thought] : []; })) ?? false;
   };
   return { sketch, confirmedThoughts, load, saving, problem: problem ?? liveState.problem, clearProblem: () => setProblem(null), canUndo: undoLabel !== null && !saving, perform, saveThoughts, saveText, saveLinkLabel, undo, reload, newId: uuid,
-    liveStatus: liveState.status, liveCanWrite: liveState.canWrite, ownGesture: liveState.ownGesture, previews: liveState.previews, peers: liveState.peers, privateMovement: liveState.privateMovement, discardPrivateMovement: () => live.current?.discardPrivateMovement(),
+    liveStatus: liveState.status, liveCanWrite: liveState.canWrite, ownGesture: liveState.ownGesture, previews: liveState.previews, presenceStore: presenceStore as MapPresenceSource | null, privateMovement: liveState.privateMovement, discardPrivateMovement: () => live.current?.discardPrivateMovement(),
     beginGesture, previewGesture: (positions: LiveMapPosition[]) => live.current?.preview(positions), cancelGesture: () => live.current?.cancel(true),
     finishGesture: () => live.current?.status === 'unavailable' ? undefined : live.current?.finish(),
     presence: (ids: string[]) => live.current?.selection(ids),

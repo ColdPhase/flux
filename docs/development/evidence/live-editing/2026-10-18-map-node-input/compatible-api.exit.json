@@ -1,0 +1,13 @@
+{
+  "source_sha": "450f2430c17e1b57bfe54df7be607dc723ba5d89",
+  "command": [
+    "./scripts/check_application.sh",
+    "tests/app/live-map-authority.test.ts",
+    "tests/app/editing-confirmation-fence.test.ts",
+    "tests/app/live-map-preparation.test.ts",
+    "tests/app/editing-http-lifetime.test.ts"
+  ],
+  "started_at": "2026-10-18T11:49:28.220525+00:00",
+  "finished_at": "2026-10-18T11:52:24.961349+00:00",
+  "exit_code": 0
+}

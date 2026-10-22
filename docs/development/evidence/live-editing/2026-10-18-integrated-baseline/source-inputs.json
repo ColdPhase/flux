@@ -1,0 +1,45 @@
+{
+  "source": "1b49737901f475a9b810a1660ba0e4bc6dac3ecc",
+  "inputs": {
+    "app/tests/ui/test_live_editing.py": {
+      "bytes": 65601,
+      "sha256": "c2d45d9695ca63e5cb512ebd47362ebca408d4ec29503d4d1fde23c930f7bc6a"
+    },
+    "app/tests/ui/test_live_map_projection.py": {
+      "bytes": 14973,
+      "sha256": "68f7d0b705b5ad00fd49db5ce5c5ff8e07ca7e63645207256b6b3b5b6bf6837b"
+    },
+    "app/tests/ui/test_live_map_selection.py": {
+      "bytes": 8878,
+      "sha256": "33615a55b5f52514f584d3d4a65be881d2bf6194ca11679ace8a45cc26bbbb6e"
+    },
+    "app/tests/ui/test_live_map_cursors.py": {
+      "bytes": 4075,
+      "sha256": "43b8e04ba8af3182b94112c08f5a96921bfcdb617da4a26bd3e8d67db99a63c6"
+    },
+    "app/tests/ui/test_live_map_lease_expiry.py": {
+      "bytes": 4426,
+      "sha256": "98fe1e5e7299a77d550cc3416097ac9df7b601c814e47b18d0c96b7c1cbdbb1b"
+    },
+    "app/tests/ui/live_editing_identity.py": {
+      "bytes": 783,
+      "sha256": "ff725c4062a5664b346c909edc2a8e67fd3f2f56442537172144710d21ac30b1"
+    },
+    "scripts/check_live_editing.sh": {
+      "bytes": 6977,
+      "sha256": "6e0ea122459547e40b303ac5044067f83af167d09afe215d56b79f1d27f8944c"
+    },
+    "docker/ui-tests.Dockerfile": {
+      "bytes": 893,
+      "sha256": "533565b9be6bf6fe5f2547254385dc795d3035d190262c74cb9a49a8d66f8590"
+    },
+    "docker/compose.live-editing.test.yaml": {
+      "bytes": 1190,
+      "sha256": "479dee7414bfb60c34a6461a59b8ff803bc0a2725e86c0bd0cc4bb70688f091e"
+    },
+    "app/pnpm-lock.yaml": {
+      "bytes": 164437,
+      "sha256": "d34264e9ac2a877f045b3c190d6be025dfc2a8b84cc67b42eeb5dd7200cb6e22"
+    }
+  }
+}

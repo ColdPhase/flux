@@ -1,0 +1,37 @@
+{
+  "earlier_three": {
+    "captured_at_utc": "2026-10-18T11:47:20.090686+00:00",
+    "projects": [
+      {
+        "project": "flux-ui-1792323591-1188667",
+        "containers": [],
+        "volumes": [],
+        "networks": [],
+        "project_images": []
+      },
+      {
+        "project": "flux-ui-1792323795-1199877",
+        "containers": [],
+        "volumes": [],
+        "networks": [],
+        "project_images": []
+      },
+      {
+        "project": "flux-ui-1792323905-1217286",
+        "containers": [],
+        "volumes": [],
+        "networks": [],
+        "project_images": []
+      }
+    ]
+  },
+  "final_webkit_off": {
+    "source_sha": "7cbdd7fd9d1007db65ea76144b4fcb1f71693481",
+    "project": "flux-ui-1792325979-1337621",
+    "captured_at_utc": "2026-10-18T12:22:31.931784+00:00",
+    "containers": [],
+    "volumes": [],
+    "networks": [],
+    "image_tags": []
+  }
+}

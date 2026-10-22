@@ -1,0 +1,152 @@
+{
+  "source_sha": "7cbdd7fd9d1007db65ea76144b4fcb1f71693481",
+  "expected_mode": "off",
+  "captured_at_utc": "2026-10-18T12:20:16.744819+00:00",
+  "project": "flux-ui-1792325979-1337621",
+  "containers": [
+    {
+      "id": "f69ed8865f08bf5e0ab2bd5d10a38ae2292f4cac6dc8ee2483589b326bffb9ad",
+      "name": "/flux-ui-1792325979-1337621-ui-test-run-6be0a82d6d9b",
+      "image_id": "sha256:df5245459da2a1db8b9fc65f49925c42bf9fa6debeec1c843bbec63bbdaa2341",
+      "configured_image": "flux-ui-tests:flux-ui-1792325979-1337621",
+      "service": "ui-test",
+      "state": {
+        "Status": "running",
+        "Running": true,
+        "OOMKilled": false,
+        "ExitCode": 0,
+        "StartedAt": "2026-10-18T12:20:16.134975062Z",
+        "FinishedAt": "0001-01-01T00:00:00Z"
+      },
+      "allowlisted_environment": {
+        "FLUX_UI_BROWSER": "webkit",
+        "FLUX_UI_SCREENSHOTS": "/screenshots",
+        "FLUX_LIVE_EDITING": "off",
+        "FLUX_LIVE_EDITING_TEST": "0"
+      }
+    },
+    {
+      "id": "f0b3ffd23e19221ab422ea39e96b29c32fd0798ae5c8e5a5695553bba1698960",
+      "name": "/flux-ui-1792325979-1337621-api-1",
+      "image_id": "sha256:d304fe2161c4e6db73005de8d93f809dd3b64dd4ddcefd051342a35070cdf2da",
+      "configured_image": "flux-foundation:flux-ui-1792325979-1337621",
+      "service": "api",
+      "state": {
+        "Status": "running",
+        "Running": true,
+        "OOMKilled": false,
+        "ExitCode": 0,
+        "StartedAt": "2026-10-18T12:20:11.655813746Z",
+        "FinishedAt": "0001-01-01T00:00:00Z"
+      },
+      "allowlisted_environment": {
+        "FLUX_LIVE_EDITING": "off",
+        "NODE_ENV": "production"
+      }
+    },
+    {
+      "id": "d42dad879474fe0275b767fb0216107c2ad058847b774d0c16b8bb433483788c",
+      "name": "/flux-ui-1792325979-1337621-worker-1",
+      "image_id": "sha256:d304fe2161c4e6db73005de8d93f809dd3b64dd4ddcefd051342a35070cdf2da",
+      "configured_image": "flux-foundation:flux-ui-1792325979-1337621",
+      "service": "worker",
+      "state": {
+        "Status": "running",
+        "Running": true,
+        "OOMKilled": false,
+        "ExitCode": 0,
+        "StartedAt": "2026-10-18T12:20:11.673253138Z",
+        "FinishedAt": "0001-01-01T00:00:00Z"
+      },
+      "allowlisted_environment": {
+        "NODE_ENV": "production"
+      }
+    },
+    {
+      "id": "a0adbba235ccb845210170d6f3230618c45ab0d55395cdd64bc805b2f0b09fa4",
+      "name": "/flux-ui-1792325979-1337621-mailpit-1",
+      "image_id": "sha256:0a94362145f58e5cffb58605023c671774e4143037a952221ee6485b6cd999af",
+      "configured_image": "axllent/mailpit:v1.31.2@sha256:74d609a42ec279aa63c6b4622a6fa9b5408d1ad5b1d76a1c4be40a265ce0863d",
+      "service": "mailpit",
+      "state": {
+        "Status": "running",
+        "Running": true,
+        "OOMKilled": false,
+        "ExitCode": 0,
+        "StartedAt": "2026-10-18T12:20:09.632024064Z",
+        "FinishedAt": "0001-01-01T00:00:00Z"
+      },
+      "allowlisted_environment": {}
+    },
+    {
+      "id": "7e9e6f2e670e915e4636e2d011dd9fe16c6ac4a513300552a65093d3473fcd62",
+      "name": "/flux-ui-1792325979-1337621-anthropic-mock-1",
+      "image_id": "sha256:df5245459da2a1db8b9fc65f49925c42bf9fa6debeec1c843bbec63bbdaa2341",
+      "configured_image": "flux-ui-tests:flux-ui-1792325979-1337621",
+      "service": "anthropic-mock",
+      "state": {
+        "Status": "running",
+        "Running": true,
+        "OOMKilled": false,
+        "ExitCode": 0,
+        "StartedAt": "2026-10-18T12:20:09.683054088Z",
+        "FinishedAt": "0001-01-01T00:00:00Z"
+      },
+      "allowlisted_environment": {}
+    },
+    {
+      "id": "343d9a77e0f852dc43eb0beb36aa79f6fc304a3b2aea35bcbaf4db129084abd8",
+      "name": "/flux-ui-1792325979-1337621-openai-mock-1",
+      "image_id": "sha256:df5245459da2a1db8b9fc65f49925c42bf9fa6debeec1c843bbec63bbdaa2341",
+      "configured_image": "flux-ui-tests:flux-ui-1792325979-1337621",
+      "service": "openai-mock",
+      "state": {
+        "Status": "running",
+        "Running": true,
+        "OOMKilled": false,
+        "ExitCode": 0,
+        "StartedAt": "2026-10-18T12:20:09.666208377Z",
+        "FinishedAt": "0001-01-01T00:00:00Z"
+      },
+      "allowlisted_environment": {}
+    },
+    {
+      "id": "6889b79052dcf069ad7e9e19ee2f70551ecbce34e4b9af3aeab8917c2aab4de1",
+      "name": "/flux-ui-1792325979-1337621-migrate-1",
+      "image_id": "sha256:d304fe2161c4e6db73005de8d93f809dd3b64dd4ddcefd051342a35070cdf2da",
+      "configured_image": "flux-foundation:flux-ui-1792325979-1337621",
+      "service": "migrate",
+      "state": {
+        "Status": "exited",
+        "Running": false,
+        "OOMKilled": false,
+        "ExitCode": 0,
+        "StartedAt": "2026-10-18T12:20:10.2405268Z",
+        "FinishedAt": "2026-10-18T12:20:11.142493175Z"
+      },
+      "allowlisted_environment": {
+        "NODE_ENV": "production"
+      }
+    },
+    {
+      "id": "d2b6675b34b568ec8a34fd2ec9a17397966bc6b67e6bb43cf29f10ab7ca31ffd",
+      "name": "/flux-ui-1792325979-1337621-db-1",
+      "image_id": "sha256:c293117fcecda7344b5480222e813b9f673d7abd69b1dd95eff239b768b04f59",
+      "configured_image": "postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873",
+      "service": "db",
+      "state": {
+        "Status": "running",
+        "Running": true,
+        "OOMKilled": false,
+        "ExitCode": 0,
+        "StartedAt": "2026-10-18T12:19:44.688491281Z",
+        "FinishedAt": "0001-01-01T00:00:00Z"
+      },
+      "allowlisted_environment": {}
+    }
+  ],
+  "ui_versions": {
+    "python": "3.12.3 (main, Jun 19 2026, 12:46:00) [GCC 13.3.0]",
+    "playwright": "1.62.0"
+  }
+}
