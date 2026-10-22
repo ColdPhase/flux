@@ -492,3 +492,16 @@ ACK/generation/sequence/hash quorum, concurrent own-undo refusal and over-limit
 input refusal unchanged. The observer replaces only an unsupported observation
 mechanism. Its browser results and source remain required in the consolidated
 independent review; the original failed clipboard attempts retain their pins.
+
+### Where the retained evidence pins resolve (2026-10-22, #613)
+
+The pins `aade67efde45b8156fe933c2124ab5a2a96d580a` (roomless conflicts, API
+50/50 and two-API), `759ecb40696f88cccb231dd33c49b739563d4e76` (lazy outline,
+confirmed Undo) and `e568243c3de2f40f7c8280edb9b8aa37295352eb` (unchanged
+map200 author diagnostic) were local-only worker commits and are not ancestors
+of the squash-merged PR. They are published as the tags
+`archive/228-pin-aade67ef`, `archive/228-pin-759ecb40` and
+`archive/228-pin-e568243c`, so each pin resolves with
+`git fetch origin tag archive/228-pin-<short>`. Their trees are the sources the
+retained evidence describes; the PR head still differs from them as the
+dossier states.
