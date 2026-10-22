@@ -31,6 +31,29 @@ const clock = sql<Date>`clock_timestamp()`.mapWith((value: Date | string) => new
 
 export function coworkUnitRows(tx: DbExecutor) {
   return {
+    /** Read-only Resume candidates, after current connection/project/capability authorization. No lease secret. */
+    async recovery(scope: { workspaceId: string; projectId: string; connectionId: string; runtimeSessionId: string },
+      page: { limit: number; offset: number }) {
+      if (!Number.isSafeInteger(page.limit) || page.limit < 1 || page.limit > 50
+        || !Number.isSafeInteger(page.offset) || page.offset < 0 || page.offset > 10_000) throw new Error('Invalid recovery page');
+      const rows = await tx.select({ id: units.id, taskId: units.taskId, role: units.role, state: units.state,
+        version: units.version, checkpointId: units.checkpointId,
+        leaseExpiresAt: units.leaseExpiresAt, currentSession: sql<boolean>`${units.leaseSessionId} = ${scope.runtimeSessionId}`,
+        live: sql<boolean>`${units.state} = 'claimed' AND ${units.leaseExpiresAt} > clock_timestamp()` })
+        .from(units).innerJoin(schema.projectWorkItems, and(eq(schema.projectWorkItems.workspaceId, units.workspaceId),
+          eq(schema.projectWorkItems.projectId, units.projectId), eq(schema.projectWorkItems.id, units.taskId)))
+        .where(and(eq(units.workspaceId, scope.workspaceId), eq(units.projectId, scope.projectId),
+          eq(units.assignmentConnectionId, scope.connectionId), inArray(units.state, ['pending', 'paused', 'claimed']),
+          sql`${schema.projectWorkItems.creationRevertedAt} IS NULL`, sql`${schema.projectWorkItems.status} NOT IN ('done', 'not_pursued')`))
+        .orderBy(sql`CASE WHEN ${units.state} = 'claimed' AND ${units.leaseExpiresAt} > clock_timestamp() THEN 0
+          WHEN ${units.state} = 'paused' OR ${units.state} = 'claimed' THEN 1 ELSE 2 END`,
+        sql`${units.updatedAt} DESC`, asc(units.id)).limit(page.limit + 1).offset(page.offset);
+      return { units: rows.slice(0, page.limit).map((row) => ({ id: row.id, taskId: row.taskId, role: row.role,
+        state: row.state as 'pending' | 'paused' | 'claimed', version: row.version, checkpointId: row.checkpointId,
+        lease: row.live && row.leaseExpiresAt ? { expiresAt: row.leaseExpiresAt.toISOString(), currentSession: row.currentSession } : null })),
+      ...page, nextOffset: rows.length > page.limit ? page.offset + page.limit : null,
+      coverage: 'current_connection_open_units' as const };
+    },
     /** Current content-free exact grant target. No runtime, claim or quota is created. */
     async grantTarget(scope: StorageScope, role: Unit['role']) {
       const [row] = await tx.select({ id: units.id }).from(units).where(and(eq(units.id, scope.unitId),

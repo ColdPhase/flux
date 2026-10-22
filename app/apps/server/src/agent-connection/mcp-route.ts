@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { requireMcpAuth } from '@better-auth/mcp';
 import type { AgentScope } from '@flux/contracts';
 import { AGENT_MCP_ENTRIES, agentScopeRefusal, assistantRunTools } from '@flux/contracts';
-import { enforce, evaluateProject, loadActor, requireAgentMcpEntry, requireWorkspaceAi, workspaceAi, WorkspaceAiBlockedError, type Database, type Transaction } from '@flux/core';
+import { enforce, evaluateProject, isUuid, loadActor, requireAgentMcpEntry, requireWorkspaceAi, workspaceAi, WorkspaceAiBlockedError, type Database, type Transaction } from '@flux/core';
 import { agentConnectionWorkspaceId, lockAgentMcpPolicy } from '@flux/db';
 import type { FluxAuth } from '../identity/auth.js';
 import type { Confirmation } from '../identity/confirmation.js';
@@ -35,7 +35,13 @@ export function registerMcpRoute(app: FastifyInstance, db: Database, auth: FluxA
     const connectionId = token.flux_connection_id;
     const scopes = typeof token.scope === 'string' ? token.scope.split(/\s+/).filter(Boolean) : [];
     const runClaims = runTokenClaims(token);
-    if (typeof ownerUserId !== 'string' || typeof connectionId !== 'string' || token.sub !== ownerUserId || runClaims === 'invalid') {
+    const params = new URL(request.url).searchParams;
+    const connections = params.getAll('flux_connection'), projects = params.getAll('flux_project');
+    const bound = connections.length || projects.length;
+    const invalidBinding = bound && (connections.length !== 1 || projects.length !== 1 || !isUuid(connections[0]!)
+      || !isUuid(projects[0]!) || connections[0]!.toLowerCase() !== connectionId);
+    const boundProjectId = bound && !invalidBinding ? projects[0]!.toLowerCase() : undefined;
+    if (typeof ownerUserId !== 'string' || typeof connectionId !== 'string' || token.sub !== ownerUserId || runClaims === 'invalid' || invalidBinding) {
       return new Response(JSON.stringify({ error: 'Agent connection is unavailable' }), {
         status: 403, headers: { 'content-type': 'application/json' },
       });
@@ -78,6 +84,12 @@ export function registerMcpRoute(app: FastifyInstance, db: Database, auth: FluxA
         await requireWorkspaceAi(tx, grant.connection.workspaceId, { lock: true });
         const policy = await lockAgentMcpPolicy(tx, connectionId);
         if (!policy) throw new Error('Policy unavailable');
+        if (boundProjectId && (!grant.connection.selectedProjectIds.includes(boundProjectId) || !policy.selectedProjectIds.includes(boundProjectId)))
+          throw new Error('Bound project unavailable');
+        if (boundProjectId) {
+          const checked = enforce(await evaluateProject({ kind: 'agent', id: grant.connection.agentId }, 'project.read', boundProjectId, tx, { lock: true }), 'project');
+          if (checked.project!.workspaceId !== grant.connection.workspaceId) throw new Error('Bound project unavailable');
+        }
         granted = scopes.filter((scope) => grant.connection.scopes.includes(scope as AgentScope));
         if (runClaims) {
           // A personal run's token (F-027 A2): its run is in flight under this token's id, and the route lists
@@ -98,6 +110,7 @@ export function registerMcpRoute(app: FastifyInstance, db: Database, auth: FluxA
     const handler = createFluxMcpHandler(() => createFluxMcpServer(db, { ownerUserId, connectionId, scopes: granted, dispatch,
       clientId: typeof token.client_id === 'string' ? token.client_id : null,
       grantReferenceId: typeof token.flux_grant_reference === 'string' ? token.flux_grant_reference : null,
+      ...(boundProjectId ? { boundProjectId } : {}),
       ...(run ? { run } : {}),
     }, cursorSecret), { refuseScope: (name) => agentScopeRefusal(name, granted), ...(run ? { refuseTool: (name: string) => !run!.tools.includes(name) } : {}) });
     // Protected bytes are handed to the transport only while the live policy and access still hold.
@@ -115,6 +128,12 @@ export function registerMcpRoute(app: FastifyInstance, db: Database, auth: FluxA
         throw new Error('Connection unavailable');
       const policy = await lockAgentMcpPolicy(tx, connectionId);
       if (!policy) throw new Error('Policy unavailable');
+      if (boundProjectId && (!grant.connection.selectedProjectIds.includes(boundProjectId) || !policy.selectedProjectIds.includes(boundProjectId)))
+        throw new Error('Bound project unavailable');
+      if (boundProjectId) {
+        const checked = enforce(await evaluateProject({ kind: 'agent', id: grant.connection.agentId }, 'project.read', boundProjectId, tx, { lock: true }), 'project');
+        if (checked.project!.workspaceId !== grant.connection.workspaceId) throw new Error('Bound project unavailable');
+      }
       const d = dispatch.dependencies;
       if (!d.protectedOutput || !d.admitted.size) return;
       if (policy.version !== d.capturedVersion) throw new Error('Policy changed');

@@ -66,7 +66,9 @@
 
 /* ---------- The strip ---------- */
 /* The strip is its own layer above the pane's sheets and stage, so its session popover (which drops into
-   the pane) is never painted over by the thread sheet (#63). Still below portalled overlays (--z-overlay). */
+   the pane) is never painted over by the thread sheet (#63). Still below portalled overlays (--z-overlay).
+   A thread or Details sheet and its scrim start below the strip instead (Overlay `keepLiveStrip`), so Leave and
+   the microphone stay on top and where they were. */
 .lv-bar { position: relative; z-index: var(--z-overlay); flex: none; border-bottom: 1px solid var(--line); background: var(--sub); }
 .lv-bar.is-quiet { background: var(--bg); }
 .lv-row { display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 6px 12px 6px 20px; }
@@ -183,7 +185,7 @@
 /* ---------- Stage: screens and cameras over the work area ---------- */
 .app__pane { position: relative; }
 .lv-stage {
-  /* Over the thread sheet (--z-panel) in the same pane, under the strip and overlays (#63). */
+  /* Over the pane's docked panel (--z-panel), under the strip and overlays (#63). On a phone or tablet the thread sheet closes when the stage opens. */
   position: absolute; inset: 0; z-index: var(--z-scrim); display: flex; flex-direction: column; background: var(--bg);
   transform-origin: 50% 0;
 }
