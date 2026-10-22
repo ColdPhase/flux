@@ -181,6 +181,7 @@ class LightMotionJourney(unittest.TestCase):
             running: surface ? surface.getAnimations().length : 0, appInert: document.getElementById('root').inert,
             visibility: document.visibilityState, focused: document.hasFocus(), now: Math.round(performance.now()),
             durOut: getComputedStyle(document.documentElement).getPropertyValue('--dur-out'), reduce: matchMedia('(prefers-reduced-motion: reduce)').matches,
+            lastAnimations: (window.__animations || []).slice(-4).map((a) => [a.id, a.playState, a.effect && a.effect.target ? (a.effect.target.className || a.effect.target.tagName) : null, a.effect ? a.effect.getComputedTiming().duration : null]),
             stored: (() => { try { return localStorage.getItem('flux.reduceMotion'); } catch (error) { return 'x'; } })(), root: document.documentElement.getAttribute('data-motion') };
         }""")
         self.assertTrue(verdict["inside"], "focus was inside the dialog")
