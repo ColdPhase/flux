@@ -409,7 +409,7 @@ button.wd-link:active:not(:disabled) { background: var(--sub); transform: scale(
 .wd-act__who .agent-id { flex-wrap: wrap; min-width: 0; }
 .wd-act__bubble { display: flex; flex-direction: column; align-items: flex-start; max-width: 100%; }
 .wd-act__bubble .message-bubble { max-width: 100%; background: var(--sub); box-shadow: none; }
-.wd-act__bubble .message-bubble p { margin: 0; font-size: var(--fs-md); line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--t1); }
+.wd-act__bubble .message-bubble :is(p, .message-body) { margin: 0; font-size: var(--fs-md); line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--t1); }
 .wd-act__earlier { margin-top: 10px; font-size: var(--fs-sm); }
 .wd-act__none { margin: 14px 0 0; }
 .wd-activity .details__sec { margin-top: 10px; }

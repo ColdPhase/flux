@@ -361,7 +361,7 @@ function TaskThread({ kind, task, projectId, meId, names, canWrite, changingScop
                 <time dateTime={message.createdAt}>{when(message.createdAt)}</time>
                 {message.contribution ? <span className="agents-msg__kind"> · {message.contribution.kind}</span> : null}
               </span>
-              <MessageContent body={message.body ? <WhenNoQuestion projectId={projectId} messageId={message.id}><p className="agents-msg__body"><MessageText body={message.body} /></p></WhenNoQuestion> : null} files={message.files} context={{ author: name, at: message.createdAt, caption: message.body, onReply: blocked ? undefined : () => box.current?.focus(), onCreateTask: kind === 'task' && canWrite && !accessLost ? () => void makeWork.create(message) : undefined }}>
+              <MessageContent body={message.body ? <WhenNoQuestion projectId={projectId} messageId={message.id}><div className="message-body agents-msg__body"><MessageText body={message.body} /></div></WhenNoQuestion> : null} files={message.files} context={{ author: name, at: message.createdAt, caption: message.body, onReply: blocked ? undefined : () => box.current?.focus(), onCreateTask: kind === 'task' && canWrite && !accessLost ? () => void makeWork.create(message) : undefined }}>
                 <LinkPreviews body={message.body} />
               </MessageContent>
               <QuestionCard projectId={projectId} messageId={message.id} meId={meId} writable={canWrite} />
@@ -373,7 +373,7 @@ function TaskThread({ kind, task, projectId, meId, names, canWrite, changingScop
             <AuthorFace kind="human" name={names.get(meId) ?? 'Someone'} mine />
             {/* "Sending…" stands where the stored message's time will be, so it takes that message's exact space. */}
             <span className="agents-msg__meta"><b>{names.get(meId) ?? 'Someone'} · you</b>{item.state === 'sending' || item.state === 'uploading' ? <OutboxStatus inline item={item} onRetry={() => composer.retry(item.id)} onRemove={() => composer.remove(item.id)} /> : null}</span>
-            <PendingFiles body={item.body ? <p className="agents-msg__body">{item.body}</p> : null} files={item.files} send={{ state: item.state, onRetry: () => composer.retry(item.id) }} />
+            <PendingFiles body={item.body ? <div className="message-body agents-msg__body">{item.body}</div> : null} files={item.files} send={{ state: item.state, onRetry: () => composer.retry(item.id) }} />
             <PendingSource item={item} />
             {item.state === 'sending' || item.state === 'uploading' ? null : <OutboxStatus item={item} onRetry={() => composer.retry(item.id)} onRemove={() => composer.remove(item.id)} />}
           </li>

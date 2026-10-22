@@ -68,7 +68,9 @@ AI**, which opens Details with the options marked "not available yet". Nothing c
 
 `main.tsx` registers the service worker, the router root renders the update prompt on every
 page, the account menu holds this device's notification control and session, the shell
-refreshes the push subscription after sign-in, and sign-out calls `signOutDevice()`.
+refreshes the push subscription after sign-in, and sign-out calls `signOutDevice()`. The
+update prompt is a row above the shell with **Later** and **Reload**, never a layer over it
+([mobile-pwa.md](../../product/mobile-pwa.md)).
 
 ## Signing out
 

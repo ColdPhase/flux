@@ -4,7 +4,12 @@ import { ServiceUnavailableError, type MapNativeChange, type ThoughtRecord, type
 export const mapHash=(generation:string,sequence:number)=>createHash('sha256').update(`${generation}:${sequence}`).digest('hex');
 const date=(value:Date|string)=>{const result=value instanceof Date?value:new Date(value);if(!Number.isFinite(result.getTime()))throw new Error('Invalid map journal timestamp');return result;};
 function thought(row:ThoughtRecord):ThoughtRecord {
-  return {...row,createdAt:date(row.createdAt),updatedAt:date(row.updatedAt),source:row.source?{...row.source,sentAt:date(row.source.sentAt)}:null};
+  if(!row.source)return {...row,createdAt:date(row.createdAt),updatedAt:date(row.updatedAt),source:null};
+  const source=row.source as NonNullable<ThoughtRecord['source']> & {authorKind?:'human'|'agent';projectMessageId?:string|null};
+  const authorKind=source.authorKind??'human';
+  if(authorKind!=='human'&&authorKind!=='agent')throw new ServiceUnavailableError('Invalid bounded map journal','EDITING_MAP_CAPACITY');
+  return {...row,createdAt:date(row.createdAt),updatedAt:date(row.updatedAt),source:{...source,authorKind,
+    projectMessageId:source.projectMessageId??null,sentAt:date(source.sentAt)}};
 }
 function sketch(row:SketchRecord):SketchRecord {
   return {...row,createdAt:date(row.createdAt),updatedAt:date(row.updatedAt),copied:row.copied?{...row.copied,at:date(row.copied.at)}:null};
