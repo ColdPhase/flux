@@ -178,7 +178,8 @@ class LightMotionJourney(unittest.TestCase):
           await Promise.resolve(); await Promise.resolve();
           const surface = document.querySelector('.ui-overlay__surface');
           return { inside, returned: document.activeElement === opener, there: !!surface, inert: surface ? surface.inert : null,
-            running: surface ? surface.getAnimations().length : 0, appInert: document.getElementById('root').inert };
+            running: surface ? surface.getAnimations().length : 0, appInert: document.getElementById('root').inert,
+            visibility: document.visibilityState, focused: document.hasFocus(), now: Math.round(performance.now()) };
         }""")
         self.assertTrue(verdict["inside"], "focus was inside the dialog")
         self.assertTrue(verdict["returned"], f"focus is back on its opener in the same task as the close: {verdict}")

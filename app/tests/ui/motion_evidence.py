@@ -269,14 +269,14 @@ class MotionEvidence(unittest.TestCase):
         page.mouse.move(2, 2); page.mouse.up(); self.beat(page, 700)
 
     def clip_reduced(self, page: Page) -> None:
-        """AC-6: with reduced motion every surface is in its end state at once: a dialog, a view, the panel and its replaced content."""
+        """AC-6: with reduced motion every surface is in its end state at once: a view, the panel and its replaced content."""
         self.go(page, self.fx.project_url()); self.beat(page, 700)
-        self.mark(page, box=(0, 0, 1440, 700), after=5.0, scale=0.45)
-        page.keyboard.press("Control+k"); self.beat(page, 800)
-        page.keyboard.press("Escape"); self.beat(page, 500)
-        page.locator(TABS).get_by_role("link", name="Tasks").click(); self.beat(page, 800)
+        self.mark(page, box=(0, 0, 1440, 700), after=4.0, scale=0.45)
+        page.locator(f"{TABS} a[href*='/tasks']").click(); self.beat(page, 900)
         page.locator(".ws-task .ws-item").first.click(); self.beat(page, 900)
         page.locator("#details a", has_text="Should the first sensors").first.click(); self.beat(page, 900)
+        page.keyboard.press("Control+k"); self.beat(page, 700)
+        page.keyboard.press("Escape"); self.beat(page, 500)
 
     def test_clips_for_the_review(self):
         for scheme in ("light", "dark"):
