@@ -135,7 +135,6 @@ export class Dissolve extends Component<Props, Record<string, never>, Snapshot |
       parent.appendChild(copy);
       parent = copy;
     }
-    const gone: Promise<unknown>[] = [];
     for (const piece of snapshot.pieces) {
       const copy = piece.copy;
       copy.setAttribute('inert', '');
@@ -144,12 +143,28 @@ export class Dissolve extends Component<Props, Record<string, never>, Snapshot |
       parent.appendChild(copy);
       const nodes = copy.querySelectorAll<HTMLElement>('*');
       for (const [index, top, left] of piece.scrolls) { const target = index < 0 ? copy : nodes[index]; if (target) { target.scrollTop = top; target.scrollLeft = left; } }
-      const leave = copy.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: `translateX(${travel}px)` }], { duration: ms, easing: token('--ease-in') || 'ease-in', fill: 'forwards' });
-      leave.id = MOTION_ID;
-      track(leave);
-      gone.push(leave.finished.catch(() => undefined));
     }
-    void Promise.all(gone).then(() => frame.remove());
+    // The fade starts on the first frame the browser draws after the swap, not at the swap: a page that is busy with the new content
+    // (its code arriving, its first layout) would otherwise have the whole fade run its course unseen. Until then the picture stands
+    // as the old content did, at full strength.
+    let started = false;
+    const fade = () => {
+      if (started) return;
+      started = true;
+      if (!frame.isConnected) return;
+      if (!motionAllowed()) { frame.remove(); return; }
+      const gone: Promise<unknown>[] = [];
+      for (const piece of snapshot.pieces) {
+        const leave = piece.copy.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: `translateX(${travel}px)` }], { duration: ms, easing: token('--ease-in') || 'ease-in', fill: 'forwards' });
+        leave.id = MOTION_ID;
+        track(leave);
+        gone.push(leave.finished.catch(() => undefined));
+      }
+      void Promise.all(gone).then(() => frame.remove());
+    };
+    requestAnimationFrame(fade);
+    // A page that draws no frame (hidden, or not painting) still lets the picture go.
+    window.setTimeout(fade, 400);
   }
 
   render() { return this.props.children; }

@@ -469,7 +469,7 @@ class LightMotionJourney(unittest.TestCase):
             const copies = layers(); const layer = copies[0];
             return { copies: copies.length, fresh: [...body.children].map((child) => child.className),
               layer: layer ? { inert: layer.inert, hidden: layer.getAttribute('aria-hidden'), events: getComputedStyle(layer).pointerEvents, of: layer.getAttribute('data-dissolve'),
-                position: getComputedStyle(layer).position, z: getComputedStyle(layer).zIndex, running: (window.__animations || []).filter((a) => a.id === 'flux-motion' && a.playState === 'running').length } : null };
+                position: getComputedStyle(layer).position, z: getComputedStyle(layer).zIndex } : null };
           };
           const seen = new Promise((resolve) => {
             const watch = new MutationObserver(() => {
@@ -494,11 +494,13 @@ class LightMotionJourney(unittest.TestCase):
         self.assertIn(self.fx.tasks[0]["id"], layer["of"], f"the picture is of the task: {forward}")
         self.assertEqual((layer["inert"], layer["hidden"], layer["events"], layer["position"]), (True, "true", "none", "fixed"),
                          f"inert, hidden from assistive technology, no pointer input, a layer of its own: {forward}")
-        self.assertGreaterEqual(layer["running"], 1, f"and it is fading out: {forward}")
         self.assertFalse(forward["inside"], "the picture is not in the panel")
         self.assertEqual((forward["scoped"], forward["everywhere"]), (1, 1), f"a query of the page finds the one live content, never two (the picture is only a picture): {forward}")
         self.assertFalse(forward["hitIsPicture"], "the person's pointer reaches the new content, not the picture")
         self.assertTrue(forward["backReachable"], f"the panel's own controls are reachable: {forward}")
+        # It starts to fade on the first frame the browser draws after the swap, and goes the way the person came from.
+        wait_fade = "() => (window.__motion || []).some((entry) => entry.kind === 'script' && entry.duration === 120 && entry.from && entry.from.opacity === 1 && entry.to && entry.to.opacity === 0)"
+        page.wait_for_function(wait_fade)
         left = self.leaving(page, 120)
         self.assertTrue(left, "the old content is animated out")
         self.assertLess(numbers(left[0]["to"]["transform"])[0], 0, "forward: it goes left as the new content comes from the right")
@@ -514,6 +516,7 @@ class LightMotionJourney(unittest.TestCase):
         self.assertLessEqual(back["scoped"], 1, back)
         self.assertEqual(back["everywhere"], back["scoped"], f"a query of the page finds the live content only, never the picture: {back}")
         self.assertFalse(back["hitIsPicture"])
+        page.wait_for_function(wait_fade)
         left = self.leaving(page, 120)
         self.assertTrue(left)
         self.assertGreater(numbers(left[0]["to"]["transform"])[0], 0, "back: it goes right as the task comes from the left")
@@ -885,7 +888,10 @@ class LightMotionJourney(unittest.TestCase):
           document.querySelector("nav[aria-label='Project views'] a[href*='/tasks']").click();
           for (let i = 0; i < 400 && !layers().length; i++) await new Promise((resolve) => setTimeout(resolve, 5));
           // The pictures are in a shadow root, which not every engine lists in document.getAnimations(): the recorder kept every animation.
-          const all = (window.__animations || []).filter((a) => a.id === 'flux-motion' && a.playState === 'running');
+          // The fade starts on the first frame drawn after the swap.
+          const running = () => (window.__animations || []).filter((a) => a.id === 'flux-motion' && a.playState === 'running');
+          for (let i = 0; i < 200 && !running().length; i++) await new Promise((resolve) => setTimeout(resolve, 5));
+          const all = running();
           for (const animation of all) { animation.pause(); animation.currentTime = 10; }
           const held = all.map((a) => a.playState);
           Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' });
