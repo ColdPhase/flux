@@ -1,6 +1,7 @@
 # F-029 — workspace AI lock
 
-**Status: proposed, 2026-10-22, pending one bounded independent peer assessment.**
+**Status: accepted, 2026-10-22,** by independent peer assessment on #629
+([comment review 5620212813](https://github.com/ColdPhase/flux/pull/629#pullrequestreview-5620212813), approve-equivalent at `ce97a7c2`). Implementation pending (slices S1–S3).
 Owner @PelikanFix16 (`claude-hubert`); independent evaluator @Zamojski5. Issue
 [#614](https://github.com/ColdPhase/flux/issues/614) (founder direction, Hubert,
 2026-10-18). Decision row: [F-029](decisions.md). The switch placement, re-enable
@@ -132,7 +133,14 @@ export async function requireWorkspaceAi(db: Executor, workspaceId: string, opti
   before the agent, membership, project and grant rows. The flip locks the policy row
   first and afterwards takes only the changing person's membership `FOR SHARE` and the
   event `seq` lock; the sweep never locks the policy row. No transaction therefore waits
-  for the policy row while holding a lock the flip needs. A two-connection test covers the
+  for the policy row while holding a lock the flip needs.
+- **Exception: checks inside a human's write.** The reaction-capture function, the
+  `ai_work_admission` backstop, `prepareHumanNegative`/`enqueueHumanNegative` and
+  `eventAudience` run inside a person's own write and take the policy share after that
+  person's membership and project shares. This is still deadlock-free: the flip needs only
+  the flipping admin's membership share (which a share does not block) and the event `seq`
+  lock, and these sites run before the write's event insert takes that lock. The test "a
+  human task write with a reaction rule during the flip still commits" covers it. A two-connection test covers the
   flip against a role change of the flipping admin, in both orders.
 - **Principal layer.** `loadActor` calls `workspaceAi` for every `agent` principal (with
   the caller's `lock`) and returns an inactive actor with `blockedBy: 'workspace_ai'` when
@@ -403,7 +411,13 @@ as for Remove and Leave), in place under the row, so nothing else moves:
 - A version conflict closes the confirm, shows the current state in the row and says
   "Someone changed this just now." A `403` says "Only owners and admins can change this."
 
-Focus returns to the row's button after either answer. Members learn the state where
+This is a confirm rather than an Undo, the same exception as Remove and Leave in this
+panel (F-026 rule 6): turning AI off stops runs and work that cannot be restored, so it is
+asked first. Focus returns to the row's button after either answer.
+
+Members and guests get no switch. While AI is off, the same section shows them one
+read-only line in the same place: "AI is off in Garden club. Its owners and admins turned
+it off." While AI is on, the section is not shown to them. Members also learn the state where
 AI would have appeared ([deep links](#ui-contract) below) and from the API's `ai` field.
 
 **Settings → Agents and AI** keeps its place and holds no switch. For a workspace that is
@@ -432,28 +446,30 @@ the member, Ada's and the member's assistants (one `server` on the mock provider
 reaction. "Provider negative control" means the mock provider
 (`tests/ui/anthropic_mock.py`, `openai_mock.py`, or the API-suite fakes) counts requests;
 every "zero requests" assertion is paired with the same step in an allowed workspace that
-does reach it.
+does reach it. In S1, which has no switch, "disable" means the test fixture sets the
+policy row to `blocked` and bumps its epoch.
 
-| AC | Test | Where |
-| --- | --- | --- |
-| AC-1 | Migration: one `allowed` row per existing workspace; new workspace gets a row; missing row is refused. | `tests/app/workspace-ai-migration.test.ts` |
-| AC-1 | `PUT ai-policy`: owner and admin succeed; member, guest and an agent principal get `403`; `If-Match` conflict; idempotent replay after demotion is refused; state survives API restart and a new session. | `tests/app/workspace-ai-policy.test.ts` |
-| AC-2 | Every `AI_HTTP_ROUTES` `gated` route answers `403 WORKSPACE_AI_BLOCKED` with nothing written; route inventory complete. | `tests/app/workspace-ai-routes.test.ts`, `architecture.test.ts` |
-| AC-2 | MCP with already-issued tokens: Ada's (owner) and the member's existing connections get `403` at bearer for `tools/list`, every tool, resource and prompt; a refresh is `invalid_grant`; a new consent cannot select A; a standing grant does not help; B's connection works throughout. | `tests/app/workspace-ai-mcp.test.ts` |
-| AC-2 | Run token minted before disable is refused at `/mcp`; mint after disable is `404`. | same, plus `assistant-run-tokens.test.ts` cases |
-| AC-2 | Personal runs (`server` and `runtime`), schedules, reactions, morning summary and comparisons in A start nothing, with zero provider requests and zero CLI starts; in B they run (positive control). | `tests/app/workspace-ai-worker.test.ts` |
-| AC-2 | Cross-workspace: Ada's morning summary in B contains no title from A; A's agents are absent from `listProjectPeople`, ⌘K data, event audience rows and `flux_list_contexts`; search for humans in A unchanged. | same file and `workspace-ai-mcp.test.ts` |
-| AC-3 | Two real connections: flip vs. MCP fence, run commit, comparison publish and reaction capture in both orders, detecting the wait with `pg_blocking_pids` (as `access-policy.test.ts` does); the chunk held by the relay's `testGate` is not delivered after the flip. | `tests/app/workspace-ai-cutover.test.ts` |
-| AC-3 | Late in-flight result: a mock provider that holds its response; disable; assert the provider connection is aborted within 1 s, the run ends `stopped`/`ai_off`, no answer, proposal or event is committed, and releasing the response later changes nothing. Same for a fake CLI run (`runtime.stop` observed) and a comparison. | same |
-| AC-3 | Multi-process: two API containers and the worker (pattern of [two-API fixture](../development/live-editing-two-api.md)); disable on API-1 while an MCP stream is served by API-2 and a run is in the worker; nothing crosses. | `tests/app/live/workspace-ai-two-api.test.ts`, `docker/compose.ai-lock.test.yaml` |
-| AC-3 | Disable, then enable before the sweep runs (sweep job held): old-epoch runs, requests, units, sessions and reaction events never run; the late sweep ends them; items admitted after the re-enable are untouched and run. | `workspace-ai-cutover.test.ts` |
-| AC-3 | Lock order and backstop: flip against a role change of the flipping admin in both orders (no deadlock); an insert of each AI work table with a stale or missing epoch is rejected by `ai_work_admission`; a human task write with a reaction rule during the flip still commits. | same |
-| AC-3 | In-flight window: a pre-flip dispatch is aborted within `stopPollMs` plus one poll after the sweep; no provider request arrives whose decision committed after the flip; a fake CLI is stopped within its bound. | same |
-| AC-2 | Every route and queue in `AI_HTTP_ROUTES` and `AI_WORK_QUEUES`, push and e-mail skips of `isAiOrigin` notifications created before the flip, Needs-you resolve refusal, consent-context and held-connection, run-token mint refused before `githubFacts` is called, idempotent replay of a gated command refused, guests see `changedBy: null`, the owner's Undo of an applied change still works while blocked. | `workspace-ai-routes.test.ts`, `workspace-ai-worker.test.ts` |
-| AC-3 | Re-enable: queued items from before and from the flip race do not run; missed schedule times do not fire; agents get no blocked-period events; a demoted admin cannot re-enable; standing configuration works again. | `workspace-ai-cutover.test.ts` |
-| AC-3 | Real client: pinned Claude Code in the `mcp-clients` image gets the refusal on its next call after disable and works again after re-enable and reconnect. | `tests/app/e2e/mcp-clients.e2e.ts` case |
-| AC-4 | Chromium and WebKit, desktop and phone viewports: owner and admin turn AI off and on in the workspace's People panel (Details panel on a computer, Details sheet on a phone), the row keeps its position across states, and the inline confirm works by keyboard; member and guest see no AI row; zero `[data-ai-surface]` in A's project, Home, Inbox, ⌘K, composer and message menus while blocked, and more than zero in B (control); every listed deep link shows the blocked state and makes no AI request (network log); reload keeps the state; an open second tab updates from the stream; conversation, task, map, Wiki, file and search still work for two people. | `tests/ui/test_workspace_ai_lock.py` (`./scripts/check_ui.sh`, run with `FLUX_UI_BROWSER=chromium` and `webkit`) |
-| AC-5 | Final candidate evaluated independently under the [bounded review policy](../agents/evaluation.md). | PR review |
+| AC | Slice | Test | Where |
+| --- | --- | --- | --- |
+| AC-1 | S1 | Migration: one `allowed` row per existing workspace; new workspace gets a row; missing row is refused. | `tests/app/workspace-ai-migration.test.ts` |
+| AC-1 | S1 | `workspace.manage_ai`: owner and admin allowed; member, guest and agent principals refused; the wire field for members and guests (`changedBy` null for guests). | `tests/app/workspace-ai-policy.test.ts` |
+| AC-1 | S2 | `PUT ai-policy`: owner and admin succeed; member, guest and an agent principal get `403`; `If-Match` conflict; idempotent replay after demotion is refused; state survives API restart and a new session. | `tests/app/workspace-ai-policy.test.ts` |
+| AC-2 | S1 | Every `AI_HTTP_ROUTES` `gated` route answers `403 WORKSPACE_AI_BLOCKED` with nothing written; route inventory complete. | `tests/app/workspace-ai-routes.test.ts`, `architecture.test.ts` |
+| AC-2 | S1 | MCP with already-issued tokens: Ada's (owner) and the member's existing connections get `403` at bearer for `tools/list`, every tool, resource and prompt; a refresh is `invalid_grant`; a new consent cannot select A; a standing grant does not help; B's connection works throughout. | `tests/app/workspace-ai-mcp.test.ts` |
+| AC-2 | S1 | Run token minted before disable is refused at `/mcp`; mint after disable is `404`. | same, plus `assistant-run-tokens.test.ts` cases |
+| AC-2 | S1 | Personal runs (`server` and `runtime`), schedules, reactions, morning summary and comparisons in A start nothing, with zero provider requests and zero CLI starts; in B they run (positive control). | `tests/app/workspace-ai-worker.test.ts` |
+| AC-2 | S1 | Cross-workspace: Ada's morning summary in B contains no title from A; A's agents are absent from `listProjectPeople`, ⌘K data, event audience rows and `flux_list_contexts`; search for humans in A unchanged. | same file and `workspace-ai-mcp.test.ts` |
+| AC-3 | S2 | Two real connections: flip vs. MCP fence, run commit, comparison publish and reaction capture in both orders, detecting the wait with `pg_blocking_pids` (as `access-policy.test.ts` does); the chunk held by the relay's `testGate` is not delivered after the flip. | `tests/app/workspace-ai-cutover.test.ts` |
+| AC-3 | S2 | Late in-flight result: a mock provider that holds its response; disable; assert the provider connection is aborted within 1 s, the run ends `stopped`/`ai_off`, no answer, proposal or event is committed, and releasing the response later changes nothing. Same for a fake CLI run (`runtime.stop` observed) and a comparison. | same |
+| AC-3 | S2 | Multi-process: two API containers and the worker (pattern of [two-API fixture](../development/live-editing-two-api.md)); disable on API-1 while an MCP stream is served by API-2 and a run is in the worker; nothing crosses. | `tests/app/live/workspace-ai-two-api.test.ts`, `docker/compose.ai-lock.test.yaml` |
+| AC-3 | S2 | Disable, then enable before the sweep runs (sweep job held): old-epoch runs, requests, units, sessions and reaction events never run; the late sweep ends them; items admitted after the re-enable are untouched and run. | `workspace-ai-cutover.test.ts` |
+| AC-3 | S2 | Lock order and backstop: flip against a role change of the flipping admin in both orders (no deadlock); an insert of each AI work table with a stale or missing epoch is rejected by `ai_work_admission`; a human task write with a reaction rule during the flip still commits. | same |
+| AC-3 | S2 | In-flight window: a pre-flip dispatch is aborted within `stopPollMs` plus one poll after the sweep; no provider request arrives whose decision committed after the flip; a fake CLI is stopped within its bound. | same |
+| AC-2 | S1 | Every route and queue in `AI_HTTP_ROUTES` and `AI_WORK_QUEUES`, push and e-mail skips of `isAiOrigin` notifications created before the flip, Needs-you resolve refusal, consent-context and held-connection, run-token mint refused before `githubFacts` is called, idempotent replay of a gated command refused, guests see `changedBy: null`, the owner's Undo of an applied change still works while blocked. | `workspace-ai-routes.test.ts`, `workspace-ai-worker.test.ts` |
+| AC-3 | S2 | Re-enable: queued items from before and from the flip race do not run; missed schedule times do not fire; agents get no blocked-period events; a demoted admin cannot re-enable; standing configuration works again. | `workspace-ai-cutover.test.ts` |
+| AC-3 | S2 | Real client: pinned Claude Code in the `mcp-clients` image gets the refusal on its next call after disable and works again after re-enable and reconnect. | `tests/app/e2e/mcp-clients.e2e.ts` case |
+| AC-4 | S3 | Chromium and WebKit, desktop and phone viewports: owner and admin turn AI off and on in the workspace's People panel (Details panel on a computer, Details sheet on a phone), the row keeps its position across states, and the inline confirm works by keyboard; member and guest see no AI row; zero `[data-ai-surface]` in A's project, Home, Inbox, ⌘K, composer and message menus while blocked, and more than zero in B (control); every listed deep link shows the blocked state and makes no AI request (network log); reload keeps the state; an open second tab updates from the stream; conversation, task, map, Wiki, file and search still work for two people. | `tests/ui/test_workspace_ai_lock.py` (`./scripts/check_ui.sh`, run with `FLUX_UI_BROWSER=chromium` and `webkit`) |
+| AC-5 | each | Final candidate evaluated independently under the [bounded review policy](../agents/evaluation.md). | PR review |
 
 ## Delivery slices
 
