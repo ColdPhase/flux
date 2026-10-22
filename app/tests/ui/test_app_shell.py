@@ -733,8 +733,8 @@ class AppShellJourney(unittest.TestCase):
                 if device == "desktop":
                     items = menu.locator("[role^=menuitem]")
                     items.nth(1).hover()
-                    background = "el => getComputedStyle(el).backgroundColor"
-                    self.assertNotEqual(items.nth(1).evaluate(background), items.nth(0).evaluate(background), "the hovered row is highlighted")
+                    expect(items.nth(0)).to_have_css("background-color", "rgba(0, 0, 0, 0)")
+                    expect(items.nth(1)).not_to_have_css("background-color", "rgba(0, 0, 0, 0)")
                 page.keyboard.press("Escape")
                 expect(menu).to_have_count(0)
                 expect(more).to_be_focused()
