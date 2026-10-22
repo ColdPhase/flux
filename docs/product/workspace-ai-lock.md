@@ -271,15 +271,22 @@ named transaction, plus epoch comparison where an item has `ai_epoch`.
      `reading`/`dispatching` → `stop_requested_at = now()`, which the existing 250 ms
      watchers turn into an aborted provider request or `runtime.stop`;
      `run_token_closed_at = now()` for every open run token;
-   - comparison candidates `queued`/`reserved` → `not_run` (reservation released);
+   - comparison candidates `queued`, or `reserved` before their provider request started → `not_run`
+     (`AI_OFF`, reservation released);
      in-flight ones are aborted by their watcher;
    - reaction events `queued`/`proof` → `skipped` ("Skipped: AI was turned off");
    - co-work requests `queued`/`deferred`/`claimed` addressed to agents → `cancelled`;
      units `pending`/`claimed`/`paused` → `stopped`, leases cleared, the task unchanged;
    - `agent_runtime_sessions` → `revoked_at = now()`; open run tokens are closed with
      their runs;
-   - morning summaries `writing` whose run is in this workspace → `plain`.
-   Each end records its usual owner-only event. Nothing is deleted.
+   - morning summaries `writing` whose run is in this workspace are left to
+     `settleAssistantSummaries`, which writes no assistant line while AI is off and sends
+     the plain summary (S2, 2026-10-22: setting `plain` in the sweep would skip that delivery).
+   Each ended or stopped run records its owner's progress event; co-work requests end
+   `cancelled` with reason `ai_off`. Nothing is deleted. Implementation:
+   `setWorkspaceAiPolicy` and `sweepWorkspaceAi` (`packages/core/src/access/domain.ts`),
+   `workspaceAiSweepRows` (`packages/db`), the API route and the worker job
+   `workspace-ai.sweep.v1` (`apps/worker/src/workspace-ai`).
 
 **The boundary.** Every check that decides a step holds `FOR SHARE` on the policy row in
 the step's transaction, so each step is ordered strictly before or after the flip. Two

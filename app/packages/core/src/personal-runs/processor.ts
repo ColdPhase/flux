@@ -269,6 +269,8 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
       const run = await ports.runs.findRun(runId, { lock: true });
       if (!run || run.status !== 'dispatching') return 'skipped';
       const { charge, withhold } = settle(run);
+      // F-029: a run stopped because AI was turned off (the sweep's stop request, or the check itself) says so; nothing is posted.
+      if ('refusal' in initial && initial.refusal === 'ai_off') return (await updateAndAnnounce(ports, run.id, ended('ai_off', 'before_commit', charge))).status;
       if (run.stopRequestedAt) return (await updateAndAnnounce(ports, run.id, ended('stopped', 'before_commit', charge))).status;
       // A tool result passed the MCP route's bound (F-022 "Caps"): the run ends in its own state, nothing is posted.
       if (run.mcpLimit) return (await updateAndAnnounce(ports, run.id, ended('cap_reached', 'before_commit', { ...charge, endReason: 'mcp_results_too_large' }))).status;

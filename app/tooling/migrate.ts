@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { assertAssistantMigrationCompatibility, assertExactMigrationLedger, assertKnownMigrationVersions, assertMigrationSqlLedgerChange, assertMigrationStepLedger, assertMorningSummaryMigrationCompatibility, assertTaskCreationUndoMigrationCompatibility, createDatabase, FLUX_SCHEMA_VERSION, readAppliedMigrationVersions, readMigrationManifest } from '@flux/db';
 import { PgBoss } from 'pg-boss';
+import { WORKSPACE_AI_SWEEP_JOB } from '@flux/contracts';
 import { ASSISTANT_TICK_JOB, ASSISTANT_TICK_QUEUE, ASSISTANT_TICK_RETRY, COMPARISON_JOB_QUEUE, COMPARISON_JOB_RETRY, COMPARISON_RECOVERY_JOB, COMPARISON_TICK_JOB, NOTIFICATION_EMAIL_JOB, NOTIFICATION_EMAIL_QUEUE, PERSONAL_RUN_JOB, PERSONAL_RUN_QUEUE, PUSH_SEND_JOB, PUSH_SEND_QUEUE } from '@flux/core';
 
 const connectionString = process.env.DATABASE_URL;
@@ -64,6 +65,9 @@ try {
     await boss.createQueue(queue, COMPARISON_JOB_QUEUE);
     await boss.updateQueue(queue, COMPARISON_JOB_RETRY);
   }
+  // F-029 (S2): the turn-off sweep, retried so a lost job cannot leave queued AI work behind (the sweep is idempotent).
+  await boss.createQueue(WORKSPACE_AI_SWEEP_JOB, { retryLimit: 5, retryDelay: 5 });
+  await boss.updateQueue(WORKSPACE_AI_SWEEP_JOB, { retryLimit: 5, retryDelay: 5 });
   await boss.stop();
   console.log(`Flux schema ${FLUX_SCHEMA_VERSION} and pg-boss ready`);
 } finally {

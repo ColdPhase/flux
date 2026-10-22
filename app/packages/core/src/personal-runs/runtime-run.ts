@@ -271,6 +271,8 @@ export function createRuntimeRunProcessor({ uow, runtime, tokens, stopPollMs, ho
         const current = await ports.runs.findRun(run.id, { lock: true });
         if (!current || current.status !== 'dispatching') return 'skipped';
         const save = async (changes: RunChanges) => (await updateAndAnnounce(ports, run.id, changes)).status;
+        // F-029: a run stopped because AI was turned off says so; nothing it produced is posted.
+        if (refusal === 'ai_off') return save(ended('ai_off', 'before_commit', used));
         if (current.stopRequestedAt) return save(ended('stopped', 'before_commit', used));
         if (stopWhy === 'local_tool' || (end.kind === 'ended' && end.reason === 'local_tool')) return save(ended('unavailable', null, { ...used, endReason: 'local_tool' }));
         if (current.mcpLimit) return save(ended('cap_reached', 'before_commit', { ...used, endReason: 'mcp_results_too_large' }));

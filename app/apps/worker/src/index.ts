@@ -13,6 +13,7 @@ import { registerNotificationEmailWorker, startNotificationGenerator } from './n
 import { personalRunWorkerComposition, registerPersonalRunWorker } from './personal-runs/index.js';
 import { workerRuntimeAvailability } from './personal-runs/runtime-standing.js';
 import { registerComparisonWorker } from './proactive-comparison/index.js';
+import { registerWorkspaceAiSweep } from './workspace-ai/index.js';
 import { comparisonProviders } from './proactive-comparison/providers.js';
 
 // The worker's composition root (#82): environment, pool, pg-boss and signals; each job's
@@ -46,6 +47,7 @@ await registerAssistantTick(boss, db, assistantRuns);
 const comparisonsOn = backgroundComparisonsEnabled(process.env);
 await registerComparisonWorker(boss, db, { enabled: comparisonsOn, masterKey: comparisonsOn ? loadBackgroundMasterKey() : null, provider: comparisonProviders(process.env) });
 await registerIdempotencyCleanup(boss, db);
+await registerWorkspaceAiSweep(boss, db);
 // The `runtime` transport (F-022 T3): reconciles slot bindings at start and periodically; off by default.
 const agentRuntime = startAgentRuntimeReconciler({ config: agentRuntimeConfig, db, pool, env: process.env });
 console.log('Flux worker ready');

@@ -70,3 +70,57 @@ export async function notificationHiddenWhileAiOff(db: DbExecutor, notificationI
     assistantJoinRequestId: sql`n.assistant_join_request_id` })} AS hidden FROM notifications n WHERE n.id = ${notificationId}`);
   return result.rows[0]?.hidden === true;
 }
+
+/** One personal run the sweep ended or asked to stop, for its owner's progress events. */
+export interface SweptRun { id: string; workspaceId: string; projectId: string; conversationId: string; ownerUserId: string; agentId: string; status: string }
+
+/**
+ * The turn-off sweep of F-029 (S2) for one workspace and the epoch `E` its flip set. It touches only work admitted under an
+ * older epoch (`ai_epoch < E`), whatever the current state: work admitted after a later re-enable is never touched, and a
+ * late sweep still ends everything admitted before the flip. Idempotent. Deletes nothing. Makes no access decision.
+ */
+export function workspaceAiSweepRows(db: DbExecutor) {
+  const runColumns = sql`id, workspace_id AS "workspaceId", project_id AS "projectId", conversation_id AS "conversationId",
+    owner_user_id AS "ownerUserId", agent_id AS "agentId", status`;
+  const rows = async <T>(query: SQL) => (await db.execute(query)).rows as T[];
+  return {
+    /** Queued runs end before reading, their reservation released. */
+    endQueuedRuns: (workspaceId: string, epoch: number) => rows<SweptRun>(sql`UPDATE personal_runs SET status = 'stopped', stopped_at_stage = 'before_read',
+      cost_state = 'released', charged_micros = 0, end_reason = 'ai_off', completed_at = now(), updated_at = now()
+      WHERE workspace_id = ${workspaceId} AND ai_epoch < ${epoch} AND status = 'queued' RETURNING ${runColumns}`),
+    /** Runs that are reading or dispatching are asked to stop: the 250 ms watchers abort the provider request or stop the CLI. */
+    stopInFlightRuns: (workspaceId: string, epoch: number) => rows<SweptRun>(sql`UPDATE personal_runs SET stop_requested_at = now(), updated_at = now()
+      WHERE workspace_id = ${workspaceId} AND ai_epoch < ${epoch} AND status IN ('reading', 'dispatching') AND stop_requested_at IS NULL RETURNING ${runColumns}`),
+    async closeRunTokens(workspaceId: string, epoch: number) {
+      return (await db.execute(sql`UPDATE personal_runs SET run_token_closed_at = now(), updated_at = now()
+        WHERE workspace_id = ${workspaceId} AND ai_epoch < ${epoch} AND run_token_jti IS NOT NULL AND run_token_closed_at IS NULL`)).rowCount ?? 0;
+    },
+    /** Comparisons that have not started their provider request end `not_run`; one in flight is aborted by its watcher. */
+    async endComparisons(workspaceId: string, epoch: number) {
+      return (await db.execute(sql`UPDATE proactive_comparison_outbox q SET status = 'not_run', failure_code = 'AI_OFF', reserved_cents = 0,
+        usage_input_tokens = 0, usage_output_tokens = 0, usage_estimated_cents = 0, finished_at = now(), updated_at = now()
+        FROM projects p WHERE p.id = q.project_id AND p.workspace_id = ${workspaceId} AND q.ai_epoch < ${epoch}
+          AND (q.status = 'queued' OR (q.status = 'reserved' AND q.dispatch_started_at IS NULL))`)).rowCount ?? 0;
+    },
+    async skipReactionEvents(workspaceId: string, epoch: number) {
+      return (await db.execute(sql`UPDATE assistant_reaction_events e SET state = 'skipped', line = 'Skipped: AI was turned off', finished_at = now()
+        FROM assistant_reactions r WHERE r.id = e.reaction_id AND r.workspace_id = ${workspaceId} AND e.ai_epoch < ${epoch}
+          AND e.state IN ('queued', 'proof')`)).rowCount ?? 0;
+    },
+    async cancelRequests(workspaceId: string, epoch: number) {
+      return (await db.execute(sql`UPDATE cowork_requests SET state = 'cancelled', reason = 'ai_off', version = version + 1, updated_at = clock_timestamp()
+        WHERE workspace_id = ${workspaceId} AND ai_epoch < ${epoch} AND state IN ('queued', 'deferred', 'claimed')`)).rowCount ?? 0;
+    },
+    /** Units stop and release their lease; the task itself is unchanged. */
+    async stopUnits(workspaceId: string, epoch: number) {
+      return (await db.execute(sql`UPDATE cowork_units SET state = 'stopped', lease_id = NULL, lease_session_id = NULL, lease_expires_at = NULL,
+        version = version + 1, updated_at = clock_timestamp()
+        WHERE workspace_id = ${workspaceId} AND ai_epoch < ${epoch} AND state IN ('pending', 'claimed', 'paused')`)).rowCount ?? 0;
+    },
+    async revokeSessions(workspaceId: string, epoch: number) {
+      return (await db.execute(sql`UPDATE agent_runtime_sessions SET revoked_at = now()
+        WHERE workspace_id = ${workspaceId} AND ai_epoch < ${epoch} AND revoked_at IS NULL`)).rowCount ?? 0;
+    },
+  };
+}
+export type WorkspaceAiSweepRows = ReturnType<typeof workspaceAiSweepRows>;

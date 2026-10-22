@@ -111,6 +111,18 @@ export interface WorkspaceAiPolicy {
 /** The refusal of every AI read or action in a workspace whose AI is off (F-029). */
 export const WORKSPACE_AI_BLOCKED = 'WORKSPACE_AI_BLOCKED';
 
+/** `PUT`: an owner or admin turns AI off or on for the whole workspace (F-029, S2). If-Match or `expectedVersion`. */
+export const workspaceAiPolicyPath = (workspaceId: string) => `/api/v1/workspaces/${workspaceId}/ai-policy`;
+export interface SetWorkspaceAiPolicyCommand { state: 'allowed' | 'blocked'; expectedVersion?: number }
+/** What turning AI off stopped at once (the worker repeats the same sweep, so a crash cannot skip it). */
+export interface WorkspaceAiSwept { runs: number; tokens: number; comparisons: number; reactions: number; requests: number; units: number; sessions: number }
+export interface SetWorkspaceAiPolicyResult { ai: WorkspaceAiPolicy; changed: boolean; stopped: WorkspaceAiSwept | null }
+/** Recorded with every change, for the workspace's people (never delivered to an agent). */
+export const WORKSPACE_AI_POLICY_CHANGED_EVENT = 'workspace.ai_policy_changed.v1';
+/** The worker's sweep of one turn-off: `{ workspaceId, epoch }`, touching only work admitted under an older epoch. */
+export const WORKSPACE_AI_SWEEP_JOB = 'workspace-ai.sweep.v1';
+export interface WorkspaceAiSweepJob { workspaceId: string; epoch: number }
+
 export interface WorkspaceMember {
   userId: string;
   email: string;

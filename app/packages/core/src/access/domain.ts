@@ -1,7 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import { and, asc, desc, eq, inArray, isNull, sql, type SQL } from 'drizzle-orm';
-import { schema, eventRepository, projectGoalRows } from '@flux/db';
+import { schema, eventRepository, projectGoalRows, workspaceAiSweepRows } from '@flux/db';
+import { ASSISTANT_RUN_CHANGED_EVENT, ASSISTANT_WORKING_EVENT, WORKSPACE_AI_POLICY_CHANGED_EVENT } from '@flux/contracts';
 import type {
+  SetWorkspaceAiPolicyCommand,
+  SetWorkspaceAiPolicyResult,
+  WorkspaceAiSweepJob,
+  WorkspaceAiSwept,
   AddMemberCommand,
   Agent,
   ChangeRoleCommand,
@@ -298,6 +303,68 @@ export async function addMember(principal: Principal, workspaceId: string, comma
     if (!member) throw new ConflictError('Account is already a member', 'ALREADY_MEMBER');
     await recordEvent(events(tx), principal, workspaceId, 'workspace.member_added.v1', workspaceId, { userId: user.id, role });
     return { userId: user.id, email: user.email, name: user.name, role, createdAt: member.createdAt.toISOString() };
+  });
+}
+
+// ---------------------------------------------------------------------------------------
+// The workspace AI lock (F-029, #614, S2): the switch, its flip and the turn-off sweep.
+
+/** The transaction-bound queue the flip sends its sweep job through, so the job commits with the flip or not at all. */
+export type WorkspaceAiSweepQueue = (tx: Executor, job: WorkspaceAiSweepJob) => Promise<void>;
+
+/**
+ * Turns AI off or on for a whole workspace (owners and admins, `workspace.manage_ai`). One short transaction, the flip:
+ * the policy row `FOR UPDATE` first, then the caller's membership under `lock`, the version check, the new state with the
+ * next epoch and version, the sweep job (when turning off) and the event last. It touches no AI work row, so it cannot
+ * deadlock with a check that holds one and waits for the policy row. Setting the current state again changes nothing.
+ * The caller runs the sweep after the commit too ({@link sweepWorkspaceAi}); the job makes sure a crash cannot skip it.
+ */
+export async function setWorkspaceAiPolicy(principal: Principal, workspaceId: string, command: SetWorkspaceAiPolicyCommand, db: Database,
+  queue: WorkspaceAiSweepQueue): Promise<SetWorkspaceAiPolicyResult & { sweep: WorkspaceAiSweepJob | null }> {
+  const state = oneOf(command?.state, ['allowed', 'blocked'] as const, 'state');
+  return db.transaction(async (tx) => {
+    const p = schema.workspaceAiPolicies;
+    const [current] = isUuid(workspaceId) ? await tx.select().from(p).where(eq(p.workspaceId, workspaceId)).for('update') : [];
+    const decision = await evaluateWorkspace(principal, 'workspace.manage_ai', workspaceId, tx, { lock: true });
+    if (!decision.visible || !current) throw new NotFoundError('Workspace', 'WORKSPACE_NOT_FOUND');
+    if (!decision.allowed) throw new ForbiddenError('Only workspace owners and admins can turn AI on or off', 'WORKSPACE_AI_ADMIN_REQUIRED');
+    const expected = command.expectedVersion;
+    if (expected === undefined || expected === null) throw new PreconditionRequiredError();
+    if (typeof expected !== 'number' || !Number.isInteger(expected) || expected < 1) throw new InvalidInputError('expectedVersion must be a positive integer');
+    const view = async () => (await workspaceAiViews(tx, [{ workspaceId, role: decision.actor.role }])).get(workspaceId)!;
+    if (current.version !== expected) throw new VersionConflictError(current.version, await view());
+    if (current.state === state) return { ai: await view(), changed: false, stopped: null, sweep: null };
+    const [updated] = await tx.update(p).set({ state, epoch: sql`${p.epoch} + 1`, version: sql`${p.version} + 1`, changedBy: principal.id, changedAt: new Date() })
+      .where(eq(p.workspaceId, workspaceId)).returning({ epoch: p.epoch });
+    const sweep = state === 'blocked' ? { workspaceId, epoch: updated!.epoch } : null;
+    if (sweep) await queue(tx, sweep);
+    await recordEvent(events(tx), principal, workspaceId, WORKSPACE_AI_POLICY_CHANGED_EVENT, workspaceId, { state });
+    return { ai: await view(), changed: true, stopped: null, sweep };
+  });
+}
+
+/**
+ * The turn-off sweep (F-029): ends or stops every AI work item of the workspace admitted under an epoch older than `epoch`,
+ * whatever the policy's current state, and tells each run's owner. Idempotent; the API runs it right after the flip and the
+ * worker again from the job. Nothing is deleted.
+ */
+export async function sweepWorkspaceAi(job: WorkspaceAiSweepJob, db: Database): Promise<WorkspaceAiSwept> {
+  if (!isUuid(job.workspaceId) || !Number.isSafeInteger(job.epoch) || job.epoch < 1) throw new InvalidInputError('A workspace and an epoch are required');
+  return db.transaction(async (tx) => {
+    const rows = workspaceAiSweepRows(tx);
+    const ended = await rows.endQueuedRuns(job.workspaceId, job.epoch);
+    const stopping = await rows.stopInFlightRuns(job.workspaceId, job.epoch);
+    const swept: WorkspaceAiSwept = { runs: ended.length + stopping.length, tokens: await rows.closeRunTokens(job.workspaceId, job.epoch),
+      comparisons: await rows.endComparisons(job.workspaceId, job.epoch), reactions: await rows.skipReactionEvents(job.workspaceId, job.epoch),
+      requests: await rows.cancelRequests(job.workspaceId, job.epoch), units: await rows.stopUnits(job.workspaceId, job.epoch),
+      sessions: await rows.revokeSessions(job.workspaceId, job.epoch) };
+    // The owner's progress events, as for any other end or stop request of a run (events are written last).
+    for (const run of [...ended, ...stopping]) {
+      await recordEvent(events(tx), { kind: 'human', id: run.ownerUserId }, run.workspaceId, ASSISTANT_RUN_CHANGED_EVENT, run.id, { status: run.status });
+      if (run.status === 'stopped') await recordEvent(events(tx), { kind: 'agent', id: run.agentId }, run.workspaceId, ASSISTANT_WORKING_EVENT, run.projectId,
+        { conversationId: run.conversationId });
+    }
+    return swept;
   });
 }
 
