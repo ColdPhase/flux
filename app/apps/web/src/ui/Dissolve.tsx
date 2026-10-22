@@ -69,12 +69,17 @@ function above(node: HTMLElement): number {
   return 1;
 }
 
-/** The page's own style sheets, as sheets a shadow root can wear (one per sheet, rebuilt when a route's styles arrive). Null where they cannot be shared. */
-let worn: { count: number; sheets: CSSStyleSheet[] } | null = null;
+/**
+ * The page's own style sheets, as sheets a shadow root can wear (one per sheet). They are rebuilt whenever the sheets or the number of
+ * rules in any of them change: a route's styles arrive as a sheet that is listed a moment before its rules can be read.
+ * Null where they cannot be shared.
+ */
+let worn: { signature: string; sheets: CSSStyleSheet[] } | null = null;
 function styles(): CSSStyleSheet[] | null {
   if (typeof CSSStyleSheet === 'undefined' || typeof CSSStyleSheet.prototype.replaceSync !== 'function' || !('adoptedStyleSheets' in ShadowRoot.prototype)) return null;
   const sources = [...document.styleSheets];
-  if (worn?.count === sources.length) return worn.sheets;
+  const signature = sources.map((source) => { try { return source.cssRules.length; } catch { return -1; } }).join(',');
+  if (worn?.signature === signature) return worn.sheets;
   const sheets: CSSStyleSheet[] = [];
   for (const source of sources) {
     try {
@@ -83,7 +88,7 @@ function styles(): CSSStyleSheet[] | null {
       sheets.push(sheet);
     } catch { /* a sheet the page may not read: the picture goes without it */ }
   }
-  worn = { count: sources.length, sheets };
+  worn = { signature, sheets };
   return sheets;
 }
 
