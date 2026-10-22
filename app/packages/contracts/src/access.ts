@@ -93,7 +93,23 @@ export interface Workspace {
   role: WorkspaceRole | null;
   version: number;
   createdAt: string;
+  /** F-029 (#614): whether agents and assistants may work here. Every member sees the state. */
+  ai: WorkspaceAiPolicy;
 }
+
+/**
+ * The workspace AI policy (F-029). `changedBy` is named only to callers who may read the members;
+ * guests get null.
+ */
+export interface WorkspaceAiPolicy {
+  state: 'allowed' | 'blocked';
+  version: number;
+  changedAt: string;
+  changedBy: { id: string; name: string } | null;
+}
+
+/** The refusal of every AI read or action in a workspace whose AI is off (F-029). */
+export const WORKSPACE_AI_BLOCKED = 'WORKSPACE_AI_BLOCKED';
 
 export interface WorkspaceMember {
   userId: string;

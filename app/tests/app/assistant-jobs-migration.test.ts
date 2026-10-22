@@ -26,8 +26,8 @@ test('0109 adds schedules, their history, the note, the written summary and the 
     await client.query("INSERT INTO projects(id,workspace_id,name,visibility,created_by) VALUES($1,$2,'Lamp','workspace',$3)", [project, ws, owner]);
     await client.query('INSERT INTO project_conversations(id,workspace_id,project_id,created_by) VALUES($1,$2,$3,$4)', [conversation, ws, project, owner]);
     await client.query('INSERT INTO notification_preferences(user_id) VALUES($1)', [owner]);
-    const run = (id: string, kind: string) => client.query(`INSERT INTO personal_runs(id,workspace_id,project_id,conversation_id,owner_user_id,agent_id,client_run_id,request_fingerprint,kind,prompt,reserved_micros,provider,model)
-      VALUES($1,$2,$3,$4,$5,$6,$7,'f',$8,'Look around',1000,'anthropic','claude-sonnet-5')`, [id, ws, project, conversation, owner, agent, randomUUID(), kind]);
+    const run = (id: string, kind: string) => client.query(`INSERT INTO personal_runs(id,workspace_id,project_id,conversation_id,owner_user_id,agent_id,client_run_id,request_fingerprint,kind,prompt,reserved_micros,provider,model,ai_epoch)
+      VALUES($1,$2,$3,$4,$5,$6,$7,'f',$8,'Look around',1000,'anthropic','claude-sonnet-5',1)`, [id, ws, project, conversation, owner, agent, randomUUID(), kind]);
     await run(ask, 'ask');
 
     await client.query(await readFile(join(directory, '0109_assistant_schedules.sql'), 'utf8'));

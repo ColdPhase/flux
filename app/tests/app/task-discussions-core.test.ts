@@ -30,6 +30,7 @@ function world({ bound = false, visible = true, writable = true, rootSequence = 
       },
       async requireWorkspace() { writes.push('access.requireWorkspace'); },
       async canRead() { return true; },
+      async aiAllowed() { return true; },
     },
     work: {
       async locate(_type, id) { return id === ids.work ? { projectId: ids.project } : null; },

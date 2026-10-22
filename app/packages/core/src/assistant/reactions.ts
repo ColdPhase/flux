@@ -12,6 +12,8 @@ export interface ReactionEvent {
   id: string; reactionId: string; ownerUserId: string; objectId: string; sourceId: string; action: AssistantReactionAction;
   event: AssistantReactionEvent; reactionVersion: number;
   state: 'queued' | 'proof' | 'running' | 'done' | 'skipped' | 'failed'; runId: string | null; createdAt: Date; data: Record<string, unknown> | null;
+  /** 0115 (F-029): the workspace AI policy epoch the event was captured under. */
+  aiEpoch: number;
 }
 export interface ReactionFacts { ownerUserId: string; projectId: string; conversationId: string | null; data: Record<string, unknown>; notificationId: string | null }
 export interface AssistantReactionRepository {
@@ -97,6 +99,9 @@ export async function assistantReactionTick(deps: { uow: AssistantReactionUnitOf
       const end = (line: string) => ports.reactions.updateEvent(event.id, { state: 'skipped', line, finishedAt: now });
       const rule = await ports.reactions.find(event.reactionId, true);
       if (!rule || !rule.enabled || event.reactionVersion !== rule.version || event.event !== rule.event) { await end('Skipped: turned off'); return true; }
+      // F-029: an event captured before AI was turned off (an older epoch) never runs, even after AI is on again.
+      const ai = await ports.access.workspaceAi(rule.workspaceId, { lock: true });
+      if (ai.state !== 'allowed' || ai.epoch !== event.aiEpoch) { await end('Skipped: AI was turned off'); return true; }
       // Serialize this owner's background limits with every schedule and other event.
       const enabled = await ports.runs.enablement(rule.ownerUserId, { lock: true });
       if (!enabled || enabled.status !== 'active') { await end('Skipped: your assistant is off or paused'); return true; }

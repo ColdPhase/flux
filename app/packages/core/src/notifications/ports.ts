@@ -167,6 +167,8 @@ export interface GeneratorUnitOfWork {
 /** The email row and its notification, read from current rows. */
 export interface ClaimableEmail {
   lifecycleActive?: boolean;
+  /** F-029: an AI-origin notification of a workspace whose AI is off now; it is not e-mailed. */
+  aiOff?: boolean;
   id: string;
   userId: string;
   addressKind: EmailAddressKind;

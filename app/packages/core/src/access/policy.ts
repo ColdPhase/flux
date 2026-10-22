@@ -2,7 +2,7 @@ import { and, eq, or, sql, type SQL, type SQLWrapper } from 'drizzle-orm';
 import { schema } from '@flux/db';
 import type { ProjectAccess, WorkspaceRole } from '@flux/contracts';
 import type { Executor, Principal } from '../types.js';
-import { ForbiddenError, NotFoundError } from './errors.js';
+import { ForbiddenError, NotFoundError, WorkspaceAiBlockedError } from './errors.js';
 
 /**
  * # Flux access policy
@@ -59,7 +59,7 @@ import { ForbiddenError, NotFoundError } from './errors.js';
  *   does not leak; visible objects with a forbidden action get {@link ForbiddenError} (403).
  */
 
-export const WORKSPACE_ACTIONS = ['workspace.read', 'workspace.read_members', 'workspace.manage_members', 'workspace.manage_agents', 'project.create', 'draft.create', 'agent.create', 'sketch.create', 'dm.create'] as const;
+export const WORKSPACE_ACTIONS = ['workspace.read', 'workspace.read_members', 'workspace.manage_members', 'workspace.manage_agents', 'workspace.manage_ai', 'project.create', 'draft.create', 'agent.create', 'sketch.create', 'dm.create'] as const;
 export const PROJECT_ACTIONS = ['project.read', 'project.write', 'project.manage'] as const;
 export const DRAFT_ACTIONS = ['draft.read', 'draft.write', 'draft.share', 'draft.move'] as const;
 export const AGENT_ACTIONS = ['agent.read', 'agent.revoke', 'agent.invoke'] as const;
@@ -98,8 +98,38 @@ export interface Actor {
   /** Membership role of a person; null for agents and non-members. */
   role: WorkspaceRole | null;
   agent: { ownerUserId: string | null; ownerRole: WorkspaceRole | null } | null;
-  /** False for non-members, revoked agents, agents whose owner left, and fixtures. */
+  /** False for non-members, revoked agents, agents whose owner left, agents of a workspace whose AI is off, and fixtures. */
   active: boolean;
+  /** Set when an agent is inactive only because AI is turned off in its workspace (F-029). */
+  blockedBy?: 'workspace_ai';
+}
+
+/** The workspace AI policy as one check reads it (F-029, #614). */
+export interface WorkspaceAi { state: 'allowed' | 'blocked'; epoch: number; version: number }
+const NO_AI_POLICY: WorkspaceAi = { state: 'blocked', epoch: 0, version: 0 };
+
+/**
+ * The workspace's AI policy, read fresh (never cached). With `lock` the row is taken `FOR SHARE`, so the
+ * decision is ordered strictly before or after a change, which takes `FOR UPDATE`. A missing row reads as
+ * blocked (fail closed). Lock order: the policy row before agent, membership, project and grant rows.
+ */
+export async function workspaceAi(db: Executor, workspaceId: string, options: { lock?: boolean } = {}): Promise<WorkspaceAi> {
+  if (!isUuid(workspaceId)) return NO_AI_POLICY;
+  const p = schema.workspaceAiPolicies;
+  const query = db.select({ state: p.state, epoch: p.epoch, version: p.version }).from(p).where(eq(p.workspaceId, workspaceId));
+  const [row] = options.lock ? await query.for('share') : await query;
+  return row ?? NO_AI_POLICY;
+}
+
+/**
+ * The single AI check of every entry point (F-029): throws {@link WorkspaceAiBlockedError} unless AI is
+ * allowed in the workspace and, when `epoch` is given (a queued item's admission epoch), still at it.
+ * Returns the policy, whose `epoch` a new AI work item records.
+ */
+export async function requireWorkspaceAi(db: Executor, workspaceId: string, options: { lock?: boolean; epoch?: number } = {}): Promise<WorkspaceAi> {
+  const ai = await workspaceAi(db, workspaceId, options);
+  if (ai.state !== 'allowed' || (options.epoch !== undefined && options.epoch !== ai.epoch)) throw new WorkspaceAiBlockedError();
+  return ai;
 }
 
 export const LEVEL = { none: 0, viewer: 1, contributor: 2, manager: 3 } as const;
@@ -166,6 +196,8 @@ export async function loadActor(principal: Principal, workspaceId: string, db: E
   }
   if (principal.kind === 'agent') {
     if (!isUuid(principal.id)) return inactive;
+    // F-029: no agent acts in a workspace whose AI is off, whatever its grants (policy row first).
+    if ((await workspaceAi(db, workspaceId, { lock })).state !== 'allowed') return { ...inactive, blockedBy: 'workspace_ai' };
     const query = db.select({ ownerUserId: schema.agents.ownerUserId, revokedAt: schema.agents.revokedAt }).from(schema.agents)
       .where(and(eq(schema.agents.id, principal.id), eq(schema.agents.workspaceId, workspaceId)));
     const [agent] = lock ? await query.for('share') : await query;
@@ -374,6 +406,7 @@ export async function evaluateWorkspace(principal: Principal, action: ActionsByR
       break;
     case 'workspace.manage_members':
     case 'workspace.manage_agents':
+    case 'workspace.manage_ai':
     case 'project.create':
       allowed = human && isManager(actor.role);
       break;
@@ -459,6 +492,8 @@ export async function evaluateAgent(principal: Principal, action: ActionsByResou
   if (!visible) return { ...none, actor };
   // `agent.invoke` (#68, O-008): only the owning person, while the agent is not revoked. A
   // workspace role never lets anyone else use a person's assistant or its payer.
+  // F-029: nobody invokes an agent of a workspace whose AI is off.
+  if (action === 'agent.invoke' && ownedByCaller && (await workspaceAi(db, agent.workspaceId, options)).state !== 'allowed') return { allowed: false, visible, actor, agent };
   const allowed = action === 'agent.invoke' ? ownedByCaller && !agent.revokedAt
     : action === 'agent.read' || ownedByCaller || isManager(actor.role);
   return { allowed, visible, actor, agent };

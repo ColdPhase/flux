@@ -17,7 +17,7 @@ const agents = new Map<string, string>();
 async function seed(owner: Person, status: 'queued' | 'reading' | 'dispatching' | 'completed', ageSeconds = 3600) {
   const id = randomUUID();
   const now = new Date();
-  await db.insert(schema.personalRuns).values({
+  await db.insert(schema.personalRuns).values({ aiEpoch: 1,
     id, workspaceId: ws.id, projectId: place.id, conversationId: conversation.id,
     ownerUserId: owner.id, agentId: agents.get(owner.id)!, connectionId: randomUUID(),
     clientRunId: randomUUID(), requestFingerprint: randomUUID(), kind: 'ask', prompt: 'Synthetic crash fixture',

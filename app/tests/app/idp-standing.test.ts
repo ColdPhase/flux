@@ -100,7 +100,7 @@ async function proactiveCandidate(userId: string, status: 'queued' | 'reserved' 
       consentVersion: BACKGROUND_CONSENT_VERSION });
   }
   const notRun = status === 'not_run' ? { usageInputTokens: 0, usageOutputTokens: 0, usageEstimatedCents: 0, failureCode: 'NO_SOURCES', finishedAt: new Date() } : {};
-  await db.insert(schema.proactiveComparisonOutbox).values({ id: randomUUID(), ruleId, ownerUserId: userId, projectId, resultId, status, connectionId,
+  await db.insert(schema.proactiveComparisonOutbox).values({ aiEpoch: 1, id: randomUUID(), ruleId, ownerUserId: userId, projectId, resultId, status, connectionId,
     sourceFingerprint: randomUUID().replaceAll('-', '') + randomUUID().replaceAll('-', ''),
     ...(reserved ? { reservedCents: 5, reservedAt: new Date() } : {}), ...notRun });
 }

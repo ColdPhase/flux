@@ -5,6 +5,7 @@ import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
 import { prepareReferencedTaskUse } from './task-targets.js';
 import { comparisonSources } from './proactive-sources.js';
+import { currentProjectAiEpoch } from './workspace-ai.js';
 
 const q = schema.proactiveComparisonOutbox;
 const rules = schema.proactiveComparisonRules;
@@ -162,7 +163,7 @@ export function proactiveOutboxRows(db: DbExecutor) {
       for (const rule of eligible) {
         const { fingerprint } = await comparisonSources(db).snapshot(resultId, rule.id);
         const [inserted] = await db.insert(q).values({ id: randomUUID(), ruleId: rule.id, ownerUserId: rule.ownerId,
-          projectId, resultId, sourceFingerprint: fingerprint, availableAfter }).onConflictDoNothing().returning({ id: q.id });
+          projectId, resultId, sourceFingerprint: fingerprint, availableAfter, aiEpoch: currentProjectAiEpoch(projectId) }).onConflictDoNothing().returning({ id: q.id });
         if (inserted) count++;
       }
       return count;

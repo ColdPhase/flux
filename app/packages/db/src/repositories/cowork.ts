@@ -1,6 +1,7 @@
 import { and, asc, eq, inArray, or, sql } from 'drizzle-orm';
 import { taskUseRows } from './task-use.js';
 import * as schema from '../schema.js';
+import { aiEpochIsCurrent } from './workspace-ai.js';
 import type { DbExecutor } from './push.js';
 
 // Storage only; #152/current core policy authorizes before these transaction-bound locks.
@@ -66,7 +67,8 @@ export function coworkUnitRows(tx: DbExecutor) {
       await tx.select().from(schema.coworkConnectionSlots).where(and(
         eq(schema.coworkConnectionSlots.workspaceId, scope.workspaceId), eq(schema.coworkConnectionSlots.connectionId, scope.connectionId),
       )).for('update');
-      const own = and(eq(units.workspaceId, scope.workspaceId), eq(units.assignmentConnectionId, scope.connectionId));
+      const own = and(eq(units.workspaceId, scope.workspaceId), eq(units.assignmentConnectionId, scope.connectionId),
+        aiEpochIsCurrent(units.aiEpoch, units.workspaceId));
       const [located] = await tx.select().from(units).where(and(own, eq(units.projectId, scope.projectId), eq(units.id, scope.unitId)));
       if (!located) return null;
       // Existing claims can belong to other tasks/projects. Gather all their task identities

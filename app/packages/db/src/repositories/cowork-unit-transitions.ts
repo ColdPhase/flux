@@ -1,6 +1,7 @@
 import { and, asc, eq, inArray, sql, type SQL } from 'drizzle-orm';
 import type { CoWorkSourceRef } from '@flux/contracts';
 import * as schema from '../schema.js';
+import { aiEpochIsCurrent } from './workspace-ai.js';
 import type { CoWorkTaskLockInput } from './cowork.js';
 import type { DbExecutor } from './push.js';
 import { taskUseRows } from './task-use.js';
@@ -48,7 +49,7 @@ export function coworkUnitTransitionRows(tx: DbExecutor) {
     return new Date(value instanceof Date ? value.getTime() : value);
   };
   const inProject = (scope: { workspaceId: string; projectId: string }) =>
-    and(eq(units.workspaceId, scope.workspaceId), eq(units.projectId, scope.projectId));
+    and(eq(units.workspaceId, scope.workspaceId), eq(units.projectId, scope.projectId), aiEpochIsCurrent(units.aiEpoch, units.workspaceId));
   /** The conditional write repeats the holder fence, the version and the open-request rule. */
   const held = (scope: CoWorkUnitTransitionScope, fence: CoWorkUnitTransitionFence) => and(inProject(scope),
     eq(units.id, scope.unitId), eq(units.assignmentConnectionId, scope.holderConnectionId), eq(units.state, 'claimed'),

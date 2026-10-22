@@ -399,6 +399,20 @@ export const workspaces = pgTable('workspaces', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
+/**
+ * F-029 workspace AI lock (#614): one row per workspace (0115 writes it for every workspace and a
+ * trigger for each new one). `epoch` grows on every state change; AI work rows record the epoch they
+ * were admitted under (`ai_epoch`, no default). See docs/product/workspace-ai-lock.md.
+ */
+export const workspaceAiPolicies = pgTable('workspace_ai_policies', {
+  workspaceId: uuid('workspace_id').primaryKey().references(() => workspaces.id, { onDelete: 'cascade' }),
+  state: text('state', { enum: ['allowed', 'blocked'] }).notNull(),
+  epoch: bigint('epoch', { mode: 'number' }).notNull().default(1),
+  version: integer('version').notNull().default(1),
+  changedBy: text('changed_by').references(() => authUsers.id, { onDelete: 'set null' }),
+  changedAt: timestamp('changed_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const workspaceMembers = pgTable('workspace_members', {
   workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
   userId: text('user_id').notNull().references(() => authUsers.id, { onDelete: 'cascade' }),
@@ -871,6 +885,8 @@ export const agentOauthFlows = pgTable('agent_oauth_flows', {
 
 /** Server-issued runtime identity, bound to one actual OAuth binding/generation. */
 export const agentRuntimeSessions = pgTable('agent_runtime_sessions', {
+  /** 0115 (F-029): the workspace AI policy epoch this item was admitted under; no default. */
+  aiEpoch: bigint('ai_epoch', { mode: 'number' }).notNull(),
   id: uuid('id').primaryKey(),
   bindingId: uuid('binding_id').notNull().references(() => agentOauthBindings.id),
   bindingGeneration: integer('binding_generation').notNull(),
@@ -1604,6 +1620,8 @@ export const proactiveComparisonProjectChanges = pgTable('proactive_comparison_p
 }, (table) => [index('proactive_comparison_project_changes_due_idx').on(table.dueAt, table.projectId)]);
 
 export const proactiveComparisonOutbox = pgTable('proactive_comparison_outbox', {
+  /** 0115 (F-029): the workspace AI policy epoch this item was admitted under; no default. */
+  aiEpoch: bigint('ai_epoch', { mode: 'number' }).notNull(),
   id: uuid('id').primaryKey(),
   ruleId: uuid('rule_id').notNull().references(() => proactiveComparisonRules.id),
   ownerUserId: text('owner_user_id').notNull().references(() => authUsers.id, { onDelete: 'cascade' }),
@@ -1779,6 +1797,8 @@ export const personalRunAgents = pgTable('personal_run_agents', {
 ]);
 
 export const personalRuns = pgTable('personal_runs', {
+  /** 0115 (F-029): the workspace AI policy epoch this item was admitted under; no default. */
+  aiEpoch: bigint('ai_epoch', { mode: 'number' }).notNull(),
   id: uuid('id').primaryKey(),
   workspaceId: uuid('workspace_id').notNull(),
   projectId: uuid('project_id').notNull(),
@@ -1982,6 +2002,8 @@ export const coworkConnectionSlots = pgTable('cowork_connection_slots', {
 ]);
 
 export const coworkUnits = pgTable('cowork_units', {
+  /** 0115 (F-029): the workspace AI policy epoch this item was admitted under; no default. */
+  aiEpoch: bigint('ai_epoch', { mode: 'number' }).notNull(),
   id: uuid('id').primaryKey(),
   workspaceId: uuid('workspace_id').notNull(),
   projectId: uuid('project_id').notNull(),
@@ -2041,6 +2063,8 @@ export const coworkRequestLineages = pgTable('cowork_request_lineages', {
   foreignKey({ columns: [table.workspaceId, table.projectId, table.taskId], foreignColumns: [projectWorkItems.workspaceId, projectWorkItems.projectId, projectWorkItems.id] }).onDelete('cascade'),
 ]);
 export const coworkRequests = pgTable('cowork_requests', {
+  /** 0115 (F-029): the workspace AI policy epoch this item was admitted under; no default. */
+  aiEpoch: bigint('ai_epoch', { mode: 'number' }).notNull(),
   id: uuid('id').primaryKey(), lineageId: uuid('lineage_id').notNull(), workspaceId: uuid('workspace_id').notNull(),
   projectId: uuid('project_id').notNull(), taskId: uuid('work_id').notNull(), unitId: uuid('unit_id').notNull(),
   senderConnectionId: uuid('sender_connection_id').notNull(), recipientConnectionId: uuid('recipient_connection_id').notNull(),
@@ -2320,6 +2344,8 @@ export const assistantReactions = pgTable('assistant_reactions', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(), updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [unique().on(t.ownerUserId, t.projectId, t.event), foreignKey({ columns: [t.workspaceId, t.projectId], foreignColumns: [projects.workspaceId, projects.id] }).onDelete('cascade')]);
 export const assistantReactionEvents = pgTable('assistant_reaction_events', {
+  /** 0115 (F-029): the workspace AI policy epoch this item was admitted under; no default. */
+  aiEpoch: bigint('ai_epoch', { mode: 'number' }).notNull(),
   id: uuid('id').primaryKey().defaultRandom(), reactionId: uuid('reaction_id').notNull().references(() => assistantReactions.id, { onDelete: 'cascade' }),
   ownerUserId: text('owner_user_id').notNull().references(() => authUsers.id, { onDelete: 'cascade' }), objectId: uuid('object_id').notNull(), sourceId: uuid('source_id').notNull(),
   action: text('action').$type<import('@flux/contracts').AssistantReactionAction>().notNull(),

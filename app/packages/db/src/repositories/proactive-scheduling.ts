@@ -3,6 +3,7 @@ import { and, asc, eq, gt, lte, sql } from 'drizzle-orm';
 import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
 import { comparisonSources } from './proactive-sources.js';
+import { currentProjectAiEpoch } from './workspace-ai.js';
 
 const cursor = schema.proactiveComparisonCursor;
 const changes = schema.proactiveComparisonProjectChanges;
@@ -137,7 +138,8 @@ export function comparisonSchedulingRows(db: DbExecutor) {
       },
       async insert(input: { rule: { id: string; ownerUserId: string; projectId: string }; resultId: string; fingerprint: string; availableAfter: Date }) {
         const [row] = await db.insert(q).values({ id: randomUUID(), ruleId: input.rule.id, ownerUserId: input.rule.ownerUserId,
-          projectId: input.rule.projectId, resultId: input.resultId, sourceFingerprint: input.fingerprint, availableAfter: input.availableAfter })
+          projectId: input.rule.projectId, resultId: input.resultId, sourceFingerprint: input.fingerprint, availableAfter: input.availableAfter,
+          aiEpoch: currentProjectAiEpoch(input.rule.projectId) })
           .onConflictDoNothing().returning({ id: q.id });
         return !!row;
       },
