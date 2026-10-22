@@ -71,7 +71,8 @@ function Root() {
   // while the app route remains matched; auth routes or a confirmed new session retire it.
   const scopeKey = inApp ? observed ?? session : null;
   // The update prompt is shown on every page, signed in or not; reloading is the person's choice.
-  return <ToastProvider scopeKey={scopeKey}><Outlet /><UpdatePrompt /></ToastProvider>;
+  // It is a row above the page, so it comes first: the shell below gives up the room it takes (#20).
+  return <ToastProvider scopeKey={scopeKey}><UpdatePrompt /><Outlet /></ToastProvider>;
 }
 
 export const router = createBrowserRouter([
