@@ -88,6 +88,9 @@ class LightMotionJourney(unittest.TestCase):
         page.keyboard.press("Control+k")
         dialog = page.get_by_role("dialog", name="Jump to")
         expect(dialog).to_be_visible()
+        # The first time on a page the dialog is a placeholder until its search chunk arrives, and the chunk's own dialog then takes its
+        # place: judge exits only once the real one is up (a WebKit run can be well into its exit when the chunk lands).
+        expect(dialog.locator("input")).to_be_visible()
         return dialog
 
     def tab(self, name: str) -> str:

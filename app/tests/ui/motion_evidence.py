@@ -273,7 +273,7 @@ class MotionEvidence(unittest.TestCase):
         self.go(page, self.fx.project_url()); self.beat(page, 700)
         self.mark(page, box=(0, 0, 1440, 700), after=4.0, scale=0.45)
         page.locator(f"{TABS} a[href*='/tasks']").click(); self.beat(page, 900)
-        page.locator(".ws-task .ws-item").first.click(); self.beat(page, 900)
+        page.get_by_role("button", name=re.compile(re.escape(self.fx.tasks[0]["title"]))).first.click(); self.beat(page, 900)  # the Tasks view opens as a board
         page.locator("#details a", has_text="Should the first sensors").first.click(); self.beat(page, 900)
         page.keyboard.press("Control+k"); self.beat(page, 700)
         page.keyboard.press("Escape"); self.beat(page, 500)
@@ -285,8 +285,9 @@ class MotionEvidence(unittest.TestCase):
                                   ("ac5-press", self.clip_press)):
                 with self.subTest(scheme=scheme, clip=name):
                     self.clip(name, journey, scheme=scheme)
-        with self.subTest(clip="ac6-reduced"):
-            self.clip("ac6-reduced", self.clip_reduced, reduced=True)
+
+    def test_clip_for_reduced_motion(self):
+        self.clip("ac6-reduced", self.clip_reduced, reduced=True)
 
     # ------------------------------------------------------------------ frame samples: what the video cannot show
     SAMPLER = r"""
