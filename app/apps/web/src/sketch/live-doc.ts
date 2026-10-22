@@ -31,7 +31,12 @@ async function withRetry<T>(send: () => Promise<T>): Promise<T> {
 }
 
 type Lease = { leaseId: string; versions: Map<string, number> };
-interface Intent { id: string; scope: number; op: Op; epochs: Map<string, number>; entry?: Entry; lease?: Promise<Lease> }
+/**
+ * `held` marks an explicit draft save (#252): the thought is shared only once the save settles, as in the ordinary
+ * document. Until then it is neither shown from the pending overlay nor from its early confirmed delta, so the
+ * thought appears in the same commit that clears the draft and a following Add is never refused as "unfinished".
+ */
+interface Intent { id: string; scope: number; op: Op; epochs: Map<string, number>; entry?: Entry; lease?: Promise<Lease>; held?: true }
 function touched(op: Op, sketch: SketchDetail): string[] {
   switch (op.kind) {
     case 'move': return op.moves.map((move) => move.id);
@@ -75,10 +80,14 @@ export function useLiveSketchDoc(sketchId: string, me: Me) {
     if (client) setLiveState({ status: client.status, canWrite: client.status === 'unavailable' || client.status === 'live' && !!client.head?.canWrite, problem: client.problem, ownGesture: client.ownGesture, previews: new Map(client.previews), privateMovement: client.privateMovement });
     let next = confirmed.current;
     if (!next) { if (live.current?.status === 'private') setLoad('not-found'); else if (live.current?.problem) setLoad('failed'); return; }
+    // A draft save in flight stays out of view, even once its delta has confirmed it, until it settles.
+    const held = new Set<string>();
+    for (const intent of pending.current.values()) if (intent.held && intent.op.kind === 'add') held.add(intent.op.thought.id);
+    if (held.size) next = { ...next, thoughts: next.thoughts.filter((thought) => !held.has(thought.id)), links: next.links.filter((link) => !held.has(link.fromId) && !held.has(link.toId)) };
     // Native geometry stays separate from replaceable live positions.
     setConfirmedThoughts(next.thoughts);
     next = projectPreviews(next, live.current?.previews.values() ?? []);
-    for (const intent of pending.current.values()) next = applyLocal(next, intent.op, meRef.current);
+    for (const intent of pending.current.values()) if (!intent.held) next = applyLocal(next, intent.op, meRef.current);
     ref.current = next; setSketch(next);
   }, [projectPreviews]);
   const adopt = useCallback((fresh: SketchDetail) => {
@@ -116,7 +125,8 @@ export function useLiveSketchDoc(sketchId: string, me: Me) {
     const links = new Map(current.links.filter((link) => !change.removedLinks.includes(link.id) && thoughts.has(link.fromId) && thoughts.has(link.toId)).map((link) => [link.id, link]));
     for (const link of change.links) if (thoughts.has(link.fromId) && thoughts.has(link.toId)) links.set(link.id, link);
     confirmed.current = { ...current, ...(change.sketch && change.sketch.version >= current.version ? change.sketch : {}), thoughts: [...thoughts.values()], links: [...links.values()] };
-    if (own) pending.current.delete(change.commandId);
+    // A held draft save settles in `send`, once the receipt and its delta are both in.
+    if (own && !pending.current.get(change.commandId)?.held) pending.current.delete(change.commandId);
     publish();
   }, [publish]);
   const reload = useCallback(async (signal?: AbortSignal) => {
@@ -195,10 +205,11 @@ export function useLiveSketchDoc(sketchId: string, me: Me) {
       }
     }
     if (intent.entry && !intent.entry.commands.includes(id)) intent.entry.commands.push(id);
-    if (shared && pending.current.has(id)) {
+    const unsettled = () => intent.held ? !receipts.current.has(id) : pending.current.has(id);
+    if (shared && unsettled()) {
       const deadline = Date.now() + 1000;
-      while (pending.current.has(id) && Date.now() < deadline) { check(); await new Promise((resolve) => window.setTimeout(resolve, 20)); }
-      if (pending.current.has(id)) {
+      while (unsettled() && Date.now() < deadline) { check(); await new Promise((resolve) => window.setTimeout(resolve, 20)); }
+      if (unsettled()) {
         // A successful native HTTP receipt proves commit but its old response is never
         // a graph patch. Missing ordered delivery is a gap: reconcile a fresh atomic
         // snapshot, which also includes any later peer edit/delete/restore.
@@ -349,7 +360,7 @@ export function useLiveSketchDoc(sketchId: string, me: Me) {
       if (pending.current.size >= 256 || [...pending.current.values()].reduce((total, intent) => total + JSON.stringify(intent.op).length * 2, JSON.stringify(op).length * 2) > 1024 * 1024) { setProblem('Wait for the pending changes before sharing this private draft.'); break; }
       try { options?.onAttempt?.({ thought, parent, key }); }
       catch (error) { if (!(error instanceof DraftSaveNotSentError)) throw error; setProblem('No request was sent. This browser could not safely retain the save state; your text is kept. Try again when storage is available.'); break; }
-      const intent: Intent = { id: key, scope: scope.current.number, op, epochs: new Map(touched(op, current).map((id) => [id, epochs.current.get(id) ?? 0])), entry };
+      const intent: Intent = { id: key, scope: scope.current.number, op, epochs: new Map(touched(op, current).map((id) => [id, epochs.current.get(id) ?? 0])), entry, held: true };
       ownCommands.current.add(key);
       while (ownCommands.current.size > 12_000) ownCommands.current.delete(ownCommands.current.values().next().value!);
       // This draft is shared only by explicit Save; no pointer preview or live text uses it.
