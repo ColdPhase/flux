@@ -52,6 +52,10 @@ from real Keycloak/provider/client behavior.
 
 ## Historical composition and source correspondence
 
+**This head does not re-execute the main90→late70/71 populated upgrade step.** That step is composed
+from the accepted 392 evidence at `6d6c1a5015f7ba2a507755e5b8d6a4016dd32c5e` plus the current ordinary
+operator bridge, as stated below.
+
 The original main90/ordinary59→61 upgrade adding only70/71 remains the accepted
 [392 evidence](../392-main90/README.md) at
 `6d6c1a5015f7ba2a507755e5b8d6a4016dd32c5e`:44 expected product/fixture phases,

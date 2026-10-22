@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { generateKeyPairSync, randomUUID, sign } from 'node:crypto';
 import { describe, test } from 'node:test';
-import { PERSONAL_RUN_CONSENT_VERSION, PERSONAL_RUNTIME_CONSENT_VERSION } from '@flux/contracts';
+import { BACKGROUND_CONSENT_VERSION, PERSONAL_RUN_CONSENT_VERSION, PERSONAL_RUNTIME_CONSENT_VERSION } from '@flux/contracts';
 import { idpStandingRepository, schema } from '@flux/db';
 import type { OidcConfig } from '../../apps/server/src/identity/config.js';
 import { createIdpStanding, openToken, sealKey, sealToken, signInAgainMessage } from '../../apps/server/src/identity/standing.js';
@@ -62,6 +62,48 @@ const row = async (userId: string) => (await pool.query('SELECT * FROM auth_idp_
 const sessions = async (userId: string) => (await pool.query('SELECT 1 FROM auth_sessions WHERE user_id = $1', [userId])).rowCount;
 const due = (userId: string) => pool.query(`UPDATE auth_idp_standing SET next_check_at = now() - interval '1 second' WHERE user_id = $1`, [userId]);
 const key = sealKey(authSecret);
+
+async function mcpClient() {
+  const client = `client-${randomUUID()}`;
+  await pool.query(`INSERT INTO oauth_client (id, client_id, name, redirect_uris, token_endpoint_auth_method, grant_types, response_types, scopes, require_pkce, created_at, updated_at)
+    VALUES ($1, $2, 'c', $3, 'none', '{authorization_code}', '{code}', '{offline_access}', true, now(), now())`, [randomUUID(), client, ['http://127.0.0.1/cb']]);
+  return client;
+}
+async function accessToken(userId: string, options: { expires: number; revoked?: boolean }) {
+  await pool.query(`INSERT INTO oauth_access_token (id, token, client_id, user_id, expires_at, created_at, revoked, scopes)
+    VALUES ($1, $2, $3, $4, now() + ($5 || ' milliseconds')::interval, now(), ${options.revoked ? 'now()' : 'NULL'}, '{offline_access}')`,
+  [randomUUID(), randomUUID(), await mcpClient(), userId, String(options.expires)]);
+}
+/** A project and agent owned by the person, with one proactive comparison rule in the given status. */
+async function proactiveRule(userId: string, status: 'enabled' | 'paused' | 'revoked') {
+  const workspaceId = randomUUID();
+  const projectId = randomUUID();
+  const agentId = randomUUID();
+  const ruleId = randomUUID();
+  await db.insert(schema.workspaces).values({ id: workspaceId, name: 'Standing fixture', createdBy: userId });
+  await db.insert(schema.projects).values({ id: projectId, workspaceId, name: 'Standing fixture', createdBy: userId });
+  await db.insert(schema.agents).values({ id: agentId, workspaceId, name: 'Standing agent', ownerUserId: userId, createdBy: userId });
+  await db.insert(schema.proactiveComparisonRules).values({ id: ruleId, workspaceId, projectId, ownerUserId: userId, agentId, maxRunsPerDay: 3, periodBudgetCents: 15, perRunCents: 5, status });
+  return { workspaceId, projectId, ruleId };
+}
+/** A candidate in the given status under a paused rule, so only the candidate can make the person eligible. */
+async function proactiveCandidate(userId: string, status: 'queued' | 'reserved' | 'completed' | 'not_run' | 'unknown') {
+  const { workspaceId, projectId, ruleId } = await proactiveRule(userId, 'paused');
+  const resultId = randomUUID();
+  await db.insert(schema.projectResults).values({ id: resultId, workspaceId, projectId, title: 'Low-light trial failed', finding: 'negative', createdByKind: 'human', createdById: userId });
+  const reserved = status === 'reserved' || status === 'unknown' || status === 'completed';
+  let connectionId: string | null = null;
+  if (reserved) {
+    connectionId = randomUUID();
+    await db.insert(schema.backgroundComputeConnections).values({ id: connectionId, ownerUserId: userId, provider: 'anthropic', model: 'claude-sonnet-5', name: 'Standing fixture',
+      payerOrganization: 'owner', providerWorkspace: 'owner', encryptedKey: 'sealed-fixture', keyLastFour: '0000', keyFingerprint: randomUUID().replaceAll('-', '').slice(0, 16), maxRunsPerDay: 3, periodDays: 30, periodBudgetCents: 15, perRunCents: 5,
+      consentVersion: BACKGROUND_CONSENT_VERSION });
+  }
+  const notRun = status === 'not_run' ? { usageInputTokens: 0, usageOutputTokens: 0, usageEstimatedCents: 0, failureCode: 'NO_SOURCES', finishedAt: new Date() } : {};
+  await db.insert(schema.proactiveComparisonOutbox).values({ id: randomUUID(), ruleId, ownerUserId: userId, projectId, resultId, status, connectionId,
+    sourceFingerprint: randomUUID().replaceAll('-', '') + randomUUID().replaceAll('-', ''),
+    ...(reserved ? { reservedCents: 5, reservedAt: new Date() } : {}), ...notRun });
+}
 
 describe('the sealed provider token', () => {
   test('round-trips, is bound to its person and provider, and does not hold the token in the clear', () => {
@@ -427,6 +469,51 @@ describe('the check', () => {
     await due(userId);
     assert.equal(await service.runOnce(), 0, 'paused automation alone is idle');
   });
+
+  // Each remaining authority in claim() (#490): a person with no browser session, no MCP refresh token and no
+  // personal-run automation stays checked only through the one authority under test. Every positive case runs the
+  // refusal and the recovery; every negative control shows the same person idle once the authority is not live.
+  const authorities: { name: string; positive: Record<string, (userId: string) => Promise<void>>; idle: Record<string, (userId: string) => Promise<void>> }[] = [
+    { name: 'a live MCP access token',
+      positive: { live: (userId) => accessToken(userId, { expires: 3_600_000 }) },
+      idle: { expired: (userId) => accessToken(userId, { expires: -1_000 }), revoked: (userId) => accessToken(userId, { expires: 3_600_000, revoked: true }) } },
+    { name: 'an enabled proactive comparison rule',
+      positive: { enabled: (userId) => proactiveRule(userId, 'enabled').then(() => undefined) },
+      idle: { paused: (userId) => proactiveRule(userId, 'paused').then(() => undefined), revoked: (userId) => proactiveRule(userId, 'revoked').then(() => undefined) } },
+    { name: 'a queued or reserved proactive comparison candidate',
+      positive: { queued: (userId) => proactiveCandidate(userId, 'queued'), reserved: (userId) => proactiveCandidate(userId, 'reserved') },
+      idle: { completed: (userId) => proactiveCandidate(userId, 'completed'), not_run: (userId) => proactiveCandidate(userId, 'not_run'), unknown: (userId) => proactiveCandidate(userId, 'unknown') } },
+  ];
+  for (const authority of authorities) {
+    for (const [kind, give] of Object.entries(authority.positive)) test(`${authority.name} (${kind}) alone keeps the owner checked through suspension and recovery`, async () => {
+      const id = provider();
+      const { service, script } = standingFor(id, [{ status: 400, body: { error: 'invalid_grant' } }, { status: 200, body: { access_token: 'at' } }]);
+      const userId = await person(id, { session: false });
+      await service.recordSignIn(userId, 'kept-offline-token');
+      await due(userId);
+      assert.equal(await service.runOnce(), 0, 'negative control: with no authority yet the identity is idle');
+      await give(userId);
+      await due(userId);
+      assert.equal(await service.runOnce(), 1, 'the authority alone selects the identity');
+      assert.equal(await service.stands(userId), false);
+      assert.equal((await row(userId)).reason, 'invalid_grant');
+      await due(userId);
+      assert.equal(await service.runOnce(), 1, 'suspension does not remove eligibility (N5)');
+      assert.equal(await service.stands(userId), true);
+      assert.equal(script.tokenCalls().length, 2);
+      assert.equal(openToken(key, userId, id, (await row(userId)).refresh_token_enc), 'kept-offline-token');
+    });
+    for (const [kind, give] of Object.entries(authority.idle)) test(`${authority.name} that is ${kind} does not keep an owner checked`, async () => {
+      const id = provider();
+      const { service, script } = standingFor(id, [{ status: 200, body: { access_token: 'at' } }]);
+      const userId = await person(id, { session: false });
+      await service.recordSignIn(userId, 'kept-offline-token');
+      await give(userId);
+      await due(userId);
+      assert.equal(await service.runOnce(), 0);
+      assert.equal(script.tokenCalls().length, 0);
+    });
+  }
 });
 
 describe('startup', () => {

@@ -23,6 +23,8 @@ test('real Keycloak boot outage recovers on the same signed authorization page',
       code_challenge: createHash('sha256').update(verifier).digest('base64url'), code_challenge_method: 'S256',
       state: randomUUID(), scope: 'flux.context.read offline_access', resource: mcpUrl }).toString();
     const page = await browser.newPage(); await page.goto(url.toString());
+    // A reload would drop this marker; the URL equality below alone cannot tell a reload from no reload.
+    await page.evaluate(() => { (window as unknown as { __noReload: string }).__noReload = 'same-document'; });
     assert.equal(new URL(page.url()).pathname, '/login');
     const signed = page.url(); assert.ok(new URL(signed).searchParams.get('sig'));
     const signIn = page.getByRole('button', { name: 'Sign in with Keycloak', exact: true });
@@ -39,6 +41,7 @@ test('real Keycloak boot outage recovers on the same signed authorization page',
       return button !== null && !button.disabled;
     }, undefined, { timeout: 120_000 });
     assert.equal(page.url(), signed, 'no reload/navigation lost or replaced the signed continuation');
+    assert.equal(await page.evaluate(() => (window as unknown as { __noReload?: string }).__noReload), 'same-document', 'the document was never reloaded');
     await signIn.click(); await page.waitForURL((target) => target.origin === 'http://keycloak:8080');
     await page.locator('#username').fill('erin'); await page.locator('#password').fill(process.env.FLUX_OIDC_TEST_PASSWORD!);
     await page.locator('#kc-login').click();
