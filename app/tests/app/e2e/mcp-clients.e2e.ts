@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { after, test } from 'node:test';
 import { createDatabase } from '@flux/db';
+import type { TaskCoordination } from '@flux/contracts';
 import { chromium, type Browser as Chromium } from 'playwright';
 import { register, uniqueEmail } from '../support/http.js';
 import { password } from '../support/people.js';
@@ -34,7 +35,9 @@ const specs: Spec[] = [
 // Names every personal connection must offer: the shared domain tools of the same owner-visible project data.
 const sharedTools = ['flux_bootstrap', 'flux_list_contexts', 'flux_list_materials', 'flux_read_material', 'flux_create_proposal',
   'flux_list_work', 'flux_get_work', 'flux_create_task', 'flux_update_task', 'flux_record_result', 'flux_propose_decision',
-  'flux_list_docs', 'flux_create_doc', 'flux_list_maps', 'flux_create_map', 'flux_list_conversations', 'flux_start_conversation'];
+  'flux_list_docs', 'flux_create_doc', 'flux_list_maps', 'flux_create_map', 'flux_list_conversations', 'flux_start_conversation',
+  'flux_create_unit', 'flux_claim_unit', 'flux_renew_unit', 'flux_release_unit', 'flux_complete_unit',
+  'flux_send_request', 'flux_coordination_inbox', 'flux_defer_request', 'flux_claim_request', 'flux_resolve_request'];
 
 interface ToolCall { tool: string; text: string }
 interface Session { names: string[]; calls: ToolCall[]; output: string }
@@ -176,13 +179,15 @@ test('real pinned Codex and Claude Code clients: two owners, both native client 
     });
 
     // Each invocation below is a fresh actual native process, using its own saved OAuth home and a scripted model.
-    // This verifies domain checkpoint/reconnect and observed task/result progress, not integrated Start/Resume,
-    // native turn interruption, durable request admission/inbox or a complete busy review/fix cycle.
+    // This verifies native domain composition, including the addressed review below, not integrated Start/Resume,
+    // interruption of an active native turn, an idle adapter or model obedience to the trusted playbook.
     async function native(spec: Spec, name: string, args: Record<string, unknown>) {
       const result = await session(spec, spec.client === 'codex'
         ? () => codexScript(`text(JSON.stringify(await tools[${JSON.stringify(`mcp__flux__${name}`)}](${JSON.stringify(args)})));`)
         : outputs => outputs.length === 0 ? [name, JSON.stringify(args)] : []);
-      return json(result.calls.find(call => call.tool === name));
+      const value = json(result.calls.find(call => call.tool === name));
+      assert.ok(!('error' in value), `${spec.label}: ${name}: ${JSON.stringify(value)}`);
+      return value;
     }
     for (const spec of specs) await t.test(`${spec.label}: native task/unit progress, quiet renewal, persisted checkpoint replay and a fresh-process reconnect`, async () => {
       const human = people[spec.agent]; const connectionId = connections[spec.key]!;
@@ -191,7 +196,7 @@ test('real pinned Codex and Claude Code clients: two owners, both native client 
           operation, peerRequestClass: 'execute', maximumUses: 5, ...(objectId ? { objectId } : {}),
           expiresAt: new Date(Date.now() + 3_600_000).toISOString() } }), 201).id);
       const boot = await native(spec, 'flux_bootstrap', { projectId: projects.study, clientSessionId: randomUUID() });
-      assert.ok((boot.gaps as string[]).includes('coordination_unavailable'), 'unimplemented inbox/admission stays explicit');
+      assert.ok(!(boot.gaps as string[]).includes('coordination_unavailable'), 'request admission, inbox and resolution are available');
       const runtimeSessionId = (boot.runtime as { id: string }).id;
       const base = (grantId: string, sessionId = runtimeSessionId) => ({ projectId: projects.study, runtimeSessionId: sessionId,
         grantId, clientCommandId: randomUUID(), peerRequestClass: 'execute' });
@@ -232,6 +237,138 @@ test('real pinned Codex and Claude Code clients: two owners, both native client 
       assert.equal(completed.state, 'completed');
       const persisted = (await pool.query('SELECT state, outcome_ref FROM cowork_units WHERE id=$1', [unitId])).rows[0];
       assert.deepEqual(persisted, { state: 'completed', outcome_ref: { type: 'result', id: recorded.resultId } });
+    });
+
+    await t.test('native addressed review: busy peer defers, retries preserve one effect, a changed version gets one fresh review', async () => {
+      const sender = specs[0]!, recipient = specs[2]!, unaddressed = specs[1]!;
+      type Role = 'execute' | 'review';
+      const actor = async (spec: Spec) => {
+        const boot = await native(spec, 'flux_bootstrap', { projectId: projects.study, clientSessionId: randomUUID() });
+        const runtimeSessionId = (boot.runtime as { id: string }).id;
+        const standing = async (operation: string, role: Role, objectId?: string, maximumUses = 5) =>
+          String(expect(await people[spec.agent].request('POST', `/api/v1/agent-connections/${connections[spec.key]}/action-grants`,
+            { body: { clientCommandId: randomUUID(), projectId: projects.study, operation, peerRequestClass: role,
+              maximumUses, ...(objectId ? { objectId } : {}), expiresAt: new Date(Date.now() + 3_600_000).toISOString() } }), 201).id);
+        const base = (grantId: string, peerRequestClass: Role) => ({ projectId: projects.study, runtimeSessionId,
+          grantId, peerRequestClass, clientCommandId: randomUUID() });
+        return { standing, base, call: (name: string, args: Record<string, unknown>) => native(spec, name, args) };
+      };
+      const author = await actor(sender), reviewer = await actor(recipient);
+      const makeTask = async (client: typeof author, title: string, outcome: string) => client.call('flux_create_task', {
+        ...client.base(await client.standing('work.create', 'execute'), 'execute'), task: { title, outcome } });
+      const task = await makeTask(author, 'Compare sensor observations', 'Compare the readings.');
+      const busyTask = await makeTask(reviewer, 'Check the second sensor reading', 'Record the bounded observation before review.');
+      const root = async (client: typeof author, spec: Spec, value: Record<string, unknown>) => client.call('flux_create_unit', {
+        ...client.base(await client.standing('cowork.unit.create', 'execute', String(value.workId)), 'execute'),
+        taskId: value.workId, expectedTaskVersion: value.version, unitKey: 'take', assignmentConnectionId: connections[spec.key], parent: null });
+      const unit = await root(author, sender, task), busy = await root(reviewer, recipient, busyTask);
+      const unitId = String(unit.unitId), busyId = String(busy.unitId);
+      let held = await author.call('flux_claim_unit', { ...author.base(await author.standing('cowork.claim', 'execute', unitId), 'execute'),
+        unitId, expectedVersion: unit.version });
+      const busyHeld = await reviewer.call('flux_claim_unit', { ...reviewer.base(await reviewer.standing('cowork.claim', 'execute', busyId), 'execute'),
+        unitId: busyId, expectedVersion: busy.version });
+      const fence = (id: string, value: Record<string, unknown>) => ({ unitId: id, expectedVersion: value.version,
+        generation: value.generation, leaseId: (value.lease as { id: string }).id });
+      const review = await author.call('flux_create_unit', {
+        ...author.base(await author.standing('cowork.unit.create', 'review', String(task.workId)), 'review'),
+        taskId: task.workId, expectedTaskVersion: task.version, unitKey: 'review', assignmentConnectionId: connections[recipient.key],
+        parent: { unitId, generation: held.generation, leaseId: (held.lease as { id: string }).id } });
+      const reviewId = String(review.unitId);
+      const askGrant = await author.standing('cowork.request', 'execute', unitId, 3);
+      const respondGrant = await reviewer.standing('cowork.request.respond', 'review', reviewId, 3);
+      const requestClaimGrant = await reviewer.standing('cowork.request.claim', 'review', reviewId, 2);
+      const reviewClaimGrant = await reviewer.standing('cowork.claim', 'review', reviewId, 1);
+      const resultGrant = await reviewer.standing('result.record', 'execute', undefined, 3);
+      const renewGrant = await author.standing('cowork.renew', 'execute', unitId, 2);
+      const target = (version: unknown) => ({ type: 'work', id: task.workId, version });
+      const send = (intentKey: string, version: unknown, recipientVersion: unknown) => ({
+        ...author.base(askGrant, 'execute'), unitId, generation: held.generation, leaseId: (held.lease as { id: string }).id,
+        recipientUnitId: reviewId, expectedRecipientUnitVersion: recipientVersion, recipientConnectionId: connections[recipient.key],
+        intentKey, parentRequestId: null, kind: 'review', target: target(version), sourceRefs: [target(version)],
+        criteriaRefs: [target(version)], peerUnblocking: true });
+      const used = async (id: string) => (await pool.query('SELECT used FROM agent_standing_grants WHERE id=$1', [id])).rows[0].used;
+      const read = async () => expect(await owner.request('GET', `/api/v1/work/${task.workId}/coordination`), 200) as unknown as TaskCoordination;
+      const inbox = async (spec: Spec) => (await native(spec, 'flux_coordination_inbox', { projectId: projects.study })).requests as
+        { id: string; state: string; status: string; reason: string | null; nextBoundary: string | null }[];
+      const requestCount = async () => (await pool.query('SELECT count(*)::int AS n FROM cowork_requests WHERE work_id=$1', [task.workId])).rows[0].n;
+      const busyState = async () => (await pool.query('SELECT state, version, generation, lease_id, lease_session_id, lease_expires_at FROM cowork_units WHERE id=$1', [busyId])).rows[0];
+      const beforeBusy = await busyState();
+      const input = send('review-1', task.version, review.version);
+      const sent = await author.call('flux_send_request', input);
+      assert.deepEqual([sent.status, sent.state], ['created', 'queued']);
+      assert.deepEqual(await author.call('flux_send_request', input), sent, 'fresh-process lost-ACK retry replays the request');
+      assert.equal(await used(askGrant), 1, 'a replay spends no second standing use');
+      assert.equal((await author.call('flux_send_request', { ...input, clientCommandId: randomUUID() })).status, 'existing');
+      assert.equal(await requestCount(), 1, 'one intent has one durable request');
+      assert.deepEqual((await inbox(recipient)).map(row => [row.id, row.state, row.status]), [[sent.requestId, 'queued', 'queued']]);
+      assert.deepEqual(await inbox(unaddressed), [], 'another connection of the sender owner receives no recipient inbox');
+      assert.deepEqual(await inbox(sender), [], 'a sender does not receive its outgoing request');
+      const deferInput = { ...reviewer.base(respondGrant, 'review'), unitId: reviewId, requestId: sent.requestId,
+        expectedRequestVersion: sent.version, reason: 'busy', nextBoundary: 'after_step' };
+      const deferred = await reviewer.call('flux_defer_request', deferInput);
+      assert.equal(deferred.state, 'deferred');
+      assert.deepEqual(await reviewer.call('flux_defer_request', deferInput), deferred, 'deferral replays without a second effect');
+      assert.equal(await used(respondGrant), 1);
+      assert.deepEqual(await busyState(), beforeBusy, 'inbox reads and deferral leave the other task live with the same lease and version');
+      assert.deepEqual((await inbox(recipient)).map(row => [row.id, row.state, row.status]), [[sent.requestId, 'deferred', 'deferred']]);
+      const card = (await read()).requests.find(row => row.id === sent.requestId)!;
+      assert.deepEqual([card.state, card.status, card.reason, card.nextBoundary], ['deferred', 'deferred', 'busy', 'after_step']);
+
+      // Finish a bounded observation on B, then park B with that fact before taking A's review.
+      const progress = await reviewer.call('flux_record_result', { ...reviewer.base(resultGrant, 'execute'), sources: [],
+        result: { title: 'Second sensor observation', finding: 'positive', evidence: 'The second reading is 21 units.', workIds: [busyTask.workId] } });
+      const parked = await reviewer.call('flux_release_unit', { ...reviewer.base(await reviewer.standing('cowork.release', 'execute', busyId), 'execute'),
+        ...fence(busyId, busyHeld), sources: [], checkpoint: { summary: `Recorded observation ${progress.resultId}.`,
+          nextAction: 'Compare the reading after the addressed review.', blocker: null } });
+      assert.equal(parked.state, 'paused');
+      const reviewHeld = await reviewer.call('flux_claim_unit', { ...reviewer.base(reviewClaimGrant, 'review'), unitId: reviewId, expectedVersion: review.version });
+      const reviewFence = { unitId: reviewId, generation: reviewHeld.generation, leaseId: (reviewHeld.lease as { id: string }).id };
+      const finishReview = async (request: Record<string, unknown>, verdict: 'changes_requested' | 'passed', evidenceText: string) => {
+        const claimed = await reviewer.call('flux_claim_request', { ...reviewer.base(requestClaimGrant, 'review'), ...reviewFence,
+          requestId: request.requestId, expectedRequestVersion: request.version });
+        assert.equal(claimed.state, 'claimed');
+        assert.equal((await read()).requests.find(row => row.id === request.requestId)!.status, 'working');
+        const evidence = await reviewer.call('flux_record_result', { ...reviewer.base(resultGrant, 'execute'), sources: [],
+          result: { title: `Observation review: ${verdict}`, finding: verdict === 'passed' ? 'positive' : 'negative',
+            evidence: evidenceText, workIds: [task.workId] } });
+        const responseRef = { type: 'result', id: evidence.resultId };
+        const resolve = { ...reviewer.base(respondGrant, 'review'), ...reviewFence, requestId: request.requestId,
+          expectedRequestVersion: claimed.version, evidence: responseRef, verdict };
+        const resolved = await reviewer.call('flux_resolve_request', resolve);
+        assert.deepEqual([resolved.state, resolved.responseRef], ['resolved', responseRef]);
+        assert.deepEqual(await reviewer.call('flux_resolve_request', resolve), resolved, 'resolution retry links one persisted evidence record');
+        return responseRef;
+      };
+      const firstEvidence = await finishReview({ ...sent, version: deferred.version }, 'changes_requested',
+        'The comparison outcome does not state the unit of measurement.');
+      const firstVerdict = (await read()).verdicts[0]!;
+      assert.deepEqual([firstVerdict.verdict, firstVerdict.current, firstVerdict.target, firstVerdict.evidenceRef],
+        ['changes_requested', true, target(task.version), firstEvidence]);
+      assert.deepEqual([firstVerdict.reviewer.name, firstVerdict.author.name], ['Peer Claude', 'Owner Codex']);
+
+      held = await author.call('flux_renew_unit', { ...author.base(renewGrant, 'execute'), ...fence(unitId, held) });
+      const changed = await author.call('flux_update_task', { ...author.base(await author.standing('work.update', 'execute', String(task.workId)), 'execute'),
+        workId: task.workId, expectedVersion: task.version, changes: { outcome: 'Compare the readings in sensor units; the second reading is 21 units.' } });
+      assert.notEqual(changed.version, task.version);
+      assert.equal((await read()).verdicts[0]!.current, false, 'the exact old-version verdict remains in history and becomes stale');
+      const grantsBefore = (await pool.query('SELECT count(*)::int AS n FROM agent_standing_grants WHERE project_id=$1', [projects.study])).rows[0].n;
+      const freshInput = send('review-2', changed.version, reviewHeld.version);
+      const fresh = await author.call('flux_send_request', freshInput);
+      assert.equal(fresh.status, 'created');
+      assert.deepEqual(await author.call('flux_send_request', freshInput), fresh, 'retrying the fresh review keeps its delivery');
+      assert.equal((await pool.query('SELECT count(*)::int AS n FROM agent_standing_grants WHERE project_id=$1', [projects.study])).rows[0].n, grantsBefore,
+        'the existing request, claim, response and publication grants cover the fresh assessment');
+      assert.deepEqual((await inbox(recipient)).map(row => row.id), [fresh.requestId]);
+      const secondEvidence = await finishReview(fresh, 'passed', 'The updated comparison now names sensor units and the observed 21-unit reading.');
+      const coordination = await read();
+      assert.deepEqual(coordination.verdicts.map(row => [row.verdict, row.current, row.target, row.evidenceRef]),
+        [['passed', true, target(changed.version), secondEvidence], ['changes_requested', false, target(task.version), firstEvidence]]);
+      assert.equal(await requestCount(), 2, 'exactly two bounded review requests, with no review loop');
+      assert.deepEqual([await used(askGrant), await used(respondGrant), await used(requestClaimGrant), await used(resultGrant)], [3, 3, 2, 3]);
+      assert.equal((await pool.query('SELECT count(*)::int AS n FROM cowork_review_verdicts WHERE work_id=$1', [task.workId])).rows[0].n, 2);
+      assert.deepEqual(await inbox(recipient), [], 'both addressed requests are resolved');
+      assert.deepEqual(await inbox(unaddressed), [], 'the third connection never receives another connection\'s request');
+      assert.equal((await busyState()).state, 'paused', 'the parked work remains available for continuation');
     });
 
     await t.test('revoking one connection stops that client and leaves the others working', async () => {
