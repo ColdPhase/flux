@@ -190,7 +190,9 @@ function SketchEditor({ sketchId, projectId, dmId, back = '/map', doc }: ViewPro
     return () => window.removeEventListener('focus', refresh);
   }, [taskProjectId]);
 
-  const say = (text: string, change = false, selection = false) => setStatus({ text, change, selection });
+  // Every status line gets a number, so a message that arrives late can tell whether it is still the newest.
+  const statusSeq = useRef(0);
+  const say = (text: string, change = false, selection = false) => { statusSeq.current++; setStatus({ text, change, selection }); };
   const find = (id: string) => sketch?.thoughts.find((t) => t.id === id);
   // Focus moves after the next commit (a list row replaces its editor only then), and only if
   // focus is not already somewhere the person put it meanwhile.
@@ -613,10 +615,13 @@ function SketchEditor({ sketchId, projectId, dmId, back = '/map', doc }: ViewPro
     if (editingState) { say('Finish or cancel your current edit first'); return; }
     setEditing(null);
     setConnectFrom(null);
-    const label = doc.undo((confirmedLabel) => say(`Undid: ${confirmedLabel}`));
+    // The live undo confirms later, after its receipt and ordered delivery. By then the person may have started
+    // something else; its status stays, since the thought's return on the map already shows the undo landed.
+    let requested = -1;
+    const label = doc.undo((confirmedLabel) => { if (statusSeq.current === requested) say(`Undid: ${confirmedLabel}`); });
     // Only the live map's undo waits for a server receipt; the ordinary one is applied at once.
     if (doc.liveStatus === 'unavailable') say(label ? `Undid: ${label}` : 'Nothing to undo');
-    else say(label ? `Undo requested: ${label}. Waiting for confirmation.` : 'No undo started');
+    else { say(label ? `Undo requested: ${label}. Waiting for confirmation.` : 'No undo started'); requested = statusSeq.current; }
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
