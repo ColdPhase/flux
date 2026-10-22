@@ -6,7 +6,7 @@ import { genericOAuth, jwt } from 'better-auth/plugins';
 import { cimd } from '@better-auth/cimd';
 import { fetchClientMetadataResource } from '@better-auth/cimd/node';
 import { mcp } from '@better-auth/mcp';
-import { schema, workspaceIdOfGrantReference } from '@flux/db';
+import { schema, workspaceIdOfGrantReference, workspaceIdOfOauthFlow } from '@flux/db';
 import { agentOauthUseCases, DomainError, workspaceAi, type Database } from '@flux/core';
 import { and, eq, isNotNull, sql } from 'drizzle-orm';
 import { createAgentConnectionStore } from '../agent-connection/store.js';
@@ -139,9 +139,19 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests, sig
     if ((await workspaceAi(db, workspaceId)).state !== 'allowed')
       throw new APIError('BAD_REQUEST', { error: 'invalid_grant', error_description: 'AI is turned off in this workspace' });
   };
+  /**
+   * F-029, before the chosen connection is resolved (its agent is inactive while AI is off, so resolving it would throw):
+   * the authorize and consent steps refuse with `access_denied` and mint no code.
+   */
+  const refuseAiOffFlow = async (userId: string, sessionId: string, fingerprint: string) => {
+    const workspaceId = await workspaceIdOfOauthFlow(db, userId, sessionId, fingerprint);
+    if (workspaceId && (await workspaceAi(db, workspaceId)).state !== 'allowed')
+      throw new APIError('FORBIDDEN', { error: 'access_denied', error_description: 'AI is turned off in this workspace', code: 'WORKSPACE_AI_BLOCKED' });
+  };
   const connectionForGrant = async (userId: string, sessionId: string, scopes: readonly string[]) => {
     const request = oauthRequests.getStore();
     if (!request || request.clearedSessionId && request.clearedSessionId !== sessionId) throw new Error('OAuth flow is unavailable');
+    await refuseAiOffFlow(userId, sessionId, request.fingerprint);
     // A connection whose agent can no longer reach a project (for example, AI turned off, F-029) is refused, not a 500.
     const grant = await connections.flowForOauth(userId, sessionId, request.fingerprint).catch((error: unknown) => {
       if (error instanceof DomainError) throw new APIError('BAD_REQUEST', { error: 'invalid_grant', error_description: 'Agent connection is unavailable' });
@@ -219,7 +229,9 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests, sig
           page: '/connect-agent',
           shouldRedirect: async ({ user, session }) => {
             const request = oauthRequests.getStore();
-            return !request || !await connections.flowForOauth(user.id, session.id, request.fingerprint);
+            if (!request) return true;
+            await refuseAiOffFlow(user.id, session.id, request.fingerprint);
+            return !await connections.flowForOauth(user.id, session.id, request.fingerprint);
           },
           consentReferenceId: async ({ user, session, scopes }) =>
             (await connectionForGrant(user.id, session.id, scopes)).referenceId,

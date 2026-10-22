@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { agentOauthUseCases, workspaceAi, type Database } from '@flux/core';
-import { agentConnectionWorkspaceId } from '@flux/db';
+import { agentConnectionWorkspaceId, workspaceIdOfOauthFlow, workspaceIdsOfOauthClient } from '@flux/db';
 import { createAgentConnectionStore } from '../agent-connection/store.js';
 import type { FluxAuth } from './auth.js';
 import { oauthFlow, verifiedOauthQuery } from './oauth-query.js';
@@ -23,6 +23,9 @@ export function registerAgentOauthContext(app: FastifyInstance, db: Database, se
     const clientId = flow?.clientId;
     if (!params || !flow || !clientId || params.get('ba_pl') && params.get('ba_pl') !== session.sessionId)
       return reply.code(400).send({ error: 'Invalid OAuth request', code: 'INVALID_OAUTH_QUERY' });
+    // F-029, before the chosen connection is resolved (its agent is inactive while AI is off).
+    const chosen = await workspaceIdOfOauthFlow(db, session.principal.id, session.sessionId, flow.fingerprint);
+    if (chosen && (await workspaceAi(db, chosen)).state !== 'allowed') return aiOff(reply);
     const context = await connections.consentForOauth(session.principal.id, session.sessionId, flow);
     if (!context) return reply.code(403).send({ error: 'Agent connection is unavailable', code: 'AGENT_CONNECTION_UNAVAILABLE' });
     // F-029: a connection of a workspace whose AI is off is never offered for consent.
@@ -40,6 +43,9 @@ export function registerAgentOauthContext(app: FastifyInstance, db: Database, se
     const flow = params ? oauthFlow(params, `${publicOrigin}/mcp`) : null;
     if (!params || !flow || params.get('ba_pl') && params.get('ba_pl') !== session.sessionId)
       return reply.code(400).send({ error: 'Invalid OAuth request', code: 'INVALID_OAUTH_QUERY' });
+    // F-029: the newest connection this owner bound to the client, if its workspace has AI off, fails closed.
+    const held = await workspaceIdsOfOauthClient(db, session.principal.id, flow.clientId);
+    if (held[0] && (await workspaceAi(db, held[0])).state !== 'allowed') return aiOff(reply);
     const connectionId = await connections.heldConnectionId(session.principal.id, flow.clientId);
     const workspaceId = connectionId ? await agentConnectionWorkspaceId(db, connectionId, session.principal.id) : null;
     if (workspaceId && (await workspaceAi(db, workspaceId)).state !== 'allowed') return aiOff(reply);

@@ -132,7 +132,7 @@ export function notificationRows(db: DbExecutor) {
     },
     async markRead(userId: string, id: string) {
       const [row] = await db.update(n).set({ readAt: sql`coalesce(${n.readAt}, now())` })
-        .where(and(eq(n.id, id), eq(n.userId, userId))).returning({ readAt: n.readAt });
+        .where(and(eq(n.id, id), eq(n.userId, userId), sql`NOT ${hiddenWhileAiOff(n)}`)).returning({ readAt: n.readAt });
       return row?.readAt ?? null;
     },
   };
