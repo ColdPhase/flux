@@ -12,6 +12,7 @@ import uuid
 from pathlib import Path
 
 from playwright.async_api import expect
+from test_app_shell import ORIGIN
 from test_live_editing import LiveFixture
 
 SHOTS = Path(os.environ.get('FLUX_UI_SCREENSHOTS', '')) if os.environ.get('FLUX_UI_SCREENSHOTS') else None
@@ -185,3 +186,106 @@ class LiveCursors(LiveFixture):
         await expect(self.pages['ada'].locator('.editing-caret[aria-label="Kai South\'s cursor"]')).to_have_count(1)
         await expect(self.pages['ada'].locator('.editing-people')).to_contain_text('Kai South')
         await self.shoot(self.pages['ada'], 'wiki-peer-cursor')
+
+    async def third_writer(self):
+        """A third account in the same project: it watches two people write in one paragraph."""
+        stamp = uuid.uuid4().hex
+        context = await self.browser.new_context(base_url=ORIGIN, viewport={'width': 1440, 'height': 900}, reduced_motion='reduce', service_workers='block')
+        self.contexts.append(context)
+        page = await context.new_page()
+        page.on('pageerror', lambda error: self.errors.append(str(error)))
+        self.record_socket(page, 'lia')
+        await page.goto('/sign-up')
+        await page.get_by_label('Name', exact=True).fill('Lia West')
+        await page.get_by_label('Email', exact=True).fill(f'lia.live.{stamp}@example.test')
+        await page.get_by_label('Password', exact=True).fill('live copies retain exact history')
+        await page.get_by_role('button', name='Create account', exact=True).click()
+        await expect(page.get_by_role('heading', name='Home', exact=True)).to_be_visible()
+        me = await self.api(page, 'GET', '/api/v1/me')
+        await self.api(self.pages['ada'], 'POST', f'/api/v1/workspaces/{self.workspace}/members', {'email': f'lia.live.{stamp}@example.test', 'role': 'member'}, 201)
+        await self.api(self.pages['ada'], 'POST', f'/api/v1/projects/{self.project}/grants', {'principal': {'kind': 'human', 'id': me['user']['id']}, 'role': 'contributor'}, 201)
+        self.pages['lia'] = page
+        return page
+
+    async def caret_at(self, page, field, offset):
+        await field.click()
+        await page.keyboard.press('Control+Home')
+        for _ in range(offset):
+            await page.keyboard.press('ArrowRight')
+
+    async def test_wiki_names_two_people_writing_in_one_paragraph(self):
+        # #613 review, AC-2: carets and selections are identified on screen, and two people in one paragraph tell apart.
+        self.frames['lia'] = []
+        self.acks['lia'] = {}
+        paragraph = ' '.join(f'Observation {n} of the shared field notes keeps going.' for n in range(1, 13))
+        await self.create_doc(paragraph)
+        lia = await self.third_writer()
+        ada, kai = self.pages['ada'], self.pages['kai']
+        ada_field, kai_field = await self.editor('ada'), await self.editor('kai')
+        await self.editor('lia')
+        # Both carets sit in the same logical line, on the same wrapped row, where only a name tells them apart.
+        await self.caret_at(ada, ada_field, 6)
+        await self.caret_at(kai, kai_field, 30)
+        ada_caret = lia.locator('.editing-caret[aria-label="Ada North\'s cursor"]')
+        kai_caret = lia.locator('.editing-caret[aria-label="Kai South\'s cursor"]')
+        await expect(ada_caret).to_have_count(1)
+        await expect(kai_caret).to_have_count(1)
+        tags = lia.locator('.editing-caret__tag')
+        await expect(tags).to_have_count(2)
+        await expect(tags.filter(has_text='Ada North')).to_be_visible()
+        await expect(tags.filter(has_text='Kai South')).to_be_visible()
+
+        async def boxes():
+            return {
+                'ada': await ada_caret.bounding_box(), 'kai': await kai_caret.bounding_box(),
+                'ada_tag': await tags.filter(has_text='Ada North').bounding_box(), 'kai_tag': await tags.filter(has_text='Kai South').bounding_box(),
+                'text': await lia.locator('.cm-line').first.bounding_box(),
+            }
+
+        self.assertEqual(await lia.locator('.cm-scroller').evaluate('(el) => getComputedStyle(el).paddingRight'), '136px', 'a wide editor reserves the lane')
+        box = await boxes()
+        # The names sit in the lane beside the line, never over the writing, and never over each other.
+        for tag in ('ada_tag', 'kai_tag'):
+            self.assertGreaterEqual(box[tag]['x'], box['text']['x'] + box['text']['width'], f'{tag} is clear of the text')
+        self.assertGreaterEqual(box['kai_tag']['y'], box['ada_tag']['y'] + box['ada_tag']['height'], 'stacked tags do not touch')
+        self.assertLess(box['ada']['x'], box['kai']['x'], 'Ada is left of Kai in the same row, so her tag is first')
+        self.assertLess(box['ada_tag']['y'], box['kai_tag']['y'])
+        # One level with the caret's row.
+        self.assertLessEqual(abs((box['ada_tag']['y'] + box['ada_tag']['height'] / 2) - (box['ada']['y'] + box['ada']['height'] / 2)), 4)
+        # Caret, tag and strip share one shape per person and the shapes differ.
+        shapes = {}
+        for name, caret in (('Ada North', ada_caret), ('Kai South', kai_caret)):
+            shape = await caret.get_attribute('data-shape')
+            self.assertEqual(await tags.filter(has_text=name).locator('.editing-shape').get_attribute('data-shape'), shape)
+            self.assertEqual(await lia.locator('.editing-people > span', has_text=name).locator('.editing-shape').get_attribute('data-shape'), shape)
+            shapes[name] = shape
+        self.assertEqual(len(set(shapes.values())), 2, shapes)
+        # Colour does not identify anyone: tags and carets use the monochrome tokens only.
+        inks = await lia.evaluate("""() => [...document.querySelectorAll('.editing-caret__tag, .editing-caret')].map((el) => {
+          const style = getComputedStyle(el); return [style.color, style.backgroundColor, style.borderLeftColor].join('|'); })""")
+        for ink in inks:
+            for value in ink.split('|'):
+                numbers = [int(float(part)) for part in re.findall(r'[\d.]+', value)[:3]]
+                if value.startswith('rgb') and len(numbers) == 3:
+                    self.assertLess(max(numbers) - min(numbers), 12, f'monochrome: {value}')
+        await self.shoot(lia, 'wiki-two-peers-one-paragraph')
+
+        # A caret and its name move together: Kai now sits on a later wrapped row, so his tag leaves Ada's row.
+        await self.caret_at(kai, kai_field, 160)
+        for _ in range(80):
+            box = await boxes()
+            if box['kai']['y'] > box['ada']['y'] + box['ada']['height']:
+                break
+            await lia.wait_for_timeout(100)
+        self.assertGreater(box['kai']['y'], box['ada']['y'] + box['ada']['height'], 'Kai moved to a later row')
+        self.assertGreaterEqual(box['kai_tag']['y'], box['ada_tag']['y'] + box['ada_tag']['height'])
+        self.assertLessEqual(abs((box['kai_tag']['y'] + box['kai_tag']['height'] / 2) - (box['kai']['y'] + box['kai']['height'] / 2)), 4)
+
+        # A narrow editor keeps all of its width: no lane, the caret keeps its shape and the strip names it.
+        await lia.set_viewport_size({'width': 390, 'height': 844})
+        await expect(tags.first).to_be_hidden()
+        padding = await lia.locator('.cm-scroller').evaluate('(el) => getComputedStyle(el).paddingRight')
+        self.assertEqual(padding, '0px')
+        await expect(lia.locator('.editing-people')).to_contain_text('Ada North')
+        await expect(lia.locator('.editing-people')).to_contain_text('Kai South')
+        self.assertEqual(self.errors, [])
