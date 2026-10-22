@@ -231,6 +231,15 @@ native map commits and saved wiki versions retain their existing durable event b
    link since, refuse that inverse with a recoverable explanation. Never delete a
    peer edit by retrying an undo against the newest version. A removal inverse must
    also preserve intervening link changes. Camera/outline changes remain local undo.
+6. An explicit draft save (#149) keeps its ordinary recovery on a live map, with the
+   same wording and guarantees. A save that fails or whose response is lost says the
+   draft or text is kept, whatever a live delta may already have shown; a retry of an
+   earlier attempt replays the same body and request key (one thought, no duplicate),
+   then confirms the thought from current state and refines its text with the draft's
+   own edit key; an unknown or phone-confirmed row is only confirmed from current
+   state, never recreated; and a saved thought appears on the map in the commit that
+   settles its draft. Keyboard moves are immediate native commits, one per key, and
+   the saved position is what shows they landed.
 
 ## Wiki contract — durable shared work, explicit immutable versions
 
