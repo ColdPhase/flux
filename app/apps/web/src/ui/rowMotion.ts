@@ -7,7 +7,9 @@ import { MOTION_ID, duration, motionAllowed, token } from './motion';
  * where it was to where it is (transform). It is the only animation that touches height, and only to collapse or grow
  * a row. Nothing here moves focus or scroll: the browser's own scroll anchoring keeps the reading position while the
  * rows around it change size, a row slides only by how far it moved relative to the row the reader is anchored to (that row,
- * and the ones that moved with it, do not move at all), and the outgoing row is an inert copy no one can reach.
+ * and the ones that moved with it, do not move at all), a row that comes or goes outside what the reader sees changes at once
+ * (nobody watches it, and the browser's scroll anchoring holds the rows the reader is on through a change that is not gradual),
+ * and the outgoing row is an inert copy no one can reach.
  *
  * Call it with the list's container; `rows` selects the rows, `key` names a row (its id), and `scope` names the view
  * the rows belong to: when it changes (another filter, List to Board) the rows are simply replaced, never animated.
@@ -80,6 +82,10 @@ export function useRowMotion(container: RefObject<HTMLElement | null>, rows: str
     const easeOut = token('--ease-out') || 'ease-out';
     const easeIn = token('--ease-in') || 'ease-in';
     const writes: (() => void)[] = [];
+    // What the reader can see. A row that comes or goes outside it is not worth animating: nobody watches it, and growing or collapsing it
+    // gradually would only make the browser's scroll anchoring chase the rows the reader is on. It changes at once, which anchoring holds.
+    const view = root.closest<HTMLElement>('.pane-scroll')?.getBoundingClientRect() ?? root.getBoundingClientRect();
+    const unseen = (box: DOMRect) => box.bottom < view.top || box.top > view.bottom;
 
     // Rows that left collapse where they stood: an inert copy of each goes back in and shrinks away.
     if (!bulk) for (const id of left) {
@@ -96,6 +102,7 @@ export function useRowMotion(container: RefObject<HTMLElement | null>, rows: str
       if (reference) gone.parent.insertBefore(ghost, reference);
       else if (gone.prev && gone.prev.parentNode === gone.parent) gone.prev.after(ghost);
       else gone.parent.appendChild(ghost);
+      if (unseen(ghost.getBoundingClientRect())) { ghost.remove(); continue; }
       const style = getComputedStyle(ghost);
       const start: Keyframe = { height: `${gone.height}px`, opacity: 1 };
       const end: Keyframe = { height: '0px', opacity: 0 };
@@ -109,6 +116,7 @@ export function useRowMotion(container: RefObject<HTMLElement | null>, rows: str
     // Rows that arrived grow to their height.
     if (!bulk) for (const id of arrived) {
       const row = seen.get(id)!;
+      if (unseen(row.el.getBoundingClientRect())) continue;
       const style = getComputedStyle(row.el);
       const start: Keyframe = { height: '0px', opacity: 0 };
       const end: Keyframe = { height: `${row.height}px`, opacity: 1 };
@@ -123,7 +131,6 @@ export function useRowMotion(container: RefObject<HTMLElement | null>, rows: str
 
     // Rows that stayed, or moved to another group, slide from where they were to where they are: read where each one is
     // now (the copies and the growing rows are in place), then write every slide.
-    const view = root.closest<HTMLElement>('.pane-scroll')?.getBoundingClientRect() ?? root.getBoundingClientRect();
     const reach = view.height + 200;
     const slides: { el: HTMLElement; dx: number; dy: number }[] = [];
     // The row the reader is anchored to is one that stayed in its group and is on screen (the focused one when it is): the browser's own
