@@ -3,11 +3,13 @@ import {
   projectGrantsPath,
   workspaceMemberPath,
   workspaceMembersPath,
+  workspaceAiPolicyPath,
   workspacePath,
   type ProjectAccess,
   type ProjectGrant,
   type ProjectGrantRole,
   type ProjectVisibility,
+  type SetWorkspaceAiPolicyResult,
   type Workspace,
   type WorkspaceMember,
   type WorkspaceRole,
@@ -28,6 +30,13 @@ export const changeRole = (workspaceId: string, userId: string, role: WorkspaceR
   request<WorkspaceMember>(workspaceMemberPath(workspaceId, userId), { method: 'PATCH', body: { role }, headers: key(idempotencyKey) });
 /** Removes someone, or leaves when `userId` is the caller. */
 export const removeMember = (workspaceId: string, userId: string) => request<null>(workspaceMemberPath(workspaceId, userId), { method: 'DELETE' });
+
+/**
+ * Turns AI off or on for the whole workspace (F-029, #614): owners and admins only. `If-Match` carries the version the person
+ * saw, so a change someone else made meanwhile is a `409 VERSION_CONFLICT`; the Idempotency-Key makes a retry apply once.
+ */
+export const setWorkspaceAi = (workspaceId: string, state: 'allowed' | 'blocked', version: number, idempotencyKey: string) =>
+  request<SetWorkspaceAiPolicyResult>(workspaceAiPolicyPath(workspaceId), { method: 'PUT', body: { state }, headers: { 'if-match': `"${version}"`, ...key(idempotencyKey) } });
 
 export const listGrants = (projectId: string, signal?: AbortSignal) => request<ProjectGrant[]>(projectGrantsPath(projectId), { signal });
 /** Creates or replaces the one grant of this person on the project. */

@@ -4,6 +4,7 @@ import type { ConversationMessage } from '@flux/contracts';
 import { Icon, Kreska, useMediaQuery, useToast, type IconName } from '../ui';
 import { useShellActions } from '../app/shellContext';
 import { useShellData } from '../app/data';
+import { useProjectAiBlocked } from '../ai/workspaceAi';
 import { useNeedsYou } from '../notifications/needsYou';
 import { useNeedsYouActions } from '../notifications/useNeedsYouActions';
 import './message-actions.css';
@@ -50,13 +51,14 @@ export interface MessageActionOptions {
 
 const messageOf = (options: MessageActionOptions | DmActionOptions) => options.kind === 'dm' ? options.messageId ?? null : options.message.id;
 
-interface MenuItem { id: string; label: string; icon: IconName | 'kreska'; run: () => void; disabled?: boolean; secondary?: boolean }
+interface MenuItem { id: string; label: string; icon: IconName | 'kreska'; run: () => void; disabled?: boolean; secondary?: boolean; ai?: boolean }
 
 /** The menu's items, in the drawn order: reply, task, hand off, cite, copy; then what makes objects. */
 function useMenuItems(options: MessageActionOptions | DmActionOptions | null, touch: boolean): MenuItem[] {
   const { openDetails } = useShellActions();
   const { me } = useShellData();
   const toast = useToast();
+  const aiOff = useProjectAiBlocked();
   if (!options) return [];
   const text = options.kind === 'dm' ? options.body : options.message.body;
   const copy = () => {
@@ -84,7 +86,8 @@ function useMenuItems(options: MessageActionOptions | DmActionOptions | null, to
     ...(onAddToMap ? [{ id: 'map', label: 'Add to map', icon: 'map' as const, run: onAddToMap }] : []),
     // There is no hand-off command yet (#347): a hand-off is a task, so it is made and opened in Details,
     // where its owner is chosen.
-    { id: 'handoff', label: 'Hand off to an agent', icon: 'kreska', run: onCreateWork },
+    // Not offered while the project's workspace has AI off (F-029, #614).
+    ...(aiOff(projectId) ? [] : [{ id: 'handoff', label: 'Hand off to an agent', icon: 'kreska' as const, run: onCreateWork, ai: true }]),
     ...(onCite ? [{ id: 'cite', label: 'Cite', icon: 'cite' as const, run: onCite }] : []),
     ...copyItem,
     { id: 'decision', label: 'Propose a decision', icon: 'rule', secondary: true, run: () => openDetails({ kind: 'propose-decision', projectId, source }) },
@@ -140,7 +143,7 @@ function MessageMenu({ items: own, anchor, press, onClose, label, messageId }: {
   const primary = items.filter((item) => !item.secondary);
   const secondary = items.filter((item) => item.secondary);
   const render = (item: MenuItem) => (
-    <button key={item.id} type="button" role="menuitem" className="msg-menu__item" data-action={item.id} disabled={item.disabled}
+    <button key={item.id} type="button" role="menuitem" className="msg-menu__item" data-action={item.id} data-ai-surface={item.ai ? `message-${item.id}` : undefined} disabled={item.disabled}
       onClick={() => { onClose(false); item.run(); }}>
       {item.icon === 'kreska' ? <Kreska size={18} /> : <Icon name={item.icon} size={18} />}{item.label}
     </button>

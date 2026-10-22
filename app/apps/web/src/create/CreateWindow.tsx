@@ -1,4 +1,5 @@
 import { useEffect, useId, useMemo, useRef, useState, type FormEvent, type MouseEvent, type ReactNode } from 'react';
+import { useWorkspaceAi } from '../ai/workspaceAi';
 import { useLocation, useNavigate, useRevalidator } from 'react-router';
 import { WORK_LIMITS, WORK_STATUSES, type Agent, type CreateWorkCommand, type ObjectRef, type Project, type WorkItem, type WorkspaceMember, type WorkStatus } from '@flux/contracts';
 import { ApiError } from '../api/client';
@@ -278,7 +279,9 @@ function TaskForm({ ids, request, prefilled, phone, carried, projectId, onProjec
 
   const people = useMemo(() => (loaded?.members.length ? loaded.members.map((m) => ({ value: `human:${m.userId}`, label: m.userId === me.user.id ? `${m.name} (you)` : m.name }))
     : [{ value: `human:${me.user.id}`, label: `${me.user.name} (you)` }]), [loaded, me.user.id, me.user.name]);
-  const agents = (loaded?.agents ?? []).map((agent) => ({ value: `agent:${agent.id}`, label: `${agent.name} (agent)` }));
+  // F-029 (#614): no agent owners while the workspace's AI is off.
+  const aiOff = useWorkspaceAi(loaded?.project.workspaceId).blocked;
+  const agents = (aiOff ? [] : loaded?.agents ?? []).map((agent) => ({ value: `agent:${agent.id}`, label: `${agent.name} (agent)` }));
   const waitingLabel = people.find((o) => o.value === waiting)?.label.replace(/ \((you|agent)\)$/, '') ?? 'No one';
   const ownerLabel = [...people, ...agents].find((o) => o.value === owner)?.label.replace(/ \((you|agent)\)$/, '') ?? 'No owner';
 
@@ -296,7 +299,7 @@ function TaskForm({ ids, request, prefilled, phone, carried, projectId, onProjec
       ...(status !== 'open' ? { status } : {}),
       ...(status === 'blocked' ? { blocker: blocker.trim() } : {}),
       ...(waiting ? { waitingFor: { kind: 'human' as const, id: waiting.slice('human:'.length) } } : {}),
-      ...(owner ? { owner: { kind: owner.startsWith('agent:') ? 'agent' as const : 'human' as const, id: owner.slice(owner.indexOf(':') + 1) } } : {}),
+      ...(owner && !(aiOff && owner.startsWith('agent:')) ? { owner: { kind: owner.startsWith('agent:') ? 'agent' as const : 'human' as const, id: owner.slice(owner.indexOf(':') + 1) } } : {}),
       ...(sources.length ? { sources: sources.map((s) => s.ref) } : {}),
     };
     const payload = JSON.stringify([projectId, command]);
@@ -363,7 +366,7 @@ function TaskForm({ ids, request, prefilled, phone, carried, projectId, onProjec
         <PickChip label="Owner" icon={<Icon name="person" size={14} />} shown={ownerLabel} value={owner} onChange={setOwner}>
           <option value="">No owner</option>
           <optgroup label="People">{people.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}</optgroup>
-          {agents.length ? <optgroup label="Agents">{agents.map((a) => <option key={a.value} value={a.value}>{a.label}</option>)}</optgroup> : null}
+          {agents.length ? <optgroup label="Agents" data-ai-surface="create-agent-owners">{agents.map((a) => <option key={a.value} value={a.value}>{a.label}</option>)}</optgroup> : null}
         </PickChip>
         {status === 'blocked' ? <PickChip label="Waiting for" icon={<Icon name="person" size={14} />} shown={waitingLabel} value={waiting} onChange={setWaiting}>
           <option value="">No one in particular</option>
@@ -585,6 +588,7 @@ function DecisionForm({ ids, phone, carried, projectId, onProject, onClose }: Pa
 function ProjectForm({ ids, phone, carried, onClose }: PanelProps) {
   const go = useNavigate();
   const { space, spaceName, setSpaceName, template, setTemplate, busy, error, ready, create } = useNewProject();
+  const aiOff = useWorkspaceAi(space?.id).blocked;
   const name = oneLine(carried.text);
   const chosen = TEMPLATES.find((item) => item.id === template) ?? TEMPLATES[0]!;
   const canCreate = ready(name) && name.length <= WORK_LIMITS.title && !busy;
@@ -602,7 +606,7 @@ function ProjectForm({ ids, phone, carried, onClose }: PanelProps) {
   const where = space ? <span>In {space.name}</span>
     : <input className="create__space" aria-label="Your space" value={spaceName} maxLength={200} disabled={busy} placeholder="Name your space first" onChange={(event) => setSpaceName(event.target.value)} />;
   return (
-    <Panel ids={ids} where={where} onSubmit={() => void submit()} foot={<><p className="create__note">Starts with {chosen.has} · invite people and agents later</p><Go label="Create project" busy={busy} ready={canCreate} phone={phone} /></>}>
+    <Panel ids={ids} where={where} onSubmit={() => void submit()} foot={<><p className="create__note">Starts with {chosen.has} · invite people {aiOff ? '' : 'and agents '}later</p><Go label="Create project" busy={busy} ready={canCreate} phone={phone} /></>}>
       <input id={ids.field} className="create__name" aria-label="What is it about?" value={flat(carried.text)} maxLength={WORK_LIMITS.title} disabled={busy} placeholder="What is it about?"
         onChange={(event) => carried.set(event.target.value)} />
       <div className="create__props">

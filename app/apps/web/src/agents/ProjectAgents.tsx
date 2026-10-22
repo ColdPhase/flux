@@ -5,7 +5,8 @@ import { AGENT_SCOPE_PLAIN } from '@flux/contracts';
 import type { AgentOperation, AgentQuestion, AgentScope, AgentStop, ConversationMessage, ProjectAgentConnection, ProjectAgentRequest, ProjectAgents as ProjectAgentsData, TaskDiscussion, WorkRowProjection, WorkStatus } from '@flux/contracts';
 import { ApiError, NetworkError } from '../api/client';
 import { useStreamEvents } from '../api/stream';
-import { useShellData } from '../app/data';
+import { projectAiBlocked, useShellData } from '../app/data';
+import { AiOffState, isAiBlocked, useWorkspaceAi } from '../ai/workspaceAi';
 import { useShellActions } from '../app/shellContext';
 import { outboxView, useComposerDraft, useComposerScope } from '../composer/draft';
 import { AttachButton, ComposerFiles, MessageContent } from '../composer/Files';
@@ -46,8 +47,10 @@ const TASK_DRAG = 'application/x-flux-task';
  * not a second backlog or chat: each person's connections are separate entries, so Hubert's Codex and Hubert's
  * Claude Code are two rows. A task's thread (`?task=`) is its one canonical discussion.
  */
-export async function projectAgentsLoader({ params, request }: LoaderFunctionArgs): Promise<ProjectAgentsData> {
-  return getProjectAgents(params.projectId!, request.signal);
+export async function projectAgentsLoader({ params, request }: LoaderFunctionArgs): Promise<ProjectAgentsData | null> {
+  // F-029 (#614): in a workspace whose AI is off there is nothing to read; the view says so and launches nothing.
+  if (await projectAiBlocked(params.projectId)) return null;
+  return getProjectAgents(params.projectId!, request.signal).catch((error: unknown) => (isAiBlocked(error) ? null : Promise.reject(error)));
 }
 
 const OPERATION_LABEL: Record<AgentOperation, string> = {
@@ -687,7 +690,15 @@ const questionLink = (projectId: string, question: AgentQuestion) => question.ta
   : `/projects/${projectId}/conversations/${question.conversationId}`;
 
 export function ProjectAgents() {
-  const data = useLoaderData() as ProjectAgentsData;
+  const data = useLoaderData() as ProjectAgentsData | null;
+  const shell = useProjectShell();
+  const aiOff = useWorkspaceAi(shell?.project.workspaceId);
+  // The loader answers null for a workspace whose AI is off; the shell says so too, once it has read the policy again.
+  if (!data || aiOff.blocked) return <AiOffState workspaceId={shell?.project.workspaceId} backTo={`/projects/${shell?.project.id ?? ''}`} backLabel="Back to the conversation" />;
+  return <ProjectAgentsLoaded data={data} />;
+}
+
+function ProjectAgentsLoaded({ data }: { data: ProjectAgentsData }) {
   const { metadataSlot, viewMenuMetadataSlot } = useShellActions();
   const shell = useProjectShell();
   const { me } = useShellData();

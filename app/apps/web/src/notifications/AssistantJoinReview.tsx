@@ -25,7 +25,7 @@ export function AssistantJoinReview({ item, onClose }: { item: Pick<NeedsYouItem
     } finally { setBusy(false); }
   };
   return <Overlay open placement="center" label="Assistant join request" onClose={onClose}>
-    <section className="assistant-join-review" aria-label="Assistant join requests">
+    <section className="assistant-join-review" aria-label="Assistant join requests" data-ai-surface="assistant-join-review">
       <h2>Assistant join request</h2>
       <AgentIdentity name={identity.assistantName} owner={identity.ownerName} hue={agentHue(identity.assistantId)} expression="asking" />
       <p>Asks to join {item.project?.name} as a contributor. Allow gives it access within its owner’s project permissions.</p>

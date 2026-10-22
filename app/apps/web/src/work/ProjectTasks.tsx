@@ -4,7 +4,8 @@ import type { Project, ProactiveComparisonOutcome, ProjectWorkViewQuery, WorkCou
 import { Button, EmptyState, ErrorState, Icon, MEDIA, useMediaQuery } from '../ui';
 import { getProject } from '../app/conversation-api';
 import { useShellActions } from '../app/shellContext';
-import { useShellData } from '../app/data';
+import { projectAiBlocked, useShellData } from '../app/data';
+import { isAiBlocked } from '../ai/workspaceAi';
 import { remember } from '../app/remembered';
 import { isFinished } from './format';
 import { TaskRow, type TaskRowProps } from './TaskRow';
@@ -28,8 +29,11 @@ interface TasksData { project: Project; outcomes: ProactiveComparisonOutcome[] }
 
 /** Object rows use their separate bounded page; this loader supplies the project contract. */
 export async function projectTasksLoader({ params, request }: LoaderFunctionArgs): Promise<TasksData> {
+  // F-029 (#614): the comparison outcomes are AI work; a workspace whose AI is off has none to show and is not asked.
+  const blocked = await projectAiBlocked(params.projectId);
   const [project, outcomes] = await Promise.all([
-    getProject(params.projectId!, request.signal), listComparisonOutcomes(params.projectId!, request.signal),
+    getProject(params.projectId!, request.signal),
+    blocked ? [] : listComparisonOutcomes(params.projectId!, request.signal).catch((error: unknown) => (isAiBlocked(error) ? [] : Promise.reject(error))),
   ]);
   return { project, outcomes };
 }

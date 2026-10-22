@@ -1,4 +1,5 @@
 import { getCapabilities, getLinkState, startLink, startSso } from '../api/auth';
+import { AiOffEverywhere, AiOffThere, useAllAiBlocked } from '../ai/workspaceAi';
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { Form, Link, Outlet, useLocation, useNavigation, useSearchParams } from 'react-router';
 import { aiConnectionLabel, PERSONAL_RUN_LIMITS, type AgentConnection, type BackgroundComputeConnection, type PersonalAssistantStatus, type IdentityCapabilities } from '@flux/contracts';
@@ -247,12 +248,15 @@ function BackgroundRow({ runtime }: { runtime: 'available' | 'unavailable' | nul
  */
 function AgentsAndAi() {
   const { me } = useShellData();
+  // F-029 (#614): with AI off in every workspace the page says so and nothing else; in some, each card says once where it is off.
+  const allOff = useAllAiBlocked();
   const [connections, setConnections] = useState<AgentConnection[] | null>(null);
   const [assistant, setAssistant] = useState<PersonalAssistantStatus | null>(null);
   const [runtime, setRuntime] = useState<'available' | 'unavailable' | null>(null);
   const [keys, setKeys] = useState<BackgroundComputeConnection[] | null>(null);
   const [failed, setFailed] = useState(false);
   useEffect(() => {
+    if (allOff) return undefined;
     const controller = new AbortController();
     listAgentConnections(controller.signal).then(setConnections, (error: unknown) => { if (!controller.signal.aborted) { setConnections([]); setFailed(!!error); } });
     getAssistantStatus(controller.signal).then(setAssistant, () => undefined);
@@ -260,7 +264,8 @@ function AgentsAndAi() {
     // The caller's own AI connections only; the list is owner-scoped on the server.
     listBackgroundConnections(controller.signal).then(setKeys, () => { if (!controller.signal.aborted) setKeys([]); });
     return () => controller.abort();
-  }, []);
+  }, [allOff]);
+  if (allOff) return <AiOffEverywhere />;
   const mine = (connections ?? []).filter((connection) => !connection.revokedAt && connection.ownerUserId === me.user.id);
   // Other ways to connect: the API key choices (F-027 AST-1.2: shown plainly when sign-in is off).
   const otherWays = (
@@ -285,6 +290,7 @@ function AgentsAndAi() {
         <h3 className="sset-sub" id="ai-in-flux">Agent in Flux</h3>
         <p className="sset-note sset-note--sub">Works inside Flux when you ask. You choose the AI and who pays for it.</p>
         <AssistantCard userId={me.user.id} status={assistant} />
+        <AiOffThere />
         <RuntimeSection otherWays={otherWays} />
         <ul className="sset-card sset-gap">
           <BackgroundRow runtime={runtime} />
@@ -301,6 +307,7 @@ function AgentsAndAi() {
               title={<><span className="sset-row__identity">{connection.name}{' '}<AgentTag /></span><span className="sset-row__meta"> · for you · {DESIGNATION[connection.clientDesignation]} · connected</span></>} action="Manage" />
           ))}
         </ul>
+        <AiOffThere />
         {connections === null ? <p className="sset-note"><Spinner label="Loading your agents" /></p> : null}
         {failed ? <p className="sset-note" role="note">Your connected agents could not be listed. Manage them under Local co-work.</p> : null}
       </section>
@@ -337,12 +344,14 @@ export function SettingsAppearance() {
 function PhoneSettings() {
   const { me } = useShellData();
   const theme = useTheme();
+  const allOff = useAllAiBlocked();
   const [assistant, setAssistant] = useState<PersonalAssistantStatus | null>(null);
   useEffect(() => {
+    if (allOff) return undefined;
     const controller = new AbortController();
     getAssistantStatus(controller.signal).then(setAssistant, () => undefined);
     return () => controller.abort();
-  }, []);
+  }, [allOff]);
   return (
     <div className="pane-scroll">
       <div className="pane-in sset-in" data-shift>
@@ -355,7 +364,7 @@ function PhoneSettings() {
         <ul className="sset-card sset-gap">
           <LinkRow to="/settings/appearance" icon={<Icon name="sun" size={16} />} title="Appearance" detail={THEME_LABEL[theme]} />
           <LinkRow to="/settings/notifications" icon={<Icon name="bell" size={16} />} title="Notifications" detail="Needs you, quiet hours, morning summary" />
-          <LinkRow to="/settings/agents" icon={<Icon name="spark" size={16} />} title="Agents and AI" detail={assistant ? `Assistant ${ASSISTANT_STATE[assistant.state]}` : undefined} />
+          <LinkRow to="/settings/agents" icon={<Icon name="spark" size={16} />} title="Agents and AI" detail={allOff ? 'AI is off' : assistant ? `Assistant ${ASSISTANT_STATE[assistant.state]}` : undefined} />
         </ul>
         <Form method="post" action="/sign-out" className="sset-card sset-gap">
           <button type="submit" className="sset-row sset-row--link">

@@ -4,6 +4,7 @@ import { useFollow } from '../place/origin';
 import type { Agent, SearchResult } from '@flux/contracts';
 import { getAssistantStatus } from '../assistant/api';
 import { AskWhere } from '../assistant/AskWhere';
+import { useBlockedWorkspaceIds } from '../ai/workspaceAi';
 import { useShellData } from '../app/data';
 import { useShellActions } from '../app/shellContext';
 import { Button, Icon, Kreska, MEDIA, Overlay, Spinner, useMediaQuery, type IconName } from '../ui';
@@ -109,6 +110,8 @@ function JumpBody({ onClose, userId, phone }: { onClose: () => void; userId: str
   const recent = useRecentSearches(userId);
   const recentPlaces = useRecentPlaces(userId);
   const { projects, workspaces, directMessages } = useShellData();
+  // F-029 (#614): agents, the assistant and the Agents scope exist only where the workspace's AI is on.
+  const aiOff = useBlockedWorkspaceIds();
   const { openCreate, openDetails, toggleFocus, toggleSidebar, sidebarHidden } = useShellActions();
   const location = useLocation();
   const here = location.pathname.match(/^\/projects\/([^/]+)/)?.[1];
@@ -127,7 +130,10 @@ function JumpBody({ onClose, userId, phone }: { onClose: () => void; userId: str
   // An agent opens in a project of its own workspace: the one in view when it shares it, else the first the person can open.
   const hereSpace = projects.find((project) => project.id === here)?.workspaceId;
   const agentProject = (agent: Agent) => (hereSpace === agent.workspaceId ? here : projects.find((project) => project.workspaceId === agent.workspaceId)?.id) ?? '';
-  const agents = useAgents(workspaces.map((space) => space.id), scope === 'people' || scope === 'agents').filter((agent) => agentProject(agent));
+  const aiSpaces = workspaces.filter((space) => !aiOff.has(space.id));
+  // In a project the search is about its workspace; elsewhere about every workspace whose AI is on.
+  const aiHere = hereSpace ? !aiOff.has(hereSpace) : aiSpaces.length > 0;
+  const agents = useAgents(aiSpaces.map((space) => space.id), aiHere && (scope === 'people' || scope === 'agents')).filter((agent) => agentProject(agent));
   const text = query.trim();
   useEffect(() => { inputRef.current?.focus(); }, []);
 
@@ -138,11 +144,12 @@ function JumpBody({ onClose, userId, phone }: { onClose: () => void; userId: str
   // Outside a conversation the ask first asks "In which conversation?" (never a dead end), then opens it the same way.
   const [pickingWhere, setPickingWhere] = useState(false);
   useEffect(() => {
+    if (!aiHere) return undefined;
     const controller = new AbortController();
     getAssistantStatus(controller.signal).then((status) => setAssistantReady(status.state === 'ready'), () => undefined);
     return () => controller.abort();
-  }, []);
-  const askMine: Option[] = assistantReady ? [{ kind: 'command', section: 'Actions', id: 'action-ask-assistant', label: 'Ask my assistant…', icon: 'spark', stays: !inThread,
+  }, [aiHere]);
+  const askMine: Option[] = assistantReady && aiHere ? [{ kind: 'command', section: 'Actions', id: 'action-ask-assistant', label: 'Ask my assistant…', icon: 'spark', stays: !inThread,
     run: () => { if (inThread) navigate({ pathname: location.pathname, search: '?ask=1' }); else setPickingWhere(true); } }] : [];
   const mapHref = here ? `/projects/${here}/map` : '/map';
   const create = (rest ? `New task “${rest.length > 40 ? `${rest.slice(0, 39)}…` : rest}”` : 'New task');
@@ -162,7 +169,7 @@ function JumpBody({ onClose, userId, phone }: { onClose: () => void; userId: str
     if (kind === 'dm') { const dm = directMessages.find((item) => item.id === id); return dm ? { label: dm.title, side: 'Message', icon: 'person' } : null; }
     const project = kind === 'project' ? projects.find((item) => item.id === id) : undefined;
     const shown = view ? PROJECT_VIEW[view] : undefined;
-    if (!project || !shown) return null;
+    if (!project || !shown || (view === 'agents' && project.workspaceId && aiOff.has(project.workspaceId))) return null;
     // A Wiki page is named by its own title; the doc it folds its versions into is the place.
     return { label: view === 'docs' && place.title && /\/docs\/[^/]+$/.test(place.path) ? place.title : project.name, side: shown.side, icon: shown.icon };
   };
@@ -179,7 +186,7 @@ function JumpBody({ onClose, userId, phone }: { onClose: () => void; userId: str
     ]),
   ];
   const results: Option[] = shown.map((result) => ({ kind: 'result' as const, id: result.id, result }));
-  const agentMatches: Option[] = scope === 'people' || scope === 'agents' ? agents.filter((agent) => agent.name.toLowerCase().includes(rest.toLowerCase())).slice(0, scope === 'agents' ? 8 : 5).map((agent) => ({ kind: 'agent' as const, id: `agent-${agent.id}`, agent })) : [];
+  const agentMatches: Option[] = aiHere && (scope === 'people' || scope === 'agents') ? agents.filter((agent) => agent.name.toLowerCase().includes(rest.toLowerCase())).slice(0, scope === 'agents' ? 8 : 5).map((agent) => ({ kind: 'agent' as const, id: `agent-${agent.id}`, agent })) : [];
   const withResults = scope === 'people' ? [...agentMatches, ...results] : scope === 'agents' ? agentMatches : results;
   const options: Option[] = rest || scope !== 'all'
     ? [...actions, ...withResults, ...(scope === 'all' && state.status === 'ready' && shown.length ? [{ kind: 'all' as const, id: 'all' }] : [])]
@@ -223,7 +230,7 @@ function JumpBody({ onClose, userId, phone }: { onClose: () => void; userId: str
     return (
       <div className="jump__in">
         {phone ? <h2 className="jump__title">Ask my assistant</h2> : null}
-        <div className="jump__body"><AskWhere userId={userId} projectId={here} projects={projects} onOpen={onClose} onBack={() => setPickingWhere(false)} /></div>
+        <div className="jump__body"><AskWhere userId={userId} projectId={here} projects={projects.filter((project) => !aiOff.has(project.workspaceId ?? ''))} onOpen={onClose} onBack={() => setPickingWhere(false)} /></div>
       </div>
     );
   }
@@ -242,7 +249,7 @@ function JumpBody({ onClose, userId, phone }: { onClose: () => void; userId: str
       </div>
       {phone ? (
         <div className="jump__chips" role="group" aria-label="Search in">
-          {CHIPS.map((item) => <button key={item.id} type="button" className="jump__chip" aria-pressed={chip === item.id} onClick={() => { setChip(item.id); inputRef.current?.focus(); }}>{item.label}</button>)}
+          {CHIPS.filter((item) => item.id !== 'agents' || aiHere).map((item) => <button key={item.id} type="button" className="jump__chip" aria-pressed={chip === item.id} onClick={() => { setChip(item.id); inputRef.current?.focus(); }}>{item.label}</button>)}
         </div>
       ) : null}
       {inProject && rest ? (
@@ -262,7 +269,7 @@ function JumpBody({ onClose, userId, phone }: { onClose: () => void; userId: str
               // Section names are plain text: the list holds options only, so nothing interactive sits inside it.
               const head = section && section !== before ? <li key={`h-${section}`} role="presentation" className="jump__sh">{section}</li> : null;
               return [head, (
-                <li key={option.id} id={`${listId}-${index}`} role="option" aria-selected={index === current} aria-label={option.kind === 'place' ? placeName(option) : undefined}
+                <li key={option.id} id={`${listId}-${index}`} role="option" aria-selected={index === current} data-ai-surface={option.kind === 'agent' || option.id === 'action-ask-assistant' ? `jump-${option.kind === 'agent' ? 'agent' : 'ask'}` : undefined} aria-label={option.kind === 'place' ? placeName(option) : undefined}
                   className={`jump__opt${option.kind === 'result' ? ' sr' : ''}${option.kind === 'all' ? ' jump__all' : ''}${index === current ? ' is-active' : ''}`}
                   onMouseMove={() => { if (index !== current) setActive(index); }} onClick={() => choose(option)}>
                   {option.kind === 'result' ? <ResultBody result={option.result} />

@@ -3,6 +3,7 @@ import { Link } from 'react-router';
 import type { PersonalAssistantStatus } from '@flux/contracts';
 import { useSmallMoments } from '../app/smallMoments';
 import { Button, Kreska, agentHue } from '../ui';
+import { useAllAiBlocked } from '../ai/workspaceAi';
 import { getAssistantStatus } from './api';
 
 // Home's one set-up card (F-027 AST-10 Journey 1, step 1): shown until the assistant is set up or the person
@@ -15,16 +16,17 @@ export function MeetAssistantCard({ userId }: { userId: string }) {
   const [status, setStatus] = useState<PersonalAssistantStatus | null>(null);
   const [hidden, setHidden] = useState(() => meetAssistantDismissed(userId));
   const moments = useSmallMoments();
+  const allOff = useAllAiBlocked();
   useEffect(() => {
-    if (hidden) return;
+    if (hidden || allOff) return;
     const controller = new AbortController();
     getAssistantStatus(controller.signal).then(setStatus, () => undefined);
     return () => controller.abort();
-  }, [hidden]);
-  if (hidden || !status || status.enablement || (status.setup.provider === 'off' && status.setup.runtime.state === 'off')) return null;
+  }, [hidden, allOff]);
+  if (hidden || allOff || !status || status.enablement || (status.setup.provider === 'off' && status.setup.runtime.state === 'off')) return null;
   const plan = status.setup.runtime.state !== 'off';
   return (
-    <section className="home__card home__meet" aria-labelledby="home-meet">
+    <section className="home__card home__meet" aria-labelledby="home-meet" data-ai-surface="meet-assistant">
       {moments ? <Kreska size={32} hue={agentHue(`assistant:${userId}`)} /> : null}
       <div className="home__meet-b">
         <h3 id="home-meet" className="home__t">Meet your assistant</h3>
@@ -46,7 +48,7 @@ const SUGGESTIONS = ['Catch me up', 'Turn this thread into tasks', 'Tidy this pr
 
 export function AssistantSuggestions({ onPick }: { onPick: (text: string) => void }) {
   return (
-    <div className="assistant-suggestions" role="group" aria-label="Suggestions for your assistant">
+    <div className="assistant-suggestions" role="group" aria-label="Suggestions for your assistant" data-ai-surface="assistant-suggestions">
       {SUGGESTIONS.map((text) => <button key={text} type="button" className="assistant-suggestions__chip" onClick={() => onPick(text)}>{text}</button>)}
     </div>
   );

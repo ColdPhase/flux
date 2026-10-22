@@ -23,7 +23,8 @@ export function AskWhere({ userId, projectId, projects, onOpen, onBack }: {
     (async () => {
       const found: Place[] = [];
       const last = lastAskedConversation(userId);
-      if (last) {
+      // Only a project the list names (the caller leaves out those whose workspace has AI off, F-029).
+      if (last && projects.some((project) => project.id === last.projectId)) {
         try {
           const conversation = await getConversation(last.conversationId, controller.signal);
           found.push({ projectId: last.projectId, conversationId: last.conversationId, title: first(conversation.firstMessageBody), project: named(last.projectId), last: true });

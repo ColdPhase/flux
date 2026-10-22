@@ -12,6 +12,7 @@ import { getOwnWorkingAgents } from '../agents/api';
 import { stopFailure, stopAgentWork } from '../agents/stop';
 import { useShellData } from './data';
 import { RefLink } from '../place/origin';
+import { useProjectAiBlocked } from '../ai/workspaceAi';
 
 const POLL_WHILE_WORKING_MS = 3000;
 interface WorkingSnapshot { identity: string; run: AssistantRun | null; stopping: boolean; failed: boolean }
@@ -183,7 +184,7 @@ function OwnAgentCard({ item, compact, onChanged }: { item: OwnWorkingAgent; com
   const destination = `/projects/${item.task.projectId}/agents`;
   const hue = agentHue(item.agent.id);
   return (
-    <div className={`agentlive agentlive--agent${compact ? ' agentlive--compact' : ''}`} role="status" aria-label={label} data-agent={item.agent.id}>
+    <div className={`agentlive agentlive--agent${compact ? ' agentlive--compact' : ''}`} role="status" aria-label={label} data-agent={item.agent.id} data-ai-surface="working-agent">
       {compact ? (
         <RefLink className="agentlive__link" to={destination} title={label} aria-label={label}><Kreska size={24} expression={expression} hue={hue} /></RefLink>
       ) : (
@@ -207,12 +208,14 @@ function OwnAgentCard({ item, compact, onChanged }: { item: OwnWorkingAgent; com
 export function WorkingAgent({ compact = false }: { compact?: boolean }) {
   const { me } = useShellData();
   const agents = useOwnWorkingAgents(me.user.id);
+  const aiOff = useProjectAiBlocked();
   // Home lists every working agent itself (HomeWorkingAgents), so the sidebar card steps aside there.
   const onHome = useLocation().pathname === '/';
-  // Several agents at once: online ones first; the card shows the first with how many more are online, so the sidebar never grows.
-  const ordered = [...agents.items.filter((item) => item.working), ...agents.items.filter((item) => !item.working)];
+  // Agents of a workspace whose AI is off (#614) are not shown. Several at once: online ones first; the card shows the first with how many more are online, so the sidebar never grows.
+  const items = agents.items.filter((item) => !aiOff(item.task.projectId));
+  const ordered = [...items.filter((item) => item.working), ...items.filter((item) => !item.working)];
   const first = ordered[0];
-  const workingCount = agents.items.filter((item) => item.working).length;
+  const workingCount = items.filter((item) => item.working).length;
   return (
     <>
       <WorkingAssistant compact={compact} />
@@ -232,12 +235,13 @@ function WorkingAssistant({ compact = false }: { compact?: boolean }) {
   const { run, stop, dismissFailure, stopping, failed } = useWorkingRun(me.user.id);
   const stopButton = useRef<HTMLButtonElement>(null);
   const moments = useSmallMoments();
-  if (!run) return null;
+  const aiOff = useProjectAiBlocked();
+  if (!run || aiOff(run.projectId)) return null;
   const label = stopping ? 'Stopping your assistant…' : `Your assistant is ${doing(run)}`;
   const destination = `/projects/${run.projectId}/conversations/${run.conversationId}`;
   return (
     <>
-    <div className={`agentlive${compact ? ' agentlive--compact' : ''}`} role="status" aria-label={label}>
+    <div className={`agentlive${compact ? ' agentlive--compact' : ''}`} role="status" aria-label={label} data-ai-surface="working-assistant">
       {compact ? (
         <RefLink className="agentlive__link" to={destination} title={label} aria-label={label}>
           {moments ? <Kreska size={24} expression={face(run)} /> : <span className="agentlive__mark" aria-hidden="true"><Icon name="spark" size={20} /></span>}
@@ -276,10 +280,12 @@ function WorkingAssistant({ compact = false }: { compact?: boolean }) {
 export function HomeWorkingAgents() {
   const { me } = useShellData();
   const agents = useOwnWorkingAgents(me.user.id);
-  if (!agents.items.length) return null;
+  const aiOff = useProjectAiBlocked();
+  const items = agents.items.filter((item) => !aiOff(item.task.projectId));
+  if (!items.length) return null;
   return (
-    <section className="home-agents" aria-label="Your agents working now">
-      {agents.items.map((item) => <OwnAgentCard key={item.task.id} item={item} compact={false} onChanged={agents.reload} />)}
+    <section className="home-agents" aria-label="Your agents working now" data-ai-surface="home-working-agents">
+      {items.map((item) => <OwnAgentCard key={item.task.id} item={item} compact={false} onChanged={agents.reload} />)}
     </section>
   );
 }
@@ -288,7 +294,8 @@ export function HomeWorkingAgents() {
 export function ProjectAgentStop({ projectId }: { projectId: string }) {
   const { me } = useShellData();
   const agents = useOwnWorkingAgents(me.user.id);
-  const item = agents.items.find((candidate) => candidate.task.projectId === projectId);
+  const aiOff = useProjectAiBlocked();
+  const item = aiOff(projectId) ? undefined : agents.items.find((candidate) => candidate.task.projectId === projectId);
   return item ? <HeaderAgentStop item={item} onChanged={agents.reload} /> : null;
 }
 
