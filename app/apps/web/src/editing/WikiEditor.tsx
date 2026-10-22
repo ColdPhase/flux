@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
-import { COLLABORATION_INK } from './color';
+import { COLLABORATION_INK, PEER_SHAPES, type PeerShape } from './color';
 import { Link } from 'react-router';
 import * as Y from 'yjs';
 import { EditorSelection, EditorState, Prec, StateEffect, StateField, type Range } from '@codemirror/state';
@@ -35,27 +35,44 @@ export function useSharedWiki(id: string | null, userId: string, writer = true) 
  * inline widget: a widget at the same position as the local cursor became a cursor stop, so
  * Shift+ArrowLeft at the end of the text stepped over the other person's caret instead of
  * selecting the last character.
+ *
+ * Its name never floats over the text. On a wide editor the name tag sits in a lane reserved to the right of the
+ * lines, level with the caret's line (stacked below another tag that would touch it); on a narrow one the caret carries
+ * only its shape, and the People strip names the same shape. A tag is `aria-hidden`: the caret names its person.
  */
+const LANE_WIDTH = 136, TAG_HEIGHT = 18, TAG_GAP = 2;
+let wide: MediaQueryList | null = null;
+const wideEditor = () => wide ??= window.matchMedia('(min-width: 768px)');
+interface Tag { left: number; dy: number }
 class NamedCaret implements LayerMarker {
-  constructor(readonly name: string, readonly ink: string, readonly left: number, readonly top: number, readonly height: number) {}
-  eq(other: LayerMarker): boolean { return other instanceof NamedCaret && other.name === this.name && other.ink === this.ink
-    && other.left === this.left && other.top === this.top && other.height === this.height; }
+  constructor(readonly name: string, readonly ink: string, readonly shape: PeerShape, readonly left: number, readonly top: number, readonly height: number, readonly tag: Tag | null) {}
+  eq(other: LayerMarker): boolean { return other instanceof NamedCaret && other.name === this.name && other.ink === this.ink && other.shape === this.shape
+    && other.left === this.left && other.top === this.top && other.height === this.height && other.tag?.left === this.tag?.left && other.tag?.dy === this.tag?.dy; }
   draw() {
     const element = document.createElement('div'); element.className = 'editing-caret';
-    element.setAttribute('aria-label', `${this.name}'s cursor`);
-    const label = document.createElement('span'); label.textContent = this.name; element.append(label);
+    element.setAttribute('aria-label', `${this.name}'s cursor`); element.dataset.shape = this.shape;
+    const label = document.createElement('span'); label.textContent = this.name; label.style.backgroundColor = this.ink; element.append(label);
+    if (this.tag) {
+      const tag = document.createElement('span'); tag.className = 'editing-caret__tag'; tag.setAttribute('aria-hidden', 'true'); tag.title = this.name;
+      const shape = document.createElement('i'); shape.className = 'editing-shape'; shape.dataset.shape = this.shape;
+      const name = document.createElement('span'); name.textContent = this.name;
+      tag.append(shape, name); element.append(tag);
+    }
     this.place(element); return element;
   }
+  // A moved caret only restyles its own nodes; a changed person, shape or lane redraws it.
   update(element: HTMLElement, previous: LayerMarker): boolean {
-    if (!(previous instanceof NamedCaret) || previous.name !== this.name) return false;
+    if (!(previous instanceof NamedCaret) || previous.name !== this.name || previous.shape !== this.shape || !previous.tag !== !this.tag) return false;
     this.place(element); return true;
   }
   private place(element: HTMLElement) {
     element.style.left = `${this.left}px`; element.style.top = `${this.top}px`; element.style.height = `${this.height}px`;
-    element.style.borderColor = this.ink; (element.firstElementChild as HTMLElement).style.backgroundColor = this.ink;
+    element.style.borderColor = this.ink;
+    const tag = element.querySelector<HTMLElement>('.editing-caret__tag');
+    if (tag && this.tag) { tag.style.left = `${this.tag.left - this.left}px`; tag.style.top = `${this.tag.dy}px`; }
   }
 }
-interface RemoteCaret { head: number; name: string; ink: string }
+interface RemoteCaret { head: number; name: string; ink: string; shape: PeerShape }
 const remoteCaretsChanged = StateEffect.define<RemoteCaret[]>();
 const remoteCarets = StateField.define<RemoteCaret[]>({
   create: () => [],
@@ -69,10 +86,21 @@ const remoteCaretLayer = layer({
   above: true, class: 'editing-carets',
   update: (update) => update.docChanged || update.geometryChanged || update.viewportChanged
     || update.transactions.some((transaction) => transaction.effects.some((effect) => effect.is(remoteCaretsChanged))),
-  markers: (view) => view.state.field(remoteCarets).flatMap((caret) => {
-    const at = RectangleMarker.forRange(view, 'editing-caret', EditorSelection.cursor(Math.min(caret.head, view.state.doc.length)))[0];
-    return at ? [new NamedCaret(caret.name, caret.ink, at.left, at.top, at.height)] : [];
-  }),
+  markers: (view) => {
+    const at = view.state.field(remoteCarets).flatMap((caret) => {
+      const rect = RectangleMarker.forRange(view, 'editing-caret', EditorSelection.cursor(Math.min(caret.head, view.state.doc.length)))[0];
+      return rect ? [{ caret, rect }] : [];
+    }).sort((a, b) => a.rect.top - b.rect.top || a.rect.left - b.rect.left);
+    // Nothing to place, nothing to measure: typing alone (an IME preedit among it) must not pay for a peer's lane.
+    if (!at.length) return [];
+    // Level with each caret's line, but never touching the tag above it; the lane is part of the editor's own width.
+    const lane = wideEditor().matches ? view.scrollDOM.clientWidth - LANE_WIDTH + 4 : null;
+    let free = -Infinity;
+    return at.map(({ caret, rect }) => {
+      const top = Math.max(rect.top + (rect.height - TAG_HEIGHT) / 2, free); free = top + TAG_HEIGHT + TAG_GAP;
+      return new NamedCaret(caret.name, caret.ink, caret.shape, rect.left, rect.top, rect.height, lane === null ? null : { left: lane, dy: top - rect.top });
+    });
+  },
 });
 /**
  * Moving to the start or end of the text comes from the editor state, not the browser.
@@ -142,11 +170,24 @@ function marks(client: SharedWiki) {
   }
   return Decoration.set(ranges, true);
 }
+/**
+ * Each person with a caret keeps one shape while they stay (the first unused one when they arrive), so the caret, its tag
+ * and their entry in the strip show the same shape and a peer never changes shape because someone else joined.
+ */
+const shapesOf = new WeakMap<SharedWiki, Map<string, PeerShape>>();
+function shapes(client: SharedWiki): Map<string, PeerShape> {
+  const kept = shapesOf.get(client) ?? new Map<string, PeerShape>(); shapesOf.set(client, kept);
+  const here = [...client.peers.values()].filter((peer) => peer.cursor).map((peer) => peer.connectionId).sort();
+  for (const id of [...kept.keys()]) if (!here.includes(id)) kept.delete(id);
+  for (const id of here) if (!kept.has(id)) kept.set(id, PEER_SHAPES.find((shape) => ![...kept.values()].includes(shape)) ?? PEER_SHAPES[kept.size % PEER_SHAPES.length]!);
+  return kept;
+}
 function carets(client: SharedWiki): RemoteCaret[] {
   const result: RemoteCaret[] = [];
+  const shape = shapes(client);
   for (const peer of client.peers.values()) {
     const head = peer.cursor ? relativeIndex(client, peer.cursor.head) : null;
-    if (head !== null) result.push({ head, name: peer.actor.name, ink: COLLABORATION_INK });
+    if (head !== null) result.push({ head, name: peer.actor.name, ink: COLLABORATION_INK, shape: shape.get(peer.connectionId)! });
   }
   return result;
 }
@@ -218,10 +259,11 @@ function lineAt(text: string, index: number) {
 }
 export function WikiPresence({ client }: { client: SharedWiki }) {
   const peers = [...client.peers.values()].filter((peer) => peer.cursor);
+  const shape = shapes(client);
   return <span className="editing-people" aria-label="People editing">{peers.map((peer) => {
     const index = relativeIndex(client, peer.cursor!.head);
     const line = index === null ? null : lineAt(client.text.toString(), index);
-    return <span key={peer.connectionId}>{peer.actor.name}{line === null ? ' is editing' : ` · line ${line}`}</span>;
+    return <span key={peer.connectionId}><i className="editing-shape" data-shape={shape.get(peer.connectionId)} aria-hidden="true" />{peer.actor.name}{line === null ? ' is editing' : ` · line ${line}`}</span>;
   })}</span>;
 }
 

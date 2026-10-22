@@ -141,10 +141,21 @@ obscured map thoughts and Wiki prose. Keep full names in the existing People
 strips (with the current Wiki line), the actual cursor/caret and their accessible
 identity. A map cursor may show its nearby name only when its bounded label box
 does not overlap any current thought; otherwise its name stays in the People
-strip. Wiki caret names stay in that strip rather than floating over editor
-text. No extra colour system, geometry polling, inline editor widget or new
-interaction is introduced. Verify the actual renders and existing selection/
-cursor journeys at the composed candidate.
+strip. A Wiki caret's name never floats over editor text, and it is not left
+to the strip alone either (independent review of PR #613, 2026-10-22: with the
+name hidden, two people in one paragraph were indistinguishable and the strip's
+line number is the same for both). On a wide editor (768 px and up) the editor
+reserves a lane to the right of the lines, and each caret's name tag sits in it
+level with the caret's row, stacked below a tag that would touch it. On a narrow
+editor there is no lane, so the text keeps its full width and the strip names
+the person. Colour never identifies anyone; a small shape (circle, square,
+diamond, triangle), kept for as long as the person stays, tops their caret,
+leads their tag and leads their entry in the strip, so the three match even
+when two carets share a row. A selection is identified by the tag at its head.
+The tag is a layer marker of the existing caret layer: no extra colour system,
+geometry polling, inline editor widget or new interaction is introduced. Verify
+the actual renders and existing selection/cursor journeys at the composed
+candidate.
 
 Proposed bounded budgets for calibration: 64 KiB inbound update/frame, chunked initial
 sync, 2 KiB presence, at most 200 native IDs in a selection/move (existing map limit),

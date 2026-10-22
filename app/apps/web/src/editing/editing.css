@@ -2,10 +2,28 @@
 .editing-code .cm-editor { color: var(--t1); }
 .editing-code .cm-gutters { background: var(--bg); color: var(--t3); border: 0; }
 .editing-carets { pointer-events: none; }
-.editing-caret { position: absolute; border-left: 2px solid; margin-left: -1px; pointer-events: none; }
-.editing-caret > span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; pointer-events: none; }
+.editing-caret { position: absolute; border-left: 2px solid; margin-left: -1px; color: var(--t1); pointer-events: none; }
+.editing-caret > span:first-child { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; pointer-events: none; }
+/* Shape, not colour, tells people apart: the same small shape tops the caret, leads its name tag and its entry in the strip. */
+.editing-caret::before { content: ''; position: absolute; top: -4px; left: -5px; width: 8px; height: 8px; background: currentColor; }
+.editing-shape { flex: none; display: inline-block; width: 8px; height: 8px; margin-right: 5px; background: currentColor; vertical-align: baseline; }
+.editing-caret[data-shape="circle"]::before, .editing-shape[data-shape="circle"] { border-radius: 50%; }
+.editing-caret[data-shape="square"]::before, .editing-shape[data-shape="square"] { border-radius: 1px; }
+.editing-caret[data-shape="diamond"]::before, .editing-shape[data-shape="diamond"] { clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%); }
+.editing-caret[data-shape="triangle"]::before, .editing-shape[data-shape="triangle"] { clip-path: polygon(50% 0, 100% 100%, 0 100%); }
+/* The name stays out of the text: on a wide editor it has its own lane right of the lines (the scroller reserves it below). */
+.editing-caret__tag { display: none; position: absolute; box-sizing: border-box; align-items: center; height: 18px; max-width: 126px; padding: 0 8px 0 7px; border-radius: 9px;
+  background: var(--inv); color: var(--oninv); font: 11px/18px var(--font); white-space: nowrap; pointer-events: none; }
+.editing-caret__tag > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.editing-caret__tag .editing-shape { margin-right: 5px; }
+@media (min-width: 768px) {
+  .editing-caret__tag { display: flex; }
+  /* The lane is the scroller's padding, not the editable's: padding on the editable broke WebKit's native IME composition (#613). */
+  .editing-code .cm-editor .cm-scroller { padding-right: 136px; }
+}
 .editing-status { display: flex; gap: 12px; flex-wrap: wrap; font-size: 12px; color: var(--t3); }
-.editing-people { display: inline-flex; gap: 10px; flex-wrap: wrap; font-size: 12px; color: var(--t1); }
+.editing-people { display: inline-flex; gap: 10px; flex-wrap: wrap; align-items: center; font-size: 12px; color: var(--t1); }
+.editing-people > span { display: inline-flex; align-items: center; }
 .doc-notice textarea { display: block; width: 100%; min-height: 150px; max-height: 320px; font: 12px/1.6 monospace; color: var(--t1); background: var(--bg); }
 .editing-panes--write, .editing-panes--preview { grid-template-columns: minmax(0, 1fr); }
 .editing-panes--both { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
