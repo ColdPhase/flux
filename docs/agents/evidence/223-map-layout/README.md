@@ -7,7 +7,7 @@ The owner and project/task names are synthetic test fixtures.
 The baseline at main `085214c6c58e265d1d19b2c56a12368a370ed24f`
 reproduces the reported wrapped state header and open task Details at 1440×900.
 The new full-hint viewport assertion fails: viewport ratio **0.2123**.
-[Baseline](baseline-task-details-1440-light.png).
+[Baseline](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/agents/evidence/223-map-layout/baseline-task-details-1440-light.png).
 
 The map's canvas now fills the actual height left by the shell, around its
 header, tools, private draft and complete wrapped hint. At very short heights,
@@ -16,10 +16,10 @@ List and sketch-index scrolling retain their existing layout.
 
 Corrected rendered states:
 
-- [Task Details, 1440×900](task-details-1440-light.png).
-- [Phone, 320×740](phone-320-light.png).
-- [Phone, 390×844](phone-390-light.png).
-- [Private unsent thought, 1440×900](private-draft-1440-light.png).
+- [Task Details, 1440×900](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/agents/evidence/223-map-layout/task-details-1440-light.png).
+- [Phone, 320×740](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/agents/evidence/223-map-layout/phone-320-light.png).
+- [Phone, 390×844](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/agents/evidence/223-map-layout/phone-390-light.png).
+- [Private unsent thought, 1440×900](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/agents/evidence/223-map-layout/private-draft-1440-light.png).
 
 `test_map_layout.MapLayoutJourney` passes **4/4** against the corrected source:
 wrapped header/task Details; 1440×720, touch 820×1180, 320×740 and 390×844;

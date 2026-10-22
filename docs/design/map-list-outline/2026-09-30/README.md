@@ -86,16 +86,16 @@ enlarge these tokens.
 
 | View | Light | Dark |
 | --- | --- | --- |
-| Mint 1440×900 | [Image](map-outline-light-mint-desktop-1440.png) | [Image](map-outline-dark-mint-desktop-1440.png) |
-| Iris 1440×900 | [Image](map-outline-light-iris-desktop-1440.png) | [Image](map-outline-dark-iris-desktop-1440.png) |
-| Sky 1440×900 | [Image](map-outline-light-sky-desktop-1440.png) | [Image](map-outline-dark-sky-desktop-1440.png) |
-| Mint 1440×900 | [Image](map-outline-light-desktop-1440.png) | [Image](map-outline-dark-desktop-1440.png) |
-| Mint 1280×800 | [Image](map-outline-light-desktop-1280.png) | [Image](map-outline-dark-desktop-1280.png) |
-| Mint tablet 820×1180 | [Image](map-outline-light-tablet-820.png) | [Image](map-outline-dark-tablet-820.png) |
-| Mint phone 390×844 | [Image](map-outline-light-phone-390.png) | [Image](map-outline-dark-phone-390.png) |
-| Mint phone with enlarged text | [Image](map-outline-light-phone-enlarged.png) | [Image](map-outline-dark-phone-enlarged.png) |
+| Mint 1440×900 | [Image](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/design/map-list-outline/2026-09-30/map-outline-light-mint-desktop-1440.png) | [Image](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/design/map-list-outline/2026-09-30/map-outline-dark-mint-desktop-1440.png) |
+| Iris 1440×900 | [Image](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/design/map-list-outline/2026-09-30/map-outline-light-iris-desktop-1440.png) | [Image](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/design/map-list-outline/2026-09-30/map-outline-dark-iris-desktop-1440.png) |
+| Sky 1440×900 | [Image](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/design/map-list-outline/2026-09-30/map-outline-light-sky-desktop-1440.png) | [Image](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/design/map-list-outline/2026-09-30/map-outline-dark-sky-desktop-1440.png) |
+| Mint 1440×900 | [Image](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/design/map-list-outline/2026-09-30/map-outline-light-desktop-1440.png) | [Image](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/design/map-list-outline/2026-09-30/map-outline-dark-desktop-1440.png) |
+| Mint 1280×800 | [Image](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/design/map-list-outline/2026-09-30/map-outline-light-desktop-1280.png) | [Image](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/design/map-list-outline/2026-09-30/map-outline-dark-desktop-1280.png) |
+| Mint tablet 820×1180 | [Image](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/design/map-list-outline/2026-09-30/map-outline-light-tablet-820.png) | [Image](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/design/map-list-outline/2026-09-30/map-outline-dark-tablet-820.png) |
+| Mint phone 390×844 | [Image](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/design/map-list-outline/2026-09-30/map-outline-light-phone-390.png) | [Image](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/design/map-list-outline/2026-09-30/map-outline-dark-phone-390.png) |
+| Mint phone with enlarged text | [Image](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/design/map-list-outline/2026-09-30/map-outline-light-phone-enlarged.png) | [Image](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/design/map-list-outline/2026-09-30/map-outline-dark-phone-enlarged.png) |
 
-[Phone after following a relation, with the touch Back control visible](map-outline-phone-related-follow-back.png).
+[Phone after following a relation, with the touch Back control visible](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/design/map-list-outline/2026-09-30/map-outline-phone-related-follow-back.png).
 
 ## Explicit limits
 

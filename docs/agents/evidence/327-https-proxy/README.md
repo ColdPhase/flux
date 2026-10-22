@@ -24,7 +24,7 @@ file or launcher. It does not certify a complete release or the final design.
 | Uncaught browser errors | None in the accepted run |
 | Own resources cleaned up | [Cleanup](cleanup.txt.gz); empty [container](cleanup-containers.txt), [volume](cleanup-volumes.txt), [tagged image](cleanup-images.txt) inventories |
 
-Actual screenshots: [sender](sender.png), [receiver](receiver.png). They corroborate the
+Actual screenshots: [sender](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/agents/evidence/327-https-proxy/sender.png), [receiver](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/agents/evidence/327-https-proxy/receiver.png). They corroborate the
 browser observations; the screenshot alone is not the behavior or stream proof.
 The current production thread refreshes its data every15seconds. The accepted probe
 allowed40seconds for visible delivery, without forcing refresh, navigation or a document

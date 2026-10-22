@@ -47,7 +47,7 @@ remain open.
 
 ## Earlier collapsed desktop evidence
 
-The [1440×900 screenshot](project-tasks-1440.png) shows a restricted sensor
+The [1440×900 screenshot](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/design/proactive-comparison/project-tasks-1440.png) shows a restricted sensor
 project's Tasks surface at 100% zoom with one human work item, two negative
 low-light results, two collapsed, separately sourced agent suggestions and the
 ordinary work/result lists. It was rendered from persisted Docker seed data

@@ -21,7 +21,7 @@ bounds fail. Opening native Details preserves the draft, but following its nativ
 message source and returning loses it (length 0). The completed phone CPU-emulation p95 values are navigation 587.8ms, input
 47.7ms, view 176.3ms and scroll 38.4ms; it has the same fetch/render/draft failures.
 Both runs retain all 30/200/60s requirements and native work remains unchanged.
-See the [complete actual evidence](../../agents/evidence/155-native-work-baseline/README.md);
+See the [complete actual evidence](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/agents/evidence/155-native-work-baseline/README.md);
 none of these observations are whole-task acceptance.
 
 The parent project loader and state line assume complete ProjectWork arrays.
