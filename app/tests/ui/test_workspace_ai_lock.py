@@ -114,7 +114,9 @@ class WorkspaceAiLock(unittest.TestCase):
     # ---------------------------------------------------------------- helpers
 
     def context(self, who: str, *, phone: bool = False) -> BrowserContext:
-        options: dict = {"base_url": ORIGIN, "color_scheme": "light", "locale": "en-GB", "timezone_id": "Europe/Warsaw", "storage_state": self.states[who]}
+        options: dict = {"base_url": ORIGIN, "color_scheme": "light", "locale": "en-GB", "timezone_id": "Europe/Warsaw", "storage_state": self.states[who],
+                         # A service worker's own requests are not seen by page.route in every engine: the stubs below need to see them.
+                         "service_workers": "block"}
         options.update(viewport=PHONE, device_scale_factor=2, is_mobile=True, has_touch=True) if phone else options.update(viewport=DESKTOP, device_scale_factor=1)
         context = self.browser.new_context(**options)
         self.addCleanup(context.close)
@@ -145,6 +147,7 @@ class WorkspaceAiLock(unittest.TestCase):
 
         def status(route: Route) -> None:
             if route.request.method == "GET":
+                page.stubbed = getattr(page, "stubbed", 0) + 1  # type: ignore[attr-defined]
                 route.fulfill(status=200, content_type="application/json", body=json.dumps(stub))
             else:
                 route.continue_()
@@ -267,7 +270,10 @@ class WorkspaceAiLock(unittest.TestCase):
                     self.assertIn("Hand off to an agent", self.message_menu_items(page, phone, A_ROOT if key == "a" else B_ROOT))
                     self.open_jump(page, phone)
                     page.get_by_role("combobox", name="Jump to").fill("ask")
-                    expect(page.get_by_role("option", name=re.compile("Ask my assistant"))).to_be_visible()
+                    try:
+                        expect(page.get_by_role("option", name=re.compile("Ask my assistant"))).to_be_visible()
+                    except AssertionError:
+                        raise AssertionError(f"stub hit {getattr(page, 'stubbed', 0)} times; list: {page.get_by_role('listbox').all_inner_texts()}; markers {self.markers(page)}") from None
                     self.assertGreater(self.markers(page), 0, f"{key}: AI surfaces are marked while AI is on")
                     self.assertEqual(page.refused, [])
 
@@ -379,7 +385,8 @@ class WorkspaceAiLock(unittest.TestCase):
         self.assertEqual(self.ai_state(page)["state"], "allowed")
 
     def stale(self, route: Route) -> None:
-        route.continue_(headers={**route.request.headers, "if-match": '"999"'})
+        """The request goes out with an old version (fetched here, so every engine sends the changed header)."""
+        route.fulfill(response=route.fetch(headers={**route.request.headers, "if-match": '"999"'}))
 
     # ---------------------------------------------------------------- AC-4: while AI is off in A
 
