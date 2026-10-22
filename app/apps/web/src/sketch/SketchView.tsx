@@ -504,15 +504,21 @@ function SketchEditor({ sketchId, projectId, dmId, back = '/map', doc }: ViewPro
     const desiredText = new Map((draft.lines ?? [draft]).map((row) => [row.id, row.text.trim()]));
     const editKeys = new Map((draft.lines ?? [draft]).map((row) => [row.id, row.editKey ?? row.key]));
     const retry = new Set((draft.lines ?? [draft]).filter((row) => !!row.attempt).map((row) => row.id));
-    const saved = await doc.saveThoughts(items, { existingOnly, expectedText, desiredText, editKeys, retry, onAttempt: (item) => {
-      const current = capture.peek();
-      if (!current) throw new DraftSaveNotSentError();
-      const row = current.lines?.find((line) => line.id === item.thought.id) ?? current;
-      const attempt = { key: item.key, parentId: item.parent?.id ?? null, linkId: item.parent?.linkId ?? row.linkId, thought: item.thought };
-      if (!capture.prepareAttempt(attempt)) throw new DraftSaveNotSentError();
-    } });
-    setSavingDraft(false);
-    draftSaveInFlight.current = false;
+    // Whatever happens, even a save that throws, the draft stops saving and its text stays for a retry.
+    let saved: string[] = [];
+    try {
+      saved = await doc.saveThoughts(items, { existingOnly, expectedText, desiredText, editKeys, retry, onAttempt: (item) => {
+        const current = capture.peek();
+        if (!current) throw new DraftSaveNotSentError();
+        const row = current.lines?.find((line) => line.id === item.thought.id) ?? current;
+        const attempt = { key: item.key, parentId: item.parent?.id ?? null, linkId: item.parent?.linkId ?? row.linkId, thought: item.thought };
+        if (!capture.prepareAttempt(attempt)) throw new DraftSaveNotSentError();
+      } });
+    } catch { saved = []; }
+    finally {
+      setSavingDraft(false);
+      draftSaveInFlight.current = false;
+    }
     if (saved.length < items.length) {
       // Confirmed thoughts are shared now; only the rest stay in the draft, with their IDs and request keys.
       const retained = capture.peek() ?? draft;
