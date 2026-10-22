@@ -1,11 +1,11 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type RefObject } from 'react';
-import { Link } from 'react-router';
 import type { ObjectLink, Project, Sketch, Thought } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { getSketch } from '../api/sketches';
 import { listProjectSketches } from '../project/data';
 import { Button, Icon } from '../ui';
 import { linkObjects } from './api';
+import { RefLink } from '../place/origin';
 
 // "Linked thoughts" in task Details (#289, #44 scenario 2): a task made first in Tasks is connected to a map
 // thought from here. The map's task count and its chooser read the same links, so they show the new task after
@@ -123,7 +123,7 @@ export function LinkedThoughts({ links }: { links: ThoughtLinks }) {
         <ul className="wd-links">
           {listed.map((entry) => {
             const body = <><span>{entry.toTitle || 'Untitled thought'}</span><small>On the map</small><Icon name="chevron-right" size={14} /></>;
-            return <li key={entry.id}>{entry.sketchId ? <Link className="wd-link" to={`/projects/${project.id}/map/${entry.sketchId}#thought-${entry.to.id}`}>{body}</Link> : <span className="wd-link">{body}</span>}</li>;
+            return <li key={entry.id}>{entry.sketchId ? <RefLink className="wd-link" to={`/projects/${project.id}/map/${entry.sketchId}#thought-${entry.to.id}`}>{body}</RefLink> : <span className="wd-link">{body}</span>}</li>;
           })}
         </ul>
       ) : null}

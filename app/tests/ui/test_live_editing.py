@@ -748,6 +748,27 @@ class LiveEditingJourney(LiveFixture):
         self.assertLess(observed, 8, f"{observed} element observations for {previews} previews of a 40-thought map")
         self.assertLessEqual(rendered, 3 * previews, f"{rendered} thought renders for {previews} previews of a 40-thought map")
 
+        # A stationary live preview still receives both people's real presence
+        # heartbeats. They must not recreate or render the moved Thought body.
+        # This pause stays inside the unchanged five-second movement lease.
+        # The first drag has already committed above; start another real preview.
+        bounds = await node.bounding_box()
+        await ada.mouse.move(bounds["x"] + 20, bounds["y"] + 20)
+        await ada.mouse.down()
+        await ada.mouse.move(bounds["x"] + 60, bounds["y"] + 40, steps=3)
+        await expect(peer).to_have_attribute("data-live-mover", "Ada North")
+        sequence = await ada.locator('.sk-canvas').get_attribute('data-live-own-sequence')
+        await expect(peer).to_have_attribute('data-live-preview-sequence', sequence)
+        await kai.wait_for_timeout(200)
+        presence_before = sum(row['direction'] == 'received' and row['header'].get('type') == 'map-presence'
+                              for row in self.frames['kai'])
+        quiet_before = await kai.evaluate("({observed: window.__observed, rendered: window.__rendered})")
+        await kai.wait_for_timeout(2100)
+        presence_after = sum(row['direction'] == 'received' and row['header'].get('type') == 'map-presence'
+                             for row in self.frames['kai'])
+        self.assertGreaterEqual(presence_after - presence_before, 2, 'Actual presence frames arrived during the stationary preview')
+        self.assertEqual(await kai.evaluate("({observed: window.__observed, rendered: window.__rendered})"), quiet_before,
+                         'Presence-only updates do not render thought bodies or reobserve nodes')
         await ada.mouse.up()
         await self.map_saved(ada)
 

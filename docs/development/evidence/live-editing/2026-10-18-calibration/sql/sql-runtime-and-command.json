@@ -1,0 +1,44 @@
+{
+  "dbVersion": {
+    "exitCode": 1,
+    "output": "",
+    "error": "Error response from daemon: No such container: flux-test-1792306930-456598-db-1"
+  },
+  "nodeVersion": {
+    "exitCode": 1,
+    "output": "",
+    "error": "Error response from daemon: No such container: flux-test-1792306930-456598-api-1"
+  },
+  "sourceSha": "a24843d7995e01e4ca62d15eb4364d3af3e12245",
+  "sourceClean": true,
+  "command": [
+    "./scripts/check_application.sh",
+    "tests/app/live-wiki-authority.test.ts",
+    "tests/app/live-wiki-reconciliation.test.ts",
+    "tests/app/live-doc-native-fence.test.ts",
+    "tests/app/editing-admission.test.ts",
+    "tests/app/editing-deferred-admission.test.ts",
+    "tests/app/editing-output.test.ts",
+    "tests/app/editing-shutdown.test.ts",
+    "tests/app/live-editing-default-off.test.ts"
+  ],
+  "ports": {
+    "FLUX_TEST_PORT": 18685,
+    "FLUX_TEST_MAILPIT_PORT": 18686
+  },
+  "hashes": {
+    "scripts/check_application.sh": "76b9168310cfe0e7a492662e5c01f183d7f6cebe466116919520035915b84fc5",
+    "docker/compose.source.yaml": "045c5da77a2cf1edc0c21cd6e5964a57106e03e4620691045aab6d988db96c6d",
+    "docker/compose.test.yaml": "26dd5c893729b89e7e4964efd9f0eae6fd8a226776053aae77ec1fdea416d260",
+    "docker/Dockerfile": "49e13f6d00cb54b2a0fd46854cdfa135cf6186c51950cafb94ad9eb0570a1e20",
+    "app/pnpm-lock.yaml": "d34264e9ac2a877f045b3c190d6be025dfc2a8b84cc67b42eeb5dd7200cb6e22",
+    "app/tests/app/live-wiki-authority.test.ts": "b9b07549e2b8365790cbc2fc0d1fce551788223b9fbe598ae8caf5809f0f9587",
+    "app/tests/app/live-wiki-reconciliation.test.ts": "16b5965e01c5a422fffa8b9331e5bf8c3a934300d5e92df04f1f4c34afa07cfc",
+    "app/tests/app/live-doc-native-fence.test.ts": "52e0b60899e942d722908d8452fc9e270ca132e7fc13ef0d30abfd2a5323028c",
+    "app/tests/app/editing-admission.test.ts": "536bc064a4b4ee2c0effcb18a613937ee93ab9b1ec8603b7d4d960b0eb2944af",
+    "app/tests/app/editing-deferred-admission.test.ts": "98deb44e13b3f239774a503e734f0b18d8bbe48308b82c4c829a2e306c7f5ac5",
+    "app/tests/app/editing-output.test.ts": "920d468d50b2ba2e3303bdde8e03982c1fe202a259201603ab47cc1addc5f3ad",
+    "app/tests/app/editing-shutdown.test.ts": "295953f2597bd997fd7d28d9d75b4d3a7325e8c151658c454cca942d5af5e770",
+    "app/tests/app/live-editing-default-off.test.ts": "7739721fba019c1842c227e2e222f8b79236e0ba2bff6e0288c312196f7056f8"
+  }
+}

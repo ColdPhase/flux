@@ -78,6 +78,8 @@ export interface OwnedPanel {
   closeLabel?: string;
   /** "‹ Task #1": a way back to where the person came from; the label is its name. */
   back?: { label: string; run: () => void };
+  /** The page a reference was followed from, for a panel that covers the header where its control sits (#592): shown only when no step in the panel leads back. */
+  origin?: { label: string; run: () => void };
   /** Esc and the close control: the view updates its address and stops registering the panel. `keepPanel`: the panel stays for what replaces it. */
   onClose: (options?: { keepPanel?: boolean }) => void;
   /** On a phone it opens at full height (a thread); the height then stays while the content changes. */

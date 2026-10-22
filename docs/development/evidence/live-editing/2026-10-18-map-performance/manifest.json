@@ -1,0 +1,75 @@
+{
+  "sourceSha": "00e383ed64346ff8bcd711459547f5f7ceb7d99f",
+  "files": [
+    {
+      "path": "latency/runtime.json",
+      "originalSha256": "01849ed1a6abdc1582fd41184f2d8db6a547e4804040e05f82056fbee4380404",
+      "retainedSha256": "01849ed1a6abdc1582fd41184f2d8db6a547e4804040e05f82056fbee4380404",
+      "originalBytes": 2013,
+      "retainedBytes": 2013
+    },
+    {
+      "path": "latency/collector-result.json",
+      "originalSha256": "f091ff427625dcad9af5c9fcca0b491218e79824496d6d1e9b7543944925c04a",
+      "retainedSha256": "f091ff427625dcad9af5c9fcca0b491218e79824496d6d1e9b7543944925c04a",
+      "originalBytes": 152,
+      "retainedBytes": 152
+    },
+    {
+      "path": "latency/queue-seal.json",
+      "originalSha256": "661a1aa330d45af4b1d78730972e6e1f23375038277777c543ddc8f1d5ae65ac",
+      "retainedSha256": "661a1aa330d45af4b1d78730972e6e1f23375038277777c543ddc8f1d5ae65ac",
+      "originalBytes": 504,
+      "retainedBytes": 504
+    },
+    {
+      "path": "latency/producer-shutdown.json",
+      "originalSha256": "b03c65a8912cd2b143cb0d9f306b249ee0a96da45acd37507caebd72d1beedb9",
+      "retainedSha256": "b03c65a8912cd2b143cb0d9f306b249ee0a96da45acd37507caebd72d1beedb9",
+      "originalBytes": 418,
+      "retainedBytes": 418
+    },
+    {
+      "path": "latency/measurement-finished.json",
+      "originalSha256": "7d5d00c5ec67dca7dc66ecd2d6444203b33f3b7c391674f13982810ac947748e",
+      "retainedSha256": "7d5d00c5ec67dca7dc66ecd2d6444203b33f3b7c391674f13982810ac947748e",
+      "originalBytes": 534,
+      "retainedBytes": 534
+    },
+    {
+      "path": "latency/summary.json.gz",
+      "originalSha256": "9d5c97768922cbea8bb50102e087991abf89ee6550679083902901cc08d30176",
+      "retainedSha256": "7d29b2c551a92165e41582f91cb046e7baa6aa53d6ca170764f3f534d6989bb1",
+      "originalBytes": 121450,
+      "retainedBytes": 19300
+    },
+    {
+      "path": "preflight.json",
+      "originalSha256": "27121ab3abc87bd48cbaa4e55a8bfbe7630ea13098a637916af33cde4032d27a",
+      "retainedSha256": "27121ab3abc87bd48cbaa4e55a8bfbe7630ea13098a637916af33cde4032d27a",
+      "originalBytes": 2654,
+      "retainedBytes": 2654
+    },
+    {
+      "path": "unit-fixed.log.gz",
+      "originalSha256": "74b20f27a9f32942cda03853317076212d4c4f802e4a81cbd45ea92de695f748",
+      "retainedSha256": "5df9cf43c42153a855fd78bd5a78df0aef32f20bbf055b6e653fda9dbfc9f44c",
+      "originalBytes": 38352,
+      "retainedBytes": 7795
+    },
+    {
+      "path": "chromium.log.gz",
+      "originalSha256": "aaa42319701c95d281b3d90ea848f2adc66eea728167bfa27c2280bb2407e8ae",
+      "retainedSha256": "2ae44e18e2b55af3cda02676c3beeb6a4b58cfb8d20a81eeb4f916cc8c49d8b7",
+      "originalBytes": 11939,
+      "retainedBytes": 2728
+    },
+    {
+      "path": "webkit.log.gz",
+      "originalSha256": "9d325fff3195a3553efa20db96181b5753fbc21adde4a30a8125041ebc323896",
+      "retainedSha256": "4c1e087f9358e452fee7726f29c3a7e0cff420c555b495adfd32b0a2af71a1ec",
+      "originalBytes": 11894,
+      "retainedBytes": 2719
+    }
+  ]
+}

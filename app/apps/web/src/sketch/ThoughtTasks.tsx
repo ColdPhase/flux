@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
-import { Link, useRevalidator } from 'react-router';
+import { useRevalidator } from 'react-router';
 import type { ThoughtTaskRow, WorkThoughtTasks } from '@flux/contracts';
 import { AgentTag, Icon, IconButton, MEDIA, StatusGlyph, duration, play, trapTab, useMediaQuery } from '../ui';
 import { useShellActions, type ThoughtTasksView } from '../app/shellContext';
@@ -8,6 +8,7 @@ import { STATUS_LABEL, taskNumber } from '../work/format';
 import { getWorkThoughtTasks, thoughtChunks } from '../work/read-api';
 import { useWorkRead } from '../work/useWorkRead';
 import { quote } from './format';
+import { RefLink } from '../place/origin';
 
 /** One thought's linked tasks: the exact count and the tasks of its bounded window. */
 export interface ThoughtTasksEntry {
@@ -92,7 +93,7 @@ function ThoughtTaskList({ thought, projectId, list, titleId, onClose, onChoose 
       <ul className="sk-tasks__list" aria-label={`Tasks linked to ${quote(thought.text)}`}>
         {tasks.map((item) => (
           <li key={item.id}>
-            <Link className="sk-task" to={taskHref(projectId, item.id)} title={`Task ${item.id}`} data-work-id={item.id} onClick={(event) => onChoose(event, item.id)}>
+            <RefLink className="sk-task" to={taskHref(projectId, item.id)} title={`Task ${item.id}`} data-work-id={item.id} onClick={(event) => onChoose(event, item.id)}>
               <StatusGlyph status={item.status} className={item.parked ? 'ui-glyph--parked' : undefined} />
               <span className="sk-task__b">
                 <span className="sk-task__t">{item.title}</span>
@@ -100,7 +101,7 @@ function ThoughtTaskList({ thought, projectId, list, titleId, onClose, onChoose 
                 <span className="sk-task__m sk-task__people">{item.owner ? <>Owner {item.owner.name}{item.owner.kind === 'agent' ? <> <AgentTag /></> : null}</> : 'No owner yet'} · added by {item.createdBy.name}{item.createdBy.kind === 'agent' ? <> <AgentTag /></> : null}</span>
               </span>
               <Icon name="chevron-right" size={14} />
-            </Link>
+            </RefLink>
           </li>
         ))}
       </ul>

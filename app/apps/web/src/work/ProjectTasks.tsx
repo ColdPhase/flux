@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
-import { Link, Navigate, useLoaderData, useLocation, useRevalidator, useSearchParams, type LoaderFunctionArgs } from 'react-router';
+import { Navigate, useLoaderData, useLocation, useRevalidator, useSearchParams, type LoaderFunctionArgs } from 'react-router';
 import type { Project, ProactiveComparisonOutcome, ProjectWorkViewQuery, WorkCounts, WorkItem, WorkObjectType, WorkRowProjection } from '@flux/contracts';
 import { Button, EmptyState, ErrorState, Icon, MEDIA, useMediaQuery, useRowMotion } from '../ui';
 import { getProject } from '../app/conversation-api';
@@ -22,6 +22,7 @@ import { ProjectProposals } from '../project/ProjectProposals';
 import { listComparisonOutcomes } from '../project/proposals';
 import { useAgentOwners } from '../agents/owners';
 import './work.css';
+import { RefLink } from '../place/origin';
 
 interface TasksData { project: Project; outcomes: ProactiveComparisonOutcome[] }
 
@@ -343,9 +344,9 @@ export function ProjectTasks() {
     if (search.get('new') !== 'task' || !writable) return;
     const next = new URLSearchParams(search);
     next.delete('new');
-    setSearch(next, { replace: true });
+    setSearch(next, { replace: true, state: location.state });
     openCreate({ kind: 'task', projectId: project.id });
-  }, [search, writable, setSearch, openCreate, project.id]);
+  }, [search, writable, setSearch, openCreate, project.id, location.state]);
 
   useEffect(() => {
     const refresh = () => { if (document.visibilityState === 'visible') revalidator.revalidate(); };
@@ -369,9 +370,9 @@ export function ProjectTasks() {
   const waiting = summaryCounts?.needs ?? 0;
   // Only people who can accept find a decision in their Inbox; others are told one waits.
   const inboxLink = !waiting ? null : writable ? (
-    <Link className="tb-also__b tb-also__b--need" to="/inbox?show=decisions">
+    <RefLink className="tb-also__b tb-also__b--need" to="/inbox?show=decisions">
       {`${waiting} ${waiting === 1 ? 'decision needs' : 'decisions need'} you in the Inbox`}
-    </Link>
+    </RefLink>
   ) : <span className="tb-also__b">{`${waiting} waiting for a decision`}</span>;
   const nothing = data !== null && cursor === null && !Object.values(data.summary.all).some(Boolean)
     && !outcomes.some((outcome) => outcome.kind === 'comparison' ? outcome.proposal.status === 'proposed' : outcome.status === 'open');
@@ -394,11 +395,11 @@ export function ProjectTasks() {
   // A task that changes state moves to another group, a new one grows in, a finished list collapses its rows (#593 AC-4).
   useRowMotion(scroller, '.ws-task[data-work-id]', (el) => el.dataset.workId, [mode, status ?? 'all', mine, cursor ?? '', phone, read.phase === 'ready' || read.phase === 'refreshing' ? 'ready' : 'loading'].join('|'));
   // The Decisions view is gone (F-026 S1): its old links open the Inbox's Decisions filter.
-  if (retired) return <Navigate to="/inbox?show=decisions" replace />;
+  if (retired) return <Navigate to="/inbox?show=decisions" replace state={location.state} />;
   return (
     <div className="tb-root">
       <Toolbar mode={mode} onMode={chooseMode} query={boardSearch} onQuery={setBoardSearch} mine={mine} onMine={(next) => setView({ mine: next })} writable={writable} onNew={startNew} />
-      <div className="pane-scroll" ref={scroller}>
+      <div className="pane-scroll" ref={scroller} data-own-place="">
       {!listing ? (
         <div className="tb" data-work-observed-at={data?.summary.observedAt}>
           {parkedCount || waiting ? <nav className="tb-also" aria-label="Also elsewhere">{inboxLink}{parkedCount ? <button type="button" className="tb-also__b" onClick={() => setView({ mode: 'list', status: 'parked' })}>{parkedCount} parked by a pivot</button> : null}</nav> : null}

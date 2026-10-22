@@ -13,6 +13,6 @@ export function RouteProgress() {
   // detail panel beside it is pushed down and back (#593 AC-2, Spokój rule 7).
   return <div className="route-progress"><div className="route-progress__bar" data-route-pending={navigation.location.pathname}>
     <span role="status" aria-live="polite"><Spinner />Opening {routeLabel(navigation.location.pathname)}…</span>
-    <Button variant="quiet" onClick={() => void navigate(`${location.pathname}${location.search}${location.hash}`, { replace: true, defaultShouldRevalidate: false })}>Cancel</Button>
+    <Button variant="quiet" onClick={() => void navigate(`${location.pathname}${location.search}${location.hash}`, { replace: true, defaultShouldRevalidate: false, state: location.state })}>Cancel</Button>
   </div></div>;
 }

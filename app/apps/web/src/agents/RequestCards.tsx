@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent } from 'react';
-import { Link } from 'react-router';
+
 import { taskCoordinationPacketPath, type TaskCoordination, type TaskCoordinationRequest, type TaskCoordinationVerdict } from '@flux/contracts';
 import { ApiError, NetworkError } from '../api/client';
 import { useStreamEvents } from '../api/stream';
@@ -8,6 +8,7 @@ import { cancelCoWorkRequest, getTaskCoordination } from './api';
 import { KIND_WORDS, splitCards, statusWords, targetWords, verdictWords } from './requestCards';
 import { firstName } from './roster';
 import './requests.css';
+import { RefLink } from '../place/origin';
 
 /**
  * A task's request cards in its agents' thread (#400 AC-4, #153): each help, review, fix or hand-off request as one card read
@@ -130,7 +131,7 @@ function Card({ workId, projectId, taskNumber, card, verdict, onChange, onReload
       <div className="rcard__actions">
         {original ? (inThread
           ? <button type="button" className="ui-link rcard__action" onClick={() => onOpenMessage(original.messageId)}>Open original message</button>
-          : <Link className="ui-link rcard__action" to={elsewhere!}>Open original message</Link>) : null}
+          : <RefLink className="ui-link rcard__action" to={elsewhere!}>Open original message</RefLink>) : null}
         <a className="ui-link rcard__action" href={taskCoordinationPacketPath(workId, card.id)}
           download={packetName} onClick={(event) => void downloadPacket(event)}>Download packet</a>
         {card.canCancel ? (confirming

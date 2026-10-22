@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
-import { Link, useRevalidator } from 'react-router';
+import { useRevalidator } from 'react-router';
 import type { ObjectLink, Project, ProjectWorkView, WorkGroup, WorkItem, WorkRelations, WorkRowProjection, WorkStatus } from '@flux/contracts';
 import { ApiError, NetworkError } from '../api/client';
 import { AgentTag, Icon, IconButton, Kreska, StatusGlyph, initials, usePop, useRowMotion, type IconName } from '../ui';
@@ -13,6 +13,7 @@ import type { ReadState } from './read-state';
 import { useWorkRead } from './useWorkRead';
 import { useAgentOwners } from '../agents/owners';
 import './board.css';
+import { RefLink } from '../place/origin';
 
 // The Tasks board (#136, UI116-4): three columns over the existing statuses, no new status and no
 // card order. A card moves by dragging with a mouse or pen, by keyboard (Space, arrows, Space) or
@@ -188,9 +189,9 @@ function Card({ item, agentOwner, from, column, meId, writable, hintId, saving, 
       </h3>
       {blocked ? <p className="tb-card__blocker">{item.blocker ? (/^(waiting|blocked)\b/i.test(item.blocker.trim()) ? item.blocker : `Waiting for ${item.blocker}`) : 'Blocked; nobody wrote down what it waits for yet.'}</p> : null}
       {from ? (
-        <Link className="tb-card__from" to={from.to} draggable={false} title={`${from.kind}: ${from.title}`}>
+        <RefLink className="tb-card__from" to={from.to} draggable={false} title={`${from.kind}: ${from.title}`}>
           <Icon name={from.icon} size={12} /><span><span className="ui-vh">{from.kind}: </span>{from.title}</span>
-        </Link>
+        </RefLink>
       ) : null}
       <div className="tb-card__foot">
         {owner ? (

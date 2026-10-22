@@ -2,7 +2,7 @@ import { useTyping } from '../typing/useTyping';
 import { TypingNotice } from '../typing/TypingNotice';
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
-import { Link, useLoaderData, useLocation, useNavigate, useRevalidator, useSearchParams, type LoaderFunctionArgs } from 'react-router';
+import { Link, Navigate, useLoaderData, useLocation, useNavigate, useRevalidator, useSearchParams, type LoaderFunctionArgs } from 'react-router';
 import type { Dm, DmMessage, DmPerson, DmTaskCopyResult } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { dmReceipts, getDm, observeDmMessages, olderDmMessages } from '../api/direct-messages';
@@ -25,6 +25,10 @@ import { DmThreadPanel } from './DmThreadPanel';
 import { groupRows } from './rows';
 import { ownRuns, useObservation, useReceipts } from '../app/receipts';
 import './dm.css';
+import { useOriginPanelBack } from '../place/origin';
+import { useReturning } from '../place/memory';
+import { useMessageReadingPosition } from '../work/readingPosition';
+import { useLeftPlace, useReturnPlace } from './returnPlace';
 
 /**
  * One direct message (#107): a private conversation with its audience always in view. Messages
@@ -45,7 +49,9 @@ export async function dmLoader({ params, request }: LoaderFunctionArgs): Promise
 export function DmConversation() {
   const dm = useLoaderData() as Dm | null;
   const { me } = useShellData();
-  if (!dm) return <DmUnavailable />;
+  // Back to a conversation that was left or closed to this person: the list of conversations, with a line saying so, not a dead end (#592).
+  const returning = useReturning();
+  if (!dm) return returning ? <Navigate to="/dm" replace state={{ note: 'That conversation is no longer available to you.' }} /> : <DmUnavailable />;
   return <DmContent key={`${me.user.id}:${dm.id}`} initial={dm} />;
 }
 
@@ -83,7 +89,10 @@ function DmContent({ initial }: { initial: Dm }) {
   const draft = composer.draft.body;
   const [gone, setGone] = useState(false);
   const [leftNotice, setLeftNotice] = useState('');
-  const feedRef = useRef<HTMLDivElement>(null);
+  const feedRef = useRef<HTMLDivElement | null>(null);
+  // The feed element as state too, so the reading-position owner starts once it is on screen.
+  const [feedNode, setFeedNode] = useState<HTMLDivElement | null>(null);
+  const attachFeed = useCallback((element: HTMLDivElement | null) => { feedRef.current = element; setFeedNode(element); }, []);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const messagesRef = useRef(messages);
   // A message confirmed here shows at once, in its queued place, until the DM's own read includes it.
@@ -174,6 +183,20 @@ function DmContent({ initial }: { initial: Dm }) {
   const hash = location.hash;
   const arrived = hash.startsWith('#message-') ? hash.slice('#message-'.length) : null;
   const arrivedLoaded = !!arrived && messages.some((message) => message.id === arrived);
+  // Coming back (#592): the message that was in view returns to where it was, read back to when it is older than the newest window.
+  // A link that names a message wins; a reload or a first visit opens on the latest as always.
+  const wanted = useLeftPlace('dm-stream', { skip: !!arrived });
+  const seekPlace = useCallback(async (elementId: string) => {
+    const target = /^message-(.+)$/.exec(elementId)?.[1];
+    if (!target || !olderCursor) return false;
+    const { pages, cursor, found } = await pageBackTo(target, olderCursor, (before, limit) => olderDmMessages(initial.id, before, undefined, limit));
+    for (const page of pages) learn(page.people);
+    setMessages((current) => pages.reduce((all, page) => merge(all, page.messages), current));
+    setOlderCursor(cursor);
+    return found;
+  }, [initial.id, learn, olderCursor]);
+  const returned = useReturnPlace({ wanted, loaded: true, have: (id) => messages.some((message) => `message-${message.id}` === id), hasOlder: olderCursor !== null, seek: seekPlace });
+  useMessageReadingPosition(feedRef, returned.pending ? null : feedNode, !returned.pending, '', returned.restore, 'dm-stream');
   // Older than the loaded window: page back until the message is loaded, then show it.
   useEffect(() => {
     if (!arrived || arrivedLoaded || !olderCursor) return;
@@ -191,8 +214,10 @@ function DmContent({ initial }: { initial: Dm }) {
   useLayoutEffect(() => {
     const anchor = arrived ? document.getElementById(`message-${arrived}`) : null;
     if (anchor) { anchor.scrollIntoView({ block: 'start' }); anchor.focus({ preventScroll: true }); return; }
+    // A return positions itself, once its message is loaded; everything else opens on the latest.
+    if (returned.pending || returned.restore) return;
     const el = feedRef.current; if (el) el.scrollTop = el.scrollHeight;
-  }, [arrived, arrivedLoaded]);
+  }, [arrived, arrivedLoaded, returned.pending, returned.restore]);
 
   const autosize = () => {
     const el = textareaRef.current;
@@ -307,7 +332,7 @@ function DmContent({ initial }: { initial: Dm }) {
   const rows = groupRows(lines);
   // #534: what this person observed, and who observed every message of their own whole runs.
   const feedBox = feedRef;
-  useObservation({ scope: dm.id, observe: (ids) => observeDmMessages(dm.id, ids), enabled: !gone && !selecting, feed: feedBox,
+  useObservation({ scope: dm.id, observe: (ids) => observeDmMessages(dm.id, ids), enabled: !gone && !selecting && !returned.pending, feed: feedBox,
     ids: shown.filter((m) => m.authorId !== me.user.id).map((m) => m.id), depend: shown.length });
   const runs = ownRuns(lines.map((line) => ({ id: line.message?.id ?? null, authorId: line.authorId, createdAt: line.at })), me.user.id, olderCursor !== null);
   const seen = useReceipts({ scope: dm.id, fetchReceipts: (list, signal) => dmReceipts(dm.id, list, signal), runs, tick: receiptTick + refreshTick });
@@ -318,13 +343,14 @@ function DmContent({ initial }: { initial: Dm }) {
     const next = new URLSearchParams(params);
     next.set('thread', rootId);
     // Opening another thread replaces the open one, so closing is still one step back to the conversation.
-    setParams(next, { replace: !!threadId, state: { dmThread: true } });
+    // The entry's state, with the origin the page was followed from, stays when a thread replaces a thread (#592).
+    setParams(next, { replace: !!threadId, state: threadId ? { ...(location.state as object | null), dmThread: true } : { dmThread: true } });
   }
   function closeThread() {
     const target = opener.current ?? threadId;
     opener.current = null;
     if ((location.state as { dmThread?: boolean } | null)?.dmThread) navigate(-1);
-    else { const next = new URLSearchParams(params); next.delete('thread'); setParams(next, { replace: true }); }
+    else { const next = new URLSearchParams(params); next.delete('thread'); setParams(next, { replace: true, state: location.state }); }
     setReplyFocus(false);
     // The message that opened it takes focus back, with the reading position where it was.
     requestAnimationFrame(() => requestAnimationFrame(() => document.getElementById(`message-${target}`)?.focus({ preventScroll: true })));
@@ -359,7 +385,8 @@ function DmContent({ initial }: { initial: Dm }) {
     : '';
   const typing = useTyping(me.user.id, !gone && !selecting ? { kind: 'dm', id: dm.id } : null, !recipientGone);
   const threadOpen = !!threadId && !!messages.length && !gone;
-  const slot = useOwnedPanel(threadOpen ? { key: `dm-thread:${threadId}`, chip: 'Thread', label: 'Replies', startFull: true, onClose: closeThread } : null);
+  const originBack = useOriginPanelBack();
+  const slot = useOwnedPanel(threadOpen ? { key: `dm-thread:${threadId}`, chip: 'Thread', label: 'Replies', startFull: true, ...(originBack ? { origin: originBack } : {}), onClose: closeThread } : null);
   if (gone) return <DmUnavailable />;
   const canSend = composer.canSend && !recipientGone;
   // On the phone the header keeps only Back, the title, Together and Search (Spokój #507): choosing starts by the composer.
@@ -374,7 +401,7 @@ function DmContent({ initial }: { initial: Dm }) {
     <div ref={root} className={`dm${selecting ? ' dm--selecting' : ''}`} data-dm-id={dm.id}
       onKeyDown={(event) => { if (selecting && event.key === 'Escape') { event.preventDefault(); toggleSelecting(false); } }}>
       {selectButton}
-      <div className="dm__feed" ref={feedRef}>
+      <div className={`dm__feed${returned.pending ? ' is-returning' : ''}`} ref={attachFeed}>
         <div className="dm__in">
           {olderCursor ? null : (
             // The start of the conversation: who is in it. The top bar keeps the name and audience in view.

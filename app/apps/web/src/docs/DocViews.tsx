@@ -18,6 +18,7 @@ import { useWiki } from './wiki-context';
 import './docs.css';
 import { editingCapability, useEditingCapability } from '../editing/capability';
 import type { LiveReadingProps, LiveReadingState } from '../editing/LiveReading';
+import { RefLink } from '../place/origin';
 
 // The current page's shared working copy (#228) loads only with a configured live capability (#239
 // review), so an ordinary wiki never evaluates its CRDT bundle. If that bundle cannot load, the page
@@ -186,7 +187,7 @@ function LinkList({ title, links, end, projectId, empty }: { title: string; link
             const body = <><span className="doc-links__k">{kindLabel(ref.type)}</span><span className="doc-links__t">{label}</span><Icon name="chevron-right" size={14} /></>;
             return (
               <li key={link.id}>
-                {path ? <Link className="doc-links__a" to={path}>{body}</Link>
+                {path ? <RefLink className="doc-links__a" to={path}>{body}</RefLink>
                   : ref.type === 'work' || ref.type === 'decision' || ref.type === 'result'
                     ? <button type="button" className="doc-links__a" onClick={() => openDetails({ kind: ref.type as 'work' | 'decision' | 'result', id: ref.id })}>{body}</button>
                     : <span className="doc-links__a doc-links__a--static">{body}</span>}

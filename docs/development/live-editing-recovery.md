@@ -2,6 +2,8 @@
 
 These are prepared Gate3 fixtures for #228/#239. They do not enable production or
 establish any of the four gates without candidate-pinned actual execution.
+The [2026-10-18 execution report](evidence/live-editing/2026-10-18-calibration/README.md)
+records the actual continuous restart pass and the still-failing parent latency gate.
 
 `tests/app/live-wiki-reconciliation.test.ts` uses real PostgreSQL and the production
 wiki authority/codec/storage. Its explicitly labelled public query interposition
@@ -31,6 +33,28 @@ original server-journal ownUndo/retry and an old native HTTP retry create no
 resurrection or duplicate sequence. The script's read-only SQL observes durability;
 all application writes use actual public routes/sockets.
 
+The separate `prepare|verify` processes destroy the original Y.Doc. Their receipt
+replay returns before the replica ownership lookup and cannot prove that the
+original enrollment survived. For that requirement, run the continuous
+`exercise` mode through the isolated runner from a clean checkout:
+
+```sh
+FLUX_LIVE_EDITING_PORT=18691 FLUX_LIVE_EDITING_MAILPIT_PORT=18692 \
+  ./scripts/check_live_editing_restart.sh /absolute/fresh/evidence/directory
+```
+
+The same public Y.Doc stays alive while the host recreates both API processes.
+After observing both changed container IDs at the original image, the client
+checks that enrollment without the original instance ID still collides, renews
+with that original instance ID, and sends a newly generated UUID and new text
+from its unchanged generated replica ID. Read-only SQL first proves that UUID
+has no stored receipt; the public socket must then acknowledge a changed update
+at sequence2, and the fetched body and two durable journal rows must agree.
+This exercises first admission after restart as well as immutable receipt replay.
+The subsequent explicit Save/history and native map undo/retry checks still run.
+The runner retains sanitized before/after inventories, source hashes, client exit
+state and logs, then removes its containers, volumes and private cookie file.
+
 Use source- and actual-process-pinned inventories with the same shape described in
 [live-editing-two-api.md](live-editing-two-api.md). Select
 `FLUX_LIVE_RESTART_TEST=1`, exact `FLUX_LIVE_SOURCE_SHA`, the actual canonical
@@ -41,6 +65,8 @@ Use source- and actual-process-pinned inventories with the same shape described 
 has a finite30s deadline and each delivery/durable observation5s; verification
 must happen within120s of prepare. Root owns container recreation and exact-project
 cleanup; the test has no Docker socket or container-control capability.
+Continuous exercise instead has a finite90s total deadline, including a bounded
+60s wait for the host's atomically published `FLUX_LIVE_RESTART_AFTER_INVENTORY`.
 
 Run restart **before** the fresh latency API inventory/collector. Before/after
 restart records are functional-test evidence only, not the measurement's expected

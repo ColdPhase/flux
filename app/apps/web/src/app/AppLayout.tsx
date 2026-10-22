@@ -14,6 +14,9 @@ import { useInboxDot } from '../notifications/dot';
 import { placeOf } from './place';
 import { placeOfPath, rememberPlace } from '../search/recent';
 import { ShellContext, isOwned, type CreateRequest, type DetailsView, type OwnedPanel } from './shellContext';
+import { arrivalEntry, entryOf, onFlush, recall, remember as keepPlace, setCurrentEntry } from '../place/memory';
+import { RouteOriginBack, useGoToOrigin, useRouteOrigin } from '../place/origin';
+import { restoreTop, usePaneMemory } from '../place/scroll';
 import { Sidebar } from './Sidebar';
 import { startCapture, viewIndex } from './views';
 import { PROJECT_VIEWS, type ProjectViewId } from '@flux/contracts';
@@ -68,6 +71,35 @@ const REPLACING = new Set(['owned', 'thought-tasks', 'work', 'decision', 'result
 const replaces = (view: DetailsView) => typeof view === 'object' && REPLACING.has(view.kind);
 const KIND_LABEL: Record<string, string> = { work: 'Task', decision: 'Decision', result: 'Result', 'thought-tasks': 'Tasks' };
 
+const NO_ORIGIN = { key: '', path: '/', label: '' };
+/** What a history entry keeps of its panel (#592): an object the panel shows over the page and the way back it left. A thread or an agent a view owns is kept by its own route. */
+interface DetailsPlace { open: boolean; view: DetailsView; trail: { label: string; view: DetailsView }[]; scroll: number; owned: boolean }
+const panelScrollNow = () => document.querySelector<HTMLElement>('#details .ui-panel__body')?.scrollTop ?? 0;
+/**
+ * What is kept of a panel view (#592): ids only. A message's text, a thought's text or the fields of a form (Propose a decision,
+ * Attach a result, Add to docs, Make it a project) are never written to storage; a view that is not kept shows as a closed panel.
+ */
+const KEPT_VIEWS = new Set(['work', 'decision', 'result', 'overview', 'recap', 'people', 'owned']);
+const persistable = (view: DetailsView): DetailsView | null => {
+  if (view === 'place' || view === 'connect-ai') return view;
+  if (typeof view !== 'object' || !KEPT_VIEWS.has(view.kind)) return null;
+  return view.kind === 'overview' ? { kind: 'overview', ...(view.messageId ? { messageId: view.messageId } : {}), ...(view.focus ? { focus: view.focus } : {}) } : view;
+};
+const placeOfDetails = (open: boolean, view: DetailsView, trail: { label: string; view: DetailsView }[]): DetailsPlace => {
+  const shown = persistable(view);
+  const owned = isOwned(view) || trail.some((entry) => isOwned(entry.view));
+  if (!shown) return { open: false, view: 'place', trail: [], scroll: 0, owned };
+  return { open, view: shown, scroll: panelScrollNow(), owned,
+    trail: trail.flatMap((entry) => { const kept = persistable(entry.view); return kept ? [{ label: entry.label, view: kept }] : []; }) };
+};
+const isPanelView = (value: unknown): value is DetailsView => value === 'place' || value === 'connect-ai' || (!!value && typeof value === 'object' && typeof (value as { kind?: unknown }).kind === 'string');
+function isDetailsPlace(value: unknown): value is DetailsPlace {
+  if (!value || typeof value !== 'object') return false;
+  const kept = value as Partial<DetailsPlace>;
+  return typeof kept.open === 'boolean' && typeof kept.owned === 'boolean' && isPanelView(kept.view) && Number.isFinite(kept.scroll)
+    && Array.isArray(kept.trail) && kept.trail.every((entry) => !!entry && typeof entry.label === 'string' && isPanelView(entry.view));
+}
+
 function isTyping(target: EventTarget | null) {
   const el = target as HTMLElement | null;
   return !!el && (el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName));
@@ -88,6 +120,11 @@ export function AppLayout() {
 function AppLayoutContent() {
   const { me, workspace, projects, directMessages } = useShellData();
   const location = useLocation();
+  const navType = useNavigationType();
+  // The entry on show, for everything that keeps or finds a place (#592). Set while rendering, so effects of this
+  // render and its children already see their own entry.
+  setCurrentEntry(entryOf(location));
+  const routeOrigin = useRouteOrigin();
   const backgroundSettings = location.pathname === '/settings/background-compute';
   const aiConnections = location.pathname === '/settings/ai-connections';
   // A page inside Settings (#266 PF-5): on the phone its header leads back instead of opening the drawer.
@@ -101,6 +138,9 @@ function AppLayoutContent() {
   const [navOpen, setNavOpen] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [detailsView, setDetailsView] = useState<DetailsView>('place');
+  // The panel opens at the height it was left at, and its body at the place it was left at, when its entry is returned to (#592).
+  const [sheetStart, setSheetStart] = useState<boolean | null>(null);
+  const [panelScrollTo, setPanelScrollTo] = useState<{ top: number } | null>(null);
   const [detailsAccount, setDetailsAccount] = useState(me.user.id);
   if (detailsAccount !== me.user.id) { setDetailsAccount(me.user.id); setDetailsView('place'); setDetailsOpen(false); }
   const [jumpOpen, setJumpOpen] = useState(false);
@@ -262,6 +302,38 @@ function AppLayoutContent() {
     const keep = (location.state as { keepPanel?: boolean } | null)?.keepPanel === true;
     if (((panelMode !== 'docked' && !keep) || backgroundSettings || aiConnections) && detailsOpen) setDetailsOpen(false);
   }
+  // Back, Forward or the way back to an entry restores the object its panel showed, the way back it left, whether it was open
+  // and how far it was scrolled (#592). A thread or an agent a view owns is kept by its own route, so it is not restored here.
+  const [shownKey, setShownKey] = useState(location.key);
+  if (shownKey !== location.key) {
+    setShownKey(location.key);
+    const arrival = arrivalEntry(location, navType);
+    const kept = arrival ? recall<unknown>('details', arrival) : undefined;
+    if (arrival && isDetailsPlace(kept) && !kept.owned) {
+      setDetailsView(kept.view); setTrail(kept.trail); setDetailsOpen(kept.open);
+      if (kept.open && kept.scroll > 0) setPanelScrollTo({ top: kept.scroll });
+    }
+    if (arrival) { const height = recall<unknown>('sheet', arrival); setSheetStart(typeof height === 'boolean' ? height : null); }
+  }
+  const trailNow = useRef(trail);
+  useEffect(() => { trailNow.current = trail; });
+  useEffect(() => {
+    keepPlace('details', placeOfDetails(detailsOpen, detailsView, trail));
+  }, [location.key, detailsOpen, detailsView, trail]);
+  // The panel's own reading position is kept as it scrolls, and put back with the object it belongs to.
+  useEffect(() => {
+    const body = () => document.querySelector<HTMLElement>('#details .ui-panel__body');
+    const write = () => keepPlace('details', placeOfDetails(now.current.detailsOpen, now.current.detailsView, trailNow.current));
+    const onScroll = (event: Event) => { if (event.target === body()) write(); };
+    document.addEventListener('scroll', onScroll, { capture: true, passive: true });
+    const unflush = onFlush(write);
+    return () => { document.removeEventListener('scroll', onScroll, true); unflush(); };
+  }, []);
+  useLayoutEffect(() => {
+    if (!panelScrollTo) return;
+    return restoreTop(() => document.querySelector<HTMLElement>('#details .ui-panel__body'), panelScrollTo.top);
+  }, [panelScrollTo]);
+  usePaneMemory(paneRef, location, navType);
   // `?open=work:<id>` (a notification's link, #116, a search result, #114, or a doc reference, #112)
   // opens that object in Details on its project; `?open=people` (a new project, #188) opens its
   // "Who can see this". Each address is handled once, and the flag leaves it without reloading the
@@ -281,10 +353,20 @@ function AppLayoutContent() {
     openedAt.current = location.key;
     params.delete('open');
     const search = params.toString();
-    navigate({ pathname: location.pathname, search: search ? `?${search}` : '', hash: location.hash }, { replace: true, defaultShouldRevalidate: false });
+    // The entry keeps its state, so the origin it was followed from survives the flag leaving the address (#592).
+    navigate({ pathname: location.pathname, search: search ? `?${search}` : '', hash: location.hash }, { replace: true, defaultShouldRevalidate: false, state: location.state });
     shell.openDetails(match ? { kind: match[1]!.toLowerCase() as 'work' | 'decision' | 'result', id: match[2]!.toLowerCase() }
       : propose ? { kind: 'propose-decision', projectId: propose } : { kind: 'overview', focus: 'people' });
-  }, [location.key, location.search, location.pathname, location.hash, navigate, shell, projectId]);
+  }, [location.key, location.search, location.pathname, location.hash, location.state, navigate, shell, projectId]);
+  // A return to a place that is gone lands on its nearest parent with one line saying so (#592); the line is said once.
+  const notedAt = useRef<string | null>(null);
+  useEffect(() => {
+    const state = location.state as { note?: unknown } | null;
+    if (typeof state?.note !== 'string' || notedAt.current === location.key) return;
+    notedAt.current = location.key;
+    toast({ message: state.note });
+    navigate({ pathname: location.pathname, search: location.search, hash: location.hash }, { replace: true, defaultShouldRevalidate: false, state: { ...state, note: undefined } });
+  }, [location.key, location.state, location.pathname, location.search, location.hash, navigate, toast]);
   // ⌘K / Ctrl+K opens Jump to… from anywhere, also while typing, as the sidebar hint says.
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -434,8 +516,13 @@ function AppLayoutContent() {
   const objectChip = ownedShown ? ownedShown.chip : typeof detailsView === 'object' ? KIND_LABEL[detailsView.kind] : undefined;
   // "‹ back": the owner's own way back (an agent's thread to its agent), else the step this content replaced.
   const trailTop = trail.at(-1);
+  const goToOrigin = useGoToOrigin(routeOrigin ?? NO_ORIGIN);
   const stepBack = () => {
     if (!trailTop) return;
+    // A panel kept over the page that a link inside it led to (a task's source message) steps back to the page it was followed
+    // from, where that panel returns as it was, not to the conversation that link opened: a sheet or an overlay covers the
+    // header's control, and this is the one visible back (#592).
+    if (ownedShown && routeOrigin && (location.state as { keepPanel?: boolean } | null)?.keepPanel === true) { goToOrigin(); return; }
     setTrail((list) => list.slice(0, -1));
     // A thread a view owns leaves its address first; the panel stays for what it gives way to.
     if (ownedShown) ownedShown.onClose({ keepPanel: true });
@@ -443,7 +530,8 @@ function AppLayoutContent() {
     if (typeof view === 'object' && view.kind === 'owned' && !ownedRef.current) return;
     shell.openDetails(view, { back: 'keep' });
   };
-  const back = ownedShown?.back ? { label: ownedShown.back.label, onClick: ownedShown.back.run } : trailTop ? { label: trailTop.label, onClick: stepBack } : undefined;
+  const back = ownedShown?.back ? { label: ownedShown.back.label, onClick: ownedShown.back.run } : trailTop ? { label: trailTop.label, onClick: stepBack }
+    : ownedShown?.origin ? { label: ownedShown.origin.label, onClick: ownedShown.origin.run } : undefined;
   // Esc and × close the whole panel; a thread or an agent a view owns also leaves its address.
   const closePanel = () => {
     ownedShown?.onClose();
@@ -537,6 +625,8 @@ function AppLayoutContent() {
   // title as the view menu with the view and who is here beneath it. The dock owns Search whenever
   // it is present; a conversation keeps header Search because it hides the dock.
   const goBack = (fallback: string) => { if (location.key !== 'default') void navigate(-1); else void navigate(fallback); };
+  // An opened reference leads back to where it was followed from, in the place of the generic back (#592).
+  const phoneBack = (fallback: string) => routeOrigin ? <RouteOriginBack origin={routeOrigin} className="origin-back--phone" /> : <PhoneBack onBack={() => goBack(fallback)} />;
   const searchButton = <IconButton icon="search" label="Search" size={20} className="phead__round" onClick={shell.openSearch} />;
   const detailsEntry = () => shell.openDetails('place');
   const peopleLine = (people: ProjectPerson[] | null, includeAgents = true) => {
@@ -561,17 +651,17 @@ function AppLayoutContent() {
   const phoneHeader = (
     <header className={`phead${mainPlace ? ' phead--large' : ''}`}>
       {backOnly ? (
-        <><PhoneBack onBack={() => goBack(settingsPage ? settingsParent : homePage ? '/' : '/projects')} />
+        <>{phoneBack(settingsPage ? settingsParent : homePage ? '/' : '/projects')}
           <div className="phead__id"><div className="phead__title"><h1>{location.pathname === '/projects/new' ? 'New project' : place.title}</h1></div></div></>
       ) : activeProject && projectViews ? (
-        <><PhoneBack onBack={() => goBack('/projects')} />
+        <>{phoneBack('/projects')}
           <PhoneTitleMenu title={place.title} items={projectMenu} onDetails={detailsEntry}
             goal={project?.project.goal && !project.project.goal.reachedAt ? project.project.goal.title : undefined}
             metadataSlot={onWiki || onAgents ? setMetadataSlot : undefined}
             adds={addViewItems.map((item) => ({ label: item.label, run: item.run }))}
             subtitle={onWiki ? peopleLine(project?.people ?? null) : <>{PROJECT_VIEW_NAMES[Math.max(0, viewOrder(location.pathname))]}{project?.people ? <span className="phead__people"> · {peopleLine(project.people, !onAgents)}</span> : null}</>} /></>
       ) : activeDm && dmViews ? (
-        <><PhoneBack onBack={() => goBack('/projects')} />
+        <>{phoneBack('/projects')}
           <PhoneTitleMenu title={activeDm.title} items={dmViews.map((view) => ({ id: view.id, label: view.label, to: view.to, icon: view.id === 'messages' ? 'chat' as const : 'edit' as const, current: view.id === (/\/sketches/.test(location.pathname) ? 'sketches' : 'messages') }))}
             onDetails={detailsEntry} detailsLabel="Message info"
             subtitle={`${/\/sketches/.test(location.pathname) ? 'Sketches' : 'Messages'} · ${activeDm.audience}`} /></>
@@ -581,7 +671,8 @@ function AppLayoutContent() {
           <div className="phead__title"><h1><span className="ui-vh">Home</span><span className="phead__word" aria-hidden="true">flux</span></h1></div>
         </div>
       ) : (
-        <div className="phead__id"><div className="phead__title"><h1>{place.title}</h1>{'topic' in place && place.topic ? <p className="phead__sub">{place.topic}</p> : null}</div></div>
+        <>{routeOrigin ? <RouteOriginBack origin={routeOrigin} className="origin-back--phone" /> : null}
+          <div className="phead__id"><div className="phead__title"><h1>{place.title}</h1>{'topic' in place && place.topic ? <p className="phead__sub">{place.topic}</p> : null}</div></div></>
       )}
       <div className="phead__right">
         <span className="top__actions" ref={setActionSlot} />
@@ -620,6 +711,7 @@ function AppLayoutContent() {
             <IconButton icon="menu" label="Open navigation" size={18} aria-expanded={navOpen} aria-controls={navOpen ? 'nav-drawer' : undefined}
               aria-haspopup="dialog" data-tip-align="start" onClick={() => { setDetailsOpen(false); setNavOpen(true); }} className="top__menu" />
           ) : null}
+          {routeOrigin ? <RouteOriginBack origin={routeOrigin} className="origin-back--header" /> : null}
           {tabletMenu ? (
             // A tablet's project title is the view menu, as on the phone (Spokój layout per screen).
             <PhoneTitleMenu title={place.title} items={projectMenu} onDetails={null} subtitle={viewName} />
@@ -654,7 +746,7 @@ function AppLayoutContent() {
             <Outlet />
             <DeferredLiveStage />
           </div>
-          <SidePanel open={detailsOpen} onClose={closePanel} title={recapOpen ? 'What matters' : ownedShown ? ownedShown.label : 'Details'} closeLabel={ownedShown?.closeLabel} chip={objectChip} id="details" back={back} startFull={ownedShown?.startFull}
+          <SidePanel open={detailsOpen} onClose={closePanel} title={recapOpen ? 'What matters' : ownedShown ? ownedShown.label : 'Details'} closeLabel={ownedShown?.closeLabel} chip={objectChip} id="details" back={back} startFull={sheetStart ?? ownedShown?.startFull} onHeight={(full) => keepPlace('sheet', full)}
             contentKey={ownedShown ? `owned:${ownedShown.key}` : typeof detailsView === 'object' ? JSON.stringify(detailsView) : detailsView} depth={trail.length + (ownedShown?.back ? 1 : 0)}
             context={phone && (detailsView === 'place' || typeof detailsView === 'object' && detailsView.kind === 'overview') ? <OverviewContext message={typeof detailsView === 'object' && detailsView.kind === 'overview' && !!detailsView.messageId} /> : undefined}>
             {isOwned(detailsView) ? <div className="ui-panel__slot" ref={setPanelSlot} /> : <DeferredDetails view={detailsView} workspace={workspace} placeTitle={place.title} dm={activeDm ? { id: activeDm.id, kind: activeDm.kind, title: activeDm.title, me: me.user.name, people: activeDm.people, audience: activeDm.audience } : null} onBack={() => setDetailsView('place')} onClose={() => toggleDetails(false)} />}

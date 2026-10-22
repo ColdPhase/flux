@@ -32,6 +32,8 @@ export interface SidePanelProps {
   contentKey?: string;
   /** How many steps of "‹ back" lie behind this content: a higher number than before is forward, a lower one is back. */
   depth?: number;
+  /** Told the height whenever the phone's sheet changes it, so a return to the screen can open it as it was (#592). */
+  onHeight?: (full: boolean) => void;
   children: ReactNode;
 }
 
@@ -165,7 +167,7 @@ export function SidePanel(props: SidePanelProps) {
     if (props.chip) {
       return (
         <Overlay placement="bottom" bare open={props.open} onClose={props.onClose} initialFocus={bodyRef}>
-          <DetentSheet id={props.id} role="dialog" aria-modal aria-labelledby={titleId} startFull={props.startFull} onClose={props.onClose} className="ui-panel">{content}</DetentSheet>
+          <DetentSheet id={props.id} role="dialog" aria-modal aria-labelledby={titleId} startFull={props.startFull} onHeight={props.onHeight} onClose={props.onClose} className="ui-panel">{content}</DetentSheet>
         </Overlay>
       );
     }

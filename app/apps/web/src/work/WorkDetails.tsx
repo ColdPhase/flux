@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
-import { Link, useRevalidator } from 'react-router';
+import { useRevalidator } from 'react-router';
 import type { Agent, ObjectLink, Project, WorkspaceMember, WorkStatus, WorkDetailObject, WorkDetailProjection } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { useStreamEvents } from '../api/stream';
@@ -23,6 +23,7 @@ import { LinkThoughtButton, LinkedThoughts, useThoughtLinks } from './TaskThough
 import { PropertyMenu } from './PropertyMenu';
 import { MoreMenu, type MoreItem } from '../app/HeaderParts';
 import { useComposerDraft } from '../composer/draft';
+import { RefLink } from '../place/origin';
 import { ReadyToClose, TaskPullRequests } from '../github/TaskPullRequests';
 import { DueField, StatusControl, TitleField, useStateKeys } from './TaskParts';
 
@@ -167,7 +168,7 @@ function Sources({ links, id, project, of }: { links: ObjectLink[]; id: string; 
           : link.to.type === 'material' ? `/materials/${link.to.id}/versions/${link.to.version}`
             : link.to.type === 'thought' && link.sketchId ? `/projects/${project.id}/map/${link.sketchId}#thought-${link.to.id}` : null;
         const kind = link.to.type === 'message' ? 'Message' : link.to.type === 'thought' ? 'Thought' : `Material v${link.to.type === 'material' ? link.to.version : ''}`;
-        return <li key={link.id}>{to ? <Link className="wd-link" to={to} state={link.to.type === 'message' ? { keepPanel: true, ...(of ? { sourceOf: of } : {}) } : undefined}><span><b>{kind}:</b> {link.toTitle}</span><Icon name="chevron-right" size={14} /></Link> : null}</li>;
+        return <li key={link.id}>{to ? <RefLink className="wd-link" to={to} state={link.to.type === 'message' ? { keepPanel: true, ...(of ? { sourceOf: of } : {}) } : undefined}><span><b>{kind}:</b> {link.toTitle}</span><Icon name="chevron-right" size={14} /></RefLink> : null}</li>;
       })}
     </ul>
   );
@@ -197,7 +198,7 @@ function OtherRelationships({ object, relations, project }: { object: WorkDetail
       : other.type === 'material' ? `/materials/${other.id}/versions/${other.version}`
         : other.type === 'thought' && link.sketchId ? `/projects/${project.id}/map/${link.sketchId}#thought-${other.id}`
           : other.type === 'doc' ? `/projects/${project.id}/docs/${other.id}` : other.type === 'sketch' ? `/projects/${project.id}/map/${other.id}` : null;
-    return to ? [<li key={link.id}><Link className="wd-link" to={to}>{body}</Link></li>] : [];
+    return to ? [<li key={link.id}><RefLink className="wd-link" to={to}>{body}</RefLink></li>] : [];
   });
   return items.length ? <section className="details__sec" aria-label="Other relationships"><h4>Other relationships on this page</h4><ul className="wd-links">{items}</ul></section> : null;
 }
@@ -210,7 +211,7 @@ function InDocs({ object, kind, project, relations }: { object: { id: string; ti
     <section className="details__sec" aria-labelledby={`wd-docs-${object.id}`}>
       <h4 id={`wd-docs-${object.id}`}>In docs</h4>
       {docs.length ? (
-        <ul className="wd-links">{docs.map((doc) => <li key={doc.id}><Link className="wd-link" to={`/projects/${project.id}/docs/${doc.id}`}><span>{doc.title}</span>{doc.role === 'source' ? <small>added</small> : <small>mentioned</small>}<Icon name="chevron-right" size={14} /></Link></li>)}</ul>
+        <ul className="wd-links">{docs.map((doc) => <li key={doc.id}><RefLink className="wd-link" to={`/projects/${project.id}/docs/${doc.id}`}><span>{doc.title}</span>{doc.role === 'source' ? <small>added</small> : <small>mentioned</small>}<Icon name="chevron-right" size={14} /></RefLink></li>)}</ul>
       ) : <p className="wd-muted">{emptyLinks(relations, 'Not in a doc yet.')}</p>}
       {writable && kind ? <div className="wd-actions"><Button variant="secondary" icon="doc" onClick={() => openDetails({ kind: 'add-to-doc', projectId: project.id, from: { type: kind, id: object.id, title: object.title }, inDocs: docs.filter((doc) => doc.role === 'source').map((doc) => doc.id), inDocsComplete: relations.complete })}>Add to docs</Button></div> : null}
     </section>
@@ -549,7 +550,7 @@ function CameFrom({ item, links, project, empty }: { item: OwnWork; links: Objec
     <>
       <Sources links={links} id={item.id} project={project} of={taskNumber(item)} />
       {item.planIntent ? (
-        <p className="wd-plan">Planned from <Link className="wd-inline" to={`/materials/${item.planIntent.materialId}/versions/${item.planIntent.version}`}>plan revision {item.planIntent.version}</Link>
+        <p className="wd-plan">Planned from <RefLink className="wd-inline" to={`/materials/${item.planIntent.materialId}/versions/${item.planIntent.version}`}>plan revision {item.planIntent.version}</RefLink>
           {' '}as <code>{item.planIntent.intentKey}</code>. This task stays tied to that revision.</p>
       ) : null}
       {!has && !item.planIntent ? <span className="wd-muted">{empty}</span> : null}

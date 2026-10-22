@@ -1,0 +1,18 @@
+{
+  "schema": 1,
+  "sourceSha": "b9c0d9560e52c525814c1cd1ddc876d762cbbad1",
+  "apis": [
+    {
+      "apiInstance": "api-one",
+      "apiUrl": "http://api:8080",
+      "containerId": "e2700c1cfec163efcc8ec25e472cb6eecacdb4149bf3351605a8f72bac4f7471",
+      "imageId": "sha256:2d2691b0978a18180b7569450a7635d58f3053ccb7deb43758d1cf5949ba3949"
+    },
+    {
+      "apiInstance": "api-two",
+      "apiUrl": "http://api-two:8080",
+      "containerId": "2ccf52d4c59afdf189b9a187f336ebd79643b9f929ee349b45d79c79363b7be6",
+      "imageId": "sha256:2d2691b0978a18180b7569450a7635d58f3053ccb7deb43758d1cf5949ba3949"
+    }
+  ]
+}
