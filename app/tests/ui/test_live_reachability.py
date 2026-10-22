@@ -32,7 +32,7 @@ HIT_TEST = """(el) => {
   const label = (node) => node ? `${node.tagName.toLowerCase()}.${(node.getAttribute('class') || '').split(' ').filter(Boolean).slice(0, 2).join('.')}` : null;
   return { ok: !!top && (el === top || el.contains(top)), top: label(top), centre: [Math.round(x), Math.round(y)],
     box: [Math.round(b.x), Math.round(b.y), Math.round(b.width), Math.round(b.height)], stackOrder: [
-      getComputedStyle(el.closest('.lv-stage') ?? el).zIndex, getComputedStyle(document.querySelector('.thread--sheet') ?? document.body).zIndex] };
+      getComputedStyle(el.closest('.lv-stage') ?? el).zIndex, getComputedStyle(document.querySelector('.ui-overlay') ?? document.body).zIndex] };
 }"""
 
 VIDEO_DECODED = "() => { const v = document.querySelector('video.lv-stage__video'); return !!v && v.videoWidth > 0; }"
@@ -164,13 +164,15 @@ class ReachabilityRows(LiveBase):
         expect(host_bar.get_by_role("button", name=re.compile("Stop sharing")).first).to_be_visible(timeout=30000)
 
     def test_01_phone_back_to_work_is_pointer_reachable(self) -> None:
-        # Phone (Chromium, 390 px, touch): the conversation sheet is open over the stream, and the stage
+        # Phone (Chromium, 390 px, touch): the stage
         # opened from the strip must be above it. Back to work is the way back, so it must take a click.
         host = self.start_host()
         self.share_host_screen(host)
         guest = self.guest_join("chromium", phone=True)
         bar = self.bar(guest)
-        expect(guest.locator(".thread--sheet")).to_be_visible()
+        # The thread sheet is modal now (#344): while it is open its scrim covers the strip, so the stage is
+        # opened from the strip with the thread closed, as a person does.
+        expect(guest.locator(".ui-overlay")).to_have_count(0)
         bar.get_by_role("button", name="View").click()
         stage = guest.get_by_role("region", name="Shared screens and cameras")
         expect(stage).to_be_visible()

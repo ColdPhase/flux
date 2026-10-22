@@ -292,7 +292,8 @@ class LiveJourney(LiveBase):
         nia.goto(self.task_url())
         panel = nia.locator("#details")
         expect(panel.get_by_role("heading", name=TASK)).to_be_visible()
-        expect(panel.get_by_label("What is it waiting for?")).to_have_value(BLOCKER)
+        # The blocker is read in place (Edit opens the field), with who it waits for (#344, #550).
+        expect(panel.get_by_role("region", name="Blocker")).to_contain_text(BLOCKER)
         start = panel.get_by_role("button", name="Work on this together")
         expect(start).to_be_visible()
         expect(panel).to_contain_text("Ada, Jonas and Kai can join")
@@ -375,8 +376,13 @@ class LiveJourney(LiveBase):
         expect(jonas.get_by_role("heading", name=DOC, level=2)).to_be_visible()
         # Following opens the next fragment: selected thoughts on the map.
         tabs.get_by_role("link", name=re.compile("^Map")).click()
-        nia.get_by_role("link", name=re.compile("Why are night frames black")).click()
-        nia.get_by_text("IR-cut filter stays in").first.click()
+        # A project with one sketch opens it from the Map tab; with several the list comes first.
+        sketch_link = nia.get_by_role("link", name=re.compile("Why are night frames black"))
+        thought = nia.get_by_text("IR-cut filter stays in").first
+        expect(sketch_link.or_(thought).first).to_be_visible()
+        if sketch_link.count():
+            sketch_link.click()
+        thought.click()
         self.bar(nia).get_by_role("button", name="Show this").click()
         expect(jonas).to_have_url(re.compile(f"/map/{self.ids['sketch']}$"))
         expect(self.bar(jonas)).to_contain_text("“IR-cut filter stays in” · thought on")
@@ -609,7 +615,9 @@ class LiveJourney(LiveBase):
         shot(phone, "live-phone-390-strip")
         bar.get_by_role("button", name="Session details and more").click()
         sheet = phone.get_by_role("dialog", name="Live session")
-        expect(sheet.get_by_role("heading", name=re.compile("night camera test"))).to_be_visible()
+        # Together on the conversation page starts at the newest root when no thread is open (OneConversation);
+        # test_01 saved a result there, so that is the session's name, with the seeded thread before it.
+        expect(sheet.get_by_role("heading", name=re.compile("night camera test|IR-cut filter stays in on rev B"))).to_be_visible()
         shot(phone, "live-phone-390-sheet")
         # A labelled way back is in the first screen of the sheet, as a touch target (review of #131).
         back = sheet.get_by_role("button", name="Back to work")
