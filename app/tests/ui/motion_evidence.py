@@ -294,10 +294,12 @@ class MotionEvidence(unittest.TestCase):
 
     def clip_state(self, page: Page, *, long: bool = False, slow: bool = False) -> None:
         """AC-4: the state glyph morphs and the row slides to its group; the rows it moved past slide by their own short distance."""
+        self.reset_tasks()
         if long:
-            # A project with a long list: the last row's state change sends it across the whole list to the group at the top, further than a row is carried.
-            self.go(page, f"/projects/{self.long_list()}/tasks?view=list")
-            target = page.locator(".ws-task").last
+            # The in-progress task of a project with open tasks and a finished one below it: marked done it goes across the list, further than a row is carried.
+            project, work = self.long_list()
+            self.go(page, f"/projects/{project}/tasks?view=list")
+            target = page.locator(f".ws-task[data-work-id='{work}']")
         else:
             self.go(page, self.fx.tasks_url())
             target = page.locator(".ws-task", has_text="Calibrate the probes at two depths").first
@@ -310,6 +312,14 @@ class MotionEvidence(unittest.TestCase):
             self.frames = page.evaluate(ROW_FRAMES, {"action": f"() => document.querySelector(\".ws-task[data-work-id='{work}'] button.ws-task__glyph\").click()"})
             self.beat(page, 900)
 
+    def reset_tasks(self) -> None:
+        """Every state-change clip starts from the same states, whatever an earlier clip (the other theme's) did to the fixture."""
+        ada = self.fx.contexts["ada"]
+        for task, status in zip(self.fx.tasks, ("open", "open", "in_progress", "open", "done")):
+            current = api(ada, "GET", f"/api/v1/work/{task['id']}")
+            if current["status"] != status:
+                api(ada, "PATCH", f"/api/v1/work/{task['id']}", {"status": status, "expectedVersion": current["version"]})
+
     def clip_state_slow(self, page: Page) -> None:
         self.clip_state(page, slow=True)
 
@@ -319,16 +329,23 @@ class MotionEvidence(unittest.TestCase):
     def clip_state_far_slow(self, page: Page) -> None:
         self.clip_state(page, long=True, slow=True)
 
-    def long_list(self) -> str:
-        """A project of ten open tasks, made once per run."""
-        if not getattr(self, "long_project", None):
-            import uuid
-            ada = self.fx.contexts["ada"]
-            project = api(ada, "POST", f"/api/v1/workspaces/{self.fx.workspace}/projects", {"name": "Long list", "visibility": "restricted"}, 201)["id"]
-            for index in range(10):
-                api(ada, "POST", f"/api/v1/projects/{project}/work", {"title": f"Long list task {index:02d}", "clientCommandId": str(uuid.uuid4())}, 201)
-            type(self).long_project = project
-        return self.long_project
+    def long_list(self) -> tuple[str, str]:
+        """A fresh project whose in-progress task, marked done, is sent across the list: it has four open tasks and a finished one below it.
+        Returns the project and the task."""
+        import uuid
+        ada = self.fx.contexts["ada"]
+        project = api(ada, "POST", f"/api/v1/workspaces/{self.fx.workspace}/projects", {"name": f"Long list {uuid.uuid4().hex[:4]}", "visibility": "restricted"}, 201)["id"]
+
+        def task(title: str, status: str | None = None) -> str:
+            made = api(ada, "POST", f"/api/v1/projects/{project}/work", {"title": title, "clientCommandId": str(uuid.uuid4())}, 201)
+            if status:
+                made = api(ada, "PATCH", f"/api/v1/work/{made['id']}", {"status": status, "expectedVersion": made["version"]})
+            return made["id"]
+
+        task("Long list: already finished", "done")
+        for index in range(4):
+            task(f"Long list: open {index}")
+        return project, task("Long list: in progress", "in_progress")
 
     def clip_press(self, page: Page) -> None:
         """AC-5: a pressed control scales to .97 and springs back."""

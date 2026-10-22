@@ -666,26 +666,37 @@ class LightMotionJourney(unittest.TestCase):
                 self.assertTrue(set(entry["props"]) <= TRANSFORM_ONLY | ROW_BOX, f"{entry['target']} animates {entry['props']}")
 
     def test_13b_a_row_that_moves_across_the_list_comes_in_with_a_short_slide_not_a_long_flight(self):
-        """Motion is short and calm (final design §2): a row sent to another group far down or up the list is not carried the whole way."""
+        """Motion is short and calm (final design §2): a row sent to another group far down the list is not carried the whole way.
+
+        The neutral visual review of PR 608 read one row translating 320 px while three others moved 57 to 114 px in the same frame:
+        the row of an in-progress task marked done, with the open ones between it and the finished group.
+        """
         import uuid
         ada = self.fx.contexts["ada"]
         project = api(ada, "POST", f"/api/v1/workspaces/{self.fx.workspace}/projects", {"name": "Long list for the row cap", "visibility": "restricted"}, 201)["id"]
-        ids = [api(ada, "POST", f"/api/v1/projects/{project}/work", {"title": f"Long list task {index:02d}", "clientCommandId": str(uuid.uuid4())}, 201)["id"] for index in range(10)]
+
+        def task(title: str, status: str | None = None) -> str:
+            made = api(ada, "POST", f"/api/v1/projects/{project}/work", {"title": title, "clientCommandId": str(uuid.uuid4())}, 201)
+            if status:
+                made = api(ada, "PATCH", f"/api/v1/work/{made['id']}", {"status": status, "expectedVersion": made["version"]})
+            return made["id"]
+
+        finished = task("Cap list: already finished", "done")
+        for index in range(4):
+            task(f"Cap list: open {index}")
+        moving = task("Cap list: in progress", "in_progress")
         page = self.page()
         self.open(page, f"/projects/{project}/tasks?view=list")
-        rows = page.locator(".ws-task")
-        expect(rows).to_have_count(10)
-        settled(page)
-        last = rows.last
-        moved_id = last.get_attribute("data-work-id")
-        self.assertIn(moved_id, ids)
-        before = last.bounding_box()["y"]
-        clear(page)
-        last.locator("button.ws-task__glyph").click()
-        row = page.locator(f".ws-task[data-work-id='{moved_id}']")
+        row = page.locator(f".ws-task[data-work-id='{moving}']")
         expect(row).to_have_attribute("data-status", "in_progress")
+        expect(page.locator(f".ws-task[data-work-id='{finished}']")).to_be_visible()
         settled(page)
-        travel = abs(row.bounding_box()["y"] - before)
+        before = row.bounding_box()["y"]
+        clear(page)
+        row.locator("button.ws-task__glyph").click()
+        expect(page.locator(f".ws-task[data-work-id='{moving}']")).to_have_attribute("data-status", "done")
+        settled(page)
+        travel = abs(page.locator(f".ws-task[data-work-id='{moving}']").bounding_box()["y"] - before)
         self.assertGreater(travel, 160, f"the row really did move across the list ({travel:.0f} px), so the cap is what is under test")
         slides = [entry for entry in self.by(page, r"ws-task", "script") if "transform" in entry["props"]]
         self.assertTrue(slides, recorded(page))
