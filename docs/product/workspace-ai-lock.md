@@ -500,6 +500,13 @@ safe to merge alone.
 - **S3 — human-only interface.** `useWorkspaceAi`, `<AiSurface>`, the People-panel row
   and its inline confirm, every listed surface, deep-link blocked states, and the AC-4
   browser tests, with a visual review under a neutral brief. It may merge only after S2.
+  Implementation notes (2026-10-23): the web app reads `workspace.ai` from the shell loader
+  and needs no new server field (the assistant status stays account-level; Settings and the
+  assistant screens merge it with the loader's `ai`). The shell reads the policy again on
+  `workspace.ai_policy_changed.v1`, when the tab regains focus (at most once a minute) and on
+  any `403 WORKSPACE_AI_BLOCKED`. Surfaces are hidden by the hooks in
+  `apps/web/src/ai/workspaceAi.tsx`; those drawn from a list (composer and ⌘K options, message
+  menu, Create's owners) carry `data-ai-surface` while shown, which the browser tests count.
 
 ## Founder answers (2026-10-22)
 
