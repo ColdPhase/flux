@@ -11,7 +11,7 @@ test('0114 up/reverse/reapply preserves native tasks and ordinary runs; fixed ev
   const directory='packages/db/migrations';
   try {
     await client.query('BEGIN'); await client.query(`CREATE SCHEMA ${namespace}`); await client.query(`SET LOCAL search_path TO ${namespace},public,pg_catalog`);
-    for(const file of (await readMigrationManifest(directory,FLUX_SCHEMA_VERSION)).filter((file)=>file.version!==114)) await client.query(await readFile(join(directory,file.name),'utf8'));
+    for(const file of (await readMigrationManifest(directory,FLUX_SCHEMA_VERSION)).filter((file)=>file.version<114)) await client.query(await readFile(join(directory,file.name),'utf8'));
     const owner=randomUUID(),ws=randomUUID(),project=randomUUID(),agent=randomUUID(),conversation=randomUUID(),ask=randomUUID(),reaction=randomUUID(),rule=randomUUID(),task=randomUUID();
     await client.query(`INSERT INTO auth_users(id,name,email) VALUES($1,'Ada',$2)`,[owner,`${owner}@example.test`]);
     await client.query(`INSERT INTO workspaces(id,name,created_by) VALUES($1,'Studio',$2)`,[ws,owner]);

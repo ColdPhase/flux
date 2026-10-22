@@ -45,7 +45,7 @@ async function fixture() {
   const source = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${p.id}/materials`,
     { body: { clientMutationId: randomUUID(), title: 'Original source label', body: 'Original private body must not be copied' } }), 201) as { materialId: string };
   const unitId = randomUUID();
-  await db.insert(schema.coworkUnits).values({ id: unitId, workspaceId: ws.id, projectId: p.id, taskId: work.id,
+  await db.insert(schema.coworkUnits).values({ aiEpoch: 1, id: unitId, workspaceId: ws.id, projectId: p.id, taskId: work.id,
     lineageTaskId: work.id, runId: randomUUID(), unitKey: unitId, role: 'execute', assignmentConnectionId: recipient.connection.id });
   const sender = { workspaceId: ws.id, projectId: p.id, connectionId: senderConnection.id };
   const enqueue = async (overrides: Partial<CoWorkEnqueueCommand> = {}) => {

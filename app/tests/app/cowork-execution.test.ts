@@ -37,7 +37,7 @@ async function fixture(maximumUses = 1, seconds = 30) {
   const source = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${p.id}/materials`,
     { body: { clientMutationId: randomUUID(), title: 'Current source', body: 'Current exact revision' } }), 201) as { materialId: string };
   const unitId = randomUUID();
-  await db.insert(schema.coworkUnits).values({ id: unitId, workspaceId: ws.id, projectId: p.id, taskId: work.id,
+  await db.insert(schema.coworkUnits).values({ aiEpoch: 1, id: unitId, workspaceId: ws.id, projectId: p.id, taskId: work.id,
     lineageTaskId: work.id, runId: randomUUID(), unitKey: unitId, role: 'execute', assignmentConnectionId: connection.id });
   const grant = async (operation: 'claim' | 'renew' | 'release' = 'claim', objectId: string | null = unitId, role: 'execute' | 'review' | 'plan' = 'execute') =>
     expectStatus(await owner.browser.request('POST', `/api/v1/agent-connections/${connection.id}/action-grants`,

@@ -1,6 +1,6 @@
 #!/bin/sh
 # Flux launcher (issue #72): one command from a fresh clone to a running Flux, all in Docker.
-# Needs only POSIX sh and Docker with Compose; no host Node.js or PostgreSQL.
+# Flux needs POSIX sh and Docker Compose; cowork also uses the installed native Codex.
 # Run `./flux help` for the commands.
 set -eu
 
@@ -1238,9 +1238,88 @@ cmd_ai() {
   say "Flux is running:  $(public_origin)"
 }
 
+# The supplied host action uses the already installed native CLI; only metadata parsing runs in Docker.
+cowork_helper() {
+  compose_main run --rm --no-deps -T --user "$(id -u):$(id -g)" \
+    -v "$COWORK_STATE:/cowork-state:Z" migrate node tooling/dist/cowork.js "$@"
+}
+cmd_cowork() (
+  action=${1:-}; [ $# -eq 0 ] || shift
+  case "$action" in start|resume) ;; *) die "Use ./flux cowork start|resume --client codex --origin URL --connection ID --project ID" ;; esac
+  client='' connection='' project='' origin=''
+  while [ $# -gt 0 ]; do
+    [ $# -ge 2 ] || die "Missing host-action option value."
+    case "$1" in
+      --client) client=$2 ;; --connection) connection=$2 ;; --project) project=$2 ;; --origin) origin=$2 ;;
+      *) die "Unknown host-action option: $1" ;;
+    esac
+    shift 2
+  done
+  [ "$client" = codex ] || die "The supplied host adapter currently supports Codex only; Claude workflow verification is pending."
+  [ -n "$connection" ] && [ -n "$project" ] && [ -n "$origin" ] || die "Use the bound Start/Resume command shown in Connect or Agents."
+  [ -f "$ENV_FILE" ] || die "This checkout needs its built Flux Docker image and docker/.env first (./flux up)."
+  command -v codex >/dev/null 2>&1 || die "Install the official Codex CLI separately; tested adapter version: 0.160.1."
+  [ "$(codex --version)" = 'codex-cli 0.160.1' ] || die "This host adapter is tested with Codex 0.160.1 only."
+  [ -z "${CODEX_API_KEY:-}${OPENAI_API_KEY:-}${OPENAI_BASE_URL:-}" ] || die "This adapter only supports the native ChatGPT account path; remove account/provider overrides before using it."
+  need_docker
+  umask 077
+  workdir=$(pwd -P)
+  state_root=${XDG_STATE_HOME:-${HOME:?}/.local/state}/flux/cowork
+  mkdir -p "$state_root"
+  # Hashes select private metadata only. The helper also checks every immutable field, including cwd.
+  scope=$(printf '%s\n' "$origin" "$connection" "$project" "$client" "$workdir" | cksum | cut -d' ' -f1)
+  COWORK_STATE="$state_root/$scope"
+  [ ! -L "$COWORK_STATE" ] || die "Private host-action state must not be a symlink."
+  mkdir -p "$COWORK_STATE"; chmod 700 "$COWORK_STATE"
+  mkdir "$COWORK_STATE/lock" 2>/dev/null || die "This bound host action is already open; finish it before Resume."
+  native_pid='' timer_pid=''
+  cleanup_cowork() {
+    [ -z "$native_pid" ] || kill -TERM "$native_pid" 2>/dev/null || true
+    [ -z "$timer_pid" ] || kill -TERM "$timer_pid" 2>/dev/null || true
+    rm -f "$COWORK_STATE/events.jsonl" "$COWORK_STATE/login-status"
+    rmdir "$COWORK_STATE/lock" 2>/dev/null || true
+  }
+  trap cleanup_cowork EXIT
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+  cowork_helper prepare "$action" "$origin" "$connection" "$project" "$client" "$workdir"
+  # Never change the native account or switch payer. Do not display possible account/key details.
+  if ! codex login status >"$COWORK_STATE/login-status" 2>&1 || ! grep -q 'Logged in using ChatGPT' "$COWORK_STATE/login-status"; then
+    die "This adapter needs an already signed-in Codex ChatGPT account. No account or payer was changed."
+  fi
+  rm -f "$COWORK_STATE/login-status"
+  url_config=$(cowork_helper url-config)
+  instructions=$(cowork_helper instructions "$action")
+  # Inline configuration does not write the person's global config or instruction files.
+  if [ ! -f "$COWORK_STATE/oauth-authorized" ]; then
+    codex -c "$url_config" -c 'mcp_servers.flux.required=true' mcp login flux || die "Flux authorization did not complete."
+    : >"$COWORK_STATE/oauth-authorized"
+  fi
+  set -- exec --ignore-user-config --json --skip-git-repo-check --sandbox workspace-write \
+    -c "$url_config" -c 'mcp_servers.flux.required=true' -c "$instructions" \
+    -c 'features.apps=false' -c 'features.plugins=false' -c 'features.remote_plugin=false'
+  if [ "$action" = resume ]; then set -- "$@" resume "$(cowork_helper thread)"; fi
+  # A finite owned child invocation, with no idle model polling or unrelated process termination.
+  codex "$@" 'Follow the current Flux server playbook for this bound host action.' >"$COWORK_STATE/events.jsonl" &
+  native_pid=$!
+  (
+    sleeper=''
+    trap '[ -z "$sleeper" ] || kill -TERM "$sleeper" 2>/dev/null || true; [ -z "$sleeper" ] || wait "$sleeper" 2>/dev/null || true; exit 0' TERM INT
+    sleep 300 & sleeper=$!
+    wait "$sleeper" || exit 0
+    kill -TERM "$native_pid" 2>/dev/null || true
+  ) >/dev/null 2>&1 &
+  timer_pid=$!
+  native_status=0
+  wait "$native_pid" || native_status=$?
+  native_pid=''
+  kill -TERM "$timer_pid" 2>/dev/null || true; wait "$timer_pid" 2>/dev/null || true; timer_pid=''
+  cowork_helper record "$native_status"
+)
+
 cmd_help() {
   cat <<EOF
-Flux launcher. Everything runs in Docker; only sh and Docker Compose are needed.
+Flux launcher. Flux runs in Docker; the external cowork action also needs the native Codex CLI.
 
   ./flux up              Create docker/.env with new secrets if it is missing (never overwrites it),
                          build, migrate, start and print the URL.
@@ -1277,6 +1356,9 @@ Flux launcher. Everything runs in Docker; only sh and Docker Compose are needed.
                          (Enter = yes for Codex; Claude Code needs a typed y to Anthropic's Commercial
                          Terms), write FLUX_AGENT_RUNTIME into docker/.env and apply it. The first
                          interactive ./flux up asks the same once. Needs a terminal.
+  ./flux cowork start|resume --client codex --origin URL --connection ID --project ID
+                         Supplied native host action from Connect/Agents. Requires this built checkout,
+                         Docker and Codex 0.160.1 signed in with ChatGPT. Resume uses its exact saved thread.
   ./flux help            This text.
 
 Commands that start, stop, back up, restore or delete refuse a Compose project that belongs to another
@@ -1320,6 +1402,7 @@ case "$command" in
   runtime) cmd_runtime "$@" ;;
   identity) cmd_identity "$@" ;;
   ai) cmd_ai "$@" ;;
+  cowork) cmd_cowork "$@" ;;
   _upgrade-apply) upgrade_apply "$@" ;;  # continues ./flux upgrade --pull in the pulled launcher
   help|-h|--help) cmd_help ;;
   *) warn "unknown command: $command"; cmd_help >&2; exit 2 ;;

@@ -95,6 +95,7 @@ export async function deliverNotificationEmail(options: EmailDeliveryOptions, jo
     if (row.status !== 'queued') return { skip: `already ${row.status}` } as const;
     const skip = async (reason: string) => { await ports.markSkipped(row.id, reason); return { skip: reason } as const; };
     if (row.lifecycleActive === false) return skip('task creation was undone');
+    if (row.aiOff) return skip('AI is off in this workspace');
     if (!options.available) return skip('email is not configured');
     const { notification } = row;
     if (!readsSource(await ports.authorizer.canRead(row.userId, notification.source), notification.source)) return skip('recipient can no longer read the source');

@@ -2,7 +2,7 @@ import { maxRequestMicros, PERSONAL_RUN_LIMITS, type AiPrice } from '@flux/contr
 import { boundedInputTokens, conservativeTokenEstimate } from '../ai/estimate.js';
 import { boundedUsageMicros } from '../ai/price.js';
 import type {
-  PersonalCompute, PersonalComputeRequest, PersonalComputeResult, PersonalToolCall, PersonalToolResult, PersonalToolSession, PersonalTurn, RunRecord,
+  PersonalCompute, PersonalComputeRequest, PersonalComputeResult, PersonalToolCall, PersonalToolResult, PersonalToolSession, PersonalTurn, RunEndStatus,
 } from './ports.js';
 
 // The bounded tool loop of a `server` run (F-027 AST-8, PROV-3 revised 2026-10-09). The loop only
@@ -63,7 +63,7 @@ export function nextRequestFits(account: RunAccount, price: Pick<AiPrice, 'input
 export type LoopLimit = 'turns' | 'money' | 'input' | 'time';
 
 /** A standing check between turns: null to go on, otherwise the status the run ends in (`gone`: the row is no longer dispatching). */
-export type Gate = () => Promise<{ status: RunRecord['status'] | 'gone' } | null>;
+export type Gate = () => Promise<{ status: RunEndStatus | 'gone' } | null>;
 
 export type LoopEnd =
   /** The model's last answer: it did not ask for more tools. */
@@ -72,7 +72,7 @@ export type LoopEnd =
   /** A request's usage was outside its bounds: its cost is unknown. */
   | { kind: 'lost' }
   | { kind: 'limit'; limit: LoopLimit }
-  | { kind: 'halted'; status: RunRecord['status'] | 'gone' };
+  | { kind: 'halted'; status: RunEndStatus | 'gone' };
 
 export interface LoopResult { end: LoopEnd; account: RunAccount; turns: number }
 

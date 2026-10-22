@@ -71,4 +71,9 @@ services:
         condition: service_healthy
     networks: [default, livekit-media, livekit-signal]
   ui-test:
-    networks: [default, livekit-media]
+    networks:
+      default: {}
+      # Firefox can gather ICE candidates only from the default-route interface when its
+      # privacy setting is enabled. Keep that interface on the bridge that reaches the SFU.
+      livekit-media:
+        gw_priority: 1

@@ -244,7 +244,7 @@ function DocReading({ live }: { live: LiveReadingState | null }) {
     const onKey = (event: KeyboardEvent) => {
       if (event.key.toLowerCase() !== 'e' || event.metaKey || event.ctrlKey || event.altKey || event.defaultPrevented || isTyping(event.target)) return;
       const target = event.target as HTMLElement | null;
-      if (document.getElementById('root')?.inert || (target && target !== document.body && !target.closest('.wiki-frame, #content'))) return;
+      if (document.getElementById('root')?.hasAttribute('data-modal') || (target && target !== document.body && !target.closest('.wiki-frame, #content'))) return;
       if (target?.closest('[role="dialog"]')) return;
       event.preventDefault();
       navigate(edit);

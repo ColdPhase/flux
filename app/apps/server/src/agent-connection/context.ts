@@ -1,5 +1,5 @@
 import { AGENT_MCP_SOURCE_CAPABILITIES, type AgentMcpPolicy, type AgentScope } from '@flux/contracts';
-import { agentProjectReads, DomainError, enforce, evaluateProject, loadActor, requireAgentMcpEntry, requireAgentSelection, type AgentConnectionContext,
+import { agentProjectReads, DomainError, enforce, evaluateProject, loadActor, requireAgentMcpEntry, requireAgentSelection, requireWorkspaceAi, type AgentConnectionContext,
   type AgentProjectObjectKind, type Database, type Transaction } from '@flux/core';
 import { agentProjectObjectRows, lockAgentMcpPolicy } from '@flux/db';
 import { createAgentConnectionStore } from './store.js';
@@ -16,6 +16,8 @@ export interface FluxMcpClaims {
   scopes: readonly string[];
   /** Supplied only by the verified HTTP composition; native internal adapters keep their existing envelope. */
   dispatch?: McpDispatch;
+  /** Optional immutable URL restriction admitted by the HTTP bearer composition; grants nothing. */
+  boundProjectId?: string;
   /**
    * A personal run's token (F-027 A2): only from the verified bearer's signed `flux_run_id`/`flux_place`.
    * The run must stay in flight and every tool reaches only its place.
@@ -34,6 +36,8 @@ export interface FluxAgentReadContext {
   connection: AgentConnectionContext;
   workspaceId: string;
   principal: { kind: 'agent'; id: string };
+  /** F-029: the workspace AI policy epoch, held `FOR SHARE` for the transaction; new AI work rows record it. */
+  aiEpoch: number;
   mcpPolicy: AgentMcpPolicy | null;
   requireProject(projectId: string, action?: 'project.read' | 'project.write'): Promise<void>;
   requireObject(projectId: string, kind: AgentProjectObjectKind, id: string): Promise<void>;
@@ -54,6 +58,8 @@ export async function agentConnectionInTransaction(tx: Transaction, claims: Flux
     if (!grant || grant.connection.id !== claims.connectionId || grant.clientId !== null && grant.clientId !== claims.clientId)
       throw new DomainError(404, 'CONNECTION_NOT_FOUND', 'Connection not found');
     const row = grant.connection;
+    // F-029: every tool, resource and prompt, with or without a project, refuses while AI is off here.
+    const { epoch: aiEpoch } = await requireWorkspaceAi(tx, row.workspaceId, { lock: true });
     // A run token works only while its run is in flight, under its own id, for the owner's assistant.
     if (claims.run) await requireLiveRun(tx, { ownerUserId: claims.ownerUserId, connectionId: claims.connectionId, run: claims.run }, { newCall: true, lock: true });
     if (!claims.scopes.includes(scope) || !row.scopes.includes(scope))
@@ -77,7 +83,7 @@ export async function agentConnectionInTransaction(tx: Transaction, claims: Flux
       connectionId: row.id, ownerUserId: row.ownerUserId, agentId: row.agentId,
       // A run reaches only its place (F-022): the selection narrows to the run's project.
       selectedProjectIds: (mcpPolicy ? mcpPolicy.selectedProjectIds.filter((id) => row.selectedProjectIds.includes(id)) : row.selectedProjectIds)
-        .filter((id) => !claims.run || id === claims.run.projectId),
+        .filter((id) => (!claims.run || id === claims.run.projectId) && (!claims.boundProjectId || id === claims.boundProjectId)),
       scopes: row.scopes.filter((selected) => claims.scopes.includes(selected)), computeSource: row.computeSource,
     };
     const requireProject = async (id: string, action: 'project.read' | 'project.write' = 'project.read') => {
@@ -91,7 +97,7 @@ export async function agentConnectionInTransaction(tx: Transaction, claims: Flux
       await requireProject(projectId, scope === 'flux.context.read' ? 'project.read' : 'project.write');
     }
     const objects = agentProjectReads(agentProjectObjectRows(tx));
-    return { tx, connection, workspaceId: row.workspaceId, principal: { kind: 'agent', id: row.agentId }, mcpPolicy, requireProject,
+    return { tx, connection, workspaceId: row.workspaceId, principal: { kind: 'agent', id: row.agentId }, aiEpoch, mcpPolicy, requireProject,
       requireObject: async (project, kind, id) => {
         await requireProject(project);
         await objects.requireObject(connection, row.workspaceId, project, kind, id);

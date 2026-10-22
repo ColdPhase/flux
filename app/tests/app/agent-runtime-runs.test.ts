@@ -434,9 +434,9 @@ describe('a run on the owner\'s own Claude Code in the agent runtime (F-022 T5, 
     assert.equal(await processor.process(started.run.id), 'completed');
     // Nineteen more started today, as copies of that one (each started and ended).
     await pool.query(`INSERT INTO personal_runs (id, workspace_id, project_id, conversation_id, owner_user_id, agent_id, client_run_id, request_fingerprint, kind,
-        prompt, status, cost_state, reserved_micros, provider, model, engine, dispatched_at, completed_at)
+        prompt, status, cost_state, reserved_micros, provider, model, engine, dispatched_at, completed_at, ai_epoch)
       SELECT gen_random_uuid(), workspace_id, project_id, conversation_id, owner_user_id, agent_id, gen_random_uuid(), request_fingerprint, kind, prompt,
-        'completed', 'unknown', 0, provider, model, engine, now(), now() FROM personal_runs, generate_series(1, 19) WHERE id = $1`, [started.run.id]);
+        'completed', 'unknown', 0, provider, model, engine, now(), now(), ai_epoch FROM personal_runs, generate_series(1, 19) WHERE id = $1`, [started.run.id]);
     assert.equal((await runs.status(human(owner))).state, 'capped');
     await assert.rejects(ask(), (error: unknown) => (error as { code?: string }).code === 'PERSONAL_RUN_CAPPED');
     assert.equal(compute.dispatched.length, 0);

@@ -19,10 +19,12 @@ export async function agentRuntimeInTransaction(tx: Transaction, claims: FluxMcp
   const row = await rows.ensureRuntime({ id: randomUUID(), bindingId, bindingGeneration: binding.generation,
     clientSessionId: clientSessionId.toLowerCase(), workspaceId: current.workspaceId, connectionId: claims.connectionId,
     ownerUserId: claims.ownerUserId, agentId: current.principal.id, scopes: [...current.connection.scopes].sort(),
+    aiEpoch: current.aiEpoch,
     expiresAt: new Date(now.getTime() + 3_600_000) });
   // Reusing a client session observes its original server-issued identity; it never renews expiry.
   const fresh = await rows.now();
-  if (row.revokedAt || row.expiresAt <= fresh || row.bindingGeneration !== binding.generation
+  // F-029: a session admitted under another workspace AI epoch (before AI was turned off) never works again.
+  if (row.revokedAt || row.expiresAt <= fresh || row.bindingGeneration !== binding.generation || row.aiEpoch !== current.aiEpoch
     || row.workspaceId !== current.workspaceId || row.ownerUserId !== claims.ownerUserId || row.agentId !== current.principal.id
     || JSON.stringify([...row.scopes].sort()) !== JSON.stringify([...current.connection.scopes].sort()))
     throw new DomainError(409, 'RUNTIME_UNAVAILABLE', 'The runtime is no longer compatible; start a new client session');

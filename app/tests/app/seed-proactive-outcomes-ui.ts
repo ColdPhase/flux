@@ -76,8 +76,8 @@ try {
     const candidateId = randomUUID(); const proposalId = randomUUID();
     const fingerprint = createHash('sha256').update(candidateId).digest('hex');
     await pool.query(`INSERT INTO proactive_comparison_outbox
-      (id,rule_id,owner_user_id,project_id,result_id,source_fingerprint,status,connection_id,reserved_cents,reserved_at,created_at)
-      VALUES($1,$2,$3,$4,$5,$6,'completed',$7,5,now()-interval '31 days',now()-interval '31 days')`,
+      (id,rule_id,owner_user_id,project_id,result_id,source_fingerprint,status,connection_id,reserved_cents,reserved_at,created_at,ai_epoch)
+      VALUES($1,$2,$3,$4,$5,$6,'completed',$7,5,now()-interval '31 days',now()-interval '31 days',1)`,
     [candidateId, rule.id, owner.id, prj.id, template.result_id, fingerprint, connection.id]);
     await pool.query(`INSERT INTO proactive_comparison_proposals
       (id,outbox_id,owner_user_id,agent_id,project_id,result_id,source_fingerprint,sources,fact,interpretation,suggested_action,status,provider,model)

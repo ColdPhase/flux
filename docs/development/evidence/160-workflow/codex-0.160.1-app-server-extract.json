@@ -1,0 +1,518 @@
+{
+  "sourceHead": "a03fe498296aa60d42129a0ae6169f7604b415e1",
+  "scope": "public schema generation only; no server/auth/model/network",
+  "imageId": "sha256:c4761d89c1f4d026eb5114bcd0f0e3e6700ba934e9d54a9fe39a11fb4c0053ae",
+  "clientVersion": "codex-cli 0.160.1",
+  "binarySha256": "f34a4d2301892ae96c90097786bfe5dc269f187b6f69faf42a7b357b8c081e35",
+  "terminal": 0,
+  "cleanup": "named container absent; empty HOME and generated schemas existed only in destroyed tmpfs",
+  "extracts": [
+    {
+      "method": "thread/start",
+      "params": {
+        "$ref": "#/definitions/ThreadStartParams"
+      },
+      "source": "codex_app_server_protocol.v2.schemas.json"
+    },
+    {
+      "method": "thread/resume",
+      "params": {
+        "$ref": "#/definitions/ThreadResumeParams"
+      },
+      "source": "codex_app_server_protocol.v2.schemas.json"
+    },
+    {
+      "method": "turn/start",
+      "params": {
+        "$ref": "#/definitions/TurnStartParams"
+      },
+      "source": "codex_app_server_protocol.v2.schemas.json"
+    },
+    {
+      "method": "turn/steer",
+      "params": {
+        "$ref": "#/definitions/TurnSteerParams"
+      },
+      "source": "codex_app_server_protocol.v2.schemas.json"
+    },
+    {
+      "method": "turn/interrupt",
+      "params": {
+        "$ref": "#/definitions/TurnInterruptParams"
+      },
+      "source": "codex_app_server_protocol.v2.schemas.json"
+    },
+    {
+      "method": "mcpServer/resource/read",
+      "params": {
+        "$ref": "#/definitions/McpResourceReadParams"
+      },
+      "source": "codex_app_server_protocol.v2.schemas.json"
+    },
+    {
+      "method": "mcpServer/tool/call",
+      "params": {
+        "$ref": "#/definitions/McpServerToolCallParams"
+      },
+      "source": "codex_app_server_protocol.v2.schemas.json"
+    },
+    {
+      "method": "mcpServerStatus/list",
+      "params": {
+        "$ref": "#/definitions/ListMcpServerStatusParams"
+      },
+      "source": "codex_app_server_protocol.v2.schemas.json"
+    },
+    {
+      "paramsFile": "v2/ListMcpServerStatusParams.json",
+      "required": [],
+      "properties": {
+        "cursor": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "detail": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/McpServerStatusDetail"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "limit": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "serverName": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "threadId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    {
+      "paramsFile": "v2/McpServerToolCallParams.json",
+      "required": [
+        "server",
+        "threadId",
+        "tool"
+      ],
+      "properties": {
+        "_meta": true,
+        "arguments": true,
+        "server": {
+          "type": "string"
+        },
+        "threadId": {
+          "type": "string"
+        },
+        "tool": {
+          "type": "string"
+        }
+      }
+    },
+    {
+      "paramsFile": "v2/ThreadResumeParams.json",
+      "required": [
+        "threadId"
+      ],
+      "properties": {
+        "approvalPolicy": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/AskForApproval"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "approvalsReviewer": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ApprovalsReviewer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "baseInstructions": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "config": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "cwd": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "developerInstructions": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "excludeTurns": {
+          "type": "boolean"
+        },
+        "model": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "modelProvider": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "personality": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Personality"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "sandbox": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/SandboxMode"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "serviceTier": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "threadId": {
+          "type": "string"
+        }
+      }
+    },
+    {
+      "paramsFile": "v2/ThreadStartParams.json",
+      "required": [],
+      "properties": {
+        "approvalPolicy": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/AskForApproval"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "approvalsReviewer": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ApprovalsReviewer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "baseInstructions": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "config": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "cwd": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "developerInstructions": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "ephemeral": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "model": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "modelProvider": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "personality": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Personality"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "sandbox": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/SandboxMode"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "serviceName": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "serviceTier": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sessionStartSource": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ThreadStartSource"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "threadSource": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ThreadSource"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "paramsFile": "v2/TurnInterruptParams.json",
+      "required": [
+        "threadId",
+        "turnId"
+      ],
+      "properties": {
+        "threadId": {
+          "type": "string"
+        },
+        "turnId": {
+          "type": "string"
+        }
+      }
+    },
+    {
+      "paramsFile": "v2/TurnStartParams.json",
+      "required": [
+        "input",
+        "threadId"
+      ],
+      "properties": {
+        "approvalPolicy": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/AskForApproval"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "approvalsReviewer": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ApprovalsReviewer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "clientUserMessageId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "cwd": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "disabledPluginIds": {
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "effort": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ReasoningEffort"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "input": {
+          "type": "array"
+        },
+        "model": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "outputSchema": {},
+        "personality": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Personality"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "sandboxPolicy": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/SandboxPolicy"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "serviceTier": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "serviceTierForTurn": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "summary": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ReasoningSummary"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "threadId": {
+          "type": "string"
+        },
+        "toolOutput": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/TurnToolOutput"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "turnTrigger": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    {
+      "paramsFile": "v2/TurnSteerParams.json",
+      "required": [
+        "expectedTurnId",
+        "input",
+        "threadId"
+      ],
+      "properties": {
+        "clientUserMessageId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "expectedTurnId": {
+          "type": "string"
+        },
+        "input": {
+          "type": "array"
+        },
+        "threadId": {
+          "type": "string"
+        }
+      }
+    }
+  ],
+  "limits": [
+    "Schema presence is not runtime interoperability or behavior proof.",
+    "McpResourceReadParams definition omitted by filename filter; required fields not extracted.",
+    "Two prior schema generations succeeded, but bind-mounted extractor read failed EACCES; their outer terminal was 1. Final extraction passed with no bind mount."
+  ],
+  "worktreeState": "Uncommitted fixture-only changes; no application build/execution. Schema CLI and extraction use the immutable image only."
+}

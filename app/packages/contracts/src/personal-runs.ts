@@ -94,11 +94,12 @@ export const RUN_TOKEN_LIMITS = {
  * lane was taken (a sign-in, a status check or another run). `unknown`: the CLI's stream broke; whether it
  * changed anything is not known and it is never rerun. `max_turns`: the turn cap. `refused`: the model
  * refused the request. `model_unavailable`: the vendor did not accept the model the owner chose (F-027 AST-11);
- * nothing was changed and no other model was tried.
+ * nothing was changed and no other model was tried. `ai_off` (F-029, #614): AI is turned off in the run's
+ * workspace; nothing was posted.
  */
 export const ASSISTANT_RUN_END_REASONS = [
   'sign_in_again', 'plan_limit', 'wall_clock', 'no_event', 'crashed', 'answer_too_large', 'mcp_results_too_large',
-  'local_tool', 'slot_busy', 'unknown', 'max_turns', 'refused', 'model_unavailable',
+  'local_tool', 'slot_busy', 'unknown', 'max_turns', 'refused', 'model_unavailable', 'ai_off',
 ] as const;
 export type AssistantRunEndReason = (typeof ASSISTANT_RUN_END_REASONS)[number];
 

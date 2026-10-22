@@ -1,7 +1,8 @@
 import { AGENT_SOURCE_KINDS, type AgentSourceChanges, type AgentSourceCheckpoint, type AgentSourceKind,
   type AgentSourcePage, type AgentSourceReference } from '@flux/contracts';
 import { InvalidInputError } from '../access/errors.js';
-import { isUuid } from '../access/policy.js';
+import { normalizeAgentCheckpoint } from './source-checkpoint.js';
+export { normalizeAgentCheckpoint } from './source-checkpoint.js';
 import { requireAgentSelection, type AgentConnectionContext } from './proposals.js';
 
 export interface AgentOrientationScope { workspaceId: string; projectId: string }
@@ -15,25 +16,6 @@ export function agentSourcePage(query: { limit?: number; offset?: number } = {})
   if (!Number.isSafeInteger(limit) || limit < 1 || limit > 50 || !Number.isSafeInteger(offset) || offset < 0 || offset > 10_000)
     throw new InvalidInputError('A source page needs limit 1–50 and offset 0–10000');
   return { limit, offset };
-}
-export function normalizeAgentCheckpoint(input: AgentSourceCheckpoint): AgentSourceCheckpoint {
-  if (!input || !AGENT_SOURCE_KINDS.includes(input.kind) || !isUuid(input.id)) throw new InvalidInputError('A canonical source kind and UUID are required');
-  const keys = input.kind === 'result' ? ['kind', 'id'] : input.kind === 'conversation' ? ['kind', 'id', 'sequence']
-    : input.kind === 'map' ? ['kind', 'id', 'version', 'updatedAt'] : ['kind', 'id', 'version'];
-  if (Object.keys(input).some((key) => !keys.includes(key))) throw new InvalidInputError('Unknown checkpoint field');
-  const integer = (value: number, minimum: number) => Number.isSafeInteger(value) && value >= minimum && value <= 2_147_483_647;
-  if (input.kind === 'result') return { kind: input.kind, id: input.id.toLowerCase() };
-  if (input.kind === 'conversation') {
-    if (!integer(input.sequence, 0)) throw new InvalidInputError('A conversation checkpoint needs its latest sequence');
-    return { kind: input.kind, id: input.id.toLowerCase(), sequence: input.sequence };
-  }
-  if (!integer(input.version, 1)) throw new InvalidInputError('A source checkpoint needs its positive canonical version');
-  if (input.kind === 'map') {
-    if (typeof input.updatedAt !== 'string' || input.updatedAt.length > 40 || !Number.isFinite(Date.parse(input.updatedAt)))
-      throw new InvalidInputError('A map checkpoint needs its canonical updatedAt');
-    return { kind: input.kind, id: input.id.toLowerCase(), version: input.version, updatedAt: new Date(input.updatedAt).toISOString() };
-  }
-  return { kind: input.kind, id: input.id.toLowerCase(), version: input.version };
 }
 function checkedReference(scope: AgentOrientationScope, kind: AgentSourceKind, reference: AgentSourceReference): AgentSourceReference {
   if (reference.workspaceId !== scope.workspaceId || reference.projectId !== scope.projectId || reference.checkpoint.kind !== kind)

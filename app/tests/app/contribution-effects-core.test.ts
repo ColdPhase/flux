@@ -53,6 +53,7 @@ function world(options: { writable?: boolean; taskIds?: string[]; hook?: boolean
     },
     async requireWorkspace() { /* not used */ },
     async canRead() { return true; },
+    async aiAllowed() { return true; },
   };
   const work = {
     async locate(_type: string, id: string) { return tasks.has(id) ? { projectId } : results.has(id) ? { projectId } : null; },

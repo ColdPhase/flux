@@ -9,6 +9,7 @@ import { PgBoss } from 'pg-boss';
 import { assertExactMigrationLedger, FLUX_SCHEMA_VERSION, readAppliedMigrationVersions, readMigrationManifest } from '@flux/db';
 import { EDITING_CAPABILITIES_PATH, type EditingCapability } from '@flux/contracts';
 import { registerDatabase } from './plugins/database.js';
+import { aiRoutes } from './access/ai-gate.js';
 import { startIdentity } from './identity/index.js';
 import { accessRoutes } from './access/routes.js';
 import { sketchRoutes } from './sketches/routes.js';
@@ -125,8 +126,8 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
   await app.register(typingRoutes, { db, sessions: identity, publicOrigin: identityConfig.publicOrigin, connectionString, tasks: typingTaskDiscussion(db) });
   await app.register(fileRoutes, { db, sessions: identity, storage: fileStorage });
   await app.register(conversationRoutes, { db, sessions: identity, storage: fileStorage });
-  await app.register(agentThreadRoutes, { db, sessions: identity, storage: fileStorage });
-  await app.register(coWorkRoutes, { db, sessions: identity });
+  await app.register(aiRoutes(agentThreadRoutes), { db, sessions: identity, storage: fileStorage });
+  await app.register(aiRoutes(coWorkRoutes), { db, sessions: identity });
   await app.register(workRoutes, { db, sessions: identity, storage: fileStorage });
   await app.register(workReadRoutes, { db, sessions: identity });
   const githubConfig = loadGithubConfig(env, identityConfig.publicOrigin);
@@ -207,13 +208,13 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
     app.addHook('onClose', async () => clearInterval(recoveryTimer));
     void recover();
   }
-  await app.register(agentProposalRoutes, { db, sessions: identity, oauthSecret: identityConfig.secret, publicOrigin: identityConfig.publicOrigin });
-  await app.register(projectAgentRoutes, { db, sessions: identity });
-  await app.register(agentPolicyRoutes, { db, sessions: identity });
-  await app.register(agentStopRoutes, { db, sessions: identity });
-  await app.register(agentQuestionRoutes, { db, sessions: identity });
-  await app.register(agentMcpPolicyRoutes, { db, sessions: identity });
-  await app.register(proactiveComparisonRoutes, { db, sessions: identity, backgroundMasterKey: config.backgroundMasterKey,
+  await app.register(aiRoutes(agentProposalRoutes), { db, sessions: identity, oauthSecret: identityConfig.secret, publicOrigin: identityConfig.publicOrigin });
+  await app.register(aiRoutes(projectAgentRoutes), { db, sessions: identity });
+  await app.register(aiRoutes(agentPolicyRoutes), { db, sessions: identity });
+  await app.register(aiRoutes(agentStopRoutes), { db, sessions: identity });
+  await app.register(aiRoutes(agentQuestionRoutes), { db, sessions: identity });
+  await app.register(aiRoutes(agentMcpPolicyRoutes), { db, sessions: identity });
+  await app.register(aiRoutes(proactiveComparisonRoutes), { db, sessions: identity, backgroundMasterKey: config.backgroundMasterKey,
     comparisonsEnabled: config.backgroundComparisons });
   registerMcpRoute(app, db, identity.auth, identityConfig.publicOrigin, config.fixture.failureInjection && !!config.fixture.token,
     identity.standing && identityConfig.oidc ? { checker: identity.standing, label: identityConfig.oidc.label } : null,
@@ -230,13 +231,13 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
   // Personal assistant runs (#68): the server queues; the worker dispatches.
   const personalRuns = personalRunServerComposition(env, db);
   if (personalRuns.mode !== 'production') app.log.warn({ mode: personalRuns.mode }, 'TEST ONLY: personal runs use fixture connections and a mock provider');
-  await app.register(assistantRoutes, { db, sessions: identity, boss });
-  await app.register(personalRunRoutes, { db, sessions: identity, boss, connections: personalRuns.connections, providerEnabled: personalRuns.providerEnabled,
+  await app.register(aiRoutes(assistantRoutes), { db, sessions: identity, boss });
+  await app.register(aiRoutes(personalRunRoutes), { db, sessions: identity, boss, connections: personalRuns.connections, providerEnabled: personalRuns.providerEnabled,
     toolTurns: personalRuns.toolTurns, runtime: personalRuntimeAvailability(config.agentRuntime, db) });
   await app.register(searchRoutes, { db, sessions: identity, cursorSecret: identityConfig.secret, exposeWork });
   await app.register(exportRoutes, { db, sessions: identity, publicOrigin: identityConfig.publicOrigin, storage: fileStorage });
   // The `runtime` transport (F-022 AIM-3): off unless the operator set FLUX_AGENT_RUNTIME.
-  await app.register(agentRuntimeRoutes, { db, sessions: identity, config: config.agentRuntime, secret: identityConfig.secret, publicOrigin: identityConfig.publicOrigin });
+  await app.register(aiRoutes(agentRuntimeRoutes), { db, sessions: identity, config: config.agentRuntime, secret: identityConfig.secret, publicOrigin: identityConfig.publicOrigin });
 
   registerHealth(app, { pool, boss, manifest: migrationManifest, filesDir });
   registerFixtureRoutes(app, { config: config.fixture, db, boss, publicOrigin: identityConfig.publicOrigin });

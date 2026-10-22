@@ -92,11 +92,19 @@ export interface RunRecord {
   /** 0108 (F-027 A4): what started the run, and a background run's short name for the lane's lines. */
   authority: 'owner_request' | 'owner_schedule' | 'owner_reaction';
   backgroundLabel: string | null;
+  /** 0115 (F-029): the workspace AI policy epoch the run was admitted under; every later step requires it. */
+  aiEpoch: number;
 }
+
+/**
+ * How a run may end at a standing check: one of its statuses, or `ai_off` (F-029), which is recorded as `stopped` with
+ * `end_reason = 'ai_off'`.
+ */
+export type RunEndStatus = RunRecord['status'] | 'ai_off';
 
 export type NewRun = Pick<RunRecord, 'id' | 'workspaceId' | 'projectId' | 'conversationId' | 'ownerUserId' | 'agentId' | 'connectionId'
   | 'clientRunId' | 'requestFingerprint' | 'kind' | 'prompt' | 'targetSketchId' | 'targetThoughtId' | 'continuesRunId' | 'retryOfRunId'
-  | 'reservedMicros' | 'provider' | 'model'> & { engine?: AssistantEngine; silent?: boolean; authority?: RunRecord['authority']; backgroundLabel?: string | null };
+  | 'reservedMicros' | 'provider' | 'model' | 'aiEpoch'> & { engine?: AssistantEngine; silent?: boolean; authority?: RunRecord['authority']; backgroundLabel?: string | null };
 export type RunChanges = Partial<Pick<RunRecord, 'status' | 'stoppedAtStage' | 'stopRequestedAt' | 'costState' | 'chargedMicros'
   | 'inputTokens' | 'outputTokens' | 'answerBody' | 'answerTruncated' | 'answerSources' | 'committedAt' | 'dispatchedAt' | 'completedAt'
   | 'endReason' | 'planLimitResetsAt' | 'stopAcknowledgedAt' | 'answerRedacted' | 'silent'>>;
@@ -222,6 +230,12 @@ export interface PersonalRunAccess {
   requireInvoke(principal: Principal, agentId: string, options?: { lock?: boolean }): Promise<{ workspaceId: string }>;
   canInvoke(principal: Principal, agentId: string, options?: { lock?: boolean }): Promise<boolean>;
   canReadSketch(principal: Principal, sketchId: string, options?: { lock?: boolean }): Promise<boolean>;
+  /**
+   * F-029: the workspace AI policy (`lock` holds it `FOR SHARE`). `requireWorkspaceAi` throws WORKSPACE_AI_BLOCKED unless
+   * AI is on there and, given an item's admission `epoch`, still at it; it returns the epoch a new run records.
+   */
+  workspaceAi(workspaceId: string, options?: { lock?: boolean }): Promise<{ state: 'allowed' | 'blocked'; epoch: number }>;
+  requireWorkspaceAi(workspaceId: string, options?: { lock?: boolean; epoch?: number }): Promise<{ epoch: number }>;
 }
 
 /** Queues the dispatch job of a run in the unit of work. The payload is the run id only. */

@@ -167,6 +167,18 @@ class LiveBase(unittest.TestCase):
         self.addCleanup(lambda: self.assertEqual(errors, [], "no uncaught page errors"))
         return page
 
+    def open_conversation(self, page: Page, url: str | None = None) -> None:
+        """Open the seeded conversation. Its URL is a thread: the app opens it in the detail panel, a sheet or an
+        overlay over the header on a phone or tablet (#344, #601). A person closes it to reach Together or Join."""
+        page.goto(url or f"/projects/{self.ids['project']}/conversations/{self.ids['conversation']}")
+        header = page.locator("header.top, header.phead").get_by_role("button", name=re.compile("^(Together|Join)$"))
+        panel_close = page.locator(".ui-panel__close")
+        expect(header.or_(panel_close).first).to_be_visible()
+        if panel_close.first.is_visible():
+            panel_close.first.click()
+            expect(panel_close).to_have_count(0)
+        expect(header.first).to_be_visible()
+
     def api(self, page: Page, method: str, path: str, body: dict | None = None, status: int | None = None, headers: dict | None = None):
         response = page.request.fetch(f"{ORIGIN}{path}", method=method, headers={"origin": ORIGIN, "content-type": "application/json", **(headers or {})},
                                       data=json.dumps(body) if body is not None else None)
@@ -236,7 +248,7 @@ class LiveUnavailable(LiveBase):
         expect(panel.get_by_role("heading", name=TASK)).to_be_visible()
         # Explained once, behind the header's Together; the task itself does not repeat it (#189).
         expect(panel).not_to_contain_text("Live sessions")
-        header = page.locator("header.top")
+        header = page.locator("header.top, header.phead")
         header.get_by_role("button", name="Together").click()
         dialog = page.get_by_role("dialog", name="Live sessions")
         expect(dialog).to_contain_text("no media server configured")
@@ -280,7 +292,8 @@ class LiveJourney(LiveBase):
         nia.goto(self.task_url())
         panel = nia.locator("#details")
         expect(panel.get_by_role("heading", name=TASK)).to_be_visible()
-        expect(panel.get_by_label("What is it waiting for?")).to_have_value(BLOCKER)
+        # The blocker is read in place (Edit opens the field), with who it waits for (#344, #550).
+        expect(panel.get_by_role("region", name="Blocker")).to_contain_text(BLOCKER)
         start = panel.get_by_role("button", name="Work on this together")
         expect(start).to_be_visible()
         expect(panel).to_contain_text("Ada, Jonas and Kai can join")
@@ -363,8 +376,13 @@ class LiveJourney(LiveBase):
         expect(jonas.get_by_role("heading", name=DOC, level=2)).to_be_visible()
         # Following opens the next fragment: selected thoughts on the map.
         tabs.get_by_role("link", name=re.compile("^Map")).click()
-        nia.get_by_role("link", name=re.compile("Why are night frames black")).click()
-        nia.get_by_text("IR-cut filter stays in").first.click()
+        # A project with one sketch opens it from the Map tab; with several the list comes first.
+        sketch_link = nia.get_by_role("link", name=re.compile("Why are night frames black"))
+        thought = nia.get_by_text("IR-cut filter stays in").first
+        expect(sketch_link.or_(thought).first).to_be_visible()
+        if sketch_link.count():
+            sketch_link.click()
+        thought.click()
         self.bar(nia).get_by_role("button", name="Show this").click()
         expect(jonas).to_have_url(re.compile(f"/map/{self.ids['sketch']}$"))
         expect(self.bar(jonas)).to_contain_text("“IR-cut filter stays in” · thought on")
@@ -427,7 +445,7 @@ class LiveJourney(LiveBase):
         ada = self.page("ada")
         ada.goto(f"/projects/{self.ids['project']}/docs/{self.ids['doc']}")
         expect(ada.get_by_role("heading", name=DOC, level=2)).to_be_visible()
-        ada.locator("header.top").get_by_role("button", name="Together").click()
+        ada.locator("header.top, header.phead").get_by_role("button", name="Together").click()
         expect(self.bar(ada).get_by_role("button", name=re.compile(re.escape(DOC)))).to_be_visible()
 
         pages = {"ada": ada}
@@ -436,7 +454,7 @@ class LiveJourney(LiveBase):
             if who == "kai":
                 page.add_init_script("window.__denyCamera = true;")
             page.goto(f"/projects/{self.ids['project']}/docs/{self.ids['doc']}")
-            join = page.locator("header.top").get_by_role("button", name="Join")
+            join = page.locator("header.top, header.phead").get_by_role("button", name="Join")
             expect(join).to_be_visible()
             join.click()
             expect(self.bar(page).get_by_role("status").first).to_contain_text("Live")
@@ -571,12 +589,12 @@ class LiveJourney(LiveBase):
     def test_03_phone_and_tablet_keep_the_work_reachable(self) -> None:
         self.seed()
         nia = self.page("nia")
-        nia.goto(f"/projects/{self.ids['project']}/conversations/{self.ids['conversation']}")
-        nia.locator("header.top").get_by_role("button", name="Together").click()
+        self.open_conversation(nia)
+        nia.locator("header.top, header.phead").get_by_role("button", name="Together").click()
         expect(self.bar(nia)).to_be_visible()
         phone = self.page("jonas", phone=True)
-        phone.goto(f"/projects/{self.ids['project']}/conversations/{self.ids['conversation']}")
-        phone.locator("header.top").get_by_role("button", name="Join").click()
+        self.open_conversation(phone)
+        phone.locator("header.top, header.phead").get_by_role("button", name="Join").click()
         bar = self.bar(phone)
         expect(bar.locator(".lv-where")).to_be_visible()
         # One compact row in the flow: the composer stays visible and above the fold.
@@ -597,7 +615,9 @@ class LiveJourney(LiveBase):
         shot(phone, "live-phone-390-strip")
         bar.get_by_role("button", name="Session details and more").click()
         sheet = phone.get_by_role("dialog", name="Live session")
-        expect(sheet.get_by_role("heading", name=re.compile("night camera test"))).to_be_visible()
+        # Together on the conversation page starts at the newest root when no thread is open (OneConversation);
+        # test_01 saved a result there, so that is the session's name, with the seeded thread before it.
+        expect(sheet.get_by_role("heading", name=re.compile("night camera test|IR-cut filter stays in on rev B"))).to_be_visible()
         shot(phone, "live-phone-390-sheet")
         # A labelled way back is in the first screen of the sheet, as a touch target (review of #131).
         back = sheet.get_by_role("button", name="Back to work")
@@ -627,8 +647,8 @@ class LiveJourney(LiveBase):
         self.assertEqual(phone.evaluate("window.__live.sockets"), 1)
 
         tablet = self.page("kai", viewport=TABLET)
-        tablet.goto(f"/projects/{self.ids['project']}/conversations/{self.ids['conversation']}")
-        tablet.locator("header.top").get_by_role("button", name="Join").click()
+        self.open_conversation(tablet)
+        tablet.locator("header.top, header.phead").get_by_role("button", name="Join").click()
         expect(self.bar(tablet).locator(".lv-where")).to_be_visible()
         overflow = tablet.evaluate("document.documentElement.scrollWidth - document.documentElement.clientWidth")
         self.assertLessEqual(overflow, 0, "no horizontal overflow on the tablet")

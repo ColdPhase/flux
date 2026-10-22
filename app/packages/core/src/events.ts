@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { authorizeEvent, type EventRef } from './access/policy.js';
+import { authorizeEvent, workspaceAi, type EventRef } from './access/policy.js';
 import type { Executor, Principal } from './types.js';
 
 /** The actor column format of events: `<kind>:<id>`. */
@@ -36,7 +36,16 @@ export interface EventPorts {
 
 /** The access policy as the event authorizer, inside `tx`, with the repository bound to the same transaction. */
 export function policyEventPorts(tx: Executor, repository: EventRepository): EventPorts {
-  return { repository, authorize: (principal, event) => authorizeEvent(principal, event, tx) };
+  // F-029: before the first agent candidate of a workspace, hold its AI policy row `FOR SHARE`, so an
+  // event racing a change of the policy is ordered before it (a pre-block event) or after it (no agent row).
+  const locked = new Set<string>();
+  return { repository, authorize: async (principal, event) => {
+    if (principal.kind === 'agent' && event.workspaceId && !locked.has(event.workspaceId)) {
+      await workspaceAi(tx, event.workspaceId, { lock: true });
+      locked.add(event.workspaceId);
+    }
+    return authorizeEvent(principal, event, tx);
+  } };
 }
 
 /**
