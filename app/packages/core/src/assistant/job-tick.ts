@@ -35,9 +35,10 @@ async function fireDue(deps: TickDeps, now: Date): Promise<number> {
       const next = once ? null : nextRuns(job.schedule, job.timeZone, now, 1)[0] ?? null;
       // F-029: while AI is off in the job's workspace nothing fires and no history row is written; the schedule moves on
       // to its next time after now, so a missed time never runs later (AST-7).
-      if ((await ports.access.workspaceAi(job.workspaceId, { lock: true })).state === 'allowed')
-        await fireJob(ports, deps.startBackground, job, firedAt, 'schedule', { late });
-      await ports.jobs.update(job.id, { lastRunAt: firedAt, nextRunAt: next, ...(once || !next ? { enabled: false } : {}) });
+      const aiOn = (await ports.access.workspaceAi(job.workspaceId, { lock: true })).state === 'allowed';
+      if (aiOn) await fireJob(ports, deps.startBackground, job, firedAt, 'schedule', { late });
+      // Skipped while AI is off: no "Last run" either, only the next time.
+      await ports.jobs.update(job.id, { ...(aiOn ? { lastRunAt: firedAt } : {}), nextRunAt: next, ...(once || !next ? { enabled: false } : {}) });
       return job.id;
     });
     if (!id) break;

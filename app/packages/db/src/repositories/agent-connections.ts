@@ -40,6 +40,24 @@ export async function agentConnectionWorkspaceId(db: DbExecutor, connectionId: s
   return row?.workspaceId ?? null;
 }
 
+/** The workspace of the connection an owner chose for one OAuth request of this session (F-029), or null. */
+export async function workspaceIdOfOauthFlow(db: DbExecutor, ownerUserId: string, sessionId: string, fingerprint: string): Promise<string | null> {
+  const [row] = await db.select({ workspaceId: schema.agentConnections.workspaceId }).from(schema.agentOauthFlows)
+    .innerJoin(schema.agentOauthBindings, eq(schema.agentOauthBindings.id, schema.agentOauthFlows.bindingId))
+    .innerJoin(schema.agentConnections, eq(schema.agentConnections.id, schema.agentOauthBindings.connectionId))
+    .where(and(eq(schema.agentOauthFlows.ownerUserId, ownerUserId), eq(schema.agentOauthFlows.sessionId, sessionId), eq(schema.agentOauthFlows.fingerprint, fingerprint)));
+  return row?.workspaceId ?? null;
+}
+
+/** The workspaces of every connection an owner bound to one OAuth client (F-029), newest first. */
+export async function workspaceIdsOfOauthClient(db: DbExecutor, ownerUserId: string, clientId: string): Promise<string[]> {
+  const rows = await db.select({ workspaceId: schema.agentConnections.workspaceId }).from(schema.agentOauthBindings)
+    .innerJoin(schema.agentConnections, eq(schema.agentConnections.id, schema.agentOauthBindings.connectionId))
+    .where(and(eq(schema.agentOauthBindings.ownerUserId, ownerUserId), eq(schema.agentOauthBindings.clientId, clientId)))
+    .orderBy(desc(schema.agentOauthBindings.createdAt));
+  return rows.map((row) => row.workspaceId);
+}
+
 /** The workspace behind an OAuth grant reference (`flux-grant:<binding>` or an explicit historic connection id), or null. */
 export async function workspaceIdOfGrantReference(db: DbExecutor, ownerUserId: string, referenceId: string): Promise<string | null> {
   let connectionId: string | null = referenceId;
