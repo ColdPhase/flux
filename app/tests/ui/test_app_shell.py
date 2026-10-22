@@ -910,7 +910,10 @@ class AppShellJourney(unittest.TestCase):
         self.assertEqual((round(sheet_box["x"]), round(sheet_box["y"]), round(sheet_box["width"]), round(sheet_box["height"])), (0, 0, PHONE["width"], PHONE["height"]), "Details is a full-screen sheet")
         shot(page, "phone-390-details-light")
         # #433: when a dialog surface itself holds keyboard focus, it shows a visible inset ring.
-        page.keyboard.press("Shift")
+        # Tab establishes keyboard modality in every engine: the focus ring is for keyboard focus only (final design focus
+        # rule), and a lone Shift does that only in Chromium (WebKit ignores modifier keys, #630), so the script's focus()
+        # after a mouse click would not show it there. The assertion itself is the same in both engines.
+        page.keyboard.press("Tab")
         ring = page.evaluate("""() => { const s = document.querySelector('.ui-overlay__surface'); s.setAttribute('tabindex', '-1'); s.focus();
           const cs = getComputedStyle(s); return {visible: s.matches(':focus-visible'), style: cs.outlineStyle, width: parseFloat(cs.outlineWidth), offset: parseFloat(cs.outlineOffset)}; }""")
         self.assertTrue(ring["visible"] and ring["style"] == "solid" and ring["width"] >= 2 and ring["offset"] < 0, ring)
