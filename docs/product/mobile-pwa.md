@@ -139,6 +139,30 @@ updates in each tab, explicit one-time Reload and draft preservation remain
 required in Chromium and WebKit. No worker blocking or visual token change is
 part of this correction.
 
+**Update prompt placement, 2026-10-22 (#20 partial slice).** The prompt was a layer
+pinned to the top of the window. On a phone it covered the header, so in WebKit
+`test_settings` test_07 (Back) failed once with `div.pwa-update` intercepting every tap for
+30 s (independent #452 review). The final design draws no update prompt; it follows the
+offline banner: a card that takes its own room and never covers content. Contract:
+
+- The prompt is a row above the shell, signed in or not. It publishes its height
+  (`--pwa-update-h`), and the shell, the sign-in page and the error page give up exactly
+  that much, so no header, Back, dock, Create or composer control is ever under it, at
+  any width or text size, and the page does not scroll because of it.
+- It pads its own top safe-area inset; while it is shown the shell below does not add the
+  inset again. Emulation cannot apply insets, so this is **device** only.
+- **Later** puts it away for this document and leaves the worker waiting; **Reload** is
+  the only action that activates the update. A newer waiting worker, or a new document,
+  offers it again. Nothing activates an update by itself.
+- A first install, a second tab and a second profile offer nothing (unchanged, #380).
+
+Browser evidence: `app/tests/ui/test_update_prompt.py` (Chromium and WebKit through
+`FLUX_UI_BROWSER`) runs with service workers active and a waiting worker, and asserts that
+real taps reach Back, the section links, the main places, the project views and the
+composer while the prompt is on screen. It also checks that nothing is under the prompt, on
+a phone, at 320 px with large text, on a computer and on the sign-in page. A negative control
+restores the old layer and expects the check to fail. Dismissal and the first-load cases are covered there too.
+
 ## Push, privacy and operations
 
 Ask for notification permission after a clear user action and explain the useful
@@ -324,7 +348,7 @@ not implemented or not tested. Each row keeps the labels of its source.
 | Simulated keyboard keeps the field and Send visible; the app follows `visualViewport` (contract; MDN browser-compat `interactive-widget`, 2026-03-26: Safari unsupported) | `app/apps/web/index.html:5`; `app/apps/web/src/app/AppLayout.tsx:263` | `test_phone_shell.py` `test_11` (Chromium and WebKit lanes) | emulated; the iOS keyboard is **device** only |
 | Safe-area insets (MDN `env()`, 2026-09-12, vendor) | `index.html:5` (`viewport-fit=cover`); `app/apps/web/src/app/app.css:13,40,48` | none; emulation cannot apply insets | code; **device** only |
 | Offline: an understandable offline page; API responses never cached (contract, MOB-5) | `sw.js:32-54`, `sw.js:38` (`/api` bypass) | `pwa.e2e.ts` offline test | emulated |
-| Update: the new worker waits, the app asks, one reload on confirmation (contract, MOB-5) | `app/apps/web/src/pwa/register.ts`; `app/apps/web/src/pwa/UpdatePrompt.tsx` | `pwa.e2e.ts` update test | emulated; **open**: drafts and in-progress input across an update are not tested |
+| Update: the new worker waits, the app asks, one reload on confirmation (contract, MOB-5) | `app/apps/web/src/pwa/register.ts`; `app/apps/web/src/pwa/UpdatePrompt.tsx` | `pwa.e2e.ts` update test; `pwa-update.e2e.ts`; `test_update_prompt.py` (placement, reach, dismissal) | emulated; **open**: drafts and in-progress input across an update are not tested |
 | Lock-screen privacy: generic title unless the server sent a full preview; tap-time recheck through `GET /api/v1/inbox/:id` (contract, #41) | `sw.js:72`, `sw.js:96-107`, `sw.js:112` | `push.test.ts:222` and `:246` (recheck and expiry, API level) | code and API tests; the display is **device** only |
 | Denied or revoked permission keeps the inbox usable (contract, MOB-4) | `NotificationsButton.tsx` `MESSAGES.denied` and `unsupported` | `push.test.ts:315` covers push unavailable, not a browser permission state | **open** for the browser state |
 
