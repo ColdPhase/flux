@@ -127,7 +127,7 @@ export function pendingMessageRow({ item, place, continued = false, keyed = true
       className={`project-convo__message is-mine is-pending is-pending-${place}${continued ? ' is-continued' : ''}${item.state === 'failed' ? ' is-failed-send' : ''}`}>
 
       {inMeta ? status : null}
-      <PendingFiles body={item.body ? <p>{item.body}</p> : null} files={item.files} send={{ state: item.state, onRetry }} />
+      <PendingFiles body={item.body ? <div className="message-body">{item.body}</div> : null} files={item.files} send={{ state: item.state, onRetry }} />
       <PendingSource item={item} className="project-convo__source" />
       {inMeta ? null : status}
     </li>

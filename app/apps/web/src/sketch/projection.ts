@@ -11,6 +11,8 @@ export interface NewThought {
   placement?: { type: 'draft'; id: string; title: string | null } | null;
   /** The message it came from (#96); only a message of the sketch's own DM is restored on the server. */
   source?: Thought['source'];
+  /** The project message being added to its own map; the server derives source author and time. */
+  sourceProjectMessageId?: string;
   /** Its image (#252): a staged file on first save, or the same published file when Undo restores the thought. */
   file?: ThoughtFile;
 }

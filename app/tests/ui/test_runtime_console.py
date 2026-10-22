@@ -8,7 +8,7 @@ Two stacks run this module:
   TEST ONLY fake `claude` (its `auth login` prints the URL and prompt as the pinned Claude Code
   2.1.285 does). There the whole sign-in runs at phone width (390×844, touch) and at 1440×900:
   the notices before sign-in, the method choice, the terminal with the CLI's URL, the pasted code,
-  the signed-in facts, sign-out and Remove Claude Code from Flux. The account-change and failed-logout notices
+  the signed-in facts, sign-out and removal of the shared runtime space. The account-change and failed-logout notices
   are rendered from a stubbed status, which proves wording and layout, not behaviour (the API suite
   tests/app/agent-runtime-console.test.ts proves those).
 """
@@ -148,7 +148,7 @@ class RuntimeConsole(unittest.TestCase):
         page = self.page()
         page.goto("/settings/agents")
         section = page.locator("section.rt")
-        expect(section.get_by_role("heading", name="Claude Code in Flux")).to_be_visible()
+        expect(section.get_by_role("heading", name="Agent sign-in in Flux")).to_be_visible()
         expect(section).to_contain_text("Signing in with your Claude or ChatGPT subscription isn’t turned on for this Flux server.")
         expect(section.get_by_role("link", name=re.compile("^Use an API key"))).to_be_visible()
         expect(section.get_by_role("link", name="Sign in with Claude")).to_have_count(0)
@@ -220,7 +220,7 @@ class RuntimeConsole(unittest.TestCase):
         expect(section.get_by_role("heading", name=re.compile("Claude Code in Flux · signed in"))).to_be_visible()
         expect(section.get_by_role("list", name="Your sign-in")).to_contain_text("Anthropic Console · API billing")
         expect(section.get_by_role("list", name="Your sign-in")).to_contain_text("o***@example.org")
-        for name in ("Check sign-in", "Sign out", "Remove Claude Code from Flux…"):
+        for name in ("Check sign-in", "Sign out", "Remove shared runtime space from Flux…"):
             expect(section.get_by_role("button", name=name)).to_be_visible()
         self.phone_layout(page, "section.rt")
         shot(page, "runtime-settings-signed-in-phone-390")
@@ -250,7 +250,7 @@ class RuntimeConsole(unittest.TestCase):
         page.route("**/api/v1/agent-runtime", lambda route: route.fulfill(status=200, content_type="application/json", body=json.dumps(signed_out)))
         page.reload()
         expect(page.get_by_role("note").filter(has_text="Anthropic didn’t confirm the sign-out.")).to_contain_text(
-            "Flux deleted the login from your Claude Code space anyway. To be sure it can’t be used, end the session in your Claude account or Anthropic Console settings.")
+            "Flux deleted the login files from your shared runtime space anyway. To be sure the session can’t be used, end it in your Claude account or Anthropic Console settings.")
         self.phone_layout(page, "section.rt")
         shot(page, "runtime-signout-failed-phone-390")
 
@@ -395,9 +395,9 @@ class RuntimeConsole(unittest.TestCase):
             self.api(page, "POST", "/api/v1/agent-runtime/binding")
         page.goto("/settings/agents")
         section = page.locator("section.rt")
-        section.get_by_role("button", name="Remove Claude Code from Flux…").tap()
-        confirm = page.get_by_role("group", name="Remove Claude Code from Flux")
-        expect(confirm).to_contain_text("Flux signs Claude Code out first, then deletes its files from your space on this server and frees the space for someone else.")
+        section.get_by_role("button", name="Remove shared runtime space from Flux…").tap()
+        confirm = page.get_by_role("group", name="Remove shared runtime space from Flux")
+        expect(confirm).to_contain_text("Flux tries to sign out of Claude Code and Codex, then deletes both clients’ files from your shared runtime space on this server and frees the space for someone else.")
         self.phone_layout(page, "section.rt")
         shot(page, "runtime-remove-phone-390")
         confirm.get_by_role("button", name="Sign out and remove").tap()
@@ -420,6 +420,97 @@ class RuntimeConsole(unittest.TestCase):
                 "accountChange": None, "signOut": None,
             }}, "auth": {},
         }
+
+    def test_15_codex_only_and_mixed_client_copy_matrix(self) -> None:
+        """The active CLI owns its sign-in facts; releasing the slot is described as shared."""
+        signed_at = "2026-10-07T10:00:00.000Z"
+        signed_out_at = "2026-10-07T10:01:00.000Z"
+
+        def codex_connection(state: str, *, sign_out: dict | None = None) -> dict:
+            signed_in = state == "signed_in"
+            return {
+                "state": state, "signInMethod": "device_code", "authMethod": "chatgpt.com" if signed_in else None,
+                "plan": "Plus" if signed_in else None, "accountLabel": "c***@example.org" if signed_in else None,
+                "signedInAt": signed_at if signed_in else None, "payer": "chatgpt_plan" if signed_in else None,
+                "accountChange": None, "signOut": sign_out,
+            }
+
+        def codex_only(state: str, *, sign_out: dict | None = None) -> dict:
+            current = self.runtime_snapshot()
+            current.update(clients={"claude_code": "off", "codex": "available"}, commercialTerms=None,
+                           connections={"claude_code": None, "codex": codex_connection(state, sign_out=sign_out)})
+            return current
+
+        # Codex-only, signed out: use OpenAI facts and disclosure, never Anthropic's.
+        page = self.page()
+        signed_out = codex_only("signed_out")
+        page.route("**/api/v1/agent-runtime", lambda route: route.fulfill(
+            status=200, headers={"cache-control": "no-store"}, content_type="application/json", body=json.dumps(signed_out)))
+        page.goto("/settings/agents")
+        section = page.locator("section.rt")
+        expect(section.get_by_role("heading", name="Codex in Flux · not signed in")).to_be_visible()
+        expect(section).to_contain_text("OpenAI’s rules")
+        expect(section).to_contain_text("your ChatGPT plan")
+        expect(section).not_to_contain_text("Anthropic")
+        expect(section).not_to_contain_text("your Claude plan")
+        section.locator("details.rt-more summary").filter(has_text="Which account should I use?").click()
+        expect(section.locator("details.rt-more").filter(has_text="Which account should I use?")).to_contain_text("A ChatGPT sign-in uses the account or organization you choose in Codex.")
+        shot(page, f"runtime-codex-only-signed-out-phone-390-{UI_BROWSER}")
+        page.close()
+
+        # Codex-only, signed in: the action names Codex and confirms the saved sign-out for Codex.
+        page = self.page()
+        signed_in = codex_only("signed_in")
+        confirmed = codex_only("signed_out", sign_out={"at": signed_out_at, "failed": False})
+        page.route("**/api/v1/agent-runtime", lambda route: route.fulfill(
+            status=200, headers={"cache-control": "no-store"}, content_type="application/json", body=json.dumps(signed_in)))
+        posted: list[dict] = []
+
+        def sign_out(route: Route) -> None:
+            posted.append(route.request.post_data_json)
+            route.fulfill(status=200, headers={"cache-control": "no-store"}, content_type="application/json", body=json.dumps(confirmed))
+
+        page.route("**/api/v1/agent-runtime/sign-out", sign_out)
+        page.goto("/settings/agents")
+        section = page.locator("section.rt")
+        expect(section.get_by_role("heading", name="Codex in Flux · signed in")).to_be_visible()
+        expect(section.get_by_role("list", name="Your Codex sign-in")).to_contain_text("c***@example.org")
+        expect(section.get_by_role("button", name="Check Codex sign-in")).to_be_visible()
+        section.get_by_role("button", name="Sign out of Codex").click()
+        expect(section.get_by_role("status").filter(has_text="Signed out of Codex in Flux.")).to_be_visible()
+        self.assertEqual(posted, [{"client": "codex"}], "the button signs out the currently selected client")
+        expect(section.get_by_role("button", name="Remove shared runtime space from Flux…")).to_be_visible()
+        section.get_by_role("button", name="Remove shared runtime space from Flux…").click()
+        removal = page.get_by_role("group", name="Remove shared runtime space from Flux")
+        expect(removal).to_contain_text("Flux tries to sign out of Claude Code and Codex")
+        expect(removal).to_contain_text("deletes both clients’ files from your shared runtime space")
+        expect(removal).not_to_contain_text("Claude Code signs out first")
+        shot(page, f"runtime-codex-confirmed-signout-removal-phone-390-{UI_BROWSER}")
+        page.close()
+
+        # Both clients offered: the mixed state is reported individually, while removal stays shared.
+        page = self.page()
+        mixed = self.runtime_snapshot()
+        mixed.update(clients={"claude_code": "available", "codex": "available"}, commercialTerms=None)
+        mixed["connections"]["codex"] = codex_connection("signed_out")
+        page.route("**/api/v1/agent-runtime", lambda route: route.fulfill(
+            status=200, headers={"cache-control": "no-store"}, content_type="application/json", body=json.dumps(mixed)))
+        page.goto("/settings/agents")
+        section = page.locator("section.rt")
+        expect(section.get_by_role("heading", name="Claude Code and Codex in Flux · Claude Code signed in · Codex not signed in")).to_be_visible()
+        expect(section.get_by_role("link", name="Sign in with ChatGPT")).to_be_visible()
+        expect(section.get_by_role("button", name="Sign out of ChatGPT", exact=True)).to_have_count(0)
+        mixed["connections"]["codex"] = codex_connection("signed_in")
+        page.reload()
+        expect(section.get_by_role("heading", name="Claude Code and Codex in Flux · Claude Code signed in · Codex signed in")).to_be_visible()
+        expect(section.locator(".rt-codex")).to_contain_text("ChatGPT plan")
+        expect(section.get_by_role("button", name="Sign out", exact=True)).to_be_visible()
+        expect(section.get_by_role("button", name="Sign out of ChatGPT", exact=True)).to_be_visible()
+        section.get_by_role("button", name="Remove shared runtime space from Flux…").click()
+        removal = page.get_by_role("group", name="Remove shared runtime space from Flux")
+        expect(removal).to_contain_text("Claude Code and Codex")
+        shot(page, f"runtime-mixed-clients-shared-removal-phone-390-{UI_BROWSER}")
+        page.close()
 
     def held_poll(self, *, remove: bool) -> None:
         """Mounted component with a real fetch held before delivery, not an implementation mirror."""
@@ -467,8 +558,8 @@ class RuntimeConsole(unittest.TestCase):
             page.wait_for_timeout(20)
         self.assertEqual(len(held), 1, "actual background GET reached the delivery barrier")
         if remove:
-            section.get_by_role("button", name="Remove Claude Code from Flux…").tap()
-            page.get_by_role("group", name="Remove Claude Code from Flux").get_by_role("button", name="Sign out and remove").tap()
+            section.get_by_role("button", name="Remove shared runtime space from Flux…").tap()
+            page.get_by_role("group", name="Remove shared runtime space from Flux").get_by_role("button", name="Sign out and remove").tap()
         else:
             section.get_by_role("button", name="Sign out", exact=True).tap()
         expected = "Claude Code in Flux · removing" if remove else "Claude Code in Flux · not signed in"
@@ -503,15 +594,15 @@ class RuntimeConsole(unittest.TestCase):
         page.route("**/api/v1/agent-runtime", lambda route: route.fulfill(status=200, content_type="application/json", body=json.dumps(released)))
         page.goto("/settings/agents")
         section = page.locator("section.rt")
-        expect(section).to_contain_text("Vendor sign-out was not confirmed")
+        expect(section).to_contain_text("Sign-out was not confirmed for at least one client")
         expect(section).not_to_contain_text("It signed out first")
         page.unroute("**/api/v1/agent-runtime")
         current = self.runtime_snapshot()
         page.route("**/api/v1/agent-runtime", lambda route: route.fulfill(status=200, content_type="application/json", body=json.dumps(current)))
         page.reload()
         page.route("**/api/v1/agent-runtime/binding", lambda route: route.fulfill(status=503, content_type="application/json", body='{"error":"unavailable"}'))
-        section.get_by_role("button", name="Remove Claude Code from Flux…").tap()
-        page.get_by_role("group", name="Remove Claude Code from Flux").get_by_role("button", name="Sign out and remove").tap()
+        section.get_by_role("button", name="Remove shared runtime space from Flux…").tap()
+        page.get_by_role("group", name="Remove shared runtime space from Flux").get_by_role("button", name="Sign out and remove").tap()
         expect(section.get_by_role("alert")).to_contain_text("Removal could not be confirmed")
         expect(section).not_to_contain_text("Nothing changed")
         self.phone_layout(page, "section.rt")
@@ -587,7 +678,7 @@ class RuntimeConsole(unittest.TestCase):
         recovery = copy.deepcopy(confirmed)
         recovery["binding"].update(state="releasing", recovery=True)
         recovery["connections"]["claude_code"] = None
-        cases.append(("recovery", recovery, "Recovering your Claude Code space after an unconfirmed operation."))
+        cases.append(("recovery", recovery, "Recovering your shared runtime space after an unconfirmed operation."))
         for name, state in (("new-sign-in", "signed_in"), ("sign-in-again", "sign_in_again")):
             status = copy.deepcopy(confirmed)
             status["connections"]["claude_code"]["state"] = state
@@ -637,8 +728,8 @@ class RuntimeConsole(unittest.TestCase):
                             held_action: list[Route] = []
                             page.route("**/api/v1/agent-runtime/binding", lambda route: held_action.append(route)
                                        if route.request.method == "DELETE" else route.continue_())
-                            section.get_by_role("button", name="Remove Claude Code from Flux…").click()
-                            page.get_by_role("group", name="Remove Claude Code from Flux").get_by_role("button", name="Sign out and remove").click()
+                            section.get_by_role("button", name="Remove shared runtime space from Flux…").click()
+                            page.get_by_role("group", name="Remove shared runtime space from Flux").get_by_role("button", name="Sign out and remove").click()
                             deadline = time.time() + 5
                             while not held_action and time.time() < deadline:
                                 page.wait_for_timeout(20)
@@ -664,7 +755,7 @@ class RuntimeConsole(unittest.TestCase):
             for theme in ("light", "dark"):
                 for response_kind, response_status, response_body, message in (
                     ("unknown", 503, {"error": "unavailable"}, "Removal could not be confirmed. Check the current state before trying again."),
-                    ("off", 409, None, "Claude Code was not removed. Sign-in is turned off on this server. Ask the person who runs this server to turn it on, then try again."),
+                    ("off", 409, None, "The shared runtime space was not removed. Sign-in is turned off on this server. Ask the person who runs this server to turn it on, then try again."),
                     # The current DELETE route never emits AUTH_BUSY. An unsupported response cannot
                     # prove refusal/no deletion; keep this explicit synthetic compatibility control.
                     ("synthetic-busy", 409, {"error": "Another auth operation is still using your runtime", "code": "AGENT_RUNTIME_AUTH_BUSY"},
@@ -688,8 +779,8 @@ class RuntimeConsole(unittest.TestCase):
                         page.goto("/settings/agents")
                         section = page.locator("section.rt")
                         expect(section.get_by_role("heading", name="Claude Code in Flux · not signed in")).to_be_visible()
-                        section.get_by_role("button", name="Remove Claude Code from Flux…").click()
-                        group = page.get_by_role("group", name="Remove Claude Code from Flux")
+                        section.get_by_role("button", name="Remove shared runtime space from Flux…").click()
+                        group = page.get_by_role("group", name="Remove shared runtime space from Flux")
                         submit = group.get_by_role("button", name="Sign out and remove")
                         if response_kind == "off":
                             with page.expect_response(lambda response: response.request.method == "DELETE"

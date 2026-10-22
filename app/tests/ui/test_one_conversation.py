@@ -216,7 +216,7 @@ class OneConversationJourney(unittest.TestCase):
         stream = self.stream(page)
         roots = stream.locator(".project-convo__message")
         expect(roots).to_have_count(50)
-        self.assertEqual([text.strip() for text in stream.locator(".project-convo__message > .message-bubble > p").all_inner_texts()[-3:]], [OPENING, NUMBERS, ORDER], "chronological, newest last")
+        self.assertEqual([text.strip() for text in stream.locator(".project-convo__message > .message-bubble > .message-body").all_inner_texts()[-3:]], [OPENING, NUMBERS, ORDER], "chronological, newest last")
         expect(self.root(page, "r1")).to_have_class(re.compile("is-mine"))
         expect(self.root(page, "r2")).not_to_have_class(re.compile("is-mine"))
         expect(self.root(page, "r2")).to_contain_text("Jonas Berg")
@@ -258,7 +258,7 @@ class OneConversationJourney(unittest.TestCase):
         after = anchor.bounding_box()
         assert before and after
         self.assertAlmostEqual(before["y"], after["y"], delta=4, msg="loading earlier roots keeps the reader's place")
-        self.assertTrue(stream.locator(".project-convo__message > .message-bubble > p").first.inner_text().startswith("Earlier note 01"))
+        self.assertTrue(stream.locator(".project-convo__message > .message-bubble > .message-body").first.inner_text().startswith("Earlier note 01"))
 
     def test_01b_message_times_are_a_natural_clock_in_a_12_hour_locale(self) -> None:
         # "4:55 PM", never a zero-padded "04:55 PM", under every root (#436).
@@ -782,8 +782,8 @@ class OneConversationJourney(unittest.TestCase):
                 page.goto(self.project_url(f"/conversations/{self.ids['c1']}"))
                 expect(self.thread(page).locator(f"#message-{self.ids['first']}")).to_be_visible()
                 for selector in (f"#message-{self.ids['r1']} .convo-replies__open", f"#message-{self.ids['r1']} .convo-replies__when",
-                                 ".ui-panel__kind", ".ui-panel__meta", ".thread__hint", ".thread__root .message-time time", ".thread__root > .message-bubble > p",
-                                 f"#message-{self.ids['first']} > .message-bubble > p", f"#message-{self.ids['r3']} .message-time time"):
+                                 ".ui-panel__kind", ".ui-panel__meta", ".thread__hint", ".thread__root .message-time time", ".thread__root > .message-bubble > .message-body",
+                                 f"#message-{self.ids['first']} > .message-bubble > .message-body", f"#message-{self.ids['r3']} .message-time time"):
                     page.wait_for_function("""selector => {
                       const el = document.querySelector(selector); if (!el) return false;
                       for (let n = el; n; n = n.parentElement) if (Number(getComputedStyle(n).opacity) !== 1) return false;
