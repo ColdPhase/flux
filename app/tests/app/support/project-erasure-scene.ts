@@ -50,8 +50,8 @@ export async function seedDraftAndProactive(f: ThreadNativeScene, resultId: stri
   const candidate = async (n: number) => {
     const id = randomUUID();
     await pool.query(`INSERT INTO proactive_comparison_outbox(id,rule_id,owner_user_id,project_id,result_id,source_fingerprint,status,
-      failure_code,usage_input_tokens,usage_output_tokens,usage_estimated_cents,finished_at,inspected_sources)
-      VALUES($1,$2,$3,$4,$5,$6,'not_run','TEST',0,0,0,now(),'[]')`, [id, rule.id, owner, f.projectId, resultId, String(n).repeat(64)]);
+      failure_code,usage_input_tokens,usage_output_tokens,usage_estimated_cents,finished_at,inspected_sources,ai_epoch)
+      VALUES($1,$2,$3,$4,$5,$6,'not_run','TEST',0,0,0,now(),'[]',1)`, [id, rule.id, owner, f.projectId, resultId, String(n).repeat(64)]);
     return id;
   };
   await candidate(1);

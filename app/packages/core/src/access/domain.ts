@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { and, asc, desc, eq, isNull, sql, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNull, sql, type SQL } from 'drizzle-orm';
 import { schema, eventRepository, projectGoalRows } from '@flux/db';
 import type {
   AddMemberCommand,
@@ -26,6 +26,7 @@ import type {
   ShareDraftCommand,
   UpdateDraftCommand,
   Workspace,
+  WorkspaceAiPolicy,
   WorkspaceMember,
   WorkspaceRole,
 } from '@flux/contracts';
@@ -44,6 +45,7 @@ import {
   isUuid,
   LEVEL,
   projectLevelSql,
+  requireWorkspaceAi,
   visibleDraftsSql,
   visibleProjectsSql,
   type Actor,
@@ -131,8 +133,33 @@ async function lockProjectForGrantChange(tx: Tx, projectId: string) {
   await tx.select({ id: schema.projects.id }).from(schema.projects).where(eq(schema.projects.id, projectId)).for('no key update');
 }
 
-function toWorkspace(row: typeof schema.workspaces.$inferSelect, role: WorkspaceRole | null): Workspace {
-  return { id: row.id, name: row.name, role, version: row.version, createdAt: row.createdAt.toISOString() };
+function toWorkspace(row: typeof schema.workspaces.$inferSelect, role: WorkspaceRole | null, ai: WorkspaceAiPolicy): Workspace {
+  return { id: row.id, name: row.name, role, version: row.version, createdAt: row.createdAt.toISOString(), ai };
+}
+
+const MISSING_AI_POLICY: WorkspaceAiPolicy = { state: 'blocked', version: 0, changedAt: new Date(0).toISOString(), changedBy: null };
+
+/**
+ * The AI policy of each workspace as its reader sees it (F-029): the state for every member, and who
+ * changed it only for a reader with `workspace.read_members` (owners, admins, members; not guests or agents).
+ */
+async function workspaceAiViews(db: Executor, readers: { workspaceId: string; role: WorkspaceRole | null }[]): Promise<Map<string, WorkspaceAiPolicy>> {
+  const ids = [...new Set(readers.map((reader) => reader.workspaceId))];
+  if (!ids.length) return new Map();
+  const p = schema.workspaceAiPolicies;
+  const rows = await db.select({ workspaceId: p.workspaceId, state: p.state, version: p.version, changedAt: p.changedAt,
+    changedBy: p.changedBy, changedByName: schema.authUsers.name }).from(p)
+    .leftJoin(schema.authUsers, eq(schema.authUsers.id, p.changedBy)).where(inArray(p.workspaceId, ids));
+  const byId = new Map(rows.map((row) => [row.workspaceId, row]));
+  const views = new Map<string, WorkspaceAiPolicy>();
+  for (const { workspaceId, role } of readers) {
+    const row = byId.get(workspaceId);
+    if (!row) { views.set(workspaceId, MISSING_AI_POLICY); continue; }
+    const named = role !== null && role !== 'guest' && row.changedBy !== null && row.changedByName !== null;
+    views.set(workspaceId, { state: row.state, version: row.version, changedAt: row.changedAt.toISOString(),
+      changedBy: named ? { id: row.changedBy!, name: row.changedByName! } : null });
+  }
+  return views;
 }
 
 function toProject(row: typeof schema.projects.$inferSelect, level: number, goal: Project['goal'] = null): Project {
@@ -196,7 +223,7 @@ export async function createWorkspace(principal: Principal, command: CreateWorks
     const [row] = await tx.insert(schema.workspaces).values({ id, name: workspaceName, createdBy: principal.id }).returning();
     await tx.insert(schema.workspaceMembers).values({ workspaceId: id, userId: principal.id, role: 'owner', createdBy: principal.id });
     await recordEvent(events(tx), principal, id, 'workspace.created.v1', id, {});
-    return toWorkspace(row!, 'owner');
+    return toWorkspace(row!, 'owner', (await workspaceAiViews(tx, [{ workspaceId: id, role: 'owner' }])).get(id)!);
   });
 }
 
@@ -208,7 +235,8 @@ export async function listWorkspaces(principal: Principal, db: Database): Promis
       .innerJoin(schema.workspaces, eq(schema.workspaces.id, schema.workspaceMembers.workspaceId))
       .where(eq(schema.workspaceMembers.userId, principal.id))
       .orderBy(asc(schema.workspaces.createdAt), asc(schema.workspaces.id));
-    return rows.map((row) => toWorkspace(row.workspace, row.role));
+    const ai = await workspaceAiViews(db, rows.map((row) => ({ workspaceId: row.workspace.id, role: row.role })));
+    return rows.map((row) => toWorkspace(row.workspace, row.role, ai.get(row.workspace.id)!));
   }
   if (principal.kind === 'agent' && isUuid(principal.id)) {
     const [agent] = await db.select({ workspaceId: schema.agents.workspaceId }).from(schema.agents).where(eq(schema.agents.id, principal.id));
@@ -216,7 +244,7 @@ export async function listWorkspaces(principal: Principal, db: Database): Promis
     const { visible } = await evaluateWorkspace(principal, 'workspace.read', agent.workspaceId, db);
     if (!visible) return [];
     const [row] = await db.select().from(schema.workspaces).where(eq(schema.workspaces.id, agent.workspaceId));
-    return row ? [toWorkspace(row, null)] : [];
+    return row ? [toWorkspace(row, null, (await workspaceAiViews(db, [{ workspaceId: row.id, role: null }])).get(row.id)!)] : [];
   }
   return [];
 }
@@ -225,7 +253,7 @@ export async function getWorkspace(principal: Principal, workspaceId: string, db
   const { actor } = enforce(await evaluateWorkspace(principal, 'workspace.read', workspaceId, db), 'workspace');
   const [row] = await db.select().from(schema.workspaces).where(eq(schema.workspaces.id, workspaceId));
   if (!row) throw new NotFoundError('Workspace', 'WORKSPACE_NOT_FOUND');
-  return toWorkspace(row, actor.role);
+  return toWorkspace(row, actor.role, (await workspaceAiViews(db, [{ workspaceId: row.id, role: actor.role }])).get(row.id)!);
 }
 
 export async function listMembers(principal: Principal, workspaceId: string, db: Database): Promise<WorkspaceMember[]> {
@@ -497,6 +525,8 @@ export async function createAgent(principal: Principal, workspaceId: string, com
   const owner = oneOf(command.owner, ['self', 'workspace'] as const, 'owner');
   return db.transaction(async (tx) => {
     enforce(await evaluateWorkspace(principal, owner === 'self' ? 'agent.create' : 'workspace.manage_agents', workspaceId, tx, { lock: true }), 'workspace');
+    // F-029: no new agent identity while AI is off in the workspace (revoking and listing stay).
+    await requireWorkspaceAi(tx, workspaceId, { lock: true });
     const id = randomUUID();
     const [row] = await tx.insert(schema.agents).values({ id, workspaceId, name: agentName, ownerUserId: owner === 'self' ? principal.id : null, createdBy: principal.id }).returning();
     await recordEvent(events(tx), principal, workspaceId, 'agent.created.v1', id, { owner });

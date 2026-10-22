@@ -105,7 +105,7 @@ test('recovery skips active row locks, serializes replicas, pages beyond 100 and
       await tx.insert(schema.proactiveComparisonRules).values({ ...rule!, id: ruleId, agentId, ownerUserId: ownerId });
       await tx.insert(schema.backgroundComputeConnections).values({ ...connection!, id: connectionId, ownerUserId: ownerId,
         encryptedKey: sealBackgroundKey('a known local fixture only', ownerId, connectionId, masterKey) });
-      await tx.insert(schema.proactiveComparisonOutbox).values({ id, ruleId, ownerUserId: ownerId, projectId: f.prj.id, resultId: first.result.id,
+      await tx.insert(schema.proactiveComparisonOutbox).values({ aiEpoch: 1, id, ruleId, ownerUserId: ownerId, projectId: f.prj.id, resultId: first.result.id,
         sourceFingerprint: 'a'.repeat(64), status: 'reserved', connectionId, reservedCents: 5, reservedAt: now, updatedAt: old,
         dispatchStartedAt: index % 2 ? old : null });
     }

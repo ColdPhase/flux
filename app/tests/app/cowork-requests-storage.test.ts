@@ -36,7 +36,7 @@ async function fixture() {
   const makeUnit = async (options: { role?: 'review' | 'execute'; taskId?: string; lineageTaskId?: string; runId?: string; connectionId?: string } = {}) => {
     const ownTask = options.taskId ?? taskId;
     const unitId = randomUUID();
-    await db.insert(schema.coworkUnits).values({ id: unitId, workspaceId, projectId, taskId: ownTask, lineageTaskId: options.lineageTaskId ?? ownTask,
+    await db.insert(schema.coworkUnits).values({ aiEpoch: 1, id: unitId, workspaceId, projectId, taskId: ownTask, lineageTaskId: options.lineageTaskId ?? ownTask,
       runId: options.runId ?? runId, unitKey: unitId, role: options.role ?? 'review', assignmentConnectionId: options.connectionId ?? recipient.connectionId });
     return unitId;
   };

@@ -173,7 +173,7 @@ named transaction, plus epoch comparison where an item has `ai_epoch`.
 
 | Point | File / function | Rule |
 | --- | --- | --- |
-| Bearer verification | `apps/server/src/agent-connection/mcp-route.ts`, `handleVerified` (the transaction that calls `grantForMcp`/`grantForRun` and `lockAgentMcpPolicy`) | Check on `grant.connection.workspaceId` before the tool server is created: no `tools/list`, resource or prompt is served. Answer `403` JSON-RPC error `WORKSPACE_AI_BLOCKED`. |
+| Bearer verification | `apps/server/src/agent-connection/mcp-route.ts`, `handleVerified` (the transaction that calls `grantForMcp`/`grantForRun` and `lockAgentMcpPolicy`) | Check on `grant.connection.workspaceId` before the tool server is created: no `tools/list`, resource or prompt is served. Answer a JSON-RPC error `WORKSPACE_AI_BLOCKED` on HTTP 200 (S1 amendment, 2026-10-23: the real Claude Code read a 403 from `/mcp` as a lost sign-in and asked to connect again after re-enable, contradicting the founder answer that connections resume). |
 | Delivery fence | same file, `fence.check` (called by `createMcpRelay` for every chunk) | Check **first and unconditionally**, before the existing `if (!d.protectedOutput …) return`, so even a tool list or a refusal body is not handed to the transport after cutover. |
 | Every tool, resource, prompt | `apps/server/src/agent-connection/context.ts`, `agentConnectionInTransaction` | Check on `row.workspaceId` for every call, with or without `claims.dispatch` (covers project-less tools such as `flux_list_contexts`, `flux_bootstrap`, `flux_coordination_inbox`, and internal native adapters: own-agent hand-off, assistant Apply). Covers every module registered in `mcp-tools.ts`. |
 | External runtime sessions | `apps/server/src/agent-connection/runtime.ts`, `agentRuntimeInTransaction`, `ensureRuntime` | New sessions are stamped with the current epoch; reusing a session of another epoch answers `409 RUNTIME_UNAVAILABLE` ("start a new client session"). The sweep revokes old-epoch sessions. |
@@ -207,7 +207,7 @@ named transaction, plus epoch comparison where an item has `ai_epoch`.
 | Co-work cards and coordination | `apps/server/src/co-work/routes.ts` (coordination view, packet, review policy) | Refused while blocked; cancel stays. |
 | Agent threads | `apps/server/src/conversation/agent-thread-routes.ts` | Posting refused while blocked; existing messages stay readable as history. |
 | Background comparisons | `apps/server/src/proactive-comparison/routes.ts`: create rule, `PATCH` to `enabled`, proposal edit/use, outcome list | Refused while blocked; pause, revoke and dismiss stay. Account-level key connections (`/background-compute-connections`) are not workspace content and stay. |
-| Needs you and Inbox | `apps/server/src/needs-you/routes.ts` (`GET` and `POST /:key` resolve), inbox list and count in `apps/server/src/notifications/routes.ts` | `isAiOrigin` items of a blocked workspace are omitted from lists and counts, and resolving one answers `403 WORKSPACE_AI_BLOCKED`; human items are unchanged. |
+| Needs you and Inbox | `apps/server/src/needs-you/routes.ts` (`GET` and `POST /:key` resolve), inbox list and count in `apps/server/src/notifications/routes.ts` | `isAiOrigin` items of a blocked workspace are omitted from lists, counts and direct reads; resolving one answers `404` like any item not in the queue, so nothing about it is shown (S1 implementation, 2026-10-22); human items are unchanged. |
 | Push and e-mail delivery | `packages/core/src/push/delivery.ts` (`deliverPush`, run by `apps/worker/src/push`), `packages/core/src/notifications/email.ts` | Gated at send: an `isAiOrigin` notification of a blocked workspace is skipped ("AI is off"), including ones created before the flip and still queued. |
 | Comparison enqueue in a human's write | `apps/server/src/work/adapters.ts`, `prepareHumanNegative` and `enqueueHumanNegative` (`proactiveOutboxRows`) | `prepareHumanNegative` reads the policy `FOR SHARE` first and selects no rule when blocked; `enqueueHumanNegative` stamps the epoch read there. The human's result is recorded either way. |
 | Runtime slot and sign-in | `apps/server/src/agent-runtime/routes.ts` | Exempt: account-level, carries no workspace content. Runs that would use it are gated above and in the worker. |
@@ -226,7 +226,7 @@ named transaction, plus epoch comparison where an item has `ai_epoch`.
 | Morning summary | `packages/core/src/assistant/morning-summary.ts`, `startAssistantSummary` | **Cross-workspace context:** `summary.unread` returns notifications of every workspace. Drop rows whose `source.workspaceId` is blocked before titles are read, and anchor the run only in an allowed workspace; with none, the plain #350 summary goes out. `settleAssistantSummaries` commits a line only after a check on the run's workspace. |
 | Comparison scheduling and reservation | `apps/worker/src/proactive-comparison/scheduling-adapter.ts`, `reservation-adapter.ts` | Check; new candidates store `ai_epoch`. |
 | Comparison input, dispatch and publish | `apps/worker/src/proactive-comparison/authorization.ts`, `authorizedComparison`; `dispatch.ts` (`prepared` transaction, which reads the source texts with `lock = true`, and the publish transaction); `watchComparisonAuthorization` (unlocked, every 250 ms) | Locked check with the candidate's `ai_epoch` in the input and publish transactions; the unlocked watcher aborts the provider request through the existing `AbortController`; publication is refused with `ComparisonStopped('AI_OFF')`. |
-| Comparison recovery | `apps/worker/src/proactive-comparison/recovery.ts` | Same check. |
+| Comparison recovery | `apps/worker/src/proactive-comparison/recovery.ts` | Exempt (S1, 2026-10-23): it only settles reservations that were interrupted and never dispatches or retries, so it starts no AI work. |
 | Event audience | `packages/core/src/events.ts`, `eventAudience` | When agent candidates exist, read the policy `FOR SHARE` once (before evaluating them) in the event's transaction; when blocked, no agent gets an `event_audience` row. An event racing the flip is therefore ordered before it (a pre-block event) or after it (no agent row), so no event of the blocked period ever reaches an agent. |
 | Runtime slot processes | `apps/runtime` supervisor and manager | No workspace knowledge needed. A run reaches Flux only through `/mcp` (gated) and is stopped by the worker (`runtime.stop`); its output is published only by the worker's commit (gated). |
 
@@ -235,8 +235,12 @@ named transaction, plus epoch comparison where an item has `ai_epoch`.
 - `AI_HTTP_ROUTES` in `app/packages/contracts` lists every route registered by the AI
   modules (`agent-connection`, `assistant`, `personal-runs`, `co-work`,
   `proactive-comparison`, `agent-runtime`, `conversation/agent-thread-routes`) as
-  `gated` or `exempt` with a one-line reason. An architecture test fails when a route in
-  those modules is missing from the list, like `verifyRegistrations` does for MCP entries.
+  `gated`, `use_case` (the workspace is not in the request; the use case checks or filters)
+  or `exempt` with a one-line reason. A gated entry names where its object is (path or body
+  key and kind), and `aiRoutes` (`apps/server/src/access/ai-gate.ts`) wraps each AI module:
+  the API does not start when one of its routes is missing from the list (S1, 2026-10-22),
+  like `verifyRegistrations` does for MCP entries, and a gated route refuses in
+  `preValidation`, before the handler and the body checks.
 - An API test calls every `gated` route in a blocked workspace and expects
   `403 WORKSPACE_AI_BLOCKED` with no row or event written; the same calls in an allowed
   workspace are the positive control. Every route named in the tables above is in the list.

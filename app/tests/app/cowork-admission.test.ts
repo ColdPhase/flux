@@ -48,7 +48,7 @@ async function world() {
   };
   const unit = async (workId: string, runId: string, role: Role, connectionId: string) => {
     const id = randomUUID();
-    await db.insert(schema.coworkUnits).values({ id, workspaceId: ws.id, projectId: p.id, taskId: workId, lineageTaskId: workId,
+    await db.insert(schema.coworkUnits).values({ aiEpoch: 1, id, workspaceId: ws.id, projectId: p.id, taskId: workId, lineageTaskId: workId,
       runId, unitKey: id, role, assignmentConnectionId: connectionId });
     return id;
   };

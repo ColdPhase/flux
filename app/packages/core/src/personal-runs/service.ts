@@ -350,6 +350,8 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, t
       if (error instanceof NotFoundError) throw new NotFoundError('Conversation', 'CONVERSATION_NOT_FOUND');
       throw error;
     }
+    // F-029: no run, and no replay of an earlier one, while AI is off in this workspace.
+    const { epoch: aiEpoch } = await ports.access.requireWorkspaceAi(place.workspaceId, { lock: true });
     // The owner's row lock serializes this owner's invocations: same-key retries, the
     // one-in-flight rule and the cap reservation cannot race.
     const enablement = await ports.runs.enablement(owner, { lock: true });
@@ -405,7 +407,7 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, t
       ownerUserId: owner, agentId, connectionId: enablement.connectionId, clientRunId: request.clientRunId,
       requestFingerprint: request.fingerprint, kind: request.kind, prompt: request.prompt,
       targetSketchId: request.target?.sketchId ?? null, targetThoughtId: request.target?.thoughtId ?? null,
-      continuesRunId: request.continuesRunId, retryOfRunId, ...reservation, engine: enablement.engine,
+      continuesRunId: request.continuesRunId, retryOfRunId, ...reservation, engine: enablement.engine, aiEpoch,
     });
     await ports.queue.enqueue(run.id);
     await taskFence.mark();
@@ -434,6 +436,9 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, t
     const principal: Principal = { kind: 'human', id: owner };
     const place = await ports.runs.locateConversation(spec.conversationId);
     if (!place || place.projectId !== spec.projectId) return skipped('Skipped: this project has no conversation yet');
+    // F-029: nothing starts in a workspace whose AI is off (the tick does not fire there; this is the backstop).
+    const ai = await ports.access.workspaceAi(place.workspaceId, { lock: true });
+    if (ai.state !== 'allowed') return skipped('Skipped: AI is off in this workspace');
     // The assistant changes things as the owner's: the owner must still be able to write here.
     if (!(await ports.access.canUseProject(principal, 'write', spec.projectId, { lock: true }))) return skipped('Skipped: you no longer have access to this project');
     const existing = await ports.runs.runByClientId(owner, spec.clientRunId);
@@ -470,6 +475,7 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, t
       id: randomUUID(), workspaceId: place.workspaceId, projectId: place.projectId, conversationId: spec.conversationId, ownerUserId: owner, agentId,
       connectionId: enablement.connectionId, clientRunId: spec.clientRunId, requestFingerprint: `background:${spec.kind}:${spec.clientRunId}`, kind: spec.kind,
       prompt: spec.prompt, targetSketchId: null, targetThoughtId: null, continuesRunId: null, retryOfRunId: null, ...reservation, engine: enablement.engine, silent: spec.silent,
+      aiEpoch: ai.epoch,
       // A schedule is the owner's own stored request: it waits behind their own requests and says what it is (AST-6 "Queue").
       authority: spec.kind === 'reaction' ? 'owner_reaction' : 'owner_schedule', backgroundLabel: spec.label.trim().slice(0, 80) || 'Schedule',
     });

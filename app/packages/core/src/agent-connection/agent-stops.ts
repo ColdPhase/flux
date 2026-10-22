@@ -78,7 +78,8 @@ export function agentStopUseCases(uow: AgentStopUnitOfWork) {
       if (principal.kind !== 'human') throw new ForbiddenError('A signed-in person is required', 'STOP_NEEDS_PERSON');
       const items = [];
       for (const item of await ports.rows.ownedWorking(principal.id, OWN_WORKING)) {
-        if (await ports.canRead(principal, item.task.projectId)) items.push(item);
+        // F-029: an agent of a workspace whose AI is off is inactive, so it reads nothing and is left out here.
+        if (await ports.canRead(principal, item.task.projectId) && await ports.canRead({ kind: 'agent', id: item.agent.id }, item.task.projectId)) items.push(item);
       }
       return { items };
     }),
