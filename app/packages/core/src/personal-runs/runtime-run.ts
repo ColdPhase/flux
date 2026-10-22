@@ -244,7 +244,7 @@ export function createRuntimeRunProcessor({ uow, runtime, tokens, stopPollMs, ho
         // The model is the one recorded when the request was sent (F-027 AST-11), never the owner's current choice.
         const model = runtimeModelFlag(run.model);
         end = await runtime!.run(target, {
-          runId: run.id, prompt: runtimePrompt(run), runToken: grant.token, tools: grant.tools, caps, ...(model ? { model } : {}),
+          runId: run.id, prompt: runtimePrompt(grant.context ? { ...run, prompt: `${run.prompt}\n${grant.context}` } : run), runToken: grant.token, tools: grant.tools, caps, ...(model ? { model } : {}),
         }, onEvent);
       } catch {
         // The stream to the slot broke: whether the CLI changed anything is unknown, and it is never rerun.

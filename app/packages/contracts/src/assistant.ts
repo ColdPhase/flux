@@ -190,6 +190,8 @@ export interface AssistantChange {
   /** A suggestion's recipient, by name, and whether it was sent. */
   suggestTo: { id: string; name: string } | null;
   sent: boolean;
+  /** Saved user-facing words of a typed suggestion. */
+  preview?: string;
   /** Who approved it ("approved by Ada"), for a change applied after a wait; who took it back, for an undone one. */
   decidedBy: { id: string; name: string } | null;
   /** Whose assistant made it: the message reads "Ada's assistant" for everyone who can read the conversation. Optional for older servers. */
@@ -228,7 +230,7 @@ export const assistantRunChangesPath = (runId: string) => `/api/v1/assistant-run
 /** `apply` (Apply all), `not-now`, or `inbox` (the owner left the conversation) for a run's waiting changes. */
 export const assistantRunChangesActionPath = (runId: string, action: 'apply' | 'not-now' | 'inbox' | 'undo') => `/api/v1/assistant-runs/${runId}/changes/${action}`;
 /** `apply`, `not-now`, `send` (a suggestion) or `undo` for one change; the body names its `expectedVersion`. */
-export const assistantChangeActionPath = (changeId: string, action: 'apply' | 'not-now' | 'send' | 'undo') => `/api/v1/assistant-changes/${changeId}/${action}`;
+export const assistantChangeActionPath = (changeId: string, action: 'apply' | 'not-now' | 'send' | 'undo' | 'accept' | 'dismiss') => `/api/v1/assistant-changes/${changeId}/${action}`;
 
 const PHRASES: Record<string, { phrase: string; verb: string; noun: string }> = {
   'work.create': { phrase: 'add', verb: 'Add', noun: 'task' },

@@ -46,12 +46,12 @@ function savedTools(db: Database, claims: FluxMcpClaims): Map<string, SavedTool>
 
 type Outcome = { ok: true } | { ok: false; code: string; error: string };
 /** Re-executes a saved change's exact call; the executor repeats every check and compares the target's version. */
-export async function reexecuteChange(db: Database, change: AssistantChangeRow, purpose: AssistantApproval['purpose'], decidedBy: string | null): Promise<Outcome> {
+export async function reexecuteChange(db: Database, change: AssistantChangeRow, purpose: AssistantApproval['purpose'], decidedBy: string | null, suggestion = false): Promise<Outcome> {
   const settings = await db.transaction((tx) => assistantChangeRows(tx as DbExecutor).settings(change.ownerUserId, change.workspaceId));
   const call = change.preparedCommand as AssistantCall | null;
   if (!settings || !call) return { ok: false, code: 'ASSISTANT_CHANGE_INVALIDATED', error: 'Your assistant is no longer available' };
   const claims: FluxMcpClaims = { ownerUserId: change.ownerUserId, connectionId: settings.connectionId, clientId: null, grantReferenceId: null,
-    scopes: ['flux.context.read', 'flux.action.execute'], approval: { changeId: change.id, runId: change.runId, purpose, decidedBy } };
+    scopes: ['flux.context.read', 'flux.action.execute'], approval: { changeId: change.id, runId: change.runId, purpose, decidedBy, ...(suggestion ? { suggestion: true as const } : {}) } };
   const tool = savedTools(db, claims).get(call.tool);
   if (!tool) return { ok: false, code: 'ASSISTANT_CHANGE_INVALIDATED', error: 'This kind of change is no longer available' };
   // A saved hand-off is decoded by the exact private view it was prepared with: an unknown or unsupported one needs Ask again,
@@ -78,6 +78,7 @@ function handoffLine(row: AssistantChangeRow, units: Map<string, { state: string
   if (unit.state === 'stopped') return 'Cancelled';
   return unit.state === 'completed' ? `${recipient} finished it` : `${recipient} started`;
 }
+const creationOwner = (row: AssistantChangeRow) => typeof row.receipt?.acceptedBy === 'string' ? row.receipt.acceptedBy : row.ownerUserId;
 const undoOf = (row: AssistantChangeRow) => (row.receipt as { undo?: UndoRecord } | null)?.undo ?? null;
 /** What was done is the message of the conversation, for everyone who can read it; a waiting change, a suggestion or a refused Apply is the owner's alone. */
 const isDone = (row: AssistantChangeRow) => row.state === 'applied' || row.state === 'applied_after_wait' || row.state === 'undone'
@@ -88,6 +89,31 @@ const runStateOf = (run: { status: string; stopRequestedAt: Date | null } | unde
   if (run.status === 'stopped' || run.stopRequestedAt) return 'stopped';
   return run.status === 'completed' || run.status === 'truncated' ? 'done' : 'failed';
 };
+
+/** Exact saved words a person reviews before accepting; transport and authority fields never enter the UI. */
+async function suggestionPreview(row: AssistantChangeRow, rows: ReturnType<typeof assistantChangeRows>): Promise<string> {
+  const args = row.preparedCommand?.args ?? {};
+  const labels: Record<string, string> = { title: 'Title', outcome: 'Outcome', status: 'State', blocker: 'Blocked because', criteria: 'Done when', text: 'Text', body: 'Page', label: 'Label', x: 'Across', y: 'Down', width: 'Width', height: 'Height', shape: 'Shape' };
+  const out: string[] = [];
+  const collect = (value: unknown) => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return;
+    for (const [key, item] of Object.entries(value)) {
+      if (labels[key]) out.push(`${labels[key]}: ${Array.isArray(item) ? item.join('\n') : item === null ? '(clear)' : String(item)}`);
+      else if (['task', 'changes', 'doc', 'thought', 'link'].includes(key)) collect(item);
+    }
+  };
+  collect(args);
+  const changes = args.changes as Record<string, unknown> | undefined;
+  if (Array.isArray(changes?.dependencyIds)) {
+    const tasks = await Promise.all(changes.dependencyIds.map((id) => rows.work(String(id))));
+    out.push(`Prerequisites: ${tasks.map((task) => task ? `#${task.number} ${task.title}` : 'No longer available').join(', ') || '(none)'}`);
+  }
+  if (changes && 'waitingForUserId' in changes) {
+    const id = changes.waitingForUserId;
+    out.push(`Waiting for: ${typeof id === 'string' ? (await rows.names([id])).get(id) ?? 'No longer available' : '(nobody)'}`);
+  }
+  return out.join('\n\n');
+}
 
 export function assistantChangeUseCases(db: Database, boss?: Pick<PgBoss, 'send'>, clock: () => Date = () => new Date()) {
   const rows = () => assistantChangeRows(db as DbExecutor);
@@ -104,7 +130,7 @@ export function assistantChangeUseCases(db: Database, boss?: Pick<PgBoss, 'send'
         || (await evaluateProject(principal, 'project.write', row.projectId, db)).allowed));
     }
     // Taking back a task's creation is the creating assistant's owner's alone (#238, the work domain's own rule), so it is no one else's Undo.
-    return (row) => principal?.kind === 'human' && (principal.id === row.ownerUserId || projects.get(row.projectId) === true && row.operation !== 'work.create');
+    return (row) => principal?.kind === 'human' && (row.operation !== 'work.create' || creationOwner(row) === principal.id) && (principal.id === row.ownerUserId || projects.get(row.projectId) === true);
   }
   async function view(list: AssistantChangeRow[], conversations: Map<string, string>, mayUndo: (row: AssistantChangeRow) => boolean = () => true): Promise<AssistantChange[]> {
     const names = await rows().names(list.flatMap((row) => [row.ownerUserId, row.otherUserId, row.suggestToUserId, row.decidedBy].filter((id): id is string => !!id)));
@@ -123,13 +149,13 @@ export function assistantChangeUseCases(db: Database, boss?: Pick<PgBoss, 'send'
       const otherId = row.waitReason === 'outside_rights' ? row.suggestToUserId : row.otherUserId;
       out.push({ id: row.id, runId: row.runId, projectId: row.projectId, conversationId: conversations.get(row.runId) ?? '', operation: row.operation,
         objectType: row.objectType, objectId: row.objectId, objectTitle: row.objectTitle, state: row.state, waitReason: row.waitReason, phrase, verb: words.verb,
-        line: handoffLine(row, units) ?? assistantChangeLine({ state: row.state, waitReason: row.waitReason, phrase, noun: words.noun, objectTitle: row.objectTitle, existing: row.objectId !== null,
+        line: row.state === 'applied_after_wait' && row.receipt?.acceptedBy ? `Accepted by ${names.get(row.decidedBy ?? '') ?? 'a person'} · drafted by ${names.get(row.ownerUserId) ?? 'Someone'}'s assistant` : handoffLine(row, units) ?? assistantChangeLine({ state: row.state, waitReason: row.waitReason, phrase, noun: words.noun, objectTitle: row.objectTitle, existing: row.objectId !== null,
           ownerName: names.get(row.ownerUserId) ?? '', otherName: otherId ? names.get(otherId) ?? null : null, limit: settings.get(key)!,
           sent: !!row.sentAt, refusal: row.refusal, decidedByName: (row.state === 'applied_after_wait' || row.state === 'undone') && row.decidedBy ? names.get(row.decidedBy) ?? null : null }),
         runState: runStateOf(states.get(row.runId)), before: undoOf(row)?.before ?? null, after: undoOf(row)?.after ?? null,
         owner: { id: row.ownerUserId, name: names.get(row.ownerUserId) ?? '' },
         undoable: (row.state === 'applied' || row.state === 'applied_after_wait') && !!undoOf(row) && mayUndo(row),
-        suggestTo: row.suggestToUserId ? { id: row.suggestToUserId, name: names.get(row.suggestToUserId) ?? '' } : null, sent: !!row.sentAt,
+        suggestTo: row.suggestToUserId ? { id: row.suggestToUserId, name: names.get(row.suggestToUserId) ?? '' } : null, sent: !!row.sentAt, preview: await suggestionPreview(row, rows()),
         decidedBy: row.decidedBy ? { id: row.decidedBy, name: names.get(row.decidedBy) ?? '' } : null,
         version: row.version, createdAt: row.createdAt.toISOString(), expiresAt: row.expiresAt.toISOString() });
     }
@@ -204,9 +230,9 @@ export function assistantChangeUseCases(db: Database, boss?: Pick<PgBoss, 'send'
   }
   /** One change's Undo; null when it was undone, otherwise the plain words for why not. */
   async function undoOne(principal: Principal, row: AssistantChangeRow): Promise<string | null> {
-    const names = await rows().names([row.ownerUserId, owner(principal)]);
-    if (row.operation === 'work.create' && row.ownerUserId !== owner(principal))
-      return `Only ${names.get(row.ownerUserId) ?? 'their owner'} can undo a task their assistant added`;
+    const names = await rows().names([row.ownerUserId, creationOwner(row), owner(principal)]);
+    if (row.operation === 'work.create' && creationOwner(row) !== owner(principal))
+      return row.receipt?.acceptedBy ? `Only ${names.get(creationOwner(row)) ?? 'its creator'} can undo this task's creation` : `Only ${names.get(row.ownerUserId) ?? 'their owner'} can undo a task their assistant added`;
     const result = await undoChange(db, row, { kind: 'human', id: owner(principal) }, names.get(owner(principal)) ?? 'Someone', names.get(row.ownerUserId) ?? 'Someone');
     return result.done ? result.message : result.message ?? CHANGED_SINCE;
   }
@@ -243,13 +269,13 @@ export function assistantChangeUseCases(db: Database, boss?: Pick<PgBoss, 'send'
       const userId = owner(principal);
       await rows().expire(clock(), userId);
       const list = await rows().recent(userId, Math.min(Math.max(limit, 1), 50));
-      return { items: await view(list, new Map(list.map((row) => [row.runId, row.conversationId]))) };
+      return { items: await view(list, new Map(list.map((row) => [row.runId, row.conversationId])), await undoers(principal, list)) };
     },
     async forRun(principal: Principal, runId: string): Promise<{ items: AssistantChange[] }> {
       await rows().expire(clock(), owner(principal));
       const list = await ownRun(principal, runId);
       const conversationId = await rows().conversationOf(runId);
-      return { items: await view(list, new Map(conversationId ? [[runId, conversationId]] : [])) };
+      return { items: await view(list, new Map(conversationId ? [[runId, conversationId]] : []), await undoers(principal, list)) };
     },
     /** Apply one waiting change. A target changed since applies nothing (AST-5.4). */
     async apply(principal: Principal, changeId: string, expected?: number): Promise<AssistantChangeDecision> {
@@ -297,7 +323,7 @@ export function assistantChangeUseCases(db: Database, boss?: Pick<PgBoss, 'send'
       // remove (a result, a decision, a message) is not "changed since"; it is simply not part of an Undo.
       const who = owner(principal);
       const list = (await editableRun(principal, runId)).filter((row) => (row.state === 'applied' || row.state === 'applied_after_wait') && !!undoOf(row)
-        && (row.operation !== 'work.create' || row.ownerUserId === who)).reverse();
+        && (row.operation !== 'work.create' || creationOwner(row) === who)).reverse();
       const changes: AssistantChangeDecision[] = []; const changedSince: string[] = []; let undone = 0;
       for (const row of list) {
         const message = await undoOne(principal, row);
@@ -317,34 +343,68 @@ export function assistantChangeUseCases(db: Database, boss?: Pick<PgBoss, 'send'
       await ownRun(principal, runId);
       return { moved: await rows().promote(runId, clock()) };
     },
+    async acceptSuggestion(principal: Principal, changeId: string, expected?: number): Promise<AssistantChangeDecision> {
+      const userId = owner(principal);
+      const row = isUuid(changeId) ? await rows().find(changeId) : null;
+      if (!row || !row.sentAt || row.suggestToUserId !== userId || row.waitReason !== 'outside_rights') throw missing();
+      if (expected !== row.version) throw new ConflictError('This change was decided meanwhile', 'ASSISTANT_CHANGE_VERSION_CONFLICT');
+      if (row.state !== 'waiting' || row.expiresAt <= clock()) throw new ConflictError('Expired or already decided. Ask again', 'ASSISTANT_CHANGE_EXPIRED');
+      const result = await reexecuteChange(db, row, 'owner_approval', userId, true);
+      if (!result.ok) {
+        if (result.code === 'ASSISTANT_PAUSED') throw new DomainError(409, result.code, result.error);
+        const message = stale(result.code) ? STALE : result.error;
+        await refuse(row, message);
+        throw new DomainError(403, result.code, message);
+      }
+      return { change: await viewOne((await rows().find(row.id))!, principal), message: null };
+    },
+    async dismissSuggestion(principal: Principal, changeId: string, expected?: number): Promise<AssistantChangeDecision> {
+      const userId = owner(principal);
+      return db.transaction(async (tx) => {
+        const r = assistantChangeRows(tx);
+        const located = isUuid(changeId) ? await r.find(changeId) : null;
+        if (!located || located.suggestToUserId !== userId || !located.sentAt) throw missing();
+        if (!(await evaluateProject(principal, 'project.write', located.projectId, tx, { lock: true })).allowed) throw new ForbiddenError('Only someone who can decide this can dismiss it', 'ASSISTANT_SUGGESTION_AUTHORITY');
+        const row = await r.lock(changeId);
+        if (!row || !row.sentAt || row.suggestToUserId !== userId || row.state !== 'waiting' || row.waitReason !== 'outside_rights') throw missing();
+        if (row.version !== expected) throw new ConflictError('This change was decided meanwhile', 'ASSISTANT_CHANGE_VERSION_CONFLICT');
+        return { change: await viewOne(await r.update(row.id, { state: 'not_now', waitReason: null, decidedBy: userId, decidedAt: clock() })), message: null };
+      });
+    },
     /** A suggestion reaches the other person only after the owner's tap (AST-5.8): one Needs-you question for them. */
     async send(principal: Principal, changeId: string, expected?: number): Promise<AssistantChangeDecision> {
       const userId = owner(principal);
-      const row = await own(principal, changeId);
+      const located = await own(principal, changeId);
+      if (located.expiresAt <= clock()) { await rows().expire(clock(), userId); throw new ConflictError('Expired · Ask again', 'ASSISTANT_CHANGE_EXPIRED'); }
+      return db.transaction(async (tx) => {
+      const r = assistantChangeRows(tx);
+      const row = await r.lock(changeId);
+      if (!row || row.ownerUserId !== userId) throw missing();
       if (row.state !== 'waiting' || row.waitReason !== 'outside_rights' || row.sentAt) throw new ConflictError('This suggestion is no longer waiting', 'ASSISTANT_CHANGE_DECIDED');
       if (expected !== undefined && expected !== row.version) throw new ConflictError('This change was decided meanwhile', 'ASSISTANT_CHANGE_VERSION_CONFLICT');
-      if (row.expiresAt <= clock()) { await rows().expire(clock(), userId); throw new ConflictError('Expired · Ask again', 'ASSISTANT_CHANGE_EXPIRED'); }
+      if (row.expiresAt <= clock()) throw new ConflictError('Expired · Ask again', 'ASSISTANT_CHANGE_EXPIRED');
       // The person who owns the thing, when they can decide it; otherwise someone who can write in the project.
       let recipient: string | null = null;
-      for (const candidate of [row.suggestToUserId, ...(await needsYouRows(db).workspaceMembersOfProject(row.projectId, 50)).map((member) => member.id)]) {
+      for (const candidate of [row.suggestToUserId, ...(await needsYouRows(tx).workspaceMembersOfProject(row.projectId, 50)).map((member) => member.id)]) {
         if (!candidate || candidate === userId) continue;
-        if ((await evaluateProject({ kind: 'human', id: candidate }, 'project.write', row.projectId, db)).allowed) { recipient = candidate; break; }
+        if ((await evaluateProject({ kind: 'human', id: candidate }, 'project.write', row.projectId, tx, { lock: true })).allowed) { recipient = candidate; break; }
       }
       if (!recipient) throw new ConflictError('Nobody in this project can decide this change', 'ASSISTANT_SUGGESTION_NO_RECIPIENT');
+      if (!['work.create', 'work.update', 'doc.create', 'doc.update', 'map.thought.create', 'map.thought.update', 'map.thought.delete', 'map.link.create', 'map.link.delete'].includes(row.operation))
+        throw new ForbiddenError('This kind of change cannot be sent as a suggestion', 'ASSISTANT_SUGGESTION_FORBIDDEN');
       const view = await viewOne(row);
       const ownerName = (await rows().names([userId])).get(userId) ?? 'Someone';
       if (!boss) throw new DomainError(503, 'ASSISTANT_SUGGESTION_UNAVAILABLE', 'Suggestions cannot be sent right now');
-      const notification = await createNotification(notificationUnitOfWork(db, pgBossQueue(boss)), {
+      const notification = await createNotification(notificationUnitOfWork(tx as Database, pgBossQueue(boss)), {
         userId: recipient, source: { type: 'project', id: row.projectId },
         title: `${ownerName}'s assistant suggests: ${view.phrase}${row.objectTitle ? ` ${row.objectTitle}` : ''}`.slice(0, 200),
         body: `Drafted by ${ownerName}'s assistant · sent by ${ownerName}`,
       });
-      const updated = await db.transaction(async (tx) => {
-        const r = assistantChangeRows(tx as DbExecutor);
-        await r.markQuestion(notification.id);
-        return r.update(row.id, { suggestToUserId: recipient, sentAt: clock(), decidedBy: userId, decidedAt: clock() });
-      });
+      // The typed suggestion itself is the one Needs-you item; this notification supplies its push only.
+      void notification;
+      const updated = await r.update(row.id, { suggestToUserId: recipient, sentAt: clock(), decidedBy: userId, decidedAt: clock() });
       return { change: await viewOne(updated), message: null };
+      });
     },
     /** Who has an assistant working here, for everyone who can read the conversation: names only (AST-6 "Visible to everyone"). */
     async activity(principal: Principal, conversationId: string): Promise<AssistantActivity> {
@@ -358,8 +418,10 @@ export function assistantChangeUseCases(db: Database, boss?: Pick<PgBoss, 'send'
     async inbox(userId: string) {
       const now = clock();
       await rows().expire(now, userId);
-      const list = await rows().inbox(userId, now, ASSISTANT_CHANGE_LIMITS.inboxAfterMinutes);
-      return view(list, new Map(list.map((row) => [row.runId, row.conversationId])));
+      const list = [...await rows().inbox(userId, now, ASSISTANT_CHANGE_LIMITS.inboxAfterMinutes), ...await rows().suggestions(userId, now)];
+      const readable = [];
+      for (const row of list) if ((await evaluateProject({ kind: 'human', id: userId }, 'project.read', row.projectId, db)).allowed) readable.push(row);
+      return view(readable, new Map(list.map((row) => [row.runId, row.conversationId])));
     },
     /** Rechecks live-Wiki deferrals whose typist finished; expires what is past seven days. */
     async sweep(): Promise<void> {
@@ -406,6 +468,10 @@ export function registerAssistantChangeRoutes(app: FastifyInstance, db: Database
   app.post<{ Params: { changeId: string } }>(assistantChangeActionPath(':changeId', 'not-now'), { schema: { body: { ...body, nullable: true } } }, async (request) =>
     changes.notNow(await who(request), request.params.changeId, expectedVersion(request)));
   app.post<{ Params: { changeId: string } }>(assistantChangeActionPath(':changeId', 'undo'), async (request) => changes.undo(await who(request), request.params.changeId));
+  app.post<{ Params: { changeId: string } }>(assistantChangeActionPath(':changeId', 'dismiss'), { schema: { body } }, async (request) =>
+    changes.dismissSuggestion(await who(request), request.params.changeId, expectedVersion(request)));
+  app.post<{ Params: { changeId: string } }>(assistantChangeActionPath(':changeId', 'accept'), { schema: { body } }, async (request) =>
+    changes.acceptSuggestion(await who(request), request.params.changeId, expectedVersion(request)));
   app.post<{ Params: { changeId: string } }>(assistantChangeActionPath(':changeId', 'send'), { schema: { body: { ...body, nullable: true } } }, async (request) =>
     changes.send(await who(request), request.params.changeId, expectedVersion(request)));
   // The live-Wiki deferral rechecks when typists finish, and seven-day expiry, every 15 seconds.

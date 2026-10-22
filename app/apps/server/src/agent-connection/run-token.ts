@@ -43,7 +43,7 @@ export async function requireLiveRun(tx: Transaction, claims: { ownerUserId: str
   options: { newCall: boolean; lock?: boolean }) {
   const rows = personalRunTokenRows(tx);
   const row = await rows.find(claims.run.id, options.lock ? { lock: 'share' } : {});
-  if (!row || row.ownerUserId !== claims.ownerUserId || (row.status !== 'reading' && row.status !== 'dispatching')
+  if (!row || row.reactionActive === false || row.ownerUserId !== claims.ownerUserId || (row.status !== 'reading' && row.status !== 'dispatching')
     || row.runTokenJti !== claims.run.jti || row.runTokenClosedAt !== null || !row.runTokenExpiresAt || row.runTokenExpiresAt.getTime() <= Date.now()
     || row.projectId !== claims.run.projectId || row.conversationId !== claims.run.conversationId || row.stopRequestedAt !== null
     || (options.newCall && row.mcpLimit !== null)) throw runEnded();

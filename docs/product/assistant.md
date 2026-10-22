@@ -1961,6 +1961,17 @@ are unchanged.
 
 #### A5 — Typed suggestions
 
+**Implementation mapping (2026-10-18, #405 + #409).** A5 uses the existing sibling
+`assistant_changes` (0104) rather than another task or proposal store. Its typed
+`operation`, bounded/redacted `prepared_command`, source/target versions and receipt
+are the suggestion. The owner's explicit Send addresses it to one authorized person;
+only then does it join that person's Inbox. Accept replays that exact saved intent
+without compute or a revived run token, through the same native commands as the
+accepting human. The shared receipt retains the assistant author and accepting person;
+access, switches and source/target revisions are checked again. Existing result
+suggestions keep their current path. Never operations remain unavailable.
+
+
 - **Scope.** Extend assistant proposals from a result to typed changes (task create
   and update, Wiki change, thought and link) for changes outside the owner's rights.
   Accepting executes the change as the accepting person with "drafted by Ada's
@@ -2050,8 +2061,19 @@ are unchanged.
   event only in GitHub-linked projects.
 - **Files.** `app/packages/core/src/assistant/reactions.ts`; event taps in the work,
   conversation (mentions) and GitHub (G-1) modules; the Inbox mention reply; web part.
-- **Migration 0081** `assistant_reactions` and `assistant_reaction_events` (dedupe key
-  per object and window).
+- **Migration 0114** `assistant_reactions`, `assistant_reaction_events` and owner-only
+  `assistant_reaction_notes`. 0081 was a historical placeholder; 0113 belongs to #617.
+  Canonical task, result-link, mention-notification and G-1 fact writes tap identifiers
+  in their transaction. The shared background tick starts ordinary personal runs;
+  the ledger enforces a rolling 30-minute owner/object debounce and per-sentence cap.
+  PR events first require the existing G-1 per-human current repository proof; its
+  credential/binding generations are fenced again before the run and at delivery.
+  The existing nonce-authenticated run-token mint repeats G-1 proof and supplies
+  freshly authorized, bounded state/check facts immediately before either engine
+  dispatches; queued PR fact snapshots never enter model input. Tell,
+  check and reply-draft runs have read-only tools; suggest actions always wait for a
+  person. Notes fold into Inbox without another push. A reply draft stays durable
+  and private until the owner opens Reply and presses Send.
 - **Tests.** AST-2.2 (every non-owner event starts nothing), AST-7.7, AST-7.8,
   AST-7.12, AST-10.3 (second half), AST-9.1 (reaction).
 - **Depends on.** A8; #74 for the PR event (the other four events do not wait for it).

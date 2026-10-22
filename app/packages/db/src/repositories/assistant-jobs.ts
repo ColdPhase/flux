@@ -116,7 +116,7 @@ export function assistantJobRows(db: DbExecutor) {
     },
     async backgroundRunsToday(ownerUserId: string, timeZone: string) {
       const [row] = await db.select({ total: sql<number>`count(*)::int` }).from(runs)
-        .where(and(eq(runs.ownerUserId, ownerUserId), inArray(runs.kind, ['scheduled', 'morning_summary']), sql`${runs.createdAt} >= ${startOfDay(timeZone)}`));
+        .where(and(eq(runs.ownerUserId, ownerUserId), inArray(runs.kind, ['scheduled', 'morning_summary', 'reaction']), sql`${runs.createdAt} >= ${startOfDay(timeZone)}`));
       return row?.total ?? 0;
     },
     async backgroundLimit(ownerUserId: string, workspaceId: string) {

@@ -198,6 +198,7 @@ export interface PersonalRunRepository {
    */
   assistantConnectionLive?(ownerUserId: string, workspaceId: string): Promise<boolean>;
   /** The schedule a run belongs to, for the answer a schedule posts in its conversation (F-027 A8). */
+  needsCurrentGithubFacts?(runId: string): Promise<boolean>;
   jobOfRun?(runId: string): Promise<{ id: string; title: string } | null>;
   /**
    * The owner's switches in the workspace, from the assistant connection's S6 policy (F-027 AST-4). Null
@@ -399,6 +400,8 @@ export interface PersonalCompute {
  */
 export interface PersonalToolSession {
   readonly tools: readonly PersonalTool[];
+  /** Fresh owner-authorized external facts provided by the run-token issuer, already bounded/redacted. */
+  readonly context?: string;
   /** Runs one call as the run's agent. A refusal or failure is a result with `isError`, not an exception. */
   call(call: PersonalToolCall, signal: AbortSignal): Promise<{ content: string; isError: boolean }>;
   /** Ends the session (the run token); called once, whatever the outcome. */

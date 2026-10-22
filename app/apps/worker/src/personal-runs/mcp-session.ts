@@ -77,7 +77,7 @@ export function mcpToolHost(tokens: PersonalRunTokenIssuer, mcpUrl: string, fetc
           inputSchema: tool.inputSchema && typeof tool.inputSchema === 'object' ? compactToolSchema(tool.inputSchema) as Record<string, unknown> : { type: 'object' } }));
       let closed = false;
       const session: PersonalToolSession = {
-        tools,
+        tools, ...(grant.context ? { context: grant.context } : {}),
         async call(call, signal) {
           if (closed) return { content: REFUSED, isError: true };
           const answer = await rpc(mcpUrl, grant.token, next++, 'tools/call', { name: call.name, arguments: call.input }, signal, fetchImpl)

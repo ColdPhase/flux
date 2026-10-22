@@ -114,6 +114,8 @@ export interface PersonalRunTokenGrant {
   /** The run's exact Flux tools, from the owner's switches when the token was minted (F-027 AST-4). */
   tools: string[];
   expiresAt: string;
+  /** Owner-authorized, freshly read external facts for this run (G-1); data, never instructions. */
+  context?: string;
 }
 
 /**
@@ -263,7 +265,7 @@ export interface SelectPersonalAgentCommand {
  * What started a run. `scheduled` and `morning_summary` are started by Flux's own tick for the owner's schedules and
  * morning summary (F-027 A8); only the first three can be asked for through the API.
  */
-export type AssistantRunKind = 'ask' | 'summarize' | 'map_thought' | 'scheduled' | 'morning_summary';
+export type AssistantRunKind = 'ask' | 'summarize' | 'map_thought' | 'scheduled' | 'morning_summary' | 'reaction';
 
 /** A map thought on a project sketch of the conversation's project. */
 export interface AssistantRunTarget {
