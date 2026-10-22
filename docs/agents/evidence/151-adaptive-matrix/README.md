@@ -73,13 +73,13 @@ Each run used `./scripts/check_ui.sh <modules>` in Docker through the shared slo
 
 ## Screenshots (emulated)
 
-- [320×568 Conversation](320x568-conversation.png)
-- [390×844 Tasks status overview](390x844-tasks.png)
-- [390×844 Map, phone projection](390x844-map.png)
-- [768×1024 Wiki](768x1024-wiki.png)
-- [1440×900 thread beside the stream](1440x900-thread.png)
-- [1920×1080 stream, thread and Details](1920x1080-thread-and-details-scaled.png), scaled to 1440
-- [3840×2160 board](3840x2160-tasks-scaled.png), scaled to 1600
+- [320×568 Conversation](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/agents/evidence/151-adaptive-matrix/320x568-conversation.png)
+- [390×844 Tasks status overview](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/agents/evidence/151-adaptive-matrix/390x844-tasks.png)
+- [390×844 Map, phone projection](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/agents/evidence/151-adaptive-matrix/390x844-map.png)
+- [768×1024 Wiki](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/agents/evidence/151-adaptive-matrix/768x1024-wiki.png)
+- [1440×900 thread beside the stream](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/agents/evidence/151-adaptive-matrix/1440x900-thread.png)
+- [1920×1080 stream, thread and Details](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/agents/evidence/151-adaptive-matrix/1920x1080-thread-and-details-scaled.png), scaled to 1440
+- [3840×2160 board](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/agents/evidence/151-adaptive-matrix/3840x2160-tasks-scaled.png), scaled to 1600
 
 Screenshots do not prove interaction or accessibility. No independent visual review has been
 done for this slice.

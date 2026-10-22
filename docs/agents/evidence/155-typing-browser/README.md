@@ -100,7 +100,7 @@ send44.031ms; grant request→withdrawn DOM866.821ms; dropped receiver frames
 →unavailable3320.912ms. These are regression observations, not the required
 30-warmup/200-sample/60-second sustained performance acceptance.
 
-The [live project recording](rendered/typing-project-live.webm) and six final
+The [live project recording](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/agents/evidence/155-typing-browser/rendered/typing-project-live.webm) and six final
 `rendered/*.png` show the actual application. No raw network trace or cookies
 are published. The source/draft screenshot intentionally shows synthetic private
 fixture text to demonstrate the retained editor, not an actual person's draft.

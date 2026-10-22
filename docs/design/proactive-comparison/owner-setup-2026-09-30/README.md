@@ -18,11 +18,11 @@ or 390×844 touch phone, DPR 1, 100%. The separate zoom2 image uses CSS zoom 200
 and a 1440×1800 capture. It does not establish browser/OS zoom or physical-device
 installation, keyboard or notification behavior.
 
-The [saved phone](current-ca4a770/background-setup-390-saved.png) keeps the
+The [saved phone](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/design/proactive-comparison/owner-setup-2026-09-30/current-ca4a770/background-setup-390-saved.png) keeps the
 disconnect effect immediately beside its action. The
-[failed replacement](current-ca4a770/background-setup-1440-error.png) explains
+[failed replacement](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/design/proactive-comparison/owner-setup-2026-09-30/current-ca4a770/background-setup-1440-error.png) explains
 the cleared key at the form and repeats the format/re-entry guidance beside the
-input. The [paused phone rule](current-ca4a770/background-rules-390-paused.png)
+input. The [paused phone rule](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/design/proactive-comparison/owner-setup-2026-09-30/current-ca4a770/background-rules-390-paused.png)
 explains unavailable execution beside its status/actions.
 
 ## Independent appearance review and disposition

@@ -69,7 +69,7 @@ record changes no requirement, criterion, scope or native/client fence.
 > | 18 | Ship the runtime's first run (#280) read-only first, with edits in the next slice? | Yes |
 >
 > **Later the same day**, after an independent UX review of this text
-> ([review](../agents/evidence/f027-assistant/ux-review-2026-10-09.md), findings P1-1 to P3), Hubert answered the
+> ([review](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/agents/evidence/f027-assistant/ux-review-2026-10-09.md), findings P1-1 to P3), Hubert answered the
 > points that change decisions:
 >
 > | # | Question | Answer |
@@ -1105,7 +1105,7 @@ Kreska. The assistant screen and the run's message are an **addition to the froz
 canvas**, accepted with F-027; they must look native to it, and the independent UX
 review of AST-10.12 examines them before the first A7 merge.
 
-*Revised 2026-10-09 after the independent [UX review](../agents/evidence/f027-assistant/ux-review-2026-10-09.md)
+*Revised 2026-10-09 after the independent [UX review](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/agents/evidence/f027-assistant/ux-review-2026-10-09.md)
 and the founder's answers A–D: guided sign-in, joining projects, one morning summary on
 Home, no private chat, truthful headers, one message per run, field-level Undo, and the
 P2/P3 fixes.*

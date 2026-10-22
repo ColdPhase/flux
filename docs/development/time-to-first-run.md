@@ -7,20 +7,35 @@ measurement as a section, newest first, and keep the summary current.
 
 ## Summary
 
-| Step | macOS arm64, cold, 2026-10-11 | macOS arm64, warm, 2026-10-11 | Linux amd64, cold, 2026-10-10 | Linux amd64, warm, 2026-10-10 |
-| --- | --- | --- | --- | --- |
-| 1. `git clone` | 2 min 47.7 s | 2 min 29.6 s | 7.2 s | 6.9 s |
-| 2. `./flux up`, until the printed URL answers HTTP 200 | 2 min 21.4 s (URL 0.1 s) | 13.6 s (URL 0.1 s) | 2 min 12.2 s (URL 0.02 s) | 10.0 s (URL 0.01 s) |
-| 3. `./flux demo`, until the logins print | 1.3 s | 1.3 s | 1.2 s | 1.2 s |
-| 4. Sign in and post the first message in the demo conversation | not re-measured; 0.8 s on 2026-10-06 | not re-measured; 0.8 s on 2026-10-06 | not measured (the workflow has no browser step) | not measured |
-| 5. First agent reply through your own MCP client | not measured on a clean clone ([#320](https://github.com/ColdPhase/flux/issues/320)) | not measured on a clean clone | not measured ([#320](https://github.com/ColdPhase/flux/issues/320)) | not measured |
-| From `git clone` to the logins | 5 min 10.9 s | 2 min 44.8 s | 2 min 20.6 s | 18.7 s |
+| Step | Linux x86_64, candidate #319 clone, 2026-10-18 | macOS arm64, cold, 2026-10-11 | macOS arm64, warm, 2026-10-11 | Linux amd64, cold, 2026-10-10 | Linux amd64, warm, 2026-10-10 |
+| --- | --- | --- | --- | --- | --- |
+| 1. `git clone` | 4.09 s; 17,187,540 pack bytes | 2 min 47.7 s | 2 min 29.6 s | 7.2 s | 6.9 s |
+| 2. `./flux up`, until the printed URL answers HTTP 200 | not measured | 2 min 21.4 s (URL 0.1 s) | 13.6 s (URL 0.1 s) | 2 min 12.2 s (URL 0.02 s) | 10.0 s (URL 0.01 s) |
+| 3. `./flux demo`, until the logins print | not measured | 1.3 s | 1.3 s | 1.2 s | 1.2 s |
+| 4. Sign in and post the first message in the demo conversation | not measured | not re-measured; 0.8 s on 2026-10-06 | not re-measured; 0.8 s on 2026-10-06 | not measured (the workflow has no browser step) | not measured |
+| 5. First agent reply through your own MCP client | not measured | not measured on a clean clone ([#320](https://github.com/ColdPhase/flux/issues/320)) | not measured on a clean clone | not measured ([#320](https://github.com/ColdPhase/flux/issues/320)) | not measured |
+| From `git clone` to the logins | not measured | 5 min 10.9 s | 2 min 44.8 s | 2 min 20.6 s | 18.7 s |
 
-Clone and dependency download take most of the time, and both depend on the network: about
-2 min 30 s to 2 min 48 s for the clone on this Mac, and 7 s on the Linux runner, a datacenter
-network. The cold macOS pass used `FLUX_NO_CACHE=1` and both macOS passes used `FLUX_PORT=19840`;
-both are deviations from the README, listed in the [2026-10-11 section](#macos-arm64-2026-10-11-cold-and-warm).
-The 2026-10-06 run is kept below. Its step 4 figure is the only macOS first-message number.
+The candidate clone used the README's `--depth 1` option. To test this PR before
+it merges, the only command substitution was an explicit branch name:
+
+```sh
+git clone --progress --depth 1 --branch codex-hubert/319-evidence-clone \
+  https://github.com/ColdPhase/flux.git /tmp/flux319-clone-measure
+```
+
+It checked out `59d33bd916bb2e3cd33b95ef0b81453386c3d78b` on Linux
+6.19.14-108.fc42.x86_64 with Git 2.54.0. Git reported a 16.39 MiB transfer;
+the fresh clone's pack file was 17,187,540 bytes (17.19 MB decimal), and
+`/usr/bin/time -p` measured 4.09 seconds real time. This is below the 30,000,000
+byte limit. The README command will use the default `main` branch after merge.
+
+The earlier full-history measurements took 2 min 30 s to 2 min 48 s for the clone on this Mac
+and about 7 s on the Linux runner, a datacenter network. The cold macOS pass used
+`FLUX_NO_CACHE=1` and both macOS passes used `FLUX_PORT=19840`; both are deviations from the
+README, listed in the [2026-10-11 section](#macos-arm64-2026-10-11-cold-and-warm). The
+2026-10-06 run is kept below. Its step 4 figure is the only macOS first-message number. The
+shallow candidate measurement above records only the source clone, not application startup.
 
 ## macOS arm64, 2026-10-11: cold and warm
 

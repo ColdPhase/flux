@@ -103,7 +103,7 @@ documents the secure-context, user-activation and per-invocation picker rules;
 the isolated test uses localhost and a real click to meet the first two.
 The 2026-09-30 current-main run passed this case; source settings and receiver
 frames remain distinct from physical-device and measured receiver-fps evidence.
-See the [pinned five-case report and original artifacts](evidence/live-turn/2026-09-30/README.md).
+See the [pinned five-case report and original artifacts](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/development/evidence/live-turn/2026-09-30/README.md).
 
 Set `FLUX_LIVE_TURN_ARTIFACT_DIR` to retain browser screenshots and the SFU
 resource trace at a chosen path (otherwise the script prints a new `/tmp` path).
@@ -229,8 +229,8 @@ fresh packets for both video tracks and audio over a two-second interval.
 All four clients selected `relay` candidates with `relayProtocol=tls`.
 OpenSSL verified the test TURN certificate hostname/SNI. The two full-page
 receiver screenshots are retained at
-[viewer 3](evidence/live-turn/receiver-3.png) and
-[viewer 4](evidence/live-turn/receiver-4.png).
+[viewer 3](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/development/evidence/live-turn/receiver-3.png) and
+[viewer 4](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/development/evidence/live-turn/receiver-4.png).
 
 At the measured observer samples, both videos decoded at 10 fps with 0%
 interval packet loss; received audio was about 98.8 kbps with 0 ms reported
@@ -250,7 +250,7 @@ bounded [1440p code calibration protocol](live-code-calibration.md). The default
 revocation and sign-out regressions and receiver/diagnostic units. See that
 protocol for source kinds, production publish settings, raw frame audit and
 remaining acceptance limits.
-The [dated high-resolution checkpoint](evidence/live-turn/2026-09-30-code/README.md)
+The [dated high-resolution checkpoint](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/development/evidence/live-turn/2026-09-30-code/README.md)
 contains actual two/four-peer decoded dimensions and frame intervals, original
 pixels and resource windows, with production/harness pins and retained failures.
 Raw receiver reports now supply the existing audio/video diagnostic rows;
