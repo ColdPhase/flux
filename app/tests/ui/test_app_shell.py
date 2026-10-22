@@ -725,9 +725,16 @@ class AppShellJourney(unittest.TestCase):
                 self.assertGreaterEqual(geometry["menu"]["top"], geometry["button"]["bottom"] - 1, geometry)
                 if device == "tablet":
                     self.assertTrue(all(height >= 44 for height in geometry["rowHeights"]), geometry)
+                if device == "desktop":
+                    self.assertTrue(all(abs(height - 32) <= 1 for height in geometry["rowHeights"]), f"desktop rows are 32px: {geometry}")
                 mode = "tablet-820x900-dpr1" if device == "tablet" else "desktop-1440x900-dpr1"
                 scheme = "dark" if dark else "light"
                 shot(page, f"app-shell-project-header-more-{mode}-{scheme}-z100-chromium")
+                if device == "desktop":
+                    items = menu.locator("[role^=menuitem]")
+                    items.nth(1).hover()
+                    background = "el => getComputedStyle(el).backgroundColor"
+                    self.assertNotEqual(items.nth(1).evaluate(background), items.nth(0).evaluate(background), "the hovered row is highlighted")
                 page.keyboard.press("Escape")
                 expect(menu).to_have_count(0)
                 expect(more).to_be_focused()

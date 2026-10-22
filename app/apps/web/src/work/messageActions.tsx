@@ -241,7 +241,7 @@ export function useTouchActions<E extends HTMLElement = HTMLLIElement>(options: 
 
   const openPress = (row: HTMLElement) => {
     opener.current = row;
-    setMenu({ kind: 'press', anchor: row.querySelector<HTMLElement>('.message-bubble > .message-body') ?? row });
+    setMenu({ kind: 'press', anchor: row.querySelector<HTMLElement>('.message-bubble > .message-body, .dm-msg__body') ?? row });
     try { navigator.vibrate?.(8); } catch { /* optional */ }
   };
   const props = {
@@ -292,7 +292,7 @@ export function useTouchActions<E extends HTMLElement = HTMLLIElement>(options: 
   const node = (
     <>
       <span className={`msg-swipe${offset >= REPLY_AT ? ' is-ready' : ''}`} aria-hidden="true" hidden={!offset}><Icon name="reply" size={20} /></span>
-      <button type="button" className="msg-touch__sr" aria-haspopup="menu" aria-expanded={menu?.kind === 'button'} onClick={(event) => { opener.current = event.currentTarget; setMenu({ kind: 'button', anchor: event.currentTarget.parentElement?.querySelector<HTMLElement>('.message-bubble > .message-body') ?? event.currentTarget }); }}>Message actions</button>
+      <button type="button" className="msg-touch__sr" aria-haspopup="menu" aria-expanded={menu?.kind === 'button'} onClick={(event) => { opener.current = event.currentTarget; setMenu({ kind: 'button', anchor: event.currentTarget.parentElement?.querySelector<HTMLElement>('.message-bubble > .message-body, .dm-msg__body') ?? event.currentTarget }); }}>Message actions</button>
       {menu ? <MessageMenu items={items} anchor={menu.anchor} press={menu.kind === 'press'} label="Message actions" messageId={messageOf(options)}
         onClose={(restore) => { setMenu(null); if (restore) opener.current?.focus({ preventScroll: true }); }} /> : null}
     </>

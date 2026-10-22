@@ -148,7 +148,7 @@ class RuntimeConsole(unittest.TestCase):
         page = self.page()
         page.goto("/settings/agents")
         section = page.locator("section.rt")
-        expect(section.get_by_role("heading", name="Claude Code in Flux")).to_be_visible()
+        expect(section.get_by_role("heading", name="Agent sign-in in Flux")).to_be_visible()
         expect(section).to_contain_text("Signing in with your Claude or ChatGPT subscription isn’t turned on for this Flux server.")
         expect(section.get_by_role("link", name=re.compile("^Use an API key"))).to_be_visible()
         expect(section.get_by_role("link", name="Sign in with Claude")).to_have_count(0)

@@ -34,7 +34,7 @@ the draft lifecycle.
 
 Migrations `0007_sketches.sql` and `0025_dm_sketches.sql` (#96). `app/tooling/migrate.ts` applies
 every unapplied file in order and checks that the highest version equals `FLUX_SCHEMA_VERSION`
-(113). Migration `0113_project_message_thought_sources.sql` adds same-project message provenance.
+(114; 0113 is this feature's reserved slot, applied even where 0114 already ran). Migration `0113_project_message_thought_sources.sql` adds same-project message provenance.
 
 ## Access
 

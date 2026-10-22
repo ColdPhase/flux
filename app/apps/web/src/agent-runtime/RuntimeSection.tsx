@@ -139,7 +139,7 @@ export function RuntimeSection({ otherWays }: { otherWays: ReactNode }) {
   if (!status.enabled || (!claudeOn && !codexOn)) {
     return (
       <section className="nset__sec rt" aria-labelledby="rt-h">
-        <h3 id="rt-h">Claude Code in Flux</h3>
+        <h3 id="rt-h">Agent sign-in in Flux</h3>
         <p className="nset__note">{status.enabled ? 'Signing in with your Claude subscription isn’t offered on this Flux server.' : 'Signing in with your Claude or ChatGPT subscription isn’t turned on for this Flux server.'}</p>
         {otherWays}
         <WhichAccount />
