@@ -127,10 +127,10 @@ class ReachabilityRows(LiveBase):
         self.use("chromium")
         self.seed()
         host = self.page("nia")
-        host.goto(self.conversation_url())
+        self.open_conversation(host, self.conversation_url())
         host_bar = self.bar(host)
-        together = host.locator("header.top").get_by_role("button", name="Together", exact=True)
-        join = host.locator("header.top").get_by_role("button", name="Join", exact=True)
+        together = host.locator("header.top, header.phead").get_by_role("button", name="Together", exact=True)
+        join = host.locator("header.top, header.phead").get_by_role("button", name="Join", exact=True)
         expect(together.or_(join).or_(host_bar)).to_be_visible()
         if together.is_visible():
             together.click()
@@ -143,8 +143,8 @@ class ReachabilityRows(LiveBase):
     def guest_join(self, engine: str, *, phone: bool = False, device: str | None = None) -> Page:
         self.use(engine)
         page = self.page("kai", phone=phone, device=device)
-        page.goto(self.conversation_url())
-        page.locator("header.top").get_by_role("button", name="Join").click()
+        self.open_conversation(page, self.conversation_url())
+        page.locator("header.top, header.phead").get_by_role("button", name="Join").click()
         expect(self.bar(page).get_by_role("status").first).to_contain_text("Live")
         self.addCleanup(self.leave_quietly, page)
         return page

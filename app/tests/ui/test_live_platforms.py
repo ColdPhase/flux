@@ -195,7 +195,7 @@ JOIN_PROBE = """() => {
   const region = document.querySelector('[role="region"][aria-label="Live session"]');
   const live = window.__live || {};
   return { url: location.pathname, userAgent: navigator.userAgent,
-    header: document.querySelector('header.top')?.innerText.slice(0, 200) ?? null,
+    header: document.querySelector('header.top, header.phead')?.innerText.slice(0, 200) ?? null,
     regionPresent: !!region, regionText: region ? region.innerText.slice(0, 300) : null,
     gum: live.gum ?? null, gdm: live.gdm ?? null, sockets: live.sockets ?? null,
     rtcReadyStates: (live.rtc || []).map((socket) => socket.readyState) };
@@ -338,10 +338,10 @@ class PlatformRows(LiveBase):
         conversation = f"/projects/{self.ids['project']}/conversations/{self.ids['conversation']}"
 
         host = self.page("nia")
-        host.goto(conversation)
+        self.open_conversation(host, conversation)
         host_bar = self.bar(host)
-        together = host.locator("header.top").get_by_role("button", name="Together", exact=True)
-        join = host.locator("header.top").get_by_role("button", name="Join", exact=True)
+        together = host.locator("header.top, header.phead").get_by_role("button", name="Together", exact=True)
+        join = host.locator("header.top, header.phead").get_by_role("button", name="Join", exact=True)
         # The header shows Together, or Join when a session is already open (left by an earlier failure).
         expect(together.or_(join).or_(host_bar)).to_be_visible()
         if not host_bar.is_visible():
@@ -370,8 +370,8 @@ class PlatformRows(LiveBase):
                                    "engineBeforeCapabilityEmulation": engine_value,
                                    "capabilityEmulation": "getDisplayMedia removed (MDN BCD, 2026-10-10)"}
 
-        page.goto(conversation)
-        page.locator("header.top").get_by_role("button", name="Join").click()
+        self.open_conversation(page, conversation)
+        page.locator("header.top, header.phead").get_by_role("button", name="Join").click()
         bar = self.bar(page)
         try:
             expect(bar.get_by_role("status").first).to_contain_text("Live")
