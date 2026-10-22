@@ -111,6 +111,8 @@ services:
       FLUX_MAILPIT_SMTPS_URL: http://mailpit-smtps:8025
       FLUX_PROVIDER_MOCK_URL: http://providermock:8095
       FLUX_API2_URL: http://api2:8080
+      # Set only by a run that composes the real worker with the mock provider (F-029 two-API test, #614).
+      FLUX_TEST_PERSONAL_RUNS: ${FLUX_TEST_PERSONAL_RUNS:-}
       NODE_EXTRA_CA_CERTS: /tls/cert.pem
     volumes:
       - pushtls:/tls:ro

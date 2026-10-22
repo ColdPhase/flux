@@ -58,6 +58,8 @@ const server = http.createServer((request, response) => {
   request.on('data', (chunk: Buffer) => chunks.push(chunk));
   request.on('end', () => {
     const url = new URL(request.url ?? '/', 'http://providermock');
+    // The Anthropic SDK with a bare origin as its base URL (the worker's FLUX_TEST_ANTHROPIC_URL) sends /v1/messages.
+    if (url.pathname.startsWith('/v1/messages')) url.pathname = `/anthropic${url.pathname}`;
     const raw = Buffer.concat(chunks).toString('utf8');
     let body: unknown = null;
     try { body = raw ? JSON.parse(raw) : null; } catch { body = raw; }

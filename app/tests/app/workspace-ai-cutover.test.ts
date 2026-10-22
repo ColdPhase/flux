@@ -2,8 +2,10 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import type { AddressInfo } from 'node:net';
 import { after, before, beforeEach, describe, test } from 'node:test';
-import { workspaceAiPolicyPath, type SetWorkspaceAiPolicyResult, type Workspace } from '@flux/contracts';
-import { sweepWorkspaceAi } from '@flux/core';
+import { assistantJobsPath, workspaceAiPolicyPath, type AssistantJob, type SetWorkspaceAiPolicyResult, type Workspace } from '@flux/contracts';
+import type { PgBoss } from 'pg-boss';
+import { assistantTick, sweepWorkspaceAi } from '@flux/core';
+import { assistantUnitOfWork, startBackgroundOf } from '../../apps/worker/src/assistant/index.js';
 import { buildApp } from '../../apps/server/src/app.js';
 import { loadServerConfig } from '../../apps/server/src/config.js';
 import { assistantScene, human, lockWaiters, type AssistantScene } from './support/assistant-scene.js';
@@ -200,6 +202,50 @@ describe('workspace AI lock: switch and cutover', () => {
     assert.equal((await pool.query('SELECT end_reason FROM personal_runs WHERE id = $1', [queued.run.id])).rows[0].end_reason, 'ai_off');
     assert.equal(scene.compute.dispatched.length, dispatched, 'the stopped run does not run');
     assert.equal((await mcp(accessToken, 3, 'tools/list')).status, 200, 'the connection works again');
+  });
+
+  test('the flip locks the policy row: two concurrent changes at the same version, one wins and the other gets a conflict', async () => {
+    const at = await workspaceAiRow(scene.ws.id);
+    const client = await pool.connect();
+    let results: Awaited<ReturnType<typeof put>>[] = [];
+    try {
+      await client.query('BEGIN');
+      await client.query('SELECT 1 FROM workspace_ai_policies WHERE workspace_id = $1 FOR SHARE', [scene.ws.id]);
+      const baseline = await lockWaiters();
+      const both = Promise.all([put(scene.owner, 'blocked', at!.version), put(scene.admin, 'blocked', at!.version)]);
+      await waitFor(async () => (await lockWaiters()) >= baseline + 2, 'both changes waiting on the policy row');
+      await client.query('COMMIT');
+      results = await both;
+    } finally { await client.query('ROLLBACK').catch(() => undefined); client.release(); }
+    assert.deepEqual(results.map((response) => response.status).sort(), [200, 409], results.map((response) => response.text).join(' | '));
+    const conflict = results.find((response) => response.status === 409)!;
+    assert.equal((conflict.json as { currentVersion?: number }).currentVersion, at!.version + 1, 'the loser saw the winner');
+    assert.deepEqual([(await workspaceAiRow(scene.ws.id))!.version, (await workspaceAiRow(scene.ws.id))!.epoch], [at!.version + 1, at!.epoch + 1], 'exactly one flip');
+  });
+
+  test('a schedule time missed while AI is off never fires; the next time after re-enable does', async () => {
+    const sent: { name: string; data: Record<string, unknown> }[] = [];
+    const boss = { send: async (name: string, data?: object | null) => { sent.push({ name, data: (data ?? {}) as Record<string, unknown> }); return randomUUID(); } } as unknown as Pick<PgBoss, 'send'>;
+    const tick = (now: Date) => assistantTick({ uow: assistantUnitOfWork(db, boss), startBackground: startBackgroundOf({ connections: scene.connections, providerEnabled: true, toolTurns: 1 }, db, boss) }, now);
+    const day = 86_400_000;
+    const base = new Date(Date.now() + 3 * day);
+    const at = (days: number, minutes = 0) => new Date(Date.UTC(base.getUTCFullYear(), base.getUTCMonth(), base.getUTCDate() + days, 9, minutes));
+    const job = expectStatus(await scene.owner.browser.request('POST', assistantJobsPath(scene.ws.id, scene.owner.id),
+      { body: { projectId: scene.place.id, text: 'List what moved', schedule: { kind: 'daily', at: '09:00' }, timeZone: 'UTC' } }), 201) as AssistantJob;
+    await pool.query('UPDATE assistant_jobs SET next_run_at = $2 WHERE id = $1', [job.id, at(0)]); // far ahead of the real clock
+    const firings = async () => Number((await pool.query('SELECT count(*)::int AS n FROM assistant_job_runs WHERE job_id = $1', [job.id])).rows[0].n);
+    const next = async () => new Date((await pool.query('SELECT next_run_at FROM assistant_jobs WHERE id = $1', [job.id])).rows[0].next_run_at as string).getTime();
+    try {
+      expectStatus(await put(scene.owner, 'blocked', await version()), 200);
+      await tick(at(0, 1));
+      assert.deepEqual([await firings(), sent.length], [0, 0], 'nothing fires while AI is off, and no history row is written');
+      assert.equal(await next(), at(1).getTime(), 'the schedule moved on to its next time');
+      expectStatus(await put(scene.owner, 'allowed', await version()), 200);
+      await tick(at(0, 5));
+      assert.equal(await firings(), 0, 'the missed time does not fire after AI is on again');
+      await tick(at(1, 1));
+      assert.equal(await firings(), 1, 'control: the next time fires');
+    } finally { await pool.query('DELETE FROM assistant_jobs WHERE id = $1', [job.id]); }
   });
 
   test('a second API process (this test process) sees a change made through the first at once', async () => {
