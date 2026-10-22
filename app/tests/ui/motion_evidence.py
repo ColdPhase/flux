@@ -32,7 +32,8 @@ from test_app_shell import ORIGIN, UI_BROWSER, UPSTREAM, start_forwarder
 OUT = Path(os.environ.get("FLUX_UI_SCREENSHOTS", "/screenshots"))
 BEAT = 650  # a pause long enough to see each motion finish before the next begins
 TABS = "nav[aria-label='Project views']"
-# Slows the page's own animations (the helpers' ones carry the id `flux-motion`) so a 260 ms slide can be seen in a 25 fps video.
+# Slows the page's own animations (the helpers' ones carry the id `flux-motion`) so a 260 ms slide can be seen in a 25 fps video (the slide's
+# own easing front-loads it: most of the distance is covered in the first third).
 # The durations in the animation log stay the real ones: this only stretches the picture.
 SLOW = """(() => { const o = Element.prototype.animate; Element.prototype.animate = function (f, opt) { const a = o.call(this, f, opt);
   setTimeout(() => { try { if (a.id === 'flux-motion') a.playbackRate = RATE; } catch (e) {} }, 0); return a; }; })();"""
@@ -304,9 +305,9 @@ class MotionEvidence(unittest.TestCase):
             self.go(page, self.fx.tasks_url())
             target = page.locator(".ws-task", has_text="Calibrate the probes at two depths").first
         expect(target).to_be_visible(); self.beat(page, 900)
-        self.mark(page, box=self.list_box(page), after=5.0 if slow else 2.0, scale=0.7, fps=25)
+        self.mark(page, box=self.list_box(page), after=9.0 if slow else 2.0, scale=0.7, fps=25)
         if slow:
-            target.locator("button.ws-task__glyph").click(); self.beat(page, 3600)
+            target.locator("button.ws-task__glyph").click(); self.beat(page, 7500)
         else:
             work = target.get_attribute("data-work-id")
             self.frames = page.evaluate(ROW_FRAMES, {"action": f"() => document.querySelector(\".ws-task[data-work-id='{work}'] button.ws-task__glyph\").click()"})
@@ -380,8 +381,8 @@ class MotionEvidence(unittest.TestCase):
         change at a rate that shows the slide (real time at 25 fps with per-frame row positions, and slowed 4x), including a move across a long list."""
         for scheme in ("light", "dark"):
             for name, journey, options in (("ac1-message-menu", self.clip_message_menu, {}), ("ac1-message-press-menu", self.clip_message_press_menu, {"phone": True}),
-                                           ("ac4-state", self.clip_state, {}), ("ac4-state-slow", self.clip_state_slow, {"slow": 0.25}),
-                                           ("ac4-state-far", self.clip_state_far, {}), ("ac4-state-far-slow", self.clip_state_far_slow, {"slow": 0.25})):
+                                           ("ac4-state", self.clip_state, {}), ("ac4-state-slow", self.clip_state_slow, {"slow": 0.1}),
+                                           ("ac4-state-far", self.clip_state_far, {}), ("ac4-state-far-slow", self.clip_state_far_slow, {"slow": 0.1})):
                 with self.subTest(scheme=scheme, clip=name):
                     self.clip(name, journey, scheme=scheme, **options)
 
