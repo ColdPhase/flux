@@ -119,6 +119,8 @@ export class Dissolve extends Component<Props, Record<string, never>, Snapshot |
     frame.setAttribute('aria-hidden', 'true');
     Object.assign(frame.style, { position: 'fixed', left: `${box.left + body.clientLeft}px`, top: `${box.top + body.clientTop}px`, width: `${body.clientWidth}px`, height: `${body.clientHeight}px`,
       overflow: 'hidden', pointerEvents: 'none', zIndex: String(given ?? above(body)) });
+    // On the page before it wears the sheets: WebKit does not apply sheets adopted by a root that is not in the document yet.
+    document.body.appendChild(frame);
     const root = frame.attachShadow({ mode: 'closed' });
     root.adoptedStyleSheets = sheets;
     // The host's own ancestors, empty and without a box of their own, so the copy is styled by the same selectors as the original.
@@ -147,7 +149,6 @@ export class Dissolve extends Component<Props, Record<string, never>, Snapshot |
       track(leave);
       gone.push(leave.finished.catch(() => undefined));
     }
-    document.body.appendChild(frame);
     void Promise.all(gone).then(() => frame.remove());
   }
 
